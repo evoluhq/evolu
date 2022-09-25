@@ -1,0 +1,11 @@
+/node_modules
+/dist
+
+# misc
+.DS_Store
+*.pem
+
+# typescript
+*.tsbuildinfo
+
+db.sqlite

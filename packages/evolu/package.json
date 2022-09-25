@@ -1,0 +1,73 @@
+{
+  "name": "evolu",
+  "version": "0.0.0",
+  "description": "Local-first React library with end-to-end encrypted backup and sync without conflicts.",
+  "keywords": [
+    "SQLite",
+    "local-first",
+    "CRDT",
+    "E2EE",
+    "react"
+  ],
+  "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
+  "license": "GNU GPL V3.0",
+  "bugs": {
+    "url": "https://github.com/evoluhq/evolu/issues"
+  },
+  "homepage": "https://github.com/evoluhq/evolu",
+  "type": "module",
+  "types": "./dist/src/index.d.ts",
+  "exports": "./dist/src/index.js",
+  "files": [
+    "dist/src/**"
+  ],
+  "scripts": {
+    "dev": "tsc --watch",
+    "build": "rm -rf dist && tsc",
+    "lint": "TIMING=1 eslint src --ext .ts,.tsx",
+    "test": "vitest run",
+    "clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist"
+  },
+  "dependencies": {
+    "@protobuf-ts/runtime": "^2.8.1",
+    "immutable-json-patch": "^5.0.0",
+    "kysely": "^0.21.6",
+    "murmurhash": "^2.0.1",
+    "nanoid": "4.0.0",
+    "rfc6902": "^5.0.1",
+    "sha256-uint8array": "^0.10.3",
+    "wa-sqlite": "github:rhashimoto/wa-sqlite#5fdc80ff1c153aeb0dab65a5e23ca22938c827a3"
+  },
+  "devDependencies": {
+    "@evolu/tsconfig": "workspace:0.0.0",
+    "@protobuf-ts/plugin": "^2.8.1",
+    "@types/node": "^16.11.60",
+    "@types/react": "^18.0.21",
+    "@types/react-dom": "^18.0.6",
+    "@types/web-locks-api": "^0.0.2",
+    "cross-env": "^7.0.3",
+    "esbuild": "^0.15.9",
+    "esbuild-node-externals": "^1.5.0",
+    "eslint": "^8.24.0",
+    "eslint-config-evolu": "workspace:0.0.0",
+    "fp-ts": "^2.12.3",
+    "openpgp": "^5.5.0",
+    "react": "^18.2.0",
+    "tslib": "^2.4.0",
+    "typescript": "^4.8.3",
+    "vitest": "^0.23.4",
+    "zod": "^3.19.1"
+  },
+  "peerDependencies": {
+    "fp-ts": "^2.12.3",
+    "openpgp": "^5.5.0",
+    "react": "^18.2.0",
+    "zod": "^3.19.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=16.17"
+  }
+}

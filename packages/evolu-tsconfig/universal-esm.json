@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "ESM for browsers and Node16+",
+  "extends": "./base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["dom", "esnext"],
+    "module": "ESNext", 
+    "target": "ES2021"
+  }
+}
