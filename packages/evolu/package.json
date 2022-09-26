@@ -1,6 +1,6 @@
 {
   "name": "evolu",
-  "version": "0.0.0",
+  "version": "0.0.2",
   "description": "Local-first React library with end-to-end encrypted backup and sync without conflicts.",
   "keywords": [
     "SQLite",
@@ -39,7 +39,7 @@
     "wa-sqlite": "github:rhashimoto/wa-sqlite#5fdc80ff1c153aeb0dab65a5e23ca22938c827a3"
   },
   "devDependencies": {
-    "@evolu/tsconfig": "workspace:0.0.0",
+    "@evolu/tsconfig": "workspace:0.0.2",
     "@protobuf-ts/plugin": "^2.8.1",
     "@types/node": "^16.11.60",
     "@types/react": "^18.0.21",
@@ -49,7 +49,7 @@
     "esbuild": "^0.15.9",
     "esbuild-node-externals": "^1.5.0",
     "eslint": "^8.24.0",
-    "eslint-config-evolu": "workspace:0.0.0",
+    "eslint-config-evolu": "workspace:0.0.2",
     "fp-ts": "^2.12.3",
     "openpgp": "^5.5.0",
     "react": "^18.2.0",

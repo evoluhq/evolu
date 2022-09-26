@@ -6,7 +6,7 @@ importers:
     specifiers:
       '@changesets/cli': ^2.24.4
       eslint: ^8.24.0
-      eslint-config-evolu: workspace:0.0.0
+      eslint-config-evolu: workspace:0.0.2
       prettier: ^2.7.1
       turbo: ^1.5.3
     devDependencies:
@@ -18,7 +18,7 @@ importers:
 
   apps/server:
     specifiers:
-      '@evolu/tsconfig': workspace:0.0.0
+      '@evolu/tsconfig': workspace:0.0.2
       '@types/better-sqlite3': ^7.6.0
       '@types/body-parser': ^1.19.2
       '@types/cors': ^2.8.12
@@ -27,7 +27,7 @@ importers:
       better-sqlite3: ^7.6.2
       body-parser: ^1.20.0
       cors: ^2.8.5
-      evolu: workspace:0.0.0
+      evolu: workspace:0.0.2
       express: ^4.18.1
       fp-ts: ^2.12.3
       ts-node: ^10.9.1
@@ -51,15 +51,15 @@ importers:
 
   apps/web:
     specifiers:
-      '@evolu/tsconfig': workspace:0.0.0
+      '@evolu/tsconfig': workspace:0.0.2
       '@next/bundle-analyzer': ^12.3.1
       '@types/node': ^16.11.60
       '@types/react': ^18.0.21
       '@types/react-dom': ^18.0.6
       cross-env: ^7.0.3
       eslint: ^8.24.0
-      eslint-config-evolu: workspace:0.0.0
-      evolu: workspace:0.0.0
+      eslint-config-evolu: workspace:0.0.2
+      evolu: workspace:0.0.2
       next: ^12.3.1
       next-transpile-modules: ^9.0.0
       react: ^18.2.0
@@ -107,7 +107,7 @@ importers:
 
   packages/evolu:
     specifiers:
-      '@evolu/tsconfig': workspace:0.0.0
+      '@evolu/tsconfig': workspace:0.0.2
       '@protobuf-ts/plugin': ^2.8.1
       '@protobuf-ts/runtime': ^2.8.1
       '@types/node': ^16.11.60
@@ -118,7 +118,7 @@ importers:
       esbuild: ^0.15.9
       esbuild-node-externals: ^1.5.0
       eslint: ^8.24.0
-      eslint-config-evolu: workspace:0.0.0
+      eslint-config-evolu: workspace:0.0.2
       fp-ts: ^2.12.3
       immutable-json-patch: ^5.0.0
       kysely: ^0.21.6
@@ -192,7 +192,7 @@ packages:
     resolution: {integrity: sha512-j2vJGnkopRzH+ykJ8h68wrHnEUmtK//E723jjixiAl/PPf6FhqY/vYRcMVlNydRKQjQsTsYEjpx+DZMIvnGk/g==}
     engines: {node: '>=6.9.0'}
     dependencies:
-      core-js-pure: 3.25.2
+      core-js-pure: 3.25.3
       regenerator-runtime: 0.13.9
     dev: false
 
@@ -1329,8 +1329,8 @@ packages:
     engines: {node: '>= 0.6'}
     dev: false
 
-  /core-js-pure/3.25.2:
-    resolution: {integrity: sha512-ItD7YpW1cUB4jaqFLZXe1AXkyqIxz6GqPnsDV4uF4hVcWh/WAGIqSqw5p0/WdsILM0Xht9s3Koyw05R3K6RtiA==}
+  /core-js-pure/3.25.3:
+    resolution: {integrity: sha512-T/7qvgv70MEvRkZ8p6BasLZmOVYKzOaWNBEHAU8FmveCJkl4nko2quqPQOmy6AJIp5MBanhz9no3A94NoRb0XA==}
     requiresBuild: true
     dev: false
 

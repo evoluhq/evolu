@@ -1,6 +1,5 @@
 {
   "name": "web",
-  "version": "0.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -13,18 +12,18 @@
   "dependencies": {
     "@next/bundle-analyzer": "^12.3.1",
     "cross-env": "^7.0.3",
-    "evolu": "workspace:0.0.0",
+    "evolu": "workspace:0.0.2",
     "next": "^12.3.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "@evolu/tsconfig": "workspace:0.0.0",
+    "@evolu/tsconfig": "workspace:0.0.2",
     "@types/node": "^16.11.60",
     "@types/react": "^18.0.21",
     "@types/react-dom": "^18.0.6",
     "eslint": "^8.24.0",
-    "eslint-config-evolu": "workspace:0.0.0",
+    "eslint-config-evolu": "workspace:0.0.2",
     "next-transpile-modules": "^9.0.0",
     "typescript": "^4.8.3"
   }

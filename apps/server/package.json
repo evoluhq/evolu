@@ -1,6 +1,5 @@
 {
   "name": "server",
-  "version": "0.0.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -14,12 +13,12 @@
     "better-sqlite3": "^7.6.2",
     "body-parser": "^1.20.0",
     "cors": "^2.8.5",
-    "evolu": "workspace:0.0.0",
+    "evolu": "workspace:0.0.2",
     "express": "^4.18.1",
     "fp-ts": "^2.12.3"
   },
   "devDependencies": {
-    "@evolu/tsconfig": "workspace:0.0.0",
+    "@evolu/tsconfig": "workspace:0.0.2",
     "@types/better-sqlite3": "^7.6.0",
     "@types/body-parser": "^1.19.2",
     "@types/cors": "^2.8.12",
