@@ -1,13 +1,15 @@
 {
   "name": "evolu",
   "version": "0.0.2",
-  "description": "Local-first React library with end-to-end encrypted backup and sync without conflicts.",
+  "description": "React Hooks library for local-first software with end-to-end encrypted backup and sync using SQLite and CRDT.",
   "keywords": [
-    "SQLite",
+    "evolu",
+    "react",
+    "hooks",
     "local-first",
-    "CRDT",
     "E2EE",
-    "react"
+    "SQLite",
+    "CRDT"
   ],
   "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
   "license": "GNU GPL V3.0",
