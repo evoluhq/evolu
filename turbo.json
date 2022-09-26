@@ -5,18 +5,18 @@
       "outputs": ["dist/**", ".next/**"],
       "dependsOn": ["^build"]
     },
+    "dev": {
+      "cache": false
+    },
+    "start": {
+      "cache": false
+    },
     "test": {
       "outputs": ["coverage/**"],
       "dependsOn": []
     },
     "lint": {
       "outputs": []
-    },
-    "dev": {
-      "cache": false
-    },
-    "start": {
-      "cache": false
     },
     "clean": {
       "cache": false
