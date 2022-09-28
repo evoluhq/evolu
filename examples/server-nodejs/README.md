@@ -2,9 +2,11 @@
 
 ## Getting Started
 
-- npm install
-- npm build
-- npm start
+```bash
+npm install
+npm build
+npm start
+```
 
 ## Deploy to fly.io
 
