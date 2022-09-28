@@ -135,7 +135,7 @@ importers:
       zod: ^3.19.1
     dependencies:
       '@protobuf-ts/runtime': 2.8.1
-      immutable-json-patch: 5.0.0
+      immutable-json-patch: 5.1.0
       kysely: 0.21.6
       murmurhash: 2.0.1
       nanoid: 4.0.0
@@ -2601,8 +2601,8 @@ packages:
     resolution: {integrity: sha512-CmxgYGiEPCLhfLnpPp1MoRmifwEIOgjcHXxOBjv7mY96c+eWScsOP9c112ZyLdWHi0FxHjI+4uVhKYp/gcdRmQ==}
     engines: {node: '>= 4'}
 
-  /immutable-json-patch/5.0.0:
-    resolution: {integrity: sha512-mlr7VHNQSyUjZecTA8tCXjsfM8J5nUmnQ4YuahGETTHx0/inOHFTIUr880wUSV7hLXcQ3UhUJvCpXpdnLYKjfQ==}
+  /immutable-json-patch/5.1.0:
+    resolution: {integrity: sha512-OFfXBoXUp9G2ULd5C8zrADcIo41kMhPKZRb3iMtSGAXmHf8jth61KzQMU71q7HGEaPHfO1HC6omfxDW5zpFcgQ==}
     dev: false
 
   /import-fresh/3.3.0:
@@ -4252,8 +4252,8 @@ packages:
     engines: {node: '>= 0.8'}
     dev: false
 
-  /vite/3.1.3:
-    resolution: {integrity: sha512-/3XWiktaopByM5bd8dqvHxRt5EEgRikevnnrpND0gRfNkrMrPaGGexhtLCzv15RcCMtV2CLw+BPas8YFeSG0KA==}
+  /vite/3.1.4:
+    resolution: {integrity: sha512-JoQI08aBjY9lycL7jcEq4p9o1xUjq5aRvdH4KWaXtkSx7e7RpAh9D3IjzDWRD4Fg44LS3oDAIOG/Kq1L+82psA==}
     engines: {node: ^14.18.0 || >=16.0.0}
     hasBin: true
     peerDependencies:
@@ -4311,7 +4311,7 @@ packages:
       tinybench: 2.1.5
       tinypool: 0.3.0
       tinyspy: 1.0.2
-      vite: 3.1.3
+      vite: 3.1.4
     transitivePeerDependencies:
       - less
       - sass
