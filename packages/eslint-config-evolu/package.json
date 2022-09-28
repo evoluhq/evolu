@@ -1,6 +1,7 @@
 {
   "name": "eslint-config-evolu",
   "version": "0.0.2",
+  "private": true,
   "main": "index.js",
   "scripts": {
     "clean": "rm -rf node_modules"
