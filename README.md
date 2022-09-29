@@ -1,6 +1,6 @@
 # Evolu
 
-The first complete and usable solution for client-first software is here.
+The first complete and usable library for client-first software is here.
 
 It's so simple that everybody should understand how it works, and it's so complete that you can start building apps on it right now.
 
@@ -127,6 +127,8 @@ Evolu uses end-to-end encryption and generates strong and safe passwords for you
 Evolu is not pure P2P software. For syncing and backup, there needs to be a server. Evolu server is very minimal, and everyone can run their own. While it's theoretically possible to have pure P2P Evolu, I haven't seen a reliable solution yet. It's not only a technical problem; it's mainly an economic problem. Someone has to be paid to keep all your data safe. Evolu provides a free server (syncUrl in Evolu config) for testing. Soon we will provide our paid server for production usage.
 
 All table columns except for ID are nullable by default. It's not a bug; it's a feature. Evolu data, like all local-first data, ale meant to last forever, but applications data schemas evolve. Local-first software can migrate data only locally. This design decision is inspired by GraphQL [nullability](https://graphql.org/learn/best-practices/#nullability) and [versionless](https://graphql.org/learn/best-practices/#versioning) schema.
+
+Evolu CRDT has no support for transactions because CRDT transactions are still an unsolved issue. Instead of a half-baked solution, I made a design decision not to implement them. I have a few ideas but need a community to discuss them, and it's not a show-stopper. 
 
 ## Community
 
