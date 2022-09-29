@@ -116,6 +116,10 @@ const handleRestoreOwner = () => {
 
 And that's all. Minimal API is the key to a great developer experience. In the next few days, I will add more docs and explanations.
 
+## Privacy
+
+Evolu uses end-to-end encryption and generates strong and safe passwords for you. Evolu sync and backup server see only timestamps. Nothing more. We plan to do at least two security audits.
+
 ## Trade-offs
 
 > “There are no solutions. There are only trade-offs.” ― Thomas Sowell
@@ -123,4 +127,20 @@ And that's all. Minimal API is the key to a great developer experience. In the n
 Evolu is not pure P2P software. For syncing and backup, there needs to be a server. Evolu server is very minimal, and everyone can run their own. While it's theoretically possible to have pure P2P Evolu, I haven't seen a reliable solution yet. It's not only a technical problem; it's mainly an economic problem. Someone has to be paid to keep all your data safe. Evolu provides a free server (syncUrl in Evolu config) for testing. Soon we will provide our paid server for production usage.
 
 All table columns except for ID are nullable by default. It's not a bug; it's a feature. Evolu data, like all local-first data, ale meant to last forever, but applications data schemas evolve. Local-first software can migrate data only locally. This design decision is inspired by GraphQL [nullability](https://graphql.org/learn/best-practices/#nullability) and [versionless](https://graphql.org/learn/best-practices/#versioning) schema.
+
+## Community
+
+Use Github discussions for now.
+
+[![Twitter URL](https://img.shields.io/twitter/url/https/twitter.com/evoluhq.svg?style=social&label=Follow%20%40evoluhq)](https://twitter.com/evoluhq)
+
+## What next
+
+We have a lot on the table. While Evolu works, it's far from finished, and I consider it a cornerstone for further development. Check [issues](https://github.com/evoluhq/evolu/issues) and feel free to discuss them.
+
+## FAQ
+
+**Q:** Why GPL-3.0 license?
+
+**A:** Yes, I know. GPL-3.0 requires that any software using Evolu must have the same license, which means it must be open-sourced. That's why Evolu uses this license. Unfortunately, there is only one maintained SQLite implementation for the browser IndexedDB. The good news is that Chrome developers are [actively working](https://twitter.com/ChromiumDev/status/1565105522092695553) on the official SQLite implementation over Wasm.
 
