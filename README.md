@@ -142,5 +142,10 @@ We have a lot on the table. While Evolu works, it's far from finished, and I con
 
 **Q:** Why GPL-3.0 license?
 
-**A:** Yes, I know. GPL-3.0 requires that any software using Evolu must have the same license, which means it must be open-sourced. That's why Evolu uses this license. Unfortunately, there is only one maintained SQLite implementation for the browser IndexedDB. The good news is that Chrome developers are [actively working](https://twitter.com/ChromiumDev/status/1565105522092695553) on the official SQLite implementation over Wasm.
+**A:** Yes, I know. GPL-3.0 requires that any software using Evolu must have the same license, which means it must be open-sourced. That's why Evolu uses this license. Unfortunately, there is only one maintained SQLite implementation for the browser IndexedDB. The good news is that Chrome developers are [actively working](https://twitter.com/ChromiumDev/status/1565105522092695553) on the official SQLite implementation over Wasm. Once it is available, Evolu will use it.
+
+**Q:** Why only React?
+
+**A:** Because React is the only UI library I'm using, but as you can check Evolu React bindings, they are very simple, so it should be easy to write bindings to other UI libraries. Feel free to send a PR.
+
 
