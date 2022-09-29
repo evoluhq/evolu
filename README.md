@@ -146,6 +146,14 @@ We have a lot on the table. While Evolu works, it's far from finished, and I con
 
 **Q:** Why only React?
 
-**A:** Because React is the only UI library I'm using, but as you can check Evolu React bindings, they are very simple, so it should be easy to write bindings to other UI libraries. Feel free to send a PR.
+**A:** Because React is the only UI library I'm using, but as you can see, Evolu React bindings are very simple, so it should be easy to write bindings to other UI libraries. Feel free to send a PR.
+
+**Q:** Is userId generated from the mnemonic safe?
+
+**A:** Yes, it is. It's impossible to compute a mnemonic from its hash because the Evolu mnemonic has high enough entropy, and we are using only 1/3 of it. But I must say I'm not a professional cryptographer, so don't use Evolu for critical security situations.
+
+## Thanks
+
+The biggest thank belongs to [James Long](https://twitter.com/jlongster). Without his ingenious contributions to open-source, Evolu would not exists. He made the first SQLite in the IndexedDB [library](https://github.com/jlongster/absurd-sql). He made [CRDT for mortals](https://github.com/jlongster/crdt-example-app). Heck, he made Prettier, and without Prettier, I would not be able to write [functional pipes](https://github.com/gcanti/fp-ts) so quickly. Thank you James. I love your work.
 
 
