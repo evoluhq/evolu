@@ -24,9 +24,10 @@ It's even more, but this is the shortest claim I have been able to come up with.
 
 - It must use an SQL database in the browser. No leaky abstractions.
 - It has to have as minimal API as possible. No barriers.
-- The source code must be as simple as possible. No Ph.D. stuff.
+- The source code must be as simple as possible. No Ph.D. complexity.
 - It must use types as much as possible. Autocomplete FTW.
-- The Developer Experience is foremost.
+- All data must be end-to-end encrypted. No excuses.
+- Developer experience is foremost. And always will be.
 - And it must be fast. Or don't block the main thread, at least 🙃
 
 That's why I wasn't satisfied with prior work and had to create Evolu. But it does not mean I did not use any. On the contrary, I used many other people's work and ideas. First and foremost, the Evolu architecture is almost a clone of James Long [CRDT for mortals](https://www.youtube.com/watch?v=DEcwa68f-jY). Rewritten and improved, of course.
@@ -114,4 +115,12 @@ const handleRestoreOwner = () => {
 ```
 
 And that's all. Minimal API is the key to a great developer experience. In the next few days, I will add more docs and explanations.
+
+## Trade-offs
+
+> “There are no solutions. There are only trade-offs.” ― Thomas Sowell
+
+Evolu is not pure P2P software. For syncing and backup, there needs to be a server. Evolu server is very minimal, and everyone can run their own. While it's theoretically possible to have pure P2P Evolu, I haven't seen a reliable solution yet. It's not only a technical problem; it's mainly an economic problem. Someone has to be paid to keep all your data safe. Evolu provides a free server (syncUrl in Evolu config) for testing. Soon we will provide our paid server for production usage.
+
+All table columns except for ID are nullable by default. It's not a bug; it's a feature. Evolu data, like all local-first data, ale meant to last forever, but applications data schemas evolve. Local-first software can migrate data only locally. This design decision is inspired by GraphQL [nullability](https://graphql.org/learn/best-practices/#nullability) and [versionless](https://graphql.org/learn/best-practices/#versioning) schema.
 
