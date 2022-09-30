@@ -13,19 +13,19 @@
   "dependencies": {
     "@next/bundle-analyzer": "^12.3.1",
     "cross-env": "^7.0.3",
-    "evolu": "workspace:*",
+    "evolu": "workspace:0.1.0",
     "next": "^12.3.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "@evolu/tsconfig": "workspace:*",
-    "@types/node": "^16.11.60",
+    "@evolu/tsconfig": "workspace:0.0.2",
+    "@types/node": "^16.11.62",
     "@types/react": "^18.0.21",
     "@types/react-dom": "^18.0.6",
     "eslint": "^8.24.0",
-    "eslint-config-evolu": "workspace:*",
+    "eslint-config-evolu": "workspace:0.0.2",
     "next-transpile-modules": "^9.0.0",
-    "typescript": "^4.8.3"
+    "typescript": "^4.8.4"
   }
 }
