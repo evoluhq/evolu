@@ -1,6 +1,6 @@
 # Evolu
 
-The first complete and usable library for client-first software is here.
+The first complete and usable library for local-first software is here.
 
 It's so simple that everybody should understand how it works, and it's so complete that you can start building apps on it right now.
 
@@ -14,13 +14,13 @@ TLDR; Local-first software allows users to own their data. It means data are sto
 
 ### The trade-offs of the client-server architecture
 
-Client-server architecture provides us with easy backup and synchronization, but all that fun depends on the ability of the server to fulfill its promises. Companies go bankrupt, users are banned, errors occur, all those things happen all the time, and then what? Right, that's why the world needs client-first software. But until now, writing local-first software has been challenging because of the lack of libraries and design patterns. I personally failed several times, and that's why I created Evolu.
+Client-server architecture provides us with easy backup and synchronization, but all that fun depends on the ability of the server to fulfill its promises. Companies go bankrupt, users are banned, errors occur, all those things happen all the time, and then what? Right, that's why the world needs local-first software. But until now, writing local-first software has been challenging because of the lack of libraries and design patterns. I personally failed several times, and that's why I created Evolu.
 
 ## What Evolu is
 
 *Evolu is React Hooks library for local-first software with end-to-end encrypted backup and sync using SQLite and CRDT.*
 
-It's even more, but this is the shortest claim I have been able to come up with. Evolu is my idea of how client-first software should be written.
+It's even more, but this is the shortest claim I have been able to come up with. Evolu is my idea of how local-first software should be written.
 
 - It must use an SQL database in the browser. No leaky abstractions.
 - It has to have as minimal API as possible. No barriers.
