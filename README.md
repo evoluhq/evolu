@@ -18,7 +18,7 @@ Client-server architecture provides us with easy backup and synchronization, but
 
 ## What Evolu is
 
-*Evolu is React Hooks library for local-first software with end-to-end encrypted backup and sync using SQLite and CRDT.*
+_Evolu is React Hooks library for local-first software with end-to-end encrypted backup and sync using SQLite and CRDT._
 
 It's even more, but this is the shortest claim I have been able to come up with. Evolu is my idea of how local-first software should be written.
 
@@ -34,7 +34,7 @@ That's why I wasn't satisfied with prior work and had to create Evolu. But it do
 
 ## Getting Started
 
-The most simple example for [Next.js](https://nextjs.org/) is [here](https://github.com/evoluhq/evolu/tree/main/examples/nextjs). Let's take a look at API.
+The complete Next.js example is [here](https://github.com/evoluhq/evolu/tree/main/examples/nextjs).
 
 ### Create a table with columns
 
@@ -128,7 +128,7 @@ Evolu is not pure P2P software. For syncing and backup, there needs to be a serv
 
 All table columns except for ID are nullable by default. It's not a bug; it's a feature. Evolu data, like all local-first data, ale meant to last forever, but applications data schemas evolve. Local-first software can migrate data only locally. This design decision is inspired by GraphQL [nullability](https://graphql.org/learn/best-practices/#nullability) and [versionless](https://graphql.org/learn/best-practices/#versioning) schema.
 
-Evolu CRDT has no support for transactions because CRDT transactions are still an unsolved issue. Instead of a half-baked solution, I made a design decision not to implement them. I have a few ideas but need a community to discuss them, and it's not a show-stopper. 
+Evolu CRDT has no support for transactions because CRDT transactions are still an unsolved issue. Instead of a half-baked solution, I made a design decision not to implement them. I have a few ideas but need a community to discuss them, and it's not a show-stopper.
 
 ## Community
 
@@ -157,5 +157,3 @@ We have a lot on the table. While Evolu works, it's far from finished, and I con
 ## Thanks
 
 The biggest thank belongs to [James Long](https://twitter.com/jlongster). Without his ingenious contributions to open-source, Evolu would not exists. He made the first SQLite in the IndexedDB [library](https://github.com/jlongster/absurd-sql). He made [CRDT for mortals](https://github.com/jlongster/crdt-example-app). Heck, he made Prettier, and without Prettier, I would not be able to write [functional pipes](https://github.com/gcanti/fp-ts) so quickly. Thank you James. I love your work.
-
-
