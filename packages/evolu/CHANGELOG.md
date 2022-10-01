@@ -1,5 +1,11 @@
 # evolu
 
+## 0.1.2
+
+### Patch Changes
+
+- 5244c0c: Kysely 0.22.0 and remove a mutation from its interface
+
 ## 0.1.1
 
 ### Patch Changes
