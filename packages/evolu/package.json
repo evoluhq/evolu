@@ -33,7 +33,7 @@
   "dependencies": {
     "@protobuf-ts/runtime": "^2.8.1",
     "immutable-json-patch": "^5.1.0",
-    "kysely": "^0.21.6",
+    "kysely": "^0.22.0",
     "murmurhash": "^2.0.1",
     "nanoid": "4.0.0",
     "rfc6902": "^5.0.1",

@@ -223,6 +223,7 @@ type KyselyOnlyForReading<DB> = Omit<
   | "isTransaction"
   | "migration"
   | "raw"
+  | "replaceInto"
   | "schema"
   | "transaction"
   | "updateTable"
