@@ -12,7 +12,8 @@
     "test": "turbo run test",
     "clean": "turbo run clean && rm -rf node_modules",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
-    "publish-packages": "turbo run build lint test && changeset version && changeset publish"
+    "version": "changeset version && pnpm install --no-frozen-lockfile && pnpm format",
+    "release": "pnpm run build && changeset publish"
   },
   "devDependencies": {
     "@changesets/cli": "^2.24.4",
