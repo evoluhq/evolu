@@ -6,7 +6,16 @@ import { kysely } from "./kysely.js";
 import { DbSchema, Mutate, Query, sqlQueryToString } from "./types.js";
 
 /**
- * Define database schema and create `useQuery` and `useMutation` React Hooks.
+ * Create `useQuery` and `useMutation` React Hooks for a given DB schema.
+ *
+ * @example
+ * const { useQuery, useMutation } = createHooks({
+ *   todo: {
+ *     id: TodoId,
+ *     title: model.NonEmptyString1000,
+ *     isCompleted: model.SqliteBoolean,
+ *   },
+ * });
  */
 export const createHooks =
   // eslint-disable-next-line @typescript-eslint/explicit-function-return-type

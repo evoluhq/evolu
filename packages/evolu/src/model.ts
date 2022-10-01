@@ -21,6 +21,7 @@ export type ID<T extends string> = string & BRAND<`${T}Id`>;
 
 /**
  * Create branded ID type for a table.
+ * It's useful for foreign keys.
  *
  * @example
  * const PersonId = id<"person">();
@@ -88,6 +89,14 @@ export const SqliteDateTime = z
   .brand<"SqliteDateTime">();
 export type SqliteDateTime = z.infer<typeof SqliteDateTime>;
 
+/**
+ * A helper for casting types not supported by SQLite.
+ * SQLite has no DateTime nor Boolean types, so Evolu emulates it
+ * via `SqliteBoolean` and `SqliteDateTime`.
+ *
+ * @example
+ * .where("isDeleted", "is not", model.cast(true))
+ */
 export function cast(value: boolean): SqliteBoolean;
 export function cast(value: SqliteBoolean): boolean;
 export function cast(value: Date): SqliteDateTime;
