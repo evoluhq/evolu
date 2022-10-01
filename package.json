@@ -16,7 +16,7 @@
     "release": "pnpm run build && changeset publish"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.24.4",
+    "@changesets/cli": "^2.25.0",
     "eslint": "^8.24.0",
     "eslint-config-evolu": "workspace:0.0.2",
     "prettier": "^2.7.1",
