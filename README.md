@@ -154,6 +154,10 @@ We have a lot on the table. While Evolu works, it's far from finished, and I con
 
 **A:** Yes, it is. It's impossible to compute a mnemonic from its hash because the Evolu mnemonic has high enough entropy, and we are using only 1/3 of it. But I must say I'm not a professional cryptographer, so don't use Evolu for critical security situations.
 
+## Contributing
+
+Use `pnpm changeset`.
+
 ## Thanks
 
 The biggest thank belongs to [James Long](https://twitter.com/jlongster). Without his ingenious contributions to open-source, Evolu would not exists. He made the first SQLite in the IndexedDB [library](https://github.com/jlongster/absurd-sql). He made [CRDT for mortals](https://github.com/jlongster/crdt-example-app). Heck, he made Prettier, and without Prettier, I would not be able to write [functional pipes](https://github.com/gcanti/fp-ts) so quickly. Thank you James. I love your work.
