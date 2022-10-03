@@ -158,7 +158,6 @@ const { postDbWorkerInput, owner } = pipe(
       // For Evolu config to have time to be overridden.
       setTimeout
     );
-    // });
   }),
   (
     promise
