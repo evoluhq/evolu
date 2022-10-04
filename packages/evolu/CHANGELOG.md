@@ -1,5 +1,11 @@
 # evolu
 
+## 0.1.3
+
+### Patch Changes
+
+- fee19a7: Expose Zod string and number
+
 ## 0.1.2
 
 ### Patch Changes
