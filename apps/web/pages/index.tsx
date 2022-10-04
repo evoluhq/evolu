@@ -1,131 +1,293 @@
-import { createHooks, getOwner, model, resetOwner, restoreOwner } from "evolu";
+/* eslint-disable functional/prefer-readonly-type */
+/* eslint-disable functional/immutable-data */
+/* eslint-disable @typescript-eslint/explicit-function-return-type */
+import {
+  createHooks,
+  getOwner,
+  model,
+  NonEmptyString1000,
+  resetOwner,
+  restoreOwner,
+  SqliteBoolean,
+} from "evolu";
+import { ChangeEvent, memo } from "react";
+import Head from "next/head";
 
-// Every table needs its own branded string ID.
-// Branded types is a TypeScript feature to distinguish primitive types.
+// `model` is Evolu helper for branded types.
+// https://dev.to/andersonjoseph/typescript-tip-safer-functions-with-branded-types-14o4
+
 const TodoId = model.id<"todo">();
 type TodoId = model.infer<typeof TodoId>;
 
-// Define database schema and create `useQuery` and `useMutation` React Hooks.
+const TodoCategoryId = model.id<"todoCategory">();
+type TodoCategoryId = model.infer<typeof TodoCategoryId>;
+
 const { useQuery, useMutation } = createHooks({
   todo: {
     id: TodoId,
-    // While it's possible to use just string, we don't recommend it.
-    // NonEmptyString1000 is a non-empty string with a maximum of 1000 chars.
     title: model.NonEmptyString1000,
-    // SQLite has no Boolean datatype, so we emulate it.
     isCompleted: model.SqliteBoolean,
+    categoryId: TodoCategoryId,
+  },
+  todoCategory: {
+    id: TodoCategoryId,
+    name: model.NonEmptyString1000,
   },
 });
 
-const TodoItem = ({
-  row: { id, title, isCompleted },
+const promptNonEmptyString1000 = (
+  message: string,
+  callback: (value: NonEmptyString1000) => void
+) => {
+  const value = prompt(message);
+  if (value == null) return;
+  const parsedValue = model.NonEmptyString1000.safeParse(value);
+  if (!parsedValue.success) {
+    alert(JSON.stringify(parsedValue.error, null, 2));
+    return;
+  }
+  callback(parsedValue.data);
+};
+
+const TodoCategorySelect = ({
+  selected,
+  onSelect,
 }: {
-  readonly row: {
-    readonly id: TodoId;
-    readonly title: model.NonEmptyString1000 | null;
-    readonly isCompleted: model.SqliteBoolean | null;
-  };
-}): JSX.Element => {
-  const { mutate } = useMutation();
+  selected: TodoCategoryId | null;
+  onSelect: (value: TodoCategoryId | null) => void;
+}) => {
+  const { rows } = useQuery((db) =>
+    db
+      .selectFrom("todoCategory")
+      .select(["id", "name", "isDeleted"])
+      .where("isDeleted", "is not", model.cast(true))
+      .orderBy("createdAt")
+  );
 
-  const handleCompleteClick = (): void => {
-    mutate("todo", { id, isCompleted: !isCompleted });
-  };
+  // That's what React recommends instead of null.
+  const nothingSelected = "";
 
-  const handleRenameClick = (): void => {
-    const newTitle = model.NonEmptyString1000.safeParse(
-      prompt("What needs to be done?", title || "")
-    );
-    if (!newTitle.success) {
-      alert(JSON.stringify(newTitle.error, null, 2));
-      return;
-    }
-    mutate("todo", { id, title: newTitle.data });
+  const handleSelectChange = ({
+    target: { value },
+  }: ChangeEvent<HTMLSelectElement>) => {
+    onSelect(value === nothingSelected ? null : (value as TodoCategoryId));
   };
 
-  const handleDeleteClick = (): void => {
-    mutate("todo", { id, isDeleted: true });
-  };
+  // If a category has been deleted, show no category.
+  const value =
+    selected &&
+    rows.find((r) => r.id === selected && r.isDeleted !== model.cast(true))
+      ? selected
+      : nothingSelected;
 
   return (
-    <li>
-      <p
-        style={{
-          textDecoration: isCompleted ? "Line-through" : "none",
-        }}
-      >
-        {title}
-      </p>
-      <button onClick={handleCompleteClick}>
-        {isCompleted ? "completed" : "complete"}
-      </button>
-      <button onClick={handleRenameClick}>rename</button>
-      <button onClick={handleDeleteClick}>delete</button>
-    </li>
+    <select value={value} onChange={handleSelectChange}>
+      <option value={nothingSelected}>-- no category --</option>
+      {rows.map(
+        ({ id, name }) =>
+          name != null && (
+            <option key={id} value={id}>
+              {name}
+            </option>
+          )
+      )}
+    </select>
   );
 };
 
-export default function Web(): JSX.Element {
+const TodoItem = memo<{
+  id: TodoId;
+  title: NonEmptyString1000;
+  isCompleted: SqliteBoolean | null;
+  categoryId: TodoCategoryId | null;
+}>(({ id, title, isCompleted, categoryId }) => {
+  const { mutate } = useMutation();
+
+  const handleCompleteClick = () => {
+    mutate("todo", { id, isCompleted: !isCompleted });
+  };
+
+  const handleRenameClick = () => {
+    promptNonEmptyString1000("New Name", (title) =>
+      mutate("todo", { id, title })
+    );
+  };
+
+  const handleDeleteClick = () => {
+    mutate("todo", { id, isDeleted: true });
+  };
+
+  const handleTodoCategorySelect = (categoryId: TodoCategoryId | null) => {
+    mutate("todo", { id, categoryId });
+  };
+
+  return (
+    <li key={id}>
+      <p>
+        <span style={{ textDecoration: isCompleted ? "line-through" : "none" }}>
+          {title}
+        </span>{" "}
+        <button onClick={handleCompleteClick}>
+          {isCompleted ? "completed" : "complete"}
+        </button>
+        <button onClick={handleRenameClick}>rename</button>
+        <button onClick={handleDeleteClick}>delete</button>
+        <TodoCategorySelect
+          selected={categoryId}
+          onSelect={handleTodoCategorySelect}
+        />
+      </p>
+    </li>
+  );
+});
+
+TodoItem.displayName = "TodoItem";
+
+const TodoList = () => {
   const { rows } = useQuery((db) =>
-    // Note typed SQL query via https://github.com/koskimas/kysely.
     db
       .selectFrom("todo")
-      .select(["id", "title", "isCompleted"])
-      // Note auto-generated (isDeleted, createdAt) columns.
+      .select(["id", "title", "isCompleted", "categoryId"])
       .where("isDeleted", "is not", model.cast(true))
       .orderBy("createdAt")
   );
 
   const { mutate } = useMutation();
 
-  const handleAddTodoClick = (): void => {
-    const title = model.NonEmptyString1000.safeParse(
-      prompt("What needs to be done?")
+  const handleAddTodoClick = () => {
+    promptNonEmptyString1000("What needs to be done?", (title) =>
+      mutate("todo", { title })
     );
-    if (!title.success) {
-      alert(JSON.stringify(title.error, null, 2));
-      return;
-    }
-    // Add new todo. Note UI is updated automatically.
-    mutate("todo", { title: title.data });
-  };
-
-  const handleShowMnemonic = (): void => {
-    getOwner().then((owner) => {
-      alert(owner.mnemonic);
-    });
-  };
-
-  const handleResetOwner = (): void => {
-    if (confirm("Are you sure? It will delete all your local data."))
-      resetOwner();
-  };
-
-  const handleRestoreOwner = (): void => {
-    const mnemonic = prompt("Your Mnemonic");
-    if (mnemonic == null) return;
-    const either = restoreOwner(mnemonic);
-    if (either._tag === "Left") alert(JSON.stringify(either.left, null, 2));
   };
 
   return (
-    <div>
-      <h1>Evolu TodoMVC</h1>
+    <>
+      <h2>todos</h2>
       <ul>
-        {rows.map((row) => (
-          <TodoItem key={row.id} row={row} />
-        ))}
+        {rows.map(
+          ({ id, title, isCompleted, categoryId }) =>
+            title != null && (
+              <TodoItem
+                key={id}
+                id={id}
+                title={title}
+                isCompleted={isCompleted}
+                categoryId={categoryId}
+              />
+            )
+        )}
       </ul>
+      <button onClick={handleAddTodoClick}>Add Todo</button>
+    </>
+  );
+};
+
+const TodoCategoryList = () => {
+  const { rows } = useQuery((db) =>
+    db
+      .selectFrom("todoCategory")
+      .select(["id", "name"])
+      .where("isDeleted", "is not", model.cast(true))
+      .orderBy("createdAt")
+  );
+
+  const { mutate } = useMutation();
+
+  return (
+    <>
+      <h2>categories</h2>
+      <ul>
+        {rows.map(
+          ({ id, name }) =>
+            name != null && (
+              <li key={id}>
+                {name}{" "}
+                <button
+                  onClick={() =>
+                    mutate("todoCategory", { id, isDeleted: true })
+                  }
+                >
+                  delete
+                </button>
+                <button
+                  onClick={() => {
+                    promptNonEmptyString1000("Category Name", (name) =>
+                      mutate("todoCategory", { id, name })
+                    );
+                  }}
+                >
+                  rename
+                </button>
+              </li>
+            )
+        )}
+      </ul>
+      <button
+        onClick={() => {
+          promptNonEmptyString1000("Category Name", (name) =>
+            mutate("todoCategory", { name })
+          );
+        }}
+      >
+        Add Category
+      </button>
+    </>
+  );
+};
+
+const OwnerActions = () => {
+  return (
+    <>
+      <p>Mnemonic is your password generated by Evolu.</p>
       <p>
-        <button onClick={handleAddTodoClick}>Add Todo</button>
+        Open this page on a different device and use your mnemonic to restore
+        your data.
       </p>
+      <button
+        onClick={() => {
+          getOwner().then((owner) => {
+            alert(owner.mnemonic);
+          });
+        }}
+      >
+        Show Mnemonic
+      </button>
+      <button
+        onClick={() => {
+          promptNonEmptyString1000("Your Mnemonic", (mnemonic) => {
+            const either = restoreOwner(mnemonic);
+            if (either._tag === "Left")
+              alert(JSON.stringify(either.left, null, 2));
+          });
+        }}
+      >
+        Restore Owner
+      </button>
+      <button
+        onClick={() => {
+          if (confirm("Are you sure? It will delete all your local data."))
+            resetOwner();
+        }}
+      >
+        Reset Owner
+      </button>
+    </>
+  );
+};
+
+export default function Index() {
+  return (
+    <div>
+      <Head>
+        <title>Evolu TodoMVC</title>
+      </Head>
+      <h1>Evolu TodoMVC</h1>
+      <TodoList />
+      <TodoCategoryList />
+      <OwnerActions />
       <p>
-        <button onClick={handleShowMnemonic}>Show Mnemonic</button>
-        <button onClick={handleResetOwner}>Reset Owner</button>
-        <button onClick={handleRestoreOwner}>Restore Owner</button>
-      </p>
-      <p>
-        Mnemonic is your password generated by Evolu. Try it on another device.
+        <a href="https://twitter.com/evoluhq">twitter</a>{" "}
+        <a href="https://github.com/evoluhq/evolu">github</a>
       </p>
     </div>
   );
