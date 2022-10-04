@@ -11,10 +11,10 @@
  * That's why all columns except `id` are nullable by default;
  * it's a similar principle to GraphQL nullability.
  */
-export { enum } from "zod";
+export { enum, string, number } from "zod";
 export type { infer } from "zod";
 import { nanoid } from "nanoid";
-import { BRAND, z, ZodBranded } from "zod";
+import { BRAND, z } from "zod";
 import { validateMnemonic } from "./validateMnemonic.js";
 
 export type ID<T extends string> = string & BRAND<`${T}Id`>;
@@ -26,7 +26,7 @@ export type ID<T extends string> = string & BRAND<`${T}Id`>;
  * @example
  * const PersonId = id<"person">();
  */
-export const id = <T extends string>(): ZodBranded<
+export const id = <T extends string>(): z.ZodBranded<
   z.ZodEffects<z.ZodString, string, string>,
   `${T}Id`
 > =>
@@ -49,7 +49,7 @@ export type OwnerId = z.TypeOf<typeof OwnerId>;
 export const Mnemonic = z.string().refine(validateMnemonic).brand<"Mnemonic">();
 export type Mnemonic = z.infer<typeof Mnemonic>;
 
-/** z.string().min(1).max(1000).brand<"NonEmptyString1000">() */
+/** model.string().min(1).max(1000).brand<"NonEmptyString1000">() */
 export const NonEmptyString1000 = z
   .string()
   .min(1)
@@ -57,15 +57,15 @@ export const NonEmptyString1000 = z
   .brand<"NonEmptyString1000">();
 export type NonEmptyString1000 = z.infer<typeof NonEmptyString1000>;
 
-/** z.string().max(1000).brand<"String1000">() */
+/** model.string().max(1000).brand<"String1000">() */
 export const String1000 = z.string().max(1000).brand<"String1000">();
 export type String1000 = z.infer<typeof String1000>;
 
-/** z.string().email().brand<"Email">() */
+/** model.string().email().brand<"Email">() */
 export const Email = z.string().email().brand<"Email">();
 export type Email = z.infer<typeof Email>;
 
-/** z.string().url().brand<"Url">() */
+/** model.string().url().brand<"Url">() */
 export const Url = z.string().url().brand<"Url">();
 export type Url = z.infer<typeof Url>;
 
@@ -111,13 +111,13 @@ export function cast(
   return new Date(value);
 }
 
-/** z.number().refine(Number.isSafeInteger).brand<"Integer">() */
+/** model.number().refine(Number.isSafeInteger).brand<"Integer">() */
 export const Integer = z
   .number()
   .refine(Number.isSafeInteger)
   .brand<"Integer">();
 export type Integer = z.infer<typeof Integer>;
 
-/** z.number().refine(Number.isFinite).brand<"Float">() */
+/** model.number().refine(Number.isFinite).brand<"Float">() */
 export const Float = z.number().refine(Number.isFinite).brand<"Float">();
 export type Float = z.infer<typeof Float>;
