@@ -1,5 +1,13 @@
 # evolu
 
+## 0.1.4
+
+### Patch Changes
+
+- 309f99f: Publish Evolu source code to NPM
+
+  "I get so annoyed when "go to definition" just takes me to typescript def files rather than actual code."
+
 ## 0.1.3
 
 ### Patch Changes
