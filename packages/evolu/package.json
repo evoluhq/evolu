@@ -21,7 +21,8 @@
   "types": "./dist/src/index.d.ts",
   "exports": "./dist/src/index.js",
   "files": [
-    "dist/src/**"
+    "dist/src/**",
+    "src/**"
   ],
   "scripts": {
     "dev": "tsc --watch",
