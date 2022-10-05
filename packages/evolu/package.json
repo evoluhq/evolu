@@ -31,7 +31,7 @@
     "test": "vitest run",
     "clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist",
     "format": "prettier --write \"src/*.{ts,tsx,md}\"",
-    "proto": "pnpm protoc --ts_out ./src --proto_path protos protos/protobuf.proto && pnpm format"
+    "proto": "pnpm protoc --ts_out ./src --proto_path protos protos/protobuf.proto --ts_opt eslint_disable && pnpm format"
   },
   "dependencies": {
     "@protobuf-ts/runtime": "^2.8.1",
