@@ -28,7 +28,9 @@
     "build": "rm -rf dist && tsc",
     "lint": "TIMING=1 eslint src --ext .ts,.tsx",
     "test": "vitest run",
-    "clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist"
+    "clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist",
+    "format": "prettier --write \"src/*.{ts,tsx,md}\"",
+    "proto": "pnpm protoc --ts_out ./src --proto_path protos protos/protobuf.proto && pnpm format"
   },
   "dependencies": {
     "@protobuf-ts/runtime": "^2.8.1",
@@ -43,6 +45,7 @@
   "devDependencies": {
     "@evolu/tsconfig": "workspace:0.0.2",
     "@protobuf-ts/plugin": "^2.8.1",
+    "@protobuf-ts/protoc": "^2.8.1",
     "@types/node": "^16.11.63",
     "@types/react": "^18.0.21",
     "@types/react-dom": "^18.0.6",
