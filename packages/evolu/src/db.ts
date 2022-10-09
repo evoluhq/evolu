@@ -342,11 +342,6 @@ export interface RestoreOwnerError {
   readonly type: "invalid mnemonic";
 }
 
-// It should be IOEither but it would confuse non FP developers.
-// nebo, mam po
-// spravne by mnemonic mel tohle delat, ale, muze?
-// imho ok, jen upravit error
-
 export const restoreOwner = (
   mnemonic: string
 ): Either<RestoreOwnerError, void> =>
