@@ -1,5 +1,11 @@
 # evolu
 
+## 0.1.5
+
+### Patch Changes
+
+- 3a78e4c: Remove dev comment
+
 ## 0.1.4
 
 ### Patch Changes
