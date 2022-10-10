@@ -241,6 +241,13 @@ export type Query<S extends DbSchema, T> = (
   db: KyselyOnlyForReading<DbSchemaToType<S, CommonColumns>>
 ) => SelectQueryBuilder<never, never, T>;
 
+export type UseQuery<S extends DbSchema> = <T>(
+  query: Query<S, T> | null | false
+) => {
+  readonly rows: readonly T[];
+  readonly row: T | null;
+};
+
 type AllowCasting<T> = {
   readonly [P in keyof T]: T[P] extends SqliteBoolean | null
     ? T[P] | boolean
@@ -257,6 +264,10 @@ export type Mutate<S extends DbSchema> = <
   values: Partial<AllowCasting<V[T]>>
 ) => {
   readonly id: V[T]["id"];
+};
+
+export type UseMutation<S extends DbSchema> = () => {
+  readonly mutate: Mutate<S>;
 };
 
 // Environments.
