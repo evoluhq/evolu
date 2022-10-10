@@ -96,12 +96,16 @@ const TodoCategorySelect = ({
 };
 
 const TodoItem = memo<{
-  id: TodoId;
-  title: NonEmptyString1000;
-  isCompleted: SqliteBoolean | null;
-  categoryId: TodoCategoryId | null;
-}>(({ id, title, isCompleted, categoryId }) => {
+  row: {
+    id: TodoId;
+    title: NonEmptyString1000 | null;
+    isCompleted: SqliteBoolean | null;
+    categoryId: TodoCategoryId | null;
+  };
+}>(({ row: { id, title, isCompleted, categoryId } }) => {
   const { mutate } = useMutation();
+
+  if (title == null) return null;
 
   const handleCompleteClick = () => {
     mutate("todo", { id, isCompleted: !isCompleted });
@@ -164,18 +168,9 @@ const TodoList = () => {
     <>
       <h2>todos</h2>
       <ul>
-        {rows.map(
-          ({ id, title, isCompleted, categoryId }) =>
-            title != null && (
-              <TodoItem
-                key={id}
-                id={id}
-                title={title}
-                isCompleted={isCompleted}
-                categoryId={categoryId}
-              />
-            )
-        )}
+        {rows.map((row) => (
+          <TodoItem key={row.id} row={row} />
+        ))}
       </ul>
       <button onClick={handleAddTodoClick}>Add Todo</button>
     </>
