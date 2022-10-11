@@ -47,7 +47,7 @@
     "@evolu/tsconfig": "workspace:0.0.2",
     "@protobuf-ts/plugin": "^2.8.1",
     "@protobuf-ts/protoc": "^2.8.1",
-    "@types/node": "^16.11.64",
+    "@types/node": "^16.11.65",
     "@types/react": "^18.0.21",
     "@types/react-dom": "^18.0.6",
     "@types/web-locks-api": "^0.0.2",
@@ -61,7 +61,7 @@
     "react": "^18.2.0",
     "tslib": "^2.4.0",
     "typescript": "^4.8.4",
-    "vitest": "^0.24.0",
+    "vitest": "^0.24.1",
     "zod": "^3.19.1"
   },
   "peerDependencies": {
