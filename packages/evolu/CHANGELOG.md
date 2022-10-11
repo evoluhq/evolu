@@ -1,5 +1,11 @@
 # evolu
 
+## 0.1.7
+
+### Patch Changes
+
+- ec6d9f2: Add isLoaded to useQuery React Hook
+
 ## 0.1.6
 
 ### Patch Changes
