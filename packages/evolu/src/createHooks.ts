@@ -30,10 +30,10 @@ export const createHooks = <S extends DbSchema>(
       ? pipe(query(kysely as never).compile(), sqlQueryToString)
       : null;
 
-    const rows = useSyncExternalStore<readonly never[]>(
+    const rows = useSyncExternalStore(
       db.listen,
       () => db.getSubscribedQueryRows(sqlQueryString) as never,
-      () => readonlyArray.empty
+      () => null
     );
 
     useEffect(() => {
@@ -42,8 +42,9 @@ export const createHooks = <S extends DbSchema>(
     }, [sqlQueryString]);
 
     return {
-      rows,
-      row: rows[0] || null,
+      rows: rows || readonlyArray.empty,
+      row: (rows && rows[0]) || null,
+      isLoaded: rows != null,
     };
   };
 

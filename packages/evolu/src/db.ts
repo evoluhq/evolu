@@ -192,41 +192,16 @@ export const updateDbSchema = (dbSchema: DbSchema): IO<void> =>
     tableDefinitions: dbSchemaToTableDefinitions(dbSchema),
   });
 
-/**
- * Get subscribed queries rows.
- *
- * @example
- * const rows = useSyncExternalStore(
- *   db.listen,
- *   () => db.getSubscribedQueryRows(sqlQueryString),
- *   () => readonlyArray.empty
- * );
- */
 export const getSubscribedQueryRows = (
   query: SqlQueryString | null
-): readonly SQLiteRowRecord[] =>
-  query == null
-    ? readonlyArray.empty
-    : pipe(
-        queriesRowsCacheRef.read(),
-        readonlyRecord.lookup(query),
-        option.getOrElseW(() => readonlyArray.empty)
-      );
+): readonly SQLiteRowRecord[] | null =>
+  (query && queriesRowsCacheRef.read()[query]) || null;
 
 const subscribedQueries = new Map<SqlQueryString, number>();
 const subscribedQueriesSnapshotRef = new ioRef.IORef<
   readonly SqlQueryString[] | null
 >(null);
 
-/**
- * Subscribe SQL query.
- *
- * @example
- * useEffect(() => {
- *   if (!sqlQueryString) return;
- *   return db.subscribeQuery(sqlQueryString);
- * }, [sqlQueryString]);
- */
 export const subscribeQuery = (sqlQueryString: SqlQueryString): Unsubscribe => {
   if (subscribedQueriesSnapshotRef.read() == null) {
     subscribedQueriesSnapshotRef.write(Array.from(subscribedQueries.keys()))();

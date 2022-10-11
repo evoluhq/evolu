@@ -246,6 +246,7 @@ export type UseQuery<S extends DbSchema> = <T>(
 ) => {
   readonly rows: readonly T[];
   readonly row: T | null;
+  readonly isLoaded: boolean;
 };
 
 type AllowCasting<T> = {
