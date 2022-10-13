@@ -86,7 +86,7 @@ const onQuery = (
     io.traverseArray(({ query, patches }) =>
       queriesRowsCacheRef.modify((a) => ({
         ...a,
-        [query]: immutableJSONPatch((a[query] as JSONArray) || [], patches),
+        [query]: immutableJSONPatch(a[query] as JSONArray, patches),
       }))
     ),
     io.chain(() => notifyListeners)

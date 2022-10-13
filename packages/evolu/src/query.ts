@@ -50,7 +50,7 @@ export const query =
               // TODO: Replace createPatch with own logic.
               // For inspiration: https://github.com/chbrown/rfc6902/pull/88
               patches: createPatch(
-                previous[query as SqlQueryString] || [],
+                previous[query as SqlQueryString],
                 next[query as keyof typeof next]
               ),
             })
