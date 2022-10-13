@@ -1,5 +1,13 @@
 # evolu
 
+## 0.2.0
+
+### Minor Changes
+
+- 96a0954: Add useEvoluFirstDataAreLoaded React Hook
+
+  React Hook returning `true` if any data are loaded. It's helpful to prevent screen flickering as data are loading. React Suspense would be better, but we are not there yet.
+
 ## 0.1.7
 
 ### Patch Changes
