@@ -1,5 +1,13 @@
 # evolu
 
+## 0.2.1
+
+### Patch Changes
+
+- fd03f74: Fix useEvoluFirstDataAreLoaded bug.
+
+  Empty table did not generate any patch so onQuery did not update queriesRowsCache.
+
 ## 0.2.0
 
 ### Minor Changes
