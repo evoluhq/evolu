@@ -9,19 +9,22 @@ import {
   readonlyRecord,
 } from "fp-ts";
 import { Either } from "fp-ts/Either";
+import { IO } from "fp-ts/IO";
 import {
   absurd,
+  constFalse,
   constVoid,
   decrement,
   flow,
   increment,
   pipe,
 } from "fp-ts/lib/function.js";
-import { IO } from "fp-ts/IO";
 import type { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
+import type { ReadonlyRecord } from "fp-ts/ReadonlyRecord";
 import { Task } from "fp-ts/Task";
 import type { JSONArray } from "immutable-json-patch";
 import { immutableJSONPatch } from "immutable-json-patch";
+import { useSyncExternalStore } from "react";
 import { config } from "./config.js";
 import { dispatchError } from "./error.js";
 import { cast, createId, ID, Mnemonic, SqliteDateTime } from "./model.js";
@@ -47,7 +50,6 @@ import {
   DbWorkerOutput,
   SyncWorkerInputInit,
 } from "./typesBrowser.js";
-import type { ReadonlyRecord } from "fp-ts/ReadonlyRecord";
 
 const queriesRowsCacheRef = new ioRef.IORef<QueriesRowsCache>({});
 
@@ -59,6 +61,18 @@ export const listen = (listener: IO<void>): IO<void> => {
     listeners.delete(listener);
   };
 };
+
+/**
+ * React Hook returning `true` if any data are loaded.
+ * It's helpful to prevent screen flickering as data are loading.
+ * React Suspense would be better, but we are not there yet.
+ */
+export const useEvoluFirstDataAreLoaded = (): boolean =>
+  useSyncExternalStore(
+    listen,
+    () => !readonlyRecord.isEmpty(queriesRowsCacheRef.read()),
+    constFalse
+  );
 
 const notifyListeners: IO<void> = () => {
   listeners.forEach((listener) => listener());

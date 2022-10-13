@@ -9,6 +9,7 @@ import {
   resetOwner,
   restoreOwner,
   SqliteBoolean,
+  useEvoluFirstDataAreLoaded,
 } from "evolu";
 import { ChangeEvent, memo } from "react";
 import Head from "next/head";
@@ -271,19 +272,23 @@ const OwnerActions = () => {
 };
 
 export default function Index() {
+  const dataAreLoaded = useEvoluFirstDataAreLoaded();
+
   return (
     <div>
       <Head>
         <title>Evolu TodoMVC</title>
       </Head>
       <h1>Evolu TodoMVC</h1>
-      <TodoList />
-      <TodoCategoryList />
-      <OwnerActions />
-      <p>
-        <a href="https://twitter.com/evoluhq">twitter</a>{" "}
-        <a href="https://github.com/evoluhq/evolu">github</a>
-      </p>
+      <div hidden={!dataAreLoaded}>
+        <TodoList />
+        <TodoCategoryList />
+        <OwnerActions />
+        <p>
+          <a href="https://twitter.com/evoluhq">twitter</a>{" "}
+          <a href="https://github.com/evoluhq/evolu">github</a>
+        </p>
+      </div>
     </div>
   );
 }
