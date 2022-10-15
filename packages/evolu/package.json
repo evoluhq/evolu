@@ -52,8 +52,6 @@
     "@types/react-dom": "^18.0.6",
     "@types/web-locks-api": "^0.0.2",
     "cross-env": "^7.0.3",
-    "esbuild": "^0.15.10",
-    "esbuild-node-externals": "^1.5.0",
     "eslint": "^8.25.0",
     "eslint-config-evolu": "workspace:0.0.2",
     "fp-ts": "^2.12.3",
@@ -61,7 +59,7 @@
     "react": "^18.2.0",
     "tslib": "^2.4.0",
     "typescript": "^4.8.4",
-    "vitest": "^0.24.1",
+    "vitest": "^0.24.3",
     "zod": "^3.19.1"
   },
   "peerDependencies": {
