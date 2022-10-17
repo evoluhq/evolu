@@ -16,7 +16,7 @@
     "cors": "^2.8.5",
     "evolu": "workspace:0.2.1",
     "express": "^4.18.2",
-    "fp-ts": "^2.12.3"
+    "fp-ts": "2.12.3"
   },
   "devDependencies": {
     "@evolu/tsconfig": "workspace:0.0.2",
