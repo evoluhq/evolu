@@ -16,7 +16,7 @@
     "cors": "^2.8.5",
     "evolu": "workspace:0.2.1",
     "express": "^4.18.2",
-    "fp-ts": "2.12.3"
+    "fp-ts": "^2.13.1"
   },
   "devDependencies": {
     "@evolu/tsconfig": "workspace:0.0.2",
@@ -24,7 +24,7 @@
     "@types/body-parser": "^1.19.2",
     "@types/cors": "^2.8.12",
     "@types/express": "^4.17.14",
-    "@types/node": "^16.11.65",
+    "@types/node": "^16.11.66",
     "ts-node": "^10.9.1",
     "typescript": "^4.8.4"
   },
