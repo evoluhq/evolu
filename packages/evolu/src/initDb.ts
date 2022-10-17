@@ -13,13 +13,17 @@ import {
   errorToUnknownError,
   PreparedStatement,
   SQLiteCompatibleType,
+  SQLiteError,
   SQLiteRow,
   SQLiteRowRecord,
   UnknownError,
 } from "./types.js";
 
-export const initDb: TaskEither<UnknownError, DbEnv & DbTransactionEnv> =
-  taskEither.tryCatch(async () => {
+export const initDb: TaskEither<
+  UnknownError | SQLiteError,
+  DbEnv & DbTransactionEnv
+> = taskEither.tryCatch(
+  async () => {
     const asyncModule = await SQLiteAsyncESMFactory();
     const sqlite3 = SQLite.Factory(asyncModule);
     sqlite3.vfs_register(
@@ -151,4 +155,9 @@ export const initDb: TaskEither<UnknownError, DbEnv & DbTransactionEnv> =
       },
       dbTransaction,
     };
-  }, errorToUnknownError);
+  },
+  (e) =>
+    e instanceof SQLite.SQLiteError
+      ? { type: "SQLiteError" }
+      : errorToUnknownError(e)
+);

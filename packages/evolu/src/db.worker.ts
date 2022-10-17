@@ -80,7 +80,7 @@ apply
   .sequenceT(taskEither.ApplyPar)(
     pipe(
       initDb,
-      taskEither.chain(({ db, dbTransaction }) =>
+      taskEither.chainW(({ db, dbTransaction }) =>
         pipe(
           initDbModel()({ db }),
           dbTransaction,

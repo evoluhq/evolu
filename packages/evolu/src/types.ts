@@ -368,6 +368,14 @@ export interface SyncError {
   readonly type: "SyncError";
 }
 
+/**
+ * This error should happen only in Firefox's private mode,
+ * which does not support IndexedDB.
+ */
+export interface SQLiteError {
+  readonly type: "SQLiteError";
+}
+
 export interface EvoluError {
   readonly type: "EvoluError";
   readonly error:
@@ -377,5 +385,6 @@ export interface EvoluError {
     | TimestampParseError
     | StringMaxLengthError
     | UnknownError
-    | SyncError;
+    | SyncError
+    | SQLiteError;
 }
