@@ -9,3 +9,4 @@
 *.tsbuildinfo
 
 db.sqlite
+package-lock.json
