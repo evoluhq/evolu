@@ -1,5 +1,13 @@
 # evolu
 
+## 0.2.2
+
+### Patch Changes
+
+- 127f1ae: Add SQLiteError
+
+  This error should happen only in Firefox's private mode, which does not support IndexedDB.
+
 ## 0.2.1
 
 ### Patch Changes
