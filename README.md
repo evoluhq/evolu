@@ -164,12 +164,20 @@ Install the dependencies with:
 pnpm install
 ```
 
+Build Evolu monorepo:
+
+```
+pnpm build
+```
+
 Start developing and watch for code changes:
+
 ```
 pnpm dev
 ```
 
-To describe changes for release log:
+Describe changes for release log:
+
 ```
 pnpm changeset
 ```
