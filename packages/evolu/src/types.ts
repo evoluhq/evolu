@@ -362,7 +362,8 @@ export const errorToUnknownError = (error: unknown): UnknownError => ({
 
 /**
  * The client was unable to get in sync with the server.
- * This error can happen only when MerkleTree has a bug.
+ * This error can happen only when MerkleTree has a bug or
+ * server did not update itself.
  */
 export interface SyncError {
   readonly type: "SyncError";
