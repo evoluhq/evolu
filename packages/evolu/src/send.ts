@@ -3,10 +3,11 @@ import {
   readerEither,
   readerTaskEither,
   readonlyNonEmptyArray,
-  taskEither,
+  task,
 } from "fp-ts";
 import { pipe } from "fp-ts/lib/function.js";
 import { ReaderEither } from "fp-ts/ReaderEither";
+import { ReaderTask } from "fp-ts/ReaderTask";
 import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
 import { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
 import { applyMessages } from "./applyMessages.js";
@@ -71,9 +72,9 @@ const callSync =
   }: {
     readonly messages: ReadonlyNonEmptyArray<CrdtMessage>;
     readonly clock: CrdtClock;
-  }): ReaderTaskEither<PostSyncWorkerInputEnv & OwnerEnv, never, void> =>
+  }): ReaderTask<PostSyncWorkerInputEnv & OwnerEnv, void> =>
   ({ postSyncWorkerInput, owner }) =>
-    taskEither.fromIO(
+    task.fromIO(
       postSyncWorkerInput({
         type: "sync",
         messages: option.some(messages),
@@ -131,6 +132,6 @@ export const send = ({
       )
     ),
     readerTaskEither.chainFirstW(({ clock }) => updateClock(clock)),
-    readerTaskEither.chainW(callSync),
+    readerTaskEither.chainReaderTaskKW(callSync),
     readerTaskEither.chainW(queryQueriesIfAny(queries))
   );
