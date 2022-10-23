@@ -30,6 +30,8 @@ import {
   MerkleTree,
   Millis,
   OwnerEnv,
+  PostDbWorkerOutputEnv,
+  PostSyncWorkerInputEnv,
   SyncError,
   TimeEnv,
   Timestamp,
@@ -38,10 +40,6 @@ import {
   TimestampDuplicateNodeError,
   UnknownError,
 } from "./types.js";
-import {
-  PostDbWorkerOutputEnv,
-  PostSyncWorkerInputEnv,
-} from "./typesBrowser.js";
 import { updateClock } from "./updateClock.js";
 
 const receiveMessages =

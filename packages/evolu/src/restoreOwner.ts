@@ -4,8 +4,7 @@ import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
 import { deleteAllTables } from "./deleteAllTables.js";
 import { initDbModel } from "./initDbModel.js";
 import { Mnemonic } from "./model.js";
-import { DbEnv, UnknownError } from "./types.js";
-import { PostDbWorkerOutputEnv } from "./typesBrowser.js";
+import { DbEnv, PostDbWorkerOutputEnv, UnknownError } from "./types.js";
 
 export const restoreOwner = (
   mnemonic: Mnemonic

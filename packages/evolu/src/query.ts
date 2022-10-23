@@ -11,13 +11,13 @@ import { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
 import { createPatch } from "rfc6902";
 import {
   DbEnv,
+  PostDbWorkerOutputEnv,
   QueriesRowsCacheEnv,
   QueryPatches,
   sqlQueryFromString,
   SqlQueryString,
   UnknownError,
 } from "./types.js";
-import { PostDbWorkerOutputEnv } from "./typesBrowser.js";
 
 export const query =
   (

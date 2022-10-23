@@ -33,6 +33,9 @@ import { safeParseToEither } from "./safeParseToEither.js";
 import {
   commonColumns,
   DbSchema,
+  DbWorkerInput,
+  DbWorkerInputInit,
+  DbWorkerOutput,
   eqSqlQueryString,
   Mutate,
   NewCrdtMessage,
@@ -41,15 +44,10 @@ import {
   QueryPatches,
   SQLiteRowRecord,
   SqlQueryString,
+  SyncWorkerInputInit,
   TableDefinition,
   Unsubscribe,
 } from "./types.js";
-import {
-  DbWorkerInput,
-  DbWorkerInputInit,
-  DbWorkerOutput,
-  SyncWorkerInputInit,
-} from "./typesBrowser.js";
 
 const queriesRowsCacheRef = new ioRef.IORef<QueriesRowsCache>({});
 

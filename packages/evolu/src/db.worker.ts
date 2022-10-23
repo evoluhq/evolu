@@ -1,7 +1,7 @@
 import { apply, either, taskEither } from "fp-ts";
 import { Either } from "fp-ts/Either";
-import { constVoid, flow, pipe } from "fp-ts/lib/function.js";
 import { IORef } from "fp-ts/IORef";
+import { constVoid, flow, pipe } from "fp-ts/lib/function.js";
 import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
 import { setConfig } from "./config.js";
 import { initDb } from "./initDb.js";
@@ -16,20 +16,18 @@ import {
   createTimeEnv,
   DbEnv,
   DbTransactionEnv,
+  DbWorkerInput,
+  DbWorkerInputInit,
   EvoluError,
   LockManagerEnv,
   OwnerEnv,
-  QueriesRowsCache,
-  QueriesRowsCacheEnv,
-  TimeEnv,
-} from "./types.js";
-import {
-  DbWorkerInput,
-  DbWorkerInputInit,
   PostDbWorkerOutputEnv,
   PostSyncWorkerInputEnv,
+  QueriesRowsCache,
+  QueriesRowsCacheEnv,
   SyncWorkerOutput,
-} from "./typesBrowser.js";
+  TimeEnv,
+} from "./types.js";
 import { updateDbSchema } from "./updateDbSchema.js";
 
 const postDbWorkerOutput: PostDbWorkerOutputEnv["postDbWorkerOutput"] =

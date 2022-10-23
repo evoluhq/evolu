@@ -19,6 +19,8 @@ import {
   DbEnv,
   NewCrdtMessage,
   OwnerEnv,
+  PostDbWorkerOutputEnv,
+  PostSyncWorkerInputEnv,
   QueriesRowsCacheEnv,
   SqlQueryString,
   TimeEnv,
@@ -27,10 +29,6 @@ import {
   TimestampDriftError,
   UnknownError,
 } from "./types.js";
-import {
-  PostDbWorkerOutputEnv,
-  PostSyncWorkerInputEnv,
-} from "./typesBrowser.js";
 import { updateClock } from "./updateClock.js";
 
 const sendMessages =

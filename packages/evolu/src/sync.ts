@@ -10,14 +10,12 @@ import {
   DbEnv,
   LockManagerEnv,
   OwnerEnv,
+  PostDbWorkerOutputEnv,
+  PostSyncWorkerInputEnv,
   QueriesRowsCacheEnv,
   SqlQueryString,
   UnknownError,
 } from "./types.js";
-import {
-  PostDbWorkerOutputEnv,
-  PostSyncWorkerInputEnv,
-} from "./typesBrowser.js";
 
 const doSync: (
   queries: Option<ReadonlyNonEmptyArray<SqlQueryString>>

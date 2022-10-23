@@ -1,6 +1,6 @@
 import { either, option, task, taskEither } from "fp-ts";
-import { constVoid, flow, pipe } from "fp-ts/lib/function.js";
 import { IO } from "fp-ts/IO";
+import { constVoid, flow, pipe } from "fp-ts/lib/function.js";
 import { Task } from "fp-ts/Task";
 import { TaskEither } from "fp-ts/TaskEither";
 import {
@@ -8,7 +8,6 @@ import {
   decrypt,
   encrypt,
   readMessage,
-  // eslint-disable-next-line node/file-extension-in-import
 } from "openpgp/lightweight";
 import { config, setConfig } from "./config.js";
 import { log } from "./log.js";
@@ -28,14 +27,12 @@ import {
   merkleTreeFromString,
   MerkleTreeString,
   merkleTreeToString,
-  TimestampString,
-  UnknownError,
-} from "./types.js";
-import {
   SyncWorkerInput,
   SyncWorkerInputInit,
   SyncWorkerOutput,
-} from "./typesBrowser.js";
+  TimestampString,
+  UnknownError,
+} from "./types.js";
 
 const crdtValueToProtobufFormat = (
   value: CrdtValue
