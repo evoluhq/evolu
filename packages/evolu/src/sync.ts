@@ -19,7 +19,7 @@ import {
 
 const doSync: (
   queries: Option<ReadonlyNonEmptyArray<SqlQueryString>>
-) => readerTaskEither.ReaderTaskEither<
+) => ReaderTaskEither<
   DbEnv &
     OwnerEnv &
     PostSyncWorkerInputEnv &
