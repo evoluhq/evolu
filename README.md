@@ -156,7 +156,23 @@ We have a lot on the table. While Evolu works, it's far from finished, and I con
 
 ## Contributing
 
-Use `pnpm changeset`.
+Evolu monorepo uses [pnpm](https://pnpm.io/).
+
+Install the dependencies with:
+
+```
+pnpm install
+```
+
+Start developing and watch for code changes:
+```
+pnpm dev
+```
+
+To describe changes for release log:
+```
+pnpm changeset
+```
 
 ## Thanks
 
