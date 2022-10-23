@@ -20,10 +20,10 @@
   },
   "devDependencies": {
     "@evolu/tsconfig": "workspace:0.0.2",
-    "@types/node": "^16.11.66",
+    "@types/node": "^16.11.68",
     "@types/react": "^18.0.21",
     "@types/react-dom": "^18.0.6",
-    "eslint": "^8.25.0",
+    "eslint": "^8.26.0",
     "eslint-config-evolu": "workspace:0.0.2",
     "next-transpile-modules": "^9.1.0",
     "typescript": "^4.8.4"
