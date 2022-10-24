@@ -19,6 +19,7 @@ import {
   increment,
   pipe,
 } from "fp-ts/lib/function.js";
+import { Option } from "fp-ts/Option";
 import type { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
 import type { ReadonlyRecord } from "fp-ts/ReadonlyRecord";
 import { Task } from "fp-ts/Task";
@@ -39,6 +40,8 @@ import {
   eqSqlQueryString,
   Mutate,
   NewCrdtMessage,
+  OnComplete,
+  OnCompleteId,
   Owner,
   QueriesRowsCache,
   QueryPatches,
@@ -60,6 +63,24 @@ export const listen = (listener: IO<void>): IO<void> => {
   };
 };
 
+const callListeners: IO<void> = () => {
+  listeners.forEach((listener) => listener());
+};
+
+const onCompletes = new Map<OnCompleteId, OnComplete>();
+
+const callOnCompletes =
+  (onCompleteIds: readonly OnCompleteId[]): IO<void> =>
+  () =>
+    pipe(
+      onCompleteIds,
+      readonlyArray.filterMap((id) => {
+        const onComplete = onCompletes.get(id);
+        onCompletes.delete(id);
+        return option.fromNullable(onComplete);
+      })
+    ).forEach((onComplete) => onComplete());
+
 /**
  * React Hook returning `true` if any data are loaded.
  * It's helpful to prevent screen flickering as data are loading.
@@ -72,13 +93,13 @@ export const useEvoluFirstDataAreLoaded = (): boolean =>
     constFalse
   );
 
-const notifyListeners: IO<void> = () => {
-  listeners.forEach((listener) => listener());
-};
-
-const onQuery = (
-  queriesPatches: ReadonlyNonEmptyArray<QueryPatches>
-): IO<void> =>
+const onQuery = ({
+  queriesPatches,
+  onCompleteIds,
+}: {
+  readonly queriesPatches: readonly QueryPatches[];
+  readonly onCompleteIds?: readonly OnCompleteId[];
+}): IO<void> =>
   pipe(
     queriesPatches,
     io.traverseArray(({ query, patches }) =>
@@ -87,7 +108,10 @@ const onQuery = (
         [query]: immutableJSONPatch(a[query] as JSONArray, patches),
       }))
     ),
-    io.chain(() => notifyListeners)
+    io.map(() => {
+      if (queriesPatches.length > 0) callListeners();
+      if (onCompleteIds) callOnCompletes(onCompleteIds)();
+    })
   );
 
 const query = (queries: readonly SqlQueryString[]): IO<void> =>
@@ -144,7 +168,7 @@ const { postDbWorkerInput, owner } = pipe(
             return;
 
           case "onQuery":
-            onQuery(data.queriesPatches)();
+            onQuery(data)();
             break;
 
           case "onReceive":
@@ -248,7 +272,7 @@ const createNewCrdtMessages = (
   ownerId: ID<"owner">,
   now: SqliteDateTime,
   isInsert: boolean
-): readonly NewCrdtMessage[] =>
+): ReadonlyNonEmptyArray<NewCrdtMessage> =>
   pipe(
     readonlyRecord.toEntries(values),
     readonlyArray.filter(([, value]) => value !== undefined),
@@ -258,15 +282,13 @@ const createNewCrdtMessages = (
         ? cast(value as never)
         : value,
     ]),
-    readonlyArray.concatW(
-      isInsert
-        ? [
-            ["createdAt", now],
-            ["createdBy", ownerId],
-          ]
-        : [["updatedAt", now]]
-    ),
-    readonlyArray.map(
+    isInsert
+      ? flow(
+          readonlyArray.appendW(["createdAt", now]),
+          readonlyArray.appendW(["createdBy", ownerId])
+        )
+      : readonlyArray.appendW(["updatedAt", now]),
+    readonlyNonEmptyArray.map(
       ([column, value]) =>
         ({
           table,
@@ -278,9 +300,14 @@ const createNewCrdtMessages = (
   );
 
 export const createMutate = <S extends DbSchema>(): Mutate<S> => {
-  const messageQueueRef = new ioRef.IORef<readonly NewCrdtMessage[]>([]);
+  const queueRef = new ioRef.IORef<
+    readonly {
+      readonly messages: ReadonlyNonEmptyArray<NewCrdtMessage>;
+      readonly onCompleteId: Option<OnCompleteId>;
+    }[]
+  >(readonlyArray.empty);
 
-  return (table, { id, ...values }) => {
+  return function mutate(table, { id, ...values }, onComplete) {
     const isInsert = id == null;
     // eslint-disable-next-line no-param-reassign
     if (isInsert) id = createId() as never;
@@ -296,23 +323,41 @@ export const createMutate = <S extends DbSchema>(): Mutate<S> => {
         isInsert
       );
 
-      const runQueueMicrotask = messageQueueRef.read().length === 0;
-      messageQueueRef.modify((a) => [...a, ...messages])();
-
-      if (!runQueueMicrotask) return;
-      pipe(
-        messageQueueRef.read,
-        io.chainFirst(() => messageQueueRef.write([])),
-        io.map(readonlyNonEmptyArray.fromReadonlyArray),
-        ioOption.chainIOK((messages) =>
-          postDbWorkerInput({
-            type: "send",
-            messages,
-            queries: Array.from(subscribedQueries.keys()),
-          })
-        ),
-        queueMicrotask
+      const onCompleteId = pipe(
+        onComplete,
+        option.fromNullable,
+        option.map((onComplete) => {
+          const id: OnCompleteId = createId<"OnComplete">();
+          onCompletes.set(id, onComplete);
+          return id;
+        })
       );
+
+      const runQueueMicrotask = queueRef.read().length === 0;
+      queueRef.modify(readonlyArray.append({ messages, onCompleteId }))();
+
+      if (runQueueMicrotask)
+        pipe(
+          queueRef.read,
+          io.chainFirst(() => queueRef.write([])),
+          io.map(readonlyNonEmptyArray.fromReadonlyArray),
+          ioOption.chainIOK((queue) =>
+            postDbWorkerInput({
+              type: "send",
+              messages: pipe(
+                queue,
+                readonlyNonEmptyArray.map((a) => a.messages),
+                readonlyNonEmptyArray.flatten
+              ),
+              onCompleteIds: queue
+                .map((a) => a.onCompleteId)
+                .filter(option.isSome)
+                .map((a) => a.value),
+              queries: Array.from(subscribedQueries.keys()),
+            })
+          ),
+          queueMicrotask
+        );
     });
 
     return { id } as never;

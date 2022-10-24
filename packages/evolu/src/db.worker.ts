@@ -57,7 +57,7 @@ const createWritableStream = ({
           case "send":
             return send(data);
           case "query":
-            return query(data.queries);
+            return query({ queries: data.queries });
           case "receive":
             return receive(data);
           case "sync":

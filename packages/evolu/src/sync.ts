@@ -28,7 +28,10 @@ const doSync: (
   UnknownError,
   void | undefined
 > = flow(
-  option.match(() => readerTaskEither.right(undefined), query),
+  option.match(
+    () => readerTaskEither.right(undefined),
+    (queries) => query({ queries })
+  ),
   readerTaskEither.chainW(() => readClock),
   readerTaskEither.chainW((clock) =>
     pipe(

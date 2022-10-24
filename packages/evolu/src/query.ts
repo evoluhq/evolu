@@ -1,16 +1,10 @@
-import {
-  option,
-  readonlyArray,
-  readonlyNonEmptyArray,
-  readonlyRecord,
-  taskEither,
-} from "fp-ts";
-import { constVoid, pipe } from "fp-ts/lib/function.js";
+import { ioOption, readonlyArray, readonlyRecord, taskEither } from "fp-ts";
+import { pipe } from "fp-ts/lib/function.js";
 import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
-import { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
 import { createPatch } from "rfc6902";
 import {
   DbEnv,
+  OnCompleteId,
   PostDbWorkerOutputEnv,
   QueriesRowsCacheEnv,
   QueryPatches,
@@ -20,9 +14,13 @@ import {
 } from "./types.js";
 
 export const query =
-  (
-    queries: ReadonlyNonEmptyArray<SqlQueryString>
-  ): ReaderTaskEither<
+  ({
+    queries,
+    onCompleteIds,
+  }: {
+    readonly queries: readonly SqlQueryString[];
+    readonly onCompleteIds?: readonly OnCompleteId[];
+  }): ReaderTaskEither<
     DbEnv & QueriesRowsCacheEnv & PostDbWorkerOutputEnv,
     UnknownError,
     void
@@ -58,15 +56,20 @@ export const query =
           readonlyArray.filter((a) => a.patches.length > 0)
         );
 
-        queriesRowsCache.write(next)();
-
         pipe(
-          queriesPatches,
-          readonlyNonEmptyArray.fromReadonlyArray,
-          option.match(
-            () => constVoid,
-            (queriesPatches) =>
-              postDbWorkerOutput({ type: "onQuery", queriesPatches })
+          queriesRowsCache.write(next),
+          ioOption.fromIO,
+          ioOption.filter(
+            () =>
+              (onCompleteIds && onCompleteIds.length > 0) ||
+              queriesPatches.length > 0
+          ),
+          ioOption.chainIOK(() =>
+            postDbWorkerOutput({
+              type: "onQuery",
+              queriesPatches,
+              onCompleteIds,
+            })
           )
         )();
       })

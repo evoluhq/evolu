@@ -1,17 +1,22 @@
+import { eq } from "fp-ts";
 import { Either } from "fp-ts/Either";
 import { IO } from "fp-ts/IO";
+import { IORef } from "fp-ts/IORef";
 import { Option } from "fp-ts/Option";
 import { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
-import { TaskEither } from "fp-ts/TaskEither";
-import { Mnemonic } from "./model.js";
-import { eq } from "fp-ts";
-import { IORef } from "fp-ts/IORef";
 import { ReadonlyRecord } from "fp-ts/ReadonlyRecord";
+import { TaskEither } from "fp-ts/TaskEither";
 import type { JSONPatchDocument } from "immutable-json-patch";
 import type { Kysely, SelectQueryBuilder } from "kysely";
 import { customAlphabet } from "nanoid";
 import { BRAND, z } from "zod";
-import { ID, OwnerId, SqliteBoolean, SqliteDateTime } from "./model.js";
+import {
+  ID,
+  Mnemonic,
+  OwnerId,
+  SqliteBoolean,
+  SqliteDateTime,
+} from "./model.js";
 
 export type LogTarget =
   | "clock:read"
@@ -255,12 +260,16 @@ type AllowCasting<T> = {
     : T[P];
 };
 
+export type OnComplete = () => void;
+export type OnCompleteId = ID<"OnComplete">;
+
 export type Mutate<S extends DbSchema> = <
   V extends DbSchemaToType<S, Pick<CommonColumns, "isDeleted">>,
   T extends keyof V
 >(
   table: T,
-  values: Partial<AllowCasting<V[T]>>
+  values: Partial<AllowCasting<V[T]>>,
+  onComplete?: OnComplete
 ) => {
   readonly id: V[T]["id"];
 };
@@ -404,6 +413,7 @@ export type DbWorkerInput =
   | {
       readonly type: "send";
       readonly messages: ReadonlyNonEmptyArray<NewCrdtMessage>;
+      readonly onCompleteIds: readonly OnCompleteId[];
       readonly queries: readonly SqlQueryString[];
     }
   | {
@@ -439,7 +449,8 @@ export type DbWorkerOutput =
     }
   | {
       readonly type: "onQuery";
-      readonly queriesPatches: ReadonlyNonEmptyArray<QueryPatches>;
+      readonly queriesPatches: readonly QueryPatches[];
+      readonly onCompleteIds?: readonly OnCompleteId[];
     }
   | {
       readonly type: "onReceive";

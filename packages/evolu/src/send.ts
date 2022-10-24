@@ -1,10 +1,4 @@
-import {
-  option,
-  readerEither,
-  readerTaskEither,
-  readonlyNonEmptyArray,
-  task,
-} from "fp-ts";
+import { option, readerEither, readerTaskEither, task } from "fp-ts";
 import { pipe } from "fp-ts/lib/function.js";
 import { ReaderEither } from "fp-ts/ReaderEither";
 import { ReaderTask } from "fp-ts/ReaderTask";
@@ -19,6 +13,7 @@ import {
   CrdtMessage,
   DbEnv,
   NewCrdtMessage,
+  OnCompleteId,
   OwnerEnv,
   PostDbWorkerOutputEnv,
   PostSyncWorkerInputEnv,
@@ -84,23 +79,13 @@ const callSync =
       })
     );
 
-const queryQueriesIfAny =
-  (queries: readonly SqlQueryString[]) =>
-  (): ReaderTaskEither<
-    DbEnv & QueriesRowsCacheEnv & PostDbWorkerOutputEnv,
-    UnknownError,
-    void
-  > =>
-    pipe(
-      readonlyNonEmptyArray.fromReadonlyArray(queries),
-      option.match(() => readerTaskEither.right(undefined), query)
-    );
-
 export const send = ({
   messages,
+  onCompleteIds,
   queries,
 }: {
   readonly messages: ReadonlyNonEmptyArray<NewCrdtMessage>;
+  readonly onCompleteIds: readonly OnCompleteId[];
   readonly queries: readonly SqlQueryString[];
 }): ReaderTaskEither<
   DbEnv &
@@ -133,5 +118,5 @@ export const send = ({
     ),
     readerTaskEither.chainFirstW(({ clock }) => updateClock(clock)),
     readerTaskEither.chainReaderTaskKW(callSync),
-    readerTaskEither.chainW(queryQueriesIfAny(queries))
+    readerTaskEither.chainW(() => query({ queries, onCompleteIds }))
   );

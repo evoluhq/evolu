@@ -36,10 +36,10 @@ export const id = <T extends string>(): z.ZodBranded<
     .brand<`${T}Id`>();
 
 /**
- * Create branded ID.
+ * Create branded ID value.
  *
  * @example
- * const id = createId<"Person">();
+ * const id = createId<"person">();
  */
 export const createId = <T extends string>(): ID<T> => nanoid() as ID<T>;
 
