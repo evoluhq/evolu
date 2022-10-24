@@ -1,5 +1,11 @@
 # evolu
 
+## 0.3.0
+
+### Minor Changes
+
+- fcdbff9: Add onComplete to mutate function
+
 ## 0.2.2
 
 ### Patch Changes
