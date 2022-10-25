@@ -299,15 +299,16 @@ const createNewCrdtMessages = (
     )
   );
 
-export const createMutate = <S extends DbSchema>(): Mutate<S> => {
-  const queueRef = new ioRef.IORef<
-    readonly {
-      readonly messages: ReadonlyNonEmptyArray<NewCrdtMessage>;
-      readonly onCompleteId: Option<OnCompleteId>;
-    }[]
-  >(readonlyArray.empty);
+const mutateQueueRef = new ioRef.IORef<
+  readonly {
+    readonly messages: ReadonlyNonEmptyArray<NewCrdtMessage>;
+    readonly onCompleteId: Option<OnCompleteId>;
+  }[]
+>(readonlyArray.empty);
 
-  return function mutate(table, { id, ...values }, onComplete) {
+export const createMutate =
+  <S extends DbSchema>(): Mutate<S> =>
+  (table, { id, ...values }, onComplete) => {
     const isInsert = id == null;
     // eslint-disable-next-line no-param-reassign
     if (isInsert) id = createId() as never;
@@ -333,13 +334,13 @@ export const createMutate = <S extends DbSchema>(): Mutate<S> => {
         })
       );
 
-      const runQueueMicrotask = queueRef.read().length === 0;
-      queueRef.modify(readonlyArray.append({ messages, onCompleteId }))();
+      const runQueueMicrotask = mutateQueueRef.read().length === 0;
+      mutateQueueRef.modify(readonlyArray.append({ messages, onCompleteId }))();
 
       if (runQueueMicrotask)
         pipe(
-          queueRef.read,
-          io.chainFirst(() => queueRef.write([])),
+          mutateQueueRef.read,
+          io.chainFirst(() => mutateQueueRef.write([])),
           io.map(readonlyNonEmptyArray.fromReadonlyArray),
           ioOption.chainIOK((queue) =>
             postDbWorkerInput({
@@ -362,7 +363,6 @@ export const createMutate = <S extends DbSchema>(): Mutate<S> => {
 
     return { id } as never;
   };
-};
 
 export const getOwner: Task<Owner> = owner;
 

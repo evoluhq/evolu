@@ -48,8 +48,9 @@ export const createHooks = <S extends DbSchema>(
     };
   };
 
+  const mutate = db.createMutate<S>();
   const useMutation: UseMutation<S> = () => ({
-    mutate: db.createMutate<S>(),
+    mutate,
   });
 
   return {
