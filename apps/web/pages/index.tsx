@@ -11,8 +11,8 @@ import {
   SqliteBoolean,
   useEvoluFirstDataAreLoaded,
 } from "evolu";
-import { ChangeEvent, memo, useState } from "react";
 import Head from "next/head";
+import { ChangeEvent, memo, useState } from "react";
 
 // `model` is Evolu helper for branded types.
 // https://dev.to/andersonjoseph/typescript-tip-safer-functions-with-branded-types-14o4

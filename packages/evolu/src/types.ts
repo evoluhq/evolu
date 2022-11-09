@@ -31,6 +31,7 @@ export type Config = {
   log: boolean | LogTarget | LogTarget[];
   /** Maximum physical clock drift allowed, in ms. */
   maxDrift: number;
+  reloadUrl: string;
 };
 /* eslint-enable functional/prefer-readonly-type */
 
