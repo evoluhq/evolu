@@ -1,5 +1,11 @@
 # evolu
 
+## 0.4.1
+
+### Patch Changes
+
+- 8d29b99: Fix ESM bug
+
 ## 0.4.0
 
 ### Minor Changes
