@@ -1,5 +1,11 @@
 # evolu
 
+## 0.4.0
+
+### Minor Changes
+
+- 74a94ee: Add config reloadUrl
+
 ## 0.3.1
 
 ### Patch Changes
