@@ -1,5 +1,4 @@
 // @ts-check
-const withTM = require("next-transpile-modules")(["evolu"]);
 const withBundleAnalyzer = require("@next/bundle-analyzer")({
   enabled: process.env.ANALYZE === "true",
 });
@@ -10,8 +9,11 @@ const withBundleAnalyzer = require("@next/bundle-analyzer")({
 const nextConfig = {
   reactStrictMode: true,
   experimental: {
+    // Monorepo needs.
+    transpilePackages: ["evolu"],
+    // Turbo needs, for some reason.
     esmExternals: "loose",
   },
 };
 
-module.exports = withBundleAnalyzer(withTM(nextConfig));
+module.exports = withBundleAnalyzer(nextConfig);
