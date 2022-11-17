@@ -18,3 +18,4 @@ export {
 } from "./timestamp.js";
 export * from "./types.js";
 export * from "./useOwner.js";
+export * from "./has.js";
