@@ -1,5 +1,11 @@
 # evolu
 
+## 0.5.1
+
+### Patch Changes
+
+- 02a8c47: Publish README.md
+
 ## 0.5.0
 
 ### Minor Changes

@@ -1,6 +1,6 @@
 {
   "name": "web",
-  "version": "0.0.18",
+  "version": "0.0.19",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -13,7 +13,7 @@
   "dependencies": {
     "@next/bundle-analyzer": "^13.0.3",
     "cross-env": "^7.0.3",
-    "evolu": "workspace:0.5.0",
+    "evolu": "workspace:0.5.1",
     "next": "^13.0.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
