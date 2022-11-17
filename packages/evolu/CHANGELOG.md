@@ -1,5 +1,13 @@
 # evolu
 
+## 0.5.0
+
+### Minor Changes
+
+- b957aea: Add has helper
+
+  Helper `has` filters items with NonNullable props with type refinement. It helps filter yet-to-be-synced data.
+
 ## 0.4.1
 
 ### Patch Changes
