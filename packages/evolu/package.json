@@ -26,7 +26,7 @@
   ],
   "scripts": {
     "dev": "tsc --watch",
-    "build": "rm -rf dist && tsc",
+    "build": "rm -rf dist && tsc && cp ../../README.md ./dist",
     "lint": "TIMING=1 eslint src --ext .ts,.tsx",
     "test": "vitest run",
     "clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist",
