@@ -34,8 +34,8 @@
     "proto": "pnpm protoc --ts_out ./src --proto_path protos protos/protobuf.proto --ts_opt eslint_disable && pnpm format"
   },
   "dependencies": {
-    "@protobuf-ts/runtime": "^2.8.1",
-    "immutable-json-patch": "^5.1.0",
+    "@protobuf-ts/runtime": "^2.8.2",
+    "immutable-json-patch": "^5.1.1",
     "kysely": "^0.22.0",
     "murmurhash": "^2.0.1",
     "nanoid": "4.0.0",
@@ -45,11 +45,11 @@
   },
   "devDependencies": {
     "@evolu/tsconfig": "workspace:0.0.2",
-    "@protobuf-ts/plugin": "^2.8.1",
-    "@protobuf-ts/protoc": "^2.8.1",
+    "@protobuf-ts/plugin": "^2.8.2",
+    "@protobuf-ts/protoc": "^2.8.2",
     "@types/node": "^18.11.9",
     "@types/react": "^18.0.25",
-    "@types/react-dom": "^18.0.8",
+    "@types/react-dom": "^18.0.9",
     "@types/web-locks-api": "^0.0.2",
     "cross-env": "^7.0.3",
     "eslint": "^8.27.0",
@@ -58,8 +58,8 @@
     "openpgp": "^5.5.0",
     "react": "^18.2.0",
     "tslib": "^2.4.1",
-    "typescript": "^4.8.4",
-    "vitest": "^0.25.1",
+    "typescript": "^4.9.3",
+    "vitest": "^0.25.2",
     "zod": "^3.19.1"
   },
   "peerDependencies": {
