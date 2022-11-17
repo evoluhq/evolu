@@ -22,7 +22,8 @@
   "exports": "./dist/src/index.js",
   "files": [
     "dist/src/**",
-    "src/**"
+    "src/**",
+    "README.md"
   ],
   "scripts": {
     "dev": "tsc --watch",
