@@ -114,6 +114,18 @@ const handleRestoreOwner = () => {
 };
 ```
 
+### Handle errors
+
+```ts
+useEffect(() => {
+  const notifyOnError = () => {
+    console.error(getError());
+  };
+
+  return subscribeError(notifyOnError);
+}, []);
+```
+
 And that's all. Minimal API is the key to a great developer experience. In the next few days, I will add more docs and explanations.
 
 ## Privacy

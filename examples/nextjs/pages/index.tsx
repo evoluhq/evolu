@@ -1,14 +1,16 @@
 import {
   createHooks,
+  getError,
   getOwner,
   model,
   NonEmptyString1000,
   resetOwner,
   restoreOwner,
   SqliteBoolean,
+  subscribeError,
   useEvoluFirstDataAreLoaded,
 } from "evolu";
-import { ChangeEvent, memo, useState } from "react";
+import { ChangeEvent, memo, useEffect, useState } from "react";
 import Head from "next/head";
 
 // `model` is Evolu helper for branded types.
@@ -275,6 +277,35 @@ const OwnerActions = () => {
   );
 };
 
+const NotificationBar = () => {
+  const [notificationMessage, setNotificationMessage] = useState<string | null>(
+    null
+  );
+
+  useEffect(() => {
+    const notifyOnError = () => {
+      const error = getError();
+
+      if (error) {
+        setNotificationMessage(`Error: ${error.error.type}`);
+      }
+    };
+
+    return subscribeError(notifyOnError);
+  }, []);
+
+  if (notificationMessage) {
+    return (
+      <div>
+        <p>{notificationMessage}</p>
+        <button onClick={() => setNotificationMessage(null)}>close</button>
+      </div>
+    );
+  }
+
+  return null;
+};
+
 export default function Index() {
   const dataAreLoaded = useEvoluFirstDataAreLoaded();
 
@@ -284,6 +315,7 @@ export default function Index() {
         <title>Evolu TodoMVC</title>
       </Head>
       <h1>Evolu TodoMVC</h1>
+      <NotificationBar />
       <div hidden={!dataAreLoaded}>
         <TodoList />
         <TodoCategoryList />
