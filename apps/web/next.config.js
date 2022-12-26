@@ -8,9 +8,9 @@ const withBundleAnalyzer = require("@next/bundle-analyzer")({
  **/
 const nextConfig = {
   reactStrictMode: true,
+  // Monorepo needs.
+  transpilePackages: ["evolu"],
   experimental: {
-    // Monorepo needs.
-    transpilePackages: ["evolu"],
     // Turbo needs, for some reason.
     esmExternals: "loose",
   },
