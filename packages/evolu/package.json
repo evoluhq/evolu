@@ -36,11 +36,9 @@
   },
   "dependencies": {
     "@protobuf-ts/runtime": "^2.8.2",
-    "immutable-json-patch": "^5.1.1",
     "kysely": "^0.23.0",
     "murmurhash": "^2.0.1",
     "nanoid": "4.0.0",
-    "rfc6902": "^5.0.1",
     "sha256-uint8array": "^0.10.3",
     "wa-sqlite": "github:rhashimoto/wa-sqlite#5fdc80ff1c153aeb0dab65a5e23ca22938c827a3"
   },

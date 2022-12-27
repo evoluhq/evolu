@@ -1,7 +1,7 @@
 import { ioOption, readonlyArray, readonlyRecord, taskEither } from "fp-ts";
 import { pipe } from "fp-ts/lib/function.js";
 import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
-import { createPatch } from "rfc6902";
+import { createPatches } from "./diff.js";
 import {
   DbEnv,
   OnCompleteId,
@@ -45,9 +45,7 @@ export const query =
           readonlyArray.map(
             (query): QueryPatches => ({
               query: query as SqlQueryString,
-              // TODO: Replace createPatch with own logic.
-              // For inspiration: https://github.com/chbrown/rfc6902/pull/88
-              patches: createPatch(
+              patches: createPatches(
                 previous[query as SqlQueryString],
                 next[query as keyof typeof next]
               ),

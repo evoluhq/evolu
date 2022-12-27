@@ -23,10 +23,9 @@ import { Option } from "fp-ts/Option";
 import type { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
 import type { ReadonlyRecord } from "fp-ts/ReadonlyRecord";
 import { Task } from "fp-ts/Task";
-import type { JSONArray } from "immutable-json-patch";
-import { immutableJSONPatch } from "immutable-json-patch";
 import { useSyncExternalStore } from "react";
 import { config } from "./config.js";
+import { applyPatches } from "./diff.js";
 import { dispatchError } from "./error.js";
 import { cast, createId, ID, Mnemonic, SqliteDateTime } from "./model.js";
 import { reloadAllTabs } from "./reloadAllTabs.js";
@@ -105,7 +104,7 @@ const onQuery = ({
     io.traverseArray(({ query, patches }) =>
       queriesRowsCacheRef.modify((a) => ({
         ...a,
-        [query]: immutableJSONPatch(a[query] as JSONArray, patches),
+        [query]: applyPatches(patches)(a[query]),
       }))
     ),
     io.map(() => {

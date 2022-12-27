@@ -6,7 +6,6 @@ import { Option } from "fp-ts/Option";
 import { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
 import { ReadonlyRecord } from "fp-ts/ReadonlyRecord";
 import { TaskEither } from "fp-ts/TaskEither";
-import type { JSONPatchDocument } from "immutable-json-patch";
 import type { Kysely, SelectQueryBuilder } from "kysely";
 import { customAlphabet } from "nanoid";
 import { BRAND, z } from "zod";
@@ -180,9 +179,22 @@ export type QueriesRowsCache = ReadonlyRecord<
   readonly SQLiteRowRecord[]
 >;
 
+export type ReplaceAllPatch = {
+  readonly op: "replaceAll";
+  readonly value: readonly SQLiteRowRecord[];
+};
+
+export type ReplaceAtPatch = {
+  readonly op: "replaceAt";
+  readonly index: number;
+  readonly value: SQLiteRowRecord;
+};
+
+export type Patch = ReplaceAllPatch | ReplaceAtPatch;
+
 export interface QueryPatches {
   readonly query: SqlQueryString;
-  readonly patches: JSONPatchDocument;
+  readonly patches: readonly Patch[];
 }
 
 type DbTableSchema = {
