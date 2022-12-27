@@ -36,7 +36,7 @@
   },
   "dependencies": {
     "@protobuf-ts/runtime": "^2.8.2",
-    "kysely": "^0.23.0",
+    "kysely": "^0.23.1",
     "murmurhash": "^2.0.1",
     "nanoid": "4.0.0",
     "sha256-uint8array": "^0.10.3",
@@ -46,7 +46,7 @@
     "@evolu/tsconfig": "workspace:0.0.2",
     "@protobuf-ts/plugin": "^2.8.2",
     "@protobuf-ts/protoc": "^2.8.2",
-    "@types/node": "^18.11.17",
+    "@types/node": "^18.11.18",
     "@types/react": "^18.0.26",
     "@types/react-dom": "^18.0.10",
     "@types/web-locks-api": "^0.0.2",
