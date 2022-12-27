@@ -28,9 +28,8 @@ test("createPatches", () => {
       },
     ]
   `);
-  expect(
-    createPatches([item, { b: 2 }], [item, { b: 3 }])
-  ).toMatchInlineSnapshot(`
+  expect(createPatches([item, { b: 2 }], [item, { b: 3 }]))
+    .toMatchInlineSnapshot(`
     [
       {
         "index": 1,
@@ -41,9 +40,8 @@ test("createPatches", () => {
       },
     ]
   `);
-  expect(
-    createPatches([{ a: 1 }, item, { c: 4 }], [{ a: 0 }, item, { c: 1 }])
-  ).toMatchInlineSnapshot(`
+  expect(createPatches([{ a: 1 }, item, { c: 4 }], [{ a: 0 }, item, { c: 1 }]))
+    .toMatchInlineSnapshot(`
     [
       {
         "index": 0,
