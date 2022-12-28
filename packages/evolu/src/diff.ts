@@ -41,16 +41,21 @@ export const createPatches = (
 
 export const applyPatches =
   (patches: readonly Patch[]) =>
-  (current: readonly SQLiteRowRecord[]): readonly SQLiteRowRecord[] =>
+  (
+    current: readonly SQLiteRowRecord[] | undefined
+  ): readonly SQLiteRowRecord[] | undefined =>
     patches.reduce((a, patch) => {
       switch (patch.op) {
         case "replaceAll":
           return patch.value;
         case "replaceAt": {
+          if (a === undefined) return a;
           const next = [...a];
           // eslint-disable-next-line functional/immutable-data
           next[patch.index] = patch.value;
           return next;
         }
+        case "purge":
+          return undefined;
       }
     }, current);

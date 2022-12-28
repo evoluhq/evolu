@@ -13,7 +13,7 @@ test("createPatches", () => {
 
   const p1 = createPatches([], array);
   expect(p1).toEqual([{ op: "replaceAll", value: array }]);
-  expect(p1[0].value).toBe(array);
+  if (p1[0].op === "replaceAll") expect(p1[0].value).toBe(array);
 
   expect(createPatches(array, array).length).toBe(0);
   expect(createPatches(array, [{ a: 2 }])).toMatchInlineSnapshot(`
@@ -74,5 +74,7 @@ test("applyPatches", () => {
     { op: "replaceAt", index: 2, value: { c: 4 } },
   ])([{ a: 1 }, replaceUntouched, { c: 3 }]);
   expect(replaceAtResult).toEqual([{ a: 2 }, { b: 2 }, { c: 4 }]);
-  expect(replaceAtResult[1]).toBe(replaceUntouched);
+  if (replaceAtResult) expect(replaceAtResult[1]).toBe(replaceUntouched);
+
+  expect(applyPatches([{ op: "purge" }])([])).toBeUndefined();
 });

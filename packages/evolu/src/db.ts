@@ -113,13 +113,19 @@ const onQuery = ({
     })
   );
 
-const query = (queries: readonly SqlQueryString[]): IO<void> =>
+const query = ({
+  queries,
+  purgeCache,
+}: {
+  readonly queries: readonly SqlQueryString[];
+  readonly purgeCache?: boolean;
+}): IO<void> =>
   pipe(
     queries,
     readonlyNonEmptyArray.fromReadonlyArray,
     option.match(
       () => constVoid,
-      (queries) => postDbWorkerInput({ type: "query", queries })
+      (queries) => postDbWorkerInput({ type: "query", queries, purgeCache })
     )
   );
 
@@ -171,7 +177,10 @@ const { postDbWorkerInput, owner } = pipe(
             break;
 
           case "onReceive":
-            query(Array.from(subscribedQueries.keys()))();
+            query({
+              queries: Array.from(subscribedQueries.keys()),
+              purgeCache: true,
+            })();
             break;
 
           case "reloadAllTabs":
@@ -248,7 +257,7 @@ export const subscribeQuery = (sqlQueryString: SqlQueryString): Unsubscribe => {
       pipe(
         Array.from(subscribedQueries.keys()),
         readonlyArray.difference(eqSqlQueryString)(subscribedQueriesSnapshot),
-        query
+        (queries) => query({ queries })
       )();
     });
   }

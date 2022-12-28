@@ -179,18 +179,22 @@ export type QueriesRowsCache = ReadonlyRecord<
   readonly SQLiteRowRecord[]
 >;
 
-export type ReplaceAllPatch = {
+export interface ReplaceAllPatch {
   readonly op: "replaceAll";
   readonly value: readonly SQLiteRowRecord[];
-};
+}
 
-export type ReplaceAtPatch = {
+export interface ReplaceAtPatch {
   readonly op: "replaceAt";
   readonly index: number;
   readonly value: SQLiteRowRecord;
-};
+}
 
-export type Patch = ReplaceAllPatch | ReplaceAtPatch;
+export interface PurgePatch {
+  readonly op: "purge";
+}
+
+export type Patch = ReplaceAllPatch | ReplaceAtPatch | PurgePatch;
 
 export interface QueryPatches {
   readonly query: SqlQueryString;
@@ -432,6 +436,7 @@ export type DbWorkerInput =
   | {
       readonly type: "query";
       readonly queries: ReadonlyNonEmptyArray<SqlQueryString>;
+      readonly purgeCache?: boolean;
     }
   | {
       readonly type: "receive";

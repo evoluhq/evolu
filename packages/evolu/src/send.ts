@@ -118,5 +118,7 @@ export const send = ({
     ),
     readerTaskEither.chainFirstW(({ clock }) => updateClock(clock)),
     readerTaskEither.chainReaderTaskKW(callSync),
-    readerTaskEither.chainW(() => query({ queries, onCompleteIds }))
+    readerTaskEither.chainW(() =>
+      query({ queries, onCompleteIds, purgeCache: true })
+    )
   );
