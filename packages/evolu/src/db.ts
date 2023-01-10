@@ -24,6 +24,7 @@ import type { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
 import type { ReadonlyRecord } from "fp-ts/ReadonlyRecord";
 import { Task } from "fp-ts/Task";
 import { useSyncExternalStore } from "react";
+import { flushSync } from "react-dom";
 import { config } from "./config.js";
 import { applyPatches } from "./diff.js";
 import { dispatchError } from "./error.js";
@@ -108,7 +109,10 @@ const onQuery = ({
       }))
     ),
     io.map(() => {
-      if (queriesPatches.length > 0) callListeners();
+      if (queriesPatches.length > 0) {
+        if (onCompleteIds && onCompleteIds.length > 0) flushSync(callListeners);
+        else callListeners();
+      }
       if (onCompleteIds) callOnCompletes(onCompleteIds)();
     })
   );
