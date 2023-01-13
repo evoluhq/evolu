@@ -1,6 +1,6 @@
 import { readonlyArray } from "fp-ts";
 import { pipe } from "fp-ts/lib/function.js";
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import * as db from "./db.js";
 import { kysely } from "./kysely.js";
 import { DbSchema, sqlQueryToString, UseMutation, UseQuery } from "./types.js";
@@ -41,11 +41,14 @@ export const createHooks = <S extends DbSchema>(
       return db.subscribeQuery(sqlQueryString);
     }, [sqlQueryString]);
 
-    return {
-      rows: rows || readonlyArray.empty,
-      row: (rows && rows[0]) || null,
-      isLoaded: rows != null,
-    };
+    return useMemo(
+      () => ({
+        rows: rows || readonlyArray.empty,
+        row: (rows && rows[0]) || null,
+        isLoaded: rows != null,
+      }),
+      [rows]
+    );
   };
 
   const mutate = db.createMutate<S>();
