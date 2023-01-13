@@ -1,5 +1,13 @@
 # evolu
 
+## 0.7.2
+
+### Patch Changes
+
+- 2cb1af4: Memoize useQuery return value
+
+  So it can be used with useDeferredValue.
+
 ## 0.7.1
 
 ### Patch Changes
