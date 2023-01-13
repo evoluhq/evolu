@@ -58,7 +58,7 @@
     "react": "^18.2.0",
     "tslib": "^2.4.1",
     "typescript": "^4.9.4",
-    "vitest": "^0.27.0",
+    "vitest": "^0.27.1",
     "zod": "^3.20.2"
   },
   "peerDependencies": {

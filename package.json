@@ -20,7 +20,7 @@
     "eslint": "^8.31.0",
     "eslint-config-evolu": "workspace:0.0.2",
     "prettier": "^2.8.2",
-    "turbo": "^1.6.3"
+    "turbo": "^1.7.0"
   },
   "packageManager": "pnpm@7.9.5"
 }
