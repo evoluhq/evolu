@@ -1,5 +1,12 @@
 # server
 
+## 0.0.23
+
+### Patch Changes
+
+- Updated dependencies [2cb1af4]
+  - evolu@0.7.2
+
 ## 0.0.22
 
 ### Patch Changes
