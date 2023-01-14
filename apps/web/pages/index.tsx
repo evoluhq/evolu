@@ -108,7 +108,7 @@ const TodoItem = memo<{
     isCompleted: SqliteBoolean | null;
     categoryId: TodoCategoryId | null;
   };
-}>(({ row: { id, title, isCompleted, categoryId } }) => {
+}>(function TodoItem({ row: { id, title, isCompleted, categoryId } }) {
   const { mutate } = useMutation();
 
   if (title == null) return null;
@@ -150,8 +150,6 @@ const TodoItem = memo<{
     </li>
   );
 });
-
-TodoItem.displayName = "TodoItem";
 
 const TodoList = () => {
   const { rows } = useQuery((db) =>
@@ -291,25 +289,19 @@ const NotificationBar = () => {
   useEffect(() => {
     const notifyOnError = () => {
       const error = getError();
-
-      if (error) {
-        setNotificationMessage(`Error: ${error.error.type}`);
-      }
+      if (error) setNotificationMessage(`Error: ${error.error.type}`);
     };
-
     return subscribeError(notifyOnError);
   }, []);
 
-  if (notificationMessage) {
-    return (
-      <div>
-        <p>{notificationMessage}</p>
-        <button onClick={() => setNotificationMessage(null)}>close</button>
-      </div>
-    );
-  }
+  if (!notificationMessage) return null;
 
-  return null;
+  return (
+    <div>
+      <p>{notificationMessage}</p>
+      <button onClick={() => setNotificationMessage(null)}>close</button>
+    </div>
+  );
 };
 
 export default function Index() {
