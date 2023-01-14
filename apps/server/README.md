@@ -1,3 +1,15 @@
-# evolu server
+# Evolu server on Node.js
 
-Node.js Evolu server with Sqlite.
+## Getting Started
+
+```bash
+npm install
+npm run build
+npm start
+```
+
+## Deploy to fly.io
+
+- https://fly.io/docs/languages-and-frameworks/node/
+
+For quick testing, write `flyctl launch` and confirm a deployment. Note that without a Fly Volume, the database with be reset on every deployment.
