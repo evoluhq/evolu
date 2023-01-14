@@ -56,6 +56,7 @@
     "fp-ts": "^2.13.1",
     "openpgp": "^5.5.0",
     "react": "^18.2.0",
+    "react-dom": "^18.2.0",
     "tslib": "^2.4.1",
     "typescript": "^4.9.4",
     "vitest": "^0.27.1",
@@ -65,6 +66,7 @@
     "fp-ts": "^2.12.3",
     "openpgp": "^5.5.0",
     "react": "^18.2.0",
+    "react-dom": "^18.2.0",
     "zod": "^3.19.1"
   },
   "publishConfig": {
