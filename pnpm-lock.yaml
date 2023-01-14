@@ -27,7 +27,7 @@ importers:
       better-sqlite3: ^8.0.1
       body-parser: ^1.20.1
       cors: ^2.8.5
-      evolu: workspace:0.7.2
+      evolu: workspace:0.7.3
       express: ^4.18.2
       fp-ts: ^2.13.1
       ts-node: ^10.9.1
@@ -59,7 +59,7 @@ importers:
       cross-env: ^7.0.3
       eslint: ^8.31.0
       eslint-config-evolu: workspace:0.0.2
-      evolu: workspace:0.7.2
+      evolu: workspace:0.7.3
       next: ^13.1.2
       react: ^18.2.0
       react-dom: ^18.2.0

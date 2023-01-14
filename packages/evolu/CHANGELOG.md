@@ -1,5 +1,11 @@
 # evolu
 
+## 0.7.3
+
+### Patch Changes
+
+- 389883a: Add missing react-dom peer dependency
+
 ## 0.7.2
 
 ### Patch Changes
