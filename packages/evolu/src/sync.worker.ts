@@ -100,7 +100,6 @@ const createSyncRequest =
   }) =>
   (messages: readonly EncryptedCrdtMessage[]): Uint8Array =>
     SyncRequest.toBinary({
-      // eslint-disable-next-line functional/prefer-readonly-type
       messages: messages as EncryptedCrdtMessage[],
       userId: ownerId,
       nodeId: clock.timestamp.node,
@@ -236,7 +235,6 @@ addEventListener(
     const postSyncWorkerOutput: PostSyncWorkerOutput = (message) => () =>
       syncPort.postMessage(message);
 
-    // eslint-disable-next-line functional/immutable-data
     syncPort.onmessage = ({ data }: MessageEvent<SyncWorkerInput>): void =>
       requestSync(sync({ ...data, postSyncWorkerOutput }));
   },

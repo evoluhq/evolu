@@ -65,14 +65,12 @@ export const diffMerkleTrees = (
   tree2: MerkleTree
 ): Option<Millis> => {
   if (tree1.hash === tree2.hash) return option.none;
-  // eslint-disable-next-line functional/no-let
+
   let node1 = tree1;
-  // eslint-disable-next-line functional/no-let
   let node2 = tree2;
-  // eslint-disable-next-line functional/no-let
   let k = "";
 
-  // eslint-disable-next-line functional/no-loop-statement, no-constant-condition
+  // eslint-disable-next-line no-constant-condition
   while (1) {
     const keyset = new Set([...getKeys(node1), ...getKeys(node2)]);
     const keys = Array.from(keyset).sort();

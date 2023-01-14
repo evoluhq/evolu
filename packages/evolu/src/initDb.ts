@@ -51,7 +51,6 @@ export const initDb: TaskEither<
     //   });
     // }, 3000);
 
-    // eslint-disable-next-line functional/no-let
     let ensureSequentialExecutionPromise = Promise.resolve();
 
     const ensureTransactionsSequentialExecution: <E, A>(
@@ -84,7 +83,6 @@ export const initDb: TaskEither<
       rowsRef: ioRef.IORef<readonly SQLiteRowRecord[]>
     ): Promise<void> => {
       const columns = sqlite3.column_names(stmt);
-      // eslint-disable-next-line functional/no-loop-statement
       while ((await sqlite3.step(stmt)) === SQLite.SQLITE_ROW)
         pipe(columns, array.zip(sqlite3.row(stmt)), record.fromEntries, (r) =>
           rowsRef.modify((a) => [...a, r])
@@ -97,11 +95,9 @@ export const initDb: TaskEither<
 
         const rowsRef = new ioRef.IORef<readonly SQLiteRowRecord[]>([]);
 
-        // eslint-disable-next-line functional/no-loop-statement
         for await (const stmt of sqlite3.statements(connection, sqlQuery.sql)) {
           sqlite3.bind_collection(
             stmt,
-            // eslint-disable-next-line functional/prefer-readonly-type
             sqlQuery.parameters as SQLiteCompatibleType[]
           );
           await readRows(stmt, rowsRef);
@@ -127,7 +123,6 @@ export const initDb: TaskEither<
             exec: (bindings) =>
               taskEither.tryCatch(async () => {
                 const rowsRef = new ioRef.IORef<readonly SQLiteRowRecord[]>([]);
-                // eslint-disable-next-line functional/prefer-readonly-type
                 sqlite3.bind_collection(stmt, bindings as CrdtValue[]);
                 await readRows(stmt, rowsRef);
                 sqlite3.reset(stmt);

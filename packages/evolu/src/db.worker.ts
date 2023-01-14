@@ -125,7 +125,6 @@ apply
         writeToStream(e.data)
       );
 
-      // eslint-disable-next-line functional/immutable-data
       syncPort.onmessage = ({ data }: MessageEvent<SyncWorkerOutput>): void =>
         pipe(
           data,

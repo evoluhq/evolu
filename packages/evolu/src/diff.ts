@@ -1,8 +1,3 @@
-/* eslint-disable functional/prefer-readonly-type */
-/* eslint-disable functional/no-let */
-/* eslint-disable functional/immutable-data */
-/* eslint-disable functional/no-loop-statement */
-
 import { Patch, ReplaceAtPatch, SQLiteRowRecord } from "./types";
 
 // For now, we detect only a change in the whole result and in-place edits.
@@ -51,7 +46,6 @@ export const applyPatches =
         case "replaceAt": {
           if (a === undefined) return a;
           const next = [...a];
-          // eslint-disable-next-line functional/immutable-data
           next[patch.index] = patch.value;
           return next;
         }

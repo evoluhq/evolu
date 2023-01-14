@@ -4,7 +4,6 @@ import { defaultMnemonicWordList } from "./validateMnemonic.js";
 
 const getRandomBytes = (length: number): Uint8Array => {
   const randomBytesArray = new Uint8Array(length);
-  // eslint-disable-next-line functional/no-loop-statement, functional/no-let
   for (let i = 0; i < length; i += 65536) {
     crypto.getRandomValues(
       randomBytesArray.subarray(i, i + Math.min(length - i, 65536))
@@ -18,7 +17,6 @@ const hexToBytes = (hexString: string): Uint8Array =>
   new Uint8Array(hexString.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)));
 
 const lpad = (str: string, padString: string, length: number): string => {
-  // eslint-disable-next-line functional/no-loop-statement
   while (str.length < length) {
     // eslint-disable-next-line no-param-reassign
     str = padString + str;
@@ -45,15 +43,12 @@ const entropyToMnemonic = (entropyInput: string | Uint8Array): string => {
     typeof entropyInput === "string" ? hexToBytes(entropyInput) : entropyInput;
 
   if (entropy.length < 16) {
-    // eslint-disable-next-line functional/no-throw-statement
     throw new Error("INVALID_ENTROPY");
   }
   if (entropy.length > 32) {
-    // eslint-disable-next-line functional/no-throw-statement
     throw new Error("INVALID_ENTROPY");
   }
   if (entropy.length % 4 !== 0) {
-    // eslint-disable-next-line functional/no-throw-statement
     throw new Error("INVALID_ENTROPY");
   }
 

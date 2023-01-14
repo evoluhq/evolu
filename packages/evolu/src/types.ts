@@ -24,7 +24,6 @@ export type LogTarget =
   | "sync:response"
   | "dev";
 
-/* eslint-disable functional/prefer-readonly-type */
 export type Config = {
   syncUrl: string;
   log: boolean | LogTarget | LogTarget[];
@@ -32,7 +31,6 @@ export type Config = {
   maxDrift: number;
   reloadUrl: string;
 };
-/* eslint-enable functional/prefer-readonly-type */
 
 export type Unsubscribe = IO<void>;
 
@@ -129,7 +127,6 @@ export type SQLiteCompatibleType =
   | number
   | string
   | Int8Array
-  // eslint-disable-next-line functional/prefer-readonly-type
   | Array<number>
   | null;
 

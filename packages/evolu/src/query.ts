@@ -39,7 +39,6 @@ export const query =
         )
       ),
       taskEither.map((queriesRows) => {
-        // eslint-disable-next-line functional/prefer-readonly-type
         const toPurge: SqlQueryString[] = [];
 
         const previous = !purgeCache
@@ -48,7 +47,6 @@ export const query =
               queriesRowsCache.read(),
               readonlyRecord.filterWithIndex((query) => {
                 const includes = queries.includes(query);
-                // eslint-disable-next-line functional/immutable-data
                 if (!includes) toPurge.push(query);
                 return includes;
               })

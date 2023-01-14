@@ -11,7 +11,6 @@ export const requestSync = (sync: Task<void>): void => {
   navigator.locks.request(syncLockName, sync);
 };
 
-// eslint-disable-next-line functional/prefer-readonly-type
 const hasLock: Predicate<LockInfo[] | undefined> = flow(
   option.fromNullable,
   option.map(array.some((a) => a.name === syncLockName)),
