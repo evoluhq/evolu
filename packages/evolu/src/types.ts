@@ -416,7 +416,6 @@ export interface EvoluError {
 export type DbWorkerInputInit = {
   readonly type: "init";
   readonly config: Config;
-  readonly syncPort: MessagePort;
 };
 
 export type DbWorkerInput =
@@ -472,14 +471,9 @@ export type DbWorkerOutput =
     }
   | { readonly type: "reloadAllTabs" };
 
-export type SyncWorkerInputInit = {
-  readonly type: "init";
-  readonly config: Config;
-  readonly syncPort: MessagePort;
-};
-
 export type SyncWorkerInput = {
   readonly type: "sync";
+  readonly syncUrl: string;
   readonly messages: Option<ReadonlyNonEmptyArray<CrdtMessage>>;
   readonly clock: CrdtClock;
   readonly owner: Owner;

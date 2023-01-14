@@ -3,13 +3,13 @@ import { IO } from "fp-ts/IO";
 import { constVoid, flow, pipe } from "fp-ts/lib/function.js";
 import { Task } from "fp-ts/Task";
 import { TaskEither } from "fp-ts/TaskEither";
+import "nested-worker/worker";
 import {
   createMessage,
   decrypt,
   encrypt,
   readMessage,
 } from "openpgp/lightweight";
-import { config, setConfig } from "./config.js";
 import { log } from "./log.js";
 import { ID, Mnemonic, OwnerId } from "./model.js";
 import {
@@ -28,7 +28,6 @@ import {
   MerkleTreeString,
   merkleTreeToString,
   SyncWorkerInput,
-  SyncWorkerInputInit,
   SyncWorkerOutput,
   TimestampString,
   UnknownError,
@@ -112,24 +111,24 @@ interface FetchError {
 }
 
 // TODO: Add ServerError (can't parse a response or HttpStatus 500 etc.)
-const postSyncRequest = (
-  body: Uint8Array
-): TaskEither<FetchError, SyncResponse> =>
-  taskEither.tryCatch(
-    () =>
-      fetch(config.syncUrl, {
-        method: "POST",
-        body,
-        headers: {
-          "Content-Type": "application/octet-stream",
-          "Content-Length": body.length.toString(),
-        },
-      })
-        .then((res) => res.arrayBuffer())
-        .then(Buffer.from)
-        .then((b) => SyncResponse.fromBinary(b)),
-    (error): FetchError => ({ type: "FetchError", error })
-  );
+const postSyncRequest =
+  (syncUrl: string) =>
+  (body: Uint8Array): TaskEither<FetchError, SyncResponse> =>
+    taskEither.tryCatch(
+      () =>
+        fetch(syncUrl, {
+          method: "POST",
+          body,
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "Content-Length": body.length.toString(),
+          },
+        })
+          .then((res) => res.arrayBuffer())
+          .then(Buffer.from)
+          .then((b) => SyncResponse.fromBinary(b)),
+      (error): FetchError => ({ type: "FetchError", error })
+    );
 
 const decryptMessages = ({
   messages,
@@ -174,6 +173,7 @@ const decryptMessages = ({
 type PostSyncWorkerOutput = (message: SyncWorkerOutput) => IO<void>;
 
 const sync = ({
+  syncUrl,
   messages,
   clock,
   owner: { mnemonic, id: ownerId },
@@ -200,7 +200,7 @@ const sync = ({
       })
     ),
     taskEither.map(createSyncRequest({ ownerId, clock })),
-    taskEither.chainW(postSyncRequest),
+    taskEither.chainW(postSyncRequest(syncUrl)),
     taskEither.chainW(({ merkleTree, messages }) =>
       pipe(
         decryptMessages({ messages, mnemonic }),
@@ -227,16 +227,9 @@ const sync = ({
     )
   );
 
-addEventListener(
-  "message",
-  ({ data: { config, syncPort } }: MessageEvent<SyncWorkerInputInit>) => {
-    setConfig(config);
+const postSyncWorkerOutput: PostSyncWorkerOutput = (message) => () =>
+  self.postMessage(message);
 
-    const postSyncWorkerOutput: PostSyncWorkerOutput = (message) => () =>
-      syncPort.postMessage(message);
-
-    syncPort.onmessage = ({ data }: MessageEvent<SyncWorkerInput>): void =>
-      requestSync(sync({ ...data, postSyncWorkerOutput }));
-  },
-  { once: true }
-);
+addEventListener("message", ({ data }: MessageEvent<SyncWorkerInput>) => {
+  requestSync(sync({ ...data, postSyncWorkerOutput }));
+});

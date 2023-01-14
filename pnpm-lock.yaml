@@ -118,6 +118,7 @@ importers:
       kysely: ^0.23.3
       murmurhash: ^2.0.1
       nanoid: 4.0.0
+      nested-worker: github:johanholmerin/nested-worker
       openpgp: ^5.5.0
       react: ^18.2.0
       react-dom: ^18.2.0
@@ -132,6 +133,7 @@ importers:
       kysely: 0.23.3
       murmurhash: 2.0.1
       nanoid: 4.0.0
+      nested-worker: github.com/johanholmerin/nested-worker/a31e9af6125ca0589df340111ab294af3e52eb16
       sha256-uint8array: 0.10.3
       wa-sqlite: github.com/rhashimoto/wa-sqlite/5fdc80ff1c153aeb0dab65a5e23ca22938c827a3
     devDependencies:
@@ -4799,6 +4801,12 @@ packages:
   /zod/3.20.2:
     resolution: {integrity: sha512-1MzNQdAvO+54H+EaK5YpyEy0T+Ejo/7YLHS93G3RnYWh5gaotGHwGeN/ZO687qEDU2y4CdStQYXVHIgrUl5UVQ==}
     dev: true
+
+  github.com/johanholmerin/nested-worker/a31e9af6125ca0589df340111ab294af3e52eb16:
+    resolution: {tarball: https://codeload.github.com/johanholmerin/nested-worker/tar.gz/a31e9af6125ca0589df340111ab294af3e52eb16}
+    name: nested-worker
+    version: 1.0.0
+    dev: false
 
   github.com/rhashimoto/wa-sqlite/5fdc80ff1c153aeb0dab65a5e23ca22938c827a3:
     resolution: {tarball: https://codeload.github.com/rhashimoto/wa-sqlite/tar.gz/5fdc80ff1c153aeb0dab65a5e23ca22938c827a3}

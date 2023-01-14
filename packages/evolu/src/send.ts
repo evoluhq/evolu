@@ -72,6 +72,7 @@ const callSync =
     task.fromIO(
       postSyncWorkerInput({
         type: "sync",
+        syncUrl: "https://bold-frost-4029.fly.dev",
         messages: option.some(messages),
         clock,
         owner,

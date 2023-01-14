@@ -39,6 +39,7 @@ const doSync: (
       readerTaskEither.chainIOK(({ postSyncWorkerInput, owner }) =>
         postSyncWorkerInput({
           type: "sync",
+          syncUrl: "https://bold-frost-4029.fly.dev",
           clock,
           owner,
           messages: option.none,
