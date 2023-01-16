@@ -17,15 +17,8 @@ import {
   SqliteDateTime,
 } from "./model.js";
 
-export type LogTarget =
-  | "clock:read"
-  | "clock:update"
-  | "sync:request"
-  | "sync:response";
-
 export type Config = {
   syncUrl: string;
-  log: boolean | LogTarget | LogTarget[];
   /** Maximum physical clock drift allowed, in ms. */
   maxDrift: number;
   reloadUrl: string;

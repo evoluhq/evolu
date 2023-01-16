@@ -10,7 +10,6 @@ import {
   encrypt,
   readMessage,
 } from "openpgp/lightweight";
-import { log } from "./log.js";
 import { ID, Mnemonic, OwnerId } from "./model.js";
 import {
   CrdtMessageContent,
@@ -183,28 +182,18 @@ const sync = ({
   readonly postSyncWorkerOutput: PostSyncWorkerOutput;
 }): Task<void> =>
   pipe(
-    log("sync:request")({
-      messages,
-      userId: ownerId,
-      nodeId: clock.timestamp.node,
-      merkleTree: clock.merkleTree,
+    encryptMessages({
+      messages: pipe(
+        messages,
+        option.getOrElseW(() => [])
+      ),
+      mnemonic,
     }),
-    taskEither.fromIO,
-    taskEither.chain(() =>
-      encryptMessages({
-        messages: pipe(
-          messages,
-          option.getOrElseW(() => [])
-        ),
-        mnemonic,
-      })
-    ),
     taskEither.map(createSyncRequest({ ownerId, clock })),
     taskEither.chainW(postSyncRequest(syncUrl)),
     taskEither.chainW(({ merkleTree, messages }) =>
       pipe(
         decryptMessages({ messages, mnemonic }),
-        taskEither.chainFirstIOK(log("sync:response")),
         taskEither.map((messages) => ({
           messages,
           merkleTree: merkleTreeFromString(merkleTree as MerkleTreeString),

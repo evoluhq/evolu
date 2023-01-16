@@ -1,7 +1,6 @@
 import { taskEither } from "fp-ts";
 import { pipe } from "fp-ts/lib/function.js";
 import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
-import { log } from "./log.js";
 import { timestampFromString } from "./timestamp.js";
 import {
   CrdtClock,
@@ -22,6 +21,5 @@ export const readClock: ReaderTaskEither<DbEnv, UnknownError, CrdtClock> = ({
     taskEither.map(([[timestamp, merkleTree]]) => ({
       timestamp: timestampFromString(timestamp as TimestampString),
       merkleTree: merkleTreeFromString(merkleTree as MerkleTreeString),
-    })),
-    taskEither.chainFirstIOK(log("clock:read"))
+    }))
   );
