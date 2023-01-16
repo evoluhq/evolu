@@ -1,5 +1,11 @@
 # evolu
 
+## 0.7.5
+
+### Patch Changes
+
+- 2216d7f: Make float-integer conversion more explicit
+
 ## 0.7.4
 
 ### Patch Changes
