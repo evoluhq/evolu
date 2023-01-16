@@ -3,6 +3,28 @@ import { Option } from "fp-ts/Option";
 import { timestampToHash } from "./timestamp.js";
 import { MerkleTree, Millis, Timestamp, TimestampHash } from "./types.js";
 
+// DebugMerkleTree
+// export const createInitialMerkleTree = (): MerkleTree => ({});
+// export const insertIntoMerkleTree =
+//   (timestamp: Timestamp) =>
+//   (tree: MerkleTree): MerkleTree => {
+//     // if (tree.test && tree.test.includes(timestampToString(timestamp)))
+//     //   return tree;
+//     const t = tree.test || [];
+//     return {
+//       test: [...t, timestampToString(timestamp)],
+//     };
+//   };
+// export const diffMerkleTrees = (
+//   tree1: MerkleTree,
+//   tree2: MerkleTree
+// ): Option<Millis> => {
+//   const a = [...(tree1.test || [])].sort();
+//   const b = [...(tree2.test || [])].sort();
+//   if (JSON.stringify(a) === JSON.stringify(b)) return option.none;
+//   return option.some(0 as Millis);
+// };
+
 export const createInitialMerkleTree = (): MerkleTree => ({});
 
 const insertKey = ({
