@@ -36,11 +36,12 @@
   },
   "dependencies": {
     "@protobuf-ts/runtime": "^2.8.2",
+    "dequal": "^2.0.3",
     "kysely": "^0.23.3",
     "murmurhash": "^2.0.1",
     "nanoid": "4.0.0",
     "sha256-uint8array": "^0.10.3",
-    "wa-sqlite": "github:rhashimoto/wa-sqlite#5fdc80ff1c153aeb0dab65a5e23ca22938c827a3"
+    "wa-sqlite": "github:rhashimoto/wa-sqlite#cb419fb12b6bf2102e90d9ba13290078ca402442"
   },
   "devDependencies": {
     "@evolu/tsconfig": "workspace:0.0.2",
@@ -50,6 +51,7 @@
     "@types/react": "^18.0.26",
     "@types/react-dom": "^18.0.10",
     "@types/web-locks-api": "^0.0.2",
+    "array-shuffle": "^3.0.0",
     "cross-env": "^7.0.3",
     "eslint": "^8.31.0",
     "eslint-config-evolu": "workspace:0.0.2",

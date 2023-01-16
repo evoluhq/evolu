@@ -111,7 +111,9 @@ importers:
       '@types/react': ^18.0.26
       '@types/react-dom': ^18.0.10
       '@types/web-locks-api': ^0.0.2
+      array-shuffle: ^3.0.0
       cross-env: ^7.0.3
+      dequal: ^2.0.3
       eslint: ^8.31.0
       eslint-config-evolu: workspace:0.0.2
       fp-ts: ^2.13.1
@@ -125,15 +127,16 @@ importers:
       tslib: ^2.4.1
       typescript: ^4.9.4
       vitest: ^0.27.1
-      wa-sqlite: github:rhashimoto/wa-sqlite#5fdc80ff1c153aeb0dab65a5e23ca22938c827a3
+      wa-sqlite: github:rhashimoto/wa-sqlite#cb419fb12b6bf2102e90d9ba13290078ca402442
       zod: ^3.20.2
     dependencies:
       '@protobuf-ts/runtime': 2.8.2
+      dequal: 2.0.3
       kysely: 0.23.3
       murmurhash: 2.0.1
       nanoid: 4.0.0
       sha256-uint8array: 0.10.3
-      wa-sqlite: github.com/rhashimoto/wa-sqlite/5fdc80ff1c153aeb0dab65a5e23ca22938c827a3
+      wa-sqlite: github.com/rhashimoto/wa-sqlite/cb419fb12b6bf2102e90d9ba13290078ca402442
     devDependencies:
       '@evolu/tsconfig': link:../evolu-tsconfig
       '@protobuf-ts/plugin': 2.8.2
@@ -142,6 +145,7 @@ importers:
       '@types/react': 18.0.26
       '@types/react-dom': 18.0.10
       '@types/web-locks-api': 0.0.2
+      array-shuffle: 3.0.0
       cross-env: 7.0.3
       eslint: 8.31.0
       eslint-config-evolu: link:../eslint-config-evolu
@@ -1224,6 +1228,11 @@ packages:
       is-string: 1.0.7
     dev: false
 
+  /array-shuffle/3.0.0:
+    resolution: {integrity: sha512-rogEGxHOQPhslOhpg12LJkB+bbAl484/s2AJq0BxtzQDQfKl76fS2u9zWgg3p3b9ENcuvE7K8A7l5ddiPjCRnw==}
+    engines: {node: '>=12.20'}
+    dev: true
+
   /array-union/2.1.0:
     resolution: {integrity: sha512-HGyxoOTYUyCM6stUe6EJgnd4EoewAI7zMdfqO+kGjnlZmBDz/cR5pf8r/cR4Wq60sL/p0IkcjUEEPwS3GFrIyw==}
     engines: {node: '>=8'}
@@ -1717,6 +1726,11 @@ packages:
   /depd/2.0.0:
     resolution: {integrity: sha512-g7nH6P6dyDioJogAAGprGpCtVImJhpPk/roCzdb3fIh61/s/nPsfR6onyMwkCAR/OlC3yBC0lESvUoQEAssIrw==}
     engines: {node: '>= 0.8'}
+    dev: false
+
+  /dequal/2.0.3:
+    resolution: {integrity: sha512-0je+qPKHEMohvfRTCEo3CrPG6cAzAYgmzKyxRiYSSDkS6eGJdyVJm7WaYA5ECaAD9wLB2T4EEeymA5aFVcYXCA==}
+    engines: {node: '>=6'}
     dev: false
 
   /destroy/1.2.0:
@@ -4800,8 +4814,8 @@ packages:
     resolution: {integrity: sha512-1MzNQdAvO+54H+EaK5YpyEy0T+Ejo/7YLHS93G3RnYWh5gaotGHwGeN/ZO687qEDU2y4CdStQYXVHIgrUl5UVQ==}
     dev: true
 
-  github.com/rhashimoto/wa-sqlite/5fdc80ff1c153aeb0dab65a5e23ca22938c827a3:
-    resolution: {tarball: https://codeload.github.com/rhashimoto/wa-sqlite/tar.gz/5fdc80ff1c153aeb0dab65a5e23ca22938c827a3}
+  github.com/rhashimoto/wa-sqlite/cb419fb12b6bf2102e90d9ba13290078ca402442:
+    resolution: {tarball: https://codeload.github.com/rhashimoto/wa-sqlite/tar.gz/cb419fb12b6bf2102e90d9ba13290078ca402442}
     name: wa-sqlite
-    version: 0.8.2
+    version: 0.8.6
     dev: false
