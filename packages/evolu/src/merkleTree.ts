@@ -53,12 +53,7 @@ const insertKey = ({
 export const insertIntoMerkleTree =
   (timestamp: Timestamp) =>
   (tree: MerkleTree): MerkleTree => {
-    // This is a quick way of converting the floating-point value to an integer (the bitwise
-    // operators only work on 32-bit integers, so it causes the 64-bit float to be converted
-    // to an integer). In this case, it ensures the base-3 encoded timestamp strings end up
-    // looking like "1211121022121110" instead of "1211121022121110.11221000121012222".
-    // https://github.com/jlongster/crdt-example-app/issues/3#issuecomment-599064327
-    const key = Number((timestamp.millis / 1000 / 60) | 0).toString(3);
+    const key = Number(Math.floor(timestamp.millis / 1000 / 60)).toString(3);
     const hash = timestampToHash(timestamp);
     return insertKey({
       tree: {
