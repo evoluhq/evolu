@@ -11,6 +11,7 @@ import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
 import { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
 import { ReadonlyRecord } from "fp-ts/ReadonlyRecord";
 import { TaskEither } from "fp-ts/TaskEither";
+import { log } from "./log.js";
 import { insertIntoMerkleTree } from "./merkleTree.js";
 import { timestampFromString } from "./timestamp.js";
 import {
@@ -82,9 +83,9 @@ export const applyMessages =
                 message.row,
                 message.column,
               ]),
-              taskEither.map(
-                flow(
-                  readonlyArray.head,
+              taskEither.map((a) =>
+                pipe(
+                  readonlyArray.head(a.rows),
                   option.map((r) => r.timestamp as TimestampString),
                   option.getOrElseW(constNull)
                 )
@@ -111,11 +112,12 @@ export const applyMessages =
                         message.column,
                         message.value,
                       ]),
-                      taskEither.map(() => {
-                        // eslint-disable-next-line no-param-reassign
-                        merkleTree = insertIntoMerkleTree(
-                          timestampFromString(message.timestamp)
-                        )(merkleTree);
+                      taskEither.map((a) => {
+                        if (a.changes > 0)
+                          // eslint-disable-next-line no-param-reassign
+                          merkleTree = insertIntoMerkleTree(
+                            timestampFromString(message.timestamp)
+                          )(merkleTree);
                       })
                     )
                   : taskEither.right(undefined)
@@ -126,6 +128,7 @@ export const applyMessages =
         ),
       flow(
         taskEither.traverseArray((a) => a.release()),
+        taskEither.chainIOK(() => log("applyMessages")(null)),
         taskEither.map(constVoid)
       )
     );
