@@ -1,5 +1,17 @@
 # evolu
 
+## 0.8.0
+
+### Minor Changes
+
+- 36a3cab: Remove logging
+
+  It didn't do much, and I'll make it better anyway.
+
+### Patch Changes
+
+- 6ec12ff: Refactor global config to ConfigEnv
+
 ## 0.7.5
 
 ### Patch Changes
