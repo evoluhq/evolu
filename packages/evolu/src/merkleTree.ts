@@ -3,6 +3,28 @@ import { Option } from "fp-ts/Option";
 import { timestampToHash } from "./timestamp.js";
 import { MerkleTree, Millis, Timestamp, TimestampHash } from "./types.js";
 
+// DebugMerkleTree
+// export const createInitialMerkleTree = (): MerkleTree => ({});
+// export const insertIntoMerkleTree =
+//   (timestamp: Timestamp) =>
+//   (tree: MerkleTree): MerkleTree => {
+//     // if (tree.test && tree.test.includes(timestampToString(timestamp)))
+//     //   return tree;
+//     const t = tree.test || [];
+//     return {
+//       test: [...t, timestampToString(timestamp)],
+//     };
+//   };
+// export const diffMerkleTrees = (
+//   tree1: MerkleTree,
+//   tree2: MerkleTree
+// ): Option<Millis> => {
+//   const a = [...(tree1.test || [])].sort();
+//   const b = [...(tree2.test || [])].sort();
+//   if (JSON.stringify(a) === JSON.stringify(b)) return option.none;
+//   return option.some(0 as Millis);
+// };
+
 export const createInitialMerkleTree = (): MerkleTree => ({});
 
 const insertKey = ({
@@ -31,12 +53,7 @@ const insertKey = ({
 export const insertIntoMerkleTree =
   (timestamp: Timestamp) =>
   (tree: MerkleTree): MerkleTree => {
-    // This is a quick way of converting the floating-point value to an integer (the bitwise
-    // operators only work on 32-bit integers, so it causes the 64-bit float to be converted
-    // to an integer). In this case, it ensures the base-3 encoded timestamp strings end up
-    // looking like "1211121022121110" instead of "1211121022121110.11221000121012222".
-    // https://github.com/jlongster/crdt-example-app/issues/3#issuecomment-599064327
-    const key = Number((timestamp.millis / 1000 / 60) | 0).toString(3);
+    const key = Number(Math.floor(timestamp.millis / 1000 / 60)).toString(3);
     const hash = timestampToHash(timestamp);
     return insertKey({
       tree: {

@@ -31,9 +31,14 @@ export const initDb: TaskEither<
     );
     const connection = await sqlite3.open_v2("app", undefined, "evolu");
 
+    // TODO: Add log SQL target.
+    const logSql = (_sql: string): void => {
+      // console.log(sql.trim());
+    };
+
     const exec: Database["exec"] = (sql) =>
       taskEither.tryCatch(async () => {
-        // console.log(sql);
+        logSql(sql);
         const rowsRef = new ioRef.IORef<readonly SQLiteRow[]>([]);
         await sqlite3.exec(connection, sql, (row) => {
           rowsRef.modify((a) => [...a, row])();
@@ -46,10 +51,11 @@ export const initDb: TaskEither<
     const changes: Database["changes"] = () => sqlite3.changes(connection);
 
     // setTimeout(() => {
+    //   // __clock, __message, __owner
     //   exec("select * from __clock")().then((a) => {
     //     console.log(a);
     //   });
-    // }, 3000);
+    // }, 2000);
 
     let ensureSequentialExecutionPromise = Promise.resolve();
 
@@ -91,7 +97,7 @@ export const initDb: TaskEither<
 
     const execSqlQuery: Database["execSqlQuery"] = (sqlQuery) =>
       taskEither.tryCatch(async () => {
-        // console.log(sqlQuery);
+        logSql(sqlQuery.sql);
 
         const rowsRef = new ioRef.IORef<readonly SQLiteRowRecord[]>([]);
 
@@ -102,13 +108,15 @@ export const initDb: TaskEither<
           );
           await readRows(stmt, rowsRef);
           // sqlQuery has only one statement that is going to be finalized anyway.
-          // sqlite3.reset(stmt);
+          sqlite3.reset(stmt);
         }
 
         return rowsRef.read();
       }, errorToUnknownError);
 
     const prepare: Database["prepare"] = (sql) => {
+      logSql(sql);
+
       const str = sqlite3.str_new(connection, sql);
       return pipe(
         taskEither.tryCatch(
@@ -125,8 +133,10 @@ export const initDb: TaskEither<
                 const rowsRef = new ioRef.IORef<readonly SQLiteRowRecord[]>([]);
                 sqlite3.bind_collection(stmt, bindings as CrdtValue[]);
                 await readRows(stmt, rowsRef);
+                const changes = sqlite3.changes(connection);
                 sqlite3.reset(stmt);
-                return rowsRef.read();
+
+                return { rows: rowsRef.read(), changes };
               }, errorToUnknownError),
             release: () =>
               pipe(

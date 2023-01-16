@@ -22,6 +22,7 @@ export type LogTarget =
   | "clock:update"
   | "sync:request"
   | "sync:response"
+  | "applyMessages"
   | "dev";
 
 export type Config = {
@@ -121,13 +122,15 @@ export const sqlQueryFromString = (s: SqlQueryString): SqlQuery =>
   JSON.parse(s) as SqlQuery;
 
 // This is a workaround for:
-// https://github.com/rhashimoto/wa-sqlite/blob/29a38da3dc001f8e6844837f6f3dffcdda2cdb10/src/types/index.d.ts#L18
+// https://github.com/rhashimoto/wa-sqlite/blob/dd2111b8b71fcb2b7747536f31fcc365396f01c4/src/types/index.d.ts#L18
 // It should be possible to import it, but it's somehow ambient.
 export type SQLiteCompatibleType =
   | number
   | string
   | Int8Array
   | Array<number>
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  | BigInt
   | null;
 
 export type SQLiteRow = readonly SQLiteCompatibleType[];
@@ -151,7 +154,10 @@ export interface Owner {
 export interface PreparedStatement {
   readonly exec: (
     bindings: readonly CrdtValue[]
-  ) => TaskEither<UnknownError, readonly SQLiteRowRecord[]>;
+  ) => TaskEither<
+    UnknownError,
+    { rows: readonly SQLiteRowRecord[]; changes: number }
+  >;
   readonly release: () => TaskEither<UnknownError, void>;
 }
 
