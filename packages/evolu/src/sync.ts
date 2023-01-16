@@ -7,6 +7,7 @@ import { query } from "./query.js";
 import { readClock } from "./readClock.js";
 import { syncIsPendingOrHeld } from "./syncLock.js";
 import {
+  ConfigEnv,
   DbEnv,
   LockManagerEnv,
   OwnerEnv,
@@ -24,7 +25,8 @@ const doSync: (
     OwnerEnv &
     PostSyncWorkerInputEnv &
     QueriesRowsCacheEnv &
-    PostDbWorkerOutputEnv,
+    PostDbWorkerOutputEnv &
+    ConfigEnv,
   UnknownError,
   void | undefined
 > = flow(
@@ -35,11 +37,11 @@ const doSync: (
   readerTaskEither.chainW(() => readClock),
   readerTaskEither.chainW((clock) =>
     pipe(
-      readerTaskEither.ask<PostSyncWorkerInputEnv & OwnerEnv>(),
-      readerTaskEither.chainIOK(({ postSyncWorkerInput, owner }) =>
+      readerTaskEither.ask<PostSyncWorkerInputEnv & OwnerEnv & ConfigEnv>(),
+      readerTaskEither.chainIOK(({ postSyncWorkerInput, owner, config }) =>
         postSyncWorkerInput({
           type: "sync",
-          syncUrl: "https://bold-frost-4029.fly.dev",
+          syncUrl: config.syncUrl,
           clock,
           owner,
           messages: option.none,
@@ -58,7 +60,8 @@ export const sync = (
     PostSyncWorkerInputEnv &
     LockManagerEnv &
     QueriesRowsCacheEnv &
-    PostDbWorkerOutputEnv,
+    PostDbWorkerOutputEnv &
+    ConfigEnv,
   UnknownError,
   void
 > =>

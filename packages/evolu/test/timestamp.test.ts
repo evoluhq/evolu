@@ -12,6 +12,7 @@ import {
   timestampToString,
 } from "../src/timestamp.js";
 import {
+  ConfigEnv,
   Millis,
   TimeEnv,
   Timestamp,
@@ -47,8 +48,8 @@ test("timestampToHash", () => {
   expect(timestampToHash(createSyncTimestamp())).toMatchSnapshot();
 });
 
-const now0 = { now: 0 } as TimeEnv;
-const now1 = { now: 1 } as TimeEnv;
+const now0 = { now: 0, config } as TimeEnv & ConfigEnv;
+const now1 = { now: 1, config } as TimeEnv & ConfigEnv;
 
 describe("sendTimestamp", () => {
   test("should send monotonically with a monotonic clock", () => {
@@ -66,12 +67,10 @@ describe("sendTimestamp", () => {
   });
 
   test("should fail with counter overflow", () => {
-    // eslint-disable-next-line functional/no-let
     let timestamp = either.right<
       TimestampDriftError | TimestampCounterOverflowError,
       Timestamp
     >(createSyncTimestamp());
-    // eslint-disable-next-line functional/no-loop-statement, functional/no-let
     for (let i = 0; i < 65536; i++) {
       timestamp = pipe(
         timestamp,

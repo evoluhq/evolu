@@ -172,7 +172,7 @@ const { postDbWorkerInput, owner } = pipe(
               break;
 
             case "reloadAllTabs":
-              reloadAllTabs();
+              reloadAllTabs(config.reloadUrl)();
               break;
 
             default:

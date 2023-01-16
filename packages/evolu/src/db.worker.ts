@@ -4,7 +4,6 @@ import { IORef } from "fp-ts/IORef";
 import { constVoid, flow, pipe } from "fp-ts/lib/function.js";
 import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
 import "nested-worker/worker";
-import { setConfig } from "./config.js";
 import { initDb } from "./initDb.js";
 import { initDbModel } from "./initDbModel.js";
 import { query } from "./query.js";
@@ -14,6 +13,7 @@ import { restoreOwner } from "./restoreOwner.js";
 import { send } from "./send.js";
 import { sync } from "./sync.js";
 import {
+  ConfigEnv,
   createTimeEnv,
   DbEnv,
   DbTransactionEnv,
@@ -48,10 +48,16 @@ type Envs = DbEnv &
 const createWritableStream = ({
   dbTransaction,
   ...envs
-}: Envs & DbTransactionEnv): WritableStream<DbWorkerInput> =>
+}: Envs & DbTransactionEnv & ConfigEnv): WritableStream<DbWorkerInput> =>
   new WritableStream({
     write: flow(
-      (data): ReaderTaskEither<Envs & TimeEnv, EvoluError["error"], void> => {
+      (
+        data
+      ): ReaderTaskEither<
+        Envs & TimeEnv & ConfigEnv,
+        EvoluError["error"],
+        void
+      > => {
         switch (data.type) {
           case "updateDbSchema":
             return updateDbSchema(data);
@@ -101,8 +107,6 @@ apply
   )()
   .then(
     either.match(onError, ([envs, { config }]) => {
-      setConfig(config);
-
       const syncWorker = new Worker(
         new URL("./sync.worker.js", import.meta.url)
       );
@@ -118,6 +122,7 @@ apply
         postSyncWorkerInput,
         queriesRowsCache,
         locks: navigator.locks,
+        config,
       });
 
       const writeToStream = (chunk: DbWorkerInput): void => {

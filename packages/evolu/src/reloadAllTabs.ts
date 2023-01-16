@@ -1,5 +1,4 @@
 import { IO } from "fp-ts/IO";
-import { config } from "./config.js";
 
 const localStorageKey = "evolu:reloadAllTabs";
 
@@ -8,7 +7,9 @@ if (typeof window !== "undefined")
     if (e.key === localStorageKey) location.reload();
   });
 
-export const reloadAllTabs: IO<void> = () => {
-  localStorage.setItem(localStorageKey, Date.now().toString());
-  location.assign(config.reloadUrl);
-};
+export const reloadAllTabs =
+  (reloadUrl: string): IO<void> =>
+  () => {
+    localStorage.setItem(localStorageKey, Date.now().toString());
+    location.assign(reloadUrl);
+  };

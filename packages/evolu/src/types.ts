@@ -21,9 +21,7 @@ export type LogTarget =
   | "clock:read"
   | "clock:update"
   | "sync:request"
-  | "sync:response"
-  | "applyMessages"
-  | "dev";
+  | "sync:response";
 
 export type Config = {
   syncUrl: string;
@@ -329,6 +327,10 @@ export const createTimeEnv: IO<TimeEnv> = () => ({
 
 export interface LockManagerEnv {
   readonly locks: LockManager;
+}
+
+export interface ConfigEnv {
+  readonly config: Config;
 }
 
 // Errors.

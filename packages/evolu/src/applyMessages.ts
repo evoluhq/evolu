@@ -11,7 +11,6 @@ import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
 import { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
 import { ReadonlyRecord } from "fp-ts/ReadonlyRecord";
 import { TaskEither } from "fp-ts/TaskEither";
-import { log } from "./log.js";
 import { insertIntoMerkleTree } from "./merkleTree.js";
 import { timestampFromString } from "./timestamp.js";
 import {
@@ -128,7 +127,6 @@ export const applyMessages =
         ),
       flow(
         taskEither.traverseArray((a) => a.release()),
-        taskEither.chainIOK(() => log("applyMessages")(null)),
         taskEither.map(constVoid)
       )
     );

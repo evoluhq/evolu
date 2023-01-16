@@ -15,7 +15,7 @@ import {
 import Head from "next/head";
 import { ChangeEvent, memo, useEffect, useState } from "react";
 
-// config.syncUrl = "http://localhost:4000";
+config.syncUrl = "http://localhost:4000";
 
 // `model` is Evolu helper for branded types.
 // https://dev.to/andersonjoseph/typescript-tip-safer-functions-with-branded-types-14o4

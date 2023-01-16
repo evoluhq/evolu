@@ -23,6 +23,7 @@ import {
   timestampToString,
 } from "./timestamp.js";
 import {
+  ConfigEnv,
   CrdtClock,
   CrdtMessage,
   DbEnv,
@@ -47,7 +48,7 @@ const receiveMessages =
   (
     messages: ReadonlyNonEmptyArray<CrdtMessage>
   ): ReaderEither<
-    TimeEnv,
+    TimeEnv & ConfigEnv,
     | TimestampDriftError
     | TimestampCounterOverflowError
     | TimestampDuplicateNodeError,
@@ -70,7 +71,7 @@ const handleReceivedMessages =
   (
     messages: ReadonlyNonEmptyArray<CrdtMessage>
   ): ReaderTaskEither<
-    TimeEnv & DbEnv & PostDbWorkerOutputEnv,
+    TimeEnv & DbEnv & PostDbWorkerOutputEnv & ConfigEnv,
     | UnknownError
     | TimestampDuplicateNodeError
     | TimestampDriftError
@@ -111,11 +112,11 @@ const handleMerkleTreesDiff =
     readonly diff: Millis;
     readonly clock: CrdtClock;
   }): ReaderTaskEither<
-    DbEnv & PostSyncWorkerInputEnv & OwnerEnv,
+    DbEnv & PostSyncWorkerInputEnv & OwnerEnv & ConfigEnv,
     UnknownError,
     void
   > =>
-  ({ db, postSyncWorkerInput, owner }) =>
+  ({ db, postSyncWorkerInput, owner, config }) =>
     pipe(
       db.execSqlQuery({
         sql: `
@@ -130,7 +131,7 @@ const handleMerkleTreesDiff =
           option.map((messages) =>
             postSyncWorkerInput({
               type: "sync",
-              syncUrl: "https://bold-frost-4029.fly.dev",
+              syncUrl: config.syncUrl,
               clock,
               messages: option.some(messages),
               owner,
@@ -156,7 +157,8 @@ export const receive = ({
     PostDbWorkerOutputEnv &
     PostSyncWorkerInputEnv &
     OwnerEnv &
-    LockManagerEnv,
+    LockManagerEnv &
+    ConfigEnv,
   | TimestampDriftError
   | TimestampCounterOverflowError
   | TimestampDuplicateNodeError

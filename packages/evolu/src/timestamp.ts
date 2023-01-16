@@ -4,8 +4,8 @@ import { increment, pipe } from "fp-ts/lib/function.js";
 import { IO } from "fp-ts/IO";
 import { ReaderEither } from "fp-ts/ReaderEither";
 import murmurhash from "murmurhash";
-import { config } from "./config.js";
 import {
+  ConfigEnv,
   Counter,
   createNodeId,
   MAX_COUNTER,
@@ -98,11 +98,11 @@ export const sendTimestamp =
   (
     timestamp: Timestamp
   ): ReaderEither<
-    TimeEnv,
+    TimeEnv & ConfigEnv,
     TimestampDriftError | TimestampCounterOverflowError,
     Timestamp
   > =>
-  ({ now }) =>
+  ({ now, config }) =>
     pipe(
       Math.max(timestamp.millis, now) as Millis,
       either.fromPredicate(
@@ -127,13 +127,13 @@ export const receiveTimestamp =
     local: Timestamp,
     remote: Timestamp
   ): ReaderEither<
-    TimeEnv,
+    TimeEnv & ConfigEnv,
     | TimestampDriftError
     | TimestampCounterOverflowError
     | TimestampDuplicateNodeError,
     Timestamp
   > =>
-  ({ now }) =>
+  ({ now, config }) =>
     pipe(
       Math.max(local.millis, remote.millis, now) as Millis,
       either.fromPredicate(

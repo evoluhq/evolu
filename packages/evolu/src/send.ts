@@ -9,6 +9,7 @@ import { query } from "./query.js";
 import { readClock } from "./readClock.js";
 import { sendTimestamp, timestampToString } from "./timestamp.js";
 import {
+  ConfigEnv,
   CrdtClock,
   CrdtMessage,
   DbEnv,
@@ -32,7 +33,7 @@ const sendMessages =
   (
     messages: ReadonlyNonEmptyArray<NewCrdtMessage>
   ): ReaderEither<
-    TimeEnv,
+    TimeEnv & ConfigEnv,
     TimestampDriftError | TimestampCounterOverflowError,
     {
       readonly messages: ReadonlyNonEmptyArray<CrdtMessage>;
@@ -67,12 +68,12 @@ const callSync =
   }: {
     readonly messages: ReadonlyNonEmptyArray<CrdtMessage>;
     readonly clock: CrdtClock;
-  }): ReaderTask<PostSyncWorkerInputEnv & OwnerEnv, void> =>
-  ({ postSyncWorkerInput, owner }) =>
+  }): ReaderTask<PostSyncWorkerInputEnv & OwnerEnv & ConfigEnv, void> =>
+  ({ postSyncWorkerInput, owner, config }) =>
     task.fromIO(
       postSyncWorkerInput({
         type: "sync",
-        syncUrl: "https://bold-frost-4029.fly.dev",
+        syncUrl: config.syncUrl,
         messages: option.some(messages),
         clock,
         owner,
@@ -94,7 +95,8 @@ export const send = ({
     QueriesRowsCacheEnv &
     PostDbWorkerOutputEnv &
     PostSyncWorkerInputEnv &
-    TimeEnv,
+    TimeEnv &
+    ConfigEnv,
   UnknownError | TimestampDriftError | TimestampCounterOverflowError,
   void
 > =>
