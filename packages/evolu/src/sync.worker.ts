@@ -217,7 +217,7 @@ const sync = ({
   );
 
 const postSyncWorkerOutput: PostSyncWorkerOutput = (message) => () =>
-  self.postMessage(message);
+  postMessage(message);
 
 addEventListener("message", ({ data }: MessageEvent<SyncWorkerInput>) => {
   requestSync(sync({ ...data, postSyncWorkerOutput }));

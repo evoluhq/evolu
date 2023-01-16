@@ -1,8 +1,9 @@
 import { apply, either, taskEither } from "fp-ts";
-import { Either } from "fp-ts/Either";
 import { IORef } from "fp-ts/IORef";
 import { constVoid, flow, pipe } from "fp-ts/lib/function.js";
 import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
+import { Task } from "fp-ts/Task";
+import { TaskEither } from "fp-ts/TaskEither";
 import "nested-worker/worker";
 import { initDb } from "./initDb.js";
 import { initDbModel } from "./initDbModel.js";
@@ -26,14 +27,16 @@ import {
   PostSyncWorkerInputEnv,
   QueriesRowsCache,
   QueriesRowsCacheEnv,
+  SQLiteError,
   SyncWorkerOutput,
   TimeEnv,
+  UnknownError,
 } from "./types.js";
 import { updateDbSchema } from "./updateDbSchema.js";
 
 const postDbWorkerOutput: PostDbWorkerOutputEnv["postDbWorkerOutput"] =
   (message) => () =>
-    self.postMessage(message);
+    postMessage(message);
 
 const onError: (error: EvoluError["error"]) => void = (error) =>
   postDbWorkerOutput({ type: "onError", error })();
@@ -81,32 +84,38 @@ const createWritableStream = ({
     ),
   });
 
+const createDbEnvs: TaskEither<
+  UnknownError | SQLiteError,
+  DbEnv & DbTransactionEnv & OwnerEnv
+> = pipe(
+  initDb,
+  taskEither.chainW(({ db, dbTransaction }) =>
+    pipe(
+      initDbModel()({ db }),
+      dbTransaction,
+      taskEither.map(({ owner }) => ({ db, dbTransaction, owner }))
+    )
+  )
+);
+
+const createConfigEnv: Task<ConfigEnv> = pipe(
+  () =>
+    new Promise<ConfigEnv>((resolve) => {
+      addEventListener(
+        "message",
+        ({ data }: MessageEvent<DbWorkerInputInit>) => resolve(data),
+        { once: true }
+      );
+    })
+);
+
 apply
   .sequenceT(taskEither.ApplyPar)(
-    pipe(
-      initDb,
-      taskEither.chainW(({ db, dbTransaction }) =>
-        pipe(
-          initDbModel()({ db }),
-          dbTransaction,
-          taskEither.map(({ owner }) => ({ db, dbTransaction, owner }))
-        )
-      )
-    ),
-    pipe(
-      () =>
-        new Promise<Either<never, DbWorkerInputInit>>((resolve) => {
-          addEventListener(
-            "message",
-            ({ data }: MessageEvent<DbWorkerInputInit>) =>
-              resolve(either.right(data)),
-            { once: true }
-          );
-        })
-    )
+    createDbEnvs,
+    taskEither.fromTask(createConfigEnv)
   )()
   .then(
-    either.match(onError, ([envs, { config }]) => {
+    either.match(onError, ([dbEnvs, configEnv]) => {
       const syncWorker = new Worker(
         new URL("./sync.worker.js", import.meta.url)
       );
@@ -117,12 +126,12 @@ apply
       const queriesRowsCache = new IORef<QueriesRowsCache>({});
 
       const stream = createWritableStream({
-        ...envs,
+        ...dbEnvs,
+        ...configEnv,
         postDbWorkerOutput,
         postSyncWorkerInput,
         queriesRowsCache,
         locks: navigator.locks,
-        config,
       });
 
       const writeToStream = (chunk: DbWorkerInput): void => {
@@ -143,6 +152,6 @@ apply
           })
         );
 
-      postDbWorkerOutput({ type: "onInit", owner: envs.owner })();
+      postDbWorkerOutput({ type: "onInit", owner: dbEnvs.owner })();
     })
   );

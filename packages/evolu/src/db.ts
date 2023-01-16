@@ -7,6 +7,7 @@ import {
   readonlyArray,
   readonlyNonEmptyArray,
   readonlyRecord,
+  task,
 } from "fp-ts";
 import { Either } from "fp-ts/Either";
 import { IO } from "fp-ts/IO";
@@ -132,15 +133,15 @@ const query = ({
     )
   );
 
-const { postDbWorkerInput, owner } = pipe(
-  new Promise<{
-    readonly postDbWorkerInput: (message: DbWorkerInput) => IO<void>;
-    readonly owner: Owner;
-  }>((resolve) => {
-    if (typeof window === "undefined") return;
+const isServer = typeof window === "undefined" || "Deno" in window;
 
-    // @ts-expect-error missing types
-    import("nested-worker/window").then(() => {
+const createWorker =
+  (): Task<{
+    postDbWorkerInput: (message: DbWorkerInput) => IO<void>;
+    owner: Owner;
+  }> =>
+  () =>
+    new Promise((resolve) => {
       const dbWorker = new Worker(new URL("./db.worker.js", import.meta.url));
 
       const postDbWorkerInput =
@@ -184,18 +185,33 @@ const { postDbWorkerInput, owner } = pipe(
       // setTimeout is for the Evolu config to have time to be overridden.
       setTimeout(postDbWorkerInput({ type: "init", config }));
     });
-  }),
-  (
-    promise
-  ): {
-    readonly postDbWorkerInput: (message: DbWorkerInput) => IO<void>;
-    readonly owner: Task<Owner>;
-  } => ({
-    postDbWorkerInput: (message) => () =>
-      promise.then(({ postDbWorkerInput }) => postDbWorkerInput(message)()),
-    owner: () => promise.then(({ owner }) => owner),
-  })
-);
+
+const {
+  postDbWorkerInput,
+  owner,
+}: {
+  postDbWorkerInput: (message: DbWorkerInput) => IO<void>;
+  owner: Task<Owner>;
+} = isServer
+  ? {
+      // Do nothing on the server.
+      postDbWorkerInput: () => constVoid,
+      owner: () => new Promise(constVoid),
+    }
+  : pipe(
+      // @ts-expect-error missing types
+      () => import("nested-worker/window"),
+      task.chain(createWorker),
+      (task) => {
+        const p = task();
+        return {
+          postDbWorkerInput: (message) => () => {
+            p.then(({ postDbWorkerInput }) => postDbWorkerInput(message)());
+          },
+          owner: () => p.then(({ owner }) => owner),
+        };
+      }
+    );
 
 const dbSchemaToTableDefinitions: (
   dbSchema: DbSchema
