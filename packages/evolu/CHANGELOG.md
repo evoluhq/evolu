@@ -1,5 +1,11 @@
 # evolu
 
+## 0.7.4
+
+### Patch Changes
+
+- 95adfb6: Fix a bug causing SyncError
+
 ## 0.7.3
 
 ### Patch Changes
