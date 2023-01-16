@@ -37,7 +37,7 @@
   "dependencies": {
     "@protobuf-ts/runtime": "^2.8.2",
     "dequal": "^2.0.3",
-    "kysely": "^0.23.3",
+    "kysely": "^0.23.4",
     "murmurhash": "^2.0.1",
     "nanoid": "4.0.0",
     "sha256-uint8array": "^0.10.3",
@@ -53,7 +53,7 @@
     "@types/web-locks-api": "^0.0.2",
     "array-shuffle": "^3.0.0",
     "cross-env": "^7.0.3",
-    "eslint": "^8.31.0",
+    "eslint": "^8.32.0",
     "eslint-config-evolu": "workspace:0.0.2",
     "fp-ts": "^2.13.1",
     "openpgp": "^5.5.0",
