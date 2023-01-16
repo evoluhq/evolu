@@ -47,7 +47,6 @@ import {
   QueryPatches,
   SQLiteRowRecord,
   SqlQueryString,
-  SyncWorkerInputInit,
   TableDefinition,
   Unsubscribe,
 } from "./types.js";
@@ -140,72 +139,51 @@ const { postDbWorkerInput, owner } = pipe(
   }>((resolve) => {
     if (typeof window === "undefined") return;
 
-    // Because Safari does not support nested Web Workers.
-    // Otherwise, the sync worker would be created within the db worker.
-    const channel = new MessageChannel();
+    // @ts-expect-error missing types
+    import("nested-worker/window").then(() => {
+      const dbWorker = new Worker(new URL("./db.worker.js", import.meta.url));
 
-    const dbWorker = new Worker(new URL("./db.worker.js", import.meta.url));
-    const syncWorker = new Worker(new URL("./sync.worker.js", import.meta.url));
+      const postDbWorkerInput =
+        (message: DbWorkerInputInit | DbWorkerInput): IO<void> =>
+        () =>
+          dbWorker.postMessage(message);
 
-    const postDbWorkerInput: (
-      message: DbWorkerInputInit | DbWorkerInput,
-      port?: MessagePort
-    ) => IO<void> = (message, port) => () =>
-      port
-        ? dbWorker.postMessage(message, [port])
-        : dbWorker.postMessage(message);
+      dbWorker.addEventListener(
+        "message",
+        ({ data }: MessageEvent<DbWorkerOutput>) => {
+          switch (data.type) {
+            case "onError":
+              dispatchError(data.error)();
+              return;
 
-    const postSyncWorkerInputInit: IO<void> = () => {
-      const message: SyncWorkerInputInit = {
-        type: "init",
-        config,
-        syncPort: channel.port2,
-      };
-      syncWorker.postMessage(message, [channel.port2]);
-    };
+            case "onInit":
+              resolve({ postDbWorkerInput, owner: data.owner });
+              return;
 
-    dbWorker.addEventListener(
-      "message",
-      ({ data }: MessageEvent<DbWorkerOutput>) => {
-        switch (data.type) {
-          case "onError":
-            dispatchError(data.error)();
-            return;
+            case "onQuery":
+              onQuery(data)();
+              break;
 
-          case "onInit":
-            resolve({ postDbWorkerInput, owner: data.owner });
-            return;
+            case "onReceive":
+              query({
+                queries: Array.from(subscribedQueries.keys()),
+                purgeCache: true,
+              })();
+              break;
 
-          case "onQuery":
-            onQuery(data)();
-            break;
+            case "reloadAllTabs":
+              reloadAllTabs();
+              break;
 
-          case "onReceive":
-            query({
-              queries: Array.from(subscribedQueries.keys()),
-              purgeCache: true,
-            })();
-            break;
-
-          case "reloadAllTabs":
-            reloadAllTabs();
-            break;
-
-          default:
-            absurd(data);
+            default:
+              absurd(data);
+          }
         }
-      }
-    );
+      );
 
-    pipe(
-      postDbWorkerInput(
-        { type: "init", syncPort: channel.port1, config },
-        channel.port1
-      ),
-      io.chain(() => postSyncWorkerInputInit),
-      // For Evolu config to have time to be overridden.
-      setTimeout
-    );
+      // setTimeout is for the Evolu config to have time to be overridden.
+      setTimeout(postDbWorkerInput({ type: "init", config }));
+    });
   }),
   (
     promise
@@ -236,7 +214,7 @@ const dbSchemaToTableDefinitions: (
 export const updateDbSchema = (dbSchema: DbSchema): IO<void> =>
   postDbWorkerInput({
     type: "updateDbSchema",
-    // Zod is not transferable.
+    // Zod is not transferable. new fp-ts/schema will be
     tableDefinitions: dbSchemaToTableDefinitions(dbSchema),
   });
 

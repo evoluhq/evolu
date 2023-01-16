@@ -40,6 +40,7 @@
     "kysely": "^0.23.4",
     "murmurhash": "^2.0.1",
     "nanoid": "4.0.0",
+    "nested-worker": "github:johanholmerin/nested-worker",
     "sha256-uint8array": "^0.10.3",
     "wa-sqlite": "github:rhashimoto/wa-sqlite#cb419fb12b6bf2102e90d9ba13290078ca402442"
   },

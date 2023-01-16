@@ -130,6 +130,7 @@ const handleMerkleTreesDiff =
           option.map((messages) =>
             postSyncWorkerInput({
               type: "sync",
+              syncUrl: "https://bold-frost-4029.fly.dev",
               clock,
               messages: option.some(messages),
               owner,
