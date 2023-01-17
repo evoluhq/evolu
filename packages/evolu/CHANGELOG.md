@@ -1,5 +1,11 @@
 # evolu
 
+## 0.9.0
+
+### Minor Changes
+
+- 6417799: Add useQuery filterMap
+
 ## 0.8.0
 
 ### Minor Changes
