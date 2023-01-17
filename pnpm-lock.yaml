@@ -82,8 +82,8 @@ importers:
 
   packages/eslint-config-evolu:
     specifiers:
-      '@typescript-eslint/eslint-plugin': ^5.48.1
-      '@typescript-eslint/parser': ^5.48.1
+      '@typescript-eslint/eslint-plugin': ^5.48.2
+      '@typescript-eslint/parser': ^5.48.2
       eslint: ^8.32.0
       eslint-config-next: ^13.1.2
       eslint-config-prettier: ^8.6.0
@@ -127,7 +127,7 @@ importers:
       sha256-uint8array: ^0.10.3
       tslib: ^2.4.1
       typescript: ^4.9.4
-      vitest: ^0.27.1
+      vitest: ^0.27.2
       wa-sqlite: github:rhashimoto/wa-sqlite#cb419fb12b6bf2102e90d9ba13290078ca402442
       zod: ^3.20.2
     dependencies:
@@ -157,7 +157,7 @@ importers:
       react-dom: 18.2.0_react@18.2.0
       tslib: 2.4.1
       typescript: 4.9.4
-      vitest: 0.27.1
+      vitest: 0.27.2
       zod: 3.20.2
 
   packages/evolu-tsconfig:
@@ -4510,8 +4510,8 @@ packages:
     engines: {node: '>= 0.8'}
     dev: false
 
-  /vite-node/0.27.1_@types+node@18.11.18:
-    resolution: {integrity: sha512-d6+ue/3NzsfndWaPbYh/bFkHbmAWfDXI4B874zRx+WREnG6CUHUbBC8lKaRYZjeR6gCPN5m1aVNNRXBYICA9XA==}
+  /vite-node/0.27.2_@types+node@18.11.18:
+    resolution: {integrity: sha512-IDwuVhslF10qCnWOGJui7/2KksAOBHi+UbVo6Pqt4f5lgn+kS2sVvYDsETRG5PSuslisGB5CFGvb9I6FQgymBQ==}
     engines: {node: '>=v14.16.0'}
     hasBin: true
     dependencies:
@@ -4567,8 +4567,8 @@ packages:
       fsevents: 2.3.2
     dev: true
 
-  /vitest/0.27.1:
-    resolution: {integrity: sha512-1sIpQ1DVFTEn7c1ici1XHcVfdU4nKiBmPtPAtGKJJJLuJjojTv/OHGgcf69P57alM4ty8V4NMv+7Yoi5Cxqx9g==}
+  /vitest/0.27.2:
+    resolution: {integrity: sha512-y7tdsL2uaQy+KF18AlmNHZe29ukyFytlxrpSTwwmgLE2XHR/aPucJP9FLjWoqjgqFlXzRAjHlFJLU+HDyI/OsA==}
     engines: {node: '>=v14.16.0'}
     hasBin: true
     peerDependencies:
@@ -4605,7 +4605,7 @@ packages:
       tinypool: 0.3.0
       tinyspy: 1.0.2
       vite: 4.0.4_@types+node@18.11.18
-      vite-node: 0.27.1_@types+node@18.11.18
+      vite-node: 0.27.2_@types+node@18.11.18
       why-is-node-running: 2.2.2
     transitivePeerDependencies:
       - less
