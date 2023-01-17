@@ -60,12 +60,15 @@ const TodoCategorySelect = ({
   selected: TodoCategoryId | null;
   onSelect: (value: TodoCategoryId | null) => void;
 }) => {
-  const { rows } = useQuery((db) =>
-    db
-      .selectFrom("todoCategory")
-      .select(["id", "name", "isDeleted"])
-      .where("isDeleted", "is not", model.cast(true))
-      .orderBy("createdAt")
+  const { rows } = useQuery(
+    (db) =>
+      db
+        .selectFrom("todoCategory")
+        .select(["id", "name", "isDeleted"])
+        .where("isDeleted", "is not", model.cast(true))
+        .orderBy("createdAt"),
+    // filterMap to filter rows with name == null
+    ({ name, ...rest }) => name && { ...rest, name }
   );
 
   // That's what React recommends instead of null.
@@ -87,14 +90,11 @@ const TodoCategorySelect = ({
   return (
     <select value={value} onChange={handleSelectChange}>
       <option value={nothingSelected}>-- no category --</option>
-      {rows.map(
-        ({ id, name }) =>
-          name != null && (
-            <option key={id} value={id}>
-              {name}
-            </option>
-          )
-      )}
+      {rows.map(({ id, name }) => (
+        <option key={id} value={id}>
+          {name}
+        </option>
+      ))}
     </select>
   );
 };
@@ -102,14 +102,12 @@ const TodoCategorySelect = ({
 const TodoItem = memo<{
   row: {
     id: TodoId;
-    title: NonEmptyString1000 | null;
+    title: NonEmptyString1000;
     isCompleted: SqliteBoolean | null;
     categoryId: TodoCategoryId | null;
   };
 }>(function TodoItem({ row: { id, title, isCompleted, categoryId } }) {
   const { mutate } = useMutation();
-
-  if (title == null) return null;
 
   const handleCompleteClick = () => {
     mutate("todo", { id, isCompleted: !isCompleted });
@@ -150,12 +148,14 @@ const TodoItem = memo<{
 });
 
 const TodoList = () => {
-  const { rows } = useQuery((db) =>
-    db
-      .selectFrom("todo")
-      .select(["id", "title", "isCompleted", "categoryId"])
-      .where("isDeleted", "is not", model.cast(true))
-      .orderBy("createdAt")
+  const { rows } = useQuery(
+    (db) =>
+      db
+        .selectFrom("todo")
+        .select(["id", "title", "isCompleted", "categoryId"])
+        .where("isDeleted", "is not", model.cast(true))
+        .orderBy("createdAt"),
+    ({ title, ...rest }) => title && { title, ...rest }
   );
 
   const { mutate } = useMutation();
@@ -180,12 +180,14 @@ const TodoList = () => {
 };
 
 const TodoCategoryList = () => {
-  const { rows } = useQuery((db) =>
-    db
-      .selectFrom("todoCategory")
-      .select(["id", "name"])
-      .where("isDeleted", "is not", model.cast(true))
-      .orderBy("createdAt")
+  const { rows } = useQuery(
+    (db) =>
+      db
+        .selectFrom("todoCategory")
+        .select(["id", "name"])
+        .where("isDeleted", "is not", model.cast(true))
+        .orderBy("createdAt"),
+    ({ name, ...rest }) => name && { name, ...rest }
   );
 
   const { mutate } = useMutation();
@@ -194,30 +196,25 @@ const TodoCategoryList = () => {
     <>
       <h2>categories</h2>
       <ul>
-        {rows.map(
-          ({ id, name }) =>
-            name != null && (
-              <li key={id}>
-                {name}{" "}
-                <button
-                  onClick={() =>
-                    mutate("todoCategory", { id, isDeleted: true })
-                  }
-                >
-                  delete
-                </button>
-                <button
-                  onClick={() => {
-                    promptNonEmptyString1000("Category Name", (name) =>
-                      mutate("todoCategory", { id, name })
-                    );
-                  }}
-                >
-                  rename
-                </button>
-              </li>
-            )
-        )}
+        {rows.map(({ id, name }) => (
+          <li key={id}>
+            {name}{" "}
+            <button
+              onClick={() => mutate("todoCategory", { id, isDeleted: true })}
+            >
+              delete
+            </button>
+            <button
+              onClick={() => {
+                promptNonEmptyString1000("Category Name", (name) =>
+                  mutate("todoCategory", { id, name })
+                );
+              }}
+            >
+              rename
+            </button>
+          </li>
+        ))}
       </ul>
       <button
         onClick={() => {

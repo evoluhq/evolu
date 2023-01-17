@@ -255,13 +255,18 @@ export type Query<S extends DbSchema, T> = (
   db: KyselyOnlyForReading<DbSchemaToType<S, CommonColumns>>
 ) => SelectQueryBuilder<never, never, T>;
 
-export type UseQuery<S extends DbSchema> = <T>(
-  query: Query<S, T> | null | false
-) => {
-  readonly rows: readonly T[];
-  readonly row: T | null;
-  readonly isLoaded: boolean;
-};
+export interface UseQuery<S extends DbSchema> {
+  <T>(query: Query<S, T> | null | false): {
+    readonly rows: readonly T[];
+    readonly row: T | null;
+    readonly isLoaded: boolean;
+  };
+  <T, U>(query: Query<S, T> | null | false, initialFilterMap: (row: T) => U): {
+    readonly rows: readonly NonNullable<U>[];
+    readonly row: NonNullable<U> | null;
+    readonly isLoaded: boolean;
+  };
+}
 
 type AllowCasting<T> = {
   readonly [P in keyof T]: T[P] extends SqliteBoolean | null
