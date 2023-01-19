@@ -414,5 +414,5 @@ if (typeof window !== "undefined") {
     if (document.visibilityState !== "hidden") handleReshow();
   });
 
-  handleReconnect();
+  setTimeout(handleReconnect);
 }
