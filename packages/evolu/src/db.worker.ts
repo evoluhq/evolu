@@ -1,4 +1,4 @@
-import { apply, either, taskEither } from "fp-ts";
+import { apply, either, readerTaskEither, taskEither } from "fp-ts";
 import { IORef } from "fp-ts/IORef";
 import { constVoid, flow, pipe } from "fp-ts/lib/function.js";
 import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
@@ -34,9 +34,14 @@ import {
 } from "./types.js";
 import { updateDbSchema } from "./updateDbSchema.js";
 
+let skipAllBecauseBrowserIsGoingToBeReloaded = false;
+
 const postDbWorkerOutput: PostDbWorkerOutputEnv["postDbWorkerOutput"] =
-  (message) => () =>
+  (message) => () => {
+    if (message.type === "reloadAllTabs")
+      skipAllBecauseBrowserIsGoingToBeReloaded = true;
     postMessage(message);
+  };
 
 const onError: (error: EvoluError["error"]) => void = (error) =>
   postDbWorkerOutput({ type: "onError", error })();
@@ -61,6 +66,8 @@ const createWritableStream = ({
         EvoluError["error"],
         void
       > => {
+        if (skipAllBecauseBrowserIsGoingToBeReloaded)
+          return readerTaskEither.right(undefined);
         switch (data.type) {
           case "updateDbSchema":
             return updateDbSchema(data);
