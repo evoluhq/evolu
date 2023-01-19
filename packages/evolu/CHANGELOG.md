@@ -1,5 +1,11 @@
 # evolu
 
+## 0.9.2
+
+### Patch Changes
+
+- 108d20d: Fix sync called before updateDbSchema
+
 ## 0.9.1
 
 ### Patch Changes
