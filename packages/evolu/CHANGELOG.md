@@ -1,5 +1,13 @@
 # evolu
 
+## 0.9.1
+
+### Patch Changes
+
+- 8ff7e3a: Fix reloadAllTabs bug
+
+  If the browser is going to be reloaded, all DB operations have to be skipped.
+
 ## 0.9.0
 
 ### Minor Changes
