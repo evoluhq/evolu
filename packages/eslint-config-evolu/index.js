@@ -14,4 +14,9 @@ module.exports = {
     "no-console": "error",
     "import/no-cycle": "error",
   },
+  parserOptions: {
+    babelOptions: {
+      presets: [require.resolve("next/babel")],
+    },
+  },
 };
