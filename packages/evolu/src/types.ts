@@ -2,6 +2,7 @@ import { eq } from "fp-ts";
 import { Either } from "fp-ts/Either";
 import { IO } from "fp-ts/IO";
 import { IORef } from "fp-ts/IORef";
+import { Task } from "fp-ts/Task";
 import { Option } from "fp-ts/Option";
 import { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
 import { ReadonlyRecord } from "fp-ts/ReadonlyRecord";
@@ -72,7 +73,6 @@ export const merkleTreeToString = (m: MerkleTree): MerkleTreeString =>
 export const merkleTreeFromString = (m: MerkleTreeString): MerkleTree =>
   JSON.parse(m) as MerkleTree;
 
-// A subset of SQLiteCompatibleType.
 // TODO: Add Int8Array, https://github.com/evolu-io/evolu/issues/13
 export type CrdtValue = null | string | number;
 
@@ -97,7 +97,7 @@ export interface CrdtClock {
 /** Like Kysely CompiledQuery but without a `query` prop. */
 export interface SqlQuery {
   readonly sql: string;
-  readonly parameters: readonly unknown[];
+  readonly parameters: readonly SqliteCompatibleType[];
 }
 
 export type SqlQueryString = string & BRAND<"SqlQueryString">;
@@ -112,23 +112,6 @@ export const sqlQueryToString = ({
 export const sqlQueryFromString = (s: SqlQueryString): SqlQuery =>
   JSON.parse(s) as SqlQuery;
 
-// This is a workaround for:
-// https://github.com/rhashimoto/wa-sqlite/blob/dd2111b8b71fcb2b7747536f31fcc365396f01c4/src/types/index.d.ts#L18
-// It should be possible to import it, but it's somehow ambient.
-export type SQLiteCompatibleType =
-  | number
-  | string
-  | Int8Array
-  | Array<number>
-  // eslint-disable-next-line @typescript-eslint/ban-types
-  | BigInt
-  | null;
-
-export type SQLiteRow = readonly SQLiteCompatibleType[];
-
-/** SQLiteRowRecord is SQLiteRow with columns. */
-export type SQLiteRowRecord = ReadonlyRecord<string, SQLiteCompatibleType>;
-
 export interface TableDefinition {
   readonly name: string;
   readonly columns: readonly string[];
@@ -136,52 +119,41 @@ export interface TableDefinition {
 
 // DB
 
+// TODO: Binary.
+export type SqliteCompatibleType = number | string | null;
+
+export type SqliteRow = ReadonlyRecord<string, SqliteCompatibleType>;
+
+export type SqliteRows = readonly SqliteRow[];
+
+/**
+ * Functional wrapper for various SQLite implementations.
+ * It's async because some platforms are.
+ */
+export interface Database {
+  readonly SQLite3Error: unknown;
+  readonly exec: (sql: string) => TaskEither<UnknownError, SqliteRows>;
+  readonly execSqlQuery: (s: SqlQuery) => TaskEither<UnknownError, SqliteRows>;
+  readonly changes: () => TaskEither<UnknownError, number>;
+}
+
 /* A database owner. */
 export interface Owner {
   readonly id: OwnerId;
   readonly mnemonic: Mnemonic;
 }
 
-export interface PreparedStatement {
-  readonly exec: (
-    bindings: readonly CrdtValue[]
-  ) => TaskEither<
-    UnknownError,
-    { rows: readonly SQLiteRowRecord[]; changes: number }
-  >;
-  readonly release: () => TaskEither<UnknownError, void>;
-}
-
-export interface Database {
-  readonly exec: (
-    sql: string
-  ) => TaskEither<UnknownError, readonly SQLiteRow[]>;
-
-  readonly changes: () => number;
-
-  readonly execSqlQuery: (
-    sqlQuery: SqlQuery
-  ) => TaskEither<UnknownError, readonly SQLiteRowRecord[]>;
-
-  readonly prepare: (
-    sql: string
-  ) => TaskEither<UnknownError, PreparedStatement>;
-}
-
-export type QueriesRowsCache = ReadonlyRecord<
-  SqlQueryString,
-  readonly SQLiteRowRecord[]
->;
+export type QueriesRowsCache = ReadonlyRecord<SqlQueryString, SqliteRows>;
 
 export interface ReplaceAllPatch {
   readonly op: "replaceAll";
-  readonly value: readonly SQLiteRowRecord[];
+  readonly value: SqliteRows;
 }
 
 export interface ReplaceAtPatch {
   readonly op: "replaceAt";
   readonly index: number;
-  readonly value: SQLiteRowRecord;
+  readonly value: SqliteRow;
 }
 
 export interface PurgePatch {
@@ -298,17 +270,20 @@ export type UseMutation<S extends DbSchema> = () => {
 // https://andywhite.xyz/posts/2021-01-28-rte-react/
 
 export interface DbEnv {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readonly db: Database;
-}
-
-export interface DbTransactionEnv {
-  readonly dbTransaction: <E, A>(
-    te: TaskEither<E, A>
-  ) => TaskEither<E | UnknownError, A>;
 }
 
 export interface OwnerEnv {
   readonly owner: Owner;
+}
+
+export interface PostDbWorkerOutputEnv {
+  readonly postDbWorkerOutput: (message: DbWorkerOutput) => IO<void>;
+}
+
+export interface PostSyncWorkerInputEnv {
+  readonly postSyncWorkerInput: (message: SyncWorkerInput) => IO<void>;
 }
 
 export interface QueriesRowsCacheEnv {
@@ -316,12 +291,8 @@ export interface QueriesRowsCacheEnv {
 }
 
 export interface TimeEnv {
-  readonly now: Millis;
+  readonly now: () => Millis;
 }
-
-export const createTimeEnv: IO<TimeEnv> = () => ({
-  now: Date.now() as Millis,
-});
 
 export interface LockManagerEnv {
   readonly locks: LockManager;
@@ -374,7 +345,7 @@ export const errorToTransferableError = (error: unknown): TransferableError => {
 };
 
 /**
- * A kitchen sink error for errors from OpenPGP, wa-sqlite, etc. that
+ * A kitchen sink error for errors from OpenPGP, Sqlite, etc. that
  * we don't handle specifically.
  */
 export interface UnknownError {
@@ -396,14 +367,6 @@ export interface SyncError {
   readonly type: "SyncError";
 }
 
-/**
- * This error should happen only in Firefox's private mode,
- * which does not support IndexedDB.
- */
-export interface SQLiteError {
-  readonly type: "SQLiteError";
-}
-
 export interface EvoluError {
   readonly type: "EvoluError";
   readonly error:
@@ -413,13 +376,12 @@ export interface EvoluError {
     | TimestampParseError
     | StringMaxLengthError
     | UnknownError
-    | SyncError
-    | SQLiteError;
+    | SyncError;
 }
 
 // Workers.
 
-export type DbWorkerInputInit = {
+export type DbWorkerInit = {
   readonly type: "init";
   readonly config: Config;
 };
@@ -477,6 +439,16 @@ export type DbWorkerOutput =
     }
   | { readonly type: "reloadAllTabs" };
 
+export interface DbWorker {
+  readonly post: (message: DbWorkerInput) => IO<void>;
+  readonly getOwner: Task<Owner>;
+}
+
+export type CreateDbWorker = (
+  init: DbWorkerInit,
+  onMessage: (message: DbWorkerOutput) => void
+) => DbWorker;
+
 export type SyncWorkerInput = {
   readonly type: "sync";
   readonly syncUrl: string;
@@ -494,28 +466,3 @@ export type SyncWorkerOutput = Either<
     readonly previousDiff: Option<Millis>;
   }
 >;
-
-// Environments.
-// https://andywhite.xyz/posts/2021-01-28-rte-react/
-
-export interface DbEnv {
-  readonly db: Database;
-}
-
-export interface DbTransactionEnv {
-  readonly dbTransaction: <E, A>(
-    te: TaskEither<E, A>
-  ) => TaskEither<E | UnknownError, A>;
-}
-
-export interface OwnerEnv {
-  readonly owner: Owner;
-}
-
-export interface PostDbWorkerOutputEnv {
-  readonly postDbWorkerOutput: (message: DbWorkerOutput) => IO<void>;
-}
-
-export interface PostSyncWorkerInputEnv {
-  readonly postSyncWorkerInput: (message: SyncWorkerInput) => IO<void>;
-}

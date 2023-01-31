@@ -7,7 +7,6 @@ import {
   readonlyArray,
   readonlyNonEmptyArray,
   readonlyRecord,
-  task,
 } from "fp-ts";
 import { Either } from "fp-ts/Either";
 import { IO } from "fp-ts/IO";
@@ -22,21 +21,21 @@ import {
 } from "fp-ts/lib/function.js";
 import { Option } from "fp-ts/Option";
 import type { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
-import type { ReadonlyRecord } from "fp-ts/ReadonlyRecord";
 import { Task } from "fp-ts/Task";
 import { useSyncExternalStore } from "react";
 import { flushSync } from "react-dom";
 import { config } from "./config.js";
+import { createMessages } from "./createMessages.js";
 import { applyPatches } from "./diff.js";
 import { dispatchError } from "./error.js";
-import { cast, createId, ID, Mnemonic, SqliteDateTime } from "./model.js";
+import { cast, createId, ID, Mnemonic } from "./model.js";
 import { reloadAllTabs } from "./reloadAllTabs.js";
 import { safeParseToEither } from "./safeParseToEither.js";
 import {
   commonColumns,
   DbSchema,
   DbWorkerInput,
-  DbWorkerInputInit,
+  DbWorkerInit,
   DbWorkerOutput,
   eqSqlQueryString,
   Mutate,
@@ -46,7 +45,7 @@ import {
   Owner,
   QueriesRowsCache,
   QueryPatches,
-  SQLiteRowRecord,
+  SqliteRows,
   SqlQueryString,
   TableDefinition,
   Unsubscribe,
@@ -135,83 +134,120 @@ const query = ({
 
 const isServer = typeof window === "undefined" || "Deno" in window;
 
-const createWorker =
-  (): Task<{
-    postDbWorkerInput: (message: DbWorkerInput) => IO<void>;
-    owner: Owner;
-  }> =>
-  () =>
-    new Promise((resolve) => {
-      const dbWorker = new Worker(new URL("./db.worker.js", import.meta.url));
+const isChromeWithOPFS: boolean =
+  !isServer &&
+  navigator.userAgentData != null &&
+  navigator.userAgentData.brands.find(
+    ({ brand, version }) =>
+      // Chrome or Chromium
+      brand.includes("Chrom") && Number(version) >= 109
+  ) != null;
 
-      const postDbWorkerInput =
-        (message: DbWorkerInputInit | DbWorkerInput): IO<void> =>
-        () =>
-          dbWorker.postMessage(message);
+// const mapDbWorkerOutputToFunction = ({
+//   data,
+// }: MessageEvent<DbWorkerOutput>) => {
+//   switch (data.type) {
+//     case "onError":
+//       dispatchError(data.error)();
+//       return;
 
-      dbWorker.addEventListener(
-        "message",
-        ({ data }: MessageEvent<DbWorkerOutput>) => {
-          switch (data.type) {
-            case "onError":
-              dispatchError(data.error)();
-              return;
+//     case "onInit":
+//       resolve({ postDbWorkerInput, owner: data.owner });
+//       return;
 
-            case "onInit":
-              resolve({ postDbWorkerInput, owner: data.owner });
-              return;
+//     case "onQuery":
+//       onQuery(data)();
+//       break;
 
-            case "onQuery":
-              onQuery(data)();
-              break;
+//     case "onReceive":
+//       query({
+//         queries: Array.from(subscribedQueries.keys()),
+//         purgeCache: true,
+//       })();
+//       break;
 
-            case "onReceive":
-              query({
-                queries: Array.from(subscribedQueries.keys()),
-                purgeCache: true,
-              })();
-              break;
+//     case "reloadAllTabs":
+//       reloadAllTabs(config.reloadUrl)();
+//       break;
 
-            case "reloadAllTabs":
-              reloadAllTabs(config.reloadUrl)();
-              break;
+//     default:
+//       absurd(data);
+//   }
+// };
 
-            default:
-              absurd(data);
-          }
+const createWorker: Task<{
+  postDbWorkerInput: (message: DbWorkerInput) => IO<void>;
+  owner: Owner;
+}> = () =>
+  new Promise((resolve) => {
+    const dbWorker = new Worker(new URL("./db.worker.js", import.meta.url));
+
+    const postDbWorkerInput =
+      (message: DbWorkerInit | DbWorkerInput): IO<void> =>
+      () =>
+        dbWorker.postMessage(message);
+
+    dbWorker.addEventListener(
+      "message",
+      ({ data }: MessageEvent<DbWorkerOutput>) => {
+        switch (data.type) {
+          case "onError":
+            dispatchError(data.error)();
+            return;
+
+          case "onInit":
+            resolve({ postDbWorkerInput, owner: data.owner });
+            return;
+
+          case "onQuery":
+            onQuery(data)();
+            break;
+
+          case "onReceive":
+            query({
+              queries: Array.from(subscribedQueries.keys()),
+              purgeCache: true,
+            })();
+            break;
+
+          case "reloadAllTabs":
+            reloadAllTabs(config.reloadUrl)();
+            break;
+
+          default:
+            absurd(data);
         }
-      );
+      }
+    );
 
-      // setTimeout is for the Evolu config to have time to be overridden.
-      setTimeout(postDbWorkerInput({ type: "init", config }));
-    });
+    // setTimeout is for the Evolu config to have time to be overridden.
+    setTimeout(postDbWorkerInput({ type: "init", config }));
+  });
 
 const {
   postDbWorkerInput,
   owner,
 }: {
-  postDbWorkerInput: (message: DbWorkerInput) => IO<void>;
-  owner: Task<Owner>;
+  readonly postDbWorkerInput: (message: DbWorkerInput) => IO<void>;
+  readonly owner: Task<Owner>;
 } = isServer
   ? {
       // Do nothing on the server.
       postDbWorkerInput: () => constVoid,
       owner: () => new Promise(constVoid),
     }
-  : pipe(
-      // @ts-expect-error missing types
-      () => import("nested-worker/window"),
-      task.chain(createWorker),
-      (task) => {
-        const p = task();
-        return {
-          postDbWorkerInput: (message) => () => {
-            p.then(({ postDbWorkerInput }) => postDbWorkerInput(message)());
-          },
-          owner: () => p.then(({ owner }) => owner),
-        };
-      }
-    );
+  : isChromeWithOPFS
+  ? pipe(createWorker(), (promise) => ({
+      postDbWorkerInput: (message) => () => {
+        promise.then(({ postDbWorkerInput }) => postDbWorkerInput(message)());
+      },
+      owner: () => promise.then(({ owner }) => owner),
+    }))
+  : {
+      // TODO:
+      postDbWorkerInput: () => constVoid,
+      owner: () => new Promise(constVoid),
+    };
 
 const dbSchemaToTableDefinitions: (
   dbSchema: DbSchema
@@ -236,8 +272,7 @@ export const updateDbSchema = (dbSchema: DbSchema): IO<void> =>
 
 export const getSubscribedQueryRows = (
   query: SqlQueryString | null
-): readonly SQLiteRowRecord[] | null =>
-  (query && queriesRowsCacheRef.read()[query]) || null;
+): SqliteRows | null => (query && queriesRowsCacheRef.read()[query]) || null;
 
 const subscribedQueries = new Map<SqlQueryString, number>();
 const subscribedQueriesSnapshotRef = new ioRef.IORef<
@@ -271,40 +306,6 @@ export const subscribeQuery = (sqlQueryString: SqlQueryString): Unsubscribe => {
   };
 };
 
-const createNewCrdtMessages = (
-  table: string,
-  row: ID<"string">,
-  values: ReadonlyRecord<string, unknown>,
-  ownerId: ID<"owner">,
-  now: SqliteDateTime,
-  isInsert: boolean
-): ReadonlyNonEmptyArray<NewCrdtMessage> =>
-  pipe(
-    readonlyRecord.toEntries(values),
-    readonlyArray.filter(([, value]) => value !== undefined),
-    readonlyArray.map(([key, value]) => [
-      key,
-      typeof value === "boolean" || value instanceof Date
-        ? cast(value as never)
-        : value,
-    ]),
-    isInsert
-      ? flow(
-          readonlyArray.appendW(["createdAt", now]),
-          readonlyArray.appendW(["createdBy", ownerId])
-        )
-      : readonlyArray.appendW(["updatedAt", now]),
-    readonlyNonEmptyArray.map(
-      ([column, value]) =>
-        ({
-          table,
-          row,
-          column,
-          value,
-        } as NewCrdtMessage)
-    )
-  );
-
 const mutateQueueRef = new ioRef.IORef<
   readonly {
     readonly messages: ReadonlyNonEmptyArray<NewCrdtMessage>;
@@ -321,7 +322,7 @@ export const createMutate =
     const now = cast(new Date());
 
     owner().then((owner) => {
-      const messages = createNewCrdtMessages(
+      const messages = createMessages(
         table as string,
         id as ID<"string">,
         values,
@@ -414,5 +415,6 @@ if (typeof window !== "undefined") {
     if (document.visibilityState !== "hidden") handleReshow();
   });
 
+  // Wait for updateDbSchema.
   setTimeout(handleReconnect);
 }

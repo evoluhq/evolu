@@ -120,7 +120,7 @@ const handleMerkleTreesDiff =
     pipe(
       db.execSqlQuery({
         sql: `
-          SELECT * FROM "__message" where "timestamp" > ? ORDER BY "timestamp"
+          select * from "__message" where "timestamp" > ? order by "timestamp"
         `,
         parameters: [pipe(diff, createSyncTimestamp, timestampToString)],
       }),

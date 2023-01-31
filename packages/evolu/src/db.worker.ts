@@ -1,12 +1,10 @@
 import { apply, either, readerTaskEither, taskEither } from "fp-ts";
 import { IORef } from "fp-ts/IORef";
 import { constVoid, flow, pipe } from "fp-ts/lib/function.js";
-import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
 import { Task } from "fp-ts/Task";
 import { TaskEither } from "fp-ts/TaskEither";
-import "nested-worker/worker";
-import { initDb } from "./initDb.js";
-import { initDbModel } from "./initDbModel.js";
+import { createDbEnv } from "./createDbEnv.js";
+import { createOwnerEnv } from "./createOwnerEnv.js";
 import { query } from "./query.js";
 import { receive } from "./receive.js";
 import { resetOwner } from "./resetOwner.js";
@@ -15,19 +13,17 @@ import { send } from "./send.js";
 import { sync } from "./sync.js";
 import {
   ConfigEnv,
-  createTimeEnv,
+  Database,
   DbEnv,
-  DbTransactionEnv,
   DbWorkerInput,
-  DbWorkerInputInit,
+  DbWorkerInit,
   EvoluError,
   LockManagerEnv,
+  Millis,
   OwnerEnv,
   PostDbWorkerOutputEnv,
   PostSyncWorkerInputEnv,
-  QueriesRowsCache,
   QueriesRowsCacheEnv,
-  SQLiteError,
   SyncWorkerOutput,
   TimeEnv,
   UnknownError,
@@ -35,6 +31,21 @@ import {
 import { updateDbSchema } from "./updateDbSchema.js";
 
 let skipAllBecauseBrowserIsGoingToBeReloaded = false;
+
+const transaction =
+  (db: Database) =>
+  <E, A>(te: TaskEither<E, A>): TaskEither<E | UnknownError, A> =>
+    pipe(
+      db.exec("begin"),
+      taskEither.chainW(() => te),
+      taskEither.chainFirstW(() => db.exec("commit")),
+      taskEither.orElse((originalError) =>
+        pipe(
+          db.exec("rollback"),
+          taskEither.chain(() => taskEither.left(originalError))
+        )
+      )
+    );
 
 const postDbWorkerOutput: PostDbWorkerOutputEnv["postDbWorkerOutput"] =
   (message) => () => {
@@ -46,26 +57,19 @@ const postDbWorkerOutput: PostDbWorkerOutputEnv["postDbWorkerOutput"] =
 const onError: (error: EvoluError["error"]) => void = (error) =>
   postDbWorkerOutput({ type: "onError", error })();
 
-type Envs = DbEnv &
-  OwnerEnv &
-  PostDbWorkerOutputEnv &
-  QueriesRowsCacheEnv &
-  PostSyncWorkerInputEnv &
-  LockManagerEnv;
-
-const createWritableStream = ({
-  dbTransaction,
-  ...envs
-}: Envs & DbTransactionEnv & ConfigEnv): WritableStream<DbWorkerInput> =>
-  new WritableStream({
+const createEnqueueDbWorkerInput = (
+  envs: DbEnv &
+    OwnerEnv &
+    PostDbWorkerOutputEnv &
+    QueriesRowsCacheEnv &
+    PostSyncWorkerInputEnv &
+    LockManagerEnv &
+    TimeEnv &
+    ConfigEnv
+): ((dbWorkerInput: DbWorkerInput) => void) => {
+  const stream = new WritableStream<DbWorkerInput>({
     write: flow(
-      (
-        data
-      ): ReaderTaskEither<
-        Envs & TimeEnv & ConfigEnv,
-        EvoluError["error"],
-        void
-      > => {
+      (data) => {
         if (skipAllBecauseBrowserIsGoingToBeReloaded)
           return readerTaskEither.right(undefined);
         switch (data.type) {
@@ -85,22 +89,26 @@ const createWritableStream = ({
             return restoreOwner(data.mnemonic);
         }
       },
-      (rte) => rte({ ...envs, ...createTimeEnv() }),
-      dbTransaction,
-      (te) => te().then(either.match(onError, constVoid))
+      (rte) =>
+        pipe(rte(envs), transaction(envs.db))().then(
+          either.match(onError, constVoid)
+        )
     ),
   });
 
-const createDbEnvs: TaskEither<
-  UnknownError | SQLiteError,
-  DbEnv & DbTransactionEnv & OwnerEnv
-> = pipe(
-  initDb,
-  taskEither.chainW(({ db, dbTransaction }) =>
+  return (dbWorkerInput) => {
+    const w = stream.getWriter();
+    w.write(dbWorkerInput);
+    w.releaseLock();
+  };
+};
+
+const createDbAndOwnerEnvs: TaskEither<UnknownError, DbEnv & OwnerEnv> = pipe(
+  createDbEnv,
+  taskEither.chainW((dbEnv) =>
     pipe(
-      initDbModel()({ db }),
-      dbTransaction,
-      taskEither.map(({ owner }) => ({ db, dbTransaction, owner }))
+      createOwnerEnv()(dbEnv),
+      taskEither.map((ownerEnv) => ({ ...dbEnv, ...ownerEnv }))
     )
   )
 );
@@ -110,7 +118,7 @@ const createConfigEnv: Task<ConfigEnv> = pipe(
     new Promise<ConfigEnv>((resolve) => {
       addEventListener(
         "message",
-        ({ data }: MessageEvent<DbWorkerInputInit>) => resolve(data),
+        ({ data }: MessageEvent<DbWorkerInit>) => resolve(data),
         { once: true }
       );
     })
@@ -118,47 +126,38 @@ const createConfigEnv: Task<ConfigEnv> = pipe(
 
 apply
   .sequenceT(taskEither.ApplyPar)(
-    createDbEnvs,
+    createDbAndOwnerEnvs,
     taskEither.fromTask(createConfigEnv)
   )()
   .then(
-    either.match(onError, ([dbEnvs, configEnv]) => {
+    either.match(onError, ([dbAndOwnerEnvs, configEnv]) => {
       const syncWorker = new Worker(
         new URL("./sync.worker.js", import.meta.url)
       );
 
-      const postSyncWorkerInput: PostSyncWorkerInputEnv["postSyncWorkerInput"] =
-        (message) => () => syncWorker.postMessage(message);
-
-      const queriesRowsCache = new IORef<QueriesRowsCache>({});
-
-      const stream = createWritableStream({
-        ...dbEnvs,
+      const enqueueDbWorkerInput = createEnqueueDbWorkerInput({
+        ...dbAndOwnerEnvs,
         ...configEnv,
+        postSyncWorkerInput: (message) => (): void =>
+          syncWorker.postMessage(message),
+        now: () => Date.now() as Millis,
+        queriesRowsCache: new IORef({}),
         postDbWorkerOutput,
-        postSyncWorkerInput,
-        queriesRowsCache,
         locks: navigator.locks,
       });
 
-      const writeToStream = (chunk: DbWorkerInput): void => {
-        const w = stream.getWriter();
-        w.write(chunk);
-        w.releaseLock();
-      };
-
       addEventListener("message", (e: MessageEvent<DbWorkerInput>) =>
-        writeToStream(e.data)
+        enqueueDbWorkerInput(e.data)
       );
 
       syncWorker.onmessage = ({ data }: MessageEvent<SyncWorkerOutput>): void =>
         pipe(
           data,
           either.match(onError, (props) => {
-            writeToStream({ type: "receive", ...props });
+            enqueueDbWorkerInput({ type: "receive", ...props });
           })
         );
 
-      postDbWorkerOutput({ type: "onInit", owner: dbEnvs.owner })();
+      postDbWorkerOutput({ type: "onInit", owner: dbAndOwnerEnvs.owner })();
     })
   );

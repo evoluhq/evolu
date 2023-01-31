@@ -5,7 +5,8 @@ import * as db from "./db.js";
 import { kysely } from "./kysely.js";
 import {
   DbSchema,
-  SQLiteRowRecord,
+  SqliteRow,
+  SqlQuery,
   sqlQueryToString,
   UseMutation,
   UseQuery,
@@ -31,12 +32,12 @@ export const createHooks = <S extends DbSchema>(
 } => {
   db.updateDbSchema(dbSchema)();
 
-  const cache = new WeakMap<SQLiteRowRecord, SQLiteRowRecord>();
+  const cache = new WeakMap<SqliteRow, SqliteRow>();
 
-  // @ts-expect-error IDK but it's internal so we don't care.
+  // @ts-expect-error IDK but it's internal, so it's OK to suppress it.
   const useQuery: UseQuery<S> = (query, initialFilterMap) => {
     const sqlQueryString = query
-      ? pipe(query(kysely as never).compile(), sqlQueryToString)
+      ? pipe(query(kysely as never).compile() as SqlQuery, sqlQueryToString)
       : null;
 
     const rawRows = pipe(
@@ -54,16 +55,16 @@ export const createHooks = <S extends DbSchema>(
 
     const filterMapRef = useRef(initialFilterMap);
 
-    const getRowFromCache = (rawRow: SQLiteRowRecord): SQLiteRowRecord => {
-      if (cache.has(rawRow)) return cache.get(rawRow) as SQLiteRowRecord;
-      const row = filterMapRef.current(rawRow as never) as SQLiteRowRecord;
+    const getRowFromCache = (rawRow: SqliteRow): SqliteRow => {
+      if (cache.has(rawRow)) return cache.get(rawRow) as SqliteRow;
+      const row = filterMapRef.current(rawRow as never) as SqliteRow;
       cache.set(rawRow, row);
       return row;
     };
 
     const rows = useMemo(() => {
       if (!filterMapRef.current || rawRows == null) return rawRows;
-      const rows: Array<SQLiteRowRecord> = [];
+      const rows: Array<SqliteRow> = [];
       for (let i = 0; i < rawRows.length; i++) {
         const row = getRowFromCache(rawRows[i]);
         if (row != null) rows.push(row);

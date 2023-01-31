@@ -3,7 +3,6 @@ import { IO } from "fp-ts/IO";
 import { constVoid, flow, pipe } from "fp-ts/lib/function.js";
 import { Task } from "fp-ts/Task";
 import { TaskEither } from "fp-ts/TaskEither";
-import "nested-worker/worker";
 import {
   createMessage,
   decrypt,

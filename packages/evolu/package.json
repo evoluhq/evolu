@@ -21,13 +21,14 @@
   "types": "./dist/src/index.d.ts",
   "exports": "./dist/src/index.js",
   "files": [
+    "dist/sqlite/**",
     "dist/src/**",
     "src/**",
     "README.md"
   ],
   "scripts": {
     "dev": "tsc --watch",
-    "build": "rm -rf dist && tsc && cp ../../README.md ./ && cp ./jswasm/sqlite3.wasm ./dist/jswasm",
+    "build": "rm -rf dist && tsc && cp ../../README.md ./ && cp ./sqlite/sqlite3.wasm ./dist/sqlite/",
     "build-sqlite": "scripts/build-sqlite.sh",
     "lint": "TIMING=1 eslint src --ext .ts,.tsx",
     "test": "vitest run",
@@ -41,9 +42,7 @@
     "kysely": "^0.23.4",
     "murmurhash": "^2.0.1",
     "nanoid": "4.0.0",
-    "nested-worker": "github:johanholmerin/nested-worker",
-    "sha256-uint8array": "^0.10.3",
-    "wa-sqlite": "github:rhashimoto/wa-sqlite#cb419fb12b6bf2102e90d9ba13290078ca402442"
+    "sha256-uint8array": "^0.10.3"
   },
   "devDependencies": {
     "@evolu/tsconfig": "workspace:0.0.2",
@@ -55,15 +54,16 @@
     "@types/web-locks-api": "^0.0.2",
     "array-shuffle": "^3.0.0",
     "cross-env": "^7.0.3",
-    "eslint": "^8.32.0",
+    "eslint": "^8.33.0",
     "eslint-config-evolu": "workspace:0.0.2",
     "fp-ts": "^2.13.1",
     "openpgp": "^5.5.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "tslib": "^2.5.0",
-    "typescript": "^4.9.4",
-    "vitest": "^0.28.2",
+    "typescript": "^4.9.5",
+    "user-agent-data-types": "^0.3.0",
+    "vitest": "^0.28.3",
     "zod": "^3.20.2"
   },
   "peerDependencies": {

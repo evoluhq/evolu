@@ -48,8 +48,8 @@ test("timestampToHash", () => {
   expect(timestampToHash(createSyncTimestamp())).toMatchSnapshot();
 });
 
-const now0 = { now: 0, config } as TimeEnv & ConfigEnv;
-const now1 = { now: 1, config } as TimeEnv & ConfigEnv;
+const now0 = { now: () => 0, config } as TimeEnv & ConfigEnv;
+const now1 = { now: () => 1, config } as TimeEnv & ConfigEnv;
 
 describe("sendTimestamp", () => {
   test("should send monotonically with a monotonic clock", () => {

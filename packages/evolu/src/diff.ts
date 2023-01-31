@@ -1,4 +1,4 @@
-import { Patch, ReplaceAtPatch, SQLiteRowRecord } from "./types";
+import { Patch, ReplaceAtPatch, SqliteRows } from "./types";
 
 // For now, we detect only a change in the whole result and in-place edits.
 // In the future, we will add more heuristics. We will probably not implement
@@ -6,8 +6,8 @@ import { Patch, ReplaceAtPatch, SQLiteRowRecord } from "./types";
 // to compute many detailed patches. We will only implement a logic
 // a developer would implement manually, if necessary.
 export const createPatches = (
-  previous: readonly SQLiteRowRecord[] | undefined,
-  next: readonly SQLiteRowRecord[]
+  previous: SqliteRows | undefined,
+  next: SqliteRows
 ): readonly Patch[] => {
   if (previous === undefined) return [{ op: "replaceAll", value: next }];
   if (previous.length === 0 && next.length === 0) return [];
@@ -36,9 +36,7 @@ export const createPatches = (
 
 export const applyPatches =
   (patches: readonly Patch[]) =>
-  (
-    current: readonly SQLiteRowRecord[] | undefined
-  ): readonly SQLiteRowRecord[] | undefined =>
+  (current: SqliteRows | undefined): SqliteRows | undefined =>
     patches.reduce((a, patch) => {
       switch (patch.op) {
         case "replaceAll":

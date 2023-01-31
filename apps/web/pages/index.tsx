@@ -161,9 +161,9 @@ const TodoList = () => {
   const { mutate } = useMutation();
 
   const handleAddTodoClick = () => {
-    promptNonEmptyString1000("What needs to be done?", (title) =>
-      mutate("todo", { title })
-    );
+    promptNonEmptyString1000("What needs to be done?", (title) => {
+      mutate("todo", { title });
+    });
   };
 
   return (
