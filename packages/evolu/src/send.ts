@@ -72,7 +72,6 @@ const callSync =
   ({ postSyncWorkerInput, owner, config }) =>
     task.fromIO(
       postSyncWorkerInput({
-        type: "sync",
         syncUrl: config.syncUrl,
         messages: option.some(messages),
         clock,

@@ -1,10 +1,12 @@
 import { readonlyArray } from "fp-ts";
-import { pipe } from "fp-ts/lib/function.js";
+import { constNull, pipe } from "fp-ts/lib/function.js";
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
-import * as db from "./db.js";
+import { createEvolu } from "./createEvolu.js";
 import { kysely } from "./kysely.js";
 import {
+  Config,
   DbSchema,
+  Hooks,
   SqliteRow,
   SqlQuery,
   sqlQueryToString,
@@ -13,10 +15,10 @@ import {
 } from "./types.js";
 
 /**
- * Create `useQuery` and `useMutation` React Hooks for a given DB schema.
+ * Create React Hooks for a given DB schema.
  *
  * @example
- * const { useQuery, useMutation } = createHooks({
+ * const { useQuery, useMutation, useOwner } = createHooks({
  *   todo: {
  *     id: TodoId,
  *     title: model.NonEmptyString1000,
@@ -25,32 +27,27 @@ import {
  * });
  */
 export const createHooks = <S extends DbSchema>(
-  dbSchema: S
-): {
-  readonly useQuery: UseQuery<S>;
-  readonly useMutation: UseMutation<S>;
-} => {
-  db.updateDbSchema(dbSchema)();
-
+  dbSchema: S,
+  config?: Partial<Config>
+): Hooks<S> => {
+  const evolu = createEvolu(dbSchema, config)();
   const cache = new WeakMap<SqliteRow, SqliteRow>();
 
-  // @ts-expect-error IDK but it's internal, so it's OK to suppress it.
+  // @ts-expect-error Function overloading sucks. It's internal, so it's OK.
   const useQuery: UseQuery<S> = (query, initialFilterMap) => {
     const sqlQueryString = query
       ? pipe(query(kysely as never).compile() as SqlQuery, sqlQueryToString)
       : null;
 
-    const rawRows = pipe(
-      useSyncExternalStore(
-        db.listen,
-        () => db.getSubscribedQueryRows(sqlQueryString),
-        () => null
-      )
+    const rawRows = useSyncExternalStore(
+      evolu.subscribeQueries,
+      evolu.getSubscribedQueries(sqlQueryString),
+      constNull
     );
 
     useEffect(() => {
       if (!sqlQueryString) return;
-      return db.subscribeQuery(sqlQueryString);
+      return evolu.subscribeQuery(sqlQueryString);
     }, [sqlQueryString]);
 
     const filterMapRef = useRef(initialFilterMap);
@@ -82,13 +79,22 @@ export const createHooks = <S extends DbSchema>(
     );
   };
 
-  const mutate = db.createMutate<S>();
-  const useMutation: UseMutation<S> = () => ({
-    mutate,
-  });
+  const useMutation: UseMutation<S> = () =>
+    useMemo(() => ({ mutate: evolu.mutate }), []);
+
+  const useEvoluError: Hooks<S>["useEvoluError"] = () =>
+    useSyncExternalStore(evolu.subscribeError, evolu.getError, constNull);
+
+  const useOwner: Hooks<S>["useOwner"] = () =>
+    useSyncExternalStore(evolu.subscribeOwner, evolu.getOwner, constNull);
+
+  const useOwnerActions: Hooks<S>["useOwnerActions"] = () => evolu.ownerActions;
 
   return {
     useQuery,
     useMutation,
+    useEvoluError,
+    useOwner,
+    useOwnerActions,
   };
 };

@@ -1,7 +1,7 @@
 import { either } from "fp-ts";
 import { pipe } from "fp-ts/lib/function.js";
 import { describe, expect, test } from "vitest";
-import { config } from "../src/config.js";
+import { createConfig } from "../src/createConfig.js";
 import {
   createInitialTimestamp,
   createSyncTimestamp,
@@ -20,6 +20,8 @@ import {
   TimestampDriftError,
 } from "../src/types.js";
 import { createNode1Timestamp, createNode2Timestamp } from "./testUtils.js";
+
+const config = createConfig()();
 
 test("createInitialTimestamp", () => {
   const ts = createInitialTimestamp();

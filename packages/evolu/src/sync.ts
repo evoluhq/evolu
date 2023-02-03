@@ -40,7 +40,6 @@ const doSync: (
       readerTaskEither.ask<PostSyncWorkerInputEnv & OwnerEnv & ConfigEnv>(),
       readerTaskEither.chainIOK(({ postSyncWorkerInput, owner, config }) =>
         postSyncWorkerInput({
-          type: "sync",
           syncUrl: config.syncUrl,
           clock,
           owner,

@@ -1,7 +1,5 @@
-export * from "./config.js";
 export * from "./createHooks.js";
-export * from "./db.js";
-export { getError, subscribeError } from "./error.js";
+export * from "./createEvolu.js";
 export * from "./merkleTree.js";
 export * from "./model.js";
 export * as model from "./model.js";
@@ -17,4 +15,3 @@ export {
   timestampToString,
 } from "./timestamp.js";
 export * from "./types.js";
-export * from "./useOwner.js";

@@ -130,7 +130,6 @@ const handleMerkleTreesDiff =
           readonlyNonEmptyArray.fromReadonlyArray,
           option.map((messages) =>
             postSyncWorkerInput({
-              type: "sync",
               syncUrl: config.syncUrl,
               clock,
               messages: option.some(messages),

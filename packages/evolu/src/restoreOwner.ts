@@ -16,7 +16,7 @@ export const restoreOwner = (
       pipe(
         readerTaskEither.ask<PostDbWorkerOutputEnv>(),
         readerTaskEither.chainIOK(({ postDbWorkerOutput }) =>
-          postDbWorkerOutput({ type: "reloadAllTabs" })
+          postDbWorkerOutput({ type: "onResetOrRestore" })
         )
       )
     )

@@ -2,7 +2,6 @@ import { eq } from "fp-ts";
 import { Either } from "fp-ts/Either";
 import { IO } from "fp-ts/IO";
 import { IORef } from "fp-ts/IORef";
-import { Task } from "fp-ts/Task";
 import { Option } from "fp-ts/Option";
 import { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
 import { ReadonlyRecord } from "fp-ts/ReadonlyRecord";
@@ -24,8 +23,6 @@ export type Config = {
   maxDrift: number;
   reloadUrl: string;
 };
-
-export type Unsubscribe = IO<void>;
 
 // CRDT
 
@@ -126,6 +123,8 @@ export type SqliteRow = ReadonlyRecord<string, SqliteCompatibleType>;
 
 export type SqliteRows = readonly SqliteRow[];
 
+export type QueriesRowsCache = ReadonlyRecord<SqlQueryString, SqliteRows>;
+
 /**
  * Functional wrapper for various SQLite implementations.
  * It's async because some platforms are.
@@ -142,8 +141,6 @@ export interface Owner {
   readonly id: OwnerId;
   readonly mnemonic: Mnemonic;
 }
-
-export type QueriesRowsCache = ReadonlyRecord<SqlQueryString, SqliteRows>;
 
 export interface ReplaceAllPatch {
   readonly op: "replaceAll";
@@ -227,6 +224,8 @@ export type Query<S extends DbSchema, T> = (
   db: KyselyOnlyForReading<DbSchemaToType<S, CommonColumns>>
 ) => SelectQueryBuilder<never, never, T>;
 
+// Typescript function overloading in arrow functions.
+// https://stackoverflow.com/a/53143568/233902
 export interface UseQuery<S extends DbSchema> {
   <T>(query: Query<S, T> | null | false): {
     readonly rows: readonly T[];
@@ -266,6 +265,28 @@ export type UseMutation<S extends DbSchema> = () => {
   readonly mutate: Mutate<S>;
 };
 
+export interface RestoreOwnerError {
+  readonly type: "invalid mnemonic";
+}
+
+export interface OwnerActions {
+  readonly reset: IO<void>;
+  readonly restore: (mnemonic: string) => Either<RestoreOwnerError, void>;
+}
+
+export interface Hooks<S extends DbSchema> {
+  readonly useQuery: UseQuery<S>;
+  readonly useMutation: UseMutation<S>;
+  readonly useEvoluError: IO<EvoluError | null>;
+  readonly useOwner: IO<Owner | null>;
+  readonly useOwnerActions: IO<OwnerActions>;
+}
+
+export type CreateHooks = <S extends DbSchema>(
+  dbSchema: S,
+  config?: Partial<Config>
+) => Hooks<S>;
+
 // Environments.
 // https://andywhite.xyz/posts/2021-01-28-rte-react/
 
@@ -302,6 +323,15 @@ export interface ConfigEnv {
   readonly config: Config;
 }
 
+export type Envs = DbEnv &
+  OwnerEnv &
+  PostDbWorkerOutputEnv &
+  PostSyncWorkerInputEnv &
+  QueriesRowsCacheEnv &
+  TimeEnv &
+  LockManagerEnv &
+  ConfigEnv;
+
 // Errors.
 
 export interface TimestampDuplicateNodeError {
@@ -321,10 +351,6 @@ export interface TimestampCounterOverflowError {
 
 export interface TimestampParseError {
   readonly type: "TimestampParseError";
-}
-
-export interface StringMaxLengthError {
-  readonly type: "StringMaxLengthError";
 }
 
 /**
@@ -374,19 +400,25 @@ export interface EvoluError {
     | TimestampDriftError
     | TimestampCounterOverflowError
     | TimestampParseError
-    | StringMaxLengthError
     | UnknownError
     | SyncError;
 }
 
 // Workers.
 
-export type DbWorkerInit = {
-  readonly type: "init";
-  readonly config: Config;
+export type DbWorkerInputReceive = {
+  readonly type: "receive";
+  readonly messages: readonly CrdtMessage[];
+  readonly merkleTree: MerkleTree;
+  readonly previousDiff: Option<Millis>;
 };
 
 export type DbWorkerInput =
+  | {
+      readonly type: "init";
+      readonly config: Config;
+      readonly tableDefinitions: readonly TableDefinition[];
+    }
   | {
       readonly type: "updateDbSchema";
       readonly tableDefinitions: readonly TableDefinition[];
@@ -402,12 +434,7 @@ export type DbWorkerInput =
       readonly queries: ReadonlyNonEmptyArray<SqlQueryString>;
       readonly purgeCache?: boolean;
     }
-  | {
-      readonly type: "receive";
-      readonly messages: readonly CrdtMessage[];
-      readonly merkleTree: MerkleTree;
-      readonly previousDiff: Option<Millis>;
-    }
+  | DbWorkerInputReceive
   | {
       readonly type: "sync";
       readonly queries: Option<ReadonlyNonEmptyArray<SqlQueryString>>;
@@ -426,7 +453,7 @@ export type DbWorkerOutput =
       readonly error: EvoluError["error"];
     }
   | {
-      readonly type: "onInit";
+      readonly type: "onOwner";
       readonly owner: Owner;
     }
   | {
@@ -437,20 +464,19 @@ export type DbWorkerOutput =
   | {
       readonly type: "onReceive";
     }
-  | { readonly type: "reloadAllTabs" };
+  | { readonly type: "onResetOrRestore" };
+
+export type PostDbWorkerInput = (message: DbWorkerInput) => IO<void>;
 
 export interface DbWorker {
-  readonly post: (message: DbWorkerInput) => IO<void>;
-  readonly getOwner: Task<Owner>;
+  readonly post: PostDbWorkerInput;
 }
 
 export type CreateDbWorker = (
-  init: DbWorkerInit,
   onMessage: (message: DbWorkerOutput) => void
-) => DbWorker;
+) => IO<DbWorker>;
 
 export type SyncWorkerInput = {
-  readonly type: "sync";
   readonly syncUrl: string;
   readonly messages: Option<ReadonlyNonEmptyArray<CrdtMessage>>;
   readonly clock: CrdtClock;
@@ -458,11 +484,39 @@ export type SyncWorkerInput = {
   readonly previousDiff: Option<Millis>;
 };
 
-export type SyncWorkerOutput = Either<
-  UnknownError,
-  {
-    readonly messages: readonly CrdtMessage[];
-    readonly merkleTree: MerkleTree;
-    readonly previousDiff: Option<Millis>;
-  }
->;
+export type SyncWorkerOutput = Either<UnknownError, DbWorkerInputReceive>;
+
+export type Unsubscribe = IO<void>;
+
+export interface Store<T> {
+  readonly subscribe: (listener: IO<void>) => Unsubscribe;
+  readonly setState: (state: T) => IO<void>;
+  readonly getState: IO<T>;
+}
+
+export interface Evolu<S extends DbSchema> {
+  readonly subscribeError: (listener: IO<void>) => Unsubscribe;
+  readonly getError: IO<EvoluError | null>;
+
+  readonly subscribeOwner: (listener: IO<void>) => Unsubscribe;
+  readonly getOwner: IO<Owner | null>;
+
+  readonly subscribeQueries: (listener: IO<void>) => Unsubscribe;
+  readonly getSubscribedQueries: (
+    query: SqlQueryString | null
+  ) => IO<SqliteRows | null>;
+
+  // TODO: Remove, should not be required.
+  readonly subscribeQuery: (sqlQueryString: SqlQueryString) => Unsubscribe;
+
+  readonly mutate: Mutate<S>;
+
+  readonly ownerActions: OwnerActions;
+
+  // TODO: resetOwner, restoreOwner
+}
+
+export type CreateEvolu = <S extends DbSchema>(
+  dbSchema: S,
+  config?: Partial<Config>
+) => IO<Evolu<S>>;
