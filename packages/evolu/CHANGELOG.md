@@ -140,7 +140,7 @@
 
 - fd03f74: Fix useEvoluFirstDataAreLoaded bug.
 
-  Empty table did not generate any patch so onQuery did not update queriesRowsCache.
+  Empty table did not generate any patch so onQuery did not update rowsCache.
 
 ## 0.2.0
 

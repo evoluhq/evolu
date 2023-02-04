@@ -15,8 +15,8 @@ import { transaction } from "./transaction.js";
 import {
   ConfigEnv,
   DbEnv,
+  DbWorkerEnvs,
   DbWorkerInput,
-  Envs,
   EvoluError,
   Millis,
   OwnerEnv,
@@ -42,18 +42,18 @@ const handleError = (error: EvoluError["error"]): void => {
 const syncWorker = createSyncWorker();
 
 export const createEnvs =
-  (envs: DbEnv & OwnerEnv & ConfigEnv): IO<Envs> =>
+  (envs: DbEnv & OwnerEnv & ConfigEnv): IO<DbWorkerEnvs> =>
   () => ({
     ...envs,
     postSyncWorkerInput: (message) => () => syncWorker.postMessage(message),
     now: () => Date.now() as Millis,
-    queriesRowsCache: new IORef({}),
+    rowsCache: new IORef({}),
     postDbWorkerOutput,
     locks: navigator.locks,
   });
 
 const createWritableStream =
-  (envs: Envs): IO<WritableStream<DbWorkerInput>> =>
+  (envs: DbWorkerEnvs): IO<WritableStream<DbWorkerInput>> =>
   () =>
     new WritableStream({
       write: flow(

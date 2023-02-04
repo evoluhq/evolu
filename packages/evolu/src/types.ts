@@ -2,6 +2,7 @@ import { eq } from "fp-ts";
 import { Either } from "fp-ts/Either";
 import { IO } from "fp-ts/IO";
 import { IORef } from "fp-ts/IORef";
+import { Reader } from "fp-ts/lib/Reader.js";
 import { Option } from "fp-ts/Option";
 import { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
 import { ReadonlyRecord } from "fp-ts/ReadonlyRecord";
@@ -123,7 +124,7 @@ export type SqliteRow = ReadonlyRecord<string, SqliteCompatibleType>;
 
 export type SqliteRows = readonly SqliteRow[];
 
-export type QueriesRowsCache = ReadonlyRecord<SqlQueryString, SqliteRows>;
+export type RowsCache = ReadonlyRecord<SqlQueryString, SqliteRows>;
 
 /**
  * Functional wrapper for various SQLite implementations.
@@ -247,7 +248,6 @@ type AllowCasting<T> = {
     : T[P];
 };
 
-export type OnComplete = () => void;
 export type OnCompleteId = ID<"OnComplete">;
 
 export type Mutate<S extends DbSchema> = <
@@ -256,7 +256,7 @@ export type Mutate<S extends DbSchema> = <
 >(
   table: T,
   values: Partial<AllowCasting<V[T]>>,
-  onComplete?: OnComplete
+  onComplete?: IO<void>
 ) => {
   readonly id: V[T]["id"];
 };
@@ -287,7 +287,7 @@ export type CreateHooks = <S extends DbSchema>(
   config?: Partial<Config>
 ) => Hooks<S>;
 
-// Environments.
+// DbWorker environments.
 // https://andywhite.xyz/posts/2021-01-28-rte-react/
 
 export interface DbEnv {
@@ -307,8 +307,8 @@ export interface PostSyncWorkerInputEnv {
   readonly postSyncWorkerInput: (message: SyncWorkerInput) => IO<void>;
 }
 
-export interface QueriesRowsCacheEnv {
-  readonly queriesRowsCache: IORef<QueriesRowsCache>;
+export interface RowsCacheEnv {
+  readonly rowsCache: IORef<RowsCache>;
 }
 
 export interface TimeEnv {
@@ -323,11 +323,11 @@ export interface ConfigEnv {
   readonly config: Config;
 }
 
-export type Envs = DbEnv &
+export type DbWorkerEnvs = DbEnv &
   OwnerEnv &
   PostDbWorkerOutputEnv &
   PostSyncWorkerInputEnv &
-  QueriesRowsCacheEnv &
+  RowsCacheEnv &
   TimeEnv &
   LockManagerEnv &
   ConfigEnv;
@@ -447,6 +447,12 @@ export type DbWorkerInput =
       readonly mnemonic: Mnemonic;
     };
 
+export type DbWorkerOutputOnQuery = {
+  readonly type: "onQuery";
+  readonly queriesPatches: readonly QueryPatches[];
+  readonly onCompleteIds: readonly OnCompleteId[];
+};
+
 export type DbWorkerOutput =
   | {
       readonly type: "onError";
@@ -456,11 +462,7 @@ export type DbWorkerOutput =
       readonly type: "onOwner";
       readonly owner: Owner;
     }
-  | {
-      readonly type: "onQuery";
-      readonly queriesPatches: readonly QueryPatches[];
-      readonly onCompleteIds?: readonly OnCompleteId[];
-    }
+  | DbWorkerOutputOnQuery
   | {
       readonly type: "onReceive";
     }
@@ -474,7 +476,7 @@ export interface DbWorker {
 
 export type CreateDbWorker = (
   onMessage: (message: DbWorkerOutput) => void
-) => IO<DbWorker>;
+) => DbWorker;
 
 export type SyncWorkerInput = {
   readonly syncUrl: string;
@@ -501,10 +503,8 @@ export interface Evolu<S extends DbSchema> {
   readonly subscribeOwner: (listener: IO<void>) => Unsubscribe;
   readonly getOwner: IO<Owner | null>;
 
-  readonly subscribeQueries: (listener: IO<void>) => Unsubscribe;
-  readonly getSubscribedQueries: (
-    query: SqlQueryString | null
-  ) => IO<SqliteRows | null>;
+  readonly subscribeRows: (listener: IO<void>) => Unsubscribe;
+  readonly getRows: (query: SqlQueryString | null) => IO<SqliteRows | null>;
 
   // TODO: Remove, should not be required.
   readonly subscribeQuery: (sqlQueryString: SqlQueryString) => Unsubscribe;
@@ -512,11 +512,13 @@ export interface Evolu<S extends DbSchema> {
   readonly mutate: Mutate<S>;
 
   readonly ownerActions: OwnerActions;
-
-  // TODO: resetOwner, restoreOwner
 }
 
+export type EvoluEnv = {
+  readonly config: Config;
+  readonly createDbWorker: CreateDbWorker;
+};
+
 export type CreateEvolu = <S extends DbSchema>(
-  dbSchema: S,
-  config?: Partial<Config>
-) => IO<Evolu<S>>;
+  dbSchema: S
+) => Reader<EvoluEnv, Evolu<S>>;

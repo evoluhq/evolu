@@ -18,7 +18,6 @@ const hexToBytes = (hexString: string): Uint8Array =>
 
 const lpad = (str: string, padString: string, length: number): string => {
   while (str.length < length) {
-    // eslint-disable-next-line no-param-reassign
     str = padString + str;
   }
   return str;

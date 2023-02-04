@@ -59,7 +59,6 @@ const receiveMessages =
       readerEither.traverseArray((message) =>
         pipe(
           receiveTimestamp(timestamp, timestampFromString(message.timestamp)),
-          // eslint-disable-next-line no-param-reassign
           readerEither.map((t) => (timestamp = t))
         )
       ),

@@ -18,7 +18,7 @@ import {
   OwnerEnv,
   PostDbWorkerOutputEnv,
   PostSyncWorkerInputEnv,
-  QueriesRowsCacheEnv,
+  RowsCacheEnv,
   SqlQueryString,
   TimeEnv,
   Timestamp,
@@ -46,7 +46,6 @@ const sendMessages =
         pipe(
           sendTimestamp(timestamp),
           readerEither.map((t): CrdtMessage => {
-            // eslint-disable-next-line no-param-reassign
             timestamp = t;
             return {
               timestamp: timestampToString(t),
@@ -91,7 +90,7 @@ export const send = ({
 }): ReaderTaskEither<
   DbEnv &
     OwnerEnv &
-    QueriesRowsCacheEnv &
+    RowsCacheEnv &
     PostDbWorkerOutputEnv &
     PostSyncWorkerInputEnv &
     TimeEnv &

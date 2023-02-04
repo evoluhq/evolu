@@ -12,11 +12,11 @@ const isChromeWithOpfs: IO<boolean> = () =>
       brand.includes("Chrom") && Number(version) >= 109
   ) != null;
 
-const createNoOpServerDbWorker: CreateDbWorker = () => () => ({
+const createNoOpServerDbWorker: CreateDbWorker = () => ({
   post: () => constVoid,
 });
 
-const createOpfsDbWorker: CreateDbWorker = (onMessage) => () => {
+const createOpfsDbWorker: CreateDbWorker = (onMessage) => {
   const dbWorker = new Worker(new URL("./opfs.worker.js", import.meta.url));
 
   const post: PostDbWorkerInput = (message) => () =>

@@ -1,6 +1,8 @@
 import { readonlyArray } from "fp-ts";
 import { constNull, pipe } from "fp-ts/lib/function.js";
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { createConfig } from "./createConfig.js";
+import { createDbWorker } from "./createDbWorker.js";
 import { createEvolu } from "./createEvolu.js";
 import { kysely } from "./kysely.js";
 import {
@@ -30,7 +32,10 @@ export const createHooks = <S extends DbSchema>(
   dbSchema: S,
   config?: Partial<Config>
 ): Hooks<S> => {
-  const evolu = createEvolu(dbSchema, config)();
+  const evolu = createEvolu(dbSchema)({
+    config: createConfig(config),
+    createDbWorker,
+  });
   const cache = new WeakMap<SqliteRow, SqliteRow>();
 
   // @ts-expect-error Function overloading sucks. It's internal, so it's OK.
@@ -40,8 +45,8 @@ export const createHooks = <S extends DbSchema>(
       : null;
 
     const rawRows = useSyncExternalStore(
-      evolu.subscribeQueries,
-      evolu.getSubscribedQueries(sqlQueryString),
+      evolu.subscribeRows,
+      evolu.getRows(sqlQueryString),
       constNull
     );
 

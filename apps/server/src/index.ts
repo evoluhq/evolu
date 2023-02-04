@@ -152,7 +152,6 @@ const addMessages =
             message.content
           );
           if (result.changes === 1)
-            // eslint-disable-next-line no-param-reassign
             merkleTree = insertIntoMerkleTree(
               timestampFromString(message.timestamp as TimestampString)
             )(merkleTree);

@@ -13,7 +13,7 @@ import {
   OwnerEnv,
   PostDbWorkerOutputEnv,
   PostSyncWorkerInputEnv,
-  QueriesRowsCacheEnv,
+  RowsCacheEnv,
   SqlQueryString,
   UnknownError,
 } from "./types.js";
@@ -24,7 +24,7 @@ const doSync: (
   DbEnv &
     OwnerEnv &
     PostSyncWorkerInputEnv &
-    QueriesRowsCacheEnv &
+    RowsCacheEnv &
     PostDbWorkerOutputEnv &
     ConfigEnv,
   UnknownError,
@@ -58,7 +58,7 @@ export const sync = (
     OwnerEnv &
     PostSyncWorkerInputEnv &
     LockManagerEnv &
-    QueriesRowsCacheEnv &
+    RowsCacheEnv &
     PostDbWorkerOutputEnv &
     ConfigEnv,
   UnknownError,

@@ -1,4 +1,3 @@
-import { IO } from "fp-ts/lib/IO.js";
 import { Config } from "./types.js";
 
 const defaultConfig: Config = {
@@ -7,6 +6,7 @@ const defaultConfig: Config = {
   reloadUrl: "/",
 };
 
-export const createConfig =
-  (config?: Partial<Config>): IO<Config> =>
-  () => ({ ...defaultConfig, ...config });
+export const createConfig = (config?: Partial<Config>): Config => ({
+  ...defaultConfig,
+  ...config,
+});

@@ -21,7 +21,7 @@ import {
 } from "../src/types.js";
 import { createNode1Timestamp, createNode2Timestamp } from "./testUtils.js";
 
-const config = createConfig()();
+const config = createConfig();
 
 test("createInitialTimestamp", () => {
   const ts = createInitialTimestamp();
