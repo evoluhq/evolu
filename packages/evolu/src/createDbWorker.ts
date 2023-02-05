@@ -1,8 +1,7 @@
 import { IO } from "fp-ts/IO";
 import { constVoid } from "fp-ts/lib/function.js";
 import { CreateDbWorker, DbWorkerOutput, PostDbWorkerInput } from "./types.js";
-
-const isServer = typeof window === "undefined" || "Deno" in window;
+import { isServer } from "./utils.js";
 
 const isChromeWithOpfs: IO<boolean> = () =>
   navigator.userAgentData != null &&
@@ -23,7 +22,7 @@ const createOpfsDbWorker: CreateDbWorker = (onMessage) => {
     dbWorker.postMessage(message);
 
   dbWorker.onmessage = (e: MessageEvent<DbWorkerOutput>): void =>
-    onMessage(e.data);
+    onMessage(e.data)();
 
   return { post };
 };

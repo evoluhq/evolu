@@ -1,6 +1,6 @@
 import { readonlyArray } from "fp-ts";
 import { constNull, pipe } from "fp-ts/lib/function.js";
-import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useMemo, useRef, useSyncExternalStore } from "react";
 import { createConfig } from "./createConfig.js";
 import { createDbWorker } from "./createDbWorker.js";
 import { createEvolu } from "./createEvolu.js";
@@ -45,15 +45,10 @@ export const createHooks = <S extends DbSchema>(
       : null;
 
     const rawRows = useSyncExternalStore(
-      evolu.subscribeRows,
-      evolu.getRows(sqlQueryString),
+      useMemo(() => evolu.subscribeQuery(sqlQueryString), [sqlQueryString]),
+      evolu.getQuery(sqlQueryString),
       constNull
     );
-
-    useEffect(() => {
-      if (!sqlQueryString) return;
-      return evolu.subscribeQuery(sqlQueryString);
-    }, [sqlQueryString]);
 
     const filterMapRef = useRef(initialFilterMap);
 

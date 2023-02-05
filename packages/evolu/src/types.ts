@@ -454,18 +454,10 @@ export type DbWorkerOutputOnQuery = {
 };
 
 export type DbWorkerOutput =
-  | {
-      readonly type: "onError";
-      readonly error: EvoluError["error"];
-    }
-  | {
-      readonly type: "onOwner";
-      readonly owner: Owner;
-    }
+  | { readonly type: "onError"; readonly error: EvoluError["error"] }
+  | { readonly type: "onOwner"; readonly owner: Owner }
   | DbWorkerOutputOnQuery
-  | {
-      readonly type: "onReceive";
-    }
+  | { readonly type: "onReceive" }
   | { readonly type: "onResetOrRestore" };
 
 export type PostDbWorkerInput = (message: DbWorkerInput) => IO<void>;
@@ -475,7 +467,7 @@ export interface DbWorker {
 }
 
 export type CreateDbWorker = (
-  onMessage: (message: DbWorkerOutput) => void
+  onMessage: (message: DbWorkerOutput) => IO<void>
 ) => DbWorker;
 
 export type SyncWorkerInput = {
@@ -503,11 +495,10 @@ export interface Evolu<S extends DbSchema> {
   readonly subscribeOwner: (listener: IO<void>) => Unsubscribe;
   readonly getOwner: IO<Owner | null>;
 
-  readonly subscribeRows: (listener: IO<void>) => Unsubscribe;
-  readonly getRows: (query: SqlQueryString | null) => IO<SqliteRows | null>;
-
-  // TODO: Remove, should not be required.
-  readonly subscribeQuery: (sqlQueryString: SqlQueryString) => Unsubscribe;
+  readonly subscribeQuery: (
+    sqlQueryString: SqlQueryString | null
+  ) => (listener: IO<void>) => Unsubscribe;
+  readonly getQuery: (query: SqlQueryString | null) => IO<SqliteRows | null>;
 
   readonly mutate: Mutate<S>;
 

@@ -10,11 +10,16 @@ import {
 } from "fp-ts";
 import { Either } from "fp-ts/Either";
 import { IO } from "fp-ts/IO";
-import { absurd, flow, pipe } from "fp-ts/lib/function.js";
+import {
+  constVoid,
+  decrement,
+  flow,
+  increment,
+  pipe,
+} from "fp-ts/lib/function.js";
 import { Option } from "fp-ts/Option";
 import { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
 import { ReadonlyRecord } from "fp-ts/ReadonlyRecord";
-import { Task } from "fp-ts/Task";
 import { flushSync } from "react-dom";
 import { createStore } from "./createStore.js";
 import { dbSchemaToTableDefinitions } from "./dbSchemaToTableDefinitions.js";
@@ -34,6 +39,7 @@ import {
   DbSchema,
   DbWorker,
   DbWorkerOutputOnQuery,
+  eqSqlQueryString,
   Evolu,
   EvoluError,
   Mutate,
@@ -44,7 +50,9 @@ import {
   RestoreOwnerError,
   RowsCache,
   SqlQueryString,
+  Store,
 } from "./types.js";
+import { isServer } from "./utils.js";
 
 const createNewCrdtMessages = (
   table: string,
@@ -88,7 +96,7 @@ const createMutate = <S extends DbSchema>({
   getSubscribedQueries,
 }: {
   createId: CreateId;
-  getOwner: Task<Owner>;
+  getOwner: Promise<Owner>;
   setOnComplete: (id: OnCompleteId, callback: IO<void>) => void;
   dbWorker: DbWorker;
   getSubscribedQueries: IO<readonly SqlQueryString[]>;
@@ -105,7 +113,7 @@ const createMutate = <S extends DbSchema>({
     if (isInsert) id = createId() as never;
     const now = cast(new Date());
 
-    getOwner().then((owner) => {
+    getOwner.then((owner) => {
       const messages = createNewCrdtMessages(
         table as string,
         id as ID<"string">,
@@ -156,6 +164,83 @@ const createMutate = <S extends DbSchema>({
   };
 };
 
+const createOnQuery =
+  (rowsStore: Store<RowsCache>, onCompletes: Map<OnCompleteId, IO<void>>) =>
+  ({ queriesPatches, onCompleteIds }: DbWorkerOutputOnQuery): IO<void> =>
+  () => {
+    pipe(
+      queriesPatches,
+      readonlyArray.reduce(
+        rowsStore.getState(),
+        (state, { query, patches }) => ({
+          ...state,
+          [query]: applyPatches(patches)(state[query]),
+        })
+      ),
+      (state) => {
+        if (onCompleteIds.length === 0) {
+          rowsStore.setState(state)();
+          return;
+        }
+
+        // flushSync is required before callOnCompletes
+        if (queriesPatches.length > 0)
+          flushSync(() => {
+            rowsStore.setState(state)();
+          });
+
+        pipe(
+          onCompleteIds,
+          readonlyArray.filterMap((id) => {
+            const onComplete = onCompletes.get(id);
+            onCompletes.delete(id);
+            return option.fromNullable(onComplete);
+          })
+        ).forEach((onComplete) => onComplete());
+      }
+    );
+  };
+
+const createSubscribeQuery = (
+  rowsStore: Store<RowsCache>,
+  subscribedQueries: Map<SqlQueryString, number>,
+  queryIfAny: (queries: readonly SqlQueryString[]) => IO<void>
+): Evolu<never>["subscribeQuery"] => {
+  const snapshot = new ioRef.IORef<readonly SqlQueryString[] | null>(null);
+
+  return (sqlQueryString: SqlQueryString | null) => (listen) => {
+    if (sqlQueryString == null) return () => constVoid;
+
+    if (snapshot.read() == null) {
+      snapshot.write(Array.from(subscribedQueries.keys()))();
+      queueMicrotask(() => {
+        const subscribedQueriesSnapshot = snapshot.read();
+        if (subscribedQueriesSnapshot == null) return;
+        snapshot.write(null)();
+        pipe(
+          Array.from(subscribedQueries.keys()),
+          readonlyArray.difference(eqSqlQueryString)(subscribedQueriesSnapshot),
+          queryIfAny
+        )();
+      });
+    }
+
+    subscribedQueries.set(
+      sqlQueryString,
+      increment(subscribedQueries.get(sqlQueryString) ?? 0)
+    );
+    const unsubscribe = rowsStore.subscribe(listen);
+
+    return () => {
+      const count = subscribedQueries.get(sqlQueryString);
+      if (count != null && count > 1)
+        subscribedQueries.set(sqlQueryString, decrement(count));
+      else subscribedQueries.delete(sqlQueryString);
+      unsubscribe();
+    };
+  };
+};
+
 // TODO: Replace with new mnemonic lib.
 const createRestoreOwner =
   (dbWorker: DbWorker) =>
@@ -170,6 +255,35 @@ const createRestoreOwner =
       )
     )();
 
+const initReconnectAndReshow = (
+  subscribedQueries: Map<SqlQueryString, number>,
+  dbWorker: DbWorker
+): void => {
+  const sync = (refreshQueries: boolean): IO<void> =>
+    pipe(
+      () =>
+        refreshQueries
+          ? readonlyNonEmptyArray.fromArray(
+              Array.from(subscribedQueries.keys())
+            )
+          : option.none,
+      io.chain((queries) => dbWorker.post({ type: "sync", queries }))
+    );
+
+  const handleReconnect = sync(false);
+  const handleReshow = sync(true);
+
+  if (!isServer) {
+    window.addEventListener("online", handleReconnect);
+    window.addEventListener("focus", handleReshow);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "hidden") handleReshow();
+    });
+  }
+
+  handleReconnect();
+};
+
 export const createEvolu: CreateEvolu =
   (dbSchema) =>
   ({ config, createDbWorker }) => {
@@ -179,99 +293,51 @@ export const createEvolu: CreateEvolu =
     const onCompletes = new Map<OnCompleteId, IO<void>>();
     const subscribedQueries = new Map<SqlQueryString, number>();
 
-    const callOnCompletes =
-      (onCompleteIds: readonly OnCompleteId[]): IO<void> =>
-      () =>
-        pipe(
-          onCompleteIds,
-          readonlyArray.filterMap((id) => {
-            const onComplete = onCompletes.get(id);
-            onCompletes.delete(id);
-            return option.fromNullable(onComplete);
-          })
-        ).forEach((onComplete) => onComplete());
+    const onQuery = createOnQuery(rowsStore, onCompletes);
 
-    const onQuery =
-      ({ queriesPatches, onCompleteIds }: DbWorkerOutputOnQuery): IO<void> =>
-      () => {
-        pipe(
-          queriesPatches,
-          readonlyArray.reduce(
-            rowsStore.getState(),
-            (state, { query, patches }) => ({
-              ...state,
-              [query]: applyPatches(patches)(state[query]),
-            })
-          ),
-          (state) => {
-            if (onCompleteIds.length === 0) {
-              rowsStore.setState(state)();
-              return;
-            }
-            // flushSync is required before callOnCompletes
-            if (queriesPatches.length > 0)
-              flushSync(() => {
-                rowsStore.setState(state)();
-              });
-            callOnCompletes(onCompleteIds)();
-          }
-        );
-      };
+    const queryIfAny: (queries: readonly SqlQueryString[]) => IO<void> = flow(
+      readonlyNonEmptyArray.fromReadonlyArray,
+      option.match(
+        () => io.of(constVoid),
+        (queries) => dbWorker.post({ type: "query", queries })
+      )
+    );
 
     const dbWorker = createDbWorker((output) => {
       switch (output.type) {
         case "onError":
-          errorStore.setState({
+          return errorStore.setState({
             type: "EvoluError",
             error: output.error,
-          })();
-          break;
+          });
         case "onOwner":
-          ownerStore.setState(output.owner)();
-          break;
+          return ownerStore.setState(output.owner);
         case "onQuery":
-          onQuery(output)();
-          break;
+          return onQuery(output);
         case "onReceive":
-          // query({
-          //   queries: Array.from(subscribedQueries.keys()),
-          //   purgeCache: true,
-          // })();
-          break;
+          return queryIfAny(Array.from(subscribedQueries.keys()));
         case "onResetOrRestore":
-          reloadAllTabs(config.reloadUrl)();
-          break;
-        default:
-          absurd(output);
+          return reloadAllTabs(config.reloadUrl);
       }
     });
 
-    dbWorker.post({
-      type: "init",
-      config,
-      tableDefinitions: dbSchemaToTableDefinitions(dbSchema),
-    })();
+    const subscribeQuery = createSubscribeQuery(
+      rowsStore,
+      subscribedQueries,
+      queryIfAny
+    );
 
-    const getRows: Evolu<never>["getRows"] = (query) => () =>
+    const getQuery: Evolu<never>["getQuery"] = (query) => () =>
       (query && rowsStore.getState()[query]) || null;
 
-    const subscribeQuery: Evolu<never>["subscribeQuery"] = (
-      _sqlQueryString
-    ) => {
-      return () => {
-        //
-      };
-    };
-
-    const getOwner: Task<Owner> = () =>
-      new Promise((resolve) => {
-        const unsubscribe = ownerStore.subscribe(() => {
-          const o = ownerStore.getState();
-          if (!o) return;
-          unsubscribe();
-          resolve(o);
-        });
+    const getOwner = new Promise<Owner>((resolve) => {
+      const unsubscribe = ownerStore.subscribe(() => {
+        const o = ownerStore.getState();
+        if (!o) return;
+        unsubscribe();
+        resolve(o);
       });
+    });
 
     const mutate: Evolu<never>["mutate"] = createMutate({
       createId,
@@ -288,99 +354,22 @@ export const createEvolu: CreateEvolu =
       restore: createRestoreOwner(dbWorker),
     };
 
-    const evolu: Evolu<never> = {
+    dbWorker.post({
+      type: "init",
+      config,
+      tableDefinitions: dbSchemaToTableDefinitions(dbSchema),
+    })();
+
+    initReconnectAndReshow(subscribedQueries, dbWorker);
+
+    return {
       subscribeError: errorStore.subscribe,
       getError: errorStore.getState,
       subscribeOwner: ownerStore.subscribe,
       getOwner: ownerStore.getState,
-      subscribeRows: rowsStore.subscribe,
-      getRows,
       subscribeQuery,
+      getQuery,
       mutate,
       ownerActions,
     };
-
-    return evolu;
   };
-
-// const query = ({
-//   queries,
-//   purgeCache,
-// }: {
-//   readonly queries: readonly SqlQueryString[];
-//   readonly purgeCache?: boolean;
-// }): IO<void> =>
-//   pipe(
-//     queries,
-//     readonlyNonEmptyArray.fromReadonlyArray,
-//     option.match(
-//       () => constVoid,
-//       (queries) => dbWorker.post({ type: "query", queries, purgeCache })
-//     )
-//   );
-
-// let resolveOwnerPromise: (value: Owner) => void = constVoid;
-
-// const ownerPromise = new Promise<Owner>((resolve) => {
-//   resolveOwnerPromise = resolve;
-// });
-
-// export const getRows = (
-//   query: SqlQueryString | null
-// ): SqliteRows | null => (query && rowsCacheRef.read()[query]) || null;
-
-// const subscribedQueries = new Map<SqlQueryString, number>();
-// const subscribedQueriesSnapshotRef = new ioRef.IORef<
-//   readonly SqlQueryString[] | null
-// >(null);
-
-// export const subscribeQuery = (sqlQueryString: SqlQueryString): Unsubscribe => {
-//   if (subscribedQueriesSnapshotRef.read() == null) {
-//     subscribedQueriesSnapshotRef.write(Array.from(subscribedQueries.keys()))();
-//     queueMicrotask(() => {
-//       const subscribedQueriesSnapshot = subscribedQueriesSnapshotRef.read();
-//       if (subscribedQueriesSnapshot == null) return;
-//       subscribedQueriesSnapshotRef.write(null)();
-
-//       pipe(
-//         Array.from(subscribedQueries.keys()),
-//         readonlyArray.difference(eqSqlQueryString)(subscribedQueriesSnapshot),
-//         (queries) => query({ queries })
-//       )();
-//     });
-//   }
-
-//   const count = subscribedQueries.get(sqlQueryString);
-//   subscribedQueries.set(sqlQueryString, increment(count ?? 0));
-
-//   return () => {
-//     const count = subscribedQueries.get(sqlQueryString);
-//     if (count && count > 1)
-//       subscribedQueries.set(sqlQueryString, decrement(count));
-//     else subscribedQueries.delete(sqlQueryString);
-//   };
-// };
-
-// // if (typeof window !== "undefined") {
-// //   const sync = (refreshQueries: boolean): IO<void> =>
-// //     pipe(
-// //       () =>
-// //         refreshQueries
-// //           ? readonlyNonEmptyArray.fromArray(
-// //               Array.from(subscribedQueries.keys())
-// //             )
-// //           : option.none,
-// //       io.chain((queries) => dbWorker.post({ type: "sync", queries }))
-// //     );
-
-// //   const handleReconnect = sync(false);
-// //   const handleReshow = sync(true);
-
-// //   window.addEventListener("online", handleReconnect);
-// //   window.addEventListener("focus", handleReshow);
-// //   document.addEventListener("visibilitychange", () => {
-// //     if (document.visibilityState !== "hidden") handleReshow();
-// //   });
-
-// //   handleReconnect();
-// // }
