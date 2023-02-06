@@ -10,8 +10,8 @@ export const updateClock =
     pipe(
       db.execSqlQuery({
         sql: `
-          UPDATE "__clock"
-          SET
+          update "__clock"
+          set
             "timestamp" = ?,
             "merkleTree" = ?
         `,

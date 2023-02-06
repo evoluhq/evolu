@@ -1,7 +1,7 @@
 import { either } from "fp-ts";
 import { pipe } from "fp-ts/lib/function.js";
 import { describe, expect, test } from "vitest";
-import { config } from "../src/config.js";
+import { createConfig } from "../src/createConfig.js";
 import {
   createInitialTimestamp,
   createSyncTimestamp,
@@ -20,6 +20,8 @@ import {
   TimestampDriftError,
 } from "../src/types.js";
 import { createNode1Timestamp, createNode2Timestamp } from "./testUtils.js";
+
+const config = createConfig();
 
 test("createInitialTimestamp", () => {
   const ts = createInitialTimestamp();
@@ -48,8 +50,8 @@ test("timestampToHash", () => {
   expect(timestampToHash(createSyncTimestamp())).toMatchSnapshot();
 });
 
-const now0 = { now: 0, config } as TimeEnv & ConfigEnv;
-const now1 = { now: 1, config } as TimeEnv & ConfigEnv;
+const now0 = { now: () => 0, config } as TimeEnv & ConfigEnv;
+const now1 = { now: () => 1, config } as TimeEnv & ConfigEnv;
 
 describe("sendTimestamp", () => {
   test("should send monotonically with a monotonic clock", () => {

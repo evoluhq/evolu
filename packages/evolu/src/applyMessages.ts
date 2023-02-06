@@ -1,24 +1,13 @@
-import {
-  apply,
-  ioRef,
-  option,
-  readonlyArray,
-  readonlyRecord,
-  taskEither,
-} from "fp-ts";
-import { constNull, constVoid, flow, pipe } from "fp-ts/lib/function.js";
+import { option, readonlyArray, taskEither } from "fp-ts";
+import { flow, pipe } from "fp-ts/lib/function.js";
 import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
 import { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
-import { ReadonlyRecord } from "fp-ts/ReadonlyRecord";
-import { TaskEither } from "fp-ts/TaskEither";
 import { insertIntoMerkleTree } from "./merkleTree.js";
 import { timestampFromString } from "./timestamp.js";
 import {
   CrdtMessage,
-  CrdtValue,
   DbEnv,
   MerkleTree,
-  PreparedStatement,
   TimestampString,
   UnknownError,
 } from "./types.js";
@@ -29,104 +18,67 @@ export const applyMessages =
     messages: ReadonlyNonEmptyArray<CrdtMessage>
   ): ReaderTaskEither<DbEnv, UnknownError, MerkleTree> =>
   ({ db }) =>
-    taskEither.bracket(
-      apply.sequenceT(taskEither.ApplySeq)(
-        db.prepare(`
-          SELECT "timestamp" FROM "__message"
-          WHERE "table" = ? AND
-                "row" = ? AND
-                "column" = ?
-          ORDER BY "timestamp" DESC LIMIT 1
-        `),
-        db.prepare(`
-          INSERT INTO "__message" (
-            "timestamp", "table", "row", "column", "value"
-          ) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING
-        `),
+    pipe(
+      messages,
+      taskEither.traverseSeqArray((message) =>
         pipe(
-          new ioRef.IORef<
-            ReadonlyRecord<string, TaskEither<UnknownError, PreparedStatement>>
-          >({}),
-          (cache) =>
-            taskEither.right({
-              exec: (sql: string, bindings: readonly CrdtValue[]) =>
-                pipe(
-                  cache.read(),
-                  readonlyRecord.lookup(sql),
-                  option.getOrElse(() => {
-                    const p = db.prepare(sql);
-                    cache.modify(readonlyRecord.upsertAt(sql, p))();
-                    return p;
-                  }),
-                  taskEither.chain((prepared) => prepared.exec(bindings))
-                ),
-              release: () =>
-                pipe(
-                  Object.values(cache.read()),
-                  taskEither.sequenceSeqArray,
-                  taskEither.chain(
-                    taskEither.traverseSeqArray((p) => p.release())
-                  ),
-                  taskEither.map(constVoid)
-                ),
-            })
-        )
-      ),
-      ([selectMostRecentTimestamp, insertMessage, updateTable]) =>
-        pipe(
-          messages,
-          taskEither.traverseSeqArray((message) =>
-            pipe(
-              selectMostRecentTimestamp.exec([
-                message.table,
-                message.row,
-                message.column,
-              ]),
-              taskEither.map((a) =>
-                pipe(
-                  readonlyArray.head(a.rows),
-                  option.map((r) => r.timestamp as TimestampString),
-                  option.getOrElseW(constNull)
-                )
-              ),
-              taskEither.chainFirst((t) =>
-                t == null || t < message.timestamp
-                  ? updateTable.exec(
-                      `
-                      INSERT INTO "${message.table}" ("id", "${message.column}")
-                      VALUES (?, ?)
-                      ON CONFLICT DO UPDATE SET "${message.column}" = ?
-                      `,
-                      [message.row, message.value, message.value]
-                    )
-                  : taskEither.right(undefined)
-              ),
-              taskEither.chainFirst((t) =>
-                t == null || t !== message.timestamp
-                  ? pipe(
-                      insertMessage.exec([
-                        message.timestamp,
-                        message.table,
-                        message.row,
-                        message.column,
-                        message.value,
-                      ]),
-                      taskEither.map((a) => {
-                        if (a.changes > 0)
-                          // eslint-disable-next-line no-param-reassign
-                          merkleTree = insertIntoMerkleTree(
-                            timestampFromString(message.timestamp)
-                          )(merkleTree);
-                      })
-                    )
-                  : taskEither.right(undefined)
-              )
+          db.execSqlQuery({
+            sql: `
+              select "timestamp" FROM "__message"
+              where "table" = ? AND
+                    "row" = ? AND
+                    "column" = ?
+              order by "timestamp" desc limit 1
+            `,
+            parameters: [message.table, message.row, message.column],
+          }),
+          taskEither.map(
+            flow(
+              readonlyArray.head,
+              option.map((row) => row.timestamp as TimestampString),
+              option.toNullable
             )
           ),
-          taskEither.map(() => merkleTree)
-        ),
-      flow(
-        taskEither.traverseArray((a) => a.release()),
-        taskEither.map(constVoid)
-      )
+          taskEither.chainFirst((timestamp) =>
+            timestamp == null || timestamp < message.timestamp
+              ? db.execSqlQuery({
+                  sql: `
+                    insert into "${message.table}" ("id", "${message.column}")
+                    values (?, ?)
+                    on conflict do update set "${message.column}" = ?
+                  `,
+                  parameters: [message.row, message.value, message.value],
+                })
+              : taskEither.right(undefined)
+          ),
+          taskEither.chainFirst((timestamp) =>
+            timestamp == null || timestamp !== message.timestamp
+              ? pipe(
+                  db.execSqlQuery({
+                    sql: `
+                      insert into "__message" (
+                        "timestamp", "table", "row", "column", "value"
+                      ) values (?, ?, ?, ?, ?) on conflict do nothing
+                    `,
+                    parameters: [
+                      message.timestamp,
+                      message.table,
+                      message.row,
+                      message.column,
+                      message.value,
+                    ],
+                  }),
+                  taskEither.chain(db.changes),
+                  taskEither.map((changes) => {
+                    if (changes > 0)
+                      merkleTree = insertIntoMerkleTree(
+                        timestampFromString(message.timestamp)
+                      )(merkleTree);
+                  })
+                )
+              : taskEither.right(undefined)
+          )
+        )
+      ),
+      taskEither.map(() => merkleTree)
     );

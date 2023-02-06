@@ -3,7 +3,6 @@ import { IO } from "fp-ts/IO";
 import { constVoid, flow, pipe } from "fp-ts/lib/function.js";
 import { Task } from "fp-ts/Task";
 import { TaskEither } from "fp-ts/TaskEither";
-import "nested-worker/worker";
 import {
   createMessage,
   decrypt,
@@ -22,6 +21,7 @@ import {
   CrdtClock,
   CrdtMessage,
   CrdtValue,
+  DbWorkerInputReceive,
   errorToUnknownError,
   merkleTreeFromString,
   MerkleTreeString,
@@ -194,11 +194,14 @@ const sync = ({
     taskEither.chainW(({ merkleTree, messages }) =>
       pipe(
         decryptMessages({ messages, mnemonic }),
-        taskEither.map((messages) => ({
-          messages,
-          merkleTree: merkleTreeFromString(merkleTree as MerkleTreeString),
-          previousDiff,
-        }))
+        taskEither.map(
+          (messages): DbWorkerInputReceive => ({
+            type: "receive",
+            messages,
+            merkleTree: merkleTreeFromString(merkleTree as MerkleTreeString),
+            previousDiff,
+          })
+        )
       )
     ),
     task.chainIOK(
@@ -219,6 +222,5 @@ const sync = ({
 const postSyncWorkerOutput: PostSyncWorkerOutput = (message) => () =>
   postMessage(message);
 
-addEventListener("message", ({ data }: MessageEvent<SyncWorkerInput>) => {
+onmessage = ({ data }: MessageEvent<SyncWorkerInput>): void =>
   requestSync(sync({ ...data, postSyncWorkerOutput }));
-});

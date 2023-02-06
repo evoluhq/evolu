@@ -1,21 +1,7 @@
 /* eslint-disable @typescript-eslint/explicit-function-return-type */
-import {
-  config,
-  createHooks,
-  getError,
-  getOwner,
-  model,
-  NonEmptyString1000,
-  resetOwner,
-  restoreOwner,
-  SqliteBoolean,
-  subscribeError,
-  useEvoluFirstDataAreLoaded,
-} from "evolu";
+import { createHooks, model, NonEmptyString1000, SqliteBoolean } from "evolu";
 import Head from "next/head";
 import { ChangeEvent, memo, useEffect, useState } from "react";
-
-config.syncUrl = "http://localhost:4000";
 
 // `model` is Evolu helper for branded types.
 // https://dev.to/andersonjoseph/typescript-tip-safer-functions-with-branded-types-14o4
@@ -26,18 +12,25 @@ type TodoId = model.infer<typeof TodoId>;
 const TodoCategoryId = model.id<"todoCategory">();
 type TodoCategoryId = model.infer<typeof TodoCategoryId>;
 
-const { useQuery, useMutation } = createHooks({
-  todo: {
-    id: TodoId,
-    title: model.NonEmptyString1000,
-    isCompleted: model.SqliteBoolean,
-    categoryId: TodoCategoryId,
-  },
-  todoCategory: {
-    id: TodoCategoryId,
-    name: model.NonEmptyString1000,
-  },
-});
+const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
+  createHooks(
+    {
+      todo: {
+        id: TodoId,
+        title: model.NonEmptyString1000,
+        isCompleted: model.SqliteBoolean,
+        categoryId: TodoCategoryId,
+      },
+      todoCategory: {
+        id: TodoCategoryId,
+        name: model.NonEmptyString1000,
+      },
+    },
+    {
+      // For local development.
+      syncUrl: "http://localhost:4000",
+    }
+  );
 
 const promptNonEmptyString1000 = (
   message: string,
@@ -161,9 +154,9 @@ const TodoList = () => {
   const { mutate } = useMutation();
 
   const handleAddTodoClick = () => {
-    promptNonEmptyString1000("What needs to be done?", (title) =>
-      mutate("todo", { title })
-    );
+    promptNonEmptyString1000("What needs to be done?", (title) => {
+      mutate("todo", { title });
+    });
   };
 
   return (
@@ -230,7 +223,9 @@ const TodoCategoryList = () => {
 };
 
 const OwnerActions = () => {
-  const [mnemonic, setMnemonic] = useState<string | null>(null);
+  const [isShown, setIsShown] = useState(false);
+  const owner = useOwner();
+  const ownerActions = useOwnerActions();
 
   return (
     <>
@@ -239,19 +234,13 @@ const OwnerActions = () => {
         Open this page on a different device and use your mnemonic to restore
         your data.
       </p>
-      <button
-        onClick={() => {
-          getOwner().then((owner) => {
-            setMnemonic(mnemonic == null ? owner.mnemonic : null);
-          });
-        }}
-      >
-        {mnemonic == null ? "Show" : "Hide"} Mnemonic
+      <button onClick={() => setIsShown((value) => !value)}>
+        {!isShown ? "Show" : "Hide"} Mnemonic
       </button>
       <button
         onClick={() => {
           promptNonEmptyString1000("Your Mnemonic", (mnemonic) => {
-            const either = restoreOwner(mnemonic);
+            const either = ownerActions.restore(mnemonic);
             if (either._tag === "Left")
               alert(JSON.stringify(either.left, null, 2));
           });
@@ -262,14 +251,19 @@ const OwnerActions = () => {
       <button
         onClick={() => {
           if (confirm("Are you sure? It will delete all your local data."))
-            resetOwner();
+            ownerActions.reset();
         }}
       >
         Reset Owner
       </button>
-      {mnemonic != null && (
+      {isShown && owner != null && (
         <div>
-          <textarea value={mnemonic} readOnly rows={2} style={{ width: 320 }} />
+          <textarea
+            value={owner.mnemonic}
+            readOnly
+            rows={2}
+            style={{ width: 320 }}
+          />
         </div>
       )}
     </>
@@ -277,33 +271,24 @@ const OwnerActions = () => {
 };
 
 const NotificationBar = () => {
-  const [notificationMessage, setNotificationMessage] = useState<string | null>(
-    null
-  );
+  const evoluError = useEvoluError();
+  const [shown, setShown] = useState(false);
 
   useEffect(() => {
-    const notifyOnError = () => {
-      const error = getError();
-      if (error) {
-        setNotificationMessage(`Error: ${JSON.stringify(error.error)}`);
-      }
-    };
-    return subscribeError(notifyOnError);
-  }, []);
+    if (evoluError) setShown(true);
+  }, [evoluError]);
 
-  if (!notificationMessage) return null;
+  if (!evoluError || !shown) return null;
 
   return (
     <div>
-      <p>{notificationMessage}</p>
-      <button onClick={() => setNotificationMessage(null)}>close</button>
+      <p>{`Error: ${JSON.stringify(evoluError.error)}`}</p>
+      <button onClick={() => setShown(false)}>close</button>
     </div>
   );
 };
 
 export default function Index() {
-  const dataAreLoaded = useEvoluFirstDataAreLoaded();
-
   return (
     <div>
       <Head>
@@ -311,15 +296,13 @@ export default function Index() {
       </Head>
       <h1>Evolu TodoMVC</h1>
       <NotificationBar />
-      <div hidden={!dataAreLoaded}>
-        <TodoList />
-        <TodoCategoryList />
-        <OwnerActions />
-        <p>
-          <a href="https://twitter.com/evoluhq">twitter</a>{" "}
-          <a href="https://github.com/evoluhq/evolu">github</a>
-        </p>
-      </div>
+      <TodoList />
+      <TodoCategoryList />
+      <OwnerActions />
+      <p>
+        <a href="https://twitter.com/evoluhq">twitter</a>{" "}
+        <a href="https://github.com/evoluhq/evolu">github</a>
+      </p>
     </div>
   );
 }

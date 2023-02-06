@@ -11,7 +11,7 @@
  * That's why all columns except `id` are nullable by default;
  * it's a similar principle to GraphQL nullability.
  */
-export { enum, string, number } from "zod";
+export { enum, number, string } from "zod";
 export type { infer } from "zod";
 import { nanoid } from "nanoid";
 import { BRAND, z } from "zod";
@@ -42,6 +42,8 @@ export const id = <T extends string>(): z.ZodBranded<
  * const id = createId<"person">();
  */
 export const createId = <T extends string>(): ID<T> => nanoid() as ID<T>;
+
+export type CreateId = typeof createId;
 
 export const OwnerId = id<"owner">();
 export type OwnerId = z.TypeOf<typeof OwnerId>;

@@ -140,12 +140,6 @@ Use Github discussions for now.
 
 [![Twitter URL](https://img.shields.io/twitter/url/https/twitter.com/evoluhq.svg?style=social&label=Follow%20%40evoluhq)](https://twitter.com/evoluhq)
 
-## FAQ
-
-**Q:** Why GPL-3.0 license?
-
-**A:** Yes, I know. GPL-3.0 requires that any software using Evolu must have the same license, which means it must be open-sourced. That's why Evolu uses this license. Unfortunately, there is only one maintained SQLite implementation for the browser IndexedDB. The good news is that Chrome developers are [actively working](https://twitter.com/ChromiumDev/status/1565105522092695553) on the official SQLite implementation over Wasm. Once it is available, Evolu will use it.
-
 ## Contributing
 
 Evolu monorepo uses [pnpm](https://pnpm.io/).

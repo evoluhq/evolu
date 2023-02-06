@@ -2051,6 +2051,7 @@ export const defaultMnemonicWordList = [
   "zoo",
 ];
 
+// TODO: parseMnemonic
 export const validateMnemonic: Predicate<string> = (s) => {
   const words = s.split(" ");
   if (words.length !== 12) return false;

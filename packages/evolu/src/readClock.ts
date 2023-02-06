@@ -15,10 +15,8 @@ export const readClock: ReaderTaskEither<DbEnv, UnknownError, CrdtClock> = ({
   db,
 }) =>
   pipe(
-    db.exec(`
-      SELECT "timestamp", "merkleTree" FROM "__clock" limit 1
-    `),
-    taskEither.map(([[timestamp, merkleTree]]) => ({
+    db.exec(`select "timestamp", "merkleTree" from "__clock" limit 1`),
+    taskEither.map(([{ timestamp, merkleTree }]) => ({
       timestamp: timestampFromString(timestamp as TimestampString),
       merkleTree: merkleTreeFromString(merkleTree as MerkleTreeString),
     }))

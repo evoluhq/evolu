@@ -9,18 +9,16 @@ import { constVoid, flow, pipe } from "fp-ts/lib/function.js";
 import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
 import { DbEnv, TableDefinition, UnknownError } from "./types.js";
 
-export const getExistingTables: ReaderTaskEither<
+const getExistingTables: ReaderTaskEither<
   DbEnv,
   UnknownError,
   ReadonlySet<string>
 > = ({ db }) =>
   pipe(
-    db.exec(`
-      SELECT "name" FROM sqlite_schema WHERE type='table'
-    `),
+    db.exec(`select "name" from sqlite_schema where type='table'`),
     taskEither.map(
       flow(
-        readonlyArray.map((row) => row[0] + ""),
+        readonlyArray.map((row) => row.name + ""),
         readonlyArray.filter(predicate.not(string.startsWith("__"))),
         (a) => new Set(a)
       )
@@ -34,12 +32,10 @@ const updateTable =
   }: TableDefinition): ReaderTaskEither<DbEnv, UnknownError, void> =>
   ({ db }) =>
     pipe(
-      db.exec(`
-        PRAGMA table_info (${name})
-      `),
+      db.exec(`pragma table_info (${name})`),
       taskEither.map(
         flow(
-          readonlyArray.map((a) => a[1] as string),
+          readonlyArray.map((a) => a.name as string),
           (existingColumns) =>
             readonlyArray.difference(string.Eq)(existingColumns)(columns)
         )
@@ -49,7 +45,7 @@ const updateTable =
           ? taskEither.right(readonlyArray.empty)
           : pipe(
               newColumns.map(
-                (column) => `ALTER TABLE "${name}" ADD COLUMN "${column}" BLOB;`
+                (column) => `alter table "${name}" add column "${column}" blob;`
               ),
               (a) => a.join(""),
               db.exec
@@ -66,16 +62,13 @@ const createTable =
   ({ db }) =>
     pipe(
       db.exec(`
-        CREATE TABLE ${name} (
-          "id" TEXT PRIMARY KEY,
+        create table ${name} (
+          "id" text primary key,
           ${columns
-            // Some people hate SQLite general dynamic type system.
-            // Some people love new SQLite strict tables.
-            // For Evolu, the BLOB behavior is the best.
             // "A column with affinity BLOB does not prefer one storage class over another
             // and no attempt is made to coerce data from one storage class into another."
             // https://www.sqlite.org/datatype3.html
-            .map((name) => `"${name}" BLOB`)
+            .map((name) => `"${name}" blob`)
             .join(", ")}
         );
       `),

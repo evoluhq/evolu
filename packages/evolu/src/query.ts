@@ -6,8 +6,8 @@ import {
   DbEnv,
   OnCompleteId,
   PostDbWorkerOutputEnv,
-  QueriesRowsCacheEnv,
   QueryPatches,
+  RowsCacheEnv,
   sqlQueryFromString,
   SqlQueryString,
   UnknownError,
@@ -24,11 +24,11 @@ export const query =
     /** Everything is cached until a mutation. */
     readonly purgeCache?: boolean;
   }): ReaderTaskEither<
-    DbEnv & QueriesRowsCacheEnv & PostDbWorkerOutputEnv,
+    DbEnv & RowsCacheEnv & PostDbWorkerOutputEnv,
     UnknownError,
     void
   > =>
-  ({ db, queriesRowsCache, postDbWorkerOutput }) =>
+  ({ db, rowsCache, postDbWorkerOutput }) =>
     pipe(
       queries,
       taskEither.traverseSeqArray((query) =>
@@ -42,9 +42,9 @@ export const query =
         const toPurge: SqlQueryString[] = [];
 
         const previous = !purgeCache
-          ? queriesRowsCache.read()
+          ? rowsCache.read()
           : pipe(
-              queriesRowsCache.read(),
+              rowsCache.read(),
               readonlyRecord.filterWithIndex((query) => {
                 const includes = queries.includes(query);
                 if (!includes) toPurge.push(query);
@@ -77,7 +77,7 @@ export const query =
         );
 
         pipe(
-          queriesRowsCache.write(next),
+          rowsCache.write(next),
           ioOption.fromIO,
           ioOption.filter(
             () =>
@@ -88,7 +88,7 @@ export const query =
             postDbWorkerOutput({
               type: "onQuery",
               queriesPatches,
-              onCompleteIds,
+              onCompleteIds: onCompleteIds || [],
             })
           )
         )();

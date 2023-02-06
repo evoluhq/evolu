@@ -59,7 +59,6 @@ const receiveMessages =
       readerEither.traverseArray((message) =>
         pipe(
           receiveTimestamp(timestamp, timestampFromString(message.timestamp)),
-          // eslint-disable-next-line no-param-reassign
           readerEither.map((t) => (timestamp = t))
         )
       ),
@@ -120,7 +119,7 @@ const handleMerkleTreesDiff =
     pipe(
       db.execSqlQuery({
         sql: `
-          SELECT * FROM "__message" where "timestamp" > ? ORDER BY "timestamp"
+          select * from "__message" where "timestamp" > ? order by "timestamp"
         `,
         parameters: [pipe(diff, createSyncTimestamp, timestampToString)],
       }),
@@ -130,7 +129,6 @@ const handleMerkleTreesDiff =
           readonlyNonEmptyArray.fromReadonlyArray,
           option.map((messages) =>
             postSyncWorkerInput({
-              type: "sync",
               syncUrl: config.syncUrl,
               clock,
               messages: option.some(messages),

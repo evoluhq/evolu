@@ -1,4 +1,4 @@
-import { either } from "fp-ts";
+import { either, readerEither } from "fp-ts";
 import { Either } from "fp-ts/Either";
 import { increment, pipe } from "fp-ts/lib/function.js";
 import { IO } from "fp-ts/IO";
@@ -54,36 +54,6 @@ export const timestampFromString = (s: TimestampString): Timestamp =>
     node: a[4] as NodeId,
   }));
 
-// timestampFromUnsafeString
-// export const parseTimestamp = (
-//   s: string
-// ): Either<TimestampParseError, Timestamp> =>
-//   pipe(
-//     s.split("-"),
-//     option.fromPredicate((a) => a.length === 5),
-//     option.chain((a) =>
-//       apply.sequenceS(option.Applicative)({
-//         millis: option.fromEither(
-//           pipe(
-//             Millis.safeParse(Date.parse(a.slice(0, 3).join("-")).valueOf()),
-//             safeParseToEither
-//           )
-//         ),
-//         counter: option.fromEither(
-//           pipe(Counter.safeParse(parseInt(a[3], 16)), safeParseToEither)
-//         ),
-//         node: option.fromEither(
-//           pipe(NodeId.safeParse(a[4]), safeParseToEither)
-//         ),
-//       })
-//     ),
-//     either.fromOption(
-//       (): TimestampParseError => ({
-//         type: "TimestampParseError",
-//       })
-//     )
-//   );
-
 export const timestampToHash = (t: Timestamp): TimestampHash =>
   pipe(timestampToString(t), murmurhash) as TimestampHash;
 
@@ -94,72 +64,78 @@ const incrementCounter = (
     ? either.right(increment(counter) as Counter)
     : either.left({ type: "TimestampCounterOverflowError" });
 
-export const sendTimestamp =
+const getNextMillis =
   (
-    timestamp: Timestamp
-  ): ReaderEither<
-    TimeEnv & ConfigEnv,
-    TimestampDriftError | TimestampCounterOverflowError,
-    Timestamp
-  > =>
+    millis: Millis[]
+  ): ReaderEither<TimeEnv & ConfigEnv, TimestampDriftError, Millis> =>
   ({ now, config }) =>
     pipe(
-      Math.max(timestamp.millis, now) as Millis,
+      now(),
+      (now) => ({ now, next: Math.max(now, ...millis) as Millis }),
       either.fromPredicate(
-        (next) => next - now <= config.maxDrift,
-        (next): TimestampDriftError => ({
+        ({ now, next }) => next - now <= config.maxDrift,
+        ({ now, next }): TimestampDriftError => ({
           type: "TimestampDriftError",
-          next,
           now,
+          next,
         })
       ),
-      either.bindTo("millis"),
-      either.bindW("counter", ({ millis }) =>
-        millis === timestamp.millis
-          ? incrementCounter(timestamp.counter)
-          : either.right(0 as Counter)
-      ),
-      either.map((a) => ({ ...a, node: timestamp.node }))
+      either.map(({ next }) => next)
     );
 
-export const receiveTimestamp =
-  (
-    local: Timestamp,
-    remote: Timestamp
-  ): ReaderEither<
-    TimeEnv & ConfigEnv,
-    | TimestampDriftError
-    | TimestampCounterOverflowError
-    | TimestampDuplicateNodeError,
-    Timestamp
-  > =>
-  ({ now, config }) =>
-    pipe(
-      Math.max(local.millis, remote.millis, now) as Millis,
-      either.fromPredicate(
-        (next) => next - now <= config.maxDrift,
-        (next): TimestampDriftError => ({
-          type: "TimestampDriftError",
-          next,
-          now,
-        })
-      ),
-      either.filterOrElseW(
-        () => local.node !== remote.node,
-        (): TimestampDuplicateNodeError => ({
+export const sendTimestamp = (
+  timestamp: Timestamp
+): ReaderEither<
+  TimeEnv & ConfigEnv,
+  TimestampDriftError | TimestampCounterOverflowError,
+  Timestamp
+> =>
+  pipe(
+    getNextMillis([timestamp.millis]),
+    readerEither.chainEitherKW((millis) =>
+      pipe(
+        millis === timestamp.millis
+          ? incrementCounter(timestamp.counter)
+          : either.right(0 as Counter),
+        either.map(
+          (counter): Timestamp => ({ millis, counter, node: timestamp.node })
+        )
+      )
+    )
+  );
+
+export const receiveTimestamp = (
+  local: Timestamp,
+  remote: Timestamp
+): ReaderEither<
+  TimeEnv & ConfigEnv,
+  | TimestampDriftError
+  | TimestampCounterOverflowError
+  | TimestampDuplicateNodeError,
+  Timestamp
+> =>
+  local.node === remote.node
+    ? pipe(
+        either.left<TimestampDuplicateNodeError>({
           type: "TimestampDuplicateNodeError",
           node: local.node,
-        })
-      ),
-      either.bindTo("millis"),
-      either.bindW("counter", ({ millis }) =>
-        millis === local.millis && millis === remote.millis
-          ? incrementCounter(Math.max(local.counter, remote.counter) as Counter)
-          : millis === local.millis
-          ? incrementCounter(local.counter)
-          : millis === remote.millis
-          ? incrementCounter(remote.counter)
-          : either.right(0 as Counter)
-      ),
-      either.map((a) => ({ ...a, node: local.node }))
-    );
+        }),
+        readerEither.fromEither
+      )
+    : pipe(
+        getNextMillis([local.millis, remote.millis]),
+        readerEither.chainEitherKW((millis) =>
+          pipe(
+            millis === local.millis && millis === remote.millis
+              ? incrementCounter(
+                  Math.max(local.counter, remote.counter) as Counter
+                )
+              : millis === local.millis
+              ? incrementCounter(local.counter)
+              : millis === remote.millis
+              ? incrementCounter(remote.counter)
+              : either.right(0 as Counter),
+            either.map((counter) => ({ millis, counter, node: local.node }))
+          )
+        )
+      );

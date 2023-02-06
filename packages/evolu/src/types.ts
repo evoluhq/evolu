@@ -2,6 +2,7 @@ import { eq } from "fp-ts";
 import { Either } from "fp-ts/Either";
 import { IO } from "fp-ts/IO";
 import { IORef } from "fp-ts/IORef";
+import { Reader } from "fp-ts/lib/Reader.js";
 import { Option } from "fp-ts/Option";
 import { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
 import { ReadonlyRecord } from "fp-ts/ReadonlyRecord";
@@ -23,8 +24,6 @@ export type Config = {
   maxDrift: number;
   reloadUrl: string;
 };
-
-export type Unsubscribe = IO<void>;
 
 // CRDT
 
@@ -72,7 +71,6 @@ export const merkleTreeToString = (m: MerkleTree): MerkleTreeString =>
 export const merkleTreeFromString = (m: MerkleTreeString): MerkleTree =>
   JSON.parse(m) as MerkleTree;
 
-// A subset of SQLiteCompatibleType.
 // TODO: Add Int8Array, https://github.com/evolu-io/evolu/issues/13
 export type CrdtValue = null | string | number;
 
@@ -97,7 +95,7 @@ export interface CrdtClock {
 /** Like Kysely CompiledQuery but without a `query` prop. */
 export interface SqlQuery {
   readonly sql: string;
-  readonly parameters: readonly unknown[];
+  readonly parameters: readonly SqliteCompatibleType[];
 }
 
 export type SqlQueryString = string & BRAND<"SqlQueryString">;
@@ -112,23 +110,6 @@ export const sqlQueryToString = ({
 export const sqlQueryFromString = (s: SqlQueryString): SqlQuery =>
   JSON.parse(s) as SqlQuery;
 
-// This is a workaround for:
-// https://github.com/rhashimoto/wa-sqlite/blob/dd2111b8b71fcb2b7747536f31fcc365396f01c4/src/types/index.d.ts#L18
-// It should be possible to import it, but it's somehow ambient.
-export type SQLiteCompatibleType =
-  | number
-  | string
-  | Int8Array
-  | Array<number>
-  // eslint-disable-next-line @typescript-eslint/ban-types
-  | BigInt
-  | null;
-
-export type SQLiteRow = readonly SQLiteCompatibleType[];
-
-/** SQLiteRowRecord is SQLiteRow with columns. */
-export type SQLiteRowRecord = ReadonlyRecord<string, SQLiteCompatibleType>;
-
 export interface TableDefinition {
   readonly name: string;
   readonly columns: readonly string[];
@@ -136,52 +117,41 @@ export interface TableDefinition {
 
 // DB
 
+// TODO: Binary.
+export type SqliteCompatibleType = number | string | null;
+
+export type SqliteRow = ReadonlyRecord<string, SqliteCompatibleType>;
+
+export type SqliteRows = readonly SqliteRow[];
+
+export type RowsCache = ReadonlyRecord<SqlQueryString, SqliteRows>;
+
+/**
+ * Functional wrapper for various SQLite implementations.
+ * It's async because some platforms are.
+ */
+export interface Database {
+  readonly SQLite3Error: unknown;
+  readonly exec: (sql: string) => TaskEither<UnknownError, SqliteRows>;
+  readonly execSqlQuery: (s: SqlQuery) => TaskEither<UnknownError, SqliteRows>;
+  readonly changes: () => TaskEither<UnknownError, number>;
+}
+
 /* A database owner. */
 export interface Owner {
   readonly id: OwnerId;
   readonly mnemonic: Mnemonic;
 }
 
-export interface PreparedStatement {
-  readonly exec: (
-    bindings: readonly CrdtValue[]
-  ) => TaskEither<
-    UnknownError,
-    { rows: readonly SQLiteRowRecord[]; changes: number }
-  >;
-  readonly release: () => TaskEither<UnknownError, void>;
-}
-
-export interface Database {
-  readonly exec: (
-    sql: string
-  ) => TaskEither<UnknownError, readonly SQLiteRow[]>;
-
-  readonly changes: () => number;
-
-  readonly execSqlQuery: (
-    sqlQuery: SqlQuery
-  ) => TaskEither<UnknownError, readonly SQLiteRowRecord[]>;
-
-  readonly prepare: (
-    sql: string
-  ) => TaskEither<UnknownError, PreparedStatement>;
-}
-
-export type QueriesRowsCache = ReadonlyRecord<
-  SqlQueryString,
-  readonly SQLiteRowRecord[]
->;
-
 export interface ReplaceAllPatch {
   readonly op: "replaceAll";
-  readonly value: readonly SQLiteRowRecord[];
+  readonly value: SqliteRows;
 }
 
 export interface ReplaceAtPatch {
   readonly op: "replaceAt";
   readonly index: number;
-  readonly value: SQLiteRowRecord;
+  readonly value: SqliteRow;
 }
 
 export interface PurgePatch {
@@ -255,6 +225,8 @@ export type Query<S extends DbSchema, T> = (
   db: KyselyOnlyForReading<DbSchemaToType<S, CommonColumns>>
 ) => SelectQueryBuilder<never, never, T>;
 
+// Typescript function overloading in arrow functions.
+// https://stackoverflow.com/a/53143568/233902
 export interface UseQuery<S extends DbSchema> {
   <T>(query: Query<S, T> | null | false): {
     readonly rows: readonly T[];
@@ -276,7 +248,6 @@ type AllowCasting<T> = {
     : T[P];
 };
 
-export type OnComplete = () => void;
 export type OnCompleteId = ID<"OnComplete">;
 
 export type Mutate<S extends DbSchema> = <
@@ -285,7 +256,7 @@ export type Mutate<S extends DbSchema> = <
 >(
   table: T,
   values: Partial<AllowCasting<V[T]>>,
-  onComplete?: OnComplete
+  onComplete?: IO<void>
 ) => {
   readonly id: V[T]["id"];
 };
@@ -294,34 +265,55 @@ export type UseMutation<S extends DbSchema> = () => {
   readonly mutate: Mutate<S>;
 };
 
-// Environments.
+export interface RestoreOwnerError {
+  readonly type: "invalid mnemonic";
+}
+
+export interface OwnerActions {
+  readonly reset: IO<void>;
+  readonly restore: (mnemonic: string) => Either<RestoreOwnerError, void>;
+}
+
+export interface Hooks<S extends DbSchema> {
+  readonly useQuery: UseQuery<S>;
+  readonly useMutation: UseMutation<S>;
+  readonly useEvoluError: IO<EvoluError | null>;
+  readonly useOwner: IO<Owner | null>;
+  readonly useOwnerActions: IO<OwnerActions>;
+}
+
+export type CreateHooks = <S extends DbSchema>(
+  dbSchema: S,
+  config?: Partial<Config>
+) => Hooks<S>;
+
+// DbWorker environments.
 // https://andywhite.xyz/posts/2021-01-28-rte-react/
 
 export interface DbEnv {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readonly db: Database;
-}
-
-export interface DbTransactionEnv {
-  readonly dbTransaction: <E, A>(
-    te: TaskEither<E, A>
-  ) => TaskEither<E | UnknownError, A>;
 }
 
 export interface OwnerEnv {
   readonly owner: Owner;
 }
 
-export interface QueriesRowsCacheEnv {
-  readonly queriesRowsCache: IORef<QueriesRowsCache>;
+export interface PostDbWorkerOutputEnv {
+  readonly postDbWorkerOutput: (message: DbWorkerOutput) => IO<void>;
+}
+
+export interface PostSyncWorkerInputEnv {
+  readonly postSyncWorkerInput: (message: SyncWorkerInput) => IO<void>;
+}
+
+export interface RowsCacheEnv {
+  readonly rowsCache: IORef<RowsCache>;
 }
 
 export interface TimeEnv {
-  readonly now: Millis;
+  readonly now: () => Millis;
 }
-
-export const createTimeEnv: IO<TimeEnv> = () => ({
-  now: Date.now() as Millis,
-});
 
 export interface LockManagerEnv {
   readonly locks: LockManager;
@@ -330,6 +322,15 @@ export interface LockManagerEnv {
 export interface ConfigEnv {
   readonly config: Config;
 }
+
+export type DbWorkerEnvs = DbEnv &
+  OwnerEnv &
+  PostDbWorkerOutputEnv &
+  PostSyncWorkerInputEnv &
+  RowsCacheEnv &
+  TimeEnv &
+  LockManagerEnv &
+  ConfigEnv;
 
 // Errors.
 
@@ -352,10 +353,6 @@ export interface TimestampParseError {
   readonly type: "TimestampParseError";
 }
 
-export interface StringMaxLengthError {
-  readonly type: "StringMaxLengthError";
-}
-
 /**
  * We can't use the whole error because of WebWorker postMessage
  * DataCloneError in Safari and Firefox.
@@ -374,7 +371,7 @@ export const errorToTransferableError = (error: unknown): TransferableError => {
 };
 
 /**
- * A kitchen sink error for errors from OpenPGP, wa-sqlite, etc. that
+ * A kitchen sink error for errors from OpenPGP, Sqlite, etc. that
  * we don't handle specifically.
  */
 export interface UnknownError {
@@ -396,14 +393,6 @@ export interface SyncError {
   readonly type: "SyncError";
 }
 
-/**
- * This error should happen only in Firefox's private mode,
- * which does not support IndexedDB.
- */
-export interface SQLiteError {
-  readonly type: "SQLiteError";
-}
-
 export interface EvoluError {
   readonly type: "EvoluError";
   readonly error:
@@ -411,20 +400,25 @@ export interface EvoluError {
     | TimestampDriftError
     | TimestampCounterOverflowError
     | TimestampParseError
-    | StringMaxLengthError
     | UnknownError
-    | SyncError
-    | SQLiteError;
+    | SyncError;
 }
 
 // Workers.
 
-export type DbWorkerInputInit = {
-  readonly type: "init";
-  readonly config: Config;
+export type DbWorkerInputReceive = {
+  readonly type: "receive";
+  readonly messages: readonly CrdtMessage[];
+  readonly merkleTree: MerkleTree;
+  readonly previousDiff: Option<Millis>;
 };
 
 export type DbWorkerInput =
+  | {
+      readonly type: "init";
+      readonly config: Config;
+      readonly tableDefinitions: readonly TableDefinition[];
+    }
   | {
       readonly type: "updateDbSchema";
       readonly tableDefinitions: readonly TableDefinition[];
@@ -440,12 +434,7 @@ export type DbWorkerInput =
       readonly queries: ReadonlyNonEmptyArray<SqlQueryString>;
       readonly purgeCache?: boolean;
     }
-  | {
-      readonly type: "receive";
-      readonly messages: readonly CrdtMessage[];
-      readonly merkleTree: MerkleTree;
-      readonly previousDiff: Option<Millis>;
-    }
+  | DbWorkerInputReceive
   | {
       readonly type: "sync";
       readonly queries: Option<ReadonlyNonEmptyArray<SqlQueryString>>;
@@ -458,27 +447,30 @@ export type DbWorkerInput =
       readonly mnemonic: Mnemonic;
     };
 
+export type DbWorkerOutputOnQuery = {
+  readonly type: "onQuery";
+  readonly queriesPatches: readonly QueryPatches[];
+  readonly onCompleteIds: readonly OnCompleteId[];
+};
+
 export type DbWorkerOutput =
-  | {
-      readonly type: "onError";
-      readonly error: EvoluError["error"];
-    }
-  | {
-      readonly type: "onInit";
-      readonly owner: Owner;
-    }
-  | {
-      readonly type: "onQuery";
-      readonly queriesPatches: readonly QueryPatches[];
-      readonly onCompleteIds?: readonly OnCompleteId[];
-    }
-  | {
-      readonly type: "onReceive";
-    }
-  | { readonly type: "reloadAllTabs" };
+  | { readonly type: "onError"; readonly error: EvoluError["error"] }
+  | { readonly type: "onOwner"; readonly owner: Owner }
+  | DbWorkerOutputOnQuery
+  | { readonly type: "onReceive" }
+  | { readonly type: "onResetOrRestore" };
+
+export type PostDbWorkerInput = (message: DbWorkerInput) => IO<void>;
+
+export interface DbWorker {
+  readonly post: PostDbWorkerInput;
+}
+
+export type CreateDbWorker = (
+  onMessage: (message: DbWorkerOutput) => IO<void>
+) => DbWorker;
 
 export type SyncWorkerInput = {
-  readonly type: "sync";
   readonly syncUrl: string;
   readonly messages: Option<ReadonlyNonEmptyArray<CrdtMessage>>;
   readonly clock: CrdtClock;
@@ -486,36 +478,38 @@ export type SyncWorkerInput = {
   readonly previousDiff: Option<Millis>;
 };
 
-export type SyncWorkerOutput = Either<
-  UnknownError,
-  {
-    readonly messages: readonly CrdtMessage[];
-    readonly merkleTree: MerkleTree;
-    readonly previousDiff: Option<Millis>;
-  }
->;
+export type SyncWorkerOutput = Either<UnknownError, DbWorkerInputReceive>;
 
-// Environments.
-// https://andywhite.xyz/posts/2021-01-28-rte-react/
+export type Unsubscribe = IO<void>;
 
-export interface DbEnv {
-  readonly db: Database;
+export interface Store<T> {
+  readonly subscribe: (listener: IO<void>) => Unsubscribe;
+  readonly setState: (state: T) => IO<void>;
+  readonly getState: IO<T>;
 }
 
-export interface DbTransactionEnv {
-  readonly dbTransaction: <E, A>(
-    te: TaskEither<E, A>
-  ) => TaskEither<E | UnknownError, A>;
+export interface Evolu<S extends DbSchema> {
+  readonly subscribeError: (listener: IO<void>) => Unsubscribe;
+  readonly getError: IO<EvoluError | null>;
+
+  readonly subscribeOwner: (listener: IO<void>) => Unsubscribe;
+  readonly getOwner: IO<Owner | null>;
+
+  readonly subscribeQuery: (
+    sqlQueryString: SqlQueryString | null
+  ) => (listener: IO<void>) => Unsubscribe;
+  readonly getQuery: (query: SqlQueryString | null) => IO<SqliteRows | null>;
+
+  readonly mutate: Mutate<S>;
+
+  readonly ownerActions: OwnerActions;
 }
 
-export interface OwnerEnv {
-  readonly owner: Owner;
-}
+export type EvoluEnv = {
+  readonly config: Config;
+  readonly createDbWorker: CreateDbWorker;
+};
 
-export interface PostDbWorkerOutputEnv {
-  readonly postDbWorkerOutput: (message: DbWorkerOutput) => IO<void>;
-}
-
-export interface PostSyncWorkerInputEnv {
-  readonly postSyncWorkerInput: (message: SyncWorkerInput) => IO<void>;
-}
+export type CreateEvolu = <S extends DbSchema>(
+  dbSchema: S
+) => Reader<EvoluEnv, Evolu<S>>;

@@ -1,21 +1,26 @@
 import { readonlyArray } from "fp-ts";
-import { pipe } from "fp-ts/lib/function.js";
-import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
-import * as db from "./db.js";
+import { constNull, pipe } from "fp-ts/lib/function.js";
+import { useMemo, useRef, useSyncExternalStore } from "react";
+import { createConfig } from "./createConfig.js";
+import { createDbWorker } from "./createDbWorker.js";
+import { createEvolu } from "./createEvolu.js";
 import { kysely } from "./kysely.js";
 import {
+  Config,
   DbSchema,
-  SQLiteRowRecord,
+  Hooks,
+  SqliteRow,
+  SqlQuery,
   sqlQueryToString,
   UseMutation,
   UseQuery,
 } from "./types.js";
 
 /**
- * Create `useQuery` and `useMutation` React Hooks for a given DB schema.
+ * Create React Hooks for a given DB schema.
  *
  * @example
- * const { useQuery, useMutation } = createHooks({
+ * const { useQuery, useMutation, useOwner } = createHooks({
  *   todo: {
  *     id: TodoId,
  *     title: model.NonEmptyString1000,
@@ -24,46 +29,39 @@ import {
  * });
  */
 export const createHooks = <S extends DbSchema>(
-  dbSchema: S
-): {
-  readonly useQuery: UseQuery<S>;
-  readonly useMutation: UseMutation<S>;
-} => {
-  db.updateDbSchema(dbSchema)();
+  dbSchema: S,
+  config?: Partial<Config>
+): Hooks<S> => {
+  const evolu = createEvolu(dbSchema)({
+    config: createConfig(config),
+    createDbWorker,
+  });
+  const cache = new WeakMap<SqliteRow, SqliteRow>();
 
-  const cache = new WeakMap<SQLiteRowRecord, SQLiteRowRecord>();
-
-  // @ts-expect-error IDK but it's internal so we don't care.
+  // @ts-expect-error Function overloading sucks. It's internal, so it's OK.
   const useQuery: UseQuery<S> = (query, initialFilterMap) => {
     const sqlQueryString = query
-      ? pipe(query(kysely as never).compile(), sqlQueryToString)
+      ? pipe(query(kysely as never).compile() as SqlQuery, sqlQueryToString)
       : null;
 
-    const rawRows = pipe(
-      useSyncExternalStore(
-        db.listen,
-        () => db.getSubscribedQueryRows(sqlQueryString),
-        () => null
-      )
+    const rawRows = useSyncExternalStore(
+      useMemo(() => evolu.subscribeQuery(sqlQueryString), [sqlQueryString]),
+      evolu.getQuery(sqlQueryString),
+      constNull
     );
-
-    useEffect(() => {
-      if (!sqlQueryString) return;
-      return db.subscribeQuery(sqlQueryString);
-    }, [sqlQueryString]);
 
     const filterMapRef = useRef(initialFilterMap);
 
-    const getRowFromCache = (rawRow: SQLiteRowRecord): SQLiteRowRecord => {
-      if (cache.has(rawRow)) return cache.get(rawRow) as SQLiteRowRecord;
-      const row = filterMapRef.current(rawRow as never) as SQLiteRowRecord;
+    const getRowFromCache = (rawRow: SqliteRow): SqliteRow => {
+      if (cache.has(rawRow)) return cache.get(rawRow) as SqliteRow;
+      const row = filterMapRef.current(rawRow as never) as SqliteRow;
       cache.set(rawRow, row);
       return row;
     };
 
     const rows = useMemo(() => {
       if (!filterMapRef.current || rawRows == null) return rawRows;
-      const rows: Array<SQLiteRowRecord> = [];
+      const rows: Array<SqliteRow> = [];
       for (let i = 0; i < rawRows.length; i++) {
         const row = getRowFromCache(rawRows[i]);
         if (row != null) rows.push(row);
@@ -81,13 +79,22 @@ export const createHooks = <S extends DbSchema>(
     );
   };
 
-  const mutate = db.createMutate<S>();
-  const useMutation: UseMutation<S> = () => ({
-    mutate,
-  });
+  const useMutation: UseMutation<S> = () =>
+    useMemo(() => ({ mutate: evolu.mutate }), []);
+
+  const useEvoluError: Hooks<S>["useEvoluError"] = () =>
+    useSyncExternalStore(evolu.subscribeError, evolu.getError, constNull);
+
+  const useOwner: Hooks<S>["useOwner"] = () =>
+    useSyncExternalStore(evolu.subscribeOwner, evolu.getOwner, constNull);
+
+  const useOwnerActions: Hooks<S>["useOwnerActions"] = () => evolu.ownerActions;
 
   return {
     useQuery,
     useMutation,
+    useEvoluError,
+    useOwner,
+    useOwnerActions,
   };
 };
