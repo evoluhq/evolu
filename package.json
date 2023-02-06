@@ -10,7 +10,7 @@
     "start": "turbo run start --parallel",
     "lint": "turbo run lint",
     "test": "turbo run test",
-    "build-lint-test": "turbo run lint && turbo run build && turbo run test",
+    "prepublishOnly": "turbo run lint && turbo run build && turbo run test",
     "clean": "turbo run clean && rm -rf node_modules",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "version": "changeset version && pnpm install --no-frozen-lockfile && pnpm format",
