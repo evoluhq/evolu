@@ -279,9 +279,8 @@ const initReconnectAndReshow = (
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState !== "hidden") handleReshow();
     });
+    handleReconnect();
   }
-
-  handleReconnect();
 };
 
 export const createEvolu: CreateEvolu =
