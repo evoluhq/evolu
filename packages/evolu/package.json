@@ -41,7 +41,7 @@
     "dequal": "^2.0.3",
     "kysely": "^0.23.4",
     "murmurhash": "^2.0.1",
-    "nanoid": "4.0.0",
+    "nanoid": "^4.0.1",
     "sha256-uint8array": "^0.10.3"
   },
   "devDependencies": {
