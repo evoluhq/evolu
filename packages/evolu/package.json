@@ -12,7 +12,7 @@
     "CRDT"
   ],
   "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
-  "license": "GNU GPL V3.0",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/evoluhq/evolu/issues"
   },
