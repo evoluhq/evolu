@@ -1,5 +1,12 @@
 # server
 
+## 0.0.32
+
+### Patch Changes
+
+- Updated dependencies [ec3755a]
+  - evolu@0.10.0
+
 ## 0.0.31
 
 ### Patch Changes
