@@ -1,5 +1,11 @@
 # evolu
 
+## 0.10.2
+
+### Patch Changes
+
+- 8ddc92f: Reduce the size of the library by 11kb
+
 ## 0.10.1
 
 ### Patch Changes
