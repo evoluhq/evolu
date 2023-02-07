@@ -1,5 +1,15 @@
 # evolu
 
+## 0.10.1
+
+### Patch Changes
+
+- bb0d128: Improve mnemonic code
+
+  - fix validateMnemonic checksum
+  - replace custom mnemonic code with audited lib @scure/bip39
+  - import code on demand to decrease library size
+
 ## 0.10.0
 
 ### Minor Changes

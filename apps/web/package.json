@@ -1,6 +1,6 @@
 {
   "name": "web",
-  "version": "0.0.32",
+  "version": "0.0.33",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -10,7 +10,7 @@
     "clean": "rm -rf .turbo && rm -rf node_modules"
   },
   "dependencies": {
-    "evolu": "workspace:0.10.0",
+    "evolu": "workspace:0.10.1",
     "next": "^13.1.6",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
