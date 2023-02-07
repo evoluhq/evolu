@@ -137,7 +137,9 @@ Evolu CRDT has no support for transactions because CRDT transactions are still a
 
 ## Community
 
-Use Github discussions for now.
+The Evolu community is on GitHub Discussions, where you can ask questions and voice ideas.
+
+To chat with other community members, you can join the [Evolu Discord](https://discord.gg/2J8yyyyxtZ).
 
 [![Twitter URL](https://img.shields.io/twitter/url/https/twitter.com/evoluhq.svg?style=social&label=Follow%20%40evoluhq)](https://twitter.com/evoluhq)
 
