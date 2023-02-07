@@ -38,7 +38,6 @@
   },
   "dependencies": {
     "@protobuf-ts/runtime": "^2.8.2",
-    "dequal": "^2.0.3",
     "kysely": "^0.23.4",
     "murmurhash": "^2.0.1",
     "nanoid": "^4.0.1",

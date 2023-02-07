@@ -115,7 +115,6 @@ importers:
       '@types/web-locks-api': ^0.0.2
       array-shuffle: ^3.0.0
       cross-env: ^7.0.3
-      dequal: ^2.0.3
       eslint: ^8.33.0
       eslint-config-evolu: workspace:0.0.2
       fp-ts: ^2.13.1
@@ -133,7 +132,6 @@ importers:
       zod: ^3.20.2
     dependencies:
       '@protobuf-ts/runtime': 2.8.2
-      dequal: 2.0.3
       kysely: 0.23.4
       murmurhash: 2.0.1
       nanoid: 4.0.1
@@ -1768,11 +1766,6 @@ packages:
   /depd/2.0.0:
     resolution: {integrity: sha512-g7nH6P6dyDioJogAAGprGpCtVImJhpPk/roCzdb3fIh61/s/nPsfR6onyMwkCAR/OlC3yBC0lESvUoQEAssIrw==}
     engines: {node: '>= 0.8'}
-    dev: false
-
-  /dequal/2.0.3:
-    resolution: {integrity: sha512-0je+qPKHEMohvfRTCEo3CrPG6cAzAYgmzKyxRiYSSDkS6eGJdyVJm7WaYA5ECaAD9wLB2T4EEeymA5aFVcYXCA==}
-    engines: {node: '>=6'}
     dev: false
 
   /destroy/1.2.0:
