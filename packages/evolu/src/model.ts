@@ -15,7 +15,6 @@ export { enum, number, string } from "zod";
 export type { infer } from "zod";
 import { nanoid } from "nanoid";
 import { BRAND, z } from "zod";
-import { validateMnemonic } from "./validateMnemonic.js";
 
 export type ID<T extends string> = string & BRAND<`${T}Id`>;
 
@@ -48,8 +47,7 @@ export type CreateId = typeof createId;
 export const OwnerId = id<"owner">();
 export type OwnerId = z.TypeOf<typeof OwnerId>;
 
-export const Mnemonic = z.string().refine(validateMnemonic).brand<"Mnemonic">();
-export type Mnemonic = z.infer<typeof Mnemonic>;
+export type Mnemonic = string & BRAND<"Mnemonic">;
 
 /** model.string().min(1).max(1000).brand<"NonEmptyString1000">() */
 export const NonEmptyString1000 = z

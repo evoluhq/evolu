@@ -271,7 +271,7 @@ export interface RestoreOwnerError {
 
 export interface OwnerActions {
   readonly reset: IO<void>;
-  readonly restore: (mnemonic: string) => Either<RestoreOwnerError, void>;
+  readonly restore: (mnemonic: string) => TaskEither<RestoreOwnerError, void>;
 }
 
 export interface Hooks<S extends DbSchema> {

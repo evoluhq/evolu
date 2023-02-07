@@ -37,11 +37,12 @@
     "proto": "pnpm protoc --ts_out ./src --proto_path protos protos/protobuf.proto --ts_opt eslint_disable && pnpm format"
   },
   "dependencies": {
+    "@noble/hashes": "^1.2.0",
     "@protobuf-ts/runtime": "^2.8.2",
+    "@scure/bip39": "^1.1.1",
     "kysely": "^0.23.4",
     "murmurhash": "^2.0.1",
-    "nanoid": "^4.0.1",
-    "sha256-uint8array": "^0.10.3"
+    "nanoid": "^4.0.1"
   },
   "devDependencies": {
     "@evolu/tsconfig": "workspace:0.0.2",

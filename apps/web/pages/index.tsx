@@ -240,9 +240,12 @@ const OwnerActions = () => {
       <button
         onClick={() => {
           promptNonEmptyString1000("Your Mnemonic", (mnemonic) => {
-            const either = ownerActions.restore(mnemonic);
-            if (either._tag === "Left")
-              alert(JSON.stringify(either.left, null, 2));
+            ownerActions
+              .restore(mnemonic)()
+              .then((either) => {
+                if (either._tag === "Left")
+                  alert(JSON.stringify(either.left, null, 2));
+              });
           });
         }}
       >

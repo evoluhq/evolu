@@ -1,8 +1,8 @@
+import { sha256 } from "@noble/hashes/sha256";
+import { bytesToHex as toHex } from "@noble/hashes/utils";
 import { readerTaskEither, taskEither } from "fp-ts";
 import { pipe } from "fp-ts/lib/function.js";
 import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
-import { createHash } from "sha256-uint8array";
-import { generateMnemonic } from "./generateMnemonic.js";
 import { createInitialMerkleTree } from "./merkleTree.js";
 import { Mnemonic, OwnerId } from "./model.js";
 import { createInitialTimestamp, timestampToString } from "./timestamp.js";
@@ -26,19 +26,17 @@ const selectOwner: ReaderTaskEither<DbEnv, UnknownError, OwnerEnv> = ({ db }) =>
  * 1/3 of it. It's impossible to restore mnemonic from ownerId.
  */
 const mnemonicToOwnerId = (mnemonic: Mnemonic): OwnerId =>
-  createHash().update(mnemonic).digest("hex").slice(0, 21) as OwnerId;
+  toHex(sha256(mnemonic)).slice(0, 21) as OwnerId;
 
 const lazyInit =
   (mnemonic?: Mnemonic): ReaderTaskEither<DbEnv, UnknownError, OwnerEnv> =>
   ({ db }) =>
     pipe(
-      taskEither.rightIO(
-        (): OwnerEnv =>
+      taskEither.fromTask(() => import("./mnemonic")),
+      taskEither.map(
+        ({ generateMnemonic }): OwnerEnv =>
           pipe(mnemonic || generateMnemonic(), (mnemonic) => ({
-            owner: {
-              id: mnemonicToOwnerId(mnemonic),
-              mnemonic,
-            },
+            owner: { id: mnemonicToOwnerId(mnemonic), mnemonic },
           }))
       ),
       taskEither.chainFirst(({ owner }) =>

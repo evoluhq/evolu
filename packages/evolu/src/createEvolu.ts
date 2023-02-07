@@ -1,14 +1,13 @@
 import {
   io,
-  ioEither,
   ioOption,
   ioRef,
   option,
   readonlyArray,
   readonlyNonEmptyArray,
   readonlyRecord,
+  taskEither,
 } from "fp-ts";
-import { Either } from "fp-ts/Either";
 import { IO } from "fp-ts/IO";
 import {
   constVoid,
@@ -24,16 +23,8 @@ import { flushSync } from "react-dom";
 import { createStore } from "./createStore.js";
 import { dbSchemaToTableDefinitions } from "./dbSchemaToTableDefinitions.js";
 import { applyPatches } from "./diff.js";
-import {
-  cast,
-  createId,
-  CreateId,
-  ID,
-  Mnemonic,
-  SqliteDateTime,
-} from "./model.js";
+import { cast, createId, CreateId, ID, SqliteDateTime } from "./model.js";
 import { reloadAllTabs } from "./reloadAllTabs.js";
-import { safeParseToEither } from "./safeParseToEither.js";
 import {
   CreateEvolu,
   DbSchema,
@@ -47,7 +38,6 @@ import {
   OnCompleteId,
   Owner,
   OwnerActions,
-  RestoreOwnerError,
   RowsCache,
   SqlQueryString,
   Store,
@@ -241,19 +231,16 @@ const createSubscribeQuery = (
   };
 };
 
-// TODO: Replace with new mnemonic lib.
-const createRestoreOwner =
-  (dbWorker: DbWorker) =>
-  (mnemonic: string): Either<RestoreOwnerError, void> =>
+const createOwnerActionRestore =
+  (dbWorker: DbWorker): OwnerActions["restore"] =>
+  (mnemonic) =>
     pipe(
-      Mnemonic.safeParse(mnemonic.trim().split(/\s+/g).join(" ")),
-      safeParseToEither,
-      ioEither.fromEither,
-      ioEither.mapLeft((): RestoreOwnerError => ({ type: "invalid mnemonic" })),
-      ioEither.chainIOK((mnemonic) =>
+      taskEither.fromTask(() => import("./mnemonic")),
+      taskEither.chainEitherKW(({ parseMnemonic }) => parseMnemonic(mnemonic)),
+      taskEither.chainIOK((mnemonic) =>
         dbWorker.post({ type: "restoreOwner", mnemonic })
       )
-    )();
+    );
 
 const initReconnectAndReshow = (
   subscribedQueries: Map<SqlQueryString, number>,
@@ -350,7 +337,7 @@ export const createEvolu: CreateEvolu =
 
     const ownerActions: OwnerActions = {
       reset: dbWorker.post({ type: "resetOwner" }),
-      restore: createRestoreOwner(dbWorker),
+      restore: createOwnerActionRestore(dbWorker),
     };
 
     dbWorker.post({
