@@ -1,5 +1,5 @@
-export * from "./createHooks.js";
 export * from "./createEvolu.js";
+export * from "./createHooks.js";
 export * from "./merkleTree.js";
 export * from "./model.js";
 export * as model from "./model.js";
