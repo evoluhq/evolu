@@ -1,5 +1,13 @@
 # evolu
 
+## 0.10.4
+
+### Patch Changes
+
+- c803352: Remove RowsCache GC
+
+  We will make better.
+
 ## 0.10.3
 
 ### Patch Changes
