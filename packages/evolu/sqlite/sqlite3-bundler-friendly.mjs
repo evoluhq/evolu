@@ -28,7 +28,9 @@
 **
 ** SQLITE_VERSION "3.41.0"
 ** SQLITE_VERSION_NUMBER 3041000
-** SQLITE_SOURCE_ID "2023-01-27 05:14:34 fa784101775b795077a23c211b5b16f51ad5a13967c284511f310dfcbfa9f77a"
+** SQLITE_SOURCE_ID "2023-02-06 19:00:54 f25eb898fce44120136f8ee5557305f43541e8a75323cfc3becf103f3fa7alt1"
+**
+** Using the Emscripten SDK version 3.1.30.
 */
 
 var sqlite3InitModule = (() => {
@@ -5252,6 +5254,10 @@ self.sqlite3ApiBootstrap = function sqlite3ApiBootstrap(
       }
       return !!self.BigInt64Array;
     })(),
+    debug: console.debug.bind(console),
+    warn: console.warn.bind(console),
+    error: console.error.bind(console),
+    log: console.log.bind(console),
     wasmfsOpfsDir: '/opfs',
     
     useStdAlloc: false
@@ -9066,7 +9072,7 @@ self.sqlite3ApiBootstrap.initializers.push(function(sqlite3){
 
 
 self.sqlite3ApiBootstrap.initializers.push(function(sqlite3){
-  sqlite3.version = {"libVersion": "3.41.0", "libVersionNumber": 3041000, "sourceId": "2023-01-27 05:14:34 fa784101775b795077a23c211b5b16f51ad5a13967c284511f310dfcbfa9f77a","downloadVersion": 3410000};
+  sqlite3.version = {"libVersion": "3.41.0", "libVersionNumber": 3041000, "sourceId": "2023-02-06 19:00:54 f25eb898fce44120136f8ee5557305f43541e8a75323cfc3becf103f3fa7alt1","downloadVersion": 3410000};
 });
 
 
@@ -9136,7 +9142,7 @@ self.sqlite3ApiBootstrap.initializers.push(function(sqlite3){
     if(('string'!==typeof fn && 'number'!==typeof fn)
        || 'string'!==typeof flagsStr
        || (vfsName && ('string'!==typeof vfsName && 'number'!==typeof vfsName))){
-      console.error("Invalid DB ctor args",opt,arguments);
+      sqlite3.config.error("Invalid DB ctor args",opt,arguments);
       toss3("Invalid arguments for DB constructor.");
     }
     let fnJs = ('number'===typeof fn) ? wasm.cstrToJs(fn) : fn;
@@ -9183,7 +9189,7 @@ self.sqlite3ApiBootstrap.initializers.push(function(sqlite3){
         checkSqlite3Rc(
           pDb, capi.sqlite3_exec(pDb, postInitSql, 0, 0, 0)
         );
-      }      
+      }
     }catch(e){
       this.close();
       throw e;
@@ -9295,6 +9301,10 @@ self.sqlite3ApiBootstrap.initializers.push(function(sqlite3){
           break;
         default:
           toss3("Invalid returnValue value:",opt.returnValue);
+    }
+    if(!opt.callback && !opt.returnValue && undefined!==opt.rowMode){
+      if(!opt.resultRows) opt.resultRows = [];
+      out.returnVal = ()=>opt.resultRows;
     }
     if(opt.callback || opt.resultRows){
       switch((undefined===opt.rowMode)
@@ -9809,7 +9819,7 @@ self.sqlite3ApiBootstrap.initializers.push(function(sqlite3){
           break;
         }
         default:
-          console.warn("Unsupported bind() argument type:",val);
+          sqlite3.config.warn("Unsupported bind() argument type:",val);
           toss3("Unsupported bind() argument type: "+(typeof val));
     }
     if(rc) DB.checkRc(stmt.db.pointer, rc);
@@ -9916,7 +9926,7 @@ self.sqlite3ApiBootstrap.initializers.push(function(sqlite3){
           case capi.SQLITE_ROW: return this._mayGet = true;
           default:
             this._mayGet = false;
-            console.warn("sqlite3_step() rc=",rc,
+            sqlite3.config.warn("sqlite3_step() rc=",rc,
                          capi.sqlite3_js_rc_str(rc),
                          "SQL =", capi.sqlite3_sql(this.pointer));
             DB.checkRc(this.db.pointer, rc);
@@ -10343,8 +10353,8 @@ sqlite3.initWorker1API = function(){
         result.stack = ('string'===typeof err.stack)
           ? err.stack.split(/\n\s*/) : err.stack;
       }
-      if(0) console.warn("Worker is propagating an exception to main thread.",
-                         "Reporting it _here_ for the stack trace:",err,result);
+      if(0) sqlite3.config.warn("Worker is propagating an exception to main thread.",
+                                "Reporting it _here_ for the stack trace:",err,result);
     }
     if(!dbId){
       dbId = result.dbId
@@ -10746,16 +10756,13 @@ const installOpfsVfs = function callee(options){
   if(!options || 'object'!==typeof options){
     options = Object.create(null);
   }
-  const urlParams =
-        undefined;
-  if(urlParams){
-    if(undefined===options.verbose){
-      options.verbose = urlParams.has('opfs-verbose')
-        ? (+urlParams.get('opfs-verbose') || 2) : 1;
-    }
-    if(undefined===options.sanityChecks){
-      options.sanityChecks = urlParams.has('opfs-sanity-check');
-    }
+  const urlParams = new URL(self.location.href).searchParams;
+  if(undefined===options.verbose){
+    options.verbose = urlParams.has('opfs-verbose')
+      ? (+urlParams.get('opfs-verbose') || 2) : 1;
+  }
+  if(undefined===options.sanityChecks){
+    options.sanityChecks = urlParams.has('opfs-sanity-check');
   }
   if(undefined===options.proxyUri){
     options.proxyUri = callee.defaultProxyUri;
@@ -10768,9 +10775,9 @@ const installOpfsVfs = function callee(options){
   }
   const thePromise = new Promise(function(promiseResolve, promiseReject_){
     const loggers = {
-      0:console.error.bind(console),
-      1:console.warn.bind(console),
-      2:console.log.bind(console)
+      0:sqlite3.config.error.bind(console),
+      1:sqlite3.config.warn.bind(console),
+      2:sqlite3.config.log.bind(console)
     };
     const logImpl = (level,...args)=>{
       if(options.verbose>level) loggers[level]("OPFS syncer:",...args);
@@ -10808,11 +10815,11 @@ const installOpfsVfs = function callee(options){
           m.avgTime = (m.count && m.time) ? (m.time / m.count) : 0;
           m.avgWait = (m.count && m.wait) ? (m.wait / m.count) : 0;
         }
-        console.log(self.location.href,
+        sqlite3.config.log(self.location.href,
                     "metrics for",self.location.href,":",metrics,
                     "\nTotal of",n,"op(s) for",t,
                     "ms (incl. "+w+" ms of waiting on the async side)");
-        console.log("Serialization metrics:",metrics.s11n);
+        sqlite3.config.log("Serialization metrics:",metrics.s11n);
         W.postMessage({type:'opfs-async-metrics'});
       },
       reset: function(){
@@ -11608,10 +11615,10 @@ self.sqlite3ApiBootstrap.initializersAsync.push(async (sqlite3)=>{
       
     }
     return installOpfsVfs().catch((e)=>{
-      console.warn("Ignoring inability to install OPFS sqlite3_vfs:",e.message);
+      sqlite3.config.warn("Ignoring inability to install OPFS sqlite3_vfs:",e.message);
     });
   }catch(e){
-    console.error("installOpfsVfs() exception:",e);
+    sqlite3.config.error("installOpfsVfs() exception:",e);
     throw e;
   }
 });
@@ -11644,11 +11651,6 @@ if('undefined' !== typeof Module){
     delete self.sqlite3ApiConfig;
   }
 
-  if(self.location && +self.location.port > 1024){
-    console.warn("Installing sqlite3 bits as global S for local dev/test purposes.");
-    self.S = sqlite3;
-  }
-
   Module.sqlite3 = sqlite3 ;
 }else{
   console.warn("This is not running in an Emscripten module context, so",
@@ -11670,7 +11672,7 @@ if('undefined' !== typeof Module){
 })();
 
 
-const toExportForES6 =
+const toExportForESM =
 (function(){
   
   const originalInit =
@@ -11683,13 +11685,14 @@ const toExportForES6 =
     moduleScript: self?.document?.currentScript,
     isWorker: ('undefined' !== typeof WorkerGlobalScope),
     location: self.location,
-    urlParams:
-    undefined
+    urlParams:  new URL(self.location.href).searchParams
   });
   initModuleState.debugModule =
-  ()=>{}
+    initModuleState.urlParams.has('sqlite3.debugModule')
+    ? (...args)=>console.warn('sqlite3.debugModule:',...args)
+    : ()=>{};
 
-  if(initModuleState.urlParams && initModuleState.urlParams.has('sqlite3.dir')){
+  if(initModuleState.urlParams.has('sqlite3.dir')){
     initModuleState.sqlite3Dir = initModuleState.urlParams.get('sqlite3.dir') +'/';
   }else if(initModuleState.moduleScript){
     const li = initModuleState.moduleScript.src.split('/');
@@ -11740,4 +11743,4 @@ const toExportForES6 =
   }
   return self.sqlite3InitModule ;
 })();
-export default toExportForES6;
+export default toExportForESM;
