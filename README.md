@@ -103,7 +103,7 @@ const handleRestoreOwner = () => {
 
 ### Handle errors
 
-Evolu useQuery and useMutation never fail, it's the advantage of local first software, but Evolu, in very rare cases, can.
+Evolu useQuery and useMutation never fail, it's the advantage of local first software, but Evolu, in rare cases, can.
 
 ```ts
 const evoluError = useEvoluError();
