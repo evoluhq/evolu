@@ -1,5 +1,13 @@
 # evolu
 
+## 0.10.3
+
+### Patch Changes
+
+- 09dc778: Update SQLite
+
+  This version only removes debug console.log output.
+
 ## 0.10.2
 
 ### Patch Changes
