@@ -155,13 +155,13 @@ const createMutate = <S extends DbSchema>({
 };
 
 const createOnQuery =
-  (rowsStore: Store<RowsCache>, onCompletes: Map<OnCompleteId, IO<void>>) =>
+  (rowsCache: Store<RowsCache>, onCompletes: Map<OnCompleteId, IO<void>>) =>
   ({ queriesPatches, onCompleteIds }: DbWorkerOutputOnQuery): IO<void> =>
   () => {
     pipe(
       queriesPatches,
       readonlyArray.reduce(
-        rowsStore.getState(),
+        rowsCache.getState(),
         (state, { query, patches }) => ({
           ...state,
           [query]: applyPatches(patches)(state[query]),
@@ -169,14 +169,14 @@ const createOnQuery =
       ),
       (state) => {
         if (onCompleteIds.length === 0) {
-          rowsStore.setState(state)();
+          rowsCache.setState(state)();
           return;
         }
 
         // flushSync is required before callOnCompletes
         if (queriesPatches.length > 0)
           flushSync(() => {
-            rowsStore.setState(state)();
+            rowsCache.setState(state)();
           });
 
         pipe(
@@ -192,7 +192,7 @@ const createOnQuery =
   };
 
 const createSubscribeQuery = (
-  rowsStore: Store<RowsCache>,
+  rowsCache: Store<RowsCache>,
   subscribedQueries: Map<SqlQueryString, number>,
   queryIfAny: (queries: readonly SqlQueryString[]) => IO<void>
 ): Evolu<never>["subscribeQuery"] => {
@@ -219,7 +219,7 @@ const createSubscribeQuery = (
       sqlQueryString,
       increment(subscribedQueries.get(sqlQueryString) ?? 0)
     );
-    const unsubscribe = rowsStore.subscribe(listen);
+    const unsubscribe = rowsCache.subscribe(listen);
 
     return () => {
       const count = subscribedQueries.get(sqlQueryString);
@@ -274,12 +274,12 @@ export const createEvolu: CreateEvolu =
   (dbSchema) =>
   ({ config, createDbWorker }) => {
     const errorStore = createStore<EvoluError | null>(null);
-    const rowsStore = createStore<RowsCache>({});
+    const rowsCache = createStore<RowsCache>({});
     const ownerStore = createStore<Owner | null>(null);
     const onCompletes = new Map<OnCompleteId, IO<void>>();
     const subscribedQueries = new Map<SqlQueryString, number>();
 
-    const onQuery = createOnQuery(rowsStore, onCompletes);
+    const onQuery = createOnQuery(rowsCache, onCompletes);
 
     const queryIfAny: (queries: readonly SqlQueryString[]) => IO<void> = flow(
       readonlyNonEmptyArray.fromReadonlyArray,
@@ -308,13 +308,13 @@ export const createEvolu: CreateEvolu =
     });
 
     const subscribeQuery = createSubscribeQuery(
-      rowsStore,
+      rowsCache,
       subscribedQueries,
       queryIfAny
     );
 
     const getQuery: Evolu<never>["getQuery"] = (query) => () =>
-      (query && rowsStore.getState()[query]) || null;
+      (query && rowsCache.getState()[query]) || null;
 
     const getOwner = new Promise<Owner>((resolve) => {
       const unsubscribe = ownerStore.subscribe(() => {

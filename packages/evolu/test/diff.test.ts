@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { SqliteRow, SqliteRows } from "../src";
+import { SqliteRows } from "../src";
 import { applyPatches, createPatches } from "../src/diff";
 
 test("createPatches", () => {
@@ -75,6 +75,4 @@ test("applyPatches", () => {
   ])([{ a: 1 }, replaceUntouched, { c: 3 }]);
   expect(replaceAtResult).toEqual([{ a: 2 }, { b: 2 }, { c: 4 }]);
   if (replaceAtResult) expect(replaceAtResult[1]).toBe(replaceUntouched);
-
-  expect(applyPatches([{ op: "purge" }])([])).toBeUndefined();
 });

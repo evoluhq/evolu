@@ -47,7 +47,5 @@ export const applyPatches =
           next[patch.index] = patch.value;
           return next;
         }
-        case "purge":
-          return undefined;
       }
     }, current);

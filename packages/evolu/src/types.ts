@@ -158,7 +158,7 @@ export interface PurgePatch {
   readonly op: "purge";
 }
 
-export type Patch = ReplaceAllPatch | ReplaceAtPatch | PurgePatch;
+export type Patch = ReplaceAllPatch | ReplaceAtPatch;
 
 export interface QueryPatches {
   readonly query: SqlQueryString;
@@ -432,7 +432,6 @@ export type DbWorkerInput =
   | {
       readonly type: "query";
       readonly queries: ReadonlyNonEmptyArray<SqlQueryString>;
-      readonly purgeCache?: boolean;
     }
   | DbWorkerInputReceive
   | {

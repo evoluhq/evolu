@@ -1,4 +1,4 @@
-import { ioOption, readonlyArray, readonlyRecord, taskEither } from "fp-ts";
+import { ioOption, readonlyArray, taskEither } from "fp-ts";
 import { pipe } from "fp-ts/lib/function.js";
 import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
 import { createPatches } from "./diff.js";
@@ -17,12 +17,9 @@ export const query =
   ({
     queries,
     onCompleteIds,
-    purgeCache,
   }: {
     readonly queries: readonly SqlQueryString[];
     readonly onCompleteIds?: readonly OnCompleteId[];
-    /** Everything is cached until a mutation. */
-    readonly purgeCache?: boolean;
   }): ReaderTaskEither<
     DbEnv & RowsCacheEnv & PostDbWorkerOutputEnv,
     UnknownError,
@@ -39,19 +36,7 @@ export const query =
         )
       ),
       taskEither.map((queriesRows) => {
-        const toPurge: SqlQueryString[] = [];
-
-        const previous = !purgeCache
-          ? rowsCache.read()
-          : pipe(
-              rowsCache.read(),
-              readonlyRecord.filterWithIndex((query) => {
-                const includes = queries.includes(query);
-                if (!includes) toPurge.push(query);
-                return includes;
-              })
-            );
-
+        const previous = rowsCache.read();
         const next = pipe(
           queriesRows,
           readonlyArray.reduce(previous, (a, { query, rows }) => ({
@@ -68,12 +53,7 @@ export const query =
               patches: createPatches(previous[query], next[query]),
             })
           ),
-          readonlyArray.filter(({ patches }) => patches.length > 0),
-          readonlyArray.concat(
-            toPurge.map(
-              (query): QueryPatches => ({ query, patches: [{ op: "purge" }] })
-            )
-          )
+          readonlyArray.filter(({ patches }) => patches.length > 0)
         );
 
         pipe(
