@@ -1,5 +1,12 @@
 # server
 
+## 0.0.35
+
+### Patch Changes
+
+- Updated dependencies [09dc778]
+  - evolu@0.10.3
+
 ## 0.0.34
 
 ### Patch Changes
