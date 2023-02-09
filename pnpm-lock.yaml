@@ -121,7 +121,7 @@ importers:
       typescript: ^4.9.5
       user-agent-data-types: ^0.3.0
       vitest: ^0.28.4
-      zod: ^3.20.3
+      zod: ^3.20.6
     dependencies:
       '@noble/hashes': 1.2.0
       '@protobuf-ts/runtime': 2.8.2
@@ -156,7 +156,7 @@ importers:
       typescript: 4.9.5
       user-agent-data-types: 0.3.0
       vitest: 0.28.4
-      zod: 3.20.3
+      zod: 3.20.6
 
   packages/evolu-tsconfig:
     specifiers: {}
@@ -4829,6 +4829,6 @@ packages:
     engines: {node: '>=12.20'}
     dev: true
 
-  /zod/3.20.3:
-    resolution: {integrity: sha512-+MLeeUcLTlnzVo5xDn9+LVN9oX4esvgZ7qfZczBN+YVUvZBafIrPPVyG2WdjMWU2Qkb2ZAh2M8lpqf1wIoGqJQ==}
+  /zod/3.20.6:
+    resolution: {integrity: sha512-oyu0m54SGCtzh6EClBVqDDlAYRz4jrVtKwQ7ZnsEmMI9HnzuZFj8QFwAY1M5uniIYACdGvv0PBWPF2kO0aNofA==}
     dev: true

@@ -74,7 +74,7 @@
     "typescript": "^4.9.5",
     "user-agent-data-types": "^0.3.0",
     "vitest": "^0.28.4",
-    "zod": "^3.20.3"
+    "zod": "^3.20.6"
   },
   "peerDependencies": {
     "fp-ts": "^2.12.3",
