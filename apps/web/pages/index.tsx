@@ -28,7 +28,7 @@ const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
     },
     {
       // For local development.
-      syncUrl: "http://localhost:4000",
+      // syncUrl: "http://localhost:4000",
     }
   );
 
