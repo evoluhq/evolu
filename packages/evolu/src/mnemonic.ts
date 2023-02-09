@@ -14,3 +14,6 @@ export const parseMnemonic = (
   bip39.validateMnemonic(mnemonic.trim(), wordlist)
     ? either.right(mnemonic as Mnemonic)
     : either.left({ type: "invalid mnemonic" });
+
+export const mnemonicToEntropy = (mnemonic: Mnemonic): Uint8Array =>
+  bip39.mnemonicToEntropy(mnemonic, wordlist);

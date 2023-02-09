@@ -371,7 +371,7 @@ export const errorToTransferableError = (error: unknown): TransferableError => {
 };
 
 /**
- * A kitchen sink error for errors from OpenPGP, Sqlite, etc. that
+ * A kitchen sink error for errors from Sqlite, micro-aes-gcm, etc. that
  * we don't handle specifically.
  */
 export interface UnknownError {

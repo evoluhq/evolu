@@ -112,9 +112,9 @@ importers:
       express: ^4.18.2
       fp-ts: ^2.13.1
       kysely: ^0.23.4
+      micro-aes-gcm: ^0.3.3
       murmurhash: ^2.0.1
       nanoid: ^4.0.1
-      openpgp: ^5.5.0
       react: ^18.2.0
       react-dom: ^18.2.0
       tslib: ^2.5.0
@@ -131,6 +131,7 @@ importers:
       cors: 2.8.5
       express: 4.18.2
       kysely: 0.23.4
+      micro-aes-gcm: 0.3.3
       murmurhash: 2.0.1
       nanoid: 4.0.1
     devDependencies:
@@ -149,7 +150,6 @@ importers:
       eslint: 8.33.0
       eslint-config-evolu: link:../eslint-config-evolu
       fp-ts: 2.13.1
-      openpgp: 5.5.0
       react: 18.2.0
       react-dom: 18.2.0_react@18.2.0
       tslib: 2.5.0
@@ -1322,15 +1322,6 @@ packages:
     engines: {node: '>=0.10.0'}
     dev: true
 
-  /asn1.js/5.4.1:
-    resolution: {integrity: sha512-+I//4cYPccV8LdmBLiX8CYvf9Sp3vQsrqu2QNXRcrbiWvcx/UdlFiqUJJzxRQxgsZmvhXhn4cSKeSmoFjVdupA==}
-    dependencies:
-      bn.js: 4.12.0
-      inherits: 2.0.4
-      minimalistic-assert: 1.0.1
-      safer-buffer: 2.1.2
-    dev: true
-
   /assertion-error/1.1.0:
     resolution: {integrity: sha512-jgsaNduz+ndvGyFt3uSuWqvy4lCnIJiovtouQN5JZHOKCS2QuhEdbcQHFhVksz2N2U9hXJo8odG7ETyWlEeuDw==}
     dev: true
@@ -1389,10 +1380,6 @@ packages:
       inherits: 2.0.4
       readable-stream: 3.6.0
     dev: false
-
-  /bn.js/4.12.0:
-    resolution: {integrity: sha512-c98Bf3tPniI+scsdk237ku1Dc3ujXQTSgyiPUDEOe7tRkhrqridvh8klBv0HCEso1OLOYcHuCv/cS6DNxKH+ZA==}
-    dev: true
 
   /body-parser/1.20.1:
     resolution: {integrity: sha512-jWi7abTbYwajOytWCQc37VulmWiRae5RyTpaCyDcS5/lMdtwSz5lOpDE67srw/HYe35f1z3fDQw+3txg7gNtWw==}
@@ -3181,6 +3168,10 @@ packages:
     engines: {node: '>= 0.6'}
     dev: false
 
+  /micro-aes-gcm/0.3.3:
+    resolution: {integrity: sha512-wetPK288r0FyTzrWKkX9fNAKlJE+//bdQWpucWwx1Ei/MyFgBgN/0Ex1G3sTm4WR+2ATReGKzDQBYVpuwhho/A==}
+    dev: false
+
   /micromatch/4.0.5:
     resolution: {integrity: sha512-DMy+ERcEW2q8Z2Po+WNXuw3c5YaUSFjAO5GsJqfEl7UjvtIuFKO6ZrKvcItdy98dwFI2N1tg3zNIdKaQT+aNdA==}
     engines: {node: '>=8.6'}
@@ -3214,10 +3205,6 @@ packages:
   /min-indent/1.0.1:
     resolution: {integrity: sha512-I9jwMn07Sy/IwOj3zVkVik2JTvgpaykDZEigL6Rx6N9LbMywwUSMtxET+7lVoDLLd3O3IXwJwvuuns8UB/HeAg==}
     engines: {node: '>=4'}
-    dev: true
-
-  /minimalistic-assert/1.0.1:
-    resolution: {integrity: sha512-UtJcAD4yEaGtjPezWuO9wC4nwUnVH/8/Im3yEHQP4b67cXlD/Qr9hdITCU1xDbSEXg2XKNaP8jsReV7vQd00/A==}
     dev: true
 
   /minimatch/3.1.2:
@@ -3441,13 +3428,6 @@ packages:
       is-docker: 2.2.1
       is-wsl: 2.2.0
     dev: false
-
-  /openpgp/5.5.0:
-    resolution: {integrity: sha512-SpwcJnxrK9Y0HRM6KxSFqkAEOSWEabCH/c8dII/+y2e5f6KvuDG5ZE7JXaPBaVJNE4VUZZeTphxXDoZD0KOHrw==}
-    engines: {node: '>= 8.0.0'}
-    dependencies:
-      asn1.js: 5.4.1
-    dev: true
 
   /optionator/0.9.1:
     resolution: {integrity: sha512-74RlY5FCnhq4jRxVUPKDaRwrVNXMqsGsiW6AJw4XK8hmtm10wC0ypZBLw5IIp85NZMr91+qd1RvvENwg7jjRFw==}

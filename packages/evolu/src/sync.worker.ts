@@ -3,13 +3,9 @@ import { IO } from "fp-ts/IO";
 import { constVoid, flow, pipe } from "fp-ts/lib/function.js";
 import { Task } from "fp-ts/Task";
 import { TaskEither } from "fp-ts/TaskEither";
-import {
-  createMessage,
-  decrypt,
-  encrypt,
-  readMessage,
-} from "openpgp/lightweight";
-import { ID, Mnemonic, OwnerId } from "./model.js";
+import * as aes from "micro-aes-gcm";
+import { mnemonicToEntropy } from "./mnemonic.js";
+import { ID, OwnerId } from "./model.js";
 import {
   CrdtMessageContent,
   EncryptedCrdtMessage,
@@ -47,10 +43,10 @@ const crdtValueToProtobufFormat = (
 
 const encryptMessages = ({
   messages,
-  mnemonic,
+  key,
 }: {
   readonly messages: readonly CrdtMessage[];
-  readonly mnemonic: Mnemonic;
+  readonly key: Uint8Array;
 }): TaskEither<UnknownError, readonly EncryptedCrdtMessage[]> =>
   pipe(
     messages,
@@ -62,22 +58,9 @@ const encryptMessages = ({
         }),
         (binary) =>
           taskEither.tryCatch(
-            () => createMessage({ binary }),
+            () => aes.encrypt(key, binary),
             errorToUnknownError
           ),
-        taskEither.chain((message) =>
-          taskEither.tryCatch(
-            () =>
-              encrypt({
-                message,
-                passwords: mnemonic,
-                format: "binary",
-                // https://github.com/openpgpjs/openpgpjs/discussions/1481#discussioncomment-2125162
-                config: { s2kIterationCountByte: 0 },
-              }),
-            errorToUnknownError
-          )
-        ),
         taskEither.map(
           (content): EncryptedCrdtMessage => ({
             timestamp,
@@ -131,10 +114,10 @@ const postSyncRequest =
 
 const decryptMessages = ({
   messages,
-  mnemonic,
+  key,
 }: {
   readonly messages: readonly EncryptedCrdtMessage[];
-  readonly mnemonic: Mnemonic;
+  readonly key: Uint8Array;
 }): TaskEither<UnknownError, readonly CrdtMessage[]> =>
   pipe(
     messages,
@@ -142,13 +125,9 @@ const decryptMessages = ({
       pipe(
         taskEither.tryCatch(
           () =>
-            readMessage({ binaryMessage: message.content })
-              .then((message) =>
-                decrypt({ message, passwords: mnemonic, format: "binary" })
-              )
-              .then(({ data }) =>
-                CrdtMessageContent.fromBinary(data as Uint8Array)
-              ),
+            aes
+              .decrypt(key, message.content)
+              .then((data) => CrdtMessageContent.fromBinary(data)),
           errorToUnknownError
         ),
         taskEither.map(
@@ -175,11 +154,13 @@ const sync = ({
   syncUrl,
   messages,
   clock,
-  owner: { mnemonic, id: ownerId },
+  owner: { id: ownerId },
   postSyncWorkerOutput,
   previousDiff,
+  key,
 }: SyncWorkerInput & {
   readonly postSyncWorkerOutput: PostSyncWorkerOutput;
+  readonly key: Uint8Array;
 }): Task<void> =>
   pipe(
     encryptMessages({
@@ -187,13 +168,13 @@ const sync = ({
         messages,
         option.getOrElseW(() => [])
       ),
-      mnemonic,
+      key,
     }),
     taskEither.map(createSyncRequest({ ownerId, clock })),
     taskEither.chainW(postSyncRequest(syncUrl)),
     taskEither.chainW(({ merkleTree, messages }) =>
       pipe(
-        decryptMessages({ messages, mnemonic }),
+        decryptMessages({ messages, key }),
         taskEither.map(
           (messages): DbWorkerInputReceive => ({
             type: "receive",
@@ -223,4 +204,10 @@ const postSyncWorkerOutput: PostSyncWorkerOutput = (message) => () =>
   postMessage(message);
 
 onmessage = ({ data }: MessageEvent<SyncWorkerInput>): void =>
-  requestSync(sync({ ...data, postSyncWorkerOutput }));
+  requestSync(
+    sync({
+      ...data,
+      postSyncWorkerOutput,
+      key: mnemonicToEntropy(data.owner.mnemonic),
+    })
+  );
