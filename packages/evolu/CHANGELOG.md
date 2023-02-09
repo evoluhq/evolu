@@ -1,5 +1,11 @@
 # evolu
 
+## 0.12.0
+
+### Minor Changes
+
+- 277d80e: Replace OpenPGP.js with micro-aes-gcm
+
 ## 0.11.0
 
 ### Minor Changes
