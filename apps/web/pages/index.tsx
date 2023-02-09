@@ -2,6 +2,7 @@
 import { createHooks, model, NonEmptyString1000, SqliteBoolean } from "evolu";
 import Head from "next/head";
 import { ChangeEvent, memo, useEffect, useState } from "react";
+import { Favicon } from "../components/Favicon";
 
 // `model` is Evolu helper for branded types.
 // https://dev.to/andersonjoseph/typescript-tip-safer-functions-with-branded-types-14o4
@@ -295,9 +296,10 @@ export default function Index() {
   return (
     <div>
       <Head>
-        <title>Evolu TodoMVC</title>
+        <title>Evolu</title>
+        <Favicon />
       </Head>
-      <h1>Evolu TodoMVC</h1>
+      <h1>Evolu</h1>
       <NotificationBar />
       <TodoList />
       <TodoCategoryList />
