@@ -8,7 +8,7 @@ Evolu is designed for privacy, ease of use, and no vendor lock-in. Everybody can
 - E2E encrypted sync and backup with CRDT (merging changes without conflicts)
 - Free Evolu server for testing (paid production-ready server soon)
 - Typed database schema with TypeScript branded types (NonEmptyStringMax1000, PositiveNumber, etc.)
-- Automatic migrations with Evolu flatMap helper for schema evolving
+- Automatic migrations with Evolu filterMap helper for schema evolving
 - Built-in validations for forms and domain models
 - Real-time experience
 - Reactive queries
