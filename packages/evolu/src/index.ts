@@ -3,6 +3,7 @@ export * from "./createHooks.js";
 export * from "./merkleTree.js";
 export * from "./model.js";
 export * as model from "./model.js";
+export * from "./perf.js";
 export {
   CrdtMessageContent,
   EncryptedCrdtMessage,

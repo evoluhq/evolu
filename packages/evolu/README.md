@@ -4,6 +4,18 @@ React Hooks library for [local-first software](https://www.inkandswitch.com/loca
 
 Evolu is designed for privacy, ease of use, and no vendor lock-in. Everybody can run their Evolu server, and the source code is so simple that everybody can understand what it does.
 
+- The official sqlite3 WASM in all browsers (React Native and Electron soon)
+- E2E encrypted sync and backup with CRDT (merging changes without conflicts)
+- Free Evolu server for testing (paid production-ready server soon)
+- Typed database schema with TypeScript branded types (NonEmptyStringMax1000, PositiveNumber, etc.)
+- Automatic migrations with Evolu flatMap helper for schema evolving
+- Built-in validations for forms and domain models
+- Real-time experience
+- Reactive queries
+- Revalidation on focus and network recovery
+- Clean and functional code with minimal API
+- React Suspense (soon)
+
 ## Local-first software
 
 Local-first software allows users to own their data. Evolu stores data in the user's device(s), so Evolu apps can work offline and without a specific server. How is it different from keeping files on disk? A very. Files are not the right abstraction for apps and are complicated to synchronize among devices. That's why client-server architecture rules the world. But as with everything, it has trade-offs.
