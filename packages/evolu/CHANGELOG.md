@@ -1,5 +1,14 @@
 # evolu
 
+## 0.12.1
+
+### Patch Changes
+
+- 63cd8e7: Export perf utils
+
+  - logTaskEitherDuration
+  - logReaderTaskEitherDuration
+
 ## 0.12.0
 
 ### Minor Changes
