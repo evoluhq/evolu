@@ -13,10 +13,13 @@ import {
 } from "./types.js";
 
 export const applyMessages =
-  (merkleTree: MerkleTree) =>
-  (
-    messages: ReadonlyNonEmptyArray<CrdtMessage>
-  ): ReaderTaskEither<DbEnv, UnknownError, MerkleTree> =>
+  ({
+    merkleTree,
+    messages,
+  }: {
+    merkleTree: MerkleTree;
+    messages: ReadonlyNonEmptyArray<CrdtMessage>;
+  }): ReaderTaskEither<DbEnv, UnknownError, MerkleTree> =>
   ({ db }) =>
     pipe(
       messages,

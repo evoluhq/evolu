@@ -107,8 +107,7 @@ export const send = ({
         readerTaskEither.fromReaderEither,
         readerTaskEither.chainW(({ messages, timestamp }) =>
           pipe(
-            messages,
-            applyMessages(clock.merkleTree),
+            applyMessages({ merkleTree: clock.merkleTree, messages }),
             readerTaskEither.map((merkleTree) => ({
               messages,
               clock: { merkleTree, timestamp },

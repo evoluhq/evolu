@@ -83,7 +83,10 @@ const handleReceivedMessages =
       readerTaskEither.fromReaderEither,
       readerTaskEither.bindTo("timestamp"),
       readerTaskEither.bindW("merkleTree", () =>
-        pipe(messages, applyMessages(clock.merkleTree))
+        applyMessages({
+          merkleTree: clock.merkleTree,
+          messages,
+        })
       ),
       readerTaskEither.chainFirstW(updateClock),
       readerTaskEither.chainFirstW(() =>
