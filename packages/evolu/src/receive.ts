@@ -34,6 +34,7 @@ import {
   PostDbWorkerOutputEnv,
   PostSyncWorkerInputEnv,
   SyncError,
+  TableDefinition,
   TimeEnv,
   Timestamp,
   TimestampCounterOverflowError,
@@ -42,6 +43,7 @@ import {
   UnknownError,
 } from "./types.js";
 import { updateClock } from "./updateClock.js";
+import { updateDbSchema } from "./updateDbSchema.js";
 
 const receiveMessages =
   (timestamp: Timestamp) =>
@@ -65,6 +67,27 @@ const receiveMessages =
       readerEither.map(() => timestamp)
     );
 
+const ensureDbSchema: (
+  messages: ReadonlyNonEmptyArray<CrdtMessage>
+) => ReaderTaskEither<DbEnv, UnknownError, void> = flow(
+  // TODO: messagesToDbSchema after switch to fp-ts/schema
+  readonlyNonEmptyArray.reduce(
+    Object.create(null) as Record<string, Record<string, null>>,
+    (record, { table, column }) => ({
+      ...record,
+      [table]: { ...record[table], [column]: null },
+    })
+  ),
+  (record) =>
+    Object.entries(record).map(
+      ([name, columns]): TableDefinition => ({
+        name,
+        columns: Object.keys(columns),
+      })
+    ),
+  (tableDefinitions) => updateDbSchema({ tableDefinitions })
+);
+
 const handleReceivedMessages =
   (clock: CrdtClock) =>
   (
@@ -83,10 +106,12 @@ const handleReceivedMessages =
       readerTaskEither.fromReaderEither,
       readerTaskEither.bindTo("timestamp"),
       readerTaskEither.bindW("merkleTree", () =>
-        applyMessages({
-          merkleTree: clock.merkleTree,
-          messages,
-        })
+        pipe(
+          ensureDbSchema(messages),
+          readerTaskEither.chainW(() =>
+            applyMessages({ merkleTree: clock.merkleTree, messages })
+          )
+        )
       ),
       readerTaskEither.chainFirstW(updateClock),
       readerTaskEither.chainFirstW(() =>

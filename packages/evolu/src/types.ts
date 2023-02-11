@@ -110,6 +110,7 @@ export const sqlQueryToString = ({
 export const sqlQueryFromString = (s: SqlQueryString): SqlQuery =>
   JSON.parse(s) as SqlQuery;
 
+// TODO: Remove after switch to fp-ts/schema
 export interface TableDefinition {
   readonly name: string;
   readonly columns: readonly string[];
