@@ -1,5 +1,12 @@
 # web
 
+## 0.0.40
+
+### Patch Changes
+
+- Updated dependencies [bafed45]
+  - evolu@0.12.2
+
 ## 0.0.39
 
 ### Patch Changes
