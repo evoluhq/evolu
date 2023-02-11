@@ -1,5 +1,11 @@
 # evolu
 
+## 1.0.0
+
+### Major Changes
+
+- 0ed4d15: Release 1.0
+
 ## 0.12.3
 
 ### Patch Changes
