@@ -1,5 +1,11 @@
 # evolu
 
+## 0.12.3
+
+### Patch Changes
+
+- 004f6f2: Move fp-ts from peer deps to deps
+
 ## 0.12.2
 
 ### Patch Changes
