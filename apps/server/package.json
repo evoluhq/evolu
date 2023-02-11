@@ -1,6 +1,6 @@
 {
   "name": "server",
-  "version": "0.0.39",
+  "version": "0.0.40",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,7 +11,7 @@
     "clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist"
   },
   "dependencies": {
-    "evolu": "workspace:0.12.1",
+    "evolu": "workspace:0.12.2",
     "fp-ts": "^2.13.1"
   },
   "devDependencies": {

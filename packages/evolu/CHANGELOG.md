@@ -1,5 +1,11 @@
 # evolu
 
+## 0.12.2
+
+### Patch Changes
+
+- bafed45: Ensure DbSchema for received messages
+
 ## 0.12.1
 
 ### Patch Changes
