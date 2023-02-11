@@ -47,7 +47,7 @@ const lazyInit =
             "row" blob,
             "column" blob,
             "value" blob
-          );
+          ) without rowid;
 
           create index index__message on __message (
             "table",

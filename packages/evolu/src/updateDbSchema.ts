@@ -70,7 +70,7 @@ const createTable =
             // https://www.sqlite.org/datatype3.html
             .map((name) => `"${name}" blob`)
             .join(", ")}
-        );
+        ) without rowid;
       `),
       taskEither.map(constVoid)
     );
