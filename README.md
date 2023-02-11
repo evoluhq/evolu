@@ -10,6 +10,7 @@ Evolu is designed for privacy, ease of use, and no vendor lock-in. Everybody can
 - Typed database schema with TypeScript branded types (NonEmptyStringMax1000, PositiveNumber, etc.)
 - Automatic migrations with Evolu filterMap helper for schema evolving
 - Built-in validations for forms and domain models
+- No signup/login, no email collection, only Bitcoin-like mnemonic (12 words)
 - Real-time experience
 - Reactive queries
 - Revalidation on focus and network recovery
@@ -138,7 +139,7 @@ Evolu uses end-to-end encryption and generates strong and safe passwords for you
 
 Evolu is not P2P software. For reliable syncing and backup, there needs to be a server. Evolu server is very minimal, and everyone can run their own. While it's theoretically possible to have P2P Evolu, I have yet to see a reliable solution. It's not only a technical problem; it's an economic problem. Someone has to be paid to keep your data safe. Evolu provides a free server for testing. Soon we will provide a paid server for production usage.
 
-All table columns except for ID are nullable by default. It's not a bug; it's a feature. Local-first data are meant to last forever, but schemas evolve. This design decision was inspired by GraphQL [nullability](https://graphql.org/learn/best-practices/#nullability) and [versioning](https://graphql.org/learn/best-practices/#versioning) design patterns. Evolu provides a handy `filterMap` helper for that.
+All table columns except for ID are nullable by default. It's not a bug; it's a feature. Local-first data are meant to last forever, but schemas evolve. This design decision was inspired by GraphQL [nullability](https://graphql.org/learn/best-practices/#nullability) and [versioning](https://graphql.org/learn/best-practices/#versioning). Evolu provides a handy `filterMap` helper for queries.
 
 Evolu has no support for CRDT transactions because CRDT transactions are still in the research phase. There are a few proposals, but nothing is usable yet. Instead of a half-baked solution, I made a design decision not to implement them. Fortunately, it's not a show-stopper.
 
