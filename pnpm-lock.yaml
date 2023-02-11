@@ -130,6 +130,7 @@ importers:
       body-parser: 1.20.1
       cors: 2.8.5
       express: 4.18.2
+      fp-ts: 2.13.1
       kysely: 0.23.4
       micro-aes-gcm: 0.3.3
       murmurhash: 2.0.1
@@ -149,7 +150,6 @@ importers:
       array-shuffle: 3.0.0
       eslint: 8.34.0
       eslint-config-evolu: link:../eslint-config-evolu
-      fp-ts: 2.13.1
       react: 18.2.0
       react-dom: 18.2.0_react@18.2.0
       tslib: 2.5.0
@@ -2493,6 +2493,7 @@ packages:
 
   /fp-ts/2.13.1:
     resolution: {integrity: sha512-0eu5ULPS2c/jsa1lGFneEFFEdTbembJv8e4QKXeVJ3lm/5hyve06dlKZrpxmMwJt6rYen7sxmHHK2CLaXvWuWQ==}
+    dev: false
 
   /fresh/0.5.2:
     resolution: {integrity: sha512-zJ2mQYM18rEFOudeV4GShTGIQ7RbzA7ozbU9I/XBpm7kqgMywgmylMwXHxZJmkVoYkna9d2pVXVXPdYTP9ej8Q==}
