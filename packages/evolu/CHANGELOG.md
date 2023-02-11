@@ -1,5 +1,13 @@
 # evolu
 
+## 1.0.1
+
+### Patch Changes
+
+- f2c88d3: Use SQLite without rowid
+
+  A WITHOUT ROWID table is an optimization that can reduce storage and processing requirements.
+
 ## 1.0.0
 
 ### Major Changes
