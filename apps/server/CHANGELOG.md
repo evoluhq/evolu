@@ -1,5 +1,12 @@
 # server
 
+## 0.0.44
+
+### Patch Changes
+
+- Updated dependencies [ddac0d6]
+  - evolu@1.0.2
+
 ## 0.0.43
 
 ### Patch Changes
