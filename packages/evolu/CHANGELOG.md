@@ -1,5 +1,11 @@
 # evolu
 
+## 1.0.2
+
+### Patch Changes
+
+- ddac0d6: Silence SQLite console output
+
 ## 1.0.1
 
 ### Patch Changes
