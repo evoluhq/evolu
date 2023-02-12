@@ -1,5 +1,5 @@
 import { either, taskEither } from "fp-ts";
-import { pipe } from "fp-ts/lib/function.js";
+import { constVoid, pipe } from "fp-ts/lib/function.js";
 import { TaskEither } from "fp-ts/TaskEither";
 import {
   Database,
@@ -9,6 +9,14 @@ import {
   UnknownError,
 } from "./types.js";
 import sqlite3 from "../sqlite/sqlite3-bundler-friendly.mjs";
+
+// @ts-expect-error Missing types.
+self.sqlite3ApiConfig = {
+  debug: constVoid,
+  log: constVoid,
+  warn: constVoid,
+  error: constVoid,
+};
 
 export const createWebDbEnv = (
   strategy: "localStorage" | "opfs"
