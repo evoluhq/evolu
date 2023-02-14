@@ -1,0 +1,65 @@
+---
+title: Evolu - React Hooks for Local-First Apps
+---
+
+# Evolu - React Hooks for Local-First Apps
+
+React Hooks library for [local-first apps](https://www.inkandswitch.com/local-first/) with end-to-end encrypted backup and sync using [SQLite](https://sqlite.org/) and [CRDT](https://crdt.tech/).
+
+import { Callout } from "nextra-theme-docs";
+
+<Callout type="info" emoji="ℹ️">
+  Evolu is designed for privacy, ease of use, and no vendor lock-in.
+</Callout>
+
+Local-first apps allow users to own their data. Evolu stores data in the user's device(s), so Evolu apps can work offline and without a specific server. [Evolu Server](docs/evolu-server)
+
+Evolu merges data changes made on different devices without conflicts using Conflict-free Replicated Data Type (CRDT). [How Evolu Works](docs/how-evolu-works)
+
+## Overview
+
+```js copy
+import { createHooks, model } from "evolu";
+
+// Define table ID branded type.
+const TodoId = model.id<"todo">();
+
+// Define DB schema and create React Hooks.
+const { useQuery, useMutation } = createHooks({
+  todo: {
+    id: TodoId,
+    // NonEmptyString1000 is much better than just a string.
+    title: model.NonEmptyString1000,
+    isCompleted: model.SqliteBoolean,
+  },
+});
+
+// Evolu uses Kysely, a type-safe TypeScript SQL query builder.
+const { rows, isLoaded } = useQuery((db) =>
+  // createAt is added automatically.
+  db.selectFrom("todo").select(["id", "title"]).orderBy("createdAt")
+);
+
+const { mutate } = useMutation();
+// Mutate never fails. It's the advantage of branded types and local first apps.
+mutate("todo", { id, isCompleted: true });
+```
+
+## Features
+
+- The official sqlite3 WASM in all browsers (React Native and Electron soon)
+- E2E encrypted sync and backup with CRDT (merging changes without conflicts)
+- Free Evolu server for testing (paid production-ready server soon)
+- Typed database schema with TypeScript branded types
+- Automatic migrations with Evolu filterMap helper for schema evolving
+- Built-in validations for forms and domain models
+- No signup/login, no email collection, only Bitcoin-like mnemonic (12 words)
+- Real-time experience
+- Reactive queries
+- Revalidation on focus and network recovery
+- Clean and functional code with minimal API
+- React Suspense (soon)
+
+## Community
+
+The Evolu community is on [GitHub Discussions](https://github.com/evoluhq/evolu/discussions). To chat with other community members, you can join the [Evolu Discord](https://discord.gg/2J8yyyyxtZ).

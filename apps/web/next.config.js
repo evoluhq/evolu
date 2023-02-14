@@ -1,8 +1,10 @@
-// @ts-check
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const withNextra = require("nextra")({
+  theme: "nextra-theme-docs",
+  themeConfig: "./theme.config.jsx",
+});
 
-/**
- * @type {import('next').NextConfig}
- **/
+/** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
   // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -28,4 +30,4 @@ const nextConfig = {
   experimental: { esmExternals: "loose" },
 };
 
-module.exports = nextConfig;
+module.exports = withNextra(nextConfig);

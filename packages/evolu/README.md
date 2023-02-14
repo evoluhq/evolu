@@ -1,6 +1,6 @@
 # Evolu
 
-React Hooks library for [local-first software](https://www.inkandswitch.com/local-first/) with end-to-end encrypted backup and sync using [SQLite](https://sqlite.org/) and [CRDT](https://crdt.tech/).
+React Hooks library for [local-first apps](https://www.inkandswitch.com/local-first/) with end-to-end encrypted backup and sync using [SQLite](https://sqlite.org/) and [CRDT](https://crdt.tech/).
 
 Evolu is designed for privacy, ease of use, and no vendor lock-in. Everybody can run their Evolu server, and the source code is so simple that everybody can understand what it does.
 
@@ -17,13 +17,13 @@ Evolu is designed for privacy, ease of use, and no vendor lock-in. Everybody can
 - Clean and functional code with minimal API
 - React Suspense (soon)
 
-## Local-first software
+## Local-first apps
 
-Local-first software allows users to own their data. Evolu stores data in the user's device(s), so Evolu apps can work offline and without a specific server. How is it different from keeping files on disk? A very. Files are not the right abstraction for apps and are complicated to synchronize among devices. That's why client-server architecture rules the world. But as with everything, it has trade-offs.
+Local-first apps allow users to own their data. Evolu stores data in the user's device(s), so Evolu apps can work offline and without a specific server. How is it different from keeping files on disk? A very. Files are not the right abstraction for apps and are complicated to synchronize among devices. That's why client-server architecture rules the world. But as with everything, it has trade-offs.
 
 ### The trade-offs of the client-server architecture
 
-Client-server architecture provides us with easy backup and synchronization, but all that depends on the ability of a server to fulfill its promises. Internet is offline, companies go bankrupt, users are banned, and errors occur. All those things happen all the time, and then what? Right, that's why the world needs local-first software. But until now, writing local-first software has been challenging because of the lack of libraries and design patterns. That's why I created Evolu.
+Client-server architecture provides us with easy backup and synchronization, but all that depends on the ability of a server to fulfill its promises. Internet is offline, companies go bankrupt, users are banned, and errors occur. All those things happen all the time, and then what? Right, that's why the world needs local-first apps. But until now, writing local-first apps has been challenging because of the lack of libraries and design patterns. That's why I created Evolu.
 
 ## Getting Started
 
@@ -116,7 +116,7 @@ const handleRestoreOwner = () => {
 
 ### Handle errors
 
-Evolu useQuery and useMutation never fail, it's the advantage of local first software, but Evolu, in rare cases, can.
+Evolu useQuery and useMutation never fail, it's the advantage of local first apps, but Evolu, in rare cases, can.
 
 ```ts
 const evoluError = useEvoluError();
@@ -137,7 +137,7 @@ Evolu uses end-to-end encryption and generates strong and safe passwords for you
 
 > “There are no solutions. There are only trade-offs.” ― Thomas Sowell
 
-Evolu is not P2P software. For reliable syncing and backup, there needs to be a server. Evolu server is very minimal, and everyone can run their own. While it's theoretically possible to have P2P Evolu, I have yet to see a reliable solution. It's not only a technical problem; it's an economic problem. Someone has to be paid to keep your data safe. Evolu provides a free server for testing. Soon we will provide a paid server for production usage.
+Evolu is not P2P. For reliable syncing and backup, there needs to be a server. Evolu server is very minimal, and everyone can run their own. While it's theoretically possible to have P2P Evolu, I have yet to see a reliable solution. It's not only a technical problem; it's an economic problem. Someone has to be paid to keep your data safe. Evolu provides a free server for testing. Soon we will provide a paid server for production usage.
 
 All table columns except for ID are nullable by default. It's not a bug; it's a feature. Local-first data are meant to last forever, but schemas evolve. This design decision was inspired by GraphQL [nullability](https://graphql.org/learn/best-practices/#nullability) and [versioning](https://graphql.org/learn/best-practices/#versioning). Evolu provides a handy `filterMap` helper for queries.
 
