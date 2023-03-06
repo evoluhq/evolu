@@ -4,15 +4,9 @@ import { readerTaskEither, taskEither } from "fp-ts";
 import { pipe } from "fp-ts/lib/function.js";
 import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
 import { createInitialMerkleTree } from "./merkleTree.js";
-import { Mnemonic, OwnerId } from "./model.js";
+import { Mnemonic, Owner, OwnerId } from "./model.js";
 import { createInitialTimestamp, timestampToString } from "./timestamp.js";
-import {
-  DbEnv,
-  merkleTreeToString,
-  Owner,
-  OwnerEnv,
-  UnknownError,
-} from "./types.js";
+import { DbEnv, merkleTreeToString, OwnerEnv, UnknownError } from "./types.js";
 
 const selectOwner: ReaderTaskEither<DbEnv, UnknownError, OwnerEnv> = ({ db }) =>
   pipe(

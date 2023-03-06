@@ -13,6 +13,7 @@ module.exports = {
     "react-hooks/exhaustive-deps": "error",
     "no-console": "error",
     "import/no-cycle": "error",
+    "@next/next/no-html-link-for-pages": "off",
   },
   parserOptions: {
     babelOptions: {

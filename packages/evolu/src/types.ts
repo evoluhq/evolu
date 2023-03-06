@@ -1,22 +1,31 @@
+import { Brand } from "@effect/data/Brand";
+import * as S from "@effect/schema";
+import { Schema } from "@effect/schema";
 import { eq } from "fp-ts";
 import { Either } from "fp-ts/Either";
 import { IO } from "fp-ts/IO";
 import { IORef } from "fp-ts/IORef";
-import { Reader } from "fp-ts/lib/Reader.js";
+import { pipe } from "fp-ts/lib/function.js";
 import { Option } from "fp-ts/Option";
+import { Reader } from "fp-ts/Reader";
 import { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
 import { ReadonlyRecord } from "fp-ts/ReadonlyRecord";
 import { TaskEither } from "fp-ts/TaskEither";
-import type { Kysely, SelectQueryBuilder } from "kysely";
+import { Kysely, SelectQueryBuilder } from "kysely";
 import { customAlphabet } from "nanoid";
-import { BRAND, z } from "zod";
 import {
-  ID,
+  Id,
+  id,
   Mnemonic,
+  Owner,
   OwnerId,
   SqliteBoolean,
-  SqliteDateTime,
+  SqliteDate,
 } from "./model.js";
+
+// https://github.com/sindresorhus/type-fest/blob/main/source/simplify.d.ts
+// eslint-disable-next-line @typescript-eslint/ban-types
+type Simplify<T> = { [KeyType in keyof T]: T[KeyType] } & {};
 
 export type Config = {
   syncUrl: string;
@@ -27,35 +36,40 @@ export type Config = {
 
 // CRDT
 
-const nodeIdRegex = /^[0-9a-f]{16}$/i;
-export const NodeId = z
-  .string()
-  .refine((s) => nodeIdRegex.test(s))
-  .brand<"NodeId">();
-export type NodeId = z.infer<typeof NodeId>;
-const nodeIdNanoId = customAlphabet("0123456789abcdef", 16);
-export const createNodeId = (): NodeId => nodeIdNanoId() as NodeId;
+export const NodeId = pipe(
+  S.string,
+  S.pattern(/^[\w-]{16}$/),
+  S.brand("NodeId")
+);
+export type NodeId = S.Infer<typeof NodeId>;
 
-export type Millis = number & BRAND<"Millis">;
-export const Millis = z.number().refine((n: number): n is Millis => n >= 0);
+export const createNodeId: IO<NodeId> = pipe(
+  customAlphabet("0123456789abcdef", 16),
+  (nanoid) => () => nanoid() as NodeId
+);
 
-export const MAX_COUNTER = 65535;
-export type Counter = number & BRAND<"Counter">;
-export const Counter = z
-  .number()
-  .refine((n: number): n is Counter => n >= 0 && n <= MAX_COUNTER);
+export const Millis = pipe(
+  S.number,
+  S.greaterThanOrEqualTo(0),
+  S.brand("Millis")
+);
+export type Millis = S.Infer<typeof Millis>;
+
+export const Counter = pipe(S.number, S.between(0, 65535), S.brand("Counter"));
+export type Counter = S.Infer<typeof Counter>;
 
 export interface Timestamp {
+  readonly node: NodeId;
   readonly millis: Millis;
   readonly counter: Counter;
-  readonly node: NodeId;
 }
 
-export type TimestampString = string & BRAND<"TimestampString">;
+// TODO: Add Schema and use it in Evolu Server.
+export type TimestampString = string & Brand<"TimestampString">;
 
-/** A murmurhash of stringified Timestamp. */
-export type TimestampHash = number & BRAND<"TimestampHash">;
+export type TimestampHash = number & Brand<"TimestampHash">;
 
+// TODO: Add Schema and use it in Evolu Server.
 export interface MerkleTree {
   readonly hash?: TimestampHash;
   readonly "0"?: MerkleTree;
@@ -63,7 +77,7 @@ export interface MerkleTree {
   readonly "2"?: MerkleTree;
 }
 
-export type MerkleTreeString = string & BRAND<"MerkleTreeString">;
+export type MerkleTreeString = string & Brand<"MerkleTreeString">;
 
 export const merkleTreeToString = (m: MerkleTree): MerkleTreeString =>
   JSON.stringify(m) as MerkleTreeString;
@@ -71,12 +85,17 @@ export const merkleTreeToString = (m: MerkleTree): MerkleTreeString =>
 export const merkleTreeFromString = (m: MerkleTreeString): MerkleTree =>
   JSON.parse(m) as MerkleTree;
 
-// TODO: Add Int8Array, https://github.com/evolu-io/evolu/issues/13
-export type CrdtValue = null | string | number;
+/**
+ * CrdtValue represents what Evolu can save in SQLite.
+ * TODO: Add Int8Array, https://github.com/evoluhq/evolu/issues/4
+ */
+export type CrdtValue =
+  // Remember to update DbSchema when changing.
+  null | string | number;
 
 export interface NewCrdtMessage {
   readonly table: string;
-  readonly row: ID<string>;
+  readonly row: Id;
   readonly column: string;
   readonly value: CrdtValue;
 }
@@ -92,13 +111,13 @@ export interface CrdtClock {
 
 // SQL
 
-/** Like Kysely CompiledQuery but without a `query` prop. */
+// Like Kysely CompiledQuery but without a `query` prop.
 export interface SqlQuery {
   readonly sql: string;
-  readonly parameters: readonly SqliteCompatibleType[];
+  readonly parameters: readonly CrdtValue[];
 }
 
-export type SqlQueryString = string & BRAND<"SqlQueryString">;
+export type SqlQueryString = string & Brand<"SqlQueryString">;
 export const eqSqlQueryString: eq.Eq<SqlQueryString> = eq.eqStrict;
 
 export const sqlQueryToString = ({
@@ -110,228 +129,10 @@ export const sqlQueryToString = ({
 export const sqlQueryFromString = (s: SqlQueryString): SqlQuery =>
   JSON.parse(s) as SqlQuery;
 
-// TODO: Remove after switch to fp-ts/schema
 export interface TableDefinition {
   readonly name: string;
   readonly columns: readonly string[];
 }
-
-// DB
-
-// TODO: Binary.
-export type SqliteCompatibleType = number | string | null;
-
-export type SqliteRow = ReadonlyRecord<string, SqliteCompatibleType>;
-
-export type SqliteRows = readonly SqliteRow[];
-
-export type RowsCache = ReadonlyRecord<SqlQueryString, SqliteRows>;
-
-/**
- * Functional wrapper for various SQLite implementations.
- * It's async because some platforms are.
- */
-export interface Database {
-  readonly SQLite3Error: unknown;
-  readonly exec: (sql: string) => TaskEither<UnknownError, SqliteRows>;
-  readonly execSqlQuery: (s: SqlQuery) => TaskEither<UnknownError, SqliteRows>;
-  readonly changes: () => TaskEither<UnknownError, number>;
-}
-
-/* A database owner. */
-export interface Owner {
-  readonly id: OwnerId;
-  readonly mnemonic: Mnemonic;
-}
-
-export interface ReplaceAllPatch {
-  readonly op: "replaceAll";
-  readonly value: SqliteRows;
-}
-
-export interface ReplaceAtPatch {
-  readonly op: "replaceAt";
-  readonly index: number;
-  readonly value: SqliteRow;
-}
-
-export interface PurgePatch {
-  readonly op: "purge";
-}
-
-export type Patch = ReplaceAllPatch | ReplaceAtPatch;
-
-export interface QueryPatches {
-  readonly query: SqlQueryString;
-  readonly patches: readonly Patch[];
-}
-
-type DbTableSchema = {
-  readonly id: z.ZodBranded<z.ZodEffects<z.ZodString, string, string>, string>;
-} & ReadonlyRecord<string, z.ZodTypeAny>;
-
-export type DbSchema = Record<string, DbTableSchema>;
-
-export const CommonColumns = z.object({
-  createdAt: SqliteDateTime,
-  createdBy: OwnerId,
-  updatedAt: SqliteDateTime,
-  isDeleted: SqliteBoolean,
-});
-export type CommonColumns = z.infer<typeof CommonColumns>;
-export const commonColumns = Object.keys(CommonColumns.shape);
-
-type NullableExceptOfId<T> = {
-  readonly [P in keyof T]: P extends "id" ? T[P] : T[P] | null;
-};
-
-export type DbSchemaToType<S extends DbSchema, A> = {
-  readonly [TableName in keyof S]: NullableExceptOfId<
-    {
-      readonly [ColumnName in keyof S[TableName]]: z.TypeOf<
-        S[TableName][ColumnName]
-      >;
-    } & A
-  >;
-};
-
-type KyselyOnlyForReading<DB> = Omit<
-  Kysely<DB>,
-  | "connection"
-  | "deleteFrom"
-  | "destroy"
-  | "dynamic"
-  | "fn"
-  | "getExecutor"
-  | "insertInto"
-  | "introspection"
-  | "isTransaction"
-  | "migration"
-  | "raw"
-  | "replaceInto"
-  | "schema"
-  | "transaction"
-  | "updateTable"
-  | "with"
-  | "withoutPlugins"
-  | "withPlugin"
-  | "withRecursive"
-  | "withSchema"
-  | "withTables"
->;
-
-// Hooks.
-
-export type Query<S extends DbSchema, T> = (
-  db: KyselyOnlyForReading<DbSchemaToType<S, CommonColumns>>
-) => SelectQueryBuilder<never, never, T>;
-
-// Typescript function overloading in arrow functions.
-// https://stackoverflow.com/a/53143568/233902
-export interface UseQuery<S extends DbSchema> {
-  <T>(query: Query<S, T> | null | false): {
-    readonly rows: readonly T[];
-    readonly row: T | null;
-    readonly isLoaded: boolean;
-  };
-  <T, U>(query: Query<S, T> | null | false, initialFilterMap: (row: T) => U): {
-    readonly rows: readonly NonNullable<U>[];
-    readonly row: NonNullable<U> | null;
-    readonly isLoaded: boolean;
-  };
-}
-
-type AllowCasting<T> = {
-  readonly [P in keyof T]: T[P] extends SqliteBoolean | null
-    ? T[P] | boolean
-    : T[P] extends SqliteDateTime | null
-    ? T[P] | Date
-    : T[P];
-};
-
-export type OnCompleteId = ID<"OnComplete">;
-
-export type Mutate<S extends DbSchema> = <
-  V extends DbSchemaToType<S, Pick<CommonColumns, "isDeleted">>,
-  T extends keyof V
->(
-  table: T,
-  values: Partial<AllowCasting<V[T]>>,
-  onComplete?: IO<void>
-) => {
-  readonly id: V[T]["id"];
-};
-
-export type UseMutation<S extends DbSchema> = () => {
-  readonly mutate: Mutate<S>;
-};
-
-export interface RestoreOwnerError {
-  readonly type: "invalid mnemonic";
-}
-
-export interface OwnerActions {
-  readonly reset: IO<void>;
-  readonly restore: (mnemonic: string) => TaskEither<RestoreOwnerError, void>;
-}
-
-export interface Hooks<S extends DbSchema> {
-  readonly useQuery: UseQuery<S>;
-  readonly useMutation: UseMutation<S>;
-  readonly useEvoluError: IO<EvoluError | null>;
-  readonly useOwner: IO<Owner | null>;
-  readonly useOwnerActions: IO<OwnerActions>;
-}
-
-export type CreateHooks = <S extends DbSchema>(
-  dbSchema: S,
-  config?: Partial<Config>
-) => Hooks<S>;
-
-// DbWorker environments.
-// https://andywhite.xyz/posts/2021-01-28-rte-react/
-
-export interface DbEnv {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  readonly db: Database;
-}
-
-export interface OwnerEnv {
-  readonly owner: Owner;
-}
-
-export interface PostDbWorkerOutputEnv {
-  readonly postDbWorkerOutput: (message: DbWorkerOutput) => IO<void>;
-}
-
-export interface PostSyncWorkerInputEnv {
-  readonly postSyncWorkerInput: (message: SyncWorkerInput) => IO<void>;
-}
-
-export interface RowsCacheEnv {
-  readonly rowsCache: IORef<RowsCache>;
-}
-
-export interface TimeEnv {
-  readonly now: () => Millis;
-}
-
-export interface LockManagerEnv {
-  readonly locks: LockManager;
-}
-
-export interface ConfigEnv {
-  readonly config: Config;
-}
-
-export type DbWorkerEnvs = DbEnv &
-  OwnerEnv &
-  PostDbWorkerOutputEnv &
-  PostSyncWorkerInputEnv &
-  RowsCacheEnv &
-  TimeEnv &
-  LockManagerEnv &
-  ConfigEnv;
 
 // Errors.
 
@@ -405,7 +206,238 @@ export interface EvoluError {
     | SyncError;
 }
 
+// DB
+
+export type SqliteRow = ReadonlyRecord<string, CrdtValue>;
+
+export type SqliteRows = readonly SqliteRow[];
+
+export type RowsCache = ReadonlyRecord<SqlQueryString, SqliteRows>;
+
+/**
+ * Functional wrapper for various SQLite implementations.
+ * It's async because some platforms are.
+ */
+export interface Database {
+  readonly SQLite3Error: unknown;
+  readonly exec: (sql: string) => TaskEither<UnknownError, SqliteRows>;
+  readonly execSqlQuery: (s: SqlQuery) => TaskEither<UnknownError, SqliteRows>;
+  readonly changes: () => TaskEither<UnknownError, number>;
+}
+
+export interface ReplaceAllPatch {
+  readonly op: "replaceAll";
+  readonly value: SqliteRows;
+}
+
+export interface ReplaceAtPatch {
+  readonly op: "replaceAt";
+  readonly index: number;
+  readonly value: SqliteRow;
+}
+
+export type Patch = ReplaceAllPatch | ReplaceAtPatch;
+
+export interface QueryPatches {
+  readonly query: SqlQueryString;
+  readonly patches: readonly Patch[];
+}
+
+export type DbSchema = Readonly<
+  Record<string, { id: Id } & Record<string, CrdtValue>>
+>;
+
+interface CommonColumns {
+  readonly createdAt: SqliteDate;
+  readonly createdBy: OwnerId;
+  readonly updatedAt: SqliteDate;
+  readonly isDeleted: SqliteBoolean;
+}
+
+const commonColumnsObject: ReadonlyRecord<keyof CommonColumns, null> = {
+  createdAt: null,
+  createdBy: null,
+  updatedAt: null,
+  isDeleted: null,
+};
+
+export const commonColumns = Object.keys(commonColumnsObject);
+
+type KyselySelectFrom<DB> = Pick<Kysely<DB>, "selectFrom">;
+
+// Hooks.
+
+type NullableExceptOfId<T> = {
+  readonly [K in keyof T]: K extends "id" ? T[K] : T[K] | null;
+};
+
+type DbSchemaForQuery<S extends DbSchema> = {
+  readonly [Table in keyof S]: NullableExceptOfId<
+    {
+      readonly [Column in keyof S[Table]]: S[Table][Column];
+    } & CommonColumns
+  >;
+};
+
+export type Query<S extends DbSchema, QueryRow> = (
+  db: KyselySelectFrom<DbSchemaForQuery<S>>
+) => SelectQueryBuilder<never, never, QueryRow>;
+
+export type NullableOrFalse<T> = T | null | false;
+export type ExcludeNullAndFalse<T> = Exclude<T, null | false>;
+
+export type UseQuery<S extends DbSchema> = <
+  QueryRow extends SqliteRow,
+  Row extends SqliteRow
+>(
+  /** TODO */
+  query: NullableOrFalse<Query<S, QueryRow>>,
+  /** TODO */
+  filterMap: (row: QueryRow) => NullableOrFalse<Row>
+) => {
+  readonly rows: readonly Readonly<ExcludeNullAndFalse<Row>>[];
+  readonly row: Readonly<ExcludeNullAndFalse<Row>> | null;
+  readonly isLoaded: boolean;
+};
+
+type DbSchemaForMutate<S extends DbSchema> = {
+  readonly [Table in keyof S]: NullableExceptOfId<
+    {
+      readonly [Column in keyof S[Table]]: S[Table][Column];
+    } & Pick<CommonColumns, "isDeleted">
+  >;
+};
+
+type AllowCasting<T> = {
+  readonly [K in keyof T]: T[K] extends SqliteBoolean
+    ? boolean | SqliteBoolean
+    : T[K] extends null | SqliteBoolean
+    ? null | boolean | SqliteBoolean
+    : T[K] extends SqliteDate
+    ? Date | SqliteDate
+    : T[K] extends null | SqliteDate
+    ? null | Date | SqliteDate
+    : T[K];
+};
+
+export type Mutate<S extends DbSchema> = <
+  U extends DbSchemaForMutate<S>,
+  T extends keyof U
+>(
+  table: T,
+  values: Simplify<Partial<AllowCasting<U[T]>>>,
+  onComplete?: IO<void>
+) => {
+  readonly id: U[T]["id"];
+};
+
+// https://stackoverflow.com/a/54713648/233902
+type NullablePartial<
+  T,
+  NK extends keyof T = {
+    [K in keyof T]: null extends T[K] ? K : never;
+  }[keyof T],
+  NP = Pick<T, Exclude<keyof T, NK>> & Partial<Pick<T, NK>>
+> = { [K in keyof NP]: NP[K] };
+
+export type Create<S extends DbSchema> = <T extends keyof S>(
+  table: T,
+  values: Simplify<NullablePartial<AllowCasting<Omit<S[T], "id">>>>,
+  onComplete?: IO<void>
+) => {
+  readonly id: S[T]["id"];
+};
+
+export type Update<S extends DbSchema> = <T extends keyof S>(
+  table: T,
+  values: Simplify<
+    Partial<
+      AllowCasting<Omit<S[T], "id"> & Pick<CommonColumns, "isDeleted">>
+    > & { id: S[T]["id"] }
+  >,
+  onComplete?: IO<void>
+) => {
+  readonly id: S[T]["id"];
+};
+
+export type UseMutation<S extends DbSchema> = () => {
+  readonly create: Create<S>;
+  readonly update: Update<S>;
+};
+
+export interface RestoreOwnerError {
+  readonly type: "invalid mnemonic";
+}
+
+export interface OwnerActions {
+  readonly reset: IO<void>;
+  readonly restore: (
+    mnemonic: string
+  ) => Promise<Either<RestoreOwnerError, void>>;
+}
+
+export interface Hooks<S extends DbSchema> {
+  readonly useQuery: UseQuery<S>;
+  readonly useMutation: UseMutation<S>;
+  readonly useEvoluError: IO<EvoluError | null>;
+  readonly useOwner: IO<Owner | null>;
+  readonly useOwnerActions: IO<OwnerActions>;
+}
+
+export type CreateHooks = <S extends DbSchema>(
+  dbSchema: S,
+  config?: Partial<Config>
+) => Hooks<S>;
+
+// DbWorker environments.
+// https://andywhite.xyz/posts/2021-01-28-rte-react/
+
+export interface DbEnv {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readonly db: Database;
+}
+
+export interface OwnerEnv {
+  readonly owner: Owner;
+}
+
+export interface PostDbWorkerOutputEnv {
+  readonly postDbWorkerOutput: (message: DbWorkerOutput) => IO<void>;
+}
+
+export interface PostSyncWorkerInputEnv {
+  readonly postSyncWorkerInput: (message: SyncWorkerInput) => IO<void>;
+}
+
+export interface RowsCacheEnv {
+  readonly rowsCache: IORef<RowsCache>;
+}
+
+export interface TimeEnv {
+  readonly now: () => Millis;
+}
+
+export interface LockManagerEnv {
+  readonly locks: LockManager;
+}
+
+export interface ConfigEnv {
+  readonly config: Config;
+}
+
+export type DbWorkerEnvs = DbEnv &
+  OwnerEnv &
+  PostDbWorkerOutputEnv &
+  PostSyncWorkerInputEnv &
+  RowsCacheEnv &
+  TimeEnv &
+  LockManagerEnv &
+  ConfigEnv;
+
 // Workers.
+
+export const OnCompleteId = id("OnComplete");
+export type OnCompleteId = S.Infer<typeof OnCompleteId>;
 
 export type DbWorkerInputReceive = {
   readonly type: "receive";
@@ -511,5 +543,5 @@ export type EvoluEnv = {
 };
 
 export type CreateEvolu = <S extends DbSchema>(
-  dbSchema: S
+  dbSchema: Schema<S>
 ) => Reader<EvoluEnv, Evolu<S>>;

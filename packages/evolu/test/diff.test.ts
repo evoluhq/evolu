@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { SqliteRows } from "../src";
+import { SqliteRows } from "../src/types";
 import { applyPatches, createPatches } from "../src/diff";
 
 test("createPatches", () => {
