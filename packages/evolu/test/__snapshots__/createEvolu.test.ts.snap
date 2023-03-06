@@ -1,0 +1,71 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`createNewCrdtMessages 1`] = `
+[
+  {
+    "column": "c",
+    "row": "row",
+    "table": "table",
+    "value": 0,
+  },
+  {
+    "column": "d",
+    "row": "row",
+    "table": "table",
+    "value": "1970-01-01T00:00:00.123Z",
+  },
+  {
+    "column": "e",
+    "row": "row",
+    "table": "table",
+    "value": "string",
+  },
+  {
+    "column": "createdAt",
+    "row": "row",
+    "table": "table",
+    "value": "now",
+  },
+  {
+    "column": "createdBy",
+    "row": "row",
+    "table": "table",
+    "value": "ownerId",
+  },
+]
+`;
+
+exports[`createNewCrdtMessages 2`] = `
+[
+  {
+    "column": "b",
+    "row": "row",
+    "table": "table",
+    "value": null,
+  },
+  {
+    "column": "c",
+    "row": "row",
+    "table": "table",
+    "value": 0,
+  },
+  {
+    "column": "d",
+    "row": "row",
+    "table": "table",
+    "value": "1970-01-01T00:00:00.123Z",
+  },
+  {
+    "column": "e",
+    "row": "row",
+    "table": "table",
+    "value": "string",
+  },
+  {
+    "column": "updatedAt",
+    "row": "row",
+    "table": "table",
+    "value": "now",
+  },
+]
+`;
