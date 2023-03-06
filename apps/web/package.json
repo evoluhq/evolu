@@ -1,6 +1,6 @@
 {
   "name": "web",
-  "version": "0.0.44",
+  "version": "0.0.45",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -13,7 +13,7 @@
     "@effect/data": "^0.3.2",
     "@effect/schema": "~0.0.4",
     "clsx": "^1.2.1",
-    "evolu": "workspace:1.0.2",
+    "evolu": "workspace:2.0.0",
     "next": "^13.2.3",
     "nextra": "^2.2.17",
     "nextra-theme-docs": "^2.2.17",
