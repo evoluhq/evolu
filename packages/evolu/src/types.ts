@@ -371,7 +371,6 @@ export interface RestoreOwnerError {
 
 export interface OwnerActions {
   readonly reset: IO<void>;
-  // aha, Promise a schema error, jasny
   readonly restore: (
     mnemonic: string
   ) => Promise<Either<RestoreOwnerError, void>>;
