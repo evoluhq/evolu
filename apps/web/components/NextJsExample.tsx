@@ -1,5 +1,65 @@
-import { createHooks, model, NonEmptyString1000, SqliteBoolean } from "evolu";
+import { pipe } from "@effect/data/Function";
+import * as S from "@effect/schema";
+import { Schema } from "@effect/schema";
+import { formatErrors } from "@effect/schema/formatter/Tree";
+import * as E from "evolu";
 import { ChangeEvent, FC, memo, useEffect, useState } from "react";
+
+const TodoId = E.id("Todo");
+type TodoId = S.Infer<typeof TodoId>;
+
+const TodoCategoryId = E.id("TodoCategory");
+type TodoCategoryId = S.Infer<typeof TodoCategoryId>;
+
+const NonEmptyString50 = pipe(
+  S.string,
+  S.minLength(1),
+  S.maxLength(50),
+  S.brand("NonEmptyString50")
+);
+type NonEmptyString50 = S.Infer<typeof NonEmptyString50>;
+
+const TodoTable = S.struct({
+  id: TodoId,
+  title: E.NonEmptyString1000,
+  isCompleted: E.SqliteBoolean,
+  categoryId: S.nullable(TodoCategoryId),
+});
+type TodoTable = S.Infer<typeof TodoTable>;
+
+const TodoCategoryTable = S.struct({
+  id: TodoCategoryId,
+  name: NonEmptyString50,
+});
+type TodoCategoryTable = S.Infer<typeof TodoCategoryTable>;
+
+const Database = S.struct({
+  todo: TodoTable,
+  todoCategory: TodoCategoryTable,
+});
+
+const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
+  E.createHooks(Database, {
+    reloadUrl: "/examples/nextjs",
+    ...(process.env.NODE_ENV === "development" && {
+      syncUrl: "http://localhost:4000",
+    }),
+  });
+
+const prompt = <T extends string>(
+  schema: Schema<T>,
+  message: string,
+  onSuccess: (value: T) => void
+): void => {
+  const value = window.prompt(message);
+  if (value == null) return; // on cancel
+  const a = S.decode(schema)(value);
+  if (S.isFailure(a)) {
+    alert(formatErrors(a.left));
+    return;
+  }
+  onSuccess(a.right);
+};
 
 const Button: FC<{
   title: string;
@@ -15,51 +75,6 @@ const Button: FC<{
   );
 };
 
-// `model` is Evolu helper for branded types.
-// https://dev.to/andersonjoseph/typescript-tip-safer-functions-with-branded-types-14o4
-
-const TodoId = model.id<"todo">();
-type TodoId = model.infer<typeof TodoId>;
-
-const TodoCategoryId = model.id<"todoCategory">();
-type TodoCategoryId = model.infer<typeof TodoCategoryId>;
-
-const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
-  createHooks(
-    {
-      todo: {
-        id: TodoId,
-        title: model.NonEmptyString1000,
-        isCompleted: model.SqliteBoolean,
-        categoryId: TodoCategoryId,
-      },
-      todoCategory: {
-        id: TodoCategoryId,
-        name: model.NonEmptyString1000,
-      },
-    },
-    {
-      reloadUrl: "/examples/nextjs",
-      ...(process.env.NODE_ENV === "development" && {
-        syncUrl: "http://localhost:4000",
-      }),
-    }
-  );
-
-const promptNonEmptyString1000 = (
-  message: string,
-  callback: (value: NonEmptyString1000) => void
-): void => {
-  const value = prompt(message);
-  if (value == null) return;
-  const parsedValue = model.NonEmptyString1000.safeParse(value);
-  if (!parsedValue.success) {
-    alert(JSON.stringify(parsedValue.error, null, 2));
-    return;
-  }
-  callback(parsedValue.data);
-};
-
 const TodoCategorySelect = ({
   selected,
   onSelect,
@@ -71,31 +86,28 @@ const TodoCategorySelect = ({
     (db) =>
       db
         .selectFrom("todoCategory")
-        .select(["id", "name", "isDeleted"])
-        .where("isDeleted", "is not", model.cast(true))
+        .select(["id", "name"])
+        .where("isDeleted", "is not", E.cast(true))
         .orderBy("createdAt"),
-    // filterMap to filter rows with name == null
-    ({ name, ...rest }) => name && { ...rest, name }
+    // (row) => row
+    ({ name, ...rest }) => name && { name, ...rest }
   );
 
-  // That's what React recommends instead of null.
   const nothingSelected = "";
-
-  const handleSelectChange = ({
-    target: { value },
-  }: ChangeEvent<HTMLSelectElement>): void => {
-    onSelect(value === nothingSelected ? null : (value as TodoCategoryId));
-  };
-
-  // If a category has been deleted, show no category.
   const value =
-    selected &&
-    rows.find((r) => r.id === selected && r.isDeleted !== model.cast(true))
+    selected && rows.find((row) => row.id === selected)
       ? selected
       : nothingSelected;
 
   return (
-    <select value={value} onChange={handleSelectChange}>
+    <select
+      value={value}
+      onChange={({
+        target: { value },
+      }: ChangeEvent<HTMLSelectElement>): void => {
+        onSelect(value === nothingSelected ? null : (value as TodoCategoryId));
+      }}
+    >
       <option value={nothingSelected}>-- no category --</option>
       {rows.map(({ id, name }) => (
         <option key={id} value={id}>
@@ -107,34 +119,9 @@ const TodoCategorySelect = ({
 };
 
 const TodoItem = memo<{
-  row: {
-    id: TodoId;
-    title: NonEmptyString1000;
-    isCompleted: SqliteBoolean | null;
-    categoryId: TodoCategoryId | null;
-  };
+  row: Pick<TodoTable, "id" | "title" | "isCompleted" | "categoryId">;
 }>(function TodoItem({ row: { id, title, isCompleted, categoryId } }) {
-  const { mutate } = useMutation();
-
-  const handleCompleteClick = (): void => {
-    mutate("todo", { id, isCompleted: !isCompleted });
-  };
-
-  const handleRenameClick = (): void => {
-    promptNonEmptyString1000("New Name", (title) =>
-      mutate("todo", { id, title })
-    );
-  };
-
-  const handleDeleteClick = (): void => {
-    mutate("todo", { id, isDeleted: true });
-  };
-
-  const handleTodoCategorySelect = (
-    categoryId: TodoCategoryId | null
-  ): void => {
-    mutate("todo", { id, categoryId });
-  };
+  const { update } = useMutation();
 
   return (
     <li key={id}>
@@ -146,13 +133,29 @@ const TodoItem = memo<{
       </span>
       <Button
         title={isCompleted ? "completed" : "complete"}
-        onClick={handleCompleteClick}
+        onClick={(): void => {
+          update("todo", { id, isCompleted: !isCompleted });
+        }}
       />
-      <Button title="Rename" onClick={handleRenameClick} />
-      <Button title="Delete" onClick={handleDeleteClick} />
+      <Button
+        title="Rename"
+        onClick={(): void => {
+          prompt(E.NonEmptyString1000, "New Name", (title) => {
+            update("todo", { id, title });
+          });
+        }}
+      />
+      <Button
+        title="Delete"
+        onClick={(): void => {
+          update("todo", { id, isDeleted: true });
+        }}
+      />
       <TodoCategorySelect
         selected={categoryId}
-        onSelect={handleTodoCategorySelect}
+        onSelect={(categoryId): void => {
+          update("todo", { id, categoryId });
+        }}
       />
     </li>
   );
@@ -164,18 +167,12 @@ const TodoList = (): JSX.Element => {
       db
         .selectFrom("todo")
         .select(["id", "title", "isCompleted", "categoryId"])
-        .where("isDeleted", "is not", model.cast(true))
+        .where("isDeleted", "is not", E.cast(true))
         .orderBy("createdAt"),
-    ({ title, ...rest }) => title && { title, ...rest }
+    // (row) => row
+    ({ title, isCompleted, ...rest }) =>
+      title && isCompleted != null && { title, isCompleted, ...rest }
   );
-
-  const { mutate } = useMutation();
-
-  const handleAddTodoClick = (): void => {
-    promptNonEmptyString1000("What needs to be done?", (title) => {
-      mutate("todo", { title });
-    });
-  };
 
   return (
     <>
@@ -185,8 +182,22 @@ const TodoList = (): JSX.Element => {
           <TodoItem key={row.id} row={row} />
         ))}
       </ul>
-      <Button title="Add Todo" onClick={handleAddTodoClick} />
     </>
+  );
+};
+
+const AddTodo = (): JSX.Element => {
+  const { create } = useMutation();
+
+  return (
+    <Button
+      title="Add Todo"
+      onClick={(): void => {
+        prompt(E.NonEmptyString1000, "What needs to be done?", (title) => {
+          create("todo", { title, isCompleted: false });
+        });
+      }}
+    />
   );
 };
 
@@ -196,12 +207,13 @@ const TodoCategoryList = (): JSX.Element => {
       db
         .selectFrom("todoCategory")
         .select(["id", "name"])
-        .where("isDeleted", "is not", model.cast(true))
+        .where("isDeleted", "is not", E.cast(true))
         .orderBy("createdAt"),
+    // (row) => row
     ({ name, ...rest }) => name && { name, ...rest }
   );
 
-  const { mutate } = useMutation();
+  const { update } = useMutation();
 
   return (
     <>
@@ -213,29 +225,36 @@ const TodoCategoryList = (): JSX.Element => {
             <Button
               title="Rename"
               onClick={(): void => {
-                promptNonEmptyString1000("Category Name", (name) =>
-                  mutate("todoCategory", { id, name })
-                );
+                prompt(NonEmptyString50, "Category Name", (name) => {
+                  update("todoCategory", { id, name });
+                });
               }}
             />
             <Button
               title="Delete"
               onClick={(): void => {
-                mutate("todoCategory", { id, isDeleted: true });
+                update("todoCategory", { id, isDeleted: true });
               }}
             />
           </li>
         ))}
       </ul>
-      <Button
-        title="Add Category"
-        onClick={(): void => {
-          promptNonEmptyString1000("Category Name", (name) =>
-            mutate("todoCategory", { name })
-          );
-        }}
-      />
     </>
+  );
+};
+
+const AddTodoCategory = (): JSX.Element => {
+  const { create } = useMutation();
+
+  return (
+    <Button
+      title="Add Category"
+      onClick={(): void => {
+        prompt(NonEmptyString50, "Category Name", (name) => {
+          create("todoCategory", { name });
+        });
+      }}
+    />
   );
 };
 
@@ -257,13 +276,11 @@ const OwnerActions = (): JSX.Element => {
       <Button
         title="Restore Owner"
         onClick={(): void => {
-          promptNonEmptyString1000("Your Mnemonic", (mnemonic) => {
-            ownerActions
-              .restore(mnemonic)()
-              .then((either) => {
-                if (either._tag === "Left")
-                  alert(JSON.stringify(either.left, null, 2));
-              });
+          prompt(E.NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
+            ownerActions.restore(mnemonic).then((either) => {
+              if (either._tag === "Left")
+                alert(JSON.stringify(either.left, null, 2));
+            });
           });
         }}
       />
@@ -311,7 +328,9 @@ export const NextJsExample = (): JSX.Element => {
     <>
       <NotificationBar />
       <TodoList />
+      <AddTodo />
       <TodoCategoryList />
+      <AddTodoCategory />
       <OwnerActions />
     </>
   );

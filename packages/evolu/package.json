@@ -40,20 +40,22 @@
     "proto": "pnpm protoc --ts_out ./src --proto_path protos protos/protobuf.proto --ts_opt eslint_disable && pnpm format"
   },
   "dependencies": {
+    "@effect/data": "~0.3.2",
     "@noble/hashes": "^1.2.0",
     "@protobuf-ts/runtime": "^2.8.2",
     "@scure/bip39": "^1.1.1",
     "better-sqlite3": "^8.1.0",
-    "body-parser": "^1.20.1",
+    "body-parser": "^1.20.2",
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "fp-ts": "^2.13.1",
-    "kysely": "^0.23.4",
-    "micro-aes-gcm": "^0.3.3",
+    "kysely": "~0.23.5",
+    "micro-aes-gcm": "~0.3.3",
     "murmurhash": "^2.0.1",
     "nanoid": "^4.0.1"
   },
   "devDependencies": {
+    "@effect/schema": "~0.0.4",
     "@evolu/tsconfig": "workspace:0.0.2",
     "@protobuf-ts/plugin": "^2.8.2",
     "@protobuf-ts/protoc": "^2.8.2",
@@ -61,25 +63,24 @@
     "@types/body-parser": "^1.19.2",
     "@types/cors": "^2.8.13",
     "@types/express": "^4.17.17",
-    "@types/node": "^18.14.0",
+    "@types/node": "^18.14.6",
     "@types/react": "^18.0.28",
     "@types/react-dom": "^18.0.11",
     "@types/web-locks-api": "^0.0.2",
     "array-shuffle": "^3.0.0",
-    "eslint": "^8.34.0",
+    "eslint": "^8.35.0",
     "eslint-config-evolu": "workspace:0.0.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "tslib": "^2.5.0",
     "typescript": "^4.9.5",
-    "user-agent-data-types": "^0.3.0",
-    "vitest": "^0.28.5",
-    "zod": "^3.20.6"
+    "user-agent-data-types": "^0.3.1",
+    "vitest": "^0.29.2"
   },
   "peerDependencies": {
+    "@effect/schema": "~0.0.1",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "zod": "^3.19.1"
+    "react-dom": "^18.2.0"
   },
   "publishConfig": {
     "access": "public"

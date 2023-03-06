@@ -5,7 +5,7 @@ import { Task } from "fp-ts/Task";
 import { TaskEither } from "fp-ts/TaskEither";
 import * as aes from "micro-aes-gcm";
 import { mnemonicToEntropy } from "./mnemonic.js";
-import { ID, OwnerId } from "./model.js";
+import { Id, OwnerId } from "./model.js";
 import {
   CrdtMessageContent,
   EncryptedCrdtMessage,
@@ -134,7 +134,7 @@ const decryptMessages = ({
           (content): CrdtMessage => ({
             timestamp: message.timestamp as TimestampString,
             table: content.table,
-            row: content.row as ID<string>,
+            row: content.row as Id,
             column: content.column,
             value:
               content.value.oneofKind === "numberValue"

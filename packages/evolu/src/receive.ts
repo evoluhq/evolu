@@ -70,7 +70,6 @@ const receiveMessages =
 const ensureDbSchema: (
   messages: ReadonlyNonEmptyArray<CrdtMessage>
 ) => ReaderTaskEither<DbEnv, UnknownError, void> = flow(
-  // TODO: messagesToDbSchema after switch to fp-ts/schema
   readonlyNonEmptyArray.reduce(
     Object.create(null) as Record<string, Record<string, null>>,
     (record, { table, column }) => ({

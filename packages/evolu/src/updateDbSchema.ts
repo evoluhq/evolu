@@ -65,6 +65,7 @@ const createTable =
         create table ${name} (
           "id" text primary key,
           ${columns
+            .filter((c) => c !== "id")
             // "A column with affinity BLOB does not prefer one storage class over another
             // and no attempt is made to coerce data from one storage class into another."
             // https://www.sqlite.org/datatype3.html

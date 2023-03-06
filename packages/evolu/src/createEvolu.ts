@@ -23,7 +23,7 @@ import { flushSync } from "react-dom";
 import { createStore } from "./createStore.js";
 import { dbSchemaToTableDefinitions } from "./dbSchemaToTableDefinitions.js";
 import { applyPatches } from "./diff.js";
-import { cast, createId, CreateId, ID, SqliteDateTime } from "./model.js";
+import { cast, createId, Id, Owner, OwnerId, SqliteDate } from "./model.js";
 import { reloadAllTabs } from "./reloadAllTabs.js";
 import {
   CreateEvolu,
@@ -36,7 +36,6 @@ import {
   Mutate,
   NewCrdtMessage,
   OnCompleteId,
-  Owner,
   OwnerActions,
   RowsCache,
   SqlQueryString,
@@ -44,17 +43,20 @@ import {
 } from "./types.js";
 import { isServer } from "./utils.js";
 
-const createNewCrdtMessages = (
+export const createNewCrdtMessages = (
   table: string,
-  row: ID<"string">,
+  row: Id,
   values: ReadonlyRecord<string, unknown>,
-  ownerId: ID<"owner">,
-  now: SqliteDateTime,
+  ownerId: OwnerId,
+  now: SqliteDate,
   isInsert: boolean
 ): ReadonlyNonEmptyArray<NewCrdtMessage> =>
   pipe(
     readonlyRecord.toEntries(values),
-    readonlyArray.filter(([, value]) => value !== undefined),
+    // Filter out undefined and null for inserts. Null is default in SQLite.
+    readonlyArray.filter(
+      ([, value]) => value !== undefined && (isInsert ? value != null : true)
+    ),
     readonlyArray.map(([key, value]) => [
       key,
       typeof value === "boolean" || value instanceof Date
@@ -77,6 +79,8 @@ const createNewCrdtMessages = (
         } as NewCrdtMessage)
     )
   );
+
+type CreateId = typeof createId;
 
 const createMutate = <S extends DbSchema>({
   createId,
@@ -106,7 +110,7 @@ const createMutate = <S extends DbSchema>({
     getOwner.then((owner) => {
       const messages = createNewCrdtMessages(
         table as string,
-        id as ID<"string">,
+        id as Id,
         values,
         owner.id,
         now,
@@ -240,7 +244,7 @@ const createOwnerActionRestore =
       taskEither.chainIOK((mnemonic) =>
         dbWorker.post({ type: "restoreOwner", mnemonic })
       )
-    );
+    )();
 
 const initReconnectAndReshow = (
   subscribedQueries: Map<SqlQueryString, number>,

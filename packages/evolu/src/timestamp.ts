@@ -1,4 +1,5 @@
 import { either, readerEither } from "fp-ts";
+import * as S from "@effect/schema";
 import { Either } from "fp-ts/Either";
 import { increment, pipe } from "fp-ts/lib/function.js";
 import { IO } from "fp-ts/IO";
@@ -8,7 +9,6 @@ import {
   ConfigEnv,
   Counter,
   createNodeId,
-  MAX_COUNTER,
   Millis,
   NodeId,
   TimeEnv,
@@ -30,7 +30,7 @@ export const createInitialTimestamp: IO<Timestamp> = () => ({
   node: createNodeId(),
 });
 
-const syncNodeId = NodeId.parse("0000000000000000");
+const syncNodeId = S.decodeOrThrow(NodeId)("0000000000000000");
 
 export const createSyncTimestamp = (
   millis: Millis = 0 as Millis
@@ -60,9 +60,11 @@ export const timestampToHash = (t: Timestamp): TimestampHash =>
 const incrementCounter = (
   counter: Counter
 ): Either<TimestampCounterOverflowError, Counter> =>
-  counter < MAX_COUNTER
-    ? either.right(increment(counter) as Counter)
-    : either.left({ type: "TimestampCounterOverflowError" });
+  pipe(
+    increment(counter),
+    S.decode(Counter),
+    either.mapLeft(() => ({ type: "TimestampCounterOverflowError" }))
+  );
 
 const getNextMillis =
   (
