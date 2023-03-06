@@ -36,7 +36,7 @@ importers:
   apps/web:
     specifiers:
       '@effect/data': ^0.3.2
-      '@effect/schema': ~0.0.4
+      '@effect/schema': ~0.0.5
       '@evolu/tsconfig': workspace:0.0.2
       '@types/node': ^18.14.6
       '@types/react': ^18.0.28
@@ -58,7 +58,7 @@ importers:
       typescript: ^4.9.5
     dependencies:
       '@effect/data': 0.3.2
-      '@effect/schema': 0.0.4
+      '@effect/schema': 0.0.5
       clsx: 1.2.1
       evolu: link:../../packages/evolu
       next: 13.2.3_biqbaboplfbrettd7655fr4n2y
@@ -110,7 +110,7 @@ importers:
   packages/evolu:
     specifiers:
       '@effect/data': ~0.3.2
-      '@effect/schema': ~0.0.4
+      '@effect/schema': ~0.0.5
       '@evolu/tsconfig': workspace:0.0.2
       '@noble/hashes': ^1.2.0
       '@protobuf-ts/plugin': ^2.8.2
@@ -158,7 +158,7 @@ importers:
       murmurhash: 2.0.1
       nanoid: 4.0.1
     devDependencies:
-      '@effect/schema': 0.0.4
+      '@effect/schema': 0.0.5
       '@evolu/tsconfig': link:../evolu-tsconfig
       '@protobuf-ts/plugin': 2.8.2
       '@protobuf-ts/protoc': 2.8.2
@@ -406,8 +406,8 @@ packages:
   /@effect/data/0.3.2:
     resolution: {integrity: sha512-4rdxsQI9mwfBdgbWQ5SjekLEJpxSJLiHLQOgZ6atoPFwKqAo1PsYglf8gbonWvMx4lIR2R2Km7zXwhk/LEgY0Q==}
 
-  /@effect/schema/0.0.4:
-    resolution: {integrity: sha512-KOPkGMJgxV+vtkdUs01jg9wQvUcFLQ7JtOR2iFNycGtsP4n+rR9QcPf+oFsjdwROzgOgnkjEehB358Z9bIBZOQ==}
+  /@effect/schema/0.0.5:
+    resolution: {integrity: sha512-xe+aL+WsK9+DGkyiMWCq7EeEbMMDYOKI4WveBs20Bgfl38vYiOxNtbJ8qcS6SUKso8bkyJcsZnlBUfzoW9pdyw==}
     dependencies:
       '@effect/data': 0.3.2
       fast-check: 3.7.0

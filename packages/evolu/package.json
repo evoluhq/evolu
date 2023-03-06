@@ -55,7 +55,7 @@
     "nanoid": "^4.0.1"
   },
   "devDependencies": {
-    "@effect/schema": "~0.0.4",
+    "@effect/schema": "~0.0.5",
     "@evolu/tsconfig": "workspace:0.0.2",
     "@protobuf-ts/plugin": "^2.8.2",
     "@protobuf-ts/protoc": "^2.8.2",
@@ -78,7 +78,7 @@
     "vitest": "^0.29.2"
   },
   "peerDependencies": {
-    "@effect/schema": "~0.0.4",
+    "@effect/schema": "~0.0.5",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
