@@ -18,31 +18,49 @@ Evolu merges data changes made on different devices without conflicts using Conf
 
 ## Overview
 
-```js copy
-import { createHooks, model } from "evolu";
+```js
+import * as S from "@effect/schema";
+import * as E from "evolu";
 
-// Define table ID branded type.
-const TodoId = model.id<"todo">();
+const TodoId = E.id("Todo");
+type TodoId = S.Infer<typeof TodoId>;
 
-// Define DB schema and create React Hooks.
-const { useQuery, useMutation } = createHooks({
-  todo: {
-    id: TodoId,
-    // NonEmptyString1000 is much better than just a string.
-    title: model.NonEmptyString1000,
-    isCompleted: model.SqliteBoolean,
-  },
+const NonEmptyString50 = pipe(
+  S.string,
+  S.minLength(1),
+  S.maxLength(50),
+  S.brand("NonEmptyString50")
+);
+type NonEmptyString50 = S.Infer<typeof NonEmptyString50>;
+
+const TodoTable = S.struct({
+  id: TodoId,
+  title: NonEmptyString50,
+  description: S.nullable(E.NonEmptyString1000),
+  isCompleted: E.SqliteBoolean,
+});
+type TodoTable = S.Infer<typeof TodoTable>;
+
+const Database = S.struct({
+  todo: TodoTable,
 });
 
-// Evolu uses Kysely, a type-safe TypeScript SQL query builder.
-const { rows, isLoaded } = useQuery((db) =>
-  // createAt is added automatically.
-  db.selectFrom("todo").select(["id", "title"]).orderBy("createdAt")
+const { useQuery, useMutation } = E.createHooks(Database);
+
+const { rows, isLoaded } = useQuery(
+  (db) =>
+    // A type-safe SQL query builder.
+    db.selectFrom("todo").select(["id", "title"]).orderBy("createdAt"),
+  // The filterMap helper for ad-hoc schema migrations.
+  (row) => row
 );
 
-const { mutate } = useMutation();
-// Mutate never fails. It's the advantage of branded types and local first apps.
-mutate("todo", { id, isCompleted: true });
+const { create, update } = useMutation();
+
+if (!S.is(NonEmptyString50)(title)) return;
+const { id } = create("todo", { title, isCompleted: false });
+
+update("todo", { id, isCompleted: true }, onComplete);
 ```
 
 ## Features
@@ -51,7 +69,7 @@ mutate("todo", { id, isCompleted: true });
 - E2E encrypted sync and backup with CRDT (merging changes without conflicts)
 - Free Evolu server for testing (paid production-ready server soon)
 - Typed database schema with TypeScript branded types
-- Automatic migrations with Evolu filterMap helper for schema evolving
+- Automatic migrations with Evolu filterMap helper
 - Built-in validations for forms and domain models
 - No signup/login, no email collection, only Bitcoin-like mnemonic (12 words)
 - Real-time experience
