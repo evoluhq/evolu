@@ -8,17 +8,15 @@
     "start": "next start"
   },
   "dependencies": {
-    "@next/font": "13.1.6",
-    "@types/node": "18.13.0",
+    "@types/node": "18.14.6",
     "@types/react": "18.0.28",
-    "@types/react-dom": "18.0.10",
-    "eslint": "8.34.0",
-    "eslint-config-next": "13.1.6",
-    "evolu": "^1.0.0",
-    "next": "13.1.6",
+    "@types/react-dom": "18.0.11",
+    "eslint": "8.35.0",
+    "eslint-config-next": "13.2.3",
+    "evolu": "2.0.0",
+    "next": "13.2.3",
     "react": "18.2.0",
     "react-dom": "18.2.0",
-    "typescript": "4.9.5",
-    "zod": "^3.20.6"
+    "typescript": "4.9.5"
   }
 }
