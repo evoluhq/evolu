@@ -1,6 +1,5 @@
 import { pipe } from "@effect/data/Function";
 import * as S from "@effect/schema";
-import { Schema } from "@effect/schema";
 import { formatErrors } from "@effect/schema/formatter/Tree";
 import * as E from "evolu";
 import { ChangeEvent, FC, memo, useEffect, useState } from "react";
@@ -47,7 +46,7 @@ const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
   });
 
 const prompt = <T extends string>(
-  schema: Schema<T>,
+  schema: S.Schema<T>,
   message: string,
   onSuccess: (value: T) => void
 ): void => {
