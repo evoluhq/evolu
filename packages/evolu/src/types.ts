@@ -195,6 +195,15 @@ export interface SyncError {
   readonly type: "SyncError";
 }
 
+/**
+ * EvoluError represents an error that can occur within Evolu.
+ *
+ * Evolu should never fail, that's the advantage of local-first apps,
+ * but a third-party bug can't be ruled out.
+ *
+ * @property {string} type - A string literal indicating the type of the error
+ * @property {TimestampDuplicateNodeError | TimestampDriftError | TimestampCounterOverflowError | TimestampParseError | UnknownError | SyncError} error - The specific error that occurred, represented by one of several possible sub-types.
+ */
 export interface EvoluError {
   readonly type: "EvoluError";
   readonly error:
@@ -283,20 +292,18 @@ export type Query<S extends DbSchema, QueryRow> = (
   db: KyselySelectFrom<DbSchemaForQuery<S>>
 ) => SelectQueryBuilder<never, never, QueryRow>;
 
-export type NullableOrFalse<T> = T | null | false;
+export type OrNullOrFalse<T> = T | null | false;
 export type ExcludeNullAndFalse<T> = Exclude<T, null | false>;
 
 export type UseQuery<S extends DbSchema> = <
   QueryRow extends SqliteRow,
   Row extends SqliteRow
 >(
-  /** TODO */
-  query: NullableOrFalse<Query<S, QueryRow>>,
-  /** TODO */
-  filterMap: (row: QueryRow) => NullableOrFalse<Row>
+  query: OrNullOrFalse<Query<S, QueryRow>>,
+  filterMap: (row: QueryRow) => OrNullOrFalse<Row>
 ) => {
-  readonly rows: readonly Readonly<ExcludeNullAndFalse<Row>>[];
-  readonly row: Readonly<ExcludeNullAndFalse<Row>> | null;
+  readonly rows: readonly Readonly<Simplify<ExcludeNullAndFalse<Row>>>[];
+  readonly row: Readonly<Simplify<ExcludeNullAndFalse<Row>>> | null;
   readonly isLoaded: boolean;
 };
 
@@ -376,18 +383,78 @@ export interface OwnerActions {
   ) => Promise<Either<RestoreOwnerError, void>>;
 }
 
+// For some reason, VSCode terminates JSDoc parsing on any @ character here,
+// so we can't use JSDoc tags. I spent a few hours googling and trying
+// anything, but without success. That's why we can't use @param a @example.
 export interface Hooks<S extends DbSchema> {
+  /**
+   * `useQuery` React Hook performs a database query and returns rows that
+   * are automatically updated when data changes.
+   *
+   * It takes two callbacks, a Kysely type-safe SQL query builder,
+   * and a filterMap helper.
+   *
+   * ### Examples
+   *
+   * The most simple example:
+   *
+   * ```
+   * const { rows } = useQuery(
+   *   (db) => db.selectFrom("todo").selectAll(),
+   *   (row) => row
+   * );
+   * ```
+   *
+   * If you mouse hover over `rows`, you will see that all columns except `Id`
+   * are nullable regardless of the database Schema.
+   *
+   * There are two good reasons for that. The first is the local-first app
+   * database schema can be changed anytime, but already-created data can't
+   * because it's not feasible to migrate all local data. The second reason
+   * is that sync messages can arrive in any order in distributed systems.
+   *
+   * The remedy for nullability is ad-hoc filtering and mapping via filterMap
+   * helper. This example filters out rows with falsy titles:
+   *
+   * ```
+   * const { rows } = useQuery(
+   *   (db) => db.selectFrom("todo").selectAll(),
+   *   ({ title, ...rest }) => title && { title, ...rest }
+   * );
+   * ```
+   *
+   * A real app would filterMap all versions of the table schema defined
+   * by a union of types, therefore safely enforced by the TypeScript compiler.
+   *
+   * The next example shows the usage of columns that Evolu automatically
+   * adds to all tables. Those columns are: `createdAt`, `createdBy`,
+   * `updatedAt`, and `isDeleted`.
+   *
+   * ```
+   * const { rows } = useQuery(
+   *   (db) =>
+   *     db
+   *       .selectFrom("todoCategory")
+   *       .select(["id", "name"])
+   *       .where("isDeleted", "is not", E.cast(true))
+   *       .orderBy("createdAt"),
+   *   ({ name, ...rest }) => name && { name, ...rest }
+   * );
+   * ```
+   *
+   * Note `E.cast` usage. It's Evolu's helper to cast booleans and dates
+   * that SQLite does not natively support.
+   */
   readonly useQuery: UseQuery<S>;
+  /**
+   * useMutation React Hook returns an object with two functions for
+   * creating and updating rows in the database.
+   */
   readonly useMutation: UseMutation<S>;
-  readonly useEvoluError: IO<EvoluError | null>;
-  readonly useOwner: IO<Owner | null>;
-  readonly useOwnerActions: IO<OwnerActions>;
+  readonly useEvoluError: () => EvoluError | null;
+  readonly useOwner: () => Owner | null;
+  readonly useOwnerActions: () => OwnerActions;
 }
-
-export type CreateHooks = <S extends DbSchema>(
-  dbSchema: S,
-  config?: Partial<Config>
-) => Hooks<S>;
 
 // DbWorker environments.
 // https://andywhite.xyz/posts/2021-01-28-rte-react/
