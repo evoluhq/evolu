@@ -4,39 +4,37 @@ import { pipe } from "fp-ts/lib/function.js";
 import { nanoid } from "nanoid";
 
 /**
- * Evolu Id is a globally unique branded string created by Nano ID.
- *
- * @link https://github.com/ai/nanoid.
+ * Branded Id Schema for any table Id.
+ * To create Id Schema for a specific table, use {@link id}.
+ * To create an Id value for a specific table, use {@link createId}.
  */
 export const Id = pipe(S.string, S.pattern(/^[\w-]{21}$/), S.brand("Id"));
 export type Id = S.Infer<typeof Id>;
 
 /**
- * A factory function that creates branded Evolu Id schema.
- *
- * Strings with different branding types are not interchangeable,
- * even though they have the same underlying representation.
+ * A factory function to create {@link Id} Schema for a specific table.
+ * To create an Id value for a specific table, use {@link createId}.
  *
  * @example
  * import * as S from "@effect/schema";
- * import { id } from "evolu";
+ * import * as E from "evolu";
  *
- * const TodoId = id("Todo");
- * // type TodoId = string & Brand<"Id"> & Brand<"Todo">
+ * const TodoId = E.id("Todo");
  * type TodoId = S.Infer<typeof TodoId>;
  *
- * if (S.is(TodoId)(1)) ...
+ * if (!S.is(TodoId)(value)) return;
  */
 export const id = <T extends string>(table: T): S.Schema<Id & Brand<T>> =>
   pipe(Id, S.brand(table));
 
 /**
- * A factory function that creates branded Evolu Id.
+ * A factory function to create an {@link Id} value for a specific table.
  *
  * @example
- * import { createId } from "evolu";
- * // const todoId: string & Brand<"Id"> & Brand<"Todo">
- * const todoId = createId<'Todo'>();
+ * import * as E from "evolu";
+ *
+ * // const id: string & Brand<"Id"> & Brand<"Todo">
+ * const id = E.createId<'Todo'>();
  */
 export const createId = <T extends string>(): Id & Brand<T> =>
   nanoid() as Id & Brand<T>;
@@ -51,7 +49,7 @@ export const createId = <T extends string>(): Id & Brand<T> =>
 export type Mnemonic = string & Brand<"Mnemonic">;
 
 /**
- * OwnerId is the current user's ID safely derived from its Mnemonic.
+ * OwnerId is the current user's {@link Id} safely derived from its {@link Mnemonic}.
  */
 export type OwnerId = Id & Brand<"Owner">;
 
@@ -65,7 +63,7 @@ export interface Owner {
 
 /**
  * SQLite doesn't support the boolean type, so Evolu uses SqliteBoolean instead.
- * Use the 'cast' helper to cast SqliteBoolean from boolean and back.
+ * Use the {@link cast} helper to cast SqliteBoolean from boolean and back.
  * https://www.sqlite.org/quirks.html#no_separate_boolean_datatype
  */
 export const SqliteBoolean = S.union(S.literal(0), S.literal(1));
@@ -73,7 +71,7 @@ export type SqliteBoolean = S.Infer<typeof SqliteBoolean>;
 
 /**
  * SQLite doesn't support the Date type, so Evolu uses SqliteDate instead.
- * Use the 'cast' helper to cast SqliteDate from Date and back.
+ * Use the {@link cast} helper to cast SqliteDate from Date and back.
  * https://www.sqlite.org/quirks.html#no_separate_datetime_datatype
  */
 export const SqliteDate = pipe(
@@ -89,9 +87,10 @@ export type SqliteDate = S.Infer<typeof SqliteDate>;
 /**
  * A helper for casting types not supported by SQLite.
  * SQLite doesn't support Date nor Boolean types, so Evolu emulates them
- * with `SqliteBoolean` and `SqliteDate`.
+ * with {@link SqliteBoolean} and {@link SqliteDate}.
  *
  * @example
+ * // isDeleted is SqliteBoolean
  * .where("isDeleted", "is not", cast(true))
  */
 export function cast(value: boolean): SqliteBoolean;
@@ -108,14 +107,14 @@ export function cast(
 }
 
 /**
- * A branded string that represents a string with a maximum length
- * of 1000 characters.
+ * A string with a maximum length of 1000 characters.
  *
  * @example
  * import * as S from "@effect/schema";
  * import * as E from "evolu";
  *
- * if (!S.is(E.String1000)(unknownValue)) return;
+ * if (!S.is(E.String1000)(value)) return;
+ * function foo(value: E.String1000) {}
  */
 export const String1000 = pipe(
   S.string,
@@ -125,14 +124,14 @@ export const String1000 = pipe(
 export type String1000 = S.Infer<typeof String1000>;
 
 /**
- * A branded string that represents a nonempty string with a maximum length
- * of 1000 characters.
+ * A nonempty string with a maximum length of 1000 characters.
  *
  * @example
  * import * as S from "@effect/schema";
  * import * as E from "evolu";
  *
- * if (!S.is(E.NonEmptyString1000)(unknownValue)) return;
+ * if (!S.is(E.NonEmptyString1000)(value)) return;
+ * function foo(value: E.NonEmptyString1000) {}
  */
 export const NonEmptyString1000 = pipe(
   S.string,
