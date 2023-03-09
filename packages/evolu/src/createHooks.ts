@@ -11,7 +11,7 @@ import {
   Create,
   DbSchema,
   Hooks,
-  NullableOrFalse,
+  OrNullOrFalse,
   SqliteRow,
   SqlQuery,
   sqlQueryToString,
@@ -21,16 +21,45 @@ import {
 } from "./types.js";
 
 /**
- * Create React Hooks for a given DB schema.
+ * Create React Hooks and initialize the database for a given schema.
  *
- * @example
- * const {
- *   useQuery,
- *   useMutation,
- *   useOwner
- * } = createHooks({
- *   todo: { columns: ['id', 'title', 'isCompleted'], indexes: ['title'] },
+ * For domain modeling, Evolu uses [Schema](https://github.com/effect-ts/schema).
+ *
+ * Remember, you shall not remove any table or column after the first release.
+ * There is a possibility that somebody is already using it. All you can do is
+ * add new tables or columns and stop using obsolete ones. That's because it's
+ * not feasible to migrate local data on any schema change.
+ *
+ * With this simple rule, any app version can handle any schema version.
+ * If an obsolete app gets a sync message with a newer schema, Evolu
+ * automatically updates the database schema to store the message safely.
+ *
+ * To learn more about handling schema evolving without migrations, check
+ * the `useQuery` documentation.
+ *
+ * ### Example
+ *
+ * ```
+ * import * as S from "@effect/schema";
+ * import * as E from "evolu";
+ *
+ * const TodoId = E.id("Todo");
+ * type TodoId = S.Infer<typeof TodoId>;
+ *
+ * const TodoTable = S.struct({
+ *   id: TodoId,
+ *   title: E.NonEmptyString1000,
+ *   isCompleted: E.SqliteBoolean,
  * });
+ * type TodoTable = S.Infer<typeof TodoTable>;
+ *
+ * const Database = S.struct({
+ *   todo: TodoTable,
+ * });
+ *
+ * const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
+ *   E.createHooks(Database);
+ * ```
  */
 export const createHooks = <S extends DbSchema>(
   dbSchema: Schema<S>,
@@ -40,9 +69,9 @@ export const createHooks = <S extends DbSchema>(
     config: createConfig(config),
     createDbWorker,
   });
-  const cache = new WeakMap<SqliteRow, NullableOrFalse<SqliteRow>>();
+  const cache = new WeakMap<SqliteRow, OrNullOrFalse<SqliteRow>>();
 
-  const useQuery: UseQuery<S> = (query, initialFilterMap) => {
+  const useQuery: UseQuery<S> = (query, filterMap) => {
     const sqlQueryString = query
       ? pipe(query(kysely as never).compile() as SqlQuery, sqlQueryToString)
       : null;
@@ -53,9 +82,9 @@ export const createHooks = <S extends DbSchema>(
       constNull
     );
 
-    const filterMapRef = useRef(initialFilterMap);
+    const filterMapRef = useRef(filterMap);
 
-    const getRowFromCache = (row: SqliteRow): NullableOrFalse<SqliteRow> => {
+    const getRowFromCache = (row: SqliteRow): OrNullOrFalse<SqliteRow> => {
       let cachedRow = cache.get(row);
       if (cachedRow !== undefined) return cachedRow;
       cachedRow = filterMapRef.current(row as never);
