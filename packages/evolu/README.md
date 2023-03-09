@@ -78,11 +78,8 @@ const { useQuery, useMutation, useOwner, useOwnerActions, useEvoluError } =
 Evolu uses type-safe TypeScript SQL query builder [kysely](https://github.com/koskimas/kysely), so autocompletion works OOTB.
 
 ```ts
-const { rows } = useQuery((db) =>
-  db
-    .selectFrom("todo")
-    .select(["id", "title"])
-    .orderBy("updatedAt"),
+const { rows } = useQuery(
+  (db) => db.selectFrom("todo").select(["id", "title"]).orderBy("updatedAt"),
   // (row) => row
   ({ title, ...rest }) => title && { title, ...rest }
 );
@@ -129,8 +126,7 @@ Your data are safely stored via randomly generated 12 words. You may know this p
 ```ts
 const ownerActions = useOwnerActions();
 ownerActions.restore(mnemonic).then((either) => {
-  if (either._tag === "Left")
-    alert(JSON.stringify(either.left, null, 2));
+  if (either._tag === "Left") alert(JSON.stringify(either.left, null, 2));
 });
 ```
 
