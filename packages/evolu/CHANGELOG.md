@@ -1,5 +1,11 @@
 # evolu
 
+## 2.1.0
+
+### Minor Changes
+
+- be95d2c: Documentation for the whole public API
+
 ## 2.0.0
 
 ### Major Changes
