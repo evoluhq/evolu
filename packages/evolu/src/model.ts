@@ -15,7 +15,9 @@ export type Id = S.Infer<typeof Id>;
  * A factory function to create {@link Id} Schema for a specific table.
  * To create an Id value for a specific table, use {@link createId}.
  *
- * @example
+ * ### Example
+ *
+ * ```
  * import * as S from "@effect/schema";
  * import * as E from "evolu";
  *
@@ -23,6 +25,7 @@ export type Id = S.Infer<typeof Id>;
  * type TodoId = S.Infer<typeof TodoId>;
  *
  * if (!S.is(TodoId)(value)) return;
+ * ```
  */
 export const id = <T extends string>(table: T): S.Schema<Id & Brand<T>> =>
   pipe(Id, S.brand(table));
@@ -30,11 +33,14 @@ export const id = <T extends string>(table: T): S.Schema<Id & Brand<T>> =>
 /**
  * A factory function to create an {@link Id} value for a specific table.
  *
- * @example
+ * ### Example
+ *
+ * ```
  * import * as E from "evolu";
  *
  * // const id: string & Brand<"Id"> & Brand<"Todo">
  * const id = E.createId<'Todo'>();
+ * ```
  */
 export const createId = <T extends string>(): Id & Brand<T> =>
   nanoid() as Id & Brand<T>;
@@ -54,11 +60,14 @@ export type Mnemonic = string & Brand<"Mnemonic">;
 export type OwnerId = Id & Brand<"Owner">;
 
 /**
- * Evolu database owner.
+ * `Owner` represents the Evolu database owner. Evolu auto-generates `Owner` on
+ * the first run. `Owner` can be reset on the current device and restored
+ * on a different one.
+ *
  */
 export interface Owner {
-  readonly id: OwnerId;
   readonly mnemonic: Mnemonic;
+  readonly id: OwnerId;
 }
 
 /**
@@ -89,9 +98,12 @@ export type SqliteDate = S.Infer<typeof SqliteDate>;
  * SQLite doesn't support Date nor Boolean types, so Evolu emulates them
  * with {@link SqliteBoolean} and {@link SqliteDate}.
  *
- * @example
+ * ### Example
+ *
+ * ```
  * // isDeleted is SqliteBoolean
  * .where("isDeleted", "is not", cast(true))
+ * ```
  */
 export function cast(value: boolean): SqliteBoolean;
 export function cast(value: SqliteBoolean): boolean;
@@ -109,12 +121,15 @@ export function cast(
 /**
  * A string with a maximum length of 1000 characters.
  *
- * @example
+ * ### Example
+ *
+ * ```
  * import * as S from "@effect/schema";
  * import * as E from "evolu";
  *
  * if (!S.is(E.String1000)(value)) return;
  * function foo(value: E.String1000) {}
+ * ```
  */
 export const String1000 = pipe(
   S.string,
@@ -126,12 +141,15 @@ export type String1000 = S.Infer<typeof String1000>;
 /**
  * A nonempty string with a maximum length of 1000 characters.
  *
- * @example
+ * ### Example
+ *
+ * ```
  * import * as S from "@effect/schema";
  * import * as E from "evolu";
  *
  * if (!S.is(E.NonEmptyString1000)(value)) return;
  * function foo(value: E.NonEmptyString1000) {}
+ * ```
  */
 export const NonEmptyString1000 = pipe(
   S.string,

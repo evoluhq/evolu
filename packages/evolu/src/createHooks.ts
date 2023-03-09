@@ -57,8 +57,13 @@ import {
  *   todo: TodoTable,
  * });
  *
- * const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
- *   E.createHooks(Database);
+ * export const {
+ *   useQuery,
+ *   useMutation,
+ *   useEvoluError,
+ *   useOwner,
+ *   useOwnerActions,
+ * } = E.createHooks(Database);
  * ```
  */
 export const createHooks = <S extends DbSchema>(

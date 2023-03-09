@@ -28,10 +28,20 @@ import {
 type Simplify<T> = { [KeyType in keyof T]: T[KeyType] } & {};
 
 export type Config = {
+  /**
+   * Alternate URL to Evolu sync&backup server.
+   */
   syncUrl: string;
-  /** Maximum physical clock drift allowed, in ms. */
-  maxDrift: number;
+  /**
+   * Alternate URL to reload browser tabs after `Owner` reset or restore.
+   * The default value is `/`.
+   */
   reloadUrl: string;
+  /**
+   * Maximum physical clock drift allowed in ms.
+   * The default value is 60000 (1 minute).
+   */
+  maxDrift: number;
 };
 
 // CRDT
@@ -197,9 +207,6 @@ export interface SyncError {
 
 /**
  * EvoluError represents an error that can occur within Evolu.
- *
- * Evolu should never fail, that's the advantage of local-first apps,
- * but a third-party bug can't be ruled out.
  *
  * @property {string} type - A string literal indicating the type of the error
  * @property {TimestampDuplicateNodeError | TimestampDriftError | TimestampCounterOverflowError | TimestampParseError | UnknownError | SyncError} error - The specific error that occurred, represented by one of several possible sub-types.
@@ -368,7 +375,52 @@ export type Update<S extends DbSchema> = <T extends keyof S>(
 };
 
 export type UseMutation<S extends DbSchema> = () => {
+  /**
+   * Creates a new row in the specified table with the given values.
+   *
+   * ### Examples
+   *
+   * To create a new row:
+   *
+   * ```
+   * const { create } = useMutation();
+   * create("todo", { title });
+   * ```
+   *
+   * To get a new row's `Id`:
+   *
+   * ```
+   * const { create } = useMutation();
+   * const { id } = create("todo", { title });
+   * ```
+   *
+   * To wait until a new row is rendered:
+   *
+   * ```
+   * const { create } = useMutation();
+   * create("todo", { title }, onComplete);
+   * ```
+   */
   readonly create: Create<S>;
+  /**
+   * Update a row in the specified table with the given values.
+   *
+   * ### Examples
+   *
+   * To update a row:
+   *
+   * ```
+   * const { update } = useMutation();
+   * update("todo", { id, title });
+   * ```
+   *
+   * To wait until the updated row is rendered:
+   *
+   * ```
+   * const { update } = useMutation();
+   * update("todo", { id, title }, onComplete);
+   * ```
+   */
   readonly update: Update<S>;
 };
 
@@ -377,7 +429,14 @@ export interface RestoreOwnerError {
 }
 
 export interface OwnerActions {
+  /**
+   * Use `reset` to delete all local data from the current device.
+   * After the deletion, Evolu reloads all browser tabs that use Evolu.
+   */
   readonly reset: IO<void>;
+  /**
+   * Use `restore` to restore `Owner` with synced data on a different device.
+   */
   readonly restore: (
     mnemonic: string
   ) => Promise<Either<RestoreOwnerError, void>>;
@@ -443,16 +502,46 @@ export interface Hooks<S extends DbSchema> {
    * ```
    *
    * Note `E.cast` usage. It's Evolu's helper to cast booleans and dates
-   * that SQLite does not natively support.
+   * that SQLite does not support natively.
    */
   readonly useQuery: UseQuery<S>;
   /**
-   * useMutation React Hook returns an object with two functions for
+   * `useMutation` React Hook returns an object with two functions for
    * creating and updating rows in the database.
+   *
+   * Note that Evolu does not use SQL for mutations. It's not a bug; it's a
+   * feature.
+   *
+   * Full SQL for mutations is dangerous for local-first apps. One wrong update
+   * can accidentally affect many rows.
+   *
+   * Local-first data are meant to last
+   * forever. Imagine an update that changes tons of data. That would generate
+   * a lot of sync messages making sync slow and backup huge.
+   *
+   *
+   * That's why Evolu enforces explicit mutations instead of allowing
+   * arbitrary SQL. Explicit mutations allow Evolu to automatically add
+   * and update a few useful columns common to all tables.
+   *
+   * Those columns are: `createdAt`, `createdBy`, `updatedAt`, and `isDeleted`.
    */
   readonly useMutation: UseMutation<S>;
+  /**
+   * `useEvoluError` React Hook returns `EvoluError`.
+   *
+   * Evolu should never fail; that's the advantage of local-first apps,
+   * but if an error occurs, please report it in Evolu GitHub issues.
+   */
   readonly useEvoluError: () => EvoluError | null;
+  /**
+   * `useOwner` React Hook returns `Owner`.
+   */
   readonly useOwner: () => Owner | null;
+  /**
+   * `useOwnerActions` React Hook returns `OwnerActions` that can be used to
+   * reset `Owner` on the current device or restore `Owner` on a different one.
+   */
   readonly useOwnerActions: () => OwnerActions;
 }
 
