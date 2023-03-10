@@ -12,13 +12,17 @@ import { Callout } from "nextra-theme-docs";
   Evolu is designed for privacy, ease of use, and no vendor lock-in.
 </Callout>
 
-Local-first apps allow users to own their data. Evolu stores data in the user's device(s), so Evolu apps can work offline and without a specific server. [Evolu Server](docs/evolu-server)
+Local-first apps allow users to own their data. Evolu stores data in the user's
+device(s), so Evolu apps can work offline and without a specific server. [Evolu Server](docs/evolu-server)
 
 Evolu merges data changes made on different devices without conflicts using Conflict-free Replicated Data Type (CRDT). [How Evolu Works](docs/how-evolu-works)
+
+[Getting Started](/docs/getting-started) · [GitHub Repository](https://github.com/evoluhq/evolu/tree/main/examples/nextjs) · [Twitter](https://twitter.com/evoluhq)
 
 ## Overview
 
 ```js
+import { pipe } from "@effect/data/Function";
 import * as S from "@effect/schema";
 import * as E from "evolu";
 
@@ -65,17 +69,14 @@ update("todo", { id, isCompleted: true }, onComplete);
 
 ## Features
 
-- The official sqlite3 WASM in all browsers (React Native and Electron soon)
+- The official SQLite Wasm in all browsers (React Native and Electron soon)
 - E2E encrypted sync and backup with CRDT (merging changes without conflicts)
-- Free Evolu server for testing (paid production-ready server soon)
-- Typed database schema with TypeScript branded types
-- Automatic migrations with Evolu filterMap helper
-- Built-in validations for forms and domain models
-- No signup/login, no email collection, only Bitcoin-like mnemonic (12 words)
-- Real-time experience
+- Free Evolu server for testing (paid production-ready soon)
+- Typed database schema with branded types (`NonEmptyString1000`, `PositiveInt`)
 - Reactive queries
-- Revalidation on focus and network recovery
-- Clean and functional code with minimal API
+- Real-time experience via revalidation on focus and network recovery
+- Schema evolving via `filterMap` ad-hoc migration
+- No signup/login, no email collection, only Bitcoin-like mnemonic (12 words)
 - React Suspense (soon)
 
 ## Community

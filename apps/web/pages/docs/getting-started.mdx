@@ -1,5 +1,42 @@
 # Getting Started
 
+## Requirements
+
+### TypeScript
+
+- TypeScript 4.7 or newer
+- The `strict` flag enabled in your `tsconfig.json` file
+- The `exactOptionalPropertyTypes` flag enabled in your `tsconfig.json` file
+
+```
+{
+  // ...
+  "compilerOptions": {
+    // ...
+    "strict": true,
+    "exactOptionalPropertyTypes": true
+  }
+}
+```
+
+### Platforms
+
+Evolu runs on all evergreen desktop and mobile browsers.
+
+- Chrome 69+
+- Edge 79+
+- Safari 15.4+
+- Firefox 96+
+- Opera 56+
+
+React Native and Electron soon.
+
 ## Installation
 
-TODO
+Install Evolu with its peer dependency:
+
+```sh
+npm install evolu @effect/schema
+```
+
+Evolu uses and we recommend [pNpm](https://pnpm.io/).
