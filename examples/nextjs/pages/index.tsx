@@ -1,44 +1,17 @@
-import { pipe } from "@effect/data/Function";
+import {
+  NonEmptyString50,
+  TodoCategoryId,
+  TodoTable,
+  useEvoluError,
+  useMutation,
+  useOwner,
+  useOwnerActions,
+  useQuery,
+} from "@/lib/db";
 import * as S from "@effect/schema";
 import { formatErrors } from "@effect/schema/formatter/Tree";
 import * as E from "evolu";
 import { ChangeEvent, FC, memo, useEffect, useState } from "react";
-
-const TodoId = E.id("Todo");
-type TodoId = S.Infer<typeof TodoId>;
-
-const TodoCategoryId = E.id("TodoCategory");
-type TodoCategoryId = S.Infer<typeof TodoCategoryId>;
-
-const NonEmptyString50 = pipe(
-  S.string,
-  S.minLength(1),
-  S.maxLength(50),
-  S.brand("NonEmptyString50")
-);
-type NonEmptyString50 = S.Infer<typeof NonEmptyString50>;
-
-const TodoTable = S.struct({
-  id: TodoId,
-  title: E.NonEmptyString1000,
-  isCompleted: E.SqliteBoolean,
-  categoryId: S.nullable(TodoCategoryId),
-});
-type TodoTable = S.Infer<typeof TodoTable>;
-
-const TodoCategoryTable = S.struct({
-  id: TodoCategoryId,
-  name: NonEmptyString50,
-});
-type TodoCategoryTable = S.Infer<typeof TodoCategoryTable>;
-
-const Database = S.struct({
-  todo: TodoTable,
-  todoCategory: TodoCategoryTable,
-});
-
-const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
-  E.createHooks(Database);
 
 const prompt = <T extends string>(
   schema: S.Schema<T>,

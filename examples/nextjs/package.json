@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@effect/data": "^0.3.3",
     "@effect/schema": "^0.0.5",
     "@types/node": "18.14.6",
     "@types/react": "18.0.28",
