@@ -1,5 +1,11 @@
 # evolu
 
+## 2.1.1
+
+### Patch Changes
+
+- e3deac8: Update readme
+
 ## 2.1.0
 
 ### Minor Changes
