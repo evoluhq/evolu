@@ -68,7 +68,7 @@
     "@types/react-dom": "^18.0.11",
     "@types/web-locks-api": "^0.0.2",
     "array-shuffle": "^3.0.0",
-    "eslint": "^8.35.0",
+    "eslint": "^8.36.0",
     "eslint-config-evolu": "workspace:0.0.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
