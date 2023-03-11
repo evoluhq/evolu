@@ -1,5 +1,12 @@
 # web
 
+## 0.0.47
+
+### Patch Changes
+
+- Updated dependencies [e3deac8]
+  - evolu@2.1.1
+
 ## 0.0.46
 
 ### Patch Changes
