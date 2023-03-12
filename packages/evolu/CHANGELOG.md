@@ -1,5 +1,11 @@
 # evolu
 
+## 2.1.2
+
+### Patch Changes
+
+- c949b26: Improve docs
+
 ## 2.1.1
 
 ### Patch Changes
