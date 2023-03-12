@@ -1,0 +1,55 @@
+# createHooks
+
+`createHooks` defines the database schema and returns React Hooks.
+Evolu uses [Schema](https://github.com/effect-ts/schema) for domain modeling.
+
+## Example
+
+```ts
+import * as S from "@effect/schema";
+import * as E from "evolu";
+
+const TodoId = E.id("Todo");
+type TodoId = S.Infer<typeof TodoId>;
+
+const TodoTable = S.struct({
+  id: TodoId,
+  title: E.NonEmptyString1000,
+  isCompleted: E.SqliteBoolean,
+});
+type TodoTable = S.Infer<typeof TodoTable>;
+
+const Database = S.struct({
+  todo: TodoTable,
+});
+
+export const {
+  useQuery,
+  useMutation,
+  useEvoluError,
+  useOwner,
+  useOwnerActions,
+} = E.createHooks(Database);
+```
+
+import { Callout } from "nextra-theme-docs";
+
+<Callout type="info" emoji="ℹ️">
+  There is one simple rule for local-first apps domain modeling: After the
+  initial release, models shall be append-only.
+</Callout>
+
+Tables and columns shall not be removed because there is a possibility
+that somebody is already using them. Column types shall be enriched only.
+
+With this simple rule, any app version can handle any schema version.
+Evolu database is schemaless and doesn't have to be migrated when
+a schema is changed. Migrations are not feasible for local-first apps.
+
+If an obsolete app gets a sync message with a newer schema, Evolu
+automatically updates the database schema to store the message safely,
+and `useQuery` filterMap helper will ignore unknown rows until
+the app is updated.
+
+To learn more about migration-less schema evolving, check the `useQuery`
+documentation.

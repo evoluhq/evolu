@@ -21,21 +21,8 @@ import {
 } from "./types.js";
 
 /**
- * Create React Hooks and initialize the database for a given schema.
- *
- * For domain modeling, Evolu uses [Schema](https://github.com/effect-ts/schema).
- *
- * Remember, you shall not remove any table or column after the first release.
- * There is a possibility that somebody is already using it. All you can do is
- * add new tables or columns and stop using obsolete ones. That's because it's
- * not feasible to migrate local data on any schema change.
- *
- * With this simple rule, any app version can handle any schema version.
- * If an obsolete app gets a sync message with a newer schema, Evolu
- * automatically updates the database schema to store the message safely.
- *
- * To learn more about handling schema evolving without migrations, check
- * the `useQuery` documentation.
+ * `createHooks` defines the database schema and returns React Hooks.
+ * Evolu uses [Schema](https://github.com/effect-ts/schema) for domain modeling.
  *
  * ### Example
  *
@@ -65,6 +52,24 @@ import {
  *   useOwnerActions,
  * } = E.createHooks(Database);
  * ```
+ *
+ * There is one simple rule for local-first apps domain modeling:
+ * After the initial release, models shall be append-only.
+ *
+ * Tables and columns shall not be removed because there is a possibility
+ * that somebody is already using them. Column types shall be enriched only.
+ *
+ * With this simple rule, any app version can handle any schema version.
+ * Evolu database is schemaless and doesn't have to be migrated when
+ * a schema is changed. Migrations are not feasible for local-first apps.
+ *
+ * If an obsolete app gets a sync message with a newer schema, Evolu
+ * automatically updates the database schema to store the message safely,
+ * and `useQuery` filterMap helper will ignore unknown rows until
+ * the app is updated.
+ *
+ * To learn more about migration-less schema evolving, check the `useQuery`
+ * documentation.
  */
 export const createHooks = <S extends DbSchema>(
   dbSchema: Schema<S>,

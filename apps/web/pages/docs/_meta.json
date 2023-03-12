@@ -1,6 +1,7 @@
 {
   "getting-started": "Getting Started",
-  "tutorial": "Tutorial",
+  "guide": "Guide",
+  "api": "API",
   "how-evolu-works": "How Evolu Works",
   "evolu-server": "Evolu Server"
 }

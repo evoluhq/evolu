@@ -63,7 +63,6 @@ export type OwnerId = Id & Brand<"Owner">;
  * `Owner` represents the Evolu database owner. Evolu auto-generates `Owner` on
  * the first run. `Owner` can be reset on the current device and restored
  * on a different one.
- *
  */
 export interface Owner {
   readonly mnemonic: Mnemonic;

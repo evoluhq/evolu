@@ -1,0 +1,9 @@
+{
+  "create-hooks": "createHooks",
+  "use-mutation": "useMutation",
+  "use-query": "useQuery",
+  "use-evolu-error": "useEvoluError",
+  "use-owner": "useOwner",
+  "use-owner-actions": "useOwnerActions",
+  "model": "Model"
+}

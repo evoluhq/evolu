@@ -1,0 +1,75 @@
+# useMutation
+
+`useMutation` React Hook returns an object with two functions for creating
+and updating rows in the database.
+
+import { Callout } from "nextra-theme-docs";
+
+<Callout type="info" emoji="ℹ️">
+  Note that Evolu does not use SQL for mutations. It's not a bug; it's a
+  feature. SQL for mutations is dangerous for local-first apps. One wrong update
+  can accidentally affect many rows.
+</Callout>
+
+Local-first data are meant to last forever. Imagine an SQL update that
+changes tons of data. That would generate a lot of sync messages making
+sync slow and backup huge.
+
+Explicit mutations also allow Evolu to automatically add and update
+a few useful columns common to all tables.
+
+Those columns are: `createdAt`, `createdBy`, `updatedAt`, and `isDeleted`.
+
+## create
+
+Creates a new row with the given values.
+
+### Examples
+
+To create a new row:
+
+```ts
+const { create } = useMutation();
+create("todo", { title });
+```
+
+To get a new row's `Id`:
+
+```ts
+const { create } = useMutation();
+const { id } = create("todo", { title });
+```
+
+To wait until a new row is rendered:
+
+```ts
+const { create } = useMutation();
+create("todo", { title }, onComplete);
+```
+
+## update
+
+Update a row with the given values.
+
+### Examples
+
+To update a row:
+
+```ts
+const { update } = useMutation();
+update("todo", { id, title });
+```
+
+To wait until the updated row is rendered:
+
+```ts
+const { update } = useMutation();
+update("todo", { id, title }, onComplete);
+```
+
+To delete a row.
+
+```ts
+const { update } = useMutation();
+update("todo", { id, isDeleted: true });
+```

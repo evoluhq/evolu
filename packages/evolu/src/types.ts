@@ -376,7 +376,7 @@ export type Update<S extends DbSchema> = <T extends keyof S>(
 
 export type UseMutation<S extends DbSchema> = () => {
   /**
-   * Creates a new row in the specified table with the given values.
+   * Creates a new row with the given values.
    *
    * ### Examples
    *
@@ -403,7 +403,7 @@ export type UseMutation<S extends DbSchema> = () => {
    */
   readonly create: Create<S>;
   /**
-   * Update a row in the specified table with the given values.
+   * Update a row with the given values.
    *
    * ### Examples
    *
@@ -419,6 +419,13 @@ export type UseMutation<S extends DbSchema> = () => {
    * ```
    * const { update } = useMutation();
    * update("todo", { id, title }, onComplete);
+   * ```
+   *
+   * To delete a row.
+   *
+   * ```
+   * const { update } = useMutation();
+   * update("todo", { id, isDeleted: true });
    * ```
    */
   readonly update: Update<S>;
@@ -506,23 +513,19 @@ export interface Hooks<S extends DbSchema> {
    */
   readonly useQuery: UseQuery<S>;
   /**
-   * `useMutation` React Hook returns an object with two functions for
-   * creating and updating rows in the database.
+   * `useMutation` React Hook returns an object with two functions for creating
+   * and updating rows in the database.
    *
-   * Note that Evolu does not use SQL for mutations. It's not a bug; it's a
-   * feature.
+   * Note that Evolu does not use SQL for mutations. It's not a bug;
+   * it's a feature. SQL for mutations is dangerous for local-first apps.
+   * One wrong update can accidentally affect many rows.
    *
-   * Full SQL for mutations is dangerous for local-first apps. One wrong update
-   * can accidentally affect many rows.
+   * Local-first data are meant to last forever. Imagine an SQL update that
+   * changes tons of data. That would generate a lot of sync messages making
+   * sync slow and backup huge.
    *
-   * Local-first data are meant to last
-   * forever. Imagine an update that changes tons of data. That would generate
-   * a lot of sync messages making sync slow and backup huge.
-   *
-   *
-   * That's why Evolu enforces explicit mutations instead of allowing
-   * arbitrary SQL. Explicit mutations allow Evolu to automatically add
-   * and update a few useful columns common to all tables.
+   * Explicit mutations also allow Evolu to automatically add and update
+   * a few useful columns common to all tables.
    *
    * Those columns are: `createdAt`, `createdBy`, `updatedAt`, and `isDeleted`.
    */
@@ -530,8 +533,12 @@ export interface Hooks<S extends DbSchema> {
   /**
    * `useEvoluError` React Hook returns `EvoluError`.
    *
-   * Evolu should never fail; that's the advantage of local-first apps,
-   * but if an error occurs, please report it in Evolu GitHub issues.
+   * Evolu should never fail; that's one of the advantages of local-first apps,
+   * but if an error still occurs, please report it in Evolu GitHub issues.
+   *
+   * The reason why Evolu should never fail is that there is no reason it should.
+   * Mutations are saved immediately and synced when the internet is available.
+   * The only expectable error is QuotaExceeded (TODO).
    */
   readonly useEvoluError: () => EvoluError | null;
   /**

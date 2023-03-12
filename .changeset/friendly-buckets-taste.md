@@ -1,0 +1,5 @@
+---
+"evolu": patch
+---
+
+Improve docs
