@@ -1,5 +1,11 @@
 # evolu
 
+## 2.2.0
+
+### Minor Changes
+
+- 0fb793f: Enable OPFS for Firefox 111+
+
 ## 2.1.3
 
 ### Patch Changes
