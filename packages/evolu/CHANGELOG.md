@@ -1,5 +1,11 @@
 # evolu
 
+## 2.1.3
+
+### Patch Changes
+
+- b8296f7: Update peer dependencies
+
 ## 2.1.2
 
 ### Patch Changes
