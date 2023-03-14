@@ -4,5 +4,10 @@
   "api": "API",
   "how-evolu-works": "How Evolu Works",
   "faq": "FAQ",
-  "evolu-server": "Evolu Server"
+  "evolu-server": "Evolu Server",
+  "changeLog_link": {
+    "title": "Change Log",
+    "href": "https://github.com/evoluhq/evolu/releases",
+    "newWindow": true
+  }
 }
