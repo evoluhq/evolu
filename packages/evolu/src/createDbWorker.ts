@@ -16,6 +16,14 @@ const isChromeWithOpfs: IO<boolean> = () =>
       brand.includes("Chrom") && Number(version) >= 109
   ) != null;
 
+const isFirefoxWithOpfs: IO<boolean> = () => {
+  const userAgent = navigator.userAgent.toLowerCase();
+  if (userAgent.indexOf("firefox") === -1) return false;
+  const matches = userAgent.match(/firefox\/([0-9]+\.*[0-9]*)/);
+  if (matches == null) return false;
+  return Number(matches[1]) >= 111;
+};
+
 const createNoOpServerDbWorker: CreateDbWorker = () => ({
   post: () => constVoid,
 });
@@ -49,6 +57,6 @@ const createLocalStorageDbWorker: CreateDbWorker = (onMessage) => {
 // TODO: React Native, Electron.
 export const createDbWorker: CreateDbWorker = isServer
   ? createNoOpServerDbWorker
-  : isChromeWithOpfs()
+  : isChromeWithOpfs() || isFirefoxWithOpfs()
   ? createOpfsDbWorker
   : createLocalStorageDbWorker;
