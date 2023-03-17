@@ -63,7 +63,7 @@ const prompt = <T extends string>(
 const Button: FC<{
   title: string;
   onClick: () => void;
-}> = ({ title, onClick }): JSX.Element => {
+}> = ({ title, onClick }) => {
   return (
     <button
       className="m-1 rounded-md border border-current px-1 text-sm"
@@ -74,13 +74,10 @@ const Button: FC<{
   );
 };
 
-const TodoCategorySelect = ({
-  selected,
-  onSelect,
-}: {
+const TodoCategorySelect: FC<{
   selected: TodoCategoryId | null;
   onSelect: (value: TodoCategoryId | null) => void;
-}): JSX.Element => {
+}> = ({ selected, onSelect }) => {
   const { rows } = useQuery(
     (db) =>
       db
@@ -160,7 +157,7 @@ const TodoItem = memo<{
   );
 });
 
-const TodoList = (): JSX.Element => {
+const TodoList: FC = () => {
   const { rows } = useQuery(
     (db) =>
       db
@@ -185,7 +182,7 @@ const TodoList = (): JSX.Element => {
   );
 };
 
-const AddTodo = (): JSX.Element => {
+const AddTodo: FC = () => {
   const { create } = useMutation();
 
   return (
@@ -200,7 +197,7 @@ const AddTodo = (): JSX.Element => {
   );
 };
 
-const TodoCategoryList = (): JSX.Element => {
+const TodoCategoryList: FC = () => {
   const { rows } = useQuery(
     (db) =>
       db
@@ -242,7 +239,7 @@ const TodoCategoryList = (): JSX.Element => {
   );
 };
 
-const AddTodoCategory = (): JSX.Element => {
+const AddTodoCategory: FC = () => {
   const { create } = useMutation();
 
   return (
@@ -257,7 +254,7 @@ const AddTodoCategory = (): JSX.Element => {
   );
 };
 
-const OwnerActions = (): JSX.Element => {
+const OwnerActions: FC = () => {
   const [isShown, setIsShown] = useState(false);
   const owner = useOwner();
   const ownerActions = useOwnerActions();
@@ -304,7 +301,7 @@ const OwnerActions = (): JSX.Element => {
   );
 };
 
-const NotificationBar = (): JSX.Element => {
+const NotificationBar: FC = () => {
   const evoluError = useEvoluError();
   const [shown, setShown] = useState(false);
 
@@ -322,7 +319,7 @@ const NotificationBar = (): JSX.Element => {
   );
 };
 
-export const NextJsExample = (): JSX.Element => {
+export const NextJsExample: FC = () => {
   return (
     <>
       <NotificationBar />
