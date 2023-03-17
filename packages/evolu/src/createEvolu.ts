@@ -177,7 +177,7 @@ const createOnQuery =
           return;
         }
 
-        // flushSync is required before callOnCompletes
+        // flushSync is required before calling onCompletes
         if (queriesPatches.length > 0)
           flushSync(() => {
             rowsCache.setState(state)();
@@ -198,7 +198,8 @@ const createOnQuery =
 const createSubscribeQuery = (
   rowsCache: Store<RowsCache>,
   subscribedQueries: Map<SqlQueryString, number>,
-  queryIfAny: (queries: readonly SqlQueryString[]) => IO<void>
+  queryIfAny: (queries: readonly SqlQueryString[]) => IO<void>,
+  queueMicrotask: (callback: () => void) => void
 ): Evolu<never>["subscribeQuery"] => {
   const snapshot = new ioRef.IORef<readonly SqlQueryString[] | null>(null);
 
@@ -314,7 +315,8 @@ export const createEvolu: CreateEvolu =
     const subscribeQuery = createSubscribeQuery(
       rowsCache,
       subscribedQueries,
-      queryIfAny
+      queryIfAny,
+      queueMicrotask
     );
 
     const getQuery: Evolu<never>["getQuery"] = (query) => () =>
