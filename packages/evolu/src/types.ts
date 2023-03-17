@@ -311,6 +311,10 @@ export type UseQuery<S extends DbSchema> = <
 ) => {
   readonly rows: readonly Readonly<Simplify<ExcludeNullAndFalse<Row>>>[];
   readonly row: Readonly<Simplify<ExcludeNullAndFalse<Row>>> | null;
+  /**
+   * `isLoaded` becomes true when rows are loaded for the first time.
+   * Rows are cached per SQL query, so this happens only once.
+   */
   readonly isLoaded: boolean;
 };
 
