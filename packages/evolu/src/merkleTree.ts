@@ -3,7 +3,7 @@ import { Option } from "fp-ts/Option";
 import { timestampToHash } from "./timestamp.js";
 import { MerkleTree, Millis, Timestamp, TimestampHash } from "./types.js";
 
-export const createInitialMerkleTree = (): MerkleTree => ({});
+export const createInitialMerkleTree = (): MerkleTree => Object.create(null);
 
 const insertKey = ({
   tree,
