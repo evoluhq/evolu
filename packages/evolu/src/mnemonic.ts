@@ -15,5 +15,8 @@ export const parseMnemonic = (
     ? either.right(mnemonic as Mnemonic)
     : either.left({ type: "invalid mnemonic" });
 
-export const mnemonicToEntropy = (mnemonic: Mnemonic): Uint8Array =>
-  bip39.mnemonicToEntropy(mnemonic, wordlist);
+export const mnemonicToSymmetricKey = (mnemonic: Mnemonic): Uint8Array => {
+  const ent = bip39.mnemonicToEntropy(mnemonic, wordlist)
+  // use empty passphrase
+  return bip39.mnemonicToSeedSync(mnemonic, "").slice(0, 32);
+}
