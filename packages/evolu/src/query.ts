@@ -1,4 +1,4 @@
-import { ioOption, readonlyArray, taskEither } from "fp-ts";
+import { readonlyArray, taskEither } from "fp-ts";
 import { pipe } from "fp-ts/lib/function.js";
 import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
 import { createPatches } from "./diff.js";
@@ -16,7 +16,7 @@ import {
 export const query =
   ({
     queries,
-    onCompleteIds,
+    onCompleteIds = readonlyArray.empty,
   }: {
     readonly queries: readonly SqlQueryString[];
     readonly onCompleteIds?: readonly OnCompleteId[];
@@ -52,25 +52,16 @@ export const query =
               query,
               patches: createPatches(previous[query], next[query]),
             })
-          ),
-          readonlyArray.filter(({ patches }) => patches.length > 0)
+          )
         );
 
-        pipe(
-          rowsCache.write(next),
-          ioOption.fromIO,
-          ioOption.filter(
-            () =>
-              (onCompleteIds && onCompleteIds.length > 0) ||
-              queriesPatches.length > 0
-          ),
-          ioOption.chainIOK(() =>
-            postDbWorkerOutput({
-              type: "onQuery",
-              queriesPatches,
-              onCompleteIds: onCompleteIds || [],
-            })
-          )
-        )();
+        rowsCache.write(next)();
+
+        if (queriesPatches.length > 0 || onCompleteIds.length > 0)
+          postDbWorkerOutput({
+            type: "onQuery",
+            queriesPatches,
+            onCompleteIds,
+          })();
       })
     );

@@ -36,7 +36,7 @@ export const createPatches = (
 
 export const applyPatches =
   (patches: readonly Patch[]) =>
-  (current: SqliteRows | undefined): SqliteRows | undefined =>
+  (current: SqliteRows): SqliteRows =>
     patches.reduce((a, patch) => {
       switch (patch.op) {
         case "replaceAll":

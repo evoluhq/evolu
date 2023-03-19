@@ -1,6 +1,7 @@
 import { Schema } from "@effect/schema";
-import { readonlyArray } from "fp-ts";
+import { option, readonlyArray } from "fp-ts";
 import { constNull, pipe } from "fp-ts/lib/function.js";
+import { Option } from "fp-ts/Option";
 import { useMemo, useRef, useSyncExternalStore } from "react";
 import { createConfig } from "./createConfig.js";
 import { createDbWorker } from "./createDbWorker.js";
@@ -11,7 +12,6 @@ import {
   Create,
   DbSchema,
   Hooks,
-  OrNullOrFalse,
   SqliteRow,
   SqlQuery,
   sqlQueryToString,
@@ -79,46 +79,55 @@ export const createHooks = <S extends DbSchema>(
     config: createConfig(config),
     createDbWorker,
   });
-  const cache = new WeakMap<SqliteRow, OrNullOrFalse<SqliteRow>>();
+  const cache = new WeakMap<SqliteRow, Option<SqliteRow>>();
 
   const useQuery: UseQuery<S> = (query, filterMap) => {
+    // `query` can and will change, compile() is cheap
     const sqlQueryString = query
       ? pipe(query(kysely as never).compile() as SqlQuery, sqlQueryToString)
       : null;
+    // filterMap is expensive but must be static, hence useRef
+    const filterMapRef = useRef(filterMap);
 
-    const queryRows = useSyncExternalStore(
-      useMemo(() => evolu.subscribeQuery(sqlQueryString), [sqlQueryString]),
-      evolu.getQuery(sqlQueryString),
+    const rowsWithLoadingState = useSyncExternalStore(
+      useMemo(
+        // Can't be IO, it's not compatible with eslint-plugin-react-hooks
+        () => evolu.subscribeRowsWithLoadingState(sqlQueryString),
+        [sqlQueryString]
+      ),
+      evolu.getRowsWithLoadingState(sqlQueryString),
       constNull
     );
 
-    const filterMapRef = useRef(filterMap);
-
-    const getRowFromCache = (row: SqliteRow): OrNullOrFalse<SqliteRow> => {
+    const filterMapRow = (row: SqliteRow): Option<SqliteRow> => {
       let cachedRow = cache.get(row);
       if (cachedRow !== undefined) return cachedRow;
-      cachedRow = filterMapRef.current(row as never);
+      cachedRow = pipe(filterMapRef.current(row as never), (row) =>
+        row ? option.some(row) : option.none
+      );
       cache.set(row, cachedRow);
       return cachedRow;
     };
 
-    const rows = useMemo(() => {
-      if (queryRows == null) return null;
-      const rows: Array<SqliteRow> = [];
-      queryRows.forEach((queryRow) => {
-        const row = getRowFromCache(queryRow);
-        if (row) rows.push(row);
-      });
-      return rows;
-    }, [queryRows]);
+    const rows = useMemo(
+      () =>
+        pipe(
+          rowsWithLoadingState?.rows,
+          option.fromNullable,
+          option.map(readonlyArray.filterMap(filterMapRow)),
+          option.toNullable
+        ),
+      [rowsWithLoadingState?.rows]
+    );
 
     return useMemo(
       () => ({
         rows: (rows || readonlyArray.empty) as never,
         row: ((rows && rows[0]) || null) as never,
         isLoaded: rows != null,
+        isLoading: rowsWithLoadingState ? rowsWithLoadingState.isLoading : true,
       }),
-      [rows]
+      [rows, rowsWithLoadingState]
     );
   };
 

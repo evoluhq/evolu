@@ -78,7 +78,7 @@ const TodoCategorySelect: FC<{
   selected: TodoCategoryId | null;
   onSelect: (value: TodoCategoryId | null) => void;
 }> = ({ selected, onSelect }) => {
-  const { rows } = useQuery(
+  const { rows, isLoading } = useQuery(
     (db) =>
       db
         .selectFrom("todoCategory")
@@ -86,8 +86,10 @@ const TodoCategorySelect: FC<{
         .where("isDeleted", "is not", E.cast(true))
         .orderBy("createdAt"),
     // (row) => row
+    // Filter out rows with nullable names.
     ({ name, ...rest }) => name && { name, ...rest }
   );
+  console.log("select", isLoading);
 
   const nothingSelected = "";
   const value =
@@ -158,7 +160,7 @@ const TodoItem = memo<{
 });
 
 const TodoList: FC = () => {
-  const { rows } = useQuery(
+  const { rows, isLoading } = useQuery(
     (db) =>
       db
         .selectFrom("todo")
@@ -169,6 +171,8 @@ const TodoList: FC = () => {
     ({ title, isCompleted, ...rest }) =>
       title && isCompleted != null && { title, isCompleted, ...rest }
   );
+
+  console.log("todolist", isLoading);
 
   return (
     <>
@@ -198,7 +202,7 @@ const AddTodo: FC = () => {
 };
 
 const TodoCategoryList: FC = () => {
-  const { rows } = useQuery(
+  const { rows, isLoading } = useQuery(
     (db) =>
       db
         .selectFrom("todoCategory")
@@ -208,6 +212,8 @@ const TodoCategoryList: FC = () => {
     // (row) => row
     ({ name, ...rest }) => name && { name, ...rest }
   );
+
+  console.log("catelist", isLoading);
 
   const { update } = useMutation();
 

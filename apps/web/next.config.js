@@ -6,7 +6,7 @@ const withNextra = require("nextra")({
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
+  reactStrictMode: false,
   // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
   async headers() {
     return [

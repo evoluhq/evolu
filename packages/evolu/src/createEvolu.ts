@@ -4,6 +4,7 @@ import {
   ioRef,
   option,
   readonlyArray,
+  readonlyMap,
   readonlyNonEmptyArray,
   readonlyRecord,
   taskEither,
@@ -37,7 +38,7 @@ import {
   NewCrdtMessage,
   OnCompleteId,
   OwnerActions,
-  RowsCache,
+  RowsWithLoadingState,
   SqlQueryString,
   Store,
 } from "./types.js";
@@ -133,7 +134,7 @@ const createMutate = <S extends DbSchema>({
       if (runQueueMicrotask)
         pipe(
           mutateQueueRef.read,
-          io.chainFirst(() => mutateQueueRef.write([])),
+          io.chainFirst(() => mutateQueueRef.write(readonlyArray.empty)),
           io.map(readonlyNonEmptyArray.fromReadonlyArray),
           ioOption.chainIOK((queue) =>
             dbWorker.post({
@@ -158,18 +159,33 @@ const createMutate = <S extends DbSchema>({
   };
 };
 
+type RowsCache = ReadonlyMap<SqlQueryString, RowsWithLoadingState>;
+
 const createOnQuery =
   (rowsCache: Store<RowsCache>, onCompletes: Map<OnCompleteId, IO<void>>) =>
   ({ queriesPatches, onCompleteIds }: DbWorkerOutputOnQuery): IO<void> =>
   () => {
     pipe(
       queriesPatches,
-      readonlyArray.reduce(
-        rowsCache.getState(),
-        (state, { query, patches }) => ({
-          ...state,
-          [query]: applyPatches(patches)(state[query]),
-        })
+      readonlyArray.reduce(rowsCache.getState(), (state, { query, patches }) =>
+        pipe(
+          state,
+          // vkladat bych mel neco, co upduju pres optic
+          // kterej, pokud se to nemeni, vrati tu samou instanci
+          // pac useSyncExternalStore potrebuju referenci
+          // muze prijit neco, co neni zmena? muze
+          // muze to nebejt? muze, ale vzdy vkladam false,
+          // takze tady ten case neni
+          // pokud to neni, nastavim, pokud to je, nastavim
+          // ale,
+
+          readonlyMap.upsertAt(eqSqlQueryString)(query, {
+            isLoading: false,
+            rows: applyPatches(patches)(
+              state.get(query)?.rows || readonlyArray.empty
+            ),
+          })
+        )
       ),
       (state) => {
         if (onCompleteIds.length === 0) {
@@ -177,11 +193,8 @@ const createOnQuery =
           return;
         }
 
-        // flushSync is required before calling onCompletes
-        if (queriesPatches.length > 0)
-          flushSync(() => {
-            rowsCache.setState(state)();
-          });
+        // Ensure DOM focus on just created input is possible.
+        flushSync(rowsCache.setState(state));
 
         pipe(
           onCompleteIds,
@@ -195,16 +208,16 @@ const createOnQuery =
     );
   };
 
-const createSubscribeQuery = (
+const createSubscribeRowsWithLoadingState = (
   rowsCache: Store<RowsCache>,
   subscribedQueries: Map<SqlQueryString, number>,
   queryIfAny: (queries: readonly SqlQueryString[]) => IO<void>,
   queueMicrotask: (callback: () => void) => void
-): Evolu<never>["subscribeQuery"] => {
+): Evolu<never>["subscribeRowsWithLoadingState"] => {
   const snapshot = new ioRef.IORef<readonly SqlQueryString[] | null>(null);
 
   return (sqlQueryString: SqlQueryString | null) => (listen) => {
-    if (sqlQueryString == null) return () => constVoid;
+    if (sqlQueryString == null) return constVoid;
 
     if (snapshot.read() == null) {
       snapshot.write(Array.from(subscribedQueries.keys()))();
@@ -212,11 +225,33 @@ const createSubscribeQuery = (
         const subscribedQueriesSnapshot = snapshot.read();
         if (subscribedQueriesSnapshot == null) return;
         snapshot.write(null)();
-        pipe(
+
+        const queries = pipe(
           Array.from(subscribedQueries.keys()),
-          readonlyArray.difference(eqSqlQueryString)(subscribedQueriesSnapshot),
-          queryIfAny
-        )();
+          readonlyArray.difference(eqSqlQueryString)(subscribedQueriesSnapshot)
+        );
+
+        pipe(
+          queries,
+          readonlyArray.reduce(rowsCache.getState(), (state, query) =>
+            pipe(
+              state,
+              // pokud to neni, nema smysl nic nastavovat
+              // muze to nebejt? muze, ale vzdy vkladam false,
+              // takze tady ten case neni
+              // pokud to neni, nastavim, pokud to je, nastavim
+              // ale,
+              // potrebuju mutaci jen kdyz se to meni, jasny
+              readonlyMap.upsertAt(eqSqlQueryString)(query, {
+                isLoading: true,
+                rows: state.get(query)?.rows || readonlyArray.empty,
+              })
+            )
+          ),
+          rowsCache.setState
+        );
+
+        queryIfAny(queries)();
       });
     }
 
@@ -279,7 +314,7 @@ export const createEvolu: CreateEvolu =
   (dbSchema) =>
   ({ config, createDbWorker }) => {
     const errorStore = createStore<EvoluError | null>(null);
-    const rowsCache = createStore<RowsCache>(Object.create(null));
+    const rowsCache = createStore<RowsCache>(new Map());
     const ownerStore = createStore<Owner | null>(null);
     const onCompletes = new Map<OnCompleteId, IO<void>>();
     const subscribedQueries = new Map<SqlQueryString, number>();
@@ -312,15 +347,16 @@ export const createEvolu: CreateEvolu =
       }
     });
 
-    const subscribeQuery = createSubscribeQuery(
+    const subscribeRowsWithLoadingState = createSubscribeRowsWithLoadingState(
       rowsCache,
       subscribedQueries,
       queryIfAny,
       queueMicrotask
     );
 
-    const getQuery: Evolu<never>["getQuery"] = (query) => () =>
-      (query && rowsCache.getState()[query]) || null;
+    const getRowsWithLoadingState: Evolu<never>["getRowsWithLoadingState"] =
+      (query) => () =>
+        (query && rowsCache.getState().get(query)) || null;
 
     const getOwner = new Promise<Owner>((resolve) => {
       const unsubscribe = ownerStore.subscribe(() => {
@@ -359,8 +395,8 @@ export const createEvolu: CreateEvolu =
       getError: errorStore.getState,
       subscribeOwner: ownerStore.subscribe,
       getOwner: ownerStore.getState,
-      subscribeQuery,
-      getQuery,
+      subscribeRowsWithLoadingState,
+      getRowsWithLoadingState,
       mutate,
       ownerActions,
     };
