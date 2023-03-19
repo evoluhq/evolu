@@ -1,6 +1,6 @@
 import * as bip39 from "@scure/bip39";
-import { hmac } from '@noble/hashes/hmac';
-import { sha512 } from '@noble/hashes/sha512';
+import { hmac } from "@noble/hashes/hmac";
+import { sha512 } from "@noble/hashes/sha512";
 import { urlAlphabet } from "nanoid";
 import { wordlist } from "@scure/bip39/wordlists/english";
 import { either } from "fp-ts";
@@ -18,13 +18,13 @@ const slip21Derive = (seed: Uint8Array, path: string[]): Uint8Array => {
   for (let i = 0; i < path.length; i++) {
     // e = "\x00" + path[i]
     const p = new TextEncoder().encode(path[i]);
-    let e = new Uint8Array(p.byteLength + 1);
+    const e = new Uint8Array(p.byteLength + 1);
     e[0] = 0;
     e.set(p, 1);
     m = hmac(sha512, m.slice(0, 32), e);
   }
   return m.slice(32, 64);
-}
+};
 
 export const generateMnemonic = (): Mnemonic =>
   bip39.generateMnemonic(wordlist, 128) as Mnemonic;
@@ -45,10 +45,10 @@ export const mnemonicToOwnerId = (mnemonic: Mnemonic): OwnerId => {
     id += urlAlphabet[key[i] & 63];
   }
   return id as OwnerId;
-}
+};
 
 export const mnemonicToEncryptionKey = (mnemonic: Mnemonic): Uint8Array => {
   const seed = bip39.mnemonicToSeedSync(mnemonic, PASSPHRASE);
   const key = slip21Derive(seed, ["Evolu", "Encryption Key"]);
   return key;
-}
+};
