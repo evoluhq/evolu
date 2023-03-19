@@ -41,7 +41,7 @@ Client-server architecture provides us with easy backup and synchronization, but
 
 ## Getting Started
 
-```sh
+```
 npm install evolu @effect/schema
 ```
 
@@ -216,6 +216,12 @@ Start developing and watch for code changes:
 
 ```
 pnpm dev
+```
+
+Run tests:
+
+```
+pnpm test
 ```
 
 Describe changes for release log:
