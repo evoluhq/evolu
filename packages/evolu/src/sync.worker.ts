@@ -4,7 +4,6 @@ import { constVoid, flow, pipe } from "fp-ts/lib/function.js";
 import { Task } from "fp-ts/Task";
 import { TaskEither } from "fp-ts/TaskEither";
 import * as aes from "micro-aes-gcm";
-import { mnemonicToEncryptionKey } from "./mnemonic.js";
 import { Id, OwnerId } from "./model.js";
 import {
   CrdtMessageContent,
@@ -208,6 +207,6 @@ onmessage = ({ data }: MessageEvent<SyncWorkerInput>): void =>
     sync({
       ...data,
       postSyncWorkerOutput,
-      key: mnemonicToEncryptionKey(data.owner.mnemonic),
+      key: data.owner.encryptionKey,
     })
   );
