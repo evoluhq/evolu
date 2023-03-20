@@ -20,8 +20,8 @@
     "@changesets/cli": "^2.26.0",
     "eslint": "^8.36.0",
     "eslint-config-evolu": "workspace:0.0.2",
-    "prettier": "^2.8.4",
-    "turbo": "^1.8.3"
+    "prettier": "^2.8.5",
+    "turbo": "^1.8.4"
   },
   "packageManager": "pnpm@7.25.0"
 }

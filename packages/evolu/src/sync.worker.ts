@@ -205,6 +205,6 @@ onmessage = ({ data }: MessageEvent<SyncWorkerInput>): void =>
     sync({
       ...data,
       postSyncWorkerOutput,
-      key: mnemonicToEntropy(data.owner.mnemonic),
+      key: data.owner.encryptionKey,
     })
   );

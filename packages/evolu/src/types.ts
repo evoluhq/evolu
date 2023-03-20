@@ -97,11 +97,8 @@ export const merkleTreeFromString = (m: MerkleTreeString): MerkleTree =>
 
 /**
  * CrdtValue represents what Evolu can save in SQLite.
- * TODO: Add Int8Array, https://github.com/evoluhq/evolu/issues/4
  */
-export type CrdtValue =
-  // Remember to update DbSchema when changing.
-  null | string | number;
+export type CrdtValue = null | string | number | Uint8Array;
 
 export interface NewCrdtMessage {
   readonly table: string;

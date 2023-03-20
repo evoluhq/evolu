@@ -1,5 +1,27 @@
 # evolu
 
+## 3.0.1
+
+### Patch Changes
+
+- f9cacfc: Fix two bugs
+
+  Run createOwnerEnv transactionally and fix a bug.
+
+## 3.0.0
+
+### Major Changes
+
+- 11f1a40: Better and more versatile encryption
+
+  For the upcoming integration of Evolu with Trezor (a cryptographic hardware wallet developed by SatoshiLabs), we changed the owner id and encryption key derivation to use SLIP-21 (hierarchical derivation of symmetric keys).
+
+  As a result, the existing owner will get a new id and encryption key, requiring all data to be re-sync. Evolu provides automatic migration for these breaking changes, so no further actions are needed.
+
+### Minor Changes
+
+- 9be7e78: Add support for SQLite binary
+
 ## 2.2.0
 
 ### Minor Changes

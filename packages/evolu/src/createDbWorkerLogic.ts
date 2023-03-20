@@ -108,6 +108,7 @@ export const createDbWorkerLogic =
       taskEither.chain((dbEnv) =>
         pipe(
           createOwnerEnv()(dbEnv),
+          transaction(dbEnv.db),
           taskEither.map((ownerEnv) => ({ ...dbEnv, ...ownerEnv }))
         )
       )
