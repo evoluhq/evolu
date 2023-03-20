@@ -1,6 +1,6 @@
 {
   "name": "evolu",
-  "version": "2.2.0",
+  "version": "3.0.0",
   "description": "React Hooks library for local-first apps with end-to-end encrypted backup and sync using SQLite and CRDT.",
   "keywords": [
     "evolu",
