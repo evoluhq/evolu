@@ -47,7 +47,7 @@ const lazyInit =
             );
 
             insert into __clock ("timestamp", "merkleTree")
-            values (?, ?);
+            values ('${timestamp}', '${merkleTree}');
 
             create table __owner (
               "mnemonic" blob,
@@ -58,13 +58,7 @@ const lazyInit =
             insert into __owner ("mnemonic", "id", "encryptionKey")
             values (?, ?, ?);
           `,
-          parameters: [
-            timestamp,
-            merkleTree,
-            owner.mnemonic,
-            owner.id,
-            owner.encryptionKey,
-          ],
+          parameters: [owner.mnemonic, owner.id, owner.encryptionKey],
         })
       )
     );
