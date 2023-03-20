@@ -5,20 +5,18 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "lint": "next lint"
   },
   "dependencies": {
-    "@effect/data": "~0.4.1",
-    "@effect/schema": "~0.1.0",
-    "@types/node": "18.14.6",
+    "@effect/schema": "^0.1.0",
+    "@types/node": "18.15.3",
     "@types/react": "18.0.28",
     "@types/react-dom": "18.0.11",
-    "eslint": "8.35.0",
-    "eslint-config-next": "13.2.3",
-    "evolu": "2.0.0",
-    "next": "13.2.3",
+    "evolu": "^3.0.1",
+    "next": "13.2.4",
     "react": "18.2.0",
     "react-dom": "18.2.0",
-    "typescript": "4.9.5"
+    "typescript": "5.0.2"
   }
 }
