@@ -1,5 +1,13 @@
 # evolu
 
+## 3.0.1
+
+### Patch Changes
+
+- f9cacfc: Fix two bugs
+
+  Run createOwnerEnv transactionally and fix a bug.
+
 ## 3.0.0
 
 ### Major Changes
