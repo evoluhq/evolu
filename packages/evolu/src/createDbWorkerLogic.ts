@@ -51,7 +51,7 @@ export const createDbWorkerLogic =
         ...envs,
         postSyncWorkerInput: (message) => () => syncWorker.postMessage(message),
         now: () => Date.now() as Millis,
-        rowsCache: new ioRef.IORef(Object.create(null)),
+        rowsCache: new ioRef.IORef(new Map()),
         postDbWorkerOutput,
         locks: navigator.locks,
       });

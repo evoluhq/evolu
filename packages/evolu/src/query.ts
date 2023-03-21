@@ -32,30 +32,22 @@ export const query =
         pipe(
           sqlQueryFromString(query),
           db.execSqlQuery,
-          taskEither.map((rows) => ({ query, rows }))
+          taskEither.map((rows) => [query, rows] as const)
         )
       ),
       taskEither.map((queriesRows) => {
         const previous = rowsCache.read();
-        const next = pipe(
-          queriesRows,
-          readonlyArray.reduce(previous, (a, { query, rows }) => ({
-            ...a,
-            [query]: rows,
-          }))
-        );
+        rowsCache.write(new Map([...previous, ...queriesRows]))();
 
         const queriesPatches = pipe(
-          queriesRows.map((a) => a.query),
+          queriesRows,
           readonlyArray.map(
-            (query): QueryPatches => ({
+            ([query, rows]): QueryPatches => ({
               query,
-              patches: createPatches(previous[query], next[query]),
+              patches: createPatches(previous.get(query), rows),
             })
           )
         );
-
-        rowsCache.write(next)();
 
         if (queriesPatches.length > 0 || onCompleteIds.length > 0)
           postDbWorkerOutput({

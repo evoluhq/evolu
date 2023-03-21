@@ -584,8 +584,7 @@ export interface PostSyncWorkerInputEnv {
 }
 
 export interface RowsCacheEnv {
-  // TODO: ReadonlyMap
-  readonly rowsCache: IORef<ReadonlyRecord<SqlQueryString, SqliteRows>>;
+  readonly rowsCache: IORef<ReadonlyMap<SqlQueryString, SqliteRows>>;
 }
 
 export interface TimeEnv {
