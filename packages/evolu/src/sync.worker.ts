@@ -4,7 +4,6 @@ import { constVoid, flow, pipe } from "fp-ts/lib/function.js";
 import { Task } from "fp-ts/Task";
 import { TaskEither } from "fp-ts/TaskEither";
 import { decrypt, encrypt } from "micro-aes-gcm";
-import { mnemonicToEntropy } from "./mnemonic.js";
 import { Id, OwnerId } from "./model.js";
 import {
   CrdtMessageContent,
