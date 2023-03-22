@@ -1,5 +1,13 @@
 # evolu
 
+## 3.1.0
+
+### Minor Changes
+
+- b043d91: isLoading
+
+  `isLoading` is a new prop `useQuery` is returning. While `isLoaded` becomes true when rows are loaded for the first time, `isLoading` becomes true whenever rows are loading.
+
 ## 3.0.1
 
 ### Patch Changes
