@@ -119,6 +119,7 @@ export interface CrdtClock {
 // SQL
 
 // Like Kysely CompiledQuery but without a `query` prop.
+// TODO: Rename to Query
 export interface SqlQuery {
   readonly sql: string;
   readonly parameters: readonly CrdtValue[];
@@ -221,11 +222,16 @@ export interface EvoluError {
 
 // DB
 
+// TODO: Rename to Row
 export type SqliteRow = ReadonlyRecord<string, CrdtValue>;
 
+// TODO: Rename to Rows
 export type SqliteRows = readonly SqliteRow[];
 
-export type RowsCache = ReadonlyRecord<SqlQueryString, SqliteRows>;
+export interface RowsWithLoadingState {
+  readonly rows: SqliteRows;
+  readonly isLoading: boolean;
+}
 
 /**
  * Functional wrapper for various SQLite implementations.
@@ -306,13 +312,23 @@ export type UseQuery<S extends DbSchema> = <
   query: OrNullOrFalse<Query<S, QueryRow>>,
   filterMap: (row: QueryRow) => OrNullOrFalse<Row>
 ) => {
+  /**
+   * Rows from the database. They can be filtered and mapped by `filterMap`.
+   */
   readonly rows: readonly Readonly<Simplify<ExcludeNullAndFalse<Row>>>[];
+  /**
+   * The first row from `rows`. For empty rows, it's null.
+   */
   readonly row: Readonly<Simplify<ExcludeNullAndFalse<Row>>> | null;
   /**
    * `isLoaded` becomes true when rows are loaded for the first time.
    * Rows are cached per SQL query, so this happens only once.
    */
   readonly isLoaded: boolean;
+  /**
+   * `isLoading` becomes true whenever rows are loading.
+   */
+  readonly isLoading: boolean;
 };
 
 type DbSchemaForMutate<S extends DbSchema> = {
@@ -461,6 +477,10 @@ export interface Hooks<S extends DbSchema> {
    * It takes two callbacks, a Kysely type-safe SQL query builder,
    * and a filterMap helper.
    *
+   * `useQuery` also returns `isLoaded` and `isLoading` props that indicate
+   * loading progress. `isLoaded` becomes true when rows are loaded for the
+   *  first time. `isLoading` becomes true whenever rows are loading.
+   *
    * ### Examples
    *
    * The most simple example:
@@ -574,7 +594,7 @@ export interface PostSyncWorkerInputEnv {
 }
 
 export interface RowsCacheEnv {
-  readonly rowsCache: IORef<RowsCache>;
+  readonly rowsCache: IORef<ReadonlyMap<SqlQueryString, SqliteRows>>;
 }
 
 export interface TimeEnv {
@@ -686,15 +706,21 @@ export interface Store<T> {
 
 export interface Evolu<S extends DbSchema> {
   readonly subscribeError: (listener: IO<void>) => Unsubscribe;
+
   readonly getError: IO<EvoluError | null>;
 
   readonly subscribeOwner: (listener: IO<void>) => Unsubscribe;
+
   readonly getOwner: IO<Owner | null>;
 
-  readonly subscribeQuery: (
-    sqlQueryString: SqlQueryString | null
+  readonly subscribeRowsWithLoadingState: (
+    queryString: SqlQueryString | null
+    // Can't be IO, it's not compatible with eslint-plugin-react-hooks
   ) => (listener: IO<void>) => Unsubscribe;
-  readonly getQuery: (query: SqlQueryString | null) => IO<SqliteRows | null>;
+
+  readonly getRowsWithLoadingState: (
+    queryString: SqlQueryString | null
+  ) => IO<RowsWithLoadingState | null>;
 
   readonly mutate: Mutate<S>;
 

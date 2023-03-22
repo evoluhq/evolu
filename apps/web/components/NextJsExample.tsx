@@ -86,6 +86,7 @@ const TodoCategorySelect: FC<{
         .where("isDeleted", "is not", E.cast(true))
         .orderBy("createdAt"),
     // (row) => row
+    // Filter out rows with nullable names.
     ({ name, ...rest }) => name && { name, ...rest }
   );
 
@@ -319,7 +320,7 @@ const NotificationBar: FC = () => {
   );
 };
 
-export const NextJsExample: FC = () => {
+export const NextJsExample = memo(function NextJsExample() {
   return (
     <>
       <NotificationBar />
@@ -330,4 +331,4 @@ export const NextJsExample: FC = () => {
       <OwnerActions />
     </>
   );
-};
+});

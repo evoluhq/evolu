@@ -3,7 +3,7 @@ import { IO } from "fp-ts/IO";
 import { constVoid, flow, pipe } from "fp-ts/lib/function.js";
 import { Task } from "fp-ts/Task";
 import { TaskEither } from "fp-ts/TaskEither";
-import * as aes from "micro-aes-gcm";
+import { decrypt, encrypt } from "micro-aes-gcm";
 import { Id, OwnerId } from "./model.js";
 import {
   CrdtMessageContent,
@@ -56,10 +56,7 @@ const encryptMessages = ({
           value: crdtValueToProtobufFormat(props.value),
         }),
         (binary) =>
-          taskEither.tryCatch(
-            () => aes.encrypt(key, binary),
-            errorToUnknownError
-          ),
+          taskEither.tryCatch(() => encrypt(key, binary), errorToUnknownError),
         taskEither.map(
           (content): EncryptedCrdtMessage => ({
             timestamp,
@@ -124,9 +121,9 @@ const decryptMessages = ({
       pipe(
         taskEither.tryCatch(
           () =>
-            aes
-              .decrypt(key, message.content)
-              .then((data) => CrdtMessageContent.fromBinary(data)),
+            decrypt(key, message.content).then((data) =>
+              CrdtMessageContent.fromBinary(data)
+            ),
           errorToUnknownError
         ),
         taskEither.map(

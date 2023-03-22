@@ -37,7 +37,7 @@ import {
   NewCrdtMessage,
   OnCompleteId,
   OwnerActions,
-  RowsCache,
+  RowsWithLoadingState,
   SqlQueryString,
   Store,
 } from "./types.js";
@@ -133,7 +133,7 @@ const createMutate = <S extends DbSchema>({
       if (runQueueMicrotask)
         pipe(
           mutateQueueRef.read,
-          io.chainFirst(() => mutateQueueRef.write([])),
+          io.chainFirst(() => mutateQueueRef.write(readonlyArray.empty)),
           io.map(readonlyNonEmptyArray.fromReadonlyArray),
           ioOption.chainIOK((queue) =>
             dbWorker.post({
@@ -158,6 +158,8 @@ const createMutate = <S extends DbSchema>({
   };
 };
 
+type RowsCache = ReadonlyMap<SqlQueryString, RowsWithLoadingState>;
+
 const createOnQuery =
   (rowsCache: Store<RowsCache>, onCompletes: Map<OnCompleteId, IO<void>>) =>
   ({ queriesPatches, onCompleteIds }: DbWorkerOutputOnQuery): IO<void> =>
@@ -166,10 +168,20 @@ const createOnQuery =
       queriesPatches,
       readonlyArray.reduce(
         rowsCache.getState(),
-        (state, { query, patches }) => ({
-          ...state,
-          [query]: applyPatches(patches)(state[query]),
-        })
+        (state, { query, patches }) => {
+          const current = state.get(query);
+          const next = {
+            isLoading: false,
+            rows: applyPatches(patches)(current?.rows || readonlyArray.empty),
+          };
+          if (
+            current &&
+            current.isLoading === next.isLoading &&
+            current.rows === next.rows
+          )
+            return state;
+          return new Map([...state, [query, next]]);
+        }
       ),
       (state) => {
         if (onCompleteIds.length === 0) {
@@ -177,11 +189,8 @@ const createOnQuery =
           return;
         }
 
-        // flushSync is required before calling onCompletes
-        if (queriesPatches.length > 0)
-          flushSync(() => {
-            rowsCache.setState(state)();
-          });
+        // Ensure onComplete can use DOM (for a focus or anything else).
+        flushSync(rowsCache.setState(state));
 
         pipe(
           onCompleteIds,
@@ -195,16 +204,16 @@ const createOnQuery =
     );
   };
 
-const createSubscribeQuery = (
+const createSubscribeRowsWithLoadingState = (
   rowsCache: Store<RowsCache>,
   subscribedQueries: Map<SqlQueryString, number>,
   queryIfAny: (queries: readonly SqlQueryString[]) => IO<void>,
   queueMicrotask: (callback: () => void) => void
-): Evolu<never>["subscribeQuery"] => {
+): Evolu<never>["subscribeRowsWithLoadingState"] => {
   const snapshot = new ioRef.IORef<readonly SqlQueryString[] | null>(null);
 
   return (sqlQueryString: SqlQueryString | null) => (listen) => {
-    if (sqlQueryString == null) return () => constVoid;
+    if (sqlQueryString == null) return constVoid;
 
     if (snapshot.read() == null) {
       snapshot.write(Array.from(subscribedQueries.keys()))();
@@ -212,11 +221,32 @@ const createSubscribeQuery = (
         const subscribedQueriesSnapshot = snapshot.read();
         if (subscribedQueriesSnapshot == null) return;
         snapshot.write(null)();
-        pipe(
+
+        const queries = pipe(
           Array.from(subscribedQueries.keys()),
-          readonlyArray.difference(eqSqlQueryString)(subscribedQueriesSnapshot),
-          queryIfAny
-        )();
+          readonlyArray.difference(eqSqlQueryString)(subscribedQueriesSnapshot)
+        );
+
+        pipe(
+          queries,
+          readonlyArray.reduce(rowsCache.getState(), (state, query) => {
+            const current = state.get(query);
+            if (!current || current.isLoading) return state;
+            return new Map([
+              ...state,
+              [
+                query,
+                {
+                  rows: (current && current.rows) || readonlyArray.empty,
+                  isLoading: true,
+                },
+              ],
+            ]);
+          }),
+          rowsCache.setState
+        );
+
+        queryIfAny(queries)();
       });
     }
 
@@ -279,7 +309,7 @@ export const createEvolu: CreateEvolu =
   (dbSchema) =>
   ({ config, createDbWorker }) => {
     const errorStore = createStore<EvoluError | null>(null);
-    const rowsCache = createStore<RowsCache>(Object.create(null));
+    const rowsCache = createStore<RowsCache>(new Map());
     const ownerStore = createStore<Owner | null>(null);
     const onCompletes = new Map<OnCompleteId, IO<void>>();
     const subscribedQueries = new Map<SqlQueryString, number>();
@@ -312,15 +342,16 @@ export const createEvolu: CreateEvolu =
       }
     });
 
-    const subscribeQuery = createSubscribeQuery(
+    const subscribeRowsWithLoadingState = createSubscribeRowsWithLoadingState(
       rowsCache,
       subscribedQueries,
       queryIfAny,
       queueMicrotask
     );
 
-    const getQuery: Evolu<never>["getQuery"] = (query) => () =>
-      (query && rowsCache.getState()[query]) || null;
+    const getRowsWithLoadingState: Evolu<never>["getRowsWithLoadingState"] =
+      (query) => () =>
+        (query && rowsCache.getState().get(query)) || null;
 
     const getOwner = new Promise<Owner>((resolve) => {
       const unsubscribe = ownerStore.subscribe(() => {
@@ -359,8 +390,8 @@ export const createEvolu: CreateEvolu =
       getError: errorStore.getState,
       subscribeOwner: ownerStore.subscribe,
       getOwner: ownerStore.getState,
-      subscribeQuery,
-      getQuery,
+      subscribeRowsWithLoadingState,
+      getRowsWithLoadingState,
       mutate,
       ownerActions,
     };
