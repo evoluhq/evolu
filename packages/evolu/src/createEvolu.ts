@@ -4,7 +4,6 @@ import {
   ioRef,
   option,
   readonlyArray,
-  readonlyMap,
   readonlyNonEmptyArray,
   readonlyRecord,
   taskEither,
@@ -167,25 +166,22 @@ const createOnQuery =
   () => {
     pipe(
       queriesPatches,
-      readonlyArray.reduce(rowsCache.getState(), (state, { query, patches }) =>
-        pipe(
-          state,
-          // vkladat bych mel neco, co upduju pres optic
-          // kterej, pokud se to nemeni, vrati tu samou instanci
-          // pac useSyncExternalStore potrebuju referenci
-          // muze prijit neco, co neni zmena? muze
-          // muze to nebejt? muze, ale vzdy vkladam false,
-          // takze tady ten case neni
-          // pokud to neni, nastavim, pokud to je, nastavim
-          // ale,
-
-          readonlyMap.upsertAt(eqSqlQueryString)(query, {
+      readonlyArray.reduce(
+        rowsCache.getState(),
+        (state, { query, patches }) => {
+          const current = state.get(query);
+          const next = {
             isLoading: false,
-            rows: applyPatches(patches)(
-              state.get(query)?.rows || readonlyArray.empty
-            ),
-          })
-        )
+            rows: applyPatches(patches)(current?.rows || readonlyArray.empty),
+          };
+          if (
+            current &&
+            current.isLoading === next.isLoading &&
+            current.rows === next.rows
+          )
+            return state;
+          return new Map([...state, [query, next]]);
+        }
       ),
       (state) => {
         if (onCompleteIds.length === 0) {
@@ -193,7 +189,7 @@ const createOnQuery =
           return;
         }
 
-        // Ensure DOM focus on just created input is possible.
+        // Ensure onComplete can use DOM (for a focus or anything else).
         flushSync(rowsCache.setState(state));
 
         pipe(
@@ -233,21 +229,20 @@ const createSubscribeRowsWithLoadingState = (
 
         pipe(
           queries,
-          readonlyArray.reduce(rowsCache.getState(), (state, query) =>
-            pipe(
-              state,
-              // pokud to neni, nema smysl nic nastavovat
-              // muze to nebejt? muze, ale vzdy vkladam false,
-              // takze tady ten case neni
-              // pokud to neni, nastavim, pokud to je, nastavim
-              // ale,
-              // potrebuju mutaci jen kdyz se to meni, jasny
-              readonlyMap.upsertAt(eqSqlQueryString)(query, {
-                isLoading: true,
-                rows: state.get(query)?.rows || readonlyArray.empty,
-              })
-            )
-          ),
+          readonlyArray.reduce(rowsCache.getState(), (state, query) => {
+            const current = state.get(query);
+            if (!current || current.isLoading) return state;
+            return new Map([
+              ...state,
+              [
+                query,
+                {
+                  rows: (current && current.rows) || readonlyArray.empty,
+                  isLoading: true,
+                },
+              ],
+            ]);
+          }),
           rowsCache.setState
         );
 

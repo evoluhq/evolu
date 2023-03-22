@@ -3,8 +3,12 @@
 `useQuery` React Hook performs a database query and returns rows that
 are automatically updated when data changes.
 
-It takes two callbacks, a Kysely type-safe SQL query builder,
-and a filterMap helper.
+It takes two callbacks, a [Kysely](https://github.com/koskimas/kysely) type-safe SQL query builder,
+and a `filterMap` helper.
+
+`useQuery` also returns `isLoaded` and `isLoading` props that indicate
+loading progress. `isLoaded` becomes true when rows are loaded for the
+first time. `isLoading` becomes true whenever rows are loading.
 
 ## Examples
 
@@ -25,7 +29,7 @@ database schema can be changed anytime, but already-created data can't
 because it's not feasible to migrate all local data. The second reason
 is that sync messages can arrive in any order in distributed systems.
 
-The remedy for nullability is ad-hoc filtering and mapping via filterMap
+The remedy for nullability is ad-hoc filtering and mapping via `filterMap`
 helper. This example filters out rows with falsy titles:
 
 ```ts
@@ -35,7 +39,7 @@ const { rows } = useQuery(
 );
 ```
 
-A real app would filterMap all versions of the table schema defined
+A real app would `filterMap` all versions of the table schema defined
 by a union of types, therefore safely enforced by the TypeScript compiler.
 
 The next example shows the usage of columns that Evolu automatically

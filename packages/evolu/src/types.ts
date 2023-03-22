@@ -312,7 +312,13 @@ export type UseQuery<S extends DbSchema> = <
   query: OrNullOrFalse<Query<S, QueryRow>>,
   filterMap: (row: QueryRow) => OrNullOrFalse<Row>
 ) => {
+  /**
+   * Rows from the database. They can be filtered and mapped by `filterMap`.
+   */
   readonly rows: readonly Readonly<Simplify<ExcludeNullAndFalse<Row>>>[];
+  /**
+   * The first row from `rows`. For empty rows, it's null.
+   */
   readonly row: Readonly<Simplify<ExcludeNullAndFalse<Row>>> | null;
   /**
    * `isLoaded` becomes true when rows are loaded for the first time.
@@ -470,6 +476,10 @@ export interface Hooks<S extends DbSchema> {
    *
    * It takes two callbacks, a Kysely type-safe SQL query builder,
    * and a filterMap helper.
+   *
+   * `useQuery` also returns `isLoaded` and `isLoading` props that indicate
+   * loading progress. `isLoaded` becomes true when rows are loaded for the
+   *  first time. `isLoading` becomes true whenever rows are loading.
    *
    * ### Examples
    *
