@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { SqliteRows } from "../src/types";
+import { Rows } from "../src/types";
 import { applyPatches, createPatches } from "../src/diff";
 
 test("createPatches", () => {
@@ -62,10 +62,10 @@ test("createPatches", () => {
 });
 
 test("applyPatches", () => {
-  const current: SqliteRows = [];
+  const current: Rows = [];
   expect(applyPatches([])(current)).toBe(current);
 
-  const value: SqliteRows = [];
+  const value: Rows = [];
   expect(applyPatches([{ op: "replaceAll", value }])(current)).toBe(value);
 
   const replaceUntouched = { b: 2 };

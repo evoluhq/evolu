@@ -12,9 +12,9 @@ import {
   Create,
   DbSchema,
   Hooks,
-  SqliteRow,
-  SqlQuery,
-  sqlQueryToString,
+  Row,
+  Query,
+  queryToString,
   Update,
   UseMutation,
   UseQuery,
@@ -79,12 +79,12 @@ export const createHooks = <S extends DbSchema>(
     config: createConfig(config),
     createDbWorker,
   });
-  const cache = new WeakMap<SqliteRow, Option<SqliteRow>>();
+  const cache = new WeakMap<Row, Option<Row>>();
 
   const useQuery: UseQuery<S> = (query, filterMap) => {
     // `query` can and will change, compile() is cheap
-    const sqlQueryString = query
-      ? pipe(query(kysely as never).compile() as SqlQuery, sqlQueryToString)
+    const queryString = query
+      ? pipe(query(kysely as never).compile() as Query, queryToString)
       : null;
     // filterMap is expensive but must be static, hence useRef
     const filterMapRef = useRef(filterMap);
@@ -92,14 +92,14 @@ export const createHooks = <S extends DbSchema>(
     const rowsWithLoadingState = useSyncExternalStore(
       useMemo(
         // Can't be IO, it's not compatible with eslint-plugin-react-hooks
-        () => evolu.subscribeRowsWithLoadingState(sqlQueryString),
-        [sqlQueryString]
+        () => evolu.subscribeRowsWithLoadingState(queryString),
+        [queryString]
       ),
-      evolu.getRowsWithLoadingState(sqlQueryString),
+      evolu.getRowsWithLoadingState(queryString),
       constNull
     );
 
-    const filterMapRow = (row: SqliteRow): Option<SqliteRow> => {
+    const filterMapRow = (row: Row): Option<Row> => {
       let cachedRow = cache.get(row);
       if (cachedRow !== undefined) return cachedRow;
       cachedRow = pipe(filterMapRef.current(row as never), (row) =>

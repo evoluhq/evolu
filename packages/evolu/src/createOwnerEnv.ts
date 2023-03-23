@@ -24,7 +24,7 @@ const lazyInit =
         owner: createOwner(mnemonic),
       })),
       taskEither.chainFirst(({ timestamp, merkleTree, owner }) =>
-        db.execSqlQuery({
+        db.execQuery({
           sql: `
             create table __message (
               "timestamp" blob primary key,
@@ -83,7 +83,7 @@ const migrateToSlip21Owner: ReaderTaskEither<DbEnv, UnknownError, OwnerEnv> = ({
       })
     ),
     taskEither.chainFirst(({ owner }) =>
-      db.execSqlQuery({
+      db.execQuery({
         sql: `
           alter table "__owner" add column "encryptionKey" blob;
           update "__owner" set "id" = ?, "encryptionKey" = ?;

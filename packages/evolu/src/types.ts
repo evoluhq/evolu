@@ -119,23 +119,19 @@ export interface CrdtClock {
 // SQL
 
 // Like Kysely CompiledQuery but without a `query` prop.
-// TODO: Rename to Query
-export interface SqlQuery {
+export interface Query {
   readonly sql: string;
   readonly parameters: readonly CrdtValue[];
 }
 
-export type SqlQueryString = string & Brand<"SqlQueryString">;
-export const eqSqlQueryString: eq.Eq<SqlQueryString> = eq.eqStrict;
+export type QueryString = string & Brand<"QueryString">;
+export const eqQueryString: eq.Eq<QueryString> = eq.eqStrict;
 
-export const sqlQueryToString = ({
-  sql,
-  parameters,
-}: SqlQuery): SqlQueryString =>
-  JSON.stringify({ sql, parameters }) as SqlQueryString;
+export const queryToString = ({ sql, parameters }: Query): QueryString =>
+  JSON.stringify({ sql, parameters }) as QueryString;
 
-export const sqlQueryFromString = (s: SqlQueryString): SqlQuery =>
-  JSON.parse(s) as SqlQuery;
+export const queryFromString = (s: QueryString): Query =>
+  JSON.parse(s) as Query;
 
 export interface TableDefinition {
   readonly name: string;
@@ -222,14 +218,12 @@ export interface EvoluError {
 
 // DB
 
-// TODO: Rename to Row
-export type SqliteRow = ReadonlyRecord<string, CrdtValue>;
+export type Row = ReadonlyRecord<string, CrdtValue>;
 
-// TODO: Rename to Rows
-export type SqliteRows = readonly SqliteRow[];
+export type Rows = readonly Row[];
 
 export interface RowsWithLoadingState {
-  readonly rows: SqliteRows;
+  readonly rows: Rows;
   readonly isLoading: boolean;
 }
 
@@ -239,26 +233,26 @@ export interface RowsWithLoadingState {
  */
 export interface Database {
   readonly SQLite3Error: unknown;
-  readonly exec: (sql: string) => TaskEither<UnknownError, SqliteRows>;
-  readonly execSqlQuery: (s: SqlQuery) => TaskEither<UnknownError, SqliteRows>;
+  readonly exec: (sql: string) => TaskEither<UnknownError, Rows>;
+  readonly execQuery: (s: Query) => TaskEither<UnknownError, Rows>;
   readonly changes: () => TaskEither<UnknownError, number>;
 }
 
 export interface ReplaceAllPatch {
   readonly op: "replaceAll";
-  readonly value: SqliteRows;
+  readonly value: Rows;
 }
 
 export interface ReplaceAtPatch {
   readonly op: "replaceAt";
   readonly index: number;
-  readonly value: SqliteRow;
+  readonly value: Row;
 }
 
 export type Patch = ReplaceAllPatch | ReplaceAtPatch;
 
 export interface QueryPatches {
-  readonly query: SqlQueryString;
+  readonly query: QueryString;
   readonly patches: readonly Patch[];
 }
 
@@ -298,7 +292,7 @@ type DbSchemaForQuery<S extends DbSchema> = {
   >;
 };
 
-export type Query<S extends DbSchema, QueryRow> = (
+type QueryCallback<S extends DbSchema, QueryRow> = (
   db: KyselySelectFrom<DbSchemaForQuery<S>>
 ) => SelectQueryBuilder<never, never, QueryRow>;
 
@@ -306,20 +300,22 @@ export type OrNullOrFalse<T> = T | null | false;
 export type ExcludeNullAndFalse<T> = Exclude<T, null | false>;
 
 export type UseQuery<S extends DbSchema> = <
-  QueryRow extends SqliteRow,
-  Row extends SqliteRow
+  QueryRow extends Row,
+  FilterMapRow extends Row
 >(
-  query: OrNullOrFalse<Query<S, QueryRow>>,
-  filterMap: (row: QueryRow) => OrNullOrFalse<Row>
+  query: OrNullOrFalse<QueryCallback<S, QueryRow>>,
+  filterMap: (row: QueryRow) => OrNullOrFalse<FilterMapRow>
 ) => {
   /**
    * Rows from the database. They can be filtered and mapped by `filterMap`.
    */
-  readonly rows: readonly Readonly<Simplify<ExcludeNullAndFalse<Row>>>[];
+  readonly rows: readonly Readonly<
+    Simplify<ExcludeNullAndFalse<FilterMapRow>>
+  >[];
   /**
    * The first row from `rows`. For empty rows, it's null.
    */
-  readonly row: Readonly<Simplify<ExcludeNullAndFalse<Row>>> | null;
+  readonly row: Readonly<Simplify<ExcludeNullAndFalse<FilterMapRow>>> | null;
   /**
    * `isLoaded` becomes true when rows are loaded for the first time.
    * Rows are cached per SQL query, so this happens only once.
@@ -594,7 +590,7 @@ export interface PostSyncWorkerInputEnv {
 }
 
 export interface RowsCacheEnv {
-  readonly rowsCache: IORef<ReadonlyMap<SqlQueryString, SqliteRows>>;
+  readonly rowsCache: IORef<ReadonlyMap<QueryString, Rows>>;
 }
 
 export interface TimeEnv {
@@ -644,16 +640,16 @@ export type DbWorkerInput =
       readonly type: "send";
       readonly messages: ReadonlyNonEmptyArray<NewCrdtMessage>;
       readonly onCompleteIds: readonly OnCompleteId[];
-      readonly queries: readonly SqlQueryString[];
+      readonly queries: readonly QueryString[];
     }
   | {
       readonly type: "query";
-      readonly queries: ReadonlyNonEmptyArray<SqlQueryString>;
+      readonly queries: ReadonlyNonEmptyArray<QueryString>;
     }
   | DbWorkerInputReceive
   | {
       readonly type: "sync";
-      readonly queries: Option<ReadonlyNonEmptyArray<SqlQueryString>>;
+      readonly queries: Option<ReadonlyNonEmptyArray<QueryString>>;
     }
   | {
       readonly type: "resetOwner";
@@ -714,12 +710,12 @@ export interface Evolu<S extends DbSchema> {
   readonly getOwner: IO<Owner | null>;
 
   readonly subscribeRowsWithLoadingState: (
-    queryString: SqlQueryString | null
+    queryString: QueryString | null
     // Can't be IO, it's not compatible with eslint-plugin-react-hooks
   ) => (listener: IO<void>) => Unsubscribe;
 
   readonly getRowsWithLoadingState: (
-    queryString: SqlQueryString | null
+    queryString: QueryString | null
   ) => IO<RowsWithLoadingState | null>;
 
   readonly mutate: Mutate<S>;

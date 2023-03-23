@@ -5,7 +5,7 @@ import {
   Database,
   DbEnv,
   errorToUnknownError,
-  SqliteRows,
+  Rows,
   UnknownError,
 } from "./types.js";
 import sqlite3 from "../sqlite/sqlite3-bundler-friendly.mjs";
@@ -33,7 +33,7 @@ export const createWebDbEnv = (
         const exec: Database["exec"] = (sql) =>
           pipe(
             either.tryCatch(
-              (): SqliteRows =>
+              (): Rows =>
                 db.exec(sql, {
                   returnValue: "resultRows",
                   rowMode: "object",
@@ -43,14 +43,14 @@ export const createWebDbEnv = (
             taskEither.fromEither
           );
 
-        const execSqlQuery: Database["execSqlQuery"] = (sqlQuery) =>
+        const execQuery: Database["execQuery"] = (query) =>
           pipe(
             either.tryCatch(
               () =>
-                db.exec(sqlQuery.sql, {
+                db.exec(query.sql, {
                   returnValue: "resultRows",
                   rowMode: "object",
-                  bind: sqlQuery.parameters,
+                  bind: query.parameters,
                 }),
               errorToUnknownError
             ),
@@ -67,7 +67,7 @@ export const createWebDbEnv = (
           db: {
             SQLite3Error: sqlite3.SQLite3Error,
             exec,
-            execSqlQuery,
+            execQuery,
             changes,
           },
         };

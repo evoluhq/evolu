@@ -14,12 +14,12 @@ import {
   PostDbWorkerOutputEnv,
   PostSyncWorkerInputEnv,
   RowsCacheEnv,
-  SqlQueryString,
+  QueryString,
   UnknownError,
 } from "./types.js";
 
 const doSync: (
-  queries: Option<ReadonlyNonEmptyArray<SqlQueryString>>
+  queries: Option<ReadonlyNonEmptyArray<QueryString>>
 ) => ReaderTaskEither<
   DbEnv &
     OwnerEnv &
@@ -52,7 +52,7 @@ const doSync: (
 );
 
 export const sync = (
-  queries: Option<ReadonlyNonEmptyArray<SqlQueryString>>
+  queries: Option<ReadonlyNonEmptyArray<QueryString>>
 ): ReaderTaskEither<
   DbEnv &
     OwnerEnv &

@@ -144,7 +144,7 @@ const handleMerkleTreesDiff =
   > =>
   ({ db, postSyncWorkerInput, owner, config }) =>
     pipe(
-      db.execSqlQuery({
+      db.execQuery({
         sql: `
           select * from "__message" where "timestamp" > ? order by "timestamp"
         `,

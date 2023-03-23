@@ -19,7 +19,7 @@ import {
   PostDbWorkerOutputEnv,
   PostSyncWorkerInputEnv,
   RowsCacheEnv,
-  SqlQueryString,
+  QueryString,
   TimeEnv,
   Timestamp,
   TimestampCounterOverflowError,
@@ -86,7 +86,7 @@ export const send = ({
 }: {
   readonly messages: ReadonlyNonEmptyArray<NewCrdtMessage>;
   readonly onCompleteIds: readonly OnCompleteId[];
-  readonly queries: readonly SqlQueryString[];
+  readonly queries: readonly QueryString[];
 }): ReaderTaskEither<
   DbEnv &
     OwnerEnv &

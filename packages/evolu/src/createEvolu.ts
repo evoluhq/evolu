@@ -30,7 +30,7 @@ import {
   DbSchema,
   DbWorker,
   DbWorkerOutputOnQuery,
-  eqSqlQueryString,
+  eqQueryString,
   Evolu,
   EvoluError,
   Mutate,
@@ -38,7 +38,7 @@ import {
   OnCompleteId,
   OwnerActions,
   RowsWithLoadingState,
-  SqlQueryString,
+  QueryString,
   Store,
 } from "./types.js";
 import { isServer } from "./utils.js";
@@ -93,7 +93,7 @@ const createMutate = <S extends DbSchema>({
   getOwner: Promise<Owner>;
   setOnComplete: (id: OnCompleteId, callback: IO<void>) => void;
   dbWorker: DbWorker;
-  getSubscribedQueries: IO<readonly SqlQueryString[]>;
+  getSubscribedQueries: IO<readonly QueryString[]>;
 }): Mutate<S> => {
   const mutateQueueRef = new ioRef.IORef<
     readonly {
@@ -158,7 +158,7 @@ const createMutate = <S extends DbSchema>({
   };
 };
 
-type RowsCache = ReadonlyMap<SqlQueryString, RowsWithLoadingState>;
+type RowsCache = ReadonlyMap<QueryString, RowsWithLoadingState>;
 
 const createOnQuery =
   (rowsCache: Store<RowsCache>, onCompletes: Map<OnCompleteId, IO<void>>) =>
@@ -206,14 +206,14 @@ const createOnQuery =
 
 const createSubscribeRowsWithLoadingState = (
   rowsCache: Store<RowsCache>,
-  subscribedQueries: Map<SqlQueryString, number>,
-  queryIfAny: (queries: readonly SqlQueryString[]) => IO<void>,
+  subscribedQueries: Map<QueryString, number>,
+  queryIfAny: (queries: readonly QueryString[]) => IO<void>,
   queueMicrotask: (callback: () => void) => void
 ): Evolu<never>["subscribeRowsWithLoadingState"] => {
-  const snapshot = new ioRef.IORef<readonly SqlQueryString[] | null>(null);
+  const snapshot = new ioRef.IORef<readonly QueryString[] | null>(null);
 
-  return (sqlQueryString: SqlQueryString | null) => (listen) => {
-    if (sqlQueryString == null) return constVoid;
+  return (queryString: QueryString | null) => (listen) => {
+    if (queryString == null) return constVoid;
 
     if (snapshot.read() == null) {
       snapshot.write(Array.from(subscribedQueries.keys()))();
@@ -224,7 +224,7 @@ const createSubscribeRowsWithLoadingState = (
 
         const queries = pipe(
           Array.from(subscribedQueries.keys()),
-          readonlyArray.difference(eqSqlQueryString)(subscribedQueriesSnapshot)
+          readonlyArray.difference(eqQueryString)(subscribedQueriesSnapshot)
         );
 
         pipe(
@@ -251,16 +251,16 @@ const createSubscribeRowsWithLoadingState = (
     }
 
     subscribedQueries.set(
-      sqlQueryString,
-      increment(subscribedQueries.get(sqlQueryString) ?? 0)
+      queryString,
+      increment(subscribedQueries.get(queryString) ?? 0)
     );
     const unsubscribe = rowsCache.subscribe(listen);
 
     return () => {
-      const count = subscribedQueries.get(sqlQueryString);
+      const count = subscribedQueries.get(queryString);
       if (count != null && count > 1)
-        subscribedQueries.set(sqlQueryString, decrement(count));
-      else subscribedQueries.delete(sqlQueryString);
+        subscribedQueries.set(queryString, decrement(count));
+      else subscribedQueries.delete(queryString);
       unsubscribe();
     };
   };
@@ -278,7 +278,7 @@ const createOwnerActionRestore =
     )();
 
 const initReconnectAndReshow = (
-  subscribedQueries: Map<SqlQueryString, number>,
+  subscribedQueries: Map<QueryString, number>,
   dbWorker: DbWorker
 ): void => {
   const sync = (refreshQueries: boolean): IO<void> =>
@@ -312,11 +312,11 @@ export const createEvolu: CreateEvolu =
     const rowsCache = createStore<RowsCache>(new Map());
     const ownerStore = createStore<Owner | null>(null);
     const onCompletes = new Map<OnCompleteId, IO<void>>();
-    const subscribedQueries = new Map<SqlQueryString, number>();
+    const subscribedQueries = new Map<QueryString, number>();
 
     const onQuery = createOnQuery(rowsCache, onCompletes);
 
-    const queryIfAny: (queries: readonly SqlQueryString[]) => IO<void> = flow(
+    const queryIfAny: (queries: readonly QueryString[]) => IO<void> = flow(
       readonlyNonEmptyArray.fromReadonlyArray,
       option.match(
         () => io.of(constVoid),

@@ -8,8 +8,8 @@ import {
   PostDbWorkerOutputEnv,
   QueryPatches,
   RowsCacheEnv,
-  sqlQueryFromString,
-  SqlQueryString,
+  queryFromString,
+  QueryString,
   UnknownError,
 } from "./types.js";
 
@@ -18,7 +18,7 @@ export const query =
     queries,
     onCompleteIds = readonlyArray.empty,
   }: {
-    readonly queries: readonly SqlQueryString[];
+    readonly queries: readonly QueryString[];
     readonly onCompleteIds?: readonly OnCompleteId[];
   }): ReaderTaskEither<
     DbEnv & RowsCacheEnv & PostDbWorkerOutputEnv,
@@ -30,8 +30,8 @@ export const query =
       queries,
       taskEither.traverseSeqArray((query) =>
         pipe(
-          sqlQueryFromString(query),
-          db.execSqlQuery,
+          queryFromString(query),
+          db.execQuery,
           taskEither.map((rows) => [query, rows] as const)
         )
       ),

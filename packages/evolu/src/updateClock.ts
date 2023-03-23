@@ -8,7 +8,7 @@ export const updateClock =
   (clock: CrdtClock): ReaderTaskEither<DbEnv, UnknownError, void> =>
   ({ db }) =>
     pipe(
-      db.execSqlQuery({
+      db.execQuery({
         sql: `
           update "__clock"
           set

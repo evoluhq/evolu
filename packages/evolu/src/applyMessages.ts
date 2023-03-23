@@ -25,7 +25,7 @@ export const applyMessages =
       messages,
       taskEither.traverseSeqArray((message) =>
         pipe(
-          db.execSqlQuery({
+          db.execQuery({
             sql: `
               select "timestamp" FROM "__message"
               where "table" = ? AND
@@ -44,7 +44,7 @@ export const applyMessages =
           ),
           taskEither.chainFirst((timestamp) =>
             timestamp == null || timestamp < message.timestamp
-              ? db.execSqlQuery({
+              ? db.execQuery({
                   sql: `
                     insert into "${message.table}" ("id", "${message.column}")
                     values (?, ?)
@@ -57,7 +57,7 @@ export const applyMessages =
           taskEither.chainFirst((timestamp) =>
             timestamp == null || timestamp !== message.timestamp
               ? pipe(
-                  db.execSqlQuery({
+                  db.execQuery({
                     sql: `
                       insert into "__message" (
                         "timestamp", "table", "row", "column", "value"
