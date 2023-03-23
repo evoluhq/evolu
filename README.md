@@ -190,7 +190,8 @@ It should be. The CRDT message format is stable.
 
 ### What is the SQLite database size limit?
 
-Evolu uses OPFS in Chrome and LocalStorage in Firefox and Safari. The size limit of OPFS is 256 MB (LocalStorage is 5 MB).
+Evolu uses OPFS in Chrome and Firefox and LocalStorage in Safari.
+The size limit of OPFS is 256 MB (LocalStorage 5 MB).
 
 ### How can I check the current database filesize?
 
