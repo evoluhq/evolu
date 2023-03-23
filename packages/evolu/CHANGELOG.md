@@ -1,5 +1,11 @@
 # evolu
 
+## 3.1.1
+
+### Patch Changes
+
+- 2e88561: Update readme
+
 ## 3.1.0
 
 ### Minor Changes
