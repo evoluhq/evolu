@@ -31,7 +31,7 @@
   ],
   "scripts": {
     "dev": "tsc --watch",
-    "build": "rm -rf dist && tsc && cp ../../README.md ./ && cp ./sqlite/sqlite3.wasm ./dist/sqlite/",
+    "build": "rm -rf dist && rm -rf ./README.md && tsc && cp ../../README.md ./ && cp ./sqlite/sqlite3.wasm ./dist/sqlite/",
     "build-sqlite": "scripts/build-sqlite.sh",
     "lint": "TIMING=1 eslint src --ext .ts,.tsx",
     "test": "vitest run",
