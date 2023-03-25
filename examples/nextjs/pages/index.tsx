@@ -13,16 +13,16 @@ import { formatErrors } from "@effect/schema/TreeFormatter";
 import * as E from "evolu";
 import { ChangeEvent, FC, memo, useEffect, useState } from "react";
 
-const prompt = <T extends string>(
-  schema: S.Schema<T>,
+const prompt = <From extends string, To>(
+  schema: S.Schema<From, To>,
   message: string,
-  onSuccess: (value: T) => void
+  onSuccess: (value: To) => void
 ): void => {
   const value = window.prompt(message);
   if (value == null) return; // on cancel
-  const a = S.decode(schema)(value);
-  if (S.isFailure(a)) {
-    alert(formatErrors(a.left));
+  const a = S.parseEither(schema)(value);
+  if (a._tag === "Left") {
+    alert(formatErrors(a.left.errors));
     return;
   }
   onSuccess(a.right);

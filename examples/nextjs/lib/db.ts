@@ -3,10 +3,10 @@ import * as S from "@effect/schema/Schema";
 import * as E from "evolu";
 
 export const TodoId = E.id("Todo");
-export type TodoId = S.Infer<typeof TodoId>;
+export type TodoId = S.To<typeof TodoId>;
 
 export const TodoCategoryId = E.id("TodoCategory");
-export type TodoCategoryId = S.Infer<typeof TodoCategoryId>;
+export type TodoCategoryId = S.To<typeof TodoCategoryId>;
 
 export const NonEmptyString50 = pipe(
   S.string,
@@ -14,7 +14,7 @@ export const NonEmptyString50 = pipe(
   S.maxLength(50),
   S.brand("NonEmptyString50")
 );
-export type NonEmptyString50 = S.Infer<typeof NonEmptyString50>;
+export type NonEmptyString50 = S.To<typeof NonEmptyString50>;
 
 export const TodoTable = S.struct({
   id: TodoId,
@@ -22,13 +22,13 @@ export const TodoTable = S.struct({
   isCompleted: E.SqliteBoolean,
   categoryId: S.nullable(TodoCategoryId),
 });
-export type TodoTable = S.Infer<typeof TodoTable>;
+export type TodoTable = S.To<typeof TodoTable>;
 
 export const TodoCategoryTable = S.struct({
   id: TodoCategoryId,
   name: NonEmptyString50,
 });
-export type TodoCategoryTable = S.Infer<typeof TodoCategoryTable>;
+export type TodoCategoryTable = S.To<typeof TodoCategoryTable>;
 
 const Database = S.struct({
   todo: TodoTable,
