@@ -22,7 +22,7 @@
   },
   "devDependencies": {
     "@evolu/tsconfig": "workspace:0.0.2",
-    "@types/node": "^18.15.8",
+    "@types/node": "^18.15.9",
     "@types/react": "^18.0.29",
     "@types/react-dom": "^18.0.11",
     "autoprefixer": "^10.4.14",

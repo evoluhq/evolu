@@ -19,7 +19,7 @@ importers:
   apps/server:
     specifiers:
       '@evolu/tsconfig': workspace:0.0.2
-      '@types/node': ^18.15.8
+      '@types/node': ^18.15.9
       evolu: workspace:4.0.0
       fp-ts: ^2.13.1
       ts-node: ^10.9.1
@@ -29,8 +29,8 @@ importers:
       fp-ts: 2.13.1
     devDependencies:
       '@evolu/tsconfig': link:../../packages/evolu-tsconfig
-      '@types/node': 18.15.8
-      ts-node: 10.9.1_p3zjr3pyxsivr4djscnsjcvzuq
+      '@types/node': 18.15.9
+      ts-node: 10.9.1_3flabivgbrnlfzsgzfhinuvrvy
       typescript: 5.0.2
 
   apps/web:
@@ -38,7 +38,7 @@ importers:
       '@effect/data': ^0.5.1
       '@effect/schema': ~0.5.0
       '@evolu/tsconfig': workspace:0.0.2
-      '@types/node': ^18.15.8
+      '@types/node': ^18.15.9
       '@types/react': ^18.0.29
       '@types/react-dom': ^18.0.11
       autoprefixer: ^10.4.14
@@ -68,7 +68,7 @@ importers:
       react-dom: 18.2.0_react@18.2.0
     devDependencies:
       '@evolu/tsconfig': link:../../packages/evolu-tsconfig
-      '@types/node': 18.15.8
+      '@types/node': 18.15.9
       '@types/react': 18.0.29
       '@types/react-dom': 18.0.11
       autoprefixer: 10.4.14_postcss@8.4.21
@@ -123,7 +123,7 @@ importers:
       '@types/body-parser': ^1.19.2
       '@types/cors': ^2.8.13
       '@types/express': ^4.17.17
-      '@types/node': ^18.15.8
+      '@types/node': ^18.15.9
       '@types/react': ^18.0.29
       '@types/react-dom': ^18.0.11
       '@types/web-locks-api': ^0.0.2
@@ -168,7 +168,7 @@ importers:
       '@types/body-parser': 1.19.2
       '@types/cors': 2.8.13
       '@types/express': 4.17.17
-      '@types/node': 18.15.8
+      '@types/node': 18.15.9
       '@types/react': 18.0.29
       '@types/react-dom': 18.0.11
       '@types/web-locks-api': 0.0.2
@@ -1118,14 +1118,14 @@ packages:
   /@types/better-sqlite3/7.6.3:
     resolution: {integrity: sha512-YS64N9SNDT/NAvou3QNdzAu3E2om/W/0dhORimtPGLef+zSK5l1vDzfsWb4xgXOgfhtOI5ZDTRxnvRPb22AIVQ==}
     dependencies:
-      '@types/node': 18.15.8
+      '@types/node': 18.15.9
     dev: true
 
   /@types/body-parser/1.19.2:
     resolution: {integrity: sha512-ALYone6pm6QmwZoAgeyNksccT9Q4AWZQ6PvfwR37GT6r6FWUPguq6sUmNGSMV2Wr761oQoBxwGGa6DR5o1DC9g==}
     dependencies:
       '@types/connect': 3.4.35
-      '@types/node': 18.15.8
+      '@types/node': 18.15.9
     dev: true
 
   /@types/chai-subset/1.3.3:
@@ -1141,13 +1141,13 @@ packages:
   /@types/connect/3.4.35:
     resolution: {integrity: sha512-cdeYyv4KWoEgpBISTxWvqYsVy444DOqehiF3fM3ne10AmJ62RSyNkUnxMJXHQWRQQX2eR94m5y1IZyDwBjV9FQ==}
     dependencies:
-      '@types/node': 18.15.8
+      '@types/node': 18.15.9
     dev: true
 
   /@types/cors/2.8.13:
     resolution: {integrity: sha512-RG8AStHlUiV5ysZQKq97copd2UmVYw3/pRMLefISZ3S1hK104Cwm7iLQ3fTKx+lsUH2CE8FlLaYeEA2LSeqYUA==}
     dependencies:
-      '@types/node': 18.15.8
+      '@types/node': 18.15.9
     dev: true
 
   /@types/debug/4.1.7:
@@ -1169,7 +1169,7 @@ packages:
   /@types/express-serve-static-core/4.17.33:
     resolution: {integrity: sha512-TPBqmR/HRYI3eC2E5hmiivIzv+bidAfXofM+sbonAGvyDhySGw9/PQZFt2BLOrjUUR++4eJVpx6KnLQK1Fk9tA==}
     dependencies:
-      '@types/node': 18.15.8
+      '@types/node': 18.15.9
       '@types/qs': 6.9.7
       '@types/range-parser': 1.2.4
     dev: true
@@ -1237,8 +1237,8 @@ packages:
     resolution: {integrity: sha512-J8xLz7q2OFulZ2cyGTLE1TbbZcjpno7FaN6zdJNrgAdrJ+DZzh/uFR6YrTb4C+nXakvud8Q4+rbhoIWlYQbUFQ==}
     dev: true
 
-  /@types/node/18.15.8:
-    resolution: {integrity: sha512-kzGNJZ57XEH7RdckxZ7wfRjB9hgZABF+NLgR1B2zogUvV0gmK0/60VYA4yb4oKZckPiiJlmmfpdqTfCN0VRX+Q==}
+  /@types/node/18.15.9:
+    resolution: {integrity: sha512-dUxhiNzBLr6IqlZXz6e/rN2YQXlFgOei/Dxy+e3cyXTJ4txSUbGT2/fmnD6zd/75jDMeW5bDee+YXxlFKHoV0A==}
     dev: true
 
   /@types/normalize-package-data/2.4.1:
@@ -1284,7 +1284,7 @@ packages:
     resolution: {integrity: sha512-NUo5XNiAdULrJENtJXZZ3fHtfMolzZwczzBbnAeBbqBwG+LaG6YaJtuwzwGSQZ2wsCrxjEhNNjAkKigy3n8teQ==}
     dependencies:
       '@types/mime': 3.0.1
-      '@types/node': 18.15.8
+      '@types/node': 18.15.9
     dev: true
 
   /@types/unist/2.0.6:
@@ -6250,7 +6250,7 @@ packages:
     resolution: {integrity: sha512-AqTiAOLcj85xS7vQ8QkAV41hPDIJ71XJB4RCUrzo/1GM2CQwhkJGaf9Hgr7BOugMRpgGUrqRg/DrBDl4H40+8g==}
     dev: false
 
-  /ts-node/10.9.1_p3zjr3pyxsivr4djscnsjcvzuq:
+  /ts-node/10.9.1_3flabivgbrnlfzsgzfhinuvrvy:
     resolution: {integrity: sha512-NtVysVPkxxrwFGUUxGYhfux8k78pQB3JqYBXlLRZgdGUqTO5wU/UyHop5p70iEbGhB7q5KmiZiU0Y3KlJrScEw==}
     hasBin: true
     peerDependencies:
@@ -6269,7 +6269,7 @@ packages:
       '@tsconfig/node12': 1.0.11
       '@tsconfig/node14': 1.0.3
       '@tsconfig/node16': 1.0.3
-      '@types/node': 18.15.8
+      '@types/node': 18.15.9
       acorn: 8.8.2
       acorn-walk: 8.2.0
       arg: 4.1.3
@@ -6649,7 +6649,7 @@ packages:
       vfile-message: 3.1.4
     dev: false
 
-  /vite-node/0.29.7_@types+node@18.15.8:
+  /vite-node/0.29.7_@types+node@18.15.9:
     resolution: {integrity: sha512-PakCZLvz37yFfUPWBnLa1OYHPCGm5v4pmRrTcFN4V/N/T3I6tyP3z07S//9w+DdeL7vVd0VSeyMZuAh+449ZWw==}
     engines: {node: '>=v14.16.0'}
     hasBin: true
@@ -6659,7 +6659,7 @@ packages:
       mlly: 1.2.0
       pathe: 1.1.0
       picocolors: 1.0.0
-      vite: 4.2.1_@types+node@18.15.8
+      vite: 4.2.1_@types+node@18.15.9
     transitivePeerDependencies:
       - '@types/node'
       - less
@@ -6670,7 +6670,7 @@ packages:
       - terser
     dev: true
 
-  /vite/4.2.1_@types+node@18.15.8:
+  /vite/4.2.1_@types+node@18.15.9:
     resolution: {integrity: sha512-7MKhqdy0ISo4wnvwtqZkjke6XN4taqQ2TBaTccLIpOKv7Vp2h4Y+NpmWCnGDeSvvn45KxvWgGyb0MkHvY1vgbg==}
     engines: {node: ^14.18.0 || >=16.0.0}
     hasBin: true
@@ -6695,7 +6695,7 @@ packages:
       terser:
         optional: true
     dependencies:
-      '@types/node': 18.15.8
+      '@types/node': 18.15.9
       esbuild: 0.17.13
       postcss: 8.4.21
       resolve: 1.22.1
@@ -6734,7 +6734,7 @@ packages:
     dependencies:
       '@types/chai': 4.3.4
       '@types/chai-subset': 1.3.3
-      '@types/node': 18.15.8
+      '@types/node': 18.15.9
       '@vitest/expect': 0.29.7
       '@vitest/runner': 0.29.7
       '@vitest/spy': 0.29.7
@@ -6753,8 +6753,8 @@ packages:
       tinybench: 2.4.0
       tinypool: 0.4.0
       tinyspy: 1.1.1
-      vite: 4.2.1_@types+node@18.15.8
-      vite-node: 0.29.7_@types+node@18.15.8
+      vite: 4.2.1_@types+node@18.15.9
+      vite-node: 0.29.7_@types+node@18.15.9
       why-is-node-running: 2.2.2
     transitivePeerDependencies:
       - less
