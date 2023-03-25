@@ -27,16 +27,27 @@ import {
   UnknownError,
 } from "./types.js";
 
-const crdtValueToProtobufFormat = (
-  value: CrdtValue
-): CrdtMessageContent["value"] => {
+const crdtValueToProtobuf = (value: CrdtValue): CrdtMessageContent["value"] => {
   switch (typeof value) {
     case "string":
       return { oneofKind: "stringValue", stringValue: value };
     case "number":
       return { oneofKind: "numberValue", numberValue: value };
+  }
+  if (value) return { oneofKind: "bytesValue", bytesValue: value };
+  return { oneofKind: undefined };
+};
+
+const protobufToCrdtValue = (value: CrdtMessageContent["value"]): CrdtValue => {
+  switch (value.oneofKind) {
+    case "numberValue":
+      return value.numberValue;
+    case "stringValue":
+      return value.stringValue;
+    case "bytesValue":
+      return value.bytesValue;
     default:
-      return { oneofKind: undefined };
+      return null;
   }
 };
 
@@ -53,7 +64,7 @@ const encryptMessages = ({
       pipe(
         CrdtMessageContent.toBinary({
           ...props,
-          value: crdtValueToProtobufFormat(props.value),
+          value: crdtValueToProtobuf(props.value),
         }),
         (binary) =>
           taskEither.tryCatch(() => encrypt(key, binary), errorToUnknownError),
@@ -132,12 +143,7 @@ const decryptMessages = ({
             table: content.table,
             row: content.row as Id,
             column: content.column,
-            value:
-              content.value.oneofKind === "numberValue"
-                ? content.value.numberValue
-                : content.value.oneofKind === "stringValue"
-                ? content.value.stringValue
-                : null,
+            value: protobufToCrdtValue(content.value),
           })
         )
       )
