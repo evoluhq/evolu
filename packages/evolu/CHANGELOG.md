@@ -1,5 +1,11 @@
 # evolu
 
+## 4.0.1
+
+### Patch Changes
+
+- 616b005: Fix peer dependency
+
 ## 4.0.0
 
 ### Major Changes

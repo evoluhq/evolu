@@ -20,7 +20,7 @@ importers:
     specifiers:
       '@evolu/tsconfig': workspace:0.0.2
       '@types/node': ^18.15.9
-      evolu: workspace:4.0.0
+      evolu: workspace:4.0.1
       fp-ts: ^2.13.1
       ts-node: ^10.9.1
       typescript: ^5.0.2
@@ -45,7 +45,7 @@ importers:
       clsx: ^1.2.1
       eslint: ^8.36.0
       eslint-config-evolu: workspace:0.0.2
-      evolu: workspace:4.0.0
+      evolu: workspace:4.0.1
       next: ^13.2.4
       nextra: ^2.2.20
       nextra-theme-docs: ^2.2.20
