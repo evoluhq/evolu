@@ -1,5 +1,13 @@
 # evolu
 
+## 4.0.0
+
+### Major Changes
+
+- 130582b: Update @effect/schema
+
+  Only Schema API has been changed. Check the docs and the example.
+
 ## 3.1.1
 
 ### Patch Changes
