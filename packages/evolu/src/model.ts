@@ -1,5 +1,5 @@
-import { Brand } from "@effect/data/Brand";
-import * as S from "@effect/schema";
+import type { Brand } from "@effect/data/Brand";
+import * as S from "@effect/schema/Schema";
 import { pipe } from "fp-ts/lib/function.js";
 import { nanoid } from "nanoid";
 
@@ -9,7 +9,7 @@ import { nanoid } from "nanoid";
  * To create an Id value for a specific table, use {@link createId}.
  */
 export const Id = pipe(S.string, S.pattern(/^[\w-]{21}$/), S.brand("Id"));
-export type Id = S.Infer<typeof Id>;
+export type Id = S.To<typeof Id>;
 
 /**
  * A factory function to create {@link Id} Schema for a specific table.
@@ -18,16 +18,18 @@ export type Id = S.Infer<typeof Id>;
  * ### Example
  *
  * ```
- * import * as S from "@effect/schema";
+ * import * as S from "@effect/schema/Schema";
  * import * as E from "evolu";
  *
  * const TodoId = E.id("Todo");
- * type TodoId = S.Infer<typeof TodoId>;
+ * type TodoId = S.To<typeof TodoId>;
  *
  * if (!S.is(TodoId)(value)) return;
  * ```
  */
-export const id = <T extends string>(table: T): S.Schema<Id & Brand<T>> =>
+export const id = <T extends string>(
+  table: T
+): S.BrandSchema<string, string & Brand<"Id"> & Brand<T>> =>
   pipe(Id, S.brand(table));
 
 /**
@@ -79,7 +81,7 @@ export interface Owner {
  * https://www.sqlite.org/quirks.html#no_separate_boolean_datatype
  */
 export const SqliteBoolean = S.union(S.literal(0), S.literal(1));
-export type SqliteBoolean = S.Infer<typeof SqliteBoolean>;
+export type SqliteBoolean = S.To<typeof SqliteBoolean>;
 
 /**
  * SQLite doesn't support the Date type, so Evolu uses SqliteDate instead.
@@ -94,7 +96,7 @@ export const SqliteDate = pipe(
   }),
   S.brand("SqliteDate")
 );
-export type SqliteDate = S.Infer<typeof SqliteDate>;
+export type SqliteDate = S.To<typeof SqliteDate>;
 
 /**
  * A helper for casting types not supported by SQLite.
@@ -127,7 +129,7 @@ export function cast(
  * ### Example
  *
  * ```
- * import * as S from "@effect/schema";
+ * import * as S from "@effect/schema/Schema";
  * import * as E from "evolu";
  *
  * if (!S.is(E.String1000)(value)) return;
@@ -139,7 +141,7 @@ export const String1000 = pipe(
   S.maxLength(1000),
   S.brand("String1000")
 );
-export type String1000 = S.Infer<typeof String1000>;
+export type String1000 = S.To<typeof String1000>;
 
 /**
  * A nonempty string with a maximum length of 1000 characters.
@@ -147,7 +149,7 @@ export type String1000 = S.Infer<typeof String1000>;
  * ### Example
  *
  * ```
- * import * as S from "@effect/schema";
+ * import * as S from "@effect/schema/Schema";
  * import * as E from "evolu";
  *
  * if (!S.is(E.NonEmptyString1000)(value)) return;
@@ -160,4 +162,4 @@ export const NonEmptyString1000 = pipe(
   S.maxLength(1000),
   S.brand("NonEmptyString1000")
 );
-export type NonEmptyString1000 = S.Infer<typeof NonEmptyString1000>;
+export type NonEmptyString1000 = S.To<typeof NonEmptyString1000>;

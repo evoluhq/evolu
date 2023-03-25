@@ -1,5 +1,5 @@
 import { either, readerEither } from "fp-ts";
-import * as S from "@effect/schema";
+import * as S from "@effect/schema/Schema";
 import { Either } from "fp-ts/Either";
 import { increment, pipe } from "fp-ts/lib/function.js";
 import { IO } from "fp-ts/IO";
@@ -30,7 +30,7 @@ export const createInitialTimestamp: IO<Timestamp> = () => ({
   node: createNodeId(),
 });
 
-const syncNodeId = S.decodeOrThrow(NodeId)("0000000000000000");
+const syncNodeId = S.parse(NodeId)("0000000000000000");
 
 export const createSyncTimestamp = (
   millis: Millis = 0 as Millis
@@ -62,7 +62,7 @@ const incrementCounter = (
 ): Either<TimestampCounterOverflowError, Counter> =>
   pipe(
     increment(counter),
-    S.decode(Counter),
+    S.parseEither(Counter),
     either.mapLeft(() => ({ type: "TimestampCounterOverflowError" }))
   );
 

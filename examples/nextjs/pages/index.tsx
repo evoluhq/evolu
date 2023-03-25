@@ -8,8 +8,8 @@ import {
   useOwnerActions,
   useQuery,
 } from "@/lib/db";
-import * as S from "@effect/schema";
-import { formatErrors } from "@effect/schema/formatter/Tree";
+import * as S from "@effect/schema/Schema";
+import { formatErrors } from "@effect/schema/TreeFormatter";
 import * as E from "evolu";
 import { ChangeEvent, FC, memo, useEffect, useState } from "react";
 

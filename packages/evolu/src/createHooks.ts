@@ -1,4 +1,4 @@
-import { Schema } from "@effect/schema";
+import * as S from "@effect/schema/Schema";
 import { option, readonlyArray } from "fp-ts";
 import { constNull, pipe } from "fp-ts/lib/function.js";
 import { Option } from "fp-ts/Option";
@@ -12,9 +12,9 @@ import {
   Create,
   DbSchema,
   Hooks,
-  Row,
   Query,
   queryToString,
+  Row,
   Update,
   UseMutation,
   UseQuery,
@@ -27,7 +27,7 @@ import {
  * ### Example
  *
  * ```
- * import * as S from "@effect/schema";
+ * import * as S from "@effect/schema/Schema";
  * import * as E from "evolu";
  *
  * const TodoId = E.id("Todo");
@@ -71,17 +71,17 @@ import {
  * To learn more about migration-less schema evolving, check the `useQuery`
  * documentation.
  */
-export const createHooks = <S extends DbSchema>(
-  dbSchema: Schema<S>,
+export const createHooks = <From, To extends DbSchema>(
+  dbSchema: S.Schema<From, To>,
   config?: Partial<Config>
-): Hooks<S> => {
+): Hooks<To> => {
   const evolu = createEvolu(dbSchema)({
     config: createConfig(config),
     createDbWorker,
   });
   const cache = new WeakMap<Row, Option<Row>>();
 
-  const useQuery: UseQuery<S> = (query, filterMap) => {
+  const useQuery: UseQuery<To> = (query, filterMap) => {
     // `query` can and will change, compile() is cheap
     const queryString = query
       ? pipe(query(kysely as never).compile() as Query, queryToString)
@@ -131,22 +131,23 @@ export const createHooks = <S extends DbSchema>(
     );
   };
 
-  const useMutation: UseMutation<S> = () =>
+  const useMutation: UseMutation<To> = () =>
     useMemo(
       () => ({
-        create: evolu.mutate as Create<S>,
-        update: evolu.mutate as Update<S>,
+        create: evolu.mutate as Create<To>,
+        update: evolu.mutate as Update<To>,
       }),
       []
     );
 
-  const useEvoluError: Hooks<S>["useEvoluError"] = () =>
+  const useEvoluError: Hooks<To>["useEvoluError"] = () =>
     useSyncExternalStore(evolu.subscribeError, evolu.getError, constNull);
 
-  const useOwner: Hooks<S>["useOwner"] = () =>
+  const useOwner: Hooks<To>["useOwner"] = () =>
     useSyncExternalStore(evolu.subscribeOwner, evolu.getOwner, constNull);
 
-  const useOwnerActions: Hooks<S>["useOwnerActions"] = () => evolu.ownerActions;
+  const useOwnerActions: Hooks<To>["useOwnerActions"] = () =>
+    evolu.ownerActions;
 
   return {
     useQuery,

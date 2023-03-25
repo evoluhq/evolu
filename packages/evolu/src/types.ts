@@ -1,6 +1,5 @@
 import { Brand } from "@effect/data/Brand";
-import * as S from "@effect/schema";
-import { Schema } from "@effect/schema";
+import * as S from "@effect/schema/Schema";
 import { eq } from "fp-ts";
 import { Either } from "fp-ts/Either";
 import { IO } from "fp-ts/IO";
@@ -51,7 +50,7 @@ export const NodeId = pipe(
   S.pattern(/^[\w-]{16}$/),
   S.brand("NodeId")
 );
-export type NodeId = S.Infer<typeof NodeId>;
+export type NodeId = S.To<typeof NodeId>;
 
 export const createNodeId: IO<NodeId> = pipe(
   customAlphabet("0123456789abcdef", 16),
@@ -63,10 +62,10 @@ export const Millis = pipe(
   S.greaterThanOrEqualTo(0),
   S.brand("Millis")
 );
-export type Millis = S.Infer<typeof Millis>;
+export type Millis = S.To<typeof Millis>;
 
 export const Counter = pipe(S.number, S.between(0, 65535), S.brand("Counter"));
-export type Counter = S.Infer<typeof Counter>;
+export type Counter = S.To<typeof Counter>;
 
 export interface Timestamp {
   readonly node: NodeId;
@@ -617,7 +616,7 @@ export type DbWorkerEnvs = DbEnv &
 // Workers.
 
 export const OnCompleteId = id("OnComplete");
-export type OnCompleteId = S.Infer<typeof OnCompleteId>;
+export type OnCompleteId = S.To<typeof OnCompleteId>;
 
 export type DbWorkerInputReceive = {
   readonly type: "receive";
@@ -728,6 +727,6 @@ export type EvoluEnv = {
   readonly createDbWorker: CreateDbWorker;
 };
 
-export type CreateEvolu = <S extends DbSchema>(
-  dbSchema: Schema<S>
-) => Reader<EvoluEnv, Evolu<S>>;
+export type CreateEvolu = <From, To extends DbSchema>(
+  dbSchema: S.Schema<From, To>
+) => Reader<EvoluEnv, Evolu<To>>;

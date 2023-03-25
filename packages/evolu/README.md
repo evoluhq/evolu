@@ -52,7 +52,7 @@ The complete Next.js example is [here](https://github.com/evoluhq/evolu/tree/mai
 To start using Evolu, define schemas for your database and export React Hooks.
 
 ```ts
-import * as S from "@effect/schema";
+import * as S from "@effect/schema/Schema";
 import * as E from "evolu";
 
 const TodoId = E.id("Todo");
@@ -83,10 +83,10 @@ export const {
 Learn more about [Schema](https://github.com/effect-ts/schema).
 
 ```ts
-import * as S from "@effect/schema";
+import * as S from "@effect/schema/Schema";
 import * as E from "evolu";
 
-S.decode(E.String1000)(title);
+S.parse(E.String1000)(title);
 ```
 
 ### Mutate Data

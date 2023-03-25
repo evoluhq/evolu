@@ -1,14 +1,14 @@
 import { pipe } from "@effect/data/Function";
-import * as S from "@effect/schema";
-import { formatErrors } from "@effect/schema/formatter/Tree";
+import * as S from "@effect/schema/Schema";
+import { formatErrors } from "@effect/schema/TreeFormatter";
 import * as E from "evolu";
 import { ChangeEvent, FC, memo, useEffect, useState } from "react";
 
 const TodoId = E.id("Todo");
-type TodoId = S.Infer<typeof TodoId>;
+type TodoId = S.To<typeof TodoId>;
 
 const TodoCategoryId = E.id("TodoCategory");
-type TodoCategoryId = S.Infer<typeof TodoCategoryId>;
+type TodoCategoryId = S.To<typeof TodoCategoryId>;
 
 const NonEmptyString50 = pipe(
   S.string,
@@ -16,7 +16,7 @@ const NonEmptyString50 = pipe(
   S.maxLength(50),
   S.brand("NonEmptyString50")
 );
-type NonEmptyString50 = S.Infer<typeof NonEmptyString50>;
+type NonEmptyString50 = S.To<typeof NonEmptyString50>;
 
 const TodoTable = S.struct({
   id: TodoId,
@@ -24,13 +24,13 @@ const TodoTable = S.struct({
   isCompleted: E.SqliteBoolean,
   categoryId: S.nullable(TodoCategoryId),
 });
-type TodoTable = S.Infer<typeof TodoTable>;
+type TodoTable = S.To<typeof TodoTable>;
 
 const TodoCategoryTable = S.struct({
   id: TodoCategoryId,
   name: NonEmptyString50,
 });
-type TodoCategoryTable = S.Infer<typeof TodoCategoryTable>;
+type TodoCategoryTable = S.To<typeof TodoCategoryTable>;
 
 const Database = S.struct({
   todo: TodoTable,
@@ -45,16 +45,16 @@ const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
     }),
   });
 
-const prompt = <T extends string>(
-  schema: S.Schema<T>,
+const prompt = <From extends string, To>(
+  schema: S.Schema<From, To>,
   message: string,
-  onSuccess: (value: T) => void
+  onSuccess: (value: To) => void
 ): void => {
   const value = window.prompt(message);
   if (value == null) return; // on cancel
-  const a = S.decode(schema)(value);
-  if (S.isFailure(a)) {
-    alert(formatErrors(a.left));
+  const a = S.parseEither(schema)(value);
+  if (a._tag === "Left") {
+    alert(formatErrors(a.left.errors));
     return;
   }
   onSuccess(a.right);

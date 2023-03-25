@@ -1,5 +1,5 @@
 import { pipe } from "@effect/data/Function";
-import * as S from "@effect/schema";
+import * as S from "@effect/schema/Schema";
 import * as E from "evolu";
 
 export const TodoId = E.id("Todo");

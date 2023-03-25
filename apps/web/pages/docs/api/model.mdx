@@ -14,7 +14,7 @@ To create an Id value for a specific table, use `createId`.
 ### Example
 
 ```ts
-import * as S from "@effect/schema";
+import * as S from "@effect/schema/Schema";
 import * as E from "evolu";
 
 const TodoId = E.id("Todo");
@@ -88,7 +88,7 @@ A string with a maximum length of 1000 characters.
 ### Example
 
 ```ts
-import * as S from "@effect/schema";
+import * as S from "@effect/schema/Schema";
 import * as E from "evolu";
 
 if (!S.is(E.String1000)(value)) return;
@@ -102,7 +102,7 @@ A nonempty string with a maximum length of 1000 characters.
 ### Example
 
 ```ts
-import * as S from "@effect/schema";
+import * as S from "@effect/schema/Schema";
 import * as E from "evolu";
 
 if (!S.is(E.NonEmptyString1000)(value)) return;
