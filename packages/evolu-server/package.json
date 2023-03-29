@@ -1,0 +1,59 @@
+{
+  "name": "evolu-server",
+  "version": "0.1.0",
+  "description": "Node.js server for Evolu library",
+  "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
+  "license": "MIT",
+  "repository": "evoluhq/evolu",
+  "bugs": {
+    "url": "https://github.com/evoluhq/evolu/issues"
+  },
+  "homepage": "https://evolu.dev",
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist/**",
+    "src/**",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "tsc --watch",
+    "build": "rm -rf dist && tsc",
+    "lint": "TIMING=1 eslint src --ext .ts,.tsx",
+    "clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist",
+    "format": "prettier --write \"src/*.{ts,tsx,md}\""
+  },
+  "dependencies": {
+    "better-sqlite3": "^8.2.0",
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "evolu": "workspace:4.0.2",
+    "express": "^4.18.2",
+    "fp-ts": "^2.13.1"
+  },
+  "devDependencies": {
+    "@evolu/tsconfig": "workspace:0.0.2",
+    "@types/better-sqlite3": "^7.6.3",
+    "@types/body-parser": "^1.19.2",
+    "@types/cors": "^2.8.13",
+    "@types/express": "^4.17.17",
+    "@types/node": "^18.15.11",
+    "eslint": "^8.37.0",
+    "eslint-config-evolu": "workspace:0.0.2",
+    "typescript": "^5.0.2",
+    "vitest": "^0.29.8"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=16.15"
+  }
+}
