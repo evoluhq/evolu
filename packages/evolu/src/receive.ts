@@ -6,40 +6,39 @@ import {
   readonlyNonEmptyArray,
   taskEither,
 } from "fp-ts";
-import { Either } from "fp-ts/Either";
+import { Either } from "fp-ts/lib/Either.js";
 import { constVoid, flow, pipe } from "fp-ts/lib/function.js";
-import { Option } from "fp-ts/Option";
-import { ReaderEither } from "fp-ts/ReaderEither";
-import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
-import { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
+import { Option } from "fp-ts/lib/Option.js";
+import { ReaderEither } from "fp-ts/lib/ReaderEither.js";
+import { ReaderTaskEither } from "fp-ts/lib/ReaderTaskEither.js";
+import { ReadonlyNonEmptyArray } from "fp-ts/lib/ReadonlyNonEmptyArray.js";
 import { applyMessages } from "./applyMessages.js";
-import { diffMerkleTrees } from "./merkleTree.js";
+import { ConfigEnv } from "./config.js";
+import { diffMerkleTrees, MerkleTree } from "./merkleTree.js";
 import { readClock } from "./readClock.js";
 import { syncIsPendingOrHeld } from "./syncLock.js";
 import {
   createSyncTimestamp,
-  receiveTimestamp,
-  timestampFromString,
-  timestampToString,
-} from "./timestamp.js";
-import {
-  ConfigEnv,
-  CrdtClock,
-  CrdtMessage,
-  DbEnv,
-  LockManagerEnv,
-  MerkleTree,
   Millis,
-  OwnerEnv,
-  PostDbWorkerOutputEnv,
-  PostSyncWorkerInputEnv,
-  SyncError,
-  TableDefinition,
+  receiveTimestamp,
   TimeEnv,
   Timestamp,
   TimestampCounterOverflowError,
   TimestampDriftError,
   TimestampDuplicateNodeError,
+  timestampFromString,
+  timestampToString,
+} from "./timestamp.js";
+import {
+  CrdtClock,
+  CrdtMessage,
+  DbEnv,
+  LockManagerEnv,
+  OwnerEnv,
+  PostDbWorkerOutputEnv,
+  PostSyncWorkerInputEnv,
+  SyncError,
+  TableDefinition,
   UnknownError,
 } from "./types.js";
 import { updateClock } from "./updateClock.js";

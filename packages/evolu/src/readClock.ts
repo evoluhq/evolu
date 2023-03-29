@@ -1,15 +1,9 @@
 import { taskEither } from "fp-ts";
 import { pipe } from "fp-ts/lib/function.js";
-import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
-import { timestampFromString } from "./timestamp.js";
-import {
-  CrdtClock,
-  DbEnv,
-  merkleTreeFromString,
-  MerkleTreeString,
-  TimestampString,
-  UnknownError,
-} from "./types.js";
+import { ReaderTaskEither } from "fp-ts/lib/ReaderTaskEither.js";
+import { merkleTreeFromString, MerkleTreeString } from "./merkleTree.js";
+import { timestampFromString, TimestampString } from "./timestamp.js";
+import { CrdtClock, DbEnv, UnknownError } from "./types.js";
 
 export const readClock: ReaderTaskEither<DbEnv, UnknownError, CrdtClock> = ({
   db,

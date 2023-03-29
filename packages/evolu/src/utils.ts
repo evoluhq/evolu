@@ -1,4 +1,4 @@
-import { IO } from "fp-ts/IO";
+import { IO } from "fp-ts/lib/IO.js";
 
 export const isServer = typeof window === "undefined" || "Deno" in window;
 

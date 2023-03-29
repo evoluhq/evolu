@@ -1,9 +1,14 @@
 import { either, option, task, taskEither } from "fp-ts";
-import { IO } from "fp-ts/IO";
 import { constVoid, flow, pipe } from "fp-ts/lib/function.js";
-import { Task } from "fp-ts/Task";
-import { TaskEither } from "fp-ts/TaskEither";
+import { IO } from "fp-ts/lib/IO.js";
+import { Task } from "fp-ts/lib/Task.js";
+import { TaskEither } from "fp-ts/lib/TaskEither.js";
 import { decrypt, encrypt } from "micro-aes-gcm";
+import {
+  merkleTreeFromString,
+  MerkleTreeString,
+  merkleTreeToString,
+} from "./merkleTree.js";
 import { Id, OwnerId } from "./model.js";
 import {
   CrdtMessageContent,
@@ -12,18 +17,15 @@ import {
   SyncResponse,
 } from "./protobuf.js";
 import { requestSync } from "./syncLock.js";
+import { TimestampString } from "./timestamp.js";
 import {
   CrdtClock,
   CrdtMessage,
   CrdtValue,
   DbWorkerInputReceive,
   errorToUnknownError,
-  merkleTreeFromString,
-  MerkleTreeString,
-  merkleTreeToString,
   SyncWorkerInput,
   SyncWorkerOutput,
-  TimestampString,
   UnknownError,
 } from "./types.js";
 

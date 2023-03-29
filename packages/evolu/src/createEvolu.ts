@@ -8,7 +8,6 @@ import {
   readonlyRecord,
   taskEither,
 } from "fp-ts";
-import { IO } from "fp-ts/IO";
 import {
   constVoid,
   decrement,
@@ -16,9 +15,10 @@ import {
   increment,
   pipe,
 } from "fp-ts/lib/function.js";
-import { Option } from "fp-ts/Option";
-import { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
-import { ReadonlyRecord } from "fp-ts/ReadonlyRecord";
+import { IO } from "fp-ts/lib/IO.js";
+import { Option } from "fp-ts/lib/Option.js";
+import { ReadonlyNonEmptyArray } from "fp-ts/lib/ReadonlyNonEmptyArray.js";
+import { ReadonlyRecord } from "fp-ts/lib/ReadonlyRecord.js";
 import { flushSync } from "react-dom";
 import { createStore } from "./createStore.js";
 import { dbSchemaToTableDefinitions } from "./dbSchemaToTableDefinitions.js";
@@ -37,8 +37,8 @@ import {
   NewCrdtMessage,
   OnCompleteId,
   OwnerActions,
-  RowsWithLoadingState,
   QueryString,
+  RowsWithLoadingState,
   Store,
 } from "./types.js";
 import { isServer } from "./utils.js";
@@ -270,7 +270,7 @@ const createOwnerActionRestore =
   (dbWorker: DbWorker): OwnerActions["restore"] =>
   (mnemonic) =>
     pipe(
-      taskEither.fromTask(() => import("./mnemonic")),
+      taskEither.fromTask(() => import("./mnemonic.js")),
       taskEither.chainEitherKW(({ parseMnemonic }) => parseMnemonic(mnemonic)),
       taskEither.chainIOK((mnemonic) =>
         dbWorker.post({ type: "restoreOwner", mnemonic })

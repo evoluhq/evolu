@@ -1,4 +1,4 @@
-import { IO } from "fp-ts/IO";
+import { IO } from "fp-ts/lib/IO.js";
 import { Store, Unsubscribe } from "./types.js";
 
 export const createStore = <T>(initialState: T): Store<T> => {

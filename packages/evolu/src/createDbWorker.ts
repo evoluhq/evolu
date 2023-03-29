@@ -1,5 +1,5 @@
-import { IO } from "fp-ts/IO";
 import { constVoid } from "fp-ts/lib/function.js";
+import { IO } from "fp-ts/lib/IO.js";
 import {
   CreateDbWorker,
   DbWorker,
@@ -41,7 +41,7 @@ const createOpfsDbWorker: CreateDbWorker = (onMessage) => {
 };
 
 const createLocalStorageDbWorker: CreateDbWorker = (onMessage) => {
-  const promise = import("./createLocalStorageDbWorker");
+  const promise = import("./createLocalStorageDbWorker.js");
   let dbWorker: DbWorker | null = null;
 
   const post: PostDbWorkerInput = (message) => () => {

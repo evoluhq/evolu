@@ -1,4 +1,4 @@
-import { IO } from "fp-ts/IO";
+import { IO } from "fp-ts/lib/IO.js";
 
 const localStorageKey = "evolu:reloadAllTabs";
 

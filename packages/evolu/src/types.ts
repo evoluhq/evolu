@@ -1,17 +1,17 @@
-import { Brand } from "@effect/data/Brand";
+import type { Brand } from "@effect/data/Brand";
 import * as S from "@effect/schema/Schema";
 import { eq } from "fp-ts";
-import { Either } from "fp-ts/Either";
-import { IO } from "fp-ts/IO";
-import { IORef } from "fp-ts/IORef";
-import { pipe } from "fp-ts/lib/function.js";
-import { Option } from "fp-ts/Option";
-import { Reader } from "fp-ts/Reader";
-import { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
-import { ReadonlyRecord } from "fp-ts/ReadonlyRecord";
-import { TaskEither } from "fp-ts/TaskEither";
+import { Either } from "fp-ts/lib/Either.js";
+import { IO } from "fp-ts/lib/IO.js";
+import { IORef } from "fp-ts/lib/IORef.js";
+import { Option } from "fp-ts/lib/Option.js";
+import { Reader } from "fp-ts/lib/Reader.js";
+import { ReadonlyNonEmptyArray } from "fp-ts/lib/ReadonlyNonEmptyArray.js";
+import { ReadonlyRecord } from "fp-ts/lib/ReadonlyRecord.js";
+import { TaskEither } from "fp-ts/lib/TaskEither.js";
 import { Kysely, SelectQueryBuilder } from "kysely";
-import { customAlphabet } from "nanoid";
+import { Config, ConfigEnv } from "./config.js";
+import { MerkleTree } from "./merkleTree.js";
 import {
   Id,
   id,
@@ -21,78 +21,22 @@ import {
   SqliteBoolean,
   SqliteDate,
 } from "./model.js";
+import {
+  Millis,
+  TimeEnv,
+  Timestamp,
+  TimestampCounterOverflowError,
+  TimestampDriftError,
+  TimestampDuplicateNodeError,
+  TimestampParseError,
+  TimestampString,
+} from "./timestamp.js";
 
 // https://github.com/sindresorhus/type-fest/blob/main/source/simplify.d.ts
 // eslint-disable-next-line @typescript-eslint/ban-types
 type Simplify<T> = { [KeyType in keyof T]: T[KeyType] } & {};
 
-export type Config = {
-  /**
-   * Alternate URL to Evolu sync&backup server.
-   */
-  syncUrl: string;
-  /**
-   * Alternate URL to reload browser tabs after `Owner` reset or restore.
-   * The default value is `/`.
-   */
-  reloadUrl: string;
-  /**
-   * Maximum physical clock drift allowed in ms.
-   * The default value is 60000 (1 minute).
-   */
-  maxDrift: number;
-};
-
 // CRDT
-
-export const NodeId = pipe(
-  S.string,
-  S.pattern(/^[\w-]{16}$/),
-  S.brand("NodeId")
-);
-export type NodeId = S.To<typeof NodeId>;
-
-export const createNodeId: IO<NodeId> = pipe(
-  customAlphabet("0123456789abcdef", 16),
-  (nanoid) => () => nanoid() as NodeId
-);
-
-export const Millis = pipe(
-  S.number,
-  S.greaterThanOrEqualTo(0),
-  S.brand("Millis")
-);
-export type Millis = S.To<typeof Millis>;
-
-export const Counter = pipe(S.number, S.between(0, 65535), S.brand("Counter"));
-export type Counter = S.To<typeof Counter>;
-
-export interface Timestamp {
-  readonly node: NodeId;
-  readonly millis: Millis;
-  readonly counter: Counter;
-}
-
-// TODO: Add Schema and use it in Evolu Server.
-export type TimestampString = string & Brand<"TimestampString">;
-
-export type TimestampHash = number & Brand<"TimestampHash">;
-
-// TODO: Add Schema and use it in Evolu Server.
-export interface MerkleTree {
-  readonly hash?: TimestampHash;
-  readonly "0"?: MerkleTree;
-  readonly "1"?: MerkleTree;
-  readonly "2"?: MerkleTree;
-}
-
-export type MerkleTreeString = string & Brand<"MerkleTreeString">;
-
-export const merkleTreeToString = (m: MerkleTree): MerkleTreeString =>
-  JSON.stringify(m) as MerkleTreeString;
-
-export const merkleTreeFromString = (m: MerkleTreeString): MerkleTree =>
-  JSON.parse(m) as MerkleTree;
 
 /**
  * CrdtValue represents what Evolu can save in SQLite.
@@ -138,25 +82,6 @@ export interface TableDefinition {
 }
 
 // Errors.
-
-export interface TimestampDuplicateNodeError {
-  readonly type: "TimestampDuplicateNodeError";
-  readonly node: NodeId;
-}
-
-export interface TimestampDriftError {
-  readonly type: "TimestampDriftError";
-  readonly next: Millis;
-  readonly now: Millis;
-}
-
-export interface TimestampCounterOverflowError {
-  readonly type: "TimestampCounterOverflowError";
-}
-
-export interface TimestampParseError {
-  readonly type: "TimestampParseError";
-}
 
 /**
  * We can't use the whole error because of WebWorker postMessage
@@ -592,16 +517,8 @@ export interface RowsCacheEnv {
   readonly rowsCache: IORef<ReadonlyMap<QueryString, Rows>>;
 }
 
-export interface TimeEnv {
-  readonly now: () => Millis;
-}
-
 export interface LockManagerEnv {
   readonly locks: LockManager;
-}
-
-export interface ConfigEnv {
-  readonly config: Config;
 }
 
 export type DbWorkerEnvs = DbEnv &

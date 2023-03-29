@@ -1,5 +1,5 @@
-import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
-import { TaskEither } from "fp-ts/TaskEither";
+import { ReaderTaskEither } from "fp-ts/lib/ReaderTaskEither.js";
+import { TaskEither } from "fp-ts/lib/TaskEither.js";
 
 export const logTaskEitherDuration =
   (label: string) =>

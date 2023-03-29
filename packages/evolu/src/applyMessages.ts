@@ -1,16 +1,10 @@
 import { option, readonlyArray, taskEither } from "fp-ts";
 import { flow, pipe } from "fp-ts/lib/function.js";
-import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
-import { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
-import { insertIntoMerkleTree } from "./merkleTree.js";
-import { timestampFromString } from "./timestamp.js";
-import {
-  CrdtMessage,
-  DbEnv,
-  MerkleTree,
-  TimestampString,
-  UnknownError,
-} from "./types.js";
+import { ReaderTaskEither } from "fp-ts/lib/ReaderTaskEither.js";
+import { ReadonlyNonEmptyArray } from "fp-ts/lib/ReadonlyNonEmptyArray.js";
+import { insertIntoMerkleTree, MerkleTree } from "./merkleTree.js";
+import { timestampFromString, TimestampString } from "./timestamp.js";
+import { CrdtMessage, DbEnv, UnknownError } from "./types.js";
 
 export const applyMessages =
   ({

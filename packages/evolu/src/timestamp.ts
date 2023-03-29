@@ -1,28 +1,73 @@
-import { either, readerEither } from "fp-ts";
+import type { Brand } from "@effect/data/Brand";
 import * as S from "@effect/schema/Schema";
-import { Either } from "fp-ts/Either";
+import { either, readerEither } from "fp-ts";
+import { Either } from "fp-ts/lib/Either.js";
 import { increment, pipe } from "fp-ts/lib/function.js";
-import { IO } from "fp-ts/IO";
-import { ReaderEither } from "fp-ts/ReaderEither";
+import { IO } from "fp-ts/lib/IO.js";
+import { ReaderEither } from "fp-ts/lib/ReaderEither.js";
 import murmurhash from "murmurhash";
-import {
-  ConfigEnv,
-  Counter,
-  createNodeId,
-  Millis,
-  NodeId,
-  TimeEnv,
-  Timestamp,
-  TimestampCounterOverflowError,
-  TimestampDriftError,
-  TimestampDuplicateNodeError,
-  TimestampHash,
-  TimestampString,
-} from "./types.js";
+import { customAlphabet } from "nanoid";
+import { ConfigEnv } from "./config.js";
 
 // https://muratbuffalo.blogspot.com/2014/07/hybrid-logical-clocks.html
 // https://jaredforsyth.com/posts/hybrid-logical-clocks/
 // https://github.com/jlongster/crdt-example-app/blob/master/shared/timestamp.js
+
+export const NodeId = pipe(
+  S.string,
+  S.pattern(/^[\w-]{16}$/),
+  S.brand("NodeId")
+);
+export type NodeId = S.To<typeof NodeId>;
+
+export const createNodeId: IO<NodeId> = pipe(
+  customAlphabet("0123456789abcdef", 16),
+  (nanoid) => () => nanoid() as NodeId
+);
+
+export const Millis = pipe(
+  S.number,
+  S.greaterThanOrEqualTo(0),
+  S.brand("Millis")
+);
+export type Millis = S.To<typeof Millis>;
+
+export interface TimeEnv {
+  readonly now: () => Millis;
+}
+
+export const Counter = pipe(S.number, S.between(0, 65535), S.brand("Counter"));
+export type Counter = S.To<typeof Counter>;
+
+export interface Timestamp {
+  readonly node: NodeId;
+  readonly millis: Millis;
+  readonly counter: Counter;
+}
+
+export interface TimestampDuplicateNodeError {
+  readonly type: "TimestampDuplicateNodeError";
+  readonly node: NodeId;
+}
+
+export interface TimestampDriftError {
+  readonly type: "TimestampDriftError";
+  readonly next: Millis;
+  readonly now: Millis;
+}
+
+export interface TimestampCounterOverflowError {
+  readonly type: "TimestampCounterOverflowError";
+}
+
+export interface TimestampParseError {
+  readonly type: "TimestampParseError";
+}
+
+// TODO: Add Schema and use it in Evolu Server.
+export type TimestampString = string & Brand<"TimestampString">;
+
+export type TimestampHash = number & Brand<"TimestampHash">;
 
 export const createInitialTimestamp: IO<Timestamp> = () => ({
   millis: 0 as Millis,

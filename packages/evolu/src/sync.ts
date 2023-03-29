@@ -1,20 +1,20 @@
 import { option, readerTaskEither } from "fp-ts";
 import { flow, pipe } from "fp-ts/lib/function.js";
-import { Option } from "fp-ts/Option";
-import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
-import { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
+import { Option } from "fp-ts/lib/Option.js";
+import { ReaderTaskEither } from "fp-ts/lib/ReaderTaskEither.js";
+import { ReadonlyNonEmptyArray } from "fp-ts/lib/ReadonlyNonEmptyArray.js";
+import { ConfigEnv } from "./config.js";
 import { query } from "./query.js";
 import { readClock } from "./readClock.js";
 import { syncIsPendingOrHeld } from "./syncLock.js";
 import {
-  ConfigEnv,
   DbEnv,
   LockManagerEnv,
   OwnerEnv,
   PostDbWorkerOutputEnv,
   PostSyncWorkerInputEnv,
-  RowsCacheEnv,
   QueryString,
+  RowsCacheEnv,
   UnknownError,
 } from "./types.js";
 

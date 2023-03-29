@@ -1,24 +1,21 @@
 import { either } from "fp-ts";
 import { pipe } from "fp-ts/lib/function.js";
 import { describe, expect, test } from "vitest";
-import { createConfig } from "../src/createConfig.js";
+import { ConfigEnv, createConfig } from "../src/config.js";
 import {
   createInitialTimestamp,
   createSyncTimestamp,
+  Millis,
   receiveTimestamp,
   sendTimestamp,
-  timestampFromString,
-  timestampToHash,
-  timestampToString,
-} from "../src/timestamp.js";
-import {
-  ConfigEnv,
-  Millis,
   TimeEnv,
   Timestamp,
   TimestampCounterOverflowError,
   TimestampDriftError,
-} from "../src/types.js";
+  timestampFromString,
+  timestampToHash,
+  timestampToString,
+} from "../src/timestamp.js";
 import { createNode1Timestamp, createNode2Timestamp } from "./testUtils.js";
 
 const config = createConfig();

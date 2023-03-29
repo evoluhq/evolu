@@ -1,10 +1,10 @@
 import { apply, readerTaskEither, taskEither } from "fp-ts";
 import { pipe } from "fp-ts/lib/function.js";
-import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
-import { createInitialMerkleTree } from "./merkleTree.js";
+import { ReaderTaskEither } from "fp-ts/lib/ReaderTaskEither.js";
+import { createInitialMerkleTree, merkleTreeToString } from "./merkleTree.js";
 import { Mnemonic, Owner } from "./model.js";
 import { createInitialTimestamp, timestampToString } from "./timestamp.js";
-import { DbEnv, merkleTreeToString, OwnerEnv, UnknownError } from "./types.js";
+import { DbEnv, OwnerEnv, UnknownError } from "./types.js";
 
 const getOwnerEnv: ReaderTaskEither<DbEnv, UnknownError, OwnerEnv> = ({ db }) =>
   pipe(
@@ -17,7 +17,7 @@ const lazyInit =
   (mnemonic?: Mnemonic): ReaderTaskEither<DbEnv, UnknownError, OwnerEnv> =>
   ({ db }) =>
     pipe(
-      taskEither.fromTask(() => import("./mnemonic")),
+      taskEither.fromTask(() => import("./mnemonic.js")),
       taskEither.map(({ createOwner }) => ({
         timestamp: pipe(createInitialTimestamp(), timestampToString),
         merkleTree: pipe(createInitialMerkleTree(), merkleTreeToString),
@@ -69,7 +69,7 @@ const migrateToSlip21Owner: ReaderTaskEither<DbEnv, UnknownError, OwnerEnv> = ({
   pipe(
     apply.sequenceS(taskEither.ApplyPar)({
       createOwner: pipe(
-        taskEither.fromTask(() => import("./mnemonic")),
+        taskEither.fromTask(() => import("./mnemonic.js")),
         taskEither.map((a) => a.createOwner)
       ),
       mnemonic: pipe(

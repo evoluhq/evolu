@@ -6,7 +6,7 @@ import {
   taskEither,
 } from "fp-ts";
 import { constVoid, flow, pipe } from "fp-ts/lib/function.js";
-import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
+import { ReaderTaskEither } from "fp-ts/lib/ReaderTaskEither.js";
 import { DbEnv, TableDefinition, UnknownError } from "./types.js";
 
 const getExistingTables: ReaderTaskEither<

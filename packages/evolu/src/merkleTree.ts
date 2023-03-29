@@ -1,7 +1,28 @@
+import type { Brand } from "@effect/data/Brand";
 import { option } from "fp-ts";
-import { Option } from "fp-ts/Option";
-import { timestampToHash } from "./timestamp.js";
-import { MerkleTree, Millis, Timestamp, TimestampHash } from "./types.js";
+import { Option } from "fp-ts/lib/Option.js";
+import {
+  Millis,
+  Timestamp,
+  TimestampHash,
+  timestampToHash,
+} from "./timestamp.js";
+
+// TODO: Add Schema and use it in Evolu Server.
+export interface MerkleTree {
+  readonly hash?: TimestampHash;
+  readonly "0"?: MerkleTree;
+  readonly "1"?: MerkleTree;
+  readonly "2"?: MerkleTree;
+}
+
+export type MerkleTreeString = string & Brand<"MerkleTreeString">;
+
+export const merkleTreeToString = (m: MerkleTree): MerkleTreeString =>
+  JSON.stringify(m) as MerkleTreeString;
+
+export const merkleTreeFromString = (m: MerkleTreeString): MerkleTree =>
+  JSON.parse(m) as MerkleTree;
 
 export const createInitialMerkleTree = (): MerkleTree => Object.create(null);
 

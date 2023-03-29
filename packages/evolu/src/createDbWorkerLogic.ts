@@ -1,7 +1,7 @@
 import { either, io, ioRef, readerTaskEither, taskEither } from "fp-ts";
-import { IO } from "fp-ts/IO";
+import { IO } from "fp-ts/lib/IO.js";
 import { constVoid, flow, pipe } from "fp-ts/lib/function.js";
-import { TaskEither } from "fp-ts/TaskEither";
+import { TaskEither } from "fp-ts/lib/TaskEither.js";
 import { createOwnerEnv } from "./createOwnerEnv.js";
 import { createSyncWorker } from "./createSyncWorker.js";
 import { query } from "./query.js";
@@ -12,13 +12,11 @@ import { send } from "./send.js";
 import { sync } from "./sync.js";
 import { transaction } from "./transaction.js";
 import {
-  ConfigEnv,
   CreateDbWorker,
   DbEnv,
   DbWorkerEnvs,
   DbWorkerInput,
   EvoluError,
-  Millis,
   OwnerEnv,
   PostDbWorkerInput,
   PostDbWorkerOutputEnv,
@@ -26,6 +24,8 @@ import {
   UnknownError,
 } from "./types.js";
 import { updateDbSchema } from "./updateDbSchema.js";
+import { ConfigEnv } from "./config.js";
+import { Millis } from "./timestamp.js";
 
 export const createDbWorkerLogic =
   (createDbEnv: TaskEither<UnknownError, DbEnv>): CreateDbWorker =>

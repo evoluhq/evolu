@@ -1,9 +1,9 @@
 import { hmac } from "@noble/hashes/hmac";
 import { sha512 } from "@noble/hashes/sha512";
 import * as bip39 from "@scure/bip39";
-import { wordlist } from "@scure/bip39/wordlists/english";
+import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { either } from "fp-ts";
-import { Either } from "fp-ts/Either";
+import { Either } from "fp-ts/lib/Either.js";
 import { urlAlphabet } from "nanoid";
 import { Mnemonic, Owner, OwnerId } from "./model.js";
 import { RestoreOwnerError } from "./types.js";

@@ -1,6 +1,6 @@
 import { taskEither } from "fp-ts";
 import { pipe } from "fp-ts/lib/function.js";
-import { TaskEither } from "fp-ts/TaskEither";
+import { TaskEither } from "fp-ts/lib/TaskEither.js";
 import { Database, UnknownError } from "./types.js";
 
 export const transaction =

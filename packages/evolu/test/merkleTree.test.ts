@@ -5,9 +5,9 @@ import {
   createInitialMerkleTree,
   diffMerkleTrees,
   insertIntoMerkleTree,
+  MerkleTree,
 } from "../src/merkleTree.js";
-import { timestampFromString } from "../src/timestamp.js";
-import { MerkleTree, TimestampString } from "../src/types.js";
+import { timestampFromString, TimestampString } from "../src/timestamp.js";
 import { messages1 } from "./fixtures/messages.js";
 import { createNode1Timestamp } from "./testUtils.js";
 

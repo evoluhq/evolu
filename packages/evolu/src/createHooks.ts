@@ -1,14 +1,13 @@
 import * as S from "@effect/schema/Schema";
 import { option, readonlyArray } from "fp-ts";
 import { constNull, pipe } from "fp-ts/lib/function.js";
-import { Option } from "fp-ts/Option";
+import { Option } from "fp-ts/lib/Option.js";
 import { useMemo, useRef, useSyncExternalStore } from "react";
-import { createConfig } from "./createConfig.js";
+import { Config, createConfig } from "./config.js";
 import { createDbWorker } from "./createDbWorker.js";
 import { createEvolu } from "./createEvolu.js";
 import { kysely } from "./kysely.js";
 import {
-  Config,
   Create,
   DbSchema,
   Hooks,
@@ -19,6 +18,11 @@ import {
   UseMutation,
   UseQuery,
 } from "./types.js";
+
+// A workaround for a TS bug:
+// https://github.com/microsoft/TypeScript/issues/42873
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import type { Brand } from "@effect/data/Brand";
 
 /**
  * `createHooks` defines the database schema and returns React Hooks.

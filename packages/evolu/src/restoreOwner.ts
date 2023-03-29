@@ -1,6 +1,6 @@
 import { readerTaskEither } from "fp-ts";
 import { pipe } from "fp-ts/lib/function.js";
-import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
+import { ReaderTaskEither } from "fp-ts/lib/ReaderTaskEither.js";
 import { createOwnerEnv } from "./createOwnerEnv.js";
 import { deleteAllTables } from "./deleteAllTables.js";
 import { Mnemonic } from "./model.js";

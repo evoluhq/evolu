@@ -1,6 +1,6 @@
 import { taskEither } from "fp-ts";
 import { constVoid, pipe } from "fp-ts/lib/function.js";
-import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
+import { ReaderTaskEither } from "fp-ts/lib/ReaderTaskEither.js";
 import { DbEnv, UnknownError } from "./types.js";
 
 export const deleteAllTables: ReaderTaskEither<DbEnv, UnknownError, void> = ({

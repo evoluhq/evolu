@@ -1,15 +1,15 @@
 import { readonlyArray, taskEither } from "fp-ts";
 import { pipe } from "fp-ts/lib/function.js";
-import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
+import { ReaderTaskEither } from "fp-ts/lib/ReaderTaskEither.js";
 import { createPatches } from "./diff.js";
 import {
   DbEnv,
   OnCompleteId,
   PostDbWorkerOutputEnv,
-  QueryPatches,
-  RowsCacheEnv,
   queryFromString,
+  QueryPatches,
   QueryString,
+  RowsCacheEnv,
   UnknownError,
 } from "./types.js";
 

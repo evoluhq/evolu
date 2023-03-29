@@ -1,15 +1,22 @@
 import { option, readerEither, readerTaskEither, task } from "fp-ts";
 import { pipe } from "fp-ts/lib/function.js";
-import { ReaderEither } from "fp-ts/ReaderEither";
-import { ReaderTask } from "fp-ts/ReaderTask";
-import { ReaderTaskEither } from "fp-ts/ReaderTaskEither";
-import { ReadonlyNonEmptyArray } from "fp-ts/ReadonlyNonEmptyArray";
+import { ReaderEither } from "fp-ts/lib/ReaderEither.js";
+import { ReaderTask } from "fp-ts/lib/ReaderTask.js";
+import { ReaderTaskEither } from "fp-ts/lib/ReaderTaskEither.js";
+import { ReadonlyNonEmptyArray } from "fp-ts/lib/ReadonlyNonEmptyArray.js";
 import { applyMessages } from "./applyMessages.js";
+import { ConfigEnv } from "./config.js";
 import { query } from "./query.js";
 import { readClock } from "./readClock.js";
-import { sendTimestamp, timestampToString } from "./timestamp.js";
 import {
-  ConfigEnv,
+  sendTimestamp,
+  TimeEnv,
+  Timestamp,
+  TimestampCounterOverflowError,
+  TimestampDriftError,
+  timestampToString,
+} from "./timestamp.js";
+import {
   CrdtClock,
   CrdtMessage,
   DbEnv,
@@ -18,12 +25,8 @@ import {
   OwnerEnv,
   PostDbWorkerOutputEnv,
   PostSyncWorkerInputEnv,
-  RowsCacheEnv,
   QueryString,
-  TimeEnv,
-  Timestamp,
-  TimestampCounterOverflowError,
-  TimestampDriftError,
+  RowsCacheEnv,
   UnknownError,
 } from "./types.js";
 import { updateClock } from "./updateClock.js";

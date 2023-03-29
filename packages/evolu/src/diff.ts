@@ -1,4 +1,4 @@
-import { Patch, ReplaceAtPatch, Rows } from "./types";
+import type { Patch, ReplaceAtPatch, Rows } from "./types.js";
 
 // For now, we detect only a change in the whole result and in-place edits.
 // In the future, we will add more heuristics. We will probably not implement
