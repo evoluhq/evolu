@@ -5,7 +5,8 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "lib": ["dom", "esnext"],
-    "module": "ESNext", 
+    "module": "ESNext",
+    "moduleResolution": "nodenext",
     "target": "ES2021"
   }
 }
