@@ -9,7 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@effect/schema": "^0.5.0",
+    "@effect/schema": "^0.8.0",
     "@types/node": "^18.15.9",
     "@types/react": "^18.0.29",
     "@types/react-dom": "18.0.11",

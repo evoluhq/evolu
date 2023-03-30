@@ -11,12 +11,11 @@
     "clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist"
   },
   "dependencies": {
-    "evolu": "workspace:4.0.2",
-    "fp-ts": "^2.13.1"
+    "evolu-server": "workspace:0.1.0"
   },
   "devDependencies": {
     "@evolu/tsconfig": "workspace:0.0.2",
-    "@types/node": "^18.15.9",
+    "@types/node": "^18.15.11",
     "ts-node": "^10.9.1",
     "typescript": "^5.0.2"
   },

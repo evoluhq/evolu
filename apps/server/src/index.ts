@@ -1,10 +1,6 @@
-import { createExpressApp } from "evolu/server";
+import { createExpressApp } from "evolu-server";
 
 const app = createExpressApp();
-
-app.get("/ping", (req, res) => {
-  res.send("ok");
-});
 
 // eslint-disable-next-line turbo/no-undeclared-env-vars
 const port = process.env.PORT || 4000;
