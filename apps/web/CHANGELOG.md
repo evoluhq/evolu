@@ -1,5 +1,12 @@
 # web
 
+## 0.0.58
+
+### Patch Changes
+
+- Updated dependencies [edef64d]
+  - evolu@4.1.0
+
 ## 0.0.57
 
 ### Patch Changes

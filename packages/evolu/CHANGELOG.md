@@ -1,5 +1,11 @@
 # evolu
 
+## 4.1.0
+
+### Minor Changes
+
+- edef64d: Export timestamp, merkleTree, protobuf modules
+
 ## 4.0.2
 
 ### Patch Changes
