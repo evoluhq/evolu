@@ -1,6 +1,6 @@
 {
   "name": "evolu-server",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Node.js server for Evolu library",
   "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
   "license": "MIT",
@@ -30,7 +30,7 @@
     "better-sqlite3": "^8.2.0",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
-    "evolu": "workspace:4.1.0",
+    "evolu": "workspace:4.1.1",
     "express": "^4.18.2",
     "fp-ts": "^2.13.1"
   },
