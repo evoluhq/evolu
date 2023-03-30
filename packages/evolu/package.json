@@ -60,7 +60,7 @@
     "@protobuf-ts/runtime": "^2.8.3",
     "@scure/bip39": "^1.2.0",
     "fp-ts": "^2.13.1",
-    "kysely": "~0.23.5",
+    "kysely": "~0.24.2",
     "micro-aes-gcm": "~0.4.0",
     "murmurhash": "^2.0.1",
     "nanoid": "^4.0.2"

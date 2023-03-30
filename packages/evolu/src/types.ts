@@ -218,7 +218,8 @@ type DbSchemaForQuery<S extends DbSchema> = {
 
 type QueryCallback<S extends DbSchema, QueryRow> = (
   db: KyselySelectFrom<DbSchemaForQuery<S>>
-) => SelectQueryBuilder<never, never, QueryRow>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+) => SelectQueryBuilder<any, any, QueryRow>;
 
 export type OrNullOrFalse<T> = T | null | false;
 export type ExcludeNullAndFalse<T> = Exclude<T, null | false>;
