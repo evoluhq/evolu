@@ -3,7 +3,7 @@
   "globalEnv": ["NODE_ENV"],
   "pipeline": {
     "build": {
-      "outputs": ["dist/**", ".next/**"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
       "dependsOn": ["^build"]
     },
     "dev": {
