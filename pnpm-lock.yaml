@@ -45,8 +45,8 @@ importers:
         specifier: ^0.7.4
         version: 0.7.4
       '@effect/schema':
-        specifier: ~0.8.0
-        version: 0.8.0
+        specifier: ~0.8.2
+        version: 0.8.2
       clsx:
         specifier: ^1.2.1
         version: 1.2.1
@@ -57,11 +57,11 @@ importers:
         specifier: ^13.2.4
         version: 13.2.4(react-dom@18.2.0)(react@18.2.0)
       nextra:
-        specifier: ^2.2.20
-        version: 2.2.20(next@13.2.4)(react-dom@18.2.0)(react@18.2.0)
+        specifier: ^2.3.0
+        version: 2.3.0(next@13.2.4)(react-dom@18.2.0)(react@18.2.0)
       nextra-theme-docs:
-        specifier: ^2.2.20
-        version: 2.2.20(next@13.2.4)(nextra@2.2.20)(react-dom@18.2.0)(react@18.2.0)
+        specifier: ^2.3.0
+        version: 2.3.0(next@13.2.4)(nextra@2.3.0)(react-dom@18.2.0)(react@18.2.0)
       react:
         specifier: ^18.2.0
         version: 18.2.0
@@ -177,8 +177,8 @@ importers:
         version: 4.0.2
     devDependencies:
       '@effect/schema':
-        specifier: ~0.8.0
-        version: 0.8.0
+        specifier: ~0.8.2
+        version: 0.8.2
       '@evolu/tsconfig':
         specifier: workspace:0.0.2
         version: link:../evolu-tsconfig
@@ -507,8 +507,8 @@ packages:
     dependencies:
       '@effect/data': 0.7.4
 
-  /@effect/schema@0.8.0:
-    resolution: {integrity: sha512-BcouVR+hCmhewgqY21rHPTPQdkyevr7LDLJQJxCxiAdo9nppJO2zbXrhGUh2lD58XCJIiVy9w7X42wcKD6dICg==}
+  /@effect/schema@0.8.2:
+    resolution: {integrity: sha512-IqHry6riTllYQtH//qKQA121tH0PZnGn9B4zY4Gcbu2Olj0U5M98BqRuu8Fl1prl5Qw9l/MnKVTgwI1Larxcvw==}
     dependencies:
       '@effect/data': 0.7.4
       '@effect/io': 0.15.1
@@ -1305,6 +1305,10 @@ packages:
     resolution: {integrity: sha512-DUlIj2nk0YnJdlWgsFuVKcX27MLW0KbKmGVoUHmFr+74FYYNUDAaj9ZqTADvsbE8rfxuVmSFc7KczYn5Y09ozg==}
     dev: false
 
+  /@types/katex@0.16.0:
+    resolution: {integrity: sha512-hz+S3nV6Mym5xPbT9fnO8dDhBFQguMYpY0Ipxv06JMi1ORgnEM4M1ymWDUhUNer3ElLmT583opRo4RzxKmh9jw==}
+    dev: false
+
   /@types/mdast@3.0.11:
     resolution: {integrity: sha512-Y/uImid8aAwrEA24/1tcRZwpxX3pIFTSilcNDKSPn+Y2iDywSEachzRuvgAYYLR3wpGXAsMbv5lvKLDZLeYPAw==}
     dependencies:
@@ -1750,7 +1754,7 @@ packages:
       postcss: ^8.1.0
     dependencies:
       browserslist: 4.21.5
-      caniuse-lite: 1.0.30001472
+      caniuse-lite: 1.0.30001473
       fraction.js: 4.2.0
       normalize-range: 0.1.2
       picocolors: 1.0.0
@@ -1881,8 +1885,8 @@ packages:
     engines: {node: ^6 || ^7 || ^8 || ^9 || ^10 || ^11 || ^12 || >=13.7}
     hasBin: true
     dependencies:
-      caniuse-lite: 1.0.30001472
-      electron-to-chromium: 1.4.343
+      caniuse-lite: 1.0.30001473
+      electron-to-chromium: 1.4.345
       node-releases: 2.0.10
       update-browserslist-db: 1.0.10(browserslist@4.21.5)
     dev: true
@@ -1933,8 +1937,8 @@ packages:
     engines: {node: '>=6'}
     dev: true
 
-  /caniuse-lite@1.0.30001472:
-    resolution: {integrity: sha512-xWC/0+hHHQgj3/vrKYY0AAzeIUgr7L9wlELIcAvZdDUHlhL/kNxMdnQLOSOQfP8R51ZzPhmHdyMkI0MMpmxCfg==}
+  /caniuse-lite@1.0.30001473:
+    resolution: {integrity: sha512-ewDad7+D2vlyy+E4UJuVfiBsU69IL+8oVmTuZnH5Q6CIUbxNfI50uVpRHbUPDD6SUaN2o0Lh4DhTrvLG/Tn1yg==}
 
   /ccount@2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
@@ -2382,8 +2386,8 @@ packages:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
     dev: false
 
-  /electron-to-chromium@1.4.343:
-    resolution: {integrity: sha512-22C6pOljO+QQ/yeBZJkxewjsGwSKCXymng7dF8lir3m8iJGi6guoLVkK8jghCf3o0/tARFASAgLP8OzR9SKRCA==}
+  /electron-to-chromium@1.4.345:
+    resolution: {integrity: sha512-znGhOQK2TUYLICgS25uaM0a7pHy66rSxbre7l762vg9AUoCcJK+Bu+HCPWpjL/U/kK8/Hf+6E0szAUJSyVYb3Q==}
     dev: true
 
   /emoji-regex@8.0.0:
@@ -3904,13 +3908,6 @@ packages:
       object.assign: 4.1.4
     dev: false
 
-  /katex@0.13.24:
-    resolution: {integrity: sha512-jZxYuKCma3VS5UuxOx/rFV1QyGSl3Uy/i0kTJF3HgQ5xMinCQVF8Zd4bMY/9aI9b9A2pjIBOsjSSm68ykTAr8w==}
-    hasBin: true
-    dependencies:
-      commander: 8.3.0
-    dev: false
-
   /katex@0.15.6:
     resolution: {integrity: sha512-UpzJy4yrnqnhXvRPhjEuLA4lcPn6eRngixW7Q3TJErjg3Aw2PuLFBzTkdUb89UtumxjhHTqL3a5GDGETMSwgJA==}
     hasBin: true
@@ -4389,11 +4386,11 @@ packages:
       micromark-util-types: 1.0.2
     dev: false
 
-  /micromark-extension-math@2.0.2:
-    resolution: {integrity: sha512-cFv2B/E4pFPBBFuGgLHkkNiFAIQv08iDgPH2HCuR2z3AUgMLecES5Cq7AVtwOtZeRrbA80QgMUk8VVW0Z+D2FA==}
+  /micromark-extension-math@2.1.0:
+    resolution: {integrity: sha512-WH+fJkveMvM3ZN+deb/jT3UW623x8xO9ycfJNDC+UQXX+V72RO6hT9KqxA7c8XFwozAFJ7tufOeG+x/CVSXHUw==}
     dependencies:
-      '@types/katex': 0.11.1
-      katex: 0.13.24
+      '@types/katex': 0.16.0
+      katex: 0.16.4
       micromark-factory-space: 1.0.0
       micromark-util-character: 1.1.0
       micromark-util-symbol: 1.0.1
@@ -4829,7 +4826,7 @@ packages:
     dependencies:
       '@next/env': 13.2.4
       '@swc/helpers': 0.4.14
-      caniuse-lite: 1.0.30001472
+      caniuse-lite: 1.0.30001473
       postcss: 8.4.14
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
@@ -4853,11 +4850,11 @@ packages:
       - babel-plugin-macros
     dev: false
 
-  /nextra-theme-docs@2.2.20(next@13.2.4)(nextra@2.2.20)(react-dom@18.2.0)(react@18.2.0):
-    resolution: {integrity: sha512-YbDbpwvLCUnDvq9afP57Zu/fDFbSrsvx5MEZIhKRcrn/eCfo4yIwoMMhdRF0yntB5uTDc4MZ8jqJgb25g2v7QA==}
+  /nextra-theme-docs@2.3.0(next@13.2.4)(nextra@2.3.0)(react-dom@18.2.0)(react@18.2.0):
+    resolution: {integrity: sha512-KMvHhGOvaKIqR71Gnx+w/1c9LLfpQJ3+fnCAgg9qfjXo2agr1zRKyRDROyY8cGINdslpzmEGgs/MH2gDSAI6nw==}
     peerDependencies:
       next: '>=9.5.3'
-      nextra: 2.2.20
+      nextra: 2.3.0
       react: '>=16.13.1'
       react-dom: '>=16.13.1'
     dependencies:
@@ -4872,15 +4869,16 @@ packages:
       next: 13.2.4(react-dom@18.2.0)(react@18.2.0)
       next-seo: 5.15.0(next@13.2.4)(react-dom@18.2.0)(react@18.2.0)
       next-themes: 0.2.1(next@13.2.4)(react-dom@18.2.0)(react@18.2.0)
-      nextra: 2.2.20(next@13.2.4)(react-dom@18.2.0)(react@18.2.0)
+      nextra: 2.3.0(next@13.2.4)(react-dom@18.2.0)(react@18.2.0)
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
       scroll-into-view-if-needed: 3.0.6
       zod: 3.21.4
     dev: false
 
-  /nextra@2.2.20(next@13.2.4)(react-dom@18.2.0)(react@18.2.0):
-    resolution: {integrity: sha512-V5P5UHvA7GvISziJSEMVV9jCDBm1aMlez3XqKPzvr/aIrugfnIPBhGrFh2YjpXp5FspldgTS8lbZVf36Alonhg==}
+  /nextra@2.3.0(next@13.2.4)(react-dom@18.2.0)(react@18.2.0):
+    resolution: {integrity: sha512-v17vMq2bJa15iKKt9+6AidSeIoKcK1ZlXmwqFqTgc0pQmRrl6pTJaSR36UZKcpMwvvLZ/7/xWuWV/OQB599O3g==}
+    engines: {node: '>=16'}
     peerDependencies:
       next: '>=9.5.3'
       react: '>=16.13.1'
@@ -5678,7 +5676,7 @@ packages:
     dependencies:
       '@types/mdast': 3.0.11
       mdast-util-math: 2.0.2
-      micromark-extension-math: 2.0.2
+      micromark-extension-math: 2.1.0
       unified: 10.1.2
     dev: false
 
