@@ -1,5 +1,11 @@
 # evolu
 
+## 4.1.1
+
+### Patch Changes
+
+- a6a308c: Update Kysely to 0.24.2
+
 ## 4.1.0
 
 ### Minor Changes
