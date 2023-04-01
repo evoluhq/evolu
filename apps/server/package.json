@@ -1,6 +1,6 @@
 {
   "name": "server",
-  "version": "0.0.59",
+  "version": "0.0.60",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,7 +11,7 @@
     "clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist"
   },
   "dependencies": {
-    "evolu-server": "workspace:0.1.2"
+    "evolu-server": "workspace:0.1.3"
   },
   "devDependencies": {
     "@evolu/tsconfig": "workspace:0.0.2",
