@@ -1,5 +1,11 @@
 # evolu
 
+## 4.1.2
+
+### Patch Changes
+
+- 3140595: Update dependencies
+
 ## 4.1.1
 
 ### Patch Changes
