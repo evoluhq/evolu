@@ -27,12 +27,13 @@
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "dependencies": {
+    "@effect/data": "^0.10.3",
+    "@effect/io": "^0.17.0",
     "better-sqlite3": "^8.2.0",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
     "evolu": "workspace:4.1.2",
-    "express": "^4.18.2",
-    "fp-ts": "^2.13.1"
+    "express": "^4.18.2"
   },
   "devDependencies": {
     "@evolu/tsconfig": "workspace:0.0.2",
@@ -43,7 +44,7 @@
     "@types/node": "^18.15.11",
     "eslint": "^8.37.0",
     "eslint-config-evolu": "workspace:0.0.2",
-    "typescript": "^5.0.2",
+    "typescript": "^5.0.3",
     "vitest": "^0.29.8"
   },
   "peerDependencies": {
