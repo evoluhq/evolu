@@ -1,13 +1,12 @@
-import * as Brand from "@effect/data/Brand";
-import * as Option from "@effect/data/Option";
+import type { Brand } from "@effect/data/Brand";
+import { option } from "fp-ts";
+import { Option } from "fp-ts/lib/Option.js";
 import {
   Millis,
   Timestamp,
   TimestampHash,
   timestampToHash,
-} from "./Timestamp.js";
-
-// https://github.com/clintharris/crdt-example-app_annotated/blob/master/shared/merkle.js
+} from "./timestamp.js";
 
 // TODO: Add Schema and use it in Evolu Server.
 export interface MerkleTree {
@@ -17,7 +16,7 @@ export interface MerkleTree {
   readonly "2"?: MerkleTree;
 }
 
-export type MerkleTreeString = string & Brand.Brand<"MerkleTreeString">;
+export type MerkleTreeString = string & Brand<"MerkleTreeString">;
 
 export const merkleTreeToString = (m: MerkleTree): MerkleTreeString =>
   JSON.stringify(m) as MerkleTreeString;
@@ -50,7 +49,7 @@ const insertKey = ({
   };
 };
 
-export const insertInto =
+export const insertIntoMerkleTree =
   (timestamp: Timestamp) =>
   (tree: MerkleTree): MerkleTree => {
     const key = Number(Math.floor(timestamp.millis / 1000 / 60)).toString(3);
@@ -77,11 +76,11 @@ const keyToTimestamp = (key: string): Millis => {
   return (parseInt(fullkey, 3) * 1000 * 60) as Millis;
 };
 
-export const diff = (
+export const diffMerkleTrees = (
   tree1: MerkleTree,
   tree2: MerkleTree
-): Option.Option<Millis> => {
-  if (tree1.hash === tree2.hash) return Option.none();
+): Option<Millis> => {
+  if (tree1.hash === tree2.hash) return option.none;
 
   let node1 = tree1;
   let node2 = tree2;
@@ -96,11 +95,11 @@ export const diff = (
       const next2 = node2[key] || {};
       return next1.hash !== next2.hash;
     });
-    if (!diffkey) return Option.some(keyToTimestamp(k));
+    if (!diffkey) return option.some(keyToTimestamp(k));
     k += diffkey;
     node1 = node1[diffkey] || {};
     node2 = node2[diffkey] || {};
   }
 
-  return Option.none();
+  return option.none;
 };

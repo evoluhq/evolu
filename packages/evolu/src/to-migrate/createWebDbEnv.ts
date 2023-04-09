@@ -1,7 +1,7 @@
 import { either, taskEither } from "fp-ts";
 import { constVoid, pipe } from "fp-ts/lib/function.js";
 import { TaskEither } from "fp-ts/lib/TaskEither.js";
-import sqlite3 from "../sqlite/sqlite3-bundler-friendly.mjs";
+import sqlite3 from "../../sqlite/sqlite3-bundler-friendly.mjs";
 import {
   Database,
   DbEnv,

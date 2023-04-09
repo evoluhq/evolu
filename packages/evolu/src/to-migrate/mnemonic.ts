@@ -5,7 +5,7 @@ import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { either } from "fp-ts";
 import { Either } from "fp-ts/lib/Either.js";
 import { urlAlphabet } from "nanoid";
-import { Mnemonic, Owner, OwnerId } from "./model.js";
+import { Mnemonic, Owner, OwnerId } from "../Model.js";
 import { RestoreOwnerError } from "./types.js";
 
 export const parseMnemonic = (

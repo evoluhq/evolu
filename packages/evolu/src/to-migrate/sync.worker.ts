@@ -9,13 +9,13 @@ import {
   MerkleTreeString,
   merkleTreeToString,
 } from "./merkleTree.js";
-import { Id, OwnerId } from "./model.js";
+import { Id, OwnerId } from "../Model.js";
 import {
   CrdtMessageContent,
   EncryptedCrdtMessage,
   SyncRequest,
   SyncResponse,
-} from "./protobuf.js";
+} from "../Protobuf.js";
 import { requestSync } from "./syncLock.js";
 import { TimestampString } from "./timestamp.js";
 import {

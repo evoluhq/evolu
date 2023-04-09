@@ -1,7 +1,7 @@
 import { either } from "fp-ts";
 import { pipe } from "fp-ts/lib/function.js";
 import { describe, expect, test } from "vitest";
-import { ConfigEnv, createConfig } from "../src/config.js";
+import { ConfigEnv, createConfig } from "../src/to-migrate/config.js";
 import {
   createInitialTimestamp,
   createSyncTimestamp,
@@ -15,7 +15,7 @@ import {
   timestampFromString,
   timestampToHash,
   timestampToString,
-} from "../src/timestamp.js";
+} from "../src/to-migrate/timestamp.js";
 import { createNode1Timestamp, createNode2Timestamp } from "./testUtils.js";
 
 const config = createConfig();

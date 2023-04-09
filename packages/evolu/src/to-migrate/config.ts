@@ -1,5 +1,3 @@
-import * as Context from "@effect/data/Context";
-
 export interface Config {
   /**
    * Alternate URL to Evolu sync&backup server.
@@ -12,16 +10,18 @@ export interface Config {
   reloadUrl: string;
   /**
    * Maximum physical clock drift allowed in ms.
-   * The default value is 5 * 60 * 1000 (5 minutes).
+   * The default value is 60000 (1 minute).
    */
   maxDrift: number;
 }
 
-export const Config = Context.Tag<Config>();
+export interface ConfigEnv {
+  readonly config: Config;
+}
 
 const defaultConfig: Config = {
   syncUrl: "https://bold-frost-4029.fly.dev",
-  maxDrift: 5 * 60 * 1000,
+  maxDrift: 60000,
   reloadUrl: "/",
 };
 

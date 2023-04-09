@@ -18,7 +18,7 @@ import * as S from "@effect/schema/Schema";
 import * as E from "evolu";
 
 const TodoId = E.id("Todo");
-type TodoId = S.Infer<typeof TodoId>;
+type TodoId = S.To<typeof TodoId>;
 
 if (!S.is(TodoId)(value)) return;
 ```

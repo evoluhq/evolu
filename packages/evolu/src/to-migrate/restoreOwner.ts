@@ -3,7 +3,7 @@ import { pipe } from "fp-ts/lib/function.js";
 import { ReaderTaskEither } from "fp-ts/lib/ReaderTaskEither.js";
 import { createOwnerEnv } from "./createOwnerEnv.js";
 import { deleteAllTables } from "./deleteAllTables.js";
-import { Mnemonic } from "./model.js";
+import { Mnemonic } from "../Model.js";
 import { DbEnv, PostDbWorkerOutputEnv, UnknownError } from "./types.js";
 
 export const restoreOwner = (

@@ -17,7 +17,7 @@
     "@evolu/tsconfig": "workspace:0.0.2",
     "@types/node": "^18.15.11",
     "ts-node": "^10.9.1",
-    "typescript": "^5.0.3"
+    "typescript": "^5.0.4"
   },
   "engines": {
     "node": ">=16.15"

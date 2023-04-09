@@ -27,7 +27,7 @@ import * as S from "@effect/schema/Schema";
 import * as E from "evolu";
 
 const TodoId = E.id("Todo");
-type TodoId = S.Infer<typeof TodoId>;
+type TodoId = S.To<typeof TodoId>;
 
 const NonEmptyString50 = pipe(
   S.string,
@@ -35,7 +35,7 @@ const NonEmptyString50 = pipe(
   S.maxLength(50),
   S.brand("NonEmptyString50")
 );
-type NonEmptyString50 = S.Infer<typeof NonEmptyString50>;
+type NonEmptyString50 = S.To<typeof NonEmptyString50>;
 
 const TodoTable = S.struct({
   id: TodoId,
@@ -43,7 +43,7 @@ const TodoTable = S.struct({
   description: S.nullable(E.NonEmptyString1000),
   isCompleted: E.SqliteBoolean,
 });
-type TodoTable = S.Infer<typeof TodoTable>;
+type TodoTable = S.To<typeof TodoTable>;
 
 const Database = S.struct({
   todo: TodoTable,

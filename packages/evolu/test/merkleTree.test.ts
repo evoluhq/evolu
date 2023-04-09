@@ -6,8 +6,11 @@ import {
   diffMerkleTrees,
   insertIntoMerkleTree,
   MerkleTree,
-} from "../src/merkleTree.js";
-import { timestampFromString, TimestampString } from "../src/timestamp.js";
+} from "../src/to-migrate/merkleTree.js";
+import {
+  timestampFromString,
+  TimestampString,
+} from "../src/to-migrate/timestamp.js";
 import { messages1 } from "./fixtures/messages.js";
 import { createNode1Timestamp } from "./testUtils.js";
 

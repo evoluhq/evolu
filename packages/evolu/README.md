@@ -24,7 +24,7 @@ Client-server architecture provides us with easy backup and synchronization, but
 
 ## Requirements
 
-- TypeScript 4.7 or newer
+- TypeScript 4.9 or newer
 - The `strict` flag enabled in your `tsconfig.json` file
 - The `exactOptionalPropertyTypes` flag enabled in your `tsconfig.json` file
 
@@ -56,14 +56,14 @@ import * as S from "@effect/schema/Schema";
 import * as E from "evolu";
 
 const TodoId = E.id("Todo");
-type TodoId = S.Infer<typeof TodoId>;
+type TodoId = S.To<typeof TodoId>;
 
 const TodoTable = S.struct({
   id: TodoId,
   title: E.NonEmptyString1000,
   isCompleted: E.SqliteBoolean,
 });
-type TodoTable = S.Infer<typeof TodoTable>;
+type TodoTable = S.To<typeof TodoTable>;
 
 const Database = S.struct({
   todo: TodoTable,

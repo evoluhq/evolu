@@ -1,14 +1,18 @@
-import type { Brand } from "@effect/data/Brand";
-import * as S from "@effect/schema/Schema";
+import * as Brand from "@effect/data/Brand";
+import * as Schema from "@effect/schema/Schema";
 import { eq } from "fp-ts";
+
 import { Either } from "fp-ts/lib/Either.js";
-import { IO } from "fp-ts/lib/IO.js";
+
 import { IORef } from "fp-ts/lib/IORef.js";
+
 import { Option } from "fp-ts/lib/Option.js";
-import { Reader } from "fp-ts/lib/Reader.js";
+
 import { ReadonlyNonEmptyArray } from "fp-ts/lib/ReadonlyNonEmptyArray.js";
+
 import { ReadonlyRecord } from "fp-ts/lib/ReadonlyRecord.js";
 import { TaskEither } from "fp-ts/lib/TaskEither.js";
+
 import { Kysely, SelectQueryBuilder } from "kysely";
 import { Config, ConfigEnv } from "./config.js";
 import { MerkleTree } from "./merkleTree.js";
@@ -20,7 +24,7 @@ import {
   OwnerId,
   SqliteBoolean,
   SqliteDate,
-} from "./model.js";
+} from "../Model.js";
 import {
   Millis,
   TimeEnv,
@@ -67,7 +71,7 @@ export interface Query {
   readonly parameters: readonly CrdtValue[];
 }
 
-export type QueryString = string & Brand<"QueryString">;
+export type QueryString = string & Brand.Brand<"QueryString">;
 export const eqQueryString: eq.Eq<QueryString> = eq.eqStrict;
 
 export const queryToString = ({ sql, parameters }: Query): QueryString =>
@@ -278,7 +282,7 @@ export type Mutate<S extends DbSchema> = <
 >(
   table: T,
   values: Simplify<Partial<AllowCasting<U[T]>>>,
-  onComplete?: IO<void>
+  onComplete?: () => void
 ) => {
   readonly id: U[T]["id"];
 };
@@ -295,7 +299,7 @@ type NullablePartial<
 export type Create<S extends DbSchema> = <T extends keyof S>(
   table: T,
   values: Simplify<NullablePartial<AllowCasting<Omit<S[T], "id">>>>,
-  onComplete?: IO<void>
+  onComplete?: () => void
 ) => {
   readonly id: S[T]["id"];
 };
@@ -307,7 +311,7 @@ export type Update<S extends DbSchema> = <T extends keyof S>(
       AllowCasting<Omit<S[T], "id"> & Pick<CommonColumns, "isDeleted">>
     > & { id: S[T]["id"] }
   >,
-  onComplete?: IO<void>
+  onComplete?: () => void
 ) => {
   readonly id: S[T]["id"];
 };
@@ -378,7 +382,7 @@ export interface OwnerActions {
    * Use `reset` to delete all local data from the current device.
    * After the deletion, Evolu reloads all browser tabs that use Evolu.
    */
-  readonly reset: IO<void>;
+  readonly reset: () => void;
   /**
    * Use `restore` to restore `Owner` with synced data on a different device.
    */
@@ -387,6 +391,7 @@ export interface OwnerActions {
   ) => Promise<Either<RestoreOwnerError, void>>;
 }
 
+// TODO: Review, maybe TS5 is ok.
 // For some reason, VSCode terminates JSDoc parsing on any @ character here,
 // so we can't use JSDoc tags. I spent a few hours googling and trying
 // anything, but without success. That's why we can't use @param a @example.
@@ -507,11 +512,11 @@ export interface OwnerEnv {
 }
 
 export interface PostDbWorkerOutputEnv {
-  readonly postDbWorkerOutput: (message: DbWorkerOutput) => IO<void>;
+  readonly postDbWorkerOutput: (message: DbWorkerOutput) => () => void;
 }
 
 export interface PostSyncWorkerInputEnv {
-  readonly postSyncWorkerInput: (message: SyncWorkerInput) => IO<void>;
+  readonly postSyncWorkerInput: (message: SyncWorkerInput) => () => void;
 }
 
 export interface RowsCacheEnv {
@@ -534,7 +539,7 @@ export type DbWorkerEnvs = DbEnv &
 // Workers.
 
 export const OnCompleteId = id("OnComplete");
-export type OnCompleteId = S.To<typeof OnCompleteId>;
+export type OnCompleteId = Schema.To<typeof OnCompleteId>;
 
 export type DbWorkerInputReceive = {
   readonly type: "receive";
@@ -589,14 +594,14 @@ export type DbWorkerOutput =
   | { readonly type: "onReceive" }
   | { readonly type: "onResetOrRestore" };
 
-export type PostDbWorkerInput = (message: DbWorkerInput) => IO<void>;
+export type PostDbWorkerInput = (message: DbWorkerInput) => () => void;
 
 export interface DbWorker {
   readonly post: PostDbWorkerInput;
 }
 
 export type CreateDbWorker = (
-  onMessage: (message: DbWorkerOutput) => IO<void>
+  onMessage: (message: DbWorkerOutput) => () => void
 ) => DbWorker;
 
 export type SyncWorkerInput = {
@@ -609,31 +614,30 @@ export type SyncWorkerInput = {
 
 export type SyncWorkerOutput = Either<UnknownError, DbWorkerInputReceive>;
 
-export type Unsubscribe = IO<void>;
+export type Unsubscribe = () => void;
 
 export interface Store<T> {
-  readonly subscribe: (listener: IO<void>) => Unsubscribe;
-  readonly setState: (state: T) => IO<void>;
-  readonly getState: IO<T>;
+  readonly subscribe: (listener: () => void) => Unsubscribe;
+  readonly setState: (state: T) => () => void;
+  readonly getState: () => T;
 }
 
 export interface Evolu<S extends DbSchema> {
-  readonly subscribeError: (listener: IO<void>) => Unsubscribe;
+  readonly subscribeError: (listener: () => void) => Unsubscribe;
 
-  readonly getError: IO<EvoluError | null>;
+  readonly getError: () => EvoluError | null;
 
-  readonly subscribeOwner: (listener: IO<void>) => Unsubscribe;
+  readonly subscribeOwner: (listener: () => void) => Unsubscribe;
 
-  readonly getOwner: IO<Owner | null>;
+  readonly getOwner: () => Owner | null;
 
   readonly subscribeRowsWithLoadingState: (
     queryString: QueryString | null
-    // Can't be IO, it's not compatible with eslint-plugin-react-hooks
-  ) => (listener: IO<void>) => Unsubscribe;
+  ) => (listener: () => void) => Unsubscribe;
 
   readonly getRowsWithLoadingState: (
     queryString: QueryString | null
-  ) => IO<RowsWithLoadingState | null>;
+  ) => () => RowsWithLoadingState | null;
 
   readonly mutate: Mutate<S>;
 
@@ -646,5 +650,5 @@ export type EvoluEnv = {
 };
 
 export type CreateEvolu = <From, To extends DbSchema>(
-  dbSchema: S.Schema<From, To>
-) => Reader<EvoluEnv, Evolu<To>>;
+  dbSchema: Schema.Schema<From, To>
+) => (env: EvoluEnv) => Evolu<To>;

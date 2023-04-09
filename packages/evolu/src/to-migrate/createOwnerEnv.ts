@@ -2,7 +2,7 @@ import { apply, readerTaskEither, taskEither } from "fp-ts";
 import { pipe } from "fp-ts/lib/function.js";
 import { ReaderTaskEither } from "fp-ts/lib/ReaderTaskEither.js";
 import { createInitialMerkleTree, merkleTreeToString } from "./merkleTree.js";
-import { Mnemonic, Owner } from "./model.js";
+import { Mnemonic, Owner } from "../Model.js";
 import { createInitialTimestamp, timestampToString } from "./timestamp.js";
 import { DbEnv, OwnerEnv, UnknownError } from "./types.js";
 

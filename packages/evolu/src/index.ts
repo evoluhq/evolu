@@ -1,3 +1,3 @@
-export * from "./createHooks.js";
-export * from "./model.js";
-export type { EvoluError } from "./types.js";
+export * from "./Model.js";
+export * from "./Errors.js";
+export * from "./Hooks.js";

@@ -1,34 +1,16 @@
 import * as Context from "@effect/data/Context";
 import { flow, pipe } from "@effect/data/Function";
-import * as RA from "@effect/data/ReadonlyArray";
+import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as Effect from "@effect/io/Effect";
 import * as Exit from "@effect/io/Exit";
 import sqlite3, { Statement } from "better-sqlite3";
 import bodyParser from "body-parser";
 import cors from "cors";
-import {
-  MerkleTree,
-  MerkleTreeString,
-  createInitialMerkleTree,
-  diffMerkleTrees,
-  insertIntoMerkleTree,
-  merkleTreeFromString,
-  merkleTreeToString,
-} from "evolu/merkleTree";
-import {
-  EncryptedCrdtMessage,
-  SyncRequest,
-  SyncResponse,
-} from "evolu/protobuf";
-import {
-  Millis,
-  TimestampString,
-  createSyncTimestamp,
-  timestampFromString,
-  timestampToString,
-} from "evolu/timestamp";
+import * as MerkleTree from "evolu/MerkleTree";
+import * as Timestamp from "evolu/Timestamp";
 import express, { Request } from "express";
 import path from "path";
+import * as Protobuf from "evolu/Protobuf";
 
 class BadRequestError {
   readonly _tag = "BadRequestError";
@@ -101,20 +83,22 @@ const DbTag = Context.Tag<Db>();
 
 const getMerkleTree = (
   userId: string
-): Effect.Effect<Db, SqliteError, MerkleTree> =>
+): Effect.Effect<Db, SqliteError, MerkleTree.MerkleTree> =>
   pipe(
     DbTag,
     Effect.flatMap(({ selectMerkleTree }) =>
       Effect.tryCatch(
         () =>
           selectMerkleTree.get(userId) as
-            | { readonly merkleTree: MerkleTreeString }
+            | { readonly merkleTree: MerkleTree.MerkleTreeString }
             | undefined,
         (error) => new SqliteError(error)
       )
     ),
     Effect.map((row) =>
-      row ? merkleTreeFromString(row.merkleTree) : createInitialMerkleTree()
+      row
+        ? MerkleTree.merkleTreeFromString(row.merkleTree)
+        : MerkleTree.createInitialMerkleTree()
     )
   );
 
@@ -123,10 +107,10 @@ const addMessages = ({
   messages,
   userId,
 }: {
-  merkleTree: MerkleTree;
-  messages: RA.NonEmptyArray<EncryptedCrdtMessage>;
+  merkleTree: MerkleTree.MerkleTree;
+  messages: ReadonlyArray.NonEmptyArray<Protobuf.EncryptedCrdtMessage>;
   userId: string;
-}): Effect.Effect<Db, SqliteError, MerkleTree> =>
+}): Effect.Effect<Db, SqliteError, MerkleTree.MerkleTree> =>
   pipe(
     DbTag,
     Effect.flatMap((db) =>
@@ -142,14 +126,16 @@ const addMessages = ({
             );
 
             if (result.changes === 1)
-              merkleTree = insertIntoMerkleTree(
-                timestampFromString(message.timestamp as TimestampString)
+              merkleTree = MerkleTree.insertInto(
+                Timestamp.unsafeTimestampFromString(
+                  message.timestamp as Timestamp.TimestampString
+                )
               )(merkleTree);
           });
 
           db.insertOrReplaceIntoMerkleTree.run(
             userId,
-            merkleTreeToString(merkleTree)
+            MerkleTree.merkleTreeToString(merkleTree)
           );
 
           db.commit.run();
@@ -169,10 +155,10 @@ const getMessages = ({
   userId,
   nodeId,
 }: {
-  millis: Millis;
+  millis: Timestamp.Millis;
   userId: string;
   nodeId: string;
-}): Effect.Effect<Db, SqliteError, readonly EncryptedCrdtMessage[]> =>
+}): Effect.Effect<Db, SqliteError, readonly Protobuf.EncryptedCrdtMessage[]> =>
   pipe(
     DbTag,
     Effect.flatMap((db) =>
@@ -180,9 +166,13 @@ const getMessages = ({
         () =>
           db.selectMessages.all(
             userId,
-            pipe(millis, createSyncTimestamp, timestampToString),
+            pipe(
+              millis,
+              Timestamp.createSyncTimestamp,
+              Timestamp.timestampToString
+            ),
             nodeId
-          ) as readonly EncryptedCrdtMessage[],
+          ) as readonly Protobuf.EncryptedCrdtMessage[],
         (error) => new SqliteError(error)
       )
     )
@@ -194,20 +184,20 @@ const sync = (
   Db,
   BadRequestError | SqliteError,
   {
-    merkleTree: MerkleTree;
-    messages: readonly EncryptedCrdtMessage[];
+    merkleTree: MerkleTree.MerkleTree;
+    messages: readonly Protobuf.EncryptedCrdtMessage[];
   }
 > =>
   pipe(
     Effect.tryCatch(
-      () => SyncRequest.fromBinary(req.body),
+      () => Protobuf.SyncRequest.fromBinary(req.body),
       (error) => new BadRequestError(error)
     ),
     Effect.flatMap((syncRequest) =>
       Effect.gen(function* ($) {
         let merkleTree = yield* $(getMerkleTree(syncRequest.userId));
 
-        if (RA.isNonEmptyArray(syncRequest.messages))
+        if (ReadonlyArray.isNonEmptyArray(syncRequest.messages))
           merkleTree = yield* $(
             addMessages({
               merkleTree,
@@ -216,9 +206,11 @@ const sync = (
             })
           );
 
-        const diff = diffMerkleTrees(
+        const diff = MerkleTree.diff(
           merkleTree,
-          merkleTreeFromString(syncRequest.merkleTree as MerkleTreeString)
+          MerkleTree.merkleTreeFromString(
+            syncRequest.merkleTree as MerkleTree.MerkleTreeString
+          )
         );
 
         const messages =
@@ -257,9 +249,9 @@ export const createExpressApp = (): express.Express => {
           res.setHeader("Content-Type", "application/octet-stream");
           res.send(
             Buffer.from(
-              SyncResponse.toBinary({
-                merkleTree: merkleTreeToString(merkleTree),
-                messages: messages as EncryptedCrdtMessage[],
+              Protobuf.SyncResponse.toBinary({
+                merkleTree: MerkleTree.merkleTreeToString(merkleTree),
+                messages: messages as Protobuf.EncryptedCrdtMessage[],
               })
             )
           );

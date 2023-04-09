@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { Id, OwnerId, SqliteDate } from "../src/index.js";
-import { createNewCrdtMessages } from "../src/createEvolu.js";
+import { createNewCrdtMessages } from "../src/to-migrate/createEvolu.js";
 
 test("createNewCrdtMessages", () => {
   const values = {

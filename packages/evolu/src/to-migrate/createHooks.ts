@@ -1,7 +1,7 @@
-import * as S from "@effect/schema/Schema";
-import { option, readonlyArray } from "fp-ts";
-import { constNull, pipe } from "fp-ts/lib/function.js";
-import { Option } from "fp-ts/lib/Option.js";
+import { constNull, pipe } from "@effect/data/Function";
+import * as Option from "@effect/data/Option";
+import * as ReadonlyArray from "@effect/data/ReadonlyArray";
+import * as Schema from "@effect/schema/Schema";
 import { useMemo, useRef, useSyncExternalStore } from "react";
 import { Config, createConfig } from "./config.js";
 import { createDbWorker } from "./createDbWorker.js";
@@ -12,14 +12,13 @@ import {
   DbSchema,
   Hooks,
   Query,
-  queryToString,
   Row,
   Update,
   UseMutation,
   UseQuery,
+  queryToString,
 } from "./types.js";
 
-// A workaround for a TS bug:
 // https://github.com/microsoft/TypeScript/issues/42873
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import type { Brand } from "@effect/data/Brand";
@@ -31,20 +30,20 @@ import type { Brand } from "@effect/data/Brand";
  * ### Example
  *
  * ```
- * import * as S from "@effect/schema/Schema";
- * import * as E from "evolu";
+ * import * as Schema from "@effect/schema/Schema";
+ * import * as Evolu from "evolu";
  *
- * const TodoId = E.id("Todo");
- * type TodoId = S.Infer<typeof TodoId>;
+ * const TodoId = Evolu.id("Todo");
+ * type TodoId = Schema.To<typeof TodoId>;
  *
- * const TodoTable = S.struct({
+ * const TodoTable = Schema.struct({
  *   id: TodoId,
- *   title: E.NonEmptyString1000,
- *   isCompleted: E.SqliteBoolean,
+ *   title: Evolu.NonEmptyString1000,
+ *   isCompleted: Evolu.SqliteBoolean,
  * });
- * type TodoTable = S.Infer<typeof TodoTable>;
+ * type TodoTable = Schema.To<typeof TodoTable>;
  *
- * const Database = S.struct({
+ * const Database = Schema.struct({
  *   todo: TodoTable,
  * });
  *
@@ -54,7 +53,7 @@ import type { Brand } from "@effect/data/Brand";
  *   useEvoluError,
  *   useOwner,
  *   useOwnerActions,
- * } = E.createHooks(Database);
+ * } = Evolu.createHooks(Database);
  * ```
  *
  * There is one simple rule for local-first apps domain modeling:
@@ -76,14 +75,14 @@ import type { Brand } from "@effect/data/Brand";
  * documentation.
  */
 export const createHooks = <From, To extends DbSchema>(
-  dbSchema: S.Schema<From, To>,
+  dbSchema: Schema.Schema<From, To>,
   config?: Partial<Config>
 ): Hooks<To> => {
   const evolu = createEvolu(dbSchema)({
     config: createConfig(config),
     createDbWorker,
   });
-  const cache = new WeakMap<Row, Option<Row>>();
+  const cache = new WeakMap<Row, Option.Option<Row>>();
 
   const useQuery: UseQuery<To> = (query, filterMap) => {
     // `query` can and will change, compile() is cheap
@@ -103,12 +102,12 @@ export const createHooks = <From, To extends DbSchema>(
       constNull
     );
 
-    const filterMapRow = (row: Row): Option<Row> => {
+    const filterMapRow = (row: Row): Option.Option<Row> => {
       let cachedRow = cache.get(row);
       if (cachedRow !== undefined) return cachedRow;
       cachedRow = pipe(filterMapRef.current(row as never), (row) =>
-        row ? option.some(row) : option.none
-      );
+        row ? Option.some(row) : Option.none
+      ) as never;
       cache.set(row, cachedRow);
       return cachedRow;
     };
@@ -117,16 +116,16 @@ export const createHooks = <From, To extends DbSchema>(
       () =>
         pipe(
           rowsWithLoadingState?.rows,
-          option.fromNullable,
-          option.map(readonlyArray.filterMap(filterMapRow)),
-          option.toNullable
+          Option.fromNullable,
+          Option.map(ReadonlyArray.filterMap(filterMapRow)),
+          Option.getOrNull
         ),
       [rowsWithLoadingState?.rows]
     );
 
     return useMemo(
       () => ({
-        rows: (rows || readonlyArray.empty) as never,
+        rows: (rows || []) as never,
         row: ((rows && rows[0]) || null) as never,
         isLoaded: rows != null,
         isLoading: rowsWithLoadingState ? rowsWithLoadingState.isLoading : true,
