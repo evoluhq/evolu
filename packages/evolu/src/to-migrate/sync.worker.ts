@@ -9,7 +9,7 @@ import {
   MerkleTreeString,
   merkleTreeToString,
 } from "./merkleTree.js";
-import { Id, OwnerId } from "../Model.js";
+import { Id, OwnerId } from "./model.js";
 import {
   CrdtMessageContent,
   EncryptedCrdtMessage,

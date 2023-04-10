@@ -10,7 +10,7 @@
     "clean": "rm -rf .turbo && rm -rf .next && rm -rf node_modules"
   },
   "dependencies": {
-    "@effect/data": "^0.11.6",
+    "@effect/data": "^0.11.8",
     "@effect/schema": "~0.11.1",
     "clsx": "^1.2.1",
     "evolu": "workspace:4.1.2",
@@ -23,7 +23,7 @@
   "devDependencies": {
     "@evolu/tsconfig": "workspace:0.0.2",
     "@types/node": "^18.15.11",
-    "@types/react": "^18.0.33",
+    "@types/react": "^18.0.34",
     "@types/react-dom": "^18.0.11",
     "autoprefixer": "^10.4.14",
     "eslint": "^8.38.0",

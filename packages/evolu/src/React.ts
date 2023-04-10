@@ -1,28 +1,27 @@
 import { constNull, pipe } from "@effect/data/Function";
 import * as Option from "@effect/data/Option";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
-import * as Schema from "@effect/schema/Schema";
+import * as S from "@effect/schema/Schema";
 import * as Kysely from "kysely";
 import { useMemo, useRef, useSyncExternalStore } from "react";
 import * as Config from "./Config.js";
-import * as Db from "./Db.js";
-import * as Errors from "./Errors.js";
 import * as Evolu from "./Evolu.js";
-import * as Model from "./Model.js";
+import * as Owner from "./Owner.js";
+import * as Schema from "./Schema.js";
 
 type KyselySelectFrom<DB> = Pick<Kysely.Kysely<DB>, "selectFrom">;
 
-type QueryCallback<S extends Db.Schema, QueryRow> = (
-  db: KyselySelectFrom<Db.SchemaForQuery<S>>
+type QueryCallback<S extends Schema.Schema, QueryRow> = (
+  db: KyselySelectFrom<Schema.SchemaForQuery<S>>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ) => Kysely.SelectQueryBuilder<any, any, QueryRow>;
 
 type OrNullOrFalse<T> = T | null | false;
 type ExcludeNullAndFalse<T> = Exclude<T, null | false>;
 
-type UseQuery<S extends Db.Schema> = <
-  QueryRow extends Db.Row,
-  FilterMapRow extends Db.Row
+type UseQuery<S extends Schema.Schema> = <
+  QueryRow extends Schema.Row,
+  FilterMapRow extends Schema.Row
 >(
   query: OrNullOrFalse<QueryCallback<S, QueryRow>>,
   filterMap: (row: QueryRow) => OrNullOrFalse<FilterMapRow>
@@ -50,7 +49,7 @@ type UseQuery<S extends Db.Schema> = <
   readonly isLoading: boolean;
 };
 
-type UseMutation<S extends Db.Schema> = () => {
+type UseMutation<S extends Schema.Schema> = () => {
   /**
    * Creates a new row with the given values.
    *
@@ -77,7 +76,7 @@ type UseMutation<S extends Db.Schema> = () => {
    * create("todo", { title }, onComplete);
    * ```
    */
-  readonly create: Db.Create<S>;
+  readonly create: Schema.Create<S>;
   /**
    * Update a row with the given values.
    *
@@ -104,10 +103,10 @@ type UseMutation<S extends Db.Schema> = () => {
    * update("todo", { id, isDeleted: true });
    * ```
    */
-  readonly update: Db.Update<S>;
+  readonly update: Schema.Update<S>;
 };
 
-interface Hooks<S extends Db.Schema> {
+interface Hooks<S extends Schema.Schema> {
   /**
    * `useQuery` React Hook performs a database query and returns rows that
    * are automatically updated when data changes.
@@ -199,16 +198,16 @@ interface Hooks<S extends Db.Schema> {
    * Mutations are saved immediately and synced when the internet is available.
    * The only expectable error is QuotaExceeded (TODO).
    */
-  readonly useEvoluError: () => Errors.EvoluError | null;
+  readonly useEvoluError: () => Evolu.EvoluError | null;
   /**
    * `useOwner` React Hook returns `Owner`.
    */
-  readonly useOwner: () => Model.Owner | null;
+  readonly useOwner: () => Owner.Owner | null;
   /**
    * `useOwnerActions` React Hook returns `OwnerActions` that can be used to
    * reset `Owner` on the current device or restore `Owner` on a different one.
    */
-  readonly useOwnerActions: () => Db.OwnerActions;
+  readonly useOwnerActions: () => Owner.Actions;
 }
 
 const createKysely = (): Kysely.Kysely<unknown> =>
@@ -282,18 +281,21 @@ const createKysely = (): Kysely.Kysely<unknown> =>
  * To learn more about migration-less schema evolving, check the `useQuery`
  * documentation.
  */
-export const createHooks = <From, To extends Db.Schema>(
-  schema: Schema.Schema<From, To>,
+export const createHooks = <From, To extends Schema.Schema>(
+  schema: S.Schema<From, To>,
   config?: Partial<Config.Config>
 ): Hooks<To> => {
   const evolu = Evolu.createEvolu(schema, config);
   const kysely = createKysely();
-  const cache = new WeakMap<Db.Row, Option.Option<Db.Row>>();
+  const cache = new WeakMap<Schema.Row, Option.Option<Schema.Row>>();
 
   const useQuery: UseQuery<To> = (query, filterMap) => {
     // `query` can and will change, compile() is cheap
     const queryString = query
-      ? pipe(query(kysely as never).compile() as Db.Query, Db.queryToString)
+      ? pipe(
+          query(kysely as never).compile() as Evolu.Query,
+          Evolu.queryToString
+        )
       : null;
     // filterMap is expensive but must be static, hence useRef
     const filterMapRef = useRef(filterMap);
@@ -307,7 +309,7 @@ export const createHooks = <From, To extends Db.Schema>(
       constNull
     );
 
-    const filterMapRow = (row: Db.Row): Option.Option<Db.Row> => {
+    const filterMapRow = (row: Schema.Row): Option.Option<Schema.Row> => {
       let cachedRow = cache.get(row);
       if (cachedRow !== undefined) return cachedRow;
       cachedRow = pipe(filterMapRef.current(row as never), (row) =>
@@ -342,8 +344,8 @@ export const createHooks = <From, To extends Db.Schema>(
   const useMutation: UseMutation<To> = () =>
     useMemo(
       () => ({
-        create: evolu.mutate as Db.Create<To>,
-        update: evolu.mutate as Db.Update<To>,
+        create: evolu.mutate as Schema.Create<To>,
+        update: evolu.mutate as Schema.Update<To>,
       }),
       []
     );

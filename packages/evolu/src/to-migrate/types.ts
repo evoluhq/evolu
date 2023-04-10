@@ -24,7 +24,7 @@ import {
   OwnerId,
   SqliteBoolean,
   SqliteDate,
-} from "../Model.js";
+} from "./model.js";
 import {
   Millis,
   TimeEnv,

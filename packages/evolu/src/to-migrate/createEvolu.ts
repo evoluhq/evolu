@@ -23,7 +23,7 @@ import { flushSync } from "react-dom";
 import { createStore } from "./createStore.js";
 import { dbSchemaToTableDefinitions } from "./dbSchemaToTableDefinitions.js";
 import { applyPatches } from "./diff.js";
-import { cast, createId, Id, Owner, OwnerId, SqliteDate } from "../Model.js";
+import { cast, createId, Id, Owner, OwnerId, SqliteDate } from "./model.js";
 import { reloadAllTabs } from "./reloadAllTabs.js";
 import {
   CreateEvolu,

@@ -1,8 +1,7 @@
 import * as ReadonlyRecord from "@effect/data/ReadonlyRecord";
-import * as Either from "@effect/data/Either";
-import * as Model from "./Model.js";
-import * as Brand from "@effect/data/Brand";
 import { Simplify } from "kysely";
+import * as Model from "./Model.js";
+import * as Owner from "./Owner.js";
 
 export type Value = null | string | number | Uint8Array;
 
@@ -25,7 +24,7 @@ type NullableExceptOfId<T> = {
 
 interface CommonColumns {
   readonly createdAt: Model.SqliteDate;
-  readonly createdBy: Model.OwnerId;
+  readonly createdBy: Owner.OwnerId;
   readonly updatedAt: Model.SqliteDate;
   readonly isDeleted: Model.SqliteBoolean;
 }
@@ -38,7 +37,7 @@ type SchemaForMutate<S extends Schema> = {
   >;
 };
 
-type AllowCasting<T> = {
+type AllowAutoCasting<T> = {
   readonly [K in keyof T]: T[K] extends Model.SqliteBoolean
     ? boolean | Model.SqliteBoolean
     : T[K] extends null | Model.SqliteBoolean
@@ -50,12 +49,12 @@ type AllowCasting<T> = {
     : T[K];
 };
 
-export type Mutate<S extends Schema = Schema> = <
+export type Mutate<S extends Schema> = <
   U extends SchemaForMutate<S>,
   T extends keyof U
 >(
   table: T,
-  values: Simplify<Partial<AllowCasting<U[T]>>>,
+  values: Simplify<Partial<AllowAutoCasting<U[T]>>>,
   onComplete?: () => void
 ) => {
   readonly id: U[T]["id"];
@@ -72,7 +71,7 @@ type NullablePartial<
 
 export type Create<S extends Schema> = <T extends keyof S>(
   table: T,
-  values: Simplify<NullablePartial<AllowCasting<Omit<S[T], "id">>>>,
+  values: Simplify<NullablePartial<AllowAutoCasting<Omit<S[T], "id">>>>,
   onComplete?: () => void
 ) => {
   readonly id: S[T]["id"];
@@ -82,7 +81,7 @@ export type Update<S extends Schema> = <T extends keyof S>(
   table: T,
   values: Simplify<
     Partial<
-      AllowCasting<Omit<S[T], "id"> & Pick<CommonColumns, "isDeleted">>
+      AllowAutoCasting<Omit<S[T], "id"> & Pick<CommonColumns, "isDeleted">>
     > & { id: S[T]["id"] }
   >,
   onComplete?: () => void
@@ -98,34 +97,9 @@ export type SchemaForQuery<S extends Schema> = {
   >;
 };
 
-export interface RestoreOwnerError {
-  readonly _tag: "invalid mnemonic";
+export interface TableDefinition {
+  readonly name: string;
+  readonly columns: readonly string[];
 }
 
-export interface OwnerActions {
-  /**
-   * Use `reset` to delete all local data from the current device.
-   * After the deletion, Evolu reloads all browser tabs that use Evolu.
-   */
-  readonly reset: () => void;
-  /**
-   * Use `restore` to restore `Owner` with synced data on a different device.
-   */
-  readonly restore: (
-    mnemonic: string
-  ) => Promise<Either.Either<RestoreOwnerError, void>>;
-}
-
-// Like Kysely CompiledQuery but without a `query` prop.
-export interface Query {
-  readonly sql: string;
-  readonly parameters: readonly Value[];
-}
-
-export type QueryString = string & Brand.Brand<"QueryString">;
-
-export const queryToString = ({ sql, parameters }: Query): QueryString =>
-  JSON.stringify({ sql, parameters }) as QueryString;
-
-export const queryFromString = (s: QueryString): Query =>
-  JSON.parse(s) as Query;
+export type TableDefinitions = ReadonlyArray<TableDefinition>;
