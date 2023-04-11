@@ -33,11 +33,9 @@ export const createEvolu = <From, To extends Schema.Schema>(
   _schema: S.Schema<From, To>,
   _config?: Partial<Config.Config>
 ): Evolu<To> => {
-  // takze, vratit api, a naimplementovat funkce
-  // jako prvni asi musim vytvorit ten worker
-
-  // const dbWorker =
-  DbWorker.create();
+  const dbWorker = DbWorker.create((_output) => {
+    //
+  });
 
   throw "";
 };

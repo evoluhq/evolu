@@ -1,9 +1,11 @@
 import * as Brand from "@effect/data/Brand";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as Config from "./Config.js";
-import * as Owner from "./Owner.js";
+import * as Diff from "./Diff.js";
 import * as MerkleTree from "./MerkleTree.js";
 import * as Message from "./Message.js";
+import * as Owner from "./Owner.js";
+import * as Mnemonic from "./Mnemonic.js";
 import * as Query from "./Query.js";
 import * as Schema from "./Schema.js";
 import * as Timestamp from "./Timestamp.js";
@@ -45,17 +47,28 @@ type Input =
     }
   | {
       readonly type: "restoreOwner";
-      readonly mnemonic: Owner.Mnemonic;
+      readonly mnemonic: Mnemonic.Mnemonic;
     };
 
-// type Output =
+type Output =
+  | { readonly type: "onError"; readonly error: unknown } // TODO: Explicit list of errors
+  | { readonly type: "onOwner"; readonly owner: Owner.Owner }
+  | {
+      readonly type: "onQuery";
+      readonly queriesPatches: ReadonlyArray<Diff.QueryPatches>;
+      readonly onCompleteIds: ReadonlyArray<OnCompleteId>;
+    }
+  | { readonly type: "onReceive" }
+  | { readonly type: "onResetOrRestore" };
 
 interface DbWorker {
-  readonly post: (input: Input) => {
-    // post
-  };
+  readonly post: (input: Input) => void;
 }
 
-export const create = (): DbWorker => {
-  throw "";
+export const create = (_onMessage: (output: Output) => void): DbWorker => {
+  const post = (_input: Input): void => {
+    //
+  };
+
+  return { post };
 };

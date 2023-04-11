@@ -66,8 +66,10 @@ export const insertInto =
     });
   };
 
-const getKeys = (tree: MerkleTree): readonly ("0" | "1" | "2")[] =>
-  Object.keys(tree).filter((x) => x !== "hash") as readonly ("0" | "1" | "2")[];
+const getKeys = (tree: MerkleTree): ReadonlyArray<"0" | "1" | "2"> =>
+  Object.keys(tree).filter((x) => x !== "hash") as ReadonlyArray<
+    "0" | "1" | "2"
+  >;
 
 const keyToTimestamp = (key: string): Millis => {
   // 16 is the length of the base 3 value of the current time in
