@@ -7,6 +7,7 @@ import { useMemo, useRef, useSyncExternalStore } from "react";
 import * as Config from "./Config.js";
 import * as Evolu from "./Evolu.js";
 import * as Owner from "./Owner.js";
+import * as Query from "./Query.js";
 import * as Schema from "./Schema.js";
 
 type KyselySelectFrom<DB> = Pick<Kysely.Kysely<DB>, "selectFrom">;
@@ -29,9 +30,9 @@ type UseQuery<S extends Schema.Schema> = <
   /**
    * Rows from the database. They can be filtered and mapped by `filterMap`.
    */
-  readonly rows: readonly Readonly<
-    Kysely.Simplify<ExcludeNullAndFalse<FilterMapRow>>
-  >[];
+  readonly rows: ReadonlyArray<
+    Readonly<Kysely.Simplify<ExcludeNullAndFalse<FilterMapRow>>>
+  >;
   /**
    * The first row from `rows`. For empty rows, it's null.
    */
@@ -293,8 +294,8 @@ export const createHooks = <From, To extends Schema.Schema>(
     // `query` can and will change, compile() is cheap
     const queryString = query
       ? pipe(
-          query(kysely as never).compile() as Evolu.Query,
-          Evolu.queryToString
+          query(kysely as never).compile() as Query.Query,
+          Query.queryToString
         )
       : null;
     // filterMap is expensive but must be static, hence useRef

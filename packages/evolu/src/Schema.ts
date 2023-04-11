@@ -7,7 +7,7 @@ export type Value = null | string | number | Uint8Array;
 
 export type Row = ReadonlyRecord.ReadonlyRecord<Value>;
 
-export type Rows = readonly Row[];
+export type Rows = ReadonlyArray<Row>;
 
 export interface RowsWithLoadingState {
   readonly rows: Rows;
@@ -24,7 +24,7 @@ type NullableExceptOfId<T> = {
 
 interface CommonColumns {
   readonly createdAt: Model.SqliteDate;
-  readonly createdBy: Owner.OwnerId;
+  readonly createdBy: Owner.Id;
   readonly updatedAt: Model.SqliteDate;
   readonly isDeleted: Model.SqliteBoolean;
 }
@@ -99,7 +99,7 @@ export type SchemaForQuery<S extends Schema> = {
 
 export interface TableDefinition {
   readonly name: string;
-  readonly columns: readonly string[];
+  readonly columns: ReadonlyArray<string>;
 }
 
 export type TableDefinitions = ReadonlyArray<TableDefinition>;
