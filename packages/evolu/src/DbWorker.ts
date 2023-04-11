@@ -9,6 +9,7 @@ import * as Mnemonic from "./Mnemonic.js";
 import * as Query from "./Query.js";
 import * as Schema from "./Schema.js";
 import * as Timestamp from "./Timestamp.js";
+import { constVoid } from "@effect/data/Function";
 
 type OnCompleteId = string & Brand.Brand<"Id"> & Brand.Brand<"OnComplete">;
 
@@ -65,10 +66,10 @@ interface DbWorker {
   readonly post: (input: Input) => void;
 }
 
+const isServer = typeof window === "undefined" || "Deno" in window;
+
 export const create = (_onMessage: (output: Output) => void): DbWorker => {
-  const post = (_input: Input): void => {
-    //
-  };
+  const post = isServer ? constVoid : constVoid;
 
   return { post };
 };

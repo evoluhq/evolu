@@ -30,7 +30,7 @@ export const createOwner = (
 ): Effect.Effect<never, never, Owner> =>
   pipe(
     Effect.allPar(
-      mnemonic ? Effect.succeed(mnemonic) : Mnemonic.generate,
+      mnemonic ? Effect.succeed(mnemonic) : Mnemonic.generate(),
       Effect.promise(() => import("@scure/bip39")),
       Effect.promise(() => import("@noble/hashes/hmac")),
       Effect.promise(() => import("@noble/hashes/sha512"))

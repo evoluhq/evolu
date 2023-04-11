@@ -35,10 +35,11 @@ export const parse = (
   );
 
 // We don't care about offline because it's called only on the first load.
-export const generate = pipe(
-  importBip39WithEnglish,
-  Effect.map(
-    ([{ generateMnemonic }, { wordlist }]) =>
-      generateMnemonic(wordlist, 128) as Mnemonic
-  )
-);
+export const generate = (): Effect.Effect<never, never, Mnemonic> =>
+  pipe(
+    importBip39WithEnglish,
+    Effect.map(
+      ([{ generateMnemonic }, { wordlist }]) =>
+        generateMnemonic(wordlist, 128) as Mnemonic
+    )
+  );
