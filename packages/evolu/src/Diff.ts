@@ -1,20 +1,19 @@
-import * as Query from "./Query.js";
-import * as Schema from "./Schema.js";
+import * as Db from "./Db.js";
 
 export interface ReplaceAllPatch {
   readonly op: "replaceAll";
-  readonly value: Schema.Rows;
+  readonly value: Db.Rows;
 }
 
 export interface ReplaceAtPatch {
   readonly op: "replaceAt";
   readonly index: number;
-  readonly value: Schema.Row;
+  readonly value: Db.Row;
 }
 
 export type Patch = ReplaceAllPatch | ReplaceAtPatch;
 
 export interface QueryPatches {
-  readonly query: Query.QueryString;
+  readonly query: Db.QueryString;
   readonly patches: ReadonlyArray<Patch>;
 }

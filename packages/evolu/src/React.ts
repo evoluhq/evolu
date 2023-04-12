@@ -7,7 +7,7 @@ import { useMemo, useRef, useSyncExternalStore } from "react";
 import * as Config from "./Config.js";
 import * as Evolu from "./Evolu.js";
 import * as Owner from "./Owner.js";
-import * as Query from "./Query.js";
+import * as Db from "./Db.js";
 import * as Schema from "./Schema.js";
 
 type KyselySelectFrom<DB> = Pick<Kysely.Kysely<DB>, "selectFrom">;
@@ -21,8 +21,8 @@ type OrNullOrFalse<T> = T | null | false;
 type ExcludeNullAndFalse<T> = Exclude<T, null | false>;
 
 type UseQuery<S extends Schema.Schema> = <
-  QueryRow extends Schema.Row,
-  FilterMapRow extends Schema.Row
+  QueryRow extends Db.Row,
+  FilterMapRow extends Db.Row
 >(
   query: OrNullOrFalse<QueryCallback<S, QueryRow>>,
   filterMap: (row: QueryRow) => OrNullOrFalse<FilterMapRow>
@@ -288,15 +288,12 @@ export const createHooks = <From, To extends Schema.Schema>(
 ): Hooks<To> => {
   const evolu = Evolu.createEvolu(schema, config);
   const kysely = createKysely();
-  const cache = new WeakMap<Schema.Row, Option.Option<Schema.Row>>();
+  const cache = new WeakMap<Db.Row, Option.Option<Db.Row>>();
 
   const useQuery: UseQuery<To> = (query, filterMap) => {
     // `query` can and will change, compile() is cheap
     const queryString = query
-      ? pipe(
-          query(kysely as never).compile() as Query.Query,
-          Query.queryToString
-        )
+      ? pipe(query(kysely as never).compile() as Db.Query, Db.queryToString)
       : null;
     // filterMap is expensive but must be static, hence useRef
     const filterMapRef = useRef(filterMap);
@@ -310,7 +307,7 @@ export const createHooks = <From, To extends Schema.Schema>(
       constNull
     );
 
-    const filterMapRow = (row: Schema.Row): Option.Option<Schema.Row> => {
+    const filterMapRow = (row: Db.Row): Option.Option<Db.Row> => {
       let cachedRow = cache.get(row);
       if (cachedRow !== undefined) return cachedRow;
       cachedRow = pipe(filterMapRef.current(row as never), (row) =>

@@ -1,19 +1,19 @@
 import * as Brand from "@effect/data/Brand";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
+import * as Effect from "@effect/io/Effect";
 import * as Config from "./Config.js";
+import * as Db from "./Db.js";
 import * as Diff from "./Diff.js";
 import * as MerkleTree from "./MerkleTree.js";
 import * as Message from "./Message.js";
-import * as Owner from "./Owner.js";
 import * as Mnemonic from "./Mnemonic.js";
-import * as Query from "./Query.js";
+import * as Owner from "./Owner.js";
 import * as Schema from "./Schema.js";
 import * as Timestamp from "./Timestamp.js";
-import { constVoid } from "@effect/data/Function";
 
 type OnCompleteId = string & Brand.Brand<"Id"> & Brand.Brand<"OnComplete">;
 
-type Input =
+export type Input =
   | {
       readonly type: "init";
       readonly config: Config.Config;
@@ -27,11 +27,11 @@ type Input =
       readonly type: "send";
       readonly messages: ReadonlyArray.NonEmptyReadonlyArray<Message.NewMessage>;
       readonly onCompleteIds: ReadonlyArray<OnCompleteId>;
-      readonly queries: ReadonlyArray<Query.QueryString>;
+      readonly queries: ReadonlyArray<Db.QueryString>;
     }
   | {
       readonly type: "query";
-      readonly queries: ReadonlyArray.NonEmptyReadonlyArray<Query.QueryString>;
+      readonly queries: ReadonlyArray.NonEmptyReadonlyArray<Db.QueryString>;
     }
   | {
       readonly type: "receive";
@@ -41,7 +41,7 @@ type Input =
     }
   | {
       readonly type: "sync";
-      readonly queries: ReadonlyArray.NonEmptyReadonlyArray<Query.QueryString> | null;
+      readonly queries: ReadonlyArray.NonEmptyReadonlyArray<Db.QueryString> | null;
     }
   | {
       readonly type: "resetOwner";
@@ -51,7 +51,7 @@ type Input =
       readonly mnemonic: Mnemonic.Mnemonic;
     };
 
-type Output =
+export type Output =
   | { readonly type: "onError"; readonly error: unknown } // TODO: Explicit list of errors
   | { readonly type: "onOwner"; readonly owner: Owner.Owner }
   | {
@@ -62,14 +62,18 @@ type Output =
   | { readonly type: "onReceive" }
   | { readonly type: "onResetOrRestore" };
 
-interface DbWorker {
+export interface DbWorker {
   readonly post: (input: Input) => void;
 }
 
-const isServer = typeof window === "undefined" || "Deno" in window;
+export type CreateDbWorker = (callback: (output: Output) => void) => DbWorker;
 
-export const create = (_onMessage: (output: Output) => void): DbWorker => {
-  const post = isServer ? constVoid : constVoid;
-
-  return { post };
-};
+export const create =
+  (_db: Effect.Effect<never, never, Db.Db>): CreateDbWorker =>
+  (_callback) => {
+    return {
+      post: (): void => {
+        //
+      },
+    };
+  };

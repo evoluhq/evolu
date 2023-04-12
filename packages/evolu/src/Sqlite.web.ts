@@ -18,24 +18,26 @@ export const create = (
 ): Effect.Effect<never, never, Db.Db> =>
   Effect.promise(() =>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    promise.then((sqlite3: any): Db.Db => {
-      const db =
+    promise.then((sqlite3: any) => {
+      const sqlite =
         strategy === "opfs"
           ? new sqlite3.oo1.OpfsDb("/evolu/evolu1.db", "c")
           : new sqlite3.oo1.JsStorageDb("local");
 
-      const exec: Db.Db["exec"] = (arg) => {
-        const isSqlString = typeof arg === "string";
+      const db: Db.Db = {
+        exec: (arg) => {
+          const isSqlString = typeof arg === "string";
 
-        return db.exec(isSqlString ? arg : arg.sql, {
-          returnValue: "resultRows",
-          rowMode: "object",
-          ...(!isSqlString && { bind: arg.parameters }),
-        });
+          return sqlite.exec(isSqlString ? arg : arg.sql, {
+            returnValue: "resultRows",
+            rowMode: "object",
+            ...(!isSqlString && { bind: arg.parameters }),
+          });
+        },
+
+        changes: () => Effect.sync(() => sqlite.changes()),
       };
 
-      const changes: Db.Db["changes"] = () => Effect.sync(() => db.changes());
-
-      return { exec, changes };
+      return db;
     })
   );

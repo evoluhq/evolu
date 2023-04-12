@@ -1,9 +1,9 @@
 import * as S from "@effect/schema/Schema";
 import * as Config from "./Config.js";
-import * as DbWorker from "./DbWorker.js";
+import * as Db from "./Db.js";
+import * as DbWorkerFactory from "./DbWorkerFactory.js";
 import * as Owner from "./Owner.js";
 import * as Schema from "./Schema.js";
-import * as Query from "./Query.js";
 
 export interface EvoluError {
   _tag: "EvoluError";
@@ -19,11 +19,11 @@ export interface Evolu<S extends Schema.Schema> {
   readonly getOwner: () => Owner.Owner | null;
 
   readonly subscribeRowsWithLoadingState: (
-    queryString: Query.QueryString | null
+    queryString: Db.QueryString | null
   ) => (listener: () => void) => () => void;
   readonly getRowsWithLoadingState: (
-    queryString: Query.QueryString | null
-  ) => () => Schema.RowsWithLoadingState | null;
+    queryString: Db.QueryString | null
+  ) => () => Db.RowsWithLoadingState | null;
 
   readonly mutate: Schema.Mutate<S>;
   readonly ownerActions: Owner.Actions;
@@ -33,7 +33,7 @@ export const createEvolu = <From, To extends Schema.Schema>(
   _schema: S.Schema<From, To>,
   _config?: Partial<Config.Config>
 ): Evolu<To> => {
-  const dbWorker = DbWorker.create((_output) => {
+  DbWorkerFactory.createDbWorker((_output) => {
     //
   });
 

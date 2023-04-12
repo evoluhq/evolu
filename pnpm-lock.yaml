@@ -37,7 +37,7 @@ importers:
       '@effect/schema': ~0.12.1
       '@evolu/tsconfig': workspace:0.0.2
       '@types/node': ^18.15.11
-      '@types/react': ^18.0.34
+      '@types/react': ^18.0.35
       '@types/react-dom': ^18.0.11
       autoprefixer: ^10.4.14
       clsx: ^1.2.1
@@ -67,7 +67,7 @@ importers:
     devDependencies:
       '@evolu/tsconfig': link:../../packages/evolu-tsconfig
       '@types/node': 18.15.11
-      '@types/react': 18.0.34
+      '@types/react': 18.0.35
       '@types/react-dom': 18.0.11
       autoprefixer: 10.4.14_postcss@8.4.21
       eslint: 8.38.0
@@ -86,7 +86,7 @@ importers:
       eslint-config-next: ^13.3.0
       eslint-config-prettier: ^8.8.0
       eslint-config-turbo: ^1.9.0
-      eslint-plugin-jsdoc: ^41.1.0
+      eslint-plugin-jsdoc: ^41.1.1
       eslint-plugin-node: ^11.1.0
       next: ^13.3.0
       react: ^18.2.0
@@ -98,7 +98,7 @@ importers:
       eslint-config-next: 13.3.0_voubu7prgxjfsfbgx5d4sqnwiy
       eslint-config-prettier: 8.8.0_eslint@8.38.0
       eslint-config-turbo: 1.9.0_eslint@8.38.0
-      eslint-plugin-jsdoc: 41.1.0_eslint@8.38.0
+      eslint-plugin-jsdoc: 41.1.1_eslint@8.38.0
       eslint-plugin-node: 11.1.0_eslint@8.38.0
       next: 13.3.0_biqbaboplfbrettd7655fr4n2y
       react: 18.2.0
@@ -118,7 +118,7 @@ importers:
       '@protobuf-ts/protoc': ^2.8.3
       '@protobuf-ts/runtime': ^2.8.3
       '@scure/bip39': ^1.2.0
-      '@types/react': ^18.0.34
+      '@types/react': ^18.0.35
       '@types/react-dom': ^18.0.11
       '@types/web-locks-api': ^0.0.2
       array-shuffle: ^3.0.0
@@ -151,7 +151,7 @@ importers:
       '@evolu/tsconfig': link:../evolu-tsconfig
       '@protobuf-ts/plugin': 2.8.3
       '@protobuf-ts/protoc': 2.8.3
-      '@types/react': 18.0.34
+      '@types/react': 18.0.35
       '@types/react-dom': 18.0.11
       '@types/web-locks-api': 0.0.2
       array-shuffle: 3.0.0
@@ -806,7 +806,7 @@ packages:
       react: '>=16'
     dependencies:
       '@types/mdx': 2.0.4
-      '@types/react': 18.0.34
+      '@types/react': 18.0.35
       react: 18.2.0
     dev: false
 
@@ -1278,11 +1278,11 @@ packages:
   /@types/react-dom/18.0.11:
     resolution: {integrity: sha512-O38bPbI2CWtgw/OoQoY+BRelw7uysmXbWvw3nLWO21H1HSh+GOlqPuXshJfjmpNlKiiSDG9cc1JZAaMmVdcTlw==}
     dependencies:
-      '@types/react': 18.0.34
+      '@types/react': 18.0.35
     dev: true
 
-  /@types/react/18.0.34:
-    resolution: {integrity: sha512-NO1UO8941541CJl1BeOXi8a9dNKFK09Gnru5ZJqkm4Q3/WoQJtHvmwt0VX0SB9YCEwe7TfSSxDuaNmx6H2BAIQ==}
+  /@types/react/18.0.35:
+    resolution: {integrity: sha512-6Laome31HpetaIUGFWl1VQ3mdSImwxtFZ39rh059a1MNnKGqBpC88J6NJ8n/Is3Qx7CefDGLgf/KhN/sYCf7ag==}
     dependencies:
       '@types/prop-types': 15.7.5
       '@types/scheduler': 0.16.3
@@ -1562,9 +1562,9 @@ packages:
     resolution: {integrity: sha512-Of/R0wqp83cgHozfIYLbBMnej79U/SVGOOyuB3VVFv1NRM/PSFMK12x9KVtiYzJqmnU5WR2qp0Z5rHb7sWGnFQ==}
     dev: false
 
-  /are-docs-informative/0.0.1:
-    resolution: {integrity: sha512-iBN6NxFQTEH0au0K8EOz6BoXXs9Pz6bGOPOgQpstabUHlX7fFx72TXB/wy7hSGZ8QcMI+XalPeM3p8IG5ncGIA==}
-    engines: {node: '>=18'}
+  /are-docs-informative/0.0.2:
+    resolution: {integrity: sha512-ixiS0nLNNG5jNQzgZJNoUpBKdo9yTYZMGJ+QgT2jmjR7G7+QHRCc4v6LQ3NgE7EBJq+o0ams3waJwkrlBom8Ig==}
+    engines: {node: '>=14'}
     dev: false
 
   /arg/1.0.0:
@@ -1678,7 +1678,7 @@ packages:
       postcss: ^8.1.0
     dependencies:
       browserslist: 4.21.5
-      caniuse-lite: 1.0.30001477
+      caniuse-lite: 1.0.30001478
       fraction.js: 4.2.0
       normalize-range: 0.1.2
       picocolors: 1.0.0
@@ -1813,8 +1813,8 @@ packages:
     engines: {node: ^6 || ^7 || ^8 || ^9 || ^10 || ^11 || ^12 || >=13.7}
     hasBin: true
     dependencies:
-      caniuse-lite: 1.0.30001477
-      electron-to-chromium: 1.4.358
+      caniuse-lite: 1.0.30001478
+      electron-to-chromium: 1.4.359
       node-releases: 2.0.10
       update-browserslist-db: 1.0.10_browserslist@4.21.5
     dev: true
@@ -1872,8 +1872,8 @@ packages:
     engines: {node: '>=6'}
     dev: true
 
-  /caniuse-lite/1.0.30001477:
-    resolution: {integrity: sha512-lZim4iUHhGcy5p+Ri/G7m84hJwncj+Kz7S5aD4hoQfslKZJgt0tHc/hafVbqHC5bbhHb+mrW2JOUHkI5KH7toQ==}
+  /caniuse-lite/1.0.30001478:
+    resolution: {integrity: sha512-gMhDyXGItTHipJj2ApIvR+iVB5hd0KP3svMWWXDvZOmjzJJassGLMfxRkQCSYgGd2gtdL/ReeiyvMSFD1Ss6Mw==}
 
   /ccount/2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
@@ -2331,8 +2331,8 @@ packages:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
     dev: false
 
-  /electron-to-chromium/1.4.358:
-    resolution: {integrity: sha512-dbqpWy662dGVwq27q8i6+t5FPcQiFPs/VExXJ+/T9Xp9KUV0b5bvG+B/i07FNNr7PgcN3GhZQCZoYJ9EUfnIOg==}
+  /electron-to-chromium/1.4.359:
+    resolution: {integrity: sha512-OoVcngKCIuNXtZnsYoqlCvr0Cf3NIPzDIgwUfI9bdTFjXCrr79lI0kwQstLPZ7WhCezLlGksZk/BFAzoXC7GDw==}
     dev: true
 
   /emoji-regex/8.0.0:
@@ -2652,14 +2652,14 @@ packages:
       - supports-color
     dev: false
 
-  /eslint-plugin-jsdoc/41.1.0_eslint@8.38.0:
-    resolution: {integrity: sha512-7nE0soOQfVhRNeV0pXTUz9IhdpBiAFNbRgs1W7TcPIOx+c4Qvy3vgI4848O9UmHrbrVUaYwpVHZvaXDeP0SBeg==}
+  /eslint-plugin-jsdoc/41.1.1_eslint@8.38.0:
+    resolution: {integrity: sha512-dfH97DKLGtQ5dgEMzd+GSUuY+xX/yyAfjML3O0pEWmMMpylsG6Ro65s4ziYXKmixiENYK9CTQxCVRGqZUFN2Mw==}
     engines: {node: ^14 || ^16 || ^17 || ^18 || ^19}
     peerDependencies:
       eslint: ^7.0.0 || ^8.0.0
     dependencies:
       '@es-joy/jsdoccomment': 0.37.0
-      are-docs-informative: 0.0.1
+      are-docs-informative: 0.0.2
       comment-parser: 1.3.1
       debug: 4.3.4
       escape-string-regexp: 4.0.0
@@ -4799,7 +4799,7 @@ packages:
       '@next/env': 13.3.0
       '@swc/helpers': 0.4.14
       busboy: 1.6.0
-      caniuse-lite: 1.0.30001477
+      caniuse-lite: 1.0.30001478
       postcss: 8.4.14
       react: 18.2.0
       react-dom: 18.2.0_react@18.2.0

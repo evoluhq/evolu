@@ -16,6 +16,7 @@ export interface InvalidMnemonicError {
 }
 
 // Dynamic because it's big and rarely used.
+// Two files, because wordlists should never change.
 const importBip39WithEnglish = Effect.allPar(
   Effect.promise(() => import("@scure/bip39")),
   Effect.promise(() => import("@scure/bip39/wordlists/english.js"))

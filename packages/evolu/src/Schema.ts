@@ -2,20 +2,10 @@ import * as ReadonlyRecord from "@effect/data/ReadonlyRecord";
 import { Simplify } from "kysely";
 import * as Model from "./Model.js";
 import * as Owner from "./Owner.js";
-
-export type Value = null | string | number | Uint8Array;
-
-export type Row = ReadonlyRecord.ReadonlyRecord<Value>;
-
-export type Rows = ReadonlyArray<Row>;
-
-export interface RowsWithLoadingState {
-  readonly rows: Rows;
-  readonly isLoading: boolean;
-}
+import * as Db from "./Db.js";
 
 export type Schema = ReadonlyRecord.ReadonlyRecord<
-  { id: Model.Id } & Record<string, Value>
+  { id: Model.Id } & Record<string, Db.Value>
 >;
 
 type NullableExceptOfId<T> = {
