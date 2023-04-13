@@ -2,6 +2,7 @@ import * as Brand from "@effect/data/Brand";
 import * as Context from "@effect/data/Context";
 import * as ReadonlyRecord from "@effect/data/ReadonlyRecord";
 import * as Effect from "@effect/io/Effect";
+import * as Equivalence from "@effect/data/typeclass/Equivalence";
 
 export type Value = null | string | number | Uint8Array;
 
@@ -21,6 +22,9 @@ export interface Query {
 }
 
 export type QueryString = string & Brand.Brand<"QueryString">;
+
+export const QueryStringEquivalence: Equivalence.Equivalence<QueryString> =
+  Equivalence.string;
 
 export const queryToString = ({ sql, parameters }: Query): QueryString =>
   JSON.stringify({ sql, parameters }) as QueryString;

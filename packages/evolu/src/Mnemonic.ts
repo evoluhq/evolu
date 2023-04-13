@@ -22,7 +22,7 @@ const importBip39WithEnglish = Effect.allPar(
   Effect.promise(() => import("@scure/bip39/wordlists/english.js"))
 );
 
-// We don't care about offline because it's called only when a user needs to restore.
+// TODO: Handle offline.
 export const parse = (
   mnemonic: string
 ): Effect.Effect<never, InvalidMnemonicError, Mnemonic> =>
@@ -35,7 +35,6 @@ export const parse = (
     )
   );
 
-// We don't care about offline because it's called only on the first load.
 export const generate = (): Effect.Effect<never, never, Mnemonic> =>
   pipe(
     importBip39WithEnglish,

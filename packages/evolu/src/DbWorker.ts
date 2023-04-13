@@ -9,9 +9,14 @@ import * as Message from "./Message.js";
 import * as Mnemonic from "./Mnemonic.js";
 import * as Owner from "./Owner.js";
 import * as Schema from "./Schema.js";
+import * as Error from "./Error.js";
 import * as Timestamp from "./Timestamp.js";
 
-type OnCompleteId = string & Brand.Brand<"Id"> & Brand.Brand<"OnComplete">;
+export type OnCompleteId = string &
+  Brand.Brand<"Id"> &
+  Brand.Brand<"OnComplete">;
+
+export type OnComplete = () => void;
 
 export type Input =
   | {
@@ -52,7 +57,7 @@ export type Input =
     };
 
 export type Output =
-  | { readonly type: "onError"; readonly error: unknown } // TODO: Explicit list of errors
+  | { readonly type: "onError"; readonly error: Error.Error }
   | { readonly type: "onOwner"; readonly owner: Owner.Owner }
   | {
       readonly type: "onQuery";

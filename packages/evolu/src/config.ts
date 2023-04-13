@@ -25,7 +25,7 @@ const defaultConfig: Config = {
   reloadUrl: "/",
 };
 
-export const createConfig = (config?: Partial<Config>): Config => ({
+export const create = (config?: Partial<Config>): Config => ({
   ...defaultConfig,
   ...config,
 });

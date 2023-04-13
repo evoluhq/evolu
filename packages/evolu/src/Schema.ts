@@ -1,8 +1,11 @@
 import * as ReadonlyRecord from "@effect/data/ReadonlyRecord";
+import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import { Simplify } from "kysely";
 import * as Model from "./Model.js";
 import * as Owner from "./Owner.js";
 import * as Db from "./Db.js";
+import * as S from "@effect/schema/Schema";
+import { pipe } from "@effect/data/Function";
 
 export type Schema = ReadonlyRecord.ReadonlyRecord<
   { id: Model.Id } & Record<string, Db.Value>
@@ -19,6 +22,8 @@ interface CommonColumns {
   readonly isDeleted: Model.SqliteBoolean;
 }
 
+const commonColumns = ["createdAt", "createdBy", "updatedAt", "isDeleted"];
+
 type SchemaForMutate<S extends Schema> = {
   readonly [Table in keyof S]: NullableExceptOfId<
     {
@@ -27,7 +32,7 @@ type SchemaForMutate<S extends Schema> = {
   >;
 };
 
-type AllowAutoCasting<T> = {
+export type AllowAutoCasting<T> = {
   readonly [K in keyof T]: T[K] extends Model.SqliteBoolean
     ? boolean | Model.SqliteBoolean
     : T[K] extends null | Model.SqliteBoolean
@@ -93,3 +98,20 @@ export interface TableDefinition {
 }
 
 export type TableDefinitions = ReadonlyArray<TableDefinition>;
+
+export const schemaToTableDefinitions = (
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  schema: S.Schema<any, any>
+): TableDefinitions =>
+  pipe(
+    S.getPropertySignatures(schema),
+    ReadonlyRecord.toEntries,
+    ReadonlyArray.map(
+      ([name, schema]): TableDefinition => ({
+        name,
+        columns: Object.keys(S.getPropertySignatures(schema)).concat(
+          commonColumns
+        ),
+      })
+    )
+  );

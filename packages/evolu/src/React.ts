@@ -9,6 +9,7 @@ import * as Evolu from "./Evolu.js";
 import * as Owner from "./Owner.js";
 import * as Db from "./Db.js";
 import * as Schema from "./Schema.js";
+import * as Error from "./Error.js";
 
 type KyselySelectFrom<DB> = Pick<Kysely.Kysely<DB>, "selectFrom">;
 
@@ -199,7 +200,7 @@ interface Hooks<S extends Schema.Schema> {
    * Mutations are saved immediately and synced when the internet is available.
    * The only expectable error is QuotaExceeded (TODO).
    */
-  readonly useEvoluError: () => Evolu.EvoluError | null;
+  readonly useEvoluError: () => Error.EvoluError | null;
   /**
    * `useOwner` React Hook returns `Owner`.
    */
