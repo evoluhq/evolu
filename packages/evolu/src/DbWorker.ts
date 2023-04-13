@@ -20,52 +20,52 @@ export type OnComplete = () => void;
 
 export type Input =
   | {
-      readonly type: "init";
+      readonly _tag: "init";
       readonly config: Config.Config;
       readonly tableDefinitions: Schema.TableDefinitions;
     }
   | {
-      readonly type: "updateDbSchema";
+      readonly _tag: "updateDbSchema";
       readonly tableDefinitions: Schema.TableDefinitions;
     }
   | {
-      readonly type: "send";
+      readonly _tag: "send";
       readonly messages: ReadonlyArray.NonEmptyReadonlyArray<Message.NewMessage>;
       readonly onCompleteIds: ReadonlyArray<OnCompleteId>;
       readonly queries: ReadonlyArray<Db.QueryString>;
     }
   | {
-      readonly type: "query";
+      readonly _tag: "query";
       readonly queries: ReadonlyArray.NonEmptyReadonlyArray<Db.QueryString>;
     }
   | {
-      readonly type: "receive";
+      readonly _tag: "receive";
       readonly messages: ReadonlyArray<Message.Message>;
       readonly merkleTree: MerkleTree.MerkleTree;
       readonly previousDiff: Timestamp.Millis | null;
     }
   | {
-      readonly type: "sync";
+      readonly _tag: "sync";
       readonly queries: ReadonlyArray.NonEmptyReadonlyArray<Db.QueryString> | null;
     }
   | {
-      readonly type: "resetOwner";
+      readonly _tag: "resetOwner";
     }
   | {
-      readonly type: "restoreOwner";
+      readonly _tag: "restoreOwner";
       readonly mnemonic: Mnemonic.Mnemonic;
     };
 
 export type Output =
-  | { readonly type: "onError"; readonly error: Error.Error }
-  | { readonly type: "onOwner"; readonly owner: Owner.Owner }
+  | { readonly _tag: "onError"; readonly error: Error.Error }
+  | { readonly _tag: "onOwner"; readonly owner: Owner.Owner }
   | {
-      readonly type: "onQuery";
+      readonly _tag: "onQuery";
       readonly queriesPatches: ReadonlyArray<Diff.QueryPatches>;
       readonly onCompleteIds: ReadonlyArray<OnCompleteId>;
     }
-  | { readonly type: "onReceive" }
-  | { readonly type: "onResetOrRestore" };
+  | { readonly _tag: "onReceive" }
+  | { readonly _tag: "onResetOrRestore" };
 
 export interface DbWorker {
   readonly post: (input: Input) => void;

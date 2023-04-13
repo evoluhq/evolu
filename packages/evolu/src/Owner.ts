@@ -77,7 +77,7 @@ export const createOwner = (
   );
 
 export interface RestoreOwnerError {
-  readonly _tag: "RestoreOwner";
+  readonly _tag: "RestoreOwnerError";
 }
 
 export interface Actions {

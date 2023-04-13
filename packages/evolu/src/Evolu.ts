@@ -1,4 +1,4 @@
-import { constVoid, flow, pipe } from "@effect/data/Function";
+import { absurd, constVoid, flow, pipe } from "@effect/data/Function";
 import * as Number from "@effect/data/Number";
 import * as Option from "@effect/data/Option";
 import * as Predicate from "@effect/data/Predicate";
@@ -6,6 +6,7 @@ import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as Effect from "@effect/io/Effect";
 import * as S from "@effect/schema/Schema";
 import { flushSync } from "react-dom";
+import * as Browser from "./Browser.js";
 import * as Config from "./Config.js";
 import * as Db from "./Db.js";
 import * as DbWorker from "./DbWorker.js";
@@ -48,7 +49,7 @@ const createOnQuery =
   ({
     queriesPatches,
     onCompleteIds,
-  }: Extract<DbWorker.Output, { type: "onQuery" }>): void => {
+  }: Extract<DbWorker.Output, { _tag: "onQuery" }>): void => {
     pipe(
       queriesPatches,
       ReadonlyArray.reduce(
@@ -217,7 +218,7 @@ const createMutate = <S extends Schema.Schema>({
           queue.length = 0;
 
           dbWorker.post({
-            type: "send",
+            _tag: "send",
             messages,
             onCompleteIds,
             queries: getSubscribedQueries(),
@@ -243,7 +244,7 @@ export const createEvolu = <From, To extends Schema.Schema>(
   const onCompletes = new Map<DbWorker.OnCompleteId, DbWorker.OnComplete>();
 
   const dbWorker = DbWorkerFactory.createDbWorker((output) => {
-    switch (output.type) {
+    switch (output._tag) {
       case "onError":
         errorStore.setState({ _tag: "EvoluError", error: output.error });
         break;
@@ -256,9 +257,11 @@ export const createEvolu = <From, To extends Schema.Schema>(
       case "onReceive":
         queryIfAny(Array.from(subscribedQueries.keys()));
         break;
-      // case "onResetOrRestore":
-      //   return reloadAllTabs(config.reloadUrl);
-      // TODO: default, vracel jsem io, blbost
+      case "onResetOrRestore":
+        Browser.reloadAllTabs(config.reloadUrl);
+        break;
+      default:
+        absurd(output);
     }
   });
 
@@ -266,7 +269,7 @@ export const createEvolu = <From, To extends Schema.Schema>(
 
   const queryIfAny = (queries: ReadonlyArray<Db.QueryString>): void => {
     if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
-      dbWorker.post({ type: "query", queries });
+      dbWorker.post({ _tag: "query", queries });
   };
 
   const subscribeRowsWithLoadingState = createSubscribeRowsWithLoadingState(
@@ -299,25 +302,24 @@ export const createEvolu = <From, To extends Schema.Schema>(
   });
 
   const ownerActions: Owner.Actions = {
-    reset: () => dbWorker.post({ type: "resetOwner" }),
+    reset: () => dbWorker.post({ _tag: "resetOwner" }),
     restore: flow(
       Mnemonic.parse,
       Effect.mapBoth(
-        (): Owner.RestoreOwnerError => ({ _tag: "RestoreOwner" }),
-        (mnemonic) => dbWorker.post({ type: "restoreOwner", mnemonic })
+        (): Owner.RestoreOwnerError => ({ _tag: "RestoreOwnerError" }),
+        (mnemonic) => dbWorker.post({ _tag: "restoreOwner", mnemonic })
       ),
       Effect.runPromiseEither
     ),
   };
 
   dbWorker.post({
-    type: "init",
+    _tag: "init",
     config,
     tableDefinitions: Schema.schemaToTableDefinitions(schema),
   });
 
-  // TODO: Browser
-  // Browser.initReconnectAndReshow(subscribedQueries, dbWorker);
+  Browser.initReconnectAndReshow(subscribedQueries, dbWorker);
 
   return {
     subscribeError: errorStore.subscribe,
