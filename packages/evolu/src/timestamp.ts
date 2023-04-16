@@ -122,7 +122,7 @@ const getNextMillis = (
   millis: Millis[]
 ): Effect.Effect<Time | Config.Config, TimestampDriftError, Millis> =>
   pipe(
-    Effect.all([Time, Config.Config]),
+    Effect.all(Time, Config.Config),
     Effect.flatMap(([currentMillis, config]) => {
       const now = currentMillis.get();
       const next = Math.max(now, ...millis) as Millis;

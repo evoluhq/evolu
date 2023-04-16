@@ -25,17 +25,19 @@ export const create = (
           : new sqlite3.oo1.JsStorageDb("local");
 
       const db: Db.Db = {
-        exec: (arg) => {
+        exec: (arg): Effect.Effect<never, never, Db.Rows> => {
           const isSqlString = typeof arg === "string";
 
-          return sqlite.exec(isSqlString ? arg : arg.sql, {
-            returnValue: "resultRows",
-            rowMode: "object",
-            ...(!isSqlString && { bind: arg.parameters }),
-          });
+          return Effect.succeed(
+            sqlite.exec(isSqlString ? arg : arg.sql, {
+              returnValue: "resultRows",
+              rowMode: "object",
+              ...(!isSqlString && { bind: arg.parameters }),
+            })
+          );
         },
 
-        changes: () => Effect.sync(() => sqlite.changes()),
+        changes: () => Effect.succeed(sqlite.changes()),
       };
 
       return db;

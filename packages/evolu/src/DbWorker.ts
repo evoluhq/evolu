@@ -1,15 +1,19 @@
 import * as Brand from "@effect/data/Brand";
+import * as Either from "@effect/data/Either";
+import { absurd, flow, pipe } from "@effect/data/Function";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as Effect from "@effect/io/Effect";
+import * as Cause from "@effect/io/Cause";
 import * as Config from "./Config.js";
+import * as UnknownError from "./UnknownError.js";
 import * as Db from "./Db.js";
 import * as Diff from "./Diff.js";
+import * as Error from "./Error.js";
 import * as MerkleTree from "./MerkleTree.js";
 import * as Message from "./Message.js";
 import * as Mnemonic from "./Mnemonic.js";
 import * as Owner from "./Owner.js";
 import * as Schema from "./Schema.js";
-import * as Error from "./Error.js";
 import * as Timestamp from "./Timestamp.js";
 
 export type OnCompleteId = string &
@@ -74,11 +78,43 @@ export interface DbWorker {
 export type CreateDbWorker = (callback: (output: Output) => void) => DbWorker;
 
 export const create =
-  (_db: Effect.Effect<never, never, Db.Db>): CreateDbWorker =>
-  (_callback) => {
+  (db: Effect.Effect<never, never, Db.Db>): CreateDbWorker =>
+  (callback) => {
+    let skipAllBecauseBrowserIsGoingToBeReloaded = false;
+
+    const postOutput = (output: Output): void => {
+      if (output._tag === "onResetOrRestore")
+        skipAllBecauseBrowserIsGoingToBeReloaded = true;
+      callback(output);
+    };
+
+    const handleError = flow(UnknownError.unknownError, (error) =>
+      postOutput({ _tag: "onError", error })
+    );
+
+    // const syncWorker = new Worker(new URL("./Sync.worker.js", import.meta.url));
+
+    const dbAndOwner = pipe(
+      db,
+      Effect.bindTo("db"),
+      Effect.bind("owner", ({ db }) =>
+        Effect.provideService(Db.init(), Db.Db, db)
+      ),
+      Effect.catchAllCause((cause) => {
+        pipe(
+          Cause.failureOrCause(cause),
+          Either.match(absurd, flow(Cause.squash, handleError))
+        );
+        return Effect.succeed(null);
+      }),
+      Effect.runPromise
+    );
+
     return {
-      post: (): void => {
-        //
+      post: (_input): void => {
+        dbAndOwner.then((_dbAndOwner) => {
+          //
+        });
       },
     };
   };

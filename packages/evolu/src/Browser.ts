@@ -1,4 +1,6 @@
-import { pipe } from "@effect/data/Function";
+import { constFalse, flow, pipe } from "@effect/data/Function";
+import * as Option from "@effect/data/Option";
+import * as Predicate from "@effect/data/Predicate";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as Db from "./Db.js";
 import * as DbWorker from "./DbWorker.js";
@@ -27,21 +29,20 @@ export const features = {
 
 const localStorageKey = "evolu:reloadAllTabs";
 
-if (isBrowser)
-  window.addEventListener("storage", (e) => {
-    if (e.key === localStorageKey) location.reload();
-  });
-
 export const reloadAllTabs = (reloadUrl: string): void => {
   localStorage.setItem(localStorageKey, Date.now().toString());
   location.assign(reloadUrl);
 };
 
-export const initReconnectAndReshow = (
+export const init = (
   subscribedQueries: ReadonlyMap<Db.QueryString, number>,
   dbWorker: DbWorker.DbWorker
 ): void => {
   if (!isBrowser) return;
+
+  window.addEventListener("storage", (e) => {
+    if (e.key === localStorageKey) location.reload();
+  });
 
   const sync = (refreshQueries: boolean) => () => {
     dbWorker.post({
@@ -65,3 +66,28 @@ export const initReconnectAndReshow = (
 
   handleReconnect();
 };
+
+const syncLockName = "evolu:sync";
+
+// TODO: Make it platform independent.
+export const requestSync = (sync: () => Promise<void>): void => {
+  navigator.locks.request(syncLockName, sync);
+};
+
+const hasLock: Predicate.Predicate<LockInfo[] | undefined> = flow(
+  Option.fromNullable,
+  Option.map(ReadonlyArray.some((a) => a.name === syncLockName)),
+  Option.getOrElse(constFalse)
+);
+
+// TODO: Effect<LockManager, UnknownError, boolean>
+// TODO: Make it platform independent.
+// export const syncIsPendingOrHeld: ReaderTaskEither<
+//   LockManagerEnv,
+//   UnknownError,
+//   boolean
+// > = ({ locks }) =>
+//   pipe(
+//     taskEither.tryCatch(() => locks.query(), errorToUnknownError),
+//     taskEither.map(({ pending, held }) => hasLock(pending) || hasLock(held))
+//   );

@@ -319,7 +319,7 @@ export const createEvolu = <From, To extends Schema.Schema>(
     tableDefinitions: Schema.schemaToTableDefinitions(schema),
   });
 
-  Browser.initReconnectAndReshow(subscribedQueries, dbWorker);
+  Browser.init(subscribedQueries, dbWorker);
 
   return {
     subscribeError: errorStore.subscribe,

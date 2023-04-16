@@ -85,8 +85,7 @@ const getMerkleTree = (
   userId: string
 ): Effect.Effect<Db, SqliteError, MerkleTree.MerkleTree> =>
   pipe(
-    DbTag,
-    Effect.flatMap(({ selectMerkleTree }) =>
+    Effect.flatMap(DbTag, ({ selectMerkleTree }) =>
       Effect.tryCatch(
         () =>
           selectMerkleTree.get(userId) as
@@ -111,42 +110,39 @@ const addMessages = ({
   messages: ReadonlyArray.NonEmptyArray<Protobuf.EncryptedCrdtMessage>;
   userId: string;
 }): Effect.Effect<Db, SqliteError, MerkleTree.MerkleTree> =>
-  pipe(
-    DbTag,
-    Effect.flatMap((db) =>
-      Effect.tryCatch(
-        () => {
-          db.begin.run();
+  Effect.flatMap(DbTag, (db) =>
+    Effect.tryCatch(
+      () => {
+        db.begin.run();
 
-          messages.forEach((message) => {
-            const result = db.insertOrIgnoreIntoMessage.run(
-              message.timestamp,
-              userId,
-              message.content
-            );
-
-            if (result.changes === 1)
-              merkleTree = MerkleTree.insertInto(
-                Timestamp.unsafeTimestampFromString(
-                  message.timestamp as Timestamp.TimestampString
-                )
-              )(merkleTree);
-          });
-
-          db.insertOrReplaceIntoMerkleTree.run(
+        messages.forEach((message) => {
+          const result = db.insertOrIgnoreIntoMessage.run(
+            message.timestamp,
             userId,
-            MerkleTree.merkleTreeToString(merkleTree)
+            message.content
           );
 
-          db.commit.run();
+          if (result.changes === 1)
+            merkleTree = MerkleTree.insertInto(
+              Timestamp.unsafeTimestampFromString(
+                message.timestamp as Timestamp.TimestampString
+              )
+            )(merkleTree);
+        });
 
-          return merkleTree;
-        },
-        (error) => {
-          db.rollback.run();
-          return new SqliteError(error);
-        }
-      )
+        db.insertOrReplaceIntoMerkleTree.run(
+          userId,
+          MerkleTree.merkleTreeToString(merkleTree)
+        );
+
+        db.commit.run();
+
+        return merkleTree;
+      },
+      (error) => {
+        db.rollback.run();
+        return new SqliteError(error);
+      }
     )
   );
 
@@ -163,22 +159,19 @@ const getMessages = ({
   SqliteError,
   ReadonlyArray<Protobuf.EncryptedCrdtMessage>
 > =>
-  pipe(
-    DbTag,
-    Effect.flatMap((db) =>
-      Effect.tryCatch(
-        () =>
-          db.selectMessages.all(
-            userId,
-            pipe(
-              millis,
-              Timestamp.createSyncTimestamp,
-              Timestamp.timestampToString
-            ),
-            nodeId
-          ) as ReadonlyArray<Protobuf.EncryptedCrdtMessage>,
-        (error) => new SqliteError(error)
-      )
+  Effect.flatMap(DbTag, (db) =>
+    Effect.tryCatch(
+      () =>
+        db.selectMessages.all(
+          userId,
+          pipe(
+            millis,
+            Timestamp.createSyncTimestamp,
+            Timestamp.timestampToString
+          ),
+          nodeId
+        ) as ReadonlyArray<Protobuf.EncryptedCrdtMessage>,
+      (error) => new SqliteError(error)
     )
   );
 
@@ -192,12 +185,12 @@ const sync = (
     messages: ReadonlyArray<Protobuf.EncryptedCrdtMessage>;
   }
 > =>
-  pipe(
+  Effect.flatMap(
     Effect.tryCatch(
       () => Protobuf.SyncRequest.fromBinary(req.body),
       (error) => new BadRequestError(error)
     ),
-    Effect.flatMap((syncRequest) =>
+    (syncRequest) =>
       Effect.gen(function* ($) {
         let merkleTree = yield* $(getMerkleTree(syncRequest.userId));
 
@@ -230,7 +223,6 @@ const sync = (
 
         return { merkleTree, messages };
       })
-    )
   );
 
 export const createExpressApp = (): express.Express => {
@@ -242,7 +234,7 @@ export const createExpressApp = (): express.Express => {
 
   app.post("/", (req, res) => {
     Effect.runCallback(
-      pipe(sync(req), Effect.provideService(DbTag, db)),
+      Effect.provideService(sync(req), DbTag, db),
       Exit.match(
         (error) => {
           // eslint-disable-next-line no-console
