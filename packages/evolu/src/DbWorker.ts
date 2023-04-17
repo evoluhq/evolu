@@ -161,8 +161,7 @@ export const createCreateDbWorker =
               }
             },
             flow(
-              //
-              Db.transaction,
+              Db.transaction, // fix prettier
               Effect.catchAllCause(recoverFromAllCause(undefined)),
               Effect.provideContext(context),
               Effect.runPromise
