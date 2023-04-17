@@ -1,14 +1,14 @@
+import { flow, pipe } from "@effect/data/Function";
+import * as Predicate from "@effect/data/Predicate";
+import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as ReadonlyRecord from "@effect/data/ReadonlyRecord";
 import * as String from "@effect/data/String";
-import * as ReadonlyArray from "@effect/data/ReadonlyArray";
-import * as Predicate from "@effect/data/Predicate";
+import * as Effect from "@effect/io/Effect";
+import * as S from "@effect/schema/Schema";
 import { Simplify } from "kysely";
+import * as Db from "./Db.js";
 import * as Model from "./Model.js";
 import * as Owner from "./Owner.js";
-import * as Db from "./Db.js";
-import * as S from "@effect/schema/Schema";
-import { flow, pipe } from "@effect/data/Function";
-import * as Effect from "@effect/io/Effect";
 
 export type Schema = ReadonlyRecord.ReadonlyRecord<
   { id: Model.Id } & Record<string, Db.Value>
@@ -119,11 +119,7 @@ export const schemaToTablesDefinitions = (
     )
   );
 
-const getExistingTables: Effect.Effect<
-  Db.Db,
-  never,
-  ReadonlyArray<string>
-> = pipe(
+const getTables: Effect.Effect<Db.Db, never, ReadonlyArray<string>> = pipe(
   Effect.flatMap(Db.Db, (db) =>
     db.exec(`select "name" from sqlite_schema where type='table'`)
   ),
@@ -177,12 +173,12 @@ const createTable = ({
     `)
   );
 
-export const updateDbSchema = (
+export const update = (
   tablesDefinitions: TablesDefinitions
 ): Effect.Effect<Db.Db, never, void> =>
-  Effect.flatMap(getExistingTables, (existingTables) =>
+  Effect.flatMap(getTables, (tables) =>
     Effect.forEachDiscard(tablesDefinitions, (tableDefinition) =>
-      existingTables.includes(tableDefinition.name)
+      tables.includes(tableDefinition.name)
         ? updateTable(tableDefinition)
         : createTable(tableDefinition)
     )

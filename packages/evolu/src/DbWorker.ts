@@ -1,11 +1,11 @@
 import * as Brand from "@effect/data/Brand";
 import * as Either from "@effect/data/Either";
-import { absurd, constVoid, flow, pipe } from "@effect/data/Function";
+import { apply, constVoid, flow, pipe } from "@effect/data/Function";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
-import * as Effect from "@effect/io/Effect";
 import * as Cause from "@effect/io/Cause";
+import * as Effect from "@effect/io/Effect";
+import * as Context from "@effect/data/Context";
 import * as Config from "./Config.js";
-import * as UnknownError from "./UnknownError.js";
 import * as Db from "./Db.js";
 import * as Diff from "./Diff.js";
 import * as Error from "./Error.js";
@@ -14,7 +14,9 @@ import * as Message from "./Message.js";
 import * as Mnemonic from "./Mnemonic.js";
 import * as Owner from "./Owner.js";
 import * as Schema from "./Schema.js";
+import * as SyncWorker from "./Sync.worker.js";
 import * as Timestamp from "./Timestamp.js";
+import * as UnknownError from "./UnknownError.js";
 
 export type OnCompleteId = string &
   Brand.Brand<"Id"> &
@@ -29,7 +31,7 @@ export type Input =
       readonly tableDefinitions: Schema.TablesDefinitions;
     }
   | {
-      readonly _tag: "updateDbSchema";
+      readonly _tag: "updateSchema";
       readonly tableDefinitions: Schema.TablesDefinitions;
     }
   | {
@@ -77,6 +79,8 @@ export interface DbWorker {
 
 export type CreateDbWorker = (onMessage: (message: Output) => void) => DbWorker;
 
+type PostInput = (message: Input) => void;
+
 export const createCreateDbWorker =
   (createDb: Effect.Effect<never, never, Db.Db>): CreateDbWorker =>
   (onMessage) => {
@@ -88,40 +92,113 @@ export const createCreateDbWorker =
       onMessage(message);
     };
 
-    const handleError = flow(UnknownError.unknownError, (error) =>
-      postOutput({ _tag: "onError", error })
-    );
+    const handleError = (error: Error.Error): void =>
+      postOutput({ _tag: "onError", error });
 
-    // const syncWorker = new Worker(new URL("./Sync.worker.js", import.meta.url));
+    const recoverFromAllCause: <A>(
+      a: A
+    ) => (self: Cause.Cause<Error.Error>) => Effect.Effect<never, never, A> = (
+      a
+    ) =>
+      flow(
+        Cause.failureOrCause,
+        Either.match(
+          handleError,
+          flow(Cause.squash, UnknownError.unknownError, handleError)
+        ),
+        () => Effect.succeed(a)
+      );
 
-    const post = pipe(
+    const syncWorker = new Worker(new URL("./Sync.worker.js", import.meta.url));
+
+    return pipe(
       Effect.gen(function* ($) {
         const db = yield* $(createDb);
         const owner = yield* $(Effect.provideService(Db.init(), Db.Db, db));
+        postOutput({ _tag: "onOwner", owner });
 
-        console.log(db, owner);
+        const context = pipe(
+          Context.empty(),
+          Context.add(Db.Db, db)
+          // Context.add(FooTag)({ foo: 'foo' })
+        );
 
-        // hmm, ale co ten config?
-        // na zaklade message vyberu effect
-        // a pustim ho v tom streamu
+        let postInput: PostInput | null = null;
 
-        return (_message: Input) => {
-          //
+        return (message: Input) => {
+          if (postInput) {
+            postInput(message);
+            return;
+          }
+
+          const write: (input: Input) => Promise<void> = flow(
+            (input) => {
+              if (skipAllBecauseBrowserIsGoingToBeReloaded)
+                return Effect.succeed(undefined);
+              switch (input._tag) {
+                case "init":
+                  throw new self.Error("init must be called once");
+                case "updateSchema":
+                  return Schema.update(input.tableDefinitions);
+                case "send":
+                  // return send(input);
+                  return Effect.succeed(undefined);
+                case "query":
+                  // return query(input);
+                  return Effect.succeed(undefined);
+                case "receive":
+                  // return receive(input);
+                  return Effect.succeed(undefined);
+                case "sync":
+                  // return sync(input.queries);
+                  return Effect.succeed(undefined);
+                case "resetOwner":
+                  // return resetOwner;
+                  return Effect.succeed(undefined);
+                case "restoreOwner":
+                  // return restoreOwner(input.mnemonic);
+                  return Effect.succeed(undefined);
+              }
+            },
+            flow(
+              //
+              Db.transaction,
+              Effect.catchAllCause(recoverFromAllCause(undefined)),
+              Effect.provideContext(context),
+              Effect.runPromise
+            )
+          );
+
+          const stream = new WritableStream<Input>({ write });
+
+          postInput = (message): void => {
+            const writer = stream.getWriter();
+            writer.write(message);
+            writer.releaseLock();
+          };
+
+          syncWorker.onmessage = ({
+            data: message,
+          }: MessageEvent<SyncWorker.Output>): void => {
+            if (message._tag === "UnknownError") handleError(message);
+            else postInput && postInput(message);
+          };
+
+          if (message._tag !== "init")
+            throw new self.Error("init must be called first");
+
+          postInput({
+            _tag: "updateSchema",
+            tableDefinitions: message.tableDefinitions,
+          });
         };
       }),
-      Effect.catchAllCause((cause) => {
-        pipe(
-          Cause.failureOrCause(cause),
-          Either.match(absurd, flow(Cause.squash, handleError))
-        );
-        return Effect.succeed(constVoid);
-      }),
-      Effect.runPromise
+      Effect.catchAllCause(recoverFromAllCause(constVoid)),
+      Effect.runPromise,
+      (post) => ({
+        post: (message): void => {
+          post.then(apply(message));
+        },
+      })
     );
-
-    return {
-      post: (message): void => {
-        post.then((post) => post(message));
-      },
-    };
   };

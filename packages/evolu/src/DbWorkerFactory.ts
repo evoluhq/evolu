@@ -5,11 +5,14 @@ import * as DbWorker from "./DbWorker.js";
 const createOpfsDbWorker: DbWorker.CreateDbWorker = (onMessage) => {
   const dbWorker = new Worker(new URL("./DbWorker.worker.js", import.meta.url));
 
-  dbWorker.onmessage = (e: MessageEvent<DbWorker.Output>): void =>
+  dbWorker.onmessage = (e: MessageEvent<DbWorker.Output>): void => {
     onMessage(e.data);
+  };
 
   return {
-    post: (message) => dbWorker.postMessage(message),
+    post: (message): void => {
+      dbWorker.postMessage(message);
+    },
   };
 };
 
