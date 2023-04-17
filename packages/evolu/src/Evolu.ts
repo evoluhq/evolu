@@ -166,7 +166,7 @@ const createMutate = <S extends Schema.Schema>({
   getOwner: Promise<Owner.Owner>;
   setOnComplete: (
     id: DbWorker.OnCompleteId,
-    callback: DbWorker.OnComplete
+    onComplete: DbWorker.OnComplete
   ) => void;
   dbWorker: DbWorker.DbWorker;
   getSubscribedQueries: () => ReadonlyArray<Db.QueryString>;
@@ -243,16 +243,16 @@ export const createEvolu = <From, To extends Schema.Schema>(
   const subscribedQueries = new Map<Db.QueryString, number>();
   const onCompletes = new Map<DbWorker.OnCompleteId, DbWorker.OnComplete>();
 
-  const dbWorker = DbWorkerFactory.createDbWorker((output) => {
-    switch (output._tag) {
+  const dbWorker = DbWorkerFactory.createDbWorker((message) => {
+    switch (message._tag) {
       case "onError":
-        errorStore.setState({ _tag: "EvoluError", error: output.error });
+        errorStore.setState({ _tag: "EvoluError", error: message.error });
         break;
       case "onOwner":
-        ownerStore.setState(output.owner);
+        ownerStore.setState(message.owner);
         break;
       case "onQuery":
-        onQuery(output);
+        onQuery(message);
         break;
       case "onReceive":
         queryIfAny(Array.from(subscribedQueries.keys()));
@@ -261,7 +261,7 @@ export const createEvolu = <From, To extends Schema.Schema>(
         Browser.reloadAllTabs(config.reloadUrl);
         break;
       default:
-        absurd(output);
+        absurd(message);
     }
   });
 
@@ -316,7 +316,7 @@ export const createEvolu = <From, To extends Schema.Schema>(
   dbWorker.post({
     _tag: "init",
     config,
-    tableDefinitions: Schema.schemaToTableDefinitions(schema),
+    tableDefinitions: Schema.schemaToTablesDefinitions(schema),
   });
 
   Browser.init(subscribedQueries, dbWorker);

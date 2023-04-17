@@ -1,6 +1,6 @@
 import * as Brand from "@effect/data/Brand";
 import * as Either from "@effect/data/Either";
-import { absurd, flow, pipe } from "@effect/data/Function";
+import { absurd, constVoid, flow, pipe } from "@effect/data/Function";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as Effect from "@effect/io/Effect";
 import * as Cause from "@effect/io/Cause";
@@ -26,11 +26,11 @@ export type Input =
   | {
       readonly _tag: "init";
       readonly config: Config.Config;
-      readonly tableDefinitions: Schema.TableDefinitions;
+      readonly tableDefinitions: Schema.TablesDefinitions;
     }
   | {
       readonly _tag: "updateDbSchema";
-      readonly tableDefinitions: Schema.TableDefinitions;
+      readonly tableDefinitions: Schema.TablesDefinitions;
     }
   | {
       readonly _tag: "send";
@@ -72,20 +72,20 @@ export type Output =
   | { readonly _tag: "onResetOrRestore" };
 
 export interface DbWorker {
-  readonly post: (input: Input) => void;
+  readonly post: (message: Input) => void;
 }
 
-export type CreateDbWorker = (callback: (output: Output) => void) => DbWorker;
+export type CreateDbWorker = (onMessage: (message: Output) => void) => DbWorker;
 
-export const create =
-  (db: Effect.Effect<never, never, Db.Db>): CreateDbWorker =>
-  (callback) => {
+export const createCreateDbWorker =
+  (createDb: Effect.Effect<never, never, Db.Db>): CreateDbWorker =>
+  (onMessage) => {
     let skipAllBecauseBrowserIsGoingToBeReloaded = false;
 
-    const postOutput = (output: Output): void => {
-      if (output._tag === "onResetOrRestore")
+    const postOutput = (message: Output): void => {
+      if (message._tag === "onResetOrRestore")
         skipAllBecauseBrowserIsGoingToBeReloaded = true;
-      callback(output);
+      onMessage(message);
     };
 
     const handleError = flow(UnknownError.unknownError, (error) =>
@@ -94,27 +94,34 @@ export const create =
 
     // const syncWorker = new Worker(new URL("./Sync.worker.js", import.meta.url));
 
-    const dbAndOwner = pipe(
-      db,
-      Effect.bindTo("db"),
-      Effect.bind("owner", ({ db }) =>
-        Effect.provideService(Db.init(), Db.Db, db)
-      ),
+    const post = pipe(
+      Effect.gen(function* ($) {
+        const db = yield* $(createDb);
+        const owner = yield* $(Effect.provideService(Db.init(), Db.Db, db));
+
+        console.log(db, owner);
+
+        // hmm, ale co ten config?
+        // na zaklade message vyberu effect
+        // a pustim ho v tom streamu
+
+        return (_message: Input) => {
+          //
+        };
+      }),
       Effect.catchAllCause((cause) => {
         pipe(
           Cause.failureOrCause(cause),
           Either.match(absurd, flow(Cause.squash, handleError))
         );
-        return Effect.succeed(null);
+        return Effect.succeed(constVoid);
       }),
       Effect.runPromise
     );
 
     return {
-      post: (_input): void => {
-        dbAndOwner.then((_dbAndOwner) => {
-          //
-        });
+      post: (message): void => {
+        post.then((post) => post(message));
       },
     };
   };

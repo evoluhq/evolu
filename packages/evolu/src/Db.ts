@@ -41,7 +41,6 @@ export const queryFromString = (s: QueryString): Query =>
 
 export interface Db {
   readonly exec: (arg: string | Query) => Effect.Effect<never, never, Rows>;
-
   readonly changes: () => Effect.Effect<never, never, number>;
 }
 

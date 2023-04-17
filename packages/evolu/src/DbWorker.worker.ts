@@ -1,9 +1,9 @@
 import * as DbWorker from "./DbWorker.js";
 import * as Sqlite from "./Sqlite.web.js";
 
-const dbWorker = DbWorker.create(Sqlite.create("opfs"))((output) =>
-  postMessage(output)
+const dbWorker = DbWorker.createCreateDbWorker(Sqlite.create("opfs"))(
+  (message) => postMessage(message)
 );
 
-onmessage = ({ data: input }: MessageEvent<DbWorker.Input>): void =>
-  dbWorker.post(input);
+onmessage = ({ data: message }: MessageEvent<DbWorker.Input>): void =>
+  dbWorker.post(message);

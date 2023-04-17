@@ -244,10 +244,10 @@ const protobufToValue = (
 //     )
 //   );
 
-const postOutput = (output: Output): void => postMessage(output);
+const postOutput = (message: Output): void => postMessage(message);
 
-// onmessage = ({ data: input }: MessageEvent<Input>): void =>
-//   dbWorker.post(input);
+// onmessage = ({ data: message }: MessageEvent<Input>): void =>
+//   dbWorker.post(message);
 
 // onmessage = ({ data }: MessageEvent<SyncWorkerInput>): void =>
 //   requestSync(

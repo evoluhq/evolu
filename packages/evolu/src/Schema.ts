@@ -1,11 +1,14 @@
 import * as ReadonlyRecord from "@effect/data/ReadonlyRecord";
+import * as String from "@effect/data/String";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
+import * as Predicate from "@effect/data/Predicate";
 import { Simplify } from "kysely";
 import * as Model from "./Model.js";
 import * as Owner from "./Owner.js";
 import * as Db from "./Db.js";
 import * as S from "@effect/schema/Schema";
-import { pipe } from "@effect/data/Function";
+import { flow, pipe } from "@effect/data/Function";
+import * as Effect from "@effect/io/Effect";
 
 export type Schema = ReadonlyRecord.ReadonlyRecord<
   { id: Model.Id } & Record<string, Db.Value>
@@ -97,12 +100,12 @@ export interface TableDefinition {
   readonly columns: ReadonlyArray<string>;
 }
 
-export type TableDefinitions = ReadonlyArray<TableDefinition>;
+export type TablesDefinitions = ReadonlyArray<TableDefinition>;
 
-export const schemaToTableDefinitions = (
+export const schemaToTablesDefinitions = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   schema: S.Schema<any, any>
-): TableDefinitions =>
+): TablesDefinitions =>
   pipe(
     S.getPropertySignatures(schema),
     ReadonlyRecord.toEntries,
@@ -113,5 +116,74 @@ export const schemaToTableDefinitions = (
           commonColumns
         ),
       })
+    )
+  );
+
+const getExistingTables: Effect.Effect<
+  Db.Db,
+  never,
+  ReadonlyArray<string>
+> = pipe(
+  Effect.flatMap(Db.Db, (db) =>
+    db.exec(`select "name" from sqlite_schema where type='table'`)
+  ),
+  Effect.map(
+    flow(
+      ReadonlyArray.map((row) => row.name + ""),
+      ReadonlyArray.filter(Predicate.not(String.startsWith("__"))),
+      ReadonlyArray.uniq(String.Equivalence)
+    )
+  )
+);
+
+const updateTable = ({
+  name,
+  columns,
+}: TableDefinition): Effect.Effect<Db.Db, never, void> =>
+  Effect.gen(function* ($) {
+    const db = yield* $(Db.Db);
+    const sql = yield* $(
+      db.exec(`pragma table_info (${name})`),
+      Effect.map(ReadonlyArray.map((row) => row.name as string)),
+      Effect.map((existingColumns) =>
+        ReadonlyArray.difference(String.Equivalence)(existingColumns)(columns)
+      ),
+      Effect.map(
+        ReadonlyArray.map(
+          (newColumn) => `alter table "${name}" add column "${newColumn}" blob;`
+        )
+      ),
+      Effect.map(ReadonlyArray.join(""))
+    );
+    if (sql) yield* $(db.exec(sql));
+  });
+
+const createTable = ({
+  name,
+  columns,
+}: TableDefinition): Effect.Effect<Db.Db, never, void> =>
+  Effect.flatMap(Db.Db, (db) =>
+    db.exec(`
+      create table ${name} (
+        "id" text primary key,
+        ${columns
+          .filter((c) => c !== "id")
+          // "A column with affinity BLOB does not prefer one storage class over another
+          // and no attempt is made to coerce data from one storage class into another."
+          // https://www.sqlite.org/datatype3.html
+          .map((name) => `"${name}" blob`)
+          .join(", ")}
+      ) without rowid;
+    `)
+  );
+
+export const updateDbSchema = (
+  tablesDefinitions: TablesDefinitions
+): Effect.Effect<Db.Db, never, void> =>
+  Effect.flatMap(getExistingTables, (existingTables) =>
+    Effect.forEachDiscard(tablesDefinitions, (tableDefinition) =>
+      existingTables.includes(tableDefinition.name)
+        ? updateTable(tableDefinition)
+        : createTable(tableDefinition)
     )
   );
