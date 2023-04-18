@@ -1,10 +1,9 @@
-import * as Brand from "@effect/data/Brand";
+import * as Context from "@effect/data/Context";
 import * as Either from "@effect/data/Either";
 import { apply, constVoid, flow, pipe } from "@effect/data/Function";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as Cause from "@effect/io/Cause";
 import * as Effect from "@effect/io/Effect";
-import * as Context from "@effect/data/Context";
 import * as Config from "./Config.js";
 import * as Db from "./Db.js";
 import * as Diff from "./Diff.js";
@@ -17,10 +16,6 @@ import * as Schema from "./Schema.js";
 import * as SyncWorker from "./Sync.worker.js";
 import * as Timestamp from "./Timestamp.js";
 import * as UnknownError from "./UnknownError.js";
-
-export type OnCompleteId = string &
-  Brand.Brand<"Id"> &
-  Brand.Brand<"OnComplete">;
 
 export type OnComplete = () => void;
 
@@ -37,7 +32,7 @@ export type Input =
   | {
       readonly _tag: "send";
       readonly messages: ReadonlyArray.NonEmptyReadonlyArray<Message.NewMessage>;
-      readonly onCompleteIds: ReadonlyArray<OnCompleteId>;
+      readonly onCompleteIds: ReadonlyArray<Db.OnCompleteId>;
       readonly queries: ReadonlyArray<Db.QueryString>;
     }
   | {
@@ -68,7 +63,7 @@ export type Output =
   | {
       readonly _tag: "onQuery";
       readonly queriesPatches: ReadonlyArray<Diff.QueryPatches>;
-      readonly onCompleteIds: ReadonlyArray<OnCompleteId>;
+      readonly onCompleteIds: ReadonlyArray<Db.OnCompleteId>;
     }
   | { readonly _tag: "onReceive" }
   | { readonly _tag: "onResetOrRestore" };

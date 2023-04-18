@@ -56,7 +56,7 @@ export interface Timestamp {
 
 export type TimestampString = string & Brand.Brand<"TimestampString">;
 
-export const timestampToString = (t: Timestamp): TimestampString =>
+export const toString = (t: Timestamp): TimestampString =>
   [
     new Date(t.millis).toISOString(),
     t.counter.toString(16).toUpperCase().padStart(4, "0"),
@@ -64,7 +64,7 @@ export const timestampToString = (t: Timestamp): TimestampString =>
   ].join("-") as TimestampString;
 
 // TODO: Use Schema.
-export const unsafeTimestampFromString = (s: TimestampString): Timestamp =>
+export const unsafeFromString = (s: TimestampString): Timestamp =>
   pipe(s.split("-"), (a) => ({
     millis: Date.parse(a.slice(0, 3).join("-")).valueOf() as Millis,
     counter: parseInt(a[3], 16) as Counter,
@@ -74,7 +74,7 @@ export const unsafeTimestampFromString = (s: TimestampString): Timestamp =>
 export type TimestampHash = number & Brand.Brand<"TimestampHash">;
 
 export const timestampToHash = (t: Timestamp): TimestampHash =>
-  pipe(timestampToString(t), murmurhash) as TimestampHash;
+  pipe(toString(t), murmurhash) as TimestampHash;
 
 export interface TimestampDuplicateNodeError {
   readonly _tag: "TimestampDuplicateNodeError";

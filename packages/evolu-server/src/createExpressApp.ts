@@ -96,8 +96,8 @@ const getMerkleTree = (
     ),
     Effect.map((row) =>
       row
-        ? MerkleTree.merkleTreeFromString(row.merkleTree)
-        : MerkleTree.createInitialMerkleTree()
+        ? MerkleTree.unsafeFromString(row.merkleTree)
+        : MerkleTree.createInitial()
     )
   );
 
@@ -124,7 +124,7 @@ const addMessages = ({
 
           if (result.changes === 1)
             merkleTree = MerkleTree.insertInto(
-              Timestamp.unsafeTimestampFromString(
+              Timestamp.unsafeFromString(
                 message.timestamp as Timestamp.TimestampString
               )
             )(merkleTree);
@@ -132,7 +132,7 @@ const addMessages = ({
 
         db.insertOrReplaceIntoMerkleTree.run(
           userId,
-          MerkleTree.merkleTreeToString(merkleTree)
+          MerkleTree.toString(merkleTree)
         );
 
         db.commit.run();
@@ -164,11 +164,7 @@ const getMessages = ({
       () =>
         db.selectMessages.all(
           userId,
-          pipe(
-            millis,
-            Timestamp.createSyncTimestamp,
-            Timestamp.timestampToString
-          ),
+          pipe(millis, Timestamp.createSyncTimestamp, Timestamp.toString),
           nodeId
         ) as ReadonlyArray<Protobuf.EncryptedCrdtMessage>,
       (error) => new SqliteError(error)
@@ -205,7 +201,7 @@ const sync = (
 
         const diff = MerkleTree.diff(
           merkleTree,
-          MerkleTree.merkleTreeFromString(
+          MerkleTree.unsafeFromString(
             syncRequest.merkleTree as MerkleTree.MerkleTreeString
           )
         );
@@ -246,7 +242,7 @@ export const createExpressApp = (): express.Express => {
           res.send(
             Buffer.from(
               Protobuf.SyncResponse.toBinary({
-                merkleTree: MerkleTree.merkleTreeToString(merkleTree),
+                merkleTree: MerkleTree.toString(merkleTree),
                 messages: messages as Array<Protobuf.EncryptedCrdtMessage>,
               })
             )

@@ -44,7 +44,7 @@ type RowsCache = ReadonlyMap<Db.QueryString, Db.RowsWithLoadingState>;
 const createOnQuery =
   (
     rowsCache: Store.Store<RowsCache>,
-    onCompletes: Map<DbWorker.OnCompleteId, DbWorker.OnComplete>
+    onCompletes: Map<Db.OnCompleteId, DbWorker.OnComplete>
   ) =>
   ({
     queriesPatches,
@@ -164,17 +164,14 @@ const createMutate = <S extends Schema.Schema>({
 }: {
   createId: typeof Model.createId;
   getOwner: Promise<Owner.Owner>;
-  setOnComplete: (
-    id: DbWorker.OnCompleteId,
-    onComplete: DbWorker.OnComplete
-  ) => void;
+  setOnComplete: (id: Db.OnCompleteId, onComplete: DbWorker.OnComplete) => void;
   dbWorker: DbWorker.DbWorker;
   getSubscribedQueries: () => ReadonlyArray<Db.QueryString>;
 }): Schema.Mutate<S> => {
   const queue: Array<
     [
       ReadonlyArray.NonEmptyReadonlyArray<Message.NewMessage>,
-      DbWorker.OnCompleteId | null
+      Db.OnCompleteId | null
     ]
   > = [];
 
@@ -184,7 +181,7 @@ const createMutate = <S extends Schema.Schema>({
 
     const now = Model.cast(new Date());
 
-    let onCompleteId: DbWorker.OnCompleteId | null = null;
+    let onCompleteId: Db.OnCompleteId | null = null;
     if (onComplete) {
       onCompleteId = createId<"OnComplete">();
       setOnComplete(onCompleteId, onComplete);
@@ -241,7 +238,7 @@ export const createEvolu = <From, To extends Schema.Schema>(
   const rowsCache = Store.create<RowsCache>(new Map());
 
   const subscribedQueries = new Map<Db.QueryString, number>();
-  const onCompletes = new Map<DbWorker.OnCompleteId, DbWorker.OnComplete>();
+  const onCompletes = new Map<Db.OnCompleteId, DbWorker.OnComplete>();
 
   const dbWorker = DbWorkerFactory.createDbWorker((message) => {
     switch (message._tag) {

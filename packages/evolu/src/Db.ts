@@ -10,6 +10,7 @@ import * as MerkleTree from "./MerkleTree.js";
 import * as Mnemonic from "./Mnemonic.js";
 import * as Owner from "./Owner.js";
 import * as Timestamp from "./Timestamp.js";
+import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 
 export type Value = null | string | number | Uint8Array;
 
@@ -46,6 +47,10 @@ export interface Db {
 
 export const Db = Context.Tag<Db>();
 
+export type OnCompleteId = string &
+  Brand.Brand<"Id"> &
+  Brand.Brand<"OnComplete">;
+
 const getOwner: Effect.Effect<Db, never, Owner.Owner> = pipe(
   Db,
   Effect.flatMap((db) =>
@@ -61,16 +66,8 @@ const createOwner = (
     Effect.allPar(
       Owner.createOwner(mnemonic),
       Db,
-      pipe(
-        Timestamp.createInitialTimestamp,
-        Effect.map(Timestamp.timestampToString)
-      ),
-      Effect.succeed(
-        pipe(
-          MerkleTree.createInitialMerkleTree(),
-          MerkleTree.merkleTreeToString
-        )
-      )
+      pipe(Timestamp.createInitialTimestamp, Effect.map(Timestamp.toString)),
+      Effect.succeed(pipe(MerkleTree.createInitial(), MerkleTree.toString))
     ),
     Effect.tap(([owner, db, timestamp, merkleTree]) =>
       db.exec({
@@ -162,3 +159,48 @@ export const init = (
     }),
     transaction
   );
+
+// export const query =
+//   ({
+//     queries,
+//     onCompleteIds = ReadonlyArray.empty(),
+//   }: {
+//     readonly queries: ReadonlyArray<QueryString>;
+//     readonly onCompleteIds?: ReadonlyArray<OnCompleteId>;
+//   }): ReaderTaskEither<
+//     DbEnv & RowsCacheEnv & PostDbWorkerOutputEnv,
+//     UnknownError,
+//     void
+//   > =>
+//   ({ db, rowsCache, postDbWorkerOutput }) =>
+//     pipe(
+//       queries,
+//       taskEither.traverseSeqArray((query) =>
+//         pipe(
+//           queryFromString(query),
+//           db.execQuery,
+//           taskEither.map((rows) => [query, rows] as const)
+//         )
+//       ),
+//       taskEither.map((queriesRows) => {
+//         const previous = rowsCache.read();
+//         rowsCache.write(new Map([...previous, ...queriesRows]))();
+
+//         const queriesPatches = pipe(
+//           queriesRows,
+//           readonlyArray.map(
+//             ([query, rows]): QueryPatches => ({
+//               query,
+//               patches: createPatches(previous.get(query), rows),
+//             })
+//           )
+//         );
+
+//         if (queriesPatches.length > 0 || onCompleteIds.length > 0)
+//           postDbWorkerOutput({
+//             type: "onQuery",
+//             queriesPatches,
+//             onCompleteIds,
+//           })();
+//       })
+//     );

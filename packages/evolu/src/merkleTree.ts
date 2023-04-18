@@ -19,13 +19,13 @@ export interface MerkleTree {
 
 export type MerkleTreeString = string & Brand.Brand<"MerkleTreeString">;
 
-export const merkleTreeToString = (m: MerkleTree): MerkleTreeString =>
+export const toString = (m: MerkleTree): MerkleTreeString =>
   JSON.stringify(m) as MerkleTreeString;
 
-export const merkleTreeFromString = (m: MerkleTreeString): MerkleTree =>
+export const unsafeFromString = (m: MerkleTreeString): MerkleTree =>
   JSON.parse(m) as MerkleTree;
 
-export const createInitialMerkleTree = (): MerkleTree => Object.create(null);
+export const createInitial = (): MerkleTree => Object.create(null);
 
 const insertKey = ({
   tree,
