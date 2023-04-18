@@ -39,12 +39,10 @@ interface Evolu<S extends Schema.Schema = Schema.Schema> {
   readonly ownerActions: Owner.Actions;
 }
 
-type RowsCache = ReadonlyMap<Db.QueryString, Db.RowsWithLoadingState>;
-
 const createOnQuery =
   (
-    rowsCache: Store.Store<RowsCache>,
-    onCompletes: Map<Db.OnCompleteId, DbWorker.OnComplete>
+    rowsCache: Store.Store<Db.RowsCache>,
+    onCompletes: Map<DbWorker.OnCompleteId, DbWorker.OnComplete>
   ) =>
   ({
     queriesPatches,
@@ -93,7 +91,7 @@ const createOnQuery =
   };
 
 const createSubscribeRowsWithLoadingState = (
-  rowsCache: Store.Store<RowsCache>,
+  rowsCache: Store.Store<Db.RowsCache>,
   subscribedQueries: Map<Db.QueryString, number>,
   queryIfAny: (queries: ReadonlyArray<Db.QueryString>) => void
 ): Evolu["subscribeRowsWithLoadingState"] => {
@@ -164,14 +162,17 @@ const createMutate = <S extends Schema.Schema>({
 }: {
   createId: typeof Model.createId;
   getOwner: Promise<Owner.Owner>;
-  setOnComplete: (id: Db.OnCompleteId, onComplete: DbWorker.OnComplete) => void;
+  setOnComplete: (
+    id: DbWorker.OnCompleteId,
+    onComplete: DbWorker.OnComplete
+  ) => void;
   dbWorker: DbWorker.DbWorker;
   getSubscribedQueries: () => ReadonlyArray<Db.QueryString>;
 }): Schema.Mutate<S> => {
   const queue: Array<
     [
       ReadonlyArray.NonEmptyReadonlyArray<Message.NewMessage>,
-      Db.OnCompleteId | null
+      DbWorker.OnCompleteId | null
     ]
   > = [];
 
@@ -181,7 +182,7 @@ const createMutate = <S extends Schema.Schema>({
 
     const now = Model.cast(new Date());
 
-    let onCompleteId: Db.OnCompleteId | null = null;
+    let onCompleteId: DbWorker.OnCompleteId | null = null;
     if (onComplete) {
       onCompleteId = createId<"OnComplete">();
       setOnComplete(onCompleteId, onComplete);
@@ -235,10 +236,10 @@ export const createEvolu = <From, To extends Schema.Schema>(
 
   const errorStore = Store.create<Error.EvoluError | null>(null);
   const ownerStore = Store.create<Owner.Owner | null>(null);
-  const rowsCache = Store.create<RowsCache>(new Map());
+  const rowsCache = Store.create<Db.RowsCache>(new Map());
 
   const subscribedQueries = new Map<Db.QueryString, number>();
-  const onCompletes = new Map<Db.OnCompleteId, DbWorker.OnComplete>();
+  const onCompletes = new Map<DbWorker.OnCompleteId, DbWorker.OnComplete>();
 
   const dbWorker = DbWorkerFactory.createDbWorker((message) => {
     switch (message._tag) {

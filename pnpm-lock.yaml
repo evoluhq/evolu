@@ -8,13 +8,13 @@ importers:
       eslint: ^8.38.0
       eslint-config-evolu: workspace:0.0.2
       prettier: ^2.8.7
-      turbo: ^1.9.2
+      turbo: ^1.9.3
     devDependencies:
       '@changesets/cli': 2.26.1
       eslint: 8.38.0
       eslint-config-evolu: link:packages/eslint-config-evolu
       prettier: 2.8.7
-      turbo: 1.9.2
+      turbo: 1.9.3
 
   apps/server:
     specifiers:
@@ -85,8 +85,8 @@ importers:
       eslint: ^8.38.0
       eslint-config-next: ^13.3.0
       eslint-config-prettier: ^8.8.0
-      eslint-config-turbo: ^1.9.2
-      eslint-plugin-jsdoc: ^41.1.2
+      eslint-config-turbo: ^1.9.3
+      eslint-plugin-jsdoc: ^43.0.0
       eslint-plugin-node: ^11.1.0
       next: ^13.3.0
       react: ^18.2.0
@@ -97,8 +97,8 @@ importers:
       '@typescript-eslint/parser': 5.59.0_voubu7prgxjfsfbgx5d4sqnwiy
       eslint-config-next: 13.3.0_voubu7prgxjfsfbgx5d4sqnwiy
       eslint-config-prettier: 8.8.0_eslint@8.38.0
-      eslint-config-turbo: 1.9.2_eslint@8.38.0
-      eslint-plugin-jsdoc: 41.1.2_eslint@8.38.0
+      eslint-config-turbo: 1.9.3_eslint@8.38.0
+      eslint-plugin-jsdoc: 43.0.0_eslint@8.38.0
       eslint-plugin-node: 11.1.0_eslint@8.38.0
       next: 13.3.0_biqbaboplfbrettd7655fr4n2y
       react: 18.2.0
@@ -110,7 +110,7 @@ importers:
   packages/evolu:
     specifiers:
       '@effect/data': ^0.12.2
-      '@effect/io': ^0.22.1
+      '@effect/io': ^0.22.4
       '@effect/schema': ^0.13.1
       '@evolu/tsconfig': workspace:0.0.2
       '@noble/hashes': ^1.3.0
@@ -146,7 +146,7 @@ importers:
       nanoid: 4.0.2
     devDependencies:
       '@effect/data': 0.12.2
-      '@effect/io': 0.22.1
+      '@effect/io': 0.22.4
       '@effect/schema': 0.13.1
       '@evolu/tsconfig': link:../evolu-tsconfig
       '@protobuf-ts/plugin': 2.8.3
@@ -167,7 +167,7 @@ importers:
   packages/evolu-server:
     specifiers:
       '@effect/data': ^0.12.2
-      '@effect/io': ^0.22.1
+      '@effect/io': ^0.22.4
       '@evolu/tsconfig': workspace:0.0.2
       '@types/better-sqlite3': ^7.6.4
       '@types/body-parser': ^1.19.2
@@ -185,7 +185,7 @@ importers:
       vitest: ^0.30.1
     dependencies:
       '@effect/data': 0.12.2
-      '@effect/io': 0.22.1
+      '@effect/io': 0.22.4
       better-sqlite3: 8.3.0
       body-parser: 1.20.2
       cors: 2.8.5
@@ -434,8 +434,8 @@ packages:
     dependencies:
       '@effect/data': 0.12.2
 
-  /@effect/io/0.22.1:
-    resolution: {integrity: sha512-56LUngnx5mVchQ8cjXkGTMtgxwKdd/HUlDh613bKKX/oESWoGHvbXD/caK06Td3+cVCD+HMa5ma+z35+Qrhlrw==}
+  /@effect/io/0.22.4:
+    resolution: {integrity: sha512-WdZDvPaynYV/3QB7dm0Jnis3QIp1zrjaIGVEKpzGsradnxTFkdxqWBQvIADLQ5wBIZzYJ60aQmpuepnaAKDJAA==}
     dependencies:
       '@effect/data': 0.12.2
 
@@ -1819,7 +1819,7 @@ packages:
     hasBin: true
     dependencies:
       caniuse-lite: 1.0.30001480
-      electron-to-chromium: 1.4.365
+      electron-to-chromium: 1.4.367
       node-releases: 2.0.10
       update-browserslist-db: 1.0.11_browserslist@4.21.5
     dev: true
@@ -2336,8 +2336,8 @@ packages:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
     dev: false
 
-  /electron-to-chromium/1.4.365:
-    resolution: {integrity: sha512-FRHZO+1tUNO4TOPXmlxetkoaIY8uwHzd1kKopK/Gx2SKn1L47wJXWD44wxP5CGRyyP98z/c8e1eBzJrgPeiBOg==}
+  /electron-to-chromium/1.4.367:
+    resolution: {integrity: sha512-mNuDxb+HpLhPGUKrg0hSxbTjHWw8EziwkwlJNkFUj3W60ypigLDRVz04vU+VRsJPi8Gub+FDhYUpuTm9xiEwRQ==}
     dev: true
 
   /emoji-regex/8.0.0:
@@ -2540,13 +2540,13 @@ packages:
       eslint: 8.38.0
     dev: false
 
-  /eslint-config-turbo/1.9.2_eslint@8.38.0:
-    resolution: {integrity: sha512-2vQ1IHJ7VuN8Rgj4ZLowFLHVyUnDnxnDBwbLwCG14Scc74lp0ojL5S/S2vhHo+b1csP7LR5zeL0d9J6cwj0R7g==}
+  /eslint-config-turbo/1.9.3_eslint@8.38.0:
+    resolution: {integrity: sha512-QG6jxFQkrGSpQqlFKefPdtgUfr20EbU0s4tGGIuGFOcPuJEdsY6VYZpZUxNJvmMcTGqPgMyOPjAFBKhy/DPHLA==}
     peerDependencies:
       eslint: '>6.6.0'
     dependencies:
       eslint: 8.38.0
-      eslint-plugin-turbo: 1.9.2_eslint@8.38.0
+      eslint-plugin-turbo: 1.9.3_eslint@8.38.0
     dev: false
 
   /eslint-import-resolver-node/0.3.7:
@@ -2657,8 +2657,8 @@ packages:
       - supports-color
     dev: false
 
-  /eslint-plugin-jsdoc/41.1.2_eslint@8.38.0:
-    resolution: {integrity: sha512-MePJXdGiPW7AG06CU5GbKzYtKpoHwTq1lKijjq+RwL/cQkZtBZ59Zbv5Ep0RVxSMnq6242249/n+w4XrTZ1Afg==}
+  /eslint-plugin-jsdoc/43.0.0_eslint@8.38.0:
+    resolution: {integrity: sha512-Z1Ox1MAGcFV7ZNKe5eYIk4ALUtCjo1r4HBMoAYUs+bBKPcHro5A/YDDHOTsQ7zxcuUnm5R9rXCZTvGWcihwZpg==}
     engines: {node: ^14 || ^16 || ^17 || ^18 || ^19}
     peerDependencies:
       eslint: ^7.0.0 || ^8.0.0
@@ -2749,8 +2749,8 @@ packages:
       string.prototype.matchall: 4.0.8
     dev: false
 
-  /eslint-plugin-turbo/1.9.2_eslint@8.38.0:
-    resolution: {integrity: sha512-xxXyq3sAkAF3OB0yr+ybyutoD1kwL5430Esp2wQszE7QX9c8IUNbF46PcoE0hf/G/KBKH3o8UVmTRDV1XZcWXQ==}
+  /eslint-plugin-turbo/1.9.3_eslint@8.38.0:
+    resolution: {integrity: sha512-ZsRtksdzk3v+z5/I/K4E50E4lfZ7oYmLX395gkrUMBz4/spJlYbr+GC8hP9oVNLj9s5Pvnm9rLv/zoj5PVYaVw==}
     peerDependencies:
       eslint: '>6.6.0'
     dependencies:
@@ -3875,8 +3875,8 @@ packages:
       commander: 8.3.0
     dev: false
 
-  /katex/0.16.4:
-    resolution: {integrity: sha512-WudRKUj8yyBeVDI4aYMNxhx5Vhh2PjpzQw1GRu/LVGqL4m1AxwD1GcUp0IMbdJaf5zsjtj8ghP0DOQRYhroNkw==}
+  /katex/0.16.6:
+    resolution: {integrity: sha512-XVB7X8jEogjJ+OY+a9JdE+VOk9i7znela0HP6WaDbpB4sUh8ghrG0Ccluu2MA2tcJbFAViBC9aVXus2UvkEr8A==}
     hasBin: true
     dependencies:
       commander: 8.3.0
@@ -4367,7 +4367,7 @@ packages:
     resolution: {integrity: sha512-WH+fJkveMvM3ZN+deb/jT3UW623x8xO9ycfJNDC+UQXX+V72RO6hT9KqxA7c8XFwozAFJ7tufOeG+x/CVSXHUw==}
     dependencies:
       '@types/katex': 0.16.0
-      katex: 0.16.4
+      katex: 0.16.6
       micromark-factory-space: 1.0.0
       micromark-util-character: 1.1.0
       micromark-util-symbol: 1.0.1
@@ -4864,7 +4864,7 @@ packages:
       github-slugger: 2.0.0
       graceful-fs: 4.2.11
       gray-matter: 4.0.3
-      katex: 0.16.4
+      katex: 0.16.6
       lodash.get: 4.4.2
       next: 13.3.0_biqbaboplfbrettd7655fr4n2y
       next-mdx-remote: 4.4.1_biqbaboplfbrettd7655fr4n2y
@@ -5740,8 +5740,8 @@ packages:
     dependencies:
       glob: 7.2.3
 
-  /rollup/3.20.4:
-    resolution: {integrity: sha512-n7J4tuctZXUErM9Uc916httwqmTc63zzCr2+TLCiSCpfO/Xuk3g/marGN1IlRJZi+QF3XMYx75PxXRfZDVgaRw==}
+  /rollup/3.20.5:
+    resolution: {integrity: sha512-Mx6NE3nLPIP6a9ReV4dTPOYYmDiyarJNtSbc37Jx0jvh8SHySoFPgyZAp9aDP3LnYvaJOrz+fclcwq3oZDzlnA==}
     engines: {node: '>=14.18.0', npm: '>=8.0.0'}
     hasBin: true
     optionalDependencies:
@@ -6415,65 +6415,65 @@ packages:
       safe-buffer: 5.2.1
     dev: false
 
-  /turbo-darwin-64/1.9.2:
-    resolution: {integrity: sha512-SJq8LhrasKcsB5HOBJ5PT95F9pHwGd7yqmCtAY8ZECVzZVJcIyOcIZMbGec15SFVzKkAAYvVRAprBUtnZeTqkg==}
+  /turbo-darwin-64/1.9.3:
+    resolution: {integrity: sha512-0dFc2cWXl82kRE4Z+QqPHhbEFEpUZho1msHXHWbz5+PqLxn8FY0lEVOHkq5tgKNNEd5KnGyj33gC/bHhpZOk5g==}
     cpu: [x64]
     os: [darwin]
     requiresBuild: true
     dev: true
     optional: true
 
-  /turbo-darwin-arm64/1.9.2:
-    resolution: {integrity: sha512-qTNouzjmEDctwsLQr9ppefpV3//h9pDp2OePONd8bzqkH0qZcsJtLcGOA3W3wNaaahxdwZzEkOzso7kzNvFiXw==}
+  /turbo-darwin-arm64/1.9.3:
+    resolution: {integrity: sha512-1cYbjqLBA2zYE1nbf/qVnEkrHa4PkJJbLo7hnuMuGM0bPzh4+AnTNe98gELhqI1mkTWBu/XAEeF5u6dgz0jLNA==}
     cpu: [arm64]
     os: [darwin]
     requiresBuild: true
     dev: true
     optional: true
 
-  /turbo-linux-64/1.9.2:
-    resolution: {integrity: sha512-Xi5r1owPP5MrBAAsOwAqPjbUpD2/DIC/CtDAO/X+Hdeb0ZmpICzrcvHjsnp7f4yOc9JYuUH67RZQulTfU45evA==}
+  /turbo-linux-64/1.9.3:
+    resolution: {integrity: sha512-UuBPFefawEwpuxh5pM9Jqq3q4C8M0vYxVYlB3qea/nHQ80pxYq7ZcaLGEpb10SGnr3oMUUs1zZvkXWDNKCJb8Q==}
     cpu: [x64]
     os: [linux]
     requiresBuild: true
     dev: true
     optional: true
 
-  /turbo-linux-arm64/1.9.2:
-    resolution: {integrity: sha512-g5NtUDoMzRHMnG9w1coAjMvscfcvgZODeuSqjy+hgnf4nw6fvF+bQI+BNOE66OFgwVZ1iACUSCzqjD42i8pPiA==}
+  /turbo-linux-arm64/1.9.3:
+    resolution: {integrity: sha512-vUrNGa3hyDtRh9W0MkO+l1dzP8Co2gKnOVmlJQW0hdpOlWlIh22nHNGGlICg+xFa2f9j4PbQlWTsc22c019s8Q==}
     cpu: [arm64]
     os: [linux]
     requiresBuild: true
     dev: true
     optional: true
 
-  /turbo-windows-64/1.9.2:
-    resolution: {integrity: sha512-2Hc+D11ajpujxTMsRkUo5gSlyqXXS1chf2GaKU4G0zuzBsfdvMdVCbNrHyoe8glGODICi72r3XVXJKTf9259xQ==}
+  /turbo-windows-64/1.9.3:
+    resolution: {integrity: sha512-0BZ7YaHs6r+K4ksqWus1GKK3W45DuDqlmfjm/yuUbTEVc8szmMCs12vugU2Zi5GdrdJSYfoKfEJ/PeegSLIQGQ==}
     cpu: [x64]
     os: [win32]
     requiresBuild: true
     dev: true
     optional: true
 
-  /turbo-windows-arm64/1.9.2:
-    resolution: {integrity: sha512-QaenrrHhej0EbDUwR4MG/8FP/jrjXjTT8t+f3o402HtlneZpDEAVNdL2fdwUW6CeLE0xH0kO+ZmmT3KZ09mHCg==}
+  /turbo-windows-arm64/1.9.3:
+    resolution: {integrity: sha512-QJUYLSsxdXOsR1TquiOmLdAgtYcQ/RuSRpScGvnZb1hY0oLc7JWU0llkYB81wVtWs469y8H9O0cxbKwCZGR4RQ==}
     cpu: [arm64]
     os: [win32]
     requiresBuild: true
     dev: true
     optional: true
 
-  /turbo/1.9.2:
-    resolution: {integrity: sha512-L7Nuuq8hZRK9tMQj8zTE7SBs1j4WgM1Xv6Rwioq7ghPqUTR+UqdnAenEycAwU0XUZoKjxk94Z4VK+KzYccyD/w==}
+  /turbo/1.9.3:
+    resolution: {integrity: sha512-ID7mxmaLUPKG/hVkp+h0VuucB1U99RPCJD9cEuSEOdIPoSIuomcIClEJtKamUsdPLhLCud+BvapBNnhgh58Nzw==}
     hasBin: true
     requiresBuild: true
     optionalDependencies:
-      turbo-darwin-64: 1.9.2
-      turbo-darwin-arm64: 1.9.2
-      turbo-linux-64: 1.9.2
-      turbo-linux-arm64: 1.9.2
-      turbo-windows-64: 1.9.2
-      turbo-windows-arm64: 1.9.2
+      turbo-darwin-64: 1.9.3
+      turbo-darwin-arm64: 1.9.3
+      turbo-linux-64: 1.9.3
+      turbo-linux-arm64: 1.9.3
+      turbo-windows-64: 1.9.3
+      turbo-windows-arm64: 1.9.3
     dev: true
 
   /type-check/0.4.0:
@@ -6787,7 +6787,7 @@ packages:
       esbuild: 0.17.17
       postcss: 8.4.22
       resolve: 1.22.2
-      rollup: 3.20.4
+      rollup: 3.20.5
     optionalDependencies:
       fsevents: 2.3.2
     dev: true
