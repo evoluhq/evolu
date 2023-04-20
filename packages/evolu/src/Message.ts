@@ -3,7 +3,6 @@ import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as ReadonlyRecord from "@effect/data/ReadonlyRecord";
 import * as Db from "./Db.js";
 import * as Model from "./Model.js";
-import * as Owner from "./Owner.js";
 import * as Schema from "./Schema.js";
 import * as Timestamp from "./Timestamp.js";
 
@@ -22,7 +21,7 @@ export const createNewMessages = (
   table: string,
   row: Model.Id,
   values: ReadonlyRecord.ReadonlyRecord<Schema.AllowAutoCasting<Db.Value>>,
-  ownerId: Owner.Id,
+  ownerId: Db.Owner["id"],
   now: Model.SqliteDate,
   isInsert: boolean
 ): ReadonlyArray.NonEmptyReadonlyArray<NewMessage> =>

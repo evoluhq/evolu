@@ -3,14 +3,15 @@ import * as Either from "@effect/data/Either";
 import { apply, constVoid, flow, pipe } from "@effect/data/Function";
 import * as Cause from "@effect/io/Cause";
 import * as Effect from "@effect/io/Effect";
+import * as Ref from "@effect/io/Ref";
 import * as Db from "./Db.js";
 import * as DbWorker from "./DbWorker.js";
 import * as Error from "./Error.js";
+import * as Owner from "./Owner.js";
+import * as Query from "./Query.js";
 import * as Schema from "./Schema.js";
 import * as SyncWorker from "./Sync.worker.js";
 import * as UnknownError from "./UnknownError.js";
-import * as Query from "./Query.js";
-import * as Ref from "@effect/io/Ref";
 
 export const create =
   (createDb: Effect.Effect<never, never, Db.Db>): DbWorker.CreateDbWorker =>
@@ -45,7 +46,9 @@ export const create =
     return pipe(
       Effect.gen(function* ($) {
         const db = yield* $(createDb);
-        const owner = yield* $(Effect.provideService(Db.lazyInit(), Db.Db, db));
+        const owner = yield* $(
+          Effect.provideService(Owner.lazyInit(), Db.Db, db)
+        );
 
         onMessage({ _tag: "onOwner", owner });
 

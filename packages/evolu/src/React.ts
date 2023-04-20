@@ -204,7 +204,7 @@ interface Hooks<S extends Schema.Schema> {
   /**
    * `useOwner` React Hook returns `Owner`.
    */
-  readonly useOwner: () => Owner.Owner | null;
+  readonly useOwner: () => Db.Owner | null;
   /**
    * `useOwnerActions` React Hook returns `OwnerActions` that can be used to
    * reset `Owner` on the current device or restore `Owner` on a different one.

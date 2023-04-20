@@ -1,15 +1,25 @@
 import * as Brand from "@effect/data/Brand";
 import * as Context from "@effect/data/Context";
-import { pipe } from "@effect/data/Function";
 import * as ReadonlyRecord from "@effect/data/ReadonlyRecord";
 import * as Equivalence from "@effect/data/typeclass/Equivalence";
-import * as Cause from "@effect/io/Cause";
 import * as Effect from "@effect/io/Effect";
 import * as Exit from "@effect/io/Exit";
-import * as MerkleTree from "./MerkleTree.js";
 import * as Mnemonic from "./Mnemonic.js";
-import * as Owner from "./Owner.js";
-import * as Timestamp from "./Timestamp.js";
+import * as Model from "./Model.js";
+
+/**
+ * `Owner` represents the Evolu database owner. Evolu auto-generates `Owner`
+ * on the first run. `Owner` can be reset on the current device and restored
+ * on a different one.
+ */
+export interface Owner {
+  /** The `Mnemonic` associated with `Owner`. */
+  readonly mnemonic: Mnemonic.Mnemonic;
+  /** The unique identifier of `Owner` safely derived from its `Mnemonic`. */
+  readonly id: Model.Id & Brand.Brand<"Owner">;
+  /* The encryption key used by `Owner` derived from its `Mnemonic`. */
+  readonly encryptionKey: Uint8Array;
+}
 
 export type Value = null | string | number | Uint8Array;
 
@@ -21,6 +31,8 @@ export interface RowsWithLoadingState {
   readonly rows: Rows;
   readonly isLoading: boolean;
 }
+
+// Do query?
 
 // Like Kysely CompiledQuery but without a `query` prop.
 export interface Query {
@@ -47,87 +59,6 @@ export interface Db {
 }
 export const Db = Context.Tag<Db>();
 
-const getOwner: Effect.Effect<Db, never, Owner.Owner> = pipe(
-  Db,
-  Effect.flatMap((db) =>
-    db.exec(`select "mnemonic", "id", "encryptionKey" from __owner limit 1`)
-  ),
-  Effect.map(([owner]) => owner as unknown as Owner.Owner)
-);
-
-const init = (
-  mnemonic?: Mnemonic.Mnemonic
-): Effect.Effect<Db, never, Owner.Owner> =>
-  pipe(
-    Effect.allPar(
-      Owner.createOwner(mnemonic),
-      Db,
-      pipe(Timestamp.createInitialTimestamp, Effect.map(Timestamp.toString)),
-      Effect.succeed(pipe(MerkleTree.createInitial(), MerkleTree.toString))
-    ),
-    Effect.tap(([owner, db, timestamp, merkleTree]) =>
-      db.exec({
-        sql: `
-          create table __message (
-            "timestamp" blob primary key,
-            "table" blob,
-            "row" blob,
-            "column" blob,
-            "value" blob
-          ) without rowid;
-
-          create index index__message on __message (
-            "table",
-            "row",
-            "column",
-            "timestamp"
-          );
-
-          create table __clock (
-            "timestamp" blob,
-            "merkleTree" blob
-          );
-
-          insert into __clock ("timestamp", "merkleTree")
-          values ('${timestamp}', '${merkleTree}');
-
-          create table __owner (
-            "mnemonic" blob,
-            "id" blob,
-            "encryptionKey" blob
-          );
-
-          insert into __owner ("mnemonic", "id", "encryptionKey")
-          values (?, ?, ?);
-        `,
-        parameters: [owner.mnemonic, owner.id, owner.encryptionKey],
-      })
-    ),
-    Effect.map(([owner]) => owner)
-  );
-
-const migrateToSlip21: Effect.Effect<Db, never, Owner.Owner> = pipe(
-  Db,
-  Effect.flatMap((db) =>
-    Effect.gen(function* ($) {
-      const { mnemonic } = (yield* $(
-        db.exec(`select "mnemonic" from __owner limit 1`)
-      ))[0] as { mnemonic: Mnemonic.Mnemonic };
-      const owner = yield* $(Owner.createOwner(mnemonic));
-      yield* $(
-        db.exec({
-          sql: `
-            alter table "__owner" add column "encryptionKey" blob;
-            update "__owner" set "id" = ?, "encryptionKey" = ?;
-          `,
-          parameters: [owner.id, owner.encryptionKey],
-        })
-      );
-      return owner;
-    })
-  )
-);
-
 export const transaction = <R, E, A>(
   effect: Effect.Effect<R, E, A>
 ): Effect.Effect<Db | R, E, A> =>
@@ -140,17 +71,18 @@ export const transaction = <R, E, A>(
     )
   );
 
-export const lazyInit = (
-  mnemonic?: Mnemonic.Mnemonic
-): Effect.Effect<Db, never, Owner.Owner> =>
-  pipe(
-    getOwner,
-    Effect.catchAllCause((cause) => {
-      const pretty = Cause.pretty(cause);
-      if (pretty.includes("no such table: __owner")) return init(mnemonic);
-      if (pretty.includes("no such column: encryptionKey"))
-        return migrateToSlip21;
-      return Effect.failCause(cause);
-    }),
-    transaction
-  );
+export const deleteAllTables: Effect.Effect<Db, never, void> = Effect.gen(
+  function* ($) {
+    const db = yield* $(Db);
+    yield* $(
+      db.exec(`select name from sqlite_master where type='table'`),
+      Effect.flatMap(
+        // The dropped table is completely removed from the database schema and
+        // the disk file. The table can not be recovered.
+        // All indices and triggers associated with the table are also deleted.
+        // https://sqlite.org/lang_droptable.html
+        Effect.forEachDiscard(({ name }) => db.exec(`drop table ${name}`))
+      )
+    );
+  }
+);

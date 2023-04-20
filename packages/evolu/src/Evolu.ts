@@ -10,7 +10,6 @@ import * as Browser from "./Browser.js";
 import * as Config from "./Config.js";
 import * as Db from "./Db.js";
 import * as DbWorker from "./DbWorker.js";
-import * as DbWorkerFactory from "./DbWorkerFactory.js";
 import * as Diff from "./Diff.js";
 import * as Error from "./Error.js";
 import * as Message from "./Message.js";
@@ -25,7 +24,7 @@ interface Evolu<S extends Schema.Schema = Schema.Schema> {
   readonly getError: () => Error.EvoluError | null;
 
   readonly subscribeOwner: (listener: Store.Listener) => Store.Unsubscribe;
-  readonly getOwner: () => Owner.Owner | null;
+  readonly getOwner: () => Db.Owner | null;
 
   readonly subscribeRowsWithLoadingState: (
     queryString: Db.QueryString | null
@@ -38,6 +37,46 @@ interface Evolu<S extends Schema.Schema = Schema.Schema> {
 
   readonly ownerActions: Owner.Actions;
 }
+
+const createOpfsDbWorker: DbWorker.CreateDbWorker = (onMessage) => {
+  const dbWorker = new Worker(new URL("./DbWorker.worker.js", import.meta.url));
+
+  dbWorker.onmessage = (e: MessageEvent<DbWorker.Output>): void => {
+    onMessage(e.data);
+  };
+
+  return {
+    post: (message): void => {
+      dbWorker.postMessage(message);
+    },
+  };
+};
+
+const createLocalStorageDbWorker: DbWorker.CreateDbWorker = (onMessage) => {
+  const worker = import("./DbWorker.window.js");
+
+  let dbWorker: DbWorker.DbWorker | null = null;
+
+  return {
+    post: (message): void => {
+      worker.then(({ createDbWorker }) => {
+        if (dbWorker == null) dbWorker = createDbWorker(onMessage);
+        dbWorker.post(message);
+      });
+    },
+  };
+};
+
+const createNoOpServerDbWorker: DbWorker.CreateDbWorker = () => ({
+  post: constVoid,
+});
+
+// TODO: React Native, Electron.
+const createDbWorker: DbWorker.CreateDbWorker = Browser.isBrowser
+  ? Browser.features.opfs
+    ? createOpfsDbWorker
+    : createLocalStorageDbWorker
+  : createNoOpServerDbWorker;
 
 const createOnQuery =
   (
@@ -161,7 +200,7 @@ const createMutate = <S extends Schema.Schema>({
   getSubscribedQueries,
 }: {
   createId: typeof Model.createId;
-  getOwner: Promise<Owner.Owner>;
+  getOwner: Promise<Db.Owner>;
   setOnComplete: (
     id: DbWorker.OnCompleteId,
     onComplete: DbWorker.OnComplete
@@ -235,13 +274,13 @@ export const createEvolu = <From, To extends Schema.Schema>(
   const config = Config.create(optionalConfig);
 
   const errorStore = Store.create<Error.EvoluError | null>(null);
-  const ownerStore = Store.create<Owner.Owner | null>(null);
+  const ownerStore = Store.create<Db.Owner | null>(null);
   const rowsCache = Store.create<Db.RowsCache>(new Map());
 
   const subscribedQueries = new Map<Db.QueryString, number>();
   const onCompletes = new Map<DbWorker.OnCompleteId, DbWorker.OnComplete>();
 
-  const dbWorker = DbWorkerFactory.createDbWorker((message) => {
+  const dbWorker = createDbWorker((message) => {
     switch (message._tag) {
       case "onError":
         errorStore.setState({ _tag: "EvoluError", error: message.error });
@@ -280,7 +319,7 @@ export const createEvolu = <From, To extends Schema.Schema>(
     (query) => () =>
       (query && rowsCache.getState().get(query)) || null;
 
-  const getOwner = new Promise<Owner.Owner>((resolve) => {
+  const getOwner = new Promise<Db.Owner>((resolve) => {
     const unsubscribe = ownerStore.subscribe(() => {
       const owner = ownerStore.getState();
       if (!owner) return;

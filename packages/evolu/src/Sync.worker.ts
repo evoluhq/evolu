@@ -1,12 +1,11 @@
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
-import * as Message from "./Message.js";
 import * as Clock from "./Clock.js";
-import * as Timestamp from "./Timestamp.js";
-import * as MerkleTree from "./MerkleTree.js";
-import * as Owner from "./Owner.js";
 import * as Db from "./Db.js";
-import * as UnknownError from "./UnknownError.js";
+import * as MerkleTree from "./MerkleTree.js";
+import * as Message from "./Message.js";
 import * as Protobuf from "./Protobuf.js";
+import * as Timestamp from "./Timestamp.js";
+import * as UnknownError from "./UnknownError.js";
 
 /**
  * The client was unable to get in sync with the server.
@@ -21,7 +20,7 @@ export type Input = {
   readonly syncUrl: string;
   readonly messages: ReadonlyArray.NonEmptyReadonlyArray<Message.Message> | null;
   readonly clock: Clock.Clock;
-  readonly owner: Owner.Owner;
+  readonly owner: Db.Owner;
   readonly previousDiff: Timestamp.Millis | null;
 };
 

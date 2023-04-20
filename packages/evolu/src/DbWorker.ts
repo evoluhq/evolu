@@ -1,5 +1,7 @@
-import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as Brand from "@effect/data/Brand";
+import * as Context from "@effect/data/Context";
+import * as ReadonlyArray from "@effect/data/ReadonlyArray";
+import * as Ref from "@effect/io/Ref";
 import * as Config from "./Config.js";
 import * as Db from "./Db.js";
 import * as Diff from "./Diff.js";
@@ -7,11 +9,8 @@ import * as Error from "./Error.js";
 import * as MerkleTree from "./MerkleTree.js";
 import * as Message from "./Message.js";
 import * as Mnemonic from "./Mnemonic.js";
-import * as Owner from "./Owner.js";
 import * as Schema from "./Schema.js";
 import * as Timestamp from "./Timestamp.js";
-import * as Context from "@effect/data/Context";
-import * as Ref from "@effect/io/Ref";
 
 export type OnComplete = () => void;
 
@@ -59,7 +58,7 @@ export type Input =
 
 export type Output =
   | { readonly _tag: "onError"; readonly error: Error.Error }
-  | { readonly _tag: "onOwner"; readonly owner: Owner.Owner }
+  | { readonly _tag: "onOwner"; readonly owner: Db.Owner }
   | {
       readonly _tag: "onQuery";
       readonly queriesPatches: ReadonlyArray<Diff.QueryPatches>;
@@ -68,9 +67,11 @@ export type Output =
   | { readonly _tag: "onReceive" }
   | { readonly _tag: "onResetOrRestore" };
 
+// Consider if it shouldn't be an effect.
 export type OnMessage = (message: Output) => void;
 export const OnMessage = Context.Tag<OnMessage>();
 
+// Consider if it shouldn't be an effect.
 export type Post = (message: Input) => void;
 
 export interface DbWorker {

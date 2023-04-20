@@ -8,7 +8,6 @@ import * as S from "@effect/schema/Schema";
 import { Simplify } from "kysely";
 import * as Db from "./Db.js";
 import * as Model from "./Model.js";
-import * as Owner from "./Owner.js";
 
 export type Schema = ReadonlyRecord.ReadonlyRecord<
   { id: Model.Id } & Record<string, Db.Value>
@@ -20,7 +19,7 @@ type NullableExceptOfId<T> = {
 
 interface CommonColumns {
   readonly createdAt: Model.SqliteDate;
-  readonly createdBy: Owner.Id;
+  readonly createdBy: Db.Owner["id"];
   readonly updatedAt: Model.SqliteDate;
   readonly isDeleted: Model.SqliteBoolean;
 }

@@ -1,33 +1,44 @@
-import * as Brand from "@effect/data/Brand";
 import * as Either from "@effect/data/Either";
+import { pipe } from "@effect/data/Function";
+import * as Cause from "@effect/io/Cause";
 import * as Effect from "@effect/io/Effect";
 import { urlAlphabet } from "nanoid";
+import * as Db from "./Db.js";
+import * as DbWorker from "./DbWorker.js";
+import * as MerkleTree from "./MerkleTree.js";
 import * as Mnemonic from "./Mnemonic.js";
-import * as Model from "./Model.js";
-import { pipe } from "@effect/data/Function";
+import * as Timestamp from "./Timestamp.js";
 
-/**
- * The current user's {@link Model.Id} safely derived from its {@link Mnemonic}.
- */
-export type Id = Model.Id & Brand.Brand<"Owner">;
-
-/**
- * `Owner` represents the Evolu database owner. Evolu auto-generates `Owner`
- * on the first run. `Owner` can be reset on the current device and restored
- * on a different one.
- */
-export interface Owner {
-  /** The `Mnemonic` associated with `Owner`. */
-  readonly mnemonic: Mnemonic.Mnemonic;
-  /** The unique identifier of `Owner` derived from its `Mnemonic`. */
-  readonly id: Id;
-  /* The encryption key used by `Owner` derived from its `Mnemonic`. */
-  readonly encryptionKey: Uint8Array;
+export interface RestoreOwnerError {
+  readonly _tag: "RestoreOwnerError";
 }
 
-export const createOwner = (
+export interface Actions {
+  /**
+   * Use `reset` to delete all local data from the current device.
+   * After the deletion, Evolu reloads all browser tabs that use Evolu.
+   */
+  readonly reset: () => void;
+
+  /**
+   * Use `restore` to restore `Owner` with synced data on a different device.
+   */
+  readonly restore: (
+    mnemonic: string
+  ) => Promise<Either.Either<RestoreOwnerError, void>>;
+}
+
+const get: Effect.Effect<Db.Db, never, Db.Owner> = pipe(
+  Db.Db,
+  Effect.flatMap((db) =>
+    db.exec(`select "mnemonic", "id", "encryptionKey" from __owner limit 1`)
+  ),
+  Effect.map(([owner]) => owner as unknown as Db.Owner)
+);
+
+const createOwner = (
   mnemonic?: Mnemonic.Mnemonic
-): Effect.Effect<never, never, Owner> =>
+): Effect.Effect<never, never, Db.Owner> =>
   pipe(
     Effect.allPar(
       mnemonic ? Effect.succeed(mnemonic) : Mnemonic.generate(),
@@ -51,14 +62,14 @@ export const createOwner = (
           return m.slice(32, 64);
         };
 
-        const seedToId = (seed: Uint8Array): Id => {
+        const seedToId = (seed: Uint8Array): Db.Owner["id"] => {
           const key = slip21Derive(seed, ["Evolu", "Owner Id"]);
           // convert key to nanoid
           let id = "";
           for (let i = 0; i < 21; i++) {
             id += urlAlphabet[key[i] & 63];
           }
-          return id as Id;
+          return id as Db.Owner["id"];
         };
 
         const seedToEncryptionKey = (seed: Uint8Array): Uint8Array =>
@@ -70,27 +81,113 @@ export const createOwner = (
         const id = seedToId(seed);
         const encryptionKey = seedToEncryptionKey(seed);
 
-        const owner: Owner = { mnemonic, id, encryptionKey };
+        const owner: Db.Owner = { mnemonic, id, encryptionKey };
         return Effect.succeed(owner);
       }
     )
   );
 
-export interface RestoreOwnerError {
-  readonly _tag: "RestoreOwnerError";
-}
+const init = (
+  mnemonic?: Mnemonic.Mnemonic
+): Effect.Effect<Db.Db, never, Db.Owner> =>
+  pipe(
+    Effect.allPar(
+      createOwner(mnemonic),
+      Db.Db,
+      pipe(Timestamp.createInitialTimestamp, Effect.map(Timestamp.toString)),
+      Effect.succeed(pipe(MerkleTree.createInitial(), MerkleTree.toString))
+    ),
+    Effect.tap(([owner, db, timestamp, merkleTree]) =>
+      db.exec({
+        sql: `
+          create table __message (
+            "timestamp" blob primary key,
+            "table" blob,
+            "row" blob,
+            "column" blob,
+            "value" blob
+          ) without rowid;
 
-export interface Actions {
-  /**
-   * Use `reset` to delete all local data from the current device.
-   * After the deletion, Evolu reloads all browser tabs that use Evolu.
-   */
-  readonly reset: () => void;
+          create index index__message on __message (
+            "table",
+            "row",
+            "column",
+            "timestamp"
+          );
 
-  /**
-   * Use `restore` to restore `Owner` with synced data on a different device.
-   */
-  readonly restore: (
-    mnemonic: string
-  ) => Promise<Either.Either<RestoreOwnerError, void>>;
-}
+          create table __clock (
+            "timestamp" blob,
+            "merkleTree" blob
+          );
+
+          insert into __clock ("timestamp", "merkleTree")
+          values ('${timestamp}', '${merkleTree}');
+
+          create table __owner (
+            "mnemonic" blob,
+            "id" blob,
+            "encryptionKey" blob
+          );
+
+          insert into __owner ("mnemonic", "id", "encryptionKey")
+          values (?, ?, ?);
+        `,
+        parameters: [owner.mnemonic, owner.id, owner.encryptionKey],
+      })
+    ),
+    Effect.map(([owner]) => owner)
+  );
+
+const migrateToSlip21: Effect.Effect<Db.Db, never, Db.Owner> = pipe(
+  Db.Db,
+  Effect.flatMap((db) =>
+    Effect.gen(function* ($) {
+      const { mnemonic } = (yield* $(
+        db.exec(`select "mnemonic" from __owner limit 1`)
+      ))[0] as { mnemonic: Mnemonic.Mnemonic };
+      const owner = yield* $(createOwner(mnemonic));
+      yield* $(
+        db.exec({
+          sql: `
+            alter table "__owner" add column "encryptionKey" blob;
+            update "__owner" set "id" = ?, "encryptionKey" = ?;
+          `,
+          parameters: [owner.id, owner.encryptionKey],
+        })
+      );
+      return owner;
+    })
+  )
+);
+
+export const lazyInit = (
+  mnemonic?: Mnemonic.Mnemonic
+): Effect.Effect<Db.Db, never, Db.Owner> =>
+  pipe(
+    get,
+    Effect.catchAllCause((cause) => {
+      const pretty = Cause.pretty(cause);
+      if (pretty.includes("no such table: __owner")) return init(mnemonic);
+      if (pretty.includes("no such column: encryptionKey"))
+        return migrateToSlip21;
+      return Effect.failCause(cause);
+    }),
+    Db.transaction
+  );
+
+export const reset: Effect.Effect<Db.Db | DbWorker.OnMessage, never, void> =
+  Effect.gen(function* ($) {
+    yield* $(Db.deleteAllTables);
+    const onMessage = yield* $(DbWorker.OnMessage);
+    onMessage({ _tag: "onResetOrRestore" });
+  });
+
+export const restore = (
+  mnemonic: Mnemonic.Mnemonic
+): Effect.Effect<Db.Db | DbWorker.OnMessage, never, void> =>
+  Effect.gen(function* ($) {
+    yield* $(Db.deleteAllTables);
+    yield* $(lazyInit(mnemonic));
+    const onMessage = yield* $(DbWorker.OnMessage);
+    onMessage({ _tag: "onResetOrRestore" });
+  });
