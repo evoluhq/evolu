@@ -87,12 +87,8 @@ export const create =
                 case "sync":
                   // return sync(input.queries);
                   return Effect.succeed(undefined);
-                case "resetOwner":
-                  // return resetOwner;
-                  return Effect.succeed(undefined);
-                case "restoreOwner":
-                  // return restoreOwner(input.mnemonic);
-                  return Effect.succeed(undefined);
+                case "reset":
+                  return Owner.reset(input.mnemonic);
               }
             },
             flow(

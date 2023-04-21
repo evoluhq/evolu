@@ -339,12 +339,12 @@ export const createEvolu = <From, To extends Schema.Schema>(
   });
 
   const ownerActions: Owner.Actions = {
-    reset: () => dbWorker.post({ _tag: "resetOwner" }),
+    reset: () => dbWorker.post({ _tag: "reset" }),
     restore: flow(
       Mnemonic.parse,
       Effect.mapBoth(
         (): Owner.RestoreOwnerError => ({ _tag: "RestoreOwnerError" }),
-        (mnemonic) => dbWorker.post({ _tag: "restoreOwner", mnemonic })
+        (mnemonic) => dbWorker.post({ _tag: "reset", mnemonic })
       ),
       Effect.runPromiseEither
     ),

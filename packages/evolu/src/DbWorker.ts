@@ -49,11 +49,8 @@ export type Input =
       readonly queries: ReadonlyArray.NonEmptyReadonlyArray<Db.QueryString> | null;
     }
   | {
-      readonly _tag: "resetOwner";
-    }
-  | {
-      readonly _tag: "restoreOwner";
-      readonly mnemonic: Mnemonic.Mnemonic;
+      readonly _tag: "reset";
+      readonly mnemonic?: Mnemonic.Mnemonic;
     };
 
 export type Output =

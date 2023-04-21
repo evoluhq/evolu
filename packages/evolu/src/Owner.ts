@@ -175,19 +175,12 @@ export const lazyInit = (
     Db.transaction
   );
 
-export const reset: Effect.Effect<Db.Db | DbWorker.OnMessage, never, void> =
-  Effect.gen(function* ($) {
-    yield* $(Db.deleteAllTables);
-    const onMessage = yield* $(DbWorker.OnMessage);
-    onMessage({ _tag: "onResetOrRestore" });
-  });
-
-export const restore = (
-  mnemonic: Mnemonic.Mnemonic
+export const reset = (
+  mnemonic?: Mnemonic.Mnemonic
 ): Effect.Effect<Db.Db | DbWorker.OnMessage, never, void> =>
   Effect.gen(function* ($) {
     yield* $(Db.deleteAllTables);
-    yield* $(lazyInit(mnemonic));
+    if (mnemonic) yield* $(lazyInit(mnemonic));
     const onMessage = yield* $(DbWorker.OnMessage);
     onMessage({ _tag: "onResetOrRestore" });
   });

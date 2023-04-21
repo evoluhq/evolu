@@ -5,6 +5,7 @@ import * as Db from "./Db.js";
 import * as Model from "./Model.js";
 import * as Schema from "./Schema.js";
 import * as Timestamp from "./Timestamp.js";
+// import * as DbWorker from "./DbWorker.js";
 
 export interface NewMessage {
   readonly table: string;
@@ -50,3 +51,108 @@ export const createNewMessages = (
       ([column, value]): NewMessage => ({ table, row, column, value })
     )
   );
+
+//   const sendMessages =
+//   (timestamp: Timestamp) =>
+//   (
+//     messages: ReadonlyNonEmptyArray<NewCrdtMessage>
+//   ): ReaderEither<
+//     TimeEnv & ConfigEnv,
+//     TimestampDriftError | TimestampCounterOverflowError,
+//     {
+//       readonly messages: ReadonlyNonEmptyArray<CrdtMessage>;
+//       readonly timestamp: Timestamp;
+//     }
+//   > =>
+//     pipe(
+//       messages,
+//       readerEither.traverseReadonlyNonEmptyArrayWithIndex((i, message) =>
+//         pipe(
+//           sendTimestamp(timestamp),
+//           readerEither.map((t): CrdtMessage => {
+//             timestamp = t;
+//             return {
+//               timestamp: timestampToString(t),
+//               table: message.table,
+//               row: message.row,
+//               column: message.column,
+//               value: message.value,
+//             };
+//           })
+//         )
+//       ),
+//       readerEither.map((messages) => ({ messages, timestamp }))
+//     );
+
+// const callSync =
+//   ({
+//     messages,
+//     clock,
+//   }: {
+//     readonly messages: ReadonlyNonEmptyArray<CrdtMessage>;
+//     readonly clock: CrdtClock;
+//   }): ReaderTask<PostSyncWorkerInputEnv & OwnerEnv & ConfigEnv, void> =>
+//   ({ postSyncWorkerInput, owner, config }) =>
+//     task.fromIO(
+//       postSyncWorkerInput({
+//         syncUrl: config.syncUrl,
+//         messages: option.some(messages),
+//         clock,
+//         owner,
+//         previousDiff: option.none,
+//       })
+//     );
+
+// export const send = ({
+//   // messages,
+//   // onCompleteIds,
+//   // queries,
+// }: {
+//   // messages: ReadonlyArray.NonEmptyReadonlyArray<NewMessage>;
+//   // onCompleteIds: ReadonlyArray<DbWorker.OnCompleteId>;
+//   // queries: ReadonlyArray<Db.QueryString>;
+// }) => {
+//   throw "";
+// };
+
+// export const send = ({
+//   messages,
+//   onCompleteIds,
+//   queries,
+// }: {
+//   readonly messages: ReadonlyNonEmptyArray<NewCrdtMessage>;
+//   readonly onCompleteIds: readonly OnCompleteId[];
+//   readonly queries: readonly QueryString[];
+// }): ReaderTaskEither<
+//   DbEnv &
+//     OwnerEnv &
+//     RowsCacheEnv &
+//     PostDbWorkerOutputEnv &
+//     PostSyncWorkerInputEnv &
+//     TimeEnv &
+//     ConfigEnv,
+//   UnknownError | TimestampDriftError | TimestampCounterOverflowError,
+//   void
+// > =>
+//   pipe(
+//     readClock,
+//     readerTaskEither.chainW((clock) =>
+//       pipe(
+//         messages,
+//         sendMessages(clock.timestamp),
+//         readerTaskEither.fromReaderEither,
+//         readerTaskEither.chainW(({ messages, timestamp }) =>
+//           pipe(
+//             applyMessages({ merkleTree: clock.merkleTree, messages }),
+//             readerTaskEither.map((merkleTree) => ({
+//               messages,
+//               clock: { merkleTree, timestamp },
+//             }))
+//           )
+//         )
+//       )
+//     ),
+//     readerTaskEither.chainFirstW(({ clock }) => updateClock(clock)),
+//     readerTaskEither.chainReaderTaskKW(callSync),
+//     readerTaskEither.chainW(() => query({ queries, onCompleteIds }))
+//   );
