@@ -2,8 +2,7 @@ import { constFalse, flow, pipe } from "@effect/data/Function";
 import * as Option from "@effect/data/Option";
 import * as Predicate from "@effect/data/Predicate";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
-import * as Db from "./Db.js";
-import * as DbWorker from "./DbWorker.js";
+import { DbWorker, QueryString } from "./Types.js";
 
 export const isBrowser = typeof window !== "undefined" && !("Deno" in window);
 
@@ -23,7 +22,7 @@ const isFirefoxWithOpfs = (): boolean => {
   return Number(matches[1]) >= 111;
 };
 
-export const features = {
+export const browserFeatures = {
   opfs: isBrowser && (isChromeWithOpfs() || isFirefoxWithOpfs()),
 };
 
@@ -34,9 +33,9 @@ export const reloadAllTabs = (reloadUrl: string): void => {
   location.assign(reloadUrl);
 };
 
-export const init = (
-  subscribedQueries: ReadonlyMap<Db.QueryString, number>,
-  dbWorker: DbWorker.DbWorker
+export const browserInit = (
+  subscribedQueries: ReadonlyMap<QueryString, number>,
+  dbWorker: DbWorker
 ): void => {
   if (!isBrowser) return;
 
@@ -74,6 +73,7 @@ export const requestSync = (sync: () => Promise<void>): void => {
   navigator.locks.request(syncLockName, sync);
 };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const hasLock: Predicate.Predicate<LockInfo[] | undefined> = flow(
   Option.fromNullable,
   Option.map(ReadonlyArray.some((a) => a.name === syncLockName)),

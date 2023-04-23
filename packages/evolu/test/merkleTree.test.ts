@@ -8,7 +8,7 @@ import {
   MerkleTree,
 } from "../src/to-migrate/merkleTree.js";
 import {
-  timestampFromString,
+  unsafeTimestampFromString,
   TimestampString,
 } from "../src/to-migrate/timestamp.js";
 import { messages1 } from "./fixtures/messages.js";
@@ -70,7 +70,7 @@ test("diffMerkleTrees", () => {
 test("createMerkleWithRandomOrder", () => {
   const createMerkleWithRandomOrder = (): MerkleTree =>
     arrayShuffle(messages1).reduce((a, b) => {
-      const t = timestampFromString(b[0] as TimestampString);
+      const t = unsafeTimestampFromString(b[0] as TimestampString);
       return insertIntoMerkleTree(t)(a);
     }, initialMerkleTree);
 

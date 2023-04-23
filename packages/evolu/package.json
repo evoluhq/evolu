@@ -25,6 +25,10 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
     },
+    "./Types": {
+      "types": "./dist/src/Types.d.ts",
+      "import": "./dist/src/Types.js"
+    },
     "./Timestamp": {
       "types": "./dist/src/Timestamp.d.ts",
       "import": "./dist/src/Timestamp.js"

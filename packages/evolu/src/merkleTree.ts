@@ -1,31 +1,22 @@
-import * as Brand from "@effect/data/Brand";
 import * as Option from "@effect/data/Option";
+import { timestampToHash } from "./Timestamp.js";
 import {
+  MerkleTree,
+  MerkleTreeString,
   Millis,
   Timestamp,
   TimestampHash,
-  timestampToHash,
-} from "./Timestamp.js";
+} from "./Types.js";
 
 // https://github.com/clintharris/crdt-example-app_annotated/blob/master/shared/merkle.js
 
-// TODO: Add Schema and use it in Evolu Server.
-export interface MerkleTree {
-  readonly hash?: TimestampHash;
-  readonly "0"?: MerkleTree;
-  readonly "1"?: MerkleTree;
-  readonly "2"?: MerkleTree;
-}
-
-export type MerkleTreeString = string & Brand.Brand<"MerkleTreeString">;
-
-export const toString = (m: MerkleTree): MerkleTreeString =>
+export const merkleTreeToString = (m: MerkleTree): MerkleTreeString =>
   JSON.stringify(m) as MerkleTreeString;
 
-export const unsafeFromString = (m: MerkleTreeString): MerkleTree =>
+export const unsafeMerkleTreeFromString = (m: MerkleTreeString): MerkleTree =>
   JSON.parse(m) as MerkleTree;
 
-export const createInitial = (): MerkleTree => Object.create(null);
+export const createInitialMerkleTree = (): MerkleTree => Object.create(null);
 
 const insertKey = ({
   tree,
@@ -50,7 +41,7 @@ const insertKey = ({
   };
 };
 
-export const insertInto =
+export const insertIntoMerkleTree =
   (timestamp: Timestamp) =>
   (tree: MerkleTree): MerkleTree => {
     const key = Number(Math.floor(timestamp.millis / 1000 / 60)).toString(3);
@@ -79,7 +70,7 @@ const keyToTimestamp = (key: string): Millis => {
   return (parseInt(fullkey, 3) * 1000 * 60) as Millis;
 };
 
-export const diff = (
+export const diffMerkleTrees = (
   tree1: MerkleTree,
   tree2: MerkleTree
 ): Option.Option<Millis> => {

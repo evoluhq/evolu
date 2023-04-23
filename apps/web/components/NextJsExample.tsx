@@ -314,7 +314,7 @@ const NotificationBar: FC = () => {
 
   return (
     <div>
-      <p>{`Error: ${JSON.stringify(evoluError.error)}`}</p>
+      <p>{`Error: ${JSON.stringify(evoluError)}`}</p>
       <Button title="Close" onClick={(): void => setShown(false)} />
     </div>
   );

@@ -1,13 +1,6 @@
-export type Unsubscribe = () => void;
-export type Listener = () => void;
+import { Listener, Store } from "./Types.js";
 
-export interface Store<T> {
-  readonly subscribe: (listener: Listener) => Unsubscribe;
-  readonly setState: (state: T) => void;
-  readonly getState: () => T;
-}
-
-export const create = <T>(initialState: T): Store<T> => {
+export const createStore = <T>(initialState: T): Store<T> => {
   let currentState = initialState;
   const listeners = new Set<Listener>();
 

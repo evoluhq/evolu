@@ -26,7 +26,7 @@ import {
   TimestampCounterOverflowError,
   TimestampDriftError,
   TimestampDuplicateNodeError,
-  timestampFromString,
+  unsafeTimestampFromString,
   timestampToString,
 } from "./timestamp.js";
 import {
@@ -59,7 +59,10 @@ const receiveMessages =
       messages,
       readerEither.traverseArray((message) =>
         pipe(
-          receiveTimestamp(timestamp, timestampFromString(message.timestamp)),
+          receiveTimestamp(
+            timestamp,
+            unsafeTimestampFromString(message.timestamp)
+          ),
           readerEither.map((t) => (timestamp = t))
         )
       ),

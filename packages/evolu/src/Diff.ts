@@ -1,26 +1,8 @@
-import * as Db from "./Db.js";
-
-export interface ReplaceAllPatch {
-  readonly op: "replaceAll";
-  readonly value: Db.Rows;
-}
-
-export interface ReplaceAtPatch {
-  readonly op: "replaceAt";
-  readonly index: number;
-  readonly value: Db.Row;
-}
-
-export type Patch = ReplaceAllPatch | ReplaceAtPatch;
-
-export interface QueryPatches {
-  readonly query: Db.QueryString;
-  readonly patches: ReadonlyArray<Patch>;
-}
+import { Patch, ReplaceAtPatch, Rows } from "./Types.js";
 
 export const applyPatches =
   (patches: ReadonlyArray<Patch>) =>
-  (current: Db.Rows): Db.Rows =>
+  (current: Rows): Rows =>
     patches.reduce((a, patch) => {
       switch (patch.op) {
         case "replaceAll":
@@ -40,8 +22,8 @@ export const applyPatches =
 // to compute many detailed patches. We will only implement a logic
 // a developer would implement manually, if necessary.
 export const createPatches = (
-  previous: Db.Rows | undefined,
-  next: Db.Rows
+  previous: Rows | undefined,
+  next: Rows
 ): readonly Patch[] => {
   if (previous === undefined) return [{ op: "replaceAll", value: next }];
   if (previous.length === 0 && next.length === 0) return [];

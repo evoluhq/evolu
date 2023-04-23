@@ -1,4 +1,3 @@
-export type { Owner } from "./Db.js";
-export type { EvoluError } from "./Error.js";
 export * from "./Model.js";
 export * from "./React.js";
+export type { EvoluError, Owner } from "./Types.js";

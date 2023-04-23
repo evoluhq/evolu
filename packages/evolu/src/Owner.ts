@@ -1,47 +1,25 @@
-import * as Either from "@effect/data/Either";
 import { pipe } from "@effect/data/Function";
 import * as Cause from "@effect/io/Cause";
 import * as Effect from "@effect/io/Effect";
 import { urlAlphabet } from "nanoid";
-import * as Db from "./Db.js";
-import * as DbWorker from "./DbWorker.js";
-import * as MerkleTree from "./MerkleTree.js";
-import * as Mnemonic from "./Mnemonic.js";
-import * as Timestamp from "./Timestamp.js";
+import { deleteAllTables, transaction } from "./Db.js";
+import { createInitialMerkleTree, merkleTreeToString } from "./MerkleTree.js";
+import { generateMnemonic } from "./Mnemonic.js";
+import { createInitialTimestamp, timestampToString } from "./Timestamp.js";
+import { Db, DbWorkerOnMessage, Mnemonic, Owner } from "./Types.js";
 
-export interface RestoreOwnerError {
-  readonly _tag: "RestoreOwnerError";
-}
-
-export interface Actions {
-  /**
-   * Use `reset` to delete all local data from the current device.
-   * After the deletion, Evolu reloads all browser tabs that use Evolu.
-   */
-  readonly reset: () => void;
-
-  /**
-   * Use `restore` to restore `Owner` with synced data on a different device.
-   */
-  readonly restore: (
-    mnemonic: string
-  ) => Promise<Either.Either<RestoreOwnerError, void>>;
-}
-
-const get: Effect.Effect<Db.Db, never, Db.Owner> = pipe(
-  Db.Db,
+const get: Effect.Effect<Db, never, Owner> = pipe(
+  Db,
   Effect.flatMap((db) =>
     db.exec(`select "mnemonic", "id", "encryptionKey" from __owner limit 1`)
   ),
-  Effect.map(([owner]) => owner as unknown as Db.Owner)
+  Effect.map(([owner]) => owner as unknown as Owner)
 );
 
-const createOwner = (
-  mnemonic?: Mnemonic.Mnemonic
-): Effect.Effect<never, never, Db.Owner> =>
+const createOwner = (mnemonic?: Mnemonic): Effect.Effect<never, never, Owner> =>
   pipe(
     Effect.allPar(
-      mnemonic ? Effect.succeed(mnemonic) : Mnemonic.generate(),
+      mnemonic ? Effect.succeed(mnemonic) : generateMnemonic(),
       Effect.promise(() => import("@scure/bip39")),
       Effect.promise(() => import("@noble/hashes/hmac")),
       Effect.promise(() => import("@noble/hashes/sha512"))
@@ -62,14 +40,14 @@ const createOwner = (
           return m.slice(32, 64);
         };
 
-        const seedToId = (seed: Uint8Array): Db.Owner["id"] => {
+        const seedToId = (seed: Uint8Array): Owner["id"] => {
           const key = slip21Derive(seed, ["Evolu", "Owner Id"]);
           // convert key to nanoid
           let id = "";
           for (let i = 0; i < 21; i++) {
             id += urlAlphabet[key[i] & 63];
           }
-          return id as Db.Owner["id"];
+          return id as Owner["id"];
         };
 
         const seedToEncryptionKey = (seed: Uint8Array): Uint8Array =>
@@ -81,21 +59,19 @@ const createOwner = (
         const id = seedToId(seed);
         const encryptionKey = seedToEncryptionKey(seed);
 
-        const owner: Db.Owner = { mnemonic, id, encryptionKey };
+        const owner: Owner = { mnemonic, id, encryptionKey };
         return Effect.succeed(owner);
       }
     )
   );
 
-const init = (
-  mnemonic?: Mnemonic.Mnemonic
-): Effect.Effect<Db.Db, never, Db.Owner> =>
+const init = (mnemonic?: Mnemonic): Effect.Effect<Db, never, Owner> =>
   pipe(
     Effect.allPar(
       createOwner(mnemonic),
-      Db.Db,
-      pipe(Timestamp.createInitialTimestamp, Effect.map(Timestamp.toString)),
-      Effect.succeed(pipe(MerkleTree.createInitial(), MerkleTree.toString))
+      Db,
+      pipe(createInitialTimestamp, Effect.map(timestampToString)),
+      Effect.succeed(pipe(createInitialMerkleTree(), merkleTreeToString))
     ),
     Effect.tap(([owner, db, timestamp, merkleTree]) =>
       db.exec({
@@ -138,13 +114,13 @@ const init = (
     Effect.map(([owner]) => owner)
   );
 
-const migrateToSlip21: Effect.Effect<Db.Db, never, Db.Owner> = pipe(
-  Db.Db,
+const migrateToSlip21: Effect.Effect<Db, never, Owner> = pipe(
+  Db,
   Effect.flatMap((db) =>
     Effect.gen(function* ($) {
       const { mnemonic } = (yield* $(
         db.exec(`select "mnemonic" from __owner limit 1`)
-      ))[0] as { mnemonic: Mnemonic.Mnemonic };
+      ))[0] as { mnemonic: Mnemonic };
       const owner = yield* $(createOwner(mnemonic));
       yield* $(
         db.exec({
@@ -160,9 +136,9 @@ const migrateToSlip21: Effect.Effect<Db.Db, never, Db.Owner> = pipe(
   )
 );
 
-export const lazyInit = (
-  mnemonic?: Mnemonic.Mnemonic
-): Effect.Effect<Db.Db, never, Db.Owner> =>
+export const lazyInitOwner = (
+  mnemonic?: Mnemonic
+): Effect.Effect<Db, never, Owner> =>
   pipe(
     get,
     Effect.catchAllCause((cause) => {
@@ -172,15 +148,15 @@ export const lazyInit = (
         return migrateToSlip21;
       return Effect.failCause(cause);
     }),
-    Db.transaction
+    transaction
   );
 
-export const reset = (
-  mnemonic?: Mnemonic.Mnemonic
-): Effect.Effect<Db.Db | DbWorker.OnMessage, never, void> =>
+export const resetOwner = (
+  mnemonic?: Mnemonic
+): Effect.Effect<Db | DbWorkerOnMessage, never, void> =>
   Effect.gen(function* ($) {
-    yield* $(Db.deleteAllTables);
-    if (mnemonic) yield* $(lazyInit(mnemonic));
-    const onMessage = yield* $(DbWorker.OnMessage);
+    yield* $(deleteAllTables);
+    if (mnemonic) yield* $(lazyInitOwner(mnemonic));
+    const onMessage = yield* $(DbWorkerOnMessage);
     onMessage({ _tag: "onResetOrRestore" });
   });

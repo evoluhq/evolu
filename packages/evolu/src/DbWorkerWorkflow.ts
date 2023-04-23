@@ -4,39 +4,46 @@ import { apply, constVoid, flow, pipe } from "@effect/data/Function";
 import * as Cause from "@effect/io/Cause";
 import * as Effect from "@effect/io/Effect";
 import * as Ref from "@effect/io/Ref";
-import * as Db from "./Db.js";
-import * as DbWorker from "./DbWorker.js";
-import * as Error from "./Error.js";
-import * as Owner from "./Owner.js";
-import * as Query from "./Query.js";
-import * as Schema from "./Schema.js";
-import * as SyncWorker from "./Sync.worker.js";
-import * as UnknownError from "./UnknownError.js";
+import { transaction } from "./Db.js";
+import { lazyInitOwner, resetOwner } from "./Owner.js";
+import { query } from "./Query.js";
+import { updateSchema } from "./Schema.js";
+import {
+  CreateDbWorker,
+  Db,
+  DbWorker,
+  DbWorkerInput,
+  DbWorkerOnMessage,
+  DbWorkerRowsCache,
+  EvoluError,
+  SyncWorkerOutput,
+} from "./Types.js";
+import { unknownError } from "./UnknownError.js";
 
 export const create =
-  (createDb: Effect.Effect<never, never, Db.Db>): DbWorker.CreateDbWorker =>
+  (createDb: Effect.Effect<never, never, Db>): CreateDbWorker =>
   (_onMessage) => {
     let skipAllBecauseBrowserIsGoingToBeReloaded = false;
 
-    const onMessage: DbWorker.OnMessage = (message) => {
+    const onMessage: DbWorkerOnMessage = (message) => {
       if (message._tag === "onResetOrRestore")
         skipAllBecauseBrowserIsGoingToBeReloaded = true;
       _onMessage(message);
     };
 
-    const handleError = (error: Error.Error): void =>
+    const handleError = (error: EvoluError): void =>
       onMessage({ _tag: "onError", error });
 
     const recoverFromAllCause: <A>(
       a: A
-    ) => (self: Cause.Cause<Error.Error>) => Effect.Effect<never, never, A> = (
+    ) => (self: Cause.Cause<EvoluError>) => Effect.Effect<never, never, A> = (
       a
     ) =>
       flow(
         Cause.failureOrCause,
         Either.match(
           handleError,
-          flow(Cause.squash, UnknownError.unknownError, handleError)
+          flow(Cause.squash, unknownError, handleError)
         ),
         () => Effect.succeed(a)
       );
@@ -46,28 +53,26 @@ export const create =
     return pipe(
       Effect.gen(function* ($) {
         const db = yield* $(createDb);
-        const owner = yield* $(
-          Effect.provideService(Owner.lazyInit(), Db.Db, db)
-        );
+        const owner = yield* $(Effect.provideService(lazyInitOwner(), Db, db));
 
         onMessage({ _tag: "onOwner", owner });
 
         const context = pipe(
           Context.empty(),
-          Context.add(Db.Db, db),
-          Context.add(DbWorker.OnMessage, onMessage),
-          Context.add(DbWorker.RowsCache, Ref.unsafeMake(new Map()))
+          Context.add(Db, db),
+          Context.add(DbWorkerOnMessage, onMessage),
+          Context.add(DbWorkerRowsCache, Ref.unsafeMake(new Map()))
         );
 
-        let post: DbWorker.Post | null = null;
+        let post: DbWorker["post"] | null = null;
 
-        return (message: DbWorker.Input) => {
+        return (message: DbWorkerInput) => {
           if (post) {
             post(message);
             return;
           }
 
-          const write: (input: DbWorker.Input) => Promise<void> = flow(
+          const write: (input: DbWorkerInput) => Promise<void> = flow(
             (input) => {
               if (skipAllBecauseBrowserIsGoingToBeReloaded)
                 return Effect.succeed(undefined);
@@ -75,12 +80,12 @@ export const create =
                 case "init":
                   throw new self.Error("init must be called once");
                 case "updateSchema":
-                  return Schema.update(input.tableDefinitions);
+                  return updateSchema(input.tableDefinitions);
                 case "send":
                   // return send(input);
                   return Effect.succeed(undefined);
                 case "query":
-                  return Query.query(input);
+                  return query(input);
                 case "receive":
                   // return receive(input);
                   return Effect.succeed(undefined);
@@ -88,18 +93,18 @@ export const create =
                   // return sync(input.queries);
                   return Effect.succeed(undefined);
                 case "reset":
-                  return Owner.reset(input.mnemonic);
+                  return resetOwner(input.mnemonic);
               }
             },
             flow(
-              Db.transaction, // fix prettier
+              transaction, // fix prettier
               Effect.catchAllCause(recoverFromAllCause(undefined)),
               Effect.provideContext(context),
               Effect.runPromise
             )
           );
 
-          const stream = new WritableStream<DbWorker.Input>({ write });
+          const stream = new WritableStream<DbWorkerInput>({ write });
 
           post = (message): void => {
             const writer = stream.getWriter();
@@ -109,7 +114,7 @@ export const create =
 
           syncWorker.onmessage = ({
             data: message,
-          }: MessageEvent<SyncWorker.Output>): void => {
+          }: MessageEvent<SyncWorkerOutput>): void => {
             if (message._tag === "UnknownError") handleError(message);
             else post && post(message);
           };

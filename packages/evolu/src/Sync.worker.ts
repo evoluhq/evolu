@@ -1,37 +1,5 @@
-import * as ReadonlyArray from "@effect/data/ReadonlyArray";
-import * as Clock from "./Clock.js";
-import * as Db from "./Db.js";
-import * as MerkleTree from "./MerkleTree.js";
-import * as Message from "./Message.js";
 import * as Protobuf from "./Protobuf.js";
-import * as Timestamp from "./Timestamp.js";
-import * as UnknownError from "./UnknownError.js";
-
-/**
- * The client was unable to get in sync with the server.
- * This error can happen only when MerkleTree has a bug or
- * server did not update itself.
- */
-export interface SyncError {
-  readonly _tag: "SyncError";
-}
-
-export type Input = {
-  readonly syncUrl: string;
-  readonly messages: ReadonlyArray.NonEmptyReadonlyArray<Message.Message> | null;
-  readonly clock: Clock.Clock;
-  readonly owner: Db.Owner;
-  readonly previousDiff: Timestamp.Millis | null;
-};
-
-export type Output =
-  | UnknownError.UnknownError
-  | {
-      readonly _tag: "receive";
-      readonly messages: ReadonlyArray<Message.Message>;
-      readonly merkleTree: MerkleTree.MerkleTree;
-      readonly previousDiff: Timestamp.Millis | null;
-    };
+import { Value } from "./Types.js";
 
 // import { either, option, task, taskEither } from "fp-ts";
 // import { constVoid, flow, pipe } from "fp-ts/lib/function.js";
@@ -64,8 +32,9 @@ export type Output =
 //   UnknownError,
 // } from "./types.js";
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const valueToProtobuf = (
-  value: Db.Value
+  value: Value
 ): Protobuf.CrdtMessageContent["value"] => {
   switch (typeof value) {
     case "string":
@@ -77,9 +46,10 @@ const valueToProtobuf = (
   return { oneofKind: undefined };
 };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const protobufToValue = (
   value: Protobuf.CrdtMessageContent["value"]
-): Db.Value => {
+): Value => {
   switch (value.oneofKind) {
     case "numberValue":
       return value.numberValue;
@@ -243,7 +213,7 @@ const protobufToValue = (
 //     )
 //   );
 
-const postOutput = (message: Output): void => postMessage(message);
+// const postOutput = (message: Output): void => postMessage(message);
 
 // onmessage = ({ data: message }: MessageEvent<Input>): void =>
 //   dbWorker.post(message);

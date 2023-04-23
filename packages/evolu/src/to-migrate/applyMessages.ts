@@ -3,7 +3,7 @@ import { flow, pipe } from "fp-ts/lib/function.js";
 import { ReaderTaskEither } from "fp-ts/lib/ReaderTaskEither.js";
 import { ReadonlyNonEmptyArray } from "fp-ts/lib/ReadonlyNonEmptyArray.js";
 import { insertIntoMerkleTree, MerkleTree } from "./merkleTree.js";
-import { timestampFromString, TimestampString } from "./timestamp.js";
+import { unsafeTimestampFromString, TimestampString } from "./timestamp.js";
 import { CrdtMessage, DbEnv, UnknownError } from "./types.js";
 
 export const applyMessages =
@@ -69,7 +69,7 @@ export const applyMessages =
                   taskEither.map((changes) => {
                     if (changes > 0)
                       merkleTree = insertIntoMerkleTree(
-                        timestampFromString(message.timestamp)
+                        unsafeTimestampFromString(message.timestamp)
                       )(merkleTree);
                   })
                 )

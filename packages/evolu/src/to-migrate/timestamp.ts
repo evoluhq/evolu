@@ -92,7 +92,7 @@ export const timestampToString = (t: Timestamp): TimestampString =>
     t.node,
   ].join("-") as TimestampString;
 
-export const timestampFromString = (s: TimestampString): Timestamp =>
+export const unsafeTimestampFromString = (s: TimestampString): Timestamp =>
   pipe(s.split("-"), (a) => ({
     millis: Date.parse(a.slice(0, 3).join("-")).valueOf() as Millis,
     counter: parseInt(a[3], 16) as Counter,

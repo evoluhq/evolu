@@ -5,43 +5,87 @@ import * as Predicate from "@effect/data/Predicate";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as Effect from "@effect/io/Effect";
 import * as S from "@effect/schema/Schema";
+import { Simplify } from "kysely";
 import { flushSync } from "react-dom";
-import * as Browser from "./Browser.js";
-import * as Config from "./Config.js";
-import * as Db from "./Db.js";
-import * as DbWorker from "./DbWorker.js";
-import * as Diff from "./Diff.js";
-import * as Error from "./Error.js";
-import * as Message from "./Message.js";
-import * as Mnemonic from "./Mnemonic.js";
-import * as Model from "./Model.js";
-import * as Owner from "./Owner.js";
-import * as Schema from "./Schema.js";
-import * as Store from "./Store.js";
+import {
+  browserFeatures,
+  browserInit,
+  isBrowser,
+  reloadAllTabs,
+} from "./Browser.js";
+import { createConfig } from "./Config.js";
+import { applyPatches } from "./Diff.js";
+import { createNewMessages } from "./Message.js";
+import { parseMnemonic } from "./Mnemonic.js";
+import { CreateId, Id, cast, createId } from "./Model.js";
+import { QueryStringEquivalence } from "./Query.js";
+import { schemaToTablesDefinitions } from "./Schema.js";
+import { createStore } from "./Store.js";
+import {
+  AllowAutoCasting,
+  CommonColumns,
+  Config,
+  CreateDbWorker,
+  DbWorker,
+  DbWorkerOutput,
+  EvoluError,
+  Listener,
+  NewMessage,
+  NullableExceptOfId,
+  OnCompleteId,
+  Owner,
+  OwnerActions,
+  QueryString,
+  RestoreOwnerError,
+  RowsCache,
+  RowsWithLoadingState,
+  Schema,
+  Store,
+  Unsubscribe,
+} from "./Types.js";
 
-interface Evolu<S extends Schema.Schema = Schema.Schema> {
-  readonly subscribeError: (listener: Store.Listener) => Store.Unsubscribe;
-  readonly getError: () => Error.EvoluError | null;
+type SchemaForMutate<S extends Schema> = {
+  readonly [Table in keyof S]: NullableExceptOfId<
+    {
+      readonly [Column in keyof S[Table]]: S[Table][Column];
+    } & Pick<CommonColumns, "isDeleted">
+  >;
+};
 
-  readonly subscribeOwner: (listener: Store.Listener) => Store.Unsubscribe;
-  readonly getOwner: () => Db.Owner | null;
+type Mutate<S extends Schema> = <
+  U extends SchemaForMutate<S>,
+  T extends keyof U
+>(
+  table: T,
+  values: Simplify<Partial<AllowAutoCasting<U[T]>>>,
+  onComplete?: () => void
+) => {
+  readonly id: U[T]["id"];
+};
+
+interface Evolu<S extends Schema = Schema> {
+  readonly subscribeError: (listener: Listener) => Unsubscribe;
+  readonly getError: () => EvoluError | null;
+
+  readonly subscribeOwner: (listener: Listener) => Unsubscribe;
+  readonly getOwner: () => Owner | null;
 
   readonly subscribeRowsWithLoadingState: (
-    queryString: Db.QueryString | null
-  ) => (listener: Store.Listener) => Store.Unsubscribe;
+    queryString: QueryString | null
+  ) => (listener: Listener) => Unsubscribe;
   readonly getRowsWithLoadingState: (
-    queryString: Db.QueryString | null
-  ) => () => Db.RowsWithLoadingState | null;
+    queryString: QueryString | null
+  ) => () => RowsWithLoadingState | null;
 
-  readonly mutate: Schema.Mutate<S>;
+  readonly mutate: Mutate<S>;
 
-  readonly ownerActions: Owner.Actions;
+  readonly ownerActions: OwnerActions;
 }
 
-const createOpfsDbWorker: DbWorker.CreateDbWorker = (onMessage) => {
+const createOpfsDbWorker: CreateDbWorker = (onMessage) => {
   const dbWorker = new Worker(new URL("./DbWorker.worker.js", import.meta.url));
 
-  dbWorker.onmessage = (e: MessageEvent<DbWorker.Output>): void => {
+  dbWorker.onmessage = (e: MessageEvent<DbWorkerOutput>): void => {
     onMessage(e.data);
   };
 
@@ -52,10 +96,10 @@ const createOpfsDbWorker: DbWorker.CreateDbWorker = (onMessage) => {
   };
 };
 
-const createLocalStorageDbWorker: DbWorker.CreateDbWorker = (onMessage) => {
+const createLocalStorageDbWorker: CreateDbWorker = (onMessage) => {
   const worker = import("./DbWorker.window.js");
 
-  let dbWorker: DbWorker.DbWorker | null = null;
+  let dbWorker: DbWorker | null = null;
 
   return {
     post: (message): void => {
@@ -67,37 +111,34 @@ const createLocalStorageDbWorker: DbWorker.CreateDbWorker = (onMessage) => {
   };
 };
 
-const createNoOpServerDbWorker: DbWorker.CreateDbWorker = () => ({
+const createNoOpServerDbWorker: CreateDbWorker = () => ({
   post: constVoid,
 });
 
 // TODO: React Native, Electron.
-const createDbWorker: DbWorker.CreateDbWorker = Browser.isBrowser
-  ? Browser.features.opfs
+const createDbWorker: CreateDbWorker = isBrowser
+  ? browserFeatures.opfs
     ? createOpfsDbWorker
     : createLocalStorageDbWorker
   : createNoOpServerDbWorker;
 
+type OnComplete = () => void;
+
 const createOnQuery =
-  (
-    rowsCache: Store.Store<Db.RowsCache>,
-    onCompletes: Map<DbWorker.OnCompleteId, DbWorker.OnComplete>
-  ) =>
+  (rowsCache: Store<RowsCache>, onCompletes: Map<OnCompleteId, OnComplete>) =>
   ({
     queriesPatches,
     onCompleteIds,
-  }: Extract<DbWorker.Output, { _tag: "onQuery" }>): void => {
+  }: Extract<DbWorkerOutput, { _tag: "onQuery" }>): void => {
     pipe(
       queriesPatches,
       ReadonlyArray.reduce(
         rowsCache.getState(),
         (state, { query, patches }) => {
           const current = state.get(query);
-          const next: Db.RowsWithLoadingState = {
+          const next: RowsWithLoadingState = {
             isLoading: false,
-            rows: Diff.applyPatches(patches)(
-              current?.rows || ReadonlyArray.empty()
-            ),
+            rows: applyPatches(patches)(current?.rows || ReadonlyArray.empty()),
           };
           if (
             current &&
@@ -130,13 +171,13 @@ const createOnQuery =
   };
 
 const createSubscribeRowsWithLoadingState = (
-  rowsCache: Store.Store<Db.RowsCache>,
-  subscribedQueries: Map<Db.QueryString, number>,
-  queryIfAny: (queries: ReadonlyArray<Db.QueryString>) => void
+  rowsCache: Store<RowsCache>,
+  subscribedQueries: Map<QueryString, number>,
+  queryIfAny: (queries: ReadonlyArray<QueryString>) => void
 ): Evolu["subscribeRowsWithLoadingState"] => {
-  let snapshot: ReadonlyArray<Db.QueryString> | null = null;
+  let snapshot: ReadonlyArray<QueryString> | null = null;
 
-  return (queryString: Db.QueryString | null) => (listen) => {
+  return (queryString: QueryString | null) => (listen) => {
     if (queryString == null) return constVoid;
 
     if (snapshot == null) {
@@ -148,7 +189,7 @@ const createSubscribeRowsWithLoadingState = (
 
         const queries = pipe(
           Array.from(subscribedQueries.keys()),
-          ReadonlyArray.difference(Db.QueryStringEquivalence)(
+          ReadonlyArray.difference(QueryStringEquivalence)(
             subscribedQueriesSnapshot
           )
         );
@@ -192,45 +233,39 @@ const createSubscribeRowsWithLoadingState = (
   };
 };
 
-const createMutate = <S extends Schema.Schema>({
+const createMutate = <S extends Schema>({
   createId,
   getOwner,
   setOnComplete,
   dbWorker,
   getSubscribedQueries,
 }: {
-  createId: typeof Model.createId;
-  getOwner: Promise<Db.Owner>;
-  setOnComplete: (
-    id: DbWorker.OnCompleteId,
-    onComplete: DbWorker.OnComplete
-  ) => void;
-  dbWorker: DbWorker.DbWorker;
-  getSubscribedQueries: () => ReadonlyArray<Db.QueryString>;
-}): Schema.Mutate<S> => {
+  createId: CreateId;
+  getOwner: Promise<Owner>;
+  setOnComplete: (id: OnCompleteId, onComplete: OnComplete) => void;
+  dbWorker: DbWorker;
+  getSubscribedQueries: () => ReadonlyArray<QueryString>;
+}): Mutate<S> => {
   const queue: Array<
-    [
-      ReadonlyArray.NonEmptyReadonlyArray<Message.NewMessage>,
-      DbWorker.OnCompleteId | null
-    ]
+    [ReadonlyArray.NonEmptyReadonlyArray<NewMessage>, OnCompleteId | null]
   > = [];
 
   return (table, { id, ...values }, onComplete) => {
     const isInsert = id == null;
     if (isInsert) id = createId() as never;
 
-    const now = Model.cast(new Date());
+    const now = cast(new Date());
 
-    let onCompleteId: DbWorker.OnCompleteId | null = null;
+    let onCompleteId: OnCompleteId | null = null;
     if (onComplete) {
       onCompleteId = createId<"OnComplete">();
       setOnComplete(onCompleteId, onComplete);
     }
 
     getOwner.then((owner) => {
-      const messages = Message.createNewMessages(
+      const messages = createNewMessages(
         table as string,
-        id as Model.Id,
+        id as Id,
         values as never,
         owner.id,
         now,
@@ -267,23 +302,23 @@ const createMutate = <S extends Schema.Schema>({
   };
 };
 
-export const createEvolu = <From, To extends Schema.Schema>(
+export const createEvolu = <From, To extends Schema>(
   schema: S.Schema<From, To>,
-  optionalConfig?: Partial<Config.Config>
+  optionalConfig?: Partial<Config>
 ): Evolu<To> => {
-  const config = Config.create(optionalConfig);
+  const config = createConfig(optionalConfig);
 
-  const errorStore = Store.create<Error.EvoluError | null>(null);
-  const ownerStore = Store.create<Db.Owner | null>(null);
-  const rowsCache = Store.create<Db.RowsCache>(new Map());
+  const errorStore = createStore<EvoluError | null>(null);
+  const ownerStore = createStore<Owner | null>(null);
+  const rowsCache = createStore<RowsCache>(new Map());
 
-  const subscribedQueries = new Map<Db.QueryString, number>();
-  const onCompletes = new Map<DbWorker.OnCompleteId, DbWorker.OnComplete>();
+  const subscribedQueries = new Map<QueryString, number>();
+  const onCompletes = new Map<OnCompleteId, OnComplete>();
 
   const dbWorker = createDbWorker((message) => {
     switch (message._tag) {
       case "onError":
-        errorStore.setState({ _tag: "EvoluError", error: message.error });
+        errorStore.setState(message.error);
         break;
       case "onOwner":
         ownerStore.setState(message.owner);
@@ -295,7 +330,7 @@ export const createEvolu = <From, To extends Schema.Schema>(
         queryIfAny(Array.from(subscribedQueries.keys()));
         break;
       case "onResetOrRestore":
-        Browser.reloadAllTabs(config.reloadUrl);
+        reloadAllTabs(config.reloadUrl);
         break;
       default:
         absurd(message);
@@ -304,7 +339,7 @@ export const createEvolu = <From, To extends Schema.Schema>(
 
   const onQuery = createOnQuery(rowsCache, onCompletes);
 
-  const queryIfAny = (queries: ReadonlyArray<Db.QueryString>): void => {
+  const queryIfAny = (queries: ReadonlyArray<QueryString>): void => {
     if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
       dbWorker.post({ _tag: "query", queries });
   };
@@ -319,7 +354,7 @@ export const createEvolu = <From, To extends Schema.Schema>(
     (query) => () =>
       (query && rowsCache.getState().get(query)) || null;
 
-  const getOwner = new Promise<Db.Owner>((resolve) => {
+  const getOwner = new Promise<Owner>((resolve) => {
     const unsubscribe = ownerStore.subscribe(() => {
       const owner = ownerStore.getState();
       if (!owner) return;
@@ -329,7 +364,7 @@ export const createEvolu = <From, To extends Schema.Schema>(
   });
 
   const mutate: Evolu["mutate"] = createMutate({
-    createId: Model.createId,
+    createId: createId,
     getOwner,
     setOnComplete: (id, callback) => {
       onCompletes.set(id, callback);
@@ -338,12 +373,12 @@ export const createEvolu = <From, To extends Schema.Schema>(
     getSubscribedQueries: () => Array.from(subscribedQueries.keys()),
   });
 
-  const ownerActions: Owner.Actions = {
+  const ownerActions: OwnerActions = {
     reset: () => dbWorker.post({ _tag: "reset" }),
     restore: flow(
-      Mnemonic.parse,
+      parseMnemonic,
       Effect.mapBoth(
-        (): Owner.RestoreOwnerError => ({ _tag: "RestoreOwnerError" }),
+        (): RestoreOwnerError => ({ _tag: "RestoreOwnerError" }),
         (mnemonic) => dbWorker.post({ _tag: "reset", mnemonic })
       ),
       Effect.runPromiseEither
@@ -353,10 +388,10 @@ export const createEvolu = <From, To extends Schema.Schema>(
   dbWorker.post({
     _tag: "init",
     config,
-    tableDefinitions: Schema.schemaToTablesDefinitions(schema),
+    tableDefinitions: schemaToTablesDefinitions(schema),
   });
 
-  Browser.init(subscribedQueries, dbWorker);
+  browserInit(subscribedQueries, dbWorker);
 
   return {
     subscribeError: errorStore.subscribe,

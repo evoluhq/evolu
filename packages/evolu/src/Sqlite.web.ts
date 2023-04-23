@@ -1,7 +1,7 @@
 import { constVoid } from "@effect/data/Function";
 import * as Effect from "@effect/io/Effect";
 import sqlite3 from "../sqlite/sqlite3-bundler-friendly.mjs";
-import * as Db from "./Db.js";
+import { Db, Rows } from "./Types.js";
 
 // @ts-expect-error Missing types.
 self.sqlite3ApiConfig = {
@@ -13,9 +13,9 @@ self.sqlite3ApiConfig = {
 
 const promise = sqlite3();
 
-export const create = (
+export const createSqlite = (
   strategy: "localStorage" | "opfs"
-): Effect.Effect<never, never, Db.Db> =>
+): Effect.Effect<never, never, Db> =>
   Effect.promise(() =>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     promise.then((sqlite3: any) => {
@@ -24,8 +24,8 @@ export const create = (
           ? new sqlite3.oo1.OpfsDb("/evolu/evolu1.db", "c")
           : new sqlite3.oo1.JsStorageDb("local");
 
-      const db: Db.Db = {
-        exec: (arg): Effect.Effect<never, never, Db.Rows> => {
+      const db: Db = {
+        exec: (arg): Effect.Effect<never, never, Rows> => {
           const isSqlString = typeof arg === "string";
 
           return Effect.succeed(

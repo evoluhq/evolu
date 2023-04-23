@@ -5,101 +5,19 @@ import * as ReadonlyRecord from "@effect/data/ReadonlyRecord";
 import * as String from "@effect/data/String";
 import * as Effect from "@effect/io/Effect";
 import * as S from "@effect/schema/Schema";
-import { Simplify } from "kysely";
-import * as Db from "./Db.js";
-import * as Model from "./Model.js";
+import {
+  CommonColumns,
+  Db,
+  TableDefinition,
+  TablesDefinitions,
+} from "./Types.js";
 
-export type Schema = ReadonlyRecord.ReadonlyRecord<
-  { id: Model.Id } & Record<string, Db.Value>
->;
+// To get commonColumns array.
+export const commonColumnsObject: {
+  [K in keyof CommonColumns]: null;
+} = { createdAt: null, createdBy: null, updatedAt: null, isDeleted: null };
 
-type NullableExceptOfId<T> = {
-  readonly [K in keyof T]: K extends "id" ? T[K] : T[K] | null;
-};
-
-interface CommonColumns {
-  readonly createdAt: Model.SqliteDate;
-  readonly createdBy: Db.Owner["id"];
-  readonly updatedAt: Model.SqliteDate;
-  readonly isDeleted: Model.SqliteBoolean;
-}
-
-const commonColumns = ["createdAt", "createdBy", "updatedAt", "isDeleted"];
-
-type SchemaForMutate<S extends Schema> = {
-  readonly [Table in keyof S]: NullableExceptOfId<
-    {
-      readonly [Column in keyof S[Table]]: S[Table][Column];
-    } & Pick<CommonColumns, "isDeleted">
-  >;
-};
-
-export type AllowAutoCasting<T> = {
-  readonly [K in keyof T]: T[K] extends Model.SqliteBoolean
-    ? boolean | Model.SqliteBoolean
-    : T[K] extends null | Model.SqliteBoolean
-    ? null | boolean | Model.SqliteBoolean
-    : T[K] extends Model.SqliteDate
-    ? Date | Model.SqliteDate
-    : T[K] extends null | Model.SqliteDate
-    ? null | Date | Model.SqliteDate
-    : T[K];
-};
-
-export type Mutate<S extends Schema> = <
-  U extends SchemaForMutate<S>,
-  T extends keyof U
->(
-  table: T,
-  values: Simplify<Partial<AllowAutoCasting<U[T]>>>,
-  onComplete?: () => void
-) => {
-  readonly id: U[T]["id"];
-};
-
-// https://stackoverflow.com/a/54713648/233902
-type NullablePartial<
-  T,
-  NK extends keyof T = {
-    [K in keyof T]: null extends T[K] ? K : never;
-  }[keyof T],
-  NP = Pick<T, Exclude<keyof T, NK>> & Partial<Pick<T, NK>>
-> = { [K in keyof NP]: NP[K] };
-
-export type Create<S extends Schema> = <T extends keyof S>(
-  table: T,
-  values: Simplify<NullablePartial<AllowAutoCasting<Omit<S[T], "id">>>>,
-  onComplete?: () => void
-) => {
-  readonly id: S[T]["id"];
-};
-
-export type Update<S extends Schema> = <T extends keyof S>(
-  table: T,
-  values: Simplify<
-    Partial<
-      AllowAutoCasting<Omit<S[T], "id"> & Pick<CommonColumns, "isDeleted">>
-    > & { id: S[T]["id"] }
-  >,
-  onComplete?: () => void
-) => {
-  readonly id: S[T]["id"];
-};
-
-export type SchemaForQuery<S extends Schema> = {
-  readonly [Table in keyof S]: NullableExceptOfId<
-    {
-      readonly [Column in keyof S[Table]]: S[Table][Column];
-    } & CommonColumns
-  >;
-};
-
-export interface TableDefinition {
-  readonly name: string;
-  readonly columns: ReadonlyArray<string>;
-}
-
-export type TablesDefinitions = ReadonlyArray<TableDefinition>;
+const commonColumns = Object.keys(commonColumnsObject);
 
 export const schemaToTablesDefinitions = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -118,8 +36,8 @@ export const schemaToTablesDefinitions = (
     )
   );
 
-const getTables: Effect.Effect<Db.Db, never, ReadonlyArray<string>> = pipe(
-  Effect.flatMap(Db.Db, (db) =>
+const getTables: Effect.Effect<Db, never, ReadonlyArray<string>> = pipe(
+  Effect.flatMap(Db, (db) =>
     db.exec(`select "name" from sqlite_schema where type='table'`)
   ),
   Effect.map(
@@ -134,9 +52,9 @@ const getTables: Effect.Effect<Db.Db, never, ReadonlyArray<string>> = pipe(
 const updateTable = ({
   name,
   columns,
-}: TableDefinition): Effect.Effect<Db.Db, never, void> =>
+}: TableDefinition): Effect.Effect<Db, never, void> =>
   Effect.gen(function* ($) {
-    const db = yield* $(Db.Db);
+    const db = yield* $(Db);
     const sql = yield* $(
       db.exec(`pragma table_info (${name})`),
       Effect.map(ReadonlyArray.map((row) => row.name as string)),
@@ -156,8 +74,8 @@ const updateTable = ({
 const createTable = ({
   name,
   columns,
-}: TableDefinition): Effect.Effect<Db.Db, never, void> =>
-  Effect.flatMap(Db.Db, (db) =>
+}: TableDefinition): Effect.Effect<Db, never, void> =>
+  Effect.flatMap(Db, (db) =>
     db.exec(`
       create table ${name} (
         "id" text primary key,
@@ -172,9 +90,9 @@ const createTable = ({
     `)
   );
 
-export const update = (
+export const updateSchema = (
   tablesDefinitions: TablesDefinitions
-): Effect.Effect<Db.Db, never, void> =>
+): Effect.Effect<Db, never, void> =>
   Effect.flatMap(getTables, (tables) =>
     Effect.forEachDiscard(tablesDefinitions, (tableDefinition) =>
       tables.includes(tableDefinition.name)

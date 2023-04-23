@@ -6,11 +6,27 @@ import * as Exit from "@effect/io/Exit";
 import sqlite3, { Statement } from "better-sqlite3";
 import bodyParser from "body-parser";
 import cors from "cors";
-import * as MerkleTree from "evolu/MerkleTree";
-import * as Timestamp from "evolu/Timestamp";
+import {
+  createInitialMerkleTree,
+  diffMerkleTrees,
+  insertIntoMerkleTree,
+  merkleTreeToString,
+  unsafeMerkleTreeFromString,
+} from "evolu/MerkleTree";
+import * as Protobuf from "evolu/Protobuf";
+import {
+  createSyncTimestamp,
+  timestampToString,
+  unsafeTimestampFromString,
+} from "evolu/Timestamp";
+import {
+  MerkleTree,
+  MerkleTreeString,
+  Millis,
+  TimestampString,
+} from "evolu/Types";
 import express, { Request } from "express";
 import path from "path";
-import * as Protobuf from "evolu/Protobuf";
 
 class BadRequestError {
   readonly _tag = "BadRequestError";
@@ -83,21 +99,21 @@ const DbTag = Context.Tag<Db>();
 
 const getMerkleTree = (
   userId: string
-): Effect.Effect<Db, SqliteError, MerkleTree.MerkleTree> =>
+): Effect.Effect<Db, SqliteError, MerkleTree> =>
   pipe(
     Effect.flatMap(DbTag, ({ selectMerkleTree }) =>
       Effect.tryCatch(
         () =>
           selectMerkleTree.get(userId) as
-            | { readonly merkleTree: MerkleTree.MerkleTreeString }
+            | { readonly merkleTree: MerkleTreeString }
             | undefined,
         (error) => new SqliteError(error)
       )
     ),
     Effect.map((row) =>
       row
-        ? MerkleTree.unsafeFromString(row.merkleTree)
-        : MerkleTree.createInitial()
+        ? unsafeMerkleTreeFromString(row.merkleTree)
+        : createInitialMerkleTree()
     )
   );
 
@@ -106,10 +122,10 @@ const addMessages = ({
   messages,
   userId,
 }: {
-  merkleTree: MerkleTree.MerkleTree;
+  merkleTree: MerkleTree;
   messages: ReadonlyArray.NonEmptyArray<Protobuf.EncryptedCrdtMessage>;
   userId: string;
-}): Effect.Effect<Db, SqliteError, MerkleTree.MerkleTree> =>
+}): Effect.Effect<Db, SqliteError, MerkleTree> =>
   Effect.flatMap(DbTag, (db) =>
     Effect.tryCatch(
       () => {
@@ -123,16 +139,14 @@ const addMessages = ({
           );
 
           if (result.changes === 1)
-            merkleTree = MerkleTree.insertInto(
-              Timestamp.unsafeFromString(
-                message.timestamp as Timestamp.TimestampString
-              )
+            merkleTree = insertIntoMerkleTree(
+              unsafeTimestampFromString(message.timestamp as TimestampString)
             )(merkleTree);
         });
 
         db.insertOrReplaceIntoMerkleTree.run(
           userId,
-          MerkleTree.toString(merkleTree)
+          merkleTreeToString(merkleTree)
         );
 
         db.commit.run();
@@ -151,7 +165,7 @@ const getMessages = ({
   userId,
   nodeId,
 }: {
-  millis: Timestamp.Millis;
+  millis: Millis;
   userId: string;
   nodeId: string;
 }): Effect.Effect<
@@ -164,7 +178,7 @@ const getMessages = ({
       () =>
         db.selectMessages.all(
           userId,
-          pipe(millis, Timestamp.createSyncTimestamp, Timestamp.toString),
+          pipe(millis, createSyncTimestamp, timestampToString),
           nodeId
         ) as ReadonlyArray<Protobuf.EncryptedCrdtMessage>,
       (error) => new SqliteError(error)
@@ -177,7 +191,7 @@ const sync = (
   Db,
   BadRequestError | SqliteError,
   {
-    merkleTree: MerkleTree.MerkleTree;
+    merkleTree: MerkleTree;
     messages: ReadonlyArray<Protobuf.EncryptedCrdtMessage>;
   }
 > =>
@@ -199,11 +213,9 @@ const sync = (
             })
           );
 
-        const diff = MerkleTree.diff(
+        const diff = diffMerkleTrees(
           merkleTree,
-          MerkleTree.unsafeFromString(
-            syncRequest.merkleTree as MerkleTree.MerkleTreeString
-          )
+          unsafeMerkleTreeFromString(syncRequest.merkleTree as MerkleTreeString)
         );
 
         const messages =
@@ -242,7 +254,7 @@ export const createExpressApp = (): express.Express => {
           res.send(
             Buffer.from(
               Protobuf.SyncResponse.toBinary({
-                merkleTree: MerkleTree.toString(merkleTree),
+                merkleTree: merkleTreeToString(merkleTree),
                 messages: messages as Array<Protobuf.EncryptedCrdtMessage>,
               })
             )

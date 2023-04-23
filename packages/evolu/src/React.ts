@@ -4,26 +4,42 @@ import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as S from "@effect/schema/Schema";
 import * as Kysely from "kysely";
 import { useMemo, useRef, useSyncExternalStore } from "react";
-import * as Config from "./Config.js";
-import * as Evolu from "./Evolu.js";
-import * as Owner from "./Owner.js";
-import * as Db from "./Db.js";
-import * as Schema from "./Schema.js";
-import * as Error from "./Error.js";
+import { createEvolu } from "./Evolu.js";
+import { queryToString } from "./Query.js";
+import {
+  AllowAutoCasting,
+  CommonColumns,
+  Config,
+  EvoluError,
+  NullableExceptOfId,
+  Owner,
+  OwnerActions,
+  Query,
+  Row,
+  Schema,
+} from "./Types.js";
 
 type KyselySelectFrom<DB> = Pick<Kysely.Kysely<DB>, "selectFrom">;
 
-type QueryCallback<S extends Schema.Schema, QueryRow> = (
-  db: KyselySelectFrom<Schema.SchemaForQuery<S>>
+type SchemaForQuery<S extends Schema> = {
+  readonly [Table in keyof S]: NullableExceptOfId<
+    {
+      readonly [Column in keyof S[Table]]: S[Table][Column];
+    } & CommonColumns
+  >;
+};
+
+type QueryCallback<S extends Schema, QueryRow> = (
+  db: KyselySelectFrom<SchemaForQuery<S>>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ) => Kysely.SelectQueryBuilder<any, any, QueryRow>;
 
 type OrNullOrFalse<T> = T | null | false;
 type ExcludeNullAndFalse<T> = Exclude<T, null | false>;
 
-type UseQuery<S extends Schema.Schema> = <
-  QueryRow extends Db.Row,
-  FilterMapRow extends Db.Row
+type UseQuery<S extends Schema> = <
+  QueryRow extends Row,
+  FilterMapRow extends Row
 >(
   query: OrNullOrFalse<QueryCallback<S, QueryRow>>,
   filterMap: (row: QueryRow) => OrNullOrFalse<FilterMapRow>
@@ -51,7 +67,36 @@ type UseQuery<S extends Schema.Schema> = <
   readonly isLoading: boolean;
 };
 
-type UseMutation<S extends Schema.Schema> = () => {
+// https://stackoverflow.com/a/54713648/233902
+type NullablePartial<
+  T,
+  NK extends keyof T = {
+    [K in keyof T]: null extends T[K] ? K : never;
+  }[keyof T],
+  NP = Pick<T, Exclude<keyof T, NK>> & Partial<Pick<T, NK>>
+> = { [K in keyof NP]: NP[K] };
+
+export type Create<S extends Schema> = <T extends keyof S>(
+  table: T,
+  values: Kysely.Simplify<NullablePartial<AllowAutoCasting<Omit<S[T], "id">>>>,
+  onComplete?: () => void
+) => {
+  readonly id: S[T]["id"];
+};
+
+export type Update<S extends Schema> = <T extends keyof S>(
+  table: T,
+  values: Kysely.Simplify<
+    Partial<
+      AllowAutoCasting<Omit<S[T], "id"> & Pick<CommonColumns, "isDeleted">>
+    > & { id: S[T]["id"] }
+  >,
+  onComplete?: () => void
+) => {
+  readonly id: S[T]["id"];
+};
+
+type UseMutation<S extends Schema> = () => {
   /**
    * Creates a new row with the given values.
    *
@@ -78,7 +123,7 @@ type UseMutation<S extends Schema.Schema> = () => {
    * create("todo", { title }, onComplete);
    * ```
    */
-  readonly create: Schema.Create<S>;
+  readonly create: Create<S>;
   /**
    * Update a row with the given values.
    *
@@ -105,10 +150,10 @@ type UseMutation<S extends Schema.Schema> = () => {
    * update("todo", { id, isDeleted: true });
    * ```
    */
-  readonly update: Schema.Update<S>;
+  readonly update: Update<S>;
 };
 
-interface Hooks<S extends Schema.Schema> {
+interface Hooks<S extends Schema> {
   /**
    * `useQuery` React Hook performs a database query and returns rows that
    * are automatically updated when data changes.
@@ -200,16 +245,16 @@ interface Hooks<S extends Schema.Schema> {
    * Mutations are saved immediately and synced when the internet is available.
    * The only expectable error is QuotaExceeded (TODO).
    */
-  readonly useEvoluError: () => Error.EvoluError | null;
+  readonly useEvoluError: () => EvoluError | null;
   /**
    * `useOwner` React Hook returns `Owner`.
    */
-  readonly useOwner: () => Db.Owner | null;
+  readonly useOwner: () => Owner | null;
   /**
    * `useOwnerActions` React Hook returns `OwnerActions` that can be used to
    * reset `Owner` on the current device or restore `Owner` on a different one.
    */
-  readonly useOwnerActions: () => Owner.Actions;
+  readonly useOwnerActions: () => OwnerActions;
 }
 
 const createKysely = (): Kysely.Kysely<unknown> =>
@@ -283,18 +328,18 @@ const createKysely = (): Kysely.Kysely<unknown> =>
  * To learn more about migration-less schema evolving, check the `useQuery`
  * documentation.
  */
-export const createHooks = <From, To extends Schema.Schema>(
+export const createHooks = <From, To extends Schema>(
   schema: S.Schema<From, To>,
-  config?: Partial<Config.Config>
+  config?: Partial<Config>
 ): Hooks<To> => {
-  const evolu = Evolu.createEvolu(schema, config);
+  const evolu = createEvolu(schema, config);
   const kysely = createKysely();
-  const cache = new WeakMap<Db.Row, Option.Option<Db.Row>>();
+  const cache = new WeakMap<Row, Option.Option<Row>>();
 
   const useQuery: UseQuery<To> = (query, filterMap) => {
     // `query` can and will change, compile() is cheap
     const queryString = query
-      ? pipe(query(kysely as never).compile() as Db.Query, Db.queryToString)
+      ? pipe(query(kysely as never).compile() as Query, queryToString)
       : null;
     // filterMap is expensive but must be static, hence useRef
     const filterMapRef = useRef(filterMap);
@@ -308,7 +353,7 @@ export const createHooks = <From, To extends Schema.Schema>(
       constNull
     );
 
-    const filterMapRow = (row: Db.Row): Option.Option<Db.Row> => {
+    const filterMapRow = (row: Row): Option.Option<Row> => {
       let cachedRow = cache.get(row);
       if (cachedRow !== undefined) return cachedRow;
       cachedRow = pipe(filterMapRef.current(row as never), (row) =>
@@ -343,8 +388,8 @@ export const createHooks = <From, To extends Schema.Schema>(
   const useMutation: UseMutation<To> = () =>
     useMemo(
       () => ({
-        create: evolu.mutate as Schema.Create<To>,
-        update: evolu.mutate as Schema.Update<To>,
+        create: evolu.mutate as Create<To>,
+        update: evolu.mutate as Update<To>,
       }),
       []
     );

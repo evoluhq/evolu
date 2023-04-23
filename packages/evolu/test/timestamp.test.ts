@@ -12,7 +12,7 @@ import {
   Timestamp,
   TimestampCounterOverflowError,
   TimestampDriftError,
-  timestampFromString,
+  unsafeTimestampFromString,
   timestampToHash,
   timestampToString,
 } from "../src/to-migrate/timestamp.js";
@@ -40,7 +40,7 @@ test("timestampToString", () => {
 
 test("timestampFromString", () => {
   const t = createSyncTimestamp();
-  expect(t).toEqual(pipe(t, timestampToString, timestampFromString));
+  expect(t).toEqual(pipe(t, timestampToString, unsafeTimestampFromString));
 });
 
 test("timestampToHash", () => {

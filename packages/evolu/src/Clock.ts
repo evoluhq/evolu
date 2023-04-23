@@ -1,31 +1,25 @@
-import * as Timestamp from "./Timestamp.js";
-import * as MerkleTree from "./MerkleTree.js";
-import * as Db from "./Db.js";
-import * as Effect from "@effect/io/Effect";
 import { pipe } from "@effect/data/Function";
+import * as Effect from "@effect/io/Effect";
+import {
+  merkleTreeToString,
+  unsafeMerkleTreeFromString,
+} from "./MerkleTree.js";
+import { timestampToString, unsafeTimestampFromString } from "./Timestamp.js";
+import { Clock, Db, MerkleTreeString, TimestampString } from "./Types.js";
 
-export interface Clock {
-  readonly timestamp: Timestamp.Timestamp;
-  readonly merkleTree: MerkleTree.MerkleTree;
-}
-
-export const read: Effect.Effect<Db.Db, never, Clock> = pipe(
-  Db.Db,
+export const read: Effect.Effect<Db, never, Clock> = pipe(
+  Db,
   Effect.flatMap((db) =>
     db.exec(`select "timestamp", "merkleTree" from "__clock" limit 1`)
   ),
   Effect.map(([{ timestamp, merkleTree }]) => ({
-    timestamp: Timestamp.unsafeFromString(
-      timestamp as Timestamp.TimestampString
-    ),
-    merkleTree: MerkleTree.unsafeFromString(
-      merkleTree as MerkleTree.MerkleTreeString
-    ),
+    timestamp: unsafeTimestampFromString(timestamp as TimestampString),
+    merkleTree: unsafeMerkleTreeFromString(merkleTree as MerkleTreeString),
   }))
 );
 
-export const update = (clock: Clock): Effect.Effect<Db.Db, never, void> =>
-  Effect.flatMap(Db.Db, (db) =>
+export const update = (clock: Clock): Effect.Effect<Db, never, void> =>
+  Effect.flatMap(Db, (db) =>
     db.exec({
       sql: `
         update "__clock"
@@ -34,8 +28,8 @@ export const update = (clock: Clock): Effect.Effect<Db.Db, never, void> =>
           "merkleTree" = ?
       `,
       parameters: [
-        Timestamp.toString(clock.timestamp),
-        MerkleTree.toString(clock.merkleTree),
+        timestampToString(clock.timestamp),
+        merkleTreeToString(clock.merkleTree),
       ],
     })
   );
