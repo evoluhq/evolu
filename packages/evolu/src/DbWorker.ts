@@ -20,7 +20,7 @@ import {
 } from "./Types.js";
 import { unknownError } from "./UnknownError.js";
 
-export const create =
+export const createCreateDbWorker =
   (createDb: Effect.Effect<never, never, Db>): CreateDbWorker =>
   (_onMessage) => {
     let skipAllBecauseBrowserIsGoingToBeReloaded = false;

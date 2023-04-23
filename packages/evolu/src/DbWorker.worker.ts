@@ -1,8 +1,8 @@
-import * as DbWorkerWorkflow from "./DbWorkerWorkflow.js";
+import { createCreateDbWorker } from "./DbWorker.js";
 import { createSqlite } from "./Sqlite.web.js";
 import { DbWorkerInput } from "./Types.js";
 
-const dbWorker = DbWorkerWorkflow.create(createSqlite("opfs"))((message) => {
+const dbWorker = createCreateDbWorker(createSqlite("opfs"))((message) => {
   postMessage(message);
 });
 

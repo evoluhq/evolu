@@ -70,8 +70,8 @@
   },
   "devDependencies": {
     "@effect/data": "^0.12.2",
-    "@effect/io": "^0.24.4",
-    "@effect/schema": "^0.15.0",
+    "@effect/io": "^0.25.1",
+    "@effect/schema": "^0.16.0",
     "@evolu/tsconfig": "workspace:0.0.2",
     "@protobuf-ts/plugin": "^2.8.3",
     "@protobuf-ts/protoc": "^2.8.3",
@@ -90,8 +90,8 @@
   },
   "peerDependencies": {
     "@effect/data": "^0.12.2",
-    "@effect/io": "^0.22.4",
-    "@effect/schema": "^0.13.1",
+    "@effect/io": "^0.25.1",
+    "@effect/schema": "^0.16.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

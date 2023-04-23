@@ -11,12 +11,12 @@
   },
   "dependencies": {
     "@effect/data": "^0.12.2",
-    "@effect/schema": "~0.15.0",
+    "@effect/schema": "~0.16.0",
     "clsx": "^1.2.1",
     "evolu": "workspace:4.1.2",
     "next": "^13.3.0",
-    "nextra": "^2.4.0",
-    "nextra-theme-docs": "^2.4.0",
+    "nextra": "^2.4.1",
+    "nextra-theme-docs": "^2.4.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
@@ -29,7 +29,7 @@
     "eslint": "^8.39.0",
     "eslint-config-evolu": "workspace:0.0.2",
     "postcss": "^8.4.23",
-    "prettier": "^2.8.7",
+    "prettier": "^2.8.8",
     "prettier-plugin-tailwindcss": "^0.2.7",
     "tailwindcss": "^3.3.1",
     "typescript": "^5.0.4"
