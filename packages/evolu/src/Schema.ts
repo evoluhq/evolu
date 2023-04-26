@@ -8,6 +8,7 @@ import * as S from "@effect/schema/Schema";
 import {
   CommonColumns,
   Db,
+  Message,
   TableDefinition,
   TablesDefinitions,
 } from "./Types.js";
@@ -100,3 +101,23 @@ export const updateSchema = (
         : createTable(tableDefinition)
     )
   );
+
+export const ensureSchema: (
+  messages: ReadonlyArray.NonEmptyReadonlyArray<Message>
+) => Effect.Effect<Db, never, void> = flow(
+  ReadonlyArray.reduce(
+    Object.create(null) as Record<string, Record<string, null>>,
+    (record, { table, column }) => ({
+      ...record,
+      [table]: { ...record[table], [column]: null },
+    })
+  ),
+  (record) =>
+    Object.entries(record).map(
+      ([name, columns]): TableDefinition => ({
+        name,
+        columns: Object.keys(columns),
+      })
+    ),
+  updateSchema
+);

@@ -53,7 +53,7 @@ export const query = ({
       })
     );
 
-    const onMessage = yield* $(DbWorkerOnMessage);
+    const dbWorkerOnMessage = yield* $(DbWorkerOnMessage);
     if (queriesPatches.length > 0 || onCompleteIds.length > 0)
-      onMessage({ _tag: "onQuery", queriesPatches, onCompleteIds });
+      dbWorkerOnMessage({ _tag: "onQuery", queriesPatches, onCompleteIds });
   });

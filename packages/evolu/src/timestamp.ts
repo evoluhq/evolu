@@ -35,12 +35,16 @@ export const timestampToString = (t: Timestamp): TimestampString =>
     t.node,
   ].join("-") as TimestampString;
 
+// TODO: Use Schema and Effect
 export const unsafeTimestampFromString = (s: TimestampString): Timestamp =>
-  pipe(s.split("-"), (a) => ({
-    millis: Date.parse(a.slice(0, 3).join("-")).valueOf() as Millis,
-    counter: parseInt(a[3], 16) as Counter,
-    node: a[4] as NodeId,
-  }));
+  pipe(
+    s.split("-"),
+    (a): Timestamp => ({
+      millis: Date.parse(a.slice(0, 3).join("-")).valueOf() as Millis,
+      counter: parseInt(a[3], 16) as Counter,
+      node: a[4] as NodeId,
+    })
+  );
 
 export const timestampToHash = (t: Timestamp): TimestampHash =>
   pipe(timestampToString(t), murmurhash) as TimestampHash;

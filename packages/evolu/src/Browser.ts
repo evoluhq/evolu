@@ -1,8 +1,9 @@
 import { constFalse, flow, pipe } from "@effect/data/Function";
 import * as Option from "@effect/data/Option";
+import * as Effect from "@effect/io/Effect";
 import * as Predicate from "@effect/data/Predicate";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
-import { DbWorker, QueryString } from "./Types.js";
+import { DbWorker, QueryString, RequestSync } from "./Types.js";
 
 export const isBrowser = typeof window !== "undefined" && !("Deno" in window);
 
@@ -68,26 +69,18 @@ export const browserInit = (
 
 const syncLockName = "evolu:sync";
 
-// TODO: Make it platform independent.
-export const requestSync = (sync: () => Promise<void>): void => {
-  navigator.locks.request(syncLockName, sync);
+export const requestSync: RequestSync = (callback) => {
+  navigator.locks.request(syncLockName, callback);
 };
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const hasLock: Predicate.Predicate<LockInfo[] | undefined> = flow(
   Option.fromNullable,
   Option.map(ReadonlyArray.some((a) => a.name === syncLockName)),
   Option.getOrElse(constFalse)
 );
 
-// TODO: Effect<LockManager, UnknownError, boolean>
-// TODO: Make it platform independent.
-// export const syncIsPendingOrHeld: ReaderTaskEither<
-//   LockManagerEnv,
-//   UnknownError,
-//   boolean
-// > = ({ locks }) =>
-//   pipe(
-//     taskEither.tryCatch(() => locks.query(), errorToUnknownError),
-//     taskEither.map(({ pending, held }) => hasLock(pending) || hasLock(held))
-//   );
+export const isSyncing = (): Effect.Effect<never, never, boolean> =>
+  pipe(
+    Effect.promise(() => navigator.locks.query()),
+    Effect.map(({ pending, held }) => hasLock(pending) || hasLock(held))
+  );

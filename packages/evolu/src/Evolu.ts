@@ -15,7 +15,7 @@ import {
 } from "./Browser.js";
 import { createConfig } from "./Config.js";
 import { applyPatches } from "./Diff.js";
-import { createNewMessages } from "./Message.js";
+import { createNewMessages } from "./Messages.js";
 import { parseMnemonic } from "./Mnemonic.js";
 import { CreateId, Id, cast, createId } from "./Model.js";
 import { QueryStringEquivalence } from "./Query.js";
@@ -263,22 +263,23 @@ const createMutate = <S extends Schema>({
     }
 
     getOwner.then((owner) => {
-      const messages = createNewMessages(
-        table as string,
-        id as Id,
-        values as never,
-        owner.id,
-        now,
-        isInsert
-      );
-
-      queue.push([messages, onCompleteId]);
+      queue.push([
+        createNewMessages(
+          table as string,
+          id as Id,
+          values as never,
+          owner.id,
+          now,
+          isInsert
+        ),
+        onCompleteId,
+      ]);
 
       if (queue.length === 1)
         queueMicrotask(() => {
           if (!ReadonlyArray.isNonEmptyReadonlyArray(queue)) return;
 
-          const [messages, onCompleteIds] = pipe(
+          const [newMessages, onCompleteIds] = pipe(
             queue,
             ReadonlyArray.unzipNonEmpty,
             ([messages, onCompleteIds]) => [
@@ -290,8 +291,8 @@ const createMutate = <S extends Schema>({
           queue.length = 0;
 
           dbWorker.post({
-            _tag: "send",
-            messages,
+            _tag: "sendMessages",
+            newMessages,
             onCompleteIds,
             queries: getSubscribedQueries(),
           });

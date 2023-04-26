@@ -119,6 +119,7 @@ export interface Owner {
   /* The encryption key used by `Owner` derived from its `Mnemonic`. */
   readonly encryptionKey: Uint8Array;
 }
+export const Owner = Tag<Owner>();
 
 export interface RestoreOwnerError {
   readonly _tag: "RestoreOwnerError";
@@ -274,8 +275,8 @@ export type DbWorkerInput =
       readonly tableDefinitions: TablesDefinitions;
     }
   | {
-      readonly _tag: "send";
-      readonly messages: NonEmptyReadonlyArray<NewMessage>;
+      readonly _tag: "sendMessages";
+      readonly newMessages: NonEmptyReadonlyArray<NewMessage>;
       readonly onCompleteIds: ReadonlyArray<OnCompleteId>;
       readonly queries: ReadonlyArray<QueryString>;
     }
@@ -284,7 +285,7 @@ export type DbWorkerInput =
       readonly queries: NonEmptyReadonlyArray<QueryString>;
     }
   | {
-      readonly _tag: "receive";
+      readonly _tag: "receiveMessages";
       readonly messages: ReadonlyArray<Message>;
       readonly merkleTree: MerkleTree;
       readonly previousDiff: Millis | null;
@@ -316,14 +317,16 @@ export interface DbWorker {
   readonly post: (message: DbWorkerInput) => void;
 }
 
-export type CreateDbWorker = (onMessage: DbWorkerOnMessage) => DbWorker;
+export type CreateDbWorker = (
+  onMessage: (message: DbWorkerOutput) => void
+) => DbWorker;
 
 export type DbWorkerRowsCache = Ref<ReadonlyMap<QueryString, Rows>>;
 export const DbWorkerRowsCache = Tag<DbWorkerRowsCache>();
 
 export type SyncWorkerInput = {
   readonly syncUrl: string;
-  readonly messages: NonEmptyReadonlyArray<Message> | null;
+  readonly messages: ReadonlyArray<Message>;
   readonly clock: Clock;
   readonly owner: Owner;
   readonly previousDiff: Millis | null;
@@ -331,19 +334,23 @@ export type SyncWorkerInput = {
 
 export type SyncWorkerOutput =
   | UnknownError
-  | {
-      readonly _tag: "receive";
-      readonly messages: ReadonlyArray<Message>;
-      readonly merkleTree: MerkleTree;
-      readonly previousDiff: Millis | null;
-    };
+  | Extract<DbWorkerInput, { _tag: "receiveMessages" }>;
 
-export type Unsubscribe = () => void;
+export type SyncWorkerPost = (message: SyncWorkerInput) => void;
+export const SyncWorkerPost = Tag<SyncWorkerPost>();
 
 export type Listener = () => void;
+
+export type Unsubscribe = () => void;
 
 export interface Store<T> {
   readonly subscribe: (listener: Listener) => Unsubscribe;
   readonly setState: (state: T) => void;
   readonly getState: () => T;
 }
+
+export type RequestSync = (callback: () => Promise<void>) => void;
+export const RequestSync = Tag<RequestSync>();
+
+export type IsSyncing = () => Effect<never, never, boolean>;
+export const IsSyncing = Tag<IsSyncing>();
