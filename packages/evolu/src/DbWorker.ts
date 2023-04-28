@@ -22,11 +22,16 @@ import {
   IsSyncing,
   Millis,
   Owner,
+  SyncError,
   SyncWorkerOutput,
   SyncWorkerPost,
   Time,
+  TimestampCounterOverflowError,
+  TimestampDriftError,
+  TimestampDuplicateNodeError,
 } from "./Types.js";
 import { unknownError } from "./UnknownError.js";
+import { sync } from "./Sync.js";
 
 export const createCreateDbWorker =
   (createDb: Effect.Effect<never, never, Db>): CreateDbWorker =>
@@ -63,7 +68,11 @@ export const createCreateDbWorker =
     return pipe(
       Effect.gen(function* ($) {
         const db = yield* $(createDb);
-        const owner = yield* $(Effect.provideService(lazyInitOwner(), Db, db));
+        const owner = yield* $(
+          lazyInitOwner(),
+          transaction,
+          Effect.provideService(Db, db)
+        );
 
         onMessage({ _tag: "onOwner", owner });
 
@@ -95,7 +104,23 @@ export const createCreateDbWorker =
           );
 
           const write: (input: DbWorkerInput) => Promise<void> = flow(
-            (input) => {
+            (
+              input
+            ): Effect.Effect<
+              | Db
+              | Owner
+              | DbWorkerOnMessage
+              | DbWorkerRowsCache
+              | SyncWorkerPost
+              | Time
+              | IsSyncing
+              | Config,
+              | TimestampDuplicateNodeError
+              | TimestampDriftError
+              | TimestampCounterOverflowError
+              | SyncError,
+              void
+            > => {
               if (skipAllBecauseBrowserIsGoingToBeReloaded)
                 return Effect.succeed(undefined);
               switch (input._tag) {
@@ -110,15 +135,13 @@ export const createCreateDbWorker =
                 case "receiveMessages":
                   return receiveMessages(input);
                 case "sync":
-                  // return sync(input.queries);
-                  return Effect.succeed(undefined);
+                  return sync(input.queries);
                 case "reset":
                   return resetOwner(input.mnemonic);
               }
             },
             flow(
               transaction,
-              (a) => a,
               Effect.catchAllCause(recoverFromAllCause(undefined)),
               Effect.provideContext(contextWithConfig),
               Effect.runPromise

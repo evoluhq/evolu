@@ -7,7 +7,7 @@ import {
 import { timestampToString, unsafeTimestampFromString } from "./Timestamp.js";
 import { Clock, Db, MerkleTreeString, TimestampString } from "./Types.js";
 
-export const readClock: Effect.Effect<Db, never, Clock> = pipe(
+export const readClock = pipe(
   Db,
   Effect.flatMap((db) =>
     db.exec(`select "timestamp", "merkleTree" from "__clock" limit 1`)

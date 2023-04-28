@@ -2,13 +2,13 @@ import { pipe } from "@effect/data/Function";
 import * as Cause from "@effect/io/Cause";
 import * as Effect from "@effect/io/Effect";
 import { urlAlphabet } from "nanoid";
-import { deleteAllTables, transaction } from "./Db.js";
+import { deleteAllTables } from "./Db.js";
 import { createInitialMerkleTree, merkleTreeToString } from "./MerkleTree.js";
 import { generateMnemonic } from "./Mnemonic.js";
 import { createInitialTimestamp, timestampToString } from "./Timestamp.js";
 import { Db, DbWorkerOnMessage, Mnemonic, Owner } from "./Types.js";
 
-const get: Effect.Effect<Db, never, Owner> = pipe(
+const getOwner: Effect.Effect<Db, never, Owner> = pipe(
   Db,
   Effect.flatMap((db) =>
     db.exec(`select "mnemonic", "id", "encryptionKey" from __owner limit 1`)
@@ -139,17 +139,13 @@ const migrateToSlip21: Effect.Effect<Db, never, Owner> = pipe(
 export const lazyInitOwner = (
   mnemonic?: Mnemonic
 ): Effect.Effect<Db, never, Owner> =>
-  pipe(
-    get,
-    Effect.catchAllCause((cause) => {
-      const pretty = Cause.pretty(cause);
-      if (pretty.includes("no such table: __owner")) return init(mnemonic);
-      if (pretty.includes("no such column: encryptionKey"))
-        return migrateToSlip21;
-      return Effect.failCause(cause);
-    }),
-    transaction
-  );
+  Effect.catchAllCause(getOwner, (cause) => {
+    const pretty = Cause.pretty(cause);
+    if (pretty.includes("no such table: __owner")) return init(mnemonic);
+    if (pretty.includes("no such column: encryptionKey"))
+      return migrateToSlip21;
+    return Effect.failCause(cause);
+  });
 
 export const resetOwner = (
   mnemonic?: Mnemonic

@@ -264,6 +264,13 @@ export interface QueryPatches {
 
 export type OnCompleteId = string & Brand<"Id"> & Brand<"OnComplete">;
 
+export type DbWorkerInputReceiveMessages = {
+  readonly _tag: "receiveMessages";
+  readonly messages: ReadonlyArray<Message>;
+  readonly merkleTree: MerkleTree;
+  readonly previousDiff: Millis | null;
+};
+
 export type DbWorkerInput =
   | {
       readonly _tag: "init";
@@ -284,12 +291,7 @@ export type DbWorkerInput =
       readonly _tag: "query";
       readonly queries: NonEmptyReadonlyArray<QueryString>;
     }
-  | {
-      readonly _tag: "receiveMessages";
-      readonly messages: ReadonlyArray<Message>;
-      readonly merkleTree: MerkleTree;
-      readonly previousDiff: Millis | null;
-    }
+  | DbWorkerInputReceiveMessages
   | {
       readonly _tag: "sync";
       readonly queries: NonEmptyReadonlyArray<QueryString> | null;
@@ -332,12 +334,12 @@ export type SyncWorkerInput = {
   readonly previousDiff: Millis | null;
 };
 
-export type SyncWorkerOutput =
-  | UnknownError
-  | Extract<DbWorkerInput, { _tag: "receiveMessages" }>;
+export type SyncWorkerOutput = UnknownError | DbWorkerInputReceiveMessages;
 
 export type SyncWorkerPost = (message: SyncWorkerInput) => void;
 export const SyncWorkerPost = Tag<SyncWorkerPost>();
+
+export type SyncWorkerOnMessage = (message: SyncWorkerOutput) => void;
 
 export type Listener = () => void;
 
@@ -352,5 +354,5 @@ export interface Store<T> {
 export type RequestSync = (callback: () => Promise<void>) => void;
 export const RequestSync = Tag<RequestSync>();
 
-export type IsSyncing = () => Effect<never, never, boolean>;
+export type IsSyncing = Effect<never, never, boolean>;
 export const IsSyncing = Tag<IsSyncing>();

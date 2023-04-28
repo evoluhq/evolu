@@ -199,7 +199,8 @@ export const sendMessages = ({
       previousDiff: null,
     });
 
-    yield* $(query({ queries, onCompleteIds }));
+    if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
+      yield* $(query({ queries, onCompleteIds }));
   });
 
 export const receiveMessages = ({
@@ -247,7 +248,7 @@ export const receiveMessages = ({
       yield* $(Effect.fail<SyncError>({ _tag: "SyncError" }));
 
     const isSyncing = yield* $(IsSyncing);
-    if (yield* $(isSyncing())) return;
+    if (yield* $(isSyncing)) return;
 
     const db = yield* $(Db);
     const messagesToSync = yield* $(

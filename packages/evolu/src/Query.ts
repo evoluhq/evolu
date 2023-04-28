@@ -27,7 +27,7 @@ export const query = ({
   queries,
   onCompleteIds = ReadonlyArray.empty(),
 }: {
-  readonly queries: ReadonlyArray<QueryString>;
+  readonly queries: ReadonlyArray.NonEmptyReadonlyArray<QueryString>;
   readonly onCompleteIds?: ReadonlyArray<OnCompleteId>;
 }): Effect.Effect<Db | DbWorkerRowsCache | DbWorkerOnMessage, never, void> =>
   Effect.gen(function* ($) {

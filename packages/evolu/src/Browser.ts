@@ -5,7 +5,8 @@ import * as Predicate from "@effect/data/Predicate";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import { DbWorker, QueryString, RequestSync } from "./Types.js";
 
-export const isBrowser = typeof window !== "undefined" && !("Deno" in window);
+// https://github.com/denoland/deno/issues/13367
+export const isBrowser = typeof document !== "undefined";
 
 const isChromeWithOpfs = (): boolean =>
   navigator.userAgentData != null &&
@@ -79,8 +80,7 @@ const hasLock: Predicate.Predicate<LockInfo[] | undefined> = flow(
   Option.getOrElse(constFalse)
 );
 
-export const isSyncing = (): Effect.Effect<never, never, boolean> =>
-  pipe(
-    Effect.promise(() => navigator.locks.query()),
-    Effect.map(({ pending, held }) => hasLock(pending) || hasLock(held))
-  );
+export const isSyncing: Effect.Effect<never, never, boolean> = pipe(
+  Effect.promise(() => navigator.locks.query()),
+  Effect.map(({ pending, held }) => hasLock(pending) || hasLock(held))
+);
