@@ -9,8 +9,8 @@ import {
 } from "./MerkleTree.js";
 import { Id } from "./Model.js";
 import {
-  CrdtMessageContent,
-  EncryptedCrdtMessage,
+  EncryptedMessage,
+  MessageContent,
   SyncRequest,
   SyncResponse,
 } from "./Protobuf.js";
@@ -25,7 +25,7 @@ import {
 } from "./Types.js";
 import { unknownError } from "./UnknownError.js";
 
-const crdtValueToProtobuf = (value: Value): CrdtMessageContent["value"] => {
+const valueToProtobuf = (value: Value): MessageContent["value"] => {
   switch (typeof value) {
     case "string":
       return { oneofKind: "stringValue", stringValue: value };
@@ -42,17 +42,17 @@ const encryptMessage =
     timestamp,
     value,
     ...rest
-  }: Message): Effect.Effect<never, never, EncryptedCrdtMessage> =>
+  }: Message): Effect.Effect<never, never, EncryptedMessage> =>
     pipe(
-      CrdtMessageContent.toBinary({
+      MessageContent.toBinary({
         ...rest,
-        value: crdtValueToProtobuf(value),
+        value: valueToProtobuf(value),
       }),
       (binary) => Effect.promise(() => encrypt(encryptionKey, binary)),
-      Effect.map((content): EncryptedCrdtMessage => ({ timestamp, content }))
+      Effect.map((content): EncryptedMessage => ({ timestamp, content }))
     );
 
-const protobufToCrdtValue = (value: CrdtMessageContent["value"]): Value => {
+const protobufToValue = (value: MessageContent["value"]): Value => {
   switch (value.oneofKind) {
     case "numberValue":
       return value.numberValue;
@@ -67,11 +67,11 @@ const protobufToCrdtValue = (value: CrdtMessageContent["value"]): Value => {
 
 const decryptMessage =
   (encryptionKey: Uint8Array) =>
-  (message: EncryptedCrdtMessage): Effect.Effect<never, never, Message> =>
+  (message: EncryptedMessage): Effect.Effect<never, never, Message> =>
     pipe(
       Effect.promise(() =>
         decrypt(encryptionKey, message.content).then((data) =>
-          CrdtMessageContent.fromBinary(data)
+          MessageContent.fromBinary(data)
         )
       ),
       Effect.map(
@@ -80,7 +80,7 @@ const decryptMessage =
           table: content.table,
           row: content.row as Id,
           column: content.column,
-          value: protobufToCrdtValue(content.value),
+          value: protobufToValue(content.value),
         })
       )
     );

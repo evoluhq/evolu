@@ -123,7 +123,7 @@ const addMessages = ({
   userId,
 }: {
   merkleTree: MerkleTree;
-  messages: ReadonlyArray.NonEmptyArray<Protobuf.EncryptedCrdtMessage>;
+  messages: ReadonlyArray.NonEmptyArray<Protobuf.EncryptedMessage>;
   userId: string;
 }): Effect.Effect<Db, SqliteError, MerkleTree> =>
   Effect.flatMap(DbTag, (db) =>
@@ -168,11 +168,7 @@ const getMessages = ({
   millis: Millis;
   userId: string;
   nodeId: string;
-}): Effect.Effect<
-  Db,
-  SqliteError,
-  ReadonlyArray<Protobuf.EncryptedCrdtMessage>
-> =>
+}): Effect.Effect<Db, SqliteError, ReadonlyArray<Protobuf.EncryptedMessage>> =>
   Effect.flatMap(DbTag, (db) =>
     Effect.tryCatch(
       () =>
@@ -180,7 +176,7 @@ const getMessages = ({
           userId,
           pipe(millis, createSyncTimestamp, timestampToString),
           nodeId
-        ) as ReadonlyArray<Protobuf.EncryptedCrdtMessage>,
+        ) as ReadonlyArray<Protobuf.EncryptedMessage>,
       (error) => new SqliteError(error)
     )
   );
@@ -192,7 +188,7 @@ const sync = (
   BadRequestError | SqliteError,
   {
     merkleTree: MerkleTree;
-    messages: ReadonlyArray<Protobuf.EncryptedCrdtMessage>;
+    messages: ReadonlyArray<Protobuf.EncryptedMessage>;
   }
 > =>
   Effect.flatMap(
@@ -255,7 +251,7 @@ export const createExpressApp = (): express.Express => {
             Buffer.from(
               Protobuf.SyncResponse.toBinary({
                 merkleTree: merkleTreeToString(merkleTree),
-                messages: messages as Array<Protobuf.EncryptedCrdtMessage>,
+                messages: messages as Array<Protobuf.EncryptedMessage>,
               })
             )
           );
