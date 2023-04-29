@@ -13,7 +13,6 @@ export const parseMnemonic = (
   mnemonic: string
 ): Effect.Effect<never, InvalidMnemonicError, Mnemonic> =>
   pipe(
-    // TODO: Handle offline.
     importBip39WithEnglish,
     Effect.flatMap(([{ validateMnemonic }, { wordlist }]) =>
       validateMnemonic(mnemonic, wordlist)
@@ -24,7 +23,6 @@ export const parseMnemonic = (
 
 export const generateMnemonic = (): Effect.Effect<never, never, Mnemonic> =>
   pipe(
-    // TODO: Handle offline.
     importBip39WithEnglish,
     Effect.map(
       ([{ generateMnemonic }, { wordlist }]) =>
