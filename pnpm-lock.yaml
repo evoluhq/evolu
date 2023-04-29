@@ -124,7 +124,6 @@ importers:
       array-shuffle: ^3.0.0
       eslint: ^8.39.0
       eslint-config-evolu: workspace:0.0.2
-      fp-ts: ^2.14.0
       kysely: ~0.24.2
       micro-aes-gcm: ~0.4.0
       murmurhash: ^2.0.1
@@ -139,7 +138,6 @@ importers:
       '@noble/hashes': 1.3.0
       '@protobuf-ts/runtime': 2.9.0
       '@scure/bip39': 1.2.0
-      fp-ts: 2.14.0
       kysely: 0.24.2
       micro-aes-gcm: 0.4.0
       murmurhash: 2.0.1
@@ -3124,10 +3122,6 @@ packages:
   /forwarded/0.2.0:
     resolution: {integrity: sha512-buRG0fpBtRHSTCOASe6hD258tEubFoRLb4ZNA6NxMVHNw2gOcwHo9wyablzMzOA5z9xA9L1KNjk/Nt6MT9aYow==}
     engines: {node: '>= 0.6'}
-    dev: false
-
-  /fp-ts/2.14.0:
-    resolution: {integrity: sha512-QLagLSYAgMA00pZzUzeksH/78Sd14y7+Gc2A8Yaja3/IpGOFMdm/gYBuDMxYqLsJ58iT5lz+bJb953RAeFfp1A==}
     dev: false
 
   /fraction.js/4.2.0:

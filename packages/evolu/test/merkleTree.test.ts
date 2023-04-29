@@ -1,16 +1,13 @@
+import { pipe } from "@effect/data/Function";
 import arrayShuffle from "array-shuffle";
-import { pipe } from "fp-ts/lib/function.js";
 import { expect, test } from "vitest";
 import {
   createInitialMerkleTree,
   diffMerkleTrees,
   insertIntoMerkleTree,
-  MerkleTree,
-} from "../src/to-migrate/merkleTree.js";
-import {
-  unsafeTimestampFromString,
-  TimestampString,
-} from "../src/to-migrate/timestamp.js";
+} from "../src/MerkleTree.js";
+import { unsafeTimestampFromString } from "../src/Timestamp.js";
+import { MerkleTree, TimestampString } from "../src/Types.js";
 import { messages1 } from "./fixtures/messages.js";
 import { createNode1Timestamp } from "./testUtils.js";
 

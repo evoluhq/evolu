@@ -4,8 +4,8 @@ exports[`receiveTimestamp > TimestampDuplicateNodeError 1`] = `
 {
   "_tag": "Left",
   "left": {
+    "_tag": "TimestampDuplicateNodeError",
     "node": "0000000000000001",
-    "type": "TimestampDuplicateNodeError",
   },
 }
 `;
@@ -14,9 +14,9 @@ exports[`receiveTimestamp > should fail with clock drift 1`] = `
 {
   "_tag": "Left",
   "left": {
-    "next": 60001,
+    "_tag": "TimestampDriftError",
+    "next": 300001,
     "now": 0,
-    "type": "TimestampDriftError",
   },
 }
 `;
@@ -25,9 +25,9 @@ exports[`receiveTimestamp > should fail with clock drift 2`] = `
 {
   "_tag": "Left",
   "left": {
-    "next": 60001,
+    "_tag": "TimestampDriftError",
+    "next": 300001,
     "now": 0,
-    "type": "TimestampDriftError",
   },
 }
 `;
@@ -91,9 +91,9 @@ exports[`sendTimestamp > should fail with clock drift 1`] = `
 {
   "_tag": "Left",
   "left": {
-    "next": 60001,
+    "_tag": "TimestampDriftError",
+    "next": 300001,
     "now": 0,
-    "type": "TimestampDriftError",
   },
 }
 `;
@@ -102,7 +102,7 @@ exports[`sendTimestamp > should fail with counter overflow 1`] = `
 {
   "_tag": "Left",
   "left": {
-    "type": "TimestampCounterOverflowError",
+    "_tag": "TimestampCounterOverflowError",
   },
 }
 `;

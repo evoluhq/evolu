@@ -265,9 +265,9 @@ const createMutate = <S extends Schema>({
     getOwner.then((owner) => {
       queue.push([
         createNewMessages(
-          table as string,
+          table.toString(),
           id as Id,
-          values as never,
+          values,
           owner.id,
           now,
           isInsert

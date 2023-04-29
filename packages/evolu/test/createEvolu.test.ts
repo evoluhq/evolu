@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
-import { Id, OwnerId, SqliteDate } from "../src/to-migrate/model.js";
-import { createNewCrdtMessages } from "../src/to-migrate/createEvolu.js";
+import { createNewMessages } from "../src/Messages.js";
+import { Id, SqliteDate } from "../src/Model.js";
+import { Owner } from "../src/Types.js";
 
 test("createNewCrdtMessages", () => {
   const values = {
@@ -12,22 +13,22 @@ test("createNewCrdtMessages", () => {
   };
 
   expect(
-    createNewCrdtMessages(
+    createNewMessages(
       "table",
       "row" as Id,
       values,
-      "ownerId" as OwnerId,
+      "ownerId" as Owner["id"],
       "now" as SqliteDate,
       true
     )
   ).toMatchSnapshot();
 
   expect(
-    createNewCrdtMessages(
+    createNewMessages(
       "table",
       "row" as Id,
       values,
-      "ownerId" as OwnerId,
+      "ownerId" as Owner["id"],
       "now" as SqliteDate,
       false
     )

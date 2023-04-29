@@ -1,11 +1,21 @@
 import { flow, pipe } from "@effect/data/Function";
-import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as Option from "@effect/data/Option";
+import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as ReadonlyRecord from "@effect/data/ReadonlyRecord";
 import * as Effect from "@effect/io/Effect";
+import { readClock, writeClock } from "./Clock.js";
+import { diffMerkleTrees, insertIntoMerkleTree } from "./MerkleTree.js";
 import { Id, SqliteDate, cast } from "./Model.js";
+import { query } from "./Query.js";
+import { ensureSchema } from "./Schema.js";
 import {
-  AllowAutoCasting,
+  createSyncTimestamp,
+  receiveTimestamp,
+  sendTimestamp,
+  timestampToString,
+  unsafeTimestampFromString,
+} from "./Timestamp.js";
+import {
   Config,
   Db,
   DbWorkerOnMessage,
@@ -27,38 +37,30 @@ import {
   TimestampString,
   Value,
 } from "./Types.js";
-import { readClock, writeClock } from "./Clock.js";
-import {
-  createSyncTimestamp,
-  receiveTimestamp,
-  sendTimestamp,
-  timestampToString,
-  unsafeTimestampFromString,
-} from "./Timestamp.js";
-import { diffMerkleTrees, insertIntoMerkleTree } from "./MerkleTree.js";
-import { query } from "./Query.js";
-import { ensureSchema } from "./Schema.js";
 
 export const createNewMessages = (
   table: string,
   row: Id,
-  values: ReadonlyRecord.ReadonlyRecord<AllowAutoCasting<Value>>,
+  values: ReadonlyRecord.ReadonlyRecord<Value | boolean | Date | undefined>,
   ownerId: Owner["id"],
   now: SqliteDate,
   isInsert: boolean
 ): ReadonlyArray.NonEmptyReadonlyArray<NewMessage> =>
   pipe(
     ReadonlyRecord.toEntries(values),
-    // Filter out undefined and null for inserts. Null is default in SQLite.
-    ReadonlyArray.filter(
-      ([, value]) => value !== undefined && (isInsert ? value != null : true)
+    ReadonlyArray.filterMap(([key, value]) =>
+      value !== undefined && (isInsert ? value != null : true)
+        ? Option.some([key, value] as const)
+        : Option.none()
     ),
     ReadonlyArray.map(
       ([key, value]) =>
         [
           key,
-          typeof value === "boolean" || value instanceof Date
-            ? cast(value as never)
+          typeof value === "boolean"
+            ? cast(value)
+            : value instanceof Date
+            ? cast(value)
             : value,
         ] as const
     ),
