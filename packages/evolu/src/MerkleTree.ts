@@ -1,5 +1,5 @@
 import * as Option from "@effect/data/Option";
-import { timestampToHash } from "./_Timestamp.js";
+import { timestampToHash } from "./Timestamp.js";
 import {
   MerkleTree,
   MerkleTreeString,

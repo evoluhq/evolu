@@ -13,11 +13,11 @@ import {
   isBrowser,
   reloadAllTabs,
 } from "./Browser.js";
-import { createConfig } from "./_config.js";
+import { createConfig } from "./Config.js";
 import { applyPatches } from "./Diff.js";
 import { createNewMessages } from "./Messages.js";
 import { parseMnemonic } from "./Mnemonic.js";
-import { Id, cast, createId } from "./_model.js";
+import { Id, cast, createId } from "./Model.js";
 import { QueryStringEquivalence } from "./Query.js";
 import { schemaToTablesDefinitions } from "./Schema.js";
 import { createStore } from "./Store.js";

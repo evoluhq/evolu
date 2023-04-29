@@ -3,9 +3,9 @@ import * as Cause from "@effect/io/Cause";
 import * as Effect from "@effect/io/Effect";
 import { urlAlphabet } from "nanoid";
 import { deleteAllTables } from "./Db.js";
-import { createInitialMerkleTree, merkleTreeToString } from "./_merkleTree.js";
+import { createInitialMerkleTree, merkleTreeToString } from "./MerkleTree.js";
 import { generateMnemonic } from "./Mnemonic.js";
-import { createInitialTimestamp, timestampToString } from "./_Timestamp.js";
+import { createInitialTimestamp, timestampToString } from "./Timestamp.js";
 import { Db, DbWorkerOnMessage, Mnemonic, Owner } from "./Types.js";
 
 const getOwner: Effect.Effect<Db, never, Owner> = pipe(

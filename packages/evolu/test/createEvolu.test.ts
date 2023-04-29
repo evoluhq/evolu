@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { createNewMessages } from "../src/Messages.js";
-import { Id, SqliteDate } from "../src/_model.js";
+import { Id, SqliteDate } from "../src/Model.js";
 import { Owner } from "../src/Types.js";
 
 test("createNewCrdtMessages", () => {

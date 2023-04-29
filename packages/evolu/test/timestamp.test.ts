@@ -3,7 +3,7 @@ import * as Either from "@effect/data/Either";
 import { pipe } from "@effect/data/Function";
 import { describe, expect, test } from "vitest";
 import { createNode1Timestamp, createNode2Timestamp } from "./testUtils.js";
-import { createConfig } from "../src/_config.js";
+import { createConfig } from "../src/Config.js";
 import {
   createInitialTimestamp,
   createSyncTimestamp,
@@ -12,7 +12,7 @@ import {
   timestampToHash,
   timestampToString,
   unsafeTimestampFromString,
-} from "../src/_Timestamp.js";
+} from "../src/Timestamp.js";
 import * as Effect from "@effect/io/Effect";
 import {
   Config,

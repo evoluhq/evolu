@@ -4,8 +4,8 @@ import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as ReadonlyRecord from "@effect/data/ReadonlyRecord";
 import * as Effect from "@effect/io/Effect";
 import { readClock, writeClock } from "./Clock.js";
-import { diffMerkleTrees, insertIntoMerkleTree } from "./_merkleTree.js";
-import { Id, SqliteDate, cast } from "./_model.js";
+import { diffMerkleTrees, insertIntoMerkleTree } from "./MerkleTree.js";
+import { Id, SqliteDate, cast } from "./Model.js";
 import { query } from "./Query.js";
 import { ensureSchema } from "./Schema.js";
 import {
@@ -14,7 +14,7 @@ import {
   sendTimestamp,
   timestampToString,
   unsafeTimestampFromString,
-} from "./_Timestamp.js";
+} from "./Timestamp.js";
 import {
   Config,
   Db,

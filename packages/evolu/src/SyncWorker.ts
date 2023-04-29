@@ -6,14 +6,14 @@ import { decrypt, encrypt } from "micro-aes-gcm";
 import {
   merkleTreeToString,
   unsafeMerkleTreeFromString,
-} from "./_merkleTree.js";
-import { Id } from "./_model.js";
+} from "./MerkleTree.js";
+import { Id } from "./Model.js";
 import {
   EncryptedMessage,
   MessageContent,
   SyncRequest,
   SyncResponse,
-} from "./_protobuf.js";
+} from "./Protobuf.js";
 import {
   DbWorkerInputReceiveMessages,
   MerkleTreeString,
