@@ -1,44 +1,44 @@
 import { pipe } from "@effect/data/Function";
-import * as S from "@effect/schema/Schema";
+import * as Schema from "@effect/schema/Schema";
 import { formatErrors } from "@effect/schema/TreeFormatter";
-import * as E from "evolu";
+import * as Evolu from "evolu";
 import { ChangeEvent, FC, memo, useEffect, useState } from "react";
 
-const TodoId = E.id("Todo");
-type TodoId = S.To<typeof TodoId>;
+const TodoId = Evolu.id("Todo");
+type TodoId = Schema.To<typeof TodoId>;
 
-const TodoCategoryId = E.id("TodoCategory");
-type TodoCategoryId = S.To<typeof TodoCategoryId>;
+const TodoCategoryId = Evolu.id("TodoCategory");
+type TodoCategoryId = Schema.To<typeof TodoCategoryId>;
 
 const NonEmptyString50 = pipe(
-  S.string,
-  S.minLength(1),
-  S.maxLength(50),
-  S.brand("NonEmptyString50")
+  Schema.string,
+  Schema.minLength(1),
+  Schema.maxLength(50),
+  Schema.brand("NonEmptyString50")
 );
-type NonEmptyString50 = S.To<typeof NonEmptyString50>;
+type NonEmptyString50 = Schema.To<typeof NonEmptyString50>;
 
-const TodoTable = S.struct({
+const TodoTable = Schema.struct({
   id: TodoId,
-  title: E.NonEmptyString1000,
-  isCompleted: E.SqliteBoolean,
-  categoryId: S.nullable(TodoCategoryId),
+  title: Evolu.NonEmptyString1000,
+  isCompleted: Evolu.SqliteBoolean,
+  categoryId: Schema.nullable(TodoCategoryId),
 });
-type TodoTable = S.To<typeof TodoTable>;
+type TodoTable = Schema.To<typeof TodoTable>;
 
-const TodoCategoryTable = S.struct({
+const TodoCategoryTable = Schema.struct({
   id: TodoCategoryId,
   name: NonEmptyString50,
 });
-type TodoCategoryTable = S.To<typeof TodoCategoryTable>;
+type TodoCategoryTable = Schema.To<typeof TodoCategoryTable>;
 
-const Database = S.struct({
+const Database = Schema.struct({
   todo: TodoTable,
   todoCategory: TodoCategoryTable,
 });
 
 const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
-  E.createHooks(Database, {
+  Evolu.createHooks(Database, {
     reloadUrl: "/examples/nextjs",
     ...(process.env.NODE_ENV === "development" && {
       syncUrl: "http://localhost:4000",
@@ -46,13 +46,13 @@ const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
   });
 
 const prompt = <From extends string, To>(
-  schema: S.Schema<From, To>,
+  schema: Schema.Schema<From, To>,
   message: string,
   onSuccess: (value: To) => void
 ): void => {
   const value = window.prompt(message);
   if (value == null) return; // on cancel
-  const a = S.parseEither(schema)(value);
+  const a = Schema.parseEither(schema)(value);
   if (a._tag === "Left") {
     alert(formatErrors(a.left.errors));
     return;
@@ -83,7 +83,7 @@ const TodoCategorySelect: FC<{
       db
         .selectFrom("todoCategory")
         .select(["id", "name"])
-        .where("isDeleted", "is not", E.cast(true))
+        .where("isDeleted", "is not", Evolu.cast(true))
         .orderBy("createdAt"),
     // (row) => row
     // Filter out rows with nullable names.
@@ -137,7 +137,7 @@ const TodoItem = memo<{
       <Button
         title="Rename"
         onClick={(): void => {
-          prompt(E.NonEmptyString1000, "New Name", (title) => {
+          prompt(Evolu.NonEmptyString1000, "New Name", (title) => {
             update("todo", { id, title });
           });
         }}
@@ -164,7 +164,7 @@ const TodoList: FC = () => {
       db
         .selectFrom("todo")
         .select(["id", "title", "isCompleted", "categoryId"])
-        .where("isDeleted", "is not", E.cast(true))
+        .where("isDeleted", "is not", Evolu.cast(true))
         .orderBy("createdAt"),
     // (row) => row
     ({ title, isCompleted, ...rest }) =>
@@ -190,7 +190,7 @@ const AddTodo: FC = () => {
     <Button
       title="Add Todo"
       onClick={(): void => {
-        prompt(E.NonEmptyString1000, "What needs to be done?", (title) => {
+        prompt(Evolu.NonEmptyString1000, "What needs to be done?", (title) => {
           create("todo", { title, isCompleted: false });
         });
       }}
@@ -204,7 +204,7 @@ const TodoCategoryList: FC = () => {
       db
         .selectFrom("todoCategory")
         .select(["id", "name"])
-        .where("isDeleted", "is not", E.cast(true))
+        .where("isDeleted", "is not", Evolu.cast(true))
         .orderBy("createdAt"),
     // (row) => row
     ({ name, ...rest }) => name && { name, ...rest }
@@ -273,7 +273,7 @@ const OwnerActions: FC = () => {
       <Button
         title="Restore Owner"
         onClick={(): void => {
-          prompt(E.NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
+          prompt(Evolu.NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
             ownerActions.restore(mnemonic).then((either) => {
               if (either._tag === "Left")
                 alert(JSON.stringify(either.left, null, 2));
@@ -314,7 +314,7 @@ const NotificationBar: FC = () => {
 
   return (
     <div>
-      <p>{`Error: ${JSON.stringify(evoluError.error)}`}</p>
+      <p>{`Error: ${JSON.stringify(evoluError)}`}</p>
       <Button title="Close" onClick={(): void => setShown(false)} />
     </div>
   );

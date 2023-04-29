@@ -7,20 +7,20 @@
     "clean": "rm -rf node_modules"
   },
   "dependencies": {
-    "@typescript-eslint/eslint-plugin": "^5.57.0",
-    "@typescript-eslint/parser": "^5.57.0",
-    "eslint-config-next": "^13.2.4",
+    "@typescript-eslint/eslint-plugin": "^5.59.1",
+    "@typescript-eslint/parser": "^5.59.1",
+    "eslint-config-next": "^13.3.1",
     "eslint-config-prettier": "^8.8.0",
-    "eslint-config-turbo": "^1.8.8",
-    "eslint-plugin-jsdoc": "^40.1.1",
+    "eslint-config-turbo": "^1.9.3",
+    "eslint-plugin-jsdoc": "^43.1.1",
     "eslint-plugin-node": "^11.1.0",
-    "next": "^13.2.4",
+    "next": "^13.3.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "eslint": "^8.37.0",
-    "typescript": "^5.0.3"
+    "eslint": "^8.39.0",
+    "typescript": "^5.0.4"
   },
   "publishConfig": {
     "access": "public"

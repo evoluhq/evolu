@@ -24,7 +24,7 @@ Client-server architecture provides us with easy backup and synchronization, but
 
 ## Requirements
 
-- TypeScript 4.7 or newer
+- TypeScript 4.9 or newer
 - The `strict` flag enabled in your `tsconfig.json` file
 - The `exactOptionalPropertyTypes` flag enabled in your `tsconfig.json` file
 
@@ -42,7 +42,7 @@ Client-server architecture provides us with easy backup and synchronization, but
 ## Getting Started
 
 ```
-npm install evolu @effect/schema
+npm install evolu
 ```
 
 The complete Next.js example is [here](https://github.com/evoluhq/evolu/tree/main/apps/web).
@@ -52,20 +52,20 @@ The complete Next.js example is [here](https://github.com/evoluhq/evolu/tree/mai
 To start using Evolu, define schemas for your database and export React Hooks.
 
 ```ts
-import * as S from "@effect/schema/Schema";
-import * as E from "evolu";
+import * as Schema from "@effect/schema/Schema";
+import * as Evolu from "evolu";
 
-const TodoId = E.id("Todo");
-type TodoId = S.Infer<typeof TodoId>;
+const TodoId = Evolu.id("Todo");
+type TodoId = Schema.To<typeof TodoId>;
 
-const TodoTable = S.struct({
+const TodoTable = Schema.struct({
   id: TodoId,
-  title: E.NonEmptyString1000,
-  isCompleted: E.SqliteBoolean,
+  title: Evolu.NonEmptyString1000,
+  isCompleted: Evolu.SqliteBoolean,
 });
-type TodoTable = S.Infer<typeof TodoTable>;
+type TodoTable = Schema.To<typeof TodoTable>;
 
-const Database = S.struct({
+const Database = Schema.struct({
   todo: TodoTable,
 });
 
@@ -75,7 +75,7 @@ export const {
   useOwner,
   useOwnerActions,
   useEvoluError,
-} = E.createHooks(Database);
+} = Evolu.createHooks(Database);
 ```
 
 ### Validate Data
@@ -83,10 +83,10 @@ export const {
 Learn more about [Schema](https://github.com/effect-ts/schema).
 
 ```ts
-import * as S from "@effect/schema/Schema";
-import * as E from "evolu";
+import * as Schema from "@effect/schema/Schema";
+import * as Evolu from "evolu";
 
-S.parse(E.String1000)(title);
+Schema.parse(Evolu.String1000)(title);
 ```
 
 ### Mutate Data
@@ -172,8 +172,6 @@ Evolu is not P2P. For reliable syncing and backup, there needs to be a server. E
 
 All table columns except for ID are nullable by default. It's not a bug; it's a feature. Local-first data are meant to last forever, but schemas evolve. This design decision was inspired by GraphQL [nullability](https://graphql.org/learn/best-practices/#nullability) and [versioning](https://graphql.org/learn/best-practices/#versioning). Evolu provides a handy `filterMap` helper for queries.
 
-Evolu has no support for CRDT transactions because CRDT transactions are still in the research phase. There are a few proposals, but nothing is usable yet. Instead of a half-baked solution, I made a design decision not to implement them. Fortunately, it's not a show-stopper.
-
 ## Community
 
 The Evolu community is on GitHub Discussions, where you can ask questions and voice ideas.
@@ -199,7 +197,7 @@ Use OPFS Explorer Chrome DevTools extension.
 
 ## Contributing
 
-Evolu monorepo uses [pnpm](https://pnpm.io/).
+Evolu monorepo uses [pnpm](https://pnpm.io).
 
 Install the dependencies with:
 

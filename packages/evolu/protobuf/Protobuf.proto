@@ -2,7 +2,7 @@ syntax = "proto3";
 
 option optimize_for = CODE_SIZE;
 
-message CrdtMessageContent {
+message MessageContent {
   string table = 1;
   string row = 2;
   string column = 3;
@@ -13,19 +13,19 @@ message CrdtMessageContent {
   }
 }
 
-message EncryptedCrdtMessage {
+message EncryptedMessage {
   string timestamp = 1;
   bytes content = 2;
 }
 
 message SyncRequest {
-  repeated EncryptedCrdtMessage messages = 1;
+  repeated EncryptedMessage messages = 1;
   string userId = 2;
   string nodeId = 3;
   string merkleTree = 4;
 }
 
 message SyncResponse {
-  repeated EncryptedCrdtMessage messages = 1;
+  repeated EncryptedMessage messages = 1;
   string merkleTree = 2;
 }

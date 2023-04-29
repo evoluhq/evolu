@@ -1,4 +1,4 @@
-import { Timestamp } from "../src/timestamp.js";
+import { Timestamp } from "../src/Types.js";
 
 export const createNode1Timestamp = (millis = 0, counter = 0): Timestamp =>
   ({

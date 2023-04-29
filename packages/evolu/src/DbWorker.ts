@@ -1,0 +1,180 @@
+import * as Context from "@effect/data/Context";
+import * as Either from "@effect/data/Either";
+import { apply, constVoid, flow, pipe } from "@effect/data/Function";
+import * as Cause from "@effect/io/Cause";
+import * as Effect from "@effect/io/Effect";
+import * as Ref from "@effect/io/Ref";
+import * as Browser from "./Browser.js";
+import { transaction } from "./Db.js";
+import { receiveMessages, sendMessages } from "./Messages.js";
+import { lazyInitOwner, resetOwner } from "./Owner.js";
+import { query } from "./Query.js";
+import { updateSchema } from "./Schema.js";
+import { sync } from "./Sync.js";
+import {
+  Config,
+  CreateDbWorker,
+  Db,
+  DbWorker,
+  DbWorkerInput,
+  DbWorkerOnMessage,
+  DbWorkerRowsCache,
+  EvoluError,
+  IsSyncing,
+  Millis,
+  Owner,
+  SyncError,
+  SyncWorkerOutput,
+  SyncWorkerPost,
+  Time,
+  TimestampCounterOverflowError,
+  TimestampDriftError,
+  TimestampDuplicateNodeError,
+} from "./Types.js";
+import { unknownError } from "./UnknownError.js";
+
+export const createCreateDbWorker =
+  (createDb: Effect.Effect<never, never, Db>): CreateDbWorker =>
+  (_onMessage) => {
+    let skipAllBecauseBrowserIsGoingToBeReloaded = false;
+
+    const onMessage: DbWorkerOnMessage = (message) => {
+      if (message._tag === "onResetOrRestore")
+        skipAllBecauseBrowserIsGoingToBeReloaded = true;
+      _onMessage(message);
+    };
+
+    const handleError = (error: EvoluError): void =>
+      onMessage({ _tag: "onError", error });
+
+    const recoverFromAllCause: <A>(
+      a: A
+    ) => (self: Cause.Cause<EvoluError>) => Effect.Effect<never, never, A> = (
+      a
+    ) =>
+      flow(
+        Cause.failureOrCause,
+        Either.match(
+          handleError,
+          flow(Cause.squash, unknownError, handleError)
+        ),
+        () => Effect.succeed(a)
+      );
+
+    const syncWorker = new Worker(new URL("./Sync.worker.js", import.meta.url));
+    const syncWorkerPost: SyncWorkerPost = (message) =>
+      syncWorker.postMessage(message);
+
+    return pipe(
+      Effect.gen(function* ($) {
+        const db = yield* $(createDb);
+        const owner = yield* $(
+          lazyInitOwner(),
+          transaction,
+          Effect.provideService(Db, db)
+        );
+
+        onMessage({ _tag: "onOwner", owner });
+
+        const context = pipe(
+          Context.empty(),
+          Context.add(Db, db),
+          Context.add(DbWorkerOnMessage, onMessage),
+          Context.add(DbWorkerRowsCache, Ref.unsafeMake(new Map())),
+          Context.add(Owner, owner),
+          Context.add(SyncWorkerPost, syncWorkerPost),
+          Context.add(IsSyncing, Browser.isSyncing),
+          Context.add(Time, { now: () => Date.now() as Millis })
+        );
+
+        let post: DbWorker["post"] | null = null;
+
+        return (message: DbWorkerInput) => {
+          if (post) {
+            post(message);
+            return;
+          }
+
+          if (message._tag !== "init")
+            throw new self.Error("init must be called first");
+
+          const contextWithConfig = pipe(
+            context,
+            Context.add(Config, message.config)
+          );
+
+          const write: (input: DbWorkerInput) => Promise<void> = flow(
+            (
+              input
+            ): Effect.Effect<
+              | Db
+              | Owner
+              | DbWorkerOnMessage
+              | DbWorkerRowsCache
+              | SyncWorkerPost
+              | Time
+              | IsSyncing
+              | Config,
+              | TimestampDuplicateNodeError
+              | TimestampDriftError
+              | TimestampCounterOverflowError
+              | SyncError,
+              void
+            > => {
+              if (skipAllBecauseBrowserIsGoingToBeReloaded)
+                return Effect.succeed(undefined);
+              switch (input._tag) {
+                case "init":
+                  throw new self.Error("init must be called once");
+                case "updateSchema":
+                  return updateSchema(input.tableDefinitions);
+                case "sendMessages":
+                  return sendMessages(input);
+                case "query":
+                  return query(input);
+                case "receiveMessages":
+                  return receiveMessages(input);
+                case "sync":
+                  return sync(input.queries);
+                case "reset":
+                  return resetOwner(input.mnemonic);
+              }
+            },
+            flow(
+              transaction,
+              Effect.catchAllCause(recoverFromAllCause(undefined)),
+              Effect.provideContext(contextWithConfig),
+              Effect.runPromise
+            )
+          );
+
+          const stream = new WritableStream<DbWorkerInput>({ write });
+
+          post = (message): void => {
+            const writer = stream.getWriter();
+            writer.write(message);
+            writer.releaseLock();
+          };
+
+          syncWorker.onmessage = ({
+            data: message,
+          }: MessageEvent<SyncWorkerOutput>): void => {
+            if (message._tag === "UnknownError") handleError(message);
+            else post && post(message);
+          };
+
+          post({
+            _tag: "updateSchema",
+            tableDefinitions: message.tableDefinitions,
+          });
+        };
+      }),
+      Effect.catchAllCause(recoverFromAllCause(constVoid)),
+      Effect.runPromise,
+      (post) => ({
+        post: (message): void => {
+          post.then(apply(message));
+        },
+      })
+    );
+  };

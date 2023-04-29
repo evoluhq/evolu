@@ -1,27 +1,30 @@
-import { either } from "fp-ts";
-import { pipe } from "fp-ts/lib/function.js";
+import * as Context from "@effect/data/Context";
+import * as Either from "@effect/data/Either";
+import { pipe } from "@effect/data/Function";
 import { describe, expect, test } from "vitest";
-import { ConfigEnv, createConfig } from "../src/config.js";
+import { createNode1Timestamp, createNode2Timestamp } from "./testUtils.js";
+import { createConfig } from "../src/Config.js";
 import {
   createInitialTimestamp,
   createSyncTimestamp,
-  Millis,
   receiveTimestamp,
   sendTimestamp,
-  TimeEnv,
+  timestampToHash,
+  timestampToString,
+  unsafeTimestampFromString,
+} from "../src/Timestamp.js";
+import * as Effect from "@effect/io/Effect";
+import {
+  Config,
+  Millis,
+  Time,
   Timestamp,
   TimestampCounterOverflowError,
   TimestampDriftError,
-  timestampFromString,
-  timestampToHash,
-  timestampToString,
-} from "../src/timestamp.js";
-import { createNode1Timestamp, createNode2Timestamp } from "./testUtils.js";
-
-const config = createConfig();
+} from "../src/Types.js";
 
 test("createInitialTimestamp", () => {
-  const ts = createInitialTimestamp();
+  const ts = Effect.runSync(createInitialTimestamp);
   expect(ts.counter).toBe(0);
   expect(ts.millis).toBe(0);
   expect(ts.node.length).toBe(16);
@@ -40,42 +43,80 @@ test("timestampToString", () => {
 
 test("timestampFromString", () => {
   const t = createSyncTimestamp();
-  expect(t).toEqual(pipe(t, timestampToString, timestampFromString));
+  expect(t).toEqual(pipe(t, timestampToString, unsafeTimestampFromString));
 });
 
 test("timestampToHash", () => {
   expect(timestampToHash(createSyncTimestamp())).toMatchSnapshot();
 });
 
-const now0 = { now: () => 0, config } as TimeEnv & ConfigEnv;
-const now1 = { now: () => 1, config } as TimeEnv & ConfigEnv;
+const config = createConfig();
+
+const context0 = pipe(
+  Context.empty(),
+  Context.add(Config, config),
+  Context.add(Time, { now: () => 0 as Millis })
+);
+
+const context1 = pipe(
+  Context.empty(),
+  Context.add(Config, config),
+  Context.add(Time, { now: () => 1 as Millis })
+);
 
 describe("sendTimestamp", () => {
   test("should send monotonically with a monotonic clock", () => {
-    expect(pipe(createSyncTimestamp(), sendTimestamp)(now1)).toMatchSnapshot();
+    expect(
+      pipe(
+        createSyncTimestamp(),
+        sendTimestamp,
+        Effect.provideContext(context1),
+        Effect.runSyncEither
+      )
+    ).toMatchSnapshot();
   });
 
   test("should send monotonically with a stuttering clock", () => {
-    expect(pipe(createSyncTimestamp(), sendTimestamp)(now0)).toMatchSnapshot();
+    expect(
+      pipe(
+        createSyncTimestamp(),
+        sendTimestamp,
+        Effect.provideContext(context0),
+        Effect.runSyncEither
+      )
+    ).toMatchSnapshot();
   });
 
   test("should send monotonically with a regressing clock", () => {
     expect(
-      pipe(createSyncTimestamp(1 as Millis), sendTimestamp)(now0)
+      pipe(
+        createSyncTimestamp(1 as Millis),
+        sendTimestamp,
+        Effect.provideContext(context0),
+        Effect.runSyncEither
+      )
     ).toMatchSnapshot();
   });
 
   test("should fail with counter overflow", () => {
-    let timestamp = either.right<
+    let timestamp: Either.Either<
       TimestampDriftError | TimestampCounterOverflowError,
       Timestamp
-    >(createSyncTimestamp());
+    > = Either.right(createSyncTimestamp());
+
     for (let i = 0; i < 65536; i++) {
       timestamp = pipe(
         timestamp,
-        either.chain((t) => sendTimestamp(t)(now0))
+        Either.flatMap((t) =>
+          pipe(
+            sendTimestamp(t),
+            Effect.provideContext(context0),
+            Effect.runSyncEither
+          )
+        )
       );
     }
+
     expect(timestamp).toMatchSnapshot();
   });
 
@@ -83,8 +124,10 @@ describe("sendTimestamp", () => {
     expect(
       pipe(
         createSyncTimestamp((config.maxDrift + 1) as Millis),
-        sendTimestamp
-      )(now0)
+        sendTimestamp,
+        Effect.provideContext(context0),
+        Effect.runSyncEither
+      )
     ).toMatchSnapshot();
   });
 });
@@ -92,59 +135,91 @@ describe("sendTimestamp", () => {
 describe("receiveTimestamp", () => {
   test("wall clock is later than both the local and remote timestamps", () => {
     expect(
-      receiveTimestamp(createNode1Timestamp(), createNode2Timestamp(0, 0))(now1)
+      pipe(
+        receiveTimestamp(createNode1Timestamp(), createNode2Timestamp(0, 0)),
+        Effect.provideContext(context1),
+        Effect.runSyncEither
+      )
     ).toMatchSnapshot();
   });
 
   describe("wall clock is somehow behind", () => {
     test("for the same timestamps millis, we take the bigger counter", () => {
       expect(
-        receiveTimestamp(
-          createNode1Timestamp(1, 0),
-          createNode2Timestamp(1, 1)
-        )(now0)
+        pipe(
+          receiveTimestamp(
+            createNode1Timestamp(1, 0),
+            createNode2Timestamp(1, 1)
+          ),
+          Effect.provideContext(context1),
+          Effect.runSyncEither
+        )
       ).toMatchSnapshot();
 
       expect(
-        receiveTimestamp(
-          createNode1Timestamp(1, 1),
-          createNode2Timestamp(1, 0)
-        )(now0)
+        pipe(
+          receiveTimestamp(
+            createNode1Timestamp(1, 1),
+            createNode2Timestamp(1, 0)
+          ),
+          Effect.provideContext(context0),
+          Effect.runSyncEither
+        )
       ).toMatchSnapshot();
     });
 
     test("local millis is later than remote", () => {
       expect(
-        receiveTimestamp(createNode1Timestamp(2), createNode2Timestamp(1))(now0)
+        pipe(
+          receiveTimestamp(createNode1Timestamp(2), createNode2Timestamp(1)),
+          Effect.provideContext(context0),
+          Effect.runSyncEither
+        )
       ).toMatchSnapshot();
     });
 
     test("remote millis is later than local", () => {
       expect(
-        receiveTimestamp(createNode1Timestamp(1), createNode2Timestamp(2))(now0)
+        pipe(
+          receiveTimestamp(createNode1Timestamp(1), createNode2Timestamp(2)),
+          Effect.provideContext(context0),
+          Effect.runSyncEither
+        )
       ).toMatchSnapshot();
     });
   });
 
   test("TimestampDuplicateNodeError", () => {
     expect(
-      receiveTimestamp(createNode1Timestamp(), createNode1Timestamp())(now1)
+      pipe(
+        receiveTimestamp(createNode1Timestamp(), createNode1Timestamp()),
+        Effect.provideContext(context1),
+        Effect.runSyncEither
+      )
     ).toMatchSnapshot();
   });
 
   test("should fail with clock drift", () => {
     expect(
-      receiveTimestamp(
-        createSyncTimestamp((config.maxDrift + 1) as Millis),
-        createNode2Timestamp()
-      )(now0)
+      pipe(
+        receiveTimestamp(
+          createSyncTimestamp((config.maxDrift + 1) as Millis),
+          createNode2Timestamp()
+        ),
+        Effect.provideContext(context0),
+        Effect.runSyncEither
+      )
     ).toMatchSnapshot();
 
     expect(
-      receiveTimestamp(
-        createNode2Timestamp(),
-        createSyncTimestamp((config.maxDrift + 1) as Millis)
-      )(now0)
+      pipe(
+        receiveTimestamp(
+          createNode2Timestamp(),
+          createSyncTimestamp((config.maxDrift + 1) as Millis)
+        ),
+        Effect.provideContext(context0),
+        Effect.runSyncEither
+      )
     ).toMatchSnapshot();
   });
 });

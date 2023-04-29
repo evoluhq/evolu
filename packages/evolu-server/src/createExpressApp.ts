@@ -1,3 +1,8 @@
+import * as Context from "@effect/data/Context";
+import { flow, pipe } from "@effect/data/Function";
+import * as ReadonlyArray from "@effect/data/ReadonlyArray";
+import * as Effect from "@effect/io/Effect";
+import * as Exit from "@effect/io/Exit";
 import sqlite3, { Statement } from "better-sqlite3";
 import bodyParser from "body-parser";
 import cors from "cors";
@@ -5,29 +10,34 @@ import {
   createInitialMerkleTree,
   diffMerkleTrees,
   insertIntoMerkleTree,
-  MerkleTree,
-  merkleTreeFromString,
-  MerkleTreeString,
   merkleTreeToString,
-} from "evolu/merkleTree";
-import {
-  EncryptedCrdtMessage,
-  SyncRequest,
-  SyncResponse,
-} from "evolu/protobuf";
+  unsafeMerkleTreeFromString,
+} from "evolu/MerkleTree";
+import * as Protobuf from "evolu/Protobuf";
 import {
   createSyncTimestamp,
-  timestampFromString,
-  TimestampString,
   timestampToString,
-} from "evolu/timestamp";
-import express from "express";
-import { either, option, readerEither, readonlyArray } from "fp-ts";
-import { flow, pipe } from "fp-ts/lib/function.js";
-import { ReaderEither } from "fp-ts/lib/ReaderEither.js";
+  unsafeTimestampFromString,
+} from "evolu/Timestamp";
+import {
+  MerkleTree,
+  MerkleTreeString,
+  Millis,
+  TimestampString,
+} from "evolu/Types";
+import express, { Request } from "express";
 import path from "path";
 
-// TODO: Abstract away better-sqlite3.
+class BadRequestError {
+  readonly _tag = "BadRequestError";
+  constructor(readonly error: unknown) {}
+}
+
+class SqliteError {
+  readonly _tag = "SqliteError";
+  constructor(readonly error: unknown) {}
+}
+
 interface Db {
   readonly begin: Statement;
   readonly rollback: Statement;
@@ -36,26 +46,6 @@ interface Db {
   readonly insertOrIgnoreIntoMessage: Statement;
   readonly insertOrReplaceIntoMerkleTree: Statement;
   readonly selectMessages: Statement;
-}
-
-interface DbEnv {
-  readonly db: Db;
-}
-
-interface ReqEnv {
-  readonly req: SyncRequest;
-}
-
-type DbAndReqEnvs = DbEnv & ReqEnv;
-
-interface ParseBodyError {
-  readonly type: "ParseBodyError";
-  readonly error: unknown;
-}
-
-interface SqliteError {
-  readonly type: "SqliteError";
-  readonly error: unknown;
 }
 
 const createDb: (fileName: string) => Db = flow(
@@ -105,129 +95,151 @@ const createDb: (fileName: string) => Db = flow(
   }
 );
 
-const sqliteErrorFromError = (error: unknown): SqliteError => ({
-  type: "SqliteError",
-  error,
-});
+const DbTag = Context.Tag<Db>();
 
-const parseBody: ReaderEither<Uint8Array, ParseBodyError, ReqEnv> = (body) =>
+const getMerkleTree = (
+  userId: string
+): Effect.Effect<Db, SqliteError, MerkleTree> =>
   pipe(
-    either.tryCatch(
-      () => SyncRequest.fromBinary(body),
-      (error): ParseBodyError => ({ type: "ParseBodyError", error })
+    Effect.flatMap(DbTag, ({ selectMerkleTree }) =>
+      Effect.tryCatch(
+        () =>
+          selectMerkleTree.get(userId) as
+            | { readonly merkleTree: MerkleTreeString }
+            | undefined,
+        (error) => new SqliteError(error)
+      )
     ),
-    either.map((req) => ({ req }))
-  );
-
-const getOrCreateMerkleTree: ReaderEither<
-  DbAndReqEnvs,
-  SqliteError,
-  MerkleTree
-> = ({ db, req }) =>
-  pipe(
-    either.tryCatch(
-      () =>
-        db.selectMerkleTree.get(req.userId) as
-          | { readonly merkleTree: MerkleTreeString }
-          | undefined,
-      sqliteErrorFromError
-    ),
-    either.map((row) =>
-      row ? merkleTreeFromString(row.merkleTree) : createInitialMerkleTree()
+    Effect.map((row) =>
+      row
+        ? unsafeMerkleTreeFromString(row.merkleTree)
+        : createInitialMerkleTree()
     )
   );
 
-const addMessages =
-  (
-    merkleTree: MerkleTree
-  ): ReaderEither<DbAndReqEnvs, SqliteError, MerkleTree> =>
-  ({ db, req }) =>
-    either.tryCatch(
+const addMessages = ({
+  merkleTree,
+  messages,
+  userId,
+}: {
+  merkleTree: MerkleTree;
+  messages: ReadonlyArray.NonEmptyArray<Protobuf.EncryptedMessage>;
+  userId: string;
+}): Effect.Effect<Db, SqliteError, MerkleTree> =>
+  Effect.flatMap(DbTag, (db) =>
+    Effect.tryCatch(
       () => {
-        if (req.messages.length === 0) return merkleTree;
-
         db.begin.run();
-        req.messages.forEach((message) => {
+
+        messages.forEach((message) => {
           const result = db.insertOrIgnoreIntoMessage.run(
             message.timestamp,
-            req.userId,
+            userId,
             message.content
           );
+
           if (result.changes === 1)
             merkleTree = insertIntoMerkleTree(
-              timestampFromString(message.timestamp as TimestampString)
+              unsafeTimestampFromString(message.timestamp as TimestampString)
             )(merkleTree);
         });
+
         db.insertOrReplaceIntoMerkleTree.run(
-          req.userId,
+          userId,
           merkleTreeToString(merkleTree)
         );
+
         db.commit.run();
+
         return merkleTree;
       },
-      (error): SqliteError => {
+      (error) => {
         db.rollback.run();
-        return sqliteErrorFromError(error);
+        return new SqliteError(error);
       }
-    );
+    )
+  );
 
-const getMessages =
-  ({
-    merkleTree,
-  }: {
-    readonly merkleTree: MerkleTree;
-  }): ReaderEither<
-    DbAndReqEnvs,
-    SqliteError,
-    readonly EncryptedCrdtMessage[]
-  > =>
-  ({ db, req }) =>
-    pipe(
-      diffMerkleTrees(
-        merkleTree,
-        merkleTreeFromString(req.merkleTree as MerkleTreeString)
-      ),
-      option.map((millis) =>
-        either.tryCatch(
-          () =>
-            db.selectMessages.all(
-              req.userId,
-              pipe(millis, createSyncTimestamp, timestampToString),
-              req.nodeId
-            ) as readonly EncryptedCrdtMessage[],
-          sqliteErrorFromError
-        )
-      ),
-      option.getOrElseW(() => either.right(readonlyArray.empty))
-    );
+const getMessages = ({
+  millis,
+  userId,
+  nodeId,
+}: {
+  millis: Millis;
+  userId: string;
+  nodeId: string;
+}): Effect.Effect<Db, SqliteError, ReadonlyArray<Protobuf.EncryptedMessage>> =>
+  Effect.flatMap(DbTag, (db) =>
+    Effect.tryCatch(
+      () =>
+        db.selectMessages.all(
+          userId,
+          pipe(millis, createSyncTimestamp, timestampToString),
+          nodeId
+        ) as ReadonlyArray<Protobuf.EncryptedMessage>,
+      (error) => new SqliteError(error)
+    )
+  );
 
-const sync: ReaderEither<
-  DbAndReqEnvs,
-  SqliteError,
+const sync = (
+  req: Request
+): Effect.Effect<
+  Db,
+  BadRequestError | SqliteError,
   {
-    readonly merkleTree: MerkleTree;
-    readonly messages: readonly EncryptedCrdtMessage[];
+    merkleTree: MerkleTree;
+    messages: ReadonlyArray<Protobuf.EncryptedMessage>;
   }
-> = pipe(
-  getOrCreateMerkleTree,
-  readerEither.chain(addMessages),
-  readerEither.bindTo("merkleTree"),
-  readerEither.bind("messages", getMessages)
-);
+> =>
+  Effect.flatMap(
+    Effect.tryCatch(
+      () => Protobuf.SyncRequest.fromBinary(req.body),
+      (error) => new BadRequestError(error)
+    ),
+    (syncRequest) =>
+      Effect.gen(function* ($) {
+        let merkleTree = yield* $(getMerkleTree(syncRequest.userId));
+
+        if (ReadonlyArray.isNonEmptyArray(syncRequest.messages))
+          merkleTree = yield* $(
+            addMessages({
+              merkleTree,
+              messages: syncRequest.messages,
+              userId: syncRequest.userId,
+            })
+          );
+
+        const diff = diffMerkleTrees(
+          merkleTree,
+          unsafeMerkleTreeFromString(syncRequest.merkleTree as MerkleTreeString)
+        );
+
+        const messages =
+          diff._tag === "None"
+            ? []
+            : yield* $(
+                getMessages({
+                  millis: diff.value,
+                  userId: syncRequest.userId,
+                  nodeId: syncRequest.nodeId,
+                })
+              );
+
+        return { merkleTree, messages };
+      })
+  );
 
 export const createExpressApp = (): express.Express => {
-  const dbEnv: DbEnv = { db: createDb("db.sqlite") };
+  const db = createDb("db.sqlite");
 
   const app = express();
   app.use(cors());
   app.use(bodyParser.raw({ limit: "20mb" }));
 
   app.post("/", (req, res) => {
-    pipe(
-      parseBody(req.body),
-      either.map((reqEnv): DbAndReqEnvs => ({ ...dbEnv, ...reqEnv })),
-      either.chainW(sync),
-      either.match(
+    Effect.runCallback(
+      Effect.provideService(sync(req), DbTag, db),
+      Exit.match(
         (error) => {
           // eslint-disable-next-line no-console
           console.log(error);
@@ -237,9 +249,9 @@ export const createExpressApp = (): express.Express => {
           res.setHeader("Content-Type", "application/octet-stream");
           res.send(
             Buffer.from(
-              SyncResponse.toBinary({
+              Protobuf.SyncResponse.toBinary({
                 merkleTree: merkleTreeToString(merkleTree),
-                messages: [...messages], // to mutable array
+                messages: messages as Array<Protobuf.EncryptedMessage>,
               })
             )
           );

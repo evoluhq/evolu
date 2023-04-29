@@ -1,27 +1,19 @@
-import type { Brand } from "@effect/data/Brand";
-import { option } from "fp-ts";
-import { Option } from "fp-ts/lib/Option.js";
+import * as Option from "@effect/data/Option";
+import { timestampToHash } from "./Timestamp.js";
 import {
+  MerkleTree,
+  MerkleTreeString,
   Millis,
   Timestamp,
   TimestampHash,
-  timestampToHash,
-} from "./timestamp.js";
+} from "./Types.js";
 
-// TODO: Add Schema and use it in Evolu Server.
-export interface MerkleTree {
-  readonly hash?: TimestampHash;
-  readonly "0"?: MerkleTree;
-  readonly "1"?: MerkleTree;
-  readonly "2"?: MerkleTree;
-}
-
-export type MerkleTreeString = string & Brand<"MerkleTreeString">;
+// https://github.com/clintharris/crdt-example-app_annotated/blob/master/shared/merkle.js
 
 export const merkleTreeToString = (m: MerkleTree): MerkleTreeString =>
   JSON.stringify(m) as MerkleTreeString;
 
-export const merkleTreeFromString = (m: MerkleTreeString): MerkleTree =>
+export const unsafeMerkleTreeFromString = (m: MerkleTreeString): MerkleTree =>
   JSON.parse(m) as MerkleTree;
 
 export const createInitialMerkleTree = (): MerkleTree => Object.create(null);
@@ -65,8 +57,10 @@ export const insertIntoMerkleTree =
     });
   };
 
-const getKeys = (tree: MerkleTree): readonly ("0" | "1" | "2")[] =>
-  Object.keys(tree).filter((x) => x !== "hash") as readonly ("0" | "1" | "2")[];
+const getKeys = (tree: MerkleTree): ReadonlyArray<"0" | "1" | "2"> =>
+  Object.keys(tree).filter((x) => x !== "hash") as ReadonlyArray<
+    "0" | "1" | "2"
+  >;
 
 const keyToTimestamp = (key: string): Millis => {
   // 16 is the length of the base 3 value of the current time in
@@ -79,8 +73,8 @@ const keyToTimestamp = (key: string): Millis => {
 export const diffMerkleTrees = (
   tree1: MerkleTree,
   tree2: MerkleTree
-): Option<Millis> => {
-  if (tree1.hash === tree2.hash) return option.none;
+): Option.Option<Millis> => {
+  if (tree1.hash === tree2.hash) return Option.none();
 
   let node1 = tree1;
   let node2 = tree2;
@@ -95,11 +89,11 @@ export const diffMerkleTrees = (
       const next2 = node2[key] || {};
       return next1.hash !== next2.hash;
     });
-    if (!diffkey) return option.some(keyToTimestamp(k));
+    if (!diffkey) return Option.some(keyToTimestamp(k));
     k += diffkey;
     node1 = node1[diffkey] || {};
     node2 = node2[diffkey] || {};
   }
 
-  return option.none;
+  return Option.none();
 };

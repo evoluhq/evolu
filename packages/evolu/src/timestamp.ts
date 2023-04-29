@@ -1,81 +1,68 @@
-import type { Brand } from "@effect/data/Brand";
-import * as S from "@effect/schema/Schema";
-import { either, readerEither } from "fp-ts";
-import { Either } from "fp-ts/lib/Either.js";
-import { increment, pipe } from "fp-ts/lib/function.js";
-import { IO } from "fp-ts/lib/IO.js";
-import { ReaderEither } from "fp-ts/lib/ReaderEither.js";
+import * as Either from "@effect/data/Either";
+import { pipe } from "@effect/data/Function";
+import * as Number from "@effect/data/Number";
+import * as Effect from "@effect/io/Effect";
+import * as Schema from "@effect/schema/Schema";
 import murmurhash from "murmurhash";
 import { customAlphabet } from "nanoid";
-import { ConfigEnv } from "./config.js";
+import {
+  Config,
+  Counter,
+  Millis,
+  NodeId,
+  Time,
+  Timestamp,
+  TimestampCounterOverflowError,
+  TimestampDriftError,
+  TimestampDuplicateNodeError,
+  TimestampHash,
+  TimestampString,
+} from "./Types.js";
 
 // https://muratbuffalo.blogspot.com/2014/07/hybrid-logical-clocks.html
 // https://jaredforsyth.com/posts/hybrid-logical-clocks/
-// https://github.com/jlongster/crdt-example-app/blob/master/shared/timestamp.js
+// https://github.com/clintharris/crdt-example-app_annotated/blob/master/shared/timestamp.js
 
-export const NodeId = pipe(
-  S.string,
-  S.pattern(/^[\w-]{16}$/),
-  S.brand("NodeId")
-);
-export type NodeId = S.To<typeof NodeId>;
-
-export const createNodeId: IO<NodeId> = pipe(
+const createNodeId = pipe(
   customAlphabet("0123456789abcdef", 16),
-  (nanoid) => () => nanoid() as NodeId
+  (createNodeId) => Effect.sync(() => createNodeId() as NodeId)
 );
 
-export const Millis = pipe(
-  S.number,
-  S.greaterThanOrEqualTo(0),
-  S.brand("Millis")
+export const timestampToString = (t: Timestamp): TimestampString =>
+  [
+    new Date(t.millis).toISOString(),
+    t.counter.toString(16).toUpperCase().padStart(4, "0"),
+    t.node,
+  ].join("-") as TimestampString;
+
+// TODO: Use Schema and Effect
+export const unsafeTimestampFromString = (s: TimestampString): Timestamp =>
+  pipe(
+    s.split("-"),
+    (a): Timestamp => ({
+      millis: Date.parse(a.slice(0, 3).join("-")).valueOf() as Millis,
+      counter: parseInt(a[3], 16) as Counter,
+      node: a[4] as NodeId,
+    })
+  );
+
+export const timestampToHash = (t: Timestamp): TimestampHash =>
+  pipe(timestampToString(t), murmurhash) as TimestampHash;
+
+export const createInitialTimestamp = pipe(
+  createNodeId,
+  Effect.flatMap((nodeId) =>
+    Effect.sync(
+      (): Timestamp => ({
+        millis: 0 as Millis,
+        counter: 0 as Counter,
+        node: nodeId,
+      })
+    )
+  )
 );
-export type Millis = S.To<typeof Millis>;
 
-export interface TimeEnv {
-  readonly now: () => Millis;
-}
-
-export const Counter = pipe(S.number, S.between(0, 65535), S.brand("Counter"));
-export type Counter = S.To<typeof Counter>;
-
-export interface Timestamp {
-  readonly node: NodeId;
-  readonly millis: Millis;
-  readonly counter: Counter;
-}
-
-export interface TimestampDuplicateNodeError {
-  readonly type: "TimestampDuplicateNodeError";
-  readonly node: NodeId;
-}
-
-export interface TimestampDriftError {
-  readonly type: "TimestampDriftError";
-  readonly next: Millis;
-  readonly now: Millis;
-}
-
-export interface TimestampCounterOverflowError {
-  readonly type: "TimestampCounterOverflowError";
-}
-
-export interface TimestampParseError {
-  readonly type: "TimestampParseError";
-}
-
-// TODO: Add Schema and use it in Evolu Server.
-export type TimestampString = string & Brand<"TimestampString">;
-
-export type TimestampHash = number & Brand<"TimestampHash">;
-
-export const createInitialTimestamp: IO<Timestamp> = () => ({
-  millis: 0 as Millis,
-  counter: 0 as Counter,
-  node: createNodeId(),
-});
-
-const syncNodeId = S.parse(NodeId)("0000000000000000");
+const syncNodeId = Schema.parse(NodeId)("0000000000000000");
 
 export const createSyncTimestamp = (
   millis: Millis = 0 as Millis
@@ -85,104 +72,82 @@ export const createSyncTimestamp = (
   node: syncNodeId,
 });
 
-export const timestampToString = (t: Timestamp): TimestampString =>
-  [
-    new Date(t.millis).toISOString(),
-    t.counter.toString(16).toUpperCase().padStart(4, "0"),
-    t.node,
-  ].join("-") as TimestampString;
+const getNextMillis = (
+  millis: Millis[]
+): Effect.Effect<Time | Config, TimestampDriftError, Millis> =>
+  pipe(
+    Effect.all(Time, Config),
+    Effect.flatMap(([time, config]) => {
+      const now = time.now();
+      const next = Math.max(now, ...millis) as Millis;
 
-export const timestampFromString = (s: TimestampString): Timestamp =>
-  pipe(s.split("-"), (a) => ({
-    millis: Date.parse(a.slice(0, 3).join("-")).valueOf() as Millis,
-    counter: parseInt(a[3], 16) as Counter,
-    node: a[4] as NodeId,
-  }));
+      if (next - now > config.maxDrift)
+        return Effect.fail<TimestampDriftError>({
+          _tag: "TimestampDriftError",
+          now,
+          next,
+        });
 
-export const timestampToHash = (t: Timestamp): TimestampHash =>
-  pipe(timestampToString(t), murmurhash) as TimestampHash;
+      return Effect.succeed(next);
+    })
+  );
 
 const incrementCounter = (
   counter: Counter
-): Either<TimestampCounterOverflowError, Counter> =>
+): Either.Either<TimestampCounterOverflowError, Counter> =>
   pipe(
-    increment(counter),
-    S.parseEither(Counter),
-    either.mapLeft(() => ({ type: "TimestampCounterOverflowError" }))
+    Number.increment(counter),
+    Schema.parseEither(Counter),
+    Either.mapLeft(() => ({ _tag: "TimestampCounterOverflowError" }))
   );
 
-const getNextMillis =
-  (
-    millis: Millis[]
-  ): ReaderEither<TimeEnv & ConfigEnv, TimestampDriftError, Millis> =>
-  ({ now, config }) =>
-    pipe(
-      now(),
-      (now) => ({ now, next: Math.max(now, ...millis) as Millis }),
-      either.fromPredicate(
-        ({ now, next }) => next - now <= config.maxDrift,
-        ({ now, next }): TimestampDriftError => ({
-          type: "TimestampDriftError",
-          now,
-          next,
-        })
-      ),
-      either.map(({ next }) => next)
-    );
+const counterMin = Schema.parse(Counter)(0);
 
 export const sendTimestamp = (
   timestamp: Timestamp
-): ReaderEither<
-  TimeEnv & ConfigEnv,
+): Effect.Effect<
+  Time | Config,
   TimestampDriftError | TimestampCounterOverflowError,
   Timestamp
 > =>
-  pipe(
-    getNextMillis([timestamp.millis]),
-    readerEither.chainEitherKW((millis) =>
-      pipe(
-        millis === timestamp.millis
-          ? incrementCounter(timestamp.counter)
-          : either.right(0 as Counter),
-        either.map(
-          (counter): Timestamp => ({ millis, counter, node: timestamp.node })
-        )
-      )
-    )
-  );
+  Effect.gen(function* ($) {
+    const millis = yield* $(getNextMillis([timestamp.millis]));
+    const counter =
+      millis === timestamp.millis
+        ? yield* $(incrementCounter(timestamp.counter))
+        : counterMin;
+    return { ...timestamp, millis, counter };
+  });
 
 export const receiveTimestamp = (
   local: Timestamp,
   remote: Timestamp
-): ReaderEither<
-  TimeEnv & ConfigEnv,
+): Effect.Effect<
+  Time | Config,
   | TimestampDriftError
   | TimestampCounterOverflowError
   | TimestampDuplicateNodeError,
   Timestamp
 > =>
-  local.node === remote.node
-    ? pipe(
-        either.left<TimestampDuplicateNodeError>({
-          type: "TimestampDuplicateNodeError",
+  Effect.gen(function* ($) {
+    if (local.node === remote.node)
+      yield* $(
+        Effect.fail<TimestampDuplicateNodeError>({
+          _tag: "TimestampDuplicateNodeError",
           node: local.node,
-        }),
-        readerEither.fromEither
-      )
-    : pipe(
-        getNextMillis([local.millis, remote.millis]),
-        readerEither.chainEitherKW((millis) =>
-          pipe(
-            millis === local.millis && millis === remote.millis
-              ? incrementCounter(
-                  Math.max(local.counter, remote.counter) as Counter
-                )
-              : millis === local.millis
-              ? incrementCounter(local.counter)
-              : millis === remote.millis
-              ? incrementCounter(remote.counter)
-              : either.right(0 as Counter),
-            either.map((counter) => ({ millis, counter, node: local.node }))
-          )
-        )
+        })
       );
+
+    const millis = yield* $(getNextMillis([local.millis, remote.millis]));
+    const counter = yield* $(
+      millis === local.millis && millis === remote.millis
+        ? incrementCounter(Math.max(local.counter, remote.counter) as Counter)
+        : millis === local.millis
+        ? incrementCounter(local.counter)
+        : millis === remote.millis
+        ? incrementCounter(remote.counter)
+        : Either.right(counterMin)
+    );
+
+    return { ...local, millis, counter };
+  });

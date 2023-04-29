@@ -1,4 +1,20 @@
-import type { Patch, ReplaceAtPatch, Rows } from "./types.js";
+import { Patch, ReplaceAtPatch, Rows } from "./Types.js";
+
+export const applyPatches =
+  (patches: ReadonlyArray<Patch>) =>
+  (current: Rows): Rows =>
+    patches.reduce((a, patch) => {
+      switch (patch.op) {
+        case "replaceAll":
+          return patch.value;
+        case "replaceAt": {
+          if (a === undefined) return a;
+          const next = [...a];
+          next[patch.index] = patch.value;
+          return next;
+        }
+      }
+    }, current);
 
 // For now, we detect only a change in the whole result and in-place edits.
 // In the future, we will add more heuristics. We will probably not implement
@@ -33,19 +49,3 @@ export const createPatches = (
 
   return replaceAtOps;
 };
-
-export const applyPatches =
-  (patches: readonly Patch[]) =>
-  (current: Rows): Rows =>
-    patches.reduce((a, patch) => {
-      switch (patch.op) {
-        case "replaceAll":
-          return patch.value;
-        case "replaceAt": {
-          if (a === undefined) return a;
-          const next = [...a];
-          next[patch.index] = patch.value;
-          return next;
-        }
-      }
-    }, current);

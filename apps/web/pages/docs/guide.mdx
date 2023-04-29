@@ -8,20 +8,20 @@ other [React](https://reactjs.org/) meta-framework.
 To start using Evolu, define schemas for your database and export React Hooks.
 
 ```ts
-import * as S from "@effect/schema/Schema";
-import * as E from "evolu";
+import * as Schema from "@effect/schema/Schema";
+import * as Evolu from "evolu";
 
-const TodoId = E.id("Todo");
-type TodoId = S.Infer<typeof TodoId>;
+const TodoId = Evolu.id("Todo");
+type TodoId = Schema.To<typeof TodoId>;
 
-const TodoTable = S.struct({
+const TodoTable = Schema.struct({
   id: TodoId,
-  title: E.NonEmptyString1000,
-  isCompleted: E.SqliteBoolean,
+  title: Evolu.NonEmptyString1000,
+  isCompleted: Evolu.SqliteBoolean,
 });
-type TodoTable = S.Infer<typeof TodoTable>;
+type TodoTable = Schema.To<typeof TodoTable>;
 
-const Database = S.struct({
+const Database = Schema.struct({
   todo: TodoTable,
 });
 
@@ -31,7 +31,7 @@ export const {
   useOwner,
   useOwnerActions,
   useEvoluError,
-} = E.createHooks(Database);
+} = Evolu.createHooks(Database);
 ```
 
 ## Validate Data
@@ -39,10 +39,10 @@ export const {
 Learn more about [Schema](https://github.com/effect-ts/schema).
 
 ```ts
-import * as S from "@effect/schema/Schema";
-import * as E from "evolu";
+import * as Schema from "@effect/schema/Schema";
+import * as Evolu from "evolu";
 
-S.parse(E.String1000)(title);
+Schema.parse(Evolu.String1000)(title);
 ```
 
 ## Mutate Data

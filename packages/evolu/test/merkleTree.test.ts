@@ -1,13 +1,13 @@
+import { pipe } from "@effect/data/Function";
 import arrayShuffle from "array-shuffle";
-import { pipe } from "fp-ts/lib/function.js";
 import { expect, test } from "vitest";
 import {
   createInitialMerkleTree,
   diffMerkleTrees,
   insertIntoMerkleTree,
-  MerkleTree,
-} from "../src/merkleTree.js";
-import { timestampFromString, TimestampString } from "../src/timestamp.js";
+} from "../src/MerkleTree.js";
+import { unsafeTimestampFromString } from "../src/Timestamp.js";
+import { MerkleTree, TimestampString } from "../src/Types.js";
 import { messages1 } from "./fixtures/messages.js";
 import { createNode1Timestamp } from "./testUtils.js";
 
@@ -67,7 +67,7 @@ test("diffMerkleTrees", () => {
 test("createMerkleWithRandomOrder", () => {
   const createMerkleWithRandomOrder = (): MerkleTree =>
     arrayShuffle(messages1).reduce((a, b) => {
-      const t = timestampFromString(b[0] as TimestampString);
+      const t = unsafeTimestampFromString(b[0] as TimestampString);
       return insertIntoMerkleTree(t)(a);
     }, initialMerkleTree);
 

@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
-import { Rows } from "../src/types.js";
-import { applyPatches, createPatches } from "../src/diff.js";
+import { applyPatches, createPatches } from "../src/Diff.js";
+import { Rows } from "../src/Types.js";
 
 test("createPatches", () => {
   const item = { a: 1 };
