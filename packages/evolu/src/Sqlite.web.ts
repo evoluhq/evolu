@@ -1,6 +1,7 @@
 import { constVoid } from "@effect/data/Function";
 import * as Effect from "@effect/io/Effect";
-import sqlite3 from "../sqlite/sqlite3-bundler-friendly.mjs";
+// @ts-expect-error Missing types
+import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
 import { Db, Rows } from "./Types.js";
 
 // @ts-expect-error Missing types.
@@ -11,7 +12,7 @@ self.sqlite3ApiConfig = {
   error: constVoid,
 };
 
-const promise = sqlite3();
+const promise = sqlite3InitModule();
 
 export const createSqlite = (
   strategy: "localStorage" | "opfs"

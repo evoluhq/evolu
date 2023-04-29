@@ -43,15 +43,13 @@
     }
   },
   "files": [
-    "dist/sqlite/**",
     "dist/src/**",
     "src/**",
     "README.md"
   ],
   "scripts": {
     "dev": "tsc --watch",
-    "build": "rm -rf dist && rm -rf ./README.md && tsc && cp ../../README.md ./ && cp ./sqlite/sqlite3.wasm ./dist/sqlite/",
-    "build-sqlite": "scripts/build-sqlite.sh",
+    "build": "rm -rf dist ./README.md && tsc && cp ../../README.md ./",
     "lint": "TIMING=1 eslint src --ext .ts,.tsx",
     "test": "vitest run",
     "clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist",
@@ -74,6 +72,7 @@
     "@evolu/tsconfig": "workspace:0.0.2",
     "@protobuf-ts/plugin": "^2.9.0",
     "@protobuf-ts/protoc": "^2.9.0",
+    "@sqlite.org/sqlite-wasm": "3.41.2-build12",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.1",
     "@types/web-locks-api": "^0.0.2",
@@ -91,6 +90,7 @@
     "@effect/data": "^0.12.2",
     "@effect/io": "^0.25.8",
     "@effect/schema": "^0.17.2",
+    "@sqlite.org/sqlite-wasm": "3.41.2-build12",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

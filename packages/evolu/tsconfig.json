@@ -5,6 +5,6 @@
     "allowJs": true,
     "types": ["./node_modules/user-agent-data-types"]
   },
-  "include": ["src", "test", "sqlite"],
+  "include": ["src", "test"],
   "exclude": ["dist", "node_modules"]
 }
