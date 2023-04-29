@@ -174,7 +174,7 @@ export const Db = Tag<Db>();
 
 export type RowsCache = ReadonlyMap<QueryString, RowsWithLoadingState>;
 
-export type Schema = ReadonlyRecord<{ id: Id } & Record<string, Value>>;
+export type Schema = ReadonlyRecord<{ id: Id } & ReadonlyRecord<Value>>;
 
 export interface CommonColumns {
   readonly createdAt: SqliteDate;
