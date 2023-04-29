@@ -14,7 +14,7 @@
     "@effect/schema": "~0.17.2",
     "clsx": "^1.2.1",
     "evolu": "workspace:4.1.2",
-    "next": "^13.3.0",
+    "next": "13.3.0",
     "nextra": "^2.4.2",
     "nextra-theme-docs": "^2.4.2",
     "react": "^18.2.0",
@@ -22,7 +22,7 @@
   },
   "devDependencies": {
     "@evolu/tsconfig": "workspace:0.0.2",
-    "@types/node": "^18.16.1",
+    "@types/node": "^18.16.3",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.1",
     "autoprefixer": "^10.4.14",
@@ -30,7 +30,7 @@
     "eslint-config-evolu": "workspace:0.0.2",
     "postcss": "^8.4.23",
     "prettier": "^2.8.8",
-    "prettier-plugin-tailwindcss": "^0.2.7",
+    "prettier-plugin-tailwindcss": "^0.2.8",
     "tailwindcss": "^3.3.2",
     "typescript": "^5.0.4"
   }
