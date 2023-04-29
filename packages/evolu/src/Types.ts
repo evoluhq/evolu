@@ -7,7 +7,7 @@ import { ReadonlyRecord } from "@effect/data/ReadonlyRecord";
 import { Effect } from "@effect/io/Effect";
 import { Ref } from "@effect/io/Ref";
 import * as S from "@effect/schema/Schema";
-import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
+import { Id, SqliteBoolean, SqliteDate } from "./_model.js";
 
 export interface Config {
   /**

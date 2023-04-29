@@ -3,8 +3,8 @@ import * as Effect from "@effect/io/Effect";
 import {
   merkleTreeToString,
   unsafeMerkleTreeFromString,
-} from "./MerkleTree.js";
-import { timestampToString, unsafeTimestampFromString } from "./Timestamp.js";
+} from "./_merkleTree.js";
+import { timestampToString, unsafeTimestampFromString } from "./_Timestamp.js";
 import { Clock, Db, MerkleTreeString, TimestampString } from "./Types.js";
 
 export const readClock = pipe(
