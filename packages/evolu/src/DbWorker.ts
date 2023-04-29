@@ -10,6 +10,7 @@ import { receiveMessages, sendMessages } from "./Messages.js";
 import { lazyInitOwner, resetOwner } from "./Owner.js";
 import { query } from "./Query.js";
 import { updateSchema } from "./Schema.js";
+import { sync } from "./Sync.js";
 import {
   Config,
   CreateDbWorker,
@@ -31,7 +32,6 @@ import {
   TimestampDuplicateNodeError,
 } from "./Types.js";
 import { unknownError } from "./UnknownError.js";
-import { sync } from "./Sync.js";
 
 export const createCreateDbWorker =
   (createDb: Effect.Effect<never, never, Db>): CreateDbWorker =>

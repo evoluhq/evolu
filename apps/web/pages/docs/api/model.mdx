@@ -14,13 +14,13 @@ To create an Id value for a specific table, use `createId`.
 ### Example
 
 ```ts
-import * as S from "@effect/schema/Schema";
-import * as E from "evolu";
+import * as Schema from "@effect/schema/Schema";
+import * as Evolu from "evolu";
 
-const TodoId = E.id("Todo");
-type TodoId = S.To<typeof TodoId>;
+const TodoId = Evolu.id("Todo");
+type TodoId = Schema.To<typeof TodoId>;
 
-if (!S.is(TodoId)(value)) return;
+if (!Schema.is(TodoId)(value)) return;
 ```
 
 ## createId
@@ -30,10 +30,10 @@ A factory function to create an `Id` value for a specific table.
 ### Example
 
 ```ts
-import * as E from "evolu";
+import * as Evolu from "evolu";
 
 // const id: string & Brand<"Id"> & Brand<"Todo">
-const id = E.createId<"Todo">();
+const id = Evolu.createId<"Todo">();
 ```
 
 ## Mnemonic
@@ -46,7 +46,7 @@ mnemonic is to provide a human-readable way of storing a private key.
 
 ## OwnerId
 
-`OwnerId` is the current user's `Id` safely derived from its `Mnemonic`.
+The unique identifier of `Owner` safely derived from its `Mnemonic`.
 
 ## Owner
 
@@ -88,11 +88,11 @@ A string with a maximum length of 1000 characters.
 ### Example
 
 ```ts
-import * as S from "@effect/schema/Schema";
-import * as E from "evolu";
+import * as Schema from "@effect/schema/Schema";
+import * as Evolu from "evolu";
 
-if (!S.is(E.String1000)(value)) return;
-function foo(value: E.String1000) {}
+if (!Schema.is(Evolu.String1000)(value)) return;
+function foo(value: Evolu.String1000) {}
 ```
 
 ## NonEmptyString1000
@@ -102,9 +102,9 @@ A nonempty string with a maximum length of 1000 characters.
 ### Example
 
 ```ts
-import * as S from "@effect/schema/Schema";
-import * as E from "evolu";
+import * as Schema from "@effect/schema/Schema";
+import * as Evolu from "evolu";
 
-if (!S.is(E.NonEmptyString1000)(value)) return;
-function foo(value: E.NonEmptyString1000) {}
+if (!Schema.is(Evolu.NonEmptyString1000)(value)) return;
+function foo(value: Evolu.NonEmptyString1000) {}
 ```

@@ -1,8 +1,8 @@
 import { constFalse, flow, pipe } from "@effect/data/Function";
 import * as Option from "@effect/data/Option";
-import * as Effect from "@effect/io/Effect";
 import * as Predicate from "@effect/data/Predicate";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
+import * as Effect from "@effect/io/Effect";
 import { DbWorker, QueryString, RequestSync } from "./Types.js";
 
 // https://github.com/denoland/deno/issues/13367

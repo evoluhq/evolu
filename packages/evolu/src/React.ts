@@ -76,7 +76,7 @@ type NullablePartial<
   NP = Pick<T, Exclude<keyof T, NK>> & Partial<Pick<T, NK>>
 > = { [K in keyof NP]: NP[K] };
 
-export type Create<S extends Schema> = <T extends keyof S>(
+type Create<S extends Schema> = <T extends keyof S>(
   table: T,
   values: Kysely.Simplify<NullablePartial<AllowAutoCasting<Omit<S[T], "id">>>>,
   onComplete?: () => void
@@ -84,7 +84,7 @@ export type Create<S extends Schema> = <T extends keyof S>(
   readonly id: S[T]["id"];
 };
 
-export type Update<S extends Schema> = <T extends keyof S>(
+type Update<S extends Schema> = <T extends keyof S>(
   table: T,
   values: Kysely.Simplify<
     Partial<

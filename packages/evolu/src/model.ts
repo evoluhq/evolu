@@ -50,7 +50,6 @@ export const id = <T extends string>(
  */
 export const createId = <T extends string>(): Id & Brand.Brand<T> =>
   nanoid() as Id & Brand.Brand<T>;
-export type CreateId = typeof createId;
 
 /**
  * SQLite doesn't support the boolean type, so Evolu uses SqliteBoolean instead.

@@ -107,6 +107,11 @@ export interface InvalidMnemonicError {
 }
 
 /**
+ * The unique identifier of `Owner` safely derived from its `Mnemonic`.
+ */
+export type OwnerId = Id & Brand<"Owner">;
+
+/**
  * `Owner` represents the Evolu database owner. Evolu auto-generates `Owner`
  * on the first run. `Owner` can be reset on the current device and restored
  * on a different one.
@@ -115,7 +120,7 @@ export interface Owner {
   /** The `Mnemonic` associated with `Owner`. */
   readonly mnemonic: Mnemonic;
   /** The unique identifier of `Owner` safely derived from its `Mnemonic`. */
-  readonly id: Id & Brand<"Owner">;
+  readonly id: OwnerId;
   /* The encryption key used by `Owner` derived from its `Mnemonic`. */
   readonly encryptionKey: Uint8Array;
 }

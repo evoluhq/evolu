@@ -17,7 +17,7 @@ import { createConfig } from "./Config.js";
 import { applyPatches } from "./Diff.js";
 import { createNewMessages } from "./Messages.js";
 import { parseMnemonic } from "./Mnemonic.js";
-import { CreateId, Id, cast, createId } from "./Model.js";
+import { Id, cast, createId } from "./Model.js";
 import { QueryStringEquivalence } from "./Query.js";
 import { schemaToTablesDefinitions } from "./Schema.js";
 import { createStore } from "./Store.js";
@@ -232,6 +232,8 @@ const createSubscribeRowsWithLoadingState = (
     };
   };
 };
+
+type CreateId = typeof createId;
 
 const createMutate = <S extends Schema>({
   createId,
