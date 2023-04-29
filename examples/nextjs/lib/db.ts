@@ -1,36 +1,36 @@
 import { pipe } from "@effect/data/Function";
-import * as S from "@effect/schema/Schema";
-import * as E from "evolu";
+import * as Schema from "@effect/schema/Schema";
+import * as Evolu from "evolu";
 
-export const TodoId = E.id("Todo");
-export type TodoId = S.To<typeof TodoId>;
+export const TodoId = Evolu.id("Todo");
+export type TodoId = Schema.To<typeof TodoId>;
 
-export const TodoCategoryId = E.id("TodoCategory");
-export type TodoCategoryId = S.To<typeof TodoCategoryId>;
+export const TodoCategoryId = Evolu.id("TodoCategory");
+export type TodoCategoryId = Schema.To<typeof TodoCategoryId>;
 
 export const NonEmptyString50 = pipe(
-  S.string,
-  S.minLength(1),
-  S.maxLength(50),
-  S.brand("NonEmptyString50")
+  Schema.string,
+  Schema.minLength(1),
+  Schema.maxLength(50),
+  Schema.brand("NonEmptyString50")
 );
-export type NonEmptyString50 = S.To<typeof NonEmptyString50>;
+export type NonEmptyString50 = Schema.To<typeof NonEmptyString50>;
 
-export const TodoTable = S.struct({
+export const TodoTable = Schema.struct({
   id: TodoId,
-  title: E.NonEmptyString1000,
-  isCompleted: E.SqliteBoolean,
-  categoryId: S.nullable(TodoCategoryId),
+  title: Evolu.NonEmptyString1000,
+  isCompleted: Evolu.SqliteBoolean,
+  categoryId: Schema.nullable(TodoCategoryId),
 });
-export type TodoTable = S.To<typeof TodoTable>;
+export type TodoTable = Schema.To<typeof TodoTable>;
 
-export const TodoCategoryTable = S.struct({
+export const TodoCategoryTable = Schema.struct({
   id: TodoCategoryId,
   name: NonEmptyString50,
 });
-export type TodoCategoryTable = S.To<typeof TodoCategoryTable>;
+export type TodoCategoryTable = Schema.To<typeof TodoCategoryTable>;
 
-const Database = S.struct({
+const Database = Schema.struct({
   todo: TodoTable,
   todoCategory: TodoCategoryTable,
 });
@@ -41,4 +41,4 @@ export const {
   useEvoluError,
   useOwner,
   useOwnerActions,
-} = E.createHooks(Database);
+} = Evolu.createHooks(Database);
