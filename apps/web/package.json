@@ -14,7 +14,7 @@
     "@effect/schema": "~0.17.2",
     "clsx": "^1.2.1",
     "evolu": "workspace:5.0.0",
-    "next": "^13.3.1",
+    "next": "^13.3.2",
     "nextra": "^2.4.2",
     "nextra-theme-docs": "^2.4.2",
     "react": "^18.2.0",
