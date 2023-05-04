@@ -21,6 +21,9 @@ const nextConfig = {
   // That's probably the Next.js App Router bug because Pages Router
   // did not require that.
   experimental: { esmExternals: "loose" },
+
+  // Stackblitz can't load SWC binary
+  swcMinify: false,
 };
 
 module.exports = nextConfig;
