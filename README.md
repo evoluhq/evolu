@@ -42,7 +42,7 @@ Client-server architecture provides us with easy backup and synchronization, but
 ## Getting Started
 
 ```
-npm install evolu
+npm install evolu @effect/schema @effect/data
 ```
 
 The complete Next.js example is [here](https://github.com/evoluhq/evolu/tree/main/apps/web).

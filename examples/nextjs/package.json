@@ -9,16 +9,16 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@effect/data": "0.12.2",
-    "@effect/schema": "0.17.2",
-    "@sqlite.org/sqlite-wasm": "3.41.2-build12",
+    "@effect/data": "^0.12.2",
+    "@effect/schema": "^0.17.4",
+    "evolu": "^5.0.0",
+    "next": "^13.4.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
     "@types/node": "18.16.3",
-    "@types/react": "18.2.0",
-    "@types/react-dom": "18.2.1",
-    "evolu": "latest",
-    "next": "^13.3.4",
-    "react": "18.2.0",
-    "react-dom": "18.2.0",
+    "@types/react": "18.2.5",
     "typescript": "5.0.4"
   }
 }

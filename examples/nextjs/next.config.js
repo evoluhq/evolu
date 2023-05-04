@@ -1,7 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
-
   async headers() {
     return [
       {
@@ -19,6 +17,10 @@ const nextConfig = {
       },
     ];
   },
+
+  // That's probably the Next.js App Router bug because Pages Router
+  // did not require that.
+  experimental: { esmExternals: "loose" },
 };
 
 module.exports = nextConfig;

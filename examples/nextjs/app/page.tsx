@@ -1,3 +1,9 @@
+"use client";
+
+import * as Schema from "@effect/schema/Schema";
+import { formatErrors } from "@effect/schema/TreeFormatter";
+import * as Evolu from "evolu";
+import { ChangeEvent, FC, memo, useEffect, useState } from "react";
 import {
   NonEmptyString50,
   TodoCategoryId,
@@ -7,17 +13,13 @@ import {
   useOwner,
   useOwnerActions,
   useQuery,
-} from "@/lib/db";
-import * as Schema from "@effect/schema/Schema";
-import { formatErrors } from "@effect/schema/TreeFormatter";
-import * as Evolu from "evolu";
-import { ChangeEvent, FC, memo, useEffect, useState } from "react";
+} from "../lib/db";
 
 const prompt = <From extends string, To>(
   schema: Schema.Schema<From, To>,
   message: string,
   onSuccess: (value: To) => void
-): void => {
+) => {
   const value = window.prompt(message);
   if (value == null) return; // on cancel
   const a = Schema.parseEither(schema)(value);
@@ -66,9 +68,7 @@ const TodoCategorySelect: FC<{
   return (
     <select
       value={value}
-      onChange={({
-        target: { value },
-      }: ChangeEvent<HTMLSelectElement>): void => {
+      onChange={({ target: { value } }: ChangeEvent<HTMLSelectElement>) => {
         onSelect(value === nothingSelected ? null : (value as TodoCategoryId));
       }}
     >
@@ -97,13 +97,13 @@ const TodoItem = memo<{
       </span>
       <Button
         title={isCompleted ? "completed" : "complete"}
-        onClick={(): void => {
+        onClick={() => {
           update("todo", { id, isCompleted: !isCompleted });
         }}
       />
       <Button
         title="Rename"
-        onClick={(): void => {
+        onClick={() => {
           prompt(Evolu.NonEmptyString1000, "New Name", (title) => {
             update("todo", { id, title });
           });
@@ -111,13 +111,13 @@ const TodoItem = memo<{
       />
       <Button
         title="Delete"
-        onClick={(): void => {
+        onClick={() => {
           update("todo", { id, isDeleted: true });
         }}
       />
       <TodoCategorySelect
         selected={categoryId}
-        onSelect={(categoryId): void => {
+        onSelect={(categoryId) => {
           update("todo", { id, categoryId });
         }}
       />
@@ -156,7 +156,7 @@ const AddTodo: FC = () => {
   return (
     <Button
       title="Add Todo"
-      onClick={(): void => {
+      onClick={() => {
         prompt(Evolu.NonEmptyString1000, "What needs to be done?", (title) => {
           create("todo", { title, isCompleted: false });
         });
@@ -188,7 +188,7 @@ const TodoCategoryList: FC = () => {
             <span className="text-sm font-bold">{name}</span>
             <Button
               title="Rename"
-              onClick={(): void => {
+              onClick={() => {
                 prompt(NonEmptyString50, "Category Name", (name) => {
                   update("todoCategory", { id, name });
                 });
@@ -196,7 +196,7 @@ const TodoCategoryList: FC = () => {
             />
             <Button
               title="Delete"
-              onClick={(): void => {
+              onClick={() => {
                 update("todoCategory", { id, isDeleted: true });
               }}
             />
@@ -213,7 +213,7 @@ const AddTodoCategory: FC = () => {
   return (
     <Button
       title="Add Category"
-      onClick={(): void => {
+      onClick={() => {
         prompt(NonEmptyString50, "Category Name", (name) => {
           create("todoCategory", { name });
         });
@@ -235,11 +235,11 @@ const OwnerActions: FC = () => {
       </p>
       <Button
         title={`${!isShown ? "Show" : "Hide"} Mnemonic`}
-        onClick={(): void => setIsShown((value) => !value)}
+        onClick={() => setIsShown((value) => !value)}
       />
       <Button
         title="Restore Owner"
-        onClick={(): void => {
+        onClick={() => {
           prompt(Evolu.NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
             ownerActions.restore(mnemonic).then((either) => {
               if (either._tag === "Left")
@@ -250,7 +250,7 @@ const OwnerActions: FC = () => {
       />
       <Button
         title="Reset Owner"
-        onClick={(): void => {
+        onClick={() => {
           if (confirm("Are you sure? It will delete all your local data."))
             ownerActions.reset();
         }}
@@ -282,12 +282,12 @@ const NotificationBar: FC = () => {
   return (
     <div>
       <p>{`Error: ${JSON.stringify(evoluError)}`}</p>
-      <Button title="Close" onClick={(): void => setShown(false)} />
+      <Button title="Close" onClick={() => setShown(false)} />
     </div>
   );
 };
 
-export default function Index(): JSX.Element {
+export default function Page() {
   return (
     <div>
       <h1>Evolu Next.js</h1>
