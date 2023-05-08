@@ -8,11 +8,10 @@ Evolu is designed for privacy, ease of use, and no vendor lock-in.
 - E2E encrypted sync and backup with CRDT (merging changes without conflicts)
 - Free Evolu server for testing (paid production-ready soon, or you can run your own)
 - Typed database schema with branded types (`NonEmptyString1000`, `PositiveInt`, etc.)
-- Reactive queries
+- Reactive queries with React Suspense support
 - Real-time experience via revalidation on focus and network recovery
 - Schema evolving via `filterMap` ad-hoc migration
 - No signup/login, no email collection, only Bitcoin-like mnemonic (12 words)
-- React Suspense (soon)
 
 ## Local-first apps
 
@@ -42,7 +41,7 @@ Client-server architecture provides us with easy backup and synchronization, but
 ## Getting Started
 
 ```
-npm install evolu
+npm install evolu @effect/schema @effect/data
 ```
 
 The complete Next.js example is [here](https://github.com/evoluhq/evolu/tree/main/apps/web).
@@ -75,7 +74,7 @@ export const {
   useOwner,
   useOwnerActions,
   useEvoluError,
-} = Evolu.createHooks(Database);
+} = Evolu.create(Database);
 ```
 
 ### Validate Data

@@ -49,9 +49,9 @@ const Database = Schema.struct({
   todo: TodoTable,
 });
 
-const { useQuery, useMutation } = Evolu.createHooks(Database);
+const { useQuery, useMutation } = Evolu.create(Database);
 
-const { rows, isLoaded } = useQuery(
+const { rows, firstRow } = useQuery(
   (db) =>
     // A type-safe SQL query builder.
     db.selectFrom("todo").select(["id", "title"]).orderBy("createdAt"),
@@ -73,11 +73,10 @@ update("todo", { id, isCompleted: true }, onComplete);
 - E2E encrypted sync and backup with CRDT (merging changes without conflicts)
 - Free Evolu server for testing (paid production-ready soon, or you can run your own)
 - Typed database schema with branded types (`NonEmptyString1000`, `PositiveInt`)
-- Reactive queries
+- Reactive queries with React Suspense support
 - Real-time experience via revalidation on focus and network recovery
 - Schema evolving via `filterMap` ad-hoc migration
 - No signup/login, no email collection, only Bitcoin-like mnemonic (12 words)
-- React Suspense (soon)
 
 ## Community
 

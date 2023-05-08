@@ -7,7 +7,11 @@ import { ReadonlyRecord } from "@effect/data/ReadonlyRecord";
 import { Effect } from "@effect/io/Effect";
 import { Ref } from "@effect/io/Ref";
 import * as S from "@effect/schema/Schema";
+import * as Kysely from "kysely";
 import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
+
+export type Listener = () => void;
+export type Unsubscribe = () => void;
 
 export interface Config {
   /**
@@ -151,11 +155,6 @@ export type Row = ReadonlyRecord<Value>;
 
 export type Rows = ReadonlyArray<Row>;
 
-export interface RowsWithLoadingState {
-  readonly rows: Rows;
-  readonly isLoading: boolean;
-}
-
 export interface TableDefinition {
   readonly name: string;
   readonly columns: ReadonlyArray<string>;
@@ -177,9 +176,11 @@ export interface Db {
 }
 export const Db = Tag<Db>();
 
-export type RowsCache = ReadonlyMap<QueryString, RowsWithLoadingState>;
-
 export type Schema = ReadonlyRecord<{ id: Id } & ReadonlyRecord<Value>>;
+
+export type NullableExceptOfId<T> = {
+  readonly [K in keyof T]: K extends "id" ? T[K] : T[K] | null;
+};
 
 export interface CommonColumns {
   readonly createdAt: SqliteDate;
@@ -187,6 +188,29 @@ export interface CommonColumns {
   readonly updatedAt: SqliteDate;
   readonly isDeleted: SqliteBoolean;
 }
+
+export type SchemaForQuery<S extends Schema> = {
+  readonly [Table in keyof S]: NullableExceptOfId<
+    {
+      readonly [Column in keyof S[Table]]: S[Table][Column];
+    } & CommonColumns
+  >;
+};
+
+export type KyselySelectFrom<DB> = Pick<Kysely.Kysely<DB>, "selectFrom">;
+
+export type QueryCallback<S extends Schema, QueryRow> = (
+  db: KyselySelectFrom<SchemaForQuery<S>>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+) => Kysely.SelectQueryBuilder<any, any, QueryRow>;
+
+export type SchemaForMutate<S extends Schema> = {
+  readonly [Table in keyof S]: NullableExceptOfId<
+    {
+      readonly [Column in keyof S[Table]]: S[Table][Column];
+    } & Pick<CommonColumns, "isDeleted">
+  >;
+};
 
 export type AllowAutoCasting<T> = {
   readonly [K in keyof T]: T[K] extends SqliteBoolean
@@ -200,9 +224,38 @@ export type AllowAutoCasting<T> = {
     : T[K];
 };
 
-export type NullableExceptOfId<T> = {
-  readonly [K in keyof T]: K extends "id" ? T[K] : T[K] | null;
+export type Mutate<S extends Schema> = <
+  U extends SchemaForMutate<S>,
+  T extends keyof U
+>(
+  table: T,
+  values: Kysely.Simplify<Partial<AllowAutoCasting<U[T]>>>,
+  onComplete?: () => void
+) => {
+  readonly id: U[T]["id"];
 };
+
+export interface Evolu<S extends Schema = Schema> {
+  readonly subscribeError: (listener: Listener) => Unsubscribe;
+  readonly getError: () => EvoluError | null;
+
+  readonly subscribeOwner: (listener: Listener) => Unsubscribe;
+  readonly getOwner: () => Owner | null;
+
+  readonly subscribeQuery: (
+    queryString: QueryString | null
+  ) => (listener: Listener) => Unsubscribe;
+  readonly getQuery: (queryString: QueryString | null) => Rows | null;
+  readonly loadQuery: (queryString: QueryString) => Promise<Rows>;
+
+  readonly mutate: Mutate<S>;
+
+  readonly ownerActions: OwnerActions;
+
+  readonly compileQueryCallback: (
+    queryCallback: QueryCallback<S, Row>
+  ) => QueryString;
+}
 
 export interface NewMessage {
   readonly table: string;
@@ -345,10 +398,6 @@ export type SyncWorkerPost = (message: SyncWorkerInput) => void;
 export const SyncWorkerPost = Tag<SyncWorkerPost>();
 
 export type SyncWorkerOnMessage = (message: SyncWorkerOutput) => void;
-
-export type Listener = () => void;
-
-export type Unsubscribe = () => void;
 
 export interface Store<T> {
   readonly subscribe: (listener: Listener) => Unsubscribe;

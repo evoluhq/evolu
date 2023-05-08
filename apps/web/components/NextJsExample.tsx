@@ -2,7 +2,7 @@ import { pipe } from "@effect/data/Function";
 import * as Schema from "@effect/schema/Schema";
 import { formatErrors } from "@effect/schema/TreeFormatter";
 import * as Evolu from "evolu";
-import { ChangeEvent, FC, memo, useEffect, useState } from "react";
+import { ChangeEvent, FC, Suspense, memo, useEffect, useState } from "react";
 
 const TodoId = Evolu.id("Todo");
 type TodoId = Schema.To<typeof TodoId>;
@@ -37,8 +37,11 @@ const Database = Schema.struct({
   todoCategory: TodoCategoryTable,
 });
 
+// const evolu = Evolu.createEvolu(Database);
+// const a = evolu.compileQueryCallback((db) => db.selectFrom("todo").selectAll());
+
 const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
-  Evolu.createHooks(Database, {
+  Evolu.create(Database, {
     reloadUrl: "/examples/nextjs",
     ...(process.env.NODE_ENV === "development" && {
       syncUrl: "http://localhost:4000",
@@ -321,14 +324,23 @@ const NotificationBar: FC = () => {
 };
 
 export const NextJsExample = memo(function NextJsExample() {
+  // Emulate "use client" in Pages Router.
+  const [didMount, setDidMount] = useState(false);
+
+  useEffect(() => {
+    setDidMount(true);
+  }, []);
+
+  if (!didMount) return null;
+
   return (
-    <>
+    <Suspense fallback={<div>Loading..</div>}>
       <NotificationBar />
       <TodoList />
       <AddTodo />
       <TodoCategoryList />
       <AddTodoCategory />
       <OwnerActions />
-    </>
+    </Suspense>
   );
 });

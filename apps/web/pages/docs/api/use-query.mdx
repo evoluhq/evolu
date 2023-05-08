@@ -1,14 +1,14 @@
 # useQuery
 
 `useQuery` React Hook performs a database query and returns rows that
-are automatically updated when data changes.
+are automatically updated when data changes. `useQuery` uses React
+Suspense.
 
-It takes two callbacks, a [Kysely](https://github.com/koskimas/kysely) type-safe SQL query builder,
-and a `filterMap` helper.
+`useQuery` takes two callbacks, a [Kysely](https://github.com/koskimas/kysely)
+type-safe SQL query builder and a `filterMap` helper for rows filtering and
+ad-hoc migrations.
 
-`useQuery` also returns `isLoaded` and `isLoading` props that indicate
-loading progress. `isLoaded` becomes true when rows are loaded for the
-first time. `isLoading` becomes true whenever rows are loading.
+`useQuery` returns `rows` and `firstRow` props.
 
 ## Examples
 

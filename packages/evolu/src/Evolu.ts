@@ -5,7 +5,6 @@ import * as Predicate from "@effect/data/Predicate";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as Effect from "@effect/io/Effect";
 import * as S from "@effect/schema/Schema";
-import { Simplify } from "kysely";
 import { flushSync } from "react-dom";
 import {
   browserFeatures,
@@ -18,69 +17,28 @@ import { applyPatches } from "./Diff.js";
 import { createNewMessages } from "./Messages.js";
 import { parseMnemonic } from "./Mnemonic.js";
 import { Id, cast, createId } from "./Model.js";
-import { QueryStringEquivalence } from "./Query.js";
 import { schemaToTablesDefinitions } from "./Schema.js";
 import { createStore } from "./Store.js";
 import {
-  AllowAutoCasting,
-  CommonColumns,
   Config,
   CreateDbWorker,
   DbWorker,
   DbWorkerOutput,
+  Evolu,
   EvoluError,
-  Listener,
+  Mutate,
   NewMessage,
-  NullableExceptOfId,
   OnCompleteId,
   Owner,
   OwnerActions,
+  QueryCallback,
   QueryString,
   RestoreOwnerError,
-  RowsCache,
-  RowsWithLoadingState,
+  Row,
+  Rows,
   Schema,
   Store,
-  Unsubscribe,
 } from "./Types.js";
-
-type SchemaForMutate<S extends Schema> = {
-  readonly [Table in keyof S]: NullableExceptOfId<
-    {
-      readonly [Column in keyof S[Table]]: S[Table][Column];
-    } & Pick<CommonColumns, "isDeleted">
-  >;
-};
-
-type Mutate<S extends Schema> = <
-  U extends SchemaForMutate<S>,
-  T extends keyof U
->(
-  table: T,
-  values: Simplify<Partial<AllowAutoCasting<U[T]>>>,
-  onComplete?: () => void
-) => {
-  readonly id: U[T]["id"];
-};
-
-interface Evolu<S extends Schema = Schema> {
-  readonly subscribeError: (listener: Listener) => Unsubscribe;
-  readonly getError: () => EvoluError | null;
-
-  readonly subscribeOwner: (listener: Listener) => Unsubscribe;
-  readonly getOwner: () => Owner | null;
-
-  readonly subscribeRowsWithLoadingState: (
-    queryString: QueryString | null
-  ) => (listener: Listener) => Unsubscribe;
-  readonly getRowsWithLoadingState: (
-    queryString: QueryString | null
-  ) => () => RowsWithLoadingState | null;
-
-  readonly mutate: Mutate<S>;
-
-  readonly ownerActions: OwnerActions;
-}
 
 const createOpfsDbWorker: CreateDbWorker = (onMessage) => {
   const dbWorker = new Worker(new URL("./DbWorker.worker.js", import.meta.url));
@@ -124,104 +82,97 @@ const createDbWorker: CreateDbWorker = isBrowser
 
 type OnComplete = () => void;
 
+export type RowsCache = ReadonlyMap<QueryString, Rows>;
+
 const createOnQuery =
   (rowsCache: Store<RowsCache>, onCompletes: Map<OnCompleteId, OnComplete>) =>
   ({
     queriesPatches,
     onCompleteIds,
   }: Extract<DbWorkerOutput, { _tag: "onQuery" }>): void => {
-    pipe(
+    const state = rowsCache.getState();
+    const nextState = pipe(
       queriesPatches,
-      ReadonlyArray.reduce(
-        rowsCache.getState(),
-        (state, { query, patches }) => {
-          const current = state.get(query);
-          const next: RowsWithLoadingState = {
-            isLoading: false,
-            rows: applyPatches(patches)(current?.rows || ReadonlyArray.empty()),
-          };
-          if (
-            current &&
-            current.isLoading === next.isLoading &&
-            current.rows === next.rows
-          )
-            return state;
-          return new Map([...state, [query, next]]);
-        }
+      ReadonlyArray.filter((a) => a.patches.length > 0),
+      ReadonlyArray.map(
+        ({ query, patches }) =>
+          [
+            query,
+            applyPatches(patches)(state.get(query) || ReadonlyArray.empty()),
+          ] as const
       ),
-      (state) => {
-        if (onCompleteIds.length === 0) {
-          rowsCache.setState(state);
-          return;
-        }
-
-        // Ensure onComplete can use DOM (for a focus or anything else).
-        flushSync(() => rowsCache.setState(state));
-
-        pipe(
-          onCompleteIds,
-          ReadonlyArray.filterMap((id) => {
-            const onComplete = onCompletes.get(id);
-            onCompletes.delete(id);
-            return Option.fromNullable(onComplete);
-          })
-        ).forEach((onComplete) => onComplete());
-      }
+      (a): RowsCache => new Map([...state, ...a])
     );
+
+    // TODO: pro vsechny queries ukoncit nahravani, jasny
+
+    if (onCompleteIds.length === 0) {
+      rowsCache.setState(nextState);
+      return;
+    }
+
+    // Ensure onComplete can use DOM (for a focus or anything else).
+    flushSync(() => rowsCache.setState(nextState));
+
+    pipe(
+      onCompleteIds,
+      ReadonlyArray.filterMap((id) => {
+        const onComplete = onCompletes.get(id);
+        onCompletes.delete(id);
+        return Option.fromNullable(onComplete);
+      })
+    ).forEach((onComplete) => {
+      onComplete();
+    });
   };
 
-const createSubscribeRowsWithLoadingState = (
+export const createSubscribeRows = (
   rowsCache: Store<RowsCache>,
-  subscribedQueries: Map<QueryString, number>,
-  queryIfAny: (queries: ReadonlyArray<QueryString>) => void
-): Evolu["subscribeRowsWithLoadingState"] => {
-  let snapshot: ReadonlyArray<QueryString> | null = null;
+  subscribedQueries: Map<QueryString, number>
+): Evolu["subscribeQuery"] => {
+  // let snapshot: ReadonlyArray<QueryString> | null = null;
 
   return (queryString: QueryString | null) => (listen) => {
     if (queryString == null) return constVoid;
 
-    if (snapshot == null) {
-      snapshot = Array.from(subscribedQueries.keys());
-      queueMicrotask(() => {
-        const subscribedQueriesSnapshot = snapshot;
-        if (subscribedQueriesSnapshot == null) return;
-        snapshot = null;
+    // if (snapshot == null) {
+    //   snapshot = Array.from(subscribedQueries.keys());
+    //   queueMicrotask(() => {
+    //     const subscribedQueriesSnapshot = snapshot;
+    //     if (subscribedQueriesSnapshot == null) return;
+    //     snapshot = null;
 
-        const queries = pipe(
-          Array.from(subscribedQueries.keys()),
-          ReadonlyArray.difference(QueryStringEquivalence)(
-            subscribedQueriesSnapshot
-          )
-        );
+    //     const queries = pipe(
+    //       Array.from(subscribedQueries.keys()),
+    //       ReadonlyArray.difference(QueryStringEquivalence)(
+    //         subscribedQueriesSnapshot
+    //       )
+    //     );
 
-        pipe(
-          queries,
-          ReadonlyArray.reduce(rowsCache.getState(), (state, query) => {
-            const current = state.get(query);
-            if (!current || current.isLoading) return state;
-            return new Map([
-              ...state,
-              [
-                query,
-                {
-                  rows: (current && current.rows) || ReadonlyArray.empty(),
-                  isLoading: true,
-                },
-              ],
-            ]);
-          }),
-          rowsCache.setState
-        );
-
-        queryIfAny(queries);
-      });
-    }
+    //     queryIfAny(queries);
+    //   });
+    // }
 
     subscribedQueries.set(
       queryString,
       Number.increment(subscribedQueries.get(queryString) ?? 0)
     );
+
     const unsubscribe = rowsCache.subscribe(listen);
+
+    // const rowsCacheState = rowsCache.getState();
+    // const state = rowsCacheState.get(queryString);
+    // if (!state || (state && state.isLoading === false)) {
+    //   rowsCache.setState(
+    //     new Map([
+    //       ...rowsCacheState,
+    //       [
+    //         queryString,
+    //         { rows: state?.rows || ReadonlyArray.empty(), isLoading: true },
+    //       ],
+    //     ])
+    //   );
+    // }
 
     return () => {
       const count = subscribedQueries.get(queryString);
@@ -347,15 +298,14 @@ export const createEvolu = <From, To extends Schema>(
       dbWorker.post({ _tag: "query", queries });
   };
 
-  const subscribeRowsWithLoadingState = createSubscribeRowsWithLoadingState(
-    rowsCache,
-    subscribedQueries,
-    queryIfAny
-  );
+  const subscribeQuery = createSubscribeRows(rowsCache, subscribedQueries);
 
-  const getRowsWithLoadingState: Evolu["getRowsWithLoadingState"] =
-    (query) => () =>
-      (query && rowsCache.getState().get(query)) || null;
+  const getQuery: Evolu["getQuery"] = (query) =>
+    (query && rowsCache.getState().get(query)) || null;
+
+  const loadQuery: Evolu["loadQuery"] = (query) => {
+    throw "";
+  };
 
   const getOwner = new Promise<Owner>((resolve) => {
     const unsubscribe = ownerStore.subscribe(() => {
@@ -388,6 +338,12 @@ export const createEvolu = <From, To extends Schema>(
     ),
   };
 
+  const compileQueryCallback = (
+    _queryCallback: QueryCallback<To, Row>
+  ): QueryString => {
+    throw "";
+  };
+
   dbWorker.post({
     _tag: "init",
     config,
@@ -403,10 +359,13 @@ export const createEvolu = <From, To extends Schema>(
     subscribeOwner: ownerStore.subscribe,
     getOwner: ownerStore.getState,
 
-    subscribeRowsWithLoadingState,
-    getRowsWithLoadingState,
+    subscribeQuery,
+    getQuery,
+    loadQuery,
 
     mutate,
     ownerActions,
+
+    compileQueryCallback,
   };
 };

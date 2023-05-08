@@ -1,38 +1,23 @@
 import { constNull, pipe } from "@effect/data/Function";
 import * as Option from "@effect/data/Option";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
-import * as S from "@effect/schema/Schema";
 import * as Kysely from "kysely";
 import { useMemo, useRef, useSyncExternalStore } from "react";
-import { createEvolu } from "./Evolu.js";
 import { queryToString } from "./Query.js";
 import {
   AllowAutoCasting,
   CommonColumns,
-  Config,
+  Evolu,
   EvoluError,
-  NullableExceptOfId,
+  KyselySelectFrom,
   Owner,
   OwnerActions,
   Query,
+  QueryCallback,
   Row,
   Schema,
+  SchemaForQuery,
 } from "./Types.js";
-
-type KyselySelectFrom<DB> = Pick<Kysely.Kysely<DB>, "selectFrom">;
-
-type SchemaForQuery<S extends Schema> = {
-  readonly [Table in keyof S]: NullableExceptOfId<
-    {
-      readonly [Column in keyof S[Table]]: S[Table][Column];
-    } & CommonColumns
-  >;
-};
-
-type QueryCallback<S extends Schema, QueryRow> = (
-  db: KyselySelectFrom<SchemaForQuery<S>>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-) => Kysely.SelectQueryBuilder<any, any, QueryRow>;
 
 type OrNullOrFalse<T> = T | null | false;
 type ExcludeNullAndFalse<T> = Exclude<T, null | false>;
@@ -41,7 +26,7 @@ type UseQuery<S extends Schema> = <
   QueryRow extends Row,
   FilterMapRow extends Row
 >(
-  query: OrNullOrFalse<QueryCallback<S, QueryRow>>,
+  queryCallback: OrNullOrFalse<QueryCallback<S, QueryRow>>,
   filterMap: (row: QueryRow) => OrNullOrFalse<FilterMapRow>
 ) => {
   /**
@@ -53,18 +38,9 @@ type UseQuery<S extends Schema> = <
   /**
    * The first row from `rows`. For empty rows, it's null.
    */
-  readonly row: Readonly<
+  readonly firstRow: Readonly<
     Kysely.Simplify<ExcludeNullAndFalse<FilterMapRow>>
   > | null;
-  /**
-   * `isLoaded` becomes true when rows are loaded for the first time.
-   * Rows are cached per SQL query, so this happens only once.
-   */
-  readonly isLoaded: boolean;
-  /**
-   * `isLoading` becomes true whenever rows are loading.
-   */
-  readonly isLoading: boolean;
 };
 
 // https://stackoverflow.com/a/54713648/233902
@@ -153,17 +129,16 @@ type UseMutation<S extends Schema> = () => {
   readonly update: Update<S>;
 };
 
-interface Hooks<S extends Schema> {
+export interface Hooks<S extends Schema> {
   /**
    * `useQuery` React Hook performs a database query and returns rows that
-   * are automatically updated when data changes.
+   * are automatically updated when data changes. `useQuery` uses React
+   * Suspense.
    *
-   * It takes two callbacks, a Kysely type-safe SQL query builder,
-   * and a filterMap helper.
+   * `useQuery` takes two callbacks, a Kysely type-safe SQL query builder
+   * and a `filterMap` helper for rows filtering and ad-hoc migrations.
    *
-   * `useQuery` also returns `isLoaded` and `isLoading` props that indicate
-   * loading progress. `isLoaded` becomes true when rows are loaded for the
-   *  first time. `isLoading` becomes true whenever rows are loading.
+   * `useQuery` returns `rows` and `firstRow` props.
    *
    * ### Examples
    *
@@ -257,7 +232,12 @@ interface Hooks<S extends Schema> {
   readonly useOwnerActions: () => OwnerActions;
 }
 
-const createKysely = (): Kysely.Kysely<unknown> =>
+// proc to mam presouvat? protoze to budu potrebovat mimo react
+// nema to vracet evolu? jako tu funkci, asi jo
+//
+const createKysely = <DB extends Schema>(): KyselySelectFrom<
+  SchemaForQuery<DB>
+> =>
   new Kysely.Kysely({
     dialect: {
       createAdapter(): Kysely.SqliteAdapter {
@@ -278,7 +258,7 @@ const createKysely = (): Kysely.Kysely<unknown> =>
   });
 
 /**
- * `createHooks` defines the database schema and returns React Hooks.
+ * `create` defines the database schema and returns React Hooks.
  * Evolu uses [Schema](https://github.com/effect-ts/schema) for domain modeling.
  *
  * ### Example
@@ -307,7 +287,7 @@ const createKysely = (): Kysely.Kysely<unknown> =>
  *   useEvoluError,
  *   useOwner,
  *   useOwnerActions,
- * } = Evolu.createHooks(Database);
+ * } = Evolu.create(Database);
  * ```
  *
  * There is one simple rule for local-first apps domain modeling:
@@ -328,80 +308,103 @@ const createKysely = (): Kysely.Kysely<unknown> =>
  * To learn more about migration-less schema evolving, check the `useQuery`
  * documentation.
  */
-export const createHooks = <From, To extends Schema>(
-  schema: S.Schema<From, To>,
-  config?: Partial<Config>
-): Hooks<To> => {
-  const evolu = createEvolu(schema, config);
-  const kysely = createKysely();
+export const createHooks = <S extends Schema>(evolu: Evolu<S>): Hooks<S> => {
   const cache = new WeakMap<Row, Option.Option<Row>>();
 
-  const useQuery: UseQuery<To> = (query, filterMap) => {
-    // `query` can and will change, compile() is cheap
-    const queryString = query
-      ? pipe(query(kysely as never).compile() as Query, queryToString)
-      : null;
-    // filterMap is expensive but must be static, hence useRef
-    const filterMapRef = useRef(filterMap);
+  const kysely = createKysely<S>();
+  // potrebuju prevest query callback na query string
+  // evolu.compileQueryCallback(query)
 
-    const rowsWithLoadingState = useSyncExternalStore(
-      useMemo(
-        () => evolu.subscribeRowsWithLoadingState(queryString),
-        [queryString]
-      ),
-      evolu.getRowsWithLoadingState(queryString),
+  const useQuery: UseQuery<S> = (queryCallback, filterMap) => {
+    const queryString = useMemo(
+      () =>
+        queryCallback
+          ? pipe(queryCallback(kysely).compile() as Query, queryToString)
+          : null,
+      [queryCallback]
+    );
+
+    // reuse: pipe(query(kysely as never).compile() as Query, queryToString)
+    // jak zjistim, jestli promisa dobehla?
+    // jak to bude fungovat?
+    // co to udela, pokud queryString neni?
+    // mam to volat conditional? imho jo
+
+    // if (queryString) {
+    //   const promise = evolu.loadQuery(queryString);
+    // }
+
+    const subscribedRows = useSyncExternalStore(
+      useMemo(() => evolu.subscribeQuery(queryString), [queryString]),
+      useMemo(() => () => evolu.getQuery(queryString), [queryString]),
       constNull
     );
 
-    const filterMapRow = (row: Row): Option.Option<Row> => {
-      let cachedRow = cache.get(row);
-      if (cachedRow !== undefined) return cachedRow;
-      cachedRow = pipe(filterMapRef.current(row as never), (row) =>
-        row ? Option.some(row) : Option.none
-      ) as never;
-      cache.set(row, cachedRow);
-      return cachedRow;
-    };
+    // if (
+    //   !disableSuspense &&
+    //   isBrowser &&
+    //   (rowsWithLoadingState == null || rowsWithLoadingState.isLoading)
+    // ) {
+    //   let resolvePromise: null | ((value: null) => void) = null;
+    //   const suspensePromise = new Promise<null>((resolve) => {
+    //     resolvePromise = resolve;
+    //   });
+    //   const unsubscribe = evolu.subscribeQuery(queryString)(
+    //     () => {
+    //       if (evolu.getQuery(queryString)()?.isLoading) return;
+    //       unsubscribe();
+    //       if (resolvePromise) resolvePromise(null);
+    //     }
+    //   );
+    //   throw suspensePromise;
+    // }
+
+    // Use useRef until React Forget release.
+    const filterMapRef = useRef(filterMap);
 
     const rows = useMemo(
       () =>
         pipe(
-          rowsWithLoadingState?.rows,
+          subscribedRows,
           Option.fromNullable,
-          Option.map(ReadonlyArray.filterMap(filterMapRow)),
-          Option.getOrNull
+          Option.map(
+            ReadonlyArray.filterMap((row) => {
+              let cachedRow = cache.get(row);
+              if (cachedRow !== undefined) return cachedRow;
+              cachedRow = pipe(filterMapRef.current(row as never), (row) =>
+                row ? Option.some(row) : Option.none
+              ) as never;
+              cache.set(row, cachedRow);
+              return cachedRow;
+            })
+          ),
+          Option.getOrElse(() => ReadonlyArray.empty())
         ),
-      [rowsWithLoadingState?.rows]
+      [subscribedRows]
     );
 
-    return useMemo(
-      () => ({
-        rows: (rows || []) as never,
-        row: ((rows && rows[0]) || null) as never,
-        isLoaded: rows != null,
-        isLoading: rowsWithLoadingState ? rowsWithLoadingState.isLoading : true,
-      }),
-      [rows, rowsWithLoadingState]
-    );
+    return {
+      rows: rows as never,
+      firstRow: rows[0] as never,
+    };
   };
 
-  const useMutation: UseMutation<To> = () =>
+  const useMutation: UseMutation<S> = () =>
     useMemo(
       () => ({
-        create: evolu.mutate as Create<To>,
-        update: evolu.mutate as Update<To>,
+        create: evolu.mutate as Create<S>,
+        update: evolu.mutate as Update<S>,
       }),
       []
     );
 
-  const useEvoluError: Hooks<To>["useEvoluError"] = () =>
+  const useEvoluError: Hooks<S>["useEvoluError"] = () =>
     useSyncExternalStore(evolu.subscribeError, evolu.getError, constNull);
 
-  const useOwner: Hooks<To>["useOwner"] = () =>
+  const useOwner: Hooks<S>["useOwner"] = () =>
     useSyncExternalStore(evolu.subscribeOwner, evolu.getOwner, constNull);
 
-  const useOwnerActions: Hooks<To>["useOwnerActions"] = () =>
-    evolu.ownerActions;
+  const useOwnerActions: Hooks<S>["useOwnerActions"] = () => evolu.ownerActions;
 
   return {
     useQuery,
