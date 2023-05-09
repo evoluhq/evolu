@@ -2,6 +2,10 @@
 
 [GitHub Repository](https://github.com/evoluhq/evolu/tree/main/examples/nextjs)
 
-import { NextJsExample } from "../../components/NextJsExample";
+import dynamic from "next/dynamic";
+export const NextJsExample = dynamic(
+  () => import("../../components/NextJsExample").then((a) => a.NextJsExample),
+  { ssr: false }
+);
 
 <NextJsExample />

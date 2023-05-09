@@ -5,18 +5,15 @@ import * as Predicate from "@effect/data/Predicate";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as Effect from "@effect/io/Effect";
 import * as S from "@effect/schema/Schema";
+import * as Kysely from "kysely";
 import { flushSync } from "react-dom";
-import {
-  browserFeatures,
-  browserInit,
-  isBrowser,
-  reloadAllTabs,
-} from "./Browser.js";
+import { browserFeatures, browserInit, reloadAllTabs } from "./Browser.js";
 import { createConfig } from "./Config.js";
 import { applyPatches } from "./Diff.js";
 import { createNewMessages } from "./Messages.js";
 import { parseMnemonic } from "./Mnemonic.js";
 import { Id, cast, createId } from "./Model.js";
+import { queryToString } from "./Query.js";
 import { schemaToTablesDefinitions } from "./Schema.js";
 import { createStore } from "./Store.js";
 import {
@@ -26,17 +23,20 @@ import {
   DbWorkerOutput,
   Evolu,
   EvoluError,
+  KyselySelectFrom,
   Mutate,
   NewMessage,
   OnCompleteId,
   Owner,
   OwnerActions,
+  Query,
   QueryCallback,
   QueryString,
   RestoreOwnerError,
   Row,
   Rows,
   Schema,
+  SchemaForQuery,
   Store,
 } from "./Types.js";
 
@@ -69,23 +69,84 @@ const createLocalStorageDbWorker: CreateDbWorker = (onMessage) => {
   };
 };
 
-const createNoOpServerDbWorker: CreateDbWorker = () => ({
-  post: constVoid,
-});
-
 // TODO: React Native, Electron.
-const createDbWorker: CreateDbWorker = isBrowser
-  ? browserFeatures.opfs
-    ? createOpfsDbWorker
-    : createLocalStorageDbWorker
-  : createNoOpServerDbWorker;
+const createDbWorker: CreateDbWorker = browserFeatures.opfs
+  ? createOpfsDbWorker
+  : createLocalStorageDbWorker;
+
+const createKysely = <S extends Schema>(): KyselySelectFrom<
+  SchemaForQuery<S>
+> =>
+  new Kysely.Kysely({
+    dialect: {
+      createAdapter(): Kysely.SqliteAdapter {
+        return new Kysely.SqliteAdapter();
+      },
+      createDriver(): Kysely.Driver {
+        return new Kysely.DummyDriver();
+      },
+      createIntrospector(db: Kysely.Kysely<S>): Kysely.DatabaseIntrospector {
+        return new Kysely.SqliteIntrospector(db);
+      },
+      createQueryCompiler(): Kysely.QueryCompiler {
+        return new Kysely.SqliteQueryCompiler();
+      },
+    },
+  });
+
+interface PromiseCache {
+  readonly get: (queryString: QueryString) => Promise<Rows>;
+  readonly has: Predicate.Predicate<QueryString>;
+  readonly resolve: (queryString: QueryString, rows: Rows) => void;
+  readonly release: (queryString: QueryString) => boolean;
+}
+
+const createPromiseCache = (): PromiseCache => {
+  const cache = new Map<
+    QueryString,
+    {
+      readonly promise: Promise<Rows>;
+      readonly resolve: (rows: Rows) => void;
+    }
+  >();
+
+  const promiseCache: PromiseCache = {
+    get: (queryString) => {
+      const item = cache.get(queryString);
+      if (item) return item.promise;
+      let resolve: null | ((rows: Rows) => void) = null;
+      const promise = new Promise<Rows>((_resolve) => {
+        resolve = _resolve;
+      });
+      // `if (resolve)` to make TS happy. This is OK.
+      if (resolve) cache.set(queryString, { promise, resolve });
+      return promise;
+    },
+    has: (queryToString) => cache.has(queryToString),
+    resolve: (queryString, rows) => {
+      const item = cache.get(queryString);
+      if (!item) return;
+      // It's similar to what React will do.
+      Object.assign(item.promise, { rows });
+      item.resolve(rows);
+    },
+    // TODO: releasePromise, releaseQuery?
+    release: (queryString) => cache.delete(queryString),
+  };
+
+  return promiseCache;
+};
 
 type OnComplete = () => void;
 
 export type RowsCache = ReadonlyMap<QueryString, Rows>;
 
 const createOnQuery =
-  (rowsCache: Store<RowsCache>, onCompletes: Map<OnCompleteId, OnComplete>) =>
+  (
+    rowsCache: Store<RowsCache>,
+    onCompletes: Map<OnCompleteId, OnComplete>,
+    promiseCache: PromiseCache
+  ) =>
   ({
     queriesPatches,
     onCompleteIds,
@@ -104,7 +165,10 @@ const createOnQuery =
       (a): RowsCache => new Map([...state, ...a])
     );
 
-    // TODO: pro vsechny queries ukoncit nahravani, jasny
+    queriesPatches.forEach(({ query }) => {
+      const rows = nextState.get(query) || ReadonlyArray.empty();
+      promiseCache.resolve(query, rows);
+    });
 
     if (onCompleteIds.length === 0) {
       rowsCache.setState(nextState);
@@ -126,32 +190,12 @@ const createOnQuery =
     });
   };
 
-export const createSubscribeRows = (
+export const createSubscribeQuery = (
   rowsCache: Store<RowsCache>,
   subscribedQueries: Map<QueryString, number>
 ): Evolu["subscribeQuery"] => {
-  // let snapshot: ReadonlyArray<QueryString> | null = null;
-
   return (queryString: QueryString | null) => (listen) => {
     if (queryString == null) return constVoid;
-
-    // if (snapshot == null) {
-    //   snapshot = Array.from(subscribedQueries.keys());
-    //   queueMicrotask(() => {
-    //     const subscribedQueriesSnapshot = snapshot;
-    //     if (subscribedQueriesSnapshot == null) return;
-    //     snapshot = null;
-
-    //     const queries = pipe(
-    //       Array.from(subscribedQueries.keys()),
-    //       ReadonlyArray.difference(QueryStringEquivalence)(
-    //         subscribedQueriesSnapshot
-    //       )
-    //     );
-
-    //     queryIfAny(queries);
-    //   });
-    // }
 
     subscribedQueries.set(
       queryString,
@@ -160,20 +204,6 @@ export const createSubscribeRows = (
 
     const unsubscribe = rowsCache.subscribe(listen);
 
-    // const rowsCacheState = rowsCache.getState();
-    // const state = rowsCacheState.get(queryString);
-    // if (!state || (state && state.isLoading === false)) {
-    //   rowsCache.setState(
-    //     new Map([
-    //       ...rowsCacheState,
-    //       [
-    //         queryString,
-    //         { rows: state?.rows || ReadonlyArray.empty(), isLoading: true },
-    //       ],
-    //     ])
-    //   );
-    // }
-
     return () => {
       const count = subscribedQueries.get(queryString);
       if (count != null && count > 1)
@@ -181,6 +211,28 @@ export const createSubscribeRows = (
       else subscribedQueries.delete(queryString);
       unsubscribe();
     };
+  };
+};
+
+const createLoadQuery = (
+  queryIfAny: (queries: ReadonlyArray<QueryString>) => void,
+  promiseCache: PromiseCache
+): Evolu["loadQuery"] => {
+  const queue = new Set<QueryString>();
+
+  return (queryString) => {
+    if (!promiseCache.has(queryString)) queue.add(queryString);
+
+    queue.add(queryString);
+    if (queue.size === 1) {
+      queueMicrotask(() => {
+        const queries = [...queue];
+        queue.clear();
+        queryIfAny(queries);
+      });
+    }
+
+    return promiseCache.get(queryString);
   };
 };
 
@@ -268,6 +320,7 @@ export const createEvolu = <From, To extends Schema>(
 
   const subscribedQueries = new Map<QueryString, number>();
   const onCompletes = new Map<OnCompleteId, OnComplete>();
+  const promiseCache = createPromiseCache();
 
   const dbWorker = createDbWorker((message) => {
     switch (message._tag) {
@@ -291,21 +344,19 @@ export const createEvolu = <From, To extends Schema>(
     }
   });
 
-  const onQuery = createOnQuery(rowsCache, onCompletes);
+  const onQuery = createOnQuery(rowsCache, onCompletes, promiseCache);
 
   const queryIfAny = (queries: ReadonlyArray<QueryString>): void => {
     if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
       dbWorker.post({ _tag: "query", queries });
   };
 
-  const subscribeQuery = createSubscribeRows(rowsCache, subscribedQueries);
+  const subscribeQuery = createSubscribeQuery(rowsCache, subscribedQueries);
 
   const getQuery: Evolu["getQuery"] = (query) =>
     (query && rowsCache.getState().get(query)) || null;
 
-  const loadQuery: Evolu["loadQuery"] = (query) => {
-    throw "";
-  };
+  const loadQuery = createLoadQuery(queryIfAny, promiseCache);
 
   const getOwner = new Promise<Owner>((resolve) => {
     const unsubscribe = ownerStore.subscribe(() => {
@@ -338,11 +389,12 @@ export const createEvolu = <From, To extends Schema>(
     ),
   };
 
+  const kysely = createKysely<To>();
+
   const compileQueryCallback = (
-    _queryCallback: QueryCallback<To, Row>
-  ): QueryString => {
-    throw "";
-  };
+    queryCallback: QueryCallback<To, Row>
+  ): QueryString =>
+    pipe(queryCallback(kysely).compile() as Query, queryToString);
 
   dbWorker.post({
     _tag: "init",

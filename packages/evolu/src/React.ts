@@ -3,20 +3,16 @@ import * as Option from "@effect/data/Option";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as Kysely from "kysely";
 import { useMemo, useRef, useSyncExternalStore } from "react";
-import { queryToString } from "./Query.js";
 import {
   AllowAutoCasting,
   CommonColumns,
   Evolu,
   EvoluError,
-  KyselySelectFrom,
   Owner,
   OwnerActions,
-  Query,
   QueryCallback,
   Row,
   Schema,
-  SchemaForQuery,
 } from "./Types.js";
 
 type OrNullOrFalse<T> = T | null | false;
@@ -232,31 +228,6 @@ export interface Hooks<S extends Schema> {
   readonly useOwnerActions: () => OwnerActions;
 }
 
-// proc to mam presouvat? protoze to budu potrebovat mimo react
-// nema to vracet evolu? jako tu funkci, asi jo
-//
-const createKysely = <DB extends Schema>(): KyselySelectFrom<
-  SchemaForQuery<DB>
-> =>
-  new Kysely.Kysely({
-    dialect: {
-      createAdapter(): Kysely.SqliteAdapter {
-        return new Kysely.SqliteAdapter();
-      },
-      createDriver(): Kysely.Driver {
-        return new Kysely.DummyDriver();
-      },
-      createIntrospector(
-        db: Kysely.Kysely<unknown>
-      ): Kysely.DatabaseIntrospector {
-        return new Kysely.SqliteIntrospector(db);
-      },
-      createQueryCompiler(): Kysely.QueryCompiler {
-        return new Kysely.SqliteQueryCompiler();
-      },
-    },
-  });
-
 /**
  * `create` defines the database schema and returns React Hooks.
  * Evolu uses [Schema](https://github.com/effect-ts/schema) for domain modeling.
@@ -311,53 +282,22 @@ const createKysely = <DB extends Schema>(): KyselySelectFrom<
 export const createHooks = <S extends Schema>(evolu: Evolu<S>): Hooks<S> => {
   const cache = new WeakMap<Row, Option.Option<Row>>();
 
-  const kysely = createKysely<S>();
-  // potrebuju prevest query callback na query string
-  // evolu.compileQueryCallback(query)
-
   const useQuery: UseQuery<S> = (queryCallback, filterMap) => {
     const queryString = useMemo(
-      () =>
-        queryCallback
-          ? pipe(queryCallback(kysely).compile() as Query, queryToString)
-          : null,
+      () => (queryCallback ? evolu.compileQueryCallback(queryCallback) : null),
       [queryCallback]
     );
 
-    // reuse: pipe(query(kysely as never).compile() as Query, queryToString)
-    // jak zjistim, jestli promisa dobehla?
-    // jak to bude fungovat?
-    // co to udela, pokud queryString neni?
-    // mam to volat conditional? imho jo
-
-    // if (queryString) {
-    //   const promise = evolu.loadQuery(queryString);
-    // }
+    if (queryString) {
+      const promise = evolu.loadQuery(queryString);
+      if (!("rows" in promise)) throw promise;
+    }
 
     const subscribedRows = useSyncExternalStore(
       useMemo(() => evolu.subscribeQuery(queryString), [queryString]),
       useMemo(() => () => evolu.getQuery(queryString), [queryString]),
       constNull
     );
-
-    // if (
-    //   !disableSuspense &&
-    //   isBrowser &&
-    //   (rowsWithLoadingState == null || rowsWithLoadingState.isLoading)
-    // ) {
-    //   let resolvePromise: null | ((value: null) => void) = null;
-    //   const suspensePromise = new Promise<null>((resolve) => {
-    //     resolvePromise = resolve;
-    //   });
-    //   const unsubscribe = evolu.subscribeQuery(queryString)(
-    //     () => {
-    //       if (evolu.getQuery(queryString)()?.isLoading) return;
-    //       unsubscribe();
-    //       if (resolvePromise) resolvePromise(null);
-    //     }
-    //   );
-    //   throw suspensePromise;
-    // }
 
     // Use useRef until React Forget release.
     const filterMapRef = useRef(filterMap);

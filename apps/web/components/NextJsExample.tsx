@@ -323,16 +323,7 @@ const NotificationBar: FC = () => {
   );
 };
 
-export const NextJsExample = memo(function NextJsExample() {
-  // Emulate "use client" in Pages Router.
-  const [didMount, setDidMount] = useState(false);
-
-  useEffect(() => {
-    setDidMount(true);
-  }, []);
-
-  if (!didMount) return null;
-
+export const NextJsExample: FC = () => {
   return (
     <Suspense fallback={<div>Loading..</div>}>
       <NotificationBar />
@@ -343,4 +334,4 @@ export const NextJsExample = memo(function NextJsExample() {
       <OwnerActions />
     </Suspense>
   );
-});
+};
