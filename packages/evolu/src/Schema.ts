@@ -1,4 +1,5 @@
 import { flow, pipe } from "@effect/data/Function";
+import * as AST from "@effect/schema/AST";
 import * as Predicate from "@effect/data/Predicate";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as ReadonlyRecord from "@effect/data/ReadonlyRecord";
@@ -20,17 +21,33 @@ export const commonColumnsObject: {
 
 const commonColumns = Object.keys(commonColumnsObject);
 
+// https://github.com/Effect-TS/schema/releases/tag/v0.18.0
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
+  schema: S.Schema<I, A>
+): { [K in keyof A]: S.Schema<I[K], A[K]> } => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const out: Record<PropertyKey, S.Schema<any>> = {};
+  const propertySignatures = AST.getPropertySignatures(schema.ast);
+  for (let i = 0; i < propertySignatures.length; i++) {
+    const propertySignature = propertySignatures[i];
+    out[propertySignature.name] = S.make(propertySignature.type);
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return out as any;
+};
+
 export const schemaToTablesDefinitions = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   schema: S.Schema<any, any>
 ): TablesDefinitions =>
   pipe(
-    S.getPropertySignatures(schema),
+    getPropertySignatures(schema),
     ReadonlyRecord.toEntries,
     ReadonlyArray.map(
       ([name, schema]): TableDefinition => ({
         name,
-        columns: Object.keys(S.getPropertySignatures(schema)).concat(
+        columns: Object.keys(getPropertySignatures(schema)).concat(
           commonColumns
         ),
       })

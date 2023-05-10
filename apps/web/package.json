@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@effect/data": "^0.12.2",
-    "@effect/schema": "~0.17.5",
+    "@effect/schema": "~0.18.0",
     "clsx": "^1.2.1",
     "evolu": "workspace:5.0.0",
     "next": "^13.4.1",
@@ -22,7 +22,7 @@
   },
   "devDependencies": {
     "@evolu/tsconfig": "workspace:0.0.2",
-    "@types/node": "^20.1.1",
+    "@types/node": "^20.1.2",
     "@types/react": "^18.2.6",
     "@types/react-dom": "^18.2.4",
     "autoprefixer": "^10.4.14",

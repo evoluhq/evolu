@@ -30,11 +30,11 @@ importers:
         specifier: workspace:0.0.2
         version: link:../../packages/evolu-tsconfig
       '@types/node':
-        specifier: ^20.1.1
-        version: 20.1.1
+        specifier: ^20.1.2
+        version: 20.1.2
       ts-node:
         specifier: ^10.9.1
-        version: 10.9.1(@types/node@20.1.1)(typescript@5.0.4)
+        version: 10.9.1(@types/node@20.1.2)(typescript@5.0.4)
       typescript:
         specifier: ^5.0.4
         version: 5.0.4
@@ -45,8 +45,8 @@ importers:
         specifier: ^0.12.2
         version: 0.12.2
       '@effect/schema':
-        specifier: ~0.17.5
-        version: 0.17.5
+        specifier: ~0.18.0
+        version: 0.18.0
       clsx:
         specifier: ^1.2.1
         version: 1.2.1
@@ -73,8 +73,8 @@ importers:
         specifier: workspace:0.0.2
         version: link:../../packages/evolu-tsconfig
       '@types/node':
-        specifier: ^20.1.1
-        version: 20.1.1
+        specifier: ^20.1.2
+        version: 20.1.2
       '@types/react':
         specifier: ^18.2.6
         version: 18.2.6
@@ -124,8 +124,8 @@ importers:
         specifier: ^1.9.3
         version: 1.9.3(eslint@8.40.0)
       eslint-plugin-jsdoc:
-        specifier: ^44.0.2
-        version: 44.0.2(eslint@8.40.0)
+        specifier: ^44.1.0
+        version: 44.1.0(eslint@8.40.0)
       eslint-plugin-node:
         specifier: ^11.1.0
         version: 11.1.0(eslint@8.40.0)
@@ -177,8 +177,8 @@ importers:
         specifier: ^0.25.9
         version: 0.25.9
       '@effect/schema':
-        specifier: ^0.17.5
-        version: 0.17.5
+        specifier: ^0.18.0
+        version: 0.18.0
       '@evolu/tsconfig':
         specifier: workspace:0.0.2
         version: link:../evolu-tsconfig
@@ -274,8 +274,8 @@ importers:
         specifier: ^4.17.17
         version: 4.17.17
       '@types/node':
-        specifier: ^20.1.1
-        version: 20.1.1
+        specifier: ^20.1.2
+        version: 20.1.2
       eslint:
         specifier: ^8.40.0
         version: 8.40.0
@@ -524,8 +524,8 @@ packages:
     dependencies:
       '@effect/data': 0.12.2
 
-  /@effect/schema@0.17.5:
-    resolution: {integrity: sha512-I9NJ/Zwx605hdMT5G1OZ1jlo95WC4KvfXFY2zHYTJNAkdv6f31GF5qylrcd32pUm6/EM73HdjxrEZMMKnpEeUQ==}
+  /@effect/schema@0.18.0:
+    resolution: {integrity: sha512-CFe61rSTrQ0DVHyUMJOYyIk/SZOBCf0ZKJmrkxyMVUCgUBlvq+twb+UQtM8HXyUqEiCLfk0/6nl46+3Ni7fllA==}
     dependencies:
       '@effect/data': 0.12.2
       '@effect/io': 0.25.9
@@ -1228,14 +1228,14 @@ packages:
   /@types/better-sqlite3@7.6.4:
     resolution: {integrity: sha512-dzrRZCYPXIXfSR1/surNbJ/grU3scTaygS0OMzjlGf71i9sc2fGyHPXXiXmEvNIoE0cGwsanEFMVJxPXmco9Eg==}
     dependencies:
-      '@types/node': 20.1.1
+      '@types/node': 20.1.2
     dev: true
 
   /@types/body-parser@1.19.2:
     resolution: {integrity: sha512-ALYone6pm6QmwZoAgeyNksccT9Q4AWZQ6PvfwR37GT6r6FWUPguq6sUmNGSMV2Wr761oQoBxwGGa6DR5o1DC9g==}
     dependencies:
       '@types/connect': 3.4.35
-      '@types/node': 20.1.1
+      '@types/node': 20.1.2
     dev: true
 
   /@types/chai-subset@1.3.3:
@@ -1251,13 +1251,13 @@ packages:
   /@types/connect@3.4.35:
     resolution: {integrity: sha512-cdeYyv4KWoEgpBISTxWvqYsVy444DOqehiF3fM3ne10AmJ62RSyNkUnxMJXHQWRQQX2eR94m5y1IZyDwBjV9FQ==}
     dependencies:
-      '@types/node': 20.1.1
+      '@types/node': 20.1.2
     dev: true
 
   /@types/cors@2.8.13:
     resolution: {integrity: sha512-RG8AStHlUiV5ysZQKq97copd2UmVYw3/pRMLefISZ3S1hK104Cwm7iLQ3fTKx+lsUH2CE8FlLaYeEA2LSeqYUA==}
     dependencies:
-      '@types/node': 20.1.1
+      '@types/node': 20.1.2
     dev: true
 
   /@types/debug@4.1.7:
@@ -1279,7 +1279,7 @@ packages:
   /@types/express-serve-static-core@4.17.34:
     resolution: {integrity: sha512-fvr49XlCGoUj2Pp730AItckfjat4WNb0lb3kfrLWffd+RLeoGAMsq7UOy04PAPtoL01uKwcp6u8nhzpgpDYr3w==}
     dependencies:
-      '@types/node': 20.1.1
+      '@types/node': 20.1.2
       '@types/qs': 6.9.7
       '@types/range-parser': 1.2.4
       '@types/send': 0.17.1
@@ -1356,8 +1356,8 @@ packages:
     resolution: {integrity: sha512-J8xLz7q2OFulZ2cyGTLE1TbbZcjpno7FaN6zdJNrgAdrJ+DZzh/uFR6YrTb4C+nXakvud8Q4+rbhoIWlYQbUFQ==}
     dev: true
 
-  /@types/node@20.1.1:
-    resolution: {integrity: sha512-uKBEevTNb+l6/aCQaKVnUModfEMjAl98lw2Si9P5y4hLu9tm6AlX2ZIoXZX6Wh9lJueYPrGPKk5WMCNHg/u6/A==}
+  /@types/node@20.1.2:
+    resolution: {integrity: sha512-CTO/wa8x+rZU626cL2BlbCDzydgnFNgc19h4YvizpTO88MFQxab8wqisxaofQJ/9bLGugRdWIuX/TbIs6VVF6g==}
     dev: true
 
   /@types/normalize-package-data@2.4.1:
@@ -1403,14 +1403,14 @@ packages:
     resolution: {integrity: sha512-Cwo8LE/0rnvX7kIIa3QHCkcuF21c05Ayb0ZfxPiv0W8VRiZiNW/WuRupHKpqqGVGf7SUA44QSOUKaEd9lIrd/Q==}
     dependencies:
       '@types/mime': 1.3.2
-      '@types/node': 20.1.1
+      '@types/node': 20.1.2
     dev: true
 
   /@types/serve-static@1.15.1:
     resolution: {integrity: sha512-NUo5XNiAdULrJENtJXZZ3fHtfMolzZwczzBbnAeBbqBwG+LaG6YaJtuwzwGSQZ2wsCrxjEhNNjAkKigy3n8teQ==}
     dependencies:
       '@types/mime': 3.0.1
-      '@types/node': 20.1.1
+      '@types/node': 20.1.2
     dev: true
 
   /@types/unist@2.0.6:
@@ -2802,8 +2802,8 @@ packages:
       - supports-color
     dev: false
 
-  /eslint-plugin-jsdoc@44.0.2(eslint@8.40.0):
-    resolution: {integrity: sha512-QgYuo/dd39eRrijoD0zGEMgP1y/cx3IHwdJue4PJQcBivItH0UGxu12MDajBBj1CxAlVdSl9lLOR5KQuu4kYHA==}
+  /eslint-plugin-jsdoc@44.1.0(eslint@8.40.0):
+    resolution: {integrity: sha512-tMIdZXChUhjK7YUsilrQjUOerLxxq4RgmHcN+Q1Hk+SroG0OHjZMGRcLkqE0+82/qtwCay+S195vllpUduP7UA==}
     engines: {node: '>=16'}
     peerDependencies:
       eslint: ^7.0.0 || ^8.0.0
@@ -6597,7 +6597,7 @@ packages:
     resolution: {integrity: sha512-Y/arvbn+rrz3JCKl9C4kVNfTfSm2/mEp5FSz5EsZSANGPSlQrpRI5M4PKF+mJnE52jOO90PnPSc3Ur3bTQw0gA==}
     dev: true
 
-  /ts-node@10.9.1(@types/node@20.1.1)(typescript@5.0.4):
+  /ts-node@10.9.1(@types/node@20.1.2)(typescript@5.0.4):
     resolution: {integrity: sha512-NtVysVPkxxrwFGUUxGYhfux8k78pQB3JqYBXlLRZgdGUqTO5wU/UyHop5p70iEbGhB7q5KmiZiU0Y3KlJrScEw==}
     hasBin: true
     peerDependencies:
@@ -6616,7 +6616,7 @@ packages:
       '@tsconfig/node12': 1.0.11
       '@tsconfig/node14': 1.0.3
       '@tsconfig/node16': 1.0.3
-      '@types/node': 20.1.1
+      '@types/node': 20.1.2
       acorn: 8.8.2
       acorn-walk: 8.2.0
       arg: 4.1.3
@@ -7001,7 +7001,7 @@ packages:
       vfile-message: 3.1.4
     dev: false
 
-  /vite-node@0.31.0(@types/node@20.1.1):
+  /vite-node@0.31.0(@types/node@20.1.2):
     resolution: {integrity: sha512-8x1x1LNuPvE2vIvkSB7c1mApX5oqlgsxzHQesYF7l5n1gKrEmrClIiZuOFbFDQcjLsmcWSwwmrWrcGWm9Fxc/g==}
     engines: {node: '>=v14.18.0'}
     hasBin: true
@@ -7011,7 +7011,7 @@ packages:
       mlly: 1.2.0
       pathe: 1.1.0
       picocolors: 1.0.0
-      vite: 4.3.5(@types/node@20.1.1)
+      vite: 4.3.5(@types/node@20.1.2)
     transitivePeerDependencies:
       - '@types/node'
       - less
@@ -7022,7 +7022,7 @@ packages:
       - terser
     dev: true
 
-  /vite@4.3.5(@types/node@20.1.1):
+  /vite@4.3.5(@types/node@20.1.2):
     resolution: {integrity: sha512-0gEnL9wiRFxgz40o/i/eTBwm+NEbpUeTWhzKrZDSdKm6nplj+z4lKz8ANDgildxHm47Vg8EUia0aicKbawUVVA==}
     engines: {node: ^14.18.0 || >=16.0.0}
     hasBin: true
@@ -7047,7 +7047,7 @@ packages:
       terser:
         optional: true
     dependencies:
-      '@types/node': 20.1.1
+      '@types/node': 20.1.2
       esbuild: 0.17.18
       postcss: 8.4.23
       rollup: 3.21.6
@@ -7088,7 +7088,7 @@ packages:
     dependencies:
       '@types/chai': 4.3.5
       '@types/chai-subset': 1.3.3
-      '@types/node': 20.1.1
+      '@types/node': 20.1.2
       '@vitest/expect': 0.31.0
       '@vitest/runner': 0.31.0
       '@vitest/snapshot': 0.31.0
@@ -7108,8 +7108,8 @@ packages:
       strip-literal: 1.0.1
       tinybench: 2.5.0
       tinypool: 0.5.0
-      vite: 4.3.5(@types/node@20.1.1)
-      vite-node: 0.31.0(@types/node@20.1.1)
+      vite: 4.3.5(@types/node@20.1.2)
+      vite-node: 0.31.0(@types/node@20.1.2)
       why-is-node-running: 2.2.2
     transitivePeerDependencies:
       - less
