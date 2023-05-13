@@ -1,5 +1,5 @@
 import * as Either from "@effect/data/Either";
-import { absurd, flow, pipe } from "@effect/data/Function";
+import { absurd, flow, identity, pipe } from "@effect/data/Function";
 import * as Cause from "@effect/io/Cause";
 import * as Effect from "@effect/io/Effect";
 import { decrypt, encrypt } from "micro-aes-gcm";
@@ -15,11 +15,11 @@ import {
   SyncResponse,
 } from "./Protobuf.js";
 import {
+  CreateSyncWorker,
   DbWorkerInputReceiveMessages,
   MerkleTreeString,
   Message,
-  SyncWorkerInput,
-  SyncWorkerOnMessage,
+  SyncWorkerInputSync,
   TimestampString,
   Value,
 } from "./Types.js";
@@ -91,18 +91,20 @@ interface FetchError {
   readonly error: unknown;
 }
 
-export const sync = ({
+const sync = ({
   syncUrl,
   messages,
   clock,
   owner,
   previousDiff,
-  onMessage,
-}: SyncWorkerInput & {
-  readonly onMessage: SyncWorkerOnMessage;
-}): Promise<void> =>
+}: SyncWorkerInputSync): Effect.Effect<
+  never,
+  FetchError,
+  DbWorkerInputReceiveMessages
+> =>
   pipe(
-    Effect.forEach(messages, encryptMessage(owner.encryptionKey)),
+    messages,
+    Effect.forEach(encryptMessage(owner.encryptionKey)),
     Effect.map((messages) =>
       SyncRequest.toBinary({
         messages,
@@ -130,7 +132,8 @@ export const sync = ({
     ),
     Effect.flatMap(({ merkleTree, messages }) =>
       pipe(
-        Effect.forEach(messages, decryptMessage(owner.encryptionKey)),
+        messages,
+        Effect.forEach(decryptMessage(owner.encryptionKey)),
         Effect.map(
           (messages): DbWorkerInputReceiveMessages => ({
             _tag: "receiveMessages",
@@ -140,18 +143,62 @@ export const sync = ({
             ),
             previousDiff,
           })
-        ),
-        Effect.map(onMessage)
+        )
       )
-    ),
-    // Ignore FetchError, because there is not much we can do with that.
-    Effect.catchTag("FetchError", () => Effect.succeed(undefined)),
-    Effect.catchAllCause(
-      flow(
-        Cause.failureOrCause,
-        Either.match(absurd, flow(Cause.squash, unknownError, onMessage)),
-        () => Effect.succeed(undefined)
-      )
-    ),
-    Effect.runPromise
+    )
   );
+
+export const createCreateSyncWorker =
+  ({
+    isSyncing,
+    setIsSyncing,
+  }: {
+    isSyncing: Effect.Effect<never, never, boolean>;
+    setIsSyncing: (isSyncing: boolean) => void;
+  }): CreateSyncWorker =>
+  (onMessage) => ({
+    post: (message): void => {
+      switch (message._tag) {
+        case "syncCompleted":
+          setIsSyncing(false);
+          return;
+        case "sync":
+          pipe(
+            Effect.gen(function* ($) {
+              // To keep client-server sync loop until it finishes.
+              // previousDiff is null when the sync loop is started.
+              if (message.previousDiff == null && (yield* $(isSyncing))) {
+                console.log("skip");
+
+                return;
+              }
+              setIsSyncing(true);
+              return yield* $(sync(message));
+            }),
+            Effect.catchAllCause(
+              flow(
+                Cause.failureOrCause,
+                Either.map(Cause.squash),
+                Either.map(unknownError)
+              )
+            ),
+            Effect.match(identity, identity),
+            Effect.runPromise
+          ).then((message) => {
+            // Sync was skipped.
+            if (!message) return;
+            // FetchError stops syncing but doesn't have to be propagated.
+            if (message._tag === "FetchError") {
+              setIsSyncing(false);
+              return;
+            }
+            // UnknownError also stops syncing.
+            if (message._tag === "UnknownError") setIsSyncing(false);
+            onMessage(message);
+          });
+          return;
+        default:
+          absurd(message);
+      }
+    },
+  });

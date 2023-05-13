@@ -1,9 +1,6 @@
-import { constFalse, flow, pipe } from "@effect/data/Function";
-import * as Option from "@effect/data/Option";
-import * as Predicate from "@effect/data/Predicate";
+import { pipe } from "@effect/data/Function";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
-import * as Effect from "@effect/io/Effect";
-import { DbWorker, QueryString, RequestSync } from "./Types.js";
+import { DbWorker, QueryString } from "./Types.js";
 
 const isChromeWithOpfs = (): boolean =>
   navigator.userAgentData != null &&
@@ -62,20 +59,3 @@ export const browserInit = (
 
   handleReconnect();
 };
-
-const syncLockName = "evolu:sync";
-
-export const requestSync: RequestSync = (callback) => {
-  navigator.locks.request(syncLockName, callback);
-};
-
-const hasLock: Predicate.Predicate<LockInfo[] | undefined> = flow(
-  Option.fromNullable,
-  Option.map(ReadonlyArray.some((a) => a.name === syncLockName)),
-  Option.getOrElse(constFalse)
-);
-
-export const isSyncing: Effect.Effect<never, never, boolean> = pipe(
-  Effect.promise(() => navigator.locks.query()),
-  Effect.map(({ pending, held }) => hasLock(pending) || hasLock(held))
-);

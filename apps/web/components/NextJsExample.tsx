@@ -86,8 +86,8 @@ const TodoCategorySelect: FC<{
       db
         .selectFrom("todoCategory")
         .select(["id", "name"])
-        .where("isDeleted", "is not", Evolu.cast(true))
-        .orderBy("createdAt"),
+        .where("isDeleted", "is not", Evolu.cast(true)),
+    // .orderBy("createdAt"),
     // (row) => row
     // Filter out rows with nullable names.
     ({ name, ...rest }) => name && { name, ...rest }
@@ -151,12 +151,14 @@ const TodoItem = memo<{
           update("todo", { id, isDeleted: true });
         }}
       />
-      <TodoCategorySelect
-        selected={categoryId}
-        onSelect={(categoryId): void => {
-          update("todo", { id, categoryId });
-        }}
-      />
+      <Suspense>
+        <TodoCategorySelect
+          selected={categoryId}
+          onSelect={(categoryId): void => {
+            update("todo", { id, categoryId });
+          }}
+        />
+      </Suspense>
     </li>
   );
 });
@@ -324,14 +326,39 @@ const NotificationBar: FC = () => {
 };
 
 export const NextJsExample: FC = () => {
+  const { create } = useMutation();
+  const [shown, setShown] = useState(true);
+
   return (
-    <Suspense fallback={<div>Loading..</div>}>
-      <NotificationBar />
-      <TodoList />
-      <AddTodo />
-      <TodoCategoryList />
-      <AddTodoCategory />
-      <OwnerActions />
-    </Suspense>
+    <>
+      <div className="mt-6">
+        <p>Suspense Testing</p>
+        <Button
+          title="Add Todo"
+          onClick={(): void => {
+            create("todo", {
+              title: "foo" as Evolu.NonEmptyString1000,
+              isCompleted: false,
+            });
+          }}
+        />
+        <Button
+          title="Simulate a route transition"
+          onClick={(): void => {
+            setShown((shown) => !shown);
+          }}
+        />
+      </div>
+      {shown && (
+        <Suspense>
+          <NotificationBar />
+          <TodoList />
+          <AddTodo />
+          <TodoCategoryList />
+          <AddTodoCategory />
+          <OwnerActions />
+        </Suspense>
+      )}
+    </>
   );
 };

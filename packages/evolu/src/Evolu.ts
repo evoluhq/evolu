@@ -98,10 +98,12 @@ interface PromiseCache {
   readonly get: (queryString: QueryString) => Promise<Rows>;
   readonly has: Predicate.Predicate<QueryString>;
   readonly resolve: (queryString: QueryString, rows: Rows) => void;
-  readonly release: (queryString: QueryString) => boolean;
+  readonly isPending: <T extends Rows>(promise: Promise<T>) => boolean;
+  readonly someIsPending: () => boolean;
+  readonly releaseQuery: (queryString: QueryString) => void;
 }
 
-const createPromiseCache = (): PromiseCache => {
+export const createPromiseCache = (): PromiseCache => {
   const cache = new Map<
     QueryString,
     {
@@ -110,31 +112,42 @@ const createPromiseCache = (): PromiseCache => {
     }
   >();
 
-  const promiseCache: PromiseCache = {
-    get: (queryString) => {
-      const item = cache.get(queryString);
-      if (item) return item.promise;
-      let resolve: null | ((rows: Rows) => void) = null;
-      const promise = new Promise<Rows>((_resolve) => {
-        resolve = _resolve;
-      });
-      // `if (resolve)` to make TS happy. This is OK.
-      if (resolve) cache.set(queryString, { promise, resolve });
-      return promise;
-    },
-    has: (queryToString) => cache.has(queryToString),
-    resolve: (queryString, rows) => {
-      const item = cache.get(queryString);
-      if (!item) return;
-      // It's similar to what React will do.
-      Object.assign(item.promise, { rows });
-      item.resolve(rows);
-    },
-    // TODO: releasePromise, releaseQuery?
-    release: (queryString) => cache.delete(queryString),
+  const get: PromiseCache["get"] = (queryString) => {
+    const item = cache.get(queryString);
+    if (item) return item.promise;
+    let resolve: null | ((rows: Rows) => void) = null;
+    const promise = new Promise<Rows>((_resolve) => {
+      resolve = _resolve;
+    });
+    // `if (resolve)` to make TS happy. This is OK.
+    if (resolve) cache.set(queryString, { promise, resolve });
+    return promise;
   };
 
-  return promiseCache;
+  const has: PromiseCache["has"] = (queryToString) => cache.has(queryToString);
+
+  const resolve: PromiseCache["resolve"] = (queryString, rows) => {
+    const item = cache.get(queryString);
+    if (!item) return;
+    // It's similar to what React will do.
+    Object.assign(item.promise, { rows });
+    item.resolve(rows);
+  };
+
+  const isPending: PromiseCache["isPending"] = (promise) => {
+    return !("rows" in promise);
+  };
+
+  const someIsPending: PromiseCache["someIsPending"] = () =>
+    Array.from(cache.values())
+      .map((a) => a.promise)
+      .some(isPending);
+
+  const releaseQuery: PromiseCache["releaseQuery"] = (queryString) => {
+    return cache.delete(queryString);
+  };
+
+  return { get, has, resolve, isPending, someIsPending, releaseQuery };
 };
 
 type OnComplete = () => void;
@@ -192,7 +205,8 @@ const createOnQuery =
 
 export const createSubscribeQuery = (
   rowsCache: Store<RowsCache>,
-  subscribedQueries: Map<QueryString, number>
+  subscribedQueries: Map<QueryString, number>,
+  promiseCache: PromiseCache
 ): Evolu["subscribeQuery"] => {
   return (queryString: QueryString | null) => (listen) => {
     if (queryString == null) return constVoid;
@@ -208,30 +222,31 @@ export const createSubscribeQuery = (
       const count = subscribedQueries.get(queryString);
       if (count != null && count > 1)
         subscribedQueries.set(queryString, Number.decrement(count));
-      else subscribedQueries.delete(queryString);
+      else {
+        subscribedQueries.delete(queryString);
+        if (!promiseCache.someIsPending())
+          promiseCache.releaseQuery(queryString);
+      }
       unsubscribe();
     };
   };
 };
 
 const createLoadQuery = (
-  queryIfAny: (queries: ReadonlyArray<QueryString>) => void,
+  query: (queries: ReadonlyArray<QueryString>) => void,
   promiseCache: PromiseCache
 ): Evolu["loadQuery"] => {
   const queue = new Set<QueryString>();
 
   return (queryString) => {
     if (!promiseCache.has(queryString)) queue.add(queryString);
-
-    queue.add(queryString);
     if (queue.size === 1) {
       queueMicrotask(() => {
         const queries = [...queue];
         queue.clear();
-        queryIfAny(queries);
+        query(queries);
       });
     }
-
     return promiseCache.get(queryString);
   };
 };
@@ -319,6 +334,9 @@ export const createEvolu = <From, To extends Schema>(
   const rowsCache = createStore<RowsCache>(new Map());
 
   const subscribedQueries = new Map<QueryString, number>();
+  const getSubscribedQueries = (): ReadonlyArray<QueryString> =>
+    Array.from(subscribedQueries.keys());
+
   const onCompletes = new Map<OnCompleteId, OnComplete>();
   const promiseCache = createPromiseCache();
 
@@ -334,7 +352,7 @@ export const createEvolu = <From, To extends Schema>(
         onQuery(message);
         break;
       case "onReceive":
-        queryIfAny(Array.from(subscribedQueries.keys()));
+        query(getSubscribedQueries());
         break;
       case "onResetOrRestore":
         reloadAllTabs(config.reloadUrl);
@@ -346,17 +364,23 @@ export const createEvolu = <From, To extends Schema>(
 
   const onQuery = createOnQuery(rowsCache, onCompletes, promiseCache);
 
-  const queryIfAny = (queries: ReadonlyArray<QueryString>): void => {
+  const query = (queries: ReadonlyArray<QueryString>): void => {
     if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
       dbWorker.post({ _tag: "query", queries });
   };
 
-  const subscribeQuery = createSubscribeQuery(rowsCache, subscribedQueries);
+  const subscribeQuery = createSubscribeQuery(
+    rowsCache,
+    subscribedQueries,
+    promiseCache
+  );
 
   const getQuery: Evolu["getQuery"] = (query) =>
     (query && rowsCache.getState().get(query)) || null;
 
-  const loadQuery = createLoadQuery(queryIfAny, promiseCache);
+  const loadQuery = createLoadQuery(query, promiseCache);
+
+  const isPending: Evolu["isPending"] = promiseCache.isPending;
 
   const getOwner = new Promise<Owner>((resolve) => {
     const unsubscribe = ownerStore.subscribe(() => {
@@ -374,7 +398,7 @@ export const createEvolu = <From, To extends Schema>(
       onCompletes.set(id, callback);
     },
     dbWorker,
-    getSubscribedQueries: () => Array.from(subscribedQueries.keys()),
+    getSubscribedQueries,
   });
 
   const ownerActions: OwnerActions = {
@@ -402,7 +426,7 @@ export const createEvolu = <From, To extends Schema>(
     tableDefinitions: schemaToTablesDefinitions(schema),
   });
 
-  browserInit(subscribedQueries, dbWorker);
+  // browserInit(subscribedQueries, dbWorker);
 
   return {
     subscribeError: errorStore.subscribe,
@@ -414,6 +438,7 @@ export const createEvolu = <From, To extends Schema>(
     subscribeQuery,
     getQuery,
     loadQuery,
+    isPending,
 
     mutate,
     ownerActions,

@@ -20,7 +20,6 @@ import {
   Db,
   DbWorkerOnMessage,
   DbWorkerRowsCache,
-  IsSyncing,
   MerkleTree,
   Message,
   Millis,
@@ -194,6 +193,7 @@ export const sendMessages = ({
     );
 
     syncWorkerPost({
+      _tag: "sync",
       syncUrl: config.syncUrl,
       messages,
       clock: { timestamp, merkleTree },
@@ -201,7 +201,7 @@ export const sendMessages = ({
       previousDiff: null,
     });
 
-    if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
+    if (queries.length > 0 || onCompleteIds.length > 0)
       yield* $(query({ queries, onCompleteIds }));
   });
 
@@ -214,7 +214,7 @@ export const receiveMessages = ({
   readonly merkleTree: MerkleTree;
   readonly previousDiff: Millis | null;
 }): Effect.Effect<
-  Db | Time | DbWorkerOnMessage | SyncWorkerPost | Owner | Config | IsSyncing,
+  Db | Time | DbWorkerOnMessage | SyncWorkerPost | Owner | Config,
   | TimestampDriftError
   | TimestampCounterOverflowError
   | TimestampDuplicateNodeError
@@ -243,14 +243,19 @@ export const receiveMessages = ({
     const dbWorkerOnMessage = yield* $(DbWorkerOnMessage);
     dbWorkerOnMessage({ _tag: "onReceive" });
 
+    const [syncWorkerPost, config, owner] = yield* $(
+      Effect.all(SyncWorkerPost, Config, Owner)
+    );
+
     const diff = diffMerkleTrees(serverMerkleTree, merkleTree);
-    if (Option.isNone(diff)) return;
+    if (Option.isNone(diff)) {
+      syncWorkerPost({ _tag: "syncCompleted" });
+      return;
+    }
 
-    if (previousDiff != null && previousDiff === diff.value)
+    if (previousDiff != null && previousDiff === diff.value) {
       yield* $(Effect.fail<SyncError>({ _tag: "SyncError" }));
-
-    const isSyncing = yield* $(IsSyncing);
-    if (yield* $(isSyncing)) return;
+    }
 
     const db = yield* $(Db);
     const messagesToSync = yield* $(
@@ -261,13 +266,8 @@ export const receiveMessages = ({
       Effect.map((a) => a as unknown as ReadonlyArray<Message>)
     );
 
-    if (ReadonlyArray.isEmptyReadonlyArray(messagesToSync)) return;
-
-    const [syncWorkerPost, config, owner] = yield* $(
-      Effect.all(SyncWorkerPost, Config, Owner)
-    );
-
     syncWorkerPost({
+      _tag: "sync",
       syncUrl: config.syncUrl,
       messages: messagesToSync,
       clock: { timestamp, merkleTree },

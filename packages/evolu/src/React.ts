@@ -288,10 +288,11 @@ export const createHooks = <S extends Schema>(evolu: Evolu<S>): Hooks<S> => {
       [queryCallback]
     );
 
-    if (queryString) {
-      const promise = evolu.loadQuery(queryString);
-      if (!("rows" in promise)) throw promise;
-    }
+    const promise = useMemo(() => {
+      return queryString ? evolu.loadQuery(queryString) : null;
+    }, [queryString]);
+
+    if (promise && evolu.isPending(promise)) throw promise;
 
     const subscribedRows = useSyncExternalStore(
       useMemo(() => evolu.subscribeQuery(queryString), [queryString]),

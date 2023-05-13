@@ -247,6 +247,7 @@ export interface Evolu<S extends Schema = Schema> {
   ) => (listener: Listener) => Unsubscribe;
   readonly getQuery: (queryString: QueryString | null) => Rows | null;
   readonly loadQuery: (queryString: QueryString) => Promise<Rows>;
+  readonly isPending: <T extends Rows>(promise: Promise<T>) => boolean;
 
   readonly mutate: Mutate<S>;
 
@@ -352,6 +353,7 @@ export type DbWorkerInput =
   | DbWorkerInputReceiveMessages
   | {
       readonly _tag: "sync";
+      // Queries are for `const handleReshow = sync(true);`
       readonly queries: NonEmptyReadonlyArray<QueryString> | null;
     }
   | {
@@ -384,7 +386,8 @@ export type CreateDbWorker = (
 export type DbWorkerRowsCache = Ref<ReadonlyMap<QueryString, Rows>>;
 export const DbWorkerRowsCache = Tag<DbWorkerRowsCache>();
 
-export type SyncWorkerInput = {
+export type SyncWorkerInputSync = {
+  readonly _tag: "sync";
   readonly syncUrl: string;
   readonly messages: ReadonlyArray<Message>;
   readonly clock: Clock;
@@ -392,21 +395,25 @@ export type SyncWorkerInput = {
   readonly previousDiff: Millis | null;
 };
 
+export type SyncWorkerInput =
+  | SyncWorkerInputSync
+  | { readonly _tag: "syncCompleted" };
+
 export type SyncWorkerOutput = UnknownError | DbWorkerInputReceiveMessages;
+
+export interface SyncWorker {
+  readonly post: (message: SyncWorkerInput) => void;
+}
+
+export type CreateSyncWorker = (
+  onMessage: (message: SyncWorkerOutput) => void
+) => SyncWorker;
 
 export type SyncWorkerPost = (message: SyncWorkerInput) => void;
 export const SyncWorkerPost = Tag<SyncWorkerPost>();
-
-export type SyncWorkerOnMessage = (message: SyncWorkerOutput) => void;
 
 export interface Store<T> {
   readonly subscribe: (listener: Listener) => Unsubscribe;
   readonly setState: (state: T) => void;
   readonly getState: () => T;
 }
-
-export type RequestSync = (callback: () => Promise<void>) => void;
-export const RequestSync = Tag<RequestSync>();
-
-export type IsSyncing = Effect<never, never, boolean>;
-export const IsSyncing = Tag<IsSyncing>();
