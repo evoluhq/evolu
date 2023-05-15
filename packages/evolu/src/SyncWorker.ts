@@ -4,6 +4,7 @@ import * as Cause from "@effect/io/Cause";
 import * as Effect from "@effect/io/Effect";
 import { decrypt, encrypt } from "micro-aes-gcm";
 import {
+  diffMerkleTrees,
   merkleTreeToString,
   unsafeMerkleTreeFromString,
 } from "./MerkleTree.js";
@@ -115,8 +116,9 @@ const sync = ({
     ),
     Effect.flatMap((body) =>
       Effect.tryCatchPromise(
-        () =>
-          fetch(syncUrl, {
+        () => {
+          console.log("fetch");
+          return fetch(syncUrl, {
             method: "POST",
             body,
             headers: {
@@ -126,7 +128,13 @@ const sync = ({
           })
             .then((response) => response.arrayBuffer())
             .then(Buffer.from)
-            .then((data) => SyncResponse.fromBinary(data)),
+            .then((a) => {
+              console.log("fetch end");
+
+              return a;
+            })
+            .then((data) => SyncResponse.fromBinary(data));
+        },
         (error): FetchError => ({ _tag: "FetchError", error })
       )
     ),
@@ -146,6 +154,12 @@ const sync = ({
         )
       )
     )
+    // Effect.map((a) => {
+    //   console.log(
+    //     JSON.stringify(a.merkleTree) === JSON.stringify(clock.merkleTree)
+    //   );
+    //   return a;
+    // })
   );
 
 export const createCreateSyncWorker =
@@ -167,11 +181,7 @@ export const createCreateSyncWorker =
             Effect.gen(function* ($) {
               // To keep client-server sync loop until it finishes.
               // previousDiff is null when the sync loop is started.
-              if (message.previousDiff == null && (yield* $(isSyncing))) {
-                console.log("skip");
-
-                return;
-              }
+              if (message.previousDiff == null && (yield* $(isSyncing))) return;
               setIsSyncing(true);
               return yield* $(sync(message));
             }),

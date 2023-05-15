@@ -2,12 +2,6 @@
 
 exports[`createInitialMerkleTree 1`] = `{}`;
 
-exports[`diffMerkleTrees 1`] = `
-{
-  "_tag": "None",
-}
-`;
-
 exports[`diffMerkleTrees 2`] = `
 {
   "_tag": "Some",

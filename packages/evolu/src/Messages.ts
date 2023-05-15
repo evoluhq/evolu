@@ -168,9 +168,11 @@ export const sendMessages = ({
 > =>
   Effect.gen(function* ($) {
     let { timestamp, merkleTree } = yield* $(readClock);
+    console.log(merkleTree);
 
     const messages = yield* $(
-      Effect.forEach(newMessages, (newMessage) =>
+      newMessages,
+      Effect.forEach((newMessage) =>
         Effect.map(sendTimestamp(timestamp), (nextTimestamp): Message => {
           timestamp = nextTimestamp;
           return {
@@ -236,6 +238,8 @@ export const receiveMessages = ({
     if (ReadonlyArray.isNonEmptyReadonlyArray(messages))
       yield* $(ensureSchema(messages));
 
+    // console.log(messages.length);
+
     merkleTree = yield* $(applyMessages({ merkleTree, messages }));
 
     yield* $(writeClock({ timestamp, merkleTree }));
@@ -247,13 +251,32 @@ export const receiveMessages = ({
       Effect.all(SyncWorkerPost, Config, Owner)
     );
 
+    // console.log(serverMerkleTree);
+
+    // kdyz udelam jednu zmenu, mely by bejt stejny
+    // ukonci se to vubec nekdy?
+    // deterministic Merkle asi jo, na test
+    // console.log(
+    //   JSON.stringify(serverMerkleTree) === JSON.stringify(merkleTree)
+    // );
+
+    // console.log("client", JSON.stringify(merkleTree));
+    // console.log("server", JSON.stringify(serverMerkleTree));
+
     const diff = diffMerkleTrees(serverMerkleTree, merkleTree);
+    console.log(Option.isNone(diff) ? "none" : diff.value);
+
     if (Option.isNone(diff)) {
       syncWorkerPost({ _tag: "syncCompleted" });
       return;
     }
 
+    // console.log("previous", previousDiff);
+    // console.log("diff", diff.value);
+
     if (previousDiff != null && previousDiff === diff.value) {
+      // console.log("error", serverMerkleTree, merkleTree);
+      console.log("error", previousDiff);
       yield* $(Effect.fail<SyncError>({ _tag: "SyncError" }));
     }
 

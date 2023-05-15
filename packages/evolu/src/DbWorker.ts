@@ -164,8 +164,8 @@ export const createCreateDbWorker =
               }
             },
             flow(
-              transaction,
               Effect.delay(Duration.millis(500)),
+              transaction,
               Effect.catchAllCause(recoverFromAllCause(undefined)),
               Effect.provideContext(contextWithConfig),
               Effect.runPromise

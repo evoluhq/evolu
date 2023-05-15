@@ -2,6 +2,9 @@ import { pipe } from "@effect/data/Function";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import { DbWorker, QueryString } from "./Types.js";
 
+// https://github.com/denoland/deno/issues/13367
+export const isBrowser = typeof document !== "undefined";
+
 const isChromeWithOpfs = (): boolean =>
   navigator.userAgentData != null &&
   navigator.userAgentData.brands.find(
@@ -19,7 +22,7 @@ const isFirefoxWithOpfs = (): boolean => {
 };
 
 export const browserFeatures = {
-  opfs: isChromeWithOpfs() || isFirefoxWithOpfs(),
+  opfs: isBrowser && (isChromeWithOpfs() || isFirefoxWithOpfs()),
 };
 
 const localStorageKey = "evolu:reloadAllTabs";

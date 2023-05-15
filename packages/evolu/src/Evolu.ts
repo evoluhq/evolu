@@ -7,7 +7,12 @@ import * as Effect from "@effect/io/Effect";
 import * as S from "@effect/schema/Schema";
 import * as Kysely from "kysely";
 import { flushSync } from "react-dom";
-import { browserFeatures, browserInit, reloadAllTabs } from "./Browser.js";
+import {
+  browserFeatures,
+  browserInit,
+  isBrowser,
+  reloadAllTabs,
+} from "./Browser.js";
 import { createConfig } from "./Config.js";
 import { applyPatches } from "./Diff.js";
 import { createNewMessages } from "./Messages.js";
@@ -40,6 +45,10 @@ import {
   Store,
 } from "./Types.js";
 
+const createNoOpServerDbWorker: CreateDbWorker = () => ({
+  post: constVoid,
+});
+
 const createOpfsDbWorker: CreateDbWorker = (onMessage) => {
   const dbWorker = new Worker(new URL("./DbWorker.worker.js", import.meta.url));
 
@@ -70,9 +79,11 @@ const createLocalStorageDbWorker: CreateDbWorker = (onMessage) => {
 };
 
 // TODO: React Native, Electron.
-const createDbWorker: CreateDbWorker = browserFeatures.opfs
-  ? createOpfsDbWorker
-  : createLocalStorageDbWorker;
+const createDbWorker: CreateDbWorker = isBrowser
+  ? browserFeatures.opfs
+    ? createOpfsDbWorker
+    : createLocalStorageDbWorker
+  : createNoOpServerDbWorker;
 
 const createKysely = <S extends Schema>(): KyselySelectFrom<
   SchemaForQuery<S>

@@ -144,6 +144,9 @@ const addMessages = ({
             )(merkleTree);
         });
 
+        // TODO:
+        // merkleTree = pruneMerkeTree(merkleTree);
+
         db.insertOrReplaceIntoMerkleTree.run(
           userId,
           merkleTreeToString(merkleTree)
