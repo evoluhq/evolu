@@ -283,7 +283,7 @@ export const receiveMessages = ({
     const db = yield* $(Db);
     const messagesToSync = yield* $(
       db.exec({
-        sql: `select * from "__message" where "timestamp" > ? order by "timestamp"`,
+        sql: `select * from "__message" where "timestamp" >= ? order by "timestamp"`,
         parameters: [pipe(diff.value, createSyncTimestamp, timestampToString)],
       }),
       Effect.map((a) => a as unknown as ReadonlyArray<Message>)

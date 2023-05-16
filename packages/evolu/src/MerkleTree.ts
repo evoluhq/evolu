@@ -10,8 +10,6 @@ import {
 
 // Technically, it's not Merkle Tree but “merkleized” prefix tree (trie).
 // https://decomposition.al/blog/2019/05/31/how-i-learned-about-merklix-trees-without-having-to-become-a-cryptocurrency-enthusiast/#fnref:1
-// https://github.com/clintharris/crdt-example-app_annotated/blob/master/shared/merkle.js
-// https://github.com/actualbudget/actual/discussions/257
 
 export const merkleTreeToString = (m: MerkleTree): MerkleTreeString =>
   JSON.stringify(m) as MerkleTreeString;
@@ -25,7 +23,7 @@ const timestampToKey = (timestamp: Timestamp): string =>
   Math.floor(timestamp.millis / 1000 / 60).toString(3);
 
 const keyToTimestamp = (key: string): Millis =>
-  (parseInt(key.padEnd(16, "0"), 3) * 1000 * 60) as Millis;
+  (parseInt(key.length > 0 ? key : "0", 3) * 1000 * 60) as Millis;
 
 const insertKey = (
   tree: MerkleTree,
@@ -60,33 +58,19 @@ export const diffMerkleTrees = (
   tree2: MerkleTree
 ): Option.Option<Millis> => {
   if (tree1.hash === tree2.hash) return Option.none();
-
-  let node1 = tree1;
-  let node2 = tree2;
-  let key = "";
-
-  // eslint-disable-next-line no-constant-condition
-  while (1) {
-    const keys = ["0", "1", "2"].filter(
-      (k) => k in node1 || k in node2
-    ) as ReadonlyArray<"0" | "1" | "2">;
-
-    const diffKey = keys.find((key) => {
-      const next1 = node1[key] || {};
-      const next2 = node2[key] || {};
-      return next1.hash !== next2.hash;
-    });
-    if (!diffKey) return Option.some(keyToTimestamp(key));
-
-    key += diffKey;
-    node1 = node1[diffKey] || {};
-    node2 = node2[diffKey] || {};
+  for1: for (let node1 = tree1, node2 = tree2, key = ""; ; ) {
+    for (const k of ["0", "1", "2"] as const) {
+      const next1 = node1[k];
+      const next2 = node2[k];
+      if (!next1 && !next2) continue;
+      if (!next1 || !next2) break;
+      if (next1.hash !== next2.hash) {
+        key += k;
+        node1 = next1;
+        node2 = next2;
+        continue for1;
+      }
+    }
+    return Option.some(keyToTimestamp(key));
   }
-
-  // nenasel shodu, tak imho vracet 0, ale test na to
-  // muze se to stat? pokud jsou empty, maji stejny hash
-  // pokud to dojde sem, jsou jine a nikdy nebyly stejne
-  // pokud ma jeden vlastni, druhej jine, co to udela? test!
-  // nenajde
-  return Option.some(123 as Millis);
 };
