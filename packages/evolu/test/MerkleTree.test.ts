@@ -7,6 +7,7 @@ import {
   insertIntoMerkleTree,
 } from "../src/MerkleTree.js";
 import { createNode1Timestamp, createNode2Timestamp } from "./testUtils.js";
+import { Millis, Timestamp } from "../src/Types.js";
 
 const now = 1684318195723;
 const node1TimestampStart = createNode1Timestamp();
@@ -175,6 +176,66 @@ describe("diffMerkleTrees", () => {
   });
 
   test("sync", () => {
+    const getRandomTime = (): number => {
+      const startTime = new Date(1971, 0, 0).getTime();
+      const endTime = new Date(2400, 11, 31).getTime();
+      const randomTime = Math.random() * (endTime - startTime) + startTime;
+      return new Date(randomTime).getTime();
+    };
+
+    const randomTimes: Array<number> = [];
+    for (let i = 0; i < 1000; i++) {
+      randomTimes.push(getRandomTime());
+    }
+    randomTimes.sort((a, b) => a - b);
+
+    const timestamps = randomTimes.map((time) =>
+      (Math.random() >= 0.5 ? createNode1Timestamp : createNode2Timestamp)(
+        time as Millis
+      )
+    );
+
+    const db1: Array<Timestamp> = [];
+    let t1 = initialMerkleTree;
+    const addTo1 = (timestamp: Timestamp): void => {
+      if (!db1.some((t) => t.millis === timestamp.millis)) {
+        db1.push(timestamp);
+        t1 = insertIntoMerkleTree(timestamp)(t1);
+      }
+    };
+
+    const db2: Array<Timestamp> = [];
+    let t2 = initialMerkleTree;
+    const addTo2 = (timestamp: Timestamp): void => {
+      if (!db2.some((t) => t.millis === timestamp.millis)) {
+        db2.push(timestamp);
+        t2 = insertIntoMerkleTree(timestamp)(t2);
+      }
+    };
+
+    const getRandomNumber = (min: number, max: number): number => {
+      return Math.random() * (max - min) + min;
+    };
+
+    while (timestamps.length > 0) {
+      timestamps.splice(0, getRandomNumber(0, 10)).forEach((timestamp) => {
+        if (timestamp.node === "0000000000000001") addTo1(timestamp);
+        else addTo2(timestamp);
+      });
+
+      // eslint-disable-next-line no-constant-condition
+      while (1) {
+        const diff = diffMerkleTrees(t1, t2);
+        if (diff._tag === "None") break;
+        [...db1, ...db2]
+          .filter((t) => t.millis >= diff.value)
+          .forEach((timestamp) => {
+            addTo1(timestamp);
+            addTo2(timestamp);
+          });
+      }
+    }
+
     expect(1).toBe(1);
   });
 });
