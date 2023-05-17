@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`insertIntoMerkleTree > ts1 then ts2 1`] = `
+exports[`insertIntoMerkleTree > node1TimestampStart then node2Timestamp2022 1`] = `
 {
   "0": {
     "hash": -1416139081,
@@ -57,7 +57,7 @@ exports[`insertIntoMerkleTree > ts1 then ts2 1`] = `
 }
 `;
 
-exports[`insertIntoMerkleTree > ts2 1`] = `
+exports[`insertIntoMerkleTree > node2Timestamp2022 1`] = `
 {
   "1": {
     "2": {
