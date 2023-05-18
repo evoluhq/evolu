@@ -19,8 +19,8 @@
   "devDependencies": {
     "@changesets/cli": "^2.26.1",
     "eslint": "^8.40.0",
-    "eslint-config-evolu": "workspace:0.0.2",
+    "eslint-config-evolu": "workspace:*",
     "prettier": "^2.8.8",
-    "turbo": "^1.9.6"
+    "turbo": "^1.9.8"
   }
 }

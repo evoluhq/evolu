@@ -142,8 +142,6 @@ export const createCreateDbWorker =
               | SyncError,
               void
             > => {
-              console.log(input._tag);
-
               if (skipAllBecauseBrowserIsGoingToBeReloaded)
                 return Effect.succeed(undefined);
               switch (input._tag) {
@@ -164,6 +162,7 @@ export const createCreateDbWorker =
               }
             },
             flow(
+              // TODO: Remove
               Effect.delay(Duration.millis(500)),
               transaction,
               Effect.catchAllCause(recoverFromAllCause(undefined)),
