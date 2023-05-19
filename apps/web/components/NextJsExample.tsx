@@ -2,7 +2,15 @@ import { pipe } from "@effect/data/Function";
 import * as Schema from "@effect/schema/Schema";
 import { formatErrors } from "@effect/schema/TreeFormatter";
 import * as Evolu from "evolu";
-import { ChangeEvent, FC, Suspense, memo, useEffect, useState } from "react";
+import {
+  ChangeEvent,
+  FC,
+  Suspense,
+  memo,
+  startTransition,
+  useEffect,
+  useState,
+} from "react";
 
 const TodoId = Evolu.id("Todo");
 type TodoId = Schema.To<typeof TodoId>;
@@ -37,9 +45,6 @@ const Database = Schema.struct({
   todoCategory: TodoCategoryTable,
 });
 
-// const evolu = Evolu.createEvolu(Database);
-// const a = evolu.compileQueryCallback((db) => db.selectFrom("todo").selectAll());
-
 const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
   Evolu.create(Database, {
     reloadUrl: "/examples/nextjs",
@@ -69,7 +74,7 @@ const Button: FC<{
 }> = ({ title, onClick }) => {
   return (
     <button
-      className="m-1 rounded-md border border-current px-1 text-sm"
+      className="m-1 rounded-md border border-current px-1 text-sm active:opacity-80"
       onClick={onClick}
     >
       {title}
@@ -151,19 +156,18 @@ const TodoItem = memo<{
           update("todo", { id, isDeleted: true });
         }}
       />
-      <Suspense>
-        <TodoCategorySelect
-          selected={categoryId}
-          onSelect={(categoryId): void => {
-            update("todo", { id, categoryId });
-          }}
-        />
-      </Suspense>
+      <TodoCategorySelect
+        selected={categoryId}
+        onSelect={(categoryId): void => {
+          update("todo", { id, categoryId });
+        }}
+      />
     </li>
   );
 });
 
-const TodoList: FC = () => {
+const Todos: FC = () => {
+  const { create } = useMutation();
   const { rows } = useQuery(
     (db) =>
       db
@@ -184,26 +188,24 @@ const TodoList: FC = () => {
           <TodoItem key={row.id} row={row} />
         ))}
       </ul>
+      <Button
+        title="Add Todo"
+        onClick={(): void => {
+          prompt(
+            Evolu.NonEmptyString1000,
+            "What needs to be done?",
+            (title) => {
+              create("todo", { title, isCompleted: false });
+            }
+          );
+        }}
+      />
     </>
   );
 };
 
-const AddTodo: FC = () => {
-  const { create } = useMutation();
-
-  return (
-    <Button
-      title="Add Todo"
-      onClick={(): void => {
-        prompt(Evolu.NonEmptyString1000, "What needs to be done?", (title) => {
-          create("todo", { title, isCompleted: false });
-        });
-      }}
-    />
-  );
-};
-
-const TodoCategoryList: FC = () => {
+const TodoCategories: FC = () => {
+  const { create, update } = useMutation();
   const { rows } = useQuery(
     (db) =>
       db
@@ -214,8 +216,6 @@ const TodoCategoryList: FC = () => {
     // (row) => row
     ({ name, ...rest }) => name && { name, ...rest }
   );
-
-  const { update } = useMutation();
 
   return (
     <>
@@ -241,22 +241,15 @@ const TodoCategoryList: FC = () => {
           </li>
         ))}
       </ul>
+      <Button
+        title="Add Category"
+        onClick={(): void => {
+          prompt(NonEmptyString50, "Category Name", (name) => {
+            create("todoCategory", { name });
+          });
+        }}
+      />
     </>
-  );
-};
-
-const AddTodoCategory: FC = () => {
-  const { create } = useMutation();
-
-  return (
-    <Button
-      title="Add Category"
-      onClick={(): void => {
-        prompt(NonEmptyString50, "Category Name", (name) => {
-          create("todoCategory", { name });
-        });
-      }}
-    />
   );
 };
 
@@ -326,39 +319,24 @@ const NotificationBar: FC = () => {
 };
 
 export const NextJsExample: FC = () => {
-  const { create } = useMutation();
-  const [shown, setShown] = useState(true);
+  const [todosShown, setTodosShown] = useState(true);
 
   return (
-    <>
-      <div className="mt-6">
-        <p>Suspense Testing</p>
+    <Suspense>
+      <NotificationBar />
+      <nav className="my-4">
         <Button
-          title="Add Todo"
+          title="Simulate suspense-enabled router transition"
           onClick={(): void => {
-            create("todo", {
-              title: "foo" as Evolu.NonEmptyString1000,
-              isCompleted: false,
+            // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
+            startTransition(() => {
+              setTodosShown(!todosShown);
             });
           }}
         />
-        <Button
-          title="Simulate a route transition"
-          onClick={(): void => {
-            setShown((shown) => !shown);
-          }}
-        />
-      </div>
-      {shown && (
-        <Suspense>
-          <NotificationBar />
-          <TodoList />
-          <AddTodo />
-          <TodoCategoryList />
-          <AddTodoCategory />
-          <OwnerActions />
-        </Suspense>
-      )}
-    </>
+      </nav>
+      {todosShown ? <Todos /> : <TodoCategories />}
+      <OwnerActions />
+    </Suspense>
   );
 };

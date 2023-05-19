@@ -7,7 +7,12 @@ import * as Effect from "@effect/io/Effect";
 import * as S from "@effect/schema/Schema";
 import * as Kysely from "kysely";
 import { flushSync } from "react-dom";
-import { browserFeatures, isBrowser, reloadAllTabs } from "./Browser.js";
+import {
+  browserFeatures,
+  browserInit,
+  isBrowser,
+  reloadAllTabs,
+} from "./Browser.js";
 import { createConfig } from "./Config.js";
 import { applyPatches } from "./Diff.js";
 import { createNewMessages } from "./Messages.js";
@@ -72,18 +77,6 @@ const createLocalStorageDbWorker: CreateDbWorker = (onMessage) => {
     },
   };
 };
-
-// const t1 = pipe(
-//   createInitialMerkleTree(),
-//   insertIntoMerkleTree(createNode2Timestamp(1656873738591))
-// );
-// const t2 = pipe(
-//   createInitialMerkleTree(),
-//   insertIntoMerkleTree(createNode2Timestamp(60000))
-// );
-// const a = diffMerkleTrees(t1, t2);
-
-// console.log(a);
 
 // TODO: React Native, Electron.
 const createDbWorker: CreateDbWorker = isBrowser
@@ -444,7 +437,7 @@ export const createEvolu = <From, To extends Schema>(
     tableDefinitions: schemaToTablesDefinitions(schema),
   });
 
-  // browserInit(subscribedQueries, dbWorker);
+  browserInit(subscribedQueries, dbWorker);
 
   return {
     subscribeError: errorStore.subscribe,
