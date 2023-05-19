@@ -1,5 +1,4 @@
 import * as Context from "@effect/data/Context";
-import * as Duration from "@effect/data/Duration";
 import * as Either from "@effect/data/Either";
 import { apply, constVoid, flow, pipe } from "@effect/data/Function";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
@@ -24,7 +23,6 @@ import {
   Millis,
   Owner,
   QueryString,
-  SyncError,
   SyncWorkerOutput,
   SyncWorkerPost,
   Time,
@@ -52,7 +50,7 @@ const sync = (
       clock,
       owner,
       messages: ReadonlyArray.empty(),
-      previousDiff: null,
+      syncCount: 0,
     });
   });
 
@@ -138,8 +136,7 @@ export const createCreateDbWorker =
               | Config,
               | TimestampDuplicateNodeError
               | TimestampDriftError
-              | TimestampCounterOverflowError
-              | SyncError,
+              | TimestampCounterOverflowError,
               void
             > => {
               if (skipAllBecauseBrowserIsGoingToBeReloaded)
@@ -162,8 +159,6 @@ export const createCreateDbWorker =
               }
             },
             flow(
-              // TODO: Remove
-              Effect.delay(Duration.millis(500)),
               transaction,
               Effect.catchAllCause(recoverFromAllCause(undefined)),
               Effect.provideContext(contextWithConfig),

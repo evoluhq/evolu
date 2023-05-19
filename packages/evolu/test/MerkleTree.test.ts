@@ -236,6 +236,6 @@ describe("diffMerkleTrees", () => {
       }
     }
 
-    expect(1).toBe(1);
+    expect(timestamps.length).toBe(0);
   });
 });

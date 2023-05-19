@@ -22,12 +22,10 @@ import {
   DbWorkerRowsCache,
   MerkleTree,
   Message,
-  Millis,
   NewMessage,
   OnCompleteId,
   Owner,
   QueryString,
-  SyncError,
   SyncWorkerPost,
   Time,
   TimestampCounterOverflowError,
@@ -199,7 +197,7 @@ export const sendMessages = ({
       messages,
       clock: { timestamp, merkleTree },
       owner,
-      previousDiff: null,
+      syncCount: 0,
     });
 
     if (queries.length > 0 || onCompleteIds.length > 0)
@@ -209,17 +207,16 @@ export const sendMessages = ({
 export const receiveMessages = ({
   messages,
   merkleTree: serverMerkleTree,
-  previousDiff,
+  syncCount,
 }: {
   readonly messages: ReadonlyArray<Message>;
   readonly merkleTree: MerkleTree;
-  readonly previousDiff: Millis | null;
+  readonly syncCount: number;
 }): Effect.Effect<
   Db | Time | DbWorkerOnMessage | SyncWorkerPost | Owner | Config,
   | TimestampDriftError
   | TimestampCounterOverflowError
-  | TimestampDuplicateNodeError
-  | SyncError,
+  | TimestampDuplicateNodeError,
   void
 > =>
   Effect.gen(function* ($) {
@@ -255,10 +252,6 @@ export const receiveMessages = ({
       return;
     }
 
-    if (previousDiff != null && previousDiff === diff.value) {
-      yield* $(Effect.fail<SyncError>({ _tag: "SyncError" }));
-    }
-
     const db = yield* $(Db);
     const messagesToSync = yield* $(
       db.exec({
@@ -274,6 +267,6 @@ export const receiveMessages = ({
       messages: messagesToSync,
       clock: { timestamp, merkleTree },
       owner,
-      previousDiff: diff.value,
+      syncCount: syncCount + 1,
     });
   });

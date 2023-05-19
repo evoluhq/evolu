@@ -286,22 +286,12 @@ export interface UnknownError {
   readonly error: TransferableError;
 }
 
-/**
- * The client was unable to get in sync with the server.
- * This error can happen only when MerkleTree has a bug or
- * server did not update itself.
- */
-export interface SyncError {
-  readonly _tag: "SyncError";
-}
-
 export type EvoluError =
   | TimestampDuplicateNodeError
   | TimestampDriftError
   | TimestampCounterOverflowError
   | TimestampParseError
-  | UnknownError
-  | SyncError;
+  | UnknownError;
 
 export interface ReplaceAllPatch {
   readonly op: "replaceAll";
@@ -327,7 +317,7 @@ export type DbWorkerInputReceiveMessages = {
   readonly _tag: "receiveMessages";
   readonly messages: ReadonlyArray<Message>;
   readonly merkleTree: MerkleTree;
-  readonly previousDiff: Millis | null;
+  readonly syncCount: number;
 };
 
 export type DbWorkerInput =
@@ -392,7 +382,7 @@ export type SyncWorkerInputSync = {
   readonly messages: ReadonlyArray<Message>;
   readonly clock: Clock;
   readonly owner: Owner;
-  readonly previousDiff: Millis | null;
+  readonly syncCount: number;
 };
 
 export type SyncWorkerInput =

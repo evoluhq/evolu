@@ -4,7 +4,6 @@ import * as Cause from "@effect/io/Cause";
 import * as Effect from "@effect/io/Effect";
 import { decrypt, encrypt } from "micro-aes-gcm";
 import {
-  diffMerkleTrees,
   merkleTreeToString,
   unsafeMerkleTreeFromString,
 } from "./MerkleTree.js";
@@ -97,7 +96,7 @@ const sync = ({
   messages,
   clock,
   owner,
-  previousDiff,
+  syncCount,
 }: SyncWorkerInputSync): Effect.Effect<
   never,
   FetchError,
@@ -116,9 +115,8 @@ const sync = ({
     ),
     Effect.flatMap((body) =>
       Effect.tryCatchPromise(
-        () => {
-          console.log("fetch");
-          return fetch(syncUrl, {
+        () =>
+          fetch(syncUrl, {
             method: "POST",
             body,
             headers: {
@@ -128,13 +126,7 @@ const sync = ({
           })
             .then((response) => response.arrayBuffer())
             .then(Buffer.from)
-            .then((a) => {
-              console.log("fetch end");
-
-              return a;
-            })
-            .then((data) => SyncResponse.fromBinary(data));
-        },
+            .then((data) => SyncResponse.fromBinary(data)),
         (error): FetchError => ({ _tag: "FetchError", error })
       )
     ),
@@ -149,17 +141,11 @@ const sync = ({
             merkleTree: unsafeMerkleTreeFromString(
               merkleTree as MerkleTreeString
             ),
-            previousDiff,
+            syncCount,
           })
         )
       )
     )
-    // Effect.map((a) => {
-    //   console.log(
-    //     JSON.stringify(a.merkleTree) === JSON.stringify(clock.merkleTree)
-    //   );
-    //   return a;
-    // })
   );
 
 export const createCreateSyncWorker =
@@ -179,9 +165,8 @@ export const createCreateSyncWorker =
         case "sync":
           pipe(
             Effect.gen(function* ($) {
-              // To keep client-server sync loop until it finishes.
-              // previousDiff is null when the sync loop is started.
-              if (message.previousDiff == null && (yield* $(isSyncing))) return;
+              // Skip syncing if it's already syncing.
+              if (message.syncCount === 0 && (yield* $(isSyncing))) return;
               setIsSyncing(true);
               return yield* $(sync(message));
             }),
