@@ -69,7 +69,7 @@
   "devDependencies": {
     "@effect/data": "^0.12.2",
     "@effect/io": "^0.25.12",
-    "@effect/schema": "^0.19.2",
+    "@effect/schema": "^0.19.3",
     "@evolu/tsconfig": "workspace:*",
     "@protobuf-ts/plugin": "^2.9.0",
     "@protobuf-ts/protoc": "^2.9.0",
@@ -81,7 +81,7 @@
     "eslint-config-evolu": "workspace:*",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "tslib": "^2.5.1",
+    "tslib": "^2.5.2",
     "typescript": "^5.0.4",
     "user-agent-data-types": "^0.3.1",
     "vitest": "^0.31.1"
