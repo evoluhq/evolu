@@ -105,71 +105,15 @@ const createKysely = <S extends Schema>(): KyselySelectFrom<
     },
   });
 
-interface PromiseCache {
-  readonly get: (queryString: QueryString) => Promise<Rows>;
-  readonly has: Predicate.Predicate<QueryString>;
-  readonly resolve: (queryString: QueryString, rows: Rows) => void;
-  readonly isPending: <T extends Rows>(promise: Promise<T>) => boolean;
-  readonly someIsPending: () => boolean;
-  readonly releaseQuery: (queryString: QueryString) => void;
-}
-
-export const createPromiseCache = (): PromiseCache => {
-  const cache = new Map<
-    QueryString,
-    {
-      readonly promise: Promise<Rows>;
-      readonly resolve: (rows: Rows) => void;
-    }
-  >();
-
-  const get: PromiseCache["get"] = (queryString) => {
-    const item = cache.get(queryString);
-    if (item) return item.promise;
-    let resolve: null | ((rows: Rows) => void) = null;
-    const promise = new Promise<Rows>((_resolve) => {
-      resolve = _resolve;
-    });
-    // `if (resolve)` to make TS happy. This is OK.
-    if (resolve) cache.set(queryString, { promise, resolve });
-    return promise;
-  };
-
-  const has: PromiseCache["has"] = (queryToString) => cache.has(queryToString);
-
-  const resolve: PromiseCache["resolve"] = (queryString, rows) => {
-    const item = cache.get(queryString);
-    if (!item) return;
-    // It's similar to what React will do.
-    Object.assign(item.promise, { rows });
-    item.resolve(rows);
-  };
-
-  const isPending: PromiseCache["isPending"] = (promise) => {
-    return !("rows" in promise);
-  };
-
-  const someIsPending: PromiseCache["someIsPending"] = () =>
-    Array.from(cache.values())
-      .map((a) => a.promise)
-      .some(isPending);
-
-  const releaseQuery: PromiseCache["releaseQuery"] = (queryString) => {
-    return cache.delete(queryString);
-  };
-
-  return { get, has, resolve, isPending, someIsPending, releaseQuery };
-};
+export type RowsCache = ReadonlyMap<QueryString, Rows>;
 
 type OnComplete = () => void;
-
-export type RowsCache = ReadonlyMap<QueryString, Rows>;
 
 const createOnQuery =
   (
     rowsCache: Store<RowsCache>,
     onCompletes: Map<OnCompleteId, OnComplete>,
-    promiseCache: PromiseCache
+    resolvePromise: (query: QueryString, rows: Rows) => void
   ) =>
   ({
     queriesPatches,
@@ -178,7 +122,6 @@ const createOnQuery =
     const state = rowsCache.getState();
     const nextState = pipe(
       queriesPatches,
-      ReadonlyArray.filter((a) => a.patches.length > 0),
       ReadonlyArray.map(
         ({ query, patches }) =>
           [
@@ -189,17 +132,19 @@ const createOnQuery =
       (a): RowsCache => new Map([...state, ...a])
     );
 
+    // Resolve all Promises belonging to queries.
     queriesPatches.forEach(({ query }) => {
       const rows = nextState.get(query) || ReadonlyArray.empty();
-      promiseCache.resolve(query, rows);
+      resolvePromise(query, rows);
     });
 
+    // No mutation is using onComplete, so we don't need flushSync.
     if (onCompleteIds.length === 0) {
       rowsCache.setState(nextState);
       return;
     }
 
-    // Ensure onComplete can use DOM (for a focus or anything else).
+    // Ensure DOM is updated before onComplete (for a focus or anything else).
     flushSync(() => rowsCache.setState(nextState));
 
     pipe(
@@ -216,8 +161,7 @@ const createOnQuery =
 
 export const createSubscribeQuery = (
   rowsCache: Store<RowsCache>,
-  subscribedQueries: Map<QueryString, number>,
-  promiseCache: PromiseCache
+  subscribedQueries: Map<QueryString, number>
 ): Evolu["subscribeQuery"] => {
   return (queryString: QueryString | null) => (listen) => {
     if (queryString == null) return constVoid;
@@ -230,13 +174,12 @@ export const createSubscribeQuery = (
     const unsubscribe = rowsCache.subscribe(listen);
 
     return () => {
-      const count = subscribedQueries.get(queryString);
-      if (count != null && count > 1)
+      // `as number`, because React mount/unmount are symmetric.
+      const count = subscribedQueries.get(queryString) as number;
+      if (count > 1)
         subscribedQueries.set(queryString, Number.decrement(count));
       else {
         subscribedQueries.delete(queryString);
-        if (!promiseCache.someIsPending())
-          promiseCache.releaseQuery(queryString);
       }
       unsubscribe();
     };
@@ -245,12 +188,13 @@ export const createSubscribeQuery = (
 
 const createLoadQuery = (
   query: (queries: ReadonlyArray<QueryString>) => void,
-  promiseCache: PromiseCache
+  getPromise: (query: QueryString) => { promise: Promise<Rows>; isNew: boolean }
 ): Evolu["loadQuery"] => {
   const queue = new Set<QueryString>();
 
   return (queryString) => {
-    if (!promiseCache.has(queryString)) queue.add(queryString);
+    const { promise, isNew } = getPromise(queryString);
+    if (isNew) queue.add(queryString);
     if (queue.size === 1) {
       queueMicrotask(() => {
         const queries = [...queue];
@@ -258,7 +202,7 @@ const createLoadQuery = (
         query(queries);
       });
     }
-    return promiseCache.get(queryString);
+    return promise;
   };
 };
 
@@ -270,12 +214,14 @@ const createMutate = <S extends Schema>({
   setOnComplete,
   dbWorker,
   getSubscribedQueries,
+  releasePromises,
 }: {
   createId: CreateId;
   getOwner: Promise<Owner>;
   setOnComplete: (id: OnCompleteId, onComplete: OnComplete) => void;
   dbWorker: DbWorker;
   getSubscribedQueries: () => ReadonlyArray<QueryString>;
+  releasePromises: (queries: ReadonlyArray<QueryString>) => void;
 }): Mutate<S> => {
   const queue: Array<
     [ReadonlyArray.NonEmptyReadonlyArray<NewMessage>, OnCompleteId | null]
@@ -321,11 +267,14 @@ const createMutate = <S extends Schema>({
 
           queue.length = 0;
 
+          const queries = getSubscribedQueries();
+          releasePromises(queries);
+
           dbWorker.post({
             _tag: "sendMessages",
             newMessages,
             onCompleteIds,
-            queries: getSubscribedQueries(),
+            queries,
           });
         });
     });
@@ -344,12 +293,50 @@ export const createEvolu = <From, To extends Schema>(
   const ownerStore = createStore<Owner | null>(null);
   const rowsCache = createStore<RowsCache>(new Map());
 
+  const onCompletes = new Map<OnCompleteId, OnComplete>();
+
   const subscribedQueries = new Map<QueryString, number>();
+
   const getSubscribedQueries = (): ReadonlyArray<QueryString> =>
     Array.from(subscribedQueries.keys());
 
-  const onCompletes = new Map<OnCompleteId, OnComplete>();
-  const promiseCache = createPromiseCache();
+  const promises = new Map<
+    QueryString,
+    {
+      readonly promise: Promise<Rows>;
+      readonly resolve: (rows: Rows) => void;
+    }
+  >();
+
+  const resolvePromise = (queryString: QueryString, rows: Rows): void => {
+    const item = promises.get(queryString);
+    if (!item) return;
+    // It's similar to what React will do.
+    Object.assign(item.promise, { rows });
+    item.resolve(rows);
+  };
+
+  const releasePromises = (queryStrings: ReadonlyArray<QueryString>): void => {
+    [...promises.keys()].forEach((queryString) => {
+      if (!queryStrings.includes(queryString)) promises.delete(queryString);
+    });
+  };
+
+  const getPromise = (
+    queryString: QueryString
+  ): { readonly promise: Promise<Rows>; readonly isNew: boolean } => {
+    const item = promises.get(queryString);
+    if (item) return { promise: item.promise, isNew: false };
+    let resolve: (rows: Rows) => void = constVoid;
+    const promise = new Promise<Rows>((_resolve) => {
+      resolve = _resolve;
+    });
+    promises.set(queryString, { promise, resolve });
+    return { promise, isNew: true };
+  };
+
+  const promiseIsPending = <T extends Rows>(promise: Promise<T>): boolean =>
+    !("rows" in promise);
 
   const dbWorker = createDbWorker((message) => {
     switch (message._tag) {
@@ -373,25 +360,19 @@ export const createEvolu = <From, To extends Schema>(
     }
   });
 
-  const onQuery = createOnQuery(rowsCache, onCompletes, promiseCache);
+  const onQuery = createOnQuery(rowsCache, onCompletes, resolvePromise);
 
   const query = (queries: ReadonlyArray<QueryString>): void => {
     if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
       dbWorker.post({ _tag: "query", queries });
   };
 
-  const subscribeQuery = createSubscribeQuery(
-    rowsCache,
-    subscribedQueries,
-    promiseCache
-  );
+  const subscribeQuery = createSubscribeQuery(rowsCache, subscribedQueries);
 
   const getQuery: Evolu["getQuery"] = (query) =>
     (query && rowsCache.getState().get(query)) || null;
 
-  const loadQuery = createLoadQuery(query, promiseCache);
-
-  const isPending: Evolu["isPending"] = promiseCache.isPending;
+  const loadQuery = createLoadQuery(query, getPromise);
 
   const getOwner = new Promise<Owner>((resolve) => {
     const unsubscribe = ownerStore.subscribe(() => {
@@ -403,13 +384,14 @@ export const createEvolu = <From, To extends Schema>(
   });
 
   const mutate: Evolu["mutate"] = createMutate({
-    createId: createId,
+    createId,
     getOwner,
     setOnComplete: (id, callback) => {
       onCompletes.set(id, callback);
     },
     dbWorker,
     getSubscribedQueries,
+    releasePromises,
   });
 
   const ownerActions: OwnerActions = {
@@ -449,7 +431,7 @@ export const createEvolu = <From, To extends Schema>(
     subscribeQuery,
     getQuery,
     loadQuery,
-    isPending,
+    isPending: promiseIsPending,
 
     mutate,
     ownerActions,
