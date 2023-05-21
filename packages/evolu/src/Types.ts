@@ -162,16 +162,15 @@ export interface TableDefinition {
 
 export type TablesDefinitions = ReadonlyArray<TableDefinition>;
 
-// Like Kysely CompiledQuery but without a `query` prop.
-export interface Query {
+export interface QueryObject {
   readonly sql: string;
   readonly parameters: ReadonlyArray<Value>;
 }
 
-export type QueryString = string & Brand<"QueryString">;
+export type Query = string & Brand<"Query">;
 
 export interface Db {
-  readonly exec: (arg: string | Query) => Effect<never, never, Rows>;
+  readonly exec: (arg: string | QueryObject) => Effect<never, never, Rows>;
   readonly changes: () => Effect<never, never, number>;
 }
 export const Db = Tag<Db>();
@@ -242,20 +241,18 @@ export interface Evolu<S extends Schema = Schema> {
   readonly subscribeOwner: (listener: Listener) => Unsubscribe;
   readonly getOwner: () => Owner | null;
 
+  readonly createQuery: (queryCallback: QueryCallback<S, Row>) => Query;
   readonly subscribeQuery: (
-    queryString: QueryString | null
+    query: Query | null
   ) => (listener: Listener) => Unsubscribe;
-  readonly getQuery: (queryString: QueryString | null) => Rows | null;
-  readonly loadQuery: (queryString: QueryString) => Promise<Rows>;
+  // readQuery?
+  readonly getQuery: (query: Query | null) => Rows | null;
+  readonly loadQuery: (query: Query) => Promise<Rows>;
   readonly isPending: <T extends Rows>(promise: Promise<T>) => boolean;
 
   readonly mutate: Mutate<S>;
 
   readonly ownerActions: OwnerActions;
-
-  readonly compileQueryCallback: (
-    queryCallback: QueryCallback<S, Row>
-  ) => QueryString;
 }
 
 export interface NewMessage {
@@ -307,7 +304,7 @@ export interface ReplaceAtPatch {
 export type Patch = ReplaceAllPatch | ReplaceAtPatch;
 
 export interface QueryPatches {
-  readonly query: QueryString;
+  readonly query: Query;
   readonly patches: ReadonlyArray<Patch>;
 }
 
@@ -334,17 +331,17 @@ export type DbWorkerInput =
       readonly _tag: "sendMessages";
       readonly newMessages: NonEmptyReadonlyArray<NewMessage>;
       readonly onCompleteIds: ReadonlyArray<OnCompleteId>;
-      readonly queries: ReadonlyArray<QueryString>;
+      readonly queries: ReadonlyArray<Query>;
     }
   | {
       readonly _tag: "query";
-      readonly queries: NonEmptyReadonlyArray<QueryString>;
+      readonly queries: NonEmptyReadonlyArray<Query>;
     }
   | DbWorkerInputReceiveMessages
   | {
       readonly _tag: "sync";
       // Queries are for `const handleReshow = sync(true);`
-      readonly queries: NonEmptyReadonlyArray<QueryString> | null;
+      readonly queries: NonEmptyReadonlyArray<Query> | null;
     }
   | {
       readonly _tag: "reset";
@@ -373,7 +370,7 @@ export type CreateDbWorker = (
   onMessage: (message: DbWorkerOutput) => void
 ) => DbWorker;
 
-export type DbWorkerRowsCache = Ref<ReadonlyMap<QueryString, Rows>>;
+export type DbWorkerRowsCache = Ref<ReadonlyMap<Query, Rows>>;
 export const DbWorkerRowsCache = Tag<DbWorkerRowsCache>();
 
 export type SyncWorkerInputSync = {

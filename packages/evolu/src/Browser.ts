@@ -1,6 +1,6 @@
 import { pipe } from "@effect/data/Function";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
-import { DbWorker, QueryString } from "./Types.js";
+import { DbWorker, Query } from "./Types.js";
 
 // https://github.com/denoland/deno/issues/13367
 export const isBrowser = typeof document !== "undefined";
@@ -33,7 +33,7 @@ export const reloadAllTabs = (reloadUrl: string): void => {
 };
 
 export const browserInit = (
-  subscribedQueries: ReadonlyMap<QueryString, number>,
+  subscribedQueries: ReadonlyMap<Query, number>,
   dbWorker: DbWorker
 ): void => {
   window.addEventListener("storage", (e) => {

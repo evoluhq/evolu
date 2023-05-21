@@ -2,15 +2,15 @@ import { constVoid } from "@effect/data/Function";
 import { expect, test } from "vitest";
 import { RowsCache, createSubscribeQuery } from "../src/Evolu.js";
 import { createStore } from "../src/Store.js";
-import { QueryString } from "../src/Types.js";
+import { Query } from "../src/Types.js";
 
 test("createSubscribeQuery", () => {
   const rowsCache = createStore<RowsCache>(new Map());
-  const subscribedQueries = new Map<QueryString, number>();
+  const subscribedQueries = new Map<Query, number>();
   const subscribeQuery = createSubscribeQuery(rowsCache, subscribedQueries);
 
-  const query1 = "query1" as QueryString;
-  const query2 = "query2" as QueryString;
+  const query1 = "query1" as Query;
+  const query2 = "query2" as Query;
 
   const unsubscribeQuery11 = subscribeQuery(query1)(constVoid);
   const unsubscribeQuery21 = subscribeQuery(query2)(constVoid);

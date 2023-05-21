@@ -25,7 +25,7 @@ import {
   NewMessage,
   OnCompleteId,
   Owner,
-  QueryString,
+  Query,
   SyncWorkerPost,
   Time,
   TimestampCounterOverflowError,
@@ -152,7 +152,7 @@ export const sendMessages = ({
 }: {
   readonly newMessages: ReadonlyArray.NonEmptyReadonlyArray<NewMessage>;
   readonly onCompleteIds: ReadonlyArray<OnCompleteId>;
-  readonly queries: ReadonlyArray<QueryString>;
+  readonly queries: ReadonlyArray<Query>;
 }): Effect.Effect<
   | Db
   | Owner

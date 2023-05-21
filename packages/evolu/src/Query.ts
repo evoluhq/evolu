@@ -1,6 +1,5 @@
 import { pipe } from "@effect/data/Function";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
-import * as Equivalence from "@effect/data/typeclass/Equivalence";
 import * as Effect from "@effect/io/Effect";
 import * as Ref from "@effect/io/Ref";
 import { createPatches } from "./Diff.js";
@@ -9,25 +8,22 @@ import {
   DbWorkerOnMessage,
   DbWorkerRowsCache,
   OnCompleteId,
-  Query,
+  QueryObject,
   QueryPatches,
-  QueryString,
+  Query,
 } from "./Types.js";
 
-export const QueryStringEquivalence: Equivalence.Equivalence<QueryString> =
-  Equivalence.string;
+export const queryObjectToQuery = ({ sql, parameters }: QueryObject): Query =>
+  JSON.stringify({ sql, parameters }) as Query;
 
-export const queryToString = ({ sql, parameters }: Query): QueryString =>
-  JSON.stringify({ sql, parameters }) as QueryString;
-
-export const queryFromString = (s: QueryString): Query =>
-  JSON.parse(s) as Query;
+export const QueryToQueryObject = (s: Query): QueryObject =>
+  JSON.parse(s) as QueryObject;
 
 export const query = ({
   queries,
   onCompleteIds = ReadonlyArray.empty(),
 }: {
-  readonly queries: ReadonlyArray<QueryString>;
+  readonly queries: ReadonlyArray<Query>;
   readonly onCompleteIds?: ReadonlyArray<OnCompleteId>;
 }): Effect.Effect<Db | DbWorkerRowsCache | DbWorkerOnMessage, never, void> =>
   Effect.gen(function* ($) {
@@ -35,7 +31,7 @@ export const query = ({
     const queriesRows = yield* $(
       Effect.forEach(queries, (query) =>
         pipe(
-          queryFromString(query),
+          QueryToQueryObject(query),
           db.exec,
           Effect.map((rows) => [query, rows] as const)
         )

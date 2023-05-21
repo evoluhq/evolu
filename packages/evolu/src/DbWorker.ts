@@ -22,7 +22,7 @@ import {
   EvoluError,
   Millis,
   Owner,
-  QueryString,
+  Query,
   SyncWorkerOutput,
   SyncWorkerPost,
   Time,
@@ -33,7 +33,7 @@ import {
 import { unknownError } from "./UnknownError.js";
 
 const sync = (
-  queries: ReadonlyArray.NonEmptyReadonlyArray<QueryString> | null
+  queries: ReadonlyArray.NonEmptyReadonlyArray<Query> | null
 ): Effect.Effect<
   Db | Owner | SyncWorkerPost | DbWorkerRowsCache | DbWorkerOnMessage | Config,
   never,

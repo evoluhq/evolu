@@ -283,20 +283,20 @@ export const createHooks = <S extends Schema>(evolu: Evolu<S>): Hooks<S> => {
   const cache = new WeakMap<Row, Option.Option<Row>>();
 
   const useQuery: UseQuery<S> = (queryCallback, filterMap) => {
-    const queryString = useMemo(
-      () => (queryCallback ? evolu.compileQueryCallback(queryCallback) : null),
+    const query = useMemo(
+      () => (queryCallback ? evolu.createQuery(queryCallback) : null),
       [queryCallback]
     );
 
     const promise = useMemo(() => {
-      return queryString ? evolu.loadQuery(queryString) : null;
-    }, [queryString]);
+      return query ? evolu.loadQuery(query) : null;
+    }, [query]);
 
     if (promise && evolu.isPending(promise)) throw promise;
 
     const subscribedRows = useSyncExternalStore(
-      useMemo(() => evolu.subscribeQuery(queryString), [queryString]),
-      useMemo(() => () => evolu.getQuery(queryString), [queryString]),
+      useMemo(() => evolu.subscribeQuery(query), [query]),
+      useMemo(() => () => evolu.getQuery(query), [query]),
       constNull
     );
 
