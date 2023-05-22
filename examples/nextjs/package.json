@@ -11,7 +11,7 @@
   "dependencies": {
     "@effect/data": "^0.12.2",
     "@effect/schema": "^0.19.3",
-    "evolu": "^6.0.0",
+    "evolu": "^6.0.1",
     "next": "^13.4.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
