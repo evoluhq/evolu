@@ -1,5 +1,12 @@
 # evolu-server
 
+## 1.0.1
+
+### Patch Changes
+
+- Updated dependencies [c7f5182]
+  - evolu@6.0.0
+
 ## 1.0.0
 
 ### Major Changes
