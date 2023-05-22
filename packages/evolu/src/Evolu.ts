@@ -203,19 +203,15 @@ const createLoadQuery = (
   };
 };
 
-type CreateId = typeof createId;
-
 const createMutate = <S extends Schema>({
-  createId,
   getOwner,
-  setOnComplete,
+  onCompletes,
   dbWorker,
   getSubscribedQueries,
   releasePromises,
 }: {
-  createId: CreateId;
   getOwner: Promise<Owner>;
-  setOnComplete: (id: OnCompleteId, onComplete: OnComplete) => void;
+  onCompletes: Map<OnCompleteId, OnComplete>;
   dbWorker: DbWorker;
   getSubscribedQueries: () => ReadonlyArray<Query>;
   releasePromises: (queries: ReadonlyArray<Query>) => void;
@@ -233,7 +229,7 @@ const createMutate = <S extends Schema>({
     let onCompleteId: OnCompleteId | null = null;
     if (onComplete) {
       onCompleteId = createId<"OnComplete">();
-      setOnComplete(onCompleteId, onComplete);
+      onCompletes.set(onCompleteId, onComplete);
     }
 
     getOwner.then((owner) => {
@@ -332,9 +328,6 @@ export const createEvolu = <From, To extends Schema>(
     return { promise, isNew: true };
   };
 
-  const promiseIsPending = <T extends Rows>(promise: Promise<T>): boolean =>
-    !("rows" in promise);
-
   const dbWorker = createDbWorker((message) => {
     switch (message._tag) {
       case "onError":
@@ -381,11 +374,8 @@ export const createEvolu = <From, To extends Schema>(
   });
 
   const mutate: Evolu["mutate"] = createMutate({
-    createId,
     getOwner,
-    setOnComplete: (id, callback) => {
-      onCompletes.set(id, callback);
-    },
+    onCompletes,
     dbWorker,
     getSubscribedQueries,
     releasePromises,
@@ -424,14 +414,12 @@ export const createEvolu = <From, To extends Schema>(
     subscribeOwner: ownerStore.subscribe,
     getOwner: ownerStore.getState,
 
+    createQuery,
     subscribeQuery,
     getQuery,
     loadQuery,
-    isPending: promiseIsPending,
 
     mutate,
     ownerActions,
-
-    createQuery,
   };
 };

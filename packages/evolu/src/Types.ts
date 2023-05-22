@@ -245,13 +245,10 @@ export interface Evolu<S extends Schema = Schema> {
   readonly subscribeQuery: (
     query: Query | null
   ) => (listener: Listener) => Unsubscribe;
-  // readQuery?
   readonly getQuery: (query: Query | null) => Rows | null;
   readonly loadQuery: (query: Query) => Promise<Rows>;
-  readonly isPending: <T extends Rows>(promise: Promise<T>) => boolean;
 
   readonly mutate: Mutate<S>;
-
   readonly ownerActions: OwnerActions;
 }
 

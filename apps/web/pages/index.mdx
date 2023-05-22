@@ -51,7 +51,7 @@ const Database = Schema.struct({
 
 const { useQuery, useMutation } = Evolu.create(Database);
 
-const { rows, firstRow } = useQuery(
+const { rows } = useQuery(
   (db) =>
     // A type-safe SQL query builder.
     db.selectFrom("todo").select(["id", "title"]).orderBy("createdAt"),

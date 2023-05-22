@@ -127,14 +127,11 @@ type UseMutation<S extends Schema> = () => {
 
 export interface Hooks<S extends Schema> {
   /**
-   * `useQuery` React Hook performs a database query and returns rows that
-   * are automatically updated when data changes. `useQuery` uses React
-   * Suspense.
-   *
-   * `useQuery` takes two callbacks, a Kysely type-safe SQL query builder
-   * and a `filterMap` helper for rows filtering and ad-hoc migrations.
-   *
-   * `useQuery` returns `rows` and `firstRow` props.
+   * `useQuery` React Hook performs a database query and returns `rows` and
+   * `firstRow` props that are automatically updated when data changes. It
+   * takes two callbacks, a Kysely type-safe SQL query builder, and a
+   * `filterMap` helper for rows filtering and ad-hoc migrations. Note that
+   * `useQuery` uses React Suspense.
    *
    * ### Examples
    *
@@ -292,7 +289,7 @@ export const createHooks = <S extends Schema>(evolu: Evolu<S>): Hooks<S> => {
       return query ? evolu.loadQuery(query) : null;
     }, [query]);
 
-    if (promise && evolu.isPending(promise)) throw promise;
+    if (promise && !("rows" in promise)) throw promise;
 
     const subscribedRows = useSyncExternalStore(
       useMemo(() => evolu.subscribeQuery(query), [query]),
