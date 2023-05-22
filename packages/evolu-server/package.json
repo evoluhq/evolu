@@ -1,6 +1,6 @@
 {
   "name": "evolu-server",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Node.js server for Evolu library",
   "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
   "license": "MIT",
