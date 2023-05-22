@@ -157,6 +157,9 @@ importers:
       '@scure/bip39':
         specifier: ^1.2.0
         version: 1.2.0
+      '@sqlite.org/sqlite-wasm':
+        specifier: 3.42.0-build1
+        version: 3.42.0-build1
       array-shuffle:
         specifier: ^3.0.0
         version: 3.0.0
@@ -191,9 +194,6 @@ importers:
       '@protobuf-ts/protoc':
         specifier: ^2.9.0
         version: 2.9.0
-      '@sqlite.org/sqlite-wasm':
-        specifier: 3.42.0-build1
-        version: 3.42.0-build1
       '@types/react':
         specifier: ^18.2.6
         version: 18.2.6
@@ -1195,7 +1195,7 @@ packages:
   /@sqlite.org/sqlite-wasm@3.42.0-build1:
     resolution: {integrity: sha512-uUKiCihaIMkIUBtzgiAM0+/mB/VQTb2P1U+ZbvNFPCyyIiFDdxIacn7+3WW1DTHYWmjCx1O70bw+iVbHyNrDUg==}
     hasBin: true
-    dev: true
+    dev: false
 
   /@swc/helpers@0.5.1:
     resolution: {integrity: sha512-sJ902EfIzn1Fa+qYmjdQqh8tPsoxyBz+8yBKC2HKUxyezKJFwPGOn7pv4WY6QuQW//ySQi5lJjA/ZT9sNWWNTg==}

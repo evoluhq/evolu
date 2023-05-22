@@ -60,12 +60,12 @@
     "@noble/hashes": "^1.3.0",
     "@protobuf-ts/runtime": "^2.9.0",
     "@scure/bip39": "^1.2.0",
+    "@sqlite.org/sqlite-wasm": "3.42.0-build1",
     "array-shuffle": "^3.0.0",
     "kysely": "~0.24.2",
     "micro-aes-gcm": "~0.4.0",
     "murmurhash": "^2.0.1",
-    "nanoid": "^4.0.2",
-    "@sqlite.org/sqlite-wasm": "3.42.0-build1"
+    "nanoid": "^4.0.2"
   },
   "devDependencies": {
     "@effect/data": "^0.12.2",
