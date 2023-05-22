@@ -1,5 +1,5 @@
 {
-  "create-hooks": "createHooks",
+  "create": "create",
   "use-mutation": "useMutation",
   "use-query": "useQuery",
   "use-evolu-error": "useEvoluError",

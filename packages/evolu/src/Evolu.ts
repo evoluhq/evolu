@@ -5,7 +5,7 @@ import * as Predicate from "@effect/data/Predicate";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as Effect from "@effect/io/Effect";
 import * as S from "@effect/schema/Schema";
-import { Simplify } from "kysely";
+import * as Kysely from "kysely";
 import { flushSync } from "react-dom";
 import {
   browserFeatures,
@@ -18,69 +18,36 @@ import { applyPatches } from "./Diff.js";
 import { createNewMessages } from "./Messages.js";
 import { parseMnemonic } from "./Mnemonic.js";
 import { Id, cast, createId } from "./Model.js";
-import { QueryStringEquivalence } from "./Query.js";
+import { queryObjectToQuery } from "./Query.js";
 import { schemaToTablesDefinitions } from "./Schema.js";
 import { createStore } from "./Store.js";
 import {
-  AllowAutoCasting,
-  CommonColumns,
   Config,
   CreateDbWorker,
   DbWorker,
   DbWorkerOutput,
+  Evolu,
   EvoluError,
-  Listener,
+  KyselySelectFrom,
+  Mutate,
   NewMessage,
-  NullableExceptOfId,
   OnCompleteId,
   Owner,
   OwnerActions,
-  QueryString,
+  Query,
+  QueryCallback,
+  QueryObject,
   RestoreOwnerError,
-  RowsCache,
-  RowsWithLoadingState,
+  Row,
+  Rows,
   Schema,
+  SchemaForQuery,
   Store,
-  Unsubscribe,
 } from "./Types.js";
 
-type SchemaForMutate<S extends Schema> = {
-  readonly [Table in keyof S]: NullableExceptOfId<
-    {
-      readonly [Column in keyof S[Table]]: S[Table][Column];
-    } & Pick<CommonColumns, "isDeleted">
-  >;
-};
-
-type Mutate<S extends Schema> = <
-  U extends SchemaForMutate<S>,
-  T extends keyof U
->(
-  table: T,
-  values: Simplify<Partial<AllowAutoCasting<U[T]>>>,
-  onComplete?: () => void
-) => {
-  readonly id: U[T]["id"];
-};
-
-interface Evolu<S extends Schema = Schema> {
-  readonly subscribeError: (listener: Listener) => Unsubscribe;
-  readonly getError: () => EvoluError | null;
-
-  readonly subscribeOwner: (listener: Listener) => Unsubscribe;
-  readonly getOwner: () => Owner | null;
-
-  readonly subscribeRowsWithLoadingState: (
-    queryString: QueryString | null
-  ) => (listener: Listener) => Unsubscribe;
-  readonly getRowsWithLoadingState: (
-    queryString: QueryString | null
-  ) => () => RowsWithLoadingState | null;
-
-  readonly mutate: Mutate<S>;
-
-  readonly ownerActions: OwnerActions;
-}
+const createNoOpServerDbWorker: CreateDbWorker = () => ({
+  post: constVoid,
+});
 
 const createOpfsDbWorker: CreateDbWorker = (onMessage) => {
   const dbWorker = new Worker(new URL("./DbWorker.worker.js", import.meta.url));
@@ -111,10 +78,6 @@ const createLocalStorageDbWorker: CreateDbWorker = (onMessage) => {
   };
 };
 
-const createNoOpServerDbWorker: CreateDbWorker = () => ({
-  post: constVoid,
-});
-
 // TODO: React Native, Electron.
 const createDbWorker: CreateDbWorker = isBrowser
   ? browserFeatures.opfs
@@ -122,131 +85,136 @@ const createDbWorker: CreateDbWorker = isBrowser
     : createLocalStorageDbWorker
   : createNoOpServerDbWorker;
 
+const createKysely = <S extends Schema>(): KyselySelectFrom<
+  SchemaForQuery<S>
+> =>
+  new Kysely.Kysely({
+    dialect: {
+      createAdapter(): Kysely.SqliteAdapter {
+        return new Kysely.SqliteAdapter();
+      },
+      createDriver(): Kysely.Driver {
+        return new Kysely.DummyDriver();
+      },
+      createIntrospector(db: Kysely.Kysely<S>): Kysely.DatabaseIntrospector {
+        return new Kysely.SqliteIntrospector(db);
+      },
+      createQueryCompiler(): Kysely.QueryCompiler {
+        return new Kysely.SqliteQueryCompiler();
+      },
+    },
+  });
+
+export type RowsCache = ReadonlyMap<Query, Rows>;
+
 type OnComplete = () => void;
 
 const createOnQuery =
-  (rowsCache: Store<RowsCache>, onCompletes: Map<OnCompleteId, OnComplete>) =>
+  (
+    rowsCache: Store<RowsCache>,
+    onCompletes: Map<OnCompleteId, OnComplete>,
+    resolvePromise: (query: Query, rows: Rows) => void
+  ) =>
   ({
     queriesPatches,
     onCompleteIds,
   }: Extract<DbWorkerOutput, { _tag: "onQuery" }>): void => {
-    pipe(
+    const state = rowsCache.getState();
+    const nextState = pipe(
       queriesPatches,
-      ReadonlyArray.reduce(
-        rowsCache.getState(),
-        (state, { query, patches }) => {
-          const current = state.get(query);
-          const next: RowsWithLoadingState = {
-            isLoading: false,
-            rows: applyPatches(patches)(current?.rows || ReadonlyArray.empty()),
-          };
-          if (
-            current &&
-            current.isLoading === next.isLoading &&
-            current.rows === next.rows
-          )
-            return state;
-          return new Map([...state, [query, next]]);
-        }
+      ReadonlyArray.map(
+        ({ query, patches }) =>
+          [
+            query,
+            applyPatches(patches)(state.get(query) || ReadonlyArray.empty()),
+          ] as const
       ),
-      (state) => {
-        if (onCompleteIds.length === 0) {
-          rowsCache.setState(state);
-          return;
-        }
-
-        // Ensure onComplete can use DOM (for a focus or anything else).
-        flushSync(() => rowsCache.setState(state));
-
-        pipe(
-          onCompleteIds,
-          ReadonlyArray.filterMap((id) => {
-            const onComplete = onCompletes.get(id);
-            onCompletes.delete(id);
-            return Option.fromNullable(onComplete);
-          })
-        ).forEach((onComplete) => onComplete());
-      }
+      (a): RowsCache => new Map([...state, ...a])
     );
-  };
 
-const createSubscribeRowsWithLoadingState = (
-  rowsCache: Store<RowsCache>,
-  subscribedQueries: Map<QueryString, number>,
-  queryIfAny: (queries: ReadonlyArray<QueryString>) => void
-): Evolu["subscribeRowsWithLoadingState"] => {
-  let snapshot: ReadonlyArray<QueryString> | null = null;
+    // Resolve all Promises belonging to queries.
+    queriesPatches.forEach(({ query }) => {
+      const rows = nextState.get(query) || ReadonlyArray.empty();
+      resolvePromise(query, rows);
+    });
 
-  return (queryString: QueryString | null) => (listen) => {
-    if (queryString == null) return constVoid;
-
-    if (snapshot == null) {
-      snapshot = Array.from(subscribedQueries.keys());
-      queueMicrotask(() => {
-        const subscribedQueriesSnapshot = snapshot;
-        if (subscribedQueriesSnapshot == null) return;
-        snapshot = null;
-
-        const queries = pipe(
-          Array.from(subscribedQueries.keys()),
-          ReadonlyArray.difference(QueryStringEquivalence)(
-            subscribedQueriesSnapshot
-          )
-        );
-
-        pipe(
-          queries,
-          ReadonlyArray.reduce(rowsCache.getState(), (state, query) => {
-            const current = state.get(query);
-            if (!current || current.isLoading) return state;
-            return new Map([
-              ...state,
-              [
-                query,
-                {
-                  rows: (current && current.rows) || ReadonlyArray.empty(),
-                  isLoading: true,
-                },
-              ],
-            ]);
-          }),
-          rowsCache.setState
-        );
-
-        queryIfAny(queries);
-      });
+    // No mutation is using onComplete, so we don't need flushSync.
+    if (onCompleteIds.length === 0) {
+      rowsCache.setState(nextState);
+      return;
     }
 
+    // Ensure DOM is updated before onComplete (for a focus or anything else).
+    flushSync(() => rowsCache.setState(nextState));
+
+    pipe(
+      onCompleteIds,
+      ReadonlyArray.filterMap((id) => {
+        const onComplete = onCompletes.get(id);
+        onCompletes.delete(id);
+        return Option.fromNullable(onComplete);
+      })
+    ).forEach((onComplete) => {
+      onComplete();
+    });
+  };
+
+export const createSubscribeQuery = (
+  rowsCache: Store<RowsCache>,
+  subscribedQueries: Map<Query, number>
+): Evolu["subscribeQuery"] => {
+  return (query: Query | null) => (listen) => {
+    if (query == null) return constVoid;
+
     subscribedQueries.set(
-      queryString,
-      Number.increment(subscribedQueries.get(queryString) ?? 0)
+      query,
+      Number.increment(subscribedQueries.get(query) ?? 0)
     );
+
     const unsubscribe = rowsCache.subscribe(listen);
 
     return () => {
-      const count = subscribedQueries.get(queryString);
-      if (count != null && count > 1)
-        subscribedQueries.set(queryString, Number.decrement(count));
-      else subscribedQueries.delete(queryString);
+      // `as number`, because React mount/unmount are symmetric.
+      const count = subscribedQueries.get(query) as number;
+      if (count > 1) subscribedQueries.set(query, Number.decrement(count));
+      else subscribedQueries.delete(query);
       unsubscribe();
     };
   };
 };
 
-type CreateId = typeof createId;
+const createLoadQuery = (
+  queryIfAny: (queries: ReadonlyArray<Query>) => void,
+  getPromise: (query: Query) => { promise: Promise<Rows>; isNew: boolean }
+): Evolu["loadQuery"] => {
+  const queue = new Set<Query>();
+
+  return (query) => {
+    const { promise, isNew } = getPromise(query);
+    if (isNew) queue.add(query);
+    if (queue.size === 1) {
+      queueMicrotask(() => {
+        const queries = [...queue];
+        queue.clear();
+        queryIfAny(queries);
+      });
+    }
+    return promise;
+  };
+};
 
 const createMutate = <S extends Schema>({
-  createId,
   getOwner,
-  setOnComplete,
+  onCompletes,
   dbWorker,
   getSubscribedQueries,
+  releasePromises,
 }: {
-  createId: CreateId;
   getOwner: Promise<Owner>;
-  setOnComplete: (id: OnCompleteId, onComplete: OnComplete) => void;
+  onCompletes: Map<OnCompleteId, OnComplete>;
   dbWorker: DbWorker;
-  getSubscribedQueries: () => ReadonlyArray<QueryString>;
+  getSubscribedQueries: () => ReadonlyArray<Query>;
+  releasePromises: (queries: ReadonlyArray<Query>) => void;
 }): Mutate<S> => {
   const queue: Array<
     [ReadonlyArray.NonEmptyReadonlyArray<NewMessage>, OnCompleteId | null]
@@ -261,7 +229,7 @@ const createMutate = <S extends Schema>({
     let onCompleteId: OnCompleteId | null = null;
     if (onComplete) {
       onCompleteId = createId<"OnComplete">();
-      setOnComplete(onCompleteId, onComplete);
+      onCompletes.set(onCompleteId, onComplete);
     }
 
     getOwner.then((owner) => {
@@ -292,11 +260,14 @@ const createMutate = <S extends Schema>({
 
           queue.length = 0;
 
+          const queries = getSubscribedQueries();
+          releasePromises(queries);
+
           dbWorker.post({
             _tag: "sendMessages",
             newMessages,
             onCompleteIds,
-            queries: getSubscribedQueries(),
+            queries,
           });
         });
     });
@@ -315,8 +286,47 @@ export const createEvolu = <From, To extends Schema>(
   const ownerStore = createStore<Owner | null>(null);
   const rowsCache = createStore<RowsCache>(new Map());
 
-  const subscribedQueries = new Map<QueryString, number>();
   const onCompletes = new Map<OnCompleteId, OnComplete>();
+
+  const subscribedQueries = new Map<Query, number>();
+
+  const getSubscribedQueries = (): ReadonlyArray<Query> =>
+    Array.from(subscribedQueries.keys());
+
+  const promises = new Map<
+    Query,
+    {
+      readonly promise: Promise<Rows>;
+      readonly resolve: (rows: Rows) => void;
+    }
+  >();
+
+  const resolvePromise = (query: Query, rows: Rows): void => {
+    const item = promises.get(query);
+    if (!item) return;
+    // It's similar to what React will do.
+    Object.assign(item.promise, { rows });
+    item.resolve(rows);
+  };
+
+  const releasePromises = (ignoreQueries: ReadonlyArray<Query>): void => {
+    [...promises.keys()].forEach((query) => {
+      if (!ignoreQueries.includes(query)) promises.delete(query);
+    });
+  };
+
+  const getPromise = (
+    query: Query
+  ): { readonly promise: Promise<Rows>; readonly isNew: boolean } => {
+    const item = promises.get(query);
+    if (item) return { promise: item.promise, isNew: false };
+    let resolve: (rows: Rows) => void = constVoid;
+    const promise = new Promise<Rows>((_resolve) => {
+      resolve = _resolve;
+    });
+    promises.set(query, { promise, resolve });
+    return { promise, isNew: true };
+  };
 
   const dbWorker = createDbWorker((message) => {
     switch (message._tag) {
@@ -330,7 +340,7 @@ export const createEvolu = <From, To extends Schema>(
         onQuery(message);
         break;
       case "onReceive":
-        queryIfAny(Array.from(subscribedQueries.keys()));
+        queryIfAny(getSubscribedQueries());
         break;
       case "onResetOrRestore":
         reloadAllTabs(config.reloadUrl);
@@ -340,22 +350,19 @@ export const createEvolu = <From, To extends Schema>(
     }
   });
 
-  const onQuery = createOnQuery(rowsCache, onCompletes);
+  const onQuery = createOnQuery(rowsCache, onCompletes, resolvePromise);
 
-  const queryIfAny = (queries: ReadonlyArray<QueryString>): void => {
+  const queryIfAny = (queries: ReadonlyArray<Query>): void => {
     if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
       dbWorker.post({ _tag: "query", queries });
   };
 
-  const subscribeRowsWithLoadingState = createSubscribeRowsWithLoadingState(
-    rowsCache,
-    subscribedQueries,
-    queryIfAny
-  );
+  const subscribeQuery = createSubscribeQuery(rowsCache, subscribedQueries);
 
-  const getRowsWithLoadingState: Evolu["getRowsWithLoadingState"] =
-    (query) => () =>
-      (query && rowsCache.getState().get(query)) || null;
+  const getQuery: Evolu["getQuery"] = (query) =>
+    (query && rowsCache.getState().get(query)) || null;
+
+  const loadQuery = createLoadQuery(queryIfAny, getPromise);
 
   const getOwner = new Promise<Owner>((resolve) => {
     const unsubscribe = ownerStore.subscribe(() => {
@@ -367,13 +374,11 @@ export const createEvolu = <From, To extends Schema>(
   });
 
   const mutate: Evolu["mutate"] = createMutate({
-    createId: createId,
     getOwner,
-    setOnComplete: (id, callback) => {
-      onCompletes.set(id, callback);
-    },
+    onCompletes,
     dbWorker,
-    getSubscribedQueries: () => Array.from(subscribedQueries.keys()),
+    getSubscribedQueries,
+    releasePromises,
   });
 
   const ownerActions: OwnerActions = {
@@ -387,6 +392,12 @@ export const createEvolu = <From, To extends Schema>(
       Effect.runPromiseEither
     ),
   };
+
+  const kysely = createKysely<To>();
+
+  // TODO: Rename
+  const createQuery = (queryCallback: QueryCallback<To, Row>): Query =>
+    pipe(queryCallback(kysely).compile() as QueryObject, queryObjectToQuery);
 
   dbWorker.post({
     _tag: "init",
@@ -403,8 +414,10 @@ export const createEvolu = <From, To extends Schema>(
     subscribeOwner: ownerStore.subscribe,
     getOwner: ownerStore.getState,
 
-    subscribeRowsWithLoadingState,
-    getRowsWithLoadingState,
+    createQuery,
+    subscribeQuery,
+    getQuery,
+    loadQuery,
 
     mutate,
     ownerActions,

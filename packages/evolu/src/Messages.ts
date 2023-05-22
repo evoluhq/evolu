@@ -20,15 +20,12 @@ import {
   Db,
   DbWorkerOnMessage,
   DbWorkerRowsCache,
-  IsSyncing,
   MerkleTree,
   Message,
-  Millis,
   NewMessage,
   OnCompleteId,
   Owner,
-  QueryString,
-  SyncError,
+  Query,
   SyncWorkerPost,
   Time,
   TimestampCounterOverflowError,
@@ -155,7 +152,7 @@ export const sendMessages = ({
 }: {
   readonly newMessages: ReadonlyArray.NonEmptyReadonlyArray<NewMessage>;
   readonly onCompleteIds: ReadonlyArray<OnCompleteId>;
-  readonly queries: ReadonlyArray<QueryString>;
+  readonly queries: ReadonlyArray<Query>;
 }): Effect.Effect<
   | Db
   | Owner
@@ -171,7 +168,8 @@ export const sendMessages = ({
     let { timestamp, merkleTree } = yield* $(readClock);
 
     const messages = yield* $(
-      Effect.forEach(newMessages, (newMessage) =>
+      newMessages,
+      Effect.forEach((newMessage) =>
         Effect.map(sendTimestamp(timestamp), (nextTimestamp): Message => {
           timestamp = nextTimestamp;
           return {
@@ -194,31 +192,31 @@ export const sendMessages = ({
     );
 
     syncWorkerPost({
+      _tag: "sync",
       syncUrl: config.syncUrl,
       messages,
       clock: { timestamp, merkleTree },
       owner,
-      previousDiff: null,
+      syncCount: 0,
     });
 
-    if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
+    if (queries.length > 0 || onCompleteIds.length > 0)
       yield* $(query({ queries, onCompleteIds }));
   });
 
 export const receiveMessages = ({
   messages,
   merkleTree: serverMerkleTree,
-  previousDiff,
+  syncCount,
 }: {
   readonly messages: ReadonlyArray<Message>;
   readonly merkleTree: MerkleTree;
-  readonly previousDiff: Millis | null;
+  readonly syncCount: number;
 }): Effect.Effect<
-  Db | Time | DbWorkerOnMessage | SyncWorkerPost | Owner | Config | IsSyncing,
+  Db | Time | DbWorkerOnMessage | SyncWorkerPost | Owner | Config,
   | TimestampDriftError
   | TimestampCounterOverflowError
-  | TimestampDuplicateNodeError
-  | SyncError,
+  | TimestampDuplicateNodeError,
   void
 > =>
   Effect.gen(function* ($) {
@@ -243,35 +241,32 @@ export const receiveMessages = ({
     const dbWorkerOnMessage = yield* $(DbWorkerOnMessage);
     dbWorkerOnMessage({ _tag: "onReceive" });
 
+    const [syncWorkerPost, config, owner] = yield* $(
+      Effect.all(SyncWorkerPost, Config, Owner)
+    );
+
     const diff = diffMerkleTrees(serverMerkleTree, merkleTree);
-    if (Option.isNone(diff)) return;
 
-    if (previousDiff != null && previousDiff === diff.value)
-      yield* $(Effect.fail<SyncError>({ _tag: "SyncError" }));
-
-    const isSyncing = yield* $(IsSyncing);
-    if (yield* $(isSyncing)) return;
+    if (Option.isNone(diff)) {
+      syncWorkerPost({ _tag: "syncCompleted" });
+      return;
+    }
 
     const db = yield* $(Db);
     const messagesToSync = yield* $(
       db.exec({
-        sql: `select * from "__message" where "timestamp" > ? order by "timestamp"`,
+        sql: `select * from "__message" where "timestamp" >= ? order by "timestamp"`,
         parameters: [pipe(diff.value, createSyncTimestamp, timestampToString)],
       }),
       Effect.map((a) => a as unknown as ReadonlyArray<Message>)
     );
 
-    if (ReadonlyArray.isEmptyReadonlyArray(messagesToSync)) return;
-
-    const [syncWorkerPost, config, owner] = yield* $(
-      Effect.all(SyncWorkerPost, Config, Owner)
-    );
-
     syncWorkerPost({
+      _tag: "sync",
       syncUrl: config.syncUrl,
       messages: messagesToSync,
       clock: { timestamp, merkleTree },
       owner,
-      previousDiff: diff.value,
+      syncCount: syncCount + 1,
     });
   });

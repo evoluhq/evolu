@@ -8,11 +8,10 @@ Evolu is designed for privacy, ease of use, and no vendor lock-in.
 - E2E encrypted sync and backup with CRDT (merging changes without conflicts)
 - Free Evolu server for testing (paid production-ready soon, or you can run your own)
 - Typed database schema with branded types (`NonEmptyString1000`, `PositiveInt`, etc.)
-- Reactive queries
+- Reactive queries with React Suspense support
 - Real-time experience via revalidation on focus and network recovery
 - Schema evolving via `filterMap` ad-hoc migration
 - No signup/login, no email collection, only Bitcoin-like mnemonic (12 words)
-- React Suspense (soon)
 
 ## Local-first apps
 
@@ -75,7 +74,7 @@ export const {
   useOwner,
   useOwnerActions,
   useEvoluError,
-} = Evolu.createHooks(Database);
+} = Evolu.create(Database);
 ```
 
 ### Validate Data
@@ -188,8 +187,7 @@ It should be. The CRDT message format is stable.
 
 ### What is the SQLite database size limit?
 
-Evolu uses OPFS in Chrome and Firefox and LocalStorage in Safari.
-The size limit of OPFS is 256 MB (LocalStorage 5 MB).
+(Storage_quotas_and_eviction_criteria)[https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria]
 
 ### How can I check the current database filesize?
 

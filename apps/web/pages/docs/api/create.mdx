@@ -1,6 +1,6 @@
-# createHooks
+# create
 
-`createHooks` defines the database schema and returns React Hooks.
+`create` defines the database schema and returns React Hooks.
 Evolu uses [Schema](https://github.com/effect-ts/schema) for domain modeling.
 
 ## Example
@@ -29,7 +29,7 @@ export const {
   useEvoluError,
   useOwner,
   useOwnerActions,
-} = Evolu.createHooks(Database);
+} = Evolu.create(Database);
 ```
 
 import { Callout } from "nextra-theme-docs";

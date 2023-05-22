@@ -1,9 +1,6 @@
-import { constFalse, flow, pipe } from "@effect/data/Function";
-import * as Option from "@effect/data/Option";
-import * as Predicate from "@effect/data/Predicate";
+import { pipe } from "@effect/data/Function";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
-import * as Effect from "@effect/io/Effect";
-import { DbWorker, QueryString, RequestSync } from "./Types.js";
+import { DbWorker, Query } from "./Types.js";
 
 // https://github.com/denoland/deno/issues/13367
 export const isBrowser = typeof document !== "undefined";
@@ -36,11 +33,9 @@ export const reloadAllTabs = (reloadUrl: string): void => {
 };
 
 export const browserInit = (
-  subscribedQueries: ReadonlyMap<QueryString, number>,
+  subscribedQueries: ReadonlyMap<Query, number>,
   dbWorker: DbWorker
 ): void => {
-  if (!isBrowser) return;
-
   window.addEventListener("storage", (e) => {
     if (e.key === localStorageKey) location.reload();
   });
@@ -67,20 +62,3 @@ export const browserInit = (
 
   handleReconnect();
 };
-
-const syncLockName = "evolu:sync";
-
-export const requestSync: RequestSync = (callback) => {
-  navigator.locks.request(syncLockName, callback);
-};
-
-const hasLock: Predicate.Predicate<LockInfo[] | undefined> = flow(
-  Option.fromNullable,
-  Option.map(ReadonlyArray.some((a) => a.name === syncLockName)),
-  Option.getOrElse(constFalse)
-);
-
-export const isSyncing: Effect.Effect<never, never, boolean> = pipe(
-  Effect.promise(() => navigator.locks.query()),
-  Effect.map(({ pending, held }) => hasLock(pending) || hasLock(held))
-);

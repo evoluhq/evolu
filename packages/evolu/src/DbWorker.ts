@@ -1,16 +1,16 @@
 import * as Context from "@effect/data/Context";
 import * as Either from "@effect/data/Either";
 import { apply, constVoid, flow, pipe } from "@effect/data/Function";
+import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as Cause from "@effect/io/Cause";
 import * as Effect from "@effect/io/Effect";
 import * as Ref from "@effect/io/Ref";
-import * as Browser from "./Browser.js";
+import { readClock } from "./Clock.js";
 import { transaction } from "./Db.js";
 import { receiveMessages, sendMessages } from "./Messages.js";
 import { lazyInitOwner, resetOwner } from "./Owner.js";
 import { query } from "./Query.js";
 import { updateSchema } from "./Schema.js";
-import { sync } from "./Sync.js";
 import {
   Config,
   CreateDbWorker,
@@ -20,10 +20,9 @@ import {
   DbWorkerOnMessage,
   DbWorkerRowsCache,
   EvoluError,
-  IsSyncing,
   Millis,
   Owner,
-  SyncError,
+  Query,
   SyncWorkerOutput,
   SyncWorkerPost,
   Time,
@@ -32,6 +31,28 @@ import {
   TimestampDuplicateNodeError,
 } from "./Types.js";
 import { unknownError } from "./UnknownError.js";
+
+const sync = (
+  queries: ReadonlyArray.NonEmptyReadonlyArray<Query> | null
+): Effect.Effect<
+  Db | Owner | SyncWorkerPost | DbWorkerRowsCache | DbWorkerOnMessage | Config,
+  never,
+  void
+> =>
+  Effect.gen(function* ($) {
+    if (queries != null) yield* $(query({ queries }));
+    const [clock, syncWorkerPost, config, owner] = yield* $(
+      Effect.all(readClock, SyncWorkerPost, Config, Owner)
+    );
+    syncWorkerPost({
+      _tag: "sync",
+      syncUrl: config.syncUrl,
+      clock,
+      owner,
+      messages: ReadonlyArray.empty(),
+      syncCount: 0,
+    });
+  });
 
 export const createCreateDbWorker =
   (createDb: Effect.Effect<never, never, Db>): CreateDbWorker =>
@@ -83,7 +104,6 @@ export const createCreateDbWorker =
           Context.add(DbWorkerRowsCache, Ref.unsafeMake(new Map())),
           Context.add(Owner, owner),
           Context.add(SyncWorkerPost, syncWorkerPost),
-          Context.add(IsSyncing, Browser.isSyncing),
           Context.add(Time, { now: () => Date.now() as Millis })
         );
 
@@ -113,12 +133,10 @@ export const createCreateDbWorker =
               | DbWorkerRowsCache
               | SyncWorkerPost
               | Time
-              | IsSyncing
               | Config,
               | TimestampDuplicateNodeError
               | TimestampDriftError
-              | TimestampCounterOverflowError
-              | SyncError,
+              | TimestampCounterOverflowError,
               void
             > => {
               if (skipAllBecauseBrowserIsGoingToBeReloaded)

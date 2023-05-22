@@ -8,7 +8,8 @@ import {
   TimestampHash,
 } from "./Types.js";
 
-// https://github.com/clintharris/crdt-example-app_annotated/blob/master/shared/merkle.js
+// Technically, it's not Merkle Tree but “merkleized” prefix tree (trie).
+// https://decomposition.al/blog/2019/05/31/how-i-learned-about-merklix-trees-without-having-to-become-a-cryptocurrency-enthusiast/#fnref:1
 
 export const merkleTreeToString = (m: MerkleTree): MerkleTreeString =>
   JSON.stringify(m) as MerkleTreeString;
@@ -18,25 +19,27 @@ export const unsafeMerkleTreeFromString = (m: MerkleTreeString): MerkleTree =>
 
 export const createInitialMerkleTree = (): MerkleTree => Object.create(null);
 
-const insertKey = ({
-  tree,
-  key,
-  hash,
-}: {
-  readonly tree: MerkleTree;
-  readonly key: string;
-  readonly hash: TimestampHash;
-}): MerkleTree => {
+const timestampToKey = (timestamp: Timestamp): string =>
+  Math.floor(timestamp.millis / 1000 / 60).toString(3);
+
+const keyToTimestamp = (key: string): Millis =>
+  (parseInt(key.length > 0 ? key : "0", 3) * 1000 * 60) as Millis;
+
+const insertKey = (
+  tree: MerkleTree,
+  key: string,
+  hash: TimestampHash
+): MerkleTree => {
   if (key.length === 0) return tree;
-  const c = key[0] as "0" | "1" | "2";
-  const n = tree[c] || {};
+  const childKey = key[0] as "0" | "1" | "2";
+  const child = tree[childKey] || {};
   return {
     ...tree,
-    [c]: {
-      ...n,
-      ...insertKey({ tree: n, key: key.slice(1), hash }),
+    [childKey]: {
+      ...child,
+      ...insertKey(child, key.slice(1), hash),
       // @ts-expect-error undefined is OK
-      hash: n.hash ^ hash,
+      hash: child.hash ^ hash,
     },
   };
 };
@@ -44,56 +47,30 @@ const insertKey = ({
 export const insertIntoMerkleTree =
   (timestamp: Timestamp) =>
   (tree: MerkleTree): MerkleTree => {
-    const key = Number(Math.floor(timestamp.millis / 1000 / 60)).toString(3);
+    const key = timestampToKey(timestamp);
     const hash = timestampToHash(timestamp);
-    return insertKey({
-      tree: {
-        ...tree,
-        // @ts-expect-error undefined is OK
-        hash: (tree.hash ^ hash) as TimestampHash,
-      },
-      key,
-      hash,
-    });
+    // @ts-expect-error undefined is OK
+    return insertKey({ ...tree, hash: tree.hash ^ hash }, key, hash);
   };
-
-const getKeys = (tree: MerkleTree): ReadonlyArray<"0" | "1" | "2"> =>
-  Object.keys(tree).filter((x) => x !== "hash") as ReadonlyArray<
-    "0" | "1" | "2"
-  >;
-
-const keyToTimestamp = (key: string): Millis => {
-  // 16 is the length of the base 3 value of the current time in
-  // minutes. Ensure it's padded to create the full value.
-  const fullkey = key + "0".repeat(16 - key.length);
-  // Parse the base 3 representation.
-  return (parseInt(fullkey, 3) * 1000 * 60) as Millis;
-};
 
 export const diffMerkleTrees = (
   tree1: MerkleTree,
   tree2: MerkleTree
 ): Option.Option<Millis> => {
   if (tree1.hash === tree2.hash) return Option.none();
-
-  let node1 = tree1;
-  let node2 = tree2;
-  let k = "";
-
-  // eslint-disable-next-line no-constant-condition
-  while (1) {
-    const keyset = new Set([...getKeys(node1), ...getKeys(node2)]);
-    const keys = Array.from(keyset).sort();
-    const diffkey = keys.find((key) => {
-      const next1 = node1[key] || {};
-      const next2 = node2[key] || {};
-      return next1.hash !== next2.hash;
-    });
-    if (!diffkey) return Option.some(keyToTimestamp(k));
-    k += diffkey;
-    node1 = node1[diffkey] || {};
-    node2 = node2[diffkey] || {};
+  for1: for (let node1 = tree1, node2 = tree2, key = ""; ; ) {
+    for (const k of ["0", "1", "2"] as const) {
+      const next1 = node1[k];
+      const next2 = node2[k];
+      if (!next1 && !next2) continue;
+      if (!next1 || !next2) break;
+      if (next1.hash !== next2.hash) {
+        key += k;
+        node1 = next1;
+        node2 = next2;
+        continue for1;
+      }
+    }
+    return Option.some(keyToTimestamp(key));
   }
-
-  return Option.none();
 };
