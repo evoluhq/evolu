@@ -1,38 +1,19 @@
 import { constNull, pipe } from "@effect/data/Function";
 import * as Option from "@effect/data/Option";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
-import * as S from "@effect/schema/Schema";
 import * as Kysely from "kysely";
 import { useMemo, useRef, useSyncExternalStore } from "react";
-import { createEvolu } from "./Evolu.js";
-import { queryToString } from "./Query.js";
 import {
   AllowAutoCasting,
   CommonColumns,
-  Config,
+  Evolu,
   EvoluError,
-  NullableExceptOfId,
   Owner,
   OwnerActions,
-  Query,
+  QueryCallback,
   Row,
   Schema,
 } from "./Types.js";
-
-type KyselySelectFrom<DB> = Pick<Kysely.Kysely<DB>, "selectFrom">;
-
-type SchemaForQuery<S extends Schema> = {
-  readonly [Table in keyof S]: NullableExceptOfId<
-    {
-      readonly [Column in keyof S[Table]]: S[Table][Column];
-    } & CommonColumns
-  >;
-};
-
-type QueryCallback<S extends Schema, QueryRow> = (
-  db: KyselySelectFrom<SchemaForQuery<S>>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-) => Kysely.SelectQueryBuilder<any, any, QueryRow>;
 
 type OrNullOrFalse<T> = T | null | false;
 type ExcludeNullAndFalse<T> = Exclude<T, null | false>;
@@ -41,7 +22,7 @@ type UseQuery<S extends Schema> = <
   QueryRow extends Row,
   FilterMapRow extends Row
 >(
-  query: OrNullOrFalse<QueryCallback<S, QueryRow>>,
+  queryCallback: OrNullOrFalse<QueryCallback<S, QueryRow>>,
   filterMap: (row: QueryRow) => OrNullOrFalse<FilterMapRow>
 ) => {
   /**
@@ -53,18 +34,9 @@ type UseQuery<S extends Schema> = <
   /**
    * The first row from `rows`. For empty rows, it's null.
    */
-  readonly row: Readonly<
+  readonly firstRow: Readonly<
     Kysely.Simplify<ExcludeNullAndFalse<FilterMapRow>>
   > | null;
-  /**
-   * `isLoaded` becomes true when rows are loaded for the first time.
-   * Rows are cached per SQL query, so this happens only once.
-   */
-  readonly isLoaded: boolean;
-  /**
-   * `isLoading` becomes true whenever rows are loading.
-   */
-  readonly isLoading: boolean;
 };
 
 // https://stackoverflow.com/a/54713648/233902
@@ -153,17 +125,13 @@ type UseMutation<S extends Schema> = () => {
   readonly update: Update<S>;
 };
 
-interface Hooks<S extends Schema> {
+export interface Hooks<S extends Schema> {
   /**
-   * `useQuery` React Hook performs a database query and returns rows that
-   * are automatically updated when data changes.
-   *
-   * It takes two callbacks, a Kysely type-safe SQL query builder,
-   * and a filterMap helper.
-   *
-   * `useQuery` also returns `isLoaded` and `isLoading` props that indicate
-   * loading progress. `isLoaded` becomes true when rows are loaded for the
-   *  first time. `isLoading` becomes true whenever rows are loading.
+   * `useQuery` React Hook performs a database query and returns `rows` and
+   * `firstRow` props that are automatically updated when data changes. It
+   * takes two callbacks, a Kysely type-safe SQL query builder, and a
+   * `filterMap` helper for rows filtering and ad-hoc migrations. Note that
+   * `useQuery` uses React Suspense.
    *
    * ### Examples
    *
@@ -257,28 +225,8 @@ interface Hooks<S extends Schema> {
   readonly useOwnerActions: () => OwnerActions;
 }
 
-const createKysely = (): Kysely.Kysely<unknown> =>
-  new Kysely.Kysely({
-    dialect: {
-      createAdapter(): Kysely.SqliteAdapter {
-        return new Kysely.SqliteAdapter();
-      },
-      createDriver(): Kysely.Driver {
-        return new Kysely.DummyDriver();
-      },
-      createIntrospector(
-        db: Kysely.Kysely<unknown>
-      ): Kysely.DatabaseIntrospector {
-        return new Kysely.SqliteIntrospector(db);
-      },
-      createQueryCompiler(): Kysely.QueryCompiler {
-        return new Kysely.SqliteQueryCompiler();
-      },
-    },
-  });
-
 /**
- * `createHooks` defines the database schema and returns React Hooks.
+ * `create` defines the database schema and returns React Hooks.
  * Evolu uses [Schema](https://github.com/effect-ts/schema) for domain modeling.
  *
  * ### Example
@@ -307,7 +255,7 @@ const createKysely = (): Kysely.Kysely<unknown> =>
  *   useEvoluError,
  *   useOwner,
  *   useOwnerActions,
- * } = Evolu.createHooks(Database);
+ * } = Evolu.create(Database);
  * ```
  *
  * There is one simple rule for local-first apps domain modeling:
@@ -328,80 +276,73 @@ const createKysely = (): Kysely.Kysely<unknown> =>
  * To learn more about migration-less schema evolving, check the `useQuery`
  * documentation.
  */
-export const createHooks = <From, To extends Schema>(
-  schema: S.Schema<From, To>,
-  config?: Partial<Config>
-): Hooks<To> => {
-  const evolu = createEvolu(schema, config);
-  const kysely = createKysely();
+export const createHooks = <S extends Schema>(evolu: Evolu<S>): Hooks<S> => {
   const cache = new WeakMap<Row, Option.Option<Row>>();
 
-  const useQuery: UseQuery<To> = (query, filterMap) => {
-    // `query` can and will change, compile() is cheap
-    const queryString = query
-      ? pipe(query(kysely as never).compile() as Query, queryToString)
-      : null;
-    // filterMap is expensive but must be static, hence useRef
-    const filterMapRef = useRef(filterMap);
+  const useQuery: UseQuery<S> = (queryCallback, filterMap) => {
+    const query = useMemo(
+      () => (queryCallback ? evolu.createQuery(queryCallback) : null),
+      [queryCallback]
+    );
 
-    const rowsWithLoadingState = useSyncExternalStore(
-      useMemo(
-        () => evolu.subscribeRowsWithLoadingState(queryString),
-        [queryString]
-      ),
-      evolu.getRowsWithLoadingState(queryString),
+    const promise = useMemo(() => {
+      return query ? evolu.loadQuery(query) : null;
+    }, [query]);
+
+    if (promise && !("rows" in promise)) throw promise;
+
+    const subscribedRows = useSyncExternalStore(
+      useMemo(() => evolu.subscribeQuery(query), [query]),
+      useMemo(() => () => evolu.getQuery(query), [query]),
       constNull
     );
 
-    const filterMapRow = (row: Row): Option.Option<Row> => {
-      let cachedRow = cache.get(row);
-      if (cachedRow !== undefined) return cachedRow;
-      cachedRow = pipe(filterMapRef.current(row as never), (row) =>
-        row ? Option.some(row) : Option.none
-      ) as never;
-      cache.set(row, cachedRow);
-      return cachedRow;
-    };
+    // Use useRef until React Forget release.
+    const filterMapRef = useRef(filterMap);
 
     const rows = useMemo(
       () =>
         pipe(
-          rowsWithLoadingState?.rows,
+          subscribedRows,
           Option.fromNullable,
-          Option.map(ReadonlyArray.filterMap(filterMapRow)),
-          Option.getOrNull
+          Option.map(
+            ReadonlyArray.filterMap((row) => {
+              let cachedRow = cache.get(row);
+              if (cachedRow !== undefined) return cachedRow;
+              cachedRow = pipe(filterMapRef.current(row as never), (row) =>
+                row ? Option.some(row) : Option.none
+              ) as never;
+              cache.set(row, cachedRow);
+              return cachedRow;
+            })
+          ),
+          Option.getOrElse(() => ReadonlyArray.empty())
         ),
-      [rowsWithLoadingState?.rows]
+      [subscribedRows]
     );
 
-    return useMemo(
-      () => ({
-        rows: (rows || []) as never,
-        row: ((rows && rows[0]) || null) as never,
-        isLoaded: rows != null,
-        isLoading: rowsWithLoadingState ? rowsWithLoadingState.isLoading : true,
-      }),
-      [rows, rowsWithLoadingState]
-    );
+    return {
+      rows: rows as never,
+      firstRow: rows[0] as never,
+    };
   };
 
-  const useMutation: UseMutation<To> = () =>
+  const useMutation: UseMutation<S> = () =>
     useMemo(
       () => ({
-        create: evolu.mutate as Create<To>,
-        update: evolu.mutate as Update<To>,
+        create: evolu.mutate as Create<S>,
+        update: evolu.mutate as Update<S>,
       }),
       []
     );
 
-  const useEvoluError: Hooks<To>["useEvoluError"] = () =>
+  const useEvoluError: Hooks<S>["useEvoluError"] = () =>
     useSyncExternalStore(evolu.subscribeError, evolu.getError, constNull);
 
-  const useOwner: Hooks<To>["useOwner"] = () =>
+  const useOwner: Hooks<S>["useOwner"] = () =>
     useSyncExternalStore(evolu.subscribeOwner, evolu.getOwner, constNull);
 
-  const useOwnerActions: Hooks<To>["useOwnerActions"] = () =>
-    evolu.ownerActions;
+  const useOwnerActions: Hooks<S>["useOwnerActions"] = () => evolu.ownerActions;
 
   return {
     useQuery,

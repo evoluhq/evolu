@@ -88,7 +88,7 @@ const createDb: (fileName: string) => Db = flow(
 
       selectMessages: sqlite.prepare(`
         SELECT "timestamp", "content" FROM "message"
-        WHERE "userId" = ? AND "timestamp" > ? AND "timestamp" NOT LIKE '%' || ?
+        WHERE "userId" = ? AND "timestamp" >= ? AND "timestamp" NOT LIKE '%' || ?
         ORDER BY "timestamp"
       `),
     };

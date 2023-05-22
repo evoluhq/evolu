@@ -7,7 +7,11 @@ import { ReadonlyRecord } from "@effect/data/ReadonlyRecord";
 import { Effect } from "@effect/io/Effect";
 import { Ref } from "@effect/io/Ref";
 import * as S from "@effect/schema/Schema";
+import * as Kysely from "kysely";
 import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
+
+export type Listener = () => void;
+export type Unsubscribe = () => void;
 
 export interface Config {
   /**
@@ -151,11 +155,6 @@ export type Row = ReadonlyRecord<Value>;
 
 export type Rows = ReadonlyArray<Row>;
 
-export interface RowsWithLoadingState {
-  readonly rows: Rows;
-  readonly isLoading: boolean;
-}
-
 export interface TableDefinition {
   readonly name: string;
   readonly columns: ReadonlyArray<string>;
@@ -163,23 +162,24 @@ export interface TableDefinition {
 
 export type TablesDefinitions = ReadonlyArray<TableDefinition>;
 
-// Like Kysely CompiledQuery but without a `query` prop.
-export interface Query {
+export interface QueryObject {
   readonly sql: string;
   readonly parameters: ReadonlyArray<Value>;
 }
 
-export type QueryString = string & Brand<"QueryString">;
+export type Query = string & Brand<"Query">;
 
 export interface Db {
-  readonly exec: (arg: string | Query) => Effect<never, never, Rows>;
+  readonly exec: (arg: string | QueryObject) => Effect<never, never, Rows>;
   readonly changes: () => Effect<never, never, number>;
 }
 export const Db = Tag<Db>();
 
-export type RowsCache = ReadonlyMap<QueryString, RowsWithLoadingState>;
-
 export type Schema = ReadonlyRecord<{ id: Id } & ReadonlyRecord<Value>>;
+
+export type NullableExceptOfId<T> = {
+  readonly [K in keyof T]: K extends "id" ? T[K] : T[K] | null;
+};
 
 export interface CommonColumns {
   readonly createdAt: SqliteDate;
@@ -187,6 +187,29 @@ export interface CommonColumns {
   readonly updatedAt: SqliteDate;
   readonly isDeleted: SqliteBoolean;
 }
+
+export type SchemaForQuery<S extends Schema> = {
+  readonly [Table in keyof S]: NullableExceptOfId<
+    {
+      readonly [Column in keyof S[Table]]: S[Table][Column];
+    } & CommonColumns
+  >;
+};
+
+export type KyselySelectFrom<DB> = Pick<Kysely.Kysely<DB>, "selectFrom">;
+
+export type QueryCallback<S extends Schema, QueryRow> = (
+  db: KyselySelectFrom<SchemaForQuery<S>>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+) => Kysely.SelectQueryBuilder<any, any, QueryRow>;
+
+export type SchemaForMutate<S extends Schema> = {
+  readonly [Table in keyof S]: NullableExceptOfId<
+    {
+      readonly [Column in keyof S[Table]]: S[Table][Column];
+    } & Pick<CommonColumns, "isDeleted">
+  >;
+};
 
 export type AllowAutoCasting<T> = {
   readonly [K in keyof T]: T[K] extends SqliteBoolean
@@ -200,9 +223,34 @@ export type AllowAutoCasting<T> = {
     : T[K];
 };
 
-export type NullableExceptOfId<T> = {
-  readonly [K in keyof T]: K extends "id" ? T[K] : T[K] | null;
+export type Mutate<S extends Schema> = <
+  U extends SchemaForMutate<S>,
+  T extends keyof U
+>(
+  table: T,
+  values: Kysely.Simplify<Partial<AllowAutoCasting<U[T]>>>,
+  onComplete?: () => void
+) => {
+  readonly id: U[T]["id"];
 };
+
+export interface Evolu<S extends Schema = Schema> {
+  readonly subscribeError: (listener: Listener) => Unsubscribe;
+  readonly getError: () => EvoluError | null;
+
+  readonly subscribeOwner: (listener: Listener) => Unsubscribe;
+  readonly getOwner: () => Owner | null;
+
+  readonly createQuery: (queryCallback: QueryCallback<S, Row>) => Query;
+  readonly subscribeQuery: (
+    query: Query | null
+  ) => (listener: Listener) => Unsubscribe;
+  readonly getQuery: (query: Query | null) => Rows | null;
+  readonly loadQuery: (query: Query) => Promise<Rows>;
+
+  readonly mutate: Mutate<S>;
+  readonly ownerActions: OwnerActions;
+}
 
 export interface NewMessage {
   readonly table: string;
@@ -232,22 +280,12 @@ export interface UnknownError {
   readonly error: TransferableError;
 }
 
-/**
- * The client was unable to get in sync with the server.
- * This error can happen only when MerkleTree has a bug or
- * server did not update itself.
- */
-export interface SyncError {
-  readonly _tag: "SyncError";
-}
-
 export type EvoluError =
   | TimestampDuplicateNodeError
   | TimestampDriftError
   | TimestampCounterOverflowError
   | TimestampParseError
-  | UnknownError
-  | SyncError;
+  | UnknownError;
 
 export interface ReplaceAllPatch {
   readonly op: "replaceAll";
@@ -263,7 +301,7 @@ export interface ReplaceAtPatch {
 export type Patch = ReplaceAllPatch | ReplaceAtPatch;
 
 export interface QueryPatches {
-  readonly query: QueryString;
+  readonly query: Query;
   readonly patches: ReadonlyArray<Patch>;
 }
 
@@ -273,7 +311,7 @@ export type DbWorkerInputReceiveMessages = {
   readonly _tag: "receiveMessages";
   readonly messages: ReadonlyArray<Message>;
   readonly merkleTree: MerkleTree;
-  readonly previousDiff: Millis | null;
+  readonly syncCount: number;
 };
 
 export type DbWorkerInput =
@@ -290,16 +328,17 @@ export type DbWorkerInput =
       readonly _tag: "sendMessages";
       readonly newMessages: NonEmptyReadonlyArray<NewMessage>;
       readonly onCompleteIds: ReadonlyArray<OnCompleteId>;
-      readonly queries: ReadonlyArray<QueryString>;
+      readonly queries: ReadonlyArray<Query>;
     }
   | {
       readonly _tag: "query";
-      readonly queries: NonEmptyReadonlyArray<QueryString>;
+      readonly queries: NonEmptyReadonlyArray<Query>;
     }
   | DbWorkerInputReceiveMessages
   | {
       readonly _tag: "sync";
-      readonly queries: NonEmptyReadonlyArray<QueryString> | null;
+      // Queries are for `const handleReshow = sync(true);`
+      readonly queries: NonEmptyReadonlyArray<Query> | null;
     }
   | {
       readonly _tag: "reset";
@@ -328,36 +367,37 @@ export type CreateDbWorker = (
   onMessage: (message: DbWorkerOutput) => void
 ) => DbWorker;
 
-export type DbWorkerRowsCache = Ref<ReadonlyMap<QueryString, Rows>>;
+export type DbWorkerRowsCache = Ref<ReadonlyMap<Query, Rows>>;
 export const DbWorkerRowsCache = Tag<DbWorkerRowsCache>();
 
-export type SyncWorkerInput = {
+export type SyncWorkerInputSync = {
+  readonly _tag: "sync";
   readonly syncUrl: string;
   readonly messages: ReadonlyArray<Message>;
   readonly clock: Clock;
   readonly owner: Owner;
-  readonly previousDiff: Millis | null;
+  readonly syncCount: number;
 };
+
+export type SyncWorkerInput =
+  | SyncWorkerInputSync
+  | { readonly _tag: "syncCompleted" };
 
 export type SyncWorkerOutput = UnknownError | DbWorkerInputReceiveMessages;
 
+export interface SyncWorker {
+  readonly post: (message: SyncWorkerInput) => void;
+}
+
+export type CreateSyncWorker = (
+  onMessage: (message: SyncWorkerOutput) => void
+) => SyncWorker;
+
 export type SyncWorkerPost = (message: SyncWorkerInput) => void;
 export const SyncWorkerPost = Tag<SyncWorkerPost>();
-
-export type SyncWorkerOnMessage = (message: SyncWorkerOutput) => void;
-
-export type Listener = () => void;
-
-export type Unsubscribe = () => void;
 
 export interface Store<T> {
   readonly subscribe: (listener: Listener) => Unsubscribe;
   readonly setState: (state: T) => void;
   readonly getState: () => T;
 }
-
-export type RequestSync = (callback: () => Promise<void>) => void;
-export const RequestSync = Tag<RequestSync>();
-
-export type IsSyncing = Effect<never, never, boolean>;
-export const IsSyncing = Tag<IsSyncing>();
