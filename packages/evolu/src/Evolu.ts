@@ -395,7 +395,6 @@ export const createEvolu = <From, To extends Schema>(
 
   const kysely = createKysely<To>();
 
-  // TODO: Rename
   const createQuery = (queryCallback: QueryCallback<To, Row>): Query =>
     pipe(queryCallback(kysely).compile() as QueryObject, queryObjectToQuery);
 
@@ -405,7 +404,7 @@ export const createEvolu = <From, To extends Schema>(
     tableDefinitions: schemaToTablesDefinitions(schema),
   });
 
-  browserInit(subscribedQueries, dbWorker);
+  if (isBrowser) browserInit(subscribedQueries, dbWorker);
 
   return {
     subscribeError: errorStore.subscribe,

@@ -3,6 +3,7 @@ import * as Option from "@effect/data/Option";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as Kysely from "kysely";
 import { useMemo, useRef, useSyncExternalStore } from "react";
+import { isBrowser } from "./Browser.js";
 import {
   AllowAutoCasting,
   CommonColumns,
@@ -289,7 +290,7 @@ export const createHooks = <S extends Schema>(evolu: Evolu<S>): Hooks<S> => {
       return query ? evolu.loadQuery(query) : null;
     }, [query]);
 
-    if (promise && !("rows" in promise)) throw promise;
+    if (isBrowser && promise && !("rows" in promise)) throw promise;
 
     const subscribedRows = useSyncExternalStore(
       useMemo(() => evolu.subscribeQuery(query), [query]),
