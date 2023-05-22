@@ -1,5 +1,11 @@
 # evolu
 
+## 6.0.1
+
+### Patch Changes
+
+- 182bd28: A fix for React Server Components in Next.js App Router
+
 ## 6.0.0
 
 ### Major Changes
