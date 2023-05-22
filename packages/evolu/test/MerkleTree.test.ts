@@ -1,83 +1,241 @@
 import { pipe } from "@effect/data/Function";
-import arrayShuffle from "array-shuffle";
-import { expect, test } from "vitest";
+import fs from "fs";
+import { describe, expect, test } from "vitest";
 import {
   createInitialMerkleTree,
   diffMerkleTrees,
   insertIntoMerkleTree,
 } from "../src/MerkleTree.js";
-import { unsafeTimestampFromString } from "../src/Timestamp.js";
-import { MerkleTree, TimestampString } from "../src/Types.js";
-import { messages1 } from "./fixtures/messages.js";
-import { createNode1Timestamp } from "./testUtils.js";
+import { createNode1Timestamp, createNode2Timestamp } from "./testUtils.js";
+import { Millis, Timestamp } from "../src/Types.js";
+
+const now = 1684318195723;
+const node1TimestampStart = createNode1Timestamp();
+const node2Timestamp2022 = createNode2Timestamp(1656873738591);
 
 const initialMerkleTree = createInitialMerkleTree();
+const someMerkleTree = pipe(
+  initialMerkleTree,
+  insertIntoMerkleTree(node2Timestamp2022)
+);
 
 test("createInitialMerkleTree", () => {
-  expect(initialMerkleTree).toMatchSnapshot();
+  expect(initialMerkleTree).toMatchInlineSnapshot("{}");
 });
 
-test("insertIntoMerkleTree", () => {
-  const ts1 = createNode1Timestamp();
-  const ts2 = createNode1Timestamp(1656873738591);
+describe("insertIntoMerkleTree", () => {
+  test("node1TimestampStart", () => {
+    expect(insertIntoMerkleTree(node1TimestampStart)(initialMerkleTree))
+      .toMatchInlineSnapshot(`
+      {
+        "0": {
+          "hash": -1416139081,
+        },
+        "hash": -1416139081,
+      }
+    `);
+  });
 
-  expect(insertIntoMerkleTree(ts1)(initialMerkleTree)).toMatchSnapshot();
-  expect(insertIntoMerkleTree(ts2)(initialMerkleTree)).toMatchSnapshot();
-  expect(
-    pipe(
-      initialMerkleTree,
-      insertIntoMerkleTree(ts1),
-      insertIntoMerkleTree(ts2)
-    )
-  ).toMatchSnapshot();
+  test("node2Timestamp2022", () => {
+    expect(
+      insertIntoMerkleTree(node2Timestamp2022)(initialMerkleTree)
+    ).toMatchSnapshot();
+  });
 
-  expect(
-    pipe(
-      initialMerkleTree,
-      insertIntoMerkleTree(ts1),
-      insertIntoMerkleTree(ts2)
-    )
-  ).toEqual(
-    pipe(
-      initialMerkleTree,
-      insertIntoMerkleTree(ts2),
-      insertIntoMerkleTree(ts1)
-    )
-  );
+  test("node1TimestampStart then node2Timestamp2022", () => {
+    expect(
+      pipe(
+        initialMerkleTree,
+        insertIntoMerkleTree(node1TimestampStart),
+        insertIntoMerkleTree(node2Timestamp2022)
+      )
+    ).toMatchSnapshot();
+  });
+
+  test("the order does not matter", () => {
+    expect(
+      pipe(
+        initialMerkleTree,
+        insertIntoMerkleTree(node1TimestampStart),
+        insertIntoMerkleTree(node2Timestamp2022)
+      )
+    ).toEqual(
+      pipe(
+        initialMerkleTree,
+        insertIntoMerkleTree(node2Timestamp2022),
+        insertIntoMerkleTree(node1TimestampStart)
+      )
+    );
+
+    const merkle0 = fs.readFileSync("./test/fixtures/merkle0.json", "utf8");
+    const merkle1 = fs.readFileSync("./test/fixtures/merkle1.json", "utf8");
+    const merkle2 = fs.readFileSync("./test/fixtures/merkle2.json", "utf8");
+    const merkle3 = fs.readFileSync("./test/fixtures/merkle3.json", "utf8");
+
+    expect(merkle0).toEqual(merkle1);
+    expect(merkle1).toEqual(merkle2);
+    expect(merkle2).toEqual(merkle3);
+  });
 });
 
-test("diffMerkleTrees", () => {
-  expect(
-    diffMerkleTrees(initialMerkleTree, initialMerkleTree)
-  ).toMatchSnapshot();
+describe("diffMerkleTrees", () => {
+  test("diff for two initial Merkle Trees", () => {
+    expect(diffMerkleTrees(initialMerkleTree, initialMerkleTree))
+      .toMatchInlineSnapshot(`
+      {
+        "_tag": "None",
+      }
+    `);
+  });
 
-  const ts = createNode1Timestamp(1656873738591);
-  const mt = pipe(initialMerkleTree, insertIntoMerkleTree(ts));
+  test("diff for initialMerkleTree and mt1", () => {
+    expect(diffMerkleTrees(initialMerkleTree, someMerkleTree))
+      .toMatchInlineSnapshot(`
+      {
+        "_tag": "Some",
+        "value": 0,
+      }
+    `);
+  });
 
-  expect(diffMerkleTrees(initialMerkleTree, mt)).toMatchSnapshot();
+  test("diff for mt1 and initialMerkleTree", () => {
+    expect(diffMerkleTrees(someMerkleTree, initialMerkleTree))
+      .toMatchInlineSnapshot(`
+      {
+        "_tag": "Some",
+        "value": 0,
+      }
+    `);
+  });
 
-  expect(diffMerkleTrees(initialMerkleTree, mt)).toEqual(
-    diffMerkleTrees(mt, initialMerkleTree)
-  );
-});
+  test("minute window", () => {
+    expect(
+      diffMerkleTrees(
+        someMerkleTree,
+        pipe(
+          initialMerkleTree,
+          insertIntoMerkleTree(createNode2Timestamp(60000 - 1))
+        )
+      )
+    ).toMatchInlineSnapshot(`
+      {
+        "_tag": "Some",
+        "value": 0,
+      }
+    `);
 
-// TODO: Add more tests.
-// Check https://github.com/actualbudget/actual/blob/master/packages/loot-core/src/server/merkle.test.js
+    expect(
+      diffMerkleTrees(
+        someMerkleTree,
+        pipe(
+          initialMerkleTree,
+          insertIntoMerkleTree(createNode2Timestamp(60000))
+        )
+      )
+    ).toMatchInlineSnapshot(`
+      {
+        "_tag": "Some",
+        "value": 60000,
+      }
+    `);
+  });
 
-test("createMerkleWithRandomOrder", () => {
-  const createMerkleWithRandomOrder = (): MerkleTree =>
-    arrayShuffle(messages1).reduce((a, b) => {
-      const t = unsafeTimestampFromString(b[0] as TimestampString);
-      return insertIntoMerkleTree(t)(a);
-    }, initialMerkleTree);
+  test("find the most recent time when trees were the same", () => {
+    const t1 = pipe(
+      initialMerkleTree,
+      insertIntoMerkleTree(createNode1Timestamp(now)),
+      insertIntoMerkleTree(createNode1Timestamp(now + 10000))
+    );
+    const t2 = pipe(
+      initialMerkleTree,
+      insertIntoMerkleTree(createNode1Timestamp(now))
+    );
+    expect(diffMerkleTrees(t1, t2)).toMatchInlineSnapshot(`
+      {
+        "_tag": "Some",
+        "value": 561439380000,
+      }
+    `);
 
-  const merkle1 = createMerkleWithRandomOrder();
-  const merkle2 = createMerkleWithRandomOrder();
-  const merkle3 = createMerkleWithRandomOrder();
-  const merkle4 = createMerkleWithRandomOrder();
+    const hundredYears = 1000 * 60 * 60 * 24 * 365 * 100;
+    const t3 = pipe(
+      initialMerkleTree,
+      insertIntoMerkleTree(createNode1Timestamp(now + hundredYears)),
+      insertIntoMerkleTree(createNode1Timestamp(now + hundredYears + 10000))
+    );
+    const t4 = pipe(
+      initialMerkleTree,
+      insertIntoMerkleTree(createNode1Timestamp(now + hundredYears))
+    );
+    expect(diffMerkleTrees(t3, t4)).toMatchInlineSnapshot(`
+      {
+        "_tag": "Some",
+        "value": 1612639380000,
+      }
+    `);
+  });
 
-  expect(merkle1).toEqual(merkle2);
-  expect(merkle2).toEqual(merkle3);
-  expect(merkle3).toEqual(merkle4);
-  // expect(merkle4).toEqual({"1":{"2":{"2":{"1":{"1":{"1":{"1":{"0":{"2":{"0":{"1":{"2":{"2":{"0":{"2":{"1":{"hash":-169010333},"2":{"hash":649112122},"hash":-748834471},"hash":-748834471},"1":{"1":{"0":{"hash":377944043},"1":{"hash":1147783348},"2":{"hash":1525152929},"hash":134792190},"2":{"0":{"hash":1577275680},"1":{"hash":-1480497077},"hash":-104711829},"hash":-238355819},"hash":580340684},"hash":580340684},"hash":580340684},"2":{"0":{"1":{"0":{"1":{"0":{"hash":-465261924},"1":{"hash":133164022},"2":{"hash":1218159491},"hash":-1422859543},"2":{"0":{"hash":-1823882561},"1":{"hash":-1646835198},"2":{"hash":632792653},"hash":724119280},"hash":-2145792999},"hash":-2145792999},"hash":-2145792999},"hash":-2145792999},"hash":-1567717419},"2":{"0":{"0":{"1":{"1":{"2":{"1":{"hash":1517528758},"hash":1517528758},"hash":1517528758},"hash":1517528758},"hash":1517528758},"1":{"1":{"0":{"2":{"1":{"hash":-754797806},"2":{"hash":-637106273},"hash":151270541},"hash":151270541},"1":{"0":{"1":{"hash":-1067287288},"2":{"hash":179247386},"hash":-892509166},"hash":-892509166},"2":{"1":{"1":{"hash":-1625930593},"hash":-1625930593},"hash":-1625930593},"hash":1558123520},"2":{"1":{"0":{"0":{"hash":1488646040},"hash":1488646040},"1":{"1":{"hash":-658882256},"2":{"hash":-155236997},"hash":772080715},"hash":1992289235},"hash":1992289235},"hash":711000019},"2":{"0":{"2":{"0":{"1":{"hash":1304081394},"hash":1304081394},"1":{"0":{"hash":834544378},"hash":834544378},"hash":2080674056},"hash":2080674056},"1":{"0":{"2":{"2":{"hash":-157334036},"hash":-157334036},"hash":-157334036},"1":{"0":{"0":{"hash":-1060685951},"1":{"hash":870880093},"hash":-214981412},"hash":-214981412},"hash":95478064},"hash":2041868344},"hash":161950045},"hash":161950045},"hash":-1423331704},"hash":-1423331704},"hash":-1423331704},"hash":-1423331704},"hash":-1423331704},"hash":-1423331704},"hash":-1423331704},"hash":-1423331704},"hash":-1423331704},"hash":-1423331704})
+  test("sync", () => {
+    const getRandomTime = (): number => {
+      const startTime = new Date(1971, 0, 0).getTime();
+      const endTime = new Date(2400, 11, 31).getTime();
+      const randomTime = Math.random() * (endTime - startTime) + startTime;
+      return new Date(randomTime).getTime();
+    };
+
+    const randomTimes: Array<number> = [];
+    for (let i = 0; i < 1000; i++) {
+      randomTimes.push(getRandomTime());
+    }
+    randomTimes.sort((a, b) => a - b);
+
+    const timestamps = randomTimes.map((time) =>
+      (Math.random() >= 0.5 ? createNode1Timestamp : createNode2Timestamp)(
+        time as Millis
+      )
+    );
+
+    const db1: Array<Timestamp> = [];
+    let t1 = initialMerkleTree;
+    const addTo1 = (timestamp: Timestamp): void => {
+      if (!db1.some((t) => t.millis === timestamp.millis)) {
+        db1.push(timestamp);
+        t1 = insertIntoMerkleTree(timestamp)(t1);
+      }
+    };
+
+    const db2: Array<Timestamp> = [];
+    let t2 = initialMerkleTree;
+    const addTo2 = (timestamp: Timestamp): void => {
+      if (!db2.some((t) => t.millis === timestamp.millis)) {
+        db2.push(timestamp);
+        t2 = insertIntoMerkleTree(timestamp)(t2);
+      }
+    };
+
+    const getRandomNumber = (min: number, max: number): number => {
+      return Math.random() * (max - min) + min;
+    };
+
+    while (timestamps.length > 0) {
+      timestamps.splice(0, getRandomNumber(0, 10)).forEach((timestamp) => {
+        if (timestamp.node === "0000000000000001") addTo1(timestamp);
+        else addTo2(timestamp);
+      });
+
+      // eslint-disable-next-line no-constant-condition
+      while (1) {
+        const diff = diffMerkleTrees(t1, t2);
+        if (diff._tag === "None") break;
+        [...db1, ...db2]
+          .filter((t) => t.millis >= diff.value)
+          .forEach((timestamp) => {
+            addTo1(timestamp);
+            addTo2(timestamp);
+          });
+      }
+    }
+
+    expect(timestamps.length).toBe(0);
+  });
 });
