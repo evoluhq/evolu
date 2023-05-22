@@ -1,25 +1,65 @@
 "use client";
 
+import { pipe } from "@effect/data/Function";
 import * as Schema from "@effect/schema/Schema";
 import { formatErrors } from "@effect/schema/TreeFormatter";
 import * as Evolu from "evolu";
-import { ChangeEvent, FC, memo, useEffect, useState } from "react";
 import {
-  NonEmptyString50,
-  TodoCategoryId,
-  TodoTable,
-  useEvoluError,
-  useMutation,
-  useOwner,
-  useOwnerActions,
-  useQuery,
-} from "../lib/db";
+  ChangeEvent,
+  FC,
+  Suspense,
+  memo,
+  startTransition,
+  useEffect,
+  useState,
+} from "react";
+
+const TodoId = Evolu.id("Todo");
+type TodoId = Schema.To<typeof TodoId>;
+
+const TodoCategoryId = Evolu.id("TodoCategory");
+type TodoCategoryId = Schema.To<typeof TodoCategoryId>;
+
+const NonEmptyString50 = pipe(
+  Schema.string,
+  Schema.minLength(1),
+  Schema.maxLength(50),
+  Schema.brand("NonEmptyString50")
+);
+type NonEmptyString50 = Schema.To<typeof NonEmptyString50>;
+
+const TodoTable = Schema.struct({
+  id: TodoId,
+  title: Evolu.NonEmptyString1000,
+  isCompleted: Evolu.SqliteBoolean,
+  categoryId: Schema.nullable(TodoCategoryId),
+});
+type TodoTable = Schema.To<typeof TodoTable>;
+
+const TodoCategoryTable = Schema.struct({
+  id: TodoCategoryId,
+  name: NonEmptyString50,
+});
+type TodoCategoryTable = Schema.To<typeof TodoCategoryTable>;
+
+const Database = Schema.struct({
+  todo: TodoTable,
+  todoCategory: TodoCategoryTable,
+});
+
+const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
+  Evolu.create(Database, {
+    reloadUrl: "/examples/nextjs",
+    ...(process.env.NODE_ENV === "development" && {
+      syncUrl: "http://localhost:4000",
+    }),
+  });
 
 const prompt = <From extends string, To>(
   schema: Schema.Schema<From, To>,
   message: string,
   onSuccess: (value: To) => void
-) => {
+): void => {
   const value = window.prompt(message);
   if (value == null) return; // on cancel
   const a = Schema.parseEither(schema)(value);
@@ -36,7 +76,7 @@ const Button: FC<{
 }> = ({ title, onClick }) => {
   return (
     <button
-      className="m-1 rounded-md border border-current px-1 text-sm"
+      className="m-1 rounded-md border border-current px-1 text-sm active:opacity-80"
       onClick={onClick}
     >
       {title}
@@ -44,36 +84,45 @@ const Button: FC<{
   );
 };
 
-const TodoCategorySelect: FC<{
-  selected: TodoCategoryId | null;
-  onSelect: (value: TodoCategoryId | null) => void;
-}> = ({ selected, onSelect }) => {
-  const { rows } = useQuery(
+type TodoCategoriesList = ReadonlyArray<{
+  id: TodoCategoryId;
+  name: NonEmptyString50;
+}>;
+
+const useTodoCategoriesList = (): TodoCategoriesList =>
+  useQuery(
     (db) =>
       db
         .selectFrom("todoCategory")
         .select(["id", "name"])
         .where("isDeleted", "is not", Evolu.cast(true))
         .orderBy("createdAt"),
-    // (row) => row
+    // Filter out rows with nullable names.
     ({ name, ...rest }) => name && { name, ...rest }
-  );
+  ).rows;
 
+const TodoCategorySelect: FC<{
+  selected: TodoCategoryId | null;
+  onSelect: (value: TodoCategoryId | null) => void;
+  todoCategoriesList: TodoCategoriesList;
+}> = ({ selected, onSelect, todoCategoriesList }) => {
   const nothingSelected = "";
   const value =
-    selected && rows.find((row) => row.id === selected)
+    selected && todoCategoriesList.find((row) => row.id === selected)
       ? selected
       : nothingSelected;
 
   return (
     <select
       value={value}
-      onChange={({ target: { value } }: ChangeEvent<HTMLSelectElement>) => {
+      onChange={({
+        target: { value },
+      }: ChangeEvent<HTMLSelectElement>): void => {
         onSelect(value === nothingSelected ? null : (value as TodoCategoryId));
       }}
     >
       <option value={nothingSelected}>-- no category --</option>
-      {rows.map(({ id, name }) => (
+      {todoCategoriesList.map(({ id, name }) => (
         <option key={id} value={id}>
           {name}
         </option>
@@ -84,7 +133,11 @@ const TodoCategorySelect: FC<{
 
 const TodoItem = memo<{
   row: Pick<TodoTable, "id" | "title" | "isCompleted" | "categoryId">;
-}>(function TodoItem({ row: { id, title, isCompleted, categoryId } }) {
+  todoCategoriesList: TodoCategoriesList;
+}>(function TodoItem({
+  row: { id, title, isCompleted, categoryId },
+  todoCategoriesList,
+}) {
   const { update } = useMutation();
 
   return (
@@ -97,13 +150,13 @@ const TodoItem = memo<{
       </span>
       <Button
         title={isCompleted ? "completed" : "complete"}
-        onClick={() => {
+        onClick={(): void => {
           update("todo", { id, isCompleted: !isCompleted });
         }}
       />
       <Button
         title="Rename"
-        onClick={() => {
+        onClick={(): void => {
           prompt(Evolu.NonEmptyString1000, "New Name", (title) => {
             update("todo", { id, title });
           });
@@ -111,13 +164,14 @@ const TodoItem = memo<{
       />
       <Button
         title="Delete"
-        onClick={() => {
+        onClick={(): void => {
           update("todo", { id, isDeleted: true });
         }}
       />
       <TodoCategorySelect
+        todoCategoriesList={todoCategoriesList}
         selected={categoryId}
-        onSelect={(categoryId) => {
+        onSelect={(categoryId): void => {
           update("todo", { id, categoryId });
         }}
       />
@@ -125,7 +179,8 @@ const TodoItem = memo<{
   );
 });
 
-const TodoList: FC = () => {
+const Todos: FC = () => {
+  const { create } = useMutation();
   const { rows } = useQuery(
     (db) =>
       db
@@ -137,35 +192,38 @@ const TodoList: FC = () => {
     ({ title, isCompleted, ...rest }) =>
       title && isCompleted != null && { title, isCompleted, ...rest }
   );
+  const todoCategoriesList = useTodoCategoriesList();
 
   return (
     <>
       <h2 className="mt-6 text-xl font-semibold">Todos</h2>
       <ul className="py-2">
         {rows.map((row) => (
-          <TodoItem key={row.id} row={row} />
+          <TodoItem
+            key={row.id}
+            row={row}
+            todoCategoriesList={todoCategoriesList}
+          />
         ))}
       </ul>
+      <Button
+        title="Add Todo"
+        onClick={(): void => {
+          prompt(
+            Evolu.NonEmptyString1000,
+            "What needs to be done?",
+            (title) => {
+              create("todo", { title, isCompleted: false });
+            }
+          );
+        }}
+      />
     </>
   );
 };
 
-const AddTodo: FC = () => {
-  const { create } = useMutation();
-
-  return (
-    <Button
-      title="Add Todo"
-      onClick={() => {
-        prompt(Evolu.NonEmptyString1000, "What needs to be done?", (title) => {
-          create("todo", { title, isCompleted: false });
-        });
-      }}
-    />
-  );
-};
-
-const TodoCategoryList: FC = () => {
+const TodoCategories: FC = () => {
+  const { create, update } = useMutation();
   const { rows } = useQuery(
     (db) =>
       db
@@ -177,8 +235,6 @@ const TodoCategoryList: FC = () => {
     ({ name, ...rest }) => name && { name, ...rest }
   );
 
-  const { update } = useMutation();
-
   return (
     <>
       <h2 className="mt-6 text-xl font-semibold">Categories</h2>
@@ -188,7 +244,7 @@ const TodoCategoryList: FC = () => {
             <span className="text-sm font-bold">{name}</span>
             <Button
               title="Rename"
-              onClick={() => {
+              onClick={(): void => {
                 prompt(NonEmptyString50, "Category Name", (name) => {
                   update("todoCategory", { id, name });
                 });
@@ -196,29 +252,22 @@ const TodoCategoryList: FC = () => {
             />
             <Button
               title="Delete"
-              onClick={() => {
+              onClick={(): void => {
                 update("todoCategory", { id, isDeleted: true });
               }}
             />
           </li>
         ))}
       </ul>
+      <Button
+        title="Add Category"
+        onClick={(): void => {
+          prompt(NonEmptyString50, "Category Name", (name) => {
+            create("todoCategory", { name });
+          });
+        }}
+      />
     </>
-  );
-};
-
-const AddTodoCategory: FC = () => {
-  const { create } = useMutation();
-
-  return (
-    <Button
-      title="Add Category"
-      onClick={() => {
-        prompt(NonEmptyString50, "Category Name", (name) => {
-          create("todoCategory", { name });
-        });
-      }}
-    />
   );
 };
 
@@ -235,11 +284,11 @@ const OwnerActions: FC = () => {
       </p>
       <Button
         title={`${!isShown ? "Show" : "Hide"} Mnemonic`}
-        onClick={() => setIsShown((value) => !value)}
+        onClick={(): void => setIsShown((value) => !value)}
       />
       <Button
         title="Restore Owner"
-        onClick={() => {
+        onClick={(): void => {
           prompt(Evolu.NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
             ownerActions.restore(mnemonic).then((either) => {
               if (either._tag === "Left")
@@ -250,7 +299,7 @@ const OwnerActions: FC = () => {
       />
       <Button
         title="Reset Owner"
-        onClick={() => {
+        onClick={(): void => {
           if (confirm("Are you sure? It will delete all your local data."))
             ownerActions.reset();
         }}
@@ -282,25 +331,33 @@ const NotificationBar: FC = () => {
   return (
     <div>
       <p>{`Error: ${JSON.stringify(evoluError)}`}</p>
-      <Button title="Close" onClick={() => setShown(false)} />
+      <Button title="Close" onClick={(): void => setShown(false)} />
     </div>
   );
 };
 
-export default function Page() {
+const Page: FC = () => {
+  const [todosShown, setTodosShown] = useState(true);
+
   return (
-    <div>
-      <h1>Evolu Next.js</h1>
+    <Suspense>
       <NotificationBar />
-      <TodoList />
-      <AddTodo />
-      <TodoCategoryList />
-      <AddTodoCategory />
+      <nav className="my-4">
+        <Button
+          title="Simulate suspense-enabled router transition"
+          onClick={(): void => {
+            // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
+            startTransition(() => {
+              setTodosShown(!todosShown);
+            });
+          }}
+        />
+      </nav>
+      {todosShown ? <Todos /> : <TodoCategories />}
       <OwnerActions />
-      <p>
-        <a href="https://twitter.com/evoluhq">twitter</a>{" "}
-        <a href="https://github.com/evoluhq/evolu">github</a>
-      </p>
-    </div>
+    </Suspense>
   );
-}
+  // return <div>hovno</div>;
+};
+
+export default Page;

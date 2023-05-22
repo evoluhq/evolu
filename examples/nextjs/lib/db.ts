@@ -41,4 +41,4 @@ export const {
   useEvoluError,
   useOwner,
   useOwnerActions,
-} = Evolu.createHooks(Database);
+} = Evolu.create(Database);

@@ -10,15 +10,15 @@
   },
   "dependencies": {
     "@effect/data": "^0.12.2",
-    "@effect/schema": "^0.17.4",
-    "evolu": "^5.0.0",
-    "next": "^13.4.0",
+    "@effect/schema": "^0.19.3",
+    "evolu": "^6.0.0",
+    "next": "^13.4.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "@types/node": "18.16.3",
-    "@types/react": "18.2.5",
+    "@types/node": "20.2.3",
+    "@types/react": "18.2.6",
     "typescript": "5.0.4"
   }
 }
