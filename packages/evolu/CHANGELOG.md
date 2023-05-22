@@ -1,5 +1,11 @@
 # evolu
 
+## 6.0.2
+
+### Patch Changes
+
+- f585bd4: Change SQLite dependency from peer to normal
+
 ## 6.0.1
 
 ### Patch Changes

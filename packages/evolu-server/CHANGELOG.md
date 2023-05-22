@@ -1,5 +1,12 @@
 # evolu-server
 
+## 1.0.3
+
+### Patch Changes
+
+- Updated dependencies [f585bd4]
+  - evolu@6.0.2
+
 ## 1.0.2
 
 ### Patch Changes
