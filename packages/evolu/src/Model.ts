@@ -139,3 +139,24 @@ export const NonEmptyString1000 = pipe(
   Schema.brand("NonEmptyString1000")
 );
 export type NonEmptyString1000 = Schema.To<typeof NonEmptyString1000>;
+
+/**
+ * A positive integer.
+ *
+ * ### Example
+ *
+ * ```
+ * import * as Schema from "@effect/schema/Schema";
+ * import * as Evolu from "evolu";
+ *
+ * if (!Schema.is(Evolu.PositiveInt)(value)) return;
+ * function foo(value: Evolu.PositiveInt) {}
+ * ```
+ */
+export const PositiveInt = pipe(
+  Schema.number,
+  Schema.int(),
+  Schema.positive(),
+  Schema.brand("PositiveInt")
+);
+export type PositiveInt = Schema.To<typeof PositiveInt>;
