@@ -1,5 +1,12 @@
 # evolu
 
+## 6.0.3
+
+### Patch Changes
+
+- 3876a99: Fixed link to storage quotas and eviction criteria
+- 7ab1057: Add missing PositiveInt Schema
+
 ## 6.0.2
 
 ### Patch Changes

@@ -1,5 +1,14 @@
 # web
 
+## 0.0.65
+
+### Patch Changes
+
+- 3876a99: Fixed link to storage quotas and eviction criteria
+- Updated dependencies [3876a99]
+- Updated dependencies [7ab1057]
+  - evolu@6.0.3
+
 ## 0.0.64
 
 ### Patch Changes
