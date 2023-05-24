@@ -350,6 +350,10 @@ export const NextJsExample: FC = () => {
             });
           }}
         />
+        <p>
+          Using suspense-enabled router transition, you will not see any loader
+          or jumping content.
+        </p>
       </nav>
       {todosShown ? <Todos /> : <TodoCategories />}
       <OwnerActions />
