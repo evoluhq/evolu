@@ -177,8 +177,16 @@ export const createCreateDbWorker =
           syncWorker.onmessage = ({
             data: message,
           }: MessageEvent<SyncWorkerOutput>): void => {
-            if (message._tag === "UnknownError") handleError(message);
-            else post && post(message);
+            switch (message._tag) {
+              case "UnknownError":
+                handleError(message);
+                break;
+              case "receiveMessages":
+                if (post) post(message);
+                break;
+              default:
+                onMessage({ _tag: "onSyncState", state: message });
+            }
           };
 
           post({

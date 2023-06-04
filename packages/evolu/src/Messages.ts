@@ -249,6 +249,13 @@ export const receiveMessages = ({
 
     if (Option.isNone(diff)) {
       syncWorkerPost({ _tag: "syncCompleted" });
+
+      const now = (yield* $(Time)).now();
+      // Should we store lastSyncedAt to __owner table or elsewhere?
+      dbWorkerOnMessage({
+        _tag: "onSyncState",
+        state: { _tag: "SyncStateIsSynced", time: now },
+      });
       return;
     }
 
