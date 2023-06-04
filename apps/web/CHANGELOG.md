@@ -1,5 +1,12 @@
 # web
 
+## 0.0.66
+
+### Patch Changes
+
+- Updated dependencies [f70280d]
+  - evolu@6.1.0
+
 ## 0.0.65
 
 ### Patch Changes
