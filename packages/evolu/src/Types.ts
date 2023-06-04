@@ -248,6 +248,9 @@ export interface Evolu<S extends Schema = Schema> {
   readonly getQuery: (query: Query | null) => Rows | null;
   readonly loadQuery: (query: Query) => Promise<Rows>;
 
+  readonly subscribeSyncState: (listener: Listener) => Unsubscribe;
+  readonly getSyncState: () => SyncState;
+
   readonly mutate: Mutate<S>;
   readonly ownerActions: OwnerActions;
 }
@@ -280,6 +283,9 @@ export interface UnknownError {
   readonly error: TransferableError;
 }
 
+/**
+ * These errors should not occur, but if they do, they shall be reported.
+ */
 export type EvoluError =
   | TimestampDuplicateNodeError
   | TimestampDriftError
@@ -354,7 +360,8 @@ export type DbWorkerOutput =
       readonly onCompleteIds: ReadonlyArray<OnCompleteId>;
     }
   | { readonly _tag: "onReceive" }
-  | { readonly _tag: "onResetOrRestore" };
+  | { readonly _tag: "onResetOrRestore" }
+  | { readonly _tag: "onSyncState"; readonly state: SyncState };
 
 export type DbWorkerOnMessage = (message: DbWorkerOutput) => void;
 export const DbWorkerOnMessage = Tag<DbWorkerOnMessage>();
@@ -383,7 +390,11 @@ export type SyncWorkerInput =
   | SyncWorkerInputSync
   | { readonly _tag: "syncCompleted" };
 
-export type SyncWorkerOutput = UnknownError | DbWorkerInputReceiveMessages;
+export type SyncWorkerOutput =
+  | SyncStateIsNotSynced
+  | DbWorkerInputReceiveMessages
+  | SyncStateIsSyncing
+  | UnknownError;
 
 export interface SyncWorker {
   readonly post: (message: SyncWorkerInput) => void;
@@ -401,3 +412,39 @@ export interface Store<T> {
   readonly setState: (state: T) => void;
   readonly getState: () => T;
 }
+
+export interface SyncStateIsSyncing {
+  readonly _tag: "SyncStateIsSyncing";
+}
+
+export interface SyncStateIsSynced {
+  readonly _tag: "SyncStateIsSynced";
+  readonly time: Millis;
+}
+
+/**
+ * This error occurs when there is a problem with the network connection,
+ * or the server cannot be reached.
+ */
+interface NetworkError {
+  readonly _tag: "NetworkError";
+}
+
+interface ServerError {
+  readonly _tag: "ServerError";
+  readonly status: number;
+}
+
+interface PaymentRequiredError {
+  readonly _tag: "PaymentRequiredError";
+}
+
+export interface SyncStateIsNotSynced {
+  readonly _tag: "SyncStateIsNotSynced";
+  readonly error: NetworkError | ServerError | PaymentRequiredError;
+}
+
+export type SyncState =
+  | SyncStateIsSyncing
+  | SyncStateIsSynced
+  | SyncStateIsNotSynced;

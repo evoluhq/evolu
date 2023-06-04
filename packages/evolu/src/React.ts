@@ -14,6 +14,7 @@ import {
   QueryCallback,
   Row,
   Schema,
+  SyncState,
 } from "./Types.js";
 
 type OrNullOrFalse<T> = T | null | false;
@@ -186,6 +187,7 @@ export interface Hooks<S extends Schema> {
    * that SQLite does not support natively.
    */
   readonly useQuery: UseQuery<S>;
+
   /**
    * `useMutation` React Hook returns an object with two functions for creating
    * and updating rows in the database.
@@ -204,6 +206,7 @@ export interface Hooks<S extends Schema> {
    * Those columns are: `createdAt`, `createdBy`, `updatedAt`, and `isDeleted`.
    */
   readonly useMutation: UseMutation<S>;
+
   /**
    * `useEvoluError` React Hook returns `EvoluError`.
    *
@@ -215,15 +218,26 @@ export interface Hooks<S extends Schema> {
    * The only expectable error is QuotaExceeded (TODO).
    */
   readonly useEvoluError: () => EvoluError | null;
+
   /**
    * `useOwner` React Hook returns `Owner`.
    */
   readonly useOwner: () => Owner | null;
+
   /**
    * `useOwnerActions` React Hook returns `OwnerActions` that can be used to
    * reset `Owner` on the current device or restore `Owner` on a different one.
    */
   readonly useOwnerActions: () => OwnerActions;
+
+  /**
+   * `useSyncState` React Hook returns `SyncState`.
+   *
+   * Don't unnecessarily frighten users with a message that they do not have
+   * synchronized data. It's okay to be offline. However, you can warn users
+   * if they have been offline too long.
+   */
+  readonly useSyncState: () => SyncState;
 }
 
 /**
@@ -345,11 +359,20 @@ export const createHooks = <S extends Schema>(evolu: Evolu<S>): Hooks<S> => {
 
   const useOwnerActions: Hooks<S>["useOwnerActions"] = () => evolu.ownerActions;
 
+  const syncStateIsSyncing: SyncState = { _tag: "SyncStateIsSyncing" };
+  const useSyncState: Hooks<S>["useSyncState"] = () =>
+    useSyncExternalStore(
+      evolu.subscribeSyncState,
+      evolu.getSyncState,
+      () => syncStateIsSyncing
+    );
+
   return {
     useQuery,
     useMutation,
     useEvoluError,
     useOwner,
     useOwnerActions,
+    useSyncState,
   };
 };

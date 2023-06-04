@@ -1,5 +1,4 @@
-import * as Either from "@effect/data/Either";
-import { absurd, flow, identity, pipe } from "@effect/data/Function";
+import { absurd, flow, pipe } from "@effect/data/Function";
 import * as Cause from "@effect/io/Cause";
 import * as Effect from "@effect/io/Effect";
 import { decrypt, encrypt } from "micro-aes-gcm";
@@ -19,6 +18,7 @@ import {
   DbWorkerInputReceiveMessages,
   MerkleTreeString,
   Message,
+  SyncStateIsNotSynced,
   SyncWorkerInputSync,
   TimestampString,
   Value,
@@ -85,12 +85,6 @@ const decryptMessage =
       )
     );
 
-// TODO: Add ServerError (can't parse a response or HttpStatus 500 etc.)
-interface FetchError {
-  readonly _tag: "FetchError";
-  readonly error: unknown;
-}
-
 const sync = ({
   syncUrl,
   messages,
@@ -99,7 +93,7 @@ const sync = ({
   syncCount,
 }: SyncWorkerInputSync): Effect.Effect<
   never,
-  FetchError,
+  SyncStateIsNotSynced,
   DbWorkerInputReceiveMessages
 > =>
   pipe(
@@ -123,13 +117,33 @@ const sync = ({
               "Content-Type": "application/octet-stream",
               "Content-Length": body.length.toString(),
             },
-          })
-            .then((response) => response.arrayBuffer())
-            .then(Buffer.from)
-            .then((data) => SyncResponse.fromBinary(data)),
-        (error): FetchError => ({ _tag: "FetchError", error })
+          }),
+        (): SyncStateIsNotSynced => ({
+          _tag: "SyncStateIsNotSynced",
+          error: { _tag: "NetworkError" },
+        })
       )
     ),
+    Effect.flatMap((response) => {
+      switch (response.status) {
+        case 402:
+          return Effect.fail<SyncStateIsNotSynced>({
+            _tag: "SyncStateIsNotSynced",
+            error: { _tag: "PaymentRequiredError" },
+          });
+        case 200:
+          return Effect.promise(() =>
+            response
+              .arrayBuffer()
+              .then((buffer) => SyncResponse.fromBinary(Buffer.from(buffer)))
+          );
+        default:
+          return Effect.fail<SyncStateIsNotSynced>({
+            _tag: "SyncStateIsNotSynced",
+            error: { _tag: "ServerError", status: response.status },
+          });
+      }
+    }),
     Effect.flatMap(({ merkleTree, messages }) =>
       pipe(
         messages,
@@ -148,6 +162,10 @@ const sync = ({
     )
   );
 
+class SyncSkipped {
+  readonly _tag = "SyncSkipped";
+}
+
 export const createCreateSyncWorker =
   ({
     isSyncing,
@@ -165,31 +183,24 @@ export const createCreateSyncWorker =
         case "sync":
           pipe(
             Effect.gen(function* ($) {
-              // Skip syncing if it's already syncing.
-              if (message.syncCount === 0 && (yield* $(isSyncing))) return;
-              setIsSyncing(true);
+              // `syncCount === 0` means an attempt to start sync loop.
+              if (message.syncCount === 0) {
+                if (yield* $(isSyncing))
+                  yield* $(Effect.fail(new SyncSkipped()));
+                setIsSyncing(true);
+                onMessage({ _tag: "SyncStateIsSyncing" });
+              }
               return yield* $(sync(message));
             }),
+            Effect.merge,
             Effect.catchAllCause(
-              flow(
-                Cause.failureOrCause,
-                Either.map(Cause.squash),
-                Either.map(unknownError)
-              )
+              flow(Cause.squash, unknownError, Effect.succeed)
             ),
-            Effect.match(identity, identity),
             Effect.runPromise
-          ).then((message) => {
-            // Sync was skipped.
-            if (!message) return;
-            // FetchError stops syncing but doesn't have to be propagated.
-            if (message._tag === "FetchError") {
-              setIsSyncing(false);
-              return;
-            }
-            // UnknownError also stops syncing.
-            if (message._tag === "UnknownError") setIsSyncing(false);
-            onMessage(message);
+          ).then((a) => {
+            if (a._tag === "SyncSkipped") return;
+            if (a._tag !== "receiveMessages") setIsSyncing(false);
+            onMessage(a);
           });
           return;
         default:

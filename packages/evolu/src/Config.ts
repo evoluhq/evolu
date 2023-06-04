@@ -1,7 +1,7 @@
 import { Config } from "./Types.js";
 
 const defaultConfig: Config = {
-  syncUrl: "https://bold-frost-4029.fly.dev",
+  syncUrl: "https://evolu.world",
   maxDrift: 5 * 60 * 1000,
   reloadUrl: "/",
 };

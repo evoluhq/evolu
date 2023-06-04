@@ -43,6 +43,7 @@ import {
   Schema,
   SchemaForQuery,
   Store,
+  SyncState,
 } from "./Types.js";
 
 const createNoOpServerDbWorker: CreateDbWorker = () => ({
@@ -286,6 +287,9 @@ export const createEvolu = <From, To extends Schema>(
   const ownerStore = createStore<Owner | null>(null);
   const rowsCache = createStore<RowsCache>(new Map());
 
+  // IsSyncing is the initial state because that's what Evolu does at the start.
+  const syncState = createStore<SyncState>({ _tag: "SyncStateIsSyncing" });
+
   const onCompletes = new Map<OnCompleteId, OnComplete>();
 
   const subscribedQueries = new Map<Query, number>();
@@ -344,6 +348,9 @@ export const createEvolu = <From, To extends Schema>(
         break;
       case "onResetOrRestore":
         reloadAllTabs(config.reloadUrl);
+        break;
+      case "onSyncState":
+        syncState.setState(message.state);
         break;
       default:
         absurd(message);
@@ -417,6 +424,9 @@ export const createEvolu = <From, To extends Schema>(
     subscribeQuery,
     getQuery,
     loadQuery,
+
+    subscribeSyncState: syncState.subscribe,
+    getSyncState: syncState.getState,
 
     mutate,
     ownerActions,
