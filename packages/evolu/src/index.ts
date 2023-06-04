@@ -1,5 +1,12 @@
 export * from "./Model.js";
-export type { EvoluError, Mnemonic, Owner, OwnerId } from "./Types.js";
+export type {
+  EvoluError,
+  Mnemonic,
+  Owner,
+  OwnerId,
+  SyncState,
+} from "./Types.js";
+
 import { pipe } from "@effect/data/Function";
 import * as S from "@effect/schema/Schema";
 import { createEvolu } from "./Evolu.js";

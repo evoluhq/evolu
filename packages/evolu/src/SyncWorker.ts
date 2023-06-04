@@ -183,11 +183,13 @@ export const createCreateSyncWorker =
         case "sync":
           pipe(
             Effect.gen(function* ($) {
-              // Skip syncing if it's already syncing.
-              // `syncCount === 0` means an attempt to start another sync loop.
-              if (message.syncCount === 0 && (yield* $(isSyncing)))
-                yield* $(Effect.fail(new SyncSkipped()));
-              setIsSyncing(true);
+              // `syncCount === 0` means an attempt to start sync loop.
+              if (message.syncCount === 0) {
+                if (yield* $(isSyncing))
+                  yield* $(Effect.fail(new SyncSkipped()));
+                setIsSyncing(true);
+                onMessage({ _tag: "SyncStateIsSyncing" });
+              }
               return yield* $(sync(message));
             }),
             Effect.merge,

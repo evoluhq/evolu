@@ -393,6 +393,7 @@ export type SyncWorkerInput =
 export type SyncWorkerOutput =
   | SyncStateIsNotSynced
   | DbWorkerInputReceiveMessages
+  | SyncStateIsSyncing
   | UnknownError;
 
 export interface SyncWorker {
