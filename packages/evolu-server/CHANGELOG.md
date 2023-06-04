@@ -1,5 +1,12 @@
 # evolu-server
 
+## 1.0.5
+
+### Patch Changes
+
+- Updated dependencies [f70280d]
+  - evolu@6.1.0
+
 ## 1.0.4
 
 ### Patch Changes
