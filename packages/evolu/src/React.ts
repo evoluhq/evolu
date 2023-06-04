@@ -231,8 +231,7 @@ export interface Hooks<S extends Schema> {
   readonly useOwnerActions: () => OwnerActions;
 
   /**
-   * `useSyncState` React Hook returns `SyncState` that can be used to show
-   * the state of syncing.
+   * `useSyncState` React Hook returns `SyncState`.
    *
    * Don't unnecessarily frighten users with a message that they do not have
    * synchronized data. It's okay to be offline. However, you can warn users
