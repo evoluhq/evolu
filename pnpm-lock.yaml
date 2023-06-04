@@ -164,9 +164,6 @@ importers:
       '@sqlite.org/sqlite-wasm':
         specifier: 3.42.0-build1
         version: 3.42.0-build1
-      array-shuffle:
-        specifier: ^3.0.0
-        version: 3.0.0
       kysely:
         specifier: ~0.25.0
         version: 0.25.0
@@ -207,6 +204,9 @@ importers:
       '@types/web-locks-api':
         specifier: ^0.0.2
         version: 0.0.2
+      array-shuffle:
+        specifier: ^3.0.0
+        version: 3.0.0
       eslint:
         specifier: ^8.42.0
         version: 8.42.0
@@ -1745,7 +1745,7 @@ packages:
   /array-shuffle@3.0.0:
     resolution: {integrity: sha512-rogEGxHOQPhslOhpg12LJkB+bbAl484/s2AJq0BxtzQDQfKl76fS2u9zWgg3p3b9ENcuvE7K8A7l5ddiPjCRnw==}
     engines: {node: '>=12.20'}
-    dev: false
+    dev: true
 
   /array-union@2.1.0:
     resolution: {integrity: sha512-HGyxoOTYUyCM6stUe6EJgnd4EoewAI7zMdfqO+kGjnlZmBDz/cR5pf8r/cR4Wq60sL/p0IkcjUEEPwS3GFrIyw==}
