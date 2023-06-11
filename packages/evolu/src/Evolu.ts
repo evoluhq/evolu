@@ -28,7 +28,6 @@ import {
   DbWorkerOutput,
   Evolu,
   EvoluError,
-  KyselySelectFrom,
   Mutate,
   NewMessage,
   OnCompleteId,
@@ -86,9 +85,7 @@ const createDbWorker: CreateDbWorker = isBrowser
     : createLocalStorageDbWorker
   : createNoOpServerDbWorker;
 
-const createKysely = <S extends Schema>(): KyselySelectFrom<
-  SchemaForQuery<S>
-> =>
+const createKysely = <S extends Schema>(): Kysely.Kysely<SchemaForQuery<S>> =>
   new Kysely.Kysely({
     dialect: {
       createAdapter(): Kysely.SqliteAdapter {
