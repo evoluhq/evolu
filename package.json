@@ -21,6 +21,6 @@
     "eslint": "^8.42.0",
     "eslint-config-evolu": "workspace:*",
     "prettier": "^2.8.8",
-    "turbo": "^1.10.1"
+    "turbo": "^1.10.3"
   }
 }
