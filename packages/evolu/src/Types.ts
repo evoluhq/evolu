@@ -196,7 +196,7 @@ export type SchemaForQuery<S extends Schema> = {
   >;
 };
 
-export type KyselySelectFrom<DB> = Pick<Kysely.Kysely<DB>, "selectFrom">;
+export type KyselySelectFrom<DB> = Pick<Kysely.Kysely<DB>, "selectFrom" | "fn">;
 
 export type QueryCallback<S extends Schema, QueryRow> = (
   db: KyselySelectFrom<SchemaForQuery<S>>
