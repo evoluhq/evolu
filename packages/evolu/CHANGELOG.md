@@ -1,5 +1,11 @@
 # evolu
 
+## 6.1.1
+
+### Patch Changes
+
+- f378902: Expose Kysely fn, close #163
+
 ## 6.1.0
 
 ### Minor Changes
