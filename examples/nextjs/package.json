@@ -9,16 +9,16 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@effect/data": "^0.12.2",
-    "@effect/schema": "^0.19.3",
-    "evolu": "^6.0.1",
-    "next": "^13.4.3",
+    "@effect/data": "^0.12.10",
+    "@effect/schema": "^0.21.1",
+    "evolu": "^6.1.2",
+    "next": "^13.4.7",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "@types/node": "20.2.3",
-    "@types/react": "18.2.6",
-    "typescript": "5.0.4"
+    "@types/node": "20.3.2",
+    "@types/react": "18.2.14",
+    "typescript": "5.1.6"
   }
 }
