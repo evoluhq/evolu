@@ -48,12 +48,7 @@ const Database = Schema.struct({
 });
 
 const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
-  Evolu.create(Database, {
-    reloadUrl: "/examples/nextjs",
-    ...(process.env.NODE_ENV === "development" && {
-      syncUrl: "http://localhost:4000",
-    }),
-  });
+  Evolu.create(Database);
 
 const prompt = <From extends string, To>(
   schema: Schema.Schema<From, To>,

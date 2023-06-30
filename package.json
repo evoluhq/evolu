@@ -17,10 +17,10 @@
     "release": "pnpm run build && changeset publish"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.26.1",
-    "eslint": "^8.42.0",
+    "@changesets/cli": "^2.26.2",
+    "eslint": "^8.43.0",
     "eslint-config-evolu": "workspace:*",
     "prettier": "^2.8.8",
-    "turbo": "^1.10.3"
+    "turbo": "^1.10.6"
   }
 }

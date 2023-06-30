@@ -82,7 +82,9 @@ export const createCreateDbWorker =
         () => Effect.succeed(a)
       );
 
-    const syncWorker = new Worker(new URL("./Sync.worker.js", import.meta.url));
+    const syncWorker = new Worker(new URL("Sync.worker.js", import.meta.url), {
+      type: "module",
+    });
     const syncWorkerPost: SyncWorkerPost = (message) =>
       syncWorker.postMessage(message);
 

@@ -26,9 +26,7 @@ const nextConfig = {
       },
     ];
   },
-  // Those two lines are for Turbo monorepo only.
   transpilePackages: ["evolu"],
-  experimental: { esmExternals: "loose" },
 };
 
 module.exports = withNextra(nextConfig);
