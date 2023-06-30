@@ -1,5 +1,11 @@
 # evolu
 
+## 6.1.3
+
+### Patch Changes
+
+- 5eaeec0: Add support for Electron
+
 ## 6.1.2
 
 ### Patch Changes
