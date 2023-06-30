@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@effect/data": "^0.12.10",
-    "@effect/io": "^0.27.2",
+    "@effect/io": "^0.28.0",
     "better-sqlite3": "^8.4.0",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
