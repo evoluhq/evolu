@@ -50,7 +50,9 @@ const createNoOpServerDbWorker: CreateDbWorker = () => ({
 });
 
 const createOpfsDbWorker: CreateDbWorker = (onMessage) => {
-  const dbWorker = new Worker(new URL("./DbWorker.worker.js", import.meta.url));
+  const dbWorker = new Worker(new URL("DbWorker.worker.js", import.meta.url), {
+    type: "module",
+  });
 
   dbWorker.onmessage = (e: MessageEvent<DbWorkerOutput>): void => {
     onMessage(e.data);

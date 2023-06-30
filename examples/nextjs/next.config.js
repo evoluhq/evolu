@@ -17,10 +17,6 @@ const nextConfig = {
       },
     ];
   },
-
-  // That's probably the Next.js App Router bug because Pages Router
-  // did not require that.
-  experimental: { esmExternals: "loose" },
 };
 
 module.exports = nextConfig;
