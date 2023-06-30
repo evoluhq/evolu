@@ -80,7 +80,7 @@ const createLocalStorageDbWorker: CreateDbWorker = (onMessage) => {
   };
 };
 
-// TODO: React Native, Electron.
+// TODO: React Native
 const createDbWorker: CreateDbWorker = isBrowser
   ? browserFeatures.opfs
     ? createOpfsDbWorker

@@ -4,7 +4,7 @@ React Hooks library for [local-first apps](https://www.inkandswitch.com/local-fi
 
 Evolu is designed for privacy, ease of use, and no vendor lock-in.
 
-- The official SQLite Wasm in all browsers (React Native and Electron soon)
+- The official SQLite Wasm in all browsers and Electron (React Native soon)
 - E2E encrypted sync and backup with CRDT (merging changes without conflicts)
 - Free Evolu server for testing (paid production-ready soon, or you can run your own)
 - Typed database schema with branded types (`NonEmptyString1000`, `PositiveInt`, etc.)
