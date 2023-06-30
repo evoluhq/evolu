@@ -1,5 +1,13 @@
 # evolu
 
+## 6.1.2
+
+### Patch Changes
+
+- fef4007: Fix Web Workers paths
+
+  Check https://github.com/evoluhq/evolu/issues/169.
+
 ## 6.1.1
 
 ### Patch Changes

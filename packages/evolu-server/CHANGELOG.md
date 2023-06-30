@@ -1,5 +1,12 @@
 # evolu-server
 
+## 1.0.7
+
+### Patch Changes
+
+- Updated dependencies [fef4007]
+  - evolu@6.1.2
+
 ## 1.0.6
 
 ### Patch Changes

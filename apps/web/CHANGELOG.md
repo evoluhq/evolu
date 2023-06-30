@@ -1,5 +1,12 @@
 # web
 
+## 0.0.68
+
+### Patch Changes
+
+- Updated dependencies [fef4007]
+  - evolu@6.1.2
+
 ## 0.0.67
 
 ### Patch Changes
