@@ -1,5 +1,13 @@
 # evolu
 
+## 6.1.4
+
+### Patch Changes
+
+- ad8fa27: Remove murmurhash dependency, update deps
+
+  NPM murmurhash has a hard-coded dependency on TextEncoder that we don't use and is missing in React Native.
+
 ## 6.1.3
 
 ### Patch Changes
