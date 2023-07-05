@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@effect/data": "^0.12.10",
-    "@effect/io": "^0.28.0",
+    "@effect/io": "^0.29.5",
     "better-sqlite3": "^8.4.0",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
@@ -47,7 +47,7 @@
     "eslint": "^8.44.0",
     "eslint-config-evolu": "workspace:*",
     "typescript": "^5.1.6",
-    "vitest": "^0.32.2"
+    "vitest": "^0.32.4"
   },
   "peerDependencies": {
     "react": "^18.2.0",

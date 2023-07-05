@@ -3,7 +3,6 @@ import { pipe } from "@effect/data/Function";
 import * as Number from "@effect/data/Number";
 import * as Effect from "@effect/io/Effect";
 import * as Schema from "@effect/schema/Schema";
-import murmurhash from "murmurhash";
 import { customAlphabet } from "nanoid";
 import {
   Config,
@@ -18,6 +17,7 @@ import {
   TimestampHash,
   TimestampString,
 } from "./Types.js";
+import { murmurhash } from "./Murmurhash.js";
 
 // https://muratbuffalo.blogspot.com/2014/07/hybrid-logical-clocks.html
 // https://jaredforsyth.com/posts/hybrid-logical-clocks/

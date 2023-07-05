@@ -64,13 +64,12 @@
     "@sqlite.org/sqlite-wasm": "3.42.0-build2",
     "kysely": "~0.25.0",
     "micro-aes-gcm": "~0.4.0",
-    "murmurhash": "^2.0.1",
     "nanoid": "^4.0.2"
   },
   "devDependencies": {
     "@effect/data": "^0.12.10",
-    "@effect/io": "^0.28.0",
-    "@effect/schema": "^0.22.0",
+    "@effect/io": "^0.29.5",
+    "@effect/schema": "^0.23.0",
     "@evolu/tsconfig": "workspace:*",
     "@protobuf-ts/plugin": "^2.9.0",
     "@protobuf-ts/protoc": "^2.9.0",
@@ -85,12 +84,12 @@
     "tslib": "^2.6.0",
     "typescript": "^5.1.6",
     "user-agent-data-types": "^0.3.1",
-    "vitest": "^0.32.2"
+    "vitest": "^0.32.4"
   },
   "peerDependencies": {
     "@effect/data": "^0.12.10",
-    "@effect/io": "^0.28.0",
-    "@effect/schema": "^0.22.0",
+    "@effect/io": "^0.29.5",
+    "@effect/schema": "^0.23.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
