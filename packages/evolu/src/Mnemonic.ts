@@ -4,9 +4,10 @@ import { InvalidMnemonicError, Mnemonic } from "./Types.js";
 
 // Dynamic because it's big and rarely used.
 // Two files, because wordlists should never change.
-const importBip39WithEnglish = Effect.allPar(
+const importBip39WithEnglish = Effect.all(
   Effect.promise(() => import("@scure/bip39")),
-  Effect.promise(() => import("@scure/bip39/wordlists/english"))
+  Effect.promise(() => import("@scure/bip39/wordlists/english")),
+  { concurrency: "unbounded" }
 );
 
 export const parseMnemonic = (

@@ -18,11 +18,12 @@ const getOwner: Effect.Effect<Db, never, Owner> = pipe(
 
 const createOwner = (mnemonic?: Mnemonic): Effect.Effect<never, never, Owner> =>
   pipe(
-    Effect.allPar(
+    Effect.all(
       mnemonic ? Effect.succeed(mnemonic) : generateMnemonic(),
       Effect.promise(() => import("@scure/bip39")),
       Effect.promise(() => import("@noble/hashes/hmac")),
-      Effect.promise(() => import("@noble/hashes/sha512"))
+      Effect.promise(() => import("@noble/hashes/sha512")),
+      { concurrency: "unbounded" }
     ),
     Effect.flatMap(
       ([mnemonic, { mnemonicToSeedSync }, { hmac }, { sha512 }]) => {
@@ -67,11 +68,12 @@ const createOwner = (mnemonic?: Mnemonic): Effect.Effect<never, never, Owner> =>
 
 const init = (mnemonic?: Mnemonic): Effect.Effect<Db, never, Owner> =>
   pipe(
-    Effect.allPar(
+    Effect.all(
       createOwner(mnemonic),
       Db,
       pipe(createInitialTimestamp, Effect.map(timestampToString)),
-      Effect.succeed(pipe(createInitialMerkleTree(), merkleTreeToString))
+      Effect.succeed(pipe(createInitialMerkleTree(), merkleTreeToString)),
+      { concurrency: "unbounded" }
     ),
     Effect.tap(([owner, db, timestamp, merkleTree]) =>
       db.exec({

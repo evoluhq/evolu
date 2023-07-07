@@ -1,5 +1,5 @@
 import * as Context from "@effect/data/Context";
-import { flow, pipe } from "@effect/data/Function";
+import { pipe } from "@effect/data/Function";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as Effect from "@effect/io/Effect";
 import * as Exit from "@effect/io/Exit";
@@ -48,10 +48,8 @@ interface Db {
   readonly selectMessages: Statement;
 }
 
-const createDb: (fileName: string) => Db = flow(
-  (fileName) => path.join(process.cwd(), "/", fileName),
-  sqlite3,
-  (sqlite) => {
+const createDb = (fileName: string): Db =>
+  pipe(path.join(process.cwd(), "/", fileName), sqlite3, (sqlite) => {
     sqlite.exec(`
       CREATE TABLE IF NOT EXISTS "message" (
         "timestamp" TEXT,
@@ -92,8 +90,7 @@ const createDb: (fileName: string) => Db = flow(
         ORDER BY "timestamp"
       `),
     };
-  }
-);
+  });
 
 const DbTag = Context.Tag<Db>();
 
@@ -102,13 +99,13 @@ const getMerkleTree = (
 ): Effect.Effect<Db, SqliteError, MerkleTree> =>
   pipe(
     Effect.flatMap(DbTag, ({ selectMerkleTree }) =>
-      Effect.tryCatch(
-        () =>
+      Effect.try({
+        try: () =>
           selectMerkleTree.get(userId) as
             | { readonly merkleTree: MerkleTreeString }
             | undefined,
-        (error) => new SqliteError(error)
-      )
+        catch: (error) => new SqliteError(error),
+      })
     ),
     Effect.map((row) =>
       row
@@ -127,8 +124,8 @@ const addMessages = ({
   userId: string;
 }): Effect.Effect<Db, SqliteError, MerkleTree> =>
   Effect.flatMap(DbTag, (db) =>
-    Effect.tryCatch(
-      () => {
+    Effect.try({
+      try: () => {
         db.begin.run();
 
         messages.forEach((message) => {
@@ -153,11 +150,11 @@ const addMessages = ({
 
         return merkleTree;
       },
-      (error) => {
+      catch: (error) => {
         db.rollback.run();
         return new SqliteError(error);
-      }
-    )
+      },
+    })
   );
 
 const getMessages = ({
@@ -170,15 +167,15 @@ const getMessages = ({
   nodeId: string;
 }): Effect.Effect<Db, SqliteError, ReadonlyArray<Protobuf.EncryptedMessage>> =>
   Effect.flatMap(DbTag, (db) =>
-    Effect.tryCatch(
-      () =>
+    Effect.try({
+      try: () =>
         db.selectMessages.all(
           userId,
           pipe(millis, createSyncTimestamp, timestampToString),
           nodeId
         ) as ReadonlyArray<Protobuf.EncryptedMessage>,
-      (error) => new SqliteError(error)
-    )
+      catch: (error) => new SqliteError(error),
+    })
   );
 
 const sync = (
@@ -192,10 +189,10 @@ const sync = (
   }
 > =>
   Effect.flatMap(
-    Effect.tryCatch(
-      () => Protobuf.SyncRequest.fromBinary(req.body),
-      (error) => new BadRequestError(error)
-    ),
+    Effect.try({
+      try: () => Protobuf.SyncRequest.fromBinary(req.body),
+      catch: (error) => new BadRequestError(error),
+    }),
     (syncRequest) =>
       Effect.gen(function* ($) {
         let merkleTree = yield* $(getMerkleTree(syncRequest.userId));
@@ -239,13 +236,13 @@ export const createExpressApp = (): express.Express => {
   app.post("/", (req, res) => {
     Effect.runCallback(
       Effect.provideService(sync(req), DbTag, db),
-      Exit.match(
-        (error) => {
+      Exit.match({
+        onFailure: (error) => {
           // eslint-disable-next-line no-console
           console.log(error);
           res.status(500).json("oh noes!");
         },
-        ({ merkleTree, messages }) => {
+        onSuccess: ({ merkleTree, messages }) => {
           res.setHeader("Content-Type", "application/octet-stream");
           res.send(
             Buffer.from(
@@ -255,8 +252,8 @@ export const createExpressApp = (): express.Express => {
               })
             )
           );
-        }
-      )
+        },
+      })
     );
   });
 

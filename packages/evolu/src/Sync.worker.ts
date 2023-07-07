@@ -1,4 +1,4 @@
-import { constFalse, flow, pipe } from "@effect/data/Function";
+import { constFalse, pipe } from "@effect/data/Function";
 import * as Option from "@effect/data/Option";
 import * as Predicate from "@effect/data/Predicate";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
@@ -8,11 +8,12 @@ import { SyncWorkerInput } from "./Types.js";
 
 const syncLockName = "evolu:sync";
 
-const hasLock: Predicate.Predicate<LockInfo[] | undefined> = flow(
-  Option.fromNullable,
-  Option.map(ReadonlyArray.some((a) => a.name === syncLockName)),
-  Option.getOrElse(constFalse)
-);
+const hasLock: Predicate.Predicate<LockInfo[] | undefined> = (lockInfos) =>
+  pipe(
+    Option.fromNullable(lockInfos),
+    Option.map(ReadonlyArray.some((a) => a.name === syncLockName)),
+    Option.getOrElse(constFalse)
+  );
 
 const isSyncing: Effect.Effect<never, never, boolean> = pipe(
   Effect.promise(() => navigator.locks.query()),

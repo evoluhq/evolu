@@ -1,4 +1,4 @@
-import { flow, pipe } from "@effect/data/Function";
+import { identity, pipe } from "@effect/data/Function";
 import * as Option from "@effect/data/Option";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as ReadonlyRecord from "@effect/data/ReadonlyRecord";
@@ -61,12 +61,8 @@ export const createNewMessages = (
             : value,
         ] as const
     ),
-    isInsert
-      ? flow(
-          ReadonlyArray.append(["createdAt", now]),
-          ReadonlyArray.append(["createdBy", ownerId])
-        )
-      : ReadonlyArray.append(["updatedAt", now]),
+    ReadonlyArray.append([isInsert ? "createdAt" : "updatedAt", now] as const),
+    isInsert ? ReadonlyArray.append(["createdBy", ownerId]) : identity,
     ReadonlyArray.mapNonEmpty(
       ([column, value]): NewMessage => ({ table, row, column, value })
     )
@@ -83,7 +79,7 @@ const applyMessages = ({
     const db = yield* $(Db);
 
     for (const message of messages) {
-      const timestamp = yield* $(
+      const timestamp: TimestampString | null = yield* $(
         db.exec({
           sql: `
             select "timestamp" FROM "__message"
@@ -94,13 +90,9 @@ const applyMessages = ({
           `,
           parameters: [message.table, message.row, message.column],
         }),
-        Effect.map(
-          flow(
-            ReadonlyArray.head,
-            Option.map((row) => row.timestamp as TimestampString),
-            Option.getOrNull
-          )
-        )
+        Effect.flatMap(ReadonlyArray.head),
+        Effect.map((row) => row.timestamp as TimestampString),
+        Effect.catchTag("NoSuchElementException", () => Effect.succeed(null))
       );
 
       if (timestamp == null || timestamp < message.timestamp)

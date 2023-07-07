@@ -1,4 +1,4 @@
-import { absurd, flow, pipe } from "@effect/data/Function";
+import { absurd, pipe } from "@effect/data/Function";
 import * as Cause from "@effect/io/Cause";
 import * as Effect from "@effect/io/Effect";
 import { decrypt, encrypt } from "micro-aes-gcm";
@@ -108,8 +108,8 @@ const sync = ({
       })
     ),
     Effect.flatMap((body) =>
-      Effect.tryCatchPromise(
-        () =>
+      Effect.tryPromise({
+        try: () =>
           fetch(syncUrl, {
             method: "POST",
             body,
@@ -118,11 +118,11 @@ const sync = ({
               "Content-Length": body.length.toString(),
             },
           }),
-        (): SyncStateIsNotSynced => ({
+        catch: (): SyncStateIsNotSynced => ({
           _tag: "SyncStateIsNotSynced",
           error: { _tag: "NetworkError" },
-        })
-      )
+        }),
+      })
     ),
     Effect.flatMap((response) => {
       switch (response.status) {
@@ -193,8 +193,8 @@ export const createCreateSyncWorker =
               return yield* $(sync(message));
             }),
             Effect.merge,
-            Effect.catchAllCause(
-              flow(Cause.squash, unknownError, Effect.succeed)
+            Effect.catchAllCause((cause) =>
+              pipe(Cause.squash(cause), unknownError, Effect.succeed)
             ),
             Effect.runPromise
           ).then((a) => {

@@ -1,6 +1,6 @@
 import * as Context from "@effect/data/Context";
 import * as Either from "@effect/data/Either";
-import { apply, constVoid, flow, pipe } from "@effect/data/Function";
+import { apply, constVoid, pipe } from "@effect/data/Function";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as Cause from "@effect/io/Cause";
 import * as Effect from "@effect/io/Effect";
@@ -68,19 +68,18 @@ export const createCreateDbWorker =
     const handleError = (error: EvoluError): void =>
       onMessage({ _tag: "onError", error });
 
-    const recoverFromAllCause: <A>(
-      a: A
-    ) => (self: Cause.Cause<EvoluError>) => Effect.Effect<never, never, A> = (
-      a
-    ) =>
-      flow(
-        Cause.failureOrCause,
-        Either.match(
-          handleError,
-          flow(Cause.squash, unknownError, handleError)
-        ),
-        () => Effect.succeed(a)
-      );
+    const recoverFromAllCause =
+      <A>(a: A) =>
+      (cause: Cause.Cause<EvoluError>): Effect.Effect<never, never, A> =>
+        pipe(
+          Cause.failureOrCause(cause),
+          Either.match({
+            onLeft: handleError,
+            onRight: (cause) =>
+              pipe(Cause.squash(cause), unknownError, handleError),
+          }),
+          () => Effect.succeed(a)
+        );
 
     const syncWorker = new Worker(new URL("Sync.worker.js", import.meta.url), {
       type: "module",
@@ -120,53 +119,54 @@ export const createCreateDbWorker =
           if (message._tag !== "init")
             throw new self.Error("init must be called first");
 
+          const inputToEffect = (
+            input: DbWorkerInput
+          ): Effect.Effect<
+            | Db
+            | Owner
+            | DbWorkerOnMessage
+            | DbWorkerRowsCache
+            | SyncWorkerPost
+            | Time
+            | Config,
+            | TimestampDuplicateNodeError
+            | TimestampDriftError
+            | TimestampCounterOverflowError,
+            void
+          > => {
+            if (skipAllBecauseBrowserIsGoingToBeReloaded)
+              return Effect.succeed(undefined);
+            switch (input._tag) {
+              case "init":
+                throw new self.Error("init must be called once");
+              case "updateSchema":
+                return updateSchema(input.tableDefinitions);
+              case "sendMessages":
+                return sendMessages(input);
+              case "query":
+                return query(input);
+              case "receiveMessages":
+                return receiveMessages(input);
+              case "sync":
+                return sync(input.queries);
+              case "reset":
+                return resetOwner(input.mnemonic);
+            }
+          };
+
           const contextWithConfig = pipe(
             context,
             Context.add(Config, message.config)
           );
 
-          const write: (input: DbWorkerInput) => Promise<void> = flow(
-            (
-              input
-            ): Effect.Effect<
-              | Db
-              | Owner
-              | DbWorkerOnMessage
-              | DbWorkerRowsCache
-              | SyncWorkerPost
-              | Time
-              | Config,
-              | TimestampDuplicateNodeError
-              | TimestampDriftError
-              | TimestampCounterOverflowError,
-              void
-            > => {
-              if (skipAllBecauseBrowserIsGoingToBeReloaded)
-                return Effect.succeed(undefined);
-              switch (input._tag) {
-                case "init":
-                  throw new self.Error("init must be called once");
-                case "updateSchema":
-                  return updateSchema(input.tableDefinitions);
-                case "sendMessages":
-                  return sendMessages(input);
-                case "query":
-                  return query(input);
-                case "receiveMessages":
-                  return receiveMessages(input);
-                case "sync":
-                  return sync(input.queries);
-                case "reset":
-                  return resetOwner(input.mnemonic);
-              }
-            },
-            flow(
+          const write = (input: DbWorkerInput): Promise<void> =>
+            pipe(
+              inputToEffect(input),
               transaction,
               Effect.catchAllCause(recoverFromAllCause(undefined)),
               Effect.provideContext(contextWithConfig),
               Effect.runPromise
-            )
-          );
+            );
 
           const stream = new WritableStream<DbWorkerInput>({ write });
 

@@ -1,7 +1,8 @@
-import { absurd, constVoid, flow, pipe } from "@effect/data/Function";
+import { absurd, constVoid, pipe } from "@effect/data/Function";
 import * as Number from "@effect/data/Number";
 import * as Option from "@effect/data/Option";
 import * as Predicate from "@effect/data/Predicate";
+import * as Either from "@effect/data/Either";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as Effect from "@effect/io/Effect";
 import * as S from "@effect/schema/Schema";
@@ -389,14 +390,20 @@ export const createEvolu = <From, To extends Schema>(
 
   const ownerActions: OwnerActions = {
     reset: () => dbWorker.post({ _tag: "reset" }),
-    restore: flow(
-      parseMnemonic,
-      Effect.mapBoth(
-        (): RestoreOwnerError => ({ _tag: "RestoreOwnerError" }),
-        (mnemonic) => dbWorker.post({ _tag: "reset", mnemonic })
+    restore: (mnemonic) =>
+      pipe(
+        parseMnemonic(mnemonic),
+        Effect.map((mnemonic) => {
+          dbWorker.post({ _tag: "reset", mnemonic });
+          return Either.right(undefined);
+        }),
+        Effect.catchTag("InvalidMnemonic", () =>
+          Effect.succeed(
+            Either.left<RestoreOwnerError>({ _tag: "RestoreOwnerError" })
+          )
+        ),
+        Effect.runPromise
       ),
-      Effect.runPromiseEither
-    ),
   };
 
   const kysely = createKysely<To>();

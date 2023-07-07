@@ -1,10 +1,10 @@
-import { flow, pipe } from "@effect/data/Function";
-import * as AST from "@effect/schema/AST";
+import { pipe } from "@effect/data/Function";
 import * as Predicate from "@effect/data/Predicate";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as ReadonlyRecord from "@effect/data/ReadonlyRecord";
 import * as String from "@effect/data/String";
 import * as Effect from "@effect/io/Effect";
+import * as AST from "@effect/schema/AST";
 import * as S from "@effect/schema/Schema";
 import {
   CommonColumns,
@@ -58,13 +58,9 @@ const getTables: Effect.Effect<Db, never, ReadonlyArray<string>> = pipe(
   Effect.flatMap(Db, (db) =>
     db.exec(`select "name" from sqlite_schema where type='table'`)
   ),
-  Effect.map(
-    flow(
-      ReadonlyArray.map((row) => row.name + ""),
-      ReadonlyArray.filter(Predicate.not(String.startsWith("__"))),
-      ReadonlyArray.uniq(String.Equivalence)
-    )
-  )
+  Effect.map(ReadonlyArray.map((row) => row.name + "")),
+  Effect.map(ReadonlyArray.filter(Predicate.not(String.startsWith("__")))),
+  Effect.map(ReadonlyArray.dedupeWith(String.Equivalence))
 );
 
 const updateTable = ({
@@ -77,7 +73,9 @@ const updateTable = ({
       db.exec(`pragma table_info (${name})`),
       Effect.map(ReadonlyArray.map((row) => row.name as string)),
       Effect.map((existingColumns) =>
-        ReadonlyArray.difference(String.Equivalence)(existingColumns)(columns)
+        ReadonlyArray.differenceWith(String.Equivalence)(existingColumns)(
+          columns
+        )
       ),
       Effect.map(
         ReadonlyArray.map(
@@ -112,29 +110,34 @@ export const updateSchema = (
   tablesDefinitions: TablesDefinitions
 ): Effect.Effect<Db, never, void> =>
   Effect.flatMap(getTables, (tables) =>
-    Effect.forEachDiscard(tablesDefinitions, (tableDefinition) =>
-      tables.includes(tableDefinition.name)
-        ? updateTable(tableDefinition)
-        : createTable(tableDefinition)
+    Effect.forEach(
+      tablesDefinitions,
+      (tableDefinition) =>
+        tables.includes(tableDefinition.name)
+          ? updateTable(tableDefinition)
+          : createTable(tableDefinition),
+      { discard: true }
     )
   );
 
-export const ensureSchema: (
+export const ensureSchema = (
   messages: ReadonlyArray.NonEmptyReadonlyArray<Message>
-) => Effect.Effect<Db, never, void> = flow(
-  ReadonlyArray.reduce(
-    Object.create(null) as Record<string, Record<string, null>>,
-    (record, { table, column }) => ({
-      ...record,
-      [table]: { ...record[table], [column]: null },
-    })
-  ),
-  (record) =>
-    Object.entries(record).map(
-      ([name, columns]): TableDefinition => ({
-        name,
-        columns: Object.keys(columns),
+): Effect.Effect<Db, never, void> =>
+  pipe(
+    messages,
+    ReadonlyArray.reduce(
+      Object.create(null) as Record<string, Record<string, null>>,
+      (record, { table, column }) => ({
+        ...record,
+        [table]: { ...record[table], [column]: null },
       })
     ),
-  updateSchema
-);
+    (record) =>
+      Object.entries(record).map(
+        ([name, columns]): TableDefinition => ({
+          name,
+          columns: Object.keys(columns),
+        })
+      ),
+    updateSchema
+  );

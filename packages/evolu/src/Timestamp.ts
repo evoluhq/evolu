@@ -4,6 +4,7 @@ import * as Number from "@effect/data/Number";
 import * as Effect from "@effect/io/Effect";
 import * as Schema from "@effect/schema/Schema";
 import { customAlphabet } from "nanoid";
+import { murmurhash } from "./Murmurhash.js";
 import {
   Config,
   Counter,
@@ -17,7 +18,6 @@ import {
   TimestampHash,
   TimestampString,
 } from "./Types.js";
-import { murmurhash } from "./Murmurhash.js";
 
 // https://muratbuffalo.blogspot.com/2014/07/hybrid-logical-clocks.html
 // https://jaredforsyth.com/posts/hybrid-logical-clocks/
@@ -62,7 +62,7 @@ export const createInitialTimestamp = pipe(
   )
 );
 
-const syncNodeId = Schema.parse(NodeId)("0000000000000000");
+const syncNodeId = Schema.parseSync(NodeId)("0000000000000000");
 
 export const createSyncTimestamp = (
   millis: Millis = 0 as Millis
@@ -101,7 +101,7 @@ const incrementCounter = (
     Either.mapLeft(() => ({ _tag: "TimestampCounterOverflowError" }))
   );
 
-const counterMin = Schema.parse(Counter)(0);
+const counterMin = Schema.parseSync(Counter)(0);
 
 export const sendTimestamp = (
   timestamp: Timestamp
