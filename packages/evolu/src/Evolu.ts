@@ -1,12 +1,20 @@
+import * as Either from "@effect/data/Either";
 import { absurd, constVoid, pipe } from "@effect/data/Function";
 import * as Number from "@effect/data/Number";
 import * as Option from "@effect/data/Option";
 import * as Predicate from "@effect/data/Predicate";
-import * as Either from "@effect/data/Either";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as Effect from "@effect/io/Effect";
 import * as S from "@effect/schema/Schema";
-import * as Kysely from "kysely";
+import {
+  DatabaseIntrospector,
+  Driver,
+  DummyDriver,
+  Kysely,
+  QueryCompiler,
+  SqliteAdapter,
+  SqliteQueryCompiler,
+} from "kysely";
 import { flushSync } from "react-dom";
 import {
   browserFeatures,
@@ -88,20 +96,20 @@ const createDbWorker: CreateDbWorker = isBrowser
     : createLocalStorageDbWorker
   : createNoOpServerDbWorker;
 
-const createKysely = <S extends Schema>(): Kysely.Kysely<SchemaForQuery<S>> =>
-  new Kysely.Kysely({
+const createKysely = <S extends Schema>(): Kysely<SchemaForQuery<S>> =>
+  new Kysely({
     dialect: {
-      createAdapter(): Kysely.SqliteAdapter {
-        return new Kysely.SqliteAdapter();
+      createAdapter(): SqliteAdapter {
+        return new SqliteAdapter();
       },
-      createDriver(): Kysely.Driver {
-        return new Kysely.DummyDriver();
+      createDriver(): Driver {
+        return new DummyDriver();
       },
-      createIntrospector(db: Kysely.Kysely<S>): Kysely.DatabaseIntrospector {
-        return new Kysely.SqliteIntrospector(db);
+      createIntrospector(): DatabaseIntrospector {
+        throw "Not implemeneted";
       },
-      createQueryCompiler(): Kysely.QueryCompiler {
-        return new Kysely.SqliteQueryCompiler();
+      createQueryCompiler(): QueryCompiler {
+        return new SqliteQueryCompiler();
       },
     },
   });

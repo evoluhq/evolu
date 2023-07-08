@@ -7,7 +7,7 @@ import { ReadonlyRecord } from "@effect/data/ReadonlyRecord";
 import { Effect } from "@effect/io/Effect";
 import { Ref } from "@effect/io/Ref";
 import * as S from "@effect/schema/Schema";
-import * as Kysely from "kysely";
+import { Kysely, SelectQueryBuilder, Simplify } from "kysely";
 import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
 
 export type Listener = () => void;
@@ -196,12 +196,12 @@ export type SchemaForQuery<S extends Schema> = {
   >;
 };
 
-type KyselyWithoutMutation<DB> = Pick<Kysely.Kysely<DB>, "selectFrom" | "fn">;
+type KyselyWithoutMutation<DB> = Pick<Kysely<DB>, "selectFrom" | "fn">;
 
 export type QueryCallback<S extends Schema, QueryRow> = (
   db: KyselyWithoutMutation<SchemaForQuery<S>>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-) => Kysely.SelectQueryBuilder<any, any, QueryRow>;
+) => SelectQueryBuilder<any, any, QueryRow>;
 
 export type SchemaForMutate<S extends Schema> = {
   readonly [Table in keyof S]: NullableExceptOfId<
@@ -228,7 +228,7 @@ export type Mutate<S extends Schema> = <
   T extends keyof U
 >(
   table: T,
-  values: Kysely.Simplify<Partial<AllowAutoCasting<U[T]>>>,
+  values: Simplify<Partial<AllowAutoCasting<U[T]>>>,
   onComplete?: () => void
 ) => {
   readonly id: U[T]["id"];

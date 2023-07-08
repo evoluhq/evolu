@@ -165,8 +165,8 @@ importers:
         specifier: 3.42.0-build2
         version: 3.42.0-build2
       kysely:
-        specifier: ~0.25.0
-        version: 0.25.0
+        specifier: ~0.26.0
+        version: 0.26.0
       micro-aes-gcm:
         specifier: ~0.4.0
         version: 0.4.0
@@ -4420,8 +4420,8 @@ packages:
     resolution: {integrity: sha512-o+NO+8WrRiQEE4/7nwRJhN1HWpVmJm511pBHUxPLtp0BUISzlBplORYSmTclCnJvQq2tKu/sgl3xVpkc7ZWuQQ==}
     engines: {node: '>=6'}
 
-  /kysely@0.25.0:
-    resolution: {integrity: sha512-srn0efIMu5IoEBk0tBmtGnoUss4uwvxtbFQWG/U2MosfqIace1l43IFP1PmEpHRDp+Z79xIcKEqmHH3dAvQdQA==}
+  /kysely@0.26.0:
+    resolution: {integrity: sha512-uj4wsWeWyGYoJlT4vNjO5wMjZxYp55I+igJJsJGe12R2WDZ4AWHNyRRMQz8Mdnv35DnHXck0S7/I2FIPEIZwjw==}
     engines: {node: '>=14.0.0'}
     dev: false
 

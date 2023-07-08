@@ -62,7 +62,7 @@
     "@protobuf-ts/runtime": "^2.9.0",
     "@scure/bip39": "^1.2.1",
     "@sqlite.org/sqlite-wasm": "3.42.0-build2",
-    "kysely": "~0.25.0",
+    "kysely": "~0.26.0",
     "micro-aes-gcm": "~0.4.0",
     "nanoid": "^4.0.2"
   },
