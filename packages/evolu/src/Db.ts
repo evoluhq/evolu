@@ -6,12 +6,12 @@ export const transaction = <R, E, A>(
   effect: Effect.Effect<R, E, A>
 ): Effect.Effect<Db | R, E, A> =>
   Effect.flatMap(Db, (db) =>
-    Effect.acquireUseRelease({
-      acquire: db.exec("begin"),
-      use: () => effect,
-      release: (_, exit) =>
-        Exit.isFailure(exit) ? db.exec("rollback") : db.exec("commit"),
-    })
+    Effect.acquireUseRelease(
+      db.exec("begin"),
+      () => effect,
+      (_, exit) =>
+        Exit.isFailure(exit) ? db.exec("rollback") : db.exec("commit")
+    )
   );
 
 export const deleteAllTables: Effect.Effect<Db, never, void> = Effect.gen(
