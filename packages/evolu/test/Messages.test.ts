@@ -19,8 +19,8 @@ test("createNewCrdtMessages", () => {
       values,
       "ownerId" as Owner["id"],
       "now" as SqliteDate,
-      true
-    )
+      true,
+    ),
   ).toMatchSnapshot();
 
   expect(
@@ -30,7 +30,7 @@ test("createNewCrdtMessages", () => {
       values,
       "ownerId" as Owner["id"],
       "now" as SqliteDate,
-      false
-    )
+      false,
+    ),
   ).toMatchSnapshot();
 });

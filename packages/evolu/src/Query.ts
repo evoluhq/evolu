@@ -33,9 +33,9 @@ export const query = ({
         pipe(
           QueryToQueryObject(query),
           db.exec,
-          Effect.map((rows) => [query, rows] as const)
-        )
-      )
+          Effect.map((rows) => [query, rows] as const),
+        ),
+      ),
     );
 
     const rowsCache = yield* $(DbWorkerRowsCache);
@@ -46,7 +46,7 @@ export const query = ({
       ([query, rows]): QueryPatches => ({
         query,
         patches: createPatches(previous.get(query), rows),
-      })
+      }),
     );
 
     const dbWorkerOnMessage = yield* $(DbWorkerOnMessage);

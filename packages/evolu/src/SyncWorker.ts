@@ -49,7 +49,7 @@ const encryptMessage =
         value: valueToProtobuf(value),
       }),
       (binary) => Effect.promise(() => encrypt(encryptionKey, binary)),
-      Effect.map((content): EncryptedMessage => ({ timestamp, content }))
+      Effect.map((content): EncryptedMessage => ({ timestamp, content })),
     );
 
 const protobufToValue = (value: MessageContent["value"]): Value => {
@@ -71,8 +71,8 @@ const decryptMessage =
     pipe(
       Effect.promise(() =>
         decrypt(encryptionKey, message.content).then((data) =>
-          MessageContent.fromBinary(data)
-        )
+          MessageContent.fromBinary(data),
+        ),
       ),
       Effect.map(
         (content): Message => ({
@@ -81,8 +81,8 @@ const decryptMessage =
           row: content.row as Id,
           column: content.column,
           value: protobufToValue(content.value),
-        })
-      )
+        }),
+      ),
     );
 
 const sync = ({
@@ -105,7 +105,7 @@ const sync = ({
         userId: owner.id,
         nodeId: clock.timestamp.node,
         merkleTree: merkleTreeToString(clock.merkleTree),
-      })
+      }),
     ),
     Effect.flatMap((body) =>
       Effect.tryPromise({
@@ -122,7 +122,7 @@ const sync = ({
           _tag: "SyncStateIsNotSynced",
           error: { _tag: "NetworkError" },
         }),
-      })
+      }),
     ),
     Effect.flatMap((response) => {
       switch (response.status) {
@@ -135,7 +135,7 @@ const sync = ({
           return Effect.promise(() =>
             response
               .arrayBuffer()
-              .then((buffer) => SyncResponse.fromBinary(Buffer.from(buffer)))
+              .then((buffer) => SyncResponse.fromBinary(Buffer.from(buffer))),
           );
         default:
           return Effect.fail<SyncStateIsNotSynced>({
@@ -153,13 +153,13 @@ const sync = ({
             _tag: "receiveMessages",
             messages,
             merkleTree: unsafeMerkleTreeFromString(
-              merkleTree as MerkleTreeString
+              merkleTree as MerkleTreeString,
             ),
             syncCount,
-          })
-        )
-      )
-    )
+          }),
+        ),
+      ),
+    ),
   );
 
 class SyncSkipped {
@@ -194,9 +194,9 @@ export const createCreateSyncWorker =
             }),
             Effect.merge,
             Effect.catchAllCause((cause) =>
-              pipe(Cause.squash(cause), unknownError, Effect.succeed)
+              pipe(Cause.squash(cause), unknownError, Effect.succeed),
             ),
-            Effect.runPromise
+            Effect.runPromise,
           ).then((a) => {
             if (a._tag === "SyncSkipped") return;
             if (a._tag !== "receiveMessages") setIsSyncing(false);

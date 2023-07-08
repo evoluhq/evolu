@@ -28,7 +28,7 @@ const keyToTimestamp = (key: string): Millis =>
 const insertKey = (
   tree: MerkleTree,
   key: string,
-  hash: TimestampHash
+  hash: TimestampHash,
 ): MerkleTree => {
   if (key.length === 0) return tree;
   const childKey = key[0] as "0" | "1" | "2";
@@ -55,7 +55,7 @@ export const insertIntoMerkleTree =
 
 export const diffMerkleTrees = (
   tree1: MerkleTree,
-  tree2: MerkleTree
+  tree2: MerkleTree,
 ): Option.Option<Millis> => {
   if (tree1.hash === tree2.hash) return Option.none();
   for1: for (let node1 = tree1, node2 = tree2, key = ""; ; ) {

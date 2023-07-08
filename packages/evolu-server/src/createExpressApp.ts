@@ -69,7 +69,7 @@ const createDb = (fileName: string): Db =>
       commit: sqlite.prepare(`COMMIT`),
 
       selectMerkleTree: sqlite.prepare(
-        `SELECT "merkleTree" FROM "merkleTree" WHERE "userId" = ?`
+        `SELECT "merkleTree" FROM "merkleTree" WHERE "userId" = ?`,
       ),
 
       insertOrIgnoreIntoMessage: sqlite.prepare(`
@@ -95,7 +95,7 @@ const createDb = (fileName: string): Db =>
 const DbTag = Context.Tag<Db>();
 
 const getMerkleTree = (
-  userId: string
+  userId: string,
 ): Effect.Effect<Db, SqliteError, MerkleTree> =>
   pipe(
     Effect.flatMap(DbTag, ({ selectMerkleTree }) =>
@@ -105,13 +105,13 @@ const getMerkleTree = (
             | { readonly merkleTree: MerkleTreeString }
             | undefined,
         catch: (error) => new SqliteError(error),
-      })
+      }),
     ),
     Effect.map((row) =>
       row
         ? unsafeMerkleTreeFromString(row.merkleTree)
-        : createInitialMerkleTree()
-    )
+        : createInitialMerkleTree(),
+    ),
   );
 
 const addMessages = ({
@@ -132,18 +132,18 @@ const addMessages = ({
           const result = db.insertOrIgnoreIntoMessage.run(
             message.timestamp,
             userId,
-            message.content
+            message.content,
           );
 
           if (result.changes === 1)
             merkleTree = insertIntoMerkleTree(
-              unsafeTimestampFromString(message.timestamp as TimestampString)
+              unsafeTimestampFromString(message.timestamp as TimestampString),
             )(merkleTree);
         });
 
         db.insertOrReplaceIntoMerkleTree.run(
           userId,
-          merkleTreeToString(merkleTree)
+          merkleTreeToString(merkleTree),
         );
 
         db.commit.run();
@@ -154,7 +154,7 @@ const addMessages = ({
         db.rollback.run();
         return new SqliteError(error);
       },
-    })
+    }),
   );
 
 const getMessages = ({
@@ -172,14 +172,14 @@ const getMessages = ({
         db.selectMessages.all(
           userId,
           pipe(millis, createSyncTimestamp, timestampToString),
-          nodeId
+          nodeId,
         ) as ReadonlyArray<Protobuf.EncryptedMessage>,
       catch: (error) => new SqliteError(error),
-    })
+    }),
   );
 
 const sync = (
-  req: Request
+  req: Request,
 ): Effect.Effect<
   Db,
   BadRequestError | SqliteError,
@@ -203,12 +203,14 @@ const sync = (
               merkleTree,
               messages: syncRequest.messages,
               userId: syncRequest.userId,
-            })
+            }),
           );
 
         const diff = diffMerkleTrees(
           merkleTree,
-          unsafeMerkleTreeFromString(syncRequest.merkleTree as MerkleTreeString)
+          unsafeMerkleTreeFromString(
+            syncRequest.merkleTree as MerkleTreeString,
+          ),
         );
 
         const messages =
@@ -219,11 +221,11 @@ const sync = (
                   millis: diff.value,
                   userId: syncRequest.userId,
                   nodeId: syncRequest.nodeId,
-                })
+                }),
               );
 
         return { merkleTree, messages };
-      })
+      }),
   );
 
 export const createExpressApp = (): express.Express => {
@@ -249,11 +251,11 @@ export const createExpressApp = (): express.Express => {
               Protobuf.SyncResponse.toBinary({
                 merkleTree: merkleTreeToString(merkleTree),
                 messages: messages as Array<Protobuf.EncryptedMessage>,
-              })
-            )
+              }),
+            ),
           );
         },
-      })
+      }),
     );
   });
 

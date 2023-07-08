@@ -11,7 +11,7 @@ import { nanoid } from "nanoid";
 export const Id = pipe(
   Schema.string,
   Schema.pattern(/^[\w-]{21}$/),
-  Schema.brand("Id")
+  Schema.brand("Id"),
 );
 export type Id = Schema.To<typeof Id>;
 
@@ -32,7 +32,7 @@ export type Id = Schema.To<typeof Id>;
  * ```
  */
 export const id = <T extends string>(
-  table: T
+  table: T,
 ): Schema.BrandSchema<string, string & Brand.Brand<"Id"> & Brand.Brand<T>> =>
   pipe(Id, Schema.brand(table));
 
@@ -70,7 +70,7 @@ export const SqliteDate = pipe(
     message: () => "a date as a string value in ISO format",
     identifier: "SqliteDate",
   }),
-  Schema.brand("SqliteDate")
+  Schema.brand("SqliteDate"),
 );
 export type SqliteDate = Schema.To<typeof SqliteDate>;
 
@@ -91,7 +91,7 @@ export function cast(value: SqliteBoolean): boolean;
 export function cast(value: Date): SqliteDate;
 export function cast(value: SqliteDate): Date;
 export function cast(
-  value: boolean | SqliteBoolean | Date | SqliteDate
+  value: boolean | SqliteBoolean | Date | SqliteDate,
 ): boolean | SqliteBoolean | Date | SqliteDate {
   if (typeof value === "boolean") return value === true ? 1 : 0;
   if (typeof value === "number") return value === 1;
@@ -115,7 +115,7 @@ export function cast(
 export const String1000 = pipe(
   Schema.string,
   Schema.maxLength(1000),
-  Schema.brand("String1000")
+  Schema.brand("String1000"),
 );
 export type String1000 = Schema.To<typeof String1000>;
 
@@ -136,7 +136,7 @@ export const NonEmptyString1000 = pipe(
   Schema.string,
   Schema.minLength(1),
   Schema.maxLength(1000),
-  Schema.brand("NonEmptyString1000")
+  Schema.brand("NonEmptyString1000"),
 );
 export type NonEmptyString1000 = Schema.To<typeof NonEmptyString1000>;
 
@@ -157,6 +157,6 @@ export const PositiveInt = pipe(
   Schema.number,
   Schema.int(),
   Schema.positive(),
-  Schema.brand("PositiveInt")
+  Schema.brand("PositiveInt"),
 );
 export type PositiveInt = Schema.To<typeof PositiveInt>;

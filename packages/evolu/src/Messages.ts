@@ -41,14 +41,14 @@ export const createNewMessages = (
   values: ReadonlyRecord.ReadonlyRecord<Value | boolean | Date | undefined>,
   ownerId: Owner["id"],
   now: SqliteDate,
-  isInsert: boolean
+  isInsert: boolean,
 ): ReadonlyArray.NonEmptyReadonlyArray<NewMessage> =>
   pipe(
     ReadonlyRecord.toEntries(values),
     ReadonlyArray.filterMap(([key, value]) =>
       value !== undefined && (isInsert ? value != null : true)
         ? Option.some([key, value] as const)
-        : Option.none()
+        : Option.none(),
     ),
     ReadonlyArray.map(
       ([key, value]) =>
@@ -59,13 +59,13 @@ export const createNewMessages = (
             : value instanceof Date
             ? cast(value)
             : value,
-        ] as const
+        ] as const,
     ),
     ReadonlyArray.append([isInsert ? "createdAt" : "updatedAt", now] as const),
     isInsert ? ReadonlyArray.append(["createdBy", ownerId]) : identity,
     ReadonlyArray.mapNonEmpty(
-      ([column, value]): NewMessage => ({ table, row, column, value })
-    )
+      ([column, value]): NewMessage => ({ table, row, column, value }),
+    ),
   );
 
 const applyMessages = ({
@@ -92,7 +92,7 @@ const applyMessages = ({
         }),
         Effect.flatMap(ReadonlyArray.head),
         Effect.map((row) => row.timestamp as TimestampString),
-        Effect.catchTag("NoSuchElementException", () => Effect.succeed(null))
+        Effect.catchTag("NoSuchElementException", () => Effect.succeed(null)),
       );
 
       if (timestamp == null || timestamp < message.timestamp)
@@ -104,7 +104,7 @@ const applyMessages = ({
               on conflict do update set "${message.column}" = ?
             `,
             parameters: [message.row, message.value, message.value],
-          })
+          }),
         );
 
       if (timestamp == null || timestamp !== message.timestamp) {
@@ -122,14 +122,14 @@ const applyMessages = ({
               message.column,
               message.value,
             ],
-          })
+          }),
         );
 
         const changes = yield* $(db.changes());
 
         if (changes > 0)
           merkleTree = insertIntoMerkleTree(
-            unsafeTimestampFromString(message.timestamp)
+            unsafeTimestampFromString(message.timestamp),
           )(merkleTree);
       }
     }
@@ -171,8 +171,8 @@ export const sendMessages = ({
             column: newMessage.column,
             value: newMessage.value,
           };
-        })
-      )
+        }),
+      ),
     );
 
     merkleTree = yield* $(applyMessages({ merkleTree, messages }));
@@ -180,7 +180,7 @@ export const sendMessages = ({
     yield* $(writeClock({ timestamp, merkleTree }));
 
     const [syncWorkerPost, config, owner] = yield* $(
-      Effect.all(SyncWorkerPost, Config, Owner)
+      Effect.all(SyncWorkerPost, Config, Owner),
     );
 
     syncWorkerPost({
@@ -218,8 +218,8 @@ export const receiveMessages = ({
       timestamp = yield* $(
         receiveTimestamp(
           timestamp,
-          unsafeTimestampFromString(message.timestamp)
-        )
+          unsafeTimestampFromString(message.timestamp),
+        ),
       );
     }
 
@@ -234,7 +234,7 @@ export const receiveMessages = ({
     dbWorkerOnMessage({ _tag: "onReceive" });
 
     const [syncWorkerPost, config, owner] = yield* $(
-      Effect.all(SyncWorkerPost, Config, Owner)
+      Effect.all(SyncWorkerPost, Config, Owner),
     );
 
     const diff = diffMerkleTrees(serverMerkleTree, merkleTree);
@@ -257,7 +257,7 @@ export const receiveMessages = ({
         sql: `select * from "__message" where "timestamp" >= ? order by "timestamp"`,
         parameters: [pipe(diff.value, createSyncTimestamp, timestampToString)],
       }),
-      Effect.map((a) => a as unknown as ReadonlyArray<Message>)
+      Effect.map((a) => a as unknown as ReadonlyArray<Message>),
     );
 
     syncWorkerPost({

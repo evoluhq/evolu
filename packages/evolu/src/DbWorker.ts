@@ -33,7 +33,7 @@ import {
 import { unknownError } from "./UnknownError.js";
 
 const sync = (
-  queries: ReadonlyArray.NonEmptyReadonlyArray<Query> | null
+  queries: ReadonlyArray.NonEmptyReadonlyArray<Query> | null,
 ): Effect.Effect<
   Db | Owner | SyncWorkerPost | DbWorkerRowsCache | DbWorkerOnMessage | Config,
   never,
@@ -42,7 +42,7 @@ const sync = (
   Effect.gen(function* ($) {
     if (queries != null) yield* $(query({ queries }));
     const [clock, syncWorkerPost, config, owner] = yield* $(
-      Effect.all(readClock, SyncWorkerPost, Config, Owner)
+      Effect.all(readClock, SyncWorkerPost, Config, Owner),
     );
     syncWorkerPost({
       _tag: "sync",
@@ -78,7 +78,7 @@ export const createCreateDbWorker =
             onRight: (cause) =>
               pipe(Cause.squash(cause), unknownError, handleError),
           }),
-          () => Effect.succeed(a)
+          () => Effect.succeed(a),
         );
 
     const syncWorker = new Worker(new URL("Sync.worker.js", import.meta.url), {
@@ -93,7 +93,7 @@ export const createCreateDbWorker =
         const owner = yield* $(
           lazyInitOwner(),
           transaction,
-          Effect.provideService(Db, db)
+          Effect.provideService(Db, db),
         );
 
         onMessage({ _tag: "onOwner", owner });
@@ -105,7 +105,7 @@ export const createCreateDbWorker =
           Context.add(DbWorkerRowsCache, Ref.unsafeMake(new Map())),
           Context.add(Owner, owner),
           Context.add(SyncWorkerPost, syncWorkerPost),
-          Context.add(Time, { now: () => Date.now() as Millis })
+          Context.add(Time, { now: () => Date.now() as Millis }),
         );
 
         let post: DbWorker["post"] | null = null;
@@ -120,7 +120,7 @@ export const createCreateDbWorker =
             throw new self.Error("init must be called first");
 
           const inputToEffect = (
-            input: DbWorkerInput
+            input: DbWorkerInput,
           ): Effect.Effect<
             | Db
             | Owner
@@ -156,7 +156,7 @@ export const createCreateDbWorker =
 
           const contextWithConfig = pipe(
             context,
-            Context.add(Config, message.config)
+            Context.add(Config, message.config),
           );
 
           const write = (input: DbWorkerInput): Promise<void> =>
@@ -165,7 +165,7 @@ export const createCreateDbWorker =
               transaction,
               Effect.catchAllCause(recoverFromAllCause(undefined)),
               Effect.provideContext(contextWithConfig),
-              Effect.runPromise
+              Effect.runPromise,
             );
 
           const stream = new WritableStream<DbWorkerInput>({ write });
@@ -203,6 +203,6 @@ export const createCreateDbWorker =
         post: (message): void => {
           post.then(apply(message));
         },
-      })
+      }),
     );
   };

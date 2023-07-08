@@ -122,7 +122,7 @@ const createOnQuery =
   (
     rowsCache: Store<RowsCache>,
     onCompletes: Map<OnCompleteId, OnComplete>,
-    resolvePromise: (query: Query, rows: Rows) => void
+    resolvePromise: (query: Query, rows: Rows) => void,
   ) =>
   ({
     queriesPatches,
@@ -136,9 +136,9 @@ const createOnQuery =
           [
             query,
             applyPatches(patches)(state.get(query) || ReadonlyArray.empty()),
-          ] as const
+          ] as const,
       ),
-      (a): RowsCache => new Map([...state, ...a])
+      (a): RowsCache => new Map([...state, ...a]),
     );
 
     // Resolve all Promises belonging to queries.
@@ -162,7 +162,7 @@ const createOnQuery =
         const onComplete = onCompletes.get(id);
         onCompletes.delete(id);
         return Option.fromNullable(onComplete);
-      })
+      }),
     ).forEach((onComplete) => {
       onComplete();
     });
@@ -170,14 +170,14 @@ const createOnQuery =
 
 export const createSubscribeQuery = (
   rowsCache: Store<RowsCache>,
-  subscribedQueries: Map<Query, number>
+  subscribedQueries: Map<Query, number>,
 ): Evolu["subscribeQuery"] => {
   return (query: Query | null) => (listen) => {
     if (query == null) return constVoid;
 
     subscribedQueries.set(
       query,
-      Number.increment(subscribedQueries.get(query) ?? 0)
+      Number.increment(subscribedQueries.get(query) ?? 0),
     );
 
     const unsubscribe = rowsCache.subscribe(listen);
@@ -194,7 +194,7 @@ export const createSubscribeQuery = (
 
 const createLoadQuery = (
   queryIfAny: (queries: ReadonlyArray<Query>) => void,
-  getPromise: (query: Query) => { promise: Promise<Rows>; isNew: boolean }
+  getPromise: (query: Query) => { promise: Promise<Rows>; isNew: boolean },
 ): Evolu["loadQuery"] => {
   const queue = new Set<Query>();
 
@@ -249,7 +249,7 @@ const createMutate = <S extends Schema>({
           values,
           owner.id,
           now,
-          isInsert
+          isInsert,
         ),
         onCompleteId,
       ]);
@@ -264,7 +264,7 @@ const createMutate = <S extends Schema>({
             ([messages, onCompleteIds]) => [
               ReadonlyArray.flattenNonEmpty(messages),
               ReadonlyArray.filter(onCompleteIds, Predicate.isNotNull),
-            ]
+            ],
           );
 
           queue.length = 0;
@@ -287,7 +287,7 @@ const createMutate = <S extends Schema>({
 
 export const createEvolu = <From, To extends Schema>(
   schema: S.Schema<From, To>,
-  optionalConfig?: Partial<Config>
+  optionalConfig?: Partial<Config>,
 ): Evolu<To> => {
   const config = createConfig(optionalConfig);
 
@@ -328,7 +328,7 @@ export const createEvolu = <From, To extends Schema>(
   };
 
   const getPromise = (
-    query: Query
+    query: Query,
   ): { readonly promise: Promise<Rows>; readonly isNew: boolean } => {
     const item = promises.get(query);
     if (item) return { promise: item.promise, isNew: false };
@@ -407,10 +407,10 @@ export const createEvolu = <From, To extends Schema>(
         }),
         Effect.catchTag("InvalidMnemonic", () =>
           Effect.succeed(
-            Either.left<RestoreOwnerError>({ _tag: "RestoreOwnerError" })
-          )
+            Either.left<RestoreOwnerError>({ _tag: "RestoreOwnerError" }),
+          ),
         ),
-        Effect.runPromise
+        Effect.runPromise,
       ),
   };
 

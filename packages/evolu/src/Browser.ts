@@ -10,7 +10,7 @@ const isChromeWithOpfs = (): boolean =>
   navigator.userAgentData.brands.find(
     ({ brand, version }) =>
       // Chrome or Chromium
-      brand.includes("Chrom") && Number(version) >= 109
+      brand.includes("Chrom") && Number(version) >= 109,
   ) != null;
 
 const isFirefoxWithOpfs = (): boolean => {
@@ -34,7 +34,7 @@ export const reloadAllTabs = (reloadUrl: string): void => {
 
 export const browserInit = (
   subscribedQueries: ReadonlyMap<Query, number>,
-  dbWorker: DbWorker
+  dbWorker: DbWorker,
 ): void => {
   window.addEventListener("storage", (e) => {
     if (e.key === localStorageKey) location.reload();
@@ -45,7 +45,7 @@ export const browserInit = (
       _tag: "sync",
       queries: refreshQueries
         ? pipe(Array.from(subscribedQueries.keys()), (a) =>
-            ReadonlyArray.isNonEmptyReadonlyArray(a) ? a : null
+            ReadonlyArray.isNonEmptyReadonlyArray(a) ? a : null,
           )
         : null,
     });

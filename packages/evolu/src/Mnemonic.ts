@@ -7,19 +7,19 @@ import { InvalidMnemonicError, Mnemonic } from "./Types.js";
 const importBip39WithEnglish = Effect.all(
   Effect.promise(() => import("@scure/bip39")),
   Effect.promise(() => import("@scure/bip39/wordlists/english")),
-  { concurrency: "unbounded" }
+  { concurrency: "unbounded" },
 );
 
 export const parseMnemonic = (
-  mnemonic: string
+  mnemonic: string,
 ): Effect.Effect<never, InvalidMnemonicError, Mnemonic> =>
   pipe(
     importBip39WithEnglish,
     Effect.flatMap(([{ validateMnemonic }, { wordlist }]) =>
       validateMnemonic(mnemonic, wordlist)
         ? Effect.succeed(mnemonic as Mnemonic)
-        : Effect.fail<InvalidMnemonicError>({ _tag: "InvalidMnemonic" })
-    )
+        : Effect.fail<InvalidMnemonicError>({ _tag: "InvalidMnemonic" }),
+    ),
   );
 
 export const generateMnemonic = (): Effect.Effect<never, never, Mnemonic> =>
@@ -27,6 +27,6 @@ export const generateMnemonic = (): Effect.Effect<never, never, Mnemonic> =>
     importBip39WithEnglish,
     Effect.map(
       ([{ generateMnemonic }, { wordlist }]) =>
-        generateMnemonic(wordlist, 128) as Mnemonic
-    )
+        generateMnemonic(wordlist, 128) as Mnemonic,
+    ),
   );

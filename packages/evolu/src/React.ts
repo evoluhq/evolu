@@ -22,10 +22,10 @@ type ExcludeNullAndFalse<T> = Exclude<T, null | false>;
 
 type UseQuery<S extends Schema> = <
   QueryRow extends Row,
-  FilterMapRow extends Row
+  FilterMapRow extends Row,
 >(
   queryCallback: OrNullOrFalse<QueryCallback<S, QueryRow>>,
-  filterMap: (row: QueryRow) => OrNullOrFalse<FilterMapRow>
+  filterMap: (row: QueryRow) => OrNullOrFalse<FilterMapRow>,
 ) => {
   /**
    * Rows from the database. They can be filtered and mapped by `filterMap`.
@@ -47,13 +47,13 @@ type NullablePartial<
   NK extends keyof T = {
     [K in keyof T]: null extends T[K] ? K : never;
   }[keyof T],
-  NP = Pick<T, Exclude<keyof T, NK>> & Partial<Pick<T, NK>>
+  NP = Pick<T, Exclude<keyof T, NK>> & Partial<Pick<T, NK>>,
 > = { [K in keyof NP]: NP[K] };
 
 type Create<S extends Schema> = <T extends keyof S>(
   table: T,
   values: Kysely.Simplify<NullablePartial<AllowAutoCasting<Omit<S[T], "id">>>>,
-  onComplete?: () => void
+  onComplete?: () => void,
 ) => {
   readonly id: S[T]["id"];
 };
@@ -65,7 +65,7 @@ type Update<S extends Schema> = <T extends keyof S>(
       AllowAutoCasting<Omit<S[T], "id"> & Pick<CommonColumns, "isDeleted">>
     > & { id: S[T]["id"] }
   >,
-  onComplete?: () => void
+  onComplete?: () => void,
 ) => {
   readonly id: S[T]["id"];
 };
@@ -297,7 +297,7 @@ export const createHooks = <S extends Schema>(evolu: Evolu<S>): Hooks<S> => {
   const useQuery: UseQuery<S> = (queryCallback, filterMap) => {
     const query = useMemo(
       () => (queryCallback ? evolu.createQuery(queryCallback) : null),
-      [queryCallback]
+      [queryCallback],
     );
 
     const promise = useMemo(() => {
@@ -309,7 +309,7 @@ export const createHooks = <S extends Schema>(evolu: Evolu<S>): Hooks<S> => {
     const subscribedRows = useSyncExternalStore(
       useMemo(() => evolu.subscribeQuery(query), [query]),
       useMemo(() => () => evolu.getQuery(query), [query]),
-      constNull
+      constNull,
     );
 
     // Use useRef until React Forget release.
@@ -325,15 +325,15 @@ export const createHooks = <S extends Schema>(evolu: Evolu<S>): Hooks<S> => {
               let cachedRow = cache.get(row);
               if (cachedRow !== undefined) return cachedRow;
               cachedRow = pipe(filterMapRef.current(row as never), (row) =>
-                row ? Option.some(row) : Option.none
+                row ? Option.some(row) : Option.none,
               ) as never;
               cache.set(row, cachedRow);
               return cachedRow;
-            })
+            }),
           ),
-          Option.getOrElse(() => ReadonlyArray.empty())
+          Option.getOrElse(() => ReadonlyArray.empty()),
         ),
-      [subscribedRows]
+      [subscribedRows],
     );
 
     return {
@@ -348,7 +348,7 @@ export const createHooks = <S extends Schema>(evolu: Evolu<S>): Hooks<S> => {
         create: evolu.mutate as Create<S>,
         update: evolu.mutate as Update<S>,
       }),
-      []
+      [],
     );
 
   const useEvoluError: Hooks<S>["useEvoluError"] = () =>
@@ -364,7 +364,7 @@ export const createHooks = <S extends Schema>(evolu: Evolu<S>): Hooks<S> => {
     useSyncExternalStore(
       evolu.subscribeSyncState,
       evolu.getSyncState,
-      () => syncStateIsSyncing
+      () => syncStateIsSyncing,
     );
 
   return {

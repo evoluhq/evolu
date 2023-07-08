@@ -12,12 +12,12 @@ const hasLock: Predicate.Predicate<LockInfo[] | undefined> = (lockInfos) =>
   pipe(
     Option.fromNullable(lockInfos),
     Option.map(ReadonlyArray.some((a) => a.name === syncLockName)),
-    Option.getOrElse(constFalse)
+    Option.getOrElse(constFalse),
   );
 
 const isSyncing: Effect.Effect<never, never, boolean> = pipe(
   Effect.promise(() => navigator.locks.query()),
-  Effect.map(({ pending, held }) => hasLock(pending) || hasLock(held))
+  Effect.map(({ pending, held }) => hasLock(pending) || hasLock(held)),
 );
 
 let isSyncingResolve: null | ((value: null) => void) = null;

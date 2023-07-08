@@ -15,7 +15,7 @@ self.sqlite3ApiConfig = {
 const promise = sqlite3InitModule();
 
 export const createSqlite = (
-  strategy: "localStorage" | "opfs"
+  strategy: "localStorage" | "opfs",
 ): Effect.Effect<never, never, Db> =>
   Effect.promise(() =>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -34,7 +34,7 @@ export const createSqlite = (
               returnValue: "resultRows",
               rowMode: "object",
               ...(!isSqlString && { bind: arg.parameters }),
-            })
+            }),
           );
         },
 
@@ -42,5 +42,5 @@ export const createSqlite = (
       };
 
       return db;
-    })
+    }),
   );

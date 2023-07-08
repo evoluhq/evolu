@@ -23,7 +23,7 @@ export const applyPatches =
 // a developer would implement manually, if necessary.
 export const createPatches = (
   previous: Rows | undefined,
-  next: Rows
+  next: Rows,
 ): readonly Patch[] => {
   if (previous === undefined) return [{ op: "replaceAll", value: next }];
   if (previous.length === 0 && next.length === 0) return [];

@@ -11,9 +11,9 @@ import { Db, DbWorkerOnMessage, Mnemonic, Owner } from "./Types.js";
 const getOwner: Effect.Effect<Db, never, Owner> = pipe(
   Db,
   Effect.flatMap((db) =>
-    db.exec(`select "mnemonic", "id", "encryptionKey" from __owner limit 1`)
+    db.exec(`select "mnemonic", "id", "encryptionKey" from __owner limit 1`),
   ),
-  Effect.map(([owner]) => owner as unknown as Owner)
+  Effect.map(([owner]) => owner as unknown as Owner),
 );
 
 const createOwner = (mnemonic?: Mnemonic): Effect.Effect<never, never, Owner> =>
@@ -23,7 +23,7 @@ const createOwner = (mnemonic?: Mnemonic): Effect.Effect<never, never, Owner> =>
       Effect.promise(() => import("@scure/bip39")),
       Effect.promise(() => import("@noble/hashes/hmac")),
       Effect.promise(() => import("@noble/hashes/sha512")),
-      { concurrency: "unbounded" }
+      { concurrency: "unbounded" },
     ),
     Effect.flatMap(
       ([mnemonic, { mnemonicToSeedSync }, { hmac }, { sha512 }]) => {
@@ -62,8 +62,8 @@ const createOwner = (mnemonic?: Mnemonic): Effect.Effect<never, never, Owner> =>
 
         const owner: Owner = { mnemonic, id, encryptionKey };
         return Effect.succeed(owner);
-      }
-    )
+      },
+    ),
   );
 
 const init = (mnemonic?: Mnemonic): Effect.Effect<Db, never, Owner> =>
@@ -73,7 +73,7 @@ const init = (mnemonic?: Mnemonic): Effect.Effect<Db, never, Owner> =>
       Db,
       pipe(createInitialTimestamp, Effect.map(timestampToString)),
       Effect.succeed(pipe(createInitialMerkleTree(), merkleTreeToString)),
-      { concurrency: "unbounded" }
+      { concurrency: "unbounded" },
     ),
     Effect.tap(([owner, db, timestamp, merkleTree]) =>
       db.exec({
@@ -111,9 +111,9 @@ const init = (mnemonic?: Mnemonic): Effect.Effect<Db, never, Owner> =>
           values (?, ?, ?);
         `,
         parameters: [owner.mnemonic, owner.id, owner.encryptionKey],
-      })
+      }),
     ),
-    Effect.map(([owner]) => owner)
+    Effect.map(([owner]) => owner),
   );
 
 const migrateToSlip21: Effect.Effect<Db, never, Owner> = pipe(
@@ -121,7 +121,7 @@ const migrateToSlip21: Effect.Effect<Db, never, Owner> = pipe(
   Effect.flatMap((db) =>
     Effect.gen(function* ($) {
       const { mnemonic } = (yield* $(
-        db.exec(`select "mnemonic" from __owner limit 1`)
+        db.exec(`select "mnemonic" from __owner limit 1`),
       ))[0] as { mnemonic: Mnemonic };
       const owner = yield* $(createOwner(mnemonic));
       yield* $(
@@ -131,15 +131,15 @@ const migrateToSlip21: Effect.Effect<Db, never, Owner> = pipe(
             update "__owner" set "id" = ?, "encryptionKey" = ?;
           `,
           parameters: [owner.id, owner.encryptionKey],
-        })
+        }),
       );
       return owner;
-    })
-  )
+    }),
+  ),
 );
 
 export const lazyInitOwner = (
-  mnemonic?: Mnemonic
+  mnemonic?: Mnemonic,
 ): Effect.Effect<Db, never, Owner> =>
   Effect.catchAllCause(getOwner, (cause) => {
     const pretty = Cause.pretty(cause);
@@ -150,7 +150,7 @@ export const lazyInitOwner = (
   });
 
 export const resetOwner = (
-  mnemonic?: Mnemonic
+  mnemonic?: Mnemonic,
 ): Effect.Effect<Db | DbWorkerOnMessage, never, void> =>
   Effect.gen(function* ($) {
     yield* $(deleteAllTables);
