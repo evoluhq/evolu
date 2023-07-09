@@ -214,8 +214,7 @@ Start developing and watch for code changes:
 ```
 pnpm dev
 pnpm dev:web
-pnpm dev:native -- --ios
-pnpm dev:native -- --android
+pnpm dev:native
 ```
 
 Lint and tests:

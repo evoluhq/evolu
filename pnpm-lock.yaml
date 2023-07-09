@@ -27,13 +27,13 @@ importers:
   apps/native:
     dependencies:
       '@effect/data':
-        specifier: ^0.13.5
-        version: 0.13.5
+        specifier: ^0.13.6
+        version: 0.13.6
       '@effect/schema':
         specifier: ^0.25.0
         version: 0.25.0
       '@types/react':
-        specifier: ^18.0.38
+        specifier: ^18.2.14
         version: 18.2.14
       evolu:
         specifier: workspace:*
@@ -89,8 +89,8 @@ importers:
   apps/web:
     dependencies:
       '@effect/data':
-        specifier: ^0.13.5
-        version: 0.13.5
+        specifier: ^0.13.6
+        version: 0.13.6
       '@effect/schema':
         specifier: ~0.25.0
         version: 0.25.0
@@ -208,8 +208,8 @@ importers:
         specifier: 3.42.0-build2
         version: 3.42.0-build2
       kysely:
-        specifier: ~0.26.0
-        version: 0.26.0
+        specifier: ~0.26.1
+        version: 0.26.1
       micro-aes-gcm:
         specifier: ~0.4.0
         version: 0.4.0
@@ -218,8 +218,8 @@ importers:
         version: 4.0.2
     devDependencies:
       '@effect/data':
-        specifier: ^0.13.5
-        version: 0.13.5
+        specifier: ^0.13.6
+        version: 0.13.6
       '@effect/io':
         specifier: ^0.31.3
         version: 0.31.3
@@ -275,8 +275,8 @@ importers:
   packages/evolu-server:
     dependencies:
       '@effect/data':
-        specifier: ^0.13.5
-        version: 0.13.5
+        specifier: ^0.13.6
+        version: 0.13.6
       '@effect/io':
         specifier: ^0.31.3
         version: 0.31.3
@@ -2347,18 +2347,18 @@ packages:
       '@jridgewell/trace-mapping': 0.3.9
     dev: true
 
-  /@effect/data@0.13.5:
-    resolution: {integrity: sha512-s9HYZkRHkN3doqOy+ICSKMr33hTe+YSod34Twt9oDI2OWgxoynsVjQ1gpM/BDn92SHv3Rgz6KTmVBKqYaqh/mQ==}
+  /@effect/data@0.13.6:
+    resolution: {integrity: sha512-nWNGS7SQKUD7qRamHE9iamrdV9JUuS5o8X7hLrk6jjLOQ47tDh6da190o7h6cNck74HZBNXeb78LaRGkK9Sc5g==}
 
   /@effect/io@0.31.3:
     resolution: {integrity: sha512-v8OltakxYj+TBUYk8ZnhrcebGd8xKavZZLjZm1p/uJqnqU8EgJq1aKCHaH7H5UdMsaZIunJG1W0NL2zDtdDYbw==}
     dependencies:
-      '@effect/data': 0.13.5
+      '@effect/data': 0.13.6
 
   /@effect/schema@0.25.0:
     resolution: {integrity: sha512-nJ674r65cqlv6+5jgjUT28oeNnfG/xkk/XduVb0ZF6Cd5rX7GqZp8cKObNwVLTNLJjMqS4N2rHhS8JtgLv88aw==}
     dependencies:
-      '@effect/data': 0.13.5
+      '@effect/data': 0.13.6
       '@effect/io': 0.31.3
       fast-check: 3.11.0
 
@@ -4514,7 +4514,7 @@ packages:
       postcss: ^8.1.0
     dependencies:
       browserslist: 4.21.9
-      caniuse-lite: 1.0.30001513
+      caniuse-lite: 1.0.30001514
       fraction.js: 4.2.0
       normalize-range: 0.1.2
       picocolors: 1.0.0
@@ -4833,7 +4833,7 @@ packages:
     engines: {node: ^6 || ^7 || ^8 || ^9 || ^10 || ^11 || ^12 || >=13.7}
     hasBin: true
     dependencies:
-      caniuse-lite: 1.0.30001513
+      caniuse-lite: 1.0.30001514
       electron-to-chromium: 1.4.454
       node-releases: 2.0.13
       update-browserslist-db: 1.0.11(browserslist@4.21.9)
@@ -4986,8 +4986,8 @@ packages:
     engines: {node: '>=10'}
     dev: false
 
-  /caniuse-lite@1.0.30001513:
-    resolution: {integrity: sha512-pnjGJo7SOOjAGytZZ203Em95MRM8Cr6jhCXNF/FAXTpCTRTECnqQWLpiTRqrFtdYcth8hf4WECUpkezuYsMVww==}
+  /caniuse-lite@1.0.30001514:
+    resolution: {integrity: sha512-ENcIpYBmwAAOm/V2cXgM7rZUrKKaqisZl4ZAI520FIkqGXUxJjmaIssbRW5HVVR5tyV6ygTLIm15aU8LUmQSaQ==}
 
   /ccount@2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
@@ -8324,8 +8324,8 @@ packages:
     resolution: {integrity: sha512-o+NO+8WrRiQEE4/7nwRJhN1HWpVmJm511pBHUxPLtp0BUISzlBplORYSmTclCnJvQq2tKu/sgl3xVpkc7ZWuQQ==}
     engines: {node: '>=6'}
 
-  /kysely@0.26.0:
-    resolution: {integrity: sha512-uj4wsWeWyGYoJlT4vNjO5wMjZxYp55I+igJJsJGe12R2WDZ4AWHNyRRMQz8Mdnv35DnHXck0S7/I2FIPEIZwjw==}
+  /kysely@0.26.1:
+    resolution: {integrity: sha512-FVRomkdZofBu3O8SiwAOXrwbhPZZr8mBN5ZeUWyprH29jzvy6Inzqbd0IMmGxpd4rcOCL9HyyBNWBa8FBqDAdg==}
     engines: {node: '>=14.0.0'}
     dev: false
 
@@ -9873,7 +9873,7 @@ packages:
       '@next/env': 13.4.9
       '@swc/helpers': 0.5.1
       busboy: 1.6.0
-      caniuse-lite: 1.0.30001513
+      caniuse-lite: 1.0.30001514
       postcss: 8.4.14
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
