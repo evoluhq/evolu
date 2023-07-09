@@ -20,6 +20,7 @@
   "homepage": "https://evolu.dev",
   "type": "module",
   "types": "./dist/src/index.d.ts",
+  "___exports": "exports browser is for Electron",
   "exports": {
     ".": {
       "types": "./dist/src/index.d.ts",
