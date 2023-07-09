@@ -1,17 +1,15 @@
 {
   "private": true,
-  "workspaces": [
-    "packages/*",
-    "apps/*"
-  ],
+  "name": "@evolu/monorepo",
   "scripts": {
-    "dev": "turbo run dev --parallel",
-    "build": "turbo run build",
-    "start": "turbo run start --parallel",
-    "lint": "turbo run lint",
-    "test": "turbo run test",
-    "prepublishOnly": "turbo run lint && turbo run build && turbo run test",
-    "clean": "turbo run clean && rm -rf node_modules",
+    "dev": "turbo dev",
+    "dev:web": "turbo dev --filter=!native",
+    "dev:native": "turbo dev --filter=!web",
+    "build": "turbo build",
+    "start": "turbo start",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "clean": "turbo clean && rm -rf node_modules",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "version": "changeset version && pnpm install --no-frozen-lockfile && pnpm format",
     "release": "pnpm run build && changeset publish"
@@ -22,5 +20,15 @@
     "eslint-config-evolu": "workspace:*",
     "prettier": "^3.0.0",
     "turbo": "^1.10.7"
+  },
+  "packageManager": "pnpm@8.6.6",
+  "pnpm": {
+    "peerDependencyRules": {
+      "ignoreMissing": [
+        "@babel/*",
+        "expo-modules-*",
+        "typescript"
+      ]
+    }
   }
 }
