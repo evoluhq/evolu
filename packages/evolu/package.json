@@ -20,7 +20,6 @@
   "homepage": "https://evolu.dev",
   "type": "module",
   "types": "./dist/src/index.d.ts",
-  "___exports": "exports browser is for Electron",
   "exports": {
     ".": {
       "types": "./dist/src/index.d.ts",
@@ -43,6 +42,9 @@
       "types": "./dist/src/Protobuf.d.ts",
       "import": "./dist/src/Protobuf.js"
     }
+  },
+  "react-native": {
+    "./index.js": "./dist/src/index.js"
   },
   "files": [
     "dist/src/**",
@@ -68,9 +70,9 @@
     "nanoid": "^4.0.2"
   },
   "devDependencies": {
-    "@effect/data": "^0.13.6",
-    "@effect/io": "^0.31.3",
-    "@effect/schema": "^0.25.0",
+    "@effect/data": "^0.14.1",
+    "@effect/io": "^0.32.1",
+    "@effect/schema": "^0.26.0",
     "@evolu/tsconfig": "workspace:*",
     "@protobuf-ts/plugin": "^2.9.0",
     "@protobuf-ts/protoc": "^2.9.0",
@@ -88,9 +90,9 @@
     "vitest": "^0.33.0"
   },
   "peerDependencies": {
-    "@effect/data": "^0.13.6",
-    "@effect/io": "^0.31.3",
-    "@effect/schema": "^0.25.0",
+    "@effect/data": "^0.14.1",
+    "@effect/io": "^0.32.1",
+    "@effect/schema": "^0.26.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

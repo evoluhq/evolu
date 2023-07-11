@@ -16,12 +16,7 @@ import {
   SqliteQueryCompiler,
 } from "kysely";
 import { flushSync } from "react-dom";
-import {
-  browserFeatures,
-  browserInit,
-  isBrowser,
-  reloadAllTabs,
-} from "./Browser.js";
+import { browserInit, reloadAllTabs } from "./Browser.js";
 import { createConfig } from "./Config.js";
 import { applyPatches } from "./Diff.js";
 import { createNewMessages } from "./Messages.js";
@@ -53,6 +48,7 @@ import {
   Store,
   SyncState,
 } from "./Types.js";
+import { isBrowserWithOpfs, platformName } from "./Platform.js";
 
 const createNoOpServerDbWorker: CreateDbWorker = () => ({
   post: constVoid,
@@ -75,7 +71,7 @@ const createOpfsDbWorker: CreateDbWorker = (onMessage) => {
 };
 
 const createLocalStorageDbWorker: CreateDbWorker = (onMessage) => {
-  const worker = import("./DbWorker.window.js");
+  const worker = import("./DbWorker.main.js");
 
   let dbWorker: DbWorker | null = null;
 
@@ -89,12 +85,12 @@ const createLocalStorageDbWorker: CreateDbWorker = (onMessage) => {
   };
 };
 
-// TODO: React Native
-const createDbWorker: CreateDbWorker = isBrowser
-  ? browserFeatures.opfs
-    ? createOpfsDbWorker
-    : createLocalStorageDbWorker
-  : createNoOpServerDbWorker;
+const createDbWorker: CreateDbWorker =
+  platformName === "browser"
+    ? isBrowserWithOpfs
+      ? createOpfsDbWorker
+      : createLocalStorageDbWorker
+    : createNoOpServerDbWorker;
 
 const createKysely = <S extends Schema>(): Kysely<SchemaForQuery<S>> =>
   new Kysely({
@@ -425,7 +421,7 @@ export const createEvolu = <From, To extends Schema>(
     tableDefinitions: schemaToTablesDefinitions(schema),
   });
 
-  if (isBrowser) browserInit(subscribedQueries, dbWorker);
+  if (platformName === "browser") browserInit(subscribedQueries, dbWorker);
 
   return {
     subscribeError: errorStore.subscribe,

@@ -1,3 +1,5 @@
+import "client-only";
+
 export * from "./Model.js";
 export type {
   EvoluError,
@@ -15,5 +17,5 @@ import { Config, Schema } from "./Types.js";
 
 export const create = <From, To extends Schema>(
   schema: S.Schema<From, To>,
-  config?: Partial<Config>,
+  config?: Partial<Config>
 ): Hooks<To> => pipe(createEvolu(schema, config), createHooks);

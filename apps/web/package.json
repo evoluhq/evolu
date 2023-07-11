@@ -10,8 +10,8 @@
     "clean": "rm -rf .turbo && rm -rf .next && rm -rf node_modules"
   },
   "dependencies": {
-    "@effect/data": "^0.13.6",
-    "@effect/schema": "~0.25.0",
+    "@effect/data": "^0.14.1",
+    "@effect/schema": "~0.26.0",
     "clsx": "^1.2.1",
     "evolu": "workspace:*",
     "next": "^13.4.9",

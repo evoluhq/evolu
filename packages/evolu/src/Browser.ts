@@ -2,29 +2,6 @@ import { pipe } from "@effect/data/Function";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import { DbWorker, Query } from "./Types.js";
 
-// https://github.com/denoland/deno/issues/13367
-export const isBrowser = typeof document !== "undefined";
-
-const isChromeWithOpfs = (): boolean =>
-  navigator.userAgentData != null &&
-  navigator.userAgentData.brands.find(
-    ({ brand, version }) =>
-      // Chrome or Chromium
-      brand.includes("Chrom") && Number(version) >= 109,
-  ) != null;
-
-const isFirefoxWithOpfs = (): boolean => {
-  const userAgent = navigator.userAgent.toLowerCase();
-  if (userAgent.indexOf("firefox") === -1) return false;
-  const matches = userAgent.match(/firefox\/([0-9]+\.*[0-9]*)/);
-  if (matches == null) return false;
-  return Number(matches[1]) >= 111;
-};
-
-export const browserFeatures = {
-  opfs: isBrowser && (isChromeWithOpfs() || isFirefoxWithOpfs()),
-};
-
 const localStorageKey = "evolu:reloadAllTabs";
 
 export const reloadAllTabs = (reloadUrl: string): void => {
@@ -34,7 +11,7 @@ export const reloadAllTabs = (reloadUrl: string): void => {
 
 export const browserInit = (
   subscribedQueries: ReadonlyMap<Query, number>,
-  dbWorker: DbWorker,
+  dbWorker: DbWorker
 ): void => {
   window.addEventListener("storage", (e) => {
     if (e.key === localStorageKey) location.reload();
@@ -45,7 +22,7 @@ export const browserInit = (
       _tag: "sync",
       queries: refreshQueries
         ? pipe(Array.from(subscribedQueries.keys()), (a) =>
-            ReadonlyArray.isNonEmptyReadonlyArray(a) ? a : null,
+            ReadonlyArray.isNonEmptyReadonlyArray(a) ? a : null
           )
         : null,
     });
