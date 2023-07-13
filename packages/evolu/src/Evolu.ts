@@ -48,14 +48,10 @@ import {
   Store,
   SyncState,
 } from "./Types.js";
-import { isBrowserWithOpfs, platformName } from "./Platform.js";
+import { PlatformName, isBrowserWithOpfs, platformName } from "./Platform.js";
 
-const createNoOpServerDbWorker: CreateDbWorker = () => ({
-  post: constVoid,
-});
-
-const createOpfsDbWorker: CreateDbWorker = (onMessage) => {
-  const dbWorker = new Worker(new URL("DbWorker.worker.js", import.meta.url), {
+const createDbWorkerOffTheMainThread: CreateDbWorker = (onMessage) => {
+  const dbWorker = new Worker(new URL("DbWorker.opfs.js", import.meta.url), {
     type: "module",
   });
 
@@ -70,26 +66,40 @@ const createOpfsDbWorker: CreateDbWorker = (onMessage) => {
   };
 };
 
-const createLocalStorageDbWorker: CreateDbWorker = (onMessage) => {
-  const worker = import("./DbWorker.main.js");
+const createDbWorkerInTheMainThread =
+  (sql: "localStorage" | "native"): CreateDbWorker =>
+  (onMessage) => {
+    const worker =
+      sql === "localStorage"
+        ? import("./DbWorker.localStorage.js")
+        : // TODO: Fix
+          import("./DbWorker.localStorage.js");
 
-  let dbWorker: DbWorker | null = null;
+    let dbWorker: DbWorker | null = null;
 
-  return {
-    post: (message): void => {
-      worker.then(({ createDbWorker }) => {
-        if (dbWorker == null) dbWorker = createDbWorker(onMessage);
-        dbWorker.post(message);
-      });
-    },
+    return {
+      post: (message): void => {
+        worker.then(({ createDbWorker }) => {
+          if (dbWorker == null) dbWorker = createDbWorker(onMessage);
+          dbWorker.post(message);
+        });
+      },
+    };
   };
-};
 
+const createNoOpServerDbWorker: CreateDbWorker = () => ({
+  post: constVoid,
+});
+
+// All DB work should be off the main thread, but that's not possible
+// for LocalStorage and React Native yet.
 const createDbWorker: CreateDbWorker =
   platformName === "browser"
     ? isBrowserWithOpfs
-      ? createOpfsDbWorker
-      : createLocalStorageDbWorker
+      ? createDbWorkerOffTheMainThread
+      : createDbWorkerInTheMainThread("localStorage")
+    : platformName === "native"
+    ? createNoOpServerDbWorker
     : createNoOpServerDbWorker;
 
 const createKysely = <S extends Schema>(): Kysely<SchemaForQuery<S>> =>
@@ -281,9 +291,13 @@ const createMutate = <S extends Schema>({
   };
 };
 
+/**
+ * Create Evolu. It can be used for React Hooks or any other UI library.
+ */
 export const createEvolu = <From, To extends Schema>(
   schema: S.Schema<From, To>,
-  optionalConfig?: Partial<Config>
+  optionalConfig?: Partial<Config>,
+  platformName?: PlatformName
 ): Evolu<To> => {
   const config = createConfig(optionalConfig);
 

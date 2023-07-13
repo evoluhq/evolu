@@ -4,23 +4,24 @@
   "private": true,
   "main": "index.js",
   "scripts": {
-    "dev": "expo start --ios",
+    "ios": "expo start --ios",
+    "android": "expo start --android",
     "lint": "eslint --ext ts,tsx .",
     "clean": "rm -rf .turbo && rm -rf .expo && rm -rf node_modules"
   },
   "dependencies": {
-    "@effect/data": "^0.14.1",
-    "@effect/schema": "^0.26.0",
-    "@types/react": "^18.2.14",
+    "@effect/data": "^0.14.2",
+    "@effect/schema": "^0.26.1",
+    "@types/react": "^18.2.15",
     "evolu": "workspace:*",
-    "expo": "^49.0.2",
+    "expo": "^49.0.3",
     "expo-status-bar": "^1.6.0",
     "react": "18.2.0",
-    "react-native": "^0.72.2",
+    "react-native": "^0.72.3",
     "react-native-select-dropdown": "^3.3.4"
   },
   "devDependencies": {
-    "@babel/core": "^7.22.8",
+    "@babel/core": "^7.22.9",
     "@babel/plugin-transform-private-methods": "^7.22.5",
     "eslint": "^8.44.0",
     "eslint-config-evolu": "workspace:*",

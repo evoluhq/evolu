@@ -54,4 +54,4 @@ import { createEvoluCreate } from "./exports.js";
  * To learn more about migration-less schema evolving, check the `useQuery`
  * documentation.
  */
-export const create = createEvoluCreate();
+export const create = createEvoluCreate("native");

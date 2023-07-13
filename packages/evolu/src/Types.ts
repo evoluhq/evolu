@@ -34,14 +34,14 @@ export const Config = Tag<Config>();
 export const NodeId = pipe(
   S.string,
   S.pattern(/^[\w-]{16}$/),
-  S.brand("NodeId"),
+  S.brand("NodeId")
 );
 export type NodeId = S.To<typeof NodeId>;
 
 export const Millis = pipe(
   S.number,
   S.greaterThanOrEqualTo(0),
-  S.brand("Millis"),
+  S.brand("Millis")
 );
 export type Millis = S.To<typeof Millis>;
 
@@ -145,7 +145,7 @@ export interface OwnerActions {
    * Use `restore` to restore `Owner` with synced data on a different device.
    */
   readonly restore: (
-    mnemonic: string,
+    mnemonic: string
   ) => Promise<Either<RestoreOwnerError, void>>;
 }
 
@@ -199,7 +199,7 @@ export type SchemaForQuery<S extends Schema> = {
 type KyselyWithoutMutation<DB> = Pick<Kysely<DB>, "selectFrom" | "fn">;
 
 export type QueryCallback<S extends Schema, QueryRow> = (
-  db: KyselyWithoutMutation<SchemaForQuery<S>>,
+  db: KyselyWithoutMutation<SchemaForQuery<S>>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ) => SelectQueryBuilder<any, any, QueryRow>;
 
@@ -229,7 +229,7 @@ export type Mutate<S extends Schema> = <
 >(
   table: T,
   values: Simplify<Partial<AllowAutoCasting<U[T]>>>,
-  onComplete?: () => void,
+  onComplete?: () => void
 ) => {
   readonly id: U[T]["id"];
 };
@@ -243,7 +243,7 @@ export interface Evolu<S extends Schema = Schema> {
 
   readonly createQuery: (queryCallback: QueryCallback<S, Row>) => Query;
   readonly subscribeQuery: (
-    query: Query | null,
+    query: Query | null
   ) => (listener: Listener) => Unsubscribe;
   readonly getQuery: (query: Query | null) => Rows | null;
   readonly loadQuery: (query: Query) => Promise<Rows>;
@@ -371,7 +371,7 @@ export interface DbWorker {
 }
 
 export type CreateDbWorker = (
-  onMessage: (message: DbWorkerOutput) => void,
+  onMessage: (message: DbWorkerOutput) => void
 ) => DbWorker;
 
 export type DbWorkerRowsCache = Ref<ReadonlyMap<Query, Rows>>;
@@ -401,7 +401,7 @@ export interface SyncWorker {
 }
 
 export type CreateSyncWorker = (
-  onMessage: (message: SyncWorkerOutput) => void,
+  onMessage: (message: SyncWorkerOutput) => void
 ) => SyncWorker;
 
 export type SyncWorkerPost = (message: SyncWorkerInput) => void;

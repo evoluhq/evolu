@@ -3,8 +3,6 @@
   "name": "@evolu/monorepo",
   "scripts": {
     "dev": "turbo dev",
-    "dev:web": "turbo dev --filter=!native",
-    "dev:native": "turbo dev --filter=!web",
     "build": "turbo build",
     "start": "turbo start",
     "lint": "turbo lint",
