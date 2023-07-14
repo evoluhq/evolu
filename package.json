@@ -10,7 +10,9 @@
     "clean": "turbo clean && rm -rf node_modules",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "version": "changeset version && pnpm install --no-frozen-lockfile && pnpm format",
-    "release": "pnpm run build && changeset publish"
+    "release": "pnpm run build && changeset publish",
+    "ios": "cd apps/native && pnpm ios",
+    "android": "cd apps/native && pnpm android"
   },
   "devDependencies": {
     "@changesets/cli": "^2.26.2",
