@@ -80,10 +80,14 @@
     "@types/react-dom": "^18.2.7",
     "@types/web-locks-api": "^0.0.2",
     "array-shuffle": "^3.0.0",
-    "eslint": "^8.44.0",
+    "eslint": "^8.45.0",
     "eslint-config-evolu": "workspace:*",
+    "expo": "^49.0.3",
+    "expo-sqlite": "^11.3.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-native": "^0.72.3",
+    "react-native-get-random-values": "^1.9.0",
     "tslib": "^2.6.0",
     "typescript": "^5.1.6",
     "user-agent-data-types": "^0.3.1",
@@ -93,8 +97,12 @@
     "@effect/data": "^0.14.2",
     "@effect/io": "^0.32.2",
     "@effect/schema": "^0.26.1",
+    "expo": "^49.0.3",
+    "expo-sqlite": "^11.3.1",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "react-native": "^0.72.3",
+    "react-native-get-random-values": "^1.9.0"
   },
   "publishConfig": {
     "access": "public"

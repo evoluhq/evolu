@@ -15,6 +15,7 @@
     "@types/react": "^18.2.15",
     "evolu": "workspace:*",
     "expo": "^49.0.3",
+    "expo-sqlite": "~11.3.1",
     "expo-status-bar": "^1.6.0",
     "react": "18.2.0",
     "react-native": "^0.72.3",
@@ -23,7 +24,7 @@
   "devDependencies": {
     "@babel/core": "^7.22.9",
     "@babel/plugin-transform-private-methods": "^7.22.5",
-    "eslint": "^8.44.0",
+    "eslint": "^8.45.0",
     "eslint-config-evolu": "workspace:*",
     "prettier": "^3.0.0",
     "typescript": "^5.1.6"
