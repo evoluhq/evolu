@@ -104,7 +104,8 @@ const TodoCategorySelect: FC<{
     <SelectDropdown
       data={todoCategoriesList.map((i) => i.name)}
       onSelect={(): void => {
-        //
+        // eslint-disable-next-line no-console
+        console.log(value, onSelect);
       }}
       // value={value}
       // onChange={({

@@ -2,7 +2,7 @@ import { constVoid } from "@effect/data/Function";
 import * as Effect from "@effect/io/Effect";
 // @ts-expect-error Missing types
 import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
-import { Db, Rows } from "./Types.js";
+import { Db } from "./Types.js";
 
 // @ts-expect-error Missing types.
 self.sqlite3ApiConfig = {
@@ -15,7 +15,7 @@ self.sqlite3ApiConfig = {
 const promise = sqlite3InitModule();
 
 export const createSqlite = (
-  strategy: "localStorage" | "opfs",
+  strategy: "localStorage" | "opfs"
 ): Effect.Effect<never, never, Db> =>
   Effect.promise(() =>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -26,7 +26,7 @@ export const createSqlite = (
           : new sqlite3.oo1.JsStorageDb("local");
 
       const db: Db = {
-        exec: (arg): Effect.Effect<never, never, Rows> => {
+        exec: (arg) => {
           const isSqlString = typeof arg === "string";
 
           return Effect.succeed(
@@ -34,7 +34,7 @@ export const createSqlite = (
               returnValue: "resultRows",
               rowMode: "object",
               ...(!isSqlString && { bind: arg.parameters }),
-            }),
+            })
           );
         },
 
@@ -42,5 +42,5 @@ export const createSqlite = (
       };
 
       return db;
-    }),
+    })
   );

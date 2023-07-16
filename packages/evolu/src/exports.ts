@@ -11,7 +11,6 @@ export type {
 
 import * as Schema from "@effect/schema/Schema";
 import * as Evolu from "./Evolu.js";
-import * as Platform from "./Platform.js";
 import * as React from "./React.js";
 import * as Types from "./Types.js";
 
@@ -19,9 +18,13 @@ import * as Types from "./Types.js";
  * To create `Evolu.create` for a platform.
  */
 export const createEvoluCreate =
-  (platformName?: Platform.PlatformName) =>
+  (
+    deps: {
+      readonly createDbWorker?: Types.CreateDbWorker;
+    } = {}
+  ) =>
   <From, To extends Types.Schema>(
     schema: Schema.Schema<From, To>,
     config?: Partial<Types.Config>
   ): React.Hooks<To> =>
-    React.createHooks(Evolu.createEvolu(schema, config, platformName));
+    React.createHooks(Evolu.createEvolu(schema, config, deps));

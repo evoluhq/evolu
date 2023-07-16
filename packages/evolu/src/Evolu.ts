@@ -22,6 +22,7 @@ import { applyPatches } from "./Diff.js";
 import { createNewMessages } from "./Messages.js";
 import { parseMnemonic } from "./Mnemonic.js";
 import { Id, cast, createId } from "./Model.js";
+import { isBrowserWithOpfs, platformName } from "./Platform.js";
 import { queryObjectToQuery } from "./Query.js";
 import { schemaToTablesDefinitions } from "./Schema.js";
 import { createStore } from "./Store.js";
@@ -48,7 +49,6 @@ import {
   Store,
   SyncState,
 } from "./Types.js";
-import { PlatformName, isBrowserWithOpfs, platformName } from "./Platform.js";
 
 const createDbWorkerOffTheMainThread: CreateDbWorker = (onMessage) => {
   const dbWorker = new Worker(new URL("DbWorker.opfs.js", import.meta.url), {
@@ -98,8 +98,6 @@ const createDbWorker: CreateDbWorker =
     ? isBrowserWithOpfs
       ? createDbWorkerOffTheMainThread
       : createDbWorkerInTheMainThread("localStorage")
-    : platformName === "native"
-    ? createNoOpServerDbWorker
     : createNoOpServerDbWorker;
 
 const createKysely = <S extends Schema>(): Kysely<SchemaForQuery<S>> =>
@@ -297,7 +295,9 @@ const createMutate = <S extends Schema>({
 export const createEvolu = <From, To extends Schema>(
   schema: S.Schema<From, To>,
   optionalConfig?: Partial<Config>,
-  platformName?: PlatformName
+  deps: {
+    readonly createDbWorker?: CreateDbWorker;
+  } = {}
 ): Evolu<To> => {
   const config = createConfig(optionalConfig);
 
@@ -350,7 +350,7 @@ export const createEvolu = <From, To extends Schema>(
     return { promise, isNew: true };
   };
 
-  const dbWorker = createDbWorker((message) => {
+  const dbWorker = (deps.createDbWorker || createDbWorker)((message) => {
     switch (message._tag) {
       case "onError":
         errorStore.setState(message.error);

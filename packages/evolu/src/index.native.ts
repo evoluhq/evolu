@@ -1,7 +1,16 @@
 export * from "./exports.js";
 
 import "@effect/schema/Schema";
+import "react-native-get-random-values";
+import { createCreateDbWorker } from "./DbWorker.js";
+import { createSqlite } from "./Sqlite.native.js";
 import { createEvoluCreate } from "./exports.js";
+
+// Effect.promise(() => import("@scure/bip39")),
+// Effect.promise(() => import("@scure/bip39/wordlists/english")),
+// Effect.promise(() => import("@scure/bip39")),
+// Effect.promise(() => import("@noble/hashes/hmac")),
+// Effect.promise(() => import("@noble/hashes/sha512")),
 
 /**
  * `Evolu.create` ensures database schema, and returns typed React Hooks.
@@ -54,4 +63,6 @@ import { createEvoluCreate } from "./exports.js";
  * To learn more about migration-less schema evolving, check the `useQuery`
  * documentation.
  */
-export const create = createEvoluCreate("native");
+export const create = createEvoluCreate({
+  createDbWorker: createCreateDbWorker(createSqlite()),
+});
