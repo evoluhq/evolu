@@ -5,7 +5,7 @@ import { urlAlphabet } from "nanoid";
 import { deleteAllTables } from "./Db.js";
 import { createInitialMerkleTree, merkleTreeToString } from "./MerkleTree.js";
 import { generateMnemonic } from "./Mnemonic.js";
-import { createInitialTimestamp, timestampToString } from "./Timestamp.js";
+import { InitialTimestamp, timestampToString } from "./Timestamp.js";
 import { Db, DbWorkerOnMessage, Mnemonic, Owner } from "./Types.js";
 
 const getOwner: Effect.Effect<Db, never, Owner> = pipe(
@@ -68,18 +68,24 @@ const createOwner = (mnemonic?: Mnemonic): Effect.Effect<never, never, Owner> =>
     )
   );
 
-const init = (mnemonic?: Mnemonic): Effect.Effect<Db, never, Owner> =>
+const init = (
+  mnemonic?: Mnemonic
+): Effect.Effect<Db | InitialTimestamp, never, Owner> =>
   pipe(
     Effect.all(
       [
         createOwner(mnemonic),
         Db,
-        pipe(createInitialTimestamp, Effect.map(timestampToString)),
+        InitialTimestamp.pipe(
+          Effect.flatMap((a) => a.create()),
+          Effect.map(timestampToString)
+        ),
+        // initial merkle tree je konstanta, to nemusi bejt effect
         Effect.succeed(pipe(createInitialMerkleTree(), merkleTreeToString)),
       ],
       { concurrency: "unbounded" }
     ),
-    Effect.tap(([owner, db, timestamp, merkleTree]) =>
+    Effect.tap(([owner, db, initialTimestamp, initialMerkleTree]) =>
       db.exec({
         sql: `
           create table __message (
@@ -103,7 +109,7 @@ const init = (mnemonic?: Mnemonic): Effect.Effect<Db, never, Owner> =>
           );
 
           insert into __clock ("timestamp", "merkleTree")
-          values ('${timestamp}', '${merkleTree}');
+          values ('${initialTimestamp}', '${initialMerkleTree}');
 
           create table __owner (
             "mnemonic" blob,
@@ -144,7 +150,7 @@ const migrateToSlip21: Effect.Effect<Db, never, Owner> = pipe(
 
 export const lazyInitOwner = (
   mnemonic?: Mnemonic
-): Effect.Effect<Db, never, Owner> =>
+): Effect.Effect<Db | InitialTimestamp, never, Owner> =>
   Effect.catchAllCause(getOwner, (cause) => {
     const pretty = Cause.pretty(cause);
     if (pretty.includes("no such table: __owner")) return init(mnemonic);
@@ -155,7 +161,7 @@ export const lazyInitOwner = (
 
 export const resetOwner = (
   mnemonic?: Mnemonic
-): Effect.Effect<Db | DbWorkerOnMessage, never, void> =>
+): Effect.Effect<Db | DbWorkerOnMessage | InitialTimestamp, never, void> =>
   Effect.gen(function* ($) {
     yield* $(deleteAllTables);
     if (mnemonic) yield* $(lazyInitOwner(mnemonic));
