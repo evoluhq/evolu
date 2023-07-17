@@ -1,7 +1,9 @@
+import * as Context from "@effect/data/Context";
 import * as Either from "@effect/data/Either";
 import { pipe } from "@effect/data/Function";
 import * as Number from "@effect/data/Number";
 import * as Effect from "@effect/io/Effect";
+import * as Layer from "@effect/io/Layer";
 import * as Schema from "@effect/schema/Schema";
 import { customAlphabet } from "nanoid";
 import { murmurhash } from "./Murmurhash.js";
@@ -22,11 +24,6 @@ import {
 // https://muratbuffalo.blogspot.com/2014/07/hybrid-logical-clocks.html
 // https://jaredforsyth.com/posts/hybrid-logical-clocks/
 // https://github.com/clintharris/crdt-example-app_annotated/blob/master/shared/timestamp.js
-
-const createNodeId = pipe(
-  customAlphabet("0123456789abcdef", 16),
-  (createNodeId) => Effect.sync(() => createNodeId() as NodeId)
-);
 
 export const timestampToString = (t: Timestamp): TimestampString =>
   [
@@ -49,17 +46,24 @@ export const unsafeTimestampFromString = (s: TimestampString): Timestamp =>
 export const timestampToHash = (t: Timestamp): TimestampHash =>
   pipe(timestampToString(t), murmurhash) as TimestampHash;
 
-export const createInitialTimestamp = pipe(
-  createNodeId,
-  Effect.flatMap((nodeId) =>
-    Effect.sync(
-      (): Timestamp => ({
+export interface InitialTimestamp {
+  readonly create: () => Effect.Effect<never, never, Timestamp>;
+}
+
+export const InitialTimestamp = Context.Tag<InitialTimestamp>();
+
+const nanoidForNodeId = customAlphabet("0123456789abcdef", 16);
+
+export const InitialTimestampLive = Layer.succeed(
+  InitialTimestamp,
+  InitialTimestamp.of({
+    create: () =>
+      Effect.succeed({
         millis: 0 as Millis,
         counter: 0 as Counter,
-        node: nodeId,
-      })
-    )
-  )
+        node: nanoidForNodeId() as NodeId,
+      }),
+  })
 );
 
 const syncNodeId = Schema.parseSync(NodeId)("0000000000000000");

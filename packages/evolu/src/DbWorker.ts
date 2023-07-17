@@ -31,6 +31,7 @@ import {
   TimestampDuplicateNodeError,
 } from "./Types.js";
 import { unknownError } from "./UnknownError.js";
+import { InitialTimestamp, InitialTimestampLive } from "./Timestamp.js";
 
 const sync = (
   queries: ReadonlyArray.NonEmptyReadonlyArray<Query> | null
@@ -129,7 +130,8 @@ export const createCreateDbWorker =
             | DbWorkerRowsCache
             | SyncWorkerPost
             | Time
-            | Config,
+            | Config
+            | InitialTimestamp,
             | TimestampDuplicateNodeError
             | TimestampDriftError
             | TimestampCounterOverflowError,
@@ -165,6 +167,7 @@ export const createCreateDbWorker =
               inputToEffect(input),
               transaction,
               Effect.catchAllCause(recoverFromAllCause(undefined)),
+              Effect.provideSomeLayer(InitialTimestampLive),
               Effect.provideContext(contextWithConfig),
               Effect.runPromise
             );
@@ -199,6 +202,7 @@ export const createCreateDbWorker =
         };
       }),
       Effect.catchAllCause(recoverFromAllCause(constVoid)),
+      Effect.provideLayer(InitialTimestampLive),
       Effect.runPromise,
       (post) => ({
         post: (message): void => {
