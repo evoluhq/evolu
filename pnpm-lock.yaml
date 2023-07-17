@@ -27,8 +27,8 @@ importers:
   apps/native:
     dependencies:
       '@effect/data':
-        specifier: ^0.15.0
-        version: 0.15.0
+        specifier: ^0.15.1
+        version: 0.15.1
       '@effect/schema':
         specifier: ^0.27.0
         version: 0.27.0
@@ -98,8 +98,8 @@ importers:
   apps/web:
     dependencies:
       '@effect/data':
-        specifier: ^0.15.0
-        version: 0.15.0
+        specifier: ^0.15.1
+        version: 0.15.1
       '@effect/schema':
         specifier: ~0.27.0
         version: 0.27.0
@@ -205,8 +205,8 @@ importers:
   packages/evolu:
     dependencies:
       '@effect/data':
-        specifier: ^0.15.0
-        version: 0.15.0
+        specifier: ^0.15.1
+        version: 0.15.1
       '@effect/io':
         specifier: ^0.33.0
         version: 0.33.0
@@ -299,8 +299,8 @@ importers:
   packages/evolu-server:
     dependencies:
       '@effect/data':
-        specifier: ^0.15.0
-        version: 0.15.0
+        specifier: ^0.15.1
+        version: 0.15.1
       '@effect/io':
         specifier: ^0.33.0
         version: 0.33.0
@@ -2220,18 +2220,18 @@ packages:
       '@jridgewell/trace-mapping': 0.3.9
     dev: true
 
-  /@effect/data@0.15.0:
-    resolution: {integrity: sha512-l/I1s9mb8yhOJvBDtGHjEhKuhVAvjWoYF8TwzcjKypSRsZ1TNxEJS//9QQdLEESd2yvlPNWudFiqHxbgRqbQDw==}
+  /@effect/data@0.15.1:
+    resolution: {integrity: sha512-dYe3GL2Lq8M56Q+QvEOPRtpRovhy1QprlBRGIjaCRPZ8DbwRFQZSdPPOL+ZX6e7y3DPF0RW+DFLHYRMA6qGOCw==}
 
   /@effect/io@0.33.0:
     resolution: {integrity: sha512-CwEiAKLZG368t2lNti7u3sX2wi0SS5c+Z0Xb3QVE0fA0WoRidNqlVwzvjMyUqYW6Rtwn0vCqyhAsfK3YVze5FQ==}
     dependencies:
-      '@effect/data': 0.15.0
+      '@effect/data': 0.15.1
 
   /@effect/schema@0.27.0:
     resolution: {integrity: sha512-NS0Fm12XsvQqYhgX7piBQxHT/XOOwQpwSwriPk9GXLJxCDmMcYsHSdG+2J2pWqoZ58Z+dZptxzrceiwt7yVcaw==}
     dependencies:
-      '@effect/data': 0.15.0
+      '@effect/data': 0.15.1
       '@effect/io': 0.33.0
       fast-check: 3.11.0
     dev: false
@@ -3385,7 +3385,7 @@ packages:
       '@react-native-community/cli-tools': 11.3.5
       chalk: 4.1.2
       execa: 5.1.1
-      fast-xml-parser: 4.2.5
+      fast-xml-parser: 4.2.6
       glob: 7.2.3
       ora: 5.4.1
     transitivePeerDependencies:
@@ -5722,7 +5722,7 @@ packages:
   /effect@2.0.0-next.17:
     resolution: {integrity: sha512-OYYuZ497/zRlFSKThnyiTdi7ycyGIEWlWqJ9ILHW4P4BabIIL9MDif9V14UKFHJ8HuAVLDEI0Odk9HqnP//qRw==}
     dependencies:
-      '@effect/data': 0.15.0
+      '@effect/data': 0.15.1
       '@effect/io': 0.33.0
     dev: true
 
@@ -6612,8 +6612,8 @@ packages:
   /fast-levenshtein@2.0.6:
     resolution: {integrity: sha512-DCXu6Ifhqcks7TZKY3Hxp3y6qphY5SJZmrWMDrKcERSOXWQdMhU9Ig/PYrzyw/ul9jOIyh0N4M0tbC5hodg8dw==}
 
-  /fast-xml-parser@4.2.5:
-    resolution: {integrity: sha512-B9/wizE4WngqQftFPmdaMYlXoJlJOYxGQOanC77fq9k8+Z0v5dDSVh+3glErdIROP//s/jgb7ZuxKfB8nVyo0g==}
+  /fast-xml-parser@4.2.6:
+    resolution: {integrity: sha512-Xo1qV++h/Y3Ng8dphjahnYe+rGHaaNdsYOBWL9Y9GCPKpNKilJtilvWkLcI9f9X2DoKTLsZsGYAls5+JL5jfLA==}
     hasBin: true
     dependencies:
       strnum: 1.0.5
@@ -8637,7 +8637,7 @@ packages:
     resolution: {integrity: sha512-FQiZGhIxCzhDwK4LxyPMLlq0Tsmla10X7BfNGlYFK0A5IsaVKNJbETyTzhpIwc+YFRT4GkFFwgo0V2N5vxO5HA==}
     engines: {node: '>=16'}
     dependencies:
-      terser: 5.19.0
+      terser: 5.19.1
 
   /metro-minify-uglify@0.76.7:
     resolution: {integrity: sha512-FuXIU3j2uNcSvQtPrAJjYWHruPiQ+EpE++J9Z+VznQKEHcIxMMoQZAfIF2IpZSrZYfLOjVFyGMvj41jQMxV1Vw==}
@@ -10916,8 +10916,8 @@ packages:
     resolution: {integrity: sha512-IXgzBWvWQwE6PrDI05OvmXUIruQTcoMDzRsOd5CDvHCVLcLHMTSYvOK5Cm46kWqlV3yAbuSpBZdJ5oP5OUoStg==}
     dev: false
 
-  /rollup@3.26.2:
-    resolution: {integrity: sha512-6umBIGVz93er97pMgQO08LuH3m6PUb3jlDUUGFsNJB6VgTCUaDFpupf5JfU30529m/UKOgmiX+uY6Sx8cOYpLA==}
+  /rollup@3.26.3:
+    resolution: {integrity: sha512-7Tin0C8l86TkpcMtXvQu6saWH93nhG3dGQ1/+l5V2TDMceTxO7kDiK6GzbfLWNNxqJXm591PcEZUozZm51ogwQ==}
     engines: {node: '>=14.18.0', npm: '>=8.0.0'}
     hasBin: true
     optionalDependencies:
@@ -11633,8 +11633,8 @@ packages:
       ansi-escapes: 4.3.2
       supports-hyperlinks: 2.3.0
 
-  /terser@5.19.0:
-    resolution: {integrity: sha512-JpcpGOQLOXm2jsomozdMDpd5f8ZHh1rR48OFgWUH3QsyZcfPgv2qDCYbcDEAYNd4OZRj2bWYKpwdll/udZCk/Q==}
+  /terser@5.19.1:
+    resolution: {integrity: sha512-27hxBUVdV6GoNg1pKQ7Z5cbR6V9txPVyBA+FQw3BaZ1Wuzvztce5p156DaP0NVZNrMZZ+6iG9Syf7WgMNKDg2Q==}
     engines: {node: '>=10'}
     hasBin: true
     dependencies:
@@ -12383,7 +12383,7 @@ packages:
       '@types/node': 20.4.2
       esbuild: 0.18.13
       postcss: 8.4.26
-      rollup: 3.26.2
+      rollup: 3.26.3
     optionalDependencies:
       fsevents: 2.3.2
     dev: true

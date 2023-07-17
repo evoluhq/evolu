@@ -10,7 +10,7 @@
     "clean": "rm -rf .turbo && rm -rf .expo && rm -rf node_modules"
   },
   "dependencies": {
-    "@effect/data": "^0.15.0",
+    "@effect/data": "^0.15.1",
     "@effect/schema": "^0.27.0",
     "@types/react": "^18.2.15",
     "evolu": "workspace:*",

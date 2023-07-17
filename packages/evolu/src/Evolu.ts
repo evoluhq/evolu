@@ -1,458 +1,168 @@
-import * as Either from "@effect/data/Either";
-import { absurd, constVoid, pipe } from "@effect/data/Function";
-import * as Number from "@effect/data/Number";
-import * as Option from "@effect/data/Option";
-import * as Predicate from "@effect/data/Predicate";
-import * as ReadonlyArray from "@effect/data/ReadonlyArray";
-import * as Effect from "@effect/io/Effect";
 import * as S from "@effect/schema/Schema";
-import {
-  DatabaseIntrospector,
-  Driver,
-  DummyDriver,
-  Kysely,
-  QueryCompiler,
-  SqliteAdapter,
-  SqliteQueryCompiler,
-} from "kysely";
-import { flushSync } from "react-dom";
-import { browserInit, reloadAllTabs } from "./Browser.js";
-import { createConfig } from "./Config.js";
-import { applyPatches } from "./Diff.js";
-import { createNewMessages } from "./Messages.js";
-import { parseMnemonic } from "./Mnemonic.js";
-import { Id, cast, createId } from "./Model.js";
-import { isBrowserWithOpfs, platformName } from "./Platform.js";
-import { queryObjectToQuery } from "./Query.js";
-import { schemaToTablesDefinitions } from "./Schema.js";
-import { createStore } from "./Store.js";
-import {
-  Config,
-  CreateDbWorker,
-  DbWorker,
-  DbWorkerOutput,
-  Evolu,
-  EvoluError,
-  Mutate,
-  NewMessage,
-  OnCompleteId,
-  Owner,
-  OwnerActions,
-  Query,
-  QueryCallback,
-  QueryObject,
-  RestoreOwnerError,
-  Row,
-  Rows,
-  Schema,
-  SchemaForQuery,
-  Store,
-  SyncState,
-} from "./Types.js";
+import { Brand, Context, ReadonlyRecord } from "effect";
+import { Kysely, SelectQueryBuilder } from "kysely";
+import { Listener, Unsubscribe } from "./Store.js";
 
-const createDbWorkerOffTheMainThread: CreateDbWorker = (onMessage) => {
-  const dbWorker = new Worker(new URL("DbWorker.opfs.js", import.meta.url), {
-    type: "module",
-  });
+export interface Evolu<S extends Schema = Schema> {
+  readonly subscribeError: (listener: Listener) => Unsubscribe;
+  readonly getError: () => Error | null;
 
-  dbWorker.onmessage = (e: MessageEvent<DbWorkerOutput>): void => {
-    onMessage(e.data);
-  };
+  readonly subscribeOwner: (listener: Listener) => Unsubscribe;
+  readonly getOwner: () => Owner | null;
 
-  return {
-    post: (message): void => {
-      dbWorker.postMessage(message);
-    },
-  };
-};
+  readonly createQuery: (queryCallback: QueryCallback<S, Row>) => Query;
+  //   readonly subscribeQuery: (
+  //     query: Query | null
+  //   ) => (listener: Listener) => Unsubscribe;
+  //   readonly getQuery: (query: Query | null) => ReadonlyArray<Row> | null;
+  //   readonly loadQuery: (query: Query) => Promise<ReadonlyArray<Row>>;
 
-const createDbWorkerInTheMainThread =
-  (sql: "localStorage" | "native"): CreateDbWorker =>
-  (onMessage) => {
-    const worker =
-      sql === "localStorage"
-        ? import("./DbWorker.localStorage.js")
-        : // TODO: Fix
-          import("./DbWorker.localStorage.js");
+  // readonly subscribeSyncState: (listener: Listener) => Unsubscribe;
+  // readonly getSyncState: () => SyncState;
+  // readonly mutate: Mutate<S>;
+  // readonly ownerActions: OwnerActions;
+}
 
-    let dbWorker: DbWorker | null = null;
-
-    return {
-      post: (message): void => {
-        worker.then(({ createDbWorker }) => {
-          if (dbWorker == null) dbWorker = createDbWorker(onMessage);
-          dbWorker.post(message);
-        });
-      },
-    };
-  };
-
-const createNoOpServerDbWorker: CreateDbWorker = () => ({
-  post: constVoid,
-});
-
-// All DB work should be off the main thread, but that's not possible
-// for LocalStorage and React Native yet.
-const createDbWorker: CreateDbWorker =
-  platformName === "browser"
-    ? isBrowserWithOpfs
-      ? createDbWorkerOffTheMainThread
-      : createDbWorkerInTheMainThread("localStorage")
-    : createNoOpServerDbWorker;
-
-const createKysely = <S extends Schema>(): Kysely<SchemaForQuery<S>> =>
-  new Kysely({
-    dialect: {
-      createAdapter(): SqliteAdapter {
-        return new SqliteAdapter();
-      },
-      createDriver(): Driver {
-        return new DummyDriver();
-      },
-      createIntrospector(): DatabaseIntrospector {
-        throw "Not implemeneted";
-      },
-      createQueryCompiler(): QueryCompiler {
-        return new SqliteQueryCompiler();
-      },
-    },
-  });
-
-export type RowsCache = ReadonlyMap<Query, Rows>;
-
-type OnComplete = () => void;
-
-const createOnQuery =
-  (
-    rowsCache: Store<RowsCache>,
-    onCompletes: Map<OnCompleteId, OnComplete>,
-    resolvePromise: (query: Query, rows: Rows) => void
-  ) =>
-  ({
-    queriesPatches,
-    onCompleteIds,
-  }: Extract<DbWorkerOutput, { _tag: "onQuery" }>): void => {
-    const state = rowsCache.getState();
-    const nextState = pipe(
-      queriesPatches,
-      ReadonlyArray.map(
-        ({ query, patches }) =>
-          [
-            query,
-            applyPatches(patches)(state.get(query) || ReadonlyArray.empty()),
-          ] as const
-      ),
-      (a): RowsCache => new Map([...state, ...a])
-    );
-
-    // Resolve all Promises belonging to queries.
-    queriesPatches.forEach(({ query }) => {
-      const rows = nextState.get(query) || ReadonlyArray.empty();
-      resolvePromise(query, rows);
-    });
-
-    // No mutation is using onComplete, so we don't need flushSync.
-    if (onCompleteIds.length === 0) {
-      rowsCache.setState(nextState);
-      return;
-    }
-
-    // Ensure DOM is updated before onComplete (for a focus or anything else).
-    flushSync(() => rowsCache.setState(nextState));
-
-    pipe(
-      onCompleteIds,
-      ReadonlyArray.filterMap((id) => {
-        const onComplete = onCompletes.get(id);
-        onCompletes.delete(id);
-        return Option.fromNullable(onComplete);
-      })
-    ).forEach((onComplete) => {
-      onComplete();
-    });
-  };
-
-export const createSubscribeQuery = (
-  rowsCache: Store<RowsCache>,
-  subscribedQueries: Map<Query, number>
-): Evolu["subscribeQuery"] => {
-  return (query: Query | null) => (listen) => {
-    if (query == null) return constVoid;
-
-    subscribedQueries.set(
-      query,
-      Number.increment(subscribedQueries.get(query) ?? 0)
-    );
-
-    const unsubscribe = rowsCache.subscribe(listen);
-
-    return () => {
-      // `as number`, because React mount/unmount are symmetric.
-      const count = subscribedQueries.get(query) as number;
-      if (count > 1) subscribedQueries.set(query, Number.decrement(count));
-      else subscribedQueries.delete(query);
-      unsubscribe();
-    };
-  };
-};
-
-const createLoadQuery = (
-  queryIfAny: (queries: ReadonlyArray<Query>) => void,
-  getPromise: (query: Query) => { promise: Promise<Rows>; isNew: boolean }
-): Evolu["loadQuery"] => {
-  const queue = new Set<Query>();
-
-  return (query) => {
-    const { promise, isNew } = getPromise(query);
-    if (isNew) queue.add(query);
-    if (queue.size === 1) {
-      queueMicrotask(() => {
-        const queries = [...queue];
-        queue.clear();
-        queryIfAny(queries);
-      });
-    }
-    return promise;
-  };
-};
-
-const createMutate = <S extends Schema>({
-  getOwner,
-  onCompletes,
-  dbWorker,
-  getSubscribedQueries,
-  releasePromises,
-}: {
-  getOwner: Promise<Owner>;
-  onCompletes: Map<OnCompleteId, OnComplete>;
-  dbWorker: DbWorker;
-  getSubscribedQueries: () => ReadonlyArray<Query>;
-  releasePromises: (queries: ReadonlyArray<Query>) => void;
-}): Mutate<S> => {
-  const queue: Array<
-    [ReadonlyArray.NonEmptyReadonlyArray<NewMessage>, OnCompleteId | null]
-  > = [];
-
-  return (table, { id, ...values }, onComplete) => {
-    const isInsert = id == null;
-    if (isInsert) id = createId() as never;
-
-    const now = cast(new Date());
-
-    let onCompleteId: OnCompleteId | null = null;
-    if (onComplete) {
-      onCompleteId = createId<"OnComplete">();
-      onCompletes.set(onCompleteId, onComplete);
-    }
-
-    getOwner.then((owner) => {
-      queue.push([
-        createNewMessages(
-          table.toString(),
-          id as Id,
-          values,
-          owner.id,
-          now,
-          isInsert
-        ),
-        onCompleteId,
-      ]);
-
-      if (queue.length === 1)
-        queueMicrotask(() => {
-          if (!ReadonlyArray.isNonEmptyReadonlyArray(queue)) return;
-
-          const [newMessages, onCompleteIds] = pipe(
-            queue,
-            ReadonlyArray.unzipNonEmpty,
-            ([messages, onCompleteIds]) => [
-              ReadonlyArray.flattenNonEmpty(messages),
-              ReadonlyArray.filter(onCompleteIds, Predicate.isNotNull),
-            ]
-          );
-
-          queue.length = 0;
-
-          const queries = getSubscribedQueries();
-          releasePromises(queries);
-
-          dbWorker.post({
-            _tag: "sendMessages",
-            newMessages,
-            onCompleteIds,
-            queries,
-          });
-        });
-    });
-
-    return { id } as never;
-  };
-};
+const Evolu = Context.Tag<Evolu>();
 
 /**
- * Create Evolu. It can be used for React Hooks or any other UI library.
+ * Schema defines database schema.
  */
-export const createEvolu = <From, To extends Schema>(
-  schema: S.Schema<From, To>,
-  optionalConfig?: Partial<Config>,
-  deps: {
-    readonly createDbWorker?: CreateDbWorker;
-  } = {}
-): Evolu<To> => {
-  const config = createConfig(optionalConfig);
+type Schema = ReadonlyRecord.ReadonlyRecord<{ id: Id } & Row>;
 
-  const errorStore = createStore<EvoluError | null>(null);
-  const ownerStore = createStore<Owner | null>(null);
-  const rowsCache = createStore<RowsCache>(new Map());
+/**
+ * Branded Id Schema for any table Id.
+ * To create Id Schema for a specific table, use {@link id}.
+ */
+const Id = S.string.pipe(S.pattern(/^[\w-]{21}$/), S.brand("Id"));
+type Id = S.To<typeof Id>;
 
-  // IsSyncing is the initial state because that's what Evolu does at the start.
-  const syncState = createStore<SyncState>({ _tag: "SyncStateIsSyncing" });
+type Row = ReadonlyRecord.ReadonlyRecord<RowValue>;
 
-  const onCompletes = new Map<OnCompleteId, OnComplete>();
+type RowValue = null | string | number | Uint8Array;
 
-  const subscribedQueries = new Map<Query, number>();
+type Error = "a" | "b";
 
-  const getSubscribedQueries = (): ReadonlyArray<Query> =>
-    Array.from(subscribedQueries.keys());
+/**
+ * `Owner` represents the Evolu database owner. Evolu auto-generates `Owner`
+ * on the first run. `Owner` can be reset on the current device and restored
+ * on a different one.
+ */
+interface Owner {
+  /** The `Mnemonic` associated with `Owner`. */
+  readonly mnemonic: Mnemonic;
+  /** The unique identifier of `Owner` safely derived from its `Mnemonic`. */
+  readonly id: OwnerId;
+  /* The encryption key used by `Owner` derived from its `Mnemonic`. */
+  readonly encryptionKey: Uint8Array;
+}
+const Owner = Context.Tag<Owner>();
 
-  const promises = new Map<
-    Query,
+/**
+ * Mnemonic is a password generated by Evolu in BIP39 format.
+ *
+ * A mnemonic, also known as a "seed phrase," is a set of 12 words in a
+ * specific order chosen from a predefined list. The purpose of the BIP39
+ * mnemonic is to provide a human-readable way of storing a private key.
+ */
+type Mnemonic = string & Brand.Brand<"Mnemonic">;
+
+/**
+ * The unique identifier of `Owner` safely derived from its `Mnemonic`.
+ */
+type OwnerId = Id & Brand.Brand<"Owner">;
+
+type QueryCallback<S extends Schema, QueryRow> = (
+  db: KyselyWithoutMutation<SchemaForQuery<S>>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+) => SelectQueryBuilder<any, any, QueryRow>;
+
+type KyselyWithoutMutation<DB> = Pick<Kysely<DB>, "selectFrom" | "fn">;
+
+type SchemaForQuery<S extends Schema> = {
+  readonly [Table in keyof S]: NullableExceptOfId<
     {
-      readonly promise: Promise<Rows>;
-      readonly resolve: (rows: Rows) => void;
-    }
-  >();
-
-  const resolvePromise = (query: Query, rows: Rows): void => {
-    const item = promises.get(query);
-    if (!item) return;
-    // It's similar to what React will do.
-    Object.assign(item.promise, { rows });
-    item.resolve(rows);
-  };
-
-  const releasePromises = (ignoreQueries: ReadonlyArray<Query>): void => {
-    [...promises.keys()].forEach((query) => {
-      if (!ignoreQueries.includes(query)) promises.delete(query);
-    });
-  };
-
-  const getPromise = (
-    query: Query
-  ): { readonly promise: Promise<Rows>; readonly isNew: boolean } => {
-    const item = promises.get(query);
-    if (item) return { promise: item.promise, isNew: false };
-    let resolve: (rows: Rows) => void = constVoid;
-    const promise = new Promise<Rows>((_resolve) => {
-      resolve = _resolve;
-    });
-    promises.set(query, { promise, resolve });
-    return { promise, isNew: true };
-  };
-
-  const dbWorker = (deps.createDbWorker || createDbWorker)((message) => {
-    switch (message._tag) {
-      case "onError":
-        errorStore.setState(message.error);
-        break;
-      case "onOwner":
-        ownerStore.setState(message.owner);
-        break;
-      case "onQuery":
-        onQuery(message);
-        break;
-      case "onReceive":
-        queryIfAny(getSubscribedQueries());
-        break;
-      case "onResetOrRestore":
-        reloadAllTabs(config.reloadUrl);
-        break;
-      case "onSyncState":
-        syncState.setState(message.state);
-        break;
-      default:
-        absurd(message);
-    }
-  });
-
-  const onQuery = createOnQuery(rowsCache, onCompletes, resolvePromise);
-
-  const queryIfAny = (queries: ReadonlyArray<Query>): void => {
-    if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
-      dbWorker.post({ _tag: "query", queries });
-  };
-
-  const subscribeQuery = createSubscribeQuery(rowsCache, subscribedQueries);
-
-  const getQuery: Evolu["getQuery"] = (query) =>
-    (query && rowsCache.getState().get(query)) || null;
-
-  const loadQuery = createLoadQuery(queryIfAny, getPromise);
-
-  const getOwner = new Promise<Owner>((resolve) => {
-    const unsubscribe = ownerStore.subscribe(() => {
-      const owner = ownerStore.getState();
-      if (!owner) return;
-      unsubscribe();
-      resolve(owner);
-    });
-  });
-
-  const mutate: Evolu["mutate"] = createMutate({
-    getOwner,
-    onCompletes,
-    dbWorker,
-    getSubscribedQueries,
-    releasePromises,
-  });
-
-  const ownerActions: OwnerActions = {
-    reset: () => dbWorker.post({ _tag: "reset" }),
-    restore: (mnemonic) =>
-      pipe(
-        parseMnemonic(mnemonic),
-        Effect.map((mnemonic) => {
-          dbWorker.post({ _tag: "reset", mnemonic });
-          return Either.right(undefined);
-        }),
-        Effect.catchTag("InvalidMnemonic", () =>
-          Effect.succeed(
-            Either.left<RestoreOwnerError>({ _tag: "RestoreOwnerError" })
-          )
-        ),
-        Effect.runPromise
-      ),
-  };
-
-  const kysely = createKysely<To>();
-
-  const createQuery = (queryCallback: QueryCallback<To, Row>): Query =>
-    pipe(queryCallback(kysely).compile() as QueryObject, queryObjectToQuery);
-
-  dbWorker.post({
-    _tag: "init",
-    config,
-    tableDefinitions: schemaToTablesDefinitions(schema),
-  });
-
-  if (platformName === "browser") browserInit(subscribedQueries, dbWorker);
-
-  return {
-    subscribeError: errorStore.subscribe,
-    getError: errorStore.getState,
-
-    subscribeOwner: ownerStore.subscribe,
-    getOwner: ownerStore.getState,
-
-    createQuery,
-    subscribeQuery,
-    getQuery,
-    loadQuery,
-
-    subscribeSyncState: syncState.subscribe,
-    getSyncState: syncState.getState,
-
-    mutate,
-    ownerActions,
-  };
+      readonly [Column in keyof S[Table]]: S[Table][Column];
+    } & CommonColumns
+  >;
 };
+
+type NullableExceptOfId<T> = {
+  readonly [K in keyof T]: K extends "id" ? T[K] : T[K] | null;
+};
+
+interface CommonColumns {
+  readonly createdAt: SqliteDate;
+  readonly createdBy: Owner["id"];
+  readonly updatedAt: SqliteDate;
+  readonly isDeleted: SqliteBoolean;
+}
+
+/**
+ * SQLite doesn't support the Date type, so Evolu uses SqliteDate instead.
+ * Use the {@link cast} helper to cast SqliteDate from Date and back.
+ * https://www.sqlite.org/quirks.html#no_separate_datetime_datatype
+ */
+const SqliteDate = S.string.pipe(
+  S.filter((s) => !isNaN(Date.parse(s)), {
+    message: () => "a date as a string value in ISO format",
+    identifier: "SqliteDate",
+  }),
+  S.brand("SqliteDate")
+);
+type SqliteDate = S.To<typeof SqliteDate>;
+
+/**
+ * SQLite doesn't support the boolean type, so Evolu uses SqliteBoolean instead.
+ * Use the {@link cast} helper to cast SqliteBoolean from boolean and back.
+ * https://www.sqlite.org/quirks.html#no_separate_boolean_datatype
+ */
+const SqliteBoolean = S.union(S.literal(0), S.literal(1));
+type SqliteBoolean = S.To<typeof SqliteBoolean>;
+
+type Query = string & Brand.Brand<"Query">;
+
+/**
+ * A helper for casting types not supported by SQLite.
+ * SQLite doesn't support Date nor Boolean types, so Evolu emulates them
+ * with {@link SqliteBoolean} and {@link SqliteDate}.
+ *
+ * ### Example
+ *
+ * ```
+ * // isDeleted is SqliteBoolean
+ * .where("isDeleted", "is not", cast(true))
+ * ```
+ */
+export function cast(value: boolean): SqliteBoolean;
+export function cast(value: SqliteBoolean): boolean;
+export function cast(value: Date): SqliteDate;
+export function cast(value: SqliteDate): Date;
+export function cast(
+  value: boolean | SqliteBoolean | Date | SqliteDate
+): boolean | SqliteBoolean | Date | SqliteDate {
+  if (typeof value === "boolean") return value === true ? 1 : 0;
+  if (typeof value === "number") return value === 1;
+  if (value instanceof Date) return value.toISOString() as SqliteDate;
+  return new Date(value);
+}
+
+/**
+ * A factory function to create {@link Id} Schema for a specific table.
+ *
+ * ### Example
+ *
+ * ```
+ * import * as Schema from "@effect/schema/Schema";
+ * import * as Evolu from "evolu";
+ *
+ * const TodoId = Evolu.id("Todo");
+ * type TodoId = Schema.To<typeof TodoId>;
+ *
+ * if (!Schema.is(TodoId)(value)) return;
+ * ```
+ */
+export const id = <T extends string>(
+  table: T
+): S.BrandSchema<string, string & Brand.Brand<"Id"> & Brand.Brand<T>> =>
+  Id.pipe(S.brand(table));
