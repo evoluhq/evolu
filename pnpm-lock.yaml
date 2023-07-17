@@ -225,6 +225,9 @@ importers:
       '@sqlite.org/sqlite-wasm':
         specifier: 3.42.0-build2
         version: 3.42.0-build2
+      expo-sqlite:
+        specifier: ^11.3.1
+        version: 11.3.1(expo@49.0.3)
       kysely:
         specifier: ~0.26.1
         version: 0.26.1
@@ -234,6 +237,9 @@ importers:
       nanoid:
         specifier: ^4.0.2
         version: 4.0.2
+      react-native-get-random-values:
+        specifier: ^1.9.0
+        version: 1.9.0(react-native@0.72.3)
     devDependencies:
       '@evolu/tsconfig':
         specifier: workspace:*
@@ -268,9 +274,6 @@ importers:
       expo:
         specifier: ^49.0.3
         version: 49.0.3(@babel/core@7.22.9)
-      expo-sqlite:
-        specifier: ^11.3.1
-        version: 11.3.1(expo@49.0.3)
       react:
         specifier: ^18.2.0
         version: 18.2.0
@@ -280,9 +283,6 @@ importers:
       react-native:
         specifier: ^0.72.3
         version: 0.72.3(@babel/core@7.22.9)(react@18.2.0)
-      react-native-get-random-values:
-        specifier: ^1.9.0
-        version: 1.9.0(react-native@0.72.3)
       tslib:
         specifier: ^2.6.0
         version: 2.6.0
@@ -2787,6 +2787,7 @@ packages:
       noop-fn: 1.0.0
       pouchdb-collections: 1.0.1
       tiny-queue: 0.2.1
+    dev: false
 
   /@expo/xcpretty@4.2.2:
     resolution: {integrity: sha512-Lke/geldJqUV0Dfxg5/QIOugOzdqZ/rQ9yHKSgGbjZtG1uiSqWyFwWvXmrdd3/sIdX33eykGvIcf+OrvvcXVUw==}
@@ -4199,6 +4200,7 @@ packages:
 
   /argsarray@0.0.1:
     resolution: {integrity: sha512-u96dg2GcAKtpTrBdDoFIM7PjcBA+6rSP0OR94MOReNRyUECL6MtQt5XXmRr4qrftYaef9+l5hcpO5te7sML1Cg==}
+    dev: false
 
   /aria-query@5.3.0:
     resolution: {integrity: sha512-b0P0sZPKtyu8HkeRAfCq0IfURZK+SuwMjY1UXGBU27wpAiTwQAIlq56IbIO+ytk/JjS1fMR14ee5WBBfKi5J6A==}
@@ -6479,6 +6481,7 @@ packages:
     dependencies:
       '@expo/websql': 1.0.1
       expo: 49.0.3(@babel/core@7.22.9)
+    dev: false
 
   /expo-status-bar@1.6.0:
     resolution: {integrity: sha512-e//Oi2WPdomMlMDD3skE4+1ZarKCJ/suvcB4Jo/nO427niKug5oppcPNYO+csR6y3ZglGuypS+3pp/hJ+Xp6fQ==}
@@ -6581,7 +6584,7 @@ packages:
 
   /fast-base64-decode@1.0.0:
     resolution: {integrity: sha512-qwaScUgUGBYeDNRnbc/KyllVU88Jk1pRHPStuF/lO7B0/RTRLj7U0lkdTAutlBblY08rwZDff6tNU9cjv6j//Q==}
-    dev: true
+    dev: false
 
   /fast-check@3.11.0:
     resolution: {integrity: sha512-H2tctb7AGfFQfz+DEr3UWhJ3s47LXsGp5g3jeJr5tHjnf4xUvpArIqiwcDmL2EXiv+auLHIpF5MqaIpIKvpxiA==}
@@ -7331,6 +7334,7 @@ packages:
 
   /immediate@3.3.0:
     resolution: {integrity: sha512-HR7EVodfFUdQCTIeySw+WDRFJlPcLOJbXfwwZ7Oom6tjsvZ3bOkCDJHehQC3nxJrv7+f9XecwazynjU8e4Vw3Q==}
+    dev: false
 
   /import-fresh@2.0.0:
     resolution: {integrity: sha512-eZ5H8rcgYazHbKC3PG4ClHNykCSxtAhxSSEM+2mb+7evD2CKF5V7c0dNum7AdpDh0ZdICwZY9sRSn8f+KH96sg==}
@@ -9652,6 +9656,7 @@ packages:
 
   /noop-fn@1.0.0:
     resolution: {integrity: sha512-pQ8vODlgXt2e7A3mIbFDlizkr46r75V+BJxVAyat8Jl7YmI513gG5cfyRL0FedKraoZ+VAouI1h4/IWpus5pcQ==}
+    dev: false
 
   /normalize-package-data@2.5.0:
     resolution: {integrity: sha512-/5CMN3T0R4XTj4DcGaexo+roZSdSFW/0AOOTROrjxzCG1wrWXEsGbRKevjlIL+ZDE4sZlJr5ED4YW0yqmkK+eA==}
@@ -10218,6 +10223,7 @@ packages:
 
   /pouchdb-collections@1.0.1:
     resolution: {integrity: sha512-31db6JRg4+4D5Yzc2nqsRqsA2oOkZS8DpFav3jf/qVNBxusKa2ClkEIZ2bJNpaDbMfWtnuSq59p6Bn+CipPMdg==}
+    dev: false
 
   /prebuild-install@7.1.1:
     resolution: {integrity: sha512-jAXscXWMcCK8GgCoHOfIr0ODh5ai8mj63L2nWrjuAgXE6tDyYGnx4/8o/rCgU+B4JSyZBKbeZqzhtwtC3ovxjw==}
@@ -10504,7 +10510,7 @@ packages:
     dependencies:
       fast-base64-decode: 1.0.0
       react-native: 0.72.3(@babel/core@7.22.9)(react@18.2.0)
-    dev: true
+    dev: false
 
   /react-native-select-dropdown@3.3.4:
     resolution: {integrity: sha512-Ld6BGGgCnbiv7uORAP+KnvDQiqeuqdlasKk9woJH9XtFMD44rwjKwelGzsDxFUM9hIAwZdac4UAFmOmXRaMeRg==}
@@ -11665,6 +11671,7 @@ packages:
 
   /tiny-queue@0.2.1:
     resolution: {integrity: sha512-EijGsv7kzd9I9g0ByCl6h42BWNGUZrlCSejfrb3AKeHC33SGbASu1VDf5O3rRiiUOhAC9CHdZxFPbZu0HmR70A==}
+    dev: false
 
   /tinybench@2.5.0:
     resolution: {integrity: sha512-kRwSG8Zx4tjF9ZiyH4bhaebu+EDz1BOx9hOigYHlUW4xxI/wKIUQUqo018UlU4ar6ATPBsaMrdbKZ+tmPdohFA==}
