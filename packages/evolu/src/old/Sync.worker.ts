@@ -28,6 +28,7 @@ const setIsSyncing = (isSyncing: boolean): void => {
     const promise = new Promise<null>((resolve) => {
       isSyncingResolve = resolve;
     });
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
     navigator.locks.request(syncLockName, () => promise);
   } else {
     if (isSyncingResolve) isSyncingResolve(null);

@@ -11,7 +11,7 @@ import {
   EncryptedMessage,
   MessageContent,
   SyncRequest,
-  SyncResponse,
+  // SyncResponsed,
 } from "./Protobuf.js";
 import {
   CreateSyncWorker,
@@ -182,6 +182,7 @@ export const createCreateSyncWorker =
           setIsSyncing(false);
           return;
         case "sync":
+          // eslint-disable-next-line @typescript-eslint/no-floating-promises
           pipe(
             Effect.gen(function* ($) {
               // `syncCount === 0` means an attempt to start sync loop.

@@ -1,3 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { constVoid } from "@effect/data/Function";
 import * as Effect from "@effect/io/Effect";
 // @ts-expect-error Missing types
@@ -18,7 +23,6 @@ export const createSqlite = (
   strategy: "localStorage" | "opfs"
 ): Effect.Effect<never, never, Db> =>
   Effect.promise(() =>
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     promise.then((sqlite3: any) => {
       const sqlite =
         strategy === "opfs"

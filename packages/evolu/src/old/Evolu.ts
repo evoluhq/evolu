@@ -79,6 +79,7 @@ const createDbWorkerInTheMainThread =
 
     return {
       post: (message): void => {
+        // eslint-disable-next-line @typescript-eslint/no-floating-promises
         worker.then(({ createDbWorker }) => {
           if (dbWorker == null) dbWorker = createDbWorker(onMessage);
           dbWorker.post(message);
@@ -245,6 +246,7 @@ const createMutate = <S extends Schema>({
       onCompletes.set(onCompleteId, onComplete);
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
     getOwner.then((owner) => {
       queue.push([
         createNewMessages(
@@ -319,7 +321,7 @@ export const createEvolu = <From, To extends Schema>(
     Query,
     {
       readonly promise: Promise<Rows>;
-      readonly resolve: (rows: Rows) => void;
+      readonly resolve: (_rows: Rows) => void;
     }
   >();
 
@@ -327,6 +329,7 @@ export const createEvolu = <From, To extends Schema>(
     const item = promises.get(query);
     if (!item) return;
     // It's similar to what React will do.
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
     Object.assign(item.promise, { rows });
     item.resolve(rows);
   };

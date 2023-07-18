@@ -176,6 +176,7 @@ export const createCreateDbWorker =
 
           post = (message): void => {
             const writer = stream.getWriter();
+            // eslint-disable-next-line @typescript-eslint/no-floating-promises
             writer.write(message);
             writer.releaseLock();
           };
@@ -206,6 +207,7 @@ export const createCreateDbWorker =
       Effect.runPromise,
       (post) => ({
         post: (message): void => {
+          // eslint-disable-next-line @typescript-eslint/no-floating-promises
           post.then(apply(message));
         },
       })

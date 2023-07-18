@@ -1,12 +1,13 @@
 module.exports = {
-  plugins: ["node", "jsdoc"],
+  plugins: ["@typescript-eslint", "node", "jsdoc"],
   extends: [
     "eslint:recommended",
     "plugin:@typescript-eslint/recommended",
-    "prettier",
+    "plugin:@typescript-eslint/recommended-type-checked",
     "plugin:jsdoc/recommended-error",
     "next/core-web-vitals",
     "turbo",
+    "prettier",
   ],
   rules: {
     "@typescript-eslint/explicit-function-return-type": "error",
@@ -20,9 +21,15 @@ module.exports = {
     "jsdoc/require-param-type": "off",
     "jsdoc/require-jsdoc": "off",
   },
+  parser: "@typescript-eslint/parser",
   parserOptions: {
     babelOptions: {
       presets: [require.resolve("next/babel")],
     },
+    project: ["./tsconfig.eslint.json", "./packages/*/tsconfig.json"],
+    tsconfigRootDir: __dirname,
+  },
+  settings: {
+    "import/ignore": ["react-native"],
   },
 };

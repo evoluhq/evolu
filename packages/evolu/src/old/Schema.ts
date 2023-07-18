@@ -24,7 +24,7 @@ const commonColumns = Object.keys(commonColumnsObject);
 // https://github.com/Effect-TS/schema/releases/tag/v0.18.0
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
-  schema: S.Schema<I, A>,
+  schema: S.Schema<I, A>
 ): { [K in keyof A]: S.Schema<I[K], A[K]> } => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const out: Record<PropertyKey, S.Schema<any>> = {};
@@ -33,13 +33,13 @@ const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
     const propertySignature = propertySignatures[i];
     out[propertySignature.name] = S.make(propertySignature.type);
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-return
   return out as any;
 };
 
 export const schemaToTablesDefinitions = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  schema: S.Schema<any, any>,
+  schema: S.Schema<any, any>
 ): TablesDefinitions =>
   pipe(
     getPropertySignatures(schema),
@@ -48,19 +48,19 @@ export const schemaToTablesDefinitions = (
       ([name, schema]): TableDefinition => ({
         name,
         columns: Object.keys(getPropertySignatures(schema)).concat(
-          commonColumns,
+          commonColumns
         ),
-      }),
-    ),
+      })
+    )
   );
 
 const getTables: Effect.Effect<Db, never, ReadonlyArray<string>> = pipe(
   Effect.flatMap(Db, (db) =>
-    db.exec(`select "name" from sqlite_schema where type='table'`),
+    db.exec(`select "name" from sqlite_schema where type='table'`)
   ),
-  Effect.map(ReadonlyArray.map((row) => row.name + "")),
+  Effect.map(ReadonlyArray.map((row) => (row.name as string) + "")),
   Effect.map(ReadonlyArray.filter(Predicate.not(String.startsWith("__")))),
-  Effect.map(ReadonlyArray.dedupeWith(String.Equivalence)),
+  Effect.map(ReadonlyArray.dedupeWith(String.Equivalence))
 );
 
 const updateTable = ({
@@ -74,16 +74,15 @@ const updateTable = ({
       Effect.map(ReadonlyArray.map((row) => row.name as string)),
       Effect.map((existingColumns) =>
         ReadonlyArray.differenceWith(String.Equivalence)(existingColumns)(
-          columns,
-        ),
+          columns
+        )
       ),
       Effect.map(
         ReadonlyArray.map(
-          (newColumn) =>
-            `alter table "${name}" add column "${newColumn}" blob;`,
-        ),
+          (newColumn) => `alter table "${name}" add column "${newColumn}" blob;`
+        )
       ),
-      Effect.map(ReadonlyArray.join("")),
+      Effect.map(ReadonlyArray.join(""))
     );
     if (sql) yield* $(db.exec(sql));
   });
@@ -104,11 +103,11 @@ const createTable = ({
           .map((name) => `"${name}" blob`)
           .join(", ")}
       ) without rowid;
-    `),
+    `)
   );
 
 export const updateSchema = (
-  tablesDefinitions: TablesDefinitions,
+  tablesDefinitions: TablesDefinitions
 ): Effect.Effect<Db, never, void> =>
   Effect.flatMap(getTables, (tables) =>
     Effect.forEach(
@@ -117,12 +116,12 @@ export const updateSchema = (
         tables.includes(tableDefinition.name)
           ? updateTable(tableDefinition)
           : createTable(tableDefinition),
-      { discard: true },
-    ),
+      { discard: true }
+    )
   );
 
 export const ensureSchema = (
-  messages: ReadonlyArray.NonEmptyReadonlyArray<Message>,
+  messages: ReadonlyArray.NonEmptyReadonlyArray<Message>
 ): Effect.Effect<Db, never, void> =>
   pipe(
     messages,
@@ -131,14 +130,14 @@ export const ensureSchema = (
       (record, { table, column }) => ({
         ...record,
         [table]: { ...record[table], [column]: null },
-      }),
+      })
     ),
     (record) =>
       Object.entries(record).map(
         ([name, columns]): TableDefinition => ({
           name,
           columns: Object.keys(columns),
-        }),
+        })
       ),
-    updateSchema,
+    updateSchema
   );

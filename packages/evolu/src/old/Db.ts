@@ -3,15 +3,15 @@ import * as Exit from "@effect/io/Exit";
 import { Db } from "./Types.js";
 
 export const transaction = <R, E, A>(
-  effect: Effect.Effect<R, E, A>,
+  effect: Effect.Effect<R, E, A>
 ): Effect.Effect<Db | R, E, A> =>
   Effect.flatMap(Db, (db) =>
     Effect.acquireUseRelease(
       db.exec("begin"),
       () => effect,
       (_, exit) =>
-        Exit.isFailure(exit) ? db.exec("rollback") : db.exec("commit"),
-    ),
+        Exit.isFailure(exit) ? db.exec("rollback") : db.exec("commit")
+    )
   );
 
 export const deleteAllTables: Effect.Effect<Db, never, void> = Effect.gen(
@@ -24,10 +24,10 @@ export const deleteAllTables: Effect.Effect<Db, never, void> = Effect.gen(
         // the disk file. The table can not be recovered.
         // All indices and triggers associated with the table are also deleted.
         // https://sqlite.org/lang_droptable.html
-        Effect.forEach(({ name }) => db.exec(`drop table ${name}`), {
+        Effect.forEach(({ name }) => db.exec(`drop table ${name as string}`), {
           discard: true,
-        }),
-      ),
+        })
+      )
     );
-  },
+  }
 );

@@ -101,7 +101,7 @@ const useTodoCategoriesList = (): TodoCategoriesList =>
 
 const TodoCategorySelect: FC<{
   selected: TodoCategoryId | null;
-  onSelect: (value: TodoCategoryId | null) => void;
+  onSelect: (_value: TodoCategoryId | null) => void;
   todoCategoriesList: TodoCategoriesList;
 }> = ({ selected, onSelect, todoCategoriesList }) => {
   const nothingSelected = "";
