@@ -26,10 +26,7 @@ module.exports = {
     babelOptions: {
       presets: [require.resolve("next/babel")],
     },
-    project: ["./tsconfig.eslint.json", "./packages/*/tsconfig.json"],
+    project: ["./packages/*/tsconfig.json"],
     tsconfigRootDir: __dirname,
-  },
-  settings: {
-    "import/ignore": ["react-native"],
   },
 };

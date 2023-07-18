@@ -288,6 +288,7 @@ const OwnerActions: FC = () => {
         title="Restore Owner"
         onClick={(): void => {
           prompt(Evolu.NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
+            // eslint-disable-next-line @typescript-eslint/no-floating-promises
             ownerActions.restore(mnemonic).then((either) => {
               if (either._tag === "Left")
                 alert(JSON.stringify(either.left, null, 2));
