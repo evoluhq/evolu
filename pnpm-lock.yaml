@@ -30,8 +30,8 @@ importers:
         specifier: ^0.15.1
         version: 0.15.1
       '@effect/schema':
-        specifier: ^0.27.0
-        version: 0.27.0
+        specifier: ^0.28.0
+        version: 0.28.0
       '@types/react':
         specifier: ^18.2.15
         version: 18.2.15
@@ -101,8 +101,8 @@ importers:
         specifier: ^0.15.1
         version: 0.15.1
       '@effect/schema':
-        specifier: ~0.27.0
-        version: 0.27.0
+        specifier: ~0.28.0
+        version: 0.28.0
       clsx:
         specifier: ^2.0.0
         version: 2.0.0
@@ -208,11 +208,11 @@ importers:
         specifier: ^0.15.1
         version: 0.15.1
       '@effect/io':
-        specifier: ^0.33.0
-        version: 0.33.0
+        specifier: ^0.34.0
+        version: 0.34.0
       '@effect/schema':
-        specifier: ^0.27.0
-        version: 0.27.0
+        specifier: ^0.28.0
+        version: 0.28.0
       '@noble/hashes':
         specifier: ^1.3.1
         version: 1.3.1
@@ -263,8 +263,8 @@ importers:
         specifier: ^3.0.0
         version: 3.0.0
       effect:
-        specifier: 2.0.0-next.17
-        version: 2.0.0-next.17
+        specifier: 2.0.0-next.18
+        version: 2.0.0-next.18
       eslint:
         specifier: ^8.45.0
         version: 8.45.0
@@ -302,8 +302,8 @@ importers:
         specifier: ^0.15.1
         version: 0.15.1
       '@effect/io':
-        specifier: ^0.33.0
-        version: 0.33.0
+        specifier: ^0.34.0
+        version: 0.34.0
       better-sqlite3:
         specifier: ^8.4.0
         version: 8.4.0
@@ -2223,16 +2223,16 @@ packages:
   /@effect/data@0.15.1:
     resolution: {integrity: sha512-dYe3GL2Lq8M56Q+QvEOPRtpRovhy1QprlBRGIjaCRPZ8DbwRFQZSdPPOL+ZX6e7y3DPF0RW+DFLHYRMA6qGOCw==}
 
-  /@effect/io@0.33.0:
-    resolution: {integrity: sha512-CwEiAKLZG368t2lNti7u3sX2wi0SS5c+Z0Xb3QVE0fA0WoRidNqlVwzvjMyUqYW6Rtwn0vCqyhAsfK3YVze5FQ==}
+  /@effect/io@0.34.0:
+    resolution: {integrity: sha512-v3elB62xFAoHEXxgJIRwEChw1kLB6139TNO/wOY7nLmHrGyVbonhzfBGlXF6bYleCgSeeM4bfEyoVydm9qWNZQ==}
     dependencies:
       '@effect/data': 0.15.1
 
-  /@effect/schema@0.27.0:
-    resolution: {integrity: sha512-NS0Fm12XsvQqYhgX7piBQxHT/XOOwQpwSwriPk9GXLJxCDmMcYsHSdG+2J2pWqoZ58Z+dZptxzrceiwt7yVcaw==}
+  /@effect/schema@0.28.0:
+    resolution: {integrity: sha512-HIMw//zc0aeHF8PLxtMm0wHo72X5njg8v+0nRGr2gM1nKfFWApuiGI/i/6PZGMg1hD/721vVjCUs+rI+eh8kiw==}
     dependencies:
       '@effect/data': 0.15.1
-      '@effect/io': 0.33.0
+      '@effect/io': 0.34.0
       fast-check: 3.11.0
     dev: false
 
@@ -5719,11 +5719,11 @@ packages:
   /ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  /effect@2.0.0-next.17:
-    resolution: {integrity: sha512-OYYuZ497/zRlFSKThnyiTdi7ycyGIEWlWqJ9ILHW4P4BabIIL9MDif9V14UKFHJ8HuAVLDEI0Odk9HqnP//qRw==}
+  /effect@2.0.0-next.18:
+    resolution: {integrity: sha512-5i/YElIU1BP4ELzDtTkPJmbH9zCB/OWRq/GOl5pgzzADR8dM1UMhRu3n72yKXp8y4m1/f108dCoI4vmkQVyZfw==}
     dependencies:
       '@effect/data': 0.15.1
-      '@effect/io': 0.33.0
+      '@effect/io': 0.34.0
     dev: true
 
   /electron-to-chromium@1.4.461:

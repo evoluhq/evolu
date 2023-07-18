@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@effect/data": "^0.15.1",
-    "@effect/schema": "~0.27.0",
+    "@effect/schema": "~0.28.0",
     "clsx": "^2.0.0",
     "evolu": "workspace:*",
     "next": "^13.4.10",
