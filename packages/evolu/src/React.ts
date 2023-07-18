@@ -252,7 +252,11 @@ type Update<S extends Schema> = <T extends keyof S>(
   readonly id: S[T]["id"];
 };
 
-const makeReact = Effect.map(Evolu, (evolu) => {
+const makeReactLive: Effect.Effect<
+  Evolu<Schema>,
+  never,
+  React<Schema>
+> = Effect.map(Evolu, (evolu) => {
   const cache = new WeakMap<Row, Option.Option<Row>>();
 
   const useQuery: UseQuery<Schema> = (queryCallback, filterMap) => {
@@ -342,4 +346,4 @@ const makeReact = Effect.map(Evolu, (evolu) => {
   });
 });
 
-export const ReactLive = Layer.effect(React, makeReact);
+export const ReactLive = Layer.effect(React, makeReactLive);

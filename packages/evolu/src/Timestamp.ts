@@ -1,6 +1,5 @@
 import * as Schema from "@effect/schema/Schema";
 import { Brand } from "effect";
-import "effect/Brand";
 import { murmurhash } from "./Murmurhash.js";
 
 // https://muratbuffalo.blogspot.com/2014/07/hybrid-logical-clocks.html

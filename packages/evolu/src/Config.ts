@@ -1,4 +1,4 @@
-import { Context } from "effect";
+import { Context, Layer } from "effect";
 
 export interface Config {
   /**
@@ -16,4 +16,18 @@ export interface Config {
    */
   maxDrift: number;
 }
+
 export const Config = Context.Tag<Config>();
+
+export const ConfigLive = (
+  config?: Partial<Config>
+): Layer.Layer<never, never, Config> =>
+  Layer.succeed(
+    Config,
+    Config.of({
+      syncUrl: "https://evolu.world",
+      maxDrift: 5 * 60 * 1000,
+      reloadUrl: "/",
+      ...config,
+    })
+  );

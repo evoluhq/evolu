@@ -1,8 +1,9 @@
 import * as S from "@effect/schema/Schema";
-import { Brand, Context, Either, Layer, ReadonlyRecord } from "effect";
+import { Brand, Context, Effect, Either, Layer, ReadonlyRecord } from "effect";
 import { Kysely, SelectQueryBuilder, Simplify } from "kysely";
 import { Listener, Unsubscribe } from "./Store.js";
 import { Millis } from "./Timestamp.js";
+import { Config } from "./Config.js";
 
 export interface Evolu<S extends Schema = Schema> {
   readonly subscribeError: (listener: Listener) => Unsubscribe;
@@ -259,53 +260,56 @@ export function cast(
   return new Date(value);
 }
 
-export const EvoluLive: Layer.Layer<
-  never,
-  never,
-  Evolu<Schema>
-> = Layer.succeed(
-  Evolu,
-  Evolu.of({
-    subscribeError: () => {
-      throw "";
-    },
-    getError: () => {
-      throw "";
-    },
-    subscribeOwner: () => {
-      throw "";
-    },
-    getOwner: () => {
-      throw "";
-    },
-    createQuery: () => {
-      throw "";
-    },
-    subscribeQuery: () => {
-      throw "";
-    },
-    getQuery: () => {
-      throw "";
-    },
-    loadQuery: () => {
-      throw "";
-    },
-    subscribeSyncState: () => {
-      throw "";
-    },
-    getSyncState: () => {
-      throw "";
-    },
-    mutate: () => {
-      throw "";
-    },
-    ownerActions: {
-      reset: () => {
+const makeEvoluLive = <From, To extends Schema>(
+  _schema: S.Schema<From, To>
+): Effect.Effect<Config, never, Evolu<Schema>> =>
+  Effect.map(Config, (_config) =>
+    Evolu.of({
+      subscribeError: () => {
         throw "";
       },
-      restore: () => {
+      getError: () => {
         throw "";
       },
-    },
-  })
-);
+      subscribeOwner: () => {
+        throw "";
+      },
+      getOwner: () => {
+        throw "";
+      },
+      createQuery: () => {
+        throw "";
+      },
+      subscribeQuery: () => {
+        throw "";
+      },
+      getQuery: () => {
+        throw "";
+      },
+      loadQuery: () => {
+        throw "";
+      },
+      subscribeSyncState: () => {
+        throw "";
+      },
+      getSyncState: () => {
+        throw "";
+      },
+      mutate: () => {
+        throw "";
+      },
+      ownerActions: {
+        reset: () => {
+          throw "";
+        },
+        restore: () => {
+          throw "";
+        },
+      },
+    })
+  );
+
+export const EvoluLive = <From, To extends Schema>(
+  schema: S.Schema<From, To>
+): Layer.Layer<Config, never, Evolu<Schema>> =>
+  Layer.effect(Evolu, makeEvoluLive(schema));
