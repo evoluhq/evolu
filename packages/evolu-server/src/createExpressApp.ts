@@ -186,7 +186,7 @@ const sync = (
 > =>
   Effect.flatMap(
     Effect.try({
-      try: () => Protobuf.SyncRequest.fromBinary(req.body),
+      try: () => Protobuf.SyncRequest.fromBinary(req.body as Uint8Array),
       catch: (error) => new BadRequestError(error),
     }),
     (syncRequest) =>

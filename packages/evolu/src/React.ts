@@ -1,17 +1,18 @@
 import {
   Context,
   Effect,
+  Function,
   Layer,
   Option,
   ReadonlyArray,
-  Function,
 } from "effect";
 import { Simplify } from "kysely";
+import { useMemo, useRef, useSyncExternalStore } from "react";
 import {
   AllowAutoCasting,
   CommonColumns,
-  EvoluError,
   Evolu,
+  EvoluError,
   Owner,
   OwnerActions,
   QueryCallback,
@@ -19,7 +20,6 @@ import {
   Schema,
   SyncState,
 } from "./Evolu.js";
-import { useMemo, useRef, useSyncExternalStore } from "react";
 import { platformName } from "./Platform.js";
 
 export interface React<S extends Schema = Schema> {

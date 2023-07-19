@@ -22,11 +22,19 @@ module.exports = {
     "jsdoc/require-jsdoc": "off",
   },
   parser: "@typescript-eslint/parser",
+
+  // https://github.com/typescript-eslint/typescript-eslint/issues/1333#issuecomment-573345631
+  settings: {
+    "import/resolver": {
+      typescript: {},
+    },
+  },
+
   parserOptions: {
     babelOptions: {
       presets: [require.resolve("next/babel")],
     },
-    project: ["./packages/*/tsconfig.json"],
+    project: ["./apps/*/tsconfig.json", "./packages/*/tsconfig.json"],
     tsconfigRootDir: __dirname,
   },
 };

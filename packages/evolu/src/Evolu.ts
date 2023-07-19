@@ -1,9 +1,9 @@
 import * as S from "@effect/schema/Schema";
 import { Brand, Context, Effect, Either, Layer, ReadonlyRecord } from "effect";
 import { Kysely, SelectQueryBuilder, Simplify } from "kysely";
+import { Config } from "./Config.js";
 import { Listener, Unsubscribe } from "./Store.js";
 import { Millis } from "./Timestamp.js";
-import { Config } from "./Config.js";
 
 export interface Evolu<S extends Schema = Schema> {
   readonly subscribeError: (listener: Listener) => Unsubscribe;
