@@ -1,9 +1,19 @@
 import * as S from "@effect/schema/Schema";
-import { Brand, Context, Effect, Either, Layer, ReadonlyRecord } from "effect";
-import { Kysely, SelectQueryBuilder, Simplify } from "kysely";
+import {
+  Brand,
+  Context,
+  Effect,
+  Either,
+  Function,
+  Layer,
+  ReadonlyArray,
+  ReadonlyRecord,
+} from "effect";
+import * as Kysely from "kysely";
 import { Config } from "./Config.js";
-import { Listener, Unsubscribe } from "./Store.js";
+import { Listener, Unsubscribe, makeStore } from "./Store.js";
 import { Millis } from "./Timestamp.js";
+import { DbWorker } from "./DbWorker.js";
 
 export interface Evolu<S extends Schema = Schema> {
   readonly subscribeError: (listener: Listener) => Unsubscribe;
@@ -26,7 +36,6 @@ export interface Evolu<S extends Schema = Schema> {
   readonly ownerActions: OwnerActions;
 }
 
-// TODO: Consider generic Tag for Evolu Schema.
 export const Evolu = Context.Tag<Evolu>();
 
 /**
@@ -41,9 +50,9 @@ export type Schema = ReadonlyRecord.ReadonlyRecord<{ id: Id } & Row>;
 export const Id = S.string.pipe(S.pattern(/^[\w-]{21}$/), S.brand("Id"));
 export type Id = S.To<typeof Id>;
 
-export type Row = ReadonlyRecord.ReadonlyRecord<RowValue>;
+export type Row = ReadonlyRecord.ReadonlyRecord<Value>;
 
-export type RowValue = null | string | number | Uint8Array;
+export type Value = null | string | number | Uint8Array;
 
 export type EvoluError = "a" | "b";
 
@@ -79,9 +88,12 @@ export type OwnerId = Id & Brand.Brand<"Owner">;
 export type QueryCallback<S extends Schema, QueryRow> = (
   db: KyselyWithoutMutation<SchemaForQuery<S>>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-) => SelectQueryBuilder<any, any, QueryRow>;
+) => Kysely.SelectQueryBuilder<any, any, QueryRow>;
 
-export type KyselyWithoutMutation<DB> = Pick<Kysely<DB>, "selectFrom" | "fn">;
+export type KyselyWithoutMutation<DB> = Pick<
+  Kysely.Kysely<DB>,
+  "selectFrom" | "fn"
+>;
 
 export type SchemaForQuery<S extends Schema> = {
   readonly [Table in keyof S]: NullableExceptOfId<
@@ -124,10 +136,19 @@ export type SqliteDate = S.To<typeof SqliteDate>;
 export const SqliteBoolean = S.union(S.literal(0), S.literal(1));
 export type SqliteBoolean = S.To<typeof SqliteBoolean>;
 
-/**
- * A stringified SQL query with parameters.
- */
-type Query = string & Brand.Brand<"Query">;
+/** Stringified QueryObject. */
+export type Query = string & Brand.Brand<"Query">;
+
+interface QueryObject {
+  readonly sql: string;
+  readonly parameters: ReadonlyArray<Value>;
+}
+
+const queryObjectToQuery = ({ sql, parameters }: QueryObject): Query =>
+  JSON.stringify({ sql, parameters }) as Query;
+
+// const queryObjectFromQuery = (s: Query): QueryObject =>
+//   JSON.parse(s) as QueryObject;
 
 export type SyncState =
   | SyncStateIsSyncing
@@ -170,7 +191,7 @@ type Mutate<S extends Schema> = <
   T extends keyof U,
 >(
   table: T,
-  values: Simplify<Partial<AllowAutoCasting<U[T]>>>,
+  values: Kysely.Simplify<Partial<AllowAutoCasting<U[T]>>>,
   onComplete?: () => void
 ) => {
   readonly id: U[T]["id"];
@@ -260,56 +281,110 @@ export function cast(
   return new Date(value);
 }
 
-const makeEvoluLive = <From, To extends Schema>(
-  _schema: S.Schema<From, To>
-): Effect.Effect<Config, never, Evolu<Schema>> =>
-  Effect.map(Config, (_config) =>
-    Evolu.of({
-      subscribeError: () => {
-        throw "";
+const makeKysely = (): Kysely.Kysely<SchemaForQuery<Schema>> =>
+  new Kysely.Kysely({
+    dialect: {
+      createAdapter: () => new Kysely.SqliteAdapter(),
+      createDriver: () => new Kysely.DummyDriver(),
+      createIntrospector(): Kysely.DatabaseIntrospector {
+        throw "Not implemeneted";
       },
-      getError: () => {
-        throw "";
-      },
-      subscribeOwner: () => {
-        throw "";
-      },
-      getOwner: () => {
-        throw "";
-      },
-      createQuery: () => {
-        throw "";
-      },
-      subscribeQuery: () => {
-        throw "";
-      },
-      getQuery: () => {
-        throw "";
-      },
-      loadQuery: () => {
-        throw "";
-      },
-      subscribeSyncState: () => {
-        throw "";
-      },
-      getSyncState: () => {
-        throw "";
-      },
-      mutate: () => {
-        throw "";
-      },
-      ownerActions: {
-        reset: () => {
-          throw "";
-        },
-        restore: () => {
-          throw "";
-        },
-      },
-    })
-  );
+      createQueryCompiler: () => new Kysely.SqliteQueryCompiler(),
+    },
+  });
 
 export const EvoluLive = <From, To extends Schema>(
-  schema: S.Schema<From, To>
-): Layer.Layer<Config, never, Evolu<Schema>> =>
-  Layer.effect(Evolu, makeEvoluLive(schema));
+  _schema: S.Schema<From, To>
+): Layer.Layer<Config | DbWorker, never, Evolu> =>
+  Layer.effect(
+    Evolu,
+    Effect.map(Effect.all([Config, DbWorker]), ([_config, dbWorker]) => {
+      const errorStore = makeStore<EvoluError | null>(null);
+      const ownerStore = makeStore<Owner | null>(null);
+
+      const kysely = makeKysely();
+
+      const createQuery: Evolu["createQuery"] = (queryCallback) =>
+        queryObjectToQuery(queryCallback(kysely).compile() as QueryObject);
+
+      const loadQueryPromises = new Map<
+        Query,
+        {
+          readonly promise: Promise<ReadonlyArray<Row>>;
+          readonly resolve: (_rows: ReadonlyArray<Row>) => void;
+        }
+      >();
+
+      const getLoadQueryPromise = (
+        query: Query
+      ): {
+        readonly promise: Promise<ReadonlyArray<Row>>;
+        readonly isNew: boolean;
+      } => {
+        const item = loadQueryPromises.get(query);
+        if (item) return { promise: item.promise, isNew: false };
+        let resolve: (rows: ReadonlyArray<Row>) => void = Function.constVoid;
+        const promise = new Promise<ReadonlyArray<Row>>((_resolve) => {
+          resolve = _resolve;
+        });
+        loadQueryPromises.set(query, { promise, resolve });
+        return { promise, isNew: true };
+      };
+
+      const loadQueryQueue = new Set<Query>();
+
+      const postQueries = (queries: ReadonlyArray<Query>): void => {
+        if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
+          dbWorker.post({ _tag: "query", queries });
+      };
+
+      const loadQuery: Evolu["loadQuery"] = (query) => {
+        const { promise, isNew } = getLoadQueryPromise(query);
+        if (isNew) loadQueryQueue.add(query);
+        if (loadQueryQueue.size === 1) {
+          queueMicrotask(() => {
+            const queries = [...loadQueryQueue];
+            loadQueryQueue.clear();
+            postQueries(queries);
+          });
+        }
+        return promise;
+      };
+
+      return Evolu.of({
+        subscribeError: errorStore.subscribe,
+        getError: errorStore.getState,
+
+        subscribeOwner: ownerStore.subscribe,
+        getOwner: ownerStore.getState,
+
+        createQuery,
+        loadQuery,
+        subscribeQuery: () => {
+          throw "subscribeQuery";
+        },
+        getQuery: () => {
+          throw "getQuery";
+        },
+
+        subscribeSyncState: () => {
+          throw "subscribeSyncState";
+        },
+        getSyncState: () => {
+          throw "getSyncState";
+        },
+
+        mutate: () => {
+          throw "mutate";
+        },
+        ownerActions: {
+          reset: () => {
+            throw "reset";
+          },
+          restore: () => {
+            throw "restore";
+          },
+        },
+      });
+    })
+  );
