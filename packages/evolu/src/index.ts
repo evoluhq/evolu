@@ -1,4 +1,4 @@
-export * from "./Exports.js";
+export * from "./Model.js";
 
 import * as S from "@effect/schema/Schema";
 import { Effect, Layer } from "effect";
