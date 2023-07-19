@@ -30,8 +30,8 @@ importers:
         specifier: ^0.16.0
         version: 0.16.0
       '@effect/schema':
-        specifier: ^0.29.1
-        version: 0.29.1
+        specifier: ^0.30.0
+        version: 0.30.0
       '@types/react':
         specifier: ^18.2.15
         version: 18.2.15
@@ -101,8 +101,8 @@ importers:
         specifier: ^0.16.0
         version: 0.16.0
       '@effect/schema':
-        specifier: ~0.29.1
-        version: 0.29.1
+        specifier: ~0.30.0
+        version: 0.30.0
       clsx:
         specifier: ^2.0.0
         version: 2.0.0
@@ -211,8 +211,8 @@ importers:
         specifier: ^0.35.1
         version: 0.35.1
       '@effect/schema':
-        specifier: ^0.29.1
-        version: 0.29.1
+        specifier: ^0.30.0
+        version: 0.30.0
       '@noble/hashes':
         specifier: ^1.3.1
         version: 1.3.1
@@ -305,8 +305,8 @@ importers:
         specifier: ^0.35.1
         version: 0.35.1
       better-sqlite3:
-        specifier: ^8.4.0
-        version: 8.4.0
+        specifier: ^8.5.0
+        version: 8.5.0
       body-parser:
         specifier: ^1.20.2
         version: 1.20.2
@@ -2228,8 +2228,8 @@ packages:
     dependencies:
       '@effect/data': 0.16.0
 
-  /@effect/schema@0.29.1:
-    resolution: {integrity: sha512-GPRGuvIu5b1PjwnQsZAJp5K6YG8E6T+HWwSJtSKv/FQul1SLM8DcsLZ4xM8HGIGnn/i/qZPHnl2XvbUjDyOV3w==}
+  /@effect/schema@0.30.0:
+    resolution: {integrity: sha512-Pj0MUD6kfYwUPUYejig2hAcQUR4aH+9e3My+puc3VkfLLlY1XkyMUIZZGV/B36iZYdMsNF4sEvpzXcZwZOaI6A==}
     dependencies:
       '@effect/data': 0.16.0
       '@effect/io': 0.35.1
@@ -4394,7 +4394,7 @@ packages:
       postcss: ^8.1.0
     dependencies:
       browserslist: 4.21.9
-      caniuse-lite: 1.0.30001516
+      caniuse-lite: 1.0.30001517
       fraction.js: 4.2.0
       normalize-range: 0.1.2
       picocolors: 1.0.0
@@ -4567,8 +4567,8 @@ packages:
       is-windows: 1.0.2
     dev: true
 
-  /better-sqlite3@8.4.0:
-    resolution: {integrity: sha512-NmsNW1CQvqMszu/CFAJ3pLct6NEFlNfuGM6vw72KHkjOD1UDnL96XNN1BMQc1hiHo8vE2GbOWQYIpZ+YM5wrZw==}
+  /better-sqlite3@8.5.0:
+    resolution: {integrity: sha512-vbPcv/Hx5WYdyNg/NbcfyaBZyv9s/NVbxb7yCeC5Bq1pVocNxeL2tZmSu3Rlm4IEOTjYdGyzWQgyx0OSdORBzw==}
     requiresBuild: true
     dependencies:
       bindings: 1.5.0
@@ -4691,8 +4691,8 @@ packages:
     engines: {node: ^6 || ^7 || ^8 || ^9 || ^10 || ^11 || ^12 || >=13.7}
     hasBin: true
     dependencies:
-      caniuse-lite: 1.0.30001516
-      electron-to-chromium: 1.4.463
+      caniuse-lite: 1.0.30001517
+      electron-to-chromium: 1.4.464
       node-releases: 2.0.13
       update-browserslist-db: 1.0.11(browserslist@4.21.9)
 
@@ -4830,8 +4830,8 @@ packages:
     resolution: {integrity: sha512-Gmy6FhYlCY7uOElZUSbxo2UCDH8owEk996gkbrpsgGtrJLM3J7jGxl9Ic7Qwwj4ivOE5AWZWRMecDdF7hqGjFA==}
     engines: {node: '>=10'}
 
-  /caniuse-lite@1.0.30001516:
-    resolution: {integrity: sha512-Wmec9pCBY8CWbmI4HsjBeQLqDTqV91nFVR83DnZpYyRnPI1wePDsTg0bGLPC5VU/3OIZV1fmxEea1b+tFKe86g==}
+  /caniuse-lite@1.0.30001517:
+    resolution: {integrity: sha512-Vdhm5S11DaFVLlyiKu4hiUTkpZu+y1KA/rZZqVQfOD5YdDT/eQKlkt7NaE0WGOFgX32diqt9MiP9CAiFeRklaA==}
 
   /ccount@2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
@@ -5792,8 +5792,8 @@ packages:
       '@effect/io': 0.35.1
     dev: true
 
-  /electron-to-chromium@1.4.463:
-    resolution: {integrity: sha512-fT3hvdUWLjDbaTGzyOjng/CQhQJSQP8ThO3XZAoaxHvHo2kUXiRQVMj9M235l8uDFiNPsPa6KHT1p3RaR6ugRw==}
+  /electron-to-chromium@1.4.464:
+    resolution: {integrity: sha512-guZ84yoou4+ILNdj0XEbmGs6DEWj6zpVOWYpY09GU66yEb0DSYvP/biBPzHn0GuW/3RC/pnaYNUWlQE1fJYtgA==}
 
   /elkjs@0.8.2:
     resolution: {integrity: sha512-L6uRgvZTH+4OF5NE/MBbzQx/WYpru1xCBE9respNj6qznEewGUIfhzmm7horWWxbNO2M0WckQypGctR8lH79xQ==}
@@ -8977,6 +8977,7 @@ packages:
 
   /micro-aes-gcm@0.4.0:
     resolution: {integrity: sha512-38RwWBRWHuVmtXysvrZ5b8C5Q7ozLlmRr1ylYPRVrxYGy3UDot89uYegP/dhk4mUfn2fsiOa0l20QHWoH++rNA==}
+    deprecated: Switch to @noble/ciphers for security updates
     dev: false
 
   /micromark-core-commonmark@1.1.0:
@@ -9592,7 +9593,7 @@ packages:
       '@next/env': 13.4.10
       '@swc/helpers': 0.5.1
       busboy: 1.6.0
-      caniuse-lite: 1.0.30001516
+      caniuse-lite: 1.0.30001517
       postcss: 8.4.14
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)

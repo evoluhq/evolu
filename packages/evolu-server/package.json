@@ -29,7 +29,7 @@
   "dependencies": {
     "@effect/data": "^0.16.0",
     "@effect/io": "^0.35.1",
-    "better-sqlite3": "^8.4.0",
+    "better-sqlite3": "^8.5.0",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
     "evolu": "workspace:*",
