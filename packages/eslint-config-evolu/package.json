@@ -11,7 +11,7 @@
     "@typescript-eslint/parser": "^6.1.0",
     "eslint-config-next": "^13.4.10",
     "eslint-config-prettier": "^8.8.0",
-    "eslint-config-turbo": "^1.10.8",
+    "eslint-config-turbo": "^1.10.9",
     "eslint-plugin-jsdoc": "^46.4.4",
     "eslint-plugin-node": "^11.1.0",
     "next": "^13.4.10",
