@@ -11,9 +11,10 @@ import {
 } from "effect";
 import * as Kysely from "kysely";
 import { Config } from "./Config.js";
+import { DbWorker } from "./DbWorker.js";
 import { Listener, Unsubscribe, makeStore } from "./Store.js";
 import { Millis } from "./Timestamp.js";
-import { DbWorker } from "./DbWorker.js";
+import { runSync } from "./utils.js";
 
 export interface Evolu<S extends Schema = Schema> {
   readonly subscribeError: (listener: Listener) => Unsubscribe;
@@ -281,8 +282,9 @@ export function cast(
   return new Date(value);
 }
 
-const makeKysely = (): Kysely.Kysely<SchemaForQuery<Schema>> =>
-  new Kysely.Kysely({
+// No side-effect, no reason to use Effect.
+const makeCreateQuery = (): Evolu["createQuery"] => {
+  const kysely: Kysely.Kysely<SchemaForQuery<Schema>> = new Kysely.Kysely({
     dialect: {
       createAdapter: () => new Kysely.SqliteAdapter(),
       createDriver: () => new Kysely.DummyDriver(),
@@ -292,99 +294,119 @@ const makeKysely = (): Kysely.Kysely<SchemaForQuery<Schema>> =>
       createQueryCompiler: () => new Kysely.SqliteQueryCompiler(),
     },
   });
+  return (queryCallback) =>
+    queryObjectToQuery(queryCallback(kysely).compile() as QueryObject);
+};
+
+// No side-effect, no reason to use Effect.
+const makeLoadQuery = (dbWorkerPost: DbWorker["post"]): Evolu["loadQuery"] => {
+  const promises = new Map<
+    Query,
+    {
+      readonly promise: Promise<ReadonlyArray<Row>>;
+      readonly resolve: (_rows: ReadonlyArray<Row>) => void;
+    }
+  >();
+
+  const getPromise = (
+    query: Query
+  ): {
+    readonly promise: Promise<ReadonlyArray<Row>>;
+    readonly isNew: boolean;
+  } => {
+    const item = promises.get(query);
+    if (item) return { promise: item.promise, isNew: false };
+    let resolve: (rows: ReadonlyArray<Row>) => void = Function.constVoid;
+    const promise = new Promise<ReadonlyArray<Row>>((_resolve) => {
+      resolve = _resolve;
+    });
+    promises.set(query, { promise, resolve });
+    return { promise, isNew: true };
+  };
+
+  const queue = new Set<Query>();
+
+  return (query) => {
+    const { promise, isNew } = getPromise(query);
+    if (isNew) queue.add(query);
+    if (queue.size === 1) {
+      queueMicrotask(() => {
+        const queries = [...queue];
+        queue.clear();
+        if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
+          runSync(dbWorkerPost({ _tag: "query", queries }));
+      });
+    }
+    return promise;
+  };
+};
+
+const dbWorkerToDbWorkerWithLogDebug = (dbWorker: DbWorker): DbWorker => ({
+  post: (input) =>
+    Effect.logDebug(`DbWorker post: ${JSON.stringify(input, null, 2)}`).pipe(
+      Effect.tap(() => dbWorker.post(input))
+    ),
+  onMessage: (): void => {
+    //
+  },
+});
+
+const makeEvoluLive = Effect.all([
+  Config,
+  DbWorker.pipe(Effect.map(dbWorkerToDbWorkerWithLogDebug)),
+]).pipe(
+  Effect.map(([_config, dbWorker]) => {
+    const errorStore = makeStore<EvoluError | null>(null);
+    const ownerStore = makeStore<Owner | null>(null);
+
+    const createQuery = makeCreateQuery();
+    const loadQuery = makeLoadQuery(dbWorker.post);
+
+    // dbWorker.post({
+    //   _tag: "init",
+    //   config,
+    //   tableDefinitions: schemaToTablesDefinitions(schema),
+    // });
+
+    return Evolu.of({
+      subscribeError: errorStore.subscribe,
+      getError: errorStore.getState,
+
+      subscribeOwner: ownerStore.subscribe,
+      getOwner: ownerStore.getState,
+
+      createQuery,
+      loadQuery,
+      subscribeQuery: () => {
+        throw "subscribeQuery";
+      },
+      getQuery: () => {
+        throw "getQuery";
+      },
+
+      subscribeSyncState: () => {
+        throw "subscribeSyncState";
+      },
+      getSyncState: () => {
+        throw "getSyncState";
+      },
+
+      mutate: () => {
+        throw "mutate";
+      },
+      ownerActions: {
+        reset: () => {
+          throw "reset";
+        },
+        restore: () => {
+          throw "restore";
+        },
+      },
+    });
+  })
+);
 
 export const EvoluLive = <From, To extends Schema>(
   _schema: S.Schema<From, To>
 ): Layer.Layer<Config | DbWorker, never, Evolu> =>
-  Layer.effect(
-    Evolu,
-    Effect.map(Effect.all([Config, DbWorker]), ([_config, dbWorker]) => {
-      const errorStore = makeStore<EvoluError | null>(null);
-      const ownerStore = makeStore<Owner | null>(null);
-
-      const kysely = makeKysely();
-
-      const createQuery: Evolu["createQuery"] = (queryCallback) =>
-        queryObjectToQuery(queryCallback(kysely).compile() as QueryObject);
-
-      const loadQueryPromises = new Map<
-        Query,
-        {
-          readonly promise: Promise<ReadonlyArray<Row>>;
-          readonly resolve: (_rows: ReadonlyArray<Row>) => void;
-        }
-      >();
-
-      const getLoadQueryPromise = (
-        query: Query
-      ): {
-        readonly promise: Promise<ReadonlyArray<Row>>;
-        readonly isNew: boolean;
-      } => {
-        const item = loadQueryPromises.get(query);
-        if (item) return { promise: item.promise, isNew: false };
-        let resolve: (rows: ReadonlyArray<Row>) => void = Function.constVoid;
-        const promise = new Promise<ReadonlyArray<Row>>((_resolve) => {
-          resolve = _resolve;
-        });
-        loadQueryPromises.set(query, { promise, resolve });
-        return { promise, isNew: true };
-      };
-
-      const loadQueryQueue = new Set<Query>();
-
-      const postQueries = (queries: ReadonlyArray<Query>): void => {
-        if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
-          dbWorker.post({ _tag: "query", queries });
-      };
-
-      const loadQuery: Evolu["loadQuery"] = (query) => {
-        const { promise, isNew } = getLoadQueryPromise(query);
-        if (isNew) loadQueryQueue.add(query);
-        if (loadQueryQueue.size === 1) {
-          queueMicrotask(() => {
-            const queries = [...loadQueryQueue];
-            loadQueryQueue.clear();
-            postQueries(queries);
-          });
-        }
-        return promise;
-      };
-
-      return Evolu.of({
-        subscribeError: errorStore.subscribe,
-        getError: errorStore.getState,
-
-        subscribeOwner: ownerStore.subscribe,
-        getOwner: ownerStore.getState,
-
-        createQuery,
-        loadQuery,
-        subscribeQuery: () => {
-          throw "subscribeQuery";
-        },
-        getQuery: () => {
-          throw "getQuery";
-        },
-
-        subscribeSyncState: () => {
-          throw "subscribeSyncState";
-        },
-        getSyncState: () => {
-          throw "getSyncState";
-        },
-
-        mutate: () => {
-          throw "mutate";
-        },
-        ownerActions: {
-          reset: () => {
-            throw "reset";
-          },
-          restore: () => {
-            throw "restore";
-          },
-        },
-      });
-    })
-  );
+  Layer.effect(Evolu, makeEvoluLive);

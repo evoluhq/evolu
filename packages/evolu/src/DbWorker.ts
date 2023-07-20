@@ -1,4 +1,4 @@
-import { Brand, Context, ReadonlyArray } from "effect";
+import { Brand, Context, Effect, ReadonlyArray } from "effect";
 import { Config } from "./Config.js";
 import type {
   EvoluError,
@@ -14,7 +14,7 @@ import { MerkleTree } from "./MerkleTree.js";
 import { TimestampString } from "./Timestamp.js";
 
 export interface DbWorker {
-  readonly post: (input: DbWorkerInput) => void;
+  readonly post: (input: DbWorkerInput) => Effect.Effect<never, never, void>;
   readonly onMessage: (callback: (output: DbWorkerOutput) => void) => void;
 }
 

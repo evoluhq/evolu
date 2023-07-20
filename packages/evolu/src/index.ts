@@ -3,9 +3,10 @@ export * from "./exports.js";
 import * as S from "@effect/schema/Schema";
 import { Effect, Layer } from "effect";
 import { Config, makeConfig } from "./Config.js";
+import { DbWorker } from "./DbWorker.js";
 import { EvoluLive, Schema } from "./Evolu.js";
 import { React, ReactLive } from "./React.js";
-import { DbWorker } from "./DbWorker.js";
+import { runSync } from "./utils.js";
 
 const ConfigLive = makeConfig({
   syncUrl: "https://evolu.world",
@@ -16,13 +17,12 @@ const ConfigLive = makeConfig({
 const DbWorkerLive = Layer.succeed(
   DbWorker,
   DbWorker.of({
-    post: (a) => {
-      // eslint-disable-next-line no-console
-      console.log(a);
+    post: (_input) => {
+      // // eslint-disable-next-line no-console
+      // console.log(input);
+      return Effect.succeed(undefined);
     },
-    onMessage: () => {
-      //
-    },
+    onMessage: () => {},
   })
 );
 
@@ -38,5 +38,5 @@ export const create = <From, To extends Schema>(
         Layer.provide(ReactLive)
       )
     ),
-    Effect.runSync
+    runSync
   );
