@@ -1,4 +1,4 @@
-import { Brand, Context, Effect, ReadonlyArray } from "effect";
+import { Brand, Context, Effect, Layer, ReadonlyArray } from "effect";
 import { Config } from "./Config.js";
 import type {
   EvoluError,
@@ -7,8 +7,8 @@ import type {
   Owner,
   Query,
   Row,
-  Value,
   SyncState,
+  Value,
 } from "./Evolu.js";
 import { MerkleTree } from "./MerkleTree.js";
 import { TimestampString } from "./Timestamp.js";
@@ -106,3 +106,15 @@ export interface ReplaceAtPatch {
   readonly index: number;
   readonly value: Row;
 }
+
+export const DbWorkerLive = Layer.succeed(
+  DbWorker,
+  DbWorker.of({
+    post: (_input) => {
+      throw "";
+    },
+    onMessage: (_callback) => {
+      //
+    },
+  })
+);

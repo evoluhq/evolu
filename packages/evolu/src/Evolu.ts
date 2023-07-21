@@ -8,13 +8,14 @@ import {
   Layer,
   ReadonlyArray,
   ReadonlyRecord,
+  pipe,
 } from "effect";
 import * as Kysely from "kysely";
 import { Config } from "./Config.js";
 import { DbWorker } from "./DbWorker.js";
 import { Listener, Unsubscribe, makeStore } from "./Store.js";
 import { Millis } from "./Timestamp.js";
-import { runSync } from "./utils.js";
+import { getPropertySignatures, logDebug, runSync } from "./utils.js";
 
 export interface Evolu<S extends Schema = Schema> {
   readonly subscribeError: (listener: Listener) => Unsubscribe;
@@ -114,6 +115,8 @@ export interface CommonColumns {
   readonly updatedAt: SqliteDate;
   readonly isDeleted: SqliteBoolean;
 }
+
+const commonColumns = ["createdAt", "createdBy", "updatedAt", "isDeleted"];
 
 /**
  * SQLite doesn't support the Date type, so Evolu uses SqliteDate instead.
@@ -334,7 +337,7 @@ const makeLoadQuery = (dbWorkerPost: DbWorker["post"]): Evolu["loadQuery"] => {
         const queries = [...queue];
         queue.clear();
         if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
-          runSync(dbWorkerPost({ _tag: "query", queries }));
+          dbWorkerPost({ _tag: "query", queries }).pipe(runSync);
       });
     }
     return promise;
@@ -343,7 +346,7 @@ const makeLoadQuery = (dbWorkerPost: DbWorker["post"]): Evolu["loadQuery"] => {
 
 const dbWorkerToDbWorkerWithLogDebug = (dbWorker: DbWorker): DbWorker => ({
   post: (input) =>
-    Effect.logDebug(`DbWorker post: ${JSON.stringify(input, null, 2)}`).pipe(
+    logDebug("DbWorker post", input).pipe(
       Effect.tap(() => dbWorker.post(input))
     ),
   onMessage: (): void => {
@@ -351,62 +354,95 @@ const dbWorkerToDbWorkerWithLogDebug = (dbWorker: DbWorker): DbWorker => ({
   },
 });
 
-const makeEvoluLive = Effect.all([
-  Config,
-  DbWorker.pipe(Effect.map(dbWorkerToDbWorkerWithLogDebug)),
-]).pipe(
-  Effect.map(([_config, dbWorker]) => {
-    const errorStore = makeStore<EvoluError | null>(null);
-    const ownerStore = makeStore<Owner | null>(null);
+export interface Table {
+  readonly name: string;
+  readonly columns: ReadonlyArray<string>;
+}
 
-    const createQuery = makeCreateQuery();
-    const loadQuery = makeLoadQuery(dbWorker.post);
+const schemaToTables = (
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  schema: S.Schema<any, any>
+): ReadonlyArray<Table> =>
+  pipe(
+    getPropertySignatures(schema),
+    ReadonlyRecord.toEntries,
+    ReadonlyArray.map(
+      ([name, schema]): Table => ({
+        name,
+        columns: Object.keys(getPropertySignatures(schema)).concat(
+          commonColumns
+        ),
+      })
+    )
+  );
 
-    // dbWorker.post({
-    //   _tag: "init",
-    //   config,
-    //   tableDefinitions: schemaToTablesDefinitions(schema),
-    // });
+const makeEvoluLive = <From, To extends Schema>(
+  schema: S.Schema<From, To>
+): Effect.Effect<DbWorker | Config, never, Evolu<Schema>> =>
+  Effect.all([
+    Config,
+    DbWorker.pipe(Effect.map(dbWorkerToDbWorkerWithLogDebug)),
+  ]).pipe(
+    Effect.map(([config, dbWorker]) => {
+      const errorStore = makeStore<EvoluError | null>(null);
+      const ownerStore = makeStore<Owner | null>(null);
 
-    return Evolu.of({
-      subscribeError: errorStore.subscribe,
-      getError: errorStore.getState,
+      const createQuery = makeCreateQuery();
+      const loadQuery = makeLoadQuery(dbWorker.post);
 
-      subscribeOwner: ownerStore.subscribe,
-      getOwner: ownerStore.getState,
+      dbWorker.onMessage((output) => {
+        // eslint-disable-next-line no-console
+        console.log(output);
+      });
 
-      createQuery,
-      loadQuery,
-      subscribeQuery: () => {
-        throw "subscribeQuery";
-      },
-      getQuery: () => {
-        throw "getQuery";
-      },
+      dbWorker
+        .post({
+          _tag: "init",
+          config,
+          tableDefinitions: schemaToTables(schema),
+        })
+        .pipe(runSync);
 
-      subscribeSyncState: () => {
-        throw "subscribeSyncState";
-      },
-      getSyncState: () => {
-        throw "getSyncState";
-      },
+      return Evolu.of({
+        subscribeError: errorStore.subscribe,
+        getError: errorStore.getState,
 
-      mutate: () => {
-        throw "mutate";
-      },
-      ownerActions: {
-        reset: () => {
-          throw "reset";
+        subscribeOwner: ownerStore.subscribe,
+        getOwner: ownerStore.getState,
+
+        createQuery,
+        loadQuery,
+        subscribeQuery: () => {
+          throw "subscribeQuery";
         },
-        restore: () => {
-          throw "restore";
+        getQuery: () => {
+          throw "getQuery";
         },
-      },
-    });
-  })
-);
+
+        subscribeSyncState: () => {
+          throw "subscribeSyncState";
+        },
+        getSyncState: () => {
+          throw "getSyncState";
+        },
+
+        mutate: () => {
+          throw "mutate";
+        },
+
+        ownerActions: {
+          reset: () => {
+            throw "reset";
+          },
+          restore: () => {
+            throw "restore";
+          },
+        },
+      });
+    })
+  );
 
 export const EvoluLive = <From, To extends Schema>(
-  _schema: S.Schema<From, To>
+  schema: S.Schema<From, To>
 ): Layer.Layer<Config | DbWorker, never, Evolu> =>
-  Layer.effect(Evolu, makeEvoluLive);
+  Layer.effect(Evolu, makeEvoluLive<From, To>(schema));

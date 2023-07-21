@@ -15,7 +15,7 @@ import {
 } from "./Types.js";
 
 // To get commonColumns array.
-export const commonColumnsObject: {
+const commonColumnsObject: {
   [K in keyof CommonColumns]: null;
 } = { createdAt: null, createdBy: null, updatedAt: null, isDeleted: null };
 

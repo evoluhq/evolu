@@ -20,7 +20,6 @@ import {
   Schema,
   SyncState,
 } from "./Evolu.js";
-import { platformName } from "./Platform.js";
 
 export interface React<S extends Schema = Schema> {
   readonly hooks: Hooks<S>;
@@ -267,8 +266,9 @@ export const ReactLive = Layer.effect(
         return query ? evolu.loadQuery(query) : null;
       }, [query]);
 
-      if (platformName !== "server" && promise && !("rows" in promise))
-        throw promise;
+      // Do we need?
+      // platformName !== "server" &&
+      if (promise && !("rows" in promise)) throw promise;
 
       const subscribedRows = useSyncExternalStore(
         useMemo(() => evolu.subscribeQuery(query), [query]),
