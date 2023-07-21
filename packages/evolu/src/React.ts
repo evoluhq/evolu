@@ -8,18 +8,18 @@ import {
 } from "effect";
 import { Simplify } from "kysely";
 import { useMemo, useRef, useSyncExternalStore } from "react";
+import { Row } from "./Db.js";
 import {
   AllowAutoCasting,
   CommonColumns,
   Evolu,
-  EvoluError,
-  Owner,
   OwnerActions,
   QueryCallback,
-  Row,
-  Schema,
-  SyncState,
 } from "./Evolu.js";
+import { EvoluError } from "./EvoluError.js";
+import { Owner } from "./Owner.js";
+import { Schema } from "./Schema.js";
+import { SyncState } from "./SyncState.js";
 
 export interface React<S extends Schema = Schema> {
   readonly hooks: Hooks<S>;

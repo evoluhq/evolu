@@ -2,9 +2,10 @@ import * as S from "@effect/schema/Schema";
 import { Effect, Layer } from "effect";
 import { Config, makeConfig } from "./Config.js";
 import { DbWorker } from "./DbWorker.js";
-import { EvoluLive, Schema } from "./Evolu.js";
+import { EvoluLive } from "./Evolu.js";
 import { React, ReactLive } from "./React.js";
 import { runSync } from "./utils.js";
+import { Schema } from "./Schema.js";
 
 const ConfigLive = makeConfig({
   syncUrl: "https://evolu.world",
