@@ -1,5 +1,6 @@
 import { Brand, Context, Effect, Layer, ReadonlyArray } from "effect";
 import { Config } from "./Config.js";
+import { Db } from "./Db.js";
 import type {
   EvoluError,
   Id,
@@ -14,7 +15,7 @@ import { MerkleTree } from "./MerkleTree.js";
 import { TimestampString } from "./Timestamp.js";
 
 export interface DbWorker {
-  readonly post: (input: DbWorkerInput) => Effect.Effect<never, never, void>;
+  readonly postMessage: (input: DbWorkerInput) => void;
   readonly onMessage: (callback: (output: DbWorkerOutput) => void) => void;
 }
 
@@ -107,14 +108,22 @@ export interface ReplaceAtPatch {
   readonly value: Row;
 }
 
-export const DbWorkerLive = Layer.succeed(
+export const DbWorkerLive = Layer.effect(
   DbWorker,
-  DbWorker.of({
-    post: (_input) => {
-      throw "";
-    },
-    onMessage: (_callback) => {
-      //
-    },
+  Effect.map(Db, (_db) => {
+    const postMessage: DbWorker["postMessage"] = (_input) => {
+      // tady mi chodej messages, handluju, jasny
+      // pustim effect, kterej cpu do streamu, jak jsem mel, cajk
+      // kazdej effect muze zavolat onMessage
+      // imho jak jsem mel, to bylo ok
+    };
+
+    const onMessage: DbWorker["onMessage"] = (_callback) => {
+      // ulozim callback, ten pak volam, jasny
+      // cokoliv muze nastavit, na to to posilam, jasny
+      // poradi je fuk
+    };
+
+    return { postMessage, onMessage };
   })
 );

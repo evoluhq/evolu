@@ -13,25 +13,25 @@ import {
 import * as Kysely from "kysely";
 import { Config } from "./Config.js";
 import { DbWorker } from "./DbWorker.js";
-import { Listener, Unsubscribe, makeStore } from "./Store.js";
+import { StoreListener, StoreUnsubscribe, makeStore } from "./Store.js";
 import { Millis } from "./Timestamp.js";
 import { getPropertySignatures, logDebug, runSync } from "./utils.js";
 
 export interface Evolu<S extends Schema = Schema> {
-  readonly subscribeError: (listener: Listener) => Unsubscribe;
+  readonly subscribeError: (listener: StoreListener) => StoreUnsubscribe;
   readonly getError: () => EvoluError | null;
 
-  readonly subscribeOwner: (listener: Listener) => Unsubscribe;
+  readonly subscribeOwner: (listener: StoreListener) => StoreUnsubscribe;
   readonly getOwner: () => Owner | null;
 
   readonly createQuery: (queryCallback: QueryCallback<S, Row>) => Query;
   readonly subscribeQuery: (
     query: Query | null
-  ) => (listener: Listener) => Unsubscribe;
+  ) => (listener: StoreListener) => StoreUnsubscribe;
   readonly getQuery: (query: Query | null) => ReadonlyArray<Row> | null;
   readonly loadQuery: (query: Query) => Promise<ReadonlyArray<Row>>;
 
-  readonly subscribeSyncState: (listener: Listener) => Unsubscribe;
+  readonly subscribeSyncState: (listener: StoreListener) => StoreUnsubscribe;
   readonly getSyncState: () => SyncState;
 
   readonly mutate: Mutate<S>;
@@ -143,7 +143,7 @@ export type SqliteBoolean = S.To<typeof SqliteBoolean>;
 /** Stringified QueryObject. */
 export type Query = string & Brand.Brand<"Query">;
 
-interface QueryObject {
+export interface QueryObject {
   readonly sql: string;
   readonly parameters: ReadonlyArray<Value>;
 }
@@ -302,7 +302,9 @@ const makeCreateQuery = (): Evolu["createQuery"] => {
 };
 
 // No side-effect, no reason to use Effect.
-const makeLoadQuery = (dbWorkerPost: DbWorker["post"]): Evolu["loadQuery"] => {
+const makeLoadQuery = (
+  dbWorkerPost: DbWorker["postMessage"]
+): Evolu["loadQuery"] => {
   const promises = new Map<
     Query,
     {
@@ -337,22 +339,26 @@ const makeLoadQuery = (dbWorkerPost: DbWorker["post"]): Evolu["loadQuery"] => {
         const queries = [...queue];
         queue.clear();
         if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
-          dbWorkerPost({ _tag: "query", queries }).pipe(runSync);
+          dbWorkerPost({ _tag: "query", queries });
       });
     }
     return promise;
   };
 };
 
-const dbWorkerToDbWorkerWithLogDebug = (dbWorker: DbWorker): DbWorker => ({
-  post: (input) =>
-    logDebug("DbWorker post", input).pipe(
-      Effect.tap(() => dbWorker.post(input))
-    ),
-  onMessage: (): void => {
-    //
-  },
-});
+const dbWorkerToDbWorkerWithLogDebug = (dbWorker: DbWorker): DbWorker => {
+  const postMessage: DbWorker["postMessage"] = (input) => {
+    runSync(logDebug("Evolu DbWorker.postMessage", input));
+    dbWorker.postMessage(input);
+  };
+  const onMessage: DbWorker["onMessage"] = (callback) => {
+    dbWorker.onMessage((output) => {
+      runSync(logDebug("Evolu DbWorker.onMessage", output));
+      callback(output);
+    });
+  };
+  return { postMessage, onMessage };
+};
 
 export interface Table {
   readonly name: string;
@@ -388,20 +394,18 @@ const makeEvoluLive = <From, To extends Schema>(
       const ownerStore = makeStore<Owner | null>(null);
 
       const createQuery = makeCreateQuery();
-      const loadQuery = makeLoadQuery(dbWorker.post);
+      const loadQuery = makeLoadQuery(dbWorker.postMessage);
 
       dbWorker.onMessage((output) => {
         // eslint-disable-next-line no-console
         console.log(output);
       });
 
-      dbWorker
-        .post({
-          _tag: "init",
-          config,
-          tableDefinitions: schemaToTables(schema),
-        })
-        .pipe(runSync);
+      dbWorker.postMessage({
+        _tag: "init",
+        config,
+        tableDefinitions: schemaToTables(schema),
+      });
 
       return Evolu.of({
         subscribeError: errorStore.subscribe,

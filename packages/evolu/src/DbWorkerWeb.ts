@@ -1,4 +1,4 @@
-import { Effect, Function, Layer } from "effect";
+import { Function, Layer } from "effect";
 import { DbWorker, DbWorkerOutput } from "./DbWorker.js";
 
 const isServer = typeof document === "undefined";
@@ -20,7 +20,7 @@ const isFirefoxWithOpfs = (): boolean => {
 };
 
 const createNoOpServerDbWorker = (): DbWorker => ({
-  post: () => Effect.succeed(undefined),
+  postMessage: Function.constVoid,
   onMessage: Function.constVoid,
 });
 
@@ -30,29 +30,29 @@ const createOpfsDbWorker = (): DbWorker => {
     { type: "module" }
   );
 
-  return {
-    post: (input) =>
-      Effect.sync(() => {
-        dbWorker.postMessage(input);
-      }),
-    onMessage: (callback): void => {
-      dbWorker.onmessage = (e: MessageEvent<DbWorkerOutput>): void => {
-        callback(e.data);
-      };
-    },
+  const post: DbWorker["postMessage"] = (input) => {
+    dbWorker.postMessage(input);
   };
+
+  const onMessage: DbWorker["onMessage"] = (callback) => {
+    dbWorker.onmessage = (e: MessageEvent<DbWorkerOutput>): void => {
+      callback(e.data);
+    };
+  };
+
+  return { postMessage: post, onMessage };
 };
 
-// injectnu celej file?
 const createLocalStorageDbWorker = (): DbWorker => ({
-  post: () => Effect.succeed(undefined),
+  postMessage: Function.constVoid,
   onMessage: Function.constVoid,
 });
 
-const dbWorker = isServer
-  ? createNoOpServerDbWorker()
-  : isChromeWithOpfs() || isFirefoxWithOpfs()
-  ? createOpfsDbWorker()
-  : createLocalStorageDbWorker();
-
-export const DbWorkerWeb = Layer.succeed(DbWorker, DbWorker.of(dbWorker));
+export const DbWorkerWeb = Layer.succeed(
+  DbWorker,
+  isServer
+    ? createNoOpServerDbWorker()
+    : isChromeWithOpfs() || isFirefoxWithOpfs()
+    ? createOpfsDbWorker()
+    : createLocalStorageDbWorker()
+);
