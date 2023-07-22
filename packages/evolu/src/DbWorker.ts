@@ -108,16 +108,11 @@ export const DbWorkerLive = Layer.effect(
   DbWorker,
   Effect.map(Db, (_db) => {
     const postMessage: DbWorker["postMessage"] = (_input) => {
-      // tady mi chodej messages, handluju, jasny
-      // pustim effect, kterej cpu do streamu, jak jsem mel, cajk
-      // kazdej effect muze zavolat onMessage
-      // imho jak jsem mel, to bylo ok
+      //
     };
 
     const onMessage: DbWorker["onMessage"] = (_callback) => {
-      // ulozim callback, ten pak volam, jasny
-      // cokoliv muze nastavit, na to to posilam, jasny
-      // poradi je fuk
+      //
     };
 
     return { postMessage, onMessage };

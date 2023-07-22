@@ -9,16 +9,15 @@ import {
 import { Simplify } from "kysely";
 import { useMemo, useRef, useSyncExternalStore } from "react";
 import { Row } from "./Db.js";
+import { Evolu, OwnerActions } from "./Evolu.js";
+import { EvoluError } from "./EvoluError.js";
+import { Owner } from "./Owner.js";
 import {
   AllowAutoCasting,
   CommonColumns,
-  Evolu,
-  OwnerActions,
   QueryCallback,
-} from "./Evolu.js";
-import { EvoluError } from "./EvoluError.js";
-import { Owner } from "./Owner.js";
-import { Schema } from "./Schema.js";
+  Schema,
+} from "./Schema.js";
 import { SyncState } from "./SyncState.js";
 
 export interface React<S extends Schema = Schema> {

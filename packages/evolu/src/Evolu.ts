@@ -1,14 +1,11 @@
 import * as S from "@effect/schema/Schema";
 import {
-  Brand,
   Context,
   Effect,
   Either,
   Function,
   Layer,
   ReadonlyArray,
-  ReadonlyRecord,
-  pipe,
 } from "effect";
 import * as Kysely from "kysely";
 import { Config } from "./Config.js";
@@ -16,10 +13,16 @@ import { Query, QueryObject, Row, queryObjectToQuery } from "./Db.js";
 import { DbWorker } from "./DbWorker.js";
 import { EvoluError } from "./EvoluError.js";
 import { Owner } from "./Owner.js";
-import { Schema } from "./Schema.js";
+import {
+  Mutate,
+  QueryCallback,
+  Schema,
+  SchemaForQuery,
+  schemaToTables,
+} from "./Schema.js";
 import { StoreListener, StoreUnsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncState.js";
-import { getPropertySignatures, logDebug, runSync } from "./utils.js";
+import { logDebug, runSync } from "./utils.js";
 
 export interface Evolu<S extends Schema = Schema> {
   readonly subscribeError: (listener: StoreListener) => StoreUnsubscribe;
@@ -44,93 +47,6 @@ export interface Evolu<S extends Schema = Schema> {
 
 export const Evolu = Context.Tag<Evolu>();
 
-export type QueryCallback<S extends Schema, QueryRow> = (
-  db: KyselyWithoutMutation<SchemaForQuery<S>>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-) => Kysely.SelectQueryBuilder<any, any, QueryRow>;
-
-export type KyselyWithoutMutation<DB> = Pick<
-  Kysely.Kysely<DB>,
-  "selectFrom" | "fn"
->;
-
-export type SchemaForQuery<S extends Schema> = {
-  readonly [Table in keyof S]: NullableExceptOfId<
-    {
-      readonly [Column in keyof S[Table]]: S[Table][Column];
-    } & CommonColumns
-  >;
-};
-
-type NullableExceptOfId<T> = {
-  readonly [K in keyof T]: K extends "id" ? T[K] : T[K] | null;
-};
-
-export interface CommonColumns {
-  readonly createdAt: SqliteDate;
-  readonly createdBy: Owner["id"];
-  readonly updatedAt: SqliteDate;
-  readonly isDeleted: SqliteBoolean;
-}
-
-const commonColumns = ["createdAt", "createdBy", "updatedAt", "isDeleted"];
-
-/**
- * SQLite doesn't support the Date type, so Evolu uses SqliteDate instead.
- * Use the {@link cast} helper to cast SqliteDate from Date and back.
- * https://www.sqlite.org/quirks.html#no_separate_datetime_datatype
- */
-export const SqliteDate: S.BrandSchema<
-  string,
-  string & Brand.Brand<"SqliteDate">
-> = S.string.pipe(
-  S.filter((s) => !isNaN(Date.parse(s)), {
-    message: () => "a date as a string value in ISO format",
-    identifier: "SqliteDate",
-  }),
-  S.brand("SqliteDate")
-);
-export type SqliteDate = S.To<typeof SqliteDate>;
-
-/**
- * SQLite doesn't support the boolean type, so Evolu uses SqliteBoolean instead.
- * Use the {@link cast} helper to cast SqliteBoolean from boolean and back.
- * https://www.sqlite.org/quirks.html#no_separate_boolean_datatype
- */
-export const SqliteBoolean = S.union(S.literal(0), S.literal(1));
-export type SqliteBoolean = S.To<typeof SqliteBoolean>;
-
-type Mutate<S extends Schema> = <
-  U extends SchemaForMutate<S>,
-  T extends keyof U,
->(
-  table: T,
-  values: Kysely.Simplify<Partial<AllowAutoCasting<U[T]>>>,
-  onComplete?: () => void
-) => {
-  readonly id: U[T]["id"];
-};
-
-type SchemaForMutate<S extends Schema> = {
-  readonly [Table in keyof S]: NullableExceptOfId<
-    {
-      readonly [Column in keyof S[Table]]: S[Table][Column];
-    } & Pick<CommonColumns, "isDeleted">
-  >;
-};
-
-export type AllowAutoCasting<T> = {
-  readonly [K in keyof T]: T[K] extends SqliteBoolean
-    ? boolean | SqliteBoolean
-    : T[K] extends null | SqliteBoolean
-    ? null | boolean | SqliteBoolean
-    : T[K] extends SqliteDate
-    ? Date | SqliteDate
-    : T[K] extends null | SqliteDate
-    ? null | Date | SqliteDate
-    : T[K];
-};
-
 export interface OwnerActions {
   /**
    * Use `reset` to delete all local data from the current device.
@@ -150,32 +66,6 @@ export interface RestoreOwnerError {
   readonly _tag: "RestoreOwnerError";
 }
 
-/**
- * A helper for casting types not supported by SQLite.
- * SQLite doesn't support Date nor Boolean types, so Evolu emulates them
- * with {@link SqliteBoolean} and {@link SqliteDate}.
- *
- * ### Example
- *
- * ```
- * // isDeleted is SqliteBoolean
- * .where("isDeleted", "is not", cast(true))
- * ```
- */
-export function cast(value: boolean): SqliteBoolean;
-export function cast(value: SqliteBoolean): boolean;
-export function cast(value: Date): SqliteDate;
-export function cast(value: SqliteDate): Date;
-export function cast(
-  value: boolean | SqliteBoolean | Date | SqliteDate
-): boolean | SqliteBoolean | Date | SqliteDate {
-  if (typeof value === "boolean") return value === true ? 1 : 0;
-  if (typeof value === "number") return value === 1;
-  if (value instanceof Date) return value.toISOString() as SqliteDate;
-  return new Date(value);
-}
-
-// No side-effect, no reason to use Effect.
 const makeCreateQuery = (): Evolu["createQuery"] => {
   const kysely: Kysely.Kysely<SchemaForQuery<Schema>> = new Kysely.Kysely({
     dialect: {
@@ -191,7 +81,6 @@ const makeCreateQuery = (): Evolu["createQuery"] => {
     queryObjectToQuery(queryCallback(kysely).compile() as QueryObject);
 };
 
-// No side-effect, no reason to use Effect.
 const makeLoadQuery = (
   dbWorkerPost: DbWorker["postMessage"]
 ): Evolu["loadQuery"] => {
@@ -250,28 +139,6 @@ const dbWorkerToDbWorkerWithLogDebug = (dbWorker: DbWorker): DbWorker => {
   return { postMessage, onMessage };
 };
 
-export interface Table {
-  readonly name: string;
-  readonly columns: ReadonlyArray<string>;
-}
-
-const schemaToTables = (
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  schema: S.Schema<any, any>
-): ReadonlyArray<Table> =>
-  pipe(
-    getPropertySignatures(schema),
-    ReadonlyRecord.toEntries,
-    ReadonlyArray.map(
-      ([name, schema]): Table => ({
-        name,
-        columns: Object.keys(getPropertySignatures(schema)).concat(
-          commonColumns
-        ),
-      })
-    )
-  );
-
 const makeEvoluLive = <From, To extends Schema>(
   schema: S.Schema<From, To>
 ): Effect.Effect<DbWorker | Config, never, Evolu<Schema>> =>
@@ -284,6 +151,7 @@ const makeEvoluLive = <From, To extends Schema>(
       const ownerStore = makeStore<Owner | null>(null);
 
       const createQuery = makeCreateQuery();
+
       const loadQuery = makeLoadQuery(dbWorker.postMessage);
 
       dbWorker.onMessage((output) => {
