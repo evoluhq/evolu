@@ -1,5 +1,5 @@
 import { Brand, Context } from "effect";
-import { Id } from "./Id.js";
+import { Id } from "./Branded.js";
 import { Mnemonic } from "./Mnemonic.js";
 
 /**
