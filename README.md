@@ -23,7 +23,7 @@ Client-server architecture provides us with easy backup and synchronization, but
 
 ## Requirements
 
-- TypeScript 4.9 or newer
+- TypeScript 5.0 or newer
 - The `strict` flag enabled in your `tsconfig.json` file
 - The `exactOptionalPropertyTypes` flag enabled in your `tsconfig.json` file
 

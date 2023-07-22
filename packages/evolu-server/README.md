@@ -6,7 +6,7 @@ Evolu is designed for privacy, ease of use, and no vendor lock-in.
 
 ## Requirements
 
-- TypeScript 4.9 or newer
+- TypeScript 5.0 or newer
 - The `strict` flag enabled in your `tsconfig.json` file
 
 ## Getting Started
