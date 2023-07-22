@@ -1,7 +1,7 @@
 import { Brand, Context, Effect, Layer, ReadonlyArray } from "effect";
 import { Id } from "./Branded.js";
 import { Config } from "./Config.js";
-import { Db, Query, Row, Value } from "./Db.js";
+import { Db, Query, Row, TableDefinition, Value } from "./Db.js";
 import { EvoluError } from "./EvoluError.js";
 import { MerkleTree } from "./MerkleTree.js";
 import { Mnemonic } from "./Mnemonic.js";
@@ -45,11 +45,6 @@ export type DbWorkerInput =
       readonly mnemonic?: Mnemonic;
     }
   | DbWorkerInputReceiveMessages;
-
-export interface TableDefinition {
-  readonly name: string;
-  readonly columns: ReadonlyArray<string>;
-}
 
 export interface NewMessage {
   readonly table: string;
@@ -107,7 +102,8 @@ export const DbWorkerLive = Layer.effect(
   DbWorker,
   Effect.map(Db, (_db) => {
     const postMessage: DbWorker["postMessage"] = (_input) => {
-      //
+      // console.log(_input);
+      _db.exec("sdf");
     };
 
     const onMessage: DbWorker["onMessage"] = (_callback) => {

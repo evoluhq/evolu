@@ -19,6 +19,11 @@ export type Value = null | string | number | Uint8Array;
 
 export type Row = ReadonlyRecord.ReadonlyRecord<Value>;
 
+export interface TableDefinition {
+  readonly name: string;
+  readonly columns: ReadonlyArray<string>;
+}
+
 export type Query = string & Brand.Brand<"Query">;
 
 export const queryObjectToQuery = ({ sql, parameters }: QueryObject): Query =>
