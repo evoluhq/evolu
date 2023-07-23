@@ -1,7 +1,7 @@
 import { Effect, Layer } from "effect";
 import { DbWeb } from "./DbWeb.js";
 import { DbWorker, DbWorkerInput, DbWorkerLive } from "./DbWorker.js";
-import { runSync } from "./utils.js";
+import { runSync } from "./run.js";
 
 DbWorker.pipe(
   Effect.map((dbWorker) => {

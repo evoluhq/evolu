@@ -1,6 +1,6 @@
-import { Brand, Context, Effect, Layer, ReadonlyArray } from "effect";
+import { Brand, Context, Effect, Function, Layer, ReadonlyArray } from "effect";
 import { Id } from "./Branded.js";
-import { Config } from "./Config.js";
+import { Config, ConfigLive } from "./Config.js";
 import { Db, Query, Row, TableDefinition, Value } from "./Db.js";
 import { EvoluError } from "./EvoluError.js";
 import { MerkleTree } from "./MerkleTree.js";
@@ -20,10 +20,6 @@ export type DbWorkerInput =
   | {
       readonly _tag: "init";
       readonly config: Config;
-      readonly tableDefinitions: ReadonlyArray<TableDefinition>;
-    }
-  | {
-      readonly _tag: "updateSchema";
       readonly tableDefinitions: ReadonlyArray<TableDefinition>;
     }
   | {
@@ -98,16 +94,64 @@ export interface ReplaceAtPatch {
   readonly value: Row;
 }
 
+type OnMessageCallback = Parameters<DbWorker["onMessage"]>[0];
+const OnMessageCallback = Context.Tag<OnMessageCallback>();
+
+const init: Effect.Effect<Db | OnMessageCallback, never, undefined> =
+  Effect.sync(() => {
+    return undefined;
+  });
+
 export const DbWorkerLive = Layer.effect(
   DbWorker,
-  Effect.map(Db, (_db) => {
-    const postMessage: DbWorker["postMessage"] = (_input) => {
-      // console.log(_input);
-      _db.exec("sdf");
+  Effect.map(Db, (db) => {
+    let config: Partial<Config> | undefined = undefined;
+
+    const inputToEffect = (
+      input: DbWorkerInput
+    ): Effect.Effect<Db | OnMessageCallback, never, undefined> => {
+      switch (input._tag) {
+        case "init":
+          config = input.config;
+          return init;
+        case "query":
+        case "receiveMessages":
+        case "reset":
+        case "sendMessages":
+        case "sync":
+          return init;
+      }
     };
 
-    const onMessage: DbWorker["onMessage"] = (_callback) => {
-      //
+    const stream = new WritableStream<DbWorkerInput>({
+      write: (input): Promise<void> =>
+        inputToEffect(input).pipe(
+          Effect.catchAllCause((_cause) => Effect.succeed(undefined)),
+          Effect.provideLayer(
+            Layer.mergeAll(
+              Layer.succeed(Db, db),
+              ConfigLive(config),
+              Layer.succeed(
+                OnMessageCallback,
+                OnMessageCallback.of(onMessageCallback)
+              )
+            )
+          ),
+          Effect.runPromise
+        ),
+    });
+
+    const postMessage: DbWorker["postMessage"] = (input) => {
+      const writer = stream.getWriter();
+      // It can't fail because both expected and unexpected errors are handled.
+      void writer.write(input);
+      writer.releaseLock();
+    };
+
+    let onMessageCallback: OnMessageCallback = Function.constVoid;
+
+    const onMessage: DbWorker["onMessage"] = (callback) => {
+      onMessageCallback = callback;
     };
 
     return { postMessage, onMessage };

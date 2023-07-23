@@ -17,7 +17,8 @@ import { Owner } from "./Owner.js";
 import { CommonColumns, Schema, schemaToTables } from "./Schema.js";
 import { StoreListener, StoreUnsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncState.js";
-import { logDebug, runSync } from "./utils.js";
+import { runSync } from "./run.js";
+import { logDebug } from "./log.js";
 
 export interface Evolu<S extends Schema = Schema> {
   readonly subscribeError: (listener: StoreListener) => StoreUnsubscribe;
