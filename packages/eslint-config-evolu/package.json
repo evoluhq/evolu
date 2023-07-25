@@ -7,11 +7,11 @@
     "clean": "rm -rf node_modules"
   },
   "dependencies": {
-    "@typescript-eslint/eslint-plugin": "^6.1.0",
-    "@typescript-eslint/parser": "^6.1.0",
+    "@typescript-eslint/eslint-plugin": "^6.2.0",
+    "@typescript-eslint/parser": "^6.2.0",
     "eslint-config-next": "^13.4.12",
     "eslint-config-prettier": "^8.8.0",
-    "eslint-config-turbo": "^1.10.9",
+    "eslint-config-turbo": "^1.10.11",
     "eslint-plugin-jsdoc": "^46.4.4",
     "eslint-plugin-node": "^11.1.0",
     "next": "^13.4.12",
