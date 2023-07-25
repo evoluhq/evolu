@@ -3,7 +3,7 @@ import * as S from "@effect/schema/Schema";
 import { make } from "@effect/schema/Schema";
 import { ReadonlyArray, ReadonlyRecord, pipe } from "effect";
 import { Id, SqliteBoolean, SqliteDate } from "./Branded.js";
-import { Row, TableDefinition } from "./Db.js";
+import { Row, Table } from "./Db.js";
 import { Owner } from "./Owner.js";
 
 /**
@@ -45,12 +45,12 @@ export const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
 export const schemaToTables = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   schema: S.Schema<any, any>
-): ReadonlyArray<TableDefinition> =>
+): ReadonlyArray<Table> =>
   pipe(
     getPropertySignatures(schema),
     ReadonlyRecord.toEntries,
     ReadonlyArray.map(
-      ([name, schema]): TableDefinition => ({
+      ([name, schema]): Table => ({
         name,
         columns: Object.keys(getPropertySignatures(schema)).concat(
           commonColumns

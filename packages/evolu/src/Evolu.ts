@@ -211,7 +211,7 @@ const makeEvoluLive = <From, To extends Schema>(
       dbWorker.postMessage({
         _tag: "init",
         config,
-        tableDefinitions: schemaToTables(schema),
+        tables: schemaToTables(schema),
       });
 
       return Evolu.of({

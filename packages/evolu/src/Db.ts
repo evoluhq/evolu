@@ -19,7 +19,7 @@ export type Value = null | string | number | Uint8Array;
 
 export type Row = ReadonlyRecord.ReadonlyRecord<Value>;
 
-export interface TableDefinition {
+export interface Table {
   readonly name: string;
   readonly columns: ReadonlyArray<string>;
 }
@@ -31,3 +31,16 @@ export const queryObjectToQuery = ({ sql, parameters }: QueryObject): Query =>
 
 // const queryObjectFromQuery = (s: Query): QueryObject =>
 //   JSON.parse(s) as QueryObject;
+
+// const selectOwner =
+
+// export const init = (
+//   mnemonic?: Mnemonic
+// ): Effect.Effect<Db | InitialTimestamp, never, Owner> =>
+//   Effect.catchAllCause(getOwner, (cause) => {
+//     const pretty = Cause.pretty(cause);
+//     if (pretty.includes("no such table: __owner")) return init(mnemonic);
+//     if (pretty.includes("no such column: encryptionKey"))
+//       return migrateToSlip21;
+//     return Effect.failCause(cause);
+//   });

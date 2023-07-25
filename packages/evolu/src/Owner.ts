@@ -22,3 +22,13 @@ export const Owner = Context.Tag<Owner>();
  * The unique identifier of `Owner` safely derived from its `Mnemonic`.
  */
 export type OwnerId = Id & Brand.Brand<"Owner">;
+
+// export const selectOwner: Effect.Effect<Db, never, Owner> =
+
+// pipe(
+//   Db,
+//   Effect.flatMap((db) =>
+//     db.exec(`select "mnemonic", "id", "encryptionKey" from __owner limit 1`)
+//   ),
+//   Effect.map(([owner]) => owner as unknown as Owner)
+// );
