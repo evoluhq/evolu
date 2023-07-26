@@ -19,13 +19,15 @@ export interface Config {
 
 export const Config = Context.Tag<Config>();
 
-const makeConfig =
-  (config: Config) =>
-  (partialConfig?: Partial<Config>): Layer.Layer<never, never, Config> =>
-    Layer.succeed(Config, Config.of({ ...config, ...partialConfig }));
-
-export const ConfigLive = makeConfig({
-  syncUrl: "https://evolu.world",
-  maxDrift: 5 * 60 * 1000,
-  reloadUrl: "/",
-});
+export const ConfigLive = (
+  config?: Partial<Config>
+): Layer.Layer<never, never, Config> =>
+  Layer.succeed(
+    Config,
+    Config.of({
+      syncUrl: "https://evolu.world",
+      maxDrift: 5 * 60 * 1000,
+      reloadUrl: "/",
+      ...config,
+    })
+  );

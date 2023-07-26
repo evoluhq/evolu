@@ -26,11 +26,11 @@ const createNoOpServerDbWorker = (): DbWorker => ({
 
 const createOpfsDbWorker = (): DbWorker => {
   const dbWorker = new Worker(
-    new URL("DbWorkerWeb.worker.js", import.meta.url),
+    new URL("DbWorkerLive.web.worker.js", import.meta.url),
     { type: "module" }
   );
 
-  const post: DbWorker["postMessage"] = (input) => {
+  const postMessage: DbWorker["postMessage"] = (input) => {
     dbWorker.postMessage(input);
   };
 
@@ -40,7 +40,7 @@ const createOpfsDbWorker = (): DbWorker => {
     };
   };
 
-  return { postMessage: post, onMessage };
+  return { postMessage, onMessage };
 };
 
 const createLocalStorageDbWorker = (): DbWorker => ({
@@ -48,7 +48,7 @@ const createLocalStorageDbWorker = (): DbWorker => ({
   onMessage: Function.constVoid,
 });
 
-export const DbWorkerWeb = Layer.succeed(
+export const DbWorkerLive = Layer.succeed(
   DbWorker,
   isServer
     ? createNoOpServerDbWorker()

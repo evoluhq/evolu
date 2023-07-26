@@ -1,6 +1,6 @@
 export * from "./exports.js";
 import "@effect/schema/Schema";
-import { DbWorkerNative } from "./DbWorkerNative.js";
-import { makeEvoluCreate } from "./makeEvoluCreate.js";
+import { DbWorkerLive } from "./DbWorkerLive.native.js";
+import { makeEvoluCreate } from "./index.common.js";
 
-export const create = makeEvoluCreate(DbWorkerNative);
+export const create = makeEvoluCreate(DbWorkerLive);

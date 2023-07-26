@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect";
-import { DbWeb } from "./DbWeb.js";
+import { DbLive } from "./DbLive.web.js";
 import { DbWorker, DbWorkerInput, DbWorkerLive } from "./DbWorker.js";
 import { runSync } from "./run.js";
 
@@ -10,6 +10,6 @@ DbWorker.pipe(
     };
     dbWorker.onMessage(postMessage);
   }),
-  Effect.provideLayer(DbWeb.pipe(Layer.provide(DbWorkerLive))),
+  Effect.provideLayer(DbLive.pipe(Layer.provide(DbWorkerLive))),
   runSync
 );

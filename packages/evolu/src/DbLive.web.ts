@@ -20,7 +20,7 @@ const sqlite = (sqlite3InitModule() as Promise<any>).then((sqlite3) => {
   };
 });
 
-export const DbWeb = Layer.succeed(
+export const DbLive = Layer.succeed(
   Db,
   Db.of({
     exec: (arg) =>
