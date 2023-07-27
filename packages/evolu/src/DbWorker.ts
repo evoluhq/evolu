@@ -1,7 +1,9 @@
 import {
   Brand,
+  Cause,
   Context,
   Effect,
+  Either,
   Function,
   Layer,
   Match,
@@ -9,11 +11,11 @@ import {
 } from "effect";
 import { Id } from "./Branded.js";
 import { Config, ConfigLive } from "./Config.js";
-import { Db, Query, Row, Table, Value } from "./Db.js";
-import { EvoluError } from "./EvoluError.js";
+import { CryptoLive } from "./CryptoLive.web.js";
+import { Db, Owner, Query, Row, Value, init, transaction } from "./Db.js";
+import { EvoluError, makeUnexpectedError } from "./Errors.js";
 import { MerkleTree } from "./MerkleTree.js";
 import { Mnemonic } from "./Mnemonic.js";
-import { Owner } from "./Owner.js";
 import { SyncState } from "./SyncState.js";
 import { TimestampString } from "./Timestamp.js";
 import { runPromise } from "./run.js";
@@ -29,7 +31,6 @@ export type DbWorkerInput =
   | {
       readonly _tag: "init";
       readonly config: Config;
-      readonly tables: ReadonlyArray<Table>;
     }
   | {
       readonly _tag: "sendMessages";
@@ -106,18 +107,7 @@ export interface ReplaceAtPatch {
 type OnMessageCallback = Parameters<DbWorker["onMessage"]>[0];
 const OnMessageCallback = Context.Tag<OnMessageCallback>();
 
-const init = (_tables: ReadonlyArray<Table>): Effect.Effect<Db, never, Owner> =>
-  Effect.async((resume) => {
-    setTimeout(() => {
-      resume(Effect.succeed("ok" as unknown as Owner));
-    }, 2000);
-  });
-
 const foo: Effect.Effect<Db, never, void> = Effect.sync(() => {
-  throw "";
-});
-
-const bar: Effect.Effect<Config, never, void> = Effect.sync(() => {
   throw "";
 });
 
@@ -126,17 +116,33 @@ export const DbWorkerLive = Layer.effect(
   Effect.map(Db, (db) => {
     let onMessageCallback: OnMessageCallback = Function.constVoid;
 
-    const run: <E>(effect: Effect.Effect<never, E, void>) => Promise<void> = (
-      effect
-    ) =>
+    const handleError = (error: EvoluError): void => {
+      onMessageCallback({ _tag: "onError", error });
+    };
+
+    const DbLive = Layer.succeed(Db, db);
+
+    const run: <E extends EvoluError>(
+      effect: Effect.Effect<never, E, void>
+    ) => Promise<void> = (effect) =>
       effect.pipe(
-        // TODO: transaction,
-        // TODO: Port previous logic.
-        Effect.catchAllCause((_cause) => Effect.succeed(undefined)),
+        transaction,
+        Effect.provideLayer(DbLive),
+        Effect.catchAllCause((cause) =>
+          Cause.failureOrCause(cause).pipe(
+            Either.match({
+              onLeft: handleError,
+              onRight: (cause) => {
+                handleError(makeUnexpectedError(Cause.squash(cause)));
+              },
+            }),
+            () => Effect.succeed(undefined)
+          )
+        ),
         runPromise
       );
 
-    const makeWrite =
+    const makeWriteAfterInit =
       (config: Config, owner: Owner) =>
       (input: DbWorkerInput): Promise<void> =>
         Match.value(input).pipe(
@@ -145,14 +151,14 @@ export const DbWorkerLive = Layer.effect(
               throw new self.Error("init must be called once");
             },
             query: () => foo,
-            receiveMessages: () => bar,
+            receiveMessages: () => foo,
             reset: () => foo,
             sendMessages: () => foo,
             sync: () => foo,
           }),
           Effect.provideLayer(
             Layer.mergeAll(
-              Layer.succeed(Db, db),
+              DbLive,
               ConfigLive(config),
               Layer.succeed(Owner, Owner.of(owner)),
               Layer.succeed(OnMessageCallback, onMessageCallback)
@@ -164,11 +170,11 @@ export const DbWorkerLive = Layer.effect(
     let write = (input: DbWorkerInput): Promise<void> => {
       if (input._tag !== "init")
         throw new self.Error("init must be called first");
-      return init(input.tables).pipe(
+      return init().pipe(
         Effect.map((owner) => {
-          write = makeWrite(input.config, owner);
+          write = makeWriteAfterInit(input.config, owner);
         }),
-        Effect.provideLayer(Layer.succeed(Db, db)),
+        Effect.provideLayer(Layer.mergeAll(DbLive, CryptoLive)),
         run
       );
     };

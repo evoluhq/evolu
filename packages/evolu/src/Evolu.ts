@@ -1,4 +1,3 @@
-import * as S from "@effect/schema/Schema";
 import {
   Context,
   Effect,
@@ -10,15 +9,21 @@ import {
 import * as Kysely from "kysely";
 import { SqliteBoolean, SqliteDate } from "./Branded.js";
 import { Config } from "./Config.js";
-import { Query, QueryObject, Row, queryObjectToQuery } from "./Db.js";
+import {
+  CommonColumns,
+  Owner,
+  Query,
+  QueryObject,
+  Row,
+  Schema,
+  queryObjectToQuery,
+} from "./Db.js";
 import { DbWorker } from "./DbWorker.js";
-import { EvoluError } from "./EvoluError.js";
-import { Owner } from "./Owner.js";
-import { CommonColumns, Schema, schemaToTables } from "./Schema.js";
+import { EvoluError } from "./Errors.js";
 import { StoreListener, StoreUnsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncState.js";
-import { runSync } from "./run.js";
 import { logDebug } from "./log.js";
+import { runSync } from "./run.js";
 
 export interface Evolu<S extends Schema = Schema> {
   readonly subscribeError: (listener: StoreListener) => StoreUnsubscribe;
@@ -188,9 +193,8 @@ const dbWorkerToDbWorkerWithLogDebug = (dbWorker: DbWorker): DbWorker => {
   return { postMessage, onMessage };
 };
 
-const makeEvoluLive = <From, To extends Schema>(
-  schema: S.Schema<From, To>
-): Effect.Effect<DbWorker | Config, never, Evolu<Schema>> =>
+export const EvoluLive = Layer.effect(
+  Evolu,
   Effect.all([
     Config,
     DbWorker.pipe(Effect.map(dbWorkerToDbWorkerWithLogDebug)),
@@ -211,7 +215,6 @@ const makeEvoluLive = <From, To extends Schema>(
       dbWorker.postMessage({
         _tag: "init",
         config,
-        tables: schemaToTables(schema),
       });
 
       return Evolu.of({
@@ -251,9 +254,5 @@ const makeEvoluLive = <From, To extends Schema>(
         },
       });
     })
-  );
-
-export const EvoluLive = <From, To extends Schema>(
-  schema: S.Schema<From, To>
-): Layer.Layer<Config | DbWorker, never, Evolu> =>
-  Layer.effect(Evolu, makeEvoluLive<From, To>(schema));
+  )
+);

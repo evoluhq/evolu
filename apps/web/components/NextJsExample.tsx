@@ -44,9 +44,10 @@ const Database = Schema.struct({
   todo: TodoTable,
   todoCategory: TodoCategoryTable,
 });
+type Database = Schema.To<typeof Database>;
 
 const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
-  Evolu.create(Database, {
+  Evolu.create<Database>({
     reloadUrl: "/examples/nextjs",
     ...(process.env.NODE_ENV === "development" && {
       syncUrl: "http://localhost:4000",
