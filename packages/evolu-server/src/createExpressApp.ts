@@ -19,7 +19,7 @@ import * as Protobuf from "evolu/Protobuf";
 import {
   Millis,
   TimestampString,
-  createSyncTimestamp,
+  makeSyncTimestamp,
   timestampToString,
   unsafeTimestampFromString,
 } from "evolu/Timestamp";
@@ -167,7 +167,7 @@ const getMessages = ({
       try: () =>
         db.selectMessages.all(
           userId,
-          pipe(millis, createSyncTimestamp, timestampToString),
+          pipe(millis, makeSyncTimestamp, timestampToString),
           nodeId
         ) as ReadonlyArray<Protobuf.EncryptedMessage>,
       catch: (error) => new SqliteError(error),

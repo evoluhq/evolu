@@ -1,7 +1,6 @@
 import { Brand, Context, Effect } from "effect";
 import { urlAlphabet } from "nanoid";
-import * as Crypto from "./Crypto.js";
-import * as Mnemonic from "./Mnemonic.js";
+import { Bip39, Hmac, Mnemonic, Sha512, slip21Derive } from "./Crypto.js";
 import { Id } from "./Model.js";
 
 /**
@@ -11,7 +10,7 @@ import { Id } from "./Model.js";
  */
 export interface Owner {
   /** The `Mnemonic` associated with `Owner`. */
-  readonly mnemonic: Mnemonic.Mnemonic;
+  readonly mnemonic: Mnemonic;
   /** The unique identifier of `Owner` safely derived from its `Mnemonic`. */
   readonly id: OwnerId;
   /* The encryption key used by `Owner` derived from its `Mnemonic`. */
@@ -27,8 +26,8 @@ export type OwnerId = Id & Brand.Brand<"Owner">;
 
 const seedToOwnerId = (
   seed: Uint8Array
-): Effect.Effect<Crypto.Hmac | Crypto.Sha512, never, OwnerId> =>
-  Crypto.slip21Derive(seed, ["Evolu", "Owner Id"]).pipe(
+): Effect.Effect<Hmac | Sha512, never, OwnerId> =>
+  slip21Derive(seed, ["Evolu", "Owner Id"]).pipe(
     Effect.map((key) => {
       // convert key to nanoid
       let id = "";
@@ -41,14 +40,14 @@ const seedToOwnerId = (
 
 const seedToEncryptionKey = (
   seed: Uint8Array
-): Effect.Effect<Crypto.Hmac | Crypto.Sha512, never, Uint8Array> =>
-  Crypto.slip21Derive(seed, ["Evolu", "Encryption Key"]);
+): Effect.Effect<Hmac | Sha512, never, Uint8Array> =>
+  slip21Derive(seed, ["Evolu", "Encryption Key"]);
 
 export const makeOwner = (
-  mnemonic?: Mnemonic.Mnemonic
-): Effect.Effect<Crypto.Bip39 | Crypto.Hmac | Crypto.Sha512, never, Owner> =>
+  mnemonic?: Mnemonic
+): Effect.Effect<Bip39 | Hmac | Sha512, never, Owner> =>
   Effect.gen(function* (_) {
-    const bip39 = yield* _(Crypto.Bip39);
+    const bip39 = yield* _(Bip39);
     if (mnemonic == null) mnemonic = yield* _(bip39.makeMnemonic);
     const seed = yield* _(bip39.mnemonicToSeed(mnemonic));
     const id = yield* _(seedToOwnerId(seed));
