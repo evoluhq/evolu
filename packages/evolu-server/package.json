@@ -27,11 +27,10 @@
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "dependencies": {
-    "@effect/data": "^0.17.1",
-    "@effect/io": "^0.37.1",
     "better-sqlite3": "^8.5.0",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
+    "effect": "2.0.0-next.23",
     "evolu": "workspace:*",
     "express": "^4.18.2",
     "react": "^18.2.0",

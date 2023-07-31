@@ -1,11 +1,7 @@
-import * as Context from "@effect/data/Context";
-import { pipe } from "@effect/data/Function";
-import * as ReadonlyArray from "@effect/data/ReadonlyArray";
-import * as Effect from "@effect/io/Effect";
-import * as Exit from "@effect/io/Exit";
 import sqlite3, { Statement } from "better-sqlite3";
 import bodyParser from "body-parser";
 import cors from "cors";
+import { Context, Effect, Exit, ReadonlyArray, pipe } from "effect";
 import {
   MerkleTree,
   MerkleTreeString,
