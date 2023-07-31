@@ -60,17 +60,17 @@ export const slip21Derive = (
     })
   );
 
-export const NodeId: Schema.BrandSchema<
-  string,
-  string & Brand.Brand<"NodeId">
-> = Schema.string.pipe(Schema.pattern(/^[\w-]{16}$/), Schema.brand("NodeId"));
-export type NodeId = Schema.To<typeof NodeId>;
-
 export interface NanoId {
   readonly nanoid: Effect.Effect<never, never, string>;
   readonly nanoidAsNodeId: Effect.Effect<never, never, NodeId>;
 }
 
 export const NanoId = Context.Tag<NanoId>();
+
+export const NodeId: Schema.BrandSchema<
+  string,
+  string & Brand.Brand<"NodeId">
+> = Schema.string.pipe(Schema.pattern(/^[\w-]{16}$/), Schema.brand("NodeId"));
+export type NodeId = Schema.To<typeof NodeId>;
 
 export const customAlphabetForNodeId = "0123456789abcdef";
