@@ -11,14 +11,19 @@ import {
 } from "effect";
 import { Config, ConfigLive } from "./Config.js";
 import { Mnemonic } from "./Crypto.js";
-import { CryptoLive } from "./CryptoLive.web.js";
-import { Db, Owner, Query, Row, Value, init, transaction } from "./Db.js";
+import {
+  HmacServiceLive,
+  MnemonicServiceLive,
+  Sha512ServiceLive,
+} from "./CryptoLive.web.js";
+import { Db, Query, Row, Value, init, transaction } from "./Db.js";
 import { EvoluError, makeUnexpectedError } from "./Errors.js";
 import { MerkleTree } from "./MerkleTree.js";
+import { Id } from "./Model.js";
+import { Owner } from "./Owner.js";
 import { SyncState } from "./SyncState.js";
 import { TimestampString } from "./Timestamp.js";
 import { runPromise } from "./run.js";
-import { Id } from "./Model.js";
 
 export interface DbWorker {
   readonly postMessage: (input: DbWorkerInput) => void;
@@ -172,7 +177,14 @@ export const DbWorkerLive = Layer.effect(
         Effect.map((owner) => {
           write = makeWriteAfterInit(input.config, owner);
         }),
-        Effect.provideLayer(Layer.mergeAll(DbLive, CryptoLive)),
+        Effect.provideLayer(
+          Layer.mergeAll(
+            DbLive,
+            MnemonicServiceLive,
+            HmacServiceLive,
+            Sha512ServiceLive
+          )
+        ),
         run
       );
     };

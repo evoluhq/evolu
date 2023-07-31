@@ -190,11 +190,11 @@ const sync = (
       catch: (error) => new BadRequestError(error),
     }),
     (syncRequest) =>
-      Effect.gen(function* ($) {
-        let merkleTree = yield* $(getMerkleTree(syncRequest.userId));
+      Effect.gen(function* (_) {
+        let merkleTree = yield* _(getMerkleTree(syncRequest.userId));
 
         if (ReadonlyArray.isNonEmptyArray(syncRequest.messages))
-          merkleTree = yield* $(
+          merkleTree = yield* _(
             addMessages({
               merkleTree,
               messages: syncRequest.messages,
@@ -210,7 +210,7 @@ const sync = (
         const messages =
           diff._tag === "None"
             ? []
-            : yield* $(
+            : yield* _(
                 getMessages({
                   millis: diff.value,
                   userId: syncRequest.userId,

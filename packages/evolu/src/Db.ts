@@ -1,6 +1,12 @@
 import { Brand, Context, Effect, Exit, Option, ReadonlyRecord } from "effect";
-import { Crypto, Mnemonic } from "./Crypto.js";
+import {
+  HmacService,
+  Mnemonic,
+  MnemonicService,
+  Sha512Service,
+} from "./Crypto.js";
 import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
+import { Owner, OwnerId, makeOwner } from "./Owner.js";
 import { selectOwner } from "./Sql.js";
 
 export interface Db {
@@ -39,7 +45,7 @@ export type Schema = ReadonlyRecord.ReadonlyRecord<{ id: Id } & Row>;
 
 export interface CommonColumns {
   readonly createdAt: SqliteDate;
-  readonly createdBy: Owner["id"];
+  readonly createdBy: OwnerId;
   readonly updatedAt: SqliteDate;
   readonly isDeleted: SqliteBoolean;
 }
@@ -48,30 +54,6 @@ export type Query = string & Brand.Brand<"Query">;
 
 export const queryObjectToQuery = ({ sql, parameters }: QueryObject): Query =>
   JSON.stringify({ sql, parameters }) as Query;
-
-/**
- * `Owner` represents the Evolu database owner. Evolu auto-generates `Owner`
- * on the first run. `Owner` can be reset on the current device and restored
- * on a different one.
- */
-export interface Owner {
-  /** The `Mnemonic` associated with `Owner`. */
-  readonly mnemonic: Mnemonic;
-  /** The unique identifier of `Owner` safely derived from its `Mnemonic`. */
-  readonly id: OwnerId;
-  /* The encryption key used by `Owner` derived from its `Mnemonic`. */
-  readonly encryptionKey: Uint8Array;
-}
-
-export const Owner = Context.Tag<Owner>();
-
-/**
- * The unique identifier of `Owner` safely derived from its `Mnemonic`.
- */
-export type OwnerId = Id & Brand.Brand<"Owner">;
-
-// const queryObjectFromQuery = (s: Query): QueryObject =>
-//   JSON.parse(s) as QueryObject;
 
 export const transaction = <R, E, A>(
   effect: Effect.Effect<R, E, A>
@@ -115,20 +97,18 @@ export const defectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
 );
 
 const lazyInit = (
-  _mnemonic?: Mnemonic
-): Effect.Effect<Db | Crypto, never, Owner> =>
-  Effect.all([Db, Crypto]).pipe(
-    Effect.flatMap(([_db, _crypto]) => {
-      // generateMnemonic
-      // ([mnemonic, { mnemonicToSeedSync }, { hmac }, { sha512 }]) => {
-      throw "";
-    }),
-    () => {
-      throw "";
-    }
-  );
+  mnemonic?: Mnemonic
+): Effect.Effect<
+  Db | MnemonicService | HmacService | Sha512Service,
+  never,
+  Owner
+> => makeOwner(mnemonic);
 
-export const init = (): Effect.Effect<Db | Crypto, never, Owner> =>
+export const init = (): Effect.Effect<
+  Db | MnemonicService | HmacService | Sha512Service,
+  never,
+  Owner
+> =>
   Db.pipe(
     Effect.flatMap((db) =>
       db

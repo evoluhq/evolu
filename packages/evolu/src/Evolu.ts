@@ -11,7 +11,6 @@ import * as Kysely from "kysely";
 import { Config } from "./Config.js";
 import {
   CommonColumns,
-  Owner,
   Query,
   QueryObject,
   Row,
@@ -20,11 +19,12 @@ import {
 } from "./Db.js";
 import { DbWorker } from "./DbWorker.js";
 import { EvoluError } from "./Errors.js";
+import { SqliteBoolean, SqliteDate } from "./Model.js";
+import { Owner } from "./Owner.js";
 import { StoreListener, StoreUnsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncState.js";
 import { logDebug } from "./log.js";
 import { runSync } from "./run.js";
-import { SqliteBoolean, SqliteDate } from "./Model.js";
 
 export interface Evolu<S extends Schema = Schema> {
   readonly subscribeError: (listener: StoreListener) => StoreUnsubscribe;
