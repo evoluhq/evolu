@@ -320,6 +320,7 @@ const OwnerActions: FC = () => {
 
 const NotificationBar: FC = () => {
   const evoluError = useEvoluError();
+
   const [shown, setShown] = useState(false);
 
   useEffect(() => {
@@ -340,25 +341,27 @@ export const NextJsExample: FC = () => {
   const [todosShown, setTodosShown] = useState(true);
 
   return (
-    <Suspense>
+    <>
       <NotificationBar />
-      <nav className="my-4">
-        <Button
-          title="Simulate suspense-enabled router transition"
-          onClick={(): void => {
-            // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
-            startTransition(() => {
-              setTodosShown(!todosShown);
-            });
-          }}
-        />
-        <p>
-          Using suspense-enabled router transition, you will not see any loader
-          or jumping content.
-        </p>
-      </nav>
-      {todosShown ? <Todos /> : <TodoCategories />}
-      <OwnerActions />
-    </Suspense>
+      <Suspense>
+        <nav className="my-4">
+          <Button
+            title="Simulate suspense-enabled router transition"
+            onClick={(): void => {
+              // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
+              startTransition(() => {
+                setTodosShown(!todosShown);
+              });
+            }}
+          />
+          <p>
+            Using suspense-enabled router transition, you will not see any
+            loader or jumping content.
+          </p>
+        </nav>
+        {todosShown ? <Todos /> : <TodoCategories />}
+        <OwnerActions />
+      </Suspense>
+    </>
   );
 };

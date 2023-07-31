@@ -9,16 +9,16 @@ import {
   Match,
   ReadonlyArray,
 } from "effect";
-import { Id } from "./Branded.js";
 import { Config, ConfigLive } from "./Config.js";
+import { Mnemonic } from "./Crypto.js";
 import { CryptoLive } from "./CryptoLive.web.js";
 import { Db, Owner, Query, Row, Value, init, transaction } from "./Db.js";
 import { EvoluError, makeUnexpectedError } from "./Errors.js";
 import { MerkleTree } from "./MerkleTree.js";
-import { Mnemonic } from "./Mnemonic.js";
 import { SyncState } from "./SyncState.js";
 import { TimestampString } from "./Timestamp.js";
 import { runPromise } from "./run.js";
+import { Id } from "./Model.js";
 
 export interface DbWorker {
   readonly postMessage: (input: DbWorkerInput) => void;
@@ -108,7 +108,7 @@ type OnMessageCallback = Parameters<DbWorker["onMessage"]>[0];
 const OnMessageCallback = Context.Tag<OnMessageCallback>();
 
 const foo: Effect.Effect<Db, never, void> = Effect.sync(() => {
-  throw "";
+  return undefined;
 });
 
 export const DbWorkerLive = Layer.effect(
@@ -147,9 +147,7 @@ export const DbWorkerLive = Layer.effect(
       (input: DbWorkerInput): Promise<void> =>
         Match.value(input).pipe(
           Match.tagsExhaustive({
-            init: () => {
-              throw new self.Error("init must be called once");
-            },
+            init: () => Effect.succeed(undefined),
             query: () => foo,
             receiveMessages: () => foo,
             reset: () => foo,
@@ -168,8 +166,8 @@ export const DbWorkerLive = Layer.effect(
         );
 
     let write = (input: DbWorkerInput): Promise<void> => {
-      if (input._tag !== "init")
-        throw new self.Error("init must be called first");
+      if (input._tag !== "init") return Promise.resolve(undefined);
+
       return init().pipe(
         Effect.map((owner) => {
           write = makeWriteAfterInit(input.config, owner);

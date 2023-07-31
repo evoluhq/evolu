@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect";
-import { Db, Row } from "./Db.js";
+import { Db, Row, defectToNoSuchTableOrColumnError } from "./Db.js";
 
 // @ts-expect-error Missing types
 import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
@@ -14,29 +14,32 @@ const sqlite = (sqlite3InitModule() as Promise<any>).then((sqlite3) => {
       : // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
         new sqlite3.oo1.JsStorageDb("local")
   ) as {
-    // Waiting for types https://github.com/tomayac/sqlite-wasm/pull/2
+    // Waiting for https://github.com/tomayac/sqlite-wasm/pull/2
     readonly exec: (arg1: unknown, arg2: unknown) => ReadonlyArray<Row>;
     readonly changes: () => number;
   };
 });
 
-export const DbLive = Layer.succeed(
-  Db,
-  Db.of({
-    exec: (arg) =>
-      Effect.promise(() => sqlite).pipe(
-        Effect.map((sqlite) => {
-          const isSqlString = typeof arg === "string";
-          return sqlite.exec(isSqlString ? arg : arg.sql, {
-            returnValue: "resultRows",
-            rowMode: "object",
-            ...(!isSqlString && { bind: arg.parameters }),
-          });
-        })
-      ),
+const execNoSchemaless: Db["execNoSchemaless"] = (arg) =>
+  Effect.promise(() => sqlite).pipe(
+    Effect.map((sqlite) => {
+      const isSqlString = typeof arg === "string";
+      return sqlite.exec(isSqlString ? arg : arg.sql, {
+        returnValue: "resultRows",
+        rowMode: "object",
+        ...(!isSqlString && { bind: arg.parameters }),
+      });
+    }),
+    defectToNoSuchTableOrColumnError
+  );
 
-    changes: Effect.promise(() => sqlite).pipe(
-      Effect.map((sqlite) => sqlite.changes())
-    ),
-  })
+const exec: Db["exec"] = execNoSchemaless as Db["exec"];
+// (_arg) => {
+//   throw "adf";
+// };
+
+const changes: Db["changes"] = Effect.promise(() => sqlite).pipe(
+  Effect.map((sqlite) => sqlite.changes())
 );
+
+export const DbLive = Layer.succeed(Db, { exec, execNoSchemaless, changes });

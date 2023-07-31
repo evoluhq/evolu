@@ -93,10 +93,10 @@ export function cast(
  * function foo(value: Evolu.String1000) {}
  * ```
  */
-export const String1000 = Schema.string.pipe(
-  Schema.maxLength(1000),
-  Schema.brand("String1000")
-);
+export const String1000: Schema.BrandSchema<
+  string,
+  string & Brand.Brand<"String1000">
+> = Schema.string.pipe(Schema.maxLength(1000), Schema.brand("String1000"));
 export type String1000 = Schema.To<typeof String1000>;
 
 /**

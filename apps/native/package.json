@@ -10,12 +10,12 @@
     "clean": "rm -rf .turbo && rm -rf .expo && rm -rf node_modules"
   },
   "dependencies": {
-    "@effect/data": "^0.16.3",
-    "@effect/schema": "^0.30.4",
+    "@effect/data": "^0.17.1",
+    "@effect/schema": "^0.32.0",
     "@types/react": "^18.2.17",
     "evolu": "workspace:*",
-    "expo": "^49.0.5",
-    "expo-sqlite": "~11.3.1",
+    "expo": "^49.0.6",
+    "expo-sqlite": "~11.3.2",
     "expo-status-bar": "^1.6.0",
     "react": "18.2.0",
     "react-native": "^0.72.3",
@@ -24,7 +24,7 @@
   "devDependencies": {
     "@babel/core": "^7.22.9",
     "@babel/plugin-transform-private-methods": "^7.22.5",
-    "eslint": "^8.45.0",
+    "eslint": "^8.46.0",
     "eslint-config-evolu": "workspace:*",
     "prettier": "^3.0.0",
     "typescript": "^5.1.6"

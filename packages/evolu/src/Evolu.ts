@@ -5,9 +5,9 @@ import {
   Function,
   Layer,
   ReadonlyArray,
+  absurd,
 } from "effect";
 import * as Kysely from "kysely";
-import { SqliteBoolean, SqliteDate } from "./Branded.js";
 import { Config } from "./Config.js";
 import {
   CommonColumns,
@@ -24,6 +24,7 @@ import { StoreListener, StoreUnsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncState.js";
 import { logDebug } from "./log.js";
 import { runSync } from "./run.js";
+import { SqliteBoolean, SqliteDate } from "./Model.js";
 
 export interface Evolu<S extends Schema = Schema> {
   readonly subscribeError: (listener: StoreListener) => StoreUnsubscribe;
@@ -208,8 +209,28 @@ export const EvoluLive = Layer.effect(
       const loadQuery = makeLoadQuery(dbWorker.postMessage);
 
       dbWorker.onMessage((output) => {
-        // eslint-disable-next-line no-console
-        console.log(output);
+        switch (output._tag) {
+          case "onError":
+            errorStore.setState(output.error);
+            break;
+          case "onOwner":
+            // ownerStore.setState(message.owner);
+            break;
+          case "onQuery":
+            // onQuery(message);
+            break;
+          case "onReceive":
+            // queryIfAny(getSubscribedQueries());
+            break;
+          case "onResetOrRestore":
+            // reloadAllTabs(config.reloadUrl);
+            break;
+          case "onSyncState":
+            // syncState.setState(message.state);
+            break;
+          default:
+            absurd(output);
+        }
       });
 
       dbWorker.postMessage({

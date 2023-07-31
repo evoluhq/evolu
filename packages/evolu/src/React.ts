@@ -263,8 +263,6 @@ export const ReactLive = Layer.effect(
         return query ? evolu.loadQuery(query) : null;
       }, [query]);
 
-      // Do we need?
-      // platformName !== "server" &&
       if (promise && !("rows" in promise)) throw promise;
 
       const subscribedRows = useSyncExternalStore(
