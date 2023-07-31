@@ -1,10 +1,6 @@
 import { Brand, Context, Effect, Exit, Option, ReadonlyRecord } from "effect";
-import {
-  HmacService,
-  Mnemonic,
-  MnemonicService,
-  Sha512Service,
-} from "./Crypto.js";
+import { Bip39, Hmac, Sha512 } from "./Crypto.js";
+import { Mnemonic } from "./Mnemonic.js";
 import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
 import { Owner, OwnerId, makeOwner } from "./Owner.js";
 import { selectOwner } from "./Sql.js";
@@ -98,14 +94,11 @@ export const defectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
 
 const lazyInit = (
   mnemonic?: Mnemonic
-): Effect.Effect<
-  Db | MnemonicService | HmacService | Sha512Service,
-  never,
-  Owner
-> => makeOwner(mnemonic);
+): Effect.Effect<Db | Bip39 | Hmac | Sha512, never, Owner> =>
+  makeOwner(mnemonic);
 
 export const init = (): Effect.Effect<
-  Db | MnemonicService | HmacService | Sha512Service,
+  Db | Bip39 | Hmac | Sha512,
   never,
   Owner
 > =>

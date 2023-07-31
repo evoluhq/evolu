@@ -1,5 +1,6 @@
 import * as Schema from "@effect/schema/Schema";
-import { Brand } from "effect";
+import { Brand, Effect } from "effect";
+import { NanoId, NodeId } from "./Crypto.js";
 import { murmurhash } from "./Murmurhash.js";
 
 // https://muratbuffalo.blogspot.com/2014/07/hybrid-logical-clocks.html
@@ -11,23 +12,21 @@ export interface Timestamp {
   readonly counter: Counter;
 }
 
-export const NodeId = Schema.string.pipe(
-  Schema.pattern(/^[\w-]{16}$/),
-  Schema.brand("NodeId")
-);
-export type NodeId = Schema.To<typeof NodeId>;
-
 export const Millis = Schema.number.pipe(
   Schema.greaterThanOrEqualTo(0),
   Schema.brand("Millis")
 );
 export type Millis = Schema.To<typeof Millis>;
 
+const initialMillis = Schema.parseSync(Millis)(0);
+
 export const Counter = Schema.number.pipe(
   Schema.between(0, 65535),
   Schema.brand("Counter")
 );
 export type Counter = Schema.To<typeof Counter>;
+
+const initialCounter = Schema.parseSync(Counter)(0);
 
 export type TimestampHash = number & Brand.Brand<"TimestampHash">;
 
@@ -55,10 +54,21 @@ export const timestampToHash = (t: Timestamp): TimestampHash =>
 
 const syncNodeId = Schema.parseSync(NodeId)("0000000000000000");
 
-export const createSyncTimestamp = (
-  millis: Millis = 0 as Millis
+export const makeSyncTimestamp = (
+  millis: Millis = initialMillis
 ): Timestamp => ({
   millis,
-  counter: 0 as Counter,
+  counter: initialCounter,
   node: syncNodeId,
 });
+
+export const makeInitialTimestamp = NanoId.pipe(
+  Effect.flatMap(({ nanoidAsNodeId }) => nanoidAsNodeId),
+  Effect.map(
+    (node): Timestamp => ({
+      millis: initialMillis,
+      counter: initialCounter,
+      node,
+    })
+  )
+);

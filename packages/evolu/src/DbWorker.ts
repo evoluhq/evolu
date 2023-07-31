@@ -10,15 +10,11 @@ import {
   ReadonlyArray,
 } from "effect";
 import { Config, ConfigLive } from "./Config.js";
-import { Mnemonic } from "./Crypto.js";
-import {
-  HmacServiceLive,
-  MnemonicServiceLive,
-  Sha512ServiceLive,
-} from "./CryptoLive.web.js";
+import { HmacLive, Bip39Live, Sha512Live } from "./CryptoLive.web.js";
 import { Db, Query, Row, Value, init, transaction } from "./Db.js";
 import { EvoluError, makeUnexpectedError } from "./Errors.js";
 import { MerkleTree } from "./MerkleTree.js";
+import { Mnemonic } from "./Mnemonic.js";
 import { Id } from "./Model.js";
 import { Owner } from "./Owner.js";
 import { SyncState } from "./SyncState.js";
@@ -178,12 +174,7 @@ export const DbWorkerLive = Layer.effect(
           write = makeWriteAfterInit(input.config, owner);
         }),
         Effect.provideLayer(
-          Layer.mergeAll(
-            DbLive,
-            MnemonicServiceLive,
-            HmacServiceLive,
-            Sha512ServiceLive
-          )
+          Layer.mergeAll(DbLive, Bip39Live, HmacLive, Sha512Live)
         ),
         run
       );

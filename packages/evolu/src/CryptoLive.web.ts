@@ -1,10 +1,6 @@
 import { Effect, Layer } from "effect";
-import {
-  HmacService,
-  Mnemonic,
-  MnemonicService,
-  Sha512Service,
-} from "./Crypto.js";
+import { Bip39, Hmac, Sha512 } from "./Crypto.js";
+import { Mnemonic } from "./Mnemonic.js";
 // import { customAlphabet } from "nanoid";
 // import { Crypto, Mnemonic } from "./Crypto.js";
 // import { NodeId } from "./Timestamp.js";
@@ -18,10 +14,10 @@ const importBip39WithEnglish = Effect.all(
   { concurrency: "unbounded" }
 );
 
-export const MnemonicServiceLive = Layer.succeed(
-  MnemonicService,
-  MnemonicService.of({
-    make: importBip39WithEnglish.pipe(
+export const Bip39Live = Layer.succeed(
+  Bip39,
+  Bip39.of({
+    makeMnemonic: importBip39WithEnglish.pipe(
       Effect.map(
         ([{ generateMnemonic }, { wordlist }]) =>
           generateMnemonic(wordlist, 128) as Mnemonic
@@ -34,18 +30,18 @@ export const MnemonicServiceLive = Layer.succeed(
   })
 );
 
-export const HmacServiceLive = Layer.succeed(
-  HmacService,
-  HmacService.of({
+export const HmacLive = Layer.succeed(
+  Hmac,
+  Hmac.of({
     make: Effect.promise(() => import("@noble/hashes/hmac")).pipe(
       Effect.map(({ hmac }) => hmac)
     ),
   })
 );
 
-export const Sha512ServiceLive = Layer.succeed(
-  Sha512Service,
-  Sha512Service.of({
+export const Sha512Live = Layer.succeed(
+  Sha512,
+  Sha512.of({
     make: Effect.promise(() => import("@noble/hashes/sha512")).pipe(
       Effect.map(({ sha512 }) => sha512)
     ),
@@ -56,7 +52,7 @@ export const Sha512ServiceLive = Layer.succeed(
 
 // export const CryptoLive = Layer.succeed(
 //   Crypto,
-//   Crypto.of({
+//   of({
 //     makeNodeId: Effect.sync(() => nanoidForNodeId() as NodeId),
 
 //     makeMnemonic: importBip39WithEnglish.pipe(
