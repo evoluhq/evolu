@@ -17,7 +17,7 @@ export interface Config {
   readonly maxDrift: number;
 }
 
-export const Config = Context.Tag<Config>();
+export const Config = Context.Tag<Config>("evolu/Config");
 
 export const ConfigLive = (
   config?: Partial<Config>

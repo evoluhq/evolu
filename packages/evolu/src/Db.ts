@@ -18,7 +18,7 @@ export interface Db {
   readonly changes: Effect.Effect<never, never, number>;
 }
 
-export const Db = Context.Tag<Db>();
+export const Db = Context.Tag<Db>("evolu/Db");
 
 export interface NoSuchTableOrColumnError {
   readonly _tag: "NoSuchTableOrColumnError";
@@ -30,6 +30,11 @@ export interface QueryObject {
   readonly sql: string;
   readonly parameters: ReadonlyArray<Value>;
 }
+
+export type Query = string & Brand.Brand<"Query">;
+
+export const queryObjectToQuery = ({ sql, parameters }: QueryObject): Query =>
+  JSON.stringify({ sql, parameters }) as Query;
 
 export type Value = null | string | number | Uint8Array;
 
@@ -46,11 +51,6 @@ export interface CommonColumns {
   readonly updatedAt: SqliteDate;
   readonly isDeleted: SqliteBoolean;
 }
-
-export type Query = string & Brand.Brand<"Query">;
-
-export const queryObjectToQuery = ({ sql, parameters }: QueryObject): Query =>
-  JSON.stringify({ sql, parameters }) as Query;
 
 export const transaction = <R, E, A>(
   effect: Effect.Effect<R, E, A>

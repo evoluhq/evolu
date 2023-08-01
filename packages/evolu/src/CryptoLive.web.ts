@@ -1,4 +1,5 @@
 import { Effect, Layer } from "effect";
+import { customAlphabet, nanoid } from "nanoid";
 import {
   Bip39,
   Hmac,
@@ -8,9 +9,6 @@ import {
   Sha512,
   customAlphabetForNodeId,
 } from "./Crypto.js";
-import { nanoid, customAlphabet } from "nanoid";
-// import { Crypto, Mnemonic } from "./Crypto.js";
-// import { NodeId } from "./Timestamp.js";
 
 const importBip39WithEnglish = Effect.all(
   [

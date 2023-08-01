@@ -47,7 +47,7 @@ export interface Evolu<S extends Schema = Schema> {
   readonly ownerActions: OwnerActions;
 }
 
-export const Evolu = Context.Tag<Evolu>();
+export const Evolu = Context.Tag<Evolu>("evolu/Evolu");
 
 export type QueryCallback<S extends Schema, QueryRow> = (
   db: KyselyWithoutMutation<SchemaForQuery<S>>
@@ -214,7 +214,7 @@ export const EvoluLive = Layer.effect(
             errorStore.setState(output.error);
             break;
           case "onOwner":
-            // ownerStore.setState(message.owner);
+            ownerStore.setState(output.owner);
             break;
           case "onQuery":
             // onQuery(message);

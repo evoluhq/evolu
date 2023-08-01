@@ -17,7 +17,7 @@ export interface Owner {
   readonly encryptionKey: Uint8Array;
 }
 
-export const Owner = Context.Tag<Owner>();
+export const Owner = Context.Tag<Owner>("evolu/Owner");
 
 /**
  * The unique identifier of `Owner` safely derived from its `Mnemonic`.

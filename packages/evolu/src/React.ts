@@ -23,7 +23,7 @@ export interface React<S extends Schema = Schema> {
   readonly hooks: Hooks<S>;
 }
 
-export const React = Context.Tag<React>();
+export const React = Context.Tag<React>("evolu/React");
 
 export interface Hooks<S extends Schema> {
   /**

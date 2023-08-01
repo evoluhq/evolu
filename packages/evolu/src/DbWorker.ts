@@ -31,7 +31,7 @@ export interface DbWorker {
   readonly onMessage: (callback: (output: DbWorkerOutput) => void) => void;
 }
 
-export const DbWorker = Context.Tag<DbWorker>();
+export const DbWorker = Context.Tag<DbWorker>("evolu/DbWorker");
 
 export type DbWorkerInput =
   | {
@@ -111,7 +111,9 @@ export interface ReplaceAtPatch {
 }
 
 type OnMessageCallback = Parameters<DbWorker["onMessage"]>[0];
-const OnMessageCallback = Context.Tag<OnMessageCallback>();
+const OnMessageCallback = Context.Tag<OnMessageCallback>(
+  "evolu/OnMessageCallback"
+);
 
 const foo: Effect.Effect<Db, never, void> = Effect.sync(() => {
   return undefined;
@@ -154,7 +156,11 @@ export const DbWorkerLive = Layer.effect(
         Match.value(input).pipe(
           Match.tagsExhaustive({
             init: () => Effect.succeed(undefined),
-            query: () => foo,
+            query: (_a) => {
+              // console.log(a);
+
+              return foo;
+            },
             receiveMessages: () => foo,
             reset: () => foo,
             sendMessages: () => foo,
@@ -176,6 +182,7 @@ export const DbWorkerLive = Layer.effect(
 
       return init().pipe(
         Effect.map((owner) => {
+          onMessageCallback({ _tag: "onOwner", owner });
           write = makeWriteAfterInit(input.config, owner);
         }),
         Effect.provideLayer(
