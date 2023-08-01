@@ -17,11 +17,10 @@ import {
   NanoIdLive,
   Sha512Live,
 } from "./CryptoLive.web.js";
-import { Db, Query, Row, Value, init, transaction } from "./Db.js";
+import { Db, Owner, Query, Row, Value, init, transaction } from "./Db.js";
 import { EvoluError, makeUnexpectedError } from "./Errors.js";
 import { MerkleTree } from "./MerkleTree.js";
 import { Id } from "./Model.js";
-import { Owner } from "./Owner.js";
 import { SyncState } from "./SyncState.js";
 import { TimestampString } from "./Timestamp.js";
 import { runPromise } from "./run.js";
