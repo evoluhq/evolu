@@ -1,8 +1,10 @@
 import { Brand, Context, Effect, Exit, Option, ReadonlyRecord } from "effect";
-import { Bip39, Hmac, Mnemonic, Sha512 } from "./Crypto.js";
+import { Bip39, Hmac, Mnemonic, NanoId, Sha512 } from "./Crypto.js";
 import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
 import { Owner, OwnerId, makeOwner } from "./Owner.js";
-import { selectOwner } from "./Sql.js";
+import { initDb, selectOwner } from "./Sql.js";
+import { makeInitialTimestamp, timestampToString } from "./Timestamp.js";
+import { initialMerkleTree, merkleTreeToString } from "./MerkleTree.js";
 
 export interface Db {
   readonly exec: (
@@ -93,11 +95,27 @@ export const defectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
 
 const lazyInit = (
   mnemonic?: Mnemonic
-): Effect.Effect<Db | Bip39 | Hmac | Sha512, never, Owner> =>
-  makeOwner(mnemonic);
+): Effect.Effect<Db | Bip39 | Hmac | Sha512 | NanoId, never, Owner> =>
+  Effect.all(
+    [
+      Db,
+      makeOwner(mnemonic),
+      makeInitialTimestamp.pipe(Effect.map(timestampToString)),
+      Effect.succeed(merkleTreeToString(initialMerkleTree)),
+    ],
+    { concurrency: "unbounded" }
+  ).pipe(
+    Effect.tap(([db, owner, initialTimestamp, initialMerkleTree]) =>
+      db.exec({
+        sql: initDb(initialTimestamp, initialMerkleTree),
+        parameters: [owner.mnemonic, owner.id, owner.encryptionKey],
+      })
+    ),
+    Effect.map(([, owner]) => owner)
+  );
 
 export const init = (): Effect.Effect<
-  Db | Bip39 | Hmac | Sha512,
+  Db | Bip39 | Hmac | Sha512 | NanoId,
   never,
   Owner
 > =>

@@ -1,6 +1,14 @@
 import { Effect, Layer } from "effect";
-import { Bip39, Hmac, Mnemonic, Sha512 } from "./Crypto.js";
-// import { customAlphabet } from "nanoid";
+import {
+  Bip39,
+  Hmac,
+  Mnemonic,
+  NanoId,
+  NodeId,
+  Sha512,
+  customAlphabetForNodeId,
+} from "./Crypto.js";
+import { nanoid, customAlphabet } from "nanoid";
 // import { Crypto, Mnemonic } from "./Crypto.js";
 // import { NodeId } from "./Timestamp.js";
 
@@ -47,31 +55,12 @@ export const Sha512Live = Layer.succeed(
   })
 );
 
-// const nanoidForNodeId = customAlphabet("0123456789abcdef", 16);
+const nanoidForNodeId = customAlphabet(customAlphabetForNodeId, 16);
 
-// export const CryptoLive = Layer.succeed(
-//   Crypto,
-//   of({
-//     makeNodeId: Effect.sync(() => nanoidForNodeId() as NodeId),
-
-//     makeMnemonic: importBip39WithEnglish.pipe(
-//       Effect.map(
-//         ([{ generateMnemonic }, { wordlist }]) =>
-//           generateMnemonic(wordlist, 128) as Mnemonic
-//       )
-//     ),
-
-//     mnemonicToSeed: (mnemonic) =>
-//       Effect.promise(() => import("@scure/bip39")).pipe(
-//         Effect.flatMap((a) => Effect.promise(() => a.mnemonicToSeed(mnemonic)))
-//       ),
-
-//     hmac: Effect.promise(() => import("@noble/hashes/hmac")).pipe(
-//       Effect.map(({ hmac }) => hmac)
-//     ),
-
-//     sha512: Effect.promise(() => import("@noble/hashes/sha512")).pipe(
-//       Effect.map(({ sha512 }) => sha512)
-//     ),
-//   })
-// );
+export const NanoIdLive = Layer.succeed(
+  NanoId,
+  NanoId.of({
+    nanoid: Effect.sync(() => nanoid()),
+    nanoidAsNodeId: Effect.sync(() => nanoidForNodeId() as NodeId),
+  })
+);

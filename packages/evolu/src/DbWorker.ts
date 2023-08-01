@@ -11,7 +11,12 @@ import {
 } from "effect";
 import { Config, ConfigLive } from "./Config.js";
 import { Mnemonic } from "./Crypto.js";
-import { Bip39Live, HmacLive, Sha512Live } from "./CryptoLive.web.js";
+import {
+  Bip39Live,
+  HmacLive,
+  NanoIdLive,
+  Sha512Live,
+} from "./CryptoLive.web.js";
 import { Db, Query, Row, Value, init, transaction } from "./Db.js";
 import { EvoluError, makeUnexpectedError } from "./Errors.js";
 import { MerkleTree } from "./MerkleTree.js";
@@ -174,7 +179,7 @@ export const DbWorkerLive = Layer.effect(
           write = makeWriteAfterInit(input.config, owner);
         }),
         Effect.provideLayer(
-          Layer.mergeAll(DbLive, Bip39Live, HmacLive, Sha512Live)
+          Layer.mergeAll(DbLive, Bip39Live, HmacLive, Sha512Live, NanoIdLive)
         ),
         run
       );
