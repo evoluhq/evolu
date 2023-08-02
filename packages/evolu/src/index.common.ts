@@ -1,3 +1,4 @@
+import * as S from "@effect/schema/Schema";
 import { Effect, Layer } from "effect";
 import { Config, ConfigLive } from "./Config.js";
 import { Schema } from "./Db.js";
@@ -8,12 +9,15 @@ import { runSync } from "./run.js";
 
 export const makeEvoluCreate =
   (DbWorkerLive: Layer.Layer<never, never, DbWorker>) =>
-  <To extends Schema>(config?: Partial<Config>): React<To>["hooks"] =>
+  <From, To extends Schema>(
+    schema: S.Schema<From, To>,
+    config?: Partial<Config>
+  ): React<To>["hooks"] =>
     React.pipe(
       Effect.map((react) => react.hooks as React<To>["hooks"]),
       Effect.provideLayer(
         Layer.merge(ConfigLive(config), DbWorkerLive).pipe(
-          Layer.provide(EvoluLive),
+          Layer.provide(EvoluLive(schema)),
           Layer.provide(ReactLive)
         )
       ),

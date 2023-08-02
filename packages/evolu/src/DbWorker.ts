@@ -8,6 +8,7 @@ import {
   Layer,
   Match,
   ReadonlyArray,
+  Ref,
 } from "effect";
 import { Config, ConfigLive } from "./Config.js";
 import { Mnemonic } from "./Crypto.js";
@@ -17,7 +18,19 @@ import {
   NanoIdLive,
   Sha512Live,
 } from "./CryptoLive.web.js";
-import { Db, Owner, Query, Row, Value, init, transaction } from "./Db.js";
+import {
+  Db,
+  Owner,
+  Query,
+  Row,
+  Table,
+  Value,
+  ensureSchema,
+  init,
+  queryObjectFromQuery,
+  transaction,
+} from "./Db.js";
+import { QueryPatches, createPatches } from "./Diff.js";
 import { EvoluError, makeUnexpectedError } from "./Errors.js";
 import { MerkleTree } from "./MerkleTree.js";
 import { Id } from "./Model.js";
@@ -36,6 +49,7 @@ export type DbWorkerInput =
   | {
       readonly _tag: "init";
       readonly config: Config;
+      readonly tables: ReadonlyArray<Table>;
     }
   | {
       readonly _tag: "sendMessages";
@@ -91,28 +105,46 @@ export type DbWorkerOutput =
   | { readonly _tag: "onResetOrRestore" }
   | { readonly _tag: "onSyncState"; readonly state: SyncState };
 
-export interface QueryPatches {
-  readonly query: Query;
-  readonly patches: ReadonlyArray<Patch>;
-}
-
-export type Patch = ReplaceAllPatch | ReplaceAtPatch;
-
-export interface ReplaceAllPatch {
-  readonly op: "replaceAll";
-  readonly value: ReadonlyArray<Row>;
-}
-
-export interface ReplaceAtPatch {
-  readonly op: "replaceAt";
-  readonly index: number;
-  readonly value: Row;
-}
-
 type OnMessageCallback = Parameters<DbWorker["onMessage"]>[0];
 const OnMessageCallback = Context.Tag<OnMessageCallback>(
   "evolu/OnMessageCallback"
 );
+
+type RowsCache = Ref.Ref<ReadonlyMap<Query, ReadonlyArray<Row>>>;
+const RowsCache = Context.Tag<RowsCache>("evolu/RowsCache");
+
+const query = ({
+  queries,
+  onCompleteIds = ReadonlyArray.empty(),
+}: {
+  readonly queries: ReadonlyArray<Query>;
+  readonly onCompleteIds?: ReadonlyArray<OnCompleteId>;
+}): Effect.Effect<Db | OnMessageCallback | RowsCache, never, void> =>
+  Effect.gen(function* ($) {
+    const db = yield* $(Db);
+
+    const queriesRows = yield* $(
+      Effect.forEach(queries, (query) =>
+        db
+          .exec(queryObjectFromQuery(query))
+          .pipe(Effect.map((rows) => [query, rows] as const))
+      )
+    );
+
+    const rowsCache = yield* $(RowsCache);
+    const previous = yield* $(Ref.get(rowsCache));
+    yield* $(Ref.set(rowsCache, new Map([...previous, ...queriesRows])));
+
+    const queriesPatches = queriesRows.map(
+      ([query, rows]): QueryPatches => ({
+        query,
+        patches: createPatches(previous.get(query), rows),
+      })
+    );
+
+    const onMessageCallback = yield* $(OnMessageCallback);
+    onMessageCallback({ _tag: "onQuery", queriesPatches, onCompleteIds });
+  });
 
 const foo: Effect.Effect<Db, never, void> = Effect.sync(() => {
   return undefined;
@@ -154,12 +186,10 @@ export const DbWorkerLive = Layer.effect(
       (input: DbWorkerInput): Promise<void> =>
         Match.value(input).pipe(
           Match.tagsExhaustive({
-            init: () => Effect.succeed(undefined),
-            query: (_a) => {
-              // console.log(a);
-
-              return foo;
+            init: () => {
+              throw new self.Error("Init must be called once.");
             },
+            query,
             receiveMessages: () => foo,
             reset: () => foo,
             sendMessages: () => foo,
@@ -170,16 +200,19 @@ export const DbWorkerLive = Layer.effect(
               DbLive,
               ConfigLive(config),
               Layer.succeed(Owner, Owner.of(owner)),
-              Layer.succeed(OnMessageCallback, onMessageCallback)
+              Layer.succeed(OnMessageCallback, onMessageCallback),
+              Layer.effect(RowsCache, Ref.make(new Map()))
             )
           ),
           run
         );
 
     let write = (input: DbWorkerInput): Promise<void> => {
-      if (input._tag !== "init") return Promise.resolve(undefined);
+      if (input._tag !== "init")
+        throw new self.Error("Init must be called first.");
 
-      return init().pipe(
+      return init.pipe(
+        Effect.tap(() => ensureSchema(input.tables)),
         Effect.map((owner) => {
           onMessageCallback({ _tag: "onOwner", owner });
           write = makeWriteAfterInit(input.config, owner);

@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect";
-import { Db, Row, defectToNoSuchTableOrColumnError } from "./Db.js";
+import { Db, Row } from "./Db.js";
 
 // @ts-expect-error Missing types
 import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
@@ -20,7 +20,7 @@ const sqlite = (sqlite3InitModule() as Promise<any>).then((sqlite3) => {
   };
 });
 
-const execNoSchemaless: Db["execNoSchemaless"] = (arg) =>
+const exec: Db["exec"] = (arg) =>
   Effect.promise(() => sqlite).pipe(
     Effect.map((sqlite) => {
       const isSqlString = typeof arg === "string";
@@ -29,17 +29,11 @@ const execNoSchemaless: Db["execNoSchemaless"] = (arg) =>
         rowMode: "object",
         ...(!isSqlString && { bind: arg.parameters }),
       });
-    }),
-    defectToNoSuchTableOrColumnError
+    })
   );
-
-const exec: Db["exec"] = execNoSchemaless as Db["exec"];
-// (_arg) => {
-//   throw "adf";
-// };
 
 const changes: Db["changes"] = Effect.promise(() => sqlite).pipe(
   Effect.map((sqlite) => sqlite.changes())
 );
 
-export const DbLive = Layer.succeed(Db, { exec, execNoSchemaless, changes });
+export const DbLive = Layer.succeed(Db, { exec, changes });

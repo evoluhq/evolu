@@ -1,3 +1,4 @@
+import * as S from "@effect/schema/Schema";
 import {
   Context,
   Effect,
@@ -17,6 +18,7 @@ import {
   Row,
   Schema,
   queryObjectToQuery,
+  schemaToTables,
 } from "./Db.js";
 import { DbWorker } from "./DbWorker.js";
 import { EvoluError } from "./Errors.js";
@@ -194,86 +196,90 @@ const dbWorkerToDbWorkerWithLogDebug = (dbWorker: DbWorker): DbWorker => {
   return { postMessage, onMessage };
 };
 
-export const EvoluLive = Layer.effect(
-  Evolu,
-  Effect.all([
-    Config,
-    DbWorker.pipe(Effect.map(dbWorkerToDbWorkerWithLogDebug)),
-  ]).pipe(
-    Effect.map(([config, dbWorker]) => {
-      const errorStore = makeStore<EvoluError | null>(null);
-      const ownerStore = makeStore<Owner | null>(null);
+export const EvoluLive = <From, To extends Schema>(
+  schema: S.Schema<From, To>
+): Layer.Layer<DbWorker | Config, never, Evolu> =>
+  Layer.effect(
+    Evolu,
+    Effect.all([
+      Config,
+      DbWorker.pipe(Effect.map(dbWorkerToDbWorkerWithLogDebug)),
+    ]).pipe(
+      Effect.map(([config, dbWorker]) => {
+        const errorStore = makeStore<EvoluError | null>(null);
+        const ownerStore = makeStore<Owner | null>(null);
 
-      const createQuery = makeCreateQuery();
+        const createQuery = makeCreateQuery();
+        const loadQuery = makeLoadQuery(dbWorker.postMessage);
+        // const onQuery = makeOnQuery
 
-      const loadQuery = makeLoadQuery(dbWorker.postMessage);
+        dbWorker.onMessage((output) => {
+          switch (output._tag) {
+            case "onError":
+              errorStore.setState(output.error);
+              break;
+            case "onOwner":
+              ownerStore.setState(output.owner);
+              break;
+            case "onQuery":
+              // onQuery(message);
+              break;
+            case "onReceive":
+              // queryIfAny(getSubscribedQueries());
+              break;
+            case "onResetOrRestore":
+              // reloadAllTabs(config.reloadUrl);
+              break;
+            case "onSyncState":
+              // syncState.setState(message.state);
+              break;
+            default:
+              absurd(output);
+          }
+        });
 
-      dbWorker.onMessage((output) => {
-        switch (output._tag) {
-          case "onError":
-            errorStore.setState(output.error);
-            break;
-          case "onOwner":
-            ownerStore.setState(output.owner);
-            break;
-          case "onQuery":
-            // onQuery(message);
-            break;
-          case "onReceive":
-            // queryIfAny(getSubscribedQueries());
-            break;
-          case "onResetOrRestore":
-            // reloadAllTabs(config.reloadUrl);
-            break;
-          case "onSyncState":
-            // syncState.setState(message.state);
-            break;
-          default:
-            absurd(output);
-        }
-      });
+        dbWorker.postMessage({
+          _tag: "init",
+          config,
+          tables: schemaToTables(schema),
+        });
 
-      dbWorker.postMessage({
-        _tag: "init",
-        config,
-      });
+        return Evolu.of({
+          subscribeError: errorStore.subscribe,
+          getError: errorStore.getState,
 
-      return Evolu.of({
-        subscribeError: errorStore.subscribe,
-        getError: errorStore.getState,
+          subscribeOwner: ownerStore.subscribe,
+          getOwner: ownerStore.getState,
 
-        subscribeOwner: ownerStore.subscribe,
-        getOwner: ownerStore.getState,
-
-        createQuery,
-        loadQuery,
-        subscribeQuery: () => {
-          throw "subscribeQuery";
-        },
-        getQuery: () => {
-          throw "getQuery";
-        },
-
-        subscribeSyncState: () => {
-          throw "subscribeSyncState";
-        },
-        getSyncState: () => {
-          throw "getSyncState";
-        },
-
-        mutate: () => {
-          throw "mutate";
-        },
-
-        ownerActions: {
-          reset: () => {
-            throw "reset";
+          createQuery,
+          loadQuery,
+          subscribeQuery: () => {
+            throw "subscribeQuery";
           },
-          restore: () => {
-            throw "restore";
+          getQuery: () => {
+            throw "getQuery";
           },
-        },
-      });
-    })
-  )
-);
+
+          subscribeSyncState: () => {
+            throw "subscribeSyncState";
+          },
+          getSyncState: () => {
+            throw "getSyncState";
+          },
+
+          mutate: () => {
+            throw "mutate";
+          },
+
+          ownerActions: {
+            reset: () => {
+              throw "reset";
+            },
+            restore: () => {
+              throw "restore";
+            },
+          },
+        });
+      })
+    )
+  );
