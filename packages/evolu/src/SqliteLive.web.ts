@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect";
-import { Db, Row } from "./Db.js";
+import { Sqlite, Row } from "./Sqlite.js";
 
 // @ts-expect-error Missing types
 import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
@@ -20,7 +20,7 @@ const sqlite = (sqlite3InitModule() as Promise<any>).then((sqlite3) => {
   };
 });
 
-const exec: Db["exec"] = (arg) =>
+const exec: Sqlite["exec"] = (arg) =>
   Effect.promise(() => sqlite).pipe(
     Effect.map((sqlite) => {
       const isSqlString = typeof arg === "string";
@@ -32,8 +32,8 @@ const exec: Db["exec"] = (arg) =>
     })
   );
 
-const changes: Db["changes"] = Effect.promise(() => sqlite).pipe(
+const changes: Sqlite["changes"] = Effect.promise(() => sqlite).pipe(
   Effect.map((sqlite) => sqlite.changes())
 );
 
-export const DbLive = Layer.succeed(Db, { exec, changes });
+export const SqliteLive = Layer.succeed(Sqlite, { exec, changes });

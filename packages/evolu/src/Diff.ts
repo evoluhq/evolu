@@ -1,4 +1,5 @@
-import { Query, Row } from "./Db.js";
+import { Query } from "./Db.js";
+import { Row } from "./Sqlite.js";
 
 export interface QueryPatches {
   readonly query: Query;

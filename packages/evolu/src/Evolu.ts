@@ -5,16 +5,16 @@ import { Config } from "./Config.js";
 import {
   CommonColumns,
   CreateQuery,
-  OwnerStore,
+  Owner,
   Schema,
   createQuery,
   schemaToTables,
 } from "./Db.js";
 import { DbWorker } from "./DbWorker.js";
-import { ErrorStore } from "./Errors.js";
+import { EvoluError } from "./Errors.js";
 import { SqliteBoolean, SqliteDate } from "./Model.js";
 import { QueryStore } from "./QueryStore.js";
-import { StoreListener, StoreUnsubscribe } from "./Store.js";
+import { Store, StoreListener, StoreUnsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncState.js";
 import { NullableExceptOfId } from "./Utils.js";
 import { logDebug } from "./log.js";
@@ -41,6 +41,9 @@ export interface Evolu<S extends Schema = Schema> {
 }
 
 export const Evolu = Context.Tag<Evolu>("evolu/Evolu");
+
+type ErrorStore = Store<EvoluError | null>;
+type OwnerStore = Store<Owner | null>;
 
 export type Mutate<S extends Schema> = <
   U extends SchemaForMutate<S>,
@@ -108,21 +111,18 @@ const dbWorkerToDbWorkerWithLogDebug = (dbWorker: DbWorker): DbWorker => {
 
 export const EvoluLive = <From, To extends Schema>(
   schema: S.Schema<From, To>
-): Layer.Layer<
-  Config | DbWorker | ErrorStore | OwnerStore | QueryStore,
-  never,
-  Evolu
-> =>
+): Layer.Layer<Config | DbWorker | QueryStore, never, Evolu> =>
   Layer.effect(
     Evolu,
     Effect.all([
       Config,
       DbWorker.pipe(Effect.map(dbWorkerToDbWorkerWithLogDebug)),
-      ErrorStore,
-      OwnerStore,
       QueryStore,
     ]).pipe(
-      Effect.map(([config, dbWorker, errorStore, ownerStore, queryStore]) => {
+      Effect.map(([config, dbWorker, queryStore]) => {
+        const errorStore = makeStore<EvoluError | null>(null);
+        const ownerStore = makeStore<Owner | null>(null);
+
         dbWorker.onMessage((output) => {
           switch (output._tag) {
             case "onError":

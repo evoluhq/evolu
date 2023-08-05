@@ -18,12 +18,9 @@ import {
   Sha512Live,
 } from "./CryptoLive.web.js";
 import {
-  Db,
   Owner,
   Query,
   Table,
-  Value,
-  ensureSchema,
   init,
   queryObjectFromQuery,
   transaction,
@@ -34,6 +31,7 @@ import { MerkleTree } from "./MerkleTree.js";
 import { Id } from "./Model.js";
 import { OnCompleteId } from "./OnCompletes.js";
 import { RowsCacheRef, RowsCacheRefLive } from "./RowsCache.js";
+import { Sqlite, Value } from "./Sqlite.js";
 import { SyncState } from "./SyncState.js";
 import { TimestampString } from "./Timestamp.js";
 import { runPromise } from "./run.js";
@@ -106,20 +104,19 @@ const OnMessageCallback = Context.Tag<OnMessageCallback>(
   "evolu/OnMessageCallback"
 );
 
-// TODO: Tohle imho do DB.
 const query = ({
   queries,
   onCompleteIds = ReadonlyArray.empty(),
 }: {
   readonly queries: ReadonlyArray<Query>;
   readonly onCompleteIds?: ReadonlyArray<OnCompleteId>;
-}): Effect.Effect<Db | OnMessageCallback | RowsCacheRef, never, void> =>
+}): Effect.Effect<Sqlite | OnMessageCallback | RowsCacheRef, never, void> =>
   Effect.gen(function* (_) {
-    const db = yield* _(Db);
+    const sqlite = yield* _(Sqlite);
 
     const queriesRows = yield* _(
       Effect.forEach(queries, (query) =>
-        db
+        sqlite
           .exec(queryObjectFromQuery(query))
           .pipe(Effect.map((rows) => [query, rows] as const))
       )
@@ -140,27 +137,31 @@ const query = ({
     onMessageCallback({ _tag: "onQuery", queriesPatches, onCompleteIds });
   });
 
-const foo: Effect.Effect<Db, never, void> = Effect.sync(() => {
+const foo: Effect.Effect<Sqlite, never, void> = Effect.sync(() => {
   return undefined;
 });
 
 export const DbWorkerLive = Layer.effect(
   DbWorker,
-  Effect.map(Db, (db) => {
+  Effect.gen(function* (_) {
+    // beru dbInit = yield* _(DbInit);
+    //
+
     let onMessageCallback: OnMessageCallback = Function.constVoid;
 
     const handleError = (error: EvoluError): void => {
       onMessageCallback({ _tag: "onError", error });
     };
 
-    const DbLive = Layer.succeed(Db, db);
+    const sqlite = yield* _(Sqlite);
+    const SqliteLive = Layer.succeed(Sqlite, sqlite);
 
     const run: <E extends EvoluError>(
       effect: Effect.Effect<never, E, void>
     ) => Promise<void> = (effect) =>
       effect.pipe(
         transaction,
-        Effect.provideLayer(DbLive),
+        Effect.provideLayer(SqliteLive),
         Effect.catchAllCause((cause) =>
           Cause.failureOrCause(cause).pipe(
             Either.match({
@@ -191,7 +192,7 @@ export const DbWorkerLive = Layer.effect(
           }),
           Effect.provideLayer(
             Layer.mergeAll(
-              DbLive,
+              SqliteLive,
               ConfigLive(config),
               Layer.succeed(Owner, owner),
               Layer.succeed(OnMessageCallback, onMessageCallback),
@@ -205,14 +206,21 @@ export const DbWorkerLive = Layer.effect(
       if (input._tag !== "init")
         throw new self.Error("Init must be called first.");
 
-      return init.pipe(
-        Effect.tap(() => ensureSchema(input.tables)),
+      // dbInit
+
+      return init(input.tables).pipe(
         Effect.map((owner) => {
           onMessageCallback({ _tag: "onOwner", owner });
           write = makeWriteAfterInit(input.config, owner);
         }),
         Effect.provideLayer(
-          Layer.mergeAll(DbLive, Bip39Live, HmacLive, Sha512Live, NanoIdLive)
+          Layer.mergeAll(
+            SqliteLive,
+            Bip39Live,
+            HmacLive,
+            Sha512Live,
+            NanoIdLive
+          )
         ),
         run
       );

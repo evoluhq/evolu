@@ -11,7 +11,7 @@ import {
   QueryObject,
   QueryPatches,
 } from "./Types.js";
-import { Row } from "../Db.js";
+import { Row } from "../Sqlite.js";
 
 export const queryObjectToQuery = ({ sql, parameters }: QueryObject): Query =>
   JSON.stringify({ sql, parameters }) as Query;

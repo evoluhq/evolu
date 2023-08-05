@@ -8,13 +8,14 @@ import {
   ReadonlyArray,
   pipe,
 } from "effect";
-import { Query, Row } from "./Db.js";
+import { Query } from "./Db.js";
 import { DbWorker, DbWorkerOutput } from "./DbWorker.js";
 import { applyPatches } from "./Diff.js";
 import { LoadingPromises } from "./LoadingPromises.js";
 import { OnCompletes } from "./OnCompletes.js";
 import { FlushSync } from "./Platform.js";
 import { RowsCacheMap, RowsCacheStore } from "./RowsCache.js";
+import { Row } from "./Sqlite.js";
 import { StoreListener, StoreUnsubscribe } from "./Store.js";
 import { SubscribedQueries } from "./SubscribedQueries.js";
 

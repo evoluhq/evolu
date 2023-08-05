@@ -1,5 +1,6 @@
 import { Context, Layer, Ref } from "effect";
-import { Query, Row } from "./Db.js";
+import { Query } from "./Db.js";
+import { Row } from "./Sqlite.js";
 import { Store, makeStore } from "./Store.js";
 
 export type RowsCacheMap = ReadonlyMap<Query, ReadonlyArray<Row>>;
