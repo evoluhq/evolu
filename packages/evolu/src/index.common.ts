@@ -5,18 +5,14 @@ import { OwnerStoreLive, Schema } from "./Db.js";
 import { DbWorker } from "./DbWorker.js";
 import { ErrorStoreLive } from "./Errors.js";
 import { EvoluLive } from "./Evolu.js";
+import { QueryStoreLive } from "./QueryStore.js";
+import { React, ReactLive } from "./React.js";
+import { runSync } from "./run.js";
+import { SubscribedQueriesLive } from "./SubscribedQueries.js";
+import { RowsCacheStoreLive } from "./RowsCache.js";
 import { LoadingPromisesLive } from "./LoadingPromises.js";
 import { OnCompletesLive } from "./OnCompletes.js";
-import {
-  GetQueryLive,
-  LoadQueryLive,
-  OnQueryLive,
-  SubscribeQueryLive,
-  SubscribedQueriesLive,
-} from "./Query.js";
-import { React, ReactLive } from "./React.js";
-import { RowsCacheStoreLive } from "./RowsCache.js";
-import { runSync } from "./run.js";
+import { FlushSyncLive } from "./Platform.web.js";
 
 export const makeEvoluCreate =
   (DbWorkerLive: Layer.Layer<never, never, DbWorker>) =>
@@ -32,18 +28,14 @@ export const makeEvoluCreate =
           DbWorkerLive,
           ErrorStoreLive,
           OwnerStoreLive,
-          Layer.merge(LoadingPromisesLive, DbWorkerLive).pipe(
-            Layer.provide(LoadQueryLive)
-          ),
           Layer.mergeAll(
+            SubscribedQueriesLive,
+            RowsCacheStoreLive,
             LoadingPromisesLive,
+            DbWorkerLive,
             OnCompletesLive,
-            RowsCacheStoreLive
-          ).pipe(Layer.provide(OnQueryLive)),
-          Layer.merge(SubscribedQueriesLive, RowsCacheStoreLive).pipe(
-            Layer.provide(SubscribeQueryLive)
-          ),
-          RowsCacheStoreLive.pipe(Layer.provide(GetQueryLive))
+            FlushSyncLive
+          ).pipe(Layer.provide(QueryStoreLive))
         ).pipe(Layer.provide(EvoluLive(schema)), Layer.provide(ReactLive))
       ),
       runSync

@@ -4,22 +4,16 @@ import * as Kysely from "kysely";
 import { Config } from "./Config.js";
 import {
   CommonColumns,
-  Owner,
+  CreateQuery,
   OwnerStore,
   Schema,
+  createQuery,
   schemaToTables,
 } from "./Db.js";
 import { DbWorker } from "./DbWorker.js";
-import { ErrorStore, EvoluError } from "./Errors.js";
+import { ErrorStore } from "./Errors.js";
 import { SqliteBoolean, SqliteDate } from "./Model.js";
-import {
-  CreateQuery,
-  GetQuery,
-  LoadQuery,
-  OnQuery,
-  SubscribeQuery,
-  createQuery,
-} from "./Query.js";
+import { QueryStore } from "./QueryStore.js";
 import { StoreListener, StoreUnsubscribe } from "./Store.js";
 import { SyncState } from "./SyncState.js";
 import { NullableExceptOfId } from "./Utils.js";
@@ -27,16 +21,17 @@ import { logDebug } from "./log.js";
 import { runSync } from "./run.js";
 
 export interface Evolu<S extends Schema = Schema> {
-  readonly subscribeError: (listener: StoreListener) => StoreUnsubscribe;
-  readonly getError: () => EvoluError | null;
+  readonly subscribeError: ErrorStore["subscribe"];
+  readonly getError: ErrorStore["getState"];
 
-  readonly subscribeOwner: (listener: StoreListener) => StoreUnsubscribe;
-  readonly getOwner: () => Owner | null;
+  readonly subscribeOwner: OwnerStore["subscribe"];
+  readonly getOwner: OwnerStore["getState"];
+
+  readonly subscribeQuery: QueryStore["subscribe"];
+  readonly getQuery: QueryStore["getState"];
 
   readonly createQuery: CreateQuery<S>;
-  readonly subscribeQuery: SubscribeQuery;
-  readonly getQuery: GetQuery;
-  readonly loadQuery: LoadQuery;
+  readonly loadQuery: QueryStore["loadQuery"];
 
   readonly subscribeSyncState: (listener: StoreListener) => StoreUnsubscribe;
   readonly getSyncState: () => SyncState;
@@ -114,14 +109,7 @@ const dbWorkerToDbWorkerWithLogDebug = (dbWorker: DbWorker): DbWorker => {
 export const EvoluLive = <From, To extends Schema>(
   schema: S.Schema<From, To>
 ): Layer.Layer<
-  | Config
-  | DbWorker
-  | ErrorStore
-  | OwnerStore
-  | LoadQuery
-  | OnQuery
-  | SubscribeQuery
-  | GetQuery,
+  Config | DbWorker | ErrorStore | OwnerStore | QueryStore,
   never,
   Evolu
 > =>
@@ -132,86 +120,72 @@ export const EvoluLive = <From, To extends Schema>(
       DbWorker.pipe(Effect.map(dbWorkerToDbWorkerWithLogDebug)),
       ErrorStore,
       OwnerStore,
-      LoadQuery,
-      OnQuery,
-      SubscribeQuery,
-      GetQuery,
+      QueryStore,
     ]).pipe(
-      Effect.map(
-        ([
+      Effect.map(([config, dbWorker, errorStore, ownerStore, queryStore]) => {
+        dbWorker.onMessage((output) => {
+          switch (output._tag) {
+            case "onError":
+              errorStore.setState(output.error);
+              break;
+            case "onOwner":
+              ownerStore.setState(output.owner);
+              break;
+            case "onQuery":
+              queryStore.onQuery(output);
+              break;
+            case "onReceive":
+              // queryIfAny(getSubscribedQueries());
+              break;
+            case "onResetOrRestore":
+              // reloadAllTabs(config.reloadUrl);
+              break;
+            case "onSyncState":
+              // syncState.setState(message.state);
+              break;
+            default:
+              absurd(output);
+          }
+        });
+
+        dbWorker.postMessage({
+          _tag: "init",
           config,
-          dbWorker,
-          errorStore,
-          ownerStore,
-          loadQuery,
-          onQuery,
-          subscribeQuery,
-          getQuery,
-        ]) => {
-          dbWorker.onMessage((output) => {
-            switch (output._tag) {
-              case "onError":
-                errorStore.setState(output.error);
-                break;
-              case "onOwner":
-                ownerStore.setState(output.owner);
-                break;
-              case "onQuery":
-                onQuery(output);
-                break;
-              case "onReceive":
-                // queryIfAny(getSubscribedQueries());
-                break;
-              case "onResetOrRestore":
-                // reloadAllTabs(config.reloadUrl);
-                break;
-              case "onSyncState":
-                // syncState.setState(message.state);
-                break;
-              default:
-                absurd(output);
-            }
-          });
+          tables: schemaToTables(schema),
+        });
 
-          dbWorker.postMessage({
-            _tag: "init",
-            config,
-            tables: schemaToTables(schema),
-          });
+        return Evolu.of({
+          subscribeError: errorStore.subscribe,
+          getError: errorStore.getState,
 
-          return Evolu.of({
-            subscribeError: errorStore.subscribe,
-            getError: errorStore.getState,
+          subscribeOwner: ownerStore.subscribe,
+          getOwner: ownerStore.getState,
 
-            subscribeOwner: ownerStore.subscribe,
-            getOwner: ownerStore.getState,
+          createQuery,
+          subscribeQuery: queryStore.subscribe,
+          getQuery: queryStore.getState,
+          loadQuery: queryStore.loadQuery,
 
-            createQuery,
-            subscribeQuery,
-            getQuery,
-            loadQuery,
+          subscribeSyncState: () => {
+            throw "subscribeSyncState";
+          },
+          getSyncState: () => {
+            throw "getSyncState";
+          },
 
-            subscribeSyncState: () => {
-              throw "subscribeSyncState";
+          mutate: () => {
+            throw "mutate";
+          },
+
+          ownerActions: {
+            reset: () => {
+              throw "reset";
             },
-            getSyncState: () => {
-              throw "getSyncState";
+            restore: () => {
+              throw "restore";
             },
-
-            mutate: () => {
-              throw "mutate";
-            },
-
-            ownerActions: {
-              reset: () => {
-                throw "reset";
-              },
-              restore: () => {
-                throw "restore";
-              },
-            },
-          });
-        }
-      )
+          },
+        });
+      })
     )
   );

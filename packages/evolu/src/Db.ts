@@ -14,6 +14,7 @@ import {
   String,
   pipe,
 } from "effect";
+import * as Kysely from "kysely";
 import { urlAlphabet } from "nanoid";
 import {
   Bip39,
@@ -26,8 +27,9 @@ import {
 import { initialMerkleTree, merkleTreeToString } from "./MerkleTree.js";
 import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
 import { initDb, selectOwner } from "./Sql.js";
-import { makeInitialTimestamp, timestampToString } from "./Timestamp.js";
 import { Store, makeStore } from "./Store.js";
+import { makeInitialTimestamp, timestampToString } from "./Timestamp.js";
+import { NullableExceptOfId } from "./Utils.js";
 
 export interface Db {
   readonly exec: (
@@ -52,17 +54,30 @@ export interface QueryObject {
 
 export type Query = string & Brand.Brand<"Query">;
 
-export const queryObjectToQuery = ({ sql, parameters }: QueryObject): Query =>
-  JSON.stringify({ sql, parameters }) as Query;
-
-export const queryObjectFromQuery = (s: Query): QueryObject =>
-  JSON.parse(s) as QueryObject;
-
 export type Value = null | string | number | Uint8Array;
 
 export type Row = ReadonlyRecord.ReadonlyRecord<Value>;
 
 export type Schema = ReadonlyRecord.ReadonlyRecord<{ id: Id } & Row>;
+
+export type CreateQuery<S extends Schema = Schema> = (
+  queryCallback: QueryCallback<S, Row>
+) => Query;
+
+export type QueryCallback<S extends Schema, QueryRow> = (
+  db: KyselyWithoutMutation<SchemaForQuery<S>>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+) => Kysely.SelectQueryBuilder<any, any, QueryRow>;
+
+type KyselyWithoutMutation<DB> = Pick<Kysely.Kysely<DB>, "selectFrom" | "fn">;
+
+type SchemaForQuery<S extends Schema> = {
+  readonly [Table in keyof S]: NullableExceptOfId<
+    {
+      readonly [Column in keyof S[Table]]: S[Table][Column];
+    } & CommonColumns
+  >;
+};
 
 export interface CommonColumns {
   readonly createdAt: SqliteDate;
@@ -71,12 +86,32 @@ export interface CommonColumns {
   readonly isDeleted: SqliteBoolean;
 }
 
-const commonColumns = ["createdAt", "createdBy", "updatedAt", "isDeleted"];
-
 export interface Table {
   readonly name: string;
   readonly columns: ReadonlyArray<string>;
 }
+
+const commonColumns = ["createdAt", "createdBy", "updatedAt", "isDeleted"];
+
+export const queryObjectToQuery = ({ sql, parameters }: QueryObject): Query =>
+  JSON.stringify({ sql, parameters }) as Query;
+
+export const queryObjectFromQuery = (s: Query): QueryObject =>
+  JSON.parse(s) as QueryObject;
+
+const kysely: Kysely.Kysely<SchemaForQuery<Schema>> = new Kysely.Kysely({
+  dialect: {
+    createAdapter: () => new Kysely.SqliteAdapter(),
+    createDriver: () => new Kysely.DummyDriver(),
+    createIntrospector(): Kysely.DatabaseIntrospector {
+      throw "Not implemeneted";
+    },
+    createQueryCompiler: () => new Kysely.SqliteQueryCompiler(),
+  },
+});
+
+export const createQuery: CreateQuery = (queryCallback) =>
+  queryObjectToQuery(queryCallback(kysely).compile() as QueryObject);
 
 // https://github.com/Effect-TS/schema/releases/tag/v0.18.0
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

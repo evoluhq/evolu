@@ -31,7 +31,9 @@ export const makeUnexpectedError = (error: unknown): UnexpectedError => {
 };
 
 export type ErrorStore = Store<EvoluError | null>;
+
 export const ErrorStore = Context.Tag<ErrorStore>("evolu/ErrorStore");
+
 export const ErrorStoreLive = Layer.succeed(
   ErrorStore,
   makeStore<EvoluError | null>(null)

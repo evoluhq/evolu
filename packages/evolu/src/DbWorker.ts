@@ -106,6 +106,7 @@ const OnMessageCallback = Context.Tag<OnMessageCallback>(
   "evolu/OnMessageCallback"
 );
 
+// TODO: Tohle imho do DB.
 const query = ({
   queries,
   onCompleteIds = ReadonlyArray.empty(),
