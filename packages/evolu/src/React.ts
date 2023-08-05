@@ -10,12 +10,8 @@ import { Simplify } from "kysely";
 import { useMemo, useRef, useSyncExternalStore } from "react";
 import { CommonColumns, Owner, Row, Schema } from "./Db.js";
 import { EvoluError } from "./Errors.js";
-import {
-  AllowAutoCasting,
-  Evolu,
-  OwnerActions,
-  QueryCallback,
-} from "./Evolu.js";
+import { AllowAutoCasting, Evolu, OwnerActions } from "./Evolu.js";
+import { QueryCallback } from "./Query.js";
 import { SyncState } from "./SyncState.js";
 
 export interface React<S extends Schema = Schema> {

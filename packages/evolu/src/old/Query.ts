@@ -1,4 +1,3 @@
-import { pipe } from "@effect/data/Function";
 import * as ReadonlyArray from "@effect/data/ReadonlyArray";
 import * as Effect from "@effect/io/Effect";
 import * as Ref from "@effect/io/Ref";
@@ -8,10 +7,11 @@ import {
   DbWorkerOnMessage,
   DbWorkerRowsCache,
   OnCompleteId,
+  Query,
   QueryObject,
   QueryPatches,
-  Query,
 } from "./Types.js";
+import { Row } from "../Db.js";
 
 export const queryObjectToQuery = ({ sql, parameters }: QueryObject): Query =>
   JSON.stringify({ sql, parameters }) as Query;
@@ -30,12 +30,10 @@ export const query = ({
     const db = yield* $(Db);
     const queriesRows = yield* $(
       Effect.forEach(queries, (query) =>
-        pipe(
-          QueryToQueryObject(query),
-          db.exec,
-          Effect.map((rows) => [query, rows] as const),
-        ),
-      ),
+        db
+          .exec(QueryToQueryObject(query))
+          .pipe(Effect.map((rows) => [query, rows] as const))
+      )
     );
 
     const rowsCache = yield* $(DbWorkerRowsCache);
@@ -46,7 +44,7 @@ export const query = ({
       ([query, rows]): QueryPatches => ({
         query,
         patches: createPatches(previous.get(query), rows),
-      }),
+      })
     );
 
     const dbWorkerOnMessage = yield* $(DbWorkerOnMessage);

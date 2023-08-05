@@ -6,6 +6,7 @@ import {
   Context,
   Effect,
   Exit,
+  Layer,
   Option,
   Predicate,
   ReadonlyArray,
@@ -26,6 +27,7 @@ import { initialMerkleTree, merkleTreeToString } from "./MerkleTree.js";
 import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
 import { initDb, selectOwner } from "./Sql.js";
 import { makeInitialTimestamp, timestampToString } from "./Timestamp.js";
+import { Store, makeStore } from "./Store.js";
 
 export interface Db {
   readonly exec: (
@@ -124,6 +126,13 @@ export interface Owner {
 }
 
 export const Owner = Context.Tag<Owner>("evolu/Owner");
+
+export type OwnerStore = Store<Owner | null>;
+export const OwnerStore = Context.Tag<OwnerStore>("evolu/OwnerStore");
+export const OwnerStoreLive = Layer.succeed(
+  OwnerStore,
+  makeStore<Owner | null>(null)
+);
 
 /**
  * The unique identifier of `Owner` safely derived from its `Mnemonic`.
@@ -240,9 +249,9 @@ const updateTable = ({
   name,
   columns,
 }: Table): Effect.Effect<Db, never, void> =>
-  Effect.gen(function* ($) {
-    const db = yield* $(Db);
-    const sql = yield* $(
+  Effect.gen(function* (_) {
+    const db = yield* _(Db);
+    const sql = yield* _(
       db.exec(`PRAGMA table_info (${name})`),
       Effect.map(ReadonlyArray.map((row) => row.name as string)),
       Effect.map((existingColumns) =>
@@ -257,7 +266,7 @@ const updateTable = ({
       ),
       Effect.map(ReadonlyArray.join(""))
     );
-    if (sql) yield* $(db.exec(sql));
+    if (sql) yield* _(db.exec(sql));
   });
 
 const createTable = ({

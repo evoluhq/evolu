@@ -1,5 +1,4 @@
 import {
-  Brand,
   Cause,
   Context,
   Effect,
@@ -22,7 +21,6 @@ import {
   Db,
   Owner,
   Query,
-  Row,
   Table,
   Value,
   ensureSchema,
@@ -34,6 +32,8 @@ import { QueryPatches, createPatches } from "./Diff.js";
 import { EvoluError, makeUnexpectedError } from "./Errors.js";
 import { MerkleTree } from "./MerkleTree.js";
 import { Id } from "./Model.js";
+import { OnCompleteId } from "./OnCompletes.js";
+import { RowsCacheRef, RowsCacheRefLive } from "./RowsCache.js";
 import { SyncState } from "./SyncState.js";
 import { TimestampString } from "./Timestamp.js";
 import { runPromise } from "./run.js";
@@ -82,10 +82,6 @@ export interface Message extends NewMessage {
   readonly timestamp: TimestampString;
 }
 
-export type OnCompleteId = string &
-  Brand.Brand<"Id"> &
-  Brand.Brand<"OnComplete">;
-
 export type DbWorkerInputReceiveMessages = {
   readonly _tag: "receiveMessages";
   readonly messages: ReadonlyArray<Message>;
@@ -110,20 +106,17 @@ const OnMessageCallback = Context.Tag<OnMessageCallback>(
   "evolu/OnMessageCallback"
 );
 
-type RowsCache = Ref.Ref<ReadonlyMap<Query, ReadonlyArray<Row>>>;
-const RowsCache = Context.Tag<RowsCache>("evolu/RowsCache");
-
 const query = ({
   queries,
   onCompleteIds = ReadonlyArray.empty(),
 }: {
   readonly queries: ReadonlyArray<Query>;
   readonly onCompleteIds?: ReadonlyArray<OnCompleteId>;
-}): Effect.Effect<Db | OnMessageCallback | RowsCache, never, void> =>
-  Effect.gen(function* ($) {
-    const db = yield* $(Db);
+}): Effect.Effect<Db | OnMessageCallback | RowsCacheRef, never, void> =>
+  Effect.gen(function* (_) {
+    const db = yield* _(Db);
 
-    const queriesRows = yield* $(
+    const queriesRows = yield* _(
       Effect.forEach(queries, (query) =>
         db
           .exec(queryObjectFromQuery(query))
@@ -131,9 +124,9 @@ const query = ({
       )
     );
 
-    const rowsCache = yield* $(RowsCache);
-    const previous = yield* $(Ref.get(rowsCache));
-    yield* $(Ref.set(rowsCache, new Map([...previous, ...queriesRows])));
+    const rowsCache = yield* _(RowsCacheRef);
+    const previous = yield* _(Ref.get(rowsCache));
+    yield* _(Ref.set(rowsCache, new Map([...previous, ...queriesRows])));
 
     const queriesPatches = queriesRows.map(
       ([query, rows]): QueryPatches => ({
@@ -142,7 +135,7 @@ const query = ({
       })
     );
 
-    const onMessageCallback = yield* $(OnMessageCallback);
+    const onMessageCallback = yield* _(OnMessageCallback);
     onMessageCallback({ _tag: "onQuery", queriesPatches, onCompleteIds });
   });
 
@@ -199,9 +192,9 @@ export const DbWorkerLive = Layer.effect(
             Layer.mergeAll(
               DbLive,
               ConfigLive(config),
-              Layer.succeed(Owner, Owner.of(owner)),
+              Layer.succeed(Owner, owner),
               Layer.succeed(OnMessageCallback, onMessageCallback),
-              Layer.effect(RowsCache, Ref.make(new Map()))
+              RowsCacheRefLive
             )
           ),
           run

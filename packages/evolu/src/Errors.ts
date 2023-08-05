@@ -1,3 +1,6 @@
+import { Context, Layer } from "effect";
+import { Store, makeStore } from "./Store.js";
+
 export type EvoluError = UnexpectedError;
 
 /**
@@ -26,3 +29,10 @@ export const makeUnexpectedError = (error: unknown): UnexpectedError => {
     },
   };
 };
+
+export type ErrorStore = Store<EvoluError | null>;
+export const ErrorStore = Context.Tag<ErrorStore>("evolu/ErrorStore");
+export const ErrorStoreLive = Layer.succeed(
+  ErrorStore,
+  makeStore<EvoluError | null>(null)
+);
