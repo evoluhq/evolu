@@ -28,13 +28,17 @@ import {
 import { initialMerkleTree, merkleTreeToString } from "./MerkleTree.js";
 import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
 import { initDb, selectOwner } from "./Sql.js";
-import { QueryObject, Row, Sqlite } from "./Sqlite.js";
+import {
+  Query,
+  QueryObject,
+  Row,
+  Sqlite,
+  queryObjectToQuery,
+} from "./Sqlite.js";
 import { makeInitialTimestamp, timestampToString } from "./Timestamp.js";
 import { NullableExceptOfId } from "./Utils.js";
 
 export type Schema = ReadonlyRecord.ReadonlyRecord<{ id: Id } & Row>;
-
-export type Query = string & Brand.Brand<"Query">;
 
 export type CreateQuery<S extends Schema = Schema> = (
   queryCallback: QueryCallback<S, Row>
@@ -68,12 +72,6 @@ export interface Table {
 }
 
 const commonColumns = ["createdAt", "createdBy", "updatedAt", "isDeleted"];
-
-export const queryObjectToQuery = ({ sql, parameters }: QueryObject): Query =>
-  JSON.stringify({ sql, parameters }) as Query;
-
-export const queryObjectFromQuery = (s: Query): QueryObject =>
-  JSON.parse(s) as QueryObject;
 
 const kysely: Kysely.Kysely<SchemaForQuery<Schema>> = new Kysely.Kysely({
   dialect: {
@@ -309,38 +307,32 @@ export const ensureSchema = (
 export type DbInit = (input: {
   readonly config: Config;
   readonly tables: ReadonlyArray<Table>;
-}) => Effect.Effect<
-  never,
-  never,
-  {
-    readonly owner: Owner;
-  }
->;
+}) => Effect.Effect<never, never, Owner>;
 
 export const DbInit = Context.Tag<DbInit>("evolu/DbInit");
 
 export const DbInitLive = Layer.effect(
   DbInit,
-  Effect.all([Sqlite, Bip39, Hmac, Sha512, NanoId], {
-    concurrency: "unbounded",
-  }).pipe(
-    Effect.map(([sqlite, bip39, hmac, sha512, nanoid]) =>
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      DbInit.of(({ config, tables }) =>
-        Sqlite.pipe(
-          Effect.flatMap((sqlite) => sqlite.exec(selectOwner)),
-          Effect.map(([owner]) => owner as unknown as Owner),
-          defectToNoSuchTableOrColumnError,
-          Effect.catchTag("NoSuchTableOrColumnError", () => lazyInit()),
-          Effect.tap(() => ensureSchema(tables)),
-          Effect.map((owner) => ({ owner })),
-          Effect.provideService(Sqlite, sqlite),
-          Effect.provideService(Bip39, bip39),
-          Effect.provideService(Hmac, hmac),
-          Effect.provideService(Sha512, sha512),
-          Effect.provideService(NanoId, nanoid)
-        )
+  Effect.gen(function* (_) {
+    const [sqlite, bip39, hmac, sha512, nanoid] = yield* _(
+      Effect.all([Sqlite, Bip39, Hmac, Sha512, NanoId], {
+        concurrency: "unbounded",
+      })
+    );
+
+    return DbInit.of(({ tables }) =>
+      Sqlite.pipe(
+        Effect.flatMap((sqlite) => sqlite.exec(selectOwner)),
+        Effect.map(([owner]) => owner as unknown as Owner),
+        defectToNoSuchTableOrColumnError,
+        Effect.catchTag("NoSuchTableOrColumnError", () => lazyInit()),
+        Effect.tap(() => ensureSchema(tables)),
+        Effect.provideService(Sqlite, sqlite),
+        Effect.provideService(Bip39, bip39),
+        Effect.provideService(Hmac, hmac),
+        Effect.provideService(Sha512, sha512),
+        Effect.provideService(NanoId, nanoid)
       )
-    )
-  )
+    );
+  })
 );

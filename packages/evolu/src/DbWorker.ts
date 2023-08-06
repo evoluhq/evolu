@@ -5,33 +5,27 @@ import {
   Either,
   Function,
   Layer,
+  Match,
   ReadonlyArray,
   Ref,
 } from "effect";
 import { Config } from "./Config.js";
 import { Mnemonic } from "./Crypto.js";
-import {
-  DbInit,
-  Owner,
-  Query,
-  Table,
-  queryObjectFromQuery,
-  transaction,
-} from "./Db.js";
+import { DbInit, Owner, Table, transaction } from "./Db.js";
 import { QueryPatches, createPatches } from "./Diff.js";
 import { EvoluError, makeUnexpectedError } from "./Errors.js";
 import { MerkleTree } from "./MerkleTree.js";
 import { Id } from "./Model.js";
 import { OnCompleteId } from "./OnCompletes.js";
-import { RowsCacheRef } from "./RowsCache.js";
-import { Sqlite, Value } from "./Sqlite.js";
+import { RowsCacheRef, RowsCacheRefLive } from "./RowsCache.js";
+import { Query, Sqlite, Value, queryObjectFromQuery } from "./Sqlite.js";
 import { SyncState } from "./SyncState.js";
 import { TimestampString } from "./Timestamp.js";
 import { runPromise } from "./run.js";
 
 export interface DbWorker {
   readonly postMessage: (input: DbWorkerInput) => void;
-  readonly onMessage: (callback: (output: DbWorkerOutput) => void) => void;
+  readonly onMessage: (callback: OnMessageCallback) => void;
 }
 
 export const DbWorker = Context.Tag<DbWorker>("evolu/DbWorker");
@@ -80,6 +74,12 @@ export type DbWorkerInputReceiveMessages = {
   readonly syncCount: number;
 };
 
+type OnMessageCallback = (output: DbWorkerOutput) => void;
+
+const OnMessageCallback = Context.Tag<OnMessageCallback>(
+  "evolu/OnMessageCallback"
+);
+
 export type DbWorkerOutput =
   | { readonly _tag: "onError"; readonly error: EvoluError }
   | { readonly _tag: "onOwner"; readonly owner: Owner }
@@ -92,23 +92,15 @@ export type DbWorkerOutput =
   | { readonly _tag: "onResetOrRestore" }
   | { readonly _tag: "onSyncState"; readonly state: SyncState };
 
-type OnMessageCallback = Parameters<DbWorker["onMessage"]>[0];
-const OnMessageCallback = Context.Tag<OnMessageCallback>(
-  "evolu/OnMessageCallback"
-);
-
-// TODO: Do Db
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const query = ({
   queries,
   onCompleteIds = ReadonlyArray.empty(),
 }: {
-  readonly queries: ReadonlyArray<Query>;
+  readonly queries: ReadonlyArray.NonEmptyReadonlyArray<Query>;
   readonly onCompleteIds?: ReadonlyArray<OnCompleteId>;
-}): Effect.Effect<Sqlite | OnMessageCallback | RowsCacheRef, never, void> =>
+}): Effect.Effect<Sqlite | RowsCacheRef | OnMessageCallback, never, void> =>
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
-
     const queriesRows = yield* _(
       Effect.forEach(queries, (query) =>
         sqlite
@@ -116,18 +108,15 @@ const query = ({
           .pipe(Effect.map((rows) => [query, rows] as const))
       )
     );
-
     const rowsCache = yield* _(RowsCacheRef);
     const previous = yield* _(Ref.get(rowsCache));
     yield* _(Ref.set(rowsCache, new Map([...previous, ...queriesRows])));
-
     const queriesPatches = queriesRows.map(
       ([query, rows]): QueryPatches => ({
         query,
         patches: createPatches(previous.get(query), rows),
       })
     );
-
     const onMessageCallback = yield* _(OnMessageCallback);
     onMessageCallback({ _tag: "onQuery", queriesPatches, onCompleteIds });
   });
@@ -144,9 +133,9 @@ export const DbWorkerLive = Layer.effect(
       onMessageCallback({ _tag: "onError", error });
     };
 
-    const run: <E extends EvoluError>(
-      effect: Effect.Effect<never, E, void>
-    ) => Promise<void> = (effect) =>
+    const run = (
+      effect: Effect.Effect<Sqlite, EvoluError, void>
+    ): Promise<void> =>
       effect.pipe(
         transaction,
         Effect.provideService(Sqlite, sqlite),
@@ -163,46 +152,41 @@ export const DbWorkerLive = Layer.effect(
         runPromise
       );
 
-    // const makeWriteAfterInit =
-    //   (config: Config, owner: Owner) =>
-    //   (input: DbWorkerInput): Promise<void> =>
-    //     Match.value(input).pipe(
-    //       Match.tagsExhaustive({
-    //         init: () => {
-    //           throw new self.Error("Init must be called once.");
-    //         },
-    //         query,
-    //         receiveMessages: () => foo,
-    //         reset: () => foo,
-    //         sendMessages: () => foo,
-    //         sync: () => foo,
-    //       }),
-    //       Effect.provideLayer(
-    //         Layer.mergeAll(
-    //           SqliteLive,
-    //           ConfigLive(config),
-    //           Layer.succeed(Owner, owner),
-    //           Layer.succeed(OnMessageCallback, onMessageCallback),
-    //           RowsCacheRefLive
-    //         )
-    //       ),
-    //       run
-    //     );
+    // ConfigLive(config),
+    // Layer.succeed(Owner, owner),
 
-    const makeWriteAfterInit = ({ owner }: { readonly owner: Owner }) => {
-      return (_input: DbWorkerInput): Promise<void> => {
-        return Promise.resolve(undefined);
-      };
-    };
+    const makeWriteAfterInit =
+      (_owner: Owner) =>
+      (input: DbWorkerInput): Promise<void> =>
+        Match.value(input).pipe(
+          Match.tagsExhaustive({
+            init: () => {
+              throw new self.Error("Init must be called once.");
+            },
+            query,
+            receiveMessages: () => Effect.succeed(undefined),
+            reset: () => Effect.succeed(undefined),
+            sendMessages: () => Effect.succeed(undefined),
+            sync: () => Effect.succeed(undefined),
+          }),
+          Effect.provideService(Sqlite, sqlite),
+          Effect.provideLayer(
+            Layer.mergeAll(
+              RowsCacheRefLive,
+              Layer.succeed(OnMessageCallback, onMessageCallback)
+            )
+          ),
+          run
+        );
 
     let write = (input: DbWorkerInput): Promise<void> => {
       if (input._tag !== "init")
         throw new self.Error("Init must be called first.");
 
       return dbInit(input).pipe(
-        Effect.map(({ owner }) => {
+        Effect.map((owner) => {
           onMessageCallback({ _tag: "onOwner", owner });
-          write = makeWriteAfterInit({ owner });
+          write = makeWriteAfterInit(owner);
         }),
         run
       );

@@ -1,4 +1,4 @@
-import { Context, Effect, ReadonlyRecord } from "effect";
+import { Brand, Context, Effect, ReadonlyRecord } from "effect";
 
 export interface Sqlite {
   readonly exec: (
@@ -18,3 +18,11 @@ export interface QueryObject {
 export type Value = null | string | number | Uint8Array;
 
 export type Row = ReadonlyRecord.ReadonlyRecord<Value>;
+
+export type Query = string & Brand.Brand<"Query">;
+
+export const queryObjectToQuery = ({ sql, parameters }: QueryObject): Query =>
+  JSON.stringify({ sql, parameters }) as Query;
+
+export const queryObjectFromQuery = (s: Query): QueryObject =>
+  JSON.parse(s) as QueryObject;

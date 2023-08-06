@@ -1,5 +1,5 @@
 import { Context, Layer } from "effect";
-import { Query } from "./Db.js";
+import { Query } from "./Sqlite.js";
 
 export type SubscribedQueries = Map<Query, number>;
 

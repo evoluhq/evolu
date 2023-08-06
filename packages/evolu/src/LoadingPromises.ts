@@ -1,6 +1,5 @@
 import { Context, Function, Layer } from "effect";
-import { Query } from "./Db.js";
-import { Row } from "./Sqlite.js";
+import { Query, Row } from "./Sqlite.js";
 
 export interface LoadingPromises {
   readonly getPromise: (query: Query) => {
