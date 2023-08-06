@@ -10,19 +10,16 @@ import {
   customAlphabetForNodeId,
 } from "./Crypto.js";
 
-const importBip39WithEnglish = Effect.all(
-  [
-    // Two files because wordlists never change.
-    Effect.promise(() => import("@scure/bip39")),
-    Effect.promise(() => import("@scure/bip39/wordlists/english")),
-  ],
-  { concurrency: "unbounded" }
-);
-
 export const Bip39Live = Layer.succeed(
   Bip39,
   Bip39.of({
-    makeMnemonic: importBip39WithEnglish.pipe(
+    makeMnemonic: Effect.all(
+      [
+        Effect.promise(() => import("@scure/bip39")),
+        Effect.promise(() => import("@scure/bip39/wordlists/english")),
+      ],
+      { concurrency: "unbounded" }
+    ).pipe(
       Effect.map(
         ([{ generateMnemonic }, { wordlist }]) =>
           generateMnemonic(wordlist, 128) as Mnemonic

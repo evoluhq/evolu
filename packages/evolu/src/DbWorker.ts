@@ -5,23 +5,16 @@ import {
   Either,
   Function,
   Layer,
-  Match,
   ReadonlyArray,
   Ref,
 } from "effect";
-import { Config, ConfigLive } from "./Config.js";
+import { Config } from "./Config.js";
 import { Mnemonic } from "./Crypto.js";
 import {
-  Bip39Live,
-  HmacLive,
-  NanoIdLive,
-  Sha512Live,
-} from "./CryptoLive.web.js";
-import {
+  DbInit,
   Owner,
   Query,
   Table,
-  init,
   queryObjectFromQuery,
   transaction,
 } from "./Db.js";
@@ -30,7 +23,7 @@ import { EvoluError, makeUnexpectedError } from "./Errors.js";
 import { MerkleTree } from "./MerkleTree.js";
 import { Id } from "./Model.js";
 import { OnCompleteId } from "./OnCompletes.js";
-import { RowsCacheRef, RowsCacheRefLive } from "./RowsCache.js";
+import { RowsCacheRef } from "./RowsCache.js";
 import { Sqlite, Value } from "./Sqlite.js";
 import { SyncState } from "./SyncState.js";
 import { TimestampString } from "./Timestamp.js";
@@ -104,6 +97,8 @@ const OnMessageCallback = Context.Tag<OnMessageCallback>(
   "evolu/OnMessageCallback"
 );
 
+// TODO: Do Db
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const query = ({
   queries,
   onCompleteIds = ReadonlyArray.empty(),
@@ -137,15 +132,11 @@ const query = ({
     onMessageCallback({ _tag: "onQuery", queriesPatches, onCompleteIds });
   });
 
-const foo: Effect.Effect<Sqlite, never, void> = Effect.sync(() => {
-  return undefined;
-});
-
 export const DbWorkerLive = Layer.effect(
   DbWorker,
   Effect.gen(function* (_) {
-    // beru dbInit = yield* _(DbInit);
-    //
+    const sqlite = yield* _(Sqlite);
+    const dbInit = yield* _(DbInit);
 
     let onMessageCallback: OnMessageCallback = Function.constVoid;
 
@@ -153,22 +144,18 @@ export const DbWorkerLive = Layer.effect(
       onMessageCallback({ _tag: "onError", error });
     };
 
-    const sqlite = yield* _(Sqlite);
-    const SqliteLive = Layer.succeed(Sqlite, sqlite);
-
     const run: <E extends EvoluError>(
       effect: Effect.Effect<never, E, void>
     ) => Promise<void> = (effect) =>
       effect.pipe(
         transaction,
-        Effect.provideLayer(SqliteLive),
+        Effect.provideService(Sqlite, sqlite),
         Effect.catchAllCause((cause) =>
           Cause.failureOrCause(cause).pipe(
             Either.match({
               onLeft: handleError,
-              onRight: (cause) => {
-                handleError(makeUnexpectedError(Cause.squash(cause)));
-              },
+              onRight: (cause) =>
+                handleError(makeUnexpectedError(Cause.squash(cause))),
             }),
             () => Effect.succeed(undefined)
           )
@@ -176,52 +163,47 @@ export const DbWorkerLive = Layer.effect(
         runPromise
       );
 
-    const makeWriteAfterInit =
-      (config: Config, owner: Owner) =>
-      (input: DbWorkerInput): Promise<void> =>
-        Match.value(input).pipe(
-          Match.tagsExhaustive({
-            init: () => {
-              throw new self.Error("Init must be called once.");
-            },
-            query,
-            receiveMessages: () => foo,
-            reset: () => foo,
-            sendMessages: () => foo,
-            sync: () => foo,
-          }),
-          Effect.provideLayer(
-            Layer.mergeAll(
-              SqliteLive,
-              ConfigLive(config),
-              Layer.succeed(Owner, owner),
-              Layer.succeed(OnMessageCallback, onMessageCallback),
-              RowsCacheRefLive
-            )
-          ),
-          run
-        );
+    // const makeWriteAfterInit =
+    //   (config: Config, owner: Owner) =>
+    //   (input: DbWorkerInput): Promise<void> =>
+    //     Match.value(input).pipe(
+    //       Match.tagsExhaustive({
+    //         init: () => {
+    //           throw new self.Error("Init must be called once.");
+    //         },
+    //         query,
+    //         receiveMessages: () => foo,
+    //         reset: () => foo,
+    //         sendMessages: () => foo,
+    //         sync: () => foo,
+    //       }),
+    //       Effect.provideLayer(
+    //         Layer.mergeAll(
+    //           SqliteLive,
+    //           ConfigLive(config),
+    //           Layer.succeed(Owner, owner),
+    //           Layer.succeed(OnMessageCallback, onMessageCallback),
+    //           RowsCacheRefLive
+    //         )
+    //       ),
+    //       run
+    //     );
+
+    const makeWriteAfterInit = ({ owner }: { readonly owner: Owner }) => {
+      return (_input: DbWorkerInput): Promise<void> => {
+        return Promise.resolve(undefined);
+      };
+    };
 
     let write = (input: DbWorkerInput): Promise<void> => {
       if (input._tag !== "init")
         throw new self.Error("Init must be called first.");
 
-      // dbInit
-
-      return init(input.tables).pipe(
-        Effect.map((owner) => {
+      return dbInit(input).pipe(
+        Effect.map(({ owner }) => {
           onMessageCallback({ _tag: "onOwner", owner });
-          write = makeWriteAfterInit(input.config, owner);
+          write = makeWriteAfterInit({ owner });
         }),
-        Effect.provideLayer(
-          Layer.mergeAll(
-            SqliteLive,
-            Bip39Live,
-            HmacLive,
-            Sha512Live,
-            NanoIdLive
-          )
-        ),
         run
       );
     };

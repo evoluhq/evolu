@@ -6,6 +6,7 @@ import {
   Context,
   Effect,
   Exit,
+  Layer,
   Option,
   Predicate,
   ReadonlyArray,
@@ -15,6 +16,7 @@ import {
 } from "effect";
 import * as Kysely from "kysely";
 import { urlAlphabet } from "nanoid";
+import { Config } from "./Config.js";
 import {
   Bip39,
   Hmac,
@@ -144,12 +146,12 @@ export type OwnerId = Id & Brand.Brand<"Owner">;
 export const transaction = <R, E, A>(
   effect: Effect.Effect<R, E, A>
 ): Effect.Effect<Sqlite | R, E, A> =>
-  Effect.flatMap(Sqlite, (db) =>
+  Effect.flatMap(Sqlite, (sqlite) =>
     Effect.acquireUseRelease(
-      db.exec("BEGIN"),
+      sqlite.exec("BEGIN"),
       () => effect,
       (_, exit) =>
-        Exit.isFailure(exit) ? db.exec("ROLLBACK") : db.exec("COMMIT")
+        Exit.isFailure(exit) ? sqlite.exec("ROLLBACK") : sqlite.exec("COMMIT")
     )
   );
 
@@ -225,8 +227,8 @@ const lazyInit = (
     ],
     { concurrency: "unbounded" }
   ).pipe(
-    Effect.tap(([db, owner, initialTimestamp, initialMerkleTree]) =>
-      db.exec({
+    Effect.tap(([sqlite, owner, initialTimestamp, initialMerkleTree]) =>
+      sqlite.exec({
         sql: initDb(initialTimestamp, initialMerkleTree),
         parameters: [owner.mnemonic, owner.id, owner.encryptionKey],
       })
@@ -234,18 +236,13 @@ const lazyInit = (
     Effect.map(([, owner]) => owner)
   );
 
-const getOwner = Sqlite.pipe(
-  Effect.flatMap((db) => db.exec(selectOwner)),
-  Effect.map(([owner]) => owner as unknown as Owner)
-);
-
 const getTables: Effect.Effect<
   Sqlite,
   never,
   ReadonlyArray<string>
 > = Sqlite.pipe(
-  Effect.flatMap((db) =>
-    db.exec(`SELECT "name" FROM "sqlite_schema" WHERE "type" = 'table'`)
+  Effect.flatMap((sqlite) =>
+    sqlite.exec(`SELECT "name" FROM "sqlite_schema" WHERE "type" = 'table'`)
   ),
   Effect.map(ReadonlyArray.map((row) => (row.name as string) + "")),
   Effect.map(ReadonlyArray.filter(Predicate.not(String.startsWith("__")))),
@@ -257,9 +254,9 @@ const updateTable = ({
   columns,
 }: Table): Effect.Effect<Sqlite, never, void> =>
   Effect.gen(function* (_) {
-    const db = yield* _(Sqlite);
+    const sqlite = yield* _(Sqlite);
     const sql = yield* _(
-      db.exec(`PRAGMA table_info (${name})`),
+      sqlite.exec(`PRAGMA table_info (${name})`),
       Effect.map(ReadonlyArray.map((row) => row.name as string)),
       Effect.map((existingColumns) =>
         ReadonlyArray.differenceWith(String.Equivalence)(existingColumns)(
@@ -273,15 +270,15 @@ const updateTable = ({
       ),
       Effect.map(ReadonlyArray.join(""))
     );
-    if (sql) yield* _(db.exec(sql));
+    if (sql) yield* _(sqlite.exec(sql));
   });
 
 const createTable = ({
   name,
   columns,
 }: Table): Effect.Effect<Sqlite, never, void> =>
-  Effect.flatMap(Sqlite, (db) =>
-    db.exec(`
+  Effect.flatMap(Sqlite, (sqlite) =>
+    sqlite.exec(`
       CREATE TABLE ${name} (
         "id" text primary key,
         ${columns
@@ -309,19 +306,41 @@ export const ensureSchema = (
     )
   );
 
-export const init = (
-  tables: ReadonlyArray<Table>
-): Effect.Effect<Sqlite | Bip39 | Hmac | Sha512 | NanoId, never, Owner> =>
-  getOwner.pipe(
-    defectToNoSuchTableOrColumnError,
-    Effect.catchTag("NoSuchTableOrColumnError", () => lazyInit()),
-    Effect.tap(() => ensureSchema(tables))
-  );
+export type DbInit = (input: {
+  readonly config: Config;
+  readonly tables: ReadonlyArray<Table>;
+}) => Effect.Effect<
+  never,
+  never,
+  {
+    readonly owner: Owner;
+  }
+>;
 
-// export type DbInit = (
-//   tables: ReadonlyArray<Table>
-// ) => Effect.Effect<never, never, Owner>;
+export const DbInit = Context.Tag<DbInit>("evolu/DbInit");
 
-// export const init = (
-//     tables: ReadonlyArray<Table>
-//   ): Effect.Effect<Sqlite | Bip39 | Hmac | Sha512 | NanoId, never, Owner> =>
+export const DbInitLive = Layer.effect(
+  DbInit,
+  Effect.all([Sqlite, Bip39, Hmac, Sha512, NanoId], {
+    concurrency: "unbounded",
+  }).pipe(
+    Effect.map(([sqlite, bip39, hmac, sha512, nanoid]) =>
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      DbInit.of(({ config, tables }) =>
+        Sqlite.pipe(
+          Effect.flatMap((sqlite) => sqlite.exec(selectOwner)),
+          Effect.map(([owner]) => owner as unknown as Owner),
+          defectToNoSuchTableOrColumnError,
+          Effect.catchTag("NoSuchTableOrColumnError", () => lazyInit()),
+          Effect.tap(() => ensureSchema(tables)),
+          Effect.map((owner) => ({ owner })),
+          Effect.provideService(Sqlite, sqlite),
+          Effect.provideService(Bip39, bip39),
+          Effect.provideService(Hmac, hmac),
+          Effect.provideService(Sha512, sha512),
+          Effect.provideService(NanoId, nanoid)
+        )
+      )
+    )
+  )
+);
