@@ -1,16 +1,19 @@
 import * as S from "@effect/schema/Schema";
 import { Effect, Layer } from "effect";
 import { Config, ConfigLive } from "./Config.js";
+import { NanoIdLive } from "./CryptoLive.web.js";
 import { Schema } from "./Db.js";
 import { DbWorker } from "./DbWorker.js";
 import { EvoluLive } from "./Evolu.js";
 import { LoadingPromisesLive } from "./LoadingPromises.js";
+import { MutateLive } from "./Mutate.js";
 import { OnCompletesLive } from "./OnCompletes.js";
 import { FlushSyncLive } from "./Platform.web.js";
 import { QueryStoreLive } from "./QueryStore.js";
 import { React, ReactLive } from "./React.js";
 import { RowsCacheStoreLive } from "./RowsCache.js";
 import { SubscribedQueriesLive } from "./SubscribedQueries.js";
+import { TimeLive } from "./Time.js";
 import { runSync } from "./run.js";
 
 export const makeEvoluCreate =
@@ -26,13 +29,21 @@ export const makeEvoluCreate =
           ConfigLive(config),
           DbWorkerLive,
           Layer.mergeAll(
-            SubscribedQueriesLive,
-            RowsCacheStoreLive,
-            LoadingPromisesLive,
             DbWorkerLive,
+            FlushSyncLive,
+            LoadingPromisesLive,
             OnCompletesLive,
-            FlushSyncLive
-          ).pipe(Layer.provide(QueryStoreLive))
+            RowsCacheStoreLive,
+            SubscribedQueriesLive
+          ).pipe(Layer.provide(QueryStoreLive)),
+          Layer.mergeAll(
+            DbWorkerLive,
+            LoadingPromisesLive,
+            NanoIdLive,
+            OnCompletesLive,
+            SubscribedQueriesLive,
+            TimeLive
+          ).pipe(Layer.provide(MutateLive))
         ).pipe(Layer.provide(EvoluLive(schema)), Layer.provide(ReactLive))
       ),
       runSync

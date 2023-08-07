@@ -1,6 +1,8 @@
 import { Context, Function, Layer } from "effect";
 import { Query, Row } from "./Sqlite.js";
 
+// For React Suspense.
+
 export interface LoadingPromises {
   readonly getPromise: (query: Query) => {
     readonly promise: Promise<ReadonlyArray<Row>>;

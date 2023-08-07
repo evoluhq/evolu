@@ -276,6 +276,8 @@ const createMutate = <S extends Schema>({
           queue.length = 0;
 
           const queries = getSubscribedQueries();
+          // TODO: Explain and add tests.
+          // tldr; Just wipe-out LoadingPromises unused queries.
           releasePromises(queries);
 
           dbWorker.post({

@@ -7,6 +7,7 @@ import {
   Layer,
   Match,
   ReadonlyArray,
+  ReadonlyRecord,
   Ref,
 } from "effect";
 import { Config } from "./Config.js";
@@ -15,13 +16,13 @@ import { DbInit, Owner, Table, transaction } from "./Db.js";
 import { QueryPatches, createPatches } from "./Diff.js";
 import { EvoluError, makeUnexpectedError } from "./Errors.js";
 import { MerkleTree } from "./MerkleTree.js";
-import { Id } from "./Model.js";
+import { Message } from "./Message.js";
 import { OnCompleteId } from "./OnCompletes.js";
 import { RowsCacheRef, RowsCacheRefLive } from "./RowsCache.js";
 import { Query, Sqlite, Value, queryObjectFromQuery } from "./Sqlite.js";
 import { SyncState } from "./SyncState.js";
-import { TimestampString } from "./Timestamp.js";
 import { runPromise } from "./run.js";
+import { Id, SqliteDate } from "./Model.js";
 
 export interface DbWorker {
   readonly postMessage: (input: DbWorkerInput) => void;
@@ -37,9 +38,8 @@ export type DbWorkerInput =
       readonly tables: ReadonlyArray<Table>;
     }
   | {
-      readonly _tag: "sendMessages";
-      readonly newMessages: ReadonlyArray.NonEmptyReadonlyArray<NewMessage>;
-      readonly onCompleteIds: ReadonlyArray<OnCompleteId>;
+      readonly _tag: "mutate";
+      readonly items: ReadonlyArray.NonEmptyReadonlyArray<MutateItem>;
       readonly queries: ReadonlyArray<Query>;
     }
   | {
@@ -56,15 +56,13 @@ export type DbWorkerInput =
     }
   | DbWorkerInputReceiveMessages;
 
-export interface NewMessage {
+export interface MutateItem {
   readonly table: string;
-  readonly row: Id;
-  readonly column: string;
-  readonly value: Value;
-}
-
-export interface Message extends NewMessage {
-  readonly timestamp: TimestampString;
+  readonly id: Id;
+  readonly values: ReadonlyRecord.ReadonlyRecord<Value>;
+  readonly isInsert: boolean;
+  readonly now: SqliteDate;
+  readonly onCompleteId: OnCompleteId | null;
 }
 
 export type DbWorkerInputReceiveMessages = {
@@ -166,7 +164,7 @@ export const DbWorkerLive = Layer.effect(
             query,
             receiveMessages: () => Effect.succeed(undefined),
             reset: () => Effect.succeed(undefined),
-            sendMessages: () => Effect.succeed(undefined),
+            mutate: () => Effect.succeed(undefined),
             sync: () => Effect.succeed(undefined),
           }),
           Effect.provideService(Sqlite, sqlite),

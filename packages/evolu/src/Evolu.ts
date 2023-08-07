@@ -1,9 +1,7 @@
 import * as S from "@effect/schema/Schema";
 import { Context, Effect, Either, Layer, absurd } from "effect";
-import * as Kysely from "kysely";
 import { Config } from "./Config.js";
 import {
-  CommonColumns,
   CreateQuery,
   Owner,
   Schema,
@@ -12,11 +10,10 @@ import {
 } from "./Db.js";
 import { DbWorker } from "./DbWorker.js";
 import { EvoluError } from "./Errors.js";
-import { SqliteBoolean, SqliteDate } from "./Model.js";
+import { Mutate } from "./Mutate.js";
 import { QueryStore } from "./QueryStore.js";
 import { Store, StoreListener, StoreUnsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncState.js";
-import { NullableExceptOfId } from "./Utils.js";
 import { logDebug } from "./log.js";
 import { runSync } from "./run.js";
 
@@ -44,37 +41,6 @@ export const Evolu = Context.Tag<Evolu>("evolu/Evolu");
 
 type ErrorStore = Store<EvoluError | null>;
 type OwnerStore = Store<Owner | null>;
-
-export type Mutate<S extends Schema> = <
-  U extends SchemaForMutate<S>,
-  T extends keyof U,
->(
-  table: T,
-  values: Kysely.Simplify<Partial<AllowAutoCasting<U[T]>>>,
-  onComplete?: () => void
-) => {
-  readonly id: U[T]["id"];
-};
-
-type SchemaForMutate<S extends Schema> = {
-  readonly [Table in keyof S]: NullableExceptOfId<
-    {
-      readonly [Column in keyof S[Table]]: S[Table][Column];
-    } & Pick<CommonColumns, "isDeleted">
-  >;
-};
-
-export type AllowAutoCasting<T> = {
-  readonly [K in keyof T]: T[K] extends SqliteBoolean
-    ? boolean | SqliteBoolean
-    : T[K] extends null | SqliteBoolean
-    ? null | boolean | SqliteBoolean
-    : T[K] extends SqliteDate
-    ? Date | SqliteDate
-    : T[K] extends null | SqliteDate
-    ? null | Date | SqliteDate
-    : T[K];
-};
 
 export interface OwnerActions {
   /**
@@ -111,15 +77,16 @@ const dbWorkerToDbWorkerWithLogDebug = (dbWorker: DbWorker): DbWorker => {
 
 export const EvoluLive = <From, To extends Schema>(
   schema: S.Schema<From, To>
-): Layer.Layer<Config | DbWorker | QueryStore, never, Evolu> =>
+): Layer.Layer<Config | DbWorker | QueryStore | Mutate, never, Evolu> =>
   Layer.effect(
     Evolu,
     Effect.all([
       Config,
       DbWorker.pipe(Effect.map(dbWorkerToDbWorkerWithLogDebug)),
       QueryStore,
+      Mutate,
     ]).pipe(
-      Effect.map(([config, dbWorker, queryStore]) => {
+      Effect.map(([config, dbWorker, queryStore, mutate]) => {
         const errorStore = makeStore<EvoluError | null>(null);
         const ownerStore = makeStore<Owner | null>(null);
 
@@ -173,9 +140,7 @@ export const EvoluLive = <From, To extends Schema>(
             throw "getSyncState";
           },
 
-          mutate: () => {
-            throw "mutate";
-          },
+          mutate,
 
           ownerActions: {
             reset: () => {

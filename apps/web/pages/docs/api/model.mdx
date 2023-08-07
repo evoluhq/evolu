@@ -4,12 +4,10 @@
 
 Branded Id Schema for any table Id.
 To create Id Schema for a specific table, use `id`.
-To create an Id value for a specific table, use `createId`.
 
 ## id
 
 A factory function to create `Id` Schema for a specific table.
-To create an Id value for a specific table, use `createId`.
 
 ### Example
 
@@ -21,19 +19,6 @@ const TodoId = Evolu.id("Todo");
 type TodoId = Schema.To<typeof TodoId>;
 
 if (!Schema.is(TodoId)(value)) return;
-```
-
-## createId
-
-A factory function to create an `Id` value for a specific table.
-
-### Example
-
-```ts
-import * as Evolu from "evolu";
-
-// const id: string & Brand<"Id"> & Brand<"Todo">
-const id = Evolu.createId<"Todo">();
 ```
 
 ## Mnemonic

@@ -8,7 +8,7 @@ export interface Sqlite {
   readonly changes: Effect.Effect<never, never, number>;
 }
 
-export const Sqlite = Context.Tag<Sqlite>("evolu/Db");
+export const Sqlite = Context.Tag<Sqlite>("evolu/Sqlite");
 
 export interface QueryObject {
   readonly sql: string;
