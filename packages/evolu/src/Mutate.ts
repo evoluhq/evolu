@@ -1,22 +1,22 @@
 import { Context, Effect, Layer, ReadonlyArray } from "effect";
 import * as Kysely from "kysely";
+import { NanoId } from "./Crypto.js";
 import { CommonColumns, Schema } from "./Db.js";
 import { DbWorker, MutateItem } from "./DbWorker.js";
 import { LoadingPromises } from "./LoadingPromises.js";
-import { Id, SqliteBoolean, SqliteDate, cast } from "./Model.js";
+import { CastableForMutate, Id, cast } from "./Model.js";
 import { OnCompleteId, OnCompletes } from "./OnCompletes.js";
 import { SubscribedQueries } from "./SubscribedQueries.js";
+import { Time } from "./Timestamp.js";
 import { NullableExceptOfId } from "./Utils.js";
-import { NanoId } from "./Crypto.js";
 import { runSync } from "./run.js";
-import { Time } from "./Time.js";
 
 export type Mutate<S extends Schema = Schema> = <
   U extends SchemaForMutate<S>,
   T extends keyof U,
 >(
   table: T,
-  values: Kysely.Simplify<Partial<AllowAutoCasting<U[T]>>>,
+  values: Kysely.Simplify<Partial<CastableForMutate<U[T]>>>,
   onComplete?: () => void
 ) => {
   readonly id: U[T]["id"];
@@ -30,18 +30,6 @@ type SchemaForMutate<S extends Schema> = {
       readonly [Column in keyof S[Table]]: S[Table][Column];
     } & Pick<CommonColumns, "isDeleted">
   >;
-};
-
-export type AllowAutoCasting<T> = {
-  readonly [K in keyof T]: T[K] extends SqliteBoolean
-    ? boolean | SqliteBoolean
-    : T[K] extends null | SqliteBoolean
-    ? null | boolean | SqliteBoolean
-    : T[K] extends SqliteDate
-    ? Date | SqliteDate
-    : T[K] extends null | SqliteDate
-    ? null | Date | SqliteDate
-    : T[K];
 };
 
 export const MutateLive = Layer.effect(
@@ -77,16 +65,15 @@ export const MutateLive = Layer.effect(
 
       if (queue.length === 1)
         queueMicrotask(() => {
-          if (!ReadonlyArray.isNonEmptyReadonlyArray(queue)) return;
-
           const queries = Array.from(subscribedQueries.keys());
           loadingPromises.releasePromises(queries);
 
-          dbWorker.postMessage({
-            _tag: "mutate",
-            items: queue,
-            queries,
-          });
+          if (ReadonlyArray.isNonEmptyReadonlyArray(queue))
+            dbWorker.postMessage({
+              _tag: "mutate",
+              items: queue,
+              queries,
+            });
 
           queue.length = 0;
         });

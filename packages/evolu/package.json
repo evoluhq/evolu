@@ -74,7 +74,7 @@
     "@evolu/tsconfig": "workspace:*",
     "@protobuf-ts/plugin": "^2.9.1",
     "@protobuf-ts/protoc": "^2.9.1",
-    "@types/react": "^18.2.18",
+    "@types/react": "^18.2.19",
     "@types/react-dom": "^18.2.7",
     "@types/web-locks-api": "^0.0.2",
     "array-shuffle": "^3.0.0",

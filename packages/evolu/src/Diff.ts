@@ -39,7 +39,7 @@ export const applyPatches =
 // the Myers diff algorithm because it's faster to rerender all than
 // to compute many detailed patches. We will only implement a logic
 // a developer would implement manually, if necessary.
-export const createPatches = (
+export const makePatches = (
   previous: ReadonlyArray<Row> | undefined,
   next: ReadonlyArray<Row>
 ): readonly Patch[] => {

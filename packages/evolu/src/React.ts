@@ -11,9 +11,9 @@ import { useMemo, useRef, useSyncExternalStore } from "react";
 import { CommonColumns, Owner, QueryCallback, Schema } from "./Db.js";
 import { EvoluError } from "./Errors.js";
 import { Evolu, OwnerActions } from "./Evolu.js";
-import { AllowAutoCasting } from "./Mutate.js";
 import { Row } from "./Sqlite.js";
 import { SyncState } from "./SyncState.js";
+import { CastableForMutate } from "./Model.js";
 
 export interface React<S extends Schema = Schema> {
   readonly hooks: Hooks<S>;
@@ -218,14 +218,14 @@ type UseMutation<S extends Schema> = () => {
 
 type Create<S extends Schema> = <T extends keyof S>(
   table: T,
-  values: Simplify<NullablePartial<AllowAutoCasting<Omit<S[T], "id">>>>,
+  values: Simplify<PartialOnlyForNullable<CastableForMutate<Omit<S[T], "id">>>>,
   onComplete?: () => void
 ) => {
   readonly id: S[T]["id"];
 };
 
 // https://stackoverflow.com/a/54713648/233902
-type NullablePartial<
+type PartialOnlyForNullable<
   T,
   NK extends keyof T = {
     [K in keyof T]: null extends T[K] ? K : never;
@@ -237,7 +237,7 @@ type Update<S extends Schema> = <T extends keyof S>(
   table: T,
   values: Simplify<
     Partial<
-      AllowAutoCasting<Omit<S[T], "id"> & Pick<CommonColumns, "isDeleted">>
+      CastableForMutate<Omit<S[T], "id"> & Pick<CommonColumns, "isDeleted">>
     > & { id: S[T]["id"] }
   >,
   onComplete?: () => void

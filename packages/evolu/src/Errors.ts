@@ -1,4 +1,6 @@
-export type EvoluError = UnexpectedError;
+import { TimestampError } from "./Timestamp.js";
+
+export type EvoluError = UnexpectedError | TimestampError;
 
 /**
  * We can't use the whole error because of WebWorker postMessage DataCloneError

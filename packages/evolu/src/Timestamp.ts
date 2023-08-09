@@ -1,7 +1,8 @@
 import * as Schema from "@effect/schema/Schema";
-import { Brand, Effect } from "effect";
+import { Brand, Context, Effect, Either, Layer, Number, pipe } from "effect";
 import { NanoId, NodeId } from "./Crypto.js";
 import { murmurhash } from "./Murmurhash.js";
+import { Config } from "./Config.js";
 
 // https://muratbuffalo.blogspot.com/2014/07/hybrid-logical-clocks.html
 // https://jaredforsyth.com/posts/hybrid-logical-clocks/
@@ -39,7 +40,6 @@ export const timestampToString = (t: Timestamp): TimestampString =>
     t.node,
   ].join("-") as TimestampString;
 
-// TODO: Use Schema and Effect
 export const unsafeTimestampFromString = (s: TimestampString): Timestamp => {
   const a = s.split("-");
   return {
@@ -72,3 +72,88 @@ export const makeInitialTimestamp = NanoId.pipe(
     })
   )
 );
+
+export interface Time {
+  readonly now: Effect.Effect<never, never, Millis>;
+}
+
+export const Time = Context.Tag<Time>("evolu/Time");
+
+export const TimeLive = Layer.succeed(
+  Time,
+  Time.of({
+    now: Effect.sync(() => Date.now() as Millis),
+  })
+);
+
+export type TimestampError =
+  | TimestampDriftError
+  | TimestampCounterOverflowError;
+
+export interface TimestampDriftError {
+  readonly _tag: "TimestampDriftError";
+  readonly next: Millis;
+  readonly now: Millis;
+}
+
+export interface TimestampCounterOverflowError {
+  readonly _tag: "TimestampCounterOverflowError";
+}
+
+const getNextMillis = (
+  millis: Millis[]
+): Effect.Effect<Time | Config, TimestampDriftError, Millis> =>
+  Effect.gen(function* (_) {
+    const time = yield* _(Time);
+    const config = yield* _(Config);
+
+    const now = yield* _(time.now);
+    const next = Math.max(now, ...millis) as Millis;
+
+    if (next - now > config.maxDrift)
+      yield* _(
+        Effect.fail<TimestampDriftError>({
+          _tag: "TimestampDriftError",
+          now,
+          next,
+        })
+      );
+
+    return next;
+  });
+
+const incrementCounter = (
+  counter: Counter
+): Either.Either<TimestampCounterOverflowError, Counter> =>
+  pipe(
+    Number.increment(counter),
+    Schema.parseEither(Counter),
+    Either.mapLeft(() => ({ _tag: "TimestampCounterOverflowError" }))
+  );
+
+const counterMin = Schema.parseSync(Counter)(0);
+
+export const sendTimestamp = (
+  timestamp: Timestamp
+): Effect.Effect<
+  Time | Config,
+  TimestampDriftError | TimestampCounterOverflowError,
+  Timestamp
+> =>
+  Effect.gen(function* ($) {
+    const millis = yield* $(getNextMillis([timestamp.millis]));
+    const counter =
+      millis === timestamp.millis
+        ? yield* $(incrementCounter(timestamp.counter))
+        : counterMin;
+    return { ...timestamp, millis, counter };
+  });
+
+// export interface TimestampDuplicateNodeError {
+//   readonly _tag: "TimestampDuplicateNodeError";
+//   readonly node: NodeId;
+// }
+
+// export interface TimestampParseError {
+//   readonly _tag: "TimestampParseError";
+// }

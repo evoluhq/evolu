@@ -13,7 +13,7 @@ import { QueryStoreLive } from "./QueryStore.js";
 import { React, ReactLive } from "./React.js";
 import { RowsCacheStoreLive } from "./RowsCache.js";
 import { SubscribedQueriesLive } from "./SubscribedQueries.js";
-import { TimeLive } from "./Time.js";
+import { TimeLive } from "./Timestamp.js";
 import { runSync } from "./run.js";
 
 export const makeEvoluCreate =

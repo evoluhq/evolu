@@ -19,12 +19,12 @@ const isFirefoxWithOpfs = (): boolean => {
   return Number(matches[1]) >= 111;
 };
 
-const createNoOpServerDbWorker = (): DbWorker => ({
+const makeNoOpServerDbWorker = (): DbWorker => ({
   postMessage: Function.constVoid,
   onMessage: Function.constVoid,
 });
 
-const createOpfsDbWorker = (): DbWorker => {
+const makeOpfsDbWorker = (): DbWorker => {
   const dbWorker = new Worker(
     new URL("DbWorkerLive.web.worker.js", import.meta.url),
     { type: "module" }
@@ -43,7 +43,7 @@ const createOpfsDbWorker = (): DbWorker => {
   return { postMessage, onMessage };
 };
 
-const createLocalStorageDbWorker = (): DbWorker => ({
+const makeLocalStorageDbWorker = (): DbWorker => ({
   postMessage: Function.constVoid,
   onMessage: Function.constVoid,
 });
@@ -51,8 +51,8 @@ const createLocalStorageDbWorker = (): DbWorker => ({
 export const DbWorkerLive = Layer.succeed(
   DbWorker,
   isServer
-    ? createNoOpServerDbWorker()
+    ? makeNoOpServerDbWorker()
     : isChromeWithOpfs() || isFirefoxWithOpfs()
-    ? createOpfsDbWorker()
-    : createLocalStorageDbWorker()
+    ? makeOpfsDbWorker()
+    : makeLocalStorageDbWorker()
 );
