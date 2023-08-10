@@ -83,13 +83,12 @@ const Button: FC<{
   );
 };
 
-type TodoCategoriesList = ReadonlyArray<{
-  id: TodoCategoryId;
-  name: NonEmptyString50;
-}>;
-
-const useTodoCategoriesList = (): TodoCategoriesList =>
-  useQuery(
+const TodoCategorySelect: FC<{
+  selected: TodoCategoryId | null;
+  onSelect: (_value: TodoCategoryId | null) => void;
+}> = ({ selected, onSelect }) => {
+  const nothingSelected = "";
+  const { rows } = useQuery(
     (db) =>
       db
         .selectFrom("todoCategory")
@@ -98,16 +97,10 @@ const useTodoCategoriesList = (): TodoCategoriesList =>
         .orderBy("createdAt"),
     // Filter out rows with nullable names.
     ({ name, ...rest }) => name && { name, ...rest },
-  ).rows;
+  );
 
-const TodoCategorySelect: FC<{
-  selected: TodoCategoryId | null;
-  onSelect: (_value: TodoCategoryId | null) => void;
-  todoCategoriesList: TodoCategoriesList;
-}> = ({ selected, onSelect, todoCategoriesList }) => {
-  const nothingSelected = "";
   const value =
-    selected && todoCategoriesList.find((row) => row.id === selected)
+    selected && rows.find((row) => row.id === selected)
       ? selected
       : nothingSelected;
 
@@ -121,7 +114,7 @@ const TodoCategorySelect: FC<{
       }}
     >
       <option value={nothingSelected}>-- no category --</option>
-      {todoCategoriesList.map(({ id, name }) => (
+      {rows.map(({ id, name }) => (
         <option key={id} value={id}>
           {name}
         </option>
@@ -132,11 +125,7 @@ const TodoCategorySelect: FC<{
 
 const TodoItem = memo<{
   row: Pick<TodoTable, "id" | "title" | "isCompleted" | "categoryId">;
-  todoCategoriesList: TodoCategoriesList;
-}>(function TodoItem({
-  row: { id, title, isCompleted, categoryId },
-  todoCategoriesList,
-}) {
+}>(function TodoItem({ row: { id, title, isCompleted, categoryId } }) {
   const { update } = useMutation();
 
   return (
@@ -168,7 +157,6 @@ const TodoItem = memo<{
         }}
       />
       <TodoCategorySelect
-        todoCategoriesList={todoCategoriesList}
         selected={categoryId}
         onSelect={(categoryId): void => {
           update("todo", { id, categoryId });
@@ -191,18 +179,13 @@ const Todos: FC = () => {
     ({ title, isCompleted, ...rest }) =>
       title && isCompleted != null && { title, isCompleted, ...rest },
   );
-  const todoCategoriesList = useTodoCategoriesList();
 
   return (
     <>
       <h2 className="mt-6 text-xl font-semibold">Todos</h2>
       <ul className="py-2">
         {rows.map((row) => (
-          <TodoItem
-            key={row.id}
-            row={row}
-            todoCategoriesList={todoCategoriesList}
-          />
+          <TodoItem key={row.id} row={row} />
         ))}
       </ul>
       <Button
