@@ -28,9 +28,6 @@ import { Message, NewMessage } from "./Message.js";
 import { CastableForMutate, Id, SqliteDate, cast } from "./Model.js";
 import { OnCompleteId } from "./OnCompletes.js";
 import { RowsCacheRef, RowsCacheRefLive } from "./RowsCache.js";
-import { Query, Sqlite, Value, queryObjectFromQuery } from "./Sqlite.js";
-import { SyncState } from "./SyncState.js";
-import { runPromise } from "./run.js";
 import {
   insertValueIntoTableColumn,
   selectClock,
@@ -38,6 +35,8 @@ import {
   tryInsertIntoMessages,
   updateClock,
 } from "./Sql.js";
+import { Query, Sqlite, Value, queryObjectFromQuery } from "./Sqlite.js";
+import { SyncState } from "./SyncState.js";
 import {
   Time,
   TimeLive,
@@ -333,7 +332,7 @@ export const DbWorkerLive = Layer.effect(
             () => Effect.succeed(undefined)
           )
         ),
-        runPromise
+        Effect.runPromise
       );
 
     type Write = (input: DbWorkerInput) => Promise<void>;

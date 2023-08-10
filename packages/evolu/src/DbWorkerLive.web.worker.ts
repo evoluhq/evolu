@@ -8,7 +8,6 @@ import {
 import { DbInitLive } from "./Db.js";
 import { DbWorker, DbWorkerInput, DbWorkerLive } from "./DbWorker.js";
 import { SqliteLive } from "./SqliteLive.web.js";
-import { runSync } from "./run.js";
 
 Effect.gen(function* (_) {
   const dbWorker = yield* _(DbWorker);
@@ -29,5 +28,5 @@ Effect.gen(function* (_) {
       ).pipe(Layer.provide(DbInitLive))
     ).pipe(Layer.provide(DbWorkerLive))
   ),
-  runSync
+  Effect.runSync
 );

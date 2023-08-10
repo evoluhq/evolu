@@ -14,8 +14,6 @@ import { Mutate } from "./Mutate.js";
 import { QueryStore } from "./QueryStore.js";
 import { Store, StoreListener, StoreUnsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncState.js";
-import { logDebug } from "./log.js";
-import { runSync } from "./run.js";
 
 export interface Evolu<S extends Schema = Schema> {
   readonly subscribeError: ErrorStore["subscribe"];
@@ -61,31 +59,13 @@ export interface RestoreOwnerError {
   readonly _tag: "RestoreOwnerError";
 }
 
-const dbWorkerToDbWorkerWithLogDebug = (dbWorker: DbWorker): DbWorker => {
-  const postMessage: DbWorker["postMessage"] = (input) => {
-    runSync(logDebug("Evolu DbWorker.postMessage", input));
-    dbWorker.postMessage(input);
-  };
-  const onMessage: DbWorker["onMessage"] = (callback) => {
-    dbWorker.onMessage((output) => {
-      runSync(logDebug("Evolu DbWorker.onMessage", output));
-      callback(output);
-    });
-  };
-  return { postMessage, onMessage };
-};
-
 export const EvoluLive = <From, To extends Schema>(
   schema: S.Schema<From, To>
 ): Layer.Layer<Config | DbWorker | QueryStore | Mutate, never, Evolu> =>
   Layer.effect(
     Evolu,
-    Effect.all([
-      Config,
-      DbWorker.pipe(Effect.map(dbWorkerToDbWorkerWithLogDebug)),
-      QueryStore,
-      Mutate,
-    ]).pipe(
+    // gen? jo
+    Effect.all([Config, DbWorker, QueryStore, Mutate]).pipe(
       Effect.map(([config, dbWorker, queryStore, mutate]) => {
         const errorStore = makeStore<EvoluError | null>(null);
         const ownerStore = makeStore<Owner | null>(null);

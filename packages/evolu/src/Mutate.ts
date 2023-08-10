@@ -9,7 +9,6 @@ import { OnCompleteId, OnCompletes } from "./OnCompletes.js";
 import { SubscribedQueries } from "./SubscribedQueries.js";
 import { Time } from "./Timestamp.js";
 import { NullableExceptOfId } from "./Utils.js";
-import { runSync } from "./run.js";
 
 export type Mutate<S extends Schema = Schema> = <
   U extends SchemaForMutate<S>,
@@ -46,11 +45,11 @@ export const MutateLive = Layer.effect(
 
     return Mutate.of((table, { id, ...values }, onComplete) => {
       const isInsert = id == null;
-      if (isInsert) id = runSync(nanoid.nanoid) as never;
+      if (isInsert) id = Effect.runSync(nanoid.nanoid) as never;
 
       let onCompleteId = null;
       if (onComplete) {
-        onCompleteId = runSync(nanoid.nanoid) as OnCompleteId;
+        onCompleteId = Effect.runSync(nanoid.nanoid) as OnCompleteId;
         onCompletes.set(onCompleteId, onComplete);
       }
 
@@ -59,7 +58,7 @@ export const MutateLive = Layer.effect(
         id: id as Id,
         values: values as MutateItem["values"],
         isInsert,
-        now: cast(new Date(runSync(time.now))),
+        now: cast(new Date(Effect.runSync(time.now))),
         onCompleteId,
       });
 
