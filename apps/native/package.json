@@ -11,10 +11,10 @@
   },
   "dependencies": {
     "@effect/data": "^0.17.1",
-    "@effect/schema": "^0.33.0",
-    "@types/react": "^18.2.19",
+    "@effect/schema": "^0.33.1",
+    "@types/react": "^18.2.20",
     "evolu": "workspace:*",
-    "expo": "^49.0.6",
+    "expo": "^49.0.7",
     "expo-sqlite": "~11.3.2",
     "expo-status-bar": "^1.6.0",
     "react": "18.2.0",
