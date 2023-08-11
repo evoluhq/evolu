@@ -11,9 +11,9 @@ import { useMemo, useRef, useSyncExternalStore } from "react";
 import { CommonColumns, Owner, QueryCallback, Schema } from "./Db.js";
 import { EvoluError } from "./Errors.js";
 import { Evolu, OwnerActions } from "./Evolu.js";
-import { Row } from "./Sqlite.js";
-import { SyncState } from "./SyncState.js";
 import { CastableForMutate } from "./Model.js";
+import { Row } from "./Sqlite.js";
+import { SyncState } from "./SyncWorker.js";
 
 export interface React<S extends Schema = Schema> {
   readonly hooks: Hooks<S>;

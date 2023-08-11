@@ -1,9 +1,7 @@
 // TODO: This file should be generated from a script via Kysely.
 // The reason for not using Kysely directly is bundle size.
-// [Playground Link](https://kyse.link/?p=b&i=haFkpnNxbGl0ZaF2pjAuMjYuMKFz2gF2aW1wb3J0IHsgR2VuZXJhdGVkIH0gZnJvbSAna3lzZWx5JwoKZGVjbGFyZSBnbG9iYWwgewogIGludGVyZmFjZSBEQiB7CiAgICBfX293bmVyOiB7CiAgICAgIGlkOiBzdHJpbmcKICAgICAgbW5lbW9uaWM6IHN0cmluZwogICAgICBlbmNyeXB0aW9uS2V5OiBVaW50OEFycmF5CiAgICB9LAoKICAgIF9fY2xvY2s6IHsKICAgICAgdGltZXN0YW1wOiBzdHJpbmcsCiAgICAgIG1lcmtsZVRyZWU6IHN0cmluZwogICAgfQoKICAgIF9fbWVzc2FnZTogewogICAgICB0aW1lc3RhbXA6IHN0cmluZywKICAgICAgdGFibGU6IHN0cmluZywKICAgICAgcm93OiBzdHJpbmcsCiAgICAgIGNvbHVtbjogc3RyaW5nLAogICAgICB2YWx1ZTogdW5rbm93bgogICAgfSAKICB9Cn2hcdoGQmF3YWl0IGt5c2VseS5zZWxlY3RGcm9tKCJfX293bmVyIikKICAuc2VsZWN0KFsiaWQiLCAibW5lbW9uaWMiLCAiZW5jcnlwdGlvbktleSJdKQogIC5leGVjdXRlKCkKCmF3YWl0IGt5c2VseS5zY2hlbWEKICAuY3JlYXRlVGFibGUoJ19fbWVzc2FnZScpCiAgLmFkZENvbHVtbigndGltZXN0YW1wJywgJ2Jsb2InLCBjb2wgPT4gY29sLnByaW1hcnlLZXkoKSkKICAuYWRkQ29sdW1uKCd0YWJsZScsICdibG9iJykKICAuYWRkQ29sdW1uKCdyb3cnLCAnYmxvYicpCiAgLmFkZENvbHVtbignY29sdW1uJywgJ2Jsb2InKQogIC5hZGRDb2x1bW4oJ3ZhbHVlJywgJ2Jsb2InKQogIC5leGVjdXRlKCkKCmF3YWl0IGt5c2VseS5zY2hlbWEKICAuY3JlYXRlSW5kZXgoImluZGV4X19tZXNzYWdlIikKICAub24oIl9fbWVzc2FnZSIpCiAgLmNvbHVtbnMoWyJ0YWJsZSIsICJyb3ciLCAiY29sdW1uIiwgInRpbWVzdGFtcCJdKQogIC5leGVjdXRlKCkKCmF3YWl0IGt5c2VseS5zY2hlbWEKICAuY3JlYXRlVGFibGUoJ19fY2xvY2snKQogIC5hZGRDb2x1bW4oJ3RpbWVzdGFtcCcsICdibG9iJykKICAuYWRkQ29sdW1uKCdtZXJrbGVUcmVlJywgJ2Jsb2InKQogIC5leGVjdXRlKCkKCmF3YWl0IGt5c2VseS5pbnNlcnRJbnRvKCJfX2Nsb2NrIikKICAudmFsdWVzKHsKICAgICJ0aW1lc3RhbXAiOiAiYSIsCiAgICAibWVya2xlVHJlZSI6ICJiIgogIH0pCiAgLmV4ZWN1dGUoKQoKYXdhaXQga3lzZWx5LnNjaGVtYQogIC5jcmVhdGVUYWJsZSgnX19vd25lcicpCiAgLmFkZENvbHVtbignaWQnLCAnYmxvYicpCiAgLmFkZENvbHVtbignbW5lbW9uaWMnLCAnYmxvYicpCiAgLmFkZENvbHVtbignZW5jcnlwdGlvbktleScsICdibG9iJykKICAuZXhlY3V0ZSgpCgphd2FpdCBreXNlbHkuaW5zZXJ0SW50bygiX19vd25lciIpCiAgLnZhbHVlcyh7CiAgICAibW5lbW9uaWMiOiAiYSIsCiAgICAiaWQiOiAiYiIsCiAgICAiZW5jcnlwdGlvbktleSI6IG5ldyBVaW50OEFycmF5KCkKICB9KQogIC5leGVjdXRlKCkKCmF3YWl0IGt5c2VseS5zZWxlY3RGcm9tKCJfX2Nsb2NrIikKICAuc2VsZWN0KFsidGltZXN0YW1wIiwgIm1lcmtsZVRyZWUiXSkKICAuZXhlY3V0ZSgpCgphd2FpdCBreXNlbHkuc2VsZWN0RnJvbSgiX19tZXNzYWdlIikKICAuc2VsZWN0KCJ0aW1lc3RhbXAiKQogIC53aGVyZSgndGFibGUnLCAnPScsICcxJykKICAud2hlcmUoJ3JvdycsICc9JywgJzInKQogIC53aGVyZSgnY29sdW1uJywgJz0nLCAnMycpCiAgLm9yZGVyQnkoInRpbWVzdGFtcCIsICJkZXNjIikKICAubGltaXQoMSkKICAuZXhlY3V0ZSgpCgphd2FpdCBreXNlbHkuaW5zZXJ0SW50bygiX19tZXNzYWdlIikKICAudmFsdWVzKHsKICAgICJ0aW1lc3RhbXAiOiAnMScsCiAgICAidGFibGUiOiAnMicsCiAgICAicm93IjogJzMnLAogICAgImNvbHVtbiI6ICc0JywKICAgICJ2YWx1ZSI6ICc1JwogIH0pCiAgLm9uQ29uZmxpY3Qob2MgPT4gb2MuZG9Ob3RoaW5nKCkpCiAgLmV4ZWN1dGUoKQoKYXdhaXQga3lzZWx5LnVwZGF0ZVRhYmxlKCJfX2Nsb2NrIikKICAuc2V0KHsKICAgICJtZXJrbGVUcmVlIjogJzEnLAogICAgInRpbWVzdGFtcCI6ICIyIgogIH0pCiAgLmV4ZWN1dGUoKaFjww==)
-
-import { MerkleTreeString } from "./MerkleTree.js";
-import { TimestampString } from "./Timestamp.js";
+// [Playground Link](https://kyse.link/?p=b&i=haFkpnNxbGl0ZaF2pjAuMjYuMKFz2gGAaW1wb3J0IHsgR2VuZXJhdGVkIH0gZnJvbSAna3lzZWx5JwoKZGVjbGFyZSBnbG9iYWwgewogIGludGVyZmFjZSBEQiB7CiAgICB1TE1zUFJpNzhsTm15V2x0X19tZXNzYWdlOiB7CiAgICAgIHRpbWVzdGFtcDogc3RyaW5nLAogICAgICB0YWJsZTogc3RyaW5nLAogICAgICByb3c6IHN0cmluZywKICAgICAgY29sdW1uOiBzdHJpbmcsCiAgICAgIHZhbHVlOiB1bmtub3duCiAgICB9LAoKICAgIHVMTXNQUmk3OGxObXlXbHRfX293bmVyOiB7CiAgICAgIGlkOiBzdHJpbmcKICAgICAgbW5lbW9uaWM6IHN0cmluZwogICAgICBlbmNyeXB0aW9uS2V5OiBVaW50OEFycmF5LAogICAgICB0aW1lc3RhbXA6IHN0cmluZywKICAgICAgbWVya2xlVHJlZTogc3RyaW5nCiAgICB9CiAgfQp9oXHaBnBhd2FpdCBreXNlbHkuc2VsZWN0RnJvbSgidUxNc1BSaTc4bE5teVdsdF9fb3duZXIiKQogIC5zZWxlY3QoWyJpZCIsICJtbmVtb25pYyIsICJlbmNyeXB0aW9uS2V5Il0pCiAgLmV4ZWN1dGUoKQoKYXdhaXQga3lzZWx5LnNjaGVtYQogIC5jcmVhdGVUYWJsZSgndUxNc1BSaTc4bE5teVdsdF9fbWVzc2FnZScpCiAgLmFkZENvbHVtbigndGltZXN0YW1wJywgJ2Jsb2InLCBjb2wgPT4gY29sLnByaW1hcnlLZXkoKSkKICAuYWRkQ29sdW1uKCd0YWJsZScsICdibG9iJykKICAuYWRkQ29sdW1uKCdyb3cnLCAnYmxvYicpCiAgLmFkZENvbHVtbignY29sdW1uJywgJ2Jsb2InKQogIC5hZGRDb2x1bW4oJ3ZhbHVlJywgJ2Jsb2InKQogIC5leGVjdXRlKCkKCmF3YWl0IGt5c2VseS5zY2hlbWEKICAuY3JlYXRlSW5kZXgoImluZGV4X191TE1zUFJpNzhsTm15V2x0X19tZXNzYWdlIikKICAub24oInVMTXNQUmk3OGxObXlXbHRfX21lc3NhZ2UiKQogIC5jb2x1bW5zKFsidGFibGUiLCAicm93IiwgImNvbHVtbiIsICJ0aW1lc3RhbXAiXSkKICAuZXhlY3V0ZSgpCgphd2FpdCBreXNlbHkuc2NoZW1hCiAgLmNyZWF0ZVRhYmxlKCd1TE1zUFJpNzhsTm15V2x0X19vd25lcicpCiAgLmFkZENvbHVtbignaWQnLCAnYmxvYicpCiAgLmFkZENvbHVtbignbW5lbW9uaWMnLCAnYmxvYicpCiAgLmFkZENvbHVtbignZW5jcnlwdGlvbktleScsICdibG9iJykKICAuYWRkQ29sdW1uKCd0aW1lc3RhbXAnLCAnYmxvYicpCiAgLmFkZENvbHVtbignbWVya2xlVHJlZScsICdibG9iJykKICAuZXhlY3V0ZSgpCgphd2FpdCBreXNlbHkuaW5zZXJ0SW50bygidUxNc1BSaTc4bE5teVdsdF9fb3duZXIiKQogIC52YWx1ZXMoewogICAgImlkIjogImIiLAogICAgIm1uZW1vbmljIjogImEiLAogICAgImVuY3J5cHRpb25LZXkiOiBuZXcgVWludDhBcnJheSgpLAogICAgInRpbWVzdGFtcCI6ICJhIiwKICAgICJtZXJrbGVUcmVlIjogImIiCiAgfSkKICAuZXhlY3V0ZSgpCgphd2FpdCBreXNlbHkuc2VsZWN0RnJvbSgidUxNc1BSaTc4bE5teVdsdF9fb3duZXIiKQogIC5zZWxlY3QoWyJ0aW1lc3RhbXAiLCAibWVya2xlVHJlZSJdKQogIC5leGVjdXRlKCkKCmF3YWl0IGt5c2VseS5zZWxlY3RGcm9tKCJ1TE1zUFJpNzhsTm15V2x0X19tZXNzYWdlIikKICAuc2VsZWN0KCJ0aW1lc3RhbXAiKQogIC53aGVyZSgndGFibGUnLCAnPScsICcxJykKICAud2hlcmUoJ3JvdycsICc9JywgJzInKQogIC53aGVyZSgnY29sdW1uJywgJz0nLCAnMycpCiAgLm9yZGVyQnkoInRpbWVzdGFtcCIsICJkZXNjIikKICAubGltaXQoMSkKICAuZXhlY3V0ZVRha2VGaXJzdCgpCgphd2FpdCBreXNlbHkuaW5zZXJ0SW50bygidUxNc1BSaTc4bE5teVdsdF9fbWVzc2FnZSIpCiAgLnZhbHVlcyh7CiAgICAidGltZXN0YW1wIjogJzEnLAogICAgInRhYmxlIjogJzInLAogICAgInJvdyI6ICczJywKICAgICJjb2x1bW4iOiAnNCcsCiAgICAidmFsdWUiOiAnNScKICB9KQogIC5vbkNvbmZsaWN0KG9jID0-IG9jLmRvTm90aGluZygpKQogIC5leGVjdXRlKCkKCmF3YWl0IGt5c2VseS51cGRhdGVUYWJsZSgidUxNc1BSaTc4bE5teVdsdF9fb3duZXIiKQogIC5zZXQoewogICAgIm1lcmtsZVRyZWUiOiAnMScsCiAgICAidGltZXN0YW1wIjogIjIiCiAgfSkKICAuZXhlY3V0ZSgpoWPD)
+// Note tables are prefixed with nanoid to avoid potential clashes.
 
 export const selectOwner = `
 SELECT
@@ -11,15 +9,12 @@ SELECT
   "mnemonic",
   "encryptionKey"
 FROM
-  "__owner"
+  "uLMsPRi78lNmyWlt__owner"
 `;
 
-export const initDb = (
-  initialTimestamp: TimestampString,
-  initialMerkleTree: MerkleTreeString
-): string => `
+export const initDb = `
 CREATE TABLE
-  "__message" (
+  "uLMsPRi78lNmyWlt__message" (
     "timestamp" blob PRIMARY KEY,
     "table" blob,
     "row" blob,
@@ -27,38 +22,42 @@ CREATE TABLE
     "value" blob
   );
 
-CREATE INDEX "index__message" ON "__message" ("table", "row", "column", "timestamp");
+CREATE INDEX "indexuLMsPRi78lNmyWlt__message" ON "uLMsPRi78lNmyWlt__message" ("table", "row", "column", "timestamp");
 
 CREATE TABLE
-  "__clock" ("timestamp" blob, "merkleTree" blob);
+  "uLMsPRi78lNmyWlt__owner" (
+    "id" blob,
+    "mnemonic" blob,
+    "encryptionKey" blob,
+    "timestamp" blob,
+    "merkleTree" blob
+  );
 
 INSERT INTO
-  "__clock" ("timestamp", "merkleTree")
+  "uLMsPRi78lNmyWlt__owner" (
+    "id",
+    "mnemonic",
+    "encryptionKey",
+    "timestamp",
+    "merkleTree"
+  )
 VALUES
-  ('${initialTimestamp}', '${initialMerkleTree}');
-
-CREATE TABLE
-  "__owner" ("id" blob, "mnemonic" blob, "encryptionKey" blob);
-
-INSERT INTO
-  "__owner" ("mnemonic", "id", "encryptionKey")
-VALUES
-  (?, ?, ?);
+  (?, ?, ?, ?, ?);
 `;
 
-export const selectClock = `
+export const selectOwnerTimestampAndMerkleTree = `
 SELECT
   "timestamp",
   "merkleTree"
 FROM
-  "__clock"
+  "uLMsPRi78lNmyWlt__owner"
 `;
 
-export const selectTimestamp = `
+export const selectLastTimestampForTableRowColumn = `
 SELECT
   "timestamp"
 FROM
-  "__message"
+  "uLMsPRi78lNmyWlt__message"
 WHERE
   "table" = ?
   AND "row" = ?
@@ -69,7 +68,7 @@ LIMIT
   1
 `;
 
-export const insertValueIntoTableColumn = (
+export const insertValueIntoTableRowColumn = (
   table: string,
   column: string
 ): string => `
@@ -83,14 +82,14 @@ ON CONFLICT DO UPDATE SET
 
 export const tryInsertIntoMessages = `
 INSERT INTO
-  "__message" ("timestamp", "table", "row", "column", "value")
+  "uLMsPRi78lNmyWlt__message" ("timestamp", "table", "row", "column", "value")
 VALUES
   (?, ?, ?, ?, ?)
 ON CONFLICT DO NOTHING
 `;
 
-export const updateClock = `
-UPDATE "__clock"
+export const updateOwnerTimestampAndMerkleTree = `
+UPDATE "uLMsPRi78lNmyWlt__owner"
 SET
   "timestamp" = ?,
   "merkleTree" = ?

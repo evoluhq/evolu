@@ -13,7 +13,7 @@ import { EvoluError } from "./Errors.js";
 import { Mutate } from "./Mutate.js";
 import { QueryStore } from "./QueryStore.js";
 import { Store, StoreListener, StoreUnsubscribe, makeStore } from "./Store.js";
-import { SyncState } from "./SyncState.js";
+import { SyncState } from "./SyncWorker.js";
 
 export interface Evolu<S extends Schema = Schema> {
   readonly subscribeError: ErrorStore["subscribe"];

@@ -8,7 +8,7 @@ import {
   ReadonlyArray,
   pipe,
 } from "effect";
-import { DbWorker, DbWorkerOutput } from "./DbWorker.js";
+import { DbWorker, DbWorkerOutputOnQuery } from "./DbWorker.js";
 import { applyPatches } from "./Diff.js";
 import { LoadingPromises } from "./LoadingPromises.js";
 import { OnCompletes } from "./OnCompletes.js";
@@ -27,9 +27,7 @@ export interface QueryStore {
 
   readonly loadQuery: (query: Query) => Promise<ReadonlyArray<Row>>;
 
-  readonly onQuery: (
-    output: Extract<DbWorkerOutput, { _tag: "onQuery" }>
-  ) => void;
+  readonly onQuery: (output: DbWorkerOutputOnQuery) => void;
 }
 
 export const QueryStore = Context.Tag<QueryStore>("evolu/QueryStore");

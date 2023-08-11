@@ -1,3 +1,3 @@
 export type { EvoluError } from "./Errors.js";
 export * from "./Model.js";
-export type { SyncState } from "./SyncState.js";
+export type { SyncState } from "./SyncWorker.js";

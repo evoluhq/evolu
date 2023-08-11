@@ -227,8 +227,14 @@ const lazyInit = (
   ).pipe(
     Effect.tap(([sqlite, owner, initialTimestamp, initialMerkleTree]) =>
       sqlite.exec({
-        sql: initDb(initialTimestamp, initialMerkleTree),
-        parameters: [owner.mnemonic, owner.id, owner.encryptionKey],
+        sql: initDb,
+        parameters: [
+          owner.id,
+          owner.mnemonic,
+          owner.encryptionKey,
+          initialTimestamp,
+          initialMerkleTree,
+        ],
       })
     ),
     Effect.map(([, owner]) => owner)

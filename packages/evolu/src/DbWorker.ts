@@ -29,14 +29,13 @@ import { CastableForMutate, Id, SqliteDate, cast } from "./Model.js";
 import { OnCompleteId } from "./OnCompletes.js";
 import { RowsCacheRef, RowsCacheRefLive } from "./RowsCache.js";
 import {
-  insertValueIntoTableColumn,
-  selectClock,
-  selectTimestamp,
+  insertValueIntoTableRowColumn,
+  selectOwnerTimestampAndMerkleTree,
+  selectLastTimestampForTableRowColumn,
   tryInsertIntoMessages,
-  updateClock,
+  updateOwnerTimestampAndMerkleTree,
 } from "./Sql.js";
 import { Query, Sqlite, Value, queryObjectFromQuery } from "./Sqlite.js";
-import { SyncState } from "./SyncState.js";
 import {
   Time,
   TimeLive,
@@ -48,38 +47,92 @@ import {
   timestampToString,
   unsafeTimestampFromString,
 } from "./Timestamp.js";
+import { SyncState, SyncWorkerInputReceiveMessages } from "./SyncWorker.js";
 
 export interface DbWorker {
   readonly postMessage: (input: DbWorkerInput) => void;
-  readonly onMessage: (callback: OnMessageCallback) => void;
+  readonly onMessage: (callback: DbWorkerOnMessageCallback) => void;
 }
 
 export const DbWorker = Context.Tag<DbWorker>("evolu/DbWorker");
 
 export type DbWorkerInput =
-  | {
-      readonly _tag: "init";
-      readonly config: Config;
-      readonly tables: ReadonlyArray<Table>;
-    }
-  | {
-      readonly _tag: "query";
-      readonly queries: ReadonlyArray.NonEmptyReadonlyArray<Query>;
-    }
-  | {
-      readonly _tag: "mutate";
-      readonly items: ReadonlyArray.NonEmptyReadonlyArray<MutateItem>;
-      readonly queries: ReadonlyArray<Query>;
-    }
-  | {
-      readonly _tag: "sync";
-      readonly queries: ReadonlyArray.NonEmptyReadonlyArray<Query> | null;
-    }
-  | {
-      readonly _tag: "reset";
-      readonly mnemonic?: Mnemonic;
-    }
-  | DbWorkerInputReceiveMessages;
+  | DbWorkerInputInit
+  | DbWorkerInputQuery
+  | DbWorkerInputMutate
+  | DbWorkerInputSync
+  | DbWorkerInputReset
+  | SyncWorkerInputReceiveMessages;
+
+interface DbWorkerInputInit {
+  readonly _tag: "init";
+  readonly config: Config;
+  readonly tables: ReadonlyArray<Table>;
+}
+
+interface DbWorkerInputQuery {
+  readonly _tag: "query";
+  readonly queries: ReadonlyArray.NonEmptyReadonlyArray<Query>;
+}
+
+interface DbWorkerInputMutate {
+  readonly _tag: "mutate";
+  readonly items: ReadonlyArray.NonEmptyReadonlyArray<MutateItem>;
+  readonly queries: ReadonlyArray<Query>;
+}
+
+interface DbWorkerInputSync {
+  readonly _tag: "sync";
+  readonly queries: ReadonlyArray.NonEmptyReadonlyArray<Query> | null;
+}
+
+interface DbWorkerInputReset {
+  readonly _tag: "reset";
+  readonly mnemonic?: Mnemonic;
+}
+
+type DbWorkerOnMessageCallback = (output: DbWorkerOutput) => void;
+
+const DbWorkerOnMessageCallback = Context.Tag<DbWorkerOnMessageCallback>(
+  "evolu/DbWorkerOnMessageCallback"
+);
+
+export type DbWorkerOutput =
+  | DbWorkerOutputOnError
+  | DbWorkerOutputOnOwner
+  | DbWorkerOutputOnQuery
+  | DbWorkerOutputOnReceive
+  | DbWorkerOutputOnResetOrRestore
+  | DbWorkerOutputOnSyncState;
+
+interface DbWorkerOutputOnError {
+  readonly _tag: "onError";
+  readonly error: EvoluError;
+}
+
+interface DbWorkerOutputOnOwner {
+  readonly _tag: "onOwner";
+  readonly owner: Owner;
+}
+
+export interface DbWorkerOutputOnQuery {
+  readonly _tag: "onQuery";
+  readonly queriesPatches: ReadonlyArray<QueryPatches>;
+  readonly onCompleteIds: ReadonlyArray<OnCompleteId>;
+}
+
+interface DbWorkerOutputOnReceive {
+  readonly _tag: "onReceive";
+}
+
+interface DbWorkerOutputOnResetOrRestore {
+  readonly _tag: "onResetOrRestore";
+}
+
+interface DbWorkerOutputOnSyncState {
+  readonly _tag: "onSyncState";
+  readonly state: SyncState;
+}
 
 export interface MutateItem {
   readonly table: string;
@@ -90,38 +143,17 @@ export interface MutateItem {
   readonly onCompleteId: OnCompleteId | null;
 }
 
-export type DbWorkerInputReceiveMessages = {
-  readonly _tag: "receiveMessages";
-  readonly messages: ReadonlyArray<Message>;
-  readonly merkleTree: MerkleTree;
-  readonly syncCount: number;
-};
-
-type OnMessageCallback = (output: DbWorkerOutput) => void;
-
-const OnMessageCallback = Context.Tag<OnMessageCallback>(
-  "evolu/OnMessageCallback"
-);
-
-export type DbWorkerOutput =
-  | { readonly _tag: "onError"; readonly error: EvoluError }
-  | { readonly _tag: "onOwner"; readonly owner: Owner }
-  | {
-      readonly _tag: "onQuery";
-      readonly queriesPatches: ReadonlyArray<QueryPatches>;
-      readonly onCompleteIds: ReadonlyArray<OnCompleteId>;
-    }
-  | { readonly _tag: "onReceive" }
-  | { readonly _tag: "onResetOrRestore" }
-  | { readonly _tag: "onSyncState"; readonly state: SyncState };
-
 const query = ({
   queries,
   onCompleteIds = ReadonlyArray.empty(),
 }: {
   readonly queries: ReadonlyArray<Query>;
   readonly onCompleteIds?: ReadonlyArray<OnCompleteId>;
-}): Effect.Effect<Sqlite | RowsCacheRef | OnMessageCallback, never, void> =>
+}): Effect.Effect<
+  Sqlite | RowsCacheRef | DbWorkerOnMessageCallback,
+  never,
+  void
+> =>
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
     const queriesRows = yield* _(
@@ -140,19 +172,19 @@ const query = ({
         patches: makePatches(previous.get(query), rows),
       })
     );
-    const onMessageCallback = yield* _(OnMessageCallback);
+    const onMessageCallback = yield* _(DbWorkerOnMessageCallback);
     onMessageCallback({ _tag: "onQuery", queriesPatches, onCompleteIds });
   });
 
-interface Clock {
+interface TimestampAndMerkleTree {
   readonly timestamp: Timestamp;
   readonly merkleTree: MerkleTree;
 }
 
-const readClock = Sqlite.pipe(
-  Effect.flatMap((sqlite) => sqlite.exec(selectClock)),
+const readTimestampAndMerkleTree = Sqlite.pipe(
+  Effect.flatMap((sqlite) => sqlite.exec(selectOwnerTimestampAndMerkleTree)),
   Effect.map(
-    ([{ timestamp, merkleTree }]): Clock => ({
+    ([{ timestamp, merkleTree }]): TimestampAndMerkleTree => ({
       timestamp: unsafeTimestampFromString(timestamp as TimestampString),
       merkleTree: unsafeMerkleTreeFromString(merkleTree as MerkleTreeString),
     })
@@ -217,7 +249,7 @@ const applyMessages = ({
     for (const message of messages) {
       const timestamp: TimestampString | null = yield* $(
         sqlite.exec({
-          sql: selectTimestamp,
+          sql: selectLastTimestampForTableRowColumn,
           parameters: [message.table, message.row, message.column],
         }),
         Effect.flatMap(ReadonlyArray.head),
@@ -228,7 +260,7 @@ const applyMessages = ({
       if (timestamp == null || timestamp < message.timestamp)
         yield* $(
           sqlite.exec({
-            sql: insertValueIntoTableColumn(message.table, message.column),
+            sql: insertValueIntoTableRowColumn(message.table, message.column),
             parameters: [message.row, message.value, message.value],
           })
         );
@@ -259,13 +291,16 @@ const applyMessages = ({
     return merkleTree;
   });
 
-const writeClock = (clock: Clock): Effect.Effect<Sqlite, never, void> =>
+const writeTimestampAndMerkleTree = ({
+  timestamp,
+  merkleTree,
+}: TimestampAndMerkleTree): Effect.Effect<Sqlite, never, void> =>
   Effect.flatMap(Sqlite, (sqlite) =>
     sqlite.exec({
-      sql: updateClock,
+      sql: updateOwnerTimestampAndMerkleTree,
       parameters: [
-        timestampToString(clock.timestamp),
-        merkleTreeToString(clock.merkleTree),
+        timestampToString(timestamp),
+        merkleTreeToString(merkleTree),
       ],
     })
   );
@@ -273,14 +308,14 @@ const writeClock = (clock: Clock): Effect.Effect<Sqlite, never, void> =>
 const mutate = ({
   items,
   queries,
-}: Extract<DbWorkerInput, { _tag: "mutate" }>): Effect.Effect<
-  Sqlite | Owner | Time | Config | RowsCacheRef | OnMessageCallback,
+}: DbWorkerInputMutate): Effect.Effect<
+  Sqlite | Owner | Time | Config | RowsCacheRef | DbWorkerOnMessageCallback,
   TimestampDriftError | TimestampCounterOverflowError,
   void
 > =>
   Effect.gen(function* (_) {
     const owner = yield* _(Owner);
-    let { timestamp, merkleTree } = yield* _(readClock);
+    let { timestamp, merkleTree } = yield* _(readTimestampAndMerkleTree);
 
     const messages = yield* _(
       mutateItemsToNewMessages(items, owner),
@@ -294,7 +329,7 @@ const mutate = ({
 
     merkleTree = yield* _(applyMessages({ merkleTree, messages }));
 
-    yield* _(writeClock({ timestamp, merkleTree }));
+    yield* _(writeTimestampAndMerkleTree({ timestamp, merkleTree }));
 
     const onCompleteIds = ReadonlyArray.filterMap(items, (item) =>
       Option.fromNullable(item.onCompleteId)
@@ -310,10 +345,11 @@ export const DbWorkerLive = Layer.effect(
     const sqlite = yield* _(Sqlite);
     const dbInit = yield* _(DbInit);
 
-    let onMessageCallback: OnMessageCallback = Function.constVoid;
+    let dbWorkerOnMessageCallback: DbWorkerOnMessageCallback =
+      Function.constVoid;
 
     const handleError = (error: EvoluError): void => {
-      onMessageCallback({ _tag: "onError", error });
+      dbWorkerOnMessageCallback({ _tag: "onError", error });
     };
 
     const run = (
@@ -342,7 +378,7 @@ export const DbWorkerLive = Layer.effect(
         Layer.succeed(Sqlite, sqlite),
         TimeLive,
         RowsCacheRefLive,
-        Layer.succeed(OnMessageCallback, onMessageCallback),
+        Layer.succeed(DbWorkerOnMessageCallback, dbWorkerOnMessageCallback),
         Layer.succeed(Owner, owner),
         ConfigLive(config)
       );
@@ -372,7 +408,7 @@ export const DbWorkerLive = Layer.effect(
 
       return dbInit(input).pipe(
         Effect.map((owner) => {
-          onMessageCallback({ _tag: "onOwner", owner });
+          dbWorkerOnMessageCallback({ _tag: "onOwner", owner });
           write = makeWriteAfterInit(owner, input.config);
         }),
         run
@@ -390,7 +426,7 @@ export const DbWorkerLive = Layer.effect(
     };
 
     const onMessage: DbWorker["onMessage"] = (callback) => {
-      onMessageCallback = callback;
+      dbWorkerOnMessageCallback = callback;
     };
 
     return { postMessage, onMessage };
