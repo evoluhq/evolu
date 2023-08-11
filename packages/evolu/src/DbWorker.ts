@@ -30,12 +30,18 @@ import { OnCompleteId } from "./OnCompletes.js";
 import { RowsCacheRef, RowsCacheRefLive } from "./RowsCache.js";
 import {
   insertValueIntoTableRowColumn,
-  selectOwnerTimestampAndMerkleTree,
   selectLastTimestampForTableRowColumn,
+  selectOwnerTimestampAndMerkleTree,
   tryInsertIntoMessages,
   updateOwnerTimestampAndMerkleTree,
 } from "./Sql.js";
 import { Query, Sqlite, Value, queryObjectFromQuery } from "./Sqlite.js";
+import {
+  SyncState,
+  SyncWorker,
+  SyncWorkerInputReceiveMessages,
+  SyncWorkerPostMessage,
+} from "./SyncWorker.js";
 import {
   Time,
   TimeLive,
@@ -47,7 +53,6 @@ import {
   timestampToString,
   unsafeTimestampFromString,
 } from "./Timestamp.js";
-import { SyncState, SyncWorkerInputReceiveMessages } from "./SyncWorker.js";
 
 export interface DbWorker {
   readonly postMessage: (input: DbWorkerInput) => void;
@@ -309,7 +314,13 @@ const mutate = ({
   items,
   queries,
 }: DbWorkerInputMutate): Effect.Effect<
-  Sqlite | Owner | Time | Config | RowsCacheRef | DbWorkerOnMessageCallback,
+  | Sqlite
+  | Owner
+  | Time
+  | Config
+  | RowsCacheRef
+  | DbWorkerOnMessageCallback
+  | SyncWorkerPostMessage,
   TimestampDriftError | TimestampCounterOverflowError,
   void
 > =>
@@ -337,6 +348,20 @@ const mutate = ({
 
     if (queries.length > 0 || onCompleteIds.length > 0)
       yield* _(query({ queries, onCompleteIds }));
+
+    const [config, syncWorkerPostMessage] = yield* _(
+      Effect.all([Config, SyncWorkerPostMessage])
+    );
+
+    syncWorkerPostMessage({
+      _tag: "sync",
+      syncUrl: config.syncUrl,
+      messages,
+      timestamp,
+      merkleTree,
+      owner,
+      syncCount: 0,
+    });
   });
 
 export const DbWorkerLive = Layer.effect(
@@ -344,6 +369,7 @@ export const DbWorkerLive = Layer.effect(
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
     const dbInit = yield* _(DbInit);
+    const syncWorker = yield* _(SyncWorker);
 
     let dbWorkerOnMessageCallback: DbWorkerOnMessageCallback =
       Function.constVoid;
@@ -351,6 +377,10 @@ export const DbWorkerLive = Layer.effect(
     const handleError = (error: EvoluError): void => {
       dbWorkerOnMessageCallback({ _tag: "onError", error });
     };
+
+    syncWorker.onMessage((_output) => {
+      //
+    });
 
     const run = (
       effect: Effect.Effect<Sqlite, EvoluError, void>
@@ -380,6 +410,7 @@ export const DbWorkerLive = Layer.effect(
         RowsCacheRefLive,
         Layer.succeed(DbWorkerOnMessageCallback, dbWorkerOnMessageCallback),
         Layer.succeed(Owner, owner),
+        Layer.succeed(SyncWorkerPostMessage, syncWorker.postMessage),
         ConfigLive(config)
       );
 

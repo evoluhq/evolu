@@ -1,13 +1,23 @@
-import { Context } from "effect";
-import { Millis } from "./Timestamp.js";
+import { Context, Effect, Layer } from "effect";
+import { Owner } from "./Db.js";
 import { UnexpectedError } from "./Errors.js";
+import { MerkleTree } from "./MerkleTree.js";
+import { Message } from "./Message.js";
+import { Millis, Timestamp } from "./Timestamp.js";
+import { SyncLock } from "./Platform.js";
 
 export interface SyncWorker {
-  readonly postMessage: (input: SyncWorkerInput) => void;
+  readonly postMessage: SyncWorkerPostMessage;
   readonly onMessage: (callback: SyncWorkerOnMessageCallback) => void;
 }
 
 export const SyncWorker = Context.Tag<SyncWorker>("evolu/SyncWorker");
+
+export type SyncWorkerPostMessage = (input: SyncWorkerInput) => void;
+
+export const SyncWorkerPostMessage = Context.Tag<SyncWorkerPostMessage>(
+  "evolu/SyncWorkerPostMessage"
+);
 
 export type SyncWorkerInput =
   | SyncWorkerInputSync
@@ -16,9 +26,10 @@ export type SyncWorkerInput =
 interface SyncWorkerInputSync {
   readonly _tag: "sync";
   readonly syncUrl: string;
-  //   readonly messages: ReadonlyArray<Message>;
-  //   readonly clock: Clock;
-  //   readonly owner: Owner;
+  readonly messages: ReadonlyArray<Message>;
+  readonly merkleTree: MerkleTree;
+  readonly timestamp: Timestamp;
+  readonly owner: Owner;
   readonly syncCount: number;
 }
 
@@ -40,8 +51,8 @@ export type SyncWorkerOutput =
 
 export type SyncWorkerInputReceiveMessages = {
   readonly _tag: "receiveMessages";
-  //   readonly messages: ReadonlyArray<Message>;
-  //   readonly merkleTree: MerkleTree;
+  readonly messages: ReadonlyArray<Message>;
+  readonly merkleTree: MerkleTree;
   readonly syncCount: number;
 };
 
@@ -83,3 +94,24 @@ export interface SyncStateServerError {
 export interface SyncStatePaymentRequiredError {
   readonly _tag: "PaymentRequiredError";
 }
+
+export const SyncWorkerLive = Layer.effect(
+  SyncWorker,
+  Effect.gen(function* (_) {
+    const syncLock = yield* _(SyncLock);
+
+    const postMessage: SyncWorker["postMessage"] = (input) => {
+      console.log(input);
+
+      //   const writer = stream.getWriter();
+      //   void writer.write(input);
+      //   writer.releaseLock();
+    };
+
+    const onMessage: SyncWorker["onMessage"] = (callback) => {
+      //   dbWorkerOnMessageCallback = callback;
+    };
+
+    return { postMessage, onMessage };
+  })
+);
