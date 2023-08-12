@@ -74,3 +74,17 @@ export const NodeId: Schema.BrandSchema<
 export type NodeId = Schema.To<typeof NodeId>;
 
 export const customAlphabetForNodeId = "0123456789abcdef";
+
+export interface AesGcm {
+  readonly encrypt: (
+    sharedKey: Uint8Array,
+    plaintext: Uint8Array
+  ) => Effect.Effect<never, never, Uint8Array>;
+
+  readonly decrypt: (
+    sharedKey: Uint8Array,
+    ciphertext: Uint8Array
+  ) => Effect.Effect<never, never, Uint8Array>;
+}
+
+export const AesGcm = Context.Tag<AesGcm>("evolu/AesGcm");

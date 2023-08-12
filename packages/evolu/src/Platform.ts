@@ -10,3 +10,18 @@ export interface SyncLock {
 }
 
 export const SyncLock = Context.Tag<SyncLock>("evolu/SyncLock");
+
+/**
+ * This error occurs when there is a problem with the network connection,
+ * or the server cannot be reached.
+ */
+export interface FetchError {
+  readonly _tag: "FetchError";
+}
+
+export type Fetch = (
+  url: string,
+  body: Uint8Array
+) => Effect.Effect<never, FetchError, Response>;
+
+export const Fetch = Context.Tag<Fetch>("evolu/Fetch");

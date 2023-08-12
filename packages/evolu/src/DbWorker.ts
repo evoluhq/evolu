@@ -356,7 +356,7 @@ const mutate = ({
       timestamp,
       merkleTree,
       owner,
-      syncCount: 0,
+      syncLoopCount: 0,
     });
   });
 

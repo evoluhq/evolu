@@ -1,11 +1,16 @@
-import { Context, Effect, Layer } from "effect";
+import { Cause, Context, Effect, Either, Layer, Match } from "effect";
 import { Owner } from "./Db.js";
-import { UnexpectedError } from "./Errors.js";
-import { MerkleTree } from "./MerkleTree.js";
+import { UnexpectedError, makeUnexpectedError } from "./Errors.js";
+import { MerkleTree, merkleTreeToString } from "./MerkleTree.js";
 import { Message } from "./Message.js";
-import { SyncLock } from "./Platform.js";
+import { Fetch, SyncLock } from "./Platform.js";
 import { Millis, Timestamp } from "./Timestamp.js";
 import { notImplemented } from "./Utils.js";
+import { EncryptedMessage, MessageContent, SyncRequest } from "./Protobuf.js";
+import { AesGcm } from "./Crypto.js";
+import { AesGcmLive } from "./CryptoLive.web.js";
+import { Value } from "./Sqlite.js";
+import { FetchLive } from "./Platform.web.js";
 
 export interface SyncWorker {
   readonly postMessage: (input: SyncWorkerInput) => void;
@@ -31,7 +36,7 @@ interface SyncWorkerInputSync {
   readonly merkleTree: MerkleTree;
   readonly timestamp: Timestamp;
   readonly owner: Owner;
-  readonly syncCount: number;
+  readonly syncLoopCount: number;
 }
 
 interface SyncWorkerInputSyncCompleted {
@@ -54,7 +59,7 @@ export type SyncWorkerInputReceiveMessages = {
   readonly _tag: "receiveMessages";
   readonly messages: ReadonlyArray<Message>;
   readonly merkleTree: MerkleTree;
-  readonly syncCount: number;
+  readonly syncLoopCount: number;
 };
 
 export type SyncState =
@@ -79,10 +84,6 @@ export interface SyncStateIsNotSynced {
     | SyncStatePaymentRequiredError;
 }
 
-/**
- * This error occurs when there is a problem with the network connection,
- * or the server cannot be reached.
- */
 export interface SyncStateNetworkError {
   readonly _tag: "NetworkError";
 }
@@ -96,23 +97,98 @@ export interface SyncStatePaymentRequiredError {
   readonly _tag: "PaymentRequiredError";
 }
 
+const valueToProtobuf = (value: Value): MessageContent["value"] => {
+  switch (typeof value) {
+    case "string":
+      return { oneofKind: "stringValue", stringValue: value };
+    case "number":
+      return { oneofKind: "numberValue", numberValue: value };
+  }
+  if (value) return { oneofKind: "bytesValue", bytesValue: value };
+  return { oneofKind: undefined };
+};
+
+const sync = (
+  input: SyncWorkerInputSync
+): Effect.Effect<
+  SyncLock | SyncWorkerOnMessage | AesGcm | Fetch,
+  never,
+  void
+> =>
+  Effect.gen(function* (_) {
+    const syncLock = yield* _(SyncLock);
+    const syncWorkerOnMessage = yield* _(SyncWorkerOnMessage);
+    const aesGcm = yield* _(AesGcm);
+    const fetch = yield* _(Fetch);
+
+    if (input.syncLoopCount === 0) {
+      if (!(yield* _(syncLock.acquire))) return;
+      syncWorkerOnMessage({ _tag: "SyncStateIsSyncing" });
+    }
+
+    yield* _(
+      Effect.forEach(input.messages, ({ timestamp, ...rest }) =>
+        aesGcm
+          .encrypt(
+            input.owner.encryptionKey,
+            MessageContent.toBinary({
+              table: rest.table,
+              row: rest.row,
+              column: rest.column,
+              value: valueToProtobuf(rest.value),
+            })
+          )
+          .pipe(
+            Effect.map((content): EncryptedMessage => ({ timestamp, content }))
+          )
+      ),
+      Effect.map((messages) =>
+        SyncRequest.toBinary({
+          messages,
+          userId: input.owner.id,
+          nodeId: input.timestamp.node,
+          merkleTree: merkleTreeToString(input.merkleTree),
+        })
+      ),
+      Effect.flatMap((body) => fetch(input.syncUrl, body)),
+      Effect.catchTag("FetchError", () => {
+        return Effect.succeed(1);
+      })
+    );
+  });
+
 export const SyncWorkerLive = Layer.effect(
   SyncWorker,
   Effect.gen(function* (_) {
     const syncLock = yield* _(SyncLock);
 
-    const postMessage: SyncWorker["postMessage"] = (_input) => {
-      // Match.value(input).pipe(
-      //   Match.tagsExhaustive({
-      //     sync: () => Effect.succeed(undefined),
-      //     syncCompleted: () => syncLock.release,
-      //   })
-      //   // Effect.provideLayer(writeLayer),
-      //   // run
-      // );
-      //   const writer = stream.getWriter();
-      //   void writer.write(input);
-      //   writer.releaseLock();
+    const handleError = (error: UnexpectedError): void => {
+      syncWorker.onMessage(error);
+    };
+
+    const postMessage: SyncWorker["postMessage"] = (input) => {
+      void Match.value(input).pipe(
+        Match.tagsExhaustive({
+          sync,
+          syncCompleted: () => syncLock.release,
+        }),
+        // to mozna nebude nutne, ne?
+        // errory proste rovnou poslu
+        Effect.catchAllCause((cause) =>
+          Cause.failureOrCause(cause).pipe(
+            Either.match({
+              onLeft: handleError,
+              onRight: (cause) =>
+                handleError(makeUnexpectedError(Cause.squash(cause))),
+            }),
+            () => Effect.succeed(undefined)
+          )
+        ),
+        Effect.provideService(SyncLock, syncLock),
+        Effect.provideService(SyncWorkerOnMessage, syncWorker.onMessage),
+        Effect.provideLayer(Layer.mergeAll(AesGcmLive, FetchLive)),
+        Effect.runPromise
+      );
     };
 
     const syncWorker: SyncWorker = {

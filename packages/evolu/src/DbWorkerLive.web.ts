@@ -36,7 +36,9 @@ const makeOpfsDbWorker = (): DbWorker => {
   };
 
   const dbWorker: DbWorker = {
-    postMessage: (input) => worker.postMessage(input),
+    postMessage: (input) => {
+      worker.postMessage(input);
+    },
     onMessage: notImplemented,
   };
 

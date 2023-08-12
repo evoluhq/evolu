@@ -1,6 +1,8 @@
 import { Effect, Layer } from "effect";
+import * as aesGcm from "micro-aes-gcm";
 import { customAlphabet, nanoid } from "nanoid";
 import {
+  AesGcm,
   Bip39,
   Hmac,
   Mnemonic,
@@ -57,5 +59,15 @@ export const NanoIdLive = Layer.succeed(
   NanoId.of({
     nanoid: Effect.sync(() => nanoid()),
     nanoidAsNodeId: Effect.sync(() => nanoidForNodeId() as NodeId),
+  })
+);
+
+export const AesGcmLive = Layer.succeed(
+  AesGcm,
+  AesGcm.of({
+    encrypt: (sharedKey, plaintext) =>
+      Effect.promise(() => aesGcm.encrypt(sharedKey, plaintext)),
+    decrypt: (sharedKey, ciphertext) =>
+      Effect.promise(() => aesGcm.decrypt(sharedKey, ciphertext)),
   })
 );

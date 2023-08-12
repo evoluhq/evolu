@@ -4,7 +4,9 @@ import { SyncLockLive } from "./Platform.web.js";
 
 Effect.gen(function* (_) {
   const syncWorker = yield* _(SyncWorker);
-  syncWorker.onMessage = postMessage;
+  syncWorker.onMessage = (output): void => {
+    postMessage(output);
+  };
   onmessage = (e: MessageEvent<SyncWorkerInput>): void => {
     syncWorker.postMessage(e.data);
   };

@@ -1,6 +1,6 @@
 import { Effect, Layer, Predicate, ReadonlyArray } from "effect";
 import { flushSync } from "react-dom";
-import { FlushSync, SyncLock } from "./Platform.js";
+import { Fetch, FetchError, FlushSync, SyncLock } from "./Platform.js";
 
 export const FlushSyncLive = Layer.succeed(FlushSync, flushSync);
 
@@ -41,4 +41,22 @@ export const SyncLockLive = Layer.effect(
 
     return { acquire, release };
   })
+);
+
+export const FetchLive = Layer.succeed(
+  Fetch,
+  Fetch.of((url, body) =>
+    Effect.tryPromise({
+      try: () =>
+        fetch(url, {
+          method: "POST",
+          body,
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "Content-Length": body.length.toString(),
+          },
+        }),
+      catch: (): FetchError => ({ _tag: "FetchError" }),
+    })
+  )
 );

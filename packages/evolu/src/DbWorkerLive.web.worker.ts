@@ -24,7 +24,9 @@ const SyncWorkerLive = Layer.effect(
     };
 
     const syncWorker: SyncWorker = {
-      postMessage: (input) => worker.postMessage(input),
+      postMessage: (input) => {
+        worker.postMessage(input);
+      },
       onMessage: notImplemented,
     };
 
