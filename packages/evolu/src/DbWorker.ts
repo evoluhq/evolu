@@ -3,7 +3,6 @@ import {
   Context,
   Effect,
   Either,
-  Function,
   Layer,
   Match,
   Option,
@@ -53,10 +52,11 @@ import {
   timestampToString,
   unsafeTimestampFromString,
 } from "./Timestamp.js";
+import { notImplemented } from "./Utils.js";
 
 export interface DbWorker {
   readonly postMessage: (input: DbWorkerInput) => void;
-  readonly onMessage: (callback: DbWorkerOnMessageCallback) => void;
+  onMessage: (output: DbWorkerOutput) => void;
 }
 
 export const DbWorker = Context.Tag<DbWorker>("evolu/DbWorker");
@@ -96,10 +96,10 @@ interface DbWorkerInputReset {
   readonly mnemonic?: Mnemonic;
 }
 
-type DbWorkerOnMessageCallback = (output: DbWorkerOutput) => void;
+type DbWorkerOnMessage = DbWorker["onMessage"];
 
-const DbWorkerOnMessageCallback = Context.Tag<DbWorkerOnMessageCallback>(
-  "evolu/DbWorkerOnMessageCallback"
+const DbWorkerOnMessage = Context.Tag<DbWorkerOnMessage>(
+  "evolu/DbWorkerOnMessage"
 );
 
 export type DbWorkerOutput =
@@ -154,11 +154,7 @@ const query = ({
 }: {
   readonly queries: ReadonlyArray<Query>;
   readonly onCompleteIds?: ReadonlyArray<OnCompleteId>;
-}): Effect.Effect<
-  Sqlite | RowsCacheRef | DbWorkerOnMessageCallback,
-  never,
-  void
-> =>
+}): Effect.Effect<Sqlite | RowsCacheRef | DbWorkerOnMessage, never, void> =>
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
     const queriesRows = yield* _(
@@ -177,8 +173,8 @@ const query = ({
         patches: makePatches(previous.get(query), rows),
       })
     );
-    const onMessageCallback = yield* _(DbWorkerOnMessageCallback);
-    onMessageCallback({ _tag: "onQuery", queriesPatches, onCompleteIds });
+    const dbWorkerOnMessage = yield* _(DbWorkerOnMessage);
+    dbWorkerOnMessage({ _tag: "onQuery", queriesPatches, onCompleteIds });
   });
 
 interface TimestampAndMerkleTree {
@@ -319,7 +315,7 @@ const mutate = ({
   | Time
   | Config
   | RowsCacheRef
-  | DbWorkerOnMessageCallback
+  | DbWorkerOnMessage
   | SyncWorkerPostMessage,
   TimestampDriftError | TimestampCounterOverflowError,
   void
@@ -371,16 +367,13 @@ export const DbWorkerLive = Layer.effect(
     const dbInit = yield* _(DbInit);
     const syncWorker = yield* _(SyncWorker);
 
-    let dbWorkerOnMessageCallback: DbWorkerOnMessageCallback =
-      Function.constVoid;
-
     const handleError = (error: EvoluError): void => {
-      dbWorkerOnMessageCallback({ _tag: "onError", error });
+      dbWorker.onMessage({ _tag: "onError", error });
     };
 
-    syncWorker.onMessage((_output) => {
-      //
-    });
+    // syncWorker.onMessage((_output) => {
+    //   //
+    // });
 
     const run = (
       effect: Effect.Effect<Sqlite, EvoluError, void>
@@ -408,9 +401,11 @@ export const DbWorkerLive = Layer.effect(
         Layer.succeed(Sqlite, sqlite),
         TimeLive,
         RowsCacheRefLive,
-        Layer.succeed(DbWorkerOnMessageCallback, dbWorkerOnMessageCallback),
+        Layer.succeed(DbWorkerOnMessage, dbWorker.onMessage),
         Layer.succeed(Owner, owner),
-        Layer.succeed(SyncWorkerPostMessage, syncWorker.postMessage),
+        Layer.succeed(SyncWorkerPostMessage, (input) =>
+          syncWorker.postMessage(input)
+        ),
         ConfigLive(config)
       );
 
@@ -439,7 +434,7 @@ export const DbWorkerLive = Layer.effect(
 
       return dbInit(input).pipe(
         Effect.map((owner) => {
-          dbWorkerOnMessageCallback({ _tag: "onOwner", owner });
+          dbWorker.onMessage({ _tag: "onOwner", owner });
           write = makeWriteAfterInit(owner, input.config);
         }),
         run
@@ -456,10 +451,10 @@ export const DbWorkerLive = Layer.effect(
       writer.releaseLock();
     };
 
-    const onMessage: DbWorker["onMessage"] = (callback) => {
-      dbWorkerOnMessageCallback = callback;
-    };
-
-    return { postMessage, onMessage };
+    const dbWorker = DbWorker.of({
+      postMessage,
+      onMessage: notImplemented,
+    });
+    return dbWorker;
   })
 );

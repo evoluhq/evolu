@@ -3,17 +3,18 @@ import { Owner } from "./Db.js";
 import { UnexpectedError } from "./Errors.js";
 import { MerkleTree } from "./MerkleTree.js";
 import { Message } from "./Message.js";
-import { Millis, Timestamp } from "./Timestamp.js";
 import { SyncLock } from "./Platform.js";
+import { Millis, Timestamp } from "./Timestamp.js";
+import { notImplemented } from "./Utils.js";
 
 export interface SyncWorker {
-  readonly postMessage: SyncWorkerPostMessage;
-  readonly onMessage: (callback: SyncWorkerOnMessageCallback) => void;
+  readonly postMessage: (input: SyncWorkerInput) => void;
+  onMessage: (output: SyncWorkerOutput) => void;
 }
 
 export const SyncWorker = Context.Tag<SyncWorker>("evolu/SyncWorker");
 
-export type SyncWorkerPostMessage = (input: SyncWorkerInput) => void;
+export type SyncWorkerPostMessage = SyncWorker["postMessage"];
 
 export const SyncWorkerPostMessage = Context.Tag<SyncWorkerPostMessage>(
   "evolu/SyncWorkerPostMessage"
@@ -37,10 +38,10 @@ interface SyncWorkerInputSyncCompleted {
   readonly _tag: "syncCompleted";
 }
 
-type SyncWorkerOnMessageCallback = (output: SyncWorkerOutput) => void;
+type SyncWorkerOnMessage = SyncWorker["onMessage"];
 
-const SyncWorkerOnMessageCallback = Context.Tag<SyncWorkerOnMessageCallback>(
-  "evolu/SyncWorkerOnMessageCallback"
+const SyncWorkerOnMessage = Context.Tag<SyncWorkerOnMessage>(
+  "evolu/SyncWorkerOnMessage"
 );
 
 export type SyncWorkerOutput =
@@ -100,18 +101,25 @@ export const SyncWorkerLive = Layer.effect(
   Effect.gen(function* (_) {
     const syncLock = yield* _(SyncLock);
 
-    const postMessage: SyncWorker["postMessage"] = (input) => {
-      console.log(input);
-
+    const postMessage: SyncWorker["postMessage"] = (_input) => {
+      // Match.value(input).pipe(
+      //   Match.tagsExhaustive({
+      //     sync: () => Effect.succeed(undefined),
+      //     syncCompleted: () => syncLock.release,
+      //   })
+      //   // Effect.provideLayer(writeLayer),
+      //   // run
+      // );
       //   const writer = stream.getWriter();
       //   void writer.write(input);
       //   writer.releaseLock();
     };
 
-    const onMessage: SyncWorker["onMessage"] = (callback) => {
-      //   dbWorkerOnMessageCallback = callback;
+    const syncWorker: SyncWorker = {
+      postMessage,
+      onMessage: notImplemented,
     };
 
-    return { postMessage, onMessage };
+    return syncWorker;
   })
 );

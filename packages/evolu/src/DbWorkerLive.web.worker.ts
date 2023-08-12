@@ -9,32 +9,32 @@ import { DbInitLive } from "./Db.js";
 import { DbWorker, DbWorkerInput, DbWorkerLive } from "./DbWorker.js";
 import { SqliteLive } from "./SqliteLive.web.js";
 import { SyncWorker, SyncWorkerOutput } from "./SyncWorker.js";
+import { notImplemented } from "./Utils.js";
 
 const SyncWorkerLive = Layer.effect(
   SyncWorker,
   Effect.sync(() => {
-    const syncWorker = new Worker(
+    const worker = new Worker(
       new URL("SyncWorker.web.worker.js", import.meta.url),
       { type: "module" }
     );
 
-    const postMessage: SyncWorker["postMessage"] = (input) => {
-      syncWorker.postMessage(input);
+    worker.onmessage = (e: MessageEvent<SyncWorkerOutput>): void => {
+      syncWorker.onMessage(e.data);
     };
 
-    const onMessage: SyncWorker["onMessage"] = (callback) => {
-      onmessage = (e: MessageEvent<SyncWorkerOutput>): void => {
-        callback(e.data);
-      };
+    const syncWorker: SyncWorker = {
+      postMessage: (input) => worker.postMessage(input),
+      onMessage: notImplemented,
     };
 
-    return SyncWorker.of({ postMessage, onMessage });
+    return syncWorker;
   })
 );
 
 Effect.gen(function* (_) {
   const dbWorker = yield* _(DbWorker);
-  dbWorker.onMessage(postMessage);
+  dbWorker.onMessage = (output): void => postMessage(output);
   onmessage = (e: MessageEvent<DbWorkerInput>): void => {
     dbWorker.postMessage(e.data);
   };

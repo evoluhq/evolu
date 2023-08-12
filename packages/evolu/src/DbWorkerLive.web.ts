@@ -1,5 +1,6 @@
 import { Function, Layer } from "effect";
 import { DbWorker, DbWorkerOutput } from "./DbWorker.js";
+import { notImplemented } from "./Utils.js";
 
 const isServer = typeof document === "undefined";
 
@@ -25,22 +26,21 @@ const makeNoOpServerDbWorker = (): DbWorker => ({
 });
 
 const makeOpfsDbWorker = (): DbWorker => {
-  const dbWorker = new Worker(
+  const worker = new Worker(
     new URL("DbWorkerLive.web.worker.js", import.meta.url),
     { type: "module" }
   );
 
-  const postMessage: DbWorker["postMessage"] = (input) => {
-    dbWorker.postMessage(input);
+  worker.onmessage = (e: MessageEvent<DbWorkerOutput>): void => {
+    dbWorker.onMessage(e.data);
   };
 
-  const onMessage: DbWorker["onMessage"] = (callback) => {
-    dbWorker.onmessage = (e: MessageEvent<DbWorkerOutput>): void => {
-      callback(e.data);
-    };
+  const dbWorker: DbWorker = {
+    postMessage: (input) => worker.postMessage(input),
+    onMessage: notImplemented,
   };
 
-  return { postMessage, onMessage };
+  return dbWorker;
 };
 
 const makeLocalStorageDbWorker = (): DbWorker => ({

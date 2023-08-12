@@ -64,13 +64,12 @@ export const EvoluLive = <From, To extends Schema>(
 ): Layer.Layer<Config | DbWorker | QueryStore | Mutate, never, Evolu> =>
   Layer.effect(
     Evolu,
-    // gen? jo
     Effect.all([Config, DbWorker, QueryStore, Mutate]).pipe(
       Effect.map(([config, dbWorker, queryStore, mutate]) => {
         const errorStore = makeStore<EvoluError | null>(null);
         const ownerStore = makeStore<Owner | null>(null);
 
-        dbWorker.onMessage((output) => {
+        dbWorker.onMessage = (output): void => {
           switch (output._tag) {
             case "onError":
               errorStore.setState(output.error);
@@ -93,7 +92,7 @@ export const EvoluLive = <From, To extends Schema>(
             default:
               absurd(output);
           }
-        });
+        };
 
         dbWorker.postMessage({
           _tag: "init",
