@@ -244,11 +244,11 @@ const applyMessages = ({
   merkleTree: MerkleTree;
   messages: ReadonlyArray<Message>;
 }): Effect.Effect<Sqlite, never, MerkleTree> =>
-  Effect.gen(function* ($) {
-    const sqlite = yield* $(Sqlite);
+  Effect.gen(function* (_) {
+    const sqlite = yield* _(Sqlite);
 
     for (const message of messages) {
-      const timestamp: TimestampString | null = yield* $(
+      const timestamp: TimestampString | null = yield* _(
         sqlite.exec({
           sql: selectLastTimestampForTableRowColumn,
           parameters: [message.table, message.row, message.column],
@@ -259,7 +259,7 @@ const applyMessages = ({
       );
 
       if (timestamp == null || timestamp < message.timestamp)
-        yield* $(
+        yield* _(
           sqlite.exec({
             sql: insertValueIntoTableRowColumn(message.table, message.column),
             parameters: [message.row, message.value, message.value],
@@ -267,7 +267,7 @@ const applyMessages = ({
         );
 
       if (timestamp == null || timestamp !== message.timestamp) {
-        yield* $(
+        yield* _(
           sqlite.exec({
             sql: tryInsertIntoMessages,
             parameters: [
@@ -280,7 +280,7 @@ const applyMessages = ({
           })
         );
 
-        const changes = yield* $(sqlite.changes);
+        const changes = yield* _(sqlite.changes);
 
         if (changes > 0)
           merkleTree = insertIntoMerkleTree(
@@ -361,10 +361,22 @@ const mutate = ({
   });
 
 const receiveMessages = (
-  _input: SyncWorkerInputReceiveMessages
-): Effect.Effect<never, never, void> => {
-  throw "";
-};
+  input: SyncWorkerInputReceiveMessages
+): Effect.Effect<Sqlite, never, void> =>
+  Effect.gen(function* (_) {
+    let { timestamp, merkleTree } = yield* _(readTimestampAndMerkleTree);
+
+    // for (const message of messages) {
+    //   timestamp = yield* _(
+    //     receiveTimestamp(
+    //       timestamp,
+    //       unsafeTimestampFromString(message.timestamp)
+    //     )
+    //   );
+    // }
+
+    throw "";
+  });
 
 export const DbWorkerLive = Layer.effect(
   DbWorker,

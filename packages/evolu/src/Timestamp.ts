@@ -140,11 +140,11 @@ export const sendTimestamp = (
   TimestampDriftError | TimestampCounterOverflowError,
   Timestamp
 > =>
-  Effect.gen(function* ($) {
-    const millis = yield* $(getNextMillis([timestamp.millis]));
+  Effect.gen(function* (_) {
+    const millis = yield* _(getNextMillis([timestamp.millis]));
     const counter =
       millis === timestamp.millis
-        ? yield* $(incrementCounter(timestamp.counter))
+        ? yield* _(incrementCounter(timestamp.counter))
         : counterMin;
     return { ...timestamp, millis, counter };
   });
