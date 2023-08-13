@@ -63,7 +63,7 @@ const SyncWorkerOnMessage = Context.Tag<SyncWorkerOnMessage>(
 export type SyncWorkerOutput =
   | UnexpectedError
   | SyncWorkerInputReceiveMessages
-  | SyncStateIsNotSynced
+  | SyncStateIsNotSyncedError
   | SyncStateIsSyncing;
 
 export type SyncWorkerInputReceiveMessages = {
@@ -76,7 +76,7 @@ export type SyncWorkerInputReceiveMessages = {
 export type SyncState =
   | SyncStateIsSyncing
   | SyncStateIsSynced
-  | SyncStateIsNotSynced;
+  | SyncStateIsNotSyncedError;
 
 export interface SyncStateIsSyncing {
   readonly _tag: "SyncStateIsSyncing";
@@ -87,8 +87,8 @@ export interface SyncStateIsSynced {
   readonly time: Millis;
 }
 
-export interface SyncStateIsNotSynced {
-  readonly _tag: "SyncStateIsNotSynced";
+export interface SyncStateIsNotSyncedError {
+  readonly _tag: "SyncStateIsNotSyncedError";
   readonly error:
     | SyncStateNetworkError
     | SyncStateServerError
@@ -176,16 +176,16 @@ const sync = (
       ),
       Effect.flatMap((body) => fetch(input.syncUrl, body)),
       Effect.catchTag("FetchError", () =>
-        Effect.fail<SyncStateIsNotSynced>({
-          _tag: "SyncStateIsNotSynced",
+        Effect.fail<SyncStateIsNotSyncedError>({
+          _tag: "SyncStateIsNotSyncedError",
           error: { _tag: "NetworkError" },
         })
       ),
       Effect.flatMap((response) => {
         switch (response.status) {
           case 402:
-            return Effect.fail<SyncStateIsNotSynced>({
-              _tag: "SyncStateIsNotSynced",
+            return Effect.fail<SyncStateIsNotSyncedError>({
+              _tag: "SyncStateIsNotSyncedError",
               error: { _tag: "PaymentRequiredError" },
             });
           case 200:
@@ -196,8 +196,8 @@ const sync = (
                 .then((array) => SyncResponse.fromBinary(array))
             );
           default:
-            return Effect.fail<SyncStateIsNotSynced>({
-              _tag: "SyncStateIsNotSynced",
+            return Effect.fail<SyncStateIsNotSyncedError>({
+              _tag: "SyncStateIsNotSyncedError",
               error: { _tag: "ServerError", status: response.status },
             });
         }
