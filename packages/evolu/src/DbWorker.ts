@@ -371,9 +371,18 @@ export const DbWorkerLive = Layer.effect(
       dbWorker.onMessage({ _tag: "onError", error });
     };
 
-    // syncWorker.onMessage((_output) => {
-    //   //
-    // });
+    syncWorker.onMessage = (output): void => {
+      switch (output._tag) {
+        case "UnexpectedError":
+          handleError(output);
+          break;
+        case "receiveMessages":
+          // if (post) post(message);
+          break;
+        default:
+          dbWorker.onMessage({ _tag: "onSyncState", state: output });
+      }
+    };
 
     const run = (
       effect: Effect.Effect<Sqlite, EvoluError, void>
@@ -455,6 +464,7 @@ export const DbWorkerLive = Layer.effect(
       postMessage,
       onMessage: notImplemented,
     });
+
     return dbWorker;
   })
 );
