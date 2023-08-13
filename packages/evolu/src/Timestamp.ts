@@ -1,8 +1,8 @@
 import * as Schema from "@effect/schema/Schema";
 import { Brand, Context, Effect, Either, Layer, Number, pipe } from "effect";
+import { Config } from "./Config.js";
 import { NanoId, NodeId } from "./Crypto.js";
 import { murmurhash } from "./Murmurhash.js";
-import { Config } from "./Config.js";
 
 // https://muratbuffalo.blogspot.com/2014/07/hybrid-logical-clocks.html
 // https://jaredforsyth.com/posts/hybrid-logical-clocks/
@@ -88,7 +88,8 @@ export const TimeLive = Layer.succeed(
 
 export type TimestampError =
   | TimestampDriftError
-  | TimestampCounterOverflowError;
+  | TimestampCounterOverflowError
+  | TimestampDuplicateNodeError;
 
 export interface TimestampDriftError {
   readonly _tag: "TimestampDriftError";
@@ -149,11 +150,43 @@ export const sendTimestamp = (
     return { ...timestamp, millis, counter };
   });
 
-// export interface TimestampDuplicateNodeError {
-//   readonly _tag: "TimestampDuplicateNodeError";
-//   readonly node: NodeId;
-// }
+export interface TimestampDuplicateNodeError {
+  readonly _tag: "TimestampDuplicateNodeError";
+  readonly node: NodeId;
+}
 
-// export interface TimestampParseError {
-//   readonly _tag: "TimestampParseError";
-// }
+export const receiveTimestamp = ({
+  local,
+  remote,
+}: {
+  readonly local: Timestamp;
+  readonly remote: Timestamp;
+}): Effect.Effect<
+  Time | Config,
+  | TimestampDriftError
+  | TimestampCounterOverflowError
+  | TimestampDuplicateNodeError,
+  Timestamp
+> =>
+  Effect.gen(function* (_) {
+    if (local.node === remote.node)
+      yield* _(
+        Effect.fail<TimestampDuplicateNodeError>({
+          _tag: "TimestampDuplicateNodeError",
+          node: local.node,
+        })
+      );
+
+    const millis = yield* _(getNextMillis([local.millis, remote.millis]));
+    const counter = yield* _(
+      millis === local.millis && millis === remote.millis
+        ? incrementCounter(Math.max(local.counter, remote.counter) as Counter)
+        : millis === local.millis
+        ? incrementCounter(local.counter)
+        : millis === remote.millis
+        ? incrementCounter(remote.counter)
+        : Either.right(counterMin)
+    );
+
+    return { ...local, millis, counter };
+  });

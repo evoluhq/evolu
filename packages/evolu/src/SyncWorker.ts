@@ -62,12 +62,12 @@ const SyncWorkerOnMessage = Context.Tag<SyncWorkerOnMessage>(
 
 export type SyncWorkerOutput =
   | UnexpectedError
-  | SyncWorkerInputReceiveMessages
+  | SyncWorkerOutputSyncResponse
   | SyncStateIsNotSyncedError
   | SyncStateIsSyncing;
 
-export type SyncWorkerInputReceiveMessages = {
-  readonly _tag: "receiveMessages";
+export type SyncWorkerOutputSyncResponse = {
+  readonly _tag: "SyncWorkerOutputSyncResponse";
   readonly messages: ReadonlyArray<Message>;
   readonly merkleTree: MerkleTree;
   readonly syncLoopCount: number;
@@ -218,8 +218,8 @@ const sync = (
           )
         ).pipe(
           Effect.map(
-            (messages): SyncWorkerInputReceiveMessages => ({
-              _tag: "receiveMessages",
+            (messages): SyncWorkerOutputSyncResponse => ({
+              _tag: "SyncWorkerOutputSyncResponse",
               messages,
               merkleTree: unsafeMerkleTreeFromString(
                 syncResponse.merkleTree as MerkleTreeString

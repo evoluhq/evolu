@@ -19,6 +19,7 @@ import { EvoluError, makeUnexpectedError } from "./Errors.js";
 import {
   MerkleTree,
   MerkleTreeString,
+  diffMerkleTrees,
   insertIntoMerkleTree,
   merkleTreeToString,
   unsafeMerkleTreeFromString,
@@ -30,6 +31,7 @@ import { RowsCacheRef, RowsCacheRefLive } from "./RowsCache.js";
 import {
   insertValueIntoTableRowColumn,
   selectLastTimestampForTableRowColumn,
+  selectMessagesToSync,
   selectOwnerTimestampAndMerkleTree,
   tryInsertIntoMessages,
   updateOwnerTimestampAndMerkleTree,
@@ -38,7 +40,7 @@ import { Query, Sqlite, Value, queryObjectFromQuery } from "./Sqlite.js";
 import {
   SyncState,
   SyncWorker,
-  SyncWorkerInputReceiveMessages,
+  SyncWorkerOutputSyncResponse,
   SyncWorkerPostMessage,
 } from "./SyncWorker.js";
 import {
@@ -47,7 +49,10 @@ import {
   Timestamp,
   TimestampCounterOverflowError,
   TimestampDriftError,
+  TimestampError,
   TimestampString,
+  makeSyncTimestamp,
+  receiveTimestamp,
   sendTimestamp,
   timestampToString,
   unsafeTimestampFromString,
@@ -67,7 +72,7 @@ export type DbWorkerInput =
   | DbWorkerInputMutate
   | DbWorkerInputSync
   | DbWorkerInputReset
-  | SyncWorkerInputReceiveMessages;
+  | SyncWorkerOutputSyncResponse;
 
 interface DbWorkerInputInit {
   readonly _tag: "init";
@@ -264,6 +269,13 @@ const applyMessages = ({
             sql: insertValueIntoTableRowColumn(message.table, message.column),
             parameters: [message.row, message.value, message.value],
           })
+          // TODO: Update DB schema on error.
+          // .pipe(
+          //   defectToNoSuchTableOrColumnError,
+          //   Effect.catchTag("NoSuchTableOrColumnError", error => {
+          //     // Add table column or alter table.
+          //   })
+          // )
         );
 
       if (timestamp == null || timestamp !== message.timestamp) {
@@ -360,22 +372,63 @@ const mutate = ({
     });
   });
 
-const receiveMessages = (
-  input: SyncWorkerInputReceiveMessages
-): Effect.Effect<Sqlite, never, void> =>
+const handleSyncResponse = (
+  response: SyncWorkerOutputSyncResponse
+): Effect.Effect<
+  Sqlite | Time | Config | DbWorkerOnMessage | SyncWorkerPostMessage | Owner,
+  TimestampError,
+  void
+> =>
   Effect.gen(function* (_) {
     let { timestamp, merkleTree } = yield* _(readTimestampAndMerkleTree);
+    for (const message of response.messages) {
+      timestamp = yield* _(
+        unsafeTimestampFromString(message.timestamp),
+        (remote) => receiveTimestamp({ local: timestamp, remote })
+      );
+    }
+    merkleTree = yield* _(
+      applyMessages({ merkleTree, messages: response.messages })
+    );
+    yield* _(writeTimestampAndMerkleTree({ timestamp, merkleTree }));
 
-    // for (const message of messages) {
-    //   timestamp = yield* _(
-    //     receiveTimestamp(
-    //       timestamp,
-    //       unsafeTimestampFromString(message.timestamp)
-    //     )
-    //   );
-    // }
+    const dbWorkerOnMessage = yield* _(DbWorkerOnMessage);
+    dbWorkerOnMessage({ _tag: "onReceive" });
 
-    throw "";
+    const diff = diffMerkleTrees(response.merkleTree, merkleTree);
+    const syncWorkerPostMessage = yield* _(SyncWorkerPostMessage);
+
+    if (Option.isNone(diff)) {
+      syncWorkerPostMessage({ _tag: "syncCompleted" });
+      dbWorkerOnMessage({
+        _tag: "onSyncState",
+        state: {
+          _tag: "SyncStateIsSynced",
+          time: yield* _(Time.pipe(Effect.flatMap((time) => time.now))),
+        },
+      });
+      return;
+    }
+
+    const sqlite = yield* _(Sqlite);
+    const messagesToSync = yield* _(
+      sqlite.exec({
+        sql: selectMessagesToSync,
+        parameters: [timestampToString(makeSyncTimestamp(diff.value))],
+      }),
+      Effect.map((a) => a as unknown as ReadonlyArray<Message>)
+    );
+
+    const [config, owner] = yield* _(Effect.all([Config, Owner]));
+    syncWorkerPostMessage({
+      _tag: "sync",
+      syncUrl: config.syncUrl,
+      messages: messagesToSync,
+      timestamp,
+      merkleTree,
+      owner,
+      syncLoopCount: response.syncLoopCount + 1,
+    });
   });
 
 export const DbWorkerLive = Layer.effect(
@@ -394,7 +447,7 @@ export const DbWorkerLive = Layer.effect(
         case "UnexpectedError":
           handleError(output);
           break;
-        case "receiveMessages":
+        case "SyncWorkerOutputSyncResponse":
           postMessage(output);
           break;
         default:
@@ -440,9 +493,9 @@ export const DbWorkerLive = Layer.effect(
             init: throwNotImplemented,
             query,
             mutate,
-            receiveMessages,
             reset: () => Effect.succeed(undefined),
             sync: () => Effect.succeed(undefined),
+            SyncWorkerOutputSyncResponse: handleSyncResponse,
           }),
           Effect.provideLayer(writeLayer),
           run
