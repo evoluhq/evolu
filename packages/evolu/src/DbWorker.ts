@@ -52,7 +52,7 @@ import {
   timestampToString,
   unsafeTimestampFromString,
 } from "./Timestamp.js";
-import { notImplemented } from "./Utils.js";
+import { throwNotImplemented } from "./Utils.js";
 
 export interface DbWorker {
   readonly postMessage: (input: DbWorkerInput) => void;
@@ -360,6 +360,12 @@ const mutate = ({
     });
   });
 
+const receiveMessages = (
+  _input: SyncWorkerInputReceiveMessages
+): Effect.Effect<never, never, void> => {
+  throw "";
+};
+
 export const DbWorkerLive = Layer.effect(
   DbWorker,
   Effect.gen(function* (_) {
@@ -377,7 +383,7 @@ export const DbWorkerLive = Layer.effect(
           handleError(output);
           break;
         case "receiveMessages":
-          // if (post) post(message);
+          postMessage(output);
           break;
         default:
           dbWorker.onMessage({ _tag: "onSyncState", state: output });
@@ -412,21 +418,17 @@ export const DbWorkerLive = Layer.effect(
         RowsCacheRefLive,
         Layer.succeed(DbWorkerOnMessage, dbWorker.onMessage),
         Layer.succeed(Owner, owner),
-        Layer.succeed(SyncWorkerPostMessage, (input) =>
-          syncWorker.postMessage(input)
-        ),
+        Layer.succeed(SyncWorkerPostMessage, syncWorker.postMessage),
         ConfigLive(config)
       );
 
       const write: Write = (input) =>
         Match.value(input).pipe(
           Match.tagsExhaustive({
-            init: () => {
-              throw new self.Error("Init must be called once.");
-            },
+            init: throwNotImplemented,
             query,
             mutate,
-            receiveMessages: () => Effect.succeed(undefined),
+            receiveMessages,
             reset: () => Effect.succeed(undefined),
             sync: () => Effect.succeed(undefined),
           }),
@@ -438,9 +440,7 @@ export const DbWorkerLive = Layer.effect(
     };
 
     let write: Write = (input) => {
-      if (input._tag !== "init")
-        throw new self.Error("Init must be called first.");
-
+      if (input._tag !== "init") return throwNotImplemented();
       return dbInit(input).pipe(
         Effect.map((owner) => {
           dbWorker.onMessage({ _tag: "onOwner", owner });
@@ -462,7 +462,7 @@ export const DbWorkerLive = Layer.effect(
 
     const dbWorker = DbWorker.of({
       postMessage,
-      onMessage: notImplemented,
+      onMessage: throwNotImplemented,
     });
 
     return dbWorker;

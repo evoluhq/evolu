@@ -1,6 +1,6 @@
 import { Function, Layer } from "effect";
 import { DbWorker, DbWorkerOutput } from "./DbWorker.js";
-import { notImplemented } from "./Utils.js";
+import { throwNotImplemented } from "./Utils.js";
 
 const isServer = typeof document === "undefined";
 
@@ -39,7 +39,7 @@ const makeOpfsDbWorker = (): DbWorker => {
     postMessage: (input) => {
       worker.postMessage(input);
     },
-    onMessage: notImplemented,
+    onMessage: throwNotImplemented,
   };
 
   return dbWorker;

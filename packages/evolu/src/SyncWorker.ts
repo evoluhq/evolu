@@ -21,7 +21,7 @@ import {
 } from "./Protobuf.js";
 import { Value } from "./Sqlite.js";
 import { Millis, Timestamp, TimestampString } from "./Timestamp.js";
-import { notImplemented } from "./Utils.js";
+import { throwNotImplemented } from "./Utils.js";
 
 export interface SyncWorker {
   readonly postMessage: (input: SyncWorkerInput) => void;
@@ -271,7 +271,7 @@ export const SyncWorkerLive = Layer.effect(
 
     const syncWorker: SyncWorker = {
       postMessage,
-      onMessage: notImplemented,
+      onMessage: throwNotImplemented,
     };
 
     return syncWorker;

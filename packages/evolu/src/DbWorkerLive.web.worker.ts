@@ -9,7 +9,7 @@ import { DbInitLive } from "./Db.js";
 import { DbWorker, DbWorkerInput, DbWorkerLive } from "./DbWorker.js";
 import { SqliteLive } from "./SqliteLive.web.js";
 import { SyncWorker, SyncWorkerOutput } from "./SyncWorker.js";
-import { notImplemented } from "./Utils.js";
+import { throwNotImplemented } from "./Utils.js";
 
 const SyncWorkerLive = Layer.effect(
   SyncWorker,
@@ -27,7 +27,7 @@ const SyncWorkerLive = Layer.effect(
       postMessage: (input) => {
         worker.postMessage(input);
       },
-      onMessage: notImplemented,
+      onMessage: throwNotImplemented,
     };
 
     return syncWorker;
