@@ -230,10 +230,8 @@ const sync = (
         )
       ),
       Effect.tapError(() => syncLock.release),
-      Effect.match({
-        onFailure: syncWorkerOnMessage,
-        onSuccess: syncWorkerOnMessage,
-      })
+      Effect.merge,
+      Effect.map(syncWorkerOnMessage)
     );
   });
 
