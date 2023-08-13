@@ -1,4 +1,4 @@
-import { Cause, Context, Effect, Either, Layer, Match } from "effect";
+import { Context, Effect, Layer, Match } from "effect";
 import { AesGcm } from "./Crypto.js";
 import { AesGcmLive } from "./CryptoLive.web.js";
 import { Owner } from "./Db.js";
@@ -250,18 +250,10 @@ export const SyncWorkerLive = Layer.effect(
           sync,
           syncCompleted: () => syncLock.release,
         }),
-        // to mozna nebude nutne, ne?
-        // errory proste rovnou poslu
-        Effect.catchAllCause((cause) =>
-          Cause.failureOrCause(cause).pipe(
-            Either.match({
-              onLeft: handleError,
-              onRight: (cause) =>
-                handleError(makeUnexpectedError(Cause.squash(cause))),
-            }),
-            () => Effect.succeed(undefined)
-          )
-        ),
+        Effect.catchAllDefect((error) => {
+          handleError(makeUnexpectedError(error));
+          return Effect.succeed(undefined);
+        }),
         Effect.provideService(SyncLock, syncLock),
         Effect.provideService(SyncWorkerOnMessage, syncWorker.onMessage),
         Effect.provideLayer(Layer.mergeAll(AesGcmLive, FetchLive)),
