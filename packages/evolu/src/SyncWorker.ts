@@ -1,16 +1,27 @@
 import { Cause, Context, Effect, Either, Layer, Match } from "effect";
-import { Owner } from "./Db.js";
-import { UnexpectedError, makeUnexpectedError } from "./Errors.js";
-import { MerkleTree, merkleTreeToString } from "./MerkleTree.js";
-import { Message } from "./Message.js";
-import { Fetch, SyncLock } from "./Platform.js";
-import { Millis, Timestamp } from "./Timestamp.js";
-import { notImplemented } from "./Utils.js";
-import { EncryptedMessage, MessageContent, SyncRequest } from "./Protobuf.js";
 import { AesGcm } from "./Crypto.js";
 import { AesGcmLive } from "./CryptoLive.web.js";
-import { Value } from "./Sqlite.js";
+import { Owner } from "./Db.js";
+import { UnexpectedError, makeUnexpectedError } from "./Errors.js";
+import {
+  MerkleTree,
+  MerkleTreeString,
+  merkleTreeToString,
+  unsafeMerkleTreeFromString,
+} from "./MerkleTree.js";
+import { Message } from "./Message.js";
+import { Id } from "./Model.js";
+import { Fetch, SyncLock } from "./Platform.js";
 import { FetchLive } from "./Platform.web.js";
+import {
+  EncryptedMessage,
+  MessageContent,
+  SyncRequest,
+  SyncResponse,
+} from "./Protobuf.js";
+import { Value } from "./Sqlite.js";
+import { Millis, Timestamp, TimestampString } from "./Timestamp.js";
+import { notImplemented } from "./Utils.js";
 
 export interface SyncWorker {
   readonly postMessage: (input: SyncWorkerInput) => void;
@@ -108,6 +119,19 @@ const valueToProtobuf = (value: Value): MessageContent["value"] => {
   return { oneofKind: undefined };
 };
 
+const valueFromProtobuf = (value: MessageContent["value"]): Value => {
+  switch (value.oneofKind) {
+    case "numberValue":
+      return value.numberValue;
+    case "stringValue":
+      return value.stringValue;
+    case "bytesValue":
+      return value.bytesValue;
+    default:
+      return null;
+  }
+};
+
 const sync = (
   input: SyncWorkerInputSync
 ): Effect.Effect<
@@ -151,8 +175,64 @@ const sync = (
         })
       ),
       Effect.flatMap((body) => fetch(input.syncUrl, body)),
-      Effect.catchTag("FetchError", () => {
-        return Effect.succeed(1);
+      Effect.catchTag("FetchError", () =>
+        Effect.fail<SyncStateIsNotSynced>({
+          _tag: "SyncStateIsNotSynced",
+          error: { _tag: "NetworkError" },
+        })
+      ),
+      Effect.flatMap((response) => {
+        switch (response.status) {
+          case 402:
+            return Effect.fail<SyncStateIsNotSynced>({
+              _tag: "SyncStateIsNotSynced",
+              error: { _tag: "PaymentRequiredError" },
+            });
+          case 200:
+            return Effect.promise(() =>
+              response
+                .arrayBuffer()
+                .then((buffer) => new Uint8Array(buffer))
+                .then((array) => SyncResponse.fromBinary(array))
+            );
+          default:
+            return Effect.fail<SyncStateIsNotSynced>({
+              _tag: "SyncStateIsNotSynced",
+              error: { _tag: "ServerError", status: response.status },
+            });
+        }
+      }),
+      Effect.flatMap((syncResponse) =>
+        Effect.forEach(syncResponse.messages, (message) =>
+          aesGcm.decrypt(input.owner.encryptionKey, message.content).pipe(
+            Effect.map((array) => MessageContent.fromBinary(array)),
+            Effect.map(
+              (content): Message => ({
+                timestamp: message.timestamp as TimestampString,
+                table: content.table,
+                row: content.row as Id,
+                column: content.column,
+                value: valueFromProtobuf(content.value),
+              })
+            )
+          )
+        ).pipe(
+          Effect.map(
+            (messages): SyncWorkerInputReceiveMessages => ({
+              _tag: "receiveMessages",
+              messages,
+              merkleTree: unsafeMerkleTreeFromString(
+                syncResponse.merkleTree as MerkleTreeString
+              ),
+              syncLoopCount: input.syncLoopCount,
+            })
+          )
+        )
+      ),
+      Effect.tapError(() => syncLock.release),
+      Effect.match({
+        onFailure: syncWorkerOnMessage,
+        onSuccess: syncWorkerOnMessage,
       })
     );
   });
