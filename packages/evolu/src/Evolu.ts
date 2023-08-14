@@ -11,8 +11,10 @@ import {
 import { DbWorker } from "./DbWorker.js";
 import { EvoluError } from "./Errors.js";
 import { Mutate } from "./Mutate.js";
+import { AppState } from "./Platform.js";
 import { QueryStore } from "./QueryStore.js";
 import { Store, StoreListener, StoreUnsubscribe, makeStore } from "./Store.js";
+import { SubscribedQueries } from "./SubscribedQueries.js";
 import { SyncState } from "./SyncWorker.js";
 
 export interface Evolu<S extends Schema = Schema> {
@@ -61,75 +63,99 @@ export interface RestoreOwnerError {
 
 export const EvoluLive = <From, To extends Schema>(
   schema: S.Schema<From, To>
-): Layer.Layer<Config | DbWorker | QueryStore | Mutate, never, Evolu> =>
+): Layer.Layer<
+  Config | DbWorker | QueryStore | Mutate | AppState | SubscribedQueries,
+  never,
+  Evolu
+> =>
   Layer.effect(
     Evolu,
-    Effect.all([Config, DbWorker, QueryStore, Mutate]).pipe(
-      Effect.map(([config, dbWorker, queryStore, mutate]) => {
-        const errorStore = makeStore<EvoluError | null>(null);
-        const ownerStore = makeStore<Owner | null>(null);
+    Effect.gen(function* (_) {
+      const dbWorker = yield* _(DbWorker);
+      const errorStore = makeStore<EvoluError | null>(null);
+      const ownerStore = makeStore<Owner | null>(null);
+      const queryStore = yield* _(QueryStore);
+      const appState = yield* _(AppState);
+      const syncStateStore = makeStore<SyncState>({
+        _tag: "SyncStateInitial",
+      });
 
-        dbWorker.onMessage = (output): void => {
-          switch (output._tag) {
-            case "onError":
-              errorStore.setState(output.error);
-              break;
-            case "onOwner":
-              ownerStore.setState(output.owner);
-              break;
-            case "onQuery":
-              queryStore.onQuery(output);
-              break;
-            case "onReceive":
-              // queryIfAny(getSubscribedQueries());
-              break;
-            case "onResetOrRestore":
-              // reloadAllTabs(config.reloadUrl);
-              break;
-            case "onSyncState":
-              // syncState.setState(message.state);
-              break;
-            default:
-              absurd(output);
-          }
-        };
+      dbWorker.onMessage = (output): void => {
+        switch (output._tag) {
+          case "onError":
+            errorStore.setState(output.error);
+            break;
+          case "onOwner":
+            ownerStore.setState(output.owner);
+            break;
+          case "onQuery":
+            queryStore.onQuery(output);
+            break;
+          case "onReceive":
+            // queryIfAny(getSubscribedQueries());
+            break;
+          case "onResetOrRestore":
+            Effect.runSync(appState.reset);
+            break;
+          case "onSyncState":
+            syncStateStore.setState(output.state);
+            break;
+          default:
+            absurd(output);
+        }
+      };
 
-        dbWorker.postMessage({
-          _tag: "init",
-          config,
-          tables: schemaToTables(schema),
-        });
+      const config = yield* _(Config);
+      dbWorker.postMessage({
+        _tag: "init",
+        config,
+        tables: schemaToTables(schema),
+      });
 
-        return Evolu.of({
-          subscribeError: errorStore.subscribe,
-          getError: errorStore.getState,
+      const subscribedQueries = yield* _(SubscribedQueries);
+      appState.onFocus(() => {
+        // `queries` to refresh subscribed queries when a tab is changed.
+        const queries = Array.from(subscribedQueries.keys());
+        dbWorker.postMessage({ _tag: "sync", queries });
+      });
 
-          subscribeOwner: ownerStore.subscribe,
-          getOwner: ownerStore.getState,
+      appState.onReconnect(() => {
+        dbWorker.postMessage({ _tag: "sync", queries: [] });
+      });
 
-          createQuery,
-          subscribeQuery: queryStore.subscribe,
-          getQuery: queryStore.getState,
-          loadQuery: queryStore.loadQuery,
+      const mutate = yield* _(Mutate);
 
-          subscribeSyncState: () => {
-            throw "subscribeSyncState";
+      return Evolu.of({
+        subscribeError: errorStore.subscribe,
+        getError: errorStore.getState,
+
+        subscribeOwner: ownerStore.subscribe,
+        getOwner: ownerStore.getState,
+
+        createQuery,
+        subscribeQuery: queryStore.subscribe,
+        getQuery: queryStore.getState,
+        loadQuery: queryStore.loadQuery,
+
+        subscribeSyncState: () => {
+          throw "subscribeSyncState";
+        },
+        getSyncState: () => {
+          throw "getSyncState";
+        },
+
+        mutate,
+
+        ownerActions: {
+          reset: () => {
+            throw "reset";
           },
-          getSyncState: () => {
-            throw "getSyncState";
+          restore: () => {
+            throw "restore";
           },
+        },
+      });
 
-          mutate,
-
-          ownerActions: {
-            reset: () => {
-              throw "reset";
-            },
-            restore: () => {
-              throw "restore";
-            },
-          },
-        });
-      })
-    )
+      throw "";
+    })
   );

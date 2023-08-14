@@ -18,7 +18,7 @@
     "expo-sqlite": "~11.3.2",
     "expo-status-bar": "^1.6.0",
     "react": "18.2.0",
-    "react-native": "^0.72.3",
+    "react-native": "^0.72.4",
     "react-native-select-dropdown": "^3.3.4"
   },
   "devDependencies": {

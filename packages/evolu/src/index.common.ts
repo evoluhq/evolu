@@ -8,7 +8,7 @@ import { EvoluLive } from "./Evolu.js";
 import { LoadingPromisesLive } from "./LoadingPromises.js";
 import { MutateLive } from "./Mutate.js";
 import { OnCompletesLive } from "./OnCompletes.js";
-import { FlushSyncLive } from "./Platform.web.js";
+import { AppStateLive, FlushSyncLive } from "./Platform.web.js";
 import { QueryStoreLive } from "./QueryStore.js";
 import { React, ReactLive } from "./React.js";
 import { RowsCacheStoreLive } from "./RowsCache.js";
@@ -42,7 +42,9 @@ export const makeEvoluCreate =
             OnCompletesLive,
             SubscribedQueriesLive,
             TimeLive
-          ).pipe(Layer.provide(MutateLive))
+          ).pipe(Layer.provide(MutateLive)),
+          ConfigLive(config).pipe(Layer.provide(AppStateLive)),
+          SubscribedQueriesLive
         ).pipe(Layer.provide(EvoluLive(schema)), Layer.provide(ReactLive))
       ),
       Effect.runSync

@@ -93,7 +93,7 @@ interface DbWorkerInputMutate {
 
 interface DbWorkerInputSync {
   readonly _tag: "sync";
-  readonly queries: ReadonlyArray.NonEmptyReadonlyArray<Query> | null;
+  readonly queries: ReadonlyArray<Query>;
 }
 
 interface DbWorkerInputReset {
@@ -431,6 +431,41 @@ const handleSyncResponse = (
     });
   });
 
+const sync = ({
+  queries,
+}: DbWorkerInputSync): Effect.Effect<
+  | Sqlite
+  | Config
+  | DbWorkerOnMessage
+  | SyncWorkerPostMessage
+  | Owner
+  | RowsCacheRef,
+  never,
+  void
+> =>
+  Effect.gen(function* (_) {
+    if (queries.length > 0) yield* _(query({ queries }));
+
+    const [syncWorkerPostMessage, config, owner, timestampAndMerkleTree] =
+      yield* _(
+        Effect.all([
+          SyncWorkerPostMessage,
+          Config,
+          Owner,
+          readTimestampAndMerkleTree,
+        ])
+      );
+
+    syncWorkerPostMessage({
+      ...timestampAndMerkleTree,
+      _tag: "sync",
+      syncUrl: config.syncUrl,
+      owner,
+      messages: ReadonlyArray.empty(),
+      syncLoopCount: 0,
+    });
+  });
+
 export const DbWorkerLive = Layer.effect(
   DbWorker,
   Effect.gen(function* (_) {
@@ -493,8 +528,8 @@ export const DbWorkerLive = Layer.effect(
             init: throwNotImplemented,
             query,
             mutate,
+            sync,
             reset: () => Effect.succeed(undefined),
-            sync: () => Effect.succeed(undefined),
             SyncWorkerOutputSyncResponse: handleSyncResponse,
           }),
           Effect.provideLayer(writeLayer),

@@ -1,4 +1,5 @@
 import { Context, Effect } from "effect";
+import { StoreListener } from "./Store.js";
 
 export type FlushSync = (callback: () => void) => void;
 
@@ -25,3 +26,11 @@ export type Fetch = (
 ) => Effect.Effect<never, FetchError, Response>;
 
 export const Fetch = Context.Tag<Fetch>("evolu/Fetch");
+
+export interface AppState {
+  readonly onFocus: (listener: StoreListener) => void;
+  readonly onReconnect: (listener: StoreListener) => void;
+  readonly reset: Effect.Effect<never, never, void>;
+}
+
+export const AppState = Context.Tag<AppState>("evolu/AppState");

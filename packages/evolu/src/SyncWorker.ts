@@ -74,9 +74,14 @@ export type SyncWorkerOutputSyncResponse = {
 };
 
 export type SyncState =
+  | SyncStateInitial
   | SyncStateIsSyncing
   | SyncStateIsSynced
   | SyncStateIsNotSyncedError;
+
+export interface SyncStateInitial {
+  readonly _tag: "SyncStateInitial";
+}
 
 export interface SyncStateIsSyncing {
   readonly _tag: "SyncStateIsSyncing";
