@@ -12,8 +12,8 @@ import {
   pipe,
 } from "effect";
 import { Config, ConfigLive } from "./Config.js";
-import { Mnemonic } from "./Crypto.js";
-import { DbInit, Owner, Table, transaction } from "./Db.js";
+import { Bip39, Mnemonic, NanoId, Slip21 } from "./Crypto.js";
+import { DbInit, Owner, Table, lazyInit, transaction } from "./Db.js";
 import { QueryPatches, makePatches } from "./Diff.js";
 import { EvoluError, makeUnexpectedError } from "./Errors.js";
 import {
@@ -466,12 +466,45 @@ const sync = ({
     });
   });
 
+const reset = (
+  input: DbWorkerInputReset
+): Effect.Effect<
+  Sqlite | Bip39 | Slip21 | NanoId | DbWorkerOnMessage,
+  never,
+  void
+> =>
+  Effect.gen(function* (_) {
+    const sqlite = yield* _(Sqlite);
+
+    yield* _(
+      sqlite.exec(`SELECT "name" FROM "sqlite_master" WHERE "type" = 'table'`),
+      Effect.flatMap(
+        // The dropped table is completely removed from the database schema and
+        // the disk file. The table can not be recovered.
+        // All indices and triggers associated with the table are also deleted.
+        // https://sqlite.org/lang_droptable.html
+        Effect.forEach(
+          ({ name }) => sqlite.exec(`DROP TABLE "${name as string}"`),
+          { discard: true }
+        )
+      )
+    );
+
+    if (input.mnemonic) yield* _(lazyInit(input.mnemonic));
+
+    const onMessage = yield* _(DbWorkerOnMessage);
+    onMessage({ _tag: "onResetOrRestore" });
+  });
+
 export const DbWorkerLive = Layer.effect(
   DbWorker,
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
     const dbInit = yield* _(DbInit);
     const syncWorker = yield* _(SyncWorker);
+    const bip39 = yield* _(Bip39);
+    const slip21 = yield* _(Slip21);
+    const nanoid = yield* _(NanoId);
 
     const handleError = (error: EvoluError): void => {
       dbWorker.onMessage({ _tag: "onError", error });
@@ -519,22 +552,33 @@ export const DbWorkerLive = Layer.effect(
         Layer.succeed(DbWorkerOnMessage, dbWorker.onMessage),
         Layer.succeed(Owner, owner),
         Layer.succeed(SyncWorkerPostMessage, syncWorker.postMessage),
-        ConfigLive(config)
+        ConfigLive(config),
+        Layer.succeed(Bip39, bip39),
+        Layer.succeed(Slip21, slip21),
+        Layer.succeed(NanoId, nanoid)
       );
 
-      const write: Write = (input) =>
-        Match.value(input).pipe(
+      let skipAllBecauseOfReset = false;
+
+      const write: Write = (input) => {
+        if (skipAllBecauseOfReset) return Promise.resolve(undefined);
+
+        return Match.value(input).pipe(
           Match.tagsExhaustive({
             init: throwNotImplemented,
             query,
             mutate,
             sync,
-            reset: () => Effect.succeed(undefined),
+            reset: (input) => {
+              skipAllBecauseOfReset = true;
+              return reset(input);
+            },
             SyncWorkerOutputSyncResponse: handleSyncResponse,
           }),
           Effect.provideLayer(writeLayer),
           run
         );
+      };
 
       return write;
     };

@@ -1,7 +1,7 @@
 import * as S from "@effect/schema/Schema";
 import { Effect, Layer } from "effect";
 import { Config, ConfigLive } from "./Config.js";
-import { NanoIdLive } from "./CryptoLive.web.js";
+import { Bip39Live, NanoIdLive } from "./CryptoLive.web.js";
 import { Schema } from "./Db.js";
 import { DbWorker } from "./DbWorker.js";
 import { EvoluLive } from "./Evolu.js";
@@ -44,7 +44,8 @@ export const makeEvoluCreate =
             TimeLive
           ).pipe(Layer.provide(MutateLive)),
           ConfigLive(config).pipe(Layer.provide(AppStateLive)),
-          SubscribedQueriesLive
+          SubscribedQueriesLive,
+          Bip39Live
         ).pipe(Layer.provide(EvoluLive(schema)), Layer.provide(ReactLive))
       ),
       Effect.runSync

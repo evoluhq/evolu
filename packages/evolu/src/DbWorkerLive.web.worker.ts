@@ -1,4 +1,5 @@
 import { Effect, Layer } from "effect";
+import { Slip21Live } from "./Crypto.js";
 import {
   Bip39Live,
   HmacLive,
@@ -48,10 +49,12 @@ Effect.gen(function* (_) {
       Layer.mergeAll(
         SqliteLive,
         Bip39Live,
-        HmacLive,
-        Sha512Live,
+        Layer.mergeAll(HmacLive, Sha512Live).pipe(Layer.provide(Slip21Live)),
         NanoIdLive
-      ).pipe(Layer.provide(DbInitLive))
+      ).pipe(Layer.provide(DbInitLive)),
+      Bip39Live,
+      Layer.mergeAll(HmacLive, Sha512Live).pipe(Layer.provide(Slip21Live)),
+      NanoIdLive
     ).pipe(Layer.provide(DbWorkerLive))
   ),
   Effect.runSync

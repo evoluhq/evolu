@@ -17,14 +17,7 @@ import {
 import * as Kysely from "kysely";
 import { urlAlphabet } from "nanoid";
 import { Config } from "./Config.js";
-import {
-  Bip39,
-  Hmac,
-  Mnemonic,
-  NanoId,
-  Sha512,
-  slip21Derive,
-} from "./Crypto.js";
+import { Bip39, Mnemonic, NanoId, Slip21 } from "./Crypto.js";
 import { initialMerkleTree, merkleTreeToString } from "./MerkleTree.js";
 import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
 import { initDb, selectOwner } from "./Sql.js";
@@ -190,13 +183,17 @@ export const defectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
 
 export const makeOwner = (
   mnemonic?: Mnemonic
-): Effect.Effect<Bip39 | Hmac | Sha512, never, Owner> =>
+): Effect.Effect<Bip39 | Slip21, never, Owner> =>
   Effect.gen(function* (_) {
     const bip39 = yield* _(Bip39);
-    if (mnemonic == null) mnemonic = yield* _(bip39.makeMnemonic);
-    const seed = yield* _(bip39.mnemonicToSeed(mnemonic));
+    const slip21 = yield* _(Slip21);
+
+    if (mnemonic == null) mnemonic = yield* _(bip39.make);
+
+    const seed = yield* _(bip39.toSeed(mnemonic));
+
     const id = yield* _(
-      slip21Derive(seed, ["Evolu", "Owner Id"]).pipe(
+      slip21.derive(seed, ["Evolu", "Owner Id"]).pipe(
         Effect.map((key) => {
           // convert key to nanoid
           let id = "";
@@ -207,15 +204,17 @@ export const makeOwner = (
         })
       )
     );
+
     const encryptionKey = yield* _(
-      slip21Derive(seed, ["Evolu", "Encryption Key"])
+      slip21.derive(seed, ["Evolu", "Encryption Key"])
     );
+
     return { mnemonic, id, encryptionKey };
   });
 
-const lazyInit = (
+export const lazyInit = (
   mnemonic?: Mnemonic
-): Effect.Effect<Sqlite | Bip39 | Hmac | Sha512 | NanoId, never, Owner> =>
+): Effect.Effect<Sqlite | Bip39 | Slip21 | NanoId, never, Owner> =>
   Effect.all(
     [
       Sqlite,
@@ -320,10 +319,8 @@ export const DbInit = Context.Tag<DbInit>("evolu/DbInit");
 export const DbInitLive = Layer.effect(
   DbInit,
   Effect.gen(function* (_) {
-    const [sqlite, bip39, hmac, sha512, nanoid] = yield* _(
-      Effect.all([Sqlite, Bip39, Hmac, Sha512, NanoId], {
-        concurrency: "unbounded",
-      })
+    const [sqlite, bip39, slip21, nanoid] = yield* _(
+      Effect.all([Sqlite, Bip39, Slip21, NanoId])
     );
 
     return DbInit.of(({ tables }) =>
@@ -335,8 +332,7 @@ export const DbInitLive = Layer.effect(
         Effect.tap(() => ensureSchema(tables)),
         Effect.provideService(Sqlite, sqlite),
         Effect.provideService(Bip39, bip39),
-        Effect.provideService(Hmac, hmac),
-        Effect.provideService(Sha512, sha512),
+        Effect.provideService(Slip21, slip21),
         Effect.provideService(NanoId, nanoid)
       )
     );

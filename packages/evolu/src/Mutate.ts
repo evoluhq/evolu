@@ -65,6 +65,8 @@ export const MutateLive = Layer.effect(
       if (queue.length === 1)
         queueMicrotask(() => {
           const queries = Array.from(subscribedQueries.keys());
+
+          // Just wipe-out LoadingPromises unused queries.
           loadingPromises.releasePromises(queries);
 
           if (ReadonlyArray.isNonEmptyReadonlyArray(queue))
