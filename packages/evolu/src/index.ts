@@ -50,23 +50,27 @@ const OpfsDbWorker = Effect.sync(() => {
   return dbWorker;
 });
 
-const LocalStorageDbWorker = Effect.sync(() =>
-  DbWorker.of({
-    postMessage: Function.constVoid,
-    onMessage: Function.constVoid,
-  })
-);
+const LocalStorageDbWorker = Effect.sync(() => {
+  const promise = Effect.promise(() => import("./DbWorker.web.js")).pipe(
+    Effect.flatMap((a) => a.DbWorkerWeb),
+    Effect.map((importedDbWorker) => {
+      importedDbWorker.onMessage = dbWorker.onMessage;
+      return importedDbWorker.postMessage;
+    }),
+    Effect.runPromise
+  );
 
-// (): DbWorker => {
-//   void import("./DbWorker.web.js").then(({ DbWorkerWeb }) => {
-//     // a.DbWorkerWeb
-//   });
+  const dbWorker = DbWorker.of({
+    postMessage: (input) => {
+      void promise.then((postMessage) => {
+        postMessage(input);
+      });
+    },
+    onMessage: throwNotImplemented,
+  });
 
-//   return {
-//     postMessage: Function.constVoid,
-//     onMessage: Function.constVoid,
-//   };
-// };
+  return dbWorker;
+});
 
 const DbWorkerLive = Layer.effect(
   DbWorker,

@@ -65,18 +65,14 @@ export const MutateLive = Layer.effect(
       if (queue.length === 1)
         queueMicrotask(() => {
           const queries = Array.from(subscribedQueries.keys());
+          const items = [...queue];
+          queue.length = 0;
 
           // Just wipe-out LoadingPromises unused queries.
           loadingPromises.releasePromises(queries);
 
-          if (ReadonlyArray.isNonEmptyReadonlyArray(queue))
-            dbWorker.postMessage({
-              _tag: "mutate",
-              items: queue,
-              queries,
-            });
-
-          queue.length = 0;
+          if (ReadonlyArray.isNonEmptyReadonlyArray(items))
+            dbWorker.postMessage({ _tag: "mutate", items, queries });
         });
 
       return { id: id as never };

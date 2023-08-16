@@ -1,14 +1,22 @@
-import { Effect, Layer } from "effect";
-import { Sqlite, Row } from "./Sqlite.js";
-
+import { Effect, Function, Layer } from "effect";
+import { Row, Sqlite } from "./Sqlite.js";
 // @ts-expect-error Missing types
 import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
+
+if (typeof document !== "undefined")
+  // @ts-expect-error Missing types.
+  self.sqlite3ApiConfig = {
+    debug: Function.constVoid,
+    log: Function.constVoid,
+    warn: Function.constVoid,
+    error: Function.constVoid,
+  };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call
 const sqlite = (sqlite3InitModule() as Promise<any>).then((sqlite3) => {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-return
   return (
-    typeof window === "undefined"
+    typeof document === "undefined"
       ? // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
         new sqlite3.oo1.OpfsDb("/evolu/evolu1.db", "c")
       : // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
@@ -24,11 +32,14 @@ const exec: Sqlite["exec"] = (arg) =>
   Effect.promise(() => sqlite).pipe(
     Effect.map((sqlite) => {
       const isSqlString = typeof arg === "string";
-      return sqlite.exec(isSqlString ? arg : arg.sql, {
+      // console.log("input", arg);
+      const rows = sqlite.exec(isSqlString ? arg : arg.sql, {
         returnValue: "resultRows",
         rowMode: "object",
         ...(!isSqlString && { bind: arg.parameters }),
       });
+      // console.log("output", rows);
+      return rows;
     })
   );
 
