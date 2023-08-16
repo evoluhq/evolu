@@ -30,7 +30,7 @@
     "better-sqlite3": "^8.5.0",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
-    "effect": "2.0.0-next.24",
+    "effect": "2.0.0-next.25",
     "evolu": "workspace:*",
     "express": "^4.18.2",
     "react": "^18.2.0",
