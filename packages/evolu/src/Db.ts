@@ -6,7 +6,6 @@ import {
   Context,
   Effect,
   Exit,
-  Layer,
   Option,
   Predicate,
   ReadonlyArray,
@@ -16,11 +15,10 @@ import {
 } from "effect";
 import * as Kysely from "kysely";
 import { urlAlphabet } from "nanoid";
-import { Config } from "./Config.js";
 import { Bip39, Mnemonic, NanoId, Slip21 } from "./Crypto.js";
 import { initialMerkleTree, merkleTreeToString } from "./MerkleTree.js";
 import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
-import { initDb, selectOwner } from "./Sql.js";
+import { initDb } from "./Sql.js";
 import {
   Query,
   QueryObject,
@@ -308,33 +306,3 @@ export const ensureSchema = (
       { discard: true }
     )
   );
-
-export type DbInit = (input: {
-  readonly config: Config;
-  readonly tables: ReadonlyArray<Table>;
-}) => Effect.Effect<never, never, Owner>;
-
-export const DbInit = Context.Tag<DbInit>("evolu/DbInit");
-
-export const DbInitLive = Layer.effect(
-  DbInit,
-  Effect.gen(function* (_) {
-    const [sqlite, bip39, slip21, nanoid] = yield* _(
-      Effect.all([Sqlite, Bip39, Slip21, NanoId])
-    );
-
-    return DbInit.of(({ tables }) =>
-      Sqlite.pipe(
-        Effect.flatMap((sqlite) => sqlite.exec(selectOwner)),
-        Effect.map(([owner]) => owner as unknown as Owner),
-        defectToNoSuchTableOrColumnError,
-        Effect.catchTag("NoSuchTableOrColumnError", () => lazyInit()),
-        Effect.tap(() => ensureSchema(tables)),
-        Effect.provideService(Sqlite, sqlite),
-        Effect.provideService(Bip39, bip39),
-        Effect.provideService(Slip21, slip21),
-        Effect.provideService(NanoId, nanoid)
-      )
-    );
-  })
-);

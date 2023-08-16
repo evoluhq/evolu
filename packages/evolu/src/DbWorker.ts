@@ -13,7 +13,14 @@ import {
 } from "effect";
 import { Config, ConfigLive } from "./Config.js";
 import { Bip39, Mnemonic, NanoId, Slip21 } from "./Crypto.js";
-import { DbInit, Owner, Table, lazyInit, transaction } from "./Db.js";
+import {
+  Owner,
+  Table,
+  defectToNoSuchTableOrColumnError,
+  ensureSchema,
+  lazyInit,
+  transaction,
+} from "./Db.js";
 import { QueryPatches, makePatches } from "./Diff.js";
 import { EvoluError, makeUnexpectedError } from "./Errors.js";
 import {
@@ -32,6 +39,7 @@ import {
   insertValueIntoTableRowColumn,
   selectLastTimestampForTableRowColumn,
   selectMessagesToSync,
+  selectOwner,
   selectOwnerTimestampAndMerkleTree,
   tryInsertIntoMessages,
   updateOwnerTimestampAndMerkleTree,
@@ -152,6 +160,21 @@ export interface MutateItem {
   readonly now: SqliteDate;
   readonly onCompleteId: OnCompleteId | null;
 }
+
+const init = (
+  input: DbWorkerInputInit
+): Effect.Effect<Sqlite | Bip39 | Slip21 | NanoId, never, Owner> =>
+  Effect.gen(function* (_) {
+    const sqlite = yield* _(Sqlite);
+
+    return yield* _(
+      sqlite.exec(selectOwner),
+      Effect.map(([owner]) => owner as unknown as Owner),
+      defectToNoSuchTableOrColumnError,
+      Effect.catchTag("NoSuchTableOrColumnError", () => lazyInit()),
+      Effect.tap(() => ensureSchema(input.tables))
+    );
+  });
 
 const query = ({
   queries,
@@ -499,9 +522,8 @@ const reset = (
 export const DbWorkerLive = Layer.effect(
   DbWorker,
   Effect.gen(function* (_) {
-    const sqlite = yield* _(Sqlite);
-    const dbInit = yield* _(DbInit);
     const syncWorker = yield* _(SyncWorker);
+    const sqlite = yield* _(Sqlite);
     const bip39 = yield* _(Bip39);
     const slip21 = yield* _(Slip21);
     const nanoid = yield* _(NanoId);
@@ -524,11 +546,14 @@ export const DbWorkerLive = Layer.effect(
     };
 
     const run = (
-      effect: Effect.Effect<Sqlite, EvoluError, void>
+      effect: Effect.Effect<Sqlite | Bip39 | Slip21 | NanoId, EvoluError, void>
     ): Promise<void> =>
       effect.pipe(
         transaction,
         Effect.provideService(Sqlite, sqlite),
+        Effect.provideService(Bip39, bip39),
+        Effect.provideService(Slip21, slip21),
+        Effect.provideService(NanoId, nanoid),
         Effect.catchAllCause((cause) =>
           Cause.failureOrCause(cause).pipe(
             Either.match({
@@ -545,19 +570,6 @@ export const DbWorkerLive = Layer.effect(
     type Write = (input: DbWorkerInput) => Promise<void>;
 
     const makeWriteAfterInit = (owner: Owner, config: Config): Write => {
-      const writeLayer = Layer.mergeAll(
-        Layer.succeed(Sqlite, sqlite),
-        TimeLive,
-        RowsCacheRefLive,
-        Layer.succeed(DbWorkerOnMessage, dbWorker.onMessage),
-        Layer.succeed(Owner, owner),
-        Layer.succeed(SyncWorkerPostMessage, syncWorker.postMessage),
-        ConfigLive(config),
-        Layer.succeed(Bip39, bip39),
-        Layer.succeed(Slip21, slip21),
-        Layer.succeed(NanoId, nanoid)
-      );
-
       let skipAllBecauseOfReset = false;
 
       const write: Write = (input) => {
@@ -575,7 +587,16 @@ export const DbWorkerLive = Layer.effect(
             },
             SyncWorkerOutputSyncResponse: handleSyncResponse,
           }),
-          Effect.provideLayer(writeLayer),
+          Effect.provideSomeLayer(
+            Layer.mergeAll(
+              ConfigLive(config),
+              Layer.succeed(DbWorkerOnMessage, dbWorker.onMessage),
+              Layer.succeed(Owner, owner),
+              Layer.succeed(SyncWorkerPostMessage, syncWorker.postMessage),
+              RowsCacheRefLive,
+              TimeLive
+            )
+          ),
           run
         );
       };
@@ -585,7 +606,7 @@ export const DbWorkerLive = Layer.effect(
 
     let write: Write = (input) => {
       if (input._tag !== "init") return throwNotImplemented();
-      return dbInit(input).pipe(
+      return init(input).pipe(
         Effect.map((owner) => {
           dbWorker.onMessage({ _tag: "onOwner", owner });
           write = makeWriteAfterInit(owner, input.config);
