@@ -1,8 +1,11 @@
 import { Effect } from "effect";
-import { DbWorkerInput } from "./DbWorker.js";
-import { makeDbWorker } from "./DbWorker.web.js";
+import { DbWorker, DbWorkerInput } from "./DbWorker.js";
+import { DbWorkerWebLive } from "./DbWorkerWebLive.js";
 
-const dbWorker = makeDbWorker.pipe(Effect.runSync);
+const dbWorker = DbWorker.pipe(
+  Effect.provideLayer(DbWorkerWebLive),
+  Effect.runSync
+);
 
 dbWorker.onMessage = (output): void => postMessage(output);
 

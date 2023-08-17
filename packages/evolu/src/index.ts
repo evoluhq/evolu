@@ -50,9 +50,12 @@ const OpfsDbWorker = Effect.sync(() => {
 });
 
 const LocalStorageDbWorker = Effect.sync(() => {
-  const promise = Effect.promise(() => import("./DbWorker.web.js")).pipe(
-    Effect.flatMap((a) => a.makeDbWorker),
-    Effect.map((importedDbWorker) => {
+  const promise = Effect.promise(() => import("./DbWorkerWebLive.js")).pipe(
+    Effect.map((a) => {
+      const importedDbWorker = DbWorker.pipe(
+        Effect.provideLayer(a.DbWorkerWebLive),
+        Effect.runSync
+      );
       importedDbWorker.onMessage = dbWorker.onMessage;
       return importedDbWorker.postMessage;
     }),

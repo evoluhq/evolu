@@ -10,8 +10,9 @@ import { Simplify } from "kysely";
 import { useMemo, useRef, useSyncExternalStore } from "react";
 import { CommonColumns, Owner, QueryCallback, Schema } from "./Db.js";
 import { EvoluError } from "./Errors.js";
-import { Evolu, OwnerActions } from "./Evolu.js";
+import { Evolu } from "./Evolu.js";
 import { CastableForMutate } from "./Model.js";
+import { OwnerActions } from "./OwnerActions.js";
 import { Row } from "./Sqlite.js";
 import { SyncState } from "./SyncWorker.js";
 

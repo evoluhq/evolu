@@ -1,7 +1,6 @@
 import * as S from "@effect/schema/Schema";
-import { Context, Effect, Either, Layer, ReadonlyArray, absurd } from "effect";
+import { Context, Effect, Layer, ReadonlyArray, absurd } from "effect";
 import { Config } from "./Config.js";
-import { Bip39 } from "./Crypto.js";
 import {
   CreateQuery,
   Owner,
@@ -12,12 +11,13 @@ import {
 import { DbWorker } from "./DbWorker.js";
 import { EvoluError } from "./Errors.js";
 import { Mutate } from "./Mutate.js";
+import { OwnerActions } from "./OwnerActions.js";
 import { AppState } from "./Platform.js";
 import { QueryStore } from "./QueryStore.js";
+import { Query } from "./Sqlite.js";
 import { Store, StoreListener, StoreUnsubscribe, makeStore } from "./Store.js";
 import { SubscribedQueries } from "./SubscribedQueries.js";
 import { SyncState } from "./SyncWorker.js";
-import { Query } from "./Sqlite.js";
 
 export interface Evolu<S extends Schema = Schema> {
   readonly subscribeError: ErrorStore["subscribe"];
@@ -44,47 +44,32 @@ export const Evolu = Context.Tag<Evolu>("evolu/Evolu");
 type ErrorStore = Store<EvoluError | null>;
 type OwnerStore = Store<Owner | null>;
 
-export interface OwnerActions {
-  /**
-   * Use `reset` to delete all local data from the current device.
-   * After the deletion, Evolu reloads all browser tabs that use Evolu.
-   */
-  readonly reset: () => void;
-
-  /**
-   * Use `restore` to restore `Owner` with synced data on a different device.
-   */
-  readonly restore: (
-    mnemonic: string
-  ) => Promise<Either.Either<RestoreOwnerError, void>>;
-}
-
-export interface RestoreOwnerError {
-  readonly _tag: "RestoreOwnerError";
-}
-
 export const EvoluLive = <From, To extends Schema>(
   schema: S.Schema<From, To>
 ): Layer.Layer<
+  | AppState
   | Config
   | DbWorker
-  | QueryStore
   | Mutate
-  | AppState
-  | SubscribedQueries
-  | Bip39,
+  | OwnerActions
+  | QueryStore
+  | SubscribedQueries,
   never,
   Evolu
 > =>
   Layer.effect(
     Evolu,
     Effect.gen(function* (_) {
-      const subscribedQueries = yield* _(SubscribedQueries);
+      const appState = yield* _(AppState);
+      const config = yield* _(Config);
       const dbWorker = yield* _(DbWorker);
+      const mutate = yield* _(Mutate);
+      const ownerActions = yield* _(OwnerActions);
+      const queryStore = yield* _(QueryStore);
+      const subscribedQueries = yield* _(SubscribedQueries);
+
       const errorStore = makeStore<EvoluError | null>(null);
       const ownerStore = makeStore<Owner | null>(null);
-      const queryStore = yield* _(QueryStore);
-      const appState = yield* _(AppState);
       const syncStateStore = makeStore<SyncState>({
         _tag: "SyncStateInitial",
       });
@@ -120,7 +105,6 @@ export const EvoluLive = <From, To extends Schema>(
         }
       };
 
-      const config = yield* _(Config);
       dbWorker.postMessage({
         _tag: "init",
         config,
@@ -135,30 +119,6 @@ export const EvoluLive = <From, To extends Schema>(
       appState.onReconnect(() => {
         dbWorker.postMessage({ _tag: "sync", queries: [] });
       });
-
-      const mutate = yield* _(Mutate);
-
-      const reset: OwnerActions["reset"] = () => {
-        dbWorker.postMessage({ _tag: "reset" });
-      };
-
-      const bip39 = yield* _(Bip39);
-
-      const restore: OwnerActions["restore"] = (mnemonic) =>
-        bip39.parse(mnemonic).pipe(
-          Effect.flatMap((mnemonic) =>
-            Effect.sync(() => {
-              dbWorker.postMessage({ _tag: "reset", mnemonic });
-              return Either.right(undefined);
-            })
-          ),
-          Effect.catchTag("InvalidMnemonicError", () =>
-            Effect.succeed(
-              Either.left<RestoreOwnerError>({ _tag: "RestoreOwnerError" })
-            )
-          ),
-          Effect.runPromise
-        );
 
       return Evolu.of({
         subscribeError: errorStore.subscribe,
@@ -176,7 +136,7 @@ export const EvoluLive = <From, To extends Schema>(
         getSyncState: syncStateStore.getState,
 
         mutate,
-        ownerActions: { reset, restore },
+        ownerActions,
       });
     })
   );

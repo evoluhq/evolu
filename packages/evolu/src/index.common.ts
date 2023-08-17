@@ -14,6 +14,7 @@ import { React, ReactLive } from "./React.js";
 import { RowsCacheStoreLive } from "./RowsCache.js";
 import { SubscribedQueriesLive } from "./SubscribedQueries.js";
 import { TimeLive } from "./Timestamp.js";
+import { OwnerActionsLive } from "./OwnerActions.js";
 
 export const makeEvoluCreate =
   (DbWorkerLive: Layer.Layer<never, never, DbWorker>) =>
@@ -45,7 +46,9 @@ export const makeEvoluCreate =
           ).pipe(Layer.provide(MutateLive)),
           ConfigLive(config).pipe(Layer.provide(AppStateLive)),
           SubscribedQueriesLive,
-          Bip39Live
+          Layer.mergeAll(DbWorkerLive, Bip39Live).pipe(
+            Layer.provide(OwnerActionsLive)
+          )
         ).pipe(Layer.provide(EvoluLive(schema)), Layer.provide(ReactLive))
       ),
       Effect.runSync
