@@ -1,14 +1,13 @@
 import { Context, Effect, Layer, ReadonlyArray } from "effect";
 import * as Kysely from "kysely";
 import { NanoId } from "./Crypto.js";
-import { CommonColumns, Schema } from "./Db.js";
+import { CommonColumns, NullableExceptOfId, Schema } from "./Db.js";
 import { DbWorker, MutateItem } from "./DbWorker.js";
 import { LoadingPromises } from "./LoadingPromises.js";
 import { CastableForMutate, Id, cast } from "./Model.js";
 import { OnCompleteId, OnCompletes } from "./OnCompletes.js";
 import { SubscribedQueries } from "./SubscribedQueries.js";
 import { Time } from "./Timestamp.js";
-import { NullableExceptOfId } from "./Utils.js";
 
 export type Mutate<S extends Schema = Schema> = <
   U extends SchemaForMutate<S>,

@@ -27,7 +27,6 @@ import {
   queryObjectToQuery,
 } from "./Sqlite.js";
 import { makeInitialTimestamp, timestampToString } from "./Timestamp.js";
-import { NullableExceptOfId } from "./Utils.js";
 
 export type Schema = ReadonlyRecord.ReadonlyRecord<{ id: Id } & Row>;
 
@@ -48,6 +47,10 @@ type SchemaForQuery<S extends Schema> = {
       readonly [Column in keyof S[Table]]: S[Table][Column];
     } & CommonColumns
   >;
+};
+
+export type NullableExceptOfId<T> = {
+  readonly [K in keyof T]: K extends "id" ? T[K] : T[K] | null;
 };
 
 export interface CommonColumns {
