@@ -10,7 +10,7 @@ import { DbWorker, DbWorkerLive } from "./DbWorker.js";
 import { SqliteLive } from "./SqliteLive.web.js";
 import { SyncWorkerLive } from "./SyncWorkerLive.web.js";
 
-export const DbWorkerWeb = DbWorker.pipe(
+export const makeDbWorker = DbWorker.pipe(
   Effect.provideLayer(
     Layer.mergeAll(
       SqliteLive,
