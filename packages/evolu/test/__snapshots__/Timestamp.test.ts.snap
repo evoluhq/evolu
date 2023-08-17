@@ -115,7 +115,3 @@ exports[`sendTimestamp > should send monotonically with a stuttering clock 1`] =
   "node": "0000000000000000",
 }
 `;
-
-exports[`timestampToHash 1`] = `4179357717`;
-
-exports[`timestampToString 1`] = `"1970-01-01T00:00:00.000Z-0000-0000000000000000"`;

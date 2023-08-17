@@ -1,79 +1,83 @@
-import * as Context from "@effect/data/Context";
-import * as Either from "@effect/data/Either";
-import { pipe } from "@effect/data/Function";
 import * as Effect from "@effect/io/Effect";
+import { Context, Either, pipe } from "effect";
 import { describe, expect, test } from "vitest";
-import { createConfig } from "../src/Config.js";
+import { Config, ConfigLive } from "../src/Config.js";
+import { NanoId, NodeId } from "../src/Crypto.js";
 import {
-  InitialTimestamp,
-  InitialTimestampLive,
-  createSyncTimestamp,
+  Millis,
+  Time,
+  Timestamp,
+  TimestampCounterOverflowError,
+  TimestampDriftError,
+  makeInitialTimestamp,
+  makeSyncTimestamp,
   receiveTimestamp,
   sendTimestamp,
   timestampToHash,
   timestampToString,
   unsafeTimestampFromString,
 } from "../src/Timestamp.js";
-import {
-  Config,
-  Millis,
-  Time,
-  Timestamp,
-  TimestampCounterOverflowError,
-  TimestampDriftError,
-} from "../src/Types.js";
-import { createNode1Timestamp, createNode2Timestamp } from "./testUtils.js";
+import { makeNode1Timestamp, makeNode2Timestamp } from "./testUtils.js";
 
 test("InitialTimestampLive", () => {
-  const timestamp = InitialTimestamp.pipe(
-    Effect.flatMap((initialTimestamp) => initialTimestamp.create()),
-    Effect.provideLayer(InitialTimestampLive),
+  const timestamp = makeInitialTimestamp.pipe(
+    Effect.provideService(
+      NanoId,
+      NanoId.of({
+        nanoid: Effect.succeed("nanoid"),
+        nanoidAsNodeId: Effect.succeed("nanoidAsNodeId" as NodeId),
+      })
+    ),
     Effect.runSync
   );
   expect(timestamp.counter).toBe(0);
   expect(timestamp.millis).toBe(0);
-  expect(timestamp.node.length).toBe(16);
+  expect(timestamp.node).toBe("nanoidAsNodeId");
 });
 
 test("createSyncTimestamp", () => {
-  const ts = createSyncTimestamp();
+  const ts = makeSyncTimestamp();
   expect(ts.counter).toBe(0);
   expect(ts.millis).toBe(0);
   expect(ts.node).toBe("0000000000000000");
 });
 
 test("timestampToString", () => {
-  expect(pipe(createSyncTimestamp(), timestampToString)).toMatchSnapshot();
+  expect(pipe(makeSyncTimestamp(), timestampToString)).toMatchInlineSnapshot(
+    '"1970-01-01T00:00:00.000Z-0000-0000000000000000"'
+  );
 });
 
 test("timestampFromString", () => {
-  const t = createSyncTimestamp();
+  const t = makeSyncTimestamp();
   expect(t).toEqual(pipe(t, timestampToString, unsafeTimestampFromString));
 });
 
 test("timestampToHash", () => {
-  expect(timestampToHash(createSyncTimestamp())).toMatchSnapshot();
+  expect(timestampToHash(makeSyncTimestamp())).toMatchInlineSnapshot(
+    "4179357717"
+  );
 });
 
-const config = createConfig();
+const config = Config.pipe(Effect.provideLayer(ConfigLive()), Effect.runSync);
 
 const context0 = pipe(
   Context.empty(),
   Context.add(Config, config),
-  Context.add(Time, { now: () => 0 as Millis })
+  Context.add(Time, { now: Effect.succeed(0 as Millis) })
 );
 
 const context1 = pipe(
   Context.empty(),
   Context.add(Config, config),
-  Context.add(Time, { now: () => 1 as Millis })
+  Context.add(Time, { now: Effect.succeed(1 as Millis) })
 );
 
 describe("sendTimestamp", () => {
   test("should send monotonically with a monotonic clock", () => {
     expect(
       pipe(
-        createSyncTimestamp(),
+        makeSyncTimestamp(),
         sendTimestamp,
         Effect.provideContext(context1),
         Effect.runSync
@@ -84,7 +88,7 @@ describe("sendTimestamp", () => {
   test("should send monotonically with a stuttering clock", () => {
     expect(
       pipe(
-        createSyncTimestamp(),
+        makeSyncTimestamp(),
         sendTimestamp,
         Effect.provideContext(context0),
         Effect.runSync
@@ -95,7 +99,7 @@ describe("sendTimestamp", () => {
   test("should send monotonically with a regressing clock", () => {
     expect(
       pipe(
-        createSyncTimestamp(1 as Millis),
+        makeSyncTimestamp(1 as Millis),
         sendTimestamp,
         Effect.provideContext(context0),
         Effect.runSync
@@ -107,7 +111,7 @@ describe("sendTimestamp", () => {
     let timestamp: Either.Either<
       TimestampDriftError | TimestampCounterOverflowError,
       Timestamp
-    > = Either.right(createSyncTimestamp());
+    > = Either.right(makeSyncTimestamp());
 
     for (let i = 0; i < 65536; i++) {
       timestamp = pipe(
@@ -126,7 +130,7 @@ describe("sendTimestamp", () => {
   test("should fail with clock drift", () => {
     expect(
       pipe(
-        createSyncTimestamp((config.maxDrift + 1) as Millis),
+        makeSyncTimestamp((config.maxDrift + 1) as Millis),
         sendTimestamp,
         Effect.catchAll((e) => Effect.succeed(Either.left(e))),
         Effect.provideContext(context0),
@@ -140,7 +144,10 @@ describe("receiveTimestamp", () => {
   test("wall clock is later than both the local and remote timestamps", () => {
     expect(
       pipe(
-        receiveTimestamp(createNode1Timestamp(), createNode2Timestamp(0, 0)),
+        receiveTimestamp({
+          local: makeNode1Timestamp(),
+          remote: makeNode2Timestamp(0, 0),
+        }),
         Effect.provideContext(context1),
         Effect.runSync
       )
@@ -151,10 +158,10 @@ describe("receiveTimestamp", () => {
     test("for the same timestamps millis, we take the bigger counter", () => {
       expect(
         pipe(
-          receiveTimestamp(
-            createNode1Timestamp(1, 0),
-            createNode2Timestamp(1, 1)
-          ),
+          receiveTimestamp({
+            local: makeNode1Timestamp(1, 0),
+            remote: makeNode2Timestamp(1, 1),
+          }),
           Effect.provideContext(context1),
           Effect.runSync
         )
@@ -162,10 +169,10 @@ describe("receiveTimestamp", () => {
 
       expect(
         pipe(
-          receiveTimestamp(
-            createNode1Timestamp(1, 1),
-            createNode2Timestamp(1, 0)
-          ),
+          receiveTimestamp({
+            local: makeNode1Timestamp(1, 1),
+            remote: makeNode2Timestamp(1, 0),
+          }),
           Effect.provideContext(context0),
           Effect.runSync
         )
@@ -175,7 +182,10 @@ describe("receiveTimestamp", () => {
     test("local millis is later than remote", () => {
       expect(
         pipe(
-          receiveTimestamp(createNode1Timestamp(2), createNode2Timestamp(1)),
+          receiveTimestamp({
+            local: makeNode1Timestamp(2),
+            remote: makeNode2Timestamp(1),
+          }),
           Effect.provideContext(context0),
           Effect.runSync
         )
@@ -185,7 +195,10 @@ describe("receiveTimestamp", () => {
     test("remote millis is later than local", () => {
       expect(
         pipe(
-          receiveTimestamp(createNode1Timestamp(1), createNode2Timestamp(2)),
+          receiveTimestamp({
+            local: makeNode1Timestamp(1),
+            remote: makeNode2Timestamp(2),
+          }),
           Effect.provideContext(context0),
           Effect.runSync
         )
@@ -196,7 +209,10 @@ describe("receiveTimestamp", () => {
   test("TimestampDuplicateNodeError", () => {
     expect(
       pipe(
-        receiveTimestamp(createNode1Timestamp(), createNode1Timestamp()),
+        receiveTimestamp({
+          local: makeNode1Timestamp(),
+          remote: makeNode1Timestamp(),
+        }),
         Effect.catchAll((e) => Effect.succeed(Either.left(e))),
         Effect.provideContext(context1),
         Effect.runSync
@@ -207,10 +223,10 @@ describe("receiveTimestamp", () => {
   test("should fail with clock drift", () => {
     expect(
       pipe(
-        receiveTimestamp(
-          createSyncTimestamp((config.maxDrift + 1) as Millis),
-          createNode2Timestamp()
-        ),
+        receiveTimestamp({
+          local: makeSyncTimestamp((config.maxDrift + 1) as Millis),
+          remote: makeNode2Timestamp(),
+        }),
         Effect.catchAll((e) => Effect.succeed(Either.left(e))),
         Effect.provideContext(context0),
         Effect.runSync
@@ -219,10 +235,10 @@ describe("receiveTimestamp", () => {
 
     expect(
       pipe(
-        receiveTimestamp(
-          createNode2Timestamp(),
-          createSyncTimestamp((config.maxDrift + 1) as Millis)
-        ),
+        receiveTimestamp({
+          local: makeNode2Timestamp(),
+          remote: makeSyncTimestamp((config.maxDrift + 1) as Millis),
+        }),
         Effect.catchAll((e) => Effect.succeed(Either.left(e))),
         Effect.provideContext(context0),
         Effect.runSync

@@ -1,22 +1,22 @@
 import { expect, test } from "vitest";
-import { applyPatches, createPatches } from "../src/Diff.js";
-import { Rows } from "../src/Types.js";
+import { applyPatches, makePatches } from "../src/Diff.js";
+import { Row } from "../src/Sqlite.js";
 
-test("createPatches", () => {
+test("makePatches", () => {
   const item = { a: 1 };
   const array = [item];
 
-  expect(createPatches([], []).length).toBe(0);
+  expect(makePatches([], []).length).toBe(0);
   const p0 = [{ op: "replaceAll", value: [] }];
-  expect(createPatches(array, [])).toEqual(p0);
-  expect(createPatches(undefined, [])).toEqual(p0);
+  expect(makePatches(array, [])).toEqual(p0);
+  expect(makePatches(undefined, [])).toEqual(p0);
 
-  const p1 = createPatches([], array);
+  const p1 = makePatches([], array);
   expect(p1).toEqual([{ op: "replaceAll", value: array }]);
   if (p1[0].op === "replaceAll") expect(p1[0].value).toBe(array);
 
-  expect(createPatches(array, array).length).toBe(0);
-  expect(createPatches(array, [{ a: 2 }])).toMatchInlineSnapshot(`
+  expect(makePatches(array, array).length).toBe(0);
+  expect(makePatches(array, [{ a: 2 }])).toMatchInlineSnapshot(`
     [
       {
         "op": "replaceAll",
@@ -28,7 +28,7 @@ test("createPatches", () => {
       },
     ]
   `);
-  expect(createPatches([item, { b: 2 }], [item, { b: 3 }]))
+  expect(makePatches([item, { b: 2 }], [item, { b: 3 }]))
     .toMatchInlineSnapshot(`
     [
       {
@@ -40,7 +40,7 @@ test("createPatches", () => {
       },
     ]
   `);
-  expect(createPatches([{ a: 1 }, item, { c: 4 }], [{ a: 0 }, item, { c: 1 }]))
+  expect(makePatches([{ a: 1 }, item, { c: 4 }], [{ a: 0 }, item, { c: 1 }]))
     .toMatchInlineSnapshot(`
     [
       {
@@ -62,10 +62,10 @@ test("createPatches", () => {
 });
 
 test("applyPatches", () => {
-  const current: Rows = [];
+  const current: ReadonlyArray<Row> = [];
   expect(applyPatches([])(current)).toBe(current);
 
-  const value: Rows = [];
+  const value: ReadonlyArray<Row> = [];
   expect(applyPatches([{ op: "replaceAll", value }])(current)).toBe(value);
 
   const replaceUntouched = { b: 2 };
