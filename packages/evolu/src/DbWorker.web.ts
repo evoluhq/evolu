@@ -10,6 +10,7 @@ import { DbWorker, DbWorkerLive } from "./DbWorker.js";
 import { SqliteLive } from "./SqliteLive.web.js";
 import { SyncWorkerLive } from "./SyncWorkerLive.web.js";
 
+// It is a separate file because it is dynamically imported.
 export const makeDbWorker = DbWorker.pipe(
   Effect.provideLayer(
     Layer.mergeAll(
