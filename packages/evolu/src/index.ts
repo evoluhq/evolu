@@ -2,7 +2,6 @@ import "@effect/schema/Schema";
 import "client-only";
 import { Effect, Function, Layer } from "effect";
 import { DbWorker, DbWorkerOutput } from "./DbWorker.js";
-import { throwNotImplemented } from "./Utils.js";
 import { makeEvoluCreate } from "./index.common.js";
 export * from "./exports.js";
 
@@ -44,7 +43,7 @@ const OpfsDbWorker = Effect.sync(() => {
     postMessage: (input) => {
       worker.postMessage(input);
     },
-    onMessage: throwNotImplemented,
+    onMessage: Function.constVoid,
   };
 
   return dbWorker;
@@ -66,7 +65,7 @@ const LocalStorageDbWorker = Effect.sync(() => {
         postMessage(input);
       });
     },
-    onMessage: throwNotImplemented,
+    onMessage: Function.constVoid,
   });
 
   return dbWorker;

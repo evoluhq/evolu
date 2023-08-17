@@ -3,6 +3,7 @@ import {
   Context,
   Effect,
   Either,
+  Function,
   Layer,
   Match,
   Option,
@@ -65,7 +66,6 @@ import {
   timestampToString,
   unsafeTimestampFromString,
 } from "./Timestamp.js";
-import { throwNotImplemented } from "./Utils.js";
 
 export interface DbWorker {
   readonly postMessage: (input: DbWorkerInput) => void;
@@ -581,7 +581,9 @@ export const DbWorkerLive = Layer.effect(
 
         return Match.value(input).pipe(
           Match.tagsExhaustive({
-            init: throwNotImplemented,
+            init: () => {
+              throw new Error("init must be called once");
+            },
             query,
             mutate,
             sync,
@@ -609,7 +611,9 @@ export const DbWorkerLive = Layer.effect(
     };
 
     let write: Write = (input) => {
-      if (input._tag !== "init") return throwNotImplemented();
+      if (input._tag !== "init") {
+        throw new Error("init must be called first");
+      }
       return init(input).pipe(
         Effect.map((owner) => {
           dbWorker.onMessage({ _tag: "onOwner", owner });
@@ -631,7 +635,7 @@ export const DbWorkerLive = Layer.effect(
 
     const dbWorker = DbWorker.of({
       postMessage,
-      onMessage: throwNotImplemented,
+      onMessage: Function.constVoid,
     });
 
     return dbWorker;

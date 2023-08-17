@@ -127,14 +127,14 @@ export const EvoluLive = <From, To extends Schema>(
         tables: schemaToTables(schema),
       });
 
-      // appState.onFocus(() => {
-      //   // `queries` to refresh subscribed queries when a tab is changed.
-      //   dbWorker.postMessage({ _tag: "sync", queries: getSubscribedQueries() });
-      // });
+      appState.onFocus(() => {
+        // `queries` to refresh subscribed queries when a tab is changed.
+        dbWorker.postMessage({ _tag: "sync", queries: getSubscribedQueries() });
+      });
 
-      // appState.onReconnect(() => {
-      //   dbWorker.postMessage({ _tag: "sync", queries: [] });
-      // });
+      appState.onReconnect(() => {
+        dbWorker.postMessage({ _tag: "sync", queries: [] });
+      });
 
       const mutate = yield* _(Mutate);
 

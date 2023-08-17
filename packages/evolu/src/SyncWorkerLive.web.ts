@@ -1,6 +1,5 @@
-import { Effect, Layer } from "effect";
+import { Effect, Function, Layer } from "effect";
 import { SyncWorker, SyncWorkerOutput } from "./SyncWorker.js";
-import { throwNotImplemented } from "./Utils.js";
 
 export const SyncWorkerLive = Layer.effect(
   SyncWorker,
@@ -18,7 +17,7 @@ export const SyncWorkerLive = Layer.effect(
       postMessage: (input) => {
         worker.postMessage(input);
       },
-      onMessage: throwNotImplemented,
+      onMessage: Function.constVoid,
     };
 
     return syncWorker;

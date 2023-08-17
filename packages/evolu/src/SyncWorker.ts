@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Match } from "effect";
+import { Context, Effect, Function, Layer, Match } from "effect";
 import { AesGcm } from "./Crypto.js";
 import { AesGcmLive } from "./CryptoLive.web.js";
 import { Owner } from "./Db.js";
@@ -21,7 +21,6 @@ import {
 } from "./Protobuf.js";
 import { Value } from "./Sqlite.js";
 import { Millis, Timestamp, TimestampString } from "./Timestamp.js";
-import { throwNotImplemented } from "./Utils.js";
 
 export interface SyncWorker {
   readonly postMessage: (input: SyncWorkerInput) => void;
@@ -268,7 +267,7 @@ export const SyncWorkerLive = Layer.effect(
 
     const syncWorker: SyncWorker = {
       postMessage,
-      onMessage: throwNotImplemented,
+      onMessage: Function.constVoid,
     };
 
     return syncWorker;
