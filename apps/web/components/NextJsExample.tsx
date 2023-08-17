@@ -22,7 +22,7 @@ const NonEmptyString50 = pipe(
   Schema.string,
   Schema.minLength(1),
   Schema.maxLength(50),
-  Schema.brand("NonEmptyString50")
+  Schema.brand("NonEmptyString50"),
 );
 type NonEmptyString50 = Schema.To<typeof NonEmptyString50>;
 
@@ -44,6 +44,7 @@ const Database = Schema.struct({
   todo: TodoTable,
   todoCategory: TodoCategoryTable,
 });
+type Database = Schema.To<typeof Database>;
 
 const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
   Evolu.create(Database, {
@@ -56,7 +57,7 @@ const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
 const prompt = <From extends string, To>(
   schema: Schema.Schema<From, To>,
   message: string,
-  onSuccess: (value: To) => void
+  onSuccess: (value: To) => void,
 ): void => {
   const value = window.prompt(message);
   if (value == null) return; // on cancel
@@ -82,13 +83,12 @@ const Button: FC<{
   );
 };
 
-type TodoCategoriesList = ReadonlyArray<{
-  id: TodoCategoryId;
-  name: NonEmptyString50;
-}>;
-
-const useTodoCategoriesList = (): TodoCategoriesList =>
-  useQuery(
+const TodoCategorySelect: FC<{
+  selected: TodoCategoryId | null;
+  onSelect: (_value: TodoCategoryId | null) => void;
+}> = ({ selected, onSelect }) => {
+  const nothingSelected = "";
+  const { rows } = useQuery(
     (db) =>
       db
         .selectFrom("todoCategory")
@@ -96,17 +96,11 @@ const useTodoCategoriesList = (): TodoCategoriesList =>
         .where("isDeleted", "is not", Evolu.cast(true))
         .orderBy("createdAt"),
     // Filter out rows with nullable names.
-    ({ name, ...rest }) => name && { name, ...rest }
-  ).rows;
+    ({ name, ...rest }) => name && { name, ...rest },
+  );
 
-const TodoCategorySelect: FC<{
-  selected: TodoCategoryId | null;
-  onSelect: (value: TodoCategoryId | null) => void;
-  todoCategoriesList: TodoCategoriesList;
-}> = ({ selected, onSelect, todoCategoriesList }) => {
-  const nothingSelected = "";
   const value =
-    selected && todoCategoriesList.find((row) => row.id === selected)
+    selected && rows.find((row) => row.id === selected)
       ? selected
       : nothingSelected;
 
@@ -120,7 +114,7 @@ const TodoCategorySelect: FC<{
       }}
     >
       <option value={nothingSelected}>-- no category --</option>
-      {todoCategoriesList.map(({ id, name }) => (
+      {rows.map(({ id, name }) => (
         <option key={id} value={id}>
           {name}
         </option>
@@ -131,15 +125,11 @@ const TodoCategorySelect: FC<{
 
 const TodoItem = memo<{
   row: Pick<TodoTable, "id" | "title" | "isCompleted" | "categoryId">;
-  todoCategoriesList: TodoCategoriesList;
-}>(function TodoItem({
-  row: { id, title, isCompleted, categoryId },
-  todoCategoriesList,
-}) {
+}>(function TodoItem({ row: { id, title, isCompleted, categoryId } }) {
   const { update } = useMutation();
 
   return (
-    <li key={id}>
+    <li>
       <span
         className="text-sm font-bold"
         style={{ textDecoration: isCompleted ? "line-through" : "none" }}
@@ -167,7 +157,6 @@ const TodoItem = memo<{
         }}
       />
       <TodoCategorySelect
-        todoCategoriesList={todoCategoriesList}
         selected={categoryId}
         onSelect={(categoryId): void => {
           update("todo", { id, categoryId });
@@ -188,20 +177,15 @@ const Todos: FC = () => {
         .orderBy("createdAt"),
     // (row) => row
     ({ title, isCompleted, ...rest }) =>
-      title && isCompleted != null && { title, isCompleted, ...rest }
+      title && isCompleted != null && { title, isCompleted, ...rest },
   );
-  const todoCategoriesList = useTodoCategoriesList();
 
   return (
     <>
       <h2 className="mt-6 text-xl font-semibold">Todos</h2>
       <ul className="py-2">
         {rows.map((row) => (
-          <TodoItem
-            key={row.id}
-            row={row}
-            todoCategoriesList={todoCategoriesList}
-          />
+          <TodoItem key={row.id} row={row} />
         ))}
       </ul>
       <Button
@@ -212,7 +196,7 @@ const Todos: FC = () => {
             "What needs to be done?",
             (title) => {
               create("todo", { title, isCompleted: false });
-            }
+            },
           );
         }}
       />
@@ -230,7 +214,7 @@ const TodoCategories: FC = () => {
         .where("isDeleted", "is not", Evolu.cast(true))
         .orderBy("createdAt"),
     // (row) => row
-    ({ name, ...rest }) => name && { name, ...rest }
+    ({ name, ...rest }) => name && { name, ...rest },
   );
 
   return (
@@ -288,6 +272,7 @@ const OwnerActions: FC = () => {
         title="Restore Owner"
         onClick={(): void => {
           prompt(Evolu.NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
+            // eslint-disable-next-line @typescript-eslint/no-floating-promises
             ownerActions.restore(mnemonic).then((either) => {
               if (either._tag === "Left")
                 alert(JSON.stringify(either.left, null, 2));
@@ -318,6 +303,7 @@ const OwnerActions: FC = () => {
 
 const NotificationBar: FC = () => {
   const evoluError = useEvoluError();
+
   const [shown, setShown] = useState(false);
 
   useEffect(() => {
@@ -338,25 +324,27 @@ export const NextJsExample: FC = () => {
   const [todosShown, setTodosShown] = useState(true);
 
   return (
-    <Suspense>
+    <>
       <NotificationBar />
-      <nav className="my-4">
-        <Button
-          title="Simulate suspense-enabled router transition"
-          onClick={(): void => {
-            // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
-            startTransition(() => {
-              setTodosShown(!todosShown);
-            });
-          }}
-        />
-        <p>
-          Using suspense-enabled router transition, you will not see any loader
-          or jumping content.
-        </p>
-      </nav>
-      {todosShown ? <Todos /> : <TodoCategories />}
-      <OwnerActions />
-    </Suspense>
+      <Suspense>
+        <nav className="my-4">
+          <Button
+            title="Simulate suspense-enabled router transition"
+            onClick={(): void => {
+              // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
+              startTransition(() => {
+                setTodosShown(!todosShown);
+              });
+            }}
+          />
+          <p>
+            Using suspense-enabled router transition, you will not see any
+            loader or jumping content.
+          </p>
+        </nav>
+        {todosShown ? <Todos /> : <TodoCategories />}
+        <OwnerActions />
+      </Suspense>
+    </>
   );
 };

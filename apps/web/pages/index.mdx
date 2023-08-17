@@ -37,7 +37,7 @@ const NonEmptyString50 = pipe(
 );
 type NonEmptyString50 = Schema.To<typeof NonEmptyString50>;
 
-const TodoTable = Schena.struct({
+const TodoTable = Schema.struct({
   id: TodoId,
   title: NonEmptyString50,
   description: Schema.nullable(Evolu.NonEmptyString1000),

@@ -10,28 +10,28 @@
     "clean": "rm -rf .turbo && rm -rf .next && rm -rf node_modules"
   },
   "dependencies": {
-    "@effect/data": "^0.12.10",
-    "@effect/schema": "~0.23.0",
-    "clsx": "^1.2.1",
+    "@effect/data": "^0.17.1",
+    "@effect/schema": "~0.33.1",
+    "clsx": "^2.0.0",
     "evolu": "workspace:*",
-    "next": "^13.4.8",
-    "nextra": "^2.8.0",
-    "nextra-theme-docs": "^2.8.0",
+    "next": "^13.4.16",
+    "nextra": "^2.11.0",
+    "nextra-theme-docs": "^2.11.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
     "@evolu/tsconfig": "workspace:*",
-    "@types/node": "^20.3.3",
-    "@types/react": "^18.2.14",
-    "@types/react-dom": "^18.2.6",
-    "autoprefixer": "^10.4.14",
-    "eslint": "^8.44.0",
+    "@types/node": "^20.5.0",
+    "@types/react": "^18.2.20",
+    "@types/react-dom": "^18.2.7",
+    "autoprefixer": "^10.4.15",
+    "eslint": "^8.47.0",
     "eslint-config-evolu": "workspace:*",
-    "postcss": "^8.4.24",
-    "prettier": "^2.8.8",
-    "prettier-plugin-tailwindcss": "^0.3.0",
-    "tailwindcss": "^3.3.2",
+    "postcss": "^8.4.28",
+    "prettier": "^3.0.2",
+    "prettier-plugin-tailwindcss": "^0.5.3",
+    "tailwindcss": "^3.3.3",
     "typescript": "^5.1.6"
   }
 }

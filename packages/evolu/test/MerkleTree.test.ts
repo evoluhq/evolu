@@ -2,18 +2,17 @@ import { pipe } from "@effect/data/Function";
 import fs from "fs";
 import { describe, expect, test } from "vitest";
 import {
-  createInitialMerkleTree,
   diffMerkleTrees,
+  initialMerkleTree,
   insertIntoMerkleTree,
 } from "../src/MerkleTree.js";
-import { createNode1Timestamp, createNode2Timestamp } from "./testUtils.js";
-import { Millis, Timestamp } from "../src/Types.js";
+import { Millis, Timestamp } from "../src/Timestamp.js";
+import { makeNode1Timestamp, makeNode2Timestamp } from "./testUtils.js";
 
 const now = 1684318195723;
-const node1TimestampStart = createNode1Timestamp();
-const node2Timestamp2022 = createNode2Timestamp(1656873738591);
+const node1TimestampStart = makeNode1Timestamp();
+const node2Timestamp2022 = makeNode2Timestamp(1656873738591);
 
-const initialMerkleTree = createInitialMerkleTree();
 const someMerkleTree = pipe(
   initialMerkleTree,
   insertIntoMerkleTree(node2Timestamp2022)
@@ -114,7 +113,7 @@ describe("diffMerkleTrees", () => {
         someMerkleTree,
         pipe(
           initialMerkleTree,
-          insertIntoMerkleTree(createNode2Timestamp(60000 - 1))
+          insertIntoMerkleTree(makeNode2Timestamp(60000 - 1))
         )
       )
     ).toMatchInlineSnapshot(`
@@ -127,10 +126,7 @@ describe("diffMerkleTrees", () => {
     expect(
       diffMerkleTrees(
         someMerkleTree,
-        pipe(
-          initialMerkleTree,
-          insertIntoMerkleTree(createNode2Timestamp(60000))
-        )
+        pipe(initialMerkleTree, insertIntoMerkleTree(makeNode2Timestamp(60000)))
       )
     ).toMatchInlineSnapshot(`
       {
@@ -143,12 +139,12 @@ describe("diffMerkleTrees", () => {
   test("find the most recent time when trees were the same", () => {
     const t1 = pipe(
       initialMerkleTree,
-      insertIntoMerkleTree(createNode1Timestamp(now)),
-      insertIntoMerkleTree(createNode1Timestamp(now + 10000))
+      insertIntoMerkleTree(makeNode1Timestamp(now)),
+      insertIntoMerkleTree(makeNode1Timestamp(now + 10000))
     );
     const t2 = pipe(
       initialMerkleTree,
-      insertIntoMerkleTree(createNode1Timestamp(now))
+      insertIntoMerkleTree(makeNode1Timestamp(now))
     );
     expect(diffMerkleTrees(t1, t2)).toMatchInlineSnapshot(`
       {
@@ -160,12 +156,12 @@ describe("diffMerkleTrees", () => {
     const hundredYears = 1000 * 60 * 60 * 24 * 365 * 100;
     const t3 = pipe(
       initialMerkleTree,
-      insertIntoMerkleTree(createNode1Timestamp(now + hundredYears)),
-      insertIntoMerkleTree(createNode1Timestamp(now + hundredYears + 10000))
+      insertIntoMerkleTree(makeNode1Timestamp(now + hundredYears)),
+      insertIntoMerkleTree(makeNode1Timestamp(now + hundredYears + 10000))
     );
     const t4 = pipe(
       initialMerkleTree,
-      insertIntoMerkleTree(createNode1Timestamp(now + hundredYears))
+      insertIntoMerkleTree(makeNode1Timestamp(now + hundredYears))
     );
     expect(diffMerkleTrees(t3, t4)).toMatchInlineSnapshot(`
       {
@@ -190,7 +186,7 @@ describe("diffMerkleTrees", () => {
     randomTimes.sort((a, b) => a - b);
 
     const timestamps = randomTimes.map((time) =>
-      (Math.random() >= 0.5 ? createNode1Timestamp : createNode2Timestamp)(
+      (Math.random() >= 0.5 ? makeNode1Timestamp : makeNode2Timestamp)(
         time as Millis
       )
     );

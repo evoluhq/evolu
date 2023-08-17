@@ -1,11 +1,14 @@
-import { createCreateDbWorker } from "./DbWorker.js";
-import { createSqlite } from "./Sqlite.web.js";
-import { DbWorkerInput } from "./Types.js";
+import { Effect } from "effect";
+import { DbWorker, DbWorkerInput } from "./DbWorker.js";
+import { DbWorkerWebLive } from "./DbWorkerWebLive.js";
 
-const dbWorker = createCreateDbWorker(createSqlite("opfs"))((message) => {
-  postMessage(message);
-});
+const dbWorker = DbWorker.pipe(
+  Effect.provideLayer(DbWorkerWebLive),
+  Effect.runSync
+);
 
-onmessage = ({ data: message }: MessageEvent<DbWorkerInput>): void => {
-  dbWorker.post(message);
+dbWorker.onMessage = (output): void => postMessage(output);
+
+onmessage = (e: MessageEvent<DbWorkerInput>): void => {
+  dbWorker.postMessage(e.data);
 };

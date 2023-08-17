@@ -26,7 +26,6 @@ const nextConfig = {
       },
     ];
   },
-  transpilePackages: ["evolu"],
 };
 
 module.exports = withNextra(nextConfig);

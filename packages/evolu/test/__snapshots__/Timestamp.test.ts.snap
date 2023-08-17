@@ -34,56 +34,41 @@ exports[`receiveTimestamp > should fail with clock drift 2`] = `
 
 exports[`receiveTimestamp > wall clock is later than both the local and remote timestamps 1`] = `
 {
-  "_tag": "Right",
-  "right": {
-    "counter": 0,
-    "millis": 1,
-    "node": "0000000000000001",
-  },
+  "counter": 0,
+  "millis": 1,
+  "node": "0000000000000001",
 }
 `;
 
 exports[`receiveTimestamp > wall clock is somehow behind > for the same timestamps millis, we take the bigger counter 1`] = `
 {
-  "_tag": "Right",
-  "right": {
-    "counter": 2,
-    "millis": 1,
-    "node": "0000000000000001",
-  },
+  "counter": 2,
+  "millis": 1,
+  "node": "0000000000000001",
 }
 `;
 
 exports[`receiveTimestamp > wall clock is somehow behind > for the same timestamps millis, we take the bigger counter 2`] = `
 {
-  "_tag": "Right",
-  "right": {
-    "counter": 2,
-    "millis": 1,
-    "node": "0000000000000001",
-  },
+  "counter": 2,
+  "millis": 1,
+  "node": "0000000000000001",
 }
 `;
 
 exports[`receiveTimestamp > wall clock is somehow behind > local millis is later than remote 1`] = `
 {
-  "_tag": "Right",
-  "right": {
-    "counter": 1,
-    "millis": 2,
-    "node": "0000000000000001",
-  },
+  "counter": 1,
+  "millis": 2,
+  "node": "0000000000000001",
 }
 `;
 
 exports[`receiveTimestamp > wall clock is somehow behind > remote millis is later than local 1`] = `
 {
-  "_tag": "Right",
-  "right": {
-    "counter": 1,
-    "millis": 2,
-    "node": "0000000000000001",
-  },
+  "counter": 1,
+  "millis": 2,
+  "node": "0000000000000001",
 }
 `;
 
@@ -109,37 +94,24 @@ exports[`sendTimestamp > should fail with counter overflow 1`] = `
 
 exports[`sendTimestamp > should send monotonically with a monotonic clock 1`] = `
 {
-  "_tag": "Right",
-  "right": {
-    "counter": 0,
-    "millis": 1,
-    "node": "0000000000000000",
-  },
+  "counter": 0,
+  "millis": 1,
+  "node": "0000000000000000",
 }
 `;
 
 exports[`sendTimestamp > should send monotonically with a regressing clock 1`] = `
 {
-  "_tag": "Right",
-  "right": {
-    "counter": 1,
-    "millis": 1,
-    "node": "0000000000000000",
-  },
+  "counter": 1,
+  "millis": 1,
+  "node": "0000000000000000",
 }
 `;
 
 exports[`sendTimestamp > should send monotonically with a stuttering clock 1`] = `
 {
-  "_tag": "Right",
-  "right": {
-    "counter": 1,
-    "millis": 0,
-    "node": "0000000000000000",
-  },
+  "counter": 1,
+  "millis": 0,
+  "node": "0000000000000000",
 }
 `;
-
-exports[`timestampToHash 1`] = `4179357717`;
-
-exports[`timestampToString 1`] = `"1970-01-01T00:00:00.000Z-0000-0000000000000000"`;

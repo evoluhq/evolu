@@ -1,208 +1,641 @@
-import * as Context from "@effect/data/Context";
-import * as Either from "@effect/data/Either";
-import { apply, constVoid, flow, pipe } from "@effect/data/Function";
-import * as ReadonlyArray from "@effect/data/ReadonlyArray";
-import * as Cause from "@effect/io/Cause";
-import * as Effect from "@effect/io/Effect";
-import * as Ref from "@effect/io/Ref";
-import { readClock } from "./Clock.js";
-import { transaction } from "./Db.js";
-import { receiveMessages, sendMessages } from "./Messages.js";
-import { lazyInitOwner, resetOwner } from "./Owner.js";
-import { query } from "./Query.js";
-import { updateSchema } from "./Schema.js";
 import {
-  Config,
-  CreateDbWorker,
-  Db,
-  DbWorker,
-  DbWorkerInput,
-  DbWorkerOnMessage,
-  DbWorkerRowsCache,
-  EvoluError,
-  Millis,
+  Cause,
+  Context,
+  Effect,
+  Either,
+  Function,
+  Layer,
+  Match,
+  Option,
+  ReadonlyArray,
+  ReadonlyRecord,
+  Ref,
+  pipe,
+} from "effect";
+import { Config, ConfigLive } from "./Config.js";
+import { Bip39, Mnemonic, NanoId, Slip21 } from "./Crypto.js";
+import {
   Owner,
-  Query,
-  SyncWorkerOutput,
-  SyncWorkerPost,
+  Table,
+  defectToNoSuchTableOrColumnError,
+  ensureSchema,
+  lazyInit,
+  transaction,
+} from "./Db.js";
+import { QueryPatches, makePatches } from "./Diff.js";
+import { EvoluError, makeUnexpectedError } from "./Errors.js";
+import {
+  MerkleTree,
+  MerkleTreeString,
+  diffMerkleTrees,
+  insertIntoMerkleTree,
+  merkleTreeToString,
+  unsafeMerkleTreeFromString,
+} from "./MerkleTree.js";
+import { Message, NewMessage } from "./Message.js";
+import { CastableForMutate, Id, SqliteDate, cast } from "./Model.js";
+import { OnCompleteId } from "./OnCompletes.js";
+import { RowsCacheRef, RowsCacheRefLive } from "./RowsCache.js";
+import {
+  insertValueIntoTableRowColumn,
+  selectLastTimestampForTableRowColumn,
+  selectMessagesToSync,
+  selectOwner,
+  selectOwnerTimestampAndMerkleTree,
+  tryInsertIntoMessages,
+  updateOwnerTimestampAndMerkleTree,
+} from "./Sql.js";
+import { Query, Sqlite, Value, queryObjectFromQuery } from "./Sqlite.js";
+import {
+  SyncState,
+  SyncWorker,
+  SyncWorkerOutputSyncResponse,
+  SyncWorkerPostMessage,
+} from "./SyncWorker.js";
+import {
   Time,
+  TimeLive,
+  Timestamp,
   TimestampCounterOverflowError,
   TimestampDriftError,
-  TimestampDuplicateNodeError,
-} from "./Types.js";
-import { unknownError } from "./UnknownError.js";
+  TimestampError,
+  TimestampString,
+  makeSyncTimestamp,
+  receiveTimestamp,
+  sendTimestamp,
+  timestampToString,
+  unsafeTimestampFromString,
+} from "./Timestamp.js";
 
-const sync = (
-  queries: ReadonlyArray.NonEmptyReadonlyArray<Query> | null
-): Effect.Effect<
-  Db | Owner | SyncWorkerPost | DbWorkerRowsCache | DbWorkerOnMessage | Config,
-  never,
+export interface DbWorker {
+  readonly postMessage: (input: DbWorkerInput) => void;
+  onMessage: (output: DbWorkerOutput) => void;
+}
+
+export const DbWorker = Context.Tag<DbWorker>("evolu/DbWorker");
+
+export type DbWorkerInput =
+  | DbWorkerInputInit
+  | DbWorkerInputQuery
+  | DbWorkerInputMutate
+  | DbWorkerInputSync
+  | DbWorkerInputReset
+  | SyncWorkerOutputSyncResponse;
+
+interface DbWorkerInputInit {
+  readonly _tag: "init";
+  readonly config: Config;
+  readonly tables: ReadonlyArray<Table>;
+}
+
+interface DbWorkerInputQuery {
+  readonly _tag: "query";
+  readonly queries: ReadonlyArray.NonEmptyReadonlyArray<Query>;
+}
+
+interface DbWorkerInputMutate {
+  readonly _tag: "mutate";
+  readonly items: ReadonlyArray.NonEmptyReadonlyArray<MutateItem>;
+  readonly queries: ReadonlyArray<Query>;
+}
+
+interface DbWorkerInputSync {
+  readonly _tag: "sync";
+  readonly queries: ReadonlyArray<Query>;
+}
+
+interface DbWorkerInputReset {
+  readonly _tag: "reset";
+  readonly mnemonic?: Mnemonic;
+}
+
+type DbWorkerOnMessage = DbWorker["onMessage"];
+
+const DbWorkerOnMessage = Context.Tag<DbWorkerOnMessage>(
+  "evolu/DbWorkerOnMessage"
+);
+
+export type DbWorkerOutput =
+  | DbWorkerOutputOnError
+  | DbWorkerOutputOnOwner
+  | DbWorkerOutputOnQuery
+  | DbWorkerOutputOnReceive
+  | DbWorkerOutputOnResetOrRestore
+  | DbWorkerOutputOnSyncState;
+
+interface DbWorkerOutputOnError {
+  readonly _tag: "onError";
+  readonly error: EvoluError;
+}
+
+interface DbWorkerOutputOnOwner {
+  readonly _tag: "onOwner";
+  readonly owner: Owner;
+}
+
+export interface DbWorkerOutputOnQuery {
+  readonly _tag: "onQuery";
+  readonly queriesPatches: ReadonlyArray<QueryPatches>;
+  readonly onCompleteIds: ReadonlyArray<OnCompleteId>;
+}
+
+interface DbWorkerOutputOnReceive {
+  readonly _tag: "onReceive";
+}
+
+interface DbWorkerOutputOnResetOrRestore {
+  readonly _tag: "onResetOrRestore";
+}
+
+interface DbWorkerOutputOnSyncState {
+  readonly _tag: "onSyncState";
+  readonly state: SyncState;
+}
+
+export interface MutateItem {
+  readonly table: string;
+  readonly id: Id;
+  readonly values: ReadonlyRecord.ReadonlyRecord<CastableForMutate<Value>>;
+  readonly isInsert: boolean;
+  readonly now: SqliteDate;
+  readonly onCompleteId: OnCompleteId | null;
+}
+
+const init = (
+  input: DbWorkerInputInit
+): Effect.Effect<Sqlite | Bip39 | Slip21 | NanoId, never, Owner> =>
+  Effect.gen(function* (_) {
+    const sqlite = yield* _(Sqlite);
+
+    return yield* _(
+      sqlite.exec(selectOwner),
+      Effect.map(([owner]) => owner as unknown as Owner),
+      defectToNoSuchTableOrColumnError,
+      Effect.catchTag("NoSuchTableOrColumnError", () => lazyInit()),
+      Effect.tap(() => ensureSchema(input.tables))
+    );
+  });
+
+const query = ({
+  queries,
+  onCompleteIds = ReadonlyArray.empty(),
+}: {
+  readonly queries: ReadonlyArray<Query>;
+  readonly onCompleteIds?: ReadonlyArray<OnCompleteId>;
+}): Effect.Effect<Sqlite | RowsCacheRef | DbWorkerOnMessage, never, void> =>
+  Effect.gen(function* (_) {
+    const sqlite = yield* _(Sqlite);
+    const queriesRows = yield* _(
+      Effect.forEach(queries, (query) =>
+        sqlite
+          .exec(queryObjectFromQuery(query))
+          .pipe(Effect.map((rows) => [query, rows] as const))
+      )
+    );
+    const rowsCache = yield* _(RowsCacheRef);
+    const previous = yield* _(Ref.get(rowsCache));
+    yield* _(Ref.set(rowsCache, new Map([...previous, ...queriesRows])));
+    const queriesPatches = queriesRows.map(
+      ([query, rows]): QueryPatches => ({
+        query,
+        patches: makePatches(previous.get(query), rows),
+      })
+    );
+    const dbWorkerOnMessage = yield* _(DbWorkerOnMessage);
+    dbWorkerOnMessage({ _tag: "onQuery", queriesPatches, onCompleteIds });
+  });
+
+interface TimestampAndMerkleTree {
+  readonly timestamp: Timestamp;
+  readonly merkleTree: MerkleTree;
+}
+
+const readTimestampAndMerkleTree = Sqlite.pipe(
+  Effect.flatMap((sqlite) => sqlite.exec(selectOwnerTimestampAndMerkleTree)),
+  Effect.map(
+    ([{ timestamp, merkleTree }]): TimestampAndMerkleTree => ({
+      timestamp: unsafeTimestampFromString(timestamp as TimestampString),
+      merkleTree: unsafeMerkleTreeFromString(merkleTree as MerkleTreeString),
+    })
+  )
+);
+
+const mutateItemsToNewMessages = (
+  items: ReadonlyArray.NonEmptyReadonlyArray<MutateItem>,
+  owner: Owner
+): ReadonlyArray.NonEmptyReadonlyArray<NewMessage> =>
+  pipe(
+    items,
+    ReadonlyArray.mapNonEmpty(({ id, isInsert, now, table, values }) =>
+      pipe(
+        Object.entries(values),
+        ReadonlyArray.filterMap(([key, value]) =>
+          // The value can be undefined if exactOptionalPropertyTypes isn't true.
+          // Don't insert nulls because null is the default value.
+          value === undefined || (isInsert && value == null)
+            ? Option.none()
+            : Option.some([key, value] as const)
+        ),
+        ReadonlyArray.map(
+          ([key, value]) =>
+            [
+              key,
+              typeof value === "boolean"
+                ? cast(value)
+                : value instanceof Date
+                ? cast(value)
+                : value,
+            ] as const
+        ),
+        ReadonlyArray.appendAllNonEmpty(
+          isInsert
+            ? ReadonlyArray.make(["createdAt", now], ["createdBy", owner.id])
+            : ReadonlyArray.make(["updatedAt", now])
+        ),
+        ReadonlyArray.mapNonEmpty(
+          ([key, value]): NewMessage => ({
+            table,
+            row: id,
+            column: key,
+            value,
+          })
+        )
+      )
+    ),
+    ReadonlyArray.flattenNonEmpty
+  );
+
+const applyMessages = ({
+  merkleTree,
+  messages,
+}: {
+  merkleTree: MerkleTree;
+  messages: ReadonlyArray.NonEmptyReadonlyArray<Message>;
+}): Effect.Effect<Sqlite, never, MerkleTree> =>
+  Effect.gen(function* (_) {
+    const sqlite = yield* _(Sqlite);
+
+    for (const message of messages) {
+      const timestamp: TimestampString | null = yield* _(
+        sqlite.exec({
+          sql: selectLastTimestampForTableRowColumn,
+          parameters: [message.table, message.row, message.column],
+        }),
+        Effect.flatMap(ReadonlyArray.head),
+        Effect.map((row) => row.timestamp as TimestampString),
+        Effect.catchTag("NoSuchElementException", () => Effect.succeed(null))
+      );
+
+      if (timestamp == null || timestamp < message.timestamp)
+        yield* _(
+          sqlite.exec({
+            sql: insertValueIntoTableRowColumn(message.table, message.column),
+            parameters: [message.row, message.value, message.value],
+          })
+          // TODO: Update DB schema on error.
+          // .pipe(
+          //   defectToNoSuchTableOrColumnError,
+          //   Effect.catchTag("NoSuchTableOrColumnError", error => {
+          //     // Add table column or alter table.
+          //   })
+          // )
+        );
+
+      if (timestamp == null || timestamp !== message.timestamp) {
+        yield* _(
+          sqlite.exec({
+            sql: tryInsertIntoMessages,
+            parameters: [
+              message.timestamp,
+              message.table,
+              message.row,
+              message.column,
+              message.value,
+            ],
+          })
+        );
+
+        const changes = yield* _(sqlite.changes);
+
+        if (changes > 0)
+          merkleTree = insertIntoMerkleTree(
+            unsafeTimestampFromString(message.timestamp)
+          )(merkleTree);
+      }
+    }
+
+    return merkleTree;
+  });
+
+const writeTimestampAndMerkleTree = ({
+  timestamp,
+  merkleTree,
+}: TimestampAndMerkleTree): Effect.Effect<Sqlite, never, void> =>
+  Effect.flatMap(Sqlite, (sqlite) =>
+    sqlite.exec({
+      sql: updateOwnerTimestampAndMerkleTree,
+      parameters: [
+        timestampToString(timestamp),
+        merkleTreeToString(merkleTree),
+      ],
+    })
+  );
+
+const mutate = ({
+  items,
+  queries,
+}: DbWorkerInputMutate): Effect.Effect<
+  | Sqlite
+  | Owner
+  | Time
+  | Config
+  | RowsCacheRef
+  | DbWorkerOnMessage
+  | SyncWorkerPostMessage,
+  TimestampDriftError | TimestampCounterOverflowError,
   void
 > =>
-  Effect.gen(function* ($) {
-    if (queries != null) yield* $(query({ queries }));
-    const [clock, syncWorkerPost, config, owner] = yield* $(
-      Effect.all(readClock, SyncWorkerPost, Config, Owner)
+  Effect.gen(function* (_) {
+    const owner = yield* _(Owner);
+    let { timestamp, merkleTree } = yield* _(readTimestampAndMerkleTree);
+
+    const messages = yield* _(
+      mutateItemsToNewMessages(items, owner),
+      Effect.forEach((newMessage) =>
+        Effect.map(sendTimestamp(timestamp), (nextTimestamp): Message => {
+          timestamp = nextTimestamp;
+          return { ...newMessage, timestamp: timestampToString(timestamp) };
+        })
+      )
     );
-    syncWorkerPost({
+
+    if (ReadonlyArray.isNonEmptyReadonlyArray(messages))
+      merkleTree = yield* _(applyMessages({ merkleTree, messages }));
+
+    yield* _(writeTimestampAndMerkleTree({ timestamp, merkleTree }));
+
+    const onCompleteIds = ReadonlyArray.filterMap(items, (item) =>
+      Option.fromNullable(item.onCompleteId)
+    );
+
+    if (queries.length > 0 || onCompleteIds.length > 0)
+      yield* _(query({ queries, onCompleteIds }));
+
+    const [config, syncWorkerPostMessage] = yield* _(
+      Effect.all([Config, SyncWorkerPostMessage])
+    );
+
+    syncWorkerPostMessage({
       _tag: "sync",
       syncUrl: config.syncUrl,
-      clock,
+      messages,
+      timestamp,
+      merkleTree,
       owner,
-      messages: ReadonlyArray.empty(),
-      syncCount: 0,
+      syncLoopCount: 0,
     });
   });
 
-export const createCreateDbWorker =
-  (createDb: Effect.Effect<never, never, Db>): CreateDbWorker =>
-  (_onMessage) => {
-    let skipAllBecauseBrowserIsGoingToBeReloaded = false;
+const handleSyncResponse = (
+  response: SyncWorkerOutputSyncResponse
+): Effect.Effect<
+  Sqlite | Time | Config | DbWorkerOnMessage | SyncWorkerPostMessage | Owner,
+  TimestampError,
+  void
+> =>
+  Effect.gen(function* (_) {
+    let { timestamp, merkleTree } = yield* _(readTimestampAndMerkleTree);
 
-    const onMessage: DbWorkerOnMessage = (message) => {
-      if (message._tag === "onResetOrRestore")
-        skipAllBecauseBrowserIsGoingToBeReloaded = true;
-      _onMessage(message);
-    };
+    if (ReadonlyArray.isNonEmptyReadonlyArray(response.messages)) {
+      for (const message of response.messages) {
+        timestamp = yield* _(
+          unsafeTimestampFromString(message.timestamp),
+          (remote) => receiveTimestamp({ local: timestamp, remote })
+        );
+      }
+      merkleTree = yield* _(
+        applyMessages({ merkleTree, messages: response.messages })
+      );
+      yield* _(writeTimestampAndMerkleTree({ timestamp, merkleTree }));
+    }
 
-    const handleError = (error: EvoluError): void =>
-      onMessage({ _tag: "onError", error });
+    const dbWorkerOnMessage = yield* _(DbWorkerOnMessage);
+    dbWorkerOnMessage({ _tag: "onReceive" });
 
-    const recoverFromAllCause: <A>(
-      a: A
-    ) => (self: Cause.Cause<EvoluError>) => Effect.Effect<never, never, A> = (
-      a
-    ) =>
-      flow(
-        Cause.failureOrCause,
-        Either.match(
-          handleError,
-          flow(Cause.squash, unknownError, handleError)
-        ),
-        () => Effect.succeed(a)
+    const diff = diffMerkleTrees(response.merkleTree, merkleTree);
+    const syncWorkerPostMessage = yield* _(SyncWorkerPostMessage);
+
+    if (Option.isNone(diff)) {
+      syncWorkerPostMessage({ _tag: "syncCompleted" });
+      dbWorkerOnMessage({
+        _tag: "onSyncState",
+        state: {
+          _tag: "SyncStateIsSynced",
+          time: yield* _(Time.pipe(Effect.flatMap((time) => time.now))),
+        },
+      });
+      return;
+    }
+
+    const sqlite = yield* _(Sqlite);
+    const messagesToSync = yield* _(
+      sqlite.exec({
+        sql: selectMessagesToSync,
+        parameters: [timestampToString(makeSyncTimestamp(diff.value))],
+      }),
+      Effect.map((a) => a as unknown as ReadonlyArray<Message>)
+    );
+
+    const [config, owner] = yield* _(Effect.all([Config, Owner]));
+    syncWorkerPostMessage({
+      _tag: "sync",
+      syncUrl: config.syncUrl,
+      messages: messagesToSync,
+      timestamp,
+      merkleTree,
+      owner,
+      syncLoopCount: response.syncLoopCount + 1,
+    });
+  });
+
+const sync = ({
+  queries,
+}: DbWorkerInputSync): Effect.Effect<
+  | Sqlite
+  | Config
+  | DbWorkerOnMessage
+  | SyncWorkerPostMessage
+  | Owner
+  | RowsCacheRef,
+  never,
+  void
+> =>
+  Effect.gen(function* (_) {
+    if (queries.length > 0) yield* _(query({ queries }));
+
+    const [syncWorkerPostMessage, config, owner, timestampAndMerkleTree] =
+      yield* _(
+        Effect.all([
+          SyncWorkerPostMessage,
+          Config,
+          Owner,
+          readTimestampAndMerkleTree,
+        ])
       );
 
-    const syncWorker = new Worker(new URL("Sync.worker.js", import.meta.url), {
-      type: "module",
+    syncWorkerPostMessage({
+      ...timestampAndMerkleTree,
+      _tag: "sync",
+      syncUrl: config.syncUrl,
+      owner,
+      messages: ReadonlyArray.empty(),
+      syncLoopCount: 0,
     });
-    const syncWorkerPost: SyncWorkerPost = (message) =>
-      syncWorker.postMessage(message);
+  });
 
-    return pipe(
-      Effect.gen(function* ($) {
-        const db = yield* $(createDb);
-        const owner = yield* $(
-          lazyInitOwner(),
-          transaction,
-          Effect.provideService(Db, db)
-        );
+const reset = (
+  input: DbWorkerInputReset
+): Effect.Effect<
+  Sqlite | Bip39 | Slip21 | NanoId | DbWorkerOnMessage,
+  never,
+  void
+> =>
+  Effect.gen(function* (_) {
+    const sqlite = yield* _(Sqlite);
 
-        onMessage({ _tag: "onOwner", owner });
-
-        const context = pipe(
-          Context.empty(),
-          Context.add(Db, db),
-          Context.add(DbWorkerOnMessage, onMessage),
-          Context.add(DbWorkerRowsCache, Ref.unsafeMake(new Map())),
-          Context.add(Owner, owner),
-          Context.add(SyncWorkerPost, syncWorkerPost),
-          Context.add(Time, { now: () => Date.now() as Millis })
-        );
-
-        let post: DbWorker["post"] | null = null;
-
-        return (message: DbWorkerInput) => {
-          if (post) {
-            post(message);
-            return;
-          }
-
-          if (message._tag !== "init")
-            throw new self.Error("init must be called first");
-
-          const contextWithConfig = pipe(
-            context,
-            Context.add(Config, message.config)
-          );
-
-          const write: (input: DbWorkerInput) => Promise<void> = flow(
-            (
-              input
-            ): Effect.Effect<
-              | Db
-              | Owner
-              | DbWorkerOnMessage
-              | DbWorkerRowsCache
-              | SyncWorkerPost
-              | Time
-              | Config,
-              | TimestampDuplicateNodeError
-              | TimestampDriftError
-              | TimestampCounterOverflowError,
-              void
-            > => {
-              if (skipAllBecauseBrowserIsGoingToBeReloaded)
-                return Effect.succeed(undefined);
-              switch (input._tag) {
-                case "init":
-                  throw new self.Error("init must be called once");
-                case "updateSchema":
-                  return updateSchema(input.tableDefinitions);
-                case "sendMessages":
-                  return sendMessages(input);
-                case "query":
-                  return query(input);
-                case "receiveMessages":
-                  return receiveMessages(input);
-                case "sync":
-                  return sync(input.queries);
-                case "reset":
-                  return resetOwner(input.mnemonic);
-              }
-            },
-            flow(
-              transaction,
-              Effect.catchAllCause(recoverFromAllCause(undefined)),
-              Effect.provideContext(contextWithConfig),
-              Effect.runPromise
-            )
-          );
-
-          const stream = new WritableStream<DbWorkerInput>({ write });
-
-          post = (message): void => {
-            const writer = stream.getWriter();
-            writer.write(message);
-            writer.releaseLock();
-          };
-
-          syncWorker.onmessage = ({
-            data: message,
-          }: MessageEvent<SyncWorkerOutput>): void => {
-            switch (message._tag) {
-              case "UnknownError":
-                handleError(message);
-                break;
-              case "receiveMessages":
-                if (post) post(message);
-                break;
-              default:
-                onMessage({ _tag: "onSyncState", state: message });
-            }
-          };
-
-          post({
-            _tag: "updateSchema",
-            tableDefinitions: message.tableDefinitions,
-          });
-        };
-      }),
-      Effect.catchAllCause(recoverFromAllCause(constVoid)),
-      Effect.runPromise,
-      (post) => ({
-        post: (message): void => {
-          post.then(apply(message));
-        },
-      })
+    yield* _(
+      sqlite.exec(`SELECT "name" FROM "sqlite_master" WHERE "type" = 'table'`),
+      Effect.flatMap(
+        // The dropped table is completely removed from the database schema and
+        // the disk file. The table can not be recovered.
+        // All indices and triggers associated with the table are also deleted.
+        // https://sqlite.org/lang_droptable.html
+        Effect.forEach(
+          ({ name }) => sqlite.exec(`DROP TABLE "${name as string}"`),
+          { discard: true }
+        )
+      )
     );
-  };
+
+    if (input.mnemonic) yield* _(lazyInit(input.mnemonic));
+
+    const onMessage = yield* _(DbWorkerOnMessage);
+    onMessage({ _tag: "onResetOrRestore" });
+  });
+
+export const DbWorkerLive = Layer.effect(
+  DbWorker,
+  Effect.gen(function* (_) {
+    const syncWorker = yield* _(SyncWorker);
+
+    const handleError = (error: EvoluError): void => {
+      dbWorker.onMessage({ _tag: "onError", error });
+    };
+
+    syncWorker.onMessage = (output): void => {
+      switch (output._tag) {
+        case "UnexpectedError":
+          handleError(output);
+          break;
+        case "SyncWorkerOutputSyncResponse":
+          postMessage(output);
+          break;
+        default:
+          dbWorker.onMessage({ _tag: "onSyncState", state: output });
+      }
+    };
+
+    const context = Context.empty().pipe(
+      Context.add(Sqlite, yield* _(Sqlite)),
+      Context.add(Bip39, yield* _(Bip39)),
+      Context.add(Slip21, yield* _(Slip21)),
+      Context.add(NanoId, yield* _(NanoId))
+    );
+
+    const run = (
+      effect: Effect.Effect<Sqlite | Bip39 | Slip21 | NanoId, EvoluError, void>
+    ): Promise<void> =>
+      effect.pipe(
+        transaction,
+        Effect.provideContext(context),
+        Effect.catchAllCause((cause) =>
+          Cause.failureOrCause(cause).pipe(
+            Either.match({
+              onLeft: handleError,
+              onRight: (cause) =>
+                handleError(makeUnexpectedError(Cause.squash(cause))),
+            }),
+            () => Effect.succeed(undefined)
+          )
+        ),
+        Effect.runPromise
+      );
+
+    type Write = (input: DbWorkerInput) => Promise<void>;
+
+    const makeWriteAfterInit = (owner: Owner, config: Config): Write => {
+      let skipAllBecauseOfReset = false;
+
+      const write: Write = (input) => {
+        if (skipAllBecauseOfReset) return Promise.resolve(undefined);
+
+        return Match.value(input).pipe(
+          Match.tagsExhaustive({
+            init: () => {
+              throw new Error("init must be called once");
+            },
+            query,
+            mutate,
+            sync,
+            reset: (input) => {
+              skipAllBecauseOfReset = true;
+              return reset(input);
+            },
+            SyncWorkerOutputSyncResponse: handleSyncResponse,
+          }),
+          Effect.provideSomeLayer(
+            Layer.mergeAll(
+              ConfigLive(config),
+              Layer.succeed(DbWorkerOnMessage, dbWorker.onMessage),
+              Layer.succeed(Owner, owner),
+              Layer.succeed(SyncWorkerPostMessage, syncWorker.postMessage),
+              RowsCacheRefLive,
+              TimeLive
+            )
+          ),
+          run
+        );
+      };
+
+      return write;
+    };
+
+    let write: Write = (input) => {
+      if (input._tag !== "init") throw new Error("init must be called first");
+      return init(input).pipe(
+        Effect.map((owner) => {
+          dbWorker.onMessage({ _tag: "onOwner", owner });
+          write = makeWriteAfterInit(owner, input.config);
+        }),
+        run
+      );
+    };
+
+    const stream = new WritableStream<DbWorkerInput>({
+      write: (input): Promise<void> => write(input),
+    });
+
+    const postMessage: DbWorker["postMessage"] = (input) => {
+      const writer = stream.getWriter();
+      void writer.write(input);
+      writer.releaseLock();
+    };
+
+    const dbWorker = DbWorker.of({
+      postMessage,
+      onMessage: Function.constVoid,
+    });
+
+    return dbWorker;
+  })
+);

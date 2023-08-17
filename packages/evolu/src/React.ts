@@ -1,131 +1,26 @@
-import { constNull, pipe } from "@effect/data/Function";
-import * as Option from "@effect/data/Option";
-import * as ReadonlyArray from "@effect/data/ReadonlyArray";
-import * as Kysely from "kysely";
-import { useMemo, useRef, useSyncExternalStore } from "react";
-import { isBrowser } from "./Browser.js";
 import {
-  AllowAutoCasting,
-  CommonColumns,
-  Evolu,
-  EvoluError,
-  Owner,
-  OwnerActions,
-  QueryCallback,
-  Row,
-  Schema,
-  SyncState,
-} from "./Types.js";
+  Context,
+  Effect,
+  Function,
+  Layer,
+  Option,
+  ReadonlyArray,
+} from "effect";
+import { Simplify } from "kysely";
+import { useMemo, useRef, useSyncExternalStore } from "react";
+import { CommonColumns, Owner, QueryCallback, Schema } from "./Db.js";
+import { EvoluError } from "./Errors.js";
+import { Evolu } from "./Evolu.js";
+import { CastableForMutate } from "./Model.js";
+import { OwnerActions } from "./OwnerActions.js";
+import { Row } from "./Sqlite.js";
+import { SyncState } from "./SyncWorker.js";
 
-type OrNullOrFalse<T> = T | null | false;
-type ExcludeNullAndFalse<T> = Exclude<T, null | false>;
+export interface React<S extends Schema = Schema> {
+  readonly hooks: Hooks<S>;
+}
 
-type UseQuery<S extends Schema> = <
-  QueryRow extends Row,
-  FilterMapRow extends Row
->(
-  queryCallback: OrNullOrFalse<QueryCallback<S, QueryRow>>,
-  filterMap: (row: QueryRow) => OrNullOrFalse<FilterMapRow>
-) => {
-  /**
-   * Rows from the database. They can be filtered and mapped by `filterMap`.
-   */
-  readonly rows: ReadonlyArray<
-    Readonly<Kysely.Simplify<ExcludeNullAndFalse<FilterMapRow>>>
-  >;
-  /**
-   * The first row from `rows`. For empty rows, it's null.
-   */
-  readonly firstRow: Readonly<
-    Kysely.Simplify<ExcludeNullAndFalse<FilterMapRow>>
-  > | null;
-};
-
-// https://stackoverflow.com/a/54713648/233902
-type NullablePartial<
-  T,
-  NK extends keyof T = {
-    [K in keyof T]: null extends T[K] ? K : never;
-  }[keyof T],
-  NP = Pick<T, Exclude<keyof T, NK>> & Partial<Pick<T, NK>>
-> = { [K in keyof NP]: NP[K] };
-
-type Create<S extends Schema> = <T extends keyof S>(
-  table: T,
-  values: Kysely.Simplify<NullablePartial<AllowAutoCasting<Omit<S[T], "id">>>>,
-  onComplete?: () => void
-) => {
-  readonly id: S[T]["id"];
-};
-
-type Update<S extends Schema> = <T extends keyof S>(
-  table: T,
-  values: Kysely.Simplify<
-    Partial<
-      AllowAutoCasting<Omit<S[T], "id"> & Pick<CommonColumns, "isDeleted">>
-    > & { id: S[T]["id"] }
-  >,
-  onComplete?: () => void
-) => {
-  readonly id: S[T]["id"];
-};
-
-type UseMutation<S extends Schema> = () => {
-  /**
-   * Creates a new row with the given values.
-   *
-   * ### Examples
-   *
-   * To create a new row:
-   *
-   * ```
-   * const { create } = useMutation();
-   * create("todo", { title });
-   * ```
-   *
-   * To get a new row's `Id`:
-   *
-   * ```
-   * const { create } = useMutation();
-   * const { id } = create("todo", { title });
-   * ```
-   *
-   * To wait until a new row is rendered:
-   *
-   * ```
-   * const { create } = useMutation();
-   * create("todo", { title }, onComplete);
-   * ```
-   */
-  readonly create: Create<S>;
-  /**
-   * Update a row with the given values.
-   *
-   * ### Examples
-   *
-   * To update a row:
-   *
-   * ```
-   * const { update } = useMutation();
-   * update("todo", { id, title });
-   * ```
-   *
-   * To wait until the updated row is rendered:
-   *
-   * ```
-   * const { update } = useMutation();
-   * update("todo", { id, title }, onComplete);
-   * ```
-   *
-   * To delete a row.
-   *
-   * ```
-   * const { update } = useMutation();
-   * update("todo", { id, isDeleted: true });
-   * ```
-   */
-  readonly update: Update<S>;
-};
+export const React = Context.Tag<React>("evolu/React");
 
 export interface Hooks<S extends Schema> {
   /**
@@ -240,139 +135,205 @@ export interface Hooks<S extends Schema> {
   readonly useSyncState: () => SyncState;
 }
 
-/**
- * `create` defines the database schema and returns React Hooks.
- * Evolu uses [Schema](https://github.com/effect-ts/schema) for domain modeling.
- *
- * ### Example
- *
- * ```
- * import * as Schema from "@effect/schema/Schema";
- * import * as Evolu from "evolu";
- *
- * const TodoId = Evolu.id("Todo");
- * type TodoId = Schema.To<typeof TodoId>;
- *
- * const TodoTable = Schema.struct({
- *   id: TodoId,
- *   title: Evolu.NonEmptyString1000,
- *   isCompleted: Evolu.SqliteBoolean,
- * });
- * type TodoTable = Schema.To<typeof TodoTable>;
- *
- * const Database = Schema.struct({
- *   todo: TodoTable,
- * });
- *
- * export const {
- *   useQuery,
- *   useMutation,
- *   useEvoluError,
- *   useOwner,
- *   useOwnerActions,
- * } = Evolu.create(Database);
- * ```
- *
- * There is one simple rule for local-first apps domain modeling:
- * After the initial release, models shall be append-only.
- *
- * Tables and columns shall not be removed because there is a possibility
- * that somebody is already using them. Column types shall be enriched only.
- *
- * With this simple rule, any app version can handle any schema version.
- * Evolu database is schemaless and doesn't have to be migrated when
- * a schema is changed. Migrations are not feasible for local-first apps.
- *
- * If an obsolete app gets a sync message with a newer schema, Evolu
- * automatically updates the database schema to store the message safely,
- * and `useQuery` filterMap helper will ignore unknown rows until
- * the app is updated.
- *
- * To learn more about migration-less schema evolving, check the `useQuery`
- * documentation.
- */
-export const createHooks = <S extends Schema>(evolu: Evolu<S>): Hooks<S> => {
-  const cache = new WeakMap<Row, Option.Option<Row>>();
-
-  const useQuery: UseQuery<S> = (queryCallback, filterMap) => {
-    const query = useMemo(
-      () => (queryCallback ? evolu.createQuery(queryCallback) : null),
-      [queryCallback]
-    );
-
-    const promise = useMemo(() => {
-      return query ? evolu.loadQuery(query) : null;
-    }, [query]);
-
-    if (isBrowser && promise && !("rows" in promise)) throw promise;
-
-    const subscribedRows = useSyncExternalStore(
-      useMemo(() => evolu.subscribeQuery(query), [query]),
-      useMemo(() => () => evolu.getQuery(query), [query]),
-      constNull
-    );
-
-    // Use useRef until React Forget release.
-    const filterMapRef = useRef(filterMap);
-
-    const rows = useMemo(
-      () =>
-        pipe(
-          subscribedRows,
-          Option.fromNullable,
-          Option.map(
-            ReadonlyArray.filterMap((row) => {
-              let cachedRow = cache.get(row);
-              if (cachedRow !== undefined) return cachedRow;
-              cachedRow = pipe(filterMapRef.current(row as never), (row) =>
-                row ? Option.some(row) : Option.none
-              ) as never;
-              cache.set(row, cachedRow);
-              return cachedRow;
-            })
-          ),
-          Option.getOrElse(() => ReadonlyArray.empty())
-        ),
-      [subscribedRows]
-    );
-
-    return {
-      rows: rows as never,
-      firstRow: rows[0] as never,
-    };
-  };
-
-  const useMutation: UseMutation<S> = () =>
-    useMemo(
-      () => ({
-        create: evolu.mutate as Create<S>,
-        update: evolu.mutate as Update<S>,
-      }),
-      []
-    );
-
-  const useEvoluError: Hooks<S>["useEvoluError"] = () =>
-    useSyncExternalStore(evolu.subscribeError, evolu.getError, constNull);
-
-  const useOwner: Hooks<S>["useOwner"] = () =>
-    useSyncExternalStore(evolu.subscribeOwner, evolu.getOwner, constNull);
-
-  const useOwnerActions: Hooks<S>["useOwnerActions"] = () => evolu.ownerActions;
-
-  const syncStateIsSyncing: SyncState = { _tag: "SyncStateIsSyncing" };
-  const useSyncState: Hooks<S>["useSyncState"] = () =>
-    useSyncExternalStore(
-      evolu.subscribeSyncState,
-      evolu.getSyncState,
-      () => syncStateIsSyncing
-    );
-
-  return {
-    useQuery,
-    useMutation,
-    useEvoluError,
-    useOwner,
-    useOwnerActions,
-    useSyncState,
-  };
+type UseQuery<S extends Schema> = <
+  QueryRow extends Row,
+  FilterMapRow extends Row,
+>(
+  queryCallback: OrNullOrFalse<QueryCallback<S, QueryRow>>,
+  filterMap: (row: QueryRow) => OrNullOrFalse<FilterMapRow>
+) => {
+  /**
+   * Rows from the database. They can be filtered and mapped by `filterMap`.
+   */
+  readonly rows: ReadonlyArray<
+    Readonly<Simplify<ExcludeNullAndFalse<FilterMapRow>>>
+  >;
+  /**
+   * The first row from `rows`. For empty rows, it's null.
+   */
+  readonly firstRow: Readonly<
+    Simplify<ExcludeNullAndFalse<FilterMapRow>>
+  > | null;
 };
+
+type OrNullOrFalse<T> = T | null | false;
+
+type ExcludeNullAndFalse<T> = Exclude<T, null | false>;
+
+type UseMutation<S extends Schema> = () => {
+  /**
+   * Creates a new row with the given values.
+   *
+   * ### Examples
+   *
+   * To create a new row:
+   *
+   * ```
+   * const { create } = useMutation();
+   * create("todo", { title });
+   * ```
+   *
+   * To get a new row's `Id`:
+   *
+   * ```
+   * const { create } = useMutation();
+   * const { id } = create("todo", { title });
+   * ```
+   *
+   * To wait until a new row is rendered:
+   *
+   * ```
+   * const { create } = useMutation();
+   * create("todo", { title }, onComplete);
+   * ```
+   */
+  readonly create: Create<S>;
+  /**
+   * Update a row with the given values.
+   *
+   * ### Examples
+   *
+   * To update a row:
+   *
+   * ```
+   * const { update } = useMutation();
+   * update("todo", { id, title });
+   * ```
+   *
+   * To wait until the updated row is rendered:
+   *
+   * ```
+   * const { update } = useMutation();
+   * update("todo", { id, title }, onComplete);
+   * ```
+   *
+   * To delete a row.
+   *
+   * ```
+   * const { update } = useMutation();
+   * update("todo", { id, isDeleted: true });
+   * ```
+   */
+  readonly update: Update<S>;
+};
+
+type Create<S extends Schema> = <T extends keyof S>(
+  table: T,
+  values: Simplify<PartialOnlyForNullable<CastableForMutate<Omit<S[T], "id">>>>,
+  onComplete?: () => void
+) => {
+  readonly id: S[T]["id"];
+};
+
+// https://stackoverflow.com/a/54713648/233902
+type PartialOnlyForNullable<
+  T,
+  NK extends keyof T = {
+    [K in keyof T]: null extends T[K] ? K : never;
+  }[keyof T],
+  NP = Pick<T, Exclude<keyof T, NK>> & Partial<Pick<T, NK>>,
+> = { [K in keyof NP]: NP[K] };
+
+type Update<S extends Schema> = <T extends keyof S>(
+  table: T,
+  values: Simplify<
+    Partial<
+      CastableForMutate<Omit<S[T], "id"> & Pick<CommonColumns, "isDeleted">>
+    > & { id: S[T]["id"] }
+  >,
+  onComplete?: () => void
+) => {
+  readonly id: S[T]["id"];
+};
+
+export const ReactLive = Layer.effect(
+  React,
+  Effect.map(Evolu, (evolu) => {
+    const cache = new WeakMap<Row, Option.Option<Row>>();
+
+    const useQuery: UseQuery<Schema> = (queryCallback, filterMap) => {
+      const query = useMemo(
+        () => (queryCallback ? evolu.createQuery(queryCallback) : null),
+        [queryCallback]
+      );
+
+      const promise = useMemo(() => {
+        return query ? evolu.loadQuery(query) : null;
+      }, [query]);
+
+      if (promise && !("rows" in promise)) throw promise;
+
+      const subscribedRows = useSyncExternalStore(
+        useMemo(() => evolu.subscribeQuery(query), [query]),
+        useMemo(() => () => evolu.getQuery(query), [query]),
+        Function.constNull
+      );
+
+      // Use useRef until React Forget release.
+      const filterMapRef = useRef(filterMap);
+
+      const rows = useMemo(() => {
+        if (subscribedRows == null) return ReadonlyArray.empty();
+        return ReadonlyArray.filterMap(subscribedRows, (row) => {
+          let cachedRow = cache.get(row);
+          if (cachedRow !== undefined) return cachedRow;
+          cachedRow = Option.fromNullable(
+            filterMapRef.current(row as never)
+          ) as never;
+          cache.set(row, cachedRow);
+          return cachedRow;
+        });
+      }, [subscribedRows]);
+
+      return {
+        rows: rows as never,
+        firstRow: rows[0] as never,
+      };
+    };
+
+    const useMutation: UseMutation<Schema> = () =>
+      useMemo(
+        () => ({
+          create: evolu.mutate as Create<Schema>,
+          update: evolu.mutate as Update<Schema>,
+        }),
+        []
+      );
+
+    const useEvoluError: Hooks<Schema>["useEvoluError"] = () =>
+      useSyncExternalStore(
+        evolu.subscribeError,
+        evolu.getError,
+        Function.constNull
+      );
+
+    const useOwner: Hooks<Schema>["useOwner"] = () =>
+      useSyncExternalStore(
+        evolu.subscribeOwner,
+        evolu.getOwner,
+        Function.constNull
+      );
+
+    const useOwnerActions: Hooks<Schema>["useOwnerActions"] = () =>
+      evolu.ownerActions;
+
+    const syncStateIsSyncing: SyncState = { _tag: "SyncStateIsSyncing" };
+    const useSyncState: Hooks<Schema>["useSyncState"] = () =>
+      useSyncExternalStore(
+        evolu.subscribeSyncState,
+        evolu.getSyncState,
+        () => syncStateIsSyncing
+      );
+
+    return React.of({
+      hooks: {
+        useQuery,
+        useMutation,
+        useEvoluError,
+        useOwner,
+        useOwnerActions,
+        useSyncState,
+      },
+    });
+  })
+);

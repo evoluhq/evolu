@@ -1,29 +1,116 @@
-import { absurd, flow, pipe } from "@effect/data/Function";
-import * as Cause from "@effect/io/Cause";
-import * as Effect from "@effect/io/Effect";
-import { decrypt, encrypt } from "micro-aes-gcm";
+import { Context, Effect, Function, Layer, Match } from "effect";
+import { AesGcm } from "./Crypto.js";
+import { AesGcmLive } from "./CryptoLive.web.js";
+import { Owner } from "./Db.js";
+import { UnexpectedError, makeUnexpectedError } from "./Errors.js";
 import {
+  MerkleTree,
+  MerkleTreeString,
   merkleTreeToString,
   unsafeMerkleTreeFromString,
 } from "./MerkleTree.js";
+import { Message } from "./Message.js";
 import { Id } from "./Model.js";
+import { Fetch, SyncLock } from "./Platform.js";
+import { FetchLive } from "./Platform.web.js";
 import {
   EncryptedMessage,
   MessageContent,
   SyncRequest,
   SyncResponse,
 } from "./Protobuf.js";
-import {
-  CreateSyncWorker,
-  DbWorkerInputReceiveMessages,
-  MerkleTreeString,
-  Message,
-  SyncStateIsNotSynced,
-  SyncWorkerInputSync,
-  TimestampString,
-  Value,
-} from "./Types.js";
-import { unknownError } from "./UnknownError.js";
+import { Value } from "./Sqlite.js";
+import { Millis, Timestamp, TimestampString } from "./Timestamp.js";
+
+export interface SyncWorker {
+  readonly postMessage: (input: SyncWorkerInput) => void;
+  onMessage: (output: SyncWorkerOutput) => void;
+}
+
+export const SyncWorker = Context.Tag<SyncWorker>("evolu/SyncWorker");
+
+export type SyncWorkerPostMessage = SyncWorker["postMessage"];
+
+export const SyncWorkerPostMessage = Context.Tag<SyncWorkerPostMessage>(
+  "evolu/SyncWorkerPostMessage"
+);
+
+export type SyncWorkerInput =
+  | SyncWorkerInputSync
+  | SyncWorkerInputSyncCompleted;
+
+interface SyncWorkerInputSync {
+  readonly _tag: "sync";
+  readonly syncUrl: string;
+  readonly messages: ReadonlyArray<Message>;
+  readonly merkleTree: MerkleTree;
+  readonly timestamp: Timestamp;
+  readonly owner: Owner;
+  readonly syncLoopCount: number;
+}
+
+interface SyncWorkerInputSyncCompleted {
+  readonly _tag: "syncCompleted";
+}
+
+type SyncWorkerOnMessage = SyncWorker["onMessage"];
+
+const SyncWorkerOnMessage = Context.Tag<SyncWorkerOnMessage>(
+  "evolu/SyncWorkerOnMessage"
+);
+
+export type SyncWorkerOutput =
+  | UnexpectedError
+  | SyncWorkerOutputSyncResponse
+  | SyncStateIsNotSyncedError
+  | SyncStateIsSyncing;
+
+export type SyncWorkerOutputSyncResponse = {
+  readonly _tag: "SyncWorkerOutputSyncResponse";
+  readonly messages: ReadonlyArray<Message>;
+  readonly merkleTree: MerkleTree;
+  readonly syncLoopCount: number;
+};
+
+export type SyncState =
+  | SyncStateInitial
+  | SyncStateIsSyncing
+  | SyncStateIsSynced
+  | SyncStateIsNotSyncedError;
+
+export interface SyncStateInitial {
+  readonly _tag: "SyncStateInitial";
+}
+
+export interface SyncStateIsSyncing {
+  readonly _tag: "SyncStateIsSyncing";
+}
+
+export interface SyncStateIsSynced {
+  readonly _tag: "SyncStateIsSynced";
+  readonly time: Millis;
+}
+
+export interface SyncStateIsNotSyncedError {
+  readonly _tag: "SyncStateIsNotSyncedError";
+  readonly error:
+    | SyncStateNetworkError
+    | SyncStateServerError
+    | SyncStatePaymentRequiredError;
+}
+
+export interface SyncStateNetworkError {
+  readonly _tag: "NetworkError";
+}
+
+export interface SyncStateServerError {
+  readonly _tag: "ServerError";
+  readonly status: number;
+}
+
+export interface SyncStatePaymentRequiredError {
+  readonly _tag: "PaymentRequiredError";
+}
 
 const valueToProtobuf = (value: Value): MessageContent["value"] => {
   switch (typeof value) {
@@ -36,23 +123,7 @@ const valueToProtobuf = (value: Value): MessageContent["value"] => {
   return { oneofKind: undefined };
 };
 
-const encryptMessage =
-  (encryptionKey: Uint8Array) =>
-  ({
-    timestamp,
-    value,
-    ...rest
-  }: Message): Effect.Effect<never, never, EncryptedMessage> =>
-    pipe(
-      MessageContent.toBinary({
-        ...rest,
-        value: valueToProtobuf(value),
-      }),
-      (binary) => Effect.promise(() => encrypt(encryptionKey, binary)),
-      Effect.map((content): EncryptedMessage => ({ timestamp, content }))
-    );
-
-const protobufToValue = (value: MessageContent["value"]): Value => {
+const valueFromProtobuf = (value: MessageContent["value"]): Value => {
   switch (value.oneofKind) {
     case "numberValue":
       return value.numberValue;
@@ -65,146 +136,140 @@ const protobufToValue = (value: MessageContent["value"]): Value => {
   }
 };
 
-const decryptMessage =
-  (encryptionKey: Uint8Array) =>
-  (message: EncryptedMessage): Effect.Effect<never, never, Message> =>
-    pipe(
-      Effect.promise(() =>
-        decrypt(encryptionKey, message.content).then((data) =>
-          MessageContent.fromBinary(data)
-        )
-      ),
-      Effect.map(
-        (content): Message => ({
-          timestamp: message.timestamp as TimestampString,
-          table: content.table,
-          row: content.row as Id,
-          column: content.column,
-          value: protobufToValue(content.value),
-        })
-      )
-    );
-
-const sync = ({
-  syncUrl,
-  messages,
-  clock,
-  owner,
-  syncCount,
-}: SyncWorkerInputSync): Effect.Effect<
+const sync = (
+  input: SyncWorkerInputSync
+): Effect.Effect<
+  SyncLock | SyncWorkerOnMessage | AesGcm | Fetch,
   never,
-  SyncStateIsNotSynced,
-  DbWorkerInputReceiveMessages
+  void
 > =>
-  pipe(
-    messages,
-    Effect.forEach(encryptMessage(owner.encryptionKey)),
-    Effect.map((messages) =>
-      SyncRequest.toBinary({
-        messages,
-        userId: owner.id,
-        nodeId: clock.timestamp.node,
-        merkleTree: merkleTreeToString(clock.merkleTree),
-      })
-    ),
-    Effect.flatMap((body) =>
-      Effect.tryCatchPromise(
-        () =>
-          fetch(syncUrl, {
-            method: "POST",
-            body,
-            headers: {
-              "Content-Type": "application/octet-stream",
-              "Content-Length": body.length.toString(),
-            },
-          }),
-        (): SyncStateIsNotSynced => ({
-          _tag: "SyncStateIsNotSynced",
+  Effect.gen(function* (_) {
+    const syncLock = yield* _(SyncLock);
+    const syncWorkerOnMessage = yield* _(SyncWorkerOnMessage);
+    const aesGcm = yield* _(AesGcm);
+    const fetch = yield* _(Fetch);
+
+    if (input.syncLoopCount === 0) {
+      if (!(yield* _(syncLock.acquire))) return;
+      syncWorkerOnMessage({ _tag: "SyncStateIsSyncing" });
+    }
+
+    yield* _(
+      Effect.forEach(input.messages, ({ timestamp, ...rest }) =>
+        aesGcm
+          .encrypt(
+            input.owner.encryptionKey,
+            MessageContent.toBinary({
+              table: rest.table,
+              row: rest.row,
+              column: rest.column,
+              value: valueToProtobuf(rest.value),
+            })
+          )
+          .pipe(
+            Effect.map((content): EncryptedMessage => ({ timestamp, content }))
+          )
+      ),
+      Effect.map((messages) =>
+        SyncRequest.toBinary({
+          messages,
+          userId: input.owner.id,
+          nodeId: input.timestamp.node,
+          merkleTree: merkleTreeToString(input.merkleTree),
+        })
+      ),
+      Effect.flatMap((body) => fetch(input.syncUrl, body)),
+      Effect.catchTag("FetchError", () =>
+        Effect.fail<SyncStateIsNotSyncedError>({
+          _tag: "SyncStateIsNotSyncedError",
           error: { _tag: "NetworkError" },
         })
-      )
-    ),
-    Effect.flatMap((response) => {
-      switch (response.status) {
-        case 402:
-          return Effect.fail<SyncStateIsNotSynced>({
-            _tag: "SyncStateIsNotSynced",
-            error: { _tag: "PaymentRequiredError" },
-          });
-        case 200:
-          return Effect.promise(() =>
-            response
-              .arrayBuffer()
-              .then((buffer) => SyncResponse.fromBinary(Buffer.from(buffer)))
-          );
-        default:
-          return Effect.fail<SyncStateIsNotSynced>({
-            _tag: "SyncStateIsNotSynced",
-            error: { _tag: "ServerError", status: response.status },
-          });
-      }
-    }),
-    Effect.flatMap(({ merkleTree, messages }) =>
-      pipe(
-        messages,
-        Effect.forEach(decryptMessage(owner.encryptionKey)),
-        Effect.map(
-          (messages): DbWorkerInputReceiveMessages => ({
-            _tag: "receiveMessages",
-            messages,
-            merkleTree: unsafeMerkleTreeFromString(
-              merkleTree as MerkleTreeString
-            ),
-            syncCount,
-          })
+      ),
+      Effect.flatMap((response) => {
+        switch (response.status) {
+          case 402:
+            return Effect.fail<SyncStateIsNotSyncedError>({
+              _tag: "SyncStateIsNotSyncedError",
+              error: { _tag: "PaymentRequiredError" },
+            });
+          case 200:
+            return Effect.promise(() =>
+              response
+                .arrayBuffer()
+                .then((buffer) => new Uint8Array(buffer))
+                .then((array) => SyncResponse.fromBinary(array))
+            );
+          default:
+            return Effect.fail<SyncStateIsNotSyncedError>({
+              _tag: "SyncStateIsNotSyncedError",
+              error: { _tag: "ServerError", status: response.status },
+            });
+        }
+      }),
+      Effect.flatMap((syncResponse) =>
+        Effect.forEach(syncResponse.messages, (message) =>
+          aesGcm.decrypt(input.owner.encryptionKey, message.content).pipe(
+            Effect.map((array) => MessageContent.fromBinary(array)),
+            Effect.map(
+              (content): Message => ({
+                timestamp: message.timestamp as TimestampString,
+                table: content.table,
+                row: content.row as Id,
+                column: content.column,
+                value: valueFromProtobuf(content.value),
+              })
+            )
+          )
+        ).pipe(
+          Effect.map(
+            (messages): SyncWorkerOutputSyncResponse => ({
+              _tag: "SyncWorkerOutputSyncResponse",
+              messages,
+              merkleTree: unsafeMerkleTreeFromString(
+                syncResponse.merkleTree as MerkleTreeString
+              ),
+              syncLoopCount: input.syncLoopCount,
+            })
+          )
         )
-      )
-    )
-  );
-
-class SyncSkipped {
-  readonly _tag = "SyncSkipped";
-}
-
-export const createCreateSyncWorker =
-  ({
-    isSyncing,
-    setIsSyncing,
-  }: {
-    isSyncing: Effect.Effect<never, never, boolean>;
-    setIsSyncing: (isSyncing: boolean) => void;
-  }): CreateSyncWorker =>
-  (onMessage) => ({
-    post: (message): void => {
-      switch (message._tag) {
-        case "syncCompleted":
-          setIsSyncing(false);
-          return;
-        case "sync":
-          pipe(
-            Effect.gen(function* ($) {
-              // `syncCount === 0` means an attempt to start sync loop.
-              if (message.syncCount === 0) {
-                if (yield* $(isSyncing))
-                  yield* $(Effect.fail(new SyncSkipped()));
-                setIsSyncing(true);
-                onMessage({ _tag: "SyncStateIsSyncing" });
-              }
-              return yield* $(sync(message));
-            }),
-            Effect.merge,
-            Effect.catchAllCause(
-              flow(Cause.squash, unknownError, Effect.succeed)
-            ),
-            Effect.runPromise
-          ).then((a) => {
-            if (a._tag === "SyncSkipped") return;
-            if (a._tag !== "receiveMessages") setIsSyncing(false);
-            onMessage(a);
-          });
-          return;
-        default:
-          absurd(message);
-      }
-    },
+      ),
+      Effect.tapError(() => syncLock.release),
+      Effect.merge,
+      Effect.map(syncWorkerOnMessage)
+    );
   });
+
+export const SyncWorkerLive = Layer.effect(
+  SyncWorker,
+  Effect.gen(function* (_) {
+    const syncLock = yield* _(SyncLock);
+
+    const handleError = (error: UnexpectedError): void => {
+      syncWorker.onMessage(error);
+    };
+
+    const postMessage: SyncWorker["postMessage"] = (input) => {
+      void Match.value(input).pipe(
+        Match.tagsExhaustive({
+          sync,
+          syncCompleted: () => syncLock.release,
+        }),
+        Effect.catchAllDefect((error) => {
+          handleError(makeUnexpectedError(error));
+          return Effect.succeed(undefined);
+        }),
+        Effect.provideService(SyncLock, syncLock),
+        Effect.provideService(SyncWorkerOnMessage, syncWorker.onMessage),
+        Effect.provideLayer(Layer.mergeAll(AesGcmLive, FetchLive)),
+        Effect.runPromise
+      );
+    };
+
+    const syncWorker: SyncWorker = {
+      postMessage,
+      onMessage: Function.constVoid,
+    };
+
+    return syncWorker;
+  })
+);

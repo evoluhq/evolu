@@ -136,7 +136,7 @@ const TodoItem = memo<{
   const { update } = useMutation();
 
   return (
-    <li key={id}>
+    <li>
       <span
         className="text-sm font-bold"
         style={{ textDecoration: isCompleted ? "line-through" : "none" }}

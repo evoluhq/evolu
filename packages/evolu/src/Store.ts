@@ -1,25 +1,32 @@
-import { Listener, Store } from "./Types.js";
+export type StoreListener = () => void;
 
-export const createStore = <T>(initialState: T): Store<T> => {
+export type StoreUnsubscribe = () => void;
+
+export interface Store<T> {
+  readonly subscribe: (listener: StoreListener) => StoreUnsubscribe;
+  readonly setState: (state: T) => void;
+  readonly getState: () => T;
+}
+
+export const makeStore = <T>(initialState: T): Store<T> => {
   let currentState = initialState;
-  const listeners = new Set<Listener>();
 
-  const store: Store<T> = {
-    subscribe: (listener) => {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
+  const listeners = new Set<StoreListener>();
 
-    setState: (state: T) => {
-      if (state === currentState) return;
-      currentState = state;
-      listeners.forEach((listener) => listener());
-    },
-
-    getState: () => currentState,
+  const subscribe: Store<T>["subscribe"] = (listener) => {
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
   };
 
-  return store;
+  const setState: Store<T>["setState"] = (state: T) => {
+    if (state === currentState) return;
+    currentState = state;
+    listeners.forEach((listener) => listener());
+  };
+
+  const getState: Store<T>["getState"] = () => currentState;
+
+  return { subscribe, setState, getState };
 };
