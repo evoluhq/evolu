@@ -26,9 +26,9 @@ test("InitialTimestampLive", () => {
       NanoId.of({
         nanoid: Effect.succeed("nanoid"),
         nanoidAsNodeId: Effect.succeed("nanoidAsNodeId" as NodeId),
-      })
+      }),
     ),
-    Effect.runSync
+    Effect.runSync,
   );
   expect(timestamp.counter).toBe(0);
   expect(timestamp.millis).toBe(0);
@@ -44,7 +44,7 @@ test("createSyncTimestamp", () => {
 
 test("timestampToString", () => {
   expect(pipe(makeSyncTimestamp(), timestampToString)).toMatchInlineSnapshot(
-    '"1970-01-01T00:00:00.000Z-0000-0000000000000000"'
+    '"1970-01-01T00:00:00.000Z-0000-0000000000000000"',
   );
 });
 
@@ -55,7 +55,7 @@ test("timestampFromString", () => {
 
 test("timestampToHash", () => {
   expect(timestampToHash(makeSyncTimestamp())).toMatchInlineSnapshot(
-    "4179357717"
+    "4179357717",
   );
 });
 
@@ -64,13 +64,13 @@ const config = Config.pipe(Effect.provideLayer(ConfigLive()), Effect.runSync);
 const context0 = pipe(
   Context.empty(),
   Context.add(Config, config),
-  Context.add(Time, { now: Effect.succeed(0 as Millis) })
+  Context.add(Time, { now: Effect.succeed(0 as Millis) }),
 );
 
 const context1 = pipe(
   Context.empty(),
   Context.add(Config, config),
-  Context.add(Time, { now: Effect.succeed(1 as Millis) })
+  Context.add(Time, { now: Effect.succeed(1 as Millis) }),
 );
 
 describe("sendTimestamp", () => {
@@ -80,8 +80,8 @@ describe("sendTimestamp", () => {
         makeSyncTimestamp(),
         sendTimestamp,
         Effect.provideContext(context1),
-        Effect.runSync
-      )
+        Effect.runSync,
+      ),
     ).toMatchSnapshot();
   });
 
@@ -91,8 +91,8 @@ describe("sendTimestamp", () => {
         makeSyncTimestamp(),
         sendTimestamp,
         Effect.provideContext(context0),
-        Effect.runSync
-      )
+        Effect.runSync,
+      ),
     ).toMatchSnapshot();
   });
 
@@ -102,8 +102,8 @@ describe("sendTimestamp", () => {
         makeSyncTimestamp(1 as Millis),
         sendTimestamp,
         Effect.provideContext(context0),
-        Effect.runSync
-      )
+        Effect.runSync,
+      ),
     ).toMatchSnapshot();
   });
 
@@ -120,7 +120,7 @@ describe("sendTimestamp", () => {
         Effect.map(Either.right),
         Effect.catchAll((e) => Effect.succeed(Either.left(e))),
         Effect.provideContext(context0),
-        Effect.runSync
+        Effect.runSync,
       );
     }
 
@@ -134,8 +134,8 @@ describe("sendTimestamp", () => {
         sendTimestamp,
         Effect.catchAll((e) => Effect.succeed(Either.left(e))),
         Effect.provideContext(context0),
-        Effect.runSync
-      )
+        Effect.runSync,
+      ),
     ).toMatchSnapshot();
   });
 });
@@ -149,8 +149,8 @@ describe("receiveTimestamp", () => {
           remote: makeNode2Timestamp(0, 0),
         }),
         Effect.provideContext(context1),
-        Effect.runSync
-      )
+        Effect.runSync,
+      ),
     ).toMatchSnapshot();
   });
 
@@ -163,8 +163,8 @@ describe("receiveTimestamp", () => {
             remote: makeNode2Timestamp(1, 1),
           }),
           Effect.provideContext(context1),
-          Effect.runSync
-        )
+          Effect.runSync,
+        ),
       ).toMatchSnapshot();
 
       expect(
@@ -174,8 +174,8 @@ describe("receiveTimestamp", () => {
             remote: makeNode2Timestamp(1, 0),
           }),
           Effect.provideContext(context0),
-          Effect.runSync
-        )
+          Effect.runSync,
+        ),
       ).toMatchSnapshot();
     });
 
@@ -187,8 +187,8 @@ describe("receiveTimestamp", () => {
             remote: makeNode2Timestamp(1),
           }),
           Effect.provideContext(context0),
-          Effect.runSync
-        )
+          Effect.runSync,
+        ),
       ).toMatchSnapshot();
     });
 
@@ -200,8 +200,8 @@ describe("receiveTimestamp", () => {
             remote: makeNode2Timestamp(2),
           }),
           Effect.provideContext(context0),
-          Effect.runSync
-        )
+          Effect.runSync,
+        ),
       ).toMatchSnapshot();
     });
   });
@@ -215,8 +215,8 @@ describe("receiveTimestamp", () => {
         }),
         Effect.catchAll((e) => Effect.succeed(Either.left(e))),
         Effect.provideContext(context1),
-        Effect.runSync
-      )
+        Effect.runSync,
+      ),
     ).toMatchSnapshot();
   });
 
@@ -229,8 +229,8 @@ describe("receiveTimestamp", () => {
         }),
         Effect.catchAll((e) => Effect.succeed(Either.left(e))),
         Effect.provideContext(context0),
-        Effect.runSync
-      )
+        Effect.runSync,
+      ),
     ).toMatchSnapshot();
 
     expect(
@@ -241,8 +241,8 @@ describe("receiveTimestamp", () => {
         }),
         Effect.catchAll((e) => Effect.succeed(Either.left(e))),
         Effect.provideContext(context0),
-        Effect.runSync
-      )
+        Effect.runSync,
+      ),
     ).toMatchSnapshot();
   });
 });

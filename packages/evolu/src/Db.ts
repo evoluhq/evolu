@@ -31,11 +31,11 @@ import { makeInitialTimestamp, timestampToString } from "./Timestamp.js";
 export type Schema = ReadonlyRecord.ReadonlyRecord<{ id: Id } & Row>;
 
 export type CreateQuery<S extends Schema = Schema> = (
-  queryCallback: QueryCallback<S, Row>
+  queryCallback: QueryCallback<S, Row>,
 ) => Query;
 
 export type QueryCallback<S extends Schema, QueryRow> = (
-  db: KyselyWithoutMutation<SchemaForQuery<S>>
+  db: KyselyWithoutMutation<SchemaForQuery<S>>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ) => Kysely.SelectQueryBuilder<any, any, QueryRow>;
 
@@ -84,7 +84,7 @@ export const createQuery: CreateQuery = (queryCallback) =>
 // https://github.com/Effect-TS/schema/releases/tag/v0.18.0
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
-  schema: S.Schema<I, A>
+  schema: S.Schema<I, A>,
 ): { [K in keyof A]: S.Schema<I[K], A[K]> } => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const out: Record<PropertyKey, S.Schema<any>> = {};
@@ -99,7 +99,7 @@ const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
 
 export const schemaToTables = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  schema: S.Schema<any, any>
+  schema: S.Schema<any, any>,
 ): ReadonlyArray<Table> =>
   pipe(
     getPropertySignatures(schema),
@@ -108,10 +108,10 @@ export const schemaToTables = (
       ([name, schema]): Table => ({
         name,
         columns: Object.keys(getPropertySignatures(schema)).concat(
-          commonColumns
+          commonColumns,
         ),
-      })
-    )
+      }),
+    ),
   );
 
 /**
@@ -136,15 +136,15 @@ export const Owner = Context.Tag<Owner>("evolu/Owner");
 export type OwnerId = Id & Brand.Brand<"Owner">;
 
 export const transaction = <R, E, A>(
-  effect: Effect.Effect<R, E, A>
+  effect: Effect.Effect<R, E, A>,
 ): Effect.Effect<Sqlite | R, E, A> =>
   Effect.flatMap(Sqlite, (sqlite) =>
     Effect.acquireUseRelease(
       sqlite.exec("BEGIN"),
       () => effect,
       (_, exit) =>
-        Exit.isFailure(exit) ? sqlite.exec("ROLLBACK") : sqlite.exec("COMMIT")
-    )
+        Exit.isFailure(exit) ? sqlite.exec("ROLLBACK") : sqlite.exec("COMMIT"),
+    ),
   );
 
 export interface NoSuchTableOrColumnError {
@@ -162,7 +162,7 @@ export const defectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
       typeof error.message === "string"
     ) {
       const match = error.message.match(
-        /sqlite3 result code 1: no such (table|column): (\S+)/
+        /sqlite3 result code 1: no such (table|column): (\S+)/,
       );
       if (
         match &&
@@ -174,16 +174,16 @@ export const defectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
             _tag: "NoSuchTableOrColumnError",
             what: match[1],
             name: match[2],
-          })
+          }),
         );
     }
 
     return Option.none();
-  }
+  },
 );
 
 export const makeOwner = (
-  mnemonic?: Mnemonic
+  mnemonic?: Mnemonic,
 ): Effect.Effect<Bip39 | Slip21, never, Owner> =>
   Effect.gen(function* (_) {
     const bip39 = yield* _(Bip39);
@@ -202,19 +202,19 @@ export const makeOwner = (
             id += urlAlphabet[key[i] & 63];
           }
           return id as OwnerId;
-        })
-      )
+        }),
+      ),
     );
 
     const encryptionKey = yield* _(
-      slip21.derive(seed, ["Evolu", "Encryption Key"])
+      slip21.derive(seed, ["Evolu", "Encryption Key"]),
     );
 
     return { mnemonic, id, encryptionKey };
   });
 
 export const lazyInit = (
-  mnemonic?: Mnemonic
+  mnemonic?: Mnemonic,
 ): Effect.Effect<Sqlite | Bip39 | Slip21 | NanoId, never, Owner> =>
   Effect.all(
     [
@@ -223,7 +223,7 @@ export const lazyInit = (
       makeInitialTimestamp.pipe(Effect.map(timestampToString)),
       Effect.succeed(merkleTreeToString(initialMerkleTree)),
     ],
-    { concurrency: "unbounded" }
+    { concurrency: "unbounded" },
   ).pipe(
     Effect.tap(([sqlite, owner, initialTimestamp, initialMerkleTree]) =>
       sqlite.exec({
@@ -235,9 +235,9 @@ export const lazyInit = (
           initialTimestamp,
           initialMerkleTree,
         ],
-      })
+      }),
     ),
-    Effect.map(([, owner]) => owner)
+    Effect.map(([, owner]) => owner),
   );
 
 const getTables: Effect.Effect<
@@ -246,11 +246,11 @@ const getTables: Effect.Effect<
   ReadonlyArray<string>
 > = Sqlite.pipe(
   Effect.flatMap((sqlite) =>
-    sqlite.exec(`SELECT "name" FROM "sqlite_schema" WHERE "type" = 'table'`)
+    sqlite.exec(`SELECT "name" FROM "sqlite_schema" WHERE "type" = 'table'`),
   ),
   Effect.map(ReadonlyArray.map((row) => (row.name as string) + "")),
   Effect.map(ReadonlyArray.filter(Predicate.not(String.startsWith("__")))),
-  Effect.map(ReadonlyArray.dedupeWith(String.Equivalence))
+  Effect.map(ReadonlyArray.dedupeWith(String.Equivalence)),
 );
 
 const updateTable = ({
@@ -264,15 +264,16 @@ const updateTable = ({
       Effect.map(ReadonlyArray.map((row) => row.name as string)),
       Effect.map((existingColumns) =>
         ReadonlyArray.differenceWith(String.Equivalence)(existingColumns)(
-          columns
-        )
+          columns,
+        ),
       ),
       Effect.map(
         ReadonlyArray.map(
-          (newColumn) => `ALTER TABLE "${name}" ADD COLUMN "${newColumn}" blob;`
-        )
+          (newColumn) =>
+            `ALTER TABLE "${name}" ADD COLUMN "${newColumn}" blob;`,
+        ),
       ),
-      Effect.map(ReadonlyArray.join(""))
+      Effect.map(ReadonlyArray.join("")),
     );
     if (sql) yield* _(sqlite.exec(sql));
   });
@@ -293,11 +294,11 @@ const createTable = ({
           .map((name) => `"${name}" blob`)
           .join(", ")}
       );
-    `)
+    `),
   );
 
 export const ensureSchema = (
-  tables: ReadonlyArray<Table>
+  tables: ReadonlyArray<Table>,
 ): Effect.Effect<Sqlite, never, void> =>
   Effect.flatMap(getTables, (existingTables) =>
     Effect.forEach(
@@ -306,6 +307,6 @@ export const ensureSchema = (
         existingTables.includes(tableDefinition.name)
           ? updateTable(tableDefinition)
           : createTable(tableDefinition),
-      { discard: true }
-    )
+      { discard: true },
+    ),
   );

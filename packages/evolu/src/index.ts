@@ -12,7 +12,7 @@ const isChromeWithOpfs = (): boolean =>
   navigator.userAgentData.brands.find(
     ({ brand, version }) =>
       // Chrome or Chromium
-      brand.includes("Chrom") && Number(version) >= 109
+      brand.includes("Chrom") && Number(version) >= 109,
   ) != null;
 
 const isFirefoxWithOpfs = (): boolean => {
@@ -27,7 +27,7 @@ const NoOpServerDbWorker = Effect.sync(() =>
   DbWorker.of({
     postMessage: Function.constVoid,
     onMessage: Function.constVoid,
-  })
+  }),
 );
 
 const OpfsDbWorker = Effect.sync(() => {
@@ -54,12 +54,12 @@ const LocalStorageDbWorker = Effect.sync(() => {
     Effect.map((a) => {
       const importedDbWorker = DbWorker.pipe(
         Effect.provideLayer(a.DbWorkerWebLive),
-        Effect.runSync
+        Effect.runSync,
       );
       importedDbWorker.onMessage = dbWorker.onMessage;
       return importedDbWorker.postMessage;
     }),
-    Effect.runPromise
+    Effect.runPromise,
   );
 
   const dbWorker = DbWorker.of({
@@ -80,7 +80,7 @@ const DbWorkerLive = Layer.effect(
     ? NoOpServerDbWorker
     : isChromeWithOpfs() || isFirefoxWithOpfs()
     ? OpfsDbWorker
-    : LocalStorageDbWorker
+    : LocalStorageDbWorker,
 );
 
 export const create = makeEvoluCreate(DbWorkerLive);

@@ -20,7 +20,7 @@ export interface Config {
 export const Config = Context.Tag<Config>("evolu/Config");
 
 export const ConfigLive = (
-  config?: Partial<Config>
+  config?: Partial<Config>,
 ): Layer.Layer<never, never, Config> =>
   Layer.succeed(
     Config,
@@ -29,5 +29,5 @@ export const ConfigLive = (
       maxDrift: 5 * 60 * 1000,
       reloadUrl: "/",
       ...config,
-    })
+    }),
   );

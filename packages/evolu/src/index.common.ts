@@ -20,7 +20,7 @@ export const makeEvoluCreate =
   (DbWorkerLive: Layer.Layer<never, never, DbWorker>) =>
   <From, To extends Schema>(
     schema: S.Schema<From, To>,
-    config?: Partial<Config>
+    config?: Partial<Config>,
   ): React<To>["hooks"] =>
     React.pipe(
       Effect.map((react) => react.hooks as React<To>["hooks"]),
@@ -34,7 +34,7 @@ export const makeEvoluCreate =
             LoadingPromisesLive,
             OnCompletesLive,
             RowsCacheStoreLive,
-            SubscribedQueriesLive
+            SubscribedQueriesLive,
           ).pipe(Layer.provide(QueryStoreLive)),
           Layer.mergeAll(
             DbWorkerLive,
@@ -42,14 +42,14 @@ export const makeEvoluCreate =
             NanoIdLive,
             OnCompletesLive,
             SubscribedQueriesLive,
-            TimeLive
+            TimeLive,
           ).pipe(Layer.provide(MutateLive)),
           ConfigLive(config).pipe(Layer.provide(AppStateLive)),
           SubscribedQueriesLive,
           Layer.mergeAll(DbWorkerLive, Bip39Live).pipe(
-            Layer.provide(OwnerActionsLive)
-          )
-        ).pipe(Layer.provide(EvoluLive(schema)), Layer.provide(ReactLive))
+            Layer.provide(OwnerActionsLive),
+          ),
+        ).pipe(Layer.provide(EvoluLive(schema)), Layer.provide(ReactLive)),
       ),
-      Effect.runSync
+      Effect.runSync,
     );

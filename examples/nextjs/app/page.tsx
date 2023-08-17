@@ -24,7 +24,7 @@ const NonEmptyString50 = pipe(
   Schema.string,
   Schema.minLength(1),
   Schema.maxLength(50),
-  Schema.brand("NonEmptyString50")
+  Schema.brand("NonEmptyString50"),
 );
 type NonEmptyString50 = Schema.To<typeof NonEmptyString50>;
 
@@ -53,7 +53,7 @@ const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
 const prompt = <From extends string, To>(
   schema: Schema.Schema<From, To>,
   message: string,
-  onSuccess: (value: To) => void
+  onSuccess: (value: To) => void,
 ): void => {
   const value = window.prompt(message);
   if (value == null) return; // on cancel
@@ -93,7 +93,7 @@ const useTodoCategoriesList = (): TodoCategoriesList =>
         .where("isDeleted", "is not", Evolu.cast(true))
         .orderBy("createdAt"),
     // Filter out rows with nullable names.
-    ({ name, ...rest }) => name && { name, ...rest }
+    ({ name, ...rest }) => name && { name, ...rest },
   ).rows;
 
 const TodoCategorySelect: FC<{
@@ -185,7 +185,7 @@ const Todos: FC = () => {
         .orderBy("createdAt"),
     // (row) => row
     ({ title, isCompleted, ...rest }) =>
-      title && isCompleted != null && { title, isCompleted, ...rest }
+      title && isCompleted != null && { title, isCompleted, ...rest },
   );
   const todoCategoriesList = useTodoCategoriesList();
 
@@ -209,7 +209,7 @@ const Todos: FC = () => {
             "What needs to be done?",
             (title) => {
               create("todo", { title, isCompleted: false });
-            }
+            },
           );
         }}
       />
@@ -227,7 +227,7 @@ const TodoCategories: FC = () => {
         .where("isDeleted", "is not", Evolu.cast(true))
         .orderBy("createdAt"),
     // (row) => row
-    ({ name, ...rest }) => name && { name, ...rest }
+    ({ name, ...rest }) => name && { name, ...rest },
   );
 
   return (

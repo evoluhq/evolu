@@ -41,7 +41,7 @@ export const applyPatches =
 // a developer would implement manually, if necessary.
 export const makePatches = (
   previous: ReadonlyArray<Row> | undefined,
-  next: ReadonlyArray<Row>
+  next: ReadonlyArray<Row>,
 ): readonly Patch[] => {
   if (previous === undefined) return [{ op: "replaceAll", value: next }];
   if (previous.length === 0 && next.length === 0) return [];

@@ -1,5 +1,13 @@
 # evolu
 
+## 6.2.0
+
+### Minor Changes
+
+- bcf25b6: Prepare for React Native, update deps
+
+  The API is the same, but the whole code base for refactored to leverage the Effect Layer making the source code much more testable and ready for React Native version.
+
 ## 6.1.4
 
 ### Patch Changes

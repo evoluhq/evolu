@@ -140,7 +140,7 @@ type UseQuery<S extends Schema> = <
   FilterMapRow extends Row,
 >(
   queryCallback: OrNullOrFalse<QueryCallback<S, QueryRow>>,
-  filterMap: (row: QueryRow) => OrNullOrFalse<FilterMapRow>
+  filterMap: (row: QueryRow) => OrNullOrFalse<FilterMapRow>,
 ) => {
   /**
    * Rows from the database. They can be filtered and mapped by `filterMap`.
@@ -220,7 +220,7 @@ type UseMutation<S extends Schema> = () => {
 type Create<S extends Schema> = <T extends keyof S>(
   table: T,
   values: Simplify<PartialOnlyForNullable<CastableForMutate<Omit<S[T], "id">>>>,
-  onComplete?: () => void
+  onComplete?: () => void,
 ) => {
   readonly id: S[T]["id"];
 };
@@ -241,7 +241,7 @@ type Update<S extends Schema> = <T extends keyof S>(
       CastableForMutate<Omit<S[T], "id"> & Pick<CommonColumns, "isDeleted">>
     > & { id: S[T]["id"] }
   >,
-  onComplete?: () => void
+  onComplete?: () => void,
 ) => {
   readonly id: S[T]["id"];
 };
@@ -254,7 +254,7 @@ export const ReactLive = Layer.effect(
     const useQuery: UseQuery<Schema> = (queryCallback, filterMap) => {
       const query = useMemo(
         () => (queryCallback ? evolu.createQuery(queryCallback) : null),
-        [queryCallback]
+        [queryCallback],
       );
 
       const promise = useMemo(() => {
@@ -266,7 +266,7 @@ export const ReactLive = Layer.effect(
       const subscribedRows = useSyncExternalStore(
         useMemo(() => evolu.subscribeQuery(query), [query]),
         useMemo(() => () => evolu.getQuery(query), [query]),
-        Function.constNull
+        Function.constNull,
       );
 
       // Use useRef until React Forget release.
@@ -278,7 +278,7 @@ export const ReactLive = Layer.effect(
           let cachedRow = cache.get(row);
           if (cachedRow !== undefined) return cachedRow;
           cachedRow = Option.fromNullable(
-            filterMapRef.current(row as never)
+            filterMapRef.current(row as never),
           ) as never;
           cache.set(row, cachedRow);
           return cachedRow;
@@ -297,21 +297,21 @@ export const ReactLive = Layer.effect(
           create: evolu.mutate as Create<Schema>,
           update: evolu.mutate as Update<Schema>,
         }),
-        []
+        [],
       );
 
     const useEvoluError: Hooks<Schema>["useEvoluError"] = () =>
       useSyncExternalStore(
         evolu.subscribeError,
         evolu.getError,
-        Function.constNull
+        Function.constNull,
       );
 
     const useOwner: Hooks<Schema>["useOwner"] = () =>
       useSyncExternalStore(
         evolu.subscribeOwner,
         evolu.getOwner,
-        Function.constNull
+        Function.constNull,
       );
 
     const useOwnerActions: Hooks<Schema>["useOwnerActions"] = () =>
@@ -322,7 +322,7 @@ export const ReactLive = Layer.effect(
       useSyncExternalStore(
         evolu.subscribeSyncState,
         evolu.getSyncState,
-        () => syncStateIsSyncing
+        () => syncStateIsSyncing,
       );
 
     return React.of({
@@ -335,5 +335,5 @@ export const ReactLive = Layer.effect(
         useSyncState,
       },
     });
-  })
+  }),
 );

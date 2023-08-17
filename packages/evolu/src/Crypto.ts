@@ -7,11 +7,11 @@ export interface Bip39 {
   readonly make: Effect.Effect<never, never, Mnemonic>;
 
   readonly toSeed: (
-    mnemonic: Mnemonic
+    mnemonic: Mnemonic,
   ) => Effect.Effect<never, never, Uint8Array>;
 
   readonly parse: (
-    mnemonic: string
+    mnemonic: string,
   ) => Effect.Effect<never, InvalidMnemonicError, Mnemonic>;
 }
 
@@ -45,7 +45,7 @@ export const Sha512 = Context.Tag<Sha512>("evolu/Sha512");
 export interface Slip21 {
   readonly derive: (
     seed: Uint8Array,
-    path: string[]
+    path: string[],
   ) => Effect.Effect<never, never, Uint8Array>;
 }
 
@@ -71,7 +71,7 @@ export const Slip21Live = Layer.effect(
       });
 
     return { derive };
-  })
+  }),
 );
 
 export interface NanoId {
@@ -92,12 +92,12 @@ export const customAlphabetForNodeId = "0123456789abcdef";
 export interface AesGcm {
   readonly encrypt: (
     sharedKey: Uint8Array,
-    plaintext: Uint8Array
+    plaintext: Uint8Array,
   ) => Effect.Effect<never, never, Uint8Array>;
 
   readonly decrypt: (
     sharedKey: Uint8Array,
-    ciphertext: Uint8Array
+    ciphertext: Uint8Array,
   ) => Effect.Effect<never, never, Uint8Array>;
 }
 

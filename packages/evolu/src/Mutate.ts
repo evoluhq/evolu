@@ -15,7 +15,7 @@ export type Mutate<S extends Schema = Schema> = <
 >(
   table: T,
   values: Kysely.Simplify<Partial<CastableForMutate<U[T]>>>,
-  onComplete?: () => void
+  onComplete?: () => void,
 ) => {
   readonly id: U[T]["id"];
 };
@@ -76,5 +76,5 @@ export const MutateLive = Layer.effect(
 
       return { id: id as never };
     });
-  })
+  }),
 );

@@ -2,7 +2,7 @@ import { Brand, Context, Effect, ReadonlyRecord } from "effect";
 
 export interface Sqlite {
   readonly exec: (
-    arg: string | QueryObject
+    arg: string | QueryObject,
   ) => Effect.Effect<never, never, ReadonlyArray<Row>>;
 
   readonly changes: Effect.Effect<never, never, number>;

@@ -15,7 +15,7 @@ export interface LoadingPromises {
 }
 
 export const LoadingPromises = Context.Tag<LoadingPromises>(
-  "evolu/LoadingPromises"
+  "evolu/LoadingPromises",
 );
 
 const promises = new Map<
@@ -54,5 +54,5 @@ const releasePromises: LoadingPromises["releasePromises"] = (ignoreQueries) => {
 
 export const LoadingPromisesLive = Layer.succeed(
   LoadingPromises,
-  LoadingPromises.of({ getPromise, resolvePromise, releasePromises })
+  LoadingPromises.of({ getPromise, resolvePromise, releasePromises }),
 );

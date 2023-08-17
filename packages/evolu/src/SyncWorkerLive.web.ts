@@ -6,7 +6,7 @@ export const SyncWorkerLive = Layer.effect(
   Effect.sync(() => {
     const worker = new Worker(
       new URL("SyncWorkerLive.web.worker.js", import.meta.url),
-      { type: "module" }
+      { type: "module" },
     );
 
     worker.onmessage = (e: MessageEvent<SyncWorkerOutput>): void => {
@@ -21,5 +21,5 @@ export const SyncWorkerLive = Layer.effect(
     };
 
     return syncWorker;
-  })
+  }),
 );
