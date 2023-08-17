@@ -527,10 +527,6 @@ export const DbWorkerLive = Layer.effect(
   DbWorker,
   Effect.gen(function* (_) {
     const syncWorker = yield* _(SyncWorker);
-    const sqlite = yield* _(Sqlite);
-    const bip39 = yield* _(Bip39);
-    const slip21 = yield* _(Slip21);
-    const nanoid = yield* _(NanoId);
 
     const handleError = (error: EvoluError): void => {
       dbWorker.onMessage({ _tag: "onError", error });
@@ -549,15 +545,19 @@ export const DbWorkerLive = Layer.effect(
       }
     };
 
+    const context = Context.empty().pipe(
+      Context.add(Sqlite, yield* _(Sqlite)),
+      Context.add(Bip39, yield* _(Bip39)),
+      Context.add(Slip21, yield* _(Slip21)),
+      Context.add(NanoId, yield* _(NanoId))
+    );
+
     const run = (
       effect: Effect.Effect<Sqlite | Bip39 | Slip21 | NanoId, EvoluError, void>
     ): Promise<void> =>
       effect.pipe(
         transaction,
-        Effect.provideService(Sqlite, sqlite),
-        Effect.provideService(Bip39, bip39),
-        Effect.provideService(Slip21, slip21),
-        Effect.provideService(NanoId, nanoid),
+        Effect.provideContext(context),
         Effect.catchAllCause((cause) =>
           Cause.failureOrCause(cause).pipe(
             Either.match({
@@ -611,9 +611,7 @@ export const DbWorkerLive = Layer.effect(
     };
 
     let write: Write = (input) => {
-      if (input._tag !== "init") {
-        throw new Error("init must be called first");
-      }
+      if (input._tag !== "init") throw new Error("init must be called first");
       return init(input).pipe(
         Effect.map((owner) => {
           dbWorker.onMessage({ _tag: "onOwner", owner });
