@@ -270,7 +270,7 @@ const applyMessages = ({
   messages,
 }: {
   merkleTree: MerkleTree;
-  messages: ReadonlyArray<Message>;
+  messages: ReadonlyArray.NonEmptyReadonlyArray<Message>;
 }): Effect.Effect<Sqlite, never, MerkleTree> =>
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
@@ -369,7 +369,8 @@ const mutate = ({
       )
     );
 
-    merkleTree = yield* _(applyMessages({ merkleTree, messages }));
+    if (ReadonlyArray.isNonEmptyReadonlyArray(messages))
+      merkleTree = yield* _(applyMessages({ merkleTree, messages }));
 
     yield* _(writeTimestampAndMerkleTree({ timestamp, merkleTree }));
 
@@ -404,16 +405,19 @@ const handleSyncResponse = (
 > =>
   Effect.gen(function* (_) {
     let { timestamp, merkleTree } = yield* _(readTimestampAndMerkleTree);
-    for (const message of response.messages) {
-      timestamp = yield* _(
-        unsafeTimestampFromString(message.timestamp),
-        (remote) => receiveTimestamp({ local: timestamp, remote })
+
+    if (ReadonlyArray.isNonEmptyReadonlyArray(response.messages)) {
+      for (const message of response.messages) {
+        timestamp = yield* _(
+          unsafeTimestampFromString(message.timestamp),
+          (remote) => receiveTimestamp({ local: timestamp, remote })
+        );
+      }
+      merkleTree = yield* _(
+        applyMessages({ merkleTree, messages: response.messages })
       );
+      yield* _(writeTimestampAndMerkleTree({ timestamp, merkleTree }));
     }
-    merkleTree = yield* _(
-      applyMessages({ merkleTree, messages: response.messages })
-    );
-    yield* _(writeTimestampAndMerkleTree({ timestamp, merkleTree }));
 
     const dbWorkerOnMessage = yield* _(DbWorkerOnMessage);
     dbWorkerOnMessage({ _tag: "onReceive" });
