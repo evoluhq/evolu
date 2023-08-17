@@ -32,7 +32,7 @@ export const SyncWorker = Context.Tag<SyncWorker>("evolu/SyncWorker");
 export type SyncWorkerPostMessage = SyncWorker["postMessage"];
 
 export const SyncWorkerPostMessage = Context.Tag<SyncWorkerPostMessage>(
-  "evolu/SyncWorkerPostMessage"
+  "evolu/SyncWorkerPostMessage",
 );
 
 export type SyncWorkerInput =
@@ -56,7 +56,7 @@ interface SyncWorkerInputSyncCompleted {
 type SyncWorkerOnMessage = SyncWorker["onMessage"];
 
 const SyncWorkerOnMessage = Context.Tag<SyncWorkerOnMessage>(
-  "evolu/SyncWorkerOnMessage"
+  "evolu/SyncWorkerOnMessage",
 );
 
 export type SyncWorkerOutput =
@@ -137,7 +137,7 @@ const valueFromProtobuf = (value: MessageContent["value"]): Value => {
 };
 
 const sync = (
-  input: SyncWorkerInputSync
+  input: SyncWorkerInputSync,
 ): Effect.Effect<
   SyncLock | SyncWorkerOnMessage | AesGcm | Fetch,
   never,
@@ -164,11 +164,11 @@ const sync = (
               row: rest.row,
               column: rest.column,
               value: valueToProtobuf(rest.value),
-            })
+            }),
           )
           .pipe(
-            Effect.map((content): EncryptedMessage => ({ timestamp, content }))
-          )
+            Effect.map((content): EncryptedMessage => ({ timestamp, content })),
+          ),
       ),
       Effect.map((messages) =>
         SyncRequest.toBinary({
@@ -176,14 +176,14 @@ const sync = (
           userId: input.owner.id,
           nodeId: input.timestamp.node,
           merkleTree: merkleTreeToString(input.merkleTree),
-        })
+        }),
       ),
       Effect.flatMap((body) => fetch(input.syncUrl, body)),
       Effect.catchTag("FetchError", () =>
         Effect.fail<SyncStateIsNotSyncedError>({
           _tag: "SyncStateIsNotSyncedError",
           error: { _tag: "NetworkError" },
-        })
+        }),
       ),
       Effect.flatMap((response) => {
         switch (response.status) {
@@ -197,7 +197,7 @@ const sync = (
               response
                 .arrayBuffer()
                 .then((buffer) => new Uint8Array(buffer))
-                .then((array) => SyncResponse.fromBinary(array))
+                .then((array) => SyncResponse.fromBinary(array)),
             );
           default:
             return Effect.fail<SyncStateIsNotSyncedError>({
@@ -217,25 +217,25 @@ const sync = (
                 row: content.row as Id,
                 column: content.column,
                 value: valueFromProtobuf(content.value),
-              })
-            )
-          )
+              }),
+            ),
+          ),
         ).pipe(
           Effect.map(
             (messages): SyncWorkerOutputSyncResponse => ({
               _tag: "SyncWorkerOutputSyncResponse",
               messages,
               merkleTree: unsafeMerkleTreeFromString(
-                syncResponse.merkleTree as MerkleTreeString
+                syncResponse.merkleTree as MerkleTreeString,
               ),
               syncLoopCount: input.syncLoopCount,
-            })
-          )
-        )
+            }),
+          ),
+        ),
       ),
       Effect.tapError(() => syncLock.release),
       Effect.merge,
-      Effect.map(syncWorkerOnMessage)
+      Effect.map(syncWorkerOnMessage),
     );
   });
 
@@ -261,7 +261,7 @@ export const SyncWorkerLive = Layer.effect(
         Effect.provideService(SyncLock, syncLock),
         Effect.provideService(SyncWorkerOnMessage, syncWorker.onMessage),
         Effect.provideLayer(Layer.mergeAll(AesGcmLive, FetchLive)),
-        Effect.runPromise
+        Effect.runPromise,
       );
     };
 
@@ -271,5 +271,5 @@ export const SyncWorkerLive = Layer.effect(
     };
 
     return syncWorker;
-  })
+  }),
 );

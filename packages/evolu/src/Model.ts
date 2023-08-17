@@ -7,7 +7,7 @@ import { Brand } from "effect";
  */
 export const Id = Schema.string.pipe(
   Schema.pattern(/^[\w-]{21}$/),
-  Schema.brand("Id")
+  Schema.brand("Id"),
 );
 export type Id = Schema.To<typeof Id>;
 
@@ -27,7 +27,7 @@ export type Id = Schema.To<typeof Id>;
  * ```
  */
 export const id = <T extends string>(
-  table: T
+  table: T,
 ): Schema.BrandSchema<string, string & Brand.Brand<"Id"> & Brand.Brand<T>> =>
   Id.pipe(Schema.brand(table));
 
@@ -38,7 +38,7 @@ export const id = <T extends string>(
  */
 export const SqliteDate = Schema.string.pipe(
   Schema.filter((s) => !isNaN(Date.parse(s))),
-  Schema.brand("SqliteDate")
+  Schema.brand("SqliteDate"),
 );
 export type SqliteDate = Schema.To<typeof SqliteDate>;
 
@@ -50,7 +50,7 @@ export type SqliteDate = Schema.To<typeof SqliteDate>;
 export const SqliteBoolean = Schema.number.pipe(
   Schema.int(),
   Schema.filter((s) => s === 0 || s === 1),
-  Schema.brand("SqliteBoolean")
+  Schema.brand("SqliteBoolean"),
 );
 export type SqliteBoolean = Schema.To<typeof SqliteBoolean>;
 
@@ -90,7 +90,7 @@ export function cast(value: SqliteBoolean): boolean;
 export function cast(value: Date): SqliteDate;
 export function cast(value: SqliteDate): Date;
 export function cast(
-  value: boolean | SqliteBoolean | Date | SqliteDate
+  value: boolean | SqliteBoolean | Date | SqliteDate,
 ): boolean | SqliteBoolean | Date | SqliteDate {
   if (typeof value === "boolean")
     return (value === true ? 1 : 0) as SqliteBoolean;
@@ -134,7 +134,7 @@ export type String1000 = Schema.To<typeof String1000>;
 export const NonEmptyString1000 = Schema.string.pipe(
   Schema.minLength(1),
   Schema.maxLength(1000),
-  Schema.brand("NonEmptyString1000")
+  Schema.brand("NonEmptyString1000"),
 );
 export type NonEmptyString1000 = Schema.To<typeof NonEmptyString1000>;
 
@@ -154,6 +154,6 @@ export type NonEmptyString1000 = Schema.To<typeof NonEmptyString1000>;
 export const PositiveInt = Schema.number.pipe(
   Schema.int(),
   Schema.positive(),
-  Schema.brand("PositiveInt")
+  Schema.brand("PositiveInt"),
 );
 export type PositiveInt = Schema.To<typeof PositiveInt>;

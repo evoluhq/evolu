@@ -15,7 +15,7 @@ export interface Timestamp {
 
 export const Millis = Schema.number.pipe(
   Schema.greaterThanOrEqualTo(0),
-  Schema.brand("Millis")
+  Schema.brand("Millis"),
 );
 export type Millis = Schema.To<typeof Millis>;
 
@@ -23,7 +23,7 @@ const initialMillis = Schema.parseSync(Millis)(0);
 
 export const Counter = Schema.number.pipe(
   Schema.between(0, 65535),
-  Schema.brand("Counter")
+  Schema.brand("Counter"),
 );
 export type Counter = Schema.To<typeof Counter>;
 
@@ -55,7 +55,7 @@ export const timestampToHash = (t: Timestamp): TimestampHash =>
 const syncNodeId = Schema.parseSync(NodeId)("0000000000000000");
 
 export const makeSyncTimestamp = (
-  millis: Millis = initialMillis
+  millis: Millis = initialMillis,
 ): Timestamp => ({
   millis,
   counter: initialCounter,
@@ -69,8 +69,8 @@ export const makeInitialTimestamp = NanoId.pipe(
       millis: initialMillis,
       counter: initialCounter,
       node,
-    })
-  )
+    }),
+  ),
 );
 
 export interface Time {
@@ -83,7 +83,7 @@ export const TimeLive = Layer.succeed(
   Time,
   Time.of({
     now: Effect.sync(() => Date.now() as Millis),
-  })
+  }),
 );
 
 export type TimestampError =
@@ -102,7 +102,7 @@ export interface TimestampCounterOverflowError {
 }
 
 const getNextMillis = (
-  millis: Millis[]
+  millis: Millis[],
 ): Effect.Effect<Time | Config, TimestampDriftError, Millis> =>
   Effect.gen(function* (_) {
     const time = yield* _(Time);
@@ -117,25 +117,25 @@ const getNextMillis = (
           _tag: "TimestampDriftError",
           now,
           next,
-        })
+        }),
       );
 
     return next;
   });
 
 const incrementCounter = (
-  counter: Counter
+  counter: Counter,
 ): Either.Either<TimestampCounterOverflowError, Counter> =>
   pipe(
     Number.increment(counter),
     Schema.parseEither(Counter),
-    Either.mapLeft(() => ({ _tag: "TimestampCounterOverflowError" }))
+    Either.mapLeft(() => ({ _tag: "TimestampCounterOverflowError" })),
   );
 
 const counterMin = Schema.parseSync(Counter)(0);
 
 export const sendTimestamp = (
-  timestamp: Timestamp
+  timestamp: Timestamp,
 ): Effect.Effect<
   Time | Config,
   TimestampDriftError | TimestampCounterOverflowError,
@@ -174,7 +174,7 @@ export const receiveTimestamp = ({
         Effect.fail<TimestampDuplicateNodeError>({
           _tag: "TimestampDuplicateNodeError",
           node: local.node,
-        })
+        }),
       );
 
     const millis = yield* _(getNextMillis([local.millis, remote.millis]));
@@ -185,7 +185,7 @@ export const receiveTimestamp = ({
         ? incrementCounter(local.counter)
         : millis === remote.millis
         ? incrementCounter(remote.counter)
-        : Either.right(counterMin)
+        : Either.right(counterMin),
     );
 
     return { ...local, millis, counter };

@@ -10,9 +10,9 @@ export const RowsCacheRefLive = Layer.effect(RowsCacheRef, Ref.make(new Map()));
 
 export type RowsCacheStore = Store<RowsCacheMap>;
 export const RowsCacheStore = Context.Tag<RowsCacheStore>(
-  "evolu/RowsCacheStore"
+  "evolu/RowsCacheStore",
 );
 export const RowsCacheStoreLive = Layer.succeed(
   RowsCacheStore,
-  makeStore<RowsCacheMap>(new Map())
+  makeStore<RowsCacheMap>(new Map()),
 );

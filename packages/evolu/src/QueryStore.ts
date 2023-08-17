@@ -20,7 +20,7 @@ import { SubscribedQueries } from "./SubscribedQueries.js";
 
 export interface QueryStore {
   readonly subscribe: (
-    query: Query | null
+    query: Query | null,
   ) => (listener: StoreListener) => StoreUnsubscribe;
 
   readonly getState: (query: Query | null) => ReadonlyArray<Row> | null;
@@ -43,7 +43,7 @@ export const QueryStoreLive = Layer.effect(
 
       subscribedQueries.set(
         query,
-        Number.increment(subscribedQueries.get(query) ?? 0)
+        Number.increment(subscribedQueries.get(query) ?? 0),
       );
 
       const unsubscribe = rowsCacheStore.subscribe(listen);
@@ -94,9 +94,9 @@ export const QueryStoreLive = Layer.effect(
             [
               query,
               applyPatches(patches)(state.get(query) || ReadonlyArray.empty()),
-            ] as const
+            ] as const,
         ),
-        (a): RowsCacheMap => new Map([...state, ...a])
+        (a): RowsCacheMap => new Map([...state, ...a]),
       );
 
       // Resolve all Promises belonging to queries.
@@ -121,5 +121,5 @@ export const QueryStoreLive = Layer.effect(
     };
 
     return QueryStore.of({ subscribe, getState, loadQuery, onQuery });
-  })
+  }),
 );

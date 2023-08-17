@@ -40,11 +40,11 @@ const exec: Sqlite["exec"] = (arg) =>
       });
       // console.log("output", rows);
       return rows;
-    })
+    }),
   );
 
 const changes: Sqlite["changes"] = Effect.promise(() => sqlite).pipe(
-  Effect.map((sqlite) => sqlite.changes())
+  Effect.map((sqlite) => sqlite.changes()),
 );
 
 export const SqliteLive = Layer.succeed(Sqlite, { exec, changes });

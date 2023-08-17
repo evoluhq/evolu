@@ -70,7 +70,7 @@ LIMIT
 
 export const insertValueIntoTableRowColumn = (
   table: string,
-  column: string
+  column: string,
 ): string => `
 INSERT INTO
   "${table}" ("id", "${column}")

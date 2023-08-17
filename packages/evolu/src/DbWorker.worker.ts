@@ -4,7 +4,7 @@ import { DbWorkerWebLive } from "./DbWorkerWebLive.js";
 
 const dbWorker = DbWorker.pipe(
   Effect.provideLayer(DbWorkerWebLive),
-  Effect.runSync
+  Effect.runSync,
 );
 
 dbWorker.onMessage = (output): void => postMessage(output);

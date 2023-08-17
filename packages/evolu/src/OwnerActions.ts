@@ -13,7 +13,7 @@ export interface OwnerActions {
    * Use `restore` to restore `Owner` with synced data on a different device.
    */
   readonly restore: (
-    mnemonic: string
+    mnemonic: string,
   ) => Promise<Either.Either<RestoreOwnerError, void>>;
 }
 
@@ -39,16 +39,16 @@ export const OwnerActionsLive = Layer.effect(
           Effect.sync(() => {
             dbWorker.postMessage({ _tag: "reset", mnemonic });
             return Either.right(undefined);
-          })
+          }),
         ),
         Effect.catchTag("InvalidMnemonicError", () =>
           Effect.succeed(
-            Either.left<RestoreOwnerError>({ _tag: "RestoreOwnerError" })
-          )
+            Either.left<RestoreOwnerError>({ _tag: "RestoreOwnerError" }),
+          ),
         ),
-        Effect.runPromise
+        Effect.runPromise,
       );
 
     return { reset, restore };
-  })
+  }),
 );

@@ -12,5 +12,5 @@ Effect.gen(function* (_) {
   };
 }).pipe(
   Effect.provideLayer(SyncLockLive.pipe(Layer.provide(SyncWorkerLive))),
-  Effect.runSync
+  Effect.runSync,
 );

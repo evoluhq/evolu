@@ -12,7 +12,7 @@ const DbWorkerLive = Layer.succeed(
       // console.log(input);
     },
     onMessage: () => {},
-  })
+  }),
 );
 
 export const create = makeEvoluCreate(DbWorkerLive);

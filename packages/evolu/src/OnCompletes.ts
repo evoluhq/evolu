@@ -12,5 +12,5 @@ export type OnComplete = () => void;
 
 export const OnCompletesLive = Layer.succeed(
   OnCompletes,
-  OnCompletes.of(new Map())
+  OnCompletes.of(new Map()),
 );

@@ -45,7 +45,7 @@ type ErrorStore = Store<EvoluError | null>;
 type OwnerStore = Store<Owner | null>;
 
 export const EvoluLive = <From, To extends Schema>(
-  schema: S.Schema<From, To>
+  schema: S.Schema<From, To>,
 ): Layer.Layer<
   | AppState
   | Config
@@ -138,5 +138,5 @@ export const EvoluLive = <From, To extends Schema>(
         mutate,
         ownerActions,
       });
-    })
+    }),
   );
