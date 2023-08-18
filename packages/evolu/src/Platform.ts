@@ -32,7 +32,7 @@ export interface FetchError {
 
 export type Fetch = (
   url: string,
-  body: Uint8Array
+  body: Uint8Array,
 ) => Effect.Effect<never, FetchError, Response>;
 
 export const Fetch = Context.Tag<Fetch>("evolu/Fetch");

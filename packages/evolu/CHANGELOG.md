@@ -1,5 +1,11 @@
 # evolu
 
+## 6.2.2
+
+### Patch Changes
+
+- a5c90b6: Fix undefined window bug, refactor index.ts
+
 ## 6.2.1
 
 ### Patch Changes
