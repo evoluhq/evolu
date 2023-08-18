@@ -109,7 +109,7 @@ Evolu uses type-safe TypeScript SQL query builder [kysely](https://github.com/ko
 const { rows } = useQuery(
   (db) => db.selectFrom("todo").select(["id", "title"]).orderBy("updatedAt"),
   // (row) => row
-  ({ title, ...rest }) => title && { title, ...rest }
+  ({ title, ...rest }) => title && { title, ...rest },
 );
 ```
 
