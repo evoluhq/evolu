@@ -13,6 +13,7 @@ import { EvoluError } from "./Errors.js";
 import { Evolu } from "./Evolu.js";
 import { CastableForMutate } from "./Model.js";
 import { OwnerActions } from "./OwnerActions.js";
+import { Platform } from "./Platform.js";
 import { Row } from "./Sqlite.js";
 import { SyncState } from "./SyncWorker.js";
 
@@ -140,7 +141,7 @@ type UseQuery<S extends Schema> = <
   FilterMapRow extends Row,
 >(
   queryCallback: OrNullOrFalse<QueryCallback<S, QueryRow>>,
-  filterMap: (row: QueryRow) => OrNullOrFalse<FilterMapRow>,
+  filterMap: (row: QueryRow) => OrNullOrFalse<FilterMapRow>
 ) => {
   /**
    * Rows from the database. They can be filtered and mapped by `filterMap`.
@@ -220,7 +221,7 @@ type UseMutation<S extends Schema> = () => {
 type Create<S extends Schema> = <T extends keyof S>(
   table: T,
   values: Simplify<PartialOnlyForNullable<CastableForMutate<Omit<S[T], "id">>>>,
-  onComplete?: () => void,
+  onComplete?: () => void
 ) => {
   readonly id: S[T]["id"];
 };
@@ -241,32 +242,36 @@ type Update<S extends Schema> = <T extends keyof S>(
       CastableForMutate<Omit<S[T], "id"> & Pick<CommonColumns, "isDeleted">>
     > & { id: S[T]["id"] }
   >,
-  onComplete?: () => void,
+  onComplete?: () => void
 ) => {
   readonly id: S[T]["id"];
 };
 
 export const ReactLive = Layer.effect(
   React,
-  Effect.map(Evolu, (evolu) => {
+  Effect.gen(function* (_) {
+    const evolu = yield* _(Evolu);
+    const platform = yield* _(Platform);
+
     const cache = new WeakMap<Row, Option.Option<Row>>();
 
     const useQuery: UseQuery<Schema> = (queryCallback, filterMap) => {
       const query = useMemo(
         () => (queryCallback ? evolu.createQuery(queryCallback) : null),
-        [queryCallback],
+        [queryCallback]
       );
 
       const promise = useMemo(() => {
         return query ? evolu.loadQuery(query) : null;
       }, [query]);
 
-      if (promise && !("rows" in promise)) throw promise;
+      if (platform.name !== "server" && promise && !("rows" in promise))
+        throw promise;
 
       const subscribedRows = useSyncExternalStore(
         useMemo(() => evolu.subscribeQuery(query), [query]),
         useMemo(() => () => evolu.getQuery(query), [query]),
-        Function.constNull,
+        Function.constNull
       );
 
       // Use useRef until React Forget release.
@@ -278,7 +283,7 @@ export const ReactLive = Layer.effect(
           let cachedRow = cache.get(row);
           if (cachedRow !== undefined) return cachedRow;
           cachedRow = Option.fromNullable(
-            filterMapRef.current(row as never),
+            filterMapRef.current(row as never)
           ) as never;
           cache.set(row, cachedRow);
           return cachedRow;
@@ -297,32 +302,32 @@ export const ReactLive = Layer.effect(
           create: evolu.mutate as Create<Schema>,
           update: evolu.mutate as Update<Schema>,
         }),
-        [],
+        []
       );
 
     const useEvoluError: Hooks<Schema>["useEvoluError"] = () =>
       useSyncExternalStore(
         evolu.subscribeError,
         evolu.getError,
-        Function.constNull,
+        Function.constNull
       );
 
     const useOwner: Hooks<Schema>["useOwner"] = () =>
       useSyncExternalStore(
         evolu.subscribeOwner,
         evolu.getOwner,
-        Function.constNull,
+        Function.constNull
       );
 
     const useOwnerActions: Hooks<Schema>["useOwnerActions"] = () =>
       evolu.ownerActions;
 
-    const syncStateIsSyncing: SyncState = { _tag: "SyncStateIsSyncing" };
+    const syncStateInitial: SyncState = { _tag: "SyncStateInitial" };
     const useSyncState: Hooks<Schema>["useSyncState"] = () =>
       useSyncExternalStore(
         evolu.subscribeSyncState,
         evolu.getSyncState,
-        () => syncStateIsSyncing,
+        () => syncStateInitial
       );
 
     return React.of({
@@ -335,5 +340,5 @@ export const ReactLive = Layer.effect(
         useSyncState,
       },
     });
-  }),
+  })
 );

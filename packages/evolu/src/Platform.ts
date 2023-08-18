@@ -1,6 +1,16 @@
 import { Context, Effect } from "effect";
 import { StoreListener } from "./Store.js";
 
+export interface Platform {
+  readonly name:
+    | "server"
+    | "web-with-opfs"
+    | "web-without-opfs"
+    | "react-native";
+}
+
+export const Platform = Context.Tag<Platform>("evolu/Platform");
+
 export type FlushSync = (callback: () => void) => void;
 
 export const FlushSync = Context.Tag<FlushSync>("evolu/FlushSync");
@@ -22,7 +32,7 @@ export interface FetchError {
 
 export type Fetch = (
   url: string,
-  body: Uint8Array,
+  body: Uint8Array
 ) => Effect.Effect<never, FetchError, Response>;
 
 export const Fetch = Context.Tag<Fetch>("evolu/Fetch");

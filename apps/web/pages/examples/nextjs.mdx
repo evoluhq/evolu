@@ -3,10 +3,13 @@
 [GitHub Repository](https://github.com/evoluhq/evolu/tree/main/examples/nextjs)
 
 import dynamic from "next/dynamic";
-// Simulate Next.js App Router.
+// Simulate Next.js App Router "use client".
+// It's crucial to not server render components using Evolu to prevent
+// this React https://legacy.reactjs.org/docs/error-decoder.html/?invariant=421
+// error. It doesn't make sense to server-render local-first data anyway.
 export const NextJsExample = dynamic(
   () => import("../../components/NextJsExample").then((a) => a.NextJsExample),
-  { ssr: false }
+  { ssr: false },
 );
 
 <NextJsExample />
