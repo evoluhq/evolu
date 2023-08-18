@@ -1,5 +1,11 @@
 # evolu
 
+## 6.2.1
+
+### Patch Changes
+
+- b285da4: Update Effect to 2.0.0-next.26
+
 ## 6.2.0
 
 ### Minor Changes
