@@ -1,7 +1,7 @@
+import { aes_decrypt, aes_encrypt } from "@noble/ciphers/simple";
 import { hmac } from "@noble/hashes/hmac";
 import { sha512 } from "@noble/hashes/sha512";
 import { Effect, Layer } from "effect";
-import * as aesGcm from "micro-aes-gcm";
 import { customAlphabet, nanoid } from "nanoid";
 import {
   AesGcm,
@@ -20,7 +20,7 @@ const importBip39WithEnglish = Effect.all(
     Effect.promise(() => import("@scure/bip39")),
     Effect.promise(() => import("@scure/bip39/wordlists/english")),
   ],
-  { concurrency: "unbounded" },
+  { concurrency: "unbounded" }
 );
 
 export const Bip39Live = Layer.succeed(
@@ -29,13 +29,13 @@ export const Bip39Live = Layer.succeed(
     make: importBip39WithEnglish.pipe(
       Effect.map(
         ([{ generateMnemonic }, { wordlist }]) =>
-          generateMnemonic(wordlist, 128) as Mnemonic,
-      ),
+          generateMnemonic(wordlist, 128) as Mnemonic
+      )
     ),
 
     toSeed: (mnemonic) =>
       Effect.promise(() => import("@scure/bip39")).pipe(
-        Effect.flatMap((a) => Effect.promise(() => a.mnemonicToSeed(mnemonic))),
+        Effect.flatMap((a) => Effect.promise(() => a.mnemonicToSeed(mnemonic)))
       ),
 
     parse: (mnemonic) =>
@@ -45,10 +45,10 @@ export const Bip39Live = Layer.succeed(
             ? Effect.succeed(mnemonic as Mnemonic)
             : Effect.fail<InvalidMnemonicError>({
                 _tag: "InvalidMnemonicError",
-              }),
-        ),
+              })
+        )
       ),
-  }),
+  })
 );
 
 export const HmacLive = Layer.succeed(Hmac, hmac);
@@ -62,15 +62,15 @@ export const NanoIdLive = Layer.succeed(
   NanoId.of({
     nanoid: Effect.sync(() => nanoid()),
     nanoidAsNodeId: Effect.sync(() => nanoidForNodeId() as NodeId),
-  }),
+  })
 );
 
 export const AesGcmLive = Layer.succeed(
   AesGcm,
   AesGcm.of({
     encrypt: (sharedKey, plaintext) =>
-      Effect.promise(() => aesGcm.encrypt(sharedKey, plaintext)),
+      Effect.promise(() => aes_encrypt(sharedKey, plaintext)),
     decrypt: (sharedKey, ciphertext) =>
-      Effect.promise(() => aesGcm.decrypt(sharedKey, ciphertext)),
-  }),
+      Effect.promise(() => aes_decrypt(sharedKey, ciphertext)),
+  })
 );
