@@ -41,8 +41,10 @@ Client-server architecture provides us with easy backup and synchronization, but
 ## Getting Started
 
 ```
-npm install evolu @effect/schema @effect/data
+npm install evolu
 ```
+
+Note Evolu uses several peer dependencies that are installed automatically with NPM and PNPM. If you are using Yarn, install them manually.
 
 The complete Next.js example is [here](https://github.com/evoluhq/evolu/tree/main/apps/web).
 
@@ -107,7 +109,7 @@ Evolu uses type-safe TypeScript SQL query builder [kysely](https://github.com/ko
 const { rows } = useQuery(
   (db) => db.selectFrom("todo").select(["id", "title"]).orderBy("updatedAt"),
   // (row) => row
-  ({ title, ...rest }) => title && { title, ...rest },
+  ({ title, ...rest }) => title && { title, ...rest }
 );
 ```
 

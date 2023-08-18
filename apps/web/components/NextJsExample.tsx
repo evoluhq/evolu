@@ -1,4 +1,3 @@
-import { pipe } from "@effect/data/Function";
 import * as Schema from "@effect/schema/Schema";
 import { formatErrors } from "@effect/schema/TreeFormatter";
 import * as Evolu from "evolu";
@@ -18,8 +17,7 @@ type TodoId = Schema.To<typeof TodoId>;
 const TodoCategoryId = Evolu.id("TodoCategory");
 type TodoCategoryId = Schema.To<typeof TodoCategoryId>;
 
-const NonEmptyString50 = pipe(
-  Schema.string,
+const NonEmptyString50 = Schema.string.pipe(
   Schema.minLength(1),
   Schema.maxLength(50),
   Schema.brand("NonEmptyString50"),

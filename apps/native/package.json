@@ -10,16 +10,17 @@
     "clean": "rm -rf .turbo && rm -rf .expo && rm -rf node_modules"
   },
   "dependencies": {
-    "@effect/data": "^0.17.1",
     "@effect/schema": "^0.33.1",
     "@types/react": "^18.2.20",
+    "effect": "2.0.0-next.26",
     "evolu": "workspace:*",
     "expo": "^49.0.7",
     "expo-sqlite": "~11.3.2",
     "expo-status-bar": "^1.6.0",
     "react": "18.2.0",
     "react-native": "^0.72.4",
-    "react-native-select-dropdown": "^3.3.4"
+    "react-native-select-dropdown": "^3.3.4",
+    "web": "workspace:^"
   },
   "devDependencies": {
     "@babel/core": "^7.22.10",
