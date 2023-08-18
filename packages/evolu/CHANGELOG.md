@@ -1,5 +1,11 @@
 # evolu
 
+## 6.2.3
+
+### Patch Changes
+
+- 5f9f10b: Replace micro-aes-gcm with @noble/ciphers
+
 ## 6.2.2
 
 ### Patch Changes
