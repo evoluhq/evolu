@@ -1,6 +1,5 @@
 "use client";
 
-import { pipe } from "@effect/data/Function";
 import * as Schema from "@effect/schema/Schema";
 import { formatErrors } from "@effect/schema/TreeFormatter";
 import * as Evolu from "evolu";
@@ -20,11 +19,10 @@ type TodoId = Schema.To<typeof TodoId>;
 const TodoCategoryId = Evolu.id("TodoCategory");
 type TodoCategoryId = Schema.To<typeof TodoCategoryId>;
 
-const NonEmptyString50 = pipe(
-  Schema.string,
+const NonEmptyString50 = Schema.string.pipe(
   Schema.minLength(1),
   Schema.maxLength(50),
-  Schema.brand("NonEmptyString50"),
+  Schema.brand("NonEmptyString50")
 );
 type NonEmptyString50 = Schema.To<typeof NonEmptyString50>;
 
@@ -53,7 +51,7 @@ const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
 const prompt = <From extends string, To>(
   schema: Schema.Schema<From, To>,
   message: string,
-  onSuccess: (value: To) => void,
+  onSuccess: (value: To) => void
 ): void => {
   const value = window.prompt(message);
   if (value == null) return; // on cancel
@@ -84,8 +82,11 @@ type TodoCategoriesList = ReadonlyArray<{
   name: NonEmptyString50;
 }>;
 
-const useTodoCategoriesList = (): TodoCategoriesList =>
-  useQuery(
+const TodoCategorySelect: FC<{
+  selected: TodoCategoryId | null;
+  onSelect: (value: TodoCategoryId | null) => void;
+}> = ({ selected, onSelect }) => {
+  const { rows } = useQuery(
     (db) =>
       db
         .selectFrom("todoCategory")
@@ -93,17 +94,12 @@ const useTodoCategoriesList = (): TodoCategoriesList =>
         .where("isDeleted", "is not", Evolu.cast(true))
         .orderBy("createdAt"),
     // Filter out rows with nullable names.
-    ({ name, ...rest }) => name && { name, ...rest },
-  ).rows;
+    ({ name, ...rest }) => name && { name, ...rest }
+  );
 
-const TodoCategorySelect: FC<{
-  selected: TodoCategoryId | null;
-  onSelect: (value: TodoCategoryId | null) => void;
-  todoCategoriesList: TodoCategoriesList;
-}> = ({ selected, onSelect, todoCategoriesList }) => {
   const nothingSelected = "";
   const value =
-    selected && todoCategoriesList.find((row) => row.id === selected)
+    selected && rows.find((row) => row.id === selected)
       ? selected
       : nothingSelected;
 
@@ -117,7 +113,7 @@ const TodoCategorySelect: FC<{
       }}
     >
       <option value={nothingSelected}>-- no category --</option>
-      {todoCategoriesList.map(({ id, name }) => (
+      {rows.map(({ id, name }) => (
         <option key={id} value={id}>
           {name}
         </option>
@@ -128,11 +124,7 @@ const TodoCategorySelect: FC<{
 
 const TodoItem = memo<{
   row: Pick<TodoTable, "id" | "title" | "isCompleted" | "categoryId">;
-  todoCategoriesList: TodoCategoriesList;
-}>(function TodoItem({
-  row: { id, title, isCompleted, categoryId },
-  todoCategoriesList,
-}) {
+}>(function TodoItem({ row: { id, title, isCompleted, categoryId } }) {
   const { update } = useMutation();
 
   return (
@@ -164,7 +156,6 @@ const TodoItem = memo<{
         }}
       />
       <TodoCategorySelect
-        todoCategoriesList={todoCategoriesList}
         selected={categoryId}
         onSelect={(categoryId): void => {
           update("todo", { id, categoryId });
@@ -185,20 +176,15 @@ const Todos: FC = () => {
         .orderBy("createdAt"),
     // (row) => row
     ({ title, isCompleted, ...rest }) =>
-      title && isCompleted != null && { title, isCompleted, ...rest },
+      title && isCompleted != null && { title, isCompleted, ...rest }
   );
-  const todoCategoriesList = useTodoCategoriesList();
 
   return (
     <>
       <h2 className="mt-6 text-xl font-semibold">Todos</h2>
       <ul className="py-2">
         {rows.map((row) => (
-          <TodoItem
-            key={row.id}
-            row={row}
-            todoCategoriesList={todoCategoriesList}
-          />
+          <TodoItem key={row.id} row={row} />
         ))}
       </ul>
       <Button
@@ -209,7 +195,7 @@ const Todos: FC = () => {
             "What needs to be done?",
             (title) => {
               create("todo", { title, isCompleted: false });
-            },
+            }
           );
         }}
       />
@@ -227,7 +213,7 @@ const TodoCategories: FC = () => {
         .where("isDeleted", "is not", Evolu.cast(true))
         .orderBy("createdAt"),
     // (row) => row
-    ({ name, ...rest }) => name && { name, ...rest },
+    ({ name, ...rest }) => name && { name, ...rest }
   );
 
   return (
