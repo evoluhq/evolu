@@ -16,5 +16,5 @@ export const DbWorkerWebLive = Layer.mergeAll(
   Bip39Live,
   Layer.merge(HmacLive, Sha512Live).pipe(Layer.provide(Slip21Live)),
   NanoIdLive,
-  SyncWorkerLive
+  SyncWorkerLive,
 ).pipe(Layer.provide(DbWorkerLive));

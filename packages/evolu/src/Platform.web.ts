@@ -17,7 +17,7 @@ const isChromeWithOpfs = (): boolean =>
   navigator.userAgentData.brands.find(
     ({ brand, version }) =>
       // Chrome or Chromium
-      brand.includes("Chrom") && Number(version) >= 109
+      brand.includes("Chrom") && Number(version) >= 109,
   ) != null;
 
 const isFirefoxWithOpfs = (): boolean => {
@@ -44,17 +44,17 @@ export const SyncLockLive = Layer.effect(
     const syncLockName = "evolu:sync";
 
     const hasLock: Predicate.Predicate<LockInfo[] | undefined> = (
-      lockInfos
+      lockInfos,
     ) => {
       if (lockInfos == null) return false;
       return ReadonlyArray.some(
         lockInfos,
-        (lockInfo) => lockInfo.name === syncLockName
+        (lockInfo) => lockInfo.name === syncLockName,
       );
     };
 
     const isSyncing = Effect.promise(() => navigator.locks.query()).pipe(
-      Effect.map(({ pending, held }) => hasLock(pending) || hasLock(held))
+      Effect.map(({ pending, held }) => hasLock(pending) || hasLock(held)),
     );
 
     let isSyncingResolve: null | ((value: undefined) => void) = null;
@@ -74,7 +74,7 @@ export const SyncLockLive = Layer.effect(
     });
 
     return { acquire, release };
-  })
+  }),
 );
 
 export const FetchLive = Layer.succeed(
@@ -91,8 +91,8 @@ export const FetchLive = Layer.succeed(
           },
         }),
       catch: (): FetchError => ({ _tag: "FetchError" }),
-    })
-  )
+    }),
+  ),
 );
 
 export const AppStateLive = Layer.effect(
@@ -139,5 +139,5 @@ export const AppStateLive = Layer.effect(
     });
 
     return AppState.of({ onFocus, onReconnect, reset });
-  })
+  }),
 );
