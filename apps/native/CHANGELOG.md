@@ -1,5 +1,13 @@
 # native
 
+## 0.0.76
+
+### Patch Changes
+
+- Updated dependencies [ac2e396]
+  - evolu@6.3.0
+  - web@0.0.76
+
 ## 0.0.75
 
 ### Patch Changes
