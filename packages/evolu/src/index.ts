@@ -1,6 +1,3 @@
-import "client-only";
-export * from "./exports.js";
-
 import "@effect/schema/Schema";
 import * as S from "@effect/schema/Schema";
 import { Effect, Function, Layer } from "effect";
@@ -20,12 +17,13 @@ import { React, ReactLive } from "./React.js";
 import { RowsCacheStoreLive } from "./RowsCache.js";
 import { SubscribedQueriesLive } from "./SubscribedQueries.js";
 import { TimeLive } from "./Timestamp.js";
+export * from "./exports.js";
 
 const NoOpServerDbWorker = Effect.sync(() =>
   DbWorker.of({
     postMessage: Function.constVoid,
     onMessage: Function.constVoid,
-  }),
+  })
 );
 
 const OpfsDbWorker = Effect.sync(() => {
@@ -52,12 +50,12 @@ const LocalStorageDbWorker = Effect.sync(() => {
     Effect.map((a) => {
       const importedDbWorker = DbWorker.pipe(
         Effect.provideLayer(a.DbWorkerWebLive),
-        Effect.runSync,
+        Effect.runSync
       );
       importedDbWorker.onMessage = dbWorker.onMessage;
       return importedDbWorker.postMessage;
     }),
-    Effect.runPromise,
+    Effect.runPromise
   );
 
   const dbWorker = DbWorker.of({
@@ -81,21 +79,21 @@ const DbWorkerLive = Layer.effect(
         ? NoOpServerDbWorker
         : platform.name === "web-with-opfs"
         ? OpfsDbWorker
-        : LocalStorageDbWorker,
+        : LocalStorageDbWorker
     );
-  }),
+  })
 );
 
 export const create = <From, To extends Schema>(
   schema: S.Schema<From, To>,
-  config?: Partial<Config>,
+  config?: Partial<Config>
 ): React<To>["hooks"] => {
   const configLive = ConfigLive(config);
 
   const dbWorkerLive = PlatformLive.pipe(Layer.provide(DbWorkerLive));
 
   const appStateLive = Layer.mergeAll(PlatformLive, configLive).pipe(
-    Layer.provide(AppStateLive),
+    Layer.provide(AppStateLive)
   );
 
   const mutateLive = Layer.mergeAll(
@@ -104,11 +102,11 @@ export const create = <From, To extends Schema>(
     OnCompletesLive,
     TimeLive,
     SubscribedQueriesLive,
-    LoadingPromisesLive,
+    LoadingPromisesLive
   ).pipe(Layer.provide(MutateLive));
 
   const ownerActionsLive = Layer.mergeAll(dbWorkerLive, Bip39Live).pipe(
-    Layer.provide(OwnerActionsLive),
+    Layer.provide(OwnerActionsLive)
   );
 
   const queryStoreLive = Layer.mergeAll(
@@ -117,7 +115,7 @@ export const create = <From, To extends Schema>(
     SubscribedQueriesLive,
     LoadingPromisesLive,
     RowsCacheStoreLive,
-    FlushSyncLive,
+    FlushSyncLive
   ).pipe(Layer.provide(QueryStoreLive));
 
   const evoluLive = Layer.mergeAll(
@@ -127,16 +125,16 @@ export const create = <From, To extends Schema>(
     mutateLive,
     ownerActionsLive,
     queryStoreLive,
-    SubscribedQueriesLive,
+    SubscribedQueriesLive
   ).pipe(Layer.provide(EvoluLive(schema)));
 
   const reactLive = Layer.mergeAll(evoluLive, PlatformLive).pipe(
-    Layer.provide(ReactLive),
+    Layer.provide(ReactLive)
   );
 
   return React.pipe(
     Effect.map((react) => react.hooks as React<To>["hooks"]),
     Effect.provideLayer(reactLive),
-    Effect.runSync,
+    Effect.runSync
   );
 };

@@ -1,4 +1,3 @@
-import { pipe } from "@effect/data/Function";
 import * as Schema from "@effect/schema/Schema";
 import { formatErrors } from "@effect/schema/TreeFormatter";
 import * as Evolu from "evolu";
@@ -17,11 +16,10 @@ type TodoId = Schema.To<typeof TodoId>;
 const TodoCategoryId = Evolu.id("TodoCategory");
 type TodoCategoryId = Schema.To<typeof TodoCategoryId>;
 
-const NonEmptyString50 = pipe(
-  Schema.string,
+const NonEmptyString50 = Schema.string.pipe(
   Schema.minLength(1),
   Schema.maxLength(50),
-  Schema.brand("NonEmptyString50"),
+  Schema.brand("NonEmptyString50")
 );
 type NonEmptyString50 = Schema.To<typeof NonEmptyString50>;
 
@@ -52,7 +50,7 @@ const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
 const prompt = <From extends string, To>(
   schema: Schema.Schema<From, To>,
   message: string,
-  onSuccess: (value: To) => void,
+  onSuccess: (value: To) => void
 ): void => {
   const value = window.prompt(message);
   if (value == null) return; // on cancel
@@ -92,7 +90,7 @@ const useTodoCategoriesList = (): TodoCategoriesList =>
         .where("isDeleted", "is not", Evolu.cast(true))
         .orderBy("createdAt"),
     // Filter out rows with nullable names.
-    ({ name, ...rest }) => name && { name, ...rest },
+    ({ name, ...rest }) => name && { name, ...rest }
   ).rows;
 
 const TodoCategorySelect: FC<{
@@ -184,7 +182,7 @@ const Todos: FC = () => {
         .orderBy("createdAt"),
     // (row) => row
     ({ title, isCompleted, ...rest }) =>
-      title && isCompleted != null && { title, isCompleted, ...rest },
+      title && isCompleted != null && { title, isCompleted, ...rest }
   );
   const todoCategoriesList = useTodoCategoriesList();
 
@@ -231,7 +229,7 @@ const TodoCategories: FC = () => {
         .where("isDeleted", "is not", Evolu.cast(true))
         .orderBy("createdAt"),
     // (row) => row
-    ({ name, ...rest }) => name && { name, ...rest },
+    ({ name, ...rest }) => name && { name, ...rest }
   );
 
   return (
