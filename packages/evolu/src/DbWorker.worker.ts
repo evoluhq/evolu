@@ -7,7 +7,9 @@ const dbWorker = DbWorker.pipe(
   Effect.runSync,
 );
 
-dbWorker.onMessage = (output): void => postMessage(output);
+dbWorker.onMessage = (output): void => {
+  postMessage(output);
+};
 
 onmessage = (e: MessageEvent<DbWorkerInput>): void => {
   dbWorker.postMessage(e.data);

@@ -19,63 +19,57 @@ import { SubscribedQueriesLive } from "./SubscribedQueries.js";
 import { TimeLive } from "./Timestamp.js";
 export * from "./exports.js";
 
-const NoOpDbWorker = Effect.sync(() =>
-  DbWorker.of({
-    postMessage: Function.constVoid,
-    onMessage: Function.constVoid,
-  }),
-);
-
-const OpfsDbWorker = Effect.sync(() => {
-  const worker = new Worker(new URL("DbWorker.worker.js", import.meta.url), {
-    type: "module",
-  });
-  worker.onmessage = (e: MessageEvent<DbWorkerOutput>): void => {
-    dbWorker.onMessage(e.data);
-  };
-  const dbWorker: DbWorker = {
-    postMessage: (input) => {
-      worker.postMessage(input);
-    },
-    onMessage: Function.constVoid,
-  };
-  return dbWorker;
-});
-
-const LocalStorageDbWorker = Effect.sync(() => {
-  const promise = Effect.promise(() => import("./DbWorkerLive.web.js")).pipe(
-    Effect.map((a) => {
-      const importedDbWorker = DbWorker.pipe(
-        Effect.provideLayer(a.dbWorkerLive),
-        Effect.runSync,
-      );
-      importedDbWorker.onMessage = dbWorker.onMessage;
-      return importedDbWorker.postMessage;
-    }),
-    Effect.runPromise,
-  );
-  const dbWorker: DbWorker = {
-    postMessage: (input) => {
-      void promise.then((postMessage) => {
-        postMessage(input);
-      });
-    },
-    onMessage: Function.constVoid,
-  };
-  return dbWorker;
-});
-
 const DbWorkerLive = Layer.effect(
   DbWorker,
   Effect.gen(function* (_) {
     const platform = yield* _(Platform);
-    return yield* _(
-      platform.name === "server"
-        ? NoOpDbWorker
-        : platform.name === "web-with-opfs"
-        ? OpfsDbWorker
-        : LocalStorageDbWorker,
-    );
+
+    if (platform.name === "web-with-opfs") {
+      const worker = new Worker(
+        new URL("DbWorker.worker.js", import.meta.url),
+        { type: "module" },
+      );
+      worker.onmessage = (e: MessageEvent<DbWorkerOutput>): void => {
+        dbWorker.onMessage(e.data);
+      };
+      const dbWorker: DbWorker = {
+        postMessage: (input) => {
+          worker.postMessage(input);
+        },
+        onMessage: Function.constVoid,
+      };
+      return dbWorker;
+    }
+
+    if (platform.name === "web-without-opfs") {
+      const promise = Effect.promise(
+        () => import("./DbWorkerLive.web.js"),
+      ).pipe(
+        Effect.map((a) => {
+          const importedDbWorker = DbWorker.pipe(
+            Effect.provideLayer(a.dbWorkerLive),
+            Effect.runSync,
+          );
+          importedDbWorker.onMessage = dbWorker.onMessage;
+          return importedDbWorker.postMessage;
+        }),
+        Effect.runPromise,
+      );
+      const dbWorker: DbWorker = {
+        postMessage: (input) => {
+          void promise.then((postMessage) => {
+            postMessage(input);
+          });
+        },
+        onMessage: Function.constVoid,
+      };
+      return dbWorker;
+    }
+
+    return DbWorker.of({
+      postMessage: Function.constVoid,
+      onMessage: Function.constVoid,
+    });
   }),
 );
 

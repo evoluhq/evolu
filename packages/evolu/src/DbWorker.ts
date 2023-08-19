@@ -32,7 +32,6 @@ import {
   merkleTreeToString,
   unsafeMerkleTreeFromString,
 } from "./MerkleTree.js";
-import { Message, NewMessage } from "./Message.js";
 import { CastableForMutate, Id, SqliteDate, cast } from "./Model.js";
 import { OnCompleteId } from "./OnCompletes.js";
 import { RowsCacheRef, RowsCacheRefLive } from "./RowsCache.js";
@@ -47,6 +46,8 @@ import {
 } from "./Sql.js";
 import { Query, Sqlite, Value, queryObjectFromQuery } from "./Sqlite.js";
 import {
+  Message,
+  NewMessage,
   SyncState,
   SyncWorker,
   SyncWorkerOutputSyncResponse,

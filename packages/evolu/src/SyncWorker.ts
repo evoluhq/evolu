@@ -9,7 +9,6 @@ import {
   merkleTreeToString,
   unsafeMerkleTreeFromString,
 } from "./MerkleTree.js";
-import { Message } from "./Message.js";
 import { Id } from "./Model.js";
 import { Fetch, SyncLock } from "./Platform.js";
 import { FetchLive } from "./Platform.web.js";
@@ -47,6 +46,17 @@ interface SyncWorkerInputSync {
   readonly timestamp: Timestamp;
   readonly owner: Owner;
   readonly syncLoopCount: number;
+}
+
+export interface NewMessage {
+  readonly table: string;
+  readonly row: Id;
+  readonly column: string;
+  readonly value: Value;
+}
+
+export interface Message extends NewMessage {
+  readonly timestamp: TimestampString;
 }
 
 interface SyncWorkerInputSyncCompleted {
