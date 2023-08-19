@@ -80,7 +80,7 @@ ON CONFLICT DO UPDATE SET
   "${column}" = ?
 `;
 
-export const tryInsertIntoMessages = `
+export const insertIntoMessagesIfNew = `
 INSERT INTO
   "uLMsPRi78lNmyWlt__message" ("timestamp", "table", "row", "column", "value")
 VALUES

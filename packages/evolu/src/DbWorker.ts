@@ -17,9 +17,9 @@ import { Bip39, Mnemonic, NanoId, Slip21 } from "./Crypto.js";
 import {
   Owner,
   Table,
-  defectToNoSuchTableOrColumnError,
   ensureSchema,
   lazyInit,
+  someDefectToNoSuchTableOrColumnError,
   transaction,
 } from "./Db.js";
 import { QueryPatches, makePatches } from "./Diff.js";
@@ -36,12 +36,12 @@ import { CastableForMutate, Id, SqliteDate, cast } from "./Model.js";
 import { OnCompleteId } from "./OnCompletes.js";
 import { RowsCacheRef, RowsCacheRefLive } from "./RowsCache.js";
 import {
+  insertIntoMessagesIfNew,
   insertValueIntoTableRowColumn,
   selectLastTimestampForTableRowColumn,
   selectMessagesToSync,
   selectOwner,
   selectOwnerTimestampAndMerkleTree,
-  tryInsertIntoMessages,
   updateOwnerTimestampAndMerkleTree,
 } from "./Sql.js";
 import { Query, Sqlite, Value, queryObjectFromQuery } from "./Sqlite.js";
@@ -171,7 +171,7 @@ const init = (
     return yield* _(
       sqlite.exec(selectOwner),
       Effect.map(([owner]) => owner as unknown as Owner),
-      defectToNoSuchTableOrColumnError,
+      someDefectToNoSuchTableOrColumnError,
       Effect.catchTag("NoSuchTableOrColumnError", () => lazyInit()),
       Effect.tap(() => ensureSchema(input.tables)),
     );
@@ -266,6 +266,29 @@ const mutateItemsToNewMessages = (
     ReadonlyArray.flattenNonEmpty,
   );
 
+const ensureSchemaByMessages = (
+  messages: ReadonlyArray.NonEmptyReadonlyArray<Message>,
+): Effect.Effect<Sqlite, never, void> =>
+  Effect.gen(function* (_) {
+    const tablesMap = new Map<string, Table>();
+    messages.forEach((message) => {
+      const table = tablesMap.get(message.table);
+      if (table == null) {
+        tablesMap.set(message.table, {
+          name: message.table,
+          columns: [message.column],
+        });
+        return;
+      }
+      if (table.columns.includes(message.column)) return;
+      tablesMap.set(message.table, {
+        name: message.table,
+        columns: table.columns.concat(message.column),
+      });
+    });
+    yield* _(ensureSchema(Array.from(tablesMap.values())));
+  });
+
 const applyMessages = ({
   merkleTree,
   messages,
@@ -287,25 +310,24 @@ const applyMessages = ({
         Effect.catchTag("NoSuchElementException", () => Effect.succeed(null)),
       );
 
-      if (timestamp == null || timestamp < message.timestamp)
+      if (timestamp == null || timestamp < message.timestamp) {
+        const insert = sqlite.exec({
+          sql: insertValueIntoTableRowColumn(message.table, message.column),
+          parameters: [message.row, message.value, message.value],
+        });
         yield* _(
-          sqlite.exec({
-            sql: insertValueIntoTableRowColumn(message.table, message.column),
-            parameters: [message.row, message.value, message.value],
-          }),
-          // TODO: Update DB schema on error.
-          // .pipe(
-          //   defectToNoSuchTableOrColumnError,
-          //   Effect.catchTag("NoSuchTableOrColumnError", error => {
-          //     // Add table column or alter table.
-          //   })
-          // )
+          insert,
+          someDefectToNoSuchTableOrColumnError,
+          Effect.catchTag("NoSuchTableOrColumnError", () =>
+            ensureSchemaByMessages(messages).pipe(Effect.flatMap(() => insert)),
+          ),
         );
+      }
 
       if (timestamp == null || timestamp !== message.timestamp) {
         yield* _(
           sqlite.exec({
-            sql: tryInsertIntoMessages,
+            sql: insertIntoMessagesIfNew,
             parameters: [
               message.timestamp,
               message.table,
@@ -370,10 +392,10 @@ const mutate = ({
       ),
     );
 
-    if (ReadonlyArray.isNonEmptyReadonlyArray(messages))
+    if (ReadonlyArray.isNonEmptyReadonlyArray(messages)) {
       merkleTree = yield* _(applyMessages({ merkleTree, messages }));
-
-    yield* _(writeTimestampAndMerkleTree({ timestamp, merkleTree }));
+      yield* _(writeTimestampAndMerkleTree({ timestamp, merkleTree }));
+    }
 
     const onCompleteIds = ReadonlyArray.filterMap(items, (item) =>
       Option.fromNullable(item.onCompleteId),
@@ -397,9 +419,10 @@ const mutate = ({
     });
   });
 
-const handleSyncResponse = (
-  response: SyncWorkerOutputSyncResponse,
-): Effect.Effect<
+const handleSyncResponse = ({
+  messages,
+  ...response
+}: SyncWorkerOutputSyncResponse): Effect.Effect<
   Sqlite | Time | Config | DbWorkerOnMessage | SyncWorkerPostMessage | Owner,
   TimestampError,
   void
@@ -407,16 +430,13 @@ const handleSyncResponse = (
   Effect.gen(function* (_) {
     let { timestamp, merkleTree } = yield* _(readTimestampAndMerkleTree);
 
-    if (ReadonlyArray.isNonEmptyReadonlyArray(response.messages)) {
-      for (const message of response.messages) {
+    if (ReadonlyArray.isNonEmptyReadonlyArray(messages)) {
+      for (const message of messages)
         timestamp = yield* _(
           unsafeTimestampFromString(message.timestamp),
           (remote) => receiveTimestamp({ local: timestamp, remote }),
         );
-      }
-      merkleTree = yield* _(
-        applyMessages({ merkleTree, messages: response.messages }),
-      );
+      merkleTree = yield* _(applyMessages({ merkleTree, messages }));
       yield* _(writeTimestampAndMerkleTree({ timestamp, merkleTree }));
     }
 

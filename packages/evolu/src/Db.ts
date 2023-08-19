@@ -149,34 +149,25 @@ export const transaction = <R, E, A>(
 
 export interface NoSuchTableOrColumnError {
   readonly _tag: "NoSuchTableOrColumnError";
-  readonly what: "table" | "column";
-  readonly name: string;
 }
 
-export const defectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
+export const someDefectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
   (error) => {
     if (
       typeof error === "object" &&
       error != null &&
       "message" in error &&
-      typeof error.message === "string"
-    ) {
-      const match = error.message.match(
-        /sqlite3 result code 1: no such (table|column): (\S+)/,
+      typeof error.message === "string" &&
+      error.message.includes("sqlite3 result code 1") &&
+      (error.message.includes("no such table") ||
+        error.message.includes("no such column") ||
+        error.message.includes("has no column"))
+    )
+      return Option.some(
+        Effect.fail<NoSuchTableOrColumnError>({
+          _tag: "NoSuchTableOrColumnError",
+        }),
       );
-      if (
-        match &&
-        (match[1] === "table" || match[1] === "column") &&
-        typeof match[2] === "string"
-      )
-        return Option.some(
-          Effect.fail<NoSuchTableOrColumnError>({
-            _tag: "NoSuchTableOrColumnError",
-            what: match[1],
-            name: match[2],
-          }),
-        );
-    }
 
     return Option.none();
   },
