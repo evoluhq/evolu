@@ -52,7 +52,8 @@ const releasePromises: LoadingPromises["releasePromises"] = (ignoreQueries) => {
   });
 };
 
-export const LoadingPromisesLive = Layer.succeed(
-  LoadingPromises,
-  LoadingPromises.of({ getPromise, resolvePromise, releasePromises }),
-);
+export const LoadingPromisesLive = Layer.succeed(LoadingPromises, {
+  getPromise,
+  resolvePromise,
+  releasePromises,
+});

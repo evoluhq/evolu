@@ -19,7 +19,7 @@ import { SubscribedQueriesLive } from "./SubscribedQueries.js";
 import { TimeLive } from "./Timestamp.js";
 export * from "./exports.js";
 
-const NoOpServerDbWorker = Effect.sync(() =>
+const NoOpDbWorker = Effect.sync(() =>
   DbWorker.of({
     postMessage: Function.constVoid,
     onMessage: Function.constVoid,
@@ -30,26 +30,23 @@ const OpfsDbWorker = Effect.sync(() => {
   const worker = new Worker(new URL("DbWorker.worker.js", import.meta.url), {
     type: "module",
   });
-
   worker.onmessage = (e: MessageEvent<DbWorkerOutput>): void => {
     dbWorker.onMessage(e.data);
   };
-
   const dbWorker: DbWorker = {
     postMessage: (input) => {
       worker.postMessage(input);
     },
     onMessage: Function.constVoid,
   };
-
   return dbWorker;
 });
 
 const LocalStorageDbWorker = Effect.sync(() => {
-  const promise = Effect.promise(() => import("./DbWorkerWebLive.js")).pipe(
+  const promise = Effect.promise(() => import("./DbWorkerLive.web.js")).pipe(
     Effect.map((a) => {
       const importedDbWorker = DbWorker.pipe(
-        Effect.provideLayer(a.DbWorkerWebLive),
+        Effect.provideLayer(a.dbWorkerLive),
         Effect.runSync,
       );
       importedDbWorker.onMessage = dbWorker.onMessage;
@@ -57,16 +54,14 @@ const LocalStorageDbWorker = Effect.sync(() => {
     }),
     Effect.runPromise,
   );
-
-  const dbWorker = DbWorker.of({
+  const dbWorker: DbWorker = {
     postMessage: (input) => {
       void promise.then((postMessage) => {
         postMessage(input);
       });
     },
     onMessage: Function.constVoid,
-  });
-
+  };
   return dbWorker;
 });
 
@@ -76,7 +71,7 @@ const DbWorkerLive = Layer.effect(
     const platform = yield* _(Platform);
     return yield* _(
       platform.name === "server"
-        ? NoOpServerDbWorker
+        ? NoOpDbWorker
         : platform.name === "web-with-opfs"
         ? OpfsDbWorker
         : LocalStorageDbWorker,

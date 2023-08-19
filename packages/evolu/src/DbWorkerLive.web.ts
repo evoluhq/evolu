@@ -11,7 +11,7 @@ import { SqliteLive } from "./SqliteLive.web.js";
 import { SyncWorkerLive } from "./SyncWorkerLive.web.js";
 
 // It's a separate file because it's imported dynamically or by WebWorker.
-export const DbWorkerWebLive = Layer.mergeAll(
+export const dbWorkerLive = Layer.mergeAll(
   SqliteLive,
   Bip39Live,
   Layer.merge(HmacLive, Sha512Live).pipe(Layer.provide(Slip21Live)),

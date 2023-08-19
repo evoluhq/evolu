@@ -1,9 +1,9 @@
 import { Effect } from "effect";
 import { DbWorker, DbWorkerInput } from "./DbWorker.js";
-import { DbWorkerWebLive } from "./DbWorkerWebLive.js";
+import { dbWorkerLive } from "./DbWorkerLive.web.js";
 
 const dbWorker = DbWorker.pipe(
-  Effect.provideLayer(DbWorkerWebLive),
+  Effect.provideLayer(dbWorkerLive),
   Effect.runSync,
 );
 

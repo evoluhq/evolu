@@ -631,10 +631,10 @@ export const DbWorkerLive = Layer.effect(
       writer.releaseLock();
     };
 
-    const dbWorker = DbWorker.of({
+    const dbWorker: DbWorker = {
       postMessage,
       onMessage: Function.constVoid,
-    });
+    };
 
     return dbWorker;
   }),
