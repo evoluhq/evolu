@@ -1,8 +1,16 @@
 # Getting Started
 
-## Requirements
+## Installation
 
-### TypeScript
+```sh
+npm install evolu
+```
+
+Note Evolu uses several peer dependencies that are installed automatically
+with NPM and PNPM. If you are using Yarn, install them manually. Evolu uses
+and recommends [PNPM](https://pnpm.io).
+
+### Requirements
 
 - TypeScript 5.0 or newer
 - The `strict` flag enabled in your `tsconfig.json` file
@@ -29,7 +37,7 @@ Evolu runs on all evergreen desktop and mobile browsers.
 - Firefox 96+
 - Opera 56+
 
-Evolu also runs on Electron.
+Evolu also runs on Electron. React Native soon.
 
 import { Callout } from "nextra-theme-docs";
 
@@ -37,16 +45,3 @@ import { Callout } from "nextra-theme-docs";
   Remember to set COOP and COEP HTTP Headers.
   [Example](https://github.com/evoluhq/evolu/blob/main/examples/nextjs/next.config.js)
 </Callout>
-
-React Native soon.
-
-## Installation
-
-```sh
-npm install evolu
-```
-
-Note Evolu uses several peer dependencies that are installed automatically
-with NPM and PNPM. If you are using Yarn, install them manually.
-
-Evolu uses and recommends [PNPM](https://pnpm.io).

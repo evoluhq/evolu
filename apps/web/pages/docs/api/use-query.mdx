@@ -19,7 +19,7 @@ The most simple example:
 ```ts
 const { rows } = useQuery(
   (db) => db.selectFrom("todo").selectAll(),
-  (row) => row
+  (row) => row,
 );
 ```
 
@@ -37,7 +37,7 @@ helper. This example filters out rows with falsy titles:
 ```ts
 const { rows } = useQuery(
   (db) => db.selectFrom("todo").selectAll(),
-  ({ title, ...rest }) => title && { title, ...rest }
+  ({ title, ...rest }) => title && { title, ...rest },
 );
 ```
 
@@ -45,8 +45,7 @@ A real app would `filterMap` all versions of the table schema defined
 by a union of types, therefore safely enforced by the TypeScript compiler.
 
 The next example shows the usage of columns that Evolu automatically
-adds to all tables. Those columns are: `createdAt`, `createdBy`,
-`updatedAt`, and `isDeleted`.
+adds to all tables. Those columns are: `createdAt`, `updatedAt`, and `isDeleted`.
 
 ```ts
 const { rows } = useQuery(
@@ -54,11 +53,11 @@ const { rows } = useQuery(
     db
       .selectFrom("todoCategory")
       .select(["id", "name"])
-      .where("isDeleted", "is not", E.cast(true))
+      .where("isDeleted", "is not", Evolu.cast(true))
       .orderBy("createdAt"),
-  ({ name, ...rest }) => name && { name, ...rest }
+  ({ name, ...rest }) => name && { name, ...rest },
 );
 ```
 
-Note `E.cast` usage. It's Evolu's helper to cast booleans and dates
+Note `Evolu.cast` usage. It's Evolu's helper to cast booleans and dates
 that SQLite does not support natively.
