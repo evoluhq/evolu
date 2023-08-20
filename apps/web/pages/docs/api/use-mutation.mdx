@@ -3,22 +3,15 @@
 `useMutation` React Hook returns an object with two functions for creating
 and updating rows in the database.
 
-import { Callout } from "nextra-theme-docs";
-
-<Callout type="info" emoji="ℹ️">
-  Note that Evolu does not use SQL for mutations. It's not a bug; it's a
-  feature. SQL for mutations is dangerous for local-first apps. One wrong update
-  can accidentally affect many rows.
-</Callout>
-
-Local-first data are meant to last forever. Imagine an SQL update that
-changes tons of data. That would generate a lot of sync messages making
-sync slow and backup huge.
+Note that Evolu does not use SQL for mutations. It's not a bug; it's a
+feature. SQL for mutations is dangerous for local-first apps. One update
+can affect all rows. Local-first data are meant to last forever.
+Imagine an SQL update that changes tons of data. That would generate
+a lot of sync messages making sync slow and backup huge.
 
 Explicit mutations also allow Evolu to automatically add and update
-a few useful columns common to all tables.
-
-Those columns are: `createdAt`, `createdBy`, `updatedAt`, and `isDeleted`.
+a few useful columns common to all tables. Those columns are:
+`createdAt`, `updatedAt`, and `isDeleted`.
 
 ## create
 

@@ -5,7 +5,13 @@ other [React](https://reactjs.org/) meta-framework.
 
 ## Define Data
 
-To start using Evolu, define schemas for your database and export React Hooks.
+First, we have to define the database schema. Evolu uses [Schema](https://github.com/effect-ts/schema)
+for data modeling. Instead of plain JavaScript types like string or number,
+we recommend using [branded types](https://www.effect.website/docs/style/brands).
+With branded types, we can define and enforce domain rules like
+`NonEmptyString1000` or `PositiveInt`.
+
+`Evolu.create` ensures actual SQLite schema and returns React Hooks.
 
 ```ts
 import * as Schema from "@effect/schema/Schema";
@@ -47,12 +53,18 @@ Schema.parse(Evolu.String1000)(title);
 
 ## Mutate Data
 
-Mutation API is designed for local-first apps to ensure changes are always merged without conflicts.
+Mutation API is designed for local-first apps to ensure changes are always merged
+without conflicts and to limit the possibility that a developer accidentally makes
+unnecessary changes.
+
+It's easy to change thousands of rows with traditional SQL, and that could be a
+problem when all those changes must be propagated to other devices. Evolu
+mutation API forces developers to think about the mutations they make.
 
 ```ts
 const { create, update } = useMutation();
 
-create("todo", { title, isCompleted: false });
+const { id } = create("todo", { title, isCompleted: false });
 update("todo", { id, isCompleted: true });
 ```
 
@@ -64,7 +76,7 @@ Evolu uses type-safe TypeScript SQL query builder [kysely](https://github.com/ko
 const { rows } = useQuery(
   (db) => db.selectFrom("todo").select(["id", "title"]).orderBy("updatedAt"),
   // (row) => row
-  ({ title, ...rest }) => title && { title, ...rest }
+  ({ title, ...rest }) => title && { title, ...rest },
 );
 ```
 

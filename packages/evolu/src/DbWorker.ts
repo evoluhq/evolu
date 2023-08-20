@@ -223,7 +223,6 @@ const readTimestampAndMerkleTree = Sqlite.pipe(
 
 const mutateItemsToNewMessages = (
   items: ReadonlyArray.NonEmptyReadonlyArray<MutateItem>,
-  owner: Owner,
 ): ReadonlyArray.NonEmptyReadonlyArray<NewMessage> =>
   pipe(
     items,
@@ -248,11 +247,7 @@ const mutateItemsToNewMessages = (
                 : value,
             ] as const,
         ),
-        ReadonlyArray.appendAllNonEmpty(
-          isInsert
-            ? ReadonlyArray.make(["createdAt", now], ["createdBy", owner.id])
-            : ReadonlyArray.make(["updatedAt", now]),
-        ),
+        ReadonlyArray.append([isInsert ? "createdAt" : "updatedAt", now]),
         ReadonlyArray.mapNonEmpty(
           ([key, value]): NewMessage => ({
             table,
@@ -383,7 +378,7 @@ const mutate = ({
     let { timestamp, merkleTree } = yield* _(readTimestampAndMerkleTree);
 
     const messages = yield* _(
-      mutateItemsToNewMessages(items, owner),
+      mutateItemsToNewMessages(items),
       Effect.forEach((newMessage) =>
         Effect.map(sendTimestamp(timestamp), (nextTimestamp): Message => {
           timestamp = nextTimestamp;
