@@ -12,11 +12,11 @@
   "dependencies": {
     "@effect/schema": "~0.33.1",
     "clsx": "^2.0.0",
-    "effect": "2.0.0-next.26",
+    "effect": "2.0.0-next.27",
     "evolu": "workspace:*",
-    "next": "^13.4.18",
-    "nextra": "^2.11.0",
-    "nextra-theme-docs": "^2.11.0",
+    "next": "^13.4.19",
+    "nextra": "^2.11.1",
+    "nextra-theme-docs": "^2.11.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

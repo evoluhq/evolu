@@ -33,8 +33,8 @@ importers:
         specifier: ^18.2.20
         version: 18.2.20
       effect:
-        specifier: 2.0.0-next.26
-        version: 2.0.0-next.26(@effect/data@0.17.5)(@effect/io@0.38.2)(@effect/match@0.32.0)(@effect/stm@0.22.0)(@effect/stream@0.34.0)
+        specifier: 2.0.0-next.27
+        version: 2.0.0-next.27(@effect/data@0.17.5)(@effect/io@0.38.2)(@effect/match@0.33.0)(@effect/stm@0.22.0)(@effect/stream@0.34.0)
       evolu:
         specifier: workspace:*
         version: link:../../packages/evolu
@@ -107,20 +107,20 @@ importers:
         specifier: ^2.0.0
         version: 2.0.0
       effect:
-        specifier: 2.0.0-next.26
-        version: 2.0.0-next.26(@effect/data@0.17.5)(@effect/io@0.38.2)(@effect/match@0.32.0)(@effect/stm@0.22.0)(@effect/stream@0.34.0)
+        specifier: 2.0.0-next.27
+        version: 2.0.0-next.27(@effect/data@0.17.5)(@effect/io@0.38.2)(@effect/match@0.33.0)(@effect/stm@0.22.0)(@effect/stream@0.34.0)
       evolu:
         specifier: workspace:*
         version: link:../../packages/evolu
       next:
-        specifier: ^13.4.18
+        specifier: ^13.4.19
         version: 13.4.19(react-dom@18.2.0)(react@18.2.0)
       nextra:
-        specifier: ^2.11.0
-        version: 2.11.0(next@13.4.19)(react-dom@18.2.0)(react@18.2.0)
+        specifier: ^2.11.1
+        version: 2.11.1(next@13.4.19)(react-dom@18.2.0)(react@18.2.0)
       nextra-theme-docs:
-        specifier: ^2.11.0
-        version: 2.11.0(next@13.4.19)(nextra@2.11.0)(react-dom@18.2.0)(react@18.2.0)
+        specifier: ^2.11.1
+        version: 2.11.1(next@13.4.19)(nextra@2.11.1)(react-dom@18.2.0)(react@18.2.0)
       react:
         specifier: ^18.2.0
         version: 18.2.0
@@ -257,8 +257,8 @@ importers:
         specifier: ^3.0.0
         version: 3.0.0
       effect:
-        specifier: 2.0.0-next.26
-        version: 2.0.0-next.26(@effect/data@0.17.5)(@effect/io@0.38.2)(@effect/match@0.32.0)(@effect/stm@0.22.0)(@effect/stream@0.34.0)
+        specifier: 2.0.0-next.27
+        version: 2.0.0-next.27(@effect/data@0.17.5)(@effect/io@0.38.2)(@effect/match@0.33.0)(@effect/stm@0.22.0)(@effect/stream@0.34.0)
       eslint:
         specifier: ^8.47.0
         version: 8.47.0
@@ -305,8 +305,8 @@ importers:
         specifier: ^2.8.5
         version: 2.8.5
       effect:
-        specifier: 2.0.0-next.26
-        version: 2.0.0-next.26(@effect/data@0.17.5)(@effect/io@0.38.2)(@effect/match@0.32.0)(@effect/stm@0.22.0)(@effect/stream@0.34.0)
+        specifier: 2.0.0-next.27
+        version: 2.0.0-next.27(@effect/data@0.17.5)(@effect/io@0.38.2)(@effect/match@0.33.0)(@effect/stm@0.22.0)(@effect/stream@0.34.0)
       evolu:
         specifier: workspace:*
         version: link:../evolu
@@ -2204,14 +2204,12 @@ packages:
     dependencies:
       '@effect/data': 0.17.5
 
-  /@effect/match@0.32.0(@effect/data@0.17.5)(@effect/schema@0.33.1):
-    resolution: {integrity: sha512-04QfnIgCcMnnNbGxTv2xa9/7q1c5kgpsBodqTUZ8eX86A/EdE8Czz+JkVarG00/xE+nYhQLXOXCN9Zj+dtqVkQ==}
+  /@effect/match@0.33.0(@effect/data@0.17.5):
+    resolution: {integrity: sha512-xAxhWTEcLgtUZC8+II0DmOhcYP+8oR2GdVZMFitQVzXRKCIqXnevrUX1BZnZWjds8YcMWswrCVQ5hhlsnK/lCQ==}
     peerDependencies:
       '@effect/data': ^0.17.1
-      '@effect/schema': ^0.33.0
     dependencies:
       '@effect/data': 0.17.5
-      '@effect/schema': 0.33.1(@effect/data@0.17.5)(@effect/io@0.38.2)
 
   /@effect/schema@0.33.1(@effect/data@0.17.5)(@effect/io@0.38.2):
     resolution: {integrity: sha512-h+fQInui4q3we8fegAygL0Cs5B2DD/+oC3JWthOh8eLcbKkbYM9smCD/PsHuyQ+BaeWiSP5JdvREGlP4Sg+Ysw==}
@@ -4343,8 +4341,8 @@ packages:
       postcss: ^8.1.0
     dependencies:
       browserslist: 4.21.10
-      caniuse-lite: 1.0.30001521
-      fraction.js: 4.2.0
+      caniuse-lite: 1.0.30001522
+      fraction.js: 4.2.1
       normalize-range: 0.1.2
       picocolors: 1.0.0
       postcss: 8.4.28
@@ -4633,7 +4631,7 @@ packages:
     engines: {node: ^6 || ^7 || ^8 || ^9 || ^10 || ^11 || ^12 || >=13.7}
     hasBin: true
     dependencies:
-      caniuse-lite: 1.0.30001521
+      caniuse-lite: 1.0.30001522
       electron-to-chromium: 1.4.496
       node-releases: 2.0.13
       update-browserslist-db: 1.0.11(browserslist@4.21.10)
@@ -4765,8 +4763,8 @@ packages:
     resolution: {integrity: sha512-Gmy6FhYlCY7uOElZUSbxo2UCDH8owEk996gkbrpsgGtrJLM3J7jGxl9Ic7Qwwj4ivOE5AWZWRMecDdF7hqGjFA==}
     engines: {node: '>=10'}
 
-  /caniuse-lite@1.0.30001521:
-    resolution: {integrity: sha512-fnx1grfpEOvDGH+V17eccmNjucGUnCbP6KL+l5KqBIerp26WK/+RQ7CIDE37KGJjaPyqWXXlFUyKiWmvdNNKmQ==}
+  /caniuse-lite@1.0.30001522:
+    resolution: {integrity: sha512-TKiyTVZxJGhsTszLuzb+6vUZSjVOAhClszBr2Ta2k9IwtNBT/4dzmL6aywt0HCgEZlmwJzXJd8yNiob6HgwTRg==}
 
   /ccount@2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
@@ -5715,18 +5713,18 @@ packages:
   /ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  /effect@2.0.0-next.26(@effect/data@0.17.5)(@effect/io@0.38.2)(@effect/match@0.32.0)(@effect/stm@0.22.0)(@effect/stream@0.34.0):
-    resolution: {integrity: sha512-VQ6jDJwOpRmJcO4BIhfKbJC8mQ5grfNqaGGqL+8yCIrPlnA9WuqE6X3ssjMm96rmd1d0El+QxaSMeOvoSPyz/Q==}
+  /effect@2.0.0-next.27(@effect/data@0.17.5)(@effect/io@0.38.2)(@effect/match@0.33.0)(@effect/stm@0.22.0)(@effect/stream@0.34.0):
+    resolution: {integrity: sha512-Z2hcIn7eTcBIC0m12JYvZlhymp6zFm8APaQvlr3scuU3pVcIugNCkl/LdSU790QM5jKCpDsoDle9FFZOD+EjFA==}
     peerDependencies:
       '@effect/data': ^0.17.1
       '@effect/io': ^0.38.2
-      '@effect/match': ^0.32.0
+      '@effect/match': ^0.33.0
       '@effect/stm': ^0.22.0
       '@effect/stream': ^0.34.0
     dependencies:
       '@effect/data': 0.17.5
       '@effect/io': 0.38.2(@effect/data@0.17.5)
-      '@effect/match': 0.32.0(@effect/data@0.17.5)(@effect/schema@0.33.1)
+      '@effect/match': 0.33.0(@effect/data@0.17.5)
       '@effect/stm': 0.22.0(@effect/data@0.17.5)(@effect/io@0.38.2)
       '@effect/stream': 0.34.0(@effect/data@0.17.5)(@effect/io@0.38.2)
 
@@ -6789,8 +6787,8 @@ packages:
     engines: {node: '>= 0.6'}
     dev: false
 
-  /fraction.js@4.2.0:
-    resolution: {integrity: sha512-MhLuK+2gUcnZe8ZHlaaINnQLl0xRIGRfcGk2yl8xoQAfHrSsL3rYu6FCmBdkdbhc9EPlwyGHewaRsvwRMJtAlA==}
+  /fraction.js@4.2.1:
+    resolution: {integrity: sha512-/KxoyCnPM0GwYI4NN0Iag38Tqt+od3/mLuguepLgCAKPn0ZhC544nssAW0tG2/00zXEYl9W+7hwAIpLHo6Oc7Q==}
     dev: true
 
   /freeport-async@2.0.0:
@@ -9499,7 +9497,7 @@ packages:
       '@next/env': 13.4.19
       '@swc/helpers': 0.5.1
       busboy: 1.6.0
-      caniuse-lite: 1.0.30001521
+      caniuse-lite: 1.0.30001522
       postcss: 8.4.14
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
@@ -9521,11 +9519,11 @@ packages:
       - babel-plugin-macros
     dev: false
 
-  /nextra-theme-docs@2.11.0(next@13.4.19)(nextra@2.11.0)(react-dom@18.2.0)(react@18.2.0):
-    resolution: {integrity: sha512-kNBVNB/NPW/3MI8Em7KFWjfX5Mtf5xY0UPhDveF5+aEvVUlrViS8Q0hfAdcbxq+0sUEc0hdr4KehU4H36cCkqg==}
+  /nextra-theme-docs@2.11.1(next@13.4.19)(nextra@2.11.1)(react-dom@18.2.0)(react@18.2.0):
+    resolution: {integrity: sha512-tMgoD9mqLBgZqZiZTcnw5UgBtXfTWfKK0qa233sTxpZSR7CquK+BH1D4ADdJ/mXOndqCBowJ4r3tyfQovXIlzQ==}
     peerDependencies:
       next: '>=9.5.3'
-      nextra: 2.11.0
+      nextra: 2.11.1
       react: '>=16.13.1'
       react-dom: '>=16.13.1'
     dependencies:
@@ -9541,15 +9539,15 @@ packages:
       next: 13.4.19(react-dom@18.2.0)(react@18.2.0)
       next-seo: 6.1.0(next@13.4.19)(react-dom@18.2.0)(react@18.2.0)
       next-themes: 0.2.1(next@13.4.19)(react-dom@18.2.0)(react@18.2.0)
-      nextra: 2.11.0(next@13.4.19)(react-dom@18.2.0)(react@18.2.0)
+      nextra: 2.11.1(next@13.4.19)(react-dom@18.2.0)(react@18.2.0)
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
       scroll-into-view-if-needed: 3.0.10
       zod: 3.22.2
     dev: false
 
-  /nextra@2.11.0(next@13.4.19)(react-dom@18.2.0)(react@18.2.0):
-    resolution: {integrity: sha512-I9F+NYl5fMBG6HUdPAvD6SbH3lpAvBeOmkS2Hkk+Cn3r8Ouc/QgLmJfpBXmG3gVFFxqYs2eQ2w/ppIivLLdylg==}
+  /nextra@2.11.1(next@13.4.19)(react-dom@18.2.0)(react@18.2.0):
+    resolution: {integrity: sha512-m+Ykev+S9Fmx7NSvVxjYFbDuFtKNV6ypnoKz+KH6WCHZor7o81LaWNyIX3RXg24GssFbVpa4sz68JAr76GZ4Sw==}
     engines: {node: '>=16'}
     peerDependencies:
       next: '>=9.5.3'
