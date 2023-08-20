@@ -55,7 +55,6 @@ export type NullableExceptOfId<T> = {
 
 export interface CommonColumns {
   readonly createdAt: SqliteDate;
-  readonly createdBy: OwnerId;
   readonly updatedAt: SqliteDate;
   readonly isDeleted: SqliteBoolean;
 }
@@ -65,7 +64,7 @@ export interface Table {
   readonly columns: ReadonlyArray<string>;
 }
 
-const commonColumns = ["createdAt", "createdBy", "updatedAt", "isDeleted"];
+const commonColumns = ["createdAt", "updatedAt", "isDeleted"];
 
 const kysely: Kysely.Kysely<SchemaForQuery<Schema>> = new Kysely.Kysely({
   dialect: {

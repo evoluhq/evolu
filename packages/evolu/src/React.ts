@@ -64,8 +64,7 @@ export interface Hooks<S extends Schema> {
    * by a union of types, therefore safely enforced by the TypeScript compiler.
    *
    * The next example shows the usage of columns that Evolu automatically
-   * adds to all tables. Those columns are: `createdAt`, `createdBy`,
-   * `updatedAt`, and `isDeleted`.
+   * adds to all tables. Those columns are: `createdAt`, `updatedAt`, and `isDeleted`.
    *
    * ```
    * const { rows } = useQuery(
@@ -73,13 +72,13 @@ export interface Hooks<S extends Schema> {
    *     db
    *       .selectFrom("todoCategory")
    *       .select(["id", "name"])
-   *       .where("isDeleted", "is not", E.cast(true))
+   *       .where("isDeleted", "is not", Evolu.cast(true))
    *       .orderBy("createdAt"),
    *   ({ name, ...rest }) => name && { name, ...rest }
    * );
    * ```
    *
-   * Note `E.cast` usage. It's Evolu's helper to cast booleans and dates
+   * Note `Evolu.cast` usage. It's Evolu's helper to cast booleans and dates
    * that SQLite does not support natively.
    */
   readonly useQuery: UseQuery<S>;
@@ -99,7 +98,7 @@ export interface Hooks<S extends Schema> {
    * Explicit mutations also allow Evolu to automatically add and update
    * a few useful columns common to all tables.
    *
-   * Those columns are: `createdAt`, `createdBy`, `updatedAt`, and `isDeleted`.
+   * Those columns are: `createdAt`, `updatedAt`, and `isDeleted`.
    */
   readonly useMutation: UseMutation<S>;
 
