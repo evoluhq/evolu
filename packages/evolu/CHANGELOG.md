@@ -1,5 +1,11 @@
 # evolu
 
+## 6.3.1
+
+### Patch Changes
+
+- a3d5524: Update Effect
+
 ## 6.3.0
 
 ### Minor Changes
