@@ -1,5 +1,13 @@
 # evolu
 
+## 7.0.0
+
+### Major Changes
+
+- cc1eb76: Remove `createdBy`. A little breaking change hence a new major version.
+
+  Automatically added column `createdBy` was an unnecessary DXness.
+
 ## 6.3.1
 
 ### Patch Changes
