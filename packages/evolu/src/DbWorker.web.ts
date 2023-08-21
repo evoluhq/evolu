@@ -10,7 +10,7 @@ import { DbWorker, DbWorkerLive } from "./DbWorker.js";
 import { SqliteLive } from "./SqliteLive.web.js";
 import { SyncWorker, SyncWorkerOutput } from "./SyncWorker.js";
 
-// It's a separate file because it's imported dynamically or by Web Worker.
+// It's a separate file because it's imported dynamically and by Web Worker.
 
 const SyncWorkerLive = Layer.effect(
   SyncWorker,
@@ -34,13 +34,16 @@ const SyncWorkerLive = Layer.effect(
 
 export const dbWorker = DbWorker.pipe(
   Effect.provideLayer(
-    Layer.mergeAll(
-      SqliteLive,
-      Bip39Live,
-      Layer.merge(HmacLive, Sha512Live).pipe(Layer.provide(Slip21Live)),
-      NanoIdLive,
-      SyncWorkerLive,
-    ).pipe(Layer.provide(DbWorkerLive)),
+    Layer.use(
+      DbWorkerLive,
+      Layer.mergeAll(
+        SqliteLive,
+        Bip39Live,
+        Layer.use(Slip21Live, Layer.merge(HmacLive, Sha512Live)),
+        NanoIdLive,
+        SyncWorkerLive,
+      ),
+    ),
   ),
   Effect.runSync,
 );

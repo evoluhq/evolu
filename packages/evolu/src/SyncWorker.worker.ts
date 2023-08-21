@@ -3,7 +3,7 @@ import { SyncLockLive } from "./Platform.web.js";
 import { SyncWorker, SyncWorkerInput, SyncWorkerLive } from "./SyncWorker.js";
 
 const syncWorker = SyncWorker.pipe(
-  Effect.provideLayer(SyncLockLive.pipe(Layer.provide(SyncWorkerLive))),
+  Effect.provideLayer(Layer.use(SyncWorkerLive, SyncLockLive)),
   Effect.runSync,
 );
 
