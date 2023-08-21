@@ -1,5 +1,3 @@
-import { pipe } from "@effect/data/Function";
-import SelectDropdown from "react-native-select-dropdown";
 import * as Schema from "@effect/schema/Schema";
 import * as Evolu from "evolu";
 import { StatusBar } from "expo-status-bar";
@@ -12,6 +10,7 @@ import {
   useState,
 } from "react";
 import { Button, StyleSheet, Text, View } from "react-native";
+import SelectDropdown from "react-native-select-dropdown";
 
 const TodoId = Evolu.id("Todo");
 type TodoId = Schema.To<typeof TodoId>;
@@ -19,8 +18,7 @@ type TodoId = Schema.To<typeof TodoId>;
 const TodoCategoryId = Evolu.id("TodoCategory");
 type TodoCategoryId = Schema.To<typeof TodoCategoryId>;
 
-const NonEmptyString50 = pipe(
-  Schema.string,
+const NonEmptyString50 = Schema.string.pipe(
   Schema.minLength(1),
   Schema.maxLength(50),
   Schema.brand("NonEmptyString50"),
