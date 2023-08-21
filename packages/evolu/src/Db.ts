@@ -64,6 +64,10 @@ export interface Table {
   readonly columns: ReadonlyArray<string>;
 }
 
+export type Tables = ReadonlyArray<Table>;
+
+export const Tables = Context.Tag<Tables>("evolu/Tables");
+
 const commonColumns = ["createdAt", "updatedAt", "isDeleted"];
 
 const kysely: Kysely.Kysely<SchemaForQuery<Schema>> = new Kysely.Kysely({
@@ -99,7 +103,7 @@ const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
 export const schemaToTables = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   schema: S.Schema<any, any>,
-): ReadonlyArray<Table> =>
+): Tables =>
   pipe(
     getPropertySignatures(schema),
     ReadonlyRecord.toEntries,
@@ -288,7 +292,7 @@ const createTable = ({
   );
 
 export const ensureSchema = (
-  tables: ReadonlyArray<Table>,
+  tables: Tables,
 ): Effect.Effect<Sqlite, never, void> =>
   Effect.flatMap(getTables, (existingTables) =>
     Effect.forEach(

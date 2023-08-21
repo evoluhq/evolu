@@ -6,9 +6,11 @@ import {
   NanoIdLive,
   Sha512Live,
 } from "./CryptoLive.web.js";
-import { DbWorkerLive } from "./DbWorker.js";
+import { DbWorker, DbWorkerLive } from "./DbWorker.js";
 import { SqliteLive } from "./SqliteLive.web.js";
 import { SyncWorker, SyncWorkerOutput } from "./SyncWorker.js";
+
+// It's a separate file because it's imported dynamically or by Web Worker.
 
 const SyncWorkerLive = Layer.effect(
   SyncWorker,
@@ -30,11 +32,15 @@ const SyncWorkerLive = Layer.effect(
   }),
 );
 
-// It's a separate file because it's imported dynamically or by WebWorker.
-export const dbWorkerLive = Layer.mergeAll(
-  SqliteLive,
-  Bip39Live,
-  Layer.merge(HmacLive, Sha512Live).pipe(Layer.provide(Slip21Live)),
-  NanoIdLive,
-  SyncWorkerLive,
-).pipe(Layer.provide(DbWorkerLive));
+export const dbWorker = DbWorker.pipe(
+  Effect.provideLayer(
+    Layer.mergeAll(
+      SqliteLive,
+      Bip39Live,
+      Layer.merge(HmacLive, Sha512Live).pipe(Layer.provide(Slip21Live)),
+      NanoIdLive,
+      SyncWorkerLive,
+    ).pipe(Layer.provide(DbWorkerLive)),
+  ),
+  Effect.runSync,
+);

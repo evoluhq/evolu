@@ -1,9 +1,7 @@
-import "@effect/schema/Schema";
 import * as S from "@effect/schema/Schema";
 import { Effect, Function, Layer } from "effect";
 import { Config, ConfigLive } from "./Config.js";
-import { Bip39Live, NanoIdLive } from "./CryptoLive.web.js";
-import { Schema } from "./Db.js";
+import { Schema, Tables, schemaToTables } from "./Db.js";
 import { DbWorker, DbWorkerOutput } from "./DbWorker.js";
 import { EvoluLive } from "./Evolu.js";
 import { LoadingPromisesLive } from "./LoadingPromises.js";
@@ -11,13 +9,15 @@ import { MutateLive } from "./Mutate.js";
 import { OnCompletesLive } from "./OnCompletes.js";
 import { OwnerActionsLive } from "./OwnerActions.js";
 import { Platform } from "./Platform.js";
-import { AppStateLive, FlushSyncLive, PlatformLive } from "./Platform.web.js";
 import { QueryStoreLive } from "./QueryStore.js";
 import { React, ReactLive } from "./React.js";
 import { RowsCacheStoreLive } from "./RowsCache.js";
 import { SubscribedQueriesLive } from "./SubscribedQueries.js";
 import { TimeLive } from "./Timestamp.js";
 export * from "./exports.js";
+
+import { Bip39Live, NanoIdLive } from "./CryptoLive.web.js";
+import { AppStateLive, FlushSyncLive, PlatformLive } from "./Platform.web.js";
 
 const DbWorkerLive = Layer.effect(
   DbWorker,
@@ -42,14 +42,8 @@ const DbWorkerLive = Layer.effect(
     }
 
     if (platform.name === "web-without-opfs") {
-      const promise = Effect.promise(
-        () => import("./DbWorkerLive.web.js"),
-      ).pipe(
-        Effect.map((a) => {
-          const importedDbWorker = DbWorker.pipe(
-            Effect.provideLayer(a.dbWorkerLive),
-            Effect.runSync,
-          );
+      const promise = Effect.promise(() => import("./DbWorker.web.js")).pipe(
+        Effect.map(({ dbWorker: importedDbWorker }) => {
           importedDbWorker.onMessage = dbWorker.onMessage;
           return importedDbWorker.postMessage;
         }),
@@ -77,53 +71,45 @@ export const create = <From, To extends Schema>(
   schema: S.Schema<From, To>,
   config?: Partial<Config>,
 ): React<To>["hooks"] => {
-  const configLive = ConfigLive(config);
-
   const dbWorkerLive = PlatformLive.pipe(Layer.provide(DbWorkerLive));
 
-  const appStateLive = Layer.mergeAll(PlatformLive, configLive).pipe(
-    Layer.provide(AppStateLive),
-  );
-
-  const mutateLive = Layer.mergeAll(
-    dbWorkerLive,
-    NanoIdLive,
-    OnCompletesLive,
-    TimeLive,
-    SubscribedQueriesLive,
-    LoadingPromisesLive,
-  ).pipe(Layer.provide(MutateLive));
-
-  const ownerActionsLive = Layer.mergeAll(dbWorkerLive, Bip39Live).pipe(
-    Layer.provide(OwnerActionsLive),
-  );
-
-  const queryStoreLive = Layer.mergeAll(
-    dbWorkerLive,
-    OnCompletesLive,
-    SubscribedQueriesLive,
-    LoadingPromisesLive,
-    RowsCacheStoreLive,
-    FlushSyncLive,
-  ).pipe(Layer.provide(QueryStoreLive));
-
-  const evoluLive = Layer.mergeAll(
-    dbWorkerLive,
-    configLive,
-    appStateLive,
-    mutateLive,
-    ownerActionsLive,
-    queryStoreLive,
-    SubscribedQueriesLive,
-  ).pipe(Layer.provide(EvoluLive(schema)));
-
-  const reactLive = Layer.mergeAll(evoluLive, PlatformLive).pipe(
-    Layer.provide(ReactLive),
-  );
+  // console.log(schemaToEvoluSchema(schema));
 
   return React.pipe(
     Effect.map((react) => react.hooks as React<To>["hooks"]),
-    Effect.provideLayer(reactLive),
+    Effect.provideLayer(
+      Layer.mergeAll(
+        Layer.mergeAll(
+          dbWorkerLive,
+          ConfigLive(config),
+          Layer.mergeAll(PlatformLive, ConfigLive(config)).pipe(
+            Layer.provide(AppStateLive),
+          ),
+          Layer.mergeAll(
+            dbWorkerLive,
+            NanoIdLive,
+            OnCompletesLive,
+            TimeLive,
+            SubscribedQueriesLive,
+            LoadingPromisesLive,
+          ).pipe(Layer.provide(MutateLive)),
+          Layer.mergeAll(dbWorkerLive, Bip39Live).pipe(
+            Layer.provide(OwnerActionsLive),
+          ),
+          Layer.mergeAll(
+            dbWorkerLive,
+            OnCompletesLive,
+            SubscribedQueriesLive,
+            LoadingPromisesLive,
+            RowsCacheStoreLive,
+            FlushSyncLive,
+          ).pipe(Layer.provide(QueryStoreLive)),
+          SubscribedQueriesLive,
+          Layer.succeed(Tables, schemaToTables(schema)),
+        ).pipe(Layer.provide(EvoluLive)),
+        PlatformLive,
+      ).pipe(Layer.provide(ReactLive)),
+    ),
     Effect.runSync,
   );
 };

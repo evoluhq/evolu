@@ -17,6 +17,7 @@ import { Bip39, Mnemonic, NanoId, Slip21 } from "./Crypto.js";
 import {
   Owner,
   Table,
+  Tables,
   ensureSchema,
   lazyInit,
   someDefectToNoSuchTableOrColumnError,
@@ -86,7 +87,7 @@ export type DbWorkerInput =
 interface DbWorkerInputInit {
   readonly _tag: "init";
   readonly config: Config;
-  readonly tables: ReadonlyArray<Table>;
+  readonly tables: Tables;
 }
 
 interface DbWorkerInputQuery {
