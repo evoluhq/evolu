@@ -1,5 +1,13 @@
 # native
 
+## 0.0.79
+
+### Patch Changes
+
+- Updated dependencies [a47544b]
+  - evolu@7.1.0
+  - web@0.0.79
+
 ## 0.0.78
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # evolu
 
+## 7.1.0
+
+### Minor Changes
+
+- a47544b: React Fast Refresh support
+
+  It also ensures only one instance of Evolu is used.
+
 ## 7.0.0
 
 ### Major Changes
