@@ -10,9 +10,8 @@ import { Simplify } from "kysely";
 import { useMemo, useRef, useSyncExternalStore } from "react";
 import { CommonColumns, Owner, QueryCallback, Schema } from "./Db.js";
 import { EvoluError } from "./Errors.js";
-import { Evolu } from "./Evolu.js";
+import { Evolu, OwnerActions, loadingPromisesPromiseProp } from "./Evolu.js";
 import { CastableForMutate } from "./Model.js";
-import { OwnerActions } from "./OwnerActions.js";
 import { Platform } from "./Platform.js";
 import { Row } from "./Sqlite.js";
 import { SyncState } from "./SyncWorker.js";
@@ -264,7 +263,11 @@ export const ReactLive = Layer.effect(
         return query ? evolu.loadQuery(query) : null;
       }, [query]);
 
-      if (platform.name !== "server" && promise && !("rows" in promise))
+      if (
+        platform.name !== "server" &&
+        promise &&
+        !(loadingPromisesPromiseProp in promise)
+      )
         throw promise;
 
       const subscribedRows = useSyncExternalStore(

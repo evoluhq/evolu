@@ -32,18 +32,16 @@ const SyncWorkerLive = Layer.effect(
   }),
 );
 
-export const dbWorker = DbWorker.pipe(
-  Effect.provideLayer(
-    Layer.use(
-      DbWorkerLive,
-      Layer.mergeAll(
-        SqliteLive,
-        Bip39Live,
-        Layer.use(Slip21Live, Layer.merge(HmacLive, Sha512Live)),
-        NanoIdLive,
-        SyncWorkerLive,
-      ),
+export const dbWorker = Effect.provideLayer(
+  DbWorker,
+  Layer.use(
+    DbWorkerLive,
+    Layer.mergeAll(
+      SqliteLive,
+      Bip39Live,
+      Layer.use(Slip21Live, Layer.merge(HmacLive, Sha512Live)),
+      NanoIdLive,
+      SyncWorkerLive,
     ),
   ),
-  Effect.runSync,
-);
+).pipe(Effect.runSync);

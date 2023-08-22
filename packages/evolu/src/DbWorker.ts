@@ -1,4 +1,5 @@
 import {
+  Brand,
   Cause,
   Context,
   Effect,
@@ -34,8 +35,6 @@ import {
   unsafeMerkleTreeFromString,
 } from "./MerkleTree.js";
 import { CastableForMutate, Id, SqliteDate, cast } from "./Model.js";
-import { OnCompleteId } from "./OnCompletes.js";
-import { RowsCacheRef, RowsCacheRefLive } from "./RowsCache.js";
 import {
   insertIntoMessagesIfNew,
   insertValueIntoTableRowColumn,
@@ -45,7 +44,7 @@ import {
   selectOwnerTimestampAndMerkleTree,
   updateOwnerTimestampAndMerkleTree,
 } from "./Sql.js";
-import { Query, Sqlite, Value, queryObjectFromQuery } from "./Sqlite.js";
+import { Query, Row, Sqlite, Value, queryObjectFromQuery } from "./Sqlite.js";
 import {
   Message,
   NewMessage,
@@ -141,6 +140,10 @@ export interface DbWorkerOutputOnQuery {
   readonly onCompleteIds: ReadonlyArray<OnCompleteId>;
 }
 
+export type OnCompleteId = string &
+  Brand.Brand<"Id"> &
+  Brand.Brand<"OnComplete">;
+
 interface DbWorkerOutputOnReceive {
   readonly _tag: "onReceive";
 }
@@ -178,6 +181,12 @@ const init = (
     );
   });
 
+export type RowsCacheMap = ReadonlyMap<Query, ReadonlyArray<Row>>;
+
+type RowsCacheRef = Ref.Ref<RowsCacheMap>;
+const RowsCacheRef = Context.Tag<RowsCacheRef>("evolu/RowsCacheRef");
+const RowsCacheRefLive = Layer.effect(RowsCacheRef, Ref.make(new Map()));
+
 const query = ({
   queries,
   onCompleteIds = ReadonlyArray.empty(),
@@ -187,6 +196,9 @@ const query = ({
 }): Effect.Effect<Sqlite | RowsCacheRef | DbWorkerOnMessage, never, void> =>
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
+    const rowsCache = yield* _(RowsCacheRef);
+    const dbWorkerOnMessage = yield* _(DbWorkerOnMessage);
+
     const queriesRows = yield* _(
       Effect.forEach(queries, (query) =>
         sqlite
@@ -194,7 +206,6 @@ const query = ({
           .pipe(Effect.map((rows) => [query, rows] as const)),
       ),
     );
-    const rowsCache = yield* _(RowsCacheRef);
     const previous = yield* _(Ref.get(rowsCache));
     yield* _(Ref.set(rowsCache, new Map([...previous, ...queriesRows])));
     const queriesPatches = queriesRows.map(
@@ -203,7 +214,6 @@ const query = ({
         patches: makePatches(previous.get(query), rows),
       }),
     );
-    const dbWorkerOnMessage = yield* _(DbWorkerOnMessage);
     dbWorkerOnMessage({ _tag: "onQuery", queriesPatches, onCompleteIds });
   });
 
