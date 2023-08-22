@@ -11,7 +11,7 @@ import {
   pipe,
 } from "effect";
 import * as Kysely from "kysely";
-import { Config } from "./Config.js";
+import { Config, ConfigLive } from "./Config.js";
 import { Bip39, NanoId } from "./Crypto.js";
 import {
   CommonColumns,
@@ -36,7 +36,7 @@ import { AppState, FlushSync } from "./Platform.js";
 import { Query, Row } from "./Sqlite.js";
 import { Store, StoreListener, StoreUnsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
-import { Time } from "./Timestamp.js";
+import { Time, TimeLive } from "./Timestamp.js";
 
 export interface Evolu<S extends Schema> {
   readonly subscribeError: ErrorStore["subscribe"];
@@ -55,6 +55,7 @@ export interface Evolu<S extends Schema> {
 
   readonly mutate: Mutate<S>;
   readonly ownerActions: OwnerActions;
+  readonly ensureSchema: (tables: Tables) => void;
 }
 
 export const Evolu = <T extends Schema>(): Context.Tag<Evolu<T>, Evolu<T>> =>
@@ -353,8 +354,10 @@ const OwnerActionsLive = Layer.effect(
   }),
 );
 
-export const EvoluLive = <T extends Schema>(): Layer.Layer<
-  DbWorker | Bip39 | Config | Tables | FlushSync | NanoId | Time | AppState,
+export const EvoluLive = <T extends Schema>(
+  tables: Tables,
+): Layer.Layer<
+  DbWorker | Bip39 | Config | FlushSync | NanoId | Time | AppState,
   never,
   Evolu<T>
 > =>
@@ -364,7 +367,6 @@ export const EvoluLive = <T extends Schema>(): Layer.Layer<
       const dbWorker = yield* _(DbWorker);
       const appState = yield* _(AppState);
       const config = yield* _(Config);
-      const tables = yield* _(Tables);
 
       const subscribedQueries: SubscribedQueries = new Map();
       const onCompletes: OnCompletes = new Map();
@@ -404,6 +406,10 @@ export const EvoluLive = <T extends Schema>(): Layer.Layer<
         OwnerActions,
         Layer.use(OwnerActionsLive, Layers),
       ).pipe(Effect.runSync);
+
+      const ensureSchema: Evolu<T>["ensureSchema"] = (tables) => {
+        dbWorker.postMessage({ _tag: "ensureSchema", tables });
+      };
 
       const getSubscribedQueries = (): ReadonlyArray<Query> =>
         Array.from(subscribedQueries.keys());
@@ -464,6 +470,24 @@ export const EvoluLive = <T extends Schema>(): Layer.Layer<
 
         mutate,
         ownerActions,
+        ensureSchema,
       });
     }),
   );
+
+export const makeEvoluForPlatform = <T extends Schema>(
+  PlatformLayers: Layer.Layer<
+    never,
+    never,
+    DbWorker | Bip39 | NanoId | FlushSync | AppState
+  >,
+  tables: Tables,
+  config?: Partial<Config>,
+): Evolu<T> =>
+  Effect.provideLayer(
+    Evolu<T>(),
+    Layer.use(
+      EvoluLive<T>(tables),
+      Layer.mergeAll(ConfigLive(config), TimeLive, PlatformLayers),
+    ),
+  ).pipe(Effect.runSync);

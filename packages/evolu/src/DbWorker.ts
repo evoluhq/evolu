@@ -81,6 +81,7 @@ export type DbWorkerInput =
   | DbWorkerInputMutate
   | DbWorkerInputSync
   | DbWorkerInputReset
+  | DbWorkerInputEnsureSchema
   | SyncWorkerOutputSyncResponse;
 
 interface DbWorkerInputInit {
@@ -108,6 +109,11 @@ interface DbWorkerInputSync {
 interface DbWorkerInputReset {
   readonly _tag: "reset";
   readonly mnemonic?: Mnemonic;
+}
+
+interface DbWorkerInputEnsureSchema {
+  readonly _tag: "ensureSchema";
+  readonly tables: Tables;
 }
 
 type DbWorkerOnMessage = DbWorker["onMessage"];
@@ -618,6 +624,7 @@ export const DbWorkerLive = Layer.effect(
               skipAllBecauseOfReset = true;
               return reset(input);
             },
+            ensureSchema: (input) => ensureSchema(input.tables),
             SyncWorkerOutputSyncResponse: handleSyncResponse,
           }),
           Effect.provideSomeLayer(

@@ -66,8 +66,6 @@ export interface Table {
 
 export type Tables = ReadonlyArray<Table>;
 
-export const Tables = Context.Tag<Tables>("evolu/Tables");
-
 const commonColumns = ["createdAt", "updatedAt", "isDeleted"];
 
 const kysely: Kysely.Kysely<SchemaForQuery<Schema>> = new Kysely.Kysely({

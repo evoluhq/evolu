@@ -1,16 +1,15 @@
 import * as S from "@effect/schema/Schema";
 import { Effect, Function, Layer } from "effect";
 import { Config, ConfigLive } from "./Config.js";
-import { Schema, Tables, schemaToTables } from "./Db.js";
+import { Schema, schemaToTables } from "./Db.js";
 import { DbWorker, DbWorkerOutput } from "./DbWorker.js";
-import { EvoluLive } from "./Evolu.js";
+import { Evolu, makeEvoluForPlatform } from "./Evolu.js";
 import { Platform } from "./Platform.js";
 import { ReactHooks, ReactHooksLive } from "./React.js";
 export * from "./exports.js";
 
 import { Bip39Live, NanoIdLive } from "./CryptoLive.web.js";
 import { AppStateLive, FlushSyncLive, PlatformLive } from "./Platform.web.js";
-import { TimeLive } from "./Timestamp.js";
 
 const DbWorkerLive = Layer.effect(
   DbWorker,
@@ -60,35 +59,36 @@ const DbWorkerLive = Layer.effect(
   }),
 );
 
+// For React Fast Refresh, to ensure only one instance of Evolu exists.
+let evolu: Evolu<Schema> | null = null;
+
 export const create = <From, To extends Schema>(
   schema: S.Schema<From, To>,
   config?: Partial<Config>,
 ): ReactHooks<To> => {
-  return ReactHooks<To>().pipe(
-    Effect.provideLayer(
-      Layer.use(
-        ReactHooksLive<To>(),
-        Layer.merge(
-          PlatformLive,
-          Layer.use(
-            EvoluLive<To>(),
-            Layer.mergeAll(
-              Layer.use(DbWorkerLive, PlatformLive),
-              Bip39Live,
-              ConfigLive(config),
-              Layer.succeed(Tables, schemaToTables(schema)),
-              FlushSyncLive,
-              NanoIdLive,
-              TimeLive,
-              Layer.use(
-                AppStateLive,
-                Layer.merge(PlatformLive, ConfigLive(config)),
-              ),
-            ),
-          ),
-        ),
+  const tables = schemaToTables(schema);
+
+  if (evolu == null) {
+    evolu = makeEvoluForPlatform<To>(
+      Layer.mergeAll(
+        Layer.use(DbWorkerLive, PlatformLive),
+        Bip39Live,
+        NanoIdLive,
+        FlushSyncLive,
+        Layer.use(AppStateLive, Layer.merge(PlatformLive, ConfigLive(config))),
       ),
+      tables,
+      config,
+    ) as Evolu<Schema>;
+  } else {
+    evolu.ensureSchema(tables);
+  }
+
+  return Effect.provideLayer(
+    ReactHooks<To>(),
+    Layer.use(
+      ReactHooksLive<To>(),
+      Layer.merge(PlatformLive, Layer.succeed(Evolu<To>(), evolu as Evolu<To>)),
     ),
-    Effect.runSync,
-  );
+  ).pipe(Effect.runSync);
 };
