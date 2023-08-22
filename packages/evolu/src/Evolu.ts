@@ -476,7 +476,7 @@ export const EvoluLive = <T extends Schema>(
   );
 
 export const makeEvoluForPlatform = <T extends Schema>(
-  PlatformLayers: Layer.Layer<
+  PlatformLayer: Layer.Layer<
     never,
     never,
     DbWorker | Bip39 | NanoId | FlushSync | AppState
@@ -488,6 +488,6 @@ export const makeEvoluForPlatform = <T extends Schema>(
     Evolu<T>(),
     Layer.use(
       EvoluLive<T>(tables),
-      Layer.mergeAll(ConfigLive(config), TimeLive, PlatformLayers),
+      Layer.mergeAll(PlatformLayer, ConfigLive(config), TimeLive),
     ),
   ).pipe(Effect.runSync);
