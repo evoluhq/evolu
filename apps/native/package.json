@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@effect/schema": "^0.33.2",
-    "@types/react": "^18.2.20",
+    "@types/react": "^18.2.21",
     "effect": "2.0.0-next.27",
     "evolu": "workspace:*",
     "expo": "^49.0.8",
@@ -19,7 +19,7 @@
     "expo-status-bar": "^1.6.0",
     "react": "18.2.0",
     "react-native": "^0.72.4",
-    "react-native-select-dropdown": "^3.3.4",
+    "react-native-select-dropdown": "^3.4.0",
     "web": "workspace:^"
   },
   "devDependencies": {
