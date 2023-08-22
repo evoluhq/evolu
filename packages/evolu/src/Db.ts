@@ -30,7 +30,7 @@ import { makeInitialTimestamp, timestampToString } from "./Timestamp.js";
 
 export type Schema = ReadonlyRecord.ReadonlyRecord<{ id: Id } & Row>;
 
-export type CreateQuery<S extends Schema = Schema> = (
+export type CreateQuery<S extends Schema> = (
   queryCallback: QueryCallback<S, Row>,
 ) => Query;
 
@@ -81,8 +81,10 @@ const kysely: Kysely.Kysely<SchemaForQuery<Schema>> = new Kysely.Kysely({
   },
 });
 
-export const createQuery: CreateQuery = (queryCallback) =>
-  queryObjectToQuery(queryCallback(kysely).compile() as QueryObject);
+export const makeCreateQuery =
+  <T extends Schema>(): CreateQuery<T> =>
+  (queryCallback) =>
+    queryObjectToQuery(queryCallback(kysely as never).compile() as QueryObject);
 
 // https://github.com/Effect-TS/schema/releases/tag/v0.18.0
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

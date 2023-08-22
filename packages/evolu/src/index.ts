@@ -5,7 +5,7 @@ import { Schema, Tables, schemaToTables } from "./Db.js";
 import { DbWorker, DbWorkerOutput } from "./DbWorker.js";
 import { EvoluLive } from "./Evolu.js";
 import { Platform } from "./Platform.js";
-import { React, ReactLive } from "./React.js";
+import { ReactHooks, ReactHooksLive } from "./React.js";
 export * from "./exports.js";
 
 import { Bip39Live, NanoIdLive } from "./CryptoLive.web.js";
@@ -63,16 +63,15 @@ const DbWorkerLive = Layer.effect(
 export const create = <From, To extends Schema>(
   schema: S.Schema<From, To>,
   config?: Partial<Config>,
-): React<To>["hooks"] => {
-  return React.pipe(
-    Effect.map((react) => react.hooks as React<To>["hooks"]),
+): ReactHooks<To> => {
+  return ReactHooks<To>().pipe(
     Effect.provideLayer(
       Layer.use(
-        ReactLive,
+        ReactHooksLive<To>(),
         Layer.merge(
           PlatformLive,
           Layer.use(
-            EvoluLive,
+            EvoluLive<To>(),
             Layer.mergeAll(
               Layer.use(DbWorkerLive, PlatformLive),
               Bip39Live,
