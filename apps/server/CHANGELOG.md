@@ -1,5 +1,11 @@
 # server
 
+## 0.0.79
+
+### Patch Changes
+
+- evolu-server@1.0.18
+
 ## 0.0.78
 
 ### Patch Changes
