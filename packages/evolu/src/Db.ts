@@ -30,7 +30,7 @@ import { makeInitialTimestamp, timestampToString } from "./Timestamp.js";
 
 export type Schema = ReadonlyRecord.ReadonlyRecord<{ id: Id } & Row>;
 
-export type CreateQuery<S extends Schema = Schema> = (
+export type CreateQuery<S extends Schema> = (
   queryCallback: QueryCallback<S, Row>,
 ) => Query;
 
@@ -64,6 +64,8 @@ export interface Table {
   readonly columns: ReadonlyArray<string>;
 }
 
+export type Tables = ReadonlyArray<Table>;
+
 const commonColumns = ["createdAt", "updatedAt", "isDeleted"];
 
 const kysely: Kysely.Kysely<SchemaForQuery<Schema>> = new Kysely.Kysely({
@@ -77,8 +79,10 @@ const kysely: Kysely.Kysely<SchemaForQuery<Schema>> = new Kysely.Kysely({
   },
 });
 
-export const createQuery: CreateQuery = (queryCallback) =>
-  queryObjectToQuery(queryCallback(kysely).compile() as QueryObject);
+export const makeCreateQuery =
+  <T extends Schema>(): CreateQuery<T> =>
+  (queryCallback) =>
+    queryObjectToQuery(queryCallback(kysely as never).compile() as QueryObject);
 
 // https://github.com/Effect-TS/schema/releases/tag/v0.18.0
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -99,7 +103,7 @@ const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
 export const schemaToTables = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   schema: S.Schema<any, any>,
-): ReadonlyArray<Table> =>
+): Tables =>
   pipe(
     getPropertySignatures(schema),
     ReadonlyRecord.toEntries,
@@ -288,7 +292,7 @@ const createTable = ({
   );
 
 export const ensureSchema = (
-  tables: ReadonlyArray<Table>,
+  tables: Tables,
 ): Effect.Effect<Sqlite, never, void> =>
   Effect.flatMap(getTables, (existingTables) =>
     Effect.forEach(

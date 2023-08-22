@@ -10,20 +10,13 @@ import { Simplify } from "kysely";
 import { useMemo, useRef, useSyncExternalStore } from "react";
 import { CommonColumns, Owner, QueryCallback, Schema } from "./Db.js";
 import { EvoluError } from "./Errors.js";
-import { Evolu } from "./Evolu.js";
+import { Evolu, OwnerActions, loadingPromisesPromiseProp } from "./Evolu.js";
 import { CastableForMutate } from "./Model.js";
-import { OwnerActions } from "./OwnerActions.js";
 import { Platform } from "./Platform.js";
 import { Row } from "./Sqlite.js";
 import { SyncState } from "./SyncWorker.js";
 
-export interface React<S extends Schema = Schema> {
-  readonly hooks: Hooks<S>;
-}
-
-export const React = Context.Tag<React>("evolu/React");
-
-export interface Hooks<S extends Schema> {
+export interface ReactHooks<S extends Schema> {
   /**
    * `useQuery` React Hook performs a database query and returns `rows` and
    * `firstRow` props that are automatically updated when data changes. It
@@ -134,6 +127,11 @@ export interface Hooks<S extends Schema> {
    */
   readonly useSyncState: () => SyncState;
 }
+
+export const ReactHooks = <T extends Schema>(): Context.Tag<
+  ReactHooks<T>,
+  ReactHooks<T>
+> => Context.Tag<ReactHooks<T>>("evolu/ReactHooks");
 
 type UseQuery<S extends Schema> = <
   QueryRow extends Row,
@@ -246,98 +244,105 @@ type Update<S extends Schema> = <T extends keyof S>(
   readonly id: S[T]["id"];
 };
 
-export const ReactLive = Layer.effect(
-  React,
-  Effect.gen(function* (_) {
-    const evolu = yield* _(Evolu);
-    const platform = yield* _(Platform);
+export const ReactHooksLive = <T extends Schema>(): Layer.Layer<
+  Platform | Evolu<T>,
+  never,
+  ReactHooks<T>
+> =>
+  Layer.effect(
+    ReactHooks<T>(),
+    Effect.gen(function* (_) {
+      const evolu = yield* _(Evolu<T>());
+      const platform = yield* _(Platform);
 
-    const cache = new WeakMap<Row, Option.Option<Row>>();
+      const cache = new WeakMap<Row, Option.Option<Row>>();
 
-    const useQuery: UseQuery<Schema> = (queryCallback, filterMap) => {
-      const query = useMemo(
-        () => (queryCallback ? evolu.createQuery(queryCallback) : null),
-        [queryCallback],
-      );
+      const useQuery: UseQuery<T> = (queryCallback, filterMap) => {
+        const query = useMemo(
+          () => (queryCallback ? evolu.createQuery(queryCallback) : null),
+          [queryCallback],
+        );
 
-      const promise = useMemo(() => {
-        return query ? evolu.loadQuery(query) : null;
-      }, [query]);
+        const promise = useMemo(() => {
+          return query ? evolu.loadQuery(query) : null;
+        }, [query]);
 
-      if (platform.name !== "server" && promise && !("rows" in promise))
-        throw promise;
+        if (
+          platform.name !== "server" &&
+          promise &&
+          !(loadingPromisesPromiseProp in promise)
+        )
+          throw promise;
 
-      const subscribedRows = useSyncExternalStore(
-        useMemo(() => evolu.subscribeQuery(query), [query]),
-        useMemo(() => () => evolu.getQuery(query), [query]),
-        Function.constNull,
-      );
+        const subscribedRows = useSyncExternalStore(
+          useMemo(() => evolu.subscribeQuery(query), [query]),
+          useMemo(() => () => evolu.getQuery(query), [query]),
+          Function.constNull,
+        );
 
-      // Use useRef until React Forget release.
-      const filterMapRef = useRef(filterMap);
+        // Use useRef until React Forget release.
+        const filterMapRef = useRef(filterMap);
 
-      const rows = useMemo(() => {
-        if (subscribedRows == null) return ReadonlyArray.empty();
-        return ReadonlyArray.filterMap(subscribedRows, (row) => {
-          let cachedRow = cache.get(row);
-          if (cachedRow !== undefined) return cachedRow;
-          cachedRow = Option.fromNullable(
-            filterMapRef.current(row as never),
-          ) as never;
-          cache.set(row, cachedRow);
-          return cachedRow;
-        });
-      }, [subscribedRows]);
+        const rows = useMemo(() => {
+          if (subscribedRows == null) return ReadonlyArray.empty();
+          return ReadonlyArray.filterMap(subscribedRows, (row) => {
+            let cachedRow = cache.get(row);
+            if (cachedRow !== undefined) return cachedRow;
+            cachedRow = Option.fromNullable(
+              filterMapRef.current(row as never),
+            ) as never;
+            cache.set(row, cachedRow);
+            return cachedRow;
+          });
+        }, [subscribedRows]);
 
-      return {
-        rows: rows as never,
-        firstRow: rows[0] as never,
+        return {
+          rows: rows as never,
+          firstRow: rows[0] as never,
+        };
       };
-    };
 
-    const useMutation: UseMutation<Schema> = () =>
-      useMemo(
-        () => ({
-          create: evolu.mutate as Create<Schema>,
-          update: evolu.mutate as Update<Schema>,
-        }),
-        [],
-      );
+      const useMutation: UseMutation<T> = () =>
+        useMemo(
+          () => ({
+            create: evolu.mutate as Create<T>,
+            update: evolu.mutate as Update<T>,
+          }),
+          [],
+        );
 
-    const useEvoluError: Hooks<Schema>["useEvoluError"] = () =>
-      useSyncExternalStore(
-        evolu.subscribeError,
-        evolu.getError,
-        Function.constNull,
-      );
+      const useEvoluError: ReactHooks<T>["useEvoluError"] = () =>
+        useSyncExternalStore(
+          evolu.subscribeError,
+          evolu.getError,
+          Function.constNull,
+        );
 
-    const useOwner: Hooks<Schema>["useOwner"] = () =>
-      useSyncExternalStore(
-        evolu.subscribeOwner,
-        evolu.getOwner,
-        Function.constNull,
-      );
+      const useOwner: ReactHooks<T>["useOwner"] = () =>
+        useSyncExternalStore(
+          evolu.subscribeOwner,
+          evolu.getOwner,
+          Function.constNull,
+        );
 
-    const useOwnerActions: Hooks<Schema>["useOwnerActions"] = () =>
-      evolu.ownerActions;
+      const useOwnerActions: ReactHooks<T>["useOwnerActions"] = () =>
+        evolu.ownerActions;
 
-    const syncStateInitial: SyncState = { _tag: "SyncStateInitial" };
-    const useSyncState: Hooks<Schema>["useSyncState"] = () =>
-      useSyncExternalStore(
-        evolu.subscribeSyncState,
-        evolu.getSyncState,
-        () => syncStateInitial,
-      );
+      const syncStateInitial: SyncState = { _tag: "SyncStateInitial" };
+      const useSyncState: ReactHooks<T>["useSyncState"] = () =>
+        useSyncExternalStore(
+          evolu.subscribeSyncState,
+          evolu.getSyncState,
+          () => syncStateInitial,
+        );
 
-    return React.of({
-      hooks: {
+      return ReactHooks<T>().of({
         useQuery,
         useMutation,
         useEvoluError,
         useOwner,
         useOwnerActions,
         useSyncState,
-      },
-    });
-  }),
-);
+      });
+    }),
+  );
