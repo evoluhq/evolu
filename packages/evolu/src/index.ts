@@ -1,4 +1,3 @@
-import "@effect/schema/Schema";
 import { Effect, Function, Layer } from "effect";
 import { Bip39Live, NanoIdLive } from "./CryptoLive.web.js";
 import { DbWorker, DbWorkerOutput } from "./DbWorker.js";
@@ -6,6 +5,9 @@ import { Platform } from "./Platform.js";
 import { AppStateLive, FlushSyncLive, PlatformLive } from "./Platform.web.js";
 import { makeReactHooksForPlatform } from "./React.js";
 export * from "./exports.js";
+
+// A TypeScript bug, recheck after TS 5.2
+import "@effect/schema/Schema";
 
 const DbWorkerLive = Layer.effect(
   DbWorker,
