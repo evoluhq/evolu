@@ -225,12 +225,18 @@ importers:
       expo-sqlite:
         specifier: ^11.3.2
         version: 11.3.2(expo@49.0.8)
+      fast-text-encoding:
+        specifier: ^1.0.6
+        version: 1.0.6
       kysely:
         specifier: ~0.26.1
         version: 0.26.1
       nanoid:
         specifier: ^4.0.2
         version: 4.0.2
+      react-native-get-random-values:
+        specifier: ^1.9.0
+        version: 1.9.0(react-native@0.72.4)
     devDependencies:
       '@effect/schema':
         specifier: ^0.33.2
@@ -277,9 +283,6 @@ importers:
       react-native:
         specifier: ^0.72.4
         version: 0.72.4(@babel/core@7.22.10)(react@18.2.0)
-      react-native-get-random-values:
-        specifier: ^1.9.0
-        version: 1.9.0(react-native@0.72.4)
       tslib:
         specifier: ^2.6.2
         version: 2.6.2
@@ -6580,7 +6583,7 @@ packages:
 
   /fast-base64-decode@1.0.0:
     resolution: {integrity: sha512-qwaScUgUGBYeDNRnbc/KyllVU88Jk1pRHPStuF/lO7B0/RTRLj7U0lkdTAutlBblY08rwZDff6tNU9cjv6j//Q==}
-    dev: true
+    dev: false
 
   /fast-check@3.12.0:
     resolution: {integrity: sha512-SqahE9mlL3+lhjJ39joMLwcj6F+24hfZdf/tchlNO8sHcTdrUUdA5P/ZbSFZM9Xpzs36XaneGwE0FWepm/zyOA==}
@@ -6606,6 +6609,10 @@ packages:
 
   /fast-levenshtein@2.0.6:
     resolution: {integrity: sha512-DCXu6Ifhqcks7TZKY3Hxp3y6qphY5SJZmrWMDrKcERSOXWQdMhU9Ig/PYrzyw/ul9jOIyh0N4M0tbC5hodg8dw==}
+
+  /fast-text-encoding@1.0.6:
+    resolution: {integrity: sha512-VhXlQgj9ioXCqGstD37E/HBeqEGV/qOD/kmbVG8h5xKBYvM1L3lR1Zn4555cQ8GkYbJa8aJSipLPndE1k6zK2w==}
+    dev: false
 
   /fast-xml-parser@4.2.7:
     resolution: {integrity: sha512-J8r6BriSLO1uj2miOk1NW0YVm8AGOOu3Si2HQp/cSmo6EA4m3fcwu2WKjJ4RK9wMLBtg69y1kS8baDiQBR41Ig==}
@@ -10528,7 +10535,7 @@ packages:
     dependencies:
       fast-base64-decode: 1.0.0
       react-native: 0.72.4(@babel/core@7.22.10)(react@18.2.0)
-    dev: true
+    dev: false
 
   /react-native-select-dropdown@3.4.0:
     resolution: {integrity: sha512-9xK1z4tYpwMxp3hsM0y1+xfqq/JoMh+l7sBsJ81b2eikFwT6ZbndFBqupQXrsQ1akce9hgC/10Nkzj0LjVjeXQ==}

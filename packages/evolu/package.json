@@ -63,8 +63,10 @@
     "@scure/bip39": "^1.2.1",
     "@sqlite.org/sqlite-wasm": "3.42.0-build7",
     "expo-sqlite": "^11.3.2",
+    "fast-text-encoding": "^1.0.6",
     "kysely": "~0.26.1",
-    "nanoid": "^4.0.2"
+    "nanoid": "^4.0.2",
+    "react-native-get-random-values": "^1.9.0"
   },
   "devDependencies": {
     "@effect/schema": "^0.33.2",
@@ -83,7 +85,6 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-native": "^0.72.4",
-    "react-native-get-random-values": "^1.9.0",
     "tslib": "^2.6.2",
     "typescript": "^5.1.6",
     "user-agent-data-types": "^0.3.1",
@@ -95,8 +96,7 @@
     "expo": "^49.0.7",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-native": "^0.72.4",
-    "react-native-get-random-values": "^1.9.0"
+    "react-native": "^0.72.4"
   },
   "publishConfig": {
     "access": "public"
