@@ -1,11 +1,14 @@
 import { Brand, Context, Effect, ReadonlyRecord } from "effect";
 
+interface ExecResult {
+  readonly rows: ReadonlyArray<Row>;
+  readonly changes: number;
+}
+
 export interface Sqlite {
   readonly exec: (
     arg: string | QueryObject,
-  ) => Effect.Effect<never, never, ReadonlyArray<Row>>;
-
-  readonly changes: Effect.Effect<never, never, number>;
+  ) => Effect.Effect<never, never, ExecResult>;
 }
 
 export const Sqlite = Context.Tag<Sqlite>("evolu/Sqlite");

@@ -179,6 +179,7 @@ const init = (
 
     return yield* _(
       sqlite.exec(selectOwner),
+      Effect.map((result) => result.rows),
       Effect.map(([owner]) => owner as unknown as Owner),
       someDefectToNoSuchTableOrColumnError,
       Effect.catchTag("NoSuchTableOrColumnError", () => lazyInit()),
@@ -208,7 +209,7 @@ const query = ({
       Effect.forEach(queries, (query) =>
         sqlite
           .exec(queryObjectFromQuery(query))
-          .pipe(Effect.map((rows) => [query, rows] as const)),
+          .pipe(Effect.map((result) => [query, result.rows] as const)),
       ),
     );
     const previous = yield* _(Ref.get(rowsCache));
@@ -229,6 +230,7 @@ interface TimestampAndMerkleTree {
 
 const readTimestampAndMerkleTree = Sqlite.pipe(
   Effect.flatMap((sqlite) => sqlite.exec(selectOwnerTimestampAndMerkleTree)),
+  Effect.map((result) => result.rows),
   Effect.map(
     ([{ timestamp, merkleTree }]): TimestampAndMerkleTree => ({
       timestamp: unsafeTimestampFromString(timestamp as TimestampString),
@@ -316,6 +318,7 @@ const applyMessages = ({
           sql: selectLastTimestampForTableRowColumn,
           parameters: [message.table, message.row, message.column],
         }),
+        Effect.map((result) => result.rows),
         Effect.flatMap(ReadonlyArray.head),
         Effect.map((row) => row.timestamp as TimestampString),
         Effect.catchTag("NoSuchElementException", () => Effect.succeed(null)),
@@ -336,7 +339,7 @@ const applyMessages = ({
       }
 
       if (timestamp == null || timestamp !== message.timestamp) {
-        yield* _(
+        const { changes } = yield* _(
           sqlite.exec({
             sql: insertIntoMessagesIfNew,
             parameters: [
@@ -348,8 +351,6 @@ const applyMessages = ({
             ],
           }),
         );
-
-        const changes = yield* _(sqlite.changes);
 
         if (changes > 0)
           merkleTree = insertIntoMerkleTree(
@@ -537,6 +538,7 @@ const reset = (
 
     yield* _(
       sqlite.exec(`SELECT "name" FROM "sqlite_master" WHERE "type" = 'table'`),
+      Effect.map((result) => result.rows),
       Effect.flatMap(
         // The dropped table is completely removed from the database schema and
         // the disk file. The table can not be recovered.

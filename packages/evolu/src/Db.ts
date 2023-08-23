@@ -242,6 +242,7 @@ const getTables: Effect.Effect<
   Effect.flatMap((sqlite) =>
     sqlite.exec(`SELECT "name" FROM "sqlite_schema" WHERE "type" = 'table'`),
   ),
+  Effect.map((result) => result.rows),
   Effect.map(ReadonlyArray.map((row) => (row.name as string) + "")),
   Effect.map(ReadonlyArray.filter(Predicate.not(String.startsWith("__")))),
   Effect.map(ReadonlyArray.dedupeWith(String.Equivalence)),
@@ -255,6 +256,7 @@ const updateTable = ({
     const sqlite = yield* _(Sqlite);
     const sql = yield* _(
       sqlite.exec(`PRAGMA table_info (${name})`),
+      Effect.map((result) => result.rows),
       Effect.map(ReadonlyArray.map((row) => row.name as string)),
       Effect.map((existingColumns) =>
         ReadonlyArray.differenceWith(String.Equivalence)(existingColumns)(

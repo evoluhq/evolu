@@ -32,19 +32,14 @@ const exec: Sqlite["exec"] = (arg) =>
   Effect.promise(() => sqlite).pipe(
     Effect.map((sqlite) => {
       const isSqlString = typeof arg === "string";
-      // console.log("input", arg);
       const rows = sqlite.exec(isSqlString ? arg : arg.sql, {
         returnValue: "resultRows",
         rowMode: "object",
         ...(!isSqlString && { bind: arg.parameters }),
       });
-      // console.log("output", rows);
-      return rows;
+      const changes = sqlite.changes();
+      return { rows, changes };
     }),
   );
 
-const changes: Sqlite["changes"] = Effect.promise(() => sqlite).pipe(
-  Effect.map((sqlite) => sqlite.changes()),
-);
-
-export const SqliteLive = Layer.succeed(Sqlite, { exec, changes });
+export const SqliteLive = Layer.succeed(Sqlite, { exec });
