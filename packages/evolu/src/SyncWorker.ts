@@ -254,9 +254,12 @@ export const SyncWorkerLive = Layer.effect(
   Effect.gen(function* (_) {
     const syncLock = yield* _(SyncLock);
 
-    const handleError = (error: UnexpectedError): void => {
-      syncWorker.onMessage(error);
-    };
+    const onError = (
+      error: UnexpectedError,
+    ): Effect.Effect<never, never, void> =>
+      Effect.sync(() => {
+        syncWorker.onMessage(error);
+      });
 
     const postMessage: SyncWorker["postMessage"] = (input) => {
       void Match.value(input).pipe(
@@ -264,10 +267,8 @@ export const SyncWorkerLive = Layer.effect(
           sync,
           syncCompleted: () => syncLock.release,
         }),
-        Effect.catchAllDefect((error) => {
-          handleError(makeUnexpectedError(error));
-          return Effect.succeed(undefined);
-        }),
+        Effect.catchAllDefect(makeUnexpectedError),
+        Effect.tapError(onError),
         Effect.provideService(SyncLock, syncLock),
         Effect.provideService(SyncWorkerOnMessage, syncWorker.onMessage),
         Effect.provideLayer(Layer.mergeAll(AesGcmLive, FetchLive)),

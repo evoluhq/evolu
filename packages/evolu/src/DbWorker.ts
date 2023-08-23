@@ -1,9 +1,7 @@
 import {
   Brand,
-  Cause,
   Context,
   Effect,
-  Either,
   Function,
   Layer,
   Match,
@@ -68,6 +66,7 @@ import {
   unsafeTimestampFromString,
 } from "./Timestamp.js";
 
+// TODO: Refactor to use Effect.
 export interface DbWorker {
   readonly postMessage: (input: DbWorkerInput) => void;
   onMessage: (output: DbWorkerOutput) => void;
@@ -561,14 +560,15 @@ export const DbWorkerLive = Layer.effect(
   Effect.gen(function* (_) {
     const syncWorker = yield* _(SyncWorker);
 
-    const handleError = (error: EvoluError): void => {
-      dbWorker.onMessage({ _tag: "onError", error });
-    };
+    const onError = (error: EvoluError): Effect.Effect<never, never, void> =>
+      Effect.sync(() => {
+        dbWorker.onMessage({ _tag: "onError", error });
+      });
 
     syncWorker.onMessage = (output): void => {
       switch (output._tag) {
         case "UnexpectedError":
-          handleError(output);
+          onError(output).pipe(Effect.runSync);
           break;
         case "SyncWorkerOutputSyncResponse":
           postMessage(output);
@@ -589,18 +589,10 @@ export const DbWorkerLive = Layer.effect(
       effect: Effect.Effect<Sqlite | Bip39 | Slip21 | NanoId, EvoluError, void>,
     ): Promise<void> =>
       effect.pipe(
+        Effect.catchAllDefect(makeUnexpectedError),
+        Effect.tapError(onError),
         transaction,
         Effect.provideContext(context),
-        Effect.catchAllCause((cause) =>
-          Cause.failureOrCause(cause).pipe(
-            Either.match({
-              onLeft: handleError,
-              onRight: (cause) =>
-                handleError(makeUnexpectedError(Cause.squash(cause))),
-            }),
-            () => Effect.succeed(undefined),
-          ),
-        ),
         Effect.runPromise,
       );
 

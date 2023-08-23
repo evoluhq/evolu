@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import { TimestampError } from "./Timestamp.js";
 
 export type EvoluError = UnexpectedError | TimestampError;
@@ -17,14 +18,16 @@ export interface UnexpectedError {
   readonly error: TransferableError;
 }
 
-export const makeUnexpectedError = (error: unknown): UnexpectedError => {
+export const makeUnexpectedError = (
+  error: unknown,
+): Effect.Effect<never, UnexpectedError, never> => {
   const isError = error instanceof Error;
 
-  return {
+  return Effect.fail({
     _tag: "UnexpectedError",
     error: {
       message: isError ? error.message : String(error),
       stack: isError ? error.stack : undefined,
     },
-  };
+  });
 };
