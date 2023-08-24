@@ -2,7 +2,7 @@ import { Effect, Function, Layer } from "effect";
 import { Row, Sqlite } from "./Sqlite.js";
 import * as SQLite from "expo-sqlite";
 
-const db = SQLite.openDatabase("evolu1.db");
+// const db = SQLite.openDatabase("evolu1.db");
 
 // db.execAsync
 
