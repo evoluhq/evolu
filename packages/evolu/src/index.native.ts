@@ -9,9 +9,6 @@ import {
 import { makeReactHooksForPlatform } from "./React.js";
 export * from "./exports.js";
 
-// A TypeScript bug, recheck after TS 5.2
-import "@effect/schema/Schema";
-
 const DbWorkerLive = Layer.succeed(
   DbWorker,
   DbWorker.of({

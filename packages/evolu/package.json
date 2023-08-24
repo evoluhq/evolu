@@ -86,7 +86,7 @@
     "react-dom": "^18.2.0",
     "react-native": "^0.72.4",
     "tslib": "^2.6.2",
-    "typescript": "^5.1.6",
+    "typescript": "^5.2.2",
     "user-agent-data-types": "^0.3.1",
     "vitest": "^0.34.2"
   },
