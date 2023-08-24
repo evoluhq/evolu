@@ -65,6 +65,7 @@ import {
   timestampToString,
   unsafeTimestampFromString,
 } from "./Timestamp.js";
+import { constVoid } from "effect/Function";
 
 // TODO: Refactor to use Effect.
 export interface DbWorker {
@@ -603,7 +604,7 @@ export const DbWorkerLive = Layer.effect(
     const makeWriteAfterInit = (owner: Owner, config: Config): Write => {
       let skipAllBecauseOfReset = false;
 
-      const write: Write = (input) => {
+      return (input) => {
         if (skipAllBecauseOfReset) return Promise.resolve(undefined);
 
         return Match.value(input).pipe(
@@ -634,8 +635,6 @@ export const DbWorkerLive = Layer.effect(
           run,
         );
       };
-
-      return write;
     };
 
     let write: Write = (input) => {
@@ -649,14 +648,10 @@ export const DbWorkerLive = Layer.effect(
       );
     };
 
-    const stream = new WritableStream<DbWorkerInput>({
-      write: (input): Promise<void> => write(input),
-    });
+    let promiseQueue: Promise<void> = Promise.resolve(undefined);
 
     const postMessage: DbWorker["postMessage"] = (input) => {
-      const writer = stream.getWriter();
-      void writer.write(input);
-      writer.releaseLock();
+      promiseQueue = promiseQueue.then(() => write(input));
     };
 
     const dbWorker: DbWorker = {
