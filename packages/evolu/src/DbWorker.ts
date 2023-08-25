@@ -65,7 +65,6 @@ import {
   timestampToString,
   unsafeTimestampFromString,
 } from "./Timestamp.js";
-import { constVoid } from "effect/Function";
 
 // TODO: Refactor to use Effect.
 export interface DbWorker {
