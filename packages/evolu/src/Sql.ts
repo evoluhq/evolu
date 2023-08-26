@@ -12,7 +12,7 @@ FROM
   "uLMsPRi78lNmyWlt__owner"
 `;
 
-export const initDb = `
+export const createMessageTable = `
 CREATE TABLE
   "uLMsPRi78lNmyWlt__message" (
     "timestamp" blob PRIMARY KEY,
@@ -21,9 +21,15 @@ CREATE TABLE
     "column" blob,
     "value" blob
   );
+`;
 
-CREATE INDEX "indexuLMsPRi78lNmyWlt__message" ON "uLMsPRi78lNmyWlt__message" ("table", "row", "column", "timestamp");
+export const createMessageTableIndex = `
+CREATE INDEX "indexuLMsPRi78lNmyWlt__message" ON "uLMsPRi78lNmyWlt__message" (
+  "table", "row", "column", "timestamp"
+);
+`;
 
+export const createOwnerTable = `
 CREATE TABLE
   "uLMsPRi78lNmyWlt__owner" (
     "id" blob,
@@ -32,7 +38,9 @@ CREATE TABLE
     "timestamp" blob,
     "merkleTree" blob
   );
+`;
 
+export const insertOwner = `
 INSERT INTO
   "uLMsPRi78lNmyWlt__owner" (
     "id",

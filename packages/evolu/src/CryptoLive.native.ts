@@ -1,14 +1,22 @@
-import "react-native-get-random-values";
 import "fast-text-encoding";
+import "react-native-get-random-values";
 
 import { hmac } from "@noble/hashes/hmac";
 import { sha512 } from "@noble/hashes/sha512";
+import {
+  generateMnemonic,
+  mnemonicToSeed,
+  validateMnemonic,
+} from "@scure/bip39";
+import { wordlist } from "@scure/bip39/wordlists/english";
 import { Effect, Layer } from "effect";
 import { customAlphabet, nanoid } from "nanoid";
 import {
   AesGcm,
   Bip39,
   Hmac,
+  InvalidMnemonicError,
+  Mnemonic,
   NanoId,
   NodeId,
   Sha512,
@@ -18,19 +26,16 @@ import {
 export const Bip39Live = Layer.succeed(
   Bip39,
   Bip39.of({
-    make: Effect.sync(() => {
-      throw "TODO";
-    }),
+    make: Effect.sync(() => generateMnemonic(wordlist, 128) as Mnemonic),
 
-    toSeed: () =>
-      Effect.sync(() => {
-        throw "TODO";
-      }),
+    toSeed: (mnemonic) => Effect.promise(() => mnemonicToSeed(mnemonic)),
 
-    parse: () =>
-      Effect.sync(() => {
-        throw "TODO";
-      }),
+    parse: (mnemonic) =>
+      validateMnemonic(mnemonic, wordlist)
+        ? Effect.succeed(mnemonic as Mnemonic)
+        : Effect.fail<InvalidMnemonicError>({
+            _tag: "InvalidMnemonicError",
+          }),
   }),
 );
 
@@ -48,16 +53,17 @@ export const NanoIdLive = Layer.succeed(
   }),
 );
 
+// TODO:
 export const AesGcmLive = Layer.succeed(
   AesGcm,
   AesGcm.of({
     encrypt: (_sharedKey, _plaintext) =>
       Effect.sync(() => {
-        throw "TODO";
+        return _plaintext;
       }),
     decrypt: (_sharedKey, _ciphertext) =>
       Effect.sync(() => {
-        throw "TODO";
+        return _ciphertext;
       }),
   }),
 );

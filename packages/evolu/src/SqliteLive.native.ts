@@ -1,43 +1,33 @@
-import { Effect, Function, Layer } from "effect";
-import { Row, Sqlite } from "./Sqlite.js";
+import { Effect, Layer } from "effect";
 import * as SQLite from "expo-sqlite";
+import { Sqlite } from "./Sqlite.js";
 
-// const db = SQLite.openDatabase("evolu1.db");
+const db = SQLite.openDatabase("evolu1.db");
 
-// db.execAsync
-
-// https://github.com/expo/expo/pull/23109
-// await db.transactionAsync(async (tx) => {
-//   const result = await tx.executeSqlAsync("SELECT COUNT(*) FROM USERS", []);
-//   if ("error" in result) {
-//     result.error;
-//   } else {
-//     // result.rowsAffected
-//   }
-//   //   console.log("Count:", result.rows[0]["COUNT(*)"]);
-// });
-
-const exec: Sqlite["exec"] = (arg) => {
-  const isSqlString = typeof arg === "string";
-  const sqlStatement = isSqlString ? arg : arg.sql;
-  return Effect.sync(() => {
-    console.log(sqlStatement);
-    return { rows: [], changes: 0 };
+const exec: Sqlite["exec"] = (arg) =>
+  Effect.gen(function* (_) {
+    const isSqlString = typeof arg === "string";
+    const query: SQLite.Query = {
+      sql: isSqlString ? arg : arg.sql,
+      args: isSqlString ? [] : [...arg.parameters],
+    };
+    // console.log(JSON.stringify(query));
+    const resultSet = yield* _(
+      Effect.promise(() =>
+        db
+          .execAsync([query], false)
+          .then((a) => a[0])
+          .then((result) => {
+            if ("error" in result) throw result.error;
+            return result;
+          }),
+      ),
+    );
+    // console.log(JSON.stringify(resultSet));
+    return {
+      rows: resultSet.rows,
+      changes: resultSet.rowsAffected,
+    };
   });
-};
-// Effect.promise(() => sqlite).pipe(
-//   Effect.map((sqlite) => {
-//     //   const isSqlString = typeof arg === "string";
-//     //   // console.log("input", arg);
-//     //   const rows = sqlite.exec(isSqlString ? arg : arg.sql, {
-//     //     returnValue: "resultRows",
-//     //     rowMode: "object",
-//     //     ...(!isSqlString && { bind: arg.parameters }),
-//     //   });
-//     //   // console.log("output", rows);
-//     //   return rows;
-//     throw "";
-//   }),
-// );
 
 export const SqliteLive = Layer.succeed(Sqlite, { exec });

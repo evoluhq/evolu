@@ -18,7 +18,12 @@ import { urlAlphabet } from "nanoid";
 import { Bip39, Mnemonic, NanoId, Slip21 } from "./Crypto.js";
 import { initialMerkleTree, merkleTreeToString } from "./MerkleTree.js";
 import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
-import { initDb } from "./Sql.js";
+import {
+  createMessageTable,
+  createMessageTableIndex,
+  createOwnerTable,
+  insertOwner,
+} from "./Sql.js";
 import {
   Query,
   QueryObject,
@@ -146,7 +151,7 @@ export const transaction = <R, E, A>(
       sqlite.exec("BEGIN"),
       () => effect,
       (_, exit) =>
-        Exit.isFailure(exit) ? sqlite.exec("ROLLBACK") : sqlite.exec("COMMIT"),
+        Exit.isFailure(exit) ? sqlite.exec("ROLLBACK") : sqlite.exec("END"),
     ),
   );
 
@@ -161,7 +166,7 @@ export const someDefectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
       error != null &&
       "message" in error &&
       typeof error.message === "string" &&
-      error.message.includes("sqlite3 result code 1") &&
+      error.message.includes("code 1") &&
       (error.message.includes("no such table") ||
         error.message.includes("no such column") ||
         error.message.includes("has no column"))
@@ -210,29 +215,33 @@ export const makeOwner = (
 export const lazyInit = (
   mnemonic?: Mnemonic,
 ): Effect.Effect<Sqlite | Bip39 | Slip21 | NanoId, never, Owner> =>
-  Effect.all(
-    [
-      Sqlite,
-      makeOwner(mnemonic),
-      makeInitialTimestamp.pipe(Effect.map(timestampToString)),
-      Effect.succeed(merkleTreeToString(initialMerkleTree)),
-    ],
-    { concurrency: "unbounded" },
-  ).pipe(
-    Effect.tap(([sqlite, owner, initialTimestamp, initialMerkleTree]) =>
-      sqlite.exec({
-        sql: initDb,
-        parameters: [
-          owner.id,
-          owner.mnemonic,
-          owner.encryptionKey,
-          initialTimestamp,
-          initialMerkleTree,
-        ],
+  Effect.gen(function* (_) {
+    const [owner, sqlite, initialTimestampString] = yield* _(
+      Effect.all([makeOwner(mnemonic), Sqlite, makeInitialTimestamp], {
+        concurrency: "unbounded",
       }),
-    ),
-    Effect.map(([, owner]) => owner),
-  );
+    );
+
+    yield* _(
+      Effect.all([
+        sqlite.exec(createMessageTable),
+        sqlite.exec(createMessageTableIndex),
+        sqlite.exec(createOwnerTable),
+        sqlite.exec({
+          sql: insertOwner,
+          parameters: [
+            owner.id,
+            owner.mnemonic,
+            owner.encryptionKey,
+            timestampToString(initialTimestampString),
+            merkleTreeToString(initialMerkleTree),
+          ],
+        }),
+      ]),
+    );
+
+    return owner;
+  });
 
 const getTables: Effect.Effect<
   Sqlite,

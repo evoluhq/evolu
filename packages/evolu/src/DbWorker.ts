@@ -66,7 +66,7 @@ import {
   unsafeTimestampFromString,
 } from "./Timestamp.js";
 
-// TODO: Refactor to use Effect.
+// TODO: Refactor to Effect.
 export interface DbWorker {
   readonly postMessage: (input: DbWorkerInput) => void;
   onMessage: (output: DbWorkerOutput) => void;
@@ -179,8 +179,16 @@ const init = (
 
     return yield* _(
       sqlite.exec(selectOwner),
-      Effect.map((result) => result.rows),
-      Effect.map(([owner]) => owner as unknown as Owner),
+      Effect.map((result) => result.rows[0] as unknown as Owner),
+      // Effect.map((owner) => {
+      //   // A workaround for expo-sqlite not supporting binary array.
+      //   if (typeof owner.encryptionKey === "string")
+      //     return {
+      //       ...owner,
+      //       encryptionKey: new TextEncoder().encode(owner.encryptionKey),
+      //     };
+      //   return owner;
+      // }),
       someDefectToNoSuchTableOrColumnError,
       Effect.catchTag("NoSuchTableOrColumnError", () => lazyInit()),
       Effect.tap(() => ensureSchema(input.tables)),
@@ -647,10 +655,10 @@ export const DbWorkerLive = Layer.effect(
       );
     };
 
-    let promiseQueue: Promise<void> = Promise.resolve(undefined);
+    let messageQueue: Promise<void> = Promise.resolve(undefined);
 
     const postMessage: DbWorker["postMessage"] = (input) => {
-      promiseQueue = promiseQueue.then(() => write(input));
+      messageQueue = messageQueue.then(() => write(input));
     };
 
     const dbWorker: DbWorker = {

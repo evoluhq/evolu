@@ -1,4 +1,6 @@
 import * as Schema from "@effect/schema/Schema";
+import { Either } from "effect";
+import { constVoid } from "effect/Function";
 import * as Evolu from "evolu";
 import { StatusBar } from "expo-status-bar";
 import {
@@ -9,7 +11,7 @@ import {
   useEffect,
   useState,
 } from "react";
-import { Button, StyleSheet, Text, View } from "react-native";
+import { Button, StyleSheet, Text, TextInput, View } from "react-native";
 import SelectDropdown from "react-native-select-dropdown";
 
 const TodoId = Evolu.id("Todo");
@@ -115,12 +117,12 @@ const TodoItem = memo<{
 
   return (
     <View>
-      <span
-        className="text-sm font-bold"
-        style={{ textDecoration: isCompleted ? "line-through" : "none" }}
+      <Text
+      // className="text-sm font-bold"
+      // style={{ textDecoration: isCompleted ? "line-through" : "none" }}
       >
         {title}
-      </span>
+      </Text>
       <Button
         title={isCompleted ? "completed" : "complete"}
         onPress={(): void => {
@@ -165,6 +167,20 @@ const Todos: FC = () => {
       title && isCompleted != null && { title, isCompleted, ...rest },
   );
 
+  const [text, setText] = useState("");
+  const newTodoTitle = Schema.parseEither(Evolu.NonEmptyString1000)(text);
+  const handleTextInputEndEditing = (): void => {
+    newTodoTitle.pipe(
+      Either.match({
+        onLeft: constVoid,
+        onRight: (title) => {
+          create("todo", { title, isCompleted: false });
+          setText("");
+        },
+      }),
+    );
+  };
+
   return (
     <>
       <Text>Todos</Text>
@@ -173,17 +189,11 @@ const Todos: FC = () => {
           <TodoItem key={row.id} row={row} />
         ))}
       </View>
-      <Button
-        title="Add Todo"
-        onPress={(): void => {
-          prompt(
-            Evolu.NonEmptyString1000,
-            "What needs to be done?",
-            (title) => {
-              create("todo", { title, isCompleted: false });
-            },
-          );
-        }}
+      <TextInput
+        value={text}
+        onChangeText={setText}
+        placeholder="What needs to be done?"
+        onEndEditing={handleTextInputEndEditing}
       />
     </>
   );
@@ -269,8 +279,7 @@ const OwnerActions: FC = () => {
       <Button
         title="Reset Owner"
         onPress={(): void => {
-          if (confirm("Are you sure? It will delete all your local data."))
-            ownerActions.reset();
+          ownerActions.reset();
         }}
       />
       {isShown && owner != null && (
