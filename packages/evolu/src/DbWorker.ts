@@ -42,7 +42,14 @@ import {
   selectOwnerTimestampAndMerkleTree,
   updateOwnerTimestampAndMerkleTree,
 } from "./Sql.js";
-import { Query, Row, Sqlite, Value, queryObjectFromQuery } from "./Sqlite.js";
+import {
+  Query,
+  Row,
+  Sqlite,
+  Value,
+  fixExpoSqliteBinding,
+  queryObjectFromQuery,
+} from "./Sqlite.js";
 import {
   Message,
   NewMessage,
@@ -180,15 +187,10 @@ const init = (
     return yield* _(
       sqlite.exec(selectOwner),
       Effect.map((result) => result.rows[0] as unknown as Owner),
-      // Effect.map((owner) => {
-      //   // A workaround for expo-sqlite not supporting binary array.
-      //   if (typeof owner.encryptionKey === "string")
-      //     return {
-      //       ...owner,
-      //       encryptionKey: new TextEncoder().encode(owner.encryptionKey),
-      //     };
-      //   return owner;
-      // }),
+      Effect.map((owner) => ({
+        ...owner,
+        encryptionKey: fixExpoSqliteBinding(owner.encryptionKey),
+      })),
       someDefectToNoSuchTableOrColumnError,
       Effect.catchTag("NoSuchTableOrColumnError", () => lazyInit()),
       Effect.tap(() => ensureSchema(input.tables)),

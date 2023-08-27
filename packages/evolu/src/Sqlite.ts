@@ -29,3 +29,23 @@ export const queryObjectToQuery = ({ sql, parameters }: QueryObject): Query =>
 
 export const queryObjectFromQuery = (s: Query): QueryObject =>
   JSON.parse(s) as QueryObject;
+
+// A workaround for expo-sqlite not supporting binary array.
+export const fixExpoSqliteBinding = (array: Uint8Array): Uint8Array => {
+  if (typeof array !== "string") return array;
+  return new Uint8Array(
+    (array as string)
+      .replace("{", "")
+      .replace("}", "")
+      .trim()
+      .split(";")
+      .map((i) => i.trim())
+      .filter((i) => i.length > 0)
+      .map((i) => {
+        const [index, value] = i.split(" = ").map(Number);
+        return { index, value };
+      })
+      .sort((a, b) => a.index - b.index)
+      .map((i) => i.value),
+  );
+};
