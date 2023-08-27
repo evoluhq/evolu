@@ -602,8 +602,8 @@ export const DbWorkerLive = Layer.effect(
     ): Promise<void> =>
       effect.pipe(
         Effect.catchAllDefect(makeUnexpectedError),
-        Effect.tapError(onError),
         transaction,
+        Effect.catchAll(onError),
         Effect.provideContext(context),
         Effect.runPromise,
       );
