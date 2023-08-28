@@ -10,7 +10,7 @@ import {
   SyncLock,
 } from "./Platform.js";
 
-const isServer = typeof document === "undefined";
+const hasDoc = typeof document !== "undefined";
 
 const isChromeWithOpfs = (): boolean =>
   navigator.userAgentData != null &&
@@ -28,13 +28,13 @@ const isFirefoxWithOpfs = (): boolean => {
   return Number(matches[1]) >= 111;
 };
 
-export const PlatformLive = Layer.succeed(Platform, {
-  name: isServer
-    ? "server"
-    : isChromeWithOpfs() || isFirefoxWithOpfs()
+const name = hasDoc
+  ? isChromeWithOpfs() || isFirefoxWithOpfs()
     ? "web-with-opfs"
-    : "web-without-opfs",
-});
+    : "web-without-opfs"
+  : "server";
+
+export const PlatformLive = Layer.succeed(Platform, { name });
 
 export const FlushSyncLive = Layer.succeed(FlushSync, flushSync);
 

@@ -1,10 +1,14 @@
 import { Effect, Layer } from "effect";
-import { SyncLockLive } from "./Platform.web.js";
+import { AesGcmLive } from "./CryptoLive.web.js";
+import { FetchLive, SyncLockLive } from "./Platform.web.js";
 import { SyncWorker, SyncWorkerInput, SyncWorkerLive } from "./SyncWorker.js";
 
 const syncWorker = Effect.provideLayer(
   SyncWorker,
-  Layer.use(SyncWorkerLive, SyncLockLive),
+  Layer.use(
+    SyncWorkerLive,
+    Layer.mergeAll(SyncLockLive, AesGcmLive, FetchLive),
+  ),
 ).pipe(Effect.runSync);
 
 syncWorker.onMessage = (output): void => {

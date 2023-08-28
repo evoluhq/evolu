@@ -305,6 +305,7 @@ const NotificationBar: FC = () => {
   }, [evoluError]);
 
   if (!evoluError || !shown) return <></>;
+  // console.log(JSON.stringify(evoluError));
 
   return (
     <View>
