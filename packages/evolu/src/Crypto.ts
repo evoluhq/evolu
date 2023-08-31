@@ -1,7 +1,8 @@
 import * as Schema from "@effect/schema/Schema";
-import type { hmac } from "@noble/hashes/hmac";
-import type { sha512 } from "@noble/hashes/sha512";
+import { hmac } from "@noble/hashes/hmac";
+import { sha512 } from "@noble/hashes/sha512";
 import { Brand, Context, Effect, Layer } from "effect";
+import { customAlphabet, nanoid } from "nanoid";
 
 export interface Bip39 {
   readonly make: Effect.Effect<never, never, Mnemonic>;
@@ -30,50 +31,6 @@ export interface InvalidMnemonicError {
  */
 export type Mnemonic = string & Brand.Brand<"Mnemonic">;
 
-export type Hmac = typeof hmac;
-
-export const Hmac = Context.Tag<Hmac>("evolu/Hmac");
-
-export type Sha512 = typeof sha512;
-
-export const Sha512 = Context.Tag<Sha512>("evolu/Sha512");
-
-/**
- * SLIP-21 implementation
- * https://github.com/satoshilabs/slips/blob/master/slip-0021.md
- */
-export interface Slip21 {
-  readonly derive: (
-    seed: Uint8Array,
-    path: string[],
-  ) => Effect.Effect<never, never, Uint8Array>;
-}
-
-export const Slip21 = Context.Tag<Slip21>("evolu/Slip21");
-
-export const Slip21Live = Layer.effect(
-  Slip21,
-  Effect.gen(function* (_) {
-    const hmac = yield* _(Hmac);
-    const sha512 = yield* _(Sha512);
-
-    const derive: Slip21["derive"] = (seed, path) =>
-      Effect.sync(() => {
-        let m = hmac(sha512, "Symmetric key seed", seed);
-        for (let i = 0; i < path.length; i++) {
-          const p = new TextEncoder().encode(path[i]);
-          const e = new Uint8Array(p.byteLength + 1);
-          e[0] = 0;
-          e.set(p, 1);
-          m = hmac(sha512, m.slice(0, 32), e);
-        }
-        return m.slice(32, 64);
-      });
-
-    return { derive };
-  }),
-);
-
 export interface NanoId {
   readonly nanoid: Effect.Effect<never, never, string>;
   readonly nanoidAsNodeId: Effect.Effect<never, never, NodeId>;
@@ -87,18 +44,38 @@ export const NodeId: Schema.BrandSchema<
 > = Schema.string.pipe(Schema.pattern(/^[\w-]{16}$/), Schema.brand("NodeId"));
 export type NodeId = Schema.To<typeof NodeId>;
 
-export const customAlphabetForNodeId = "0123456789abcdef";
+const nanoidForNodeId = customAlphabet("0123456789abcdef", 16);
 
-export interface AesGcm {
-  readonly encrypt: (
-    sharedKey: Uint8Array,
-    plaintext: Uint8Array,
-  ) => Effect.Effect<never, never, Uint8Array>;
+export const NanoIdLive = Layer.succeed(
+  NanoId,
+  NanoId.of({
+    nanoid: Effect.sync(() => nanoid()),
+    nanoidAsNodeId: Effect.sync(() => nanoidForNodeId() as NodeId),
+  }),
+);
 
-  readonly decrypt: (
-    sharedKey: Uint8Array,
-    ciphertext: Uint8Array,
-  ) => Effect.Effect<never, never, Uint8Array>;
-}
+/**
+ * SLIP-21 implementation
+ * https://github.com/satoshilabs/slips/blob/master/slip-0021.md
+ */
+export const slip21Derive = (
+  seed: Uint8Array,
+  path: string[],
+): Effect.Effect<never, never, Uint8Array> =>
+  Effect.sync(() => {
+    let m = hmac(sha512, "Symmetric key seed", seed);
+    for (let i = 0; i < path.length; i++) {
+      const p = new TextEncoder().encode(path[i]);
+      const e = new Uint8Array(p.byteLength + 1);
+      e[0] = 0;
+      e.set(p, 1);
+      m = hmac(sha512, m.slice(0, 32), e);
+    }
+    return m.slice(32, 64);
+  });
 
-export const AesGcm = Context.Tag<AesGcm>("evolu/AesGcm");
+// tohle na binary zacatek, ale jak?
+// nepatri to preci jenom do toho protobuf?
+// by znamenalo, ze nesmim nikdy zmenit protobuf, hmm
+// coz je ale asi ok, ne?
+// export const cryptoVersion = new Uint8Array([1]);

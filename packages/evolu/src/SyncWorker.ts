@@ -1,6 +1,5 @@
 import { BinaryReader, BinaryWriter } from "@protobuf-ts/runtime";
 import { Context, Effect, Function, Layer, Match } from "effect";
-import { AesGcm } from "./Crypto.js";
 import { Owner } from "./Db.js";
 import { UnexpectedError, makeUnexpectedError } from "./Errors.js";
 import {
@@ -163,15 +162,10 @@ const binaryReadOptions = {
 
 const sync = (
   input: SyncWorkerInputSync,
-): Effect.Effect<
-  SyncLock | SyncWorkerOnMessage | AesGcm | Fetch,
-  never,
-  void
-> =>
+): Effect.Effect<SyncLock | SyncWorkerOnMessage | Fetch, never, void> =>
   Effect.gen(function* (_) {
     const syncLock = yield* _(SyncLock);
     const syncWorkerOnMessage = yield* _(SyncWorkerOnMessage);
-    const aesGcm = yield* _(AesGcm);
     const fetch = yield* _(Fetch);
 
     if (input.syncLoopCount === 0) {
@@ -181,22 +175,19 @@ const sync = (
 
     yield* _(
       Effect.forEach(input.messages, ({ timestamp, ...rest }) =>
-        aesGcm
-          .encrypt(
-            input.owner.encryptionKey,
-            MessageContent.toBinary(
-              {
-                table: rest.table,
-                row: rest.row,
-                column: rest.column,
-                value: valueToProtobuf(rest.value),
-              },
-              binaryWriteOptions,
-            ),
-          )
-          .pipe(
-            Effect.map((content): EncryptedMessage => ({ timestamp, content })),
+        Effect.succeed(
+          MessageContent.toBinary(
+            {
+              table: rest.table,
+              row: rest.row,
+              column: rest.column,
+              value: valueToProtobuf(rest.value),
+            },
+            binaryWriteOptions,
           ),
+        ).pipe(
+          Effect.map((content): EncryptedMessage => ({ timestamp, content })),
+        ),
       ),
       Effect.map((messages) =>
         SyncRequest.toBinary(
@@ -241,7 +232,7 @@ const sync = (
       }),
       Effect.flatMap((syncResponse) =>
         Effect.forEach(syncResponse.messages, (message) =>
-          aesGcm.decrypt(input.owner.encryptionKey, message.content).pipe(
+          Effect.succeed(message.content).pipe(
             Effect.map((array) =>
               MessageContent.fromBinary(array, binaryReadOptions),
             ),
@@ -279,7 +270,6 @@ export const SyncWorkerLive = Layer.effect(
   Effect.gen(function* (_) {
     const syncLock = yield* _(SyncLock);
     const fetch = yield* _(Fetch);
-    const aesGcm = yield* _(AesGcm);
 
     const onError = (
       error: UnexpectedError,
@@ -299,7 +289,6 @@ export const SyncWorkerLive = Layer.effect(
         Effect.provideService(SyncLock, syncLock),
         Effect.provideService(SyncWorkerOnMessage, syncWorker.onMessage),
         Effect.provideService(Fetch, fetch),
-        Effect.provideService(AesGcm, aesGcm),
         Effect.runPromise,
       );
     };

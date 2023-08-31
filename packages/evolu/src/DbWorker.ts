@@ -12,7 +12,7 @@ import {
   pipe,
 } from "effect";
 import { Config, ConfigLive } from "./Config.js";
-import { Bip39, Mnemonic, NanoId, Slip21 } from "./Crypto.js";
+import { Bip39, Mnemonic, NanoId } from "./Crypto.js";
 import {
   Owner,
   Table,
@@ -180,7 +180,7 @@ export interface MutateItem {
 
 const init = (
   input: DbWorkerInputInit,
-): Effect.Effect<Sqlite | Bip39 | Slip21 | NanoId, never, Owner> =>
+): Effect.Effect<Sqlite | Bip39 | NanoId, never, Owner> =>
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
 
@@ -538,11 +538,7 @@ const sync = ({
 
 const reset = (
   input: DbWorkerInputReset,
-): Effect.Effect<
-  Sqlite | Bip39 | Slip21 | NanoId | DbWorkerOnMessage,
-  never,
-  void
-> =>
+): Effect.Effect<Sqlite | Bip39 | NanoId | DbWorkerOnMessage, never, void> =>
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
 
@@ -593,12 +589,11 @@ export const DbWorkerLive = Layer.effect(
     const context = Context.empty().pipe(
       Context.add(Sqlite, yield* _(Sqlite)),
       Context.add(Bip39, yield* _(Bip39)),
-      Context.add(Slip21, yield* _(Slip21)),
       Context.add(NanoId, yield* _(NanoId)),
     );
 
     const run = (
-      effect: Effect.Effect<Sqlite | Bip39 | Slip21 | NanoId, EvoluError, void>,
+      effect: Effect.Effect<Sqlite | Bip39 | NanoId, EvoluError, void>,
     ): Promise<void> =>
       effect.pipe(
         Effect.catchAllDefect(makeUnexpectedError),

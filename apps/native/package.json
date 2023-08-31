@@ -10,9 +10,12 @@
     "clean": "rm -rf .turbo && rm -rf .expo && rm -rf node_modules"
   },
   "dependencies": {
+    "@craftzdog/react-native-buffer": "^6.0.5",
     "@effect/schema": "^0.33.2",
     "@types/react": "^18.2.21",
+    "crypto-browserify": "^3.12.0",
     "effect": "2.0.0-next.29",
+    "events": "^3.3.0",
     "evolu": "workspace:*",
     "expo": "^49.0.8",
     "expo-sqlite": "~11.3.2",
@@ -20,6 +23,7 @@
     "react": "18.2.0",
     "react-native": "^0.72.4",
     "react-native-select-dropdown": "^3.4.0",
+    "stream-browserify": "^3.0.0",
     "web": "workspace:^"
   },
   "devDependencies": {
@@ -27,7 +31,7 @@
     "@babel/plugin-transform-private-methods": "^7.22.5",
     "eslint": "^8.48.0",
     "eslint-config-evolu": "workspace:*",
-    "prettier": "^3.0.2",
+    "prettier": "^3.0.3",
     "typescript": "^5.2.2"
   }
 }

@@ -2,14 +2,8 @@ import "fast-text-encoding";
 import "react-native-get-random-values";
 
 import { Layer } from "effect";
-import { Slip21Live } from "./Crypto.js";
-import {
-  AesGcmLive,
-  Bip39Live,
-  HmacLive,
-  NanoIdLive,
-  Sha512Live,
-} from "./CryptoLive.native.js";
+import { NanoIdLive } from "./Crypto.js";
+import { Bip39Live } from "./CryptoLive.native.js";
 import { DbWorkerLive } from "./DbWorker.js";
 import {
   AppStateLive,
@@ -29,12 +23,8 @@ export const create = makeReactHooksForPlatform(
     Layer.mergeAll(
       SqliteLive,
       Bip39Live,
-      Layer.use(Slip21Live, Layer.merge(HmacLive, Sha512Live)),
       NanoIdLive,
-      Layer.use(
-        SyncWorkerLive,
-        Layer.mergeAll(SyncLockLive, AesGcmLive, FetchLive),
-      ),
+      Layer.use(SyncWorkerLive, Layer.mergeAll(SyncLockLive, FetchLive)),
     ),
   ),
   Layer.use(AppStateLive, PlatformLive),
