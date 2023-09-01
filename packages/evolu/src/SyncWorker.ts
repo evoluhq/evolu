@@ -55,6 +55,7 @@ export interface NewMessage {
 
 export interface Message extends NewMessage {
   readonly timestamp: TimestampString;
+  readonly version: number;
 }
 
 interface SyncWorkerInputSyncCompleted {
@@ -156,7 +157,7 @@ const binaryWriteOptions = {
 const binaryReadOptions = {
   readerFactory: (bytes: Uint8Array): BinaryReader =>
     new BinaryReader(bytes, {
-      decode: (input?: Uint8Array): string => new TextDecoder().decode(input),
+      decode: (input: Uint8Array): string => new TextDecoder().decode(input),
     }),
 };
 
@@ -182,6 +183,7 @@ const sync = (
               row: rest.row,
               column: rest.column,
               value: valueToProtobuf(rest.value),
+              version: rest.version,
             },
             binaryWriteOptions,
           ),
@@ -243,6 +245,7 @@ const sync = (
                 row: content.row as Id,
                 column: content.column,
                 value: valueFromProtobuf(content.value),
+                version: content.version,
               }),
             ),
           ),

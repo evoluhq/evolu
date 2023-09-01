@@ -11,10 +11,10 @@
   },
   "dependencies": {
     "@craftzdog/react-native-buffer": "^6.0.5",
-    "@effect/schema": "^0.33.2",
+    "@effect/schema": "^0.34.0",
     "@types/react": "^18.2.21",
     "crypto-browserify": "^3.12.0",
-    "effect": "2.0.0-next.29",
+    "effect": "2.0.0-next.30",
     "events": "^3.3.0",
     "evolu": "workspace:*",
     "expo": "^49.0.8",
