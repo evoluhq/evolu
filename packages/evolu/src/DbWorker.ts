@@ -358,6 +358,7 @@ const applyMessages = ({
               message.row,
               message.column,
               message.value,
+              message.version,
             ],
           }),
         );
@@ -409,7 +410,11 @@ const mutate = ({
       Effect.forEach((newMessage) =>
         Effect.map(sendTimestamp(timestamp), (nextTimestamp): Message => {
           timestamp = nextTimestamp;
-          return { ...newMessage, timestamp: timestampToString(timestamp) };
+          return {
+            ...newMessage,
+            timestamp: timestampToString(timestamp),
+            version: 1,
+          };
         }),
       ),
     );

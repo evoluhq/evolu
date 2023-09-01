@@ -1,6 +1,9 @@
 import * as Schema from "@effect/schema/Schema";
+import { secretbox } from "@noble/ciphers/salsa";
+import { concatBytes } from "@noble/ciphers/utils";
 import { hmac } from "@noble/hashes/hmac";
 import { sha512 } from "@noble/hashes/sha512";
+import { randomBytes } from "@noble/hashes/utils";
 import { Brand, Context, Effect, Layer } from "effect";
 import { customAlphabet, nanoid } from "nanoid";
 
@@ -74,8 +77,37 @@ export const slip21Derive = (
     return m.slice(32, 64);
   });
 
-// tohle na binary zacatek, ale jak?
-// nepatri to preci jenom do toho protobuf?
-// by znamenalo, ze nesmim nikdy zmenit protobuf, hmm
-// coz je ale asi ok, ne?
-// export const cryptoVersion = new Uint8Array([1]);
+/**
+ * Alias to xsalsa20poly1305, for compatibility with libsodium / nacl
+ */
+export interface SecretBox {
+  readonly seal: (
+    key: Uint8Array,
+    plaintext: Uint8Array,
+  ) => Effect.Effect<never, never, Uint8Array>;
+
+  readonly open: (
+    key: Uint8Array,
+    ciphertext: Uint8Array,
+  ) => Effect.Effect<never, never, Uint8Array>;
+}
+
+export const SecretBox = Context.Tag<SecretBox>("evolu/SecretBox");
+
+export const SecretBoxLive = Layer.succeed(
+  SecretBox,
+  SecretBox.of({
+    seal: (key, plaintext) =>
+      Effect.sync(() => {
+        const nonce = randomBytes(24);
+        const ciphertext = secretbox(key, nonce).seal(plaintext);
+        return concatBytes(nonce, ciphertext);
+      }),
+    open: (key, ciphertext) =>
+      Effect.sync(() => {
+        const nonce = ciphertext.subarray(0, 24);
+        const ciphertextWithoutNonce = ciphertext.subarray(24);
+        return secretbox(key, nonce).open(ciphertextWithoutNonce);
+      }),
+  }),
+);

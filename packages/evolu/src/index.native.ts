@@ -2,7 +2,7 @@ import "fast-text-encoding";
 import "react-native-get-random-values";
 
 import { Layer } from "effect";
-import { NanoIdLive } from "./Crypto.js";
+import { NanoIdLive, SecretBoxLive } from "./Crypto.js";
 import { Bip39Live } from "./CryptoLive.native.js";
 import { DbWorkerLive } from "./DbWorker.js";
 import {
@@ -24,7 +24,10 @@ export const create = makeReactHooksForPlatform(
       SqliteLive,
       Bip39Live,
       NanoIdLive,
-      Layer.use(SyncWorkerLive, Layer.mergeAll(SyncLockLive, FetchLive)),
+      Layer.use(
+        SyncWorkerLive,
+        Layer.mergeAll(SyncLockLive, FetchLive, SecretBoxLive),
+      ),
     ),
   ),
   Layer.use(AppStateLive, PlatformLive),

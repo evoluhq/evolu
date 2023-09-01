@@ -10,7 +10,8 @@ message MessageContent {
     string stringValue = 4;
     int32 numberValue = 5;
     bytes bytesValue = 6;
-  }
+  };
+  int32 version = 7;
 }
 
 message EncryptedMessage {

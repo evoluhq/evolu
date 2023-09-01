@@ -1,5 +1,6 @@
 import { BinaryReader, BinaryWriter } from "@protobuf-ts/runtime";
 import { Context, Effect, Function, Layer, Match } from "effect";
+import { SecretBox } from "./Crypto.js";
 import { Owner } from "./Db.js";
 import { UnexpectedError, makeUnexpectedError } from "./Errors.js";
 import {
@@ -163,11 +164,16 @@ const binaryReadOptions = {
 
 const sync = (
   input: SyncWorkerInputSync,
-): Effect.Effect<SyncLock | SyncWorkerOnMessage | Fetch, never, void> =>
+): Effect.Effect<
+  SyncLock | SyncWorkerOnMessage | Fetch | SecretBox,
+  never,
+  void
+> =>
   Effect.gen(function* (_) {
     const syncLock = yield* _(SyncLock);
     const syncWorkerOnMessage = yield* _(SyncWorkerOnMessage);
     const fetch = yield* _(Fetch);
+    const secretBox = yield* _(SecretBox);
 
     if (input.syncLoopCount === 0) {
       if (!(yield* _(syncLock.acquire))) return;
@@ -176,20 +182,23 @@ const sync = (
 
     yield* _(
       Effect.forEach(input.messages, ({ timestamp, ...rest }) =>
-        Effect.succeed(
-          MessageContent.toBinary(
-            {
-              table: rest.table,
-              row: rest.row,
-              column: rest.column,
-              value: valueToProtobuf(rest.value),
-              version: rest.version,
-            },
-            binaryWriteOptions,
+        secretBox
+          .seal(
+            input.owner.encryptionKey,
+            MessageContent.toBinary(
+              {
+                table: rest.table,
+                row: rest.row,
+                column: rest.column,
+                value: valueToProtobuf(rest.value),
+                version: rest.version,
+              },
+              binaryWriteOptions,
+            ),
+          )
+          .pipe(
+            Effect.map((content): EncryptedMessage => ({ timestamp, content })),
           ),
-        ).pipe(
-          Effect.map((content): EncryptedMessage => ({ timestamp, content })),
-        ),
       ),
       Effect.map((messages) =>
         SyncRequest.toBinary(
@@ -234,7 +243,7 @@ const sync = (
       }),
       Effect.flatMap((syncResponse) =>
         Effect.forEach(syncResponse.messages, (message) =>
-          Effect.succeed(message.content).pipe(
+          secretBox.open(input.owner.encryptionKey, message.content).pipe(
             Effect.map((array) =>
               MessageContent.fromBinary(array, binaryReadOptions),
             ),
@@ -273,6 +282,7 @@ export const SyncWorkerLive = Layer.effect(
   Effect.gen(function* (_) {
     const syncLock = yield* _(SyncLock);
     const fetch = yield* _(Fetch);
+    const secretBox = yield* _(SecretBox);
 
     const onError = (
       error: UnexpectedError,
@@ -290,8 +300,9 @@ export const SyncWorkerLive = Layer.effect(
         Effect.catchAllDefect(makeUnexpectedError),
         Effect.catchAll(onError),
         Effect.provideService(SyncLock, syncLock),
-        Effect.provideService(SyncWorkerOnMessage, syncWorker.onMessage),
         Effect.provideService(Fetch, fetch),
+        Effect.provideService(SecretBox, secretBox),
+        Effect.provideService(SyncWorkerOnMessage, syncWorker.onMessage),
         Effect.runPromise,
       );
     };
