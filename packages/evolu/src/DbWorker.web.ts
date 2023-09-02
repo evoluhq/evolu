@@ -1,7 +1,7 @@
 import { Effect, Function, Layer } from "effect";
 import { NanoIdLive } from "./Crypto.js";
-import { Bip39Live } from "./CryptoLive.web.js";
 import { DbWorker, DbWorkerLive } from "./DbWorker.js";
+import { Bip39Live } from "./PlatformLive.web.js";
 import { SqliteLive } from "./SqliteLive.web.js";
 import { SyncWorker, SyncWorkerOutput } from "./SyncWorker.js";
 

@@ -1,4 +1,11 @@
+import {
+  generateMnemonic,
+  mnemonicToSeed,
+  validateMnemonic,
+} from "@scure/bip39";
+import { wordlist } from "@scure/bip39/wordlists/english";
 import { Effect, Function, Layer } from "effect";
+import { Bip39, InvalidMnemonicError, Mnemonic } from "./Crypto.js";
 import {
   AppState,
   Fetch,
@@ -54,7 +61,7 @@ export const FetchLive = Layer.succeed(
 export const AppStateLive = Layer.effect(
   AppState,
   Effect.sync(() => {
-    const onFocus: AppState["onFocus"] = (_callback) => {
+    const onFocus: AppState["onFocus"] = (_listener) => {
       // TODO:
     };
 
@@ -67,5 +74,21 @@ export const AppStateLive = Layer.effect(
     });
 
     return AppState.of({ onFocus, onReconnect, reset });
+  }),
+);
+
+export const Bip39Live = Layer.succeed(
+  Bip39,
+  Bip39.of({
+    make: Effect.sync(() => generateMnemonic(wordlist, 128) as Mnemonic),
+
+    toSeed: (mnemonic) => Effect.promise(() => mnemonicToSeed(mnemonic)),
+
+    parse: (mnemonic) =>
+      validateMnemonic(mnemonic, wordlist)
+        ? Effect.succeed(mnemonic as Mnemonic)
+        : Effect.fail<InvalidMnemonicError>({
+            _tag: "InvalidMnemonicError",
+          }),
   }),
 );

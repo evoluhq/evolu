@@ -1,9 +1,13 @@
 import { Effect, Function, Layer } from "effect";
 import { NanoIdLive } from "./Crypto.js";
-import { Bip39Live } from "./CryptoLive.web.js";
 import { DbWorker, DbWorkerOutput } from "./DbWorker.js";
 import { Platform } from "./Platform.js";
-import { AppStateLive, FlushSyncLive, PlatformLive } from "./Platform.web.js";
+import {
+  AppStateLive,
+  Bip39Live,
+  FlushSyncLive,
+  PlatformLive,
+} from "./PlatformLive.web.js";
 import { makeReactHooksForPlatform } from "./React.js";
 export * from "./exports.js";
 

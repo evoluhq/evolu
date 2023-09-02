@@ -3,15 +3,15 @@ import "react-native-get-random-values";
 
 import { Layer } from "effect";
 import { NanoIdLive, SecretBoxLive } from "./Crypto.js";
-import { Bip39Live } from "./CryptoLive.native.js";
 import { DbWorkerLive } from "./DbWorker.js";
 import {
   AppStateLive,
+  Bip39Live,
   FetchLive,
   FlushSyncLive,
   PlatformLive,
   SyncLockLive,
-} from "./Platform.native.js";
+} from "./PlatformLive.native.js";
 import { makeReactHooksForPlatform } from "./React.js";
 import { SqliteLive } from "./SqliteLive.native.js";
 import { SyncWorkerLive } from "./SyncWorker.js";

@@ -1,6 +1,7 @@
 import { Effect, Function, Layer, Predicate, ReadonlyArray } from "effect";
 import { flushSync } from "react-dom";
 import { Config } from "./Config.js";
+import { Bip39, InvalidMnemonicError, Mnemonic } from "./Crypto.js";
 import {
   AppState,
   Fetch,
@@ -109,10 +110,10 @@ export const AppStateLive = Layer.effect(
 
     const config = yield* _(Config);
 
-    const onFocus: AppState["onFocus"] = (callback) => {
-      window.addEventListener("focus", () => callback());
+    const onFocus: AppState["onFocus"] = (listener) => {
+      window.addEventListener("focus", () => listener());
       document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState !== "hidden") callback();
+        if (document.visibilityState !== "hidden") listener();
       });
     };
 
@@ -139,5 +140,41 @@ export const AppStateLive = Layer.effect(
     });
 
     return AppState.of({ onFocus, onReconnect, reset });
+  }),
+);
+
+const importBip39WithEnglish = Effect.all(
+  [
+    Effect.promise(() => import("@scure/bip39")),
+    Effect.promise(() => import("@scure/bip39/wordlists/english")),
+  ],
+  { concurrency: "unbounded" },
+);
+
+export const Bip39Live = Layer.succeed(
+  Bip39,
+  Bip39.of({
+    make: importBip39WithEnglish.pipe(
+      Effect.map(
+        ([{ generateMnemonic }, { wordlist }]) =>
+          generateMnemonic(wordlist, 128) as Mnemonic,
+      ),
+    ),
+
+    toSeed: (mnemonic) =>
+      Effect.promise(() => import("@scure/bip39")).pipe(
+        Effect.flatMap((a) => Effect.promise(() => a.mnemonicToSeed(mnemonic))),
+      ),
+
+    parse: (mnemonic) =>
+      importBip39WithEnglish.pipe(
+        Effect.flatMap(([{ validateMnemonic }, { wordlist }]) =>
+          validateMnemonic(mnemonic, wordlist)
+            ? Effect.succeed(mnemonic as Mnemonic)
+            : Effect.fail<InvalidMnemonicError>({
+                _tag: "InvalidMnemonicError",
+              }),
+        ),
+      ),
   }),
 );
