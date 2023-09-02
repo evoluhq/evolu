@@ -1,5 +1,4 @@
 import { Context, Effect } from "effect";
-import { StoreListener } from "./Store.js";
 
 export interface Platform {
   readonly name:
@@ -38,8 +37,8 @@ export type Fetch = (
 export const Fetch = Context.Tag<Fetch>("evolu/Fetch");
 
 export interface AppState {
-  readonly onFocus: (listener: StoreListener) => void;
-  readonly onReconnect: (listener: StoreListener) => void;
+  readonly onFocus: (callback: () => void) => void;
+  readonly onReconnect: (callback: () => void) => void;
   readonly reset: Effect.Effect<never, never, void>;
 }
 

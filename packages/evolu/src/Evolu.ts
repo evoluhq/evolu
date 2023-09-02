@@ -449,9 +449,10 @@ export const EvoluLive = <T extends Schema>(
         dbWorker.postMessage({ _tag: "sync", queries: getSubscribedQueries() });
       });
 
-      appState.onReconnect(() => {
+      const sync = (): void =>
         dbWorker.postMessage({ _tag: "sync", queries: [] });
-      });
+      appState.onReconnect(sync);
+      sync();
 
       return Evolu<T>().of({
         subscribeError: errorStore.subscribe,

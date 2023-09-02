@@ -110,18 +110,17 @@ export const AppStateLive = Layer.effect(
 
     const config = yield* _(Config);
 
-    const onFocus: AppState["onFocus"] = (listener) => {
-      window.addEventListener("focus", () => listener());
+    const onFocus: AppState["onFocus"] = (callback) => {
+      window.addEventListener("focus", () => callback());
       document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState !== "hidden") listener();
+        if (document.visibilityState !== "hidden") callback();
       });
     };
 
     // We can't use `navigator.onLine`.
     // https://bugs.chromium.org/p/chromium/issues/detail?id=678075
-    const onReconnect: AppState["onReconnect"] = (listener) => {
-      window.addEventListener("online", listener);
-      listener();
+    const onReconnect: AppState["onReconnect"] = (callback) => {
+      window.addEventListener("online", callback);
     };
 
     const localStorageKey = "evolu:reloadAllTabs";

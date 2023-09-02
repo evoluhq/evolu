@@ -1,3 +1,5 @@
+import { AppState as ReactNativeAppState } from "react-native";
+import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
 import {
   generateMnemonic,
   mnemonicToSeed,
@@ -61,12 +63,26 @@ export const FetchLive = Layer.succeed(
 export const AppStateLive = Layer.effect(
   AppState,
   Effect.sync(() => {
-    const onFocus: AppState["onFocus"] = (_listener) => {
-      // TODO:
+    const onFocus: AppState["onFocus"] = (callback) => {
+      let state = ReactNativeAppState.currentState;
+      ReactNativeAppState.addEventListener("change", (nextState): void => {
+        if (state.match(/inactive|background/) && nextState === "active")
+          callback();
+        state = nextState;
+      });
     };
 
-    const onReconnect: AppState["onReconnect"] = (_listener) => {
-      // TODO:
+    const onReconnect: AppState["onReconnect"] = (callback) => {
+      let state: NetInfoState | null = null;
+      NetInfo.addEventListener((nextState) => {
+        if (
+          state?.isInternetReachable === false &&
+          nextState.isConnected &&
+          nextState.isInternetReachable
+        )
+          callback();
+        state = nextState;
+      });
     };
 
     const reset: AppState["reset"] = Effect.sync(() => {
