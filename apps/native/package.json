@@ -10,7 +10,6 @@
     "clean": "rm -rf .turbo && rm -rf .expo && rm -rf node_modules"
   },
   "dependencies": {
-    "@craftzdog/react-native-buffer": "^6.0.5",
     "@effect/schema": "^0.34.0",
     "@types/react": "^18.2.21",
     "crypto-browserify": "^3.12.0",
@@ -23,7 +22,6 @@
     "react": "18.2.0",
     "react-native": "^0.72.4",
     "react-native-select-dropdown": "^3.4.0",
-    "stream-browserify": "^3.0.0",
     "web": "workspace:^"
   },
   "devDependencies": {
