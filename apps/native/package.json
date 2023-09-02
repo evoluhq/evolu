@@ -6,6 +6,7 @@
   "scripts": {
     "ios": "expo start --ios",
     "android": "expo start --android",
+    "build": "expo start --no-dev --minify",
     "lint": "eslint --ext ts,tsx .",
     "clean": "rm -rf .turbo && rm -rf .expo && rm -rf node_modules"
   },
