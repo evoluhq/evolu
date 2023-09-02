@@ -4,10 +4,10 @@ import "react-native-get-random-values";
 import { Layer } from "effect";
 import { NanoIdLive, SecretBoxLive } from "./Crypto.js";
 import { DbWorkerLive } from "./DbWorker.js";
+import { FetchLive } from "./Platform.js";
 import {
   AppStateLive,
   Bip39Live,
-  FetchLive,
   FlushSyncLive,
   PlatformLive,
   SyncLockLive,

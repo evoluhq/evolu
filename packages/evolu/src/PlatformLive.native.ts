@@ -1,4 +1,3 @@
-import { AppState as ReactNativeAppState } from "react-native";
 import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
 import {
   generateMnemonic,
@@ -7,15 +6,9 @@ import {
 } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english";
 import { Effect, Function, Layer } from "effect";
+import { AppState as ReactNativeAppState } from "react-native";
 import { Bip39, InvalidMnemonicError, Mnemonic } from "./Crypto.js";
-import {
-  AppState,
-  Fetch,
-  FetchError,
-  FlushSync,
-  Platform,
-  SyncLock,
-} from "./Platform.js";
+import { AppState, FlushSync, Platform, SyncLock } from "./Platform.js";
 
 export const PlatformLive = Layer.succeed(Platform, {
   name: "react-native",
@@ -40,24 +33,6 @@ export const SyncLockLive = Layer.effect(
 
     return { acquire, release };
   }),
-);
-
-export const FetchLive = Layer.succeed(
-  Fetch,
-  Fetch.of((url, body) =>
-    Effect.tryPromise({
-      try: () =>
-        fetch(url, {
-          method: "POST",
-          body,
-          headers: {
-            "Content-Type": "application/octet-stream",
-            "Content-Length": body.length.toString(),
-          },
-        }),
-      catch: (): FetchError => ({ _tag: "FetchError" }),
-    }),
-  ),
 );
 
 export const AppStateLive = Layer.effect(
@@ -103,8 +78,6 @@ export const Bip39Live = Layer.succeed(
     parse: (mnemonic) =>
       validateMnemonic(mnemonic, wordlist)
         ? Effect.succeed(mnemonic as Mnemonic)
-        : Effect.fail<InvalidMnemonicError>({
-            _tag: "InvalidMnemonicError",
-          }),
+        : Effect.fail<InvalidMnemonicError>({ _tag: "InvalidMnemonicError" }),
   }),
 );

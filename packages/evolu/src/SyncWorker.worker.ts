@@ -1,6 +1,7 @@
 import { Effect, Layer } from "effect";
 import { SecretBoxLive } from "./Crypto.js";
-import { FetchLive, SyncLockLive } from "./PlatformLive.web.js";
+import { FetchLive } from "./Platform.js";
+import { SyncLockLive } from "./PlatformLive.web.js";
 import { SyncWorker, SyncWorkerInput, SyncWorkerLive } from "./SyncWorker.js";
 
 const syncWorker = Effect.provideLayer(

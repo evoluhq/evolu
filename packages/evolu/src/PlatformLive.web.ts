@@ -2,14 +2,7 @@ import { Effect, Function, Layer, Predicate, ReadonlyArray } from "effect";
 import { flushSync } from "react-dom";
 import { Config } from "./Config.js";
 import { Bip39, InvalidMnemonicError, Mnemonic } from "./Crypto.js";
-import {
-  AppState,
-  Fetch,
-  FetchError,
-  FlushSync,
-  Platform,
-  SyncLock,
-} from "./Platform.js";
+import { AppState, FlushSync, Platform, SyncLock } from "./Platform.js";
 
 const hasDoc = typeof document !== "undefined";
 
@@ -76,24 +69,6 @@ export const SyncLockLive = Layer.effect(
 
     return { acquire, release };
   }),
-);
-
-export const FetchLive = Layer.succeed(
-  Fetch,
-  Fetch.of((url, body) =>
-    Effect.tryPromise({
-      try: () =>
-        fetch(url, {
-          method: "POST",
-          body,
-          headers: {
-            "Content-Type": "application/octet-stream",
-            "Content-Length": body.length.toString(),
-          },
-        }),
-      catch: (): FetchError => ({ _tag: "FetchError" }),
-    }),
-  ),
 );
 
 export const AppStateLive = Layer.effect(
