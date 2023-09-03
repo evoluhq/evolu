@@ -6,6 +6,7 @@ import {
 } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english";
 import { Effect, Function, Layer } from "effect";
+import { reloadAsync } from "expo-updates";
 import { AppState as ReactNativeAppState } from "react-native";
 import { Bip39, InvalidMnemonicError, Mnemonic } from "./Crypto.js";
 import { AppState, FlushSync, Platform, SyncLock } from "./Platform.js";
@@ -61,7 +62,7 @@ export const AppStateLive = Layer.effect(
     };
 
     const reset: AppState["reset"] = Effect.sync(() => {
-      // TODO:
+      void reloadAsync();
     });
 
     return AppState.of({ onFocus, onReconnect, reset });
