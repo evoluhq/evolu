@@ -6,13 +6,13 @@
   "scripts": {
     "ios": "expo start --ios",
     "android": "expo start --android",
-    "build": "expo start --no-dev --minify",
+    "build-native": "expo start --no-dev --minify",
     "lint": "eslint --ext ts,tsx .",
     "clean": "rm -rf .turbo && rm -rf .expo && rm -rf node_modules"
   },
   "dependencies": {
     "@effect/schema": "^0.34.0",
-    "@react-native-community/netinfo": "9.3.10",
+    "@react-native-community/netinfo": "9.4.1",
     "@types/react": "^18.2.21",
     "crypto-browserify": "^3.12.0",
     "effect": "2.0.0-next.30",
