@@ -2,7 +2,6 @@ import * as Schema from "@effect/schema/Schema";
 import { Either } from "effect";
 import { constVoid } from "effect/Function";
 import * as Evolu from "evolu";
-import { StatusBar } from "expo-status-bar";
 import {
   FC,
   Suspense,
@@ -11,8 +10,15 @@ import {
   useEffect,
   useState,
 } from "react";
-import { Button, StyleSheet, Text, TextInput, View } from "react-native";
-import SelectDropdown from "react-native-select-dropdown";
+import {
+  Button,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import RNPickerSelect from "react-native-picker-select";
 
 const TodoId = Evolu.id("Todo");
 type TodoId = Schema.To<typeof TodoId>;
@@ -53,22 +59,6 @@ const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
     }),
   });
 
-const prompt = <From extends string, To>(
-  _schema: Schema.Schema<From, To>,
-  _message: string,
-  _onSuccess: (value: To) => void,
-): void => {
-  // // Alert.prompt()
-  // const value = window.prompt(message);
-  // if (value == null) return; // on cancel
-  // const a = Schema.parseEither(schema)(value);
-  // if (a._tag === "Left") {
-  //   alert(formatErrors(a.left.errors));
-  //   return;
-  // }
-  // onSuccess(a.right);
-};
-
 const TodoCategorySelect: FC<{
   selected: TodoCategoryId | null;
   onSelect: (_value: TodoCategoryId | null) => void;
@@ -90,26 +80,13 @@ const TodoCategorySelect: FC<{
       ? selected
       : nothingSelected;
 
-  //   {/* <option value={nothingSelected}>-- no category --</option>
-  //   {todoCategoriesList.map(({ id, name }) => (
-  //     <option key={id} value={id}>
-  //       {name}
-  //     </option>
-  //   ))}
-  // </SelectDropdown> */}
   return (
-    <SelectDropdown
-      data={rows.map((i) => i.name)}
-      onSelect={(): void => {
-        // eslint-disable-next-line no-console
-        console.log(value, onSelect);
+    <RNPickerSelect
+      value={value}
+      onValueChange={(value: TodoCategoryId | null): void => {
+        onSelect(value);
       }}
-      // value={value}
-      // onChange={({
-      //   target: { value },
-      // }: ChangeEvent<HTMLSelectElement>): void => {
-      //   onSelect(value === nothingSelected ? null : (value as TodoCategoryId));
-      // }}
+      items={rows.map((row) => ({ label: row.name, value: row.id }))}
     />
   );
 };
@@ -120,39 +97,37 @@ const TodoItem = memo<{
   const { update } = useMutation();
 
   return (
-    <View>
-      <Text
-      // className="text-sm font-bold"
-      // style={{ textDecoration: isCompleted ? "line-through" : "none" }}
-      >
-        {title}
-      </Text>
-      <Button
-        title={isCompleted ? "completed" : "complete"}
-        onPress={(): void => {
-          update("todo", { id, isCompleted: !isCompleted });
-        }}
-      />
-      <Button
-        title="Rename"
-        onPress={(): void => {
-          prompt(Evolu.NonEmptyString1000, "New Name", (title) => {
-            update("todo", { id, title });
-          });
-        }}
-      />
-      <Button
-        title="Delete"
-        onPress={(): void => {
-          update("todo", { id, isDeleted: true });
-        }}
-      />
-      <TodoCategorySelect
-        selected={categoryId}
-        onSelect={(categoryId): void => {
-          update("todo", { id, categoryId });
-        }}
-      />
+    <View style={{ marginBottom: 16 }}>
+      <View style={{ flexDirection: "row" }}>
+        <Text
+          style={[
+            appStyles.item,
+            { textDecorationLine: isCompleted ? "line-through" : "none" },
+          ]}
+        >
+          {title}
+        </Text>
+        <TodoCategorySelect
+          selected={categoryId}
+          onSelect={(categoryId): void => {
+            update("todo", { id, categoryId });
+          }}
+        />
+      </View>
+      <View style={{ flexDirection: "row" }}>
+        <Button
+          title={isCompleted ? "Completed" : "Complete"}
+          onPress={(): void => {
+            update("todo", { id, isCompleted: !isCompleted });
+          }}
+        />
+        <Button
+          title="Delete"
+          onPress={(): void => {
+            update("todo", { id, isDeleted: true });
+          }}
+        />
+      </View>
     </View>
   );
 });
@@ -187,13 +162,16 @@ const Todos: FC = () => {
 
   return (
     <>
-      <Text>Todos</Text>
+      <Text style={appStyles.h2}>Todos</Text>
       <View>
         {rows.map((row) => (
           <TodoItem key={row.id} row={row} />
         ))}
       </View>
       <TextInput
+        autoComplete="off"
+        autoCorrect={false}
+        style={appStyles.textInput}
         value={text}
         onChangeText={setText}
         placeholder="What needs to be done?"
@@ -216,39 +194,44 @@ const TodoCategories: FC = () => {
     ({ name, ...rest }) => name && { name, ...rest },
   );
 
-  return null;
+  const [text, setText] = useState("");
+  const newTodoTitle = Schema.parseEither(NonEmptyString50)(text);
+  const handleTextInputEndEditing = (): void => {
+    newTodoTitle.pipe(
+      Either.match({
+        onLeft: constVoid,
+        onRight: (name) => {
+          create("todoCategory", { name });
+          setText("");
+        },
+      }),
+    );
+  };
 
   return (
     <>
-      <h2 className="mt-6 text-xl font-semibold">Categories</h2>
-      <ul className="py-2">
-        {rows.map(({ id, name }) => (
-          <li key={id}>
-            <span className="text-sm font-bold">{name}</span>
-            <Button
-              title="Rename"
-              onPress={(): void => {
-                prompt(NonEmptyString50, "Category Name", (name) => {
-                  update("todoCategory", { id, name });
-                });
-              }}
-            />
+      <Text style={appStyles.h2}>Categories</Text>
+      {rows.map(({ id, name }) => (
+        <View key={id} style={{ marginBottom: 16 }}>
+          <Text style={appStyles.item}>{name}</Text>
+          <View style={{ flexDirection: "row" }}>
             <Button
               title="Delete"
               onPress={(): void => {
                 update("todoCategory", { id, isDeleted: true });
               }}
             />
-          </li>
-        ))}
-      </ul>
-      <Button
-        title="Add Category"
-        onPress={(): void => {
-          prompt(NonEmptyString50, "Category Name", (name) => {
-            create("todoCategory", { name });
-          });
-        }}
+          </View>
+        </View>
+      ))}
+      <TextInput
+        autoComplete="off"
+        autoCorrect={false}
+        style={appStyles.textInput}
+        value={text}
+        onChangeText={setText}
+        placeholder="New Category"
+        onEndEditing={handleTextInputEndEditing}
       />
     </>
   );
@@ -265,36 +248,33 @@ const OwnerActions: FC = () => {
         Open this page on a different device and use your mnemonic to restore
         your data.
       </Text>
-      <Button
-        title={`${!isShown ? "Show" : "Hide"} Mnemonic`}
-        onPress={(): void => setIsShown((value) => !value)}
-      />
-      <Button
-        title="Restore Owner"
-        onPress={(): void => {
-          prompt(Evolu.NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
-            void ownerActions.restore(mnemonic).then((either) => {
-              if (either._tag === "Left")
-                alert(JSON.stringify(either.left, null, 2));
-            });
-          });
-        }}
-      />
-      <Button
-        title="Reset Owner"
-        onPress={(): void => {
-          ownerActions.reset();
-        }}
-      />
+      <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
+        <Button
+          title={`${!isShown ? "Show" : "Hide"} Mnemonic`}
+          onPress={(): void => setIsShown((value) => !value)}
+        />
+        <Button
+          title="Restore"
+          onPress={(): void => {
+            // prompt(Evolu.NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
+            //   void ownerActions.restore(mnemonic).then((either) => {
+            //     if (either._tag === "Left")
+            //       alert(JSON.stringify(either.left, null, 2));
+            //   });
+            // });
+          }}
+        />
+        <Button
+          title="Reset"
+          onPress={(): void => {
+            ownerActions.reset();
+          }}
+        />
+      </View>
       {isShown && owner != null && (
-        <View>
-          <textarea
-            value={owner.mnemonic}
-            readOnly
-            rows={2}
-            style={{ width: 320 }}
-          />
-        </View>
+        <TextInput multiline selectTextOnFocus>
+          {owner.mnemonic}
+        </TextInput>
       )}
     </View>
   );
@@ -324,9 +304,9 @@ const NextJsExample: FC = () => {
   return (
     <Suspense>
       <NotificationBar />
-      <View>
+      <View style={{ alignItems: "flex-start" }}>
         <Button
-          title="Simulate suspense-enabled router transition"
+          title="Simulate suspense-enabled router"
           onPress={(): void => {
             // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
             startTransition(() => {
@@ -347,18 +327,34 @@ const NextJsExample: FC = () => {
 
 export default function App(): JSX.Element {
   return (
-    <View style={styles.container}>
-      <StatusBar style="auto" />
+    <ScrollView style={appStyles.container}>
+      <Text style={appStyles.h1}>React Native Example</Text>
       <NextJsExample />
-    </View>
+    </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
+const appStyles = StyleSheet.create({
+  h1: {
+    fontSize: 24,
+    marginVertical: 16,
+  },
+  h2: {
+    fontSize: 18,
+    marginVertical: 16,
+  },
+  item: {
+    flexGrow: 1,
+    flexShrink: 1,
+    fontSize: 16,
+  },
+  textInput: {
+    fontSize: 18,
+    marginBottom: 16,
+  },
   container: {
     flex: 1,
+    padding: 16,
     backgroundColor: "#fff",
-    alignItems: "center",
-    justifyContent: "center",
   },
 });

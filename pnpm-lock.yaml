@@ -62,9 +62,9 @@ importers:
       react-native:
         specifier: ^0.72.4
         version: 0.72.4(@babel/core@7.22.11)(react@18.2.0)
-      react-native-select-dropdown:
-        specifier: ^3.4.0
-        version: 3.4.0
+      react-native-picker-select:
+        specifier: ^8.1.0
+        version: 8.1.0(react-native@0.72.4)(react@18.2.0)
       web:
         specifier: workspace:^
         version: link:../web
@@ -3492,6 +3492,16 @@ packages:
     peerDependencies:
       react-native: '>=0.59'
     dependencies:
+      react-native: 0.72.4(@babel/core@7.22.11)(react@18.2.0)
+    dev: false
+
+  /@react-native-picker/picker@1.16.8(react-native@0.72.4)(react@18.2.0):
+    resolution: {integrity: sha512-pacdQDX6V6EmjF+HoiIh6u++qx4mTK0WnhgUHRc01B+Qt5eoeUwseBqmqfTSXTx/aHDEd6PiIw7UGvKgFoqgFQ==}
+    peerDependencies:
+      react: 16 || 17
+      react-native: '>=0.57'
+    dependencies:
+      react: 18.2.0
       react-native: 0.72.4(@babel/core@7.22.11)(react@18.2.0)
     dev: false
 
@@ -8524,6 +8534,10 @@ packages:
     resolution: {integrity: sha512-z+Uw/vLuy6gQe8cfaFWD7p0wVv8fJl3mbzXh33RS+0oW2wvUqiRXiQ69gLWSLpgB5/6sU+r6BlQR0MBILadqTQ==}
     dev: false
 
+  /lodash.isequal@4.5.0:
+    resolution: {integrity: sha512-pDo3lu8Jhfjqls6GkMgpahsF9kCyayhgykjyLMNFTKWrpVdAQtYyB4muAMWozBB4ig/dtWAmsMxLEI8wuz+DYQ==}
+    dev: false
+
   /lodash.merge@4.6.2:
     resolution: {integrity: sha512-0KpjqXRVvrYyCsX1swR/XTK0va6VQkQM6MNo7PqW77ByjAhoARA8EfrP1N4+KlKj8YS0ZUCtRT/YUuhyYDujIQ==}
 
@@ -11002,8 +11016,14 @@ packages:
       react-native: 0.72.4(@babel/core@7.22.11)(react@18.2.0)
     dev: false
 
-  /react-native-select-dropdown@3.4.0:
-    resolution: {integrity: sha512-9xK1z4tYpwMxp3hsM0y1+xfqq/JoMh+l7sBsJ81b2eikFwT6ZbndFBqupQXrsQ1akce9hgC/10Nkzj0LjVjeXQ==}
+  /react-native-picker-select@8.1.0(react-native@0.72.4)(react@18.2.0):
+    resolution: {integrity: sha512-iLsLv2OEWpXnQMDYJS6du5Cl1HTHy887n60Yp5OOiMny0TDB9w5CfxTUYWtpsvJJrUa/Yrv+1NMQiJy7IA4ETw==}
+    dependencies:
+      '@react-native-picker/picker': 1.16.8(react-native@0.72.4)(react@18.2.0)
+      lodash.isequal: 4.5.0
+    transitivePeerDependencies:
+      - react
+      - react-native
     dev: false
 
   /react-native@0.72.4(@babel/core@7.22.11)(react@18.2.0):

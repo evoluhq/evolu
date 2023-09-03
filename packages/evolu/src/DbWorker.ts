@@ -486,7 +486,9 @@ const handleSyncResponse = ({
       return;
     }
 
-    const sqlite = yield* _(Sqlite);
+    const [sqlite, config, owner] = yield* _(
+      Effect.all([Sqlite, Config, Owner]),
+    );
     const messagesToSync = yield* _(
       sqlite.exec({
         sql: selectMessagesToSync,
@@ -494,7 +496,6 @@ const handleSyncResponse = ({
       }),
       Effect.map(({ rows }) => rows as unknown as ReadonlyArray<Message>),
     );
-    const [config, owner] = yield* _(Effect.all([Config, Owner]));
     syncWorkerPostMessage({
       _tag: "sync",
       syncUrl: config.syncUrl,

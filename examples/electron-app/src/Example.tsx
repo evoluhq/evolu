@@ -141,7 +141,7 @@ const TodoItem = memo<{
         {title}
       </span>
       <Button
-        title={isCompleted ? "completed" : "complete"}
+        title={isCompleted ? "Completed" : "Complete"}
         onClick={(): void => {
           update("todo", { id, isCompleted: !isCompleted });
         }}
