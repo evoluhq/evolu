@@ -471,6 +471,7 @@ const handleSyncResponse = ({
     dbWorkerOnMessage({ _tag: "onReceive" });
 
     const diff = diffMerkleTrees(response.merkleTree, merkleTree);
+
     const syncWorkerPostMessage = yield* _(SyncWorkerPostMessage);
 
     if (Option.isNone(diff)) {
@@ -491,9 +492,8 @@ const handleSyncResponse = ({
         sql: selectMessagesToSync,
         parameters: [timestampToString(makeSyncTimestamp(diff.value))],
       }),
-      Effect.map((a) => a as unknown as ReadonlyArray<Message>),
+      Effect.map(({ rows }) => rows as unknown as ReadonlyArray<Message>),
     );
-
     const [config, owner] = yield* _(Effect.all([Config, Owner]));
     syncWorkerPostMessage({
       _tag: "sync",
