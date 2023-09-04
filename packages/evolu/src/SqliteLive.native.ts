@@ -11,7 +11,6 @@ const exec: Sqlite["exec"] = (arg) =>
       sql: isSqlString ? arg : arg.sql,
       args: isSqlString ? [] : [...arg.parameters],
     };
-    // console.log(JSON.stringify(query));
     const resultSet = yield* _(
       Effect.promise(() =>
         db
@@ -23,7 +22,6 @@ const exec: Sqlite["exec"] = (arg) =>
           }),
       ),
     );
-    // console.log(JSON.stringify(resultSet));
     return {
       rows: resultSet.rows,
       changes: resultSet.rowsAffected,
