@@ -4,6 +4,7 @@ import * as Evolu from "evolu";
 import {
   ChangeEvent,
   FC,
+  Suspense,
   memo,
   startTransition,
   useEffect,
@@ -323,7 +324,7 @@ const NotificationBar: FC = () => {
     if (evoluError) setShown(true);
   }, [evoluError]);
 
-  if (!evoluError || !shown) return <></>;
+  if (!evoluError || !shown) return null;
 
   return (
     <div>
@@ -338,7 +339,7 @@ export const Example: FC = () => {
 
   return (
     <>
-      <NotificationBar />
+      <OwnerActions />
       <nav className="my-4">
         <Button
           title="Simulate suspense-enabled router transition"
@@ -354,8 +355,8 @@ export const Example: FC = () => {
           or jumping content.
         </p>
       </nav>
-      {todosShown ? <Todos /> : <TodoCategories />}
-      <OwnerActions />
+      <Suspense>{todosShown ? <Todos /> : <TodoCategories />}</Suspense>
+      <NotificationBar />
     </>
   );
 };

@@ -140,11 +140,21 @@ const Todos: FC = () => {
         .selectFrom("todo")
         .select(["id", "title", "isCompleted", "categoryId"])
         .where("isDeleted", "is not", Evolu.cast(true))
-        .orderBy("createdAt"),
+        .orderBy("createdAt")
+        // https://kysely.dev/docs/recipes/relations
+        .select((eb) => [
+          Evolu.jsonArrayFrom(
+            eb
+              .selectFrom("todoCategory")
+              .select(["todoCategory.id", "todoCategory.name"]),
+          ).as("categories"),
+        ]),
     // (row) => row
     ({ title, isCompleted, ...rest }) =>
       title && isCompleted != null && { title, isCompleted, ...rest },
   );
+
+  // console.log(rows[0].categories);
 
   const [text, setText] = useState("");
   const newTodoTitle = Schema.parseEither(Evolu.NonEmptyString1000)(text);
@@ -288,7 +298,7 @@ const NotificationBar: FC = () => {
     if (evoluError) setShown(true);
   }, [evoluError]);
 
-  if (!evoluError || !shown) return <></>;
+  if (!evoluError || !shown) return null;
 
   return (
     <View>
@@ -302,8 +312,8 @@ const NextJsExample: FC = () => {
   const [todosShown, setTodosShown] = useState(true);
 
   return (
-    <Suspense>
-      <NotificationBar />
+    <>
+      <OwnerActions />
       <View style={{ alignItems: "flex-start" }}>
         <Button
           title="Simulate suspense-enabled router"
@@ -319,9 +329,9 @@ const NextJsExample: FC = () => {
           or jumping content.
         </Text>
       </View>
-      {todosShown ? <Todos /> : <TodoCategories />}
-      <OwnerActions />
-    </Suspense>
+      <Suspense>{todosShown ? <Todos /> : <TodoCategories />}</Suspense>
+      <NotificationBar />
+    </>
   );
 };
 

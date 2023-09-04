@@ -172,11 +172,22 @@ const Todos: FC = () => {
         .selectFrom("todo")
         .select(["id", "title", "isCompleted", "categoryId"])
         .where("isDeleted", "is not", Evolu.cast(true))
-        .orderBy("createdAt"),
+        .orderBy("createdAt")
+        // https://kysely.dev/docs/recipes/relations
+        .select((eb) => [
+          Evolu.jsonArrayFrom(
+            eb
+              .selectFrom("todoCategory")
+              .select(["todoCategory.id", "todoCategory.name"]),
+          ).as("categories"),
+        ]),
     // (row) => row
     ({ title, isCompleted, ...rest }) =>
       title && isCompleted != null && { title, isCompleted, ...rest },
   );
+
+  // eslint-disable-next-line no-console
+  // console.log(rows[0].categories);
 
   return (
     <>
@@ -308,7 +319,7 @@ const NotificationBar: FC = () => {
     if (evoluError) setShown(true);
   }, [evoluError]);
 
-  if (!evoluError || !shown) return <></>;
+  if (!evoluError || !shown) return null;
 
   return (
     <div>
@@ -323,26 +334,24 @@ export const NextJsExample: FC = () => {
 
   return (
     <>
+      <OwnerActions />
+      <nav className="my-4">
+        <Button
+          title="Simulate suspense-enabled router transition"
+          onClick={(): void => {
+            // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
+            startTransition(() => {
+              setTodosShown(!todosShown);
+            });
+          }}
+        />
+        <p>
+          Using suspense-enabled router transition, you will not see any loader
+          or jumping content.
+        </p>
+      </nav>
+      <Suspense>{todosShown ? <Todos /> : <TodoCategories />}</Suspense>
       <NotificationBar />
-      <Suspense>
-        <nav className="my-4">
-          <Button
-            title="Simulate suspense-enabled router transition"
-            onClick={(): void => {
-              // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
-              startTransition(() => {
-                setTodosShown(!todosShown);
-              });
-            }}
-          />
-          <p>
-            Using suspense-enabled router transition, you will not see any
-            loader or jumping content.
-          </p>
-        </nav>
-        {todosShown ? <Todos /> : <TodoCategories />}
-        <OwnerActions />
-      </Suspense>
     </>
   );
 };
