@@ -28,7 +28,7 @@ importers:
     dependencies:
       '@effect/schema':
         specifier: ^0.34.0
-        version: 0.34.0(@effect/data@0.18.3)(@effect/io@0.39.0)
+        version: 0.34.0(@effect/data@0.18.3)(@effect/io@0.39.1)
       '@react-native-community/netinfo':
         specifier: 9.4.1
         version: 9.4.1(react-native@0.72.4)
@@ -40,7 +40,7 @@ importers:
         version: 3.12.0
       effect:
         specifier: 2.0.0-next.30
-        version: 2.0.0-next.30(@effect/data@0.18.3)(@effect/io@0.39.0)(@effect/match@0.35.1)(@effect/stm@0.23.0)(@effect/stream@0.35.1)
+        version: 2.0.0-next.30(@effect/data@0.18.3)(@effect/io@0.39.1)(@effect/match@0.35.1)(@effect/stm@0.23.0)(@effect/stream@0.35.1)
       events:
         specifier: ^3.3.0
         version: 3.3.0
@@ -111,13 +111,13 @@ importers:
     dependencies:
       '@effect/schema':
         specifier: ~0.34.0
-        version: 0.34.0(@effect/data@0.18.3)(@effect/io@0.39.0)
+        version: 0.34.0(@effect/data@0.18.3)(@effect/io@0.39.1)
       clsx:
         specifier: ^2.0.0
         version: 2.0.0
       effect:
         specifier: 2.0.0-next.30
-        version: 2.0.0-next.30(@effect/data@0.18.3)(@effect/io@0.39.0)(@effect/match@0.35.1)(@effect/stm@0.23.0)(@effect/stream@0.35.1)
+        version: 2.0.0-next.30(@effect/data@0.18.3)(@effect/io@0.39.1)(@effect/match@0.35.1)(@effect/stm@0.23.0)(@effect/stream@0.35.1)
       evolu:
         specifier: workspace:*
         version: link:../../packages/evolu
@@ -249,7 +249,7 @@ importers:
     devDependencies:
       '@effect/schema':
         specifier: ^0.34.0
-        version: 0.34.0(@effect/data@0.18.3)(@effect/io@0.39.0)
+        version: 0.34.0(@effect/data@0.18.3)(@effect/io@0.39.1)
       '@evolu/tsconfig':
         specifier: workspace:*
         version: link:../evolu-tsconfig
@@ -276,7 +276,7 @@ importers:
         version: 3.0.0
       effect:
         specifier: 2.0.0-next.30
-        version: 2.0.0-next.30(@effect/data@0.18.3)(@effect/io@0.39.0)(@effect/match@0.35.1)(@effect/stm@0.23.0)(@effect/stream@0.35.1)
+        version: 2.0.0-next.30(@effect/data@0.18.3)(@effect/io@0.39.1)(@effect/match@0.35.1)(@effect/stm@0.23.0)(@effect/stream@0.35.1)
       eslint:
         specifier: ^8.48.0
         version: 8.48.0
@@ -324,7 +324,7 @@ importers:
         version: 2.8.5
       effect:
         specifier: 2.0.0-next.30
-        version: 2.0.0-next.30(@effect/data@0.18.3)(@effect/io@0.39.0)(@effect/match@0.35.1)(@effect/stm@0.23.0)(@effect/stream@0.35.1)
+        version: 2.0.0-next.30(@effect/data@0.18.3)(@effect/io@0.39.1)(@effect/match@0.35.1)(@effect/stm@0.23.0)(@effect/stream@0.35.1)
       evolu:
         specifier: workspace:*
         version: link:../evolu
@@ -2223,8 +2223,8 @@ packages:
   /@effect/data@0.18.3:
     resolution: {integrity: sha512-xNG4CwxE758EK0v81EIPnKv9QeU/x9st1Doab/Fjf7sb9V3n55C85aBiKChpKgGD8pKCPHcjGydLsRHVUvzpwg==}
 
-  /@effect/io@0.39.0(@effect/data@0.18.3):
-    resolution: {integrity: sha512-9rlW1Pvn6ww1eaxPCg5+PeRlzYA7AfUJwiduPSMfXwgvqdR24gBGCoGgaD8aSKeOE1V1xhgOUNqbaf/oGsmbtQ==}
+  /@effect/io@0.39.1(@effect/data@0.18.3):
+    resolution: {integrity: sha512-ISBX1EYsWdVBMOV3ZmEVtbMW8FyVwmK6K47rx8ztOjMBKS5tfhB4W8iRjyycObvvlolfpIcZuAAPrCW5Tty+4Q==}
     peerDependencies:
       '@effect/data': ^0.18.0
     dependencies:
@@ -2237,33 +2237,33 @@ packages:
     dependencies:
       '@effect/data': 0.18.3
 
-  /@effect/schema@0.34.0(@effect/data@0.18.3)(@effect/io@0.39.0):
+  /@effect/schema@0.34.0(@effect/data@0.18.3)(@effect/io@0.39.1):
     resolution: {integrity: sha512-7BdriGSWYj+f9jVqIq6PyfLoPztV05RW1Sj+mdKX3gAwqqIM7MBwkM0kTaLYKAFbGXTE9AK83uG2SSfzMigqTA==}
     peerDependencies:
       '@effect/data': ^0.18.3
       '@effect/io': ^0.39.0
     dependencies:
       '@effect/data': 0.18.3
-      '@effect/io': 0.39.0(@effect/data@0.18.3)
-      fast-check: 3.12.0
+      '@effect/io': 0.39.1(@effect/data@0.18.3)
+      fast-check: 3.12.1
 
-  /@effect/stm@0.23.0(@effect/data@0.18.3)(@effect/io@0.39.0):
+  /@effect/stm@0.23.0(@effect/data@0.18.3)(@effect/io@0.39.1):
     resolution: {integrity: sha512-c8pXK5mN9ZCFwPvxNJRzxAWwwSWjkdxs1FlCh1mdyXSah0uSD+lkuvEKrcpJCJroMmMBPrxKJv5ascfzTbBE9A==}
     peerDependencies:
       '@effect/data': ^0.18.3
       '@effect/io': ^0.39.0
     dependencies:
       '@effect/data': 0.18.3
-      '@effect/io': 0.39.0(@effect/data@0.18.3)
+      '@effect/io': 0.39.1(@effect/data@0.18.3)
 
-  /@effect/stream@0.35.1(@effect/data@0.18.3)(@effect/io@0.39.0):
+  /@effect/stream@0.35.1(@effect/data@0.18.3)(@effect/io@0.39.1):
     resolution: {integrity: sha512-MPtZdEZ3U2vtQTg+jXm6Xg5i0p4wO+BC4KtXqV93KIajk7sLfjlLlRf7GqlUPZgMH+jSoOAPARjM+G3UsNhMvg==}
     peerDependencies:
       '@effect/data': ^0.18.3
       '@effect/io': ^0.39.0
     dependencies:
       '@effect/data': 0.18.3
-      '@effect/io': 0.39.0(@effect/data@0.18.3)
+      '@effect/io': 0.39.1(@effect/data@0.18.3)
 
   /@es-joy/jsdoccomment@0.40.1:
     resolution: {integrity: sha512-YORCdZSusAlBrFpZ77pJjc5r1bQs5caPWtAu+WWmiSo+8XaUzseapVrfAtiRFbQWnrBxxLLEwF6f6ZG/UgCQCg==}
@@ -4270,8 +4270,8 @@ packages:
     resolution: {integrity: sha512-PCVAQswWemu6UdxsDFFX/+gVeYqKAod3D3UVm91jHwynguOwAvYPhx8nNlM++NqRcK6CxxpUafjmhIdKiHibqg==}
     dev: false
 
-  /array-includes@3.1.6:
-    resolution: {integrity: sha512-sgTbLvL6cNnw24FnbaDyjmvddQ2ML8arZsgaJhoABMoplz/4QRhtrYS+alr1BUM1Bwp6dhx8vVCBSLG+StwOFw==}
+  /array-includes@3.1.7:
+    resolution: {integrity: sha512-dlcsNBIiWhPkHdOEEKnehA+RNUWDc4UqFtnIXU4uuYDPtA4LDkr7qip2p0VvFAEXNDr0yWZ9PJyIRiGjRLQzwQ==}
     engines: {node: '>= 0.4'}
     dependencies:
       call-bind: 1.0.2
@@ -5917,7 +5917,7 @@ packages:
   /ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  /effect@2.0.0-next.30(@effect/data@0.18.3)(@effect/io@0.39.0)(@effect/match@0.35.1)(@effect/stm@0.23.0)(@effect/stream@0.35.1):
+  /effect@2.0.0-next.30(@effect/data@0.18.3)(@effect/io@0.39.1)(@effect/match@0.35.1)(@effect/stm@0.23.0)(@effect/stream@0.35.1):
     resolution: {integrity: sha512-7mCheLiy6x33e4qXLSFpQ9TCpj/+gPhPjLtBY9HODzH0sQw3B4sBUytoKWd+7DnRJRU7sdJbpPZnfDz+M1g3fw==}
     peerDependencies:
       '@effect/data': ^0.18.3
@@ -5927,10 +5927,10 @@ packages:
       '@effect/stream': ^0.35.1
     dependencies:
       '@effect/data': 0.18.3
-      '@effect/io': 0.39.0(@effect/data@0.18.3)
+      '@effect/io': 0.39.1(@effect/data@0.18.3)
       '@effect/match': 0.35.1(@effect/data@0.18.3)
-      '@effect/stm': 0.23.0(@effect/data@0.18.3)(@effect/io@0.39.0)
-      '@effect/stream': 0.35.1(@effect/data@0.18.3)(@effect/io@0.39.0)
+      '@effect/stm': 0.23.0(@effect/data@0.18.3)(@effect/io@0.39.1)
+      '@effect/stream': 0.35.1(@effect/data@0.18.3)(@effect/io@0.39.1)
 
   /electron-to-chromium@1.4.508:
     resolution: {integrity: sha512-FFa8QKjQK/A5QuFr2167myhMesGrhlOBD+3cYNxO9/S4XzHEXesyTD/1/xF644gC8buFPz3ca6G1LOQD0tZrrg==}
@@ -6283,7 +6283,7 @@ packages:
         optional: true
     dependencies:
       '@typescript-eslint/parser': 6.5.0(eslint@8.48.0)(typescript@5.2.2)
-      array-includes: 3.1.6
+      array-includes: 3.1.7
       array.prototype.findlastindex: 1.2.3
       array.prototype.flat: 1.3.1
       array.prototype.flatmap: 1.3.1
@@ -6335,7 +6335,7 @@ packages:
     dependencies:
       '@babel/runtime': 7.22.11
       aria-query: 5.3.0
-      array-includes: 3.1.6
+      array-includes: 3.1.7
       array.prototype.flatmap: 1.3.1
       ast-types-flow: 0.0.7
       axe-core: 4.7.2
@@ -6382,7 +6382,7 @@ packages:
     peerDependencies:
       eslint: ^3 || ^4 || ^5 || ^6 || ^7 || ^8
     dependencies:
-      array-includes: 3.1.6
+      array-includes: 3.1.7
       array.prototype.flatmap: 1.3.1
       array.prototype.tosorted: 1.1.1
       doctrine: 2.1.0
@@ -6858,8 +6858,8 @@ packages:
     resolution: {integrity: sha512-qwaScUgUGBYeDNRnbc/KyllVU88Jk1pRHPStuF/lO7B0/RTRLj7U0lkdTAutlBblY08rwZDff6tNU9cjv6j//Q==}
     dev: false
 
-  /fast-check@3.12.0:
-    resolution: {integrity: sha512-SqahE9mlL3+lhjJ39joMLwcj6F+24hfZdf/tchlNO8sHcTdrUUdA5P/ZbSFZM9Xpzs36XaneGwE0FWepm/zyOA==}
+  /fast-check@3.12.1:
+    resolution: {integrity: sha512-aRN6WrO+q3TZV8CjXnpebx9bTHrpYIOVi6v3ttxciZiWqS739yy8b1oVx+qNEyV1b8RdVjlp/+miTY6yAp90HA==}
     engines: {node: '>=8.0.0'}
     dependencies:
       pure-rand: 6.0.2
@@ -8334,7 +8334,7 @@ packages:
     resolution: {integrity: sha512-ZZow9HBI5O6EPgSJLUb8n2NKgmVWTwCvHGwFuJlMjvLFqlGG6pjirPhtdsseaLZjSibD8eegzmYpUZwoIlj2cQ==}
     engines: {node: '>=4.0'}
     dependencies:
-      array-includes: 3.1.6
+      array-includes: 3.1.7
       array.prototype.flat: 1.3.1
       object.assign: 4.1.4
       object.values: 1.1.7
