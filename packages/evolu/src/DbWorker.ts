@@ -268,8 +268,7 @@ const mutateItemsToNewMessages = (
               key,
               typeof value === "boolean"
                 ? cast(value)
-                : // @ts-expect-error // TODO: Put Uint8Array back once expo-sqlite is fixed.
-                value instanceof Date
+                : value instanceof Date
                 ? cast(value)
                 : value,
             ] as const,

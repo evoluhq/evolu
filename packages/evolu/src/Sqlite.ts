@@ -18,8 +18,7 @@ export interface QueryObject {
   readonly parameters: ReadonlyArray<Value>;
 }
 
-// TODO: Put Uint8Array back once expo-sqlite is fixed.
-export type Value = null | string | number;
+export type Value = null | string | number | Uint8Array;
 
 // TODO: jsonObjectFrom
 // TODO: Can JSON be nested?
