@@ -1,3 +1,4 @@
+import { hexToBytes } from "@noble/ciphers/utils";
 import {
   Brand,
   Context,
@@ -15,6 +16,7 @@ import { Config, ConfigLive } from "./Config.js";
 import { Bip39, Mnemonic, NanoId } from "./Crypto.js";
 import {
   Owner,
+  OwnerId,
   Table,
   Tables,
   ensureSchema,
@@ -42,14 +44,7 @@ import {
   selectOwnerTimestampAndMerkleTree,
   updateOwnerTimestampAndMerkleTree,
 } from "./Sql.js";
-import {
-  Query,
-  Row,
-  Sqlite,
-  Value,
-  fixExpoSqliteBinding,
-  queryObjectFromQuery,
-} from "./Sqlite.js";
+import { Query, Row, Sqlite, Value, queryObjectFromQuery } from "./Sqlite.js";
 import {
   Message,
   NewMessage,
@@ -186,11 +181,14 @@ const init = (
 
     return yield* _(
       sqlite.exec(selectOwner),
-      Effect.map((result) => result.rows[0] as unknown as Owner),
-      Effect.map((owner) => ({
-        ...owner,
-        encryptionKey: fixExpoSqliteBinding(owner.encryptionKey),
-      })),
+      Effect.map(
+        ({ rows: [row] }): Owner => ({
+          id: row.id as OwnerId,
+          mnemonic: row.mnemonic as Mnemonic,
+          // expo-sqlite 11.3.2 doesn't support Uint8Array
+          encryptionKey: hexToBytes(row.encryptionKey as string),
+        }),
+      ),
       someDefectToNoSuchTableOrColumnError,
       Effect.catchTag("NoSuchTableOrColumnError", () => lazyInit()),
       Effect.tap(() => ensureSchema(input.tables)),
@@ -270,7 +268,8 @@ const mutateItemsToNewMessages = (
               key,
               typeof value === "boolean"
                 ? cast(value)
-                : value instanceof Date
+                : // @ts-expect-error // TODO: Put Uint8Array back once expo-sqlite is fixed.
+                value instanceof Date
                 ? cast(value)
                 : value,
             ] as const,
@@ -611,7 +610,17 @@ export const DbWorkerLive = Layer.effect(
 
     type Write = (input: DbWorkerInput) => Promise<void>;
 
-    const makeWriteAfterInit = (owner: Owner, config: Config): Write => {
+    // Write for reset only in case init fails.
+    const writeForInitFail: Write = (input): Promise<void> => {
+      if (input._tag !== "reset") return Promise.resolve(undefined);
+      return reset(input).pipe(
+        Effect.provideService(DbWorkerOnMessage, dbWorker.onMessage),
+        Effect.provideContext(context),
+        run,
+      );
+    };
+
+    const makeWriteForInitSuccess = (owner: Owner, config: Config): Write => {
       let skipAllBecauseOfReset = false;
 
       return (input) => {
@@ -619,9 +628,8 @@ export const DbWorkerLive = Layer.effect(
 
         return Match.value(input).pipe(
           Match.tagsExhaustive({
-            init: () => {
-              throw new Error("init must be called once");
-            },
+            init: () =>
+              makeUnexpectedError(new Error("init must be called once")),
             query,
             mutate,
             sync,
@@ -648,11 +656,13 @@ export const DbWorkerLive = Layer.effect(
     };
 
     let write: Write = (input) => {
-      if (input._tag !== "init") throw new Error("init must be called first");
+      if (input._tag !== "init")
+        return run(makeUnexpectedError(new Error("init must be called first")));
+      write = writeForInitFail;
       return init(input).pipe(
         Effect.map((owner) => {
           dbWorker.onMessage({ _tag: "onOwner", owner });
-          write = makeWriteAfterInit(owner, input.config);
+          write = makeWriteForInitSuccess(owner, input.config);
         }),
         run,
       );

@@ -139,8 +139,9 @@ const valueFromProtobuf = (value: MessageContent["value"]): Value => {
       return value.numberValue;
     case "stringValue":
       return value.stringValue;
-    case "bytesValue":
-      return value.bytesValue;
+    // TODO: Put Uint8Array back once expo-sqlite is fixed.
+    // case "bytesValue":
+    //   return value.bytesValue;
     default:
       return null;
   }

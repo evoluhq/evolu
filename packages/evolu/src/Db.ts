@@ -32,6 +32,7 @@ import {
   queryObjectToQuery,
 } from "./Sqlite.js";
 import { makeInitialTimestamp, timestampToString } from "./Timestamp.js";
+import { bytesToHex } from "@noble/ciphers/utils";
 
 export type Schema = ReadonlyRecord.ReadonlyRecord<{ id: Id } & Row>;
 
@@ -231,7 +232,8 @@ export const lazyInit = (
           parameters: [
             owner.id,
             owner.mnemonic,
-            owner.encryptionKey,
+            // expo-sqlite 11.3.2 doesn't support Uint8Array
+            bytesToHex(owner.encryptionKey),
             timestampToString(initialTimestampString),
             merkleTreeToString(initialMerkleTree),
           ],
