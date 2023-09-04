@@ -27,7 +27,7 @@
     "web": "workspace:^"
   },
   "devDependencies": {
-    "@babel/core": "^7.22.11",
+    "@babel/core": "^7.22.15",
     "@babel/plugin-transform-private-methods": "^7.22.5",
     "eslint": "^8.48.0",
     "eslint-config-evolu": "workspace:*",
