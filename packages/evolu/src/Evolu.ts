@@ -10,7 +10,6 @@ import {
   absurd,
   pipe,
 } from "effect";
-import * as Kysely from "kysely";
 import { Config, ConfigLive } from "./Config.js";
 import { Bip39, NanoId } from "./Crypto.js";
 import {
@@ -37,6 +36,7 @@ import { Query, Row } from "./Sqlite.js";
 import { Store, StoreListener, StoreUnsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
 import { Time, TimeLive } from "./Timestamp.js";
+import { Simplify } from "kysely";
 
 export interface Evolu<S extends Schema> {
   readonly subscribeError: ErrorStore["subscribe"];
@@ -81,7 +81,7 @@ type Mutate<S extends Schema> = <
   T extends keyof U,
 >(
   table: T,
-  values: Kysely.Simplify<Partial<CastableForMutate<U[T]>>>,
+  values: Simplify<Partial<CastableForMutate<U[T]>>>,
   onComplete?: () => void,
 ) => {
   readonly id: U[T]["id"];
@@ -417,6 +417,10 @@ export const EvoluLive = <T extends Schema>(
       dbWorker.onMessage = (output): void => {
         switch (output._tag) {
           case "onError":
+            if (process.env.NODE_ENV === "development")
+              // JSON.stringify, because Expo console needs strings.
+              // eslint-disable-next-line no-console
+              console.warn(JSON.stringify(output.error, null, 2));
             errorStore.setState(output.error);
             break;
           case "onOwner":
