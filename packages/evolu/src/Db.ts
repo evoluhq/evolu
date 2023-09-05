@@ -1,6 +1,7 @@
 import * as AST from "@effect/schema/AST";
 import * as S from "@effect/schema/Schema";
 import { make } from "@effect/schema/Schema";
+import { bytesToHex } from "@noble/ciphers/utils";
 import {
   Brand,
   Context,
@@ -32,7 +33,6 @@ import {
   queryObjectToQuery,
 } from "./Sqlite.js";
 import { makeInitialTimestamp, timestampToString } from "./Timestamp.js";
-import { bytesToHex } from "@noble/ciphers/utils";
 
 export type Schema = ReadonlyRecord.ReadonlyRecord<{ id: Id } & Row>;
 

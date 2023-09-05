@@ -1,8 +1,11 @@
 import { Effect, Layer } from "effect";
 import * as SQLite from "expo-sqlite";
-import { Sqlite } from "./Sqlite.js";
+import { ParseJSONResultsPlugin } from "kysely";
+import { Sqlite, parseJSONResults } from "./Sqlite.js";
 
 const db = SQLite.openDatabase("evolu1.db");
+
+const parseJSONResultsPlugin = new ParseJSONResultsPlugin();
 
 const exec: Sqlite["exec"] = (arg) =>
   Effect.gen(function* (_) {
@@ -23,7 +26,7 @@ const exec: Sqlite["exec"] = (arg) =>
       ),
     );
     return {
-      rows: resultSet.rows,
+      rows: yield* _(parseJSONResults(parseJSONResultsPlugin, resultSet.rows)),
       changes: resultSet.rowsAffected,
     };
   });

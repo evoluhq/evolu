@@ -10,6 +10,7 @@ import {
   absurd,
   pipe,
 } from "effect";
+import { Simplify } from "kysely";
 import { Config, ConfigLive } from "./Config.js";
 import { Bip39, NanoId } from "./Crypto.js";
 import {
@@ -36,7 +37,6 @@ import { Query, Row } from "./Sqlite.js";
 import { Store, StoreListener, StoreUnsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
 import { Time, TimeLive } from "./Timestamp.js";
-import { Simplify } from "kysely";
 
 export interface Evolu<S extends Schema> {
   readonly subscribeError: ErrorStore["subscribe"];
@@ -170,8 +170,7 @@ const LoadingPromisesLive = Layer.effect(
       const item = promises.get(query);
       if (!item) return;
       // It's similar to what React will do.
-      // eslint-disable-next-line @typescript-eslint/no-floating-promises
-      Object.assign(item.promise, { [loadingPromisesPromiseProp]: rows });
+      void Object.assign(item.promise, { [loadingPromisesPromiseProp]: rows });
       item.resolve(rows);
     };
 

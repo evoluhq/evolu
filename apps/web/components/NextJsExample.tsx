@@ -81,24 +81,19 @@ const Button: FC<{
   );
 };
 
+interface TodoCategoryForSelect {
+  readonly id: TodoCategoryTable["id"];
+  readonly name: TodoCategoryTable["name"] | null;
+}
+
 const TodoCategorySelect: FC<{
+  categories: ReadonlyArray<TodoCategoryForSelect>;
   selected: TodoCategoryId | null;
   onSelect: (_value: TodoCategoryId | null) => void;
-}> = ({ selected, onSelect }) => {
+}> = ({ categories, selected, onSelect }) => {
   const nothingSelected = "";
-  const { rows } = useQuery(
-    (db) =>
-      db
-        .selectFrom("todoCategory")
-        .select(["id", "name"])
-        .where("isDeleted", "is not", Evolu.cast(true))
-        .orderBy("createdAt"),
-    // Filter out rows with nullable names.
-    ({ name, ...rest }) => name && { name, ...rest },
-  );
-
   const value =
-    selected && rows.find((row) => row.id === selected)
+    selected && categories.find((row) => row.id === selected)
       ? selected
       : nothingSelected;
 
@@ -112,7 +107,7 @@ const TodoCategorySelect: FC<{
       }}
     >
       <option value={nothingSelected}>-- no category --</option>
-      {rows.map(({ id, name }) => (
+      {categories.map(({ id, name }) => (
         <option key={id} value={id}>
           {name}
         </option>
@@ -122,8 +117,12 @@ const TodoCategorySelect: FC<{
 };
 
 const TodoItem = memo<{
-  row: Pick<TodoTable, "id" | "title" | "isCompleted" | "categoryId">;
-}>(function TodoItem({ row: { id, title, isCompleted, categoryId } }) {
+  row: Pick<TodoTable, "id" | "title" | "isCompleted" | "categoryId"> & {
+    categories: ReadonlyArray<TodoCategoryForSelect>;
+  };
+}>(function TodoItem({
+  row: { id, title, isCompleted, categoryId, categories },
+}) {
   const { update } = useMutation();
 
   return (
@@ -155,6 +154,7 @@ const TodoItem = memo<{
         }}
       />
       <TodoCategorySelect
+        categories={categories}
         selected={categoryId}
         onSelect={(categoryId): void => {
           update("todo", { id, categoryId });
@@ -166,6 +166,7 @@ const TodoItem = memo<{
 
 const Todos: FC = () => {
   const { create } = useMutation();
+
   const { rows } = useQuery(
     (db) =>
       db
@@ -178,16 +179,14 @@ const Todos: FC = () => {
           Evolu.jsonArrayFrom(
             eb
               .selectFrom("todoCategory")
-              .select(["todoCategory.id", "todoCategory.name"]),
+              .select(["todoCategory.id", "todoCategory.name"])
+              .where("isDeleted", "is not", Evolu.cast(true))
+              .orderBy("createdAt"),
           ).as("categories"),
         ]),
-    // (row) => row
     ({ title, isCompleted, ...rest }) =>
-      title && isCompleted != null && { title, isCompleted, ...rest },
+      title != null && isCompleted != null && { title, isCompleted, ...rest },
   );
-
-  // eslint-disable-next-line no-console
-  // console.log(rows[0].categories);
 
   return (
     <>
@@ -222,7 +221,6 @@ const TodoCategories: FC = () => {
         .select(["id", "name"])
         .where("isDeleted", "is not", Evolu.cast(true))
         .orderBy("createdAt"),
-    // (row) => row
     ({ name, ...rest }) => name && { name, ...rest },
   );
 
@@ -281,8 +279,7 @@ const OwnerActions: FC = () => {
         title="Restore Owner"
         onClick={(): void => {
           prompt(Evolu.NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
-            // eslint-disable-next-line @typescript-eslint/no-floating-promises
-            ownerActions.restore(mnemonic).then((either) => {
+            void ownerActions.restore(mnemonic).then((either) => {
               if (either._tag === "Left")
                 alert(JSON.stringify(either.left, null, 2));
             });

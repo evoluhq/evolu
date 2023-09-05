@@ -28,11 +28,9 @@ import { QueryPatches, makePatches } from "./Diff.js";
 import { EvoluError, makeUnexpectedError } from "./Errors.js";
 import {
   MerkleTree,
-  MerkleTreeString,
   diffMerkleTrees,
   insertIntoMerkleTree,
   merkleTreeToString,
-  unsafeMerkleTreeFromString,
 } from "./MerkleTree.js";
 import { CastableForMutate, Id, SqliteDate, cast } from "./Model.js";
 import {
@@ -242,7 +240,10 @@ const readTimestampAndMerkleTree = Sqlite.pipe(
   Effect.map(
     ([{ timestamp, merkleTree }]): TimestampAndMerkleTree => ({
       timestamp: unsafeTimestampFromString(timestamp as TimestampString),
-      merkleTree: unsafeMerkleTreeFromString(merkleTree as MerkleTreeString),
+      // MerkleTree is already parsed by Sqlite parseJSONResults.
+      // parseJSONResults is for https://kysely.dev/docs/recipes/relations
+      // We store MerkleTree as a string because it works everywhere.
+      merkleTree: merkleTree as MerkleTree,
     }),
   ),
 );
