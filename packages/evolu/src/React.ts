@@ -26,7 +26,12 @@ import {
   loadingPromisesPromiseProp,
   makeEvoluForPlatform,
 } from "./Evolu.js";
-import { CastableForMutate } from "./Model.js";
+import {
+  CastableForMutate,
+  ExcludeNullAndFalse,
+  FilterMap,
+  OrNullOrFalse,
+} from "./Model.js";
 import { AppState, FlushSync, Platform } from "./Platform.js";
 import { Row } from "./Sqlite.js";
 import { SyncState } from "./SyncWorker.js";
@@ -153,7 +158,7 @@ type UseQuery<S extends Schema> = <
   FilterMapRow extends Row,
 >(
   queryCallback: OrNullOrFalse<QueryCallback<S, QueryRow>>,
-  filterMap: (row: QueryRow) => OrNullOrFalse<FilterMapRow>,
+  filterMap: FilterMap<QueryRow, FilterMapRow>,
 ) => {
   /**
    * Rows from the database. They can be filtered and mapped by `filterMap`.
@@ -168,10 +173,6 @@ type UseQuery<S extends Schema> = <
     Simplify<ExcludeNullAndFalse<FilterMapRow>>
   > | null;
 };
-
-type OrNullOrFalse<T> = T | null | false;
-
-type ExcludeNullAndFalse<T> = Exclude<T, null | false>;
 
 type UseMutation<S extends Schema> = () => {
   /**
