@@ -17,7 +17,7 @@ export const Millis = Schema.number.pipe(
   Schema.greaterThanOrEqualTo(0),
   Schema.brand("Millis"),
 );
-export type Millis = Schema.To<typeof Millis>;
+export type Millis = Schema.Schema.To<typeof Millis>;
 
 const initialMillis = Schema.parseSync(Millis)(0);
 
@@ -25,7 +25,7 @@ export const Counter = Schema.number.pipe(
   Schema.between(0, 65535),
   Schema.brand("Counter"),
 );
-export type Counter = Schema.To<typeof Counter>;
+export type Counter = Schema.Schema.To<typeof Counter>;
 
 const initialCounter = Schema.parseSync(Counter)(0);
 

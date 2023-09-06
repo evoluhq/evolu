@@ -21,17 +21,17 @@ import {
 import RNPickerSelect from "react-native-picker-select";
 
 const TodoId = Evolu.id("Todo");
-type TodoId = Schema.To<typeof TodoId>;
+type TodoId = Schema.Schema.To<typeof TodoId>;
 
 const TodoCategoryId = Evolu.id("TodoCategory");
-type TodoCategoryId = Schema.To<typeof TodoCategoryId>;
+type TodoCategoryId = Schema.Schema.To<typeof TodoCategoryId>;
 
 const NonEmptyString50 = Schema.string.pipe(
   Schema.minLength(1),
   Schema.maxLength(50),
   Schema.brand("NonEmptyString50"),
 );
-type NonEmptyString50 = Schema.To<typeof NonEmptyString50>;
+type NonEmptyString50 = Schema.Schema.To<typeof NonEmptyString50>;
 
 const TodoTable = Schema.struct({
   id: TodoId,
@@ -39,13 +39,13 @@ const TodoTable = Schema.struct({
   isCompleted: Evolu.SqliteBoolean,
   categoryId: Schema.nullable(TodoCategoryId),
 });
-type TodoTable = Schema.To<typeof TodoTable>;
+type TodoTable = Schema.Schema.To<typeof TodoTable>;
 
 const TodoCategoryTable = Schema.struct({
   id: TodoCategoryId,
   name: NonEmptyString50,
 });
-type TodoCategoryTable = Schema.To<typeof TodoCategoryTable>;
+type TodoCategoryTable = Schema.Schema.To<typeof TodoCategoryTable>;
 
 const Database = Schema.struct({
   todo: TodoTable,
@@ -59,24 +59,19 @@ const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
     }),
   });
 
+interface TodoCategoryForSelect {
+  readonly id: TodoCategoryTable["id"];
+  readonly name: TodoCategoryTable["name"] | null;
+}
+
 const TodoCategorySelect: FC<{
+  categories: ReadonlyArray<TodoCategoryForSelect>;
   selected: TodoCategoryId | null;
   onSelect: (_value: TodoCategoryId | null) => void;
-}> = ({ selected, onSelect }) => {
+}> = ({ categories, selected, onSelect }) => {
   const nothingSelected = "";
-  const { rows } = useQuery(
-    (db) =>
-      db
-        .selectFrom("todoCategory")
-        .select(["id", "name"])
-        .where("isDeleted", "is not", Evolu.cast(true))
-        .orderBy("createdAt"),
-    // Filter out rows with nullable names.
-    ({ name, ...rest }) => name && { name, ...rest },
-  );
-
   const value =
-    selected && rows.find((row) => row.id === selected)
+    selected && categories.find((row) => row.id === selected)
       ? selected
       : nothingSelected;
 
@@ -86,14 +81,21 @@ const TodoCategorySelect: FC<{
       onValueChange={(value: TodoCategoryId | null): void => {
         onSelect(value);
       }}
-      items={rows.map((row) => ({ label: row.name, value: row.id }))}
+      items={categories.map((row) => ({
+        label: row.name || "",
+        value: row.id,
+      }))}
     />
   );
 };
 
 const TodoItem = memo<{
-  row: Pick<TodoTable, "id" | "title" | "isCompleted" | "categoryId">;
-}>(function TodoItem({ row: { id, title, isCompleted, categoryId } }) {
+  row: Pick<TodoTable, "id" | "title" | "isCompleted" | "categoryId"> & {
+    categories: ReadonlyArray<TodoCategoryForSelect>;
+  };
+}>(function TodoItem({
+  row: { id, title, isCompleted, categoryId, categories },
+}) {
   const { update } = useMutation();
 
   return (
@@ -108,6 +110,7 @@ const TodoItem = memo<{
           {title}
         </Text>
         <TodoCategorySelect
+          categories={categories}
           selected={categoryId}
           onSelect={(categoryId): void => {
             update("todo", { id, categoryId });
@@ -149,12 +152,9 @@ const Todos: FC = () => {
               .select(["todoCategory.id", "todoCategory.name"]),
           ).as("categories"),
         ]),
-    // (row) => row
     ({ title, isCompleted, ...rest }) =>
       title && isCompleted != null && { title, isCompleted, ...rest },
   );
-
-  // console.log(rows[0].categories);
 
   const [text, setText] = useState("");
   const newTodoTitle = Schema.parseEither(Evolu.NonEmptyString1000)(text);
@@ -173,11 +173,6 @@ const Todos: FC = () => {
   return (
     <>
       <Text style={appStyles.h2}>Todos</Text>
-      <View>
-        {rows.map((row) => (
-          <TodoItem key={row.id} row={row} />
-        ))}
-      </View>
       <TextInput
         autoComplete="off"
         autoCorrect={false}
@@ -187,6 +182,11 @@ const Todos: FC = () => {
         placeholder="What needs to be done?"
         onEndEditing={handleTextInputEndEditing}
       />
+      <View>
+        {rows.map((row) => (
+          <TodoItem key={row.id} row={row} />
+        ))}
+      </View>
     </>
   );
 };
@@ -200,7 +200,6 @@ const TodoCategories: FC = () => {
         .select(["id", "name"])
         .where("isDeleted", "is not", Evolu.cast(true))
         .orderBy("createdAt"),
-    // (row) => row
     ({ name, ...rest }) => name && { name, ...rest },
   );
 
@@ -221,6 +220,15 @@ const TodoCategories: FC = () => {
   return (
     <>
       <Text style={appStyles.h2}>Categories</Text>
+      <TextInput
+        autoComplete="off"
+        autoCorrect={false}
+        style={appStyles.textInput}
+        value={text}
+        onChangeText={setText}
+        placeholder="New Category"
+        onEndEditing={handleTextInputEndEditing}
+      />
       {rows.map(({ id, name }) => (
         <View key={id} style={{ marginBottom: 16 }}>
           <Text style={appStyles.item}>{name}</Text>
@@ -234,15 +242,6 @@ const TodoCategories: FC = () => {
           </View>
         </View>
       ))}
-      <TextInput
-        autoComplete="off"
-        autoCorrect={false}
-        style={appStyles.textInput}
-        value={text}
-        onChangeText={setText}
-        placeholder="New Category"
-        onEndEditing={handleTextInputEndEditing}
-      />
     </>
   );
 };

@@ -45,7 +45,7 @@ export const NodeId: Schema.BrandSchema<
   string,
   string & Brand.Brand<"NodeId">
 > = Schema.string.pipe(Schema.pattern(/^[\w-]{16}$/), Schema.brand("NodeId"));
-export type NodeId = Schema.To<typeof NodeId>;
+export type NodeId = Schema.Schema.To<typeof NodeId>;
 
 const nanoidForNodeId = customAlphabet("0123456789abcdef", 16);
 

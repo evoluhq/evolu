@@ -1,5 +1,5 @@
 import * as Schema from "@effect/schema/Schema";
-import { formatErrors } from "@effect/schema/TreeFormatter";
+import * as TreeFormatter from "@effect/schema/TreeFormatter";
 import * as Evolu from "evolu";
 import {
   ChangeEvent,
@@ -12,17 +12,17 @@ import {
 } from "react";
 
 const TodoId = Evolu.id("Todo");
-type TodoId = Schema.To<typeof TodoId>;
+type TodoId = Schema.Schema.To<typeof TodoId>;
 
 const TodoCategoryId = Evolu.id("TodoCategory");
-type TodoCategoryId = Schema.To<typeof TodoCategoryId>;
+type TodoCategoryId = Schema.Schema.To<typeof TodoCategoryId>;
 
 const NonEmptyString50 = Schema.string.pipe(
   Schema.minLength(1),
   Schema.maxLength(50),
   Schema.brand("NonEmptyString50"),
 );
-type NonEmptyString50 = Schema.To<typeof NonEmptyString50>;
+type NonEmptyString50 = Schema.Schema.To<typeof NonEmptyString50>;
 
 const TodoTable = Schema.struct({
   id: TodoId,
@@ -30,19 +30,19 @@ const TodoTable = Schema.struct({
   isCompleted: Evolu.SqliteBoolean,
   categoryId: Schema.nullable(TodoCategoryId),
 });
-type TodoTable = Schema.To<typeof TodoTable>;
+type TodoTable = Schema.Schema.To<typeof TodoTable>;
 
 const TodoCategoryTable = Schema.struct({
   id: TodoCategoryId,
   name: NonEmptyString50,
 });
-type TodoCategoryTable = Schema.To<typeof TodoCategoryTable>;
+type TodoCategoryTable = Schema.Schema.To<typeof TodoCategoryTable>;
 
 const Database = Schema.struct({
   todo: TodoTable,
   todoCategory: TodoCategoryTable,
 });
-type Database = Schema.To<typeof Database>;
+type Database = Schema.Schema.To<typeof Database>;
 
 const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
   Evolu.create(Database, {
@@ -61,7 +61,7 @@ const prompt = <From extends string, To>(
   if (value == null) return; // on cancel
   const a = Schema.parseEither(schema)(value);
   if (a._tag === "Left") {
-    alert(formatErrors(a.left.errors));
+    alert(TreeFormatter.formatErrors(a.left.errors));
     return;
   }
   onSuccess(a.right);

@@ -10,7 +10,7 @@ export const Id = Schema.string.pipe(
   Schema.pattern(/^[\w-]{21}$/),
   Schema.brand("Id"),
 );
-export type Id = Schema.To<typeof Id>;
+export type Id = Schema.Schema.To<typeof Id>;
 
 /**
  * A factory function to create {@link Id} Schema for a specific table.
@@ -22,7 +22,7 @@ export type Id = Schema.To<typeof Id>;
  * import * as Evolu from "evolu";
  *
  * const TodoId = Evolu.id("Todo");
- * type TodoId = Schema.To<typeof TodoId>;
+ * type TodoId = Schema.Schema.To<typeof TodoId>;
  *
  * if (!Schema.is(TodoId)(value)) return;
  * ```
@@ -41,7 +41,7 @@ export const SqliteDate = Schema.string.pipe(
   Schema.filter((s) => !isNaN(Date.parse(s))),
   Schema.brand("SqliteDate"),
 );
-export type SqliteDate = Schema.To<typeof SqliteDate>;
+export type SqliteDate = Schema.Schema.To<typeof SqliteDate>;
 
 /**
  * SQLite doesn't support the boolean type, so Evolu uses SqliteBoolean instead.
@@ -53,7 +53,7 @@ export const SqliteBoolean = Schema.number.pipe(
   Schema.filter((s) => s === 0 || s === 1),
   Schema.brand("SqliteBoolean"),
 );
-export type SqliteBoolean = Schema.To<typeof SqliteBoolean>;
+export type SqliteBoolean = Schema.Schema.To<typeof SqliteBoolean>;
 
 /**
  * SQLite doesn't support Date nor Boolean types, so Evolu emulates them
@@ -117,7 +117,7 @@ export const String1000: Schema.BrandSchema<
   string,
   string & Brand.Brand<"String1000">
 > = Schema.string.pipe(Schema.maxLength(1000), Schema.brand("String1000"));
-export type String1000 = Schema.To<typeof String1000>;
+export type String1000 = Schema.Schema.To<typeof String1000>;
 
 /**
  * A nonempty string with a maximum length of 1000 characters.
@@ -137,7 +137,7 @@ export const NonEmptyString1000 = Schema.string.pipe(
   Schema.maxLength(1000),
   Schema.brand("NonEmptyString1000"),
 );
-export type NonEmptyString1000 = Schema.To<typeof NonEmptyString1000>;
+export type NonEmptyString1000 = Schema.Schema.To<typeof NonEmptyString1000>;
 
 /**
  * A positive integer.
@@ -157,7 +157,7 @@ export const PositiveInt = Schema.number.pipe(
   Schema.positive(),
   Schema.brand("PositiveInt"),
 );
-export type PositiveInt = Schema.To<typeof PositiveInt>;
+export type PositiveInt = Schema.Schema.To<typeof PositiveInt>;
 
 /**
  * Filter and map array items in one step with the correct return type and

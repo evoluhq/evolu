@@ -69,7 +69,7 @@
     "react-native-get-random-values": "^1.9.0"
   },
   "devDependencies": {
-    "@effect/schema": "^0.34.0",
+    "@effect/schema": "^0.35.0",
     "@evolu/tsconfig": "workspace:*",
     "@protobuf-ts/plugin": "^2.9.1",
     "@protobuf-ts/protoc": "^2.9.1",
@@ -78,7 +78,7 @@
     "@types/react-dom": "^18.2.7",
     "@types/web-locks-api": "^0.0.2",
     "array-shuffle": "^3.0.0",
-    "effect": "2.0.0-next.30",
+    "effect": "2.0.0-next.31",
     "eslint": "^8.48.0",
     "eslint-config-evolu": "workspace:*",
     "expo": "^49.0.9",
@@ -92,9 +92,9 @@
     "vitest": "^0.34.3"
   },
   "peerDependencies": {
-    "@effect/schema": "^0.34.0",
+    "@effect/schema": "^0.35.0",
     "@sqlite.org/sqlite-wasm": "3.43.0-build3",
-    "effect": "2.0.0-next.30",
+    "effect": "2.0.0-next.31",
     "expo": "^49.0.9",
     "expo-sqlite": "~11.3.2",
     "react": "^18.2.0",
