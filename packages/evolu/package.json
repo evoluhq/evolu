@@ -5,7 +5,8 @@
   "keywords": [
     "evolu",
     "react",
-    "hooks",
+    "react-native",
+    "react-hooks",
     "local-first",
     "E2EE",
     "SQLite",
