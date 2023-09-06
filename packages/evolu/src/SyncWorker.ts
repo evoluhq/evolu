@@ -1,6 +1,6 @@
+import { BinaryReader, BinaryWriter } from "@protobuf-ts/runtime";
 import { Context, Effect, Function, Layer, Match } from "effect";
-import { AesGcm } from "./Crypto.js";
-import { AesGcmLive } from "./CryptoLive.web.js";
+import { SecretBox } from "./Crypto.js";
 import { Owner } from "./Db.js";
 import { UnexpectedError, makeUnexpectedError } from "./Errors.js";
 import {
@@ -11,7 +11,6 @@ import {
 } from "./MerkleTree.js";
 import { Id } from "./Model.js";
 import { Fetch, SyncLock } from "./Platform.js";
-import { FetchLive } from "./Platform.web.js";
 import {
   EncryptedMessage,
   MessageContent,
@@ -57,6 +56,7 @@ export interface NewMessage {
 
 export interface Message extends NewMessage {
   readonly timestamp: TimestampString;
+  readonly version: number;
 }
 
 interface SyncWorkerInputSyncCompleted {
@@ -146,18 +146,34 @@ const valueFromProtobuf = (value: MessageContent["value"]): Value => {
   }
 };
 
+// The 'protobuf-ts' uses TextEncoder, but polyfill fast-text-encoding
+// doesn't support the fatal option.
+// https://github.com/timostamm/protobuf-ts/issues/184#issuecomment-1658443836
+const binaryWriteOptions = {
+  writerFactory: (): BinaryWriter =>
+    new BinaryWriter({
+      encode: (input: string): Uint8Array => new TextEncoder().encode(input),
+    }),
+};
+const binaryReadOptions = {
+  readerFactory: (bytes: Uint8Array): BinaryReader =>
+    new BinaryReader(bytes, {
+      decode: (input: Uint8Array): string => new TextDecoder().decode(input),
+    }),
+};
+
 const sync = (
   input: SyncWorkerInputSync,
 ): Effect.Effect<
-  SyncLock | SyncWorkerOnMessage | AesGcm | Fetch,
+  SyncLock | SyncWorkerOnMessage | Fetch | SecretBox,
   never,
   void
 > =>
   Effect.gen(function* (_) {
     const syncLock = yield* _(SyncLock);
     const syncWorkerOnMessage = yield* _(SyncWorkerOnMessage);
-    const aesGcm = yield* _(AesGcm);
     const fetch = yield* _(Fetch);
+    const secretBox = yield* _(SecretBox);
 
     if (input.syncLoopCount === 0) {
       if (!(yield* _(syncLock.acquire))) return;
@@ -166,27 +182,34 @@ const sync = (
 
     yield* _(
       Effect.forEach(input.messages, ({ timestamp, ...rest }) =>
-        aesGcm
-          .encrypt(
+        secretBox
+          .seal(
             input.owner.encryptionKey,
-            MessageContent.toBinary({
-              table: rest.table,
-              row: rest.row,
-              column: rest.column,
-              value: valueToProtobuf(rest.value),
-            }),
+            MessageContent.toBinary(
+              {
+                table: rest.table,
+                row: rest.row,
+                column: rest.column,
+                value: valueToProtobuf(rest.value),
+                version: rest.version,
+              },
+              binaryWriteOptions,
+            ),
           )
           .pipe(
             Effect.map((content): EncryptedMessage => ({ timestamp, content })),
           ),
       ),
       Effect.map((messages) =>
-        SyncRequest.toBinary({
-          messages,
-          userId: input.owner.id,
-          nodeId: input.timestamp.node,
-          merkleTree: merkleTreeToString(input.merkleTree),
-        }),
+        SyncRequest.toBinary(
+          {
+            messages,
+            userId: input.owner.id,
+            nodeId: input.timestamp.node,
+            merkleTree: merkleTreeToString(input.merkleTree),
+          },
+          binaryWriteOptions,
+        ),
       ),
       Effect.flatMap((body) => fetch(input.syncUrl, body)),
       Effect.catchTag("FetchError", () =>
@@ -207,7 +230,9 @@ const sync = (
               response
                 .arrayBuffer()
                 .then((buffer) => new Uint8Array(buffer))
-                .then((array) => SyncResponse.fromBinary(array)),
+                .then((array) =>
+                  SyncResponse.fromBinary(array, binaryReadOptions),
+                ),
             );
           default:
             return Effect.fail<SyncStateIsNotSyncedError>({
@@ -218,8 +243,10 @@ const sync = (
       }),
       Effect.flatMap((syncResponse) =>
         Effect.forEach(syncResponse.messages, (message) =>
-          aesGcm.decrypt(input.owner.encryptionKey, message.content).pipe(
-            Effect.map((array) => MessageContent.fromBinary(array)),
+          secretBox.open(input.owner.encryptionKey, message.content).pipe(
+            Effect.map((array) =>
+              MessageContent.fromBinary(array, binaryReadOptions),
+            ),
             Effect.map(
               (content): Message => ({
                 timestamp: message.timestamp as TimestampString,
@@ -227,6 +254,7 @@ const sync = (
                 row: content.row as Id,
                 column: content.column,
                 value: valueFromProtobuf(content.value),
+                version: content.version,
               }),
             ),
           ),
@@ -253,10 +281,15 @@ export const SyncWorkerLive = Layer.effect(
   SyncWorker,
   Effect.gen(function* (_) {
     const syncLock = yield* _(SyncLock);
+    const fetch = yield* _(Fetch);
+    const secretBox = yield* _(SecretBox);
 
-    const handleError = (error: UnexpectedError): void => {
-      syncWorker.onMessage(error);
-    };
+    const onError = (
+      error: UnexpectedError,
+    ): Effect.Effect<never, never, void> =>
+      Effect.sync(() => {
+        syncWorker.onMessage(error);
+      });
 
     const postMessage: SyncWorker["postMessage"] = (input) => {
       void Match.value(input).pipe(
@@ -264,13 +297,12 @@ export const SyncWorkerLive = Layer.effect(
           sync,
           syncCompleted: () => syncLock.release,
         }),
-        Effect.catchAllDefect((error) => {
-          handleError(makeUnexpectedError(error));
-          return Effect.succeed(undefined);
-        }),
+        Effect.catchAllDefect(makeUnexpectedError),
+        Effect.catchAll(onError),
         Effect.provideService(SyncLock, syncLock),
+        Effect.provideService(Fetch, fetch),
+        Effect.provideService(SecretBox, secretBox),
         Effect.provideService(SyncWorkerOnMessage, syncWorker.onMessage),
-        Effect.provideLayer(Layer.mergeAll(AesGcmLive, FetchLive)),
         Effect.runPromise,
       );
     };

@@ -1,9 +1,8 @@
+import { hexToBytes } from "@noble/ciphers/utils";
 import {
   Brand,
-  Cause,
   Context,
   Effect,
-  Either,
   Function,
   Layer,
   Match,
@@ -14,9 +13,10 @@ import {
   pipe,
 } from "effect";
 import { Config, ConfigLive } from "./Config.js";
-import { Bip39, Mnemonic, NanoId, Slip21 } from "./Crypto.js";
+import { Bip39, Mnemonic, NanoId } from "./Crypto.js";
 import {
   Owner,
+  OwnerId,
   Table,
   Tables,
   ensureSchema,
@@ -28,11 +28,9 @@ import { QueryPatches, makePatches } from "./Diff.js";
 import { EvoluError, makeUnexpectedError } from "./Errors.js";
 import {
   MerkleTree,
-  MerkleTreeString,
   diffMerkleTrees,
   insertIntoMerkleTree,
   merkleTreeToString,
-  unsafeMerkleTreeFromString,
 } from "./MerkleTree.js";
 import { CastableForMutate, Id, SqliteDate, cast } from "./Model.js";
 import {
@@ -68,6 +66,7 @@ import {
   unsafeTimestampFromString,
 } from "./Timestamp.js";
 
+// TODO: Refactor to Effect.
 export interface DbWorker {
   readonly postMessage: (input: DbWorkerInput) => void;
   onMessage: (output: DbWorkerOutput) => void;
@@ -174,13 +173,20 @@ export interface MutateItem {
 
 const init = (
   input: DbWorkerInputInit,
-): Effect.Effect<Sqlite | Bip39 | Slip21 | NanoId, never, Owner> =>
+): Effect.Effect<Sqlite | Bip39 | NanoId, never, Owner> =>
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
 
     return yield* _(
       sqlite.exec(selectOwner),
-      Effect.map(([owner]) => owner as unknown as Owner),
+      Effect.map(
+        ({ rows: [row] }): Owner => ({
+          id: row.id as OwnerId,
+          mnemonic: row.mnemonic as Mnemonic,
+          // expo-sqlite 11.3.2 doesn't support Uint8Array
+          encryptionKey: hexToBytes(row.encryptionKey as string),
+        }),
+      ),
       someDefectToNoSuchTableOrColumnError,
       Effect.catchTag("NoSuchTableOrColumnError", () => lazyInit()),
       Effect.tap(() => ensureSchema(input.tables)),
@@ -209,7 +215,7 @@ const query = ({
       Effect.forEach(queries, (query) =>
         sqlite
           .exec(queryObjectFromQuery(query))
-          .pipe(Effect.map((rows) => [query, rows] as const)),
+          .pipe(Effect.map((result) => [query, result.rows] as const)),
       ),
     );
     const previous = yield* _(Ref.get(rowsCache));
@@ -230,10 +236,14 @@ interface TimestampAndMerkleTree {
 
 const readTimestampAndMerkleTree = Sqlite.pipe(
   Effect.flatMap((sqlite) => sqlite.exec(selectOwnerTimestampAndMerkleTree)),
+  Effect.map((result) => result.rows),
   Effect.map(
     ([{ timestamp, merkleTree }]): TimestampAndMerkleTree => ({
       timestamp: unsafeTimestampFromString(timestamp as TimestampString),
-      merkleTree: unsafeMerkleTreeFromString(merkleTree as MerkleTreeString),
+      // MerkleTree is already parsed by Sqlite parseJSONResults.
+      // parseJSONResults is for https://kysely.dev/docs/recipes/relations
+      // We store MerkleTree as a string because it works everywhere.
+      merkleTree: merkleTree as MerkleTree,
     }),
   ),
 );
@@ -317,6 +327,7 @@ const applyMessages = ({
           sql: selectLastTimestampForTableRowColumn,
           parameters: [message.table, message.row, message.column],
         }),
+        Effect.map((result) => result.rows),
         Effect.flatMap(ReadonlyArray.head),
         Effect.map((row) => row.timestamp as TimestampString),
         Effect.catchTag("NoSuchElementException", () => Effect.succeed(null)),
@@ -337,7 +348,7 @@ const applyMessages = ({
       }
 
       if (timestamp == null || timestamp !== message.timestamp) {
-        yield* _(
+        const { changes } = yield* _(
           sqlite.exec({
             sql: insertIntoMessagesIfNew,
             parameters: [
@@ -346,11 +357,10 @@ const applyMessages = ({
               message.row,
               message.column,
               message.value,
+              message.version,
             ],
           }),
         );
-
-        const changes = yield* _(sqlite.changes);
 
         if (changes > 0)
           merkleTree = insertIntoMerkleTree(
@@ -399,7 +409,11 @@ const mutate = ({
       Effect.forEach((newMessage) =>
         Effect.map(sendTimestamp(timestamp), (nextTimestamp): Message => {
           timestamp = nextTimestamp;
-          return { ...newMessage, timestamp: timestampToString(timestamp) };
+          return {
+            ...newMessage,
+            timestamp: timestampToString(timestamp),
+            version: 1,
+          };
         }),
       ),
     );
@@ -456,6 +470,7 @@ const handleSyncResponse = ({
     dbWorkerOnMessage({ _tag: "onReceive" });
 
     const diff = diffMerkleTrees(response.merkleTree, merkleTree);
+
     const syncWorkerPostMessage = yield* _(SyncWorkerPostMessage);
 
     if (Option.isNone(diff)) {
@@ -470,16 +485,16 @@ const handleSyncResponse = ({
       return;
     }
 
-    const sqlite = yield* _(Sqlite);
+    const [sqlite, config, owner] = yield* _(
+      Effect.all([Sqlite, Config, Owner]),
+    );
     const messagesToSync = yield* _(
       sqlite.exec({
         sql: selectMessagesToSync,
         parameters: [timestampToString(makeSyncTimestamp(diff.value))],
       }),
-      Effect.map((a) => a as unknown as ReadonlyArray<Message>),
+      Effect.map(({ rows }) => rows as unknown as ReadonlyArray<Message>),
     );
-
-    const [config, owner] = yield* _(Effect.all([Config, Owner]));
     syncWorkerPostMessage({
       _tag: "sync",
       syncUrl: config.syncUrl,
@@ -528,16 +543,13 @@ const sync = ({
 
 const reset = (
   input: DbWorkerInputReset,
-): Effect.Effect<
-  Sqlite | Bip39 | Slip21 | NanoId | DbWorkerOnMessage,
-  never,
-  void
-> =>
+): Effect.Effect<Sqlite | Bip39 | NanoId | DbWorkerOnMessage, never, void> =>
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
 
     yield* _(
       sqlite.exec(`SELECT "name" FROM "sqlite_master" WHERE "type" = 'table'`),
+      Effect.map((result) => result.rows),
       Effect.flatMap(
         // The dropped table is completely removed from the database schema and
         // the disk file. The table can not be recovered.
@@ -561,14 +573,15 @@ export const DbWorkerLive = Layer.effect(
   Effect.gen(function* (_) {
     const syncWorker = yield* _(SyncWorker);
 
-    const handleError = (error: EvoluError): void => {
-      dbWorker.onMessage({ _tag: "onError", error });
-    };
+    const onError = (error: EvoluError): Effect.Effect<never, never, void> =>
+      Effect.sync(() => {
+        dbWorker.onMessage({ _tag: "onError", error });
+      });
 
     syncWorker.onMessage = (output): void => {
       switch (output._tag) {
         case "UnexpectedError":
-          handleError(output);
+          onError(output).pipe(Effect.runSync);
           break;
         case "SyncWorkerOutputSyncResponse":
           postMessage(output);
@@ -581,42 +594,42 @@ export const DbWorkerLive = Layer.effect(
     const context = Context.empty().pipe(
       Context.add(Sqlite, yield* _(Sqlite)),
       Context.add(Bip39, yield* _(Bip39)),
-      Context.add(Slip21, yield* _(Slip21)),
       Context.add(NanoId, yield* _(NanoId)),
     );
 
     const run = (
-      effect: Effect.Effect<Sqlite | Bip39 | Slip21 | NanoId, EvoluError, void>,
+      effect: Effect.Effect<Sqlite | Bip39 | NanoId, EvoluError, void>,
     ): Promise<void> =>
       effect.pipe(
+        Effect.catchAllDefect(makeUnexpectedError),
         transaction,
+        Effect.catchAll(onError),
         Effect.provideContext(context),
-        Effect.catchAllCause((cause) =>
-          Cause.failureOrCause(cause).pipe(
-            Either.match({
-              onLeft: handleError,
-              onRight: (cause) =>
-                handleError(makeUnexpectedError(Cause.squash(cause))),
-            }),
-            () => Effect.succeed(undefined),
-          ),
-        ),
         Effect.runPromise,
       );
 
     type Write = (input: DbWorkerInput) => Promise<void>;
 
-    const makeWriteAfterInit = (owner: Owner, config: Config): Write => {
+    // Write for reset only in case init fails.
+    const writeForInitFail: Write = (input): Promise<void> => {
+      if (input._tag !== "reset") return Promise.resolve(undefined);
+      return reset(input).pipe(
+        Effect.provideService(DbWorkerOnMessage, dbWorker.onMessage),
+        Effect.provideContext(context),
+        run,
+      );
+    };
+
+    const makeWriteForInitSuccess = (owner: Owner, config: Config): Write => {
       let skipAllBecauseOfReset = false;
 
-      const write: Write = (input) => {
+      return (input) => {
         if (skipAllBecauseOfReset) return Promise.resolve(undefined);
 
         return Match.value(input).pipe(
           Match.tagsExhaustive({
-            init: () => {
-              throw new Error("init must be called once");
-            },
+            init: () =>
+              makeUnexpectedError(new Error("init must be called once")),
             query,
             mutate,
             sync,
@@ -640,29 +653,25 @@ export const DbWorkerLive = Layer.effect(
           run,
         );
       };
-
-      return write;
     };
 
     let write: Write = (input) => {
-      if (input._tag !== "init") throw new Error("init must be called first");
+      if (input._tag !== "init")
+        return run(makeUnexpectedError(new Error("init must be called first")));
+      write = writeForInitFail;
       return init(input).pipe(
         Effect.map((owner) => {
           dbWorker.onMessage({ _tag: "onOwner", owner });
-          write = makeWriteAfterInit(owner, input.config);
+          write = makeWriteForInitSuccess(owner, input.config);
         }),
         run,
       );
     };
 
-    const stream = new WritableStream<DbWorkerInput>({
-      write: (input): Promise<void> => write(input),
-    });
+    let messageQueue: Promise<void> = Promise.resolve(undefined);
 
     const postMessage: DbWorker["postMessage"] = (input) => {
-      const writer = stream.getWriter();
-      void writer.write(input);
-      writer.releaseLock();
+      messageQueue = messageQueue.then(() => write(input));
     };
 
     const dbWorker: DbWorker = {

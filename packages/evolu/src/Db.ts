@@ -1,6 +1,7 @@
 import * as AST from "@effect/schema/AST";
 import * as S from "@effect/schema/Schema";
 import { make } from "@effect/schema/Schema";
+import { bytesToHex } from "@noble/ciphers/utils";
 import {
   Brand,
   Context,
@@ -15,10 +16,15 @@ import {
 } from "effect";
 import * as Kysely from "kysely";
 import { urlAlphabet } from "nanoid";
-import { Bip39, Mnemonic, NanoId, Slip21 } from "./Crypto.js";
+import { Bip39, Mnemonic, NanoId, slip21Derive } from "./Crypto.js";
 import { initialMerkleTree, merkleTreeToString } from "./MerkleTree.js";
 import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
-import { initDb } from "./Sql.js";
+import {
+  createMessageTable,
+  createMessageTableIndex,
+  createOwnerTable,
+  insertOwner,
+} from "./Sql.js";
 import {
   Query,
   QueryObject,
@@ -146,7 +152,7 @@ export const transaction = <R, E, A>(
       sqlite.exec("BEGIN"),
       () => effect,
       (_, exit) =>
-        Exit.isFailure(exit) ? sqlite.exec("ROLLBACK") : sqlite.exec("COMMIT"),
+        Exit.isFailure(exit) ? sqlite.exec("ROLLBACK") : sqlite.exec("END"),
     ),
   );
 
@@ -161,7 +167,7 @@ export const someDefectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
       error != null &&
       "message" in error &&
       typeof error.message === "string" &&
-      error.message.includes("sqlite3 result code 1") &&
+      error.message.includes("code 1") &&
       (error.message.includes("no such table") ||
         error.message.includes("no such column") ||
         error.message.includes("has no column"))
@@ -178,17 +184,16 @@ export const someDefectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
 
 export const makeOwner = (
   mnemonic?: Mnemonic,
-): Effect.Effect<Bip39 | Slip21, never, Owner> =>
+): Effect.Effect<Bip39, never, Owner> =>
   Effect.gen(function* (_) {
     const bip39 = yield* _(Bip39);
-    const slip21 = yield* _(Slip21);
 
     if (mnemonic == null) mnemonic = yield* _(bip39.make);
 
     const seed = yield* _(bip39.toSeed(mnemonic));
 
     const id = yield* _(
-      slip21.derive(seed, ["Evolu", "Owner Id"]).pipe(
+      slip21Derive(seed, ["Evolu", "Owner Id"]).pipe(
         Effect.map((key) => {
           // convert key to nanoid
           let id = "";
@@ -201,7 +206,7 @@ export const makeOwner = (
     );
 
     const encryptionKey = yield* _(
-      slip21.derive(seed, ["Evolu", "Encryption Key"]),
+      slip21Derive(seed, ["Evolu", "Encryption Key"]),
     );
 
     return { mnemonic, id, encryptionKey };
@@ -209,30 +214,35 @@ export const makeOwner = (
 
 export const lazyInit = (
   mnemonic?: Mnemonic,
-): Effect.Effect<Sqlite | Bip39 | Slip21 | NanoId, never, Owner> =>
-  Effect.all(
-    [
-      Sqlite,
-      makeOwner(mnemonic),
-      makeInitialTimestamp.pipe(Effect.map(timestampToString)),
-      Effect.succeed(merkleTreeToString(initialMerkleTree)),
-    ],
-    { concurrency: "unbounded" },
-  ).pipe(
-    Effect.tap(([sqlite, owner, initialTimestamp, initialMerkleTree]) =>
-      sqlite.exec({
-        sql: initDb,
-        parameters: [
-          owner.id,
-          owner.mnemonic,
-          owner.encryptionKey,
-          initialTimestamp,
-          initialMerkleTree,
-        ],
+): Effect.Effect<Sqlite | Bip39 | NanoId, never, Owner> =>
+  Effect.gen(function* (_) {
+    const [owner, sqlite, initialTimestampString] = yield* _(
+      Effect.all([makeOwner(mnemonic), Sqlite, makeInitialTimestamp], {
+        concurrency: "unbounded",
       }),
-    ),
-    Effect.map(([, owner]) => owner),
-  );
+    );
+
+    yield* _(
+      Effect.all([
+        sqlite.exec(createMessageTable),
+        sqlite.exec(createMessageTableIndex),
+        sqlite.exec(createOwnerTable),
+        sqlite.exec({
+          sql: insertOwner,
+          parameters: [
+            owner.id,
+            owner.mnemonic,
+            // expo-sqlite 11.3.2 doesn't support Uint8Array
+            bytesToHex(owner.encryptionKey),
+            timestampToString(initialTimestampString),
+            merkleTreeToString(initialMerkleTree),
+          ],
+        }),
+      ]),
+    );
+
+    return owner;
+  });
 
 const getTables: Effect.Effect<
   Sqlite,
@@ -242,6 +252,7 @@ const getTables: Effect.Effect<
   Effect.flatMap((sqlite) =>
     sqlite.exec(`SELECT "name" FROM "sqlite_schema" WHERE "type" = 'table'`),
   ),
+  Effect.map((result) => result.rows),
   Effect.map(ReadonlyArray.map((row) => (row.name as string) + "")),
   Effect.map(ReadonlyArray.filter(Predicate.not(String.startsWith("__")))),
   Effect.map(ReadonlyArray.dedupeWith(String.Equivalence)),
@@ -255,6 +266,7 @@ const updateTable = ({
     const sqlite = yield* _(Sqlite);
     const sql = yield* _(
       sqlite.exec(`PRAGMA table_info (${name})`),
+      Effect.map((result) => result.rows),
       Effect.map(ReadonlyArray.map((row) => row.name as string)),
       Effect.map((existingColumns) =>
         ReadonlyArray.differenceWith(String.Equivalence)(existingColumns)(

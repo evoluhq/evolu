@@ -1,7 +1,11 @@
 import * as Schema from "@effect/schema/Schema";
-import type { hmac } from "@noble/hashes/hmac";
-import type { sha512 } from "@noble/hashes/sha512";
+import { secretbox } from "@noble/ciphers/salsa";
+import { concatBytes } from "@noble/ciphers/utils";
+import { hmac } from "@noble/hashes/hmac";
+import { sha512 } from "@noble/hashes/sha512";
+import { randomBytes } from "@noble/hashes/utils";
 import { Brand, Context, Effect, Layer } from "effect";
+import { customAlphabet, nanoid } from "nanoid";
 
 export interface Bip39 {
   readonly make: Effect.Effect<never, never, Mnemonic>;
@@ -30,50 +34,6 @@ export interface InvalidMnemonicError {
  */
 export type Mnemonic = string & Brand.Brand<"Mnemonic">;
 
-export type Hmac = typeof hmac;
-
-export const Hmac = Context.Tag<Hmac>("evolu/Hmac");
-
-export type Sha512 = typeof sha512;
-
-export const Sha512 = Context.Tag<Sha512>("evolu/Sha512");
-
-/**
- * SLIP-21 implementation
- * https://github.com/satoshilabs/slips/blob/master/slip-0021.md
- */
-export interface Slip21 {
-  readonly derive: (
-    seed: Uint8Array,
-    path: string[],
-  ) => Effect.Effect<never, never, Uint8Array>;
-}
-
-export const Slip21 = Context.Tag<Slip21>("evolu/Slip21");
-
-export const Slip21Live = Layer.effect(
-  Slip21,
-  Effect.gen(function* (_) {
-    const hmac = yield* _(Hmac);
-    const sha512 = yield* _(Sha512);
-
-    const derive: Slip21["derive"] = (seed, path) =>
-      Effect.sync(() => {
-        let m = hmac(sha512, "Symmetric key seed", seed);
-        for (let i = 0; i < path.length; i++) {
-          const p = new TextEncoder().encode(path[i]);
-          const e = new Uint8Array(p.byteLength + 1);
-          e[0] = 0;
-          e.set(p, 1);
-          m = hmac(sha512, m.slice(0, 32), e);
-        }
-        return m.slice(32, 64);
-      });
-
-    return { derive };
-  }),
-);
-
 export interface NanoId {
   readonly nanoid: Effect.Effect<never, never, string>;
   readonly nanoidAsNodeId: Effect.Effect<never, never, NodeId>;
@@ -85,20 +45,69 @@ export const NodeId: Schema.BrandSchema<
   string,
   string & Brand.Brand<"NodeId">
 > = Schema.string.pipe(Schema.pattern(/^[\w-]{16}$/), Schema.brand("NodeId"));
-export type NodeId = Schema.To<typeof NodeId>;
+export type NodeId = Schema.Schema.To<typeof NodeId>;
 
-export const customAlphabetForNodeId = "0123456789abcdef";
+const nanoidForNodeId = customAlphabet("0123456789abcdef", 16);
 
-export interface AesGcm {
-  readonly encrypt: (
-    sharedKey: Uint8Array,
+export const NanoIdLive = Layer.succeed(
+  NanoId,
+  NanoId.of({
+    nanoid: Effect.sync(() => nanoid()),
+    nanoidAsNodeId: Effect.sync(() => nanoidForNodeId() as NodeId),
+  }),
+);
+
+/**
+ * SLIP-21 implementation
+ * https://github.com/satoshilabs/slips/blob/master/slip-0021.md
+ */
+export const slip21Derive = (
+  seed: Uint8Array,
+  path: string[],
+): Effect.Effect<never, never, Uint8Array> =>
+  Effect.sync(() => {
+    let m = hmac(sha512, "Symmetric key seed", seed);
+    for (let i = 0; i < path.length; i++) {
+      const p = new TextEncoder().encode(path[i]);
+      const e = new Uint8Array(p.byteLength + 1);
+      e[0] = 0;
+      e.set(p, 1);
+      m = hmac(sha512, m.slice(0, 32), e);
+    }
+    return m.slice(32, 64);
+  });
+
+/**
+ * Alias to xsalsa20poly1305, for compatibility with libsodium / nacl
+ */
+export interface SecretBox {
+  readonly seal: (
+    key: Uint8Array,
     plaintext: Uint8Array,
   ) => Effect.Effect<never, never, Uint8Array>;
 
-  readonly decrypt: (
-    sharedKey: Uint8Array,
+  readonly open: (
+    key: Uint8Array,
     ciphertext: Uint8Array,
   ) => Effect.Effect<never, never, Uint8Array>;
 }
 
-export const AesGcm = Context.Tag<AesGcm>("evolu/AesGcm");
+export const SecretBox = Context.Tag<SecretBox>("evolu/SecretBox");
+
+export const SecretBoxLive = Layer.succeed(
+  SecretBox,
+  SecretBox.of({
+    seal: (key, plaintext) =>
+      Effect.sync(() => {
+        const nonce = randomBytes(24);
+        const ciphertext = secretbox(key, nonce).seal(plaintext);
+        return concatBytes(nonce, ciphertext);
+      }),
+    open: (key, ciphertext) =>
+      Effect.sync(() => {
+        const nonce = ciphertext.subarray(0, 24);
+        const ciphertextWithoutNonce = ciphertext.subarray(24);
+        return secretbox(key, nonce).open(ciphertextWithoutNonce);
+      }),
+  }),
+);

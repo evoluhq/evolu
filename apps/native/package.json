@@ -6,28 +6,34 @@
   "scripts": {
     "ios": "expo start --ios",
     "android": "expo start --android",
+    "build-native": "expo start --no-dev --minify",
     "lint": "eslint --ext ts,tsx .",
     "clean": "rm -rf .turbo && rm -rf .expo && rm -rf node_modules"
   },
   "dependencies": {
-    "@effect/schema": "^0.33.2",
-    "@types/react": "^18.2.20",
-    "effect": "2.0.0-next.27",
+    "@effect/schema": "^0.35.0",
+    "@react-native-community/netinfo": "9.3.10",
+    "@types/react": "^18.2.21",
+    "crypto-browserify": "^3.12.0",
+    "effect": "2.0.0-next.31",
+    "events": "^3.3.0",
     "evolu": "workspace:*",
-    "expo": "^49.0.8",
+    "expo": "^49.0.9",
     "expo-sqlite": "~11.3.2",
     "expo-status-bar": "^1.6.0",
+    "fast-text-encoding": "^1.0.6",
     "react": "18.2.0",
     "react-native": "^0.72.4",
-    "react-native-select-dropdown": "^3.3.4",
+    "react-native-get-random-values": "^1.9.0",
+    "react-native-picker-select": "^8.1.0",
     "web": "workspace:^"
   },
   "devDependencies": {
-    "@babel/core": "^7.22.10",
+    "@babel/core": "^7.22.15",
     "@babel/plugin-transform-private-methods": "^7.22.5",
-    "eslint": "^8.47.0",
+    "eslint": "^8.48.0",
     "eslint-config-evolu": "workspace:*",
-    "prettier": "^3.0.2",
-    "typescript": "^5.1.6"
+    "prettier": "^3.0.3",
+    "typescript": "^5.2.2"
   }
 }

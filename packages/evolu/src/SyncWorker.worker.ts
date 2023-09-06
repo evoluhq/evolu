@@ -1,10 +1,15 @@
 import { Effect, Layer } from "effect";
-import { SyncLockLive } from "./Platform.web.js";
+import { SecretBoxLive } from "./Crypto.js";
+import { FetchLive } from "./Platform.js";
+import { SyncLockLive } from "./PlatformLive.web.js";
 import { SyncWorker, SyncWorkerInput, SyncWorkerLive } from "./SyncWorker.js";
 
 const syncWorker = Effect.provideLayer(
   SyncWorker,
-  Layer.use(SyncWorkerLive, SyncLockLive),
+  Layer.use(
+    SyncWorkerLive,
+    Layer.mergeAll(SyncLockLive, FetchLive, SecretBoxLive),
+  ),
 ).pipe(Effect.runSync);
 
 syncWorker.onMessage = (output): void => {

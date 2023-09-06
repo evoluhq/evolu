@@ -10,7 +10,7 @@ import {
   absurd,
   pipe,
 } from "effect";
-import * as Kysely from "kysely";
+import { Simplify } from "kysely";
 import { Config, ConfigLive } from "./Config.js";
 import { Bip39, NanoId } from "./Crypto.js";
 import {
@@ -81,7 +81,7 @@ type Mutate<S extends Schema> = <
   T extends keyof U,
 >(
   table: T,
-  values: Kysely.Simplify<Partial<CastableForMutate<U[T]>>>,
+  values: Simplify<Partial<CastableForMutate<U[T]>>>,
   onComplete?: () => void,
 ) => {
   readonly id: U[T]["id"];
@@ -170,8 +170,7 @@ const LoadingPromisesLive = Layer.effect(
       const item = promises.get(query);
       if (!item) return;
       // It's similar to what React will do.
-      // eslint-disable-next-line @typescript-eslint/no-floating-promises
-      Object.assign(item.promise, { [loadingPromisesPromiseProp]: rows });
+      void Object.assign(item.promise, { [loadingPromisesPromiseProp]: rows });
       item.resolve(rows);
     };
 
@@ -417,6 +416,10 @@ export const EvoluLive = <T extends Schema>(
       dbWorker.onMessage = (output): void => {
         switch (output._tag) {
           case "onError":
+            if (process.env.NODE_ENV === "development")
+              // JSON.stringify, because Expo console needs strings.
+              // eslint-disable-next-line no-console
+              console.warn(JSON.stringify(output.error, null, 2));
             errorStore.setState(output.error);
             break;
           case "onOwner":
@@ -449,9 +452,10 @@ export const EvoluLive = <T extends Schema>(
         dbWorker.postMessage({ _tag: "sync", queries: getSubscribedQueries() });
       });
 
-      appState.onReconnect(() => {
+      const sync = (): void =>
         dbWorker.postMessage({ _tag: "sync", queries: [] });
-      });
+      appState.onReconnect(sync);
+      sync();
 
       return Evolu<T>().of({
         subscribeError: errorStore.subscribe,
@@ -476,7 +480,7 @@ export const EvoluLive = <T extends Schema>(
   );
 
 export const makeEvoluForPlatform = <T extends Schema>(
-  PlatformLayers: Layer.Layer<
+  PlatformLayer: Layer.Layer<
     never,
     never,
     DbWorker | Bip39 | NanoId | FlushSync | AppState
@@ -488,6 +492,6 @@ export const makeEvoluForPlatform = <T extends Schema>(
     Evolu<T>(),
     Layer.use(
       EvoluLive<T>(tables),
-      Layer.mergeAll(ConfigLive(config), TimeLive, PlatformLayers),
+      Layer.mergeAll(PlatformLayer, ConfigLive(config), TimeLive),
     ),
   ).pipe(Effect.runSync);

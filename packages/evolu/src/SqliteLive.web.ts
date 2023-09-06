@@ -1,7 +1,8 @@
 import { Effect, Function, Layer } from "effect";
-import { Row, Sqlite } from "./Sqlite.js";
+import { Row, Sqlite, parseJSONResults } from "./Sqlite.js";
 // @ts-expect-error Missing types
 import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
+import { ParseJSONResultsPlugin } from "kysely";
 
 if (typeof document !== "undefined")
   // @ts-expect-error Missing types.
@@ -13,7 +14,7 @@ if (typeof document !== "undefined")
   };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call
-const sqlite = (sqlite3InitModule() as Promise<any>).then((sqlite3) => {
+const sqlitePromise = (sqlite3InitModule() as Promise<any>).then((sqlite3) => {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-return
   return (
     typeof document === "undefined"
@@ -28,23 +29,21 @@ const sqlite = (sqlite3InitModule() as Promise<any>).then((sqlite3) => {
   };
 });
 
+const parseJSONResultsPlugin = new ParseJSONResultsPlugin();
+
 const exec: Sqlite["exec"] = (arg) =>
-  Effect.promise(() => sqlite).pipe(
-    Effect.map((sqlite) => {
-      const isSqlString = typeof arg === "string";
-      // console.log("input", arg);
-      const rows = sqlite.exec(isSqlString ? arg : arg.sql, {
-        returnValue: "resultRows",
-        rowMode: "object",
-        ...(!isSqlString && { bind: arg.parameters }),
-      });
-      // console.log("output", rows);
-      return rows;
-    }),
-  );
+  Effect.gen(function* (_) {
+    const sqlite = yield* _(Effect.promise(() => sqlitePromise));
+    const isSqlString = typeof arg === "string";
+    const rows = sqlite.exec(isSqlString ? arg : arg.sql, {
+      returnValue: "resultRows",
+      rowMode: "object",
+      ...(!isSqlString && { bind: arg.parameters }),
+    });
+    return {
+      rows: yield* _(parseJSONResults(parseJSONResultsPlugin, rows)),
+      changes: sqlite.changes(),
+    };
+  });
 
-const changes: Sqlite["changes"] = Effect.promise(() => sqlite).pipe(
-  Effect.map((sqlite) => sqlite.changes()),
-);
-
-export const SqliteLive = Layer.succeed(Sqlite, { exec, changes });
+export const SqliteLive = Layer.succeed(Sqlite, { exec });

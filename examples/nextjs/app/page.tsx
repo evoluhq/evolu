@@ -136,7 +136,7 @@ const TodoItem = memo<{
         {title}
       </span>
       <Button
-        title={isCompleted ? "completed" : "complete"}
+        title={isCompleted ? "Completed" : "Complete"}
         onClick={(): void => {
           update("todo", { id, isCompleted: !isCompleted });
         }}
@@ -307,7 +307,7 @@ const NotificationBar: FC = () => {
     if (evoluError) setShown(true);
   }, [evoluError]);
 
-  if (!evoluError || !shown) return <></>;
+  if (!evoluError || !shown) return null;
 
   return (
     <div>
@@ -321,8 +321,8 @@ const Page: FC = () => {
   const [todosShown, setTodosShown] = useState(true);
 
   return (
-    <Suspense>
-      <NotificationBar />
+    <>
+      <OwnerActions />
       <nav className="my-4">
         <Button
           title="Simulate suspense-enabled router transition"
@@ -338,9 +338,9 @@ const Page: FC = () => {
           or jumping content.
         </p>
       </nav>
-      {todosShown ? <Todos /> : <TodoCategories />}
-      <OwnerActions />
-    </Suspense>
+      <Suspense>{todosShown ? <Todos /> : <TodoCategories />}</Suspense>
+      <NotificationBar />
+    </>
   );
 };
 

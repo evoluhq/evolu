@@ -1,5 +1,5 @@
 import * as Schema from "@effect/schema/Schema";
-import { formatErrors } from "@effect/schema/TreeFormatter";
+import * as TreeFormatter from "@effect/schema/TreeFormatter";
 import * as Evolu from "evolu";
 import {
   ChangeEvent,
@@ -12,17 +12,17 @@ import {
 } from "react";
 
 const TodoId = Evolu.id("Todo");
-type TodoId = Schema.To<typeof TodoId>;
+type TodoId = Schema.Schema.To<typeof TodoId>;
 
 const TodoCategoryId = Evolu.id("TodoCategory");
-type TodoCategoryId = Schema.To<typeof TodoCategoryId>;
+type TodoCategoryId = Schema.Schema.To<typeof TodoCategoryId>;
 
 const NonEmptyString50 = Schema.string.pipe(
   Schema.minLength(1),
   Schema.maxLength(50),
   Schema.brand("NonEmptyString50"),
 );
-type NonEmptyString50 = Schema.To<typeof NonEmptyString50>;
+type NonEmptyString50 = Schema.Schema.To<typeof NonEmptyString50>;
 
 const TodoTable = Schema.struct({
   id: TodoId,
@@ -30,19 +30,19 @@ const TodoTable = Schema.struct({
   isCompleted: Evolu.SqliteBoolean,
   categoryId: Schema.nullable(TodoCategoryId),
 });
-type TodoTable = Schema.To<typeof TodoTable>;
+type TodoTable = Schema.Schema.To<typeof TodoTable>;
 
 const TodoCategoryTable = Schema.struct({
   id: TodoCategoryId,
   name: NonEmptyString50,
 });
-type TodoCategoryTable = Schema.To<typeof TodoCategoryTable>;
+type TodoCategoryTable = Schema.Schema.To<typeof TodoCategoryTable>;
 
 const Database = Schema.struct({
   todo: TodoTable,
   todoCategory: TodoCategoryTable,
 });
-type Database = Schema.To<typeof Database>;
+type Database = Schema.Schema.To<typeof Database>;
 
 const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
   Evolu.create(Database, {
@@ -61,7 +61,7 @@ const prompt = <From extends string, To>(
   if (value == null) return; // on cancel
   const a = Schema.parseEither(schema)(value);
   if (a._tag === "Left") {
-    alert(formatErrors(a.left.errors));
+    alert(TreeFormatter.formatErrors(a.left.errors));
     return;
   }
   onSuccess(a.right);
@@ -81,24 +81,19 @@ const Button: FC<{
   );
 };
 
+interface TodoCategoryForSelect {
+  readonly id: TodoCategoryTable["id"];
+  readonly name: TodoCategoryTable["name"] | null;
+}
+
 const TodoCategorySelect: FC<{
+  categories: ReadonlyArray<TodoCategoryForSelect>;
   selected: TodoCategoryId | null;
   onSelect: (_value: TodoCategoryId | null) => void;
-}> = ({ selected, onSelect }) => {
+}> = ({ categories, selected, onSelect }) => {
   const nothingSelected = "";
-  const { rows } = useQuery(
-    (db) =>
-      db
-        .selectFrom("todoCategory")
-        .select(["id", "name"])
-        .where("isDeleted", "is not", Evolu.cast(true))
-        .orderBy("createdAt"),
-    // Filter out rows with nullable names.
-    ({ name, ...rest }) => name && { name, ...rest },
-  );
-
   const value =
-    selected && rows.find((row) => row.id === selected)
+    selected && categories.find((row) => row.id === selected)
       ? selected
       : nothingSelected;
 
@@ -112,7 +107,7 @@ const TodoCategorySelect: FC<{
       }}
     >
       <option value={nothingSelected}>-- no category --</option>
-      {rows.map(({ id, name }) => (
+      {categories.map(({ id, name }) => (
         <option key={id} value={id}>
           {name}
         </option>
@@ -122,8 +117,12 @@ const TodoCategorySelect: FC<{
 };
 
 const TodoItem = memo<{
-  row: Pick<TodoTable, "id" | "title" | "isCompleted" | "categoryId">;
-}>(function TodoItem({ row: { id, title, isCompleted, categoryId } }) {
+  row: Pick<TodoTable, "id" | "title" | "isCompleted" | "categoryId"> & {
+    categories: ReadonlyArray<TodoCategoryForSelect>;
+  };
+}>(function TodoItem({
+  row: { id, title, isCompleted, categoryId, categories },
+}) {
   const { update } = useMutation();
 
   return (
@@ -135,7 +134,7 @@ const TodoItem = memo<{
         {title}
       </span>
       <Button
-        title={isCompleted ? "completed" : "complete"}
+        title={isCompleted ? "Completed" : "Complete"}
         onClick={(): void => {
           update("todo", { id, isCompleted: !isCompleted });
         }}
@@ -155,6 +154,7 @@ const TodoItem = memo<{
         }}
       />
       <TodoCategorySelect
+        categories={categories}
         selected={categoryId}
         onSelect={(categoryId): void => {
           update("todo", { id, categoryId });
@@ -166,16 +166,26 @@ const TodoItem = memo<{
 
 const Todos: FC = () => {
   const { create } = useMutation();
+
   const { rows } = useQuery(
     (db) =>
       db
         .selectFrom("todo")
         .select(["id", "title", "isCompleted", "categoryId"])
         .where("isDeleted", "is not", Evolu.cast(true))
-        .orderBy("createdAt"),
-    // (row) => row
+        .orderBy("createdAt")
+        // https://kysely.dev/docs/recipes/relations
+        .select((eb) => [
+          Evolu.jsonArrayFrom(
+            eb
+              .selectFrom("todoCategory")
+              .select(["todoCategory.id", "todoCategory.name"])
+              .where("isDeleted", "is not", Evolu.cast(true))
+              .orderBy("createdAt"),
+          ).as("categories"),
+        ]),
     ({ title, isCompleted, ...rest }) =>
-      title && isCompleted != null && { title, isCompleted, ...rest },
+      title != null && isCompleted != null && { title, isCompleted, ...rest },
   );
 
   return (
@@ -211,7 +221,6 @@ const TodoCategories: FC = () => {
         .select(["id", "name"])
         .where("isDeleted", "is not", Evolu.cast(true))
         .orderBy("createdAt"),
-    // (row) => row
     ({ name, ...rest }) => name && { name, ...rest },
   );
 
@@ -270,8 +279,7 @@ const OwnerActions: FC = () => {
         title="Restore Owner"
         onClick={(): void => {
           prompt(Evolu.NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
-            // eslint-disable-next-line @typescript-eslint/no-floating-promises
-            ownerActions.restore(mnemonic).then((either) => {
+            void ownerActions.restore(mnemonic).then((either) => {
               if (either._tag === "Left")
                 alert(JSON.stringify(either.left, null, 2));
             });
@@ -308,7 +316,7 @@ const NotificationBar: FC = () => {
     if (evoluError) setShown(true);
   }, [evoluError]);
 
-  if (!evoluError || !shown) return <></>;
+  if (!evoluError || !shown) return null;
 
   return (
     <div>
@@ -323,26 +331,24 @@ export const NextJsExample: FC = () => {
 
   return (
     <>
+      <OwnerActions />
+      <nav className="my-4">
+        <Button
+          title="Simulate suspense-enabled router transition"
+          onClick={(): void => {
+            // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
+            startTransition(() => {
+              setTodosShown(!todosShown);
+            });
+          }}
+        />
+        <p>
+          Using suspense-enabled router transition, you will not see any loader
+          or jumping content.
+        </p>
+      </nav>
+      <Suspense>{todosShown ? <Todos /> : <TodoCategories />}</Suspense>
       <NotificationBar />
-      <Suspense>
-        <nav className="my-4">
-          <Button
-            title="Simulate suspense-enabled router transition"
-            onClick={(): void => {
-              // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
-              startTransition(() => {
-                setTodosShown(!todosShown);
-              });
-            }}
-          />
-          <p>
-            Using suspense-enabled router transition, you will not see any
-            loader or jumping content.
-          </p>
-        </nav>
-        {todosShown ? <Todos /> : <TodoCategories />}
-        <OwnerActions />
-      </Suspense>
     </>
   );
 };

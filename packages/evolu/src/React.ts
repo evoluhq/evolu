@@ -1,3 +1,4 @@
+import * as S from "@effect/schema/Schema";
 import {
   Context,
   Effect,
@@ -8,11 +9,30 @@ import {
 } from "effect";
 import { Simplify } from "kysely";
 import { useMemo, useRef, useSyncExternalStore } from "react";
-import { CommonColumns, Owner, QueryCallback, Schema } from "./Db.js";
+import { Config, ConfigLive } from "./Config.js";
+import { Bip39, NanoId } from "./Crypto.js";
+import {
+  CommonColumns,
+  Owner,
+  QueryCallback,
+  Schema,
+  schemaToTables,
+} from "./Db.js";
+import { DbWorker } from "./DbWorker.js";
 import { EvoluError } from "./Errors.js";
-import { Evolu, OwnerActions, loadingPromisesPromiseProp } from "./Evolu.js";
-import { CastableForMutate } from "./Model.js";
-import { Platform } from "./Platform.js";
+import {
+  Evolu,
+  OwnerActions,
+  loadingPromisesPromiseProp,
+  makeEvoluForPlatform,
+} from "./Evolu.js";
+import {
+  CastableForMutate,
+  ExcludeNullAndFalse,
+  FilterMap,
+  OrNullOrFalse,
+} from "./Model.js";
+import { AppState, FlushSync, Platform } from "./Platform.js";
 import { Row } from "./Sqlite.js";
 import { SyncState } from "./SyncWorker.js";
 
@@ -138,7 +158,7 @@ type UseQuery<S extends Schema> = <
   FilterMapRow extends Row,
 >(
   queryCallback: OrNullOrFalse<QueryCallback<S, QueryRow>>,
-  filterMap: (row: QueryRow) => OrNullOrFalse<FilterMapRow>,
+  filterMap: FilterMap<QueryRow, FilterMapRow>,
 ) => {
   /**
    * Rows from the database. They can be filtered and mapped by `filterMap`.
@@ -153,10 +173,6 @@ type UseQuery<S extends Schema> = <
     Simplify<ExcludeNullAndFalse<FilterMapRow>>
   > | null;
 };
-
-type OrNullOrFalse<T> = T | null | false;
-
-type ExcludeNullAndFalse<T> = Exclude<T, null | false>;
 
 type UseMutation<S extends Schema> = () => {
   /**
@@ -346,3 +362,49 @@ export const ReactHooksLive = <T extends Schema>(): Layer.Layer<
       });
     }),
   );
+
+// For React Fast Refresh, to ensure only one instance of Evolu exists.
+let evolu: Evolu<Schema> | null = null;
+
+export const makeReactHooksForPlatform =
+  (
+    DbWorkerLive: Layer.Layer<never, never, DbWorker>,
+    AppStateLive: Layer.Layer<Config, never, AppState>,
+    PlatformLive: Layer.Layer<never, never, Platform>,
+    Bip39Live: Layer.Layer<never, never, Bip39>,
+    NanoIdLive: Layer.Layer<never, never, NanoId>,
+    FlushSyncLive: Layer.Layer<never, never, FlushSync>,
+  ) =>
+  <From, To extends Schema>(
+    schema: S.Schema<From, To>,
+    config?: Partial<Config>,
+  ): ReactHooks<To> => {
+    const tables = schemaToTables(schema);
+
+    if (evolu == null) {
+      evolu = makeEvoluForPlatform<To>(
+        Layer.mergeAll(
+          DbWorkerLive,
+          Bip39Live,
+          NanoIdLive,
+          FlushSyncLive,
+          Layer.use(AppStateLive, ConfigLive(config)),
+        ),
+        tables,
+        config,
+      ) as Evolu<Schema>;
+    } else {
+      evolu.ensureSchema(tables);
+    }
+
+    return Effect.provideLayer(
+      ReactHooks<To>(),
+      Layer.use(
+        ReactHooksLive<To>(),
+        Layer.merge(
+          PlatformLive,
+          Layer.succeed(Evolu<To>(), evolu as Evolu<To>),
+        ),
+      ),
+    ).pipe(Effect.runSync);
+  };

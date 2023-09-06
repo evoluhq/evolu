@@ -1,12 +1,7 @@
 import { Effect, Function, Layer } from "effect";
-import { Slip21Live } from "./Crypto.js";
-import {
-  Bip39Live,
-  HmacLive,
-  NanoIdLive,
-  Sha512Live,
-} from "./CryptoLive.web.js";
+import { NanoIdLive } from "./Crypto.js";
 import { DbWorker, DbWorkerLive } from "./DbWorker.js";
+import { Bip39Live } from "./PlatformLive.web.js";
 import { SqliteLive } from "./SqliteLive.web.js";
 import { SyncWorker, SyncWorkerOutput } from "./SyncWorker.js";
 
@@ -36,12 +31,6 @@ export const dbWorker = Effect.provideLayer(
   DbWorker,
   Layer.use(
     DbWorkerLive,
-    Layer.mergeAll(
-      SqliteLive,
-      Bip39Live,
-      Layer.use(Slip21Live, Layer.merge(HmacLive, Sha512Live)),
-      NanoIdLive,
-      SyncWorkerLive,
-    ),
+    Layer.mergeAll(SqliteLive, Bip39Live, NanoIdLive, SyncWorkerLive),
   ),
 ).pipe(Effect.runSync);

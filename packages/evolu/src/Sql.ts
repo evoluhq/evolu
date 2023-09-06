@@ -1,6 +1,6 @@
 // TODO: This file should be generated from a script via Kysely.
 // The reason for not using Kysely directly is bundle size.
-// [Playground Link](https://kyse.link/?p=b&i=haFkpnNxbGl0ZaF2pjAuMjYuMKFz2gGAaW1wb3J0IHsgR2VuZXJhdGVkIH0gZnJvbSAna3lzZWx5JwoKZGVjbGFyZSBnbG9iYWwgewogIGludGVyZmFjZSBEQiB7CiAgICB1TE1zUFJpNzhsTm15V2x0X19tZXNzYWdlOiB7CiAgICAgIHRpbWVzdGFtcDogc3RyaW5nLAogICAgICB0YWJsZTogc3RyaW5nLAogICAgICByb3c6IHN0cmluZywKICAgICAgY29sdW1uOiBzdHJpbmcsCiAgICAgIHZhbHVlOiB1bmtub3duCiAgICB9LAoKICAgIHVMTXNQUmk3OGxObXlXbHRfX293bmVyOiB7CiAgICAgIGlkOiBzdHJpbmcKICAgICAgbW5lbW9uaWM6IHN0cmluZwogICAgICBlbmNyeXB0aW9uS2V5OiBVaW50OEFycmF5LAogICAgICB0aW1lc3RhbXA6IHN0cmluZywKICAgICAgbWVya2xlVHJlZTogc3RyaW5nCiAgICB9CiAgfQp9oXHaBvlhd2FpdCBreXNlbHkuc2VsZWN0RnJvbSgidUxNc1BSaTc4bE5teVdsdF9fb3duZXIiKQogIC5zZWxlY3QoWyJpZCIsICJtbmVtb25pYyIsICJlbmNyeXB0aW9uS2V5Il0pCiAgLmV4ZWN1dGUoKQoKYXdhaXQga3lzZWx5LnNjaGVtYQogIC5jcmVhdGVUYWJsZSgndUxNc1BSaTc4bE5teVdsdF9fbWVzc2FnZScpCiAgLmFkZENvbHVtbigndGltZXN0YW1wJywgJ2Jsb2InLCBjb2wgPT4gY29sLnByaW1hcnlLZXkoKSkKICAuYWRkQ29sdW1uKCd0YWJsZScsICdibG9iJykKICAuYWRkQ29sdW1uKCdyb3cnLCAnYmxvYicpCiAgLmFkZENvbHVtbignY29sdW1uJywgJ2Jsb2InKQogIC5hZGRDb2x1bW4oJ3ZhbHVlJywgJ2Jsb2InKQogIC5leGVjdXRlKCkKCmF3YWl0IGt5c2VseS5zY2hlbWEKICAuY3JlYXRlSW5kZXgoImluZGV4X191TE1zUFJpNzhsTm15V2x0X19tZXNzYWdlIikKICAub24oInVMTXNQUmk3OGxObXlXbHRfX21lc3NhZ2UiKQogIC5jb2x1bW5zKFsidGFibGUiLCAicm93IiwgImNvbHVtbiIsICJ0aW1lc3RhbXAiXSkKICAuZXhlY3V0ZSgpCgphd2FpdCBreXNlbHkuc2NoZW1hCiAgLmNyZWF0ZVRhYmxlKCd1TE1zUFJpNzhsTm15V2x0X19vd25lcicpCiAgLmFkZENvbHVtbignaWQnLCAnYmxvYicpCiAgLmFkZENvbHVtbignbW5lbW9uaWMnLCAnYmxvYicpCiAgLmFkZENvbHVtbignZW5jcnlwdGlvbktleScsICdibG9iJykKICAuYWRkQ29sdW1uKCd0aW1lc3RhbXAnLCAnYmxvYicpCiAgLmFkZENvbHVtbignbWVya2xlVHJlZScsICdibG9iJykKICAuZXhlY3V0ZSgpCgphd2FpdCBreXNlbHkuaW5zZXJ0SW50bygidUxNc1BSaTc4bE5teVdsdF9fb3duZXIiKQogIC52YWx1ZXMoewogICAgImlkIjogImIiLAogICAgIm1uZW1vbmljIjogImEiLAogICAgImVuY3J5cHRpb25LZXkiOiBuZXcgVWludDhBcnJheSgpLAogICAgInRpbWVzdGFtcCI6ICJhIiwKICAgICJtZXJrbGVUcmVlIjogImIiCiAgfSkKICAuZXhlY3V0ZSgpCgphd2FpdCBreXNlbHkuc2VsZWN0RnJvbSgidUxNc1BSaTc4bE5teVdsdF9fb3duZXIiKQogIC5zZWxlY3QoWyJ0aW1lc3RhbXAiLCAibWVya2xlVHJlZSJdKQogIC5leGVjdXRlKCkKCmF3YWl0IGt5c2VseS5zZWxlY3RGcm9tKCJ1TE1zUFJpNzhsTm15V2x0X19tZXNzYWdlIikKICAuc2VsZWN0KCJ0aW1lc3RhbXAiKQogIC53aGVyZSgndGFibGUnLCAnPScsICcxJykKICAud2hlcmUoJ3JvdycsICc9JywgJzInKQogIC53aGVyZSgnY29sdW1uJywgJz0nLCAnMycpCiAgLm9yZGVyQnkoInRpbWVzdGFtcCIsICJkZXNjIikKICAubGltaXQoMSkKICAuZXhlY3V0ZVRha2VGaXJzdCgpCgphd2FpdCBreXNlbHkuaW5zZXJ0SW50bygidUxNc1BSaTc4bE5teVdsdF9fbWVzc2FnZSIpCiAgLnZhbHVlcyh7CiAgICAidGltZXN0YW1wIjogJzEnLAogICAgInRhYmxlIjogJzInLAogICAgInJvdyI6ICczJywKICAgICJjb2x1bW4iOiAnNCcsCiAgICAidmFsdWUiOiAnNScKICB9KQogIC5vbkNvbmZsaWN0KG9jID0-IG9jLmRvTm90aGluZygpKQogIC5leGVjdXRlKCkKCmF3YWl0IGt5c2VseS51cGRhdGVUYWJsZSgidUxNc1BSaTc4bE5teVdsdF9fb3duZXIiKQogIC5zZXQoewogICAgIm1lcmtsZVRyZWUiOiAnMScsCiAgICAidGltZXN0YW1wIjogIjIiCiAgfSkKICAuZXhlY3V0ZSgpCgphd2FpdCBreXNlbHkuc2VsZWN0RnJvbSgidUxNc1BSaTc4bE5teVdsdF9fbWVzc2FnZSIpCiAgLnNlbGVjdEFsbCgpCiAgLndoZXJlKCJ0aW1lc3RhbXAiLCAiPj0iLCAxKQogIC5vcmRlckJ5KCJ0aW1lc3RhbXAiKQogIC5leGVjdXRlKCmhY8M=)
+// [Playground Link](https://kyse.link/?p=b&i=haFkpnNxbGl0ZaF2pjAuMjYuMKFz2gGBaW1wb3J0IHsgR2VuZXJhdGVkIH0gZnJvbSAna3lzZWx5JwoKZGVjbGFyZSBnbG9iYWwgewogIGludGVyZmFjZSBEQiB7CiAgICBldm9sdV9fbWVzc2FnZTogewogICAgICB0aW1lc3RhbXA6IHN0cmluZywKICAgICAgdGFibGU6IHN0cmluZywKICAgICAgcm93OiBzdHJpbmcsCiAgICAgIGNvbHVtbjogc3RyaW5nLAogICAgICB2YWx1ZTogdW5rbm93biwKICAgICAgdmVyc2lvbjogbnVtYmVyCiAgICB9LAoKICAgIGV2b2x1X19vd25lcjogewogICAgICBpZDogc3RyaW5nCiAgICAgIG1uZW1vbmljOiBzdHJpbmcKICAgICAgZW5jcnlwdGlvbktleTogVWludDhBcnJheSwKICAgICAgdGltZXN0YW1wOiBzdHJpbmcsCiAgICAgIG1lcmtsZVRyZWU6IHN0cmluZwogICAgfQogIH0KfaFx2gayYXdhaXQga3lzZWx5LnNlbGVjdEZyb20oImV2b2x1X19vd25lciIpCiAgLnNlbGVjdChbImlkIiwgIm1uZW1vbmljIiwgImVuY3J5cHRpb25LZXkiXSkKICAuZXhlY3V0ZSgpCgphd2FpdCBreXNlbHkuc2NoZW1hCiAgLmNyZWF0ZVRhYmxlKCdldm9sdV9fbWVzc2FnZScpCiAgLmFkZENvbHVtbigndGltZXN0YW1wJywgJ2Jsb2InLCBjb2wgPT4gY29sLnByaW1hcnlLZXkoKSkKICAuYWRkQ29sdW1uKCd0YWJsZScsICdibG9iJykKICAuYWRkQ29sdW1uKCdyb3cnLCAnYmxvYicpCiAgLmFkZENvbHVtbignY29sdW1uJywgJ2Jsb2InKQogIC5hZGRDb2x1bW4oJ3ZhbHVlJywgJ2Jsb2InKQogIC5hZGRDb2x1bW4oJ3ZlcnNpb24nLCAnYmxvYicpCiAgLmV4ZWN1dGUoKQoKYXdhaXQga3lzZWx5LnNjaGVtYQogIC5jcmVhdGVJbmRleCgiaW5kZXhfX2V2b2x1X19tZXNzYWdlIikKICAub24oImV2b2x1X19tZXNzYWdlIikKICAuY29sdW1ucyhbInRhYmxlIiwgInJvdyIsICJjb2x1bW4iLCAidGltZXN0YW1wIl0pCiAgLmV4ZWN1dGUoKQoKYXdhaXQga3lzZWx5LnNjaGVtYQogIC5jcmVhdGVUYWJsZSgnZXZvbHVfX293bmVyJykKICAuYWRkQ29sdW1uKCdpZCcsICdibG9iJykKICAuYWRkQ29sdW1uKCdtbmVtb25pYycsICdibG9iJykKICAuYWRkQ29sdW1uKCdlbmNyeXB0aW9uS2V5JywgJ2Jsb2InKQogIC5hZGRDb2x1bW4oJ3RpbWVzdGFtcCcsICdibG9iJykKICAuYWRkQ29sdW1uKCdtZXJrbGVUcmVlJywgJ2Jsb2InKQogIC5leGVjdXRlKCkKCmF3YWl0IGt5c2VseS5pbnNlcnRJbnRvKCJldm9sdV9fb3duZXIiKQogIC52YWx1ZXMoewogICAgImlkIjogImIiLAogICAgIm1uZW1vbmljIjogImEiLAogICAgImVuY3J5cHRpb25LZXkiOiBuZXcgVWludDhBcnJheSgpLAogICAgInRpbWVzdGFtcCI6ICJhIiwKICAgICJtZXJrbGVUcmVlIjogImIiCiAgfSkKICAuZXhlY3V0ZSgpCgphd2FpdCBreXNlbHkuc2VsZWN0RnJvbSgiZXZvbHVfX293bmVyIikKICAuc2VsZWN0KFsidGltZXN0YW1wIiwgIm1lcmtsZVRyZWUiXSkKICAuZXhlY3V0ZSgpCgphd2FpdCBreXNlbHkuc2VsZWN0RnJvbSgiZXZvbHVfX21lc3NhZ2UiKQogIC5zZWxlY3QoInRpbWVzdGFtcCIpCiAgLndoZXJlKCd0YWJsZScsICc9JywgJzEnKQogIC53aGVyZSgncm93JywgJz0nLCAnMicpCiAgLndoZXJlKCdjb2x1bW4nLCAnPScsICczJykKICAub3JkZXJCeSgidGltZXN0YW1wIiwgImRlc2MiKQogIC5saW1pdCgxKQogIC5leGVjdXRlVGFrZUZpcnN0KCkKCmF3YWl0IGt5c2VseS5pbnNlcnRJbnRvKCJldm9sdV9fbWVzc2FnZSIpCiAgLnZhbHVlcyh7CiAgICAidGltZXN0YW1wIjogJzEnLAogICAgInRhYmxlIjogJzInLAogICAgInJvdyI6ICczJywKICAgICJjb2x1bW4iOiAnNCcsCiAgICAidmFsdWUiOiAnNScsCiAgICAidmVyc2lvbiI6IDEKICB9KQogIC5vbkNvbmZsaWN0KG9jID0-IG9jLmRvTm90aGluZygpKQogIC5leGVjdXRlKCkKCmF3YWl0IGt5c2VseS51cGRhdGVUYWJsZSgiZXZvbHVfX293bmVyIikKICAuc2V0KHsKICAgICJtZXJrbGVUcmVlIjogJzEnLAogICAgInRpbWVzdGFtcCI6ICIyIgogIH0pCiAgLmV4ZWN1dGUoKQoKYXdhaXQga3lzZWx5LnNlbGVjdEZyb20oImV2b2x1X19tZXNzYWdlIikKICAuc2VsZWN0QWxsKCkKICAud2hlcmUoInRpbWVzdGFtcCIsICI-PSIsIDEpCiAgLm9yZGVyQnkoInRpbWVzdGFtcCIpCiAgLmV4ZWN1dGUoKaFjww==)
 // Note tables are prefixed with nanoid to avoid potential clashes.
 
 export const selectOwner = `
@@ -9,32 +9,41 @@ SELECT
   "mnemonic",
   "encryptionKey"
 FROM
-  "uLMsPRi78lNmyWlt__owner"
+  "evolu__owner"
 `;
 
-export const initDb = `
+export const createMessageTable = `
 CREATE TABLE
-  "uLMsPRi78lNmyWlt__message" (
+  "evolu__message" (
     "timestamp" blob PRIMARY KEY,
     "table" blob,
     "row" blob,
     "column" blob,
-    "value" blob
+    "value" blob,
+    "version" blob
   );
+`;
 
-CREATE INDEX "indexuLMsPRi78lNmyWlt__message" ON "uLMsPRi78lNmyWlt__message" ("table", "row", "column", "timestamp");
+export const createMessageTableIndex = `
+CREATE INDEX "index_evolu__message" ON "evolu__message" (
+  "table", "row", "column", "timestamp"
+);
+`;
 
+export const createOwnerTable = `
 CREATE TABLE
-  "uLMsPRi78lNmyWlt__owner" (
+  "evolu__owner" (
     "id" blob,
     "mnemonic" blob,
     "encryptionKey" blob,
     "timestamp" blob,
     "merkleTree" blob
   );
+`;
 
+export const insertOwner = `
 INSERT INTO
-  "uLMsPRi78lNmyWlt__owner" (
+  "evolu__owner" (
     "id",
     "mnemonic",
     "encryptionKey",
@@ -50,14 +59,14 @@ SELECT
   "timestamp",
   "merkleTree"
 FROM
-  "uLMsPRi78lNmyWlt__owner"
+  "evolu__owner"
 `;
 
 export const selectLastTimestampForTableRowColumn = `
 SELECT
   "timestamp"
 FROM
-  "uLMsPRi78lNmyWlt__message"
+  "evolu__message"
 WHERE
   "table" = ?
   AND "row" = ?
@@ -82,14 +91,14 @@ ON CONFLICT DO UPDATE SET
 
 export const insertIntoMessagesIfNew = `
 INSERT INTO
-  "uLMsPRi78lNmyWlt__message" ("timestamp", "table", "row", "column", "value")
+  "evolu__message" ("timestamp", "table", "row", "column", "value", "version")
 VALUES
-  (?, ?, ?, ?, ?)
+  (?, ?, ?, ?, ?, ?)
 ON CONFLICT DO NOTHING
 `;
 
 export const updateOwnerTimestampAndMerkleTree = `
-UPDATE "uLMsPRi78lNmyWlt__owner"
+UPDATE "evolu__owner"
 SET
   "timestamp" = ?,
   "merkleTree" = ?
@@ -99,7 +108,7 @@ export const selectMessagesToSync = `
 SELECT
   *
 FROM
-  "uLMsPRi78lNmyWlt__message"
+  "evolu__message"
 WHERE
   "timestamp" >= ?
 ORDER BY

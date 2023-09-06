@@ -1,16 +1,10 @@
 import { Effect, Function, Layer, Predicate, ReadonlyArray } from "effect";
 import { flushSync } from "react-dom";
 import { Config } from "./Config.js";
-import {
-  AppState,
-  Fetch,
-  FetchError,
-  FlushSync,
-  Platform,
-  SyncLock,
-} from "./Platform.js";
+import { Bip39, InvalidMnemonicError, Mnemonic } from "./Crypto.js";
+import { AppState, FlushSync, Platform, SyncLock } from "./Platform.js";
 
-const isServer = typeof document === "undefined";
+const hasDoc = typeof document !== "undefined";
 
 const isChromeWithOpfs = (): boolean =>
   navigator.userAgentData != null &&
@@ -28,13 +22,13 @@ const isFirefoxWithOpfs = (): boolean => {
   return Number(matches[1]) >= 111;
 };
 
-export const PlatformLive = Layer.succeed(Platform, {
-  name: isServer
-    ? "server"
-    : isChromeWithOpfs() || isFirefoxWithOpfs()
+const name = hasDoc
+  ? isChromeWithOpfs() || isFirefoxWithOpfs()
     ? "web-with-opfs"
-    : "web-without-opfs",
-});
+    : "web-without-opfs"
+  : "server";
+
+export const PlatformLive = Layer.succeed(Platform, { name });
 
 export const FlushSyncLive = Layer.succeed(FlushSync, flushSync);
 
@@ -77,24 +71,6 @@ export const SyncLockLive = Layer.effect(
   }),
 );
 
-export const FetchLive = Layer.succeed(
-  Fetch,
-  Fetch.of((url, body) =>
-    Effect.tryPromise({
-      try: () =>
-        fetch(url, {
-          method: "POST",
-          body,
-          headers: {
-            "Content-Type": "application/octet-stream",
-            "Content-Length": body.length.toString(),
-          },
-        }),
-      catch: (): FetchError => ({ _tag: "FetchError" }),
-    }),
-  ),
-);
-
 export const AppStateLive = Layer.effect(
   AppState,
   Effect.gen(function* (_) {
@@ -118,9 +94,8 @@ export const AppStateLive = Layer.effect(
 
     // We can't use `navigator.onLine`.
     // https://bugs.chromium.org/p/chromium/issues/detail?id=678075
-    const onReconnect: AppState["onReconnect"] = (listener) => {
-      window.addEventListener("online", listener);
-      listener();
+    const onReconnect: AppState["onReconnect"] = (callback) => {
+      window.addEventListener("online", callback);
     };
 
     const localStorageKey = "evolu:reloadAllTabs";
@@ -139,5 +114,41 @@ export const AppStateLive = Layer.effect(
     });
 
     return AppState.of({ onFocus, onReconnect, reset });
+  }),
+);
+
+const importBip39WithEnglish = Effect.all(
+  [
+    Effect.promise(() => import("@scure/bip39")),
+    Effect.promise(() => import("@scure/bip39/wordlists/english")),
+  ],
+  { concurrency: "unbounded" },
+);
+
+export const Bip39Live = Layer.succeed(
+  Bip39,
+  Bip39.of({
+    make: importBip39WithEnglish.pipe(
+      Effect.map(
+        ([{ generateMnemonic }, { wordlist }]) =>
+          generateMnemonic(wordlist, 128) as Mnemonic,
+      ),
+    ),
+
+    toSeed: (mnemonic) =>
+      Effect.promise(() => import("@scure/bip39")).pipe(
+        Effect.flatMap((a) => Effect.promise(() => a.mnemonicToSeed(mnemonic))),
+      ),
+
+    parse: (mnemonic) =>
+      importBip39WithEnglish.pipe(
+        Effect.flatMap(([{ validateMnemonic }, { wordlist }]) =>
+          validateMnemonic(mnemonic, wordlist)
+            ? Effect.succeed(mnemonic as Mnemonic)
+            : Effect.fail<InvalidMnemonicError>({
+                _tag: "InvalidMnemonicError",
+              }),
+        ),
+      ),
   }),
 );

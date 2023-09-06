@@ -1,6 +1,8 @@
 import * as Schema from "@effect/schema/Schema";
+import * as TreeFormatter from "@effect/schema/TreeFormatter";
+import { Either } from "effect";
+import { constVoid } from "effect/Function";
 import * as Evolu from "evolu";
-import { StatusBar } from "expo-status-bar";
 import {
   FC,
   Suspense,
@@ -9,21 +11,28 @@ import {
   useEffect,
   useState,
 } from "react";
-import { Button, StyleSheet, Text, View } from "react-native";
-import SelectDropdown from "react-native-select-dropdown";
+import {
+  Button,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import RNPickerSelect from "react-native-picker-select";
 
 const TodoId = Evolu.id("Todo");
-type TodoId = Schema.To<typeof TodoId>;
+type TodoId = Schema.Schema.To<typeof TodoId>;
 
 const TodoCategoryId = Evolu.id("TodoCategory");
-type TodoCategoryId = Schema.To<typeof TodoCategoryId>;
+type TodoCategoryId = Schema.Schema.To<typeof TodoCategoryId>;
 
 const NonEmptyString50 = Schema.string.pipe(
   Schema.minLength(1),
   Schema.maxLength(50),
   Schema.brand("NonEmptyString50"),
 );
-type NonEmptyString50 = Schema.To<typeof NonEmptyString50>;
+type NonEmptyString50 = Schema.Schema.To<typeof NonEmptyString50>;
 
 const TodoTable = Schema.struct({
   id: TodoId,
@@ -31,13 +40,13 @@ const TodoTable = Schema.struct({
   isCompleted: Evolu.SqliteBoolean,
   categoryId: Schema.nullable(TodoCategoryId),
 });
-type TodoTable = Schema.To<typeof TodoTable>;
+type TodoTable = Schema.Schema.To<typeof TodoTable>;
 
 const TodoCategoryTable = Schema.struct({
   id: TodoCategoryId,
   name: NonEmptyString50,
 });
-type TodoCategoryTable = Schema.To<typeof TodoCategoryTable>;
+type TodoCategoryTable = Schema.Schema.To<typeof TodoCategoryTable>;
 
 const Database = Schema.struct({
   todo: TodoTable,
@@ -45,120 +54,84 @@ const Database = Schema.struct({
 });
 
 const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
-  Evolu.create(Database);
+  Evolu.create(Database, {
+    ...(process.env.NODE_ENV === "development" && {
+      syncUrl: "http://localhost:4000",
+    }),
+  });
 
-const prompt = <From extends string, To>(
-  _schema: Schema.Schema<From, To>,
-  _message: string,
-  _onSuccess: (value: To) => void,
-): void => {
-  // // Alert.prompt()
-  // const value = window.prompt(message);
-  // if (value == null) return; // on cancel
-  // const a = Schema.parseEither(schema)(value);
-  // if (a._tag === "Left") {
-  //   alert(formatErrors(a.left.errors));
-  //   return;
-  // }
-  // onSuccess(a.right);
-};
-
-type TodoCategoriesList = ReadonlyArray<{
-  id: TodoCategoryId;
-  name: NonEmptyString50;
-}>;
-
-const useTodoCategoriesList = (): TodoCategoriesList =>
-  useQuery(
-    (db) =>
-      db
-        .selectFrom("todoCategory")
-        .select(["id", "name"])
-        .where("isDeleted", "is not", Evolu.cast(true))
-        .orderBy("createdAt"),
-    // Filter out rows with nullable names.
-    ({ name, ...rest }) => name && { name, ...rest },
-  ).rows;
+interface TodoCategoryForSelect {
+  readonly id: TodoCategoryTable["id"];
+  readonly name: TodoCategoryTable["name"] | null;
+}
 
 const TodoCategorySelect: FC<{
+  categories: ReadonlyArray<TodoCategoryForSelect>;
   selected: TodoCategoryId | null;
   onSelect: (_value: TodoCategoryId | null) => void;
-  todoCategoriesList: TodoCategoriesList;
-}> = ({ selected, onSelect, todoCategoriesList }) => {
+}> = ({ categories, selected, onSelect }) => {
   const nothingSelected = "";
   const value =
-    selected && todoCategoriesList.find((row) => row.id === selected)
+    selected && categories.find((row) => row.id === selected)
       ? selected
       : nothingSelected;
 
-  //   {/* <option value={nothingSelected}>-- no category --</option>
-  //   {todoCategoriesList.map(({ id, name }) => (
-  //     <option key={id} value={id}>
-  //       {name}
-  //     </option>
-  //   ))}
-  // </SelectDropdown> */}
   return (
-    <SelectDropdown
-      data={todoCategoriesList.map((i) => i.name)}
-      onSelect={(): void => {
-        // eslint-disable-next-line no-console
-        console.log(value, onSelect);
+    <RNPickerSelect
+      value={value}
+      onValueChange={(value: TodoCategoryId | null): void => {
+        onSelect(value);
       }}
-      // value={value}
-      // onChange={({
-      //   target: { value },
-      // }: ChangeEvent<HTMLSelectElement>): void => {
-      //   onSelect(value === nothingSelected ? null : (value as TodoCategoryId));
-      // }}
+      items={categories.map((row) => ({
+        label: row.name || "",
+        value: row.id,
+      }))}
     />
   );
 };
 
 const TodoItem = memo<{
-  row: Pick<TodoTable, "id" | "title" | "isCompleted" | "categoryId">;
-  todoCategoriesList: TodoCategoriesList;
+  row: Pick<TodoTable, "id" | "title" | "isCompleted" | "categoryId"> & {
+    categories: ReadonlyArray<TodoCategoryForSelect>;
+  };
 }>(function TodoItem({
-  row: { id, title, isCompleted, categoryId },
-  todoCategoriesList,
+  row: { id, title, isCompleted, categoryId, categories },
 }) {
   const { update } = useMutation();
 
   return (
-    <View>
-      <span
-        className="text-sm font-bold"
-        style={{ textDecoration: isCompleted ? "line-through" : "none" }}
-      >
-        {title}
-      </span>
-      <Button
-        title={isCompleted ? "completed" : "complete"}
-        onPress={(): void => {
-          update("todo", { id, isCompleted: !isCompleted });
-        }}
-      />
-      <Button
-        title="Rename"
-        onPress={(): void => {
-          prompt(Evolu.NonEmptyString1000, "New Name", (title) => {
-            update("todo", { id, title });
-          });
-        }}
-      />
-      <Button
-        title="Delete"
-        onPress={(): void => {
-          update("todo", { id, isDeleted: true });
-        }}
-      />
-      <TodoCategorySelect
-        todoCategoriesList={todoCategoriesList}
-        selected={categoryId}
-        onSelect={(categoryId): void => {
-          update("todo", { id, categoryId });
-        }}
-      />
+    <View style={{ marginBottom: 16 }}>
+      <View style={{ flexDirection: "row" }}>
+        <Text
+          style={[
+            appStyles.item,
+            { textDecorationLine: isCompleted ? "line-through" : "none" },
+          ]}
+        >
+          {title}
+        </Text>
+        <TodoCategorySelect
+          categories={categories}
+          selected={categoryId}
+          onSelect={(categoryId): void => {
+            update("todo", { id, categoryId });
+          }}
+        />
+      </View>
+      <View style={{ flexDirection: "row" }}>
+        <Button
+          title={isCompleted ? "Completed" : "Complete"}
+          onPress={(): void => {
+            update("todo", { id, isCompleted: !isCompleted });
+          }}
+        />
+        <Button
+          title="Delete"
+          onPress={(): void => {
+            update("todo", { id, isDeleted: true });
+          }}
+        />
+      </View>
     </View>
   );
 });
@@ -171,37 +144,48 @@ const Todos: FC = () => {
         .selectFrom("todo")
         .select(["id", "title", "isCompleted", "categoryId"])
         .where("isDeleted", "is not", Evolu.cast(true))
-        .orderBy("createdAt"),
-    // (row) => row
+        .orderBy("createdAt")
+        // https://kysely.dev/docs/recipes/relations
+        .select((eb) => [
+          Evolu.jsonArrayFrom(
+            eb
+              .selectFrom("todoCategory")
+              .select(["todoCategory.id", "todoCategory.name"]),
+          ).as("categories"),
+        ]),
     ({ title, isCompleted, ...rest }) =>
       title && isCompleted != null && { title, isCompleted, ...rest },
   );
-  const todoCategoriesList = useTodoCategoriesList();
+
+  const [text, setText] = useState("");
+  const newTodoTitle = Schema.parseEither(Evolu.NonEmptyString1000)(text);
+  const handleTextInputEndEditing = (): void => {
+    Either.match(newTodoTitle, {
+      onLeft: constVoid,
+      onRight: (title) => {
+        create("todo", { title, isCompleted: false });
+        setText("");
+      },
+    });
+  };
 
   return (
     <>
-      <Text>Todos</Text>
+      <Text style={appStyles.h2}>Todos</Text>
+      <TextInput
+        autoComplete="off"
+        autoCorrect={false}
+        style={appStyles.textInput}
+        value={text}
+        onChangeText={setText}
+        placeholder="What needs to be done?"
+        onEndEditing={handleTextInputEndEditing}
+      />
       <View>
         {rows.map((row) => (
-          <TodoItem
-            key={row.id}
-            row={row}
-            todoCategoriesList={todoCategoriesList}
-          />
+          <TodoItem key={row.id} row={row} />
         ))}
       </View>
-      <Button
-        title="Add Todo"
-        onPress={(): void => {
-          prompt(
-            Evolu.NonEmptyString1000,
-            "What needs to be done?",
-            (title) => {
-              create("todo", { title, isCompleted: false });
-            },
-          );
-        }}
-      />
     </>
   );
 };
@@ -215,52 +199,69 @@ const TodoCategories: FC = () => {
         .select(["id", "name"])
         .where("isDeleted", "is not", Evolu.cast(true))
         .orderBy("createdAt"),
-    // (row) => row
     ({ name, ...rest }) => name && { name, ...rest },
   );
 
-  return null;
+  const [text, setText] = useState("");
+  const newTodoTitle = Schema.parseEither(NonEmptyString50)(text);
+  const handleTextInputEndEditing = (): void => {
+    Either.match(newTodoTitle, {
+      onLeft: constVoid,
+      onRight: (name) => {
+        create("todoCategory", { name });
+        setText("");
+      },
+    });
+  };
 
   return (
     <>
-      <h2 className="mt-6 text-xl font-semibold">Categories</h2>
-      <ul className="py-2">
-        {rows.map(({ id, name }) => (
-          <li key={id}>
-            <span className="text-sm font-bold">{name}</span>
-            <Button
-              title="Rename"
-              onPress={(): void => {
-                prompt(NonEmptyString50, "Category Name", (name) => {
-                  update("todoCategory", { id, name });
-                });
-              }}
-            />
+      <Text style={appStyles.h2}>Categories</Text>
+      <TextInput
+        autoComplete="off"
+        autoCorrect={false}
+        style={appStyles.textInput}
+        value={text}
+        onChangeText={setText}
+        placeholder="New Category"
+        onEndEditing={handleTextInputEndEditing}
+      />
+      {rows.map(({ id, name }) => (
+        <View key={id} style={{ marginBottom: 16 }}>
+          <Text style={appStyles.item}>{name}</Text>
+          <View style={{ flexDirection: "row" }}>
             <Button
               title="Delete"
               onPress={(): void => {
                 update("todoCategory", { id, isDeleted: true });
               }}
             />
-          </li>
-        ))}
-      </ul>
-      <Button
-        title="Add Category"
-        onPress={(): void => {
-          prompt(NonEmptyString50, "Category Name", (name) => {
-            create("todoCategory", { name });
-          });
-        }}
-      />
+          </View>
+        </View>
+      ))}
     </>
   );
 };
 
 const OwnerActions: FC = () => {
-  const [isShown, setIsShown] = useState(false);
   const owner = useOwner();
   const ownerActions = useOwnerActions();
+  const [showMnemonic, setShowMnemonic] = useState(false);
+  const [showRestore, setShowRestore] = useState(false);
+
+  const [mnemonic, setMnemonic] = useState("");
+  const parsedMnemonic = Schema.parseEither(Evolu.NonEmptyString1000)(mnemonic);
+  const handleMnemonicInputEndEditing = (): void => {
+    Either.match(parsedMnemonic, {
+      onLeft: (error) => alert(TreeFormatter.formatErrors(error.errors)),
+      onRight: (mnemonic) => {
+        void ownerActions.restore(mnemonic).then((either) => {
+          if (either._tag === "Left")
+            alert(JSON.stringify(either.left, null, 2));
+        });
+      },
+    });
+  };
 
   return (
     <View>
@@ -268,37 +269,37 @@ const OwnerActions: FC = () => {
         Open this page on a different device and use your mnemonic to restore
         your data.
       </Text>
-      <Button
-        title={`${!isShown ? "Show" : "Hide"} Mnemonic`}
-        onPress={(): void => setIsShown((value) => !value)}
-      />
-      <Button
-        title="Restore Owner"
-        onPress={(): void => {
-          prompt(Evolu.NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
-            void ownerActions.restore(mnemonic).then((either) => {
-              if (either._tag === "Left")
-                alert(JSON.stringify(either.left, null, 2));
-            });
-          });
-        }}
-      />
-      <Button
-        title="Reset Owner"
-        onPress={(): void => {
-          if (confirm("Are you sure? It will delete all your local data."))
+      <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
+        <Button
+          title={`${!showMnemonic ? "Show" : "Hide"} Mnemonic`}
+          onPress={(): void => setShowMnemonic(!showMnemonic)}
+        />
+        <Button
+          title="Restore"
+          onPress={(): void => setShowRestore(!showRestore)}
+        />
+        <Button
+          title="Reset"
+          onPress={(): void => {
             ownerActions.reset();
-        }}
-      />
-      {isShown && owner != null && (
-        <View>
-          <textarea
-            value={owner.mnemonic}
-            readOnly
-            rows={2}
-            style={{ width: 320 }}
-          />
-        </View>
+          }}
+        />
+      </View>
+      {showMnemonic && owner != null && (
+        <TextInput multiline selectTextOnFocus>
+          {owner.mnemonic}
+        </TextInput>
+      )}
+      {showRestore && (
+        <TextInput
+          placeholder="insert your mnemonic"
+          autoComplete="off"
+          autoCorrect={false}
+          style={appStyles.textInput}
+          value={mnemonic}
+          onChangeText={setMnemonic}
+          onEndEditing={handleMnemonicInputEndEditing}
+        />
       )}
     </View>
   );
@@ -312,7 +313,7 @@ const NotificationBar: FC = () => {
     if (evoluError) setShown(true);
   }, [evoluError]);
 
-  if (!evoluError || !shown) return <></>;
+  if (!evoluError || !shown) return null;
 
   return (
     <View>
@@ -326,11 +327,11 @@ const NextJsExample: FC = () => {
   const [todosShown, setTodosShown] = useState(true);
 
   return (
-    <Suspense>
-      <NotificationBar />
-      <View>
+    <>
+      <OwnerActions />
+      <View style={{ alignItems: "flex-start" }}>
         <Button
-          title="Simulate suspense-enabled router transition"
+          title="Simulate suspense-enabled router"
           onPress={(): void => {
             // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
             startTransition(() => {
@@ -343,26 +344,42 @@ const NextJsExample: FC = () => {
           or jumping content.
         </Text>
       </View>
-      {todosShown ? <Todos /> : <TodoCategories />}
-      <OwnerActions />
-    </Suspense>
+      <Suspense>{todosShown ? <Todos /> : <TodoCategories />}</Suspense>
+      <NotificationBar />
+    </>
   );
 };
 
 export default function App(): JSX.Element {
   return (
-    <View style={styles.container}>
-      <StatusBar style="auto" />
+    <ScrollView style={appStyles.container}>
+      <Text style={appStyles.h1}>React Native Example</Text>
       <NextJsExample />
-    </View>
+    </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
+const appStyles = StyleSheet.create({
+  h1: {
+    fontSize: 24,
+    marginVertical: 16,
+  },
+  h2: {
+    fontSize: 18,
+    marginVertical: 16,
+  },
+  item: {
+    flexGrow: 1,
+    flexShrink: 1,
+    fontSize: 16,
+  },
+  textInput: {
+    fontSize: 18,
+    marginBottom: 16,
+  },
   container: {
     flex: 1,
+    padding: 16,
     backgroundColor: "#fff",
-    alignItems: "center",
-    justifyContent: "center",
   },
 });
