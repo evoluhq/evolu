@@ -1,4 +1,5 @@
 import * as Schema from "@effect/schema/Schema";
+import * as TreeFormatter from "@effect/schema/TreeFormatter";
 import { Either } from "effect";
 import { constVoid } from "effect/Function";
 import * as Evolu from "evolu";
@@ -159,15 +160,13 @@ const Todos: FC = () => {
   const [text, setText] = useState("");
   const newTodoTitle = Schema.parseEither(Evolu.NonEmptyString1000)(text);
   const handleTextInputEndEditing = (): void => {
-    newTodoTitle.pipe(
-      Either.match({
-        onLeft: constVoid,
-        onRight: (title) => {
-          create("todo", { title, isCompleted: false });
-          setText("");
-        },
-      }),
-    );
+    Either.match(newTodoTitle, {
+      onLeft: constVoid,
+      onRight: (title) => {
+        create("todo", { title, isCompleted: false });
+        setText("");
+      },
+    });
   };
 
   return (
@@ -206,15 +205,13 @@ const TodoCategories: FC = () => {
   const [text, setText] = useState("");
   const newTodoTitle = Schema.parseEither(NonEmptyString50)(text);
   const handleTextInputEndEditing = (): void => {
-    newTodoTitle.pipe(
-      Either.match({
-        onLeft: constVoid,
-        onRight: (name) => {
-          create("todoCategory", { name });
-          setText("");
-        },
-      }),
-    );
+    Either.match(newTodoTitle, {
+      onLeft: constVoid,
+      onRight: (name) => {
+        create("todoCategory", { name });
+        setText("");
+      },
+    });
   };
 
   return (
@@ -247,9 +244,24 @@ const TodoCategories: FC = () => {
 };
 
 const OwnerActions: FC = () => {
-  const [isShown, setIsShown] = useState(false);
   const owner = useOwner();
   const ownerActions = useOwnerActions();
+  const [showMnemonic, setShowMnemonic] = useState(false);
+  const [showRestore, setShowRestore] = useState(false);
+
+  const [mnemonic, setMnemonic] = useState("");
+  const parsedMnemonic = Schema.parseEither(Evolu.NonEmptyString1000)(mnemonic);
+  const handleMnemonicInputEndEditing = (): void => {
+    Either.match(parsedMnemonic, {
+      onLeft: (error) => alert(TreeFormatter.formatErrors(error.errors)),
+      onRight: (mnemonic) => {
+        void ownerActions.restore(mnemonic).then((either) => {
+          if (either._tag === "Left")
+            alert(JSON.stringify(either.left, null, 2));
+        });
+      },
+    });
+  };
 
   return (
     <View>
@@ -259,19 +271,12 @@ const OwnerActions: FC = () => {
       </Text>
       <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
         <Button
-          title={`${!isShown ? "Show" : "Hide"} Mnemonic`}
-          onPress={(): void => setIsShown((value) => !value)}
+          title={`${!showMnemonic ? "Show" : "Hide"} Mnemonic`}
+          onPress={(): void => setShowMnemonic(!showMnemonic)}
         />
         <Button
           title="Restore"
-          onPress={(): void => {
-            // prompt(Evolu.NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
-            //   void ownerActions.restore(mnemonic).then((either) => {
-            //     if (either._tag === "Left")
-            //       alert(JSON.stringify(either.left, null, 2));
-            //   });
-            // });
-          }}
+          onPress={(): void => setShowRestore(!showRestore)}
         />
         <Button
           title="Reset"
@@ -280,10 +285,21 @@ const OwnerActions: FC = () => {
           }}
         />
       </View>
-      {isShown && owner != null && (
+      {showMnemonic && owner != null && (
         <TextInput multiline selectTextOnFocus>
           {owner.mnemonic}
         </TextInput>
+      )}
+      {showRestore && (
+        <TextInput
+          placeholder="insert your mnemonic"
+          autoComplete="off"
+          autoCorrect={false}
+          style={appStyles.textInput}
+          value={mnemonic}
+          onChangeText={setMnemonic}
+          onEndEditing={handleMnemonicInputEndEditing}
+        />
       )}
     </View>
   );
