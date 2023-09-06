@@ -21,8 +21,10 @@
     "expo": "^49.0.9",
     "expo-sqlite": "~11.3.2",
     "expo-status-bar": "^1.6.0",
+    "fast-text-encoding": "^1.0.6",
     "react": "18.2.0",
     "react-native": "^0.72.4",
+    "react-native-get-random-values": "^1.9.0",
     "react-native-picker-select": "^8.1.0",
     "web": "workspace:^"
   },

@@ -63,10 +63,8 @@
     "@react-native-community/netinfo": "9.3.10",
     "@scure/bip39": "^1.2.1",
     "expo-updates": "^0.18.12",
-    "fast-text-encoding": "^1.0.6",
     "kysely": "^0.26.3",
-    "nanoid": "^4.0.2",
-    "react-native-get-random-values": "^1.9.0"
+    "nanoid": "^4.0.2"
   },
   "devDependencies": {
     "@effect/schema": "^0.35.0",

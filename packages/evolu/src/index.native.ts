@@ -1,6 +1,3 @@
-import "fast-text-encoding";
-import "react-native-get-random-values";
-
 import { Layer } from "effect";
 import { NanoIdLive, SecretBoxLive } from "./Crypto.js";
 import { DbWorkerLive } from "./DbWorker.js";

@@ -56,12 +56,18 @@ importers:
       expo-status-bar:
         specifier: ^1.6.0
         version: 1.6.0
+      fast-text-encoding:
+        specifier: ^1.0.6
+        version: 1.0.6
       react:
         specifier: 18.2.0
         version: 18.2.0
       react-native:
         specifier: ^0.72.4
         version: 0.72.4(@babel/core@7.22.15)(react@18.2.0)
+      react-native-get-random-values:
+        specifier: ^1.9.0
+        version: 1.9.0(react-native@0.72.4)
       react-native-picker-select:
         specifier: ^8.1.0
         version: 8.1.0(react-native@0.72.4)(react@18.2.0)
@@ -234,18 +240,12 @@ importers:
       expo-updates:
         specifier: ^0.18.12
         version: 0.18.12(expo@49.0.9)
-      fast-text-encoding:
-        specifier: ^1.0.6
-        version: 1.0.6
       kysely:
         specifier: ^0.26.3
         version: 0.26.3
       nanoid:
         specifier: ^4.0.2
         version: 4.0.2
-      react-native-get-random-values:
-        specifier: ^1.9.0
-        version: 1.9.0(react-native@0.72.4)
     devDependencies:
       '@effect/schema':
         specifier: ^0.35.0
@@ -415,7 +415,7 @@ packages:
       '@babel/helper-compilation-targets': 7.22.15
       '@babel/helper-module-transforms': 7.22.15(@babel/core@7.22.15)
       '@babel/helpers': 7.22.15
-      '@babel/parser': 7.22.15
+      '@babel/parser': 7.22.16
       '@babel/template': 7.22.15
       '@babel/traverse': 7.22.15
       '@babel/types': 7.22.15
@@ -648,8 +648,8 @@ packages:
       chalk: 2.4.2
       js-tokens: 4.0.0
 
-  /@babel/parser@7.22.15:
-    resolution: {integrity: sha512-RWmQ/sklUN9BvGGpCDgSubhHWfAx24XDTDObup4ffvxaYsptOg2P3KG0j+1eWKLxpkX0j0uHxmpq2Z1SP/VhxA==}
+  /@babel/parser@7.22.16:
+    resolution: {integrity: sha512-+gPfKv8UWeKKeJTUxe59+OobVcrYHETCsORl61EmSkmgymguYk/X5bp7GuUIXaFsc6y++v8ZxPsLSSuujqDphA==}
     engines: {node: '>=6.0.0'}
     hasBin: true
     dependencies:
@@ -1997,7 +1997,7 @@ packages:
     engines: {node: '>=6.9.0'}
     dependencies:
       '@babel/code-frame': 7.22.13
-      '@babel/parser': 7.22.15
+      '@babel/parser': 7.22.16
       '@babel/types': 7.22.15
 
   /@babel/traverse@7.22.15:
@@ -2010,7 +2010,7 @@ packages:
       '@babel/helper-function-name': 7.22.5
       '@babel/helper-hoist-variables': 7.22.5
       '@babel/helper-split-export-declaration': 7.22.6
-      '@babel/parser': 7.22.15
+      '@babel/parser': 7.22.16
       '@babel/types': 7.22.15
       debug: 4.3.4
       globals: 11.12.0
@@ -3516,7 +3516,7 @@ packages:
       '@babel/preset-env':
         optional: true
     dependencies:
-      '@babel/parser': 7.22.15
+      '@babel/parser': 7.22.16
       flow-parser: 0.206.0
       jscodeshift: 0.14.0
       nullthrows: 1.1.1
@@ -4421,8 +4421,8 @@ packages:
     resolution: {integrity: sha512-DMD0KiN46eipeziST1LPP/STfDU0sufISXmjSgvVsoU2tqxctQeASejWcfNtxYKqETM1UxQ8sp2OrSBWpHY6sw==}
     engines: {node: '>= 0.4'}
 
-  /axe-core@4.7.2:
-    resolution: {integrity: sha512-zIURGIS1E1Q4pcrMjp+nnEh+16G56eG/MUllJH8yEvw7asDo7Ac9uhC9KIH5jzpITueEZolfYglnCGIuSBz39g==}
+  /axe-core@4.8.0:
+    resolution: {integrity: sha512-ZtlVZobOeDQhb/y2lMK6mznDw7TJHDNcKx5/bbBkFvArIQ5CVFhSI6hWWQnMx9I8cNmNmZ30wpDyOC2E2nvgbQ==}
     engines: {node: '>=4'}
     dev: false
 
@@ -6339,7 +6339,7 @@ packages:
       array-includes: 3.1.7
       array.prototype.flatmap: 1.3.1
       ast-types-flow: 0.0.7
-      axe-core: 4.7.2
+      axe-core: 4.8.0
       axobject-query: 3.2.1
       damerau-levenshtein: 1.0.8
       emoji-regex: 9.2.2
@@ -8240,7 +8240,7 @@ packages:
         optional: true
     dependencies:
       '@babel/core': 7.22.15
-      '@babel/parser': 7.22.15
+      '@babel/parser': 7.22.16
       '@babel/plugin-proposal-class-properties': 7.18.6(@babel/core@7.22.15)
       '@babel/plugin-proposal-nullish-coalescing-operator': 7.18.6(@babel/core@7.22.15)
       '@babel/plugin-proposal-optional-chaining': 7.21.0(@babel/core@7.22.15)
@@ -9271,7 +9271,7 @@ packages:
     dependencies:
       '@babel/core': 7.22.15
       '@babel/generator': 7.22.15
-      '@babel/parser': 7.22.15
+      '@babel/parser': 7.22.16
       '@babel/types': 7.22.15
       babel-preset-fbjs: 3.4.0(@babel/core@7.22.15)
       metro: 0.76.7
@@ -9295,7 +9295,7 @@ packages:
       '@babel/code-frame': 7.22.13
       '@babel/core': 7.22.15
       '@babel/generator': 7.22.15
-      '@babel/parser': 7.22.15
+      '@babel/parser': 7.22.16
       '@babel/template': 7.22.15
       '@babel/traverse': 7.22.15
       '@babel/types': 7.22.15
