@@ -21,8 +21,9 @@ export interface QueryObject {
 
 export type Value = null | string | number | Uint8Array;
 
-// TODO: jsonObjectFrom
-export type Row = ReadonlyRecord.ReadonlyRecord<Value | ReadonlyArray<Row>>;
+export type Row = ReadonlyRecord.ReadonlyRecord<
+  Value | Row | ReadonlyArray<Row>
+>;
 
 export type Query = string & Brand.Brand<"Query">;
 
