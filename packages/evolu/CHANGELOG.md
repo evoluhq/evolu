@@ -1,5 +1,11 @@
 # evolu
 
+## 8.0.1
+
+### Patch Changes
+
+- 143b94d: Fix type for Kysely jsonObjectFrom
+
 ## 8.0.0
 
 ### Major Changes
