@@ -1,22 +1,32 @@
 # How Evolu Works
 
-## Local-first apps
+Evolu is simple. That's the feature, not a bug. It's based on James Long's
+[CRDTs for Mortals](https://www.youtube.com/watch?v=DEcwa68f-jY) talk.
+I recommend you to watch it. James also made a
+[working example](https://github.com/jlongster/crdt-example-app), and someone
+very well [explained it](https://github.com/steida/crdt-example-app_annotated/blob/master/NOTES.md).
+I took that code and improved it for production.
 
-Local-first apps allow users to own their data. Evolu stores data in the
-user's device(s), so Evolu apps can work offline and without a specific
-server. How is it different from keeping files on disk? Files are not
-the right abstraction for apps and are complicated to synchronize
-among devices. That's why client-server architecture rules the world.
-But as with everything, it has trade-offs.
+So, how does Evolu work? Evolu creates SQLite database in the user device and stores
+all data locally. While we have full SQL for reads, writes must be written
+in a special form to sync data among devices safely and without merge conflicts.
+Every DB change is described as a CRDT message.
 
-### The trade-offs of the client-server architecture
+import { Callout } from "nextra-theme-docs";
 
-Client-server architecture provides us with easy backup and synchronization,
-but all that depends on the ability of a server to fulfill its promises.
-Internet is offline, companies go bankrupt, users are banned, and errors
-occur. All those things happen all the time, and then what? Right,
-that's why the world needs local-first apps. But until now, writing
-local-first apps has been challenging because of the lack of libraries
-and design patterns.
+<Callout type="info" emoji="ℹ️">
+  CRDT stands for "Conflict-Free Replicated Data Type." It is a type of data
+  structure used in distributed computing and distributed databases to enable
+  concurrent updates to data without conflicts or the need for centralized
+  coordination. CRDTs are designed to work in scenarios where multiple replicas
+  of data exist in a distributed system, and these replicas can be updated
+  independently and concurrently.
+</Callout>
 
-TODO: Describe Evolu architecture and protocol.
+Evolu creates and stores CRDT messages locally and derives actual DB from them.
+The most simple CRDT mutation (and the only one implemented right now) is the
+last write win. Table, row, column, and new value. And a timestamp because
+every CRDT message has to have a timestamp to ensure globally stable ordering
+via [hybrid logical clocks](https://jaredforsyth.com/posts/hybrid-logical-clocks/).
+
+To be continued...
