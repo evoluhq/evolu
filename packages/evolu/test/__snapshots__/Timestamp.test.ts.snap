@@ -2,6 +2,7 @@
 
 exports[`receiveTimestamp > TimestampDuplicateNodeError 1`] = `
 {
+  "_id": "Either",
   "_tag": "Left",
   "left": {
     "_tag": "TimestampDuplicateNodeError",
@@ -12,6 +13,7 @@ exports[`receiveTimestamp > TimestampDuplicateNodeError 1`] = `
 
 exports[`receiveTimestamp > should fail with clock drift 1`] = `
 {
+  "_id": "Either",
   "_tag": "Left",
   "left": {
     "_tag": "TimestampDriftError",
@@ -23,6 +25,7 @@ exports[`receiveTimestamp > should fail with clock drift 1`] = `
 
 exports[`receiveTimestamp > should fail with clock drift 2`] = `
 {
+  "_id": "Either",
   "_tag": "Left",
   "left": {
     "_tag": "TimestampDriftError",
@@ -74,6 +77,7 @@ exports[`receiveTimestamp > wall clock is somehow behind > remote millis is late
 
 exports[`sendTimestamp > should fail with clock drift 1`] = `
 {
+  "_id": "Either",
   "_tag": "Left",
   "left": {
     "_tag": "TimestampDriftError",
@@ -85,6 +89,7 @@ exports[`sendTimestamp > should fail with clock drift 1`] = `
 
 exports[`sendTimestamp > should fail with counter overflow 1`] = `
 {
+  "_id": "Either",
   "_tag": "Left",
   "left": {
     "_tag": "TimestampCounterOverflowError",

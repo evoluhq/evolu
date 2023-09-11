@@ -19,20 +19,14 @@ const someMerkleTree = pipe(
 );
 
 test("createInitialMerkleTree", () => {
-  expect(initialMerkleTree).toMatchInlineSnapshot("{}");
+  expect(initialMerkleTree).toMatchSnapshot();
 });
 
 describe("insertIntoMerkleTree", () => {
   test("node1TimestampStart", () => {
-    expect(insertIntoMerkleTree(node1TimestampStart)(initialMerkleTree))
-      .toMatchInlineSnapshot(`
-      {
-        "0": {
-          "hash": -1416139081,
-        },
-        "hash": -1416139081,
-      }
-    `);
+    expect(
+      insertIntoMerkleTree(node1TimestampStart)(initialMerkleTree),
+    ).toMatchSnapshot();
   });
 
   test("node2Timestamp2022", () => {
@@ -79,32 +73,21 @@ describe("insertIntoMerkleTree", () => {
 
 describe("diffMerkleTrees", () => {
   test("diff for two initial Merkle Trees", () => {
-    expect(diffMerkleTrees(initialMerkleTree, initialMerkleTree))
-      .toMatchInlineSnapshot(`
-      {
-        "_tag": "None",
-      }
-    `);
+    expect(
+      diffMerkleTrees(initialMerkleTree, initialMerkleTree),
+    ).toMatchSnapshot();
   });
 
   test("diff for initialMerkleTree and mt1", () => {
-    expect(diffMerkleTrees(initialMerkleTree, someMerkleTree))
-      .toMatchInlineSnapshot(`
-      {
-        "_tag": "Some",
-        "value": 0,
-      }
-    `);
+    expect(
+      diffMerkleTrees(initialMerkleTree, someMerkleTree),
+    ).toMatchSnapshot();
   });
 
   test("diff for mt1 and initialMerkleTree", () => {
-    expect(diffMerkleTrees(someMerkleTree, initialMerkleTree))
-      .toMatchInlineSnapshot(`
-      {
-        "_tag": "Some",
-        "value": 0,
-      }
-    `);
+    expect(
+      diffMerkleTrees(someMerkleTree, initialMerkleTree),
+    ).toMatchSnapshot();
   });
 
   test("minute window", () => {
@@ -116,12 +99,7 @@ describe("diffMerkleTrees", () => {
           insertIntoMerkleTree(makeNode2Timestamp(60000 - 1)),
         ),
       ),
-    ).toMatchInlineSnapshot(`
-      {
-        "_tag": "Some",
-        "value": 0,
-      }
-    `);
+    ).toMatchSnapshot();
 
     expect(
       diffMerkleTrees(
@@ -131,12 +109,7 @@ describe("diffMerkleTrees", () => {
           insertIntoMerkleTree(makeNode2Timestamp(60000)),
         ),
       ),
-    ).toMatchInlineSnapshot(`
-      {
-        "_tag": "Some",
-        "value": 60000,
-      }
-    `);
+    ).toMatchSnapshot();
   });
 
   test("find the most recent time when trees were the same", () => {
@@ -149,12 +122,7 @@ describe("diffMerkleTrees", () => {
       initialMerkleTree,
       insertIntoMerkleTree(makeNode1Timestamp(now)),
     );
-    expect(diffMerkleTrees(t1, t2)).toMatchInlineSnapshot(`
-      {
-        "_tag": "Some",
-        "value": 561439380000,
-      }
-    `);
+    expect(diffMerkleTrees(t1, t2)).toMatchSnapshot();
 
     const hundredYears = 1000 * 60 * 60 * 24 * 365 * 100;
     const t3 = pipe(
@@ -166,12 +134,7 @@ describe("diffMerkleTrees", () => {
       initialMerkleTree,
       insertIntoMerkleTree(makeNode1Timestamp(now + hundredYears)),
     );
-    expect(diffMerkleTrees(t3, t4)).toMatchInlineSnapshot(`
-      {
-        "_tag": "Some",
-        "value": 1612639380000,
-      }
-    `);
+    expect(diffMerkleTrees(t3, t4)).toMatchSnapshot();
   });
 
   test("sync", () => {
