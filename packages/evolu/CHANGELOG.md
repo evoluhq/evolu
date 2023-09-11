@@ -1,5 +1,11 @@
 # evolu
 
+## 8.0.2
+
+### Patch Changes
+
+- 7fb9e97: Update deps
+
 ## 8.0.1
 
 ### Patch Changes
