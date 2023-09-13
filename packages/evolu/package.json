@@ -65,14 +65,14 @@
     "@scure/bip39": "^1.2.1",
     "expo-updates": "^0.18.12",
     "kysely": "^0.26.3",
-    "nanoid": "^4.0.2"
+    "nanoid": "^5.0.1"
   },
   "devDependencies": {
     "@effect/schema": "^0.36.1",
     "@evolu/tsconfig": "workspace:*",
     "@protobuf-ts/plugin": "^2.9.1",
     "@protobuf-ts/protoc": "^2.9.1",
-    "@sqlite.org/sqlite-wasm": "3.43.0-build3",
+    "@sqlite.org/sqlite-wasm": "3.43.1-build1",
     "@types/react": "^18.2.21",
     "@types/react-dom": "^18.2.7",
     "@types/web-locks-api": "^0.0.2",
@@ -81,7 +81,7 @@
     "eslint": "^8.49.0",
     "eslint-config-evolu": "workspace:*",
     "expo": "^49.0.10",
-    "expo-sqlite": "~11.3.3",
+    "expo-sqlite": "~11.6.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-native": "^0.72.4",
@@ -92,10 +92,10 @@
   },
   "peerDependencies": {
     "@effect/schema": "^0.36.1",
-    "@sqlite.org/sqlite-wasm": "3.43.0-build3",
+    "@sqlite.org/sqlite-wasm": "3.43.1-build1",
     "effect": "2.0.0-next.32",
     "expo": "^49.0.10",
-    "expo-sqlite": "~11.3.3",
+    "expo-sqlite": "~11.6.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-native": "^0.72.4"
