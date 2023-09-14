@@ -2,14 +2,13 @@
 
 [GitHub Repository](https://github.com/evoluhq/evolu/tree/main/examples/nextjs)
 
-import dynamic from "next/dynamic";
-// Simulate Next.js App Router "use client".
-// It's crucial to not server render components using Evolu to prevent
-// this React https://legacy.reactjs.org/docs/error-decoder.html/?invariant=421
-// error. It doesn't make sense to server-render local-first data anyway.
-export const NextJsExample = dynamic(
-  () => import("../../components/NextJsExample").then((a) => a.NextJsExample),
-  { ssr: false },
-);
+import { NextJsExample } from "../../components/NextJsExample";
+import { ClientOnly } from "../../components/ClientOnly";
+// ClientOnly is a workaround for this React bug:
+// "Error: This Suspense boundary received an update before it finished hydrating."
+// This bug is already fixed but not released in a stable React version.
+// https://github.com/facebook/react/pull/25692
 
-<NextJsExample />
+<ClientOnly>
+  <NextJsExample />
+</ClientOnly>
