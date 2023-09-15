@@ -3,62 +3,23 @@ import { applyPatches, makePatches } from "../src/Diff.js";
 import { Row } from "../src/Sqlite.js";
 
 test("makePatches", () => {
-  const item = { a: 1 };
-  const array = [item];
+  const row: Row = { a: 1 };
+  const rows: ReadonlyArray<Row> = [row];
 
   expect(makePatches([], []).length).toBe(0);
   const p0 = [{ op: "replaceAll", value: [] }];
-  expect(makePatches(array, [])).toEqual(p0);
-  expect(makePatches(undefined, [])).toEqual(p0);
+  expect(makePatches(rows, [])).toEqual(p0);
 
-  const p1 = makePatches([], array);
-  expect(p1).toEqual([{ op: "replaceAll", value: array }]);
-  if (p1[0].op === "replaceAll") expect(p1[0].value).toBe(array);
+  const p1 = makePatches([], rows);
+  expect(p1).toEqual([{ op: "replaceAll", value: rows }]);
+  if (p1[0].op === "replaceAll") expect(p1[0].value).toBe(rows);
 
-  expect(makePatches(array, array).length).toBe(0);
-  expect(makePatches(array, [{ a: 2 }])).toMatchInlineSnapshot(`
-    [
-      {
-        "op": "replaceAll",
-        "value": [
-          {
-            "a": 2,
-          },
-        ],
-      },
-    ]
-  `);
-  expect(makePatches([item, { b: 2 }], [item, { b: 3 }]))
-    .toMatchInlineSnapshot(`
-    [
-      {
-        "index": 1,
-        "op": "replaceAt",
-        "value": {
-          "b": 3,
-        },
-      },
-    ]
-  `);
-  expect(makePatches([{ a: 1 }, item, { c: 4 }], [{ a: 0 }, item, { c: 1 }]))
-    .toMatchInlineSnapshot(`
-    [
-      {
-        "index": 0,
-        "op": "replaceAt",
-        "value": {
-          "a": 0,
-        },
-      },
-      {
-        "index": 2,
-        "op": "replaceAt",
-        "value": {
-          "c": 1,
-        },
-      },
-    ]
-  `);
+  expect(makePatches(rows, rows).length).toBe(0);
+  expect(makePatches(rows, [{ a: 2 }])).toMatchSnapshot();
+  expect(makePatches([row, { b: 2 }], [row, { b: 3 }])).toMatchSnapshot();
+  expect(
+    makePatches([{ a: 1 }, row, { c: 4 }], [{ a: 0 }, row, { c: 1 }]),
+  ).toMatchSnapshot();
 });
 
 test("applyPatches", () => {

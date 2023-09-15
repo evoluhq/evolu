@@ -223,7 +223,7 @@ const query = ({
     const queriesPatches = queriesRows.map(
       ([query, rows]): QueryPatches => ({
         query,
-        patches: makePatches(previous.get(query), rows),
+        patches: makePatches(previous.get(query) || [], rows),
       }),
     );
     dbWorkerOnMessage({ _tag: "onQuery", queriesPatches, onCompleteIds });

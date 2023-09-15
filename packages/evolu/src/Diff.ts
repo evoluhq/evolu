@@ -34,36 +34,35 @@ export const applyPatches =
       }
     }, current);
 
-// For now, we detect only a change in the whole result and in-place edits.
+// We detect only a change in the whole result and in-place edits.
 // In the future, we will add more heuristics. We will probably not implement
 // the Myers diff algorithm because it's faster to rerender all than
 // to compute many detailed patches. We will only implement a logic
 // a developer would implement manually, if necessary.
+// Another idea is to make makePatches configurable via custom functions.
 export const makePatches = (
-  previous: ReadonlyArray<Row> | undefined,
-  next: ReadonlyArray<Row>,
+  previousRows: ReadonlyArray<Row>,
+  nextRows: ReadonlyArray<Row>,
 ): readonly Patch[] => {
-  if (previous === undefined) return [{ op: "replaceAll", value: next }];
-  if (previous.length === 0 && next.length === 0) return [];
-  if (previous.length !== next.length)
-    return [{ op: "replaceAll", value: next }];
+  // TODO: Detect prepend and append, it's cheap.
+  if (previousRows.length !== nextRows.length)
+    return [{ op: "replaceAll", value: nextRows }];
 
-  const replaceAtOps: ReplaceAtPatch[] = [];
+  const length = previousRows.length;
+  const replaceAtPatches: ReplaceAtPatch[] = [];
 
-  for (let i = 0; i < previous.length; i++) {
-    const pItem = previous[i];
-    const nItem = next[i];
-    for (const key in pItem) {
-      if (pItem[key] !== nItem[key]) {
-        replaceAtOps.push({ op: "replaceAt", value: nItem, index: i });
+  for (let i = 0; i < length; i++) {
+    const previousRow = previousRows[i];
+    const nextRow = nextRows[i];
+    // We expect the same shape for both rows.
+    for (const key in previousRow)
+      if (previousRow[key] !== nextRow[key]) {
+        replaceAtPatches.push({ op: "replaceAt", value: nextRow, index: i });
         break;
       }
-    }
   }
 
-  if (replaceAtOps.length === 0) return [];
-  if (replaceAtOps.length === previous.length)
-    return [{ op: "replaceAll", value: next }];
-
-  return replaceAtOps;
+  if (length > 0 && replaceAtPatches.length === length)
+    return [{ op: "replaceAll", value: nextRows }];
+  return replaceAtPatches;
 };
