@@ -240,16 +240,13 @@ const QueryStoreLive = Layer.effect(
         queriesPatches,
         ReadonlyArray.map(
           ({ query, patches }) =>
-            [
-              query,
-              applyPatches(patches)(state.get(query) || ReadonlyArray.empty()),
-            ] as const,
+            [query, applyPatches(patches)(state.get(query) || [])] as const,
         ),
         (a): RowsCacheMap => new Map([...state, ...a]),
       );
       // Resolve all Promises belonging to queries.
       queriesPatches.forEach(({ query }) => {
-        const rows = nextState.get(query) || ReadonlyArray.empty();
+        const rows = nextState.get(query) || [];
         loadingPromises.resolvePromise(query, rows);
       });
       // No mutation is using onComplete, so we don't need flushSync.
@@ -414,6 +411,7 @@ export const EvoluLive = <T extends Schema>(
         Array.from(subscribedQueries.keys());
 
       dbWorker.onMessage = (output): void => {
+        // console.log(output);
         switch (output._tag) {
           case "onError":
             if (process.env.NODE_ENV === "development")

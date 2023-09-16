@@ -197,11 +197,10 @@ export type RowsCacheMap = ReadonlyMap<Query, ReadonlyArray<Row>>;
 
 type RowsCacheRef = Ref.Ref<RowsCacheMap>;
 const RowsCacheRef = Context.Tag<RowsCacheRef>("evolu/RowsCacheRef");
-const RowsCacheRefLive = Layer.effect(RowsCacheRef, Ref.make(new Map()));
 
 const query = ({
   queries,
-  onCompleteIds = ReadonlyArray.empty(),
+  onCompleteIds = [],
 }: {
   readonly queries: ReadonlyArray<Query>;
   readonly onCompleteIds?: ReadonlyArray<OnCompleteId>;
@@ -220,12 +219,14 @@ const query = ({
     );
     const previous = yield* _(Ref.get(rowsCache));
     yield* _(Ref.set(rowsCache, new Map([...previous, ...queriesRows])));
+
     const queriesPatches = queriesRows.map(
       ([query, rows]): QueryPatches => ({
         query,
-        patches: makePatches(previous.get(query) || [], rows),
+        patches: makePatches(previous.get(query), rows),
       }),
     );
+
     dbWorkerOnMessage({ _tag: "onQuery", queriesPatches, onCompleteIds });
   });
 
@@ -536,7 +537,7 @@ const sync = ({
       _tag: "sync",
       syncUrl: config.syncUrl,
       owner,
-      messages: ReadonlyArray.empty(),
+      messages: [],
       syncLoopCount: 0,
     });
   });
@@ -572,6 +573,7 @@ export const DbWorkerLive = Layer.effect(
   DbWorker,
   Effect.gen(function* (_) {
     const syncWorker = yield* _(SyncWorker);
+    const rowsCacheRef = yield* _(Ref.make<RowsCacheMap>(new Map()));
 
     const onError = (error: EvoluError): Effect.Effect<never, never, void> =>
       Effect.sync(() => {
@@ -623,6 +625,15 @@ export const DbWorkerLive = Layer.effect(
     const makeWriteForInitSuccess = (owner: Owner, config: Config): Write => {
       let skipAllBecauseOfReset = false;
 
+      const layer = Layer.mergeAll(
+        ConfigLive(config),
+        Layer.succeed(DbWorkerOnMessage, dbWorker.onMessage),
+        Layer.succeed(Owner, owner),
+        Layer.succeed(SyncWorkerPostMessage, syncWorker.postMessage),
+        Layer.succeed(RowsCacheRef, rowsCacheRef),
+        TimeLive,
+      );
+
       return (input) => {
         if (skipAllBecauseOfReset) return Promise.resolve(undefined);
 
@@ -640,16 +651,7 @@ export const DbWorkerLive = Layer.effect(
             ensureSchema: (input) => ensureSchema(input.tables),
             SyncWorkerOutputSyncResponse: handleSyncResponse,
           }),
-          Effect.provideSomeLayer(
-            Layer.mergeAll(
-              ConfigLive(config),
-              Layer.succeed(DbWorkerOnMessage, dbWorker.onMessage),
-              Layer.succeed(Owner, owner),
-              Layer.succeed(SyncWorkerPostMessage, syncWorker.postMessage),
-              RowsCacheRefLive,
-              TimeLive,
-            ),
-          ),
+          Effect.provideSomeLayer(layer),
           run,
         );
       };
