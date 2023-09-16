@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { applyPatches, makePatches } from "../src/Diff.js";
+import { applyPatches, areEqual, makePatches } from "../src/Diff.js";
 import { Row } from "../src/Sqlite.js";
 
 test("makePatches", () => {
@@ -15,11 +15,53 @@ test("makePatches", () => {
   if (p1[0].op === "replaceAll") expect(p1[0].value).toBe(rows);
 
   expect(makePatches(rows, rows).length).toBe(0);
+
   expect(makePatches(rows, [{ a: 2 }])).toMatchSnapshot();
+
   expect(makePatches([row, { b: 2 }], [row, { b: 3 }])).toMatchSnapshot();
+
   expect(
     makePatches([{ a: 1 }, row, { c: 4 }], [{ a: 0 }, row, { c: 1 }]),
   ).toMatchSnapshot();
+
+  expect(
+    makePatches([{ a: new Uint8Array([1]) }], [{ a: new Uint8Array([1]) }])
+      .length,
+  ).toBe(0);
+
+  expect(makePatches([{ a: [{ a: 1 }] }], [{ a: [{ a: 1 }] }]).length).toBe(0);
+});
+
+test("areEqual", () => {
+  expect(areEqual(null, null)).toMatchInlineSnapshot("true");
+  expect(areEqual("", "")).toMatchInlineSnapshot("true");
+  expect(areEqual("", "a")).toMatchInlineSnapshot("false");
+  expect(areEqual(0, 0)).toMatchInlineSnapshot("true");
+  expect(areEqual(0, 1)).toMatchInlineSnapshot("false");
+  expect(areEqual(null, 1)).toMatchInlineSnapshot("false");
+  expect(areEqual(null, {})).toMatchInlineSnapshot("false");
+  expect(areEqual(1, null)).toMatchInlineSnapshot("false");
+  expect(areEqual([], [])).toMatchInlineSnapshot("true");
+  expect(areEqual({ a: 1 }, { a: 1 })).toMatchInlineSnapshot("true");
+  expect(areEqual({ a: 1 }, { a: 2 })).toMatchInlineSnapshot("false");
+  expect(areEqual([{ a: 1 }], [{ a: 1 }])).toMatchInlineSnapshot("true");
+  expect(areEqual([{ a: 1 }], [{ a: 2 }])).toMatchInlineSnapshot("false");
+  expect(areEqual({ a: 1 }, [{ a: 2 }])).toMatchInlineSnapshot("false");
+  expect(
+    areEqual(new Uint8Array([1]), new Uint8Array([1])),
+  ).toMatchInlineSnapshot("true");
+  expect(
+    areEqual(
+      { a: [{ b: new Uint8Array([1]) }] },
+      { a: [{ b: new Uint8Array([1]) }] },
+    ),
+  ).toMatchInlineSnapshot("true");
+  expect(
+    areEqual(
+      { a: [{ b: new Uint8Array([1]) }] },
+      { a: [{ b: new Uint8Array([2]) }] },
+    ),
+  ).toMatchInlineSnapshot("false");
 });
 
 test("applyPatches", () => {

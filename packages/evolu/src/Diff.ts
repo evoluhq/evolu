@@ -1,4 +1,4 @@
-import { Query, Row } from "./Sqlite.js";
+import { Query, Row, Value } from "./Sqlite.js";
 
 export interface QueryPatches {
   readonly query: Query;
@@ -41,12 +41,15 @@ export const applyPatches =
 // a developer would implement manually, if necessary.
 // Another idea is to make makePatches configurable via custom functions.
 export const makePatches = (
-  previousRows: ReadonlyArray<Row>,
+  previousRows: ReadonlyArray<Row> | undefined,
   nextRows: ReadonlyArray<Row>,
 ): readonly Patch[] => {
-  // TODO: Detect prepend and append, it's cheap.
-  if (previousRows.length !== nextRows.length)
+  if (previousRows === undefined)
     return [{ op: "replaceAll", value: nextRows }];
+  // TODO: Detect prepend and append, it's cheap.
+  if (previousRows.length !== nextRows.length) {
+    return [{ op: "replaceAll", value: nextRows }];
+  }
 
   const length = previousRows.length;
   const replaceAtPatches: ReplaceAtPatch[] = [];
@@ -56,13 +59,53 @@ export const makePatches = (
     const nextRow = nextRows[i];
     // We expect the same shape for both rows.
     for (const key in previousRow)
-      if (previousRow[key] !== nextRow[key]) {
+      if (!areEqual(previousRow[key], nextRow[key])) {
         replaceAtPatches.push({ op: "replaceAt", value: nextRow, index: i });
         break;
       }
   }
 
-  if (length > 0 && replaceAtPatches.length === length)
+  if (length > 0 && replaceAtPatches.length === length) {
     return [{ op: "replaceAll", value: nextRows }];
+  }
   return replaceAtPatches;
+};
+
+export const areEqual = (
+  a: Value | Row | ReadonlyArray<Row>,
+  b: Value | Row | ReadonlyArray<Row>,
+): boolean => {
+  // Compare string, number, null ASAP.
+  if (a === b) return true;
+  // Different type works only for string and number, everything else is an object.
+  if (typeof a !== typeof b) return false;
+  // Both are nonnullable objects.
+  if (typeof a === "object" && a !== null && b !== null) {
+    const aIsUint8Array = a instanceof Uint8Array;
+    const bIsUint8Array = b instanceof Uint8Array;
+    if (aIsUint8Array && bIsUint8Array) {
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+      return true;
+    }
+
+    const aIsArray = Array.isArray(a);
+    const bIsArray = Array.isArray(b);
+    if (aIsArray && bIsArray) {
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++)
+        if (!areEqual(a[i] as never, b[i] as never)) return false;
+      return true;
+    }
+
+    if (!aIsUint8Array && !bIsUint8Array && !aIsArray && !bIsArray) {
+      const aKeys = Object.keys(a);
+      const bKeys = Object.keys(b);
+      if (aKeys.length !== bKeys.length) return false;
+      for (const key of aKeys)
+        if (!areEqual((a as never)[key], (b as never)[key])) return false;
+      return true;
+    }
+  }
+  return false;
 };
