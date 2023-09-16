@@ -37,9 +37,7 @@ import {
 import { makeInitialTimestamp, timestampToString } from "./Timestamp.js";
 
 export type Schema = ReadonlyRecord.ReadonlyRecord<
-  // musim to bejt objekt kterej ma value Value nebo
   { id: Id } & ReadonlyRecord.ReadonlyRecord<Value | JsonObjectOrArray>
-  // { id: Id } & Row & ReadonlyRecord.ReadonlyRecord<JsonObjectOrArray>
 >;
 
 export type CreateQuery<S extends Schema> = (
