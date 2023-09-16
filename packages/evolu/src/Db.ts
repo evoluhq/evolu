@@ -26,15 +26,19 @@ import {
   insertOwner,
 } from "./Sql.js";
 import {
+  JsonObjectOrArray,
   Query,
   QueryObject,
   Row,
   Sqlite,
+  Value,
   queryObjectToQuery,
 } from "./Sqlite.js";
 import { makeInitialTimestamp, timestampToString } from "./Timestamp.js";
 
-export type Schema = ReadonlyRecord.ReadonlyRecord<{ id: Id } & Row>;
+export type Schema = ReadonlyRecord.ReadonlyRecord<
+  { id: Id } & ReadonlyRecord.ReadonlyRecord<Value | JsonObjectOrArray>
+>;
 
 export type CreateQuery<S extends Schema> = (
   queryCallback: QueryCallback<S, Row>,

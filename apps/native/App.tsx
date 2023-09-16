@@ -1,7 +1,6 @@
 import * as Schema from "@effect/schema/Schema";
 import * as TreeFormatter from "@effect/schema/TreeFormatter";
-import { Either } from "effect";
-import { constVoid } from "effect/Function";
+import { Either, Function } from "effect";
 import * as Evolu from "evolu";
 import {
   FC,
@@ -161,7 +160,7 @@ const Todos: FC = () => {
   const newTodoTitle = Schema.parseEither(Evolu.NonEmptyString1000)(text);
   const handleTextInputEndEditing = (): void => {
     Either.match(newTodoTitle, {
-      onLeft: constVoid,
+      onLeft: Function.constVoid,
       onRight: (title) => {
         create("todo", { title, isCompleted: false });
         setText("");
@@ -206,7 +205,7 @@ const TodoCategories: FC = () => {
   const newTodoTitle = Schema.parseEither(NonEmptyString50)(text);
   const handleTextInputEndEditing = (): void => {
     Either.match(newTodoTitle, {
-      onLeft: constVoid,
+      onLeft: Function.constVoid,
       onRight: (name) => {
         create("todoCategory", { name });
         setText("");

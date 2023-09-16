@@ -1,11 +1,6 @@
 import { Brand, Context, Effect, ReadonlyRecord } from "effect";
 import { ParseJSONResultsPlugin } from "kysely";
 
-interface ExecResult {
-  readonly rows: ReadonlyArray<Row>;
-  readonly changes: number;
-}
-
 export interface Sqlite {
   readonly exec: (
     arg: string | QueryObject,
@@ -21,8 +16,19 @@ export interface QueryObject {
 
 export type Value = null | string | number | Uint8Array;
 
+interface ExecResult {
+  readonly rows: ReadonlyArray<Row>;
+  readonly changes: number;
+}
+
+type Json = string | number | boolean | null | JsonObject | JsonArray;
+type JsonArray = Json[];
+type JsonObject = { [property: string]: Json };
+
+export type JsonObjectOrArray = JsonObject | JsonArray;
+
 export type Row = ReadonlyRecord.ReadonlyRecord<
-  Value | Row | ReadonlyArray<Row>
+  Value | Row | ReadonlyArray<Row> | JsonObjectOrArray
 >;
 
 export type Query = string & Brand.Brand<"Query">;

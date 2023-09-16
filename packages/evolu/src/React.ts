@@ -300,7 +300,7 @@ export const ReactHooksLive = <T extends Schema>(): Layer.Layer<
         const filterMapRef = useRef(filterMap);
 
         const rows = useMemo(() => {
-          if (subscribedRows == null) return ReadonlyArray.empty();
+          if (subscribedRows == null) return [];
           return ReadonlyArray.filterMap(subscribedRows, (row) => {
             let cachedRow = cache.get(row);
             if (cachedRow !== undefined) return cachedRow;
