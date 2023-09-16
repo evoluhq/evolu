@@ -12,6 +12,8 @@ Evolu is designed for privacy, ease of use, and no vendor lock-in.
 - Real-time experience via revalidation on focus and network recovery
 - Schema evolving via `filterMap` ad-hoc migration
 - No signup/login, no email collection, only Bitcoin-like mnemonic (12 words)
+- Fetching nested objects and arrays in a single SQL query
+- JSON support with automatic parsing and stringifying
 
 ## Local-first apps
 
