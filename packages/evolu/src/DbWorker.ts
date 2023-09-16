@@ -7,6 +7,7 @@ import {
   Layer,
   Match,
   Option,
+  Predicate,
   ReadonlyArray,
   ReadonlyRecord,
   Ref,
@@ -32,7 +33,7 @@ import {
   insertIntoMerkleTree,
   merkleTreeToString,
 } from "./MerkleTree.js";
-import { CastableForMutate, Id, SqliteDate, cast } from "./Model.js";
+import { Id, SqliteDate, cast } from "./Model.js";
 import {
   insertIntoMessagesIfNew,
   insertValueIntoTableRowColumn,
@@ -42,7 +43,14 @@ import {
   selectOwnerTimestampAndMerkleTree,
   updateOwnerTimestampAndMerkleTree,
 } from "./Sql.js";
-import { Query, Row, Sqlite, Value, queryObjectFromQuery } from "./Sqlite.js";
+import {
+  JsonObjectOrArray,
+  Query,
+  Row,
+  Sqlite,
+  Value,
+  queryObjectFromQuery,
+} from "./Sqlite.js";
 import {
   Message,
   NewMessage,
@@ -165,7 +173,9 @@ interface DbWorkerOutputOnSyncState {
 export interface MutateItem {
   readonly table: string;
   readonly id: Id;
-  readonly values: ReadonlyRecord.ReadonlyRecord<CastableForMutate<Value>>;
+  readonly values: ReadonlyRecord.ReadonlyRecord<
+    Value | Date | boolean | undefined | JsonObjectOrArray
+  >;
   readonly isInsert: boolean;
   readonly now: SqliteDate;
   readonly onCompleteId: OnCompleteId | null;
@@ -272,6 +282,10 @@ const mutateItemsToNewMessages = (
                 ? cast(value)
                 : value instanceof Date
                 ? cast(value)
+                : value !== null &&
+                  typeof value === "object" &&
+                  !Predicate.isUint8Array(value)
+                ? JSON.stringify(value)
                 : value,
             ] as const,
         ),

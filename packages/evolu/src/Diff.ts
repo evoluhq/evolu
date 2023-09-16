@@ -1,4 +1,4 @@
-import { Query, Row, Value } from "./Sqlite.js";
+import { JsonObjectOrArray, Query, Row, Value } from "./Sqlite.js";
 
 export interface QueryPatches {
   readonly query: Query;
@@ -57,6 +57,7 @@ export const makePatches = (
   for (let i = 0; i < length; i++) {
     const previousRow = previousRows[i];
     const nextRow = nextRows[i];
+
     // We expect the same shape for both rows.
     for (const key in previousRow)
       if (!areEqual(previousRow[key], nextRow[key])) {
@@ -72,8 +73,8 @@ export const makePatches = (
 };
 
 export const areEqual = (
-  a: Value | Row | ReadonlyArray<Row>,
-  b: Value | Row | ReadonlyArray<Row>,
+  a: Value | Row | ReadonlyArray<Row> | JsonObjectOrArray,
+  b: Value | Row | ReadonlyArray<Row> | JsonObjectOrArray,
 ): boolean => {
   // Compare string, number, null ASAP.
   if (a === b) return true;

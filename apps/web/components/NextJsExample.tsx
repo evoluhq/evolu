@@ -27,14 +27,23 @@ type NonEmptyString50 = Schema.Schema.To<typeof NonEmptyString50>;
 const TodoTable = Schema.struct({
   id: TodoId,
   title: Evolu.NonEmptyString1000,
+  // We can't use JavaScript boolean in SQLite.
   isCompleted: Evolu.SqliteBoolean,
   categoryId: Schema.nullable(TodoCategoryId),
 });
 type TodoTable = Schema.Schema.To<typeof TodoTable>;
 
+const SomeJson = Schema.struct({
+  foo: Schema.string,
+  // We can use any JSON type in SQLite JSON.
+  bar: Schema.boolean,
+});
+type SomeJson = Schema.Schema.To<typeof SomeJson>;
+
 const TodoCategoryTable = Schema.struct({
   id: TodoCategoryId,
   name: NonEmptyString50,
+  json: SomeJson,
 });
 type TodoCategoryTable = Schema.Schema.To<typeof TodoCategoryTable>;
 
@@ -218,11 +227,14 @@ const TodoCategories: FC = () => {
     (db) =>
       db
         .selectFrom("todoCategory")
-        .select(["id", "name"])
+        .select(["id", "name", "json"])
         .where("isDeleted", "is not", Evolu.cast(true))
         .orderBy("createdAt"),
     ({ name, ...rest }) => name && { name, ...rest },
   );
+
+  // Evolu automatically parses JSONs into typed objects.
+  // rows[0].json?.bar;
 
   return (
     <>
@@ -252,7 +264,10 @@ const TodoCategories: FC = () => {
         title="Add Category"
         onClick={(): void => {
           prompt(NonEmptyString50, "Category Name", (name) => {
-            create("todoCategory", { name });
+            create("todoCategory", {
+              name,
+              json: { foo: "a", bar: false },
+            });
           });
         }}
       />

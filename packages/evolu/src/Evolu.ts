@@ -294,9 +294,9 @@ const MutateLive = <T extends Schema>(): Layer.Layer<
         }
 
         queue.push({
-          table: table as string,
+          table: table.toString(),
           id: id as Id,
-          values: values as MutateItem["values"],
+          values,
           isInsert,
           now: cast(new Date(Effect.runSync(time.now))),
           onCompleteId,
