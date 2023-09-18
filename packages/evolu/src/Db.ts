@@ -36,9 +36,11 @@ import {
 } from "./Sqlite.js";
 import { makeInitialTimestamp, timestampToString } from "./Timestamp.js";
 
-export type Schema = ReadonlyRecord.ReadonlyRecord<
-  { id: Id } & ReadonlyRecord.ReadonlyRecord<Value | JsonObjectOrArray>
->;
+export type TableSchema = ReadonlyRecord.ReadonlyRecord<
+  Value | JsonObjectOrArray
+> & { id: Id };
+
+export type Schema = ReadonlyRecord.ReadonlyRecord<TableSchema>;
 
 export type CreateQuery<S extends Schema> = (
   queryCallback: QueryCallback<S, Row>,

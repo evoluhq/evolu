@@ -22,8 +22,8 @@ interface ExecResult {
 }
 
 type Json = string | number | boolean | null | JsonObject | JsonArray;
-type JsonArray = Json[];
-type JsonObject = { [property: string]: Json };
+type JsonArray = ReadonlyArray<Json>;
+type JsonObject = ReadonlyRecord.ReadonlyRecord<Json>;
 
 export type JsonObjectOrArray = JsonObject | JsonArray;
 
