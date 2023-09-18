@@ -1,5 +1,13 @@
 # evolu
 
+## 8.1.1
+
+### Patch Changes
+
+- 6cfe697: Fix type bug for SQLite JSON
+
+  Change writable types to read-only because that's what Schema generates.
+
 ## 8.1.0
 
 ### Minor Changes
