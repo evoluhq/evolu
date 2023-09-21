@@ -11,9 +11,9 @@
     "clean": "rm -rf .turbo && rm -rf .expo && rm -rf node_modules"
   },
   "dependencies": {
-    "@effect/schema": "^0.36.1",
+    "@effect/schema": "^0.36.4",
     "@react-native-community/netinfo": "9.4.1",
-    "@types/react": "^18.2.21",
+    "@types/react": "^18.2.22",
     "crypto-browserify": "^3.12.0",
     "effect": "2.0.0-next.34",
     "events": "^3.3.0",
@@ -29,7 +29,7 @@
     "web": "workspace:^"
   },
   "devDependencies": {
-    "@babel/core": "^7.22.19",
+    "@babel/core": "^7.22.20",
     "@babel/plugin-transform-private-methods": "^7.22.5",
     "eslint": "^8.49.0",
     "eslint-config-evolu": "workspace:*",

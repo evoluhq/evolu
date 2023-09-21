@@ -68,12 +68,12 @@
     "nanoid": "^5.0.1"
   },
   "devDependencies": {
-    "@effect/schema": "^0.36.1",
+    "@effect/schema": "^0.36.4",
     "@evolu/tsconfig": "workspace:*",
     "@protobuf-ts/plugin": "^2.9.1",
     "@protobuf-ts/protoc": "^2.9.1",
     "@sqlite.org/sqlite-wasm": "3.43.1-build1",
-    "@types/react": "^18.2.21",
+    "@types/react": "^18.2.22",
     "@types/react-dom": "^18.2.7",
     "@types/web-locks-api": "^0.0.2",
     "array-shuffle": "^3.0.0",
