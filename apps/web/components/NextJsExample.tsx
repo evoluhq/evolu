@@ -51,7 +51,6 @@ const Database = Schema.struct({
   todo: TodoTable,
   todoCategory: TodoCategoryTable,
 });
-type Database = Schema.Schema.To<typeof Database>;
 
 const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
   Evolu.create(Database, {
@@ -324,7 +323,6 @@ const OwnerActions: FC = () => {
 
 const NotificationBar: FC = () => {
   const evoluError = useEvoluError();
-
   const [shown, setShown] = useState(false);
 
   useEffect(() => {
