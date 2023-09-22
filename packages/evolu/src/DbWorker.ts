@@ -243,9 +243,6 @@ const readTimestampAndMerkleTree = Sqlite.pipe(
   Effect.map(
     ([{ timestamp, merkleTree }]): TimestampAndMerkleTree => ({
       timestamp: unsafeTimestampFromString(timestamp as TimestampString),
-      // MerkleTree is already parsed by Sqlite parseJSONResults.
-      // parseJSONResults is for https://kysely.dev/docs/recipes/relations
-      // We store MerkleTree as a string because it works everywhere.
       merkleTree: merkleTree as MerkleTree,
     }),
   ),
