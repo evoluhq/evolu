@@ -1,4 +1,4 @@
-import { JsonObjectOrArray, Query, Row, Value } from "./Sqlite.js";
+import { Query, Row, Value } from "./Sqlite.js";
 
 export interface QueryPatches {
   readonly query: Query;
@@ -73,8 +73,8 @@ export const makePatches = (
 };
 
 export const areEqual = (
-  a: Value | Row | ReadonlyArray<Row> | JsonObjectOrArray,
-  b: Value | Row | ReadonlyArray<Row> | JsonObjectOrArray,
+  a: Value | Row | ReadonlyArray<Row>,
+  b: Value | Row | ReadonlyArray<Row>,
 ): boolean => {
   // Compare string, number, null ASAP.
   if (a === b) return true;

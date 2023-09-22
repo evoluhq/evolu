@@ -1,5 +1,5 @@
 import { BinaryReader, BinaryWriter } from "@protobuf-ts/runtime";
-import { Context, Effect, Function, Layer, Match } from "effect";
+import { Context, Effect, Function, Layer, Match, absurd } from "effect";
 import { SecretBox } from "./Crypto.js";
 import { Owner } from "./Db.js";
 import { UnexpectedError, makeUnexpectedError } from "./Errors.js";
@@ -17,7 +17,7 @@ import {
   SyncRequest,
   SyncResponse,
 } from "./Protobuf.js";
-import { Value } from "./Sqlite.js";
+import { JsonObjectOrArray, Value } from "./Sqlite.js";
 import { Millis, Timestamp, TimestampString } from "./Timestamp.js";
 
 export interface SyncWorker {
@@ -129,8 +129,10 @@ const valueToProtobuf = (value: Value): MessageContent["value"] => {
     case "number":
       return { oneofKind: "numberValue", numberValue: value };
   }
-  if (value) return { oneofKind: "bytesValue", bytesValue: value };
-  return { oneofKind: undefined };
+  if (value == null) return { oneofKind: undefined };
+  if (value instanceof Uint8Array)
+    return { oneofKind: "bytesValue", bytesValue: value };
+  return { oneofKind: "jsonValue", jsonValue: JSON.stringify(value) };
 };
 
 const valueFromProtobuf = (value: MessageContent["value"]): Value => {
@@ -141,8 +143,12 @@ const valueFromProtobuf = (value: MessageContent["value"]): Value => {
       return value.stringValue;
     case "bytesValue":
       return value.bytesValue;
-    default:
+    case "jsonValue":
+      return JSON.parse(value.jsonValue) as JsonObjectOrArray;
+    case undefined:
       return null;
+    default:
+      return absurd(value);
   }
 };
 

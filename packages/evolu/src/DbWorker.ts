@@ -7,7 +7,6 @@ import {
   Layer,
   Match,
   Option,
-  Predicate,
   ReadonlyArray,
   ReadonlyRecord,
   Ref,
@@ -43,14 +42,7 @@ import {
   selectOwnerTimestampAndMerkleTree,
   updateOwnerTimestampAndMerkleTree,
 } from "./Sql.js";
-import {
-  JsonObjectOrArray,
-  Query,
-  Row,
-  Sqlite,
-  Value,
-  queryObjectFromQuery,
-} from "./Sqlite.js";
+import { Query, Row, Sqlite, Value, queryObjectFromQuery } from "./Sqlite.js";
 import {
   Message,
   NewMessage,
@@ -174,7 +166,7 @@ export interface MutateItem {
   readonly table: string;
   readonly id: Id;
   readonly values: ReadonlyRecord.ReadonlyRecord<
-    Value | Date | boolean | undefined | JsonObjectOrArray
+    Value | Date | boolean | undefined
   >;
   readonly isInsert: boolean;
   readonly now: SqliteDate;
@@ -282,10 +274,6 @@ const mutateItemsToNewMessages = (
                 ? cast(value)
                 : value instanceof Date
                 ? cast(value)
-                : value !== null &&
-                  typeof value === "object" &&
-                  !Predicate.isUint8Array(value)
-                ? JSON.stringify(value)
                 : value,
             ] as const,
         ),

@@ -45,6 +45,13 @@ export interface MessageContent {
         bytesValue: Uint8Array;
       }
     | {
+        oneofKind: "jsonValue";
+        /**
+         * @generated from protobuf field: string jsonValue = 8;
+         */
+        jsonValue: string; // JSON.stringify
+      }
+    | {
         oneofKind: undefined;
       };
   /**
@@ -84,7 +91,7 @@ export interface SyncRequest {
   /**
    * @generated from protobuf field: string merkleTree = 4;
    */
-  merkleTree: string;
+  merkleTree: string; // JSON.stringify
 }
 /**
  * @generated from protobuf message SyncResponse
@@ -97,7 +104,7 @@ export interface SyncResponse {
   /**
    * @generated from protobuf field: string merkleTree = 2;
    */
-  merkleTree: string;
+  merkleTree: string; // JSON.stringify
 }
 // @generated message type with reflection information, may provide speed optimized methods
 class MessageContent$Type extends MessageType<MessageContent> {
@@ -126,6 +133,13 @@ class MessageContent$Type extends MessageType<MessageContent> {
         kind: "scalar",
         oneof: "value",
         T: 12 /*ScalarType.BYTES*/,
+      },
+      {
+        no: 8,
+        name: "jsonValue",
+        kind: "scalar",
+        oneof: "value",
+        T: 9 /*ScalarType.STRING*/,
       },
       { no: 7, name: "version", kind: "scalar", T: 5 /*ScalarType.INT32*/ },
     ]);

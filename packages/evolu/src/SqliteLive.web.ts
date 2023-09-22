@@ -1,5 +1,10 @@
 import { Effect, Function, Layer } from "effect";
-import { Row, Sqlite, parseJSONResults } from "./Sqlite.js";
+import {
+  Row,
+  Sqlite,
+  parseJSONResults,
+  valuesToSqliteValues,
+} from "./Sqlite.js";
 // @ts-expect-error Missing types
 import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
 import { ParseJSONResultsPlugin } from "kysely";
@@ -38,7 +43,7 @@ const exec: Sqlite["exec"] = (arg) =>
     const rows = sqlite.exec(isSqlString ? arg : arg.sql, {
       returnValue: "resultRows",
       rowMode: "object",
-      ...(!isSqlString && { bind: arg.parameters }),
+      ...(!isSqlString && { bind: valuesToSqliteValues(arg.parameters) }),
     });
     return {
       rows: yield* _(parseJSONResults(parseJSONResultsPlugin, rows)),

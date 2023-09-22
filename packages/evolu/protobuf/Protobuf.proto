@@ -10,6 +10,7 @@ message MessageContent {
     string stringValue = 4;
     int32 numberValue = 5;
     bytes bytesValue = 6;
+    string jsonValue = 8; // JSON.stringify
   };
   int32 version = 7;
 }
@@ -23,10 +24,10 @@ message SyncRequest {
   repeated EncryptedMessage messages = 1;
   string userId = 2;
   string nodeId = 3;
-  string merkleTree = 4;
+  string merkleTree = 4; // JSON.stringify
 }
 
 message SyncResponse {
   repeated EncryptedMessage messages = 1;
-  string merkleTree = 2;
+  string merkleTree = 2; // JSON.stringify
 }

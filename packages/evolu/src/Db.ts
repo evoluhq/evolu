@@ -26,7 +26,6 @@ import {
   insertOwner,
 } from "./Sql.js";
 import {
-  JsonObjectOrArray,
   Query,
   QueryObject,
   Row,
@@ -36,9 +35,9 @@ import {
 } from "./Sqlite.js";
 import { makeInitialTimestamp, timestampToString } from "./Timestamp.js";
 
-export type TableSchema = ReadonlyRecord.ReadonlyRecord<
-  Value | JsonObjectOrArray
-> & { id: Id };
+export type TableSchema = ReadonlyRecord.ReadonlyRecord<Value> & {
+  readonly id: Id;
+};
 
 export type Schema = ReadonlyRecord.ReadonlyRecord<TableSchema>;
 
