@@ -100,7 +100,7 @@ export type Update<S extends Schema> = <T extends keyof S>(
   values: Simplify<
     Partial<
       CastableForMutate<Omit<S[T], "id"> & Pick<CommonColumns, "isDeleted">>
-    > & { id: S[T]["id"] }
+    > & { readonly id: S[T]["id"] }
   >,
   onComplete?: () => void,
 ) => {
