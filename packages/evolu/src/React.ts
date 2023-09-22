@@ -11,27 +11,18 @@ import { Simplify } from "kysely";
 import { useMemo, useRef, useSyncExternalStore } from "react";
 import { Config, ConfigLive } from "./Config.js";
 import { Bip39, NanoId } from "./Crypto.js";
-import {
-  CommonColumns,
-  Owner,
-  QueryCallback,
-  Schema,
-  schemaToTables,
-} from "./Db.js";
+import { Owner, QueryCallback, Schema, schemaToTables } from "./Db.js";
 import { DbWorker } from "./DbWorker.js";
 import { EvoluError } from "./Errors.js";
 import {
+  Create,
   Evolu,
   OwnerActions,
+  Update,
   loadingPromisesPromiseProp,
   makeEvoluForPlatform,
 } from "./Evolu.js";
-import {
-  CastableForMutate,
-  ExcludeNullAndFalse,
-  FilterMap,
-  OrNullOrFalse,
-} from "./Model.js";
+import { ExcludeNullAndFalse, FilterMap, OrNullOrFalse } from "./Model.js";
 import { AppState, FlushSync, Platform } from "./Platform.js";
 import { Row } from "./Sqlite.js";
 import { SyncState } from "./SyncWorker.js";
@@ -231,35 +222,6 @@ type UseMutation<S extends Schema> = () => {
   readonly update: Update<S>;
 };
 
-type Create<S extends Schema> = <T extends keyof S>(
-  table: T,
-  values: Simplify<PartialOnlyForNullable<CastableForMutate<Omit<S[T], "id">>>>,
-  onComplete?: () => void,
-) => {
-  readonly id: S[T]["id"];
-};
-
-// https://stackoverflow.com/a/54713648/233902
-type PartialOnlyForNullable<
-  T,
-  NK extends keyof T = {
-    [K in keyof T]: null extends T[K] ? K : never;
-  }[keyof T],
-  NP = Pick<T, Exclude<keyof T, NK>> & Partial<Pick<T, NK>>,
-> = { [K in keyof NP]: NP[K] };
-
-type Update<S extends Schema> = <T extends keyof S>(
-  table: T,
-  values: Simplify<
-    Partial<
-      CastableForMutate<Omit<S[T], "id"> & Pick<CommonColumns, "isDeleted">>
-    > & { id: S[T]["id"] }
-  >,
-  onComplete?: () => void,
-) => {
-  readonly id: S[T]["id"];
-};
-
 export const ReactHooksLive = <T extends Schema>(): Layer.Layer<
   Platform | Evolu<T>,
   never,
@@ -319,13 +281,7 @@ export const ReactHooksLive = <T extends Schema>(): Layer.Layer<
       };
 
       const useMutation: UseMutation<T> = () =>
-        useMemo(
-          () => ({
-            create: evolu.mutate as Create<T>,
-            update: evolu.mutate as Update<T>,
-          }),
-          [],
-        );
+        useMemo(() => ({ create: evolu.create, update: evolu.update }), []);
 
       const useEvoluError: ReactHooks<T>["useEvoluError"] = () =>
         useSyncExternalStore(

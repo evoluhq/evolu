@@ -53,7 +53,9 @@ export interface Evolu<S extends Schema> {
   readonly subscribeSyncState: (listener: StoreListener) => StoreUnsubscribe;
   readonly getSyncState: () => SyncState;
 
-  readonly mutate: Mutate<S>;
+  readonly create: Create<S>;
+  readonly update: Update<S>;
+
   readonly ownerActions: OwnerActions;
   readonly ensureSchema: (tables: Tables) => void;
 }
@@ -75,6 +77,35 @@ interface QueryStore {
 }
 
 const QueryStore = Context.Tag<QueryStore>("evolu/QueryStore");
+
+export type Create<S extends Schema> = <T extends keyof S>(
+  table: T,
+  values: Simplify<PartialOnlyForNullable<CastableForMutate<Omit<S[T], "id">>>>,
+  onComplete?: () => void,
+) => {
+  readonly id: S[T]["id"];
+};
+
+// https://stackoverflow.com/a/54713648/233902
+type PartialOnlyForNullable<
+  T,
+  NK extends keyof T = {
+    [K in keyof T]: null extends T[K] ? K : never;
+  }[keyof T],
+  NP = Pick<T, Exclude<keyof T, NK>> & Partial<Pick<T, NK>>,
+> = { [K in keyof NP]: NP[K] };
+
+export type Update<S extends Schema> = <T extends keyof S>(
+  table: T,
+  values: Simplify<
+    Partial<
+      CastableForMutate<Omit<S[T], "id"> & Pick<CommonColumns, "isDeleted">>
+    > & { id: S[T]["id"] }
+  >,
+  onComplete?: () => void,
+) => {
+  readonly id: S[T]["id"];
+};
 
 type Mutate<S extends Schema> = <
   U extends SchemaForMutate<S>,
@@ -470,7 +501,8 @@ export const EvoluLive = <T extends Schema>(
         subscribeSyncState: syncStateStore.subscribe,
         getSyncState: syncStateStore.getState,
 
-        mutate,
+        create: mutate as Create<T>,
+        update: mutate as Update<T>,
         ownerActions,
         ensureSchema,
       });
