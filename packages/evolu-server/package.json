@@ -46,7 +46,7 @@
     "eslint": "^8.49.0",
     "eslint-config-evolu": "workspace:*",
     "typescript": "^5.2.2",
-    "vitest": "^0.34.4"
+    "vitest": "^0.34.5"
   },
   "peerDependencies": {
     "react": "^18.2.0",

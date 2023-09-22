@@ -68,7 +68,7 @@
     "nanoid": "^5.0.1"
   },
   "devDependencies": {
-    "@effect/schema": "^0.36.4",
+    "@effect/schema": "^0.36.5",
     "@evolu/tsconfig": "workspace:*",
     "@protobuf-ts/plugin": "^2.9.1",
     "@protobuf-ts/protoc": "^2.9.1",
@@ -88,13 +88,13 @@
     "tslib": "^2.6.2",
     "typescript": "^5.2.2",
     "user-agent-data-types": "^0.4.2",
-    "vitest": "^0.34.4"
+    "vitest": "^0.34.5"
   },
   "peerDependencies": {
-    "@effect/schema": "^0.36.1",
+    "@effect/schema": "^0.36.5",
     "@sqlite.org/sqlite-wasm": "3.43.1-build1",
     "effect": "2.0.0-next.34",
-    "expo": "^49.0.10",
+    "expo": "^49.0.11",
     "expo-sqlite": "~11.6.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
