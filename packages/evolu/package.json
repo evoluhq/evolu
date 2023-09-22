@@ -3,14 +3,15 @@
   "version": "8.1.2",
   "description": "React Hooks library for local-first apps with end-to-end encrypted backup and sync using SQLite and CRDT.",
   "keywords": [
-    "evolu",
-    "react",
-    "react-native",
-    "react-hooks",
-    "local-first",
+    "CRDT",
     "E2EE",
-    "SQLite",
-    "CRDT"
+    "evolu",
+    "local-first",
+    "offline",
+    "react-hooks",
+    "react-native",
+    "react",
+    "SQLite"
   ],
   "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
   "license": "MIT",
