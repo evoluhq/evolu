@@ -1,3 +1,4 @@
+import { Predicate } from "effect/index";
 import { Query, Row, Value } from "./Sqlite.js";
 
 export interface QueryPatches {
@@ -82,8 +83,8 @@ export const areEqual = (
   if (typeof a !== typeof b) return false;
   // Both are nonnullable objects.
   if (typeof a === "object" && a !== null && b !== null) {
-    const aIsUint8Array = a instanceof Uint8Array;
-    const bIsUint8Array = b instanceof Uint8Array;
+    const aIsUint8Array = Predicate.isUint8Array(a);
+    const bIsUint8Array = Predicate.isUint8Array(b);
     if (aIsUint8Array && bIsUint8Array) {
       if (a.length !== b.length) return false;
       for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;

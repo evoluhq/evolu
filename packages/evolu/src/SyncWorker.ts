@@ -1,5 +1,13 @@
 import { BinaryReader, BinaryWriter } from "@protobuf-ts/runtime";
-import { Context, Effect, Function, Layer, Match, absurd } from "effect";
+import {
+  Context,
+  Effect,
+  Function,
+  Layer,
+  Match,
+  Predicate,
+  absurd,
+} from "effect";
 import { SecretBox } from "./Crypto.js";
 import { Owner } from "./Db.js";
 import { UnexpectedError, makeUnexpectedError } from "./Errors.js";
@@ -130,7 +138,7 @@ const valueToProtobuf = (value: Value): MessageContent["value"] => {
       return { oneofKind: "numberValue", numberValue: value };
   }
   if (value == null) return { oneofKind: undefined };
-  if (value instanceof Uint8Array)
+  if (Predicate.isUint8Array(value))
     return { oneofKind: "bytesValue", bytesValue: value };
   return { oneofKind: "jsonValue", jsonValue: JSON.stringify(value) };
 };

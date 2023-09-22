@@ -1,5 +1,4 @@
 import { Brand, Context, Effect, Predicate, ReadonlyRecord } from "effect";
-import { ParseJSONResultsPlugin } from "kysely";
 
 export interface Sqlite {
   readonly exec: (
@@ -17,6 +16,7 @@ export interface QueryObject {
 export type Value = SqliteValue | JsonObjectOrArray;
 
 export type SqliteValue = null | string | number | Uint8Array;
+export type SqliteRow = Record<string, SqliteValue>;
 
 export type JsonObjectOrArray = JsonObject | JsonArray;
 
@@ -43,7 +43,7 @@ export const isJsonObjectOrArray: Predicate.Refinement<
 
 export const valuesToSqliteValues = (
   values: ReadonlyArray<Value>,
-): ReadonlyArray<SqliteValue> =>
+): SqliteValue[] =>
   values.map((value) =>
     isJsonObjectOrArray(value) ? JSON.stringify(value) : value,
   );
@@ -54,14 +54,39 @@ export const queryObjectToQuery = ({ sql, parameters }: QueryObject): Query =>
 export const queryObjectFromQuery = (s: Query): QueryObject =>
   JSON.parse(s) as QueryObject;
 
-// TODO: Rewrite.
-export const parseJSONResults = (
-  // pass ParseJSONResultsPlugin because of tree shaking
-  parseJSONResultsPlugin: ParseJSONResultsPlugin,
-  rows: ReadonlyArray<Row>,
-): Effect.Effect<never, never, ReadonlyArray<Row>> =>
-  Effect.promise(() =>
-    parseJSONResultsPlugin
-      .transformResult({ result: { rows } } as never)
-      .then((a) => a.rows as ReadonlyArray<Row>),
-  );
+export const parseJsonResults = (rows: SqliteRow[]): void => {
+  parseArray(rows);
+};
+
+const parseArray = <T>(a: T[]): T[] => {
+  for (let i = 0; i < a.length; ++i) a[i] = parse(a[i]) as T;
+  return a;
+};
+
+const parse = (o: unknown): unknown => {
+  if (Predicate.isString(o)) return parseString(o);
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+  if (Array.isArray(o)) return parseArray(o);
+  // Predicate.isReadonlyRecord
+  if (typeof o === "object" && o !== null && !Predicate.isUint8Array(o))
+    return parseObject(o as Record<string, unknown>);
+  return o;
+};
+
+const parseString = (s: string): unknown => {
+  if (maybeJson(s))
+    try {
+      return parse(JSON.parse(s));
+    } catch (err) {
+      // Nothing to do.
+    }
+  return s;
+};
+
+const maybeJson: Predicate.Predicate<string> = (value) =>
+  value.match(/^[[{]/) != null;
+
+const parseObject = (o: Record<string, unknown>): Record<string, unknown> => {
+  for (const key in o) o[key] = parse(o[key]);
+  return o;
+};

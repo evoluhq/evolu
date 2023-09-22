@@ -1,13 +1,12 @@
 import { Effect, Function, Layer } from "effect";
 import {
-  Row,
   Sqlite,
-  parseJSONResults,
+  SqliteRow,
+  parseJsonResults,
   valuesToSqliteValues,
 } from "./Sqlite.js";
 // @ts-expect-error Missing types
 import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
-import { ParseJSONResultsPlugin } from "kysely";
 
 if (typeof document !== "undefined")
   // @ts-expect-error Missing types.
@@ -29,12 +28,10 @@ const sqlitePromise = (sqlite3InitModule() as Promise<any>).then((sqlite3) => {
         new sqlite3.oo1.JsStorageDb("local")
   ) as {
     // Waiting for https://github.com/tomayac/sqlite-wasm/pull/2
-    readonly exec: (arg1: unknown, arg2: unknown) => ReadonlyArray<Row>;
+    readonly exec: (arg1: unknown, arg2: unknown) => SqliteRow[];
     readonly changes: () => number;
   };
 });
-
-const parseJSONResultsPlugin = new ParseJSONResultsPlugin();
 
 const exec: Sqlite["exec"] = (arg) =>
   Effect.gen(function* (_) {
@@ -45,10 +42,8 @@ const exec: Sqlite["exec"] = (arg) =>
       rowMode: "object",
       ...(!isSqlString && { bind: valuesToSqliteValues(arg.parameters) }),
     });
-    return {
-      rows: yield* _(parseJSONResults(parseJSONResultsPlugin, rows)),
-      changes: sqlite.changes(),
-    };
+    parseJsonResults(rows);
+    return { rows, changes: sqlite.changes() };
   });
 
 export const SqliteLive = Layer.succeed(Sqlite, { exec });

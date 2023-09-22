@@ -234,7 +234,7 @@ const TodoCategories: FC = () => {
   );
 
   // Evolu automatically parses JSONs into typed objects.
-  // rows[0].json?.bar;
+  // if (rows[0]) console.log(rows[0].json?.foo);
 
   return (
     <>
