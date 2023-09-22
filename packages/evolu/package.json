@@ -79,7 +79,7 @@
     "@types/web-locks-api": "^0.0.2",
     "array-shuffle": "^3.0.0",
     "effect": "2.0.0-next.34",
-    "eslint": "^8.49.0",
+    "eslint": "^8.50.0",
     "eslint-config-evolu": "workspace:*",
     "expo": "^49.0.11",
     "expo-sqlite": "~11.6.0",
