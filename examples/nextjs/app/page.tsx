@@ -19,7 +19,7 @@ type TodoId = Schema.Schema.To<typeof TodoId>;
 const TodoCategoryId = Evolu.id("TodoCategory");
 type TodoCategoryId = Schema.Schema.To<typeof TodoCategoryId>;
 
-const NonEmptyString50 = Schema.string.pipe(
+const NonEmptyString50 = Evolu.String.pipe(
   Schema.minLength(1),
   Schema.maxLength(50),
   Schema.brand("NonEmptyString50"),

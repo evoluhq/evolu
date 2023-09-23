@@ -83,7 +83,7 @@ const parseString = (s: string): unknown => {
   return s;
 };
 
-const maybeJson: Predicate.Predicate<string> = (value) =>
+export const maybeJson: Predicate.Predicate<string> = (value) =>
   value.match(/^[[{]/) != null;
 
 const parseObject = (o: Record<string, unknown>): Record<string, unknown> => {

@@ -1,6 +1,6 @@
 import * as Schema from "@effect/schema/Schema";
 import { Brand } from "effect";
-import { Row } from "./Sqlite.js";
+import { Row, maybeJson } from "./Sqlite.js";
 
 /**
  * Branded Id Schema for any table Id.
@@ -101,6 +101,29 @@ export function cast(
 }
 
 /**
+ * String schema represents a string that is not stringified JSON. Using
+ * String schema for strings stored in SQLite is crucial to ensure a stored
+ * string is not automatically parsed to a JSON object or array when
+ * retrieved. Use String schema for all string-based schemas.
+ */
+export const String = Schema.string.pipe(
+  Schema.filter(
+    (s) => {
+      if (!maybeJson(s)) return true;
+      try {
+        JSON.parse(s);
+      } catch (e) {
+        return true;
+      }
+      return false;
+    },
+    { message: () => "a string that is not stringified JSON" },
+  ),
+  Schema.brand("String"),
+);
+export type String = Schema.Schema.To<typeof String>;
+
+/**
  * A string with a maximum length of 1000 characters.
  *
  * ### Example
@@ -113,10 +136,10 @@ export function cast(
  * function foo(value: Evolu.String1000) {}
  * ```
  */
-export const String1000: Schema.BrandSchema<
-  string,
-  string & Brand.Brand<"String1000">
-> = Schema.string.pipe(Schema.maxLength(1000), Schema.brand("String1000"));
+export const String1000 = String.pipe(
+  Schema.maxLength(1000),
+  Schema.brand("String1000"),
+);
 export type String1000 = Schema.Schema.To<typeof String1000>;
 
 /**
@@ -132,7 +155,7 @@ export type String1000 = Schema.Schema.To<typeof String1000>;
  * function foo(value: Evolu.NonEmptyString1000) {}
  * ```
  */
-export const NonEmptyString1000 = Schema.string.pipe(
+export const NonEmptyString1000 = String.pipe(
   Schema.minLength(1),
   Schema.maxLength(1000),
   Schema.brand("NonEmptyString1000"),

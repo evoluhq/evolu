@@ -16,7 +16,7 @@ import * as Schema from "@effect/schema/Schema";
 import * as Evolu from "evolu";
 
 const TodoId = Evolu.id("Todo");
-type TodoId = Schema.To<typeof TodoId>;
+type TodoId = Schema.Schema.To<typeof TodoId>;
 
 if (!Schema.is(TodoId)(value)) return;
 ```
