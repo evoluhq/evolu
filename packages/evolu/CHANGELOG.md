@@ -1,5 +1,18 @@
 # evolu
 
+## 8.2.0
+
+### Minor Changes
+
+- 7949c8d: Move create and update from React to Evolu
+- 8f6864b: Add String schema
+
+  String schema represents a string that is not stringified JSON. Using String schema for strings stored in SQLite is crucial to ensure a stored string is not automatically parsed to a JSON object or array when retrieved. Use String schema for all string-based schemas.
+
+### Patch Changes
+
+- c12cffe: Port Kysely ParseJSONResultsPlugin, small refactoring
+
 ## 8.1.2
 
 ### Patch Changes
