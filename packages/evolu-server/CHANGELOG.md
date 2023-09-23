@@ -1,5 +1,14 @@
 # evolu-server
 
+## 1.0.26
+
+### Patch Changes
+
+- Updated dependencies [7949c8d]
+- Updated dependencies [c12cffe]
+- Updated dependencies [8f6864b]
+  - evolu@8.2.0
+
 ## 1.0.25
 
 ### Patch Changes
