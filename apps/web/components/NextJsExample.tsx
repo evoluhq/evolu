@@ -1,6 +1,7 @@
 import * as Schema from "@effect/schema/Schema";
 import * as TreeFormatter from "@effect/schema/TreeFormatter";
-import * as Evolu from "evolu";
+import * as Evolu from "@evolu/common";
+import * as EvoluReact from "@evolu/react";
 import {
   ChangeEvent,
   FC,
@@ -53,7 +54,7 @@ const Database = Schema.struct({
 });
 
 const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
-  Evolu.create(Database, {
+  EvoluReact.create(Database, {
     reloadUrl: "/examples/nextjs",
     ...(process.env.NODE_ENV === "development" && {
       syncUrl: "http://localhost:4000",

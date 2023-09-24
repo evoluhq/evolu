@@ -1,0 +1,61 @@
+{
+  "name": "@evolu/common-react",
+  "version": "1.0.0",
+  "description": "Common code for Evolu React libraries",
+  "keywords": [
+    "evolu",
+    "react"
+  ],
+  "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
+  "license": "MIT",
+  "repository": "evoluhq/evolu",
+  "bugs": {
+    "url": "https://github.com/evoluhq/evolu/issues"
+  },
+  "homepage": "https://evolu.dev",
+  "type": "module",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "browser": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "dist/src/**",
+    "src/**",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "tsc --watch",
+    "build": "rm -rf dist ./README.md && tsc && cp ../../README.md ./",
+    "lint": "TIMING=1 eslint src --ext .ts,.tsx",
+    "test": "vitest run",
+    "clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist",
+    "format": "prettier --write \"src/*.{ts,tsx,md}\"",
+    "protobuf": "pnpm protoc --ts_out ./src --proto_path protobuf protobuf/Protobuf.proto --ts_opt eslint_disable --ts_opt optimize_code_size && pnpm format"
+  },
+  "devDependencies": {
+    "eslint": "^8.50.0",
+    "typescript": "^5.2.2",
+    "vitest": "^0.34.5",
+    "@evolu/tsconfig": "workspace:*",
+    "eslint-config-evolu": "workspace:*",
+    "@evolu/common": "workspace:*",
+    "react": "^18.2.0",
+    "@types/react": "^18.2.22"
+  },
+  "peerDependencies": {
+    "@evolu/common": "^1.0.0",
+    "react": "^18.2.0",
+    "@types/react": "^18.2.22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18.16"
+  },
+  "sideEffects": false
+}

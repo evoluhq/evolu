@@ -2,7 +2,7 @@
   "private": true,
   "name": "@evolu/monorepo",
   "scripts": {
-    "dev": "turbo dev",
+    "dev": "turbo dev --concurrency=13",
     "build": "turbo build",
     "start": "turbo start",
     "lint": "turbo lint",
