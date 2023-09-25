@@ -10,15 +10,15 @@ import {
   insertIntoMerkleTree,
   merkleTreeToString,
   unsafeMerkleTreeFromString,
-} from "evolu/MerkleTree";
-import * as Protobuf from "evolu/Protobuf";
-import {
+  EncryptedMessage,
   Millis,
   TimestampString,
   makeSyncTimestamp,
   timestampToString,
   unsafeTimestampFromString,
-} from "evolu/Timestamp";
+  SyncRequest,
+  SyncResponse,
+} from "@evolu/common";
 import express, { Request } from "express";
 import path from "path";
 
@@ -112,7 +112,7 @@ const addMessages = ({
   userId,
 }: {
   merkleTree: MerkleTree;
-  messages: ReadonlyArray.NonEmptyArray<Protobuf.EncryptedMessage>;
+  messages: ReadonlyArray.NonEmptyArray<EncryptedMessage>;
   userId: string;
 }): Effect.Effect<Db, SqliteError, MerkleTree> =>
   Effect.flatMap(DbTag, (db) =>
@@ -157,7 +157,7 @@ const getMessages = ({
   millis: Millis;
   userId: string;
   nodeId: string;
-}): Effect.Effect<Db, SqliteError, ReadonlyArray<Protobuf.EncryptedMessage>> =>
+}): Effect.Effect<Db, SqliteError, ReadonlyArray<EncryptedMessage>> =>
   Effect.flatMap(DbTag, (db) =>
     Effect.try({
       try: () =>
@@ -165,7 +165,7 @@ const getMessages = ({
           userId,
           pipe(millis, makeSyncTimestamp, timestampToString),
           nodeId,
-        ) as ReadonlyArray<Protobuf.EncryptedMessage>,
+        ) as ReadonlyArray<EncryptedMessage>,
       catch: (error) => new SqliteError(error),
     }),
   );
@@ -177,12 +177,12 @@ const sync = (
   BadRequestError | SqliteError,
   {
     merkleTree: MerkleTree;
-    messages: ReadonlyArray<Protobuf.EncryptedMessage>;
+    messages: ReadonlyArray<EncryptedMessage>;
   }
 > =>
   Effect.flatMap(
     Effect.try({
-      try: () => Protobuf.SyncRequest.fromBinary(req.body as Uint8Array),
+      try: () => SyncRequest.fromBinary(req.body as Uint8Array),
       catch: (error) => new BadRequestError(error),
     }),
     (syncRequest) =>
@@ -240,9 +240,9 @@ export const createExpressApp = (): express.Express => {
           res.setHeader("Content-Type", "application/octet-stream");
           res.send(
             Buffer.from(
-              Protobuf.SyncResponse.toBinary({
+              SyncResponse.toBinary({
                 merkleTree: merkleTreeToString(merkleTree),
-                messages: messages as Array<Protobuf.EncryptedMessage>,
+                messages: messages as Array<EncryptedMessage>,
               }),
             ),
           );

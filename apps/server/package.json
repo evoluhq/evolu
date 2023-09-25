@@ -11,7 +11,7 @@
     "clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist"
   },
   "dependencies": {
-    "evolu-server": "workspace:*"
+    "@evolu/server": "workspace:*"
   },
   "devDependencies": {
     "@evolu/tsconfig": "workspace:*",

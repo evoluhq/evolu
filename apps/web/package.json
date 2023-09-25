@@ -16,7 +16,7 @@
     "clsx": "^2.0.0",
     "effect": "2.0.0-next.34",
     "evolu": "workspace:*",
-    "next": "^13.5.2",
+    "next": "13.5.2",
     "nextra": "^2.13.0",
     "nextra-theme-docs": "^2.13.0",
     "react": "^18.2.0",

@@ -36,15 +36,15 @@
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "devDependencies": {
-    "eslint": "^8.50.0",
-    "typescript": "^5.2.2",
-    "vitest": "^0.34.5",
-    "@evolu/tsconfig": "workspace:*",
-    "eslint-config-evolu": "workspace:*",
     "@evolu/common": "workspace:*",
+    "@evolu/tsconfig": "workspace:*",
     "@sqlite.org/sqlite-wasm": "3.43.1-build1",
-    "@types/web-locks-api": "^0.0.2",
-    "user-agent-data-types": "^0.4.2"
+    "@types/web-locks-api": "^0.0.3",
+    "eslint": "^8.50.0",
+    "eslint-config-evolu": "workspace:*",
+    "typescript": "^5.2.2",
+    "user-agent-data-types": "^0.4.2",
+    "vitest": "^0.34.5"
   },
   "peerDependencies": {
     "@evolu/common": "^1.0.0",

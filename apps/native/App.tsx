@@ -1,7 +1,7 @@
 import * as Schema from "@effect/schema/Schema";
 import * as TreeFormatter from "@effect/schema/TreeFormatter";
 import { Either, Function } from "effect";
-import * as Evolu from "evolu";
+import * as Evolu from "@evolu/react-native";
 import {
   FC,
   Suspense,

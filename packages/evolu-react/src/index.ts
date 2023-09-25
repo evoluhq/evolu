@@ -10,14 +10,7 @@ import {
 import { Layer } from "effect";
 
 // Public API. It must be copy-pasted to all Evolu UI libs because re-exporting
-// from package.json exports is not working for some reason.
-// This doesn't work:
-// "./Public": {
-//   "types": "./dist/src/Public.d.ts",
-//   "import": "./dist/src/Public.js",
-//   "browser": "./dist/src/Public.js"
-// }
-// export * from "@evolu/common/Public";
+// from @evolu/common/Public is not working for some reason.
 export {
   Id,
   NonEmptyString1000,

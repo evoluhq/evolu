@@ -25,6 +25,9 @@
       "browser": "./dist/src/index.js"
     }
   },
+  "react-native": {
+    "./index.js": "./dist/src/index.js"
+  },
   "files": [
     "dist/src/**",
     "src/**",
