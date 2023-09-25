@@ -1,3 +1,4 @@
+import { concatBytes } from "@noble/ciphers/utils";
 import { BinaryReader, BinaryWriter } from "@protobuf-ts/runtime";
 import {
   Context,
@@ -5,15 +6,17 @@ import {
   Function,
   Layer,
   Match,
+  Option,
   Predicate,
+  ReadonlyArray,
   absurd,
+  identity,
 } from "effect";
 import { SecretBox } from "./Crypto.js";
 import { Owner } from "./Db.js";
 import { UnexpectedError, makeUnexpectedError } from "./Errors.js";
 import {
   MerkleTree,
-  MerkleTreeString,
   merkleTreeToString,
   unsafeMerkleTreeFromString,
 } from "./MerkleTree.js";
@@ -129,6 +132,8 @@ export interface SyncStatePaymentRequiredError {
   readonly _tag: "PaymentRequiredError";
 }
 
+const version1 = new Uint8Array([0, 1]);
+
 const valueToProtobuf = (value: Value): MessageContent["value"] => {
   switch (typeof value) {
     case "string":
@@ -157,6 +162,34 @@ const valueFromProtobuf = (value: MessageContent["value"]): Value => {
     default:
       return absurd(value);
   }
+};
+
+const newMessageToBinary = ({ value, ...rest }: NewMessage): Uint8Array =>
+  concatBytes(
+    version1,
+    MessageContent.toBinary(
+      { value: valueToProtobuf(value), ...rest },
+      binaryWriteOptions,
+    ),
+  );
+
+const startsWithArray = (array: Uint8Array, prefix: Uint8Array): boolean => {
+  if (prefix.length > array.length) return false;
+  for (let i = 0; i < prefix.length; i++) {
+    if (array[i] !== prefix[i]) return false;
+  }
+  return true;
+};
+
+const newMessageFromBinary = (
+  binary: Uint8Array,
+): Option.Option<NewMessage> => {
+  if (!startsWithArray(binary, version1)) return Option.none();
+  const { value, ...content } = MessageContent.fromBinary(
+    binary.slice(version1.length),
+    binaryReadOptions,
+  );
+  return Option.some({ value: valueFromProtobuf(value), ...content });
 };
 
 // The 'protobuf-ts' uses TextEncoder, but polyfill fast-text-encoding
@@ -194,20 +227,9 @@ const sync = (
     }
 
     yield* _(
-      Effect.forEach(input.messages, ({ timestamp, ...rest }) =>
+      Effect.forEach(input.messages, ({ timestamp, ...newMessage }) =>
         secretBox
-          .seal(
-            input.owner.encryptionKey,
-            MessageContent.toBinary(
-              {
-                table: rest.table,
-                row: rest.row,
-                column: rest.column,
-                value: valueToProtobuf(rest.value),
-              },
-              binaryWriteOptions,
-            ),
-          )
+          .seal(input.owner.encryptionKey, newMessageToBinary(newMessage))
           .pipe(
             Effect.map((content): EncryptedMessage => ({ timestamp, content })),
           ),
@@ -254,29 +276,23 @@ const sync = (
         }
       }),
       Effect.flatMap((syncResponse) =>
-        Effect.forEach(syncResponse.messages, (message) =>
-          secretBox.open(input.owner.encryptionKey, message.content).pipe(
-            Effect.map((array) =>
-              MessageContent.fromBinary(array, binaryReadOptions),
+        Effect.forEach(syncResponse.messages, ({ timestamp, content }) =>
+          secretBox
+            .open(input.owner.encryptionKey, content)
+            .pipe(
+              Effect.map(newMessageFromBinary),
+              Effect.map(
+                Option.map(
+                  (newMessage): Message => ({ timestamp, ...newMessage }),
+                ),
+              ),
             ),
-            Effect.map(
-              (content): Message => ({
-                timestamp: message.timestamp as TimestampString,
-                table: content.table,
-                row: content.row as Id,
-                column: content.column,
-                value: valueFromProtobuf(content.value),
-              }),
-            ),
-          ),
         ).pipe(
           Effect.map(
             (messages): SyncWorkerOutputSyncResponse => ({
               _tag: "SyncWorkerOutputSyncResponse",
-              messages,
-              merkleTree: unsafeMerkleTreeFromString(
-                syncResponse.merkleTree as MerkleTreeString,
-              ),
+              messages: ReadonlyArray.filterMap(messages, identity),
+              merkleTree: unsafeMerkleTreeFromString(syncResponse.merkleTree),
               syncLoopCount: input.syncLoopCount,
             }),
           ),
