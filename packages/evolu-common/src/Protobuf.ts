@@ -3,6 +3,11 @@
 // @generated from protobuf file "Protobuf.proto" (syntax proto3)
 // tslint:disable
 import { MessageType } from "@protobuf-ts/runtime";
+import { MerkleTreeString } from "./MerkleTree.js";
+import { OwnerId } from "./Db.js";
+import { NodeId } from "./Crypto.js";
+import { TimestampString } from "./Timestamp.js";
+import { Id } from "./Model.js";
 /**
  * @generated from protobuf message SyncRequest
  */
@@ -10,19 +15,19 @@ export interface SyncRequest {
   /**
    * @generated from protobuf field: repeated EncryptedMessage messages = 1;
    */
-  messages: EncryptedMessage[];
+  messages: ReadonlyArray<EncryptedMessage>;
   /**
    * @generated from protobuf field: string userId = 2;
    */
-  userId: string;
+  userId: OwnerId;
   /**
    * @generated from protobuf field: string nodeId = 3;
    */
-  nodeId: string;
+  nodeId: NodeId;
   /**
    * @generated from protobuf field: string merkleTree = 4;
    */
-  merkleTree: string; // JSON.stringify
+  merkleTree: MerkleTreeString;
 }
 /**
  * @generated from protobuf message SyncResponse
@@ -31,11 +36,11 @@ export interface SyncResponse {
   /**
    * @generated from protobuf field: repeated EncryptedMessage messages = 1;
    */
-  messages: EncryptedMessage[];
+  messages: ReadonlyArray<EncryptedMessage>;
   /**
    * @generated from protobuf field: string merkleTree = 2;
    */
-  merkleTree: string; // JSON.stringify
+  merkleTree: MerkleTreeString;
 }
 /**
  * @generated from protobuf message EncryptedMessage
@@ -44,7 +49,7 @@ export interface EncryptedMessage {
   /**
    * @generated from protobuf field: string timestamp = 1;
    */
-  timestamp: string;
+  timestamp: TimestampString;
   /**
    * @generated from protobuf field: bytes content = 2;
    */
@@ -61,7 +66,7 @@ export interface MessageContent {
   /**
    * @generated from protobuf field: string row = 2;
    */
-  row: string;
+  row: Id;
   /**
    * @generated from protobuf field: string column = 3;
    */
@@ -96,7 +101,7 @@ export interface MessageContent {
         /**
          * @generated from protobuf field: string jsonValue = 7;
          */
-        jsonValue: string; // JSON.stringify
+        jsonValue: string;
       }
     | {
         oneofKind: undefined;

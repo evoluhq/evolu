@@ -4,14 +4,14 @@ option optimize_for = CODE_SIZE;
 
 message SyncRequest {
   repeated EncryptedMessage messages = 1;
-  string userId = 2; // OwnerId
-  string nodeId = 3; // TODO:
-  string merkleTree = 4; // MerkleTreeString
+  string userId = 2;
+  string nodeId = 3;
+  string merkleTree = 4;
 }
 
 message SyncResponse {
   repeated EncryptedMessage messages = 1;
-  string merkleTree = 2; // MerkleTreeString
+  string merkleTree = 2;
 }
 
 message EncryptedMessage {
@@ -19,7 +19,6 @@ message EncryptedMessage {
   bytes content = 2;
 }
 
-// TODO: Remove.
 message MessageContent {
   string table = 1;
   string row = 2;
@@ -28,7 +27,6 @@ message MessageContent {
     string stringValue = 4;
     int32 numberValue = 5;
     bytes bytesValue = 6;
-    string jsonValue = 7; // JSON.stringify
+    string jsonValue = 7;
   };
 }
-

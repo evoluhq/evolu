@@ -1,24 +1,24 @@
+import {
+  EncryptedMessage,
+  MerkleTree,
+  MerkleTreeString,
+  Millis,
+  SyncRequest,
+  SyncResponse,
+  TimestampString,
+  diffMerkleTrees,
+  initialMerkleTree,
+  insertIntoMerkleTree,
+  makeSyncTimestamp,
+  merkleTreeToString,
+  timestampToString,
+  unsafeMerkleTreeFromString,
+  unsafeTimestampFromString,
+} from "@evolu/common";
 import sqlite3, { Statement } from "better-sqlite3";
 import bodyParser from "body-parser";
 import cors from "cors";
 import { Context, Effect, Exit, ReadonlyArray, pipe } from "effect";
-import {
-  MerkleTree,
-  MerkleTreeString,
-  diffMerkleTrees,
-  initialMerkleTree,
-  insertIntoMerkleTree,
-  merkleTreeToString,
-  unsafeMerkleTreeFromString,
-  EncryptedMessage,
-  Millis,
-  TimestampString,
-  makeSyncTimestamp,
-  timestampToString,
-  unsafeTimestampFromString,
-  SyncRequest,
-  SyncResponse,
-} from "@evolu/common";
 import express, { Request } from "express";
 import path from "path";
 
@@ -112,7 +112,7 @@ const addMessages = ({
   userId,
 }: {
   merkleTree: MerkleTree;
-  messages: ReadonlyArray.NonEmptyArray<EncryptedMessage>;
+  messages: ReadonlyArray.NonEmptyReadonlyArray<EncryptedMessage>;
   userId: string;
 }): Effect.Effect<Db, SqliteError, MerkleTree> =>
   Effect.flatMap(DbTag, (db) =>
@@ -189,7 +189,7 @@ const sync = (
       Effect.gen(function* (_) {
         let merkleTree = yield* _(getMerkleTree(syncRequest.userId));
 
-        if (ReadonlyArray.isNonEmptyArray(syncRequest.messages))
+        if (ReadonlyArray.isNonEmptyReadonlyArray(syncRequest.messages))
           merkleTree = yield* _(
             addMessages({
               merkleTree,
@@ -200,9 +200,7 @@ const sync = (
 
         const diff = diffMerkleTrees(
           merkleTree,
-          unsafeMerkleTreeFromString(
-            syncRequest.merkleTree as MerkleTreeString,
-          ),
+          unsafeMerkleTreeFromString(syncRequest.merkleTree),
         );
 
         const messages =
@@ -242,7 +240,7 @@ export const createExpressApp = (): express.Express => {
             Buffer.from(
               SyncResponse.toBinary({
                 merkleTree: merkleTreeToString(merkleTree),
-                messages: messages as Array<EncryptedMessage>,
+                messages,
               }),
             ),
           );
