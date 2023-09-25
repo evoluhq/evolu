@@ -1,11 +1,9 @@
 # Evolu
 
-React Hooks library for [local-first apps](https://www.inkandswitch.com/local-first/) with end-to-end encrypted backup and sync using [SQLite](https://sqlite.org/) and [CRDT](https://crdt.tech/).
+[Local-first](https://www.inkandswitch.com/local-first/) platform designed for privacy, ease of use, and no vendor lock-in to sync and backup people's lifetime data.
 
-Evolu is designed for privacy, ease of use, and no vendor lock-in.
-
-- SQLite in all browsers, Electron, and React Native
-- E2E encrypted sync and backup with CRDT (merging changes without conflicts)
+- [SQLite](https://sqlite.org/) in all browsers, Electron, and React Native
+- E2E encrypted sync and backup with [CRDT](https://crdt.tech/) (merging changes without conflicts)
 - Free Evolu server for testing (paid production-ready soon, or you can run your own)
 - Typed database schema with branded types (`NonEmptyString1000`, `PositiveInt`, etc.)
 - Reactive queries with React Suspense support
@@ -23,40 +21,15 @@ Local-first apps allow users to own their data. Evolu stores data in the user's 
 
 Client-server architecture provides us with easy backup and synchronization, but all that depends on the ability of a server to fulfill its promises. Internet is offline, companies go bankrupt, users are banned, and errors occur. All those things happen all the time, and then what? Right, that's why the world needs local-first apps. But until now, writing local-first apps has been challenging because of the lack of libraries and design patterns. That's why I created Evolu.
 
-## Requirements
-
-- TypeScript 5.0 or newer
-- The `strict` flag enabled in your `tsconfig.json` file
-- The `exactOptionalPropertyTypes` flag enabled in your `tsconfig.json` file
-
-```
-{
-  // ...
-  "compilerOptions": {
-    // ...
-    "strict": true,
-    "exactOptionalPropertyTypes": true
-  }
-}
-```
-
-## Getting Started
-
-```
-npm install evolu
-```
-
-Note Evolu uses several peer dependencies that are installed automatically with NPM and PNPM. If you are using Yarn, install them manually.
-
-The complete Next.js example is [here](https://github.com/evoluhq/evolu/tree/main/apps/web).
+## Overview
 
 ### Define Data
 
-To start using Evolu, define schemas for your database and export React Hooks.
+To start using Evolu, define tables for your database and export React Hooks.
 
 ```ts
 import * as Schema from "@effect/schema/Schema";
-import * as Evolu from "evolu";
+import * as Evolu from "@evolu/react";
 
 const TodoId = Evolu.id("Todo");
 type TodoId = Schema.Schema.To<typeof TodoId>;
@@ -87,7 +60,7 @@ Learn more about [Schema](https://github.com/effect-ts/schema).
 
 ```ts
 import * as Schema from "@effect/schema/Schema";
-import * as Evolu from "evolu";
+import * as Evolu from "@evolu/react";
 
 Schema.parse(Evolu.String1000)(title);
 ```
@@ -165,7 +138,7 @@ And that's all. Minimal API is the key to a great developer experience.
 
 ## Privacy
 
-Evolu uses end-to-end encryption and generates strong and safe passwords for you. Evolu sync and backup server see only timestamps.
+Evolu uses end-to-end encryption and generates strong and safe passwords for you. Evolu sync and backup server see only userId and timestamps.
 
 ## Trade-offs
 
@@ -187,7 +160,7 @@ To chat with other community members, you can join the [Evolu Discord](https://d
 
 ### Is Evolu ready for production?
 
-It should be. The CRDT message format is stable.
+Yes. Evolu is stable.
 
 ### What is the SQLite database size limit?
 

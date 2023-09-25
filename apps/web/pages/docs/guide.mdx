@@ -15,7 +15,7 @@ With branded types, we can define and enforce domain rules like
 
 ```ts
 import * as Schema from "@effect/schema/Schema";
-import * as Evolu from "evolu";
+import * as Evolu from "@evolu/react";
 
 const TodoId = Evolu.id("Todo");
 type TodoId = Schema.Schema.To<typeof TodoId>;
@@ -46,7 +46,7 @@ Learn more about [Schema](https://github.com/effect-ts/schema).
 
 ```ts
 import * as Schema from "@effect/schema/Schema";
-import * as Evolu from "evolu";
+import * as Evolu from "@evolu/react";
 
 Schema.parse(Evolu.String1000)(title);
 ```

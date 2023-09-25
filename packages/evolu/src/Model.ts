@@ -19,7 +19,7 @@ export type Id = Schema.Schema.To<typeof Id>;
  *
  * ```
  * import * as Schema from "@effect/schema/Schema";
- * import * as Evolu from "evolu";
+ * import * as Evolu from "@evolu/react";
  *
  * const TodoId = Evolu.id("Todo");
  * type TodoId = Schema.Schema.To<typeof TodoId>;
@@ -130,7 +130,7 @@ export type String = Schema.Schema.To<typeof String>;
  *
  * ```
  * import * as Schema from "@effect/schema/Schema";
- * import * as Evolu from "evolu";
+ * import * as Evolu from "@evolu/react";
  *
  * if (!Schema.is(Evolu.String1000)(value)) return;
  * function foo(value: Evolu.String1000) {}
@@ -149,7 +149,7 @@ export type String1000 = Schema.Schema.To<typeof String1000>;
  *
  * ```
  * import * as Schema from "@effect/schema/Schema";
- * import * as Evolu from "evolu";
+ * import * as Evolu from "@evolu/react";
  *
  * if (!Schema.is(Evolu.NonEmptyString1000)(value)) return;
  * function foo(value: Evolu.NonEmptyString1000) {}
@@ -169,7 +169,7 @@ export type NonEmptyString1000 = Schema.Schema.To<typeof NonEmptyString1000>;
  *
  * ```
  * import * as Schema from "@effect/schema/Schema";
- * import * as Evolu from "evolu";
+ * import * as Evolu from "@evolu/react";
  *
  * if (!Schema.is(Evolu.PositiveInt)(value)) return;
  * function foo(value: Evolu.PositiveInt) {}
