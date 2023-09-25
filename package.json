@@ -4,7 +4,7 @@
   "scripts": {
     "dev": "turbo dev --concurrency=13",
     "build": "turbo build",
-    "start": "turbo start",
+    "start": "turbo start --concurrency=13",
     "lint": "turbo lint",
     "test": "turbo test",
     "clean": "turbo clean && rm -rf node_modules",
