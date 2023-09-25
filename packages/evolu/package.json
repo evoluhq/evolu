@@ -85,7 +85,7 @@
     "expo-sqlite": "~11.6.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-native": "^0.72.4",
+    "react-native": "^0.72.5",
     "tslib": "^2.6.2",
     "typescript": "^5.2.2",
     "user-agent-data-types": "^0.4.2",

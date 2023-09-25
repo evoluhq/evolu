@@ -40,21 +40,21 @@
     "expo-updates": "^0.18.13"
   },
   "devDependencies": {
-    "eslint": "^8.50.0",
-    "typescript": "^5.2.2",
-    "vitest": "^0.34.5",
-    "@evolu/tsconfig": "workspace:*",
-    "eslint-config-evolu": "workspace:*",
     "@evolu/common-react": "workspace:*",
-    "react-native": "^0.72.4",
+    "@evolu/tsconfig": "workspace:*",
+    "eslint": "^8.50.0",
+    "eslint-config-evolu": "workspace:*",
     "expo": "^49.0.11",
-    "expo-sqlite": "~11.6.0"
+    "expo-sqlite": "~11.6.0",
+    "react-native": "^0.72.5",
+    "typescript": "^5.2.2",
+    "vitest": "^0.34.5"
   },
   "peerDependencies": {
     "@evolu/common-react": "^1.0.0",
-    "react-native": "^0.72.4",
     "expo": "^49.0.11",
-    "expo-sqlite": "~11.6.0"
+    "expo-sqlite": "~11.6.0",
+    "react-native": "^0.72.4"
   },
   "publishConfig": {
     "access": "public"
