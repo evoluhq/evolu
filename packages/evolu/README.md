@@ -1,6 +1,6 @@
 # Evolu
 
-[Local-first](https://www.inkandswitch.com/local-first/) platform designed for privacy, ease of use, and no vendor lock-in to sync and backup people's lifetime data.
+[Local-first](https://www.inkandswitch.com/local-first/) platform designed for privacy, ease of use, and no vendor lock-in to sync&back precious data.
 
 - [SQLite](https://sqlite.org/) in all browsers, Electron, and React Native
 - E2E encrypted sync and backup with [CRDT](https://crdt.tech/) (merging changes without conflicts)
