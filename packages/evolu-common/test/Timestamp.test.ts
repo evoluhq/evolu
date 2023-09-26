@@ -59,7 +59,7 @@ test("timestampToHash", () => {
   );
 });
 
-const config = Config.pipe(Effect.provideLayer(ConfigLive()), Effect.runSync);
+const config = Config.pipe(Effect.provide(ConfigLive()), Effect.runSync);
 
 const context0 = pipe(
   Context.empty(),
@@ -79,7 +79,7 @@ describe("sendTimestamp", () => {
       pipe(
         makeSyncTimestamp(),
         sendTimestamp,
-        Effect.provideContext(context1),
+        Effect.provide(context1),
         Effect.runSync,
       ),
     ).toMatchSnapshot();
@@ -90,7 +90,7 @@ describe("sendTimestamp", () => {
       pipe(
         makeSyncTimestamp(),
         sendTimestamp,
-        Effect.provideContext(context0),
+        Effect.provide(context0),
         Effect.runSync,
       ),
     ).toMatchSnapshot();
@@ -101,7 +101,7 @@ describe("sendTimestamp", () => {
       pipe(
         makeSyncTimestamp(1 as Millis),
         sendTimestamp,
-        Effect.provideContext(context0),
+        Effect.provide(context0),
         Effect.runSync,
       ),
     ).toMatchSnapshot();
@@ -119,7 +119,7 @@ describe("sendTimestamp", () => {
         Effect.flatMap(sendTimestamp),
         Effect.map(Either.right),
         Effect.catchAll((e) => Effect.succeed(Either.left(e))),
-        Effect.provideContext(context0),
+        Effect.provide(context0),
         Effect.runSync,
       );
     }
@@ -133,7 +133,7 @@ describe("sendTimestamp", () => {
         makeSyncTimestamp((config.maxDrift + 1) as Millis),
         sendTimestamp,
         Effect.catchAll((e) => Effect.succeed(Either.left(e))),
-        Effect.provideContext(context0),
+        Effect.provide(context0),
         Effect.runSync,
       ),
     ).toMatchSnapshot();
@@ -148,7 +148,7 @@ describe("receiveTimestamp", () => {
           local: makeNode1Timestamp(),
           remote: makeNode2Timestamp(0, 0),
         }),
-        Effect.provideContext(context1),
+        Effect.provide(context1),
         Effect.runSync,
       ),
     ).toMatchSnapshot();
@@ -162,7 +162,7 @@ describe("receiveTimestamp", () => {
             local: makeNode1Timestamp(1, 0),
             remote: makeNode2Timestamp(1, 1),
           }),
-          Effect.provideContext(context1),
+          Effect.provide(context1),
           Effect.runSync,
         ),
       ).toMatchSnapshot();
@@ -173,7 +173,7 @@ describe("receiveTimestamp", () => {
             local: makeNode1Timestamp(1, 1),
             remote: makeNode2Timestamp(1, 0),
           }),
-          Effect.provideContext(context0),
+          Effect.provide(context0),
           Effect.runSync,
         ),
       ).toMatchSnapshot();
@@ -186,7 +186,7 @@ describe("receiveTimestamp", () => {
             local: makeNode1Timestamp(2),
             remote: makeNode2Timestamp(1),
           }),
-          Effect.provideContext(context0),
+          Effect.provide(context0),
           Effect.runSync,
         ),
       ).toMatchSnapshot();
@@ -199,7 +199,7 @@ describe("receiveTimestamp", () => {
             local: makeNode1Timestamp(1),
             remote: makeNode2Timestamp(2),
           }),
-          Effect.provideContext(context0),
+          Effect.provide(context0),
           Effect.runSync,
         ),
       ).toMatchSnapshot();
@@ -214,7 +214,7 @@ describe("receiveTimestamp", () => {
           remote: makeNode1Timestamp(),
         }),
         Effect.catchAll((e) => Effect.succeed(Either.left(e))),
-        Effect.provideContext(context1),
+        Effect.provide(context1),
         Effect.runSync,
       ),
     ).toMatchSnapshot();
@@ -228,7 +228,7 @@ describe("receiveTimestamp", () => {
           remote: makeNode2Timestamp(),
         }),
         Effect.catchAll((e) => Effect.succeed(Either.left(e))),
-        Effect.provideContext(context0),
+        Effect.provide(context0),
         Effect.runSync,
       ),
     ).toMatchSnapshot();
@@ -240,7 +240,7 @@ describe("receiveTimestamp", () => {
           remote: makeSyncTimestamp((config.maxDrift + 1) as Millis),
         }),
         Effect.catchAll((e) => Effect.succeed(Either.left(e))),
-        Effect.provideContext(context0),
+        Effect.provide(context0),
         Effect.runSync,
       ),
     ).toMatchSnapshot();

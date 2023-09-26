@@ -31,7 +31,7 @@ const SyncWorkerLive = Layer.effect(
   }),
 );
 
-export const dbWorker = Effect.provideLayer(
+export const dbWorker = Effect.provide(
   DbWorker,
   Layer.use(
     DbWorkerLive,

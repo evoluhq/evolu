@@ -397,7 +397,7 @@ export const EvoluLive = <T extends Schema>(
 
       const subscribedQueries: SubscribedQueries = new Map();
       const onCompletes: OnCompletes = new Map();
-      const loadingPromises = Effect.provideLayer(
+      const loadingPromises = Effect.provide(
         LoadingPromises,
         LoadingPromisesLive,
       ).pipe(Effect.runSync);
@@ -419,17 +419,17 @@ export const EvoluLive = <T extends Schema>(
         Layer.succeed(Bip39, yield* _(Bip39)),
       );
 
-      const queryStore = Effect.provideLayer(
+      const queryStore = Effect.provide(
         QueryStore,
         Layer.use(QueryStoreLive, Layers),
       ).pipe(Effect.runSync);
 
-      const mutate = Effect.provideLayer(
+      const mutate = Effect.provide(
         Mutate<T>(),
         Layer.use(MutateLive<T>(), Layers),
       ).pipe(Effect.runSync);
 
-      const ownerActions = Effect.provideLayer(
+      const ownerActions = Effect.provide(
         OwnerActions,
         Layer.use(OwnerActionsLive, Layers),
       ).pipe(Effect.runSync);
@@ -518,7 +518,7 @@ export const makeEvoluForPlatform = <T extends Schema>(
   tables: Tables,
   config?: Partial<Config>,
 ): Evolu<T> =>
-  Effect.provideLayer(
+  Effect.provide(
     Evolu<T>(),
     Layer.use(
       EvoluLive<T>(tables),

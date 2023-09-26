@@ -69,7 +69,7 @@
     "nanoid": "^5.0.1"
   },
   "devDependencies": {
-    "@effect/schema": "^0.36.5",
+    "@effect/schema": "^0.37.0",
     "@evolu/tsconfig": "workspace:*",
     "@protobuf-ts/plugin": "^2.9.1",
     "@protobuf-ts/protoc": "^2.9.1",
@@ -78,7 +78,7 @@
     "@types/react-dom": "^18.2.7",
     "@types/web-locks-api": "^0.0.3",
     "array-shuffle": "^3.0.0",
-    "effect": "2.0.0-next.34",
+    "effect": "2.0.0-next.35",
     "eslint": "^8.50.0",
     "eslint-config-evolu": "workspace:*",
     "expo": "^49.0.11",
