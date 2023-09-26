@@ -34,7 +34,6 @@
     "dev": "tsc --watch",
     "build": "rm -rf dist && tsc",
     "lint": "TIMING=1 eslint src --ext .ts,.tsx",
-    "test": "vitest run",
     "clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist",
     "format": "prettier --write \"src/*.{ts,tsx,md}\"",
     "protobuf": "pnpm protoc --ts_out ./src --proto_path protobuf protobuf/Protobuf.proto --ts_opt eslint_disable --ts_opt optimize_code_size && pnpm format"
