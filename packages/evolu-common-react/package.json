@@ -1,6 +1,6 @@
 {
   "name": "@evolu/common-react",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Common code for Evolu React libraries",
   "keywords": [
     "evolu",
@@ -49,7 +49,7 @@
     "@types/react": "^18.2.22"
   },
   "peerDependencies": {
-    "@evolu/common": "^0.1.0",
+    "@evolu/common": "^1.0.0",
     "react": "^18.2.0",
     "@types/react": "^18.2.22"
   },
