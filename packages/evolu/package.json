@@ -78,7 +78,7 @@
     "@types/react-dom": "^18.2.7",
     "@types/web-locks-api": "^0.0.3",
     "array-shuffle": "^3.0.0",
-    "effect": "2.0.0-next.35",
+    "effect": "2.0.0-next.36",
     "eslint": "^8.50.0",
     "eslint-config-evolu": "workspace:*",
     "expo": "^49.0.11",
@@ -92,9 +92,9 @@
     "vitest": "^0.34.5"
   },
   "peerDependencies": {
-    "@effect/schema": "^0.36.5",
+    "@effect/schema": "^0.37.0",
     "@sqlite.org/sqlite-wasm": "3.43.1-build1",
-    "effect": "2.0.0-next.34",
+    "effect": "2.0.0-next.36",
     "expo": "^49.0.11",
     "expo-sqlite": "~11.6.0",
     "react": "^18.2.0",

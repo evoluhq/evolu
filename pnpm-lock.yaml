@@ -42,8 +42,8 @@ importers:
         specifier: ^3.12.0
         version: 3.12.0
       effect:
-        specifier: 2.0.0-next.35
-        version: 2.0.0-next.35(@effect/data@0.18.6)(@effect/io@0.41.1)(@effect/match@0.35.2)(@effect/stm@0.25.0)(@effect/stream@0.37.0)
+        specifier: 2.0.0-next.36
+        version: 2.0.0-next.36(@effect/data@0.18.6)(@effect/io@0.41.1)(@effect/match@0.35.2)(@effect/stm@0.25.0)(@effect/stream@0.37.0)
       events:
         specifier: ^3.3.0
         version: 3.3.0
@@ -131,8 +131,8 @@ importers:
         specifier: ^2.0.0
         version: 2.0.0
       effect:
-        specifier: 2.0.0-next.35
-        version: 2.0.0-next.35(@effect/data@0.18.6)(@effect/io@0.41.1)(@effect/match@0.35.2)(@effect/stm@0.25.0)(@effect/stream@0.37.0)
+        specifier: 2.0.0-next.36
+        version: 2.0.0-next.36(@effect/data@0.18.6)(@effect/io@0.41.1)(@effect/match@0.35.2)(@effect/stm@0.25.0)(@effect/stream@0.37.0)
       evolu:
         specifier: workspace:*
         version: link:../../packages/evolu
@@ -284,8 +284,8 @@ importers:
         specifier: ^3.0.0
         version: 3.0.0
       effect:
-        specifier: 2.0.0-next.35
-        version: 2.0.0-next.35(@effect/data@0.18.6)(@effect/io@0.41.1)(@effect/match@0.35.2)(@effect/stm@0.25.0)(@effect/stream@0.37.0)
+        specifier: 2.0.0-next.36
+        version: 2.0.0-next.36(@effect/data@0.18.6)(@effect/io@0.41.1)(@effect/match@0.35.2)(@effect/stm@0.25.0)(@effect/stream@0.37.0)
       eslint:
         specifier: ^8.50.0
         version: 8.50.0
@@ -357,8 +357,8 @@ importers:
         specifier: ^3.0.0
         version: 3.0.0
       effect:
-        specifier: 2.0.0-next.35
-        version: 2.0.0-next.35(@effect/data@0.18.6)(@effect/io@0.41.1)(@effect/match@0.35.2)(@effect/stm@0.25.0)(@effect/stream@0.37.0)
+        specifier: 2.0.0-next.36
+        version: 2.0.0-next.36(@effect/data@0.18.6)(@effect/io@0.41.1)(@effect/match@0.35.2)(@effect/stm@0.25.0)(@effect/stream@0.37.0)
       eslint:
         specifier: ^8.50.0
         version: 8.50.0
@@ -514,8 +514,8 @@ importers:
         specifier: ^2.8.5
         version: 2.8.5
       effect:
-        specifier: 2.0.0-next.35
-        version: 2.0.0-next.35(@effect/data@0.18.6)(@effect/io@0.41.1)(@effect/match@0.35.2)(@effect/stm@0.25.0)(@effect/stream@0.37.0)
+        specifier: 2.0.0-next.36
+        version: 2.0.0-next.36(@effect/data@0.18.6)(@effect/io@0.41.1)(@effect/match@0.35.2)(@effect/stm@0.25.0)(@effect/stream@0.37.0)
       express:
         specifier: ^4.18.2
         version: 4.18.2
@@ -6110,8 +6110,8 @@ packages:
   /ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  /effect@2.0.0-next.35(@effect/data@0.18.6)(@effect/io@0.41.1)(@effect/match@0.35.2)(@effect/stm@0.25.0)(@effect/stream@0.37.0):
-    resolution: {integrity: sha512-vVAkPzEl1Mkn6x0Im/uJ+yfqqIzFXNMbqMmaZU7y8pkoDtwGkqmXWDHKIZF9hsXV+tyUKhrvgj6QSSLTnzM4Gw==}
+  /effect@2.0.0-next.36(@effect/data@0.18.6)(@effect/io@0.41.1)(@effect/match@0.35.2)(@effect/stm@0.25.0)(@effect/stream@0.37.0):
+    resolution: {integrity: sha512-RGAFBGwmkhm2/7m71sTF9bILtB/Lj4POQXEEmXaldR61MlsWqRYqaUgPue56ltnSGVQkuwwYhJ1F7FUAloVs/Q==}
     peerDependencies:
       '@effect/data': ^0.18.6
       '@effect/io': ^0.41.0

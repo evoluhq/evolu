@@ -14,7 +14,7 @@
     "@evolu/common": "workspace:*",
     "@evolu/react": "workspace:*",
     "clsx": "^2.0.0",
-    "effect": "2.0.0-next.35",
+    "effect": "2.0.0-next.36",
     "evolu": "workspace:*",
     "next": "13.5.3",
     "nextra": "^2.13.1",
