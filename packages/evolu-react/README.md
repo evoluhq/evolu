@@ -1,3 +1,3 @@
 # Evolu for React
 
-A library for [Evolu](https://github.com/evoluhq/evolu).
+[Evolu](https://github.com/evoluhq/evolu) for [React](https://react.dev).

@@ -1,3 +1,3 @@
 # Evolu Common for React
 
-A library for [Evolu](https://github.com/evoluhq/evolu) React and React Native.
+Common code for Evolu React and Evolu React Native.
