@@ -15,7 +15,7 @@
   },
   "homepage": "https://evolu.dev",
   "type": "module",
-  "types": "./dist/src/index.d.ts",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
