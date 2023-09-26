@@ -69,7 +69,7 @@
     "nanoid": "^5.0.1"
   },
   "devDependencies": {
-    "@effect/schema": "^0.37.0",
+    "@effect/schema": "^0.37.1",
     "@evolu/tsconfig": "workspace:*",
     "@protobuf-ts/plugin": "^2.9.1",
     "@protobuf-ts/protoc": "^2.9.1",
@@ -92,7 +92,7 @@
     "vitest": "^0.34.5"
   },
   "peerDependencies": {
-    "@effect/schema": "^0.37.0",
+    "@effect/schema": "^0.37.1",
     "@sqlite.org/sqlite-wasm": "3.43.1-build1",
     "effect": "2.0.0-next.36",
     "expo": "^49.0.11",
