@@ -5,7 +5,6 @@ import {
   Millis,
   SyncRequest,
   SyncResponse,
-  TimestampString,
   diffMerkleTrees,
   initialMerkleTree,
   insertIntoMerkleTree,
@@ -129,7 +128,7 @@ const addMessages = ({
 
           if (result.changes === 1)
             merkleTree = insertIntoMerkleTree(
-              unsafeTimestampFromString(message.timestamp as TimestampString),
+              unsafeTimestampFromString(message.timestamp),
             )(merkleTree);
         });
 
