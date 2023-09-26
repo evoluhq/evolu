@@ -14,16 +14,16 @@
   },
   "homepage": "https://evolu.dev",
   "type": "module",
-  "types": "./dist/src/index.d.ts",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js",
-      "browser": "./dist/src/index.js"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "browser": "./dist/index.js"
     }
   },
   "react-native": {
-    "./index.js": "./dist/src/index.js"
+    "./index.js": "./dist/index.js"
   },
   "files": [
     "dist/src/**",
