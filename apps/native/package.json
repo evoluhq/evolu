@@ -11,11 +11,12 @@
     "clean": "rm -rf .turbo && rm -rf .expo && rm -rf node_modules"
   },
   "dependencies": {
-    "@effect/schema": "^0.36.5",
+    "@effect/schema": "^0.37.1",
+    "@evolu/react-native": "workspace:*",
     "@react-native-community/netinfo": "9.4.1",
     "@types/react": "^18.2.22",
     "crypto-browserify": "^3.12.0",
-    "effect": "2.0.0-next.34",
+    "effect": "2.0.0-next.36",
     "events": "^3.3.0",
     "evolu": "workspace:*",
     "expo": "^49.0.11",
@@ -23,13 +24,13 @@
     "expo-status-bar": "^1.7.1",
     "fast-text-encoding": "^1.0.6",
     "react": "18.2.0",
-    "react-native": "^0.72.4",
+    "react-native": "^0.72.5",
     "react-native-get-random-values": "^1.9.0",
     "react-native-picker-select": "^8.1.0",
     "web": "workspace:^"
   },
   "devDependencies": {
-    "@babel/core": "^7.22.20",
+    "@babel/core": "^7.23.0",
     "@babel/plugin-transform-private-methods": "^7.22.5",
     "eslint": "^8.50.0",
     "eslint-config-evolu": "workspace:*",

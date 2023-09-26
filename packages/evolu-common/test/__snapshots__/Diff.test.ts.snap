@@ -1,0 +1,45 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`makePatches 1`] = `
+[
+  {
+    "op": "replaceAll",
+    "value": [
+      {
+        "a": 2,
+      },
+    ],
+  },
+]
+`;
+
+exports[`makePatches 2`] = `
+[
+  {
+    "index": 1,
+    "op": "replaceAt",
+    "value": {
+      "b": 3,
+    },
+  },
+]
+`;
+
+exports[`makePatches 3`] = `
+[
+  {
+    "index": 0,
+    "op": "replaceAt",
+    "value": {
+      "a": 0,
+    },
+  },
+  {
+    "index": 2,
+    "op": "replaceAt",
+    "value": {
+      "c": 1,
+    },
+  },
+]
+`;

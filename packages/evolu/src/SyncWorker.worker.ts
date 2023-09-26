@@ -4,7 +4,7 @@ import { FetchLive } from "./Platform.js";
 import { SyncLockLive } from "./PlatformLive.web.js";
 import { SyncWorker, SyncWorkerInput, SyncWorkerLive } from "./SyncWorker.js";
 
-const syncWorker = Effect.provideLayer(
+const syncWorker = Effect.provide(
   SyncWorker,
   Layer.use(
     SyncWorkerLive,

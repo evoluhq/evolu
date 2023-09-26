@@ -605,7 +605,7 @@ export const DbWorkerLive = Layer.effect(
         Effect.catchAllDefect(makeUnexpectedError),
         transaction,
         Effect.catchAll(onError),
-        Effect.provideContext(context),
+        Effect.provide(context),
         Effect.runPromise,
       );
 
@@ -616,7 +616,7 @@ export const DbWorkerLive = Layer.effect(
       if (input._tag !== "reset") return Promise.resolve(undefined);
       return reset(input).pipe(
         Effect.provideService(DbWorkerOnMessage, dbWorker.onMessage),
-        Effect.provideContext(context),
+        Effect.provide(context),
         run,
       );
     };
@@ -650,7 +650,7 @@ export const DbWorkerLive = Layer.effect(
             ensureSchema: (input) => ensureSchema(input.tables),
             SyncWorkerOutputSyncResponse: handleSyncResponse,
           }),
-          Effect.provideSomeLayer(layer),
+          Effect.provide(layer),
           run,
         );
       };

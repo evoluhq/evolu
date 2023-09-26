@@ -353,7 +353,7 @@ export const makeReactHooksForPlatform =
       evolu.ensureSchema(tables);
     }
 
-    return Effect.provideLayer(
+    return Effect.provide(
       ReactHooks<To>(),
       Layer.use(
         ReactHooksLive<To>(),

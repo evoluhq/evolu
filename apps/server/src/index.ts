@@ -1,4 +1,4 @@
-import { createExpressApp } from "evolu-server";
+import { createExpressApp } from "@evolu/server";
 
 const app = createExpressApp();
 

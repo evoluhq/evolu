@@ -1,0 +1,59 @@
+{
+  "name": "@evolu/common-web",
+  "version": "0.1.0",
+  "description": "Common code for Evolu libraries targeting web",
+  "keywords": [
+    "evolu",
+    "web"
+  ],
+  "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
+  "license": "MIT",
+  "repository": "evoluhq/evolu",
+  "bugs": {
+    "url": "https://github.com/evoluhq/evolu/issues"
+  },
+  "homepage": "https://evolu.dev",
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "browser": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/**",
+    "src/**",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "tsc --watch",
+    "build": "rm -rf dist && tsc",
+    "lint": "TIMING=1 eslint src --ext .ts,.tsx",
+    "clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist",
+    "format": "prettier --write \"src/*.{ts,tsx,md}\""
+  },
+  "devDependencies": {
+    "@evolu/common": "workspace:*",
+    "@evolu/tsconfig": "workspace:*",
+    "@sqlite.org/sqlite-wasm": "3.43.1-build1",
+    "@types/web-locks-api": "^0.0.3",
+    "eslint": "^8.50.0",
+    "eslint-config-evolu": "workspace:*",
+    "typescript": "^5.2.2",
+    "user-agent-data-types": "^0.4.2",
+    "vitest": "^0.34.5"
+  },
+  "peerDependencies": {
+    "@evolu/common": "^0.1.0",
+    "@sqlite.org/sqlite-wasm": "3.43.1-build1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18.16"
+  },
+  "sideEffects": false
+}

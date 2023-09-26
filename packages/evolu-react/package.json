@@ -1,0 +1,64 @@
+{
+  "name": "@evolu/react",
+  "version": "0.1.0",
+  "description": "Evolu for React",
+  "keywords": [
+    "evolu",
+    "react",
+    "react-hooks"
+  ],
+  "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
+  "license": "MIT",
+  "repository": "evoluhq/evolu",
+  "bugs": {
+    "url": "https://github.com/evoluhq/evolu/issues"
+  },
+  "homepage": "https://evolu.dev",
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "browser": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/**",
+    "src/**",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "tsc --watch",
+    "build": "rm -rf dist && tsc",
+    "lint": "TIMING=1 eslint src --ext .ts,.tsx",
+    "clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist",
+    "format": "prettier --write \"src/*.{ts,tsx,md}\""
+  },
+  "devDependencies": {
+    "eslint": "^8.50.0",
+    "typescript": "^5.2.2",
+    "vitest": "^0.34.5",
+    "@evolu/tsconfig": "workspace:*",
+    "eslint-config-evolu": "workspace:*",
+    "@evolu/common": "workspace:*",
+    "@evolu/common-web": "workspace:*",
+    "@evolu/common-react": "workspace:*",
+    "react-dom": "^18.2.0",
+    "@types/react-dom": "^18.2.7"
+  },
+  "peerDependencies": {
+    "@evolu/common": "^0.1.0",
+    "@evolu/common-web": "^0.1.0",
+    "@evolu/common-react": "^0.1.0",
+    "react-dom": "^18.2.0",
+    "@types/react-dom": "^18.2.7"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18.16"
+  },
+  "sideEffects": false
+}

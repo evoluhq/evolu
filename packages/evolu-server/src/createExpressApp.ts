@@ -1,24 +1,23 @@
+import {
+  EncryptedMessage,
+  MerkleTree,
+  MerkleTreeString,
+  Millis,
+  SyncRequest,
+  SyncResponse,
+  diffMerkleTrees,
+  initialMerkleTree,
+  insertIntoMerkleTree,
+  makeSyncTimestamp,
+  merkleTreeToString,
+  timestampToString,
+  unsafeMerkleTreeFromString,
+  unsafeTimestampFromString,
+} from "@evolu/common";
 import sqlite3, { Statement } from "better-sqlite3";
 import bodyParser from "body-parser";
 import cors from "cors";
 import { Context, Effect, Exit, ReadonlyArray, pipe } from "effect";
-import {
-  MerkleTree,
-  MerkleTreeString,
-  diffMerkleTrees,
-  initialMerkleTree,
-  insertIntoMerkleTree,
-  merkleTreeToString,
-  unsafeMerkleTreeFromString,
-} from "evolu/MerkleTree";
-import * as Protobuf from "evolu/Protobuf";
-import {
-  Millis,
-  TimestampString,
-  makeSyncTimestamp,
-  timestampToString,
-  unsafeTimestampFromString,
-} from "evolu/Timestamp";
 import express, { Request } from "express";
 import path from "path";
 
@@ -112,7 +111,7 @@ const addMessages = ({
   userId,
 }: {
   merkleTree: MerkleTree;
-  messages: ReadonlyArray.NonEmptyArray<Protobuf.EncryptedMessage>;
+  messages: ReadonlyArray.NonEmptyReadonlyArray<EncryptedMessage>;
   userId: string;
 }): Effect.Effect<Db, SqliteError, MerkleTree> =>
   Effect.flatMap(DbTag, (db) =>
@@ -129,7 +128,7 @@ const addMessages = ({
 
           if (result.changes === 1)
             merkleTree = insertIntoMerkleTree(
-              unsafeTimestampFromString(message.timestamp as TimestampString),
+              unsafeTimestampFromString(message.timestamp),
             )(merkleTree);
         });
 
@@ -157,7 +156,7 @@ const getMessages = ({
   millis: Millis;
   userId: string;
   nodeId: string;
-}): Effect.Effect<Db, SqliteError, ReadonlyArray<Protobuf.EncryptedMessage>> =>
+}): Effect.Effect<Db, SqliteError, ReadonlyArray<EncryptedMessage>> =>
   Effect.flatMap(DbTag, (db) =>
     Effect.try({
       try: () =>
@@ -165,7 +164,7 @@ const getMessages = ({
           userId,
           pipe(millis, makeSyncTimestamp, timestampToString),
           nodeId,
-        ) as ReadonlyArray<Protobuf.EncryptedMessage>,
+        ) as ReadonlyArray<EncryptedMessage>,
       catch: (error) => new SqliteError(error),
     }),
   );
@@ -177,19 +176,19 @@ const sync = (
   BadRequestError | SqliteError,
   {
     merkleTree: MerkleTree;
-    messages: ReadonlyArray<Protobuf.EncryptedMessage>;
+    messages: ReadonlyArray<EncryptedMessage>;
   }
 > =>
   Effect.flatMap(
     Effect.try({
-      try: () => Protobuf.SyncRequest.fromBinary(req.body as Uint8Array),
+      try: () => SyncRequest.fromBinary(req.body as Uint8Array),
       catch: (error) => new BadRequestError(error),
     }),
     (syncRequest) =>
       Effect.gen(function* (_) {
         let merkleTree = yield* _(getMerkleTree(syncRequest.userId));
 
-        if (ReadonlyArray.isNonEmptyArray(syncRequest.messages))
+        if (ReadonlyArray.isNonEmptyReadonlyArray(syncRequest.messages))
           merkleTree = yield* _(
             addMessages({
               merkleTree,
@@ -200,9 +199,7 @@ const sync = (
 
         const diff = diffMerkleTrees(
           merkleTree,
-          unsafeMerkleTreeFromString(
-            syncRequest.merkleTree as MerkleTreeString,
-          ),
+          unsafeMerkleTreeFromString(syncRequest.merkleTree),
         );
 
         const messages =
@@ -240,9 +237,9 @@ export const createExpressApp = (): express.Express => {
           res.setHeader("Content-Type", "application/octet-stream");
           res.send(
             Buffer.from(
-              Protobuf.SyncResponse.toBinary({
+              SyncResponse.toBinary({
                 merkleTree: merkleTreeToString(merkleTree),
-                messages: messages as Array<Protobuf.EncryptedMessage>,
+                messages,
               }),
             ),
           );

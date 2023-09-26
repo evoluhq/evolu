@@ -2,7 +2,7 @@
 
 import * as Schema from "@effect/schema/Schema";
 import * as TreeFormatter from "@effect/schema/TreeFormatter";
-import * as Evolu from "evolu";
+import * as Evolu from "@evolu/react";
 import {
   ChangeEvent,
   FC,

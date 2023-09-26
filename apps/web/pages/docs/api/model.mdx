@@ -13,7 +13,7 @@ A factory function to create `Id` Schema for a specific table.
 
 ```ts
 import * as Schema from "@effect/schema/Schema";
-import * as Evolu from "evolu";
+import * as Evolu from "@evolu/react";
 
 const TodoId = Evolu.id("Todo");
 type TodoId = Schema.Schema.To<typeof TodoId>;
@@ -74,7 +74,7 @@ A string with a maximum length of 1000 characters.
 
 ```ts
 import * as Schema from "@effect/schema/Schema";
-import * as Evolu from "evolu";
+import * as Evolu from "@evolu/react";
 
 if (!Schema.is(Evolu.String1000)(value)) return;
 function foo(value: Evolu.String1000) {}
@@ -88,7 +88,7 @@ A nonempty string with a maximum length of 1000 characters.
 
 ```ts
 import * as Schema from "@effect/schema/Schema";
-import * as Evolu from "evolu";
+import * as Evolu from "@evolu/react";
 
 if (!Schema.is(Evolu.NonEmptyString1000)(value)) return;
 function foo(value: Evolu.NonEmptyString1000) {}
