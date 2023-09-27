@@ -12,7 +12,7 @@ Evolu is designed for privacy, ease of use, and no vendor lock-in.
 ## Getting Started
 
 ```bash
-npm install evolu-server
+npm install @evolu/server
 npm run build
 npm start
 ```
