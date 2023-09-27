@@ -1,5 +1,13 @@
 # @evolu/react
 
+## 1.0.1
+
+### Patch Changes
+
+- 768427c: Fix files in @evolu/common-react package.json
+- Updated dependencies [768427c]
+  - @evolu/common-react@1.0.1
+
 ## 1.0.0
 
 ### Major Changes
