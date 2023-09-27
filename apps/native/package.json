@@ -14,7 +14,7 @@
     "@effect/schema": "^0.37.1",
     "@evolu/react-native": "workspace:*",
     "@react-native-community/netinfo": "9.4.1",
-    "@types/react": "^18.2.22",
+    "@types/react": "^18.2.23",
     "crypto-browserify": "^3.12.0",
     "effect": "2.0.0-next.36",
     "events": "^3.3.0",

@@ -26,7 +26,7 @@
     "./index.js": "./dist/index.js"
   },
   "files": [
-    "dist/src/**",
+    "dist/**",
     "src/**",
     "README.md"
   ],
@@ -39,19 +39,19 @@
     "protobuf": "pnpm protoc --ts_out ./src --proto_path protobuf protobuf/Protobuf.proto --ts_opt eslint_disable --ts_opt optimize_code_size && pnpm format"
   },
   "devDependencies": {
-    "eslint": "^8.50.0",
-    "typescript": "^5.2.2",
-    "vitest": "^0.34.5",
-    "@evolu/tsconfig": "workspace:*",
-    "eslint-config-evolu": "workspace:*",
     "@evolu/common": "workspace:*",
+    "@evolu/tsconfig": "workspace:*",
+    "@types/react": "^18.2.23",
+    "eslint": "^8.50.0",
+    "eslint-config-evolu": "workspace:*",
     "react": "^18.2.0",
-    "@types/react": "^18.2.22"
+    "typescript": "^5.2.2",
+    "vitest": "^0.34.5"
   },
   "peerDependencies": {
     "@evolu/common": "^1.0.0",
-    "react": "^18.2.0",
-    "@types/react": "^18.2.22"
+    "@types/react": "^18.2.22",
+    "react": "^18.2.0"
   },
   "publishConfig": {
     "access": "public"
