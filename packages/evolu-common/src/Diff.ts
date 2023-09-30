@@ -1,4 +1,4 @@
-import { Predicate } from "effect/index";
+import { Predicate } from "effect";
 import { Query, Row, Value } from "./Sqlite.js";
 
 export interface QueryPatches {

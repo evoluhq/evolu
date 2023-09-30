@@ -1,5 +1,4 @@
-import * as Effect from "@effect/io/Effect";
-import { Context, Either, pipe } from "effect";
+import { Context, Effect, Either, pipe } from "effect";
 import { describe, expect, test } from "vitest";
 import { Config, ConfigLive } from "../src/Config.js";
 import { NanoId, NodeId } from "../src/Crypto.js";

@@ -45,7 +45,7 @@
     "eslint-config-evolu": "workspace:*",
     "react-dom": "^18.2.0",
     "typescript": "^5.2.2",
-    "vitest": "^0.34.5"
+    "vitest": "^0.34.6"
   },
   "peerDependencies": {
     "@evolu/common": "^1.0.1",

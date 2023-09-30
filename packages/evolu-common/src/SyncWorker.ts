@@ -5,7 +5,6 @@ import {
   Effect,
   Function,
   Layer,
-  Match,
   Option,
   Predicate,
   ReadonlyArray,
@@ -318,12 +317,23 @@ export const SyncWorkerLive = Layer.effect(
         syncWorker.onMessage(error);
       });
 
+    const mapInputToEffect = (
+      input: SyncWorkerInput,
+    ): Effect.Effect<
+      SyncLock | SyncWorkerOnMessage | Fetch | SecretBox,
+      never,
+      void
+    > => {
+      switch (input._tag) {
+        case "sync":
+          return sync(input);
+        case "syncCompleted":
+          return syncLock.release;
+      }
+    };
+
     const postMessage: SyncWorker["postMessage"] = (input) => {
-      void Match.value(input).pipe(
-        Match.tagsExhaustive({
-          sync,
-          syncCompleted: () => syncLock.release,
-        }),
+      void mapInputToEffect(input).pipe(
         Effect.catchAllDefect(makeUnexpectedError),
         Effect.catchAll(onError),
         Effect.provideService(SyncLock, syncLock),

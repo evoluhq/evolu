@@ -5,7 +5,6 @@ import {
   Effect,
   Function,
   Layer,
-  Match,
   Option,
   ReadonlyArray,
   ReadonlyRecord,
@@ -25,7 +24,7 @@ import {
   transaction,
 } from "./Db.js";
 import { QueryPatches, makePatches } from "./Diff.js";
-import { EvoluError, makeUnexpectedError } from "./Errors.js";
+import { EvoluError, UnexpectedError, makeUnexpectedError } from "./Errors.js";
 import {
   MerkleTree,
   diffMerkleTrees,
@@ -631,26 +630,46 @@ export const DbWorkerLive = Layer.effect(
         TimeLive,
       );
 
+      const mapInputToEffect = (
+        input: DbWorkerInput,
+      ): Effect.Effect<
+        | Sqlite
+        | RowsCacheRef
+        | DbWorkerOnMessage
+        | Owner
+        | Time
+        | Config
+        | SyncWorkerPostMessage
+        | Bip39
+        | NanoId,
+        | UnexpectedError
+        | TimestampDriftError
+        | TimestampCounterOverflowError
+        | TimestampError,
+        void
+      > => {
+        switch (input._tag) {
+          case "init":
+            return makeUnexpectedError(new Error("init must be called once"));
+          case "query":
+            return query(input);
+          case "mutate":
+            return mutate(input);
+          case "sync":
+            return sync(input);
+          case "reset":
+            skipAllBecauseOfReset = true;
+            return reset(input);
+          case "ensureSchema":
+            return ensureSchema(input.tables);
+          case "SyncWorkerOutputSyncResponse":
+            return handleSyncResponse(input);
+        }
+      };
+
       return (input) => {
         if (skipAllBecauseOfReset) return Promise.resolve(undefined);
-
-        return Match.value(input).pipe(
-          Match.tagsExhaustive({
-            init: () =>
-              makeUnexpectedError(new Error("init must be called once")),
-            query,
-            mutate,
-            sync,
-            reset: (input) => {
-              skipAllBecauseOfReset = true;
-              return reset(input);
-            },
-            ensureSchema: (input) => ensureSchema(input.tables),
-            SyncWorkerOutputSyncResponse: handleSyncResponse,
-          }),
-          Effect.provide(layer),
-          run,
-        );
+        return mapInputToEffect(input).pipe(Effect.provide(layer), run);
       };
     };
 
