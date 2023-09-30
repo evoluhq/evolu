@@ -1,5 +1,13 @@
 # @evolu/common-react
 
+## 1.0.2
+
+### Patch Changes
+
+- 0a6f7e7: Update deps, remove Match depedency
+- Updated dependencies [0a6f7e7]
+  - @evolu/common@1.0.2
+
 ## 1.0.1
 
 ### Patch Changes
