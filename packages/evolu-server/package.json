@@ -28,10 +28,10 @@
   },
   "dependencies": {
     "@evolu/common": "workspace:*",
-    "better-sqlite3": "^8.6.0",
+    "better-sqlite3": "^8.7.0",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
-    "effect": "2.0.0-next.39",
+    "effect": "2.0.0-next.41",
     "express": "^4.18.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
