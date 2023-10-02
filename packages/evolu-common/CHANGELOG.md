@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 1.0.3
+
+### Patch Changes
+
+- c406a60: Update deps
+
 ## 1.0.2
 
 ### Patch Changes

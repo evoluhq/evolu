@@ -1,5 +1,13 @@
 # @evolu/common-react
 
+## 1.0.3
+
+### Patch Changes
+
+- c406a60: Update deps
+- Updated dependencies [c406a60]
+  - @evolu/common@1.0.3
+
 ## 1.0.2
 
 ### Patch Changes
