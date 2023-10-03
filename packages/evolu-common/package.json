@@ -56,7 +56,7 @@
     "@protobuf-ts/plugin": "^2.9.1",
     "@protobuf-ts/protoc": "^2.9.1",
     "array-shuffle": "^3.0.0",
-    "effect": "2.0.0-next.42",
+    "effect": "2.0.0-next.44",
     "eslint": "^8.50.0",
     "eslint-config-evolu": "workspace:*",
     "typescript": "^5.2.2",
@@ -64,7 +64,7 @@
   },
   "peerDependencies": {
     "@effect/schema": "^0.39.2",
-    "effect": "2.0.0-next.42"
+    "effect": "2.0.0-next.44"
   },
   "publishConfig": {
     "access": "public"
