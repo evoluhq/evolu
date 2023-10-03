@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 1.0.4
+
+### Patch Changes
+
+- ac05ef2: Update deps
+
 ## 1.0.3
 
 ### Patch Changes
