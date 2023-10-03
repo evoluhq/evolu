@@ -1,5 +1,11 @@
 # @evolu/common-web
 
+## 1.1.0
+
+### Minor Changes
+
+- 6674c78: Enable OPFS for Safari 17+
+
 ## 1.0.1
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # web
 
+## 0.0.95
+
+### Patch Changes
+
+- @evolu/react@2.0.0
+
 ## 0.0.94
 
 ### Patch Changes
