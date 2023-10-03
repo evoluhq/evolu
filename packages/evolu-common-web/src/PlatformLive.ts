@@ -29,8 +29,16 @@ const isFirefoxWithOpfs = (): boolean => {
   return Number(matches[1]) >= 111;
 };
 
+const isSafariWithOpfs = (): boolean => {
+  const userAgent = navigator.userAgent.toLowerCase();
+  if (userAgent.indexOf("safari") === -1) return false;
+  const matches = userAgent.match(/version\/([0-9]+)/);
+  if (matches == null) return false;
+  return Number(matches[1]) >= 17;
+};
+
 const name = hasDoc
-  ? isChromeWithOpfs() || isFirefoxWithOpfs()
+  ? isChromeWithOpfs() || isFirefoxWithOpfs() || isSafariWithOpfs()
     ? "web-with-opfs"
     : "web-without-opfs"
   : "server";
