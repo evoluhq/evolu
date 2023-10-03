@@ -1,5 +1,13 @@
 # @evolu/server
 
+## 1.0.5
+
+### Patch Changes
+
+- 0b53b45: Update deps
+- Updated dependencies [0b53b45]
+  - @evolu/common@1.0.5
+
 ## 1.0.4
 
 ### Patch Changes
