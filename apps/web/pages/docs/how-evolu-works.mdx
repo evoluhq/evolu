@@ -28,3 +28,86 @@ The most simple CRDT mutation (and the only one implemented right now) is the
 last write win. A CRDT message contains a table, row, column, value, and timestamp
 because every CRDT message has to have a timestamp to ensure globally stable ordering
 via [hybrid logical clocks](https://jaredforsyth.com/posts/hybrid-logical-clocks/).
+
+## How it really works?
+
+Everything starts with a mutation, you can create or update a row.
+
+```ts
+const { create, update } = useMutation();
+
+const { id } = create("todo", { title, isCompleted: false });
+update("todo", { id, isCompleted: true });
+```
+
+Evolu uses `queueMicrotask` to make an array of `MutateItem` to send
+a batch to a WebWorker to not block the main thread.
+
+```ts
+export interface MutateItem {
+  readonly table: string;
+  readonly id: Id;
+  readonly values: ReadonlyRecord.ReadonlyRecord<
+    Value | Date | boolean | undefined
+  >;
+  readonly isInsert: boolean;
+  readonly now: SqliteDate;
+  readonly onCompleteId: OnCompleteId | null;
+}
+```
+
+In the WebWorker, Evolu maps `MutateItem` to `Message`.
+
+```ts
+export interface NewMessage {
+  readonly table: string;
+  readonly row: Id;
+  readonly column: string;
+  readonly value: Value;
+}
+
+export interface Message extends NewMessage {
+  readonly timestamp: TimestampString;
+}
+```
+
+Every `NewMessage` will get a `Timestamp` consisting of `NodeId`, `Millis`,
+and `Counter`.
+
+```ts
+export interface Timestamp {
+  readonly node: NodeId;
+  readonly millis: Millis;
+  readonly counter: Counter;
+}
+```
+
+The timestamp is essential to ensure the same order of messages across
+all devices. Every timestamp also has to be unique. That is guaranteed via
+`NodeId` and `Counter`. Computer clocks are unreliable. They can accidentally
+go backward or be the same. If such a situation happens, the later time is chosen,
+and the counter is incremented. Check `sendTimestamp` function in `Timestamp.ts`.
+We must store the last timestamp in the database to make a new one.
+
+Now, we have an array of messages to update the local database via the
+`applyMessages` function. The `applyMessages` function is also used for
+messages we receive from other devices. We use the same logic for all
+messages describing database changes to ensure messages are processed
+always in the same manner.
+
+The `applyMessages` function in the `DbWorker.ts` stores messages in a
+separate table and updates the database if a message is new. It's the
+simple last-write-win approach. The `applyMessages` function also maintains
+the Merkle tree, which is used to find the last timestamp when both the
+local and remove Merkle trees are the same. Merkle tree is stored as
+a "merkleized" prefix tree (trie).
+
+After messages are processed, a sync loop is requested, and subscribed
+queries are refreshed.
+
+The sync loop compares Merkle trees until both local and remote devices are
+in the same state. Received messages timestamps are processed via
+the `receiveTimestamp` function.
+
+And that's all. Take a look at the source code and check the tests. For a
+more detailed description, read the links above.
