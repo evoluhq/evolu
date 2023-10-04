@@ -2,7 +2,24 @@
 
 ## Is Evolu ready for production?
 
-Yes. Evolu is stable.
+Yes. Evolu is stable and backward compatible from version one.
+
+## I see a major version without a breaking change. Why?
+
+Evolu is stable and backward compatible from version one. The reason for a major
+version without a breaking change is that the Changeset, a tool for automatic
+releases Evolu is using, releases a major change if some peer dependency has
+a minor change to maintain compatibility with old NPM versions.
+
+import { Callout } from "nextra-theme-docs";
+
+<Callout type="info" emoji="ℹ️">
+  Local-first software has to be backward compatible forever, and Evolu is
+  designed to embrace this requirement.
+</Callout>
+
+If you see a new major version, it means some peer dependency has a new feature.
+Nothing more. It's common for React, Next.js, and other libraries and frameworks.
 
 ## What is the SQLite database size limit?
 

@@ -156,20 +156,6 @@ To chat with other community members, you can join the [Evolu Discord](https://d
 
 [![Twitter URL](https://img.shields.io/twitter/url/https/twitter.com/evoluhq.svg?style=social&label=Follow%20%40evoluhq)](https://twitter.com/evoluhq)
 
-## FAQ
-
-### Is Evolu ready for production?
-
-Yes. Evolu is stable.
-
-### What is the SQLite database size limit?
-
-[Storage quotas and eviction criteria](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria)
-
-### How can I check the current database filesize?
-
-Use OPFS Explorer Chrome DevTools extension.
-
 ## Contributing
 
 Evolu monorepo uses [pnpm](https://pnpm.io).
