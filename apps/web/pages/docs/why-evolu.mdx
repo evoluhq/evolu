@@ -12,7 +12,7 @@ How is it different from keeping files on disk? Files are not the right abstract
 for apps and are complicated to synchronize among devices. That's why client-server
 architecture rules the world. But as with everything, it has trade-offs.
 
-## The trade-offs of the client-server architecture
+### The trade-offs of the client-server architecture
 
 Client-server architecture provides us with easy backup and synchronization,
 but all that depends on the ability of a server to fulfill its promises.
@@ -21,3 +21,23 @@ All those things happen all the time, and then what? Right, that's why
 the world needs local-first apps. But until now, writing local-first apps
 has been challenging because of the lack of libraries and design patterns.
 That's why I created Evolu.
+
+## What does local-first mean to Evolu?
+
+Local-first is becoming a broad term for various strategies, an umbrella term, so let me explain what local-first means for Evolu:
+
+1. Data Ownership
+2. Privacy
+3. No vendor-lockin
+
+Data ownership means all your data is stored in your local SQLite database.
+Not a subset, not a cache, but all your data. Having all your data stored locally
+is essential for Evolu. But, of course, everyone needs a reliable backup.
+That's why privacy is so crucial for Evolu, and that's why Evolu encrypts
+all your data by default without an exception.
+
+The last point is no vendor-lockin. It's OK to leverage clouds, but it's also
+harmful to depend on them. That's why Evolu provides a simple open-sourced
+Evolu Server, a simple message buffer without any specific logic for Evolu apps.
+Evolu Server is generic for all Evolu apps, so there is nothing to maintain and
+depend on.
