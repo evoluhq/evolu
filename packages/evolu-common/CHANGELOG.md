@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 1.0.6
+
+### Patch Changes
+
+- 43ae617: Update peer dependencies
+
 ## 1.0.5
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # @evolu/server
 
+## 1.0.6
+
+### Patch Changes
+
+- 43ae617: Update peer dependencies
+- Updated dependencies [43ae617]
+  - @evolu/common@1.0.6
+
 ## 1.0.5
 
 ### Patch Changes
