@@ -51,20 +51,20 @@
     "nanoid": "^5.0.1"
   },
   "devDependencies": {
-    "@effect/schema": "^0.39.2",
+    "@effect/schema": "^0.41.0",
     "@evolu/tsconfig": "workspace:*",
     "@protobuf-ts/plugin": "^2.9.1",
     "@protobuf-ts/protoc": "^2.9.1",
     "array-shuffle": "^3.0.0",
-    "effect": "2.0.0-next.44",
+    "effect": "^2.0.0-next.46",
     "eslint": "^8.50.0",
     "eslint-config-evolu": "workspace:*",
     "typescript": "^5.2.2",
     "vitest": "^0.34.6"
   },
   "peerDependencies": {
-    "@effect/schema": "^0.39.2",
-    "effect": "2.0.0-next.44"
+    "@effect/schema": "^0.41.0",
+    "effect": "^2.0.0-next.46"
   },
   "publishConfig": {
     "access": "public"
