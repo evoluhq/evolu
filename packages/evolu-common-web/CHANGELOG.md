@@ -1,5 +1,13 @@
 # @evolu/common-web
 
+## 1.1.1
+
+### Patch Changes
+
+- a938b3d: Update deps
+- Updated dependencies [a938b3d]
+  - @evolu/common@1.0.7
+
 ## 1.1.0
 
 ### Minor Changes
