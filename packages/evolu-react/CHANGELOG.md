@@ -1,5 +1,15 @@
 # @evolu/react
 
+## 2.0.2
+
+### Patch Changes
+
+- a938b3d: Update deps
+- Updated dependencies [a938b3d]
+  - @evolu/common-react@1.0.5
+  - @evolu/common-web@1.1.1
+  - @evolu/common@1.0.7
+
 ## 2.0.1
 
 ### Patch Changes
