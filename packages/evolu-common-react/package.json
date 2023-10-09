@@ -41,8 +41,8 @@
   "devDependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
-    "@types/react": "^18.2.25",
-    "eslint": "^8.50.0",
+    "@types/react": "^18.2.27",
+    "eslint": "^8.51.0",
     "eslint-config-evolu": "workspace:*",
     "react": "^18.2.0",
     "typescript": "^5.2.2",
