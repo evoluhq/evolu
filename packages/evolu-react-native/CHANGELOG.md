@@ -1,5 +1,13 @@
 # @evolu/react-native
 
+## 1.0.4
+
+### Patch Changes
+
+- a938b3d: Update deps
+- Updated dependencies [a938b3d]
+  - @evolu/common-react@1.0.5
+
 ## 1.0.3
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # @evolu/server
 
+## 1.0.7
+
+### Patch Changes
+
+- a938b3d: Update deps
+- Updated dependencies [a938b3d]
+  - @evolu/common@1.0.7
+
 ## 1.0.6
 
 ### Patch Changes
