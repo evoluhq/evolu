@@ -6,7 +6,6 @@ import {
 } from "@evolu/common";
 import { Effect, Function, Layer } from "effect";
 
-// @ts-expect-error Missing types
 import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
 
 if (typeof document !== "undefined")
@@ -18,20 +17,10 @@ if (typeof document !== "undefined")
     error: Function.constVoid,
   };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call
-const sqlitePromise = (sqlite3InitModule() as Promise<any>).then((sqlite3) => {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-  return (
-    typeof document === "undefined"
-      ? // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-        new sqlite3.oo1.OpfsDb("/evolu/evolu1.db", "c")
-      : // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-        new sqlite3.oo1.JsStorageDb("local")
-  ) as {
-    // Waiting for https://github.com/tomayac/sqlite-wasm/pull/2
-    readonly exec: (arg1: unknown, arg2: unknown) => SqliteRow[];
-    readonly changes: () => number;
-  };
+const sqlitePromise = sqlite3InitModule().then((sqlite3) => {
+  return typeof document === "undefined"
+    ? new sqlite3.oo1.OpfsDb("/evolu/evolu1.db", "c")
+    : new sqlite3.oo1.JsStorageDb("local");
 });
 
 const exec: Sqlite["exec"] = (arg) =>
@@ -42,7 +31,7 @@ const exec: Sqlite["exec"] = (arg) =>
       returnValue: "resultRows",
       rowMode: "object",
       ...(!isSqlString && { bind: valuesToSqliteValues(arg.parameters) }),
-    });
+    }) as SqliteRow[];
     parseJsonResults(rows);
     return { rows, changes: sqlite.changes() };
   });
