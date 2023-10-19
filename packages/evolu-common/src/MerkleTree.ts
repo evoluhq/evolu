@@ -6,9 +6,10 @@ import {
   timestampToHash,
 } from "./Timestamp.js";
 
-// Technically, it's not Merkle Tree but “merkleized” prefix tree (trie).
+// Technically, it's not Merkle Tree but “merkleized” prefix tree (trie)
+// aka merkle radix trie.
 // https://decomposition.al/blog/2019/05/31/how-i-learned-about-merklix-trees-without-having-to-become-a-cryptocurrency-enthusiast/#fnref:1
-// TODO: Add Schema and use it in Evolu Server.
+
 export interface MerkleTree {
   readonly hash?: TimestampHash;
   readonly "0"?: MerkleTree;
@@ -23,6 +24,14 @@ export const initialMerkleTree = Object.create(null) as MerkleTree;
 const timestampToKey = (timestamp: Timestamp): string =>
   Math.floor(timestamp.millis / 1000 / 60).toString(3);
 
+// The internal function [ToInt32] is called on all operands for all bitwise
+// operators. ToInt32(undefined) === 0.
+// https://es5.github.io/#x9.5
+const xorTimestampHashes = (
+  a: TimestampHash | undefined,
+  b: TimestampHash,
+): TimestampHash => ((a || 0) ^ b) as TimestampHash;
+
 const insertKey = (
   tree: MerkleTree,
   key: string,
@@ -36,8 +45,7 @@ const insertKey = (
     [childKey]: {
       ...child,
       ...insertKey(child, key.slice(1), hash),
-      // @ts-expect-error undefined is OK
-      hash: child.hash ^ hash,
+      hash: xorTimestampHashes(child.hash, hash),
     },
   };
 };
@@ -47,8 +55,11 @@ export const insertIntoMerkleTree =
   (tree: MerkleTree): MerkleTree => {
     const key = timestampToKey(timestamp);
     const hash = timestampToHash(timestamp);
-    // @ts-expect-error undefined is OK
-    return insertKey({ ...tree, hash: tree.hash ^ hash }, key, hash);
+    return insertKey(
+      { ...tree, hash: xorTimestampHashes(tree.hash, hash) },
+      key,
+      hash,
+    );
   };
 
 const keyToTimestamp = (key: string): Millis =>
