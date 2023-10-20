@@ -3,10 +3,9 @@
 // @generated from protobuf file "Protobuf.proto" (syntax proto3)
 // tslint:disable
 import { MessageType } from "@protobuf-ts/runtime";
-import { MerkleTreeString } from "./MerkleTree.js";
-import { OwnerId } from "./Db.js";
+import { MerkleTreeString, TimestampString } from "./Crdt.js";
 import { NodeId } from "./Crypto.js";
-import { TimestampString } from "./Timestamp.js";
+import { OwnerId } from "./Db.js";
 import { Id } from "./Model.js";
 /**
  * @generated from protobuf message SyncRequest

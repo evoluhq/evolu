@@ -63,7 +63,7 @@ export const NanoIdLive = Layer.succeed(
  */
 export const slip21Derive = (
   seed: Uint8Array,
-  path: string[],
+  path: ReadonlyArray<string>,
 ): Effect.Effect<never, never, Uint8Array> =>
   Effect.sync(() => {
     let m = hmac(sha512, "Symmetric key seed", seed);

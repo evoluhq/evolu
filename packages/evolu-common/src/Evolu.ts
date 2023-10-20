@@ -12,6 +12,7 @@ import {
 } from "effect";
 import { Simplify } from "kysely";
 import { Config, ConfigLive } from "./Config.js";
+import { Time, TimeLive } from "./Crdt.js";
 import { Bip39, NanoId } from "./Crypto.js";
 import {
   CommonColumns,
@@ -36,7 +37,6 @@ import { AppState, FlushSync } from "./Platform.js";
 import { Query, Row } from "./Sqlite.js";
 import { Store, StoreListener, StoreUnsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
-import { Time, TimeLive } from "./Timestamp.js";
 
 export interface Evolu<S extends Schema> {
   readonly subscribeError: ErrorStore["subscribe"];

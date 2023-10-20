@@ -1,12 +1,12 @@
 export { jsonArrayFrom, jsonObjectFrom } from "kysely/helpers/sqlite";
 export * from "./Config.js";
+export * from "./Crdt.js";
 export * from "./Crypto.js";
 export * from "./Db.js";
 export * from "./DbWorker.js";
 export * from "./Diff.js";
 export * from "./Errors.js";
 export * from "./Evolu.js";
-export * from "./MerkleTree.js";
 export * from "./Model.js";
 export * from "./Murmurhash.js";
 export * from "./Platform.js";
@@ -15,4 +15,3 @@ export * from "./Sql.js";
 export * from "./Sqlite.js";
 export * from "./Store.js";
 export * from "./SyncWorker.js";
-export * from "./Timestamp.js";

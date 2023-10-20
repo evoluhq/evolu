@@ -11,14 +11,17 @@ import {
   absurd,
   identity,
 } from "effect";
+import {
+  MerkleTree,
+  Millis,
+  Timestamp,
+  TimestampString,
+  merkleTreeToString,
+  unsafeMerkleTreeFromString,
+} from "./Crdt.js";
 import { SecretBox } from "./Crypto.js";
 import { Owner } from "./Db.js";
 import { UnexpectedError, makeUnexpectedError } from "./Errors.js";
-import {
-  MerkleTree,
-  merkleTreeToString,
-  unsafeMerkleTreeFromString,
-} from "./MerkleTree.js";
 import { Id } from "./Model.js";
 import { Fetch, SyncLock } from "./Platform.js";
 import {
@@ -28,7 +31,6 @@ import {
   SyncResponse,
 } from "./Protobuf.js";
 import { JsonObjectOrArray, Value } from "./Sqlite.js";
-import { Millis, Timestamp, TimestampString } from "./Timestamp.js";
 
 export interface SyncWorker {
   readonly postMessage: (input: SyncWorkerInput) => void;
