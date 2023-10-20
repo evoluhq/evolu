@@ -1,15 +1,16 @@
-import { Timestamp } from "../src/Timestamp.js";
+import * as Schema from "@effect/schema/Schema";
+import { Millis, Timestamp, initialMillis } from "../src/Crdt.js";
 
-export const makeNode1Timestamp = (millis = 0, counter = 0): Timestamp =>
+export const makeNode1Timestamp = (
+  millis = 0,
+  counter = 0,
+  node = "0000000000000001",
+): Timestamp =>
   ({
-    millis,
+    millis: Schema.parseSync(Millis)(initialMillis + millis),
     counter,
-    node: "0000000000000001",
+    node,
   }) as Timestamp;
 
 export const makeNode2Timestamp = (millis = 0, counter = 0): Timestamp =>
-  ({
-    millis,
-    counter,
-    node: "0000000000000002",
-  }) as Timestamp;
+  makeNode1Timestamp(millis, counter, "0000000000000002");

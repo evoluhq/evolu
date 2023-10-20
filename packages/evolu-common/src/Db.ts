@@ -16,8 +16,13 @@ import {
 } from "effect";
 import * as Kysely from "kysely";
 import { urlAlphabet } from "nanoid";
+import {
+  initialMerkleTree,
+  makeInitialTimestamp,
+  merkleTreeToString,
+  timestampToString,
+} from "./Crdt.js";
 import { Bip39, Mnemonic, NanoId, slip21Derive } from "./Crypto.js";
-import { initialMerkleTree, merkleTreeToString } from "./MerkleTree.js";
 import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
 import {
   createMessageTable,
@@ -33,7 +38,6 @@ import {
   Value,
   queryObjectToQuery,
 } from "./Sqlite.js";
-import { makeInitialTimestamp, timestampToString } from "./Timestamp.js";
 
 export type TableSchema = ReadonlyRecord.ReadonlyRecord<Value> & {
   readonly id: Id;

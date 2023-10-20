@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { TimestampError } from "./Timestamp.js";
+import { TimestampError } from "./Crdt.js";
 
 export type EvoluError = UnexpectedError | TimestampError;
 

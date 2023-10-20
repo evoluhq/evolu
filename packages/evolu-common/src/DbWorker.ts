@@ -12,6 +12,25 @@ import {
   pipe,
 } from "effect";
 import { Config, ConfigLive } from "./Config.js";
+import {
+  MerkleTree,
+  Time,
+  TimeLive,
+  Timestamp,
+  TimestampCounterOverflowError,
+  TimestampDriftError,
+  TimestampError,
+  TimestampString,
+  TimestampTimeOutOfRangeError,
+  diffMerkleTrees,
+  insertIntoMerkleTree,
+  makeSyncTimestamp,
+  merkleTreeToString,
+  receiveTimestamp,
+  sendTimestamp,
+  timestampToString,
+  unsafeTimestampFromString,
+} from "./Crdt.js";
 import { Bip39, Mnemonic, NanoId } from "./Crypto.js";
 import {
   Owner,
@@ -25,12 +44,6 @@ import {
 } from "./Db.js";
 import { QueryPatches, makePatches } from "./Diff.js";
 import { EvoluError, UnexpectedError, makeUnexpectedError } from "./Errors.js";
-import {
-  MerkleTree,
-  diffMerkleTrees,
-  insertIntoMerkleTree,
-  merkleTreeToString,
-} from "./MerkleTree.js";
 import { Id, SqliteDate, cast } from "./Model.js";
 import {
   insertIntoMessagesIfNew,
@@ -50,20 +63,6 @@ import {
   SyncWorkerOutputSyncResponse,
   SyncWorkerPostMessage,
 } from "./SyncWorker.js";
-import {
-  Time,
-  TimeLive,
-  Timestamp,
-  TimestampCounterOverflowError,
-  TimestampDriftError,
-  TimestampError,
-  TimestampString,
-  makeSyncTimestamp,
-  receiveTimestamp,
-  sendTimestamp,
-  timestampToString,
-  unsafeTimestampFromString,
-} from "./Timestamp.js";
 
 // TODO: Refactor to Effect.
 export interface DbWorker {
@@ -395,7 +394,9 @@ const mutate = ({
   | RowsCacheRef
   | DbWorkerOnMessage
   | SyncWorkerPostMessage,
-  TimestampDriftError | TimestampCounterOverflowError,
+  | TimestampDriftError
+  | TimestampCounterOverflowError
+  | TimestampTimeOutOfRangeError,
   void
 > =>
   Effect.gen(function* (_) {
