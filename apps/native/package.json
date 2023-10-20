@@ -11,14 +11,14 @@
     "clean": "rm -rf .turbo && rm -rf .expo && rm -rf node_modules"
   },
   "dependencies": {
-    "@effect/schema": "^0.45.0",
+    "@effect/schema": "^0.45.5",
     "@evolu/react-native": "workspace:*",
     "@react-native-community/netinfo": "9.4.1",
-    "@types/react": "^18.2.29",
+    "@types/react": "^18.2.31",
     "crypto-browserify": "^3.12.0",
     "effect": "2.0.0-next.50",
     "events": "^3.3.0",
-    "expo": "^49.0.15",
+    "expo": "^49.0.16",
     "expo-sqlite": "~11.6.0",
     "expo-status-bar": "^1.7.1",
     "fast-text-encoding": "^1.0.6",
