@@ -58,6 +58,7 @@ import { Query, Row, Sqlite, Value, queryObjectFromQuery } from "./Sqlite.js";
 import {
   Message,
   NewMessage,
+  NewMessageEquivalence,
   SyncState,
   SyncWorker,
   SyncWorkerOutputSyncResponse,
@@ -246,7 +247,7 @@ const readTimestampAndMerkleTree = Sqlite.pipe(
   ),
 );
 
-const mutateItemsToNewMessages = (
+export const mutateItemsToNewMessages = (
   items: ReadonlyArray.NonEmptyReadonlyArray<MutateItem>,
 ): ReadonlyArray.NonEmptyReadonlyArray<NewMessage> =>
   pipe(
@@ -284,6 +285,7 @@ const mutateItemsToNewMessages = (
       ),
     ),
     ReadonlyArray.flattenNonEmpty,
+    ReadonlyArray.dedupeNonEmptyWith(NewMessageEquivalence),
   );
 
 const ensureSchemaByMessages = (

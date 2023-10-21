@@ -3,6 +3,7 @@ import { BinaryReader, BinaryWriter } from "@protobuf-ts/runtime";
 import {
   Context,
   Effect,
+  Equivalence,
   Function,
   Layer,
   Option,
@@ -65,6 +66,15 @@ export interface NewMessage {
   readonly column: string;
   readonly value: Value;
 }
+
+export const NewMessageEquivalence: Equivalence.Equivalence<NewMessage> = (
+  a,
+  b,
+) =>
+  a.table === b.table &&
+  a.row === b.row &&
+  a.column === b.column &&
+  JSON.stringify(a.value) === JSON.stringify(b.value);
 
 export interface Message extends NewMessage {
   readonly timestamp: TimestampString;
