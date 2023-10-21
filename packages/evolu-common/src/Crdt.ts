@@ -68,7 +68,6 @@ export const timestampToString = (t: Timestamp): TimestampString =>
     t.node,
   ].join("-") as TimestampString;
 
-// TODO: Replace with safe.
 export const unsafeTimestampFromString = (s: TimestampString): Timestamp => {
   const a = s.split("-");
   return {
