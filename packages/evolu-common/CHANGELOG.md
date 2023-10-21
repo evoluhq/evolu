@@ -1,5 +1,13 @@
 # @evolu/common
 
+## 1.0.11
+
+### Patch Changes
+
+- 8f7c8c8: Dedupe messages created within the microtask queue
+
+  That's only for a case where someone accidentally calls mutate with the same values repeatedly. There is no reason to create identical messages.
+
 ## 1.0.10
 
 ### Patch Changes
