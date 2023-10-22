@@ -7,7 +7,7 @@ import {
   Mnemonic,
   Platform,
   SyncLock,
-  canUseDOM,
+  canUseDom,
 } from "@evolu/common";
 import { Effect, Function, Layer, Predicate, ReadonlyArray } from "effect";
 import { flushSync } from "react-dom";
@@ -36,7 +36,7 @@ const isSafariWithOpfs = (): boolean => {
   return Number(matches[1]) >= 17;
 };
 
-const name = canUseDOM
+const name = canUseDom
   ? isChromeWithOpfs() || isFirefoxWithOpfs() || isSafariWithOpfs()
     ? "web-with-opfs"
     : "web-without-opfs"

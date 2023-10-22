@@ -1,7 +1,7 @@
 import {
   Sqlite,
   SqliteRow,
-  canUseDOM,
+  canUseDom,
   parseJsonResults,
   valuesToSqliteValues,
 } from "@evolu/common";
@@ -9,7 +9,7 @@ import { Effect, Function, Layer } from "effect";
 
 import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
 
-if (canUseDOM)
+if (canUseDom)
   // @ts-expect-error Missing types.
   self.sqlite3ApiConfig = {
     debug: Function.constVoid,
@@ -19,7 +19,7 @@ if (canUseDOM)
   };
 
 const sqlitePromise = sqlite3InitModule().then((sqlite3) =>
-  canUseDOM
+  canUseDom
     ? new sqlite3.oo1.JsStorageDb("local")
     : new sqlite3.oo1.OpfsDb("/evolu/evolu1.db", "c"),
 );
