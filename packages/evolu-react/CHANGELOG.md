@@ -1,5 +1,15 @@
 # @evolu/react
 
+## 2.0.6
+
+### Patch Changes
+
+- 9d319e5: Rename canUseDOM to canUseDom
+- Updated dependencies [9d319e5]
+  - @evolu/common-web@1.1.5
+  - @evolu/common@1.0.13
+  - @evolu/common-react@1.0.7
+
 ## 2.0.5
 
 ### Patch Changes

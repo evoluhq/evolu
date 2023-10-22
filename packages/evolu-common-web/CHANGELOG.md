@@ -1,5 +1,13 @@
 # @evolu/common-web
 
+## 1.1.5
+
+### Patch Changes
+
+- 9d319e5: Rename canUseDOM to canUseDom
+- Updated dependencies [9d319e5]
+  - @evolu/common@1.0.13
+
 ## 1.1.4
 
 ### Patch Changes

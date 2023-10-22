@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 1.0.13
+
+### Patch Changes
+
+- 9d319e5: Rename canUseDOM to canUseDom
+
 ## 1.0.12
 
 ### Patch Changes
