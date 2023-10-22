@@ -1,5 +1,12 @@
 # @evolu/react-native
 
+## 1.0.7
+
+### Patch Changes
+
+- 094e25a: Expose and leverage canUseDOM
+  - @evolu/common-react@1.0.7
+
 ## 1.0.6
 
 ### Patch Changes

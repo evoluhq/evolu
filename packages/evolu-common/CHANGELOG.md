@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 1.0.12
+
+### Patch Changes
+
+- 094e25a: Expose and leverage canUseDOM
+
 ## 1.0.11
 
 ### Patch Changes
