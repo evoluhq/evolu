@@ -1,5 +1,13 @@
 # @evolu/common-web
 
+## 1.1.4
+
+### Patch Changes
+
+- 094e25a: Expose and leverage canUseDOM
+- Updated dependencies [094e25a]
+  - @evolu/common@1.0.12
+
 ## 1.1.3
 
 ### Patch Changes

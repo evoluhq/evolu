@@ -1,5 +1,15 @@
 # @evolu/react
 
+## 2.0.5
+
+### Patch Changes
+
+- 094e25a: Expose and leverage canUseDOM
+- Updated dependencies [094e25a]
+  - @evolu/common-web@1.1.4
+  - @evolu/common@1.0.12
+  - @evolu/common-react@1.0.7
+
 ## 2.0.4
 
 ### Patch Changes
