@@ -1,5 +1,11 @@
 # server
 
+## 0.0.101
+
+### Patch Changes
+
+- @evolu/server@1.0.13
+
 ## 0.0.100
 
 ### Patch Changes

@@ -1,5 +1,12 @@
 # @evolu/server
 
+## 1.0.13
+
+### Patch Changes
+
+- Updated dependencies [9d319e5]
+  - @evolu/common@1.0.13
+
 ## 1.0.12
 
 ### Patch Changes

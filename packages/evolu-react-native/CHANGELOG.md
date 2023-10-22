@@ -1,5 +1,12 @@
 # @evolu/react-native
 
+## 1.0.8
+
+### Patch Changes
+
+- 9d319e5: Rename canUseDOM to canUseDom
+  - @evolu/common-react@1.0.7
+
 ## 1.0.7
 
 ### Patch Changes
