@@ -20,6 +20,7 @@ export {
   SqliteDate,
   String,
   String1000,
+  canUseDOM,
   cast,
   id,
   jsonArrayFrom,

@@ -1,6 +1,7 @@
 import {
   Sqlite,
   SqliteRow,
+  canUseDOM,
   parseJsonResults,
   valuesToSqliteValues,
 } from "@evolu/common";
@@ -8,7 +9,7 @@ import { Effect, Function, Layer } from "effect";
 
 import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
 
-if (typeof document !== "undefined")
+if (canUseDOM)
   // @ts-expect-error Missing types.
   self.sqlite3ApiConfig = {
     debug: Function.constVoid,
@@ -17,11 +18,11 @@ if (typeof document !== "undefined")
     error: Function.constVoid,
   };
 
-const sqlitePromise = sqlite3InitModule().then((sqlite3) => {
-  return typeof document === "undefined"
-    ? new sqlite3.oo1.OpfsDb("/evolu/evolu1.db", "c")
-    : new sqlite3.oo1.JsStorageDb("local");
-});
+const sqlitePromise = sqlite3InitModule().then((sqlite3) =>
+  canUseDOM
+    ? new sqlite3.oo1.JsStorageDb("local")
+    : new sqlite3.oo1.OpfsDb("/evolu/evolu1.db", "c"),
+);
 
 const exec: Sqlite["exec"] = (arg) =>
   Effect.gen(function* (_) {

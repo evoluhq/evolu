@@ -61,3 +61,13 @@ export interface AppState {
 }
 
 export const AppState = Context.Tag<AppState>("evolu/AppState");
+
+/**
+ * To detect whether DOM can be used.
+ * https://github.com/facebook/fbjs/blob/main/packages/fbjs/src/core/ExecutionEnvironment.js
+ */
+export const canUseDOM = !!(
+  typeof window !== "undefined" &&
+  window.document &&
+  window.document.createElement
+);

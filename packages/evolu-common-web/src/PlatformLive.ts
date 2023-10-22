@@ -7,11 +7,10 @@ import {
   Mnemonic,
   Platform,
   SyncLock,
+  canUseDOM,
 } from "@evolu/common";
 import { Effect, Function, Layer, Predicate, ReadonlyArray } from "effect";
 import { flushSync } from "react-dom";
-
-const hasDoc = typeof document !== "undefined";
 
 const isChromeWithOpfs = (): boolean =>
   navigator.userAgentData != null &&
@@ -37,7 +36,7 @@ const isSafariWithOpfs = (): boolean => {
   return Number(matches[1]) >= 17;
 };
 
-const name = hasDoc
+const name = canUseDOM
   ? isChromeWithOpfs() || isFirefoxWithOpfs() || isSafariWithOpfs()
     ? "web-with-opfs"
     : "web-without-opfs"
