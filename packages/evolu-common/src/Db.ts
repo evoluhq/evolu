@@ -169,26 +169,26 @@ export interface NoSuchTableOrColumnError {
   readonly _tag: "NoSuchTableOrColumnError";
 }
 
-export const someDefectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
-  (error) => {
-    if (
-      typeof error === "object" &&
-      error != null &&
-      "message" in error &&
-      typeof error.message === "string" &&
-      error.message.includes("code 1") &&
-      (error.message.includes("no such table") ||
-        error.message.includes("no such column") ||
-        error.message.includes("has no column"))
-    )
-      return Option.some(
-        Effect.fail<NoSuchTableOrColumnError>({
-          _tag: "NoSuchTableOrColumnError",
-        }),
-      );
+export const SqliteNoSuchTableOrColumnError = S.struct({
+  message: S.union(
+    S.string.pipe(S.includes("no such table")),
+    S.string.pipe(S.includes("no such column")),
+    S.string.pipe(S.includes("has no column")),
+  ),
+});
+export type SqliteNoSuchTableOrColumnError = S.Schema.To<
+  typeof SqliteNoSuchTableOrColumnError
+>;
 
-    return Option.none();
-  },
+export const someDefectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
+  (error) =>
+    S.is(SqliteNoSuchTableOrColumnError)(error)
+      ? Option.some(
+          Effect.fail<NoSuchTableOrColumnError>({
+            _tag: "NoSuchTableOrColumnError",
+          }),
+        )
+      : Option.none(),
 );
 
 export const makeOwner = (
