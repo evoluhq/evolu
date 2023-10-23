@@ -87,6 +87,12 @@ ON CONFLICT DO UPDATE SET
   "${column}" = ?
 `;
 
+export const deleteTableRow = (table: string): string => `
+DELETE FROM "${table}"
+WHERE
+  "id" = ?;
+`;
+
 export const insertIntoMessagesIfNew = `
 INSERT INTO
   "evolu_message" ("timestamp", "table", "row", "column", "value")

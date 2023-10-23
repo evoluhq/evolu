@@ -268,7 +268,7 @@ export const mutateItemsToNewMessages = (
             ] as const,
         ),
         ReadonlyArray.append([isInsert ? "createdAt" : "updatedAt", now]),
-        ReadonlyArray.mapNonEmpty(
+        ReadonlyArray.map(
           ([key, value]): NewMessage => ({
             table,
             row: id,
@@ -282,8 +282,8 @@ export const mutateItemsToNewMessages = (
     ReadonlyArray.dedupeWith(NewMessageEquivalence),
   );
 
-const ensureSchemaByMessages = (
-  messages: ReadonlyArray<Message>,
+const ensureSchemaByNewMessages = (
+  messages: ReadonlyArray<NewMessage>,
 ): Effect.Effect<Sqlite, never, void> =>
   Effect.gen(function* (_) {
     const tablesMap = new Map<string, Table>();
@@ -306,8 +306,8 @@ const ensureSchemaByMessages = (
   });
 
 export const upsertValueIntoTableRowColumn = (
-  message: Message,
-  messages: ReadonlyArray<Message>,
+  message: NewMessage,
+  messages: ReadonlyArray<NewMessage>,
 ): Effect.Effect<Sqlite, never, void> =>
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
@@ -322,7 +322,7 @@ export const upsertValueIntoTableRowColumn = (
       someDefectToNoSuchTableOrColumnError,
       Effect.catchTag("NoSuchTableOrColumnError", () =>
         // If one message fails, we ensure schema for all messages.
-        ensureSchemaByMessages(messages).pipe(Effect.zipRight(insert)),
+        ensureSchemaByNewMessages(messages).pipe(Effect.zipRight(insert)),
       ),
     );
   });
@@ -350,7 +350,7 @@ const applyMessages = ({
       );
 
       if (timestamp == null || timestamp < message.timestamp) {
-        upsertValueIntoTableRowColumn(message, messages);
+        yield* _(upsertValueIntoTableRowColumn(message, messages));
       }
 
       if (timestamp == null || timestamp !== message.timestamp) {
@@ -366,11 +366,10 @@ const applyMessages = ({
             ],
           }),
         );
-
-        if (changes > 0)
-          merkleTree = insertIntoMerkleTree(
-            unsafeTimestampFromString(message.timestamp),
-          )(merkleTree);
+        if (changes > 0) {
+          const timestamp = unsafeTimestampFromString(message.timestamp);
+          merkleTree = insertIntoMerkleTree(timestamp)(merkleTree);
+        }
       }
     }
 
@@ -408,22 +407,39 @@ const mutate = ({
   void
 > =>
   Effect.gen(function* (_) {
-    const [itemsToSync /*, localItems*/] = ReadonlyArray.partition(
-      items,
-      (item) => item.table.startsWith("_"),
+    const [toSync, localOnlyItems] = ReadonlyArray.partition(items, (item) =>
+      item.table.startsWith("_"),
+    );
+    const [toUpsert, toDelete] = ReadonlyArray.partition(
+      localOnlyItems,
+      (item) =>
+        mutateItemsToNewMessages([item]).some(
+          (message) => message.column === "isDeleted" && message.value === 1,
+        ),
+    ).map(mutateItemsToNewMessages);
+
+    yield* _(
+      Effect.forEach(toUpsert, (message) =>
+        upsertValueIntoTableRowColumn(message, toUpsert),
+      ),
     );
 
-    // TODO: localItems.
+    const { exec } = yield* _(Sqlite);
+    yield* _(
+      Effect.forEach(toDelete, ({ table, row }) =>
+        exec({ sql: Sql.deleteTableRow(table), parameters: [row] }),
+      ),
+    );
 
-    if (ReadonlyArray.isNonEmptyArray(itemsToSync)) {
+    if (toSync.length > 0) {
       let { timestamp, merkleTree } = yield* _(readTimestampAndMerkleTree);
 
       const messages = yield* _(
-        mutateItemsToNewMessages(itemsToSync),
-        Effect.forEach((newMessage) =>
+        mutateItemsToNewMessages(toSync),
+        Effect.forEach((message) =>
           Effect.map(sendTimestamp(timestamp), (nextTimestamp): Message => {
             timestamp = nextTimestamp;
-            return { ...newMessage, timestamp: timestampToString(timestamp) };
+            return { ...message, timestamp: timestampToString(timestamp) };
           }),
         ),
       );
@@ -435,7 +451,7 @@ const mutate = ({
       (yield* _(SyncWorkerPostMessage))({
         _tag: "sync",
         syncUrl: (yield* _(Config)).syncUrl,
-        messages: messages,
+        messages,
         timestamp,
         merkleTree,
         owner: yield* _(Owner),
@@ -461,7 +477,7 @@ const handleSyncResponse = ({
   Effect.gen(function* (_) {
     let { timestamp, merkleTree } = yield* _(readTimestampAndMerkleTree);
 
-    if (ReadonlyArray.isNonEmptyReadonlyArray(messages)) {
+    if (messages.length > 0) {
       for (const message of messages)
         timestamp = yield* _(
           unsafeTimestampFromString(message.timestamp),
