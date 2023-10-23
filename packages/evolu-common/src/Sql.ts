@@ -75,7 +75,7 @@ LIMIT
   1
 `;
 
-export const insertValueIntoTableRowColumn = (
+export const upsertValueIntoTableRowColumn = (
   table: string,
   column: string,
 ): string => `
