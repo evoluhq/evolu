@@ -25,7 +25,7 @@ import {
   unsafeTimestampFromString,
 } from "../src/Crdt.js";
 import { NanoId, NodeId } from "../src/Crypto.js";
-import { makeNode1Timestamp, makeNode2Timestamp } from "./testUtils.js";
+import { makeNode1Timestamp, makeNode2Timestamp } from "./utils.js";
 
 test("InitialTimestampLive", () => {
   const timestamp = makeInitialTimestamp.pipe(

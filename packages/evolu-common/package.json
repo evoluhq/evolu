@@ -56,6 +56,7 @@
     "@protobuf-ts/plugin": "^2.9.1",
     "@protobuf-ts/protoc": "^2.9.1",
     "array-shuffle": "^3.0.0",
+    "better-sqlite3": "^9.0.0",
     "effect": "2.0.0-next.50",
     "eslint": "^8.52.0",
     "eslint-config-evolu": "workspace:*",
