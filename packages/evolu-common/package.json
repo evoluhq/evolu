@@ -51,7 +51,7 @@
     "nanoid": "^5.0.2"
   },
   "devDependencies": {
-    "@effect/schema": "0.45.5",
+    "@effect/schema": "0.45.6",
     "@evolu/tsconfig": "workspace:*",
     "@protobuf-ts/plugin": "^2.9.1",
     "@protobuf-ts/protoc": "^2.9.1",
@@ -64,8 +64,8 @@
     "vitest": "^0.34.6"
   },
   "peerDependencies": {
-    "@effect/schema": "0.45.5",
-    "effect": "2.0.0-next.50"
+    "@effect/schema": "^0.45.6",
+    "effect": "^2.0.0-next.50"
   },
   "publishConfig": {
     "access": "public"
