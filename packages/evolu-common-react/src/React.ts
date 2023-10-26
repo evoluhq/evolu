@@ -12,7 +12,6 @@ import {
   FilterMap,
   FlushSync,
   NanoId,
-  OrNullOrFalse,
   Owner,
   OwnerActions,
   Platform,
@@ -157,7 +156,7 @@ type UseQuery<S extends Schema> = <
   QueryRow extends Row,
   FilterMapRow extends Row,
 >(
-  queryCallback: OrNullOrFalse<QueryCallback<S, QueryRow>>,
+  queryCallback: QueryCallback<S, QueryRow>,
   filterMap: FilterMap<QueryRow, FilterMapRow>,
 ) => {
   /**
