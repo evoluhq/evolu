@@ -38,7 +38,7 @@
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "dependencies": {
-    "expo-updates": "^0.18.16"
+    "expo-updates": "^0.18.17"
   },
   "devDependencies": {
     "@evolu/common": "workspace:*",
