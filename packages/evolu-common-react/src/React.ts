@@ -8,7 +8,6 @@ import {
   DbWorker,
   Evolu,
   EvoluError,
-  ExcludeNullAndFalse,
   FilterMap,
   FlushSync,
   NanoId,
@@ -16,11 +15,13 @@ import {
   OwnerActions,
   Platform,
   QueryCallback,
+  QueryResult,
   Row,
   Schema,
   SyncState,
   Update,
   loadingPromisesPromiseProp,
+  makeCacheFilterMap,
   makeEvoluForPlatform,
   schemaToTables,
 } from "@evolu/common";
@@ -32,7 +33,6 @@ import {
   Option,
   ReadonlyArray,
 } from "effect";
-import { Simplify } from "kysely";
 import { useMemo, useRef, useSyncExternalStore } from "react";
 
 export interface ReactHooks<S extends Schema> {
@@ -48,10 +48,7 @@ export interface ReactHooks<S extends Schema> {
    * The most simple example:
    *
    * ```
-   * const { rows } = useQuery(
-   *   (db) => db.selectFrom("todo").selectAll(),
-   *   (row) => row
-   * );
+   * const { rows } = useQuery((db) => db.selectFrom("todo").selectAll());
    * ```
    *
    * If you mouse hover over `rows`, you will see that all columns except `Id`
@@ -152,25 +149,14 @@ export const ReactHooks = <T extends Schema>(): Context.Tag<
   ReactHooks<T>
 > => Context.Tag<ReactHooks<T>>("evolu/ReactHooks");
 
-type UseQuery<S extends Schema> = <
-  QueryRow extends Row,
-  FilterMapRow extends Row,
->(
-  queryCallback: QueryCallback<S, QueryRow>,
-  filterMap: FilterMap<QueryRow, FilterMapRow>,
-) => {
-  /**
-   * Rows from the database. They can be filtered and mapped by `filterMap`.
-   */
-  readonly rows: ReadonlyArray<
-    Readonly<Simplify<ExcludeNullAndFalse<FilterMapRow>>>
-  >;
-  /**
-   * The first row from `rows`. For empty rows, it's null.
-   */
-  readonly firstRow: Readonly<
-    Simplify<ExcludeNullAndFalse<FilterMapRow>>
-  > | null;
+type UseQuery<S extends Schema> = {
+  <QueryRow extends Row>(
+    queryCallback: QueryCallback<S, QueryRow>,
+  ): QueryResult<QueryRow>;
+  <QueryRow extends Row, FilterMapRow extends Row>(
+    queryCallback: QueryCallback<S, QueryRow>,
+    filterMap: FilterMap<QueryRow, FilterMapRow>,
+  ): QueryResult<FilterMapRow>;
 };
 
 type UseMutation<S extends Schema> = () => {
@@ -240,51 +226,52 @@ export const ReactHooksLive = <T extends Schema>(): Layer.Layer<
     Effect.gen(function* (_) {
       const evolu = yield* _(Evolu<T>());
       const platform = yield* _(Platform);
+      const cacheFilterMap = makeCacheFilterMap();
 
-      const cache = new WeakMap<Row, Option.Option<Row>>();
-
-      const useQuery: UseQuery<T> = (queryCallback, filterMap) => {
+      const useQuery: UseQuery<T> = <
+        QueryRow extends Row,
+        FilterMapRow extends Row,
+      >(
+        queryCallback: QueryCallback<T, QueryRow>,
+        initialFilterMap?: FilterMap<QueryRow, FilterMapRow>,
+      ) => {
         const query = useMemo(
-          () => (queryCallback ? evolu.createQuery(queryCallback) : null),
+          () => evolu.createQuery(queryCallback),
           [queryCallback],
         );
 
-        const promise = useMemo(() => {
-          return query ? evolu.loadQuery(query) : null;
-        }, [query]);
+        const promise = useMemo(() => evolu.loadQuery(query), [query]);
 
         if (
           platform.name !== "server" &&
-          promise &&
           !(loadingPromisesPromiseProp in promise)
         )
           throw promise;
 
-        const subscribedRows = useSyncExternalStore(
-          useMemo(() => evolu.subscribeQuery(query), [query]),
-          useMemo(() => () => evolu.getQuery(query), [query]),
-          Function.constNull,
-        );
+        // Enforce pure filterMap via useRef, args belong to query
+        const initialFilterMapRef = useRef(initialFilterMap);
 
-        // Use useRef until React Forget release.
-        const filterMapRef = useRef(filterMap);
+        const rows =
+          useSyncExternalStore(
+            useMemo(() => evolu.subscribeQuery(query), [query]),
+            useMemo(() => () => evolu.getQuery(query), [query]),
+            Function.constNull,
+          ) || ReadonlyArray.empty();
 
-        const rows = useMemo(() => {
-          if (subscribedRows == null) return [];
-          return ReadonlyArray.filterMap(subscribedRows, (row) => {
-            let cachedRow = cache.get(row);
-            if (cachedRow !== undefined) return cachedRow;
-            cachedRow = Option.fromNullable(
-              filterMapRef.current(row as never),
-            ) as never;
-            cache.set(row, cachedRow);
-            return cachedRow;
+        const filterMapRows = useMemo(() => {
+          const { current: filterMap } = initialFilterMapRef;
+          if (!filterMap) return rows;
+
+          return ReadonlyArray.filterMap(rows, (row) => {
+            const cachedRow = cacheFilterMap(filterMap)(row as QueryRow);
+            if (cachedRow === false) return Option.none();
+            return Option.fromNullable(cachedRow);
           });
-        }, [subscribedRows]);
+        }, [rows]);
 
         return {
-          rows: rows as never,
-          firstRow: rows[0] as never,
+          rows: filterMapRows,
+          firstRow: filterMapRows[0],
         };
       };
 

@@ -1,6 +1,6 @@
 import * as Schema from "@effect/schema/Schema";
 import { Brand } from "effect";
-import { Row, maybeJson } from "./Sqlite.js";
+import { maybeJson } from "./Sqlite.js";
 
 /**
  * Branded Id Schema for any table Id.
@@ -181,32 +181,3 @@ export const PositiveInt = Schema.number.pipe(
   Schema.brand("PositiveInt"),
 );
 export type PositiveInt = Schema.Schema.To<typeof PositiveInt>;
-
-/**
- * Filter and map array items in one step with the correct return type and
- * without unreliable TypeScript type guards.
- *
- * ### Examples
- *
- * ```
- * useQuery(
- *   (db) => db.selectFrom("todo").selectAll(),
- *   // Filter and map nothing.
- *   (row) => row,
- * );
- *
- * useQuery(
- *   (db) => db.selectFrom("todo").selectAll(),
- *   // Filter items with title != null.
- *   // Note the title type isn't nullable anymore in rows.
- *   ({ title, ...rest }) => title != null && { title, ...rest },
- * );
- * ```
- */
-export type FilterMap<QueryRow extends Row, FilterMapRow extends Row> = (
-  row: QueryRow,
-) => OrNullOrFalse<FilterMapRow>;
-
-export type OrNullOrFalse<T> = T | null | false;
-
-export type ExcludeNullAndFalse<T> = Exclude<T, null | false>;

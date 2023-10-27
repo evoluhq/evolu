@@ -17,10 +17,7 @@ import { Callout } from "nextra-theme-docs";
 The most simple example:
 
 ```ts
-const { rows } = useQuery(
-  (db) => db.selectFrom("todo").selectAll(),
-  (row) => row,
-);
+const { rows } = useQuery((db) => db.selectFrom("todo").selectAll());
 ```
 
 If you mouse hover over `rows`, you will see that all columns except `Id`

@@ -15,6 +15,7 @@ import {
   pipe,
 } from "effect";
 import * as Kysely from "kysely";
+import { Simplify } from "kysely";
 import { urlAlphabet } from "nanoid";
 import {
   initialMerkleTree,
@@ -50,13 +51,13 @@ export type CreateQuery<S extends Schema> = (
 ) => Query;
 
 export type QueryCallback<S extends Schema, QueryRow> = (
-  db: KyselyWithoutMutation<SchemaForQuery<S>>,
+  db: KyselyWithoutMutation<QuerySchema<S>>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ) => Kysely.SelectQueryBuilder<any, any, QueryRow>;
 
 type KyselyWithoutMutation<DB> = Pick<Kysely.Kysely<DB>, "selectFrom" | "fn">;
 
-type SchemaForQuery<S extends Schema> = {
+type QuerySchema<S extends Schema> = {
   readonly [Table in keyof S]: NullableExceptOfId<
     {
       readonly [Column in keyof S[Table]]: S[Table][Column];
@@ -74,6 +75,48 @@ export interface CommonColumns {
   readonly isDeleted: SqliteBoolean;
 }
 
+/**
+ * Filter and map array items in one step with the correct return type and
+ * without unreliable TypeScript type guards.
+ *
+ * ### Examples
+ *
+ * ```
+ * useQuery(
+ *   (db) => db.selectFrom("todo").selectAll(),
+ *   // Filter and map nothing.
+ *   (row) => row,
+ * );
+ *
+ * useQuery(
+ *   (db) => db.selectFrom("todo").selectAll(),
+ *   // Filter items with title != null.
+ *   // Note the title type isn't nullable anymore in rows.
+ *   ({ title, ...rest }) => title != null && { title, ...rest },
+ * );
+ * ```
+ */
+export type FilterMap<QueryRow extends Row, FilterMapRow extends Row> = (
+  row: QueryRow,
+) => FilterMapRow | null | false;
+
+export interface QueryResult<FilterMapRow extends Row> {
+  /**
+   * Rows from the database. They can be filtered and mapped by `filterMap`.
+   */
+  readonly rows: ReadonlyArray<
+    Readonly<Simplify<ExcludeNullAndFalse<FilterMapRow>>>
+  >;
+  /**
+   * The first row from `rows`. For empty rows, it's null.
+   */
+  readonly firstRow: Readonly<
+    Simplify<ExcludeNullAndFalse<FilterMapRow>>
+  > | null;
+}
+
+type ExcludeNullAndFalse<T> = Exclude<T, null | false>;
+
 export interface Table {
   readonly name: string;
   readonly columns: ReadonlyArray<string>;
@@ -83,7 +126,7 @@ export type Tables = ReadonlyArray<Table>;
 
 const commonColumns = ["createdAt", "updatedAt", "isDeleted"];
 
-const kysely: Kysely.Kysely<SchemaForQuery<Schema>> = new Kysely.Kysely({
+const kysely: Kysely.Kysely<QuerySchema<Schema>> = new Kysely.Kysely({
   dialect: {
     createAdapter: () => new Kysely.SqliteAdapter(),
     createDriver: () => new Kysely.DummyDriver(),
@@ -325,3 +368,24 @@ export const ensureSchema = (
       { discard: true },
     ),
   );
+
+export const makeCacheFilterMap = (): (<
+  QueryRow extends Row,
+  FilterMapRow extends Row,
+>(
+  filterMap: FilterMap<QueryRow, FilterMapRow>,
+) => FilterMap<QueryRow, FilterMapRow>) => {
+  const cache = new WeakMap<Row, Row | null | false>();
+
+  return <QueryRow extends Row, FilterMapRow extends Row>(
+      filterMap: FilterMap<QueryRow, FilterMapRow>,
+    ): FilterMap<QueryRow, FilterMapRow> =>
+    (row: QueryRow) => {
+      let cachedRow = cache.get(row);
+      if (cachedRow === undefined) {
+        cachedRow = filterMap(row);
+        cache.set(row, cachedRow);
+      }
+      return cachedRow as FilterMapRow | null | false;
+    };
+};
