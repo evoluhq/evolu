@@ -1,5 +1,18 @@
 # @evolu/common-react
 
+## 1.0.8
+
+### Patch Changes
+
+- 51ead17: Make useQuery filterMap optional and reusable
+- 8eaff48: Remove conditional queryCallback
+
+  Conditional useQuery callback wasn't documented, and it's an antipattern. With Kysely Relations, it's possible to nest related rows in queries now.
+
+- Updated dependencies [db84a4e]
+- Updated dependencies [51ead17]
+  - @evolu/common@1.0.15
+
 ## 1.0.7
 
 ### Patch Changes

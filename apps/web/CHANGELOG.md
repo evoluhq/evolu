@@ -1,5 +1,14 @@
 # web
 
+## 0.0.105
+
+### Patch Changes
+
+- Updated dependencies [db84a4e]
+- Updated dependencies [51ead17]
+  - @evolu/common@1.0.15
+  - @evolu/react@2.0.6
+
 ## 0.0.104
 
 ### Patch Changes

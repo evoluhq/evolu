@@ -1,5 +1,12 @@
 # @evolu/common
 
+## 1.0.15
+
+### Patch Changes
+
+- db84a4e: Update deps
+- 51ead17: Make useQuery filterMap optional and reusable
+
 ## 1.0.14
 
 ### Patch Changes
