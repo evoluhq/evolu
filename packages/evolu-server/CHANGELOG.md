@@ -1,5 +1,14 @@
 # @evolu/server
 
+## 1.0.15
+
+### Patch Changes
+
+- db84a4e: Update deps
+- Updated dependencies [db84a4e]
+- Updated dependencies [51ead17]
+  - @evolu/common@1.0.15
+
 ## 1.0.14
 
 ### Patch Changes

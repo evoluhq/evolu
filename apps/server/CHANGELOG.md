@@ -1,5 +1,12 @@
 # server
 
+## 0.0.103
+
+### Patch Changes
+
+- Updated dependencies [db84a4e]
+  - @evolu/server@1.0.15
+
 ## 0.0.102
 
 ### Patch Changes
