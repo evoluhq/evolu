@@ -138,7 +138,7 @@ const kysely: Kysely.Kysely<QuerySchema<Schema>> = new Kysely.Kysely({
 });
 
 export const makeCreateQuery =
-  <T extends Schema>(): CreateQuery<T> =>
+  <S extends Schema>(): CreateQuery<S> =>
   (queryCallback) =>
     queryObjectToQuery(queryCallback(kysely as never).compile() as QueryObject);
 

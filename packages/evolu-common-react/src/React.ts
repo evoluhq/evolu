@@ -144,10 +144,10 @@ export interface ReactHooks<S extends Schema> {
   readonly useSyncState: () => SyncState;
 }
 
-export const ReactHooks = <T extends Schema>(): Context.Tag<
-  ReactHooks<T>,
-  ReactHooks<T>
-> => Context.Tag<ReactHooks<T>>("evolu/ReactHooks");
+export const ReactHooks = <S extends Schema>(): Context.Tag<
+  ReactHooks<S>,
+  ReactHooks<S>
+> => Context.Tag<ReactHooks<S>>("evolu/ReactHooks");
 
 type UseQuery<S extends Schema> = {
   <QueryRow extends Row>(
@@ -216,23 +216,23 @@ type UseMutation<S extends Schema> = () => {
   readonly update: Update<S>;
 };
 
-export const ReactHooksLive = <T extends Schema>(): Layer.Layer<
-  Platform | Evolu<T>,
+export const ReactHooksLive = <S extends Schema>(): Layer.Layer<
+  Platform | Evolu<S>,
   never,
-  ReactHooks<T>
+  ReactHooks<S>
 > =>
   Layer.effect(
-    ReactHooks<T>(),
+    ReactHooks<S>(),
     Effect.gen(function* (_) {
-      const evolu = yield* _(Evolu<T>());
+      const evolu = yield* _(Evolu<S>());
       const platform = yield* _(Platform);
       const cacheFilterMap = makeCacheFilterMap();
 
-      const useQuery: UseQuery<T> = <
+      const useQuery: UseQuery<S> = <
         QueryRow extends Row,
         FilterMapRow extends Row,
       >(
-        queryCallback: QueryCallback<T, QueryRow>,
+        queryCallback: QueryCallback<S, QueryRow>,
         initialFilterMap?: FilterMap<QueryRow, FilterMapRow>,
       ) => {
         const query = useMemo(
@@ -275,35 +275,35 @@ export const ReactHooksLive = <T extends Schema>(): Layer.Layer<
         };
       };
 
-      const useMutation: UseMutation<T> = () =>
+      const useMutation: UseMutation<S> = () =>
         useMemo(() => ({ create: evolu.create, update: evolu.update }), []);
 
-      const useEvoluError: ReactHooks<T>["useEvoluError"] = () =>
+      const useEvoluError: ReactHooks<S>["useEvoluError"] = () =>
         useSyncExternalStore(
           evolu.subscribeError,
           evolu.getError,
           Function.constNull,
         );
 
-      const useOwner: ReactHooks<T>["useOwner"] = () =>
+      const useOwner: ReactHooks<S>["useOwner"] = () =>
         useSyncExternalStore(
           evolu.subscribeOwner,
           evolu.getOwner,
           Function.constNull,
         );
 
-      const useOwnerActions: ReactHooks<T>["useOwnerActions"] = () =>
+      const useOwnerActions: ReactHooks<S>["useOwnerActions"] = () =>
         evolu.ownerActions;
 
       const syncStateInitial: SyncState = { _tag: "SyncStateInitial" };
-      const useSyncState: ReactHooks<T>["useSyncState"] = () =>
+      const useSyncState: ReactHooks<S>["useSyncState"] = () =>
         useSyncExternalStore(
           evolu.subscribeSyncState,
           evolu.getSyncState,
           () => syncStateInitial,
         );
 
-      return ReactHooks<T>().of({
+      return ReactHooks<S>().of({
         useQuery,
         useMutation,
         useEvoluError,

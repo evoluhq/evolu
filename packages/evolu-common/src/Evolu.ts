@@ -60,8 +60,8 @@ export interface Evolu<S extends Schema> {
   readonly ensureSchema: (tables: Tables) => void;
 }
 
-export const Evolu = <T extends Schema>(): Context.Tag<Evolu<T>, Evolu<T>> =>
-  Context.Tag<Evolu<T>>("evolu/Evolu");
+export const Evolu = <S extends Schema>(): Context.Tag<Evolu<S>, Evolu<S>> =>
+  Context.Tag<Evolu<S>>("evolu/Evolu");
 
 type ErrorStore = Store<EvoluError | null>;
 
@@ -118,8 +118,8 @@ type Mutate<S extends Schema> = <
   readonly id: U[T]["id"];
 };
 
-const Mutate = <T extends Schema>(): Context.Tag<Mutate<T>, Mutate<T>> =>
-  Context.Tag<Mutate<T>>("evolu/Mutate");
+const Mutate = <S extends Schema>(): Context.Tag<Mutate<S>, Mutate<S>> =>
+  Context.Tag<Mutate<S>>("evolu/Mutate");
 
 type SchemaForMutate<S extends Schema> = {
   readonly [Table in keyof S]: NullableExceptOfId<
@@ -297,13 +297,13 @@ const QueryStoreLive = Layer.effect(
   }),
 );
 
-const MutateLive = <T extends Schema>(): Layer.Layer<
+const MutateLive = <S extends Schema>(): Layer.Layer<
   NanoId | OnCompletes | Time | SubscribedQueries | LoadingPromises | DbWorker,
   never,
-  Mutate<T>
+  Mutate<S>
 > =>
   Layer.effect(
-    Mutate<T>(),
+    Mutate<S>(),
     Effect.gen(function* (_) {
       const nanoid = yield* _(NanoId);
       const onCompletes = yield* _(OnCompletes);
@@ -314,7 +314,7 @@ const MutateLive = <T extends Schema>(): Layer.Layer<
 
       const queue: Array<MutateItem> = [];
 
-      return Mutate<T>().of((table, { id, ...values }, onComplete) => {
+      return Mutate<S>().of((table, { id, ...values }, onComplete) => {
         const isInsert = id == null;
         if (isInsert) id = Effect.runSync(nanoid.nanoid) as never;
 
@@ -381,15 +381,15 @@ const OwnerActionsLive = Layer.effect(
   }),
 );
 
-export const EvoluLive = <T extends Schema>(
+export const EvoluLive = <S extends Schema>(
   tables: Tables,
 ): Layer.Layer<
   DbWorker | Bip39 | Config | FlushSync | NanoId | Time | AppState,
   never,
-  Evolu<T>
+  Evolu<S>
 > =>
   Layer.effect(
-    Evolu<T>(),
+    Evolu<S>(),
     Effect.gen(function* (_) {
       const dbWorker = yield* _(DbWorker);
       const appState = yield* _(AppState);
@@ -425,8 +425,8 @@ export const EvoluLive = <T extends Schema>(
       ).pipe(Effect.runSync);
 
       const mutate = Effect.provide(
-        Mutate<T>(),
-        Layer.use(MutateLive<T>(), Layers),
+        Mutate<S>(),
+        Layer.use(MutateLive<S>(), Layers),
       ).pipe(Effect.runSync);
 
       const ownerActions = Effect.provide(
@@ -434,7 +434,7 @@ export const EvoluLive = <T extends Schema>(
         Layer.use(OwnerActionsLive, Layers),
       ).pipe(Effect.runSync);
 
-      const ensureSchema: Evolu<T>["ensureSchema"] = (tables) => {
+      const ensureSchema: Evolu<S>["ensureSchema"] = (tables) => {
         dbWorker.postMessage({ _tag: "ensureSchema", tables });
       };
 
@@ -486,14 +486,14 @@ export const EvoluLive = <T extends Schema>(
       appState.onReconnect(sync);
       sync();
 
-      return Evolu<T>().of({
+      return Evolu<S>().of({
         subscribeError: errorStore.subscribe,
         getError: errorStore.getState,
 
         subscribeOwner: ownerStore.subscribe,
         getOwner: ownerStore.getState,
 
-        createQuery: makeCreateQuery<T>(),
+        createQuery: makeCreateQuery<S>(),
         subscribeQuery: queryStore.subscribe,
         getQuery: queryStore.getState,
         loadQuery: queryStore.loadQuery,
@@ -501,15 +501,15 @@ export const EvoluLive = <T extends Schema>(
         subscribeSyncState: syncStateStore.subscribe,
         getSyncState: syncStateStore.getState,
 
-        create: mutate as Create<T>,
-        update: mutate as Update<T>,
+        create: mutate as Create<S>,
+        update: mutate as Update<S>,
         ownerActions,
         ensureSchema,
       });
     }),
   );
 
-export const makeEvoluForPlatform = <T extends Schema>(
+export const makeEvoluForPlatform = <S extends Schema>(
   PlatformLayer: Layer.Layer<
     never,
     never,
@@ -517,11 +517,11 @@ export const makeEvoluForPlatform = <T extends Schema>(
   >,
   tables: Tables,
   config?: Partial<Config>,
-): Evolu<T> =>
+): Evolu<S> =>
   Effect.provide(
-    Evolu<T>(),
+    Evolu<S>(),
     Layer.use(
-      EvoluLive<T>(tables),
+      EvoluLive<S>(tables),
       Layer.mergeAll(PlatformLayer, ConfigLive(config), TimeLive),
     ),
   ).pipe(Effect.runSync);
