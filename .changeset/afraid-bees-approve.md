@@ -1,5 +1,5 @@
 ---
-"@evolu/common-react": minor
+"@evolu/common-react": patch
 ---
 
 Allow to disable React Suspense per useQuery
