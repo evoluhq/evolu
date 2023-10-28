@@ -156,8 +156,28 @@ type UseQuery<S extends Schema> = {
   <QueryRow extends Row, FilterMapRow extends Row>(
     queryCallback: QueryCallback<S, QueryRow>,
     filterMap: FilterMap<QueryRow, FilterMapRow>,
+    options?: UseQueryOptions,
   ): QueryResult<FilterMapRow>;
 };
+
+interface UseQueryOptions {
+  /**
+   * React Suspense is enabled by default but can be optionally disabled
+   * per useQuery hook. When disabled, useQuery will not stop rendering
+   * and will return empty rows instead.
+   *
+   * That can be helpful to avoid waterfall when using more than one
+   * useQuery within one React Component. In such a situation, disable
+   * Suspense for all useQuery hooks except the last one.
+   *
+   * Because Evolu queues queries within a microtask sequentially, all
+   * queries will be batched within one roundtrip.
+   *
+   * Another use case is to optimistically prefetch data that might be
+   * needed in a future render without blocking the current render.
+   */
+  readonly suspense?: boolean;
+}
 
 type UseMutation<S extends Schema> = () => {
   /**
@@ -234,6 +254,7 @@ export const ReactHooksLive = <S extends Schema>(): Layer.Layer<
       >(
         queryCallback: QueryCallback<S, QueryRow>,
         initialFilterMap?: FilterMap<QueryRow, FilterMapRow>,
+        options: UseQueryOptions = {},
       ) => {
         const query = useMemo(
           () => evolu.createQuery(queryCallback),
@@ -243,6 +264,7 @@ export const ReactHooksLive = <S extends Schema>(): Layer.Layer<
         const promise = useMemo(() => evolu.loadQuery(query), [query]);
 
         if (
+          options.suspense !== false &&
           platform.name !== "server" &&
           !(loadingPromisesPromiseProp in promise)
         )
