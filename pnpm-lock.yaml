@@ -27,8 +27,8 @@ importers:
   apps/native:
     dependencies:
       '@effect/schema':
-        specifier: ^0.46.1
-        version: 0.46.1(effect@2.0.0-next.52)(fast-check@3.13.2)
+        specifier: ^0.46.2
+        version: 0.46.2(effect@2.0.0-next.52)(fast-check@3.13.2)
       '@evolu/react-native':
         specifier: workspace:*
         version: link:../../packages/evolu-react-native
@@ -113,8 +113,8 @@ importers:
   apps/web:
     dependencies:
       '@effect/schema':
-        specifier: ^0.46.1
-        version: 0.46.1(effect@2.0.0-next.52)(fast-check@3.13.2)
+        specifier: ^0.46.2
+        version: 0.46.2(effect@2.0.0-next.52)(fast-check@3.13.2)
       '@evolu/common':
         specifier: workspace:*
         version: link:../../packages/evolu-common
@@ -242,8 +242,8 @@ importers:
         version: 5.0.2
     devDependencies:
       '@effect/schema':
-        specifier: 0.46.1
-        version: 0.46.1(effect@2.0.0-next.52)(fast-check@3.13.2)
+        specifier: 0.46.2
+        version: 0.46.2(effect@2.0.0-next.52)(fast-check@3.13.2)
       '@evolu/tsconfig':
         specifier: workspace:*
         version: link:../evolu-tsconfig
@@ -2311,8 +2311,8 @@ packages:
       '@jridgewell/trace-mapping': 0.3.9
     dev: true
 
-  /@effect/schema@0.46.1(effect@2.0.0-next.52)(fast-check@3.13.2):
-    resolution: {integrity: sha512-+uaJy6vn2wd5cuYzeCZ68EMPcwNran5/JPL0+MUlRL8x23Bp15YCiT9oqOPH+Bo9+JPVuS7BOPQD3tj/MNLzWQ==}
+  /@effect/schema@0.46.2(effect@2.0.0-next.52)(fast-check@3.13.2):
+    resolution: {integrity: sha512-Xw96qAgsbhspmsa2M5yaKl5Xv3qLDQ12Hw1+NC0iK2y3J9HhQCSvPp+s6aegVK07QZo0rW4LP7nXDHrbuzx1Pw==}
     peerDependencies:
       effect: 2.0.0-next.52
       fast-check: ^3.13.2
@@ -4458,7 +4458,7 @@ packages:
       postcss: ^8.1.0
     dependencies:
       browserslist: 4.22.1
-      caniuse-lite: 1.0.30001555
+      caniuse-lite: 1.0.30001557
       fraction.js: 4.3.7
       normalize-range: 0.1.2
       picocolors: 1.0.0
@@ -4808,7 +4808,7 @@ packages:
     engines: {node: ^6 || ^7 || ^8 || ^9 || ^10 || ^11 || ^12 || >=13.7}
     hasBin: true
     dependencies:
-      caniuse-lite: 1.0.30001555
+      caniuse-lite: 1.0.30001557
       electron-to-chromium: 1.4.569
       node-releases: 2.0.13
       update-browserslist-db: 1.0.13(browserslist@4.22.1)
@@ -4945,8 +4945,8 @@ packages:
     resolution: {integrity: sha512-Gmy6FhYlCY7uOElZUSbxo2UCDH8owEk996gkbrpsgGtrJLM3J7jGxl9Ic7Qwwj4ivOE5AWZWRMecDdF7hqGjFA==}
     engines: {node: '>=10'}
 
-  /caniuse-lite@1.0.30001555:
-    resolution: {integrity: sha512-NzbUFKUnJ3DTcq6YyZB6+qqhfD112uR3uoEnkmfzm2wVzUNsFkU7AwBjKQ654Sp5cau0JxhFyRSn/tQZ+XfygA==}
+  /caniuse-lite@1.0.30001557:
+    resolution: {integrity: sha512-91oR7hLNUP3gG6MLU+n96em322a8Xzes8wWdBKhLgUoiJsAF5irZnxSUCbc+qUZXNnPCfUwLOi9ZCZpkvjQajw==}
 
   /ccount@2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
@@ -9870,8 +9870,8 @@ packages:
       - supports-color
     dev: false
 
-  /next-seo@6.1.0(next@14.0.0)(react-dom@18.2.0)(react@18.2.0):
-    resolution: {integrity: sha512-iMBpFoJsR5zWhguHJvsoBDxDSmdYTHtnVPB1ij+CD0NReQCP78ZxxbdL9qkKIf4oEuZEqZkrjAQLB0bkII7RYA==}
+  /next-seo@6.4.0(next@14.0.0)(react-dom@18.2.0)(react@18.2.0):
+    resolution: {integrity: sha512-XQFxkOL2hw0YE+P100HbI3EAvcludlHPxuzMgaIjKb7kPK0CvjGvLFjd9hszZFEDc5oiQkGFA8+cuWcnip7eYA==}
     peerDependencies:
       next: ^8.1.1-canary.54 || >=9.0.0
       react: '>=16.0.0'
@@ -9912,7 +9912,7 @@ packages:
       '@next/env': 14.0.0
       '@swc/helpers': 0.5.2
       busboy: 1.6.0
-      caniuse-lite: 1.0.30001555
+      caniuse-lite: 1.0.30001557
       postcss: 8.4.31
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
@@ -9951,7 +9951,7 @@ packages:
       intersection-observer: 0.12.2
       match-sorter: 6.3.1
       next: 14.0.0(react-dom@18.2.0)(react@18.2.0)
-      next-seo: 6.1.0(next@14.0.0)(react-dom@18.2.0)(react@18.2.0)
+      next-seo: 6.4.0(next@14.0.0)(react-dom@18.2.0)(react@18.2.0)
       next-themes: 0.2.1(next@14.0.0)(react-dom@18.2.0)(react@18.2.0)
       nextra: 2.13.2(next@14.0.0)(react-dom@18.2.0)(react@18.2.0)
       react: 18.2.0
