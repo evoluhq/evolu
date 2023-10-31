@@ -1,5 +1,12 @@
 # server
 
+## 0.0.105
+
+### Patch Changes
+
+- Updated dependencies [22f6085]
+  - @evolu/server@1.0.17
+
 ## 0.0.104
 
 ### Patch Changes
