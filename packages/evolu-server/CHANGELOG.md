@@ -1,5 +1,13 @@
 # @evolu/server
 
+## 1.0.17
+
+### Patch Changes
+
+- 22f6085: Update deps
+- Updated dependencies [22f6085]
+  - @evolu/common@1.0.17
+
 ## 1.0.16
 
 ### Patch Changes
