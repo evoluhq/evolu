@@ -51,6 +51,29 @@ const Database = Schema.struct({
   todo: TodoTable,
   todoCategory: TodoCategoryTable,
 });
+type Database = Schema.Schema.To<typeof Database>;
+
+// const evolu = Evolu.create()
+(evolu: Evolu.Evolu2<Database>): void => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const todos = evolu.createQuery(
+    (db) => db.selectFrom("todo").selectAll(),
+    ({ title, categoryId, ...rest }) =>
+      title != null && categoryId != null && { title, categoryId, ...rest },
+  );
+
+  void evolu.loadQuery(todos).then((_a) => {
+    // a.rows[0].;
+  });
+
+  evolu.subscribeQuery(todos)(() => {
+    //
+  })();
+
+  // evolu.loadQuery(allTodos) vraci promisu
+  // evolu.subscribeQuery(allTodos)
+  // evolu.getQuery(allTodos)
+};
 
 const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
   Evolu.create(Database, {

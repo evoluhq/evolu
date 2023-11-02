@@ -6,6 +6,7 @@ export * from "./Db.js";
 export * from "./DbWorker.js";
 export * from "./Errors.js";
 export * from "./Evolu.js";
+export * from "./Evolu2.js";
 export * from "./Model.js";
 export * from "./Platform.js";
 export * from "./Protobuf.js";

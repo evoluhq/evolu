@@ -10,6 +10,7 @@ import {
 import { Layer } from "effect";
 
 export * from "@evolu/common/public";
+export type { Evolu, Evolu2 } from "@evolu/common";
 
 export const create = makeReactHooksForPlatform(
   Layer.use(DbWorkerLive, PlatformLive),
