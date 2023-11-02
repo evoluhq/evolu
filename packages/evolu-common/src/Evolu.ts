@@ -34,7 +34,7 @@ import { applyPatches } from "./Diff.js";
 import { EvoluError } from "./Errors.js";
 import { Id, SqliteBoolean, SqliteDate, cast } from "./Model.js";
 import { AppState, FlushSync } from "./Platform.js";
-import { Query, Row } from "./Sqlite.js";
+import { SerializedSqliteQuery, Row } from "./Sqlite.js";
 import { Store, StoreListener, StoreUnsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
 
@@ -69,10 +69,14 @@ type OwnerStore = Store<Owner | null>;
 
 interface QueryStore {
   readonly subscribe: (
-    query: Query | null,
+    query: SerializedSqliteQuery | null,
   ) => (listener: StoreListener) => StoreUnsubscribe;
-  readonly getState: (query: Query | null) => ReadonlyArray<Row> | null;
-  readonly loadQuery: (query: Query) => Promise<ReadonlyArray<Row>>;
+  readonly getState: (
+    query: SerializedSqliteQuery | null,
+  ) => ReadonlyArray<Row> | null;
+  readonly loadQuery: (
+    query: SerializedSqliteQuery,
+  ) => Promise<ReadonlyArray<Row>>;
   readonly onQuery: (output: DbWorkerOutputOnQuery) => void;
 }
 
@@ -170,7 +174,7 @@ interface RestoreOwnerError {
   readonly _tag: "RestoreOwnerError";
 }
 
-type SubscribedQueries = Map<Query, number>;
+type SubscribedQueries = Map<SerializedSqliteQuery, number>;
 
 const SubscribedQueries = Context.Tag<SubscribedQueries>(
   "evolu/SubscribedQueries",
@@ -183,12 +187,17 @@ const OnCompletes = Context.Tag<OnCompletes>("evolu/OnCompletes");
 type OnComplete = () => void;
 
 interface LoadingPromises {
-  readonly getPromise: (query: Query) => {
+  readonly getPromise: (query: SerializedSqliteQuery) => {
     readonly promise: Promise<ReadonlyArray<Row>>;
     readonly isNew: boolean;
   };
-  readonly resolvePromise: (query: Query, rows: ReadonlyArray<Row>) => void;
-  readonly releasePromises: (ignoreQueries: ReadonlyArray<Query>) => void;
+  readonly resolvePromise: (
+    query: SerializedSqliteQuery,
+    rows: ReadonlyArray<Row>,
+  ) => void;
+  readonly releasePromises: (
+    ignoreQueries: ReadonlyArray<SerializedSqliteQuery>,
+  ) => void;
 }
 
 const LoadingPromises = Context.Tag<LoadingPromises>("evolu/LoadingPromises");
@@ -199,7 +208,7 @@ const LoadingPromisesLive = Layer.effect(
   LoadingPromises,
   Effect.sync(() => {
     const promises = new Map<
-      Query,
+      SerializedSqliteQuery,
       {
         readonly promise: Promise<ReadonlyArray<Row>>;
         readonly resolve: (rows: ReadonlyArray<Row>) => void;
@@ -247,7 +256,7 @@ const QueryStoreLive = Layer.effect(
     const onCompletes = yield* _(OnCompletes);
 
     const rowsCacheStore = makeStore<RowsCacheMap>(new Map());
-    const queue = new Set<Query>();
+    const queue = new Set<SerializedSqliteQuery>();
 
     const subscribe: QueryStore["subscribe"] = (query) => (listen) => {
       if (query == null) return Function.constVoid;
@@ -458,7 +467,7 @@ export const EvoluLive = <S extends Schema>(
         dbWorker.postMessage({ _tag: "ensureSchema", tables });
       };
 
-      const getSubscribedQueries = (): ReadonlyArray<Query> =>
+      const getSubscribedQueries = (): ReadonlyArray<SerializedSqliteQuery> =>
         Array.from(subscribedQueries.keys());
 
       dbWorker.onMessage = (output): void => {

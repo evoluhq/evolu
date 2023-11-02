@@ -46,7 +46,13 @@ import { QueryPatches, makePatches } from "./Diff.js";
 import { EvoluError, UnexpectedError, makeUnexpectedError } from "./Errors.js";
 import { Id, SqliteDate, cast } from "./Model.js";
 import * as Sql from "./Sql.js";
-import { Query, Row, Sqlite, Value, queryObjectFromQuery } from "./Sqlite.js";
+import {
+  SerializedSqliteQuery,
+  Row,
+  Sqlite,
+  Value,
+  deserializeSqliteQuery,
+} from "./Sqlite.js";
 import {
   Message,
   NewMessage,
@@ -82,18 +88,18 @@ interface DbWorkerInputInit {
 
 interface DbWorkerInputQuery {
   readonly _tag: "query";
-  readonly queries: ReadonlyArray.NonEmptyReadonlyArray<Query>;
+  readonly queries: ReadonlyArray.NonEmptyReadonlyArray<SerializedSqliteQuery>;
 }
 
 interface DbWorkerInputMutate {
   readonly _tag: "mutate";
   readonly items: ReadonlyArray.NonEmptyReadonlyArray<MutateItem>;
-  readonly queries: ReadonlyArray<Query>;
+  readonly queries: ReadonlyArray<SerializedSqliteQuery>;
 }
 
 interface DbWorkerInputSync {
   readonly _tag: "sync";
-  readonly queries: ReadonlyArray<Query>;
+  readonly queries: ReadonlyArray<SerializedSqliteQuery>;
 }
 
 interface DbWorkerInputReset {
@@ -186,7 +192,10 @@ const init = (
     );
   });
 
-export type RowsCacheMap = ReadonlyMap<Query, ReadonlyArray<Row>>;
+export type RowsCacheMap = ReadonlyMap<
+  SerializedSqliteQuery,
+  ReadonlyArray<Row>
+>;
 
 type RowsCacheRef = Ref.Ref<RowsCacheMap>;
 const RowsCacheRef = Context.Tag<RowsCacheRef>("evolu/RowsCacheRef");
@@ -195,7 +204,7 @@ const query = ({
   queries,
   onCompleteIds = [],
 }: {
-  readonly queries: ReadonlyArray<Query>;
+  readonly queries: ReadonlyArray<SerializedSqliteQuery>;
   readonly onCompleteIds?: ReadonlyArray<OnCompleteId>;
 }): Effect.Effect<Sqlite | RowsCacheRef | DbWorkerOnMessage, never, void> =>
   Effect.gen(function* (_) {
@@ -206,7 +215,7 @@ const query = ({
     const queriesRows = yield* _(
       Effect.forEach(queries, (query) =>
         sqlite
-          .exec(queryObjectFromQuery(query))
+          .exec(deserializeSqliteQuery(query))
           .pipe(Effect.map((result) => [query, result.rows] as const)),
       ),
     );

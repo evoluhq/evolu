@@ -2,16 +2,28 @@ import { Brand, Context, Effect, Predicate, ReadonlyRecord } from "effect";
 
 export interface Sqlite {
   readonly exec: (
-    arg: string | QueryObject,
+    arg: string | SqliteQuery,
   ) => Effect.Effect<never, never, ExecResult>;
 }
 
 export const Sqlite = Context.Tag<Sqlite>("evolu/Sqlite");
 
-export interface QueryObject {
+export type SerializedSqliteQuery = string &
+  Brand.Brand<"SerializedSqliteQuery">;
+
+export interface SqliteQuery {
   readonly sql: string;
   readonly parameters: ReadonlyArray<Value>;
 }
+
+export const serializeSqliteQuery = ({
+  sql,
+  parameters,
+}: SqliteQuery): SerializedSqliteQuery =>
+  JSON.stringify({ sql, parameters }) as SerializedSqliteQuery;
+
+export const deserializeSqliteQuery = (s: SerializedSqliteQuery): SqliteQuery =>
+  JSON.parse(s) as SqliteQuery;
 
 export type Value = SqliteValue | JsonObjectOrArray;
 
@@ -33,8 +45,6 @@ export type Row = ReadonlyRecord.ReadonlyRecord<
   Value | Row | ReadonlyArray<Row>
 >;
 
-export type Query = string & Brand.Brand<"Query">;
-
 export const isJsonObjectOrArray: Predicate.Refinement<
   Value,
   JsonObjectOrArray
@@ -47,12 +57,6 @@ export const valuesToSqliteValues = (
   values.map((value) =>
     isJsonObjectOrArray(value) ? JSON.stringify(value) : value,
   );
-
-export const queryObjectToQuery = ({ sql, parameters }: QueryObject): Query =>
-  JSON.stringify({ sql, parameters }) as Query;
-
-export const queryObjectFromQuery = (s: Query): QueryObject =>
-  JSON.parse(s) as QueryObject;
 
 export const parseJsonResults = (rows: SqliteRow[]): void => {
   parseArray(rows);

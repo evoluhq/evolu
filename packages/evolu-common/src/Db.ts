@@ -32,12 +32,12 @@ import {
   insertOwner,
 } from "./Sql.js";
 import {
-  Query,
-  QueryObject,
+  SerializedSqliteQuery,
+  SqliteQuery,
   Row,
   Sqlite,
   Value,
-  queryObjectToQuery,
+  serializeSqliteQuery,
 } from "./Sqlite.js";
 
 export type TableSchema = ReadonlyRecord.ReadonlyRecord<Value> & {
@@ -48,7 +48,7 @@ export type Schema = ReadonlyRecord.ReadonlyRecord<TableSchema>;
 
 export type CreateQuery<S extends Schema> = (
   queryCallback: QueryCallback<S, Row>,
-) => Query;
+) => SerializedSqliteQuery;
 
 export type QueryCallback<S extends Schema, QueryRow> = (
   db: KyselyWithoutMutation<QuerySchema<S>>,
@@ -139,8 +139,14 @@ const kysely: Kysely.Kysely<QuerySchema<Schema>> = new Kysely.Kysely({
 
 export const makeCreateQuery =
   <S extends Schema>(): CreateQuery<S> =>
-  (queryCallback) =>
-    queryObjectToQuery(queryCallback(kysely as never).compile() as QueryObject);
+  (queryCallback) => {
+    const compiledQuery = queryCallback(kysely as never).compile();
+    const sqliteQuery: SqliteQuery = {
+      sql: compiledQuery.sql,
+      parameters: compiledQuery.parameters as SqliteQuery["parameters"],
+    };
+    return serializeSqliteQuery(sqliteQuery);
+  };
 
 // https://github.com/Effect-TS/schema/releases/tag/v0.18.0
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
