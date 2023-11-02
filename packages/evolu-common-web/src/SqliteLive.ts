@@ -2,6 +2,7 @@ import {
   Sqlite,
   SqliteRow,
   canUseDom,
+  ensureSqliteQuery,
   parseJsonResults,
   valuesToSqliteValues,
 } from "@evolu/common";
@@ -27,11 +28,11 @@ const sqlitePromise = sqlite3InitModule().then((sqlite3) =>
 const exec: Sqlite["exec"] = (arg) =>
   Effect.gen(function* (_) {
     const sqlite = yield* _(Effect.promise(() => sqlitePromise));
-    const isSqlString = typeof arg === "string";
-    const rows = sqlite.exec(isSqlString ? arg : arg.sql, {
+    const sqliteQuery = ensureSqliteQuery(arg);
+    const rows = sqlite.exec(sqliteQuery.sql, {
       returnValue: "resultRows",
       rowMode: "object",
-      ...(!isSqlString && { bind: valuesToSqliteValues(arg.parameters) }),
+      bind: valuesToSqliteValues(sqliteQuery.parameters),
     }) as SqliteRow[];
     parseJsonResults(rows);
     return { rows, changes: sqlite.changes() };

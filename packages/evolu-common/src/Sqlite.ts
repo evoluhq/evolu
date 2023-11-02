@@ -8,13 +8,13 @@ export interface Sqlite {
 
 export const Sqlite = Context.Tag<Sqlite>("evolu/Sqlite");
 
-export type SerializedSqliteQuery = string &
-  Brand.Brand<"SerializedSqliteQuery">;
-
 export interface SqliteQuery {
   readonly sql: string;
   readonly parameters: ReadonlyArray<Value>;
 }
+
+export type SerializedSqliteQuery = string &
+  Brand.Brand<"SerializedSqliteQuery">;
 
 export const serializeSqliteQuery = ({
   sql,
@@ -24,6 +24,15 @@ export const serializeSqliteQuery = ({
 
 export const deserializeSqliteQuery = (s: SerializedSqliteQuery): SqliteQuery =>
   JSON.parse(s) as SqliteQuery;
+
+export const ensureSqliteQuery = (arg: string | SqliteQuery): SqliteQuery => {
+  if (typeof arg === "string")
+    return {
+      sql: arg,
+      parameters: [],
+    };
+  return arg;
+};
 
 export type Value = SqliteValue | JsonObjectOrArray;
 
