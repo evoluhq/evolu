@@ -1,9 +1,9 @@
-export type StoreListener = () => void;
+export type Listener = () => void;
 
-export type StoreUnsubscribe = () => void;
+export type Unsubscribe = () => void;
 
 export interface Store<T> {
-  readonly subscribe: (listener: StoreListener) => StoreUnsubscribe;
+  readonly subscribe: (listener: Listener) => Unsubscribe;
   readonly setState: (state: T) => void;
   readonly getState: () => T;
 }
@@ -11,7 +11,7 @@ export interface Store<T> {
 export const makeStore = <T>(initialState: T): Store<T> => {
   let currentState = initialState;
 
-  const listeners = new Set<StoreListener>();
+  const listeners = new Set<Listener>();
 
   const subscribe: Store<T>["subscribe"] = (listener) => {
     listeners.add(listener);

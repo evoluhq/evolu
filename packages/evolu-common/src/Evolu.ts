@@ -35,7 +35,7 @@ import { EvoluError } from "./Errors.js";
 import { Id, SqliteBoolean, SqliteDate, cast } from "./Model.js";
 import { AppState, FlushSync } from "./Platform.js";
 import { SerializedSqliteQuery, Row } from "./Sqlite.js";
-import { Store, StoreListener, StoreUnsubscribe, makeStore } from "./Store.js";
+import { Store, Listener, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
 
 export interface Evolu<S extends Schema> {
@@ -50,7 +50,7 @@ export interface Evolu<S extends Schema> {
   readonly createQuery: CreateQuery<S>;
   readonly loadQuery: QueryStore["loadQuery"];
 
-  readonly subscribeSyncState: (listener: StoreListener) => StoreUnsubscribe;
+  readonly subscribeSyncState: (listener: Listener) => Unsubscribe;
   readonly getSyncState: () => SyncState;
 
   readonly create: Create<S>;
@@ -70,7 +70,7 @@ type OwnerStore = Store<Owner | null>;
 interface QueryStore {
   readonly subscribe: (
     query: SerializedSqliteQuery | null,
-  ) => (listener: StoreListener) => StoreUnsubscribe;
+  ) => (listener: Listener) => Unsubscribe;
   readonly getState: (
     query: SerializedSqliteQuery | null,
   ) => ReadonlyArray<Row> | null;
