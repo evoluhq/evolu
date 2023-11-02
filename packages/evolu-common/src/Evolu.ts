@@ -32,7 +32,7 @@ import {
 } from "./DbWorker.js";
 import { applyPatches } from "./Diff.js";
 import { EvoluError } from "./Errors.js";
-import { CastableForMutate, Id, cast } from "./Model.js";
+import { Id, SqliteBoolean, SqliteDate, cast } from "./Model.js";
 import { AppState, FlushSync } from "./Platform.js";
 import { Query, Row } from "./Sqlite.js";
 import { Store, StoreListener, StoreUnsubscribe, makeStore } from "./Store.js";
@@ -94,6 +94,26 @@ type PartialOnlyForNullable<
   }[keyof T],
   NP = Pick<T, Exclude<keyof T, NK>> & Partial<Pick<T, NK>>,
 > = { [K in keyof NP]: NP[K] };
+
+/**
+ * SQLite doesn't support Date nor Boolean types, so Evolu emulates them
+ * with {@link SqliteBoolean} and {@link SqliteDate}.
+ *
+ * For {@link SqliteBoolean}, you can use JavaScript boolean.
+ * For {@link SqliteDate}, you can use JavaScript Date.
+ */
+
+type CastableForMutate<T> = {
+  readonly [K in keyof T]: T[K] extends SqliteBoolean
+    ? boolean | SqliteBoolean
+    : T[K] extends null | SqliteBoolean
+    ? null | boolean | SqliteBoolean
+    : T[K] extends SqliteDate
+    ? Date | SqliteDate
+    : T[K] extends null | SqliteDate
+    ? null | Date | SqliteDate
+    : T[K];
+};
 
 export type Update<S extends Schema> = <T extends keyof S>(
   table: T,

@@ -56,25 +56,6 @@ export const SqliteBoolean = Schema.number.pipe(
 export type SqliteBoolean = Schema.Schema.To<typeof SqliteBoolean>;
 
 /**
- * SQLite doesn't support Date nor Boolean types, so Evolu emulates them
- * with {@link SqliteBoolean} and {@link SqliteDate}.
- *
- * For {@link SqliteBoolean}, you can use JavaScript boolean.
- * For {@link SqliteDate}, you can use JavaScript Date.
- */
-export type CastableForMutate<T> = {
-  readonly [K in keyof T]: T[K] extends SqliteBoolean
-    ? boolean | SqliteBoolean
-    : T[K] extends null | SqliteBoolean
-    ? null | boolean | SqliteBoolean
-    : T[K] extends SqliteDate
-    ? Date | SqliteDate
-    : T[K] extends null | SqliteDate
-    ? null | Date | SqliteDate
-    : T[K];
-};
-
-/**
  * A helper for casting types not supported by SQLite.
  * SQLite doesn't support Date nor Boolean types, so Evolu emulates them
  * with {@link SqliteBoolean} and {@link SqliteDate}.
