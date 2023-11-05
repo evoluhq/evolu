@@ -10,6 +10,7 @@ module.exports = {
     "prettier",
   ],
   rules: {
+    "@typescript-eslint/explicit-function-return-type": "error",
     "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
     "react-hooks/exhaustive-deps": "error",
     "no-console": "error",

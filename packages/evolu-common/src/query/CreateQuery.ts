@@ -13,8 +13,10 @@ export type CreateQuery<S extends Schema> = {
   ): Query<To, From>;
 };
 
-export const CreateQuery = <S extends Schema>() =>
-  Context.Tag<CreateQuery<S>>("evolu/CreateQuery");
+export const CreateQuery = <S extends Schema>(): Context.Tag<
+  CreateQuery<S>,
+  CreateQuery<S>
+> => Context.Tag<CreateQuery<S>>("evolu/CreateQuery");
 
 type QueryCallback<S extends Schema, QueryRow> = (
   db: Pick<Kysely.Kysely<QuerySchema<S>>, "selectFrom" | "fn">,
@@ -35,16 +37,21 @@ type NullableExceptId<T> = {
 
 const kysely = new Kysely.Kysely<QuerySchema<Schema>>({
   dialect: {
-    createAdapter: () => new Kysely.SqliteAdapter(),
-    createDriver: () => new Kysely.DummyDriver(),
+    createAdapter: (): Kysely.DialectAdapter => new Kysely.SqliteAdapter(),
+    createDriver: (): Kysely.Driver => new Kysely.DummyDriver(),
     createIntrospector(): Kysely.DatabaseIntrospector {
       throw "Not implemeneted";
     },
-    createQueryCompiler: () => new Kysely.SqliteQueryCompiler(),
+    createQueryCompiler: (): Kysely.QueryCompiler =>
+      new Kysely.SqliteQueryCompiler(),
   },
 });
 
-export const CreateQueryLive = <S extends Schema>() =>
+export const CreateQueryLive = <S extends Schema>(): Layer.Layer<
+  never,
+  never,
+  CreateQuery<S>
+> =>
   Layer.succeed(
     CreateQuery<S>(),
     (queryCallback: QueryCallback<S, Row>, filterMap?: FilterMap<Row, Row>) =>

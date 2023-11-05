@@ -57,7 +57,7 @@ export const LoadingPromisesLive = Layer.effect(
         const item = promises.get(query);
         if (!item) return;
         // filterMapCache(filterMap)(rows)
-
+        // problem, nemam imho filtermap
         // It's similar to what React will do.
         void Object.assign(item.promise, {
           [loadingPromisesPromiseProp]: rows,

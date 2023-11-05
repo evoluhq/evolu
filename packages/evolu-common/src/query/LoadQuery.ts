@@ -14,12 +14,12 @@ export const LoadQuery = Context.Tag<LoadQuery>("evolu/LoadQuery");
 export const LoadQueryLive = Layer.effect(
   LoadQuery,
   Effect.gen(function* (_) {
-    const promises = yield* _(LoadingPromises);
+    const loadingPromises = yield* _(LoadingPromises);
     const dbWorker = yield* _(DbWorker);
     const queue = new Set<SerializedSqliteQuery>();
 
-    return (query) => {
-      const { /*promise,*/ isNew } = promises.get(query);
+    return LoadQuery.of((query) => {
+      const { isNew } = loadingPromises.get(query);
       if (isNew) queue.add(query.query);
       if (queue.size === 1) {
         queueMicrotask(() => {
@@ -29,7 +29,13 @@ export const LoadQueryLive = Layer.effect(
             dbWorker.postMessage({ _tag: "query", queries });
         });
       }
+
+      // query result
+      // const { rows } = evolu.loadQuery(todosAll);
+      // const { firstRow } = evolu.loadQuery(productById);
+      // const { firstRow } = evolu.loadQueries(todosQuery, fooQuery);
+      // return promise;
       throw "";
-    };
+    });
   }),
 );
