@@ -2,8 +2,7 @@ import { Effect } from "effect";
 import { assertType, expect, test } from "vitest";
 import { Id } from "../../src/Model.js";
 import { CreateQuery, CreateQueryLive } from "../../src/query/CreateQuery.js";
-
-type Db = { users: { id: Id; name: string } };
+import { Db } from "./utils.js";
 
 test("CreateQuery", () => {
   Effect.gen(function* (_) {
@@ -26,6 +25,6 @@ test("CreateQuery", () => {
     if (mapped) assertType<string>(mapped.name);
 
     // Must preserve identity.
-    expect(usersAll.filterMap(identity) === mapped).toBe(true);
+    expect(usersAll.filterMap(identity)).toBe(mapped);
   }).pipe(Effect.provide(CreateQueryLive<Db>()), Effect.runSync);
 });

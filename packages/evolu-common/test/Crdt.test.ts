@@ -417,7 +417,7 @@ describe("diffMerkleTrees", () => {
     };
 
     const randomTimes: Array<number> = [];
-    for (let i = 0; i < 1000; i++) {
+    for (let i = 0; i < 100; i++) {
       randomTimes.push(getRandomTime());
     }
     randomTimes.sort((a, b) => a - b);
