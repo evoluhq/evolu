@@ -19,7 +19,7 @@ export const LoadQueryLive = Layer.effect(
     const queue = new Set<SerializedSqliteQuery>();
 
     return LoadQuery.of((query) => {
-      const { isNew } = loadingPromises.get(query);
+      const { promise, isNew } = loadingPromises.get(query);
       if (isNew) queue.add(query.query);
       if (queue.size === 1) {
         queueMicrotask(() => {
@@ -29,13 +29,7 @@ export const LoadQueryLive = Layer.effect(
             dbWorker.postMessage({ _tag: "query", queries });
         });
       }
-
-      // query result
-      // const { rows } = evolu.loadQuery(todosAll);
-      // const { firstRow } = evolu.loadQuery(productById);
-      // const { firstRow } = evolu.loadQueries(todosQuery, fooQuery);
-      // return promise;
-      throw "";
+      return promise;
     });
   }),
 );

@@ -1,3 +1,4 @@
+import { Option, ReadonlyArray } from "effect";
 import { Row } from "../Sqlite.js";
 
 /**
@@ -25,6 +26,7 @@ export type FilterMap<From extends Row, To extends Row> = (
   row: From,
 ) => To | null | false;
 
+// Evolu caches filterMap results to preserve rows identity (===) for React.
 export const cacheFilterMap = <From extends Row, To extends Row>(
   filterMap: FilterMap<From, To>,
 ): FilterMap<From, To> => {
@@ -39,10 +41,11 @@ export const cacheFilterMap = <From extends Row, To extends Row>(
   };
 };
 
-// const filterMapRows = <R extends Row>(rows: ReadonlyArray<Row>) =>
-// a neco, co dostane rows, a vraci rows, a pouzije ten filterMap
-// return ReadonlyArray.filterMap(rows, (row) => {
-//   const cachedRow = cacheFilterMap(filterMap)(row as QueryRow);
-//   if (cachedRow === false) return Option.none();
-//   return Option.fromNullable(cachedRow);
-// });
+export const filterMapRows =
+  <From extends Row, To extends Row>(filterMap: FilterMap<From, To>) =>
+  (rows: ReadonlyArray<From>): ReadonlyArray<To> =>
+    ReadonlyArray.filterMap(rows, (row) => {
+      const filterMapRow = filterMap(row);
+      if (filterMapRow === false) return Option.none();
+      return Option.fromNullable(filterMapRow);
+    });
