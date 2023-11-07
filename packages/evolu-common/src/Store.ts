@@ -39,6 +39,7 @@ export const makeStore2 = <T>(
     return store;
   });
 
+// TODO: Remove
 export const makeStore = <T>(initialState: T): Store<T> => {
   let currentState = initialState;
 

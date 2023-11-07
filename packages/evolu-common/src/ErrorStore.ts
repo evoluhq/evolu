@@ -2,7 +2,9 @@ import { Context, Effect, Function, Layer } from "effect";
 import { TimestampError } from "./Crdt.js";
 import { Store, makeStore2 } from "./Store.js";
 
-export type ErrorStore = Store<EvoluError | null>;
+export type ErrorStore = Store<ErrorStoreValue>;
+
+type ErrorStoreValue = EvoluError | null;
 
 export const ErrorStore = Context.Tag<ErrorStore>("evolu/ErrorStore");
 
@@ -39,5 +41,5 @@ interface TransferableError {
 
 export const ErrorStoreLive = Layer.effect(
   ErrorStore,
-  makeStore2<EvoluError | null>(Function.constNull),
+  makeStore2<ErrorStoreValue>(Function.constNull),
 );
