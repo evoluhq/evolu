@@ -31,7 +31,7 @@ import {
   RowsCacheMap,
 } from "./DbWorker.js";
 import { applyPatches } from "./Diff.js";
-import { EvoluError } from "./Errors.js";
+import { EvoluError } from "./ErrorStore.js";
 import { Id, SqliteBoolean, SqliteDate, cast } from "./Model.js";
 import { AppState, FlushSync } from "./Platform.js";
 import { SerializedSqliteQuery, Row } from "./Sqlite.js";

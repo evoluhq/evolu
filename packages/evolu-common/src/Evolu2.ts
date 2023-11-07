@@ -1,13 +1,14 @@
 import { Context, Effect, Layer, absurd } from "effect";
+import { CreateQuery, makeCreateQuery } from "./CreateQuery.js";
 import { NanoId } from "./Crypto.js";
 import { Schema, Tables } from "./Db.js";
 import { DbWorker } from "./DbWorker.js";
-import { OnCompletesLive } from "./OnCompletes.js";
-import { FlushSync } from "./Platform.js";
-import { CreateQuery, makeCreateQuery } from "./CreateQuery.js";
+import { ErrorStore, ErrorStoreLive } from "./ErrorStore.js";
 import { LoadQuery, LoadQueryLive } from "./LoadQuery.js";
 import { LoadingPromisesLive } from "./LoadingPromises.js";
+import { OnCompletesLive } from "./OnCompletes.js";
 import { OnQuery, OnQueryLive } from "./OnQuery.js";
+import { FlushSync } from "./Platform.js";
 import { RowsStoreLive } from "./RowsStore.js";
 
 export interface Evolu2<S extends Schema> {
@@ -18,14 +19,14 @@ export interface Evolu2<S extends Schema> {
 
   readonly loadQuery: LoadQuery;
 
+  readonly subscribeError: ErrorStore["subscribe"];
+  readonly getError: ErrorStore["getState"];
+
   // readonly subscribeQuery: (
   //   query: Query<Row>,
   // ) => (listener: Listener) => Unsubscribe;
 
   // readonly getQuery: <R extends Row>(query: Query<R>) => QueryResult<R> | null;
-
-  // readonly subscribeError: (listener: Listener) => Unsubscribe;
-  // readonly getError: () => EvoluError | null;
 
   // readonly subscribeSyncState: (listener: Listener) => Unsubscribe;
   // readonly getSyncState: () => SyncState;
@@ -111,23 +112,26 @@ const EvoluLayer = <S extends Schema>(
       const dbWorker = yield* _(DbWorker);
       const loadQuery = yield* _(LoadQuery);
       const onQuery = yield* _(OnQuery);
+      const errorStore = yield* _(ErrorStore);
 
       dbWorker.onMessage = (output): void => {
-        // console.log(output);
         switch (output._tag) {
           case "onError":
-            // if (process.env.NODE_ENV === "development")
-            //   // JSON.stringify, because Expo console needs strings.
-            //   // eslint-disable-next-line no-console
-            //   console.warn(JSON.stringify(output.error, null, 2));
-            // errorStore.setState(output.error);
+            if (process.env.NODE_ENV === "development")
+              // JSON.stringify, because Expo console needs strings.
+              // eslint-disable-next-line no-console
+              console.warn(JSON.stringify(output.error, null, 2));
+            errorStore.setState(output.error);
             break;
+
           case "onQuery":
             onQuery(output).pipe(Effect.runSync);
             break;
+
           case "onOwner":
             // ownerStore.setState(output.owner);
             break;
+
           case "onReceive": {
             // const queries = getSubscribedQueries();
             // if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
@@ -137,9 +141,11 @@ const EvoluLayer = <S extends Schema>(
           case "onResetOrRestore":
             // Effect.runSync(appState.reset);
             break;
+
           case "onSyncState":
             // syncStateStore.setState(output.state);
             break;
+
           default:
             absurd(output);
         }
@@ -149,19 +155,14 @@ const EvoluLayer = <S extends Schema>(
         createQuery: makeCreateQuery<S>(),
         loadQuery,
 
+        subscribeError: errorStore.subscribe,
+        getError: errorStore.getState,
+
         // subscribeQuery(_query) {
         //   throw "";
         // },
 
         // getQuery() {
-        //   throw "";
-        // },
-
-        // subscribeError() {
-        //   throw "";
-        // },
-
-        // getError() {
         //   throw "";
         // },
 
@@ -212,9 +213,13 @@ export const Evolu2Live = <S extends Schema>(
   Evolu2<S>
 > =>
   EvoluLayer<S>(_tables).pipe(
-    Layer.use(LoadQueryLive),
-    Layer.use(OnQueryLive),
-    Layer.use(LoadingPromisesLive),
-    Layer.use(OnCompletesLive),
-    Layer.use(RowsStoreLive),
+    Layer.use(Layer.mergeAll(LoadQueryLive, OnQueryLive)),
+    Layer.use(
+      Layer.mergeAll(
+        LoadingPromisesLive,
+        OnCompletesLive,
+        RowsStoreLive,
+        ErrorStoreLive,
+      ),
+    ),
   );

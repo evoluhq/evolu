@@ -43,7 +43,9 @@ import {
   transaction,
 } from "./Db.js";
 import { QueryPatches, makePatches } from "./Diff.js";
-import { EvoluError, UnexpectedError, makeUnexpectedError } from "./Errors.js";
+import { makeUnexpectedError } from "./ErrorStore.js";
+import { UnexpectedError } from "./ErrorStore.js";
+import { EvoluError } from "./ErrorStore.js";
 import { Id, SqliteDate, cast } from "./Model.js";
 import * as Sql from "./Sql.js";
 import {

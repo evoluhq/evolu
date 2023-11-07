@@ -22,7 +22,8 @@ import {
 } from "./Crdt.js";
 import { SecretBox } from "./Crypto.js";
 import { Owner } from "./Db.js";
-import { UnexpectedError, makeUnexpectedError } from "./Errors.js";
+import { makeUnexpectedError } from "./ErrorStore.js";
+import { UnexpectedError } from "./ErrorStore.js";
 import { Id } from "./Model.js";
 import { Fetch, SyncLock } from "./Platform.js";
 import {
