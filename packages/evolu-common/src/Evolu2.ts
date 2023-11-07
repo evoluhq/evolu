@@ -1,6 +1,9 @@
 import { Context, Effect, Layer } from "effect";
 import { Schema, Tables } from "./Db.js";
+import { DbWorker } from "./DbWorker.js";
 import { CreateQuery, CreateQueryLive } from "./query/CreateQuery.js";
+import { LoadQuery, LoadQueryLive } from "./query/LoadQuery.js";
+import { LoadingPromisesLive } from "./query/LoadingPromises.js";
 
 export interface Evolu2<S extends Schema> {
   /**
@@ -8,7 +11,7 @@ export interface Evolu2<S extends Schema> {
    */
   readonly createQuery: CreateQuery<S>;
 
-  // readonly loadQuery: LoadQuery;
+  readonly loadQuery: LoadQuery;
 
   // readonly subscribeQuery: (
   //   query: Query<Row>,
@@ -93,44 +96,19 @@ export const Evolu2 = <S extends Schema>(): Context.Tag<Evolu2<S>, Evolu2<S>> =>
 //     : T[K];
 // };
 
-const EvoluLive = <S extends Schema>(
+const EvoluLayer = <S extends Schema>(
   _tables: Tables,
-): Layer.Layer<
-  CreateQuery<S>, // | Bip39 | Config | FlushSync | NanoId | Time | AppState,
-  never,
-  Evolu2<S>
-> =>
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+) =>
   Layer.effect(
     Evolu2<S>(),
     Effect.gen(function* (_) {
       const createQuery = yield* _(CreateQuery<S>());
+      const loadQuery = yield* _(LoadQuery);
 
       return {
         createQuery,
-
-        // loadQuery(_query) {
-        //   // getLoadingPromise(query).pipe(Effect.provide, runSync)?
-        //   // priserny, a co?
-        //   // getLoadingPromise(query)(loadingPromises)?
-        //   // divny
-        //   // getLoadingPromise(query) s tim, ze je to lokalni?
-        //   // jako, ted to zase chci
-        //   // nebo teda
-        //   // loadingPromises.get()
-
-        //   // const { promise, isNew } = getPromise(query.query);
-        //   // if (isNew) queue.add(query);
-        //   // if (queue.size === 1) {
-        //   //   queueMicrotask(() => {
-        //   //     const queries = [...queue];
-        //   //     queue.clear();
-        //   //     if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
-        //   //       dbWorker.postMessage({ _tag: "query", queries });
-        //   //   });
-        //   // }
-        //   // return promise;
-        //   throw "";
-        // },
+        loadQuery,
 
         // subscribeQuery(_query) {
         //   throw "";
@@ -187,7 +165,18 @@ const EvoluLive = <S extends Schema>(
     }),
   );
 
-export const EvoluFoo = <S extends Schema>(
+export const EvoluPlatform = <S extends Schema>(
   _tables: Tables,
-): Layer.Layer<never, never, Evolu2<S>> =>
-  EvoluLive<S>(_tables).pipe(Layer.use(CreateQueryLive<S>()));
+): Layer.Layer<
+  DbWorker, // | Bip39 | NanoId | FlushSync | AppState,
+  never,
+  Evolu2<S>
+> =>
+  EvoluLayer<S>(_tables).pipe(
+    Layer.use(
+      Layer.mergeAll(
+        CreateQueryLive<S>(),
+        LoadQueryLive.pipe(Layer.use(LoadingPromisesLive)),
+      ),
+    ),
+  );
