@@ -11,12 +11,12 @@
     "clean": "rm -rf .turbo && rm -rf .expo && rm -rf node_modules"
   },
   "dependencies": {
-    "@effect/schema": "^0.46.3",
+    "@effect/schema": "^0.47.2",
     "@evolu/react-native": "workspace:*",
-    "@react-native-community/netinfo": "9.4.1",
-    "@types/react": "^18.2.33",
+    "@react-native-community/netinfo": "11.0.1",
+    "@types/react": "^18.2.37",
     "crypto-browserify": "^3.12.0",
-    "effect": "2.0.0-next.52",
+    "effect": "2.0.0-next.54",
     "events": "^3.3.0",
     "expo": "^49.0.16",
     "expo-sqlite": "~11.6.0",
@@ -25,12 +25,12 @@
     "react": "18.2.0",
     "react-native": "^0.72.6",
     "react-native-get-random-values": "^1.9.0",
-    "react-native-picker-select": "^8.1.0"
+    "react-native-picker-select": "^9.0.0"
   },
   "devDependencies": {
     "@babel/core": "^7.23.2",
     "@babel/plugin-transform-private-methods": "^7.22.5",
-    "eslint": "^8.52.0",
+    "eslint": "^8.53.0",
     "eslint-config-evolu": "workspace:*",
     "prettier": "^3.0.3",
     "typescript": "^5.2.2"

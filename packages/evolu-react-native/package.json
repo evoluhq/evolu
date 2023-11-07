@@ -44,7 +44,7 @@
     "@evolu/common": "workspace:*",
     "@evolu/common-react": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
-    "eslint": "^8.52.0",
+    "eslint": "^8.53.0",
     "eslint-config-evolu": "workspace:*",
     "expo": "^49.0.16",
     "expo-sqlite": "~11.6.0",
