@@ -1,3 +1,5 @@
+import { Effect, Function } from "effect";
+
 export type Listener = () => void;
 
 export type Unsubscribe = () => void;
@@ -7,6 +9,35 @@ export interface Store<T> {
   readonly setState: (state: T) => void;
   readonly getState: () => T;
 }
+
+export const makeStore2 = <T>(
+  initialState: Function.LazyArg<T>,
+): Effect.Effect<never, never, Store<T>> =>
+  Effect.sync(() => {
+    const listeners = new Set<Listener>();
+    let currentState = initialState();
+
+    const store: Store<T> = {
+      subscribe(listener) {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+
+      getState() {
+        return currentState;
+      },
+
+      setState(state) {
+        if (state === currentState) return;
+        currentState = state;
+        listeners.forEach((listener) => listener());
+      },
+    };
+
+    return store;
+  });
 
 export const makeStore = <T>(initialState: T): Store<T> => {
   let currentState = initialState;

@@ -1,9 +1,14 @@
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, absurd } from "effect";
+import { NanoId } from "./Crypto.js";
 import { Schema, Tables } from "./Db.js";
 import { DbWorker } from "./DbWorker.js";
-import { CreateQuery, CreateQueryLive } from "./query/CreateQuery.js";
-import { LoadQuery, LoadQueryLive } from "./query/LoadQuery.js";
-import { LoadingPromisesLive } from "./query/LoadingPromises.js";
+import { OnCompletesLive } from "./OnCompletes.js";
+import { FlushSync } from "./Platform.js";
+import { CreateQuery, makeCreateQuery } from "./CreateQuery.js";
+import { LoadQuery, LoadQueryLive } from "./LoadQuery.js";
+import { LoadingPromisesLive } from "./LoadingPromises.js";
+import { OnQuery, OnQueryLive } from "./OnQuery.js";
+import { RowsStoreLive } from "./RowsStore.js";
 
 export interface Evolu2<S extends Schema> {
   /**
@@ -61,8 +66,8 @@ export interface Evolu2<S extends Schema> {
   //   mnemonic: string,
   // ) => Promise<Either.Either<{ readonly _tag: "RestoreOwnerError" }, void>>;
 
-  // /** Ensure schema ad-hoc for hot reloading. */
-  // readonly ensureSchema: (tables: Tables) => void;
+  /** Ensure schema ad-hoc for hot reloading. */
+  readonly ensureSchema: (tables: Tables) => void;
 }
 
 export const Evolu2 = <S extends Schema>(): Context.Tag<Evolu2<S>, Evolu2<S>> =>
@@ -103,11 +108,45 @@ const EvoluLayer = <S extends Schema>(
   Layer.effect(
     Evolu2<S>(),
     Effect.gen(function* (_) {
-      const createQuery = yield* _(CreateQuery<S>());
+      const dbWorker = yield* _(DbWorker);
       const loadQuery = yield* _(LoadQuery);
+      const onQuery = yield* _(OnQuery);
 
-      return {
-        createQuery,
+      dbWorker.onMessage = (output): void => {
+        // console.log(output);
+        switch (output._tag) {
+          case "onError":
+            // if (process.env.NODE_ENV === "development")
+            //   // JSON.stringify, because Expo console needs strings.
+            //   // eslint-disable-next-line no-console
+            //   console.warn(JSON.stringify(output.error, null, 2));
+            // errorStore.setState(output.error);
+            break;
+          case "onQuery":
+            onQuery(output).pipe(Effect.runSync);
+            break;
+          case "onOwner":
+            // ownerStore.setState(output.owner);
+            break;
+          case "onReceive": {
+            // const queries = getSubscribedQueries();
+            // if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
+            //   dbWorker.postMessage({ _tag: "query", queries });
+            break;
+          }
+          case "onResetOrRestore":
+            // Effect.runSync(appState.reset);
+            break;
+          case "onSyncState":
+            // syncStateStore.setState(output.state);
+            break;
+          default:
+            absurd(output);
+        }
+      };
+
+      return Evolu2<S>().of({
+        createQuery: makeCreateQuery<S>(),
         loadQuery,
 
         // subscribeQuery(_query) {
@@ -158,25 +197,24 @@ const EvoluLayer = <S extends Schema>(
         //   throw "";
         // },
 
-        // ensureSchema() {
-        //   throw "";
-        // },
-      };
+        ensureSchema(tables) {
+          dbWorker.postMessage({ _tag: "ensureSchema", tables });
+        },
+      });
     }),
   );
 
-export const EvoluPlatform = <S extends Schema>(
+export const Evolu2Live = <S extends Schema>(
   _tables: Tables,
 ): Layer.Layer<
-  DbWorker, // | Bip39 | NanoId | FlushSync | AppState,
+  DbWorker | NanoId | FlushSync, // | Bip39 | AppState,
   never,
   Evolu2<S>
 > =>
   EvoluLayer<S>(_tables).pipe(
-    Layer.use(
-      Layer.mergeAll(
-        CreateQueryLive<S>(),
-        LoadQueryLive.pipe(Layer.use(LoadingPromisesLive)),
-      ),
-    ),
+    Layer.use(LoadQueryLive),
+    Layer.use(OnQueryLive),
+    Layer.use(LoadingPromisesLive),
+    Layer.use(OnCompletesLive),
+    Layer.use(RowsStoreLive),
   );

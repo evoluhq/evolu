@@ -137,6 +137,7 @@ const kysely: Kysely.Kysely<QuerySchema<Schema>> = new Kysely.Kysely({
   },
 });
 
+// TODO: Remove
 export const makeCreateQuery =
   <S extends Schema>(): CreateQuery<S> =>
   (queryCallback) => {

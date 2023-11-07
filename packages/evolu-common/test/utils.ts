@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import { Effect, Layer } from "effect";
 import { Millis, Timestamp, initialMillis } from "../src/Crdt.js";
 import { Sqlite, SqliteRow, parseJsonResults } from "../src/Sqlite.js";
+import { Id } from "../src/Model.js";
 
 export const makeNode1Timestamp = (
   millis = 0,
@@ -43,3 +44,4 @@ export const SqliteTest = Layer.effect(
     return { exec };
   }),
 );
+export type Db = { users: { id: Id; name: string } };

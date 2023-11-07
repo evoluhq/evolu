@@ -1,15 +1,15 @@
 import { Effect } from "effect";
 import { expect, test } from "vitest";
-import { CreateQuery, CreateQueryLive } from "../../src/query/CreateQuery.js";
+import { makeCreateQuery } from "../src/CreateQuery.js";
 import {
   LoadingPromises,
   LoadingPromisesLive,
-} from "../../src/query/LoadingPromises.js";
+} from "../src/LoadingPromises.js";
 import { Db } from "./utils.js";
 
 test("LoadingPromises", () => {
   Effect.gen(function* (_) {
-    const createQuery = yield* _(CreateQuery<Db>());
+    const createQuery = makeCreateQuery<Db>();
     const loadingPromises = yield* _(LoadingPromises);
 
     const query1 = createQuery((db) => db.selectFrom("users").selectAll());
@@ -44,9 +44,5 @@ test("LoadingPromises", () => {
     loadingPromises.release();
     expect(loadingPromises.get(query1).isNew).toBe(true);
     expect(loadingPromises.get(query1WithDifferentFilterMap).isNew).toBe(true);
-  }).pipe(
-    Effect.provide(LoadingPromisesLive),
-    Effect.provide(CreateQueryLive<Db>()),
-    Effect.runSync,
-  );
+  }).pipe(Effect.provide(LoadingPromisesLive), Effect.runSync);
 });

@@ -1,5 +1,5 @@
 import { Option, ReadonlyArray } from "effect";
-import { Row } from "../Sqlite.js";
+import { Row } from "./Sqlite.js";
 
 /**
  * Filter and map array items in one step with the correct return type and

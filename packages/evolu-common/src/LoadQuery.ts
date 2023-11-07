@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, ReadonlyArray } from "effect";
-import { DbWorker } from "../DbWorker.js";
-import { Row, SerializedSqliteQuery } from "../Sqlite.js";
+import { DbWorker } from "./DbWorker.js";
+import { Row, SerializedSqliteQuery } from "./Sqlite.js";
 import { LoadingPromises } from "./LoadingPromises.js";
 import { Query } from "./Query.js";
 import { QueryResult } from "./QueryResult.js";
@@ -16,6 +16,7 @@ export const LoadQueryLive = Layer.effect(
   Effect.gen(function* (_) {
     const loadingPromises = yield* _(LoadingPromises);
     const dbWorker = yield* _(DbWorker);
+
     const queue = new Set<SerializedSqliteQuery>();
 
     return LoadQuery.of((query) => {

@@ -1,5 +1,5 @@
 import { Context, Effect, Function, Layer, pipe } from "effect";
-import { Row, SerializedSqliteQuery } from "../Sqlite.js";
+import { Row, SerializedSqliteQuery } from "./Sqlite.js";
 import { FilterMap, filterMapRows } from "./FilterMap.js";
 import { Query } from "./Query.js";
 import { QueryResult, queryResultFromRows } from "./QueryResult.js";
