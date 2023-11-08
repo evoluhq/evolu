@@ -1,4 +1,4 @@
-import { Predicate } from "effect";
+import { Predicate, ReadonlyArray } from "effect";
 import { SerializedSqliteQuery, Row, Value } from "./Sqlite.js";
 
 export interface QueryPatches {
@@ -22,15 +22,12 @@ export interface ReplaceAtPatch {
 export const applyPatches =
   (patches: ReadonlyArray<Patch>) =>
   (current: ReadonlyArray<Row>): ReadonlyArray<Row> =>
-    patches.reduce((a, patch) => {
+    patches.reduce((next, patch) => {
       switch (patch.op) {
         case "replaceAll":
           return patch.value;
         case "replaceAt": {
-          if (a === undefined) return a;
-          const next = [...a];
-          next[patch.index] = patch.value;
-          return next;
+          return ReadonlyArray.replace(next, patch.index, patch.value);
         }
       }
     }, current);
