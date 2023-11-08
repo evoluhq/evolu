@@ -215,7 +215,8 @@ const query = ({
     const dbWorkerOnMessage = yield* _(DbWorkerOnMessage);
 
     const queriesRows = yield* _(
-      Effect.forEach(queries, (query) =>
+      ReadonlyArray.dedupe(queries),
+      Effect.forEach((query) =>
         sqlite
           .exec(deserializeSqliteQuery(query))
           .pipe(Effect.map((result) => [query, result.rows] as const)),
