@@ -23,12 +23,31 @@ export const OnQueryLive = Layer.effect(
     return OnQuery.of(({ queriesPatches, onCompleteIds }) =>
       Effect.gen(function* (_) {
         const currentState = rowsStore.getState();
+
+        // dostanu queries a jejich patches
+        // mam ReadonlyMap<SerializedSqliteQuery, ReadonlyArray<Row>>;
+        // muze a nemusi bejt rows ve value
+        // getQuery imho ma vracet nic, kdyz je nic?
+        // uz ted vidim chybu, ze do promisi davam empty
+        // get query vracet taky empty?
+        // jo
+        //
+
         const nextState = pipe(
           queriesPatches,
           ReadonlyArray.map(
             ({ query, patches }) =>
               [
                 query,
+                // nechapu
+                // pro kazde query zalozi vysledek?
+                // ono to presmahne skrze tu mapu
+                // jako, query vrati co? klidne empty pole, nebo pole necejo
+                // tohle by melo bejt jinak, pokud neni co patchovat,
+                // co to je?
+                // dostanu query, a patches muze bejt empty, ale to je fuk
+                // jak to je?
+                //
                 applyPatches(patches)(currentState.get(query) || []),
               ] as const,
           ),
@@ -36,6 +55,7 @@ export const OnQueryLive = Layer.effect(
         );
 
         queriesPatches.forEach(({ query }) => {
+          // furt nove, imho spatne
           loadingPromises.resolve(query, nextState.get(query) || []);
         });
 

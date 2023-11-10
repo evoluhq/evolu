@@ -16,7 +16,6 @@ export interface Evolu2<S extends Schema> {
    * TODO: ... and naming, todosAll, productById, etc.
    */
   readonly createQuery: CreateQuery<S>;
-
   readonly loadQuery: LoadQuery;
 
   readonly subscribeError: ErrorStore["subscribe"];
@@ -111,8 +110,8 @@ const EvoluLayer = <S extends Schema>(
     Effect.gen(function* (_) {
       const dbWorker = yield* _(DbWorker);
       const loadQuery = yield* _(LoadQuery);
-      const onQuery = yield* _(OnQuery);
       const errorStore = yield* _(ErrorStore);
+      const onQuery = yield* _(OnQuery);
 
       dbWorker.onMessage = (output): void => {
         switch (output._tag) {
