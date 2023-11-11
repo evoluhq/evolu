@@ -1,4 +1,12 @@
-import { Context, Effect, Layer, ReadonlyArray, absurd, pipe } from "effect";
+import {
+  Context,
+  Effect,
+  Function,
+  Layer,
+  ReadonlyArray,
+  absurd,
+  pipe,
+} from "effect";
 import * as Kysely from "kysely";
 import { NanoId } from "./Crypto.js";
 import {
@@ -11,11 +19,11 @@ import {
   Tables,
   emptyRows,
   queryFromSqliteQuery,
+  queryResultFromRows,
 } from "./Db.js";
 import { DbWorker, DbWorkerOutputOnQuery } from "./DbWorker.js";
 import { applyPatches } from "./Diff.js";
 import { ErrorStore, ErrorStoreLive } from "./ErrorStore.js";
-import { LoadingPromises, LoadingPromisesLive } from "./LoadingPromises.js";
 import { SqliteBoolean, SqliteDate } from "./Model.js";
 import { OnCompletes, OnCompletesLive } from "./OnCompletes.js";
 import { FlushSync } from "./Platform.js";
@@ -25,7 +33,6 @@ type CreateQuery<S extends Schema> = <R extends Row>(
   queryCallback: QueryCallback<S, R>,
 ) => Query<R>;
 
-// TB extends keyof DB
 type QueryCallback<S extends Schema, QueryRow> = (
   db: Pick<Kysely.Kysely<QuerySchema<S>>, "selectFrom" | "fn">,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -72,6 +79,105 @@ export const makeCreateQuery =
       }),
       (query) => queryFromSqliteQuery<R>(query),
     );
+
+export interface LoadingPromises {
+  readonly get: <R extends Row>(
+    query: Query<R>,
+  ) => {
+    readonly promise: LoadingPromise<R>;
+    readonly isNew: boolean;
+  };
+
+  readonly resolve: <R extends Row>(
+    query: Query<R>,
+    rows: ReadonlyArray<R>,
+  ) => void;
+
+  readonly release: () => void;
+}
+
+export const LoadingPromises = Context.Tag<LoadingPromises>();
+
+type LoadingPromise<R extends Row> = Promise<QueryResult<R>>;
+
+export const LoadingPromisesLive = Layer.effect(
+  LoadingPromises,
+  Effect.sync(() => {
+    interface LoadingPromiseWithResolve<R extends Row> {
+      readonly promise: LoadingPromise<R>;
+      readonly resolve: Resolve<R>;
+      releaseOnResolve: boolean;
+    }
+    type Resolve<R extends Row> = (rows: QueryResult<R>) => void;
+
+    const promises = new Map<Query, LoadingPromiseWithResolve<Row>>();
+
+    return LoadingPromises.of({
+      get<R extends Row>(query: Query<R>) {
+        let isNew = false;
+        let promiseWithResolve = promises.get(query);
+
+        if (!promiseWithResolve) {
+          isNew = true;
+          let resolve: Resolve<Row> = Function.constVoid;
+          const promise: LoadingPromise<Row> = new Promise((_resolve) => {
+            resolve = _resolve;
+          });
+          promiseWithResolve = {
+            promise,
+            resolve: (rows): void => {
+              setLoadingPromiseProp(promise, rows);
+              resolve(rows);
+            },
+            releaseOnResolve: false,
+          };
+          promises.set(query, promiseWithResolve);
+        }
+
+        return {
+          promise: promiseWithResolve.promise as LoadingPromise<R>,
+          isNew,
+        };
+      },
+
+      resolve(query, rows) {
+        const promiseWithResolve = promises.get(query);
+        if (!promiseWithResolve) return;
+        if (promiseWithResolve.releaseOnResolve) promises.delete(query);
+        promiseWithResolve.resolve(queryResultFromRows(rows));
+      },
+
+      /**
+       * LoadingPromises caches promises until they are released.
+       * Release must be called on any mutation.
+       */
+      release() {
+        promises.forEach((promiseWithResolve, query) => {
+          const isResolved =
+            getLoadingPromiseProp(promiseWithResolve.promise) != null;
+          if (isResolved) promises.delete(query);
+          else promiseWithResolve.releaseOnResolve = true;
+        });
+      },
+    });
+  }),
+);
+
+// For React < 19. React 'use' Hook pattern.
+const loadingPromiseProp = "evolu_QueryResult";
+
+const setLoadingPromiseProp = <R extends Row>(
+  promise: LoadingPromise<R>,
+  result: QueryResult<R>,
+): void => {
+  void Object.assign(promise, { [loadingPromiseProp]: result });
+};
+
+export const getLoadingPromiseProp = <R extends Row>(
+  promise: LoadingPromise<R>,
+  // @ts-expect-error Promise has no such prop.
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+): QueryResult<R> | null => promise[loadingPromiseProp] || null;
 
 type LoadQuery = <R extends Row>(query: Query<R>) => Promise<QueryResult<R>>;
 
