@@ -82,12 +82,21 @@ export const emptyRows: ReadonlyArray<Row> = [];
 
 export interface QueryResult<R extends Row> {
   readonly rows: ReadonlyArray<Readonly<Kysely.Simplify<R>>>;
-  readonly firstRow: Readonly<Kysely.Simplify<R>> | null;
+  readonly row: Readonly<Kysely.Simplify<R>> | null;
 }
+
+const queryResultCache = new WeakMap<ReadonlyArray<Row>, QueryResult<Row>>();
 
 export const queryResultFromRows = <R extends Row>(
   rows: ReadonlyArray<R>,
-): QueryResult<R> => ({ rows, firstRow: rows[0] });
+): QueryResult<R> => {
+  let queryResult = queryResultCache.get(rows);
+  if (queryResult == null) {
+    queryResult = { rows, row: rows[0] };
+    queryResultCache.set(rows, queryResult);
+  }
+  return queryResult as QueryResult<R>;
+};
 
 export type Tables = ReadonlyArray<Table>;
 
