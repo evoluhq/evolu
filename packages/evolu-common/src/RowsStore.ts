@@ -1,15 +1,13 @@
-// import { Context, Layer } from "effect";
-// import { Query } from "./Query.js";
-// import { Row } from "./Sqlite.js";
-// import { Store, makeStore2 } from "./Store.js";
+import { Context, Layer } from "effect";
+import { Query, Row } from "./Db.js";
+import { Store, makeStore } from "./Store.js";
 
-// export type RowsStore = Store<RowsStoreValue>;
+export type RowsStore = Store<RowsStoreValue>;
+export const RowsStore = Context.Tag<RowsStore>("evolu/RowsStore");
 
-// type RowsStoreValue = ReadonlyMap<Query, ReadonlyArray<Row>>;
+type RowsStoreValue = ReadonlyMap<Query, ReadonlyArray<Row>>;
 
-// export const RowsStore = Context.Tag<RowsStore>("evolu/RowsStore");
-
-// export const RowsStoreLive = Layer.effect(
-//   RowsStore,
-//   makeStore2<RowsStoreValue>(() => new Map()),
-// );
+export const RowsStoreLive = Layer.effect(
+  RowsStore,
+  makeStore<RowsStoreValue>(() => new Map()),
+);

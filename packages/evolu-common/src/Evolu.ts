@@ -4,22 +4,22 @@ import { NanoId } from "./Crypto.js";
 import { Schema, Tables } from "./Db.js";
 import { DbWorker } from "./DbWorker.js";
 import { ErrorStore, ErrorStoreLive } from "./ErrorStore.js";
-// import { LoadQuery, LoadQueryLive } from "./LoadQuery.js";
-// import { LoadingPromisesLive } from "./LoadingPromises.js";
-// import { OnCompletesLive } from "./OnCompletes.js";
+import { LoadQuery, LoadQueryLive } from "./LoadQuery.js";
+import { LoadingPromisesLive } from "./LoadingPromises.js";
+import { OnCompletesLive } from "./OnCompletes.js";
 // import { OnQuery, OnQueryLive } from "./OnQuery.js";
-// import { FlushSync } from "./Platform.js";
-// import { RowsStoreLive } from "./RowsStore.js";
+import { FlushSync } from "./Platform.js";
+import { RowsStoreLive } from "./RowsStore.js";
 
 export interface Evolu<S extends Schema> {
+  readonly subscribeError: ErrorStore["subscribe"];
+  readonly getError: ErrorStore["getState"];
+
   /**
    * TODO: ... and naming, todosAll, productById, etc.
    */
   readonly createQuery: CreateQuery<S>;
-  //   readonly loadQuery: LoadQuery;
-
-  //   readonly subscribeError: ErrorStore["subscribe"];
-  //   readonly getError: ErrorStore["getState"];
+  readonly loadQuery: LoadQuery;
 
   // readonly subscribeQuery: (
   //   query: Query,
@@ -109,8 +109,8 @@ const EvoluLayer = <S extends Schema>(
     Evolu<S>(),
     Effect.gen(function* (_) {
       const dbWorker = yield* _(DbWorker);
-      //   const loadQuery = yield* _(LoadQuery);
       const errorStore = yield* _(ErrorStore);
+      const loadQuery = yield* _(LoadQuery);
       //   const onQuery = yield* _(OnQuery);
 
       dbWorker.onMessage = (output): void => {
@@ -151,11 +151,11 @@ const EvoluLayer = <S extends Schema>(
       };
 
       return Evolu<S>().of({
-        createQuery: makeCreateQuery<S>(),
-        // loadQuery,
+        subscribeError: errorStore.subscribe,
+        getError: errorStore.getState,
 
-        // subscribeError: errorStore.subscribe,
-        // getError: errorStore.getState,
+        createQuery: makeCreateQuery<S>(),
+        loadQuery,
 
         // subscribeQuery(_query) {
         //   throw "";
@@ -204,21 +204,22 @@ const EvoluLayer = <S extends Schema>(
     }),
   );
 
-// export const EvoluLive = <S extends Schema>(
-//   _tables: Tables,
-// ): Layer.Layer<
-//   DbWorker | NanoId | FlushSync, // | Bip39 | AppState,
-//   never,
-//   Evolu<S>
-// > =>
-//   EvoluLayer<S>(_tables).pipe(
-//     // Layer.use(Layer.mergeAll(LoadQueryLive, OnQueryLive)),
-//     Layer.use(
-//       Layer.mergeAll(
-//         LoadingPromisesLive,
-//         OnCompletesLive,
-//         RowsStoreLive,
-//         ErrorStoreLive,
-//       ),
-//     ),
-//   );
+export const EvoluLive = <S extends Schema>(
+  _tables: Tables,
+): Layer.Layer<
+  DbWorker | NanoId | FlushSync, // | Bip39 | AppState,
+  never,
+  Evolu<S>
+> =>
+  EvoluLayer<S>(_tables).pipe(
+    // Layer.use(Layer.mergeAll(LoadQueryLive/*, OnQueryLive*/)),
+    Layer.use(LoadQueryLive),
+    Layer.use(
+      Layer.mergeAll(
+        LoadingPromisesLive,
+        OnCompletesLive,
+        RowsStoreLive,
+        ErrorStoreLive,
+      ),
+    ),
+  );

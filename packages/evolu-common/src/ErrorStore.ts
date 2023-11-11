@@ -3,10 +3,9 @@ import { TimestampError } from "./Crdt.js";
 import { Store, makeStore } from "./Store.js";
 
 export type ErrorStore = Store<ErrorStoreValue>;
+export const ErrorStore = Context.Tag<ErrorStore>("evolu/ErrorStore");
 
 type ErrorStoreValue = EvoluError | null;
-
-export const ErrorStore = Context.Tag<ErrorStore>("evolu/ErrorStore");
 
 export type EvoluError = UnexpectedError | TimestampError;
 
