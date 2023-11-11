@@ -15,7 +15,6 @@ import {
   pipe,
 } from "effect";
 import * as Kysely from "kysely";
-import { Simplify } from "kysely";
 import { urlAlphabet } from "nanoid";
 import {
   initialMerkleTree,
@@ -24,130 +23,76 @@ import {
   timestampToString,
 } from "./Crdt.js";
 import { Bip39, Mnemonic, NanoId, slip21Derive } from "./Crypto.js";
-import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
+import { Id } from "./Model.js";
 import {
   createMessageTable,
   createMessageTableIndex,
   createOwnerTable,
   insertOwner,
 } from "./Sql.js";
-import {
-  SerializedSqliteQuery,
-  SqliteQuery,
-  Row,
-  Sqlite,
-  Value,
-  serializeSqliteQuery,
-} from "./Sqlite.js";
+import { Sqlite, SqliteQuery, SqliteValue } from "./Sqlite.js";
+
+export type Schema = ReadonlyRecord.ReadonlyRecord<TableSchema>;
 
 export type TableSchema = ReadonlyRecord.ReadonlyRecord<Value> & {
   readonly id: Id;
 };
 
-export type Schema = ReadonlyRecord.ReadonlyRecord<TableSchema>;
+export type Value = SqliteValue | JsonObjectOrArray;
 
-export type CreateQuery<S extends Schema> = (
-  queryCallback: QueryCallback<S, Row>,
-) => SerializedSqliteQuery;
+export type JsonObjectOrArray = JsonObject | JsonArray;
 
-export type QueryCallback<S extends Schema, QueryRow> = (
-  db: KyselyWithoutMutation<QuerySchema<S>>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-) => Kysely.SelectQueryBuilder<any, any, QueryRow>;
+type JsonObject = ReadonlyRecord.ReadonlyRecord<Json>;
+type JsonArray = ReadonlyArray<Json>;
+type Json = string | number | boolean | null | JsonObject | JsonArray;
 
-type KyselyWithoutMutation<DB> = Pick<Kysely.Kysely<DB>, "selectFrom" | "fn">;
+export type Query<R extends Row = Row> = string & Brand.Brand<"Query"> & R;
 
-type QuerySchema<S extends Schema> = {
-  readonly [Table in keyof S]: NullableExceptOfId<
-    {
-      readonly [Column in keyof S[Table]]: S[Table][Column];
-    } & CommonColumns
-  >;
-};
+export type Row = ReadonlyRecord.ReadonlyRecord<
+  | Value
+  | Row // for jsonObjectFrom from kysely/helpers/sqlite
+  | ReadonlyArray<Row> // for jsonArrayFrom from kysely/helpers/sqlite
+>;
 
-export type NullableExceptOfId<T> = {
-  readonly [K in keyof T]: K extends "id" ? T[K] : T[K] | null;
-};
-
-export interface CommonColumns {
-  readonly createdAt: SqliteDate;
-  readonly updatedAt: SqliteDate;
-  readonly isDeleted: SqliteBoolean;
+export interface QueryResult<R extends Row> {
+  readonly rows: ReadonlyArray<Readonly<Kysely.Simplify<R>>>;
+  readonly firstRow: Readonly<Kysely.Simplify<R>> | null;
 }
 
-/**
- * Filter and map array items in one step with the correct return type and
- * without unreliable TypeScript type guards.
- *
- * ### Examples
- *
- * ```
- * useQuery(
- *   (db) => db.selectFrom("todo").selectAll(),
- *   // Filter and map nothing.
- *   (row) => row,
- * );
- *
- * useQuery(
- *   (db) => db.selectFrom("todo").selectAll(),
- *   // Filter items with title != null.
- *   // Note the title type isn't nullable anymore in rows.
- *   ({ title, ...rest }) => title != null && { title, ...rest },
- * );
- * ```
- */
-export type FilterMap<QueryRow extends Row, FilterMapRow extends Row> = (
-  row: QueryRow,
-) => FilterMapRow | null | false;
+export const queryResultFromRows = <R extends Row>(
+  rows: ReadonlyArray<R>,
+): QueryResult<R> => ({ rows, firstRow: rows[0] });
 
-export interface QueryResult<FilterMapRow extends Row> {
-  /**
-   * Rows from the database. They can be filtered and mapped by `filterMap`.
-   */
-  readonly rows: ReadonlyArray<
-    Readonly<Simplify<ExcludeNullAndFalse<FilterMapRow>>>
-  >;
-  /**
-   * The first row from `rows`. For empty rows, it's null.
-   */
-  readonly firstRow: Readonly<
-    Simplify<ExcludeNullAndFalse<FilterMapRow>>
-  > | null;
-}
-
-type ExcludeNullAndFalse<T> = Exclude<T, null | false>;
+export type Tables = ReadonlyArray<Table>;
 
 export interface Table {
   readonly name: string;
   readonly columns: ReadonlyArray<string>;
 }
 
-export type Tables = ReadonlyArray<Table>;
+export const queryFromSqliteQuery = <R extends Row>({
+  sql,
+  parameters,
+}: SqliteQuery): Query<R> => JSON.stringify({ sql, parameters }) as Query<R>;
+
+export const queryToSqliteQuery = <R extends Row>(
+  query: Query<R>,
+): SqliteQuery => JSON.parse(query) as SqliteQuery;
+
+export const isJsonObjectOrArray: Predicate.Refinement<
+  Value,
+  JsonObjectOrArray
+> = (value): value is JsonObjectOrArray =>
+  value !== null && typeof value === "object" && !(value instanceof Uint8Array);
+
+export const valuesToSqliteValues = (
+  values: ReadonlyArray<Value>,
+): SqliteValue[] =>
+  values.map((value) =>
+    isJsonObjectOrArray(value) ? JSON.stringify(value) : value,
+  );
 
 const commonColumns = ["createdAt", "updatedAt", "isDeleted"];
-
-const kysely: Kysely.Kysely<QuerySchema<Schema>> = new Kysely.Kysely({
-  dialect: {
-    createAdapter: () => new Kysely.SqliteAdapter(),
-    createDriver: () => new Kysely.DummyDriver(),
-    createIntrospector(): Kysely.DatabaseIntrospector {
-      throw "Not implemeneted";
-    },
-    createQueryCompiler: () => new Kysely.SqliteQueryCompiler(),
-  },
-});
-
-// TODO: Remove
-export const makeCreateQuery =
-  <S extends Schema>(): CreateQuery<S> =>
-  (queryCallback) => {
-    const compiledQuery = queryCallback(kysely as never).compile();
-    const sqliteQuery: SqliteQuery = {
-      sql: compiledQuery.sql,
-      parameters: compiledQuery.parameters as SqliteQuery["parameters"],
-    };
-    return serializeSqliteQuery(sqliteQuery);
-  };
 
 // https://github.com/Effect-TS/schema/releases/tag/v0.18.0
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -375,24 +320,3 @@ export const ensureSchema = (
       { discard: true },
     ),
   );
-
-export const makeCacheFilterMap = (): (<
-  QueryRow extends Row,
-  FilterMapRow extends Row,
->(
-  filterMap: FilterMap<QueryRow, FilterMapRow>,
-) => FilterMap<QueryRow, FilterMapRow>) => {
-  const cache = new WeakMap<Row, Row | null | false>();
-
-  return <QueryRow extends Row, FilterMapRow extends Row>(
-      filterMap: FilterMap<QueryRow, FilterMapRow>,
-    ): FilterMap<QueryRow, FilterMapRow> =>
-    (row: QueryRow) => {
-      let cachedRow = cache.get(row);
-      if (cachedRow === undefined) {
-        cachedRow = filterMap(row);
-        cache.set(row, cachedRow);
-      }
-      return cachedRow as FilterMapRow | null | false;
-    };
-};

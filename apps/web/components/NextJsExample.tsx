@@ -26,6 +26,12 @@ type NonEmptyString50 = Schema.Schema.To<typeof NonEmptyString50>;
 
 const TodoTable = Schema.struct({
   id: TodoId,
+  // zmena by byla, ze by byl nullable, a titleRich nebyl, jasny
+  // ale pro select musim predpokladat, ze vse je nullable, pac sync atd.
+  // teoreticky bych mohl vytvorit view, z tohodle
+  // ale neni to pravda, ted muze bejt nullable oboje, a mne zajima
+  // jedno nebo druhe, takze query je title is not null nebo isCompleted is not null
+  // schema je pro zapis
   title: Evolu.NonEmptyString1000,
   // We can't use JavaScript boolean in SQLite.
   isCompleted: Evolu.SqliteBoolean,
@@ -55,24 +61,53 @@ type Database = Schema.Schema.To<typeof Database>;
 
 // const evolu = Evolu.create()
 (evolu: Evolu.Evolu2<Database>): void => {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // evolu.createQuery(db => db.selectFrom("todoCategory"))
+
+  // nemam mit dynamicke view? to jsem kdysi mel
+  // pak by to filtrovalo automaticky
+  //
+
+  // function log<T extends Kysely.Compilable>(qb: T): T {
+  //   console.log(qb.compile());
+  //   return qb;
+  // }
+  // ha, to nejak jde
+
   const todos = evolu.createQuery(
-    (db) => db.selectFrom("todo").selectAll(),
-    ({ title, categoryId, ...rest }) =>
-      title != null && categoryId != null && { title, categoryId, ...rest },
+    (db) =>
+      db
+        .selectFrom("todo")
+        .selectAll()
+        // .withNonNullable('title', 'isCompleted')
+        .$call((a) =>
+          a
+            .where("title", "is not", null)
+            .$narrowType<{ title: Evolu.NonEmptyString1000 }>(),
+        ),
+    // .r
+    // .retur
+    // .$narrowType<{ nullable_column: string }>()
+    // .$narrowType<{ title: Evolu.NonEmptyString1000 }>(),
   );
 
-  void evolu.loadQuery(todos).then((_a) => {
-    // a.rows[0].;
+  // // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // const todos = evolu.createQuery(
+  //   (db) => db.selectFrom("todo").selectAll(),
+  //   ({ title, categoryId, ...rest }) =>
+  //     title != null && categoryId != null && { title, categoryId, ...rest },
+  // );
+  // // to createQuery wrapne filterMap
+  // //
+
+  // todos.
+  // evolu.create("todo", )
+  void evolu.loadQuery(todos).then((a) => {
+    a.rows[0];
   });
-
-  evolu.subscribeQuery(todos)(() => {
-    //
-  })();
-
-  // evolu.loadQuery(allTodos) vraci promisu
-  // evolu.subscribeQuery(allTodos)
-  // evolu.getQuery(allTodos)
+  // evolu.getQuery(todos)?.firstRow?.isCompleted
+  // evolu.subscribeQuery(todos)(() => {
+  //   //
+  // })();
 };
 
 const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
@@ -198,26 +233,41 @@ const TodoItem = memo<{
 const Todos: FC = () => {
   const { create } = useMutation();
 
-  const { rows } = useQuery(
-    (db) =>
-      db
-        .selectFrom("todo")
-        .select(["id", "title", "isCompleted", "categoryId"])
-        .where("isDeleted", "is not", Evolu.cast(true))
-        .orderBy("createdAt")
-        // https://kysely.dev/docs/recipes/relations
-        .select((eb) => [
-          Evolu.jsonArrayFrom(
-            eb
-              .selectFrom("todoCategory")
-              .select(["todoCategory.id", "todoCategory.name"])
-              .where("isDeleted", "is not", Evolu.cast(true))
-              .orderBy("createdAt"),
-          ).as("categories"),
-        ]),
-    ({ title, isCompleted, ...rest }) =>
-      title != null && isCompleted != null && { title, isCompleted, ...rest },
+  const { rows } = useQuery((db) =>
+    db
+      .selectFrom("todo")
+      .select(["id", "title", "isCompleted", "categoryId"])
+      .where("isDeleted", "is not", Evolu.cast(true))
+      .where("title", "is not", null)
+      .where("isCompleted", "is not", null)
+      .orderBy("createdAt")
+      // https://kysely.dev/docs/recipes/relations
+      .select((eb) => [
+        Evolu.jsonArrayFrom(
+          eb
+            .selectFrom("todoCategory")
+            .select(["todoCategory.id", "todoCategory.name"])
+            .where("isDeleted", "is not", Evolu.cast(true))
+            .orderBy("createdAt"),
+        ).as("categories"),
+      ])
+      .select((eb) => [
+        Evolu.jsonArrayFrom(
+          eb
+            .selectFrom("todoCategory")
+            .select(["todoCategory.id", "todoCategory.name"])
+            .where("isDeleted", "is not", Evolu.cast(true))
+            .orderBy("createdAt"),
+        ).as("test"),
+      ])
+      .$narrowType<{ title: Evolu.NonEmptyString1000 }>()
+      .$narrowType<{ isCompleted: Evolu.SqliteBoolean }>(),
   );
+
+  // ({ title, isCompleted, ...rest }) =>
+  //     title != null && isCompleted != null && { title, isCompleted, ...rest }
+
+  // rows[0].
 
   return (
     <>

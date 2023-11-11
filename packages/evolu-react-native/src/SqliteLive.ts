@@ -1,9 +1,4 @@
-import {
-  Sqlite,
-  ensureSqliteQuery,
-  parseJsonResults,
-  valuesToSqliteValues,
-} from "@evolu/common";
+import { Sqlite, ensureSqliteQuery, parseJsonResults } from "@evolu/common";
 import { Effect, Layer } from "effect";
 import * as SQLite from "expo-sqlite";
 
@@ -14,7 +9,7 @@ const exec: Sqlite["exec"] = (arg) =>
     const sqliteQuery = ensureSqliteQuery(arg);
     const query: SQLite.Query = {
       sql: sqliteQuery.sql,
-      args: valuesToSqliteValues(sqliteQuery.parameters),
+      args: sqliteQuery.parameters,
     };
     const { rows, rowsAffected } = yield* _(
       Effect.promise(() =>

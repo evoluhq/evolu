@@ -1,8 +1,8 @@
 import { Predicate, ReadonlyArray } from "effect";
-import { SerializedSqliteQuery, Row, Value } from "./Sqlite.js";
+import { Query, Row, Value } from "./Db.js";
 
 export interface QueryPatches {
-  readonly query: SerializedSqliteQuery;
+  readonly query: Query;
   readonly patches: ReadonlyArray<Patch>;
 }
 

@@ -21,9 +21,8 @@ import {
   unsafeMerkleTreeFromString,
 } from "./Crdt.js";
 import { SecretBox } from "./Crypto.js";
-import { Owner } from "./Db.js";
-import { makeUnexpectedError } from "./ErrorStore.js";
-import { UnexpectedError } from "./ErrorStore.js";
+import { JsonObjectOrArray, Owner, Value } from "./Db.js";
+import { UnexpectedError, makeUnexpectedError } from "./ErrorStore.js";
 import { Id } from "./Model.js";
 import { Fetch, SyncLock } from "./Platform.js";
 import {
@@ -32,7 +31,6 @@ import {
   SyncRequest,
   SyncResponse,
 } from "./Protobuf.js";
-import { JsonObjectOrArray, Value } from "./Sqlite.js";
 
 export interface SyncWorker {
   readonly postMessage: (input: SyncWorkerInput) => void;

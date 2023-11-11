@@ -10,7 +10,7 @@ export interface Store<T> {
   readonly getState: () => T;
 }
 
-export const makeStore2 = <T>(
+export const makeStore = <T>(
   initialState: Function.LazyArg<T>,
 ): Effect.Effect<never, never, Store<T>> =>
   Effect.sync(() => {
@@ -38,27 +38,3 @@ export const makeStore2 = <T>(
 
     return store;
   });
-
-// TODO: Remove
-export const makeStore = <T>(initialState: T): Store<T> => {
-  let currentState = initialState;
-
-  const listeners = new Set<Listener>();
-
-  const subscribe: Store<T>["subscribe"] = (listener) => {
-    listeners.add(listener);
-    return () => {
-      listeners.delete(listener);
-    };
-  };
-
-  const setState: Store<T>["setState"] = (state: T) => {
-    if (state === currentState) return;
-    currentState = state;
-    listeners.forEach((listener) => listener());
-  };
-
-  const getState: Store<T>["getState"] = () => currentState;
-
-  return { subscribe, setState, getState };
-};

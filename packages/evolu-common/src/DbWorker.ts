@@ -35,26 +35,27 @@ import { Bip39, Mnemonic, NanoId } from "./Crypto.js";
 import {
   Owner,
   OwnerId,
+  Query,
+  Row,
   Table,
   Tables,
+  Value,
   ensureSchema,
   lazyInit,
+  queryToSqliteQuery,
   someDefectToNoSuchTableOrColumnError,
   transaction,
+  valuesToSqliteValues,
 } from "./Db.js";
 import { QueryPatches, makePatches } from "./Diff.js";
-import { makeUnexpectedError } from "./ErrorStore.js";
-import { UnexpectedError } from "./ErrorStore.js";
-import { EvoluError } from "./ErrorStore.js";
+import {
+  EvoluError,
+  UnexpectedError,
+  makeUnexpectedError,
+} from "./ErrorStore.js";
 import { Id, SqliteDate, cast } from "./Model.js";
 import * as Sql from "./Sql.js";
-import {
-  SerializedSqliteQuery,
-  Row,
-  Sqlite,
-  Value,
-  deserializeSqliteQuery,
-} from "./Sqlite.js";
+import { Sqlite, maybeParseJson } from "./Sqlite.js";
 import {
   Message,
   NewMessage,
@@ -90,18 +91,18 @@ interface DbWorkerInputInit {
 
 interface DbWorkerInputQuery {
   readonly _tag: "query";
-  readonly queries: ReadonlyArray.NonEmptyReadonlyArray<SerializedSqliteQuery>;
+  readonly queries: ReadonlyArray.NonEmptyReadonlyArray<Query>;
 }
 
 interface DbWorkerInputMutate {
   readonly _tag: "mutate";
   readonly items: ReadonlyArray.NonEmptyReadonlyArray<MutateItem>;
-  readonly queries: ReadonlyArray<SerializedSqliteQuery>;
+  readonly queries: ReadonlyArray<Query>;
 }
 
 interface DbWorkerInputSync {
   readonly _tag: "sync";
-  readonly queries: ReadonlyArray<SerializedSqliteQuery>;
+  readonly queries: ReadonlyArray<Query>;
 }
 
 interface DbWorkerInputReset {
@@ -194,10 +195,7 @@ const init = (
     );
   });
 
-export type RowsCacheMap = ReadonlyMap<
-  SerializedSqliteQuery,
-  ReadonlyArray<Row>
->;
+export type RowsCacheMap = ReadonlyMap<Query, ReadonlyArray<Row>>;
 
 type RowsCacheRef = Ref.Ref<RowsCacheMap>;
 const RowsCacheRef = Context.Tag<RowsCacheRef>("evolu/RowsCacheRef");
@@ -206,7 +204,7 @@ const query = ({
   queries,
   onCompleteIds = [],
 }: {
-  readonly queries: ReadonlyArray<SerializedSqliteQuery>;
+  readonly queries: ReadonlyArray<Query>;
   readonly onCompleteIds?: ReadonlyArray<OnCompleteId>;
 }): Effect.Effect<Sqlite | RowsCacheRef | DbWorkerOnMessage, never, void> =>
   Effect.gen(function* (_) {
@@ -218,8 +216,12 @@ const query = ({
       ReadonlyArray.dedupe(queries),
       Effect.forEach((query) =>
         sqlite
-          .exec(deserializeSqliteQuery(query))
-          .pipe(Effect.map((result) => [query, result.rows] as const)),
+          .exec(queryToSqliteQuery(query))
+          .pipe(
+            Effect.map(
+              (result) => [query, maybeParseJson(result.rows)] as const,
+            ),
+          ),
       ),
     );
     const previous = yield* _(Ref.get(rowsCache));
@@ -326,7 +328,11 @@ export const upsertValueIntoTableRowColumn = (
 
     const insert = sqlite.exec({
       sql: Sql.upsertValueIntoTableRowColumn(message.table, message.column),
-      parameters: [message.row, message.value, message.value],
+      parameters: valuesToSqliteValues([
+        message.row,
+        message.value,
+        message.value,
+      ]),
     });
 
     yield* _(
@@ -369,13 +375,13 @@ const applyMessages = ({
         const { changes } = yield* _(
           sqlite.exec({
             sql: Sql.insertIntoMessagesIfNew,
-            parameters: [
+            parameters: valuesToSqliteValues([
               message.timestamp,
               message.table,
               message.row,
               message.column,
               message.value,
-            ],
+            ]),
           }),
         );
         if (changes > 0) {

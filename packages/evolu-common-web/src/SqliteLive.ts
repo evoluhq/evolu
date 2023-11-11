@@ -4,7 +4,6 @@ import {
   canUseDom,
   ensureSqliteQuery,
   parseJsonResults,
-  valuesToSqliteValues,
 } from "@evolu/common";
 import { Effect, Function, Layer } from "effect";
 
@@ -32,7 +31,7 @@ const exec: Sqlite["exec"] = (arg) =>
     const rows = sqlite.exec(sqliteQuery.sql, {
       returnValue: "resultRows",
       rowMode: "object",
-      bind: valuesToSqliteValues(sqliteQuery.parameters),
+      bind: sqliteQuery.parameters,
     }) as SqliteRow[];
     parseJsonResults(rows);
     return { rows, changes: sqlite.changes() };

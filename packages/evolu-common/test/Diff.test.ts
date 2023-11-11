@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
+import { Row } from "../src/Db.js";
 import { applyPatches, areEqual, makePatches } from "../src/Diff.js";
-import { Row } from "../src/Sqlite.js";
 
 test("makePatches", () => {
   const row: Row = { a: 1 };

@@ -1,17 +1,12 @@
-import { Function, pipe } from "effect";
+import { pipe } from "effect";
 import * as Kysely from "kysely";
-import { CommonColumns, Schema } from "./Db.js";
-import { Row, SqliteQuery, serializeSqliteQuery } from "./Sqlite.js";
-import { FilterMap, cacheFilterMap } from "./FilterMap.js";
-import { Query } from "./Query.js";
+import { Query, Row, Schema, queryFromSqliteQuery } from "./Db.js";
+import { SqliteBoolean, SqliteDate } from "./Model.js";
+import { SqliteQuery } from "./Sqlite.js";
 
-export type CreateQuery<S extends Schema> = {
-  <R extends Row>(queryCallback: QueryCallback<S, R>): Query<R>;
-  <From extends Row, To extends Row>(
-    queryCallback: QueryCallback<S, From>,
-    filterMap: FilterMap<From, To>,
-  ): Query<To, From>;
-};
+export type CreateQuery<S extends Schema> = <R extends Row>(
+  queryCallback: QueryCallback<S, R>,
+) => Query<R>;
 
 type QueryCallback<S extends Schema, QueryRow> = (
   db: Pick<Kysely.Kysely<QuerySchema<S>>, "selectFrom" | "fn">,
@@ -30,6 +25,12 @@ type NullableExceptId<T> = {
   readonly [K in keyof T]: K extends "id" ? T[K] : T[K] | null;
 };
 
+export interface CommonColumns {
+  readonly createdAt: SqliteDate;
+  readonly updatedAt: SqliteDate;
+  readonly isDeleted: SqliteBoolean;
+}
+
 const kysely = new Kysely.Kysely<QuerySchema<Schema>>({
   dialect: {
     createAdapter: (): Kysely.DialectAdapter => new Kysely.SqliteAdapter(),
@@ -42,20 +43,14 @@ const kysely = new Kysely.Kysely<QuerySchema<Schema>>({
   },
 });
 
-// It's not Layer because it's pure function. WeakMap is used only
-// internally via cacheFilterMap, so it does not affect the observable
-// behavior of the function.
 export const makeCreateQuery =
   <S extends Schema>(): CreateQuery<S> =>
-  (queryCallback: QueryCallback<S, Row>, filterMap?: FilterMap<Row, Row>) =>
+  <R extends Row>(queryCallback: QueryCallback<S, R>) =>
     pipe(
       queryCallback(kysely as Kysely.Kysely<QuerySchema<S>>).compile(),
       ({ sql, parameters }): SqliteQuery => ({
         sql,
         parameters: parameters as SqliteQuery["parameters"],
       }),
-      (query) => ({
-        query: serializeSqliteQuery(query),
-        filterMap: filterMap ? cacheFilterMap(filterMap) : Function.identity,
-      }),
+      (query) => queryFromSqliteQuery<R>(query),
     );

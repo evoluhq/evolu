@@ -1,4 +1,4 @@
-import { Brand, Context, Effect, Predicate, ReadonlyRecord } from "effect";
+import { Context, Effect, Predicate } from "effect";
 
 export interface Sqlite {
   readonly exec: (
@@ -10,66 +10,25 @@ export const Sqlite = Context.Tag<Sqlite>("evolu/Sqlite");
 
 export interface SqliteQuery {
   readonly sql: string;
-  readonly parameters: ReadonlyArray<Value>;
+  readonly parameters: SqliteValue[];
 }
 
-export type SerializedSqliteQuery = string &
-  Brand.Brand<"SerializedSqliteQuery">;
-
-export const serializeSqliteQuery = ({
-  sql,
-  parameters,
-}: SqliteQuery): SerializedSqliteQuery =>
-  JSON.stringify({ sql, parameters }) as SerializedSqliteQuery;
-
-export const deserializeSqliteQuery = (s: SerializedSqliteQuery): SqliteQuery =>
-  JSON.parse(s) as SqliteQuery;
-
-export const ensureSqliteQuery = (arg: string | SqliteQuery): SqliteQuery => {
-  if (typeof arg === "string")
-    return {
-      sql: arg,
-      parameters: [],
-    };
-  return arg;
-};
-
-export type Value = SqliteValue | JsonObjectOrArray;
-
 export type SqliteValue = null | string | number | Uint8Array;
-export type SqliteRow = Record<string, SqliteValue>;
-
-export type JsonObjectOrArray = JsonObject | JsonArray;
-
-type JsonObject = ReadonlyRecord.ReadonlyRecord<Json>;
-type JsonArray = ReadonlyArray<Json>;
-type Json = string | number | boolean | null | JsonObject | JsonArray;
 
 interface ExecResult {
-  readonly rows: ReadonlyArray<Row>;
+  readonly rows: SqliteRow[];
   readonly changes: number;
 }
 
-export type Row = ReadonlyRecord.ReadonlyRecord<
-  Value | Row | ReadonlyArray<Row>
->;
+export type SqliteRow = Record<string, SqliteValue>;
 
-export const isJsonObjectOrArray: Predicate.Refinement<
-  Value,
-  JsonObjectOrArray
-> = (value): value is JsonObjectOrArray =>
-  value !== null && typeof value === "object" && !(value instanceof Uint8Array);
-
-export const valuesToSqliteValues = (
-  values: ReadonlyArray<Value>,
-): SqliteValue[] =>
-  values.map((value) =>
-    isJsonObjectOrArray(value) ? JSON.stringify(value) : value,
-  );
-
-export const parseJsonResults = (rows: SqliteRow[]): void => {
-  parseArray(rows);
+export const ensureSqliteQuery = (arg: string | SqliteQuery): SqliteQuery => {
+  if (typeof arg !== "string") return arg;
+  return { sql: arg, parameters: [] };
 };
+
+export const maybeParseJson = (rows: SqliteRow[]): SqliteRow[] =>
+  parseArray(rows);
 
 const parseArray = <T>(a: T[]): T[] => {
   for (let i = 0; i < a.length; ++i) a[i] = parse(a[i]) as T;
@@ -80,7 +39,6 @@ const parse = (o: unknown): unknown => {
   if (Predicate.isString(o)) return parseString(o);
   // eslint-disable-next-line @typescript-eslint/no-unsafe-return
   if (Array.isArray(o)) return parseArray(o);
-  // Predicate.isReadonlyRecord
   if (typeof o === "object" && o !== null && !Predicate.isUint8Array(o))
     return parseObject(o as Record<string, unknown>);
   return o;
