@@ -5,7 +5,7 @@
 import { MessageType } from "@protobuf-ts/runtime";
 import { MerkleTreeString, TimestampString } from "./Crdt.js";
 import { NodeId } from "./Crypto.js";
-import { OwnerId } from "./Db.js";
+import { OwnerId } from "./Owner.js";
 import { Id } from "./Model.js";
 /**
  * @generated from protobuf message SyncRequest

@@ -17,9 +17,7 @@ export interface LoadingPromises {
   readonly release: () => void;
 }
 
-export const LoadingPromises = Context.Tag<LoadingPromises>(
-  "evolu/LoadingPromises",
-);
+export const LoadingPromises = Context.Tag<LoadingPromises>();
 
 interface LoadingPromiseWithResolve<R extends Row> {
   readonly promise: LoadingPromise<R>;

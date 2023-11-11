@@ -17,7 +17,7 @@ export type OnCompleteId = string &
   Brand.Brand<"Id"> &
   Brand.Brand<"OnComplete">;
 
-export const OnCompletes = Context.Tag<OnCompletes>("evolu/OnCompletes");
+export const OnCompletes = Context.Tag<OnCompletes>();
 
 export const OnCompletesLive = Layer.effect(
   OnCompletes,

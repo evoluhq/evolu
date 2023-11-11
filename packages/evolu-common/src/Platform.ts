@@ -8,25 +8,25 @@ export interface Platform {
     | "react-native";
 }
 
-export const Platform = Context.Tag<Platform>("evolu/Platform");
+export const Platform = Context.Tag<Platform>();
 
 export type FlushSync = (callback: () => void) => void;
 
-export const FlushSync = Context.Tag<FlushSync>("evolu/FlushSync");
+export const FlushSync = Context.Tag<FlushSync>();
 
 export interface SyncLock {
   readonly acquire: Effect.Effect<never, never, boolean>;
   readonly release: Effect.Effect<never, never, void>;
 }
 
-export const SyncLock = Context.Tag<SyncLock>("evolu/SyncLock");
+export const SyncLock = Context.Tag<SyncLock>();
 
 export type Fetch = (
   url: string,
   body: Uint8Array,
 ) => Effect.Effect<never, FetchError, Response>;
 
-export const Fetch = Context.Tag<Fetch>("evolu/Fetch");
+export const Fetch = Context.Tag<Fetch>();
 
 /**
  * This error occurs when there is a problem with the network connection,
@@ -60,7 +60,7 @@ export interface AppState {
   readonly reset: Effect.Effect<never, never, void>;
 }
 
-export const AppState = Context.Tag<AppState>("evolu/AppState");
+export const AppState = Context.Tag<AppState>();
 
 /**
  * To detect whether DOM can be used.

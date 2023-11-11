@@ -33,8 +33,6 @@ import {
 } from "./Crdt.js";
 import { Bip39, Mnemonic, NanoId } from "./Crypto.js";
 import {
-  Owner,
-  OwnerId,
   Query,
   Row,
   Table,
@@ -47,6 +45,7 @@ import {
   transaction,
   valuesToSqliteValues,
 } from "./Db.js";
+import { Owner, OwnerId } from "./Owner.js";
 import { QueryPatches, makePatches } from "./Diff.js";
 import {
   EvoluError,
@@ -72,7 +71,7 @@ export interface DbWorker {
   onMessage: (output: DbWorkerOutput) => void;
 }
 
-export const DbWorker = Context.Tag<DbWorker>("evolu/DbWorker");
+export const DbWorker = Context.Tag<DbWorker>();
 
 export type DbWorkerInput =
   | DbWorkerInputInit
@@ -117,9 +116,7 @@ interface DbWorkerInputEnsureSchema {
 
 type DbWorkerOnMessage = DbWorker["onMessage"];
 
-const DbWorkerOnMessage = Context.Tag<DbWorkerOnMessage>(
-  "evolu/DbWorkerOnMessage",
-);
+const DbWorkerOnMessage = Context.Tag<DbWorkerOnMessage>();
 
 export type DbWorkerOutput =
   | DbWorkerOutputOnError
@@ -195,10 +192,10 @@ const init = (
     );
   });
 
-export type RowsCacheMap = ReadonlyMap<Query, ReadonlyArray<Row>>;
-
+// co s timhle? potrebuju reusnout ten typ
+type RowsCacheMap = ReadonlyMap<Query, ReadonlyArray<Row>>;
 type RowsCacheRef = Ref.Ref<RowsCacheMap>;
-const RowsCacheRef = Context.Tag<RowsCacheRef>("evolu/RowsCacheRef");
+const RowsCacheRef = Context.Tag<RowsCacheRef>();
 
 const query = ({
   queries,

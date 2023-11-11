@@ -4,8 +4,10 @@ import { make } from "@effect/schema/Schema";
 import { bytesToHex } from "@noble/ciphers/utils";
 import {
   Brand,
+  Context,
   Effect,
   Exit,
+  Layer,
   Option,
   Predicate,
   ReadonlyArray,
@@ -30,6 +32,7 @@ import {
   insertOwner,
 } from "./Sql.js";
 import { Sqlite, SqliteQuery, SqliteValue } from "./Sqlite.js";
+import { Store, makeStore } from "./Store.js";
 
 export type Schema = ReadonlyRecord.ReadonlyRecord<TableSchema>;
 
@@ -58,6 +61,15 @@ export interface QueryResult<R extends Row> {
   readonly firstRow: Readonly<Kysely.Simplify<R>> | null;
 }
 
+export const queryFromSqliteQuery = <R extends Row>({
+  sql,
+  parameters,
+}: SqliteQuery): Query<R> => JSON.stringify({ sql, parameters }) as Query<R>;
+
+export const queryToSqliteQuery = <R extends Row>(
+  query: Query<R>,
+): SqliteQuery => JSON.parse(query) as SqliteQuery;
+
 export const queryResultFromRows = <R extends Row>(
   rows: ReadonlyArray<R>,
 ): QueryResult<R> => ({ rows, firstRow: rows[0] });
@@ -68,15 +80,6 @@ export interface Table {
   readonly name: string;
   readonly columns: ReadonlyArray<string>;
 }
-
-export const queryFromSqliteQuery = <R extends Row>({
-  sql,
-  parameters,
-}: SqliteQuery): Query<R> => JSON.stringify({ sql, parameters }) as Query<R>;
-
-export const queryToSqliteQuery = <R extends Row>(
-  query: Query<R>,
-): SqliteQuery => JSON.parse(query) as SqliteQuery;
 
 export const isJsonObjectOrArray: Predicate.Refinement<
   Value,
@@ -268,3 +271,13 @@ export const ensureSchema = (
       { discard: true },
     ),
   );
+
+export type RowsStore = Store<RowsStoreValue>;
+export const RowsStore = Context.Tag<RowsStore>();
+
+type RowsStoreValue = ReadonlyMap<Query, ReadonlyArray<Row>>;
+
+export const RowsStoreLive = Layer.effect(
+  RowsStore,
+  makeStore<RowsStoreValue>(() => new Map()),
+);

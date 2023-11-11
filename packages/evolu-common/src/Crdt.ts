@@ -105,7 +105,7 @@ export interface Time {
   readonly now: Effect.Effect<never, TimestampTimeOutOfRangeError, Millis>;
 }
 
-export const Time = Context.Tag<Time>("evolu/Time");
+export const Time = Context.Tag<Time>();
 
 export const TimeLive = Layer.succeed(
   Time,

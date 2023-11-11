@@ -147,7 +147,7 @@ export interface ReactHooks<S extends Schema> {
 export const ReactHooks = <S extends Schema>(): Context.Tag<
   ReactHooks<S>,
   ReactHooks<S>
-> => Context.Tag<ReactHooks<S>>("evolu/ReactHooks");
+> => Context.Tag<ReactHooks<S>>();
 
 type UseQuery<S extends Schema> = {
   <QueryRow extends Row>(

@@ -6,7 +6,7 @@ export interface Sqlite {
   ) => Effect.Effect<never, never, ExecResult>;
 }
 
-export const Sqlite = Context.Tag<Sqlite>("evolu/Sqlite");
+export const Sqlite = Context.Tag<Sqlite>();
 
 export interface SqliteQuery {
   readonly sql: string;

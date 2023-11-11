@@ -10,7 +10,7 @@
 //   output: DbWorkerOutputOnQuery,
 // ) => Effect.Effect<never, never, void>;
 
-// export const OnQuery = Context.Tag<OnQuery>("evolu/OnQuery");
+// export const OnQuery = Context.Tag<OnQuery>();
 
 // export const OnQueryLive = Layer.effect(
 //   OnQuery,

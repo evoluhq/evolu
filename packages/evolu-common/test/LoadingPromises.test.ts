@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { expect, test } from "vitest";
-import { makeCreateQuery } from "../src/CreateQuery.js";
+import { makeCreateQuery } from "../src/Evolu.js";
 import {
   LoadingPromises,
   LoadingPromisesLive,

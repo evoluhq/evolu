@@ -1,15 +1,100 @@
-import { Context, Effect, Layer, absurd } from "effect";
-import { CreateQuery, makeCreateQuery } from "./CreateQuery.js";
+import { Context, Effect, Layer, ReadonlyArray, absurd, pipe } from "effect";
+import * as Kysely from "kysely";
 import { NanoId } from "./Crypto.js";
-import { Schema, Tables } from "./Db.js";
+import {
+  Query,
+  QueryResult,
+  Row,
+  Schema,
+  Tables,
+  queryFromSqliteQuery,
+} from "./Db.js";
 import { DbWorker } from "./DbWorker.js";
 import { ErrorStore, ErrorStoreLive } from "./ErrorStore.js";
-import { LoadQuery, LoadQueryLive } from "./LoadQuery.js";
-import { LoadingPromisesLive } from "./LoadingPromises.js";
-import { OnCompletesLive } from "./OnCompletes.js";
-// import { OnQuery, OnQueryLive } from "./OnQuery.js";
+import { LoadingPromises, LoadingPromisesLive } from "./LoadingPromises.js";
+import { SqliteBoolean, SqliteDate } from "./Model.js";
 import { FlushSync } from "./Platform.js";
-import { RowsStoreLive } from "./RowsStore.js";
+import { SqliteQuery } from "./Sqlite.js";
+
+type CreateQuery<S extends Schema> = <R extends Row>(
+  queryCallback: QueryCallback<S, R>,
+) => Query<R>;
+
+// TB extends keyof DB
+type QueryCallback<S extends Schema, QueryRow> = (
+  db: Pick<Kysely.Kysely<QuerySchema<S>>, "selectFrom" | "fn">,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+) => Kysely.SelectQueryBuilder<S, any, QueryRow>;
+
+type QuerySchema<S extends Schema> = {
+  readonly [Table in keyof S]: NullableExceptId<
+    {
+      readonly [Column in keyof S[Table]]: S[Table][Column];
+    } & CommonColumns
+  >;
+};
+
+type NullableExceptId<T> = {
+  readonly [K in keyof T]: K extends "id" ? T[K] : T[K] | null;
+};
+
+export interface CommonColumns {
+  readonly createdAt: SqliteDate;
+  readonly updatedAt: SqliteDate;
+  readonly isDeleted: SqliteBoolean;
+}
+
+const kysely = new Kysely.Kysely<QuerySchema<Schema>>({
+  dialect: {
+    createAdapter: (): Kysely.DialectAdapter => new Kysely.SqliteAdapter(),
+    createDriver: (): Kysely.Driver => new Kysely.DummyDriver(),
+    createIntrospector(): Kysely.DatabaseIntrospector {
+      throw "Not implemeneted";
+    },
+    createQueryCompiler: (): Kysely.QueryCompiler =>
+      new Kysely.SqliteQueryCompiler(),
+  },
+});
+
+export const makeCreateQuery =
+  <S extends Schema>(): CreateQuery<S> =>
+  <R extends Row>(queryCallback: QueryCallback<S, R>) =>
+    pipe(
+      queryCallback(kysely as Kysely.Kysely<QuerySchema<S>>).compile(),
+      ({ sql, parameters }): SqliteQuery => ({
+        sql,
+        parameters: parameters as SqliteQuery["parameters"],
+      }),
+      (query) => queryFromSqliteQuery<R>(query),
+    );
+
+type LoadQuery = <R extends Row>(query: Query<R>) => Promise<QueryResult<R>>;
+
+const LoadQuery = Context.Tag<LoadQuery>();
+
+const LoadQueryLive = Layer.effect(
+  LoadQuery,
+  Effect.gen(function* (_) {
+    const loadingPromises = yield* _(LoadingPromises);
+    const dbWorker = yield* _(DbWorker);
+
+    const queue = new Set<Query>();
+
+    return LoadQuery.of((query) => {
+      const { promise, isNew } = loadingPromises.get(query);
+      if (isNew) queue.add(query);
+      if (queue.size === 1) {
+        queueMicrotask(() => {
+          const queries = [...queue];
+          queue.clear();
+          if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
+            dbWorker.postMessage({ _tag: "query", queries });
+        });
+      }
+      return promise;
+    });
+  }),
+);
 
 export interface Evolu<S extends Schema> {
   readonly subscribeError: ErrorStore["subscribe"];
@@ -71,7 +156,7 @@ export interface Evolu<S extends Schema> {
 }
 
 export const Evolu = <S extends Schema>(): Context.Tag<Evolu<S>, Evolu<S>> =>
-  Context.Tag<Evolu<S>>("evolu/Evolu");
+  Context.Tag<Evolu<S>>();
 
 // // https://stackoverflow.com/a/54713648/233902
 // type PartialForNullable<
@@ -213,13 +298,13 @@ export const EvoluLive = <S extends Schema>(
 > =>
   EvoluLayer<S>(_tables).pipe(
     // Layer.use(Layer.mergeAll(LoadQueryLive/*, OnQueryLive*/)),
-    Layer.use(LoadQueryLive),
+    Layer.use(Layer.mergeAll(ErrorStoreLive, LoadQueryLive)),
     Layer.use(
       Layer.mergeAll(
         LoadingPromisesLive,
-        OnCompletesLive,
-        RowsStoreLive,
-        ErrorStoreLive,
+        // tohle, poradi
+        // OnCompletesLive,
+        // RowsStoreLive,
       ),
     ),
   );
