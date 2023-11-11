@@ -61,7 +61,7 @@
     "nanoid": "^5.0.3"
   },
   "devDependencies": {
-    "@effect/schema": "0.47.3",
+    "@effect/schema": "0.47.4",
     "@evolu/tsconfig": "workspace:*",
     "@protobuf-ts/plugin": "^2.9.1",
     "@protobuf-ts/protoc": "^2.9.1",
