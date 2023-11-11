@@ -38,7 +38,7 @@ import { useMemo, useRef, useSyncExternalStore } from "react";
 export interface ReactHooks<S extends Schema> {
   /**
    * `useQuery` React Hook performs a database query and returns `rows` and
-   * `firstRow` props that are automatically updated when data changes. It
+   * `row` props that are automatically updated when data changes. It
    * takes two callbacks, a Kysely type-safe SQL query builder, and a
    * `filterMap` helper for rows filtering and ad-hoc migrations. Note that
    * `useQuery` uses React Suspense.
@@ -293,7 +293,7 @@ export const ReactHooksLive = <S extends Schema>(): Layer.Layer<
 
         return {
           rows: filterMapRows,
-          firstRow: filterMapRows[0],
+          row: filterMapRows[0],
         };
       };
 
