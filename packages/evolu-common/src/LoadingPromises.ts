@@ -1,5 +1,5 @@
-import { Context, Effect, Layer } from "effect";
-import { Query, QueryResult, Row } from "./Db.js";
+import { Context, Effect, Function, Layer } from "effect";
+import { Query, QueryResult, Row, queryResultFromRows } from "./Db.js";
 
 export interface LoadingPromises {
   readonly get: <R extends Row>(
@@ -9,7 +9,10 @@ export interface LoadingPromises {
     readonly isNew: boolean;
   };
 
-  readonly resolve: (query: Query, rows: ReadonlyArray<Row>) => void;
+  readonly resolve: <R extends Row>(
+    query: Query<R>,
+    rows: ReadonlyArray<R>,
+  ) => void;
 
   readonly release: () => void;
 }
@@ -34,54 +37,38 @@ export const LoadingPromisesLive = Layer.effect(
     const promises = new Map<Query, LoadingPromiseWithResolve<Row>>();
 
     return LoadingPromises.of({
-      get<R extends Row>(_query: Query<R>) {
-        // let isNew = false;
+      get<R extends Row>(query: Query<R>) {
+        let isNew = false;
+        let promiseWithResolve = promises.get(query);
 
-        throw "";
+        if (!promiseWithResolve) {
+          isNew = true;
+          let resolve: LoadingPromiseResolve<Row> = Function.constVoid;
+          const promise: LoadingPromise<Row> = new Promise((_resolve) => {
+            resolve = _resolve;
+          });
+          promiseWithResolve = {
+            promise,
+            resolve: (rows): void => {
+              setLoadingPromiseProp(promise, rows);
+              resolve(rows);
+            },
+            releaseOnResolve: false,
+          };
+          promises.set(query, promiseWithResolve);
+        }
 
-        // let map = promises.get(query);
-        // if (!map) {
-        //   map = new Map();
-        //   promises.set(query, map);
-        // }
-
-        // let promiseWithResolve = map.get(filterMap as FilterMap<Row, R>);
-        // if (!promiseWithResolve) {
-        //   isNew = true;
-        //   let resolve: LoadingPromiseResolve<Row> = Function.constVoid;
-        //   const promise: LoadingPromise<Row> = new Promise((_resolve) => {
-        //     resolve = _resolve;
-        //   });
-        //   promiseWithResolve = {
-        //     promise,
-        //     resolve: (rows): void => {
-        //       setLoadingPromiseProp(promise, rows);
-        //       resolve(rows);
-        //     },
-        //     releaseOnResolve: false,
-        //   };
-        //   map.set(filterMap as FilterMap<Row, R>, promiseWithResolve);
-        // }
-
-        // return {
-        //   promise: promiseWithResolve.promise as LoadingPromise<R>,
-        //   isNew,
-        // };
+        return {
+          promise: promiseWithResolve.promise as LoadingPromise<R>,
+          isNew,
+        };
       },
 
-      resolve(query, _rows) {
-        const filterMapPromises = promises.get(query);
-        if (!filterMapPromises) return;
-        // filterMapPromises.forEach((promiseWithResolve, filterMap) => {
-        //   if (promiseWithResolve.releaseOnResolve)
-        //     filterMapPromises.delete(filterMap);
-        //   pipe(
-        //     rows,
-        //     filterMapRows(filterMap),
-        //     queryResultFromRows,
-        //     promiseWithResolve.resolve,
-        //   );
-        // });
+      resolve(query, rows) {
+        const promiseWithResolve = promises.get(query);
+        if (!promiseWithResolve) return;
+        if (promiseWithResolve.releaseOnResolve) promises.delete(query);
+        promiseWithResolve.resolve(queryResultFromRows(rows));
       },
 
       /**
@@ -89,15 +76,12 @@ export const LoadingPromisesLive = Layer.effect(
        * Release must be called on any mutation.
        */
       release() {
-        // promises.forEach((filterMapPromises, query) => {
-        //   filterMapPromises.forEach((promiseWithResolve, filterMap) => {
-        //     const isResolved =
-        //       getLoadingPromiseProp(promiseWithResolve.promise) != null;
-        //     if (isResolved) filterMapPromises.delete(filterMap);
-        //     else promiseWithResolve.releaseOnResolve = true;
-        //   });
-        //   if (filterMapPromises.size === 0) promises.delete(query);
-        // });
+        promises.forEach((promiseWithResolve, query) => {
+          const isResolved =
+            getLoadingPromiseProp(promiseWithResolve.promise) != null;
+          if (isResolved) promises.delete(query);
+          else promiseWithResolve.releaseOnResolve = true;
+        });
       },
     });
   }),
@@ -106,12 +90,12 @@ export const LoadingPromisesLive = Layer.effect(
 // For React < 19. React 'use' Hook pattern.
 const loadingPromiseProp = "evolu_QueryResult";
 
-// const setLoadingPromiseProp = <R extends Row>(
-//   promise: LoadingPromise<R>,
-//   result: QueryResult<R>,
-// ): void => {
-//   void Object.assign(promise, { [loadingPromiseProp]: result });
-// };
+const setLoadingPromiseProp = <R extends Row>(
+  promise: LoadingPromise<R>,
+  result: QueryResult<R>,
+): void => {
+  void Object.assign(promise, { [loadingPromiseProp]: result });
+};
 
 export const getLoadingPromiseProp = <R extends Row>(
   promise: LoadingPromise<R>,
