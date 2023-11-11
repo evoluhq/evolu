@@ -8,7 +8,6 @@ import {
   Option,
   ReadonlyArray,
   ReadonlyRecord,
-  Ref,
   pipe,
 } from "effect";
 import { Config, ConfigLive } from "./Config.js";
@@ -34,7 +33,8 @@ import {
 import { Bip39, Mnemonic, NanoId } from "./Crypto.js";
 import {
   Query,
-  Row,
+  RowsStore,
+  RowsStoreLive,
   Table,
   Tables,
   Value,
@@ -45,7 +45,6 @@ import {
   transaction,
   valuesToSqliteValues,
 } from "./Db.js";
-import { Owner, OwnerId } from "./Owner.js";
 import { QueryPatches, makePatches } from "./Diff.js";
 import {
   EvoluError,
@@ -53,6 +52,7 @@ import {
   makeUnexpectedError,
 } from "./ErrorStore.js";
 import { Id, SqliteDate, cast } from "./Model.js";
+import { Owner, OwnerId } from "./Owner.js";
 import * as Sql from "./Sql.js";
 import { Sqlite, maybeParseJson } from "./Sqlite.js";
 import {
@@ -65,7 +65,6 @@ import {
   SyncWorkerPostMessage,
 } from "./SyncWorker.js";
 
-// TODO: Refactor to Effect.
 export interface DbWorker {
   readonly postMessage: (input: DbWorkerInput) => void;
   onMessage: (output: DbWorkerOutput) => void;
@@ -192,21 +191,16 @@ const init = (
     );
   });
 
-// co s timhle? potrebuju reusnout ten typ
-type RowsCacheMap = ReadonlyMap<Query, ReadonlyArray<Row>>;
-type RowsCacheRef = Ref.Ref<RowsCacheMap>;
-const RowsCacheRef = Context.Tag<RowsCacheRef>();
-
 const query = ({
   queries,
   onCompleteIds = [],
 }: {
   readonly queries: ReadonlyArray<Query>;
   readonly onCompleteIds?: ReadonlyArray<OnCompleteId>;
-}): Effect.Effect<Sqlite | RowsCacheRef | DbWorkerOnMessage, never, void> =>
+}): Effect.Effect<Sqlite | RowsStore | DbWorkerOnMessage, never, void> =>
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
-    const rowsCache = yield* _(RowsCacheRef);
+    const rowsStore = yield* _(RowsStore);
     const dbWorkerOnMessage = yield* _(DbWorkerOnMessage);
 
     const queriesRows = yield* _(
@@ -221,8 +215,9 @@ const query = ({
           ),
       ),
     );
-    const previous = yield* _(Ref.get(rowsCache));
-    yield* _(Ref.set(rowsCache, new Map([...previous, ...queriesRows])));
+
+    const previous = rowsStore.getState();
+    rowsStore.setState(new Map([...previous, ...queriesRows]));
 
     const queriesPatches = queriesRows.map(
       ([query, rows]): QueryPatches => ({
@@ -413,7 +408,7 @@ const mutate = ({
   | Owner
   | Time
   | Config
-  | RowsCacheRef
+  | RowsStore
   | DbWorkerOnMessage
   | SyncWorkerPostMessage,
   | TimestampDriftError
@@ -550,7 +545,7 @@ const sync = ({
   | DbWorkerOnMessage
   | SyncWorkerPostMessage
   | Owner
-  | RowsCacheRef,
+  | RowsStore,
   never,
   void
 > =>
@@ -608,7 +603,6 @@ export const DbWorkerLive = Layer.effect(
   DbWorker,
   Effect.gen(function* (_) {
     const syncWorker = yield* _(SyncWorker);
-    const rowsCacheRef = yield* _(Ref.make<RowsCacheMap>(new Map()));
 
     const onError = (error: EvoluError): Effect.Effect<never, never, void> =>
       Effect.sync(() => {
@@ -665,7 +659,7 @@ export const DbWorkerLive = Layer.effect(
         Layer.succeed(DbWorkerOnMessage, dbWorker.onMessage),
         Layer.succeed(Owner, owner),
         Layer.succeed(SyncWorkerPostMessage, syncWorker.postMessage),
-        Layer.succeed(RowsCacheRef, rowsCacheRef),
+        RowsStoreLive,
         TimeLive,
       );
 
@@ -673,7 +667,7 @@ export const DbWorkerLive = Layer.effect(
         input: DbWorkerInput,
       ): Effect.Effect<
         | Sqlite
-        | RowsCacheRef
+        | RowsStore
         | DbWorkerOnMessage
         | Owner
         | Time
