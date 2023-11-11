@@ -217,7 +217,7 @@ const query = ({
     );
 
     const previous = rowsStore.getState();
-    rowsStore.setState(new Map([...previous, ...queriesRows]));
+    yield* _(rowsStore.setState(new Map([...previous, ...queriesRows])));
 
     const queriesPatches = queriesRows.map(
       ([query, rows]): QueryPatches => ({

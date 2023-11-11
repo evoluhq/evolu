@@ -5,9 +5,12 @@ export type Listener = () => void;
 export type Unsubscribe = () => void;
 
 export interface Store<T> {
+  // No Effect API because of React useSyncExternalStore
   readonly subscribe: (listener: Listener) => Unsubscribe;
-  readonly setState: (state: T) => void;
   readonly getState: () => T;
+
+  // Effect API because it's a side-effect.
+  readonly setState: (state: T) => Effect.Effect<never, never, void>;
 }
 
 export const makeStore = <T>(
@@ -29,11 +32,12 @@ export const makeStore = <T>(
         return currentState;
       },
 
-      setState(state) {
-        if (state === currentState) return;
-        currentState = state;
-        listeners.forEach((listener) => listener());
-      },
+      setState: (state) =>
+        Effect.sync(() => {
+          if (state === currentState) return;
+          currentState = state;
+          listeners.forEach((listener) => listener());
+        }),
     };
 
     return store;

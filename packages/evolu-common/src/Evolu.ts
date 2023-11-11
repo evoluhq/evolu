@@ -205,7 +205,7 @@ const EvoluLayer = <S extends Schema>(
               // JSON.stringify, because Expo console needs strings.
               // eslint-disable-next-line no-console
               console.warn(JSON.stringify(output.error, null, 2));
-            errorStore.setState(output.error);
+            errorStore.setState(output.error).pipe(Effect.runSync);
             break;
 
           case "onQuery":
