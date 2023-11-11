@@ -1,8 +1,8 @@
 import { expect, test } from "vitest";
-import { makeCreateQuery } from "../src/CreateQuery.js";
+import { makeCreateQuery } from "../src/Evolu.js";
 import { Db } from "./utils.js";
 
-test("CreateQuery", () => {
+test("createQuery", () => {
   const createQuery = makeCreateQuery<Db>();
   const users1 = createQuery((db) =>
     db.selectFrom("users").select(["id", "name"]),
