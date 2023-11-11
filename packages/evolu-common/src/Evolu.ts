@@ -154,8 +154,8 @@ const EvoluLayer = <S extends Schema>(
         createQuery: makeCreateQuery<S>(),
         // loadQuery,
 
-        subscribeError: errorStore.subscribe,
-        getError: errorStore.getState,
+        // subscribeError: errorStore.subscribe,
+        // getError: errorStore.getState,
 
         // subscribeQuery(_query) {
         //   throw "";
