@@ -3,11 +3,11 @@ import { expect, test } from "vitest";
 import { timestampToString } from "../src/Crdt.js";
 import {
   MutateItem,
-  OnCompleteId,
   mutateItemsToNewMessages,
   upsertValueIntoTableRowColumn,
 } from "../src/DbWorker.js";
 import { Id, cast } from "../src/Model.js";
+import { OnCompleteId } from "../src/OnCompletes.js";
 import { Sqlite } from "../src/Sqlite.js";
 import { Message } from "../src/SyncWorker.js";
 import { SqliteTest, makeNode1Timestamp } from "./utils.js";

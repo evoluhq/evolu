@@ -48,39 +48,6 @@ type JsonObject = ReadonlyRecord.ReadonlyRecord<Json>;
 type JsonArray = ReadonlyArray<Json>;
 type Json = string | number | boolean | null | JsonObject | JsonArray;
 
-export type Query<R extends Row = Row> = string & Brand.Brand<"Query"> & R;
-
-export type Row = ReadonlyRecord.ReadonlyRecord<
-  | Value
-  | Row // for jsonObjectFrom from kysely/helpers/sqlite
-  | ReadonlyArray<Row> // for jsonArrayFrom from kysely/helpers/sqlite
->;
-
-export interface QueryResult<R extends Row> {
-  readonly rows: ReadonlyArray<Readonly<Kysely.Simplify<R>>>;
-  readonly firstRow: Readonly<Kysely.Simplify<R>> | null;
-}
-
-export const queryFromSqliteQuery = <R extends Row>({
-  sql,
-  parameters,
-}: SqliteQuery): Query<R> => JSON.stringify({ sql, parameters }) as Query<R>;
-
-export const queryToSqliteQuery = <R extends Row>(
-  query: Query<R>,
-): SqliteQuery => JSON.parse(query) as SqliteQuery;
-
-export const queryResultFromRows = <R extends Row>(
-  rows: ReadonlyArray<R>,
-): QueryResult<R> => ({ rows, firstRow: rows[0] });
-
-export type Tables = ReadonlyArray<Table>;
-
-export interface Table {
-  readonly name: string;
-  readonly columns: ReadonlyArray<string>;
-}
-
 export const isJsonObjectOrArray: Predicate.Refinement<
   Value,
   JsonObjectOrArray
@@ -93,6 +60,41 @@ export const valuesToSqliteValues = (
   values.map((value) =>
     isJsonObjectOrArray(value) ? JSON.stringify(value) : value,
   );
+
+export type Query<R extends Row = Row> = string & Brand.Brand<"Query"> & R;
+
+export const queryFromSqliteQuery = <R extends Row>({
+  sql,
+  parameters,
+}: SqliteQuery): Query<R> => JSON.stringify({ sql, parameters }) as Query<R>;
+
+export const queryToSqliteQuery = <R extends Row>(
+  query: Query<R>,
+): SqliteQuery => JSON.parse(query) as SqliteQuery;
+
+export type Row = ReadonlyRecord.ReadonlyRecord<
+  | Value
+  | Row // for jsonObjectFrom from kysely/helpers/sqlite
+  | ReadonlyArray<Row> // for jsonArrayFrom from kysely/helpers/sqlite
+>;
+
+export const emptyRows: ReadonlyArray<Row> = [];
+
+export interface QueryResult<R extends Row> {
+  readonly rows: ReadonlyArray<Readonly<Kysely.Simplify<R>>>;
+  readonly firstRow: Readonly<Kysely.Simplify<R>> | null;
+}
+
+export const queryResultFromRows = <R extends Row>(
+  rows: ReadonlyArray<R>,
+): QueryResult<R> => ({ rows, firstRow: rows[0] });
+
+export type Tables = ReadonlyArray<Table>;
+
+export interface Table {
+  readonly name: string;
+  readonly columns: ReadonlyArray<string>;
+}
 
 // https://github.com/Effect-TS/schema/releases/tag/v0.18.0
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

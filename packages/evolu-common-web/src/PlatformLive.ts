@@ -44,6 +44,7 @@ const name = canUseDom
 
 export const PlatformLive = Layer.succeed(Platform, { name });
 
+// TODO: Move to @evolu/react and make effectul.
 export const FlushSyncLive = Layer.succeed(FlushSync, flushSync);
 
 export const SyncLockLive = Layer.effect(

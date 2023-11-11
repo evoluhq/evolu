@@ -5,14 +5,19 @@ import {
   Query,
   QueryResult,
   Row,
+  RowsStore,
+  RowsStoreLive,
   Schema,
   Tables,
+  emptyRows,
   queryFromSqliteQuery,
 } from "./Db.js";
-import { DbWorker } from "./DbWorker.js";
+import { DbWorker, DbWorkerOutputOnQuery } from "./DbWorker.js";
+import { applyPatches } from "./Diff.js";
 import { ErrorStore, ErrorStoreLive } from "./ErrorStore.js";
 import { LoadingPromises, LoadingPromisesLive } from "./LoadingPromises.js";
 import { SqliteBoolean, SqliteDate } from "./Model.js";
+import { OnCompletes, OnCompletesLive } from "./OnCompletes.js";
 import { FlushSync } from "./Platform.js";
 import { SqliteQuery } from "./Sqlite.js";
 
@@ -93,6 +98,52 @@ const LoadQueryLive = Layer.effect(
       }
       return promise;
     });
+  }),
+);
+
+type OnQuery = (
+  output: DbWorkerOutputOnQuery,
+) => Effect.Effect<never, never, void>;
+
+const OnQuery = Context.Tag<OnQuery>();
+
+const OnQueryLive = Layer.effect(
+  OnQuery,
+  Effect.gen(function* (_) {
+    const [rowsStore, loadingPromises, flushSync, onCompletes] = yield* _(
+      Effect.all([RowsStore, LoadingPromises, FlushSync, OnCompletes]),
+    );
+
+    return OnQuery.of(({ queriesPatches, onCompleteIds }) =>
+      Effect.gen(function* (_) {
+        const currentState = rowsStore.getState();
+        const nextState = pipe(
+          queriesPatches,
+          ReadonlyArray.map(
+            ({ query, patches }) =>
+              [
+                query,
+                applyPatches(patches)(currentState.get(query) || emptyRows),
+              ] as const,
+          ),
+          (map) => new Map([...currentState, ...map]),
+        );
+
+        queriesPatches.forEach(({ query }) => {
+          loadingPromises.resolve(query, nextState.get(query) || emptyRows);
+        });
+
+        // No mutation is using onComplete, so we don't need flushSync.
+        if (onCompleteIds.length === 0) {
+          yield* _(rowsStore.setState(nextState));
+          return;
+        }
+
+        // TODO: yield* _(flushSync(rowsStore.setState(nextState)))
+        flushSync(() => rowsStore.setState(nextState).pipe(Effect.runSync));
+        yield* _(onCompletes.execute(onCompleteIds));
+      }),
+    );
   }),
 );
 
@@ -193,12 +244,12 @@ const EvoluLayer = <S extends Schema>(
   Layer.effect(
     Evolu<S>(),
     Effect.gen(function* (_) {
-      const dbWorker = yield* _(DbWorker);
-      const errorStore = yield* _(ErrorStore);
-      const loadQuery = yield* _(LoadQuery);
-      //   const onQuery = yield* _(OnQuery);
+      const [dbWorker, errorStore, loadQuery, onQuery] = yield* _(
+        Effect.all([DbWorker, ErrorStore, LoadQuery, OnQuery]),
+      );
 
       dbWorker.onMessage = (output): void => {
+        // TODO: Return effects and run them at one place.
         switch (output._tag) {
           case "onError":
             if (process.env.NODE_ENV === "development")
@@ -209,11 +260,11 @@ const EvoluLayer = <S extends Schema>(
             break;
 
           case "onQuery":
-            // onQuery(output).pipe(Effect.runSync);
+            onQuery(output).pipe(Effect.runSync);
             break;
 
           case "onOwner":
-            // ownerStore.setState(output.owner);
+            // ownerStore.setState(output.owner). run sync;
             break;
 
           case "onReceive": {
@@ -227,7 +278,7 @@ const EvoluLayer = <S extends Schema>(
             break;
 
           case "onSyncState":
-            // syncStateStore.setState(output.state);
+            // syncStateStore.setState(output.state); run sync
             break;
 
           default:
@@ -297,14 +348,8 @@ export const EvoluLive = <S extends Schema>(
   Evolu<S>
 > =>
   EvoluLayer<S>(_tables).pipe(
-    // Layer.use(Layer.mergeAll(LoadQueryLive/*, OnQueryLive*/)),
-    Layer.use(Layer.mergeAll(ErrorStoreLive, LoadQueryLive)),
+    Layer.use(Layer.mergeAll(ErrorStoreLive, LoadQueryLive, OnQueryLive)),
     Layer.use(
-      Layer.mergeAll(
-        LoadingPromisesLive,
-        // tohle, poradi
-        // OnCompletesLive,
-        // RowsStoreLive,
-      ),
+      Layer.mergeAll(LoadingPromisesLive, RowsStoreLive, OnCompletesLive),
     ),
   );

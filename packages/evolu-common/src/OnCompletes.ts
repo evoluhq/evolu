@@ -6,16 +6,14 @@ export interface OnCompletes {
     onComplete: OnComplete,
   ) => Effect.Effect<never, never, OnCompleteId>;
 
-  readonly flush: (
+  readonly execute: (
     onCompleteIds: readonly OnCompleteId[],
   ) => Effect.Effect<never, never, void>;
 }
 
 export type OnComplete = () => void;
-// TODO: Refactor to Brand.Brand<"OnCompleteId">;
-export type OnCompleteId = string &
-  Brand.Brand<"Id"> &
-  Brand.Brand<"OnComplete">;
+
+export type OnCompleteId = string & Brand.Brand<"OnCompleteId">;
 
 export const OnCompletes = Context.Tag<OnCompletes>();
 
@@ -35,7 +33,7 @@ export const OnCompletesLive = Layer.effect(
           }),
         ),
 
-      flush: (onCompleteIds) =>
+      execute: (onCompleteIds) =>
         Effect.sync(() => {
           ReadonlyArray.filterMap(onCompleteIds, (id) => {
             const onComplete = map.get(id);

@@ -10,6 +10,8 @@ export interface Platform {
 
 export const Platform = Context.Tag<Platform>();
 
+/** No Effect API because of React DOM flushSync. */
+// je ale fuk, ne?
 export type FlushSync = (callback: () => void) => void;
 
 export const FlushSync = Context.Tag<FlushSync>();

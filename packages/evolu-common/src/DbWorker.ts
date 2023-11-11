@@ -1,6 +1,5 @@
 import { hexToBytes } from "@noble/ciphers/utils";
 import {
-  Brand,
   Context,
   Effect,
   Function,
@@ -52,6 +51,7 @@ import {
   makeUnexpectedError,
 } from "./ErrorStore.js";
 import { Id, SqliteDate, cast } from "./Model.js";
+import { OnCompleteId } from "./OnCompletes.js";
 import { Owner, OwnerId } from "./Owner.js";
 import * as Sql from "./Sql.js";
 import { Sqlite, maybeParseJson } from "./Sqlite.js";
@@ -140,10 +140,6 @@ export interface DbWorkerOutputOnQuery {
   readonly queriesPatches: ReadonlyArray<QueryPatches>;
   readonly onCompleteIds: ReadonlyArray<OnCompleteId>;
 }
-
-export type OnCompleteId = string &
-  Brand.Brand<"Id"> &
-  Brand.Brand<"OnComplete">;
 
 interface DbWorkerOutputOnReceive {
   readonly _tag: "onReceive";
