@@ -74,7 +74,7 @@
     "vitest": "^0.34.6"
   },
   "peerDependencies": {
-    "@effect/schema": "0.47.3",
+    "@effect/schema": "0.47.4",
     "effect": "2.0.0-next.54"
   },
   "publishConfig": {
