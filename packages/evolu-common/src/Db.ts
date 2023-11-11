@@ -4,7 +4,6 @@ import { make } from "@effect/schema/Schema";
 import { bytesToHex } from "@noble/ciphers/utils";
 import {
   Brand,
-  Context,
   Effect,
   Exit,
   Option,
@@ -15,15 +14,15 @@ import {
   pipe,
 } from "effect";
 import * as Kysely from "kysely";
-import { urlAlphabet } from "nanoid";
 import {
   initialMerkleTree,
   makeInitialTimestamp,
   merkleTreeToString,
   timestampToString,
 } from "./Crdt.js";
-import { Bip39, Mnemonic, NanoId, slip21Derive } from "./Crypto.js";
+import { Bip39, Mnemonic, NanoId } from "./Crypto.js";
 import { Id } from "./Model.js";
+import { Owner, makeOwner } from "./Owner.js";
 import {
   createMessageTable,
   createMessageTableIndex,
@@ -92,8 +91,6 @@ export const valuesToSqliteValues = (
     isJsonObjectOrArray(value) ? JSON.stringify(value) : value,
   );
 
-const commonColumns = ["createdAt", "updatedAt", "isDeleted"];
-
 // https://github.com/Effect-TS/schema/releases/tag/v0.18.0
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
@@ -109,6 +106,8 @@ const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
   // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-explicit-any
   return out as any;
 };
+
+const commonColumns = ["createdAt", "updatedAt", "isDeleted"];
 
 export const schemaToTables = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -126,27 +125,6 @@ export const schemaToTables = (
       }),
     ),
   );
-
-/**
- * `Owner` represents the Evolu database owner. Evolu auto-generates `Owner`
- * on the first run. `Owner` can be reset on the current device and restored
- * on a different one.
- */
-export interface Owner {
-  /** The `Mnemonic` associated with `Owner`. */
-  readonly mnemonic: Mnemonic;
-  /** The unique identifier of `Owner` safely derived from its `Mnemonic`. */
-  readonly id: OwnerId;
-  /* The encryption key used by `Owner` derived from its `Mnemonic`. */
-  readonly encryptionKey: Uint8Array;
-}
-
-export const Owner = Context.Tag<Owner>("evolu/Owner");
-
-/**
- * The unique identifier of `Owner` safely derived from its `Mnemonic`.
- */
-export type OwnerId = Id & Brand.Brand<"Owner">;
 
 export const transaction = <R, E, A>(
   effect: Effect.Effect<R, E, A>,
@@ -185,36 +163,6 @@ export const someDefectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
         )
       : Option.none(),
 );
-
-export const makeOwner = (
-  mnemonic?: Mnemonic,
-): Effect.Effect<Bip39, never, Owner> =>
-  Effect.gen(function* (_) {
-    const bip39 = yield* _(Bip39);
-
-    if (mnemonic == null) mnemonic = yield* _(bip39.make);
-
-    const seed = yield* _(bip39.toSeed(mnemonic));
-
-    const id = yield* _(
-      slip21Derive(seed, ["Evolu", "Owner Id"]).pipe(
-        Effect.map((key) => {
-          // convert key to nanoid
-          let id = "";
-          for (let i = 0; i < 21; i++) {
-            id += urlAlphabet[key[i] & 63];
-          }
-          return id as OwnerId;
-        }),
-      ),
-    );
-
-    const encryptionKey = yield* _(
-      slip21Derive(seed, ["Evolu", "Encryption Key"]),
-    );
-
-    return { mnemonic, id, encryptionKey };
-  });
 
 export const lazyInit = (
   mnemonic?: Mnemonic,
