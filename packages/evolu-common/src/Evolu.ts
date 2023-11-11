@@ -3,6 +3,7 @@ import {
   Effect,
   Function,
   Layer,
+  Number,
   ReadonlyArray,
   absurd,
   pipe,
@@ -28,6 +29,63 @@ import { SqliteBoolean, SqliteDate } from "./Model.js";
 import { OnCompletes, OnCompletesLive } from "./OnCompletes.js";
 import { FlushSync } from "./Platform.js";
 import { SqliteQuery } from "./Sqlite.js";
+import { Store, Unsubscribe } from "./Store.js";
+
+export interface Evolu<S extends Schema> {
+  readonly subscribeError: ErrorStore["subscribe"];
+  readonly getError: ErrorStore["getState"];
+
+  readonly createQuery: CreateQuery<S>;
+  readonly loadQuery: LoadQuery;
+
+  readonly subscribeQuery: SubscribedQueries["subscribeQuery"];
+  readonly getQuery: SubscribedQueries["getQuery"];
+
+  // readonly subscribeSyncState: (listener: Listener) => Unsubscribe;
+  // readonly getSyncState: () => SyncState;
+
+  // readonly subscribeOwner: (listener: Listener) => Unsubscribe;
+  // readonly getOwner: () => Owner | null;
+
+  // create: <K extends keyof S>(
+  //   table: K,
+  //   values: Kysely.Simplify<PartialForNullable<Castable<Omit<S[K], "id">>>>,
+  //   onComplete?: () => void,
+  // ) => {
+  //   readonly id: S[K]["id"];
+  // };
+
+  // update: <K extends keyof S>(
+  //   table: K,
+  //   values: Kysely.Simplify<
+  //     Partial<Castable<Omit<S[K], "id"> & Pick<CommonColumns, "isDeleted">>> & {
+  //       readonly id: S[K]["id"];
+  //     }
+  //   >,
+  //   onComplete?: () => void,
+  // ) => {
+  //   readonly id: S[K]["id"];
+  // };
+
+  // /**
+  //  * Delete all local data from the current device.
+  //  * After the deletion, Evolu reloads all browser tabs that use Evolu.
+  //  */
+  // readonly resetOwner: () => void;
+
+  // /**
+  //  * Restore `Owner` with synced data from different devices.
+  //  */
+  // readonly restoreOwner: (
+  //   mnemonic: string,
+  // ) => Promise<Either.Either<{ readonly _tag: "RestoreOwnerError" }, void>>;
+
+  /** Ensure schema ad-hoc for hot reloading. */
+  readonly ensureSchema: (tables: Tables) => void;
+}
+
+export const Evolu = <S extends Schema>(): Context.Tag<Evolu<S>, Evolu<S>> =>
+  Context.Tag<Evolu<S>>();
 
 type CreateQuery<S extends Schema> = <R extends Row>(
   queryCallback: QueryCallback<S, R>,
@@ -216,9 +274,10 @@ const OnQuery = Context.Tag<OnQuery>();
 const OnQueryLive = Layer.effect(
   OnQuery,
   Effect.gen(function* (_) {
-    const [rowsStore, loadingPromises, flushSync, onCompletes] = yield* _(
-      Effect.all([RowsStore, LoadingPromises, FlushSync, OnCompletes]),
-    );
+    const rowsStore = yield* _(RowsStore);
+    const loadingPromises = yield* _(LoadingPromises);
+    const flushSync = yield* _(FlushSync);
+    const onCompletes = yield* _(OnCompletes);
 
     return OnQuery.of(({ queriesPatches, onCompleteIds }) =>
       Effect.gen(function* (_) {
@@ -253,67 +312,51 @@ const OnQueryLive = Layer.effect(
   }),
 );
 
-export interface Evolu<S extends Schema> {
-  readonly subscribeError: ErrorStore["subscribe"];
-  readonly getError: ErrorStore["getState"];
+interface SubscribedQueries {
+  readonly subscribeQuery: (query: Query) => Store<Row>["subscribe"];
 
-  /**
-   * TODO: ... and naming, todosAll, productById, etc.
-   */
-  readonly createQuery: CreateQuery<S>;
-  readonly loadQuery: LoadQuery;
+  readonly getQuery: <R extends Row>(query: Query<R>) => QueryResult<R>;
 
-  // readonly subscribeQuery: (
-  //   query: Query,
-  // ) => (listener: Listener) => Unsubscribe;
-
-  // readonly getQuery: <R extends Row>(query: Query<R>) => QueryResult<R> | null;
-
-  // readonly subscribeSyncState: (listener: Listener) => Unsubscribe;
-  // readonly getSyncState: () => SyncState;
-
-  // readonly subscribeOwner: (listener: Listener) => Unsubscribe;
-  // readonly getOwner: () => Owner | null;
-
-  // create: <K extends keyof S>(
-  //   table: K,
-  //   values: Kysely.Simplify<PartialForNullable<Castable<Omit<S[K], "id">>>>,
-  //   onComplete?: () => void,
-  // ) => {
-  //   readonly id: S[K]["id"];
-  // };
-
-  // update: <K extends keyof S>(
-  //   table: K,
-  //   values: Kysely.Simplify<
-  //     Partial<Castable<Omit<S[K], "id"> & Pick<CommonColumns, "isDeleted">>> & {
-  //       readonly id: S[K]["id"];
-  //     }
-  //   >,
-  //   onComplete?: () => void,
-  // ) => {
-  //   readonly id: S[K]["id"];
-  // };
-
-  // /**
-  //  * Delete all local data from the current device.
-  //  * After the deletion, Evolu reloads all browser tabs that use Evolu.
-  //  */
-  // readonly resetOwner: () => void;
-
-  // /**
-  //  * Restore `Owner` with synced data from different devices.
-  //  */
-  // readonly restoreOwner: (
-  //   mnemonic: string,
-  // ) => Promise<Either.Either<{ readonly _tag: "RestoreOwnerError" }, void>>;
-
-  /** Ensure schema ad-hoc for hot reloading. */
-  readonly ensureSchema: (tables: Tables) => void;
+  readonly getSubscribedQueries: () => ReadonlyArray<Query>;
 }
 
-export const Evolu = <S extends Schema>(): Context.Tag<Evolu<S>, Evolu<S>> =>
-  Context.Tag<Evolu<S>>();
+const SubscribedQueries = Context.Tag<SubscribedQueries>();
+
+const SubscribedQueriesLive = Layer.effect(
+  SubscribedQueries,
+  Effect.gen(function* (_) {
+    const rowsStore = yield* _(RowsStore);
+    const subscribedQueries = new Map<Query, number>();
+
+    return SubscribedQueries.of({
+      subscribeQuery:
+        (query) =>
+        (listener): Unsubscribe => {
+          subscribedQueries.set(
+            query,
+            Number.increment(subscribedQueries.get(query) ?? 0),
+          );
+          const unsubscribe = rowsStore.subscribe(listener);
+
+          return () => {
+            const count = subscribedQueries.get(query);
+            if (count != null && count > 1)
+              subscribedQueries.set(query, Number.decrement(count));
+            else subscribedQueries.delete(query);
+            unsubscribe();
+          };
+        },
+
+      getQuery: <R extends Row>(query: Query<R>): QueryResult<R> =>
+        queryResultFromRows(
+          rowsStore.getState().get(query) || emptyRows,
+        ) as QueryResult<R>,
+
+      getSubscribedQueries: () =>
+        ReadonlyArray.fromIterable(subscribedQueries.keys()),
+    });
+  }),
+);
 
 // // https://stackoverflow.com/a/54713648/233902
 // type PartialForNullable<
@@ -350,9 +393,11 @@ const EvoluLayer = <S extends Schema>(
   Layer.effect(
     Evolu<S>(),
     Effect.gen(function* (_) {
-      const [dbWorker, errorStore, loadQuery, onQuery] = yield* _(
-        Effect.all([DbWorker, ErrorStore, LoadQuery, OnQuery]),
-      );
+      const dbWorker = yield* _(DbWorker);
+      const errorStore = yield* _(ErrorStore);
+      const loadQuery = yield* _(LoadQuery);
+      const onQuery = yield* _(OnQuery);
+      const subscribedQueries = yield* _(SubscribedQueries);
 
       dbWorker.onMessage = (output): void => {
         // TODO: Return effects and run them at one place.
@@ -399,13 +444,8 @@ const EvoluLayer = <S extends Schema>(
         createQuery: makeCreateQuery<S>(),
         loadQuery,
 
-        // subscribeQuery(_query) {
-        //   throw "";
-        // },
-
-        // getQuery() {
-        //   throw "";
-        // },
+        subscribeQuery: subscribedQueries.subscribeQuery,
+        getQuery: subscribedQueries.getQuery,
 
         // subscribeSyncState() {
         //   throw "";
@@ -454,7 +494,14 @@ export const EvoluLive = <S extends Schema>(
   Evolu<S>
 > =>
   EvoluLayer<S>(_tables).pipe(
-    Layer.use(Layer.mergeAll(ErrorStoreLive, LoadQueryLive, OnQueryLive)),
+    Layer.use(
+      Layer.mergeAll(
+        ErrorStoreLive,
+        LoadQueryLive,
+        OnQueryLive,
+        SubscribedQueriesLive,
+      ),
+    ),
     Layer.use(
       Layer.mergeAll(LoadingPromisesLive, RowsStoreLive, OnCompletesLive),
     ),
