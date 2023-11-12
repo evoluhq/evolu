@@ -10,7 +10,7 @@ import {
 } from "effect";
 import * as Kysely from "kysely";
 import { Time, TimeLive } from "./Crdt.js";
-import { NanoId } from "./Crypto.js";
+import { Bip39, Mnemonic, NanoId } from "./Crypto.js";
 import {
   Query,
   QueryResult,
@@ -53,18 +53,18 @@ export interface Evolu<S extends Schema> {
   create: Mutate<S, "create">;
   update: Mutate<S, "update">;
 
-  // /**
-  //  * Delete all local data from the current device.
-  //  * After the deletion, Evolu reloads all browser tabs that use Evolu.
-  //  */
-  // readonly resetOwner: () => void;
+  /**
+   * Delete all local data from the current device.
+   * After the deletion, Evolu reloads all browser tabs that use Evolu.
+   */
+  readonly resetOwner: () => void;
 
-  // /**
-  //  * Restore `Owner` with synced data from different devices.
-  //  */
-  // readonly restoreOwner: (
-  //   mnemonic: string,
-  // ) => Promise<Either.Either<{ readonly _tag: "RestoreOwnerError" }, void>>;
+  readonly parseMnemonic: Bip39["parse"];
+
+  /**
+   * Restore `Owner` with synced data from different devices.
+   */
+  readonly restoreOwner: (mnemonic: Mnemonic) => void;
 
   /** Ensure schema ad-hoc for hot reloading. */
   readonly ensureSchema: (tables: Tables) => void;
@@ -451,6 +451,7 @@ const EvoluLayer = <S extends Schema>(_tables: Tables) =>
         makeStore<SyncState>(() => ({ _tag: "SyncStateInitial" })),
       );
       const mutate = yield* _(Mutate<S>());
+      const bip39 = yield* _(Bip39);
 
       dbWorker.onMessage = (output): void => {
         // TODO: Return effects and run them at one place.
@@ -509,13 +510,15 @@ const EvoluLayer = <S extends Schema>(_tables: Tables) =>
         create: mutate as Mutate<S, "create">,
         update: mutate,
 
-        // resetOwner() {
-        //   throw "";
-        // },
+        resetOwner() {
+          dbWorker.postMessage({ _tag: "reset" });
+        },
 
-        // restoreOwner() {
-        //   throw "";
-        // },
+        parseMnemonic: bip39.parse,
+
+        restoreOwner(mnemonic) {
+          dbWorker.postMessage({ _tag: "reset", mnemonic });
+        },
 
         ensureSchema(tables) {
           dbWorker.postMessage({ _tag: "ensureSchema", tables });
@@ -527,7 +530,7 @@ const EvoluLayer = <S extends Schema>(_tables: Tables) =>
 export const EvoluLive = <S extends Schema>(
   _tables: Tables,
 ): Layer.Layer<
-  DbWorker | NanoId | FlushSync, // | Bip39 | AppState,
+  DbWorker | NanoId | FlushSync | Bip39, // | AppState,
   never,
   Evolu<S>
 > =>
