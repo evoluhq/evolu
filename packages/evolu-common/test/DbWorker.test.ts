@@ -2,8 +2,8 @@ import { Effect } from "effect";
 import { expect, test } from "vitest";
 import { timestampToString } from "../src/Crdt.js";
 import {
-  MutateItem,
-  mutateItemsToNewMessages,
+  Mutation,
+  mutationsToNewMessages,
   upsertValueIntoTableRowColumn,
 } from "../src/DbWorker.js";
 import { Id, cast } from "../src/Model.js";
@@ -12,8 +12,8 @@ import { Sqlite } from "../src/Sqlite.js";
 import { Message } from "../src/SyncWorker.js";
 import { SqliteTest, makeNode1Timestamp } from "./utils.js";
 
-test("mutateItemsToNewMessages should dedupe", () => {
-  const item: MutateItem = {
+test("mutationsToNewMessages should dedupe", () => {
+  const mutation: Mutation = {
     table: "table",
     id: "id" as Id,
     values: { a: 1, b: true },
@@ -21,7 +21,7 @@ test("mutateItemsToNewMessages should dedupe", () => {
     now: cast(new Date()),
     onCompleteId: "onCompleteId" as OnCompleteId,
   };
-  const length = mutateItemsToNewMessages([item, item]).length;
+  const length = mutationsToNewMessages([mutation, mutation]).length;
   expect(length).toBe(3);
 });
 

@@ -9,6 +9,7 @@ import {
   pipe,
 } from "effect";
 import * as Kysely from "kysely";
+import { Time, TimeLive } from "./Crdt.js";
 import { NanoId } from "./Crypto.js";
 import {
   Query,
@@ -19,19 +20,19 @@ import {
   Schema,
   Tables,
   emptyRows,
-  serializeQuery,
   queryResultFromRows,
+  serializeQuery,
 } from "./Db.js";
-import { DbWorker, DbWorkerOutputOnQuery } from "./DbWorker.js";
+import { DbWorker, DbWorkerOutputOnQuery, Mutation } from "./DbWorker.js";
 import { applyPatches } from "./Diff.js";
 import { ErrorStore, ErrorStoreLive } from "./ErrorStore.js";
-import { SqliteBoolean, SqliteDate } from "./Model.js";
+import { Id, SqliteBoolean, SqliteDate, cast } from "./Model.js";
 import { OnCompletes, OnCompletesLive } from "./OnCompletes.js";
+import { Owner } from "./Owner.js";
 import { FlushSync } from "./Platform.js";
 import { SqliteQuery } from "./Sqlite.js";
 import { Store, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
-import { Owner } from "./Owner.js";
 
 export interface Evolu<S extends Schema> {
   readonly subscribeError: ErrorStore["subscribe"];
@@ -49,25 +50,8 @@ export interface Evolu<S extends Schema> {
   readonly subscribeSyncState: Store<SyncState>["subscribe"];
   readonly getSyncState: Store<SyncState>["getState"];
 
-  // create: <K extends keyof S>(
-  //   table: K,
-  //   values: Kysely.Simplify<PartialForNullable<Castable<Omit<S[K], "id">>>>,
-  //   onComplete?: () => void,
-  // ) => {
-  //   readonly id: S[K]["id"];
-  // };
-
-  // update: <K extends keyof S>(
-  //   table: K,
-  //   values: Kysely.Simplify<
-  //     Partial<Castable<Omit<S[K], "id"> & Pick<CommonColumns, "isDeleted">>> & {
-  //       readonly id: S[K]["id"];
-  //     }
-  //   >,
-  //   onComplete?: () => void,
-  // ) => {
-  //   readonly id: S[K]["id"];
-  // };
+  create: Mutate<S, "create">;
+  update: Mutate<S, "update">;
 
   // /**
   //  * Delete all local data from the current device.
@@ -248,18 +232,16 @@ const LoadQueryLive = Layer.effect(
   Effect.gen(function* (_) {
     const loadingPromises = yield* _(LoadingPromises);
     const dbWorker = yield* _(DbWorker);
-
-    const queue = new Set<Query>();
+    const queries: Query[] = [];
 
     return LoadQuery.of((query) => {
       const { promise, isNew } = loadingPromises.get(query);
-      if (isNew) queue.add(query);
-      if (queue.size === 1) {
+      if (isNew) queries.push(query);
+      if (queries.length === 1) {
         queueMicrotask(() => {
-          const queries = [...queue];
-          queue.clear();
           if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
             dbWorker.postMessage({ _tag: "query", queries });
+          queries.length = 0;
         });
       }
       return promise;
@@ -360,38 +342,102 @@ const SubscribedQueriesLive = Layer.effect(
   }),
 );
 
-// // https://stackoverflow.com/a/54713648/233902
-// type PartialForNullable<
-//   T,
-//   NK extends keyof T = {
-//     [K in keyof T]: null extends T[K] ? K : never;
-//   }[keyof T],
-//   NP = Pick<T, Exclude<keyof T, NK>> & Partial<Pick<T, NK>>,
-// > = { [K in keyof NP]: NP[K] };
+type Mutate<S extends Schema, Mode extends "create" | "update" = "update"> = <
+  K extends keyof S,
+>(
+  table: K,
+  values: Kysely.Simplify<
+    Mode extends "create"
+      ? PartialForNullable<Castable<Omit<S[K], "id">>>
+      : Partial<
+          Castable<Omit<S[K], "id"> & Pick<CommonColumns, "isDeleted">>
+        > & { readonly id: S[K]["id"] }
+  >,
+  onComplete?: () => void,
+) => {
+  readonly id: S[K]["id"];
+};
 
-// /**
-//  * SQLite doesn't support Date nor Boolean types, so Evolu emulates them
-//  * with {@link SqliteBoolean} and {@link SqliteDate}.
-//  *
-//  * For {@link SqliteBoolean}, you can use JavaScript boolean.
-//  * For {@link SqliteDate}, you can use JavaScript Date.
-//  */
-// type Castable<T> = {
-//   readonly [K in keyof T]: T[K] extends SqliteBoolean
-//     ? boolean | SqliteBoolean
-//     : T[K] extends null | SqliteBoolean
-//     ? null | boolean | SqliteBoolean
-//     : T[K] extends SqliteDate
-//     ? Date | SqliteDate
-//     : T[K] extends null | SqliteDate
-//     ? null | Date | SqliteDate
-//     : T[K];
-// };
+const Mutate = <S extends Schema>(): Context.Tag<Mutate<S>, Mutate<S>> =>
+  Context.Tag<Mutate<S>>();
 
-const EvoluLayer = <S extends Schema>(
-  _tables: Tables,
-  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-) =>
+// https://stackoverflow.com/a/54713648/233902
+type PartialForNullable<
+  T,
+  NK extends keyof T = {
+    [K in keyof T]: null extends T[K] ? K : never;
+  }[keyof T],
+  NP = Pick<T, Exclude<keyof T, NK>> & Partial<Pick<T, NK>>,
+> = { [K in keyof NP]: NP[K] };
+
+/**
+ * SQLite doesn't support Date nor Boolean types, so Evolu emulates them
+ * with {@link SqliteBoolean} and {@link SqliteDate}.
+ *
+ * For {@link SqliteBoolean}, you can use JavaScript boolean.
+ * For {@link SqliteDate}, you can use JavaScript Date.
+ */
+type Castable<T> = {
+  readonly [K in keyof T]: T[K] extends SqliteBoolean
+    ? boolean | SqliteBoolean
+    : T[K] extends null | SqliteBoolean
+    ? null | boolean | SqliteBoolean
+    : T[K] extends SqliteDate
+    ? Date | SqliteDate
+    : T[K] extends null | SqliteDate
+    ? null | Date | SqliteDate
+    : T[K];
+};
+
+const MutateLive = <S extends Schema>(): Layer.Layer<
+  NanoId | OnCompletes | Time | SubscribedQueries | LoadingPromises | DbWorker,
+  never,
+  Mutate<S>
+> =>
+  Layer.effect(
+    Mutate<S>(),
+    Effect.gen(function* (_) {
+      const nanoid = yield* _(NanoId);
+      const onCompletes = yield* _(OnCompletes);
+      const time = yield* _(Time);
+      const subscribedQueries = yield* _(SubscribedQueries);
+      const loadingPromises = yield* _(LoadingPromises);
+      const dbWorker = yield* _(DbWorker);
+      const mutations: Array<Mutation> = [];
+
+      return Mutate<S>().of((table, { id, ...values }, onComplete) => {
+        const isInsert = id == null;
+        if (isInsert) id = Effect.runSync(nanoid.nanoid) as never;
+
+        const onCompleteId = onComplete
+          ? onCompletes.add(onComplete).pipe(Effect.runSync)
+          : null;
+
+        mutations.push({
+          table: table.toString(),
+          id: id as Id,
+          values,
+          isInsert,
+          now: cast(new Date(Effect.runSync(time.now))),
+          onCompleteId,
+        });
+
+        if (mutations.length === 1)
+          queueMicrotask(() => {
+            const queries = subscribedQueries.getSubscribedQueries();
+            if (ReadonlyArray.isNonEmptyReadonlyArray(mutations))
+              dbWorker.postMessage({ _tag: "mutate", mutations, queries });
+            mutations.length = 0;
+            loadingPromises.release();
+          });
+
+        return { id: id as never };
+      });
+    }),
+  );
+
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+const EvoluLayer = <S extends Schema>(_tables: Tables) =>
   Layer.effect(
     Evolu<S>(),
     Effect.gen(function* (_) {
@@ -404,6 +450,7 @@ const EvoluLayer = <S extends Schema>(
       const syncStateStore = yield* _(
         makeStore<SyncState>(() => ({ _tag: "SyncStateInitial" })),
       );
+      const mutate = yield* _(Mutate<S>());
 
       dbWorker.onMessage = (output): void => {
         // TODO: Return effects and run them at one place.
@@ -459,13 +506,8 @@ const EvoluLayer = <S extends Schema>(
         subscribeSyncState: syncStateStore.subscribe,
         getSyncState: syncStateStore.getState,
 
-        // create() {
-        //   throw "";
-        // },
-
-        // update() {
-        //   throw "";
-        // },
+        create: mutate as Mutate<S, "create">,
+        update: mutate,
 
         // resetOwner() {
         //   throw "";
@@ -495,10 +537,16 @@ export const EvoluLive = <S extends Schema>(
         ErrorStoreLive,
         LoadQueryLive,
         OnQueryLive,
-        SubscribedQueriesLive,
+        MutateLive<S>(),
       ),
     ),
+    Layer.use(SubscribedQueriesLive),
     Layer.use(
-      Layer.mergeAll(LoadingPromisesLive, RowsStoreLive, OnCompletesLive),
+      Layer.mergeAll(
+        LoadingPromisesLive,
+        RowsStoreLive,
+        OnCompletesLive,
+        TimeLive,
+      ),
     ),
   );

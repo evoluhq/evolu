@@ -94,7 +94,7 @@ interface DbWorkerInputQuery {
 
 interface DbWorkerInputMutate {
   readonly _tag: "mutate";
-  readonly items: ReadonlyArray.NonEmptyReadonlyArray<MutateItem>;
+  readonly mutations: ReadonlyArray.NonEmptyReadonlyArray<Mutation>;
   readonly queries: ReadonlyArray<Query>;
 }
 
@@ -154,7 +154,7 @@ interface DbWorkerOutputOnSyncState {
   readonly state: SyncState;
 }
 
-export interface MutateItem {
+export interface Mutation {
   readonly table: string;
   readonly id: Id;
   readonly values: ReadonlyRecord.ReadonlyRecord<
@@ -243,11 +243,11 @@ const readTimestampAndMerkleTree = Sqlite.pipe(
   ),
 );
 
-export const mutateItemsToNewMessages = (
-  items: ReadonlyArray<MutateItem>,
+export const mutationsToNewMessages = (
+  mutations: ReadonlyArray<Mutation>,
 ): ReadonlyArray<NewMessage> =>
   pipe(
-    items,
+    mutations,
     ReadonlyArray.map(({ id, isInsert, now, table, values }) =>
       pipe(
         Object.entries(values),
@@ -397,7 +397,7 @@ const writeTimestampAndMerkleTree = ({
   );
 
 const mutate = ({
-  items,
+  mutations,
   queries,
 }: DbWorkerInputMutate): Effect.Effect<
   | Sqlite
@@ -413,16 +413,14 @@ const mutate = ({
   void
 > =>
   Effect.gen(function* (_) {
-    const [toSync, localOnlyItems] = ReadonlyArray.partition(items, (item) =>
+    const [toSync, localOnly] = ReadonlyArray.partition(mutations, (item) =>
       item.table.startsWith("_"),
     );
-    const [toUpsert, toDelete] = ReadonlyArray.partition(
-      localOnlyItems,
-      (item) =>
-        mutateItemsToNewMessages([item]).some(
-          (message) => message.column === "isDeleted" && message.value === 1,
-        ),
-    ).map(mutateItemsToNewMessages);
+    const [toUpsert, toDelete] = ReadonlyArray.partition(localOnly, (item) =>
+      mutationsToNewMessages([item]).some(
+        (message) => message.column === "isDeleted" && message.value === 1,
+      ),
+    ).map(mutationsToNewMessages);
 
     yield* _(
       Effect.forEach(toUpsert, (message) =>
@@ -441,7 +439,7 @@ const mutate = ({
       let { timestamp, merkleTree } = yield* _(readTimestampAndMerkleTree);
 
       const messages = yield* _(
-        mutateItemsToNewMessages(toSync),
+        mutationsToNewMessages(toSync),
         Effect.forEach((message) =>
           Effect.map(sendTimestamp(timestamp), (nextTimestamp): Message => {
             timestamp = nextTimestamp;
@@ -465,7 +463,7 @@ const mutate = ({
       });
     }
 
-    const onCompleteIds = ReadonlyArray.filterMap(items, (item) =>
+    const onCompleteIds = ReadonlyArray.filterMap(mutations, (item) =>
       Option.fromNullable(item.onCompleteId),
     );
     if (queries.length > 0 || onCompleteIds.length > 0)
