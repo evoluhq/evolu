@@ -3,6 +3,7 @@ import {
   Effect,
   Function,
   Layer,
+  Match,
   Number,
   ReadonlyArray,
   pipe,
@@ -23,12 +24,7 @@ import {
   queryResultFromRows,
   serializeQuery,
 } from "./Db.js";
-import {
-  DbWorker,
-  DbWorkerOutput,
-  DbWorkerOutputOnQuery,
-  Mutation,
-} from "./DbWorker.js";
+import { DbWorker, DbWorkerOutputOnQuery, Mutation } from "./DbWorker.js";
 import { applyPatches } from "./Diff.js";
 import { ErrorStore, ErrorStoreLive } from "./ErrorStore.js";
 import { Id, SqliteBoolean, SqliteDate, cast } from "./Model.js";
@@ -464,41 +460,24 @@ export const EvoluLive = <S extends Schema>(
       const bip39 = yield* _(Bip39);
       const config = yield* _(Config);
 
-      const mapOutputToEffect = (
-        output: DbWorkerOutput,
-      ): Effect.Effect<never, never, void> => {
-        switch (output._tag) {
-          case "onError":
-            if (process.env.NODE_ENV === "development")
-              // JSON.stringify, because Expo console needs strings.
-              // eslint-disable-next-line no-console
-              console.warn(JSON.stringify(output.error, null, 2));
-            return errorStore.setState(output.error);
-
-          case "onQuery":
-            return onQuery(output);
-
-          case "onOwner":
-            return ownerStore.setState(output.owner);
-
-          case "onSyncState":
-            return syncStateStore.setState(output.state);
-
-          case "onReceive": {
-            const queries = subscribedQueries.getSubscribedQueries();
-            if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
-              dbWorker.postMessage({ _tag: "query", queries });
-            return Effect.succeed(void 0);
-          }
-          case "onResetOrRestore":
+      dbWorker.onMessage = (output): void =>
+        Match.value(output).pipe(
+          Match.tagsExhaustive({
+            onError: ({ error }) => errorStore.setState(error),
+            onQuery,
+            onOwner: ({ owner }) => ownerStore.setState(owner),
+            onSyncState: ({ state }) => syncStateStore.setState(state),
+            onReceive: () => {
+              const queries = subscribedQueries.getSubscribedQueries();
+              if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
+                dbWorker.postMessage({ _tag: "query", queries });
+              return Effect.succeed(void 0);
+            },
             // TODO: appState.reset
-            return Effect.succeed(void 0);
-        }
-      };
-
-      dbWorker.onMessage = (output): void => {
-        mapOutputToEffect(output).pipe(Effect.runSync);
-      };
+            onResetOrRestore: () => Effect.succeed(void 0),
+          }),
+          Effect.runSync,
+        );
 
       dbWorker.postMessage({ _tag: "init", config, tables });
 

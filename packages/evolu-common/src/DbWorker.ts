@@ -4,6 +4,7 @@ import {
   Effect,
   Function,
   Layer,
+  Match,
   Option,
   ReadonlyArray,
   ReadonlyRecord,
@@ -37,19 +38,15 @@ import {
   Table,
   Tables,
   Value,
+  deserializeQuery,
   ensureSchema,
   lazyInit,
-  deserializeQuery,
   someDefectToNoSuchTableOrColumnError,
   transaction,
   valuesToSqliteValues,
 } from "./Db.js";
 import { QueryPatches, makePatches } from "./Diff.js";
-import {
-  EvoluError,
-  UnexpectedError,
-  makeUnexpectedError,
-} from "./ErrorStore.js";
+import { EvoluError, makeUnexpectedError } from "./ErrorStore.js";
 import { Id, SqliteDate, cast } from "./Model.js";
 import { OnCompleteId } from "./OnCompletes.js";
 import { Owner, OwnerId } from "./Owner.js";
@@ -125,12 +122,12 @@ export type DbWorkerOutput =
   | DbWorkerOutputOnResetOrRestore
   | DbWorkerOutputOnSyncState;
 
-interface DbWorkerOutputOnError {
+export interface DbWorkerOutputOnError {
   readonly _tag: "onError";
   readonly error: EvoluError;
 }
 
-interface DbWorkerOutputOnOwner {
+export interface DbWorkerOutputOnOwner {
   readonly _tag: "onOwner";
   readonly owner: Owner;
 }
@@ -657,46 +654,25 @@ export const DbWorkerLive = Layer.effect(
         TimeLive,
       );
 
-      const mapInputToEffect = (
-        input: DbWorkerInput,
-      ): Effect.Effect<
-        | Sqlite
-        | RowsStore
-        | DbWorkerOnMessage
-        | Owner
-        | Time
-        | Config
-        | SyncWorkerPostMessage
-        | Bip39
-        | NanoId,
-        | UnexpectedError
-        | TimestampDriftError
-        | TimestampCounterOverflowError
-        | TimestampError,
-        void
-      > => {
-        switch (input._tag) {
-          case "init":
-            return makeUnexpectedError(new Error("init must be called once"));
-          case "query":
-            return query(input);
-          case "mutate":
-            return mutate(input);
-          case "sync":
-            return sync(input);
-          case "reset":
-            skipAllBecauseOfReset = true;
-            return reset(input);
-          case "ensureSchema":
-            return ensureSchema(input.tables);
-          case "SyncWorkerOutputSyncResponse":
-            return handleSyncResponse(input);
-        }
-      };
-
       return (input) => {
         if (skipAllBecauseOfReset) return Promise.resolve(undefined);
-        return mapInputToEffect(input).pipe(Effect.provide(layer), run);
+        return Match.value(input).pipe(
+          Match.tagsExhaustive({
+            init: () =>
+              makeUnexpectedError(new Error("init must be called once")),
+            query,
+            mutate,
+            sync,
+            reset: (input) => {
+              skipAllBecauseOfReset = true;
+              return reset(input);
+            },
+            ensureSchema: ({ tables }) => ensureSchema(tables),
+            SyncWorkerOutputSyncResponse: handleSyncResponse,
+          }),
+          Effect.provide(layer),
+          run,
+        );
       };
     };
 
