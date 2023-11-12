@@ -1,10 +1,4 @@
-import {
-  Sqlite,
-  SqliteRow,
-  canUseDom,
-  ensureSqliteQuery,
-  parseJsonResults,
-} from "@evolu/common";
+import { Sqlite, SqliteRow, canUseDom, ensureSqliteQuery } from "@evolu/common";
 import { Effect, Function, Layer } from "effect";
 
 import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
@@ -33,7 +27,6 @@ const exec: Sqlite["exec"] = (arg) =>
       rowMode: "object",
       bind: sqliteQuery.parameters,
     }) as SqliteRow[];
-    parseJsonResults(rows);
     return { rows, changes: sqlite.changes() };
   });
 
