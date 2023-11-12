@@ -1,4 +1,4 @@
-import { Context, Effect, Function, Layer } from "effect";
+import { Context, Effect, Layer } from "effect";
 import { TimestampError } from "./Crdt.js";
 import { Store, makeStore } from "./Store.js";
 
@@ -40,5 +40,5 @@ interface TransferableError {
 
 export const ErrorStoreLive = Layer.effect(
   ErrorStore,
-  makeStore<ErrorStoreValue>(Function.constNull),
+  makeStore<ErrorStoreValue>(null),
 );

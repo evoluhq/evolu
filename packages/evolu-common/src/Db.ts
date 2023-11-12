@@ -312,5 +312,5 @@ type RowsStoreValue = ReadonlyMap<Query, ReadonlyArray<Row>>;
 
 export const RowsStoreLive = Layer.effect(
   RowsStore,
-  makeStore<RowsStoreValue>(() => new Map()),
+  makeStore<RowsStoreValue>(new Map()),
 );

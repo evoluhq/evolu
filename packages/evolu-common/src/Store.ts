@@ -1,4 +1,4 @@
-import { Effect, Function } from "effect";
+import { Effect } from "effect";
 
 export type Listener = () => void;
 
@@ -14,11 +14,11 @@ export interface Store<T> {
 }
 
 export const makeStore = <T>(
-  initialState: Function.LazyArg<T>,
+  initialState: T,
 ): Effect.Effect<never, never, Store<T>> =>
   Effect.sync(() => {
     const listeners = new Set<Listener>();
-    let currentState = initialState();
+    let currentState = initialState;
 
     const store: Store<T> = {
       subscribe(listener) {

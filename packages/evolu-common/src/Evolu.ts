@@ -446,9 +446,9 @@ const EvoluLayer = <S extends Schema>(_tables: Tables) =>
       const loadQuery = yield* _(LoadQuery);
       const onQuery = yield* _(OnQuery);
       const subscribedQueries = yield* _(SubscribedQueries);
-      const ownerStore = yield* _(makeStore<Owner | null>(Function.constNull));
+      const ownerStore = yield* _(makeStore<Owner | null>(null));
       const syncStateStore = yield* _(
-        makeStore<SyncState>(() => ({ _tag: "SyncStateInitial" })),
+        makeStore<SyncState>({ _tag: "SyncStateInitial" }),
       );
       const mutate = yield* _(Mutate<S>());
       const bip39 = yield* _(Bip39);
