@@ -33,6 +33,7 @@ import { FlushSync } from "./Platform.js";
 import { SqliteQuery } from "./Sqlite.js";
 import { Store, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
+import { Config } from "./Config.js";
 
 export interface Evolu<S extends Schema> {
   readonly subscribeError: ErrorStore["subscribe"];
@@ -436,8 +437,13 @@ const MutateLive = <S extends Schema>(): Layer.Layer<
     }),
   );
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-const EvoluLayer = <S extends Schema>(_tables: Tables) =>
+export const EvoluLive = <S extends Schema>(
+  tables: Tables,
+): Layer.Layer<
+  DbWorker | NanoId | FlushSync | Bip39 | Config, // | AppState,
+  never,
+  Evolu<S>
+> =>
   Layer.effect(
     Evolu<S>(),
     Effect.gen(function* (_) {
@@ -452,6 +458,7 @@ const EvoluLayer = <S extends Schema>(_tables: Tables) =>
       );
       const mutate = yield* _(Mutate<S>());
       const bip39 = yield* _(Bip39);
+      const config = yield* _(Config);
 
       dbWorker.onMessage = (output): void => {
         // TODO: Return effects and run them at one place.
@@ -477,9 +484,9 @@ const EvoluLayer = <S extends Schema>(_tables: Tables) =>
             break;
 
           case "onReceive": {
-            // const queries = getSubscribedQueries();
-            // if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
-            //   dbWorker.postMessage({ _tag: "query", queries });
+            const queries = subscribedQueries.getSubscribedQueries();
+            if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
+              dbWorker.postMessage({ _tag: "query", queries });
             break;
           }
           case "onResetOrRestore":
@@ -490,6 +497,18 @@ const EvoluLayer = <S extends Schema>(_tables: Tables) =>
             absurd(output);
         }
       };
+
+      dbWorker.postMessage({ _tag: "init", config, tables });
+
+      // appState.onFocus(() => {
+      //   // `queries` to refresh subscribed queries when a tab is changed.
+      //   dbWorker.postMessage({ _tag: "sync", queries: getSubscribedQueries() });
+      // });
+
+      // const sync = (): void =>
+      //   dbWorker.postMessage({ _tag: "sync", queries: [] });
+      // appState.onReconnect(sync);
+      // sync();
 
       return Evolu<S>().of({
         subscribeError: errorStore.subscribe,
@@ -525,16 +544,7 @@ const EvoluLayer = <S extends Schema>(_tables: Tables) =>
         },
       });
     }),
-  );
-
-export const EvoluLive = <S extends Schema>(
-  _tables: Tables,
-): Layer.Layer<
-  DbWorker | NanoId | FlushSync | Bip39, // | AppState,
-  never,
-  Evolu<S>
-> =>
-  EvoluLayer<S>(_tables).pipe(
+  ).pipe(
     Layer.use(
       Layer.mergeAll(
         ErrorStoreLive,
