@@ -28,7 +28,7 @@ importers:
     dependencies:
       '@effect/schema':
         specifier: ^0.47.4
-        version: 0.47.4(effect@2.0.0-next.54)(fast-check@3.13.2)
+        version: 0.47.6(effect@2.0.0-next.54)(fast-check@3.13.2)
       '@evolu/react-native':
         specifier: workspace:*
         version: link:../../packages/evolu-react-native
@@ -114,7 +114,7 @@ importers:
     dependencies:
       '@effect/schema':
         specifier: ^0.47.4
-        version: 0.47.4(effect@2.0.0-next.54)(fast-check@3.13.2)
+        version: 0.47.6(effect@2.0.0-next.54)(fast-check@3.13.2)
       '@evolu/common':
         specifier: workspace:*
         version: link:../../packages/evolu-common
@@ -242,8 +242,8 @@ importers:
         version: 5.0.3
     devDependencies:
       '@effect/schema':
-        specifier: 0.47.4
-        version: 0.47.4(effect@2.0.0-next.54)(fast-check@3.13.2)
+        specifier: 0.47.6
+        version: 0.47.6(effect@2.0.0-next.54)(fast-check@3.13.2)
       '@evolu/tsconfig':
         specifier: workspace:*
         version: link:../evolu-tsconfig
@@ -2324,8 +2324,8 @@ packages:
       '@jridgewell/trace-mapping': 0.3.9
     dev: true
 
-  /@effect/schema@0.47.4(effect@2.0.0-next.54)(fast-check@3.13.2):
-    resolution: {integrity: sha512-uoXYrAH1btW7F6GCbxtxofxFMa7t3wlmdeFF+k9pAws5FqbNCBql/X6ABg4Za9OaznjeEE0W5HKBn5YlPkzD3g==}
+  /@effect/schema@0.47.6(effect@2.0.0-next.54)(fast-check@3.13.2):
+    resolution: {integrity: sha512-+pH1/ByUnWa71tirb3kYMdCfWXjmYvU/2wZOfG3vmF8XQWcR3WnIlI1R5DvVYxtLp872a1kDiYX618h6ta6w9g==}
     peerDependencies:
       effect: 2.0.0-next.54
       fast-check: ^3.13.2
