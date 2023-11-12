@@ -43,4 +43,10 @@ export const SqliteTest = Layer.effect(
     return { exec };
   }),
 );
-export type Db = { users: { id: Id; name: string } };
+
+export type Db = {
+  users: {
+    id: Id;
+    name: string;
+  };
+};

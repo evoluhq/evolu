@@ -63,14 +63,36 @@ export const valuesToSqliteValues = (
 
 export type Query<R extends Row = Row> = string & Brand.Brand<"Query"> & R;
 
-export const queryFromSqliteQuery = <R extends Row>({
+interface SerializedSqliteQuery {
+  readonly sql: string;
+  readonly parameters: (null | string | number | Array<number>)[];
+}
+
+// We use queries as keys, hence JSON.stringify.
+export const serializeQuery = <R extends Row>({
   sql,
   parameters,
-}: SqliteQuery): Query<R> => JSON.stringify({ sql, parameters }) as Query<R>;
+}: SqliteQuery): Query<R> => {
+  const query: SerializedSqliteQuery = {
+    sql,
+    parameters: parameters.map((p) =>
+      Predicate.isUint8Array(p) ? Array.from(p) : p,
+    ),
+  };
+  return JSON.stringify(query) as Query<R>;
+};
 
-export const queryToSqliteQuery = <R extends Row>(
+export const deserializeQuery = <R extends Row>(
   query: Query<R>,
-): SqliteQuery => JSON.parse(query) as SqliteQuery;
+): SqliteQuery => {
+  const serializedSqliteQuery = JSON.parse(query) as SerializedSqliteQuery;
+  return {
+    ...serializedSqliteQuery,
+    parameters: serializedSqliteQuery.parameters.map((p) =>
+      Array.isArray(p) ? new Uint8Array(p) : p,
+    ),
+  };
+};
 
 export type Row = ReadonlyRecord.ReadonlyRecord<
   | Value

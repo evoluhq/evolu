@@ -19,7 +19,7 @@ import {
   Schema,
   Tables,
   emptyRows,
-  queryFromSqliteQuery,
+  serializeQuery,
   queryResultFromRows,
 } from "./Db.js";
 import { DbWorker, DbWorkerOutputOnQuery } from "./DbWorker.js";
@@ -135,7 +135,7 @@ export const makeCreateQuery =
         sql,
         parameters: parameters as SqliteQuery["parameters"],
       }),
-      (query) => queryFromSqliteQuery<R>(query),
+      (query) => serializeQuery<R>(query),
     );
 
 export interface LoadingPromises {

@@ -39,7 +39,7 @@ import {
   Value,
   ensureSchema,
   lazyInit,
-  queryToSqliteQuery,
+  deserializeQuery,
   someDefectToNoSuchTableOrColumnError,
   transaction,
   valuesToSqliteValues,
@@ -203,7 +203,7 @@ const query = ({
       ReadonlyArray.dedupe(queries),
       Effect.forEach((query) =>
         sqlite
-          .exec(queryToSqliteQuery(query))
+          .exec(deserializeQuery(query))
           .pipe(
             Effect.map(
               (result) => [query, maybeParseJson(result.rows)] as const,
