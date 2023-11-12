@@ -5,10 +5,10 @@ import {
   Layer,
   Number,
   ReadonlyArray,
-  absurd,
   pipe,
 } from "effect";
 import * as Kysely from "kysely";
+import { Config } from "./Config.js";
 import { Time, TimeLive } from "./Crdt.js";
 import { Bip39, Mnemonic, NanoId } from "./Crypto.js";
 import {
@@ -23,7 +23,12 @@ import {
   queryResultFromRows,
   serializeQuery,
 } from "./Db.js";
-import { DbWorker, DbWorkerOutputOnQuery, Mutation } from "./DbWorker.js";
+import {
+  DbWorker,
+  DbWorkerOutput,
+  DbWorkerOutputOnQuery,
+  Mutation,
+} from "./DbWorker.js";
 import { applyPatches } from "./Diff.js";
 import { ErrorStore, ErrorStoreLive } from "./ErrorStore.js";
 import { Id, SqliteBoolean, SqliteDate, cast } from "./Model.js";
@@ -33,7 +38,6 @@ import { FlushSync } from "./Platform.js";
 import { SqliteQuery } from "./Sqlite.js";
 import { Store, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
-import { Config } from "./Config.js";
 
 export interface Evolu<S extends Schema> {
   readonly subscribeError: ErrorStore["subscribe"];
@@ -460,42 +464,40 @@ export const EvoluLive = <S extends Schema>(
       const bip39 = yield* _(Bip39);
       const config = yield* _(Config);
 
-      dbWorker.onMessage = (output): void => {
-        // TODO: Return effects and run them at one place.
+      const mapOutputToEffect = (
+        output: DbWorkerOutput,
+      ): Effect.Effect<never, never, void> => {
         switch (output._tag) {
           case "onError":
             if (process.env.NODE_ENV === "development")
               // JSON.stringify, because Expo console needs strings.
               // eslint-disable-next-line no-console
               console.warn(JSON.stringify(output.error, null, 2));
-            errorStore.setState(output.error).pipe(Effect.runSync);
-            break;
+            return errorStore.setState(output.error);
 
           case "onQuery":
-            onQuery(output).pipe(Effect.runSync);
-            break;
+            return onQuery(output);
 
           case "onOwner":
-            ownerStore.setState(output.owner).pipe(Effect.runSync);
-            break;
+            return ownerStore.setState(output.owner);
 
           case "onSyncState":
-            syncStateStore.setState(output.state).pipe(Effect.runSync);
-            break;
+            return syncStateStore.setState(output.state);
 
           case "onReceive": {
             const queries = subscribedQueries.getSubscribedQueries();
             if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
               dbWorker.postMessage({ _tag: "query", queries });
-            break;
+            return Effect.succeed(void 0);
           }
           case "onResetOrRestore":
-            // Effect.runSync(appState.reset);
-            break;
-
-          default:
-            absurd(output);
+            // TODO: appState.reset
+            return Effect.succeed(void 0);
         }
+      };
+
+      dbWorker.onMessage = (output): void => {
+        mapOutputToEffect(output).pipe(Effect.runSync);
       };
 
       dbWorker.postMessage({ _tag: "init", config, tables });
