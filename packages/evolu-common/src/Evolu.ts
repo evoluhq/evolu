@@ -29,7 +29,9 @@ import { SqliteBoolean, SqliteDate } from "./Model.js";
 import { OnCompletes, OnCompletesLive } from "./OnCompletes.js";
 import { FlushSync } from "./Platform.js";
 import { SqliteQuery } from "./Sqlite.js";
-import { Store, Unsubscribe } from "./Store.js";
+import { Store, Unsubscribe, makeStore } from "./Store.js";
+import { SyncState } from "./SyncWorker.js";
+import { Owner } from "./Owner.js";
 
 export interface Evolu<S extends Schema> {
   readonly subscribeError: ErrorStore["subscribe"];
@@ -41,11 +43,11 @@ export interface Evolu<S extends Schema> {
   readonly subscribeQuery: SubscribedQueries["subscribeQuery"];
   readonly getQuery: SubscribedQueries["getQuery"];
 
-  // readonly subscribeSyncState: (listener: Listener) => Unsubscribe;
-  // readonly getSyncState: () => SyncState;
+  readonly subscribeOwner: Store<Owner | null>["subscribe"];
+  readonly getOwner: Store<Owner | null>["getState"];
 
-  // readonly subscribeOwner: (listener: Listener) => Unsubscribe;
-  // readonly getOwner: () => Owner | null;
+  readonly subscribeSyncState: Store<SyncState>["subscribe"];
+  readonly getSyncState: Store<SyncState>["getState"];
 
   // create: <K extends keyof S>(
   //   table: K,
@@ -398,6 +400,10 @@ const EvoluLayer = <S extends Schema>(
       const loadQuery = yield* _(LoadQuery);
       const onQuery = yield* _(OnQuery);
       const subscribedQueries = yield* _(SubscribedQueries);
+      const ownerStore = yield* _(makeStore<Owner | null>(Function.constNull));
+      const syncStateStore = yield* _(
+        makeStore<SyncState>(() => ({ _tag: "SyncStateInitial" })),
+      );
 
       dbWorker.onMessage = (output): void => {
         // TODO: Return effects and run them at one place.
@@ -415,7 +421,11 @@ const EvoluLayer = <S extends Schema>(
             break;
 
           case "onOwner":
-            // ownerStore.setState(output.owner). run sync;
+            ownerStore.setState(output.owner).pipe(Effect.runSync);
+            break;
+
+          case "onSyncState":
+            syncStateStore.setState(output.state).pipe(Effect.runSync);
             break;
 
           case "onReceive": {
@@ -426,10 +436,6 @@ const EvoluLayer = <S extends Schema>(
           }
           case "onResetOrRestore":
             // Effect.runSync(appState.reset);
-            break;
-
-          case "onSyncState":
-            // syncStateStore.setState(output.state); run sync
             break;
 
           default:
@@ -447,21 +453,11 @@ const EvoluLayer = <S extends Schema>(
         subscribeQuery: subscribedQueries.subscribeQuery,
         getQuery: subscribedQueries.getQuery,
 
-        // subscribeSyncState() {
-        //   throw "";
-        // },
+        subscribeOwner: ownerStore.subscribe,
+        getOwner: ownerStore.getState,
 
-        // getSyncState() {
-        //   throw "";
-        // },
-
-        // subscribeOwner() {
-        //   throw "";
-        // },
-
-        // getOwner() {
-        //   throw "";
-        // },
+        subscribeSyncState: syncStateStore.subscribe,
+        getSyncState: syncStateStore.getState,
 
         // create() {
         //   throw "";
