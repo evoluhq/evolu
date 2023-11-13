@@ -1,14 +1,6 @@
 import * as S from "@effect/schema/Schema";
 import * as Evolu from "@evolu/react";
-// import {
-//   ChangeEvent,
-//   FC,
-//   Suspense,
-//   memo,
-//   startTransition,
-//   useEffect,
-//   useState,
-// } from "react";
+import { FC } from "react";
 
 const TodoId = Evolu.id("Todo");
 type TodoId = S.Schema.To<typeof TodoId>;
@@ -41,18 +33,41 @@ const TodoCategoryTable = S.struct({
 });
 type TodoCategoryTable = S.Schema.To<typeof TodoCategoryTable>;
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const Database = S.struct({
   todo: TodoTable,
   todoCategory: TodoCategoryTable,
 });
 type Database = S.Schema.To<typeof Database>;
 
-const evolu = Evolu.createEvolu(Database);
-const todos = evolu.createQuery((db) => db.selectFrom("todo").selectAll());
+// const evolu = Evolu.createEvolu(Database);
 
-//     // .$narrowType<{ nullable_column: string }>()
-//     // .$narrowType<{ title: Evolu.NonEmptyString1000 }>(),
-//   );
+// jo, tohle je ok, naprosto
+// const { EvoluProvider, useQuery, useCreate, useUpdate } =
+//   Evolu.createReact(evolu);
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+// const todos = evolu.createQuery((db) =>
+//   db
+//     .selectFrom("todo")
+//     .selectAll()
+//     // TODO: Tohle kdyby existovalo, hmm, exists
+//     // ale bacha, musi se to skladat potom pres or!
+//     // use case: pridam novou prop, starou prestanu pouzivat
+//     // chci jen ty, ktere existuji jedna nebo druha
+//     // a ted ta otazka, jde to sloucit? tusim to slo pres ten JSON
+//     // to je jedina cesta, ze bych vytvoril novou prop
+//     // titleOrTitleBla, a dal ji union a tag, to by slo
+//     // je to nested object subselect per neco, jo
+//     // ok, tak budu mit DSL pro use cases, nice!
+//     // .$call(foo('title'))
+//     // aspon jeden bych udelat mohl
+//     .$call((a) =>
+//       a
+//         .where("title", "is not", null)
+//         .$narrowType<{ title: Evolu.NonEmptyString1000 }>(),
+//     ),
+// );
 
 // const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
 //   Evolu.create(Database, {
@@ -356,29 +371,29 @@ const todos = evolu.createQuery((db) => db.selectFrom("todo").selectAll());
 //   );
 // };
 
-// export const NextJsExample: FC = () => {
-//   const [todosShown, setTodosShown] = useState(true);
+export const NextJsExample: FC = () => {
+  // const [todosShown, setTodosShown] = useState(true);
 
-//   return (
-//     <>
-//       <OwnerActions />
-//       <nav className="my-4">
-//         <Button
-//           title="Simulate suspense-enabled router transition"
-//           onClick={(): void => {
-//             // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
-//             startTransition(() => {
-//               setTodosShown(!todosShown);
-//             });
-//           }}
-//         />
-//         <p>
-//           Using suspense-enabled router transition, you will not see any loader
-//           or jumping content.
-//         </p>
-//       </nav>
-//       <Suspense>{todosShown ? <Todos /> : <TodoCategories />}</Suspense>
-//       <NotificationBar />
-//     </>
-//   );
-// };
+  return (
+    <>
+      {/* <OwnerActions />
+      <nav className="my-4">
+        <Button
+          title="Simulate suspense-enabled router transition"
+          onClick={(): void => {
+            // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
+            startTransition(() => {
+              setTodosShown(!todosShown);
+            });
+          }}
+        />
+        <p>
+          Using suspense-enabled router transition, you will not see any loader
+          or jumping content.
+        </p>
+      </nav>
+      <Suspense>{todosShown ? <Todos /> : <TodoCategories />}</Suspense>
+      <NotificationBar /> */}
+    </>
+  );
+};

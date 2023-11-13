@@ -1,12 +1,15 @@
-export { jsonArrayFrom, jsonObjectFrom } from "kysely/helpers/sqlite";
 export * from "./Config.js";
 export * from "./Crdt.js";
 export * from "./Crypto.js";
 export * from "./Db.js";
 export * from "./DbWorker.js";
+export * from "./Diff.js";
 export * from "./ErrorStore.js";
 export * from "./Evolu.js";
 export * from "./Model.js";
+export * from "./Murmurhash.js";
+export * from "./OnCompletes.js";
+export * from "./Owner.js";
 export * from "./Platform.js";
 export * from "./Protobuf.js";
 export * from "./Public.js";
