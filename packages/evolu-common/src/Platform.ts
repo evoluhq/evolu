@@ -1,14 +1,12 @@
 import { Context, Effect, Layer } from "effect";
 
-export interface Platform {
-  readonly name:
-    | "server"
-    | "web-with-opfs"
-    | "web-without-opfs"
-    | "react-native";
-}
+export type PlatformName =
+  | "server"
+  | "web-with-opfs"
+  | "web-without-opfs"
+  | "react-native";
 
-export const Platform = Context.Tag<Platform>();
+export const PlatformName = Context.Tag<PlatformName>();
 
 // TODO: Effect API
 export type FlushSync = (callback: () => void) => void;

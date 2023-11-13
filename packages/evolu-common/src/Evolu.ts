@@ -1,3 +1,4 @@
+import * as S from "@effect/schema/Schema";
 import {
   Context,
   Effect,
@@ -11,7 +12,7 @@ import {
 import * as Kysely from "kysely";
 import { Config } from "./Config.js";
 import { Time, TimeLive } from "./Crdt.js";
-import { Bip39, Mnemonic, NanoId } from "./Crypto.js";
+import { Bip39, Mnemonic, NanoId, NanoIdLive } from "./Crypto.js";
 import {
   Query,
   QueryResult,
@@ -22,6 +23,7 @@ import {
   Tables,
   emptyRows,
   queryResultFromRows,
+  schemaToTables,
   serializeQuery,
 } from "./Db.js";
 import { DbWorker, DbWorkerOutputOnQuery, Mutation } from "./DbWorker.js";
@@ -382,12 +384,12 @@ type Castable<T> = {
   readonly [K in keyof T]: T[K] extends SqliteBoolean
     ? boolean | SqliteBoolean
     : T[K] extends null | SqliteBoolean
-    ? null | boolean | SqliteBoolean
-    : T[K] extends SqliteDate
-    ? Date | SqliteDate
-    : T[K] extends null | SqliteDate
-    ? null | Date | SqliteDate
-    : T[K];
+      ? null | boolean | SqliteBoolean
+      : T[K] extends SqliteDate
+        ? Date | SqliteDate
+        : T[K] extends null | SqliteDate
+          ? null | Date | SqliteDate
+          : T[K];
 };
 
 const MutateLive = <S extends Schema>(): Layer.Layer<
@@ -437,15 +439,15 @@ const MutateLive = <S extends Schema>(): Layer.Layer<
     }),
   );
 
-export const EvoluLive = <S extends Schema>(
-  tables: Tables,
+export const EvoluLive = <From, To extends Schema>(
+  schema: S.Schema<From, To>,
 ): Layer.Layer<
-  DbWorker | NanoId | FlushSync | Bip39 | Config, // | AppState,
+  DbWorker | FlushSync | Bip39 | Config, // | AppState,
   never,
-  Evolu<S>
+  Evolu<To>
 > =>
   Layer.effect(
-    Evolu<S>(),
+    Evolu<To>(),
     Effect.gen(function* (_) {
       const dbWorker = yield* _(DbWorker);
       const errorStore = yield* _(ErrorStore);
@@ -456,7 +458,7 @@ export const EvoluLive = <S extends Schema>(
       const syncStateStore = yield* _(
         makeStore<SyncState>({ _tag: "SyncStateInitial" }),
       );
-      const mutate = yield* _(Mutate<S>());
+      const mutate = yield* _(Mutate<To>());
       const bip39 = yield* _(Bip39);
       const config = yield* _(Config);
 
@@ -479,7 +481,11 @@ export const EvoluLive = <S extends Schema>(
           Effect.runSync,
         );
 
-      dbWorker.postMessage({ _tag: "init", config, tables });
+      dbWorker.postMessage({
+        _tag: "init",
+        config,
+        tables: schemaToTables(schema),
+      });
 
       // appState.onFocus(() => {
       //   // `queries` to refresh subscribed queries when a tab is changed.
@@ -491,11 +497,11 @@ export const EvoluLive = <S extends Schema>(
       // appState.onReconnect(sync);
       // sync();
 
-      return Evolu<S>().of({
+      return Evolu<To>().of({
         subscribeError: errorStore.subscribe,
         getError: errorStore.getState,
 
-        createQuery: makeCreateQuery<S>(),
+        createQuery: makeCreateQuery<To>(),
         loadQuery,
 
         subscribeQuery: subscribedQueries.subscribeQuery,
@@ -507,7 +513,7 @@ export const EvoluLive = <S extends Schema>(
         subscribeSyncState: syncStateStore.subscribe,
         getSyncState: syncStateStore.getState,
 
-        create: mutate as Mutate<S, "create">,
+        create: mutate as Mutate<To, "create">,
         update: mutate,
 
         resetOwner() {
@@ -526,21 +532,15 @@ export const EvoluLive = <S extends Schema>(
       });
     }),
   ).pipe(
+    Layer.use(Layer.mergeAll(LoadQueryLive, OnQueryLive, MutateLive<To>())),
     Layer.use(
       Layer.mergeAll(
         ErrorStoreLive,
-        LoadQueryLive,
-        OnQueryLive,
-        MutateLive<S>(),
-      ),
-    ),
-    Layer.use(SubscribedQueriesLive),
-    Layer.use(
-      Layer.mergeAll(
         LoadingPromisesLive,
-        RowsStoreLive,
         OnCompletesLive,
+        SubscribedQueriesLive,
         TimeLive,
       ),
     ),
+    Layer.use(Layer.mergeAll(NanoIdLive, RowsStoreLive)),
   );

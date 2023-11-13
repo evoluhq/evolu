@@ -9,6 +9,7 @@ export * from "./Evolu.js";
 export * from "./Model.js";
 export * from "./Platform.js";
 export * from "./Protobuf.js";
+export * from "./Public.js";
 export * from "./Sqlite.js";
 export * from "./Store.js";
 export * from "./SyncWorker.js";

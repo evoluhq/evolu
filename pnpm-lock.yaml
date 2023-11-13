@@ -18,8 +18,8 @@ importers:
         specifier: workspace:*
         version: link:packages/eslint-config-evolu
       prettier:
-        specifier: ^3.0.3
-        version: 3.0.3
+        specifier: ^3.1.0
+        version: 3.1.0
       turbo:
         specifier: ^1.10.16
         version: 1.10.16
@@ -27,8 +27,8 @@ importers:
   apps/native:
     dependencies:
       '@effect/schema':
-        specifier: ^0.47.4
-        version: 0.47.6(effect@2.0.0-next.54)(fast-check@3.13.2)
+        specifier: ^0.47.7
+        version: 0.47.7(effect@2.0.0-next.54)(fast-check@3.13.2)
       '@evolu/react-native':
         specifier: workspace:*
         version: link:../../packages/evolu-react-native
@@ -85,8 +85,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/eslint-config-evolu
       prettier:
-        specifier: ^3.0.3
-        version: 3.0.3
+        specifier: ^3.1.0
+        version: 3.1.0
       typescript:
         specifier: ^5.2.2
         version: 5.2.2
@@ -113,8 +113,8 @@ importers:
   apps/web:
     dependencies:
       '@effect/schema':
-        specifier: ^0.47.4
-        version: 0.47.6(effect@2.0.0-next.54)(fast-check@3.13.2)
+        specifier: ^0.47.7
+        version: 0.47.7(effect@2.0.0-next.54)(fast-check@3.13.2)
       '@evolu/common':
         specifier: workspace:*
         version: link:../../packages/evolu-common
@@ -168,11 +168,11 @@ importers:
         specifier: ^8.4.31
         version: 8.4.31
       prettier:
-        specifier: ^3.0.3
-        version: 3.0.3
+        specifier: ^3.1.0
+        version: 3.1.0
       prettier-plugin-tailwindcss:
         specifier: ^0.5.7
-        version: 0.5.7(prettier@3.0.3)
+        version: 0.5.7(prettier@3.1.0)
       tailwindcss:
         specifier: ^3.3.5
         version: 3.3.5
@@ -242,8 +242,8 @@ importers:
         version: 5.0.3
     devDependencies:
       '@effect/schema':
-        specifier: 0.47.6
-        version: 0.47.6(effect@2.0.0-next.54)(fast-check@3.13.2)
+        specifier: 0.47.7
+        version: 0.47.7(effect@2.0.0-next.54)(fast-check@3.13.2)
       '@evolu/tsconfig':
         specifier: workspace:*
         version: link:../evolu-tsconfig
@@ -2324,8 +2324,8 @@ packages:
       '@jridgewell/trace-mapping': 0.3.9
     dev: true
 
-  /@effect/schema@0.47.6(effect@2.0.0-next.54)(fast-check@3.13.2):
-    resolution: {integrity: sha512-+pH1/ByUnWa71tirb3kYMdCfWXjmYvU/2wZOfG3vmF8XQWcR3WnIlI1R5DvVYxtLp872a1kDiYX618h6ta6w9g==}
+  /@effect/schema@0.47.7(effect@2.0.0-next.54)(fast-check@3.13.2):
+    resolution: {integrity: sha512-rQpzxfGsv2C3HSpwBRYPt7p5eibekWbn+RrYCd6SWtNSF0YPClhZwzBLygQvqDMXHkk3rHuuSOnJvIdqu7o4Hw==}
     peerDependencies:
       effect: 2.0.0-next.54
       fast-check: ^3.13.2
@@ -6986,7 +6986,7 @@ packages:
     resolution: {integrity: sha512-7Gps/XWymbLk2QLYK4NzpMOrYjMhdIxXuIvy2QBsLE6ljuodKvdkWs/cpyJJ3CVIVpH0Oi1Hvg1ovbMzLdFBBg==}
     engines: {node: ^10.12.0 || >=12.0.0}
     dependencies:
-      flat-cache: 3.1.1
+      flat-cache: 3.2.0
 
   /file-uri-to-path@1.0.0:
     resolution: {integrity: sha512-0Zt+s3L7Vf1biwWZ29aARiVYLx7iMGnEUl9x33fbB/j3jR81u/O2LbqK+Bm1CDSNDKVtJ/YjwY7TUd5SkeLQLw==}
@@ -7073,9 +7073,9 @@ packages:
     dependencies:
       micromatch: 4.0.5
 
-  /flat-cache@3.1.1:
-    resolution: {integrity: sha512-/qM2b3LUIaIgviBQovTLvijfyOQXPtSRnRK26ksj2J7rzPIecePUIpJsZ4T02Qg+xiAEKIs5K8dsHEd+VaKa/Q==}
-    engines: {node: '>=12.0.0'}
+  /flat-cache@3.2.0:
+    resolution: {integrity: sha512-CYcENa+FtcUKLmhhqyctpclsq7QF38pKjZHsGNiSQF5r4FtoKDWabFDl3hzaEQMvT1LHEysw5twgLvpYYb4vbw==}
+    engines: {node: ^10.12.0 || >=12.0.0}
     dependencies:
       flatted: 3.2.9
       keyv: 4.5.4
@@ -10654,7 +10654,7 @@ packages:
     resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
     engines: {node: '>= 0.8.0'}
 
-  /prettier-plugin-tailwindcss@0.5.7(prettier@3.0.3):
+  /prettier-plugin-tailwindcss@0.5.7(prettier@3.1.0):
     resolution: {integrity: sha512-4v6uESAgwCni6YF6DwJlRaDjg9Z+al5zM4JfngcazMy4WEf/XkPS5TEQjbD+DZ5iNuG6RrKQLa/HuX2SYzC3kQ==}
     engines: {node: '>=14.21.3'}
     peerDependencies:
@@ -10706,7 +10706,7 @@ packages:
       prettier-plugin-twig-melody:
         optional: true
     dependencies:
-      prettier: 3.0.3
+      prettier: 3.1.0
     dev: true
 
   /prettier@2.8.8:
@@ -10715,8 +10715,8 @@ packages:
     hasBin: true
     dev: true
 
-  /prettier@3.0.3:
-    resolution: {integrity: sha512-L/4pUDMxcNa8R/EthV08Zt42WBO4h1rarVtK0K+QJG0X187OLo7l699jWw0GKuwzkPQ//jMFA/8Xm6Fh3J/DAg==}
+  /prettier@3.1.0:
+    resolution: {integrity: sha512-TQLvXjq5IAibjh8EpBIkNKxO749UEWABoiIZehEPiY4GNpVdhaFKqSTu+QrlU6D2dPAfubRmtJTi4K4YkQ5eXw==}
     engines: {node: '>=14'}
     hasBin: true
     dev: true

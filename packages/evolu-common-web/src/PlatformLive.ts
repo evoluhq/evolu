@@ -5,7 +5,7 @@ import {
   FlushSync,
   InvalidMnemonicError,
   Mnemonic,
-  Platform,
+  PlatformName,
   SyncLock,
   canUseDom,
 } from "@evolu/common";
@@ -36,13 +36,14 @@ const isSafariWithOpfs = (): boolean => {
   return Number(matches[1]) >= 17;
 };
 
-const name = canUseDom
-  ? isChromeWithOpfs() || isFirefoxWithOpfs() || isSafariWithOpfs()
-    ? "web-with-opfs"
-    : "web-without-opfs"
-  : "server";
-
-export const PlatformLive = Layer.succeed(Platform, { name });
+export const PlatformNameLive = Layer.succeed(
+  PlatformName,
+  canUseDom
+    ? isChromeWithOpfs() || isFirefoxWithOpfs() || isSafariWithOpfs()
+      ? "web-with-opfs"
+      : "web-without-opfs"
+    : "server",
+);
 
 // TODO: Move to @evolu/react and make effectul.
 export const FlushSyncLive = Layer.succeed(FlushSync, flushSync);
@@ -89,9 +90,9 @@ export const SyncLockLive = Layer.effect(
 export const AppStateLive = Layer.effect(
   AppState,
   Effect.gen(function* (_) {
-    const platform = yield* _(Platform);
+    const platformName = yield* _(PlatformName);
 
-    if (platform.name === "server")
+    if (platformName === "server")
       return AppState.of({
         onFocus: Function.constVoid,
         onReconnect: Function.constVoid,
