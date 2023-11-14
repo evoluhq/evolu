@@ -37,7 +37,7 @@ import { SqliteQuery } from "./Sqlite.js";
 import { Store, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
 
-export interface Evolu<S extends Schema> {
+export interface Evolu<S extends Schema = Schema> {
   readonly subscribeError: ErrorStore["subscribe"];
   readonly getError: ErrorStore["getState"];
 
@@ -73,8 +73,7 @@ export interface Evolu<S extends Schema> {
   readonly ensureSchema: (tables: Tables) => void;
 }
 
-export const Evolu = <S extends Schema>(): Context.Tag<Evolu<S>, Evolu<S>> =>
-  Context.Tag<Evolu<S>>("evolu/Evolu");
+export const Evolu = Context.Tag<Evolu>();
 
 type CreateQuery<S extends Schema> = <R extends Row>(
   queryCallback: QueryCallback<S, R>,
@@ -143,9 +142,7 @@ export interface LoadingPromises {
   readonly release: () => void;
 }
 
-export const LoadingPromises = Context.Tag<LoadingPromises>(
-  "evolu/LoadingPromises",
-);
+export const LoadingPromises = Context.Tag<LoadingPromises>();
 
 type LoadingPromise<R extends Row> = Promise<QueryResult<R>>;
 
@@ -230,7 +227,7 @@ export const getLoadingPromiseProp = <R extends Row>(
 
 type LoadQuery = <R extends Row>(query: Query<R>) => Promise<QueryResult<R>>;
 
-const LoadQuery = Context.Tag<LoadQuery>("evolu/LoadQuery");
+const LoadQuery = Context.Tag<LoadQuery>();
 
 const LoadQueryLive = Layer.effect(
   LoadQuery,
@@ -258,7 +255,7 @@ type OnQuery = (
   output: DbWorkerOutputOnQuery,
 ) => Effect.Effect<never, never, void>;
 
-const OnQuery = Context.Tag<OnQuery>("evolu/OnQuery");
+const OnQuery = Context.Tag<OnQuery>();
 
 const OnQueryLive = Layer.effect(
   OnQuery,
@@ -309,9 +306,7 @@ interface SubscribedQueries {
   readonly getSubscribedQueries: () => ReadonlyArray<Query>;
 }
 
-const SubscribedQueries = Context.Tag<SubscribedQueries>(
-  "evolu/SubscribedQueries",
-);
+const SubscribedQueries = Context.Tag<SubscribedQueries>();
 
 const SubscribedQueriesLive = Layer.effect(
   SubscribedQueries,
@@ -349,9 +344,10 @@ const SubscribedQueriesLive = Layer.effect(
   }),
 );
 
-type Mutate<S extends Schema, Mode extends "create" | "update" = "update"> = <
-  K extends keyof S,
->(
+type Mutate<
+  S extends Schema = Schema,
+  Mode extends "create" | "update" = "update",
+> = <K extends keyof S>(
   table: K,
   values: Kysely.Simplify<
     Mode extends "create"
@@ -365,8 +361,7 @@ type Mutate<S extends Schema, Mode extends "create" | "update" = "update"> = <
   readonly id: S[K]["id"];
 };
 
-const Mutate = <S extends Schema>(): Context.Tag<Mutate<S>, Mutate<S>> =>
-  Context.Tag<Mutate<S>>("evolu/Mutate");
+const Mutate = Context.Tag<Mutate>();
 
 // https://stackoverflow.com/a/54713648/233902
 type PartialForNullable<
@@ -396,155 +391,144 @@ type Castable<T> = {
           : T[K];
 };
 
-const MutateLive = <S extends Schema>(): Layer.Layer<
-  NanoId | OnCompletes | Time | SubscribedQueries | LoadingPromises | DbWorker,
-  never,
-  Mutate<S>
-> =>
-  Layer.effect(
-    Mutate<S>(),
-    Effect.gen(function* (_) {
-      const nanoid = yield* _(NanoId);
-      const onCompletes = yield* _(OnCompletes);
-      const time = yield* _(Time);
-      const subscribedQueries = yield* _(SubscribedQueries);
-      const loadingPromises = yield* _(LoadingPromises);
-      const dbWorker = yield* _(DbWorker);
-      const mutations: Array<Mutation> = [];
+const MutateLive = Layer.effect(
+  Mutate,
+  Effect.gen(function* (_) {
+    const nanoid = yield* _(NanoId);
+    const onCompletes = yield* _(OnCompletes);
+    const time = yield* _(Time);
+    const subscribedQueries = yield* _(SubscribedQueries);
+    const loadingPromises = yield* _(LoadingPromises);
+    const dbWorker = yield* _(DbWorker);
+    const mutations: Array<Mutation> = [];
 
-      return Mutate<S>().of((table, { id, ...values }, onComplete) => {
-        const isInsert = id == null;
-        if (isInsert) id = Effect.runSync(nanoid.nanoid) as never;
+    return Mutate.of((table, { id, ...values }, onComplete) => {
+      const isInsert = id == null;
+      if (isInsert) id = Effect.runSync(nanoid.nanoid) as never;
 
-        const onCompleteId = onComplete
-          ? onCompletes.add(onComplete).pipe(Effect.runSync)
-          : null;
+      const onCompleteId = onComplete
+        ? onCompletes.add(onComplete).pipe(Effect.runSync)
+        : null;
 
-        mutations.push({
-          table: table.toString(),
-          id: id as Id,
-          values,
-          isInsert,
-          now: cast(new Date(Effect.runSync(time.now))),
-          onCompleteId,
+      mutations.push({
+        table: table.toString(),
+        id: id as Id,
+        values,
+        isInsert,
+        now: cast(new Date(Effect.runSync(time.now))),
+        onCompleteId,
+      });
+
+      if (mutations.length === 1)
+        queueMicrotask(() => {
+          const queries = subscribedQueries.getSubscribedQueries();
+          if (ReadonlyArray.isNonEmptyReadonlyArray(mutations))
+            dbWorker.postMessage({ _tag: "mutate", mutations, queries });
+          mutations.length = 0;
+          loadingPromises.release();
         });
 
-        if (mutations.length === 1)
-          queueMicrotask(() => {
+      return { id: id as never };
+    });
+  }),
+);
+
+export const EvoluCommonLive = Layer.effect(
+  Evolu,
+  Effect.gen(function* (_) {
+    const dbWorker = yield* _(DbWorker);
+    const errorStore = yield* _(ErrorStore);
+    const loadQuery = yield* _(LoadQuery);
+    const onQuery = yield* _(OnQuery);
+    const subscribedQueries = yield* _(SubscribedQueries);
+    const ownerStore = yield* _(makeStore<Owner | null>(null));
+    const syncStateStore = yield* _(
+      makeStore<SyncState>({ _tag: "SyncStateInitial" }),
+    );
+    const mutate = yield* _(Mutate);
+    const bip39 = yield* _(Bip39);
+    const config = yield* _(Config);
+
+    dbWorker.onMessage = (output): void =>
+      Match.value(output).pipe(
+        Match.tagsExhaustive({
+          onError: ({ error }) => errorStore.setState(error),
+          onQuery,
+          onOwner: ({ owner }) => ownerStore.setState(owner),
+          onSyncState: ({ state }) => syncStateStore.setState(state),
+          onReceive: () => {
             const queries = subscribedQueries.getSubscribedQueries();
-            if (ReadonlyArray.isNonEmptyReadonlyArray(mutations))
-              dbWorker.postMessage({ _tag: "mutate", mutations, queries });
-            mutations.length = 0;
-            loadingPromises.release();
-          });
-
-        return { id: id as never };
-      });
-    }),
-  );
-
-export const EvoluLive = <From, To extends Schema>(
-  schema: S.Schema<From, To>,
-): Layer.Layer<
-  DbWorker | FlushSync | Bip39 | Config, // | AppState,
-  never,
-  Evolu<To>
-> =>
-  Layer.effect(
-    Evolu<To>(),
-    Effect.gen(function* (_) {
-      const dbWorker = yield* _(DbWorker);
-      const errorStore = yield* _(ErrorStore);
-      const loadQuery = yield* _(LoadQuery);
-      const onQuery = yield* _(OnQuery);
-      const subscribedQueries = yield* _(SubscribedQueries);
-      const ownerStore = yield* _(makeStore<Owner | null>(null));
-      const syncStateStore = yield* _(
-        makeStore<SyncState>({ _tag: "SyncStateInitial" }),
+            if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
+              dbWorker.postMessage({ _tag: "query", queries });
+            return Effect.succeed(void 0);
+          },
+          // TODO: appState.reset
+          onResetOrRestore: () => Effect.succeed(void 0),
+        }),
+        Effect.runSync,
       );
-      const mutate = yield* _(Mutate<To>());
-      const bip39 = yield* _(Bip39);
-      const config = yield* _(Config);
 
-      dbWorker.onMessage = (output): void =>
-        Match.value(output).pipe(
-          Match.tagsExhaustive({
-            onError: ({ error }) => errorStore.setState(error),
-            onQuery,
-            onOwner: ({ owner }) => ownerStore.setState(owner),
-            onSyncState: ({ state }) => syncStateStore.setState(state),
-            onReceive: () => {
-              const queries = subscribedQueries.getSubscribedQueries();
-              if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
-                dbWorker.postMessage({ _tag: "query", queries });
-              return Effect.succeed(void 0);
-            },
-            // TODO: appState.reset
-            onResetOrRestore: () => Effect.succeed(void 0),
-          }),
-          Effect.runSync,
-        );
+    dbWorker.postMessage({
+      _tag: "init",
+      config,
+      // @ts-expect-error TODO
+      tables: schemaToTables(),
+    });
 
-      dbWorker.postMessage({
-        _tag: "init",
-        config,
-        tables: schemaToTables(schema),
-      });
+    // // appState.onFocus(() => {
+    // //   // `queries` to refresh subscribed queries when a tab is changed.
+    // //   dbWorker.postMessage({ _tag: "sync", queries: getSubscribedQueries() });
+    // // });
 
-      // appState.onFocus(() => {
-      //   // `queries` to refresh subscribed queries when a tab is changed.
-      //   dbWorker.postMessage({ _tag: "sync", queries: getSubscribedQueries() });
-      // });
+    // // const sync = (): void =>
+    // //   dbWorker.postMessage({ _tag: "sync", queries: [] });
+    // // appState.onReconnect(sync);
+    // // sync();
 
-      // const sync = (): void =>
-      //   dbWorker.postMessage({ _tag: "sync", queries: [] });
-      // appState.onReconnect(sync);
-      // sync();
+    return Evolu.of({
+      subscribeError: errorStore.subscribe,
+      getError: errorStore.getState,
 
-      return Evolu<To>().of({
-        subscribeError: errorStore.subscribe,
-        getError: errorStore.getState,
+      createQuery: makeCreateQuery<Schema>(),
+      loadQuery,
 
-        createQuery: makeCreateQuery<To>(),
-        loadQuery,
+      subscribeQuery: subscribedQueries.subscribeQuery,
+      getQuery: subscribedQueries.getQuery,
 
-        subscribeQuery: subscribedQueries.subscribeQuery,
-        getQuery: subscribedQueries.getQuery,
+      subscribeOwner: ownerStore.subscribe,
+      getOwner: ownerStore.getState,
 
-        subscribeOwner: ownerStore.subscribe,
-        getOwner: ownerStore.getState,
+      subscribeSyncState: syncStateStore.subscribe,
+      getSyncState: syncStateStore.getState,
 
-        subscribeSyncState: syncStateStore.subscribe,
-        getSyncState: syncStateStore.getState,
+      create: mutate as Mutate<Schema, "create">,
+      update: mutate,
 
-        create: mutate as Mutate<To, "create">,
-        update: mutate,
+      resetOwner() {
+        dbWorker.postMessage({ _tag: "reset" });
+      },
 
-        resetOwner() {
-          dbWorker.postMessage({ _tag: "reset" });
-        },
+      parseMnemonic: bip39.parse,
 
-        parseMnemonic: bip39.parse,
+      restoreOwner(mnemonic) {
+        dbWorker.postMessage({ _tag: "reset", mnemonic });
+      },
 
-        restoreOwner(mnemonic) {
-          dbWorker.postMessage({ _tag: "reset", mnemonic });
-        },
-
-        ensureSchema(tables) {
-          dbWorker.postMessage({ _tag: "ensureSchema", tables });
-        },
-      });
-    }),
-  ).pipe(
-    Layer.use(Layer.mergeAll(LoadQueryLive, OnQueryLive, MutateLive<To>())),
-    Layer.use(
-      Layer.mergeAll(
-        ErrorStoreLive,
-        LoadingPromisesLive,
-        OnCompletesLive,
-        SubscribedQueriesLive,
-        TimeLive,
-      ),
+      ensureSchema(tables) {
+        dbWorker.postMessage({ _tag: "ensureSchema", tables });
+      },
+    });
+  }),
+).pipe(
+  Layer.use(Layer.mergeAll(LoadQueryLive, OnQueryLive, MutateLive)),
+  Layer.use(
+    Layer.mergeAll(
+      ErrorStoreLive,
+      LoadingPromisesLive,
+      OnCompletesLive,
+      SubscribedQueriesLive,
+      TimeLive,
     ),
-    Layer.use(Layer.mergeAll(NanoIdLive, RowsStoreLive)),
-  );
+  ),
+  Layer.use(Layer.mergeAll(NanoIdLive, RowsStoreLive)),
+);
