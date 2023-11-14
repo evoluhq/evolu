@@ -67,7 +67,7 @@ export interface DbWorker {
   onMessage: (output: DbWorkerOutput) => void;
 }
 
-export const DbWorker = Context.Tag<DbWorker>();
+export const DbWorker = Context.Tag<DbWorker>("evolu/DbWorker");
 
 export type DbWorkerInput =
   | DbWorkerInputInit
@@ -112,7 +112,9 @@ interface DbWorkerInputEnsureSchema {
 
 type DbWorkerOnMessage = DbWorker["onMessage"];
 
-const DbWorkerOnMessage = Context.Tag<DbWorkerOnMessage>();
+const DbWorkerOnMessage = Context.Tag<DbWorkerOnMessage>(
+  "evolu/DbWorkerOnMessage",
+);
 
 export type DbWorkerOutput =
   | DbWorkerOutputOnError
@@ -262,8 +264,8 @@ export const mutationsToNewMessages = (
               typeof value === "boolean"
                 ? cast(value)
                 : value instanceof Date
-                ? cast(value)
-                : value,
+                  ? cast(value)
+                  : value,
             ] as const,
         ),
         ReadonlyArray.append([isInsert ? "createdAt" : "updatedAt", now]),

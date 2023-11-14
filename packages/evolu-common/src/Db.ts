@@ -306,7 +306,7 @@ export const ensureSchema = (
   );
 
 export type RowsStore = Store<RowsStoreValue>;
-export const RowsStore = Context.Tag<RowsStore>();
+export const RowsStore = Context.Tag<RowsStore>("evolu/RowsStore");
 
 type RowsStoreValue = ReadonlyMap<Query, ReadonlyArray<Row>>;
 

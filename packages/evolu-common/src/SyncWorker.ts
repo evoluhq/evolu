@@ -38,11 +38,13 @@ export interface SyncWorker {
   onMessage: (output: SyncWorkerOutput) => void;
 }
 
-export const SyncWorker = Context.Tag<SyncWorker>();
+export const SyncWorker = Context.Tag<SyncWorker>("evolu/SyncWorker");
 
 export type SyncWorkerPostMessage = SyncWorker["postMessage"];
 
-export const SyncWorkerPostMessage = Context.Tag<SyncWorkerPostMessage>();
+export const SyncWorkerPostMessage = Context.Tag<SyncWorkerPostMessage>(
+  "evolu/SyncWorkerPostMessage",
+);
 
 export type SyncWorkerInput =
   | SyncWorkerInputSync
@@ -84,7 +86,9 @@ interface SyncWorkerInputSyncCompleted {
 
 type SyncWorkerOnMessage = SyncWorker["onMessage"];
 
-const SyncWorkerOnMessage = Context.Tag<SyncWorkerOnMessage>();
+const SyncWorkerOnMessage = Context.Tag<SyncWorkerOnMessage>(
+  "evolu/SyncWorkerOnMessage",
+);
 
 export type SyncWorkerOutput =
   | UnexpectedError

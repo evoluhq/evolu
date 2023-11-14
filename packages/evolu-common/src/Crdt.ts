@@ -105,7 +105,7 @@ export interface Time {
   readonly now: Effect.Effect<never, TimestampTimeOutOfRangeError, Millis>;
 }
 
-export const Time = Context.Tag<Time>();
+export const Time = Context.Tag<Time>("evolu/Time");
 
 export const TimeLive = Layer.succeed(
   Time,
@@ -228,10 +228,10 @@ export const receiveTimestamp = ({
       millis === local.millis && millis === remote.millis
         ? incrementCounter(Math.max(local.counter, remote.counter) as Counter)
         : millis === local.millis
-        ? incrementCounter(local.counter)
-        : millis === remote.millis
-        ? incrementCounter(remote.counter)
-        : Either.right(counterMin),
+          ? incrementCounter(local.counter)
+          : millis === remote.millis
+            ? incrementCounter(remote.counter)
+            : Either.right(counterMin),
     );
 
     return { ...local, millis, counter };

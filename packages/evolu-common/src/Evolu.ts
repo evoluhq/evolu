@@ -74,7 +74,7 @@ export interface Evolu<S extends Schema> {
 }
 
 export const Evolu = <S extends Schema>(): Context.Tag<Evolu<S>, Evolu<S>> =>
-  Context.Tag<Evolu<S>>();
+  Context.Tag<Evolu<S>>("evolu/Evolu");
 
 type CreateQuery<S extends Schema> = <R extends Row>(
   queryCallback: QueryCallback<S, R>,
@@ -143,7 +143,9 @@ export interface LoadingPromises {
   readonly release: () => void;
 }
 
-export const LoadingPromises = Context.Tag<LoadingPromises>();
+export const LoadingPromises = Context.Tag<LoadingPromises>(
+  "evolu/LoadingPromises",
+);
 
 type LoadingPromise<R extends Row> = Promise<QueryResult<R>>;
 
@@ -228,7 +230,7 @@ export const getLoadingPromiseProp = <R extends Row>(
 
 type LoadQuery = <R extends Row>(query: Query<R>) => Promise<QueryResult<R>>;
 
-const LoadQuery = Context.Tag<LoadQuery>();
+const LoadQuery = Context.Tag<LoadQuery>("evolu/LoadQuery");
 
 const LoadQueryLive = Layer.effect(
   LoadQuery,
@@ -256,7 +258,7 @@ type OnQuery = (
   output: DbWorkerOutputOnQuery,
 ) => Effect.Effect<never, never, void>;
 
-const OnQuery = Context.Tag<OnQuery>();
+const OnQuery = Context.Tag<OnQuery>("evolu/OnQuery");
 
 const OnQueryLive = Layer.effect(
   OnQuery,
@@ -307,7 +309,9 @@ interface SubscribedQueries {
   readonly getSubscribedQueries: () => ReadonlyArray<Query>;
 }
 
-const SubscribedQueries = Context.Tag<SubscribedQueries>();
+const SubscribedQueries = Context.Tag<SubscribedQueries>(
+  "evolu/SubscribedQueries",
+);
 
 const SubscribedQueriesLive = Layer.effect(
   SubscribedQueries,
@@ -362,7 +366,7 @@ type Mutate<S extends Schema, Mode extends "create" | "update" = "update"> = <
 };
 
 const Mutate = <S extends Schema>(): Context.Tag<Mutate<S>, Mutate<S>> =>
-  Context.Tag<Mutate<S>>();
+  Context.Tag<Mutate<S>>("evolu/Mutate");
 
 // https://stackoverflow.com/a/54713648/233902
 type PartialForNullable<

@@ -19,7 +19,7 @@ export interface Bip39 {
   ) => Effect.Effect<never, InvalidMnemonicError, Mnemonic>;
 }
 
-export const Bip39 = Context.Tag<Bip39>();
+export const Bip39 = Context.Tag<Bip39>("evolu/Bip39");
 
 export interface InvalidMnemonicError {
   readonly _tag: "InvalidMnemonicError";
@@ -39,7 +39,7 @@ export interface NanoId {
   readonly nanoidAsNodeId: Effect.Effect<never, never, NodeId>;
 }
 
-export const NanoId = Context.Tag<NanoId>();
+export const NanoId = Context.Tag<NanoId>("evolu/NanoId");
 
 export const NodeId: Schema.BrandSchema<
   string,
@@ -92,7 +92,7 @@ export interface SecretBox {
   ) => Effect.Effect<never, never, Uint8Array>;
 }
 
-export const SecretBox = Context.Tag<SecretBox>();
+export const SecretBox = Context.Tag<SecretBox>("evolu/SecretBox");
 
 export const SecretBoxLive = Layer.succeed(
   SecretBox,

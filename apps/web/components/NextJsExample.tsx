@@ -40,7 +40,8 @@ const Database = S.struct({
 });
 type Database = S.Schema.To<typeof Database>;
 
-// const evolu = Evolu.createEvolu(Database);
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const evolu = Evolu.createEvolu(Database);
 
 // jo, tohle je ok, naprosto
 // const { EvoluProvider, useQuery, useCreate, useUpdate } =
