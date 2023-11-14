@@ -67,7 +67,7 @@ export interface DbWorker {
   onMessage: (output: DbWorkerOutput) => void;
 }
 
-export const DbWorker = Context.Tag<DbWorker>("evolu/DbWorker");
+export const DbWorker = Context.Tag<DbWorker>();
 
 export type DbWorkerInput =
   | DbWorkerInputInit
@@ -112,9 +112,7 @@ interface DbWorkerInputEnsureSchema {
 
 type DbWorkerOnMessage = DbWorker["onMessage"];
 
-const DbWorkerOnMessage = Context.Tag<DbWorkerOnMessage>(
-  "evolu/DbWorkerOnMessage",
-);
+const DbWorkerOnMessage = Context.Tag<DbWorkerOnMessage>();
 
 export type DbWorkerOutput =
   | DbWorkerOutputOnError
