@@ -1,10 +1,46 @@
-import { Evolu, Schema } from "@evolu/common";
-import { Context, Effect, Layer } from "effect";
+import {
+  Evolu,
+  EvoluError,
+  Query,
+  QueryResult,
+  Row,
+  Schema,
+} from "@evolu/common";
+import { Context, Effect, Function, Layer } from "effect";
+import {
+  FC,
+  ReactNode,
+  createContext,
+  useContext,
+  useSyncExternalStore,
+} from "react";
 
 export interface EvoluCommonReact<S extends Schema = Schema> {
   readonly evolu: Evolu<S>;
-  // readonly EvoluProvider: React.ReactNode;
-  readonly useQuery: (query: string) => void;
+
+  readonly EvoluProvider: FC<{
+    readonly children?: ReactNode | undefined;
+  }>;
+
+  readonly useEvolu: () => Evolu<S>;
+
+  readonly useEvoluError: () => EvoluError | null;
+
+  readonly createQuery: Evolu<S>["createQuery"];
+
+  // usePromise
+
+  readonly useQuery: <R extends Row>(query: Query<R>) => QueryResult<R>;
+
+  // readonly useQuerySubscription
+  // readonly useQueries
+  //    useQueries([todos], [todoById], [chatRoom(1)])
+  // readonly useCreate
+  // readonly useUpdate
+  // const { loadQuery } = useEvolu()
+  // useQueryPromise, to pujde? imho ne, protoze vytvorena promisa
+  // pomohlo by useMemo? imho jo, pac to vrati ty same
+  // useQueryPromise(Promise.all([loadQuery(todos), loadQuery(todoById(1))])
 }
 
 export const EvoluCommonReact = Context.Tag<EvoluCommonReact>();
@@ -14,10 +50,28 @@ export const EvoluCommonReactLive = Layer.effect(
   Effect.gen(function* (_) {
     const evolu = yield* _(Evolu);
 
+    const EvoluContext = createContext<Evolu>(evolu);
+
     return EvoluCommonReact.of({
       evolu,
+
+      EvoluProvider: ({ children }) => (
+        <EvoluContext.Provider value={evolu}>{children}</EvoluContext.Provider>
+      ),
+
+      useEvolu: () => useContext(EvoluContext),
+
+      useEvoluError: () =>
+        useSyncExternalStore(
+          evolu.subscribeError,
+          evolu.getError,
+          Function.constNull,
+        ),
+
+      createQuery: evolu.createQuery,
+
       useQuery() {
-        //
+        throw "todo";
       },
     });
   }),
@@ -246,49 +300,3 @@ export const EvoluCommonReactLive = Layer.effect(
 //       });
 //     }),
 //   );
-
-// // For React Fast Refresh, to ensure only one instance of Evolu exists.
-// let evolu: Evolu<Schema> | null = null;
-
-// export const makeReactHooksForPlatform =
-//   (
-//     DbWorkerLive: Layer.Layer<never, never, DbWorker>,
-//     AppStateLive: Layer.Layer<Config, never, AppState>,
-//     PlatformLive: Layer.Layer<never, never, Platform>,
-//     Bip39Live: Layer.Layer<never, never, Bip39>,
-//     NanoIdLive: Layer.Layer<never, never, NanoId>,
-//     FlushSyncLive: Layer.Layer<never, never, FlushSync>,
-//   ) =>
-//   <From, To extends Schema>(
-//     schema: S.Schema<From, To>,
-//     config?: Partial<Config>,
-//   ): ReactHooks<To> => {
-//     const tables = schemaToTables(schema);
-
-//     if (evolu == null) {
-//       evolu = makeEvoluForPlatform<To>(
-//         Layer.mergeAll(
-//           DbWorkerLive,
-//           Bip39Live,
-//           NanoIdLive,
-//           FlushSyncLive,
-//           Layer.use(AppStateLive, ConfigLive(config)),
-//         ),
-//         tables,
-//         config,
-//       ) as Evolu<Schema>;
-//     } else {
-//       evolu.ensureSchema(tables);
-//     }
-
-//     return Effect.provide(
-//       ReactHooks<To>(),
-//       Layer.use(
-//         ReactHooksLive<To>(),
-//         Layer.merge(
-//           PlatformLive,
-//           Layer.succeed(Evolu<To>(), evolu as Evolu<To>),
-//         ),
-//       ),
-//     ).pipe(Effect.runSync);
-//   };

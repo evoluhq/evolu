@@ -1,6 +1,7 @@
+import { TreeFormatter } from "@effect/schema";
 import * as S from "@effect/schema/Schema";
 import * as Evolu from "@evolu/react";
-import { FC } from "react";
+import { FC, Suspense, startTransition, useEffect, useState } from "react";
 
 const TodoId = Evolu.id("Todo");
 type TodoId = S.Schema.To<typeof TodoId>;
@@ -40,95 +41,44 @@ const Database = S.struct({
 });
 type Database = S.Schema.To<typeof Database>;
 
-const evolu = Evolu.create(Database, { reloadUrl: "" });
-
-// evolu.evolu.create("todo", {title})
-
-export const todos = evolu.evolu.createQuery((db) =>
-  db.selectFrom("todo").selectAll(),
+const { EvoluProvider, useEvoluError, createQuery, useQuery } = Evolu.create(
+  Database,
+  {
+    reloadUrl: "/examples/nextjs",
+    ...(process.env.NODE_ENV === "development" && {
+      syncUrl: "http://localhost:4000",
+    }),
+  },
 );
-// console.log(evolu);
 
-// const {
-//   evolu,
-//   // EvoluProvider,
-//   // useQuery,
-//   // useCreate,
-//   // useUpdate,
-//   // useEvoluError,
-//   // useOwner,
-// } = Evolu.create(Database);
+const prompt = <From extends string, To>(
+  schema: S.Schema<From, To>,
+  message: string,
+  onSuccess: (value: To) => void,
+): void => {
+  const value = window.prompt(message);
+  if (value == null) return; // on cancel
+  const a = S.parseEither(schema)(value);
+  if (a._tag === "Left") {
+    alert(TreeFormatter.formatErrors(a.left.errors));
+    return;
+  }
+  onSuccess(a.right);
+};
 
-// evolu.
-
-// nebo fakt vytvorit evolu, a pak React?
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-// const evolu = Evolu.createEvolu(Database);
-
-// const { EvoluProvider, useQuery, useCreate, useUpdate } =
-//   Evolu.createReact(evolu);
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-// const todos = evolu.createQuery((db) =>
-//   db
-//     .selectFrom("todo")
-//     .selectAll()
-//     // TODO: Tohle kdyby existovalo, hmm, exists
-//     // ale bacha, musi se to skladat potom pres or!
-//     // use case: pridam novou prop, starou prestanu pouzivat
-//     // chci jen ty, ktere existuji jedna nebo druha
-//     // a ted ta otazka, jde to sloucit? tusim to slo pres ten JSON
-//     // to je jedina cesta, ze bych vytvoril novou prop
-//     // titleOrTitleBla, a dal ji union a tag, to by slo
-//     // je to nested object subselect per neco, jo
-//     // ok, tak budu mit DSL pro use cases, nice!
-//     // .$call(foo('title'))
-//     // aspon jeden bych udelat mohl
-//     .$call((a) =>
-//       a
-//         .where("title", "is not", null)
-//         .$narrowType<{ title: Evolu.NonEmptyString1000 }>(),
-//     ),
-// );
-
-// const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
-//   Evolu.create({
-//     Database,
-//     reloadUrl: "/examples/nextjs",
-//     ...(process.env.NODE_ENV === "development" && {
-//       syncUrl: "http://localhost:4000",
-//     }),
-//   });
-
-// const prompt = <From extends string, To>(
-//   schema: Schema.Schema<From, To>,
-//   message: string,
-//   onSuccess: (value: To) => void,
-// ): void => {
-//   const value = window.prompt(message);
-//   if (value == null) return; // on cancel
-//   const a = Schema.parseEither(schema)(value);
-//   if (a._tag === "Left") {
-//     alert(TreeFormatter.formatErrors(a.left.errors));
-//     return;
-//   }
-//   onSuccess(a.right);
-// };
-
-// const Button: FC<{
-//   title: string;
-//   onClick: () => void;
-// }> = ({ title, onClick }) => {
-//   return (
-//     <button
-//       className="m-1 rounded-md border border-current px-1 text-sm active:opacity-80"
-//       onClick={onClick}
-//     >
-//       {title}
-//     </button>
-//   );
-// };
+const Button: FC<{
+  title: string;
+  onClick: () => void;
+}> = ({ title, onClick }) => {
+  return (
+    <button
+      className="m-1 rounded-md border border-current px-1 text-sm active:opacity-80"
+      onClick={onClick}
+    >
+      {title}
+    </button>
+  );
+};
 
 // interface TodoCategoryForSelect {
 //   readonly id: TodoCategoryTable["id"];
@@ -213,194 +163,198 @@ export const todos = evolu.evolu.createQuery((db) =>
 //   );
 // });
 
-// const Todos: FC = () => {
-//   const { create } = useMutation();
+const todosWithCategories = createQuery((db) =>
+  db
+    .selectFrom("todo")
+    .select(["id", "title", "isCompleted", "categoryId"])
+    .where("isDeleted", "is not", Evolu.cast(true))
+    .where("title", "is not", null)
+    .where("isCompleted", "is not", null)
+    .orderBy("createdAt")
+    // https://kysely.dev/docs/recipes/relations
+    .select((eb) => [
+      Evolu.jsonArrayFrom(
+        eb
+          .selectFrom("todoCategory")
+          .select(["todoCategory.id", "todoCategory.name"])
+          .where("isDeleted", "is not", Evolu.cast(true))
+          .orderBy("createdAt"),
+      ).as("categories"),
+    ])
+    .$narrowType<{ title: Evolu.NonEmptyString1000 }>()
+    .$narrowType<{ isCompleted: Evolu.SqliteBoolean }>(),
+);
 
-//   const { rows } = useQuery((db) =>
-//     db
-//       .selectFrom("todo")
-//       .select(["id", "title", "isCompleted", "categoryId"])
-//       .where("isDeleted", "is not", Evolu.cast(true))
-//       .where("title", "is not", null)
-//       .where("isCompleted", "is not", null)
-//       .orderBy("createdAt")
-//       // https://kysely.dev/docs/recipes/relations
-//       .select((eb) => [
-//         Evolu.jsonArrayFrom(
-//           eb
-//             .selectFrom("todoCategory")
-//             .select(["todoCategory.id", "todoCategory.name"])
-//             .where("isDeleted", "is not", Evolu.cast(true))
-//             .orderBy("createdAt"),
-//         ).as("categories"),
-//       ])
-//       .select((eb) => [
-//         Evolu.jsonArrayFrom(
-//           eb
-//             .selectFrom("todoCategory")
-//             .select(["todoCategory.id", "todoCategory.name"])
-//             .where("isDeleted", "is not", Evolu.cast(true))
-//             .orderBy("createdAt"),
-//         ).as("test"),
-//       ])
-//       .$narrowType<{ title: Evolu.NonEmptyString1000 }>()
-//       .$narrowType<{ isCompleted: Evolu.SqliteBoolean }>(),
-//   );
+const Todos: FC = () => {
+  // const { create } = useMutation();
 
-//   // ({ title, isCompleted, ...rest }) =>
-//   //     title != null && isCompleted != null && { title, isCompleted, ...rest }
+  // const { rows } = useQuery(todosWithCategories);
 
-//   // rows[0].
+  // return (
+  //   <>
+  //     <h2 className="mt-6 text-xl font-semibold">Todos</h2>
+  //     <ul className="py-2">
+  //       {rows.map((row) => (
+  //         <TodoItem key={row.id} row={row} />
+  //       ))}
+  //     </ul>
+  //     <Button
+  //       title="Add Todo"
+  //       onClick={(): void => {
+  //         prompt(
+  //           Evolu.NonEmptyString1000,
+  //           "What needs to be done?",
+  //           (title) => {
+  //             create("todo", { title, isCompleted: false });
+  //           },
+  //         );
+  //       }}
+  //     />
+  //   </>
+  // );
+  return null;
+};
 
-//   return (
-//     <>
-//       <h2 className="mt-6 text-xl font-semibold">Todos</h2>
-//       <ul className="py-2">
-//         {rows.map((row) => (
-//           <TodoItem key={row.id} row={row} />
-//         ))}
-//       </ul>
-//       <Button
-//         title="Add Todo"
-//         onClick={(): void => {
-//           prompt(
-//             Evolu.NonEmptyString1000,
-//             "What needs to be done?",
-//             (title) => {
-//               create("todo", { title, isCompleted: false });
-//             },
-//           );
-//         }}
-//       />
-//     </>
-//   );
-// };
+const TodoCategories: FC = () => {
+  // const { create, update } = useMutation();
+  // const { rows } = useQuery(
+  //   (db) =>
+  //     db
+  //       .selectFrom("todoCategory")
+  //       .select(["id", "name", "json"])
+  //       .where("isDeleted", "is not", Evolu.cast(true))
+  //       .orderBy("createdAt"),
+  //   ({ name, ...rest }) => name && { name, ...rest },
+  // );
 
-// const TodoCategories: FC = () => {
-//   const { create, update } = useMutation();
-//   const { rows } = useQuery(
-//     (db) =>
-//       db
-//         .selectFrom("todoCategory")
-//         .select(["id", "name", "json"])
-//         .where("isDeleted", "is not", Evolu.cast(true))
-//         .orderBy("createdAt"),
-//     ({ name, ...rest }) => name && { name, ...rest },
-//   );
+  // // Evolu automatically parses JSONs into typed objects.
+  // // if (rows[0]) console.log(rows[0].json?.foo);
 
-//   // Evolu automatically parses JSONs into typed objects.
-//   // if (rows[0]) console.log(rows[0].json?.foo);
+  // return (
+  //   <>
+  //     <h2 className="mt-6 text-xl font-semibold">Categories</h2>
+  //     <ul className="py-2">
+  //       {rows.map(({ id, name }) => (
+  //         <li key={id}>
+  //           <span className="text-sm font-bold">{name}</span>
+  //           <Button
+  //             title="Rename"
+  //             onClick={(): void => {
+  //               prompt(NonEmptyString50, "Category Name", (name) => {
+  //                 update("todoCategory", { id, name });
+  //               });
+  //             }}
+  //           />
+  //           <Button
+  //             title="Delete"
+  //             onClick={(): void => {
+  //               update("todoCategory", { id, isDeleted: true });
+  //             }}
+  //           />
+  //         </li>
+  //       ))}
+  //     </ul>
+  //     <Button
+  //       title="Add Category"
+  //       onClick={(): void => {
+  //         prompt(NonEmptyString50, "Category Name", (name) => {
+  //           create("todoCategory", {
+  //             name,
+  //             json: { foo: "a", bar: false },
+  //           });
+  //         });
+  //       }}
+  //     />
+  //   </>
+  // );
+  return null;
+};
 
-//   return (
-//     <>
-//       <h2 className="mt-6 text-xl font-semibold">Categories</h2>
-//       <ul className="py-2">
-//         {rows.map(({ id, name }) => (
-//           <li key={id}>
-//             <span className="text-sm font-bold">{name}</span>
-//             <Button
-//               title="Rename"
-//               onClick={(): void => {
-//                 prompt(NonEmptyString50, "Category Name", (name) => {
-//                   update("todoCategory", { id, name });
-//                 });
-//               }}
-//             />
-//             <Button
-//               title="Delete"
-//               onClick={(): void => {
-//                 update("todoCategory", { id, isDeleted: true });
-//               }}
-//             />
-//           </li>
-//         ))}
-//       </ul>
-//       <Button
-//         title="Add Category"
-//         onClick={(): void => {
-//           prompt(NonEmptyString50, "Category Name", (name) => {
-//             create("todoCategory", {
-//               name,
-//               json: { foo: "a", bar: false },
-//             });
-//           });
-//         }}
-//       />
-//     </>
-//   );
-// };
+const OwnerActions: FC = () => {
+  const [isShown, setIsShown] = useState(false);
+  // const { loadQuery } = useEvolu();
 
-// const OwnerActions: FC = () => {
-//   const [isShown, setIsShown] = useState(false);
-//   const owner = useOwner();
-//   const ownerActions = useOwnerActions();
+  // useEffect(() => {
+  //   setTimeout(() => {
+  //     const s = performance.now();
+  //     void loadQuery(todos).then((a) => {
+  //       console.log(a);
+  //       console.log(performance.now() - s);
+  //     });
+  //   }, 3000);
+  // }, [loadQuery]);
 
-//   return (
-//     <div className="mt-6">
-//       <p>
-//         Open this page on a different device and use your mnemonic to restore
-//         your data.
-//       </p>
-//       <Button
-//         title={`${!isShown ? "Show" : "Hide"} Mnemonic`}
-//         onClick={(): void => setIsShown((value) => !value)}
-//       />
-//       <Button
-//         title="Restore Owner"
-//         onClick={(): void => {
-//           prompt(Evolu.NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
-//             void ownerActions.restore(mnemonic).then((either) => {
-//               if (either._tag === "Left")
-//                 alert(JSON.stringify(either.left, null, 2));
-//             });
-//           });
-//         }}
-//       />
-//       <Button
-//         title="Reset Owner"
-//         onClick={(): void => {
-//           if (confirm("Are you sure? It will delete all your local data."))
-//             ownerActions.reset();
-//         }}
-//       />
-//       {isShown && owner != null && (
-//         <div>
-//           <textarea
-//             value={owner.mnemonic}
-//             readOnly
-//             rows={2}
-//             style={{ width: 320 }}
-//           />
-//         </div>
-//       )}
-//     </div>
-//   );
-// };
+  // console.log(e);
 
-// const NotificationBar: FC = () => {
-//   const evoluError = useEvoluError();
-//   const [shown, setShown] = useState(false);
-
-//   useEffect(() => {
-//     if (evoluError) setShown(true);
-//   }, [evoluError]);
-
-//   if (!evoluError || !shown) return null;
-
-//   return (
-//     <div>
-//       <p>{`Error: ${JSON.stringify(evoluError)}`}</p>
-//       <Button title="Close" onClick={(): void => setShown(false)} />
-//     </div>
-//   );
-// };
-
-export const NextJsExample: FC = () => {
-  // const [todosShown, setTodosShown] = useState(true);
+  // const owner = useOwner();
+  // const ownerActions = useOwnerActions();
 
   return (
-    <>
-      {/* <OwnerActions />
+    <div className="mt-6">
+      <p>
+        Open this page on a different device and use your mnemonic to restore
+        your data.
+      </p>
+      <Button
+        title={`${!isShown ? "Show" : "Hide"} Mnemonic`}
+        onClick={(): void => setIsShown((value) => !value)}
+      />
+      {/* <Button
+        title="Restore Owner"
+        onClick={(): void => {
+          prompt(Evolu.NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
+            void ownerActions.restore(mnemonic).then((either) => {
+              if (either._tag === "Left")
+                alert(JSON.stringify(either.left, null, 2));
+            });
+          });
+        }}
+      /> */}
+      {/* <Button
+        title="Reset Owner"
+        onClick={(): void => {
+          if (confirm("Are you sure? It will delete all your local data."))
+            ownerActions.reset();
+        }}
+      /> */}
+      {/* {isShown && owner != null && (
+        <div>
+          <textarea
+            value={owner.mnemonic}
+            readOnly
+            rows={2}
+            style={{ width: 320 }}
+          />
+        </div>
+      )} */}
+    </div>
+  );
+};
+
+const NotificationBar: FC = () => {
+  const evoluError = useEvoluError();
+  const [shown, setShown] = useState(false);
+
+  useEffect(() => {
+    if (evoluError) setShown(true);
+  }, [evoluError]);
+
+  if (!evoluError || !shown) return null;
+
+  return (
+    <div>
+      <p>{`Error: ${JSON.stringify(evoluError)}`}</p>
+      <Button title="Close" onClick={(): void => setShown(false)} />
+    </div>
+  );
+};
+
+export const NextJsExample: FC = () => {
+  const [todosShown, setTodosShown] = useState(true);
+
+  return (
+    <EvoluProvider>
+      <OwnerActions />
       <nav className="my-4">
         <Button
           title="Simulate suspense-enabled router transition"
@@ -417,7 +371,7 @@ export const NextJsExample: FC = () => {
         </p>
       </nav>
       <Suspense>{todosShown ? <Todos /> : <TodoCategories />}</Suspense>
-      <NotificationBar /> */}
-    </>
+      <NotificationBar />
+    </EvoluProvider>
   );
 };
