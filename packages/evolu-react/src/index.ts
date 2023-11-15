@@ -6,7 +6,7 @@ import { EvoluCommonWebLive } from "@evolu/common-web";
 import { Effect } from "effect";
 
 // https://nextjs.org/docs/architecture/fast-refresh
-let fastRefreshRef: EvoluCommonReact<Schema> | null = null;
+let fastRefreshRef: EvoluCommonReact | null = null;
 
 export const create = <From, To extends Schema>(
   schema: S.Schema<From, To>,
