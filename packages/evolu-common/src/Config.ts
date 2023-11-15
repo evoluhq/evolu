@@ -5,11 +5,13 @@ export interface Config {
    * Alternate URL to Evolu sync&backup server.
    */
   readonly syncUrl: string;
+
   /**
    * Alternate URL to reload browser tabs after `Owner` reset or restore.
    * The default value is `/`.
    */
   readonly reloadUrl: string;
+
   /**
    * Maximum physical clock drift allowed in ms.
    * The default value is 5 * 60 * 1000 (5 minutes).

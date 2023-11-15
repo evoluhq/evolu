@@ -122,8 +122,6 @@ export const queryResultFromRows = <R extends Row>(
 
 export type Tables = ReadonlyArray<Table>;
 
-// TableDefinitions
-
 export interface Table {
   readonly name: string;
   readonly columns: ReadonlyArray<string>;
@@ -147,7 +145,6 @@ const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
 
 const commonColumns = ["createdAt", "updatedAt", "isDeleted"];
 
-//
 export const schemaToTables = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   schema: S.Schema<any, any>,

@@ -81,7 +81,6 @@ export type DbWorkerInput =
 interface DbWorkerInputInit {
   readonly _tag: "init";
   readonly config: Config;
-  readonly tables: Tables;
 }
 
 interface DbWorkerInputQuery {
@@ -162,27 +161,23 @@ export interface Mutation {
   readonly onCompleteId: OnCompleteId | null;
 }
 
-const init = (
-  input: DbWorkerInputInit,
-): Effect.Effect<Sqlite | Bip39 | NanoId, never, Owner> =>
-  Effect.gen(function* (_) {
-    const sqlite = yield* _(Sqlite);
+const init = Effect.gen(function* (_) {
+  const sqlite = yield* _(Sqlite);
 
-    return yield* _(
-      sqlite.exec(Sql.selectOwner),
-      Effect.map(
-        ({ rows: [row] }): Owner => ({
-          id: row.id as OwnerId,
-          mnemonic: row.mnemonic as Mnemonic,
-          // expo-sqlite 11.3.2 doesn't support Uint8Array
-          encryptionKey: hexToBytes(row.encryptionKey as string),
-        }),
-      ),
-      someDefectToNoSuchTableOrColumnError,
-      Effect.catchTag("NoSuchTableOrColumnError", () => lazyInit()),
-      Effect.tap(() => ensureSchema(input.tables)),
-    );
-  });
+  return yield* _(
+    sqlite.exec(Sql.selectOwner),
+    Effect.map(
+      ({ rows: [row] }): Owner => ({
+        id: row.id as OwnerId,
+        mnemonic: row.mnemonic as Mnemonic,
+        // expo-sqlite 11.3.2 doesn't support Uint8Array
+        encryptionKey: hexToBytes(row.encryptionKey as string),
+      }),
+    ),
+    someDefectToNoSuchTableOrColumnError,
+    Effect.catchTag("NoSuchTableOrColumnError", () => lazyInit()),
+  );
+});
 
 const query = ({
   queries,
@@ -680,7 +675,7 @@ export const DbWorkerLive = Layer.effect(
       if (input._tag !== "init")
         return run(makeUnexpectedError(new Error("init must be called first")));
       write = writeForInitFail;
-      return init(input).pipe(
+      return init.pipe(
         Effect.map((owner) => {
           dbWorker.onMessage({ _tag: "onOwner", owner });
           write = makeWriteForInitSuccess(owner, input.config);

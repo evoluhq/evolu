@@ -40,10 +40,33 @@ const Database = S.struct({
 });
 type Database = S.Schema.To<typeof Database>;
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const evolu = Evolu.createEvolu(Database);
+// const evolu =
+Evolu.create(Database, { reloadUrl: "" });
 
-// jo, tohle je ok, naprosto
+// evolu.evolu.create("todo", {title})
+
+// export const todos = evolu.evolu.createQuery((db) =>
+//   db.selectFrom("todo").selectAll(),
+// );
+// console.log(evolu);
+
+// const {
+//   evolu,
+//   // EvoluProvider,
+//   // useQuery,
+//   // useCreate,
+//   // useUpdate,
+//   // useEvoluError,
+//   // useOwner,
+// } = Evolu.create(Database);
+
+// evolu.
+
+// nebo fakt vytvorit evolu, a pak React?
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+// const evolu = Evolu.createEvolu(Database);
+
 // const { EvoluProvider, useQuery, useCreate, useUpdate } =
 //   Evolu.createReact(evolu);
 
@@ -71,7 +94,8 @@ const evolu = Evolu.createEvolu(Database);
 // );
 
 // const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
-//   Evolu.create(Database, {
+//   Evolu.create({
+//     Database,
 //     reloadUrl: "/examples/nextjs",
 //     ...(process.env.NODE_ENV === "development" && {
 //       syncUrl: "http://localhost:4000",

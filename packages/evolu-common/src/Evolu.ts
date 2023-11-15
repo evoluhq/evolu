@@ -20,7 +20,6 @@ import {
   RowsStore,
   RowsStoreLive,
   Schema,
-  Tables,
   emptyRows,
   queryResultFromRows,
   schemaToTables,
@@ -37,24 +36,36 @@ import { SqliteQuery } from "./Sqlite.js";
 import { Store, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
 
-export interface Evolu<S extends Schema = Schema> {
+export interface Evolu<T extends Schema = Schema> {
+  /** TODO: Docs */
   readonly subscribeError: ErrorStore["subscribe"];
+  /** TODO: Docs */
   readonly getError: ErrorStore["getState"];
 
-  readonly createQuery: CreateQuery<S>;
+  /** TODO: Docs */
+  readonly createQuery: CreateQuery<T>;
+  /** TODO: Docs */
   readonly loadQuery: LoadQuery;
 
+  /** TODO: Docs */
   readonly subscribeQuery: SubscribedQueries["subscribeQuery"];
+  /** TODO: Docs */
   readonly getQuery: SubscribedQueries["getQuery"];
 
+  /** TODO: Docs */
   readonly subscribeOwner: Store<Owner | null>["subscribe"];
+  /** TODO: Docs */
   readonly getOwner: Store<Owner | null>["getState"];
 
+  /** TODO: Docs */
   readonly subscribeSyncState: Store<SyncState>["subscribe"];
+  /** TODO: Docs */
   readonly getSyncState: Store<SyncState>["getState"];
 
-  create: Mutate<S, "create">;
-  update: Mutate<S, "update">;
+  /** TODO: Docs */
+  create: Mutate<T, "create">;
+  /** TODO: Docs */
+  update: Mutate<T, "update">;
 
   /**
    * Delete all local data from the current device.
@@ -62,6 +73,7 @@ export interface Evolu<S extends Schema = Schema> {
    */
   readonly resetOwner: () => void;
 
+  /** TODO: Docs */
   readonly parseMnemonic: Bip39["parse"];
 
   /**
@@ -69,8 +81,12 @@ export interface Evolu<S extends Schema = Schema> {
    */
   readonly restoreOwner: (mnemonic: Mnemonic) => void;
 
-  /** Ensure schema ad-hoc for hot reloading. */
-  readonly ensureSchema: (tables: Tables) => void;
+  /**
+   * Ensure database tables and columns exist.
+   */
+  readonly ensureSchema: <From, To extends T>(
+    schema: S.Schema<From, To>,
+  ) => void;
 }
 
 export const Evolu = Context.Tag<Evolu>();
@@ -468,12 +484,7 @@ export const EvoluCommonLive = Layer.effect(
         Effect.runSync,
       );
 
-    dbWorker.postMessage({
-      _tag: "init",
-      config,
-      // @ts-expect-error TODO
-      tables: schemaToTables(),
-    });
+    dbWorker.postMessage({ _tag: "init", config });
 
     // // appState.onFocus(() => {
     // //   // `queries` to refresh subscribed queries when a tab is changed.
@@ -514,12 +525,16 @@ export const EvoluCommonLive = Layer.effect(
         dbWorker.postMessage({ _tag: "reset", mnemonic });
       },
 
-      ensureSchema(tables) {
-        dbWorker.postMessage({ _tag: "ensureSchema", tables });
+      ensureSchema(schema) {
+        dbWorker.postMessage({
+          _tag: "ensureSchema",
+          tables: schemaToTables(schema),
+        });
       },
     });
   }),
 ).pipe(
+  // TODO: Refactor.
   Layer.use(Layer.mergeAll(LoadQueryLive, OnQueryLive, MutateLive)),
   Layer.use(
     Layer.mergeAll(
