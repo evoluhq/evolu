@@ -27,7 +27,7 @@ import {
 } from "./Db.js";
 import { DbWorker, DbWorkerOutputOnQuery, Mutation } from "./DbWorker.js";
 import { applyPatches } from "./Diff.js";
-import { ErrorStore, ErrorStoreLive } from "./ErrorStore.js";
+import { ErrorStore, makeErrorStore } from "./ErrorStore.js";
 import { Id, SqliteBoolean, SqliteDate, cast } from "./Model.js";
 import { OnCompletes, OnCompletesLive } from "./OnCompletes.js";
 import { Owner } from "./Owner.js";
@@ -162,68 +162,65 @@ export const LoadingPromises = Context.Tag<LoadingPromises>();
 
 type LoadingPromise<R extends Row> = Promise<QueryResult<R>>;
 
-export const LoadingPromisesLive = Layer.effect(
-  LoadingPromises,
-  Effect.sync(() => {
-    interface LoadingPromiseWithResolve<R extends Row> {
-      readonly promise: LoadingPromise<R>;
-      readonly resolve: Resolve<R>;
-      releaseOnResolve: boolean;
-    }
-    type Resolve<R extends Row> = (rows: QueryResult<R>) => void;
+export const makeLoadingPromise = (): LoadingPromises => {
+  interface LoadingPromiseWithResolve<R extends Row> {
+    readonly promise: LoadingPromise<R>;
+    readonly resolve: Resolve<R>;
+    releaseOnResolve: boolean;
+  }
+  type Resolve<R extends Row> = (rows: QueryResult<R>) => void;
 
-    const promises = new Map<Query, LoadingPromiseWithResolve<Row>>();
+  const promises = new Map<Query, LoadingPromiseWithResolve<Row>>();
 
-    return LoadingPromises.of({
-      get<R extends Row>(query: Query<R>) {
-        let isNew = false;
-        let promiseWithResolve = promises.get(query);
+  return LoadingPromises.of({
+    get<R extends Row>(query: Query<R>) {
+      let isNew = false;
+      let promiseWithResolve = promises.get(query);
 
-        if (!promiseWithResolve) {
-          isNew = true;
-          let resolve: Resolve<Row> = Function.constVoid;
-          const promise: LoadingPromise<Row> = new Promise((_resolve) => {
-            resolve = _resolve;
-          });
-          promiseWithResolve = {
-            promise,
-            resolve: (rows): void => {
-              setLoadingPromiseProp(promise, rows);
-              resolve(rows);
-            },
-            releaseOnResolve: false,
-          };
-          promises.set(query, promiseWithResolve);
-        }
-
-        return {
-          promise: promiseWithResolve.promise as LoadingPromise<R>,
-          isNew,
-        };
-      },
-
-      resolve(query, rows) {
-        const promiseWithResolve = promises.get(query);
-        if (!promiseWithResolve) return;
-        if (promiseWithResolve.releaseOnResolve) promises.delete(query);
-        promiseWithResolve.resolve(queryResultFromRows(rows));
-      },
-
-      /**
-       * LoadingPromises caches promises until they are released.
-       * Release must be called on any mutation.
-       */
-      release() {
-        promises.forEach((promiseWithResolve, query) => {
-          const isResolved =
-            getLoadingPromiseProp(promiseWithResolve.promise) != null;
-          if (isResolved) promises.delete(query);
-          else promiseWithResolve.releaseOnResolve = true;
+      if (!promiseWithResolve) {
+        isNew = true;
+        let resolve: Resolve<Row> = Function.constVoid;
+        const promise: LoadingPromise<Row> = new Promise((_resolve) => {
+          resolve = _resolve;
         });
-      },
-    });
-  }),
-);
+        promiseWithResolve = {
+          promise,
+          resolve: (rows): void => {
+            setLoadingPromiseProp(promise, rows);
+            resolve(rows);
+          },
+          releaseOnResolve: false,
+        };
+        promises.set(query, promiseWithResolve);
+      }
+
+      return {
+        promise: promiseWithResolve.promise as LoadingPromise<R>,
+        isNew,
+      };
+    },
+
+    resolve(query, rows) {
+      const promiseWithResolve = promises.get(query);
+      if (!promiseWithResolve) return;
+      if (promiseWithResolve.releaseOnResolve) promises.delete(query);
+      promiseWithResolve.resolve(queryResultFromRows(rows));
+    },
+
+    /**
+     * LoadingPromises caches promises until they are released.
+     * Release must be called on any mutation.
+     */
+    release() {
+      promises.forEach((promiseWithResolve, query) => {
+        const isResolved =
+          getLoadingPromiseProp(promiseWithResolve.promise) != null;
+        if (isResolved) promises.delete(query);
+        else promiseWithResolve.releaseOnResolve = true;
+      });
+    },
+  });
+};
 
 // For React < 19. React 'use' Hook pattern.
 const loadingPromiseProp = "evolu_QueryResult";
@@ -267,52 +264,47 @@ const LoadQueryLive = Layer.effect(
   }),
 );
 
-type OnQuery = (
-  output: DbWorkerOutputOnQuery,
-) => Effect.Effect<never, never, void>;
-
-const OnQuery = Context.Tag<OnQuery>();
-
-const OnQueryLive = Layer.effect(
-  OnQuery,
+const onQuery = ({
+  queriesPatches,
+  onCompleteIds,
+}: DbWorkerOutputOnQuery): Effect.Effect<
+  LoadingPromises | RowsStore | FlushSync | OnCompletes,
+  never,
+  void
+> =>
   Effect.gen(function* (_) {
     const rowsStore = yield* _(RowsStore);
     const loadingPromises = yield* _(LoadingPromises);
     const flushSync = yield* _(FlushSync);
     const onCompletes = yield* _(OnCompletes);
 
-    return OnQuery.of(({ queriesPatches, onCompleteIds }) =>
-      Effect.gen(function* (_) {
-        const currentState = rowsStore.getState();
-        const nextState = pipe(
-          queriesPatches,
-          ReadonlyArray.map(
-            ({ query, patches }) =>
-              [
-                query,
-                applyPatches(patches)(currentState.get(query) || emptyRows),
-              ] as const,
-          ),
-          (map) => new Map([...currentState, ...map]),
-        );
-
-        queriesPatches.forEach(({ query }) => {
-          loadingPromises.resolve(query, nextState.get(query) || emptyRows);
-        });
-
-        // No mutation is using onComplete, so we don't need flushSync.
-        if (onCompleteIds.length === 0) {
-          yield* _(rowsStore.setState(nextState));
-          return;
-        }
-
-        // TODO: yield* _(flushSync(rowsStore.setState(nextState)))
-        flushSync(() => rowsStore.setState(nextState).pipe(Effect.runSync));
-        yield* _(onCompletes.execute(onCompleteIds));
-      }),
+    const currentState = rowsStore.getState();
+    const nextState = pipe(
+      queriesPatches,
+      ReadonlyArray.map(
+        ({ query, patches }) =>
+          [
+            query,
+            applyPatches(patches)(currentState.get(query) || emptyRows),
+          ] as const,
+      ),
+      (map) => new Map([...currentState, ...map]),
     );
-  }),
-);
+
+    queriesPatches.forEach(({ query }) => {
+      loadingPromises.resolve(query, nextState.get(query) || emptyRows);
+    });
+
+    // No mutation is using onComplete, so we don't need flushSync.
+    if (onCompleteIds.length === 0) {
+      yield* _(rowsStore.setState(nextState));
+      return;
+    }
+
+    // TODO: yield* _(flushSync(rowsStore.setState(nextState)))
+    flushSync(() => rowsStore.setState(nextState).pipe(Effect.runSync));
+    yield* _(onCompletes.execute(onCompleteIds));
+  });
 
 interface SubscribedQueries {
   readonly subscribeQuery: (query: Query) => Store<Row>["subscribe"];
@@ -449,21 +441,45 @@ const MutateLive = Layer.effect(
   }),
 );
 
-export const EvoluCommonLive = Layer.effect(
+export const EvoluCommon: Layer.Layer<
+  NanoId | Time | DbWorker | Config | Bip39 | FlushSync,
+  never,
+  Evolu<Schema>
+> = Layer.effect(
   Evolu,
   Effect.gen(function* (_) {
-    const dbWorker = yield* _(DbWorker);
-    const errorStore = yield* _(ErrorStore);
-    const loadQuery = yield* _(LoadQuery);
-    const onQuery = yield* _(OnQuery);
-    const subscribedQueries = yield* _(SubscribedQueries);
-    const ownerStore = yield* _(makeStore<Owner | null>(null));
+    const rowsStore = yield* _(Effect.provide(RowsStore, RowsStoreLive));
+    const subscribedQueries = yield* _(
+      Effect.provide(SubscribedQueries, SubscribedQueriesLive),
+      Effect.provideService(RowsStore, rowsStore),
+    );
+    const onCompletes = yield* _(Effect.provide(OnCompletes, OnCompletesLive));
+    const flushSync = yield* _(FlushSync);
     const syncStateStore = yield* _(
       makeStore<SyncState>({ _tag: "SyncStateInitial" }),
     );
-    const mutate = yield* _(Mutate);
-    const bip39 = yield* _(Bip39);
-    const config = yield* _(Config);
+
+    const context = Context.empty().pipe(
+      Context.add(LoadingPromises, makeLoadingPromise()),
+      Context.add(SubscribedQueries, subscribedQueries),
+      Context.add(OnCompletes, onCompletes),
+      Context.add(FlushSync, flushSync),
+      Context.add(RowsStore, rowsStore),
+    );
+
+    const loadQuery = yield* _(
+      Effect.provide(LoadQuery, LoadQueryLive),
+      Effect.provide(context),
+    );
+
+    const mutate = yield* _(
+      Effect.provide(Mutate, MutateLive),
+      Effect.provide(context),
+    );
+
+    const dbWorker = yield* _(DbWorker);
+    const errorStore = yield* _(makeErrorStore);
+    const ownerStore = yield* _(makeStore<Owner | null>(null));
 
     dbWorker.onMessage = (output): void =>
       Match.value(output).pipe(
@@ -481,9 +497,11 @@ export const EvoluCommonLive = Layer.effect(
           // TODO: appState.reset
           onResetOrRestore: () => Effect.succeed(void 0),
         }),
+        Effect.provide(context),
         Effect.runSync,
       );
 
+    const config = yield* _(Config);
     dbWorker.postMessage({ _tag: "init", config });
 
     // // appState.onFocus(() => {
@@ -495,6 +513,8 @@ export const EvoluCommonLive = Layer.effect(
     // //   dbWorker.postMessage({ _tag: "sync", queries: [] });
     // // appState.onReconnect(sync);
     // // sync();
+
+    const bip39 = yield* _(Bip39);
 
     return Evolu.of({
       subscribeError: errorStore.subscribe,
@@ -533,17 +553,8 @@ export const EvoluCommonLive = Layer.effect(
       },
     });
   }),
-).pipe(
-  // TODO: Refactor.
-  Layer.use(Layer.mergeAll(LoadQueryLive, OnQueryLive, MutateLive)),
-  Layer.use(
-    Layer.mergeAll(
-      ErrorStoreLive,
-      LoadingPromisesLive,
-      OnCompletesLive,
-      SubscribedQueriesLive,
-      TimeLive,
-    ),
-  ),
-  Layer.use(Layer.mergeAll(NanoIdLive, RowsStoreLive)),
+);
+
+export const EvoluCommonLive = EvoluCommon.pipe(
+  Layer.use(Layer.merge(TimeLive, NanoIdLive)),
 );

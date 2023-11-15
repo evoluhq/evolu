@@ -2,8 +2,8 @@ import { Effect } from "effect";
 import { expect, test } from "vitest";
 import {
   LoadingPromises,
-  LoadingPromisesLive,
   makeCreateQuery,
+  makeLoadingPromise,
 } from "../src/Evolu.js";
 import { Db } from "./utils.js";
 
@@ -54,5 +54,8 @@ test("LoadingPromises", () => {
     loadingPromises.resolve(query1, []);
     loadingPromises.release();
     expect(loadingPromises.get(query1).isNew).toBe(true);
-  }).pipe(Effect.provide(LoadingPromisesLive), Effect.runSync);
+  }).pipe(
+    Effect.provideService(LoadingPromises, makeLoadingPromise()),
+    Effect.runSync,
+  );
 });

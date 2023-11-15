@@ -40,14 +40,13 @@ const Database = S.struct({
 });
 type Database = S.Schema.To<typeof Database>;
 
-// const evolu =
-Evolu.create(Database, { reloadUrl: "" });
+const evolu = Evolu.create(Database, { reloadUrl: "" });
 
 // evolu.evolu.create("todo", {title})
 
-// export const todos = evolu.evolu.createQuery((db) =>
-//   db.selectFrom("todo").selectAll(),
-// );
+export const todos = evolu.evolu.createQuery((db) =>
+  db.selectFrom("todo").selectAll(),
+);
 // console.log(evolu);
 
 // const {

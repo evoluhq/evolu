@@ -1,9 +1,10 @@
-import { Context, Effect, Layer } from "effect";
+import { Effect } from "effect";
 import { TimestampError } from "./Crdt.js";
 import { Store, makeStore } from "./Store.js";
 
 export type ErrorStore = Store<ErrorStoreValue>;
-export const ErrorStore = Context.Tag<ErrorStore>();
+
+export const makeErrorStore = makeStore<ErrorStoreValue>(null);
 
 type ErrorStoreValue = EvoluError | null;
 
@@ -37,8 +38,3 @@ interface TransferableError {
   readonly message: string;
   readonly stack: string | undefined;
 }
-
-export const ErrorStoreLive = Layer.effect(
-  ErrorStore,
-  makeStore<ErrorStoreValue>(null),
-);
