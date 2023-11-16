@@ -1,6 +1,5 @@
 import { DbWorker, DbWorkerOutput, PlatformName } from "@evolu/common";
 import { Effect, Function, Layer } from "effect";
-import { PlatformNameLive } from "./PlatformLive.js";
 
 export const DbWorkerLive = Layer.effect(
   DbWorker,
@@ -48,4 +47,4 @@ export const DbWorkerLive = Layer.effect(
       onMessage: Function.constVoid,
     });
   }),
-).pipe(Layer.use(PlatformNameLive));
+);
