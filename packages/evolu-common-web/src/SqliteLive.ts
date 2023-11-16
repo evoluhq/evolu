@@ -1,16 +1,12 @@
-import { Sqlite, SqliteRow, canUseDom, ensureSqliteQuery } from "@evolu/common";
-import { Effect, Function, Layer } from "effect";
-
+import {
+  Sqlite,
+  SqliteRow,
+  canUseDom,
+  ensureSqliteQuery,
+  maybeParseJson,
+} from "@evolu/common";
 import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
-
-if (canUseDom)
-  // @ts-expect-error Missing types.
-  self.sqlite3ApiConfig = {
-    debug: Function.constVoid,
-    log: Function.constVoid,
-    warn: Function.constVoid,
-    error: Function.constVoid,
-  };
+import { Effect, Layer } from "effect";
 
 const sqlitePromise = sqlite3InitModule().then((sqlite3) =>
   canUseDom
@@ -27,6 +23,7 @@ const exec: Sqlite["exec"] = (arg) =>
       rowMode: "object",
       bind: sqliteQuery.parameters,
     }) as SqliteRow[];
+    maybeParseJson(rows);
     return { rows, changes: sqlite.changes() };
   });
 

@@ -1,13 +1,17 @@
+/// <reference types="react/experimental" />
 import {
   Evolu,
   EvoluError,
+  PlatformName,
   Query,
   QueryResult,
   Row,
   Schema,
+  emptyRows,
+  queryResultFromRows,
 } from "@evolu/common";
 import { Context, Effect, Function, Layer } from "effect";
-import {
+import ReactExports, {
   FC,
   ReactNode,
   createContext,
@@ -16,26 +20,40 @@ import {
 } from "react";
 
 export interface EvoluCommonReact<S extends Schema = Schema> {
+  /** TODO: Docs */
   readonly evolu: Evolu<S>;
 
+  /** TODO: Docs */
   readonly EvoluProvider: FC<{
     readonly children?: ReactNode | undefined;
   }>;
 
+  /** TODO: Docs */
   readonly useEvolu: () => Evolu<S>;
 
+  /** TODO: Docs */
   readonly useEvoluError: () => EvoluError | null;
 
+  /** TODO: Docs */
   readonly createQuery: Evolu<S>["createQuery"];
 
-  // usePromise
+  /** TODO: Docs */
+  readonly usePromise: <R extends Row>(
+    promise: Promise<QueryResult<R>>,
+  ) => QueryResult<R>;
 
+  /** TODO: Docs */
   readonly useQuery: <R extends Row>(query: Query<R>) => QueryResult<R>;
+
+  /** TODO: Docs */
+  readonly useCreate: () => Evolu<S>["create"];
+
+  /** TODO: Docs */
+  readonly useUpdate: () => Evolu<S>["update"];
 
   // readonly useQuerySubscription
   // readonly useQueries
   //    useQueries([todos], [todoById], [chatRoom(1)])
-  // readonly useCreate
   // readonly useUpdate
   // const { loadQuery } = useEvolu()
   // useQueryPromise, to pujde? imho ne, protoze vytvorena promisa
@@ -49,30 +67,50 @@ export const EvoluCommonReactLive = Layer.effect(
   EvoluCommonReact,
   Effect.gen(function* (_) {
     const evolu = yield* _(Evolu);
+    const platformName = yield* _(PlatformName);
 
     const EvoluContext = createContext<Evolu>(evolu);
 
+    const EvoluProvider: EvoluCommonReact["EvoluProvider"] = ({ children }) => (
+      <EvoluContext.Provider value={evolu}>{children}</EvoluContext.Provider>
+    );
+
+    const useEvolu: EvoluCommonReact["useEvolu"] = () =>
+      useContext(EvoluContext);
+
+    const useEvoluError: EvoluCommonReact["useEvoluError"] = () =>
+      useSyncExternalStore(
+        evolu.subscribeError,
+        evolu.getError,
+        Function.constNull,
+      );
+
+    const usePromise = <R extends Row>(
+      promise: Promise<QueryResult<R>>,
+    ): QueryResult<R> => {
+      if (platformName === "server") return queryResultFromRows(emptyRows<R>());
+      return use(promise);
+    };
+
+    const useQuery = <R extends Row>(query: Query<R>): QueryResult<R> => {
+      const evolu = useEvolu();
+      const result = usePromise(evolu.loadQuery(query));
+      return result;
+    };
+
+    const useCreate: EvoluCommonReact["useCreate"] = () => useEvolu().create;
+    const useUpdate: EvoluCommonReact["useUpdate"] = () => useEvolu().update;
+
     return EvoluCommonReact.of({
       evolu,
-
-      EvoluProvider: ({ children }) => (
-        <EvoluContext.Provider value={evolu}>{children}</EvoluContext.Provider>
-      ),
-
-      useEvolu: () => useContext(EvoluContext),
-
-      useEvoluError: () =>
-        useSyncExternalStore(
-          evolu.subscribeError,
-          evolu.getError,
-          Function.constNull,
-        ),
-
+      EvoluProvider,
+      useEvolu,
+      useEvoluError,
       createQuery: evolu.createQuery,
-
-      useQuery() {
-        throw "todo";
-      },
+      usePromise,
+      useQuery,
+      useCreate,
+      useUpdate,
     });
   }),
 );
@@ -300,3 +338,34 @@ export const EvoluCommonReactLive = Layer.effect(
 //       });
 //     }),
 //   );
+
+const use =
+  ReactExports.use ||
+  (<T,>(
+    promise: Promise<T> & {
+      status?: "pending" | "fulfilled" | "rejected";
+      value?: T;
+      reason?: unknown;
+    },
+  ): T => {
+    if (promise.status === "pending") {
+      throw promise;
+    } else if (promise.status === "fulfilled") {
+      return promise.value as T;
+    } else if (promise.status === "rejected") {
+      throw promise.reason;
+    } else {
+      promise.status = "pending";
+      promise.then(
+        (v) => {
+          promise.status = "fulfilled";
+          promise.value = v;
+        },
+        (e) => {
+          promise.status = "rejected";
+          promise.reason = e;
+        },
+      );
+      throw promise;
+    }
+  });

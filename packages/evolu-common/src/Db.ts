@@ -100,9 +100,12 @@ export type Row = ReadonlyRecord.ReadonlyRecord<
   | ReadonlyArray<Row> // for jsonArrayFrom from kysely/helpers/sqlite
 >;
 
-export const emptyRows: ReadonlyArray<Row> = [];
+const _emptyRows: ReadonlyArray<Row> = [];
 
-export interface QueryResult<R extends Row> {
+export const emptyRows = <R extends Row>(): ReadonlyArray<R> =>
+  _emptyRows as ReadonlyArray<R>;
+
+export interface QueryResult<R extends Row = Row> {
   readonly rows: ReadonlyArray<Readonly<Kysely.Simplify<R>>>;
   readonly row: Readonly<Kysely.Simplify<R>> | null;
 }

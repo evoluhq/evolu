@@ -1,7 +1,15 @@
 import { TreeFormatter } from "@effect/schema";
 import * as S from "@effect/schema/Schema";
 import * as Evolu from "@evolu/react";
-import { FC, Suspense, startTransition, useEffect, useState } from "react";
+import {
+  ChangeEvent,
+  FC,
+  Suspense,
+  memo,
+  startTransition,
+  useEffect,
+  useState,
+} from "react";
 
 const TodoId = Evolu.id("Todo");
 type TodoId = S.Schema.To<typeof TodoId>;
@@ -41,127 +49,46 @@ const Database = S.struct({
 });
 type Database = S.Schema.To<typeof Database>;
 
-const { EvoluProvider, useEvoluError, createQuery, useQuery } = Evolu.create(
-  Database,
-  {
-    reloadUrl: "/examples/nextjs",
-    ...(process.env.NODE_ENV === "development" && {
-      syncUrl: "http://localhost:4000",
-    }),
-  },
-);
+const {
+  EvoluProvider,
+  useEvoluError,
+  createQuery,
+  useQuery,
+  useCreate,
+  useUpdate,
+} = Evolu.create(Database, {
+  reloadUrl: "/examples/nextjs",
+  ...(process.env.NODE_ENV === "development" && {
+    syncUrl: "http://localhost:4000",
+  }),
+});
 
-const prompt = <From extends string, To>(
-  schema: S.Schema<From, To>,
-  message: string,
-  onSuccess: (value: To) => void,
-): void => {
-  const value = window.prompt(message);
-  if (value == null) return; // on cancel
-  const a = S.parseEither(schema)(value);
-  if (a._tag === "Left") {
-    alert(TreeFormatter.formatErrors(a.left.errors));
-    return;
-  }
-  onSuccess(a.right);
-};
+export const NextJsExample: FC = () => {
+  const [todosShown, setTodosShown] = useState(true);
 
-const Button: FC<{
-  title: string;
-  onClick: () => void;
-}> = ({ title, onClick }) => {
   return (
-    <button
-      className="m-1 rounded-md border border-current px-1 text-sm active:opacity-80"
-      onClick={onClick}
-    >
-      {title}
-    </button>
+    <EvoluProvider>
+      <OwnerActions />
+      <nav className="my-4">
+        <Button
+          title="Simulate suspense-enabled router transition"
+          onClick={(): void => {
+            // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
+            startTransition(() => {
+              setTodosShown(!todosShown);
+            });
+          }}
+        />
+        <p>
+          Using suspense-enabled router transition, you will not see any loader
+          or jumping content.
+        </p>
+      </nav>
+      <Suspense>{todosShown ? <Todos /> : <TodoCategories />}</Suspense>
+      <NotificationBar />
+    </EvoluProvider>
   );
 };
-
-// interface TodoCategoryForSelect {
-//   readonly id: TodoCategoryTable["id"];
-//   readonly name: TodoCategoryTable["name"] | null;
-// }
-
-// const TodoCategorySelect: FC<{
-//   categories: ReadonlyArray<TodoCategoryForSelect>;
-//   selected: TodoCategoryId | null;
-//   onSelect: (_value: TodoCategoryId | null) => void;
-// }> = ({ categories, selected, onSelect }) => {
-//   const nothingSelected = "";
-//   const value =
-//     selected && categories.find((row) => row.id === selected)
-//       ? selected
-//       : nothingSelected;
-
-//   return (
-//     <select
-//       value={value}
-//       onChange={({
-//         target: { value },
-//       }: ChangeEvent<HTMLSelectElement>): void => {
-//         onSelect(value === nothingSelected ? null : (value as TodoCategoryId));
-//       }}
-//     >
-//       <option value={nothingSelected}>-- no category --</option>
-//       {categories.map(({ id, name }) => (
-//         <option key={id} value={id}>
-//           {name}
-//         </option>
-//       ))}
-//     </select>
-//   );
-// };
-
-// const TodoItem = memo<{
-//   row: Pick<TodoTable, "id" | "title" | "isCompleted" | "categoryId"> & {
-//     categories: ReadonlyArray<TodoCategoryForSelect>;
-//   };
-// }>(function TodoItem({
-//   row: { id, title, isCompleted, categoryId, categories },
-// }) {
-//   const { update } = useMutation();
-
-//   return (
-//     <li>
-//       <span
-//         className="text-sm font-bold"
-//         style={{ textDecoration: isCompleted ? "line-through" : "none" }}
-//       >
-//         {title}
-//       </span>
-//       <Button
-//         title={isCompleted ? "Completed" : "Complete"}
-//         onClick={(): void => {
-//           update("todo", { id, isCompleted: !isCompleted });
-//         }}
-//       />
-//       <Button
-//         title="Rename"
-//         onClick={(): void => {
-//           prompt(Evolu.NonEmptyString1000, "New Name", (title) => {
-//             update("todo", { id, title });
-//           });
-//         }}
-//       />
-//       <Button
-//         title="Delete"
-//         onClick={(): void => {
-//           update("todo", { id, isDeleted: true });
-//         }}
-//       />
-//       <TodoCategorySelect
-//         categories={categories}
-//         selected={categoryId}
-//         onSelect={(categoryId): void => {
-//           update("todo", { id, categoryId });
-//         }}
-//       />
-//     </li>
-//   );
-// });
 
 const todosWithCategories = createQuery((db) =>
   db
@@ -186,33 +113,115 @@ const todosWithCategories = createQuery((db) =>
 );
 
 const Todos: FC = () => {
-  // const { create } = useMutation();
+  const create = useCreate();
 
-  // const { rows } = useQuery(todosWithCategories);
+  const { rows } = useQuery(todosWithCategories);
 
-  // return (
-  //   <>
-  //     <h2 className="mt-6 text-xl font-semibold">Todos</h2>
-  //     <ul className="py-2">
-  //       {rows.map((row) => (
-  //         <TodoItem key={row.id} row={row} />
-  //       ))}
-  //     </ul>
-  //     <Button
-  //       title="Add Todo"
-  //       onClick={(): void => {
-  //         prompt(
-  //           Evolu.NonEmptyString1000,
-  //           "What needs to be done?",
-  //           (title) => {
-  //             create("todo", { title, isCompleted: false });
-  //           },
-  //         );
-  //       }}
-  //     />
-  //   </>
-  // );
-  return null;
+  return (
+    <>
+      <h2 className="mt-6 text-xl font-semibold">Todos</h2>
+      <ul className="py-2">
+        {rows.map((row) => (
+          <TodoItem key={row.id} row={row} />
+        ))}
+      </ul>
+      <Button
+        title="Add Todo"
+        onClick={(): void => {
+          prompt(
+            Evolu.NonEmptyString1000,
+            "What needs to be done?",
+            (title) => {
+              create("todo", { title, isCompleted: false });
+            },
+          );
+        }}
+      />
+    </>
+  );
+};
+
+const TodoItem = memo<{
+  row: Pick<TodoTable, "id" | "title" | "isCompleted" | "categoryId"> & {
+    categories: ReadonlyArray<TodoCategoryForSelect>;
+  };
+}>(function TodoItem({
+  row: { id, title, isCompleted, categoryId, categories },
+}) {
+  const update = useUpdate();
+
+  return (
+    <li>
+      <span
+        className="text-sm font-bold"
+        style={{ textDecoration: isCompleted ? "line-through" : "none" }}
+      >
+        {title}
+      </span>
+      <Button
+        title={isCompleted ? "Completed" : "Complete"}
+        onClick={(): void => {
+          update("todo", { id, isCompleted: !isCompleted });
+        }}
+      />
+      <Button
+        title="Rename"
+        onClick={(): void => {
+          prompt(Evolu.NonEmptyString1000, "New Name", (title) => {
+            update("todo", { id, title });
+          });
+        }}
+      />
+      <Button
+        title="Delete"
+        onClick={(): void => {
+          update("todo", { id, isDeleted: true });
+        }}
+      />
+      <TodoCategorySelect
+        categories={categories}
+        selected={categoryId}
+        onSelect={(categoryId): void => {
+          update("todo", { id, categoryId });
+        }}
+      />
+    </li>
+  );
+});
+
+interface TodoCategoryForSelect {
+  readonly id: TodoCategoryTable["id"];
+  readonly name: TodoCategoryTable["name"] | null;
+}
+
+const TodoCategorySelect: FC<{
+  categories: ReadonlyArray<TodoCategoryForSelect>;
+  selected: TodoCategoryId | null;
+  onSelect: (_value: TodoCategoryId | null) => void;
+}> = ({ categories, selected, onSelect }) => {
+  const nothingSelected = "";
+  const value =
+    selected && categories.find((row) => row.id === selected)
+      ? selected
+      : nothingSelected;
+
+  return (
+    <select
+      value={value}
+      onChange={({
+        target: { value },
+      }: ChangeEvent<HTMLSelectElement>): void => {
+        onSelect(value === nothingSelected ? null : (value as TodoCategoryId));
+      }}
+    >
+      <option value={nothingSelected}>-- no category --</option>
+      {categories.map(({ id, name }) => (
+        <option key={id} value={id}>
+          {name}
+        </option>
+      ))}
+    </select>
+  );
 };
 
 const TodoCategories: FC = () => {
@@ -349,29 +358,32 @@ const NotificationBar: FC = () => {
   );
 };
 
-export const NextJsExample: FC = () => {
-  const [todosShown, setTodosShown] = useState(true);
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const prompt = <From extends string, To>(
+  schema: S.Schema<From, To>,
+  message: string,
+  onSuccess: (value: To) => void,
+): void => {
+  const value = window.prompt(message);
+  if (value == null) return; // on cancel
+  const a = S.parseEither(schema)(value);
+  if (a._tag === "Left") {
+    alert(TreeFormatter.formatErrors(a.left.errors));
+    return;
+  }
+  onSuccess(a.right);
+};
 
+const Button: FC<{
+  title: string;
+  onClick: () => void;
+}> = ({ title, onClick }) => {
   return (
-    <EvoluProvider>
-      <OwnerActions />
-      <nav className="my-4">
-        <Button
-          title="Simulate suspense-enabled router transition"
-          onClick={(): void => {
-            // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
-            startTransition(() => {
-              setTodosShown(!todosShown);
-            });
-          }}
-        />
-        <p>
-          Using suspense-enabled router transition, you will not see any loader
-          or jumping content.
-        </p>
-      </nav>
-      <Suspense>{todosShown ? <Todos /> : <TodoCategories />}</Suspense>
-      <NotificationBar />
-    </EvoluProvider>
+    <button
+      className="m-1 rounded-md border border-current px-1 text-sm active:opacity-80"
+      onClick={onClick}
+    >
+      {title}
+    </button>
   );
 };

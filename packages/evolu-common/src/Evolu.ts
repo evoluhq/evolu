@@ -39,31 +39,38 @@ import { SyncState } from "./SyncWorker.js";
 export interface Evolu<T extends Schema = Schema> {
   /** TODO: Docs */
   readonly subscribeError: ErrorStore["subscribe"];
+
   /** TODO: Docs */
   readonly getError: ErrorStore["getState"];
 
   /** TODO: Docs */
   readonly createQuery: CreateQuery<T>;
+
   /** TODO: Docs */
   readonly loadQuery: LoadQuery;
 
   /** TODO: Docs */
+
   readonly subscribeQuery: SubscribedQueries["subscribeQuery"];
+
   /** TODO: Docs */
   readonly getQuery: SubscribedQueries["getQuery"];
 
   /** TODO: Docs */
   readonly subscribeOwner: Store<Owner | null>["subscribe"];
+
   /** TODO: Docs */
   readonly getOwner: Store<Owner | null>["getState"];
 
   /** TODO: Docs */
   readonly subscribeSyncState: Store<SyncState>["subscribe"];
+
   /** TODO: Docs */
   readonly getSyncState: Store<SyncState>["getState"];
 
   /** TODO: Docs */
   create: Mutate<T, "create">;
+
   /** TODO: Docs */
   update: Mutate<T, "update">;
 
@@ -185,10 +192,7 @@ export const makeLoadingPromise = (): LoadingPromises => {
         });
         promiseWithResolve = {
           promise,
-          resolve: (rows): void => {
-            setLoadingPromiseProp(promise, rows);
-            resolve(rows);
-          },
+          resolve,
           releaseOnResolve: false,
         };
         promises.set(query, promiseWithResolve);
@@ -213,30 +217,16 @@ export const makeLoadingPromise = (): LoadingPromises => {
      */
     release() {
       promises.forEach((promiseWithResolve, query) => {
-        const isResolved =
-          getLoadingPromiseProp(promiseWithResolve.promise) != null;
-        if (isResolved) promises.delete(query);
+        if (
+          "status" in promiseWithResolve.promise &&
+          promiseWithResolve.promise.status !== "pending"
+        )
+          promises.delete(query);
         else promiseWithResolve.releaseOnResolve = true;
       });
     },
   });
 };
-
-// For React < 19. React 'use' Hook pattern.
-const loadingPromiseProp = "evolu_QueryResult";
-
-const setLoadingPromiseProp = <R extends Row>(
-  promise: LoadingPromise<R>,
-  result: QueryResult<R>,
-): void => {
-  void Object.assign(promise, { [loadingPromiseProp]: result });
-};
-
-export const getLoadingPromiseProp = <R extends Row>(
-  promise: LoadingPromise<R>,
-  // @ts-expect-error Promise has no such prop.
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-): QueryResult<R> | null => promise[loadingPromiseProp] || null;
 
 type LoadQuery = <R extends Row>(query: Query<R>) => Promise<QueryResult<R>>;
 
@@ -285,14 +275,14 @@ const onQuery = ({
         ({ query, patches }) =>
           [
             query,
-            applyPatches(patches)(currentState.get(query) || emptyRows),
+            applyPatches(patches)(currentState.get(query) || emptyRows()),
           ] as const,
       ),
       (map) => new Map([...currentState, ...map]),
     );
 
     queriesPatches.forEach(({ query }) => {
-      loadingPromises.resolve(query, nextState.get(query) || emptyRows);
+      loadingPromises.resolve(query, nextState.get(query) || emptyRows());
     });
 
     // No mutation is using onComplete, so we don't need flushSync.
@@ -343,7 +333,7 @@ const SubscribedQueriesLive = Layer.effect(
 
       getQuery: <R extends Row>(query: Query<R>): QueryResult<R> =>
         queryResultFromRows(
-          rowsStore.getState().get(query) || emptyRows,
+          rowsStore.getState().get(query) || emptyRows(),
         ) as QueryResult<R>,
 
       getSubscribedQueries: () =>

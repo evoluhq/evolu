@@ -51,7 +51,7 @@ import { Id, SqliteDate, cast } from "./Model.js";
 import { OnCompleteId } from "./OnCompletes.js";
 import { Owner, OwnerId } from "./Owner.js";
 import * as Sql from "./Sql.js";
-import { Sqlite, maybeParseJson } from "./Sqlite.js";
+import { Sqlite } from "./Sqlite.js";
 import {
   Message,
   NewMessage,
@@ -196,11 +196,7 @@ const query = ({
       Effect.forEach((query) =>
         sqlite
           .exec(deserializeQuery(query))
-          .pipe(
-            Effect.map(
-              (result) => [query, maybeParseJson(result.rows)] as const,
-            ),
-          ),
+          .pipe(Effect.map((result) => [query, result.rows] as const)),
       ),
     );
 
