@@ -604,20 +604,27 @@ export const DbWorkerLive = Layer.effect(
       }
     };
 
-    const context = Context.empty().pipe(
+    const runContext = Context.empty().pipe(
       Context.add(Sqlite, yield* _(Sqlite)),
       Context.add(Bip39, yield* _(Bip39)),
       Context.add(NanoId, yield* _(NanoId)),
+      Context.add(DbWorkerOnMessage, (output) => {
+        dbWorker.onMessage(output);
+      }),
     );
 
     const run = (
-      effect: Effect.Effect<Sqlite | Bip39 | NanoId, EvoluError, void>,
+      effect: Effect.Effect<
+        Sqlite | Bip39 | NanoId | DbWorkerOnMessage,
+        EvoluError,
+        void
+      >,
     ): Promise<void> =>
       effect.pipe(
         Effect.catchAllDefect(makeUnexpectedError),
         transaction,
         Effect.catchAll(onError),
-        Effect.provide(context),
+        Effect.provide(runContext),
         Effect.runPromise,
       );
 
@@ -626,19 +633,14 @@ export const DbWorkerLive = Layer.effect(
     // Write for reset only in case init fails.
     const writeForInitFail: Write = (input): Promise<void> => {
       if (input._tag !== "reset") return Promise.resolve(undefined);
-      return reset(input).pipe(
-        Effect.provideService(DbWorkerOnMessage, dbWorker.onMessage),
-        Effect.provide(context),
-        run,
-      );
+      return reset(input).pipe(run);
     };
 
-    const makeWriteForInitSuccess = (owner: Owner, config: Config): Write => {
+    const makeWriteForInitSuccess = (config: Config, owner: Owner): Write => {
       let skipAllBecauseOfReset = false;
 
       const layer = Layer.mergeAll(
         ConfigLive(config),
-        Layer.succeed(DbWorkerOnMessage, dbWorker.onMessage),
         Layer.succeed(Owner, owner),
         Layer.succeed(SyncWorkerPostMessage, syncWorker.postMessage),
         RowsStoreLive,
@@ -674,7 +676,7 @@ export const DbWorkerLive = Layer.effect(
       return init.pipe(
         Effect.map((owner) => {
           dbWorker.onMessage({ _tag: "onOwner", owner });
-          write = makeWriteForInitSuccess(owner, input.config);
+          write = makeWriteForInitSuccess(input.config, owner);
         }),
         run,
       );
