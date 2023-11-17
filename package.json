@@ -7,7 +7,7 @@
     "start": "turbo start --concurrency=12",
     "lint": "turbo lint",
     "test": "turbo test",
-    "clean": "turbo clean && rm -rf node_modules",
+    "clean": "turbo clean && rm -rf node_modules pnpm-lock.yaml",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "version": "changeset version && pnpm install --no-frozen-lockfile && pnpm format",
     "release": "pnpm run build && changeset publish",

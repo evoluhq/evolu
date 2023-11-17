@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "clean": "rm -rf .turbo && rm -rf .next && rm -rf node_modules"
+    "clean": "rm -rf .turbo .next node_modules"
   },
   "dependencies": {
     "@effect/schema": "^0.48.1",

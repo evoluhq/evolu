@@ -8,7 +8,7 @@
     "android": "expo start --android",
     "build-native": "expo start --no-dev --minify",
     "lint": "eslint --ext ts,tsx .",
-    "clean": "rm -rf .turbo && rm -rf .expo && rm -rf node_modules"
+    "clean": "rm -rf .turbo .expo node_modules"
   },
   "dependencies": {
     "@effect/schema": "^0.48.1",

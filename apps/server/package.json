@@ -8,7 +8,7 @@
     "build": "rm -rf dist && tsc",
     "start": "node dist/index.js",
     "lint": "TIMING=1 eslint src --ext .ts,.tsx",
-    "clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist"
+    "clean": "rm -rf .turbo node_modules dist db.sqlite"
   },
   "dependencies": {
     "@evolu/server": "workspace:*"
