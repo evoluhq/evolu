@@ -422,12 +422,6 @@ importers:
       express:
         specifier: ^4.18.2
         version: 4.18.2
-      react:
-        specifier: ^18.2.0
-        version: 18.2.0
-      react-dom:
-        specifier: ^18.2.0
-        version: 18.2.0(react@18.2.0)
     devDependencies:
       '@evolu/tsconfig':
         specifier: workspace:*
