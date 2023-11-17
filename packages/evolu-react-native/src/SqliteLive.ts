@@ -1,4 +1,9 @@
-import { Sqlite, ensureSqliteQuery, maybeParseJson } from "@evolu/common";
+import {
+  Sqlite,
+  ensureSqliteQuery,
+  maybeParseJson,
+  valuesToSqliteValues,
+} from "@evolu/common";
 import { Effect, Layer } from "effect";
 import * as SQLite from "expo-sqlite";
 
@@ -11,7 +16,12 @@ const exec: Sqlite["exec"] = (arg) =>
       Effect.promise(() =>
         db
           .execAsync(
-            [{ sql: sqliteQuery.sql, args: sqliteQuery.parameters }],
+            [
+              {
+                sql: sqliteQuery.sql,
+                args: valuesToSqliteValues(sqliteQuery.parameters),
+              },
+            ],
             false,
           )
           .then((a) => a[0])

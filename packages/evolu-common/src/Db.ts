@@ -31,7 +31,13 @@ import {
   createOwnerTable,
   insertOwner,
 } from "./Sql.js";
-import { Sqlite, SqliteQuery, SqliteValue } from "./Sqlite.js";
+import {
+  JsonObjectOrArray,
+  Sqlite,
+  SqliteQuery,
+  Value,
+  isJsonObjectOrArray,
+} from "./Sqlite.js";
 import { Store, makeStore } from "./Store.js";
 
 export type Schema = ReadonlyRecord.ReadonlyRecord<TableSchema>;
@@ -40,32 +46,17 @@ export type TableSchema = ReadonlyRecord.ReadonlyRecord<Value> & {
   readonly id: Id;
 };
 
-export type Value = SqliteValue | JsonObjectOrArray;
-
-export type JsonObjectOrArray = JsonObject | JsonArray;
-
-type JsonObject = ReadonlyRecord.ReadonlyRecord<Json>;
-type JsonArray = ReadonlyArray<Json>;
-type Json = string | number | boolean | null | JsonObject | JsonArray;
-
-export const isJsonObjectOrArray: Predicate.Refinement<
-  Value,
-  JsonObjectOrArray
-> = (value): value is JsonObjectOrArray =>
-  value !== null && typeof value === "object" && !(value instanceof Uint8Array);
-
-export const valuesToSqliteValues = (
-  values: ReadonlyArray<Value>,
-): SqliteValue[] =>
-  values.map((value) =>
-    isJsonObjectOrArray(value) ? JSON.stringify(value) : value,
-  );
-
 export type Query<R extends Row = Row> = string & Brand.Brand<"Query"> & R;
 
 interface SerializedSqliteQuery {
   readonly sql: string;
-  readonly parameters: (null | string | number | Array<number>)[];
+  readonly parameters: (
+    | null
+    | string
+    | number
+    | Array<number>
+    | { json: JsonObjectOrArray }
+  )[];
 }
 
 // We use queries as keys, hence JSON.stringify.
@@ -75,9 +66,13 @@ export const serializeQuery = <R extends Row>({
 }: SqliteQuery): Query<R> => {
   const query: SerializedSqliteQuery = {
     sql,
-    parameters: parameters.map((p) =>
-      Predicate.isUint8Array(p) ? Array.from(p) : p,
-    ),
+    parameters: parameters.map((p) => {
+      return Predicate.isUint8Array(p)
+        ? Array.from(p)
+        : isJsonObjectOrArray(p)
+          ? { json: p }
+          : p;
+    }),
   };
   return JSON.stringify(query) as Query<R>;
 };
@@ -89,7 +84,11 @@ export const deserializeQuery = <R extends Row>(
   return {
     ...serializedSqliteQuery,
     parameters: serializedSqliteQuery.parameters.map((p) =>
-      Array.isArray(p) ? new Uint8Array(p) : p,
+      Array.isArray(p)
+        ? new Uint8Array(p)
+        : typeof p === "object" && p != null
+          ? p.json
+          : p,
     ),
   };
 };

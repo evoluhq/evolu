@@ -16,6 +16,7 @@ import ReactExports, {
   ReactNode,
   createContext,
   useContext,
+  useMemo,
   useSyncExternalStore,
 } from "react";
 
@@ -43,6 +44,11 @@ export interface EvoluCommonReact<S extends Schema = Schema> {
   ) => QueryResult<R>;
 
   /** TODO: Docs */
+  readonly useQuerySubscription: <R extends Row>(
+    query: Query<R>,
+  ) => QueryResult<R>;
+
+  /** TODO: Docs */
   readonly useQuery: <R extends Row>(query: Query<R>) => QueryResult<R>;
 
   /** TODO: Docs */
@@ -51,7 +57,6 @@ export interface EvoluCommonReact<S extends Schema = Schema> {
   /** TODO: Docs */
   readonly useUpdate: () => Evolu<S>["update"];
 
-  // readonly useQuerySubscription
   // readonly useQueries
   //    useQueries([todos], [todoById], [chatRoom(1)])
   // readonly useUpdate
@@ -85,6 +90,9 @@ export const EvoluCommonReactLive = Layer.effect(
         Function.constNull,
       );
 
+    /**
+     * React `use` polyfill.
+     */
     const usePromise = <R extends Row>(
       promise: Promise<QueryResult<R>>,
     ): QueryResult<R> => {
@@ -92,10 +100,20 @@ export const EvoluCommonReactLive = Layer.effect(
       return use(promise);
     };
 
+    const useQuerySubscription = <R extends Row>(
+      query: Query<R>,
+    ): QueryResult<R> => {
+      const evolu = useEvolu();
+      return useSyncExternalStore(
+        useMemo(() => evolu.subscribeQuery(query), [evolu, query]),
+        useMemo(() => () => evolu.getQuery(query), [evolu, query]),
+      );
+    };
+
     const useQuery = <R extends Row>(query: Query<R>): QueryResult<R> => {
       const evolu = useEvolu();
-      const result = usePromise(evolu.loadQuery(query));
-      return result;
+      usePromise(evolu.loadQuery(query));
+      return useQuerySubscription(query);
     };
 
     const useCreate: EvoluCommonReact["useCreate"] = () => useEvolu().create;
@@ -107,6 +125,7 @@ export const EvoluCommonReactLive = Layer.effect(
       useEvolu,
       useEvoluError,
       createQuery: evolu.createQuery,
+      useQuerySubscription,
       usePromise,
       useQuery,
       useCreate,

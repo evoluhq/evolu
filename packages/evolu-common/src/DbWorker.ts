@@ -37,13 +37,11 @@ import {
   RowsStoreLive,
   Table,
   Tables,
-  Value,
   deserializeQuery,
   ensureSchema,
   lazyInit,
   someDefectToNoSuchTableOrColumnError,
   transaction,
-  valuesToSqliteValues,
 } from "./Db.js";
 import { QueryPatches, makePatches } from "./Diff.js";
 import { EvoluError, makeUnexpectedError } from "./ErrorStore.js";
@@ -51,7 +49,7 @@ import { Id, SqliteDate, cast } from "./Model.js";
 import { OnCompleteId } from "./OnCompletes.js";
 import { Owner, OwnerId } from "./Owner.js";
 import * as Sql from "./Sql.js";
-import { Sqlite } from "./Sqlite.js";
+import { Sqlite, Value } from "./Sqlite.js";
 import {
   Message,
   NewMessage,
@@ -304,11 +302,7 @@ export const upsertValueIntoTableRowColumn = (
 
     const insert = sqlite.exec({
       sql: Sql.upsertValueIntoTableRowColumn(message.table, message.column),
-      parameters: valuesToSqliteValues([
-        message.row,
-        message.value,
-        message.value,
-      ]),
+      parameters: [message.row, message.value, message.value],
     });
 
     yield* _(
@@ -351,13 +345,13 @@ const applyMessages = ({
         const { changes } = yield* _(
           sqlite.exec({
             sql: Sql.insertIntoMessagesIfNew,
-            parameters: valuesToSqliteValues([
+            parameters: [
               message.timestamp,
               message.table,
               message.row,
               message.column,
               message.value,
-            ]),
+            ],
           }),
         );
         if (changes > 0) {
@@ -469,6 +463,7 @@ const handleSyncResponse = ({
   Effect.gen(function* (_) {
     let { timestamp, merkleTree } = yield* _(readTimestampAndMerkleTree);
 
+    const dbWorkerOnMessage = yield* _(DbWorkerOnMessage);
     if (messages.length > 0) {
       for (const message of messages)
         timestamp = yield* _(
@@ -477,10 +472,8 @@ const handleSyncResponse = ({
         );
       merkleTree = yield* _(applyMessages({ merkleTree, messages }));
       yield* _(writeTimestampAndMerkleTree({ timestamp, merkleTree }));
+      dbWorkerOnMessage({ _tag: "onReceive" });
     }
-
-    const dbWorkerOnMessage = yield* _(DbWorkerOnMessage);
-    dbWorkerOnMessage({ _tag: "onReceive" });
 
     const diff = diffMerkleTrees(response.merkleTree, merkleTree);
 
@@ -501,6 +494,7 @@ const handleSyncResponse = ({
     const [sqlite, config, owner] = yield* _(
       Effect.all([Sqlite, Config, Owner]),
     );
+
     const messagesToSync = yield* _(
       sqlite.exec({
         sql: Sql.selectMessagesToSync,
@@ -508,6 +502,13 @@ const handleSyncResponse = ({
       }),
       Effect.map(({ rows }) => rows as unknown as ReadonlyArray<Message>),
     );
+
+    if (response.syncLoopCount > 100) {
+      // eslint-disable-next-line no-console
+      console.error("syncLoopCount > 100");
+      return;
+    }
+
     syncWorkerPostMessage({
       _tag: "sync",
       syncUrl: config.syncUrl,

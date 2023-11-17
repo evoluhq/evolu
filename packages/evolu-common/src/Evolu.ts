@@ -174,6 +174,7 @@ export const makeLoadingPromise = (): LoadingPromises => {
     readonly promise: LoadingPromise<R>;
     readonly resolve: Resolve<R>;
     releaseOnResolve: boolean;
+    resolved: boolean;
   }
   type Resolve<R extends Row> = (rows: QueryResult<R>) => void;
 
@@ -194,6 +195,7 @@ export const makeLoadingPromise = (): LoadingPromises => {
           promise,
           resolve,
           releaseOnResolve: false,
+          resolved: false,
         };
         promises.set(query, promiseWithResolve);
       }
@@ -207,8 +209,9 @@ export const makeLoadingPromise = (): LoadingPromises => {
     resolve(query, rows) {
       const promiseWithResolve = promises.get(query);
       if (!promiseWithResolve) return;
-      if (promiseWithResolve.releaseOnResolve) promises.delete(query);
       promiseWithResolve.resolve(queryResultFromRows(rows));
+      promiseWithResolve.resolved = true;
+      if (promiseWithResolve.releaseOnResolve) promises.delete(query);
     },
 
     /**
@@ -217,11 +220,7 @@ export const makeLoadingPromise = (): LoadingPromises => {
      */
     release() {
       promises.forEach((promiseWithResolve, query) => {
-        if (
-          "status" in promiseWithResolve.promise &&
-          promiseWithResolve.promise.status !== "pending"
-        )
-          promises.delete(query);
+        if (promiseWithResolve.resolved) promises.delete(query);
         else promiseWithResolve.releaseOnResolve = true;
       });
     },

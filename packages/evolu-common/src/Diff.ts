@@ -1,5 +1,6 @@
 import { Predicate, ReadonlyArray } from "effect";
-import { Query, Row, Value } from "./Db.js";
+import { Query, Row } from "./Db.js";
+import { Value } from "./Sqlite.js";
 
 export interface QueryPatches {
   readonly query: Query;

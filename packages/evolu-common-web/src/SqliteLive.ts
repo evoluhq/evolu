@@ -4,6 +4,7 @@ import {
   canUseDom,
   ensureSqliteQuery,
   maybeParseJson,
+  valuesToSqliteValues,
 } from "@evolu/common";
 import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
 import { Effect, Layer } from "effect";
@@ -21,7 +22,7 @@ const exec: Sqlite["exec"] = (arg) =>
     const rows = sqlite.exec(sqliteQuery.sql, {
       returnValue: "resultRows",
       rowMode: "object",
-      bind: sqliteQuery.parameters,
+      bind: valuesToSqliteValues(sqliteQuery.parameters),
     }) as SqliteRow[];
     maybeParseJson(rows);
     return { rows, changes: sqlite.changes() };

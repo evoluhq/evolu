@@ -1,4 +1,4 @@
-import { Context, Effect, Predicate } from "effect";
+import { Context, Effect, Predicate, ReadonlyRecord } from "effect";
 
 export interface Sqlite {
   readonly exec: (
@@ -10,10 +10,15 @@ export const Sqlite = Context.Tag<Sqlite>();
 
 export interface SqliteQuery {
   readonly sql: string;
-  readonly parameters: SqliteValue[];
+  readonly parameters: Value[];
 }
 
+export type Value = SqliteValue | JsonObjectOrArray;
 export type SqliteValue = null | string | number | Uint8Array;
+export type JsonObjectOrArray = JsonObject | JsonArray;
+type JsonObject = ReadonlyRecord.ReadonlyRecord<Json>;
+type JsonArray = ReadonlyArray<Json>;
+type Json = string | number | boolean | null | JsonObject | JsonArray;
 
 interface ExecResult {
   readonly rows: SqliteRow[];
@@ -21,6 +26,19 @@ interface ExecResult {
 }
 
 export type SqliteRow = Record<string, SqliteValue>;
+
+export const isJsonObjectOrArray: Predicate.Refinement<
+  Value,
+  JsonObjectOrArray
+> = (value): value is JsonObjectOrArray =>
+  value !== null && typeof value === "object" && !Predicate.isUint8Array(value);
+
+export const valuesToSqliteValues = (
+  values: ReadonlyArray<Value>,
+): SqliteValue[] =>
+  values.map((value) =>
+    isJsonObjectOrArray(value) ? JSON.stringify(value) : value,
+  );
 
 export const ensureSqliteQuery = (arg: string | SqliteQuery): SqliteQuery => {
   if (typeof arg !== "string") return arg;
