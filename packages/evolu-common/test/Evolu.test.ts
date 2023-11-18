@@ -3,9 +3,11 @@ import { expect, test } from "vitest";
 import {
   LoadingPromiseLive,
   LoadingPromises,
+  SubscribedQueriesLive,
   makeCreateQuery,
 } from "../src/Evolu.js";
 import { Db } from "./utils.js";
+import { RowsStoreLive } from "../src/Db.js";
 
 test("createQuery", () => {
   const createQuery = makeCreateQuery<Db>();
@@ -41,7 +43,7 @@ test("LoadingPromises", () => {
     expect(p1.promise).not.toBe(p3.promise);
 
     // Release nothing because all are pending.
-    loadingPromises.release([]);
+    loadingPromises.release();
     expect(loadingPromises.get(query1).isNew).toBe(false);
     expect(loadingPromises.get(query2).isNew).toBe(false);
 
@@ -52,7 +54,12 @@ test("LoadingPromises", () => {
 
     // Release resolved.
     loadingPromises.resolve(query1, []);
-    loadingPromises.release([]);
+    loadingPromises.release();
     expect(loadingPromises.get(query1).isNew).toBe(true);
-  }).pipe(Effect.provide(LoadingPromiseLive), Effect.runSync);
+  }).pipe(
+    Effect.provide(LoadingPromiseLive),
+    Effect.provide(SubscribedQueriesLive),
+    Effect.provide(RowsStoreLive),
+    Effect.runSync,
+  );
 });

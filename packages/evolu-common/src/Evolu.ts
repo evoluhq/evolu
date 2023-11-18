@@ -162,8 +162,11 @@ export interface LoadingPromises {
     rows: ReadonlyArray<R>,
   ) => void;
 
-  /** Release all promises except of subscribed queries promises. */
-  readonly release: (subscribedQueries: ReadonlyArray<Query>) => void;
+  /**
+   * Release all unsubscribed queries on mutation because only subscribed queries
+   * are automatically updated.
+   */
+  readonly release: () => void;
 }
 
 export const LoadingPromises = Context.Tag<LoadingPromises>();
@@ -176,7 +179,7 @@ export type LoadingPromise<R extends Row> = Promise<QueryResult<R>> & {
 
 export const LoadingPromiseLive = Layer.effect(
   LoadingPromises,
-  Effect.sync(() => {
+  Effect.gen(function* (_) {
     interface LoadingPromiseWithResolve<R extends Row> {
       promise: LoadingPromise<R>;
       readonly resolve: Resolve<R>;
@@ -184,6 +187,7 @@ export const LoadingPromiseLive = Layer.effect(
     }
     type Resolve<R extends Row> = (rows: QueryResult<R>) => void;
 
+    const subscribedQueries = yield* _(SubscribedQueries);
     const promises = new Map<Query, LoadingPromiseWithResolve<Row>>();
 
     return LoadingPromises.of({
@@ -223,9 +227,10 @@ export const LoadingPromiseLive = Layer.effect(
         if (promiseWithResolve.releaseOnResolve) promises.delete(query);
       },
 
-      release(subscribedQueries) {
+      release() {
+        const keep = subscribedQueries.getSubscribedQueries();
         promises.forEach((promiseWithResolve, query) => {
-          if (subscribedQueries.includes(query)) return;
+          if (keep.includes(query)) return;
           if (promiseWithResolve.promise.status === "fulfilled")
             promises.delete(query);
           else promiseWithResolve.releaseOnResolve = true;
@@ -310,17 +315,15 @@ const OnQueryLive = Layer.effect(
   }),
 );
 
-interface SubscribedQueries {
+export interface SubscribedQueries {
   readonly subscribeQuery: (query: Query) => Store<Row>["subscribe"];
-
   readonly getQuery: <R extends Row>(query: Query<R>) => QueryResult<R>;
-
   readonly getSubscribedQueries: () => ReadonlyArray<Query>;
 }
 
-const SubscribedQueries = Context.Tag<SubscribedQueries>();
+export const SubscribedQueries = Context.Tag<SubscribedQueries>();
 
-const SubscribedQueriesLive = Layer.effect(
+export const SubscribedQueriesLive = Layer.effect(
   SubscribedQueries,
   Effect.gen(function* (_) {
     const rowsStore = yield* _(RowsStore);
@@ -436,9 +439,12 @@ const MutateLive = Layer.effect(
         mutations.length === 1
       )
         queueMicrotask(() => {
-          const queries = subscribedQueries.getSubscribedQueries();
-          loadingPromises.release(queries);
-          dbWorker.postMessage({ _tag: "mutate", mutations, queries });
+          dbWorker.postMessage({
+            _tag: "mutate",
+            mutations,
+            queries: subscribedQueries.getSubscribedQueries(),
+          });
+          loadingPromises.release();
           mutations.length = 0;
         });
 
@@ -472,8 +478,8 @@ export const EvoluCommonTest = Layer.effect(
           onSyncState: ({ state }) => syncStateStore.setState(state),
           onReceive: () =>
             Effect.sync(() => {
+              loadingPromises.release();
               const queries = subscribedQueries.getSubscribedQueries();
-              loadingPromises.release(queries);
               if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
                 dbWorker.postMessage({ _tag: "query", queries });
             }),
@@ -528,8 +534,9 @@ export const EvoluCommonTest = Layer.effect(
   }),
 ).pipe(
   Layer.use(Layer.mergeAll(LoadQueryLive, OnQueryLive, MutateLive)),
+  Layer.use(LoadingPromiseLive),
   Layer.use(SubscribedQueriesLive),
-  Layer.use(Layer.mergeAll(RowsStoreLive, OnCompletesLive, LoadingPromiseLive)),
+  Layer.use(Layer.merge(RowsStoreLive, OnCompletesLive)),
 );
 
 // EvoluCommonLive (with side effects) is for apps.
