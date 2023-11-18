@@ -80,7 +80,9 @@ export interface Evolu<T extends Schema = Schema> {
    */
   readonly resetOwner: () => void;
 
-  /** TODO: Docs */
+  /**
+   * TODO:
+   */
   readonly parseMnemonic: Bip39["parse"];
 
   /**
@@ -521,7 +523,9 @@ export const EvoluCommonTest = Layer.effect(
       update: mutate,
 
       resetOwner: () => dbWorker.postMessage({ _tag: "reset" }),
+
       parseMnemonic: (yield* _(Bip39)).parse,
+
       restoreOwner: (mnemonic) =>
         dbWorker.postMessage({ _tag: "reset", mnemonic }),
 
@@ -539,7 +543,7 @@ export const EvoluCommonTest = Layer.effect(
   Layer.use(Layer.merge(RowsStoreLive, OnCompletesLive)),
 );
 
-// EvoluCommonLive (with side effects) is for apps.
+// EvoluCommonLive (with common side effects) is for apps.
 export const EvoluCommonLive = EvoluCommonTest.pipe(
   Layer.use(Layer.merge(TimeLive, NanoIdLive)),
 );
