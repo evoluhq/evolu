@@ -504,8 +504,9 @@ const handleSyncResponse = ({
     );
 
     if (response.syncLoopCount > 100) {
+      // TODO: dbWorkerOnMessage({ _tag: "onError" });
       // eslint-disable-next-line no-console
-      console.error("syncLoopCount > 100");
+      console.error("Evolu: syncLoopCount > 100");
       return;
     }
 
