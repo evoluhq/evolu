@@ -491,9 +491,9 @@ const handleSyncResponse = ({
       return;
     }
 
-    const [sqlite, config, owner] = yield* _(
-      Effect.all([Sqlite, Config, Owner]),
-    );
+    const sqlite = yield* _(Sqlite);
+    const config = yield* _(Config);
+    const owner = yield* _(Owner);
 
     const messagesToSync = yield* _(
       sqlite.exec({
@@ -536,15 +536,10 @@ const sync = ({
   Effect.gen(function* (_) {
     if (queries.length > 0) yield* _(query({ queries }));
 
-    const [syncWorkerPostMessage, config, owner, timestampAndMerkleTree] =
-      yield* _(
-        Effect.all([
-          SyncWorkerPostMessage,
-          Config,
-          Owner,
-          readTimestampAndMerkleTree,
-        ]),
-      );
+    const syncWorkerPostMessage = yield* _(SyncWorkerPostMessage);
+    const config = yield* _(Config);
+    const owner = yield* _(Owner);
+    const timestampAndMerkleTree = yield* _(readTimestampAndMerkleTree);
 
     syncWorkerPostMessage({
       ...timestampAndMerkleTree,
