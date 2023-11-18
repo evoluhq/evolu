@@ -19,28 +19,28 @@ import { Callout } from "nextra-theme-docs";
 ## Overview
 
 ```js
-import * as Schema from "@effect/schema/Schema";
+import * as S from "@effect/schema/Schema";
 import * as Evolu from "@evolu/react";
 
 const TodoId = Evolu.id("Todo");
-type TodoId = Schema.Schema.To<typeof TodoId>;
+type TodoId = S.Schema.To<typeof TodoId>;
 
 const NonEmptyString50 = Evolu.String.pipe(
-  Schema.minLength(1),
-  Schema.maxLength(50),
-  Schema.brand("NonEmptyString50"),
+  S.minLength(1),
+  S.maxLength(50),
+  S.brand("NonEmptyString50"),
 );
-type NonEmptyString50 = Schema.Schema.To<typeof NonEmptyString50>;
+type NonEmptyString50 = S.Schema.To<typeof NonEmptyString50>;
 
-const TodoTable = Schema.struct({
+const TodoTable = S.struct({
   id: TodoId,
   title: NonEmptyString50,
-  description: Schema.nullable(Evolu.NonEmptyString1000),
+  description: S.nullable(Evolu.NonEmptyString1000),
   isCompleted: Evolu.SqliteBoolean,
 });
-type TodoTable = Schema.Schema.To<typeof TodoTable>;
+type TodoTable = S.Schema.To<typeof TodoTable>;
 
-const Database = Schema.struct({
+const Database = S.struct({
   todo: TodoTable,
 });
 
@@ -56,7 +56,7 @@ const { rows } = useQuery(
 
 const { create, update } = useMutation();
 
-if (!Schema.is(NonEmptyString50)(title)) return;
+if (!S.is(NonEmptyString50)(title)) return;
 const { id } = create("todo", { title, isCompleted: false });
 
 update("todo", { id, isCompleted: true }, onComplete);

@@ -1,4 +1,4 @@
-import * as Schema from "@effect/schema/Schema";
+import * as S from "@effect/schema/Schema";
 import { secretbox } from "@noble/ciphers/salsa";
 import { concatBytes } from "@noble/ciphers/utils";
 import { hmac } from "@noble/hashes/hmac";
@@ -7,6 +7,7 @@ import { randomBytes } from "@noble/hashes/utils";
 import { Brand, Context, Effect, Layer } from "effect";
 import { customAlphabet, nanoid } from "nanoid";
 
+// TODO: Add dynamic import error.
 export interface Bip39 {
   readonly make: Effect.Effect<never, never, Mnemonic>;
 
@@ -41,11 +42,9 @@ export interface NanoId {
 
 export const NanoId = Context.Tag<NanoId>();
 
-export const NodeId: Schema.BrandSchema<
-  string,
-  string & Brand.Brand<"NodeId">
-> = Schema.string.pipe(Schema.pattern(/^[\w-]{16}$/), Schema.brand("NodeId"));
-export type NodeId = Schema.Schema.To<typeof NodeId>;
+export const NodeId: S.BrandSchema<string, string & Brand.Brand<"NodeId">> =
+  S.string.pipe(S.pattern(/^[\w-]{16}$/), S.brand("NodeId"));
+export type NodeId = S.Schema.To<typeof NodeId>;
 
 const nanoidForNodeId = customAlphabet("0123456789abcdef", 16);
 

@@ -1,4 +1,4 @@
-import * as Schema from "@effect/schema/Schema";
+import * as S from "@effect/schema/Schema";
 import Database from "better-sqlite3";
 import { Effect, Layer } from "effect";
 import { Millis, Timestamp, initialMillis } from "../src/Crdt.js";
@@ -11,7 +11,7 @@ export const makeNode1Timestamp = (
   node = "0000000000000001",
 ): Timestamp =>
   ({
-    millis: Schema.parseSync(Millis)(initialMillis + millis),
+    millis: S.parseSync(Millis)(initialMillis + millis),
     counter,
     node,
   }) as Timestamp;

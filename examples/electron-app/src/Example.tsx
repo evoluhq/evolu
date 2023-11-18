@@ -1,4 +1,4 @@
-import * as Schema from "@effect/schema/Schema";
+import * as S from "@effect/schema/Schema";
 import { formatErrors } from "@effect/schema/TreeFormatter";
 import * as Evolu from "@evolu/react";
 import {
@@ -12,33 +12,33 @@ import {
 } from "react";
 
 const TodoId = Evolu.id("Todo");
-type TodoId = Schema.Schema.To<typeof TodoId>;
+type TodoId = S.Schema.To<typeof TodoId>;
 
 const TodoCategoryId = Evolu.id("TodoCategory");
-type TodoCategoryId = Schema.Schema.To<typeof TodoCategoryId>;
+type TodoCategoryId = S.Schema.To<typeof TodoCategoryId>;
 
 const NonEmptyString50 = Evolu.String.pipe(
-  Schema.minLength(1),
-  Schema.maxLength(50),
-  Schema.brand("NonEmptyString50"),
+  S.minLength(1),
+  S.maxLength(50),
+  S.brand("NonEmptyString50"),
 );
-type NonEmptyString50 = Schema.Schema.To<typeof NonEmptyString50>;
+type NonEmptyString50 = S.Schema.To<typeof NonEmptyString50>;
 
-const TodoTable = Schema.struct({
+const TodoTable = S.struct({
   id: TodoId,
   title: Evolu.NonEmptyString1000,
   isCompleted: Evolu.SqliteBoolean,
-  categoryId: Schema.nullable(TodoCategoryId),
+  categoryId: S.nullable(TodoCategoryId),
 });
-type TodoTable = Schema.Schema.To<typeof TodoTable>;
+type TodoTable = S.Schema.To<typeof TodoTable>;
 
-const TodoCategoryTable = Schema.struct({
+const TodoCategoryTable = S.struct({
   id: TodoCategoryId,
   name: NonEmptyString50,
 });
-type TodoCategoryTable = Schema.Schema.To<typeof TodoCategoryTable>;
+type TodoCategoryTable = S.Schema.To<typeof TodoCategoryTable>;
 
-const Database = Schema.struct({
+const Database = S.struct({
   todo: TodoTable,
   todoCategory: TodoCategoryTable,
 });
@@ -49,13 +49,13 @@ const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
   });
 
 const prompt = <From extends string, To>(
-  schema: Schema.Schema<From, To>,
+  schema: S.Schema<From, To>,
   message: string,
   onSuccess: (value: To) => void,
 ): void => {
   const value = window.prompt(message);
   if (value == null) return; // on cancel
-  const a = Schema.parseEither(schema)(value);
+  const a = S.parseEither(schema)(value);
   if (a._tag === "Left") {
     alert(formatErrors(a.left.errors));
     return;

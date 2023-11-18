@@ -6,20 +6,20 @@ Evolu uses [Schema](https://github.com/effect-ts/schema) for domain modeling.
 ## Example
 
 ```ts
-import * as Schema from "@effect/schema/Schema";
+import * as S from "@effect/schema/Schema";
 import * as Evolu from "@evolu/react";
 
 const TodoId = Evolu.id("Todo");
-type TodoId = Schema.Schema.To<typeof TodoId>;
+type TodoId = S.Schema.To<typeof TodoId>;
 
-const TodoTable = Schema.struct({
+const TodoTable = S.struct({
   id: TodoId,
   title: Evolu.NonEmptyString1000,
   isCompleted: Evolu.SqliteBoolean,
 });
-type TodoTable = Schema.Schema.To<typeof TodoTable>;
+type TodoTable = S.Schema.To<typeof TodoTable>;
 
-const Database = Schema.struct({
+const Database = S.struct({
   todo: TodoTable,
 });
 

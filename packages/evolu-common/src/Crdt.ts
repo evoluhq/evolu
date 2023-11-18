@@ -1,4 +1,4 @@
-import * as Schema from "@effect/schema/Schema";
+import * as S from "@effect/schema/Schema";
 import {
   Brand,
   Context,
@@ -37,25 +37,22 @@ export const AllowedTimeRange = {
  * length equals 16. We can find diff for two Merkle trees only within this range.
  * If the device clock is out of range, Evolu will not store data until it's fixed.
  */
-export const Millis = Schema.number.pipe(
-  Schema.greaterThan(AllowedTimeRange.greaterThan),
-  Schema.lessThan(AllowedTimeRange.lessThan),
-  Schema.brand("Millis"),
+export const Millis = S.number.pipe(
+  S.greaterThan(AllowedTimeRange.greaterThan),
+  S.lessThan(AllowedTimeRange.lessThan),
+  S.brand("Millis"),
 );
 
-export type Millis = Schema.Schema.To<typeof Millis>;
+export type Millis = S.Schema.To<typeof Millis>;
 
-export const initialMillis = Schema.parseSync(Millis)(
+export const initialMillis = S.parseSync(Millis)(
   AllowedTimeRange.greaterThan + 1,
 );
 
-export const Counter = Schema.number.pipe(
-  Schema.between(0, 65535),
-  Schema.brand("Counter"),
-);
-export type Counter = Schema.Schema.To<typeof Counter>;
+export const Counter = S.number.pipe(S.between(0, 65535), S.brand("Counter"));
+export type Counter = S.Schema.To<typeof Counter>;
 
-const initialCounter = Schema.parseSync(Counter)(0);
+const initialCounter = S.parseSync(Counter)(0);
 
 export type TimestampHash = number & Brand.Brand<"TimestampHash">;
 
@@ -80,7 +77,7 @@ export const unsafeTimestampFromString = (s: TimestampString): Timestamp => {
 export const timestampToHash = (t: Timestamp): TimestampHash =>
   murmurhash(timestampToString(t)) as TimestampHash;
 
-const syncNodeId = Schema.parseSync(NodeId)("0000000000000000");
+const syncNodeId = S.parseSync(NodeId)("0000000000000000");
 
 export const makeSyncTimestamp = (
   millis: Millis = initialMillis,
@@ -110,7 +107,7 @@ export const Time = Context.Tag<Time>();
 export const TimeLive = Layer.succeed(
   Time,
   Time.of({
-    now: Effect.suspend(() => Schema.parse(Millis)(Date.now())).pipe(
+    now: Effect.suspend(() => S.parse(Millis)(Date.now())).pipe(
       Effect.catchTag("ParseError", () =>
         Effect.fail<TimestampTimeOutOfRangeError>({
           _tag: "TimestampTimeOutOfRangeError",
@@ -176,11 +173,11 @@ const incrementCounter = (
 ): Either.Either<TimestampCounterOverflowError, Counter> =>
   pipe(
     Number.increment(counter),
-    Schema.parseEither(Counter),
+    S.parseEither(Counter),
     Either.mapLeft(() => ({ _tag: "TimestampCounterOverflowError" })),
   );
 
-const counterMin = Schema.parseSync(Counter)(0);
+const counterMin = S.parseSync(Counter)(0);
 
 export const sendTimestamp = (
   timestamp: Timestamp,

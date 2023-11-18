@@ -1,4 +1,4 @@
-import * as Schema from "@effect/schema/Schema";
+import * as S from "@effect/schema/Schema";
 import * as TreeFormatter from "@effect/schema/TreeFormatter";
 import { Either, Function } from "effect";
 import * as Evolu from "@evolu/react-native";
@@ -21,33 +21,33 @@ import {
 import RNPickerSelect from "react-native-picker-select";
 
 const TodoId = Evolu.id("Todo");
-type TodoId = Schema.Schema.To<typeof TodoId>;
+type TodoId = S.Schema.To<typeof TodoId>;
 
 const TodoCategoryId = Evolu.id("TodoCategory");
-type TodoCategoryId = Schema.Schema.To<typeof TodoCategoryId>;
+type TodoCategoryId = S.Schema.To<typeof TodoCategoryId>;
 
 const NonEmptyString50 = Evolu.String.pipe(
-  Schema.minLength(1),
-  Schema.maxLength(50),
-  Schema.brand("NonEmptyString50"),
+  S.minLength(1),
+  S.maxLength(50),
+  S.brand("NonEmptyString50"),
 );
-type NonEmptyString50 = Schema.Schema.To<typeof NonEmptyString50>;
+type NonEmptyString50 = S.Schema.To<typeof NonEmptyString50>;
 
-const TodoTable = Schema.struct({
+const TodoTable = S.struct({
   id: TodoId,
   title: Evolu.NonEmptyString1000,
   isCompleted: Evolu.SqliteBoolean,
-  categoryId: Schema.nullable(TodoCategoryId),
+  categoryId: S.nullable(TodoCategoryId),
 });
-type TodoTable = Schema.Schema.To<typeof TodoTable>;
+type TodoTable = S.Schema.To<typeof TodoTable>;
 
-const TodoCategoryTable = Schema.struct({
+const TodoCategoryTable = S.struct({
   id: TodoCategoryId,
   name: NonEmptyString50,
 });
-type TodoCategoryTable = Schema.Schema.To<typeof TodoCategoryTable>;
+type TodoCategoryTable = S.Schema.To<typeof TodoCategoryTable>;
 
-const Database = Schema.struct({
+const Database = S.struct({
   todo: TodoTable,
   todoCategory: TodoCategoryTable,
 });
@@ -157,7 +157,7 @@ const Todos: FC = () => {
   );
 
   const [text, setText] = useState("");
-  const newTodoTitle = Schema.parseEither(Evolu.NonEmptyString1000)(text);
+  const newTodoTitle = S.parseEither(Evolu.NonEmptyString1000)(text);
   const handleTextInputEndEditing = (): void => {
     Either.match(newTodoTitle, {
       onLeft: Function.constVoid,
@@ -202,7 +202,7 @@ const TodoCategories: FC = () => {
   );
 
   const [text, setText] = useState("");
-  const newTodoTitle = Schema.parseEither(NonEmptyString50)(text);
+  const newTodoTitle = S.parseEither(NonEmptyString50)(text);
   const handleTextInputEndEditing = (): void => {
     Either.match(newTodoTitle, {
       onLeft: Function.constVoid,
@@ -249,7 +249,7 @@ const OwnerActions: FC = () => {
   const [showRestore, setShowRestore] = useState(false);
 
   const [mnemonic, setMnemonic] = useState("");
-  const parsedMnemonic = Schema.parseEither(Evolu.NonEmptyString1000)(mnemonic);
+  const parsedMnemonic = S.parseEither(Evolu.NonEmptyString1000)(mnemonic);
   const handleMnemonicInputEndEditing = (): void => {
     Either.match(parsedMnemonic, {
       onLeft: (error) => alert(TreeFormatter.formatErrors(error.errors)),
