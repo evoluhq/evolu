@@ -90,46 +90,42 @@ export const SyncLockLive = Layer.effect(
 export const AppStateLive = Layer.effect(
   AppState,
   Effect.gen(function* (_) {
-    const platformName = yield* _(PlatformName);
-
-    if (platformName === "server")
+    if ((yield* _(PlatformName)) === "server")
       return AppState.of({
-        onFocus: Function.constVoid,
-        onReconnect: Function.constVoid,
+        init: Function.constVoid,
         reset: Effect.succeed(undefined),
       });
 
-    const config = yield* _(Config);
-
-    const onFocus: AppState["onFocus"] = (callback) => {
-      window.addEventListener("focus", () => callback());
-      document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState !== "hidden") callback();
-      });
-    };
-
-    // We can't use `navigator.onLine`.
-    // https://bugs.chromium.org/p/chromium/issues/detail?id=678075
-    const onReconnect: AppState["onReconnect"] = (callback) => {
-      window.addEventListener("online", callback);
-    };
-
+    const { reloadUrl } = yield* _(Config);
     const localStorageKey = "evolu:reloadAllTabs";
 
     const reloadLocation = (): void => {
-      location.assign(config.reloadUrl);
+      location.assign(reloadUrl);
     };
 
     window.addEventListener("storage", (e) => {
       if (e.key === localStorageKey) reloadLocation();
     });
 
-    const reset: AppState["reset"] = Effect.sync(() => {
-      localStorage.setItem(localStorageKey, Date.now().toString());
-      reloadLocation();
-    });
+    return AppState.of({
+      init: ({ onFocus, onReconnect }) => {
+        window.addEventListener("focus", onFocus);
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState !== "hidden") onFocus();
+        });
 
-    return AppState.of({ onFocus, onReconnect, reset });
+        // We can't use `navigator.onLine`.
+        // https://bugs.chromium.org/p/chromium/issues/detail?id=678075
+        window.addEventListener("online", onReconnect);
+
+        onReconnect();
+      },
+
+      reset: Effect.sync(() => {
+        localStorage.setItem(localStorageKey, Date.now().toString());
+        reloadLocation();
+      }),
+    });
   }),
 );
 

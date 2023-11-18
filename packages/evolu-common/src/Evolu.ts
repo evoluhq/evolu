@@ -31,7 +31,7 @@ import { ErrorStore, makeErrorStore } from "./ErrorStore.js";
 import { SqliteBoolean, SqliteDate, cast } from "./Model.js";
 import { OnCompletes, OnCompletesLive } from "./OnCompletes.js";
 import { Owner } from "./Owner.js";
-import { FlushSync } from "./Platform.js";
+import { AppState, FlushSync } from "./Platform.js";
 import { SqliteQuery } from "./Sqlite.js";
 import { Store, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
@@ -463,13 +463,15 @@ export const EvoluCommonTest = Layer.effect(
     const errorStore = yield* _(makeErrorStore);
     const loadQuery = yield* _(LoadQuery);
     const onQuery = yield* _(OnQuery);
-    const subscribedQueries = yield* _(SubscribedQueries);
+    const { subscribeQuery, getQuery, getSubscribedQueries } =
+      yield* _(SubscribedQueries);
     const syncStateStore = yield* _(
       makeStore<SyncState>({ _tag: "SyncStateInitial" }),
     );
     const mutate = yield* _(Mutate);
     const ownerStore = yield* _(makeStore<Owner | null>(null));
     const loadingPromises = yield* _(LoadingPromises);
+    const appState = yield* _(AppState);
 
     dbWorker.onMessage = (output): void =>
       Match.value(output).pipe(
@@ -481,27 +483,28 @@ export const EvoluCommonTest = Layer.effect(
           onReceive: () =>
             Effect.sync(() => {
               loadingPromises.release();
-              const queries = subscribedQueries.getSubscribedQueries();
+              const queries = getSubscribedQueries();
               if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
                 dbWorker.postMessage({ _tag: "query", queries });
             }),
-          // TODO: appState.reset
-          onResetOrRestore: () => Effect.succeed(void 0),
+          onResetOrRestore: () => appState.reset,
         }),
         Effect.runSync,
       );
 
-    dbWorker.postMessage({ _tag: "init", config: yield* _(Config) });
+    dbWorker.postMessage({
+      _tag: "init",
+      config: yield* _(Config),
+    });
 
-    // // appState.onFocus(() => {
-    // //   // `queries` to refresh subscribed queries when a tab is changed.
-    // //   dbWorker.postMessage({ _tag: "sync", queries: getSubscribedQueries() });
-    // // });
-
-    // // const sync = (): void =>
-    // //   dbWorker.postMessage({ _tag: "sync", queries: [] });
-    // // appState.onReconnect(sync);
-    // // sync();
+    appState.init({
+      onFocus: () => {
+        dbWorker.postMessage({ _tag: "sync", queries: getSubscribedQueries() });
+      },
+      onReconnect: () => {
+        dbWorker.postMessage({ _tag: "sync", queries: [] });
+      },
+    });
 
     return Evolu.of({
       subscribeError: errorStore.subscribe,
@@ -510,8 +513,8 @@ export const EvoluCommonTest = Layer.effect(
       createQuery: makeCreateQuery<Schema>(),
       loadQuery,
 
-      subscribeQuery: subscribedQueries.subscribeQuery,
-      getQuery: subscribedQueries.getQuery,
+      subscribeQuery,
+      getQuery,
 
       subscribeOwner: ownerStore.subscribe,
       getOwner: ownerStore.getState,

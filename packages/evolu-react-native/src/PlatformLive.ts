@@ -41,39 +41,44 @@ export const SyncLockLive = Layer.effect(
   }),
 );
 
-export const AppStateLive = Layer.effect(
+export const AppStateLive = Layer.succeed(
   AppState,
-  Effect.sync(() => {
-    const onFocus: AppState["onFocus"] = (callback) => {
-      let state = ReactNativeAppState.currentState;
-      ReactNativeAppState.addEventListener("change", (nextState): void => {
-        if (state.match(/inactive|background/) && nextState === "active")
-          callback();
-        state = nextState;
+  AppState.of({
+    init: ({ onFocus, onReconnect }) => {
+      let appStateStatus = ReactNativeAppState.currentState;
+      ReactNativeAppState.addEventListener("change", (current): void => {
+        if (appStateStatus.match(/inactive|background/) && current === "active")
+          onFocus();
+        appStateStatus = current;
       });
-    };
 
-    const onReconnect: AppState["onReconnect"] = (callback) => {
-      let state: NetInfoState | null = null;
-      NetInfo.addEventListener((nextState) => {
+      let netInfoState: NetInfoState | null = null;
+      NetInfo.addEventListener((current) => {
         if (
-          state?.isInternetReachable === false &&
-          nextState.isConnected &&
-          nextState.isInternetReachable
+          netInfoState?.isInternetReachable === false &&
+          current.isConnected &&
+          current.isInternetReachable
         )
-          callback();
-        state = nextState;
+          onReconnect();
+        netInfoState = current;
       });
-    };
 
-    const reset: AppState["reset"] = Effect.sync(() => {
+      onReconnect();
+    },
+
+    reset: Effect.sync(() => {
       if (process.env.NODE_ENV === "development") DevSettings.reload();
       else reloadAsync();
-    });
-
-    return AppState.of({ onFocus, onReconnect, reset });
+    }),
   }),
 );
+
+// const reset: AppState["reset"] = Effect.sync(() => {
+//   if (process.env.NODE_ENV === "development") DevSettings.reload();
+//   else reloadAsync();
+// });
+
+// return AppState.of({ onFocus, onReconnect, reset });
 
 export const Bip39Live = Layer.succeed(
   Bip39,

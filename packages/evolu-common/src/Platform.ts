@@ -53,9 +53,13 @@ export const FetchLive = Layer.succeed(
   ),
 );
 
+interface AppStateConfig {
+  readonly onFocus: () => void;
+  readonly onReconnect: () => void;
+}
+
 export interface AppState {
-  readonly onFocus: (callback: () => void) => void;
-  readonly onReconnect: (callback: () => void) => void;
+  readonly init: (config: AppStateConfig) => void;
   readonly reset: Effect.Effect<never, never, void>;
 }
 
