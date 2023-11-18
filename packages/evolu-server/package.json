@@ -41,7 +41,7 @@
     "@types/cors": "^2.8.16",
     "@types/express": "^4.17.21",
     "@types/node": "^20.9.1",
-    "eslint": "^8.53.0",
+    "eslint": "^8.54.0",
     "eslint-config-evolu": "workspace:*",
     "typescript": "^5.2.2",
     "vitest": "^0.34.6"
