@@ -1,9 +1,9 @@
 import { Effect } from "effect";
 import { expect, test } from "vitest";
 import {
+  LoadingPromiseLive,
   LoadingPromises,
   makeCreateQuery,
-  makeLoadingPromise,
 } from "../src/Evolu.js";
 import { Db } from "./utils.js";
 
@@ -41,7 +41,7 @@ test("LoadingPromises", () => {
     expect(p1.promise).not.toBe(p3.promise);
 
     // Release nothing because all are pending.
-    loadingPromises.release();
+    loadingPromises.release([]);
     expect(loadingPromises.get(query1).isNew).toBe(false);
     expect(loadingPromises.get(query2).isNew).toBe(false);
 
@@ -52,10 +52,7 @@ test("LoadingPromises", () => {
 
     // Release resolved.
     loadingPromises.resolve(query1, []);
-    loadingPromises.release();
+    loadingPromises.release([]);
     expect(loadingPromises.get(query1).isNew).toBe(true);
-  }).pipe(
-    Effect.provideService(LoadingPromises, makeLoadingPromise()),
-    Effect.runSync,
-  );
+  }).pipe(Effect.provide(LoadingPromiseLive), Effect.runSync);
 });
