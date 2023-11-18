@@ -68,7 +68,7 @@ export const AppStateLive = Layer.effect(
 
     const reset: AppState["reset"] = Effect.sync(() => {
       if (process.env.NODE_ENV === "development") DevSettings.reload();
-      else void reloadAsync();
+      else reloadAsync();
     });
 
     return AppState.of({ onFocus, onReconnect, reset });

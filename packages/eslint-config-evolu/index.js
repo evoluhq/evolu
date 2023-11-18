@@ -12,6 +12,7 @@ module.exports = {
   rules: {
     "@typescript-eslint/explicit-function-return-type": "error",
     "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+    "@typescript-eslint/no-floating-promises": "off",
     "react-hooks/exhaustive-deps": "error",
     "no-console": "error",
     "import/no-cycle": "error",

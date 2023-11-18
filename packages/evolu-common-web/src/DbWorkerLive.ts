@@ -33,7 +33,7 @@ export const DbWorkerLive = Layer.effect(
       );
       const dbWorker: DbWorker = {
         postMessage: (input) => {
-          void promise.then((postMessage) => {
+          promise.then((postMessage) => {
             postMessage(input);
           });
         },

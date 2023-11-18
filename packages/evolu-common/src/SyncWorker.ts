@@ -341,7 +341,7 @@ export const SyncWorkerLive = Layer.effect(
     };
 
     const postMessage: SyncWorker["postMessage"] = (input) => {
-      void mapInputToEffect(input).pipe(
+      mapInputToEffect(input).pipe(
         Effect.catchAllDefect(makeUnexpectedError),
         Effect.catchAll(onError),
         Effect.provideService(SyncLock, syncLock),

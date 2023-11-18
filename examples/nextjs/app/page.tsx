@@ -290,7 +290,7 @@ const OwnerActions: FC = () => {
         title="Restore Owner"
         onClick={(): void => {
           prompt(Evolu.NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
-            void ownerActions.restore(mnemonic).then((either) => {
+            ownerActions.restore(mnemonic).then((either) => {
               if (either._tag === "Left")
                 alert(JSON.stringify(either.left, null, 2));
             });

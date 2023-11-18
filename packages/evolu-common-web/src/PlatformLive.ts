@@ -74,7 +74,7 @@ export const SyncLockLive = Layer.effect(
       const promise = new Promise<undefined>((resolve) => {
         isSyncingResolve = resolve;
       });
-      void navigator.locks.request(syncLockName, () => promise);
+      navigator.locks.request(syncLockName, () => promise);
       return true;
     });
 
