@@ -130,27 +130,22 @@ export interface Table {
 }
 
 // https://github.com/Effect-TS/schema/releases/tag/v0.18.0
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
   schema: S.Schema<I, A>,
 ): { [K in keyof A]: S.Schema<I[K], A[K]> } => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const out: Record<PropertyKey, S.Schema<any>> = {};
   const propertySignatures = AST.getPropertySignatures(schema.ast);
   for (let i = 0; i < propertySignatures.length; i++) {
     const propertySignature = propertySignatures[i];
     out[propertySignature.name] = make(propertySignature.type);
   }
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
   return out as any;
 };
 
 const commonColumns = ["createdAt", "updatedAt", "isDeleted"];
 
-export const schemaToTables = (
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  schema: S.Schema<any, any>,
-): Tables =>
+export const schemaToTables = (schema: S.Schema<any, any>): Tables =>
   pipe(
     getPropertySignatures(schema),
     ReadonlyRecord.toEntries,

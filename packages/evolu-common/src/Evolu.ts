@@ -106,7 +106,6 @@ type CreateQuery<S extends Schema> = <R extends Row>(
 
 type QueryCallback<S extends Schema, R extends Row> = (
   db: Pick<Kysely.Kysely<QuerySchema<S>>, "selectFrom" | "fn">,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ) => Kysely.SelectQueryBuilder<any, any, R>;
 
 type QuerySchema<S extends Schema> = {
