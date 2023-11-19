@@ -6,7 +6,7 @@ export interface OnCompletes {
     onComplete: OnComplete,
   ) => Effect.Effect<never, never, OnCompleteId>;
 
-  readonly execute: (
+  readonly complete: (
     onCompleteIds: readonly OnCompleteId[],
   ) => Effect.Effect<never, never, void>;
 }
@@ -33,7 +33,7 @@ export const OnCompletesLive = Layer.effect(
           }),
         ),
 
-      execute: (onCompleteIds) =>
+      complete: (onCompleteIds) =>
         Effect.sync(() => {
           ReadonlyArray.filterMap(onCompleteIds, (id) => {
             const onComplete = map.get(id);

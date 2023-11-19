@@ -311,7 +311,7 @@ const OnQueryLive = Layer.effect(
 
         // TODO: yield* _(flushSync(rowsStore.setState(nextState)))
         flushSync(() => rowsStore.setState(nextState).pipe(Effect.runSync));
-        yield* _(onCompletes.execute(onCompleteIds));
+        yield* _(onCompletes.complete(onCompleteIds));
       }),
     );
   }),
