@@ -45,7 +45,6 @@ export const PlatformNameLive = Layer.succeed(
     : "server",
 );
 
-// TODO: Move to @evolu/react and make effectul.
 export const FlushSyncLive = Layer.succeed(FlushSync, flushSync);
 
 export const SyncLockLive = Layer.effect(

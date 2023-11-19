@@ -8,7 +8,6 @@ export type PlatformName =
 
 export const PlatformName = Context.Tag<PlatformName>();
 
-// TODO: Effect API
 export type FlushSync = (callback: () => void) => void;
 
 export const FlushSync = Context.Tag<FlushSync>();
