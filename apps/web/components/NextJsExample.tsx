@@ -51,7 +51,6 @@ const Database = S.struct({
 type Database = S.Schema.To<typeof Database>;
 
 const {
-  EvoluProvider,
   useEvoluError,
   createQuery,
   useQuery,
@@ -76,7 +75,7 @@ export const NextJsExample: FC = () => {
     });
 
   return (
-    <EvoluProvider>
+    <>
       <OwnerActions />
       <nav className="my-4">
         <Button
@@ -90,7 +89,7 @@ export const NextJsExample: FC = () => {
       </nav>
       <Suspense>{todosShown ? <Todos /> : <TodoCategories />}</Suspense>
       <NotificationBar />
-    </EvoluProvider>
+    </>
   );
 };
 

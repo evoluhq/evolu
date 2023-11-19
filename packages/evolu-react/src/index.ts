@@ -24,5 +24,6 @@ export const create = <From, To extends Schema>(
       Effect.runSync,
     );
   fastRefreshRef.evolu.ensureSchema(schema);
-  return fastRefreshRef as EvoluCommonReact<To>;
+  // The Effect team does not recommend generic services, hence casting.
+  return fastRefreshRef as unknown as EvoluCommonReact<To>;
 };
