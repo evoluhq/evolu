@@ -4,8 +4,10 @@ import {
   EvoluError,
   Owner,
   PlatformName,
+  Queries,
   Query,
   QueryResult,
+  QueryResultsFromQueries,
   Row,
   Schema,
   SyncState,
@@ -26,16 +28,6 @@ import ReactExports, {
 export interface EvoluCommonReact<S extends Schema = Schema> {
   /** TODO: Docs */
   readonly evolu: Evolu<S>;
-
-  /**
-   * The default value of EvoluContext is an Evolu instance, so we don't have
-   * to use EvoluProvider by default. However, EvoluProvider is helpful for
-   * testing, as we can inject memory-only Evolu.
-   */
-  readonly EvoluProvider: FC<{
-    readonly children?: ReactNode | undefined;
-    readonly value: Evolu<S>;
-  }>;
 
   /** TODO: Docs */
   readonly useEvolu: () => Evolu<S>;
@@ -65,17 +57,44 @@ export interface EvoluCommonReact<S extends Schema = Schema> {
   readonly useQueryOnce: <R extends Row>(query: Query<R>) => QueryResult<R>;
 
   /** TODO: Docs */
+  readonly useQueries: <
+    R extends Row,
+    Q1 extends Queries<R>,
+    Q2 extends Queries<R>,
+    Q3 extends Queries<R>,
+  >(
+    queries: [...Q1],
+    loadOnlyQueries?: [...Q2],
+    subscribeOnlyQueries?: [...Q3],
+  ) => [
+    ...QueryResultsFromQueries<Q1>,
+    ...QueryResultsFromQueries<Q2>,
+    ...QueryResultsFromQueries<Q3>,
+  ];
+
+  /** TODO: Docs */
   readonly useCreate: () => Evolu<S>["create"];
 
   /** TODO: Docs */
   readonly useUpdate: () => Evolu<S>["update"];
 
+  /** TODO: Docs */
   readonly useOwner: () => Owner | null;
 
+  /** TODO: Docs */
   readonly useSyncState: () => SyncState;
 
-  // const {  } = useQueries([todos, blas])
-  // readonly useQueries:
+  /**
+   * The default value of EvoluContext is an Evolu instance, so we don't have
+   * to use EvoluProvider by default. However, EvoluProvider is helpful for
+   * testing, as we can inject memory-only Evolu.
+   * Yep, it's OK to use React Context without a provider:
+   * https://react.dev/learn/passing-data-deeply-with-context
+   */
+  readonly EvoluProvider: FC<{
+    readonly children?: ReactNode | undefined;
+    readonly value: Evolu<S>;
+  }>;
 }
 
 export const EvoluCommonReact = Context.Tag<EvoluCommonReact>();
@@ -83,31 +102,14 @@ export const EvoluCommonReact = Context.Tag<EvoluCommonReact>();
 export const EvoluCommonReactLive = Layer.effect(
   EvoluCommonReact,
   Effect.gen(function* (_) {
+    const platformName = yield* _(PlatformName);
     const evolu = yield* _(Evolu);
-
     const EvoluContext = createContext<Evolu>(evolu);
-
-    const EvoluProvider: EvoluCommonReact["EvoluProvider"] = ({
-      children,
-      value,
-    }) => (
-      <EvoluContext.Provider value={value}>{children}</EvoluContext.Provider>
-    );
 
     const useEvolu: EvoluCommonReact["useEvolu"] = () =>
       useContext(EvoluContext);
 
-    const useEvoluError: EvoluCommonReact["useEvoluError"] = () => {
-      const evolu = useEvolu();
-      return useSyncExternalStore(
-        evolu.subscribeError,
-        evolu.getError,
-        Function.constNull,
-      );
-    };
-
-    const platformName = yield* _(PlatformName);
-
+    // TODO: Accept also Promise<ReadonlyArray<QueryResult<R>>>
     const useQueryPromise = <R extends Row>(
       promise: Promise<QueryResult<R>>,
     ): QueryResult<R> =>
@@ -125,50 +127,72 @@ export const EvoluCommonReactLive = Layer.effect(
       );
     };
 
-    const useQuery = <R extends Row>(query: Query<R>): QueryResult<R> => {
-      useQueryPromise(useEvolu().loadQuery(query));
-      return useQuerySubscription(query);
-    };
-
-    const useQueryOnce = <R extends Row>(query: Query<R>): QueryResult<R> => {
-      const evolu = useEvolu();
-      const result = useQueryPromise(evolu.loadQuery(query));
-      // Loading promises are released on mutation by default, so loading the same
-      // query will be suspended again, which is undesirable if we already have such
-      // a query on a page. Luckily, subscribeQuery tracks subscribed queries to be
-      // automatically updated on mutation while unsubscribed queries are released.
-      // It's probably how the future React Cache will work.
-      useEffect(
-        () => evolu.subscribeQuery(query)(Function.constVoid),
-        [evolu, query],
-      );
-      return result;
-    };
-
-    const useOwner: EvoluCommonReact["useOwner"] = () => {
-      const evolu = useEvolu();
-      return useSyncExternalStore(evolu.subscribeOwner, evolu.getOwner);
-    };
-
-    const useSyncState: EvoluCommonReact["useSyncState"] = () => {
-      const evolu = useEvolu();
-      return useSyncExternalStore(evolu.subscribeSyncState, evolu.getSyncState);
-    };
-
     return EvoluCommonReact.of({
       evolu,
-      EvoluProvider,
       useEvolu,
-      useEvoluError,
+
+      useEvoluError: () => {
+        const evolu = useEvolu();
+        return useSyncExternalStore(
+          evolu.subscribeError,
+          evolu.getError,
+          Function.constNull,
+        );
+      },
+
       createQuery: evolu.createQuery,
       useQuerySubscription,
       useQueryPromise,
-      useQuery,
-      useQueryOnce,
-      useCreate: () => useEvolu().create,
-      useUpdate: () => useEvolu().update,
-      useOwner,
-      useSyncState,
+
+      useQuery: (query) => {
+        const evolu = useEvolu();
+        useQueryPromise(evolu.loadQuery(query));
+        return useQuerySubscription(query);
+      },
+
+      useQueryOnce: (query) => {
+        const evolu = useEvolu();
+        const result = useQueryPromise(evolu.loadQuery(query));
+        // Loading promises are released on mutation by default, so loading the same
+        // query will be suspended again, which is undesirable if we already have such
+        // a query on a page. Luckily, subscribeQuery tracks subscribed queries to be
+        // automatically updated on mutation while unsubscribed queries are released.
+        useEffect(
+          () => evolu.subscribeQuery(query)(Function.constVoid),
+          [evolu, query],
+        );
+        return result;
+      },
+
+      useQueries: (_queries, _loadOnlyQueries, _subscribeOnlyQueries) => {
+        // const evolu = useEvolu();
+        // const promise = evolu.loadQueries(
+        //   queries.concat(loadOnlyQueries || []),
+        // );
+        // const foo = useQueryPromise(promise);
+        // TODO: subscribe and results.
+        throw "";
+      },
+
+      useCreate: () => useContext(EvoluContext).create,
+      useUpdate: () => useContext(EvoluContext).update,
+
+      useOwner: () => {
+        const evolu = useEvolu();
+        return useSyncExternalStore(evolu.subscribeOwner, evolu.getOwner);
+      },
+
+      useSyncState: () => {
+        const evolu = useEvolu();
+        return useSyncExternalStore(
+          evolu.subscribeSyncState,
+          evolu.getSyncState,
+        );
+      },
+
+      EvoluProvider: ({ children, value }) => (
+        <EvoluContext.Provider value={value}>{children}</EvoluContext.Provider>
+      ),
     });
   }),
 );

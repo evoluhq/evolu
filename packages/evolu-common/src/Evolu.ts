@@ -14,8 +14,10 @@ import { Config } from "./Config.js";
 import { Time, TimeLive } from "./Crdt.js";
 import { Bip39, Mnemonic, NanoId, NanoIdLive } from "./Crypto.js";
 import {
+  Queries,
   Query,
   QueryResult,
+  QueryResultsFromQueries,
   Row,
   RowsStore,
   RowsStoreLive,
@@ -48,6 +50,9 @@ export interface Evolu<T extends Schema = Schema> {
 
   /** TODO: Docs */
   readonly loadQuery: LoadQuery;
+
+  /** TODO: Docs */
+  readonly loadQueries: LoadQueries;
 
   /** TODO: Docs */
 
@@ -139,7 +144,7 @@ const kysely = new Kysely.Kysely<QuerySchema<Schema>>({
 });
 
 export const makeCreateQuery =
-  <S extends Schema>(): CreateQuery<S> =>
+  <S extends Schema = Schema>(): CreateQuery<S> =>
   <R extends Row>(queryCallback: QueryCallback<S, R>) =>
     pipe(
       queryCallback(kysely as Kysely.Kysely<QuerySchema<S>>).compile(),
@@ -219,12 +224,7 @@ export const LoadingPromiseLive = Layer.effect(
         if (promiseWithResolve.promise.status !== "fulfilled")
           promiseWithResolve.resolve(result);
         else promiseWithResolve.promise = Promise.resolve(result);
-        // "For example, a data framework can set the status and value fields
-        // on a promise preemptively, before passing to React, so that React can
-        // unwrap it without waiting a microtask."
-        // https://github.com/acdlite/rfcs/blob/first-class-promises/text/0000-first-class-support-for-promises.md
-        promiseWithResolve.promise.status = "fulfilled";
-        promiseWithResolve.promise.value = result;
+        setPromiseAsResolved(promiseWithResolve.promise)(result);
         if (promiseWithResolve.releaseOnResolve) promises.delete(query);
       },
 
@@ -240,6 +240,18 @@ export const LoadingPromiseLive = Layer.effect(
     });
   }),
 );
+
+/**
+ * "For example, a data framework can set the status and value fields on a promise
+ * preemptively, before passing to React, so that React can unwrap it without waiting
+ * a microtask."
+ * https://github.com/acdlite/rfcs/blob/first-class-promises/text/0000-first-class-support-for-promises.md
+ */
+const setPromiseAsResolved =
+  <T>(promise: Promise<T>) =>
+  (value: unknown): void => {
+    Object.assign(promise, { status: "fulfilled", value });
+  };
 
 type LoadQuery = <R extends Row>(query: Query<R>) => Promise<QueryResult<R>>;
 
@@ -268,6 +280,10 @@ const LoadQueryLive = Layer.effect(
     });
   }),
 );
+
+type LoadQueries = <R extends Row, QS extends Queries<R>>(
+  queries: [...QS],
+) => Promise<[...QueryResultsFromQueries<QS>]>;
 
 type OnQuery = (
   dbWorkerOutputOnQuery: DbWorkerOutputOnQuery,
@@ -508,8 +524,14 @@ export const EvoluCommonTest = Layer.effect(
       subscribeError: errorStore.subscribe,
       getError: errorStore.getState,
 
-      createQuery: makeCreateQuery<Schema>(),
+      createQuery: makeCreateQuery(),
       loadQuery,
+
+      loadQueries: <R extends Row, QS extends Queries<R>>(queries: [...QS]) => {
+        const promise = Promise.all(queries.map(loadQuery));
+        promise.then(setPromiseAsResolved(promise));
+        return promise as Promise<[...QueryResultsFromQueries<QS>]>;
+      },
 
       subscribeQuery,
       getQuery,
