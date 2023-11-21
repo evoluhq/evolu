@@ -3,7 +3,6 @@ import {
   Evolu,
   EvoluError,
   Owner,
-  PlatformName,
   Queries,
   Query,
   QueryResult,
@@ -11,23 +10,26 @@ import {
   Row,
   Schema,
   SyncState,
-  emptyRows,
-  queryResultFromRows,
 } from "@evolu/common";
 import { Context, Effect, Function, Layer } from "effect";
 import ReactExports, {
   FC,
   ReactNode,
+  Usable,
   createContext,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useSyncExternalStore,
 } from "react";
 
 export interface EvoluCommonReact<S extends Schema = Schema> {
   /** TODO: Docs */
   readonly evolu: Evolu<S>;
+
+  /** A React 19 `use` polyfill. */
+  readonly use: <T>(usable: Usable<T>) => T;
 
   /** TODO: Docs */
   readonly useEvolu: () => Evolu<S>;
@@ -39,38 +41,46 @@ export interface EvoluCommonReact<S extends Schema = Schema> {
   readonly createQuery: Evolu<S>["createQuery"];
 
   /**
-   * It's like React `use` Hook but for React 18. It uses React `use` with React 19.
+   * TODO: Docs
+   * Loading promises are released on mutation by default, so loading the same
+   * query will be suspended again, which is undesirable if we already have such
+   * a query on a page. Luckily, subscribeQuery tracks subscribed queries to be
+   * automatically updated on mutation while unsubscribed queries are released.
    */
-  readonly useQueryPromise: <R extends Row>(
-    promise: Promise<QueryResult<R>>,
-  ) => QueryResult<R>;
-
-  /** TODO: Docs */
   readonly useQuerySubscription: <R extends Row>(
     query: Query<R>,
+    options?: Partial<{
+      /** TODO: Docs, exaplain why once is useful. */
+      readonly once: boolean;
+    }>,
   ) => QueryResult<R>;
 
   /** TODO: Docs */
-  readonly useQuery: <R extends Row>(query: Query<R>) => QueryResult<R>;
+  readonly useQuery: <R extends Row>(
+    query: Query<R>,
+    options?: Partial<{
+      readonly once: boolean;
+    }>,
+  ) => QueryResult<R>;
 
-  /** TODO: Docs */
-  readonly useQueryOnce: <R extends Row>(query: Query<R>) => QueryResult<R>;
-
-  /** TODO: Docs */
+  /**
+   * TODO: Docs
+   * For more than one query, always use useQueries Hook to avoid loading waterfalls
+   * and to cache loading promises.
+   * This is possible of course:
+   * const foo = use(useEvolu().loadQuery(todos)()
+   * but it will not cache loading promise nor subscribe updates.
+   * That's why we have useQuery and useQueries.
+   *
+   */
   readonly useQueries: <
     R extends Row,
     Q1 extends Queries<R>,
     Q2 extends Queries<R>,
-    Q3 extends Queries<R>,
   >(
     queries: [...Q1],
     loadOnlyQueries?: [...Q2],
-    subscribeOnlyQueries?: [...Q3],
-  ) => [
-    ...QueryResultsFromQueries<Q1>,
-    ...QueryResultsFromQueries<Q2>,
-    ...QueryResultsFromQueries<Q3>,
-  ];
+  ) => [...QueryResultsFromQueries<Q1>, ...QueryResultsFromQueries<Q2>];
 
   /** TODO: Docs */
   readonly useCreate: () => Evolu<S>["create"];
@@ -102,33 +112,40 @@ export const EvoluCommonReact = Context.Tag<EvoluCommonReact>();
 export const EvoluCommonReactLive = Layer.effect(
   EvoluCommonReact,
   Effect.gen(function* (_) {
-    const platformName = yield* _(PlatformName);
     const evolu = yield* _(Evolu);
     const EvoluContext = createContext<Evolu>(evolu);
 
     const useEvolu: EvoluCommonReact["useEvolu"] = () =>
       useContext(EvoluContext);
 
-    // TODO: Accept also Promise<ReadonlyArray<QueryResult<R>>>
-    const useQueryPromise = <R extends Row>(
-      promise: Promise<QueryResult<R>>,
-    ): QueryResult<R> =>
-      platformName === "server"
-        ? queryResultFromRows(emptyRows<R>())
-        : use(promise);
-
-    const useQuerySubscription = <R extends Row>(
-      query: Query<R>,
-    ): QueryResult<R> => {
+    const useQuerySubscription: EvoluCommonReact["useQuerySubscription"] = (
+      query,
+      options = {},
+    ) => {
       const evolu = useEvolu();
+      // The options can't be change, hence useRef.
+      const optionsRef = useRef(options).current;
+
+      /* eslint-disable react-hooks/rules-of-hooks */
+      if (optionsRef.once) {
+        // No useSyncExternalStore, no unnecessary updates.
+        useEffect(
+          () => evolu.subscribeQuery(query)(Function.constVoid),
+          [evolu, query],
+        );
+        return evolu.getQuery(query);
+      }
+
       return useSyncExternalStore(
         useMemo(() => evolu.subscribeQuery(query), [evolu, query]),
         useMemo(() => () => evolu.getQuery(query), [evolu, query]),
       );
+      /* eslint-enable react-hooks/rules-of-hooks */
     };
 
     return EvoluCommonReact.of({
       evolu,
+      use,
       useEvolu,
 
       useEvoluError: () => {
@@ -142,29 +159,14 @@ export const EvoluCommonReactLive = Layer.effect(
 
       createQuery: evolu.createQuery,
       useQuerySubscription,
-      useQueryPromise,
 
-      useQuery: (query) => {
+      useQuery: (query, options) => {
         const evolu = useEvolu();
-        useQueryPromise(evolu.loadQuery(query));
-        return useQuerySubscription(query);
+        use(evolu.loadQuery(query));
+        return useQuerySubscription(query, options);
       },
 
-      useQueryOnce: (query) => {
-        const evolu = useEvolu();
-        const result = useQueryPromise(evolu.loadQuery(query));
-        // Loading promises are released on mutation by default, so loading the same
-        // query will be suspended again, which is undesirable if we already have such
-        // a query on a page. Luckily, subscribeQuery tracks subscribed queries to be
-        // automatically updated on mutation while unsubscribed queries are released.
-        useEffect(
-          () => evolu.subscribeQuery(query)(Function.constVoid),
-          [evolu, query],
-        );
-        return result;
-      },
-
-      useQueries: (_queries, _loadOnlyQueries, _subscribeOnlyQueries) => {
+      useQueries: (_queries, _loadOnlyQueries) => {
         // const evolu = useEvolu();
         // const promise = evolu.loadQueries(
         //   queries.concat(loadOnlyQueries || []),
@@ -174,8 +176,8 @@ export const EvoluCommonReactLive = Layer.effect(
         throw "";
       },
 
-      useCreate: () => useContext(EvoluContext).create,
-      useUpdate: () => useContext(EvoluContext).update,
+      useCreate: () => useEvolu().create,
+      useUpdate: () => useEvolu().update,
 
       useOwner: () => {
         const evolu = useEvolu();

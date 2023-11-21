@@ -58,6 +58,8 @@ const {
   useUpdate,
   useOwner,
   useEvolu,
+  // useQuerySubscription,
+  // use,
   // useQueries,
 } = Evolu.create(Database, {
   reloadUrl: "/examples/nextjs",
@@ -68,24 +70,6 @@ const {
 
 export const NextJsExample: FC = () => {
   const [todosShown, setTodosShown] = useState(true);
-  // const evolu = useEvolu();
-
-  // const todoId = createQuery((db) => db.selectFrom("todo").select(["id"]));
-
-  // evolu.loadQueries([todoId, todosWithCategories]).then(([a, b]) => {
-  //   //
-  // });
-
-  // const [a, b, c, d, e] = useQueries(
-  //   [todoId, todosWithCategories, todoCategories],
-  //   [todoCategories],
-  //   [todoId],
-  // );
-
-  // a.rows[0].
-
-  // // eslint-disable-next-line no-console
-  // console.log(a, b, c, d, e);
 
   // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
   const handleTabClick = (): void =>

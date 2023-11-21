@@ -1,8 +1,8 @@
 import * as S from "@effect/schema/Schema";
 import { Config, ConfigLive, Schema } from "@evolu/common";
 import { EvoluCommonReact, EvoluCommonReactLive } from "@evolu/common-react";
-import { EvoluCommonWebLive, PlatformNameLive } from "@evolu/common-web";
-import { Effect, Layer } from "effect";
+import { EvoluCommonWebLive } from "@evolu/common-web";
+import { Effect } from "effect";
 
 export * from "@evolu/common/public";
 
@@ -15,12 +15,9 @@ export const create = <From, To extends Schema>(
 ): EvoluCommonReact<To> => {
   if (!fastRefreshRef)
     fastRefreshRef = EvoluCommonReact.pipe(
-      Effect.provide(
-        EvoluCommonReactLive.pipe(
-          Layer.use(Layer.merge(EvoluCommonWebLive, PlatformNameLive)),
-          Layer.use(ConfigLive(config)),
-        ),
-      ),
+      Effect.provide(EvoluCommonReactLive),
+      Effect.provide(EvoluCommonWebLive),
+      Effect.provide(ConfigLive(config)),
       Effect.runSync,
     );
   fastRefreshRef.evolu.ensureSchema(schema);
