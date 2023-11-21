@@ -32,6 +32,7 @@ import {
 } from "./Crdt.js";
 import { Bip39, Mnemonic, NanoId } from "./Crypto.js";
 import {
+  Queries,
   Query,
   RowsStore,
   RowsStoreLive,
@@ -89,12 +90,12 @@ interface DbWorkerInputQuery {
 interface DbWorkerInputMutate {
   readonly _tag: "mutate";
   readonly mutations: ReadonlyArray.NonEmptyReadonlyArray<Mutation>;
-  readonly queries: ReadonlyArray<Query>;
+  readonly queries: Queries;
 }
 
 interface DbWorkerInputSync {
   readonly _tag: "sync";
-  readonly queries: ReadonlyArray<Query>;
+  readonly queries: Queries;
 }
 
 interface DbWorkerInputReset {
@@ -181,7 +182,7 @@ const query = ({
   queries,
   onCompleteIds = [],
 }: {
-  readonly queries: ReadonlyArray<Query>;
+  readonly queries: Queries;
   readonly onCompleteIds?: ReadonlyArray<OnCompleteId>;
 }): Effect.Effect<Sqlite | RowsStore | DbWorkerOnMessage, never, void> =>
   Effect.gen(function* (_) {
