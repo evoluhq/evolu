@@ -17,7 +17,7 @@ import {
   Queries,
   Query,
   QueryResult,
-  QueryResultsFromQueries,
+  QueryResultsPromisesFromQueries,
   Row,
   RowsStore,
   RowsStoreLive,
@@ -51,11 +51,12 @@ export interface Evolu<T extends Schema = Schema> {
   /** TODO: Docs */
   readonly loadQuery: LoadQuery;
 
-  /** TODO: Docs */
-  readonly loadQueries: LoadQueries;
+  /** TODO: Docs, just a typed helper for [a, b].map(loadQuery) */
+  readonly loadQueries: <R extends Row, Q extends Queries<R>>(
+    queries: [...Q],
+  ) => [...QueryResultsPromisesFromQueries<Q>];
 
   /** TODO: Docs */
-
   readonly subscribeQuery: SubscribedQueries["subscribeQuery"];
 
   /** TODO: Docs */
@@ -281,10 +282,6 @@ const LoadQueryLive = Layer.effect(
   }),
 );
 
-type LoadQueries = <R extends Row, QS extends Queries<R>>(
-  queries: [...QS],
-) => Promise<[...QueryResultsFromQueries<QS>]>;
-
 type OnQuery = (
   dbWorkerOutputOnQuery: DbWorkerOutputOnQuery,
 ) => Effect.Effect<never, never, void>;
@@ -334,7 +331,7 @@ const OnQueryLive = Layer.effect(
 export interface SubscribedQueries {
   readonly subscribeQuery: (query: Query) => Store<Row>["subscribe"];
   readonly getQuery: <R extends Row>(query: Query<R>) => QueryResult<R>;
-  readonly getSubscribedQueries: () => ReadonlyArray<Query>;
+  readonly getSubscribedQueries: () => Queries;
 }
 
 export const SubscribedQueries = Context.Tag<SubscribedQueries>();
@@ -527,11 +524,8 @@ export const EvoluCommonTest = Layer.effect(
       createQuery: makeCreateQuery(),
       loadQuery,
 
-      loadQueries: <R extends Row, QS extends Queries<R>>(queries: [...QS]) => {
-        const promise = Promise.all(queries.map(loadQuery));
-        promise.then(setPromiseAsResolved(promise));
-        return promise as Promise<[...QueryResultsFromQueries<QS>]>;
-      },
+      loadQueries: <R extends Row, Q extends Queries<R>>(queries: [...Q]) =>
+        queries.map(loadQuery) as [...QueryResultsPromisesFromQueries<Q>],
 
       subscribeQuery,
       getQuery,

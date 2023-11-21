@@ -47,11 +47,12 @@ export type TableSchema = ReadonlyRecord.ReadonlyRecord<Value> & {
 };
 
 // https://blog.beraliv.dev/2021-05-07-opaque-type-in-typescript
-declare const __queryRowBrand: unique symbol;
-export type Query<R extends Row = Row> = string &
-  Brand.Brand<"Query"> & { readonly [__queryRowBrand]: R };
+declare const __queryBrand: unique symbol;
 
-export type Queries<R extends Row> = ReadonlyArray<Query<R>>;
+export type Query<R extends Row = Row> = string &
+  Brand.Brand<"Query"> & { readonly [__queryBrand]: R };
+
+export type Queries<R extends Row = Row> = ReadonlyArray<Query<R>>;
 
 interface SerializedSqliteQuery {
   readonly sql: string;
@@ -114,8 +115,12 @@ export interface QueryResult<R extends Row = Row> {
   readonly row: Readonly<Kysely.Simplify<R>> | null;
 }
 
-export type QueryResultsFromQueries<T extends ReadonlyArray<Query<any>>> = {
-  [P in keyof T]: T[P] extends Query<infer R> ? QueryResult<R> : never;
+export type QueryResultsFromQueries<Q extends Queries> = {
+  [P in keyof Q]: Q[P] extends Query<infer R> ? QueryResult<R> : never;
+};
+
+export type QueryResultsPromisesFromQueries<Q extends Queries> = {
+  [P in keyof Q]: Q[P] extends Query<infer R> ? Promise<QueryResult<R>> : never;
 };
 
 const queryResultCache = new WeakMap<ReadonlyArray<Row>, QueryResult<Row>>();
