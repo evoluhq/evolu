@@ -58,9 +58,6 @@ const {
   useUpdate,
   useOwner,
   useEvolu,
-  // useQuerySubscription,
-  // use,
-  // useQueries,
 } = Evolu.create(Database, {
   reloadUrl: "/examples/nextjs",
   ...(process.env.NODE_ENV === "development" && {

@@ -20,7 +20,6 @@ import ReactExports, {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useSyncExternalStore,
 } from "react";
 
@@ -50,7 +49,6 @@ export interface EvoluCommonReact<S extends Schema = Schema> {
   readonly useQuerySubscription: <R extends Row>(
     query: Query<R>,
     options?: Partial<{
-      /** TODO: Docs, exaplain why once is useful. */
       readonly once: boolean;
     }>,
   ) => QueryResult<R>;
@@ -68,19 +66,20 @@ export interface EvoluCommonReact<S extends Schema = Schema> {
    * For more than one query, always use useQueries Hook to avoid loading waterfalls
    * and to cache loading promises.
    * This is possible of course:
-   * const foo = use(useEvolu().loadQuery(todos)()
+   * const foo = use(useEvolu().loadQuery(todos))
    * but it will not cache loading promise nor subscribe updates.
    * That's why we have useQuery and useQueries.
-   *
    */
   readonly useQueries: <
     R extends Row,
-    Q1 extends Queries<R>,
-    Q2 extends Queries<R>,
+    Q extends Queries<R>,
+    OQ extends Queries<R>,
   >(
-    queries: [...Q1],
-    loadOnlyQueries?: [...Q2],
-  ) => [...QueryResultsFromQueries<Q1>, ...QueryResultsFromQueries<Q2>];
+    queries: [...Q],
+    options?: Partial<{
+      readonly once: [...OQ];
+    }>,
+  ) => [...QueryResultsFromQueries<Q>, ...QueryResultsFromQueries<OQ>];
 
   /** TODO: Docs */
   readonly useCreate: () => Evolu<S>["create"];
@@ -123,19 +122,15 @@ export const EvoluCommonReactLive = Layer.effect(
       options = {},
     ) => {
       const evolu = useEvolu();
-      // The options can't be change, hence useRef.
-      const optionsRef = useRef(options).current;
-
       /* eslint-disable react-hooks/rules-of-hooks */
-      if (optionsRef.once) {
-        // No useSyncExternalStore, no unnecessary updates.
+      if (options.once) {
         useEffect(
+          // No useSyncExternalStore, no unnecessary updates.
           () => evolu.subscribeQuery(query)(Function.constVoid),
           [evolu, query],
         );
         return evolu.getQuery(query);
       }
-
       return useSyncExternalStore(
         useMemo(() => evolu.subscribeQuery(query), [evolu, query]),
         useMemo(() => () => evolu.getQuery(query), [evolu, query]),
@@ -150,11 +145,7 @@ export const EvoluCommonReactLive = Layer.effect(
 
       useEvoluError: () => {
         const evolu = useEvolu();
-        return useSyncExternalStore(
-          evolu.subscribeError,
-          evolu.getError,
-          Function.constNull,
-        );
+        return useSyncExternalStore(evolu.subscribeError, evolu.getError);
       },
 
       createQuery: evolu.createQuery,
@@ -166,14 +157,14 @@ export const EvoluCommonReactLive = Layer.effect(
         return useQuerySubscription(query, options);
       },
 
-      useQueries: (_queries, _loadOnlyQueries) => {
-        // const evolu = useEvolu();
-        // const promise = evolu.loadQueries(
-        //   queries.concat(loadOnlyQueries || []),
-        // );
-        // const foo = useQueryPromise(promise);
-        // TODO: subscribe and results.
-        throw "";
+      useQueries: (queries, options = {}) => {
+        const evolu = useEvolu();
+        const allQueries = queries.concat(options.once || []);
+        evolu.loadQueries(allQueries).map(use);
+        return allQueries.map((query, i) =>
+          // eslint-disable-next-line react-hooks/rules-of-hooks
+          useQuerySubscription(query, { once: i > queries.length - 1 }),
+        ) as never;
       },
 
       useCreate: () => useEvolu().create,
