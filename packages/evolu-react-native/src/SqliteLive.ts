@@ -12,18 +12,14 @@ const db = SQLite.openDatabase("evolu1.db");
 const exec: Sqlite["exec"] = (arg) =>
   Effect.gen(function* (_) {
     const sqliteQuery = ensureSqliteQuery(arg);
+    const query = {
+      sql: sqliteQuery.sql,
+      args: valuesToSqliteValues(sqliteQuery.parameters),
+    };
     const { rows, rowsAffected } = yield* _(
       Effect.promise(() =>
         db
-          .execAsync(
-            [
-              {
-                sql: sqliteQuery.sql,
-                args: valuesToSqliteValues(sqliteQuery.parameters),
-              },
-            ],
-            false,
-          )
+          .execAsync([query], false)
           .then((a) => a[0])
           .then((result) => {
             if ("error" in result) throw result.error;

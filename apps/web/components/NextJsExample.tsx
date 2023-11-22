@@ -1,7 +1,7 @@
 import { TreeFormatter } from "@effect/schema";
 import * as S from "@effect/schema/Schema";
 import * as Evolu from "@evolu/react";
-import { Effect } from "effect";
+import { Effect, Exit } from "effect";
 import {
   ChangeEvent,
   FC,
@@ -100,15 +100,17 @@ const OwnerActions: FC = () => {
 
   const handleRestoreOwnerClick = (): void => {
     prompt(Evolu.NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
-      evolu.parseMnemonic(mnemonic).pipe(
-        Effect.match({
-          onFailure: (error) => {
-            alert(JSON.stringify(error, null, 2));
-          },
-          onSuccess: evolu.restoreOwner,
-        }),
-        Effect.runPromise,
-      );
+      evolu
+        .parseMnemonic(mnemonic)
+        .pipe(Effect.runPromiseExit)
+        .then(
+          Exit.match({
+            onFailure: (error) => {
+              alert(JSON.stringify(error, null, 2));
+            },
+            onSuccess: evolu.restoreOwner,
+          }),
+        );
     });
   };
 
