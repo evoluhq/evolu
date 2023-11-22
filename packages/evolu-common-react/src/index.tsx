@@ -62,6 +62,7 @@ export interface EvoluCommonReact<S extends Schema = Schema> {
       readonly once: boolean;
       /** Reuse existing promise instead of loading so query will not suspense. */
       readonly promise: Promise<QueryResult<R>>;
+      // Do we need default data for SSR?
     }>,
   ) => QueryResult<R>;
 
@@ -87,6 +88,7 @@ export interface EvoluCommonReact<S extends Schema = Schema> {
         ...QueryResultsPromisesFromQueries<Q>,
         ...QueryResultsPromisesFromQueries<OQ>,
       ];
+      // Do we need default data for SSR?
     }>,
   ) => [...QueryResultsFromQueries<Q>, ...QueryResultsFromQueries<OQ>];
 
