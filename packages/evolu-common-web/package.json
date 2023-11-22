@@ -37,7 +37,7 @@
   "devDependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
-    "@sqlite.org/sqlite-wasm": "3.44.0-build2",
+    "@sqlite.org/sqlite-wasm": "3.44.1-build2",
     "@types/web-locks-api": "^0.0.5",
     "eslint": "^8.54.0",
     "eslint-config-evolu": "workspace:*",

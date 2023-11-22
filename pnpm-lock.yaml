@@ -27,8 +27,8 @@ importers:
   apps/native:
     dependencies:
       '@effect/schema':
-        specifier: ^0.49.2
-        version: 0.49.2(effect@2.0.0-next.56)(fast-check@3.14.0)
+        specifier: ^0.49.3
+        version: 0.49.3(effect@2.0.0-next.56)(fast-check@3.14.0)
       '@evolu/react-native':
         specifier: workspace:*
         version: link:../../packages/evolu-react-native
@@ -113,8 +113,8 @@ importers:
   apps/web:
     dependencies:
       '@effect/schema':
-        specifier: ^0.49.2
-        version: 0.49.2(effect@2.0.0-next.56)(fast-check@3.14.0)
+        specifier: ^0.49.3
+        version: 0.49.3(effect@2.0.0-next.56)(fast-check@3.14.0)
       '@evolu/common':
         specifier: workspace:*
         version: link:../../packages/evolu-common
@@ -242,8 +242,8 @@ importers:
         version: 5.0.3
     devDependencies:
       '@effect/schema':
-        specifier: 0.49.2
-        version: 0.49.2(effect@2.0.0-next.56)(fast-check@3.14.0)
+        specifier: 0.49.3
+        version: 0.49.3(effect@2.0.0-next.56)(fast-check@3.14.0)
       '@evolu/tsconfig':
         specifier: workspace:*
         version: link:../evolu-tsconfig
@@ -311,8 +311,8 @@ importers:
         specifier: workspace:*
         version: link:../evolu-tsconfig
       '@sqlite.org/sqlite-wasm':
-        specifier: 3.44.0-build2
-        version: 3.44.0-build2
+        specifier: 3.44.1-build2
+        version: 3.44.1-build2
       '@types/web-locks-api':
         specifier: ^0.0.5
         version: 0.0.5
@@ -2318,8 +2318,8 @@ packages:
       '@jridgewell/trace-mapping': 0.3.9
     dev: true
 
-  /@effect/schema@0.49.2(effect@2.0.0-next.56)(fast-check@3.14.0):
-    resolution: {integrity: sha512-9xs/kEobJY1C1QfOxThIWpGMGlmBRmLS+ZkmJ9B0ULSyngxHHm2yNg9/XW0aKfbcjtHfcR5fXb3gVv5ZOR9IMg==}
+  /@effect/schema@0.49.3(effect@2.0.0-next.56)(fast-check@3.14.0):
+    resolution: {integrity: sha512-hABm/W9qIRTtR4pJv9r9PzxcHeZ9V9HfP1QD8oP1vw0Ef/m+boEKLG8AT5P33ME7UDsSmYU4jLmsVFbk5TXNTw==}
     peerDependencies:
       effect: 2.0.0-next.56
       fast-check: ^3.13.2
@@ -3746,8 +3746,8 @@ packages:
     dependencies:
       '@sinonjs/commons': 3.0.0
 
-  /@sqlite.org/sqlite-wasm@3.44.0-build2:
-    resolution: {integrity: sha512-zFfqHoYxuGQ15+A9W00JGQEfQ+f1b+NNpZRD98I31G0x7es+IiGIh8n52vBoub+q9bZLW++Xa6T1QXuw4eGSDQ==}
+  /@sqlite.org/sqlite-wasm@3.44.1-build2:
+    resolution: {integrity: sha512-TrZrsuwX0YLfwULlSrlvcqE2sjHghKLYW4cnuh/Hg3hbt4fivnNfD9j5ks7Yn/u8yKndF9oRpDDBPM2wCPiZVg==}
     hasBin: true
     dev: true
 
@@ -4912,7 +4912,7 @@ packages:
     hasBin: true
     dependencies:
       caniuse-lite: 1.0.30001564
-      electron-to-chromium: 1.4.590
+      electron-to-chromium: 1.4.591
       node-releases: 2.0.13
       update-browserslist-db: 1.0.13(browserslist@4.22.1)
 
@@ -6075,8 +6075,8 @@ packages:
   /effect@2.0.0-next.56:
     resolution: {integrity: sha512-Z6L9rf78OveZorl4pC82hUM/kNhQ8epChuCBVNIjVsookbb6iqTuP9goi3qi6CR7xUZE+HnOKF2bzMIdOOP+Vw==}
 
-  /electron-to-chromium@1.4.590:
-    resolution: {integrity: sha512-hohItzsQcG7/FBsviCYMtQwUSWvVF7NVqPOnJCErWsAshsP/CR2LAXdmq276RbESNdhxiAq5/vRo1g2pxGXVww==}
+  /electron-to-chromium@1.4.591:
+    resolution: {integrity: sha512-vLv/P7wwAPKQoY+CVMyyI6rsTp+A14KGtPXx92oz1FY41AAqa9l6Wkizcixg0LDuJgyeo8xgNN9+9hsnGp66UA==}
 
   /elkjs@0.8.2:
     resolution: {integrity: sha512-L6uRgvZTH+4OF5NE/MBbzQx/WYpru1xCBE9respNj6qznEewGUIfhzmm7horWWxbNO2M0WckQypGctR8lH79xQ==}
