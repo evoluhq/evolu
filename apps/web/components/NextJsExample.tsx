@@ -65,7 +65,7 @@ const {
   }),
 });
 
-export const NextJsExample: FC = () => {
+export const NextJsExample = memo(function NextJsExample() {
   const [todosShown, setTodosShown] = useState(true);
 
   // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
@@ -91,7 +91,7 @@ export const NextJsExample: FC = () => {
       <NotificationBar />
     </>
   );
-};
+});
 
 const OwnerActions: FC = () => {
   const evolu = useEvolu();
