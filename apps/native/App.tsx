@@ -1,7 +1,7 @@
 import * as S from "@effect/schema/Schema";
 import * as TreeFormatter from "@effect/schema/TreeFormatter";
-import { Either, Function } from "effect";
 import * as Evolu from "@evolu/react-native";
+import { Effect, Either, Exit, Function } from "effect";
 import {
   FC,
   Suspense,
@@ -41,9 +41,13 @@ const TodoTable = S.struct({
 });
 type TodoTable = S.Schema.To<typeof TodoTable>;
 
+const SomeJson = S.struct({ foo: S.string, bar: S.boolean });
+type SomeJson = S.Schema.To<typeof SomeJson>;
+
 const TodoCategoryTable = S.struct({
   id: TodoCategoryId,
   name: NonEmptyString50,
+  json: SomeJson,
 });
 type TodoCategoryTable = S.Schema.To<typeof TodoCategoryTable>;
 
@@ -52,40 +56,182 @@ const Database = S.struct({
   todoCategory: TodoCategoryTable,
 });
 
-const { useQuery, useMutation, useEvoluError, useOwner, useOwnerActions } =
-  Evolu.create(Database, {
-    ...(process.env.NODE_ENV === "development" && {
-      syncUrl: "http://localhost:4000",
-    }),
-  });
+const {
+  useEvoluError,
+  createQuery,
+  useQuery,
+  useCreate,
+  useUpdate,
+  useOwner,
+  useEvolu,
+} = Evolu.create(Database, {
+  ...(process.env.NODE_ENV === "development" && {
+    syncUrl: "http://localhost:4000",
+  }),
+});
 
-interface TodoCategoryForSelect {
-  readonly id: TodoCategoryTable["id"];
-  readonly name: TodoCategoryTable["name"] | null;
+export default function App(): JSX.Element {
+  return (
+    <ScrollView style={appStyles.container}>
+      <Text style={appStyles.h1}>React Native Example</Text>
+      <NextJsExample />
+    </ScrollView>
+  );
 }
 
-const TodoCategorySelect: FC<{
-  categories: ReadonlyArray<TodoCategoryForSelect>;
-  selected: TodoCategoryId | null;
-  onSelect: (_value: TodoCategoryId | null) => void;
-}> = ({ categories, selected, onSelect }) => {
-  const nothingSelected = "";
-  const value =
-    selected && categories.find((row) => row.id === selected)
-      ? selected
-      : nothingSelected;
+const NextJsExample: FC = () => {
+  const [todosShown, setTodosShown] = useState(true);
 
   return (
-    <RNPickerSelect
-      value={value}
-      onValueChange={(value: TodoCategoryId | null): void => {
-        onSelect(value);
-      }}
-      items={categories.map((row) => ({
-        label: row.name || "",
-        value: row.id,
-      }))}
-    />
+    <>
+      <OwnerActions />
+      <View style={{ alignItems: "flex-start" }}>
+        <Button
+          title="Simulate suspense-enabled router"
+          onPress={(): void => {
+            // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
+            startTransition(() => {
+              setTodosShown(!todosShown);
+            });
+          }}
+        />
+        <Text>
+          Using suspense-enabled router transition, you will not see any loader
+          or jumping content.
+        </Text>
+      </View>
+      <Suspense>{todosShown ? <Todos /> : <TodoCategories />}</Suspense>
+      <NotificationBar />
+    </>
+  );
+};
+
+const OwnerActions: FC = () => {
+  const evolu = useEvolu();
+  const owner = useOwner();
+  const [isMnemonicShown, setIsMnemonicShown] = useState(false);
+  const [isRestoreShown, setIsRestoreShown] = useState(false);
+  const [mnemonic, setMnemonic] = useState("");
+  const parsedMnemonic = S.parseEither(Evolu.NonEmptyString1000)(mnemonic);
+
+  const handleMnemonicInputEndEditing = (): void => {
+    Either.match(parsedMnemonic, {
+      onLeft: (error) => alert(TreeFormatter.formatErrors(error.errors)),
+      onRight: (mnemonic) => {
+        evolu
+          .parseMnemonic(mnemonic)
+          .pipe(Effect.runPromiseExit)
+          .then(
+            Exit.match({
+              onFailure: (error) => {
+                alert(JSON.stringify(error, null, 2));
+              },
+              onSuccess: evolu.restoreOwner,
+            }),
+          );
+      },
+    });
+  };
+
+  return (
+    <View>
+      <Text>
+        Open this page on a different device and use your mnemonic to restore
+        your data.
+      </Text>
+      <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
+        <Button
+          title={`${!isMnemonicShown ? "Show" : "Hide"} Mnemonic`}
+          onPress={(): void => setIsMnemonicShown(!isMnemonicShown)}
+        />
+        <Button
+          title="Restore"
+          onPress={(): void => setIsRestoreShown(!isRestoreShown)}
+        />
+        <Button
+          title="Reset"
+          onPress={(): void => {
+            evolu.resetOwner();
+          }}
+        />
+      </View>
+      {isMnemonicShown && owner != null && (
+        <TextInput multiline selectTextOnFocus>
+          {owner.mnemonic}
+        </TextInput>
+      )}
+      {isRestoreShown && (
+        <TextInput
+          placeholder="insert your mnemonic"
+          autoComplete="off"
+          autoCorrect={false}
+          style={appStyles.textInput}
+          value={mnemonic}
+          onChangeText={setMnemonic}
+          onEndEditing={handleMnemonicInputEndEditing}
+        />
+      )}
+    </View>
+  );
+};
+
+const todosWithCategories = createQuery((db) =>
+  db
+    .selectFrom("todo")
+    .select(["id", "title", "isCompleted", "categoryId"])
+    .where("isDeleted", "is not", Evolu.cast(true))
+    // Filter null values and ensure non-null types. Evolu will provide a helper.
+    .where("title", "is not", null)
+    .where("isCompleted", "is not", null)
+    .$narrowType<{ title: Evolu.NonEmptyString1000 }>()
+    .$narrowType<{ isCompleted: Evolu.SqliteBoolean }>()
+    .orderBy("createdAt")
+    // https://kysely.dev/docs/recipes/relations
+    .select((eb) => [
+      Evolu.jsonArrayFrom(
+        eb
+          .selectFrom("todoCategory")
+          .select(["todoCategory.id", "todoCategory.name"])
+          .where("isDeleted", "is not", Evolu.cast(true))
+          .orderBy("createdAt"),
+      ).as("categories"),
+    ]),
+);
+
+const Todos: FC = () => {
+  const create = useCreate();
+  const { rows } = useQuery(todosWithCategories);
+
+  const [text, setText] = useState("");
+  const newTodoTitle = S.parseEither(Evolu.NonEmptyString1000)(text);
+  const handleTextInputEndEditing = (): void => {
+    Either.match(newTodoTitle, {
+      onLeft: Function.constVoid,
+      onRight: (title) => {
+        create("todo", { title, isCompleted: false });
+        setText("");
+      },
+    });
+  };
+
+  return (
+    <>
+      <Text style={appStyles.h2}>Todos</Text>
+      <TextInput
+        autoComplete="off"
+        autoCorrect={false}
+        style={appStyles.textInput}
+        value={text}
+        onChangeText={setText}
+        placeholder="What needs to be done?"
+        onEndEditing={handleTextInputEndEditing}
+      />
+      <View>
+        {rows.map((row) => (
+          <TodoItem key={row.id} row={row} />
+        ))}
+      </View>
+    </>
   );
 };
 
@@ -96,7 +242,7 @@ const TodoItem = memo<{
 }>(function TodoItem({
   row: { id, title, isCompleted, categoryId, categories },
 }) {
-  const { update } = useMutation();
+  const update = useUpdate();
 
   return (
     <View style={{ marginBottom: 16 }}>
@@ -135,71 +281,51 @@ const TodoItem = memo<{
   );
 });
 
-const Todos: FC = () => {
-  const { create } = useMutation();
-  const { rows } = useQuery(
-    (db) =>
-      db
-        .selectFrom("todo")
-        .select(["id", "title", "isCompleted", "categoryId"])
-        .where("isDeleted", "is not", Evolu.cast(true))
-        .orderBy("createdAt")
-        // https://kysely.dev/docs/recipes/relations
-        .select((eb) => [
-          Evolu.jsonArrayFrom(
-            eb
-              .selectFrom("todoCategory")
-              .select(["todoCategory.id", "todoCategory.name"]),
-          ).as("categories"),
-        ]),
-    ({ title, isCompleted, ...rest }) =>
-      title && isCompleted != null && { title, isCompleted, ...rest },
-  );
-
-  const [text, setText] = useState("");
-  const newTodoTitle = S.parseEither(Evolu.NonEmptyString1000)(text);
-  const handleTextInputEndEditing = (): void => {
-    Either.match(newTodoTitle, {
-      onLeft: Function.constVoid,
-      onRight: (title) => {
-        create("todo", { title, isCompleted: false });
-        setText("");
-      },
-    });
-  };
+const TodoCategorySelect: FC<{
+  categories: ReadonlyArray<TodoCategoryForSelect>;
+  selected: TodoCategoryId | null;
+  onSelect: (_value: TodoCategoryId | null) => void;
+}> = ({ categories, selected, onSelect }) => {
+  const nothingSelected = "";
+  const value =
+    selected && categories.find((row) => row.id === selected)
+      ? selected
+      : nothingSelected;
 
   return (
-    <>
-      <Text style={appStyles.h2}>Todos</Text>
-      <TextInput
-        autoComplete="off"
-        autoCorrect={false}
-        style={appStyles.textInput}
-        value={text}
-        onChangeText={setText}
-        placeholder="What needs to be done?"
-        onEndEditing={handleTextInputEndEditing}
-      />
-      <View>
-        {rows.map((row) => (
-          <TodoItem key={row.id} row={row} />
-        ))}
-      </View>
-    </>
+    <RNPickerSelect
+      value={value}
+      onValueChange={(value: TodoCategoryId | null): void => {
+        onSelect(value);
+      }}
+      items={categories.map((row) => ({
+        label: row.name || "",
+        value: row.id,
+      }))}
+    />
   );
 };
 
+interface TodoCategoryForSelect {
+  readonly id: TodoCategoryTable["id"];
+  readonly name: TodoCategoryTable["name"] | null;
+}
+
+const todoCategories = createQuery((db) =>
+  db
+    .selectFrom("todoCategory")
+    .select(["id", "name", "json"])
+    .where("isDeleted", "is not", Evolu.cast(true))
+    // Filter null value and ensure non-null type. Evolu will provide a helper.
+    .where("name", "is not", null)
+    .$narrowType<{ name: NonEmptyString50 }>()
+    .orderBy("createdAt"),
+);
+
 const TodoCategories: FC = () => {
-  const { create, update } = useMutation();
-  const { rows } = useQuery(
-    (db) =>
-      db
-        .selectFrom("todoCategory")
-        .select(["id", "name"])
-        .where("isDeleted", "is not", Evolu.cast(true))
-        .orderBy("createdAt"),
-    ({ name, ...rest }) => name && { name, ...rest },
-  );
+  const create = useCreate();
+  const update = useUpdate();
+  const { rows } = useQuery(todoCategories);
 
   const [text, setText] = useState("");
   const newTodoTitle = S.parseEither(NonEmptyString50)(text);
@@ -207,7 +333,10 @@ const TodoCategories: FC = () => {
     Either.match(newTodoTitle, {
       onLeft: Function.constVoid,
       onRight: (name) => {
-        create("todoCategory", { name });
+        create("todoCategory", {
+          name,
+          json: { foo: "a", bar: false },
+        });
         setText("");
       },
     });
@@ -242,68 +371,6 @@ const TodoCategories: FC = () => {
   );
 };
 
-const OwnerActions: FC = () => {
-  const owner = useOwner();
-  const ownerActions = useOwnerActions();
-  const [showMnemonic, setShowMnemonic] = useState(false);
-  const [showRestore, setShowRestore] = useState(false);
-
-  const [mnemonic, setMnemonic] = useState("");
-  const parsedMnemonic = S.parseEither(Evolu.NonEmptyString1000)(mnemonic);
-  const handleMnemonicInputEndEditing = (): void => {
-    Either.match(parsedMnemonic, {
-      onLeft: (error) => alert(TreeFormatter.formatErrors(error.errors)),
-      onRight: (mnemonic) => {
-        void ownerActions.restore(mnemonic).then((either) => {
-          if (either._tag === "Left")
-            alert(JSON.stringify(either.left, null, 2));
-        });
-      },
-    });
-  };
-
-  return (
-    <View>
-      <Text>
-        Open this page on a different device and use your mnemonic to restore
-        your data.
-      </Text>
-      <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
-        <Button
-          title={`${!showMnemonic ? "Show" : "Hide"} Mnemonic`}
-          onPress={(): void => setShowMnemonic(!showMnemonic)}
-        />
-        <Button
-          title="Restore"
-          onPress={(): void => setShowRestore(!showRestore)}
-        />
-        <Button
-          title="Reset"
-          onPress={(): void => {
-            ownerActions.reset();
-          }}
-        />
-      </View>
-      {showMnemonic && owner != null && (
-        <TextInput multiline selectTextOnFocus>
-          {owner.mnemonic}
-        </TextInput>
-      )}
-      {showRestore && (
-        <TextInput
-          placeholder="insert your mnemonic"
-          autoComplete="off"
-          autoCorrect={false}
-          style={appStyles.textInput}
-          value={mnemonic}
-          onChangeText={setMnemonic}
-          onEndEditing={handleMnemonicInputEndEditing}
-        />
-      )}
-    </View>
-  );
-};
-
 const NotificationBar: FC = () => {
   const evoluError = useEvoluError();
   const [shown, setShown] = useState(false);
@@ -321,42 +388,6 @@ const NotificationBar: FC = () => {
     </View>
   );
 };
-
-const NextJsExample: FC = () => {
-  const [todosShown, setTodosShown] = useState(true);
-
-  return (
-    <>
-      <OwnerActions />
-      <View style={{ alignItems: "flex-start" }}>
-        <Button
-          title="Simulate suspense-enabled router"
-          onPress={(): void => {
-            // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
-            startTransition(() => {
-              setTodosShown(!todosShown);
-            });
-          }}
-        />
-        <Text>
-          Using suspense-enabled router transition, you will not see any loader
-          or jumping content.
-        </Text>
-      </View>
-      <Suspense>{todosShown ? <Todos /> : <TodoCategories />}</Suspense>
-      <NotificationBar />
-    </>
-  );
-};
-
-export default function App(): JSX.Element {
-  return (
-    <ScrollView style={appStyles.container}>
-      <Text style={appStyles.h1}>React Native Example</Text>
-      <NextJsExample />
-    </ScrollView>
-  );
-}
 
 const appStyles = StyleSheet.create({
   h1: {

@@ -1,5 +1,8 @@
 /// <reference types="react/experimental" />
+import * as S from "@effect/schema/Schema";
 import {
+  Config,
+  ConfigLive,
   Evolu,
   EvoluError,
   Owner,
@@ -12,7 +15,7 @@ import {
   Schema,
   SyncState,
 } from "@evolu/common";
-import { Context, Effect, Function, Layer } from "effect";
+import { Context, Effect, Function, GlobalValue, Layer } from "effect";
 import ReactExports, {
   FC,
   ReactNode,
@@ -235,3 +238,24 @@ const use =
       throw promise;
     }
   });
+
+export const makeCreate =
+  (ReactLive: Layer.Layer<Config, never, EvoluCommonReact<Schema>>) =>
+  <From, To extends Schema>(
+    schema: S.Schema<From, To>,
+    config?: Partial<Config>,
+  ): EvoluCommonReact<To> => {
+    // For https://nextjs.org/docs/architecture/fast-refresh etc.
+    const react = GlobalValue.globalValue(
+      Symbol.for("@evolu/common-react"),
+      () =>
+        EvoluCommonReact.pipe(
+          Effect.provide(ReactLive),
+          Effect.provide(ConfigLive(config)),
+          Effect.runSync,
+        ),
+    );
+    react.evolu.ensureSchema(schema);
+    // The Effect team does not recommend generic services, hence casting.
+    return react as unknown as EvoluCommonReact<To>;
+  };

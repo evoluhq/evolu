@@ -73,13 +73,6 @@ export const AppStateLive = Layer.succeed(
   }),
 );
 
-// const reset: AppState["reset"] = Effect.sync(() => {
-//   if (process.env.NODE_ENV === "development") DevSettings.reload();
-//   else reloadAsync();
-// });
-
-// return AppState.of({ onFocus, onReconnect, reset });
-
 export const Bip39Live = Layer.succeed(
   Bip39,
   Bip39.of({

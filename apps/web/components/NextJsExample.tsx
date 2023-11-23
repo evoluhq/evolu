@@ -43,7 +43,6 @@ const TodoCategoryTable = S.struct({
 });
 type TodoCategoryTable = S.Schema.To<typeof TodoCategoryTable>;
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const Database = S.struct({
   todo: TodoTable,
   todoCategory: TodoCategoryTable,
@@ -96,7 +95,7 @@ export const NextJsExample = memo(function NextJsExample() {
 const OwnerActions: FC = () => {
   const evolu = useEvolu();
   const owner = useOwner();
-  const [isShown, setIsShown] = useState(false);
+  const [isMnemonicShown, setIsMnemonicShown] = useState(false);
 
   const handleRestoreOwnerClick = (): void => {
     prompt(Evolu.NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
@@ -126,12 +125,12 @@ const OwnerActions: FC = () => {
         your data.
       </p>
       <Button
-        title={`${!isShown ? "Show" : "Hide"} Mnemonic`}
-        onClick={(): void => setIsShown((value) => !value)}
+        title={`${!isMnemonicShown ? "Show" : "Hide"} Mnemonic`}
+        onClick={(): void => setIsMnemonicShown(!isMnemonicShown)}
       />
       <Button title="Restore Owner" onClick={handleRestoreOwnerClick} />
       <Button title="Reset Owner" onClick={handleResetOwnerClick} />
-      {isShown && owner != null && (
+      {isMnemonicShown && owner != null && (
         <div>
           <textarea
             value={owner.mnemonic}
@@ -150,8 +149,11 @@ const todosWithCategories = createQuery((db) =>
     .selectFrom("todo")
     .select(["id", "title", "isCompleted", "categoryId"])
     .where("isDeleted", "is not", Evolu.cast(true))
+    // Filter null values and ensure non-null types. Evolu will provide a helper.
     .where("title", "is not", null)
     .where("isCompleted", "is not", null)
+    .$narrowType<{ title: Evolu.NonEmptyString1000 }>()
+    .$narrowType<{ isCompleted: Evolu.SqliteBoolean }>()
     .orderBy("createdAt")
     // https://kysely.dev/docs/recipes/relations
     .select((eb) => [
@@ -162,9 +164,7 @@ const todosWithCategories = createQuery((db) =>
           .where("isDeleted", "is not", Evolu.cast(true))
           .orderBy("createdAt"),
       ).as("categories"),
-    ])
-    .$narrowType<{ title: Evolu.NonEmptyString1000 }>()
-    .$narrowType<{ isCompleted: Evolu.SqliteBoolean }>(),
+    ]),
 );
 
 const Todos: FC = () => {
@@ -278,9 +278,10 @@ const todoCategories = createQuery((db) =>
     .selectFrom("todoCategory")
     .select(["id", "name", "json"])
     .where("isDeleted", "is not", Evolu.cast(true))
+    // Filter null value and ensure non-null type. Evolu will provide a helper.
     .where("name", "is not", null)
-    .orderBy("createdAt")
-    .$narrowType<{ name: NonEmptyString50 }>(),
+    .$narrowType<{ name: NonEmptyString50 }>()
+    .orderBy("createdAt"),
 );
 
 const TodoCategories: FC = () => {
@@ -356,7 +357,6 @@ const NotificationBar: FC = () => {
   );
 };
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const prompt = <From extends string, To>(
   schema: S.Schema<From, To>,
   message: string,
