@@ -19,7 +19,28 @@ import {
 } from "./PlatformLive.js";
 import { SqliteLive } from "./SqliteLive.js";
 
-export * from "@evolu/common/public";
+// It's not working in RN for some reason, so we must manually re-export it.
+// export * from "@evolu/common/public";
+export {
+  Id,
+  NonEmptyString1000,
+  PositiveInt,
+  SqliteBoolean,
+  SqliteDate,
+  String,
+  String1000,
+  canUseDom,
+  cast,
+  id,
+} from "@evolu/common";
+export type {
+  EvoluError,
+  Mnemonic,
+  Owner,
+  OwnerId,
+  SyncState,
+} from "@evolu/common";
+export { jsonArrayFrom, jsonObjectFrom } from "kysely/helpers/sqlite";
 
 const EvoluCommonNativeLive: Layer.Layer<
   Config,
