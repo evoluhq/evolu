@@ -3,7 +3,9 @@ module.exports = function (api) {
   return {
     presets: ["babel-preset-expo"],
     plugins: [
+      // For Kysely
       ["@babel/plugin-transform-private-methods", { loose: true }],
+      "@babel/plugin-proposal-dynamic-import",
       [
         "module-resolver",
         {
