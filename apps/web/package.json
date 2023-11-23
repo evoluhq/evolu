@@ -10,7 +10,7 @@
     "clean": "rm -rf .turbo .next node_modules"
   },
   "dependencies": {
-    "@effect/schema": "^0.49.3",
+    "@effect/schema": "^0.49.4",
     "@evolu/common": "workspace:*",
     "@evolu/react": "workspace:*",
     "clsx": "^2.0.0",
