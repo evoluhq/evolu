@@ -263,18 +263,16 @@ const LoadQueryLive = Layer.effect(
   Effect.gen(function* (_) {
     const loadingPromises = yield* _(LoadingPromises);
     const dbWorker = yield* _(DbWorker);
-    const queries: Query[] = [];
+    let queries: ReadonlyArray<Query> = [];
 
     return LoadQuery.of((query) => {
       const { promise, isNew } = loadingPromises.get(query);
-      if (isNew) queries.push(query);
-      if (
-        ReadonlyArray.isNonEmptyReadonlyArray(queries) &&
-        queries.length === 1
-      ) {
+      if (isNew) queries = [...queries, query];
+      if (queries.length === 1) {
         queueMicrotask(() => {
-          dbWorker.postMessage({ _tag: "query", queries });
-          queries.length = 0;
+          if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
+            dbWorker.postMessage({ _tag: "query", queries });
+          queries = [];
         });
       }
       return promise;
@@ -428,7 +426,7 @@ const MutateLive = Layer.effect(
     const subscribedQueries = yield* _(SubscribedQueries);
     const loadingPromises = yield* _(LoadingPromises);
     const dbWorker = yield* _(DbWorker);
-    const mutations: Array<Mutation> = [];
+    let mutations: ReadonlyArray<Mutation> = [];
 
     return Mutate.of((table, { id, ...values }, onComplete) => {
       const isInsert = id == null;
@@ -438,27 +436,28 @@ const MutateLive = Layer.effect(
         ? onCompletes.add(onComplete).pipe(Effect.runSync)
         : null;
 
-      mutations.push({
-        table: table.toString(),
-        id,
-        values,
-        isInsert,
-        now: cast(new Date(Effect.runSync(time.now))),
-        onCompleteId,
-      });
+      mutations = [
+        ...mutations,
+        {
+          table: table.toString(),
+          id,
+          values,
+          isInsert,
+          now: cast(new Date(Effect.runSync(time.now))),
+          onCompleteId,
+        },
+      ];
 
-      if (
-        ReadonlyArray.isNonEmptyReadonlyArray(mutations) &&
-        mutations.length === 1
-      )
+      if (mutations.length === 1)
         queueMicrotask(() => {
-          dbWorker.postMessage({
-            _tag: "mutate",
-            mutations,
-            queries: subscribedQueries.getSubscribedQueries(),
-          });
+          if (ReadonlyArray.isNonEmptyReadonlyArray(mutations))
+            dbWorker.postMessage({
+              _tag: "mutate",
+              mutations,
+              queries: subscribedQueries.getSubscribedQueries(),
+            });
           loadingPromises.release();
-          mutations.length = 0;
+          mutations = [];
         });
 
       return { id };
