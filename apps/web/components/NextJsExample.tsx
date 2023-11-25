@@ -1,7 +1,7 @@
 import { TreeFormatter } from "@effect/schema";
 import * as S from "@effect/schema/Schema";
 import * as Evolu from "@evolu/react";
-import { Effect, Exit } from "effect";
+import { Effect, Exit, GlobalValue } from "effect";
 import {
   ChangeEvent,
   FC,
@@ -57,7 +57,6 @@ const {
   useCreate,
   useUpdate,
   useOwner,
-  useSyncState,
   useEvolu,
 } = Evolu.create(Database, {
   reloadUrl: "/examples/nextjs",
@@ -65,14 +64,6 @@ const {
     syncUrl: "http://localhost:4000",
   }),
 });
-
-const isRestoringOwner = (isRestoringOwner?: boolean): boolean => {
-  if (!Evolu.canUseDom) return false;
-  const key = 'evolu:isRestoringOwner"';
-  if (isRestoringOwner != null)
-    localStorage.setItem(key, String(isRestoringOwner));
-  return localStorage.getItem(key) === "true";
-};
 
 const createFixtures = (): Promise<void> =>
   Promise.all(
@@ -91,7 +82,28 @@ const createFixtures = (): Promise<void> =>
     });
   });
 
+const isRestoringOwner = (isRestoringOwner?: boolean): boolean => {
+  if (!Evolu.canUseDom) return false;
+  const key = 'evolu:isRestoringOwner"';
+  if (isRestoringOwner != null)
+    localStorage.setItem(key, String(isRestoringOwner));
+  return localStorage.getItem(key) === "true";
+};
+
+// Ensure fixtures are not added to the restored owner.
 if (!isRestoringOwner()) createFixtures();
+
+const logSyncState = (): void => {
+  evolu.subscribeSyncState(() => {
+    // eslint-disable-next-line no-console
+    console.log(evolu.getSyncState());
+  });
+};
+
+// Ensure logSyncState is called only once with hot reloading.
+// Without GlobalValue, people could be confused why logSyncState
+// logs 2x, 3x, etc., when they edit this file.
+GlobalValue.globalValue("example/subscribeSyncState", logSyncState);
 
 export const NextJsExample = memo(function NextJsExample() {
   const [currentTab, setCurrentTab] = useState<"todos" | "categories">("todos");
@@ -129,7 +141,7 @@ export const NextJsExample = memo(function NextJsExample() {
 const OwnerActions: FC = () => {
   const evolu = useEvolu();
   const owner = useOwner();
-  const [isMnemonicShown, setIsMnemonicShown] = useState(false);
+  const [showMnemonic, setShowMnemonic] = useState(false);
 
   const handleRestoreOwnerClick = (): void => {
     prompt(Evolu.NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
@@ -164,12 +176,12 @@ const OwnerActions: FC = () => {
         your data.
       </p>
       <Button
-        title={`${!isMnemonicShown ? "Show" : "Hide"} Mnemonic`}
-        onClick={(): void => setIsMnemonicShown(!isMnemonicShown)}
+        title={`${showMnemonic ? "Hide" : "Show"} Mnemonic`}
+        onClick={(): void => setShowMnemonic(!showMnemonic)}
       />
       <Button title="Restore Owner" onClick={handleRestoreOwnerClick} />
       <Button title="Reset Owner" onClick={handleResetOwnerClick} />
-      {isMnemonicShown && owner != null && (
+      {showMnemonic && owner != null && (
         <div>
           <textarea
             value={owner.mnemonic}
@@ -376,21 +388,18 @@ const TodoCategoryItem = memo<{
 
 const NotificationBar: FC = () => {
   const evoluError = useEvoluError();
-  const [shown, setShown] = useState(false);
+  const [showError, setShowError] = useState(false);
 
   useEffect(() => {
-    if (evoluError) setShown(true);
+    if (evoluError) setShowError(true);
   }, [evoluError]);
-
-  const syncState = useSyncState();
 
   return (
     <div className="mt-3">
-      <p>SyncState: {JSON.stringify(syncState)}</p>
-      {evoluError && !shown && (
+      {evoluError && !showError && (
         <>
           <p>{`Error: ${JSON.stringify(evoluError)}`}</p>
-          <Button title="Close" onClick={(): void => setShown(false)} />
+          <Button title="Close" onClick={(): void => setShowError(false)} />
         </>
       )}
     </div>
