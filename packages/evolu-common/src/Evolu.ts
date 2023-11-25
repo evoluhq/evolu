@@ -257,7 +257,7 @@ export const LoadingPromiseLive = Layer.effect(
 const setPromiseAsResolved =
   <T>(promise: Promise<T>) =>
   (value: unknown): void => {
-    Object.assign(promise, { status: "fulfilled", value });
+    void Object.assign(promise, { status: "fulfilled", value });
   };
 
 type LoadQuery = <R extends Row>(query: Query<R>) => Promise<QueryResult<R>>;

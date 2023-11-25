@@ -6,6 +6,7 @@ import {
   Equivalence,
   Function,
   Layer,
+  Match,
   Option,
   Predicate,
   ReadonlyArray,
@@ -315,8 +316,6 @@ export const SyncWorkerLive = Layer.effect(
   SyncWorker,
   Effect.gen(function* (_) {
     const syncLock = yield* _(SyncLock);
-    const fetch = yield* _(Fetch);
-    const secretBox = yield* _(SecretBox);
 
     const onError = (
       error: UnexpectedError,
@@ -325,35 +324,26 @@ export const SyncWorkerLive = Layer.effect(
         syncWorker.onMessage(error);
       });
 
-    const mapInputToEffect = (
-      input: SyncWorkerInput,
-    ): Effect.Effect<
-      SyncLock | SyncWorkerOnMessage | Fetch | SecretBox,
-      never,
-      void
-    > => {
-      switch (input._tag) {
-        case "sync":
-          return sync(input);
-        case "syncCompleted":
-          return syncLock.release;
-      }
-    };
-
-    const postMessage: SyncWorker["postMessage"] = (input) => {
-      mapInputToEffect(input).pipe(
-        Effect.catchAllDefect(makeUnexpectedError),
-        Effect.catchAll(onError),
-        Effect.provideService(SyncLock, syncLock),
-        Effect.provideService(Fetch, fetch),
-        Effect.provideService(SecretBox, secretBox),
-        Effect.provideService(SyncWorkerOnMessage, syncWorker.onMessage),
-        Effect.runPromise,
-      );
-    };
+    const context = Context.empty().pipe(
+      Context.add(SyncLock, syncLock),
+      Context.add(Fetch, yield* _(Fetch)),
+      Context.add(SecretBox, yield* _(SecretBox)),
+    );
 
     const syncWorker: SyncWorker = {
-      postMessage,
+      postMessage: (input) => {
+        void Match.value(input).pipe(
+          Match.tagsExhaustive({
+            sync,
+            syncCompleted: () => syncLock.release,
+          }),
+          Effect.catchAllDefect(makeUnexpectedError),
+          Effect.catchAll(onError),
+          Effect.provide(context),
+          Effect.provideService(SyncWorkerOnMessage, syncWorker.onMessage),
+          Effect.runPromise,
+        );
+      },
       onMessage: Function.constVoid,
     };
 
