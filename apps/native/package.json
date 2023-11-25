@@ -7,7 +7,7 @@
     "ios": "expo start --ios",
     "android": "expo start --android",
     "build-native": "expo start --no-dev --minify",
-    "lint": "eslint --ext ts,tsx .",
+    "lint": "eslint . --ext .ts,.tsx",
     "clean": "rm -rf .turbo .expo node_modules"
   },
   "dependencies": {

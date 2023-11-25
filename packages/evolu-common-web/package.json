@@ -30,7 +30,7 @@
   "scripts": {
     "dev": "tsc --watch",
     "build": "rm -rf dist && tsc",
-    "lint": "TIMING=1 eslint src --ext .ts,.tsx",
+    "lint": "eslint src --ext .ts,.tsx",
     "clean": "rm -rf .turbo node_modules dist",
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
