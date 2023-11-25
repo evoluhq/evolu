@@ -123,73 +123,38 @@ export const NextJsExample = memo(function NextJsExample() {
         </h2>
         {currentTab === "todos" ? <Todos /> : <TodoCategories />}
         <Button title="Switch Tab" onClick={handleTabClick} />
-        <nav className="my-4">
-          <p>Switch Tab button simulates suspense-enabled router transition</p>
-        </nav>
+        <p className="my-4">
+          To try React Suspense, click the `Switch Tab` button and rename a
+          category. Then click the `Switch Tab` again to see the updated
+          category name without any loading state. React Suspense is excellent
+          for UX.
+        </p>
+        <p className="my-4">
+          The data created in this example are stored locally in SQLite. Evolu
+          encrypts the data for backup and sync with a Mnemonic, a unique safe
+          password created on your device.
+        </p>
         <OwnerActions />
-        <nav className="my-4">
-          <p>
-            Using suspense-enabled router transition, you will not see any
-            loader or jumping content.
-          </p>
-        </nav>
       </Suspense>
     </>
   );
 });
 
-const OwnerActions: FC = () => {
-  const evolu = useEvolu();
-  const owner = useOwner();
-  const [showMnemonic, setShowMnemonic] = useState(false);
+const NotificationBar: FC = () => {
+  const evoluError = useEvoluError();
+  const [showError, setShowError] = useState(false);
 
-  const handleRestoreOwnerClick = (): void => {
-    prompt(Evolu.NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
-      evolu
-        .parseMnemonic(mnemonic)
-        .pipe(Effect.runPromiseExit)
-        .then(
-          Exit.match({
-            onFailure: (error) => {
-              alert(JSON.stringify(error, null, 2));
-            },
-            onSuccess: (mnemonic) => {
-              isRestoringOwner(true);
-              evolu.restoreOwner(mnemonic);
-            },
-          }),
-        );
-    });
-  };
-
-  const handleResetOwnerClick = (): void => {
-    if (confirm("Are you sure? It will delete all your local data.")) {
-      isRestoringOwner(false);
-      evolu.resetOwner();
-    }
-  };
+  useEffect(() => {
+    if (evoluError) setShowError(true);
+  }, [evoluError]);
 
   return (
-    <div className="mt-6">
-      <p>
-        Open this page on a different device and use your mnemonic to restore
-        your data.
-      </p>
-      <Button
-        title={`${showMnemonic ? "Hide" : "Show"} Mnemonic`}
-        onClick={(): void => setShowMnemonic(!showMnemonic)}
-      />
-      <Button title="Restore Owner" onClick={handleRestoreOwnerClick} />
-      <Button title="Reset Owner" onClick={handleResetOwnerClick} />
-      {showMnemonic && owner != null && (
-        <div>
-          <textarea
-            value={owner.mnemonic}
-            readOnly
-            rows={2}
-            style={{ width: 320 }}
-          />
-        </div>
+    <div className="mt-3">
+      {evoluError && !showError && (
+        <>
+          <p>{`Error: ${JSON.stringify(evoluError)}`}</p>
+          <Button title="Close" onClick={(): void => setShowError(false)} />
+        </>
       )}
     </div>
   );
@@ -337,7 +302,7 @@ const TodoCategories: FC = () => {
   const { rows } = useQuery(todoCategories);
 
   // Evolu automatically parses JSONs into typed objects.
-  // if (rows[0]) console.log(rows[0].json?.foo);
+  // if (rows[0]) console.log(rows[1].json?.foo);
 
   const handleAddCategoryClick = (): void => {
     prompt(NonEmptyString50, "Category Name", (name) => {
@@ -386,23 +351,74 @@ const TodoCategoryItem = memo<{
   );
 });
 
-const NotificationBar: FC = () => {
-  const evoluError = useEvoluError();
-  const [showError, setShowError] = useState(false);
+const OwnerActions: FC = () => {
+  const evolu = useEvolu();
+  const owner = useOwner();
+  const [showMnemonic, setShowMnemonic] = useState(false);
 
-  useEffect(() => {
-    if (evoluError) setShowError(true);
-  }, [evoluError]);
+  const handleRestoreOwnerClick = (): void => {
+    prompt(Evolu.NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
+      evolu
+        .parseMnemonic(mnemonic)
+        .pipe(Effect.runPromiseExit)
+        .then(
+          Exit.match({
+            onFailure: (error) => {
+              alert(JSON.stringify(error, null, 2));
+            },
+            onSuccess: (mnemonic) => {
+              isRestoringOwner(true);
+              evolu.restoreOwner(mnemonic);
+            },
+          }),
+        );
+    });
+  };
+
+  const handleResetOwnerClick = (): void => {
+    if (confirm("Are you sure? It will delete all your local data.")) {
+      isRestoringOwner(false);
+      evolu.resetOwner();
+    }
+  };
 
   return (
-    <div className="mt-3">
-      {evoluError && !showError && (
-        <>
-          <p>{`Error: ${JSON.stringify(evoluError)}`}</p>
-          <Button title="Close" onClick={(): void => setShowError(false)} />
-        </>
+    <div className="mt-6">
+      <p>
+        Open this page on a different device and use your mnemonic to restore
+        your data.
+      </p>
+      <Button
+        title={`${showMnemonic ? "Hide" : "Show"} Mnemonic`}
+        onClick={(): void => setShowMnemonic(!showMnemonic)}
+      />
+      <Button title="Restore Owner" onClick={handleRestoreOwnerClick} />
+      <Button title="Reset Owner" onClick={handleResetOwnerClick} />
+      {showMnemonic && owner != null && (
+        <div>
+          <textarea
+            value={owner.mnemonic}
+            readOnly
+            rows={2}
+            style={{ width: 320 }}
+          />
+        </div>
       )}
     </div>
+  );
+};
+
+const Button: FC<{
+  title: string;
+  onClick: () => void;
+}> = ({ title, onClick }) => {
+  return (
+    <button
+      className="m-1 rounded-md border border-current px-1 text-sm active:opacity-80"
+      onClick={onClick}
+    >
+      {title}
+    </button>
   );
 };
 
@@ -419,18 +435,4 @@ const prompt = <From extends string, To>(
     return;
   }
   onSuccess(a.right);
-};
-
-const Button: FC<{
-  title: string;
-  onClick: () => void;
-}> = ({ title, onClick }) => {
-  return (
-    <button
-      className="m-1 rounded-md border border-current px-1 text-sm active:opacity-80"
-      onClick={onClick}
-    >
-      {title}
-    </button>
-  );
 };
