@@ -32,7 +32,7 @@ export const makeUnexpectedError = (
 /**
  * We can't use the whole error because of WebWorker postMessage DataCloneError
  * in Safari and Firefox.
- * https://discord.com/channels/795981131316985866/795983589644304396/1096736473396564079
+ * TODO: https://discord.com/channels/795981131316985866/795983589644304396/1096736473396564079
  */
 interface TransferableError {
   readonly message: string;

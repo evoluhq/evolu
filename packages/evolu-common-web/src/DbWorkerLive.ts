@@ -1,4 +1,9 @@
-import { DbWorker, DbWorkerOutput, PlatformName } from "@evolu/common";
+import {
+  DbWorker,
+  DbWorkerOutput,
+  PlatformName,
+  makeUnexpectedError,
+} from "@evolu/common";
 import { Effect, Function, Layer } from "effect";
 
 export const DbWorkerLive = Layer.effect(
@@ -33,9 +38,20 @@ export const DbWorkerLive = Layer.effect(
       );
       const dbWorker: DbWorker = {
         postMessage: (input) => {
-          promise.then((postMessage) => {
-            postMessage(input);
-          });
+          promise.then(
+            (postMessage) => {
+              postMessage(input);
+            },
+            (reason: unknown) => {
+              dbWorker.onMessage({
+                _tag: "onError",
+                error: {
+                  _tag: "UnexpectedError",
+                  error: makeUnexpectedError(reason).pipe(Effect.runSync),
+                },
+              });
+            },
+          );
         },
         onMessage: Function.constVoid,
       };
