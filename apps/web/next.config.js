@@ -14,7 +14,7 @@ const withNextra = require("nextra")({
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    optimizePackageImports: ["effect"],
+    optimizePackageImports: ["effect", "@effect/schema", "kysely"],
   },
   async headers() {
     return [
