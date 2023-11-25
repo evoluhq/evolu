@@ -28,7 +28,7 @@ type NonEmptyString50 = S.Schema.To<typeof NonEmptyString50>;
 const TodoTable = S.struct({
   id: TodoId,
   title: Evolu.NonEmptyString1000,
-  isCompleted: Evolu.SqliteBoolean,
+  isCompleted: S.nullable(Evolu.SqliteBoolean),
   categoryId: S.nullable(TodoCategoryId),
 });
 type TodoTable = S.Schema.To<typeof TodoTable>;
@@ -39,7 +39,7 @@ type SomeJson = S.Schema.To<typeof SomeJson>;
 const TodoCategoryTable = S.struct({
   id: TodoCategoryId,
   name: NonEmptyString50,
-  json: SomeJson,
+  json: S.nullable(SomeJson),
 });
 type TodoCategoryTable = S.Schema.To<typeof TodoCategoryTable>;
 
@@ -50,12 +50,14 @@ const Database = S.struct({
 type Database = S.Schema.To<typeof Database>;
 
 const {
+  evolu,
   useEvoluError,
   createQuery,
   useQuery,
   useCreate,
   useUpdate,
   useOwner,
+  useSyncState,
   useEvolu,
 } = Evolu.create(Database, {
   reloadUrl: "/examples/nextjs",
@@ -64,30 +66,62 @@ const {
   }),
 });
 
-export const NextJsExample = memo(function NextJsExample() {
-  const [todosShown, setTodosShown] = useState(true);
+const isRestoringOwner = (isRestoringOwner?: boolean): boolean => {
+  if (!Evolu.canUseDom) return false;
+  const key = 'evolu:isRestoringOwner"';
+  if (isRestoringOwner != null)
+    localStorage.setItem(key, String(isRestoringOwner));
+  return localStorage.getItem(key) === "true";
+};
 
-  // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
+const createFixtures = (): Promise<void> =>
+  Promise.all(
+    evolu.loadQueries([
+      evolu.createQuery((db) => db.selectFrom("todo").selectAll()),
+      evolu.createQuery((db) => db.selectFrom("todoCategory").selectAll()),
+    ]),
+  ).then(([todos, categories]) => {
+    if (todos.row || categories.row) return;
+    const { id: notUrgentCategoryId } = evolu.create("todoCategory", {
+      name: S.parseSync(NonEmptyString50)("Not Urgent"),
+    });
+    evolu.create("todo", {
+      title: S.parseSync(Evolu.NonEmptyString1000)("Try React Suspense"),
+      categoryId: notUrgentCategoryId,
+    });
+  });
+
+if (!isRestoringOwner()) createFixtures();
+
+export const NextJsExample = memo(function NextJsExample() {
+  const [currentTab, setCurrentTab] = useState<"todos" | "categories">("todos");
+
   const handleTabClick = (): void =>
+    // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
     startTransition(() => {
-      setTodosShown(!todosShown);
+      setCurrentTab(currentTab === "todos" ? "categories" : "todos");
     });
 
   return (
     <>
-      <OwnerActions />
-      <nav className="my-4">
-        <Button
-          title="Simulate suspense-enabled router transition"
-          onClick={handleTabClick}
-        />
-        <p>
-          Using suspense-enabled router transition, you will not see any loader
-          or jumping content.
-        </p>
-      </nav>
-      <Suspense>{todosShown ? <Todos /> : <TodoCategories />}</Suspense>
       <NotificationBar />
+      <Suspense>
+        <h2 className="mt-6 text-xl font-semibold">
+          {currentTab === "todos" ? "Todos" : "Categories"}
+        </h2>
+        {currentTab === "todos" ? <Todos /> : <TodoCategories />}
+        <Button title="Switch Tab" onClick={handleTabClick} />
+        <nav className="my-4">
+          <p>Switch Tab button simulates suspense-enabled router transition</p>
+        </nav>
+        <OwnerActions />
+        <nav className="my-4">
+          <p>
+            Using suspense-enabled router transition, you will not see any
+            loader or jumping content.
+          </p>
+        </nav>
+      </Suspense>
     </>
   );
 });
@@ -107,15 +141,20 @@ const OwnerActions: FC = () => {
             onFailure: (error) => {
               alert(JSON.stringify(error, null, 2));
             },
-            onSuccess: evolu.restoreOwner,
+            onSuccess: (mnemonic) => {
+              isRestoringOwner(true);
+              evolu.restoreOwner(mnemonic);
+            },
           }),
         );
     });
   };
 
   const handleResetOwnerClick = (): void => {
-    if (confirm("Are you sure? It will delete all your local data."))
+    if (confirm("Are you sure? It will delete all your local data.")) {
+      isRestoringOwner(false);
       evolu.resetOwner();
+    }
   };
 
   return (
@@ -149,11 +188,9 @@ const todosWithCategories = createQuery((db) =>
     .selectFrom("todo")
     .select(["id", "title", "isCompleted", "categoryId"])
     .where("isDeleted", "is not", Evolu.cast(true))
-    // Filter null values and ensure non-null types. Evolu will provide a helper.
+    // Filter null value and ensure non-null type. Evolu will provide a helper.
     .where("title", "is not", null)
-    .where("isCompleted", "is not", null)
     .$narrowType<{ title: Evolu.NonEmptyString1000 }>()
-    .$narrowType<{ isCompleted: Evolu.SqliteBoolean }>()
     .orderBy("createdAt")
     // https://kysely.dev/docs/recipes/relations
     .select((eb) => [
@@ -173,13 +210,12 @@ const Todos: FC = () => {
 
   const handleAddTodoClick = (): void => {
     prompt(Evolu.NonEmptyString1000, "What needs to be done?", (title) => {
-      create("todo", { title, isCompleted: false });
+      create("todo", { title });
     });
   };
 
   return (
     <>
-      <h2 className="mt-6 text-xl font-semibold">Todos</h2>
       <ul className="py-2">
         {rows.map((row) => (
           <TodoItem key={row.id} row={row} />
@@ -302,7 +338,6 @@ const TodoCategories: FC = () => {
 
   return (
     <>
-      <h2 className="mt-6 text-xl font-semibold">Categories</h2>
       <ul className="py-2">
         {rows.map((row) => (
           <TodoCategoryItem row={row} key={row.id} />
@@ -347,12 +382,17 @@ const NotificationBar: FC = () => {
     if (evoluError) setShown(true);
   }, [evoluError]);
 
-  if (!evoluError || !shown) return null;
+  const syncState = useSyncState();
 
   return (
-    <div>
-      <p>{`Error: ${JSON.stringify(evoluError)}`}</p>
-      <Button title="Close" onClick={(): void => setShown(false)} />
+    <div className="mt-3">
+      <p>SyncState: {JSON.stringify(syncState)}</p>
+      {evoluError && !shown && (
+        <>
+          <p>{`Error: ${JSON.stringify(evoluError)}`}</p>
+          <Button title="Close" onClick={(): void => setShown(false)} />
+        </>
+      )}
     </div>
   );
 };
