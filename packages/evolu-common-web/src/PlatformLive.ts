@@ -59,22 +59,17 @@ export const SyncLockLive = Layer.effect(
         release = Function.constVoid;
         return yield* _(
           Effect.async<never, never, boolean>((resume) => {
-            // `void` because we don't terminate requests on timeout yet
-            void navigator.locks.request(
-              lockName,
-              { ifAvailable: true },
-              (lock) => {
-                if (lock == null) {
-                  release = null;
-                  resume(Effect.succeed(false));
-                  return;
-                }
-                resume(Effect.succeed(true));
-                return new Promise<void>((resolve) => {
-                  release = resolve;
-                });
-              },
-            );
+            navigator.locks.request(lockName, { ifAvailable: true }, (lock) => {
+              if (lock == null) {
+                release = null;
+                resume(Effect.succeed(false));
+                return;
+              }
+              resume(Effect.succeed(true));
+              return new Promise<void>((resolve) => {
+                release = resolve;
+              });
+            });
           }),
         );
       }),

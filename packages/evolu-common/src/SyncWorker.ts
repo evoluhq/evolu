@@ -332,7 +332,7 @@ export const SyncWorkerLive = Layer.effect(
 
     const syncWorker: SyncWorker = {
       postMessage: (input) => {
-        void Match.value(input).pipe(
+        Match.value(input).pipe(
           Match.tagsExhaustive({
             sync,
             syncCompleted: () => syncLock.release,
