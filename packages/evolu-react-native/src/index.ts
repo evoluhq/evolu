@@ -19,8 +19,8 @@ import {
 } from "./PlatformLive.js";
 import { SqliteLive } from "./SqliteLive.js";
 
-// It's not working in RN for some reason, so we must manually re-export it.
-// export * from "@evolu/common/public";
+// export * from "@evolu/common/public" isn't working in RN for some reason,
+// so we have to export manually.
 export {
   Id,
   NonEmptyString1000,
@@ -38,6 +38,8 @@ export type {
   Mnemonic,
   Owner,
   OwnerId,
+  TimestampError,
+  UnexpectedError,
   SyncState,
 } from "@evolu/common";
 export { jsonArrayFrom, jsonObjectFrom } from "kysely/helpers/sqlite";
@@ -53,6 +55,37 @@ const EvoluCommonNativeLive: Layer.Layer<
   Layer.use(Layer.mergeAll(SecretBoxLive, SyncLockLive, FetchLive)),
 );
 
+/**
+ * Create Evolu for React Native from database schema.
+ *
+ * @example
+ * import * as S from "@effect/schema/Schema";
+ * import * as Evolu from "@evolu/react-native";
+ *
+ * const TodoId = Evolu.id("Todo");
+ * type TodoId = S.Schema.To<typeof TodoId>;
+ *
+ * const TodoTable = S.struct({
+ *   id: TodoId,
+ *   title: Evolu.NonEmptyString1000,
+ * });
+ * type TodoTable = S.Schema.To<typeof TodoTable>;
+ *
+ * const Database = S.struct({
+ *   todo: TodoTable,
+ * });
+ *
+ * export const {
+ *   evolu,
+ *   useEvoluError,
+ *   createQuery,
+ *   useQuery,
+ *   useCreate,
+ *   useUpdate,
+ *   useOwner,
+ *   useEvolu,
+ * } = Evolu.create(Database);
+ */
 export const create = EvoluCommonReactLive.pipe(
   Layer.use(EvoluCommonNativeLive),
   makeCreate,

@@ -47,7 +47,6 @@ const Database = S.struct({
   todo: TodoTable,
   todoCategory: TodoCategoryTable,
 });
-type Database = S.Schema.To<typeof Database>;
 
 const {
   evolu,

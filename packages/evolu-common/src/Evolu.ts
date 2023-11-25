@@ -248,12 +248,10 @@ export const LoadingPromiseLive = Layer.effect(
   }),
 );
 
-/**
- * "For example, a data framework can set the status and value fields on a promise
- * preemptively, before passing to React, so that React can unwrap it without waiting
- * a microtask."
- * https://github.com/acdlite/rfcs/blob/first-class-promises/text/0000-first-class-support-for-promises.md
- */
+// "For example, a data framework can set the status and value fields on a promise
+// preemptively, before passing to React, so that React can unwrap it without waiting
+// a microtask."
+// https://github.com/acdlite/rfcs/blob/first-class-promises/text/0000-first-class-support-for-promises.md
 const setPromiseAsResolved =
   <T>(promise: Promise<T>) =>
   (value: unknown): void => {

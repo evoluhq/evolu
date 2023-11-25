@@ -5,6 +5,7 @@ module.exports = {
     "plugin:@typescript-eslint/recommended",
     "plugin:@typescript-eslint/recommended-type-checked",
     "plugin:jsdoc/recommended-error",
+    "plugin:jsdoc/recommended-typescript-error",
     "next/core-web-vitals",
     "turbo",
     "prettier",
@@ -18,19 +19,17 @@ module.exports = {
     "no-console": "error",
     "import/no-cycle": "error",
     "@next/next/no-html-link-for-pages": "off",
-    "jsdoc/require-returns": "off",
-    "jsdoc/require-param": "off",
-    "jsdoc/require-param-type": "off",
     "jsdoc/require-jsdoc": "off",
+    "jsdoc/tag-lines": [
+      "error",
+      "any",
+      {
+        startLines: 1,
+        tags: { returns: { lines: "always" }, param: { lines: "never" } },
+      },
+    ],
   },
   parser: "@typescript-eslint/parser",
-
-  // https://github.com/typescript-eslint/typescript-eslint/issues/1333#issuecomment-573345631
-  settings: {
-    "import/resolver": {
-      typescript: {},
-    },
-  },
 
   parserOptions: {
     babelOptions: {
@@ -38,5 +37,10 @@ module.exports = {
     },
     project: ["./apps/*/tsconfig.json", "./packages/*/tsconfig.json"],
     tsconfigRootDir: __dirname,
+  },
+
+  // https://github.com/facebook/react-native/issues/28549#issuecomment-1464986589
+  settings: {
+    "import/ignore": ["react-native"],
   },
 };

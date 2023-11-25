@@ -8,8 +8,17 @@ export const makeErrorStore = makeStore<ErrorStoreValue>(null);
 
 type ErrorStoreValue = EvoluError | null;
 
+/**
+ * The EvoluError type is used to represent errors that can occur in Evolu.
+ * It is a union type that includes UnexpectedError and TimestampError.
+ */
 export type EvoluError = UnexpectedError | TimestampError;
 
+/**
+ * The UnexpectedError interface is designed to represent errors that can
+ * occur unexpectedly anywhere, even in third-party libraries, because
+ * Evolu uses Effect to track all errors.
+ */
 export interface UnexpectedError {
   readonly _tag: "UnexpectedError";
   readonly error: TransferableError;

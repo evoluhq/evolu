@@ -117,6 +117,11 @@ export const TimeLive = Layer.succeed(
   }),
 );
 
+/**
+ * The TimestampError type represents all Timestamp-related errors. If such
+ * an error happens, the device clock is skewed and should be set to the
+ * current time.
+ */
 export type TimestampError =
   | TimestampDriftError
   | TimestampCounterOverflowError

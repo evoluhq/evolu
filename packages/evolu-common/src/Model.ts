@@ -12,15 +12,15 @@ export type Id = S.Schema.To<typeof Id>;
 /**
  * A factory function to create {@link Id} Schema for a specific table.
  *
- * ### Example
+ * @param table - The `string` to parse.
+ * @returns A schema.
  *
- * ```
+ * @example
  * import * as S from "@effect/schema/Schema";
  * import * as Evolu from "@evolu/react";
  *
  * const TodoId = Evolu.id("Todo");
  * type TodoId = S.Schema.To<typeof TodoId>;
- * ```
  */
 export const id = <T extends string>(
   table: T,
@@ -55,12 +55,12 @@ export type SqliteBoolean = S.Schema.To<typeof SqliteBoolean>;
  * SQLite doesn't support Date nor Boolean types, so Evolu emulates them
  * with {@link SqliteBoolean} and {@link SqliteDate}.
  *
- * ### Example
+ * @param value - A value to be casted.
+ * @returns A casted value.
  *
- * ```
+ * @example
  * // isDeleted is SqliteBoolean
  * .where("isDeleted", "is not", cast(true))
- * ```
  */
 export function cast(value: boolean): SqliteBoolean;
 export function cast(value: SqliteBoolean): boolean;
@@ -102,14 +102,11 @@ export type String = S.Schema.To<typeof String>;
 /**
  * A string with a maximum length of 1000 characters.
  *
- * ### Example
- *
- * ```
+ * @example
  * import * as S from "@effect/schema/Schema";
  * import * as Evolu from "@evolu/react";
  *
  * S.parse(Evolu.String1000)(value)
- * ```
  */
 export const String1000 = String.pipe(S.maxLength(1000), S.brand("String1000"));
 export type String1000 = S.Schema.To<typeof String1000>;
@@ -117,14 +114,11 @@ export type String1000 = S.Schema.To<typeof String1000>;
 /**
  * A nonempty string with a maximum length of 1000 characters.
  *
- * ### Example
- *
- * ```
+ * @example
  * import * as S from "@effect/schema/Schema";
  * import * as Evolu from "@evolu/react";
  *
  * S.parse(Evolu.NonEmptyString1000)(value)
- * ```
  */
 export const NonEmptyString1000 = String.pipe(
   S.minLength(1),
@@ -136,14 +130,11 @@ export type NonEmptyString1000 = S.Schema.To<typeof NonEmptyString1000>;
 /**
  * A positive integer.
  *
- * ### Example
- *
- * ```
+ * @example
  * import * as S from "@effect/schema/Schema";
  * import * as Evolu from "@evolu/react";
  *
  * S.parse(Evolu.PositiveInt)(value)
- * ```
  */
 export const PositiveInt = S.number.pipe(
   S.int(),

@@ -56,10 +56,8 @@ export const NanoIdLive = Layer.succeed(
   }),
 );
 
-/**
- * SLIP-21 implementation
- * https://github.com/satoshilabs/slips/blob/master/slip-0021.md
- */
+// SLIP-21 implementation
+// https://github.com/satoshilabs/slips/blob/master/slip-0021.md
 export const slip21Derive = (
   seed: Uint8Array,
   path: ReadonlyArray<string>,
