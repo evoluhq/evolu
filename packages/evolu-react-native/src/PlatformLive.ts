@@ -25,19 +25,17 @@ export const FlushSyncLive = Layer.succeed(FlushSync, Function.constVoid);
 export const SyncLockLive = Layer.effect(
   SyncLock,
   Effect.sync(() => {
-    let hasLock = false;
-
-    const acquire: SyncLock["acquire"] = Effect.sync(() => {
-      if (hasLock) return false;
-      hasLock = true;
-      return true;
+    let hasSyncLock = false;
+    return SyncLock.of({
+      acquire: Effect.sync(() => {
+        if (hasSyncLock) return false;
+        hasSyncLock = true;
+        return true;
+      }),
+      release: Effect.sync(() => {
+        hasSyncLock = false;
+      }),
     });
-
-    const release: SyncLock["release"] = Effect.sync(() => {
-      hasLock = false;
-    });
-
-    return { acquire, release };
   }),
 );
 

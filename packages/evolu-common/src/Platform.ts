@@ -13,7 +13,15 @@ export type FlushSync = (callback: () => void) => void;
 export const FlushSync = Context.Tag<FlushSync>();
 
 export interface SyncLock {
+  /**
+   * Try to acquire a sync lock. The caller must not call sync if a sync lock
+   * can't be acquired.
+   */
   readonly acquire: Effect.Effect<never, never, boolean>;
+
+  /**
+   * Release a sync lock.
+   */
   readonly release: Effect.Effect<never, never, void>;
 }
 
