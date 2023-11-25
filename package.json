@@ -6,6 +6,7 @@
     "build": "turbo build",
     "start": "turbo start --concurrency=12",
     "lint": "turbo lint",
+    "lint-monorepo": "pnpm dlx sherif@latest",
     "test": "turbo test",
     "clean": "turbo clean && rm -rf node_modules pnpm-lock.yaml",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
