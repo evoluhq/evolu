@@ -111,7 +111,15 @@ export const emptyRows = <R extends Row>(): ReadonlyArray<R> =>
   _emptyRows as ReadonlyArray<R>;
 
 export interface QueryResult<R extends Row = Row> {
+  /**
+   * An array containing all the rows returned by the query.
+   */
   readonly rows: ReadonlyArray<Readonly<Kysely.Simplify<R>>>;
+
+  /**
+   * The first row returned by the query, or null if no rows were returned.
+   * This property is useful for queries that are expected to return a single row.
+   */
   readonly row: Readonly<Kysely.Simplify<R>> | null;
 }
 
