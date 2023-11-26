@@ -19,9 +19,7 @@ export interface SyncLock {
    */
   readonly acquire: Effect.Effect<never, never, boolean>;
 
-  /**
-   * Release a sync lock.
-   */
+  /** Release a sync lock. */
   readonly release: Effect.Effect<never, never, void>;
 }
 
@@ -35,8 +33,8 @@ export type Fetch = (
 export const Fetch = Context.Tag<Fetch>();
 
 /**
- * This error occurs when there is a problem with the network connection,
- * or the server cannot be reached.
+ * This error occurs when there is a problem with the network connection, or the
+ * server cannot be reached.
  */
 export interface FetchError {
   readonly _tag: "FetchError";

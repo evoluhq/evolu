@@ -25,11 +25,16 @@ module.exports = {
       "any",
       {
         startLines: 1,
-        tags: { returns: { lines: "always" }, param: { lines: "never" } },
+        tags: { param: { lines: "never" } },
       },
     ],
   },
   parser: "@typescript-eslint/parser",
+
+  // https://github.com/facebook/react-native/issues/28549#issuecomment-1464986589
+  settings: {
+    "import/ignore": ["react-native"],
+  },
 
   parserOptions: {
     babelOptions: {
@@ -37,10 +42,5 @@ module.exports = {
     },
     project: ["./apps/*/tsconfig.json", "./packages/*/tsconfig.json"],
     tsconfigRootDir: __dirname,
-  },
-
-  // https://github.com/facebook/react-native/issues/28549#issuecomment-1464986589
-  settings: {
-    "import/ignore": ["react-native"],
   },
 };

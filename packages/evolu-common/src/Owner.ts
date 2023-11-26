@@ -4,9 +4,9 @@ import { Bip39, Mnemonic, slip21Derive } from "./Crypto.js";
 import { Id } from "./Model.js";
 
 /**
- * `Owner` represents the Evolu database owner. Evolu auto-generates `Owner`
- * on the first run. `Owner` can be reset on the current device and restored
- * on a different one.
+ * `Owner` represents the Evolu database owner. Evolu auto-generates `Owner` on
+ * the first run. `Owner` can be reset on the current device and restored on a
+ * different one.
  */
 
 export interface Owner {
@@ -19,9 +19,7 @@ export interface Owner {
 }
 
 export const Owner = Context.Tag<Owner>();
-/**
- * The unique identifier of `Owner` safely derived from its `Mnemonic`.
- */
+/** The unique identifier of `Owner` safely derived from its `Mnemonic`. */
 
 export type OwnerId = Id & Brand.Brand<"Owner">;
 

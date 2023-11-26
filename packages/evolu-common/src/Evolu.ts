@@ -39,13 +39,33 @@ import { Store, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
 
 export interface Evolu<T extends Schema = Schema> {
-  /** TODO: Docs */
+  /**
+   * Subscribe EvoluError.
+   *
+   * @example
+   *   const unsubscribe = evolu.subscribeError(() => {
+   *     const error = evolu.getError();
+   *     console.log(error);
+   *   });
+   */
   readonly subscribeError: ErrorStore["subscribe"];
 
-  /** TODO: Docs */
+  /** Get EvoluError. */
   readonly getError: ErrorStore["getState"];
 
-  /** TODO: Docs */
+  /**
+   * Create type-safe SQL query.
+   *
+   * @example
+   *   const allTodos = evolu.createQuery((db) =>
+   *     db.selectFrom("todo").selectAll(),
+   *   );
+   *
+   *   const todoById = (id: TodoId) =>
+   *     evolu.createQuery((db) =>
+   *       db.selectFrom("todo").selectAll().where("id", "=", id),
+   *     );
+   */
   readonly createQuery: CreateQuery<T>;
 
   /** TODO: Docs */
@@ -81,24 +101,18 @@ export interface Evolu<T extends Schema = Schema> {
   update: Mutate<T, "update">;
 
   /**
-   * Delete all local data from the current device.
-   * After the deletion, Evolu reloads all browser tabs that use Evolu.
+   * Delete all local data from the current device. After the deletion, Evolu
+   * reloads all browser tabs that use Evolu.
    */
   readonly resetOwner: () => void;
 
-  /**
-   * TODO:
-   */
+  /** TODO: */
   readonly parseMnemonic: Bip39["parse"];
 
-  /**
-   * Restore `Owner` with synced data from different devices.
-   */
+  /** Restore `Owner` with synced data from different devices. */
   readonly restoreOwner: (mnemonic: Mnemonic) => void;
 
-  /**
-   * Ensure database tables and columns exist.
-   */
+  /** Ensure database tables and columns exist. */
   readonly ensureSchema: <From, To extends T>(
     schema: S.Schema<From, To>,
   ) => void;
@@ -176,8 +190,8 @@ export interface LoadingPromises {
   ) => void;
 
   /**
-   * Release all unsubscribed queries on mutation because only subscribed queries
-   * are automatically updated.
+   * Release all unsubscribed queries on mutation because only subscribed
+   * queries are automatically updated.
    */
   readonly release: () => void;
 }
@@ -403,11 +417,11 @@ type PartialForNullable<
 > = { [K in keyof NP]: NP[K] };
 
 /**
- * SQLite doesn't support Date nor Boolean types, so Evolu emulates them
- * with {@link SqliteBoolean} and {@link SqliteDate}.
+ * SQLite doesn't support Date nor Boolean types, so Evolu emulates them with
+ * {@link SqliteBoolean} and {@link SqliteDate}.
  *
- * For {@link SqliteBoolean}, you can use JavaScript boolean.
- * For {@link SqliteDate}, you can use JavaScript Date.
+ * For {@link SqliteBoolean}, you can use JavaScript boolean. For
+ * {@link SqliteDate}, you can use JavaScript Date.
  */
 type Castable<T> = {
   readonly [K in keyof T]: T[K] extends SqliteBoolean

@@ -103,8 +103,8 @@ export type SyncWorkerOutputSyncResponse = {
 /**
  * The SyncState type represents the various states that a synchronization
  * process can be in. Evolu apps should not bother users with an "unsynced"
- * state. Instead, they should warn users if data have not been synced for
- * too long (a week, for example).
+ * state. Instead, they should warn users if data have not been synced for too
+ * long (a week, for example).
  */
 export type SyncState =
   | SyncStateInitial

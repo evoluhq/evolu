@@ -45,11 +45,11 @@ export interface EvoluCommonReact<S extends Schema = Schema> {
   readonly createQuery: Evolu<S>["createQuery"];
 
   /**
-   * TODO: Docs
-   * Loading promises are released on mutation by default, so loading the same
-   * query will be suspended again, which is undesirable if we already have such
-   * a query on a page. Luckily, subscribeQuery tracks subscribed queries to be
-   * automatically updated on mutation while unsubscribed queries are released.
+   * TODO: Docs Loading promises are released on mutation by default, so loading
+   * the same query will be suspended again, which is undesirable if we already
+   * have such a query on a page. Luckily, subscribeQuery tracks subscribed
+   * queries to be automatically updated on mutation while unsubscribed queries
+   * are released.
    */
   readonly useQuerySubscription: <R extends Row>(
     query: Query<R>,
@@ -70,13 +70,11 @@ export interface EvoluCommonReact<S extends Schema = Schema> {
   ) => QueryResult<R>;
 
   /**
-   * TODO: Docs
-   * For more than one query, always use useQueries Hook to avoid loading waterfalls
-   * and to cache loading promises.
-   * This is possible of course:
-   * const foo = use(useEvolu().loadQuery(todos))
-   * but it will not cache loading promise nor subscribe updates.
-   * That's why we have useQuery and useQueries.
+   * TODO: Docs For more than one query, always use useQueries Hook to avoid
+   * loading waterfalls and to cache loading promises. This is possible of
+   * course: const foo = use(useEvolu().loadQuery(todos)) but it will not cache
+   * loading promise nor subscribe updates. That's why we have useQuery and
+   * useQueries.
    */
   readonly useQueries: <
     R extends Row,
@@ -108,10 +106,10 @@ export interface EvoluCommonReact<S extends Schema = Schema> {
   readonly useSyncState: () => SyncState;
 
   /**
-   * The default value of EvoluContext is an Evolu instance, so we don't have
-   * to use EvoluProvider by default. However, EvoluProvider is helpful for
-   * testing, as we can inject memory-only Evolu.
-   * Yep, it's OK to use React Context without a provider:
+   * The default value of EvoluContext is an Evolu instance, so we don't have to
+   * use EvoluProvider by default. However, EvoluProvider is helpful for
+   * testing, as we can inject memory-only Evolu. Yep, it's OK to use React
+   * Context without a provider:
    * https://react.dev/learn/passing-data-deeply-with-context
    */
   readonly EvoluProvider: FC<{

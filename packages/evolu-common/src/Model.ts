@@ -3,8 +3,8 @@ import { Brand } from "effect";
 import { maybeJson } from "./Sqlite.js";
 
 /**
- * Branded Id Schema for any table Id.
- * To create Id Schema for a specific table, use {@link id}.
+ * Branded Id Schema for any table Id. To create Id Schema for a specific table,
+ * use {@link id}.
  */
 export const Id = S.string.pipe(S.pattern(/^[\w-]{21}$/), S.brand("Id"));
 export type Id = S.Schema.To<typeof Id>;
@@ -12,15 +12,15 @@ export type Id = S.Schema.To<typeof Id>;
 /**
  * A factory function to create {@link Id} Schema for a specific table.
  *
+ * @example
+ *   import * as S from "@effect/schema/Schema";
+ *   import * as Evolu from "@evolu/react";
+ *
+ *   const TodoId = Evolu.id("Todo");
+ *   type TodoId = S.Schema.To<typeof TodoId>;
+ *
  * @param table - The `string` to parse.
  * @returns A schema.
- *
- * @example
- * import * as S from "@effect/schema/Schema";
- * import * as Evolu from "@evolu/react";
- *
- * const TodoId = Evolu.id("Todo");
- * type TodoId = S.Schema.To<typeof TodoId>;
  */
 export const id = <T extends string>(
   table: T,
@@ -28,8 +28,8 @@ export const id = <T extends string>(
   Id.pipe(S.brand(table));
 
 /**
- * SQLite doesn't support the Date type, so Evolu uses SqliteDate instead.
- * Use the {@link cast} helper to cast SqliteDate from Date and back.
+ * SQLite doesn't support the Date type, so Evolu uses SqliteDate instead. Use
+ * the {@link cast} helper to cast SqliteDate from Date and back.
  * https://www.sqlite.org/quirks.html#no_separate_datetime_datatype
  */
 export const SqliteDate = S.string.pipe(
@@ -51,16 +51,16 @@ export const SqliteBoolean = S.number.pipe(
 export type SqliteBoolean = S.Schema.To<typeof SqliteBoolean>;
 
 /**
- * A helper for casting types not supported by SQLite.
- * SQLite doesn't support Date nor Boolean types, so Evolu emulates them
- * with {@link SqliteBoolean} and {@link SqliteDate}.
+ * A helper for casting types not supported by SQLite. SQLite doesn't support
+ * Date nor Boolean types, so Evolu emulates them with {@link SqliteBoolean} and
+ * {@link SqliteDate}.
+ *
+ * @example
+ *   // isDeleted is SqliteBoolean
+ *   .where("isDeleted", "is not", cast(true))
  *
  * @param value - A value to be casted.
  * @returns A casted value.
- *
- * @example
- * // isDeleted is SqliteBoolean
- * .where("isDeleted", "is not", cast(true))
  */
 export function cast(value: boolean): SqliteBoolean;
 export function cast(value: SqliteBoolean): boolean;
@@ -77,10 +77,10 @@ export function cast(
 }
 
 /**
- * String schema represents a string that is not stringified JSON. Using
- * String schema for strings stored in SQLite is crucial to ensure a stored
- * string is not automatically parsed to a JSON object or array when
- * retrieved. Use String schema for all string-based schemas.
+ * String schema represents a string that is not stringified JSON. Using String
+ * schema for strings stored in SQLite is crucial to ensure a stored string is
+ * not automatically parsed to a JSON object or array when retrieved. Use String
+ * schema for all string-based schemas.
  */
 export const String = S.string.pipe(
   S.filter(
@@ -103,10 +103,10 @@ export type String = S.Schema.To<typeof String>;
  * A string with a maximum length of 1000 characters.
  *
  * @example
- * import * as S from "@effect/schema/Schema";
- * import * as Evolu from "@evolu/react";
+ *   import * as S from "@effect/schema/Schema";
+ *   import * as Evolu from "@evolu/react";
  *
- * S.parse(Evolu.String1000)(value)
+ *   S.parse(Evolu.String1000)(value);
  */
 export const String1000 = String.pipe(S.maxLength(1000), S.brand("String1000"));
 export type String1000 = S.Schema.To<typeof String1000>;
@@ -115,10 +115,10 @@ export type String1000 = S.Schema.To<typeof String1000>;
  * A nonempty string with a maximum length of 1000 characters.
  *
  * @example
- * import * as S from "@effect/schema/Schema";
- * import * as Evolu from "@evolu/react";
+ *   import * as S from "@effect/schema/Schema";
+ *   import * as Evolu from "@evolu/react";
  *
- * S.parse(Evolu.NonEmptyString1000)(value)
+ *   S.parse(Evolu.NonEmptyString1000)(value);
  */
 export const NonEmptyString1000 = String.pipe(
   S.minLength(1),
@@ -131,10 +131,10 @@ export type NonEmptyString1000 = S.Schema.To<typeof NonEmptyString1000>;
  * A positive integer.
  *
  * @example
- * import * as S from "@effect/schema/Schema";
- * import * as Evolu from "@evolu/react";
+ *   import * as S from "@effect/schema/Schema";
+ *   import * as Evolu from "@evolu/react";
  *
- * S.parse(Evolu.PositiveInt)(value)
+ *   S.parse(Evolu.PositiveInt)(value);
  */
 export const PositiveInt = S.number.pipe(
   S.int(),
