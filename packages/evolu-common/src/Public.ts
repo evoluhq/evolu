@@ -1,5 +1,5 @@
 export { jsonArrayFrom, jsonObjectFrom } from "kysely/helpers/sqlite";
-export type { TimestampError } from "./Crdt.js";
+export type { Timestamp, TimestampError } from "./Crdt.js";
 export type { Mnemonic } from "./Crypto.js";
 export type { EvoluError, UnexpectedError } from "./ErrorStore.js";
 export * from "./Model.js";

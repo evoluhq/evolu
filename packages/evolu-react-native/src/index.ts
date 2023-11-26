@@ -38,6 +38,7 @@ export type {
   Mnemonic,
   Owner,
   OwnerId,
+  Timestamp,
   TimestampError,
   UnexpectedError,
   SyncState,
