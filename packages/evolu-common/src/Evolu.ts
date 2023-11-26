@@ -40,7 +40,7 @@ import { SyncState } from "./SyncWorker.js";
 
 export interface Evolu<T extends Schema = Schema> {
   /**
-   * Subscribe EvoluError.
+   * Subscribe to {@link ErrorStore}.
    *
    * @example
    *   const unsubscribe = evolu.subscribeError(() => {
@@ -50,11 +50,13 @@ export interface Evolu<T extends Schema = Schema> {
    */
   readonly subscribeError: ErrorStore["subscribe"];
 
-  /** Get EvoluError. */
+  /** Get {@link ErrorStore} value. */
   readonly getError: ErrorStore["getState"];
 
   /**
-   * Create type-safe SQL query.
+   * Create type-safe SQL query. Evolu uses Kysely - The type-safe SQL query
+   * builder for TypeScript. See https://kysely.dev. For mutations, use
+   * {@link create} and {@link update}.
    *
    * @example
    *   const allTodos = evolu.createQuery((db) =>
@@ -65,10 +67,61 @@ export interface Evolu<T extends Schema = Schema> {
    *     evolu.createQuery((db) =>
    *       db.selectFrom("todo").selectAll().where("id", "=", id),
    *     );
+   *
+   * @param queryCallback - SQL query builder.
+   * @returns SQL query serialized into a branded string.
    */
   readonly createQuery: CreateQuery<T>;
 
-  /** TODO: Docs */
+  /**
+   * Load {@link Query} and return a promise with {@link QueryResult}.
+   *
+   * A returned promise always resolves successfully because there is no reason
+   * why loading should fail. All data are local, and the query is typed. A
+   * serious unexpected Evolu error shall be handled with
+   * {@link subscribeError}.
+   *
+   * Loading is batched, and returned promises are cached, so there is no need
+   * for an additional cache. Evolu's internal cache is invalidated on
+   * mutation.
+   *
+   * The returned promise is enriched with special status and value properties
+   * for the upcoming React `use` Hook, but other UI libraries can also leverage
+   * them. Speaking of React, there are two essential React Suspense-related
+   * patterns that every developer should be aware of—passing promises to
+   * children and caching over mutations.
+   *
+   * With promises passed to children, we can load a query as soon as possible,
+   * but we don't have to use the returned promise immediately. That's useful
+   * for prefetching, which is generally not necessary for local-first apps but
+   * can be if a query takes a long time to load.
+   *
+   * Caching over mutation is a pattern that every developer should know. As we
+   * said, Evolu caches promise until a mutation happens. A query loaded after
+   * that will return a new pending promise. That's okay for general usage but
+   * not for UI with React Suspense because a mutation would suspend rerendered
+   * queries on a page, and that's not a good UX.
+   *
+   * We call this pattern "caching over mutation" because it has no globally
+   * accepted name yet. React RFC for React Cache does not exist yet.
+   *
+   * For better UX, a query must be subscribed for updates. This way, instead of
+   * Suspense flashes, the user sees new data immediately because Evolu replaces
+   * cached promises with fresh, already resolved new ones.
+   *
+   * If you are curious why Evolu does not do that for all queries by default,
+   * the answer is simple: performance. Tracking changes is costly and
+   * meaningful only for visible (hence subscribed) queries anyway. To subscribe
+   * to a query, use subscribeQuery.
+   *
+   * @example
+   *   const allTodos = evolu.createQuery((db) =>
+   *     db.selectFrom("todo").selectAll(),
+   *   );
+   *   evolu.loadQuery(allTodos).then(({ rows }) => {
+   *     console.log(rows);
+   *   });
+   */
   readonly loadQuery: LoadQuery;
 
   /** TODO: Docs, just a typed helper for [a, b].map(loadQuery) */
@@ -109,7 +162,7 @@ export interface Evolu<T extends Schema = Schema> {
   /** TODO: */
   readonly parseMnemonic: Bip39["parse"];
 
-  /** Restore `Owner` with synced data from different devices. */
+  /** Restore {@link Owner} with synced data from different devices. */
   readonly restoreOwner: (mnemonic: Mnemonic) => void;
 
   /** Ensure database tables and columns exist. */

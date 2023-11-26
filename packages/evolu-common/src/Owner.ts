@@ -4,23 +4,34 @@ import { Bip39, Mnemonic, slip21Derive } from "./Crypto.js";
 import { Id } from "./Model.js";
 
 /**
- * `Owner` represents the Evolu database owner. Evolu auto-generates `Owner` on
- * the first run. `Owner` can be reset on the current device and restored on a
- * different one.
+ * The Owner represents the Evolu database owner, a user. Instead of traditional
+ * email with a password, the Owner uses a mnemonic, also known as a "seed
+ * phrase," which is a set of 12 words in a specific order chosen from a
+ * predefined list.
+ *
+ * The purpose of the BIP39 mnemonic is to provide a human-readable way of
+ * storing a private key.
+ *
+ * Mnemonic is generated safely in the user's device and must not be shared with
+ * anyone.
  */
-
 export interface Owner {
-  /** The `Mnemonic` associated with `Owner`. */
+  /** The {@link Mnemonic} associated with {@link Owner}. */
   readonly mnemonic: Mnemonic;
-  /** The unique identifier of `Owner` safely derived from its `Mnemonic`. */
+
+  /** The unique identifier safely derived from {@link Mnemonic}. */
   readonly id: OwnerId;
-  /* The encryption key used by `Owner` derived from its `Mnemonic`. */
+
+  /** The encryption key safely derived from {@link Mnemonic}. */
   readonly encryptionKey: Uint8Array;
 }
 
 export const Owner = Context.Tag<Owner>();
-/** The unique identifier of `Owner` safely derived from its `Mnemonic`. */
 
+/**
+ * The unique identifier of {@link Owner} safely derived from its
+ * {@link Mnemonic}.
+ */
 export type OwnerId = Id & Brand.Brand<"Owner">;
 
 export const makeOwner = (

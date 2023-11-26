@@ -5,8 +5,8 @@ export interface Config {
   readonly syncUrl: string;
 
   /**
-   * Alternate URL to reload browser tabs after `Owner` reset or restore. The
-   * default value is `/`.
+   * Alternate URL to reload browser tabs after {@link Owner} reset or restore.
+   * The default value is `/`.
    */
   readonly reloadUrl: string;
 

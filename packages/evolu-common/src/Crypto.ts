@@ -74,7 +74,7 @@ export const slip21Derive = (
     return m.slice(32, 64);
   });
 
-/** Alias to xsalsa20poly1305, for compatibility with libsodium / nacl */
+/** Alias to xsalsa20poly1305, for compatibility with libsodium/nacl */
 export interface SecretBox {
   readonly seal: (
     key: Uint8Array,
