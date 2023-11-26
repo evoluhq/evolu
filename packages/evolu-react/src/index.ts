@@ -1,5 +1,5 @@
-import { EvoluCommonReactLive, makeCreate } from "@evolu/common-react";
-import { EvoluCommonWebLive } from "@evolu/common-web";
+import { EvoluReactLive, makeCreateEvoluReact } from "@evolu/common-react";
+import { EvoluWebLive } from "@evolu/common-web";
 import { Layer } from "effect";
 
 export * from "@evolu/common/public";
@@ -27,7 +27,7 @@ export * from "@evolu/common/public";
  *   const { useEvolu, useEvoluError, useQuery, useOwner } =
  *     Evolu.create(Database);
  */
-export const create = EvoluCommonReactLive.pipe(
-  Layer.use(EvoluCommonWebLive),
-  makeCreate,
+export const create = EvoluReactLive.pipe(
+  Layer.use(EvoluWebLive),
+  makeCreateEvoluReact,
 );

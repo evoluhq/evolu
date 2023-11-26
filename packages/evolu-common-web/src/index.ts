@@ -8,7 +8,8 @@ import {
   PlatformNameLive,
 } from "./PlatformLive.js";
 
-export const EvoluCommonWebLive = EvoluCommonLive.pipe(
+/** Evolu for web platform. */
+export const EvoluWebLive = EvoluCommonLive.pipe(
   Layer.use(Layer.mergeAll(DbWorkerLive, AppStateLive)),
   Layer.use(Layer.mergeAll(PlatformNameLive, Bip39Live, FlushSyncLive)),
 );

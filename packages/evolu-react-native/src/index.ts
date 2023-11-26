@@ -9,7 +9,7 @@ import {
   SecretBoxLive,
   SyncWorkerLive,
 } from "@evolu/common";
-import { EvoluCommonReactLive, makeCreate } from "@evolu/common-react";
+import { EvoluReactLive, makeCreateEvoluReact } from "@evolu/common-react";
 import { Layer } from "effect";
 import {
   AppStateLive,
@@ -38,26 +38,26 @@ export type {
   Mnemonic,
   Owner,
   OwnerId,
+  SyncState,
   Timestamp,
   TimestampError,
   UnexpectedError,
-  SyncState,
 } from "@evolu/common";
 export { jsonArrayFrom, jsonObjectFrom } from "kysely/helpers/sqlite";
 
-const EvoluCommonNativeLive: Layer.Layer<
+/** Evolu for native platform. */
+const EvoluNativeLive: Layer.Layer<
   Config,
   never,
   Evolu<Schema>
 > = EvoluCommonLive.pipe(
-  Layer.use(EvoluCommonLive),
   Layer.use(Layer.mergeAll(FlushSyncLive, AppStateLive, DbWorkerLive)),
   Layer.use(Layer.mergeAll(Bip39Live, NanoIdLive, SqliteLive, SyncWorkerLive)),
   Layer.use(Layer.mergeAll(SecretBoxLive, SyncLockLive, FetchLive)),
 );
 
 /**
- * Create Evolu for React Native from database schema.
+ * Create Evolu for React from database schema.
  *
  * @example
  *   import * as S from "@effect/schema/Schema";
@@ -76,18 +76,10 @@ const EvoluCommonNativeLive: Layer.Layer<
  *     todo: TodoTable,
  *   });
  *
- *   export const {
- *     evolu,
- *     useEvoluError,
- *     createQuery,
- *     useQuery,
- *     useCreate,
- *     useUpdate,
- *     useOwner,
- *     useEvolu,
- *   } = Evolu.create(Database);
+ *   const { useEvolu, useEvoluError, useQuery, useOwner } =
+ *     Evolu.create(Database);
  */
-export const create = EvoluCommonReactLive.pipe(
-  Layer.use(EvoluCommonNativeLive),
-  makeCreate,
+export const create = EvoluReactLive.pipe(
+  Layer.use(EvoluNativeLive),
+  makeCreateEvoluReact,
 );

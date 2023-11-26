@@ -546,8 +546,8 @@ const MutateLive = Layer.effect(
   }),
 );
 
-// EvoluCommonTest is pure (without side effects), so it's testable.
-export const EvoluCommonTest = Layer.effect(
+/** EvoluCommon is without side effects, so it's unit-testable. */
+const EvoluCommon = Layer.effect(
   Evolu,
   Effect.gen(function* (_) {
     const dbWorker = yield* _(DbWorker);
@@ -640,7 +640,7 @@ export const EvoluCommonTest = Layer.effect(
   Layer.use(Layer.merge(RowsStoreLive, OnCompletesLive)),
 );
 
-// EvoluCommonLive (with common side effects) is for apps.
-export const EvoluCommonLive = EvoluCommonTest.pipe(
+/** EvoluCommonLive has only platform independent side-effects. */
+export const EvoluCommonLive = EvoluCommon.pipe(
   Layer.use(Layer.merge(TimeLive, NanoIdLive)),
 );

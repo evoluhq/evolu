@@ -28,7 +28,7 @@ import ReactExports, {
   useSyncExternalStore,
 } from "react";
 
-export type EvoluCommonReact<S extends Schema = Schema> = Evolu<S> & {
+export type EvoluReact<S extends Schema = Schema> = Evolu<S> & {
   /** A React 19 `use` polyfill. */
   readonly use: <T>(usable: Usable<T>) => T;
 
@@ -106,18 +106,17 @@ export type EvoluCommonReact<S extends Schema = Schema> = Evolu<S> & {
   }>;
 };
 
-export const EvoluCommonReact = Context.Tag<EvoluCommonReact>();
+export const EvoluReact = Context.Tag<EvoluReact>();
 
-export const EvoluCommonReactLive = Layer.effect(
-  EvoluCommonReact,
+export const EvoluReactLive = Layer.effect(
+  EvoluReact,
   Effect.gen(function* (_) {
     const evolu = yield* _(Evolu);
     const EvoluContext = createContext<Evolu>(evolu);
 
-    const useEvolu: EvoluCommonReact["useEvolu"] = () =>
-      useContext(EvoluContext);
+    const useEvolu: EvoluReact["useEvolu"] = () => useContext(EvoluContext);
 
-    const useQuerySubscription: EvoluCommonReact["useQuerySubscription"] = (
+    const useQuerySubscription: EvoluReact["useQuerySubscription"] = (
       query,
       options = {},
     ) => {
@@ -139,7 +138,7 @@ export const EvoluCommonReactLive = Layer.effect(
       );
     };
 
-    return EvoluCommonReact.of({
+    return EvoluReact.of({
       ...evolu,
 
       use,
@@ -221,21 +220,21 @@ const use =
     }
   });
 
-export const makeCreate =
-  (ReactLive: Layer.Layer<Config, never, EvoluCommonReact<Schema>>) =>
+export const makeCreateEvoluReact =
+  (EvoluReactLive: Layer.Layer<Config, never, EvoluReact<Schema>>) =>
   <From, To extends Schema>(
     schema: S.Schema<From, To>,
     config?: Partial<Config>,
-  ): EvoluCommonReact<To> => {
+  ): EvoluReact<To> => {
     // For https://nextjs.org/docs/architecture/fast-refresh etc.
-    const react = GlobalValue.globalValue("@evolu/common-react/react", () =>
-      EvoluCommonReact.pipe(
-        Effect.provide(ReactLive),
+    const react = GlobalValue.globalValue("@evolu/common-react", () =>
+      EvoluReact.pipe(
+        Effect.provide(EvoluReactLive),
         Effect.provide(ConfigLive(config)),
         Effect.runSync,
       ),
     );
     react.ensureSchema(schema);
     // The Effect team does not recommend generic services, hence casting.
-    return react as unknown as EvoluCommonReact<To>;
+    return react as unknown as EvoluReact<To>;
   };
