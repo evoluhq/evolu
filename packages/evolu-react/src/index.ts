@@ -24,16 +24,8 @@ export * from "@evolu/common/public";
  *     todo: TodoTable,
  *   });
  *
- *   export const {
- *     evolu,
- *     useEvoluError,
- *     createQuery,
- *     useQuery,
- *     useCreate,
- *     useUpdate,
- *     useOwner,
- *     useEvolu,
- *   } = Evolu.create(Database);
+ *   const { useEvolu, useEvoluError, useQuery, useOwner } =
+ *     Evolu.create(Database);
  */
 export const create = EvoluCommonReactLive.pipe(
   Layer.use(EvoluCommonWebLive),

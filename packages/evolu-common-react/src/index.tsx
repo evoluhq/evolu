@@ -28,10 +28,7 @@ import ReactExports, {
   useSyncExternalStore,
 } from "react";
 
-export interface EvoluCommonReact<S extends Schema = Schema> {
-  /** TODO: Docs */
-  readonly evolu: Evolu<S>;
-
+export type EvoluCommonReact<S extends Schema = Schema> = Evolu<S> & {
   /** A React 19 `use` polyfill. */
   readonly use: <T>(usable: Usable<T>) => T;
 
@@ -40,9 +37,6 @@ export interface EvoluCommonReact<S extends Schema = Schema> {
 
   /** TODO: Docs */
   readonly useEvoluError: () => EvoluError | null;
-
-  /** TODO: Docs */
-  readonly createQuery: Evolu<S>["createQuery"];
 
   /**
    * TODO: Docs Loading promises are released on mutation by default, so loading
@@ -94,12 +88,6 @@ export interface EvoluCommonReact<S extends Schema = Schema> {
   ) => [...QueryResultsFromQueries<Q>, ...QueryResultsFromQueries<OQ>];
 
   /** TODO: Docs */
-  readonly useCreate: () => Evolu<S>["create"];
-
-  /** TODO: Docs */
-  readonly useUpdate: () => Evolu<S>["update"];
-
-  /** TODO: Docs */
   readonly useOwner: () => Owner | null;
 
   /** TODO: Docs */
@@ -116,7 +104,7 @@ export interface EvoluCommonReact<S extends Schema = Schema> {
     readonly children?: ReactNode | undefined;
     readonly value: Evolu<S>;
   }>;
-}
+};
 
 export const EvoluCommonReact = Context.Tag<EvoluCommonReact>();
 
@@ -152,16 +140,15 @@ export const EvoluCommonReactLive = Layer.effect(
     };
 
     return EvoluCommonReact.of({
-      evolu,
+      ...evolu,
+
       use,
       useEvolu,
-
       useEvoluError: () => {
         const evolu = useEvolu();
         return useSyncExternalStore(evolu.subscribeError, evolu.getError);
       },
 
-      createQuery: evolu.createQuery,
       useQuerySubscription,
 
       useQuery: (query, options = {}) => {
@@ -181,9 +168,6 @@ export const EvoluCommonReactLive = Layer.effect(
           useQuerySubscription(query, { once: i > queries.length - 1 }),
         ) as never;
       },
-
-      useCreate: () => useEvolu().create,
-      useUpdate: () => useEvolu().update,
 
       useOwner: () => {
         const evolu = useEvolu();
@@ -244,16 +228,14 @@ export const makeCreate =
     config?: Partial<Config>,
   ): EvoluCommonReact<To> => {
     // For https://nextjs.org/docs/architecture/fast-refresh etc.
-    const react = GlobalValue.globalValue(
-      Symbol.for("@evolu/common-react"),
-      () =>
-        EvoluCommonReact.pipe(
-          Effect.provide(ReactLive),
-          Effect.provide(ConfigLive(config)),
-          Effect.runSync,
-        ),
+    const react = GlobalValue.globalValue("@evolu/common-react/react", () =>
+      EvoluCommonReact.pipe(
+        Effect.provide(ReactLive),
+        Effect.provide(ConfigLive(config)),
+        Effect.runSync,
+      ),
     );
-    react.evolu.ensureSchema(schema);
+    react.ensureSchema(schema);
     // The Effect team does not recommend generic services, hence casting.
     return react as unknown as EvoluCommonReact<To>;
   };

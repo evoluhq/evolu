@@ -54,9 +54,12 @@ export interface Evolu<T extends Schema = Schema> {
   readonly getError: ErrorStore["getState"];
 
   /**
-   * Create type-safe SQL query. Evolu uses Kysely - The type-safe SQL query
-   * builder for TypeScript. See https://kysely.dev. For mutations, use
-   * {@link create} and {@link update}.
+   * Create type-safe SQL {@link Query}.
+   *
+   * Evolu uses Kysely - the type-safe SQL query builder for TypeScript. See
+   * https://kysely.dev.
+   *
+   * For mutations, use {@link create} and {@link update}.
    *
    * @example
    *   const allTodos = evolu.createQuery((db) =>
@@ -67,9 +70,6 @@ export interface Evolu<T extends Schema = Schema> {
    *     evolu.createQuery((db) =>
    *       db.selectFrom("todo").selectAll().where("id", "=", id),
    *     );
-   *
-   * @param queryCallback - SQL query builder.
-   * @returns SQL query serialized into a branded string.
    */
   readonly createQuery: CreateQuery<T>;
 
@@ -112,7 +112,7 @@ export interface Evolu<T extends Schema = Schema> {
    * If you are curious why Evolu does not do that for all queries by default,
    * the answer is simple: performance. Tracking changes is costly and
    * meaningful only for visible (hence subscribed) queries anyway. To subscribe
-   * to a query, use subscribeQuery.
+   * to a query, use {@link subscribeQuery}.
    *
    * @example
    *   const allTodos = evolu.createQuery((db) =>
@@ -124,7 +124,17 @@ export interface Evolu<T extends Schema = Schema> {
    */
   readonly loadQuery: LoadQuery;
 
-  /** TODO: Docs, just a typed helper for [a, b].map(loadQuery) */
+  /**
+   * Load an array of {@link Query} items and return an array of
+   * {@link QueryResult} promises. It's like `queries.map(loadQuery)` but with
+   * proper types for returned promises.
+   *
+   * @example
+   *   evolu.loadQueries([allTodos, todoById(1)]);
+   *
+   * @param queries An array of {@link Query} items.
+   * @returns An array of {@link QueryResult} promises.
+   */
   readonly loadQueries: <R extends Row, Q extends Queries<R>>(
     queries: [...Q],
   ) => [...QueryResultsPromisesFromQueries<Q>];
@@ -147,7 +157,7 @@ export interface Evolu<T extends Schema = Schema> {
   /** TODO: Docs */
   readonly getSyncState: Store<SyncState>["getState"];
 
-  /** TODO: Docs */
+  /** TODO: create */
   create: Mutate<T, "create">;
 
   /** TODO: Docs */

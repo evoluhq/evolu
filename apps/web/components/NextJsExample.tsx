@@ -48,21 +48,15 @@ const Database = S.struct({
   todoCategory: TodoCategoryTable,
 });
 
-const {
-  evolu,
-  useEvoluError,
-  createQuery,
-  useQuery,
-  useCreate,
-  useUpdate,
-  useOwner,
-  useEvolu,
-} = Evolu.create(Database, {
+const evolu = Evolu.create(Database, {
   reloadUrl: "/examples/nextjs",
   ...(process.env.NODE_ENV === "development" && {
     syncUrl: "http://localhost:4000",
   }),
 });
+
+// React Hooks
+const { useEvolu, useEvoluError, useQuery, useOwner } = evolu;
 
 const createFixtures = (): Promise<void> =>
   Promise.all(
@@ -72,9 +66,11 @@ const createFixtures = (): Promise<void> =>
     ]),
   ).then(([todos, categories]) => {
     if (todos.row || categories.row) return;
+
     const { id: notUrgentCategoryId } = evolu.create("todoCategory", {
       name: S.parseSync(NonEmptyString50)("Not Urgent"),
     });
+
     evolu.create("todo", {
       title: S.parseSync(Evolu.NonEmptyString1000)("Try React Suspense"),
       categoryId: notUrgentCategoryId,
@@ -100,9 +96,9 @@ const logSyncState = (): void => {
 };
 
 // Ensure logSyncState is called only once with hot reloading.
-// Without GlobalValue, people could be confused why logSyncState
-// logs 2x, 3x, etc., when they edit this file.
-GlobalValue.globalValue("example/subscribeSyncState", logSyncState);
+// Without GlobalValue, people could be confused about why logSyncState
+// logs 2x, 3x, etc.
+GlobalValue.globalValue("NextJsExample/logSyncState", logSyncState);
 
 export const NextJsExample = memo(function NextJsExample() {
   const [currentTab, setCurrentTab] = useState<"todos" | "categories">("todos");
@@ -159,7 +155,7 @@ const NotificationBar: FC = () => {
   );
 };
 
-const todosWithCategories = createQuery((db) =>
+const todosWithCategories = evolu.createQuery((db) =>
   db
     .selectFrom("todo")
     .select(["id", "title", "isCompleted", "categoryId"])
@@ -181,7 +177,7 @@ const todosWithCategories = createQuery((db) =>
 );
 
 const Todos: FC = () => {
-  const create = useCreate();
+  const { create } = useEvolu();
   const { rows } = useQuery(todosWithCategories);
 
   const handleAddTodoClick = (): void => {
@@ -209,7 +205,7 @@ const TodoItem = memo<{
 }>(function TodoItem({
   row: { id, title, isCompleted, categoryId, categories },
 }) {
-  const update = useUpdate();
+  const { update } = useEvolu();
 
   const handleToggleCompletedClick = (): void => {
     update("todo", { id, isCompleted: !isCompleted });
@@ -285,7 +281,7 @@ const TodoCategorySelect: FC<{
   );
 };
 
-const todoCategories = createQuery((db) =>
+const todoCategories = evolu.createQuery((db) =>
   db
     .selectFrom("todoCategory")
     .select(["id", "name", "json"])
@@ -297,7 +293,7 @@ const todoCategories = createQuery((db) =>
 );
 
 const TodoCategories: FC = () => {
-  const create = useCreate();
+  const { create } = useEvolu();
   const { rows } = useQuery(todoCategories);
 
   // Evolu automatically parses JSONs into typed objects.
@@ -327,7 +323,7 @@ const TodoCategories: FC = () => {
 const TodoCategoryItem = memo<{
   row: Pick<TodoCategoryTable, "id" | "name">;
 }>(function TodoItem({ row: { id, name } }) {
-  const update = useUpdate();
+  const { update } = useEvolu();
 
   const handleRenameClick = (): void => {
     prompt(NonEmptyString50, "Category Name", (name) => {
