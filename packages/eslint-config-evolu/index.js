@@ -31,9 +31,8 @@ module.exports = {
   },
   parser: "@typescript-eslint/parser",
 
-  // https://github.com/facebook/react-native/issues/28549#issuecomment-1464986589
   settings: {
-    "import/ignore": ["react-native"],
+    "import/ignore": ["node_modules/react-native/index\\.js$"],
   },
 
   parserOptions: {

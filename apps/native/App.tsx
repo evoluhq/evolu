@@ -56,19 +56,14 @@ const Database = S.struct({
   todoCategory: TodoCategoryTable,
 });
 
-const {
-  useEvoluError,
-  createQuery,
-  useQuery,
-  useCreate,
-  useUpdate,
-  useOwner,
-  useEvolu,
-} = Evolu.create(Database, {
+const evolu = Evolu.create(Database, {
   ...(process.env.NODE_ENV === "development" && {
     syncUrl: "http://localhost:4000",
   }),
 });
+
+// React Hooks
+const { useEvolu, useEvoluError, useQuery, useOwner } = evolu;
 
 export default function App(): JSX.Element {
   return (
@@ -175,7 +170,7 @@ const OwnerActions: FC = () => {
   );
 };
 
-const todosWithCategories = createQuery((db) =>
+const todosWithCategories = evolu.createQuery((db) =>
   db
     .selectFrom("todo")
     .select(["id", "title", "isCompleted", "categoryId"])
@@ -199,7 +194,7 @@ const todosWithCategories = createQuery((db) =>
 );
 
 const Todos: FC = () => {
-  const create = useCreate();
+  const { create } = useEvolu();
   const { rows } = useQuery(todosWithCategories);
 
   const [text, setText] = useState("");
@@ -242,7 +237,7 @@ const TodoItem = memo<{
 }>(function TodoItem({
   row: { id, title, isCompleted, categoryId, categories },
 }) {
-  const update = useUpdate();
+  const { update } = useEvolu();
 
   return (
     <View style={{ marginBottom: 16 }}>
@@ -311,7 +306,7 @@ interface TodoCategoryForSelect {
   readonly name: TodoCategoryTable["name"] | null;
 }
 
-const todoCategories = createQuery((db) =>
+const todoCategories = evolu.createQuery((db) =>
   db
     .selectFrom("todoCategory")
     .select(["id", "name", "json"])
@@ -323,8 +318,7 @@ const todoCategories = createQuery((db) =>
 );
 
 const TodoCategories: FC = () => {
-  const create = useCreate();
-  const update = useUpdate();
+  const { create, update } = useEvolu();
   const { rows } = useQuery(todoCategories);
 
   const [text, setText] = useState("");
