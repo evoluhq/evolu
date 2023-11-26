@@ -49,6 +49,10 @@ export type TableSchema = ReadonlyRecord.ReadonlyRecord<Value> & {
 // https://blog.beraliv.dev/2021-05-07-opaque-type-in-typescript
 declare const __queryBrand: unique symbol;
 
+/**
+ * The query is an SQL query serialized as a string with a branded type
+ * representing a row it returns.
+ */
 export type Query<R extends Row = Row> = string &
   Brand.Brand<"Query"> & { readonly [__queryBrand]: R };
 
