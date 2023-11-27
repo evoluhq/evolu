@@ -22,6 +22,9 @@ import { SqliteLive } from "./SqliteLive.js";
 // export * from "@evolu/common/public" isn't working in RN for some reason,
 // so we have to export manually.
 export {
+  canUseDom,
+  cast,
+  id,
   Id,
   NonEmptyString1000,
   PositiveInt,
@@ -29,12 +32,10 @@ export {
   SqliteDate,
   String,
   String1000,
-  canUseDom,
-  cast,
-  id,
 } from "@evolu/common";
 export type {
   EvoluError,
+  InvalidMnemonicError,
   Mnemonic,
   Owner,
   OwnerId,

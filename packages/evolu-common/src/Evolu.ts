@@ -12,7 +12,13 @@ import {
 import * as Kysely from "kysely";
 import { Config } from "./Config.js";
 import { Time, TimeLive } from "./Crdt.js";
-import { Bip39, Mnemonic, NanoId, NanoIdLive } from "./Crypto.js";
+import {
+  Bip39,
+  InvalidMnemonicError,
+  Mnemonic,
+  NanoId,
+  NanoIdLive,
+} from "./Crypto.js";
 import {
   Queries,
   Query,
@@ -29,7 +35,7 @@ import {
 } from "./Db.js";
 import { DbWorker, DbWorkerOutputOnQuery, Mutation } from "./DbWorker.js";
 import { applyPatches } from "./Diff.js";
-import { ErrorStore, makeErrorStore } from "./ErrorStore.js";
+import { EvoluError, makeErrorStore } from "./ErrorStore.js";
 import { SqliteBoolean, SqliteDate, cast } from "./Model.js";
 import { OnCompletes, OnCompletesLive } from "./OnCompletes.js";
 import { Owner } from "./Owner.js";
@@ -40,7 +46,7 @@ import { SyncState } from "./SyncWorker.js";
 
 export interface Evolu<T extends Schema = Schema> {
   /**
-   * Subscribe to {@link ErrorStore}.
+   * Subscribe to {@link EvoluError} changes.
    *
    * @example
    *   const unsubscribe = evolu.subscribeError(() => {
@@ -48,10 +54,10 @@ export interface Evolu<T extends Schema = Schema> {
    *     console.log(error);
    *   });
    */
-  readonly subscribeError: ErrorStore["subscribe"];
+  readonly subscribeError: Store<EvoluError | null>["subscribe"];
 
-  /** Get {@link ErrorStore} value. */
-  readonly getError: ErrorStore["getState"];
+  /** Get {@link EvoluError}. */
+  readonly getError: Store<EvoluError | null>["getState"];
 
   /**
    * Create type-safe SQL {@link Query}.
@@ -125,36 +131,75 @@ export interface Evolu<T extends Schema = Schema> {
   readonly loadQuery: LoadQuery;
 
   /**
-   * Load an array of {@link Query} items and return an array of
+   * Load an array of {@link Query} queries and return an array of
    * {@link QueryResult} promises. It's like `queries.map(loadQuery)` but with
    * proper types for returned promises.
    *
    * @example
    *   evolu.loadQueries([allTodos, todoById(1)]);
-   *
-   * @param queries An array of {@link Query} items.
-   * @returns An array of {@link QueryResult} promises.
    */
   readonly loadQueries: <R extends Row, Q extends Queries<R>>(
     queries: [...Q],
   ) => [...QueryResultsPromisesFromQueries<Q>];
 
-  /** TODO: Docs */
+  /**
+   * Subscribe to {@link Query} {@link QueryResult} changes.
+   *
+   * @example
+   *   const unsubscribe = evolu.subscribeQuery(allTodos)(() => {
+   *     const { rows } = evolu.getQuery(allTodos);
+   *   });
+   */
   readonly subscribeQuery: SubscribedQueries["subscribeQuery"];
 
-  /** TODO: Docs */
+  /**
+   * Get {@link Query} {@link QueryResult}.
+   *
+   * @example
+   *   const unsubscribe = evolu.subscribeQuery(allTodos)(() => {
+   *     const { rows } = evolu.getQuery(allTodos);
+   *   });
+   */
   readonly getQuery: SubscribedQueries["getQuery"];
 
-  /** TODO: Docs */
+  /**
+   * Subscribe to {@link Owner} changes.
+   *
+   * @example
+   *   const unsubscribe = evolu.subscribeOwner(() => {
+   *     const owner = evolu.getOwner();
+   *   });
+   */
   readonly subscribeOwner: Store<Owner | null>["subscribe"];
 
-  /** TODO: Docs */
+  /**
+   * Get {@link Owner}.
+   *
+   * @example
+   *   const unsubscribe = evolu.subscribeOwner(() => {
+   *     const owner = evolu.getOwner();
+   *   });
+   */
   readonly getOwner: Store<Owner | null>["getState"];
 
-  /** TODO: Docs */
+  /**
+   * Subscribe to {@link SyncState} changes.
+   *
+   * @example
+   *   const unsubscribe = evolu.subscribeSyncState(() => {
+   *     const syncState = evolu.getSyncState();
+   *   });
+   */
   readonly subscribeSyncState: Store<SyncState>["subscribe"];
 
-  /** TODO: Docs */
+  /**
+   * Get {@link SyncState}.
+   *
+   * @example
+   *   const unsubscribe = evolu.subscribeSyncState(() => {
+   *     const syncState = evolu.getSyncState();
+   *   });
+   */
   readonly getSyncState: Store<SyncState>["getState"];
 
   /** TODO: create */
@@ -164,18 +209,27 @@ export interface Evolu<T extends Schema = Schema> {
   update: Mutate<T, "update">;
 
   /**
-   * Delete all local data from the current device. After the deletion, Evolu
-   * reloads all browser tabs that use Evolu.
+   * Delete {@link Owner} and all their data from the current device. After the
+   * deletion, Evolu will purge the application state. For browsers, this will
+   * reload all tabs using Evolu. For native apps, it will restart the app.
    */
   readonly resetOwner: () => void;
 
-  /** TODO: */
-  readonly parseMnemonic: Bip39["parse"];
+  /**
+   * What this function does, we can read from its signature. It takes a string
+   * and returns an Effect that can fail with {@link InvalidMnemonicError} or
+   * succeed with {@link Mnemonic}. In other words, this function tries to parse
+   * a string; if it is a {@link Mnemonic}, it will return it, but otherwise, it
+   * fails. On the web, this function imports BIP39 dictionaries dynamically.
+   */
+  readonly parseMnemonic: (
+    mnemonic: string,
+  ) => Effect.Effect<never, InvalidMnemonicError, Mnemonic>;
 
-  /** Restore {@link Owner} with synced data from different devices. */
+  /** Restore {@link Owner} with all their synced data. */
   readonly restoreOwner: (mnemonic: Mnemonic) => void;
 
-  /** Ensure database tables and columns exist. */
+  /** Ensure tables and columns defined in Schema exist in the database. */
   readonly ensureSchema: <From, To extends T>(
     schema: S.Schema<From, To>,
   ) => void;

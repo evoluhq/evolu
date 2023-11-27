@@ -1,15 +1,10 @@
 import { Effect } from "effect";
 import { TimestampError } from "./Crdt.js";
-import { Store, makeStore } from "./Store.js";
-
-export type ErrorStore = Store<EvoluError | null>;
+import { makeStore } from "./Store.js";
 
 export const makeErrorStore = makeStore<EvoluError | null>(null);
 
-/**
- * The EvoluError type is used to represent errors that can occur in Evolu. It
- * is a union type that includes UnexpectedError and TimestampError.
- */
+/** The EvoluError type is used to represent errors that can occur in Evolu. */
 export type EvoluError = UnexpectedError | TimestampError;
 
 /**
