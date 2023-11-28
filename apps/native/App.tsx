@@ -113,8 +113,7 @@ const OwnerActions: FC = () => {
     Either.match(parsedMnemonic, {
       onLeft: (error) => alert(TreeFormatter.formatErrors(error.errors)),
       onRight: (mnemonic) => {
-        evolu
-          .parseMnemonic(mnemonic)
+        Evolu.parseMnemonic(mnemonic)
           .pipe(Effect.runPromiseExit)
           .then(
             Exit.match({
