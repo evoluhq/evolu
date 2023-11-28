@@ -20,6 +20,8 @@ module.exports = {
     "import/no-cycle": "error",
     "@next/next/no-html-link-for-pages": "off",
     "jsdoc/require-jsdoc": "off",
+    "jsdoc/require-param": "off",
+    "jsdoc/require-returns": "off",
     "jsdoc/tag-lines": [
       "error",
       "any",

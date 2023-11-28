@@ -28,23 +28,29 @@ import ReactExports, {
   useSyncExternalStore,
 } from "react";
 
-export type EvoluReact<S extends Schema = Schema> = Evolu<S> & {
-  /** A React 19 `use` polyfill. */
+export interface EvoluReact<S extends Schema = Schema> extends Evolu<S> {
+  /**
+   * A React 19 `use` polyfill.
+   *
+   * See https://react.dev/reference/react/use.
+   */
   readonly use: <T>(usable: Usable<T>) => T;
 
-  /** TODO: Docs */
+  /**
+   * React Hook returning an instance of {@link Evolu}.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const { create, update } = useEvolu();
+   * ```
+   */
   readonly useEvolu: () => Evolu<S>;
 
-  /** TODO: Docs */
+  /** Subscribe to {@link EvoluError} changes. */
   readonly useEvoluError: () => EvoluError | null;
 
-  /**
-   * TODO: Docs Loading promises are released on mutation by default, so loading
-   * the same query will be suspended again, which is undesirable if we already
-   * have such a query on a page. Luckily, subscribeQuery tracks subscribed
-   * queries to be automatically updated on mutation while unsubscribed queries
-   * are released.
-   */
+  /** Subscribe to {@link Query} {@link QueryResult} changes. */
   readonly useQuerySubscription: <R extends Row>(
     query: Query<R>,
     options?: Partial<{
@@ -52,14 +58,25 @@ export type EvoluReact<S extends Schema = Schema> = Evolu<S> & {
     }>,
   ) => QueryResult<R>;
 
-  /** TODO: Docs */
+  /**
+   * `useQuery` React Hook performs a database query and returns an object with
+   * `rows` and `row` properties that are automatically updated when data
+   * changes.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const a = 1;
+   * ```
+   */
   readonly useQuery: <R extends Row>(
     query: Query<R>,
     options?: Partial<{
+      /** TODO: B */
       readonly once: boolean;
+
       /** Reuse existing promise instead of loading so query will not suspense. */
       readonly promise: Promise<QueryResult<R>>;
-      // Do we need default data for SSR?
     }>,
   ) => QueryResult<R>;
 
@@ -87,24 +104,21 @@ export type EvoluReact<S extends Schema = Schema> = Evolu<S> & {
     }>,
   ) => [...QueryResultsFromQueries<Q>, ...QueryResultsFromQueries<OQ>];
 
-  /** TODO: Docs */
+  /** Subscribe to {@link Owner} changes. */
   readonly useOwner: () => Owner | null;
 
-  /** TODO: Docs */
+  /** Subscribe to {@link SyncState} changes. */
   readonly useSyncState: () => SyncState;
 
   /**
-   * The default value of EvoluContext is an Evolu instance, so we don't have to
-   * use EvoluProvider by default. However, EvoluProvider is helpful for
-   * testing, as we can inject memory-only Evolu. Yep, it's OK to use React
-   * Context without a provider:
-   * https://react.dev/learn/passing-data-deeply-with-context
+   * EvoluProvider is not necessary for using Evolu, but it's helpful for
+   * testing, as we can inject memory-only Evolu.
    */
   readonly EvoluProvider: FC<{
     readonly children?: ReactNode | undefined;
     readonly value: Evolu<S>;
   }>;
-};
+}
 
 export const EvoluReact = Context.Tag<EvoluReact>();
 

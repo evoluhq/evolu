@@ -58,27 +58,30 @@ const EvoluNativeLive: Layer.Layer<
 );
 
 /**
- * Create Evolu for React from database schema.
+ * Create Evolu for React Native.
  *
- * @example
- *   import * as S from "@effect/schema/Schema";
- *   import * as Evolu from "@evolu/react-native";
+ * ### Example
  *
- *   const TodoId = Evolu.id("Todo");
- *   type TodoId = S.Schema.To<typeof TodoId>;
+ * ```ts
+ * import * as S from "@effect/schema/Schema";
+ * import * as Evolu from "@evolu/react-native";
  *
- *   const TodoTable = S.struct({
- *     id: TodoId,
- *     title: Evolu.NonEmptyString1000,
- *   });
- *   type TodoTable = S.Schema.To<typeof TodoTable>;
+ * const TodoId = Evolu.id("Todo");
+ * type TodoId = S.Schema.To<typeof TodoId>;
  *
- *   const Database = S.struct({
- *     todo: TodoTable,
- *   });
+ * const TodoTable = S.struct({
+ *   id: TodoId,
+ *   title: Evolu.NonEmptyString1000,
+ * });
+ * type TodoTable = S.Schema.To<typeof TodoTable>;
  *
- *   const { useEvolu, useEvoluError, useQuery, useOwner } =
- *     Evolu.create(Database);
+ * const Database = S.struct({
+ *   todo: TodoTable,
+ * });
+ *
+ * const { useEvolu, useEvoluError, useQuery, useOwner } =
+ *   Evolu.create(Database);
+ * ```
  */
 export const create = EvoluReactLive.pipe(
   Layer.use(EvoluNativeLive),

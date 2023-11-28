@@ -48,11 +48,14 @@ export interface Evolu<T extends Schema = Schema> {
   /**
    * Subscribe to {@link EvoluError} changes.
    *
-   * @example
-   *   const unsubscribe = evolu.subscribeError(() => {
-   *     const error = evolu.getError();
-   *     console.log(error);
-   *   });
+   * ### Example
+   *
+   * ```ts
+   * const unsubscribe = evolu.subscribeError(() => {
+   *   const error = evolu.getError();
+   *   console.log(error);
+   * });
+   * ```
    */
   readonly subscribeError: Store<EvoluError | null>["subscribe"];
 
@@ -67,15 +70,18 @@ export interface Evolu<T extends Schema = Schema> {
    *
    * For mutations, use {@link create} and {@link update}.
    *
-   * @example
-   *   const allTodos = evolu.createQuery((db) =>
-   *     db.selectFrom("todo").selectAll(),
-   *   );
+   * ### Example
    *
-   *   const todoById = (id: TodoId) =>
-   *     evolu.createQuery((db) =>
-   *       db.selectFrom("todo").selectAll().where("id", "=", id),
-   *     );
+   * ```ts
+   * const allTodos = evolu.createQuery((db) =>
+   *   db.selectFrom("todo").selectAll(),
+   * );
+   *
+   * const todoById = (id: TodoId) =>
+   *   evolu.createQuery((db) =>
+   *     db.selectFrom("todo").selectAll().where("id", "=", id),
+   *   );
+   * ```
    */
   readonly createQuery: CreateQuery<T>;
 
@@ -120,13 +126,16 @@ export interface Evolu<T extends Schema = Schema> {
    * meaningful only for visible (hence subscribed) queries anyway. To subscribe
    * to a query, use {@link subscribeQuery}.
    *
-   * @example
-   *   const allTodos = evolu.createQuery((db) =>
-   *     db.selectFrom("todo").selectAll(),
-   *   );
-   *   evolu.loadQuery(allTodos).then(({ rows }) => {
-   *     console.log(rows);
-   *   });
+   * ### Example
+   *
+   * ```ts
+   * const allTodos = evolu.createQuery((db) =>
+   *   db.selectFrom("todo").selectAll(),
+   * );
+   * evolu.loadQuery(allTodos).then(({ rows }) => {
+   *   console.log(rows);
+   * });
+   * ```
    */
   readonly loadQuery: LoadQuery;
 
@@ -135,8 +144,11 @@ export interface Evolu<T extends Schema = Schema> {
    * {@link QueryResult} promises. It's like `queries.map(loadQuery)` but with
    * proper types for returned promises.
    *
-   * @example
-   *   evolu.loadQueries([allTodos, todoById(1)]);
+   * ### Example
+   *
+   * ```ts
+   * evolu.loadQueries([allTodos, todoById(1)]);
+   * ```
    */
   readonly loadQueries: <R extends Row, Q extends Queries<R>>(
     queries: [...Q],
@@ -145,67 +157,141 @@ export interface Evolu<T extends Schema = Schema> {
   /**
    * Subscribe to {@link Query} {@link QueryResult} changes.
    *
-   * @example
-   *   const unsubscribe = evolu.subscribeQuery(allTodos)(() => {
-   *     const { rows } = evolu.getQuery(allTodos);
-   *   });
+   * ### Example
+   *
+   * ```ts
+   * const unsubscribe = evolu.subscribeQuery(allTodos)(() => {
+   *   const { rows } = evolu.getQuery(allTodos);
+   * });
+   * ```
    */
   readonly subscribeQuery: SubscribedQueries["subscribeQuery"];
 
   /**
    * Get {@link Query} {@link QueryResult}.
    *
-   * @example
-   *   const unsubscribe = evolu.subscribeQuery(allTodos)(() => {
-   *     const { rows } = evolu.getQuery(allTodos);
-   *   });
+   * ### Example
+   *
+   * ```ts
+   * const unsubscribe = evolu.subscribeQuery(allTodos)(() => {
+   *   const { rows } = evolu.getQuery(allTodos);
+   * });
+   * ```
    */
   readonly getQuery: SubscribedQueries["getQuery"];
 
   /**
    * Subscribe to {@link Owner} changes.
    *
-   * @example
-   *   const unsubscribe = evolu.subscribeOwner(() => {
-   *     const owner = evolu.getOwner();
-   *   });
+   * ### Example
+   *
+   * ```ts
+   * const unsubscribe = evolu.subscribeOwner(() => {
+   *   const owner = evolu.getOwner();
+   * });
+   * ```
    */
   readonly subscribeOwner: Store<Owner | null>["subscribe"];
 
   /**
    * Get {@link Owner}.
    *
-   * @example
-   *   const unsubscribe = evolu.subscribeOwner(() => {
-   *     const owner = evolu.getOwner();
-   *   });
+   * ### Example
+   *
+   * ```ts
+   * const unsubscribe = evolu.subscribeOwner(() => {
+   *   const owner = evolu.getOwner();
+   * });
+   * ```
    */
   readonly getOwner: Store<Owner | null>["getState"];
 
   /**
    * Subscribe to {@link SyncState} changes.
    *
-   * @example
-   *   const unsubscribe = evolu.subscribeSyncState(() => {
-   *     const syncState = evolu.getSyncState();
-   *   });
+   * ### Example
+   *
+   * ```ts
+   * const unsubscribe = evolu.subscribeSyncState(() => {
+   *   const syncState = evolu.getSyncState();
+   * });
+   * ```
    */
   readonly subscribeSyncState: Store<SyncState>["subscribe"];
 
   /**
    * Get {@link SyncState}.
    *
-   * @example
-   *   const unsubscribe = evolu.subscribeSyncState(() => {
-   *     const syncState = evolu.getSyncState();
-   *   });
+   * ### Example
+   *
+   * ```ts
+   * const unsubscribe = evolu.subscribeSyncState(() => {
+   *   const syncState = evolu.getSyncState();
+   * });
+   * ```
    */
   readonly getSyncState: Store<SyncState>["getState"];
 
-  /** TODO: create */
+  /**
+   * The function creates a row in the database and returns a new ID. The first
+   * argument is the table name, and the second is an object.
+   *
+   * The third optional argument, the onComplete callback, is generally
+   * unnecessary because creating a row cannot fail. Still, UI libraries can use
+   * it to ensure the DOM is updated if we want to manipulate it, for example,
+   * to focus an element.
+   *
+   * Evolu does not use SQL for mutations to ensure data can be safely and
+   * predictably merged without conflicts.
+   *
+   * Explicit mutations also allow Evolu to automatically add and update a few
+   * useful columns common to all tables. Those columns are: `createdAt`,
+   * `updatedAt`, and `isDeleted`.
+   *
+   * ### Example
+   *
+   * ```ts
+   * import * as S from "@effect/schema/Schema";
+   *
+   * // Evolu uses the Schema to enforce domain model.
+   * const title = S.parseSync(Evolu.NonEmptyString1000)("A title");
+   *
+   * const { id } = evolu.create("todo", { title }, () => {
+   *   // onComplete callback
+   * });
+   * ```
+   */
   create: Mutate<T, "create">;
 
-  /** TODO: Docs */
+  /**
+   * The function updates a row in the database and returns the existing ID. The
+   * first argument is the table name, and the second is an object.
+   *
+   * The third optional argument, the onComplete callback, is generally
+   * unnecessary because creating a row cannot fail. Still, UI libraries can use
+   * it to ensure the DOM is updated if we want to manipulate it, for example,
+   * to focus an element.
+   *
+   * Evolu does not use SQL for mutations to ensure data can be safely and
+   * predictably merged without conflicts.
+   *
+   * Explicit mutations also allow Evolu to automatically add and update a few
+   * useful columns common to all tables. Those columns are: `createdAt`,
+   * `updatedAt`, and `isDeleted`.
+   *
+   * ### Example
+   *
+   * ```ts
+   * import * as S from "@effect/schema/Schema";
+   *
+   * // Evolu uses the Schema to enforce domain model.
+   * const title = S.parseSync(Evolu.NonEmptyString1000)("A title");
+   * evolu.update("todo", { id, title });
+   *
+   * // To delete a row, set `isDeleted` to true.
+   * evolu.update("todo", { id, isDeleted: true });
+   * ```
+   */
   update: Mutate<T, "update">;
 
   /**
