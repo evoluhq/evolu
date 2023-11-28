@@ -11,7 +11,7 @@
     "clean": "rm -rf .turbo .expo node_modules"
   },
   "dependencies": {
-    "@effect/schema": "^0.49.4",
+    "@effect/schema": "^0.50.0",
     "@evolu/react-native": "workspace:*",
     "@react-native-community/netinfo": "9.3.10",
     "buffer": "^6.0.3",
@@ -32,7 +32,7 @@
     "@babel/core": "^7.23.3",
     "@babel/plugin-proposal-dynamic-import": "^7.18.6",
     "@babel/plugin-transform-private-methods": "^7.23.3",
-    "@types/react": "^18.2.38",
+    "@types/react": "^18.2.39",
     "eslint": "^8.54.0",
     "eslint-config-evolu": "workspace:*",
     "prettier": "^3.1.0",

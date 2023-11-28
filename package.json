@@ -16,7 +16,7 @@
     "android": "cd apps/native && pnpm android"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.26.2",
+    "@changesets/cli": "^2.27.1",
     "eslint": "^8.54.0",
     "eslint-config-evolu": "workspace:*",
     "prettier": "^3.1.0",
