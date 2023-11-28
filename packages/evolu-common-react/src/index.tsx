@@ -59,20 +59,39 @@ export interface EvoluReact<S extends Schema = Schema> extends Evolu<S> {
   ) => QueryResult<R>;
 
   /**
-   * `useQuery` React Hook performs a database query and returns an object with
-   * `rows` and `row` properties that are automatically updated when data
-   * changes.
+   * Load and subscribe to the Query, and return an object with `rows` and `row`
+   * properties that are automatically updated when data changes.
    *
-   * ### Example
+   * Note that {@link useQuery} uses React Suspense. It means every usage of
+   * {@link useQuery} blocks rendering until loading is completed. To avoid
+   * loading waterfall with more queries, use {@link useQueries}.
+   *
+   * ### Examples
    *
    * ```ts
-   * const a = 1;
+   * // Get all rows.
+   * const { rows } = useQuery(allTodos);
+   *
+   * // Get the first row (it can be null).
+   * const { row } = useQuery(todoById(1));
+   *
+   * // Get all rows, but without subscribing to changes.
+   * const { rows } = useQuery(allTodos, { once: true });
+   *
+   * // Prefetch all rows
+   * const allTodos = evolu.createQuery((db) =>
+   *   db.selectFrom("todo").selectAll(),
+   * );
+   * // Load before usage.
+   * const allTodosPromise = evolu.loadQuery(allTodos);
+   * // A usage.
+   * const { rows } = useQuery(allTodos, { promise: allTodosPromise });
    * ```
    */
   readonly useQuery: <R extends Row>(
     query: Query<R>,
     options?: Partial<{
-      /** TODO: B */
+      /** Without subscribing to changes. */
       readonly once: boolean;
 
       /** Reuse existing promise instead of loading so query will not suspense. */
@@ -80,13 +99,7 @@ export interface EvoluReact<S extends Schema = Schema> extends Evolu<S> {
     }>,
   ) => QueryResult<R>;
 
-  /**
-   * TODO: Docs For more than one query, always use useQueries Hook to avoid
-   * loading waterfalls and to cache loading promises. This is possible of
-   * course: const foo = use(useEvolu().loadQuery(todos)) but it will not cache
-   * loading promise nor subscribe updates. That's why we have useQuery and
-   * useQueries.
-   */
+  /** The same as {@link useQuery}, but for many queries. */
   readonly useQueries: <
     R extends Row,
     Q extends Queries<R>,
@@ -94,6 +107,7 @@ export interface EvoluReact<S extends Schema = Schema> extends Evolu<S> {
   >(
     queries: [...Q],
     options?: Partial<{
+      /** Queries that should be only loaded, not subscribed to. */
       readonly once: [...OQ];
       /** Reuse existing promises instead of loading so query will not suspense. */
       readonly promises: [
