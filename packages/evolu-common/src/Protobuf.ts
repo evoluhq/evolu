@@ -7,99 +7,59 @@ import { MerkleTreeString, TimestampString } from "./Crdt.js";
 import { NodeId } from "./Crypto.js";
 import { OwnerId } from "./Owner.js";
 import { Id } from "./Model.js";
-/**
- * @generated from protobuf message SyncRequest
- */
+/** @generated from protobuf message SyncRequest */
 export interface SyncRequest {
-  /**
-   * @generated from protobuf field: repeated EncryptedMessage messages = 1;
-   */
+  /** @generated from protobuf field: repeated EncryptedMessage messages = 1; */
   messages: ReadonlyArray<EncryptedMessage>;
-  /**
-   * @generated from protobuf field: string userId = 2;
-   */
+  /** @generated from protobuf field: string userId = 2; */
   userId: OwnerId;
-  /**
-   * @generated from protobuf field: string nodeId = 3;
-   */
+  /** @generated from protobuf field: string nodeId = 3; */
   nodeId: NodeId;
-  /**
-   * @generated from protobuf field: string merkleTree = 4;
-   */
+  /** @generated from protobuf field: string merkleTree = 4; */
   merkleTree: MerkleTreeString;
 }
-/**
- * @generated from protobuf message SyncResponse
- */
+/** @generated from protobuf message SyncResponse */
 export interface SyncResponse {
-  /**
-   * @generated from protobuf field: repeated EncryptedMessage messages = 1;
-   */
+  /** @generated from protobuf field: repeated EncryptedMessage messages = 1; */
   messages: ReadonlyArray<EncryptedMessage>;
-  /**
-   * @generated from protobuf field: string merkleTree = 2;
-   */
+  /** @generated from protobuf field: string merkleTree = 2; */
   merkleTree: MerkleTreeString;
 }
-/**
- * @generated from protobuf message EncryptedMessage
- */
+/** @generated from protobuf message EncryptedMessage */
 export interface EncryptedMessage {
-  /**
-   * @generated from protobuf field: string timestamp = 1;
-   */
+  /** @generated from protobuf field: string timestamp = 1; */
   timestamp: TimestampString;
-  /**
-   * @generated from protobuf field: bytes content = 2;
-   */
+  /** @generated from protobuf field: bytes content = 2; */
   content: Uint8Array;
 }
-/**
- * @generated from protobuf message MessageContent
- */
+/** @generated from protobuf message MessageContent */
 export interface MessageContent {
-  /**
-   * @generated from protobuf field: string table = 1;
-   */
+  /** @generated from protobuf field: string table = 1; */
   table: string;
-  /**
-   * @generated from protobuf field: string row = 2;
-   */
+  /** @generated from protobuf field: string row = 2; */
   row: Id;
-  /**
-   * @generated from protobuf field: string column = 3;
-   */
+  /** @generated from protobuf field: string column = 3; */
   column: string;
-  /**
-   * @generated from protobuf oneof: value
-   */
+  /** @generated from protobuf oneof: value */
   value:
     | {
         oneofKind: "stringValue";
-        /**
-         * @generated from protobuf field: string stringValue = 4;
-         */
+        /** @generated from protobuf field: string stringValue = 4; */
         stringValue: string;
       }
     | {
         oneofKind: "numberValue";
-        /**
-         * @generated from protobuf field: int32 numberValue = 5;
-         */
+        /** @generated from protobuf field: int32 numberValue = 5; */
         numberValue: number;
       }
     | {
         oneofKind: "bytesValue";
-        /**
-         * @generated from protobuf field: bytes bytesValue = 6;
-         */
+        /** @generated from protobuf field: bytes bytesValue = 6; */
         bytesValue: Uint8Array;
       }
     | {
         oneofKind: "jsonValue";
-        /**
-         * @generated from protobuf field: string jsonValue = 7;
-         */
+        /** @generated from protobuf field: string jsonValue = 7; */
         jsonValue: string;
       }
     | {
@@ -123,9 +83,7 @@ class SyncRequest$Type extends MessageType<SyncRequest> {
     ]);
   }
 }
-/**
- * @generated MessageType for protobuf message SyncRequest
- */
+/** @generated MessageType for protobuf message SyncRequest */
 export const SyncRequest = new SyncRequest$Type();
 // @generated message type with reflection information, may provide speed optimized methods
 class SyncResponse$Type extends MessageType<SyncResponse> {
@@ -142,9 +100,7 @@ class SyncResponse$Type extends MessageType<SyncResponse> {
     ]);
   }
 }
-/**
- * @generated MessageType for protobuf message SyncResponse
- */
+/** @generated MessageType for protobuf message SyncResponse */
 export const SyncResponse = new SyncResponse$Type();
 // @generated message type with reflection information, may provide speed optimized methods
 class EncryptedMessage$Type extends MessageType<EncryptedMessage> {
@@ -155,9 +111,7 @@ class EncryptedMessage$Type extends MessageType<EncryptedMessage> {
     ]);
   }
 }
-/**
- * @generated MessageType for protobuf message EncryptedMessage
- */
+/** @generated MessageType for protobuf message EncryptedMessage */
 export const EncryptedMessage = new EncryptedMessage$Type();
 // @generated message type with reflection information, may provide speed optimized methods
 class MessageContent$Type extends MessageType<MessageContent> {
@@ -197,7 +151,5 @@ class MessageContent$Type extends MessageType<MessageContent> {
     ]);
   }
 }
-/**
- * @generated MessageType for protobuf message MessageContent
- */
+/** @generated MessageType for protobuf message MessageContent */
 export const MessageContent = new MessageContent$Type();
