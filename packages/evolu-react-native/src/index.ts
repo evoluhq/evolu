@@ -1,16 +1,19 @@
 import {
+  Bip39,
   Config,
   DbWorkerLive,
   Evolu,
   EvoluCommonLive,
   FetchLive,
+  InvalidMnemonicError,
+  Mnemonic,
   NanoIdLive,
   Schema,
   SecretBoxLive,
   SyncWorkerLive,
 } from "@evolu/common";
 import { EvoluReactLive, makeCreateEvoluReact } from "@evolu/common-react";
-import { Layer } from "effect";
+import { Effect, Layer } from "effect";
 import {
   AppStateLive,
   Bip39Live,
@@ -21,10 +24,8 @@ import { SqliteLive } from "./SqliteLive.js";
 
 // export * from "@evolu/common/public" isn't working in RN for some reason,
 // so we have to export manually.
+// TODO: Recheck after RN 0.73 release.
 export {
-  canUseDom,
-  cast,
-  id,
   Id,
   NonEmptyString1000,
   PositiveInt,
@@ -32,6 +33,9 @@ export {
   SqliteDate,
   String,
   String1000,
+  canUseDom,
+  cast,
+  id,
 } from "@evolu/common";
 export type {
   EvoluError,
@@ -87,3 +91,11 @@ export const create = EvoluReactLive.pipe(
   Layer.use(EvoluNativeLive),
   makeCreateEvoluReact,
 );
+
+/** Parse a string to {@link Mnemonic}. */
+export const parseMnemonic: (
+  mnemonic: string,
+) => Effect.Effect<never, InvalidMnemonicError, Mnemonic> = Bip39.pipe(
+  Effect.provide(Bip39Live),
+  Effect.runSync,
+).parse;

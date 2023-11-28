@@ -2,6 +2,7 @@ import { EvoluReactLive, makeCreateEvoluReact } from "@evolu/common-react";
 import { EvoluWebLive } from "@evolu/common-web";
 import { Layer } from "effect";
 
+export { parseMnemonic } from "@evolu/common-web";
 export * from "@evolu/common/public";
 
 /**

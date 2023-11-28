@@ -12,13 +12,7 @@ import {
 import * as Kysely from "kysely";
 import { Config } from "./Config.js";
 import { Time, TimeLive } from "./Crdt.js";
-import {
-  Bip39,
-  InvalidMnemonicError,
-  Mnemonic,
-  NanoId,
-  NanoIdLive,
-} from "./Crypto.js";
+import { Mnemonic, NanoId, NanoIdLive } from "./Crypto.js";
 import {
   Queries,
   Query,
@@ -301,21 +295,10 @@ export interface Evolu<T extends Schema = Schema> {
    */
   readonly resetOwner: () => void;
 
-  /**
-   * What this function does, we can read from its signature. It takes a string
-   * and returns an Effect that can fail with {@link InvalidMnemonicError} or
-   * succeed with {@link Mnemonic}. In other words, this function tries to parse
-   * a string; if it is a {@link Mnemonic}, it will return it, but otherwise, it
-   * fails. On the web, this function imports BIP39 dictionaries dynamically.
-   */
-  readonly parseMnemonic: (
-    mnemonic: string,
-  ) => Effect.Effect<never, InvalidMnemonicError, Mnemonic>;
-
   /** Restore {@link Owner} with all their synced data. */
   readonly restoreOwner: (mnemonic: Mnemonic) => void;
 
-  /** Ensure tables and columns defined in Schema exist in the database. */
+  /** Ensure tables and columns defined in {@link Schema} exist in the database. */
   readonly ensureSchema: <From, To extends T>(
     schema: S.Schema<From, To>,
   ) => void;
@@ -760,8 +743,6 @@ const EvoluCommon = Layer.effect(
       update: mutate,
 
       resetOwner: () => dbWorker.postMessage({ _tag: "reset" }),
-
-      parseMnemonic: (yield* _(Bip39)).parse,
 
       restoreOwner: (mnemonic) =>
         dbWorker.postMessage({ _tag: "reset", mnemonic }),

@@ -353,8 +353,7 @@ const OwnerActions: FC = () => {
 
   const handleRestoreOwnerClick = (): void => {
     prompt(Evolu.NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
-      evolu
-        .parseMnemonic(mnemonic)
+      Evolu.parseMnemonic(mnemonic)
         .pipe(Effect.runPromiseExit)
         .then(
           Exit.match({
