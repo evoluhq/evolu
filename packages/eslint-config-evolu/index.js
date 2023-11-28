@@ -5,6 +5,7 @@ module.exports = {
     "plugin:@typescript-eslint/recommended",
     "plugin:@typescript-eslint/recommended-type-checked",
     "plugin:jsdoc/recommended-error",
+    "plugin:jsdoc/recommended-typescript-error",
     "next/core-web-vitals",
     "turbo",
     "prettier",
@@ -12,22 +13,28 @@ module.exports = {
   rules: {
     "@typescript-eslint/explicit-function-return-type": "error",
     "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+    "@typescript-eslint/no-explicit-any": "off",
+    "@typescript-eslint/no-floating-promises": "off",
     "react-hooks/exhaustive-deps": "error",
     "no-console": "error",
     "import/no-cycle": "error",
     "@next/next/no-html-link-for-pages": "off",
-    "jsdoc/require-returns": "off",
-    "jsdoc/require-param": "off",
-    "jsdoc/require-param-type": "off",
     "jsdoc/require-jsdoc": "off",
+    "jsdoc/require-param": "off",
+    "jsdoc/require-returns": "off",
+    "jsdoc/tag-lines": [
+      "error",
+      "any",
+      {
+        startLines: 1,
+        tags: { param: { lines: "never" } },
+      },
+    ],
   },
   parser: "@typescript-eslint/parser",
 
-  // https://github.com/typescript-eslint/typescript-eslint/issues/1333#issuecomment-573345631
   settings: {
-    "import/resolver": {
-      typescript: {},
-    },
+    "import/ignore": ["node_modules/react-native/index\\.js$"],
   },
 
   parserOptions: {

@@ -1,8 +1,9 @@
-import * as Schema from "@effect/schema/Schema";
+import * as S from "@effect/schema/Schema";
 import Database from "better-sqlite3";
 import { Effect, Layer } from "effect";
 import { Millis, Timestamp, initialMillis } from "../src/Crdt.js";
-import { Sqlite, SqliteRow, parseJsonResults } from "../src/Sqlite.js";
+import { Id } from "../src/Model.js";
+import { Sqlite, SqliteRow } from "../src/Sqlite.js";
 
 export const makeNode1Timestamp = (
   millis = 0,
@@ -10,7 +11,7 @@ export const makeNode1Timestamp = (
   node = "0000000000000001",
 ): Timestamp =>
   ({
-    millis: Schema.parseSync(Millis)(initialMillis + millis),
+    millis: S.parseSync(Millis)(initialMillis + millis),
     counter,
     node,
   }) as Timestamp;
@@ -34,7 +35,6 @@ export const SqliteTest = Layer.effect(
         const parameters = isSqlString ? [] : arg.parameters;
 
         const rows = isSelect ? (prepared.all(parameters) as SqliteRow[]) : [];
-        parseJsonResults(rows);
         const changes = isSelect ? 0 : prepared.run(parameters).changes;
 
         return { rows, changes };
@@ -43,3 +43,10 @@ export const SqliteTest = Layer.effect(
     return { exec };
   }),
 );
+
+export type Db = {
+  users: {
+    id: Id;
+    name: string;
+  };
+};

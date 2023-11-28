@@ -6,6 +6,7 @@ import {
   Equivalence,
   Function,
   Layer,
+  Match,
   Option,
   Predicate,
   ReadonlyArray,
@@ -21,9 +22,9 @@ import {
   unsafeMerkleTreeFromString,
 } from "./Crdt.js";
 import { SecretBox } from "./Crypto.js";
-import { Owner } from "./Db.js";
-import { UnexpectedError, makeUnexpectedError } from "./Errors.js";
+import { UnexpectedError, makeUnexpectedError } from "./ErrorStore.js";
 import { Id } from "./Model.js";
+import { Owner } from "./Owner.js";
 import { Fetch, SyncLock } from "./Platform.js";
 import {
   EncryptedMessage,
@@ -38,13 +39,11 @@ export interface SyncWorker {
   onMessage: (output: SyncWorkerOutput) => void;
 }
 
-export const SyncWorker = Context.Tag<SyncWorker>("evolu/SyncWorker");
+export const SyncWorker = Context.Tag<SyncWorker>();
 
 export type SyncWorkerPostMessage = SyncWorker["postMessage"];
 
-export const SyncWorkerPostMessage = Context.Tag<SyncWorkerPostMessage>(
-  "evolu/SyncWorkerPostMessage",
-);
+export const SyncWorkerPostMessage = Context.Tag<SyncWorkerPostMessage>();
 
 export type SyncWorkerInput =
   | SyncWorkerInputSync
@@ -86,9 +85,7 @@ interface SyncWorkerInputSyncCompleted {
 
 type SyncWorkerOnMessage = SyncWorker["onMessage"];
 
-const SyncWorkerOnMessage = Context.Tag<SyncWorkerOnMessage>(
-  "evolu/SyncWorkerOnMessage",
-);
+const SyncWorkerOnMessage = Context.Tag<SyncWorkerOnMessage>();
 
 export type SyncWorkerOutput =
   | UnexpectedError
@@ -103,6 +100,12 @@ export type SyncWorkerOutputSyncResponse = {
   readonly syncLoopCount: number;
 };
 
+/**
+ * The SyncState type represents the various states that a synchronization
+ * process can be in. Evolu apps should not bother users with an "unsynced"
+ * state. Instead, they should warn users if data have not been synced for too
+ * long (a week, for example).
+ */
 export type SyncState =
   | SyncStateInitial
   | SyncStateIsSyncing
@@ -319,8 +322,6 @@ export const SyncWorkerLive = Layer.effect(
   SyncWorker,
   Effect.gen(function* (_) {
     const syncLock = yield* _(SyncLock);
-    const fetch = yield* _(Fetch);
-    const secretBox = yield* _(SecretBox);
 
     const onError = (
       error: UnexpectedError,
@@ -329,35 +330,26 @@ export const SyncWorkerLive = Layer.effect(
         syncWorker.onMessage(error);
       });
 
-    const mapInputToEffect = (
-      input: SyncWorkerInput,
-    ): Effect.Effect<
-      SyncLock | SyncWorkerOnMessage | Fetch | SecretBox,
-      never,
-      void
-    > => {
-      switch (input._tag) {
-        case "sync":
-          return sync(input);
-        case "syncCompleted":
-          return syncLock.release;
-      }
-    };
-
-    const postMessage: SyncWorker["postMessage"] = (input) => {
-      void mapInputToEffect(input).pipe(
-        Effect.catchAllDefect(makeUnexpectedError),
-        Effect.catchAll(onError),
-        Effect.provideService(SyncLock, syncLock),
-        Effect.provideService(Fetch, fetch),
-        Effect.provideService(SecretBox, secretBox),
-        Effect.provideService(SyncWorkerOnMessage, syncWorker.onMessage),
-        Effect.runPromise,
-      );
-    };
+    const context = Context.empty().pipe(
+      Context.add(SyncLock, syncLock),
+      Context.add(Fetch, yield* _(Fetch)),
+      Context.add(SecretBox, yield* _(SecretBox)),
+    );
 
     const syncWorker: SyncWorker = {
-      postMessage,
+      postMessage: (input) => {
+        Match.value(input).pipe(
+          Match.tagsExhaustive({
+            sync,
+            syncCompleted: () => syncLock.release,
+          }),
+          Effect.catchAllDefect(makeUnexpectedError),
+          Effect.catchAll(onError),
+          Effect.provide(context),
+          Effect.provideService(SyncWorkerOnMessage, syncWorker.onMessage),
+          Effect.runPromise,
+        );
+      },
       onMessage: Function.constVoid,
     };
 

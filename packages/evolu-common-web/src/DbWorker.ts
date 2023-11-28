@@ -9,8 +9,6 @@ import { Effect, Function, Layer } from "effect";
 import { Bip39Live } from "./PlatformLive.js";
 import { SqliteLive } from "./SqliteLive.js";
 
-// It's a separate file because it's imported dynamically and by Web Worker.
-
 const SyncWorkerLive = Layer.effect(
   SyncWorker,
   Effect.sync(() => {
@@ -31,6 +29,7 @@ const SyncWorkerLive = Layer.effect(
   }),
 );
 
+// It's a separated because it's imported dynamically and by Web Worker.
 export const dbWorker = Effect.provide(
   DbWorker,
   Layer.use(

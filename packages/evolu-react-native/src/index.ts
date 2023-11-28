@@ -1,27 +1,33 @@
 import {
+  Bip39,
+  Config,
   DbWorkerLive,
+  Evolu,
+  EvoluCommonLive,
   FetchLive,
+  InvalidMnemonicError,
+  Mnemonic,
   NanoIdLive,
+  Schema,
   SecretBoxLive,
   SyncWorkerLive,
 } from "@evolu/common";
-import { makeReactHooksForPlatform } from "@evolu/common-react";
-import { Layer } from "effect";
+import { EvoluReactLive, makeCreateEvoluReact } from "@evolu/common-react";
+import { Effect, Layer } from "effect";
 import {
   AppStateLive,
   Bip39Live,
   FlushSyncLive,
-  PlatformLive,
   SyncLockLive,
 } from "./PlatformLive.js";
 import { SqliteLive } from "./SqliteLive.js";
 
-// Public API. It must be copy-pasted to all Evolu UI libs because re-exporting
-// from @evolu/common/Public is not working for some reason.
+// export * from "@evolu/common/public" isn't working in RN for some reason,
+// so we have to export manually.
+// TODO: Recheck after RN 0.73 release.
 export {
   Id,
   NonEmptyString1000,
-  Owner,
   PositiveInt,
   SqliteBoolean,
   SqliteDate,
@@ -30,28 +36,66 @@ export {
   canUseDom,
   cast,
   id,
-  jsonArrayFrom,
-  jsonObjectFrom,
 } from "@evolu/common";
-// Re-exporting a type when 'isolatedModules' is enabled requires using 'export type'.
-export type { EvoluError, Mnemonic, OwnerId, SyncState } from "@evolu/common";
+export type {
+  EvoluError,
+  InvalidMnemonicError,
+  Mnemonic,
+  Owner,
+  OwnerId,
+  SyncState,
+  Timestamp,
+  TimestampError,
+  UnexpectedError,
+} from "@evolu/common";
+export { jsonArrayFrom, jsonObjectFrom } from "kysely/helpers/sqlite";
 
-export const create = makeReactHooksForPlatform(
-  Layer.use(
-    DbWorkerLive,
-    Layer.mergeAll(
-      SqliteLive,
-      Bip39Live,
-      NanoIdLive,
-      Layer.use(
-        SyncWorkerLive,
-        Layer.mergeAll(SyncLockLive, FetchLive, SecretBoxLive),
-      ),
-    ),
-  ),
-  Layer.use(AppStateLive, PlatformLive),
-  PlatformLive,
-  Bip39Live,
-  NanoIdLive,
-  FlushSyncLive,
+/** Evolu for native platform. */
+const EvoluNativeLive: Layer.Layer<
+  Config,
+  never,
+  Evolu<Schema>
+> = EvoluCommonLive.pipe(
+  Layer.use(Layer.mergeAll(FlushSyncLive, AppStateLive, DbWorkerLive)),
+  Layer.use(Layer.mergeAll(Bip39Live, NanoIdLive, SqliteLive, SyncWorkerLive)),
+  Layer.use(Layer.mergeAll(SecretBoxLive, SyncLockLive, FetchLive)),
 );
+
+/**
+ * Create Evolu for React Native.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import * as S from "@effect/schema/Schema";
+ * import * as Evolu from "@evolu/react-native";
+ *
+ * const TodoId = Evolu.id("Todo");
+ * type TodoId = S.Schema.To<typeof TodoId>;
+ *
+ * const TodoTable = S.struct({
+ *   id: TodoId,
+ *   title: Evolu.NonEmptyString1000,
+ * });
+ * type TodoTable = S.Schema.To<typeof TodoTable>;
+ *
+ * const Database = S.struct({
+ *   todo: TodoTable,
+ * });
+ *
+ * const { useEvolu, useEvoluError, useQuery, useOwner } =
+ *   Evolu.create(Database);
+ * ```
+ */
+export const create = EvoluReactLive.pipe(
+  Layer.use(EvoluNativeLive),
+  makeCreateEvoluReact,
+);
+
+/** Parse a string to {@link Mnemonic}. */
+export const parseMnemonic: (
+  mnemonic: string,
+) => Effect.Effect<never, InvalidMnemonicError, Mnemonic> = Bip39.pipe(
+  Effect.provide(Bip39Live),
+  Effect.runSync,
+).parse;

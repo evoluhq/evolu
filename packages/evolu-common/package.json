@@ -23,10 +23,20 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js",
       "browser": "./dist/src/index.js"
+    },
+    "./public": {
+      "import": "./dist/src/Public.js"
     }
   },
   "react-native": {
     "./index.js": "./dist/src/index.js"
+  },
+  "typesVersions": {
+    "*": {
+      "public": [
+        "./dist/src/Public.d.ts"
+      ]
+    }
   },
   "files": [
     "dist/src/**",
@@ -36,9 +46,9 @@
   "scripts": {
     "dev": "tsc --watch",
     "build": "rm -rf dist ./README.md && tsc && cp ../../README.md ./",
-    "lint": "TIMING=1 eslint src --ext .ts,.tsx",
+    "lint": "eslint src --ext .ts,.tsx",
     "test": "vitest run",
-    "clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist",
+    "clean": "rm -rf .turbo node_modules dist",
     "format": "prettier --write \"src/*.{ts,tsx,md}\"",
     "protobuf": "pnpm protoc --ts_out ./src --proto_path protobuf protobuf/Protobuf.proto --ts_opt eslint_disable --ts_opt optimize_code_size && pnpm format"
   },
@@ -48,24 +58,24 @@
     "@protobuf-ts/runtime": "^2.9.1",
     "@scure/bip39": "^1.2.1",
     "kysely": "^0.26.3",
-    "nanoid": "^5.0.2"
+    "nanoid": "^5.0.3"
   },
   "devDependencies": {
-    "@effect/schema": "0.46.3",
+    "@effect/schema": "0.50.0",
     "@evolu/tsconfig": "workspace:*",
     "@protobuf-ts/plugin": "^2.9.1",
     "@protobuf-ts/protoc": "^2.9.1",
     "array-shuffle": "^3.0.0",
-    "better-sqlite3": "^9.0.0",
-    "effect": "2.0.0-next.52",
-    "eslint": "^8.52.0",
+    "better-sqlite3": "^9.1.1",
+    "effect": "2.0.0-next.56",
+    "eslint": "^8.54.0",
     "eslint-config-evolu": "workspace:*",
-    "typescript": "^5.2.2",
+    "typescript": "^5.3.2",
     "vitest": "^0.34.6"
   },
   "peerDependencies": {
-    "@effect/schema": "0.46.3",
-    "effect": "2.0.0-next.52"
+    "@effect/schema": "0.50.0",
+    "effect": "2.0.0-next.56"
   },
   "publishConfig": {
     "access": "public"
@@ -73,5 +83,5 @@
   "engines": {
     "node": ">=18.16"
   },
-  "sideEffects": false
+  "sideEffects": []
 }

@@ -1,3 +1,5 @@
+import buffer from "buffer";
+global.Buffer = buffer.Buffer;
 import "fast-text-encoding";
 import "react-native-get-random-values";
 

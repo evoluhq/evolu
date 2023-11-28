@@ -1,39 +1,37 @@
-import { NanoIdLive } from "@evolu/common";
-import { makeReactHooksForPlatform } from "@evolu/common-react";
-import {
-  AppStateLive,
-  Bip39Live,
-  DbWorkerLive,
-  FlushSyncLive,
-  PlatformLive,
-} from "@evolu/common-web";
+import { EvoluReactLive, makeCreateEvoluReact } from "@evolu/common-react";
+import { EvoluWebLive } from "@evolu/common-web";
 import { Layer } from "effect";
 
-// Public API. It must be copy-pasted to all Evolu UI libs because re-exporting
-// from @evolu/common/Public is not working for some reason.
-export {
-  Id,
-  NonEmptyString1000,
-  Owner,
-  PositiveInt,
-  SqliteBoolean,
-  SqliteDate,
-  String,
-  String1000,
-  canUseDom,
-  cast,
-  id,
-  jsonArrayFrom,
-  jsonObjectFrom,
-} from "@evolu/common";
-// Re-exporting a type when 'isolatedModules' is enabled requires using 'export type'.
-export type { EvoluError, Mnemonic, OwnerId, SyncState } from "@evolu/common";
+export { parseMnemonic } from "@evolu/common-web";
+export * from "@evolu/common/public";
 
-export const create = makeReactHooksForPlatform(
-  Layer.use(DbWorkerLive, PlatformLive),
-  Layer.use(AppStateLive, PlatformLive),
-  PlatformLive,
-  Bip39Live,
-  NanoIdLive,
-  FlushSyncLive,
+/**
+ * Create Evolu for React.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import * as S from "@effect/schema/Schema";
+ * import * as Evolu from "@evolu/react";
+ *
+ * const TodoId = Evolu.id("Todo");
+ * type TodoId = S.Schema.To<typeof TodoId>;
+ *
+ * const TodoTable = S.struct({
+ *   id: TodoId,
+ *   title: Evolu.NonEmptyString1000,
+ * });
+ * type TodoTable = S.Schema.To<typeof TodoTable>;
+ *
+ * const Database = S.struct({
+ *   todo: TodoTable,
+ * });
+ *
+ * const { useEvolu, useEvoluError, useQuery, useOwner } =
+ *   Evolu.create(Database);
+ * ```
+ */
+export const create = EvoluReactLive.pipe(
+  Layer.use(EvoluWebLive),
+  makeCreateEvoluReact,
 );

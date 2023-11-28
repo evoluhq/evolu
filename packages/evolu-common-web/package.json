@@ -30,18 +30,18 @@
   "scripts": {
     "dev": "tsc --watch",
     "build": "rm -rf dist && tsc",
-    "lint": "TIMING=1 eslint src --ext .ts,.tsx",
-    "clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist",
+    "lint": "eslint src --ext .ts,.tsx",
+    "clean": "rm -rf .turbo node_modules dist",
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "devDependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
-    "@sqlite.org/sqlite-wasm": "3.43.2-build1",
-    "@types/web-locks-api": "^0.0.4",
-    "eslint": "^8.52.0",
+    "@sqlite.org/sqlite-wasm": "3.44.2-build1",
+    "@types/web-locks-api": "^0.0.5",
+    "eslint": "^8.54.0",
     "eslint-config-evolu": "workspace:*",
-    "typescript": "^5.2.2",
+    "typescript": "^5.3.2",
     "user-agent-data-types": "^0.4.2",
     "vitest": "^0.34.6"
   },
@@ -55,5 +55,5 @@
   "engines": {
     "node": ">=18.16"
   },
-  "sideEffects": false
+  "sideEffects": []
 }

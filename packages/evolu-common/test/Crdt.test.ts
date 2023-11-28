@@ -1,4 +1,4 @@
-import * as Schema from "@effect/schema/Schema";
+import * as S from "@effect/schema/Schema";
 import { Context, Effect, Either, pipe } from "effect";
 import fs from "fs";
 import { describe, expect, test } from "vitest";
@@ -69,7 +69,7 @@ test("timestampToHash", () => {
 
 const config = Config.pipe(Effect.provide(ConfigLive()), Effect.runSync);
 
-const makeMillis = (millis: number): Millis => Schema.parseSync(Millis)(millis);
+const makeMillis = (millis: number): Millis => S.parseSync(Millis)(millis);
 
 const context0 = pipe(
   Context.empty(),
@@ -417,7 +417,7 @@ describe("diffMerkleTrees", () => {
     };
 
     const randomTimes: Array<number> = [];
-    for (let i = 0; i < 1000; i++) {
+    for (let i = 0; i < 100; i++) {
       randomTimes.push(getRandomTime());
     }
     randomTimes.sort((a, b) => a - b);

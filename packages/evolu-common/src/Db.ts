@@ -7,6 +7,7 @@ import {
   Context,
   Effect,
   Exit,
+  Layer,
   Option,
   Predicate,
   ReadonlyArray,
@@ -15,16 +16,15 @@ import {
   pipe,
 } from "effect";
 import * as Kysely from "kysely";
-import { Simplify } from "kysely";
-import { urlAlphabet } from "nanoid";
 import {
   initialMerkleTree,
   makeInitialTimestamp,
   merkleTreeToString,
   timestampToString,
 } from "./Crdt.js";
-import { Bip39, Mnemonic, NanoId, slip21Derive } from "./Crypto.js";
-import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
+import { Bip39, Mnemonic, NanoId } from "./Crypto.js";
+import { Id } from "./Model.js";
+import { Owner, makeOwner } from "./Owner.js";
 import {
   createMessageTable,
   createMessageTableIndex,
@@ -32,136 +32,145 @@ import {
   insertOwner,
 } from "./Sql.js";
 import {
-  Query,
-  QueryObject,
-  Row,
+  JsonObjectOrArray,
   Sqlite,
+  SqliteQuery,
   Value,
-  queryObjectToQuery,
+  isJsonObjectOrArray,
 } from "./Sqlite.js";
+import { Store, makeStore } from "./Store.js";
+
+export type Schema = ReadonlyRecord.ReadonlyRecord<TableSchema>;
 
 export type TableSchema = ReadonlyRecord.ReadonlyRecord<Value> & {
   readonly id: Id;
 };
 
-export type Schema = ReadonlyRecord.ReadonlyRecord<TableSchema>;
-
-export type CreateQuery<S extends Schema> = (
-  queryCallback: QueryCallback<S, Row>,
-) => Query;
-
-export type QueryCallback<S extends Schema, QueryRow> = (
-  db: KyselyWithoutMutation<QuerySchema<S>>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-) => Kysely.SelectQueryBuilder<any, any, QueryRow>;
-
-type KyselyWithoutMutation<DB> = Pick<Kysely.Kysely<DB>, "selectFrom" | "fn">;
-
-type QuerySchema<S extends Schema> = {
-  readonly [Table in keyof S]: NullableExceptOfId<
-    {
-      readonly [Column in keyof S[Table]]: S[Table][Column];
-    } & CommonColumns
-  >;
-};
-
-export type NullableExceptOfId<T> = {
-  readonly [K in keyof T]: K extends "id" ? T[K] : T[K] | null;
-};
-
-export interface CommonColumns {
-  readonly createdAt: SqliteDate;
-  readonly updatedAt: SqliteDate;
-  readonly isDeleted: SqliteBoolean;
-}
+// https://blog.beraliv.dev/2021-05-07-opaque-type-in-typescript
+declare const __queryBrand: unique symbol;
 
 /**
- * Filter and map array items in one step with the correct return type and
- * without unreliable TypeScript type guards.
- *
- * ### Examples
- *
- * ```
- * useQuery(
- *   (db) => db.selectFrom("todo").selectAll(),
- *   // Filter and map nothing.
- *   (row) => row,
- * );
- *
- * useQuery(
- *   (db) => db.selectFrom("todo").selectAll(),
- *   // Filter items with title != null.
- *   // Note the title type isn't nullable anymore in rows.
- *   ({ title, ...rest }) => title != null && { title, ...rest },
- * );
- * ```
+ * The query is an SQL query serialized as a string with a branded type
+ * representing a row it returns.
  */
-export type FilterMap<QueryRow extends Row, FilterMapRow extends Row> = (
-  row: QueryRow,
-) => FilterMapRow | null | false;
+export type Query<R extends Row = Row> = string &
+  Brand.Brand<"Query"> & { readonly [__queryBrand]: R };
 
-export interface QueryResult<FilterMapRow extends Row> {
-  /**
-   * Rows from the database. They can be filtered and mapped by `filterMap`.
-   */
-  readonly rows: ReadonlyArray<
-    Readonly<Simplify<ExcludeNullAndFalse<FilterMapRow>>>
-  >;
-  /**
-   * The first row from `rows`. For empty rows, it's null.
-   */
-  readonly firstRow: Readonly<
-    Simplify<ExcludeNullAndFalse<FilterMapRow>>
-  > | null;
+export type Queries<R extends Row = Row> = ReadonlyArray<Query<R>>;
+
+interface SerializedSqliteQuery {
+  readonly sql: string;
+  readonly parameters: (
+    | null
+    | string
+    | number
+    | Array<number>
+    | { json: JsonObjectOrArray }
+  )[];
 }
 
-type ExcludeNullAndFalse<T> = Exclude<T, null | false>;
+// We use queries as keys, hence JSON.stringify.
+export const serializeQuery = <R extends Row>({
+  sql,
+  parameters,
+}: SqliteQuery): Query<R> => {
+  const query: SerializedSqliteQuery = {
+    sql,
+    parameters: parameters.map((p) => {
+      return Predicate.isUint8Array(p)
+        ? Array.from(p)
+        : isJsonObjectOrArray(p)
+          ? { json: p }
+          : p;
+    }),
+  };
+  return JSON.stringify(query) as Query<R>;
+};
+
+export const deserializeQuery = <R extends Row>(
+  query: Query<R>,
+): SqliteQuery => {
+  const serializedSqliteQuery = JSON.parse(query) as SerializedSqliteQuery;
+  return {
+    ...serializedSqliteQuery,
+    parameters: serializedSqliteQuery.parameters.map((p) =>
+      Array.isArray(p)
+        ? new Uint8Array(p)
+        : typeof p === "object" && p != null
+          ? p.json
+          : p,
+    ),
+  };
+};
+
+export type Row = ReadonlyRecord.ReadonlyRecord<
+  | Value
+  | Row // for jsonObjectFrom from kysely/helpers/sqlite
+  | ReadonlyArray<Row> // for jsonArrayFrom from kysely/helpers/sqlite
+>;
+
+const _emptyRows: ReadonlyArray<Row> = [];
+
+export const emptyRows = <R extends Row>(): ReadonlyArray<R> =>
+  _emptyRows as ReadonlyArray<R>;
+
+/** An object with rows and row properties. */
+export interface QueryResult<R extends Row = Row> {
+  /** An array containing all the rows returned by the query. */
+  readonly rows: ReadonlyArray<Readonly<Kysely.Simplify<R>>>;
+
+  /**
+   * The first row returned by the query, or null if no rows were returned. This
+   * property is useful for queries that are expected to return a single row.
+   */
+  readonly row: Readonly<Kysely.Simplify<R>> | null;
+}
+
+export type QueryResultsFromQueries<Q extends Queries> = {
+  [P in keyof Q]: Q[P] extends Query<infer R> ? QueryResult<R> : never;
+};
+
+export type QueryResultsPromisesFromQueries<Q extends Queries> = {
+  [P in keyof Q]: Q[P] extends Query<infer R> ? Promise<QueryResult<R>> : never;
+};
+
+const queryResultCache = new WeakMap<ReadonlyArray<Row>, QueryResult<Row>>();
+
+export const queryResultFromRows = <R extends Row>(
+  rows: ReadonlyArray<R>,
+): QueryResult<R> => {
+  let queryResult = queryResultCache.get(rows);
+  if (queryResult == null) {
+    queryResult = { rows, row: rows[0] };
+    queryResultCache.set(rows, queryResult);
+  }
+  return queryResult as QueryResult<R>;
+};
+
+export type Tables = ReadonlyArray<Table>;
 
 export interface Table {
   readonly name: string;
   readonly columns: ReadonlyArray<string>;
 }
 
-export type Tables = ReadonlyArray<Table>;
-
-const commonColumns = ["createdAt", "updatedAt", "isDeleted"];
-
-const kysely: Kysely.Kysely<QuerySchema<Schema>> = new Kysely.Kysely({
-  dialect: {
-    createAdapter: () => new Kysely.SqliteAdapter(),
-    createDriver: () => new Kysely.DummyDriver(),
-    createIntrospector(): Kysely.DatabaseIntrospector {
-      throw "Not implemeneted";
-    },
-    createQueryCompiler: () => new Kysely.SqliteQueryCompiler(),
-  },
-});
-
-export const makeCreateQuery =
-  <S extends Schema>(): CreateQuery<S> =>
-  (queryCallback) =>
-    queryObjectToQuery(queryCallback(kysely as never).compile() as QueryObject);
-
 // https://github.com/Effect-TS/schema/releases/tag/v0.18.0
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
   schema: S.Schema<I, A>,
 ): { [K in keyof A]: S.Schema<I[K], A[K]> } => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const out: Record<PropertyKey, S.Schema<any>> = {};
   const propertySignatures = AST.getPropertySignatures(schema.ast);
   for (let i = 0; i < propertySignatures.length; i++) {
     const propertySignature = propertySignatures[i];
     out[propertySignature.name] = make(propertySignature.type);
   }
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
   return out as any;
 };
 
-export const schemaToTables = (
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  schema: S.Schema<any, any>,
-): Tables =>
+const commonColumns = ["createdAt", "updatedAt", "isDeleted"];
+
+export const schemaToTables = (schema: S.Schema<any, any>): Tables =>
   pipe(
     getPropertySignatures(schema),
     ReadonlyRecord.toEntries,
@@ -174,27 +183,6 @@ export const schemaToTables = (
       }),
     ),
   );
-
-/**
- * `Owner` represents the Evolu database owner. Evolu auto-generates `Owner`
- * on the first run. `Owner` can be reset on the current device and restored
- * on a different one.
- */
-export interface Owner {
-  /** The `Mnemonic` associated with `Owner`. */
-  readonly mnemonic: Mnemonic;
-  /** The unique identifier of `Owner` safely derived from its `Mnemonic`. */
-  readonly id: OwnerId;
-  /* The encryption key used by `Owner` derived from its `Mnemonic`. */
-  readonly encryptionKey: Uint8Array;
-}
-
-export const Owner = Context.Tag<Owner>("evolu/Owner");
-
-/**
- * The unique identifier of `Owner` safely derived from its `Mnemonic`.
- */
-export type OwnerId = Id & Brand.Brand<"Owner">;
 
 export const transaction = <R, E, A>(
   effect: Effect.Effect<R, E, A>,
@@ -233,36 +221,6 @@ export const someDefectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
         )
       : Option.none(),
 );
-
-export const makeOwner = (
-  mnemonic?: Mnemonic,
-): Effect.Effect<Bip39, never, Owner> =>
-  Effect.gen(function* (_) {
-    const bip39 = yield* _(Bip39);
-
-    if (mnemonic == null) mnemonic = yield* _(bip39.make);
-
-    const seed = yield* _(bip39.toSeed(mnemonic));
-
-    const id = yield* _(
-      slip21Derive(seed, ["Evolu", "Owner Id"]).pipe(
-        Effect.map((key) => {
-          // convert key to nanoid
-          let id = "";
-          for (let i = 0; i < 21; i++) {
-            id += urlAlphabet[key[i] & 63];
-          }
-          return id as OwnerId;
-        }),
-      ),
-    );
-
-    const encryptionKey = yield* _(
-      slip21Derive(seed, ["Evolu", "Encryption Key"]),
-    );
-
-    return { mnemonic, id, encryptionKey };
-  });
 
 export const lazyInit = (
   mnemonic?: Mnemonic,
@@ -369,23 +327,12 @@ export const ensureSchema = (
     ),
   );
 
-export const makeCacheFilterMap = (): (<
-  QueryRow extends Row,
-  FilterMapRow extends Row,
->(
-  filterMap: FilterMap<QueryRow, FilterMapRow>,
-) => FilterMap<QueryRow, FilterMapRow>) => {
-  const cache = new WeakMap<Row, Row | null | false>();
+export type RowsStore = Store<RowsStoreValue>;
+export const RowsStore = Context.Tag<RowsStore>();
 
-  return <QueryRow extends Row, FilterMapRow extends Row>(
-      filterMap: FilterMap<QueryRow, FilterMapRow>,
-    ): FilterMap<QueryRow, FilterMapRow> =>
-    (row: QueryRow) => {
-      let cachedRow = cache.get(row);
-      if (cachedRow === undefined) {
-        cachedRow = filterMap(row);
-        cache.set(row, cachedRow);
-      }
-      return cachedRow as FilterMapRow | null | false;
-    };
-};
+type RowsStoreValue = ReadonlyMap<Query, ReadonlyArray<Row>>;
+
+export const RowsStoreLive = Layer.effect(
+  RowsStore,
+  makeStore<RowsStoreValue>(new Map()),
+);

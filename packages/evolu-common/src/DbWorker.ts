@@ -1,14 +1,13 @@
 import { hexToBytes } from "@noble/ciphers/utils";
 import {
-  Brand,
   Context,
   Effect,
   Function,
   Layer,
+  Match,
   Option,
   ReadonlyArray,
   ReadonlyRecord,
-  Ref,
   pipe,
 } from "effect";
 import { Config, ConfigLive } from "./Config.js";
@@ -33,20 +32,25 @@ import {
 } from "./Crdt.js";
 import { Bip39, Mnemonic, NanoId } from "./Crypto.js";
 import {
-  Owner,
-  OwnerId,
+  Queries,
+  Query,
+  RowsStore,
+  RowsStoreLive,
   Table,
   Tables,
+  deserializeQuery,
   ensureSchema,
   lazyInit,
   someDefectToNoSuchTableOrColumnError,
   transaction,
 } from "./Db.js";
 import { QueryPatches, makePatches } from "./Diff.js";
-import { EvoluError, UnexpectedError, makeUnexpectedError } from "./Errors.js";
+import { EvoluError, makeUnexpectedError } from "./ErrorStore.js";
 import { Id, SqliteDate, cast } from "./Model.js";
+import { OnCompleteId } from "./OnCompletes.js";
+import { Owner, OwnerId } from "./Owner.js";
 import * as Sql from "./Sql.js";
-import { Query, Row, Sqlite, Value, queryObjectFromQuery } from "./Sqlite.js";
+import { Sqlite, Value } from "./Sqlite.js";
 import {
   Message,
   NewMessage,
@@ -57,13 +61,12 @@ import {
   SyncWorkerPostMessage,
 } from "./SyncWorker.js";
 
-// TODO: Refactor to Effect.
 export interface DbWorker {
   readonly postMessage: (input: DbWorkerInput) => void;
   onMessage: (output: DbWorkerOutput) => void;
 }
 
-export const DbWorker = Context.Tag<DbWorker>("evolu/DbWorker");
+export const DbWorker = Context.Tag<DbWorker>();
 
 export type DbWorkerInput =
   | DbWorkerInputInit
@@ -77,7 +80,6 @@ export type DbWorkerInput =
 interface DbWorkerInputInit {
   readonly _tag: "init";
   readonly config: Config;
-  readonly tables: Tables;
 }
 
 interface DbWorkerInputQuery {
@@ -87,13 +89,13 @@ interface DbWorkerInputQuery {
 
 interface DbWorkerInputMutate {
   readonly _tag: "mutate";
-  readonly items: ReadonlyArray.NonEmptyReadonlyArray<MutateItem>;
-  readonly queries: ReadonlyArray<Query>;
+  readonly mutations: ReadonlyArray.NonEmptyReadonlyArray<Mutation>;
+  readonly queries: Queries;
 }
 
 interface DbWorkerInputSync {
   readonly _tag: "sync";
-  readonly queries: ReadonlyArray<Query>;
+  readonly queries: Queries;
 }
 
 interface DbWorkerInputReset {
@@ -108,9 +110,7 @@ interface DbWorkerInputEnsureSchema {
 
 type DbWorkerOnMessage = DbWorker["onMessage"];
 
-const DbWorkerOnMessage = Context.Tag<DbWorkerOnMessage>(
-  "evolu/DbWorkerOnMessage",
-);
+const DbWorkerOnMessage = Context.Tag<DbWorkerOnMessage>();
 
 export type DbWorkerOutput =
   | DbWorkerOutputOnError
@@ -120,12 +120,12 @@ export type DbWorkerOutput =
   | DbWorkerOutputOnResetOrRestore
   | DbWorkerOutputOnSyncState;
 
-interface DbWorkerOutputOnError {
+export interface DbWorkerOutputOnError {
   readonly _tag: "onError";
   readonly error: EvoluError;
 }
 
-interface DbWorkerOutputOnOwner {
+export interface DbWorkerOutputOnOwner {
   readonly _tag: "onOwner";
   readonly owner: Owner;
 }
@@ -135,10 +135,6 @@ export interface DbWorkerOutputOnQuery {
   readonly queriesPatches: ReadonlyArray<QueryPatches>;
   readonly onCompleteIds: ReadonlyArray<OnCompleteId>;
 }
-
-export type OnCompleteId = string &
-  Brand.Brand<"Id"> &
-  Brand.Brand<"OnComplete">;
 
 interface DbWorkerOutputOnReceive {
   readonly _tag: "onReceive";
@@ -153,7 +149,7 @@ interface DbWorkerOutputOnSyncState {
   readonly state: SyncState;
 }
 
-export interface MutateItem {
+export interface Mutation {
   readonly table: string;
   readonly id: Id;
   readonly values: ReadonlyRecord.ReadonlyRecord<
@@ -164,54 +160,47 @@ export interface MutateItem {
   readonly onCompleteId: OnCompleteId | null;
 }
 
-const init = (
-  input: DbWorkerInputInit,
-): Effect.Effect<Sqlite | Bip39 | NanoId, never, Owner> =>
-  Effect.gen(function* (_) {
-    const sqlite = yield* _(Sqlite);
+const init = Effect.gen(function* (_) {
+  const sqlite = yield* _(Sqlite);
 
-    return yield* _(
-      sqlite.exec(Sql.selectOwner),
-      Effect.map(
-        ({ rows: [row] }): Owner => ({
-          id: row.id as OwnerId,
-          mnemonic: row.mnemonic as Mnemonic,
-          // expo-sqlite 11.3.2 doesn't support Uint8Array
-          encryptionKey: hexToBytes(row.encryptionKey as string),
-        }),
-      ),
-      someDefectToNoSuchTableOrColumnError,
-      Effect.catchTag("NoSuchTableOrColumnError", () => lazyInit()),
-      Effect.tap(() => ensureSchema(input.tables)),
-    );
-  });
-
-export type RowsCacheMap = ReadonlyMap<Query, ReadonlyArray<Row>>;
-
-type RowsCacheRef = Ref.Ref<RowsCacheMap>;
-const RowsCacheRef = Context.Tag<RowsCacheRef>("evolu/RowsCacheRef");
+  return yield* _(
+    sqlite.exec(Sql.selectOwner),
+    Effect.map(
+      ({ rows: [row] }): Owner => ({
+        id: row.id as OwnerId,
+        mnemonic: row.mnemonic as Mnemonic,
+        // expo-sqlite 11.3.2 doesn't support Uint8Array
+        encryptionKey: hexToBytes(row.encryptionKey as string),
+      }),
+    ),
+    someDefectToNoSuchTableOrColumnError,
+    Effect.catchTag("NoSuchTableOrColumnError", () => lazyInit()),
+  );
+});
 
 const query = ({
   queries,
   onCompleteIds = [],
 }: {
-  readonly queries: ReadonlyArray<Query>;
+  readonly queries: Queries;
   readonly onCompleteIds?: ReadonlyArray<OnCompleteId>;
-}): Effect.Effect<Sqlite | RowsCacheRef | DbWorkerOnMessage, never, void> =>
+}): Effect.Effect<Sqlite | RowsStore | DbWorkerOnMessage, never, void> =>
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
-    const rowsCache = yield* _(RowsCacheRef);
+    const rowsStore = yield* _(RowsStore);
     const dbWorkerOnMessage = yield* _(DbWorkerOnMessage);
 
     const queriesRows = yield* _(
-      Effect.forEach(queries, (query) =>
+      ReadonlyArray.dedupe(queries),
+      Effect.forEach((query) =>
         sqlite
-          .exec(queryObjectFromQuery(query))
+          .exec(deserializeQuery(query))
           .pipe(Effect.map((result) => [query, result.rows] as const)),
       ),
     );
-    const previous = yield* _(Ref.get(rowsCache));
-    yield* _(Ref.set(rowsCache, new Map([...previous, ...queriesRows])));
+
+    const previous = rowsStore.getState();
+    yield* _(rowsStore.setState(new Map([...previous, ...queriesRows])));
 
     const queriesPatches = queriesRows.map(
       ([query, rows]): QueryPatches => ({
@@ -241,11 +230,11 @@ const readTimestampAndMerkleTree = Sqlite.pipe(
   ),
 );
 
-export const mutateItemsToNewMessages = (
-  items: ReadonlyArray<MutateItem>,
+export const mutationsToNewMessages = (
+  mutations: ReadonlyArray<Mutation>,
 ): ReadonlyArray<NewMessage> =>
   pipe(
-    items,
+    mutations,
     ReadonlyArray.map(({ id, isInsert, now, table, values }) =>
       pipe(
         Object.entries(values),
@@ -263,8 +252,8 @@ export const mutateItemsToNewMessages = (
               typeof value === "boolean"
                 ? cast(value)
                 : value instanceof Date
-                ? cast(value)
-                : value,
+                  ? cast(value)
+                  : value,
             ] as const,
         ),
         ReadonlyArray.append([isInsert ? "createdAt" : "updatedAt", now]),
@@ -391,14 +380,14 @@ const writeTimestampAndMerkleTree = ({
   );
 
 const mutate = ({
-  items,
+  mutations,
   queries,
 }: DbWorkerInputMutate): Effect.Effect<
   | Sqlite
   | Owner
   | Time
   | Config
-  | RowsCacheRef
+  | RowsStore
   | DbWorkerOnMessage
   | SyncWorkerPostMessage,
   | TimestampDriftError
@@ -407,16 +396,14 @@ const mutate = ({
   void
 > =>
   Effect.gen(function* (_) {
-    const [toSync, localOnlyItems] = ReadonlyArray.partition(items, (item) =>
+    const [toSync, localOnly] = ReadonlyArray.partition(mutations, (item) =>
       item.table.startsWith("_"),
     );
-    const [toUpsert, toDelete] = ReadonlyArray.partition(
-      localOnlyItems,
-      (item) =>
-        mutateItemsToNewMessages([item]).some(
-          (message) => message.column === "isDeleted" && message.value === 1,
-        ),
-    ).map(mutateItemsToNewMessages);
+    const [toUpsert, toDelete] = ReadonlyArray.partition(localOnly, (item) =>
+      mutationsToNewMessages([item]).some(
+        (message) => message.column === "isDeleted" && message.value === 1,
+      ),
+    ).map(mutationsToNewMessages);
 
     yield* _(
       Effect.forEach(toUpsert, (message) =>
@@ -435,7 +422,7 @@ const mutate = ({
       let { timestamp, merkleTree } = yield* _(readTimestampAndMerkleTree);
 
       const messages = yield* _(
-        mutateItemsToNewMessages(toSync),
+        mutationsToNewMessages(toSync),
         Effect.forEach((message) =>
           Effect.map(sendTimestamp(timestamp), (nextTimestamp): Message => {
             timestamp = nextTimestamp;
@@ -459,7 +446,7 @@ const mutate = ({
       });
     }
 
-    const onCompleteIds = ReadonlyArray.filterMap(items, (item) =>
+    const onCompleteIds = ReadonlyArray.filterMap(mutations, (item) =>
       Option.fromNullable(item.onCompleteId),
     );
     if (queries.length > 0 || onCompleteIds.length > 0)
@@ -477,6 +464,7 @@ const handleSyncResponse = ({
   Effect.gen(function* (_) {
     let { timestamp, merkleTree } = yield* _(readTimestampAndMerkleTree);
 
+    const dbWorkerOnMessage = yield* _(DbWorkerOnMessage);
     if (messages.length > 0) {
       for (const message of messages)
         timestamp = yield* _(
@@ -485,10 +473,8 @@ const handleSyncResponse = ({
         );
       merkleTree = yield* _(applyMessages({ merkleTree, messages }));
       yield* _(writeTimestampAndMerkleTree({ timestamp, merkleTree }));
+      dbWorkerOnMessage({ _tag: "onReceive" });
     }
-
-    const dbWorkerOnMessage = yield* _(DbWorkerOnMessage);
-    dbWorkerOnMessage({ _tag: "onReceive" });
 
     const diff = diffMerkleTrees(response.merkleTree, merkleTree);
 
@@ -506,9 +492,10 @@ const handleSyncResponse = ({
       return;
     }
 
-    const [sqlite, config, owner] = yield* _(
-      Effect.all([Sqlite, Config, Owner]),
-    );
+    const sqlite = yield* _(Sqlite);
+    const config = yield* _(Config);
+    const owner = yield* _(Owner);
+
     const messagesToSync = yield* _(
       sqlite.exec({
         sql: Sql.selectMessagesToSync,
@@ -516,6 +503,14 @@ const handleSyncResponse = ({
       }),
       Effect.map(({ rows }) => rows as unknown as ReadonlyArray<Message>),
     );
+
+    if (response.syncLoopCount > 100) {
+      // TODO: dbWorkerOnMessage({ _tag: "onError" });
+      // eslint-disable-next-line no-console
+      console.error("Evolu: syncLoopCount > 100");
+      return;
+    }
+
     syncWorkerPostMessage({
       _tag: "sync",
       syncUrl: config.syncUrl,
@@ -535,22 +530,17 @@ const sync = ({
   | DbWorkerOnMessage
   | SyncWorkerPostMessage
   | Owner
-  | RowsCacheRef,
+  | RowsStore,
   never,
   void
 > =>
   Effect.gen(function* (_) {
     if (queries.length > 0) yield* _(query({ queries }));
 
-    const [syncWorkerPostMessage, config, owner, timestampAndMerkleTree] =
-      yield* _(
-        Effect.all([
-          SyncWorkerPostMessage,
-          Config,
-          Owner,
-          readTimestampAndMerkleTree,
-        ]),
-      );
+    const syncWorkerPostMessage = yield* _(SyncWorkerPostMessage);
+    const config = yield* _(Config);
+    const owner = yield* _(Owner);
+    const timestampAndMerkleTree = yield* _(readTimestampAndMerkleTree);
 
     syncWorkerPostMessage({
       ...timestampAndMerkleTree,
@@ -593,7 +583,6 @@ export const DbWorkerLive = Layer.effect(
   DbWorker,
   Effect.gen(function* (_) {
     const syncWorker = yield* _(SyncWorker);
-    const rowsCacheRef = yield* _(Ref.make<RowsCacheMap>(new Map()));
 
     const onError = (error: EvoluError): Effect.Effect<never, never, void> =>
       Effect.sync(() => {
@@ -613,20 +602,27 @@ export const DbWorkerLive = Layer.effect(
       }
     };
 
-    const context = Context.empty().pipe(
+    const runContext = Context.empty().pipe(
       Context.add(Sqlite, yield* _(Sqlite)),
       Context.add(Bip39, yield* _(Bip39)),
       Context.add(NanoId, yield* _(NanoId)),
+      Context.add(DbWorkerOnMessage, (output) => {
+        dbWorker.onMessage(output);
+      }),
     );
 
     const run = (
-      effect: Effect.Effect<Sqlite | Bip39 | NanoId, EvoluError, void>,
+      effect: Effect.Effect<
+        Sqlite | Bip39 | NanoId | DbWorkerOnMessage,
+        EvoluError,
+        void
+      >,
     ): Promise<void> =>
       effect.pipe(
         Effect.catchAllDefect(makeUnexpectedError),
         transaction,
         Effect.catchAll(onError),
-        Effect.provide(context),
+        Effect.provide(runContext),
         Effect.runPromise,
       );
 
@@ -635,65 +631,39 @@ export const DbWorkerLive = Layer.effect(
     // Write for reset only in case init fails.
     const writeForInitFail: Write = (input): Promise<void> => {
       if (input._tag !== "reset") return Promise.resolve(undefined);
-      return reset(input).pipe(
-        Effect.provideService(DbWorkerOnMessage, dbWorker.onMessage),
-        Effect.provide(context),
-        run,
-      );
+      return reset(input).pipe(run);
     };
 
-    const makeWriteForInitSuccess = (owner: Owner, config: Config): Write => {
+    const makeWriteForInitSuccess = (config: Config, owner: Owner): Write => {
       let skipAllBecauseOfReset = false;
 
       const layer = Layer.mergeAll(
         ConfigLive(config),
-        Layer.succeed(DbWorkerOnMessage, dbWorker.onMessage),
         Layer.succeed(Owner, owner),
         Layer.succeed(SyncWorkerPostMessage, syncWorker.postMessage),
-        Layer.succeed(RowsCacheRef, rowsCacheRef),
+        RowsStoreLive,
         TimeLive,
       );
 
-      const mapInputToEffect = (
-        input: DbWorkerInput,
-      ): Effect.Effect<
-        | Sqlite
-        | RowsCacheRef
-        | DbWorkerOnMessage
-        | Owner
-        | Time
-        | Config
-        | SyncWorkerPostMessage
-        | Bip39
-        | NanoId,
-        | UnexpectedError
-        | TimestampDriftError
-        | TimestampCounterOverflowError
-        | TimestampError,
-        void
-      > => {
-        switch (input._tag) {
-          case "init":
-            return makeUnexpectedError(new Error("init must be called once"));
-          case "query":
-            return query(input);
-          case "mutate":
-            return mutate(input);
-          case "sync":
-            return sync(input);
-          case "reset":
-            skipAllBecauseOfReset = true;
-            return reset(input);
-          case "ensureSchema":
-            return ensureSchema(input.tables);
-          case "SyncWorkerOutputSyncResponse":
-            return handleSyncResponse(input);
-        }
-      };
-
       return (input) => {
         if (skipAllBecauseOfReset) return Promise.resolve(undefined);
-        return mapInputToEffect(input).pipe(Effect.provide(layer), run);
+        return Match.value(input).pipe(
+          Match.tagsExhaustive({
+            init: () =>
+              makeUnexpectedError(new Error("init must be called once")),
+            query,
+            mutate,
+            sync,
+            reset: (input) => {
+              skipAllBecauseOfReset = true;
+              return reset(input);
+            },
+            ensureSchema: ({ tables }) => ensureSchema(tables),
+            SyncWorkerOutputSyncResponse: handleSyncResponse,
+          }),
+          Effect.provide(layer),
+          run,
+        );
       };
     };
 
@@ -701,10 +671,10 @@ export const DbWorkerLive = Layer.effect(
       if (input._tag !== "init")
         return run(makeUnexpectedError(new Error("init must be called first")));
       write = writeForInitFail;
-      return init(input).pipe(
+      return init.pipe(
         Effect.map((owner) => {
           dbWorker.onMessage({ _tag: "onOwner", owner });
-          write = makeWriteForInitSuccess(owner, input.config);
+          write = makeWriteForInitSuccess(input.config, owner);
         }),
         run,
       );

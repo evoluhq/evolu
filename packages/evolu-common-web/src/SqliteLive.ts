@@ -2,21 +2,12 @@ import {
   Sqlite,
   SqliteRow,
   canUseDom,
-  parseJsonResults,
+  ensureSqliteQuery,
+  maybeParseJson,
   valuesToSqliteValues,
 } from "@evolu/common";
-import { Effect, Function, Layer } from "effect";
-
 import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
-
-if (canUseDom)
-  // @ts-expect-error Missing types.
-  self.sqlite3ApiConfig = {
-    debug: Function.constVoid,
-    log: Function.constVoid,
-    warn: Function.constVoid,
-    error: Function.constVoid,
-  };
+import { Effect, Layer } from "effect";
 
 const sqlitePromise = sqlite3InitModule().then((sqlite3) =>
   canUseDom
@@ -27,13 +18,13 @@ const sqlitePromise = sqlite3InitModule().then((sqlite3) =>
 const exec: Sqlite["exec"] = (arg) =>
   Effect.gen(function* (_) {
     const sqlite = yield* _(Effect.promise(() => sqlitePromise));
-    const isSqlString = typeof arg === "string";
-    const rows = sqlite.exec(isSqlString ? arg : arg.sql, {
+    const sqliteQuery = ensureSqliteQuery(arg);
+    const rows = sqlite.exec(sqliteQuery.sql, {
       returnValue: "resultRows",
       rowMode: "object",
-      ...(!isSqlString && { bind: valuesToSqliteValues(arg.parameters) }),
+      bind: valuesToSqliteValues(sqliteQuery.parameters),
     }) as SqliteRow[];
-    parseJsonResults(rows);
+    maybeParseJson(rows);
     return { rows, changes: sqlite.changes() };
   });
 

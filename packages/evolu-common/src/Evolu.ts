@@ -1,93 +1,600 @@
+import * as S from "@effect/schema/Schema";
 import {
   Context,
   Effect,
-  Either,
   Function,
   Layer,
+  Match,
   Number,
-  Option,
   ReadonlyArray,
-  absurd,
   pipe,
 } from "effect";
-import { Simplify } from "kysely";
-import { Config, ConfigLive } from "./Config.js";
+import * as Kysely from "kysely";
+import { Config } from "./Config.js";
 import { Time, TimeLive } from "./Crdt.js";
-import { Bip39, NanoId } from "./Crypto.js";
+import { Mnemonic, NanoId, NanoIdLive } from "./Crypto.js";
 import {
-  CommonColumns,
-  CreateQuery,
-  NullableExceptOfId,
-  Owner,
+  Queries,
+  Query,
+  QueryResult,
+  QueryResultsPromisesFromQueries,
+  Row,
+  RowsStore,
+  RowsStoreLive,
   Schema,
-  Tables,
-  makeCreateQuery,
+  emptyRows,
+  queryResultFromRows,
+  schemaToTables,
+  serializeQuery,
 } from "./Db.js";
-import {
-  DbWorker,
-  DbWorkerOutputOnQuery,
-  MutateItem,
-  OnCompleteId,
-  RowsCacheMap,
-} from "./DbWorker.js";
+import { DbWorker, DbWorkerOutputOnQuery, Mutation } from "./DbWorker.js";
 import { applyPatches } from "./Diff.js";
-import { EvoluError } from "./Errors.js";
-import { CastableForMutate, Id, cast } from "./Model.js";
+import { EvoluError, makeErrorStore } from "./ErrorStore.js";
+import { SqliteBoolean, SqliteDate, cast } from "./Model.js";
+import { OnCompletes, OnCompletesLive } from "./OnCompletes.js";
+import { Owner } from "./Owner.js";
 import { AppState, FlushSync } from "./Platform.js";
-import { Query, Row } from "./Sqlite.js";
-import { Store, StoreListener, StoreUnsubscribe, makeStore } from "./Store.js";
+import { SqliteQuery } from "./Sqlite.js";
+import { Store, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
 
-export interface Evolu<S extends Schema> {
-  readonly subscribeError: ErrorStore["subscribe"];
-  readonly getError: ErrorStore["getState"];
+export interface Evolu<T extends Schema = Schema> {
+  /**
+   * Subscribe to {@link EvoluError} changes.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const unsubscribe = evolu.subscribeError(() => {
+   *   const error = evolu.getError();
+   *   console.log(error);
+   * });
+   * ```
+   */
+  readonly subscribeError: Store<EvoluError | null>["subscribe"];
 
-  readonly subscribeOwner: OwnerStore["subscribe"];
-  readonly getOwner: OwnerStore["getState"];
+  /** Get {@link EvoluError}. */
+  readonly getError: Store<EvoluError | null>["getState"];
 
-  readonly subscribeQuery: QueryStore["subscribe"];
-  readonly getQuery: QueryStore["getState"];
-  readonly createQuery: CreateQuery<S>;
-  readonly loadQuery: QueryStore["loadQuery"];
+  /**
+   * Create type-safe SQL {@link Query}.
+   *
+   * Evolu uses Kysely - the type-safe SQL query builder for TypeScript. See
+   * https://kysely.dev.
+   *
+   * For mutations, use {@link create} and {@link update}.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const allTodos = evolu.createQuery((db) =>
+   *   db.selectFrom("todo").selectAll(),
+   * );
+   *
+   * const todoById = (id: TodoId) =>
+   *   evolu.createQuery((db) =>
+   *     db.selectFrom("todo").selectAll().where("id", "=", id),
+   *   );
+   * ```
+   */
+  readonly createQuery: CreateQuery<T>;
 
-  readonly subscribeSyncState: (listener: StoreListener) => StoreUnsubscribe;
-  readonly getSyncState: () => SyncState;
+  /**
+   * Load {@link Query} and return a promise with {@link QueryResult}.
+   *
+   * A returned promise always resolves successfully because there is no reason
+   * why loading should fail. All data are local, and the query is typed. A
+   * serious unexpected Evolu error shall be handled with
+   * {@link subscribeError}.
+   *
+   * Loading is batched, and returned promises are cached, so there is no need
+   * for an additional cache. Evolu's internal cache is invalidated on
+   * mutation.
+   *
+   * The returned promise is enriched with special status and value properties
+   * for the upcoming React `use` Hook, but other UI libraries can also leverage
+   * them. Speaking of React, there are two essential React Suspense-related
+   * patterns that every developer should be aware of—passing promises to
+   * children and caching over mutations.
+   *
+   * With promises passed to children, we can load a query as soon as possible,
+   * but we don't have to use the returned promise immediately. That's useful
+   * for prefetching, which is generally not necessary for local-first apps but
+   * can be if a query takes a long time to load.
+   *
+   * Caching over mutation is a pattern that every developer should know. As we
+   * said, Evolu caches promise until a mutation happens. A query loaded after
+   * that will return a new pending promise. That's okay for general usage but
+   * not for UI with React Suspense because a mutation would suspend rerendered
+   * queries on a page, and that's not a good UX.
+   *
+   * We call this pattern "caching over mutation" because it has no globally
+   * accepted name yet. React RFC for React Cache does not exist yet.
+   *
+   * For better UX, a query must be subscribed for updates. This way, instead of
+   * Suspense flashes, the user sees new data immediately because Evolu replaces
+   * cached promises with fresh, already resolved new ones.
+   *
+   * If you are curious why Evolu does not do that for all queries by default,
+   * the answer is simple: performance. Tracking changes is costly and
+   * meaningful only for visible (hence subscribed) queries anyway. To subscribe
+   * to a query, use {@link subscribeQuery}.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const allTodos = evolu.createQuery((db) =>
+   *   db.selectFrom("todo").selectAll(),
+   * );
+   * evolu.loadQuery(allTodos).then(({ rows }) => {
+   *   console.log(rows);
+   * });
+   * ```
+   */
+  readonly loadQuery: LoadQuery;
 
-  readonly create: Create<S>;
-  readonly update: Update<S>;
+  /**
+   * Load an array of {@link Query} queries and return an array of
+   * {@link QueryResult} promises. It's like `queries.map(loadQuery)` but with
+   * proper types for returned promises.
+   *
+   * ### Example
+   *
+   * ```ts
+   * evolu.loadQueries([allTodos, todoById(1)]);
+   * ```
+   */
+  readonly loadQueries: <R extends Row, Q extends Queries<R>>(
+    queries: [...Q],
+  ) => [...QueryResultsPromisesFromQueries<Q>];
 
-  readonly ownerActions: OwnerActions;
-  readonly ensureSchema: (tables: Tables) => void;
+  /**
+   * Subscribe to {@link Query} {@link QueryResult} changes.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const unsubscribe = evolu.subscribeQuery(allTodos)(() => {
+   *   const { rows } = evolu.getQuery(allTodos);
+   * });
+   * ```
+   */
+  readonly subscribeQuery: SubscribedQueries["subscribeQuery"];
+
+  /**
+   * Get {@link Query} {@link QueryResult}.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const unsubscribe = evolu.subscribeQuery(allTodos)(() => {
+   *   const { rows } = evolu.getQuery(allTodos);
+   * });
+   * ```
+   */
+  readonly getQuery: SubscribedQueries["getQuery"];
+
+  /**
+   * Subscribe to {@link Owner} changes.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const unsubscribe = evolu.subscribeOwner(() => {
+   *   const owner = evolu.getOwner();
+   * });
+   * ```
+   */
+  readonly subscribeOwner: Store<Owner | null>["subscribe"];
+
+  /**
+   * Get {@link Owner}.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const unsubscribe = evolu.subscribeOwner(() => {
+   *   const owner = evolu.getOwner();
+   * });
+   * ```
+   */
+  readonly getOwner: Store<Owner | null>["getState"];
+
+  /**
+   * Subscribe to {@link SyncState} changes.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const unsubscribe = evolu.subscribeSyncState(() => {
+   *   const syncState = evolu.getSyncState();
+   * });
+   * ```
+   */
+  readonly subscribeSyncState: Store<SyncState>["subscribe"];
+
+  /**
+   * Get {@link SyncState}.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const unsubscribe = evolu.subscribeSyncState(() => {
+   *   const syncState = evolu.getSyncState();
+   * });
+   * ```
+   */
+  readonly getSyncState: Store<SyncState>["getState"];
+
+  /**
+   * The function creates a row in the database and returns a new ID. The first
+   * argument is the table name, and the second is an object.
+   *
+   * The third optional argument, the onComplete callback, is generally
+   * unnecessary because creating a row cannot fail. Still, UI libraries can use
+   * it to ensure the DOM is updated if we want to manipulate it, for example,
+   * to focus an element.
+   *
+   * Evolu does not use SQL for mutations to ensure data can be safely and
+   * predictably merged without conflicts.
+   *
+   * Explicit mutations also allow Evolu to automatically add and update a few
+   * useful columns common to all tables. Those columns are: `createdAt`,
+   * `updatedAt`, and `isDeleted`.
+   *
+   * ### Example
+   *
+   * ```ts
+   * import * as S from "@effect/schema/Schema";
+   *
+   * // Evolu uses the Schema to enforce domain model.
+   * const title = S.parseSync(Evolu.NonEmptyString1000)("A title");
+   *
+   * const { id } = evolu.create("todo", { title }, () => {
+   *   // onComplete callback
+   * });
+   * ```
+   */
+  create: Mutate<T, "create">;
+
+  /**
+   * The function updates a row in the database and returns the existing ID. The
+   * first argument is the table name, and the second is an object.
+   *
+   * The third optional argument, the onComplete callback, is generally
+   * unnecessary because creating a row cannot fail. Still, UI libraries can use
+   * it to ensure the DOM is updated if we want to manipulate it, for example,
+   * to focus an element.
+   *
+   * Evolu does not use SQL for mutations to ensure data can be safely and
+   * predictably merged without conflicts.
+   *
+   * Explicit mutations also allow Evolu to automatically add and update a few
+   * useful columns common to all tables. Those columns are: `createdAt`,
+   * `updatedAt`, and `isDeleted`.
+   *
+   * ### Example
+   *
+   * ```ts
+   * import * as S from "@effect/schema/Schema";
+   *
+   * // Evolu uses the Schema to enforce domain model.
+   * const title = S.parseSync(Evolu.NonEmptyString1000)("A title");
+   * evolu.update("todo", { id, title });
+   *
+   * // To delete a row, set `isDeleted` to true.
+   * evolu.update("todo", { id, isDeleted: true });
+   * ```
+   */
+  update: Mutate<T, "update">;
+
+  /**
+   * Delete {@link Owner} and all their data from the current device. After the
+   * deletion, Evolu will purge the application state. For browsers, this will
+   * reload all tabs using Evolu. For native apps, it will restart the app.
+   */
+  readonly resetOwner: () => void;
+
+  /** Restore {@link Owner} with all their synced data. */
+  readonly restoreOwner: (mnemonic: Mnemonic) => void;
+
+  /** Ensure tables and columns defined in {@link Schema} exist in the database. */
+  readonly ensureSchema: <From, To extends T>(
+    schema: S.Schema<From, To>,
+  ) => void;
 }
 
-export const Evolu = <S extends Schema>(): Context.Tag<Evolu<S>, Evolu<S>> =>
-  Context.Tag<Evolu<S>>("evolu/Evolu");
+export const Evolu = Context.Tag<Evolu>();
 
-type ErrorStore = Store<EvoluError | null>;
+type CreateQuery<S extends Schema> = <R extends Row>(
+  queryCallback: QueryCallback<S, R>,
+) => Query<R>;
 
-type OwnerStore = Store<Owner | null>;
+type QueryCallback<S extends Schema, R extends Row> = (
+  db: Pick<
+    Kysely.Kysely<QuerySchema<S>>,
+    | "selectFrom"
+    // TODO: Test.
+    // | "selectNoFrom"
+    | "fn"
+  >,
+) => Kysely.SelectQueryBuilder<any, any, R>;
 
-interface QueryStore {
-  readonly subscribe: (
-    query: Query | null,
-  ) => (listener: StoreListener) => StoreUnsubscribe;
-  readonly getState: (query: Query | null) => ReadonlyArray<Row> | null;
-  readonly loadQuery: (query: Query) => Promise<ReadonlyArray<Row>>;
-  readonly onQuery: (output: DbWorkerOutputOnQuery) => void;
-}
-
-const QueryStore = Context.Tag<QueryStore>("evolu/QueryStore");
-
-export type Create<S extends Schema> = <T extends keyof S>(
-  table: T,
-  values: Simplify<PartialOnlyForNullable<CastableForMutate<Omit<S[T], "id">>>>,
-  onComplete?: () => void,
-) => {
-  readonly id: S[T]["id"];
+type QuerySchema<S extends Schema> = {
+  readonly [Table in keyof S]: NullableExceptId<
+    {
+      readonly [Column in keyof S[Table]]: S[Table][Column];
+    } & CommonColumns
+  >;
 };
 
+type NullableExceptId<T> = {
+  readonly [K in keyof T]: K extends "id" ? T[K] : T[K] | null;
+};
+
+export interface CommonColumns {
+  readonly createdAt: SqliteDate;
+  readonly updatedAt: SqliteDate;
+  readonly isDeleted: SqliteBoolean;
+}
+
+const kysely = new Kysely.Kysely<QuerySchema<Schema>>({
+  dialect: {
+    createAdapter: (): Kysely.DialectAdapter => new Kysely.SqliteAdapter(),
+    createDriver: (): Kysely.Driver => new Kysely.DummyDriver(),
+    createIntrospector(): Kysely.DatabaseIntrospector {
+      throw "Not implemeneted";
+    },
+    createQueryCompiler: (): Kysely.QueryCompiler =>
+      new Kysely.SqliteQueryCompiler(),
+  },
+});
+
+export const makeCreateQuery =
+  <S extends Schema = Schema>(): CreateQuery<S> =>
+  <R extends Row>(queryCallback: QueryCallback<S, R>) =>
+    pipe(
+      queryCallback(kysely as Kysely.Kysely<QuerySchema<S>>).compile(),
+      ({ sql, parameters }): SqliteQuery => ({
+        sql,
+        parameters: parameters as SqliteQuery["parameters"],
+      }),
+      (query) => serializeQuery<R>(query),
+    );
+
+export interface LoadingPromises {
+  readonly get: <R extends Row>(
+    query: Query<R>,
+  ) => {
+    readonly promise: LoadingPromise<R>;
+    readonly isNew: boolean;
+  };
+
+  readonly resolve: <R extends Row>(
+    query: Query<R>,
+    rows: ReadonlyArray<R>,
+  ) => void;
+
+  /**
+   * Release all unsubscribed queries on mutation because only subscribed
+   * queries are automatically updated.
+   */
+  readonly release: () => void;
+}
+
+export const LoadingPromises = Context.Tag<LoadingPromises>();
+
+export type LoadingPromise<R extends Row> = Promise<QueryResult<R>> & {
+  status?: "pending" | "fulfilled" | "rejected";
+  value?: QueryResult<R>;
+  reason?: unknown;
+};
+
+export const LoadingPromiseLive = Layer.effect(
+  LoadingPromises,
+  Effect.gen(function* (_) {
+    interface LoadingPromiseWithResolve<R extends Row> {
+      promise: LoadingPromise<R>;
+      readonly resolve: Resolve<R>;
+      releaseOnResolve: boolean;
+    }
+    type Resolve<R extends Row> = (rows: QueryResult<R>) => void;
+
+    const subscribedQueries = yield* _(SubscribedQueries);
+    const promises = new Map<Query, LoadingPromiseWithResolve<Row>>();
+
+    return LoadingPromises.of({
+      get<R extends Row>(query: Query<R>) {
+        let isNew = false;
+        let promiseWithResolve = promises.get(query);
+
+        if (!promiseWithResolve) {
+          isNew = true;
+          let resolve: Resolve<Row> = Function.constVoid;
+          const promise: LoadingPromise<Row> = new Promise((_resolve) => {
+            resolve = _resolve;
+          });
+          promiseWithResolve = { promise, resolve, releaseOnResolve: false };
+          promises.set(query, promiseWithResolve);
+        }
+
+        return {
+          promise: promiseWithResolve.promise as LoadingPromise<R>,
+          isNew,
+        };
+      },
+
+      resolve(query, rows) {
+        const promiseWithResolve = promises.get(query);
+        if (!promiseWithResolve) return;
+        const result = queryResultFromRows(rows);
+        if (promiseWithResolve.promise.status !== "fulfilled")
+          promiseWithResolve.resolve(result);
+        else promiseWithResolve.promise = Promise.resolve(result);
+        setPromiseAsResolved(promiseWithResolve.promise)(result);
+        if (promiseWithResolve.releaseOnResolve) promises.delete(query);
+      },
+
+      release() {
+        const keep = subscribedQueries.getSubscribedQueries();
+        promises.forEach((promiseWithResolve, query) => {
+          if (keep.includes(query)) return;
+          if (promiseWithResolve.promise.status === "fulfilled")
+            promises.delete(query);
+          else promiseWithResolve.releaseOnResolve = true;
+        });
+      },
+    });
+  }),
+);
+
+// "For example, a data framework can set the status and value fields on a promise
+// preemptively, before passing to React, so that React can unwrap it without waiting
+// a microtask."
+// https://github.com/acdlite/rfcs/blob/first-class-promises/text/0000-first-class-support-for-promises.md
+const setPromiseAsResolved =
+  <T>(promise: Promise<T>) =>
+  (value: unknown): void => {
+    Object.assign(promise, { status: "fulfilled", value });
+  };
+
+type LoadQuery = <R extends Row>(query: Query<R>) => Promise<QueryResult<R>>;
+
+const LoadQuery = Context.Tag<LoadQuery>();
+
+const LoadQueryLive = Layer.effect(
+  LoadQuery,
+  Effect.gen(function* (_) {
+    const loadingPromises = yield* _(LoadingPromises);
+    const dbWorker = yield* _(DbWorker);
+    let queries: ReadonlyArray<Query> = [];
+
+    return LoadQuery.of((query) => {
+      const { promise, isNew } = loadingPromises.get(query);
+      if (isNew) queries = [...queries, query];
+      if (queries.length === 1) {
+        queueMicrotask(() => {
+          if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
+            dbWorker.postMessage({ _tag: "query", queries });
+          queries = [];
+        });
+      }
+      return promise;
+    });
+  }),
+);
+
+type OnQuery = (
+  dbWorkerOutputOnQuery: DbWorkerOutputOnQuery,
+) => Effect.Effect<never, never, void>;
+
+const OnQuery = Context.Tag<OnQuery>();
+
+const OnQueryLive = Layer.effect(
+  OnQuery,
+  Effect.gen(function* (_) {
+    const rowsStore = yield* _(RowsStore);
+    const loadingPromises = yield* _(LoadingPromises);
+    const flushSync = yield* _(FlushSync);
+    const onCompletes = yield* _(OnCompletes);
+
+    return OnQuery.of(({ queriesPatches, onCompleteIds }) =>
+      Effect.gen(function* (_) {
+        const currentState = rowsStore.getState();
+        const nextState = pipe(
+          queriesPatches,
+          ReadonlyArray.map(
+            ({ query, patches }) =>
+              [
+                query,
+                applyPatches(patches)(currentState.get(query) || emptyRows()),
+              ] as const,
+          ),
+          (map) => new Map([...currentState, ...map]),
+        );
+
+        queriesPatches.forEach(({ query }) => {
+          loadingPromises.resolve(query, nextState.get(query) || emptyRows());
+        });
+
+        // No mutation is using onComplete, so we don't need flushSync.
+        if (onCompleteIds.length === 0) {
+          yield* _(rowsStore.setState(nextState));
+          return;
+        }
+
+        flushSync(() => rowsStore.setState(nextState).pipe(Effect.runSync));
+        yield* _(onCompletes.complete(onCompleteIds));
+      }),
+    );
+  }),
+);
+
+export interface SubscribedQueries {
+  readonly subscribeQuery: (query: Query) => Store<Row>["subscribe"];
+  readonly getQuery: <R extends Row>(query: Query<R>) => QueryResult<R>;
+  readonly getSubscribedQueries: () => Queries;
+}
+
+export const SubscribedQueries = Context.Tag<SubscribedQueries>();
+
+export const SubscribedQueriesLive = Layer.effect(
+  SubscribedQueries,
+  Effect.gen(function* (_) {
+    const rowsStore = yield* _(RowsStore);
+    const subscribedQueries = new Map<Query, number>();
+
+    return SubscribedQueries.of({
+      subscribeQuery:
+        (query) =>
+        (listener): Unsubscribe => {
+          subscribedQueries.set(
+            query,
+            Number.increment(subscribedQueries.get(query) ?? 0),
+          );
+          const unsubscribe = rowsStore.subscribe(listener);
+
+          return () => {
+            const count = subscribedQueries.get(query);
+            if (count != null && count > 1)
+              subscribedQueries.set(query, Number.decrement(count));
+            else subscribedQueries.delete(query);
+            unsubscribe();
+          };
+        },
+
+      getQuery: <R extends Row>(query: Query<R>): QueryResult<R> =>
+        queryResultFromRows(
+          rowsStore.getState().get(query) || emptyRows(),
+        ) as QueryResult<R>,
+
+      getSubscribedQueries: () =>
+        ReadonlyArray.fromIterable(subscribedQueries.keys()),
+    });
+  }),
+);
+
+type Mutate<
+  S extends Schema = Schema,
+  Mode extends "create" | "update" = "update",
+> = <K extends keyof S>(
+  table: K,
+  values: Kysely.Simplify<
+    Mode extends "create"
+      ? PartialForNullable<Castable<Omit<S[K], "id">>>
+      : Partial<
+          Castable<Omit<S[K], "id"> & Pick<CommonColumns, "isDeleted">>
+        > & { readonly id: S[K]["id"] }
+  >,
+  onComplete?: () => void,
+) => {
+  readonly id: S[K]["id"];
+};
+
+const Mutate = Context.Tag<Mutate>();
+
 // https://stackoverflow.com/a/54713648/233902
-type PartialOnlyForNullable<
+type PartialForNullable<
   T,
   NK extends keyof T = {
     [K in keyof T]: null extends T[K] ? K : never;
@@ -95,433 +602,166 @@ type PartialOnlyForNullable<
   NP = Pick<T, Exclude<keyof T, NK>> & Partial<Pick<T, NK>>,
 > = { [K in keyof NP]: NP[K] };
 
-export type Update<S extends Schema> = <T extends keyof S>(
-  table: T,
-  values: Simplify<
-    Partial<
-      CastableForMutate<Omit<S[T], "id"> & Pick<CommonColumns, "isDeleted">>
-    > & { readonly id: S[T]["id"] }
-  >,
-  onComplete?: () => void,
-) => {
-  readonly id: S[T]["id"];
+/**
+ * SQLite doesn't support Date nor Boolean types, so Evolu emulates them with
+ * {@link SqliteBoolean} and {@link SqliteDate}.
+ *
+ * For {@link SqliteBoolean}, you can use JavaScript boolean. For
+ * {@link SqliteDate}, you can use JavaScript Date.
+ */
+type Castable<T> = {
+  readonly [K in keyof T]: T[K] extends SqliteBoolean
+    ? boolean | SqliteBoolean
+    : T[K] extends null | SqliteBoolean
+      ? null | boolean | SqliteBoolean
+      : T[K] extends SqliteDate
+        ? Date | SqliteDate
+        : T[K] extends null | SqliteDate
+          ? null | Date | SqliteDate
+          : T[K];
 };
 
-type Mutate<S extends Schema> = <
-  U extends SchemaForMutate<S>,
-  T extends keyof U,
->(
-  table: T,
-  values: Simplify<Partial<CastableForMutate<U[T]>>>,
-  onComplete?: () => void,
-) => {
-  readonly id: U[T]["id"];
-};
-
-const Mutate = <S extends Schema>(): Context.Tag<Mutate<S>, Mutate<S>> =>
-  Context.Tag<Mutate<S>>("evolu/Mutate");
-
-type SchemaForMutate<S extends Schema> = {
-  readonly [Table in keyof S]: NullableExceptOfId<
-    {
-      readonly [Column in keyof S[Table]]: S[Table][Column];
-    } & Pick<CommonColumns, "isDeleted">
-  >;
-};
-
-export interface OwnerActions {
-  /**
-   * Use `reset` to delete all local data from the current device.
-   * After the deletion, Evolu reloads all browser tabs that use Evolu.
-   */
-  readonly reset: () => void;
-
-  /**
-   * Use `restore` to restore `Owner` with synced data on a different device.
-   */
-  readonly restore: (
-    mnemonic: string,
-  ) => Promise<Either.Either<RestoreOwnerError, void>>;
-}
-
-const OwnerActions = Context.Tag<OwnerActions>("evolu/OwnerActions");
-
-interface RestoreOwnerError {
-  readonly _tag: "RestoreOwnerError";
-}
-
-type SubscribedQueries = Map<Query, number>;
-
-const SubscribedQueries = Context.Tag<SubscribedQueries>(
-  "evolu/SubscribedQueries",
-);
-
-type OnCompletes = Map<OnCompleteId, OnComplete>;
-
-const OnCompletes = Context.Tag<OnCompletes>("evolu/OnCompletes");
-
-type OnComplete = () => void;
-
-interface LoadingPromises {
-  readonly getPromise: (query: Query) => {
-    readonly promise: Promise<ReadonlyArray<Row>>;
-    readonly isNew: boolean;
-  };
-  readonly resolvePromise: (query: Query, rows: ReadonlyArray<Row>) => void;
-  readonly releasePromises: (ignoreQueries: ReadonlyArray<Query>) => void;
-}
-
-const LoadingPromises = Context.Tag<LoadingPromises>("evolu/LoadingPromises");
-
-export const loadingPromisesPromiseProp = "rows";
-
-const LoadingPromisesLive = Layer.effect(
-  LoadingPromises,
-  Effect.sync(() => {
-    const promises = new Map<
-      Query,
-      {
-        readonly promise: Promise<ReadonlyArray<Row>>;
-        readonly resolve: (rows: ReadonlyArray<Row>) => void;
-      }
-    >();
-
-    const getPromise: LoadingPromises["getPromise"] = (query) => {
-      const item = promises.get(query);
-      if (item) return { promise: item.promise, isNew: false };
-      let resolve: (rows: ReadonlyArray<Row>) => void = Function.constVoid;
-      const promise = new Promise<ReadonlyArray<Row>>((_resolve) => {
-        resolve = _resolve;
-      });
-      promises.set(query, { promise, resolve });
-      return { promise, isNew: true };
-    };
-
-    const resolvePromise: LoadingPromises["resolvePromise"] = (query, rows) => {
-      const item = promises.get(query);
-      if (!item) return;
-      // It's similar to what React will do.
-      void Object.assign(item.promise, { [loadingPromisesPromiseProp]: rows });
-      item.resolve(rows);
-    };
-
-    const releasePromises: LoadingPromises["releasePromises"] = (
-      ignoreQueries,
-    ) => {
-      [...promises.keys()].forEach((query) => {
-        if (!ignoreQueries.includes(query)) promises.delete(query);
-      });
-    };
-
-    return { getPromise, resolvePromise, releasePromises };
-  }),
-);
-
-const QueryStoreLive = Layer.effect(
-  QueryStore,
+const MutateLive = Layer.effect(
+  Mutate,
   Effect.gen(function* (_) {
+    const nanoid = yield* _(NanoId);
+    const onCompletes = yield* _(OnCompletes);
+    const time = yield* _(Time);
     const subscribedQueries = yield* _(SubscribedQueries);
     const loadingPromises = yield* _(LoadingPromises);
     const dbWorker = yield* _(DbWorker);
-    const flushSync = yield* _(FlushSync);
-    const onCompletes = yield* _(OnCompletes);
+    let mutations: ReadonlyArray<Mutation> = [];
 
-    const rowsCacheStore = makeStore<RowsCacheMap>(new Map());
-    const queue = new Set<Query>();
+    return Mutate.of((table, { id, ...values }, onComplete) => {
+      const isInsert = id == null;
+      if (isInsert) id = Effect.runSync(nanoid.nanoid) as never;
 
-    const subscribe: QueryStore["subscribe"] = (query) => (listen) => {
-      if (query == null) return Function.constVoid;
-      subscribedQueries.set(
-        query,
-        Number.increment(subscribedQueries.get(query) ?? 0),
-      );
-      const unsubscribe = rowsCacheStore.subscribe(listen);
-      return () => {
-        // `as number`, because React mount/unmount are symmetric.
-        const count = subscribedQueries.get(query) as number;
-        if (count > 1) subscribedQueries.set(query, Number.decrement(count));
-        else subscribedQueries.delete(query);
-        unsubscribe();
-      };
-    };
+      const onCompleteId = onComplete
+        ? onCompletes.add(onComplete).pipe(Effect.runSync)
+        : null;
 
-    const getState: QueryStore["getState"] = (query) =>
-      (query && rowsCacheStore.getState().get(query)) || null;
-
-    const loadQuery: QueryStore["loadQuery"] = (query) => {
-      const { promise, isNew } = loadingPromises.getPromise(query);
-      if (isNew) queue.add(query);
-      if (queue.size === 1) {
-        queueMicrotask(() => {
-          const queries = [...queue];
-          queue.clear();
-          if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
-            dbWorker.postMessage({ _tag: "query", queries });
-        });
-      }
-      return promise;
-    };
-
-    const onQuery: QueryStore["onQuery"] = ({
-      queriesPatches,
-      onCompleteIds,
-    }) => {
-      const state = rowsCacheStore.getState();
-      const nextState = pipe(
-        queriesPatches,
-        ReadonlyArray.map(
-          ({ query, patches }) =>
-            [query, applyPatches(patches)(state.get(query) || [])] as const,
-        ),
-        (a): RowsCacheMap => new Map([...state, ...a]),
-      );
-      // Resolve all Promises belonging to queries.
-      queriesPatches.forEach(({ query }) => {
-        const rows = nextState.get(query) || [];
-        loadingPromises.resolvePromise(query, rows);
-      });
-      // No mutation is using onComplete, so we don't need flushSync.
-      if (onCompleteIds.length === 0) {
-        rowsCacheStore.setState(nextState);
-        return;
-      }
-      flushSync(() => rowsCacheStore.setState(nextState));
-      ReadonlyArray.filterMap(onCompleteIds, (id) => {
-        const onComplete = onCompletes.get(id);
-        onCompletes.delete(id);
-        return Option.fromNullable(onComplete);
-      }).forEach((onComplete) => onComplete());
-    };
-
-    return { subscribe, getState, loadQuery, onQuery };
-  }),
-);
-
-const MutateLive = <S extends Schema>(): Layer.Layer<
-  NanoId | OnCompletes | Time | SubscribedQueries | LoadingPromises | DbWorker,
-  never,
-  Mutate<S>
-> =>
-  Layer.effect(
-    Mutate<S>(),
-    Effect.gen(function* (_) {
-      const nanoid = yield* _(NanoId);
-      const onCompletes = yield* _(OnCompletes);
-      const time = yield* _(Time);
-      const subscribedQueries = yield* _(SubscribedQueries);
-      const loadingPromises = yield* _(LoadingPromises);
-      const dbWorker = yield* _(DbWorker);
-
-      const queue: Array<MutateItem> = [];
-
-      return Mutate<S>().of((table, { id, ...values }, onComplete) => {
-        const isInsert = id == null;
-        if (isInsert) id = Effect.runSync(nanoid.nanoid) as never;
-
-        let onCompleteId = null;
-        if (onComplete) {
-          onCompleteId = Effect.runSync(nanoid.nanoid) as OnCompleteId;
-          onCompletes.set(onCompleteId, onComplete);
-        }
-
-        queue.push({
+      mutations = [
+        ...mutations,
+        {
           table: table.toString(),
-          id: id as Id,
+          id,
           values,
           isInsert,
           now: cast(new Date(Effect.runSync(time.now))),
           onCompleteId,
+        },
+      ];
+
+      if (mutations.length === 1)
+        queueMicrotask(() => {
+          if (ReadonlyArray.isNonEmptyReadonlyArray(mutations))
+            dbWorker.postMessage({
+              _tag: "mutate",
+              mutations,
+              queries: subscribedQueries.getSubscribedQueries(),
+            });
+          loadingPromises.release();
+          mutations = [];
         });
 
-        if (queue.length === 1)
-          queueMicrotask(() => {
-            const items = [...queue];
-            queue.length = 0;
-
-            const queries = Array.from(subscribedQueries.keys());
-            // Just wipe-out LoadingPromises unused queries.
-            loadingPromises.releasePromises(queries);
-
-            if (ReadonlyArray.isNonEmptyReadonlyArray(items))
-              dbWorker.postMessage({ _tag: "mutate", items, queries });
-          });
-
-        return { id: id as never };
-      });
-    }),
-  );
-
-const OwnerActionsLive = Layer.effect(
-  OwnerActions,
-  Effect.gen(function* (_) {
-    const dbWorker = yield* _(DbWorker);
-    const bip39 = yield* _(Bip39);
-
-    const reset: OwnerActions["reset"] = () => {
-      dbWorker.postMessage({ _tag: "reset" });
-    };
-
-    const restore: OwnerActions["restore"] = (mnemonic) =>
-      bip39.parse(mnemonic).pipe(
-        Effect.flatMap((mnemonic) =>
-          Effect.sync(() => {
-            dbWorker.postMessage({ _tag: "reset", mnemonic });
-            return Either.right(undefined);
-          }),
-        ),
-        Effect.catchTag("InvalidMnemonicError", () =>
-          Effect.succeed(
-            Either.left<RestoreOwnerError>({ _tag: "RestoreOwnerError" }),
-          ),
-        ),
-        Effect.runPromise,
-      );
-
-    return { reset, restore };
+      return { id };
+    });
   }),
 );
 
-export const EvoluLive = <S extends Schema>(
-  tables: Tables,
-): Layer.Layer<
-  DbWorker | Bip39 | Config | FlushSync | NanoId | Time | AppState,
-  never,
-  Evolu<S>
-> =>
-  Layer.effect(
-    Evolu<S>(),
-    Effect.gen(function* (_) {
-      const dbWorker = yield* _(DbWorker);
-      const appState = yield* _(AppState);
-      const config = yield* _(Config);
+/** EvoluCommon is without side effects, so it's unit-testable. */
+const EvoluCommon = Layer.effect(
+  Evolu,
+  Effect.gen(function* (_) {
+    const dbWorker = yield* _(DbWorker);
+    const errorStore = yield* _(makeErrorStore);
+    const loadQuery = yield* _(LoadQuery);
+    const onQuery = yield* _(OnQuery);
+    const { subscribeQuery, getQuery, getSubscribedQueries } =
+      yield* _(SubscribedQueries);
+    const syncStateStore = yield* _(
+      makeStore<SyncState>({ _tag: "SyncStateInitial" }),
+    );
+    const mutate = yield* _(Mutate);
+    const ownerStore = yield* _(makeStore<Owner | null>(null));
+    const loadingPromises = yield* _(LoadingPromises);
+    const appState = yield* _(AppState);
 
-      const subscribedQueries: SubscribedQueries = new Map();
-      const onCompletes: OnCompletes = new Map();
-      const loadingPromises = Effect.provide(
-        LoadingPromises,
-        LoadingPromisesLive,
-      ).pipe(Effect.runSync);
-
-      const errorStore = makeStore<EvoluError | null>(null);
-      const ownerStore = makeStore<Owner | null>(null);
-      const syncStateStore = makeStore<SyncState>({
-        _tag: "SyncStateInitial",
-      });
-
-      const Layers = Layer.mergeAll(
-        Layer.succeed(DbWorker, dbWorker),
-        Layer.succeed(SubscribedQueries, subscribedQueries),
-        Layer.succeed(OnCompletes, onCompletes),
-        Layer.succeed(LoadingPromises, loadingPromises),
-        Layer.succeed(FlushSync, yield* _(FlushSync)),
-        Layer.succeed(NanoId, yield* _(NanoId)),
-        Layer.succeed(Time, yield* _(Time)),
-        Layer.succeed(Bip39, yield* _(Bip39)),
+    dbWorker.onMessage = (output): void =>
+      Match.value(output).pipe(
+        Match.tagsExhaustive({
+          onError: ({ error }) => errorStore.setState(error),
+          onQuery,
+          onOwner: ({ owner }) => ownerStore.setState(owner),
+          onSyncState: ({ state }) => syncStateStore.setState(state),
+          onReceive: () =>
+            Effect.sync(() => {
+              loadingPromises.release();
+              const queries = getSubscribedQueries();
+              if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
+                dbWorker.postMessage({ _tag: "query", queries });
+            }),
+          onResetOrRestore: () => appState.reset,
+        }),
+        Effect.runSync,
       );
 
-      const queryStore = Effect.provide(
-        QueryStore,
-        Layer.use(QueryStoreLive, Layers),
-      ).pipe(Effect.runSync);
+    dbWorker.postMessage({
+      _tag: "init",
+      config: yield* _(Config),
+    });
 
-      const mutate = Effect.provide(
-        Mutate<S>(),
-        Layer.use(MutateLive<S>(), Layers),
-      ).pipe(Effect.runSync);
-
-      const ownerActions = Effect.provide(
-        OwnerActions,
-        Layer.use(OwnerActionsLive, Layers),
-      ).pipe(Effect.runSync);
-
-      const ensureSchema: Evolu<S>["ensureSchema"] = (tables) => {
-        dbWorker.postMessage({ _tag: "ensureSchema", tables });
-      };
-
-      const getSubscribedQueries = (): ReadonlyArray<Query> =>
-        Array.from(subscribedQueries.keys());
-
-      dbWorker.onMessage = (output): void => {
-        // console.log(output);
-        switch (output._tag) {
-          case "onError":
-            if (process.env.NODE_ENV === "development")
-              // JSON.stringify, because Expo console needs strings.
-              // eslint-disable-next-line no-console
-              console.warn(JSON.stringify(output.error, null, 2));
-            errorStore.setState(output.error);
-            break;
-          case "onOwner":
-            ownerStore.setState(output.owner);
-            break;
-          case "onQuery":
-            queryStore.onQuery(output);
-            break;
-          case "onReceive": {
-            const queries = getSubscribedQueries();
-            if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
-              dbWorker.postMessage({ _tag: "query", queries });
-            break;
-          }
-          case "onResetOrRestore":
-            Effect.runSync(appState.reset);
-            break;
-          case "onSyncState":
-            syncStateStore.setState(output.state);
-            break;
-          default:
-            absurd(output);
-        }
-      };
-
-      dbWorker.postMessage({ _tag: "init", config, tables });
-
-      appState.onFocus(() => {
-        // `queries` to refresh subscribed queries when a tab is changed.
+    appState.init({
+      onFocus: () => {
         dbWorker.postMessage({ _tag: "sync", queries: getSubscribedQueries() });
-      });
-
-      const sync = (): void =>
+      },
+      onReconnect: () => {
         dbWorker.postMessage({ _tag: "sync", queries: [] });
-      appState.onReconnect(sync);
-      sync();
+      },
+    });
 
-      return Evolu<S>().of({
-        subscribeError: errorStore.subscribe,
-        getError: errorStore.getState,
+    return Evolu.of({
+      subscribeError: errorStore.subscribe,
+      getError: errorStore.getState,
 
-        subscribeOwner: ownerStore.subscribe,
-        getOwner: ownerStore.getState,
+      createQuery: makeCreateQuery(),
+      loadQuery,
 
-        createQuery: makeCreateQuery<S>(),
-        subscribeQuery: queryStore.subscribe,
-        getQuery: queryStore.getState,
-        loadQuery: queryStore.loadQuery,
+      loadQueries: <R extends Row, Q extends Queries<R>>(queries: [...Q]) =>
+        queries.map(loadQuery) as [...QueryResultsPromisesFromQueries<Q>],
 
-        subscribeSyncState: syncStateStore.subscribe,
-        getSyncState: syncStateStore.getState,
+      subscribeQuery,
+      getQuery,
 
-        create: mutate as Create<S>,
-        update: mutate as Update<S>,
-        ownerActions,
-        ensureSchema,
-      });
-    }),
-  );
+      subscribeOwner: ownerStore.subscribe,
+      getOwner: ownerStore.getState,
 
-export const makeEvoluForPlatform = <S extends Schema>(
-  PlatformLayer: Layer.Layer<
-    never,
-    never,
-    DbWorker | Bip39 | NanoId | FlushSync | AppState
-  >,
-  tables: Tables,
-  config?: Partial<Config>,
-): Evolu<S> =>
-  Effect.provide(
-    Evolu<S>(),
-    Layer.use(
-      EvoluLive<S>(tables),
-      Layer.mergeAll(PlatformLayer, ConfigLive(config), TimeLive),
-    ),
-  ).pipe(Effect.runSync);
+      subscribeSyncState: syncStateStore.subscribe,
+      getSyncState: syncStateStore.getState,
+
+      create: mutate as Mutate<Schema, "create">,
+      update: mutate,
+
+      resetOwner: () => dbWorker.postMessage({ _tag: "reset" }),
+
+      restoreOwner: (mnemonic) =>
+        dbWorker.postMessage({ _tag: "reset", mnemonic }),
+
+      ensureSchema: (schema) =>
+        dbWorker.postMessage({
+          _tag: "ensureSchema",
+          tables: schemaToTables(schema),
+        }),
+    });
+  }),
+).pipe(
+  Layer.use(Layer.mergeAll(LoadQueryLive, OnQueryLive, MutateLive)),
+  Layer.use(LoadingPromiseLive),
+  Layer.use(SubscribedQueriesLive),
+  Layer.use(Layer.merge(RowsStoreLive, OnCompletesLive)),
+);
+
+/** EvoluCommonLive has only platform independent side-effects. */
+export const EvoluCommonLive = EvoluCommon.pipe(
+  Layer.use(Layer.merge(TimeLive, NanoIdLive)),
+);

@@ -2,12 +2,13 @@
   "private": true,
   "name": "@evolu/monorepo",
   "scripts": {
-    "dev": "turbo dev --concurrency=13",
+    "dev": "turbo dev --concurrency=12",
     "build": "turbo build",
-    "start": "turbo start --concurrency=13",
+    "start": "turbo start --concurrency=12",
     "lint": "turbo lint",
+    "lint-monorepo": "pnpm dlx sherif@latest",
     "test": "turbo test",
-    "clean": "turbo clean && rm -rf node_modules",
+    "clean": "turbo clean && rm -rf node_modules pnpm-lock.yaml",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "version": "changeset version && pnpm install --no-frozen-lockfile && pnpm format",
     "release": "pnpm run build && changeset publish",
@@ -15,10 +16,11 @@
     "android": "cd apps/native && pnpm android"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.26.2",
-    "eslint": "^8.52.0",
+    "@changesets/cli": "^2.27.1",
+    "eslint": "^8.54.0",
     "eslint-config-evolu": "workspace:*",
-    "prettier": "^3.0.3",
+    "prettier": "^3.1.0",
+    "prettier-plugin-jsdoc": "^1.1.1",
     "turbo": "^1.10.16"
   },
   "packageManager": "pnpm@8.6.6",

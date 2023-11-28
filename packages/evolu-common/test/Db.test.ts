@@ -1,22 +1,25 @@
 import { expect, test } from "vitest";
-import { FilterMap, makeCacheFilterMap } from "../src/Db.js";
+import { deserializeQuery, serializeQuery } from "../src/Db.js";
+import { SqliteQuery, isJsonObjectOrArray } from "../src/Sqlite.js";
 
-test("makeCacheFilterMap", () => {
-  const cacheFilterMap = makeCacheFilterMap();
+test("isJsonObjectOrArray", () => {
+  expect(isJsonObjectOrArray(null)).toBe(false);
+  expect(isJsonObjectOrArray("foo")).toBe(false);
+  expect(isJsonObjectOrArray("")).toBe(false);
+  expect(isJsonObjectOrArray(0)).toBe(false);
+  expect(isJsonObjectOrArray(1)).toBe(false);
+  expect(isJsonObjectOrArray(new Uint8Array())).toBe(false);
+  expect(isJsonObjectOrArray({})).toBe(true);
+  expect(isJsonObjectOrArray([])).toBe(true);
+});
 
-  const row = { name: "a" };
-
-  const filterMap: FilterMap<{ name: string | null }, { foo: string }> = ({
-    name,
-  }) => name != null && { foo: name };
-
-  expect(filterMap(row)).toMatchInlineSnapshot(`
-    {
-      "foo": "a",
-    }
-  `);
-  expect(filterMap({ name: null })).toMatchInlineSnapshot("false");
-
-  const cachedMappedRow = cacheFilterMap(filterMap)(row);
-  expect(cacheFilterMap(filterMap)(row)).toBe(cachedMappedRow);
+test("serializeQuery and deserializeQuery", () => {
+  const binaryData = new Uint8Array([1, 3, 2]);
+  const sqliteQuery: SqliteQuery = {
+    sql: "a",
+    parameters: [null, "a", 1, binaryData, ["b"], { c: 1 }],
+  };
+  expect(deserializeQuery(serializeQuery(sqliteQuery))).toStrictEqual(
+    sqliteQuery,
+  );
 });

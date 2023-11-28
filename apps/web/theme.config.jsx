@@ -15,7 +15,6 @@ export default {
     link: "https://github.com/evoluhq/evolu",
   },
   docsRepositoryBase: "https://github.com/evoluhq/evolu/tree/main/apps/web",
-  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
   useNextSeoProps() {
     const { asPath } = useRouter();
     if (asPath !== "/") {

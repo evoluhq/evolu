@@ -4,7 +4,7 @@ import {
   FlushSync,
   InvalidMnemonicError,
   Mnemonic,
-  Platform,
+  PlatformName,
   SyncLock,
 } from "@evolu/common";
 import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
@@ -18,62 +18,56 @@ import { Effect, Function, Layer } from "effect";
 import { reloadAsync } from "expo-updates";
 import { DevSettings, AppState as ReactNativeAppState } from "react-native";
 
-export const PlatformLive = Layer.succeed(Platform, {
-  name: "react-native",
-});
+export const PlatformNameLive = Layer.succeed(PlatformName, "react-native");
 
 export const FlushSyncLive = Layer.succeed(FlushSync, Function.constVoid);
 
 export const SyncLockLive = Layer.effect(
   SyncLock,
   Effect.sync(() => {
-    let hasLock = false;
-
-    const acquire: SyncLock["acquire"] = Effect.sync(() => {
-      if (hasLock) return false;
-      hasLock = true;
-      return true;
+    let hasSyncLock = false;
+    return SyncLock.of({
+      acquire: Effect.sync(() => {
+        if (hasSyncLock) return false;
+        hasSyncLock = true;
+        return true;
+      }),
+      release: Effect.sync(() => {
+        hasSyncLock = false;
+      }),
     });
-
-    const release: SyncLock["release"] = Effect.sync(() => {
-      hasLock = false;
-    });
-
-    return { acquire, release };
   }),
 );
 
-export const AppStateLive = Layer.effect(
+export const AppStateLive = Layer.succeed(
   AppState,
-  Effect.sync(() => {
-    const onFocus: AppState["onFocus"] = (callback) => {
-      let state = ReactNativeAppState.currentState;
-      ReactNativeAppState.addEventListener("change", (nextState): void => {
-        if (state.match(/inactive|background/) && nextState === "active")
-          callback();
-        state = nextState;
+  AppState.of({
+    init: ({ onFocus, onReconnect }) => {
+      let appStateStatus = ReactNativeAppState.currentState;
+      ReactNativeAppState.addEventListener("change", (current): void => {
+        if (appStateStatus.match(/inactive|background/) && current === "active")
+          onFocus();
+        appStateStatus = current;
       });
-    };
 
-    const onReconnect: AppState["onReconnect"] = (callback) => {
-      let state: NetInfoState | null = null;
-      NetInfo.addEventListener((nextState) => {
+      let netInfoState: NetInfoState | null = null;
+      NetInfo.addEventListener((current) => {
         if (
-          state?.isInternetReachable === false &&
-          nextState.isConnected &&
-          nextState.isInternetReachable
+          netInfoState?.isInternetReachable === false &&
+          current.isConnected &&
+          current.isInternetReachable
         )
-          callback();
-        state = nextState;
+          onReconnect();
+        netInfoState = current;
       });
-    };
 
-    const reset: AppState["reset"] = Effect.sync(() => {
+      onReconnect();
+    },
+
+    reset: Effect.sync(() => {
       if (process.env.NODE_ENV === "development") DevSettings.reload();
-      else void reloadAsync();
-    });
-
-    return AppState.of({ onFocus, onReconnect, reset });
+      else reloadAsync();
+    }),
   }),
 );
 

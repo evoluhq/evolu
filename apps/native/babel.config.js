@@ -3,7 +3,10 @@ module.exports = function (api) {
   return {
     presets: ["babel-preset-expo"],
     plugins: [
+      // For Kysely to work with Hermes
       ["@babel/plugin-transform-private-methods", { loose: true }],
+      // For Kysely to work with Hermes
+      "@babel/plugin-proposal-dynamic-import",
       [
         "module-resolver",
         {

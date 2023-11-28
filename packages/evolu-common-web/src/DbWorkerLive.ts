@@ -1,12 +1,17 @@
-import { DbWorker, DbWorkerOutput, Platform } from "@evolu/common";
+import {
+  DbWorker,
+  DbWorkerOutput,
+  PlatformName,
+  makeUnexpectedError,
+} from "@evolu/common";
 import { Effect, Function, Layer } from "effect";
 
 export const DbWorkerLive = Layer.effect(
   DbWorker,
   Effect.gen(function* (_) {
-    const platform = yield* _(Platform);
+    const platformName = yield* _(PlatformName);
 
-    if (platform.name === "web-with-opfs") {
+    if (platformName === "web-with-opfs") {
       const worker = new Worker(
         new URL("DbWorker.worker.js", import.meta.url),
         { type: "module" },
@@ -23,7 +28,7 @@ export const DbWorkerLive = Layer.effect(
       return dbWorker;
     }
 
-    if (platform.name === "web-without-opfs") {
+    if (platformName === "web-without-opfs") {
       const promise = Effect.promise(() => import("./DbWorker.js")).pipe(
         Effect.map(({ dbWorker: importedDbWorker }) => {
           importedDbWorker.onMessage = dbWorker.onMessage;
@@ -33,9 +38,20 @@ export const DbWorkerLive = Layer.effect(
       );
       const dbWorker: DbWorker = {
         postMessage: (input) => {
-          void promise.then((postMessage) => {
-            postMessage(input);
-          });
+          promise.then(
+            (postMessage) => {
+              postMessage(input);
+            },
+            (reason: unknown) => {
+              dbWorker.onMessage({
+                _tag: "onError",
+                error: {
+                  _tag: "UnexpectedError",
+                  error: makeUnexpectedError(reason).pipe(Effect.runSync),
+                },
+              });
+            },
+          );
         },
         onMessage: Function.constVoid,
       };

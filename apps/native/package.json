@@ -7,32 +7,35 @@
     "ios": "expo start --ios",
     "android": "expo start --android",
     "build-native": "expo start --no-dev --minify",
-    "lint": "eslint --ext ts,tsx .",
-    "clean": "rm -rf .turbo && rm -rf .expo && rm -rf node_modules"
+    "lint": "eslint . --ext .ts,.tsx",
+    "clean": "rm -rf .turbo .expo node_modules"
   },
   "dependencies": {
-    "@effect/schema": "^0.46.3",
+    "@effect/schema": "^0.50.0",
     "@evolu/react-native": "workspace:*",
-    "@react-native-community/netinfo": "9.4.1",
-    "@types/react": "^18.2.33",
+    "@react-native-community/netinfo": "9.3.10",
+    "buffer": "^6.0.3",
     "crypto-browserify": "^3.12.0",
-    "effect": "2.0.0-next.52",
+    "effect": "2.0.0-next.56",
     "events": "^3.3.0",
-    "expo": "^49.0.16",
-    "expo-sqlite": "~11.6.0",
-    "expo-status-bar": "^1.7.1",
+    "expo": "^49.0.21",
+    "expo-sqlite": "~11.3.3",
+    "expo-status-bar": "~1.6.0",
     "fast-text-encoding": "^1.0.6",
     "react": "18.2.0",
-    "react-native": "^0.72.6",
-    "react-native-get-random-values": "^1.9.0",
-    "react-native-picker-select": "^8.1.0"
+    "react-native": "0.72.6",
+    "react-native-get-random-values": "1.9.0",
+    "react-native-picker-select": "^9.0.0",
+    "stream": "^0.0.2"
   },
   "devDependencies": {
-    "@babel/core": "^7.23.2",
-    "@babel/plugin-transform-private-methods": "^7.22.5",
-    "eslint": "^8.52.0",
+    "@babel/core": "^7.23.3",
+    "@babel/plugin-proposal-dynamic-import": "^7.18.6",
+    "@babel/plugin-transform-private-methods": "^7.23.3",
+    "@types/react": "^18.2.39",
+    "eslint": "^8.54.0",
     "eslint-config-evolu": "workspace:*",
-    "prettier": "^3.0.3",
-    "typescript": "^5.2.2"
+    "prettier": "^3.1.0",
+    "typescript": "^5.3.2"
   }
 }

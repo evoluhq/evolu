@@ -5,11 +5,11 @@ import {
   FlushSync,
   InvalidMnemonicError,
   Mnemonic,
-  Platform,
+  PlatformName,
   SyncLock,
   canUseDom,
 } from "@evolu/common";
-import { Effect, Function, Layer, Predicate, ReadonlyArray } from "effect";
+import { Effect, Function, Layer } from "effect";
 import { flushSync } from "react-dom";
 
 const isChromeWithOpfs = (): boolean =>
@@ -36,98 +36,91 @@ const isSafariWithOpfs = (): boolean => {
   return Number(matches[1]) >= 17;
 };
 
-const name = canUseDom
-  ? isChromeWithOpfs() || isFirefoxWithOpfs() || isSafariWithOpfs()
-    ? "web-with-opfs"
-    : "web-without-opfs"
-  : "server";
-
-export const PlatformLive = Layer.succeed(Platform, { name });
+export const PlatformNameLive = Layer.succeed(
+  PlatformName,
+  canUseDom
+    ? isChromeWithOpfs() || isFirefoxWithOpfs() || isSafariWithOpfs()
+      ? "web-with-opfs"
+      : "web-without-opfs"
+    : "server",
+);
 
 export const FlushSyncLive = Layer.succeed(FlushSync, flushSync);
 
 export const SyncLockLive = Layer.effect(
   SyncLock,
   Effect.sync(() => {
-    const syncLockName = "evolu:sync";
+    const lockName = "evolu:sync";
+    let release: null | (() => void) = null;
 
-    const hasLock: Predicate.Predicate<LockInfo[] | undefined> = (
-      lockInfos,
-    ) => {
-      if (lockInfos == null) return false;
-      return ReadonlyArray.some(
-        lockInfos,
-        (lockInfo) => lockInfo.name === syncLockName,
-      );
-    };
+    return SyncLock.of({
+      acquire: Effect.gen(function* (_) {
+        if (release) return false;
+        release = Function.constVoid;
+        return yield* _(
+          Effect.async<never, never, boolean>((resume) => {
+            navigator.locks.request(lockName, { ifAvailable: true }, (lock) => {
+              if (lock == null) {
+                release = null;
+                resume(Effect.succeed(false));
+                return;
+              }
+              resume(Effect.succeed(true));
+              return new Promise<void>((resolve) => {
+                release = resolve;
+              });
+            });
+          }),
+        );
+      }),
 
-    const isSyncing = Effect.promise(() => navigator.locks.query()).pipe(
-      Effect.map(({ pending, held }) => hasLock(pending) || hasLock(held)),
-    );
-
-    let isSyncingResolve: null | ((value: undefined) => void) = null;
-
-    const acquire: SyncLock["acquire"] = Effect.gen(function* (_) {
-      if (isSyncingResolve || (yield* _(isSyncing))) return false;
-      const promise = new Promise<undefined>((resolve) => {
-        isSyncingResolve = resolve;
-      });
-      void navigator.locks.request(syncLockName, () => promise);
-      return true;
+      release: Effect.sync(() => {
+        if (release) release();
+        release = null;
+      }),
     });
-
-    const release: SyncLock["release"] = Effect.sync(() => {
-      if (isSyncingResolve) isSyncingResolve(undefined);
-      isSyncingResolve = null;
-    });
-
-    return { acquire, release };
   }),
 );
 
 export const AppStateLive = Layer.effect(
   AppState,
   Effect.gen(function* (_) {
-    const platform = yield* _(Platform);
-
-    if (platform.name === "server")
+    if ((yield* _(PlatformName)) === "server")
       return AppState.of({
-        onFocus: Function.constVoid,
-        onReconnect: Function.constVoid,
+        init: Function.constVoid,
         reset: Effect.succeed(undefined),
       });
 
-    const config = yield* _(Config);
-
-    const onFocus: AppState["onFocus"] = (callback) => {
-      window.addEventListener("focus", () => callback());
-      document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState !== "hidden") callback();
-      });
-    };
-
-    // We can't use `navigator.onLine`.
-    // https://bugs.chromium.org/p/chromium/issues/detail?id=678075
-    const onReconnect: AppState["onReconnect"] = (callback) => {
-      window.addEventListener("online", callback);
-    };
-
+    const { reloadUrl } = yield* _(Config);
     const localStorageKey = "evolu:reloadAllTabs";
 
     const reloadLocation = (): void => {
-      location.assign(config.reloadUrl);
+      location.assign(reloadUrl);
     };
 
     window.addEventListener("storage", (e) => {
       if (e.key === localStorageKey) reloadLocation();
     });
 
-    const reset: AppState["reset"] = Effect.sync(() => {
-      localStorage.setItem(localStorageKey, Date.now().toString());
-      reloadLocation();
-    });
+    return AppState.of({
+      init: ({ onFocus, onReconnect }) => {
+        window.addEventListener("focus", onFocus);
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState !== "hidden") onFocus();
+        });
 
-    return AppState.of({ onFocus, onReconnect, reset });
+        // We can't use `navigator.onLine`.
+        // https://bugs.chromium.org/p/chromium/issues/detail?id=678075
+        window.addEventListener("online", onReconnect);
+
+        onReconnect();
+      },
+
+      reset: Effect.sync(() => {
+        localStorage.setItem(localStorageKey, Date.now().toString());
+        reloadLocation();
+      }),
+    });
   }),
 );
 
