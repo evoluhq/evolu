@@ -1,7 +1,7 @@
 import { TreeFormatter } from "@effect/schema";
 import * as S from "@effect/schema/Schema";
 import * as Evolu from "@evolu/react";
-import { Effect, Exit, GlobalValue } from "effect";
+import { Effect, Exit } from "effect";
 import {
   ChangeEvent,
   FC,
@@ -418,15 +418,3 @@ const prompt = <From extends string, To>(
   }
   onSuccess(a.right);
 };
-
-const logSyncState = (): void => {
-  evolu.subscribeSyncState(() => {
-    // eslint-disable-next-line no-console
-    console.log(evolu.getSyncState());
-  });
-};
-
-// Ensure logSyncState is called only once with hot reloading.
-// Without GlobalValue, people could be confused about why logSyncState
-// logs 2x, 3x, etc.
-GlobalValue.globalValue("NextJsExample/logSyncState", logSyncState);
