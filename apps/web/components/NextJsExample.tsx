@@ -100,10 +100,10 @@ export const NextJsExample = memo(function NextJsExample() {
   return (
     <>
       <NotificationBar />
+      <h2 className="mt-6 text-xl font-semibold">
+        {currentTab === "todos" ? "Todos" : "Categories"}
+      </h2>
       <Suspense>
-        <h2 className="mt-6 text-xl font-semibold">
-          {currentTab === "todos" ? "Todos" : "Categories"}
-        </h2>
         {currentTab === "todos" ? <Todos /> : <TodoCategories />}
         <Button title="Switch Tab" onClick={handleTabClick} />
         <p className="my-4">
