@@ -9,7 +9,9 @@
   "updateInternalDependencies": "patch",
   "ignore": [],
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
-    "useCalculatedVersionForSnapshots": true,
     "onlyUpdatePeerDependentsWhenOutOfRange": true
+  },
+  "snapshot": {
+    "useCalculatedVersion": true
   }
 }
