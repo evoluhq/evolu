@@ -70,12 +70,17 @@ export interface AppState {
 
 export const AppState = Context.Tag<AppState>();
 
-/**
- * To detect whether DOM can be used.
- * https://github.com/facebook/fbjs/blob/main/packages/fbjs/src/core/ExecutionEnvironment.js
- */
-export const canUseDom = !!(
-  typeof window !== "undefined" &&
-  window.document &&
-  window.document.createElement
-);
+/** To detect whether DOM can be used. */
+export const canUseDom = ((): boolean => {
+  // IDK why try-catch is necessary, but it is.
+  // "ReferenceError: window is not defined" should not happen, but it does.
+  try {
+    return !!(
+      typeof window !== "undefined" &&
+      window.document &&
+      window.document.createElement
+    );
+  } catch (e) {
+    return false;
+  }
+})();

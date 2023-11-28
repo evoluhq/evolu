@@ -14,6 +14,9 @@ import {
   Row,
   Schema,
   SyncState,
+  canUseDom,
+  emptyRows,
+  queryResultFromRows,
 } from "@evolu/common";
 import { Context, Effect, Function, GlobalValue, Layer } from "effect";
 import ReactExports, {
@@ -162,6 +165,7 @@ export const EvoluReactLive = Layer.effect(
       return useSyncExternalStore(
         useMemo(() => evolu.subscribeQuery(query), [evolu, query]),
         useMemo(() => () => evolu.getQuery(query), [evolu, query]),
+        () => queryResultFromRows(emptyRows()),
         /* eslint-enable react-hooks/rules-of-hooks */
       );
     };
@@ -173,14 +177,18 @@ export const EvoluReactLive = Layer.effect(
       useEvolu,
       useEvoluError: () => {
         const evolu = useEvolu();
-        return useSyncExternalStore(evolu.subscribeError, evolu.getError);
+        return useSyncExternalStore(
+          evolu.subscribeError,
+          evolu.getError,
+          Function.constNull,
+        );
       },
 
       useQuerySubscription,
 
       useQuery: (query, options = {}) => {
         const evolu = useEvolu();
-        use(options?.promise || evolu.loadQuery(query));
+        if (canUseDom) use(options?.promise || evolu.loadQuery(query));
         return useQuerySubscription(query, options);
       },
 
@@ -188,8 +196,10 @@ export const EvoluReactLive = Layer.effect(
         const evolu = useEvolu();
         const once = useRef(options).current.once;
         const allQueries = once ? queries.concat(once) : queries;
-        if (options.promises) options.promises.map(use);
-        else evolu.loadQueries(allQueries).map(use);
+        if (canUseDom) {
+          if (options.promises) options.promises.map(use);
+          else evolu.loadQueries(allQueries).map(use);
+        }
         return allQueries.map((query, i) =>
           // eslint-disable-next-line react-hooks/rules-of-hooks
           useQuerySubscription(query, { once: i > queries.length - 1 }),
@@ -198,7 +208,11 @@ export const EvoluReactLive = Layer.effect(
 
       useOwner: () => {
         const evolu = useEvolu();
-        return useSyncExternalStore(evolu.subscribeOwner, evolu.getOwner);
+        return useSyncExternalStore(
+          evolu.subscribeOwner,
+          evolu.getOwner,
+          Function.constNull,
+        );
       },
 
       useSyncState: () => {
@@ -206,6 +220,7 @@ export const EvoluReactLive = Layer.effect(
         return useSyncExternalStore(
           evolu.subscribeSyncState,
           evolu.getSyncState,
+          () => ({ _tag: "SyncStateInitial" }),
         );
       },
 
