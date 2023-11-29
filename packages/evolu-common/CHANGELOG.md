@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 2.0.1
+
+### Patch Changes
+
+- fea7623: Fix SSR
+
 ## 2.0.0
 
 ### Major Changes
