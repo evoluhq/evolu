@@ -1,12 +1,13 @@
-export default function RootLayout({ children }): JSX.Element {
+import "./globals.css";
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en">
-      <body
-        // https://twitter.com/evoluhq/status/1660763010657402881
-        suppressHydrationWarning
-      >
-        {children}
-      </body>
+      <body suppressHydrationWarning>{children}</body>
     </html>
   );
 }
