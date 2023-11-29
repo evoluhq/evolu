@@ -1,6 +1,11 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+// The build is not working, and the error isn't helpful:
+// [vite:build-import-analysis] Cannot read properties of undefined (reading 'forEach')
+// Do we need that?
+// assetsInclude: [`**/*.wasm`],
+
 // https://vitejs.dev/config/
 export default defineConfig({
   optimizeDeps: {
@@ -8,6 +13,9 @@ export default defineConfig({
     exclude: ["@evolu/react"],
     // Another workaround for Vite bug: https://github.com/radix-ui/primitives/discussions/1915#discussioncomment-5733178
     include: ["react-dom"],
+  },
+  worker: {
+    format: "es",
   },
   plugins: [
     react(),
