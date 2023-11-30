@@ -1,5 +1,12 @@
 # @evolu/server
 
+## 2.0.2
+
+### Patch Changes
+
+- Updated dependencies [ddd4014]
+  - @evolu/common@2.0.2
+
 ## 2.0.1
 
 ### Patch Changes

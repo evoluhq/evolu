@@ -21,7 +21,7 @@ type TodoCategoryId = S.Schema.To<typeof TodoCategoryId>;
 const NonEmptyString50 = Evolu.String.pipe(
   S.minLength(1),
   S.maxLength(50),
-  S.brand("NonEmptyString50")
+  S.brand("NonEmptyString50"),
 );
 type NonEmptyString50 = S.Schema.To<typeof NonEmptyString50>;
 
@@ -58,7 +58,7 @@ const createFixtures = (): Promise<void> =>
     evolu.loadQueries([
       evolu.createQuery((db) => db.selectFrom("todo").selectAll()),
       evolu.createQuery((db) => db.selectFrom("todoCategory").selectAll()),
-    ])
+    ]),
   ).then(([todos, categories]) => {
     if (todos.row || categories.row) return;
 
@@ -154,9 +154,9 @@ const todosWithCategories = evolu.createQuery((db) =>
           .selectFrom("todoCategory")
           .select(["todoCategory.id", "todoCategory.name"])
           .where("isDeleted", "is not", Evolu.cast(true))
-          .orderBy("createdAt")
+          .orderBy("createdAt"),
       ).as("categories"),
-    ])
+    ]),
 );
 
 const Todos: FC = () => {
@@ -272,7 +272,7 @@ const todoCategories = evolu.createQuery((db) =>
     // Filter null value and ensure non-null type. Evolu will provide a helper.
     .where("name", "is not", null)
     .$narrowType<{ name: NonEmptyString50 }>()
-    .orderBy("createdAt")
+    .orderBy("createdAt"),
 );
 
 const TodoCategories: FC = () => {
@@ -347,7 +347,7 @@ const OwnerActions: FC = () => {
               isRestoringOwner(true);
               evolu.restoreOwner(mnemonic);
             },
-          })
+          }),
         );
     });
   };
@@ -402,7 +402,7 @@ const Button: FC<{
 const prompt = <From extends string, To>(
   schema: S.Schema<From, To>,
   message: string,
-  onSuccess: (value: To) => void
+  onSuccess: (value: To) => void,
 ): void => {
   const value = window.prompt(message);
   if (value == null) return; // on cancel
