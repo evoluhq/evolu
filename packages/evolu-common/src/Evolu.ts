@@ -755,13 +755,13 @@ const EvoluCommon = Layer.effect(
     });
   }),
 ).pipe(
-  Layer.use(Layer.mergeAll(LoadQueryLive, OnQueryLive, MutateLive)),
-  Layer.use(LoadingPromiseLive),
-  Layer.use(SubscribedQueriesLive),
-  Layer.use(Layer.merge(RowsStoreLive, OnCompletesLive)),
+  Layer.provide(Layer.mergeAll(LoadQueryLive, OnQueryLive, MutateLive)),
+  Layer.provide(LoadingPromiseLive),
+  Layer.provide(SubscribedQueriesLive),
+  Layer.provide(Layer.merge(RowsStoreLive, OnCompletesLive)),
 );
 
 /** EvoluCommonLive has only platform independent side-effects. */
 export const EvoluCommonLive = EvoluCommon.pipe(
-  Layer.use(Layer.merge(TimeLive, NanoIdLive)),
+  Layer.provide(Layer.merge(TimeLive, NanoIdLive)),
 );

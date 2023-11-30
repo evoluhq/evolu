@@ -27,6 +27,6 @@ export const parseMnemonic: (
 
 /** Evolu for web platform. */
 export const EvoluWebLive = EvoluCommonLive.pipe(
-  Layer.use(Layer.merge(DbWorkerLive, AppStateLive)),
-  Layer.use(Layer.merge(PlatformNameLive, FlushSyncLive)),
+  Layer.provide(Layer.merge(DbWorkerLive, AppStateLive)),
+  Layer.provide(Layer.merge(PlatformNameLive, FlushSyncLive)),
 );

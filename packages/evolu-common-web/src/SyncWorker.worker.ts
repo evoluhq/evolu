@@ -10,7 +10,7 @@ import { SyncLockLive } from "./PlatformLive.js";
 
 const syncWorker = Effect.provide(
   SyncWorker,
-  Layer.use(
+  Layer.provide(
     SyncWorkerLive,
     Layer.mergeAll(SyncLockLive, FetchLive, SecretBoxLive),
   ),

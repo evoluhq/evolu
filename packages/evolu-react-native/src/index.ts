@@ -56,9 +56,11 @@ const EvoluNativeLive: Layer.Layer<
   never,
   Evolu<Schema>
 > = EvoluCommonLive.pipe(
-  Layer.use(Layer.mergeAll(FlushSyncLive, AppStateLive, DbWorkerLive)),
-  Layer.use(Layer.mergeAll(Bip39Live, NanoIdLive, SqliteLive, SyncWorkerLive)),
-  Layer.use(Layer.mergeAll(SecretBoxLive, SyncLockLive, FetchLive)),
+  Layer.provide(Layer.mergeAll(FlushSyncLive, AppStateLive, DbWorkerLive)),
+  Layer.provide(
+    Layer.mergeAll(Bip39Live, NanoIdLive, SqliteLive, SyncWorkerLive),
+  ),
+  Layer.provide(Layer.mergeAll(SecretBoxLive, SyncLockLive, FetchLive)),
 );
 
 /**
@@ -88,7 +90,7 @@ const EvoluNativeLive: Layer.Layer<
  * ```
  */
 export const create = EvoluReactLive.pipe(
-  Layer.use(EvoluNativeLive),
+  Layer.provide(EvoluNativeLive),
   makeCreateEvoluReact,
 );
 

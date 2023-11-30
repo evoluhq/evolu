@@ -32,6 +32,6 @@ export * from "@evolu/common/public";
  * ```
  */
 export const create = EvoluReactLive.pipe(
-  Layer.use(EvoluWebLive),
+  Layer.provide(EvoluWebLive),
   makeCreateEvoluReact,
 );

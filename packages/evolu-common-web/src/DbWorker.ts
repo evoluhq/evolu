@@ -32,7 +32,7 @@ const SyncWorkerLive = Layer.effect(
 // It's a separated because it's imported dynamically and by Web Worker.
 export const dbWorker = Effect.provide(
   DbWorker,
-  Layer.use(
+  Layer.provide(
     DbWorkerLive,
     Layer.mergeAll(SqliteLive, Bip39Live, NanoIdLive, SyncWorkerLive),
   ),

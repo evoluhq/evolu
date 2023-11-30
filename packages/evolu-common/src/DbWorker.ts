@@ -267,7 +267,7 @@ export const mutationsToNewMessages = (
         ),
       ),
     ),
-    ReadonlyArray.flatten,
+    (a) => a.flat(),
     ReadonlyArray.dedupeWith(NewMessageEquivalence),
   );
 
