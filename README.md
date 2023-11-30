@@ -19,9 +19,7 @@
 
 ## Local-first apps
 
-Local-first apps allow users to own their data. Evolu stores data in the user's device(s), so Evolu apps can work offline and without a specific server. How is it different from keeping files on disk? Files are not the right abstraction for apps and are complicated to synchronize among devices. That's why client-server architecture rules the world. But as with everything, it has trade-offs.
-
-Client-server architecture provides us with easy backup and synchronization, but all that depends on the ability of a server to fulfill its promises. Internet is offline, companies go bankrupt, users are banned, and errors occur. All those things happen all the time, and then what? Right, that's why the world needs local-first apps.
+Local-first apps allow users to own their data by storing them on their devices. Modern browsers provide API designed precisely for that. How is it different from keeping files on disk? Files are not the right abstraction for apps and cannot synchronize among devices. That's why traditional apps use the client-server architecture. But using client-server architecture also means that users' ability to use an app depends on some server that can be offline, temporarily or forever, if a company decides to ban a user or even goes bankrupt. That's unfortunate. Luckily, a way to restore data ownership exists. It's Evolu.
 
 ## Documentation
 
