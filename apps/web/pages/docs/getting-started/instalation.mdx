@@ -1,0 +1,53 @@
+import { Callout } from "nextra-theme-docs";
+import { Steps } from "nextra/components";
+import { Tabs } from "nextra/components";
+
+# Installation
+
+Supported Platforms:
+
+- All desktop and mobile browsers
+- Electron
+- React Native
+
+Requirements:
+
+- TypeScript 5.0 or newer
+- The `strict` flag enabled in your `tsconfig.json` file
+
+<Steps>
+### Choose Framework
+
+Evolu is tested with: [Next.js](https://nextjs.org), [Vite](https://vitejs.dev),
+[Electron](https://www.electronjs.org), [Expo](https://expo.dev)
+
+### Install Evolu
+
+<Tabs items={["React", "React Native"]}>
+  <Tabs.Tab>
+
+    ```bash filename="Terminal"
+      npm install @evolu/react
+    ```
+
+  </Tabs.Tab>
+  <Tabs.Tab>
+
+    ```bash filename="Terminal"
+      npm install @evolu/react-native
+    ```
+
+  </Tabs.Tab>
+</Tabs>
+
+### Add Settings
+
+Check [examples](https://github.com/evoluhq/evolu/tree/main/examples)
+for additional settings.
+
+<Callout type="warning" emoji="‼️">
+  For the web, remember to set COOP and COEP HTTP Headers.
+  [Example](https://github.com/evoluhq/evolu/blob/main/examples/nextjs/next.config.js)
+</Callout>
+
+</Steps>
