@@ -1,15 +1,15 @@
 {
   "index": {
-    "title": "Home",
     "type": "page",
+    "title": "Home",
     "display": "hidden"
   },
   "docs": {
-    "title": "Docs",
-    "type": "page"
+    "type": "page",
+    "title": "Documentation"
   },
   "examples": {
-    "title": "Examples",
-    "type": "page"
+    "type": "page",
+    "title": "Examples"
   }
 }
