@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 2.0.2
+
+### Patch Changes
+
+- ddd4014: Update readme
+
 ## 2.0.1
 
 ### Patch Changes
