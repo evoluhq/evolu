@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 2.0.3
+
+### Patch Changes
+
+- 59ec99c: Update @evolu/common peer dependencies
+
 ## 2.0.2
 
 ### Patch Changes
