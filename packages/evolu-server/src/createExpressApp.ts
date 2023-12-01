@@ -85,21 +85,20 @@ const createDb = (fileName: string): Db =>
     };
   });
 
-const DbTag = Context.Tag<Db>();
+const Db = Context.Tag<Db>();
 
 const getMerkleTree = (
   userId: string,
 ): Effect.Effect<Db, SqliteError, MerkleTree> =>
-  pipe(
-    Effect.flatMap(DbTag, ({ selectMerkleTree }) =>
-      Effect.try({
-        try: () =>
-          selectMerkleTree.get(userId) as
-            | { readonly merkleTree: MerkleTreeString }
-            | undefined,
-        catch: (error) => new SqliteError(error),
-      }),
-    ),
+  Effect.flatMap(Db, ({ selectMerkleTree }) =>
+    Effect.try({
+      try: () =>
+        selectMerkleTree.get(userId) as
+          | { readonly merkleTree: MerkleTreeString }
+          | undefined,
+      catch: (error) => new SqliteError(error),
+    }),
+  ).pipe(
     Effect.map((row) =>
       row ? unsafeMerkleTreeFromString(row.merkleTree) : initialMerkleTree,
     ),
@@ -114,7 +113,7 @@ const addMessages = ({
   messages: ReadonlyArray.NonEmptyReadonlyArray<EncryptedMessage>;
   userId: string;
 }): Effect.Effect<Db, SqliteError, MerkleTree> =>
-  Effect.flatMap(DbTag, (db) =>
+  Effect.flatMap(Db, (db) =>
     Effect.try({
       try: () => {
         db.begin.run();
@@ -157,7 +156,7 @@ const getMessages = ({
   userId: string;
   nodeId: string;
 }): Effect.Effect<Db, SqliteError, ReadonlyArray<EncryptedMessage>> =>
-  Effect.flatMap(DbTag, (db) =>
+  Effect.flatMap(Db, (db) =>
     Effect.try({
       try: () =>
         db.selectMessages.all(
@@ -226,7 +225,7 @@ export const createExpressApp = (): express.Express => {
 
   app.post("/", (req, res) => {
     Effect.runCallback(
-      Effect.provideService(sync(req), DbTag, db),
+      Effect.provideService(sync(req), Db, db),
       Exit.match({
         onFailure: (error) => {
           // eslint-disable-next-line no-console
