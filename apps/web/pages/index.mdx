@@ -2,19 +2,26 @@
 title: Evolu - Local-first platform designed for privacy, ease of use, and no vendor lock-in
 ---
 
-# Evolu - Local-First Platform
-
-[Local-first](https://www.inkandswitch.com/local-first/) apps allow users to own their data. Evolu stores data in the user's
-device(s), so Evolu apps can work offline. Evolu merges data changes made on different devices without conflicts using
-Conflict-free Replicated Data Type (CRDT).
-
-import { Callout } from "nextra-theme-docs";
-
-<Callout type="info" emoji="ℹ️">
-  Evolu is designed for privacy, ease of use, and no vendor lock-in.
-</Callout>
+# Local-first platform designed for privacy, ease of use, and no vendor lock-in
 
 [Get started](/docs) · [GitHub repository](https://github.com/evoluhq/evolu/)
+
+## Features
+
+- [SQLite](https://sqlite.org) in all browsers, Electron, and React Native
+- [CRDT](https://crdt.tech) for merging changes without conflicts
+- End-to-end encrypted sync and backup
+- Free Evolu sync and backup server, or you can run your own
+- Typed database schema (with branded types like `NonEmptyString1000`, `PositiveInt`, etc.)
+- Typed SQL via [Kysely](https://kysely.dev)
+- Reactive queries with full React Suspense support
+- Real-time experience via revalidation on focus and network recovery
+- No signup/login, only bitcoin-like mnemonic (12 words)
+- Ad-hoc migration
+- Sqlite JSON support with automatic stringifying and parsing
+- Support for [Kysely Relations](https://kysely.dev/docs/recipes/relations) (loading nested objects and arrays in a single SQL query)
+- Local-only tables (tables with \_ prefix are not synced)
+- Evolu Solid/Vue/Svelte soon
 
 ## Overview
 
@@ -22,59 +29,70 @@ import { Callout } from "nextra-theme-docs";
 import * as S from "@effect/schema/Schema";
 import * as Evolu from "@evolu/react";
 
+// Create TodoId schema.
 const TodoId = Evolu.id("Todo");
+
+// It's branded string: string & Brand<"Id"> & Brand<"Todo">
+// TodoId type ensures no other ID can be used where TodoId is expected.
 type TodoId = S.Schema.To<typeof TodoId>;
 
-const NonEmptyString50 = Evolu.String.pipe(
-  S.minLength(1),
-  S.maxLength(50),
-  S.brand("NonEmptyString50"),
-);
-type NonEmptyString50 = S.Schema.To<typeof NonEmptyString50>;
-
+// Create TodoTable schema.
 const TodoTable = S.struct({
   id: TodoId,
-  title: NonEmptyString50,
-  description: S.nullable(Evolu.NonEmptyString1000),
-  isCompleted: Evolu.SqliteBoolean,
+  // Note we can enforce NonEmptyString1000.
+  title: Evolu.NonEmptyString1000,
+  // SQLite doesn't support the boolean type, so Evolu uses
+  // SqliteBoolean (a branded number) instead.
+  isCompleted: S.nullable(Evolu.SqliteBoolean),
 });
 type TodoTable = S.Schema.To<typeof TodoTable>;
 
+// Create database schema.
 const Database = S.struct({
   todo: TodoTable,
 });
 
-const { useQuery, useMutation } = Evolu.create(Database);
+// Create Evolu.
+const evolu = Evolu.create(Database);
 
-const { rows } = useQuery(
-  (db) =>
-    // A type-safe SQL query builder.
-    db.selectFrom("todo").select(["id", "title"]).orderBy("createdAt"),
-  // The filterMap helper for ad-hoc schema migrations.
-  (row) => row
+// Create a typed SQL query. Yes, with autocomplete and type-checking.
+const allTodos = evolu.createQuery((db) =>
+  db
+    .selectFrom("todo")
+    .selectAll()
+    // SQLite doesn't support the boolean type, but we have `cast` helper.
+    .where("isDeleted", "is not", Evolu.cast(true))
+    .orderBy("createdAt"),
 );
 
-const { create, update } = useMutation();
+// Load the query. Batched and cached by default.
+const allTodosPromise = evolu.loadQuery(allTodos);
 
-if (!S.is(NonEmptyString50)(title)) return;
-const { id } = create("todo", { title, isCompleted: false });
+// React Hooks.
+const { useEvolu, useQuery } = evolu;
 
-update("todo", { id, isCompleted: true }, onComplete);
+// Use the query in React reactively (it's updated on a mutation).
+const { rows, row } = useQuery(allTodos);
+
+// Create a todo.
+const { create } = useEvolu();
+create("todo", {
+  title: S.parseSync(Evolu.NonEmptyString1000)("Learn Effect"),
+});
+
+// Update a todo.
+const { update } = useEvolu();
+update("todo", { id, isCompleted: true });
+
+// Delete all data on a device.
+useEvolu().resetOwner();
+
+// Restore all data on a different defice.
+useEvolu().restoreOwner(mnemonic);
 ```
-
-## Features
-
-- SQLite in all browsers, Electron, and React Native
-- E2E encrypted sync and backup with CRDT (merging changes without conflicts)
-- Free Evolu server for testing (paid production-ready soon, or you can run your own)
-- Typed database schema with branded types (`NonEmptyString1000`, `PositiveInt`)
-- Reactive queries with React Suspense support
-- Real-time experience via revalidation on focus and network recovery
-- Schema evolving via `filterMap` ad-hoc migration
-- No signup/login, no email collection, only Bitcoin-like mnemonic (12 words)
-- Fetching nested objects and arrays in a single SQL query
-- JSON support with automatic parsing and stringifying
 
 ## Community
 
-The Evolu community is on [GitHub Discussions](https://github.com/evoluhq/evolu/discussions). To chat with other community members, you can join the [Evolu Discord](https://discord.gg/2J8yyyyxtZ).
+The Evolu community is on [GitHub Discussions](https://github.com/evoluhq/evolu/discussions).
+
+To chat with other community members, you can join the [Evolu Discord](https://discord.gg/2J8yyyyxtZ).
