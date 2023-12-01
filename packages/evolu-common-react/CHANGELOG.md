@@ -1,5 +1,13 @@
 # @evolu/common-react
 
+## 2.0.2
+
+### Patch Changes
+
+- b06757c: Update readme
+- Updated dependencies [b06757c]
+  - @evolu/common@2.0.5
+
 ## 2.0.1
 
 ### Patch Changes

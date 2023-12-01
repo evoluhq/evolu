@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 2.0.5
+
+### Patch Changes
+
+- b06757c: Update readme
+
 ## 2.0.4
 
 ### Patch Changes
