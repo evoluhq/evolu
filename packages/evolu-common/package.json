@@ -1,6 +1,6 @@
 {
   "name": "@evolu/common",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "description": "Local-first platform designed for privacy, ease of use, and no vendor lock-in to sync and backup people's lifetime data",
   "keywords": [
     "evolu",

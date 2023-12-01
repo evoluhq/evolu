@@ -1,5 +1,13 @@
 # @evolu/react-native
 
+## 2.0.1
+
+### Patch Changes
+
+- b06757c: Update readme
+- Updated dependencies [b06757c]
+  - @evolu/common-react@2.0.2
+
 ## 2.0.0
 
 ### Major Changes
