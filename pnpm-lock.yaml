@@ -434,6 +434,9 @@ importers:
       express:
         specifier: ^4.18.2
         version: 4.18.2
+      kysely:
+        specifier: ^0.26.3
+        version: 0.26.3
     devDependencies:
       '@evolu/tsconfig':
         specifier: workspace:*
