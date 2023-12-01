@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 2.0.4
+
+### Patch Changes
+
+- 4563ec0: Bump peer dependants
+
 ## 2.0.3
 
 ### Patch Changes
