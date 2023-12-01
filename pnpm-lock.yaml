@@ -30,8 +30,8 @@ importers:
   apps/native:
     dependencies:
       '@effect/schema':
-        specifier: ^0.51.0
-        version: 0.51.0(effect@2.0.0-next.57)(fast-check@3.14.0)
+        specifier: ^0.51.1
+        version: 0.51.1(effect@2.0.0-next.58)(fast-check@3.14.0)
       '@evolu/react-native':
         specifier: workspace:*
         version: link:../../packages/evolu-react-native
@@ -45,8 +45,8 @@ importers:
         specifier: ^3.12.0
         version: 3.12.0
       effect:
-        specifier: 2.0.0-next.57
-        version: 2.0.0-next.57
+        specifier: 2.0.0-next.58
+        version: 2.0.0-next.58
       events:
         specifier: ^3.3.0
         version: 3.3.0
@@ -125,8 +125,8 @@ importers:
   apps/web:
     dependencies:
       '@effect/schema':
-        specifier: ^0.51.0
-        version: 0.51.0(effect@2.0.0-next.57)(fast-check@3.14.0)
+        specifier: ^0.51.1
+        version: 0.51.1(effect@2.0.0-next.58)(fast-check@3.14.0)
       '@evolu/common':
         specifier: workspace:*
         version: link:../../packages/evolu-common
@@ -137,8 +137,8 @@ importers:
         specifier: ^2.0.0
         version: 2.0.0
       effect:
-        specifier: 2.0.0-next.57
-        version: 2.0.0-next.57
+        specifier: 2.0.0-next.58
+        version: 2.0.0-next.58
       next:
         specifier: 14.0.3
         version: 14.0.3(react-dom@18.2.0)(react@18.2.0)
@@ -254,8 +254,8 @@ importers:
         version: 5.0.3
     devDependencies:
       '@effect/schema':
-        specifier: 0.51.0
-        version: 0.51.0(effect@2.0.0-next.57)(fast-check@3.14.0)
+        specifier: 0.51.1
+        version: 0.51.1(effect@2.0.0-next.58)(fast-check@3.14.0)
       '@evolu/tsconfig':
         specifier: workspace:*
         version: link:../evolu-tsconfig
@@ -272,8 +272,8 @@ importers:
         specifier: ^9.1.1
         version: 9.1.1
       effect:
-        specifier: 2.0.0-next.57
-        version: 2.0.0-next.57
+        specifier: 2.0.0-next.58
+        version: 2.0.0-next.58
       eslint:
         specifier: ^8.54.0
         version: 8.54.0
@@ -429,8 +429,8 @@ importers:
         specifier: ^2.8.5
         version: 2.8.5
       effect:
-        specifier: 2.0.0-next.57
-        version: 2.0.0-next.57
+        specifier: 2.0.0-next.58
+        version: 2.0.0-next.58
       express:
         specifier: ^4.18.2
         version: 4.18.2
@@ -2344,13 +2344,13 @@ packages:
       '@jridgewell/trace-mapping': 0.3.9
     dev: true
 
-  /@effect/schema@0.51.0(effect@2.0.0-next.57)(fast-check@3.14.0):
-    resolution: {integrity: sha512-KacmzkeloC4iQjFL3SzpzpdPyizuPWEU/mhhkpb6QL9RVAlTQMnebek9l9GixTEkxCnGZJXReYMhjXx4uONikg==}
+  /@effect/schema@0.51.1(effect@2.0.0-next.58)(fast-check@3.14.0):
+    resolution: {integrity: sha512-ZuULzdmAUTtdC/OFaVsEtc7NUCCElYYBE6LJSc9sYG8sDQisA5AQnWFsRk6MZPxzD2EdpTlKgQE0gysn14sttA==}
     peerDependencies:
-      effect: 2.0.0-next.57
+      effect: 2.0.0-next.58
       fast-check: ^3.13.2
     dependencies:
-      effect: 2.0.0-next.57
+      effect: 2.0.0-next.58
       fast-check: 3.14.0
 
   /@es-joy/jsdoccomment@0.41.0:
@@ -4932,8 +4932,8 @@ packages:
     hasBin: true
     dependencies:
       caniuse-lite: 1.0.30001565
-      electron-to-chromium: 1.4.599
-      node-releases: 2.0.13
+      electron-to-chromium: 1.4.600
+      node-releases: 2.0.14
       update-browserslist-db: 1.0.13(browserslist@4.22.1)
 
   /bser@2.1.1:
@@ -6094,11 +6094,11 @@ packages:
   /ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  /effect@2.0.0-next.57:
-    resolution: {integrity: sha512-riZE0QZt/v7pko4TJj/px3uF2P72N2VufBkjadVxW0JNgBg769+L6TZ3RQtXjFFq/jAfgSJYDiQGNXWCZvHTuQ==}
+  /effect@2.0.0-next.58:
+    resolution: {integrity: sha512-3JtlhJWIZlKe2krJp8ZsKCWCsKMemRVMNOGKtW6bLbg1ZYDi9riuDO44heqEyh7mVBhGsLh/Ut+Hz4olFbfhyg==}
 
-  /electron-to-chromium@1.4.599:
-    resolution: {integrity: sha512-FdLI0/h+PvShEqmBMnZCdbgabAuQiiM9Ph8hVGmPOR5GU1XXZgwLRCMogE63OrUxcDEOBlEMVYAgtkJjWFnhRA==}
+  /electron-to-chromium@1.4.600:
+    resolution: {integrity: sha512-KD6CWjf1BnQG+NsXuyiTDDT1eV13sKuYsOUioXkQweYTQIbgHkXPry9K7M+7cKtYHnSUPitVaLrXYB1jTkkYrw==}
 
   /elkjs@0.8.2:
     resolution: {integrity: sha512-L6uRgvZTH+4OF5NE/MBbzQx/WYpru1xCBE9respNj6qznEewGUIfhzmm7horWWxbNO2M0WckQypGctR8lH79xQ==}
@@ -10332,8 +10332,8 @@ packages:
   /node-int64@0.4.0:
     resolution: {integrity: sha512-O5lz91xSOeoXP6DulyHfllpq+Eg00MWitZIbtPfoSEvqIHdl5gfcY6hYzDWnj0qD5tz52PI08u9qUvSVeUBeHw==}
 
-  /node-releases@2.0.13:
-    resolution: {integrity: sha512-uYr7J37ae/ORWdZeQ1xxMJe3NtdmqMC/JZK+geofDrkLUApKRHPd18/TxtBOJ4A0/+uUIliorNrfYV6s1b02eQ==}
+  /node-releases@2.0.14:
+    resolution: {integrity: sha512-y10wOWt8yZpqXmOgRo77WaHEmhYQYGNA6y421PKsKYWEK8aW+cqAphborZDhqfyKrbZEN92CN1X2KbafY2s7Yw==}
 
   /node-stream-zip@1.15.0:
     resolution: {integrity: sha512-LN4fydt9TqhZhThkZIVQnF9cwjU3qmUH9h78Mx/K7d3VvfRqqwthLwJEUOEL0QPZ0XQmNN7be5Ggit5+4dq3Bw==}

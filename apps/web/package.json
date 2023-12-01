@@ -10,11 +10,11 @@
     "clean": "rm -rf .turbo .next node_modules"
   },
   "dependencies": {
-    "@effect/schema": "^0.51.0",
+    "@effect/schema": "^0.51.1",
     "@evolu/common": "workspace:*",
     "@evolu/react": "workspace:*",
     "clsx": "^2.0.0",
-    "effect": "2.0.0-next.57",
+    "effect": "2.0.0-next.58",
     "next": "14.0.3",
     "nextra": "^2.13.2",
     "nextra-theme-docs": "^2.13.2",

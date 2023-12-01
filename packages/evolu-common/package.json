@@ -61,21 +61,21 @@
     "nanoid": "^5.0.3"
   },
   "devDependencies": {
-    "@effect/schema": "0.51.0",
+    "@effect/schema": "0.51.1",
     "@evolu/tsconfig": "workspace:*",
     "@protobuf-ts/plugin": "^2.9.1",
     "@protobuf-ts/protoc": "^2.9.1",
     "array-shuffle": "^3.0.0",
     "better-sqlite3": "^9.1.1",
-    "effect": "2.0.0-next.57",
+    "effect": "2.0.0-next.58",
     "eslint": "^8.54.0",
     "eslint-config-evolu": "workspace:*",
     "typescript": "^5.3.2",
     "vitest": "^0.34.6"
   },
   "peerDependencies": {
-    "@effect/schema": "0.51.0",
-    "effect": "2.0.0-next.57"
+    "@effect/schema": "0.51.1",
+    "effect": "2.0.0-next.58"
   },
   "publishConfig": {
     "access": "public"
