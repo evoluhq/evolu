@@ -1,24 +1,15 @@
 # Evolu Server
 
-Node.js server for Evolu library.
+Evolu server for Evolu library.
 
-Evolu is designed for privacy, ease of use, and no vendor lock-in.
+## Documentation
 
-## Requirements
+For detailed information and usage examples, please visit [evolu.dev](https://www.evolu.dev).
 
-- TypeScript 5.0 or newer
-- The `strict` flag enabled in your `tsconfig.json` file
+## Community
 
-## Getting Started
+The Evolu community is on [GitHub Discussions](https://github.com/evoluhq/evolu/discussions), where you can ask questions and voice ideas.
 
-```bash
-npm install @evolu/server
-npm run build
-npm start
-```
+To chat with other community members, you can join the [Evolu Discord](https://discord.gg/2J8yyyyxtZ).
 
-## Deploy to fly.io
-
-- https://fly.io/docs/languages-and-frameworks/node/
-
-For quick testing, write `flyctl launch` and confirm a deployment. Note that without a Fly Volume, the database with be reset on every deployment.
+[![Twitter URL](https://img.shields.io/twitter/url/https/twitter.com/evoluhq.svg?style=social&label=Follow%20%40evoluhq)](https://twitter.com/evoluhq)
