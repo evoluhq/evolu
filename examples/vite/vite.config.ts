@@ -14,10 +14,20 @@ export default defineConfig({
     // Another workaround for Vite bug: https://github.com/radix-ui/primitives/discussions/1915#discussioncomment-5733178
     include: ["react-dom"],
   },
-  // assets lazily loaded by evolu
-  assetsInclude: [/@scure\/bip39/],
+  build: {
+    rollupOptions: {
+      // lazily loaded modules
+      external: [/@scure\/bip39/],
+    },
+  },
   worker: {
     format: "es",
+  },
+  preview: {
+    headers: {
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Embedder-Policy": "require-corp",
+    },
   },
   plugins: [
     react(),
