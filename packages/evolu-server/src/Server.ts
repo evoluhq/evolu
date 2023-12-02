@@ -1,28 +1,38 @@
+import {
+  SyncRequest,
+  SyncResponse,
+  diffMerkleTrees,
+  initialMerkleTree,
+  insertIntoMerkleTree,
+  makeSyncTimestamp,
+  merkleTreeToString,
+  timestampToString,
+  unsafeMerkleTreeFromString,
+  unsafeTimestampFromString,
+} from "@evolu/common";
 import { Context, Effect, Layer } from "effect";
-import { Kysely } from "kysely";
-import { Database } from "./Database.js";
+import { sql } from "kysely";
+import { BadRequestError, Db } from "./Types.js";
 
-export interface EvoluServer {
-  readonly createDatabase: Effect.Effect<never, never, void>;
+export interface Server {
+  /** Create database tables and indexes if they do not exist. */
+  readonly initDatabase: Effect.Effect<never, never, void>;
 
+  /** Sync data. */
   readonly sync: (
     body: Uint8Array,
   ) => Effect.Effect<never, BadRequestError, Buffer>;
 }
-export const EvoluServer = Context.Tag<EvoluServer>();
 
-export class BadRequestError {
-  readonly _tag = "BadRequestError";
-  constructor(readonly error: unknown) {}
-}
+export const Server = Context.Tag<Server>();
 
-export const EvoluServerLive = Layer.effect(
-  EvoluServer,
+export const ServerLive = Layer.effect(
+  Server,
   Effect.gen(function* (_) {
-    const db = yield* _(EvoluServerKysely);
+    const db = yield* _(Db);
 
-    return EvoluServer.of({
-      createDatabase: Effect.promise(async () => {
+    return Server.of({
+      initDatabase: Effect.promise(async () => {
         await db.schema
           .createTable("message")
           .ifNotExists()
@@ -31,22 +41,117 @@ export const EvoluServerLive = Layer.effect(
           .addColumn("content", "blob")
           .addPrimaryKeyConstraint("messagePrimaryKey", ["timestamp", "userId"])
           .execute();
+
         await db.schema
           .createTable("merkleTree")
           .ifNotExists()
           .addColumn("userId", "text", (col) => col.primaryKey())
           .addColumn("merkleTree", "text")
           .execute();
+
+        await db.schema
+          .createIndex("messageIndex")
+          .ifNotExists()
+          .on("message")
+          .columns(["userId", "timestamp"])
+          .execute();
       }),
 
-      sync: (_body) =>
+      sync: (body) =>
         Effect.gen(function* (_) {
-          yield* _(Effect.succeed(1));
-          throw "";
+          const request = yield* _(
+            Effect.try({
+              try: () => SyncRequest.fromBinary(body),
+              catch: (error): BadRequestError => ({
+                _tag: "BadRequestError",
+                error,
+              }),
+            }),
+          );
+
+          const merkleTree = yield* _(
+            Effect.promise(() =>
+              db
+                .transaction()
+                .setIsolationLevel("serializable")
+                .execute(async (trx) => {
+                  let merkleTree = await trx
+                    .selectFrom("merkleTree")
+                    .select("merkleTree")
+                    .where("userId", "=", request.userId)
+                    .executeTakeFirst()
+                    .then((row) => {
+                      if (!row) return initialMerkleTree;
+                      return unsafeMerkleTreeFromString(row.merkleTree);
+                    });
+
+                  if (request.messages.length === 0) return merkleTree;
+
+                  for (const message of request.messages) {
+                    const { numInsertedOrUpdatedRows } = await trx
+                      .insertInto("message")
+                      .values({
+                        content: message.content,
+                        timestamp: message.timestamp,
+                        userId: request.userId,
+                      })
+                      .onConflict((oc) => oc.doNothing())
+                      .executeTakeFirst();
+
+                    if (numInsertedOrUpdatedRows === 1n) {
+                      merkleTree = insertIntoMerkleTree(
+                        unsafeTimestampFromString(message.timestamp),
+                      )(merkleTree);
+                    }
+                  }
+
+                  const merkleTreeString = merkleTreeToString(merkleTree);
+
+                  await trx
+                    .insertInto("merkleTree")
+                    .values({
+                      userId: request.userId,
+                      merkleTree: merkleTreeString,
+                    })
+                    .onConflict((oc) =>
+                      oc.doUpdateSet({ merkleTree: merkleTreeString }),
+                    )
+                    .execute();
+
+                  return merkleTree;
+                }),
+            ),
+          );
+
+          const messages = yield* _(
+            diffMerkleTrees(
+              merkleTree,
+              unsafeMerkleTreeFromString(request.merkleTree),
+            ),
+            Effect.map(makeSyncTimestamp),
+            Effect.map(timestampToString),
+            Effect.flatMap((timestamp) =>
+              Effect.promise(() =>
+                db
+                  .selectFrom("message")
+                  .select(["timestamp", "content"])
+                  .where("userId", "=", request.userId)
+                  .where("timestamp", ">=", timestamp)
+                  .where("timestamp", "not like", sql`'%' || ${request.nodeId}`)
+                  .orderBy("timestamp")
+                  .execute(),
+              ),
+            ),
+            Effect.orElseSucceed(() => []),
+          );
+
+          const response = SyncResponse.toBinary({
+            merkleTree: merkleTreeToString(merkleTree),
+            messages,
+          });
+
+          return Buffer.from(response);
         }),
     });
   }),
 );
-
-export type EvoluServerKysely = Kysely<Database>;
-export const EvoluServerKysely = Context.Tag<EvoluServerKysely>();
