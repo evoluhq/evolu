@@ -1,5 +1,13 @@
 # @evolu/server
 
+## 2.1.0
+
+### Minor Changes
+
+- e401e55: Add EvoluServer, refactor out Express
+
+  Now, it's possible to make Hono and other adapters easily.
+
 ## 2.0.5
 
 ### Patch Changes

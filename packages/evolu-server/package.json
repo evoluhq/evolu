@@ -1,6 +1,6 @@
 {
   "name": "@evolu/server",
-  "version": "2.0.5",
+  "version": "2.1.0",
   "description": "Node.js server for Evolu",
   "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
   "license": "MIT",
