@@ -1,12 +1,23 @@
+import { Callout } from "nextra-theme-docs";
+
 # Evolu Server
 
-Evolu Server provides sync and backup for Evolu clients. It's a simple
-message buffer; therefore, it's generic (the same) for all local-first
-applications.
+Evolu Server provides sync and backup for Evolu clients. While it's technically
+possible to sync and backup Evolu devices among themselves (P2P), it's not
+practical because devices are often offline and geographically close. Backups
+should be stored in locations that are geographically distant from each other
+to ensure protection against localized disasters.
 
-Not having to write and maintains specific server significantly improves
-the developer experience. Just write the client code without spending
-precious time on the server REST/GraphQL/whatever APIs.
+Evolu Server is a simple message buffer and storage generic (the same) for all
+Evolu apps. Only UserId, NodeId, and messages timestamps are visible. Everything
+else is encrypted.
 
-Evolu server is open-sourced, and anyone can (but doesn't have to) run
-their own.
+Evolu server is [open-sourced](https://github.com/evoluhq/evolu/tree/main/packages/evolu-server),
+and anyone can easily run their own. The core logic is a SQL database and
+web framework agnostic, so it's highly portable.
+
+<Callout type="info" emoji="ℹ️">
+  We provide a free `evolu.world` server built on the Cloudflare Workers and D1
+  database for testing and personal usage. Our super secret master plan on how
+  to make money on that is simple: We will sell hardware.
+</Callout>
