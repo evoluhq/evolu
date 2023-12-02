@@ -1,5 +1,13 @@
 # @evolu/server
 
+## 2.1.1
+
+### Patch Changes
+
+- b00dec2: Update deps
+- Updated dependencies [b00dec2]
+  - @evolu/common@2.0.6
+
 ## 2.1.0
 
 ### Minor Changes
