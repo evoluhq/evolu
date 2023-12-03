@@ -16,8 +16,11 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      // lazily loaded modules
-      external: ["@scure/bip39", "@scure/bip39/wordlists/english"],
+      output: {
+        entryFileNames: `[name][hash].js`,
+        chunkFileNames: `[name][hash].js`,
+        assetFileNames: `[name][hash].[ext]`,
+      },
     },
   },
   worker: {
