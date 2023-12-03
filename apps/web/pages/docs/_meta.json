@@ -2,9 +2,9 @@
   "index": "Introduction",
   "installation": "Installation",
   "quickstart": "Quickstart",
+  "evolu-server": "Evolu Server",
   "how-evolu-works": "How Evolu Works",
   "faq": "FAQ",
-  "evolu-server": "Evolu Server",
   "changeLog_link": {
     "title": "Change Log",
     "href": "https://github.com/evoluhq/evolu/releases",
