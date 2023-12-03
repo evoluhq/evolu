@@ -4,9 +4,10 @@
   "quickstart": "Quickstart",
   "evolu-server": "Evolu Server",
   "how-evolu-works": "How Evolu Works",
+  "comparison": "Comparison",
   "faq": "FAQ",
   "changeLog_link": {
-    "title": "Change Log",
+    "title": "Changelog",
     "href": "https://github.com/evoluhq/evolu/releases",
     "newWindow": true
   }

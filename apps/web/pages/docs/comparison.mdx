@@ -1,0 +1,52 @@
+import { Callout } from "nextra-theme-docs";
+
+# Comparison
+
+Local-first software, a paradigm emphasizing data sovereignty and network-independent
+functionality, is rapidly emerging as a cutting-edge trend in technology.
+The expanding ecosystem of frameworks and libraries makes it hard to choose
+the right tool for a job. Let's talk about the choices developers have.
+
+## Evolu vs Custom Solution
+
+Let's face it. Developers love to create new things from scratch. "Not Invented Here"
+syndrome is real. But sometimes it's also necessary, especially when we have special
+requirements.
+
+I decided to create Evolu because I made a few local-first apps, but I spent too much
+time on data persistence and synchronization details with each of them. Typically,
+I started with the front end and had much fun until I had to implement a server.
+Local-first apps are effectively distributed systems, and distributed systems
+are one of the most challenging topics in computer science.
+
+Just try to google "app sync problem," and you will see that even the most prominent companies
+fail to deliver reliable software. Apple Notes, for example: "11 Ways to Fix Apple
+Notes Not Syncing Between", "Notes Not Syncing Across Devices", and many more.
+If it's hard for Apple, how hard will it be for smaller companies?
+
+Creating a custom solution is possible but requires a deep understanding of
+distributed systems. Did you know that computer clocks can go backward? What
+should happen if the user edits the same data on two different offline devices?
+Can we enforce database constraints like transactions? And what about database
+schema changes? Should we migrate all data? How can we ensure outdated clients
+can work with new data or don't crash, at least? And that's only the tip of
+the iceberg. A local-first platform should work with all desktop, mobile, and
+native platforms.
+
+And the last and most crucial question: **What will happen when
+the author of a custom solution leaves the company?**
+
+<Callout type="info">
+  If someone still decides to write the most straightforward working code, they
+  will end up with something similar to Evolu minus years of Evolu evolving.
+</Callout>
+
+## Evolu vs ElectricSQL
+
+**TLDR**: It isn't stable yet and is not secure by default. It also requires a
+specific server. TODO: Compare CRDT approaches.
+
+## Evolu vs Vulcan Web (CR-SQLite)
+
+**TLDR**: It isn't stable yet and is not secure by default.
+TODO: Compare CRDT approaches.
