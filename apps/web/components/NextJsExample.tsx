@@ -1,6 +1,21 @@
 import { TreeFormatter } from "@effect/schema";
 import * as S from "@effect/schema/Schema";
-import * as Evolu from "@evolu/react";
+import {
+  EvoluProvider,
+  NonEmptyString1000,
+  SqliteBoolean,
+  String,
+  canUseDom,
+  cast,
+  createEvolu,
+  id,
+  jsonArrayFrom,
+  parseMnemonic,
+  useEvolu,
+  useEvoluError,
+  useOwner,
+  useQuery,
+} from "@evolu/react";
 import { Effect, Exit } from "effect";
 import {
   ChangeEvent,
@@ -12,13 +27,13 @@ import {
   useState,
 } from "react";
 
-const TodoId = Evolu.id("Todo");
+const TodoId = id("Todo");
 type TodoId = S.Schema.To<typeof TodoId>;
 
-const TodoCategoryId = Evolu.id("TodoCategory");
+const TodoCategoryId = id("TodoCategory");
 type TodoCategoryId = S.Schema.To<typeof TodoCategoryId>;
 
-const NonEmptyString50 = Evolu.String.pipe(
+const NonEmptyString50 = String.pipe(
   S.minLength(1),
   S.maxLength(50),
   S.brand("NonEmptyString50"),
@@ -27,8 +42,8 @@ type NonEmptyString50 = S.Schema.To<typeof NonEmptyString50>;
 
 const TodoTable = S.struct({
   id: TodoId,
-  title: Evolu.NonEmptyString1000,
-  isCompleted: S.nullable(Evolu.SqliteBoolean),
+  title: NonEmptyString1000,
+  isCompleted: S.nullable(SqliteBoolean),
   categoryId: S.nullable(TodoCategoryId),
 });
 type TodoTable = S.Schema.To<typeof TodoTable>;
@@ -47,16 +62,14 @@ const Database = S.struct({
   todo: TodoTable,
   todoCategory: TodoCategoryTable,
 });
+type Database = S.Schema.To<typeof Database>;
 
-const evolu = Evolu.create(Database, {
+const evolu = createEvolu(Database, {
   reloadUrl: "/examples/nextjs",
   ...(process.env.NODE_ENV === "development" && {
     syncUrl: "http://localhost:4000",
   }),
 });
-
-// React Hooks
-const { useEvolu, useEvoluError, useQuery, useOwner } = evolu;
 
 const createFixtures = (): Promise<void> =>
   Promise.all(
@@ -72,16 +85,16 @@ const createFixtures = (): Promise<void> =>
     });
 
     evolu.create("todo", {
-      title: S.parseSync(Evolu.NonEmptyString1000)("Try React Suspense"),
+      title: S.parseSync(NonEmptyString1000)("Try React Suspense"),
       categoryId: notUrgentCategoryId,
     });
   });
 
 const isRestoringOwner = (isRestoringOwner?: boolean): boolean => {
-  if (!Evolu.canUseDom) return false;
+  if (!canUseDom) return false;
   const key = 'evolu:isRestoringOwner"';
   if (isRestoringOwner != null)
-    localStorage.setItem(key, String(isRestoringOwner));
+    localStorage.setItem(key, isRestoringOwner.toString());
   return localStorage.getItem(key) === "true";
 };
 
@@ -98,7 +111,7 @@ export const NextJsExample = memo(function NextJsExample() {
     });
 
   return (
-    <>
+    <EvoluProvider value={evolu}>
       <NotificationBar />
       <h2 className="mt-6 text-xl font-semibold">
         {currentTab === "todos" ? "Todos" : "Categories"}
@@ -119,7 +132,7 @@ export const NextJsExample = memo(function NextJsExample() {
         </p>
         <OwnerActions />
       </Suspense>
-    </>
+    </EvoluProvider>
   );
 });
 
@@ -147,29 +160,29 @@ const todosWithCategories = evolu.createQuery((db) =>
   db
     .selectFrom("todo")
     .select(["id", "title", "isCompleted", "categoryId"])
-    .where("isDeleted", "is not", Evolu.cast(true))
+    .where("isDeleted", "is not", cast(true))
     // Filter null value and ensure non-null type. Evolu will provide a helper.
     .where("title", "is not", null)
-    .$narrowType<{ title: Evolu.NonEmptyString1000 }>()
+    .$narrowType<{ title: NonEmptyString1000 }>()
     .orderBy("createdAt")
     // https://kysely.dev/docs/recipes/relations
     .select((eb) => [
-      Evolu.jsonArrayFrom(
+      jsonArrayFrom(
         eb
           .selectFrom("todoCategory")
           .select(["todoCategory.id", "todoCategory.name"])
-          .where("isDeleted", "is not", Evolu.cast(true))
+          .where("isDeleted", "is not", cast(true))
           .orderBy("createdAt"),
       ).as("categories"),
     ]),
 );
 
 const Todos: FC = () => {
-  const { create } = useEvolu();
   const { rows } = useQuery(todosWithCategories);
+  const { create } = useEvolu<Database>();
 
   const handleAddTodoClick = (): void => {
-    prompt(Evolu.NonEmptyString1000, "What needs to be done?", (title) => {
+    prompt(NonEmptyString1000, "What needs to be done?", (title) => {
       create("todo", { title });
     });
   };
@@ -193,14 +206,14 @@ const TodoItem = memo<{
 }>(function TodoItem({
   row: { id, title, isCompleted, categoryId, categories },
 }) {
-  const { update } = useEvolu();
+  const { update } = useEvolu<Database>();
 
   const handleToggleCompletedClick = (): void => {
     update("todo", { id, isCompleted: !isCompleted });
   };
 
   const handleRenameClick = (): void => {
-    prompt(Evolu.NonEmptyString1000, "New Name", (title) => {
+    prompt(NonEmptyString1000, "New Name", (_title) => {
       update("todo", { id, title });
     });
   };
@@ -273,7 +286,7 @@ const todoCategories = evolu.createQuery((db) =>
   db
     .selectFrom("todoCategory")
     .select(["id", "name", "json"])
-    .where("isDeleted", "is not", Evolu.cast(true))
+    .where("isDeleted", "is not", cast(true))
     // Filter null value and ensure non-null type. Evolu will provide a helper.
     .where("name", "is not", null)
     .$narrowType<{ name: NonEmptyString50 }>()
@@ -281,8 +294,8 @@ const todoCategories = evolu.createQuery((db) =>
 );
 
 const TodoCategories: FC = () => {
-  const { create } = useEvolu();
   const { rows } = useQuery(todoCategories);
+  const { create } = useEvolu<Database>();
 
   // Evolu automatically parses JSONs into typed objects.
   // if (rows[0]) console.log(rows[1].json?.foo);
@@ -311,10 +324,10 @@ const TodoCategories: FC = () => {
 const TodoCategoryItem = memo<{
   row: Pick<TodoCategoryTable, "id" | "name">;
 }>(function TodoItem({ row: { id, name } }) {
-  const { update } = useEvolu();
+  const { update } = useEvolu<Database>();
 
   const handleRenameClick = (): void => {
-    prompt(NonEmptyString50, "Category Name", (name) => {
+    prompt(NonEmptyString50, "Category Name", (_name) => {
       update("todoCategory", { id, name });
     });
   };
@@ -335,13 +348,13 @@ const TodoCategoryItem = memo<{
 });
 
 const OwnerActions: FC = () => {
-  const evolu = useEvolu();
+  const evolu = useEvolu<Database>();
   const owner = useOwner();
   const [showMnemonic, setShowMnemonic] = useState(false);
 
   const handleRestoreOwnerClick = (): void => {
-    prompt(Evolu.NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
-      Evolu.parseMnemonic(mnemonic)
+    prompt(NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
+      parseMnemonic(mnemonic)
         .pipe(Effect.runPromiseExit)
         .then(
           Exit.match({

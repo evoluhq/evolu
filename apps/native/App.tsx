@@ -1,6 +1,20 @@
 import * as S from "@effect/schema/Schema";
 import * as TreeFormatter from "@effect/schema/TreeFormatter";
-import * as Evolu from "@evolu/react-native";
+import {
+  EvoluProvider,
+  NonEmptyString1000,
+  SqliteBoolean,
+  String,
+  cast,
+  createEvolu,
+  id,
+  jsonArrayFrom,
+  parseMnemonic,
+  useEvolu,
+  useEvoluError,
+  useOwner,
+  useQuery,
+} from "@evolu/react-native";
 import { Effect, Either, Exit, Function } from "effect";
 import {
   FC,
@@ -20,13 +34,13 @@ import {
 } from "react-native";
 import RNPickerSelect from "react-native-picker-select";
 
-const TodoId = Evolu.id("Todo");
+const TodoId = id("Todo");
 type TodoId = S.Schema.To<typeof TodoId>;
 
-const TodoCategoryId = Evolu.id("TodoCategory");
+const TodoCategoryId = id("TodoCategory");
 type TodoCategoryId = S.Schema.To<typeof TodoCategoryId>;
 
-const NonEmptyString50 = Evolu.String.pipe(
+const NonEmptyString50 = String.pipe(
   S.minLength(1),
   S.maxLength(50),
   S.brand("NonEmptyString50"),
@@ -35,8 +49,8 @@ type NonEmptyString50 = S.Schema.To<typeof NonEmptyString50>;
 
 const TodoTable = S.struct({
   id: TodoId,
-  title: Evolu.NonEmptyString1000,
-  isCompleted: Evolu.SqliteBoolean,
+  title: NonEmptyString1000,
+  isCompleted: S.nullable(SqliteBoolean),
   categoryId: S.nullable(TodoCategoryId),
 });
 type TodoTable = S.Schema.To<typeof TodoTable>;
@@ -47,7 +61,7 @@ type SomeJson = S.Schema.To<typeof SomeJson>;
 const TodoCategoryTable = S.struct({
   id: TodoCategoryId,
   name: NonEmptyString50,
-  json: SomeJson,
+  json: S.nullable(SomeJson),
 });
 type TodoCategoryTable = S.Schema.To<typeof TodoCategoryTable>;
 
@@ -55,15 +69,13 @@ const Database = S.struct({
   todo: TodoTable,
   todoCategory: TodoCategoryTable,
 });
+type Database = S.Schema.To<typeof Database>;
 
-const evolu = Evolu.create(Database, {
+const evolu = createEvolu(Database, {
   ...(process.env.NODE_ENV === "development" && {
     syncUrl: "http://localhost:4000",
   }),
 });
-
-// React Hooks
-const { useEvolu, useEvoluError, useQuery, useOwner } = evolu;
 
 export default function App(): JSX.Element {
   return (
@@ -78,7 +90,7 @@ const NextJsExample: FC = () => {
   const [todosShown, setTodosShown] = useState(true);
 
   return (
-    <>
+    <EvoluProvider value={evolu}>
       <OwnerActions />
       <View style={{ alignItems: "flex-start" }}>
         <Button
@@ -97,23 +109,23 @@ const NextJsExample: FC = () => {
       </View>
       <Suspense>{todosShown ? <Todos /> : <TodoCategories />}</Suspense>
       <NotificationBar />
-    </>
+    </EvoluProvider>
   );
 };
 
 const OwnerActions: FC = () => {
-  const evolu = useEvolu();
+  const evolu = useEvolu<Database>();
   const owner = useOwner();
   const [isMnemonicShown, setIsMnemonicShown] = useState(false);
   const [isRestoreShown, setIsRestoreShown] = useState(false);
   const [mnemonic, setMnemonic] = useState("");
-  const parsedMnemonic = S.parseEither(Evolu.NonEmptyString1000)(mnemonic);
+  const parsedMnemonic = S.parseEither(NonEmptyString1000)(mnemonic);
 
   const handleMnemonicInputEndEditing = (): void => {
     Either.match(parsedMnemonic, {
       onLeft: (error) => alert(TreeFormatter.formatErrors(error.errors)),
       onRight: (mnemonic) => {
-        Evolu.parseMnemonic(mnemonic)
+        parseMnemonic(mnemonic)
           .pipe(Effect.runPromiseExit)
           .then(
             Exit.match({
@@ -173,31 +185,29 @@ const todosWithCategories = evolu.createQuery((db) =>
   db
     .selectFrom("todo")
     .select(["id", "title", "isCompleted", "categoryId"])
-    .where("isDeleted", "is not", Evolu.cast(true))
-    // Filter null values and ensure non-null types. Evolu will provide a helper.
+    .where("isDeleted", "is not", cast(true))
+    // Filter null value and ensure non-null type. Evolu will provide a helper.
     .where("title", "is not", null)
-    .where("isCompleted", "is not", null)
-    .$narrowType<{ title: Evolu.NonEmptyString1000 }>()
-    .$narrowType<{ isCompleted: Evolu.SqliteBoolean }>()
+    .$narrowType<{ title: NonEmptyString1000 }>()
     .orderBy("createdAt")
     // https://kysely.dev/docs/recipes/relations
     .select((eb) => [
-      Evolu.jsonArrayFrom(
+      jsonArrayFrom(
         eb
           .selectFrom("todoCategory")
           .select(["todoCategory.id", "todoCategory.name"])
-          .where("isDeleted", "is not", Evolu.cast(true))
+          .where("isDeleted", "is not", cast(true))
           .orderBy("createdAt"),
       ).as("categories"),
     ]),
 );
 
 const Todos: FC = () => {
-  const { create } = useEvolu();
   const { rows } = useQuery(todosWithCategories);
+  const { create } = useEvolu<Database>();
 
   const [text, setText] = useState("");
-  const newTodoTitle = S.parseEither(Evolu.NonEmptyString1000)(text);
+  const newTodoTitle = S.parseEither(NonEmptyString1000)(text);
   const handleTextInputEndEditing = (): void => {
     Either.match(newTodoTitle, {
       onLeft: Function.constVoid,
@@ -236,7 +246,7 @@ const TodoItem = memo<{
 }>(function TodoItem({
   row: { id, title, isCompleted, categoryId, categories },
 }) {
-  const { update } = useEvolu();
+  const { update } = useEvolu<Database>();
 
   return (
     <View style={{ marginBottom: 16 }}>
@@ -309,7 +319,7 @@ const todoCategories = evolu.createQuery((db) =>
   db
     .selectFrom("todoCategory")
     .select(["id", "name", "json"])
-    .where("isDeleted", "is not", Evolu.cast(true))
+    .where("isDeleted", "is not", cast(true))
     // Filter null value and ensure non-null type. Evolu will provide a helper.
     .where("name", "is not", null)
     .$narrowType<{ name: NonEmptyString50 }>()
@@ -317,7 +327,7 @@ const todoCategories = evolu.createQuery((db) =>
 );
 
 const TodoCategories: FC = () => {
-  const { create, update } = useEvolu();
+  const { create, update } = useEvolu<Database>();
   const { rows } = useQuery(todoCategories);
 
   const [text, setText] = useState("");

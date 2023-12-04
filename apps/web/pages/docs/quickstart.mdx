@@ -20,23 +20,29 @@ First, we define a database schema: tables, columns, and their types.
 
 ```ts
 import * as S from "@effect/schema/Schema";
-import * as Evolu from "@evolu/react";
+import {
+  NonEmptyString1000,
+  SqliteBoolean,
+  createEvolu,
+  id,
+} from "@evolu/react";
 
-const TodoId = Evolu.id("Todo");
+const TodoId = id("Todo");
 type TodoId = S.Schema.To<typeof TodoId>;
 
 const TodoTable = S.struct({
   id: TodoId,
-  title: Evolu.NonEmptyString1000,
-  isCompleted: Evolu.SqliteBoolean,
+  title: NonEmptyString1000,
+  isCompleted: SqliteBoolean,
 });
 type TodoTable = S.Schema.To<typeof TodoTable>;
 
 const Database = S.struct({
   todo: TodoTable,
 });
+type Database = S.Schema.To<typeof Database>;
 
-const evolu = Evolu.create(Database);
+const evolu = createEvolu(Database);
 ```
 
 TypeScript compiler ensures that the `title` can't be an arbitrary string.
@@ -46,9 +52,9 @@ It has to be parsed with the `NonEmptyString1000` schema. Isn't that beautiful?
 
 ```ts
 import * as S from "@effect/schema/Schema";
-import * as Evolu from "@evolu/react";
+import { NonEmptyString1000 } from "@evolu/react";
 
-S.parse(Evolu.NonEmptyString1000)(title);
+S.parse(NonEmptyString1000)(title);
 ```
 
 Learn more about [Schema](https://github.com/effect-ts/schema).
@@ -64,12 +70,14 @@ would have to be propagated to all other devices. It's not bad per se; it's just
 something that shouldn't be necessary with proper database schema design.
 
 ```ts
-const evolu = Evolu.create(Database);
-
+// Without React
 const { id } = evolu.create("todo", { title, isCompleted: false });
 evolu.update("todo", { id, isCompleted: true }, () => {
   // done
 });
+
+// With React
+const { create, update } = useEvolu<Database>();
 ```
 
 <Callout type="info">

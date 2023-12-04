@@ -11,8 +11,8 @@ import {
   Schema,
   SecretBoxLive,
   SyncWorkerLive,
+  makeCreateEvolu,
 } from "@evolu/common";
-import { EvoluReactLive, makeCreateEvoluReact } from "@evolu/common-react";
 import { Effect, Layer } from "effect";
 import {
   AppStateLive,
@@ -22,8 +22,9 @@ import {
 } from "./PlatformLive.js";
 import { SqliteLive } from "./SqliteLive.js";
 
-// export * from "@evolu/common/public" isn't working in RN for some reason,
-// so we have to export manually.
+// export * from "@evolu/common/public"
+// https://github.com/facebook/metro/issues/1128
+// So we have to export manually.
 // TODO: Recheck after RN 0.73 release.
 export {
   Id,
@@ -50,6 +51,8 @@ export type {
 } from "@evolu/common";
 export { jsonArrayFrom, jsonObjectFrom } from "kysely/helpers/sqlite";
 
+export * from "@evolu/common-react";
+
 /** Evolu for native platform. */
 const EvoluNativeLive: Layer.Layer<
   Config,
@@ -64,35 +67,29 @@ const EvoluNativeLive: Layer.Layer<
 );
 
 /**
- * Create Evolu for React Native.
+ * Create Evolu for web.
  *
- * ### Example
+ * @example
+ *   import * as S from "@effect/schema/Schema";
+ *   import { NonEmptyString1000, createEvolu, id } from "@evolu/react";
  *
- * ```ts
- * import * as S from "@effect/schema/Schema";
- * import * as Evolu from "@evolu/react-native";
+ *   const TodoId = id("Todo");
+ *   type TodoId = S.Schema.To<typeof TodoId>;
  *
- * const TodoId = Evolu.id("Todo");
- * type TodoId = S.Schema.To<typeof TodoId>;
+ *   const TodoTable = S.struct({
+ *     id: TodoId,
+ *     title: NonEmptyString1000,
+ *   });
+ *   type TodoTable = S.Schema.To<typeof TodoTable>;
  *
- * const TodoTable = S.struct({
- *   id: TodoId,
- *   title: Evolu.NonEmptyString1000,
- * });
- * type TodoTable = S.Schema.To<typeof TodoTable>;
+ *   const Database = S.struct({
+ *     todo: TodoTable,
+ *   });
+ *   type Database = S.Schema.To<typeof Database>;
  *
- * const Database = S.struct({
- *   todo: TodoTable,
- * });
- *
- * const { useEvolu, useEvoluError, useQuery, useOwner } =
- *   Evolu.create(Database);
- * ```
+ *   const evolu = createEvolu(Database);
  */
-export const create = EvoluReactLive.pipe(
-  Layer.provide(EvoluNativeLive),
-  makeCreateEvoluReact,
-);
+export const createEvolu = makeCreateEvolu(EvoluNativeLive);
 
 /** Parse a string to {@link Mnemonic}. */
 export const parseMnemonic: (
