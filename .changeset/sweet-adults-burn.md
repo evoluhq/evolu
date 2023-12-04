@@ -26,4 +26,10 @@ const Database = S.struct({
   todo: TodoTable,
 });
 type Database = S.Schema.To<typeof Database>;
+
+// Note `Database` must be passed to useEvolu.
+const { create, update } = useEvolu<Database>();
+
+// It's also possible to do this:
+const useEvolu = Evolu.useEvolu<Database>;
 ```
