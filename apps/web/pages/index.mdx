@@ -27,10 +27,19 @@ title: Evolu - Local-First Platform Designed for Privacy, Ease of Use, and No Ve
 
 ```js
 import * as S from "@effect/schema/Schema";
-import * as Evolu from "@evolu/react";
+import {
+  NonEmptyString1000,
+  SqliteBoolean,
+  cast,
+  createEvolu,
+  createMutationHooks,
+  id,
+  useEvolu,
+  useQuery,
+} from "@evolu/react";
 
 // Create TodoId schema.
-const TodoId = Evolu.id("Todo");
+const TodoId = id("Todo");
 
 // It's branded string: string & Brand<"Id"> & Brand<"Todo">
 // TodoId type ensures no other ID can be used where TodoId is expected.
@@ -40,10 +49,10 @@ type TodoId = S.Schema.To<typeof TodoId>;
 const TodoTable = S.struct({
   id: TodoId,
   // Note we can enforce NonEmptyString1000.
-  title: Evolu.NonEmptyString1000,
+  title: NonEmptyString1000,
   // SQLite doesn't support the boolean type, so Evolu uses
   // SqliteBoolean (a branded number) instead.
-  isCompleted: S.nullable(Evolu.SqliteBoolean),
+  isCompleted: S.nullable(SqliteBoolean),
 });
 type TodoTable = S.Schema.To<typeof TodoTable>;
 
@@ -51,9 +60,10 @@ type TodoTable = S.Schema.To<typeof TodoTable>;
 const Database = S.struct({
   todo: TodoTable,
 });
+type Database = S.Schema.To<typeof Database>;
 
 // Create Evolu.
-const evolu = Evolu.create(Database);
+const evolu = createEvolu(Database);
 
 // Create a typed SQL query. Yes, with autocomplete and type-checking.
 const allTodos = evolu.createQuery((db) =>
@@ -61,27 +71,27 @@ const allTodos = evolu.createQuery((db) =>
     .selectFrom("todo")
     .selectAll()
     // SQLite doesn't support the boolean type, but we have `cast` helper.
-    .where("isDeleted", "is not", Evolu.cast(true))
+    .where("isDeleted", "is not", cast(true))
     .orderBy("createdAt"),
 );
 
 // Load the query. Batched and cached by default.
 const allTodosPromise = evolu.loadQuery(allTodos);
 
-// React Hooks.
-const { useEvolu, useQuery } = evolu;
-
 // Use the query in React reactively (it's updated on a mutation).
 const { rows, row } = useQuery(allTodos);
 
+// Create mutation hooks.
+const { useCreate, useUpdate } = createMutationHooks<Database>();
+
 // Create a todo.
-const { create } = useEvolu();
+const create = useCreate();
 create("todo", {
-  title: S.parseSync(Evolu.NonEmptyString1000)("Learn Effect"),
+  title: S.parseSync(NonEmptyString1000)("Learn Effect"),
 });
 
 // Update a todo.
-const { update } = useEvolu();
+const update = useUpdate();
 update("todo", { id, isCompleted: true });
 
 // Delete all data on a device.

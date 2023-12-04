@@ -3,6 +3,7 @@ import {
   EvoluCommonLive,
   InvalidMnemonicError,
   Mnemonic,
+  makeCreateEvolu,
 } from "@evolu/common";
 import { Effect, Layer } from "effect";
 import { DbWorkerLive } from "./DbWorkerLive.js";
@@ -12,6 +13,36 @@ import {
   FlushSyncLive,
   PlatformNameLive,
 } from "./PlatformLive.js";
+
+/**
+ * Create Evolu for web.
+ *
+ * @example
+ *   import * as S from "@effect/schema/Schema";
+ *   import { NonEmptyString1000, createEvolu, id } from "@evolu/react";
+ *
+ *   const TodoId = id("Todo");
+ *   type TodoId = S.Schema.To<typeof TodoId>;
+ *
+ *   const TodoTable = S.struct({
+ *     id: TodoId,
+ *     title: NonEmptyString1000,
+ *   });
+ *   type TodoTable = S.Schema.To<typeof TodoTable>;
+ *
+ *   const Database = S.struct({
+ *     todo: TodoTable,
+ *   });
+ *   type Database = S.Schema.To<typeof Database>;
+ *
+ *   const evolu = createEvolu(Database);
+ */
+export const createEvolu = makeCreateEvolu(
+  EvoluCommonLive.pipe(
+    Layer.provide(Layer.merge(DbWorkerLive, AppStateLive)),
+    Layer.provide(Layer.merge(PlatformNameLive, FlushSyncLive)),
+  ),
+);
 
 /**
  * Parse a string to {@link Mnemonic}.
@@ -24,9 +55,3 @@ export const parseMnemonic: (
   Effect.provide(Bip39Live),
   Effect.runSync,
 ).parse;
-
-/** Evolu for web platform. */
-export const EvoluWebLive = EvoluCommonLive.pipe(
-  Layer.provide(Layer.merge(DbWorkerLive, AppStateLive)),
-  Layer.provide(Layer.merge(PlatformNameLive, FlushSyncLive)),
-);
