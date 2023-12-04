@@ -77,9 +77,7 @@ evolu.update("todo", { id, isCompleted: true }, () => {
 });
 
 // With React
-const { useCreate, useUpdate } = createMutationHooks<Database>();
-const create = useCreate();
-const update = useUpdate();
+const { create, update } = useEvolu<Database>();
 ```
 
 <Callout type="info">

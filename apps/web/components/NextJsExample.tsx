@@ -8,7 +8,6 @@ import {
   canUseDom,
   cast,
   createEvolu,
-  createMutationHooks,
   id,
   jsonArrayFrom,
   parseMnemonic,
@@ -71,8 +70,6 @@ const evolu = createEvolu(Database, {
     syncUrl: "http://localhost:4000",
   }),
 });
-
-const { useCreate, useUpdate } = createMutationHooks<Database>();
 
 const createFixtures = (): Promise<void> =>
   Promise.all(
@@ -182,7 +179,7 @@ const todosWithCategories = evolu.createQuery((db) =>
 
 const Todos: FC = () => {
   const { rows } = useQuery(todosWithCategories);
-  const create = useCreate();
+  const { create } = useEvolu<Database>();
 
   const handleAddTodoClick = (): void => {
     prompt(NonEmptyString1000, "What needs to be done?", (title) => {
@@ -209,7 +206,7 @@ const TodoItem = memo<{
 }>(function TodoItem({
   row: { id, title, isCompleted, categoryId, categories },
 }) {
-  const update = useUpdate();
+  const { update } = useEvolu<Database>();
 
   const handleToggleCompletedClick = (): void => {
     update("todo", { id, isCompleted: !isCompleted });
@@ -298,7 +295,7 @@ const todoCategories = evolu.createQuery((db) =>
 
 const TodoCategories: FC = () => {
   const { rows } = useQuery(todoCategories);
-  const create = useCreate();
+  const { create } = useEvolu<Database>();
 
   // Evolu automatically parses JSONs into typed objects.
   // if (rows[0]) console.log(rows[1].json?.foo);
@@ -327,8 +324,7 @@ const TodoCategories: FC = () => {
 const TodoCategoryItem = memo<{
   row: Pick<TodoCategoryTable, "id" | "name">;
 }>(function TodoItem({ row: { id, name } }) {
-  const update = useUpdate();
-  evolu.update;
+  const { update } = useEvolu<Database>();
 
   const handleRenameClick = (): void => {
     prompt(NonEmptyString50, "Category Name", (_name) => {
@@ -352,7 +348,7 @@ const TodoCategoryItem = memo<{
 });
 
 const OwnerActions: FC = () => {
-  const evolu = useEvolu();
+  const evolu = useEvolu<Database>();
   const owner = useOwner();
   const [showMnemonic, setShowMnemonic] = useState(false);
 

@@ -7,7 +7,6 @@ import {
   String,
   cast,
   createEvolu,
-  createMutationHooks,
   id,
   jsonArrayFrom,
   parseMnemonic,
@@ -78,8 +77,6 @@ const evolu = createEvolu(Database, {
   }),
 });
 
-const { useCreate, useUpdate } = createMutationHooks<Database>();
-
 export default function App(): JSX.Element {
   return (
     <ScrollView style={appStyles.container}>
@@ -117,7 +114,7 @@ const NextJsExample: FC = () => {
 };
 
 const OwnerActions: FC = () => {
-  const evolu = useEvolu();
+  const evolu = useEvolu<Database>();
   const owner = useOwner();
   const [isMnemonicShown, setIsMnemonicShown] = useState(false);
   const [isRestoreShown, setIsRestoreShown] = useState(false);
@@ -207,7 +204,7 @@ const todosWithCategories = evolu.createQuery((db) =>
 
 const Todos: FC = () => {
   const { rows } = useQuery(todosWithCategories);
-  const create = useCreate();
+  const { create } = useEvolu<Database>();
 
   const [text, setText] = useState("");
   const newTodoTitle = S.parseEither(NonEmptyString1000)(text);
@@ -249,7 +246,7 @@ const TodoItem = memo<{
 }>(function TodoItem({
   row: { id, title, isCompleted, categoryId, categories },
 }) {
-  const update = useUpdate();
+  const { update } = useEvolu<Database>();
 
   return (
     <View style={{ marginBottom: 16 }}>
@@ -330,8 +327,7 @@ const todoCategories = evolu.createQuery((db) =>
 );
 
 const TodoCategories: FC = () => {
-  const create = useCreate();
-  const update = useUpdate();
+  const { create, update } = useEvolu<Database>();
   const { rows } = useQuery(todoCategories);
 
   const [text, setText] = useState("");

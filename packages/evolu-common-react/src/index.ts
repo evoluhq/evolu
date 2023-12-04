@@ -1,6 +1,5 @@
 export * from "./EvoluContext.js";
 export * from "./EvoluProvider.js";
-export * from "./createMutationHooks.js";
 export * from "./use.js";
 export * from "./useEvolu.js";
 export * from "./useEvoluError.js";

@@ -32,7 +32,6 @@ import {
   SqliteBoolean,
   cast,
   createEvolu,
-  createMutationHooks,
   id,
   useEvolu,
   useQuery,
@@ -81,17 +80,14 @@ const allTodosPromise = evolu.loadQuery(allTodos);
 // Use the query in React reactively (it's updated on a mutation).
 const { rows, row } = useQuery(allTodos);
 
-// Create mutation hooks.
-const { useCreate, useUpdate } = createMutationHooks<Database>();
-
 // Create a todo.
-const create = useCreate();
+const { create } = useEvolu<Database>();
 create("todo", {
   title: S.parseSync(NonEmptyString1000)("Learn Effect"),
 });
 
 // Update a todo.
-const update = useUpdate();
+const { update } = useEvolu<Database>();
 update("todo", { id, isCompleted: true });
 
 // Delete all data on a device.
