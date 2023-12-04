@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 2.1.0
+
+### Minor Changes
+
+- 1eef638: Add makeCreateEvolu factory
+
 ## 2.0.6
 
 ### Patch Changes

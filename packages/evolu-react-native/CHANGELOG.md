@@ -1,5 +1,12 @@
 # @evolu/react-native
 
+## 3.0.0
+
+### Patch Changes
+
+- Updated dependencies [1eef638]
+  - @evolu/common-react@3.0.0
+
 ## 2.0.1
 
 ### Patch Changes
