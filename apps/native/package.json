@@ -11,7 +11,7 @@
     "clean": "rm -rf .turbo .expo node_modules dist"
   },
   "dependencies": {
-    "@effect/schema": "^0.51.3",
+    "@effect/schema": "^0.51.4",
     "@evolu/react-native": "workspace:*",
     "@react-native-community/netinfo": "9.3.10",
     "buffer": "^6.0.3",
