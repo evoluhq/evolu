@@ -1,5 +1,12 @@
 # native
 
+## 1.0.3
+
+### Patch Changes
+
+- Updated dependencies [07fd60d]
+  - @evolu/react-native@3.0.1
+
 ## 1.0.2
 
 ### Patch Changes
