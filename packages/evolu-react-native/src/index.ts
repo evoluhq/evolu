@@ -67,11 +67,18 @@ const EvoluNativeLive: Layer.Layer<
 );
 
 /**
- * Create Evolu for web.
+ * Create Evolu for React Native.
+ *
+ * Tables with a name prefixed with `_` are local only, which means they are
+ * never synced. It's useful for device-specific or temporal data.
  *
  * @example
  *   import * as S from "@effect/schema/Schema";
- *   import { NonEmptyString1000, createEvolu, id } from "@evolu/react";
+ *   import {
+ *     NonEmptyString1000,
+ *     createEvolu,
+ *     id,
+ *   } from "@evolu/react-native";
  *
  *   const TodoId = id("Todo");
  *   type TodoId = S.Schema.To<typeof TodoId>;
@@ -83,6 +90,7 @@ const EvoluNativeLive: Layer.Layer<
  *   type TodoTable = S.Schema.To<typeof TodoTable>;
  *
  *   const Database = S.struct({
+ *     // _todo is local only table
  *     todo: TodoTable,
  *   });
  *   type Database = S.Schema.To<typeof Database>;

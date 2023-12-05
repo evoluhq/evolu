@@ -15,7 +15,10 @@ import {
 } from "./PlatformLive.js";
 
 /**
- * Create Evolu for web.
+ * Create Evolu for the web.
+ *
+ * Tables with a name prefixed with `_` are local only, which means they are
+ * never synced. It's useful for device-specific or temporal data.
  *
  * @example
  *   import * as S from "@effect/schema/Schema";
@@ -31,6 +34,8 @@ import {
  *   type TodoTable = S.Schema.To<typeof TodoTable>;
  *
  *   const Database = S.struct({
+ *     // _todo is local only table
+ *     _todo: TodoTable,
  *     todo: TodoTable,
  *   });
  *   type Database = S.Schema.To<typeof Database>;
