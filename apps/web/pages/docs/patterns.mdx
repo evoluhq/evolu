@@ -2,6 +2,26 @@ import { Callout } from "nextra-theme-docs";
 
 # Patterns
 
+## Relations
+
+Evolu is using [Kysely](https://kysely.dev), the type-safe SQL query builder
+for TypeScript.
+
+> Kysely IS NOT an ORM. Kysely DOES NOT have the concept of relations. Kysely IS a query builder. Kysely DOES build the SQL you tell it to, nothing more, nothing less.
+
+However, there is a way to nest related rows in queries. It's described
+[here](https://kysely.dev/docs/recipes/relations), and Evolu supports it.
+
+TLDR: JSON type with subselects. With the combination of these two things,
+we can write some super efficient queries with nested relations.
+Evolu automatically parses stringified JSONs to typed objects. Evolu also ensures
+that no strings can accidentally contain a stringified JSON.
+
+<Callout>
+  Evolu Relations are also helpful to avoid loading waterfalls. Check examples
+  to see it.
+</Callout>
+
 ## Deferred Sync with Local-Only Tables
 
 Tables with a name prefixed with `_` are local-only, which means they are never
