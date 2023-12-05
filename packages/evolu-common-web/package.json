@@ -1,6 +1,6 @@
 {
   "name": "@evolu/common-web",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Common code for Evolu libraries targeting web",
   "keywords": [
     "evolu",
