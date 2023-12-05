@@ -213,7 +213,7 @@ const TodoItem = memo<{
   };
 
   const handleRenameClick = (): void => {
-    prompt(NonEmptyString1000, "New Name", (_title) => {
+    prompt(NonEmptyString1000, "New Name", (title) => {
       update("todo", { id, title });
     });
   };
