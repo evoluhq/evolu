@@ -18,7 +18,9 @@ test("createQuery", () => {
     db.selectFrom("users").select(["id", "name"]),
   );
 
-  expect(users1).toMatchInlineSnapshot(`"{"sql":"select \\"id\\", \\"name\\" from \\"users\\"","parameters":[]}"`);
+  expect(users1).toMatchInlineSnapshot(
+    `"{"sql":"select \\"id\\", \\"name\\" from \\"users\\"","parameters":[]}"`,
+  );
   expect(users1).toBe(users2);
 });
 

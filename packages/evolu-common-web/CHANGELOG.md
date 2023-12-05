@@ -1,5 +1,11 @@
 # @evolu/common-web
 
+## 3.0.1
+
+### Patch Changes
+
+- 07fd60d: Add docs for local-only tables
+
 ## 3.0.0
 
 ### Patch Changes
