@@ -50,3 +50,13 @@ specific server. TODO: Compare CRDT approaches.
 
 **TLDR**: It isn't stable yet and is not secure by default.
 TODO: Compare CRDT approaches.
+
+## Evolu vs Loro and other SQL-less CRDTs
+
+Evolu CRDT is built on SQLite, which gives it SQL queries and scalability.
+CRDTs can also be made with custom data structures, often for particular purposes
+like rich text data. Custom data structures can be super efficient and fast,
+but they're not SQL anymore. As always, choosing the right tool depends on
+requirements. Evolu was made for general-purpose apps where SQL is a must.
+We observe the competition among SQL-less CRDTs and will choose the
+winner (or make our own).
