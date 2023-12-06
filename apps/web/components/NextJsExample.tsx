@@ -327,7 +327,7 @@ const TodoCategoryItem = memo<{
   const { update } = useEvolu<Database>();
 
   const handleRenameClick = (): void => {
-    prompt(NonEmptyString50, "Category Name", (_name) => {
+    prompt(NonEmptyString50, "Category Name", (name) => {
       update("todoCategory", { id, name });
     });
   };
