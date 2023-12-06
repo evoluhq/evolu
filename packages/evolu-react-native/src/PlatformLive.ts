@@ -42,11 +42,11 @@ export const SyncLockLive = Layer.effect(
 export const AppStateLive = Layer.succeed(
   AppState,
   AppState.of({
-    init: ({ onFocus, onReconnect }) => {
+    init: ({ onRequestSync }) => {
       let appStateStatus = ReactNativeAppState.currentState;
       ReactNativeAppState.addEventListener("change", (current): void => {
         if (appStateStatus.match(/inactive|background/) && current === "active")
-          onFocus();
+          onRequestSync();
         appStateStatus = current;
       });
 
@@ -57,11 +57,9 @@ export const AppStateLive = Layer.succeed(
           current.isConnected &&
           current.isInternetReachable
         )
-          onReconnect();
+          onRequestSync();
         netInfoState = current;
       });
-
-      onReconnect();
     },
 
     reset: Effect.sync(() => {

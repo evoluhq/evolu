@@ -267,6 +267,15 @@ export interface Evolu<T extends Schema = Schema> {
   readonly ensureSchema: <From, To extends T>(
     schema: S.Schema<From, To>,
   ) => void;
+
+  /**
+   * Force sync with Evolu Server.
+   *
+   * Evolu syncs on every mutation, tab focus, and network reconnect, so it's
+   * generally not required to sync manually, but if you need it, you can do
+   * it.
+   */
+  readonly sync: () => void;
 }
 
 export const Evolu = Context.Tag<Evolu>();
@@ -680,14 +689,13 @@ const EvoluCommon = Layer.effect(
       config: yield* _(Config),
     });
 
-    appState.init({
-      onFocus: () => {
-        dbWorker.postMessage({ _tag: "sync", queries: getSubscribedQueries() });
-      },
-      onReconnect: () => {
-        dbWorker.postMessage({ _tag: "sync", queries: [] });
-      },
-    });
+    const sync = (): void => {
+      dbWorker.postMessage({ _tag: "sync", queries: getSubscribedQueries() });
+    };
+
+    appState.init({ onRequestSync: sync });
+
+    sync();
 
     return Evolu.of({
       subscribeError: errorStore.subscribe,
@@ -721,6 +729,8 @@ const EvoluCommon = Layer.effect(
           _tag: "ensureSchema",
           tables: schemaToTables(schema),
         }),
+
+      sync,
     });
   }),
 ).pipe(

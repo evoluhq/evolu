@@ -59,8 +59,7 @@ export const FetchLive = Layer.succeed(
 );
 
 interface AppStateConfig {
-  readonly onFocus: () => void;
-  readonly onReconnect: () => void;
+  readonly onRequestSync: () => void;
 }
 
 export interface AppState {

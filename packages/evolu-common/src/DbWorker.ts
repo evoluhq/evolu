@@ -537,16 +537,11 @@ const sync = ({
   Effect.gen(function* (_) {
     if (queries.length > 0) yield* _(query({ queries }));
 
-    const syncWorkerPostMessage = yield* _(SyncWorkerPostMessage);
-    const config = yield* _(Config);
-    const owner = yield* _(Owner);
-    const timestampAndMerkleTree = yield* _(readTimestampAndMerkleTree);
-
-    syncWorkerPostMessage({
-      ...timestampAndMerkleTree,
+    (yield* _(SyncWorkerPostMessage))({
       _tag: "sync",
-      syncUrl: config.syncUrl,
-      owner,
+      ...(yield* _(readTimestampAndMerkleTree)),
+      syncUrl: (yield* _(Config)).syncUrl,
+      owner: yield* _(Owner),
       messages: [],
       syncLoopCount: 0,
     });

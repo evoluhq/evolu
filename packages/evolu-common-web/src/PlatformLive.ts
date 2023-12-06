@@ -103,17 +103,15 @@ export const AppStateLive = Layer.effect(
     });
 
     return AppState.of({
-      init: ({ onFocus, onReconnect }) => {
-        window.addEventListener("focus", onFocus);
+      init: ({ onRequestSync }) => {
+        // On network reconnect.
+        window.addEventListener("online", onRequestSync);
+
         document.addEventListener("visibilitychange", () => {
-          if (document.visibilityState !== "hidden") onFocus();
+          if (document.visibilityState !== "hidden") onRequestSync();
         });
-
-        // We can't use `navigator.onLine`.
-        // https://bugs.chromium.org/p/chromium/issues/detail?id=678075
-        window.addEventListener("online", onReconnect);
-
-        onReconnect();
+        // visibilitychange isn't enough
+        window.addEventListener("focus", onRequestSync);
       },
 
       reset: Effect.sync(() => {
