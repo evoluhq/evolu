@@ -1,5 +1,5 @@
 ---
-"@evolu/common": minor
+"@evolu/common": patch
 ---
 
 Add the sync function
