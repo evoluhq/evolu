@@ -1,5 +1,11 @@
 # @evolu/react
 
+## 3.0.1
+
+### Patch Changes
+
+- 7adfb47: Update peer deps
+
 ## 3.0.0
 
 ### Patch Changes

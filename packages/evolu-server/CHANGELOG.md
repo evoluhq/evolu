@@ -1,5 +1,12 @@
 # @evolu/server
 
+## 2.1.3
+
+### Patch Changes
+
+- Updated dependencies [bc18e74]
+  - @evolu/common@2.2.0
+
 ## 2.1.2
 
 ### Patch Changes
