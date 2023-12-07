@@ -1,5 +1,13 @@
 # web
 
+## 1.0.9
+
+### Patch Changes
+
+- Updated dependencies [98e19f0]
+  - @evolu/common@2.2.1
+  - @evolu/react@3.0.1
+
 ## 1.0.8
 
 ### Patch Changes
