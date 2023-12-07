@@ -55,7 +55,7 @@
   "dependencies": {
     "@noble/ciphers": "^0.4.0",
     "@noble/hashes": "^1.3.2",
-    "@protobuf-ts/runtime": "2.9.1",
+    "@protobuf-ts/runtime": "^2.9.3",
     "@scure/bip39": "^1.2.1",
     "kysely": "^0.26.3",
     "nanoid": "^5.0.4"
@@ -63,8 +63,8 @@
   "devDependencies": {
     "@effect/schema": "0.52.0",
     "@evolu/tsconfig": "workspace:*",
-    "@protobuf-ts/plugin": "2.9.1",
-    "@protobuf-ts/protoc": "2.9.1",
+    "@protobuf-ts/plugin": "^2.9.3",
+    "@protobuf-ts/protoc": "^2.9.3",
     "array-shuffle": "^3.0.0",
     "effect": "2.0.0-next.59",
     "eslint": "^8.54.0",
