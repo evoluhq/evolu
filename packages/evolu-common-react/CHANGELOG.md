@@ -1,5 +1,12 @@
 # @evolu/common-react
 
+## 4.0.0
+
+### Patch Changes
+
+- Updated dependencies [bc18e74]
+  - @evolu/common@2.2.0
+
 ## 3.0.0
 
 ### Major Changes
