@@ -1,10 +1,5 @@
-import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-
-// The build is not working, and the error isn't helpful:
-// [vite:build-import-analysis] Cannot read properties of undefined (reading 'forEach')
-// Do we need that?
-// assetsInclude: [`**/*.wasm`],
+import { defineConfig } from "vite";
 
 // https://vitejs.dev/config/
 export default defineConfig({
