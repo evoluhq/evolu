@@ -1,5 +1,11 @@
 # @evolu/common-web
 
+## 3.0.2
+
+### Patch Changes
+
+- 7adfb47: Update peer deps
+
 ## 3.0.1
 
 ### Patch Changes

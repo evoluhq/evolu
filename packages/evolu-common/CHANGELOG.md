@@ -1,5 +1,17 @@
 # @evolu/common
 
+## 2.2.0
+
+### Minor Changes
+
+- bc18e74: Add the sync function
+
+  Evolu syncs on every mutation, tab focus, and network reconnect, so it's generally not required to sync manually, but if you need it, you can do it.
+
+  ```ts
+  evolu.sync();
+  ```
+
 ## 2.1.0
 
 ### Minor Changes
