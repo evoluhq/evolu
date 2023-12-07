@@ -241,7 +241,7 @@ importers:
         specifier: ^1.3.2
         version: 1.3.2
       '@protobuf-ts/runtime':
-        specifier: 2.9.3
+        specifier: ^2.9.3
         version: 2.9.3
       '@scure/bip39':
         specifier: ^1.2.1
@@ -260,10 +260,10 @@ importers:
         specifier: workspace:*
         version: link:../evolu-tsconfig
       '@protobuf-ts/plugin':
-        specifier: 2.9.3
+        specifier: ^2.9.3
         version: 2.9.3
       '@protobuf-ts/protoc':
-        specifier: 2.9.3
+        specifier: ^2.9.3
         version: 2.9.3
       array-shuffle:
         specifier: ^3.0.0
@@ -282,7 +282,7 @@ importers:
         version: 5.3.3
       vitest:
         specifier: ^1.0.1
-        version: 1.0.2
+        version: 1.0.2(@types/node@20.10.4)
 
   packages/evolu-common-react:
     devDependencies:
@@ -10317,12 +10317,12 @@ packages:
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
       rehype-katex: 7.0.0
-      rehype-pretty-code: 0.9.11(shiki@0.14.5)
+      rehype-pretty-code: 0.9.11(shiki@0.14.6)
       rehype-raw: 7.0.0
       remark-gfm: 3.0.1
       remark-math: 5.1.1
       remark-reading-time: 2.0.1
-      shiki: 0.14.5
+      shiki: 0.14.6
       slash: 3.0.0
       title: 3.5.3
       unist-util-remove: 4.0.0
@@ -11534,7 +11534,7 @@ packages:
       vfile: 6.0.1
     dev: false
 
-  /rehype-pretty-code@0.9.11(shiki@0.14.5):
+  /rehype-pretty-code@0.9.11(shiki@0.14.6):
     resolution: {integrity: sha512-Eq90eCYXQJISktfRZ8PPtwc5SUyH6fJcxS8XOMnHPUQZBtC6RYo67gGlley9X2nR8vlniPj0/7oCDEYHKQa/oA==}
     engines: {node: '>=16'}
     peerDependencies:
@@ -11543,7 +11543,7 @@ packages:
       '@types/hast': 2.3.8
       hash-obj: 4.0.0
       parse-numeric-range: 1.3.0
-      shiki: 0.14.5
+      shiki: 0.14.6
     dev: false
 
   /rehype-raw@7.0.0:
@@ -11960,8 +11960,8 @@ packages:
   /shell-quote@1.8.1:
     resolution: {integrity: sha512-6j1W9l1iAs/4xYBI1SYOVZyFcCis9b4KCLQ8fgAGG07QvzaRLVVRQvAy85yNmmZSjYjg4MWh4gNvlPujU/5LpA==}
 
-  /shiki@0.14.5:
-    resolution: {integrity: sha512-1gCAYOcmCFONmErGTrS1fjzJLA7MGZmKzrBNX7apqSwhyITJg2O102uFzXUeBxNnEkDA9vHIKLyeKq0V083vIw==}
+  /shiki@0.14.6:
+    resolution: {integrity: sha512-R4koBBlQP33cC8cpzX0hAoOURBHJILp4Aaduh2eYi+Vj8ZBqtK/5SWNEHBS3qwUMu8dqOtI/ftno3ESfNeVW9g==}
     dependencies:
       ansi-sequence-parser: 1.1.1
       jsonc-parser: 3.2.0
@@ -13198,27 +13198,6 @@ packages:
       vfile-message: 4.0.2
     dev: false
 
-  /vite-node@1.0.2:
-    resolution: {integrity: sha512-h7BbMJf46fLvFW/9Ygo3snkIBEHFh6fHpB4lge98H5quYrDhPFeI3S0LREz328uqPWSnii2yeJXktQ+Pmqk5BQ==}
-    engines: {node: ^18.0.0 || >=20.0.0}
-    hasBin: true
-    dependencies:
-      cac: 6.7.14
-      debug: 4.3.4
-      pathe: 1.1.1
-      picocolors: 1.0.0
-      vite: 5.0.6
-    transitivePeerDependencies:
-      - '@types/node'
-      - less
-      - lightningcss
-      - sass
-      - stylus
-      - sugarss
-      - supports-color
-      - terser
-    dev: true
-
   /vite-node@1.0.2(@types/node@20.10.4):
     resolution: {integrity: sha512-h7BbMJf46fLvFW/9Ygo3snkIBEHFh6fHpB4lge98H5quYrDhPFeI3S0LREz328uqPWSnii2yeJXktQ+Pmqk5BQ==}
     engines: {node: ^18.0.0 || >=20.0.0}
@@ -13238,41 +13217,6 @@ packages:
       - sugarss
       - supports-color
       - terser
-    dev: true
-
-  /vite@5.0.6:
-    resolution: {integrity: sha512-MD3joyAEBtV7QZPl2JVVUai6zHms3YOmLR+BpMzLlX2Yzjfcc4gTgNi09d/Rua3F4EtC8zdwPU8eQYyib4vVMQ==}
-    engines: {node: ^18.0.0 || >=20.0.0}
-    hasBin: true
-    peerDependencies:
-      '@types/node': ^18.0.0 || >=20.0.0
-      less: '*'
-      lightningcss: ^1.21.0
-      sass: '*'
-      stylus: '*'
-      sugarss: '*'
-      terser: ^5.4.0
-    peerDependenciesMeta:
-      '@types/node':
-        optional: true
-      less:
-        optional: true
-      lightningcss:
-        optional: true
-      sass:
-        optional: true
-      stylus:
-        optional: true
-      sugarss:
-        optional: true
-      terser:
-        optional: true
-    dependencies:
-      esbuild: 0.19.8
-      postcss: 8.4.32
-      rollup: 4.6.1
-    optionalDependencies:
-      fsevents: 2.3.3
     dev: true
 
   /vite@5.0.6(@types/node@20.10.4):
@@ -13309,62 +13253,6 @@ packages:
       rollup: 4.6.1
     optionalDependencies:
       fsevents: 2.3.3
-    dev: true
-
-  /vitest@1.0.2:
-    resolution: {integrity: sha512-F3NVwwpXfRSDnJmyv+ALPwSRVt0zDkRRE18pwUHSUPXAlWQ47rY1dc99ziMW5bBHyqwK2ERjMisLNoef64qk9w==}
-    engines: {node: ^18.0.0 || >=20.0.0}
-    hasBin: true
-    peerDependencies:
-      '@edge-runtime/vm': '*'
-      '@types/node': ^18.0.0 || >=20.0.0
-      '@vitest/browser': ^1.0.0
-      '@vitest/ui': ^1.0.0
-      happy-dom: '*'
-      jsdom: '*'
-    peerDependenciesMeta:
-      '@edge-runtime/vm':
-        optional: true
-      '@types/node':
-        optional: true
-      '@vitest/browser':
-        optional: true
-      '@vitest/ui':
-        optional: true
-      happy-dom:
-        optional: true
-      jsdom:
-        optional: true
-    dependencies:
-      '@vitest/expect': 1.0.2
-      '@vitest/runner': 1.0.2
-      '@vitest/snapshot': 1.0.2
-      '@vitest/spy': 1.0.2
-      '@vitest/utils': 1.0.2
-      acorn-walk: 8.3.1
-      cac: 6.7.14
-      chai: 4.3.10
-      debug: 4.3.4
-      execa: 8.0.1
-      local-pkg: 0.5.0
-      magic-string: 0.30.5
-      pathe: 1.1.1
-      picocolors: 1.0.0
-      std-env: 3.6.0
-      strip-literal: 1.3.0
-      tinybench: 2.5.1
-      tinypool: 0.8.1
-      vite: 5.0.6
-      vite-node: 1.0.2
-      why-is-node-running: 2.2.2
-    transitivePeerDependencies:
-      - less
-      - lightningcss
-      - sass
-      - stylus
-      - sugarss
-      - supports-color
-      - terser
     dev: true
 
   /vitest@1.0.2(@types/node@20.10.4):
