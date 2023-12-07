@@ -1,10 +1,10 @@
 # @evolu/react-native
 
-## 4.0.0
+## 3.0.2
 
 ### Patch Changes
 
-- @evolu/common-react@4.0.0
+- @evolu/common-react@3.0.1
 
 ## 3.0.1
 
