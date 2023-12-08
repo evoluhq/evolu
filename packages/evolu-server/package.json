@@ -47,6 +47,9 @@
     "typescript": "^5.3.3",
     "vitest": "^1.0.1"
   },
+  "peerDependencies": {
+    "@evolu/common": "^2.2.0"
+  },
   "publishConfig": {
     "access": "public"
   },
