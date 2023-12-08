@@ -1,5 +1,11 @@
 # @evolu/server
 
+## 2.1.5
+
+### Patch Changes
+
+- 25d345d: Add peer dependency
+
 ## 2.1.4
 
 ### Patch Changes
