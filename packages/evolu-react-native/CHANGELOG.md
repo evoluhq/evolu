@@ -1,5 +1,11 @@
 # @evolu/react-native
 
+## 3.0.3
+
+### Patch Changes
+
+- 25d345d: Update deps
+
 ## 3.0.2
 
 ### Patch Changes
