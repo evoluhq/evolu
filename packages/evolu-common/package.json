@@ -70,7 +70,7 @@
     "eslint": "^8.54.0",
     "eslint-config-evolu": "workspace:*",
     "typescript": "^5.3.3",
-    "vitest": "^1.0.1"
+    "vitest": "^1.0.4"
   },
   "peerDependencies": {
     "@effect/schema": "0.51.4",
