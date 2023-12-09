@@ -144,14 +144,12 @@ const NotificationBar: FC = () => {
     if (evoluError) setShowError(true);
   }, [evoluError]);
 
+  if (!evoluError || !showError) return null;
+
   return (
     <div className="mt-3">
-      {evoluError && !showError && (
-        <>
-          <p>{`Error: ${JSON.stringify(evoluError)}`}</p>
-          <Button title="Close" onClick={(): void => setShowError(false)} />
-        </>
-      )}
+      <p>{`Error: ${JSON.stringify(evoluError)}`}</p>
+      <Button title="Close" onClick={(): void => setShowError(false)} />
     </div>
   );
 };

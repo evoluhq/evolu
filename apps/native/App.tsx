@@ -376,18 +376,18 @@ const TodoCategories: FC = () => {
 
 const NotificationBar: FC = () => {
   const evoluError = useEvoluError();
-  const [shown, setShown] = useState(false);
+  const [showError, setShowError] = useState(false);
 
   useEffect(() => {
-    if (evoluError) setShown(true);
+    if (evoluError) setShowError(true);
   }, [evoluError]);
 
-  if (!evoluError || !shown) return null;
+  if (!evoluError || !showError) return null;
 
   return (
     <View>
       <Text>{`Error: ${JSON.stringify(evoluError)}`}</Text>
-      <Button title="Close" onPress={(): void => setShown(false)} />
+      <Button title="Close" onPress={(): void => setShowError(false)} />
     </View>
   );
 };
