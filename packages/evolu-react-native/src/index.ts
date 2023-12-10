@@ -8,7 +8,6 @@ import {
   InvalidMnemonicError,
   Mnemonic,
   NanoIdLive,
-  Schema,
   SecretBoxLive,
   SyncWorkerLive,
   makeCreateEvolu,
@@ -54,11 +53,7 @@ export { jsonArrayFrom, jsonObjectFrom } from "kysely/helpers/sqlite";
 export * from "@evolu/common-react";
 
 /** Evolu for native platform. */
-const EvoluNativeLive: Layer.Layer<
-  Config,
-  never,
-  Evolu<Schema>
-> = EvoluCommonLive.pipe(
+const EvoluNativeLive: Layer.Layer<Config, never, Evolu> = EvoluCommonLive.pipe(
   Layer.provide(Layer.mergeAll(FlushSyncLive, AppStateLive, DbWorkerLive)),
   Layer.provide(
     Layer.mergeAll(Bip39Live, NanoIdLive, SqliteLive, SyncWorkerLive),

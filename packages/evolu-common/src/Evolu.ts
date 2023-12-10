@@ -22,7 +22,7 @@ import {
   Row,
   RowsStore,
   RowsStoreLive,
-  Schema,
+  DatabaseSchema,
   emptyRows,
   queryResultFromRows,
   schemaToTables,
@@ -39,7 +39,7 @@ import { SqliteQuery } from "./Sqlite.js";
 import { Store, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
 
-export interface Evolu<T extends Schema = Schema> {
+export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
   /**
    * Subscribe to {@link EvoluError} changes.
    *
@@ -72,7 +72,7 @@ export interface Evolu<T extends Schema = Schema> {
    *       db.selectFrom("todo").selectAll().where("id", "=", id),
    *     );
    */
-  readonly createQuery: CreateQuery<T>;
+  readonly createQuery: CreateQuery<S>;
 
   /**
    * Load {@link Query} and return a promise with {@link QueryResult}.
@@ -223,7 +223,7 @@ export interface Evolu<T extends Schema = Schema> {
    *     // onComplete callback
    *   });
    */
-  create: Create<T>;
+  create: Create<S>;
 
   /**
    * Update a row in the database and returns the existing ID. The first
@@ -251,7 +251,7 @@ export interface Evolu<T extends Schema = Schema> {
    *   // To delete a row, set `isDeleted` to true.
    *   evolu.update("todo", { id, isDeleted: true });
    */
-  update: Update<T>;
+  update: Update<S>;
 
   /**
    * Delete {@link Owner} and all their data from the current device. After the
@@ -263,8 +263,11 @@ export interface Evolu<T extends Schema = Schema> {
   /** Restore {@link Owner} with all their synced data. */
   readonly restoreOwner: (mnemonic: Mnemonic) => void;
 
-  /** Ensure tables and columns defined in {@link Schema} exist in the database. */
-  readonly ensureSchema: <From, To extends T>(
+  /**
+   * Ensure tables and columns defined in {@link DatabaseSchema} exist in the
+   * database.
+   */
+  readonly ensureSchema: <From, To extends S>(
     schema: S.Schema<From, To>,
   ) => void;
 
@@ -280,11 +283,11 @@ export interface Evolu<T extends Schema = Schema> {
 
 export const Evolu = Context.Tag<Evolu>();
 
-type CreateQuery<S extends Schema> = <R extends Row>(
+type CreateQuery<S extends DatabaseSchema> = <R extends Row>(
   queryCallback: QueryCallback<S, R>,
 ) => Query<R>;
 
-type QueryCallback<S extends Schema, R extends Row> = (
+type QueryCallback<S extends DatabaseSchema, R extends Row> = (
   db: Pick<
     Kysely.Kysely<QuerySchema<S>>,
     | "selectFrom"
@@ -294,7 +297,7 @@ type QueryCallback<S extends Schema, R extends Row> = (
   >,
 ) => Kysely.SelectQueryBuilder<any, any, R>;
 
-type QuerySchema<S extends Schema> = {
+type QuerySchema<S extends DatabaseSchema> = {
   readonly [Table in keyof S]: NullableExceptId<
     {
       readonly [Column in keyof S[Table]]: S[Table][Column];
@@ -312,7 +315,7 @@ export interface CommonColumns {
   readonly isDeleted: SqliteBoolean;
 }
 
-const kysely = new Kysely.Kysely<QuerySchema<Schema>>({
+const kysely = new Kysely.Kysely<QuerySchema<DatabaseSchema>>({
   dialect: {
     createAdapter: (): Kysely.DialectAdapter => new Kysely.SqliteAdapter(),
     createDriver: (): Kysely.Driver => new Kysely.DummyDriver(),
@@ -325,7 +328,7 @@ const kysely = new Kysely.Kysely<QuerySchema<Schema>>({
 });
 
 export const makeCreateQuery =
-  <S extends Schema = Schema>(): CreateQuery<S> =>
+  <S extends DatabaseSchema = DatabaseSchema>(): CreateQuery<S> =>
   <R extends Row>(queryCallback: QueryCallback<S, R>) =>
     pipe(
       queryCallback(kysely as Kysely.Kysely<QuerySchema<S>>).compile(),
@@ -548,12 +551,18 @@ export const SubscribedQueriesLive = Layer.effect(
   }),
 );
 
-export type Create<S extends Schema = Schema> = Mutate<S, "create">;
+export type Create<S extends DatabaseSchema = DatabaseSchema> = Mutate<
+  S,
+  "create"
+>;
 
-export type Update<S extends Schema = Schema> = Mutate<S, "update">;
+export type Update<S extends DatabaseSchema = DatabaseSchema> = Mutate<
+  S,
+  "update"
+>;
 
 export type Mutate<
-  S extends Schema = Schema,
+  S extends DatabaseSchema = DatabaseSchema,
   Mode extends "create" | "update" = "update",
 > = <K extends keyof S>(
   table: K,
@@ -716,7 +725,7 @@ const EvoluCommon = Layer.effect(
       subscribeSyncState: syncStateStore.subscribe,
       getSyncState: syncStateStore.getState,
 
-      create: mutate as Mutate<Schema, "create">,
+      create: mutate as Mutate<DatabaseSchema, "create">,
       update: mutate,
 
       resetOwner: () => dbWorker.postMessage({ _tag: "reset" }),
@@ -746,8 +755,8 @@ export const EvoluCommonLive = EvoluCommon.pipe(
 );
 
 export const makeCreateEvolu =
-  (EvoluLive: Layer.Layer<Config, never, Evolu<Schema>>) =>
-  <From, To extends Schema>(
+  (EvoluLive: Layer.Layer<Config, never, Evolu>) =>
+  <From, To extends DatabaseSchema>(
     schema: S.Schema<From, To>,
     config?: Partial<Config>,
   ): Evolu<To> => {

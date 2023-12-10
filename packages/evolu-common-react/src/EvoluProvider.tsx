@@ -1,8 +1,8 @@
-import { Evolu, Schema } from "@evolu/common";
+import { Evolu, DatabaseSchema } from "@evolu/common";
 import { ReactNode } from "react";
 import { EvoluContext } from "./EvoluContext.js";
 
-export const EvoluProvider = <S extends Schema>({
+export const EvoluProvider = <S extends DatabaseSchema>({
   children,
   value,
 }: {

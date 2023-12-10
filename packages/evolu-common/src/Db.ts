@@ -40,7 +40,7 @@ import {
 } from "./Sqlite.js";
 import { Store, makeStore } from "./Store.js";
 
-export type Schema = ReadonlyRecord.ReadonlyRecord<TableSchema>;
+export type DatabaseSchema = ReadonlyRecord.ReadonlyRecord<TableSchema>;
 
 export type TableSchema = ReadonlyRecord.ReadonlyRecord<Value> & {
   readonly id: Id;
