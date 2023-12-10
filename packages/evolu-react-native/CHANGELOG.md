@@ -1,5 +1,14 @@
 # @evolu/react-native
 
+## 3.0.4
+
+### Patch Changes
+
+- eb819cb: Rename Schema to DatabaseSchema
+- Updated dependencies [eb819cb]
+- Updated dependencies [d506312]
+  - @evolu/common-react@3.0.2
+
 ## 3.0.3
 
 ### Patch Changes

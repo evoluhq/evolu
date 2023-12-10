@@ -1,5 +1,15 @@
 # @evolu/common-react
 
+## 3.0.2
+
+### Patch Changes
+
+- eb819cb: Rename Schema to DatabaseSchema
+- d506312: Add "use client" directive to EvoluProvider
+- Updated dependencies [eb819cb]
+- Updated dependencies [92448d6]
+  - @evolu/common@2.2.4
+
 ## 3.0.1
 
 ### Patch Changes

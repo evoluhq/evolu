@@ -1,5 +1,14 @@
 # @evolu/server
 
+## 2.1.8
+
+### Patch Changes
+
+- 92448d6: Update peer deps
+- Updated dependencies [eb819cb]
+- Updated dependencies [92448d6]
+  - @evolu/common@2.2.4
+
 ## 2.1.7
 
 ### Patch Changes

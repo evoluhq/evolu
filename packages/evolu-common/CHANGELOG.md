@@ -1,5 +1,12 @@
 # @evolu/common
 
+## 2.2.4
+
+### Patch Changes
+
+- eb819cb: Rename Schema to DatabaseSchema
+- 92448d6: Update peer deps
+
 ## 2.2.3
 
 ### Patch Changes
