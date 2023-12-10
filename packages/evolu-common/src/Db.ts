@@ -44,7 +44,7 @@ export type DatabaseSchema = ReadonlyRecord.ReadonlyRecord<TableSchema>;
 
 export type TableSchema = ReadonlyRecord.ReadonlyRecord<Value> & {
   readonly id: Id;
-} & Partial<Record<(typeof commonColumns)[number], never>>;
+};
 
 // https://blog.beraliv.dev/2021-05-07-opaque-type-in-typescript
 declare const __queryBrand: unique symbol;
