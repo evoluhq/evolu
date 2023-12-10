@@ -1,3 +1,5 @@
+"use client";
+
 import { Evolu, DatabaseSchema } from "@evolu/common";
 import { ReactNode } from "react";
 import { EvoluContext } from "./EvoluContext.js";
