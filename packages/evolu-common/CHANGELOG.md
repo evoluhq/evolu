@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 2.2.2
+
+### Patch Changes
+
+- 33974aa: Fix number protobuf serialization
+
 ## 2.2.1
 
 ### Patch Changes
