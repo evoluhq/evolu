@@ -1,3 +1,4 @@
+import * as S from "@effect/schema/Schema";
 import { concatBytes } from "@noble/ciphers/utils";
 import { BinaryReader, BinaryWriter } from "@protobuf-ts/runtime";
 import {
@@ -153,7 +154,10 @@ const valueToProtobuf = (value: Value): MessageContent["value"] => {
     case "string":
       return { oneofKind: "stringValue", stringValue: value };
     case "number":
-      return { oneofKind: "numberValue", numberValue: value };
+      return {
+        oneofKind: "numberValue",
+        numberValue: S.encodeSync(S.NumberFromString)(value),
+      };
   }
   if (value == null) return { oneofKind: undefined };
   if (Predicate.isUint8Array(value))
@@ -164,7 +168,7 @@ const valueToProtobuf = (value: Value): MessageContent["value"] => {
 const valueFromProtobuf = (value: MessageContent["value"]): Value => {
   switch (value.oneofKind) {
     case "numberValue":
-      return value.numberValue;
+      return S.decodeSync(S.NumberFromString)(value.numberValue);
     case "stringValue":
       return value.stringValue;
     case "bytesValue":

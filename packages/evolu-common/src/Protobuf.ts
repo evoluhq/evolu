@@ -49,8 +49,8 @@ export interface MessageContent {
       }
     | {
         oneofKind: "numberValue";
-        /** @generated from protobuf field: int32 numberValue = 5; */
-        numberValue: number;
+        /** @generated from protobuf field: string numberValue = 5; */
+        numberValue: string;
       }
     | {
         oneofKind: "bytesValue";
@@ -132,7 +132,7 @@ class MessageContent$Type extends MessageType<MessageContent> {
         name: "numberValue",
         kind: "scalar",
         oneof: "value",
-        T: 5 /*ScalarType.INT32*/,
+        T: 9 /*ScalarType.STRING*/,
       },
       {
         no: 6,

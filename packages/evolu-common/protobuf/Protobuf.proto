@@ -25,7 +25,7 @@ message MessageContent {
   string column = 3;
   oneof value {
     string stringValue = 4;
-    int32 numberValue = 5;
+    string numberValue = 5;
     bytes bytesValue = 6;
     string jsonValue = 7;
   };
