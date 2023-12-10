@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 2.2.3
+
+### Patch Changes
+
+- 215662c: Update deps
+
 ## 2.2.2
 
 ### Patch Changes
