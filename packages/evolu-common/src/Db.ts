@@ -44,7 +44,7 @@ export type Schema = ReadonlyRecord.ReadonlyRecord<TableSchema>;
 
 export type TableSchema = ReadonlyRecord.ReadonlyRecord<Value> & {
   readonly id: Id;
-};
+} & Partial<Record<(typeof commonColumns)[number], never>>;
 
 // https://blog.beraliv.dev/2021-05-07-opaque-type-in-typescript
 declare const __queryBrand: unique symbol;
@@ -168,7 +168,7 @@ const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
   return out as any;
 };
 
-const commonColumns = ["createdAt", "updatedAt", "isDeleted"];
+const commonColumns = ["createdAt", "updatedAt", "isDeleted"] as const;
 
 export const schemaToTables = (schema: S.Schema<any, any>): Tables =>
   pipe(
