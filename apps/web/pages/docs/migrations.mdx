@@ -66,7 +66,7 @@ const allTodos = evolu.createQuery((db) =>
 ```
 
 Now, what if we decide we don't want the title anymore? Make it nullable,
-but remember, there is a chance it's already used, so queries should still use it.
+but remember, there is a chance it's already used, so queries must still use it.
 
 ```ts
 const TodoTable = table({
@@ -88,8 +88,8 @@ const allTodos = evolu.createQuery((db) =>
 );
 ```
 
-Ideally, we would like to tell somehow that the title column was replaced with
-column content and have access to both with union type:
+Ideally, we would like to tell somehow that the column `title` was replaced with
+column `content` and have access to both with union type:
 
 ```ts
 type TitleOrContent =
@@ -98,9 +98,10 @@ type TitleOrContent =
 ```
 
 Such a DSL for ad-hoc migrations is not available yet, but it's possible
-with the power of Kysely and SQLite, and we plan to make it soon.
+with the power of [Kysely](https://kysely.dev) and SQLite, and we plan to
+make it soon.
 
 The last question: because `RichTextMax10k` can be a JSON, should we version it?
 Yes, because while we can version it via name (content2, content3), it may be
 used elsewhere in the database schema, and then we want to have a version
-explicitly defined on the `RichTextMax10k` type itself.
+explicitly defined in the `RichTextMax10k` type itself.
