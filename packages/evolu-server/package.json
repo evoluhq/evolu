@@ -1,6 +1,6 @@
 {
   "name": "@evolu/server",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Node.js server for Evolu",
   "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
   "license": "MIT",
@@ -48,7 +48,7 @@
     "vitest": "^1.0.4"
   },
   "peerDependencies": {
-    "@evolu/common": "^3.0.0"
+    "@evolu/common": "^3.0.1"
   },
   "publishConfig": {
     "access": "public"
