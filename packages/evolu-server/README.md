@@ -1,6 +1,6 @@
 # Evolu Server
 
-Evolu server for Evolu library.
+Evolu Server for Evolu library.
 
 ## Documentation
 
