@@ -1,0 +1,106 @@
+import { Callout } from "nextra-theme-docs";
+
+# Migrations
+
+Traditional server databases are versioned and migrated with migration scripts.
+However, that's not practical with local-first databases replicated across
+devices because Evolu apps must be able to handle data not only already made
+but also data that will be made in the future. An outdated Evolu app version
+must be able to handle data made on newer versions. Luckily, with two
+simple rules, Evolu does that automatically.
+
+<Callout>
+  Evolu embraces schemaless design. It's similar to GraphQL [best
+  practices](https://graphql.org/learn/best-practices/#versioning) with few
+  improvements we can afford because Evolu Server is generic for all Evolu apps
+  (it knows nothing about Evolu apps schemas), and the database is local. Evolu
+  can filter rows with nullable columns and narrow their types so developers
+  don't have to deal with nullable values in their code.
+</Callout>
+
+## Append only schema
+
+The first and most important rule is "append only schema." Once an app is
+released, we can't change the existing database schema. We can't rename a
+table, we can't rename a column, and we can't change a column type because
+there is a chance some data has already been made. All we can do is stop
+using them in new mutations, and that's fine.
+
+## Nullability
+
+While we can and should define non-nullable column types, and those types are
+enforced on mutations, all columns except for `id` are nullable for queries.
+That's because Evolu apps must properly handle all data regardless of when
+they were made.
+
+Imagine replacing a column `address` with the new column `addressId`
+(foreign key) in the table schema. What should an outdated app do when
+it gets new data? It should store data but not use them because it has
+no code related to them until the app is updated. And that's what Evolu does.
+Evolu updates the SQLite database ad-hoc, and with nullable columns for
+queries, it forces developers to filter rows that the app can handle.
+
+Take a look at this schema, mutation, and query.
+
+```ts
+const TodoTable = table({
+  id: TodoId,
+  // The title is not nullable.
+  title: NonEmptyString1000,
+});
+
+// Mutations enforce required columns.
+evolu.create("todo", { title });
+
+// But in queries, all columns (except for `id`) are nullable
+// until we explicitly filter and narrow them.
+const allTodos = evolu.createQuery((db) =>
+  db
+    .selectFrom("todo")
+    .selectAll()
+    // Filter null value and ensure non-null type.
+    .where("title", "is not", null)
+    .$narrowType<{ title: NonEmptyString1000 }>()
+    .orderBy("createdAt"),
+);
+```
+
+Now, what if we decide we don't want the title anymore? Make it nullable,
+but remember, there is a chance it's already used, so queries should still use it.
+
+```ts
+const TodoTable = table({
+  id: TodoId,
+  // Deprecated. Use the content instead.
+  title: S.nullable(NonEmptyString1000),
+  content: RichTextMax10k,
+});
+
+const allTodos = evolu.createQuery((db) =>
+  db
+    .selectFrom("todo")
+    .selectAll()
+    .where((eb) =>
+      // The app has to use both title and content, depending on what is available.
+      eb("title", "is not", null).or(eb("content", "is not", null)),
+    )
+    .orderBy("createdAt"),
+);
+```
+
+Ideally, we would like to tell somehow that the title column was replaced with
+column content and have access to both with union type:
+
+```ts
+type TitleOrContent =
+  | { _tag: "title"; value: NonEmptyString1000 }
+  | { _tag: "content"; value: RichTextMax10k };
+```
+
+Such a DSL for ad-hoc migrations is not available yet, but it's possible
+with the power of Kysely and SQLite, and we plan to make it soon.
+
+The last question: because `RichTextMax10k` can be a JSON, should we version it?
+Yes, because while we can version it via name (content2, content3), it may be
+used elsewhere in the database schema, and then we want to have a version
+explicitly defined on the `RichTextMax10k` type itself.
