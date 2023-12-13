@@ -1,5 +1,18 @@
 # @evolu/common
 
+## 3.0.1
+
+### Patch Changes
+
+- a969843: Add ExtractRow type helper
+
+  Extract `Row` from `Query` instance.
+
+  ```ts
+  const allTodos = evolu.createQuery((db) => db.selectFrom("todo").selectAll());
+  type AllTodosRow = ExtractRow<typeof allTodos>;
+  ```
+
 ## 3.0.0
 
 ### Major Changes
