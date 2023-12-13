@@ -202,6 +202,17 @@ export type Row = ReadonlyRecord.ReadonlyRecord<
   | ReadonlyArray<Row> // for jsonArrayFrom from kysely/helpers/sqlite
 >;
 
+/**
+ * Extract {@link Row} from {@link Query} instance.
+ *
+ * @example
+ *   const allTodos = evolu.createQuery((db) =>
+ *     db.selectFrom("todo").selectAll(),
+ *   );
+ *   type AllTodosRow = ExtractRow<typeof allTodos>;
+ */
+export type ExtractRow<T extends Query> = T extends Query<infer R> ? R : never;
+
 const _emptyRows: ReadonlyArray<Row> = [];
 
 export const emptyRows = <R extends Row>(): ReadonlyArray<R> =>

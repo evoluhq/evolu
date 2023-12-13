@@ -2,6 +2,7 @@ import { TreeFormatter } from "@effect/schema";
 import * as S from "@effect/schema/Schema";
 import {
   EvoluProvider,
+  ExtractRow,
   NonEmptyString1000,
   SqliteBoolean,
   String,
@@ -177,6 +178,8 @@ const todosWithCategories = evolu.createQuery((db) =>
     ]),
 );
 
+type TodosWithCategoriesRow = ExtractRow<typeof todosWithCategories>;
+
 const Todos: FC = () => {
   const { rows } = useQuery(todosWithCategories);
   const { create } = useEvolu<Database>();
@@ -200,9 +203,7 @@ const Todos: FC = () => {
 };
 
 const TodoItem = memo<{
-  row: Pick<TodoTable, "id" | "title" | "isCompleted" | "categoryId"> & {
-    categories: ReadonlyArray<TodoCategoryForSelect>;
-  };
+  row: TodosWithCategoriesRow;
 }>(function TodoItem({
   row: { id, title, isCompleted, categoryId, categories },
 }) {
@@ -247,15 +248,10 @@ const TodoItem = memo<{
   );
 });
 
-interface TodoCategoryForSelect {
-  readonly id: TodoCategoryTable["id"];
-  readonly name: TodoCategoryTable["name"] | null;
-}
-
 const TodoCategorySelect: FC<{
-  categories: ReadonlyArray<TodoCategoryForSelect>;
+  categories: TodosWithCategoriesRow["categories"];
   selected: TodoCategoryId | null;
-  onSelect: (_value: TodoCategoryId | null) => void;
+  onSelect: (value: TodoCategoryId | null) => void;
 }> = ({ categories, selected, onSelect }) => {
   const nothingSelected = "";
   const value =
@@ -293,6 +289,8 @@ const todoCategories = evolu.createQuery((db) =>
     .orderBy("createdAt"),
 );
 
+type TodoCategoriesRow = ExtractRow<typeof todoCategories>;
+
 const TodoCategories: FC = () => {
   const { rows } = useQuery(todoCategories);
   const { create } = useEvolu<Database>();
@@ -322,7 +320,7 @@ const TodoCategories: FC = () => {
 };
 
 const TodoCategoryItem = memo<{
-  row: Pick<TodoCategoryTable, "id" | "name">;
+  row: TodoCategoriesRow;
 }>(function TodoItem({ row: { id, name } }) {
   const { update } = useEvolu<Database>();
 
