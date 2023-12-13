@@ -8,9 +8,11 @@ import {
   canUseDom,
   cast,
   createEvolu,
+  database,
   id,
   jsonArrayFrom,
   parseMnemonic,
+  table,
   useEvolu,
   useEvoluError,
   useOwner,
@@ -40,7 +42,7 @@ const NonEmptyString50 = String.pipe(
 );
 type NonEmptyString50 = S.Schema.To<typeof NonEmptyString50>;
 
-const TodoTable = S.struct({
+const TodoTable = table({
   id: TodoId,
   title: NonEmptyString1000,
   isCompleted: S.nullable(SqliteBoolean),
@@ -51,14 +53,14 @@ type TodoTable = S.Schema.To<typeof TodoTable>;
 const SomeJson = S.struct({ foo: S.string, bar: S.boolean });
 type SomeJson = S.Schema.To<typeof SomeJson>;
 
-const TodoCategoryTable = S.struct({
+const TodoCategoryTable = table({
   id: TodoCategoryId,
   name: NonEmptyString50,
   json: S.nullable(SomeJson),
 });
 type TodoCategoryTable = S.Schema.To<typeof TodoCategoryTable>;
 
-const Database = S.struct({
+const Database = database({
   todo: TodoTable,
   todoCategory: TodoCategoryTable,
 });

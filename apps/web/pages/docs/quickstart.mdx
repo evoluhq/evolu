@@ -25,19 +25,21 @@ import {
   SqliteBoolean,
   createEvolu,
   id,
+  table,
+  database,
 } from "@evolu/react";
 
 const TodoId = id("Todo");
 type TodoId = S.Schema.To<typeof TodoId>;
 
-const TodoTable = S.struct({
+const TodoTable = table({
   id: TodoId,
   title: NonEmptyString1000,
   isCompleted: SqliteBoolean,
 });
 type TodoTable = S.Schema.To<typeof TodoTable>;
 
-const Database = S.struct({
+const Database = database({
   todo: TodoTable,
 });
 type Database = S.Schema.To<typeof Database>;

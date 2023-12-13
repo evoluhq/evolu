@@ -36,6 +36,8 @@ export {
   canUseDom,
   cast,
   id,
+  table,
+  database,
 } from "@evolu/common";
 export type {
   EvoluError,

@@ -40,3 +40,7 @@ interface TransferableError {
   readonly message: string;
   readonly stack: string | undefined;
 }
+
+export interface EvoluTypeError<E extends string> {
+  readonly __evoluTypeError__: E;
+}

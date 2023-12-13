@@ -298,22 +298,14 @@ type QueryCallback<S extends DatabaseSchema, R extends Row> = (
 ) => Kysely.SelectQueryBuilder<any, any, R>;
 
 type QuerySchema<S extends DatabaseSchema> = {
-  readonly [Table in keyof S]: NullableExceptId<
-    {
-      readonly [Column in keyof S[Table]]: S[Table][Column];
-    } & CommonColumns
-  >;
+  readonly [Table in keyof S]: NullableExceptId<{
+    readonly [Column in keyof S[Table]]: S[Table][Column];
+  }>;
 };
 
 type NullableExceptId<T> = {
   readonly [K in keyof T]: K extends "id" ? T[K] : T[K] | null;
 };
-
-export interface CommonColumns {
-  readonly createdAt: SqliteDate;
-  readonly updatedAt: SqliteDate;
-  readonly isDeleted: SqliteBoolean;
-}
 
 const kysely = new Kysely.Kysely<QuerySchema<DatabaseSchema>>({
   dialect: {
@@ -568,10 +560,12 @@ export type Mutate<
   table: K,
   values: Kysely.Simplify<
     Mode extends "create"
-      ? PartialForNullable<Castable<Omit<S[K], "id">>>
-      : Partial<
-          Castable<Omit<S[K], "id"> & Pick<CommonColumns, "isDeleted">>
-        > & { readonly id: S[K]["id"] }
+      ? PartialForNullable<
+          Castable<Omit<S[K], "id" | "createdAt" | "updatedAt" | "isDeleted">>
+        >
+      : Partial<Castable<Omit<S[K], "id" | "createdAt" | "updatedAt">>> & {
+          readonly id: S[K]["id"];
+        }
   >,
   onComplete?: () => void,
 ) => {
