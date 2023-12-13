@@ -10,9 +10,11 @@ import {
   canUseDom,
   cast,
   createEvolu,
+  database,
   id,
   jsonArrayFrom,
   parseMnemonic,
+  table,
   useEvolu,
   useEvoluError,
   useOwner,
@@ -38,11 +40,11 @@ type TodoCategoryId = S.Schema.To<typeof TodoCategoryId>;
 const NonEmptyString50 = String.pipe(
   S.minLength(1),
   S.maxLength(50),
-  S.brand("NonEmptyString50"),
+  S.brand("NonEmptyString50")
 );
 type NonEmptyString50 = S.Schema.To<typeof NonEmptyString50>;
 
-const TodoTable = S.struct({
+const TodoTable = table({
   id: TodoId,
   title: NonEmptyString1000,
   isCompleted: S.nullable(SqliteBoolean),
@@ -53,14 +55,14 @@ type TodoTable = S.Schema.To<typeof TodoTable>;
 const SomeJson = S.struct({ foo: S.string, bar: S.boolean });
 type SomeJson = S.Schema.To<typeof SomeJson>;
 
-const TodoCategoryTable = S.struct({
+const TodoCategoryTable = table({
   id: TodoCategoryId,
   name: NonEmptyString50,
   json: S.nullable(SomeJson),
 });
 type TodoCategoryTable = S.Schema.To<typeof TodoCategoryTable>;
 
-const Database = S.struct({
+const Database = database({
   todo: TodoTable,
   todoCategory: TodoCategoryTable,
 });
@@ -73,7 +75,7 @@ const createFixtures = (): Promise<void> =>
     evolu.loadQueries([
       evolu.createQuery((db) => db.selectFrom("todo").selectAll()),
       evolu.createQuery((db) => db.selectFrom("todoCategory").selectAll()),
-    ]),
+    ])
   ).then(([todos, categories]) => {
     if (todos.row || categories.row) return;
 
@@ -167,9 +169,9 @@ const todosWithCategories = evolu.createQuery((db) =>
           .selectFrom("todoCategory")
           .select(["todoCategory.id", "todoCategory.name"])
           .where("isDeleted", "is not", cast(true))
-          .orderBy("createdAt"),
+          .orderBy("createdAt")
       ).as("categories"),
-    ]),
+    ])
 );
 
 const Todos: FC = () => {
@@ -285,7 +287,7 @@ const todoCategories = evolu.createQuery((db) =>
     // Filter null value and ensure non-null type. Evolu will provide a helper.
     .where("name", "is not", null)
     .$narrowType<{ name: NonEmptyString50 }>()
-    .orderBy("createdAt"),
+    .orderBy("createdAt")
 );
 
 const TodoCategories: FC = () => {
@@ -360,7 +362,7 @@ const OwnerActions: FC = () => {
               isRestoringOwner(true);
               evolu.restoreOwner(mnemonic);
             },
-          }),
+          })
         );
     });
   };
@@ -415,7 +417,7 @@ const Button: FC<{
 const prompt = <From extends string, To>(
   schema: S.Schema<From, To>,
   message: string,
-  onSuccess: (value: To) => void,
+  onSuccess: (value: To) => void
 ): void => {
   const value = window.prompt(message);
   if (value == null) return; // on cancel

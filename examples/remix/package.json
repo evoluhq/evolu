@@ -10,8 +10,8 @@
     "typecheck": "tsc"
   },
   "dependencies": {
-    "@evolu/react": "^3.0.0",
-    "@evolu/server": "^2.0.0",
+    "@evolu/react": "^4.0.0",
+    "@evolu/server": "^3.0.0",
     "@remix-run/dev": "^2.3.1",
     "@remix-run/express": "^2.3.1",
     "@remix-run/node": "^2.3.1",
