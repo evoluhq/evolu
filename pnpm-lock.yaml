@@ -30,8 +30,8 @@ importers:
   apps/native:
     dependencies:
       '@effect/schema':
-        specifier: 0.53.0
-        version: 0.53.0(effect@2.0.0-next.60)(fast-check@3.14.0)
+        specifier: ^0.53.2
+        version: 0.53.2(effect@2.0.0-next.60)(fast-check@3.14.0)
       '@evolu/react-native':
         specifier: workspace:*
         version: link:../../packages/evolu-react-native
@@ -125,8 +125,8 @@ importers:
   apps/web:
     dependencies:
       '@effect/schema':
-        specifier: 0.53.0
-        version: 0.53.0(effect@2.0.0-next.60)(fast-check@3.14.0)
+        specifier: ^0.53.2
+        version: 0.53.2(effect@2.0.0-next.60)(fast-check@3.14.0)
       '@evolu/common':
         specifier: workspace:*
         version: link:../../packages/evolu-common
@@ -211,7 +211,7 @@ importers:
         version: 1.11.2(eslint@8.55.0)
       eslint-plugin-jsdoc:
         specifier: ^46.9.0
-        version: 46.9.0(eslint@8.55.0)
+        version: 46.9.1(eslint@8.55.0)
       eslint-plugin-node:
         specifier: ^11.1.0
         version: 11.1.0(eslint@8.55.0)
@@ -254,8 +254,8 @@ importers:
         version: 5.0.4
     devDependencies:
       '@effect/schema':
-        specifier: 0.53.0
-        version: 0.53.0(effect@2.0.0-next.60)(fast-check@3.14.0)
+        specifier: ^0.53.2
+        version: 0.53.2(effect@2.0.0-next.60)(fast-check@3.14.0)
       '@evolu/tsconfig':
         specifier: workspace:*
         version: link:../evolu-tsconfig
@@ -2346,8 +2346,8 @@ packages:
       '@jridgewell/trace-mapping': 0.3.9
     dev: true
 
-  /@effect/schema@0.53.0(effect@2.0.0-next.60)(fast-check@3.14.0):
-    resolution: {integrity: sha512-hrKiXA5+sXt2xqos0lRBWx89Od7Y166YEjhDDokVZ3vHjHKf0huFBeKssnl8V5L7XU2mgQNPCeBii3+JB1WjHg==}
+  /@effect/schema@0.53.2(effect@2.0.0-next.60)(fast-check@3.14.0):
+    resolution: {integrity: sha512-byk2qHRQSnLSj736pvkGRaa21xAp1TJw3rED8rMiUELGsXW7PjAOKhl4NaMYxRrAxPODSllwCGhRiEaaSDkyuA==}
     peerDependencies:
       effect: 2.0.0-next.60
       fast-check: ^3.13.2
@@ -4934,7 +4934,7 @@ packages:
     hasBin: true
     dependencies:
       caniuse-lite: 1.0.30001570
-      electron-to-chromium: 1.4.611
+      electron-to-chromium: 1.4.612
       node-releases: 2.0.14
       update-browserslist-db: 1.0.13(browserslist@4.22.2)
 
@@ -6102,8 +6102,8 @@ packages:
   /effect@2.0.0-next.60:
     resolution: {integrity: sha512-23KhlVACgrg5UPFu9i4szybSU4cCU4T/7CX4pe0jV84QBZX0zm96WzwCtg6dqOnmUzBL7hm6S+iiPW2Rab13Uw==}
 
-  /electron-to-chromium@1.4.611:
-    resolution: {integrity: sha512-ZtRpDxrjHapOwxtv+nuth5ByB8clyn8crVynmRNGO3wG3LOp8RTcyZDqwaI6Ng6y8FCK2hVZmJoqwCskKbNMaw==}
+  /electron-to-chromium@1.4.612:
+    resolution: {integrity: sha512-dM8BMtXtlH237ecSMnYdYuCkib2QHq0kpWfUnavjdYsyr/6OsAwg5ZGUfnQ9KD1Ga4QgB2sqXlB2NT8zy2GnVg==}
 
   /elkjs@0.8.2:
     resolution: {integrity: sha512-L6uRgvZTH+4OF5NE/MBbzQx/WYpru1xCBE9respNj6qznEewGUIfhzmm7horWWxbNO2M0WckQypGctR8lH79xQ==}
@@ -6481,8 +6481,8 @@ packages:
       - supports-color
     dev: false
 
-  /eslint-plugin-jsdoc@46.9.0(eslint@8.55.0):
-    resolution: {integrity: sha512-UQuEtbqLNkPf5Nr/6PPRCtr9xypXY+g8y/Q7gPa0YK7eDhh0y2lWprXRnaYbW7ACgIUvpDKy9X2bZqxtGzBG9Q==}
+  /eslint-plugin-jsdoc@46.9.1(eslint@8.55.0):
+    resolution: {integrity: sha512-11Ox5LCl2wY7gGkp9UOyew70o9qvii1daAH+h/MFobRVRNcy7sVlH+jm0HQdgcvcru6285GvpjpUyoa051j03Q==}
     engines: {node: '>=16'}
     peerDependencies:
       eslint: ^7.0.0 || ^8.0.0
@@ -6496,7 +6496,7 @@ packages:
       esquery: 1.5.0
       is-builtin-module: 3.2.1
       semver: 7.5.4
-      spdx-expression-parse: 3.0.1
+      spdx-expression-parse: 4.0.0
     transitivePeerDependencies:
       - supports-color
     dev: false
@@ -12106,6 +12106,14 @@ packages:
     dependencies:
       spdx-exceptions: 2.3.0
       spdx-license-ids: 3.0.16
+    dev: true
+
+  /spdx-expression-parse@4.0.0:
+    resolution: {integrity: sha512-Clya5JIij/7C6bRR22+tnGXbc4VKlibKSVj2iHvVeX5iMW7s1SIQlqu699JkODJJIhh/pUu8L0/VLh8xflD+LQ==}
+    dependencies:
+      spdx-exceptions: 2.3.0
+      spdx-license-ids: 3.0.16
+    dev: false
 
   /spdx-license-ids@3.0.16:
     resolution: {integrity: sha512-eWN+LnM3GR6gPu35WxNgbGl8rmY1AEmoMDvL/QD6zYmPWgywxWqJWNdLGT+ke8dKNWrcYgYjPpG5gbTfghP8rw==}
