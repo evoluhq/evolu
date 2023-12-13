@@ -1,9 +1,12 @@
 # API
 
-All public API functions are documented with JSDoc.
+Public API is documented with JSDoc.
 
-Developer should only import:
+Packages for app development:
 
-- @evolu/react
-- @evolu/react-native
-- @evolu/server (if you wish to run your own server)
+- `@evolu/react`
+- `@evolu/react-native`
+
+To define the Evolu database schema reusable for platforms, use `@evolu/common`.
+
+If you want to host your own Evolu Server, use `@evolu/server`.
