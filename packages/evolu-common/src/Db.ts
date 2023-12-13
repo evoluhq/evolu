@@ -13,6 +13,7 @@ import {
   ReadonlyArray,
   ReadonlyRecord,
   String,
+  Types,
   pipe,
 } from "effect";
 import * as Kysely from "kysely";
@@ -23,7 +24,7 @@ import {
   timestampToString,
 } from "./Crdt.js";
 import { Bip39, Mnemonic, NanoId } from "./Crypto.js";
-import { Id } from "./Model.js";
+import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
 import { Owner, makeOwner } from "./Owner.js";
 import {
   createMessageTable,
@@ -39,12 +40,104 @@ import {
   isJsonObjectOrArray,
 } from "./Sqlite.js";
 import { Store, makeStore } from "./Store.js";
+import { EvoluTypeError } from "./ErrorStore.js";
 
 export type DatabaseSchema = ReadonlyRecord.ReadonlyRecord<TableSchema>;
 
-export type TableSchema = ReadonlyRecord.ReadonlyRecord<Value> & {
+type TableSchema = ReadonlyRecord.ReadonlyRecord<Value> & {
   readonly id: Id;
 };
+
+/**
+ * Create table schema.
+ *
+ * Supported types are null, string, number, Uint8Array, JSON Object, and JSON
+ * Array. Use SqliteDate for dates and SqliteBoolean for booleans.
+ *
+ * Reserved columns are createdAt, updatedAt, isDeleted. Those columns are added
+ * by default.
+ *
+ * @example
+ *   const TodoId = id("Todo");
+ *   type TodoId = S.Schema.To<typeof TodoId>;
+ *
+ *   const TodoTable = table({
+ *     id: TodoId,
+ *     title: NonEmptyString1000,
+ *     isCompleted: S.nullable(SqliteBoolean),
+ *   });
+ *   type TodoTable = S.Schema.To<typeof TodoTable>;
+ */
+export const table = <Fields extends TableFields>(
+  fields: Fields,
+  // Because Schema is invariant, we have to do validation like this.
+): ValidateFieldsTypes<Fields> extends true
+  ? ValidateFieldsNames<Fields> extends true
+    ? ValidateFieldsHasId<Fields> extends true
+      ? S.Schema<
+          Types.Simplify<
+            S.FromStruct<Fields> & S.Schema.From<typeof ReservedColumns>
+          >,
+          Types.Simplify<
+            S.ToStruct<Fields> & S.Schema.To<typeof ReservedColumns>
+          >
+        >
+      : EvoluTypeError<"table() called without id column.">
+    : EvoluTypeError<"table() called with a reserved column. Reserved columns are createdAt, updatedAt, isDeleted. Those columns are added by default.">
+  : EvoluTypeError<"table() called with unsupported type. Supported types are null, string, number, Uint8Array, JSON Object, and JSON Array. Use SqliteDate for dates and SqliteBoolean for booleans."> =>
+  S.struct(fields).pipe(S.extend(ReservedColumns)) as never;
+
+const ReservedColumns = S.struct({
+  createdAt: SqliteDate,
+  updatedAt: SqliteDate,
+  isDeleted: SqliteBoolean,
+});
+
+type TableFields = Record<string, S.Schema<any, any>>;
+
+type ValidateFieldsTypes<Fields extends TableFields> =
+  keyof Fields extends infer K
+    ? K extends keyof Fields
+      ? Fields[K] extends TableFields
+        ? ValidateFieldsTypes<Fields[K]>
+        : // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          Fields[K] extends S.Schema<infer _I, infer A>
+          ? A extends Value
+            ? true
+            : false
+          : never
+      : never
+    : never;
+
+type ValidateFieldsNames<Fields extends TableFields> =
+  keyof Fields extends infer K
+    ? K extends keyof Fields
+      ? K extends "createdAt" | "updatedAt" | "isDeleted"
+        ? false
+        : true
+      : never
+    : never;
+
+type ValidateFieldsHasId<Fields extends TableFields> = "id" extends keyof Fields
+  ? true
+  : false;
+
+/**
+ * Create database schema.
+ *
+ * Tables with a name prefixed with _ are local-only, which means they are not
+ * synced. Local-only tables are useful for device-specific or temporal data.
+ *
+ * @example
+ *   const Database = database({
+ *     // A local-only table.
+ *     _todo: TodoTable,
+ *     todo: TodoTable,
+ *     todoCategory: TodoCategoryTable,
+ *   });
+ *   type Database = S.Schema.To<typeof Database>;
+ */
+export const database = S.struct;
 
 // https://blog.beraliv.dev/2021-05-07-opaque-type-in-typescript
 declare const __queryBrand: unique symbol;
@@ -168,8 +261,6 @@ const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
   return out as any;
 };
 
-const commonColumns = ["createdAt", "updatedAt", "isDeleted"] as const;
-
 export const schemaToTables = (schema: S.Schema<any, any>): Tables =>
   pipe(
     getPropertySignatures(schema),
@@ -177,9 +268,7 @@ export const schemaToTables = (schema: S.Schema<any, any>): Tables =>
     ReadonlyArray.map(
       ([name, schema]): Table => ({
         name,
-        columns: Object.keys(getPropertySignatures(schema)).concat(
-          commonColumns,
-        ),
+        columns: Object.keys(getPropertySignatures(schema)),
       }),
     ),
   );
