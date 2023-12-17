@@ -39,7 +39,7 @@
     "@evolu/tsconfig": "workspace:*",
     "@sqlite.org/sqlite-wasm": "3.44.2-build1",
     "@types/web-locks-api": "^0.0.5",
-    "eslint": "^8.54.0",
+    "eslint": "^8.56.0",
     "eslint-config-evolu": "workspace:*",
     "typescript": "^5.3.3",
     "user-agent-data-types": "^0.4.2",
