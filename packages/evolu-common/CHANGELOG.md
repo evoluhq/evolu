@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 3.0.4
+
+### Patch Changes
+
+- e6abac0: Update Effect and Schema deps
+
 ## 3.0.3
 
 ### Patch Changes
