@@ -30,8 +30,8 @@ importers:
   apps/native:
     dependencies:
       '@effect/schema':
-        specifier: ^0.53.3
-        version: 0.53.3(effect@2.0.0-next.60)(fast-check@3.15.0)
+        specifier: ^0.54.0
+        version: 0.54.0(effect@2.0.0-next.61)(fast-check@3.15.0)
       '@evolu/react-native':
         specifier: workspace:*
         version: link:../../packages/evolu-react-native
@@ -45,8 +45,8 @@ importers:
         specifier: ^3.12.0
         version: 3.12.0
       effect:
-        specifier: 2.0.0-next.60
-        version: 2.0.0-next.60
+        specifier: 2.0.0-next.61
+        version: 2.0.0-next.61
       events:
         specifier: ^3.3.0
         version: 3.3.0
@@ -125,8 +125,8 @@ importers:
   apps/web:
     dependencies:
       '@effect/schema':
-        specifier: ^0.53.3
-        version: 0.53.3(effect@2.0.0-next.60)(fast-check@3.15.0)
+        specifier: ^0.54.0
+        version: 0.54.0(effect@2.0.0-next.61)(fast-check@3.15.0)
       '@evolu/common':
         specifier: workspace:*
         version: link:../../packages/evolu-common
@@ -137,8 +137,8 @@ importers:
         specifier: ^2.0.0
         version: 2.0.0
       effect:
-        specifier: 2.0.0-next.60
-        version: 2.0.0-next.60
+        specifier: 2.0.0-next.61
+        version: 2.0.0-next.61
       next:
         specifier: 14.0.4
         version: 14.0.4(react-dom@18.2.0)(react@18.2.0)
@@ -254,8 +254,8 @@ importers:
         version: 5.0.4
     devDependencies:
       '@effect/schema':
-        specifier: ^0.53.3
-        version: 0.53.3(effect@2.0.0-next.60)(fast-check@3.15.0)
+        specifier: ^0.54.0
+        version: 0.54.0(effect@2.0.0-next.61)(fast-check@3.15.0)
       '@evolu/tsconfig':
         specifier: workspace:*
         version: link:../evolu-tsconfig
@@ -269,8 +269,8 @@ importers:
         specifier: ^3.0.0
         version: 3.0.0
       effect:
-        specifier: 2.0.0-next.60
-        version: 2.0.0-next.60
+        specifier: 2.0.0-next.61
+        version: 2.0.0-next.61
       eslint:
         specifier: ^8.56.0
         version: 8.56.0
@@ -426,8 +426,8 @@ importers:
         specifier: ^2.8.5
         version: 2.8.5
       effect:
-        specifier: 2.0.0-next.60
-        version: 2.0.0-next.60
+        specifier: 2.0.0-next.61
+        version: 2.0.0-next.61
       express:
         specifier: ^4.18.2
         version: 4.18.2
@@ -2346,13 +2346,13 @@ packages:
       '@jridgewell/trace-mapping': 0.3.9
     dev: true
 
-  /@effect/schema@0.53.3(effect@2.0.0-next.60)(fast-check@3.15.0):
-    resolution: {integrity: sha512-QycmIqn2E7v0IPzHqSXmdnX7fhgr102z90BAjBUsifJy5MOfC9EdxTJ5DY8Vxiq9gjbLz7QWBQuCyqRDJ6eNAQ==}
+  /@effect/schema@0.54.0(effect@2.0.0-next.61)(fast-check@3.15.0):
+    resolution: {integrity: sha512-RdiAOIgmjOVihyGUGd0TS3iM92bvQ55A3dPh6OeOZPDr+MEYWhSDqaxt+TK6tUdaQ+sBRmgc6cFlW1OAt+BBwg==}
     peerDependencies:
-      effect: 2.0.0-next.60
+      effect: 2.0.0-next.61
       fast-check: ^3.13.2
     dependencies:
-      effect: 2.0.0-next.60
+      effect: 2.0.0-next.61
       fast-check: 3.15.0
 
   /@es-joy/jsdoccomment@0.41.0:
@@ -6099,8 +6099,8 @@ packages:
   /ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  /effect@2.0.0-next.60:
-    resolution: {integrity: sha512-23KhlVACgrg5UPFu9i4szybSU4cCU4T/7CX4pe0jV84QBZX0zm96WzwCtg6dqOnmUzBL7hm6S+iiPW2Rab13Uw==}
+  /effect@2.0.0-next.61:
+    resolution: {integrity: sha512-BuRr9SEwYdMVLQunATRjm3MAkTgWI21Tyn5ooWVZnTeXj0lUqSV0fjaqNFksEymssmwJ1ucogbuYQ/3RLmwxgA==}
 
   /electron-to-chromium@1.4.614:
     resolution: {integrity: sha512-X4ze/9Sc3QWs6h92yerwqv7aB/uU8vCjZcrMjA8N9R1pjMFRe44dLsck5FzLilOYvcXuDn93B+bpGYyufc70gQ==}
