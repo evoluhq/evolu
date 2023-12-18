@@ -17,9 +17,10 @@ we can write some super efficient queries with nested relations.
 Evolu automatically parses stringified JSONs to typed objects. Evolu also ensures
 that no strings can accidentally contain a stringified JSON.
 
-<Callout>
-  Evolu Relations are also helpful to avoid loading waterfalls. Check examples
-  to see it.
+<Callout type="info">
+  Relations are helpful to avoid loading waterfalls. Check Next.js
+  [example](https://www.evolu.dev/examples/nextjs) to see how each todo fetches
+  its categories.
 </Callout>
 
 ## Deferred Sync with Local-Only Tables
@@ -38,7 +39,7 @@ JSON on every keystroke isn't an issue because Evolu uses Web Workers,
 so saving doesn't block the main thread. In React Native, we use
 `InteractionManager.runAfterInteractions` (soon).
 
-<Callout>
+<Callout type="info">
   Is postMessage slow? No, not really. (It depends.)
   [surma.dev/things/is-postmessage-slow](https://surma.dev/things/is-postmessage-slow)
 </Callout>
@@ -60,3 +61,34 @@ button, but that's not a friendly UX. The better approach is to use a reliable
 heuristic to detect the user unit of work. We can leverage page visibility,
 a route change, and other techniques. Unfortunately, we can't rely on unload
 event because it's unreliable. **Evolu will release a helper for that soon.**
+
+## JSON
+
+SQLite supports JSON but stores and returns it as a stringified object.
+Evolu automatically stringifies and parses JSON to improve DX.
+
+```ts
+const SomeJson = S.struct({ foo: S.string, bar: S.boolean });
+type SomeJson = S.Schema.To<typeof SomeJson>;
+
+const TodoTable = table({
+  id: TodoId,
+  title: NonEmptyString1000,
+  json: SomeJson,
+});
+
+// No need to call JSON.stringify
+create("todo", { title, json: { foo: "a", bar: false } });
+
+const { rows } = useQuery(allTodos);
+// Evolu automatically parses JSONs into typed objects.
+if (rows[0]) console.log(rows[0].json.foo);
+```
+
+<Callout>
+  Evolu's automatic JSON string parsing is based on heuristics (if it looks like
+  a stringified JSON, try to parse it). That means that any string that is a
+  stringified JSON will be parsed. Use the Evolu `String` schema for all string
+  columns to prevent a situation where the user stores stringified JSON in a
+  regular string column. Check how `String1000` schema is made.
+</Callout>
