@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 3.0.5
+
+### Patch Changes
+
+- ac609e1: Update Schema peer dependency
+
 ## 3.0.4
 
 ### Patch Changes
