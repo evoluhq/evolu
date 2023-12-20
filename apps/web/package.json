@@ -10,7 +10,7 @@
     "clean": "rm -rf .turbo .next node_modules"
   },
   "dependencies": {
-    "@effect/schema": "^0.54.0",
+    "@effect/schema": "^0.55.0",
     "@evolu/common": "workspace:*",
     "@evolu/react": "workspace:*",
     "clsx": "^2.0.0",
@@ -32,7 +32,7 @@
     "postcss": "^8.4.32",
     "prettier": "^3.1.1",
     "prettier-plugin-tailwindcss": "^0.5.9",
-    "tailwindcss": "^3.3.5",
+    "tailwindcss": "^3.4.0",
     "typescript": "^5.3.3"
   }
 }

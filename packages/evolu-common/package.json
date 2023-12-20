@@ -61,7 +61,7 @@
     "nanoid": "^5.0.4"
   },
   "devDependencies": {
-    "@effect/schema": "^0.54.0",
+    "@effect/schema": "^0.55.0",
     "@evolu/tsconfig": "workspace:*",
     "@protobuf-ts/plugin": "^2.9.3",
     "@protobuf-ts/protoc": "^2.9.3",
@@ -70,10 +70,10 @@
     "eslint": "^8.56.0",
     "eslint-config-evolu": "workspace:*",
     "typescript": "^5.3.3",
-    "vitest": "^1.0.4"
+    "vitest": "^1.1.0"
   },
   "peerDependencies": {
-    "@effect/schema": "^0.54.0",
+    "@effect/schema": "^0.55.0",
     "effect": "2.0.0-next.61"
   },
   "publishConfig": {
