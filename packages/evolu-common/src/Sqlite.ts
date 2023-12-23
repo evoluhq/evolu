@@ -1,4 +1,7 @@
-import { Context, Effect, Predicate, ReadonlyRecord } from "effect";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Predicate from "effect/Predicate";
+import * as ReadonlyRecord from "effect/ReadonlyRecord";
 
 export interface Sqlite {
   readonly exec: (

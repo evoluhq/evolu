@@ -1,7 +1,12 @@
 import SQLite from "better-sqlite3";
 import bodyParser from "body-parser";
 import cors from "cors";
-import { Cause, Effect, Either, Exit, Match, flow } from "effect";
+import * as Cause from "effect/Cause";
+import * as Effect from "effect/Effect";
+import * as Either from "effect/Either";
+import * as Exit from "effect/Exit";
+import { flow } from "effect/Function";
+import * as Match from "effect/Match";
 import express from "express";
 import { Kysely, SqliteDialect } from "kysely";
 import path from "path";

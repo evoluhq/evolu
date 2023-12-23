@@ -1,5 +1,5 @@
 import * as S from "@effect/schema/Schema";
-import { Brand } from "effect";
+import * as Brand from "effect/Brand";
 import { maybeJson } from "./Sqlite.js";
 
 /**

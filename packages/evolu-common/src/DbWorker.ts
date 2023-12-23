@@ -1,15 +1,13 @@
 import { hexToBytes } from "@noble/ciphers/utils";
-import {
-  Context,
-  Effect,
-  Function,
-  Layer,
-  Match,
-  Option,
-  ReadonlyArray,
-  ReadonlyRecord,
-  pipe,
-} from "effect";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Function from "effect/Function";
+import { pipe } from "effect/Function";
+import * as Layer from "effect/Layer";
+import * as Match from "effect/Match";
+import * as Option from "effect/Option";
+import * as ReadonlyArray from "effect/ReadonlyArray";
+import * as ReadonlyRecord from "effect/ReadonlyRecord";
 import { Config, ConfigLive } from "./Config.js";
 import {
   MerkleTree,

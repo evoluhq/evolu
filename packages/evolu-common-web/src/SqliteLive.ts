@@ -7,7 +7,8 @@ import {
   valuesToSqliteValues,
 } from "@evolu/common";
 import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
-import { Effect, Layer } from "effect";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 
 const sqlitePromise = sqlite3InitModule().then((sqlite3) =>
   canUseDom

@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import * as Effect from "effect/Effect";
 import { TimestampError } from "./Crdt.js";
 import { makeStore } from "./Store.js";
 

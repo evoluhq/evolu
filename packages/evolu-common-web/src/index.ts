@@ -5,7 +5,8 @@ import {
   Mnemonic,
   makeCreateEvolu,
 } from "@evolu/common";
-import { Effect, Layer } from "effect";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import { DbWorkerLive } from "./DbWorkerLive.js";
 import {
   AppStateLive,

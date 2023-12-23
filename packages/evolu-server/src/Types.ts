@@ -1,5 +1,5 @@
 import { MerkleTreeString, OwnerId, TimestampString } from "@evolu/common";
-import { Context } from "effect";
+import * as Context from "effect/Context";
 import { Kysely } from "kysely";
 
 /** Evolu Server database schema. */

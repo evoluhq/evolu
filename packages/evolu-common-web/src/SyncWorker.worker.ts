@@ -5,7 +5,9 @@ import {
   SyncWorkerInput,
   SyncWorkerLive,
 } from "@evolu/common";
-import { Effect, Layer } from "effect";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+
 import { SyncLockLive } from "./PlatformLive.js";
 
 const syncWorker = Effect.provide(

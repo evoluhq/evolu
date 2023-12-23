@@ -4,7 +4,10 @@ import { concatBytes } from "@noble/ciphers/utils";
 import { hmac } from "@noble/hashes/hmac";
 import { sha512 } from "@noble/hashes/sha512";
 import { randomBytes } from "@noble/hashes/utils";
-import { Brand, Context, Effect, Layer } from "effect";
+import * as Brand from "effect/Brand";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import { customAlphabet, nanoid } from "nanoid";
 
 // TODO: Add dynamic import error.

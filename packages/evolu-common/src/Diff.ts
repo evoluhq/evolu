@@ -1,4 +1,5 @@
-import { Predicate, ReadonlyArray } from "effect";
+import * as Predicate from "effect/Predicate";
+import * as ReadonlyArray from "effect/ReadonlyArray";
 import { Query, Row } from "./Db.js";
 import { Value } from "./Sqlite.js";
 

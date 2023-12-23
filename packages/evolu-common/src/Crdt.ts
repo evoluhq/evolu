@@ -1,16 +1,14 @@
 import * as S from "@effect/schema/Schema";
-import {
-  Brand,
-  Context,
-  Effect,
-  Either,
-  Layer,
-  Number,
-  Option,
-  ReadonlyArray,
-  String,
-  pipe,
-} from "effect";
+import * as Brand from "effect/Brand";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Either from "effect/Either";
+import { pipe } from "effect/Function";
+import * as Layer from "effect/Layer";
+import * as Number from "effect/Number";
+import * as Option from "effect/Option";
+import * as ReadonlyArray from "effect/ReadonlyArray";
+import * as String from "effect/String";
 import { Config } from "./Config.js";
 import { NanoId, NodeId } from "./Crypto.js";
 import { murmurhash } from "./Murmurhash.js";

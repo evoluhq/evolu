@@ -1,20 +1,19 @@
 import * as S from "@effect/schema/Schema";
-import {
-  Context,
-  Effect,
-  Function,
-  GlobalValue,
-  Layer,
-  Match,
-  Number,
-  ReadonlyArray,
-  pipe,
-} from "effect";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Function from "effect/Function";
+import { pipe } from "effect/Function";
+import * as GlobalValue from "effect/GlobalValue";
+import * as Layer from "effect/Layer";
+import * as Match from "effect/Match";
+import * as Number from "effect/Number";
+import * as ReadonlyArray from "effect/ReadonlyArray";
 import * as Kysely from "kysely";
 import { Config, ConfigLive } from "./Config.js";
 import { Time, TimeLive } from "./Crdt.js";
 import { Mnemonic, NanoId, NanoIdLive } from "./Crypto.js";
 import {
+  DatabaseSchema,
   Queries,
   Query,
   QueryResult,
@@ -22,7 +21,6 @@ import {
   Row,
   RowsStore,
   RowsStoreLive,
-  DatabaseSchema,
   emptyRows,
   queryResultFromRows,
   schemaToTables,

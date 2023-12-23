@@ -1,19 +1,16 @@
 import * as S from "@effect/schema/Schema";
 import { concatBytes } from "@noble/ciphers/utils";
 import { BinaryReader, BinaryWriter } from "@protobuf-ts/runtime";
-import {
-  Context,
-  Effect,
-  Equivalence,
-  Function,
-  Layer,
-  Match,
-  Option,
-  Predicate,
-  ReadonlyArray,
-  absurd,
-  identity,
-} from "effect";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Equivalence from "effect/Equivalence";
+import * as Function from "effect/Function";
+import { absurd, identity } from "effect/Function";
+import * as Layer from "effect/Layer";
+import * as Match from "effect/Match";
+import * as Option from "effect/Option";
+import * as Predicate from "effect/Predicate";
+import * as ReadonlyArray from "effect/ReadonlyArray";
 import {
   MerkleTree,
   Millis,

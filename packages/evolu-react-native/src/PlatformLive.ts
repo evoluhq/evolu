@@ -14,7 +14,9 @@ import {
   validateMnemonic,
 } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english";
-import { Effect, Function, Layer } from "effect";
+import * as Effect from "effect/Effect";
+import * as Function from "effect/Function";
+import * as Layer from "effect/Layer";
 import { reloadAsync } from "expo-updates";
 import { DevSettings, AppState as ReactNativeAppState } from "react-native";
 

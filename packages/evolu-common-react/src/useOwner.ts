@@ -1,5 +1,5 @@
 import { Owner } from "@evolu/common";
-import { Function } from "effect";
+import * as Function from "effect/Function";
 import { useSyncExternalStore } from "react";
 import { useEvolu } from "./useEvolu.js";
 

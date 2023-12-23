@@ -5,7 +5,9 @@ import {
   SyncWorker,
   SyncWorkerOutput,
 } from "@evolu/common";
-import { Effect, Function, Layer } from "effect";
+import * as Effect from "effect/Effect";
+import * as Function from "effect/Function";
+import * as Layer from "effect/Layer";
 import { Bip39Live } from "./PlatformLive.js";
 import { SqliteLive } from "./SqliteLive.js";
 

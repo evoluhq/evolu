@@ -1,4 +1,5 @@
-import { Context, Layer } from "effect";
+import * as Context from "effect/Context";
+import * as Layer from "effect/Layer";
 
 export interface Config {
   /** Alternate URL to Evolu sync and backup server. */

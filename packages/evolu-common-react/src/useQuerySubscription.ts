@@ -5,7 +5,7 @@ import {
   emptyRows,
   queryResultFromRows,
 } from "@evolu/common";
-import { Function } from "effect";
+import * as Function from "effect/Function";
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useEvolu } from "./useEvolu.js";
 

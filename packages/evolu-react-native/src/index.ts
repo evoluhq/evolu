@@ -12,7 +12,8 @@ import {
   SyncWorkerLive,
   makeCreateEvolu,
 } from "@evolu/common";
-import { Effect, Layer } from "effect";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import {
   AppStateLive,
   Bip39Live,
@@ -35,22 +36,22 @@ export {
   String1000,
   canUseDom,
   cast,
+  database,
   id,
   table,
-  database,
 } from "@evolu/common";
 export type {
   EvoluError,
+  ExtractRow,
   InvalidMnemonicError,
   Mnemonic,
   Owner,
   OwnerId,
+  QueryResult,
   SyncState,
   Timestamp,
   TimestampError,
   UnexpectedError,
-  ExtractRow,
-  QueryResult,
 } from "@evolu/common";
 export { jsonArrayFrom, jsonObjectFrom } from "kysely/helpers/sqlite";
 

@@ -4,7 +4,8 @@ import {
   maybeParseJson,
   valuesToSqliteValues,
 } from "@evolu/common";
-import { Effect, Layer } from "effect";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as SQLite from "expo-sqlite";
 
 const db = SQLite.openDatabase("evolu1.db");

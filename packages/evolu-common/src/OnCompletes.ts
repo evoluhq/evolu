@@ -1,4 +1,9 @@
-import { Brand, Context, Effect, Layer, Option, ReadonlyArray } from "effect";
+import * as Brand from "effect/Brand";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as ReadonlyArray from "effect/ReadonlyArray";
 import { NanoId } from "./Crypto.js";
 
 export interface OnCompletes {

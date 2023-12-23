@@ -1,4 +1,6 @@
-import { Brand, Context, Effect } from "effect";
+import * as Brand from "effect/Brand";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
 import { urlAlphabet } from "nanoid";
 import { Bip39, Mnemonic, slip21Derive } from "./Crypto.js";
 import { Id } from "./Model.js";
