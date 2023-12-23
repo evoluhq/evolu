@@ -1,5 +1,15 @@
 # @evolu/common
 
+## 3.0.7
+
+### Patch Changes
+
+- a2068f2: Use namespace imports
+
+  Namespace imports make dev faster and build smaller for bundlers without three shaking.
+
+  https://www.effect.website/docs/essentials/importing
+
 ## 3.0.6
 
 ### Patch Changes
