@@ -1,5 +1,18 @@
 # @evolu/common-react
 
+## 4.0.1
+
+### Patch Changes
+
+- a2068f2: Use namespace imports
+
+  Namespace imports make dev faster and build smaller for bundlers without three shaking.
+
+  https://www.effect.website/docs/essentials/importing
+
+- Updated dependencies [a2068f2]
+  - @evolu/common@3.0.7
+
 ## 4.0.0
 
 ### Patch Changes
