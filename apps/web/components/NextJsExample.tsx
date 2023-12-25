@@ -18,6 +18,7 @@ import {
   useEvoluError,
   useOwner,
   useQuery,
+  PositiveInt,
 } from "@evolu/react";
 import { Effect, Exit } from "effect";
 import {
@@ -29,6 +30,14 @@ import {
   useEffect,
   useState,
 } from "react";
+
+import { DndContext } from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 const TodoId = id("Todo");
 type TodoId = S.Schema.To<typeof TodoId>;
@@ -58,12 +67,24 @@ const TodoCategoryTable = table({
   id: TodoCategoryId,
   name: NonEmptyString50,
   json: S.nullable(SomeJson),
+  order: S.nullable(PositiveInt),
 });
 type TodoCategoryTable = S.Schema.To<typeof TodoCategoryTable>;
+
+export const TodoCategoryCounterId = id("Counter");
+export type TodoCategoryCounterId = S.Schema.To<typeof TodoCategoryCounterId>;
+const TodoCategoryCounterTable = table({
+  id: TodoCategoryCounterId,
+  count: S.nullable(PositiveInt),
+});
+export type TodoCategoryCounterTable = S.Schema.To<
+  typeof TodoCategoryCounterTable
+>;
 
 const Database = database({
   todo: TodoTable,
   todoCategory: TodoCategoryTable,
+  todoCategoryCounter: TodoCategoryCounterTable,
 });
 type Database = S.Schema.To<typeof Database>;
 
@@ -281,38 +302,93 @@ const TodoCategorySelect: FC<{
 const todoCategories = evolu.createQuery((db) =>
   db
     .selectFrom("todoCategory")
-    .select(["id", "name", "json"])
+    .select(["id", "name", "json", "order"])
     .where("isDeleted", "is not", cast(true))
     // Filter null value and ensure non-null type. Evolu will provide a helper.
     .where("name", "is not", null)
-    .$narrowType<{ name: NonEmptyString50 }>()
-    .orderBy("createdAt"),
+    .where("order", "is not", null)
+    .$narrowType<{ name: NonEmptyString50; order: PositiveInt }>()
+    .orderBy("order"),
+);
+
+const todoCategoryCounter = evolu.createQuery((db) =>
+  db
+    .selectFrom("todoCategoryCounter")
+    .selectAll()
+    // Filter null value and ensure non-null type. Evolu will provide a helper.
+    .where("count", "is not", null)
+    .$narrowType<{ count: PositiveInt }>(),
 );
 
 type TodoCategoriesRow = ExtractRow<typeof todoCategories>;
 
 const TodoCategories: FC = () => {
   const { rows } = useQuery(todoCategories);
-  const { create } = useEvolu<Database>();
+  const { row: counter } = useQuery(todoCategoryCounter);
+  const { create, update } = useEvolu<Database>();
 
   // Evolu automatically parses JSONs into typed objects.
   // if (rows[0]) console.log(rows[1].json?.foo);
 
   const handleAddCategoryClick = (): void => {
     prompt(NonEmptyString50, "Category Name", (name) => {
+      const count = S.parseSync(PositiveInt)(counter?.count ?? 1) + 1;
+      update("todoCategoryCounter", { id: "todo-category-counter", count });
       create("todoCategory", {
         name,
         json: { foo: "a", bar: false },
+        order: count,
       });
     });
+  };
+
+  const handleDragEnd = (event: { active: any; over: any }): void => {
+    const { active, over } = event;
+
+    if (active.id !== over.id) {
+      const oldIndex = rows.findIndex((i) => i.id === active.id);
+      const newIndex = rows.findIndex((i) => i.id === over.id);
+
+      const activePlace = rows[oldIndex];
+      const overPlace = rows[newIndex];
+
+      rows.forEach((row) => {
+        if (row.id === active.id) {
+          update("todoCategory", { id: row.id, order: overPlace.order });
+        } else if (
+          overPlace.order >= row.order &&
+          activePlace.order < row.order
+        ) {
+          update("todoCategory", {
+            id: row.id,
+            order: S.parseSync(PositiveInt)(Number(row.order) - 1),
+          });
+        } else if (
+          overPlace.order <= row.order &&
+          activePlace.order > row.order
+        ) {
+          update("todoCategory", {
+            id: row.id,
+            order: S.parseSync(PositiveInt)(Number(row.order) + 1),
+          });
+        }
+      });
+    }
   };
 
   return (
     <>
       <ul className="py-2">
-        {rows.map((row) => (
-          <TodoCategoryItem row={row} key={row.id} />
-        ))}
+        <DndContext onDragEnd={handleDragEnd}>
+          <SortableContext
+            items={[...rows]}
+            strategy={verticalListSortingStrategy}
+          >
+            {rows.map((row) => (
+              <TodoCategoryItem row={row} key={row.id} />
+            ))}
+          </SortableContext>
+        </DndContext>
       </ul>
       <Button title="Add Category" onClick={handleAddCategoryClick} />
     </>
@@ -323,6 +399,14 @@ const TodoCategoryItem = memo<{
   row: TodoCategoriesRow;
 }>(function TodoItem({ row: { id, name } }) {
   const { update } = useEvolu<Database>();
+
+  const { attributes, listeners, setNodeRef, transform, transition } =
+    useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
 
   const handleRenameClick = (): void => {
     prompt(NonEmptyString50, "Category Name", (name) => {
@@ -336,8 +420,10 @@ const TodoCategoryItem = memo<{
 
   return (
     <>
-      <li key={id}>
-        <span className="text-sm font-bold">{name}</span>
+      <li key={id} ref={setNodeRef} style={style} {...attributes}>
+        <span className="text-sm font-bold" {...listeners}>
+          {name}
+        </span>
         <Button title="Rename" onClick={handleRenameClick} />
         <Button title="Delete" onClick={handleDeleteClick} />
       </li>
