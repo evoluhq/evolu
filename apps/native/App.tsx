@@ -3,6 +3,7 @@ import * as TreeFormatter from "@effect/schema/TreeFormatter";
 import {
   EvoluProvider,
   NonEmptyString1000,
+  NotNull,
   SqliteBoolean,
   String,
   cast,
@@ -188,9 +189,9 @@ const todosWithCategories = evolu.createQuery((db) =>
     .selectFrom("todo")
     .select(["id", "title", "isCompleted", "categoryId"])
     .where("isDeleted", "is not", cast(true))
-    // Filter null value and ensure non-null type. Evolu will provide a helper.
+    // Filter null value and ensure non-null type.
     .where("title", "is not", null)
-    .$narrowType<{ title: NonEmptyString1000 }>()
+    .$narrowType<{ title: NotNull }>()
     .orderBy("createdAt")
     // https://kysely.dev/docs/recipes/relations
     .select((eb) => [
@@ -322,9 +323,9 @@ const todoCategories = evolu.createQuery((db) =>
     .selectFrom("todoCategory")
     .select(["id", "name", "json"])
     .where("isDeleted", "is not", cast(true))
-    // Filter null value and ensure non-null type. Evolu will provide a helper.
+    // Filter null value and ensure non-null type.
     .where("name", "is not", null)
-    .$narrowType<{ name: NonEmptyString50 }>()
+    .$narrowType<{ name: NotNull }>()
     .orderBy("createdAt"),
 );
 

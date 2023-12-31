@@ -286,13 +286,7 @@ type CreateQuery<S extends DatabaseSchema> = <R extends Row>(
 ) => Query<R>;
 
 type QueryCallback<S extends DatabaseSchema, R extends Row> = (
-  db: Pick<
-    Kysely.Kysely<QuerySchema<S>>,
-    | "selectFrom"
-    // TODO: Test.
-    // | "selectNoFrom"
-    | "fn"
-  >,
+  db: Pick<Kysely.Kysely<QuerySchema<S>>, "selectFrom" | "fn">,
 ) => Kysely.SelectQueryBuilder<any, any, R>;
 
 type QuerySchema<S extends DatabaseSchema> = {

@@ -10,10 +10,10 @@
     "clean": "rm -rf .turbo .next node_modules"
   },
   "dependencies": {
-    "@effect/schema": "^0.56.0",
+    "@effect/schema": "^0.56.1",
     "@evolu/common": "workspace:*",
     "@evolu/react": "workspace:*",
-    "clsx": "^2.0.0",
+    "clsx": "^2.1.0",
     "effect": "2.0.0-next.62",
     "next": "14.0.4",
     "nextra": "^2.13.2",
@@ -23,15 +23,15 @@
   },
   "devDependencies": {
     "@evolu/tsconfig": "workspace:*",
-    "@types/node": "^20.10.5",
-    "@types/react": "^18.2.41",
+    "@types/node": "^20.10.6",
+    "@types/react": "^18.2.46",
     "@types/react-dom": "^18.2.18",
     "autoprefixer": "^10.4.16",
     "eslint": "^8.56.0",
     "eslint-config-evolu": "workspace:*",
     "postcss": "^8.4.32",
     "prettier": "^3.1.1",
-    "prettier-plugin-tailwindcss": "^0.5.9",
+    "prettier-plugin-tailwindcss": "^0.5.10",
     "tailwindcss": "^3.4.0",
     "typescript": "^5.3.3"
   }

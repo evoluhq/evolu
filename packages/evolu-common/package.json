@@ -57,11 +57,11 @@
     "@noble/hashes": "^1.3.3",
     "@protobuf-ts/runtime": "^2.9.3",
     "@scure/bip39": "^1.2.2",
-    "kysely": "^0.26.3",
+    "kysely": "^0.27.0",
     "nanoid": "^5.0.4"
   },
   "devDependencies": {
-    "@effect/schema": "^0.56.0",
+    "@effect/schema": "^0.56.1",
     "@evolu/tsconfig": "workspace:*",
     "@protobuf-ts/plugin": "^2.9.3",
     "@protobuf-ts/protoc": "^2.9.3",
@@ -73,7 +73,7 @@
     "vitest": "^1.1.0"
   },
   "peerDependencies": {
-    "@effect/schema": "^0.56.0",
+    "@effect/schema": "^0.56.1",
     "effect": "2.0.0-next.62"
   },
   "publishConfig": {

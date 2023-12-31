@@ -52,6 +52,7 @@ export type {
   Timestamp,
   TimestampError,
   UnexpectedError,
+  NotNull,
 } from "@evolu/common";
 export { jsonArrayFrom, jsonObjectFrom } from "kysely/helpers/sqlite";
 

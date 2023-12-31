@@ -1,6 +1,7 @@
 import {
   SyncRequest,
   SyncResponse,
+  TimestampString,
   diffMerkleTrees,
   initialMerkleTree,
   insertIntoMerkleTree,
@@ -139,7 +140,11 @@ export const ServerLive = Layer.effect(
                   .select(["timestamp", "content"])
                   .where("userId", "=", request.userId)
                   .where("timestamp", ">=", timestamp)
-                  .where("timestamp", "not like", sql`'%' || ${request.nodeId}`)
+                  .where(
+                    "timestamp",
+                    "not like",
+                    sql<TimestampString>`'%' || ${request.nodeId}`,
+                  )
                   .orderBy("timestamp")
                   .execute(),
               ),

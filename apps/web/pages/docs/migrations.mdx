@@ -60,7 +60,7 @@ const allTodos = evolu.createQuery((db) =>
     .selectAll()
     // Filter null value and ensure non-null type.
     .where("title", "is not", null)
-    .$narrowType<{ title: NonEmptyString1000 }>()
+    .$narrowType<{ title: NotNull }>()
     .orderBy("createdAt"),
 );
 ```
