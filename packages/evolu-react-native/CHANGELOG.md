@@ -1,5 +1,28 @@
 # @evolu/react-native
 
+## 4.0.2
+
+### Patch Changes
+
+- 047b92e: Update Kysely to 0.27.0
+
+  Check [Kysely release](https://github.com/kysely-org/kysely/releases/tag/0.27.0)
+
+  Note simplified `$narrowType` usage. Previous:
+
+  ```ts
+  .$narrowType<{ title: NonEmptyString1000 }>()
+  ```
+
+  Simplified:
+
+  ```ts
+  .$narrowType<{ title: NotNull }>()
+  ```
+
+- Updated dependencies [047b92e]
+  - @evolu/common-react@4.0.2
+
 ## 4.0.1
 
 ### Patch Changes
