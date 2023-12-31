@@ -2,7 +2,9 @@ import { TreeFormatter } from "@effect/schema";
 import * as S from "@effect/schema/Schema";
 import {
   EvoluProvider,
+  ExtractRow,
   NonEmptyString1000,
+  NotNull,
   SqliteBoolean,
   String,
   canUseDom,
@@ -117,7 +119,7 @@ export default function RemixExample() {
       <h2 className="mt-6 text-xl font-semibold">
         {currentTab === "todos" ? "Todos" : "Categories"}
       </h2>
-      <Suspense fallback="loading">
+      <Suspense>
         {currentTab === "todos" ? <Todos /> : <TodoCategories />}
         <Button title="Switch Tab" onClick={handleTabClick} />
         <p className="my-4">
@@ -135,7 +137,7 @@ export default function RemixExample() {
       </Suspense>
     </EvoluProvider>
   );
-}
+});
 
 const NotificationBar: FC = () => {
   const evoluError = useEvoluError();
@@ -160,10 +162,10 @@ const todosWithCategories = evolu.createQuery((db) =>
     .selectFrom("todo")
     .select(["id", "title", "isCompleted", "categoryId"])
     .where("isDeleted", "is not", cast(true))
-    // Filter null value and ensure non-null type. Evolu will provide a helper.
+    // Filter null value and ensure non-null type.
     .where("title", "is not", null)
-    .$narrowType<{ title: NonEmptyString1000 }>()
-    .orderBy("createdAt desc")
+    .$narrowType<{ title: NotNull }>()
+    .orderBy("createdAt")
     // https://kysely.dev/docs/recipes/relations
     .select((eb) => [
       jsonArrayFrom(
@@ -175,6 +177,8 @@ const todosWithCategories = evolu.createQuery((db) =>
       ).as("categories"),
     ]),
 );
+
+type TodosWithCategoriesRow = ExtractRow<typeof todosWithCategories>;
 
 const Todos: FC = () => {
   const { rows } = useQuery(todosWithCategories);
@@ -199,9 +203,7 @@ const Todos: FC = () => {
 };
 
 const TodoItem = memo<{
-  row: Pick<TodoTable, "id" | "title" | "isCompleted" | "categoryId"> & {
-    categories: ReadonlyArray<TodoCategoryForSelect>;
-  };
+  row: TodosWithCategoriesRow;
 }>(function TodoItem({
   row: { id, title, isCompleted, categoryId, categories },
 }) {
@@ -246,15 +248,10 @@ const TodoItem = memo<{
   );
 });
 
-interface TodoCategoryForSelect {
-  readonly id: TodoCategoryTable["id"];
-  readonly name: TodoCategoryTable["name"] | null;
-}
-
 const TodoCategorySelect: FC<{
-  categories: ReadonlyArray<TodoCategoryForSelect>;
+  categories: TodosWithCategoriesRow["categories"];
   selected: TodoCategoryId | null;
-  onSelect: (_value: TodoCategoryId | null) => void;
+  onSelect: (value: TodoCategoryId | null) => void;
 }> = ({ categories, selected, onSelect }) => {
   const nothingSelected = "";
   const value =
@@ -286,15 +283,17 @@ const todoCategories = evolu.createQuery((db) =>
     .selectFrom("todoCategory")
     .select(["id", "name", "json"])
     .where("isDeleted", "is not", cast(true))
-    // Filter null value and ensure non-null type. Evolu will provide a helper.
+    // Filter null value and ensure non-null type.
     .where("name", "is not", null)
-    .$narrowType<{ name: NonEmptyString50 }>()
+    .$narrowType<{ name: NotNull }>()
     .orderBy("createdAt"),
 );
 
+type TodoCategoriesRow = ExtractRow<typeof todoCategories>;
+
 const TodoCategories: FC = () => {
-  const { create } = useEvolu();
   const { rows } = useQuery(todoCategories);
+  const { create } = useEvolu<Database>();
 
   // Evolu automatically parses JSONs into typed objects.
   // if (rows[0]) console.log(rows[1].json?.foo);
@@ -321,7 +320,7 @@ const TodoCategories: FC = () => {
 };
 
 const TodoCategoryItem = memo<{
-  row: Pick<TodoCategoryTable, "id" | "name">;
+  row: TodoCategoriesRow;
 }>(function TodoItem({ row: { id, name } }) {
   const { update } = useEvolu<Database>();
 
