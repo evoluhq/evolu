@@ -1,5 +1,28 @@
 # @evolu/server
 
+## 3.0.8
+
+### Patch Changes
+
+- 047b92e: Update Kysely to 0.27.0
+
+  Check [Kysely release](https://github.com/kysely-org/kysely/releases/tag/0.27.0)
+
+  Note simplified `$narrowType` usage. Previous:
+
+  ```ts
+  .$narrowType<{ title: NonEmptyString1000 }>()
+  ```
+
+  Simplified:
+
+  ```ts
+  .$narrowType<{ title: NotNull }>()
+  ```
+
+- Updated dependencies [047b92e]
+  - @evolu/common@3.0.8
+
 ## 3.0.7
 
 ### Patch Changes
