@@ -137,7 +137,7 @@ export default function RemixExample() {
       </Suspense>
     </EvoluProvider>
   );
-});
+}
 
 const NotificationBar: FC = () => {
   const evoluError = useEvoluError();
