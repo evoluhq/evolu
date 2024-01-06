@@ -100,7 +100,7 @@ const isRestoringOwner = (isRestoringOwner?: boolean): boolean => {
 // Ensure fixtures are not added to the restored owner.
 if (!isRestoringOwner()) createFixtures();
 
-const NextJsExample = memo(function NextJsExample() {
+const ViteExample = memo(function ViteExample() {
   const [currentTab, setCurrentTab] = useState<"todos" | "categories">("todos");
 
   const handleTabClick = (): void =>
@@ -427,7 +427,7 @@ const prompt = <From extends string, To>(
 };
 
 function App() {
-  return <NextJsExample />;
+  return <ViteExample />;
 }
 
 export default App;
