@@ -1,5 +1,13 @@
 # @evolu/common-web
 
+## 4.0.2
+
+### Patch Changes
+
+- 3cd5c71: Update deps
+- Updated dependencies [3cd5c71]
+  - @evolu/common@3.0.10
+
 ## 4.0.1
 
 ### Patch Changes
