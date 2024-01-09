@@ -1,5 +1,16 @@
 # @evolu/server
 
+## 3.0.9
+
+### Patch Changes
+
+- ff6254b: Update Effect and Schema peer dependencies
+
+  Effect 2 isn't still considered stable; breaking changes can happen in minor versions. Effect 3 will be stable. No worries, they are only tuning APIs.
+
+- Updated dependencies [ff6254b]
+  - @evolu/common@3.0.9
+
 ## 3.0.8
 
 ### Patch Changes
