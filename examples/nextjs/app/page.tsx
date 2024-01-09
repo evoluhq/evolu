@@ -1,7 +1,7 @@
 "use client";
 
-import { TreeFormatter } from "@effect/schema";
 import * as S from "@effect/schema/Schema";
+import { formatError } from "@effect/schema/TreeFormatter";
 import {
   EvoluProvider,
   ExtractRow,
@@ -422,7 +422,7 @@ const prompt = <From extends string, To>(
   if (value == null) return; // on cancel
   const a = S.parseEither(schema)(value);
   if (a._tag === "Left") {
-    alert(TreeFormatter.formatErrors(a.left.errors));
+    alert(formatError(a.left));
     return;
   }
   onSuccess(a.right);

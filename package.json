@@ -31,6 +31,9 @@
         "expo-modules-*",
         "typescript"
       ]
+    },
+    "overrides": {
+      "flexsearch": "0.7.31"
     }
   }
 }

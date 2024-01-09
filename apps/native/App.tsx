@@ -1,5 +1,5 @@
 import * as S from "@effect/schema/Schema";
-import * as TreeFormatter from "@effect/schema/TreeFormatter";
+import { formatError } from "@effect/schema/TreeFormatter";
 import {
   EvoluProvider,
   NonEmptyString1000,
@@ -126,7 +126,7 @@ const OwnerActions: FC = () => {
 
   const handleMnemonicInputEndEditing = (): void => {
     Either.match(parsedMnemonic, {
-      onLeft: (error) => alert(TreeFormatter.formatErrors(error.errors)),
+      onLeft: (error) => alert(formatError(error)),
       onRight: (mnemonic) => {
         parseMnemonic(mnemonic)
           .pipe(Effect.runPromiseExit)
