@@ -1,5 +1,13 @@
 # @evolu/server
 
+## 3.0.10
+
+### Patch Changes
+
+- 3cd5c71: Update deps
+- Updated dependencies [3cd5c71]
+  - @evolu/common@3.0.10
+
 ## 3.0.9
 
 ### Patch Changes
