@@ -35,9 +35,8 @@ export const createExpressApp = Effect.gen(function* (_) {
   app.use(bodyParser.raw({ limit: "20mb" }));
 
   app.post("/", (req, res) => {
-    Effect.runCallback(
-      server.sync(req.body as Uint8Array),
-      Exit.match({
+    Effect.runCallback(server.sync(req.body as Uint8Array), {
+      onExit: Exit.match({
         onFailure: flow(
           Cause.failureOrCause,
           Either.match({
@@ -61,7 +60,7 @@ export const createExpressApp = Effect.gen(function* (_) {
           res.send(buffer);
         },
       }),
-    );
+    });
   });
 
   return app;
