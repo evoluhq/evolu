@@ -1,5 +1,15 @@
 # @evolu/react
 
+## 4.0.1
+
+### Patch Changes
+
+- ffb503b: Effect 2.1.0 and Schema 0.60.3
+- Updated dependencies [ffb503b]
+  - @evolu/common-react@4.0.3
+  - @evolu/common-web@4.0.3
+  - @evolu/common@3.0.11
+
 ## 4.0.0
 
 ### Patch Changes

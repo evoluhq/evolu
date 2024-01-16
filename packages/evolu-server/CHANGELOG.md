@@ -1,5 +1,13 @@
 # @evolu/server
 
+## 3.0.11
+
+### Patch Changes
+
+- ffb503b: Effect 2.1.0 and Schema 0.60.3
+- Updated dependencies [ffb503b]
+  - @evolu/common@3.0.11
+
 ## 3.0.10
 
 ### Patch Changes
