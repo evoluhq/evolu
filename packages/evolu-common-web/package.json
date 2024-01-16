@@ -1,6 +1,6 @@
 {
   "name": "@evolu/common-web",
-  "version": "4.0.2",
+  "version": "4.0.3",
   "description": "Common code for Evolu libraries targeting web",
   "keywords": [
     "evolu",
@@ -46,7 +46,7 @@
     "vitest": "^1.2.0"
   },
   "peerDependencies": {
-    "@evolu/common": "^3.0.10",
+    "@evolu/common": "^3.0.11",
     "@sqlite.org/sqlite-wasm": "3.43.2-build1"
   },
   "publishConfig": {

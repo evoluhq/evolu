@@ -1,5 +1,12 @@
 # server
 
+## 1.0.26
+
+### Patch Changes
+
+- Updated dependencies [ffb503b]
+  - @evolu/server@3.0.11
+
 ## 1.0.25
 
 ### Patch Changes
