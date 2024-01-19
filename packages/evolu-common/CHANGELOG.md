@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 3.0.12
+
+### Patch Changes
+
+- b9e549a: Effect 2.1.2 and Schema 0.60.6
+
 ## 3.0.11
 
 ### Patch Changes

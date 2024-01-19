@@ -1,5 +1,13 @@
 # @evolu/common-web
 
+## 4.0.4
+
+### Patch Changes
+
+- b9e549a: Effect 2.1.2 and Schema 0.60.6
+- Updated dependencies [b9e549a]
+  - @evolu/common@3.0.12
+
 ## 4.0.3
 
 ### Patch Changes
