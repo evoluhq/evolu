@@ -1,5 +1,13 @@
 # @evolu/react-native
 
+## 4.0.4
+
+### Patch Changes
+
+- b9e549a: Effect 2.1.2 and Schema 0.60.6
+- Updated dependencies [b9e549a]
+  - @evolu/common-react@4.0.4
+
 ## 4.0.3
 
 ### Patch Changes

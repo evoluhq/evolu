@@ -1,5 +1,15 @@
 # @evolu/react
 
+## 4.0.2
+
+### Patch Changes
+
+- b9e549a: Effect 2.1.2 and Schema 0.60.6
+- Updated dependencies [b9e549a]
+  - @evolu/common-react@4.0.4
+  - @evolu/common-web@4.0.4
+  - @evolu/common@3.0.12
+
 ## 4.0.1
 
 ### Patch Changes
