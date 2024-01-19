@@ -11,12 +11,12 @@
     "clean": "rm -rf .turbo .expo node_modules dist"
   },
   "dependencies": {
-    "@effect/schema": "^0.60.3",
+    "@effect/schema": "^0.60.6",
     "@evolu/react-native": "workspace:*",
     "@react-native-community/netinfo": "9.3.10",
     "buffer": "^6.0.3",
     "crypto-browserify": "^3.12.0",
-    "effect": "2.1.0",
+    "effect": "2.1.2",
     "events": "^3.3.0",
     "expo": "^49.0.21",
     "expo-sqlite": "~11.3.3",
@@ -35,7 +35,7 @@
     "@types/react": "^18.2.48",
     "eslint": "^8.56.0",
     "eslint-config-evolu": "workspace:*",
-    "prettier": "^3.2.2",
+    "prettier": "^3.2.4",
     "typescript": "^5.3.3"
   }
 }
