@@ -1,5 +1,13 @@
 # @evolu/server
 
+## 3.0.13
+
+### Patch Changes
+
+- 369ff8b: Update peer deps
+- Updated dependencies [369ff8b]
+  - @evolu/common@3.0.13
+
 ## 3.0.12
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # @evolu/common-web
 
+## 4.0.5
+
+### Patch Changes
+
+- 369ff8b: Update peer deps
+- Updated dependencies [369ff8b]
+  - @evolu/common@3.0.13
+
 ## 4.0.4
 
 ### Patch Changes
