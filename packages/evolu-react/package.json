@@ -48,9 +48,9 @@
     "vitest": "^1.2.1"
   },
   "peerDependencies": {
-    "@evolu/common": "^3.0.12",
+    "@evolu/common": "^3.0.13",
     "@evolu/common-react": "^4.0.4",
-    "@evolu/common-web": "^4.0.4",
+    "@evolu/common-web": "^4.0.5",
     "@types/react-dom": "^18.2.7",
     "react-dom": "^18.2.0"
   },

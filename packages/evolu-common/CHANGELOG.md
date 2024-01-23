@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 3.0.13
+
+### Patch Changes
+
+- 369ff8b: Update peer deps
+
 ## 3.0.12
 
 ### Patch Changes
