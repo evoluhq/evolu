@@ -1,5 +1,11 @@
 # @evolu/common-web
 
+## 4.0.6
+
+### Patch Changes
+
+- 3fd44ee: Update deps
+
 ## 4.0.5
 
 ### Patch Changes
