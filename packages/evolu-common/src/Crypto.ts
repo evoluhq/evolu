@@ -45,8 +45,10 @@ export interface NanoId {
 
 export const NanoId = Context.Tag<NanoId>();
 
-export const NodeId: S.BrandSchema<string, string & Brand.Brand<"NodeId">> =
-  S.string.pipe(S.pattern(/^[\w-]{16}$/), S.brand("NodeId"));
+export const NodeId = S.string.pipe(
+  S.pattern(/^[\w-]{16}$/),
+  S.brand("NodeId"),
+);
 export type NodeId = S.Schema.To<typeof NodeId>;
 
 const nanoidForNodeId = customAlphabet("0123456789abcdef", 16);

@@ -11,7 +11,7 @@ export const makeNode1Timestamp = (
   node = "0000000000000001",
 ): Timestamp =>
   ({
-    millis: S.parseSync(Millis)(initialMillis + millis),
+    millis: S.decodeSync(Millis)(initialMillis + millis),
     counter,
     node,
   }) as Timestamp;

@@ -215,7 +215,7 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
    *   import * as S from "@effect/schema/Schema";
    *
    *   // Evolu uses the Schema to enforce domain model.
-   *   const title = S.parseSync(Evolu.NonEmptyString1000)("A title");
+   *   const title = S.decodeSync(Evolu.NonEmptyString1000)("A title");
    *
    *   const { id } = evolu.create("todo", { title }, () => {
    *     // onComplete callback
@@ -243,7 +243,7 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
    *   import * as S from "@effect/schema/Schema";
    *
    *   // Evolu uses the Schema to enforce domain model.
-   *   const title = S.parseSync(Evolu.NonEmptyString1000)("A title");
+   *   const title = S.decodeSync(Evolu.NonEmptyString1000)("A title");
    *   evolu.update("todo", { id, title });
    *
    *   // To delete a row, set `isDeleted` to true.
@@ -266,7 +266,7 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
    * database.
    */
   readonly ensureSchema: <From, To extends S>(
-    schema: S.Schema<From, To>,
+    schema: S.Schema<never, From, To>,
   ) => void;
 
   /**
@@ -743,7 +743,7 @@ export const EvoluCommonLive = EvoluCommon.pipe(
 export const makeCreateEvolu =
   (EvoluLive: Layer.Layer<Config, never, Evolu>) =>
   <From, To extends DatabaseSchema>(
-    schema: S.Schema<From, To>,
+    schema: S.Schema<never, From, To>,
     config?: Partial<Config>,
   ): Evolu<To> => {
     // For https://nextjs.org/docs/architecture/fast-refresh etc.

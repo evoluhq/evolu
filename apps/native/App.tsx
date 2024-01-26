@@ -122,7 +122,7 @@ const OwnerActions: FC = () => {
   const [isMnemonicShown, setIsMnemonicShown] = useState(false);
   const [isRestoreShown, setIsRestoreShown] = useState(false);
   const [mnemonic, setMnemonic] = useState("");
-  const parsedMnemonic = S.parseEither(NonEmptyString1000)(mnemonic);
+  const parsedMnemonic = S.decodeUnknownEither(NonEmptyString1000)(mnemonic);
 
   const handleMnemonicInputEndEditing = (): void => {
     Either.match(parsedMnemonic, {
@@ -210,7 +210,7 @@ const Todos: FC = () => {
   const { create } = useEvolu<Database>();
 
   const [text, setText] = useState("");
-  const newTodoTitle = S.parseEither(NonEmptyString1000)(text);
+  const newTodoTitle = S.decodeUnknownEither(NonEmptyString1000)(text);
   const handleTextInputEndEditing = (): void => {
     Either.match(newTodoTitle, {
       onLeft: Function.constVoid,
@@ -334,7 +334,7 @@ const TodoCategories: FC = () => {
   const { rows } = useQuery(todoCategories);
 
   const [text, setText] = useState("");
-  const newTodoTitle = S.parseEither(NonEmptyString50)(text);
+  const newTodoTitle = S.decodeUnknownEither(NonEmptyString50)(text);
   const handleTextInputEndEditing = (): void => {
     Either.match(newTodoTitle, {
       onLeft: Function.constVoid,

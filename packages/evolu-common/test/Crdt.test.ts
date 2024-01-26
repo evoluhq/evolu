@@ -69,7 +69,7 @@ test("timestampToHash", () => {
 
 const config = Config.pipe(Effect.provide(ConfigLive()), Effect.runSync);
 
-const makeMillis = (millis: number): Millis => S.parseSync(Millis)(millis);
+const makeMillis = (millis: number): Millis => S.decodeSync(Millis)(millis);
 
 const context0 = pipe(
   Context.empty(),

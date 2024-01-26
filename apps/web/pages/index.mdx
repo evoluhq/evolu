@@ -86,7 +86,7 @@ const { rows } = useQuery(allTodos);
 // Create a todo.
 const { create } = useEvolu<Database>();
 create("todo", {
-  title: S.parseSync(NonEmptyString1000)("Learn Effect"),
+  title: S.decodeSync(NonEmptyString1000)("Learn Effect"),
 });
 
 // Update a todo.

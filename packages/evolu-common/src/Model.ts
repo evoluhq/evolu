@@ -21,7 +21,7 @@ export type Id = S.Schema.To<typeof Id>;
  */
 export const id = <T extends string>(
   table: T,
-): S.BrandSchema<string, string & Brand.Brand<"Id"> & Brand.Brand<T>> =>
+): S.BrandSchema<never, string, string & Brand.Brand<"Id"> & Brand.Brand<T>> =>
   Id.pipe(S.brand(table));
 
 /**
@@ -105,7 +105,7 @@ export type String = S.Schema.To<typeof String>;
  *   import * as S from "@effect/schema/Schema";
  *   import { String1000 } from "@evolu/react";
  *
- *   S.parse(String1000)(value);
+ *   S.decode(String1000)(value);
  */
 export const String1000 = String.pipe(S.maxLength(1000), S.brand("String1000"));
 export type String1000 = S.Schema.To<typeof String1000>;
@@ -117,7 +117,7 @@ export type String1000 = S.Schema.To<typeof String1000>;
  *   import * as S from "@effect/schema/Schema";
  *   import { NonEmptyString1000 } from "@evolu/react";
  *
- *   S.parse(NonEmptyString1000)(value);
+ *   S.decode(NonEmptyString1000)(value);
  */
 export const NonEmptyString1000 = String.pipe(
   S.minLength(1),
@@ -133,7 +133,7 @@ export type NonEmptyString1000 = S.Schema.To<typeof NonEmptyString1000>;
  *   import * as S from "@effect/schema/Schema";
  *   import { PositiveInt } from "@evolu/react";
  *
- *   S.parse(PositiveInt)(value);
+ *   S.decode(PositiveInt)(value);
  */
 export const PositiveInt = S.number.pipe(
   S.int(),

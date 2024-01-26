@@ -56,7 +56,7 @@ It has to be parsed with the `NonEmptyString1000` schema. Isn't that beautiful?
 import * as S from "@effect/schema/Schema";
 import { NonEmptyString1000 } from "@evolu/react";
 
-S.parse(NonEmptyString1000)(title);
+S.decode(NonEmptyString1000)(title);
 ```
 
 Learn more about [Schema](https://github.com/effect-ts/schema).

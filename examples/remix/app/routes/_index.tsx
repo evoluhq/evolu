@@ -84,11 +84,11 @@ const createFixtures = (): Promise<void> =>
     if (todos.row || categories.row) return;
 
     const { id: notUrgentCategoryId } = evolu.create("todoCategory", {
-      name: S.parseSync(NonEmptyString50)("Not Urgent"),
+      name: S.decodeSync(NonEmptyString50)("Not Urgent"),
     });
 
     evolu.create("todo", {
-      title: S.parseSync(NonEmptyString1000)("Try React Suspense"),
+      title: S.decodeSync(NonEmptyString1000)("Try React Suspense"),
       categoryId: notUrgentCategoryId,
     });
   });
@@ -416,13 +416,13 @@ const Button: FC<{
 };
 
 const prompt = <From extends string, To>(
-  schema: S.Schema<From, To>,
+  schema: S.Schema<never, From, To>,
   message: string,
   onSuccess: (value: To) => void,
 ): void => {
   const value = window.prompt(message);
   if (value == null) return; // on cancel
-  const a = S.parseEither(schema)(value);
+  const a = S.decodeUnknownEither(schema)(value);
   if (a._tag === "Left") {
     alert(formatError(a.left));
     return;

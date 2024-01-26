@@ -44,14 +44,14 @@ export const Millis = S.number.pipe(
 
 export type Millis = S.Schema.To<typeof Millis>;
 
-export const initialMillis = S.parseSync(Millis)(
+export const initialMillis = S.decodeSync(Millis)(
   AllowedTimeRange.greaterThan + 1,
 );
 
 export const Counter = S.number.pipe(S.between(0, 65535), S.brand("Counter"));
 export type Counter = S.Schema.To<typeof Counter>;
 
-const initialCounter = S.parseSync(Counter)(0);
+const initialCounter = S.decodeSync(Counter)(0);
 
 export type TimestampHash = number & Brand.Brand<"TimestampHash">;
 
@@ -76,7 +76,7 @@ export const unsafeTimestampFromString = (s: TimestampString): Timestamp => {
 export const timestampToHash = (t: Timestamp): TimestampHash =>
   murmurhash(timestampToString(t)) as TimestampHash;
 
-const syncNodeId = S.parseSync(NodeId)("0000000000000000");
+const syncNodeId = S.decodeSync(NodeId)("0000000000000000");
 
 export const makeSyncTimestamp = (
   millis: Millis = initialMillis,
@@ -106,7 +106,7 @@ export const Time = Context.Tag<Time>();
 export const TimeLive = Layer.succeed(
   Time,
   Time.of({
-    now: Effect.suspend(() => S.parse(Millis)(Date.now())).pipe(
+    now: Effect.suspend(() => S.decode(Millis)(Date.now())).pipe(
       Effect.catchTag("ParseError", () =>
         Effect.fail<TimestampTimeOutOfRangeError>({
           _tag: "TimestampTimeOutOfRangeError",
@@ -177,11 +177,11 @@ const incrementCounter = (
 ): Either.Either<TimestampCounterOverflowError, Counter> =>
   pipe(
     Number.increment(counter),
-    S.parseEither(Counter),
+    S.decodeEither(Counter),
     Either.mapLeft(() => ({ _tag: "TimestampCounterOverflowError" })),
   );
 
-const counterMin = S.parseSync(Counter)(0);
+const counterMin = S.decodeSync(Counter)(0);
 
 export const sendTimestamp = (
   timestamp: Timestamp,

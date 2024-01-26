@@ -73,6 +73,7 @@ export const table = <Fields extends TableFields>(
   ? ValidateFieldsNames<Fields> extends true
     ? ValidateFieldsHasId<Fields> extends true
       ? S.Schema<
+          never,
           Types.Simplify<
             S.FromStruct<Fields> & S.Schema.From<typeof ReservedColumns>
           >,
@@ -91,7 +92,7 @@ const ReservedColumns = S.struct({
   isDeleted: SqliteBoolean,
 });
 
-type TableFields = Record<string, S.Schema<any, any>>;
+type TableFields = Record<string, S.Schema<never, any, any>>;
 
 type ValidateFieldsTypes<Fields extends TableFields> =
   keyof Fields extends infer K
@@ -99,7 +100,7 @@ type ValidateFieldsTypes<Fields extends TableFields> =
       ? Fields[K] extends TableFields
         ? ValidateFieldsTypes<Fields[K]>
         : // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          Fields[K] extends S.Schema<infer _I, infer A>
+          Fields[K] extends S.Schema<never, infer _I, infer A>
           ? A extends Value
             ? true
             : false
@@ -258,9 +259,9 @@ export interface Table {
 
 // https://github.com/Effect-TS/schema/releases/tag/v0.18.0
 const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
-  schema: S.Schema<I, A>,
-): { [K in keyof A]: S.Schema<I[K], A[K]> } => {
-  const out: Record<PropertyKey, S.Schema<any>> = {};
+  schema: S.Schema<never, I, A>,
+): { [K in keyof A]: S.Schema<never, I[K], A[K]> } => {
+  const out: Record<PropertyKey, S.Schema<never, any, any>> = {};
   const propertySignatures = AST.getPropertySignatures(schema.ast);
   for (let i = 0; i < propertySignatures.length; i++) {
     const propertySignature = propertySignatures[i];
@@ -270,7 +271,7 @@ const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
   return out as any;
 };
 
-export const schemaToTables = (schema: S.Schema<any, any>): Tables =>
+export const schemaToTables = (schema: S.Schema<never, any, any>): Tables =>
   pipe(
     getPropertySignatures(schema),
     ReadonlyRecord.toEntries,
