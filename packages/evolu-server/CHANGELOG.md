@@ -1,5 +1,16 @@
 # @evolu/server
 
+## 3.0.14
+
+### Patch Changes
+
+- f1d76d3: Effect 2.2.2 and Schema 0.61.2
+
+  Schema parse renamed to decodeUnknown.
+
+- Updated dependencies [f1d76d3]
+  - @evolu/common@3.0.14
+
 ## 3.0.13
 
 ### Patch Changes
