@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 3.0.15
+
+### Patch Changes
+
+- 621f3a3: Update deps: Effect, Schema, sqlite-wasm, nanoid, better-sqlite3
+
 ## 3.0.14
 
 ### Patch Changes
