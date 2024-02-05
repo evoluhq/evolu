@@ -84,12 +84,12 @@ export default function App(): JSX.Element {
   return (
     <ScrollView style={appStyles.container}>
       <Text style={appStyles.h1}>React Native Example</Text>
-      <NextJsExample />
+      <ReactNativeExample />
     </ScrollView>
   );
 }
 
-const NextJsExample: FC = () => {
+const ReactNativeExample: FC = () => {
   const [todosShown, setTodosShown] = useState(true);
 
   return (
