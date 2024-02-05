@@ -10,14 +10,14 @@
     "clean": "rm -rf .turbo .next node_modules"
   },
   "dependencies": {
-    "@effect/schema": "^0.61.2",
+    "@effect/schema": "^0.61.5",
     "@evolu/common": "workspace:*",
     "@evolu/react": "workspace:*",
     "clsx": "^2.1.0",
-    "effect": "2.2.2",
+    "effect": "2.2.3",
     "next": "14.1.0",
-    "nextra": "^2.13.2",
-    "nextra-theme-docs": "^2.13.2",
+    "nextra": "^2.13.3",
+    "nextra-theme-docs": "^2.13.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
@@ -30,7 +30,7 @@
     "eslint": "^8.56.0",
     "eslint-config-evolu": "workspace:*",
     "postcss": "^8.4.32",
-    "prettier": "^3.2.4",
+    "prettier": "^3.2.5",
     "prettier-plugin-tailwindcss": "^0.5.10",
     "tailwindcss": "^3.4.0",
     "typescript": "^5.3.3"

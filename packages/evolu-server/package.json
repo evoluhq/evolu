@@ -28,10 +28,10 @@
   },
   "dependencies": {
     "@evolu/common": "workspace:*",
-    "better-sqlite3": "^9.3.0",
+    "better-sqlite3": "^9.4.0",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
-    "effect": "2.2.2",
+    "effect": "2.2.3",
     "express": "^4.18.2",
     "kysely": "^0.27.0"
   },
@@ -45,7 +45,7 @@
     "eslint": "^8.56.0",
     "eslint-config-evolu": "workspace:*",
     "typescript": "^5.3.3",
-    "vitest": "^1.2.1"
+    "vitest": "^1.2.2"
   },
   "peerDependencies": {
     "@evolu/common": "^3.0.14"

@@ -58,23 +58,23 @@
     "@protobuf-ts/runtime": "^2.9.3",
     "@scure/bip39": "^1.2.2",
     "kysely": "^0.27.0",
-    "nanoid": "^5.0.4"
+    "nanoid": "^5.0.5"
   },
   "devDependencies": {
-    "@effect/schema": "^0.61.2",
+    "@effect/schema": "^0.61.5",
     "@evolu/tsconfig": "workspace:*",
     "@protobuf-ts/plugin": "^2.9.3",
     "@protobuf-ts/protoc": "^2.9.3",
     "array-shuffle": "^3.0.0",
-    "effect": "2.2.2",
+    "effect": "2.2.3",
     "eslint": "^8.56.0",
     "eslint-config-evolu": "workspace:*",
     "typescript": "^5.3.3",
-    "vitest": "^1.2.1"
+    "vitest": "^1.2.2"
   },
   "peerDependencies": {
-    "@effect/schema": "^0.61.2",
-    "effect": "2.2.2"
+    "@effect/schema": "^0.61.5",
+    "effect": "2.2.3"
   },
   "publishConfig": {
     "access": "public"
