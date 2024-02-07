@@ -1,5 +1,5 @@
 ---
-"@evolu/common": patch
+"@evolu/common": minor
 ---
 
 Add createOrUpdate
