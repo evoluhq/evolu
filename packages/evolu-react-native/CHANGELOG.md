@@ -1,5 +1,13 @@
 # @evolu/react-native
 
+## 5.0.1
+
+### Patch Changes
+
+- b337e70: Update Effect and Schema
+- Updated dependencies [b337e70]
+  - @evolu/common-react@5.0.1
+
 ## 5.0.0
 
 ### Patch Changes

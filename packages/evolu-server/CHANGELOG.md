@@ -1,5 +1,13 @@
 # @evolu/server
 
+## 4.0.1
+
+### Patch Changes
+
+- b337e70: Update Effect and Schema
+- Updated dependencies [b337e70]
+  - @evolu/common@3.1.1
+
 ## 4.0.0
 
 ### Patch Changes

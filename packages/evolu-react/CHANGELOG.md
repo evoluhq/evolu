@@ -1,5 +1,15 @@
 # @evolu/react
 
+## 5.0.1
+
+### Patch Changes
+
+- b337e70: Update Effect and Schema
+- Updated dependencies [b337e70]
+  - @evolu/common@3.1.1
+  - @evolu/common-react@5.0.1
+  - @evolu/common-web@5.0.1
+
 ## 5.0.0
 
 ### Patch Changes
