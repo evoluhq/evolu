@@ -1,5 +1,12 @@
 # @evolu/common-web
 
+## 5.0.0
+
+### Patch Changes
+
+- Updated dependencies [ef32952]
+  - @evolu/common@3.1.0
+
 ## 4.0.7
 
 ### Patch Changes

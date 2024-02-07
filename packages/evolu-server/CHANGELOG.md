@@ -1,5 +1,12 @@
 # @evolu/server
 
+## 4.0.0
+
+### Patch Changes
+
+- Updated dependencies [ef32952]
+  - @evolu/common@3.1.0
+
 ## 3.0.15
 
 ### Patch Changes
