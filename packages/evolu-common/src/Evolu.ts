@@ -224,11 +224,11 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
   create: Create<S>;
 
   /**
-   * Update a row in the database and returns the existing ID. The first
-   * argument is the table name, and the second is an object.
+   * Update a row in the database and return the existing ID. The first argument
+   * is the table name, and the second is an object.
    *
    * The third optional argument, the onComplete callback, is generally
-   * unnecessary because creating a row cannot fail. Still, UI libraries can use
+   * unnecessary because updating a row cannot fail. Still, UI libraries can use
    * it to ensure the DOM is updated if we want to manipulate it, for example,
    * to focus an element.
    *
@@ -250,6 +250,37 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
    *   evolu.update("todo", { id, isDeleted: true });
    */
   update: Update<S>;
+
+  /**
+   * Create or update a row in the database and return the existing ID. The
+   * first argument is the table name, and the second is an object.
+   *
+   * This function is useful when we already have an `id` and want to create a
+   * new row or update an existing one.
+   *
+   * The third optional argument, the onComplete callback, is generally
+   * unnecessary because updating a row cannot fail. Still, UI libraries can use
+   * it to ensure the DOM is updated if we want to manipulate it, for example,
+   * to focus an element.
+   *
+   * Evolu does not use SQL for mutations to ensure data can be safely and
+   * predictably merged without conflicts.
+   *
+   * Explicit mutations also allow Evolu to automatically add and update a few
+   * useful columns common to all tables. Those columns are: `createdAt`,
+   * `updatedAt`, and `isDeleted`.
+   *
+   * @example
+   *   import * as S from "@effect/schema/Schema";
+   *
+   *   // Evolu uses the Schema to enforce domain model.
+   *   const title = S.decodeSync(Evolu.NonEmptyString1000)("A title");
+   *   evolu.update("todo", { id, title });
+   *
+   *   // To delete a row, set `isDeleted` to true.
+   *   evolu.update("todo", { id, isDeleted: true });
+   */
+  createOrUpdate: CreateOrUpdate<S>;
 
   /**
    * Delete {@link Owner} and all their data from the current device. After the
@@ -545,9 +576,14 @@ export type Update<S extends DatabaseSchema = DatabaseSchema> = Mutate<
   "update"
 >;
 
+export type CreateOrUpdate<S extends DatabaseSchema = DatabaseSchema> = Mutate<
+  S,
+  "createOrUpdate"
+>;
+
 export type Mutate<
   S extends DatabaseSchema = DatabaseSchema,
-  Mode extends "create" | "update" = "update",
+  Mode extends "create" | "update" | "createOrUpdate" = "update",
 > = <K extends keyof S>(
   table: K,
   values: Kysely.Simplify<
@@ -555,9 +591,13 @@ export type Mutate<
       ? PartialForNullable<
           Castable<Omit<S[K], "id" | "createdAt" | "updatedAt" | "isDeleted">>
         >
-      : Partial<Castable<Omit<S[K], "id" | "createdAt" | "updatedAt">>> & {
-          readonly id: S[K]["id"];
-        }
+      : Mode extends "update"
+        ? Partial<Castable<Omit<S[K], "id" | "createdAt" | "updatedAt">>> & {
+            readonly id: S[K]["id"];
+          }
+        : PartialForNullable<
+            Castable<Omit<S[K], "createdAt" | "updatedAt" | "isDeleted">>
+          >
   >,
   onComplete?: () => void,
 ) => {
@@ -713,6 +753,7 @@ const EvoluCommon = Layer.effect(
 
       create: mutate as Mutate<DatabaseSchema, "create">,
       update: mutate,
+      createOrUpdate: mutate as Mutate<DatabaseSchema, "createOrUpdate">,
 
       resetOwner: () => dbWorker.postMessage({ _tag: "reset" }),
 
