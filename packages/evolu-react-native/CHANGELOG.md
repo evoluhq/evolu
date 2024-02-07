@@ -1,5 +1,11 @@
 # @evolu/react-native
 
+## 5.0.0
+
+### Patch Changes
+
+- @evolu/common-react@5.0.0
+
 ## 4.0.5
 
 ### Patch Changes
