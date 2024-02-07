@@ -1,5 +1,11 @@
 # @evolu/common-web
 
+## 5.0.2
+
+### Patch Changes
+
+- 8900137: Update peer dependency
+
 ## 5.0.1
 
 ### Patch Changes
