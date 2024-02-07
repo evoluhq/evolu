@@ -272,13 +272,13 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
    *
    * @example
    *   import * as S from "@effect/schema/Schema";
+   *   import { Id } from "@evolu/react";
    *
-   *   // Evolu uses the Schema to enforce domain model.
-   *   const title = S.decodeSync(Evolu.NonEmptyString1000)("A title");
-   *   evolu.update("todo", { id, title });
+   *   // Id can be stable.
+   *   // 2024-02-0800000000000
+   *   const id = S.decodeSync(Id)(date.toString().padEnd(21, "0")) as TodoId;
    *
-   *   // To delete a row, set `isDeleted` to true.
-   *   evolu.update("todo", { id, isDeleted: true });
+   *   evolu.createOrUpdate("todo", { id, title });
    */
   createOrUpdate: CreateOrUpdate<S>;
 
