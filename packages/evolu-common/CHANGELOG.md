@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 3.1.2
+
+### Patch Changes
+
+- a59be92: Update Effect and Schema
+
 ## 3.1.1
 
 ### Patch Changes
