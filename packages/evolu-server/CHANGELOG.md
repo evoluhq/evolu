@@ -1,5 +1,13 @@
 # @evolu/server
 
+## 4.0.2
+
+### Patch Changes
+
+- a59be92: Update Effect and Schema
+- Updated dependencies [a59be92]
+  - @evolu/common@3.1.2
+
 ## 4.0.1
 
 ### Patch Changes
