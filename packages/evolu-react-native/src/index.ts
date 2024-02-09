@@ -1,8 +1,6 @@
 import {
   Bip39,
-  Config,
   DbWorkerLive,
-  Evolu,
   EvoluCommonLive,
   FetchLive,
   InvalidMnemonicError,
@@ -45,6 +43,7 @@ export type {
   ExtractRow,
   InvalidMnemonicError,
   Mnemonic,
+  NotNull,
   Owner,
   OwnerId,
   QueryResult,
@@ -52,14 +51,13 @@ export type {
   Timestamp,
   TimestampError,
   UnexpectedError,
-  NotNull,
 } from "@evolu/common";
 export { jsonArrayFrom, jsonObjectFrom } from "kysely/helpers/sqlite";
 
 export * from "@evolu/common-react";
 
 /** Evolu for native platform. */
-const EvoluNativeLive: Layer.Layer<Config, never, Evolu> = EvoluCommonLive.pipe(
+const EvoluNativeLive = EvoluCommonLive.pipe(
   Layer.provide(Layer.mergeAll(FlushSyncLive, AppStateLive, DbWorkerLive)),
   Layer.provide(
     Layer.mergeAll(Bip39Live, NanoIdLive, SqliteLive, SyncWorkerLive),
@@ -103,7 +101,7 @@ export const createEvolu = makeCreateEvolu(EvoluNativeLive);
 /** Parse a string to {@link Mnemonic}. */
 export const parseMnemonic: (
   mnemonic: string,
-) => Effect.Effect<never, InvalidMnemonicError, Mnemonic> = Bip39.pipe(
+) => Effect.Effect<Mnemonic, InvalidMnemonicError> = Bip39.pipe(
   Effect.provide(Bip39Live),
   Effect.runSync,
 ).parse;

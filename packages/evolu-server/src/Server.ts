@@ -19,15 +19,13 @@ import { BadRequestError, Db } from "./Types.js";
 
 export interface Server {
   /** Create database tables and indexes if they do not exist. */
-  readonly initDatabase: Effect.Effect<never, never, void>;
+  readonly initDatabase: Effect.Effect<void>;
 
   /** Sync data. */
-  readonly sync: (
-    body: Uint8Array,
-  ) => Effect.Effect<never, BadRequestError, Buffer>;
+  readonly sync: (body: Uint8Array) => Effect.Effect<Buffer, BadRequestError>;
 }
 
-export const Server = Context.Tag<Server>();
+export const Server = Context.GenericTag<Server>("@services/Server");
 
 export const ServerLive = Layer.effect(
   Server,

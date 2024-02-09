@@ -18,11 +18,9 @@ export interface Config {
   readonly maxDrift: number;
 }
 
-export const Config = Context.Tag<Config>();
+export const Config = Context.GenericTag<Config>("@services/Config");
 
-export const ConfigLive = (
-  config?: Partial<Config>,
-): Layer.Layer<never, never, Config> =>
+export const ConfigLive = (config?: Partial<Config>): Layer.Layer<Config> =>
   Layer.succeed(
     Config,
     Config.of({

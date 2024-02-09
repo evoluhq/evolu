@@ -8,31 +8,33 @@ export type PlatformName =
   | "web-without-opfs"
   | "react-native";
 
-export const PlatformName = Context.Tag<PlatformName>();
+export const PlatformName = Context.GenericTag<PlatformName>(
+  "@services/PlatformName",
+);
 
 export type FlushSync = (callback: () => void) => void;
 
-export const FlushSync = Context.Tag<FlushSync>();
+export const FlushSync = Context.GenericTag<FlushSync>("@services/FlushSync");
 
 export interface SyncLock {
   /**
    * Try to acquire a sync lock. The caller must not call sync if a sync lock
    * can't be acquired.
    */
-  readonly acquire: Effect.Effect<never, never, boolean>;
+  readonly acquire: Effect.Effect<boolean>;
 
   /** Release a sync lock. */
-  readonly release: Effect.Effect<never, never, void>;
+  readonly release: Effect.Effect<void>;
 }
 
-export const SyncLock = Context.Tag<SyncLock>();
+export const SyncLock = Context.GenericTag<SyncLock>("@services/SyncLock");
 
 export type Fetch = (
   url: string,
   body: Uint8Array,
-) => Effect.Effect<never, FetchError, Response>;
+) => Effect.Effect<Response, FetchError>;
 
-export const Fetch = Context.Tag<Fetch>();
+export const Fetch = Context.GenericTag<Fetch>("@services/Fetch");
 
 /**
  * This error occurs when there is a problem with the network connection, or the
@@ -66,10 +68,10 @@ interface AppStateConfig {
 
 export interface AppState {
   readonly init: (config: AppStateConfig) => void;
-  readonly reset: Effect.Effect<never, never, void>;
+  readonly reset: Effect.Effect<void>;
 }
 
-export const AppState = Context.Tag<AppState>();
+export const AppState = Context.GenericTag<AppState>("@services/AppState");
 
 /** To detect whether DOM can be used. */
 export const canUseDom = ((): boolean => {

@@ -10,12 +10,10 @@ export interface Store<T> {
   readonly getState: () => T;
 
   // Effect API because it's a side-effect.
-  readonly setState: (state: T) => Effect.Effect<never, never, void>;
+  readonly setState: (state: T) => Effect.Effect<void>;
 }
 
-export const makeStore = <T>(
-  initialState: T,
-): Effect.Effect<never, never, Store<T>> =>
+export const makeStore = <T>(initialState: T): Effect.Effect<Store<T>> =>
   Effect.sync(() => {
     const listeners = new Set<Listener>();
     let currentState = initialState;

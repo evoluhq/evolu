@@ -60,7 +60,7 @@ export const SyncLockLive = Layer.effect(
         if (release) return false;
         release = Function.constVoid;
         return yield* _(
-          Effect.async<never, never, boolean>((resume) => {
+          Effect.async<boolean>((resume) => {
             navigator.locks.request(lockName, { ifAvailable: true }, (lock) => {
               if (lock == null) {
                 release = null;

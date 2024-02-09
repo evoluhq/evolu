@@ -98,10 +98,10 @@ export const makeInitialTimestamp = NanoId.pipe(
 );
 
 export interface Time {
-  readonly now: Effect.Effect<never, TimestampTimeOutOfRangeError, Millis>;
+  readonly now: Effect.Effect<Millis, TimestampTimeOutOfRangeError>;
 }
 
-export const Time = Context.Tag<Time>();
+export const Time = Context.GenericTag<Time>("@services/Time");
 
 export const TimeLive = Layer.succeed(
   Time,
@@ -149,9 +149,9 @@ export interface TimestampTimeOutOfRangeError {
 const getNextMillis = (
   millis: ReadonlyArray<Millis>,
 ): Effect.Effect<
-  Time | Config,
+  Millis,
   TimestampDriftError | TimestampTimeOutOfRangeError,
-  Millis
+  Time | Config
 > =>
   Effect.gen(function* (_) {
     const time = yield* _(Time);
@@ -186,11 +186,11 @@ const counterMin = S.decodeSync(Counter)(0);
 export const sendTimestamp = (
   timestamp: Timestamp,
 ): Effect.Effect<
-  Time | Config,
+  Timestamp,
   | TimestampDriftError
   | TimestampCounterOverflowError
   | TimestampTimeOutOfRangeError,
-  Timestamp
+  Time | Config
 > =>
   Effect.gen(function* (_) {
     const millis = yield* _(getNextMillis([timestamp.millis]));
@@ -208,12 +208,12 @@ export const receiveTimestamp = ({
   readonly local: Timestamp;
   readonly remote: Timestamp;
 }): Effect.Effect<
-  Time | Config,
+  Timestamp,
   | TimestampDriftError
   | TimestampCounterOverflowError
   | TimestampDuplicateNodeError
   | TimestampTimeOutOfRangeError,
-  Timestamp
+  Time | Config
 > =>
   Effect.gen(function* (_) {
     if (local.node === remote.node)

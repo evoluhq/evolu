@@ -12,18 +12,16 @@ import { customAlphabet, nanoid } from "nanoid";
 
 // TODO: Add dynamic import error.
 export interface Bip39 {
-  readonly make: Effect.Effect<never, never, Mnemonic>;
+  readonly make: Effect.Effect<Mnemonic>;
 
-  readonly toSeed: (
-    mnemonic: Mnemonic,
-  ) => Effect.Effect<never, never, Uint8Array>;
+  readonly toSeed: (mnemonic: Mnemonic) => Effect.Effect<Uint8Array>;
 
   readonly parse: (
     mnemonic: string,
-  ) => Effect.Effect<never, InvalidMnemonicError, Mnemonic>;
+  ) => Effect.Effect<Mnemonic, InvalidMnemonicError>;
 }
 
-export const Bip39 = Context.Tag<Bip39>();
+export const Bip39 = Context.GenericTag<Bip39>("@services/Bip39");
 
 export interface InvalidMnemonicError {
   readonly _tag: "InvalidMnemonicError";
@@ -39,11 +37,11 @@ export interface InvalidMnemonicError {
 export type Mnemonic = string & Brand.Brand<"Mnemonic">;
 
 export interface NanoId {
-  readonly nanoid: Effect.Effect<never, never, string>;
-  readonly nanoidAsNodeId: Effect.Effect<never, never, NodeId>;
+  readonly nanoid: Effect.Effect<string>;
+  readonly nanoidAsNodeId: Effect.Effect<NodeId>;
 }
 
-export const NanoId = Context.Tag<NanoId>();
+export const NanoId = Context.GenericTag<NanoId>("@services/NanoId");
 
 export const NodeId = S.string.pipe(
   S.pattern(/^[\w-]{16}$/),
@@ -66,7 +64,7 @@ export const NanoIdLive = Layer.succeed(
 export const slip21Derive = (
   seed: Uint8Array,
   path: ReadonlyArray<string>,
-): Effect.Effect<never, never, Uint8Array> =>
+): Effect.Effect<Uint8Array> =>
   Effect.sync(() => {
     let m = hmac(sha512, "Symmetric key seed", seed);
     for (let i = 0; i < path.length; i++) {
@@ -84,15 +82,15 @@ export interface SecretBox {
   readonly seal: (
     key: Uint8Array,
     plaintext: Uint8Array,
-  ) => Effect.Effect<never, never, Uint8Array>;
+  ) => Effect.Effect<Uint8Array>;
 
   readonly open: (
     key: Uint8Array,
     ciphertext: Uint8Array,
-  ) => Effect.Effect<never, never, Uint8Array>;
+  ) => Effect.Effect<Uint8Array>;
 }
 
-export const SecretBox = Context.Tag<SecretBox>();
+export const SecretBox = Context.GenericTag<SecretBox>("@services/SecretBox");
 
 export const SecretBoxLive = Layer.succeed(
   SecretBox,

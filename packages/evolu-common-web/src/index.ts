@@ -57,7 +57,7 @@ export const createEvolu = makeCreateEvolu(
  */
 export const parseMnemonic: (
   mnemonic: string,
-) => Effect.Effect<never, InvalidMnemonicError, Mnemonic> = Bip39.pipe(
+) => Effect.Effect<Mnemonic, InvalidMnemonicError> = Bip39.pipe(
   Effect.provide(Bip39Live),
   Effect.runSync,
 ).parse;

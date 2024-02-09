@@ -7,20 +7,20 @@ import * as ReadonlyArray from "effect/ReadonlyArray";
 import { NanoId } from "./Crypto.js";
 
 export interface OnCompletes {
-  readonly add: (
-    onComplete: OnComplete,
-  ) => Effect.Effect<never, never, OnCompleteId>;
+  readonly add: (onComplete: OnComplete) => Effect.Effect<OnCompleteId>;
 
   readonly complete: (
     onCompleteIds: readonly OnCompleteId[],
-  ) => Effect.Effect<never, never, void>;
+  ) => Effect.Effect<void>;
 }
 
 export type OnComplete = () => void;
 
 export type OnCompleteId = string & Brand.Brand<"OnCompleteId">;
 
-export const OnCompletes = Context.Tag<OnCompletes>();
+export const OnCompletes = Context.GenericTag<OnCompletes>(
+  "@services/OnCompletes",
+);
 
 export const OnCompletesLive = Layer.effect(
   OnCompletes,

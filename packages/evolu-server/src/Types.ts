@@ -24,7 +24,7 @@ interface MerkleTreeTable {
  * https://kysely-org.github.io/kysely-apidoc/classes/InsertQueryBuilder.html#onConflict
  */
 export type Db = Kysely<Database>;
-export const Db = Context.Tag<Db>();
+export const Db = Context.GenericTag<Db>("@services/Db");
 
 export interface BadRequestError {
   readonly _tag: "BadRequestError";
