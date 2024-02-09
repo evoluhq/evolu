@@ -37,11 +37,15 @@ export interface SyncWorker {
   onMessage: (output: SyncWorkerOutput) => void;
 }
 
-export const SyncWorker = Context.Tag<SyncWorker>();
+export const SyncWorker = Context.GenericTag<SyncWorker>(
+  "@services/SyncWorker",
+);
 
 export type SyncWorkerPostMessage = SyncWorker["postMessage"];
 
-export const SyncWorkerPostMessage = Context.Tag<SyncWorkerPostMessage>();
+export const SyncWorkerPostMessage = Context.GenericTag<SyncWorkerPostMessage>(
+  "@services/SyncWorkerPostMessage",
+);
 
 export type SyncWorkerInput =
   | SyncWorkerInputSync
@@ -83,7 +87,9 @@ interface SyncWorkerInputSyncCompleted {
 
 type SyncWorkerOnMessage = SyncWorker["onMessage"];
 
-const SyncWorkerOnMessage = Context.Tag<SyncWorkerOnMessage>();
+const SyncWorkerOnMessage = Context.GenericTag<SyncWorkerOnMessage>(
+  "@services/SyncWorkerOnMessage",
+);
 
 export type SyncWorkerOutput =
   | UnexpectedError
@@ -226,9 +232,9 @@ const binaryReadOptions = {
 const sync = (
   input: SyncWorkerInputSync,
 ): Effect.Effect<
-  SyncLock | SyncWorkerOnMessage | Fetch | SecretBox,
+  void,
   never,
-  void
+  SyncLock | SyncWorkerOnMessage | Fetch | SecretBox
 > =>
   Effect.gen(function* (_) {
     const syncLock = yield* _(SyncLock);
@@ -324,9 +330,7 @@ export const SyncWorkerLive = Layer.effect(
   Effect.gen(function* (_) {
     const syncLock = yield* _(SyncLock);
 
-    const onError = (
-      error: UnexpectedError,
-    ): Effect.Effect<never, never, void> =>
+    const onError = (error: UnexpectedError): Effect.Effect<void> =>
       Effect.sync(() => {
         syncWorker.onMessage(error);
       });

@@ -64,7 +64,7 @@ export interface DbWorker {
   onMessage: (output: DbWorkerOutput) => void;
 }
 
-export const DbWorker = Context.Tag<DbWorker>();
+export const DbWorker = Context.GenericTag<DbWorker>("@services/DbWorker");
 
 export type DbWorkerInput =
   | DbWorkerInputInit
@@ -108,7 +108,9 @@ interface DbWorkerInputEnsureSchema {
 
 type DbWorkerOnMessage = DbWorker["onMessage"];
 
-const DbWorkerOnMessage = Context.Tag<DbWorkerOnMessage>();
+const DbWorkerOnMessage = Context.GenericTag<DbWorkerOnMessage>(
+  "@services/DbWorkerOnMessage",
+);
 
 export type DbWorkerOutput =
   | DbWorkerOutputOnError
@@ -182,7 +184,7 @@ const query = ({
 }: {
   readonly queries: Queries;
   readonly onCompleteIds?: ReadonlyArray<OnCompleteId>;
-}): Effect.Effect<Sqlite | RowsStore | DbWorkerOnMessage, never, void> =>
+}): Effect.Effect<void, never, Sqlite | RowsStore | DbWorkerOnMessage> =>
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
     const rowsStore = yield* _(RowsStore);
@@ -271,7 +273,7 @@ export const mutationsToNewMessages = (
 
 const ensureSchemaByNewMessages = (
   messages: ReadonlyArray<NewMessage>,
-): Effect.Effect<Sqlite, never, void> =>
+): Effect.Effect<void, never, Sqlite> =>
   Effect.gen(function* (_) {
     const tablesMap = new Map<string, Table>();
     messages.forEach((message) => {
@@ -295,7 +297,7 @@ const ensureSchemaByNewMessages = (
 export const upsertValueIntoTableRowColumn = (
   message: NewMessage,
   messages: ReadonlyArray<NewMessage>,
-): Effect.Effect<Sqlite, never, void> =>
+): Effect.Effect<void, never, Sqlite> =>
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
 
@@ -320,7 +322,7 @@ const applyMessages = ({
 }: {
   merkleTree: MerkleTree;
   messages: ReadonlyArray<Message>;
-}): Effect.Effect<Sqlite, never, MerkleTree> =>
+}): Effect.Effect<MerkleTree, never, Sqlite> =>
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
 
@@ -366,7 +368,7 @@ const applyMessages = ({
 const writeTimestampAndMerkleTree = ({
   timestamp,
   merkleTree,
-}: TimestampAndMerkleTree): Effect.Effect<Sqlite, never, void> =>
+}: TimestampAndMerkleTree): Effect.Effect<void, never, Sqlite> =>
   Effect.flatMap(Sqlite, (sqlite) =>
     sqlite.exec({
       sql: Sql.updateOwnerTimestampAndMerkleTree,
@@ -381,17 +383,17 @@ const mutate = ({
   mutations,
   queries,
 }: DbWorkerInputMutate): Effect.Effect<
+  void,
+  | TimestampDriftError
+  | TimestampCounterOverflowError
+  | TimestampTimeOutOfRangeError,
   | Sqlite
   | Owner
   | Time
   | Config
   | RowsStore
   | DbWorkerOnMessage
-  | SyncWorkerPostMessage,
-  | TimestampDriftError
-  | TimestampCounterOverflowError
-  | TimestampTimeOutOfRangeError,
-  void
+  | SyncWorkerPostMessage
 > =>
   Effect.gen(function* (_) {
     const [toSync, localOnly] = ReadonlyArray.partition(mutations, (item) =>
@@ -455,9 +457,9 @@ const handleSyncResponse = ({
   messages,
   ...response
 }: SyncWorkerOutputSyncResponse): Effect.Effect<
-  Sqlite | Time | Config | DbWorkerOnMessage | SyncWorkerPostMessage | Owner,
+  void,
   TimestampError,
-  void
+  Sqlite | Time | Config | DbWorkerOnMessage | SyncWorkerPostMessage | Owner
 > =>
   Effect.gen(function* (_) {
     let { timestamp, merkleTree } = yield* _(readTimestampAndMerkleTree);
@@ -523,14 +525,14 @@ const handleSyncResponse = ({
 const sync = ({
   queries,
 }: DbWorkerInputSync): Effect.Effect<
+  void,
+  never,
   | Sqlite
   | Config
   | DbWorkerOnMessage
   | SyncWorkerPostMessage
   | Owner
-  | RowsStore,
-  never,
-  void
+  | RowsStore
 > =>
   Effect.gen(function* (_) {
     if (queries.length > 0) yield* _(query({ queries }));
@@ -547,7 +549,7 @@ const sync = ({
 
 const reset = (
   input: DbWorkerInputReset,
-): Effect.Effect<Sqlite | Bip39 | NanoId | DbWorkerOnMessage, never, void> =>
+): Effect.Effect<void, never, Sqlite | Bip39 | NanoId | DbWorkerOnMessage> =>
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
 
@@ -577,7 +579,7 @@ export const DbWorkerLive = Layer.effect(
   Effect.gen(function* (_) {
     const syncWorker = yield* _(SyncWorker);
 
-    const onError = (error: EvoluError): Effect.Effect<never, never, void> =>
+    const onError = (error: EvoluError): Effect.Effect<void> =>
       Effect.sync(() => {
         dbWorker.onMessage({ _tag: "onError", error });
       });
@@ -606,9 +608,9 @@ export const DbWorkerLive = Layer.effect(
 
     const run = (
       effect: Effect.Effect<
-        Sqlite | Bip39 | NanoId | DbWorkerOnMessage,
+        void,
         EvoluError,
-        void
+        Sqlite | Bip39 | NanoId | DbWorkerOnMessage
       >,
     ): Promise<void> =>
       effect.pipe(
@@ -636,7 +638,7 @@ export const DbWorkerLive = Layer.effect(
         Layer.succeed(SyncWorkerPostMessage, syncWorker.postMessage),
         RowsStoreLive,
         TimeLive,
-      );
+      ).pipe(Layer.memoize, Effect.scoped, Effect.runSync);
 
       return (input) => {
         if (skipAllBecauseOfReset) return Promise.resolve(undefined);

@@ -19,7 +19,7 @@ export interface UnexpectedError {
 
 export const makeUnexpectedError = (
   error: unknown,
-): Effect.Effect<never, UnexpectedError, never> => {
+): Effect.Effect<never, UnexpectedError> => {
   const isError = error instanceof Error;
 
   return Effect.fail({

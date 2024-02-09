@@ -414,7 +414,7 @@ const Button: FC<{
 };
 
 const prompt = <From extends string, To>(
-  schema: S.Schema<never, From, To>,
+  schema: S.Schema<To, From, never>,
   message: string,
   onSuccess: (value: To) => void,
 ): void => {

@@ -297,7 +297,7 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
    * database.
    */
   readonly ensureSchema: <From, To extends S>(
-    schema: S.Schema<never, From, To>,
+    schema: S.Schema<To, From>,
   ) => void;
 
   /**
@@ -310,7 +310,7 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
   readonly sync: () => void;
 }
 
-export const Evolu = Context.Tag<Evolu>();
+export const Evolu = Context.GenericTag<Evolu>("@services/Evolu");
 
 type CreateQuery<S extends DatabaseSchema> = <R extends Row>(
   queryCallback: QueryCallback<S, R>,
@@ -374,7 +374,9 @@ export interface LoadingPromises {
   readonly release: () => void;
 }
 
-export const LoadingPromises = Context.Tag<LoadingPromises>();
+export const LoadingPromises = Context.GenericTag<LoadingPromises>(
+  "@services/LoadingPromises",
+);
 
 export type LoadingPromise<R extends Row> = Promise<QueryResult<R>> & {
   status?: "pending" | "fulfilled" | "rejected";
@@ -452,7 +454,7 @@ const setPromiseAsResolved =
 
 type LoadQuery = <R extends Row>(query: Query<R>) => Promise<QueryResult<R>>;
 
-const LoadQuery = Context.Tag<LoadQuery>();
+const LoadQuery = Context.GenericTag<LoadQuery>("@services/LoadQuery");
 
 const LoadQueryLive = Layer.effect(
   LoadQuery,
@@ -478,9 +480,9 @@ const LoadQueryLive = Layer.effect(
 
 type OnQuery = (
   dbWorkerOutputOnQuery: DbWorkerOutputOnQuery,
-) => Effect.Effect<never, never, void>;
+) => Effect.Effect<void>;
 
-const OnQuery = Context.Tag<OnQuery>();
+const OnQuery = Context.GenericTag<OnQuery>("@services/OnQuery");
 
 const OnQueryLive = Layer.effect(
   OnQuery,
@@ -528,7 +530,9 @@ export interface SubscribedQueries {
   readonly getSubscribedQueries: () => Queries;
 }
 
-export const SubscribedQueries = Context.Tag<SubscribedQueries>();
+export const SubscribedQueries = Context.GenericTag<SubscribedQueries>(
+  "@services/SubscribedQueries",
+);
 
 export const SubscribedQueriesLive = Layer.effect(
   SubscribedQueries,
@@ -604,7 +608,7 @@ export type Mutate<
   readonly id: S[K]["id"];
 };
 
-export const Mutate = Context.Tag<Mutate>();
+export const Mutate = Context.GenericTag<Mutate>("@services/Mutate");
 
 // https://stackoverflow.com/a/54713648/233902
 type PartialForNullable<
@@ -782,9 +786,9 @@ export const EvoluCommonLive = EvoluCommon.pipe(
 );
 
 export const makeCreateEvolu =
-  (EvoluLive: Layer.Layer<Config, never, Evolu>) =>
+  (EvoluLive: Layer.Layer<Evolu, never, Config>) =>
   <From, To extends DatabaseSchema>(
-    schema: S.Schema<never, From, To>,
+    schema: S.Schema<To, From>,
     config?: Partial<Config>,
   ): Evolu<To> => {
     // For https://nextjs.org/docs/architecture/fast-refresh etc.

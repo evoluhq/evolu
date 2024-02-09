@@ -4,12 +4,10 @@ import * as Predicate from "effect/Predicate";
 import * as ReadonlyRecord from "effect/ReadonlyRecord";
 
 export interface Sqlite {
-  readonly exec: (
-    arg: string | SqliteQuery,
-  ) => Effect.Effect<never, never, ExecResult>;
+  readonly exec: (arg: string | SqliteQuery) => Effect.Effect<ExecResult>;
 }
 
-export const Sqlite = Context.Tag<Sqlite>();
+export const Sqlite = Context.GenericTag<Sqlite>("@services/Sqlite");
 
 export interface SqliteQuery {
   readonly sql: string;

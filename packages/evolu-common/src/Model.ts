@@ -21,7 +21,7 @@ export type Id = S.Schema.To<typeof Id>;
  */
 export const id = <T extends string>(
   table: T,
-): S.BrandSchema<never, string, string & Brand.Brand<"Id"> & Brand.Brand<T>> =>
+): S.BrandSchema<string & Brand.Brand<"Id"> & Brand.Brand<T>, string, never> =>
   Id.pipe(S.brand(table));
 
 /**

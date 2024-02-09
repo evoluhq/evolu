@@ -73,12 +73,11 @@ export const table = <Fields extends TableFields>(
   ? ValidateFieldsNames<Fields> extends true
     ? ValidateFieldsHasId<Fields> extends true
       ? S.Schema<
-          never,
-          Types.Simplify<
-            S.FromStruct<Fields> & S.Schema.From<typeof ReservedColumns>
-          >,
           Types.Simplify<
             S.ToStruct<Fields> & S.Schema.To<typeof ReservedColumns>
+          >,
+          Types.Simplify<
+            S.FromStruct<Fields> & S.Schema.From<typeof ReservedColumns>
           >
         >
       : EvoluTypeError<"table() called without id column.">
@@ -92,7 +91,7 @@ const ReservedColumns = S.struct({
   isDeleted: SqliteBoolean,
 });
 
-type TableFields = Record<string, S.Schema<never, any, any>>;
+type TableFields = Record<string, S.Schema<any>>;
 
 type ValidateFieldsTypes<Fields extends TableFields> =
   keyof Fields extends infer K
@@ -100,7 +99,7 @@ type ValidateFieldsTypes<Fields extends TableFields> =
       ? Fields[K] extends TableFields
         ? ValidateFieldsTypes<Fields[K]>
         : // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          Fields[K] extends S.Schema<never, infer _I, infer A>
+          Fields[K] extends S.Schema<infer A, infer _I>
           ? A extends Value
             ? true
             : false
@@ -259,9 +258,9 @@ export interface Table {
 
 // https://github.com/Effect-TS/schema/releases/tag/v0.18.0
 const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
-  schema: S.Schema<never, I, A>,
-): { [K in keyof A]: S.Schema<never, I[K], A[K]> } => {
-  const out: Record<PropertyKey, S.Schema<never, any, any>> = {};
+  schema: S.Schema<A, I>,
+): { [K in keyof A]: S.Schema<A[K], I[K]> } => {
+  const out: Record<PropertyKey, S.Schema<any>> = {};
   const propertySignatures = AST.getPropertySignatures(schema.ast);
   for (let i = 0; i < propertySignatures.length; i++) {
     const propertySignature = propertySignatures[i];
@@ -271,7 +270,7 @@ const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
   return out as any;
 };
 
-export const schemaToTables = (schema: S.Schema<never, any, any>): Tables =>
+export const schemaToTables = (schema: S.Schema<any>): Tables =>
   pipe(
     getPropertySignatures(schema),
     ReadonlyRecord.toEntries,
@@ -284,8 +283,8 @@ export const schemaToTables = (schema: S.Schema<never, any, any>): Tables =>
   );
 
 export const transaction = <R, E, A>(
-  effect: Effect.Effect<R, E, A>,
-): Effect.Effect<Sqlite | R, E, A> =>
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, Sqlite | R> =>
   Effect.flatMap(Sqlite, (sqlite) =>
     Effect.acquireUseRelease(
       sqlite.exec("BEGIN"),
@@ -323,7 +322,7 @@ export const someDefectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
 
 export const lazyInit = (
   mnemonic?: Mnemonic,
-): Effect.Effect<Sqlite | Bip39 | NanoId, never, Owner> =>
+): Effect.Effect<Owner, never, Sqlite | Bip39 | NanoId> =>
   Effect.gen(function* (_) {
     const [owner, sqlite, initialTimestampString] = yield* _(
       Effect.all([makeOwner(mnemonic), Sqlite, makeInitialTimestamp], {
@@ -354,9 +353,9 @@ export const lazyInit = (
   });
 
 const getTables: Effect.Effect<
-  Sqlite,
+  ReadonlyArray<string>,
   never,
-  ReadonlyArray<string>
+  Sqlite
 > = Sqlite.pipe(
   Effect.flatMap((sqlite) =>
     sqlite.exec(`SELECT "name" FROM "sqlite_schema" WHERE "type" = 'table'`),
@@ -370,7 +369,7 @@ const getTables: Effect.Effect<
 const updateTable = ({
   name,
   columns,
-}: Table): Effect.Effect<Sqlite, never, void> =>
+}: Table): Effect.Effect<void, never, Sqlite> =>
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
     const sql = yield* _(
@@ -396,7 +395,7 @@ const updateTable = ({
 const createTable = ({
   name,
   columns,
-}: Table): Effect.Effect<Sqlite, never, void> =>
+}: Table): Effect.Effect<void, never, Sqlite> =>
   Effect.flatMap(Sqlite, (sqlite) =>
     sqlite.exec(`
       CREATE TABLE ${name} (
@@ -414,7 +413,7 @@ const createTable = ({
 
 export const ensureSchema = (
   tables: Tables,
-): Effect.Effect<Sqlite, never, void> =>
+): Effect.Effect<void, never, Sqlite> =>
   Effect.flatMap(getTables, (existingTables) =>
     Effect.forEach(
       tables,
@@ -427,7 +426,7 @@ export const ensureSchema = (
   );
 
 export type RowsStore = Store<RowsStoreValue>;
-export const RowsStore = Context.Tag<RowsStore>();
+export const RowsStore = Context.GenericTag<RowsStore>("@services/RowsStore");
 
 type RowsStoreValue = ReadonlyMap<Query, ReadonlyArray<Row>>;
 

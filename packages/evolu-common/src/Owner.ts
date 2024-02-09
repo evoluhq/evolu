@@ -28,7 +28,7 @@ export interface Owner {
   readonly encryptionKey: Uint8Array;
 }
 
-export const Owner = Context.Tag<Owner>();
+export const Owner = Context.GenericTag<Owner>("@services/Owner");
 
 /**
  * The unique identifier of {@link Owner} safely derived from its
@@ -38,7 +38,7 @@ export type OwnerId = Id & Brand.Brand<"Owner">;
 
 export const makeOwner = (
   mnemonic?: Mnemonic,
-): Effect.Effect<Bip39, never, Owner> =>
+): Effect.Effect<Owner, never, Bip39> =>
   Effect.gen(function* (_) {
     const bip39 = yield* _(Bip39);
 
