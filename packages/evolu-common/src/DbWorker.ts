@@ -638,7 +638,7 @@ export const DbWorkerLive = Layer.effect(
         Layer.succeed(SyncWorkerPostMessage, syncWorker.postMessage),
         RowsStoreLive,
         TimeLive,
-      );
+      ).pipe(Layer.memoize, Effect.scoped, Effect.runSync);
 
       return (input) => {
         if (skipAllBecauseOfReset) return Promise.resolve(undefined);
