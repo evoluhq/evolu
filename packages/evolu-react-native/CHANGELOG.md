@@ -1,5 +1,16 @@
 # @evolu/react-native
 
+## 5.0.2
+
+### Patch Changes
+
+- 106462c: Update Effect and Schema
+
+  Note API change: https://github.com/Effect-TS/effect/releases/tag/effect%402.3.0
+
+- Updated dependencies [106462c]
+  - @evolu/common-react@5.0.2
+
 ## 5.0.1
 
 ### Patch Changes
