@@ -1,5 +1,13 @@
 # @evolu/server
 
+## 4.0.4
+
+### Patch Changes
+
+- 1cf6502: Update Effect and Schema
+- Updated dependencies [1cf6502]
+  - @evolu/common@3.1.4
+
 ## 4.0.3
 
 ### Patch Changes
