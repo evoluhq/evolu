@@ -1,5 +1,12 @@
 # native
 
+## 1.0.16
+
+### Patch Changes
+
+- Updated dependencies [1cf6502]
+  - @evolu/react-native@5.0.3
+
 ## 1.0.15
 
 ### Patch Changes
