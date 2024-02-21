@@ -10,11 +10,11 @@ export const makeNode1Timestamp = (
   counter = 0,
   node = "0000000000000001",
 ): Timestamp =>
-  (({
+  ({
     millis: S.decodeSync(Millis)(initialMillis + millis),
     counter,
-    node
-  }) as Timestamp);
+    node,
+  }) as Timestamp;
 
 export const makeNode2Timestamp = (millis = 0, counter = 0): Timestamp =>
   makeNode1Timestamp(millis, counter, "0000000000000002");
