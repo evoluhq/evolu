@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 3.1.5
+
+### Patch Changes
+
+- f6e198a: Effect 2.40.0, Schema 0.63.0
+
 ## 3.1.4
 
 ### Patch Changes

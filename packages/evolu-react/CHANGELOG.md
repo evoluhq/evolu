@@ -1,5 +1,15 @@
 # @evolu/react
 
+## 5.0.4
+
+### Patch Changes
+
+- f6e198a: Effect 2.40.0, Schema 0.63.0
+- Updated dependencies [f6e198a]
+  - @evolu/common-react@5.0.4
+  - @evolu/common-web@5.0.5
+  - @evolu/common@3.1.5
+
 ## 5.0.3
 
 ### Patch Changes
