@@ -153,6 +153,7 @@ export interface Mutation {
   readonly table: string;
   readonly id: Id;
   readonly values: ReadonlyRecord.ReadonlyRecord<
+    string,
     Value | Date | boolean | undefined
   >;
   readonly isInsert: boolean;

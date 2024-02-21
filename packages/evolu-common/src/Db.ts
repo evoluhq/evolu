@@ -40,9 +40,9 @@ import {
 } from "./Sqlite.js";
 import { Store, makeStore } from "./Store.js";
 
-export type DatabaseSchema = ReadonlyRecord.ReadonlyRecord<TableSchema>;
+export type DatabaseSchema = ReadonlyRecord.ReadonlyRecord<string, TableSchema>;
 
-type TableSchema = ReadonlyRecord.ReadonlyRecord<Value> & {
+type TableSchema = ReadonlyRecord.ReadonlyRecord<string, Value> & {
   readonly id: Id;
 };
 
@@ -194,11 +194,12 @@ export const deserializeQuery = <R extends Row>(
   };
 };
 
-export type Row = ReadonlyRecord.ReadonlyRecord<
-  | Value
-  | Row // for jsonObjectFrom from kysely/helpers/sqlite
-  | ReadonlyArray<Row> // for jsonArrayFrom from kysely/helpers/sqlite
->;
+export type Row = {
+  [key: string]:
+    | Value
+    | Row // for jsonObjectFrom from kysely/helpers/sqlite
+    | ReadonlyArray<Row>; // for jsonArrayFrom from kysely/helpers/sqlite
+};
 
 /**
  * Extract {@link Row} from {@link Query} instance.

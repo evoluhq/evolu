@@ -118,12 +118,9 @@ describe("sendTimestamp", () => {
   });
 
   test("should fail with counter overflow", () => {
-    let timestamp: Either.Either<
-      | TimestampDriftError
-      | TimestampCounterOverflowError
-      | TimestampTimeOutOfRangeError,
-      Timestamp
-    > = Either.right(makeSyncTimestamp());
+    let timestamp: Either.Either<Timestamp, | TimestampDriftError
+    | TimestampCounterOverflowError
+    | TimestampTimeOutOfRangeError> = Either.right(makeSyncTimestamp());
 
     for (let i = 0; i < 65536; i++) {
       timestamp = pipe(

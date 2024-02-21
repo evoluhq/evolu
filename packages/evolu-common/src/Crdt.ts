@@ -174,7 +174,7 @@ const getNextMillis = (
 
 const incrementCounter = (
   counter: Counter,
-): Either.Either<TimestampCounterOverflowError, Counter> =>
+): Either.Either<Counter, TimestampCounterOverflowError> =>
   pipe(
     Number.increment(counter),
     S.decodeEither(Counter),

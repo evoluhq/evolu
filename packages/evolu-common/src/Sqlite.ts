@@ -1,7 +1,6 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Predicate from "effect/Predicate";
-import * as ReadonlyRecord from "effect/ReadonlyRecord";
 
 export interface Sqlite {
   readonly exec: (arg: string | SqliteQuery) => Effect.Effect<ExecResult>;
@@ -17,9 +16,10 @@ export interface SqliteQuery {
 export type Value = SqliteValue | JsonObjectOrArray;
 export type SqliteValue = null | string | number | Uint8Array;
 export type JsonObjectOrArray = JsonObject | JsonArray;
-type JsonObject = ReadonlyRecord.ReadonlyRecord<Json>;
+type JsonObject = { [key: string]: Json };
 type JsonArray = ReadonlyArray<Json>;
-type Json = string | number | boolean | null | JsonObject | JsonArray;
+type JsonPrimitive = string | number | boolean | null;
+type Json = JsonPrimitive | JsonObject | JsonArray;
 
 interface ExecResult {
   readonly rows: SqliteRow[];
