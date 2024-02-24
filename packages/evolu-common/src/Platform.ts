@@ -1,5 +1,6 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Function from "effect/Function";
 import * as Layer from "effect/Layer";
 
 export type PlatformName =
@@ -12,9 +13,19 @@ export const PlatformName = Context.GenericTag<PlatformName>(
   "@services/PlatformName",
 );
 
+/**
+ * FlushSync lets you force React to flush any updates inside the provided
+ * callback synchronously. This ensures that the DOM is updated immediately.
+ *
+ * It's required only for React DOM. The other UI libraries probably don't need
+ * that, so it should be a no-op.
+ */
 export type FlushSync = (callback: () => void) => void;
 
 export const FlushSync = Context.GenericTag<FlushSync>("@services/FlushSync");
+
+/** No-op FlushSync implementation for UI libraries not needing that feature. */
+export const FlushSyncNoOpLive = Layer.succeed(FlushSync, Function.constVoid);
 
 export interface SyncLock {
   /**
