@@ -785,6 +785,11 @@ export const EvoluCommonLive = EvoluCommon.pipe(
   Layer.provide(Layer.merge(TimeLive, NanoIdLive)),
 );
 
+/**
+ * Make `createEvolu`, which is a function that takes a schema and a
+ * configuration to create an Evolu instance for a specific platform and UI
+ * library.
+ */
 export const makeCreateEvolu =
   (EvoluLive: Layer.Layer<Evolu, never, Config>) =>
   <From, To extends DatabaseSchema>(

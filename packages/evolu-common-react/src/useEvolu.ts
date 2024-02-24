@@ -8,7 +8,7 @@ import { EvoluContext } from "./EvoluContext.js";
  * Please don't use it without the generic parameter.
  *
  * @example
- *   const Database = S.struct({
+ *   const Database = database({
  *     todo: TodoTable,
  *   });
  *   type Database = S.Schema.To<typeof Database>;
