@@ -42,7 +42,7 @@
     "@evolu/common": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
     "@types/react": "^18.2.48",
-    "eslint": "^8.56.0",
+    "eslint": "^8.57.0",
     "eslint-config-evolu": "workspace:*",
     "react": "^18.2.0",
     "typescript": "^5.3.3",

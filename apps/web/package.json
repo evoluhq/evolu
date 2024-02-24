@@ -23,11 +23,11 @@
   },
   "devDependencies": {
     "@evolu/tsconfig": "workspace:*",
-    "@types/node": "^20.11.19",
+    "@types/node": "^20.11.20",
     "@types/react": "^18.2.48",
     "@types/react-dom": "^18.2.19",
     "autoprefixer": "^10.4.17",
-    "eslint": "^8.56.0",
+    "eslint": "^8.57.0",
     "eslint-config-evolu": "workspace:*",
     "postcss": "^8.4.35",
     "prettier": "^3.2.5",
