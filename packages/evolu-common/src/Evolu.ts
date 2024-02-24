@@ -786,10 +786,16 @@ export const EvoluCommonLive = EvoluCommon.pipe(
 );
 
 /**
- * Make `createEvolu`, which is a function that takes a schema and a
- * configuration to create an Evolu instance for a specific platform and UI
- * library.
+ * The recipe for creating Evolu for a platform and UI library:
+ *
+ * 1. Export everything from "@evolu/common/public"
+ * 2. Export platform-specific parseMnemonic. If the platform supports lazy import,
+ *    use it because dictionaries have a few hundred KBs.
+ * 3. Export `createEvolu` for a platform. The TS docs must be copy-pasted, and
+ *    remember to update the import.
+ * 4. Export UI library API code.
  */
+
 export const makeCreateEvolu =
   (EvoluLive: Layer.Layer<Evolu, never, Config>) =>
   <From, To extends DatabaseSchema>(

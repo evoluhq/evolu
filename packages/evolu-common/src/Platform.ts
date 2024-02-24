@@ -24,8 +24,9 @@ export type FlushSync = (callback: () => void) => void;
 
 export const FlushSync = Context.GenericTag<FlushSync>("@services/FlushSync");
 
-/** No-op FlushSync implementation for UI libraries not needing that feature. */
-export const FlushSyncNoOpLive = Layer.succeed(FlushSync, Function.constVoid);
+export const FlushSyncDefaultLive = Layer.succeed(FlushSync, (callback) =>
+  callback(),
+);
 
 export interface SyncLock {
   /**

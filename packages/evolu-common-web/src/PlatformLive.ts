@@ -2,7 +2,6 @@ import {
   AppState,
   Bip39,
   Config,
-  FlushSync,
   InvalidMnemonicError,
   Mnemonic,
   PlatformName,
@@ -12,7 +11,6 @@ import {
 import * as Effect from "effect/Effect";
 import * as Function from "effect/Function";
 import * as Layer from "effect/Layer";
-import { flushSync } from "react-dom";
 
 const isChromeWithOpfs = (): boolean =>
   navigator.userAgentData != null &&
@@ -46,8 +44,6 @@ export const PlatformNameLive = Layer.succeed(
       : "web-without-opfs"
     : "server",
 );
-
-export const FlushSyncLive = Layer.succeed(FlushSync, flushSync);
 
 export const SyncLockLive = Layer.effect(
   SyncLock,

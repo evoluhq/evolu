@@ -1,7 +1,6 @@
 import {
   AppState,
   Bip39,
-  FlushSync,
   InvalidMnemonicError,
   Mnemonic,
   PlatformName,
@@ -15,14 +14,11 @@ import {
 } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english";
 import * as Effect from "effect/Effect";
-import * as Function from "effect/Function";
 import * as Layer from "effect/Layer";
 import { reloadAsync } from "expo-updates";
 import { DevSettings, AppState as ReactNativeAppState } from "react-native";
 
 export const PlatformNameLive = Layer.succeed(PlatformName, "react-native");
-
-export const FlushSyncLive = Layer.succeed(FlushSync, Function.constVoid);
 
 export const SyncLockLive = Layer.effect(
   SyncLock,

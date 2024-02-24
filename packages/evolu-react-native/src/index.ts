@@ -3,6 +3,7 @@ import {
   DbWorkerLive,
   EvoluCommonLive,
   FetchLive,
+  FlushSyncDefaultLive,
   InvalidMnemonicError,
   Mnemonic,
   NanoIdLive,
@@ -12,12 +13,7 @@ import {
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import {
-  AppStateLive,
-  Bip39Live,
-  FlushSyncLive,
-  SyncLockLive,
-} from "./PlatformLive.js";
+import { AppStateLive, Bip39Live, SyncLockLive } from "./PlatformLive.js";
 import { SqliteLive } from "./SqliteLive.js";
 
 // export * from "@evolu/common/public"
@@ -54,16 +50,13 @@ export type {
 } from "@evolu/common";
 export { jsonArrayFrom, jsonObjectFrom } from "kysely/helpers/sqlite";
 
-export * from "@evolu/common-react";
-
-/** Evolu for native platform. */
-const EvoluNativeLive = EvoluCommonLive.pipe(
-  Layer.provide(Layer.mergeAll(FlushSyncLive, AppStateLive, DbWorkerLive)),
-  Layer.provide(
-    Layer.mergeAll(Bip39Live, NanoIdLive, SqliteLive, SyncWorkerLive),
-  ),
-  Layer.provide(Layer.mergeAll(SecretBoxLive, SyncLockLive, FetchLive)),
-);
+/** Parse a string to {@link Mnemonic}. */
+export const parseMnemonic: (
+  mnemonic: string,
+) => Effect.Effect<Mnemonic, InvalidMnemonicError> = Bip39.pipe(
+  Effect.provide(Bip39Live),
+  Effect.runSync,
+).parse;
 
 /**
  * Create Evolu for React Native.
@@ -82,13 +75,13 @@ const EvoluNativeLive = EvoluCommonLive.pipe(
  *   const TodoId = id("Todo");
  *   type TodoId = S.Schema.To<typeof TodoId>;
  *
- *   const TodoTable = S.struct({
+ *   const TodoTable = table({
  *     id: TodoId,
  *     title: NonEmptyString1000,
  *   });
  *   type TodoTable = S.Schema.To<typeof TodoTable>;
  *
- *   const Database = S.struct({
+ *   const Database = database({
  *     // _todo is local-only table
  *     todo: TodoTable,
  *   });
@@ -96,12 +89,16 @@ const EvoluNativeLive = EvoluCommonLive.pipe(
  *
  *   const evolu = createEvolu(Database);
  */
-export const createEvolu = makeCreateEvolu(EvoluNativeLive);
+export const createEvolu = makeCreateEvolu(
+  EvoluCommonLive.pipe(
+    Layer.provide(
+      Layer.mergeAll(FlushSyncDefaultLive, AppStateLive, DbWorkerLive),
+    ),
+    Layer.provide(
+      Layer.mergeAll(Bip39Live, NanoIdLive, SqliteLive, SyncWorkerLive),
+    ),
+    Layer.provide(Layer.mergeAll(SecretBoxLive, SyncLockLive, FetchLive)),
+  ),
+);
 
-/** Parse a string to {@link Mnemonic}. */
-export const parseMnemonic: (
-  mnemonic: string,
-) => Effect.Effect<Mnemonic, InvalidMnemonicError> = Bip39.pipe(
-  Effect.provide(Bip39Live),
-  Effect.runSync,
-).parse;
+export * from "@evolu/common-react";
