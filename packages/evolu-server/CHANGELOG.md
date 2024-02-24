@@ -1,5 +1,12 @@
 # @evolu/server
 
+## 4.0.6
+
+### Patch Changes
+
+- Updated dependencies [ccd699a]
+  - @evolu/common@3.1.6
+
 ## 4.0.5
 
 ### Patch Changes

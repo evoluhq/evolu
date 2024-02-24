@@ -1,5 +1,13 @@
 # @evolu/common-web
 
+## 5.0.6
+
+### Patch Changes
+
+- ccd699a: Fix #333
+- Updated dependencies [ccd699a]
+  - @evolu/common@3.1.6
+
 ## 5.0.5
 
 ### Patch Changes

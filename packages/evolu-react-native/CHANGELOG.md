@@ -1,5 +1,12 @@
 # @evolu/react-native
 
+## 5.0.5
+
+### Patch Changes
+
+- ccd699a: Fix #333
+  - @evolu/common-react@5.0.4
+
 ## 5.0.4
 
 ### Patch Changes

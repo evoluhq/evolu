@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 3.1.6
+
+### Patch Changes
+
+- ccd699a: Fix #333
+
 ## 3.1.5
 
 ### Patch Changes

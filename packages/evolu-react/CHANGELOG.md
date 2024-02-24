@@ -1,5 +1,15 @@
 # @evolu/react
 
+## 5.0.5
+
+### Patch Changes
+
+- ccd699a: Fix #333
+- Updated dependencies [ccd699a]
+  - @evolu/common-web@5.0.6
+  - @evolu/common@3.1.6
+  - @evolu/common-react@5.0.4
+
 ## 5.0.4
 
 ### Patch Changes
