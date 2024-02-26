@@ -1,5 +1,13 @@
 # @evolu/react-native
 
+## 6.0.1
+
+### Patch Changes
+
+- a322695: Update peer dependencies
+- Updated dependencies [a322695]
+  - @evolu/common-react@5.0.6
+
 ## 6.0.0
 
 ### Major Changes

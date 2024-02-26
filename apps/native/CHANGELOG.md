@@ -1,5 +1,13 @@
 # native
 
+## 1.0.20
+
+### Patch Changes
+
+- Updated dependencies [a322695]
+  - @evolu/common-react@5.0.6
+  - @evolu/react-native@6.0.1
+
 ## 1.0.19
 
 ### Patch Changes
