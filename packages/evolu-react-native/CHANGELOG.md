@@ -1,5 +1,13 @@
 # @evolu/react-native
 
+## 6.0.2
+
+### Patch Changes
+
+- 01d2554: Update peer deps
+- Updated dependencies [01d2554]
+  - @evolu/common-react@5.0.7
+
 ## 6.0.1
 
 ### Patch Changes
