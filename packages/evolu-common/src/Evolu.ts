@@ -785,7 +785,6 @@ const EvoluCommon = Layer.effect(
   Layer.provide(Layer.merge(RowsStoreLive, OnCompletesLive)),
 );
 
-/** EvoluCommonLive has only platform independent side-effects. */
 export const EvoluCommonLive = EvoluCommon.pipe(
   Layer.provide(Layer.merge(TimeLive, NanoIdLive)),
 );

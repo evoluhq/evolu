@@ -575,7 +575,7 @@ const reset = (
     onMessage({ _tag: "onResetOrRestore" });
   });
 
-export const DbWorkerLive = Layer.effect(
+export const DbWorkerCommonLive = Layer.effect(
   DbWorker,
   Effect.gen(function* (_) {
     const syncWorker = yield* _(SyncWorker);

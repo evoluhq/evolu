@@ -325,7 +325,7 @@ const sync = (
     );
   });
 
-export const SyncWorkerLive = Layer.effect(
+export const SyncWorkerCommonLive = Layer.effect(
   SyncWorker,
   Effect.gen(function* (_) {
     const syncLock = yield* _(SyncLock);

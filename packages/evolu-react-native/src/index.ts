@@ -1,6 +1,6 @@
 import {
   Bip39,
-  DbWorkerLive,
+  DbWorkerCommonLive,
   EvoluCommonLive,
   FetchLive,
   FlushSyncDefaultLive,
@@ -8,7 +8,7 @@ import {
   Mnemonic,
   NanoIdLive,
   SecretBoxLive,
-  SyncWorkerLive,
+  SyncWorkerCommonLive,
   makeCreateEvolu,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
@@ -68,12 +68,12 @@ export const createEvolu = makeCreateEvolu(
       Layer.mergeAll(
         FlushSyncDefaultLive,
         AppStateLive,
-        DbWorkerLive,
+        DbWorkerCommonLive,
         PlatformNameLive,
       ),
     ),
     Layer.provide(
-      Layer.mergeAll(Bip39Live, NanoIdLive, SqliteLive, SyncWorkerLive),
+      Layer.mergeAll(Bip39Live, NanoIdLive, SqliteLive, SyncWorkerCommonLive),
     ),
     Layer.provide(Layer.mergeAll(SecretBoxLive, SyncLockLive, FetchLive)),
   ),

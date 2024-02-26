@@ -1,9 +1,4 @@
-import {
-  DbWorker,
-  DbWorkerOutput,
-  PlatformName,
-  makeUnexpectedError,
-} from "@evolu/common";
+import { DbWorker, DbWorkerOutput, PlatformName } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import * as Function from "effect/Function";
 import * as Layer from "effect/Layer";
@@ -13,56 +8,27 @@ export const DbWorkerLive = Layer.effect(
   Effect.gen(function* (_) {
     const platformName = yield* _(PlatformName);
 
-    if (platformName === "web-with-opfs") {
-      const worker = new Worker(
-        new URL("DbWorker.worker.js", import.meta.url),
-        { type: "module" },
-      );
-      worker.onmessage = (e: MessageEvent<DbWorkerOutput>): void => {
-        dbWorker.onMessage(e.data);
-      };
-      const dbWorker: DbWorker = {
-        postMessage: (input) => {
-          worker.postMessage(input);
-        },
+    // no-op for SSR
+    if (platformName === "server")
+      return DbWorker.of({
+        postMessage: Function.constVoid,
         onMessage: Function.constVoid,
-      };
-      return dbWorker;
-    }
+      });
 
-    if (platformName === "web-without-opfs") {
-      const promise = Effect.promise(() => import("./DbWorker.js")).pipe(
-        Effect.map(({ dbWorker: importedDbWorker }) => {
-          importedDbWorker.onMessage = dbWorker.onMessage;
-          return importedDbWorker.postMessage;
-        }),
-        Effect.runPromise,
-      );
-      const dbWorker: DbWorker = {
-        postMessage: (input) => {
-          promise.then(
-            (postMessage) => {
-              postMessage(input);
-            },
-            (reason: unknown) => {
-              dbWorker.onMessage({
-                _tag: "onError",
-                error: {
-                  _tag: "UnexpectedError",
-                  error: makeUnexpectedError(reason).pipe(Effect.runSync),
-                },
-              });
-            },
-          );
-        },
-        onMessage: Function.constVoid,
-      };
-      return dbWorker;
-    }
-
-    return DbWorker.of({
-      postMessage: Function.constVoid,
-      onMessage: Function.constVoid,
+    const worker = new Worker(new URL("DbWorker.worker.js", import.meta.url), {
+      type: "module",
     });
+    worker.onmessage = (e: MessageEvent<DbWorkerOutput>): void => {
+      dbWorker.onMessage(e.data);
+    };
+
+    const dbWorker: DbWorker = {
+      postMessage: (input) => {
+        worker.postMessage(input);
+      },
+      onMessage: Function.constVoid,
+    };
+
+    return dbWorker;
   }),
 );

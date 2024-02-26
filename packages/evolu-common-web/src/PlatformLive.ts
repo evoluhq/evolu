@@ -12,39 +12,12 @@ import * as Effect from "effect/Effect";
 import * as Function from "effect/Function";
 import * as Layer from "effect/Layer";
 
-const isChromeWithOpfs = (): boolean =>
-  navigator.userAgentData != null &&
-  navigator.userAgentData.brands.find(
-    ({ brand, version }) =>
-      // Chrome or Chromium
-      brand.includes("Chrom") && Number(version) >= 109,
-  ) != null;
-
-const isFirefoxWithOpfs = (): boolean => {
-  const userAgent = navigator.userAgent.toLowerCase();
-  if (userAgent.indexOf("firefox") === -1) return false;
-  const matches = userAgent.match(/firefox\/([0-9]+\.*[0-9]*)/);
-  if (matches == null) return false;
-  return Number(matches[1]) >= 111;
-};
-
-const isSafariWithOpfs = (): boolean => {
-  const userAgent = navigator.userAgent.toLowerCase();
-  if (userAgent.indexOf("safari") === -1) return false;
-  const matches = userAgent.match(/version\/([0-9]+)/);
-  if (matches == null) return false;
-  return Number(matches[1]) >= 17;
-};
-
 export const PlatformNameLive = Layer.succeed(
   PlatformName,
-  canUseDom
-    ? isChromeWithOpfs() || isFirefoxWithOpfs() || isSafariWithOpfs()
-      ? "web-with-opfs"
-      : "web-without-opfs"
-    : "server",
+  canUseDom ? "web" : "server",
 );
 
+// TODO: Probably remove and simplify code.
 export const SyncLockLive = Layer.effect(
   SyncLock,
   Effect.sync(() => {
