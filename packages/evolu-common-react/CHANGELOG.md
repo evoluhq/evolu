@@ -1,5 +1,13 @@
 # @evolu/common-react
 
+## 5.0.5
+
+### Patch Changes
+
+- 888b83e: Fix a bug for React Native
+- Updated dependencies [888b83e]
+  - @evolu/common@3.1.7
+
 ## 5.0.4
 
 ### Patch Changes

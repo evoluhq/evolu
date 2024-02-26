@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 3.1.7
+
+### Patch Changes
+
+- 888b83e: Add platformName property to Evolu.
+
 ## 3.1.6
 
 ### Patch Changes

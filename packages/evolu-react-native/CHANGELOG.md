@@ -1,5 +1,18 @@
 # @evolu/react-native
 
+## 6.0.0
+
+### Major Changes
+
+- 888b83e: Expo 50 with expo-sqlite/next
+
+  Now everything works as expected.
+
+### Patch Changes
+
+- Updated dependencies [888b83e]
+  - @evolu/common-react@5.0.5
+
 ## 5.0.5
 
 ### Patch Changes
