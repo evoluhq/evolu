@@ -32,7 +32,7 @@ import { EvoluError, makeErrorStore } from "./ErrorStore.js";
 import { SqliteBoolean, SqliteDate, cast } from "./Model.js";
 import { OnCompletes, OnCompletesLive } from "./OnCompletes.js";
 import { Owner } from "./Owner.js";
-import { AppState, FlushSync } from "./Platform.js";
+import { AppState, FlushSync, PlatformName } from "./Platform.js";
 import { SqliteQuery } from "./Sqlite.js";
 import { Store, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
@@ -308,6 +308,8 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
    * it.
    */
   readonly sync: () => void;
+
+  readonly platformName: PlatformName;
 }
 
 export const Evolu = Context.GenericTag<Evolu>("@services/Evolu");
@@ -703,6 +705,7 @@ const EvoluCommon = Layer.effect(
     const ownerStore = yield* _(makeStore<Owner | null>(null));
     const loadingPromises = yield* _(LoadingPromises);
     const appState = yield* _(AppState);
+    const platformName = yield* _(PlatformName);
 
     dbWorker.onMessage = (output): void =>
       Match.value(output).pipe(
@@ -771,6 +774,8 @@ const EvoluCommon = Layer.effect(
         }),
 
       sync,
+
+      platformName,
     });
   }),
 ).pipe(

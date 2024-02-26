@@ -6,13 +6,12 @@ module.exports = function (api) {
       // For Kysely to work with Hermes
       ["@babel/plugin-transform-private-methods", { loose: true }],
       // For Kysely to work with Hermes
+      // plugin-syntax-dynamic-import isn't workoing for some reason.
       "@babel/plugin-proposal-dynamic-import",
       [
         "module-resolver",
         {
           alias: {
-            // TODO: Use react-native-quick-crypto once fixed for RN 0.72
-            // 'crypto': 'react-native-quick-crypto',
             crypto: "crypto-browserify",
           },
         },
