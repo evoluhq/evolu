@@ -1,4 +1,4 @@
-import { Query, QueryResult, Row, canUseDom } from "@evolu/common";
+import { Query, QueryResult, Row } from "@evolu/common";
 import { use } from "./use.js";
 import { useEvolu } from "./useEvolu.js";
 import { useQuerySubscription } from "./useQuerySubscription.js";
@@ -41,6 +41,7 @@ export const useQuery = <R extends Row>(
   }> = {},
 ): QueryResult<R> => {
   const evolu = useEvolu();
-  if (canUseDom) use(options?.promise || evolu.loadQuery(query));
+  if (evolu.platformName !== "server")
+    use(options?.promise || evolu.loadQuery(query));
   return useQuerySubscription(query, options);
 };

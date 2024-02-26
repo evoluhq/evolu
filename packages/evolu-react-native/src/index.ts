@@ -13,42 +13,15 @@ import {
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { AppStateLive, Bip39Live, SyncLockLive } from "./PlatformLive.js";
+import {
+  AppStateLive,
+  Bip39Live,
+  PlatformNameLive,
+  SyncLockLive,
+} from "./PlatformLive.js";
 import { SqliteLive } from "./SqliteLive.js";
 
-// export * from "@evolu/common/public"
-// https://github.com/facebook/metro/issues/1128
-// So we have to export manually.
-// TODO: Recheck after RN 0.73 release.
-export {
-  Id,
-  NonEmptyString1000,
-  PositiveInt,
-  SqliteBoolean,
-  SqliteDate,
-  String,
-  String1000,
-  canUseDom,
-  cast,
-  database,
-  id,
-  table,
-} from "@evolu/common";
-export type {
-  EvoluError,
-  ExtractRow,
-  InvalidMnemonicError,
-  Mnemonic,
-  NotNull,
-  Owner,
-  OwnerId,
-  QueryResult,
-  SyncState,
-  Timestamp,
-  TimestampError,
-  UnexpectedError,
-} from "@evolu/common";
-export { jsonArrayFrom, jsonObjectFrom } from "kysely/helpers/sqlite";
+export * from "@evolu/common/public";
 
 /** Parse a string to {@link Mnemonic}. */
 export const parseMnemonic: (
@@ -92,7 +65,12 @@ export const parseMnemonic: (
 export const createEvolu = makeCreateEvolu(
   EvoluCommonLive.pipe(
     Layer.provide(
-      Layer.mergeAll(FlushSyncDefaultLive, AppStateLive, DbWorkerLive),
+      Layer.mergeAll(
+        FlushSyncDefaultLive,
+        AppStateLive,
+        DbWorkerLive,
+        PlatformNameLive,
+      ),
     ),
     Layer.provide(
       Layer.mergeAll(Bip39Live, NanoIdLive, SqliteLive, SyncWorkerLive),
