@@ -1,5 +1,13 @@
 # @evolu/server
 
+## 4.0.8
+
+### Patch Changes
+
+- 01d2554: Update peer deps
+- Updated dependencies [01d2554]
+  - @evolu/common@3.1.8
+
 ## 4.0.7
 
 ### Patch Changes

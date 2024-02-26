@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 3.1.8
+
+### Patch Changes
+
+- 01d2554: Update peer deps
+
 ## 3.1.7
 
 ### Patch Changes
