@@ -1,3 +1,6 @@
 {
-  "nextjs": "Next.js"
+  "nextjs": "Next.js",
+  "electron": "Electron",
+  "vite": "Vite",
+  "remix": "Remix"
 }
