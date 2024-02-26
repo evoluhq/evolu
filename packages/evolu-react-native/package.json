@@ -54,9 +54,9 @@
   },
   "peerDependencies": {
     "@evolu/common-react": "^5.0.5",
-    "expo": "^49.0.20",
-    "expo-sqlite": "~11.3.3",
-    "react-native": "^0.72.4"
+    "expo": "^50.0.7",
+    "expo-sqlite": "~13.2.2",
+    "react-native": "0.73.4"
   },
   "publishConfig": {
     "access": "public"
