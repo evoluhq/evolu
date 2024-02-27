@@ -1,7 +1,6 @@
 import {
   Sqlite,
   SqliteRow,
-  canUseDom,
   ensureSqliteQuery,
   maybeParseJson,
   valuesToSqliteValues,
@@ -11,9 +10,11 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 const sqlitePromise = sqlite3InitModule().then((sqlite3) =>
-  canUseDom
-    ? new sqlite3.oo1.JsStorageDb("local")
-    : new sqlite3.oo1.OpfsDb("/evolu/evolu1.db", "c"),
+  sqlite3
+    .installOpfsSAHPoolVfs({
+      // TODO: Use name to allow Evolu apps co-exist in the same HTTP origin.
+    })
+    .then((PoolUtil) => new PoolUtil.OpfsSAHPoolDb("/evolu1")),
 );
 
 const exec: Sqlite["exec"] = (arg) =>
