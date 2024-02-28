@@ -31,12 +31,10 @@ import {
   SyncResponse,
 } from "./Protobuf.js";
 import { JsonObjectOrArray, Value } from "./Sqlite.js";
+import { Messaging } from "./Types.js";
 
-export interface SyncWorker {
-  readonly postMessage: (input: SyncWorkerInput) => void;
-  onMessage: (output: SyncWorkerOutput) => void;
-}
-
+export interface SyncWorker
+  extends Messaging<SyncWorkerInput, SyncWorkerOutput> {}
 export const SyncWorker = Context.GenericTag<SyncWorker>(
   "@services/SyncWorker",
 );

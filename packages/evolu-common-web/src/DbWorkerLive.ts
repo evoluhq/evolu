@@ -18,6 +18,7 @@ export const DbWorkerLive = Layer.effect(
     const worker = new Worker(new URL("DbWorker.worker.js", import.meta.url), {
       type: "module",
     });
+
     worker.onmessage = (e: MessageEvent<DbWorkerOutput>): void => {
       dbWorker.onMessage(e.data);
     };

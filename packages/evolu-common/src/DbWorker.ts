@@ -58,12 +58,9 @@ import {
   SyncWorkerOutputSyncResponse,
   SyncWorkerPostMessage,
 } from "./SyncWorker.js";
+import { Messaging } from "./Types.js";
 
-export interface DbWorker {
-  readonly postMessage: (input: DbWorkerInput) => void;
-  onMessage: (output: DbWorkerOutput) => void;
-}
-
+export interface DbWorker extends Messaging<DbWorkerInput, DbWorkerOutput> {}
 export const DbWorker = Context.GenericTag<DbWorker>("@services/DbWorker");
 
 export type DbWorkerInput =

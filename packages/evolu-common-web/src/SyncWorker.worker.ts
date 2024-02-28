@@ -2,12 +2,11 @@ import {
   FetchLive,
   SecretBoxLive,
   SyncWorker,
-  SyncWorkerInput,
   SyncWorkerCommonLive,
+  SyncWorkerInput,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-
 import { SyncLockLive } from "./PlatformLive.js";
 
 const syncWorker = Effect.provide(
