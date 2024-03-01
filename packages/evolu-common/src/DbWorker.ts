@@ -534,8 +534,8 @@ const sync = ({
 > =>
   Effect.gen(function* (_) {
     if (queries.length > 0) yield* _(query({ queries }));
-
-    (yield* _(SyncWorkerPostMessage))({
+    const syncWorkerPostMessage = yield* _(SyncWorkerPostMessage);
+    syncWorkerPostMessage({
       _tag: "sync",
       ...(yield* _(readTimestampAndMerkleTree)),
       syncUrl: (yield* _(Config)).syncUrl,
@@ -592,7 +592,7 @@ export const DbWorkerCommonLive = Layer.effect(
           onError(output).pipe(Effect.runSync);
           break;
         case "SyncWorkerOutputSyncResponse":
-          postMessage(output);
+          dbWorker.postMessage(output);
           break;
         default:
           dbWorker.onMessage({ _tag: "onSyncState", state: output });
@@ -623,15 +623,18 @@ export const DbWorkerCommonLive = Layer.effect(
         Effect.runPromise,
       );
 
-    type Write = (input: DbWorkerInput) => Promise<void>;
+    type HandleInput = (input: DbWorkerInput) => Promise<void>;
 
-    // Write for reset only in case init fails.
-    const writeForInitFail: Write = (input): Promise<void> => {
+    /** If init fails, we have to allow reset at least. */
+    const handleInputForInitFail: HandleInput = (input): Promise<void> => {
       if (input._tag !== "reset") return Promise.resolve(undefined);
       return reset(input).pipe(run);
     };
 
-    const makeWriteForInitSuccess = (config: Config, owner: Owner): Write => {
+    const makeHandleInputForInitSuccess = (
+      config: Config,
+      owner: Owner,
+    ): HandleInput => {
       let skipAllBecauseOfReset = false;
 
       const layer = Layer.mergeAll(
@@ -664,14 +667,14 @@ export const DbWorkerCommonLive = Layer.effect(
       };
     };
 
-    let write: Write = (input) => {
+    let handleInput: HandleInput = (input) => {
       if (input._tag !== "init")
         return run(makeUnexpectedError(new Error("init must be called first")));
-      write = writeForInitFail;
+      handleInput = handleInputForInitFail;
       return init.pipe(
         Effect.map((owner) => {
           dbWorker.onMessage({ _tag: "onOwner", owner });
-          write = makeWriteForInitSuccess(input.config, owner);
+          handleInput = makeHandleInputForInitSuccess(input.config, owner);
         }),
         run,
       );
@@ -679,13 +682,11 @@ export const DbWorkerCommonLive = Layer.effect(
 
     let messageQueue: Promise<void> = Promise.resolve(undefined);
 
-    const postMessage: DbWorker["postMessage"] = (input) => {
-      // TODO: Use Web Locks to enforce DbWorker transaction across tabs.
-      messageQueue = messageQueue.then(() => write(input));
-    };
-
     const dbWorker: DbWorker = {
-      postMessage,
+      postMessage: (input) => {
+        // TODO: Use Web Locks to enforce DbWorker transaction across tabs.
+        messageQueue = messageQueue.then(() => handleInput(input));
+      },
       onMessage: Function.constVoid,
     };
 
