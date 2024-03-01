@@ -1,6 +1,7 @@
 import {
   AppState,
   Bip39,
+  DbWorkerLock,
   InvalidMnemonicError,
   Mnemonic,
   PlatformName,
@@ -33,6 +34,16 @@ export const SyncLockLive = Layer.effect(
       release: Effect.sync(() => {
         hasSyncLock = false;
       }),
+    });
+  }),
+);
+
+export const DbWorkerLockLive = Layer.effect(
+  DbWorkerLock,
+  Effect.sync(() => {
+    let queue: Promise<void> = Promise.resolve(undefined);
+    return DbWorkerLock.of((callback) => {
+      queue = queue.then(callback);
     });
   }),
 );

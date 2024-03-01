@@ -59,6 +59,7 @@ import {
   SyncWorkerPostMessage,
 } from "./SyncWorker.js";
 import { Messaging } from "./Types.js";
+import { DbWorkerLock } from "./Platform.js";
 
 export interface DbWorker extends Messaging<DbWorkerInput, DbWorkerOutput> {}
 export const DbWorker = Context.GenericTag<DbWorker>("@services/DbWorker");
@@ -680,12 +681,11 @@ export const DbWorkerCommonLive = Layer.effect(
       );
     };
 
-    let messageQueue: Promise<void> = Promise.resolve(undefined);
+    const dbWorkerLock = yield* _(DbWorkerLock);
 
     const dbWorker: DbWorker = {
       postMessage: (input) => {
-        // TODO: Use Web Locks to enforce DbWorker transaction across tabs.
-        messageQueue = messageQueue.then(() => handleInput(input));
+        dbWorkerLock(() => handleInput(input));
       },
       onMessage: Function.constVoid,
     };

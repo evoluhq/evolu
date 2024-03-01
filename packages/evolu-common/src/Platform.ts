@@ -36,6 +36,11 @@ export interface SyncLock {
 
 export const SyncLock = Context.GenericTag<SyncLock>("@services/SyncLock");
 
+export type DbWorkerLock = (callback: () => Promise<void>) => void;
+export const DbWorkerLock = Context.GenericTag<DbWorkerLock>(
+  "@services/DbWorkerLock",
+);
+
 export type Fetch = (
   url: string,
   body: Uint8Array,

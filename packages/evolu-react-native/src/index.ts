@@ -16,6 +16,7 @@ import * as Layer from "effect/Layer";
 import {
   AppStateLive,
   Bip39Live,
+  DbWorkerLockLive,
   PlatformNameLive,
   SyncLockLive,
 } from "./PlatformLive.js";
@@ -78,6 +79,7 @@ export const createEvolu = makeCreateEvolu(
         NanoIdGeneratorLive,
         SqliteLive,
         SyncWorkerCommonLive,
+        DbWorkerLockLive,
       ),
     ),
     Layer.provide(Layer.mergeAll(SecretBoxLive, SyncLockLive, FetchLive)),

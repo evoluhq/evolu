@@ -1,3 +1,4 @@
+import { DbWorkerLock } from "@evolu/common";
 import {
   AppState,
   Bip39,
@@ -51,6 +52,10 @@ export const SyncLockLive = Layer.effect(
     });
   }),
 );
+
+export const DbWorkerLockLive = Layer.succeed(DbWorkerLock, (callback) => {
+  navigator.locks.request("evolu:DbWorker", callback);
+});
 
 export const AppStateLive = Layer.effect(
   AppState,
