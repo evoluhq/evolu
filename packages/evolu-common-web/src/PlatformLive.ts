@@ -17,7 +17,6 @@ export const PlatformNameLive = Layer.succeed(
   canUseDom ? "web" : "server",
 );
 
-// TODO: Probably remove and simplify code.
 export const SyncLockLive = Layer.effect(
   SyncLock,
   Effect.sync(() => {

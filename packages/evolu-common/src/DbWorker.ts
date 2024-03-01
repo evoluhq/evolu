@@ -28,7 +28,7 @@ import {
   timestampToString,
   unsafeTimestampFromString,
 } from "./Crdt.js";
-import { Bip39, Mnemonic, NanoId } from "./Crypto.js";
+import { Bip39, Mnemonic, NanoIdGenerator } from "./Crypto.js";
 import {
   Queries,
   Query,
@@ -547,7 +547,11 @@ const sync = ({
 
 const reset = (
   input: DbWorkerInputReset,
-): Effect.Effect<void, never, Sqlite | Bip39 | NanoId | DbWorkerOnMessage> =>
+): Effect.Effect<
+  void,
+  never,
+  Sqlite | Bip39 | NanoIdGenerator | DbWorkerOnMessage
+> =>
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
 
@@ -598,7 +602,7 @@ export const DbWorkerCommonLive = Layer.effect(
     const runContext = Context.empty().pipe(
       Context.add(Sqlite, yield* _(Sqlite)),
       Context.add(Bip39, yield* _(Bip39)),
-      Context.add(NanoId, yield* _(NanoId)),
+      Context.add(NanoIdGenerator, yield* _(NanoIdGenerator)),
       Context.add(DbWorkerOnMessage, (output) => {
         dbWorker.onMessage(output);
       }),
@@ -608,7 +612,7 @@ export const DbWorkerCommonLive = Layer.effect(
       effect: Effect.Effect<
         void,
         EvoluError,
-        Sqlite | Bip39 | NanoId | DbWorkerOnMessage
+        Sqlite | Bip39 | NanoIdGenerator | DbWorkerOnMessage
       >,
     ): Promise<void> =>
       effect.pipe(
@@ -676,6 +680,7 @@ export const DbWorkerCommonLive = Layer.effect(
     let messageQueue: Promise<void> = Promise.resolve(undefined);
 
     const postMessage: DbWorker["postMessage"] = (input) => {
+      // TODO: Use Web Locks to enforce DbWorker transaction across tabs.
       messageQueue = messageQueue.then(() => write(input));
     };
 

@@ -21,7 +21,7 @@ import {
   merkleTreeToString,
   timestampToString,
 } from "./Crdt.js";
-import { Bip39, Mnemonic, NanoId } from "./Crypto.js";
+import { Bip39, Mnemonic, NanoIdGenerator } from "./Crypto.js";
 import { EvoluTypeError } from "./ErrorStore.js";
 import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
 import { Owner, makeOwner } from "./Owner.js";
@@ -323,7 +323,7 @@ export const someDefectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
 
 export const lazyInit = (
   mnemonic?: Mnemonic,
-): Effect.Effect<Owner, never, Sqlite | Bip39 | NanoId> =>
+): Effect.Effect<Owner, never, Sqlite | Bip39 | NanoIdGenerator> =>
   Effect.gen(function* (_) {
     const [owner, sqlite, initialTimestampString] = yield* _(
       Effect.all([makeOwner(mnemonic), Sqlite, makeInitialTimestamp], {

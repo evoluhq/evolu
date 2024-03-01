@@ -2,7 +2,7 @@ import {
   DbWorker,
   DbWorkerCommonLive,
   DbWorkerInput,
-  NanoIdLive,
+  NanoIdGeneratorLive,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -12,9 +12,9 @@ import { SyncWorkerLive } from "./SyncWorkerLive.js";
 
 const dbWorker = Effect.provide(
   DbWorker,
-  Layer.provide(
-    DbWorkerCommonLive,
-    Layer.mergeAll(SqliteLive, Bip39Live, NanoIdLive, SyncWorkerLive),
+  DbWorkerCommonLive.pipe(
+    Layer.provide(Layer.mergeAll(SqliteLive, Bip39Live, SyncWorkerLive)),
+    Layer.provide(NanoIdGeneratorLive),
   ),
 ).pipe(Effect.runSync);
 

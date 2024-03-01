@@ -36,12 +36,16 @@ export interface InvalidMnemonicError {
  */
 export type Mnemonic = string & Brand.Brand<"Mnemonic">;
 
-export interface NanoId {
-  readonly nanoid: Effect.Effect<string>;
+export interface NanoIdGenerator {
+  readonly nanoid: Effect.Effect<NanoId>;
   readonly nanoidAsNodeId: Effect.Effect<NodeId>;
 }
 
-export const NanoId = Context.GenericTag<NanoId>("@services/NanoId");
+export const NanoIdGenerator = Context.GenericTag<NanoIdGenerator>(
+  "@services/NanoIdGenerator",
+);
+
+export type NanoId = string & Brand.Brand<"NanoId">;
 
 export const NodeId = S.string.pipe(
   S.pattern(/^[\w-]{16}$/),
@@ -51,10 +55,10 @@ export type NodeId = S.Schema.To<typeof NodeId>;
 
 const nanoidForNodeId = customAlphabet("0123456789abcdef", 16);
 
-export const NanoIdLive = Layer.succeed(
-  NanoId,
-  NanoId.of({
-    nanoid: Effect.sync(() => nanoid()),
+export const NanoIdGeneratorLive = Layer.succeed(
+  NanoIdGenerator,
+  NanoIdGenerator.of({
+    nanoid: Effect.sync(() => nanoid() as NanoId),
     nanoidAsNodeId: Effect.sync(() => nanoidForNodeId() as NodeId),
   }),
 );

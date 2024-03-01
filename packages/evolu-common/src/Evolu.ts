@@ -11,7 +11,7 @@ import * as ReadonlyArray from "effect/ReadonlyArray";
 import * as Kysely from "kysely";
 import { Config, ConfigLive } from "./Config.js";
 import { Time, TimeLive } from "./Crdt.js";
-import { Mnemonic, NanoId, NanoIdLive } from "./Crypto.js";
+import { Mnemonic, NanoIdGenerator, NanoIdGeneratorLive } from "./Crypto.js";
 import {
   DatabaseSchema,
   Queries,
@@ -643,7 +643,7 @@ type Castable<T> = {
 const MutateLive = Layer.effect(
   Mutate,
   Effect.gen(function* (_) {
-    const nanoid = yield* _(NanoId);
+    const { nanoid } = yield* _(NanoIdGenerator);
     const onCompletes = yield* _(OnCompletes);
     const time = yield* _(Time);
     const subscribedQueries = yield* _(SubscribedQueries);
@@ -653,7 +653,7 @@ const MutateLive = Layer.effect(
 
     return Mutate.of((table, { id, ...values }, onComplete) => {
       const isInsert = id == null;
-      if (isInsert) id = Effect.runSync(nanoid.nanoid) as never;
+      if (isInsert) id = Effect.runSync(nanoid) as never;
 
       const onCompleteId = onComplete
         ? onCompletes.add(onComplete).pipe(Effect.runSync)
@@ -786,7 +786,7 @@ const EvoluCommon = Layer.effect(
 );
 
 export const EvoluCommonLive = EvoluCommon.pipe(
-  Layer.provide(Layer.merge(TimeLive, NanoIdLive)),
+  Layer.provide(Layer.merge(TimeLive, NanoIdGeneratorLive)),
 );
 
 /**

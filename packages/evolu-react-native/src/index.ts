@@ -6,7 +6,7 @@ import {
   FlushSyncDefaultLive,
   InvalidMnemonicError,
   Mnemonic,
-  NanoIdLive,
+  NanoIdGeneratorLive,
   SecretBoxLive,
   SyncWorkerCommonLive,
   makeCreateEvolu,
@@ -73,7 +73,12 @@ export const createEvolu = makeCreateEvolu(
       ),
     ),
     Layer.provide(
-      Layer.mergeAll(Bip39Live, NanoIdLive, SqliteLive, SyncWorkerCommonLive),
+      Layer.mergeAll(
+        Bip39Live,
+        NanoIdGeneratorLive,
+        SqliteLive,
+        SyncWorkerCommonLive,
+      ),
     ),
     Layer.provide(Layer.mergeAll(SecretBoxLive, SyncLockLive, FetchLive)),
   ),
