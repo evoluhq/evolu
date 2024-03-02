@@ -47,6 +47,7 @@ import { EvoluError, makeUnexpectedError } from "./ErrorStore.js";
 import { Id, SqliteDate, cast } from "./Model.js";
 import { OnCompleteId } from "./OnCompletes.js";
 import { Owner, OwnerId } from "./Owner.js";
+import { DbWorkerLock } from "./Platform.js";
 import * as Sql from "./Sql.js";
 import { Sqlite, Value } from "./Sqlite.js";
 import {
@@ -59,7 +60,6 @@ import {
   SyncWorkerPostMessage,
 } from "./SyncWorker.js";
 import { Messaging } from "./Types.js";
-import { DbWorkerLock } from "./Platform.js";
 
 export interface DbWorker extends Messaging<DbWorkerInput, DbWorkerOutput> {}
 export const DbWorker = Context.GenericTag<DbWorker>("@services/DbWorker");
