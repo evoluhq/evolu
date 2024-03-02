@@ -1,4 +1,3 @@
-import { hexToBytes } from "@noble/ciphers/utils";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Function from "effect/Function";
@@ -168,8 +167,7 @@ const init = Effect.gen(function* (_) {
       ({ rows: [row] }): Owner => ({
         id: row.id as OwnerId,
         mnemonic: row.mnemonic as Mnemonic,
-        // expo-sqlite 11.3.2 doesn't support Uint8Array
-        encryptionKey: hexToBytes(row.encryptionKey as string),
+        encryptionKey: row.encryptionKey as Uint8Array,
       }),
     ),
     someDefectToNoSuchTableOrColumnError,

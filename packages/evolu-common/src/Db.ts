@@ -1,7 +1,6 @@
 import * as AST from "@effect/schema/AST";
 import * as S from "@effect/schema/Schema";
 import { make } from "@effect/schema/Schema";
-import { bytesToHex } from "@noble/ciphers/utils";
 import * as Brand from "effect/Brand";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -341,8 +340,7 @@ export const lazyInit = (
           parameters: [
             owner.id,
             owner.mnemonic,
-            // expo-sqlite 11.3.2 doesn't support Uint8Array
-            bytesToHex(owner.encryptionKey),
+            owner.encryptionKey,
             timestampToString(initialTimestampString),
             merkleTreeToString(initialMerkleTree),
           ],
