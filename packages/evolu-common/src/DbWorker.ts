@@ -218,9 +218,8 @@ const readTimestampAndMerkleTree = Sqlite.pipe(
   Effect.flatMap((sqlite) =>
     sqlite.exec(Sql.selectOwnerTimestampAndMerkleTree),
   ),
-  Effect.map((result) => result.rows),
   Effect.map(
-    ([{ timestamp, merkleTree }]): TimestampAndMerkleTree => ({
+    ({ rows: [{ timestamp, merkleTree }] }): TimestampAndMerkleTree => ({
       timestamp: unsafeTimestampFromString(timestamp as TimestampString),
       merkleTree: merkleTree as MerkleTree,
     }),
