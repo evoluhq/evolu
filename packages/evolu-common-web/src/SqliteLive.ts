@@ -5,11 +5,13 @@ import {
   SqliteExecResult,
   SqliteQuery,
   SqliteRow,
+  UnexpectedError,
   ensureSqliteQuery,
+  makeUnexpectedError,
   maybeParseJson,
   valuesToSqliteValues,
 } from "@evolu/common";
-import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
+import sqlite3InitModule, { SAHPoolUtil } from "@sqlite.org/sqlite-wasm";
 import * as Effect from "effect/Effect";
 import * as Function from "effect/Function";
 import * as Layer from "effect/Layer";
@@ -27,8 +29,7 @@ import * as ReadonlyArray from "effect/ReadonlyArray";
  * https://github.com/rhashimoto/wa-sqlite/discussions/81
  *
  * I decided not to use it because we can't use SharedWorker in Chrome Android,
- * and I don't want to use ServiceWorker because it's slower and harder to
- * grasp.
+ * and I don't want to use ServiceWorker because it's slower and tricky.
  *
  * This implementation doesn't need SharedWorker or ServiceWorker and does not
  * use dedicated broadcast channels to keep code as simple as possible. Browsers
@@ -42,20 +43,24 @@ interface SqliteChannel {
   onMessage: (message: SqliteChannelMessage) => void;
 }
 
-type SqliteChannelMessage =
-  | SqliteChannelMessageExec
-  | SqliteChannelMessageResult;
+type SqliteChannelMessage = MessageExec | MessageExecSuccess | MessageExecError;
 
-type SqliteChannelMessageExec = {
-  readonly _tag: "exec";
+type MessageExec = {
+  readonly _tag: "Exec";
   readonly id: NanoId;
   readonly query: SqliteQuery;
 };
 
-type SqliteChannelMessageResult = {
-  readonly _tag: "execResult";
+type MessageExecSuccess = {
+  readonly _tag: "ExecSuccess";
   readonly id: NanoId;
   readonly result: SqliteExecResult;
+};
+
+type MessageExecError = {
+  readonly _tag: "ExecError";
+  readonly id: NanoId;
+  readonly error: UnexpectedError;
 };
 
 const createSqliteChannel = (): SqliteChannel => {
@@ -84,34 +89,37 @@ export const SqliteLive = Layer.effect(
      * We don't know which tab will be elected leader, and messages are
      * dispatched before initialization, so we must store them.
      */
-    let execsBeforeDbInit: ReadonlyArray<SqliteChannelMessageExec> = [];
+    let execsBeforeSqliteInit: ReadonlyArray<MessageExec> = [];
 
-    type ResolvePromise = (result: SqliteExecResult) => void;
-    const resolvePromises = new Map<NanoId, ResolvePromise>();
+    const promiseResolves = new Map<
+      NanoId,
+      (message: MessageExecSuccess | MessageExecError) => void
+    >();
 
-    const maybeResolveExecResult = (
-      result: SqliteChannelMessageResult,
+    const maybeResolvePromise = (
+      message: MessageExecSuccess | MessageExecError,
     ): void => {
-      const resolvePromise = resolvePromises.get(result.id);
-      if (resolvePromise == null) return;
-      resolvePromises.delete(result.id);
-      resolvePromise(result.result);
+      const resolve = promiseResolves.get(message.id);
+      if (resolve == null) return;
+      promiseResolves.delete(message.id);
+      resolve(message);
     };
 
-    /** Handle incoming messages for a tab without initialized DB. */
+    /** Handle incoming messages for a tab without initialized Sqlite. */
     channel.onMessage = (message): void => {
       switch (message._tag) {
-        case "exec": {
-          execsBeforeDbInit = [...execsBeforeDbInit, message];
+        case "Exec": {
+          execsBeforeSqliteInit = [...execsBeforeSqliteInit, message];
           break;
         }
-        case "execResult": {
+        case "ExecError":
+        case "ExecSuccess": {
           /** Remove already handled exec so the other tabs will not process it. */
-          execsBeforeDbInit = ReadonlyArray.filter(
-            execsBeforeDbInit,
+          execsBeforeSqliteInit = ReadonlyArray.filter(
+            execsBeforeSqliteInit,
             (m) => m.id !== message.id,
           );
-          maybeResolveExecResult(message);
+          maybeResolvePromise(message);
           break;
         }
         default:
@@ -119,52 +127,48 @@ export const SqliteLive = Layer.effect(
       }
     };
 
-    const initDb = (): void => {
-      sqlite3InitModule().then((sqlite3) =>
-        sqlite3
-          .installOpfsSAHPoolVfs({
-            // TODO: Use name to allow Evolu apps co-exist in the same HTTP origin.
-          })
-          .then((poolUtil) => {
-            const sqlite = new poolUtil.OpfsSAHPoolDb("/evolu1");
+    const initSqlite = (poolUtil: SAHPoolUtil): void => {
+      const sqlite = new poolUtil.OpfsSAHPoolDb("/evolu1");
 
-            const exec = (sqliteQuery: SqliteQuery, id: NanoId): void => {
-              // console.log(sqliteQuery);
-              // TODO: Try
-              const rows = sqlite.exec(sqliteQuery.sql, {
-                returnValue: "resultRows",
-                rowMode: "object",
-                bind: valuesToSqliteValues(sqliteQuery.parameters),
-              }) as SqliteRow[];
-              maybeParseJson(rows);
-              const result = { rows, changes: sqlite.changes() };
-              // For the race conditions testing
-              // setTimeout(() => {
-              channel.postMessage({ _tag: "execResult", id, result });
-              // }, 100);
-            };
+      const exec = (sqliteQuery: SqliteQuery, id: NanoId): void => {
+        try {
+          const rows = sqlite.exec(sqliteQuery.sql, {
+            returnValue: "resultRows",
+            rowMode: "object",
+            bind: valuesToSqliteValues(sqliteQuery.parameters),
+          }) as SqliteRow[];
+          maybeParseJson(rows);
+          const result = { rows, changes: sqlite.changes() };
+          channel.postMessage({ _tag: "ExecSuccess", id, result });
+        } catch (error) {
+          channel.postMessage({
+            _tag: "ExecError",
+            id,
+            error: makeUnexpectedError(error).pipe(Effect.runSync),
+          });
+        }
+      };
 
-            channel.onMessage = (message): void => {
-              switch (message._tag) {
-                /** A tab was elected so it can start processing. */
-                case "exec":
-                  exec(message.query, message.id);
-                  break;
-                case "execResult":
-                  maybeResolveExecResult(message);
-                  break;
-                default:
-                  Function.absurd(message);
-              }
-            };
+      channel.onMessage = (message): void => {
+        switch (message._tag) {
+          /** A tab was elected so it can start processing. */
+          case "Exec":
+            exec(message.query, message.id);
+            break;
+          case "ExecSuccess":
+          case "ExecError":
+            maybeResolvePromise(message);
+            break;
+          default:
+            Function.absurd(message);
+        }
+      };
 
-            /** Handle execs arrived before Db was initialized. */
-            execsBeforeDbInit.forEach((message) => {
-              exec(message.query, message.id);
-            });
-            execsBeforeDbInit = [];
-          }),
-      );
+      /** Handle execs arrived before Sqlite was initialized. */
+      execsBeforeSqliteInit.forEach((message) => {
+        exec(message.query, message.id);
+      });
+      execsBeforeSqliteInit = [];
     };
 
     navigator.locks.request(
@@ -175,19 +179,38 @@ export const SqliteLive = Layer.effect(
          * never resolved or rejected. The next SQLite instance is created when
          * the previous lock is released (a tab is reloaded or closed).
          */
-        new Promise(initDb),
+        new Promise((): void => {
+          sqlite3InitModule().then((sqlite3) =>
+            sqlite3
+              // TODO: Use name to allow Evolu apps co-exist in the same HTTP origin.
+              .installOpfsSAHPoolVfs({})
+              .then(initSqlite),
+          );
+        }),
     );
 
     return Sqlite.of({
       exec: (arg) =>
         Effect.gen(function* (_) {
           const id = yield* _(nanoIdGenerator.nanoid);
-          const promise = new Promise<SqliteExecResult>((resolve) => {
-            resolvePromises.set(id, resolve);
-          });
           const query = ensureSqliteQuery(arg);
-          channel.postMessage({ _tag: "exec", id, query });
-          return yield* _(Effect.promise(() => promise));
+
+          const promise = new Promise<MessageExecSuccess | MessageExecError>(
+            (resolve) => {
+              promiseResolves.set(id, resolve);
+            },
+          );
+
+          channel.postMessage({ _tag: "Exec", id, query });
+
+          return yield* _(
+            Effect.promise(() => promise),
+            Effect.map((message) => {
+              if (message._tag === "ExecSuccess") return message.result;
+              // This throw will be catched as UnexpectedError.
+              throw new Error(message.error.error.message);
+            }),
+          );
         }),
     });
   }),
