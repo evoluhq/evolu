@@ -10,6 +10,7 @@ import * as ReadonlyRecord from "effect/ReadonlyRecord";
 import { Config, ConfigLive } from "./Config.js";
 import {
   MerkleTree,
+  Millis,
   Time,
   TimeLive,
   Timestamp,
@@ -43,7 +44,7 @@ import {
 } from "./Db.js";
 import { QueryPatches, makePatches } from "./Diff.js";
 import { EvoluError, makeUnexpectedError } from "./ErrorStore.js";
-import { Id, SqliteDate, cast } from "./Model.js";
+import { Id, cast } from "./Model.js";
 import { OnCompleteId } from "./OnCompletes.js";
 import { Owner, OwnerId } from "./Owner.js";
 import { DbWorkerLock } from "./Platform.js";
@@ -154,7 +155,6 @@ export interface Mutation {
     Value | Date | boolean | undefined
   >;
   readonly isInsert: boolean;
-  readonly now: SqliteDate;
   readonly onCompleteId: OnCompleteId | null;
 }
 
@@ -231,9 +231,10 @@ export const mutationsToNewMessages = (
 ): ReadonlyArray<NewMessage> =>
   pipe(
     mutations,
-    ReadonlyArray.map(({ id, isInsert, now, table, values }) =>
+    ReadonlyArray.map(({ id, isInsert, table, values }) =>
       pipe(
         Object.entries(values),
+        // Filter values.
         ReadonlyArray.filterMap(([key, value]) =>
           // The value can be undefined if exactOptionalPropertyTypes isn't true.
           // Don't insert nulls because null is the default value.
@@ -241,6 +242,7 @@ export const mutationsToNewMessages = (
             ? Option.none()
             : Option.some([key, value] as const),
         ),
+        // Cast values.
         ReadonlyArray.map(
           ([key, value]) =>
             [
@@ -252,7 +254,6 @@ export const mutationsToNewMessages = (
                   : value,
             ] as const,
         ),
-        ReadonlyArray.append([isInsert ? "createdAt" : "updatedAt", now]),
         ReadonlyArray.map(
           ([key, value]): NewMessage => ({
             table,
@@ -293,13 +294,21 @@ const ensureSchemaByNewMessages = (
 export const upsertValueIntoTableRowColumn = (
   message: NewMessage,
   messages: ReadonlyArray<NewMessage>,
+  millis: Millis,
 ): Effect.Effect<void, never, Sqlite> =>
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
-
+    const createdAtOrUpdatedAt = cast(new Date(millis));
     const insert = sqlite.exec({
       sql: Sql.upsertValueIntoTableRowColumn(message.table, message.column),
-      parameters: [message.row, message.value, message.value],
+      parameters: [
+        message.row,
+        message.value,
+        createdAtOrUpdatedAt,
+        createdAtOrUpdatedAt,
+        message.value,
+        createdAtOrUpdatedAt,
+      ],
     });
 
     yield* _(
@@ -335,7 +344,8 @@ const applyMessages = ({
       );
 
       if (timestamp == null || timestamp < message.timestamp) {
-        yield* _(upsertValueIntoTableRowColumn(message, messages));
+        const { millis } = unsafeTimestampFromString(message.timestamp);
+        yield* _(upsertValueIntoTableRowColumn(message, messages, millis));
       }
 
       if (timestamp == null || timestamp !== message.timestamp) {
@@ -401,11 +411,11 @@ const mutate = ({
       ),
     ).map(mutationsToNewMessages);
 
-    yield* _(
-      Effect.forEach(toUpsert, (message) =>
-        upsertValueIntoTableRowColumn(message, toUpsert),
-      ),
-    );
+    const time = yield* _(Time);
+    for (const messageToUpsert of toUpsert) {
+      const now = yield* _(time.now);
+      yield* _(upsertValueIntoTableRowColumn(messageToUpsert, toUpsert, now));
+    }
 
     const { exec } = yield* _(Sqlite);
     yield* _(

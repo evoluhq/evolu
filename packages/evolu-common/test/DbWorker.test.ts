@@ -1,12 +1,12 @@
 import { Effect } from "effect";
 import { expect, test } from "vitest";
-import { timestampToString } from "../src/Crdt.js";
+import { timestampToString, unsafeTimestampFromString } from "../src/Crdt.js";
 import {
   Mutation,
   mutationsToNewMessages,
   upsertValueIntoTableRowColumn,
 } from "../src/DbWorker.js";
-import { Id, cast } from "../src/Model.js";
+import { Id } from "../src/Model.js";
 import { OnCompleteId } from "../src/OnCompletes.js";
 import { Sqlite } from "../src/Sqlite.js";
 import { Message } from "../src/SyncWorker.js";
@@ -18,7 +18,6 @@ test("mutationsToNewMessages should dedupe", () => {
     id: "id" as Id,
     values: { a: 1, b: true },
     isInsert: true,
-    now: cast(new Date()),
     onCompleteId: "onCompleteId" as OnCompleteId,
   };
   const length = mutationsToNewMessages([mutation, mutation]).length;
@@ -33,8 +32,13 @@ test("upsertValueIntoTableRowColumn should ensure schema", () => {
     value: "d",
     timestamp: timestampToString(makeNode1Timestamp()),
   };
+  const { millis } = unsafeTimestampFromString(message.timestamp);
 
-  const rows = upsertValueIntoTableRowColumn(message, [message, message]).pipe(
+  const rows = upsertValueIntoTableRowColumn(
+    message,
+    [message, message],
+    millis,
+  ).pipe(
     Effect.zipRight(Sqlite),
     Effect.flatMap(({ exec }) => exec("select * from a")),
     Effect.provide(SqliteTest),

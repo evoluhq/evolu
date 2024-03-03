@@ -10,7 +10,6 @@ import * as Number from "effect/Number";
 import * as ReadonlyArray from "effect/ReadonlyArray";
 import * as Kysely from "kysely";
 import { Config, ConfigLive } from "./Config.js";
-import { Time, TimeLive } from "./Crdt.js";
 import { Mnemonic, NanoIdGenerator, NanoIdGeneratorLive } from "./Crypto.js";
 import {
   DatabaseSchema,
@@ -29,7 +28,7 @@ import {
 import { DbWorker, DbWorkerOutputOnQuery, Mutation } from "./DbWorker.js";
 import { applyPatches } from "./Diff.js";
 import { EvoluError, makeErrorStore } from "./ErrorStore.js";
-import { SqliteBoolean, SqliteDate, cast } from "./Model.js";
+import { SqliteBoolean, SqliteDate } from "./Model.js";
 import { OnCompletes, OnCompletesLive } from "./OnCompletes.js";
 import { Owner } from "./Owner.js";
 import { AppState, FlushSync, PlatformName } from "./Platform.js";
@@ -323,13 +322,15 @@ type QueryCallback<S extends DatabaseSchema, R extends Row> = (
 ) => Kysely.SelectQueryBuilder<any, any, R>;
 
 type QuerySchema<S extends DatabaseSchema> = {
-  readonly [Table in keyof S]: NullableExceptId<{
+  readonly [Table in keyof S]: NullableExceptForIdAndAutomaticColumns<{
     readonly [Column in keyof S[Table]]: S[Table][Column];
   }>;
 };
 
-type NullableExceptId<T> = {
-  readonly [K in keyof T]: K extends "id" ? T[K] : T[K] | null;
+type NullableExceptForIdAndAutomaticColumns<T> = {
+  readonly [K in keyof T]: K extends "id" | "createdAt" | "updatedAt"
+    ? T[K]
+    : T[K] | null;
 };
 
 const kysely = new Kysely.Kysely<QuerySchema<DatabaseSchema>>({
@@ -645,7 +646,6 @@ const MutateLive = Layer.effect(
   Effect.gen(function* (_) {
     const { nanoid } = yield* _(NanoIdGenerator);
     const onCompletes = yield* _(OnCompletes);
-    const time = yield* _(Time);
     const subscribedQueries = yield* _(SubscribedQueries);
     const loadingPromises = yield* _(LoadingPromises);
     const dbWorker = yield* _(DbWorker);
@@ -666,7 +666,6 @@ const MutateLive = Layer.effect(
           id,
           values,
           isInsert,
-          now: cast(new Date(Effect.runSync(time.now))),
           onCompleteId,
         },
       ];
@@ -786,7 +785,7 @@ const EvoluCommon = Layer.effect(
 );
 
 export const EvoluCommonLive = EvoluCommon.pipe(
-  Layer.provide(Layer.merge(TimeLive, NanoIdGeneratorLive)),
+  Layer.provide(NanoIdGeneratorLive),
 );
 
 /**
