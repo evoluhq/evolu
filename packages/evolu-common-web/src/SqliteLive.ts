@@ -79,6 +79,12 @@ const createSqliteChannel = (): SqliteChannel => {
   return sqliteChannel;
 };
 
+// https://github.com/sqlite/sqlite-wasm/issues/62
+// @ts-expect-error Missing types.
+globalThis.sqlite3ApiConfig = {
+  warn: Function.constVoid,
+};
+
 export const SqliteLive = Layer.effect(
   Sqlite,
   Effect.gen(function* (_) {
