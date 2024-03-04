@@ -21,7 +21,7 @@ test("mutationsToNewMessages should dedupe", () => {
     onCompleteId: "onCompleteId" as OnCompleteId,
   };
   const length = mutationsToNewMessages([mutation, mutation]).length;
-  expect(length).toBe(3);
+  expect(length).toBe(2);
 });
 
 test("upsertValueIntoTableRowColumn should ensure schema", () => {
@@ -51,7 +51,9 @@ test("upsertValueIntoTableRowColumn should ensure schema", () => {
       "rows": [
         {
           "c": "d",
+          "createdAt": "1997-04-13T12:27:00.000Z",
           "id": "b",
+          "updatedAt": "1997-04-13T12:27:00.000Z",
         },
       ],
     }

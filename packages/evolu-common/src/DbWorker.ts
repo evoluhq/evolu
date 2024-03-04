@@ -278,7 +278,7 @@ const ensureSchemaByNewMessages = (
       if (table == null) {
         tablesMap.set(message.table, {
           name: message.table,
-          columns: [message.column],
+          columns: [message.column, "createdAt", "updatedAt"],
         });
         return;
       }
