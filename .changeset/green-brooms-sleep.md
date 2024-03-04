@@ -2,4 +2,4 @@
 "@evolu/common-react": patch
 ---
 
-Update @types/react peer dependency
+Update peer dependencies
