@@ -28,7 +28,6 @@ export const parseMnemonic: (
   Effect.runSync,
 ).parse;
 
-
 /**
  * Create Evolu Instance.
  *
