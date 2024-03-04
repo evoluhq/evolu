@@ -80,11 +80,12 @@ export const upsertValueIntoTableRowColumn = (
   column: string,
 ): string => `
 INSERT INTO
-  "${table}" ("id", "${column}")
+  "${table}" ("id", "${column}", "createdAt", "updatedAt")
 VALUES
-  (?, ?)
+  (?, ?, ?, ?)
 ON CONFLICT DO UPDATE SET
-  "${column}" = ?
+  "${column}" = ?,
+  "updatedAt" = ?
 `;
 
 export const deleteTableRow = (table: string): string => `

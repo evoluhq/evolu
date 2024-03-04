@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Predicate from "effect/Predicate";
 
 export interface Sqlite {
-  readonly exec: (arg: string | SqliteQuery) => Effect.Effect<ExecResult>;
+  readonly exec: (arg: string | SqliteQuery) => Effect.Effect<SqliteExecResult>;
 }
 
 export const Sqlite = Context.GenericTag<Sqlite>("@services/Sqlite");
@@ -21,7 +21,7 @@ type JsonArray = ReadonlyArray<Json>;
 type JsonPrimitive = string | number | boolean | null;
 type Json = JsonPrimitive | JsonObject | JsonArray;
 
-interface ExecResult {
+export interface SqliteExecResult {
   readonly rows: SqliteRow[];
   readonly changes: number;
 }

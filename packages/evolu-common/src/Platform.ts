@@ -2,11 +2,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-export type PlatformName =
-  | "server"
-  | "web-with-opfs"
-  | "web-without-opfs"
-  | "react-native";
+export type PlatformName = "server" | "web" | "react-native";
 
 export const PlatformName = Context.GenericTag<PlatformName>(
   "@services/PlatformName",
@@ -39,6 +35,11 @@ export interface SyncLock {
 }
 
 export const SyncLock = Context.GenericTag<SyncLock>("@services/SyncLock");
+
+export type DbWorkerLock = (callback: () => Promise<void>) => void;
+export const DbWorkerLock = Context.GenericTag<DbWorkerLock>(
+  "@services/DbWorkerLock",
+);
 
 export type Fetch = (
   url: string,

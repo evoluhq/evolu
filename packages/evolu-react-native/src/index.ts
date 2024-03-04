@@ -1,14 +1,14 @@
 import {
   Bip39,
-  DbWorkerLive,
+  DbWorkerCommonLive,
   EvoluCommonLive,
   FetchLive,
   FlushSyncDefaultLive,
   InvalidMnemonicError,
   Mnemonic,
-  NanoIdLive,
+  NanoIdGeneratorLive,
   SecretBoxLive,
-  SyncWorkerLive,
+  SyncWorkerCommonLive,
   makeCreateEvolu,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
@@ -16,6 +16,7 @@ import * as Layer from "effect/Layer";
 import {
   AppStateLive,
   Bip39Live,
+  DbWorkerLockLive,
   PlatformNameLive,
   SyncLockLive,
 } from "./PlatformLive.js";
@@ -68,12 +69,18 @@ export const createEvolu = makeCreateEvolu(
       Layer.mergeAll(
         FlushSyncDefaultLive,
         AppStateLive,
-        DbWorkerLive,
+        DbWorkerCommonLive,
         PlatformNameLive,
       ),
     ),
     Layer.provide(
-      Layer.mergeAll(Bip39Live, NanoIdLive, SqliteLive, SyncWorkerLive),
+      Layer.mergeAll(
+        Bip39Live,
+        NanoIdGeneratorLive,
+        SqliteLive,
+        SyncWorkerCommonLive,
+        DbWorkerLockLive,
+      ),
     ),
     Layer.provide(Layer.mergeAll(SecretBoxLive, SyncLockLive, FetchLive)),
   ),

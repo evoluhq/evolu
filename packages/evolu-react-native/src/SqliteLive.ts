@@ -1,4 +1,5 @@
 import {
+  Config,
   Sqlite,
   SqliteRow,
   ensureSqliteQuery,
@@ -7,35 +8,41 @@ import {
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as SQLite from "expo-sqlite/next.js";
+import * as ExpoSQLite from "expo-sqlite/next.js";
 
-const db = SQLite.openDatabaseSync("evolu1.db");
-
-const exec: Sqlite["exec"] = (arg) =>
+export const SqliteLive = Layer.effect(
+  Sqlite,
   Effect.gen(function* (_) {
-    const sqliteQuery = ensureSqliteQuery(arg);
-    const query = {
-      sql: sqliteQuery.sql,
-      args: valuesToSqliteValues(sqliteQuery.parameters),
-    };
+    const config = yield* _(Config);
+    const db = ExpoSQLite.openDatabaseSync(`evolu1-${config.name}.db`);
 
-    const isSelectOrPragma =
-      query.sql.trimStart().toLowerCase().startsWith("select") ||
-      query.sql.trimStart().toLowerCase().startsWith("pragma");
-    // Expo can log only strings.
-    // console.log(JSON.stringify(isSelect), sql);
+    return Sqlite.of({
+      exec: (arg) =>
+        Effect.gen(function* (_) {
+          const sqliteQuery = ensureSqliteQuery(arg);
+          const query = {
+            sql: sqliteQuery.sql,
+            args: valuesToSqliteValues(sqliteQuery.parameters),
+          };
 
-    if (isSelectOrPragma) {
-      const rows = (yield* _(
-        Effect.promise(() => db.getAllAsync(query.sql, query.args)),
-      )) as SqliteRow[];
-      maybeParseJson(rows);
-      return { rows, changes: 0 };
-    }
-    const { changes } = yield* _(
-      Effect.promise(() => db.runAsync(query.sql, query.args)),
-    );
-    return { rows: [], changes };
-  });
+          const isSelectOrPragma =
+            query.sql.trimStart().toLowerCase().startsWith("select") ||
+            query.sql.trimStart().toLowerCase().startsWith("pragma");
+          // Expo can log only strings.
+          // console.log(JSON.stringify(isSelect), sql);
 
-export const SqliteLive = Layer.succeed(Sqlite, { exec });
+          if (isSelectOrPragma) {
+            const rows = (yield* _(
+              Effect.promise(() => db.getAllAsync(query.sql, query.args)),
+            )) as SqliteRow[];
+            maybeParseJson(rows);
+            return { rows, changes: 0 };
+          }
+          const { changes } = yield* _(
+            Effect.promise(() => db.runAsync(query.sql, query.args)),
+          );
+          return { rows: [], changes };
+        }),
+    });
+  }),
+);

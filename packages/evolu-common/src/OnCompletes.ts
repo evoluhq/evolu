@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as ReadonlyArray from "effect/ReadonlyArray";
-import { NanoId } from "./Crypto.js";
+import { NanoId, NanoIdGenerator } from "./Crypto.js";
 
 export interface OnCompletes {
   readonly add: (onComplete: OnComplete) => Effect.Effect<OnCompleteId>;
@@ -16,7 +16,7 @@ export interface OnCompletes {
 
 export type OnComplete = () => void;
 
-export type OnCompleteId = string & Brand.Brand<"OnCompleteId">;
+export type OnCompleteId = NanoId & Brand.Brand<"OnCompleteId">;
 
 export const OnCompletes = Context.GenericTag<OnCompletes>(
   "@services/OnCompletes",
@@ -25,12 +25,12 @@ export const OnCompletes = Context.GenericTag<OnCompletes>(
 export const OnCompletesLive = Layer.effect(
   OnCompletes,
   Effect.gen(function* (_) {
-    const nanoid = yield* _(NanoId);
+    const { nanoid } = yield* _(NanoIdGenerator);
     const map = new Map<OnCompleteId, OnComplete>();
 
     return OnCompletes.of({
       add: (onComplete) =>
-        nanoid.nanoid.pipe(
+        nanoid.pipe(
           Effect.map((nanoid) => {
             const id = nanoid as OnCompleteId;
             map.set(id, onComplete);

@@ -1,4 +1,3 @@
-import { hexToBytes } from "@noble/ciphers/utils";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Function from "effect/Function";
@@ -11,6 +10,7 @@ import * as ReadonlyRecord from "effect/ReadonlyRecord";
 import { Config, ConfigLive } from "./Config.js";
 import {
   MerkleTree,
+  Millis,
   Time,
   TimeLive,
   Timestamp,
@@ -28,7 +28,7 @@ import {
   timestampToString,
   unsafeTimestampFromString,
 } from "./Crdt.js";
-import { Bip39, Mnemonic, NanoId } from "./Crypto.js";
+import { Bip39, Mnemonic, NanoIdGenerator } from "./Crypto.js";
 import {
   Queries,
   Query,
@@ -44,9 +44,10 @@ import {
 } from "./Db.js";
 import { QueryPatches, makePatches } from "./Diff.js";
 import { EvoluError, makeUnexpectedError } from "./ErrorStore.js";
-import { Id, SqliteDate, cast } from "./Model.js";
+import { Id, cast } from "./Model.js";
 import { OnCompleteId } from "./OnCompletes.js";
 import { Owner, OwnerId } from "./Owner.js";
+import { DbWorkerLock } from "./Platform.js";
 import * as Sql from "./Sql.js";
 import { Sqlite, Value } from "./Sqlite.js";
 import {
@@ -58,12 +59,9 @@ import {
   SyncWorkerOutputSyncResponse,
   SyncWorkerPostMessage,
 } from "./SyncWorker.js";
+import { Messaging } from "./Types.js";
 
-export interface DbWorker {
-  readonly postMessage: (input: DbWorkerInput) => void;
-  onMessage: (output: DbWorkerOutput) => void;
-}
-
+export interface DbWorker extends Messaging<DbWorkerInput, DbWorkerOutput> {}
 export const DbWorker = Context.GenericTag<DbWorker>("@services/DbWorker");
 
 export type DbWorkerInput =
@@ -157,7 +155,6 @@ export interface Mutation {
     Value | Date | boolean | undefined
   >;
   readonly isInsert: boolean;
-  readonly now: SqliteDate;
   readonly onCompleteId: OnCompleteId | null;
 }
 
@@ -170,8 +167,7 @@ const init = Effect.gen(function* (_) {
       ({ rows: [row] }): Owner => ({
         id: row.id as OwnerId,
         mnemonic: row.mnemonic as Mnemonic,
-        // expo-sqlite 11.3.2 doesn't support Uint8Array
-        encryptionKey: hexToBytes(row.encryptionKey as string),
+        encryptionKey: row.encryptionKey as Uint8Array,
       }),
     ),
     someDefectToNoSuchTableOrColumnError,
@@ -222,9 +218,8 @@ const readTimestampAndMerkleTree = Sqlite.pipe(
   Effect.flatMap((sqlite) =>
     sqlite.exec(Sql.selectOwnerTimestampAndMerkleTree),
   ),
-  Effect.map((result) => result.rows),
   Effect.map(
-    ([{ timestamp, merkleTree }]): TimestampAndMerkleTree => ({
+    ({ rows: [{ timestamp, merkleTree }] }): TimestampAndMerkleTree => ({
       timestamp: unsafeTimestampFromString(timestamp as TimestampString),
       merkleTree: merkleTree as MerkleTree,
     }),
@@ -236,9 +231,10 @@ export const mutationsToNewMessages = (
 ): ReadonlyArray<NewMessage> =>
   pipe(
     mutations,
-    ReadonlyArray.map(({ id, isInsert, now, table, values }) =>
+    ReadonlyArray.map(({ id, isInsert, table, values }) =>
       pipe(
         Object.entries(values),
+        // Filter values.
         ReadonlyArray.filterMap(([key, value]) =>
           // The value can be undefined if exactOptionalPropertyTypes isn't true.
           // Don't insert nulls because null is the default value.
@@ -246,6 +242,7 @@ export const mutationsToNewMessages = (
             ? Option.none()
             : Option.some([key, value] as const),
         ),
+        // Cast values.
         ReadonlyArray.map(
           ([key, value]) =>
             [
@@ -257,7 +254,6 @@ export const mutationsToNewMessages = (
                   : value,
             ] as const,
         ),
-        ReadonlyArray.append([isInsert ? "createdAt" : "updatedAt", now]),
         ReadonlyArray.map(
           ([key, value]): NewMessage => ({
             table,
@@ -282,7 +278,7 @@ const ensureSchemaByNewMessages = (
       if (table == null) {
         tablesMap.set(message.table, {
           name: message.table,
-          columns: [message.column],
+          columns: [message.column, "createdAt", "updatedAt"],
         });
         return;
       }
@@ -298,13 +294,21 @@ const ensureSchemaByNewMessages = (
 export const upsertValueIntoTableRowColumn = (
   message: NewMessage,
   messages: ReadonlyArray<NewMessage>,
+  millis: Millis,
 ): Effect.Effect<void, never, Sqlite> =>
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
-
+    const createdAtOrUpdatedAt = cast(new Date(millis));
     const insert = sqlite.exec({
       sql: Sql.upsertValueIntoTableRowColumn(message.table, message.column),
-      parameters: [message.row, message.value, message.value],
+      parameters: [
+        message.row,
+        message.value,
+        createdAtOrUpdatedAt,
+        createdAtOrUpdatedAt,
+        message.value,
+        createdAtOrUpdatedAt,
+      ],
     });
 
     yield* _(
@@ -340,7 +344,8 @@ const applyMessages = ({
       );
 
       if (timestamp == null || timestamp < message.timestamp) {
-        yield* _(upsertValueIntoTableRowColumn(message, messages));
+        const { millis } = unsafeTimestampFromString(message.timestamp);
+        yield* _(upsertValueIntoTableRowColumn(message, messages, millis));
       }
 
       if (timestamp == null || timestamp !== message.timestamp) {
@@ -406,11 +411,11 @@ const mutate = ({
       ),
     ).map(mutationsToNewMessages);
 
-    yield* _(
-      Effect.forEach(toUpsert, (message) =>
-        upsertValueIntoTableRowColumn(message, toUpsert),
-      ),
-    );
+    const time = yield* _(Time);
+    for (const messageToUpsert of toUpsert) {
+      const now = yield* _(time.now);
+      yield* _(upsertValueIntoTableRowColumn(messageToUpsert, toUpsert, now));
+    }
 
     const { exec } = yield* _(Sqlite);
     yield* _(
@@ -537,8 +542,8 @@ const sync = ({
 > =>
   Effect.gen(function* (_) {
     if (queries.length > 0) yield* _(query({ queries }));
-
-    (yield* _(SyncWorkerPostMessage))({
+    const syncWorkerPostMessage = yield* _(SyncWorkerPostMessage);
+    syncWorkerPostMessage({
       _tag: "sync",
       ...(yield* _(readTimestampAndMerkleTree)),
       syncUrl: (yield* _(Config)).syncUrl,
@@ -550,7 +555,11 @@ const sync = ({
 
 const reset = (
   input: DbWorkerInputReset,
-): Effect.Effect<void, never, Sqlite | Bip39 | NanoId | DbWorkerOnMessage> =>
+): Effect.Effect<
+  void,
+  never,
+  Sqlite | Bip39 | NanoIdGenerator | DbWorkerOnMessage
+> =>
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
 
@@ -575,7 +584,7 @@ const reset = (
     onMessage({ _tag: "onResetOrRestore" });
   });
 
-export const DbWorkerLive = Layer.effect(
+export const DbWorkerCommonLive = Layer.effect(
   DbWorker,
   Effect.gen(function* (_) {
     const syncWorker = yield* _(SyncWorker);
@@ -591,7 +600,7 @@ export const DbWorkerLive = Layer.effect(
           onError(output).pipe(Effect.runSync);
           break;
         case "SyncWorkerOutputSyncResponse":
-          postMessage(output);
+          dbWorker.postMessage(output);
           break;
         default:
           dbWorker.onMessage({ _tag: "onSyncState", state: output });
@@ -601,7 +610,7 @@ export const DbWorkerLive = Layer.effect(
     const runContext = Context.empty().pipe(
       Context.add(Sqlite, yield* _(Sqlite)),
       Context.add(Bip39, yield* _(Bip39)),
-      Context.add(NanoId, yield* _(NanoId)),
+      Context.add(NanoIdGenerator, yield* _(NanoIdGenerator)),
       Context.add(DbWorkerOnMessage, (output) => {
         dbWorker.onMessage(output);
       }),
@@ -611,7 +620,7 @@ export const DbWorkerLive = Layer.effect(
       effect: Effect.Effect<
         void,
         EvoluError,
-        Sqlite | Bip39 | NanoId | DbWorkerOnMessage
+        Sqlite | Bip39 | NanoIdGenerator | DbWorkerOnMessage
       >,
     ): Promise<void> =>
       effect.pipe(
@@ -622,15 +631,18 @@ export const DbWorkerLive = Layer.effect(
         Effect.runPromise,
       );
 
-    type Write = (input: DbWorkerInput) => Promise<void>;
+    type HandleInput = (input: DbWorkerInput) => Promise<void>;
 
-    // Write for reset only in case init fails.
-    const writeForInitFail: Write = (input): Promise<void> => {
+    /** If init fails, we have to allow reset at least. */
+    const handleInputForInitFail: HandleInput = (input): Promise<void> => {
       if (input._tag !== "reset") return Promise.resolve(undefined);
       return reset(input).pipe(run);
     };
 
-    const makeWriteForInitSuccess = (config: Config, owner: Owner): Write => {
+    const makeHandleInputForInitSuccess = (
+      config: Config,
+      owner: Owner,
+    ): HandleInput => {
       let skipAllBecauseOfReset = false;
 
       const layer = Layer.mergeAll(
@@ -663,27 +675,25 @@ export const DbWorkerLive = Layer.effect(
       };
     };
 
-    let write: Write = (input) => {
+    let handleInput: HandleInput = (input) => {
       if (input._tag !== "init")
         return run(makeUnexpectedError(new Error("init must be called first")));
-      write = writeForInitFail;
+      handleInput = handleInputForInitFail;
       return init.pipe(
         Effect.map((owner) => {
           dbWorker.onMessage({ _tag: "onOwner", owner });
-          write = makeWriteForInitSuccess(input.config, owner);
+          handleInput = makeHandleInputForInitSuccess(input.config, owner);
         }),
         run,
       );
     };
 
-    let messageQueue: Promise<void> = Promise.resolve(undefined);
-
-    const postMessage: DbWorker["postMessage"] = (input) => {
-      messageQueue = messageQueue.then(() => write(input));
-    };
+    const dbWorkerLock = yield* _(DbWorkerLock);
 
     const dbWorker: DbWorker = {
-      postMessage,
+      postMessage: (input) => {
+        dbWorkerLock(() => handleInput(input));
+      },
       onMessage: Function.constVoid,
     };
 

@@ -16,6 +16,13 @@ export interface Config {
    * 1000 (5 minutes).
    */
   readonly maxDrift: number;
+
+  /**
+   * Evolu application name. For now, this is only useful for localhost
+   * development, where we want each application to have its own database. The
+   * default value is: "Evolu".
+   */
+  readonly name: string;
 }
 
 export const Config = Context.GenericTag<Config>("@services/Config");
@@ -27,6 +34,7 @@ export const ConfigLive = (config?: Partial<Config>): Layer.Layer<Config> =>
       syncUrl: "https://evolu.world",
       maxDrift: 5 * 60 * 1000,
       reloadUrl: "/",
+      name: "Evolu",
       ...config,
     }),
   );

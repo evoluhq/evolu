@@ -10,7 +10,7 @@ import * as Option from "effect/Option";
 import * as ReadonlyArray from "effect/ReadonlyArray";
 import * as String from "effect/String";
 import { Config } from "./Config.js";
-import { NanoId, NodeId } from "./Crypto.js";
+import { NanoIdGenerator, NodeId } from "./Crypto.js";
 import { murmurhash } from "./Murmurhash.js";
 
 // https://muratbuffalo.blogspot.com/2014/07/hybrid-logical-clocks.html
@@ -86,7 +86,7 @@ export const makeSyncTimestamp = (
   node: syncNodeId,
 });
 
-export const makeInitialTimestamp = NanoId.pipe(
+export const makeInitialTimestamp = NanoIdGenerator.pipe(
   Effect.flatMap(({ nanoidAsNodeId }) => nanoidAsNodeId),
   Effect.map(
     (node): Timestamp => ({

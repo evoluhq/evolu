@@ -1,17 +1,9 @@
-import {
-  DbWorker,
-  DbWorkerLive,
-  NanoIdLive,
-  SyncWorker,
-  SyncWorkerOutput,
-} from "@evolu/common";
+import { SyncWorker, SyncWorkerOutput } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import * as Function from "effect/Function";
 import * as Layer from "effect/Layer";
-import { Bip39Live } from "./PlatformLive.js";
-import { SqliteLive } from "./SqliteLive.js";
 
-const SyncWorkerLive = Layer.effect(
+export const SyncWorkerLive = Layer.effect(
   SyncWorker,
   Effect.sync(() => {
     const worker = new Worker(
@@ -30,12 +22,3 @@ const SyncWorkerLive = Layer.effect(
     return syncWorker;
   }),
 );
-
-// It's a separated because it's imported dynamically and by Web Worker.
-export const dbWorker = Effect.provide(
-  DbWorker,
-  Layer.provide(
-    DbWorkerLive,
-    Layer.mergeAll(SqliteLive, Bip39Live, NanoIdLive, SyncWorkerLive),
-  ),
-).pipe(Effect.runSync);
