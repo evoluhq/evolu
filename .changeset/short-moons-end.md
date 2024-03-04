@@ -7,4 +7,4 @@
 "@evolu/server": patch
 ---
 
-Update peer deps
+Update peer dependencies
