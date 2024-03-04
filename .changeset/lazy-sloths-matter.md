@@ -11,3 +11,5 @@ Sync is 2x faster because Evolu doesn't create sync messages for createdAt and u
 The "opfs-sahpool" also does not require COOP/COEP HTTP headers (and associated restrictions), and it works on all major browsers released since March 2023.
 
 This change was challenging because, by default, the "opfs-sahpool" does not support multiple simultaneous connections and can be instantiated only within a web worker and only within one tab of the same origin. Evolu uses Web Locks and BroadcastChannel to re-enable multiple tabs functionality.
+
+It's a breaking change because we had to remove support for LocalStore. Fortunately, we don't need it anymore, and without LocalStorare, Evolu can support separated SQLite instances.
