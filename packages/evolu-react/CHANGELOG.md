@@ -1,5 +1,15 @@
 # @evolu/react
 
+## 5.0.7
+
+### Patch Changes
+
+- 01d2554: Update peer deps
+- Updated dependencies [01d2554]
+  - @evolu/common@3.1.8
+  - @evolu/common-react@5.0.7
+  - @evolu/common-web@5.0.7
+
 ## 5.0.6
 
 ### Patch Changes

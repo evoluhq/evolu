@@ -38,10 +38,18 @@ import {
   NonEmptyString1000,
   SqliteBoolean,
   cast,
-  createEvolu,
   database,
   id,
   table,
+  // can be also imported from "@evolu/react"
+} from "@evolu/common";
+
+// Without React
+import { createEvolu } from "@evolu/common-web";
+
+// With React
+import {
+  createEvolu,
   useEvolu,
   useQuery,
 } from "@evolu/react";
@@ -80,6 +88,8 @@ const allTodos = evolu.createQuery((db) =>
 // Load the query. Batched and cached by default.
 const allTodosPromise = evolu.loadQuery(allTodos);
 
+// React Helper Functions
+
 // Use the query in React reactively (it's updated on a mutation).
 const { rows } = useQuery(allTodos);
 
@@ -96,8 +106,24 @@ update("todo", { id, isCompleted: true });
 // Delete all data on a device.
 useEvolu().resetOwner();
 
-// Restore all data on a different defice.
+// Restore all data on a different device.
 useEvolu().restoreOwner(mnemonic);
+
+// All other Frameworks
+
+// Create a todo.
+evolu.create("todo", {
+  title: S.decodeSync(NonEmptyString1000)("Learn Effect"),
+});
+
+// Update a todo.
+evolu.update("todo", { id, isCompleted: true });
+
+// Delete all data on a device.
+evolu.resetOwner();
+
+// Restore all data on a different device.
+evolu.restoreOwner(mnemonic);
 ```
 
 ## Community
