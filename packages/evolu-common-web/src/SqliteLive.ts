@@ -1,4 +1,5 @@
 import {
+  Config,
   NanoId,
   NanoIdGenerator,
   Sqlite,
@@ -88,6 +89,7 @@ globalThis.sqlite3ApiConfig = {
 export const SqliteLive = Layer.effect(
   Sqlite,
   Effect.gen(function* (_) {
+    const config = yield* _(Config);
     const nanoIdGenerator = yield* _(NanoIdGenerator);
     const channel = createSqliteChannel();
 
@@ -134,9 +136,10 @@ export const SqliteLive = Layer.effect(
     };
 
     const initSqlite = (poolUtil: SAHPoolUtil): void => {
-      const sqlite = new poolUtil.OpfsSAHPoolDb("/evolu1");
+      const sqlite = new poolUtil.OpfsSAHPoolDb("/evolu1.db");
 
       const exec = (sqliteQuery: SqliteQuery, id: NanoId): void => {
+        // console.log(sqliteQuery.sql);
         try {
           const rows = sqlite.exec(sqliteQuery.sql, {
             returnValue: "resultRows",
@@ -178,7 +181,7 @@ export const SqliteLive = Layer.effect(
     };
 
     navigator.locks.request(
-      "sqliteFilename", // TODO: filename
+      config.name,
       () =>
         /**
          * This promise prevents other tabs from acquiring the lock because it's
@@ -189,7 +192,9 @@ export const SqliteLive = Layer.effect(
           sqlite3InitModule().then((sqlite3) =>
             sqlite3
               // TODO: Use name to allow Evolu apps co-exist in the same HTTP origin.
-              .installOpfsSAHPoolVfs({})
+              .installOpfsSAHPoolVfs({
+                name: config.name,
+              })
               .then(initSqlite),
           );
         }),
@@ -213,7 +218,7 @@ export const SqliteLive = Layer.effect(
             Effect.promise(() => promise),
             Effect.map((message) => {
               if (message._tag === "ExecSuccess") return message.result;
-              // This throw will be catched as UnexpectedError.
+              // This throw will be caught as UnexpectedError.
               throw new Error(message.error.error.message);
             }),
           );
