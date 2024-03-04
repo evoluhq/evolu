@@ -1,5 +1,17 @@
 # @evolu/common
 
+## 4.0.0
+
+### Major Changes
+
+- 2fe4e16: Add Config name property and remove LocalStorage support.
+
+  It's a breaking change only because PlatformName was restricted. There is no change in sync protocol so that all data can be safely restored.
+
+### Patch Changes
+
+- 01d2554: Update peer dependencies
+
 ## 3.1.8
 
 ### Patch Changes

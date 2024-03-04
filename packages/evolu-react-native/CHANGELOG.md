@@ -1,5 +1,20 @@
 # @evolu/react-native
 
+## 7.0.0
+
+### Major Changes
+
+- a5011e2: The new SQLite database filename
+
+  It's configurable by the Config name property now.
+
+### Patch Changes
+
+- 01d2554: Update peer dependencies
+- Updated dependencies [8175b6f]
+- Updated dependencies [01d2554]
+  - @evolu/common-react@6.0.0
+
 ## 6.0.2
 
 ### Patch Changes

@@ -1,5 +1,15 @@
 # @evolu/common-react
 
+## 6.0.0
+
+### Patch Changes
+
+- 8175b6f: Update peer dependencies
+- 01d2554: Update peer dependencies
+- Updated dependencies [2fe4e16]
+- Updated dependencies [01d2554]
+  - @evolu/common@4.0.0
+
 ## 5.0.7
 
 ### Patch Changes
