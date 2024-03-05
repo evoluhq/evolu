@@ -80,3 +80,19 @@ const parseObject = (o: Record<string, unknown>): Record<string, unknown> => {
   for (const key in o) o[key] = parse(o[key]);
   return o;
 };
+
+/** This is good enough detection because SQL strings in Evolu are predictable. */
+const isSqlMutationRegEx = new RegExp(
+  `\\b(${[
+    "alter",
+    "create",
+    "delete",
+    "drop",
+    "insert",
+    "replace",
+    "update",
+  ].join("|")})\\b`,
+);
+
+export const isSqlMutation = (sql: string): boolean =>
+  isSqlMutationRegEx.test(sql);

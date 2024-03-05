@@ -3,6 +3,7 @@ import {
   Sqlite,
   SqliteRow,
   ensureSqliteQuery,
+  isSqlMutation,
   maybeParseJson,
   valuesToSqliteValues,
 } from "@evolu/common";
@@ -25,13 +26,7 @@ export const SqliteLive = Layer.effect(
             args: valuesToSqliteValues(sqliteQuery.parameters),
           };
 
-          const isSelectOrPragma =
-            query.sql.trimStart().toLowerCase().startsWith("select") ||
-            query.sql.trimStart().toLowerCase().startsWith("pragma");
-          // Expo can log only strings.
-          // console.log(JSON.stringify(isSelect), sql);
-
-          if (isSelectOrPragma) {
+          if (!isSqlMutation(query.sql)) {
             const rows = (yield* _(
               Effect.promise(() => db.getAllAsync(query.sql, query.args)),
             )) as SqliteRow[];
