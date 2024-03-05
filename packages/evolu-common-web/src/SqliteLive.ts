@@ -139,7 +139,6 @@ export const SqliteLive = Layer.effect(
       const sqlite = new poolUtil.OpfsSAHPoolDb("/evolu1.db");
 
       const exec = (sqliteQuery: SqliteQuery, id: NanoId): void => {
-        // console.log(sqliteQuery.sql);
         try {
           const rows = sqlite.exec(sqliteQuery.sql, {
             returnValue: "resultRows",
