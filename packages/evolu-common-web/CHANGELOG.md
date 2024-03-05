@@ -1,5 +1,16 @@
 # @evolu/common-web
 
+## 6.0.1
+
+### Patch Changes
+
+- aa06cbe: Allow using Kysely `with` and `withRecursive`
+
+  And throw on forbidden SQL mutations.
+
+- Updated dependencies [aa06cbe]
+  - @evolu/common@4.0.1
+
 ## 6.0.0
 
 ### Major Changes
