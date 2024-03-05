@@ -1,5 +1,15 @@
 # @evolu/react-native
 
+## 7.0.1
+
+### Patch Changes
+
+- aa06cbe: Allow using Kysely `with` and `withRecursive`
+
+  And throw on forbidden SQL mutations.
+
+  - @evolu/common-react@6.0.0
+
 ## 7.0.0
 
 ### Major Changes
