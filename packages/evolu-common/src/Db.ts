@@ -287,10 +287,10 @@ export const transaction = <R, E, A>(
 ): Effect.Effect<A, E, Sqlite | R> =>
   Effect.flatMap(Sqlite, (sqlite) =>
     Effect.acquireUseRelease(
-      sqlite.exec("BEGIN"),
+      sqlite.exec("begin"),
       () => effect,
       (_, exit) =>
-        Exit.isFailure(exit) ? sqlite.exec("ROLLBACK") : sqlite.exec("END"),
+        Exit.isFailure(exit) ? sqlite.exec("rollback") : sqlite.exec("end"),
     ),
   );
 
@@ -357,7 +357,7 @@ const getTables: Effect.Effect<
   Sqlite
 > = Sqlite.pipe(
   Effect.flatMap((sqlite) =>
-    sqlite.exec(`SELECT "name" FROM "sqlite_schema" WHERE "type" = 'table'`),
+    sqlite.exec(`select "name" from "sqlite_schema" where "type" = 'table'`),
   ),
   Effect.map((result) => result.rows),
   Effect.map(ReadonlyArray.map((row) => (row.name as string) + "")),
@@ -372,7 +372,7 @@ const updateTable = ({
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
     const sql = yield* _(
-      sqlite.exec(`PRAGMA table_info (${name})`),
+      sqlite.exec(`pragma table_info (${name})`),
       Effect.map((result) => result.rows),
       Effect.map(ReadonlyArray.map((row) => row.name as string)),
       Effect.map((existingColumns) =>
@@ -383,7 +383,7 @@ const updateTable = ({
       Effect.map(
         ReadonlyArray.map(
           (newColumn) =>
-            `ALTER TABLE "${name}" ADD COLUMN "${newColumn}" blob;`,
+            `alter table "${name}" add column "${newColumn}" blob;`,
         ),
       ),
       Effect.map(ReadonlyArray.join("")),
@@ -397,7 +397,7 @@ const createTable = ({
 }: Table): Effect.Effect<void, never, Sqlite> =>
   Effect.flatMap(Sqlite, (sqlite) =>
     sqlite.exec(`
-      CREATE TABLE ${name} (
+      create table ${name} (
         "id" text primary key,
         ${columns
           .filter((c) => c !== "id")
