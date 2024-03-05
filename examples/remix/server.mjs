@@ -21,14 +21,6 @@ const app = express();
 // for evolu sync instead of the default https://evolu.world/
 // const app = await Effect.runPromise(createExpressApp);
 
-app.use((_, res, next) => {
-  res.set({
-    "Cross-Origin-Opener-Policy": "same-origin",
-    "Cross-Origin-Embedder-Policy": "require-corp",
-  });
-  next();
-});
-
 // handle asset requests
 if (vite) {
   app.use(vite.middlewares);

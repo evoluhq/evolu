@@ -23,19 +23,6 @@ const createWindow = (): void => {
     },
   });
 
-  // // Modify COOP and COEP headers
-  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    const responseHeaders = Object.assign({}, details.responseHeaders);
-
-    // Set COOP header
-    responseHeaders["Cross-Origin-Opener-Policy"] = "same-origin";
-
-    // Set COEP header
-    responseHeaders["Cross-Origin-Embedder-Policy"] = "require-corp";
-
-    callback({ responseHeaders });
-  });
-
   // and load the index.html of the app.
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 

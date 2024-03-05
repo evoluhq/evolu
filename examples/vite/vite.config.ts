@@ -21,24 +21,5 @@ export default defineConfig({
   worker: {
     format: "es",
   },
-  preview: {
-    headers: {
-      "Cross-Origin-Opener-Policy": "same-origin",
-      "Cross-Origin-Embedder-Policy": "require-corp",
-    },
-  },
-  plugins: [
-    react(),
-    {
-      configureServer(server) {
-        server.middlewares.use((_req, res, next) => {
-          // https://sqlite.org/wasm/doc/trunk/persistence.md#coop-coep
-          res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
-          res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
-          next();
-        });
-      },
-      name: "configure-server",
-    },
-  ],
+  plugins: [react()],
 });
