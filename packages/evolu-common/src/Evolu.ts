@@ -32,7 +32,7 @@ import { SqliteBoolean, SqliteDate } from "./Model.js";
 import { OnCompletes, OnCompletesLive } from "./OnCompletes.js";
 import { Owner } from "./Owner.js";
 import { AppState, FlushSync, PlatformName } from "./Platform.js";
-import { SqliteQuery } from "./Sqlite.js";
+import { SqliteQuery, isSqlMutation } from "./Sqlite.js";
 import { Store, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
 
@@ -318,7 +318,10 @@ type CreateQuery<S extends DatabaseSchema> = <R extends Row>(
 ) => Query<R>;
 
 type QueryCallback<S extends DatabaseSchema, R extends Row> = (
-  db: Pick<Kysely.Kysely<QuerySchema<S>>, "selectFrom" | "fn">,
+  db: Pick<
+    Kysely.Kysely<QuerySchema<S>>,
+    "selectFrom" | "fn" | "with" | "withRecursive"
+  >,
 ) => Kysely.SelectQueryBuilder<any, any, R>;
 
 type QuerySchema<S extends DatabaseSchema> = {
@@ -350,10 +353,14 @@ export const makeCreateQuery =
   <R extends Row>(queryCallback: QueryCallback<S, R>) =>
     pipe(
       queryCallback(kysely as Kysely.Kysely<QuerySchema<S>>).compile(),
-      ({ sql, parameters }): SqliteQuery => ({
-        sql,
-        parameters: parameters as SqliteQuery["parameters"],
-      }),
+      ({ sql, parameters }): SqliteQuery => {
+        if (isSqlMutation(sql))
+          throw new Error(
+            "SQL mutation (INSERT, UPDATE, DELETE, etc.) isn't allowed in the Evolu `createQuery` function. Kysely suggests it because there is no read-only Kysely yet, and removing such an API is not possible. For mutations, use Evolu mutation API.",
+          );
+
+        return { sql, parameters: parameters as SqliteQuery["parameters"] };
+      },
       (query) => serializeQuery<R>(query),
     );
 
