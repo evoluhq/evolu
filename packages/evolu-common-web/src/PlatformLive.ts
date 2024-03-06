@@ -1,8 +1,8 @@
-import { DbWorkerLock } from "@evolu/common";
 import {
   AppState,
   Bip39,
   Config,
+  DbWorkerLock,
   InvalidMnemonicError,
   Mnemonic,
   PlatformName,
@@ -12,6 +12,7 @@ import {
 import * as Effect from "effect/Effect";
 import * as Function from "effect/Function";
 import * as Layer from "effect/Layer";
+import { multitenantLockName } from "./multitenantLockName.js";
 
 export const PlatformNameLive = Layer.succeed(
   PlatformName,
@@ -21,6 +22,7 @@ export const PlatformNameLive = Layer.succeed(
 export const SyncLockLive = Layer.effect(
   SyncLock,
   Effect.sync(() => {
+    // No multitenantLockName because this will be redesigned.
     const lockName = "evolu:sync";
     let release: null | (() => void) = null;
 
@@ -53,9 +55,15 @@ export const SyncLockLive = Layer.effect(
   }),
 );
 
-export const DbWorkerLockLive = Layer.succeed(DbWorkerLock, (callback) => {
-  navigator.locks.request("evolu:DbWorker", callback);
-});
+export const DbWorkerLockLive = Layer.effect(
+  DbWorkerLock,
+  Effect.gen(function* (_) {
+    const lockName = yield* _(multitenantLockName("DbWorker"));
+    return DbWorkerLock.of((callback) => {
+      navigator.locks.request(lockName, callback);
+    });
+  }),
+);
 
 export const AppStateLive = Layer.effect(
   AppState,
