@@ -53,8 +53,22 @@ export const SyncLockLive = Layer.effect(
   }),
 );
 
+interface LockManager {
+  request: <T>(name: string, callback: () => Promise<T>) => void;
+}
+
+let lockPromise = Promise.resolve();
+export const fakeLocksForBuggySafari: LockManager = {
+  request: (name, callback) => {
+    lockPromise = lockPromise.then(() => callback().then(Function.constVoid));
+  },
+};
+
 export const DbWorkerLockLive = Layer.succeed(DbWorkerLock, (callback) => {
-  navigator.locks.request("evolu:DbWorker", callback);
+  (navigator.locks || fakeLocksForBuggySafari).request(
+    "evolu:DbWorker",
+    callback,
+  );
 });
 
 export const AppStateLive = Layer.effect(

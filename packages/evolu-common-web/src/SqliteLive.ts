@@ -17,6 +17,7 @@ import * as Effect from "effect/Effect";
 import * as Function from "effect/Function";
 import * as Layer from "effect/Layer";
 import * as ReadonlyArray from "effect/ReadonlyArray";
+import { fakeLocksForBuggySafari } from "./PlatformLive.js";
 
 /**
  * "opfs-sahpool" does not support multiple simultaneous connections, and it can
@@ -179,25 +180,29 @@ export const SqliteLive = Layer.effect(
       execsBeforeSqliteInit = [];
     };
 
-    navigator.locks.request(
-      config.name,
-      () =>
-        /**
-         * This promise prevents other tabs from acquiring the lock because it's
-         * never resolved or rejected. The next SQLite instance is created when
-         * the previous lock is released (a tab is reloaded or closed).
-         */
-        new Promise((): void => {
-          sqlite3InitModule().then((sqlite3) =>
-            sqlite3
-              // TODO: Use name to allow Evolu apps co-exist in the same HTTP origin.
-              .installOpfsSAHPoolVfs({
-                name: config.name,
-              })
-              .then(initSqlite),
-          );
-        }),
-    );
+    const locks = navigator.locks || fakeLocksForBuggySafari;
+
+    if (locks)
+      locks.request(
+        config.name,
+        () =>
+          /**
+           * This promise prevents other tabs from acquiring the lock because
+           * it's never resolved or rejected. The next SQLite instance is
+           * created when the previous lock is released (a tab is reloaded or
+           * closed).
+           */
+          new Promise((): void => {
+            sqlite3InitModule().then((sqlite3) =>
+              sqlite3
+                // TODO: Use name to allow Evolu apps co-exist in the same HTTP origin.
+                .installOpfsSAHPoolVfs({
+                  name: config.name,
+                })
+                .then(initSqlite),
+            );
+          }),
+      );
 
     return Sqlite.of({
       exec: (arg) =>
