@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { useRouter } from "next/router";
-import { plaster } from "./styles/plaster";
+// import { plaster } from "./styles/plaster";
 
 // The favicon was generated using the following font:
 // - Font Title: Plaster
@@ -10,7 +10,16 @@ import { plaster } from "./styles/plaster";
 
 // eslint-disable-next-line import/no-anonymous-default-export
 export default {
-  logo: <span className={clsx(plaster.className, "text-2xl")}>Evolu</span>,
+  logo: (
+    <span
+      className={clsx(
+        // plaster.className,
+        "text-2xl",
+      )}
+    >
+      Evolu
+    </span>
+  ),
   project: {
     link: "https://github.com/evoluhq/evolu",
   },
