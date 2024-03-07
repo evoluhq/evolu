@@ -1,5 +1,21 @@
 # @evolu/common-web
 
+## 6.0.2
+
+### Patch Changes
+
+- cef609b: Add multitenantLockName
+
+  In the future, it will be possible to run multiple Evolu instances within the same origin.
+
+- 17c78d9: Improve reset/restore privacy
+
+  Using location.replace() will not save the current page in session History,
+  meaning the user will not be able to use the back button to navigate to
+  it.
+
+  It also fixes a bug in Safari, probably related to leaking SQLite WASM.
+
 ## 6.0.1
 
 ### Patch Changes
