@@ -78,7 +78,14 @@ export const AppStateLive = Layer.effect(
     const localStorageKey = "evolu:reloadAllTabs";
 
     const reloadLocation = (): void => {
-      location.assign(reloadUrl);
+      /**
+       * Using replace() will not save the current page in session History,
+       * meaning the user will not be able to use the back button to navigate to
+       * it.
+       *
+       * It also fixes a bug in Safari, probably related to leaking SQLite WASM.
+       */
+      location.replace(reloadUrl);
     };
 
     window.addEventListener("storage", (e) => {
