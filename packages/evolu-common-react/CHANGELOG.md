@@ -1,5 +1,11 @@
 # @evolu/common-react
 
+## 6.0.1
+
+### Patch Changes
+
+- 919c38f: Remove types from peer dependencies
+
 ## 6.0.0
 
 ### Patch Changes
