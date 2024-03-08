@@ -40,7 +40,7 @@
     "@evolu/common-react": "workspace:*",
     "@evolu/common-web": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
-    "@types/react-dom": "^18.2.20",
+    "@types/react-dom": "^18.2.21",
     "eslint": "^8.57.0",
     "eslint-config-evolu": "workspace:*",
     "react-dom": "^18.2.0",
