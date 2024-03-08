@@ -9,7 +9,7 @@ import {
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as ExpoSQLite from "expo-sqlite/next.js";
+import * as ExpoSQLite from "expo-sqlite/next";
 
 export const SqliteLive = Layer.effect(
   Sqlite,
