@@ -1,5 +1,24 @@
 # @evolu/common-react
 
+## 6.0.2
+
+### Patch Changes
+
+- 1f9168f: Fix SSR
+
+  Evolu server-side rendering was surprisingly problematic because of the React Suspense error: "This Suspense boundary received an update before it finished hydrating."
+
+  If you are curious why a local-first library needs to render something on the server where there is no data, the answer is that if we can render empty rows, we should.
+
+  But because of the React Suspense error, Evolu apps had to be wrapped by the ClientOnly component, which wasn't ideal. Check article:
+
+  https://tkdodo.eu/blog/avoiding-hydration-mismatches-with-use-sync-external-store
+
+  Internally, PlatformName has been replaced with useWasSSR React Hook.
+
+- Updated dependencies [1f9168f]
+  - @evolu/common@4.0.2
+
 ## 6.0.1
 
 ### Patch Changes

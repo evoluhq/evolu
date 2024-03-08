@@ -1,5 +1,16 @@
 # @evolu/react-native
 
+## 7.1.0
+
+### Minor Changes
+
+- d3f1ac4: Update peer dependencies: expo, expo-sqlite
+
+### Patch Changes
+
+- Updated dependencies [1f9168f]
+  - @evolu/common-react@6.0.2
+
 ## 7.0.1
 
 ### Patch Changes
