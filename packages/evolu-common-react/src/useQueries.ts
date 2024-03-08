@@ -8,6 +8,7 @@ import { useRef } from "react";
 import { use } from "./use.js";
 import { useEvolu } from "./useEvolu.js";
 import { useQuerySubscription } from "./useQuerySubscription.js";
+import { useWasSSR } from "./useWasSSR.js";
 
 /** The same as {@link useQuery}, but for many queries. */
 export const useQueries = <
@@ -30,7 +31,8 @@ export const useQueries = <
   const evolu = useEvolu();
   const once = useRef(options).current.once;
   const allQueries = once ? queries.concat(once) : queries;
-  if (evolu.platformName !== "server") {
+  const wasSSR = useWasSSR();
+  if (!wasSSR) {
     if (options.promises) options.promises.map(use);
     else evolu.loadQueries(allQueries).map(use);
   }

@@ -4,7 +4,6 @@ import {
   DbWorkerLock,
   InvalidMnemonicError,
   Mnemonic,
-  PlatformName,
   SyncLock,
 } from "@evolu/common";
 import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
@@ -18,8 +17,6 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { reloadAsync } from "expo-updates";
 import { DevSettings, AppState as ReactNativeAppState } from "react-native";
-
-export const PlatformNameLive = Layer.succeed(PlatformName, "react-native");
 
 export const SyncLockLive = Layer.effect(
   SyncLock,

@@ -9,11 +9,10 @@ import {
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { DbWorkerLive } from "./DbWorkerLive.js";
-import { AppStateLive, Bip39Live, PlatformNameLive } from "./PlatformLive.js";
+import { AppStateLive, Bip39Live } from "./PlatformLive.js";
 
 export const EvoluWebLive = EvoluCommonLive.pipe(
   Layer.provide(Layer.merge(DbWorkerLive, AppStateLive)),
-  Layer.provide(PlatformNameLive),
 );
 
 /**

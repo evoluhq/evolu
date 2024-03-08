@@ -2,12 +2,6 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-export type PlatformName = "server" | "web" | "react-native";
-
-export const PlatformName = Context.GenericTag<PlatformName>(
-  "@services/PlatformName",
-);
-
 /**
  * FlushSync lets you force React to flush any updates inside the provided
  * callback synchronously. This ensures that the DOM is updated immediately.

@@ -5,7 +5,6 @@ import {
   DbWorkerLock,
   InvalidMnemonicError,
   Mnemonic,
-  PlatformName,
   SyncLock,
   canUseDom,
 } from "@evolu/common";
@@ -13,11 +12,6 @@ import * as Effect from "effect/Effect";
 import * as Function from "effect/Function";
 import * as Layer from "effect/Layer";
 import { multitenantLockName } from "./multitenantLockName.js";
-
-export const PlatformNameLive = Layer.succeed(
-  PlatformName,
-  canUseDom ? "web" : "server",
-);
 
 export const SyncLockLive = Layer.effect(
   SyncLock,
@@ -68,7 +62,7 @@ export const DbWorkerLockLive = Layer.effect(
 export const AppStateLive = Layer.effect(
   AppState,
   Effect.gen(function* (_) {
-    if ((yield* _(PlatformName)) === "server")
+    if (!canUseDom)
       return AppState.of({
         init: Function.constVoid,
         reset: Effect.succeed(undefined),
