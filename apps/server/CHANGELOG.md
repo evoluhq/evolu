@@ -1,5 +1,12 @@
 # server
 
+## 1.0.43
+
+### Patch Changes
+
+- Updated dependencies [6b04ce6]
+  - @evolu/server@5.0.3
+
 ## 1.0.42
 
 ### Patch Changes
