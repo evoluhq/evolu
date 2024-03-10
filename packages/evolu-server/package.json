@@ -33,7 +33,7 @@
     "cors": "^2.8.5",
     "effect": "2.4.1",
     "express": "^4.18.3",
-    "kysely": "^0.27.0"
+    "kysely": "^0.27.3"
   },
   "devDependencies": {
     "@evolu/tsconfig": "workspace:*",

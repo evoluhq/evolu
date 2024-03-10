@@ -259,8 +259,8 @@ importers:
         specifier: ^1.2.2
         version: 1.2.2
       kysely:
-        specifier: ^0.27.0
-        version: 0.27.2
+        specifier: ^0.27.3
+        version: 0.27.3
       nanoid:
         specifier: ^5.0.6
         version: 5.0.6
@@ -444,8 +444,8 @@ importers:
         specifier: ^4.18.3
         version: 4.18.3
       kysely:
-        specifier: ^0.27.0
-        version: 0.27.2
+        specifier: ^0.27.3
+        version: 0.27.3
     devDependencies:
       '@evolu/tsconfig':
         specifier: workspace:*
@@ -8930,8 +8930,8 @@ packages:
     resolution: {integrity: sha512-o+NO+8WrRiQEE4/7nwRJhN1HWpVmJm511pBHUxPLtp0BUISzlBplORYSmTclCnJvQq2tKu/sgl3xVpkc7ZWuQQ==}
     engines: {node: '>=6'}
 
-  /kysely@0.27.2:
-    resolution: {integrity: sha512-DmRvEfiR/NLpgsTbSxma2ldekhsdcd65+MNiKXyd/qj7w7X5e3cLkXxcj+MypsRDjPhHQ/CD5u3Eq1sBYzX0bw==}
+  /kysely@0.27.3:
+    resolution: {integrity: sha512-lG03Ru+XyOJFsjH3OMY6R/9U38IjDPfnOfDgO3ynhbDr+Dz8fak+X6L62vqu3iybQnj+lG84OttBuU9KY3L9kA==}
     engines: {node: '>=14.0.0'}
     dev: false
 

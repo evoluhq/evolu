@@ -59,7 +59,7 @@ export const FetchLive = Layer.succeed(
           method: "POST",
           body,
           headers: {
-            "Content-Type": "application/octet-stream",
+            "Content-Type": "application/x-protobuf",
             "Content-Length": body.length.toString(),
           },
         }),
