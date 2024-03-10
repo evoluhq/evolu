@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 4.0.3
+
+### Patch Changes
+
+- d5038ba: Update Kysely for TypeScript 5.4
+
 ## 4.0.2
 
 ### Patch Changes
