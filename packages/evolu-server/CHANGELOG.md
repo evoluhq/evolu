@@ -1,5 +1,13 @@
 # @evolu/server
 
+## 5.0.4
+
+### Patch Changes
+
+- 9f92715: Effect 2.4.3, Schema 0.63.4
+- Updated dependencies [9f92715]
+  - @evolu/common@4.0.4
+
 ## 5.0.3
 
 ### Patch Changes
