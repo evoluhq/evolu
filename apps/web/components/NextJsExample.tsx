@@ -32,17 +32,17 @@ import {
 } from "react";
 
 const TodoId = id("Todo");
-type TodoId = S.Schema.To<typeof TodoId>;
+type TodoId = S.Schema.Type<typeof TodoId>;
 
 const TodoCategoryId = id("TodoCategory");
-type TodoCategoryId = S.Schema.To<typeof TodoCategoryId>;
+type TodoCategoryId = S.Schema.Type<typeof TodoCategoryId>;
 
 const NonEmptyString50 = String.pipe(
   S.minLength(1),
   S.maxLength(50),
   S.brand("NonEmptyString50"),
 );
-type NonEmptyString50 = S.Schema.To<typeof NonEmptyString50>;
+type NonEmptyString50 = S.Schema.Type<typeof NonEmptyString50>;
 
 const TodoTable = table({
   id: TodoId,
@@ -50,23 +50,23 @@ const TodoTable = table({
   isCompleted: S.nullable(SqliteBoolean),
   categoryId: S.nullable(TodoCategoryId),
 });
-type TodoTable = S.Schema.To<typeof TodoTable>;
+type TodoTable = S.Schema.Type<typeof TodoTable>;
 
 const SomeJson = S.struct({ foo: S.string, bar: S.boolean });
-type SomeJson = S.Schema.To<typeof SomeJson>;
+type SomeJson = S.Schema.Type<typeof SomeJson>;
 
 const TodoCategoryTable = table({
   id: TodoCategoryId,
   name: NonEmptyString50,
   json: S.nullable(SomeJson),
 });
-type TodoCategoryTable = S.Schema.To<typeof TodoCategoryTable>;
+type TodoCategoryTable = S.Schema.Type<typeof TodoCategoryTable>;
 
 const Database = database({
   todo: TodoTable,
   todoCategory: TodoCategoryTable,
 });
-type Database = S.Schema.To<typeof Database>;
+type Database = S.Schema.Type<typeof Database>;
 
 const evolu = createEvolu(Database, {
   reloadUrl: "/examples/nextjs",

@@ -69,7 +69,7 @@ Evolu automatically stringifies and parses JSON to improve DX.
 
 ```ts
 const SomeJson = S.struct({ foo: S.string, bar: S.boolean });
-type SomeJson = S.Schema.To<typeof SomeJson>;
+type SomeJson = S.Schema.Type<typeof SomeJson>;
 
 const TodoTable = table({
   id: TodoId,

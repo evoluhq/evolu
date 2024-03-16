@@ -51,7 +51,7 @@ export const NodeId = S.string.pipe(
   S.pattern(/^[\w-]{16}$/),
   S.brand("NodeId"),
 );
-export type NodeId = S.Schema.To<typeof NodeId>;
+export type NodeId = S.Schema.Type<typeof NodeId>;
 
 const nanoidForNodeId = customAlphabet("0123456789abcdef", 16);
 

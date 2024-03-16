@@ -1,13 +1,9 @@
 import * as S from "@effect/schema/Schema";
-import * as Brand from "effect/Brand";
 import { maybeJson } from "./Sqlite.js";
 
-/**
- * Branded Id Schema for any table Id. To create Id Schema for a specific table,
- * use {@link id}.
- */
+/** Branded Id Schema. To create Id Schema for a specific table, use {@link id}. */
 export const Id = S.string.pipe(S.pattern(/^[\w-]{21}$/), S.brand("Id"));
-export type Id = S.Schema.To<typeof Id>;
+export type Id = S.Schema.Type<typeof Id>;
 
 /**
  * A factory function to create {@link Id} Schema for a specific table.
@@ -17,11 +13,11 @@ export type Id = S.Schema.To<typeof Id>;
  *   import { id } from "@evolu/react";
  *
  *   const TodoId = id("Todo");
- *   type TodoId = S.Schema.To<typeof TodoId>;
+ *   type TodoId = S.Schema.Type<typeof TodoId>;
  */
 export const id = <T extends string>(
   table: T,
-): S.BrandSchema<string & Brand.Brand<"Id"> & Brand.Brand<T>, string, never> =>
+): S.brand<S.brand<S.Schema<string, string, never>, "Id">, T> =>
   Id.pipe(S.brand(table));
 
 /**
@@ -33,7 +29,7 @@ export const SqliteDate = S.string.pipe(
   S.filter((s) => !isNaN(Date.parse(s))),
   S.brand("SqliteDate"),
 );
-export type SqliteDate = S.Schema.To<typeof SqliteDate>;
+export type SqliteDate = S.Schema.Type<typeof SqliteDate>;
 
 /**
  * SQLite doesn't support the boolean type, so Evolu uses SqliteBoolean instead.
@@ -45,7 +41,7 @@ export const SqliteBoolean = S.number.pipe(
   S.filter((s) => s === 0 || s === 1),
   S.brand("SqliteBoolean"),
 );
-export type SqliteBoolean = S.Schema.To<typeof SqliteBoolean>;
+export type SqliteBoolean = S.Schema.Type<typeof SqliteBoolean>;
 
 /**
  * A helper for casting types not supported by SQLite. SQLite doesn't support
@@ -96,7 +92,7 @@ export const String = S.string.pipe(
   ),
   S.brand("String"),
 );
-export type String = S.Schema.To<typeof String>;
+export type String = S.Schema.Type<typeof String>;
 
 /**
  * A string with a maximum length of 1000 characters.
@@ -108,7 +104,7 @@ export type String = S.Schema.To<typeof String>;
  *   S.decode(String1000)(value);
  */
 export const String1000 = String.pipe(S.maxLength(1000), S.brand("String1000"));
-export type String1000 = S.Schema.To<typeof String1000>;
+export type String1000 = S.Schema.Type<typeof String1000>;
 
 /**
  * A nonempty string with a maximum length of 1000 characters.
@@ -124,7 +120,7 @@ export const NonEmptyString1000 = String.pipe(
   S.maxLength(1000),
   S.brand("NonEmptyString1000"),
 );
-export type NonEmptyString1000 = S.Schema.To<typeof NonEmptyString1000>;
+export type NonEmptyString1000 = S.Schema.Type<typeof NonEmptyString1000>;
 
 /**
  * A positive integer.
@@ -140,4 +136,4 @@ export const PositiveInt = S.number.pipe(
   S.positive(),
   S.brand("PositiveInt"),
 );
-export type PositiveInt = S.Schema.To<typeof PositiveInt>;
+export type PositiveInt = S.Schema.Type<typeof PositiveInt>;

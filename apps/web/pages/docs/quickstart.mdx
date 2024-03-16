@@ -11,11 +11,12 @@ Let's learn how to use Evolu in a few steps.
 First, we define a database schema: tables, columns, and their types.
 
 <Callout>
-  Evolu uses [Schema](https://github.com/Effect-TS/effect/blob/main/packages/schema) for data modeling.
-  Instead of plain JavaScript types like String or Number, we recommend [branded
-  types](https://www.effect.website/docs/style/brands). With branded types, we
-  can define and enforce domain rules like `NonEmptyString1000` or
-  `PositiveInt`.
+  Evolu uses
+  [Schema](https://github.com/Effect-TS/effect/blob/main/packages/schema) for
+  data modeling. Instead of plain JavaScript types like String or Number, we
+  recommend [branded types](https://www.effect.website/docs/style/brands). With
+  branded types, we can define and enforce domain rules like
+  `NonEmptyString1000` or `PositiveInt`.
 </Callout>
 
 ```ts
@@ -30,19 +31,19 @@ import {
 } from "@evolu/react";
 
 const TodoId = id("Todo");
-type TodoId = S.Schema.To<typeof TodoId>;
+type TodoId = S.Schema.Type<typeof TodoId>;
 
 const TodoTable = table({
   id: TodoId,
   title: NonEmptyString1000,
   isCompleted: SqliteBoolean,
 });
-type TodoTable = S.Schema.To<typeof TodoTable>;
+type TodoTable = S.Schema.Type<typeof TodoTable>;
 
 const Database = database({
   todo: TodoTable,
 });
-type Database = S.Schema.To<typeof Database>;
+type Database = S.Schema.Type<typeof Database>;
 
 const evolu = createEvolu(Database);
 ```

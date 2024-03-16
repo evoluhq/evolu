@@ -56,14 +56,14 @@ type TableSchema = ReadonlyRecord.ReadonlyRecord<string, Value> & {
  *
  * @example
  *   const TodoId = id("Todo");
- *   type TodoId = S.Schema.To<typeof TodoId>;
+ *   type TodoId = S.Schema.Type<typeof TodoId>;
  *
  *   const TodoTable = table({
  *     id: TodoId,
  *     title: NonEmptyString1000,
  *     isCompleted: S.nullable(SqliteBoolean),
  *   });
- *   type TodoTable = S.Schema.To<typeof TodoTable>;
+ *   type TodoTable = S.Schema.Type<typeof TodoTable>;
  */
 export const table = <Fields extends TableFields>(
   fields: Fields,
@@ -73,10 +73,10 @@ export const table = <Fields extends TableFields>(
     ? ValidateFieldsHasId<Fields> extends true
       ? S.Schema<
           Types.Simplify<
-            S.ToStruct<Fields> & S.Schema.To<typeof ReservedColumns>
+            S.Struct.Type<Fields> & S.Schema.Type<typeof ReservedColumns>
           >,
           Types.Simplify<
-            S.FromStruct<Fields> & S.Schema.From<typeof ReservedColumns>
+            S.Struct.Encoded<Fields> & S.Schema.Encoded<typeof ReservedColumns>
           >
         >
       : EvoluTypeError<"table() called without id column.">
@@ -132,7 +132,7 @@ type ValidateFieldsHasId<Fields extends TableFields> = "id" extends keyof Fields
  *     todo: TodoTable,
  *     todoCategory: TodoCategoryTable,
  *   });
- *   type Database = S.Schema.To<typeof Database>;
+ *   type Database = S.Schema.Type<typeof Database>;
  */
 export const database = S.struct;
 
@@ -305,7 +305,7 @@ export const SqliteNoSuchTableOrColumnError = S.struct({
     S.string.pipe(S.includes("has no column")),
   ),
 });
-export type SqliteNoSuchTableOrColumnError = S.Schema.To<
+export type SqliteNoSuchTableOrColumnError = S.Schema.Type<
   typeof SqliteNoSuchTableOrColumnError
 >;
 

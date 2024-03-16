@@ -19,20 +19,20 @@ const FlushSyncLive = Layer.succeed(FlushSync, flushSync);
  *   import { NonEmptyString1000, createEvolu, id } from "@evolu/react";
  *
  *   const TodoId = id("Todo");
- *   type TodoId = S.Schema.To<typeof TodoId>;
+ *   type TodoId = S.Schema.Type<typeof TodoId>;
  *
  *   const TodoTable = table({
  *     id: TodoId,
  *     title: NonEmptyString1000,
  *   });
- *   type TodoTable = S.Schema.To<typeof TodoTable>;
+ *   type TodoTable = S.Schema.Type<typeof TodoTable>;
  *
  *   const Database = database({
  *     // _todo is local-only table
  *     _todo: TodoTable,
  *     todo: TodoTable,
  *   });
- *   type Database = S.Schema.To<typeof Database>;
+ *   type Database = S.Schema.Type<typeof Database>;
  *
  *   const evolu = createEvolu(Database);
  */
