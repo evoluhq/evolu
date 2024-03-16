@@ -1,5 +1,18 @@
 # @evolu/react-native
 
+## 7.1.1
+
+### Patch Changes
+
+- 6e61bb9: Update Effect and Schema
+
+  Rename `Schema.To` to `Schema.Type`.
+
+  All Effect Schema changes are [here](https://github.com/Effect-TS/effect/blob/main/packages/schema/WHATSNEW-0.64.md).
+
+- Updated dependencies [6e61bb9]
+  - @evolu/common-react@6.0.3
+
 ## 7.1.0
 
 ### Minor Changes

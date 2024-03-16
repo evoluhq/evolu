@@ -1,5 +1,19 @@
 # @evolu/common-web
 
+## 6.0.4
+
+### Patch Changes
+
+- 6e61bb9: Update Effect and Schema
+
+  Rename `Schema.To` to `Schema.Type`.
+
+  All Effect Schema changes are [here](https://github.com/Effect-TS/effect/blob/main/packages/schema/WHATSNEW-0.64.md).
+
+- 040513c: Update SQLite to 3.45.2
+- Updated dependencies [6e61bb9]
+  - @evolu/common@4.0.5
+
 ## 6.0.3
 
 ### Patch Changes
