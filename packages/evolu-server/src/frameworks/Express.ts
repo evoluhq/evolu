@@ -32,7 +32,7 @@ export const createExpressApp = Effect.gen(function* (_) {
 
   const app = express();
   app.use(cors());
-  app.use(bodyParser.raw({ limit: "20mb" }));
+  app.use(bodyParser.raw({ limit: "20mb", type: "application/x-protobuf" }));
 
   app.post("/", (req, res) => {
     Effect.runCallback(server.sync(req.body as Uint8Array), {
@@ -56,7 +56,7 @@ export const createExpressApp = Effect.gen(function* (_) {
           }),
         ),
         onSuccess: (buffer) => {
-          res.setHeader("Content-Type", "application/octet-stream");
+          res.setHeader("Content-Type", "application/x-protobuf");
           res.send(buffer);
         },
       }),
