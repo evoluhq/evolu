@@ -48,7 +48,7 @@
     "eslint-config-evolu": "workspace:*",
     "expo": "^50.0.11",
     "expo-sqlite": "~13.3.0",
-    "react-native": "0.73.4",
+    "react-native": "0.73.5",
     "typescript": "^5.4.2",
     "vitest": "^1.4.0"
   },
@@ -56,7 +56,7 @@
     "@evolu/common-react": "^6.0.3",
     "expo": "^50.0.11",
     "expo-sqlite": "~13.3.0",
-    "react-native": "0.73.4"
+    "react-native": "0.73.5"
   },
   "publishConfig": {
     "access": "public"

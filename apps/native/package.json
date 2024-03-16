@@ -26,7 +26,7 @@
     "expo-status-bar": "~1.11.1",
     "fast-text-encoding": "^1.0.6",
     "react": "^18.2.0",
-    "react-native": "0.73.4",
+    "react-native": "0.73.5",
     "react-native-get-random-values": "~1.8.0",
     "react-native-picker-select": "^9.0.0",
     "stream": "^0.0.2"
