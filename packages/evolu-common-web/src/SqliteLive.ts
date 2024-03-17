@@ -139,16 +139,19 @@ export const SqliteLive = Layer.effect(
       const sqlite = new poolUtil.OpfsSAHPoolDb("/evolu1.db");
 
       const exec = (sqliteQuery: SqliteQuery, id: NanoId): void => {
+        // TODO: Add debugSql config option.
+        // console.log(sqliteQuery);
         try {
           const rows = sqlite.exec(sqliteQuery.sql, {
             returnValue: "resultRows",
             rowMode: "object",
-            bind: valuesToSqliteValues(sqliteQuery.parameters),
+            bind: valuesToSqliteValues(sqliteQuery.parameters || []),
           }) as SqliteRow[];
           maybeParseJson(rows);
           const result = { rows, changes: sqlite.changes() };
           channel.postMessage({ _tag: "ExecSuccess", id, result });
         } catch (error) {
+          // console.log(sqliteQuery);
           channel.postMessage({
             _tag: "ExecError",
             id,
