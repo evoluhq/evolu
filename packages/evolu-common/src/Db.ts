@@ -166,13 +166,13 @@ export const serializeQuery = <R extends Row>({
 }: SqliteQuery): Query<R> => {
   const query: SerializedSqliteQuery = {
     sql,
-    parameters: parameters.map((p) => {
-      return Predicate.isUint8Array(p)
+    parameters: (parameters || []).map((p) =>
+      Predicate.isUint8Array(p)
         ? Array.from(p)
         : isJsonObjectOrArray(p)
           ? { json: p }
-          : p;
-    }),
+          : p,
+    ),
   };
   return JSON.stringify(query) as Query<R>;
 };
@@ -287,10 +287,12 @@ export const transaction = <R, E, A>(
 ): Effect.Effect<A, E, Sqlite | R> =>
   Effect.flatMap(Sqlite, (sqlite) =>
     Effect.acquireUseRelease(
-      sqlite.exec("begin"),
+      sqlite.exec({ sql: "begin" }),
       () => effect,
       (_, exit) =>
-        Exit.isFailure(exit) ? sqlite.exec("rollback") : sqlite.exec("end"),
+        Exit.isFailure(exit)
+          ? sqlite.exec({ sql: "rollback" })
+          : sqlite.exec({ sql: "end" }),
     ),
   );
 
@@ -336,7 +338,7 @@ export const lazyInit = (
         sqlite.exec(createMessageTableIndex),
         sqlite.exec(createOwnerTable),
         sqlite.exec({
-          sql: insertOwner,
+          ...insertOwner,
           parameters: [
             owner.id,
             owner.mnemonic,
@@ -357,7 +359,9 @@ const getTables: Effect.Effect<
   Sqlite
 > = Sqlite.pipe(
   Effect.flatMap((sqlite) =>
-    sqlite.exec(`select "name" from "sqlite_schema" where "type" = 'table'`),
+    sqlite.exec({
+      sql: `select "name" from "sqlite_schema" where "type" = 'table'`,
+    }),
   ),
   Effect.map((result) => result.rows),
   Effect.map(ReadonlyArray.map((row) => (row.name as string) + "")),
@@ -372,7 +376,7 @@ const updateTable = ({
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
     const sql = yield* _(
-      sqlite.exec(`pragma table_info (${name})`),
+      sqlite.exec({ sql: `pragma table_info (${name})` }),
       Effect.map((result) => result.rows),
       Effect.map(ReadonlyArray.map((row) => row.name as string)),
       Effect.map((existingColumns) =>
@@ -388,7 +392,7 @@ const updateTable = ({
       ),
       Effect.map(ReadonlyArray.join("")),
     );
-    if (sql) yield* _(sqlite.exec(sql));
+    if (sql) yield* _(sqlite.exec({ sql }));
   });
 
 const createTable = ({
@@ -396,18 +400,20 @@ const createTable = ({
   columns,
 }: Table): Effect.Effect<void, never, Sqlite> =>
   Effect.flatMap(Sqlite, (sqlite) =>
-    sqlite.exec(`
-      create table ${name} (
-        "id" text primary key,
-        ${columns
-          .filter((c) => c !== "id")
-          // "A column with affinity BLOB does not prefer one storage class over another
-          // and no attempt is made to coerce data from one storage class into another."
-          // https://www.sqlite.org/datatype3.html
-          .map((name) => `"${name}" blob`)
-          .join(", ")}
-      );
-    `),
+    sqlite.exec({
+      sql: `
+create table ${name} (
+  "id" text primary key,
+  ${columns
+    .filter((c) => c !== "id")
+    // "A column with affinity BLOB does not prefer one storage class over another
+    // and no attempt is made to coerce data from one storage class into another."
+    // https://www.sqlite.org/datatype3.html
+    .map((name) => `"${name}" blob`)
+    .join(", ")}
+);
+`.trim(),
+    }),
   );
 
 export const ensureSchema = (

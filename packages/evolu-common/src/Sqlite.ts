@@ -3,14 +3,14 @@ import * as Effect from "effect/Effect";
 import * as Predicate from "effect/Predicate";
 
 export interface Sqlite {
-  readonly exec: (arg: string | SqliteQuery) => Effect.Effect<SqliteExecResult>;
+  readonly exec: (query: SqliteQuery) => Effect.Effect<SqliteExecResult>;
 }
 
 export const Sqlite = Context.GenericTag<Sqlite>("@services/Sqlite");
 
 export interface SqliteQuery {
   readonly sql: string;
-  readonly parameters: Value[];
+  readonly parameters?: Value[];
 }
 
 export type Value = SqliteValue | JsonObjectOrArray;
@@ -40,11 +40,6 @@ export const valuesToSqliteValues = (
   values.map((value) =>
     isJsonObjectOrArray(value) ? JSON.stringify(value) : value,
   );
-
-export const ensureSqliteQuery = (arg: string | SqliteQuery): SqliteQuery => {
-  if (typeof arg !== "string") return arg;
-  return { sql: arg, parameters: [] };
-};
 
 export const maybeParseJson = (rows: SqliteRow[]): SqliteRow[] =>
   parseArray(rows);

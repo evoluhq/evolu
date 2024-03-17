@@ -24,15 +24,12 @@ export const SqliteTest = Layer.effect(
   Effect.sync(() => {
     const db = new Database(":memory:");
 
-    const exec: Sqlite["exec"] = (arg) =>
+    const exec: Sqlite["exec"] = (query) =>
       Effect.sync(() => {
-        const isSqlString = typeof arg === "string";
-        const isSelect = (isSqlString ? arg : arg.sql)
-          .toLowerCase()
-          .includes("select");
+        const isSelect = query.sql.toLowerCase().includes("select");
 
-        const prepared = db.prepare(isSqlString ? arg : arg.sql);
-        const parameters = isSqlString ? [] : arg.parameters;
+        const prepared = db.prepare(query.sql);
+        const parameters = query.parameters || [];
 
         const rows = isSelect ? (prepared.all(parameters) as SqliteRow[]) : [];
         const changes = isSelect ? 0 : prepared.run(parameters).changes;

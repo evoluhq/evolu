@@ -300,7 +300,15 @@ export const upsertValueIntoTableRowColumn = (
     const sqlite = yield* _(Sqlite);
     const createdAtOrUpdatedAt = cast(new Date(millis));
     const insert = sqlite.exec({
-      sql: Sql.upsertValueIntoTableRowColumn(message.table, message.column),
+      sql: `
+insert into
+  "${message.table}" ("id", "${message.column}", "createdAt", "updatedAt")
+values
+  (?, ?, ?, ?)
+on conflict do update set
+  "${message.column}" = ?,
+  "updatedAt" = ?
+`.trim(),
       parameters: [
         message.row,
         message.value,
@@ -334,8 +342,8 @@ const applyMessages = ({
     for (const message of messages) {
       const timestamp: TimestampString | null = yield* _(
         sqlite.exec({
-          sql: Sql.selectLastTimestampForTableRowColumn,
-          parameters: [message.table, message.row, message.column],
+          ...Sql.selectLastTimestampForTableRowColumn,
+          parameters: [message.table, message.row, message.column, 1],
         }),
         Effect.map((result) => result.rows),
         Effect.flatMap(ReadonlyArray.head),
@@ -351,7 +359,7 @@ const applyMessages = ({
       if (timestamp == null || timestamp !== message.timestamp) {
         const { changes } = yield* _(
           sqlite.exec({
-            sql: Sql.insertIntoMessagesIfNew,
+            ...Sql.insertIntoMessagesIfNew,
             parameters: [
               message.timestamp,
               message.table,
@@ -377,10 +385,10 @@ const writeTimestampAndMerkleTree = ({
 }: TimestampAndMerkleTree): Effect.Effect<void, never, Sqlite> =>
   Effect.flatMap(Sqlite, (sqlite) =>
     sqlite.exec({
-      sql: Sql.updateOwnerTimestampAndMerkleTree,
+      ...Sql.updateOwnerTimestampAndMerkleTree,
       parameters: [
-        timestampToString(timestamp),
         merkleTreeToString(merkleTree),
+        timestampToString(timestamp),
       ],
     }),
   );
@@ -420,7 +428,14 @@ const mutate = ({
     const { exec } = yield* _(Sqlite);
     yield* _(
       Effect.forEach(toDelete, ({ table, row }) =>
-        exec({ sql: Sql.deleteTableRow(table), parameters: [row] }),
+        exec({
+          sql: `
+            delete from "${table}"
+            where
+              "id" = ?;
+            `.trim(),
+          parameters: [row],
+        }),
       ),
     );
 
@@ -504,7 +519,7 @@ const handleSyncResponse = ({
 
     const messagesToSync = yield* _(
       sqlite.exec({
-        sql: Sql.selectMessagesToSync,
+        ...Sql.selectMessagesToSync,
         parameters: [timestampToString(makeSyncTimestamp(diff.value))],
       }),
       Effect.map(({ rows }) => rows as unknown as ReadonlyArray<Message>),
@@ -564,7 +579,9 @@ const reset = (
     const sqlite = yield* _(Sqlite);
 
     yield* _(
-      sqlite.exec(`SELECT "name" FROM "sqlite_master" WHERE "type" = 'table'`),
+      sqlite.exec({
+        sql: `SELECT "name" FROM "sqlite_master" WHERE "type" = 'table'`,
+      }),
       Effect.map((result) => result.rows),
       Effect.flatMap(
         // The dropped table is completely removed from the database schema and
@@ -572,7 +589,7 @@ const reset = (
         // All indices and triggers associated with the table are also deleted.
         // https://sqlite.org/lang_droptable.html
         Effect.forEach(
-          ({ name }) => sqlite.exec(`DROP TABLE "${name as string}"`),
+          ({ name }) => sqlite.exec({ sql: `DROP TABLE "${name as string}"` }),
           { discard: true },
         ),
       ),

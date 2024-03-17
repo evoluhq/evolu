@@ -334,6 +334,7 @@ type NullableExceptForIdAndAutomaticColumns<T> = {
     : T[K] | null;
 };
 
+// https://kysely.dev/docs/recipes/splitting-query-building-and-execution
 const kysely = new Kysely.Kysely<QuerySchema<DatabaseSchema>>({
   dialect: {
     createAdapter: (): Kysely.DialectAdapter => new Kysely.SqliteAdapter(),
@@ -351,13 +352,15 @@ export const makeCreateQuery =
   <R extends Row>(queryCallback: QueryCallback<S, R>) =>
     pipe(
       queryCallback(kysely as Kysely.Kysely<QuerySchema<S>>).compile(),
-      ({ sql, parameters }): SqliteQuery => {
-        if (isSqlMutation(sql))
+      (compiledQuery): SqliteQuery => {
+        if (isSqlMutation(compiledQuery.sql))
           throw new Error(
             "SQL mutation (INSERT, UPDATE, DELETE, etc.) isn't allowed in the Evolu `createQuery` function. Kysely suggests it because there is no read-only Kysely yet, and removing such an API is not possible. For mutations, use Evolu mutation API.",
           );
-
-        return { sql, parameters: parameters as SqliteQuery["parameters"] };
+        const parameters = compiledQuery.parameters as NonNullable<
+          SqliteQuery["parameters"]
+        >;
+        return { sql: compiledQuery.sql, parameters };
       },
       (query) => serializeQuery<R>(query),
     );
@@ -739,7 +742,6 @@ const EvoluCommon = Layer.effect(
     };
 
     appState.init({ onRequestSync: sync });
-
     sync();
 
     return Evolu.of({

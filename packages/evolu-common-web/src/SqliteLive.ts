@@ -7,7 +7,6 @@ import {
   SqliteQuery,
   SqliteRow,
   UnexpectedError,
-  ensureSqliteQuery,
   makeUnexpectedError,
   maybeParseJson,
   valuesToSqliteValues,
@@ -140,7 +139,7 @@ export const SqliteLive = Layer.effect(
 
       const exec = (sqliteQuery: SqliteQuery, id: NanoId): void => {
         // TODO: Add debugSql config option.
-        // console.log(sqliteQuery);
+        // console.log(sqliteQuery.sql);
         try {
           const rows = sqlite.exec(sqliteQuery.sql, {
             returnValue: "resultRows",
@@ -201,11 +200,9 @@ export const SqliteLive = Layer.effect(
     );
 
     return Sqlite.of({
-      exec: (arg) =>
+      exec: (query) =>
         Effect.gen(function* (_) {
           const id = yield* _(nanoIdGenerator.nanoid);
-          const query = ensureSqliteQuery(arg);
-
           const promise = new Promise<MessageExecSuccess | MessageExecError>(
             (resolve) => {
               promiseResolves.set(id, resolve);

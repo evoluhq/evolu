@@ -2,7 +2,6 @@ import {
   Config,
   Sqlite,
   SqliteRow,
-  ensureSqliteQuery,
   isSqlMutation,
   maybeParseJson,
   valuesToSqliteValues,
@@ -18,12 +17,11 @@ export const SqliteLive = Layer.effect(
     const db = ExpoSQLite.openDatabaseSync(`evolu1-${config.name}.db`);
 
     return Sqlite.of({
-      exec: (arg) =>
+      exec: ({ sql, parameters }) =>
         Effect.gen(function* (_) {
-          const sqliteQuery = ensureSqliteQuery(arg);
           const query = {
-            sql: sqliteQuery.sql,
-            args: valuesToSqliteValues(sqliteQuery.parameters),
+            sql,
+            args: valuesToSqliteValues(parameters || []),
           };
 
           if (!isSqlMutation(query.sql)) {
