@@ -140,18 +140,6 @@ export const SqliteLive = Layer.effect(
 
       const exec = (query: SqliteQuery, id: NanoId): void => {
         try {
-          // console.log(
-          //   JSON.stringify(
-          //     sqlite.exec(`EXPLAIN QUERY PLAN ${query.sql}`, {
-          //       returnValue: "resultRows",
-          //       // rowMode: "object",
-          //       // bind: valuesToSqliteValues(query.parameters || []),
-          //     }),
-          //     null,
-          //     2,
-          //   ),
-          // );
-
           const rows = Effect.try(
             () =>
               sqlite.exec(query.sql, {
