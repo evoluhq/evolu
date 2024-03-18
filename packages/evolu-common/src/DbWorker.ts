@@ -49,7 +49,12 @@ import { OnCompleteId } from "./OnCompletes.js";
 import { Owner, OwnerId } from "./Owner.js";
 import { DbWorkerLock } from "./Platform.js";
 import * as Sql from "./Sql.js";
-import { Sqlite, Value } from "./Sqlite.js";
+import {
+  QueryPlanRow,
+  Sqlite,
+  Value,
+  drawQueryPlan as drawExplainQueryPlan,
+} from "./Sqlite.js";
 import {
   Message,
   NewMessage,
@@ -189,11 +194,28 @@ const query = ({
 
     const queriesRows = yield* _(
       ReadonlyArray.dedupe(queries),
-      Effect.forEach((query) =>
-        sqlite
-          .exec(deserializeQuery(query))
-          .pipe(Effect.map((result) => [query, result.rows] as const)),
-      ),
+      Effect.forEach((query) => {
+        const sqliteQuery = deserializeQuery(query);
+        return sqlite.exec(sqliteQuery).pipe(
+          Effect.map((result) => [query, result.rows] as const),
+          Effect.tap(() => {
+            if (!sqliteQuery.options?.logExplainQueryPlan) return;
+            return sqlite
+              .exec({
+                ...sqliteQuery,
+                sql: `EXPLAIN QUERY PLAN ${sqliteQuery.sql}`,
+              })
+              .pipe(
+                Effect.tap(() => Effect.log("ExplainQueryPlan")),
+                Effect.tap(({ rows }) => {
+                  // Not using Effect.log because of formating
+                  // eslint-disable-next-line no-console
+                  console.log(drawExplainQueryPlan(rows as QueryPlanRow[]));
+                }),
+              );
+          }),
+        );
+      }),
     );
 
     const previous = rowsStore.getState();

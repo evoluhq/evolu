@@ -179,8 +179,8 @@ const todosWithCategories = evolu.createQuery(
         ).as("categories"),
       ]),
   {
-    // logExecutionTime: true,
-    // explainQueryPlan: true,
+    // logQueryExecutionTime: true,
+    logExplainQueryPlan: true,
   },
 );
 

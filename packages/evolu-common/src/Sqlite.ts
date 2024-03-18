@@ -15,14 +15,9 @@ export interface SqliteQuery {
 }
 
 export interface SqliteQueryOptions {
-  /** Loq query execution time. */
-  readonly logExecutionTime?: boolean;
-  /**
-   * Explain query plan.
-   *
-   * https://www.sqlite.org/eqp.html
-   */
-  readonly explainQueryPlan?: boolean;
+  readonly logQueryExecutionTime?: boolean;
+  /** https://www.sqlite.org/eqp.html */
+  readonly logExplainQueryPlan?: boolean;
 }
 
 export type Value = SqliteValue | JsonObjectOrArray;
@@ -104,14 +99,39 @@ const isSqlMutationRegEx = new RegExp(
 export const isSqlMutation = (sql: string): boolean =>
   isSqlMutationRegEx.test(sql);
 
-export const logSqliteQueryExecutionTime =
+export const maybeLogSqliteQueryExecutionTime =
   (query: SqliteQuery) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> => {
-    if (!query.options?.logExecutionTime) return effect;
+    if (!query.options?.logQueryExecutionTime) return effect;
     return effect.pipe(
-      Effect.tap(() => Effect.log(query.sql)),
-      Effect.withLogSpan("ExecutionTime"),
+      Effect.tap(() => Effect.log("QueryExecutionTime")),
+      // Not using Effect.log because of formating
+      // eslint-disable-next-line no-console
+      Effect.tap(() => console.log(query.sql)),
+      Effect.withLogSpan("duration"),
     );
   };
 
-// explainQueryPlan
+export type QueryPlanRow = {
+  id: number;
+  parent: number;
+  detail: string;
+};
+
+export const drawQueryPlan = (rows: QueryPlanRow[]): string =>
+  rows
+    .map((row) => {
+      let parentId = row.parent;
+      let indent = 0;
+
+      do {
+        const parent = rows.find((r) => r.id === parentId);
+        if (!parent) break;
+        parentId = parent.parent;
+        indent++;
+        // eslint-disable-next-line no-constant-condition
+      } while (true);
+
+      return `${"  ".repeat(indent)}${row.detail}`;
+    })
+    .join("\n");

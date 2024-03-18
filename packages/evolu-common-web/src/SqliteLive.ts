@@ -7,7 +7,7 @@ import {
   SqliteQuery,
   SqliteRow,
   UnexpectedError,
-  logSqliteQueryExecutionTime,
+  maybeLogSqliteQueryExecutionTime,
   makeUnexpectedError,
   maybeParseJson,
   valuesToSqliteValues,
@@ -147,7 +147,7 @@ export const SqliteLive = Layer.effect(
                 rowMode: "object",
                 bind: valuesToSqliteValues(query.parameters || []),
               }) as SqliteRow[],
-          ).pipe(logSqliteQueryExecutionTime(query), Effect.runSync);
+          ).pipe(maybeLogSqliteQueryExecutionTime(query), Effect.runSync);
           maybeParseJson(rows);
           const result = { rows, changes: sqlite.changes() };
           channel.postMessage({ _tag: "ExecSuccess", id, result });
