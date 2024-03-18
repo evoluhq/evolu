@@ -158,25 +158,30 @@ const NotificationBar: FC = () => {
   );
 };
 
-const todosWithCategories = evolu.createQuery((db) =>
-  db
-    .selectFrom("todo")
-    .select(["id", "title", "isCompleted", "categoryId"])
-    .where("isDeleted", "is not", cast(true))
-    // Filter null value and ensure non-null type.
-    .where("title", "is not", null)
-    .$narrowType<{ title: NotNull }>()
-    .orderBy("createdAt")
-    // https://kysely.dev/docs/recipes/relations
-    .select((eb) => [
-      jsonArrayFrom(
-        eb
-          .selectFrom("todoCategory")
-          .select(["todoCategory.id", "todoCategory.name"])
-          .where("isDeleted", "is not", cast(true))
-          .orderBy("createdAt"),
-      ).as("categories"),
-    ]),
+const todosWithCategories = evolu.createQuery(
+  (db) =>
+    db
+      .selectFrom("todo")
+      .select(["id", "title", "isCompleted", "categoryId"])
+      .where("isDeleted", "is not", cast(true))
+      // Filter null value and ensure non-null type.
+      .where("title", "is not", null)
+      .$narrowType<{ title: NotNull }>()
+      .orderBy("createdAt")
+      // https://kysely.dev/docs/recipes/relations
+      .select((eb) => [
+        jsonArrayFrom(
+          eb
+            .selectFrom("todoCategory")
+            .select(["todoCategory.id", "todoCategory.name"])
+            .where("isDeleted", "is not", cast(true))
+            .orderBy("createdAt"),
+        ).as("categories"),
+      ]),
+  {
+    // logExecutionTime: true,
+    // explainQueryPlan: true,
+  },
 );
 
 type TodosWithCategoriesRow = ExtractRow<typeof todosWithCategories>;

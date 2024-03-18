@@ -32,7 +32,7 @@ import { SqliteBoolean, SqliteDate } from "./Model.js";
 import { OnCompletes, OnCompletesLive } from "./OnCompletes.js";
 import { Owner } from "./Owner.js";
 import { AppState, FlushSync } from "./Platform.js";
-import { SqliteQuery, isSqlMutation } from "./Sqlite.js";
+import { SqliteQuery, SqliteQueryOptions, isSqlMutation } from "./Sqlite.js";
 import { Store, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
 
@@ -313,6 +313,7 @@ export const Evolu = Context.GenericTag<Evolu>("@services/Evolu");
 
 type CreateQuery<S extends DatabaseSchema> = <R extends Row>(
   queryCallback: QueryCallback<S, R>,
+  options?: SqliteQueryOptions,
 ) => Query<R>;
 
 type QueryCallback<S extends DatabaseSchema, R extends Row> = (
@@ -349,7 +350,10 @@ const kysely = new Kysely.Kysely<QuerySchema<DatabaseSchema>>({
 
 export const makeCreateQuery =
   <S extends DatabaseSchema = DatabaseSchema>(): CreateQuery<S> =>
-  <R extends Row>(queryCallback: QueryCallback<S, R>) =>
+  <R extends Row>(
+    queryCallback: QueryCallback<S, R>,
+    options?: SqliteQueryOptions,
+  ) =>
     pipe(
       queryCallback(kysely as Kysely.Kysely<QuerySchema<S>>).compile(),
       (compiledQuery): SqliteQuery => {
@@ -360,7 +364,11 @@ export const makeCreateQuery =
         const parameters = compiledQuery.parameters as NonNullable<
           SqliteQuery["parameters"]
         >;
-        return { sql: compiledQuery.sql, parameters };
+        return {
+          sql: compiledQuery.sql,
+          parameters,
+          ...(options && { options }),
+        };
       },
       (query) => serializeQuery<R>(query),
     );

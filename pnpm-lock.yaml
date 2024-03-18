@@ -64,7 +64,7 @@ importers:
         version: 3.3.0
       expo:
         specifier: ^50.0.11
-        version: 50.0.13(@babel/core@7.24.0)(@react-native/babel-preset@0.73.21)
+        version: 50.0.13(@babel/core@7.24.0)(@react-native/babel-preset@0.75.0-main)
       expo-sqlite:
         specifier: ~13.3.0
         version: 13.3.0(expo@50.0.13)
@@ -181,7 +181,7 @@ importers:
         version: 18.2.22
       autoprefixer:
         specifier: ^10.4.18
-        version: 10.4.18(postcss@8.4.35)
+        version: 10.4.18(postcss@8.4.36)
       eslint:
         specifier: ^8.57.0
         version: 8.57.0
@@ -189,8 +189,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/eslint-config-evolu
       postcss:
-        specifier: ^8.4.35
-        version: 8.4.35
+        specifier: ^8.4.36
+        version: 8.4.36
       prettier:
         specifier: ^3.2.5
         version: 3.2.5
@@ -409,7 +409,7 @@ importers:
         version: link:../eslint-config-evolu
       expo:
         specifier: ^50.0.11
-        version: 50.0.13(@babel/core@7.24.0)(@react-native/babel-preset@0.73.21)
+        version: 50.0.13(@babel/core@7.24.0)(@react-native/babel-preset@0.75.0-main)
       expo-sqlite:
         specifier: ~13.3.0
         version: 13.3.0(expo@50.0.13)
@@ -876,6 +876,20 @@ packages:
       '@babel/core': 7.24.0
       '@babel/helper-plugin-utils': 7.24.0
       '@babel/plugin-syntax-export-default-from': 7.23.3(@babel/core@7.24.0)
+
+  /@babel/plugin-proposal-logical-assignment-operators@7.20.7(@babel/core@7.24.0):
+    resolution: {integrity: sha512-y7C7cZgpMIjWlKE5T7eJwp+tnRYM89HmRvWM5EQuB5BoHEONjmQ8lSNmBUwOyy/GFRsohJED51YBF79hE1djug==}
+    engines: {node: '>=6.9.0'}
+    deprecated: This proposal has been merged to the ECMAScript standard and thus this plugin is no longer maintained. Please use @babel/plugin-transform-logical-assignment-operators instead.
+    peerDependencies:
+      '@babel/core': ^7.0.0-0
+    peerDependenciesMeta:
+      '@babel/core':
+        optional: true
+    dependencies:
+      '@babel/core': 7.24.0
+      '@babel/helper-plugin-utils': 7.24.0
+      '@babel/plugin-syntax-logical-assignment-operators': 7.10.4(@babel/core@7.24.0)
 
   /@babel/plugin-proposal-nullish-coalescing-operator@7.18.6(@babel/core@7.24.0):
     resolution: {integrity: sha512-wQxQzxYeJqHcfppzBDnm1yAY0jSRkUXR2z8RePZYrKwMKgMlE8+Z6LUno+bd6LvbGh8Gltvy74+9pIYkr+XkKA==}
@@ -2651,7 +2665,7 @@ packages:
       mv: 2.1.1
       safe-json-stringify: 1.2.0
 
-  /@expo/cli@0.17.8(@react-native/babel-preset@0.73.21)(expo-modules-autolinking@1.10.3):
+  /@expo/cli@0.17.8(@react-native/babel-preset@0.75.0-main)(expo-modules-autolinking@1.10.3):
     resolution: {integrity: sha512-yfkoghCltbGPDbRI71Qu3puInjXx4wO82+uhW82qbWLvosfIN7ep5Gr0Lq54liJpvlUG6M0IXM1GiGqcCyP12w==}
     hasBin: true
     dependencies:
@@ -2663,7 +2677,7 @@ packages:
       '@expo/env': 0.2.2
       '@expo/image-utils': 0.4.1
       '@expo/json-file': 8.3.0
-      '@expo/metro-config': 0.17.6(@react-native/babel-preset@0.73.21)
+      '@expo/metro-config': 0.17.6(@react-native/babel-preset@0.75.0-main)
       '@expo/osascript': 2.1.0
       '@expo/package-manager': 1.4.2
       '@expo/plist': 0.1.0
@@ -2856,7 +2870,7 @@ packages:
       json5: 2.2.3
       write-file-atomic: 2.4.3
 
-  /@expo/metro-config@0.17.6(@react-native/babel-preset@0.73.21):
+  /@expo/metro-config@0.17.6(@react-native/babel-preset@0.75.0-main):
     resolution: {integrity: sha512-WaC1C+sLX/Wa7irwUigLhng3ckmXIEQefZczB8DfYmleV6uhfWWo2kz/HijFBpV7FKs2cW6u8J/aBQpFkxlcqg==}
     peerDependencies:
       '@react-native/babel-preset': '*'
@@ -2869,7 +2883,7 @@ packages:
       '@expo/env': 0.2.2
       '@expo/json-file': 8.3.0
       '@expo/spawn-async': 1.7.2
-      '@react-native/babel-preset': 0.73.21(@babel/core@7.24.0)(@babel/preset-env@7.24.0)
+      '@react-native/babel-preset': 0.75.0-main(@babel/core@7.24.0)
       babel-preset-fbjs: 3.4.0(@babel/core@7.24.0)
       chalk: 4.1.2
       debug: 4.3.4
@@ -2879,7 +2893,7 @@ packages:
       glob: 7.2.3
       jsc-safe-url: 0.2.4
       lightningcss: 1.19.0
-      postcss: 8.4.35
+      postcss: 8.4.36
       resolve-from: 5.0.0
       sucrase: 3.34.0
     transitivePeerDependencies:
@@ -3677,6 +3691,15 @@ packages:
       - '@babel/preset-env'
       - supports-color
 
+  /@react-native/babel-plugin-codegen@0.75.0-main:
+    resolution: {integrity: sha512-gEl+bl+orntqNA3yGETGeHLNzDnZuQfO074BreX/l80WnZbx00/BJ57IkZ372j6I+gjki+3dYeRQOp82m/sUWQ==}
+    engines: {node: '>=18'}
+    dependencies:
+      '@react-native/codegen': 0.75.0-main
+    transitivePeerDependencies:
+      - '@babel/preset-env'
+      - supports-color
+
   /@react-native/babel-preset@0.73.21(@babel/core@7.24.0)(@babel/preset-env@7.24.0):
     resolution: {integrity: sha512-WlFttNnySKQMeujN09fRmrdWqh46QyJluM5jdtDNrkl/2Hx6N4XeDUGhABvConeK95OidVO7sFFf7sNebVXogA==}
     engines: {node: '>=18'}
@@ -3732,6 +3755,62 @@ packages:
       - '@babel/preset-env'
       - supports-color
 
+  /@react-native/babel-preset@0.75.0-main(@babel/core@7.24.0):
+    resolution: {integrity: sha512-yTyft0jSbTEfTfDUUfllJqKWLl3rNMiVMFjuWzMigikKAlSwKKUC/DxTEUfMwekFU05TjDyEOtigOTrm2yuoRQ==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@babel/core': '*'
+    peerDependenciesMeta:
+      '@babel/core':
+        optional: true
+    dependencies:
+      '@babel/core': 7.24.0
+      '@babel/plugin-proposal-async-generator-functions': 7.20.7(@babel/core@7.24.0)
+      '@babel/plugin-proposal-class-properties': 7.18.6(@babel/core@7.24.0)
+      '@babel/plugin-proposal-export-default-from': 7.23.3(@babel/core@7.24.0)
+      '@babel/plugin-proposal-logical-assignment-operators': 7.20.7(@babel/core@7.24.0)
+      '@babel/plugin-proposal-nullish-coalescing-operator': 7.18.6(@babel/core@7.24.0)
+      '@babel/plugin-proposal-numeric-separator': 7.18.6(@babel/core@7.24.0)
+      '@babel/plugin-proposal-object-rest-spread': 7.20.7(@babel/core@7.24.0)
+      '@babel/plugin-proposal-optional-catch-binding': 7.18.6(@babel/core@7.24.0)
+      '@babel/plugin-proposal-optional-chaining': 7.21.0(@babel/core@7.24.0)
+      '@babel/plugin-syntax-dynamic-import': 7.8.3(@babel/core@7.24.0)
+      '@babel/plugin-syntax-export-default-from': 7.23.3(@babel/core@7.24.0)
+      '@babel/plugin-syntax-flow': 7.23.3(@babel/core@7.24.0)
+      '@babel/plugin-syntax-nullish-coalescing-operator': 7.8.3(@babel/core@7.24.0)
+      '@babel/plugin-syntax-optional-chaining': 7.8.3(@babel/core@7.24.0)
+      '@babel/plugin-transform-arrow-functions': 7.23.3(@babel/core@7.24.0)
+      '@babel/plugin-transform-async-to-generator': 7.23.3(@babel/core@7.24.0)
+      '@babel/plugin-transform-block-scoping': 7.23.4(@babel/core@7.24.0)
+      '@babel/plugin-transform-classes': 7.23.8(@babel/core@7.24.0)
+      '@babel/plugin-transform-computed-properties': 7.23.3(@babel/core@7.24.0)
+      '@babel/plugin-transform-destructuring': 7.23.3(@babel/core@7.24.0)
+      '@babel/plugin-transform-flow-strip-types': 7.23.3(@babel/core@7.24.0)
+      '@babel/plugin-transform-function-name': 7.23.3(@babel/core@7.24.0)
+      '@babel/plugin-transform-literals': 7.23.3(@babel/core@7.24.0)
+      '@babel/plugin-transform-modules-commonjs': 7.23.3(@babel/core@7.24.0)
+      '@babel/plugin-transform-named-capturing-groups-regex': 7.22.5(@babel/core@7.24.0)
+      '@babel/plugin-transform-parameters': 7.23.3(@babel/core@7.24.0)
+      '@babel/plugin-transform-private-methods': 7.23.3(@babel/core@7.24.0)
+      '@babel/plugin-transform-private-property-in-object': 7.23.4(@babel/core@7.24.0)
+      '@babel/plugin-transform-react-display-name': 7.23.3(@babel/core@7.24.0)
+      '@babel/plugin-transform-react-jsx': 7.23.4(@babel/core@7.24.0)
+      '@babel/plugin-transform-react-jsx-self': 7.23.3(@babel/core@7.24.0)
+      '@babel/plugin-transform-react-jsx-source': 7.23.3(@babel/core@7.24.0)
+      '@babel/plugin-transform-runtime': 7.24.0(@babel/core@7.24.0)
+      '@babel/plugin-transform-shorthand-properties': 7.23.3(@babel/core@7.24.0)
+      '@babel/plugin-transform-spread': 7.23.3(@babel/core@7.24.0)
+      '@babel/plugin-transform-sticky-regex': 7.23.3(@babel/core@7.24.0)
+      '@babel/plugin-transform-typescript': 7.23.6(@babel/core@7.24.0)
+      '@babel/plugin-transform-unicode-regex': 7.23.3(@babel/core@7.24.0)
+      '@babel/template': 7.24.0
+      '@react-native/babel-plugin-codegen': 0.75.0-main
+      babel-plugin-transform-flow-enums: 0.0.2(@babel/core@7.24.0)
+      react-refresh: 0.14.0
+    transitivePeerDependencies:
+      - '@babel/preset-env'
+      - supports-color
+
   /@react-native/codegen@0.73.3(@babel/preset-env@7.24.0):
     resolution: {integrity: sha512-sxslCAAb8kM06vGy9Jyh4TtvjhcP36k/rvj2QE2Jdhdm61KvfafCATSIsOfc0QvnduWFcpXUPvAVyYwuv7PYDg==}
     engines: {node: '>=18'}
@@ -3745,6 +3824,25 @@ packages:
       '@babel/preset-env': 7.24.0(@babel/core@7.24.0)
       flow-parser: 0.206.0
       glob: 7.2.3
+      invariant: 2.2.4
+      jscodeshift: 0.14.0(@babel/preset-env@7.24.0)
+      mkdirp: 0.5.6
+      nullthrows: 1.1.1
+    transitivePeerDependencies:
+      - supports-color
+
+  /@react-native/codegen@0.75.0-main:
+    resolution: {integrity: sha512-vcIu7x7o/3xn9UQdOPqA6B/jtxDHB+xTIDlVe7nym+0ua/OIOwYoVscTb0NtHuEjGKO1G5CTWNhl34BFhIs0+g==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@babel/preset-env': ^7.1.6
+    peerDependenciesMeta:
+      '@babel/preset-env':
+        optional: true
+    dependencies:
+      '@babel/parser': 7.24.0
+      glob: 7.2.3
+      hermes-parser: 0.20.1
       invariant: 2.2.4
       jscodeshift: 0.14.0(@babel/preset-env@7.24.0)
       mkdirp: 0.5.6
@@ -4883,7 +4981,7 @@ packages:
     resolution: {integrity: sha512-+q/t7Ekv1EDY2l6Gda6LLiX14rU9TV20Wa3ofeQmwPFZbOMo9DXrLbOjFaaclkXKWidIaopwAObQDqwWtGUjqg==}
     engines: {node: '>= 4.0.0'}
 
-  /autoprefixer@10.4.18(postcss@8.4.35):
+  /autoprefixer@10.4.18(postcss@8.4.36):
     resolution: {integrity: sha512-1DKbDfsr6KUElM6wg+0zRNkB/Q7WcKYAaK+pzXn+Xqmszm/5Xa9coeNdtP88Vi+dPzZnMjhge8GIV49ZQkDa+g==}
     engines: {node: ^10 || ^12 || >=14}
     hasBin: true
@@ -4895,7 +4993,7 @@ packages:
       fraction.js: 4.3.7
       normalize-range: 0.1.2
       picocolors: 1.0.0
-      postcss: 8.4.35
+      postcss: 8.4.36
       postcss-value-parser: 4.2.0
     dev: true
 
@@ -7273,7 +7371,7 @@ packages:
       expo: '*'
     dependencies:
       '@expo/config': 8.5.4
-      expo: 50.0.13(@babel/core@7.24.0)(@react-native/babel-preset@0.73.21)
+      expo: 50.0.13(@babel/core@7.24.0)(@react-native/babel-preset@0.75.0-main)
     transitivePeerDependencies:
       - supports-color
 
@@ -7286,14 +7384,14 @@ packages:
     peerDependencies:
       expo: '*'
     dependencies:
-      expo: 50.0.13(@babel/core@7.24.0)(@react-native/babel-preset@0.73.21)
+      expo: 50.0.13(@babel/core@7.24.0)(@react-native/babel-preset@0.75.0-main)
 
   /expo-font@11.10.3(expo@50.0.13):
     resolution: {integrity: sha512-q1Td2zUvmLbCA9GV4OG4nLPw5gJuNY1VrPycsnemN1m8XWTzzs8nyECQQqrcBhgulCgcKZZJJ6U0kC2iuSoQHQ==}
     peerDependencies:
       expo: '*'
     dependencies:
-      expo: 50.0.13(@babel/core@7.24.0)(@react-native/babel-preset@0.73.21)
+      expo: 50.0.13(@babel/core@7.24.0)(@react-native/babel-preset@0.75.0-main)
       fontfaceobserver: 2.3.0
 
   /expo-json-utils@0.12.3:
@@ -7305,7 +7403,7 @@ packages:
     peerDependencies:
       expo: '*'
     dependencies:
-      expo: 50.0.13(@babel/core@7.24.0)(@react-native/babel-preset@0.73.21)
+      expo: 50.0.13(@babel/core@7.24.0)(@react-native/babel-preset@0.75.0-main)
 
   /expo-manifests@0.13.2(expo@50.0.13):
     resolution: {integrity: sha512-l0Sia1WmLULx8V41K8RzGLsFoTe4qqthPRGpHjItsYn8ZB6lRrdTBM9OYp2McIflgqN1HAimUCQMFIwJyH+UmA==}
@@ -7313,7 +7411,7 @@ packages:
       expo: '*'
     dependencies:
       '@expo/config': 8.5.4
-      expo: 50.0.13(@babel/core@7.24.0)(@react-native/babel-preset@0.73.21)
+      expo: 50.0.13(@babel/core@7.24.0)(@react-native/babel-preset@0.75.0-main)
       expo-json-utils: 0.12.3
     transitivePeerDependencies:
       - supports-color
@@ -7343,7 +7441,7 @@ packages:
       expo: '*'
     dependencies:
       '@expo/websql': 1.0.1
-      expo: 50.0.13(@babel/core@7.24.0)(@react-native/babel-preset@0.73.21)
+      expo: 50.0.13(@babel/core@7.24.0)(@react-native/babel-preset@0.75.0-main)
 
   /expo-status-bar@1.11.1:
     resolution: {integrity: sha512-ddQEtCOgYHTLlFUe/yH67dDBIoct5VIULthyT3LRJbEwdpzAgueKsX2FYK02ldh440V87PWKCamh7R9evk1rrg==}
@@ -7358,7 +7456,7 @@ packages:
     peerDependencies:
       expo: '*'
     dependencies:
-      expo: 50.0.13(@babel/core@7.24.0)(@react-native/babel-preset@0.73.21)
+      expo: 50.0.13(@babel/core@7.24.0)(@react-native/babel-preset@0.75.0-main)
     dev: false
 
   /expo-updates@0.24.12(expo@50.0.13):
@@ -7372,7 +7470,7 @@ packages:
       '@expo/config-plugins': 7.8.4
       arg: 4.1.0
       chalk: 4.1.2
-      expo: 50.0.13(@babel/core@7.24.0)(@react-native/babel-preset@0.73.21)
+      expo: 50.0.13(@babel/core@7.24.0)(@react-native/babel-preset@0.75.0-main)
       expo-eas-client: 0.11.2
       expo-manifests: 0.13.2(expo@50.0.13)
       expo-structured-headers: 3.7.2
@@ -7384,15 +7482,15 @@ packages:
       - supports-color
     dev: false
 
-  /expo@50.0.13(@babel/core@7.24.0)(@react-native/babel-preset@0.73.21):
+  /expo@50.0.13(@babel/core@7.24.0)(@react-native/babel-preset@0.75.0-main):
     resolution: {integrity: sha512-p0FYrhUJZe92YOwOXx6GZ/WaxF6YtsLXtWkql9pFIIocYBN6iQ3OMGsbQCRSu0ao8rlxsk7HgQDEWK4D+y9tAg==}
     hasBin: true
     dependencies:
       '@babel/runtime': 7.24.0
-      '@expo/cli': 0.17.8(@react-native/babel-preset@0.73.21)(expo-modules-autolinking@1.10.3)
+      '@expo/cli': 0.17.8(@react-native/babel-preset@0.75.0-main)(expo-modules-autolinking@1.10.3)
       '@expo/config': 8.5.4
       '@expo/config-plugins': 7.8.4
-      '@expo/metro-config': 0.17.6(@react-native/babel-preset@0.73.21)
+      '@expo/metro-config': 0.17.6(@react-native/babel-preset@0.75.0-main)
       '@expo/vector-icons': 14.0.0
       babel-preset-expo: 10.0.1(@babel/core@7.24.0)
       expo-asset: 9.0.2(expo@50.0.13)
@@ -8211,6 +8309,9 @@ packages:
   /hermes-estree@0.19.1:
     resolution: {integrity: sha512-daLGV3Q2MKk8w4evNMKwS8zBE/rcpA800nu1Q5kM08IKijoSnPe9Uo1iIxzPKRkn95IxxsgBMPeYHt3VG4ej2g==}
 
+  /hermes-estree@0.20.1:
+    resolution: {integrity: sha512-SQpZK4BzR48kuOg0v4pb3EAGNclzIlqMj3Opu/mu7bbAoFw6oig6cEt/RAi0zTFW/iW6Iz9X9ggGuZTAZ/yZHg==}
+
   /hermes-parser@0.15.0:
     resolution: {integrity: sha512-Q1uks5rjZlE9RjMMjSUCkGrEIPI5pKJILeCtK1VmTj7U4pf3wVPoo+cxfu+s4cBAPy2JzikIIdCZgBoR6x7U1Q==}
     dependencies:
@@ -8220,6 +8321,11 @@ packages:
     resolution: {integrity: sha512-Vp+bXzxYJWrpEuJ/vXxUsLnt0+y4q9zyi4zUlkLqD8FKv4LjIfOvP69R/9Lty3dCyKh0E2BU7Eypqr63/rKT/A==}
     dependencies:
       hermes-estree: 0.19.1
+
+  /hermes-parser@0.20.1:
+    resolution: {integrity: sha512-BL5P83cwCogI8D7rrDCgsFY0tdYUtmFP9XaXtl2IQjC+2Xo+4okjfXintlTxcIwl4qeGddEl28Z11kbVIw0aNA==}
+    dependencies:
+      hermes-estree: 0.20.1
 
   /hermes-profile-transformer@0.0.6:
     resolution: {integrity: sha512-cnN7bQUm65UWOy6cbGcCcZ3rpwW8Q/j4OP5aWRhEry4Z2t2aR1cjrbp0BS+KiBN0smvP1caBgAuxutvyvJILzQ==}
@@ -11313,29 +11419,29 @@ packages:
     resolution: {integrity: sha512-d7Uw+eZoloe0EHDIYoe+bQ5WXnGMOpmiZFTuMWCwpjzzkL2nTjcKiAk4hh8TjnGye2TwWOk3UXucZ+3rbmBa8Q==}
     engines: {node: '>= 0.4'}
 
-  /postcss-import@15.1.0(postcss@8.4.35):
+  /postcss-import@15.1.0(postcss@8.4.36):
     resolution: {integrity: sha512-hpr+J05B2FVYUAXHeK1YyI267J/dDDhMU6B6civm8hSY1jYJnBXxzKDKDswzJmtLHryrjhnDjqqp/49t8FALew==}
     engines: {node: '>=14.0.0'}
     peerDependencies:
       postcss: ^8.0.0
     dependencies:
-      postcss: 8.4.35
+      postcss: 8.4.36
       postcss-value-parser: 4.2.0
       read-cache: 1.0.0
       resolve: 1.22.8
     dev: true
 
-  /postcss-js@4.0.1(postcss@8.4.35):
+  /postcss-js@4.0.1(postcss@8.4.36):
     resolution: {integrity: sha512-dDLF8pEO191hJMtlHFPRa8xsizHaM82MLfNkUHdUtVEV3tgTp5oj+8qbEqYM57SLfc74KSbw//4SeJma2LRVIw==}
     engines: {node: ^12 || ^14 || >= 16}
     peerDependencies:
       postcss: ^8.4.21
     dependencies:
       camelcase-css: 2.0.1
-      postcss: 8.4.35
+      postcss: 8.4.36
     dev: true
 
-  /postcss-load-config@4.0.2(postcss@8.4.35):
+  /postcss-load-config@4.0.2(postcss@8.4.36):
     resolution: {integrity: sha512-bSVhyJGL00wMVoPUzAVAnbEoWyqRxkjv64tUl427SKnPrENtq6hJwUojroMz2VB+Q1edmi4IfrAPpami5VVgMQ==}
     engines: {node: '>= 14'}
     peerDependencies:
@@ -11348,17 +11454,17 @@ packages:
         optional: true
     dependencies:
       lilconfig: 3.1.1
-      postcss: 8.4.35
+      postcss: 8.4.36
       yaml: 2.4.1
     dev: true
 
-  /postcss-nested@6.0.1(postcss@8.4.35):
+  /postcss-nested@6.0.1(postcss@8.4.36):
     resolution: {integrity: sha512-mEp4xPMi5bSWiMbsgoPfcP74lsWLHkQbZc3sY+jWYd65CUwXrUaTp0fmNpa01ZcETKlIgUdFN/MpS2xZtqL9dQ==}
     engines: {node: '>=12.0'}
     peerDependencies:
       postcss: ^8.2.14
     dependencies:
-      postcss: 8.4.35
+      postcss: 8.4.36
       postcss-selector-parser: 6.0.16
     dev: true
 
@@ -11383,8 +11489,8 @@ packages:
       source-map-js: 1.1.0
     dev: false
 
-  /postcss@8.4.35:
-    resolution: {integrity: sha512-u5U8qYpBCpN13BsiEB0CbR1Hhh4Gc0zLFuedrHJKMctHCHAGrMdG0PRM/KErzAL3CU6/eckEtmHNB3x6e3c0vA==}
+  /postcss@8.4.36:
+    resolution: {integrity: sha512-/n7eumA6ZjFHAsbX30yhHup/IMkOmlmvtEi7P+6RMYf+bGJSUHc3geH4a0NSZxAz/RJfiS9tooCTs9LAVYUZKw==}
     engines: {node: ^10 || ^12 || >=14}
     dependencies:
       nanoid: 3.3.7
@@ -12848,11 +12954,11 @@ packages:
       normalize-path: 3.0.0
       object-hash: 3.0.0
       picocolors: 1.0.0
-      postcss: 8.4.35
-      postcss-import: 15.1.0(postcss@8.4.35)
-      postcss-js: 4.0.1(postcss@8.4.35)
-      postcss-load-config: 4.0.2(postcss@8.4.35)
-      postcss-nested: 6.0.1(postcss@8.4.35)
+      postcss: 8.4.36
+      postcss-import: 15.1.0(postcss@8.4.36)
+      postcss-js: 4.0.1(postcss@8.4.36)
+      postcss-load-config: 4.0.2(postcss@8.4.36)
+      postcss-nested: 6.0.1(postcss@8.4.36)
       postcss-selector-parser: 6.0.16
       resolve: 1.22.8
       sucrase: 3.35.0
@@ -13684,7 +13790,7 @@ packages:
     dependencies:
       '@types/node': 20.11.28
       esbuild: 0.19.12
-      postcss: 8.4.35
+      postcss: 8.4.36
       rollup: 4.13.0
     optionalDependencies:
       fsevents: 2.3.3

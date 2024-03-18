@@ -11,6 +11,18 @@ export const Sqlite = Context.GenericTag<Sqlite>("@services/Sqlite");
 export interface SqliteQuery {
   readonly sql: string;
   readonly parameters?: Value[];
+  readonly options?: SqliteQueryOptions;
+}
+
+export interface SqliteQueryOptions {
+  /** Loq query execution time. */
+  readonly logExecutionTime?: boolean;
+  /**
+   * Explain query plan.
+   *
+   * https://www.sqlite.org/eqp.html
+   */
+  readonly explainQueryPlan?: boolean;
 }
 
 export type Value = SqliteValue | JsonObjectOrArray;
@@ -91,3 +103,15 @@ const isSqlMutationRegEx = new RegExp(
 
 export const isSqlMutation = (sql: string): boolean =>
   isSqlMutationRegEx.test(sql);
+
+export const logSqliteQueryExecutionTime =
+  (query: SqliteQuery) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> => {
+    if (!query.options?.logExecutionTime) return effect;
+    return effect.pipe(
+      Effect.tap(() => Effect.log(query.sql)),
+      Effect.withLogSpan("ExecutionTime"),
+    );
+  };
+
+// explainQueryPlan

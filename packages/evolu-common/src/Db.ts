@@ -34,6 +34,7 @@ import {
   JsonObjectOrArray,
   Sqlite,
   SqliteQuery,
+  SqliteQueryOptions,
   Value,
   isJsonObjectOrArray,
 } from "./Sqlite.js";
@@ -157,22 +158,25 @@ interface SerializedSqliteQuery {
     | Array<number>
     | { json: JsonObjectOrArray }
   )[];
+  readonly options?: SqliteQueryOptions;
 }
 
 // We use queries as keys, hence JSON.stringify.
 export const serializeQuery = <R extends Row>({
   sql,
-  parameters,
+  parameters = [],
+  options,
 }: SqliteQuery): Query<R> => {
   const query: SerializedSqliteQuery = {
     sql,
-    parameters: (parameters || []).map((p) =>
+    parameters: parameters.map((p) =>
       Predicate.isUint8Array(p)
         ? Array.from(p)
         : isJsonObjectOrArray(p)
           ? { json: p }
           : p,
     ),
+    ...(options && { options }),
   };
   return JSON.stringify(query) as Query<R>;
 };

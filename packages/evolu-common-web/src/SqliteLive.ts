@@ -7,6 +7,7 @@ import {
   SqliteQuery,
   SqliteRow,
   UnexpectedError,
+  logSqliteQueryExecutionTime,
   makeUnexpectedError,
   maybeParseJson,
   valuesToSqliteValues,
@@ -137,20 +138,32 @@ export const SqliteLive = Layer.effect(
     const initSqlite = (poolUtil: SAHPoolUtil): void => {
       const sqlite = new poolUtil.OpfsSAHPoolDb("/evolu1.db");
 
-      const exec = (sqliteQuery: SqliteQuery, id: NanoId): void => {
-        // TODO: Add debugSql config option.
-        // console.log(sqliteQuery.sql);
+      const exec = (query: SqliteQuery, id: NanoId): void => {
         try {
-          const rows = sqlite.exec(sqliteQuery.sql, {
-            returnValue: "resultRows",
-            rowMode: "object",
-            bind: valuesToSqliteValues(sqliteQuery.parameters || []),
-          }) as SqliteRow[];
+          // console.log(
+          //   JSON.stringify(
+          //     sqlite.exec(`EXPLAIN QUERY PLAN ${query.sql}`, {
+          //       returnValue: "resultRows",
+          //       // rowMode: "object",
+          //       // bind: valuesToSqliteValues(query.parameters || []),
+          //     }),
+          //     null,
+          //     2,
+          //   ),
+          // );
+
+          const rows = Effect.try(
+            () =>
+              sqlite.exec(query.sql, {
+                returnValue: "resultRows",
+                rowMode: "object",
+                bind: valuesToSqliteValues(query.parameters || []),
+              }) as SqliteRow[],
+          ).pipe(logSqliteQueryExecutionTime(query), Effect.runSync);
           maybeParseJson(rows);
           const result = { rows, changes: sqlite.changes() };
           channel.postMessage({ _tag: "ExecSuccess", id, result });
         } catch (error) {
-          // console.log(sqliteQuery);
           channel.postMessage({
             _tag: "ExecError",
             id,
