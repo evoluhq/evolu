@@ -46,17 +46,17 @@
     "@evolu/tsconfig": "workspace:*",
     "eslint": "^8.57.0",
     "eslint-config-evolu": "workspace:*",
-    "expo": "^50.0.11",
-    "expo-sqlite": "~13.3.0",
-    "react-native": "0.73.5",
-    "typescript": "^5.4.2",
+    "expo": "^50.0.14",
+    "expo-sqlite": "~13.4.0",
+    "react-native": "0.73.6",
+    "typescript": "^5.4.3",
     "vitest": "^1.4.0"
   },
   "peerDependencies": {
     "@evolu/common-react": "^6.0.3",
-    "expo": "^50.0.11",
-    "expo-sqlite": "~13.3.0",
-    "react-native": "0.73.5"
+    "expo": "^50.0.14",
+    "expo-sqlite": "~13.4.0",
+    "react-native": "0.73.6"
   },
   "publishConfig": {
     "access": "public"

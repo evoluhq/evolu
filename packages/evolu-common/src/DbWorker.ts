@@ -34,9 +34,8 @@ import {
   Query,
   RowsStore,
   RowsStoreLive,
-  Table,
-  Tables,
   deserializeQuery,
+  dropAllTables,
   ensureSchema,
   lazyInit,
   someDefectToNoSuchTableOrColumnError,
@@ -49,7 +48,14 @@ import { OnCompleteId } from "./OnCompletes.js";
 import { Owner, OwnerId } from "./Owner.js";
 import { DbWorkerLock } from "./Platform.js";
 import * as Sql from "./Sql.js";
-import { Sqlite, Value } from "./Sqlite.js";
+import {
+  Sqlite,
+  SqliteQueryPlanRow,
+  SqliteSchema,
+  Table,
+  Value,
+  drawSqliteQueryPlan as drawExplainQueryPlan,
+} from "./Sqlite.js";
 import {
   Message,
   NewMessage,
@@ -99,9 +105,8 @@ interface DbWorkerInputReset {
   readonly mnemonic?: Mnemonic;
 }
 
-interface DbWorkerInputEnsureSchema {
+interface DbWorkerInputEnsureSchema extends SqliteSchema {
   readonly _tag: "ensureSchema";
-  readonly tables: Tables;
 }
 
 type DbWorkerOnMessage = DbWorker["onMessage"];
@@ -189,11 +194,30 @@ const query = ({
 
     const queriesRows = yield* _(
       ReadonlyArray.dedupe(queries),
-      Effect.forEach((query) =>
-        sqlite
-          .exec(deserializeQuery(query))
-          .pipe(Effect.map((result) => [query, result.rows] as const)),
-      ),
+      Effect.forEach((query) => {
+        const sqliteQuery = deserializeQuery(query);
+        return sqlite.exec(sqliteQuery).pipe(
+          Effect.map((result) => [query, result.rows] as const),
+          Effect.tap(() => {
+            if (!sqliteQuery.options?.logExplainQueryPlan) return;
+            return sqlite
+              .exec({
+                ...sqliteQuery,
+                sql: `EXPLAIN QUERY PLAN ${sqliteQuery.sql}`,
+              })
+              .pipe(
+                Effect.tap(() => Effect.log("ExplainQueryPlan")),
+                Effect.tap(({ rows }) => {
+                  // Not using Effect.log because of formating
+                  // eslint-disable-next-line no-console
+                  console.log(
+                    drawExplainQueryPlan(rows as SqliteQueryPlanRow[]),
+                  );
+                }),
+              );
+          }),
+        );
+      }),
     );
 
     const previous = rowsStore.getState();
@@ -288,7 +312,8 @@ const ensureSchemaByNewMessages = (
         columns: table.columns.concat(message.column),
       });
     });
-    yield* _(ensureSchema(Array.from(tablesMap.values())));
+    const tables = Array.from(tablesMap.values());
+    yield* _(ensureSchema({ tables, indexes: [] }));
   });
 
 export const upsertValueIntoTableRowColumn = (
@@ -300,7 +325,15 @@ export const upsertValueIntoTableRowColumn = (
     const sqlite = yield* _(Sqlite);
     const createdAtOrUpdatedAt = cast(new Date(millis));
     const insert = sqlite.exec({
-      sql: Sql.upsertValueIntoTableRowColumn(message.table, message.column),
+      sql: `
+        insert into
+          "${message.table}" ("id", "${message.column}", "createdAt", "updatedAt")
+        values
+          (?, ?, ?, ?)
+        on conflict do update set
+          "${message.column}" = ?,
+          "updatedAt" = ?
+        `.trim(),
       parameters: [
         message.row,
         message.value,
@@ -334,8 +367,8 @@ const applyMessages = ({
     for (const message of messages) {
       const timestamp: TimestampString | null = yield* _(
         sqlite.exec({
-          sql: Sql.selectLastTimestampForTableRowColumn,
-          parameters: [message.table, message.row, message.column],
+          ...Sql.selectLastTimestampForTableRowColumn,
+          parameters: [message.table, message.row, message.column, 1],
         }),
         Effect.map((result) => result.rows),
         Effect.flatMap(ReadonlyArray.head),
@@ -351,7 +384,7 @@ const applyMessages = ({
       if (timestamp == null || timestamp !== message.timestamp) {
         const { changes } = yield* _(
           sqlite.exec({
-            sql: Sql.insertIntoMessagesIfNew,
+            ...Sql.insertIntoMessagesIfNew,
             parameters: [
               message.timestamp,
               message.table,
@@ -377,10 +410,10 @@ const writeTimestampAndMerkleTree = ({
 }: TimestampAndMerkleTree): Effect.Effect<void, never, Sqlite> =>
   Effect.flatMap(Sqlite, (sqlite) =>
     sqlite.exec({
-      sql: Sql.updateOwnerTimestampAndMerkleTree,
+      ...Sql.updateOwnerTimestampAndMerkleTree,
       parameters: [
-        timestampToString(timestamp),
         merkleTreeToString(merkleTree),
+        timestampToString(timestamp),
       ],
     }),
   );
@@ -420,7 +453,10 @@ const mutate = ({
     const { exec } = yield* _(Sqlite);
     yield* _(
       Effect.forEach(toDelete, ({ table, row }) =>
-        exec({ sql: Sql.deleteTableRow(table), parameters: [row] }),
+        exec({
+          sql: `delete from "${table}" where "id" = ?;`,
+          parameters: [row],
+        }),
       ),
     );
 
@@ -504,7 +540,7 @@ const handleSyncResponse = ({
 
     const messagesToSync = yield* _(
       sqlite.exec({
-        sql: Sql.selectMessagesToSync,
+        ...Sql.selectMessagesToSync,
         parameters: [timestampToString(makeSyncTimestamp(diff.value))],
       }),
       Effect.map(({ rows }) => rows as unknown as ReadonlyArray<Message>),
@@ -561,25 +597,8 @@ const reset = (
   Sqlite | Bip39 | NanoIdGenerator | DbWorkerOnMessage
 > =>
   Effect.gen(function* (_) {
-    const sqlite = yield* _(Sqlite);
-
-    yield* _(
-      sqlite.exec(`SELECT "name" FROM "sqlite_master" WHERE "type" = 'table'`),
-      Effect.map((result) => result.rows),
-      Effect.flatMap(
-        // The dropped table is completely removed from the database schema and
-        // the disk file. The table can not be recovered.
-        // All indices and triggers associated with the table are also deleted.
-        // https://sqlite.org/lang_droptable.html
-        Effect.forEach(
-          ({ name }) => sqlite.exec(`DROP TABLE "${name as string}"`),
-          { discard: true },
-        ),
-      ),
-    );
-
+    yield* _(dropAllTables);
     if (input.mnemonic) yield* _(lazyInit(input.mnemonic));
-
     const onMessage = yield* _(DbWorkerOnMessage);
     onMessage({ _tag: "onResetOrRestore" });
   });
@@ -666,7 +685,7 @@ export const DbWorkerCommonLive = Layer.effect(
               skipAllBecauseOfReset = true;
               return reset(input);
             },
-            ensureSchema: ({ tables }) => ensureSchema(tables),
+            ensureSchema,
             SyncWorkerOutputSyncResponse: handleSyncResponse,
           }),
           Effect.provide(layer),

@@ -31,9 +31,14 @@ import {
   insertOwner,
 } from "./Sql.js";
 import {
+  Index,
+  indexEquivalence,
   JsonObjectOrArray,
   Sqlite,
   SqliteQuery,
+  SqliteQueryOptions,
+  SqliteSchema,
+  Table,
   Value,
   isJsonObjectOrArray,
 } from "./Sqlite.js";
@@ -157,22 +162,25 @@ interface SerializedSqliteQuery {
     | Array<number>
     | { json: JsonObjectOrArray }
   )[];
+  readonly options?: SqliteQueryOptions;
 }
 
 // We use queries as keys, hence JSON.stringify.
 export const serializeQuery = <R extends Row>({
   sql,
-  parameters,
+  parameters = [],
+  options,
 }: SqliteQuery): Query<R> => {
   const query: SerializedSqliteQuery = {
     sql,
-    parameters: parameters.map((p) => {
-      return Predicate.isUint8Array(p)
+    parameters: parameters.map((p) =>
+      Predicate.isUint8Array(p)
         ? Array.from(p)
         : isJsonObjectOrArray(p)
           ? { json: p }
-          : p;
-    }),
+          : p,
+    ),
+    ...(options && { options }),
   };
   return JSON.stringify(query) as Query<R>;
 };
@@ -249,13 +257,7 @@ export const queryResultFromRows = <R extends Row>(
   return queryResult as QueryResult<R>;
 };
 
-export type Tables = ReadonlyArray<Table>;
-
-export interface Table {
-  readonly name: string;
-  readonly columns: ReadonlyArray<string>;
-}
-
+// TODO: https://discord.com/channels/795981131316985866/1218626687546294386/1218796529725476935
 // https://github.com/Effect-TS/schema/releases/tag/v0.18.0
 const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
   schema: S.Schema<A, I>,
@@ -270,7 +272,7 @@ const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
   return out as any;
 };
 
-export const schemaToTables = (schema: S.Schema<any>): Tables =>
+export const schemaToTables = (schema: S.Schema<any>): ReadonlyArray<Table> =>
   pipe(
     getPropertySignatures(schema),
     ReadonlyRecord.toEntries,
@@ -287,10 +289,12 @@ export const transaction = <R, E, A>(
 ): Effect.Effect<A, E, Sqlite | R> =>
   Effect.flatMap(Sqlite, (sqlite) =>
     Effect.acquireUseRelease(
-      sqlite.exec("begin"),
+      sqlite.exec({ sql: "begin" }),
       () => effect,
       (_, exit) =>
-        Exit.isFailure(exit) ? sqlite.exec("rollback") : sqlite.exec("end"),
+        Exit.isFailure(exit)
+          ? sqlite.exec({ sql: "rollback" })
+          : sqlite.exec({ sql: "end" }),
     ),
   );
 
@@ -336,7 +340,7 @@ export const lazyInit = (
         sqlite.exec(createMessageTableIndex),
         sqlite.exec(createOwnerTable),
         sqlite.exec({
-          sql: insertOwner,
+          ...insertOwner,
           parameters: [
             owner.id,
             owner.mnemonic,
@@ -351,78 +355,150 @@ export const lazyInit = (
     return owner;
   });
 
-const getTables: Effect.Effect<
-  ReadonlyArray<string>,
-  never,
-  Sqlite
-> = Sqlite.pipe(
-  Effect.flatMap((sqlite) =>
-    sqlite.exec(`select "name" from "sqlite_schema" where "type" = 'table'`),
-  ),
-  Effect.map((result) => result.rows),
-  Effect.map(ReadonlyArray.map((row) => (row.name as string) + "")),
-  Effect.map(ReadonlyArray.filter(Predicate.not(String.startsWith("__")))),
-  Effect.map(ReadonlyArray.dedupeWith(String.Equivalence)),
+const getSchema: Effect.Effect<SqliteSchema, never, Sqlite> = Effect.gen(
+  function* (_) {
+    const sqlite = yield* _(Sqlite);
+
+    const tables = yield* _(
+      sqlite.exec({
+        // https://til.simonwillison.net/sqlite/list-all-columns-in-a-database
+        sql: `
+          select
+            sqlite_master.name as tableName,
+            table_info.name as columnName
+          from
+            sqlite_master
+            join pragma_table_info(sqlite_master.name) as table_info
+          `.trim(),
+      }),
+      Effect.map(({ rows }) => {
+        const map = new Map<string, string[]>();
+        rows.forEach((row) => {
+          const { tableName, columnName } = row as {
+            tableName: string;
+            columnName: string;
+          };
+          if (!map.has(tableName)) map.set(tableName, []);
+          map.get(tableName)?.push(columnName);
+        });
+        return Array.from(map, ([name, columns]) => ({
+          name,
+          columns,
+        }));
+      }),
+    );
+
+    const indexes = yield* _(
+      sqlite.exec({
+        sql: `
+          select
+            name, sql
+          from
+            sqlite_master
+          where
+            type='index' and
+            name not like 'sqlite_%' and
+            name not like 'index_evolu_%'`,
+      }),
+      Effect.map((result) =>
+        ReadonlyArray.map(
+          result.rows,
+          (row): Index => ({
+            name: row.name as string,
+            /**
+             * SQLite returns "CREATE INDEX" for "create index" for some reason.
+             * Other keywords remain unchanged. We have to normalize the casing
+             * for `indexEquivalence` manually.
+             */
+            sql: (row.sql as string).replace("CREATE INDEX", "create index"),
+          }),
+        ),
+      ),
+    );
+
+    return { tables, indexes };
+  },
 );
 
-const updateTable = ({
-  name,
-  columns,
-}: Table): Effect.Effect<void, never, Sqlite> =>
+export const ensureSchema = (
+  schema: SqliteSchema,
+): Effect.Effect<void, never, Sqlite> =>
   Effect.gen(function* (_) {
     const sqlite = yield* _(Sqlite);
-    const sql = yield* _(
-      sqlite.exec(`pragma table_info (${name})`),
-      Effect.map((result) => result.rows),
-      Effect.map(ReadonlyArray.map((row) => row.name as string)),
-      Effect.map((existingColumns) =>
-        ReadonlyArray.differenceWith(String.Equivalence)(existingColumns)(
-          columns,
-        ),
+    const currentSchema = yield* _(getSchema);
+
+    const sql: string[] = [];
+
+    schema.tables.forEach((table) => {
+      const currentTable = currentSchema.tables.find(
+        (t) => t.name === table.name,
+      );
+      if (!currentTable) {
+        sql.push(`
+          create table ${table.name} (
+            "id" text primary key,
+            ${table.columns
+              .filter((c) => c !== "id")
+              // "A column with affinity BLOB does not prefer one storage class over another
+              // and no attempt is made to coerce data from one storage class into another."
+              // https://www.sqlite.org/datatype3.html
+              .map((name) => `"${name}" blob`)
+              .join(", ")}
+            );
+        `);
+      } else {
+        ReadonlyArray.differenceWith(String.Equivalence)(
+          table.columns,
+          currentTable.columns,
+        ).forEach((newColumn) => {
+          sql.push(
+            `alter table "${table.name}" add column "${newColumn}" blob;`,
+          );
+        });
+      }
+    });
+
+    // Remove old indexes.
+    ReadonlyArray.differenceWith(indexEquivalence)(
+      currentSchema.indexes,
+      ReadonlyArray.intersectionWith(indexEquivalence)(
+        currentSchema.indexes,
+        schema.indexes,
       ),
-      Effect.map(
-        ReadonlyArray.map(
-          (newColumn) =>
-            `alter table "${name}" add column "${newColumn}" blob;`,
-        ),
-      ),
-      Effect.map(ReadonlyArray.join("")),
-    );
-    if (sql) yield* _(sqlite.exec(sql));
+    ).forEach((indexToDrop) => {
+      sql.push(`drop index "${indexToDrop.name}";`);
+    });
+
+    // Add new indexes.
+    ReadonlyArray.differenceWith(indexEquivalence)(
+      schema.indexes,
+      currentSchema.indexes,
+    ).forEach((newIndex) => {
+      sql.push(`${newIndex.sql};`);
+    });
+
+    if (sql.length > 0)
+      yield* _(
+        sqlite.exec({
+          sql: sql.join(""),
+        }),
+      );
   });
 
-const createTable = ({
-  name,
-  columns,
-}: Table): Effect.Effect<void, never, Sqlite> =>
-  Effect.flatMap(Sqlite, (sqlite) =>
-    sqlite.exec(`
-      create table ${name} (
-        "id" text primary key,
-        ${columns
-          .filter((c) => c !== "id")
-          // "A column with affinity BLOB does not prefer one storage class over another
-          // and no attempt is made to coerce data from one storage class into another."
-          // https://www.sqlite.org/datatype3.html
-          .map((name) => `"${name}" blob`)
-          .join(", ")}
-      );
-    `),
-  );
-
-export const ensureSchema = (
-  tables: Tables,
-): Effect.Effect<void, never, Sqlite> =>
-  Effect.flatMap(getTables, (existingTables) =>
-    Effect.forEach(
-      tables,
-      (tableDefinition) =>
-        existingTables.includes(tableDefinition.name)
-          ? updateTable(tableDefinition)
-          : createTable(tableDefinition),
-      { discard: true },
-    ),
-  );
+export const dropAllTables: Effect.Effect<void, never, Sqlite> = Effect.gen(
+  function* (_) {
+    const sqlite = yield* _(Sqlite);
+    const schema = yield* _(getSchema);
+    const sql = schema.tables
+      // The dropped table is completely removed from the database schema and
+      // the disk file. The table can not be recovered.
+      // All indices and triggers associated with the table are also deleted.
+      // https://sqlite.org/lang_droptable.html
+      .map((table) => `drop table "${table.name}";`)
+      .join("");
+    yield* _(sqlite.exec({ sql }));
+  },
+);
 
 export type RowsStore = Store<RowsStoreValue>;
 export const RowsStore = Context.GenericTag<RowsStore>("@services/RowsStore");

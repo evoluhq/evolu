@@ -32,7 +32,12 @@ import { SqliteBoolean, SqliteDate } from "./Model.js";
 import { OnCompletes, OnCompletesLive } from "./OnCompletes.js";
 import { Owner } from "./Owner.js";
 import { AppState, FlushSync } from "./Platform.js";
-import { SqliteQuery, isSqlMutation } from "./Sqlite.js";
+import {
+  Index,
+  SqliteQuery,
+  SqliteQueryOptions,
+  isSqlMutation,
+} from "./Sqlite.js";
 import { Store, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
 
@@ -297,6 +302,7 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
    */
   readonly ensureSchema: <From, To extends S>(
     schema: S.Schema<To, From>,
+    indexes?: ReadonlyArray<Index>,
   ) => void;
 
   /**
@@ -313,6 +319,7 @@ export const Evolu = Context.GenericTag<Evolu>("@services/Evolu");
 
 type CreateQuery<S extends DatabaseSchema> = <R extends Row>(
   queryCallback: QueryCallback<S, R>,
+  options?: SqliteQueryOptions,
 ) => Query<R>;
 
 type QueryCallback<S extends DatabaseSchema, R extends Row> = (
@@ -334,6 +341,7 @@ type NullableExceptForIdAndAutomaticColumns<T> = {
     : T[K] | null;
 };
 
+// https://kysely.dev/docs/recipes/splitting-query-building-and-execution
 const kysely = new Kysely.Kysely<QuerySchema<DatabaseSchema>>({
   dialect: {
     createAdapter: (): Kysely.DialectAdapter => new Kysely.SqliteAdapter(),
@@ -346,18 +354,29 @@ const kysely = new Kysely.Kysely<QuerySchema<DatabaseSchema>>({
   },
 });
 
+export const createIndex = kysely.schema.createIndex.bind(kysely.schema);
+
 export const makeCreateQuery =
   <S extends DatabaseSchema = DatabaseSchema>(): CreateQuery<S> =>
-  <R extends Row>(queryCallback: QueryCallback<S, R>) =>
+  <R extends Row>(
+    queryCallback: QueryCallback<S, R>,
+    options?: SqliteQueryOptions,
+  ) =>
     pipe(
       queryCallback(kysely as Kysely.Kysely<QuerySchema<S>>).compile(),
-      ({ sql, parameters }): SqliteQuery => {
-        if (isSqlMutation(sql))
+      (compiledQuery): SqliteQuery => {
+        if (isSqlMutation(compiledQuery.sql))
           throw new Error(
             "SQL mutation (INSERT, UPDATE, DELETE, etc.) isn't allowed in the Evolu `createQuery` function. Kysely suggests it because there is no read-only Kysely yet, and removing such an API is not possible. For mutations, use Evolu mutation API.",
           );
-
-        return { sql, parameters: parameters as SqliteQuery["parameters"] };
+        const parameters = compiledQuery.parameters as NonNullable<
+          SqliteQuery["parameters"]
+        >;
+        return {
+          sql: compiledQuery.sql,
+          parameters,
+          ...(options && { options }),
+        };
       },
       (query) => serializeQuery<R>(query),
     );
@@ -739,7 +758,6 @@ const EvoluCommon = Layer.effect(
     };
 
     appState.init({ onRequestSync: sync });
-
     sync();
 
     return Evolu.of({
@@ -770,10 +788,11 @@ const EvoluCommon = Layer.effect(
       restoreOwner: (mnemonic) =>
         dbWorker.postMessage({ _tag: "reset", mnemonic }),
 
-      ensureSchema: (schema) =>
+      ensureSchema: (schema, indexes = []) =>
         dbWorker.postMessage({
           _tag: "ensureSchema",
           tables: schemaToTables(schema),
+          indexes,
         }),
 
       sync,
@@ -815,6 +834,14 @@ export const makeCreateEvolu =
         Effect.runSync,
       ),
     );
-    evolu.ensureSchema(schema);
+
+    const indexes = config?.indexes?.map(
+      (index): Index => ({
+        name: index.toOperationNode().name.name,
+        sql: index.compile().sql,
+      }),
+    );
+
+    evolu.ensureSchema(schema, indexes);
     return evolu as Evolu<To>;
   };

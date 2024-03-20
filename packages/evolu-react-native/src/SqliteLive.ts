@@ -2,8 +2,8 @@ import {
   Config,
   Sqlite,
   SqliteRow,
-  ensureSqliteQuery,
   isSqlMutation,
+  maybeLogSqliteQueryExecutionTime,
   maybeParseJson,
   valuesToSqliteValues,
 } from "@evolu/common";
@@ -18,23 +18,20 @@ export const SqliteLive = Layer.effect(
     const db = ExpoSQLite.openDatabaseSync(`evolu1-${config.name}.db`);
 
     return Sqlite.of({
-      exec: (arg) =>
+      exec: (query) =>
         Effect.gen(function* (_) {
-          const sqliteQuery = ensureSqliteQuery(arg);
-          const query = {
-            sql: sqliteQuery.sql,
-            args: valuesToSqliteValues(sqliteQuery.parameters),
-          };
+          const parameters = valuesToSqliteValues(query.parameters || []);
 
           if (!isSqlMutation(query.sql)) {
             const rows = (yield* _(
-              Effect.promise(() => db.getAllAsync(query.sql, query.args)),
+              Effect.promise(() => db.getAllAsync(query.sql, parameters)),
+              maybeLogSqliteQueryExecutionTime(query),
             )) as SqliteRow[];
             maybeParseJson(rows);
             return { rows, changes: 0 };
           }
           const { changes } = yield* _(
-            Effect.promise(() => db.runAsync(query.sql, query.args)),
+            Effect.promise(() => db.runAsync(query.sql, parameters)),
           );
           return { rows: [], changes };
         }),

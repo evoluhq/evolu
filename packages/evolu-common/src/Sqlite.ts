@@ -1,16 +1,24 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import { Equivalence } from "effect/Equivalence";
 import * as Predicate from "effect/Predicate";
 
 export interface Sqlite {
-  readonly exec: (arg: string | SqliteQuery) => Effect.Effect<SqliteExecResult>;
+  readonly exec: (query: SqliteQuery) => Effect.Effect<SqliteExecResult>;
 }
 
 export const Sqlite = Context.GenericTag<Sqlite>("@services/Sqlite");
 
 export interface SqliteQuery {
   readonly sql: string;
-  readonly parameters: Value[];
+  readonly parameters?: Value[];
+  readonly options?: SqliteQueryOptions;
+}
+
+export interface SqliteQueryOptions {
+  readonly logQueryExecutionTime?: boolean;
+  /** https://www.sqlite.org/eqp.html */
+  readonly logExplainQueryPlan?: boolean;
 }
 
 export type Value = SqliteValue | JsonObjectOrArray;
@@ -40,11 +48,6 @@ export const valuesToSqliteValues = (
   values.map((value) =>
     isJsonObjectOrArray(value) ? JSON.stringify(value) : value,
   );
-
-export const ensureSqliteQuery = (arg: string | SqliteQuery): SqliteQuery => {
-  if (typeof arg !== "string") return arg;
-  return { sql: arg, parameters: [] };
-};
 
 export const maybeParseJson = (rows: SqliteRow[]): SqliteRow[] =>
   parseArray(rows);
@@ -96,3 +99,58 @@ const isSqlMutationRegEx = new RegExp(
 
 export const isSqlMutation = (sql: string): boolean =>
   isSqlMutationRegEx.test(sql);
+
+export const maybeLogSqliteQueryExecutionTime =
+  (query: SqliteQuery) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> => {
+    if (!query.options?.logQueryExecutionTime) return effect;
+    return effect.pipe(
+      Effect.tap(() => Effect.log("QueryExecutionTime")),
+      // Not using Effect.log because of formating
+      // eslint-disable-next-line no-console
+      Effect.tap(() => console.log(query.sql)),
+      Effect.withLogSpan("duration"),
+    );
+  };
+
+export type SqliteQueryPlanRow = {
+  id: number;
+  parent: number;
+  detail: string;
+};
+
+export const drawSqliteQueryPlan = (rows: SqliteQueryPlanRow[]): string =>
+  rows
+    .map((row) => {
+      let parentId = row.parent;
+      let indent = 0;
+
+      do {
+        const parent = rows.find((r) => r.id === parentId);
+        if (!parent) break;
+        parentId = parent.parent;
+        indent++;
+        // eslint-disable-next-line no-constant-condition
+      } while (true);
+
+      return `${"  ".repeat(indent)}${row.detail}`;
+    })
+    .join("\n");
+
+export interface SqliteSchema {
+  readonly tables: ReadonlyArray<Table>;
+  readonly indexes: ReadonlyArray<Index>;
+}
+
+export interface Table {
+  readonly name: string;
+  readonly columns: ReadonlyArray<string>;
+}
+
+export interface Index {
+  readonly name: string;
+  readonly sql: string;
+}
+
+export const indexEquivalence: Equivalence<Index> = (self, that) =>
+  self.name === that.name && self.sql === that.sql;

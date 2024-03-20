@@ -8,6 +8,7 @@ import {
   String,
   cast,
   createEvolu,
+  createIndex,
   database,
   id,
   jsonArrayFrom,
@@ -37,12 +38,18 @@ import {
 } from "react-native";
 import RNPickerSelect from "react-native-picker-select";
 
+// Let's start with the database schema.
+
+// Every table needs Id. It's defined as a branded type.
+// Branded types make database types super safe.
 const TodoId = id("Todo");
 type TodoId = S.Schema.Type<typeof TodoId>;
 
 const TodoCategoryId = id("TodoCategory");
 type TodoCategoryId = S.Schema.Type<typeof TodoCategoryId>;
 
+// This branded type ensures a string must be validated before being put
+// into the database.
 const NonEmptyString50 = String.pipe(
   S.minLength(1),
   S.maxLength(50),
@@ -50,6 +57,7 @@ const NonEmptyString50 = String.pipe(
 );
 type NonEmptyString50 = S.Schema.Type<typeof NonEmptyString50>;
 
+// Now we can define tables.
 const TodoTable = table({
   id: TodoId,
   title: NonEmptyString1000,
@@ -58,6 +66,7 @@ const TodoTable = table({
 });
 type TodoTable = S.Schema.Type<typeof TodoTable>;
 
+// Evolu tables can contain typed JSONs.
 const SomeJson = S.struct({ foo: S.string, bar: S.boolean });
 type SomeJson = S.Schema.Type<typeof SomeJson>;
 
@@ -68,13 +77,34 @@ const TodoCategoryTable = table({
 });
 type TodoCategoryTable = S.Schema.Type<typeof TodoCategoryTable>;
 
+// Now, we can define the database schema.
 const Database = database({
   todo: TodoTable,
   todoCategory: TodoCategoryTable,
 });
 type Database = S.Schema.Type<typeof Database>;
 
+/**
+ * Indexes
+ *
+ * Indexes are not necessary for development but are required for production.
+ *
+ * Before adding an index, use `logExecutionTime` and `logExplainQueryPlan`
+ * createQuery options.
+ *
+ * SQLite has a tool for Index Recommendations (SQLite Expert)
+ * https://sqlite.org/cli.html#index_recommendations_sqlite_expert_
+ */
+const indexes = [
+  createIndex("indexTodoCreatedAt").on("todo").column("createdAt"),
+
+  createIndex("indexTodoCategoryCreatedAt")
+    .on("todoCategory")
+    .column("createdAt"),
+];
+
 const evolu = createEvolu(Database, {
+  indexes,
   ...(process.env.NODE_ENV === "development" && {
     syncUrl: "http://localhost:4000",
   }),
@@ -184,25 +214,31 @@ const OwnerActions: FC = () => {
   );
 };
 
-const todosWithCategories = evolu.createQuery((db) =>
-  db
-    .selectFrom("todo")
-    .select(["id", "title", "isCompleted", "categoryId"])
-    .where("isDeleted", "is not", cast(true))
-    // Filter null value and ensure non-null type.
-    .where("title", "is not", null)
-    .$narrowType<{ title: NotNull }>()
-    .orderBy("createdAt")
-    // https://kysely.dev/docs/recipes/relations
-    .select((eb) => [
-      jsonArrayFrom(
-        eb
-          .selectFrom("todoCategory")
-          .select(["todoCategory.id", "todoCategory.name"])
-          .where("isDeleted", "is not", cast(true))
-          .orderBy("createdAt"),
-      ).as("categories"),
-    ]),
+// Evolu queries should be collocated. If necessary, they can be preloaded.
+const todosWithCategories = evolu.createQuery(
+  (db) =>
+    db
+      .selectFrom("todo")
+      .select(["id", "title", "isCompleted", "categoryId"])
+      .where("isDeleted", "is not", cast(true))
+      // Filter null value and ensure non-null type.
+      .where("title", "is not", null)
+      .$narrowType<{ title: NotNull }>()
+      .orderBy("createdAt")
+      // https://kysely.dev/docs/recipes/relations
+      .select((eb) => [
+        jsonArrayFrom(
+          eb
+            .selectFrom("todoCategory")
+            .select(["todoCategory.id", "todoCategory.name"])
+            .where("isDeleted", "is not", cast(true))
+            .orderBy("createdAt"),
+        ).as("categories"),
+      ]),
+  {
+    // logQueryExecutionTime: true,
+    // logExplainQueryPlan: true,
+  },
 );
 
 const Todos: FC = () => {

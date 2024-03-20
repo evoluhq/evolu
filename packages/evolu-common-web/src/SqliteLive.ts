@@ -7,7 +7,7 @@ import {
   SqliteQuery,
   SqliteRow,
   UnexpectedError,
-  ensureSqliteQuery,
+  maybeLogSqliteQueryExecutionTime,
   makeUnexpectedError,
   maybeParseJson,
   valuesToSqliteValues,
@@ -138,13 +138,16 @@ export const SqliteLive = Layer.effect(
     const initSqlite = (poolUtil: SAHPoolUtil): void => {
       const sqlite = new poolUtil.OpfsSAHPoolDb("/evolu1.db");
 
-      const exec = (sqliteQuery: SqliteQuery, id: NanoId): void => {
+      const exec = (query: SqliteQuery, id: NanoId): void => {
         try {
-          const rows = sqlite.exec(sqliteQuery.sql, {
-            returnValue: "resultRows",
-            rowMode: "object",
-            bind: valuesToSqliteValues(sqliteQuery.parameters),
-          }) as SqliteRow[];
+          const rows = Effect.try(
+            () =>
+              sqlite.exec(query.sql, {
+                returnValue: "resultRows",
+                rowMode: "object",
+                bind: valuesToSqliteValues(query.parameters || []),
+              }) as SqliteRow[],
+          ).pipe(maybeLogSqliteQueryExecutionTime(query), Effect.runSync);
           maybeParseJson(rows);
           const result = { rows, changes: sqlite.changes() };
           channel.postMessage({ _tag: "ExecSuccess", id, result });
@@ -198,11 +201,9 @@ export const SqliteLive = Layer.effect(
     );
 
     return Sqlite.of({
-      exec: (arg) =>
+      exec: (query) =>
         Effect.gen(function* (_) {
           const id = yield* _(nanoIdGenerator.nanoid);
-          const query = ensureSqliteQuery(arg);
-
           const promise = new Promise<MessageExecSuccess | MessageExecError>(
             (resolve) => {
               promiseResolves.set(id, resolve);

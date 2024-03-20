@@ -11,7 +11,7 @@
     "clean": "rm -rf .turbo .expo node_modules dist"
   },
   "dependencies": {
-    "@effect/schema": "^0.64.5",
+    "@effect/schema": "^0.64.9",
     "@evolu/common": "workspace:*",
     "@evolu/common-react": "workspace:*",
     "@evolu/react-native": "workspace:*",
@@ -19,26 +19,26 @@
     "babel-plugin-module-resolver": "^5.0.0",
     "buffer": "^6.0.3",
     "crypto-browserify": "^3.12.0",
-    "effect": "2.4.7",
+    "effect": "2.4.9",
     "events": "^3.3.0",
-    "expo": "^50.0.11",
-    "expo-sqlite": "~13.3.0",
+    "expo": "^50.0.14",
+    "expo-sqlite": "~13.4.0",
     "expo-status-bar": "~1.11.1",
     "fast-text-encoding": "^1.0.6",
     "react": "^18.2.0",
-    "react-native": "0.73.5",
+    "react-native": "0.73.6",
     "react-native-get-random-values": "~1.8.0",
     "react-native-picker-select": "^9.0.0",
     "stream": "^0.0.2"
   },
   "devDependencies": {
-    "@babel/core": "^7.23.3",
-    "@babel/plugin-transform-dynamic-import": "^7.23.4",
-    "@babel/plugin-transform-private-methods": "^7.23.3",
-    "@types/react": "^18.2.66",
+    "@babel/core": "^7.24.3",
+    "@babel/plugin-transform-dynamic-import": "^7.24.1",
+    "@babel/plugin-transform-private-methods": "^7.24.1",
+    "@types/react": "^18.2.67",
     "eslint": "^8.57.0",
     "eslint-config-evolu": "workspace:*",
     "prettier": "^3.2.5",
-    "typescript": "^5.4.2"
+    "typescript": "^5.4.3"
   }
 }
