@@ -1,5 +1,11 @@
 # @evolu/react-native
 
+## 8.0.0
+
+### Patch Changes
+
+- @evolu/common-react@7.0.0
+
 ## 7.1.1
 
 ### Patch Changes
