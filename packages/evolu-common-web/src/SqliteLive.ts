@@ -11,6 +11,7 @@ import {
   makeUnexpectedError,
   maybeParseJson,
   valuesToSqliteValues,
+  maybeLogSql,
 } from "@evolu/common";
 import sqlite3InitModule, { SAHPoolUtil } from "@sqlite.org/sqlite-wasm";
 import * as Effect from "effect/Effect";
@@ -90,6 +91,7 @@ globalThis.sqlite3ApiConfig = {
 export const SqliteLive = Layer.effect(
   Sqlite,
   Effect.gen(function* (_) {
+    const { name, logSql } = yield* _(Config);
     const nanoIdGenerator = yield* _(NanoIdGenerator);
     const channel = createSqliteChannel();
 
@@ -147,7 +149,11 @@ export const SqliteLive = Layer.effect(
                 rowMode: "object",
                 bind: valuesToSqliteValues(query.parameters || []),
               }) as SqliteRow[],
-          ).pipe(maybeLogSqliteQueryExecutionTime(query), Effect.runSync);
+          ).pipe(
+            maybeLogSql(query, logSql),
+            maybeLogSqliteQueryExecutionTime(query),
+            Effect.runSync,
+          );
           maybeParseJson(rows);
           const result = { rows, changes: sqlite.changes() };
           channel.postMessage({ _tag: "ExecSuccess", id, result });
@@ -183,7 +189,6 @@ export const SqliteLive = Layer.effect(
     };
 
     const lockName = yield* _(multitenantLockName("Sqlite"));
-    const { name } = yield* _(Config);
 
     navigator.locks.request(
       lockName,

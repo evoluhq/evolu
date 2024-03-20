@@ -154,3 +154,20 @@ export interface Index {
 
 export const indexEquivalence: Equivalence<Index> = (self, that) =>
   self.name === that.name && self.sql === that.sql;
+
+export const maybeLogSql =
+  (query: SqliteQuery, logSql: boolean) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> => {
+    if (!logSql) return effect;
+    return effect.pipe(
+      Effect.tap(() => Effect.log("SQL")),
+      // Not using Effect.log because of formating
+      Effect.tap(() => {
+        // eslint-disable-next-line no-console
+        console.log(query.sql);
+        if (query.parameters && query.parameters.length > 0)
+          // eslint-disable-next-line no-console
+          console.log(query.parameters);
+      }),
+    );
+  };
