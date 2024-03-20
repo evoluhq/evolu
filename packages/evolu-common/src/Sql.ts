@@ -9,7 +9,7 @@ export const createMessageTable: SqliteQuery = {
 };
 
 export const createMessageTableIndex: SqliteQuery = {
-  sql: `create index "index_evolu_message" on "evolu_message" ("table", "row", "column", "timestamp")`,
+  sql: `create index "index_evolu_message" on "evolu_message" ("table", "row", "column", "timestamp" desc)`,
 };
 
 export const createOwnerTable: SqliteQuery = {

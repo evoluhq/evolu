@@ -1,5 +1,6 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import { Equivalence } from "effect/Equivalence";
 import * as Predicate from "effect/Predicate";
 
 export interface Sqlite {
@@ -112,13 +113,13 @@ export const maybeLogSqliteQueryExecutionTime =
     );
   };
 
-export type QueryPlanRow = {
+export type SqliteQueryPlanRow = {
   id: number;
   parent: number;
   detail: string;
 };
 
-export const drawQueryPlan = (rows: QueryPlanRow[]): string =>
+export const drawSqliteQueryPlan = (rows: SqliteQueryPlanRow[]): string =>
   rows
     .map((row) => {
       let parentId = row.parent;
@@ -135,3 +136,21 @@ export const drawQueryPlan = (rows: QueryPlanRow[]): string =>
       return `${"  ".repeat(indent)}${row.detail}`;
     })
     .join("\n");
+
+export interface SqliteSchema {
+  readonly tables: ReadonlyArray<Table>;
+  readonly indexes: ReadonlyArray<Index>;
+}
+
+export interface Table {
+  readonly name: string;
+  readonly columns: ReadonlyArray<string>;
+}
+
+export interface Index {
+  readonly name: string;
+  readonly sql: string;
+}
+
+export const indexEquivalence: Equivalence<Index> = (self, that) =>
+  self.name === that.name && self.sql === that.sql;

@@ -1,5 +1,6 @@
 import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
+import { CreateIndexBuilder } from "kysely";
 
 export interface Config {
   /** Alternate URL to Evolu sync and backup server. */
@@ -23,6 +24,24 @@ export interface Config {
    * default value is: "Evolu".
    */
   readonly name: string;
+
+  /**
+   * Use the `indexes` property to define SQLite indexes.
+   *
+   * Table and column names are not typed because Kysely doesn't support it.
+   *
+   * https://medium.com/@JasonWyatt/squeezing-performance-from-sqlite-indexes-indexes-c4e175f3c346
+   *
+   * @example
+   *   const indexes = [
+   *     createIndex("indexTodoCreatedAt").on("todo").column("createdAt"),
+   *
+   *     createIndex("indexTodoCategoryCreatedAt")
+   *       .on("todoCategory")
+   *       .column("createdAt"),
+   *   ];
+   */
+  readonly indexes: ReadonlyArray<CreateIndexBuilder<any>>;
 }
 
 export const Config = Context.GenericTag<Config>("@services/Config");
@@ -35,6 +54,7 @@ export const ConfigLive = (config?: Partial<Config>): Layer.Layer<Config> =>
       maxDrift: 5 * 60 * 1000,
       reloadUrl: "/",
       name: "Evolu",
+      indexes: [],
       ...config,
     }),
   );

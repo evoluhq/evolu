@@ -34,9 +34,8 @@ import {
   Query,
   RowsStore,
   RowsStoreLive,
-  Table,
-  Tables,
   deserializeQuery,
+  dropAllTables,
   ensureSchema,
   lazyInit,
   someDefectToNoSuchTableOrColumnError,
@@ -50,10 +49,12 @@ import { Owner, OwnerId } from "./Owner.js";
 import { DbWorkerLock } from "./Platform.js";
 import * as Sql from "./Sql.js";
 import {
-  QueryPlanRow,
   Sqlite,
+  SqliteQueryPlanRow,
+  SqliteSchema,
+  Table,
   Value,
-  drawQueryPlan as drawExplainQueryPlan,
+  drawSqliteQueryPlan as drawExplainQueryPlan,
 } from "./Sqlite.js";
 import {
   Message,
@@ -104,9 +105,8 @@ interface DbWorkerInputReset {
   readonly mnemonic?: Mnemonic;
 }
 
-interface DbWorkerInputEnsureSchema {
+interface DbWorkerInputEnsureSchema extends SqliteSchema {
   readonly _tag: "ensureSchema";
-  readonly tables: Tables;
 }
 
 type DbWorkerOnMessage = DbWorker["onMessage"];
@@ -210,7 +210,9 @@ const query = ({
                 Effect.tap(({ rows }) => {
                   // Not using Effect.log because of formating
                   // eslint-disable-next-line no-console
-                  console.log(drawExplainQueryPlan(rows as QueryPlanRow[]));
+                  console.log(
+                    drawExplainQueryPlan(rows as SqliteQueryPlanRow[]),
+                  );
                 }),
               );
           }),
@@ -310,7 +312,8 @@ const ensureSchemaByNewMessages = (
         columns: table.columns.concat(message.column),
       });
     });
-    yield* _(ensureSchema(Array.from(tablesMap.values())));
+    const tables = Array.from(tablesMap.values());
+    yield* _(ensureSchema({ tables, indexes: [] }));
   });
 
 export const upsertValueIntoTableRowColumn = (
@@ -323,14 +326,14 @@ export const upsertValueIntoTableRowColumn = (
     const createdAtOrUpdatedAt = cast(new Date(millis));
     const insert = sqlite.exec({
       sql: `
-insert into
-  "${message.table}" ("id", "${message.column}", "createdAt", "updatedAt")
-values
-  (?, ?, ?, ?)
-on conflict do update set
-  "${message.column}" = ?,
-  "updatedAt" = ?
-`.trim(),
+        insert into
+          "${message.table}" ("id", "${message.column}", "createdAt", "updatedAt")
+        values
+          (?, ?, ?, ?)
+        on conflict do update set
+          "${message.column}" = ?,
+          "updatedAt" = ?
+        `.trim(),
       parameters: [
         message.row,
         message.value,
@@ -451,11 +454,7 @@ const mutate = ({
     yield* _(
       Effect.forEach(toDelete, ({ table, row }) =>
         exec({
-          sql: `
-            delete from "${table}"
-            where
-              "id" = ?;
-            `.trim(),
+          sql: `delete from "${table}" where "id" = ?;`,
           parameters: [row],
         }),
       ),
@@ -598,27 +597,8 @@ const reset = (
   Sqlite | Bip39 | NanoIdGenerator | DbWorkerOnMessage
 > =>
   Effect.gen(function* (_) {
-    const sqlite = yield* _(Sqlite);
-
-    yield* _(
-      sqlite.exec({
-        sql: `SELECT "name" FROM "sqlite_master" WHERE "type" = 'table'`,
-      }),
-      Effect.map((result) => result.rows),
-      Effect.flatMap(
-        // The dropped table is completely removed from the database schema and
-        // the disk file. The table can not be recovered.
-        // All indices and triggers associated with the table are also deleted.
-        // https://sqlite.org/lang_droptable.html
-        Effect.forEach(
-          ({ name }) => sqlite.exec({ sql: `DROP TABLE "${name as string}"` }),
-          { discard: true },
-        ),
-      ),
-    );
-
+    yield* _(dropAllTables);
     if (input.mnemonic) yield* _(lazyInit(input.mnemonic));
-
     const onMessage = yield* _(DbWorkerOnMessage);
     onMessage({ _tag: "onResetOrRestore" });
   });
@@ -705,7 +685,7 @@ export const DbWorkerCommonLive = Layer.effect(
               skipAllBecauseOfReset = true;
               return reset(input);
             },
-            ensureSchema: ({ tables }) => ensureSchema(tables),
+            ensureSchema,
             SyncWorkerOutputSyncResponse: handleSyncResponse,
           }),
           Effect.provide(layer),

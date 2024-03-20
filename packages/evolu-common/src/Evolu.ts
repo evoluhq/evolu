@@ -32,7 +32,12 @@ import { SqliteBoolean, SqliteDate } from "./Model.js";
 import { OnCompletes, OnCompletesLive } from "./OnCompletes.js";
 import { Owner } from "./Owner.js";
 import { AppState, FlushSync } from "./Platform.js";
-import { SqliteQuery, SqliteQueryOptions, isSqlMutation } from "./Sqlite.js";
+import {
+  Index,
+  SqliteQuery,
+  SqliteQueryOptions,
+  isSqlMutation,
+} from "./Sqlite.js";
 import { Store, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
 
@@ -297,6 +302,7 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
    */
   readonly ensureSchema: <From, To extends S>(
     schema: S.Schema<To, From>,
+    indexes?: ReadonlyArray<Index>,
   ) => void;
 
   /**
@@ -347,6 +353,8 @@ const kysely = new Kysely.Kysely<QuerySchema<DatabaseSchema>>({
       new Kysely.SqliteQueryCompiler(),
   },
 });
+
+export const createIndex = kysely.schema.createIndex.bind(kysely.schema);
 
 export const makeCreateQuery =
   <S extends DatabaseSchema = DatabaseSchema>(): CreateQuery<S> =>
@@ -780,10 +788,11 @@ const EvoluCommon = Layer.effect(
       restoreOwner: (mnemonic) =>
         dbWorker.postMessage({ _tag: "reset", mnemonic }),
 
-      ensureSchema: (schema) =>
+      ensureSchema: (schema, indexes = []) =>
         dbWorker.postMessage({
           _tag: "ensureSchema",
           tables: schemaToTables(schema),
+          indexes,
         }),
 
       sync,
@@ -825,6 +834,14 @@ export const makeCreateEvolu =
         Effect.runSync,
       ),
     );
-    evolu.ensureSchema(schema);
+
+    const indexes = config?.indexes?.map(
+      (index): Index => ({
+        name: index.toOperationNode().name.name,
+        sql: index.compile().sql,
+      }),
+    );
+
+    evolu.ensureSchema(schema, indexes);
     return evolu as Evolu<To>;
   };

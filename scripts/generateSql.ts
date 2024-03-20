@@ -58,7 +58,7 @@ const queries = {
   createMessageTableIndex: db.schema
     .createIndex("index_evolu_message")
     .on("evolu_message")
-    .columns(["table", "row", "column", "timestamp"]),
+    .columns(["table", "row", "column", "timestamp desc"]),
 
   createOwnerTable: db.schema
     .createTable("evolu_owner")
