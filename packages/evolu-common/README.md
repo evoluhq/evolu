@@ -55,6 +55,12 @@ Start developing and watch for code changes:
 pnpm dev
 ```
 
+Start iOS developing:
+
+```
+pnpm ios
+```
+
 Lint and tests:
 
 ```
