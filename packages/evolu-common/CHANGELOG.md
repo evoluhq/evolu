@@ -1,5 +1,12 @@
 # @evolu/common
 
+## 4.1.1
+
+### Patch Changes
+
+- a0d1e3c: Add config logSql option
+- 0afb614: Update Effect and Schema
+
 ## 4.1.0
 
 ### Minor Changes
