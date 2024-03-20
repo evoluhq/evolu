@@ -1,5 +1,13 @@
 # @evolu/react-native
 
+## 8.0.1
+
+### Patch Changes
+
+- a0d1e3c: Add config logSql option
+- 0afb614: Update Effect and Schema
+  - @evolu/common-react@7.0.0
+
 ## 8.0.0
 
 ### Patch Changes

@@ -1,5 +1,15 @@
 # @evolu/common-web
 
+## 7.0.1
+
+### Patch Changes
+
+- a0d1e3c: Add config logSql option
+- 0afb614: Update Effect and Schema
+- Updated dependencies [a0d1e3c]
+- Updated dependencies [0afb614]
+  - @evolu/common@4.1.1
+
 ## 7.0.0
 
 ### Patch Changes

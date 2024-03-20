@@ -1,5 +1,12 @@
 # server
 
+## 1.0.47
+
+### Patch Changes
+
+- Updated dependencies [0afb614]
+  - @evolu/server@6.0.1
+
 ## 1.0.46
 
 ### Patch Changes

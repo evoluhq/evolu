@@ -1,5 +1,14 @@
 # @evolu/server
 
+## 6.0.1
+
+### Patch Changes
+
+- 0afb614: Update Effect and Schema
+- Updated dependencies [a0d1e3c]
+- Updated dependencies [0afb614]
+  - @evolu/common@4.1.1
+
 ## 6.0.0
 
 ### Patch Changes
