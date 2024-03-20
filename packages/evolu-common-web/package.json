@@ -41,7 +41,7 @@
     "@types/web-locks-api": "^0.0.5",
     "eslint": "^8.57.0",
     "eslint-config-evolu": "workspace:*",
-    "typescript": "^5.4.2",
+    "typescript": "^5.4.3",
     "user-agent-data-types": "^0.4.2",
     "vitest": "^1.4.0"
   },
