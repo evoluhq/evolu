@@ -31,8 +31,8 @@
     "better-sqlite3": "^9.4.3",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
-    "effect": "2.4.9",
-    "express": "^4.19.0",
+    "effect": "2.4.10",
+    "express": "^4.19.1",
     "kysely": "^0.27.3"
   },
   "devDependencies": {
@@ -49,7 +49,7 @@
   },
   "peerDependencies": {
     "@evolu/common": "^4.1.0",
-    "effect": "2.4.9"
+    "effect": "2.4.10"
   },
   "publishConfig": {
     "access": "public"
