@@ -326,14 +326,14 @@ export const upsertValueIntoTableRowColumn = (
     const createdAtOrUpdatedAt = cast(new Date(millis));
     const insert = sqlite.exec({
       sql: `
-        insert into
-          "${message.table}" ("id", "${message.column}", "createdAt", "updatedAt")
-        values
-          (?, ?, ?, ?)
-        on conflict do update set
-          "${message.column}" = ?,
-          "updatedAt" = ?
-        `.trim(),
+insert into
+  "${message.table}" ("id", "${message.column}", "createdAt", "updatedAt")
+values
+  (?, ?, ?, ?)
+on conflict do update set
+  "${message.column}" = ?,
+  "updatedAt" = ?
+`.trim(),
       parameters: [
         message.row,
         message.value,

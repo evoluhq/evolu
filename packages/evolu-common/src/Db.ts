@@ -363,13 +363,13 @@ const getSchema: Effect.Effect<SqliteSchema, never, Sqlite> = Effect.gen(
       sqlite.exec({
         // https://til.simonwillison.net/sqlite/list-all-columns-in-a-database
         sql: `
-          select
-            sqlite_master.name as tableName,
-            table_info.name as columnName
-          from
-            sqlite_master
-            join pragma_table_info(sqlite_master.name) as table_info
-          `.trim(),
+select
+  sqlite_master.name as tableName,
+  table_info.name as columnName
+from
+  sqlite_master
+  join pragma_table_info(sqlite_master.name) as table_info
+`.trim(),
       }),
       Effect.map(({ rows }) => {
         const map = new Map<string, string[]>();
@@ -391,14 +391,15 @@ const getSchema: Effect.Effect<SqliteSchema, never, Sqlite> = Effect.gen(
     const indexes = yield* _(
       sqlite.exec({
         sql: `
-          select
-            name, sql
-          from
-            sqlite_master
-          where
-            type='index' and
-            name not like 'sqlite_%' and
-            name not like 'index_evolu_%'`,
+select
+  name, sql
+from
+  sqlite_master
+where
+  type='index' and
+  name not like 'sqlite_%' and
+  name not like 'index_evolu_%'
+`.trim(),
       }),
       Effect.map((result) =>
         ReadonlyArray.map(
@@ -434,18 +435,19 @@ export const ensureSchema = (
         (t) => t.name === table.name,
       );
       if (!currentTable) {
-        sql.push(`
-          create table ${table.name} (
-            "id" text primary key,
-            ${table.columns
-              .filter((c) => c !== "id")
-              // "A column with affinity BLOB does not prefer one storage class over another
-              // and no attempt is made to coerce data from one storage class into another."
-              // https://www.sqlite.org/datatype3.html
-              .map((name) => `"${name}" blob`)
-              .join(", ")}
-            );
-        `);
+        sql.push(
+          `
+create table ${table.name} (
+  "id" text primary key,
+  ${table.columns
+    .filter((c) => c !== "id")
+    // "A column with affinity BLOB does not prefer one storage class over another
+    // and no attempt is made to coerce data from one storage class into another."
+    // https://www.sqlite.org/datatype3.html
+    .map((name) => `"${name}" blob`)
+    .join(", ")}
+);`.trim(),
+        );
       } else {
         ReadonlyArray.differenceWith(String.Equivalence)(
           table.columns,
@@ -480,7 +482,7 @@ export const ensureSchema = (
     if (sql.length > 0)
       yield* _(
         sqlite.exec({
-          sql: sql.join(""),
+          sql: sql.join("\n"),
         }),
       );
   });
