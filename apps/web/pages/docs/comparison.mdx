@@ -43,8 +43,16 @@ the author of a custom solution leaves the company?**
 
 ## Evolu vs ElectricSQL
 
-**TLDR**: It isn't stable yet and is not secure by default. It also requires a
-specific server. TODO: Compare CRDT approaches.
+It's not secure by default and stable yet. It also requires a
+proprietary server. I like what [ElectricSQL](https://electric-sql.com/) does, but it is not local-first as
+described in [the essay](https://www.inkandswitch.com/local-first/). If
+ElectricSQL goes out of business and shuts down its servers, I wonder if an
+external developer will maintain their sophisticated open-sourced sync service
+written Elixir. It is not impossible, but there is another problem.
+The ElectricSQL server is not generic by design. It's not a bug; it's a feature,
+but the feature that is making ElectricSQL a non-local-first. Evolu is different.
+The Evolu Server is actually a simplified Evolu Client generic for all Evolu
+applications. Zero-configuration and nothing to maintain.
 
 ## Evolu vs Vulcan Web (CR-SQLite)
 
