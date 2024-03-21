@@ -3,6 +3,7 @@
   "installation": "Installation",
   "quickstart": "Quickstart",
   "api": "API",
+  "indexes": "Indexes",
   "migrations": "Migrations",
   "patterns": "Patterns",
   "evolu-server": "Evolu Server",
