@@ -1,19 +1,18 @@
 import {
   Bip39,
-  EvoluCommonLive,
-  FlushSyncDefaultLive,
+  EvoluFactory,
+  EvoluFactoryCommon,
+  // FlushSyncDefaultLive,
   InvalidMnemonicError,
-  makeCreateEvolu,
   Mnemonic,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import { DbWorkerLive } from "./DbWorkerLive.js";
-import { AppStateLive, Bip39Live } from "./PlatformLive.js";
+// import * as Layer from "effect/Layer";
+// import { DbWorkerLive } from "./DbWorkerLive.js";
+import { Bip39Live } from "./PlatformLive.js";
 
-export const EvoluWebLive = EvoluCommonLive.pipe(
-  Layer.provide(Layer.merge(DbWorkerLive, AppStateLive)),
-);
+// TODO: Inject web deps.
+export const EvoluFactoryWeb = EvoluFactoryCommon;
 
 /**
  * Parse a string to {@link Mnemonic}.
@@ -27,35 +26,38 @@ export const parseMnemonic: (
   Effect.runSync,
 ).parse;
 
-/**
- * Create Evolu Instance.
- *
- * Tables with a name prefixed with `_` are local-only, which means they are
- * never synced. It's useful for device-specific or temporal data.
- *
- * @example
- *   import * as S from "@effect/schema/Schema";
- *   import { NonEmptyString1000, id } from "@evolu/common";
- *   import { createEvolu } from "@evolu/common-web";
- *
- *   const TodoId = id("Todo");
- *   type TodoId = S.Schema.Type<typeof TodoId>;
- *
- *   const TodoTable = table({
- *     id: TodoId,
- *     title: NonEmptyString1000,
- *   });
- *   type TodoTable = S.Schema.Type<typeof TodoTable>;
- *
- *   const Database = database({
- *     // _todo is local-only table
- *     _todo: TodoTable,
- *     todo: TodoTable,
- *   });
- *   type Database = S.Schema.Type<typeof Database>;
- *
- *   const evolu = createEvolu(Database);
- */
-export const createEvolu = makeCreateEvolu(
-  EvoluWebLive.pipe(Layer.provide(FlushSyncDefaultLive)),
-);
+// JSDoc doesn't support destructured parameters, so we must copy-paste
+// createEvolu docs from `evolu-common/src/Evolu.ts`
+// https://github.com/microsoft/TypeScript/issues/11859
+export const {
+  /**
+   * Create Evolu from the database schema.
+   *
+   * Tables with a name prefixed with `_` are local-only, which means they are
+   * never synced. It's useful for device-specific or temporal data.
+   *
+   * @example
+   *   import * as S from "@effect/schema/Schema";
+   *   import * as E from "@evolu/common-web";
+   *
+   *   const TodoId = E.id("Todo");
+   *   type TodoId = S.Schema.Type<typeof TodoId>;
+   *
+   *   const TodoTable = E.table({
+   *     id: TodoId,
+   *     title: E.NonEmptyString1000,
+   *   });
+   *   type TodoTable = S.Schema.Type<typeof TodoTable>;
+   *
+   *   const Database = E.database({
+   *     todo: TodoTable,
+   *
+   *     // Prefix `_` makes the table local-only (it will not sync)
+   *     _todo: TodoTable,
+   *   });
+   *   type Database = S.Schema.Type<typeof Database>;
+   *
+   *   const evolu = E.createEvolu(Database);
+   */
+  createEvolu,
+} = EvoluFactory.pipe(Effect.provide(EvoluFactoryWeb), Effect.runSync);

@@ -106,6 +106,7 @@ const evolu = createEvolu(Database, {
   }),
 });
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const createFixtures = (): Promise<void> =>
   Promise.all(
     evolu.loadQueries([
@@ -134,7 +135,7 @@ const isRestoringOwner = (isRestoringOwner?: boolean): boolean => {
 };
 
 // Ensure fixtures are not added to the restored owner.
-if (!isRestoringOwner()) createFixtures();
+// if (!isRestoringOwner()) createFixtures();
 
 export const NextJsExample = memo(function NextJsExample() {
   const [currentTab, setCurrentTab] = useState<"todos" | "categories">("todos");

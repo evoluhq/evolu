@@ -7,11 +7,9 @@ import * as Kysely from "kysely";
 import { DatabaseSchema, serializeQuery } from "./Db.js";
 import { SqliteQuery, isSqlMutation } from "./Sqlite.js";
 import { makeStore } from "./Store.js";
-import { Config, createEvoluRunSync } from "./_Config.js";
-import { Evolu, EvoluError } from "./_Evolu.js";
-
-// `### Example` is used instead of `@example` because of TypeScript JSDoc bug.
-// For some reason, TS strips anything starting `@` on assignment.
+import { Config, createEvoluRunSync } from "./Config.js";
+import { Evolu, EvoluError } from "./Evolu.js";
+import { Id } from "./Model.js";
 
 export class EvoluFactory extends Context.Tag("EvoluFactory")<
   EvoluFactory,
@@ -22,37 +20,34 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
      * Tables with a name prefixed with `_` are local-only, which means they are
      * never synced. It's useful for device-specific or temporal data.
      *
-     * ### Example
+     * @example
+     *   import * as S from "@effect/schema/Schema";
      *
-     * ```ts
-     * import * as S from "@effect/schema/Schema";
+     *   import * as E from "@evolu/react";
+     *   // The same API for different platforms
+     *   // import * as E from "@evolu/react-native";
+     *   // import * as E from "@evolu/common-web";
      *
-     * import * as E from "@evolu/react";
-     * // The same API for different platforms
-     * // import * as E from "@evolu/react-native";
-     * // import * as E from "@evolu/common-web";
+     *   const TodoId = E.id("Todo");
+     *   type TodoId = S.Schema.Type<typeof TodoId>;
      *
-     * const TodoId = E.id("Todo");
-     * type TodoId = S.Schema.Type<typeof TodoId>;
+     *   const TodoTable = E.table({
+     *     id: TodoId,
+     *     title: E.NonEmptyString1000,
+     *   });
+     *   type TodoTable = S.Schema.Type<typeof TodoTable>;
      *
-     * const TodoTable = E.table({
-     *   id: TodoId,
-     *   title: E.NonEmptyString1000,
-     * });
-     * type TodoTable = S.Schema.Type<typeof TodoTable>;
+     *   const Database = E.database({
+     *     todo: TodoTable,
      *
-     * const Database = E.database({
-     *   todo: TodoTable,
+     *     // Prefix `_` makes the table local-only (it will not sync)
+     *     _todo: TodoTable,
+     *   });
+     *   type Database = S.Schema.Type<typeof Database>;
      *
-     *   // Prefix `_` makes the table local-only (it will not sync)
-     *   _todo: TodoTable,
-     * });
-     * type Database = S.Schema.Type<typeof Database>;
-     *
-     * const evolu = E.createEvolu(Database);
-     * ```
+     *   const evolu = E.createEvolu(Database);
      */
-    readonly _createEvolu: <T extends DatabaseSchema, I>(
+    readonly createEvolu: <T extends DatabaseSchema, I>(
       schema: S.Schema<T, I>,
       config?: Partial<Config>,
     ) => Evolu<T>;
@@ -70,7 +65,7 @@ export const EvoluFactoryCommon = Layer.effect(
     const instances = new Map<string, Evolu>();
 
     return {
-      _createEvolu: <T extends DatabaseSchema, I>(
+      createEvolu: <T extends DatabaseSchema, I>(
         schema: S.Schema<T, I>,
         config?: Partial<Config>,
       ): Evolu<T> => {
@@ -89,27 +84,13 @@ const createEvolu = <T extends DatabaseSchema, I, R>(
   _schema: S.Schema<T, I, R>,
 ): Effect.Effect<Evolu, never, Config> =>
   Effect.gen(function* (_) {
-    const config = yield* _(Config);
+    // const config = yield* _(Config);
     const errorStore = yield* _(makeStore<EvoluError | null>(null));
 
+    const emptyResult = { rows: [], row: null };
+
     const loadQuery: Evolu["loadQuery"] = () => {
-      // const loadingPromises = yield * _(LoadingPromises);
-      // const dbWorker = yield* _(DbWorker);
-      // let queries: ReadonlyArray<Query> = [];
-
-      // return LoadQuery.of((query) => {
-      //   const { promise, isNew } = loadingPromises.get(query);
-      //   if (isNew) queries = [...queries, query];
-      //   if (queries.length === 1) {
-      //     queueMicrotask(() => {
-      //       if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
-      //         dbWorker.postMessage({ _tag: "query", queries });
-      //       queries = [];
-      //     });
-      //   }
-      //   return promise;
-
-      throw "";
+      return Promise.resolve(emptyResult);
     };
 
     const loadQueries: Evolu["loadQueries"] = () => {
@@ -117,55 +98,55 @@ const createEvolu = <T extends DatabaseSchema, I, R>(
     };
 
     const subscribeQuery: Evolu["subscribeQuery"] = () => {
-      throw "";
+      return () => () => {};
     };
 
     const getQuery: Evolu["getQuery"] = () => {
-      throw "";
+      return emptyResult;
     };
 
     const subscribeOwner: Evolu["subscribeOwner"] = () => {
-      throw "";
+      return () => () => {};
     };
 
     const getOwner: Evolu["getOwner"] = () => {
-      throw "";
+      return null;
     };
 
     const subscribeSyncState: Evolu["subscribeSyncState"] = () => {
-      throw "";
+      return () => () => {};
     };
 
     const getSyncState: Evolu["getSyncState"] = () => {
-      throw "";
+      return { _tag: "SyncStateInitial" };
     };
 
     const create: Evolu["create"] = () => {
-      throw "";
+      return { id: "123" as Id };
     };
 
     const update: Evolu["update"] = () => {
-      throw "";
+      return { id: "123" as Id };
     };
 
     const createOrUpdate: Evolu["createOrUpdate"] = () => {
-      throw "";
+      return { id: "123" as Id };
     };
 
     const resetOwner: Evolu["resetOwner"] = () => {
-      throw "";
+      //
     };
 
     const restoreOwner: Evolu["restoreOwner"] = () => {
-      throw "";
+      //
     };
 
     const ensureSchema: Evolu["ensureSchema"] = () => {
-      throw "";
+      //
     };
 
     const sync: Evolu["sync"] = () => {
-      throw "";
+      //
     };
 
     return {
@@ -222,3 +203,7 @@ const kysely = new Kysely.Kysely({
       new Kysely.SqliteQueryCompiler(),
   },
 });
+
+// TODO: I suppose we can make createIndex type-safe as well.
+/** https://www.evolu.dev/docs/indexes */
+export const createIndex = kysely.schema.createIndex.bind(kysely.schema);
