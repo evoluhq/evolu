@@ -1,9 +1,8 @@
-import { Effect } from "effect";
 import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
 import * as LogLevel from "effect/LogLevel";
 import * as Logger from "effect/Logger";
-import * as Runtime from "effect/Runtime";
+import * as ManagedRuntime from "effect/ManagedRuntime";
 import { CreateIndexBuilder } from "kysely";
 
 export interface Config {
@@ -53,6 +52,10 @@ export interface Config {
   /**
    * Setting the minimum log level. The default value is `LogLevel.None`.
    *
+   * For development, use `LogLevel.Trace` to log all events and
+   * `LogLevel.Debug` to log only events with values. For production, use
+   * `LogLevel.Warning`.
+   *
    * https://effect.website/docs/guides/observability/logging
    */
   readonly minimumLogLevel: LogLevel.LogLevel;
@@ -71,24 +74,16 @@ const defaultConfig: Config = {
 };
 
 /** https://effect.website/docs/guides/runtime */
-const createEvoluRuntime = (
+export const createEvoluRuntime = (
   config?: Partial<Config>,
-): Runtime.Runtime<Config> => {
+): ManagedRuntime.ManagedRuntime<Config, never> => {
   const mergedConfig = { ...defaultConfig, ...config };
-  const evoluLayer = Logger.minimumLogLevel(mergedConfig.minimumLogLevel);
-
-  return evoluLayer.pipe(
-    Layer.toRuntime,
-    Effect.scoped,
-    Effect.runSync,
-    Runtime.provideService(Config, mergedConfig),
+  const evoluLayer = Layer.merge(
+    Logger.minimumLogLevel(mergedConfig.minimumLogLevel),
+    Layer.succeed(Config, mergedConfig),
   );
+  return ManagedRuntime.make(evoluLayer);
 };
-
-export const createEvoluRunSync: (
-  config?: Partial<Config>,
-) => <A, E>(effect: Effect.Effect<A, E, Config>) => A = (config) =>
-  createEvoluRuntime(config).pipe(Runtime.runSync);
 
 // import * as Context from "effect/Context";
 // import * as Layer from "effect/Layer";

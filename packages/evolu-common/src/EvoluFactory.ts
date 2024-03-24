@@ -7,7 +7,7 @@ import * as Kysely from "kysely";
 import { DatabaseSchema, serializeQuery } from "./Db.js";
 import { SqliteQuery, isSqlMutation } from "./Sqlite.js";
 import { makeStore } from "./Store.js";
-import { Config, createEvoluRunSync } from "./Config.js";
+import { Config, createEvoluRuntime } from "./Config.js";
 import { Evolu, EvoluError } from "./Evolu.js";
 import { Id } from "./Model.js";
 
@@ -69,10 +69,10 @@ export const EvoluFactoryCommon = Layer.effect(
         schema: S.Schema<T, I>,
         config?: Partial<Config>,
       ): Evolu<T> => {
-        const runSync = createEvoluRunSync(config);
-        const { name } = Config.pipe(runSync);
+        const runtime = createEvoluRuntime(config);
+        const { name } = Config.pipe(runtime.runSync);
         let evolu = instances.get(name);
-        if (evolu == null) evolu = createEvolu(schema).pipe(runSync);
+        if (evolu == null) evolu = createEvolu(schema).pipe(runtime.runSync);
         evolu.ensureSchema(schema);
         return evolu as Evolu<T>;
       },
@@ -84,12 +84,16 @@ const createEvolu = <T extends DatabaseSchema, I, R>(
   _schema: S.Schema<T, I, R>,
 ): Effect.Effect<Evolu, never, Config> =>
   Effect.gen(function* (_) {
-    // const config = yield* _(Config);
-    const errorStore = yield* _(makeStore<EvoluError | null>(null));
+    const config = yield* _(Config);
+    const runtime = createEvoluRuntime(config);
 
+    yield* _(Effect.logTrace("creating Evolu"));
+
+    // stub
     const emptyResult = { rows: [], row: null };
 
-    const loadQuery: Evolu["loadQuery"] = () => {
+    const loadQuery: Evolu["loadQuery"] = (query) => {
+      Effect.logDebug(`loadQuery ${query}`).pipe(runtime.runSync);
       return Promise.resolve(emptyResult);
     };
 
@@ -97,6 +101,8 @@ const createEvolu = <T extends DatabaseSchema, I, R>(
       throw "";
     };
 
+    const errorStore = yield* _(makeStore<EvoluError | null>(null));
+    // const promises = new Map<Query, LoadingPromiseWithResolve<Row>>();
     const subscribeQuery: Evolu["subscribeQuery"] = () => {
       return () => () => {};
     };
