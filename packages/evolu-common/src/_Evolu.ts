@@ -1,5 +1,6 @@
 import * as S from "@effect/schema/Schema";
 import * as Kysely from "kysely";
+import { TimestampError } from "./Crdt.js";
 import { Mnemonic } from "./Crypto.js";
 import {
   DatabaseSchema,
@@ -9,7 +10,6 @@ import {
   QueryResultsPromisesFromQueries,
   Row,
 } from "./Db.js";
-import { EvoluError } from "./_ErrorStore.js";
 import { SqliteBoolean, SqliteDate } from "./Model.js";
 import { Owner } from "./Owner.js";
 import { Index, SqliteQueryOptions } from "./Sqlite.js";
@@ -308,6 +308,18 @@ export interface Evolu<T extends DatabaseSchema = DatabaseSchema> {
   readonly sync: () => void;
 
   // // TODO: dispose
+}
+
+/** The EvoluError type is used to represent errors that can occur in Evolu. */
+export type EvoluError = TimestampError | UnexpectedError;
+
+/**
+ * The UnexpectedError represents errors that can occur anywhere, even in
+ * third-party libraries, because Evolu uses Effect to track all errors.
+ */
+export interface UnexpectedError {
+  readonly _tag: "UnexpectedError";
+  readonly error: unknown;
 }
 
 type NullableExceptIdCreatedAtUpdatedAt<T> = {

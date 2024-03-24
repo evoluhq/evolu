@@ -6,9 +6,9 @@ import * as Layer from "effect/Layer";
 import * as Kysely from "kysely";
 import { DatabaseSchema, serializeQuery } from "./Db.js";
 import { SqliteQuery, isSqlMutation } from "./Sqlite.js";
+import { makeStore } from "./Store.js";
 import { Config, createEvoluRunSync } from "./_Config.js";
-import { makeErrorStore } from "./_ErrorStore.js";
-import { Evolu } from "./_Evolu.js";
+import { Evolu, EvoluError } from "./_Evolu.js";
 
 // `### Example` is used instead of `@example` because of TypeScript JSDoc bug.
 // For some reason, TS strips anything starting `@` on assignment.
@@ -90,7 +90,7 @@ const createEvolu = <T extends DatabaseSchema, I, R>(
 ): Effect.Effect<Evolu, never, Config> =>
   Effect.gen(function* (_) {
     const config = yield* _(Config);
-    const errorStore = yield* _(makeErrorStore);
+    const errorStore = yield* _(makeStore<EvoluError | null>(null));
 
     const loadQuery: Evolu["loadQuery"] = () => {
       // const loadingPromises = yield * _(LoadingPromises);
