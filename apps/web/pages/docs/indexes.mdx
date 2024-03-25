@@ -27,9 +27,9 @@ article [squeezing-performance-from-sqlite-indexes](https://medium.com/@JasonWya
 ## Usage
 
 ```ts
-const indexes = [
-  createIndex("indexTodoCreatedAt").on("todo").column("createdAt"),
-];
+const indexes = createIndexes((create) => [
+  create("indexTodoCreatedAt").on("todo").column("createdAt"),
+]);
 
 const evolu = createEvolu(Database, { indexes });
 ```
