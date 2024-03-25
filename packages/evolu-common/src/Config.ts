@@ -1,11 +1,13 @@
 import * as Context from "effect/Context";
+import * as S from "@effect/schema/Schema";
 import * as Layer from "effect/Layer";
+import * as Match from "effect/Match";
 import * as LogLevel from "effect/LogLevel";
 import * as Logger from "effect/Logger";
 import * as ManagedRuntime from "effect/ManagedRuntime";
-import { CreateIndexBuilder } from "kysely";
+import { Index } from "./Sqlite.js";
 
-export interface Config {
+export const Config = S.struct({
   /**
    * Use the `indexes` property to define SQLite indexes.
    *
@@ -22,46 +24,52 @@ export interface Config {
    *       .column("createdAt"),
    *   ];
    */
-  readonly indexes: ReadonlyArray<CreateIndexBuilder<any>>;
+  indexes: S.array(Index),
 
   /** Log SQL. */
-  readonly logSql: boolean;
+  logSql: S.boolean,
 
   /**
-   * Alternate URL to reload browser tabs after {@link Owner} reset or restore.
+   * URL to reload browser tabs after {@link Owner} reset or restore.
+   *
    * The default value is `/`.
    */
-  readonly reloadUrl: string;
+  reloadUrl: S.string,
 
-  /** Alternate URL for Evolu sync and backup server. */
-  readonly syncUrl: string;
+  /**
+   * URL for Evolu sync and backup server
+   *
+   * The default value is `https://evolu.world`.
+   */
+  syncUrl: S.string,
 
   /**
    * Evolu application name. For now, this is only useful for localhost
-   * development, where we want each application to have its own database. The
-   * default value is: "Evolu".
+   * development, where we want each application to have its own database.
+   *
+   * The default value is: `Evolu`.
    */
-  readonly name: string;
+  name: S.string,
 
   /**
-   * Maximum physical clock drift allowed in ms. The default value is 5 * 60 *
-   * 1000 (5 minutes).
+   * Maximum physical clock drift allowed in ms.
+   *
+   * The default value is 5 * 60 * 1000 (5 minutes).
    */
-  readonly maxDrift: number;
+  maxDrift: S.number,
 
   /**
-   * Setting the minimum log level. The default value is `LogLevel.None`.
+   * Setting the minimum log level. The default value is `none`.
    *
-   * For development, use `LogLevel.Trace` to log all events and
-   * `LogLevel.Debug` to log only events with values. For production, use
-   * `LogLevel.Warning`.
-   *
-   * https://effect.website/docs/guides/observability/logging
+   * For development, use `trace` to log all events and `debug` to log only
+   * events with values. For production, use `warning`.
    */
-  readonly minimumLogLevel: LogLevel.LogLevel;
-}
+  minimumLogLevel: S.literal("none", "trace", "debug", "warning"),
+});
 
-export const Config = Context.GenericTag<Config>("Config");
+export type Config = S.Schema.Type<typeof Config>;
+
+export const ConfigTag = Context.GenericTag<Config>("Config");
 
 const defaultConfig: Config = {
   indexes: [],
@@ -70,7 +78,7 @@ const defaultConfig: Config = {
   syncUrl: "https://evolu.world",
   name: "Evolu",
   maxDrift: 5 * 60 * 1000,
-  minimumLogLevel: LogLevel.None,
+  minimumLogLevel: "none",
 };
 
 /** https://effect.website/docs/guides/runtime */
@@ -78,9 +86,16 @@ export const createEvoluRuntime = (
   config?: Partial<Config>,
 ): ManagedRuntime.ManagedRuntime<Config, never> => {
   const mergedConfig = { ...defaultConfig, ...config };
+  const minimumLogLevel = Match.value(mergedConfig.minimumLogLevel).pipe(
+    Match.when("debug", () => LogLevel.Debug),
+    Match.when("none", () => LogLevel.Debug),
+    Match.when("trace", () => LogLevel.Debug),
+    Match.when("warning", () => LogLevel.Debug),
+    Match.exhaustive,
+  );
   const evoluLayer = Layer.merge(
-    Logger.minimumLogLevel(mergedConfig.minimumLogLevel),
-    Layer.succeed(Config, mergedConfig),
+    Logger.minimumLogLevel(minimumLogLevel),
+    Layer.succeed(ConfigTag, mergedConfig),
   );
   return ManagedRuntime.make(evoluLayer);
 };

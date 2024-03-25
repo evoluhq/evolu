@@ -12,7 +12,7 @@ export * from "@evolu/common/public";
 const EvoluFactoryWebReact = EvoluFactoryWeb;
 
 // JSDoc doesn't support destructured parameters, so we must copy-paste
-// createEvolu docs from `evolu-common/src/Evolu.ts`
+// createEvolu docs from `evolu-common/src/Evolu.ts`.
 // https://github.com/microsoft/TypeScript/issues/11859
 export const {
   /**

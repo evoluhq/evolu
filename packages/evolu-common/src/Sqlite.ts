@@ -2,6 +2,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import { Equivalence } from "effect/Equivalence";
 import * as Predicate from "effect/Predicate";
+import * as S from "@effect/schema/Schema";
 
 export interface Sqlite {
   readonly exec: (query: SqliteQuery) => Effect.Effect<SqliteExecResult>;
@@ -106,6 +107,7 @@ export const maybeLogSqliteQueryExecutionTime =
     if (!query.options?.logQueryExecutionTime) return effect;
     return effect.pipe(
       Effect.tap(() => Effect.log("QueryExecutionTime")),
+      // TODO: Fix that double log.
       // Not using Effect.log because of formating
       // eslint-disable-next-line no-console
       Effect.tap(() => console.log(query.sql)),
@@ -147,11 +149,14 @@ export interface Table {
   readonly columns: ReadonlyArray<string>;
 }
 
-export interface Index {
-  readonly name: string;
-  readonly sql: string;
-}
+// TODO: Rename to SqliteIndex
+export const Index = S.struct({
+  name: S.string,
+  sql: S.string,
+});
+export type Index = S.Schema.Type<typeof Index>;
 
+// TODO: Rename to sqliteIndexEquivalence
 export const indexEquivalence: Equivalence<Index> = (self, that) =>
   self.name === that.name && self.sql === that.sql;
 

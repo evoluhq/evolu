@@ -10,7 +10,7 @@ import {
   canUseDom,
   cast,
   createEvolu,
-  createIndex,
+  createIndexes,
   database,
   id,
   jsonArrayFrom,
@@ -80,23 +80,17 @@ const Database = database({
 type Database = S.Schema.Type<typeof Database>;
 
 /**
- * Indexes
- *
  * Indexes are not necessary for development but are required for production.
- *
  * Before adding an index, use `logExecutionTime` and `logExplainQueryPlan`
  * createQuery options.
  *
- * SQLite has a tool for Index Recommendations (SQLite Expert)
- * https://sqlite.org/cli.html#index_recommendations_sqlite_expert_
+ * See https://www.evolu.dev/docs/indexes
+ *
  */
-const indexes = [
-  createIndex("indexTodoCreatedAt").on("todo").column("createdAt"),
-
-  createIndex("indexTodoCategoryCreatedAt")
-    .on("todoCategory")
-    .column("createdAt"),
-];
+const indexes = createIndexes((create) => [
+  create("indexTodoCreatedAt").on("todo").column("createdAt"),
+  create("indexTodoCategoryCreatedAt").on("todoCategory").column("createdAt"),
+]);
 
 const evolu = createEvolu(Database, {
   indexes,
@@ -104,6 +98,7 @@ const evolu = createEvolu(Database, {
   ...(process.env.NODE_ENV === "development" && {
     syncUrl: "http://localhost:4000",
   }),
+  minimumLogLevel: "trace",
 });
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
