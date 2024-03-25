@@ -1,5 +1,10 @@
 import * as S from "@effect/schema/Schema";
+import * as Cause from "effect/Cause";
+import * as Effect from "effect/Effect";
+import * as Function from "effect/Function";
+import { pipe } from "effect/Function";
 import * as Kysely from "kysely";
+import { Config, createEvoluRuntime } from "./Config.js";
 import { TimestampError } from "./Crdt.js";
 import { Mnemonic } from "./Crypto.js";
 import {
@@ -9,11 +14,17 @@ import {
   QueryResult,
   QueryResultsPromisesFromQueries,
   Row,
+  serializeQuery,
 } from "./Db.js";
-import { SqliteBoolean, SqliteDate } from "./Model.js";
+import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
 import { Owner } from "./Owner.js";
-import { Index, SqliteQueryOptions } from "./Sqlite.js";
-import { Listener, Unsubscribe } from "./Store.js";
+import {
+  Index,
+  SqliteQuery,
+  SqliteQueryOptions,
+  isSqlMutation,
+} from "./Sqlite.js";
+import { Listener, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
 
 export interface Evolu<T extends DatabaseSchema = DatabaseSchema> {
@@ -307,7 +318,7 @@ export interface Evolu<T extends DatabaseSchema = DatabaseSchema> {
    */
   readonly sync: () => void;
 
-  // TODO: dispose
+  // TODO: dispose via ManagedRuntime.dispose
 }
 
 /** The EvoluError type is used to represent errors that can occur in Evolu. */
@@ -375,6 +386,214 @@ type Castable<T> = {
           ? null | Date | SqliteDate
           : T[K];
 };
+
+/**
+ * The LoadingPromise interface represents a custom wrapper around a native
+ * JavaScript Promise object, specifically tailored for handling asynchronous
+ * loading operations, typically involving querying or fetching data. It
+ * enriches the standard promise with additional properties to monitor and
+ * control the promise's state, and it provides mechanisms to resolve the
+ * promise while optionally releasing resources upon resolution.
+ */
+interface LoadingPromise {
+  promise: Promise<QueryResult> & {
+    status?: "pending" | "fulfilled" | "rejected";
+    value?: QueryResult;
+    reason?: unknown;
+  };
+  resolve: (rows: QueryResult) => void;
+  releaseOnResolve: boolean;
+}
+
+/**
+ * If you are curious about why createEvolu is a function and not a layer,
+ * that's because EvoluFactory creates Evolu instances dynamically. Layers are
+ * for static composition, not for runtime composition.
+ */
+export const createEvolu = <T extends DatabaseSchema, I, R>(
+  _schema: S.Schema<T, I, R>,
+): Effect.Effect<Evolu, never, Config> =>
+  Effect.gen(function* (_) {
+    yield* _(Effect.logTrace("creating Evolu"));
+
+    const errorStore = yield* _(makeStore<EvoluError | null>(null));
+
+    const tapErrorAndDefectToErrorStore = <A>(
+      effect: Effect.Effect<A, TimestampError>,
+    ): Effect.Effect<A, TimestampError> =>
+      effect.pipe(
+        Effect.tapError(errorStore.setState),
+        Effect.tapDefect((cause) =>
+          errorStore.setState({
+            _tag: "UnexpectedError",
+            error: Cause.pretty(cause),
+          }),
+        ),
+      );
+
+    const config = yield* _(Config);
+    const runtime = createEvoluRuntime(config);
+
+    const runSync = <A>(effect: Effect.Effect<A, TimestampError>): A =>
+      effect.pipe(tapErrorAndDefectToErrorStore, runtime.runSync);
+
+    const runPromise = (effect: Effect.Effect<void, TimestampError>): void => {
+      effect.pipe(tapErrorAndDefectToErrorStore, runtime.runPromise);
+    };
+
+    // stub
+    const emptyResult = { rows: [], row: null };
+
+    const loadingPromises = new Map<Query, LoadingPromise>();
+    let loadQueryQueue: ReadonlyArray<Query> = [];
+
+    // const dbWorker zde?
+
+    const loadQuery = <R extends Row>(
+      query: Query<R>,
+    ): Promise<QueryResult<R>> =>
+      Effect.gen(function* (_) {
+        yield* _(Effect.logDebug(`loadQuery ${query}`));
+        let isNew = false;
+        let loadingPromise = loadingPromises.get(query);
+        if (!loadingPromise) {
+          isNew = true;
+          let resolve: LoadingPromise["resolve"] = Function.constVoid;
+          const promise: LoadingPromise["promise"] = new Promise((_resolve) => {
+            resolve = _resolve;
+          });
+          loadingPromise = { resolve, promise, releaseOnResolve: false };
+          loadingPromises.set(query, loadingPromise);
+        }
+
+        if (isNew) loadQueryQueue = [...loadQueryQueue, query];
+        if (loadQueryQueue.length === 1) {
+          queueMicrotask(() => {
+            // tady bude effect, takze logDebug s values
+
+            // if (ReadonlyArray.isNonEmptyReadonlyArray(loadQueryQueue))
+            //   dbWorker.postMessage({ _tag: "query", loadQueryQueue });
+            loadQueryQueue = [];
+          });
+        }
+
+        return loadingPromise.promise as Promise<QueryResult<R>>;
+      }).pipe(runSync);
+
+    const loadQueries: Evolu["loadQueries"] = () => {
+      throw "";
+    };
+
+    const subscribeQuery: Evolu["subscribeQuery"] = () => {
+      return () => () => {};
+    };
+
+    const getQuery: Evolu["getQuery"] = () => {
+      return emptyResult;
+    };
+
+    const subscribeOwner: Evolu["subscribeOwner"] = () => {
+      return () => () => {};
+    };
+
+    const getOwner: Evolu["getOwner"] = () => {
+      return null;
+    };
+
+    const subscribeSyncState: Evolu["subscribeSyncState"] = () => {
+      return () => () => {};
+    };
+
+    const getSyncState: Evolu["getSyncState"] = () => {
+      return { _tag: "SyncStateInitial" };
+    };
+
+    const create: Evolu["create"] = () => {
+      return { id: "123" as Id };
+    };
+
+    const update: Evolu["update"] = () => {
+      return { id: "123" as Id };
+    };
+
+    const createOrUpdate: Evolu["createOrUpdate"] = () => {
+      return { id: "123" as Id };
+    };
+
+    const resetOwner: Evolu["resetOwner"] = () => {
+      //
+    };
+
+    const restoreOwner: Evolu["restoreOwner"] = () => {
+      //
+    };
+
+    const ensureSchema: Evolu["ensureSchema"] = () => {
+      //
+    };
+
+    const sync: Evolu["sync"] = () => {
+      //
+    };
+
+    return {
+      subscribeError: errorStore.subscribe,
+      getError: errorStore.getState,
+      createQuery,
+      loadQuery,
+      loadQueries,
+      subscribeQuery,
+      getQuery,
+      subscribeOwner,
+      getOwner,
+      subscribeSyncState,
+      getSyncState,
+      create,
+      update,
+      createOrUpdate,
+      resetOwner,
+      restoreOwner,
+      ensureSchema,
+      sync,
+    };
+  });
+
+const createQuery: Evolu["createQuery"] = (queryCallback, options) =>
+  pipe(
+    queryCallback(kysely).compile(),
+    (compiledQuery): SqliteQuery => {
+      if (isSqlMutation(compiledQuery.sql))
+        throw new Error(
+          "SQL mutation (INSERT, UPDATE, DELETE, etc.) isn't allowed in the Evolu `createQuery` function. Kysely suggests it because there is no read-only Kysely yet, and removing such an API is not possible. For mutations, use Evolu mutation API.",
+        );
+      const parameters = compiledQuery.parameters as NonNullable<
+        SqliteQuery["parameters"]
+      >;
+      return {
+        sql: compiledQuery.sql,
+        parameters,
+        ...(options && { options }),
+      };
+    },
+    (query) => serializeQuery(query),
+  );
+
+// https://kysely.dev/docs/recipes/splitting-query-building-and-execution
+const kysely = new Kysely.Kysely({
+  dialect: {
+    createAdapter: (): Kysely.DialectAdapter => new Kysely.SqliteAdapter(),
+    createDriver: (): Kysely.Driver => new Kysely.DummyDriver(),
+    createIntrospector(): Kysely.DatabaseIntrospector {
+      throw "Not implemeneted";
+    },
+    createQueryCompiler: (): Kysely.QueryCompiler =>
+      new Kysely.SqliteQueryCompiler(),
+  },
+});
+
+// TODO: I suppose we can make createIndex type-safe as well.
+/** https://www.evolu.dev/docs/indexes */
+export const createIndex = kysely.schema.createIndex.bind(kysely.schema);
 
 // import * as S from "@effect/schema/Schema";
 // import * as Context from "effect/Context";
