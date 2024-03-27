@@ -97,11 +97,11 @@ export const makeInitialTimestamp = NanoIdGenerator.pipe(
   ),
 );
 
-export interface Time {
+export interface TimeShape {
   readonly now: Effect.Effect<Millis, TimestampTimeOutOfRangeError>;
 }
 
-export const Time = Context.GenericTag<Time>("@services/Time");
+export class Time extends Context.Tag("@services/Time")<Time, TimeShape>() {}
 
 export const TimeLive = Layer.succeed(
   Time,
