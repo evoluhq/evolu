@@ -7,7 +7,7 @@ import * as Match from "effect/Match";
 import * as Option from "effect/Option";
 import * as ReadonlyArray from "effect/ReadonlyArray";
 import * as ReadonlyRecord from "effect/ReadonlyRecord";
-import { Config, ConfigLive } from "./Config.js";
+import { Config, type ConfigShape, ConfigLive } from "./Config.js";
 import {
   MerkleTree,
   Millis,
@@ -81,7 +81,7 @@ export type DbWorkerInput =
 
 interface DbWorkerInputInit {
   readonly _tag: "init";
-  readonly config: Config;
+  readonly config: ConfigShape;
 }
 
 interface DbWorkerInputQuery {
@@ -659,7 +659,7 @@ export const DbWorkerCommonLive = Layer.effect(
     };
 
     const makeHandleInputForInitSuccess = (
-      config: Config,
+      config: ConfigShape,
       owner: Owner,
     ): HandleInput => {
       let skipAllBecauseOfReset = false;

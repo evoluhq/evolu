@@ -2,7 +2,7 @@ import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
 import { CreateIndexBuilder } from "kysely";
 
-export interface Config {
+export interface ConfigShape {
   /**
    * Use the `indexes` property to define SQLite indexes.
    *
@@ -47,9 +47,12 @@ export interface Config {
   readonly maxDrift: number;
 }
 
-export const Config = Context.GenericTag<Config>("@services/Config");
+export class Config extends Context.Tag("@services/Config")<
+  Config,
+  ConfigShape
+>() {}
 
-const defaultConfig: Config = {
+const defaultConfig: ConfigShape = {
   indexes: [],
   logSql: false,
   reloadUrl: "/",
@@ -58,5 +61,7 @@ const defaultConfig: Config = {
   maxDrift: 5 * 60 * 1000,
 };
 
-export const ConfigLive = (config?: Partial<Config>): Layer.Layer<Config> =>
+export const ConfigLive = (
+  config?: Partial<ConfigShape>,
+): Layer.Layer<Config> =>
   Layer.succeed(Config, Config.of({ ...defaultConfig, ...config }));

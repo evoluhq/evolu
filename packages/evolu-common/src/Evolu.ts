@@ -9,7 +9,7 @@ import * as Match from "effect/Match";
 import * as Number from "effect/Number";
 import * as ReadonlyArray from "effect/ReadonlyArray";
 import * as Kysely from "kysely";
-import { Config, ConfigLive } from "./Config.js";
+import { Config, ConfigLive, type ConfigShape } from "./Config.js";
 import { Mnemonic, NanoIdGenerator, NanoIdGeneratorLive } from "./Crypto.js";
 import {
   DatabaseSchema,
@@ -824,7 +824,7 @@ export const makeCreateEvolu =
   (EvoluLive: Layer.Layer<Evolu, never, Config>) =>
   <From, To extends DatabaseSchema>(
     schema: S.Schema<To, From>,
-    config?: Partial<Config>,
+    config?: Partial<ConfigShape>,
   ): Evolu<To> => {
     // For https://nextjs.org/docs/architecture/fast-refresh etc.
     const evolu = GlobalValue.globalValue("@evolu/common", () =>
