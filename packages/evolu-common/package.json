@@ -53,7 +53,7 @@
     "protobuf": "pnpm protoc --ts_out ./src --proto_path protobuf protobuf/Protobuf.proto --ts_opt eslint_disable --ts_opt optimize_code_size && pnpm format"
   },
   "dependencies": {
-    "@noble/ciphers": "^0.5.1",
+    "@noble/ciphers": "^0.5.2",
     "@noble/hashes": "^1.4.0",
     "@protobuf-ts/runtime": "^2.9.4",
     "@scure/bip39": "^1.3.0",
@@ -61,20 +61,22 @@
     "nanoid": "^5.0.6"
   },
   "devDependencies": {
-    "@effect/schema": "^0.64.13",
+    "@effect/platform": "^0.48.21",
+    "@effect/schema": "^0.64.15",
     "@evolu/tsconfig": "workspace:*",
     "@protobuf-ts/plugin": "^2.9.4",
     "@protobuf-ts/protoc": "^2.9.4",
     "array-shuffle": "^3.0.0",
-    "effect": "2.4.13",
+    "effect": "2.4.15",
     "eslint": "^8.57.0",
     "eslint-config-evolu": "workspace:*",
     "typescript": "^5.4.3",
     "vitest": "^1.4.0"
   },
   "peerDependencies": {
-    "@effect/schema": "^0.64.13",
-    "effect": "2.4.13"
+    "@effect/platform": "^0.48.21",
+    "@effect/schema": "^0.64.15",
+    "effect": "2.4.15"
   },
   "publishConfig": {
     "access": "public"
