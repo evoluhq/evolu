@@ -1,7 +1,6 @@
 import {
   Bip39,
   EvoluCommonLive,
-  FlushSyncDefaultLive,
   InvalidMnemonicError,
   makeCreateEvolu,
   Mnemonic,
@@ -56,6 +55,4 @@ export const parseMnemonic: (
  *
  *   const evolu = createEvolu(Database);
  */
-export const createEvolu = makeCreateEvolu(
-  EvoluWebLive.pipe(Layer.provide(FlushSyncDefaultLive)),
-);
+export const createEvolu = makeCreateEvolu(EvoluWebLive);

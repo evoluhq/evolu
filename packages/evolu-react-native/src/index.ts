@@ -3,7 +3,6 @@ import {
   DbWorkerCommonLive,
   EvoluCommonLive,
   FetchLive,
-  FlushSyncDefaultLive,
   InvalidMnemonicError,
   Mnemonic,
   NanoIdGeneratorLive,
@@ -64,9 +63,7 @@ export const parseMnemonic: (
  */
 export const createEvolu = makeCreateEvolu(
   EvoluCommonLive.pipe(
-    Layer.provide(
-      Layer.mergeAll(FlushSyncDefaultLive, AppStateLive, DbWorkerCommonLive),
-    ),
+    Layer.provide(Layer.mergeAll(AppStateLive, DbWorkerCommonLive)),
     Layer.provide(
       Layer.mergeAll(
         Bip39Live,
