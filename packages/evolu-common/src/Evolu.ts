@@ -1,10 +1,12 @@
 import * as S from "@effect/schema/Schema";
 import * as Cause from "effect/Cause";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Function from "effect/Function";
 import { pipe } from "effect/Function";
+import * as Layer from "effect/Layer";
 import * as Kysely from "kysely";
-import { Config, createEvoluRuntime } from "./Config.js";
+import { Config, ConfigTag, createEvoluRuntime } from "./Config.js";
 import { TimestampError } from "./Crdt.js";
 import { Mnemonic } from "./Crypto.js";
 import {
@@ -26,6 +28,7 @@ import {
 } from "./Sqlite.js";
 import { Listener, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
+import { DbWorkerFactory } from "./DbWorker.js";
 
 export interface Evolu<T extends DatabaseSchema = DatabaseSchema> {
   /**
@@ -412,7 +415,7 @@ interface LoadingPromise {
  */
 export const createEvolu = <T extends DatabaseSchema, I, R>(
   _schema: S.Schema<T, I, R>,
-): Effect.Effect<Evolu, never, Config> =>
+): Effect.Effect<Evolu, never, Config | DbWorkerFactory> =>
   Effect.gen(function* (_) {
     yield* _(Effect.logTrace("creating Evolu"));
 
@@ -431,7 +434,7 @@ export const createEvolu = <T extends DatabaseSchema, I, R>(
         ),
       );
 
-    const config = yield* _(Config);
+    const config = yield* _(ConfigTag);
     const runtime = createEvoluRuntime(config);
 
     const runSync = <A>(effect: Effect.Effect<A, TimestampError>): A =>
@@ -447,7 +450,17 @@ export const createEvolu = <T extends DatabaseSchema, I, R>(
     const loadingPromises = new Map<Query, LoadingPromise>();
     let loadQueryQueue: ReadonlyArray<Query> = [];
 
-    // const dbWorker zde?
+    const dbWorkerFactory = yield* _(DbWorkerFactory);
+
+    // tady musim poresit ten scope
+    // uz ho chapu, skvela abstrakce!
+
+    // uz to chapu, musim tam pipe to co to provede, cajk
+    // const dbWorker = yield* _(
+    //   dbWorkerFactory.createDbWorker().pipe(Effect.scoped),
+    // );
+
+    // dbWorker
 
     const loadQuery = <R extends Row>(
       query: Query<R>,
@@ -558,6 +571,19 @@ export const createEvolu = <T extends DatabaseSchema, I, R>(
     };
   });
 
+// https://kysely.dev/docs/recipes/splitting-query-building-and-execution
+const kysely = new Kysely.Kysely({
+  dialect: {
+    createAdapter: (): Kysely.DialectAdapter => new Kysely.SqliteAdapter(),
+    createDriver: (): Kysely.Driver => new Kysely.DummyDriver(),
+    createIntrospector(): Kysely.DatabaseIntrospector {
+      throw "Not implemeneted";
+    },
+    createQueryCompiler: (): Kysely.QueryCompiler =>
+      new Kysely.SqliteQueryCompiler(),
+  },
+});
+
 const createQuery: Evolu["createQuery"] = (queryCallback, options) =>
   pipe(
     queryCallback(kysely).compile(),
@@ -578,22 +604,113 @@ const createQuery: Evolu["createQuery"] = (queryCallback, options) =>
     (query) => serializeQuery(query),
   );
 
-// https://kysely.dev/docs/recipes/splitting-query-building-and-execution
-const kysely = new Kysely.Kysely({
-  dialect: {
-    createAdapter: (): Kysely.DialectAdapter => new Kysely.SqliteAdapter(),
-    createDriver: (): Kysely.Driver => new Kysely.DummyDriver(),
-    createIntrospector(): Kysely.DatabaseIntrospector {
-      throw "Not implemeneted";
-    },
-    createQueryCompiler: (): Kysely.QueryCompiler =>
-      new Kysely.SqliteQueryCompiler(),
-  },
-});
+const createIndex = kysely.schema.createIndex.bind(kysely.schema);
+type CreateIndex = typeof createIndex;
 
-// TODO: I suppose we can make createIndex type-safe as well.
-/** https://www.evolu.dev/docs/indexes */
-export const createIndex = kysely.schema.createIndex.bind(kysely.schema);
+/**
+ * Create SQLite indexes.
+ *
+ * See https://www.evolu.dev/docs/indexes
+ *
+ * ### Example
+ *
+ * @example
+ *   ```ts
+ *     const indexes = createIndexes((create) => [
+ *       create("indexTodoCreatedAt").on("todo").column("createdAt"),
+ *       create("indexTodoCategoryCreatedAt")
+ *         .on("todoCategory")
+ *         .column("createdAt"),
+ *     ]);
+ *   ```;
+ */
+export const createIndexes = (
+  callback: (
+    create: CreateIndex,
+  ) => ReadonlyArray<Kysely.CreateIndexBuilder<any>>,
+): ReadonlyArray<Index> =>
+  callback(createIndex).map(
+    (index): Index => ({
+      name: index.toOperationNode().name.name,
+      sql: index.compile().sql,
+    }),
+  );
+
+export class EvoluFactory extends Context.Tag("EvoluFactory")<
+  EvoluFactory,
+  {
+    /**
+     * Create Evolu from the database schema.
+     *
+     * Tables with a name prefixed with `_` are local-only, which means they are
+     * never synced. It's useful for device-specific or temporal data.
+     *
+     * @example
+     *   import * as S from "@effect/schema/Schema";
+     *   import * as E from "@evolu/react";
+     *   // The same API for different platforms
+     *   // import * as E from "@evolu/react-native";
+     *   // import * as E from "@evolu/common-web";
+     *
+     *   const TodoId = E.id("Todo");
+     *   type TodoId = S.Schema.Type<typeof TodoId>;
+     *
+     *   const TodoTable = E.table({
+     *     id: TodoId,
+     *     title: E.NonEmptyString1000,
+     *   });
+     *   type TodoTable = S.Schema.Type<typeof TodoTable>;
+     *
+     *   const Database = E.database({
+     *     todo: TodoTable,
+     *
+     *     // Prefix `_` makes the table local-only (it will not sync)
+     *     _todo: TodoTable,
+     *   });
+     *   type Database = S.Schema.Type<typeof Database>;
+     *
+     *   const evolu = E.createEvolu(Database);
+     */
+    readonly createEvolu: <T extends DatabaseSchema, I>(
+      schema: S.Schema<T, I>,
+      config?: Partial<Config>,
+    ) => Evolu<T>;
+  }
+>() {}
+
+export const EvoluFactoryCommon = Layer.effect(
+  EvoluFactory,
+  Effect.gen(function* (_) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const foo = yield* _(Effect.succeed(1));
+
+    const dbWorkerFactory = yield* _(DbWorkerFactory);
+    const context = Context.empty().pipe(
+      Context.add(DbWorkerFactory, dbWorkerFactory),
+    );
+
+    // For hot/live reload and future Evolu dynamic import.
+    const instances = new Map<string, Evolu>();
+
+    return {
+      createEvolu: <T extends DatabaseSchema, I>(
+        schema: S.Schema<T, I>,
+        config?: Partial<Config>,
+      ): Evolu<T> => {
+        const runtime = createEvoluRuntime(config);
+        const { name } = ConfigTag.pipe(runtime.runSync);
+        let evolu = instances.get(name);
+        if (evolu == null)
+          evolu = createEvolu(schema).pipe(
+            Effect.provide(context),
+            runtime.runSync,
+          );
+        evolu.ensureSchema(schema);
+        return evolu as Evolu<T>;
+      },
+    };
+  }),
+);
 
 // import * as S from "@effect/schema/Schema";
 // import * as Context from "effect/Context";
