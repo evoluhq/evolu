@@ -34,7 +34,7 @@ importers:
     dependencies:
       '@effect/schema':
         specifier: ^0.64.15
-        version: 0.64.15(effect@2.4.15)(fast-check@3.17.0)
+        version: 0.64.15(effect@2.4.15)(fast-check@3.17.1)
       '@evolu/common':
         specifier: workspace:*
         version: link:../../packages/evolu-common
@@ -138,7 +138,7 @@ importers:
     dependencies:
       '@effect/schema':
         specifier: ^0.64.15
-        version: 0.64.15(effect@2.4.15)(fast-check@3.17.0)
+        version: 0.64.15(effect@2.4.15)(fast-check@3.17.1)
       '@evolu/common':
         specifier: workspace:*
         version: link:../../packages/evolu-common
@@ -222,8 +222,8 @@ importers:
         specifier: ^1.13.0
         version: 1.13.0(eslint@8.57.0)
       eslint-plugin-jsdoc:
-        specifier: ^48.2.1
-        version: 48.2.1(eslint@8.57.0)
+        specifier: ^48.2.2
+        version: 48.2.2(eslint@8.57.0)
       eslint-plugin-node:
         specifier: ^11.1.0
         version: 11.1.0(eslint@8.57.0)
@@ -270,7 +270,7 @@ importers:
         version: 0.48.21(@effect/schema@0.64.15)(effect@2.4.15)(ws@8.16.0)
       '@effect/schema':
         specifier: ^0.64.15
-        version: 0.64.15(effect@2.4.15)(fast-check@3.17.0)
+        version: 0.64.15(effect@2.4.15)(fast-check@3.17.1)
       '@evolu/tsconfig':
         specifier: workspace:*
         version: link:../evolu-tsconfig
@@ -2390,7 +2390,7 @@ packages:
       '@effect/schema': ^0.64.15
       effect: ^2.4.15
     dependencies:
-      '@effect/schema': 0.64.15(effect@2.4.15)(fast-check@3.17.0)
+      '@effect/schema': 0.64.15(effect@2.4.15)(fast-check@3.17.1)
       effect: 2.4.15
       find-my-way-ts: 0.1.1
       isomorphic-ws: 5.0.0(ws@8.16.0)
@@ -2400,14 +2400,14 @@ packages:
       - ws
     dev: true
 
-  /@effect/schema@0.64.15(effect@2.4.15)(fast-check@3.17.0):
+  /@effect/schema@0.64.15(effect@2.4.15)(fast-check@3.17.1):
     resolution: {integrity: sha512-d9Ye0lZRmiEyUghK6PYAz1qPE7ZuVeZhpqo1FmbAVFC1kMDeRRPg9+0yW6iAccF5SPApeKM/cWbbnNj2ZsWx9g==}
     peerDependencies:
       effect: ^2.4.15
       fast-check: ^3.13.2
     dependencies:
       effect: 2.4.15
-      fast-check: 3.17.0
+      fast-check: 3.17.1
 
   /@es-joy/jsdoccomment@0.42.0:
     resolution: {integrity: sha512-R1w57YlVA6+YE01wch3GPYn6bCsrOV3YW/5oGGE2tmX6JcL9Nr+b5IikrjMPF+v9CV3ay+obImEdsDhovhJrzw==}
@@ -6953,8 +6953,8 @@ packages:
       - supports-color
     dev: false
 
-  /eslint-plugin-jsdoc@48.2.1(eslint@8.57.0):
-    resolution: {integrity: sha512-iUvbcyDZSO/9xSuRv2HQBw++8VkV/pt3UWtX9cpPH0l7GKPq78QC/6+PmyQHHvNZaTjAce6QVciEbnc6J/zH5g==}
+  /eslint-plugin-jsdoc@48.2.2(eslint@8.57.0):
+    resolution: {integrity: sha512-S0Gk+rpT5w/ephKCncUY7kUsix9uE4B9XI8D/fS1/26d8okE+vZsuG1IvIt4B6sJUdQqsnzi+YXfmh+HJG11CA==}
     engines: {node: '>=18'}
     peerDependencies:
       eslint: ^7.0.0 || ^8.0.0 || ^9.0.0
@@ -7512,8 +7512,8 @@ packages:
     resolution: {integrity: sha512-qwaScUgUGBYeDNRnbc/KyllVU88Jk1pRHPStuF/lO7B0/RTRLj7U0lkdTAutlBblY08rwZDff6tNU9cjv6j//Q==}
     dev: false
 
-  /fast-check@3.17.0:
-    resolution: {integrity: sha512-9A7UiBENXxMBb40qY+xOcIcGdxF5CYbXJOU4b+omh773RIFcIQRejHEjjrzIHQFLIQXWgWQu3dl6FrWR9VpYRQ==}
+  /fast-check@3.17.1:
+    resolution: {integrity: sha512-jIKXJVe6ZO0SpwEgVtEVujTf8TwjI9wMXFJCjsDHUB3RroUbXBgF4kOSz3A7MW0UR26aqsoB8i9O2mjtjERAiA==}
     engines: {node: '>=8.0.0'}
     dependencies:
       pure-rand: 6.1.0
