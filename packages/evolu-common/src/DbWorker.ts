@@ -12,8 +12,8 @@ export class DbWorkerFactory extends Context.Tag("DbWorkerFactory")<
   }
 >() {}
 
-export class InitialDbWorkerMessage extends S.TaggedRequest<InitialDbWorkerMessage>()(
-  "InitialDbWorkerMessage",
+export class InitialMessage extends S.TaggedRequest<InitialMessage>()(
+  "InitialMessage",
   S.never,
   S.void,
   {
@@ -30,7 +30,7 @@ export class GetUserById extends S.TaggedRequest<GetUserById>()(
   },
 ) {}
 
-export const DbWorkerMessage = S.union(InitialDbWorkerMessage, GetUserById);
+export const DbWorkerMessage = S.union(InitialMessage, GetUserById);
 export type DbWorkerMessage = S.Schema.Type<typeof DbWorkerMessage>;
 
 export type DbWorker = EffectWorker.SerializedWorkerPool<DbWorkerMessage>;
@@ -41,7 +41,7 @@ export const createDbWorker = Effect.gen(function* (_) {
   return yield* _(
     EffectWorker.makePoolSerialized<DbWorkerMessage>({
       size: 1,
-      initialMessage: () => new InitialDbWorkerMessage({ config }),
+      initialMessage: () => new InitialMessage({ config }),
     }),
   );
 });
