@@ -519,8 +519,8 @@ const OnQueryLive = Layer.effect(
     const loadingPromises = yield* _(LoadingPromises);
     const flushSync = pipe(
       Effect.serviceOption(FlushSync),
-      Effect.map(O.getOrElse(():FlushSync => (callback) => callback())),
-      Effect.runSync
+      Effect.map(O.getOrElse((): FlushSync => (callback) => callback())),
+      Effect.runSync,
     );
     const onCompletes = yield* _(OnCompletes);
 
