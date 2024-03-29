@@ -1,28 +1,48 @@
 import * as BrowserWorker from "@effect/platform-browser/BrowserWorker";
 import {
   Bip39,
+  DbWorker,
   DbWorkerFactory,
   EvoluFactory,
   EvoluFactoryCommon,
   // FlushSyncDefaultLive,
   InvalidMnemonicError,
   Mnemonic,
-  createDbWorker,
+  // createDbWorker,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { Bip39Live } from "./PlatformLive.js";
+import * as Comlink from "comlink";
 
 const DbWorkerFactoryWeb = Layer.succeed(DbWorkerFactory, {
-  createDbWorker: Effect.provide(
-    createDbWorker,
-    BrowserWorker.layer(
-      () =>
-        new Worker(new URL("DbWorker.worker.js", import.meta.url), {
-          type: "module",
-        }),
-    ),
-  ),
+  // Effect.Effect<DbWorker, never, Config | Scope>;
+  // effect sync?
+  createDbWorker: Effect.sync((): DbWorker => {
+    if (typeof window === "undefined")
+      return {
+        getUserById: ({ id }) => Promise.resolve(id.toString()),
+      };
+    const w = new Worker(new URL("DbWorker.worker.js", import.meta.url), {
+      type: "module",
+    });
+    return Comlink.wrap(w) as DbWorker;
+    //getUserById: ({ id }) => Promise.resolve(id.toString()),
+    //  .succeed<DbWorker>({
+    // })
+    // return {
+    //   getUserById: ({ id }) => Promise.resolve(id.toString()),
+    // };
+  }),
+  // createDbWorker: Effect.provide(
+  //   createDbWorker,
+  //   BrowserWorker.layer(
+  //     () =>
+  //       new Worker(new URL("DbWorker.worker.js", import.meta.url), {
+  //         type: "module",
+  //       }),
+  //   ),
+  // ),
 });
 
 export const EvoluFactoryWeb = Layer.provide(

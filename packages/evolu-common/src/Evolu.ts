@@ -502,26 +502,30 @@ const createEvolu = Effect.gen(function* (_) {
 
   setInterval(() => {
     const s = performance.now();
-    dbWorker
-      .executeEffect(new GetUserById({ id: 123 }))
-      .pipe(
-        // Stream.runCollect,
-        Effect.tap(() => {
-          console.log(performance.now() - s);
-        }),
-        Effect.runPromiseExit,
-      )
-      .then((exit) => {
-        Exit.match(exit, {
-          onFailure: (e) => {
-            console.log(e);
-          },
-          onSuccess: (v) => {
-            console.log(v);
-          },
-        });
-      });
+    dbWorker.getUserById({ id: 1 }).then((response) => {
+      console.log(performance.now() - s);
+    });
   }, 1000);
+
+  // setTimeout(() => {
+  //   dbWorker
+  //     .executeEffect(new GetUserById({ id: 123 }))
+  //     .pipe(
+  //       Effect.tap(() => Effect.log("bla")),
+  //       Effect.withLogSpan("foo"),
+  //       Effect.runPromiseExit,
+  //     )
+  //     .then((exit) => {
+  //       Exit.match(exit, {
+  //         onFailure: (e) => {
+  //           console.log(e);
+  //         },
+  //         onSuccess: (v) => {
+  //           console.log(v);
+  //         },
+  //       });
+  //     });
+  // }, 1000);
 
   const tapErrorAndDefectToErrorStore = <A>(
     effect: Effect.Effect<A, TimestampError>,

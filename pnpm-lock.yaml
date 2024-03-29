@@ -327,6 +327,10 @@ importers:
         version: 1.4.0(@types/node@20.11.30)
 
   packages/evolu-common-web:
+    dependencies:
+      comlink:
+        specifier: ^4.4.1
+        version: 4.4.1
     devDependencies:
       '@effect/platform-browser':
         specifier: ^0.31.21
@@ -5606,6 +5610,10 @@ packages:
     engines: {node: '>= 0.8'}
     dependencies:
       delayed-stream: 1.0.0
+
+  /comlink@4.4.1:
+    resolution: {integrity: sha512-+1dlx0aY5Jo1vHy/tSsIGpSkN4tS9rZSW8FIhG0JH/crs9wwweswIo/POr451r7bZww3hFbPAKnTpimzL/mm4Q==}
+    dev: false
 
   /comma-separated-tokens@2.0.3:
     resolution: {integrity: sha512-Fu4hJdvzeylCfQPp9SGWidpzrMs7tTrlu6Vb8XGaRGck8QSNZJJp538Wrb60Lax4fPwR64ViY468OIUTbRlGZg==}

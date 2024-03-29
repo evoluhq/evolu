@@ -12,37 +12,41 @@ export class DbWorkerFactory extends Context.Tag("DbWorkerFactory")<
   }
 >() {}
 
-export class InitialMessage extends S.TaggedRequest<InitialMessage>()(
-  "InitialMessage",
-  S.never,
-  S.void,
-  { config: Config },
-) {}
+export interface DbWorker {
+  getUserById: (options: { id: number }) => Promise<string>;
+}
 
-export class GetUserById extends S.TaggedRequest<GetUserById>()(
-  "GetUserById",
-  S.never,
-  S.string,
-  {
-    id: S.number,
-  },
-) {}
+// export class InitialMessage extends S.TaggedRequest<InitialMessage>()(
+//   "InitialMessage",
+//   S.never,
+//   S.void,
+//   { config: Config },
+// ) {}
 
-export const DbWorkerMessage = S.union(InitialMessage, GetUserById);
-export type DbWorkerMessage = S.Schema.Type<typeof DbWorkerMessage>;
+// export class GetUserById extends S.TaggedRequest<GetUserById>()(
+//   "GetUserById",
+//   S.never,
+//   S.string,
+//   {
+//     id: S.number,
+//   },
+// ) {}
 
-export type DbWorker = EffectWorker.SerializedWorkerPool<DbWorkerMessage>;
+// export const DbWorkerMessage = S.union(InitialMessage, GetUserById);
+// export type DbWorkerMessage = S.Schema.Type<typeof DbWorkerMessage>;
 
-export const createDbWorker = Effect.gen(function* (_) {
-  yield* _(Effect.logTrace("creating DbWorker"));
-  const config = yield* _(ConfigTag);
-  return yield* _(
-    EffectWorker.makePoolSerialized<DbWorkerMessage>({
-      size: 1,
-      initialMessage: () => new InitialMessage({ config }),
-    }),
-  );
-});
+// export type DbWorker = EffectWorker.SerializedWorkerPool<DbWorkerMessage>;
+
+// export const createDbWorker = Effect.gen(function* (_) {
+//   yield* _(Effect.logTrace("creating DbWorker"));
+//   const config = yield* _(ConfigTag);
+//   return yield* _(
+//     EffectWorker.makePoolSerialized<DbWorkerMessage>({
+//       size: 1,
+//       initialMessage: () => new InitialMessage({ config }),
+//     }),
+//   );
+// });
 
 // import * as Context from "effect/Context";
 // import * as Effect from "effect/Effect";
