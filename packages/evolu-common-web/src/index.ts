@@ -16,15 +16,12 @@ import { Bip39Live } from "./PlatformLive.js";
 const DbWorkerFactoryWeb = Layer.succeed(DbWorkerFactory, {
   createDbWorker: Effect.provide(
     createDbWorker,
-    BrowserWorker.layer(() => {
-      console.log("new W");
-      // ok, slava, hura, omg, ok
-      // fake api? asi jo, ne? hlidaj to typy?
-      //
-      return new Worker(new URL("DbWorker.worker.js", import.meta.url), {
-        type: "module",
-      });
-    }),
+    BrowserWorker.layer(
+      () =>
+        new Worker(new URL("DbWorker.worker.js", import.meta.url), {
+          type: "module",
+        }),
+    ),
   ),
 });
 
