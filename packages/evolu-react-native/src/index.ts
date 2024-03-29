@@ -1,10 +1,12 @@
+import type * as Worker from "@effect/platform/Worker";
 import {
   Bip39,
-  DbWorkerFactoryCommon,
+  DbWorkerFactory,
   EvoluFactory,
   EvoluFactoryCommon,
   InvalidMnemonicError,
   Mnemonic,
+  createDbWorker,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -19,6 +21,25 @@ export const parseMnemonic: (
   Effect.provide(Bip39Live),
   Effect.runSync,
 ).parse;
+
+// TODO:
+const layer: (
+  spawn: (id: number) => Worker | SharedWorker | MessagePort,
+) => Layer.Layer<Worker.WorkerManager | Worker.Spawner, never, never> = () => {
+  throw "";
+};
+
+export const EvoluFactoryReactNative = Layer.provide(
+  EvoluFactoryCommon,
+  Layer.succeed(DbWorkerFactory, {
+    createDbWorker: Effect.provide(
+      createDbWorker,
+      layer(() => {
+        throw "not implemented";
+      }),
+    ),
+  }),
+);
 
 // JSDoc doesn't support destructured parameters, so we must copy-paste
 // createEvolu docs from `evolu-common/src/Evolu.ts`.
@@ -54,10 +75,12 @@ export const {
    *   const evolu = E.createEvolu(Database);
    */
   createEvolu,
-} = EvoluFactory.pipe(
-  Effect.provide(EvoluFactoryCommon.pipe(Layer.provide(DbWorkerFactoryCommon))),
-  Effect.runSync,
-);
+} = EvoluFactory.pipe(Effect.provide(EvoluFactoryReactNative), Effect.runSync);
+
+// } = EvoluFactory.pipe(
+//   Effect.provide(EvoluFactoryCommon.pipe(Layer.provide(DbWorkerFactoryCommon))),
+//   Effect.runSync,
+// );
 
 // export const createEvolu = makeCreateEvolu(
 //   EvoluCommonLive.pipe(
