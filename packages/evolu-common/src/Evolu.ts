@@ -1,6 +1,7 @@
 import * as S from "@effect/schema/Schema";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
+import * as Stream from "effect/Stream";
 import * as Exit from "effect/Exit";
 import * as Effect from "effect/Effect";
 import * as Function from "effect/Function";
@@ -20,7 +21,7 @@ import {
   Row,
   serializeQuery,
 } from "./Db.js";
-import { DbWorkerFactory } from "./DbWorker.js";
+import { DbWorkerFactory, GetUserById } from "./DbWorker.js";
 import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
 import { Owner } from "./Owner.js";
 import {
@@ -498,6 +499,29 @@ const createEvolu = Effect.gen(function* (_) {
     dbWorkerFactory.createDbWorker,
     Scope.extend(scope),
   );
+
+  setInterval(() => {
+    const s = performance.now();
+    dbWorker
+      .executeEffect(new GetUserById({ id: 123 }))
+      .pipe(
+        // Stream.runCollect,
+        Effect.tap(() => {
+          console.log(performance.now() - s);
+        }),
+        Effect.runPromiseExit,
+      )
+      .then((exit) => {
+        Exit.match(exit, {
+          onFailure: (e) => {
+            console.log(e);
+          },
+          onSuccess: (v) => {
+            console.log(v);
+          },
+        });
+      });
+  }, 1000);
 
   const tapErrorAndDefectToErrorStore = <A>(
     effect: Effect.Effect<A, TimestampError>,

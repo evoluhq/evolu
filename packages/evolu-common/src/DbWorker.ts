@@ -16,9 +16,7 @@ export class InitialMessage extends S.TaggedRequest<InitialMessage>()(
   "InitialMessage",
   S.never,
   S.void,
-  {
-    config: Config,
-  },
+  { config: Config },
 ) {}
 
 export class GetUserById extends S.TaggedRequest<GetUserById>()(
