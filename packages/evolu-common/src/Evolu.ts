@@ -517,8 +517,11 @@ const OnQueryLive = Layer.effect(
   Effect.gen(function* (_) {
     const rowsStore = yield* _(RowsStore);
     const loadingPromises = yield* _(LoadingPromises);
-    // optional `FlashSync` service
-    const oFlushSync = yield* _(Effect.serviceOption(FlushSync));
+    const flushSync = pipe(
+      Effect.serviceOption(FlushSync),
+      Effect.map(O.getOrElse((): FlushSync => (callback) => callback())),
+      Effect.runSync,
+    );
     const onCompletes = yield* _(OnCompletes);
 
     return OnQuery.of(({ queriesPatches, onCompleteIds }) =>
@@ -546,13 +549,7 @@ const OnQueryLive = Layer.effect(
           return;
         }
 
-        // run `flashSync` if provided only
-        pipe(
-          oFlushSync,
-          O.map((flushSync) =>
-            flushSync(() => rowsStore.setState(nextState).pipe(Effect.runSync)),
-          ),
-        );
+        flushSync(() => rowsStore.setState(nextState).pipe(Effect.runSync));
 
         yield* _(onCompletes.complete(onCompleteIds));
       }),
