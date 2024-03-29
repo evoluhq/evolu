@@ -5,7 +5,6 @@ export * from "./Db.js";
 export * from "./DbWorker.js";
 export * from "./Diff.js";
 export * from "./Evolu.js";
-export * from "./EvoluFactory.js";
 export * from "./Model.js";
 export * from "./Murmurhash.js";
 export * from "./OnCompletes.js";

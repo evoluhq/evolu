@@ -1,11 +1,13 @@
 import {
   Bip39,
+  DbWorkerFactoryCommon,
   EvoluFactory,
   EvoluFactoryCommon,
   InvalidMnemonicError,
   Mnemonic,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import { Bip39Live } from "./PlatformLive.js";
 
 export * from "@evolu/common/public";
@@ -52,7 +54,10 @@ export const {
    *   const evolu = E.createEvolu(Database);
    */
   createEvolu,
-} = EvoluFactory.pipe(Effect.provide(EvoluFactoryCommon), Effect.runSync);
+} = EvoluFactory.pipe(
+  Effect.provide(EvoluFactoryCommon.pipe(Layer.provide(DbWorkerFactoryCommon))),
+  Effect.runSync,
+);
 
 // export const createEvolu = makeCreateEvolu(
 //   EvoluCommonLive.pipe(

@@ -1,10 +1,12 @@
 import * as S from "@effect/schema/Schema";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
+import * as Exit from "effect/Exit";
 import * as Effect from "effect/Effect";
 import * as Function from "effect/Function";
 import { pipe } from "effect/Function";
 import * as Layer from "effect/Layer";
+import * as Scope from "effect/Scope";
 import * as Kysely from "kysely";
 import { Config, ConfigTag, createEvoluRuntime } from "./Config.js";
 import { TimestampError } from "./Crdt.js";
@@ -18,6 +20,7 @@ import {
   Row,
   serializeQuery,
 } from "./Db.js";
+import { DbWorkerFactory } from "./DbWorker.js";
 import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
 import { Owner } from "./Owner.js";
 import {
@@ -28,8 +31,27 @@ import {
 } from "./Sqlite.js";
 import { Listener, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
-import { DbWorkerFactory } from "./DbWorker.js";
 
+/**
+ * The Evolu interface provides a type-safe SQL query building and state
+ * management defined by a database schema. It leverages Kysely for creating SQL
+ * queries in TypeScript, enabling operations such as data querying, loading,
+ * subscription to data changes, and mutations (create, update, createOrUpdate).
+ * It also includes functionalities for error handling, syncing state
+ * management, and owner data manipulation. Specifically, Evolu allows:
+ *
+ * - Subscribing to and getting errors via subscribeError and getError.
+ * - Creating type-safe SQL queries with createQuery, leveraging Kysely's
+ *   capabilities.
+ * - Loading queries and subscribing to query result changes using loadQuery,
+ *   loadQueries, subscribeQuery, and getQuery.
+ * - Subscribing to and getting the owner's information and sync state changes.
+ * - Performing mutations on the database with create, update, and createOrUpdate
+ *   methods, which include automatic management of common columns like
+ *   createdAt, updatedAt, and isDeleted.
+ * - Managing owner data with resetOwner and restoreOwner.
+ * - Ensuring the database schema's integrity with ensureSchema.
+ */
 export interface Evolu<T extends DatabaseSchema = DatabaseSchema> {
   /**
    * Subscribe to {@link EvoluError} changes.
@@ -321,7 +343,7 @@ export interface Evolu<T extends DatabaseSchema = DatabaseSchema> {
    */
   readonly sync: () => void;
 
-  // TODO: dispose via ManagedRuntime.dispose
+  readonly dispose: () => void;
 }
 
 /** The EvoluError type is used to represent errors that can occur in Evolu. */
@@ -390,186 +412,243 @@ type Castable<T> = {
           : T[K];
 };
 
-/**
- * The LoadingPromise interface represents a custom wrapper around a native
- * JavaScript Promise object, specifically tailored for handling asynchronous
- * loading operations, typically involving querying or fetching data. It
- * enriches the standard promise with additional properties to monitor and
- * control the promise's state, and it provides mechanisms to resolve the
- * promise while optionally releasing resources upon resolution.
- */
-interface LoadingPromise {
-  promise: Promise<QueryResult> & {
-    status?: "pending" | "fulfilled" | "rejected";
-    value?: QueryResult;
-    reason?: unknown;
-  };
-  resolve: (rows: QueryResult) => void;
-  releaseOnResolve: boolean;
-}
+export class EvoluFactory extends Context.Tag("EvoluFactory")<
+  EvoluFactory,
+  {
+    /**
+     * Create Evolu from the database schema.
+     *
+     * Tables with a name prefixed with `_` are local-only, which means they are
+     * never synced. It's useful for device-specific or temporal data.
+     *
+     * @example
+     *   import * as S from "@effect/schema/Schema";
+     *   import * as E from "@evolu/react";
+     *   // The same API for different platforms
+     *   // import * as E from "@evolu/react-native";
+     *   // import * as E from "@evolu/common-web";
+     *
+     *   const TodoId = E.id("Todo");
+     *   type TodoId = S.Schema.Type<typeof TodoId>;
+     *
+     *   const TodoTable = E.table({
+     *     id: TodoId,
+     *     title: E.NonEmptyString1000,
+     *   });
+     *   type TodoTable = S.Schema.Type<typeof TodoTable>;
+     *
+     *   const Database = E.database({
+     *     todo: TodoTable,
+     *
+     *     // Prefix `_` makes the table local-only (it will not sync)
+     *     _todo: TodoTable,
+     *   });
+     *   type Database = S.Schema.Type<typeof Database>;
+     *
+     *   const evolu = E.createEvolu(Database);
+     */
+    readonly createEvolu: <T extends DatabaseSchema, I>(
+      schema: S.Schema<T, I>,
+      config?: Partial<Config>,
+    ) => Evolu<T>;
+  }
+>() {}
 
-/**
- * If you are curious about why createEvolu is a function and not a layer,
- * that's because EvoluFactory creates Evolu instances dynamically. Layers are
- * for static composition, not for runtime composition.
- */
-export const createEvolu = <T extends DatabaseSchema, I, R>(
-  _schema: S.Schema<T, I, R>,
-): Effect.Effect<Evolu, never, Config | DbWorkerFactory> =>
+/** EvoluFactory is common for all platforms. */
+export const EvoluFactoryCommon = Layer.effect(
+  EvoluFactory,
   Effect.gen(function* (_) {
-    yield* _(Effect.logTrace("creating Evolu"));
-
-    const errorStore = yield* _(makeStore<EvoluError | null>(null));
-
-    const tapErrorAndDefectToErrorStore = <A>(
-      effect: Effect.Effect<A, TimestampError>,
-    ): Effect.Effect<A, TimestampError> =>
-      effect.pipe(
-        Effect.tapError(errorStore.setState),
-        Effect.tapDefect((cause) =>
-          errorStore.setState({
-            _tag: "UnexpectedError",
-            error: Cause.pretty(cause),
-          }),
-        ),
-      );
-
-    const config = yield* _(ConfigTag);
-    const runtime = createEvoluRuntime(config);
-
-    const runSync = <A>(effect: Effect.Effect<A, TimestampError>): A =>
-      effect.pipe(tapErrorAndDefectToErrorStore, runtime.runSync);
-
-    const runPromise = (effect: Effect.Effect<void, TimestampError>): void => {
-      effect.pipe(tapErrorAndDefectToErrorStore, runtime.runPromise);
-    };
-
-    // stub
-    const emptyResult = { rows: [], row: null };
-
-    const loadingPromises = new Map<Query, LoadingPromise>();
-    let loadQueryQueue: ReadonlyArray<Query> = [];
-
     const dbWorkerFactory = yield* _(DbWorkerFactory);
 
-    // tady musim poresit ten scope
-    // uz ho chapu, skvela abstrakce!
-
-    // uz to chapu, musim tam pipe to co to provede, cajk
-    // const dbWorker = yield* _(
-    //   dbWorkerFactory.createDbWorker().pipe(Effect.scoped),
-    // );
-
-    // dbWorker
-
-    const loadQuery = <R extends Row>(
-      query: Query<R>,
-    ): Promise<QueryResult<R>> =>
-      Effect.gen(function* (_) {
-        yield* _(Effect.logDebug(`loadQuery ${query}`));
-        let isNew = false;
-        let loadingPromise = loadingPromises.get(query);
-        if (!loadingPromise) {
-          isNew = true;
-          let resolve: LoadingPromise["resolve"] = Function.constVoid;
-          const promise: LoadingPromise["promise"] = new Promise((_resolve) => {
-            resolve = _resolve;
-          });
-          loadingPromise = { resolve, promise, releaseOnResolve: false };
-          loadingPromises.set(query, loadingPromise);
-        }
-
-        if (isNew) loadQueryQueue = [...loadQueryQueue, query];
-        if (loadQueryQueue.length === 1) {
-          queueMicrotask(() => {
-            // tady bude effect, takze logDebug s values
-
-            // if (ReadonlyArray.isNonEmptyReadonlyArray(loadQueryQueue))
-            //   dbWorker.postMessage({ _tag: "query", loadQueryQueue });
-            loadQueryQueue = [];
-          });
-        }
-
-        return loadingPromise.promise as Promise<QueryResult<R>>;
-      }).pipe(runSync);
-
-    const loadQueries: Evolu["loadQueries"] = () => {
-      throw "";
-    };
-
-    const subscribeQuery: Evolu["subscribeQuery"] = () => {
-      return () => () => {};
-    };
-
-    const getQuery: Evolu["getQuery"] = () => {
-      return emptyResult;
-    };
-
-    const subscribeOwner: Evolu["subscribeOwner"] = () => {
-      return () => () => {};
-    };
-
-    const getOwner: Evolu["getOwner"] = () => {
-      return null;
-    };
-
-    const subscribeSyncState: Evolu["subscribeSyncState"] = () => {
-      return () => () => {};
-    };
-
-    const getSyncState: Evolu["getSyncState"] = () => {
-      return { _tag: "SyncStateInitial" };
-    };
-
-    const create: Evolu["create"] = () => {
-      return { id: "123" as Id };
-    };
-
-    const update: Evolu["update"] = () => {
-      return { id: "123" as Id };
-    };
-
-    const createOrUpdate: Evolu["createOrUpdate"] = () => {
-      return { id: "123" as Id };
-    };
-
-    const resetOwner: Evolu["resetOwner"] = () => {
-      //
-    };
-
-    const restoreOwner: Evolu["restoreOwner"] = () => {
-      //
-    };
-
-    const ensureSchema: Evolu["ensureSchema"] = () => {
-      //
-    };
-
-    const sync: Evolu["sync"] = () => {
-      //
-    };
+    // For hot/live reload and future Evolu dynamic import.
+    const instances = new Map<string, Evolu>();
 
     return {
-      subscribeError: errorStore.subscribe,
-      getError: errorStore.getState,
-      createQuery,
-      loadQuery,
-      loadQueries,
-      subscribeQuery,
-      getQuery,
-      subscribeOwner,
-      getOwner,
-      subscribeSyncState,
-      getSyncState,
-      create,
-      update,
-      createOrUpdate,
-      resetOwner,
-      restoreOwner,
-      ensureSchema,
-      sync,
+      createEvolu: <T extends DatabaseSchema, I>(
+        schema: S.Schema<T, I>,
+        config?: Partial<Config>,
+      ): Evolu<T> => {
+        const runtime = createEvoluRuntime(config);
+        const { name } = ConfigTag.pipe(runtime.runSync);
+        let evolu = instances.get(name);
+        if (evolu == null)
+          // Evolu.pipe(layer?) neni to fuk?
+          evolu = createEvolu.pipe(
+            Effect.provideService(DbWorkerFactory, dbWorkerFactory),
+            runtime.runSync,
+          );
+        evolu.ensureSchema(schema, config?.indexes);
+        return evolu as Evolu<T>;
+      },
     };
-  });
+  }),
+);
+
+// TODO: Review by Effect team.
+// Maybe this should be layer factory returning Layer?
+const createEvolu = Effect.gen(function* (_) {
+  yield* _(Effect.logTrace("creating Evolu"));
+  const config = yield* _(ConfigTag);
+  const errorStore = yield* _(makeStore<EvoluError | null>(null));
+  const runtime = createEvoluRuntime(config);
+  const scope = yield* _(Scope.make());
+
+  const dbWorkerFactory = yield* _(DbWorkerFactory);
+  const dbWorker = yield* _(
+    dbWorkerFactory.createDbWorker,
+    Scope.extend(scope),
+  );
+
+  const tapErrorAndDefectToErrorStore = <A>(
+    effect: Effect.Effect<A, TimestampError>,
+  ): Effect.Effect<A, TimestampError> =>
+    effect.pipe(
+      Effect.tapError(errorStore.setState),
+      Effect.tapDefect((cause) =>
+        errorStore.setState({
+          _tag: "UnexpectedError",
+          error: Cause.pretty(cause),
+        }),
+      ),
+    );
+
+  // TODO: Review by Effect team.
+  const runSync = <A>(effect: Effect.Effect<A, TimestampError>): A =>
+    effect.pipe(tapErrorAndDefectToErrorStore, runtime.runSync);
+
+  // const runPromise = (effect: Effect.Effect<void, TimestampError>): void => {
+  //   effect.pipe(tapErrorAndDefectToErrorStore, runtime.runPromise);
+  // };
+
+  // stub
+  const emptyResult = { rows: [], row: null };
+
+  interface LoadingPromise {
+    promise: Promise<QueryResult> & {
+      status?: "pending" | "fulfilled" | "rejected";
+      value?: QueryResult;
+      reason?: unknown;
+    };
+    resolve: (rows: QueryResult) => void;
+    releaseOnResolve: boolean;
+  }
+
+  const loadingPromises = new Map<Query, LoadingPromise>();
+  let loadQueryQueue: ReadonlyArray<Query> = [];
+
+  const loadQuery = <R extends Row>(query: Query<R>): Promise<QueryResult<R>> =>
+    Effect.gen(function* (_) {
+      yield* _(Effect.logDebug(`loadQuery ${query}`));
+      let isNew = false;
+      let loadingPromise = loadingPromises.get(query);
+      if (!loadingPromise) {
+        isNew = true;
+        let resolve: LoadingPromise["resolve"] = Function.constVoid;
+        const promise: LoadingPromise["promise"] = new Promise((_resolve) => {
+          resolve = _resolve;
+        });
+        loadingPromise = { resolve, promise, releaseOnResolve: false };
+        loadingPromises.set(query, loadingPromise);
+      }
+
+      if (isNew) loadQueryQueue = [...loadQueryQueue, query];
+      if (loadQueryQueue.length === 1) {
+        queueMicrotask(() => {
+          // tady bude effect, takze logDebug s values
+
+          // if (ReadonlyArray.isNonEmptyReadonlyArray(loadQueryQueue))
+          //   dbWorker.postMessage({ _tag: "query", loadQueryQueue });
+          loadQueryQueue = [];
+        });
+      }
+
+      return loadingPromise.promise as Promise<QueryResult<R>>;
+    }).pipe(runSync);
+
+  const loadQueries: Evolu["loadQueries"] = () => {
+    throw "";
+  };
+
+  const subscribeQuery: Evolu["subscribeQuery"] = () => {
+    return () => () => {};
+  };
+
+  const getQuery: Evolu["getQuery"] = () => {
+    return emptyResult;
+  };
+
+  const subscribeOwner: Evolu["subscribeOwner"] = () => {
+    return () => () => {};
+  };
+
+  const getOwner: Evolu["getOwner"] = () => {
+    return null;
+  };
+
+  const subscribeSyncState: Evolu["subscribeSyncState"] = () => {
+    return () => () => {};
+  };
+
+  const getSyncState: Evolu["getSyncState"] = () => {
+    return { _tag: "SyncStateInitial" };
+  };
+
+  const create: Evolu["create"] = () => {
+    return { id: "123" as Id };
+  };
+
+  const update: Evolu["update"] = () => {
+    return { id: "123" as Id };
+  };
+
+  const createOrUpdate: Evolu["createOrUpdate"] = () => {
+    return { id: "123" as Id };
+  };
+
+  const resetOwner: Evolu["resetOwner"] = () => {
+    //
+  };
+
+  const restoreOwner: Evolu["restoreOwner"] = () => {
+    //
+  };
+
+  const ensureSchema: Evolu["ensureSchema"] = () => {
+    //
+  };
+
+  const sync: Evolu["sync"] = () => {
+    //
+  };
+
+  const dispose: Evolu["dispose"] = () =>
+    Effect.gen(function* (_) {
+      yield* _(Effect.logTrace("dispose Evolu"));
+      yield* _(Scope.close(scope, Exit.succeed("Evolu disposed")));
+    }).pipe(runSync);
+
+  return {
+    subscribeError: errorStore.subscribe,
+    getError: errorStore.getState,
+    createQuery,
+    loadQuery,
+    loadQueries,
+    subscribeQuery,
+    getQuery,
+    subscribeOwner,
+    getOwner,
+    subscribeSyncState,
+    getSyncState,
+    create,
+    update,
+    createOrUpdate,
+    resetOwner,
+    restoreOwner,
+    ensureSchema,
+    sync,
+    dispose,
+  };
+});
 
 // https://kysely.dev/docs/recipes/splitting-query-building-and-execution
 const kysely = new Kysely.Kysely({
@@ -614,15 +693,14 @@ type CreateIndex = typeof createIndex;
  *
  * ### Example
  *
- * @example
- *   ```ts
- *     const indexes = createIndexes((create) => [
- *       create("indexTodoCreatedAt").on("todo").column("createdAt"),
- *       create("indexTodoCategoryCreatedAt")
- *         .on("todoCategory")
- *         .column("createdAt"),
- *     ]);
- *   ```;
+ * ```ts
+ * const indexes = createIndexes((create) => [
+ *   create("indexTodoCreatedAt").on("todo").column("createdAt"),
+ *   create("indexTodoCategoryCreatedAt")
+ *     .on("todoCategory")
+ *     .column("createdAt"),
+ * ]);
+ * ```
  */
 export const createIndexes = (
   callback: (
@@ -635,82 +713,6 @@ export const createIndexes = (
       sql: index.compile().sql,
     }),
   );
-
-export class EvoluFactory extends Context.Tag("EvoluFactory")<
-  EvoluFactory,
-  {
-    /**
-     * Create Evolu from the database schema.
-     *
-     * Tables with a name prefixed with `_` are local-only, which means they are
-     * never synced. It's useful for device-specific or temporal data.
-     *
-     * @example
-     *   import * as S from "@effect/schema/Schema";
-     *   import * as E from "@evolu/react";
-     *   // The same API for different platforms
-     *   // import * as E from "@evolu/react-native";
-     *   // import * as E from "@evolu/common-web";
-     *
-     *   const TodoId = E.id("Todo");
-     *   type TodoId = S.Schema.Type<typeof TodoId>;
-     *
-     *   const TodoTable = E.table({
-     *     id: TodoId,
-     *     title: E.NonEmptyString1000,
-     *   });
-     *   type TodoTable = S.Schema.Type<typeof TodoTable>;
-     *
-     *   const Database = E.database({
-     *     todo: TodoTable,
-     *
-     *     // Prefix `_` makes the table local-only (it will not sync)
-     *     _todo: TodoTable,
-     *   });
-     *   type Database = S.Schema.Type<typeof Database>;
-     *
-     *   const evolu = E.createEvolu(Database);
-     */
-    readonly createEvolu: <T extends DatabaseSchema, I>(
-      schema: S.Schema<T, I>,
-      config?: Partial<Config>,
-    ) => Evolu<T>;
-  }
->() {}
-
-export const EvoluFactoryCommon = Layer.effect(
-  EvoluFactory,
-  Effect.gen(function* (_) {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const foo = yield* _(Effect.succeed(1));
-
-    const dbWorkerFactory = yield* _(DbWorkerFactory);
-    const context = Context.empty().pipe(
-      Context.add(DbWorkerFactory, dbWorkerFactory),
-    );
-
-    // For hot/live reload and future Evolu dynamic import.
-    const instances = new Map<string, Evolu>();
-
-    return {
-      createEvolu: <T extends DatabaseSchema, I>(
-        schema: S.Schema<T, I>,
-        config?: Partial<Config>,
-      ): Evolu<T> => {
-        const runtime = createEvoluRuntime(config);
-        const { name } = ConfigTag.pipe(runtime.runSync);
-        let evolu = instances.get(name);
-        if (evolu == null)
-          evolu = createEvolu(schema).pipe(
-            Effect.provide(context),
-            runtime.runSync,
-          );
-        evolu.ensureSchema(schema);
-        return evolu as Evolu<T>;
-      },
-    };
-  }),
-);
 
 // import * as S from "@effect/schema/Schema";
 // import * as Context from "effect/Context";

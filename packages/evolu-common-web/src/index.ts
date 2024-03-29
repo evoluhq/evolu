@@ -1,18 +1,37 @@
+import * as BrowserWorker from "@effect/platform-browser/BrowserWorker";
 import {
   Bip39,
+  DbWorkerFactory,
   EvoluFactory,
   EvoluFactoryCommon,
   // FlushSyncDefaultLive,
   InvalidMnemonicError,
   Mnemonic,
+  createDbWorker,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
-// import * as Layer from "effect/Layer";
-// import { DbWorkerLive } from "./DbWorkerLive.js";
+import * as Layer from "effect/Layer";
 import { Bip39Live } from "./PlatformLive.js";
 
-// TODO: Inject web deps.
-export const EvoluFactoryWeb = EvoluFactoryCommon;
+const DbWorkerFactoryWeb = Layer.succeed(DbWorkerFactory, {
+  createDbWorker: Effect.provide(
+    createDbWorker,
+    BrowserWorker.layer(() => {
+      console.log("new W");
+      // ok, slava, hura, omg, ok
+      // fake api? asi jo, ne? hlidaj to typy?
+      //
+      return new Worker(new URL("DbWorker.worker.js", import.meta.url), {
+        type: "module",
+      });
+    }),
+  ),
+});
+
+export const EvoluFactoryWeb = Layer.provide(
+  EvoluFactoryCommon,
+  DbWorkerFactoryWeb,
+);
 
 /**
  * Parse a string to {@link Mnemonic}.
@@ -27,7 +46,7 @@ export const parseMnemonic: (
 ).parse;
 
 // JSDoc doesn't support destructured parameters, so we must copy-paste
-// createEvolu docs from `evolu-common/src/Evolu.ts`
+// createEvolu docs from `evolu-common/src/Evolu.ts`.
 // https://github.com/microsoft/TypeScript/issues/11859
 export const {
   /**

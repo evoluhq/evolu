@@ -35,6 +35,7 @@
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "devDependencies": {
+    "@effect/platform-browser": "^0.31.21",
     "@evolu/common": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
     "@sqlite.org/sqlite-wasm": "3.45.2-build1",
@@ -46,6 +47,7 @@
     "vitest": "^1.4.0"
   },
   "peerDependencies": {
+    "@effect/platform-browser": "^0.31.21",
     "@evolu/common": "^4.1.1",
     "@sqlite.org/sqlite-wasm": "3.45.1-build1"
   },

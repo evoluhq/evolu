@@ -2,17 +2,22 @@ import * as EffectWorker from "@effect/platform/Worker";
 import * as S from "@effect/schema/Schema";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
 import { Scope } from "effect/Scope";
 import { Config, ConfigTag } from "./Config.js";
 
-export class InitialMessage extends S.TaggedRequest<InitialMessage>()(
-  "InitialMessage",
+export class DbWorkerFactory extends Context.Tag("DbWorkerFactory")<
+  DbWorkerFactory,
+  {
+    readonly createDbWorker: Effect.Effect<DbWorker, never, Config | Scope>;
+  }
+>() {}
+
+export class InitialDbWorkerMessage extends S.TaggedRequest<InitialDbWorkerMessage>()(
+  "InitialDbWorkerMessage",
   S.never,
   S.void,
   {
-    // foo: Foo,
-    // config: Config,
+    config: Config,
   },
 ) {}
 
@@ -25,68 +30,21 @@ export class GetUserById extends S.TaggedRequest<GetUserById>()(
   },
 ) {}
 
-export const WorkerMessage = S.union(InitialMessage, GetUserById);
-export type WorkerMessage = S.Schema.Type<typeof WorkerMessage>;
+export const DbWorkerMessage = S.union(InitialDbWorkerMessage, GetUserById);
+export type DbWorkerMessage = S.Schema.Type<typeof DbWorkerMessage>;
 
-export type DbWorker = EffectWorker.SerializedWorkerPool<WorkerMessage>;
+export type DbWorker = EffectWorker.SerializedWorkerPool<DbWorkerMessage>;
 
-// ok, jak to vytvorim? potrebuju config
-// () => Effect.Effect<DbWorker, never, Config>;
-
-// const a = EffectWorker.makePoolSerialized<WorkerMessage>({
-//     size: 1,
-//     initialMessage: () =>
-//       new InitialMessage({
-//         foo: { name: "bla" },
-//       }),
-//   })
-
-export const createDbWorker = (): Effect.Effect<
-  DbWorker,
-  never,
-  Config | EffectWorker.WorkerManager | Scope | EffectWorker.Spawner
-> =>
-  Effect.gen(function* (_) {
-    const config = yield* _(ConfigTag);
-    // config.
-    return yield* _(
-      EffectWorker.makePoolSerialized<WorkerMessage>({
-        size: 1,
-        initialMessage: () =>
-          new InitialMessage({
-            foo: { name: "bla" },
-          }),
-      }),
-    );
-  });
-
-export class DbWorkerFactory extends Context.Tag("DbWorkerFactory")<
-  DbWorkerFactory,
-  {
-    readonly createDbWorker: () => Effect.Effect<
-      DbWorker,
-      never,
-      Config | EffectWorker.WorkerManager | Scope | EffectWorker.Spawner
-    >;
-  }
->() {}
-
-export const DbWorkerFactoryCommon = Layer.effect(
-  DbWorkerFactory,
-  Effect.gen(function* (_) {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const foo = yield* _(Effect.succeed(1));
-
-    return DbWorkerFactory.of({
-      createDbWorker,
-    });
-  }),
-);
-
-// const pool = yield* _(EffectWorker.makePoolSerialized<WorkerMessage>({
-//     size: 1,
-//     initialMessage: () => new InitialMessage({ name: "custom", data: new Uint8Array([1, 2, 3]) })
-//   }))
+export const createDbWorker = Effect.gen(function* (_) {
+  yield* _(Effect.logTrace("creating DbWorker"));
+  const config = yield* _(ConfigTag);
+  return yield* _(
+    EffectWorker.makePoolSerialized<DbWorkerMessage>({
+      size: 1,
+      initialMessage: () => new InitialDbWorkerMessage({ config }),
+    }),
+  );
+});
 
 // import * as Context from "effect/Context";
 // import * as Effect from "effect/Effect";
