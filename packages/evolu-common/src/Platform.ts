@@ -13,10 +13,6 @@ export type FlushSync = (callback: () => void) => void;
 
 export const FlushSync = Context.GenericTag<FlushSync>("@services/FlushSync");
 
-export const FlushSyncDefaultLive = Layer.succeed(FlushSync, (callback) =>
-  callback(),
-);
-
 export interface SyncLock {
   /**
    * Try to acquire a sync lock. The caller must not call sync if a sync lock
