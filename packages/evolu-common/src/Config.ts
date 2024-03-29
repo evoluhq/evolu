@@ -67,7 +67,7 @@ export const Config = S.struct({
   minimumLogLevel: S.literal("none", "trace", "debug", "warning"),
 });
 
-export type Config = S.Schema.Type<typeof Config>;
+export interface Config extends S.Schema.Type<typeof Config> {}
 
 export const ConfigTag = Context.GenericTag<Config>("Config");
 
@@ -88,11 +88,12 @@ export const createEvoluRuntime = (
   const mergedConfig = { ...defaultConfig, ...config };
   const minimumLogLevel = Match.value(mergedConfig.minimumLogLevel).pipe(
     Match.when("debug", () => LogLevel.Debug),
-    Match.when("none", () => LogLevel.Debug),
-    Match.when("trace", () => LogLevel.Debug),
-    Match.when("warning", () => LogLevel.Debug),
+    Match.when("none", () => LogLevel.None),
+    Match.when("trace", () => LogLevel.Trace),
+    Match.when("warning", () => LogLevel.Warning),
     Match.exhaustive,
   );
+
   const evoluLayer = Layer.merge(
     Logger.minimumLogLevel(minimumLogLevel),
     Layer.succeed(ConfigTag, mergedConfig),
