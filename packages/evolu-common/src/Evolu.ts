@@ -3,6 +3,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Function from "effect/Function";
 import { pipe } from "effect/Function";
+import * as O from "effect/Option";
 import * as GlobalValue from "effect/GlobalValue";
 import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
@@ -31,7 +32,7 @@ import { EvoluError, makeErrorStore } from "./ErrorStore.js";
 import { SqliteBoolean, SqliteDate } from "./Model.js";
 import { OnCompletes, OnCompletesLive } from "./OnCompletes.js";
 import { Owner } from "./Owner.js";
-import { AppState, FlushSync, FlushSyncDefaultLive } from "./Platform.js";
+import { AppState, FlushSync } from "./Platform.js";
 import {
   Index,
   SqliteQuery,
@@ -516,7 +517,8 @@ const OnQueryLive = Layer.effect(
   Effect.gen(function* (_) {
     const rowsStore = yield* _(RowsStore);
     const loadingPromises = yield* _(LoadingPromises);
-    const flushSync = yield* _(FlushSync);
+    // optional `FlashSync` service
+    const oFlushSync = yield* _(Effect.serviceOption(FlushSync));
     const onCompletes = yield* _(OnCompletes);
 
     return OnQuery.of(({ queriesPatches, onCompleteIds }) =>
@@ -544,7 +546,14 @@ const OnQueryLive = Layer.effect(
           return;
         }
 
-        flushSync(() => rowsStore.setState(nextState).pipe(Effect.runSync));
+        // run `flashSync` if provided only
+        pipe(
+          oFlushSync,
+          O.map((flushSync) =>
+            flushSync(() => rowsStore.setState(nextState).pipe(Effect.runSync)),
+          ),
+        );
+
         yield* _(onCompletes.complete(onCompleteIds));
       }),
     );
@@ -800,7 +809,6 @@ const EvoluCommon = Layer.effect(
   }),
 ).pipe(
   Layer.provide(Layer.mergeAll(LoadQueryLive, OnQueryLive, MutateLive)),
-  Layer.provide(FlushSyncDefaultLive),
   Layer.provide(LoadingPromiseLive),
   Layer.provide(SubscribedQueriesLive),
   Layer.provide(Layer.merge(RowsStoreLive, OnCompletesLive)),
