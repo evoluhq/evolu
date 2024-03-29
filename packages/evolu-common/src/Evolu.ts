@@ -31,7 +31,7 @@ import { EvoluError, makeErrorStore } from "./ErrorStore.js";
 import { SqliteBoolean, SqliteDate } from "./Model.js";
 import { OnCompletes, OnCompletesLive } from "./OnCompletes.js";
 import { Owner } from "./Owner.js";
-import { AppState, FlushSync } from "./Platform.js";
+import { AppState, FlushSync, FlushSyncDefaultLive } from "./Platform.js";
 import {
   Index,
   SqliteQuery,
@@ -800,6 +800,7 @@ const EvoluCommon = Layer.effect(
   }),
 ).pipe(
   Layer.provide(Layer.mergeAll(LoadQueryLive, OnQueryLive, MutateLive)),
+  Layer.provide(FlushSyncDefaultLive),
   Layer.provide(LoadingPromiseLive),
   Layer.provide(SubscribedQueriesLive),
   Layer.provide(Layer.merge(RowsStoreLive, OnCompletesLive)),
