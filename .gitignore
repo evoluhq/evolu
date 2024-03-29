@@ -13,3 +13,5 @@ server/dist
 public/dist
 storybook-static/
 pnpm-lock.yaml
+
+.direnv
