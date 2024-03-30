@@ -1,0 +1,12 @@
+{
+  "extends": "@evolu/tsconfig/universal-esm.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "allowJs": true,
+    // https://www.solidjs.com/guides/typescript#configuring-typescript
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js"
+  },
+  "include": ["src", "test", "./.eslintrc.cjs"],
+  "exclude": ["dist", "node_modules"]
+}

@@ -1,0 +1,59 @@
+{
+  "name": "@evolu/solid",
+  "version": "0.0.1",
+  "description": "Evolu for Solid",
+  "keywords": [
+    "evolu",
+    "solid"
+  ],
+  "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
+  "license": "MIT",
+  "repository": "evoluhq/evolu",
+  "bugs": {
+    "url": "https://github.com/evoluhq/evolu/issues"
+  },
+  "homepage": "https://evolu.dev",
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "browser": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/**",
+    "src/**",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "tsc --watch",
+    "build": "rm -rf dist && tsc",
+    "lint": "eslint src --ext .ts,.tsx",
+    "clean": "rm -rf .turbo node_modules dist",
+    "format": "prettier --write \"src/*.{ts,tsx,md}\""
+  },
+  "devDependencies": {
+    "@evolu/common": "workspace:*",
+    "@evolu/common-web": "workspace:*",
+    "@evolu/tsconfig": "workspace:*",
+    "eslint": "^8.57.0",
+    "eslint-config-evolu": "workspace:*",
+    "solid-js": "^1.8.16",
+    "typescript": "^5.4.3",
+    "vitest": "^1.4.0"
+  },
+  "peerDependencies": {
+    "@evolu/common": "^4.1.1",
+    "@evolu/common-web": "^7.0.1",
+    "solid-js": "^1.8.16"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18.16"
+  },
+  "sideEffects": []
+}
