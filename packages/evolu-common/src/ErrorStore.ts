@@ -1,8 +1,9 @@
+import * as O from "effect/Option";
 import * as Effect from "effect/Effect";
 import { TimestampError } from "./Crdt.js";
 import { makeStore } from "./Store.js";
 
-export const makeErrorStore = makeStore<EvoluError | null>(null);
+export const makeErrorStore = makeStore<O.Option<EvoluError>>(O.none());
 
 /** The EvoluError type is used to represent errors that can occur in Evolu. */
 export type EvoluError = UnexpectedError | TimestampError;
