@@ -11,7 +11,7 @@
     "clean": "rm -rf .turbo .expo node_modules dist"
   },
   "dependencies": {
-    "@effect/schema": "^0.64.15",
+    "@effect/schema": "^0.64.16",
     "@evolu/common": "workspace:*",
     "@evolu/common-react": "workspace:*",
     "@evolu/react-native": "workspace:*",
@@ -28,7 +28,7 @@
     "react": "^18.2.0",
     "react-native": "0.73.6",
     "react-native-get-random-values": "~1.8.0",
-    "react-native-picker-select": "^9.0.0",
+    "react-native-picker-select": "^9.1.1",
     "stream": "^0.0.2"
   },
   "devDependencies": {
