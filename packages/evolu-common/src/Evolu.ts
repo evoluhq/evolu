@@ -52,10 +52,10 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
    *     console.log(error);
    *   });
    */
-  readonly subscribeError: Store<EvoluError | null>["subscribe"];
+  readonly subscribeError: Store<O.Option<EvoluError>>["subscribe"];
 
   /** Get {@link EvoluError}. */
-  readonly getError: Store<EvoluError | null>["getState"];
+  readonly getError: Store<O.Option<EvoluError>>["getState"];
 
   /**
    * Create type-safe SQL {@link Query}.
@@ -738,7 +738,7 @@ const EvoluCommon = Layer.effect(
     dbWorker.onMessage = (output): void =>
       Match.value(output).pipe(
         Match.tagsExhaustive({
-          onError: ({ error }) => errorStore.setState(error),
+          onError: ({ error }) => errorStore.setState(O.some(error)),
           onQuery,
           onOwner: ({ owner }) => ownerStore.setState(owner),
           onSyncState: ({ state }) => syncStateStore.setState(state),
