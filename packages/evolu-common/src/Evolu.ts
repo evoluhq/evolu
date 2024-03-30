@@ -168,7 +168,7 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
    *     const owner = evolu.getOwner();
    *   });
    */
-  readonly subscribeOwner: Store<Owner | null>["subscribe"];
+  readonly subscribeOwner: Store<O.Option<Owner>>["subscribe"];
 
   /**
    * Get {@link Owner}.
@@ -178,7 +178,7 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
    *     const owner = evolu.getOwner();
    *   });
    */
-  readonly getOwner: Store<Owner | null>["getState"];
+  readonly getOwner: Store<O.Option<Owner>>["getState"];
 
   /**
    * Subscribe to {@link SyncState} changes.
@@ -731,7 +731,7 @@ const EvoluCommon = Layer.effect(
       makeStore<SyncState>({ _tag: "SyncStateInitial" }),
     );
     const mutate = yield* _(Mutate);
-    const ownerStore = yield* _(makeStore<Owner | null>(null));
+    const ownerStore = yield* _(makeStore<O.Option<Owner>>(O.none()));
     const loadingPromises = yield* _(LoadingPromises);
     const appState = yield* _(AppState);
 
@@ -740,7 +740,7 @@ const EvoluCommon = Layer.effect(
         Match.tagsExhaustive({
           onError: ({ error }) => errorStore.setState(error),
           onQuery,
-          onOwner: ({ owner }) => ownerStore.setState(owner),
+          onOwner: ({ owner }) => ownerStore.setState(O.some(owner)),
           onSyncState: ({ state }) => syncStateStore.setState(state),
           onReceive: () =>
             Effect.sync(() => {
