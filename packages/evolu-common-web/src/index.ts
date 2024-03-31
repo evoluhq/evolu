@@ -8,18 +8,14 @@ import {
   InvalidMnemonicError,
   Mnemonic,
 } from "@evolu/common";
-import * as Comlink from "comlink";
 import * as Effect from "effect/Effect";
-import * as Function from "effect/Function";
 import * as Layer from "effect/Layer";
-import { initComlink } from "./Comlink.js";
 import { Bip39Live } from "./PlatformLive.js";
-
-initComlink();
+import { wrap } from "./ProxyWorker.js";
 
 const noOpServerWorker: DbWorker = {
   // eslint-disable-next-line @typescript-eslint/no-misused-promises
-  init: () => new Promise(Function.constVoid),
+  init: () => Effect.succeed(""),
 };
 
 const DbWorkerFactoryWeb = Layer.succeed(DbWorkerFactory, {
@@ -28,7 +24,7 @@ const DbWorkerFactoryWeb = Layer.succeed(DbWorkerFactory, {
     const worker = new Worker(new URL("DbWorker.worker.js", import.meta.url), {
       type: "module",
     });
-    return Comlink.wrap(worker);
+    return wrap<DbWorker>(worker);
   }),
 });
 

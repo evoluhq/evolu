@@ -55,8 +55,5 @@
   "engines": {
     "node": ">=18.16"
   },
-  "sideEffects": [],
-  "dependencies": {
-    "comlink": "^4.4.1"
-  }
+  "sideEffects": []
 }

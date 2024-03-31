@@ -1,8 +1,6 @@
 import * as S from "@effect/schema/Schema";
-import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as Either from "effect/Either";
 import * as Exit from "effect/Exit";
 import * as Function from "effect/Function";
 import { pipe } from "effect/Function";
@@ -497,22 +495,12 @@ const createEvolu = (): Effect.Effect<Evolu, never, Config | DbWorkerFactory> =>
     const runtime = createEvoluRuntime(config);
     const errorStore = yield* _(makeStore<EvoluError | null>(null));
 
-    const handleError = <T>(
+    const tapAllErrors = <T>(
       effect: Effect.Effect<T, Exclude<EvoluError, UnexpectedError>>,
     ): Effect.Effect<T, EvoluError> =>
       effect.pipe(
-        Effect.catchAllCause(
-          Function.flow(
-            Cause.failureOrCause,
-            Either.match({
-              onLeft: Effect.fail,
-              onRight: (cause) =>
-                Effect.fail<EvoluError>({
-                  _tag: "UnexpectedError",
-                  error: Cause.pretty(cause),
-                }),
-            }),
-          ),
+        Effect.catchAllDefect((error) =>
+          Effect.fail<EvoluError>({ _tag: "UnexpectedError", error }),
         ),
         Effect.tapError(Effect.logError),
         Effect.tapError(errorStore.setState),
@@ -520,24 +508,11 @@ const createEvolu = (): Effect.Effect<Evolu, never, Config | DbWorkerFactory> =>
 
     const runSync = <T>(
       effect: Effect.Effect<T, Exclude<EvoluError, UnexpectedError>>,
-    ): T => effect.pipe(handleError, runtime.runSync);
+    ): T => effect.pipe(tapAllErrors, runtime.runSync);
 
     const runPromise = <T>(
       effect: Effect.Effect<T, Exclude<EvoluError, UnexpectedError>>,
-    ): Promise<T> => effect.pipe(handleError, runtime.runPromise);
-
-    // const promiseEitherToEffect = <
-    //   R,
-    //   L extends Exclude<EvoluError, UnexpectedError>,
-    // >(
-    //   promise: Promise<Either.Either<R, L>>,
-    // ): Effect.Effect<R, L> =>
-    //   Effect.promise(() => promise).pipe(
-    //     (a) => a,
-    //     Effect.flatMap(
-    //       Either.match({ onLeft: Effect.fail, onRight: Effect.succeed }),
-    //     ),
-    //   );
+    ): Promise<T> => effect.pipe(tapAllErrors, runtime.runPromise);
 
     const dbWorkerFactory = yield* _(DbWorkerFactory);
     const dbWorker = yield* _(
@@ -546,7 +521,12 @@ const createEvolu = (): Effect.Effect<Evolu, never, Config | DbWorkerFactory> =>
     );
 
     // TODO: Owner
-    Effect.promise(() => dbWorker.init(config)).pipe(runPromise);
+    dbWorker
+      .init(config)
+      .pipe(runPromise)
+      .then((a) => {
+        console.log(a);
+      });
 
     // stub
     const emptyResult = { rows: [], row: null };

@@ -1,8 +1,8 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as Either from "effect/Either";
 import { Scope } from "effect/Scope";
 import { Config } from "./Config.js";
+import { TimestampError } from "./Crdt.js";
 
 export class DbWorkerFactory extends Context.Tag("DbWorkerFactory")<
   DbWorkerFactory,
@@ -12,32 +12,19 @@ export class DbWorkerFactory extends Context.Tag("DbWorkerFactory")<
 >() {}
 
 export interface DbWorker {
-  // muzu mit effect API? imho jo
-  init: (config: Config) => Promise<string>;
-  // init: (config: Config) => Promise<Either.Either<string, never>>;
-  // withEither: () => Promise<Either.Either<string, TimestampError>>;
-  // Effect.either in worker,
-  // Effect.flatMap(
-  //   Either.match({ onLeft: Effect.fail, onRight: Effect.succeed }),
-  // ),
+  init: (config: Config) => Effect.Effect<string, TimestampError>;
 }
 
 export const createDbWorker = (): Effect.Effect<DbWorker> =>
   Effect.gen(function* (_) {
     yield* _(Effect.logTrace("creating Evolu"));
 
-    // const runPromise? kvuli logovani, imho jo
+    const init: DbWorker["init"] = () =>
+      Effect.gen(function* (_) {
+        yield* _(Effect.logTrace("dbWorker init"));
 
-    const init: DbWorker["init"] = (_config) => {
-      return Effect.succeed("foo").pipe(
-        Effect.map((a) => {
-          throw new Error("test");
-          return a;
-        }),
-        // Effect.either,
-        Effect.runPromise,
-      );
-    };
+        return "foo";
+      });
 
     return { init };
   });
