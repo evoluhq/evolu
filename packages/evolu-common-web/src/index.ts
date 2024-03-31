@@ -1,48 +1,35 @@
-import * as BrowserWorker from "@effect/platform-browser/BrowserWorker";
 import {
   Bip39,
+  canUseDom,
   DbWorker,
   DbWorkerFactory,
   EvoluFactory,
   EvoluFactoryCommon,
-  // FlushSyncDefaultLive,
   InvalidMnemonicError,
   Mnemonic,
-  // createDbWorker,
 } from "@evolu/common";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import { Bip39Live } from "./PlatformLive.js";
 import * as Comlink from "comlink";
+import * as Effect from "effect/Effect";
+import * as Function from "effect/Function";
+import * as Layer from "effect/Layer";
+import { initComlink } from "./Comlink.js";
+import { Bip39Live } from "./PlatformLive.js";
+
+initComlink();
+
+const noOpServerWorker: DbWorker = {
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises
+  init: () => new Promise(Function.constVoid),
+};
 
 const DbWorkerFactoryWeb = Layer.succeed(DbWorkerFactory, {
-  // Effect.Effect<DbWorker, never, Config | Scope>;
-  // effect sync?
   createDbWorker: Effect.sync((): DbWorker => {
-    if (typeof window === "undefined")
-      return {
-        getUserById: ({ id }) => Promise.resolve(id.toString()),
-      };
-    const w = new Worker(new URL("DbWorker.worker.js", import.meta.url), {
+    if (!canUseDom) return noOpServerWorker;
+    const worker = new Worker(new URL("DbWorker.worker.js", import.meta.url), {
       type: "module",
     });
-    return Comlink.wrap(w) as DbWorker;
-    //getUserById: ({ id }) => Promise.resolve(id.toString()),
-    //  .succeed<DbWorker>({
-    // })
-    // return {
-    //   getUserById: ({ id }) => Promise.resolve(id.toString()),
-    // };
+    return Comlink.wrap(worker);
   }),
-  // createDbWorker: Effect.provide(
-  //   createDbWorker,
-  //   BrowserWorker.layer(
-  //     () =>
-  //       new Worker(new URL("DbWorker.worker.js", import.meta.url), {
-  //         type: "module",
-  //       }),
-  //   ),
-  // ),
 });
 
 export const EvoluFactoryWeb = Layer.provide(

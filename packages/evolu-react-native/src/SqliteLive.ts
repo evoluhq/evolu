@@ -1,5 +1,5 @@
 import {
-  ConfigTag,
+  Config,
   Sqlite,
   SqliteRow,
   isSqlMutation,
@@ -15,7 +15,7 @@ import * as ExpoSQLite from "expo-sqlite/next";
 export const SqliteLive = Layer.effect(
   Sqlite,
   Effect.gen(function* (_) {
-    const config = yield* _(ConfigTag);
+    const config = yield* _(Config);
     const db = ExpoSQLite.openDatabaseSync(`evolu1-${config.name}.db`);
 
     return Sqlite.of({

@@ -12,7 +12,6 @@ import * as Effect from "effect/Effect";
 import * as Function from "effect/Function";
 import * as Layer from "effect/Layer";
 import { multitenantLockName } from "./multitenantLockName.js";
-import { ConfigTag } from "@evolu/common";
 
 export const SyncLockLive = Layer.effect(
   SyncLock,
@@ -69,7 +68,7 @@ export const AppStateLive = Layer.effect(
         reset: Effect.succeed(undefined),
       });
 
-    const { reloadUrl } = yield* _(ConfigTag);
+    const { reloadUrl } = yield* _(Config);
     const localStorageKey = "evolu:reloadAllTabs";
 
     const reloadLocation = (): void => {

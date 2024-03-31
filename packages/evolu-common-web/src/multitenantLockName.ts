@@ -1,4 +1,4 @@
-import { Config, ConfigTag } from "@evolu/common";
+import { Config } from "@evolu/common";
 import * as Effect from "effect/Effect";
 
 /**
@@ -10,6 +10,6 @@ export const multitenantLockName = (
   name: "Sqlite" | "DbWorker",
 ): Effect.Effect<string, never, Config> =>
   Effect.gen(function* (_) {
-    const config = yield* _(ConfigTag);
+    const config = yield* _(Config);
     return `evolu:${config.name}:${name}`;
   });

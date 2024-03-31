@@ -1,9 +1,8 @@
-import * as EffectWorker from "@effect/platform/Worker";
-import * as S from "@effect/schema/Schema";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Either from "effect/Either";
 import { Scope } from "effect/Scope";
-import { Config, ConfigTag } from "./Config.js";
+import { Config } from "./Config.js";
 
 export class DbWorkerFactory extends Context.Tag("DbWorkerFactory")<
   DbWorkerFactory,
@@ -13,40 +12,35 @@ export class DbWorkerFactory extends Context.Tag("DbWorkerFactory")<
 >() {}
 
 export interface DbWorker {
-  getUserById: (options: { id: number }) => Promise<string>;
+  // muzu mit effect API? imho jo
+  init: (config: Config) => Promise<string>;
+  // init: (config: Config) => Promise<Either.Either<string, never>>;
+  // withEither: () => Promise<Either.Either<string, TimestampError>>;
+  // Effect.either in worker,
+  // Effect.flatMap(
+  //   Either.match({ onLeft: Effect.fail, onRight: Effect.succeed }),
+  // ),
 }
 
-// export class InitialMessage extends S.TaggedRequest<InitialMessage>()(
-//   "InitialMessage",
-//   S.never,
-//   S.void,
-//   { config: Config },
-// ) {}
+export const createDbWorker = (): Effect.Effect<DbWorker> =>
+  Effect.gen(function* (_) {
+    yield* _(Effect.logTrace("creating Evolu"));
 
-// export class GetUserById extends S.TaggedRequest<GetUserById>()(
-//   "GetUserById",
-//   S.never,
-//   S.string,
-//   {
-//     id: S.number,
-//   },
-// ) {}
+    // const runPromise? kvuli logovani, imho jo
 
-// export const DbWorkerMessage = S.union(InitialMessage, GetUserById);
-// export type DbWorkerMessage = S.Schema.Type<typeof DbWorkerMessage>;
+    const init: DbWorker["init"] = (_config) => {
+      return Effect.succeed("foo").pipe(
+        Effect.map((a) => {
+          throw new Error("test");
+          return a;
+        }),
+        // Effect.either,
+        Effect.runPromise,
+      );
+    };
 
-// export type DbWorker = EffectWorker.SerializedWorkerPool<DbWorkerMessage>;
-
-// export const createDbWorker = Effect.gen(function* (_) {
-//   yield* _(Effect.logTrace("creating DbWorker"));
-//   const config = yield* _(ConfigTag);
-//   return yield* _(
-//     EffectWorker.makePoolSerialized<DbWorkerMessage>({
-//       size: 1,
-//       initialMessage: () => new InitialMessage({ config }),
-//     }),
-//   );
-// });
+    return { init };
+  });
 
 // import * as Context from "effect/Context";
 // import * as Effect from "effect/Effect";

@@ -1,4 +1,3 @@
-import type * as Worker from "@effect/platform/Worker";
 import {
   Bip39,
   DbWorkerFactory,
@@ -6,7 +5,6 @@ import {
   EvoluFactoryCommon,
   InvalidMnemonicError,
   Mnemonic,
-  createDbWorker,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -22,22 +20,12 @@ export const parseMnemonic: (
   Effect.runSync,
 ).parse;
 
-// TODO:
-const layer: (
-  spawn: (id: number) => Worker | SharedWorker | MessagePort,
-) => Layer.Layer<Worker.WorkerManager | Worker.Spawner, never, never> = () => {
-  throw "";
-};
-
 export const EvoluFactoryReactNative = Layer.provide(
   EvoluFactoryCommon,
   Layer.succeed(DbWorkerFactory, {
-    createDbWorker: Effect.provide(
-      createDbWorker,
-      layer(() => {
-        throw "not implemented";
-      }),
-    ),
+    createDbWorker: Effect.sync(() => {
+      throw "";
+    }),
   }),
 );
 

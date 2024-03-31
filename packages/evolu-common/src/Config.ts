@@ -1,13 +1,12 @@
 import * as Context from "effect/Context";
-import * as S from "@effect/schema/Schema";
 import * as Layer from "effect/Layer";
-import * as Match from "effect/Match";
 import * as LogLevel from "effect/LogLevel";
 import * as Logger from "effect/Logger";
 import * as ManagedRuntime from "effect/ManagedRuntime";
+import * as Match from "effect/Match";
 import { Index } from "./Sqlite.js";
 
-export const Config = S.struct({
+export interface Config {
   /**
    * Use the `indexes` property to define SQLite indexes.
    *
@@ -24,24 +23,24 @@ export const Config = S.struct({
    *       .column("createdAt"),
    *   ];
    */
-  indexes: S.array(Index),
+  indexes: ReadonlyArray<Index>;
 
   /** Log SQL. */
-  logSql: S.boolean,
+  logSql: boolean;
 
   /**
    * URL to reload browser tabs after {@link Owner} reset or restore.
    *
    * The default value is `/`.
    */
-  reloadUrl: S.string,
+  reloadUrl: string;
 
   /**
    * URL for Evolu sync and backup server
    *
    * The default value is `https://evolu.world`.
    */
-  syncUrl: S.string,
+  syncUrl: string;
 
   /**
    * Evolu application name. For now, this is only useful for localhost
@@ -49,14 +48,14 @@ export const Config = S.struct({
    *
    * The default value is: `Evolu`.
    */
-  name: S.string,
+  name: string;
 
   /**
    * Maximum physical clock drift allowed in ms.
    *
    * The default value is 5 * 60 * 1000 (5 minutes).
    */
-  maxDrift: S.number,
+  maxDrift: number;
 
   /**
    * Setting the minimum log level. The default value is `none`.
@@ -64,12 +63,10 @@ export const Config = S.struct({
    * For development, use `trace` to log all events and `debug` to log only
    * events with values. For production, use `warning`.
    */
-  minimumLogLevel: S.literal("none", "trace", "debug", "warning"),
-});
+  minimumLogLevel: "none" | "trace" | "debug" | "warning";
+}
 
-export interface Config extends S.Schema.Type<typeof Config> {}
-
-export const ConfigTag = Context.GenericTag<Config>("Config");
+export const Config = Context.GenericTag<Config>("Config");
 
 const defaultConfig: Config = {
   indexes: [],
@@ -96,7 +93,7 @@ export const createEvoluRuntime = (
 
   const evoluLayer = Layer.merge(
     Logger.minimumLogLevel(minimumLogLevel),
-    Layer.succeed(ConfigTag, mergedConfig),
+    Layer.succeed(Config, mergedConfig),
   );
   return ManagedRuntime.make(evoluLayer);
 };

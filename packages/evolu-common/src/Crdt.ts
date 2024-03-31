@@ -9,7 +9,7 @@ import * as Number from "effect/Number";
 import * as Option from "effect/Option";
 import * as ReadonlyArray from "effect/ReadonlyArray";
 import * as String from "effect/String";
-import { Config, ConfigTag } from "./Config.js";
+import { Config } from "./Config.js";
 import { NanoIdGenerator, NodeId } from "./Crypto.js";
 import { murmurhash } from "./Murmurhash.js";
 
@@ -155,7 +155,7 @@ const getNextMillis = (
 > =>
   Effect.gen(function* (_) {
     const time = yield* _(Time);
-    const config = yield* _(ConfigTag);
+    const config = yield* _(Config);
 
     const now = yield* _(time.now);
     const next = Math.max(now, ...millis) as Millis;
