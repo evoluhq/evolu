@@ -2,6 +2,7 @@ import { Config, createEvoluRuntime } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import { ManagedRuntime } from "effect/ManagedRuntime";
 import { nanoid } from "nanoid";
+import { ensureTransferableError } from "./ensureTransferableError.js";
 
 /**
  * Something like Comlink but simplified and with Effect API.
@@ -99,20 +100,12 @@ export const expose = (object: object): void => {
         Effect.catchAll((value) =>
           Effect.succeed<OnMessage>({ id, response: { _tag: "fail", value } }),
         ),
-        Effect.catchAllDefect((error) => {
-          // Error can't be transferred.
-          if (error instanceof Error) {
-            error = {
-              message: error.message,
-              name: error.name,
-              stack: error.stack,
-            };
-          }
-          return Effect.succeed<OnMessage>({
+        Effect.catchAllDefect((error) =>
+          Effect.succeed<OnMessage>({
             id,
-            response: { _tag: "die", value: error },
-          });
-        }),
+            response: { _tag: "die", value: ensureTransferableError(error) },
+          }),
+        ),
         Effect.tap((message) => postMessage(message)),
       ),
     );
