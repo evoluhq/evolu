@@ -4,7 +4,7 @@ import * as LogLevel from "effect/LogLevel";
 import * as Logger from "effect/Logger";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Match from "effect/Match";
-import { Index } from "./Sqlite.js";
+import type { Index } from "./Sqlite.js";
 
 export interface Config {
   /**
