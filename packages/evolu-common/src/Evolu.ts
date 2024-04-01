@@ -496,8 +496,8 @@ const createEvolu = (): Effect.Effect<Evolu, never, Config | DbWorkerFactory> =>
     const errorStore = yield* _(makeStore<EvoluError | null>(null));
 
     const tapAllErrors = <T>(
-      effect: Effect.Effect<T, Exclude<EvoluError, UnexpectedError>>,
-    ): Effect.Effect<T, EvoluError> =>
+      effect: Effect.Effect<T, Exclude<EvoluError, UnexpectedError>, Config>,
+    ): Effect.Effect<T, EvoluError, Config> =>
       effect.pipe(
         Effect.catchAllDefect((error) =>
           Effect.fail<EvoluError>({ _tag: "UnexpectedError", error }),
@@ -506,12 +506,12 @@ const createEvolu = (): Effect.Effect<Evolu, never, Config | DbWorkerFactory> =>
         Effect.tapError(errorStore.setState),
       );
 
-    const runSync = <T>(
-      effect: Effect.Effect<T, Exclude<EvoluError, UnexpectedError>>,
-    ): T => effect.pipe(tapAllErrors, runtime.runSync);
+    // const runSync = <T>(
+    //   effect: Effect.Effect<T, Exclude<EvoluError, UnexpectedError>>,
+    // ): T => effect.pipe(tapAllErrors, runtime.runSync);
 
     const runPromise = <T>(
-      effect: Effect.Effect<T, Exclude<EvoluError, UnexpectedError>>,
+      effect: Effect.Effect<T, Exclude<EvoluError, UnexpectedError>, Config>,
     ): Promise<T> => effect.pipe(tapAllErrors, runtime.runPromise);
 
     const dbWorkerFactory = yield* _(DbWorkerFactory);
@@ -521,24 +521,12 @@ const createEvolu = (): Effect.Effect<Evolu, never, Config | DbWorkerFactory> =>
     );
 
     // TODO: Owner
-
-    const times: number[] = [];
-    setInterval(() => {
-      const s = performance.now();
-      dbWorker
-        .init(config)
-        .pipe(runPromise)
-        .then((a) => {
-          times.push(performance.now() - s);
-          // first is slow
-          if (times.length > 1)
-            console.log(
-              times.slice(1).reduce((prev, cur) => prev + cur) /
-                (times.length - 1),
-            );
-          // console.log(performance.now() - s);
-        });
-    }, 1000);
+    dbWorker
+      .init()
+      .pipe(runPromise)
+      .then((a) => {
+        console.log(a);
+      });
 
     // stub
     const emptyResult = { rows: [], row: null };
