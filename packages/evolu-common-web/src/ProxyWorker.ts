@@ -49,9 +49,9 @@ export const wrap = <T>(worker: Worker): T => {
   const callbacks = new Map<string, (response: OnMessageResponse) => void>();
 
   worker.onmessage = ({ data: message }: MessageEvent<OnMessage>): void => {
-    const response = callbacks.get(message.id);
-    if (response) {
-      response(message.response);
+    const callback = callbacks.get(message.id);
+    if (callback) {
+      callback(message.response);
       callbacks.delete(message.id);
     }
   };
