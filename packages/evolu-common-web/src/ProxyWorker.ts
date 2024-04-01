@@ -1,5 +1,10 @@
 import { Config, createEvoluRuntime } from "@evolu/common";
 import * as Effect from "effect/Effect";
+import { flow } from "effect/Function";
+import * as Exit from "effect/Exit";
+import * as Chunk from "effect/Chunk";
+import * as Either from "effect/Either";
+import * as Cause from "effect/Cause";
 import { ManagedRuntime } from "effect/ManagedRuntime";
 import { nanoid } from "nanoid";
 
@@ -87,6 +92,45 @@ export const expose = (object: object): void => {
     data: { id, name, args, config },
   }: MessageEvent<PostMessage>): void => {
     if (runtime == null) runtime = createEvoluRuntime(config);
+
+    // runtime.runCallback((object as ExposableObject)[name](...args), {
+    //   onExit: (exit) => {
+    //     Exit.match(exit, {
+    //       onSuccess: (value) => {
+    //         postMessage({
+    //           id,
+    //           response: { _tag: "succeed", value },
+    //         } satisfies OnMessage);
+    //       },
+    //       onFailure: flow(
+    //         Cause.failureOrCause,
+    //         Either.match({
+    //           onLeft: (value) => {
+    //             postMessage({
+    //               id,
+    //               response: { _tag: "fail", value },
+    //             } satisfies OnMessage);
+    //           },
+    //           onRight: (cause) => {
+    //             let error = Cause.squash(cause);
+    //             // Error can't be transferred.
+    //             if (error instanceof Error) {
+    //               error = {
+    //                 message: error.message,
+    //                 name: error.name,
+    //                 stack: error.stack,
+    //               };
+    //             }
+    //             postMessage({
+    //               id,
+    //               response: { _tag: "die", value: error },
+    //             } satisfies OnMessage);
+    //           },
+    //         }),
+    //       ),
+    //     });
+    //   },
+    // });
 
     runtime.runCallback(
       (object as ExposableObject)[name](...args).pipe(
