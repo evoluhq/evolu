@@ -1,12 +1,14 @@
+import * as O from "effect/Option";
+import { pipe } from "effect/Function";
 import { EvoluError } from "@evolu/common";
 import { useEvolu } from "./useEvolu.js";
-import { useSyncNullableEvoluStore } from "./useSyncNullableEvoluStore.js";
+import { useSyncEvoluStore } from "./useSyncEvoluStore.js";
 
 /** Subscribe to {@link Owner} changes. */
 export const useEvoluError = (): EvoluError | null => {
   const evolu = useEvolu();
-  return useSyncNullableEvoluStore(
-    evolu.subscribeError,
-    evolu.getError,
+  return pipe(
+    useSyncEvoluStore(evolu.subscribeError, evolu.getError),
+    O.getOrNull,
   );
 };

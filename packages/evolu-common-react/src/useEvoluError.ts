@@ -13,5 +13,5 @@ export const useEvoluError = (): EvoluError | null => {
     (): O.Option<EvoluError> => O.none(),
   );
 
-  return pipe(oStore, O.getOrNull); 
+  return pipe(oStore, O.getOrNull);
 };

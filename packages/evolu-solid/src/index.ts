@@ -34,6 +34,4 @@ export * from "./EvoluProvider.js";
  *
  *   const evolu = createEvolu(Database);
  */
-export const createEvolu = makeCreateEvolu(
-  EvoluWebLive,
-);
+export const createEvolu = makeCreateEvolu(EvoluWebLive);
