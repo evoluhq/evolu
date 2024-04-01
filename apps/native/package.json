@@ -28,7 +28,7 @@
     "react": "^18.2.0",
     "react-native": "0.73.6",
     "react-native-get-random-values": "~1.8.0",
-    "react-native-picker-select": "^9.1.1",
+    "react-native-picker-select": "^9.1.2",
     "stream": "^0.0.2"
   },
   "devDependencies": {
