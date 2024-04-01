@@ -19,7 +19,7 @@ const noOpServerWorker: DbWorker = {
 };
 
 const DbWorkerFactoryWeb = Layer.succeed(DbWorkerFactory, {
-  createDbWorker: Effect.sync((): DbWorker => {
+  createDbWorker: Effect.sync(() => {
     if (!canUseDom) return noOpServerWorker;
     const worker = new Worker(new URL("DbWorker.worker.js", import.meta.url), {
       type: "module",
