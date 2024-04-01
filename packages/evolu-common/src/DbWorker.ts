@@ -2,7 +2,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import { Scope } from "effect/Scope";
 import { Config } from "./Config.js";
-import { TimestampError } from "./Crdt.js";
+import { SqliteFactory } from "./Sqlite.js";
 
 export class DbWorkerFactory extends Context.Tag("DbWorkerFactory")<
   DbWorkerFactory,
@@ -12,29 +12,23 @@ export class DbWorkerFactory extends Context.Tag("DbWorkerFactory")<
 >() {}
 
 export interface DbWorker {
-  init: (config: Config) => Effect.Effect<string, TimestampError>;
+  init: () => Effect.Effect<string, never, Config>;
 }
 
-export const createDbWorker = (): Effect.Effect<DbWorker> =>
-  Effect.gen(function* (_) {
-    yield* _(Effect.logTrace("creating Evolu"));
+export const createDbWorker = Effect.gen(function* (_) {
+  const sqliteFactory = yield* _(SqliteFactory);
+  // sqliteFactory.createSqlite
+  yield* _(Effect.unit);
 
-    const init: DbWorker["init"] = () =>
-      Effect.gen(function* (_) {
-        yield* _(Effect.unit);
+  const init: DbWorker["init"] = () =>
+    Effect.gen(function* () {
+      const config = yield* _(Config);
+      yield* _(Effect.logTrace("init dbWorker"));
+      return config.name;
+    });
 
-        // yield* _(
-        //   Effect.fail<TimestampError>({ _tag: "TimestampTimeOutOfRangeError" }),
-        // );
-
-        // throw new Error("f");
-        // yield* _(Effect.logTrace("dbWorker init"));
-
-        return "foo";
-      });
-
-    return { init };
-  });
+  return { init } satisfies DbWorker;
+});
 
 // import * as Context from "effect/Context";
 // import * as Effect from "effect/Effect";

@@ -1,13 +1,28 @@
+import * as S from "@effect/schema/Schema";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import { Equivalence } from "effect/Equivalence";
 import * as Predicate from "effect/Predicate";
-import * as S from "@effect/schema/Schema";
+import { Scope } from "effect/Scope";
+import { Config } from "./Config.js";
+import { NanoIdGenerator } from "./Crypto.js";
+
+export class SqliteFactory extends Context.Tag("SqliteFactory")<
+  SqliteFactory,
+  {
+    readonly createSqlite: Effect.Effect<
+      Sqlite,
+      never,
+      Config | Scope | NanoIdGenerator
+    >;
+  }
+>() {}
 
 export interface Sqlite {
   readonly exec: (query: SqliteQuery) => Effect.Effect<SqliteExecResult>;
 }
 
+// TODO: Remove
 export const Sqlite = Context.GenericTag<Sqlite>("@services/Sqlite");
 
 export interface SqliteQuery {
