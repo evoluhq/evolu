@@ -21,7 +21,14 @@ export const createDbWorker = (): Effect.Effect<DbWorker> =>
 
     const init: DbWorker["init"] = () =>
       Effect.gen(function* (_) {
-        yield* _(Effect.logTrace("dbWorker init"));
+        yield* _(Effect.unit);
+
+        // yield* _(
+        //   Effect.fail<TimestampError>({ _tag: "TimestampTimeOutOfRangeError" }),
+        // );
+
+        // throw new Error("f");
+        // yield* _(Effect.logTrace("dbWorker init"));
 
         return "foo";
       });

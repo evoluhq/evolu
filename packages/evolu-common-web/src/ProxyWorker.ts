@@ -1,7 +1,5 @@
-import * as S from "@effect/schema/Schema";
 import { Config, createEvoluRuntime } from "@evolu/common";
 import * as Effect from "effect/Effect";
-import * as Either from "effect/Either";
 import { ManagedRuntime } from "effect/ManagedRuntime";
 import { nanoid } from "nanoid";
 
@@ -24,58 +22,50 @@ interface PostMessage {
 
 interface OnMessage {
   readonly id: string;
-  readonly response: Success | Error;
+  readonly response: OnMessageResponse;
 }
 
-interface Success {
-  _tag: "success";
+type OnMessageResponse = Succeed | Fail | Die;
+
+interface Succeed {
+  _tag: "succeed";
   value: unknown;
 }
 
-interface Error {
-  _tag: "error";
-  error: unknown;
+interface Fail {
+  _tag: "fail";
+  value: unknown;
 }
 
-const UnknownEither = S.either({ left: S.unknown, right: S.unknown });
-type UnknownEither = S.Schema.Type<typeof UnknownEither>;
+interface Die {
+  _tag: "die";
+  value: unknown;
+}
 
 export const wrap = <T>(worker: Worker): T => {
-  const promises = new Map<
-    string,
-    {
-      readonly resolve: (value: unknown) => void;
-      readonly reject: (value: unknown) => void;
-    }
-  >();
+  const callbacks = new Map<string, (response: OnMessageResponse) => void>();
 
-  worker.onmessage = ({
-    data: { id, response },
-  }: MessageEvent<OnMessage>): void => {
-    if (response._tag === "success") promises.get(id)?.resolve(response.value);
-    else promises.get(id)?.reject(response.error);
-    promises.delete(id);
+  worker.onmessage = ({ data: message }: MessageEvent<OnMessage>): void => {
+    const response = callbacks.get(message.id);
+    if (response) {
+      response(message.response);
+      callbacks.delete(message.id);
+    }
   };
 
   const proxy = new Proxy(worker, {
     get(target: Worker, name: string) {
       return (...args: unknown[]) =>
-        Config.pipe(
-          Effect.flatMap((config) =>
-            Effect.promise(
-              () =>
-                new Promise((resolve, reject) => {
-                  const id = nanoid();
-                  promises.set(id, { resolve, reject });
-                  const message: PostMessage = { id, name, args, config };
-                  target.postMessage(message);
-                }),
-            ),
-          ),
-          Effect.map((a) => S.decodeSync(UnknownEither)(a as UnknownEither)),
-          Effect.flatMap(
-            Either.match({ onLeft: Effect.fail, onRight: Effect.succeed }),
-          ),
+        Effect.flatMap(Config, (config) =>
+          Effect.async<unknown, unknown>((resume) => {
+            // Nanoid is pretty fast. No reason to use incremented counter.
+            const id = nanoid();
+            callbacks.set(id, (response) => {
+              resume(Effect[response._tag](response.value));
+            });
+            const message: PostMessage = { id, name, args, config };
+            target.postMessage(message);
+          }),
         );
     },
   });
@@ -86,7 +76,7 @@ export const wrap = <T>(worker: Worker): T => {
 /** An object with functions returning Effect. */
 type ExposableObject = Record<
   any,
-  (...args: unknown[]) => Effect.Effect<any, any>
+  (...args: unknown[]) => Effect.Effect<unknown, unknown>
 >;
 
 // ExposableObject doesn't match class instance 🤔
@@ -98,21 +88,15 @@ export const expose = (object: object): void => {
   }: MessageEvent<PostMessage>): void => {
     if (runtime == null) runtime = createEvoluRuntime(config);
 
-    (object as ExposableObject)
-      [name](...args)
-      .pipe(
-        Effect.either,
-        Effect.map(S.encodeSync(UnknownEither)),
-        runtime.runPromise,
-      )
-      .then(
-        (value) => {
-          postMessage({
-            id,
-            response: { _tag: "success", value },
-          } satisfies OnMessage);
-        },
-        (error) => {
+    runtime.runCallback(
+      (object as ExposableObject)[name](...args).pipe(
+        Effect.map(
+          (value): OnMessage => ({ id, response: { _tag: "succeed", value } }),
+        ),
+        Effect.catchAll((value) =>
+          Effect.succeed<OnMessage>({ id, response: { _tag: "fail", value } }),
+        ),
+        Effect.catchAllDefect((error) => {
           // Error can't be transferred.
           if (error instanceof Error) {
             error = {
@@ -121,11 +105,13 @@ export const expose = (object: object): void => {
               stack: error.stack,
             };
           }
-          postMessage({
+          return Effect.succeed<OnMessage>({
             id,
-            response: { _tag: "error", error: error },
-          } satisfies OnMessage);
-        },
-      );
+            response: { _tag: "die", value: error },
+          });
+        }),
+        Effect.tap((message) => postMessage(message)),
+      ),
+    );
   };
 };

@@ -521,12 +521,24 @@ const createEvolu = (): Effect.Effect<Evolu, never, Config | DbWorkerFactory> =>
     );
 
     // TODO: Owner
-    dbWorker
-      .init(config)
-      .pipe(runPromise)
-      .then((a) => {
-        console.log(a);
-      });
+
+    const times: number[] = [];
+    setInterval(() => {
+      const s = performance.now();
+      dbWorker
+        .init(config)
+        .pipe(runPromise)
+        .then((a) => {
+          times.push(performance.now() - s);
+          // first is slow
+          if (times.length > 1)
+            console.log(
+              times.slice(1).reduce((prev, cur) => prev + cur) /
+                (times.length - 1),
+            );
+          // console.log(performance.now() - s);
+        });
+    }, 1000);
 
     // stub
     const emptyResult = { rows: [], row: null };
