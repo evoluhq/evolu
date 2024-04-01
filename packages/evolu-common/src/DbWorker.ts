@@ -20,11 +20,8 @@ export const createDbWorker = (): Effect.Effect<DbWorker> =>
     yield* _(Effect.logTrace("creating Evolu"));
 
     const init: DbWorker["init"] = () =>
-      Effect.gen(function* (_) {
-        yield* _(Effect.logTrace("dbWorker init"));
-
-        return "foo";
-      });
+      // don't use gen here...
+      Effect.succeed("foo");
 
     return { init };
   });
