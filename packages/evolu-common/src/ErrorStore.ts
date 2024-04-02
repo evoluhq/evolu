@@ -8,9 +8,9 @@ export const makeErrorStore = makeStore<EvoluError | null>(null);
 export type EvoluError = UnexpectedError | TimestampError;
 
 /**
- * The UnexpectedError interface is designed to represent errors that can occur
- * unexpectedly anywhere, even in third-party libraries, because Evolu uses
- * Effect to track all errors.
+ * The UnexpectedError interface represents errors that can occur unexpectedly
+ * anywhere, even in third-party libraries, because Evolu uses Effect to track
+ * all errors.
  */
 export interface UnexpectedError {
   readonly _tag: "UnexpectedError";
