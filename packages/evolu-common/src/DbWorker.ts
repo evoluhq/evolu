@@ -1,12 +1,13 @@
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Scope from "effect/Scope";
 import { Config } from "./Config.js";
-import { Sqlite, SqliteFactory } from "./Sqlite.js";
 import { Bip39, NanoIdGenerator } from "./Crypto.js";
 import { ensureDbSchemaWithOwner } from "./Db.js";
 import { Owner } from "./Owner.js";
+import { Sqlite, SqliteFactory } from "./Sqlite.js";
 
 /**
  * Perf notes:
@@ -36,42 +37,39 @@ export interface NotSupportedPlatformError {
 }
 
 export const createDbWorker = Effect.gen(function* (_) {
-  yield* _(Effect.logTrace("creating DbWorker"));
-
   const sqliteFactory = yield* _(SqliteFactory);
   const scope = yield* _(Scope.make());
-
-  const bip39 = yield* _(Bip39);
-  const nanoIdGenerator = yield* _(NanoIdGenerator);
-
-  // TODO: Use Deferred
+  const context = Context.empty().pipe(
+    Context.add(Bip39, yield* _(Bip39)),
+    Context.add(NanoIdGenerator, yield* _(NanoIdGenerator)),
+  );
+  const sqliteAndOwnerDeferred = yield* _(
+    Deferred.make<{
+      readonly sqlite: Sqlite;
+      readonly owner: Owner;
+    }>(),
+  );
 
   const dbWorker: DbWorker = {
     init: () =>
-      Effect.gen(function* (_) {
-        yield* _(Effect.logTrace("init dbWorker"));
-
-        const sqlite = yield* _(
-          sqliteFactory.createSqlite,
-          Scope.extend(scope),
-        );
-
-        const owner = yield* _(
+      Effect.logTrace("init dbWorker").pipe(
+        Effect.zipRight(sqliteFactory.createSqlite),
+        Scope.extend(scope),
+        Effect.flatMap((sqlite) =>
           ensureDbSchemaWithOwner.pipe(
-            Effect.provideService(Bip39, bip39),
-            Effect.provideService(NanoIdGenerator, nanoIdGenerator),
+            Effect.provide(context),
             Effect.provideService(Sqlite, sqlite),
+            Effect.tap((owner) =>
+              Deferred.succeed(sqliteAndOwnerDeferred, { sqlite, owner }),
+            ),
           ),
-        );
-
-        return owner;
-      }),
+        ),
+      ),
 
     dispose: () =>
-      Effect.gen(function* () {
-        yield* _(Effect.logTrace("dispose DbWorker"));
-        yield* _(Scope.close(scope, Exit.succeed("DbWorker disposed")));
-      }),
+      Effect.logTrace("dispose DbWorker").pipe(
+        Effect.zipRight(Scope.close(scope, Exit.succeed("DbWorker disposed"))),
+      ),
   };
 
   return dbWorker;
