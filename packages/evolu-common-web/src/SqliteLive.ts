@@ -8,13 +8,11 @@ import {
   SqliteQuery,
   SqliteRow,
   createEvoluRuntime,
-  maybeLogSql,
   maybeLogSqliteQueryExecutionTime,
   maybeParseJson,
   valuesToSqliteValues,
 } from "@evolu/common";
 import sqlite3InitModule, { SAHPoolUtil } from "@sqlite.org/sqlite-wasm";
-import { ManagedRuntime } from "effect/ManagedRuntime";
 import * as Effect from "effect/Effect";
 import * as Function from "effect/Function";
 import * as Layer from "effect/Layer";

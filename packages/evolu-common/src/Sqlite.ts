@@ -170,7 +170,7 @@ export type Index = S.Schema.Type<typeof Index>;
 export const indexEquivalence: Equivalence<Index> = (self, that) =>
   self.name === that.name && self.sql === that.sql;
 
-// TODO: Effect.logDebug input/output.
+// TODO: Effect.logDebug input/output when variadic arguments supported
 export const maybeLogSql =
   (query: SqliteQuery, logSql: boolean) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> => {

@@ -3,7 +3,6 @@ import {
   Sqlite,
   SqliteRow,
   isSqlMutation,
-  maybeLogSql,
   maybeLogSqliteQueryExecutionTime,
   maybeParseJson,
   valuesToSqliteValues,
