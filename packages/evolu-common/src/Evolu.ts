@@ -509,6 +509,7 @@ const createEvolu = Effect.gen(function* (_) {
   //   effect: Effect.Effect<T, Exclude<EvoluError, UnexpectedError>>,
   // ): T => effect.pipe(tapAllErrors, runtime.runSync);
 
+  // TODO: runAsync
   const runPromise = <T>(
     effect: Effect.Effect<T, Exclude<EvoluError, UnexpectedError>, Config>,
   ): Promise<T> => effect.pipe(tapAllErrors, runtime.runPromise);
@@ -523,43 +524,6 @@ const createEvolu = Effect.gen(function* (_) {
     dbWorkerFactory.createDbWorker,
     Scope.extend(scope),
   );
-
-  // TODO: Owner
-  const times: number[] = [];
-  const foo = (): void => {
-    const s = performance.now();
-    const measure = (): void => {
-      times.push(performance.now() - s);
-      if (times.length > 0)
-        console.log(times.reduce((prev, cur) => prev + cur) / times.length);
-    };
-    // callback
-    runtime.runCallback(dbWorker.init().pipe(tapAllErrors), {
-      onExit: Exit.match({
-        onFailure: (e) => {
-          //
-        },
-        onSuccess: (a) => {
-          measure();
-        },
-      }),
-    });
-    // promise
-    // dbWorker
-    //   .init()
-    //   .pipe(runPromise)
-    //   .then(() => {
-    //     measure();
-    //   });
-  };
-
-  if (typeof window !== "undefined") {
-    // hit JIT
-    dbWorker.init().pipe(runPromise);
-    setInterval(() => {
-      foo();
-    }, 1000);
-  }
 
   // stub
   const emptyResult = { rows: [], row: null };
@@ -577,7 +541,6 @@ const createEvolu = Effect.gen(function* (_) {
   const loadingPromises = new Map<Query, LoadingPromise>();
   let loadQueryQueue: ReadonlyArray<Query> = [];
 
-  // muze bejt sync, rozhodne vrapovat
   const loadQuery = <R extends Row>(
     query: Query<R>,
   ): Promise<QueryResult<R>> => {
@@ -596,7 +559,6 @@ const createEvolu = Effect.gen(function* (_) {
     if (isNew) loadQueryQueue = [...loadQueryQueue, query];
     if (loadQueryQueue.length === 1) {
       queueMicrotask(() => {
-        // tady bude effect, takze logDebug s values
         // if (ReadonlyArray.isNonEmptyReadonlyArray(loadQueryQueue))
         //   dbWorker.postMessage({ _tag: "query", loadQueryQueue });
         loadQueryQueue = [];
