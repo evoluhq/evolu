@@ -10,11 +10,11 @@
     "clean": "rm -rf .turbo .next node_modules"
   },
   "dependencies": {
-    "@effect/schema": "^0.64.16",
+    "@effect/schema": "^0.64.17",
     "@evolu/common": "workspace:*",
     "@evolu/react": "workspace:*",
     "clsx": "^2.1.0",
-    "effect": "2.4.15",
+    "effect": "2.4.16",
     "next": "14.1.4",
     "nextra": "^2.13.4",
     "nextra-theme-docs": "^2.13.4",
@@ -24,7 +24,7 @@
   "devDependencies": {
     "@evolu/tsconfig": "workspace:*",
     "@types/node": "^20.12.2",
-    "@types/react": "^18.2.73",
+    "@types/react": "^18.2.74",
     "@types/react-dom": "^18.2.22",
     "autoprefixer": "^10.4.19",
     "eslint": "^8.57.0",
