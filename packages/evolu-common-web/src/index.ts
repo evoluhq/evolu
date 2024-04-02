@@ -7,6 +7,7 @@ import {
   EvoluFactoryCommon,
   InvalidMnemonicError,
   Mnemonic,
+  NotSupportedPlatformError,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import * as Function from "effect/Function";
@@ -15,8 +16,10 @@ import { Bip39Live } from "./PlatformLive.js";
 import { wrap } from "./ProxyWorker.js";
 
 const noOpServerWorker: DbWorker = {
-  // eslint-disable-next-line @typescript-eslint/no-misused-promises
-  init: () => Effect.succeed(""),
+  init: () =>
+    Effect.fail<NotSupportedPlatformError>({
+      _tag: "NotSupportedPlatformError",
+    }),
   dispose: Function.constVoid,
 };
 

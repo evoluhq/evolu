@@ -3,7 +3,10 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Scope from "effect/Scope";
 import { Config } from "./Config.js";
-import { SqliteFactory } from "./Sqlite.js";
+import { Sqlite, SqliteFactory } from "./Sqlite.js";
+import { Bip39, NanoIdGenerator } from "./Crypto.js";
+import { ensureDbSchemaWithOwner } from "./Db.js";
+import { Owner } from "./Owner.js";
 
 /**
  * Perf notes:
@@ -24,39 +27,54 @@ export class DbWorkerFactory extends Context.Tag("DbWorkerFactory")<
 >() {}
 
 export interface DbWorker {
-  readonly init: () => Effect.Effect<string, never, Config>;
+  readonly init: () => Effect.Effect<Owner, NotSupportedPlatformError, Config>;
   readonly dispose: () => void;
+}
+
+export interface NotSupportedPlatformError {
+  readonly _tag: "NotSupportedPlatformError";
 }
 
 export const createDbWorker = Effect.gen(function* (_) {
   yield* _(Effect.logTrace("creating DbWorker"));
 
-  const scope = yield* _(Scope.make());
   const sqliteFactory = yield* _(SqliteFactory);
+  const scope = yield* _(Scope.make());
 
-  const init: DbWorker["init"] = () =>
-    Effect.gen(function* () {
-      yield* _(Effect.unit);
-      // TODO: Use Deferred
+  const bip39 = yield* _(Bip39);
+  const nanoIdGenerator = yield* _(NanoIdGenerator);
 
-      // const sqlite = yield* _(sqliteFactory.createSqlite, Scope.extend(scope));
+  // TODO: Use Deferred
 
-      // sqlite.exec({ sql: "select 1" }).pipe(Effect.runPromise);
+  const dbWorker: DbWorker = {
+    init: () =>
+      Effect.gen(function* (_) {
+        yield* _(Effect.logTrace("init dbWorker"));
 
-      // const a = sqlite.exec({ sql: "select 1" })
-      // yield* _(sqlite.exec({ sql: "select 1" }));
+        const sqlite = yield* _(
+          sqliteFactory.createSqlite,
+          Scope.extend(scope),
+        );
 
-      // yield* _(Effect.logTrace("init dbWorker"));
-      return "foo";
-    });
+        const owner = yield* _(
+          ensureDbSchemaWithOwner.pipe(
+            Effect.provideService(Bip39, bip39),
+            Effect.provideService(NanoIdGenerator, nanoIdGenerator),
+            Effect.provideService(Sqlite, sqlite),
+          ),
+        );
 
-  const dispose: DbWorker["dispose"] = () =>
-    Effect.gen(function* () {
-      yield* _(Effect.logTrace("dispose DbWorker"));
-      yield* _(Scope.close(scope, Exit.succeed("DbWorker disposed")));
-    });
+        return owner;
+      }),
 
-  return { init, dispose };
+    dispose: () =>
+      Effect.gen(function* () {
+        yield* _(Effect.logTrace("dispose DbWorker"));
+        yield* _(Scope.close(scope, Exit.succeed("DbWorker disposed")));
+      }),
+  };
+
+  return dbWorker;
 });
 
 // import * as Context from "effect/Context";

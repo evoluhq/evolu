@@ -352,8 +352,8 @@ export interface Evolu<T extends DatabaseSchema = DatabaseSchema> {
 export type EvoluError = TimestampError | UnexpectedError;
 
 /**
- * The UnexpectedError represents errors that can occur anywhere, even in
- * third-party libraries, because Evolu uses Effect to track all errors.
+ * UnexpectedError represents errors that can occur unexpectedly anywhere, even
+ * in third-party libraries, because Evolu uses Effect to track all errors.
  */
 export interface UnexpectedError {
   readonly _tag: "UnexpectedError";
@@ -493,9 +493,10 @@ const createEvolu = Effect.gen(function* (_) {
 
   const runtime = createEvoluRuntime(config);
   const errorStore = yield* _(makeStore<EvoluError | null>(null));
+  const ownerStore = yield* _(makeStore<Owner | null>(null));
 
-  const tapAllErrors = <T>(
-    effect: Effect.Effect<T, Exclude<EvoluError, UnexpectedError>, Config>,
+  const tapEvoluError = <T>(
+    effect: Effect.Effect<T, EvoluError, Config>,
   ): Effect.Effect<T, EvoluError, Config> =>
     effect.pipe(
       Effect.catchAllDefect((error) =>
@@ -506,23 +507,29 @@ const createEvolu = Effect.gen(function* (_) {
     );
 
   // const runSync = <T>(
-  //   effect: Effect.Effect<T, Exclude<EvoluError, UnexpectedError>>,
+  //   effect: Effect.Effect<T, EvoluError>,
   // ): T => effect.pipe(tapAllErrors, runtime.runSync);
 
-  // TODO: runAsync
-  const runPromise = <T>(
-    effect: Effect.Effect<T, Exclude<EvoluError, UnexpectedError>, Config>,
-  ): Promise<T> => effect.pipe(tapAllErrors, runtime.runPromise);
+  // const runPromise = <T>(
+  //   effect: Effect.Effect<T, EvoluError, Config>,
+  // ): Promise<T> => effect.pipe(tapEvoluError, runtime.runPromise);
 
-  // const runCallback = <T>(
-  //   effect: Effect.Effect<T, Exclude<EvoluError, UnexpectedError>, Config>,
-  // ): Runtime.Cancel<T, EvoluError> =>
-  //   effect.pipe(tapAllErrors, runtime.runCallback);
+  const runCallback = (
+    effect: Effect.Effect<void, EvoluError, Config>,
+  ): void => {
+    effect.pipe(tapEvoluError, runtime.runCallback);
+  };
 
   const dbWorkerFactory = yield* _(DbWorkerFactory);
   const dbWorker = yield* _(
     dbWorkerFactory.createDbWorker,
     Scope.extend(scope),
+  );
+
+  dbWorker.init().pipe(
+    Effect.flatMap(ownerStore.setState),
+    Effect.catchTag("NotSupportedPlatformError", () => Effect.unit), // no-op
+    runCallback,
   );
 
   // stub

@@ -23,16 +23,16 @@ import {
 import { Bip39, Mnemonic, NanoIdGenerator } from "./Crypto.js";
 import { EvoluTypeError } from "./ErrorStore.js";
 import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
-import { Owner, makeOwner } from "./Owner.js";
+import { Owner, OwnerId, makeOwner } from "./Owner.js";
 import {
   createMessageTable,
   createMessageTableIndex,
   createOwnerTable,
   insertOwner,
+  selectOwner,
 } from "./Sql.js";
 import {
   Index,
-  indexEquivalence,
   JsonObjectOrArray,
   Sqlite,
   SqliteQuery,
@@ -40,6 +40,7 @@ import {
   SqliteSchema,
   Table,
   Value,
+  indexEquivalence,
   isJsonObjectOrArray,
 } from "./Sqlite.js";
 import { Store, makeStore } from "./Store.js";
@@ -313,7 +314,26 @@ export type SqliteNoSuchTableOrColumnError = S.Schema.Type<
   typeof SqliteNoSuchTableOrColumnError
 >;
 
-export const someDefectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
+export const ensureDbSchemaWithOwner = Effect.gen(function* (_) {
+  const sqlite = yield* _(Sqlite);
+
+  return yield* _(
+    sqlite.exec(selectOwner),
+    Effect.map(
+      ({ rows: [row] }): Owner => ({
+        id: row.id as OwnerId,
+        mnemonic: row.mnemonic as Mnemonic,
+        encryptionKey: row.encryptionKey as Uint8Array,
+      }),
+    ),
+    sqliteDefectToNoSuchTableOrColumnError,
+    Effect.catchTag("NoSuchTableOrColumnError", () =>
+      createDbSchemaWithOwner(),
+    ),
+  );
+});
+
+const sqliteDefectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
   (error) =>
     S.is(SqliteNoSuchTableOrColumnError)(error)
       ? Option.some(
@@ -324,7 +344,7 @@ export const someDefectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
       : Option.none(),
 );
 
-export const lazyInit = (
+export const createDbSchemaWithOwner = (
   mnemonic?: Mnemonic,
 ): Effect.Effect<Owner, never, Sqlite | Bip39 | NanoIdGenerator> =>
   Effect.gen(function* (_) {
