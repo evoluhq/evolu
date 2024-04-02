@@ -5,6 +5,17 @@ import * as Scope from "effect/Scope";
 import { Config } from "./Config.js";
 import { SqliteFactory } from "./Sqlite.js";
 
+/**
+ * Perf notes:
+ *
+ * - Effect.promise uses Effect.async in the implementation.
+ * - Generators are slower than pipes.
+ * - MinimumLogLevel adds 0.4-0.6ms (on M1) to the first run.
+ * - ProvideService is 2x faster then providing a layer, but layer providing
+ *   should happen once at app startup, or once per a request cycle, otherwise
+ *   provide services or a context, or prepare runtimes up front.
+ */
+
 export class DbWorkerFactory extends Context.Tag("DbWorkerFactory")<
   DbWorkerFactory,
   {
