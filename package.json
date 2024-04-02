@@ -3,7 +3,7 @@
   "name": "@evolu/monorepo",
   "scripts": {
     "dev": "turbo dev",
-    "build": "turbo build --ignore='examples/**/*'",
+    "build": "turbo build --filter='./packages/*' --filter='./apps/*'",
     "start": "turbo start",
     "lint": "turbo lint",
     "lint-monorepo": "pnpm dlx sherif@latest",
