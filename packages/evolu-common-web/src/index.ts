@@ -9,6 +9,7 @@ import {
   Mnemonic,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
+import * as Function from "effect/Function";
 import * as Layer from "effect/Layer";
 import { Bip39Live } from "./PlatformLive.js";
 import { wrap } from "./ProxyWorker.js";
@@ -16,6 +17,7 @@ import { wrap } from "./ProxyWorker.js";
 const noOpServerWorker: DbWorker = {
   // eslint-disable-next-line @typescript-eslint/no-misused-promises
   init: () => Effect.succeed(""),
+  dispose: Function.constVoid,
 };
 
 const DbWorkerFactoryWeb = Layer.succeed(DbWorkerFactory, {

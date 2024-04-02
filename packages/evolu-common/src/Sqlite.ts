@@ -3,18 +3,13 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import { Equivalence } from "effect/Equivalence";
 import * as Predicate from "effect/Predicate";
-import { Scope } from "effect/Scope";
+import * as Scope from "effect/Scope";
 import { Config } from "./Config.js";
-import { NanoIdGenerator } from "./Crypto.js";
 
 export class SqliteFactory extends Context.Tag("SqliteFactory")<
   SqliteFactory,
   {
-    readonly createSqlite: Effect.Effect<
-      Sqlite,
-      never,
-      Config | Scope | NanoIdGenerator
-    >;
+    readonly createSqlite: Effect.Effect<Sqlite, never, Config | Scope.Scope>;
   }
 >() {}
 
@@ -175,6 +170,7 @@ export type Index = S.Schema.Type<typeof Index>;
 export const indexEquivalence: Equivalence<Index> = (self, that) =>
   self.name === that.name && self.sql === that.sql;
 
+// TODO: Effect.logDebug input/output.
 export const maybeLogSql =
   (query: SqliteQuery, logSql: boolean) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> => {

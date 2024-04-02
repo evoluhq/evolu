@@ -25,9 +25,6 @@ export interface Config {
    */
   indexes: ReadonlyArray<Index>;
 
-  /** Log SQL. */
-  logSql: boolean;
-
   /**
    * URL to reload browser tabs after {@link Owner} reset or restore.
    *
@@ -70,7 +67,6 @@ export const Config = Context.GenericTag<Config>("Config");
 
 const defaultConfig: Config = {
   indexes: [],
-  logSql: false,
   reloadUrl: "/",
   syncUrl: "https://evolu.world",
   name: "Evolu",

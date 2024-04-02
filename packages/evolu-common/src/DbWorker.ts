@@ -1,33 +1,50 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import { Scope } from "effect/Scope";
+import * as Exit from "effect/Exit";
+import * as Scope from "effect/Scope";
 import { Config } from "./Config.js";
 import { SqliteFactory } from "./Sqlite.js";
 
 export class DbWorkerFactory extends Context.Tag("DbWorkerFactory")<
   DbWorkerFactory,
   {
-    readonly createDbWorker: Effect.Effect<DbWorker, never, Config | Scope>;
+    readonly createDbWorker: Effect.Effect<DbWorker, never, Config>;
   }
 >() {}
 
 export interface DbWorker {
-  init: () => Effect.Effect<string, never, Config>;
+  readonly init: () => Effect.Effect<string, never, Config>;
+  readonly dispose: () => void;
 }
 
 export const createDbWorker = Effect.gen(function* (_) {
+  yield* _(Effect.logTrace("creating DbWorker"));
+
+  const scope = yield* _(Scope.make());
   const sqliteFactory = yield* _(SqliteFactory);
-  // sqliteFactory.createSqlite
-  yield* _(Effect.unit);
 
   const init: DbWorker["init"] = () =>
     Effect.gen(function* () {
-      const config = yield* _(Config);
+      // TODO: Use Deferred
+
+      const sqlite = yield* _(sqliteFactory.createSqlite, Scope.extend(scope));
+
+      sqlite.exec({ sql: "select 1" }).pipe(Effect.runPromise);
+
+      // const a = sqlite.exec({ sql: "select 1" })
+      // yield* _(sqlite.exec({ sql: "select 1" }));
+
       yield* _(Effect.logTrace("init dbWorker"));
-      return config.name;
+      return "foo";
     });
 
-  return { init } satisfies DbWorker;
+  const dispose: DbWorker["dispose"] = () =>
+    Effect.gen(function* () {
+      yield* _(Effect.logTrace("dispose DbWorker"));
+      yield* _(Scope.close(scope, Exit.succeed("DbWorker disposed")));
+    });
+
+  return { init, dispose };
 });
 
 // import * as Context from "effect/Context";

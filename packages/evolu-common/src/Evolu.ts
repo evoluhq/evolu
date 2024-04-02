@@ -474,7 +474,7 @@ export const EvoluFactoryCommon = Layer.effect(
         const { name } = Config.pipe(runtime.runSync);
         let evolu = instances.get(name);
         if (evolu == null)
-          evolu = createEvolu().pipe(
+          evolu = createEvolu.pipe(
             Effect.provideService(DbWorkerFactory, dbWorkerFactory),
             runtime.runSync,
           );
@@ -485,177 +485,176 @@ export const EvoluFactoryCommon = Layer.effect(
   }),
 );
 
-const createEvolu = (): Effect.Effect<Evolu, never, Config | DbWorkerFactory> =>
-  Effect.gen(function* (_) {
-    yield* _(Effect.logTrace("creating Evolu"));
+const createEvolu = Effect.gen(function* (_) {
+  yield* _(Effect.logTrace("creating Evolu"));
 
-    const config = yield* _(Config);
-    const scope = yield* _(Scope.make());
+  const config = yield* _(Config);
+  const scope = yield* _(Scope.make());
 
-    const runtime = createEvoluRuntime(config);
-    const errorStore = yield* _(makeStore<EvoluError | null>(null));
+  const runtime = createEvoluRuntime(config);
+  const errorStore = yield* _(makeStore<EvoluError | null>(null));
 
-    const tapAllErrors = <T>(
-      effect: Effect.Effect<T, Exclude<EvoluError, UnexpectedError>, Config>,
-    ): Effect.Effect<T, EvoluError, Config> =>
-      effect.pipe(
-        Effect.catchAllDefect((error) =>
-          Effect.fail<EvoluError>({ _tag: "UnexpectedError", error }),
-        ),
-        Effect.tapError(Effect.logError),
-        Effect.tapError(errorStore.setState),
-      );
-
-    // const runSync = <T>(
-    //   effect: Effect.Effect<T, Exclude<EvoluError, UnexpectedError>>,
-    // ): T => effect.pipe(tapAllErrors, runtime.runSync);
-
-    const runPromise = <T>(
-      effect: Effect.Effect<T, Exclude<EvoluError, UnexpectedError>, Config>,
-    ): Promise<T> => effect.pipe(tapAllErrors, runtime.runPromise);
-
-    const dbWorkerFactory = yield* _(DbWorkerFactory);
-    const dbWorker = yield* _(
-      dbWorkerFactory.createDbWorker,
-      Scope.extend(scope),
+  const tapAllErrors = <T>(
+    effect: Effect.Effect<T, Exclude<EvoluError, UnexpectedError>, Config>,
+  ): Effect.Effect<T, EvoluError, Config> =>
+    effect.pipe(
+      Effect.catchAllDefect((error) =>
+        Effect.fail<EvoluError>({ _tag: "UnexpectedError", error }),
+      ),
+      Effect.tapError(Effect.logError),
+      Effect.tapError(errorStore.setState),
     );
 
-    // TODO: Owner
-    dbWorker
-      .init()
-      .pipe(runPromise)
-      .then((a) => {
-        console.log(a);
+  // const runSync = <T>(
+  //   effect: Effect.Effect<T, Exclude<EvoluError, UnexpectedError>>,
+  // ): T => effect.pipe(tapAllErrors, runtime.runSync);
+
+  const runPromise = <T>(
+    effect: Effect.Effect<T, Exclude<EvoluError, UnexpectedError>, Config>,
+  ): Promise<T> => effect.pipe(tapAllErrors, runtime.runPromise);
+
+  const dbWorkerFactory = yield* _(DbWorkerFactory);
+  const dbWorker = yield* _(
+    dbWorkerFactory.createDbWorker,
+    Scope.extend(scope),
+  );
+
+  // TODO: Owner
+  dbWorker
+    .init()
+    .pipe(runPromise)
+    .then((a) => {
+      console.log(a);
+    });
+
+  // stub
+  const emptyResult = { rows: [], row: null };
+
+  interface LoadingPromise {
+    promise: Promise<QueryResult> & {
+      status?: "pending" | "fulfilled" | "rejected";
+      value?: QueryResult;
+      reason?: unknown;
+    };
+    resolve: (rows: QueryResult) => void;
+    releaseOnResolve: boolean;
+  }
+
+  const loadingPromises = new Map<Query, LoadingPromise>();
+  let loadQueryQueue: ReadonlyArray<Query> = [];
+
+  // muze bejt sync, rozhodne vrapovat
+  const loadQuery = <R extends Row>(
+    query: Query<R>,
+  ): Promise<QueryResult<R>> => {
+    Effect.logDebug(`loadQuery ${query}`).pipe(runtime.runSync);
+    let isNew = false;
+    let loadingPromise = loadingPromises.get(query);
+    if (!loadingPromise) {
+      isNew = true;
+      let resolve: LoadingPromise["resolve"] = Function.constVoid;
+      const promise: LoadingPromise["promise"] = new Promise((_resolve) => {
+        resolve = _resolve;
       });
-
-    // stub
-    const emptyResult = { rows: [], row: null };
-
-    interface LoadingPromise {
-      promise: Promise<QueryResult> & {
-        status?: "pending" | "fulfilled" | "rejected";
-        value?: QueryResult;
-        reason?: unknown;
-      };
-      resolve: (rows: QueryResult) => void;
-      releaseOnResolve: boolean;
+      loadingPromise = { resolve, promise, releaseOnResolve: false };
+      loadingPromises.set(query, loadingPromise);
     }
+    if (isNew) loadQueryQueue = [...loadQueryQueue, query];
+    if (loadQueryQueue.length === 1) {
+      queueMicrotask(() => {
+        // tady bude effect, takze logDebug s values
+        // if (ReadonlyArray.isNonEmptyReadonlyArray(loadQueryQueue))
+        //   dbWorker.postMessage({ _tag: "query", loadQueryQueue });
+        loadQueryQueue = [];
+      });
+    }
+    return loadingPromise.promise as Promise<QueryResult<R>>;
+  };
 
-    const loadingPromises = new Map<Query, LoadingPromise>();
-    let loadQueryQueue: ReadonlyArray<Query> = [];
+  const loadQueries: Evolu["loadQueries"] = () => {
+    throw "";
+  };
 
-    // muze bejt sync, rozhodne vrapovat
-    const loadQuery = <R extends Row>(
-      query: Query<R>,
-    ): Promise<QueryResult<R>> => {
-      Effect.logDebug(`loadQuery ${query}`).pipe(runtime.runSync);
-      let isNew = false;
-      let loadingPromise = loadingPromises.get(query);
-      if (!loadingPromise) {
-        isNew = true;
-        let resolve: LoadingPromise["resolve"] = Function.constVoid;
-        const promise: LoadingPromise["promise"] = new Promise((_resolve) => {
-          resolve = _resolve;
-        });
-        loadingPromise = { resolve, promise, releaseOnResolve: false };
-        loadingPromises.set(query, loadingPromise);
-      }
-      if (isNew) loadQueryQueue = [...loadQueryQueue, query];
-      if (loadQueryQueue.length === 1) {
-        queueMicrotask(() => {
-          // tady bude effect, takze logDebug s values
-          // if (ReadonlyArray.isNonEmptyReadonlyArray(loadQueryQueue))
-          //   dbWorker.postMessage({ _tag: "query", loadQueryQueue });
-          loadQueryQueue = [];
-        });
-      }
-      return loadingPromise.promise as Promise<QueryResult<R>>;
-    };
+  const subscribeQuery: Evolu["subscribeQuery"] = () => {
+    return () => () => {};
+  };
 
-    const loadQueries: Evolu["loadQueries"] = () => {
-      throw "";
-    };
+  const getQuery: Evolu["getQuery"] = () => {
+    return emptyResult;
+  };
 
-    const subscribeQuery: Evolu["subscribeQuery"] = () => {
-      return () => () => {};
-    };
+  const subscribeOwner: Evolu["subscribeOwner"] = () => {
+    return () => () => {};
+  };
 
-    const getQuery: Evolu["getQuery"] = () => {
-      return emptyResult;
-    };
+  const getOwner: Evolu["getOwner"] = () => {
+    return null;
+  };
 
-    const subscribeOwner: Evolu["subscribeOwner"] = () => {
-      return () => () => {};
-    };
+  const subscribeSyncState: Evolu["subscribeSyncState"] = () => {
+    return () => () => {};
+  };
 
-    const getOwner: Evolu["getOwner"] = () => {
-      return null;
-    };
+  const getSyncState: Evolu["getSyncState"] = () => {
+    return { _tag: "SyncStateInitial" };
+  };
 
-    const subscribeSyncState: Evolu["subscribeSyncState"] = () => {
-      return () => () => {};
-    };
+  const create: Evolu["create"] = () => {
+    return { id: "123" as Id };
+  };
 
-    const getSyncState: Evolu["getSyncState"] = () => {
-      return { _tag: "SyncStateInitial" };
-    };
+  const update: Evolu["update"] = () => {
+    return { id: "123" as Id };
+  };
 
-    const create: Evolu["create"] = () => {
-      return { id: "123" as Id };
-    };
+  const createOrUpdate: Evolu["createOrUpdate"] = () => {
+    return { id: "123" as Id };
+  };
 
-    const update: Evolu["update"] = () => {
-      return { id: "123" as Id };
-    };
+  const resetOwner: Evolu["resetOwner"] = () => {
+    //
+  };
 
-    const createOrUpdate: Evolu["createOrUpdate"] = () => {
-      return { id: "123" as Id };
-    };
+  const restoreOwner: Evolu["restoreOwner"] = () => {
+    //
+  };
 
-    const resetOwner: Evolu["resetOwner"] = () => {
-      //
-    };
+  const ensureSchema: Evolu["ensureSchema"] = () => {
+    //
+  };
 
-    const restoreOwner: Evolu["restoreOwner"] = () => {
-      //
-    };
+  const sync: Evolu["sync"] = () => {
+    //
+  };
 
-    const ensureSchema: Evolu["ensureSchema"] = () => {
-      //
-    };
+  const dispose: Evolu["dispose"] = () =>
+    Effect.gen(function* (_) {
+      yield* _(Effect.logTrace("dispose Evolu"));
+      yield* _(Scope.close(scope, Exit.succeed("Evolu disposed")));
+    }).pipe(runtime.runSync);
 
-    const sync: Evolu["sync"] = () => {
-      //
-    };
-
-    const dispose: Evolu["dispose"] = () =>
-      Effect.gen(function* (_) {
-        yield* _(Effect.logTrace("dispose Evolu"));
-        yield* _(Scope.close(scope, Exit.succeed("Evolu disposed")));
-      }).pipe(runtime.runSync);
-
-    return {
-      subscribeError: errorStore.subscribe,
-      getError: errorStore.getState,
-      createQuery,
-      loadQuery,
-      loadQueries,
-      subscribeQuery,
-      getQuery,
-      subscribeOwner,
-      getOwner,
-      subscribeSyncState,
-      getSyncState,
-      create,
-      update,
-      createOrUpdate,
-      resetOwner,
-      restoreOwner,
-      ensureSchema,
-      sync,
-      dispose,
-    };
-  });
+  return {
+    subscribeError: errorStore.subscribe,
+    getError: errorStore.getState,
+    createQuery,
+    loadQuery,
+    loadQueries,
+    subscribeQuery,
+    getQuery,
+    subscribeOwner,
+    getOwner,
+    subscribeSyncState,
+    getSyncState,
+    create,
+    update,
+    createOrUpdate,
+    resetOwner,
+    restoreOwner,
+    ensureSchema,
+    sync,
+    dispose,
+  };
+});
 
 // https://kysely.dev/docs/recipes/splitting-query-building-and-execution
 const kysely = new Kysely.Kysely({

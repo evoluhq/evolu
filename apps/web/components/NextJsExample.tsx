@@ -98,7 +98,7 @@ const evolu = createEvolu(Database, {
   ...(process.env.NODE_ENV === "development" && {
     syncUrl: "http://localhost:4000",
   }),
-  minimumLogLevel: "trace",
+  minimumLogLevel: "debug",
 });
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

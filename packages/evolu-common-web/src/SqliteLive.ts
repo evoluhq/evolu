@@ -7,12 +7,14 @@ import {
   SqliteFactory,
   SqliteQuery,
   SqliteRow,
+  createEvoluRuntime,
   maybeLogSql,
   maybeLogSqliteQueryExecutionTime,
   maybeParseJson,
   valuesToSqliteValues,
 } from "@evolu/common";
 import sqlite3InitModule, { SAHPoolUtil } from "@sqlite.org/sqlite-wasm";
+import { ManagedRuntime } from "effect/ManagedRuntime";
 import * as Effect from "effect/Effect";
 import * as Function from "effect/Function";
 import * as Layer from "effect/Layer";
@@ -69,12 +71,11 @@ type ExecError = {
 const createSqliteChannel = (): SqliteChannel => {
   const channel = new BroadcastChannel("sqlite");
   const sqliteChannel: SqliteChannel = {
-    postMessage: (message) =>
-      Effect.sync(() => {
-        channel.postMessage(message);
-        // Send to itself as well.
-        sqliteChannel.onMessage(message);
-      }),
+    postMessage: (message) => {
+      channel.postMessage(message);
+      // Send to itself as well.
+      sqliteChannel.onMessage(message);
+    },
     onMessage: Function.constVoid,
   };
   channel.onmessage = (e: MessageEvent<SqliteChannelMessage>): void => {
@@ -96,8 +97,10 @@ export const SqliteFactoryWeb = Layer.effect(
 
     return SqliteFactory.of({
       createSqlite: Effect.gen(function* (_) {
-        const { name, logSql } = yield* _(Config);
         const channel = createSqliteChannel();
+
+        // TODO: Finalize SQLite
+        // yield* _(Effect.addFinalizer((exit) => Effect.unit));
 
         /**
          * We don't know which tab will be elected leader, and messages are
@@ -143,7 +146,10 @@ export const SqliteFactoryWeb = Layer.effect(
           }
         };
 
+        const config = yield* _(Config);
+
         const initSqlite = (poolUtil: SAHPoolUtil): void => {
+          const runtime = createEvoluRuntime(config);
           const sqlite = new poolUtil.OpfsSAHPoolDb("/evolu1.db");
 
           const exec = (query: SqliteQuery, id: NanoId): void =>
@@ -156,7 +162,8 @@ export const SqliteFactoryWeb = Layer.effect(
                 }) as SqliteRow[],
               catch: ensureTransferableError,
             }).pipe(
-              maybeLogSql(query, logSql),
+              // TODO: Effect.logDebug input/output.
+              // maybeLogSql(query, logSql),
               maybeLogSqliteQueryExecutionTime(query),
               Effect.match({
                 onSuccess: (rows) => {
@@ -171,7 +178,7 @@ export const SqliteFactoryWeb = Layer.effect(
                   channel.postMessage({ _tag: "ExecError", id, error });
                 },
               }),
-              Effect.runSync,
+              runtime.runSync,
             );
 
           channel.onMessage = (message): void => {
@@ -209,7 +216,9 @@ export const SqliteFactoryWeb = Layer.effect(
              */
             new Promise((): void => {
               sqlite3InitModule().then((sqlite3) =>
-                sqlite3.installOpfsSAHPoolVfs({ name }).then(initSqlite),
+                sqlite3
+                  .installOpfsSAHPoolVfs({ name: config.name })
+                  .then(initSqlite),
               );
             }),
         );
