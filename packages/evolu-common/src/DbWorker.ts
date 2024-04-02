@@ -25,16 +25,17 @@ export const createDbWorker = Effect.gen(function* (_) {
 
   const init: DbWorker["init"] = () =>
     Effect.gen(function* () {
+      yield* _(Effect.unit);
       // TODO: Use Deferred
 
-      const sqlite = yield* _(sqliteFactory.createSqlite, Scope.extend(scope));
+      // const sqlite = yield* _(sqliteFactory.createSqlite, Scope.extend(scope));
 
-      sqlite.exec({ sql: "select 1" }).pipe(Effect.runPromise);
+      // sqlite.exec({ sql: "select 1" }).pipe(Effect.runPromise);
 
       // const a = sqlite.exec({ sql: "select 1" })
       // yield* _(sqlite.exec({ sql: "select 1" }));
 
-      yield* _(Effect.logTrace("init dbWorker"));
+      // yield* _(Effect.logTrace("init dbWorker"));
       return "foo";
     });
 

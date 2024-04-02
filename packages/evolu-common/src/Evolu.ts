@@ -513,6 +513,11 @@ const createEvolu = Effect.gen(function* (_) {
     effect: Effect.Effect<T, Exclude<EvoluError, UnexpectedError>, Config>,
   ): Promise<T> => effect.pipe(tapAllErrors, runtime.runPromise);
 
+  // const runCallback = <T>(
+  //   effect: Effect.Effect<T, Exclude<EvoluError, UnexpectedError>, Config>,
+  // ): Runtime.Cancel<T, EvoluError> =>
+  //   effect.pipe(tapAllErrors, runtime.runCallback);
+
   const dbWorkerFactory = yield* _(DbWorkerFactory);
   const dbWorker = yield* _(
     dbWorkerFactory.createDbWorker,
@@ -520,12 +525,41 @@ const createEvolu = Effect.gen(function* (_) {
   );
 
   // TODO: Owner
-  dbWorker
-    .init()
-    .pipe(runPromise)
-    .then((a) => {
-      console.log(a);
+  const times: number[] = [];
+  const foo = (): void => {
+    const s = performance.now();
+    const measure = (): void => {
+      times.push(performance.now() - s);
+      if (times.length > 0)
+        console.log(times.reduce((prev, cur) => prev + cur) / times.length);
+    };
+    // callback
+    runtime.runCallback(dbWorker.init().pipe(tapAllErrors), {
+      onExit: Exit.match({
+        onFailure: (e) => {
+          //
+        },
+        onSuccess: (a) => {
+          measure();
+        },
+      }),
     });
+    // promise
+    // dbWorker
+    //   .init()
+    //   .pipe(runPromise)
+    //   .then(() => {
+    //     measure();
+    //   });
+  };
+
+  if (typeof window !== "undefined") {
+    // hit JIT
+    dbWorker.init().pipe(runPromise);
+    setInterval(() => {
+      foo();
+    }, 1000);
+  }
 
   // stub
   const emptyResult = { rows: [], row: null };
