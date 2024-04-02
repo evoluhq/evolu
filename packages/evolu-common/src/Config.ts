@@ -79,6 +79,8 @@ export const createEvoluRuntime = (
   config?: Partial<Config>,
 ): ManagedRuntime.ManagedRuntime<Config, never> => {
   const mergedConfig = { ...defaultConfig, ...config };
+  const ConfigLive = Layer.succeed(Config, mergedConfig);
+
   const minimumLogLevel = Match.value(mergedConfig.minimumLogLevel).pipe(
     Match.when("debug", () => LogLevel.Debug),
     Match.when("none", () => LogLevel.None),
@@ -87,10 +89,11 @@ export const createEvoluRuntime = (
     Match.exhaustive,
   );
 
-  const evoluLayer = Layer.merge(
-    Logger.minimumLogLevel(minimumLogLevel),
-    Layer.succeed(Config, mergedConfig),
-  );
+  const evoluLayer =
+    mergedConfig.minimumLogLevel === "none"
+      ? ConfigLive
+      : Layer.merge(Logger.minimumLogLevel(minimumLogLevel), ConfigLive);
+
   return ManagedRuntime.make(evoluLayer);
 };
 
