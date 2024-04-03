@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import { constVoid, pipe } from "effect/Function";
 import * as Layer from "effect/Layer";
+import * as Number from "effect/Number";
 import * as ReadonlyArray from "effect/ReadonlyArray";
 import * as Scope from "effect/Scope";
 import * as Kysely from "kysely";
@@ -479,11 +480,13 @@ export const EvoluFactoryCommon = Layer.effect(
         const runtime = createEvoluRuntime(config);
         const { name } = Config.pipe(runtime.runSync);
         let evolu = instances.get(name);
-        if (evolu == null)
+        if (evolu == null) {
           evolu = createEvolu.pipe(
             Effect.provideService(DbWorkerFactory, dbWorkerFactory),
             runtime.runSync,
           );
+          instances.set(name, evolu);
+        }
         evolu.ensureSchema(schema, config?.indexes);
         return evolu as Evolu<T>;
       },
@@ -512,7 +515,7 @@ const createEvolu = Effect.gen(function* (_) {
   const ownerStore = yield* _(makeStore<Owner | null>(null));
   const rowsStore = yield* _(makeRowsStore);
   const loadingPromises = new Map<Query, LoadingPromise>();
-  // const subscribedQueries = new Map<Query, number>();
+  const subscribedQueries = new Map<Query, number>();
 
   const run = (effect: Effect.Effect<void, EvoluError, Config>): void => {
     effect.pipe(handleAllErrors, runtime.runFork);
@@ -547,68 +550,48 @@ const createEvolu = Effect.gen(function* (_) {
     run,
   );
 
-  // stub
-  const emptyResult = { rows: [], row: null };
+  const loadQuery = Effect.sync(() => {
+    let queue: ReadonlyArray<Query> = [];
 
-  //     // No mutation is using onComplete, so we don't need flushSync.
-  //     if (onCompleteIds.length === 0) {
-  //       yield* _(rowsStore.setState(nextState));
-  //       return;
-  //     }
-
-  //     flushSync(() => rowsStore.setState(nextState).pipe(Effect.runSync));
-  //     yield* _(onCompletes.complete(onCompleteIds));
-  //   }),
-  // );
-
-  //   return Effect.unit;
-  // };
-
-  //       getSubscribedQueries: () =>
-  //         ReadonlyArray.fromIterable(subscribedQueries.keys()),
-  //     });
-  //   }),
-
-  let loadQueryQueue: ReadonlyArray<Query> = [];
-
-  const loadQuery = <R extends Row>(
-    query: Query<R>,
-  ): Promise<QueryResult<R>> => {
-    Effect.logDebug(`Evolu loadQuery ${query}`).pipe(run);
-    let isNew = false;
-    let loadingPromise = loadingPromises.get(query);
-    if (!loadingPromise) {
-      isNew = true;
-      let resolve: LoadingPromise["resolve"] = constVoid;
-      const promise: LoadingPromise["promise"] = new Promise((_resolve) => {
-        resolve = _resolve;
-      });
-      loadingPromise = { resolve, promise, releaseOnResolve: false };
-      loadingPromises.set(query, loadingPromise);
-    }
-    if (isNew) loadQueryQueue = [...loadQueryQueue, query];
-    if (loadQueryQueue.length === 1) {
-      queueMicrotask(() => {
-        if (!ReadonlyArray.isNonEmptyReadonlyArray(loadQueryQueue)) return;
-        dbWorker.loadQueries(loadQueryQueue).pipe(
-          Effect.flatMap(({ patches }) => handlePatches(patches)),
-          run,
-        );
-        loadQueryQueue = [];
-      });
-    }
-    return loadingPromise.promise as Promise<QueryResult<R>>;
-  };
+    return <R extends Row>(query: Query<R>): Promise<QueryResult<R>> => {
+      Effect.logDebug(`Evolu loadQuery ${query}`).pipe(run);
+      let isNew = false;
+      let loadingPromise = loadingPromises.get(query);
+      if (!loadingPromise) {
+        isNew = true;
+        let resolve: LoadingPromise["resolve"] = constVoid;
+        const promise: LoadingPromise["promise"] = new Promise((_resolve) => {
+          resolve = _resolve;
+        });
+        loadingPromise = { resolve, promise, releaseOnResolve: false };
+        loadingPromises.set(query, loadingPromise);
+      }
+      if (isNew) queue = [...queue, query];
+      if (queue.length === 1) {
+        queueMicrotask(() => {
+          if (!ReadonlyArray.isNonEmptyReadonlyArray(queue)) return;
+          dbWorker.loadQueries(queue).pipe(
+            Effect.flatMap(({ patches }) => handlePatches(patches)),
+            run,
+          );
+          queue = [];
+        });
+      }
+      return loadingPromise.promise as Promise<QueryResult<R>>;
+    };
+  }).pipe(Effect.runSync);
 
   const handlePatches = (
     patches: ReadonlyArray<QueryPatches>,
   ): Effect.Effect<void> =>
-    createRowsStoreStateFromPatches(patches).pipe(
-      Effect.tap((nextState) => {
+    Effect.logDebug(`Evolu handlePatches ${JSON.stringify(patches)}`).pipe(
+      Effect.andThen(createRowsStoreStateFromPatches(patches)),
+      Effect.tap((nextState) =>
         Effect.forEach(patches, ({ query }) =>
-          resolveLoadingPromises(query, nextState.get(query) as Row[]),
-        );
-      }),
+          resolveLoadingPromises(query, nextState.get(query) || emptyRows()),
+        ),
+      ),
+      Effect.flatMap(rowsStore.setState),
     );
 
   const createRowsStoreStateFromPatches = (
@@ -660,18 +643,26 @@ const createEvolu = Effect.gen(function* (_) {
   ): [...QueryResultsPromisesFromQueries<Q>] =>
     queries.map(loadQuery) as [...QueryResultsPromisesFromQueries<Q>];
 
-  const subscribeQuery: Evolu["subscribeQuery"] = () => {
-    return () => () => {};
+  const subscribeQuery: Evolu["subscribeQuery"] = (query) => (listener) => {
+    subscribedQueries.set(
+      query,
+      Number.increment(subscribedQueries.get(query) ?? 0),
+    );
+    const unsubscribe = rowsStore.subscribe(listener);
+
+    return () => {
+      const count = subscribedQueries.get(query);
+      if (count != null && count > 1)
+        subscribedQueries.set(query, Number.decrement(count));
+      else subscribedQueries.delete(query);
+      unsubscribe();
+    };
   };
 
-  //       getQuery: <R extends Row>(query: Query<R>): QueryResult<R> =>
-  //         queryResultFromRows(
-  //           rowsStore.getState().get(query) || emptyRows(),
-  //         ) as QueryResult<R>,
-
-  const getQuery: Evolu["getQuery"] = () => {
-    return emptyResult;
-  };
+  const getQuery = <R extends Row>(query: Query<R>): QueryResult<R> =>
+    queryResultFromRows(
+      rowsStore.getState().get(query) || emptyRows(),
+    ) as QueryResult<R>;
 
   const subscribeOwner: Evolu["subscribeOwner"] = () => {
     return () => () => {};
