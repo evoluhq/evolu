@@ -42,7 +42,7 @@ export interface DbWorker {
     queries: ReadonlyArray.NonEmptyReadonlyArray<Query>,
   ) => Effect.Effect<{ readonly patches: ReadonlyArray<QueryPatches> }>;
 
-  readonly dispose: () => void;
+  readonly dispose: () => Effect.Effect<void>;
 }
 
 export interface NotSupportedPlatformError {

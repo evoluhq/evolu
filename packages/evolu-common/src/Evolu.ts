@@ -2,7 +2,7 @@ import * as S from "@effect/schema/Schema";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
-import * as Function from "effect/Function";
+import { constVoid, pipe } from "effect/Function";
 import * as Layer from "effect/Layer";
 import * as ReadonlyArray from "effect/ReadonlyArray";
 import * as Scope from "effect/Scope";
@@ -17,9 +17,15 @@ import {
   QueryResult,
   QueryResultsPromisesFromQueries,
   Row,
+  Rows,
+  RowsStoreState,
+  emptyRows,
+  makeRowsStore,
+  queryResultFromRows,
   serializeQuery,
 } from "./Db.js";
 import { DbWorkerFactory } from "./DbWorker.js";
+import { QueryPatches, applyPatches } from "./Diff.js";
 import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
 import { Owner } from "./Owner.js";
 import {
@@ -30,7 +36,6 @@ import {
 } from "./Sqlite.js";
 import { Listener, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
-import { QueryPatches } from "./Diff.js";
 
 /**
  * The Evolu interface provides a type-safe SQL query building and state
@@ -486,17 +491,38 @@ export const EvoluFactoryCommon = Layer.effect(
   }),
 );
 
+interface LoadingPromise {
+  /** Promise with props for the upcoming React use hook. */
+  promise: Promise<QueryResult> & {
+    status?: "pending" | "fulfilled" | "rejected";
+    value?: QueryResult;
+    reason?: unknown;
+  };
+  resolve: (rows: QueryResult) => void;
+  releaseOnResolve: boolean;
+}
+
 const createEvolu = Effect.gen(function* (_) {
   yield* _(Effect.logTrace("creating Evolu"));
 
   const config = yield* _(Config);
-  const scope = yield* _(Scope.make());
-
   const runtime = createEvoluRuntime(config);
+  const scope = yield* _(Scope.make());
   const errorStore = yield* _(makeStore<EvoluError | null>(null));
   const ownerStore = yield* _(makeStore<Owner | null>(null));
+  const rowsStore = yield* _(makeRowsStore);
+  const loadingPromises = new Map<Query, LoadingPromise>();
+  // const subscribedQueries = new Map<Query, number>();
 
-  const tapEvoluError = <T>(
+  const run = (effect: Effect.Effect<void, EvoluError, Config>): void => {
+    effect.pipe(handleAllErrors, runtime.runFork);
+  };
+
+  // const runPromise = <T>(
+  //   effect: Effect.Effect<T, EvoluError, Config>,
+  // ): Promise<T> => effect.pipe(handleAllErrors, runtime.runPromise);
+
+  const handleAllErrors = <T>(
     effect: Effect.Effect<T, EvoluError, Config>,
   ): Effect.Effect<T, EvoluError, Config> =>
     effect.pipe(
@@ -507,23 +533,13 @@ const createEvolu = Effect.gen(function* (_) {
       Effect.tapError(errorStore.setState),
     );
 
-  const run = <T>(effect: Effect.Effect<T, EvoluError, Config>): void => {
-    effect.pipe(tapEvoluError, runtime.runCallback);
-  };
-
-  // const runSync = <T>(
-  //   effect: Effect.Effect<T, EvoluError>,
-  // ): T => effect.pipe(tapAllErrors, runtime.runSync);
-
-  // const runPromise = <T>(
-  //   effect: Effect.Effect<T, EvoluError, Config>,
-  // ): Promise<T> => effect.pipe(tapEvoluError, runtime.runPromise);
-
-  const dbWorkerFactory = yield* _(DbWorkerFactory);
   const dbWorker = yield* _(
-    dbWorkerFactory.createDbWorker,
-    Scope.extend(scope),
+    DbWorkerFactory,
+    Effect.flatMap(({ createDbWorker }) => createDbWorker),
   );
+
+  // We can't extend the scope because the DbWorker code can run in WebWorker.
+  Scope.addFinalizer(scope, dbWorker.dispose());
 
   dbWorker.init().pipe(
     Effect.flatMap(ownerStore.setState),
@@ -534,36 +550,36 @@ const createEvolu = Effect.gen(function* (_) {
   // stub
   const emptyResult = { rows: [], row: null };
 
-  interface LoadingPromise {
-    /** Promise with props for the upcoming React use hook. */
-    promise: Promise<QueryResult> & {
-      status?: "pending" | "fulfilled" | "rejected";
-      value?: QueryResult;
-      reason?: unknown;
-    };
-    resolve: (rows: QueryResult) => void;
-    releaseOnResolve: boolean;
-  }
+  //     // No mutation is using onComplete, so we don't need flushSync.
+  //     if (onCompleteIds.length === 0) {
+  //       yield* _(rowsStore.setState(nextState));
+  //       return;
+  //     }
 
-  const loadingPromises = new Map<Query, LoadingPromise>();
+  //     flushSync(() => rowsStore.setState(nextState).pipe(Effect.runSync));
+  //     yield* _(onCompletes.complete(onCompleteIds));
+  //   }),
+  // );
+
+  //   return Effect.unit;
+  // };
+
+  //       getSubscribedQueries: () =>
+  //         ReadonlyArray.fromIterable(subscribedQueries.keys()),
+  //     });
+  //   }),
+
   let loadQueryQueue: ReadonlyArray<Query> = [];
-
-  const handlePatches = (
-    patches: ReadonlyArray<QueryPatches>,
-  ): Effect.Effect<void> => {
-    console.log(patches);
-    return Effect.unit;
-  };
 
   const loadQuery = <R extends Row>(
     query: Query<R>,
   ): Promise<QueryResult<R>> => {
-    Effect.logDebug(`Evolu loadQuery ${query}`).pipe(runtime.runSync);
+    Effect.logDebug(`Evolu loadQuery ${query}`).pipe(run);
     let isNew = false;
     let loadingPromise = loadingPromises.get(query);
     if (!loadingPromise) {
       isNew = true;
-      let resolve: LoadingPromise["resolve"] = Function.constVoid;
+      let resolve: LoadingPromise["resolve"] = constVoid;
       const promise: LoadingPromise["promise"] = new Promise((_resolve) => {
         resolve = _resolve;
       });
@@ -584,6 +600,61 @@ const createEvolu = Effect.gen(function* (_) {
     return loadingPromise.promise as Promise<QueryResult<R>>;
   };
 
+  const handlePatches = (
+    patches: ReadonlyArray<QueryPatches>,
+  ): Effect.Effect<void> =>
+    createRowsStoreStateFromPatches(patches).pipe(
+      Effect.tap((nextState) => {
+        Effect.forEach(patches, ({ query }) =>
+          resolveLoadingPromises(query, nextState.get(query) as Row[]),
+        );
+      }),
+    );
+
+  const createRowsStoreStateFromPatches = (
+    patches: readonly QueryPatches[],
+  ): Effect.Effect<RowsStoreState> =>
+    Effect.sync(() => {
+      const state = rowsStore.getState();
+      return pipe(
+        patches,
+        ReadonlyArray.map(
+          ({ query, patches }) =>
+            [
+              query,
+              applyPatches(patches)(state.get(query) || emptyRows()),
+            ] as const,
+        ),
+        // Spread syntax converts a Map to an Array.
+        (entries) => new Map([...state, ...entries]),
+      );
+    });
+
+  const resolveLoadingPromises = (
+    query: Query,
+    rows: Rows,
+  ): Effect.Effect<void> =>
+    Effect.sync(() => {
+      const promiseWithResolve = loadingPromises.get(query);
+      if (!promiseWithResolve) return;
+      const result = queryResultFromRows(rows);
+      if (promiseWithResolve.promise.status !== "fulfilled")
+        promiseWithResolve.resolve(result);
+      else promiseWithResolve.promise = Promise.resolve(result);
+      setPromiseAsResolved(promiseWithResolve.promise)(result);
+      if (promiseWithResolve.releaseOnResolve) loadingPromises.delete(query);
+    });
+
+  // "For example, a data framework can set the status and value fields on a promise
+  // preemptively, before passing to React, so that React can unwrap it without waiting
+  // a microtask."
+  // https://github.com/acdlite/rfcs/blob/first-class-promises/text/0000-first-class-support-for-promises.md
+  const setPromiseAsResolved =
+    <T>(promise: Promise<T>) =>
+    (value: unknown): void => {
+      Object.assign(promise, { status: "fulfilled", value });
+    };
+
   const loadQueries = <R extends Row, Q extends Queries<R>>(
     queries: [...Q],
   ): [...QueryResultsPromisesFromQueries<Q>] =>
@@ -592,6 +663,11 @@ const createEvolu = Effect.gen(function* (_) {
   const subscribeQuery: Evolu["subscribeQuery"] = () => {
     return () => () => {};
   };
+
+  //       getQuery: <R extends Row>(query: Query<R>): QueryResult<R> =>
+  //         queryResultFromRows(
+  //           rowsStore.getState().get(query) || emptyRows(),
+  //         ) as QueryResult<R>,
 
   const getQuery: Evolu["getQuery"] = () => {
     return emptyResult;
@@ -642,10 +718,10 @@ const createEvolu = Effect.gen(function* (_) {
   };
 
   const dispose: Evolu["dispose"] = () =>
-    Effect.gen(function* (_) {
-      yield* _(Effect.logTrace("dispose Evolu"));
-      yield* _(Scope.close(scope, Exit.succeed("Evolu disposed")));
-    }).pipe(runtime.runSync);
+    Effect.logTrace("dispose Evolu").pipe(
+      Effect.andThen(Scope.close(scope, Exit.succeed("Evolu disposed"))),
+      run,
+    );
 
   return {
     subscribeError: errorStore.subscribe,
@@ -684,7 +760,7 @@ const kysely = new Kysely.Kysely({
 });
 
 const createQuery: Evolu["createQuery"] = (queryCallback, options) =>
-  Function.pipe(
+  pipe(
     queryCallback(kysely).compile(),
     (compiledQuery): SqliteQuery => {
       if (isSqlMutation(compiledQuery.sql))
@@ -1205,171 +1281,9 @@ export const createIndexes = (
 //   }),
 // );
 
-// // "For example, a data framework can set the status and value fields on a promise
-// // preemptively, before passing to React, so that React can unwrap it without waiting
-// // a microtask."
-// // https://github.com/acdlite/rfcs/blob/first-class-promises/text/0000-first-class-support-for-promises.md
-// const setPromiseAsResolved =
-//   <T>(promise: Promise<T>) =>
-//   (value: unknown): void => {
-//     Object.assign(promise, { status: "fulfilled", value });
-//   };
-
-// type LoadQuery = <R extends Row>(query: Query<R>) => Promise<QueryResult<R>>;
-
-// const LoadQuery = Context.GenericTag<LoadQuery>("@services/LoadQuery");
-
-// const LoadQueryLive = Layer.effect(
-//   LoadQuery,
-//   Effect.gen(function* (_) {
-//     const loadingPromises = yield* _(LoadingPromises);
-//     const dbWorker = yield* _(DbWorker);
-//     let queries: ReadonlyArray<Query> = [];
-
-//     return LoadQuery.of((query) => {
-//       const { promise, isNew } = loadingPromises.get(query);
-//       if (isNew) queries = [...queries, query];
-//       if (queries.length === 1) {
-//         queueMicrotask(() => {
-//           if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
-//             dbWorker.postMessage({ _tag: "query", queries });
-//           queries = [];
-//         });
-//       }
-//       return promise;
-//     });
-//   }),
-// );
-
 // type OnQuery = (
 //   dbWorkerOutputOnQuery: DbWorkerOutputOnQuery,
 // ) => Effect.Effect<void>;
-
-// const OnQuery = Context.GenericTag<OnQuery>("@services/OnQuery");
-
-// const OnQueryLive = Layer.effect(
-//   OnQuery,
-//   Effect.gen(function* (_) {
-//     const rowsStore = yield* _(RowsStore);
-//     const loadingPromises = yield* _(LoadingPromises);
-//     const flushSync = yield* _(FlushSync);
-//     const onCompletes = yield* _(OnCompletes);
-
-//     return OnQuery.of(({ queriesPatches, onCompleteIds }) =>
-//       Effect.gen(function* (_) {
-//         const currentState = rowsStore.getState();
-//         const nextState = pipe(
-//           queriesPatches,
-//           ReadonlyArray.map(
-//             ({ query, patches }) =>
-//               [
-//                 query,
-//                 applyPatches(patches)(currentState.get(query) || emptyRows()),
-//               ] as const,
-//           ),
-//           (map) => new Map([...currentState, ...map]),
-//         );
-
-//         queriesPatches.forEach(({ query }) => {
-//           loadingPromises.resolve(query, nextState.get(query) || emptyRows());
-//         });
-
-//         // No mutation is using onComplete, so we don't need flushSync.
-//         if (onCompleteIds.length === 0) {
-//           yield* _(rowsStore.setState(nextState));
-//           return;
-//         }
-
-//         flushSync(() => rowsStore.setState(nextState).pipe(Effect.runSync));
-//         yield* _(onCompletes.complete(onCompleteIds));
-//       }),
-//     );
-//   }),
-// );
-
-// export interface SubscribedQueries {
-//   readonly subscribeQuery: (query: Query) => Store<Row>["subscribe"];
-//   readonly getQuery: <R extends Row>(query: Query<R>) => QueryResult<R>;
-//   readonly getSubscribedQueries: () => Queries;
-// }
-
-// export const SubscribedQueries = Context.GenericTag<SubscribedQueries>(
-//   "@services/SubscribedQueries",
-// );
-
-// export const SubscribedQueriesLive = Layer.effect(
-//   SubscribedQueries,
-//   Effect.gen(function* (_) {
-//     const rowsStore = yield* _(RowsStore);
-//     const subscribedQueries = new Map<Query, number>();
-
-//     return SubscribedQueries.of({
-//       subscribeQuery:
-//         (query) =>
-//         (listener): Unsubscribe => {
-//           subscribedQueries.set(
-//             query,
-//             Number.increment(subscribedQueries.get(query) ?? 0),
-//           );
-//           const unsubscribe = rowsStore.subscribe(listener);
-
-//           return () => {
-//             const count = subscribedQueries.get(query);
-//             if (count != null && count > 1)
-//               subscribedQueries.set(query, Number.decrement(count));
-//             else subscribedQueries.delete(query);
-//             unsubscribe();
-//           };
-//         },
-
-//       getQuery: <R extends Row>(query: Query<R>): QueryResult<R> =>
-//         queryResultFromRows(
-//           rowsStore.getState().get(query) || emptyRows(),
-//         ) as QueryResult<R>,
-
-//       getSubscribedQueries: () =>
-//         ReadonlyArray.fromIterable(subscribedQueries.keys()),
-//     });
-//   }),
-// );
-
-// export type Create<S extends DatabaseSchema = DatabaseSchema> = Mutate<
-//   S,
-//   "create"
-// >;
-
-// export type Update<S extends DatabaseSchema = DatabaseSchema> = Mutate<
-//   S,
-//   "update"
-// >;
-
-// export type CreateOrUpdate<S extends DatabaseSchema = DatabaseSchema> = Mutate<
-//   S,
-//   "createOrUpdate"
-// >;
-
-// export type Mutate<
-//   S extends DatabaseSchema = DatabaseSchema,
-//   Mode extends "create" | "update" | "createOrUpdate" = "update",
-// > = <K extends keyof S>(
-//   table: K,
-//   values: Kysely.Simplify<
-//     Mode extends "create"
-//       ? PartialForNullable<
-//           Castable<Omit<S[K], "id" | "createdAt" | "updatedAt" | "isDeleted">>
-//         >
-//       : Mode extends "update"
-//         ? Partial<Castable<Omit<S[K], "id" | "createdAt" | "updatedAt">>> & {
-//             readonly id: S[K]["id"];
-//           }
-//         : PartialForNullable<
-//             Castable<Omit<S[K], "createdAt" | "updatedAt" | "isDeleted">>
-//           >
-//   >,
-//   onComplete?: () => void,
-// ) => {
-//   readonly id: S[K]["id"];
-// };
 
 // export const Mutate = Context.GenericTag<Mutate>("@services/Mutate");
 
