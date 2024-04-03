@@ -9,7 +9,7 @@ import {
   canUseDom,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
-import * as Function from "effect/Function";
+import { constVoid } from "effect/Function";
 import * as Layer from "effect/Layer";
 import { multitenantLockName } from "./multitenantLockName.js";
 
@@ -23,7 +23,7 @@ export const SyncLockLive = Layer.effect(
     return SyncLock.of({
       acquire: Effect.gen(function* (_) {
         if (release) return false;
-        release = Function.constVoid;
+        release = constVoid;
         return yield* _(
           Effect.async<boolean>((resume) => {
             navigator.locks.request(lockName, { ifAvailable: true }, (lock) => {
@@ -64,7 +64,7 @@ export const AppStateLive = Layer.effect(
   Effect.gen(function* (_) {
     if (!canUseDom)
       return AppState.of({
-        init: Function.constVoid,
+        init: constVoid,
         reset: Effect.succeed(undefined),
       });
 

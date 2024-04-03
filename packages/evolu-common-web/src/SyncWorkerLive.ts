@@ -1,6 +1,6 @@
 import { SyncWorker, SyncWorkerOutput } from "@evolu/common";
 import * as Effect from "effect/Effect";
-import * as Function from "effect/Function";
+import { constVoid } from "effect/Function";
 import * as Layer from "effect/Layer";
 
 export const SyncWorkerLive = Layer.effect(
@@ -17,7 +17,7 @@ export const SyncWorkerLive = Layer.effect(
       postMessage: (input) => {
         worker.postMessage(input);
       },
-      onMessage: Function.constVoid,
+      onMessage: constVoid,
     };
     return syncWorker;
   }),

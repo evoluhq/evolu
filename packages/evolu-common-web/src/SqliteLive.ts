@@ -14,7 +14,7 @@ import {
 } from "@evolu/common";
 import sqlite3InitModule, { SAHPoolUtil } from "@sqlite.org/sqlite-wasm";
 import * as Effect from "effect/Effect";
-import * as Function from "effect/Function";
+import { absurd, constVoid } from "effect/Function";
 import * as Layer from "effect/Layer";
 import * as ReadonlyArray from "effect/ReadonlyArray";
 import { ensureTransferableError } from "./ensureTransferableError.js";
@@ -74,7 +74,7 @@ const createSqliteChannel = (): SqliteChannel => {
       // Send to itself as well.
       sqliteChannel.onMessage(message);
     },
-    onMessage: Function.constVoid,
+    onMessage: constVoid,
   };
   channel.onmessage = (e: MessageEvent<SqliteChannelMessage>): void => {
     sqliteChannel.onMessage(e.data);
@@ -85,7 +85,7 @@ const createSqliteChannel = (): SqliteChannel => {
 // https://github.com/sqlite/sqlite-wasm/issues/62
 // @ts-expect-error Missing types.
 globalThis.sqlite3ApiConfig = {
-  warn: Function.constVoid,
+  warn: constVoid,
 };
 
 export const SqliteFactoryWeb = Layer.effect(
@@ -140,7 +140,7 @@ export const SqliteFactoryWeb = Layer.effect(
               break;
             }
             default:
-              Function.absurd(message);
+              absurd(message);
           }
         };
 
@@ -190,7 +190,7 @@ export const SqliteFactoryWeb = Layer.effect(
                 maybeCallCallback(message);
                 break;
               default:
-                Function.absurd(message);
+                absurd(message);
             }
           };
 

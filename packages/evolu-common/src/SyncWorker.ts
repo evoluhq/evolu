@@ -4,8 +4,7 @@ import { BinaryReader, BinaryWriter } from "@protobuf-ts/runtime";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Equivalence from "effect/Equivalence";
-import * as Function from "effect/Function";
-import { absurd, identity } from "effect/Function";
+import { absurd, constVoid, identity } from "effect/Function";
 import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
 import * as Option from "effect/Option";
@@ -353,7 +352,7 @@ export const SyncWorkerCommonLive = Layer.effect(
           Effect.runPromise,
         );
       },
-      onMessage: Function.constVoid,
+      onMessage: constVoid,
     };
 
     return syncWorker;
