@@ -4,7 +4,7 @@ import { make } from "@effect/schema/Schema";
 import * as Brand from "effect/Brand";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
-import * as Function from "effect/Function";
+import { constVoid, pipe } from "effect/Function";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
 import * as ReadonlyArray from "effect/ReadonlyArray";
@@ -206,8 +206,10 @@ export type Row = {
   [key: string]:
     | Value
     | Row // for jsonObjectFrom from kysely/helpers/sqlite
-    | ReadonlyArray<Row>; // for jsonArrayFrom from kysely/helpers/sqlite
+    | Rows; // for jsonArrayFrom from kysely/helpers/sqlite
 };
+
+export type Rows = ReadonlyArray<Row>;
 
 /**
  * Extract {@link Row} from {@link Query} instance.
@@ -220,8 +222,8 @@ export type Row = {
  */
 export type ExtractRow<T extends Query> = T extends Query<infer R> ? R : never;
 
-const _emptyRows: ReadonlyArray<Row> = [];
-
+// To preserve identity.
+const _emptyRows: Rows = [];
 export const emptyRows = <R extends Row>(): ReadonlyArray<R> =>
   _emptyRows as ReadonlyArray<R>;
 
@@ -245,7 +247,7 @@ export type QueryResultsPromisesFromQueries<Q extends Queries> = {
   [P in keyof Q]: Q[P] extends Query<infer R> ? Promise<QueryResult<R>> : never;
 };
 
-const queryResultCache = new WeakMap<ReadonlyArray<Row>, QueryResult<Row>>();
+const queryResultCache = new WeakMap<Rows, QueryResult<Row>>();
 
 export const queryResultFromRows = <R extends Row>(
   rows: ReadonlyArray<R>,
@@ -274,7 +276,7 @@ const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
 };
 
 export const schemaToTables = (schema: S.Schema<any>): ReadonlyArray<Table> =>
-  Function.pipe(
+  pipe(
     getPropertySignatures(schema),
     ReadonlyRecord.toEntries,
     ReadonlyArray.map(
@@ -522,9 +524,9 @@ export const dropAllTables: Effect.Effect<void, never, Sqlite> = Effect.gen(
   },
 );
 
-export const makeRowsStore = makeStore<ReadonlyMap<Query, ReadonlyArray<Row>>>(
-  new Map(),
-);
+export type RowsStoreState = ReadonlyMap<Query, Rows>;
+
+export const makeRowsStore = makeStore<RowsStoreState>(new Map());
 
 export const maybeExplainQueryPlan = (
   sqliteQuery: SqliteQuery,
@@ -544,6 +546,6 @@ export const maybeExplainQueryPlan = (
       // eslint-disable-next-line no-console
       console.log(drawSqliteQueryPlan(rows as SqliteQueryPlanRow[]));
     }),
-    Effect.map(Function.constVoid),
+    Effect.map(constVoid),
   );
 };

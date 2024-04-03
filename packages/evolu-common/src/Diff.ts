@@ -1,6 +1,6 @@
 import * as Predicate from "effect/Predicate";
 import * as ReadonlyArray from "effect/ReadonlyArray";
-import { Query, Row } from "./Db.js";
+import { Query, Row, Rows } from "./Db.js";
 import { Value } from "./Sqlite.js";
 
 export interface QueryPatches {
@@ -12,7 +12,7 @@ export type Patch = ReplaceAllPatch | ReplaceAtPatch;
 
 export interface ReplaceAllPatch {
   readonly op: "replaceAll";
-  readonly value: ReadonlyArray<Row>;
+  readonly value: Rows;
 }
 
 export interface ReplaceAtPatch {
@@ -23,7 +23,7 @@ export interface ReplaceAtPatch {
 
 export const applyPatches =
   (patches: ReadonlyArray<Patch>) =>
-  (current: ReadonlyArray<Row>): ReadonlyArray<Row> =>
+  (current: Rows): Rows =>
     patches.reduce((next, patch) => {
       switch (patch.op) {
         case "replaceAll":
@@ -41,8 +41,8 @@ export const applyPatches =
 // a developer would implement manually, if necessary.
 // Another idea is to make makePatches configurable via custom functions.
 export const makePatches = (
-  previousRows: ReadonlyArray<Row> | undefined,
-  nextRows: ReadonlyArray<Row>,
+  previousRows: Rows | undefined,
+  nextRows: Rows,
 ): readonly Patch[] => {
   if (previousRows === undefined)
     return [{ op: "replaceAll", value: nextRows }];
@@ -73,8 +73,8 @@ export const makePatches = (
 };
 
 export const areEqual = (
-  a: Value | Row | ReadonlyArray<Row>,
-  b: Value | Row | ReadonlyArray<Row>,
+  a: Value | Row | Rows,
+  b: Value | Row | Rows,
 ): boolean => {
   // Compare string, number, null ASAP.
   if (a === b) return true;
