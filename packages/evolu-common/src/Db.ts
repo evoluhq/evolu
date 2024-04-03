@@ -2,11 +2,9 @@ import * as AST from "@effect/schema/AST";
 import * as S from "@effect/schema/Schema";
 import { make } from "@effect/schema/Schema";
 import * as Brand from "effect/Brand";
-import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Function from "effect/Function";
-import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
 import * as ReadonlyArray from "effect/ReadonlyArray";
@@ -45,7 +43,7 @@ import {
   indexEquivalence,
   isJsonObjectOrArray,
 } from "./Sqlite.js";
-import { Store, makeStore } from "./Store.js";
+import { makeStore } from "./Store.js";
 
 export type DatabaseSchema = ReadonlyRecord.ReadonlyRecord<string, TableSchema>;
 
@@ -524,14 +522,8 @@ export const dropAllTables: Effect.Effect<void, never, Sqlite> = Effect.gen(
   },
 );
 
-export type RowsStore = Store<RowsStoreValue>;
-export const RowsStore = Context.GenericTag<RowsStore>("@services/RowsStore");
-
-type RowsStoreValue = ReadonlyMap<Query, ReadonlyArray<Row>>;
-
-export const RowsStoreLive = Layer.effect(
-  RowsStore,
-  makeStore<RowsStoreValue>(new Map()),
+export const makeRowsStore = makeStore<ReadonlyMap<Query, ReadonlyArray<Row>>>(
+  new Map(),
 );
 
 export const maybeExplainQueryPlan = (

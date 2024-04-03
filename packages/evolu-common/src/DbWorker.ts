@@ -8,9 +8,9 @@ import { Config } from "./Config.js";
 import { Bip39, NanoIdGenerator } from "./Crypto.js";
 import {
   Query,
-  RowsStore,
   deserializeQuery,
   ensureDbSchemaWithOwner,
+  makeRowsStore,
   maybeExplainQueryPlan,
 } from "./Db.js";
 import { QueryPatches, makePatches } from "./Diff.js";
@@ -59,7 +59,8 @@ export const createDbWorker = Effect.gen(function* (_) {
   const sqliteAndOwnerDeferred = yield* _(
     Deferred.make<{ readonly sqlite: Sqlite; readonly owner: Owner }>(),
   );
-  const rowsStore = yield* _(RowsStore);
+
+  const rowsStore = yield* _(makeRowsStore);
 
   const init: DbWorker["init"] = () =>
     Effect.logTrace("DbWorker init").pipe(
