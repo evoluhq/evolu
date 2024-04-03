@@ -10,7 +10,6 @@ import {
   NotSupportedPlatformError,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
-import { constVoid } from "effect/Function";
 import * as Layer from "effect/Layer";
 import { Bip39Live } from "./PlatformLive.js";
 import { wrap } from "./ProxyWorker.js";
@@ -21,7 +20,7 @@ const noOpServerWorker: DbWorker = {
       _tag: "NotSupportedPlatformError",
     }),
   loadQueries: () => Effect.succeed({ patches: [] }),
-  dispose: constVoid,
+  dispose: () => Effect.unit,
 };
 
 const DbWorkerFactoryWeb = Layer.succeed(DbWorkerFactory, {
