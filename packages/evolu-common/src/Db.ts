@@ -5,7 +5,7 @@ import * as Brand from "effect/Brand";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
-import { pipe } from "effect/Function";
+import * as Function from "effect/Function";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
@@ -37,9 +37,11 @@ import {
   Sqlite,
   SqliteQuery,
   SqliteQueryOptions,
+  SqliteQueryPlanRow,
   SqliteSchema,
   Table,
   Value,
+  drawSqliteQueryPlan,
   indexEquivalence,
   isJsonObjectOrArray,
 } from "./Sqlite.js";
@@ -274,7 +276,7 @@ const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
 };
 
 export const schemaToTables = (schema: S.Schema<any>): ReadonlyArray<Table> =>
-  pipe(
+  Function.pipe(
     getPropertySignatures(schema),
     ReadonlyRecord.toEntries,
     ReadonlyArray.map(
@@ -531,3 +533,25 @@ export const RowsStoreLive = Layer.effect(
   RowsStore,
   makeStore<RowsStoreValue>(new Map()),
 );
+
+export const maybeExplainQueryPlan = (
+  sqliteQuery: SqliteQuery,
+): Effect.Effect<void, never, Sqlite> => {
+  if (!sqliteQuery.options?.logExplainQueryPlan) return Effect.unit;
+  return Sqlite.pipe(
+    Effect.flatMap((sqlite) =>
+      sqlite.exec({
+        ...sqliteQuery,
+        sql: `EXPLAIN QUERY PLAN ${sqliteQuery.sql}`,
+      }),
+    ),
+    // TODO: Use new Effect log variadic
+    Effect.tap(() => Effect.log("ExplainQueryPlan")),
+    Effect.tap(({ rows }) => {
+      // Not using Effect.log because of formating
+      // eslint-disable-next-line no-console
+      console.log(drawSqliteQueryPlan(rows as SqliteQueryPlanRow[]));
+    }),
+    Effect.map(Function.constVoid),
+  );
+};

@@ -2,10 +2,18 @@ import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as ReadonlyArray from "effect/ReadonlyArray";
 import * as Scope from "effect/Scope";
 import { Config } from "./Config.js";
 import { Bip39, NanoIdGenerator } from "./Crypto.js";
-import { ensureDbSchemaWithOwner } from "./Db.js";
+import {
+  Query,
+  RowsStore,
+  deserializeQuery,
+  ensureDbSchemaWithOwner,
+  maybeExplainQueryPlan,
+} from "./Db.js";
+import { QueryPatches, makePatches } from "./Diff.js";
 import { Owner } from "./Owner.js";
 import { Sqlite, SqliteFactory } from "./Sqlite.js";
 
@@ -29,6 +37,11 @@ export class DbWorkerFactory extends Context.Tag("DbWorkerFactory")<
 
 export interface DbWorker {
   readonly init: () => Effect.Effect<Owner, NotSupportedPlatformError, Config>;
+
+  readonly loadQueries: (
+    queries: ReadonlyArray.NonEmptyReadonlyArray<Query>,
+  ) => Effect.Effect<{ readonly patches: ReadonlyArray<QueryPatches> }>;
+
   readonly dispose: () => void;
 }
 
@@ -44,35 +57,65 @@ export const createDbWorker = Effect.gen(function* (_) {
     Context.add(NanoIdGenerator, yield* _(NanoIdGenerator)),
   );
   const sqliteAndOwnerDeferred = yield* _(
-    Deferred.make<{
-      readonly sqlite: Sqlite;
-      readonly owner: Owner;
-    }>(),
+    Deferred.make<{ readonly sqlite: Sqlite; readonly owner: Owner }>(),
   );
+  const rowsStore = yield* _(RowsStore);
 
-  const dbWorker: DbWorker = {
-    init: () =>
-      Effect.logTrace("init dbWorker").pipe(
-        Effect.zipRight(sqliteFactory.createSqlite),
-        Scope.extend(scope),
-        Effect.flatMap((sqlite) =>
-          ensureDbSchemaWithOwner.pipe(
-            Effect.provide(context),
-            Effect.provideService(Sqlite, sqlite),
-            Effect.tap((owner) =>
-              Deferred.succeed(sqliteAndOwnerDeferred, { sqlite, owner }),
-            ),
+  const init: DbWorker["init"] = () =>
+    Effect.logTrace("DbWorker init").pipe(
+      Effect.andThen(sqliteFactory.createSqlite),
+      Scope.extend(scope),
+      Effect.flatMap((sqlite) =>
+        ensureDbSchemaWithOwner.pipe(
+          Effect.provide(context),
+          Effect.provideService(Sqlite, sqlite),
+          Effect.tap((owner) =>
+            Deferred.succeed(sqliteAndOwnerDeferred, { sqlite, owner }),
           ),
         ),
       ),
+    );
 
-    dispose: () =>
-      Effect.logTrace("dispose DbWorker").pipe(
-        Effect.zipRight(Scope.close(scope, Exit.succeed("DbWorker disposed"))),
+  const loadQueries: DbWorker["loadQueries"] = (queries) =>
+    Deferred.await(sqliteAndOwnerDeferred).pipe(
+      Effect.tap(() =>
+        Effect.logDebug(`DbWorker loadQueries ${JSON.stringify(queries)}`),
       ),
-  };
+      Effect.flatMap(({ sqlite }) =>
+        Effect.forEach(ReadonlyArray.dedupe(queries), (query) => {
+          const sqliteQuery = deserializeQuery(query);
+          return sqlite.exec(sqliteQuery).pipe(
+            Effect.map(({ rows }) => [query, rows] as const),
+            Effect.tap(() =>
+              maybeExplainQueryPlan(sqliteQuery).pipe(
+                Effect.provideService(Sqlite, sqlite),
+              ),
+            ),
+          );
+        }),
+      ),
+      Effect.bindTo("queryRows"),
+      Effect.bind("previous", () => Effect.succeed(rowsStore.getState())),
+      Effect.tap(({ queryRows, previous }) =>
+        rowsStore.setState(new Map([...previous, ...queryRows])),
+      ),
+      Effect.map(({ queryRows, previous }) =>
+        queryRows.map(
+          ([query, rows]): QueryPatches => ({
+            query,
+            patches: makePatches(previous.get(query), rows),
+          }),
+        ),
+      ),
+      Effect.map((patches) => ({ patches })),
+    );
 
-  return dbWorker;
+  const dispose: DbWorker["dispose"] = () =>
+    Effect.logTrace("dispose DbWorker").pipe(
+      Effect.andThen(Scope.close(scope, Exit.succeed("DbWorker disposed"))),
+    );
+
+  return { init, loadQueries, dispose };
 });
 
 // import * as Context from "effect/Context";
@@ -427,7 +470,7 @@ export const createDbWorker = Effect.gen(function* (_) {
 //       someDefectToNoSuchTableOrColumnError,
 //       Effect.catchTag("NoSuchTableOrColumnError", () =>
 //         // If one message fails, we ensure schema for all messages.
-//         ensureSchemaByNewMessages(messages).pipe(Effect.zipRight(insert)),
+//         ensureSchemaByNewMessages(messages).pipe(Effect.andThen(insert)),
 //       ),
 //     );
 //   });

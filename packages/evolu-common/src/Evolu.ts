@@ -3,8 +3,8 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Function from "effect/Function";
-import { pipe } from "effect/Function";
 import * as Layer from "effect/Layer";
+import * as ReadonlyArray from "effect/ReadonlyArray";
 import * as Scope from "effect/Scope";
 import * as Kysely from "kysely";
 import { Config, createEvoluRuntime } from "./Config.js";
@@ -30,6 +30,7 @@ import {
 } from "./Sqlite.js";
 import { Listener, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
+import { QueryPatches } from "./Diff.js";
 
 /**
  * The Evolu interface provides a type-safe SQL query building and state
@@ -506,6 +507,10 @@ const createEvolu = Effect.gen(function* (_) {
       Effect.tapError(errorStore.setState),
     );
 
+  const run = <T>(effect: Effect.Effect<T, EvoluError, Config>): void => {
+    effect.pipe(tapEvoluError, runtime.runCallback);
+  };
+
   // const runSync = <T>(
   //   effect: Effect.Effect<T, EvoluError>,
   // ): T => effect.pipe(tapAllErrors, runtime.runSync);
@@ -513,12 +518,6 @@ const createEvolu = Effect.gen(function* (_) {
   // const runPromise = <T>(
   //   effect: Effect.Effect<T, EvoluError, Config>,
   // ): Promise<T> => effect.pipe(tapEvoluError, runtime.runPromise);
-
-  const runCallback = (
-    effect: Effect.Effect<void, EvoluError, Config>,
-  ): void => {
-    effect.pipe(tapEvoluError, runtime.runCallback);
-  };
 
   const dbWorkerFactory = yield* _(DbWorkerFactory);
   const dbWorker = yield* _(
@@ -529,13 +528,14 @@ const createEvolu = Effect.gen(function* (_) {
   dbWorker.init().pipe(
     Effect.flatMap(ownerStore.setState),
     Effect.catchTag("NotSupportedPlatformError", () => Effect.unit), // no-op
-    runCallback,
+    run,
   );
 
   // stub
   const emptyResult = { rows: [], row: null };
 
   interface LoadingPromise {
+    /** Promise with props for the upcoming React use hook. */
     promise: Promise<QueryResult> & {
       status?: "pending" | "fulfilled" | "rejected";
       value?: QueryResult;
@@ -548,10 +548,17 @@ const createEvolu = Effect.gen(function* (_) {
   const loadingPromises = new Map<Query, LoadingPromise>();
   let loadQueryQueue: ReadonlyArray<Query> = [];
 
+  const handlePatches = (
+    patches: ReadonlyArray<QueryPatches>,
+  ): Effect.Effect<void> => {
+    console.log(patches);
+    return Effect.unit;
+  };
+
   const loadQuery = <R extends Row>(
     query: Query<R>,
   ): Promise<QueryResult<R>> => {
-    Effect.logDebug(`loadQuery ${query}`).pipe(runtime.runSync);
+    Effect.logDebug(`Evolu loadQuery ${query}`).pipe(runtime.runSync);
     let isNew = false;
     let loadingPromise = loadingPromises.get(query);
     if (!loadingPromise) {
@@ -566,17 +573,21 @@ const createEvolu = Effect.gen(function* (_) {
     if (isNew) loadQueryQueue = [...loadQueryQueue, query];
     if (loadQueryQueue.length === 1) {
       queueMicrotask(() => {
-        // if (ReadonlyArray.isNonEmptyReadonlyArray(loadQueryQueue))
-        //   dbWorker.postMessage({ _tag: "query", loadQueryQueue });
+        if (!ReadonlyArray.isNonEmptyReadonlyArray(loadQueryQueue)) return;
+        dbWorker.loadQueries(loadQueryQueue).pipe(
+          Effect.flatMap(({ patches }) => handlePatches(patches)),
+          run,
+        );
         loadQueryQueue = [];
       });
     }
     return loadingPromise.promise as Promise<QueryResult<R>>;
   };
 
-  const loadQueries: Evolu["loadQueries"] = () => {
-    throw "";
-  };
+  const loadQueries = <R extends Row, Q extends Queries<R>>(
+    queries: [...Q],
+  ): [...QueryResultsPromisesFromQueries<Q>] =>
+    queries.map(loadQuery) as [...QueryResultsPromisesFromQueries<Q>];
 
   const subscribeQuery: Evolu["subscribeQuery"] = () => {
     return () => () => {};
@@ -673,7 +684,7 @@ const kysely = new Kysely.Kysely({
 });
 
 const createQuery: Evolu["createQuery"] = (queryCallback, options) =>
-  pipe(
+  Function.pipe(
     queryCallback(kysely).compile(),
     (compiledQuery): SqliteQuery => {
       if (isSqlMutation(compiledQuery.sql))

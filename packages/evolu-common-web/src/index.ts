@@ -20,6 +20,7 @@ const noOpServerWorker: DbWorker = {
     Effect.fail<NotSupportedPlatformError>({
       _tag: "NotSupportedPlatformError",
     }),
+  loadQueries: () => Effect.succeed({ patches: [] }),
   dispose: Function.constVoid,
 };
 

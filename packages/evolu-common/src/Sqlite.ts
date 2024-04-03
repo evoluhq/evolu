@@ -17,7 +17,6 @@ export interface Sqlite {
   readonly exec: (query: SqliteQuery) => Effect.Effect<SqliteExecResult>;
 }
 
-// TODO: Remove
 export const Sqlite = Context.GenericTag<Sqlite>("@services/Sqlite");
 
 export interface SqliteQuery {
