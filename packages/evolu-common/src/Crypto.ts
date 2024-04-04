@@ -36,14 +36,21 @@ export interface InvalidMnemonicError {
  */
 export type Mnemonic = string & Brand.Brand<"Mnemonic">;
 
-export interface NanoIdGenerator {
-  readonly nanoid: Effect.Effect<NanoId>;
-  readonly nanoidAsNodeId: Effect.Effect<NodeId>;
+export class NanoIdGenerator extends Effect.Tag("NanoIdGenerator")<
+  NanoIdGenerator,
+  {
+    readonly nanoid: Effect.Effect<NanoId>;
+    readonly nanoidAsNodeId: Effect.Effect<NodeId>;
+  }
+>() {
+  static Live = Layer.succeed(
+    NanoIdGenerator,
+    NanoIdGenerator.of({
+      nanoid: Effect.sync(() => nanoid() as NanoId),
+      nanoidAsNodeId: Effect.sync(() => nanoidForNodeId() as NodeId),
+    }),
+  );
 }
-
-export const NanoIdGenerator = Context.GenericTag<NanoIdGenerator>(
-  "@services/NanoIdGenerator",
-);
 
 export type NanoId = string & Brand.Brand<"NanoId">;
 
@@ -54,14 +61,6 @@ export const NodeId = S.string.pipe(
 export type NodeId = S.Schema.Type<typeof NodeId>;
 
 const nanoidForNodeId = customAlphabet("0123456789abcdef", 16);
-
-export const NanoIdGeneratorLive = Layer.succeed(
-  NanoIdGenerator,
-  NanoIdGenerator.of({
-    nanoid: Effect.sync(() => nanoid() as NanoId),
-    nanoidAsNodeId: Effect.sync(() => nanoidForNodeId() as NodeId),
-  }),
-);
 
 // SLIP-21 implementation
 // https://github.com/satoshilabs/slips/blob/master/slip-0021.md

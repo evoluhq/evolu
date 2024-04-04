@@ -98,7 +98,7 @@ export const SqliteFactoryWeb = Layer.effect(
         const channel = createSqliteChannel();
 
         // TODO: Finalize SQLite
-        // yield* _(Effect.addFinalizer((exit) => Effect.unit));
+        // yield* _(Effect.addFinalizer(() => Effect.unit));
 
         /**
          * We don't know which tab will be elected leader, and messages are
@@ -221,24 +221,24 @@ export const SqliteFactoryWeb = Layer.effect(
             }),
         );
 
-        const exec: Sqlite["exec"] = (query) =>
-          Effect.flatMap(nanoIdGenerator.nanoid, (id) =>
-            Effect.async((resume) => {
-              callbacks.set(id, (message) => {
-                switch (message._tag) {
-                  case "ExecSuccess":
-                    resume(Effect.succeed(message.result));
-                    break;
-                  case "ExecError":
-                    resume(Effect.die(message.error));
-                    break;
-                }
-              });
-              channel.postMessage({ _tag: "Exec", id, query });
-            }),
-          );
-
-        return { exec };
+        return Sqlite.of({
+          exec: (query) =>
+            Effect.flatMap(nanoIdGenerator.nanoid, (id) =>
+              Effect.async((resume) => {
+                callbacks.set(id, (message) => {
+                  switch (message._tag) {
+                    case "ExecSuccess":
+                      resume(Effect.succeed(message.result));
+                      break;
+                    case "ExecError":
+                      resume(Effect.die(message.error));
+                      break;
+                  }
+                });
+                channel.postMessage({ _tag: "Exec", id, query });
+              }),
+            ),
+        });
       }),
     });
   }),
