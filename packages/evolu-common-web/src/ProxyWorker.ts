@@ -92,7 +92,7 @@ export const expose = (object: object): void => {
   }: MessageEvent<PostMessage>): void => {
     if (runtime == null) runtime = createEvoluRuntime(config);
 
-    runtime.runCallback(
+    runtime.runFork(
       (object as ExposableObject)[name](...args).pipe(
         Effect.map(
           (value): OnMessage => ({ id, response: { _tag: "succeed", value } }),
