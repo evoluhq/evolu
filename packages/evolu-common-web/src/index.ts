@@ -84,5 +84,3 @@ export const {
    */
   createEvolu,
 } = EvoluFactory.pipe(Effect.provide(EvoluFactoryWeb), Effect.runSync);
-
-// EvoluFactory.createEvolu;
