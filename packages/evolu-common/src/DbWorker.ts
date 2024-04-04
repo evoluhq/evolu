@@ -22,7 +22,7 @@ export interface DbWorker {
 
   readonly loadQueries: (
     queries: ReadonlyArray.NonEmptyReadonlyArray<Query>,
-  ) => Effect.Effect<{ readonly patches: ReadonlyArray<QueryPatches> }>;
+  ) => Effect.Effect<ReadonlyArray<QueryPatches>>;
 
   readonly dispose: () => Effect.Effect<void>;
 }
@@ -46,6 +46,7 @@ export const createDbWorker: Effect.Effect<
 > = Effect.gen(function* (_) {
   const sqliteFactory = yield* _(SqliteFactory);
   const scope = yield* _(Scope.make());
+  // TODO: Move to runtime? Provide only what's required?
   const context = Context.empty().pipe(
     Context.add(Bip39, yield* _(Bip39)),
     Context.add(NanoIdGenerator, yield* _(NanoIdGenerator)),
@@ -61,7 +62,6 @@ export const createDbWorker: Effect.Effect<
         Effect.andThen(sqliteFactory.createSqlite),
         Scope.extend(scope),
         Effect.flatMap((sqlite) =>
-          // TODO: tohle uz musi bejt pres transakci
           ensureDbSchemaWithOwner.pipe(
             Effect.provide(context),
             Effect.provideService(Sqlite, sqlite),
@@ -103,7 +103,6 @@ export const createDbWorker: Effect.Effect<
             }),
           ),
         ),
-        Effect.map((patches) => ({ patches })),
       ),
 
     dispose: () =>

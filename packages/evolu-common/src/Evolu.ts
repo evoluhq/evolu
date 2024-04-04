@@ -630,10 +630,9 @@ const createEvolu: Effect.Effect<Evolu, never, Config | DbWorkerFactory> =
           if (queue.length === 1) {
             queueMicrotask(() => {
               if (!ReadonlyArray.isNonEmptyReadonlyArray(queue)) return;
-              dbWorker.loadQueries(queue).pipe(
-                Effect.flatMap(({ patches }) => handlePatches(patches)),
-                run,
-              );
+              dbWorker
+                .loadQueries(queue)
+                .pipe(Effect.flatMap(handlePatches), run);
               queue = [];
             });
           }
