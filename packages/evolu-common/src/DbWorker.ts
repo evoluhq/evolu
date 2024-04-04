@@ -12,6 +12,7 @@ import {
   ensureDbSchemaWithOwner,
   makeRowsStore,
   maybeExplainQueryPlan,
+  transaction,
 } from "./Db.js";
 import { QueryPatches, makePatches } from "./Diff.js";
 import { Owner } from "./Owner.js";
@@ -62,7 +63,7 @@ export const createDbWorker: Effect.Effect<
         Effect.andThen(sqliteFactory.createSqlite),
         Scope.extend(scope),
         Effect.flatMap((sqlite) =>
-          ensureDbSchemaWithOwner.pipe(
+          transaction(ensureDbSchemaWithOwner).pipe(
             Effect.provide(context),
             Effect.provideService(Sqlite, sqlite),
             Effect.tap((owner) =>
@@ -105,6 +106,7 @@ export const createDbWorker: Effect.Effect<
         ),
       ),
 
+    // TODO: Wait for Sqlite.
     dispose: () =>
       Effect.logTrace("dispose DbWorker").pipe(
         Effect.andThen(Scope.close(scope, Exit.succeed("DbWorker disposed"))),

@@ -287,7 +287,7 @@ export const schemaToTables = (schema: S.Schema<any>): ReadonlyArray<Table> =>
     ),
   );
 
-export const transaction = <R, E, A>(
+export const transaction = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E, Sqlite | R> =>
   Effect.flatMap(Sqlite, (sqlite) =>
