@@ -316,25 +316,6 @@ export type SqliteNoSuchTableOrColumnError = S.Schema.Type<
   typeof SqliteNoSuchTableOrColumnError
 >;
 
-export const ensureDbSchemaWithOwner = Effect.gen(function* (_) {
-  const sqlite = yield* _(Sqlite);
-
-  return yield* _(
-    sqlite.exec(selectOwner),
-    Effect.map(
-      ({ rows: [row] }): Owner => ({
-        id: row.id as OwnerId,
-        mnemonic: row.mnemonic as Mnemonic,
-        encryptionKey: row.encryptionKey as Uint8Array,
-      }),
-    ),
-    sqliteDefectToNoSuchTableOrColumnError,
-    Effect.catchTag("NoSuchTableOrColumnError", () =>
-      createDbSchemaWithOwner(),
-    ),
-  );
-});
-
 const sqliteDefectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
   (error) =>
     S.is(SqliteNoSuchTableOrColumnError)(error)
@@ -344,6 +325,19 @@ const sqliteDefectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
           }),
         )
       : Option.none(),
+);
+
+export const ensureDbSchemaWithOwner = Sqlite.pipe(
+  Effect.flatMap((sqlite) => sqlite.exec(selectOwner)),
+  Effect.map(
+    ({ rows: [row] }): Owner => ({
+      id: row.id as OwnerId,
+      mnemonic: row.mnemonic as Mnemonic,
+      encryptionKey: row.encryptionKey as Uint8Array,
+    }),
+  ),
+  sqliteDefectToNoSuchTableOrColumnError,
+  Effect.catchTag("NoSuchTableOrColumnError", () => createDbSchemaWithOwner()),
 );
 
 export const createDbSchemaWithOwner = (
