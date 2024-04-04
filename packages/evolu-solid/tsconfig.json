@@ -7,6 +7,6 @@
     "jsx": "preserve",
     "jsxImportSource": "solid-js"
   },
-  "include": ["src", "test", "./.eslintrc.cjs"],
+  "include": ["src", "test"],
   "exclude": ["dist", "node_modules"]
 }

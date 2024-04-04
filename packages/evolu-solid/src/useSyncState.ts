@@ -1,19 +1,11 @@
-import * as O from "effect/Option";
-import { pipe } from "effect/Function";
+import type { Accessor } from "solid-js";;
 import { SyncState } from "@evolu/common";
 import { useEvolu } from "./useEvolu.js";
-import { useSyncEvoluStore } from "./useSyncEvoluStore.js";
+import { useSyncExternalStore } from "./useSyncExternalStore.js";
 
 /** Subscribe to {@link SyncState} changes. */
-export const useSyncState = (): SyncState => {
+export const useSyncState = (): Accessor<SyncState> => {
   const evolu = useEvolu();
-  return pipe(
-    useSyncEvoluStore(evolu.subscribeSyncState, () =>
-      O.some(evolu.getSyncState()),
-    ),
-    // kinda `absurd`, because `SyncState` is always there (`some`)
-    O.getOrThrowWith(() =>
-      Error("Unexpected error. `SyncState` should be there, but is `none`"),
-    ),
-  );
+  return useSyncExternalStore(evolu.subscribeSyncState, () =>
+      evolu.getSyncState());
 };
