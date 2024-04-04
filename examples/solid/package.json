@@ -1,0 +1,20 @@
+{
+  "name": "example-bare",
+  "type": "module",
+  "scripts": {
+    "dev": "vinxi dev",
+    "build": "vinxi build",
+    "start": "vinxi start"
+  },
+  "dependencies": {
+    "@solidjs/start": "^1.0.0-rc.0",
+    "solid-js": "^1.8.16",
+    "vinxi": "^0.3.10",
+    "@evolu/common": "latest",
+    "@evolu/common-web": "latest",
+    "@evolu/solid": "latest"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
