@@ -470,7 +470,7 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
       // For hot/live reload and future Evolu dynamic import.
       const instances = new Map<string, Evolu>();
 
-      return {
+      return EvoluFactory.of({
         createEvolu: <T extends DatabaseSchema, I>(
           schema: S.Schema<T, I>,
           config?: Partial<Config>,
@@ -488,20 +488,9 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
           evolu.ensureSchema(schema, config?.indexes);
           return evolu as Evolu<T>;
         },
-      };
+      });
     }),
   );
-}
-
-interface LoadingPromise {
-  /** Promise with props for the upcoming React use hook. */
-  promise: Promise<QueryResult> & {
-    status?: "pending" | "fulfilled" | "rejected";
-    value?: QueryResult;
-    reason?: unknown;
-  };
-  resolve: (rows: QueryResult) => void;
-  releaseOnResolve: boolean;
 }
 
 const createEvolu: Effect.Effect<Evolu, never, Config | DbWorkerFactory> =
@@ -547,37 +536,6 @@ const createEvolu: Effect.Effect<Evolu, never, Config | DbWorkerFactory> =
       Effect.catchTag("NotSupportedPlatformError", () => Effect.unit), // no-op
       run,
     );
-
-    const loadQuery = Effect.sync(() => {
-      let queue: ReadonlyArray<Query> = [];
-
-      return <R extends Row>(query: Query<R>): Promise<QueryResult<R>> => {
-        Effect.logDebug(`Evolu loadQuery ${query}`).pipe(run);
-        let isNew = false;
-        let loadingPromise = loadingPromises.get(query);
-        if (!loadingPromise) {
-          isNew = true;
-          let resolve: LoadingPromise["resolve"] = constVoid;
-          const promise: LoadingPromise["promise"] = new Promise((_resolve) => {
-            resolve = _resolve;
-          });
-          loadingPromise = { resolve, promise, releaseOnResolve: false };
-          loadingPromises.set(query, loadingPromise);
-        }
-        if (isNew) queue = [...queue, query];
-        if (queue.length === 1) {
-          queueMicrotask(() => {
-            if (!ReadonlyArray.isNonEmptyReadonlyArray(queue)) return;
-            dbWorker.loadQueries(queue).pipe(
-              Effect.flatMap(({ patches }) => handlePatches(patches)),
-              run,
-            );
-            queue = [];
-          });
-        }
-        return loadingPromise.promise as Promise<QueryResult<R>>;
-      };
-    }).pipe(Effect.runSync);
 
     const handlePatches = (
       patches: ReadonlyArray<QueryPatches>,
@@ -626,114 +584,153 @@ const createEvolu: Effect.Effect<Evolu, never, Config | DbWorkerFactory> =
         if (promiseWithResolve.releaseOnResolve) loadingPromises.delete(query);
       });
 
-    // "For example, a data framework can set the status and value fields on a promise
-    // preemptively, before passing to React, so that React can unwrap it without waiting
-    // a microtask."
-    // https://github.com/acdlite/rfcs/blob/first-class-promises/text/0000-first-class-support-for-promises.md
-    const setPromiseAsResolved =
-      <T>(promise: Promise<T>) =>
-      (value: unknown): void => {
-        Object.assign(promise, { status: "fulfilled", value });
-      };
-
-    const loadQueries = <R extends Row, Q extends Queries<R>>(
-      queries: [...Q],
-    ): [...QueryResultsPromisesFromQueries<Q>] =>
-      queries.map(loadQuery) as [...QueryResultsPromisesFromQueries<Q>];
-
-    const subscribeQuery: Evolu["subscribeQuery"] = (query) => (listener) => {
-      subscribedQueries.set(
-        query,
-        Number.increment(subscribedQueries.get(query) ?? 0),
-      );
-      const unsubscribe = rowsStore.subscribe(listener);
-
-      return () => {
-        const count = subscribedQueries.get(query);
-        if (count != null && count > 1)
-          subscribedQueries.set(query, Number.decrement(count));
-        else subscribedQueries.delete(query);
-        unsubscribe();
-      };
-    };
-
-    const getQuery = <R extends Row>(query: Query<R>): QueryResult<R> =>
-      queryResultFromRows(
-        rowsStore.getState().get(query) || emptyRows(),
-      ) as QueryResult<R>;
-
-    const subscribeOwner: Evolu["subscribeOwner"] = () => {
-      return () => () => {};
-    };
-
-    const getOwner: Evolu["getOwner"] = () => {
-      return null;
-    };
-
-    const subscribeSyncState: Evolu["subscribeSyncState"] = () => {
-      return () => () => {};
-    };
-
-    const getSyncState: Evolu["getSyncState"] = () => {
-      return { _tag: "SyncStateInitial" };
-    };
-
-    const create: Evolu["create"] = () => {
-      return { id: "123" as Id };
-    };
-
-    const update: Evolu["update"] = () => {
-      return { id: "123" as Id };
-    };
-
-    const createOrUpdate: Evolu["createOrUpdate"] = () => {
-      return { id: "123" as Id };
-    };
-
-    const resetOwner: Evolu["resetOwner"] = () => {
-      //
-    };
-
-    const restoreOwner: Evolu["restoreOwner"] = () => {
-      //
-    };
-
-    const ensureSchema: Evolu["ensureSchema"] = () => {
-      //
-    };
-
-    const sync: Evolu["sync"] = () => {
-      //
-    };
-
-    const dispose: Evolu["dispose"] = () =>
-      Effect.logTrace("dispose Evolu").pipe(
-        Effect.andThen(Scope.close(scope, Exit.succeed("Evolu disposed"))),
-        run,
-      );
-
-    return {
+    const evolu: Evolu = {
       subscribeError: errorStore.subscribe,
       getError: errorStore.getState,
-      createQuery,
-      loadQuery,
-      loadQueries,
-      subscribeQuery,
-      getQuery,
-      subscribeOwner,
-      getOwner,
-      subscribeSyncState,
-      getSyncState,
-      create,
-      update,
-      createOrUpdate,
-      resetOwner,
-      restoreOwner,
-      ensureSchema,
-      sync,
-      dispose,
+
+      createQuery: (queryCallback, options) =>
+        pipe(
+          queryCallback(kysely).compile(),
+          (compiledQuery): SqliteQuery => {
+            if (isSqlMutation(compiledQuery.sql))
+              throw new Error(
+                "SQL mutation (INSERT, UPDATE, DELETE, etc.) isn't allowed in the Evolu `createQuery` function. Kysely suggests it because there is no read-only Kysely yet, and removing such an API is not possible. For mutations, use Evolu mutation API.",
+              );
+            const parameters = compiledQuery.parameters as NonNullable<
+              SqliteQuery["parameters"]
+            >;
+            return {
+              sql: compiledQuery.sql,
+              parameters,
+              ...(options && { options }),
+            };
+          },
+          (query) => serializeQuery(query),
+        ),
+
+      loadQuery: Effect.sync(() => {
+        let queue: ReadonlyArray<Query> = [];
+
+        return <R extends Row>(query: Query<R>): Promise<QueryResult<R>> => {
+          Effect.logDebug(`Evolu loadQuery ${query}`).pipe(run);
+          let isNew = false;
+          let loadingPromise = loadingPromises.get(query);
+          if (!loadingPromise) {
+            isNew = true;
+            let resolve: LoadingPromise["resolve"] = constVoid;
+            const promise: LoadingPromise["promise"] = new Promise(
+              (_resolve) => {
+                resolve = _resolve;
+              },
+            );
+            loadingPromise = { resolve, promise, releaseOnResolve: false };
+            loadingPromises.set(query, loadingPromise);
+          }
+          if (isNew) queue = [...queue, query];
+          if (queue.length === 1) {
+            queueMicrotask(() => {
+              if (!ReadonlyArray.isNonEmptyReadonlyArray(queue)) return;
+              dbWorker.loadQueries(queue).pipe(
+                Effect.flatMap(({ patches }) => handlePatches(patches)),
+                run,
+              );
+              queue = [];
+            });
+          }
+          return loadingPromise.promise as Promise<QueryResult<R>>;
+        };
+      }).pipe(Effect.runSync),
+
+      loadQueries: <R extends Row, Q extends Queries<R>>(
+        queries: [...Q],
+      ): [...QueryResultsPromisesFromQueries<Q>] =>
+        queries.map(evolu.loadQuery) as [...QueryResultsPromisesFromQueries<Q>],
+
+      subscribeQuery: (query) => (listener) => {
+        subscribedQueries.set(
+          query,
+          Number.increment(subscribedQueries.get(query) ?? 0),
+        );
+        const unsubscribe = rowsStore.subscribe(listener);
+
+        return () => {
+          const count = subscribedQueries.get(query);
+          if (count != null && count > 1)
+            subscribedQueries.set(query, Number.decrement(count));
+          else subscribedQueries.delete(query);
+          unsubscribe();
+        };
+      },
+
+      getQuery: <R extends Row>(query: Query<R>): QueryResult<R> =>
+        queryResultFromRows(
+          rowsStore.getState().get(query) || emptyRows(),
+        ) as QueryResult<R>,
+
+      subscribeOwner: () => {
+        return () => () => {};
+      },
+
+      getOwner: () => {
+        return null;
+      },
+
+      subscribeSyncState: () => {
+        return () => () => {};
+      },
+
+      getSyncState: () => {
+        return { _tag: "SyncStateInitial" };
+      },
+
+      create: () => {
+        return { id: "123" as Id };
+      },
+
+      update: () => {
+        return { id: "123" as Id };
+      },
+
+      createOrUpdate: () => {
+        return { id: "123" as Id };
+      },
+
+      resetOwner: () => {
+        //
+      },
+
+      restoreOwner: () => {
+        //
+      },
+
+      ensureSchema: () => {
+        //
+      },
+
+      sync: () => {
+        //
+      },
+
+      dispose: () =>
+        Effect.logTrace("dispose Evolu").pipe(
+          Effect.andThen(Scope.close(scope, Exit.succeed("Evolu disposed"))),
+          run,
+        ),
     };
+
+    return evolu;
   });
+
+interface LoadingPromise {
+  /** Promise with props for the upcoming React use hook. */
+  promise: Promise<QueryResult> & {
+    status?: "pending" | "fulfilled" | "rejected";
+    value?: QueryResult;
+    reason?: unknown;
+  };
+  resolve: (rows: QueryResult) => void;
+  releaseOnResolve: boolean;
+}
 
 // https://kysely.dev/docs/recipes/splitting-query-building-and-execution
 const kysely = new Kysely.Kysely({
@@ -747,26 +744,6 @@ const kysely = new Kysely.Kysely({
       new Kysely.SqliteQueryCompiler(),
   },
 });
-
-const createQuery: Evolu["createQuery"] = (queryCallback, options) =>
-  pipe(
-    queryCallback(kysely).compile(),
-    (compiledQuery): SqliteQuery => {
-      if (isSqlMutation(compiledQuery.sql))
-        throw new Error(
-          "SQL mutation (INSERT, UPDATE, DELETE, etc.) isn't allowed in the Evolu `createQuery` function. Kysely suggests it because there is no read-only Kysely yet, and removing such an API is not possible. For mutations, use Evolu mutation API.",
-        );
-      const parameters = compiledQuery.parameters as NonNullable<
-        SqliteQuery["parameters"]
-      >;
-      return {
-        sql: compiledQuery.sql,
-        parameters,
-        ...(options && { options }),
-      };
-    },
-    (query) => serializeQuery(query),
-  );
 
 const createIndex = kysely.schema.createIndex.bind(kysely.schema);
 type CreateIndex = typeof createIndex;
@@ -798,6 +775,16 @@ export const createIndexes = (
       sql: index.compile().sql,
     }),
   );
+
+// "For example, a data framework can set the status and value fields on a promise
+// preemptively, before passing to React, so that React can unwrap it without waiting
+// a microtask."
+// https://github.com/acdlite/rfcs/blob/first-class-promises/text/0000-first-class-support-for-promises.md
+const setPromiseAsResolved =
+  <T>(promise: Promise<T>) =>
+  (value: unknown): void => {
+    Object.assign(promise, { status: "fulfilled", value });
+  };
 
 // import * as S from "@effect/schema/Schema";
 // import * as Context from "effect/Context";

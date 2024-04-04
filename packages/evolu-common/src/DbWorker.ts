@@ -17,13 +17,6 @@ import { QueryPatches, makePatches } from "./Diff.js";
 import { Owner } from "./Owner.js";
 import { Sqlite, SqliteFactory } from "./Sqlite.js";
 
-export class DbWorkerFactory extends Effect.Tag("DbWorkerFactory")<
-  DbWorkerFactory,
-  {
-    readonly createDbWorker: Effect.Effect<DbWorker, never, Config>;
-  }
->() {}
-
 export interface DbWorker {
   readonly init: () => Effect.Effect<Owner, NotSupportedPlatformError, Config>;
 
@@ -38,6 +31,14 @@ export interface NotSupportedPlatformError {
   readonly _tag: "NotSupportedPlatformError";
 }
 
+export class DbWorkerFactory extends Effect.Tag("DbWorkerFactory")<
+  DbWorkerFactory,
+  {
+    readonly createDbWorker: Effect.Effect<DbWorker, never, Config>;
+  }
+>() {}
+
+// It's a function because it's called from Web Worker.
 export const createDbWorker: Effect.Effect<
   DbWorker,
   never,
@@ -54,62 +55,64 @@ export const createDbWorker: Effect.Effect<
   );
   const rowsStore = yield* _(makeRowsStore);
 
-  const init: DbWorker["init"] = () =>
-    Effect.logTrace("DbWorker init").pipe(
-      Effect.andThen(sqliteFactory.createSqlite),
-      Scope.extend(scope),
-      Effect.flatMap((sqlite) =>
-        // TODO: tohle uz musi bejt pres transakci
-        ensureDbSchemaWithOwner.pipe(
-          Effect.provide(context),
-          Effect.provideService(Sqlite, sqlite),
-          Effect.tap((owner) =>
-            Deferred.succeed(sqliteAndOwnerDeferred, { sqlite, owner }),
+  const dbWorker: DbWorker = {
+    init: () =>
+      Effect.logTrace("DbWorker init").pipe(
+        Effect.andThen(sqliteFactory.createSqlite),
+        Scope.extend(scope),
+        Effect.flatMap((sqlite) =>
+          // TODO: tohle uz musi bejt pres transakci
+          ensureDbSchemaWithOwner.pipe(
+            Effect.provide(context),
+            Effect.provideService(Sqlite, sqlite),
+            Effect.tap((owner) =>
+              Deferred.succeed(sqliteAndOwnerDeferred, { sqlite, owner }),
+            ),
           ),
         ),
       ),
-    );
 
-  const loadQueries: DbWorker["loadQueries"] = (queries) =>
-    Deferred.await(sqliteAndOwnerDeferred).pipe(
-      Effect.tap(() =>
-        Effect.logDebug(`DbWorker loadQueries ${JSON.stringify(queries)}`),
-      ),
-      Effect.flatMap(({ sqlite }) =>
-        Effect.forEach(ReadonlyArray.dedupe(queries), (query) => {
-          const sqliteQuery = deserializeQuery(query);
-          return sqlite.exec(sqliteQuery).pipe(
-            Effect.map(({ rows }) => [query, rows] as const),
-            Effect.tap(() =>
-              maybeExplainQueryPlan(sqliteQuery).pipe(
-                Effect.provideService(Sqlite, sqlite),
+    loadQueries: (queries) =>
+      Deferred.await(sqliteAndOwnerDeferred).pipe(
+        Effect.tap(() =>
+          Effect.logDebug(`DbWorker loadQueries ${JSON.stringify(queries)}`),
+        ),
+        Effect.flatMap(({ sqlite }) =>
+          Effect.forEach(ReadonlyArray.dedupe(queries), (query) => {
+            const sqliteQuery = deserializeQuery(query);
+            return sqlite.exec(sqliteQuery).pipe(
+              Effect.map(({ rows }) => [query, rows] as const),
+              Effect.tap(() =>
+                maybeExplainQueryPlan(sqliteQuery).pipe(
+                  Effect.provideService(Sqlite, sqlite),
+                ),
               ),
-            ),
-          );
-        }),
-      ),
-      Effect.bindTo("queryRows"),
-      Effect.bind("previous", () => Effect.succeed(rowsStore.getState())),
-      Effect.tap(({ queryRows, previous }) =>
-        rowsStore.setState(new Map([...previous, ...queryRows])),
-      ),
-      Effect.map(({ queryRows, previous }) =>
-        queryRows.map(
-          ([query, rows]): QueryPatches => ({
-            query,
-            patches: makePatches(previous.get(query), rows),
+            );
           }),
         ),
+        Effect.bindTo("queryRows"),
+        Effect.bind("previous", () => Effect.succeed(rowsStore.getState())),
+        Effect.tap(({ queryRows, previous }) =>
+          rowsStore.setState(new Map([...previous, ...queryRows])),
+        ),
+        Effect.map(({ queryRows, previous }) =>
+          queryRows.map(
+            ([query, rows]): QueryPatches => ({
+              query,
+              patches: makePatches(previous.get(query), rows),
+            }),
+          ),
+        ),
+        Effect.map((patches) => ({ patches })),
       ),
-      Effect.map((patches) => ({ patches })),
-    );
 
-  const dispose: DbWorker["dispose"] = () =>
-    Effect.logTrace("dispose DbWorker").pipe(
-      Effect.andThen(Scope.close(scope, Exit.succeed("DbWorker disposed"))),
-    );
+    dispose: () =>
+      Effect.logTrace("dispose DbWorker").pipe(
+        Effect.andThen(Scope.close(scope, Exit.succeed("DbWorker disposed"))),
+      ),
+  };
 
-  return { init, loadQueries, dispose };
+  return dbWorker;
 });
 
 // import * as Context from "effect/Context";

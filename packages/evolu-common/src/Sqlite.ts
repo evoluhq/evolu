@@ -5,13 +5,6 @@ import { Equivalence } from "effect/Equivalence";
 import * as Predicate from "effect/Predicate";
 import { Config } from "./Config.js";
 
-export class SqliteFactory extends Context.Tag("SqliteFactory")<
-  SqliteFactory,
-  {
-    readonly createSqlite: Effect.Effect<Sqlite, never, Config>;
-  }
->() {}
-
 export interface Sqlite {
   readonly exec: (query: SqliteQuery) => Effect.Effect<SqliteExecResult>;
 }
@@ -22,6 +15,13 @@ export const Sqlite = Context.GenericTag<Sqlite>("@services/Sqlite");
 //   Sqlite,
 //   { readonly exec: (query: SqliteQuery) => Effect.Effect<SqliteExecResult> }
 // >() {}
+
+export class SqliteFactory extends Context.Tag("SqliteFactory")<
+  SqliteFactory,
+  {
+    readonly createSqlite: Effect.Effect<Sqlite, never, Config>;
+  }
+>() {}
 
 export interface SqliteQuery {
   readonly sql: string;
