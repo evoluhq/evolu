@@ -4,7 +4,6 @@ import {
   DbWorker,
   DbWorkerFactory,
   EvoluFactory,
-  EvoluFactoryCommon,
   InvalidMnemonicError,
   Mnemonic,
   NotSupportedPlatformError,
@@ -34,7 +33,7 @@ const DbWorkerFactoryWeb = Layer.succeed(DbWorkerFactory, {
 });
 
 export const EvoluFactoryWeb = Layer.provide(
-  EvoluFactoryCommon,
+  EvoluFactory.Common,
   DbWorkerFactoryWeb,
 );
 
@@ -85,3 +84,5 @@ export const {
    */
   createEvolu,
 } = EvoluFactory.pipe(Effect.provide(EvoluFactoryWeb), Effect.runSync);
+
+// EvoluFactory.createEvolu;

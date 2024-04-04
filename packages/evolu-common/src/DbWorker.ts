@@ -17,18 +17,7 @@ import { QueryPatches, makePatches } from "./Diff.js";
 import { Owner } from "./Owner.js";
 import { Sqlite, SqliteFactory } from "./Sqlite.js";
 
-/**
- * Perf notes:
- *
- * - Effect.promise uses Effect.async in the implementation.
- * - Generators are slower than pipes.
- * - MinimumLogLevel adds 0.4-0.6ms (on M1) to the first run.
- * - ProvideService is 2x faster then providing a layer, but layer providing
- *   should happen once at app startup, or once per a request cycle, otherwise
- *   provide services or a context, or prepare runtimes up front.
- */
-
-export class DbWorkerFactory extends Context.Tag("DbWorkerFactory")<
+export class DbWorkerFactory extends Effect.Tag("DbWorkerFactory")<
   DbWorkerFactory,
   {
     readonly createDbWorker: Effect.Effect<DbWorker, never, Config>;
@@ -49,7 +38,11 @@ export interface NotSupportedPlatformError {
   readonly _tag: "NotSupportedPlatformError";
 }
 
-export const createDbWorker = Effect.gen(function* (_) {
+export const createDbWorker: Effect.Effect<
+  DbWorker,
+  never,
+  SqliteFactory | Bip39 | NanoIdGenerator
+> = Effect.gen(function* (_) {
   const sqliteFactory = yield* _(SqliteFactory);
   const scope = yield* _(Scope.make());
   const context = Context.empty().pipe(
@@ -59,7 +52,6 @@ export const createDbWorker = Effect.gen(function* (_) {
   const sqliteAndOwnerDeferred = yield* _(
     Deferred.make<{ readonly sqlite: Sqlite; readonly owner: Owner }>(),
   );
-
   const rowsStore = yield* _(makeRowsStore);
 
   const init: DbWorker["init"] = () =>
@@ -67,6 +59,7 @@ export const createDbWorker = Effect.gen(function* (_) {
       Effect.andThen(sqliteFactory.createSqlite),
       Scope.extend(scope),
       Effect.flatMap((sqlite) =>
+        // TODO: tohle uz musi bejt pres transakci
         ensureDbSchemaWithOwner.pipe(
           Effect.provide(context),
           Effect.provideService(Sqlite, sqlite),

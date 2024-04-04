@@ -2,7 +2,6 @@ import {
   Bip39,
   DbWorkerFactory,
   EvoluFactory,
-  EvoluFactoryCommon,
   InvalidMnemonicError,
   Mnemonic,
 } from "@evolu/common";
@@ -21,7 +20,7 @@ export const parseMnemonic: (
 ).parse;
 
 export const EvoluFactoryReactNative = Layer.provide(
-  EvoluFactoryCommon,
+  EvoluFactory.Common,
   Layer.succeed(DbWorkerFactory, {
     createDbWorker: Effect.sync(() => {
       throw "";
@@ -66,7 +65,7 @@ export const {
 } = EvoluFactory.pipe(Effect.provide(EvoluFactoryReactNative), Effect.runSync);
 
 // } = EvoluFactory.pipe(
-//   Effect.provide(EvoluFactoryCommon.pipe(Layer.provide(DbWorkerFactoryCommon))),
+//   Effect.provide(EvoluFactory.Common.pipe(Layer.provide(DbWorkerFactoryCommon))),
 //   Effect.runSync,
 // );
 
