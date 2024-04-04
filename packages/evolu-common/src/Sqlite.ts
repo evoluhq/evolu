@@ -3,21 +3,25 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import { Equivalence } from "effect/Equivalence";
 import * as Predicate from "effect/Predicate";
-import * as Scope from "effect/Scope";
 import { Config } from "./Config.js";
 
 export class SqliteFactory extends Context.Tag("SqliteFactory")<
   SqliteFactory,
   {
-    readonly createSqlite: Effect.Effect<Sqlite, never, Config | Scope.Scope>;
+    readonly createSqlite: Effect.Effect<Sqlite, never, Config>;
   }
 >() {}
 
 export interface Sqlite {
   readonly exec: (query: SqliteQuery) => Effect.Effect<SqliteExecResult>;
 }
-
 export const Sqlite = Context.GenericTag<Sqlite>("@services/Sqlite");
+
+// TODO: Ask Effect team why this doesn't compile.
+// export class Sqlite extends Context.Tag("Sqlite")<
+//   Sqlite,
+//   { readonly exec: (query: SqliteQuery) => Effect.Effect<SqliteExecResult> }
+// >() {}
 
 export interface SqliteQuery {
   readonly sql: string;
