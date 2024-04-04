@@ -25,8 +25,6 @@ export const SqliteLive = Layer.effect(
           if (!isSqlMutation(query.sql)) {
             const rows = (yield* _(
               Effect.promise(() => db.getAllAsync(query.sql, parameters)),
-              // TODO: Effect.logDebug input/output.
-              // maybeLogSql(query, config.logSql),
               maybeLogSqliteQueryExecutionTime(query),
             )) as SqliteRow[];
             maybeParseJson(rows);

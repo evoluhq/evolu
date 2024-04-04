@@ -92,10 +92,18 @@ export const createEvoluRuntime = (
   const evoluLayer =
     mergedConfig.minimumLogLevel === "none"
       ? ConfigLive
-      : Layer.merge(Logger.minimumLogLevel(minimumLogLevel), ConfigLive);
+      : Layer.mergeAll(
+          ConfigLive,
+          Logger.minimumLogLevel(minimumLogLevel),
+          Logger.replace(Logger.defaultLogger, minimalLogger),
+        );
 
   return ManagedRuntime.make(evoluLayer);
 };
+
+const minimalLogger = Logger.make(({ logLevel, message }) => {
+  globalThis.console.log(`[${logLevel.label}]`, message);
+});
 
 // import * as Context from "effect/Context";
 // import * as Layer from "effect/Layer";

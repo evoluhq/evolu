@@ -1,8 +1,9 @@
 import * as S from "@effect/schema/Schema";
+import * as Console from "effect/Console";
 import * as Context from "effect/Context";
-import * as Layer from "effect/Layer";
 import * as Effect from "effect/Effect";
 import { Equivalence } from "effect/Equivalence";
+import * as Layer from "effect/Layer";
 import * as Predicate from "effect/Predicate";
 import { Config } from "./Config.js";
 
@@ -32,13 +33,11 @@ export class SqliteFactory extends Context.Tag("SqliteFactory")<
           (sqlite): Sqlite => ({
             ...sqlite,
             exec: (query) =>
-              Effect.logDebug(`SQLite exec ${JSON.stringify(query)}`).pipe(
+              Effect.logDebug("SQLite exec:").pipe(
+                Effect.andThen(Effect.logDebug(query)),
                 Effect.andThen(sqlite.exec(query)),
-                Effect.tap((result) =>
-                  Effect.logDebug(
-                    `SQLite exec result ${JSON.stringify(result)}`,
-                  ),
-                ),
+                Effect.tap(() => Effect.logDebug("SQLite exec result:")),
+                Effect.tap((result) => Effect.logDebug(result)),
               ),
           }),
         ),
@@ -138,18 +137,19 @@ const isSqlMutationRegEx = new RegExp(
 export const isSqlMutation = (sql: string): boolean =>
   isSqlMutationRegEx.test(sql);
 
-// TODO: Use Effect.logDebug once it will support more args.
 export const maybeLogSqliteQueryExecutionTime =
   (query: SqliteQuery) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> => {
     if (!query.options?.logQueryExecutionTime) return effect;
-    return effect.pipe(
-      Effect.tap(() => Effect.log("QueryExecutionTime")),
-      // TODO: Fix that double log.
-      // Not using Effect.log because of formating
-      // eslint-disable-next-line no-console
-      Effect.tap(() => console.log(query.sql)),
-      Effect.withLogSpan("duration"),
+    return Effect.Do.pipe(
+      Effect.let("start", () => performance.now()),
+      Effect.bind("result", () => effect),
+      Effect.let("elapsed", ({ start }) => performance.now() - start),
+      Effect.tap(({ elapsed }) =>
+        Console.log(`QueryExecutionTime: ${elapsed}ms`),
+      ),
+      Effect.tap(() => Console.log(query)),
+      Effect.map(({ result }) => result),
     );
   };
 
@@ -197,21 +197,3 @@ export type Index = S.Schema.Type<typeof Index>;
 // TODO: Rename to sqliteIndexEquivalence
 export const indexEquivalence: Equivalence<Index> = (self, that) =>
   self.name === that.name && self.sql === that.sql;
-
-// TODO: Effect.logDebug input/output when variadic arguments supported
-export const maybeLogSql =
-  (query: SqliteQuery, logSql: boolean) =>
-  <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> => {
-    if (!logSql) return effect;
-    return effect.pipe(
-      Effect.tap(() => Effect.log("SQL")),
-      // Not using Effect.log because of formating
-      Effect.tap(() => {
-        // eslint-disable-next-line no-console
-        console.log(query.sql);
-        if (query.parameters && query.parameters.length > 0)
-          // eslint-disable-next-line no-console
-          console.log(query.parameters);
-      }),
-    );
-  };
