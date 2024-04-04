@@ -1,14 +1,10 @@
 import * as S from "@effect/schema/Schema";
 import * as Context from "effect/Context";
+import * as Layer from "effect/Layer";
 import * as Effect from "effect/Effect";
 import { Equivalence } from "effect/Equivalence";
 import * as Predicate from "effect/Predicate";
 import { Config } from "./Config.js";
-
-export interface Sqlite {
-  readonly exec: (query: SqliteQuery) => Effect.Effect<SqliteExecResult>;
-}
-export const Sqlite = Context.GenericTag<Sqlite>("@services/Sqlite");
 
 // TODO: Ask Effect team why this doesn't compile.
 // export class Sqlite extends Context.Tag("Sqlite")<
@@ -16,12 +12,40 @@ export const Sqlite = Context.GenericTag<Sqlite>("@services/Sqlite");
 //   { readonly exec: (query: SqliteQuery) => Effect.Effect<SqliteExecResult> }
 // >() {}
 
+export interface Sqlite {
+  readonly exec: (query: SqliteQuery) => Effect.Effect<SqliteExecResult>;
+}
+export const Sqlite = Context.GenericTag<Sqlite>("@services/Sqlite");
+
 export class SqliteFactory extends Context.Tag("SqliteFactory")<
   SqliteFactory,
   {
     readonly createSqlite: Effect.Effect<Sqlite, never, Config>;
   }
->() {}
+>() {
+  static Common = Layer.effect(
+    SqliteFactory,
+    Effect.map(SqliteFactory, (sqliteFactory) => ({
+      createSqlite: sqliteFactory.createSqlite.pipe(
+        // Aspect-oriented programming, who remembers that? 😂
+        Effect.map(
+          (sqlite): Sqlite => ({
+            ...sqlite,
+            exec: (query) =>
+              Effect.logDebug(`SQLite exec ${JSON.stringify(query)}`).pipe(
+                Effect.andThen(sqlite.exec(query)),
+                Effect.tap((result) =>
+                  Effect.logDebug(
+                    `SQLite exec result ${JSON.stringify(result)}`,
+                  ),
+                ),
+              ),
+          }),
+        ),
+      ),
+    })),
+  );
+}
 
 export interface SqliteQuery {
   readonly sql: string;
@@ -114,6 +138,7 @@ const isSqlMutationRegEx = new RegExp(
 export const isSqlMutation = (sql: string): boolean =>
   isSqlMutationRegEx.test(sql);
 
+// TODO: Use Effect.logDebug once it will support more args.
 export const maybeLogSqliteQueryExecutionTime =
   (query: SqliteQuery) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> => {

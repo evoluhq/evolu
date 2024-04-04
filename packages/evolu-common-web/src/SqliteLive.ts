@@ -160,8 +160,6 @@ export const SqliteFactoryWeb = Layer.effect(
                 }) as SqliteRow[],
               catch: ensureTransferableError,
             }).pipe(
-              // TODO: Effect.logDebug input/output.
-              // maybeLogSql(query, logSql),
               maybeLogSqliteQueryExecutionTime(query),
               Effect.match({
                 onSuccess: (rows) => {
