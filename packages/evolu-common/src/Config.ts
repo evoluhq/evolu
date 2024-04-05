@@ -101,6 +101,7 @@ export const createEvoluRuntime = (
   return ManagedRuntime.make(evoluLayer);
 };
 
+// TODO: Spans and variadic when supported.
 const minimalLogger = Logger.make(({ logLevel, message }) => {
   globalThis.console.log(`[${logLevel.label}]`, message);
 });
