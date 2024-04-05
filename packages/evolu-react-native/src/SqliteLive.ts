@@ -4,7 +4,6 @@ import {
   SqliteRow,
   isSqlMutation,
   maybeLogSqliteQueryExecutionTime,
-  maybeParseJson,
   valuesToSqliteValues,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
@@ -27,7 +26,6 @@ export const SqliteLive = Layer.effect(
               Effect.promise(() => db.getAllAsync(query.sql, parameters)),
               maybeLogSqliteQueryExecutionTime(query),
             )) as SqliteRow[];
-            maybeParseJson(rows);
             return { rows, changes: 0 };
           }
           const { changes } = yield* _(

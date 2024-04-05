@@ -9,7 +9,6 @@ import {
   SqliteRow,
   createEvoluRuntime,
   maybeLogSqliteQueryExecutionTime,
-  maybeParseJson,
   valuesToSqliteValues,
 } from "@evolu/common";
 import sqlite3InitModule, { SAHPoolUtil } from "@sqlite.org/sqlite-wasm";
@@ -163,7 +162,6 @@ export const SqliteFactoryWeb = Layer.effect(
               maybeLogSqliteQueryExecutionTime(query),
               Effect.match({
                 onSuccess: (rows) => {
-                  maybeParseJson(rows);
                   channel.postMessage({
                     _tag: "ExecSuccess",
                     id,

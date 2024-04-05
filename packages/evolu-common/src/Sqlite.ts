@@ -38,6 +38,9 @@ export class SqliteFactory extends Context.Tag("SqliteFactory")<
                 Effect.andThen(sqlite.exec(query)),
                 Effect.tap(() => Effect.logDebug("SQLite exec result:")),
                 Effect.tap((result) => Effect.logDebug(result)),
+                Effect.tap((result) => {
+                  maybeParseJson(result.rows);
+                }),
               ),
           }),
         ),
@@ -86,8 +89,10 @@ export const valuesToSqliteValues = (
     isJsonObjectOrArray(value) ? JSON.stringify(value) : value,
   );
 
-export const maybeParseJson = (rows: SqliteRow[]): SqliteRow[] =>
+/** This function mutates for better performance. */
+export const maybeParseJson = (rows: SqliteRow[]): void => {
   parseArray(rows);
+};
 
 const parseArray = <T>(a: T[]): T[] => {
   for (let i = 0; i < a.length; ++i) a[i] = parse(a[i]) as T;
