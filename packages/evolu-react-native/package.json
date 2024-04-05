@@ -49,7 +49,7 @@
     "expo": "^50.0.14",
     "expo-sqlite": "~13.4.0",
     "react-native": "0.73.6",
-    "typescript": "^5.4.3",
+    "typescript": "^5.4.4",
     "vitest": "^1.4.0"
   },
   "peerDependencies": {
