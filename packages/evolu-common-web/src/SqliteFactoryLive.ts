@@ -8,6 +8,7 @@ import {
   SqliteQuery,
   SqliteRow,
   createEvoluRuntime,
+  lockName,
   maybeLogSqliteQueryExecutionTime,
   valuesToSqliteValues,
 } from "@evolu/common";
@@ -154,10 +155,13 @@ export const SqliteFactoryLive = Layer.effect(
           execsBeforeSqliteInit = [];
         };
 
-        yield* _(Effect.logTrace("Sqlite lock request"));
+        const connectionLockName = yield* _(lockName("sqliteConnection"));
+        const transactionLockName = yield* _(lockName("sqliteTransaction"));
+
+        yield* _(Effect.logTrace("SqliteWeb connection lock request"));
 
         navigator.locks.request(
-          yield* _(lockNameFor("OpfsSAHPool")),
+          connectionLockName,
           () =>
             /**
              * This promise prevents other tabs from acquiring the lock because
@@ -191,7 +195,20 @@ export const SqliteFactoryLive = Layer.effect(
                 channel.postMessage({ _tag: "Exec", id, query });
               }),
             ),
-          transaction: (effect) => effect,
+          transaction: (effect) =>
+            Effect.acquireUseRelease(
+              Effect.async<() => void>((resume) => {
+                navigator.locks.request(
+                  transactionLockName,
+                  () =>
+                    new Promise<void>((resolve) => {
+                      resume(Effect.succeed(resolve));
+                    }),
+                );
+              }),
+              () => effect,
+              (resolve) => Effect.sync(resolve),
+            ),
         });
       }),
     });
@@ -239,26 +256,3 @@ const createSqliteChannel = (): SqliteChannel => {
   };
   return sqliteChannel;
 };
-
-const lockNameFor = (
-  name: "OpfsSAHPool" | "DbWorker",
-): Effect.Effect<string, never, Config> =>
-  Effect.map(Config, (config) => `evolu:${config.name}:${name}`);
-
-// export const DbWorkerLockLive = Layer.effect(
-//   DbWorkerLock,
-//   Effect.map(multitenantLockName("DbWorker"), (lockName) =>
-//     DbWorkerLock.of({
-//       await: (effect) =>
-//         Effect.acquireUseRelease(
-//           Effect.tap(Deferred.make<true>(), (lock) => {
-//             navigator.locks.request(lockName, () =>
-//               Deferred.await(lock).pipe(Effect.runPromise),
-//             );
-//           }),
-//           () => effect,
-//           (lock) => Deferred.succeed(lock, true),
-//         ),
-//     }),
-//   ),
-// );

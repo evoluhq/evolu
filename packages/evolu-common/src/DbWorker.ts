@@ -53,8 +53,6 @@ export const createDbWorker: Effect.Effect<
   const ownerDeferred = yield* _(Deferred.make<Owner>());
   const rowsStore = yield* _(makeRowsStore);
 
-  // const dbWorkerLock = yield* _(DbWorkerLock);
-
   const dbWorker: DbWorker = {
     init: () =>
       Effect.logTrace("DbWorker init").pipe(
@@ -86,7 +84,7 @@ export const createDbWorker: Effect.Effect<
                 ),
               ),
             );
-          }),
+          }).pipe(sqlite.transaction, Effect.provideService(Sqlite, sqlite)),
         ),
         Effect.bindTo("queryRows"),
         Effect.bind("previous", () => Effect.succeed(rowsStore.getState())),

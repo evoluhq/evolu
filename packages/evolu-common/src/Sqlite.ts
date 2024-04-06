@@ -36,6 +36,7 @@ export class SqliteFactory extends Context.Tag("SqliteFactory")<
     SqliteFactory,
     Effect.map(SqliteFactory, (sqliteFactory) => ({
       createSqlite: sqliteFactory.createSqlite.pipe(
+        Effect.tap(() => Effect.logTrace("SqliteFactoryCommon createSqlite")),
         Effect.map(
           (sqlite): SqliteService => ({
             exec: (query) =>
@@ -49,15 +50,18 @@ export class SqliteFactory extends Context.Tag("SqliteFactory")<
                 }),
               ),
             transaction: (effect) =>
-              Effect.flatMap(Sqlite, (sqlite) =>
-                Effect.acquireUseRelease(
-                  sqlite.exec({ sql: "begin" }),
-                  () => effect,
-                  (_, exit) =>
-                    Exit.isFailure(exit)
-                      ? sqlite.exec({ sql: "rollback" })
-                      : sqlite.exec({ sql: "end" }),
+              Sqlite.pipe(
+                Effect.flatMap((sqlite) =>
+                  Effect.acquireUseRelease(
+                    sqlite.exec({ sql: "begin" }),
+                    () => effect,
+                    (_, exit) =>
+                      Exit.isFailure(exit)
+                        ? sqlite.exec({ sql: "rollback" })
+                        : sqlite.exec({ sql: "end" }),
+                  ),
                 ),
+                sqlite.transaction,
               ),
           }),
         ),
