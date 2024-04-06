@@ -10,18 +10,18 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { customAlphabet, nanoid } from "nanoid";
 
-// TODO: Add dynamic import error.
-export interface Bip39 {
-  readonly make: Effect.Effect<Mnemonic>;
+export class Bip39 extends Context.Tag("Bip39")<
+  Bip39,
+  {
+    readonly make: Effect.Effect<Mnemonic>;
 
-  readonly toSeed: (mnemonic: Mnemonic) => Effect.Effect<Uint8Array>;
+    readonly toSeed: (mnemonic: Mnemonic) => Effect.Effect<Uint8Array>;
 
-  readonly parse: (
-    mnemonic: string,
-  ) => Effect.Effect<Mnemonic, InvalidMnemonicError>;
-}
-
-export const Bip39 = Context.GenericTag<Bip39>("@services/Bip39");
+    readonly parse: (
+      mnemonic: string,
+    ) => Effect.Effect<Mnemonic, InvalidMnemonicError>;
+  }
+>() {}
 
 export interface InvalidMnemonicError {
   readonly _tag: "InvalidMnemonicError";
@@ -36,7 +36,7 @@ export interface InvalidMnemonicError {
  */
 export type Mnemonic = string & Brand.Brand<"Mnemonic">;
 
-export class NanoIdGenerator extends Effect.Tag("NanoIdGenerator")<
+export class NanoIdGenerator extends Context.Tag("NanoIdGenerator")<
   NanoIdGenerator,
   {
     readonly nanoid: Effect.Effect<NanoId>;

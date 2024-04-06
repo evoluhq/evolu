@@ -16,7 +16,7 @@ import {
 } from "./Db.js";
 import { QueryPatches, makePatches } from "./Diff.js";
 import { Owner } from "./Owner.js";
-import { Sqlite, SqliteFactory } from "./Sqlite.js";
+import { Sqlite, SqliteFactory, SqliteService } from "./Sqlite.js";
 
 export interface DbWorker {
   readonly init: () => Effect.Effect<Owner, NotSupportedPlatformError, Config>;
@@ -32,52 +32,51 @@ export interface NotSupportedPlatformError {
   readonly _tag: "NotSupportedPlatformError";
 }
 
-export class DbWorkerFactory extends Effect.Tag("DbWorkerFactory")<
+export class DbWorkerFactory extends Context.Tag("DbWorkerFactory")<
   DbWorkerFactory,
   {
     readonly createDbWorker: Effect.Effect<DbWorker, never, Config>;
   }
 >() {}
 
-// It's a function because it's called from Web Worker.
+/** It's a function because it's called from Web Worker. */
 export const createDbWorker: Effect.Effect<
   DbWorker,
   never,
   SqliteFactory | Bip39 | NanoIdGenerator
 > = Effect.gen(function* (_) {
   const sqliteFactory = yield* _(SqliteFactory);
+  const bip39 = yield* _(Bip39);
+  const nanoIdGenerator = yield* _(NanoIdGenerator);
+
   const scope = yield* _(Scope.make());
-  // TODO: Move to runtime? Provide only what's required?
-  const context = Context.empty().pipe(
-    Context.add(Bip39, yield* _(Bip39)),
-    Context.add(NanoIdGenerator, yield* _(NanoIdGenerator)),
-  );
-  const sqliteAndOwnerDeferred = yield* _(
-    Deferred.make<{ readonly sqlite: Sqlite; readonly owner: Owner }>(),
-  );
+  const sqliteDeferred = yield* _(Deferred.make<SqliteService>());
+  const ownerDeferred = yield* _(Deferred.make<Owner>());
   const rowsStore = yield* _(makeRowsStore);
+
+  // const dbWorkerLock = yield* _(DbWorkerLock);
 
   const dbWorker: DbWorker = {
     init: () =>
       Effect.logTrace("DbWorker init").pipe(
         Effect.andThen(sqliteFactory.createSqlite),
         Scope.extend(scope),
+        Effect.tap((sqlite) => Deferred.succeed(sqliteDeferred, sqlite)),
         Effect.flatMap((sqlite) =>
           transaction(ensureDbSchemaWithOwner).pipe(
-            Effect.provide(context),
+            Effect.provideService(Bip39, bip39),
+            Effect.provideService(NanoIdGenerator, nanoIdGenerator),
             Effect.provideService(Sqlite, sqlite),
-            Effect.tap((owner) =>
-              Deferred.succeed(sqliteAndOwnerDeferred, { sqlite, owner }),
-            ),
+            Effect.tap((owner) => Deferred.succeed(ownerDeferred, owner)),
           ),
         ),
       ),
 
     loadQueries: (queries) =>
-      Deferred.await(sqliteAndOwnerDeferred).pipe(
-        Effect.tap(() => Effect.logDebug("DbWorker loadQueries:")),
+      Deferred.await(sqliteDeferred).pipe(
+        Effect.tap(() => Effect.logDebug("DbWorker loadQueries")),
         Effect.tap(() => Effect.logDebug(queries)),
-        Effect.flatMap(({ sqlite }) =>
+        Effect.flatMap((sqlite) =>
           Effect.forEach(ReadonlyArray.dedupe(queries), (query) => {
             const sqliteQuery = deserializeQuery(query);
             return sqlite.exec(sqliteQuery).pipe(
@@ -105,7 +104,6 @@ export const createDbWorker: Effect.Effect<
         ),
       ),
 
-    // TODO: Wait for Sqlite.
     dispose: () =>
       Effect.logTrace("dispose DbWorker").pipe(
         Effect.andThen(Scope.close(scope, Exit.succeed("DbWorker disposed"))),

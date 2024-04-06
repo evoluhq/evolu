@@ -7,36 +7,36 @@ import * as Layer from "effect/Layer";
 import * as Predicate from "effect/Predicate";
 import { Config } from "./Config.js";
 
-// TODO: Ask Effect team why this doesn't compile.
-// export class Sqlite extends Context.Tag("Sqlite")<
-//   Sqlite,
-//   { readonly exec: (query: SqliteQuery) => Effect.Effect<SqliteExecResult> }
-// >() {}
+export class Sqlite extends Context.Tag("Sqlite")<
+  Sqlite,
+  { readonly exec: (query: SqliteQuery) => Effect.Effect<SqliteExecResult> }
+>() {}
 
-export interface Sqlite {
-  readonly exec: (query: SqliteQuery) => Effect.Effect<SqliteExecResult>;
-}
-export const Sqlite = Context.GenericTag<Sqlite>("@services/Sqlite");
+/**
+ * Usually, Tag and Service can have the same name, but in this case, we create
+ * instances dynamically via `createSqlite` and not via Layer, so we need
+ * different names. Logically, `createSqlite` creates a service, not a tag.
+ */
+export interface SqliteService extends Context.Tag.Service<typeof Sqlite> {}
 
 export class SqliteFactory extends Context.Tag("SqliteFactory")<
   SqliteFactory,
   {
-    readonly createSqlite: Effect.Effect<Sqlite, never, Config>;
+    readonly createSqlite: Effect.Effect<SqliteService, never, Config>;
   }
 >() {
   static Common = Layer.effect(
     SqliteFactory,
     Effect.map(SqliteFactory, (sqliteFactory) => ({
       createSqlite: sqliteFactory.createSqlite.pipe(
-        // Aspect-oriented programming, who remembers that? 😂
         Effect.map(
-          (sqlite): Sqlite => ({
+          (sqlite): SqliteService => ({
             ...sqlite,
             exec: (query) =>
-              Effect.logDebug("SQLite exec:").pipe(
+              Effect.logDebug("SQLite exec").pipe(
                 Effect.andThen(Effect.logDebug(query)),
                 Effect.andThen(sqlite.exec(query)),
-                Effect.tap(() => Effect.logDebug("SQLite exec result:")),
+                Effect.tap(() => Effect.logDebug("SQLite exec result")),
                 Effect.tap((result) => Effect.logDebug(result)),
                 Effect.tap((result) => {
                   maybeParseJson(result.rows);

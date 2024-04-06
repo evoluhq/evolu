@@ -5,15 +5,15 @@ import { Bip39Live } from "./PlatformLive.js";
 import { expose } from "./ProxyWorker.js";
 import { SqliteFactoryWeb } from "./SqliteLive.js";
 
-const worker = createDbWorker.pipe(
-  Effect.provide(
-    Layer.mergeAll(
-      Layer.provide(SqliteFactory.Common, SqliteFactoryWeb),
-      Bip39Live,
-    ),
+const layer = Layer.mergeAll(
+  Bip39Live,
+  SqliteFactory.Common.pipe(
+    Layer.provide(SqliteFactoryWeb),
+    Layer.provide(NanoIdGenerator.Live),
   ),
-  Effect.provide(NanoIdGenerator.Live),
-  Effect.runSync,
+  NanoIdGenerator.Live,
 );
+
+const worker = createDbWorker.pipe(Effect.provide(layer), Effect.runSync);
 
 expose(worker);

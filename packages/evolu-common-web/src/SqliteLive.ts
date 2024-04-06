@@ -199,6 +199,8 @@ export const SqliteFactoryWeb = Layer.effect(
 
         const lockName = yield* _(multitenantLockName("Sqlite"));
 
+        yield* _(Effect.logTrace("Sqlite lock request"));
+
         navigator.locks.request(
           lockName,
           () =>

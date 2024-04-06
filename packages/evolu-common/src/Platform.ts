@@ -2,6 +2,15 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+export class DbWorkerLock extends Context.Tag("DbWorkerLock")<
+  DbWorkerLock,
+  {
+    readonly await: <A, E, R>(
+      effect: Effect.Effect<A, E, R>,
+    ) => Effect.Effect<A, E, R>;
+  }
+>() {}
+
 /**
  * FlushSync lets you force React to flush any updates inside the provided
  * callback synchronously. This ensures that the DOM is updated immediately.
@@ -29,11 +38,6 @@ export interface SyncLock {
 }
 
 export const SyncLock = Context.GenericTag<SyncLock>("@services/SyncLock");
-
-export type DbWorkerLock = (callback: () => Promise<void>) => void;
-export const DbWorkerLock = Context.GenericTag<DbWorkerLock>(
-  "@services/DbWorkerLock",
-);
 
 export type Fetch = (
   url: string,
