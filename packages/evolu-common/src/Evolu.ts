@@ -527,8 +527,10 @@ const createEvolu: Effect.Effect<Evolu, never, Config | DbWorkerFactory> =
         Effect.tapError(errorStore.setState),
       );
 
-    const dbWorkerFactory = yield* _(DbWorkerFactory);
-    const dbWorker = yield* _(dbWorkerFactory.createDbWorker);
+    const dbWorker = yield* _(
+      DbWorkerFactory,
+      Effect.flatMap(({ createDbWorker }) => createDbWorker),
+    );
 
     // We can't extend the scope because the DbWorker code can run in WebWorker.
     Scope.addFinalizer(scope, dbWorker.dispose());
