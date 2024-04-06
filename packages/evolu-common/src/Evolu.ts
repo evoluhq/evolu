@@ -791,6 +791,10 @@ const setPromiseAsResolved =
     Object.assign(promise, { status: "fulfilled", value });
   };
 
+/** Create a namespaced lock name. */
+export const lockName = (name: string): Effect.Effect<string, never, Config> =>
+  Effect.map(Config, (config) => `evolu:${config.name}:${name}`);
+
 // import * as S from "@effect/schema/Schema";
 // import * as Context from "effect/Context";
 // import * as Effect from "effect/Effect";
