@@ -38,55 +38,13 @@ import { ensureTransferableError } from "./ensureTransferableError.js";
  * near future.
  */
 
-/** A typed wrapper. Every SqliteChannelMessage is sent to all tabs. */
-interface SqliteChannel {
-  readonly postMessage: (message: SqliteChannelMessage) => void;
-  onMessage: (message: SqliteChannelMessage) => void;
-}
-
-type SqliteChannelMessage = Exec | ExecSuccess | ExecError;
-
-type Exec = {
-  readonly _tag: "Exec";
-  readonly id: NanoId;
-  readonly query: SqliteQuery;
-};
-
-type ExecSuccess = {
-  readonly _tag: "ExecSuccess";
-  readonly id: NanoId;
-  readonly result: SqliteExecResult;
-};
-
-type ExecError = {
-  readonly _tag: "ExecError";
-  readonly id: NanoId;
-  readonly error: unknown;
-};
-
-const createSqliteChannel = (): SqliteChannel => {
-  const channel = new BroadcastChannel("sqlite");
-  const sqliteChannel: SqliteChannel = {
-    postMessage: (message) => {
-      channel.postMessage(message);
-      // Send to itself as well.
-      sqliteChannel.onMessage(message);
-    },
-    onMessage: constVoid,
-  };
-  channel.onmessage = (e: MessageEvent<SqliteChannelMessage>): void => {
-    sqliteChannel.onMessage(e.data);
-  };
-  return sqliteChannel;
-};
-
 // https://github.com/sqlite/sqlite-wasm/issues/62
 // @ts-expect-error Missing types.
 globalThis.sqlite3ApiConfig = {
   warn: constVoid,
 };
 
-export const SqliteFactoryWeb = Layer.effect(
+export const SqliteFactoryLive = Layer.effect(
   SqliteFactory,
   Effect.gen(function* (_) {
     const nanoIdGenerator = yield* _(NanoIdGenerator);
@@ -239,6 +197,48 @@ export const SqliteFactoryWeb = Layer.effect(
     });
   }),
 );
+
+/** A typed wrapper. Every SqliteChannelMessage is sent to all tabs. */
+interface SqliteChannel {
+  readonly postMessage: (message: SqliteChannelMessage) => void;
+  onMessage: (message: SqliteChannelMessage) => void;
+}
+
+type SqliteChannelMessage = Exec | ExecSuccess | ExecError;
+
+type Exec = {
+  readonly _tag: "Exec";
+  readonly id: NanoId;
+  readonly query: SqliteQuery;
+};
+
+type ExecSuccess = {
+  readonly _tag: "ExecSuccess";
+  readonly id: NanoId;
+  readonly result: SqliteExecResult;
+};
+
+type ExecError = {
+  readonly _tag: "ExecError";
+  readonly id: NanoId;
+  readonly error: unknown;
+};
+
+const createSqliteChannel = (): SqliteChannel => {
+  const channel = new BroadcastChannel("sqlite");
+  const sqliteChannel: SqliteChannel = {
+    postMessage: (message) => {
+      channel.postMessage(message);
+      // Send to itself as well.
+      sqliteChannel.onMessage(message);
+    },
+    onMessage: constVoid,
+  };
+  channel.onmessage = (e: MessageEvent<SqliteChannelMessage>): void => {
+    sqliteChannel.onMessage(e.data);
+  };
+  return sqliteChannel;
+};
 
 const lockNameFor = (
   name: "OpfsSAHPool" | "DbWorker",
