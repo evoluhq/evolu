@@ -3,19 +3,26 @@ import * as Console from "effect/Console";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import { Equivalence } from "effect/Equivalence";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Predicate from "effect/Predicate";
 import { Config } from "./Config.js";
 
 export class Sqlite extends Context.Tag("Sqlite")<
   Sqlite,
-  { readonly exec: (query: SqliteQuery) => Effect.Effect<SqliteExecResult> }
+  {
+    readonly exec: (query: SqliteQuery) => Effect.Effect<SqliteExecResult>;
+    readonly transaction: <A, E, R>(
+      effect: Effect.Effect<A, E, R>,
+    ) => Effect.Effect<A, E, Sqlite | R>;
+  }
 >() {}
 
 /**
  * Usually, Tag and Service can have the same name, but in this case, we create
  * instances dynamically via `createSqlite` and not via Layer, so we need
- * different names. Logically, `createSqlite` creates a service, not a tag.
+ * Context.Tag.Service type. Logically, `createSqlite` creates a service, not a
+ * tag.
  */
 export interface SqliteService extends Context.Tag.Service<typeof Sqlite> {}
 
@@ -31,7 +38,6 @@ export class SqliteFactory extends Context.Tag("SqliteFactory")<
       createSqlite: sqliteFactory.createSqlite.pipe(
         Effect.map(
           (sqlite): SqliteService => ({
-            ...sqlite,
             exec: (query) =>
               Effect.logDebug("SQLite exec").pipe(
                 Effect.andThen(Effect.logDebug(query)),
@@ -41,6 +47,17 @@ export class SqliteFactory extends Context.Tag("SqliteFactory")<
                 Effect.tap((result) => {
                   maybeParseJson(result.rows);
                 }),
+              ),
+            transaction: (effect) =>
+              Effect.flatMap(Sqlite, (sqlite) =>
+                Effect.acquireUseRelease(
+                  sqlite.exec({ sql: "begin" }),
+                  () => effect,
+                  (_, exit) =>
+                    Exit.isFailure(exit)
+                      ? sqlite.exec({ sql: "rollback" })
+                      : sqlite.exec({ sql: "end" }),
+                ),
               ),
           }),
         ),

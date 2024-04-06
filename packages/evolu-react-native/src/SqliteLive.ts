@@ -10,6 +10,16 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ExpoSQLite from "expo-sqlite/next";
 
+// export const DbWorkerLockLive = Layer.effect(
+//   DbWorkerLock,
+//   Effect.sync(() => {
+//     let queue: Promise<void> = Promise.resolve(undefined);
+//     return DbWorkerLock.of((callback) => {
+//       queue = queue.then(callback);
+//     });
+//   }),
+// );
+
 export const SqliteLive = Layer.effect(
   Sqlite,
   Effect.gen(function* (_) {
@@ -33,6 +43,7 @@ export const SqliteLive = Layer.effect(
           );
           return { rows: [], changes };
         }),
+      transaction: (effect) => effect,
     });
   }),
 );

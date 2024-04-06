@@ -17,7 +17,6 @@ import { absurd, constVoid } from "effect/Function";
 import * as Layer from "effect/Layer";
 import * as ReadonlyArray from "effect/ReadonlyArray";
 import { ensureTransferableError } from "./ensureTransferableError.js";
-import { multitenantLockName } from "./multitenantLockName.js";
 
 /**
  * "opfs-sahpool" does not support multiple simultaneous connections, and it can
@@ -197,12 +196,10 @@ export const SqliteFactoryWeb = Layer.effect(
           execsBeforeSqliteInit = [];
         };
 
-        const lockName = yield* _(multitenantLockName("Sqlite"));
-
         yield* _(Effect.logTrace("Sqlite lock request"));
 
         navigator.locks.request(
-          lockName,
+          yield* _(lockNameFor("OpfsSAHPool")),
           () =>
             /**
              * This promise prevents other tabs from acquiring the lock because
@@ -236,8 +233,32 @@ export const SqliteFactoryWeb = Layer.effect(
                 channel.postMessage({ _tag: "Exec", id, query });
               }),
             ),
+          transaction: (effect) => effect,
         });
       }),
     });
   }),
 );
+
+const lockNameFor = (
+  name: "OpfsSAHPool" | "DbWorker",
+): Effect.Effect<string, never, Config> =>
+  Effect.map(Config, (config) => `evolu:${config.name}:${name}`);
+
+// export const DbWorkerLockLive = Layer.effect(
+//   DbWorkerLock,
+//   Effect.map(multitenantLockName("DbWorker"), (lockName) =>
+//     DbWorkerLock.of({
+//       await: (effect) =>
+//         Effect.acquireUseRelease(
+//           Effect.tap(Deferred.make<true>(), (lock) => {
+//             navigator.locks.request(lockName, () =>
+//               Deferred.await(lock).pipe(Effect.runPromise),
+//             );
+//           }),
+//           () => effect,
+//           (lock) => Deferred.succeed(lock, true),
+//         ),
+//     }),
+//   ),
+// );

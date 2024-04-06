@@ -3,7 +3,6 @@ import * as S from "@effect/schema/Schema";
 import { make } from "@effect/schema/Schema";
 import * as Brand from "effect/Brand";
 import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
 import { constVoid, pipe } from "effect/Function";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
@@ -284,20 +283,6 @@ export const schemaToTables = (schema: S.Schema<any>): ReadonlyArray<Table> =>
         name,
         columns: Object.keys(getPropertySignatures(schema)),
       }),
-    ),
-  );
-
-export const transaction = <A, E, R>(
-  effect: Effect.Effect<A, E, R>,
-): Effect.Effect<A, E, Sqlite | R> =>
-  Effect.flatMap(Sqlite, (sqlite) =>
-    Effect.acquireUseRelease(
-      sqlite.exec({ sql: "begin" }),
-      () => effect,
-      (_, exit) =>
-        Exit.isFailure(exit)
-          ? sqlite.exec({ sql: "rollback" })
-          : sqlite.exec({ sql: "end" }),
     ),
   );
 

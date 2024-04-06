@@ -2,35 +2,14 @@ import {
   AppState,
   Bip39,
   Config,
-  DbWorkerLock,
   InvalidMnemonicError,
   Mnemonic,
   SyncLock,
   canUseDom,
 } from "@evolu/common";
-import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import { constVoid } from "effect/Function";
 import * as Layer from "effect/Layer";
-import { multitenantLockName } from "./multitenantLockName.js";
-
-export const DbWorkerLockLive = Layer.effect(
-  DbWorkerLock,
-  Effect.map(multitenantLockName("DbWorker"), (lockName) =>
-    DbWorkerLock.of({
-      await: (effect) =>
-        Effect.acquireUseRelease(
-          Effect.tap(Deferred.make<true>(), (lock) => {
-            navigator.locks.request(lockName, () =>
-              Deferred.await(lock).pipe(Effect.runPromise),
-            );
-          }),
-          () => effect,
-          (lock) => Deferred.succeed(lock, true),
-        ),
-    }),
-  ),
-);
 
 export const SyncLockLive = Layer.effect(
   SyncLock,

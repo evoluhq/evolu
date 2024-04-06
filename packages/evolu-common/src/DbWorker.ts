@@ -12,7 +12,6 @@ import {
   ensureDbSchemaWithOwner,
   makeRowsStore,
   maybeExplainQueryPlan,
-  transaction,
 } from "./Db.js";
 import { QueryPatches, makePatches } from "./Diff.js";
 import { Owner } from "./Owner.js";
@@ -63,7 +62,7 @@ export const createDbWorker: Effect.Effect<
         Scope.extend(scope),
         Effect.tap((sqlite) => Deferred.succeed(sqliteDeferred, sqlite)),
         Effect.flatMap((sqlite) =>
-          transaction(ensureDbSchemaWithOwner).pipe(
+          sqlite.transaction(ensureDbSchemaWithOwner).pipe(
             Effect.provideService(Bip39, bip39),
             Effect.provideService(NanoIdGenerator, nanoIdGenerator),
             Effect.provideService(Sqlite, sqlite),
