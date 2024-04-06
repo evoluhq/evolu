@@ -76,12 +76,12 @@ const defaultConfig: Config = {
 
 /** https://effect.website/docs/guides/runtime */
 export const createEvoluRuntime = (
-  config?: Partial<Config>,
+  partialConfig?: Partial<Config>,
 ): ManagedRuntime.ManagedRuntime<Config, never> => {
-  const mergedConfig = { ...defaultConfig, ...config };
-  const ConfigLive = Layer.succeed(Config, mergedConfig);
+  const config = { ...defaultConfig, ...partialConfig };
+  const ConfigLive = Layer.succeed(Config, config);
 
-  const minimumLogLevel = Match.value(mergedConfig.minimumLogLevel).pipe(
+  const minimumLogLevel = Match.value(config.minimumLogLevel).pipe(
     Match.when("debug", () => LogLevel.Debug),
     Match.when("none", () => LogLevel.None),
     Match.when("trace", () => LogLevel.Trace),
@@ -90,21 +90,28 @@ export const createEvoluRuntime = (
   );
 
   const evoluLayer =
-    mergedConfig.minimumLogLevel === "none"
+    config.minimumLogLevel === "none"
       ? ConfigLive
       : Layer.mergeAll(
           ConfigLive,
           Logger.minimumLogLevel(minimumLogLevel),
-          Logger.replace(Logger.defaultLogger, minimalLogger),
+          Logger.replace(Logger.defaultLogger, makeEvoluLogger(config.name)),
         );
 
   return ManagedRuntime.make(evoluLayer);
 };
 
 // TODO: Spans and variadic when supported.
-const minimalLogger = Logger.make(({ logLevel, message }) => {
-  globalThis.console.log(`[${logLevel.label}]`, message);
-});
+const makeEvoluLogger = (name: string): Logger.Logger<unknown, void> =>
+  Logger.make(({ logLevel, message }) => {
+    const fn =
+      logLevel._tag === "Warning"
+        ? "warn"
+        : logLevel._tag === "Error"
+          ? "error"
+          : "log";
+    globalThis.console[fn](`[${name}]`, message);
+  });
 
 // import * as Context from "effect/Context";
 // import * as Layer from "effect/Layer";
