@@ -544,8 +544,7 @@ const createEvolu: Effect.Effect<Evolu, never, Config | DbWorkerFactory> =
     const handlePatches = (
       patches: ReadonlyArray<QueryPatches>,
     ): Effect.Effect<void> =>
-      Effect.logDebug("Evolu handlePatches").pipe(
-        Effect.andThen(Effect.logDebug(patches)),
+      Effect.logDebug(["Evolu handlePatches", patches]).pipe(
         Effect.andThen(createRowsStoreStateFromPatches(patches)),
         Effect.tap((nextState) =>
           Effect.forEach(patches, ({ query }) =>
@@ -617,8 +616,7 @@ const createEvolu: Effect.Effect<Evolu, never, Config | DbWorkerFactory> =
         let queue: ReadonlyArray<Query> = [];
 
         return <R extends Row>(query: Query<R>): Promise<QueryResult<R>> => {
-          Effect.logDebug("Evolu loadQuery").pipe(
-            Effect.andThen(Effect.logDebug(deserializeQuery(query))),
+          Effect.logDebug(["Evolu loadQuery", deserializeQuery(query)]).pipe(
             run,
           );
           let isNew = false;

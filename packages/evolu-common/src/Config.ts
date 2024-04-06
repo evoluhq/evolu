@@ -110,7 +110,9 @@ const makeEvoluLogger = (name: string): Logger.Logger<unknown, void> =>
         : logLevel._tag === "Error"
           ? "error"
           : "log";
-    globalThis.console[fn](`[${name}]`, message);
+    // This is temp workaround. Next Effect minor will solve it.
+    const messages: unknown[] = Array.isArray(message) ? message : [message];
+    globalThis.console[fn](`[${name}]`, ...messages);
   });
 
 // import * as Context from "effect/Context";

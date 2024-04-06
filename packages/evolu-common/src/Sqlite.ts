@@ -40,11 +40,11 @@ export class SqliteFactory extends Context.Tag("SqliteFactory")<
         Effect.map(
           (sqlite): SqliteService => ({
             exec: (query) =>
-              Effect.logDebug("SQLite exec").pipe(
-                Effect.andThen(Effect.logDebug(query)),
+              Effect.logDebug(["SQLite exec", query]).pipe(
                 Effect.andThen(sqlite.exec(query)),
-                Effect.tap(() => Effect.logDebug("SQLite exec result")),
-                Effect.tap((result) => Effect.logDebug(result)),
+                Effect.tap((result) =>
+                  Effect.logDebug(["SQLite exec result", result]),
+                ),
                 Effect.tap((result) => {
                   maybeParseJson(result.rows);
                 }),
@@ -172,9 +172,8 @@ export const maybeLogSqliteQueryExecutionTime =
       Effect.bind("result", () => effect),
       Effect.let("elapsed", ({ start }) => performance.now() - start),
       Effect.tap(({ elapsed }) =>
-        Console.log(`QueryExecutionTime: ${elapsed}ms`),
+        Console.log(`QueryExecutionTime: ${elapsed}ms`, query),
       ),
-      Effect.tap(() => Console.log(query)),
       Effect.map(({ result }) => result),
     );
   };

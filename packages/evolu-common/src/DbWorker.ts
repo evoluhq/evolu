@@ -71,8 +71,7 @@ export const createDbWorker: Effect.Effect<
 
     loadQueries: (queries) =>
       Deferred.await(sqliteDeferred).pipe(
-        Effect.tap(() => Effect.logDebug("DbWorker loadQueries")),
-        Effect.tap(() => Effect.logDebug(queries)),
+        Effect.tap(() => Effect.logDebug(["DbWorker loadQueries", queries])),
         Effect.flatMap((sqlite) =>
           Effect.forEach(ReadonlyArray.dedupe(queries), (query) => {
             const sqliteQuery = deserializeQuery(query);

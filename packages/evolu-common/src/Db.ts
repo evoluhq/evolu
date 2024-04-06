@@ -2,6 +2,7 @@ import * as AST from "@effect/schema/AST";
 import * as S from "@effect/schema/Schema";
 import { make } from "@effect/schema/Schema";
 import * as Brand from "effect/Brand";
+import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import { constVoid, pipe } from "effect/Function";
 import * as Option from "effect/Option";
@@ -518,13 +519,10 @@ export const maybeExplainQueryPlan = (
         sql: `EXPLAIN QUERY PLAN ${sqliteQuery.sql}`,
       }),
     ),
-    // TODO: Use new Effect log variadic
-    Effect.tap(() => Effect.log("ExplainQueryPlan")),
-    Effect.tap(({ rows }) => {
-      // Not using Effect.log because of formating
-      // eslint-disable-next-line no-console
-      console.log(drawSqliteQueryPlan(rows as SqliteQueryPlanRow[]));
-    }),
+    Effect.tap(() => Console.log("ExplainQueryPlan", sqliteQuery)),
+    Effect.tap(({ rows }) =>
+      Console.log(drawSqliteQueryPlan(rows as SqliteQueryPlanRow[])),
+    ),
     Effect.map(constVoid),
   );
 };
