@@ -12,7 +12,10 @@ import {
   maybeLogSqliteQueryExecutionTime,
   valuesToSqliteValues,
 } from "@evolu/common";
-import sqlite3InitModule, { SAHPoolUtil } from "@sqlite.org/sqlite-wasm";
+import sqlite3InitModule, {
+  SAHPoolUtil,
+  Sqlite3Static,
+} from "@sqlite.org/sqlite-wasm";
 import * as Effect from "effect/Effect";
 import { absurd, constVoid } from "effect/Function";
 import * as Layer from "effect/Layer";
@@ -49,32 +52,14 @@ export const SqliteFactoryLive = Layer.effect(
   SqliteFactory,
   Effect.gen(function* (_) {
     const nanoIdGenerator = yield* _(NanoIdGenerator);
+    const sqlite3Promise = sqlite3InitModule();
 
     return SqliteFactory.of({
       createSqlite: Effect.gen(function* (_) {
-        const channel = createSqliteChannel();
-
-        // TODO: Finalize SQLite
-        // yield* _(Effect.addFinalizer(() => Effect.unit));
-
-        /**
-         * We don't know which tab will be elected leader, and messages are
-         * dispatched before initialization, so we must store them.
-         */
-        let execsBeforeSqliteInit: ReadonlyArray<Exec> = [];
-
-        const callbacks = new Map<
-          NanoId,
-          (message: ExecSuccess | ExecError) => void
-        >();
-
-        const maybeCallCallback = (message: ExecSuccess | ExecError): void => {
-          const callback = callbacks.get(message.id);
-          if (callback) {
-            callback(message);
-            callbacks.delete(message.id);
-          }
-        };
+        const channel = yield* _(
+          lockName("SqliteBroadcastChannel"),
+          Effect.flatMap(createSqliteBroadcastChannel),
+        );
 
         /** Handle incoming messages for a tab without initialized Sqlite. */
         channel.onMessage = (message): void => {
@@ -101,82 +86,119 @@ export const SqliteFactoryLive = Layer.effect(
           }
         };
 
-        const config = yield* _(Config);
+        /**
+         * We don't know which tab will be elected leader, and messages are
+         * dispatched before initialization, so we must store them.
+         */
+        let execsBeforeSqliteInit: ReadonlyArray<Exec> = [];
 
-        const initSqlite = (poolUtil: SAHPoolUtil): void => {
-          const runtime = createEvoluRuntime(config);
-          const sqlite = new poolUtil.OpfsSAHPoolDb("/evolu1.db");
-
-          const exec = (query: SqliteQuery, id: NanoId): void =>
-            Effect.try({
-              try: () =>
-                sqlite.exec(query.sql, {
-                  returnValue: "resultRows",
-                  rowMode: "object",
-                  bind: valuesToSqliteValues(query.parameters || []),
-                }) as SqliteRow[],
-              catch: ensureTransferableError,
-            }).pipe(
-              maybeLogSqliteQueryExecutionTime(query),
-              Effect.match({
-                onSuccess: (rows) => {
-                  channel.postMessage({
-                    _tag: "ExecSuccess",
-                    id,
-                    result: { rows, changes: sqlite.changes() },
-                  });
-                },
-                onFailure: (error) => {
-                  channel.postMessage({ _tag: "ExecError", id, error });
-                },
-              }),
-              runtime.runSync,
-            );
-
-          channel.onMessage = (message): void => {
-            switch (message._tag) {
-              /** A tab was elected so it can start processing. */
-              case "Exec":
-                exec(message.query, message.id);
-                break;
-              case "ExecSuccess":
-              case "ExecError":
-                maybeCallCallback(message);
-                break;
-              default:
-                absurd(message);
-            }
-          };
-
-          /** Handle execs arrived before Sqlite was initialized. */
-          execsBeforeSqliteInit.forEach((message) => {
-            exec(message.query, message.id);
-          });
-          execsBeforeSqliteInit = [];
+        const maybeCallCallback = (message: ExecSuccess | ExecError): void => {
+          const callback = callbacks.get(message.id);
+          if (callback) {
+            callback(message);
+            callbacks.delete(message.id);
+          }
         };
 
-        const connectionLockName = yield* _(lockName("sqliteConnection"));
-        const transactionLockName = yield* _(lockName("sqliteTransaction"));
+        const callbacks = new Map<
+          NanoId,
+          (message: ExecSuccess | ExecError) => void
+        >();
 
-        yield* _(Effect.logTrace("SqliteWeb connection lock request"));
+        // TODO: Finalize SQLite
+        // yield* _(Effect.addFinalizer(() => ...));
 
-        navigator.locks.request(
-          connectionLockName,
-          () =>
-            /**
-             * This promise prevents other tabs from acquiring the lock because
-             * it's never resolved or rejected. The next SQLite instance is
-             * created when the previous lock is released (a tab is reloaded or
-             * closed).
-             */
-            new Promise((): void => {
-              sqlite3InitModule().then((sqlite3) =>
-                sqlite3
-                  .installOpfsSAHPoolVfs({ name: config.name })
-                  .then(initSqlite),
-              );
+        const config = yield* _(Config);
+        const runtime = createEvoluRuntime(config);
+
+        Effect.logTrace("SqliteWeb connection lock request")
+          .pipe(
+            Effect.andThen(lockName("SqliteConnection")),
+            Effect.flatMap((lockName) =>
+              Effect.async<Sqlite3Static>((resume) => {
+                navigator.locks.request(
+                  lockName,
+                  () =>
+                    /**
+                     * This promise prevents other tabs from acquiring the lock
+                     * because it's never resolved or rejected. The next SQLite
+                     * instance is created when the previous lock is released (a
+                     * tab is reloaded or closed).
+                     */
+                    new Promise(() => {
+                      resume(Effect.promise(() => sqlite3Promise));
+                    }),
+                );
+              }),
+            ),
+            Effect.tap(() =>
+              Effect.logTrace("SqliteWeb connection lock granted"),
+            ),
+            Effect.flatMap((sqlite3) =>
+              Effect.promise(() =>
+                sqlite3.installOpfsSAHPoolVfs({ name: config.name }),
+              ),
+            ),
+            Effect.map(
+              (poolUtil: SAHPoolUtil) =>
+                new poolUtil.OpfsSAHPoolDb("/evolu1.db"),
+            ),
+            Effect.tap((sqlite) => {
+              const exec = (query: SqliteQuery, id: NanoId): void =>
+                Effect.try({
+                  try: () =>
+                    sqlite.exec(query.sql, {
+                      returnValue: "resultRows",
+                      rowMode: "object",
+                      bind: valuesToSqliteValues(query.parameters || []),
+                    }) as SqliteRow[],
+                  catch: ensureTransferableError,
+                }).pipe(
+                  maybeLogSqliteQueryExecutionTime(query),
+                  Effect.match({
+                    onSuccess: (rows) => {
+                      channel.postMessage({
+                        _tag: "ExecSuccess",
+                        id,
+                        result: { rows, changes: sqlite.changes() },
+                      });
+                    },
+                    onFailure: (error) => {
+                      channel.postMessage({ _tag: "ExecError", id, error });
+                    },
+                  }),
+                  runtime.runSync,
+                );
+
+              channel.onMessage = (message): void => {
+                switch (message._tag) {
+                  /** A tab was elected so it can start processing. */
+                  case "Exec":
+                    exec(message.query, message.id);
+                    break;
+                  case "ExecSuccess":
+                  case "ExecError":
+                    maybeCallCallback(message);
+                    break;
+                  default:
+                    absurd(message);
+                }
+              };
+
+              /** Handle execs arrived before Sqlite was initialized. */
+              execsBeforeSqliteInit.forEach((message) => {
+                exec(message.query, message.id);
+              });
+              execsBeforeSqliteInit = [];
             }),
-        );
+            // TODO: Use channel to send errors to Evolu.
+            // Effect.catchAllDefect(defect => {
+            //   //
+            // })
+          )
+          .pipe(Effect.provideService(Config, config), runtime.runPromise);
+
+        const transactionName = yield* _(lockName("SqliteTransaction"));
 
         return Sqlite.of({
           exec: (query) =>
@@ -199,7 +221,7 @@ export const SqliteFactoryLive = Layer.effect(
             Effect.acquireUseRelease(
               Effect.async<() => void>((resume) => {
                 navigator.locks.request(
-                  transactionLockName,
+                  transactionName,
                   () =>
                     new Promise<void>((resolve) => {
                       resume(Effect.succeed(resolve));
@@ -216,12 +238,12 @@ export const SqliteFactoryLive = Layer.effect(
 );
 
 /** A typed wrapper. Every SqliteChannelMessage is sent to all tabs. */
-interface SqliteChannel {
-  readonly postMessage: (message: SqliteChannelMessage) => void;
-  onMessage: (message: SqliteChannelMessage) => void;
+interface SqliteBroadcastChannel {
+  readonly postMessage: (message: SqliteBroadcastChannelMessage) => void;
+  onMessage: (message: SqliteBroadcastChannelMessage) => void;
 }
 
-type SqliteChannelMessage = Exec | ExecSuccess | ExecError;
+type SqliteBroadcastChannelMessage = Exec | ExecSuccess | ExecError;
 
 type Exec = {
   readonly _tag: "Exec";
@@ -241,18 +263,23 @@ type ExecError = {
   readonly error: unknown;
 };
 
-const createSqliteChannel = (): SqliteChannel => {
-  const channel = new BroadcastChannel("sqlite");
-  const sqliteChannel: SqliteChannel = {
-    postMessage: (message) => {
-      channel.postMessage(message);
-      // Send to itself as well.
-      sqliteChannel.onMessage(message);
-    },
-    onMessage: constVoid,
-  };
-  channel.onmessage = (e: MessageEvent<SqliteChannelMessage>): void => {
-    sqliteChannel.onMessage(e.data);
-  };
-  return sqliteChannel;
-};
+const createSqliteBroadcastChannel = (
+  name: string,
+): Effect.Effect<SqliteBroadcastChannel> =>
+  Effect.sync(() => {
+    const channel = new BroadcastChannel(name);
+    const sqliteChannel: SqliteBroadcastChannel = {
+      postMessage: (message) => {
+        channel.postMessage(message);
+        // Send to itself as well.
+        sqliteChannel.onMessage(message);
+      },
+      onMessage: constVoid,
+    };
+    channel.onmessage = (
+      e: MessageEvent<SqliteBroadcastChannelMessage>,
+    ): void => {
+      sqliteChannel.onMessage(e.data);
+    };
+    return sqliteChannel;
+  });
