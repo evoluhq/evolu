@@ -9,16 +9,19 @@ import { Bip39, NanoIdGenerator } from "./Crypto.js";
 import {
   Query,
   deserializeQuery,
-  ensureDbSchemaWithOwner,
+  ensureSchema,
+  getOrCreateOwner,
   makeRowsStore,
   maybeExplainQueryPlan,
 } from "./Db.js";
 import { QueryPatches, makePatches } from "./Diff.js";
 import { Owner } from "./Owner.js";
-import { Sqlite, SqliteFactory, SqliteService } from "./Sqlite.js";
+import { Sqlite, SqliteFactory, SqliteSchema } from "./Sqlite.js";
 
 export interface DbWorker {
-  readonly init: () => Effect.Effect<Owner, NotSupportedPlatformError, Config>;
+  readonly init: (
+    sqliteSchema: SqliteSchema,
+  ) => Effect.Effect<Owner, NotSupportedPlatformError, Config>;
 
   readonly loadQueries: (
     queries: ReadonlyArray.NonEmptyReadonlyArray<Query>,
@@ -47,31 +50,42 @@ export const createDbWorker: Effect.Effect<
   const sqliteFactory = yield* _(SqliteFactory);
   const bip39 = yield* _(Bip39);
   const nanoIdGenerator = yield* _(NanoIdGenerator);
-
   const scope = yield* _(Scope.make());
-  const sqliteDeferred = yield* _(Deferred.make<SqliteService>());
-  const ownerDeferred = yield* _(Deferred.make<Owner>());
+  const context = yield* _(Deferred.make<Context.Context<Sqlite | Owner>>());
   const rowsStore = yield* _(makeRowsStore);
 
   const dbWorker: DbWorker = {
-    init: () =>
-      Effect.logTrace("DbWorker init").pipe(
-        Effect.andThen(sqliteFactory.createSqlite),
-        Scope.extend(scope),
-        Effect.tap((sqlite) => Deferred.succeed(sqliteDeferred, sqlite)),
-        Effect.flatMap((sqlite) =>
-          sqlite.transaction(ensureDbSchemaWithOwner).pipe(
-            Effect.provideService(Bip39, bip39),
-            Effect.provideService(NanoIdGenerator, nanoIdGenerator),
-            Effect.provideService(Sqlite, sqlite),
-            Effect.tap((owner) => Deferred.succeed(ownerDeferred, owner)),
+    init: (schema) =>
+      Effect.gen(function* (_) {
+        yield* _(Effect.logTrace("DbWorker init"));
+        const sqlite = yield* _(
+          sqliteFactory.createSqlite,
+          Scope.extend(scope),
+        );
+        const owner = yield* _(
+          ensureSchema(schema),
+          Effect.andThen(getOrCreateOwner),
+          sqlite.transaction,
+          Effect.provideService(Sqlite, sqlite),
+          Effect.provideService(Bip39, bip39),
+          Effect.provideService(NanoIdGenerator, nanoIdGenerator),
+        );
+        yield* _(
+          Deferred.succeed(
+            context,
+            Context.empty().pipe(
+              Context.add(Sqlite, sqlite),
+              Context.add(Owner, owner),
+            ),
           ),
-        ),
-      ),
+        );
+        return owner;
+      }),
 
     loadQueries: (queries) =>
-      Deferred.await(sqliteDeferred).pipe(
-        Effect.tap(() => Effect.logDebug(["DbWorker loadQueries", queries])),
+      Effect.logDebug(["DbWorker loadQueries", queries]).pipe(
+        Effect.andThen(Deferred.await(context)),
+        Effect.map(Context.get(Sqlite)),
         Effect.flatMap((sqlite) =>
           Effect.forEach(ReadonlyArray.dedupe(queries), (query) => {
             const sqliteQuery = deserializeQuery(query);
@@ -83,7 +97,7 @@ export const createDbWorker: Effect.Effect<
                 ),
               ),
             );
-          }).pipe(sqlite.transaction, Effect.provideService(Sqlite, sqlite)),
+          }),
         ),
         Effect.bindTo("queryRows"),
         Effect.bind("previous", () => Effect.succeed(rowsStore.getState())),

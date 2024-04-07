@@ -1,10 +1,8 @@
-import * as AST from "@effect/schema/AST";
 import * as S from "@effect/schema/Schema";
-import { make } from "@effect/schema/Schema";
 import * as Brand from "effect/Brand";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
-import { constVoid, pipe } from "effect/Function";
+import { constVoid } from "effect/Function";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
 import * as ReadonlyArray from "effect/ReadonlyArray";
@@ -37,7 +35,6 @@ import {
   SqliteQueryOptions,
   SqliteQueryPlanRow,
   SqliteSchema,
-  Table,
   Value,
   drawSqliteQueryPlan,
   indexEquivalence,
@@ -260,33 +257,6 @@ export const queryResultFromRows = <R extends Row>(
   return queryResult as QueryResult<R>;
 };
 
-// TODO: https://discord.com/channels/795981131316985866/1218626687546294386/1218796529725476935
-// https://github.com/Effect-TS/schema/releases/tag/v0.18.0
-const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
-  schema: S.Schema<A, I>,
-): { [K in keyof A]: S.Schema<A[K], I[K]> } => {
-  const out: Record<PropertyKey, S.Schema<any>> = {};
-  const propertySignatures = AST.getPropertySignatures(schema.ast);
-  for (let i = 0; i < propertySignatures.length; i++) {
-    const propertySignature = propertySignatures[i];
-    out[propertySignature.name] = make(propertySignature.type);
-  }
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-  return out as any;
-};
-
-export const schemaToTables = (schema: S.Schema<any>): ReadonlyArray<Table> =>
-  pipe(
-    getPropertySignatures(schema),
-    ReadonlyRecord.toEntries,
-    ReadonlyArray.map(
-      ([name, schema]): Table => ({
-        name,
-        columns: Object.keys(getPropertySignatures(schema)),
-      }),
-    ),
-  );
-
 export interface NoSuchTableOrColumnError {
   readonly _tag: "NoSuchTableOrColumnError";
 }
@@ -313,7 +283,8 @@ const sqliteDefectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
       : Option.none(),
 );
 
-export const ensureDbSchemaWithOwner = Sqlite.pipe(
+export const getOrCreateOwner = Effect.logTrace("Db getOrCreateOwner").pipe(
+  Effect.flatMap(() => Sqlite),
   Effect.flatMap((sqlite) => sqlite.exec(selectOwner)),
   Effect.map(
     ({ rows: [row] }): Owner => ({
@@ -322,21 +293,19 @@ export const ensureDbSchemaWithOwner = Sqlite.pipe(
       encryptionKey: row.encryptionKey as Uint8Array,
     }),
   ),
+  // Lazy init.
   sqliteDefectToNoSuchTableOrColumnError,
-  Effect.catchTag("NoSuchTableOrColumnError", () => createDbSchemaWithOwner()),
+  Effect.catchTag("NoSuchTableOrColumnError", () => createOwner()),
 );
 
-export const createDbSchemaWithOwner = (
+export const createOwner = (
   mnemonic?: Mnemonic,
 ): Effect.Effect<Owner, never, Sqlite | Bip39 | NanoIdGenerator> =>
-  Effect.gen(function* (_) {
-    const [owner, sqlite, initialTimestampString] = yield* _(
-      Effect.all([makeOwner(mnemonic), Sqlite, makeInitialTimestamp], {
-        concurrency: "unbounded",
-      }),
-    );
-
-    yield* _(
+  Effect.logTrace("Db createOwner").pipe(
+    Effect.andThen(
+      Effect.all([makeOwner(mnemonic), Sqlite, makeInitialTimestamp]),
+    ),
+    Effect.tap(([owner, sqlite, initialTimestampString]) =>
       Effect.all([
         sqlite.exec(createMessageTable),
         sqlite.exec(createMessageTableIndex),
@@ -352,10 +321,9 @@ export const createDbSchemaWithOwner = (
           ],
         }),
       ]),
-    );
-
-    return owner;
-  });
+    ),
+    Effect.map(([owner]) => owner),
+  );
 
 const getSchema: Effect.Effect<SqliteSchema, never, Sqlite> = Effect.gen(
   function* (_) {
@@ -427,6 +395,7 @@ export const ensureSchema = (
   schema: SqliteSchema,
 ): Effect.Effect<void, never, Sqlite> =>
   Effect.gen(function* (_) {
+    yield* _(Effect.logTrace("Db ensureSchema"));
     const sqlite = yield* _(Sqlite);
     const currentSchema = yield* _(getSchema);
 

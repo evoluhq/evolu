@@ -28,7 +28,7 @@ export interface Owner {
   readonly encryptionKey: Uint8Array;
 }
 
-export const Owner = Context.GenericTag<Owner>("@services/Owner");
+export const Owner = Context.GenericTag<Owner>("Owner");
 
 /**
  * The unique identifier of {@link Owner} safely derived from its

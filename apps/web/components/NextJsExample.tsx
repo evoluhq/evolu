@@ -99,6 +99,7 @@ const evolu = createEvolu(Database, {
     syncUrl: "http://localhost:4000",
   }),
   minimumLogLevel: "trace",
+  name: "Evolu",
 });
 
 // const evolu2 = createEvolu(Database, {
@@ -108,7 +109,7 @@ const evolu = createEvolu(Database, {
 //     syncUrl: "http://localhost:4000",
 //   }),
 //   minimumLogLevel: "trace",
-//   name: "Foo1",
+//   name: "Evolu1",
 // });
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

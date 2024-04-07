@@ -34,6 +34,7 @@ import {
   Index,
   SqliteQuery,
   SqliteQueryOptions,
+  createSqliteSchema,
   isSqlMutation,
 } from "./Sqlite.js";
 import { Listener, Unsubscribe, makeStore } from "./Store.js";
@@ -480,13 +481,14 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
           const { name } = Config.pipe(runtime.runSync);
           let evolu = instances.get(name);
           if (evolu == null) {
-            evolu = createEvolu.pipe(
+            evolu = createEvolu(schema).pipe(
               Effect.provideService(DbWorkerFactory, dbWorkerFactory),
               runtime.runSync,
             );
             instances.set(name, evolu);
+          } else {
+            evolu.ensureSchema(schema, config?.indexes);
           }
-          evolu.ensureSchema(schema, config?.indexes);
           return evolu as Evolu<T>;
         },
       });
@@ -494,7 +496,9 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
   );
 }
 
-const createEvolu: Effect.Effect<Evolu, never, Config | DbWorkerFactory> =
+const createEvolu = (
+  schema: S.Schema<any>,
+): Effect.Effect<Evolu, never, Config | DbWorkerFactory> =>
   Effect.gen(function* (_) {
     yield* _(Effect.logTrace("creating Evolu"));
 
@@ -535,7 +539,8 @@ const createEvolu: Effect.Effect<Evolu, never, Config | DbWorkerFactory> =
     // We can't extend the scope because the DbWorker code can run in WebWorker.
     Scope.addFinalizer(scope, dbWorker.dispose());
 
-    dbWorker.init().pipe(
+    createSqliteSchema(schema).pipe(
+      Effect.flatMap(dbWorker.init),
       Effect.flatMap(ownerStore.setState),
       Effect.catchTag("NotSupportedPlatformError", () => Effect.unit), // no-op
       run,
