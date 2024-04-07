@@ -1,17 +1,24 @@
+import * as AST from "@effect/schema/AST";
 import * as S from "@effect/schema/Schema";
+import { make } from "@effect/schema/Schema";
 import * as Console from "effect/Console";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import { Equivalence } from "effect/Equivalence";
 import * as Exit from "effect/Exit";
+import { pipe } from "effect/Function";
 import * as Layer from "effect/Layer";
 import * as Predicate from "effect/Predicate";
+import * as ReadonlyArray from "effect/ReadonlyArray";
+import * as ReadonlyRecord from "effect/ReadonlyRecord";
+import * as Scope from "effect/Scope";
 import { Config } from "./Config.js";
 
 export class Sqlite extends Context.Tag("Sqlite")<
   Sqlite,
   {
     readonly exec: (query: SqliteQuery) => Effect.Effect<SqliteExecResult>;
+    // TODO: Consider execMany, it could make web platform faster.
     readonly transaction: <A, E, R>(
       effect: Effect.Effect<A, E, R>,
     ) => Effect.Effect<A, E, Sqlite | R>;
@@ -29,7 +36,11 @@ export interface SqliteService extends Context.Tag.Service<typeof Sqlite> {}
 export class SqliteFactory extends Context.Tag("SqliteFactory")<
   SqliteFactory,
   {
-    readonly createSqlite: Effect.Effect<SqliteService, never, Config>;
+    readonly createSqlite: Effect.Effect<
+      SqliteService,
+      never,
+      Config | Scope.Scope
+    >;
   }
 >() {
   static Common = Layer.effect(
@@ -40,14 +51,13 @@ export class SqliteFactory extends Context.Tag("SqliteFactory")<
         Effect.map(
           (sqlite): SqliteService => ({
             exec: (query) =>
-              Effect.logDebug(["SQLite exec", query]).pipe(
-                Effect.andThen(sqlite.exec(query)),
-                Effect.tap((result) =>
-                  Effect.logDebug(["SQLite exec result", result]),
-                ),
+              sqlite.exec(query).pipe(
                 Effect.tap((result) => {
                   maybeParseJson(result.rows);
                 }),
+                Effect.tap((result) =>
+                  Effect.logDebug(["SQLite exec", query, result]),
+                ),
               ),
             transaction: (effect) =>
               Sqlite.pipe(
@@ -206,6 +216,41 @@ export interface SqliteSchema {
   readonly tables: ReadonlyArray<Table>;
   readonly indexes: ReadonlyArray<Index>;
 }
+
+export const createSqliteSchema = (
+  schema: S.Schema<any>,
+): Effect.Effect<SqliteSchema, never, Config> =>
+  Effect.map(Config, (config) => ({
+    tables: schemaToTables(schema),
+    indexes: config?.indexes,
+  }));
+
+const schemaToTables = (schema: S.Schema<any>): ReadonlyArray<Table> =>
+  pipe(
+    getPropertySignatures(schema),
+    ReadonlyRecord.toEntries,
+    ReadonlyArray.map(
+      ([name, schema]): Table => ({
+        name,
+        columns: Object.keys(getPropertySignatures(schema)),
+      }),
+    ),
+  );
+
+// TODO: https://discord.com/channels/795981131316985866/1218626687546294386/1218796529725476935
+// https://github.com/Effect-TS/schema/releases/tag/v0.18.0
+const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
+  schema: S.Schema<A, I>,
+): { [K in keyof A]: S.Schema<A[K], I[K]> } => {
+  const out: Record<PropertyKey, S.Schema<any>> = {};
+  const propertySignatures = AST.getPropertySignatures(schema.ast);
+  for (let i = 0; i < propertySignatures.length; i++) {
+    const propertySignature = propertySignatures[i];
+    out[propertySignature.name] = make(propertySignature.type);
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+  return out as any;
+};
 
 export interface Table {
   readonly name: string;
