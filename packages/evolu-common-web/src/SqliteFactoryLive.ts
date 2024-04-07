@@ -131,9 +131,7 @@ export const SqliteFactoryLive = Layer.effect(
                 );
               }),
             ),
-            Effect.tap(() =>
-              Effect.logTrace("SqliteWeb connection lock granted"),
-            ),
+            Effect.tap(Effect.logTrace("SqliteWeb connection lock granted")),
             Effect.flatMap((sqlite3) =>
               Effect.promise(() =>
                 sqlite3.installOpfsSAHPoolVfs({ name: config.name }),

@@ -488,7 +488,7 @@ export const maybeExplainQueryPlan = (
         sql: `EXPLAIN QUERY PLAN ${sqliteQuery.sql}`,
       }),
     ),
-    Effect.tap(() => Console.log("ExplainQueryPlan", sqliteQuery)),
+    Effect.tap(Console.log("ExplainQueryPlan", sqliteQuery)),
     Effect.tap(({ rows }) =>
       Console.log(drawSqliteQueryPlan(rows as SqliteQueryPlanRow[])),
     ),

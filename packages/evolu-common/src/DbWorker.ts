@@ -84,18 +84,15 @@ export const createDbWorker: Effect.Effect<
 
     loadQueries: (queries) =>
       Deferred.await(context).pipe(
-        Effect.tap(() => Effect.logDebug(["DbWorker loadQueries", queries])),
-        Effect.map(Context.get(Sqlite)),
-        Effect.flatMap((sqlite) =>
+        Effect.tap(Effect.logDebug(["DbWorker loadQueries", queries])),
+        Effect.flatMap((context) =>
           Effect.forEach(ReadonlyArray.dedupe(queries), (query) => {
             const sqliteQuery = deserializeQuery(query);
-            return sqlite.exec(sqliteQuery).pipe(
+            return Sqlite.pipe(
+              Effect.flatMap((sqlite) => sqlite.exec(sqliteQuery)),
               Effect.map(({ rows }) => [query, rows] as const),
-              Effect.tap(() =>
-                maybeExplainQueryPlan(sqliteQuery).pipe(
-                  Effect.provideService(Sqlite, sqlite),
-                ),
-              ),
+              Effect.tap(maybeExplainQueryPlan(sqliteQuery)),
+              Effect.provide(context),
             );
           }),
         ),
