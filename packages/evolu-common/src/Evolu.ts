@@ -337,10 +337,7 @@ export interface Evolu<T extends DatabaseSchema = DatabaseSchema> {
    *
    * This function is for hot/live reloading.
    */
-  readonly ensureSchema: <T, I>(
-    schema: S.Schema<T, I>,
-    indexes?: ReadonlyArray<Index>,
-  ) => void;
+  readonly ensureSchema: <T, I>(schema: S.Schema<T, I>) => void;
 
   /**
    * Force sync with Evolu Server.
@@ -487,7 +484,7 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
             );
             instances.set(name, evolu);
           } else {
-            evolu.ensureSchema(schema, config?.indexes);
+            evolu.ensureSchema(schema);
           }
           return evolu as Evolu<T>;
         },
@@ -516,6 +513,8 @@ const createEvolu = (
       effect.pipe(handleAllErrors, runtime.runFork);
     };
 
+    // const runSync = <T>(effect: Effect.Effect<T, EvoluError, Config>): T =>
+    //   effect.pipe(handleAllErrors, runtime.runSync);
     // const runPromise = <T>(
     //   effect: Effect.Effect<T, EvoluError, Config>,
     // ): Promise<T> => effect.pipe(handleAllErrors, runtime.runPromise);
@@ -713,8 +712,11 @@ const createEvolu = (
         //
       },
 
-      ensureSchema: () => {
-        //
+      ensureSchema: (schema) => {
+        createSqliteSchema(schema).pipe(
+          Effect.flatMap(dbWorker.ensureSchema),
+          run,
+        );
       },
 
       sync: () => {

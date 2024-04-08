@@ -27,6 +27,8 @@ export interface DbWorker {
     queries: ReadonlyArray.NonEmptyReadonlyArray<Query>,
   ) => Effect.Effect<ReadonlyArray<QueryPatches>>;
 
+  readonly ensureSchema: (schema: SqliteSchema) => Effect.Effect<void>;
+
   readonly dispose: () => Effect.Effect<void>;
 }
 
@@ -53,6 +55,13 @@ export const createDbWorker: Effect.Effect<
   const scope = yield* _(Scope.make());
   const context = yield* _(Deferred.make<Context.Context<Sqlite | Owner>>());
   const rowsStore = yield* _(makeRowsStore);
+
+  const afterInit = <A, E, R>(
+    effect: Effect.Effect<A, E, R>,
+  ): Effect.Effect<A, E, Exclude<R, Sqlite | Owner>> =>
+    Deferred.await(context).pipe(
+      Effect.flatMap((context) => Effect.provide(effect, context)),
+    );
 
   const dbWorker: DbWorker = {
     init: (schema) =>
@@ -109,6 +118,12 @@ export const createDbWorker: Effect.Effect<
             }),
           ),
         ),
+      ),
+
+    ensureSchema: (schema) =>
+      Effect.logTrace("DbWorker ensureSchema").pipe(
+        Effect.tap(ensureSchema(schema)),
+        afterInit,
       ),
 
     dispose: () =>
