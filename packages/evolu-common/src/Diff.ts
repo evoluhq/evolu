@@ -21,19 +21,19 @@ export interface ReplaceAtPatch {
   readonly value: Row;
 }
 
-// TODO: Refactor args.
-export const applyPatches =
-  (patches: ReadonlyArray<Patch>) =>
-  (current: Rows): Rows =>
-    patches.reduce((next, patch) => {
-      switch (patch.op) {
-        case "replaceAll":
-          return patch.value;
-        case "replaceAt": {
-          return ReadonlyArray.replace(next, patch.index, patch.value);
-        }
+export const applyPatches = (
+  patches: ReadonlyArray<Patch>,
+  current: Rows,
+): Rows =>
+  patches.reduce((next, patch) => {
+    switch (patch.op) {
+      case "replaceAll":
+        return patch.value;
+      case "replaceAt": {
+        return ReadonlyArray.replace(next, patch.index, patch.value);
       }
-    }, current);
+    }
+  }, current);
 
 // We detect only a change in the whole result and in-place edits.
 // In the future, we will add more heuristics. We will probably not implement

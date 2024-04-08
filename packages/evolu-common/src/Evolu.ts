@@ -558,19 +558,20 @@ const createEvolu = (schema: S.Schema<any>) =>
       patches: ReadonlyArray<QueryPatches>,
     ) =>
       Effect.sync(() => {
-        const state = rowsStore.getState();
-        return pipe(
-          patches,
-          ReadonlyArray.map(
+        const currentState = rowsStore.getState();
+        const nextState: RowsStoreState = new Map([
+          // Spread syntax converts a Map to an Array.
+          ...currentState,
+          ...ReadonlyArray.map(
+            patches,
             ({ query, patches }) =>
               [
                 query,
-                applyPatches(patches)(state.get(query) || emptyRows()),
+                applyPatches(patches, currentState.get(query) || emptyRows()),
               ] as const,
           ),
-          // Spread syntax converts a Map to an Array.
-          (entries): RowsStoreState => new Map([...state, ...entries]),
-        );
+        ]);
+        return nextState;
       });
 
     const resolveLoadingPromises = (query: Query, rows: Rows) =>
