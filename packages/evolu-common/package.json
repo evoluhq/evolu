@@ -58,10 +58,10 @@
     "@protobuf-ts/runtime": "^2.9.4",
     "@scure/bip39": "^1.3.0",
     "kysely": "^0.27.3",
-    "nanoid": "^5.0.6"
+    "nanoid": "^5.0.7"
   },
   "devDependencies": {
-    "@effect/schema": "^0.64.19",
+    "@effect/schema": "^0.64.20",
     "@evolu/tsconfig": "workspace:*",
     "@protobuf-ts/plugin": "^2.9.4",
     "@protobuf-ts/protoc": "^2.9.4",
@@ -73,7 +73,7 @@
     "vitest": "^1.4.0"
   },
   "peerDependencies": {
-    "@effect/schema": "^0.64.19",
+    "@effect/schema": "^0.64.20",
     "effect": "2.4.18"
   },
   "publishConfig": {
