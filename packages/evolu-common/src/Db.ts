@@ -284,7 +284,7 @@ const sqliteDefectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
 );
 
 export const getOrCreateOwner = Effect.logTrace("Db getOrCreateOwner").pipe(
-  Effect.flatMap(() => Sqlite),
+  Effect.zipRight(Sqlite),
   Effect.flatMap((sqlite) => sqlite.exec(selectOwner)),
   Effect.map(
     ({ rows: [row] }): Owner => ({
@@ -395,6 +395,7 @@ export const ensureSchema = (
   schema: SqliteSchema,
 ): Effect.Effect<void, never, Sqlite> =>
   Effect.gen(function* (_) {
+    Effect.logTrace("Db ensureSchema");
     const sqlite = yield* _(Sqlite);
     const currentSchema = yield* _(getSchema);
 
@@ -449,12 +450,7 @@ create table ${table.name} (
       sql.push(`${newIndex.sql};`);
     });
 
-    if (sql.length > 0)
-      yield* _(
-        sqlite.exec({
-          sql: sql.join("\n"),
-        }),
-      );
+    if (sql.length > 0) yield* _(sqlite.exec({ sql: sql.join("\n") }));
   });
 
 export const dropAllTables: Effect.Effect<void, never, Sqlite> = Effect.gen(

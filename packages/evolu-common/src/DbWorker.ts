@@ -50,16 +50,25 @@ export const createDbWorker: Effect.Effect<
   SqliteFactory | Bip39 | NanoIdGenerator
 > = Effect.gen(function* (_) {
   const sqliteFactory = yield* _(SqliteFactory);
-  const bip39 = yield* _(Bip39);
-  const nanoIdGenerator = yield* _(NanoIdGenerator);
   const scope = yield* _(Scope.make());
-  const context = yield* _(Deferred.make<Context.Context<Sqlite | Owner>>());
   const rowsStore = yield* _(makeRowsStore);
+
+  const initContext = Context.empty().pipe(
+    Context.add(Bip39, yield* _(Bip39)),
+    Context.add(NanoIdGenerator, yield* _(NanoIdGenerator)),
+  );
+  const deferredContext = yield* _(
+    Deferred.make<Context.Context<Bip39 | NanoIdGenerator | Sqlite | Owner>>(),
+  );
 
   const afterInit = <A, E, R>(
     effect: Effect.Effect<A, E, R>,
-  ): Effect.Effect<A, E, Exclude<R, Sqlite | Owner>> =>
-    Deferred.await(context).pipe(
+  ): Effect.Effect<
+    A,
+    E,
+    Exclude<R, Bip39 | NanoIdGenerator | Sqlite | Owner>
+  > =>
+    Deferred.await(deferredContext).pipe(
       Effect.flatMap((context) => Effect.provide(effect, context)),
     );
 
@@ -71,37 +80,31 @@ export const createDbWorker: Effect.Effect<
           sqliteFactory.createSqlite,
           Scope.extend(scope),
         );
+        const contextWithSqlite = Context.add(initContext, Sqlite, sqlite);
         const owner = yield* _(
           ensureSchema(schema),
           Effect.andThen(getOrCreateOwner),
           sqlite.transaction,
-          Effect.provideService(Sqlite, sqlite),
-          Effect.provideService(Bip39, bip39),
-          Effect.provideService(NanoIdGenerator, nanoIdGenerator),
+          Effect.provide(contextWithSqlite),
         );
         yield* _(
           Deferred.succeed(
-            context,
-            Context.empty().pipe(
-              Context.add(Sqlite, sqlite),
-              Context.add(Owner, owner),
-            ),
+            deferredContext,
+            Context.add(contextWithSqlite, Owner, owner),
           ),
         );
         return owner;
       }),
 
     loadQueries: (queries) =>
-      Deferred.await(context).pipe(
-        Effect.tap(Effect.logDebug(["DbWorker loadQueries", queries])),
-        Effect.flatMap((context) =>
+      Effect.logDebug(["DbWorker loadQueries", queries]).pipe(
+        Effect.zipRight(Sqlite),
+        Effect.flatMap((sqlite) =>
           Effect.forEach(ReadonlyArray.dedupe(queries), (query) => {
             const sqliteQuery = deserializeQuery(query);
-            return Sqlite.pipe(
-              Effect.flatMap((sqlite) => sqlite.exec(sqliteQuery)),
-              Effect.map(({ rows }) => [query, rows] as const),
+            return sqlite.exec(sqliteQuery).pipe(
               Effect.tap(maybeExplainQueryPlan(sqliteQuery)),
-              Effect.provide(context),
+              Effect.map(({ rows }) => [query, rows] as const),
             );
           }),
         ),
@@ -118,13 +121,10 @@ export const createDbWorker: Effect.Effect<
             }),
           ),
         ),
-      ),
-
-    ensureSchema: (schema) =>
-      Effect.logTrace("DbWorker ensureSchema").pipe(
-        Effect.tap(ensureSchema(schema)),
         afterInit,
       ),
+
+    ensureSchema: (schema) => ensureSchema(schema).pipe(afterInit),
 
     dispose: () =>
       Effect.logTrace("dispose DbWorker").pipe(
