@@ -10,7 +10,7 @@ export const SyncWorkerLive = Layer.effect(
       new URL("SyncWorker.worker.js", import.meta.url),
       { type: "module" },
     );
-    worker.onmessage = (e: MessageEvent<SyncWorkerOutput>): void => {
+    worker.onmessage = (e: MessageEvent<SyncWorkerOutput>) => {
       syncWorker.onMessage(e.data);
     };
     const syncWorker: SyncWorker = {

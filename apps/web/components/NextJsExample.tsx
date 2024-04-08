@@ -112,8 +112,7 @@ const evolu = createEvolu(Database, {
 //   name: "Evolu1",
 // });
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const createFixtures = (): Promise<void> =>
+const createFixtures = () =>
   Promise.all(
     evolu.loadQueries([
       evolu.createQuery((db) => db.selectFrom("todo").selectAll()),
@@ -132,7 +131,7 @@ const createFixtures = (): Promise<void> =>
     });
   });
 
-const isRestoringOwner = (isRestoringOwner?: boolean): boolean => {
+const isRestoringOwner = (isRestoringOwner?: boolean) => {
   if (!canUseDom) return false;
   const key = 'evolu:isRestoringOwner"';
   if (isRestoringOwner != null)
@@ -141,12 +140,12 @@ const isRestoringOwner = (isRestoringOwner?: boolean): boolean => {
 };
 
 // Ensure fixtures are not added to the restored owner.
-// if (!isRestoringOwner()) createFixtures();
+if (!isRestoringOwner()) createFixtures();
 
 export const NextJsExample = memo(function NextJsExample() {
   const [currentTab, setCurrentTab] = useState<"todos" | "categories">("todos");
 
-  const handleTabClick = (): void =>
+  const handleTabClick = () =>
     // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
     startTransition(() => {
       setCurrentTab(currentTab === "todos" ? "categories" : "todos");
@@ -191,7 +190,7 @@ const NotificationBar: FC = () => {
   return (
     <div className="mt-3">
       <p>{`Error: ${JSON.stringify(evoluError)}`}</p>
-      <Button title="Close" onClick={(): void => setShowError(false)} />
+      <Button title="Close" onClick={() => setShowError(false)} />
     </div>
   );
 };
@@ -229,7 +228,7 @@ const Todos: FC = () => {
   const { rows } = useQuery(todosWithCategories);
   const { create } = useEvolu<Database>();
 
-  const handleAddTodoClick = (): void => {
+  const handleAddTodoClick = () => {
     prompt(NonEmptyString1000, "What needs to be done?", (title) => {
       create("todo", { title });
     });
@@ -254,17 +253,17 @@ const TodoItem = memo<{
 }) {
   const { update } = useEvolu<Database>();
 
-  const handleToggleCompletedClick = (): void => {
+  const handleToggleCompletedClick = () => {
     update("todo", { id, isCompleted: !isCompleted });
   };
 
-  const handleRenameClick = (): void => {
+  const handleRenameClick = () => {
     prompt(NonEmptyString1000, "New Name", (title) => {
       update("todo", { id, title });
     });
   };
 
-  const handleDeleteClick = (): void => {
+  const handleDeleteClick = () => {
     update("todo", { id, isDeleted: true });
   };
 
@@ -285,7 +284,7 @@ const TodoItem = memo<{
       <TodoCategorySelect
         categories={categories}
         selected={categoryId}
-        onSelect={(categoryId): void => {
+        onSelect={(categoryId) => {
           update("todo", { id, categoryId });
         }}
       />
@@ -307,9 +306,7 @@ const TodoCategorySelect: FC<{
   return (
     <select
       value={value}
-      onChange={({
-        target: { value },
-      }: ChangeEvent<HTMLSelectElement>): void => {
+      onChange={({ target: { value } }: ChangeEvent<HTMLSelectElement>) => {
         onSelect(value === nothingSelected ? null : (value as TodoCategoryId));
       }}
     >
@@ -343,7 +340,7 @@ const TodoCategories: FC = () => {
   // Evolu automatically parses JSONs into typed objects.
   // if (rows[0]) console.log(rows[1].json?.foo);
 
-  const handleAddCategoryClick = (): void => {
+  const handleAddCategoryClick = () => {
     prompt(NonEmptyString50, "Category Name", (name) => {
       create("todoCategory", {
         name,
@@ -369,13 +366,13 @@ const TodoCategoryItem = memo<{
 }>(function TodoItem({ row: { id, name } }) {
   const { update } = useEvolu<Database>();
 
-  const handleRenameClick = (): void => {
+  const handleRenameClick = () => {
     prompt(NonEmptyString50, "Category Name", (name) => {
       update("todoCategory", { id, name });
     });
   };
 
-  const handleDeleteClick = (): void => {
+  const handleDeleteClick = () => {
     update("todoCategory", { id, isDeleted: true });
   };
 
@@ -395,7 +392,7 @@ const OwnerActions: FC = () => {
   const owner = useOwner();
   const [showMnemonic, setShowMnemonic] = useState(false);
 
-  const handleRestoreOwnerClick = (): void => {
+  const handleRestoreOwnerClick = () => {
     prompt(NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
       parseMnemonic(mnemonic)
         .pipe(Effect.runPromiseExit)
@@ -413,7 +410,7 @@ const OwnerActions: FC = () => {
     });
   };
 
-  const handleResetOwnerClick = (): void => {
+  const handleResetOwnerClick = () => {
     if (confirm("Are you sure? It will delete all your local data.")) {
       isRestoringOwner(false);
       evolu.resetOwner();
@@ -428,7 +425,7 @@ const OwnerActions: FC = () => {
       </p>
       <Button
         title={`${showMnemonic ? "Hide" : "Show"} Mnemonic`}
-        onClick={(): void => setShowMnemonic(!showMnemonic)}
+        onClick={() => setShowMnemonic(!showMnemonic)}
       />
       <Button title="Restore Owner" onClick={handleRestoreOwnerClick} />
       <Button title="Reset Owner" onClick={handleResetOwnerClick} />
@@ -464,7 +461,7 @@ const prompt = <From extends string, To>(
   schema: S.Schema<To, From, never>,
   message: string,
   onSuccess: (value: To) => void,
-): void => {
+) => {
   const value = window.prompt(message);
   if (value == null) return; // on cancel
   const a = S.decodeUnknownEither(schema)(value);

@@ -493,9 +493,7 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
   );
 }
 
-const createEvolu = (
-  schema: S.Schema<any>,
-): Effect.Effect<Evolu, never, Config | DbWorkerFactory> =>
+const createEvolu = (schema: S.Schema<any>) =>
   Effect.gen(function* (_) {
     yield* _(Effect.logTrace("creating Evolu"));
 
@@ -509,7 +507,7 @@ const createEvolu = (
     const loadingPromises = new Map<Query, LoadingPromise>();
     const subscribedQueries = new Map<Query, number>();
 
-    const run = (effect: Effect.Effect<void, EvoluError, Config>): void => {
+    const run = (effect: Effect.Effect<void, EvoluError, Config>) => {
       effect.pipe(handleAllErrors, runtime.runFork);
     };
 
@@ -545,9 +543,7 @@ const createEvolu = (
       run,
     );
 
-    const handlePatches = (
-      patches: ReadonlyArray<QueryPatches>,
-    ): Effect.Effect<void> =>
+    const handlePatches = (patches: ReadonlyArray<QueryPatches>) =>
       Effect.logDebug(["Evolu handlePatches", patches]).pipe(
         Effect.andThen(createRowsStoreStateFromPatches(patches)),
         Effect.tap((nextState) =>
@@ -559,8 +555,8 @@ const createEvolu = (
       );
 
     const createRowsStoreStateFromPatches = (
-      patches: readonly QueryPatches[],
-    ): Effect.Effect<RowsStoreState> =>
+      patches: ReadonlyArray<QueryPatches>,
+    ) =>
       Effect.sync(() => {
         const state = rowsStore.getState();
         return pipe(
@@ -573,14 +569,11 @@ const createEvolu = (
               ] as const,
           ),
           // Spread syntax converts a Map to an Array.
-          (entries) => new Map([...state, ...entries]),
+          (entries): RowsStoreState => new Map([...state, ...entries]),
         );
       });
 
-    const resolveLoadingPromises = (
-      query: Query,
-      rows: Rows,
-    ): Effect.Effect<void> =>
+    const resolveLoadingPromises = (query: Query, rows: Rows) =>
       Effect.sync(() => {
         const promiseWithResolve = loadingPromises.get(query);
         if (!promiseWithResolve) return;
@@ -747,13 +740,12 @@ interface LoadingPromise {
 // https://kysely.dev/docs/recipes/splitting-query-building-and-execution
 const kysely = new Kysely.Kysely({
   dialect: {
-    createAdapter: (): Kysely.DialectAdapter => new Kysely.SqliteAdapter(),
-    createDriver: (): Kysely.Driver => new Kysely.DummyDriver(),
-    createIntrospector(): Kysely.DatabaseIntrospector {
+    createAdapter: () => new Kysely.SqliteAdapter(),
+    createDriver: () => new Kysely.DummyDriver(),
+    createIntrospector() {
       throw "Not implemeneted";
     },
-    createQueryCompiler: (): Kysely.QueryCompiler =>
-      new Kysely.SqliteQueryCompiler(),
+    createQueryCompiler: () => new Kysely.SqliteQueryCompiler(),
   },
 });
 
@@ -794,7 +786,7 @@ export const createIndexes = (
 // https://github.com/acdlite/rfcs/blob/first-class-promises/text/0000-first-class-support-for-promises.md
 const setPromiseAsResolved =
   <T>(promise: Promise<T>) =>
-  (value: unknown): void => {
+  (value: unknown) => {
     Object.assign(promise, { status: "fulfilled", value });
   };
 

@@ -62,7 +62,7 @@ export const SqliteFactoryLive = Layer.effect(
         );
 
         /** Handle incoming messages for a tab without initialized Sqlite. */
-        channel.onMessage = (message): void => {
+        channel.onMessage = (message) => {
           switch (message._tag) {
             case "Exec": {
               execsBeforeSqliteInit = [...execsBeforeSqliteInit, message];
@@ -92,7 +92,7 @@ export const SqliteFactoryLive = Layer.effect(
          */
         let execsBeforeSqliteInit: ReadonlyArray<Exec> = [];
 
-        const maybeCallCallback = (message: ExecSuccess | ExecError): void => {
+        const maybeCallCallback = (message: ExecSuccess | ExecError) => {
           const callback = callbacks.get(message.id);
           if (callback) {
             callback(message);
@@ -142,7 +142,7 @@ export const SqliteFactoryLive = Layer.effect(
                 new poolUtil.OpfsSAHPoolDb("/evolu1.db"),
             ),
             Effect.tap((sqlite) => {
-              const exec = (query: SqliteQuery, id: NanoId): void =>
+              const exec = (query: SqliteQuery, id: NanoId) =>
                 Effect.try({
                   try: () =>
                     sqlite.exec(query.sql, {
@@ -168,7 +168,7 @@ export const SqliteFactoryLive = Layer.effect(
                   runtime.runSync,
                 );
 
-              channel.onMessage = (message): void => {
+              channel.onMessage = (message) => {
                 switch (message._tag) {
                   /** A tab was elected so it can start processing. */
                   case "Exec":
@@ -261,9 +261,7 @@ type ExecError = {
   readonly error: unknown;
 };
 
-const createSqliteBroadcastChannel = (
-  name: string,
-): Effect.Effect<SqliteBroadcastChannel> =>
+const createSqliteBroadcastChannel = (name: string) =>
   Effect.sync(() => {
     const channel = new BroadcastChannel(name);
     const sqliteChannel: SqliteBroadcastChannel = {
@@ -274,9 +272,7 @@ const createSqliteBroadcastChannel = (
       },
       onMessage: constVoid,
     };
-    channel.onmessage = (
-      e: MessageEvent<SqliteBroadcastChannelMessage>,
-    ): void => {
+    channel.onmessage = (e: MessageEvent<SqliteBroadcastChannelMessage>) => {
       sqliteChannel.onMessage(e.data);
     };
     return sqliteChannel;

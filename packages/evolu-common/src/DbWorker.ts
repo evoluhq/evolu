@@ -61,13 +61,7 @@ export const createDbWorker: Effect.Effect<
     Deferred.make<Context.Context<Bip39 | NanoIdGenerator | Sqlite | Owner>>(),
   );
 
-  const afterInit = <A, E, R>(
-    effect: Effect.Effect<A, E, R>,
-  ): Effect.Effect<
-    A,
-    E,
-    Exclude<R, Bip39 | NanoIdGenerator | Sqlite | Owner>
-  > =>
+  const afterInit = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Deferred.await(deferredContext).pipe(
       Effect.flatMap((context) => Effect.provide(effect, context)),
     );

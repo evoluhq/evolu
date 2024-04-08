@@ -21,6 +21,7 @@ export interface ReplaceAtPatch {
   readonly value: Row;
 }
 
+// TODO: Refactor args.
 export const applyPatches =
   (patches: ReadonlyArray<Patch>) =>
   (current: Rows): Rows =>

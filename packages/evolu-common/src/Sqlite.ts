@@ -225,7 +225,7 @@ export const createSqliteSchema = (
     indexes: config?.indexes,
   }));
 
-const schemaToTables = (schema: S.Schema<any>): ReadonlyArray<Table> =>
+const schemaToTables = (schema: S.Schema<any>) =>
   pipe(
     getPropertySignatures(schema),
     ReadonlyRecord.toEntries,

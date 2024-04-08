@@ -102,7 +102,7 @@ export const createEvoluRuntime = (
 };
 
 // TODO: Spans and variadic when supported.
-const makeEvoluLogger = (name: string): Logger.Logger<unknown, void> =>
+const makeEvoluLogger = (name: string) =>
   Logger.make(({ logLevel, message }) => {
     const fn =
       logLevel._tag === "Warning"

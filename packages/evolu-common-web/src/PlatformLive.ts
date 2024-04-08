@@ -59,7 +59,7 @@ export const AppStateLive = Layer.effect(
     const { reloadUrl } = yield* _(Config);
     const localStorageKey = "evolu:reloadAllTabs";
 
-    const reloadLocation = (): void => {
+    const reloadLocation = () => {
       /**
        * Using replace() will not save the current page in session History,
        * meaning the user will not be able to use the back button to navigate to

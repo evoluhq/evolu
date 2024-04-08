@@ -19,6 +19,7 @@ const noOpServerWorker: DbWorker = {
       _tag: "NotSupportedPlatformError",
     }),
   loadQueries: () => Effect.succeed([]),
+  ensureSchema: () => Effect.unit,
   dispose: () => Effect.unit,
 };
 

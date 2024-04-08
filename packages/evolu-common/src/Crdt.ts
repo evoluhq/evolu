@@ -146,13 +146,7 @@ export interface TimestampTimeOutOfRangeError {
   readonly _tag: "TimestampTimeOutOfRangeError";
 }
 
-const getNextMillis = (
-  millis: ReadonlyArray<Millis>,
-): Effect.Effect<
-  Millis,
-  TimestampDriftError | TimestampTimeOutOfRangeError,
-  Time | Config
-> =>
+const getNextMillis = (millis: ReadonlyArray<Millis>) =>
   Effect.gen(function* (_) {
     const time = yield* _(Time);
     const config = yield* _(Config);
@@ -172,13 +166,15 @@ const getNextMillis = (
     return next;
   });
 
-const incrementCounter = (
-  counter: Counter,
-): Either.Either<Counter, TimestampCounterOverflowError> =>
+const incrementCounter = (counter: Counter) =>
   pipe(
     Number.increment(counter),
     S.decodeEither(Counter),
-    Either.mapLeft(() => ({ _tag: "TimestampCounterOverflowError" })),
+    Either.mapLeft(
+      (): TimestampCounterOverflowError => ({
+        _tag: "TimestampCounterOverflowError",
+      }),
+    ),
   );
 
 const counterMin = S.decodeSync(Counter)(0);
@@ -262,17 +258,15 @@ export const millisToMerkleTreePath = (millis: Millis): MerkleTreePath =>
     .toString(3)
     .split("") as MerkleTreePath;
 
-const merkleTreePathToMillis = (path: MerkleTreePath): Millis =>
+const merkleTreePathToMillis = (path: MerkleTreePath) =>
   path.length === 0
     ? initialMillis
     : // 16 is the length of the base 3 value of the current time in minutes.
       // Ensure it's padded to create the full value.
       ((parseInt(path.join("").padEnd(16, "0"), 3) * 1000 * 60) as Millis);
 
-const xorTimestampHashes = (
-  a: TimestampHash | undefined,
-  b: TimestampHash,
-): TimestampHash => ((a || 0) ^ b) as TimestampHash;
+const xorTimestampHashes = (a: TimestampHash | undefined, b: TimestampHash) =>
+  ((a || 0) ^ b) as TimestampHash;
 
 const insertKey = (
   tree: MerkleTree,
@@ -306,9 +300,7 @@ export const insertIntoMerkleTree =
 
 const sortedMerkleTreeKeys: ReadonlyArray<MerkleTreeKey> = ["0", "1", "2"];
 
-const getSortedMerkleTreeKeys = (
-  tree: MerkleTree,
-): ReadonlyArray<MerkleTreeKey> =>
+const getSortedMerkleTreeKeys = (tree: MerkleTree) =>
   sortedMerkleTreeKeys.filter((key) => key in tree);
 
 export const diffMerkleTrees = (

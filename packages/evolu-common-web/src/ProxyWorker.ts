@@ -49,7 +49,7 @@ interface Die {
 export const wrap = <T>(worker: Worker): T => {
   const callbacks = new Map<string, (response: OnMessageResponse) => void>();
 
-  worker.onmessage = ({ data: message }: MessageEvent<OnMessage>): void => {
+  worker.onmessage = ({ data: message }: MessageEvent<OnMessage>) => {
     const callback = callbacks.get(message.id);
     if (callback) {
       callback(message.response);
@@ -89,7 +89,7 @@ export const expose = (object: object): void => {
 
   onmessage = ({
     data: { id, name, args, config },
-  }: MessageEvent<PostMessage>): void => {
+  }: MessageEvent<PostMessage>) => {
     if (runtime == null) runtime = createEvoluRuntime(config);
 
     runtime.runFork(

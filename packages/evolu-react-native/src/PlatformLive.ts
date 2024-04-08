@@ -39,7 +39,7 @@ export const AppStateLive = Layer.succeed(
   AppState.of({
     init: ({ onRequestSync }) => {
       let appStateStatus = ReactNativeAppState.currentState;
-      ReactNativeAppState.addEventListener("change", (current): void => {
+      ReactNativeAppState.addEventListener("change", (current) => {
         if (appStateStatus.match(/inactive|background/) && current === "active")
           onRequestSync();
         appStateStatus = current;
