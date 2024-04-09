@@ -2,15 +2,16 @@ import * as S from "@effect/schema/Schema";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
-import { constVoid, pipe } from "effect/Function";
+import { constVoid, flow, pipe } from "effect/Function";
 import * as Layer from "effect/Layer";
+import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Number from "effect/Number";
 import * as ReadonlyArray from "effect/ReadonlyArray";
 import * as Scope from "effect/Scope";
 import * as Kysely from "kysely";
 import { Config, createEvoluRuntime } from "./Config.js";
 import { TimestampError } from "./Crdt.js";
-import { Mnemonic } from "./Crypto.js";
+import { Mnemonic, NanoIdGenerator } from "./Crypto.js";
 import {
   DatabaseSchema,
   Queries,
@@ -26,7 +27,7 @@ import {
   queryResultFromRows,
   serializeQuery,
 } from "./Db.js";
-import { DbWorkerFactory } from "./DbWorker.js";
+import { DbWorkerFactory, Mutation } from "./DbWorker.js";
 import { QueryPatches, applyPatches } from "./Diff.js";
 import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
 import { Owner } from "./Owner.js";
@@ -351,7 +352,7 @@ export interface Evolu<T extends DatabaseSchema = DatabaseSchema> {
   // TODO:
   // readonly exportSqliteFile: () => Promise<Uint8Array>
 
-  readonly dispose: () => void;
+  readonly dispose: () => Promise<void>;
 }
 
 /** The EvoluError type is used to represent errors that can occur in Evolu. */
@@ -390,10 +391,12 @@ type Mutate<
             Castable<Omit<S[K], "createdAt" | "updatedAt" | "isDeleted">>
           >
   >,
-  onComplete?: () => void,
+  onComplete?: MutateOnComplete,
 ) => {
   readonly id: S[K]["id"];
 };
+
+type MutateOnComplete = () => void;
 
 // https://stackoverflow.com/a/54713648/233902
 type PartialForNullable<
@@ -464,7 +467,9 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
   static Common = Layer.effect(
     EvoluFactory,
     Effect.gen(function* (_) {
+      // TODO: context, a poslat ho tam jednim jebem
       const dbWorkerFactory = yield* _(DbWorkerFactory);
+      const { nanoid } = yield* _(NanoIdGenerator);
 
       // For hot/live reload and future Evolu dynamic import.
       const instances = new Map<string, Evolu>();
@@ -478,7 +483,7 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
           const { name } = Config.pipe(runtime.runSync);
           let evolu = instances.get(name);
           if (evolu == null) {
-            evolu = createEvolu(schema).pipe(
+            evolu = createEvolu(schema, runtime).pipe(
               Effect.provideService(DbWorkerFactory, dbWorkerFactory),
               runtime.runSync,
             );
@@ -493,13 +498,13 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
   );
 }
 
-const createEvolu = (schema: S.Schema<any>) =>
+const createEvolu = (
+  schema: S.Schema<any>,
+  runtime: ManagedRuntime.ManagedRuntime<Config, never>,
+) =>
   Effect.gen(function* (_) {
-    yield* _(Effect.logTrace("creating Evolu"));
-
+    yield* _(Effect.logTrace("EvoluFactory createEvolu"));
     const config = yield* _(Config);
-    const runtime = createEvoluRuntime(config);
-
     const scope = yield* _(Scope.make());
     const errorStore = yield* _(makeStore<EvoluError | null>(null));
     const ownerStore = yield* _(makeStore<Owner | null>(null));
@@ -507,19 +512,7 @@ const createEvolu = (schema: S.Schema<any>) =>
     const loadingPromises = new Map<Query, LoadingPromise>();
     const subscribedQueries = new Map<Query, number>();
 
-    const run = (effect: Effect.Effect<void, EvoluError, Config>) => {
-      effect.pipe(handleAllErrors, runtime.runFork);
-    };
-
-    // const runSync = <T>(effect: Effect.Effect<T, EvoluError, Config>): T =>
-    //   effect.pipe(handleAllErrors, runtime.runSync);
-    // const runPromise = <T>(
-    //   effect: Effect.Effect<T, EvoluError, Config>,
-    // ): Promise<T> => effect.pipe(handleAllErrors, runtime.runPromise);
-
-    const handleAllErrors = <T>(
-      effect: Effect.Effect<T, EvoluError, Config>,
-    ): Effect.Effect<T, EvoluError, Config> =>
+    const handleAllErrors = <T>(effect: Effect.Effect<T, EvoluError, Config>) =>
       effect.pipe(
         Effect.catchAllDefect((error) =>
           Effect.fail<EvoluError>({ _tag: "UnexpectedError", error }),
@@ -527,6 +520,10 @@ const createEvolu = (schema: S.Schema<any>) =>
         Effect.tapError(Effect.logError),
         Effect.tapError(errorStore.setState),
       );
+
+    const runFork = flow(handleAllErrors, runtime.runFork);
+    const runSync = flow(handleAllErrors, runtime.runSync);
+    const runPromise = flow(handleAllErrors, runtime.runPromise);
 
     const dbWorker = yield* _(
       DbWorkerFactory,
@@ -536,16 +533,9 @@ const createEvolu = (schema: S.Schema<any>) =>
     // We can't extend the scope because the DbWorker code can run in WebWorker.
     Scope.addFinalizer(scope, dbWorker.dispose());
 
-    createSqliteSchema(schema).pipe(
-      Effect.flatMap(dbWorker.init),
-      Effect.flatMap(ownerStore.setState),
-      Effect.catchTag("NotSupportedPlatformError", () => Effect.unit), // no-op
-      run,
-    );
-
     const handlePatches = (patches: ReadonlyArray<QueryPatches>) =>
       Effect.logDebug(["Evolu handlePatches", patches]).pipe(
-        Effect.andThen(createRowsStoreStateFromPatches(patches)),
+        Effect.andThen(rowsStoreStateFromPatches(patches)),
         Effect.tap((nextState) =>
           Effect.forEach(patches, ({ query }) =>
             resolveLoadingPromises(query, nextState.get(query) || emptyRows()),
@@ -554,24 +544,18 @@ const createEvolu = (schema: S.Schema<any>) =>
         Effect.flatMap(rowsStore.setState),
       );
 
-    const createRowsStoreStateFromPatches = (
-      patches: ReadonlyArray<QueryPatches>,
-    ) =>
-      Effect.sync(() => {
-        const currentState = rowsStore.getState();
-        const nextState: RowsStoreState = new Map([
-          // Spread syntax converts a Map to an Array.
-          ...currentState,
-          ...ReadonlyArray.map(
-            patches,
-            ({ query, patches }) =>
-              [
-                query,
-                applyPatches(patches, currentState.get(query) || emptyRows()),
-              ] as const,
-          ),
-        ]);
-        return nextState;
+    const rowsStoreStateFromPatches = (patches: ReadonlyArray<QueryPatches>) =>
+      Effect.sync((): RowsStoreState => {
+        const rowsStoreState = rowsStore.getState();
+        const queriesRows = ReadonlyArray.map(
+          patches,
+          ({ query, patches }): [Query, Rows] => [
+            query,
+            applyPatches(patches, rowsStoreState.get(query) || emptyRows()),
+          ],
+        );
+        // Spread syntax converts a Map to an Array.
+        return new Map([...rowsStoreState, ...queriesRows]);
       });
 
     const resolveLoadingPromises = (query: Query, rows: Rows) =>
@@ -585,6 +569,59 @@ const createEvolu = (schema: S.Schema<any>) =>
         setPromiseAsResolved(promiseWithResolve.promise)(result);
         if (promiseWithResolve.releaseOnResolve) loadingPromises.delete(query);
       });
+
+    const mutate = (() => {
+      let queue: ReadonlyArray<[Mutation, MutateOnComplete]> = [];
+    })();
+
+    // const MutateLive = Layer.effect(
+    //   Mutate,
+    //   Effect.gen(function* (_) {
+    //     const { nanoid } = yield* _(NanoIdGenerator);
+    //     let mutations: ReadonlyArray<Mutation> = [];
+
+    //     return Mutate.of((table, { id, ...values }, onComplete) => {
+    //       const isInsert = id == null;
+    //       if (isInsert) id = Effect.runSync(nanoid) as never;
+
+    //       const onCompleteId = onComplete
+    //         ? onCompletes.add(onComplete).pipe(Effect.runSync)
+    //         : null;
+
+    //       mutations = [
+    //         ...mutations,
+    //         {
+    //           table: table.toString(),
+    //           id,
+    //           values,
+    //           isInsert,
+    //           onCompleteId,
+    //         },
+    //       ];
+
+    //       if (mutations.length === 1)
+    //         queueMicrotask(() => {
+    //           if (ReadonlyArray.isNonEmptyReadonlyArray(mutations))
+    //             dbWorker.postMessage({
+    //               _tag: "mutate",
+    //               mutations,
+    //               queries: subscribedQueries.getSubscribedQueries(),
+    //             });
+    //           loadingPromises.release();
+    //           mutations = [];
+    //         });
+
+    //       return { id };
+    //     });
+    //   }),
+    // );
+
+    createSqliteSchema(schema).pipe(
+      Effect.flatMap(dbWorker.init),
+      Effect.flatMap(ownerStore.setState),
+      Effect.catchTag("NotSupportedPlatformError", () => Effect.unit), // no-op
+      runFork,
+    );
 
     const evolu: Evolu = {
       subscribeError: errorStore.subscribe,
@@ -610,12 +647,12 @@ const createEvolu = (schema: S.Schema<any>) =>
           (query) => serializeQuery(query),
         ),
 
-      loadQuery: Effect.sync(() => {
+      loadQuery: (() => {
         let queue: ReadonlyArray<Query> = [];
 
         return <R extends Row>(query: Query<R>): Promise<QueryResult<R>> => {
           Effect.logDebug(["Evolu loadQuery", deserializeQuery(query)]).pipe(
-            run,
+            runSync,
           );
           let isNew = false;
           let loadingPromise = loadingPromises.get(query);
@@ -636,13 +673,13 @@ const createEvolu = (schema: S.Schema<any>) =>
               if (!ReadonlyArray.isNonEmptyReadonlyArray(queue)) return;
               dbWorker
                 .loadQueries(queue)
-                .pipe(Effect.flatMap(handlePatches), run);
+                .pipe(Effect.flatMap(handlePatches), runFork);
               queue = [];
             });
           }
           return loadingPromise.promise as Promise<QueryResult<R>>;
         };
-      }).pipe(Effect.runSync),
+      })(),
 
       loadQueries: <R extends Row, Q extends Queries<R>>(
         queries: [...Q],
@@ -670,13 +707,8 @@ const createEvolu = (schema: S.Schema<any>) =>
           rowsStore.getState().get(query) || emptyRows(),
         ) as QueryResult<R>,
 
-      subscribeOwner: () => {
-        return () => () => {};
-      },
-
-      getOwner: () => {
-        return null;
-      },
+      subscribeOwner: ownerStore.subscribe,
+      getOwner: ownerStore.getState,
 
       subscribeSyncState: () => {
         return () => () => {};
@@ -709,7 +741,7 @@ const createEvolu = (schema: S.Schema<any>) =>
       ensureSchema: (schema) => {
         createSqliteSchema(schema).pipe(
           Effect.flatMap(dbWorker.ensureSchema),
-          run,
+          runFork,
         );
       },
 
@@ -720,7 +752,7 @@ const createEvolu = (schema: S.Schema<any>) =>
       dispose: () =>
         Effect.logTrace("dispose Evolu").pipe(
           Effect.andThen(Scope.close(scope, Exit.succeed("Evolu disposed"))),
-          run,
+          runPromise,
         ),
     };
 
@@ -1299,52 +1331,6 @@ export const lockName = (name: string): Effect.Effect<string, never, Config> =>
 //           ? null | Date | SqliteDate
 //           : T[K];
 // };
-
-// const MutateLive = Layer.effect(
-//   Mutate,
-//   Effect.gen(function* (_) {
-//     const { nanoid } = yield* _(NanoIdGenerator);
-//     const onCompletes = yield* _(OnCompletes);
-//     const subscribedQueries = yield* _(SubscribedQueries);
-//     const loadingPromises = yield* _(LoadingPromises);
-//     const dbWorker = yield* _(DbWorker);
-//     let mutations: ReadonlyArray<Mutation> = [];
-
-//     return Mutate.of((table, { id, ...values }, onComplete) => {
-//       const isInsert = id == null;
-//       if (isInsert) id = Effect.runSync(nanoid) as never;
-
-//       const onCompleteId = onComplete
-//         ? onCompletes.add(onComplete).pipe(Effect.runSync)
-//         : null;
-
-//       mutations = [
-//         ...mutations,
-//         {
-//           table: table.toString(),
-//           id,
-//           values,
-//           isInsert,
-//           onCompleteId,
-//         },
-//       ];
-
-//       if (mutations.length === 1)
-//         queueMicrotask(() => {
-//           if (ReadonlyArray.isNonEmptyReadonlyArray(mutations))
-//             dbWorker.postMessage({
-//               _tag: "mutate",
-//               mutations,
-//               queries: subscribedQueries.getSubscribedQueries(),
-//             });
-//           loadingPromises.release();
-//           mutations = [];
-//         });
-
-//       return { id };
-//     });
-//   }),
-// );
 
 // /** EvoluCommon is without side effects, so it's unit-testable. */
 // const EvoluCommon = Layer.effect(
