@@ -4,6 +4,7 @@ import {
   EvoluFactory,
   InvalidMnemonicError,
   Mnemonic,
+  NanoIdGenerator,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -21,11 +22,14 @@ export const parseMnemonic: (
 
 export const EvoluFactoryReactNative = Layer.provide(
   EvoluFactory.Common,
-  Layer.succeed(DbWorkerFactory, {
-    createDbWorker: Effect.sync(() => {
-      throw "";
+  Layer.mergeAll(
+    Layer.succeed(DbWorkerFactory, {
+      createDbWorker: Effect.sync(() => {
+        throw "";
+      }),
     }),
-  }),
+    NanoIdGenerator.Live,
+  ),
 );
 
 // JSDoc doesn't support destructured parameters, so we must copy-paste

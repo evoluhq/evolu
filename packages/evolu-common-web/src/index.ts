@@ -6,6 +6,7 @@ import {
   EvoluFactory,
   InvalidMnemonicError,
   Mnemonic,
+  NanoIdGenerator,
   NotSupportedPlatformError,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
@@ -19,6 +20,7 @@ const noOpServerWorker: DbWorker = {
       _tag: "NotSupportedPlatformError",
     }),
   loadQueries: () => Effect.succeed([]),
+  mutate: () => Effect.succeed([]),
   ensureSchema: () => Effect.unit,
   dispose: () => Effect.unit,
 };
@@ -35,7 +37,7 @@ const DbWorkerFactoryWeb = Layer.succeed(DbWorkerFactory, {
 
 export const EvoluFactoryWeb = Layer.provide(
   EvoluFactory.Common,
-  DbWorkerFactoryWeb,
+  Layer.mergeAll(DbWorkerFactoryWeb, NanoIdGenerator.Live),
 );
 
 /**
