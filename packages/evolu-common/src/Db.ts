@@ -395,7 +395,7 @@ export const ensureSchema = (
   schema: SqliteSchema,
 ): Effect.Effect<void, never, Sqlite> =>
   Effect.gen(function* (_) {
-    Effect.logTrace("Db ensureSchema");
+    yield* _(Effect.logTrace("Db ensureSchema"));
     const sqlite = yield* _(Sqlite);
     const currentSchema = yield* _(getSchema);
 
