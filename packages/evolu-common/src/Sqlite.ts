@@ -56,7 +56,7 @@ export class SqliteFactory extends Context.Tag("SqliteFactory")<
                   maybeParseJson(result.rows);
                 }),
                 Effect.tap((result) =>
-                  Effect.logDebug(["SQLite exec", query, result]),
+                  Effect.logDebug(["SQLiteCommon exec", query, result]),
                 ),
               ),
             transaction: (effect) =>
