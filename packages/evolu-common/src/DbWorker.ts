@@ -3,6 +3,7 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as ReadonlyArray from "effect/ReadonlyArray";
+import * as ReadonlyRecord from "effect/ReadonlyRecord";
 import * as Scope from "effect/Scope";
 import { Config } from "./Config.js";
 import { Bip39, NanoIdGenerator } from "./Crypto.js";
@@ -16,7 +17,8 @@ import {
 } from "./Db.js";
 import { QueryPatches, makePatches } from "./Diff.js";
 import { Owner } from "./Owner.js";
-import { Sqlite, SqliteFactory, SqliteSchema } from "./Sqlite.js";
+import { Sqlite, SqliteFactory, SqliteSchema, Value } from "./Sqlite.js";
+import { Id } from "./Model.js";
 
 export interface DbWorker {
   readonly init: (
@@ -27,6 +29,10 @@ export interface DbWorker {
     queries: ReadonlyArray.NonEmptyReadonlyArray<Query>,
   ) => Effect.Effect<ReadonlyArray<QueryPatches>>;
 
+  readonly mutate: (
+    mutations: ReadonlyArray.NonEmptyReadonlyArray<Mutation>,
+  ) => Effect.Effect<ReadonlyArray<QueryPatches>>;
+
   readonly ensureSchema: (schema: SqliteSchema) => Effect.Effect<void>;
 
   readonly dispose: () => Effect.Effect<void>;
@@ -34,6 +40,16 @@ export interface DbWorker {
 
 export interface NotSupportedPlatformError {
   readonly _tag: "NotSupportedPlatformError";
+}
+
+export interface Mutation {
+  readonly table: string;
+  readonly id: Id;
+  readonly values: ReadonlyRecord.ReadonlyRecord<
+    string,
+    Value | Date | boolean | undefined
+  >;
+  readonly isInsert: boolean;
 }
 
 export class DbWorkerFactory extends Context.Tag("DbWorkerFactory")<
@@ -57,6 +73,7 @@ export const createDbWorker: Effect.Effect<
     Context.add(Bip39, yield* _(Bip39)),
     Context.add(NanoIdGenerator, yield* _(NanoIdGenerator)),
   );
+
   const deferredContext = yield* _(
     Deferred.make<Context.Context<Bip39 | NanoIdGenerator | Sqlite | Owner>>(),
   );
@@ -81,19 +98,20 @@ export const createDbWorker: Effect.Effect<
           sqlite.transaction,
           Effect.provide(contextWithSqlite),
         );
-        yield* _(
-          Deferred.succeed(
-            deferredContext,
-            Context.add(contextWithSqlite, Owner, owner),
-          ),
+        // It's faster than Deferred.succeed and in order (FIFO) we need.
+        // It's not unsafe in this context because it runs within a Effect.
+        Deferred.unsafeDone(
+          deferredContext,
+          Effect.succeed(Context.add(contextWithSqlite, Owner, owner)),
         );
         return owner;
       }),
 
-    loadQueries: (queries) =>
-      Effect.logDebug(["DbWorker loadQueries", queries]).pipe(
+    loadQueries: (queries) => {
+      return Effect.logDebug(["DbWorker loadQueries", queries]).pipe(
         Effect.zipRight(Sqlite),
-        Effect.flatMap((sqlite) =>
+        Effect.bind("previous", () => Effect.succeed(rowsStore.getState())),
+        Effect.bind("queryRows", (sqlite) =>
           Effect.forEach(ReadonlyArray.dedupe(queries), (query) => {
             const sqliteQuery = deserializeQuery(query);
             return sqlite.exec(sqliteQuery).pipe(
@@ -102,9 +120,7 @@ export const createDbWorker: Effect.Effect<
             );
           }),
         ),
-        Effect.bindTo("queryRows"),
-        Effect.bind("previous", () => Effect.succeed(rowsStore.getState())),
-        Effect.tap(({ queryRows, previous }) =>
+        Effect.tap(({ previous, queryRows }) =>
           rowsStore.setState(new Map([...previous, ...queryRows])),
         ),
         Effect.map(({ queryRows, previous }) =>
@@ -116,7 +132,12 @@ export const createDbWorker: Effect.Effect<
           ),
         ),
         afterInit,
-      ),
+      );
+    },
+
+    mutate: (_mutations) => {
+      throw "";
+    },
 
     ensureSchema: (schema) => ensureSchema(schema).pipe(afterInit),
 
