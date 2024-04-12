@@ -40,12 +40,12 @@
     "@evolu/common-react": "workspace:*",
     "@evolu/common-web": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
-    "@types/react-dom": "^18.2.24",
+    "@types/react-dom": "^18.2.25",
     "eslint": "^8.57.0",
     "eslint-config-evolu": "workspace:*",
     "react-dom": "^18.2.0",
-    "typescript": "^5.4.4",
-    "vitest": "^1.4.0"
+    "typescript": "^5.4.5",
+    "vitest": "^1.5.0"
   },
   "peerDependencies": {
     "@evolu/common": "^4.1.1",

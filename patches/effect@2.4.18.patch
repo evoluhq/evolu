@@ -1,0 +1,29 @@
+diff --git a/dist/esm/internal/core-effect.js b/dist/esm/internal/core-effect.js
+index 964938c639aca56d8e67b4b7fbdd3bda95836ba4..0472f2ca2a0f8b538feb6c7a513b78e9eabc2dc1 100644
+--- a/dist/esm/internal/core-effect.js
++++ b/dist/esm/internal/core-effect.js
+@@ -372,7 +372,8 @@ export const mapAccum = /*#__PURE__*/dual(3, (elements, zero, f) => core.suspend
+   let i = 0;
+   while (!(next = iterator.next()).done) {
+     const index = i++;
+-    result = core.flatMap(result, state => core.map(f(state, next.value, index), ([z, b]) => {
++    const value = next.value
++    result = core.flatMap(result, state => core.map(f(state, value, index), ([z, b]) => {
+       builder.push(b);
+       return z;
+     }));
+diff --git a/src/internal/core-effect.ts b/src/internal/core-effect.ts
+index 8f4ea22975cc3f4fa1b5f6517a4e241a0ba42f47..210783878835bcce68bbc1e9099c08be5368df22 100644
+--- a/src/internal/core-effect.ts
++++ b/src/internal/core-effect.ts
+@@ -1072,8 +1072,9 @@ export const mapAccum: {
+     let i = 0
+     while (!(next = iterator.next()).done) {
+       const index = i++
++      const value = next.value
+       result = core.flatMap(result, (state) =>
+-        core.map(f(state, next.value, index), ([z, b]) => {
++        core.map(f(state, value, index), ([z, b]) => {
+           builder.push(b)
+           return z
+         }))
