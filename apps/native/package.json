@@ -35,7 +35,7 @@
     "@babel/core": "^7.24.4",
     "@babel/plugin-transform-dynamic-import": "^7.24.1",
     "@babel/plugin-transform-private-methods": "^7.24.1",
-    "@types/react": "^18.2.77",
+    "@types/react": "^18.2.78",
     "eslint": "^8.57.0",
     "eslint-config-evolu": "workspace:*",
     "prettier": "^3.2.5",

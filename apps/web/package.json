@@ -15,7 +15,7 @@
     "@evolu/react": "workspace:*",
     "clsx": "^2.1.0",
     "effect": "2.4.18",
-    "next": "14.2.0",
+    "next": "14.2.1",
     "nextra": "^2.13.4",
     "nextra-theme-docs": "^2.13.4",
     "react": "^18.2.0",
@@ -24,7 +24,7 @@
   "devDependencies": {
     "@evolu/tsconfig": "workspace:*",
     "@types/node": "^20.12.7",
-    "@types/react": "^18.2.77",
+    "@types/react": "^18.2.78",
     "@types/react-dom": "^18.2.25",
     "autoprefixer": "^10.4.19",
     "eslint": "^8.57.0",
