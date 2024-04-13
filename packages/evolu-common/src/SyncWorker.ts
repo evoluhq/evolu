@@ -3,7 +3,6 @@ import { concatBytes } from "@noble/ciphers/utils";
 import { BinaryReader, BinaryWriter } from "@protobuf-ts/runtime";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as Equivalence from "effect/Equivalence";
 import { absurd, constVoid, identity } from "effect/Function";
 import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
@@ -64,15 +63,6 @@ export interface NewMessage {
   readonly column: string;
   readonly value: Value;
 }
-
-export const NewMessageEquivalence: Equivalence.Equivalence<NewMessage> = (
-  a,
-  b,
-) =>
-  a.table === b.table &&
-  a.row === b.row &&
-  a.column === b.column &&
-  JSON.stringify(a.value) === JSON.stringify(b.value);
 
 export interface Message extends NewMessage {
   readonly timestamp: TimestampString;

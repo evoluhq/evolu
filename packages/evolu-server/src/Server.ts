@@ -101,8 +101,9 @@ export const ServerLive = Layer.effect(
 
                     if (numInsertedOrUpdatedRows === 1n) {
                       merkleTree = insertIntoMerkleTree(
+                        merkleTree,
                         unsafeTimestampFromString(message.timestamp),
-                      )(merkleTree);
+                      );
                     }
                   }
 

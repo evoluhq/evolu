@@ -98,8 +98,7 @@ const evolu = createEvolu(Database, {
   ...(process.env.NODE_ENV === "development" && {
     syncUrl: "http://localhost:4000",
   }),
-  minimumLogLevel: "trace",
-  name: "Evolu",
+  // minimumLogLevel: "trace",
 });
 
 // const evolu2 = createEvolu(Database, {

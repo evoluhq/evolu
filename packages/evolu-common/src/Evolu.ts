@@ -29,7 +29,7 @@ import {
 } from "./Db.js";
 import { DbWorkerFactory, Mutation } from "./DbWorker.js";
 import { QueryPatches, applyPatches } from "./Diff.js";
-import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
+import { SqliteBoolean, SqliteDate } from "./Model.js";
 import { Owner } from "./Owner.js";
 import {
   Index,
@@ -467,9 +467,10 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
   static Common = Layer.effect(
     EvoluFactory,
     Effect.gen(function* (_) {
-      // TODO: context, a poslat ho tam jednim jebem
-      const dbWorkerFactory = yield* _(DbWorkerFactory);
-      const { nanoid } = yield* _(NanoIdGenerator);
+      const context = Context.empty().pipe(
+        Context.add(DbWorkerFactory, yield* _(DbWorkerFactory)),
+        Context.add(NanoIdGenerator, yield* _(NanoIdGenerator)),
+      );
 
       // For hot/live reload and future Evolu dynamic import.
       const instances = new Map<string, Evolu>();
@@ -484,7 +485,7 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
           let evolu = instances.get(name);
           if (evolu == null) {
             evolu = createEvolu(schema, runtime).pipe(
-              Effect.provideService(DbWorkerFactory, dbWorkerFactory),
+              Effect.provide(context),
               runtime.runSync,
             );
             instances.set(name, evolu);
@@ -504,13 +505,13 @@ const createEvolu = (
 ) =>
   Effect.gen(function* (_) {
     yield* _(Effect.logTrace("EvoluFactory createEvolu"));
-    const config = yield* _(Config);
     const scope = yield* _(Scope.make());
     const errorStore = yield* _(makeStore<EvoluError | null>(null));
     const ownerStore = yield* _(makeStore<Owner | null>(null));
     const rowsStore = yield* _(makeRowsStore);
     const loadingPromises = new Map<Query, LoadingPromise>();
     const subscribedQueries = new Map<Query, number>();
+    const nanoIdGenerator = yield* _(NanoIdGenerator);
 
     const handleAllErrors = <T>(effect: Effect.Effect<T, EvoluError, Config>) =>
       effect.pipe(
@@ -535,7 +536,7 @@ const createEvolu = (
 
     const handlePatches = (patches: ReadonlyArray<QueryPatches>) =>
       Effect.logDebug(["Evolu handlePatches", patches]).pipe(
-        Effect.andThen(rowsStoreStateFromPatches(patches)),
+        Effect.zipRight(rowsStoreStateFromPatches(patches)),
         Effect.tap((nextState) =>
           Effect.forEach(patches, ({ query }) =>
             resolveLoadingPromises(query, nextState.get(query) || emptyRows()),
@@ -560,61 +561,64 @@ const createEvolu = (
 
     const resolveLoadingPromises = (query: Query, rows: Rows) =>
       Effect.sync(() => {
-        const promiseWithResolve = loadingPromises.get(query);
-        if (!promiseWithResolve) return;
+        const loadingPromise = loadingPromises.get(query);
+        if (!loadingPromise) return;
         const result = queryResultFromRows(rows);
-        if (promiseWithResolve.promise.status !== "fulfilled")
-          promiseWithResolve.resolve(result);
-        else promiseWithResolve.promise = Promise.resolve(result);
-        setPromiseAsResolved(promiseWithResolve.promise)(result);
-        if (promiseWithResolve.releaseOnResolve) loadingPromises.delete(query);
+        if (loadingPromise.promise.status !== "fulfilled") {
+          loadingPromise.resolve(result);
+        } else {
+          // A promise can't be fulfilled 2x, so we need a new one.
+          loadingPromise.promise = Promise.resolve(result);
+        }
+        /**
+         * "For example, a data framework can set the status and value fields on
+         * a promise preemptively, before passing to React, so that React can
+         * unwrap it without waiting a microtask."
+         * https://github.com/acdlite/rfcs/blob/first-class-promises/text/0000-first-class-support-for-promises.md
+         */
+        Object.assign(loadingPromise, { status: "fulfilled", value: result });
+        if (loadingPromise.releaseOnResolve) {
+          loadingPromises.delete(query);
+        }
       });
 
-    const mutate = (() => {
-      let queue: ReadonlyArray<[Mutation, MutateOnComplete]> = [];
+    /**
+     * We can't delete loading promises in `resolveLoadingPromises` because they
+     * must be cached, so repeated calls to `loadQuery` will always return the
+     * same promise until the data changes, and we also can't cache them forever
+     * because only subscribed queries are automatically updated (reactivity is
+     * expensive) hence this function must be called manually on any mutation.
+     */
+    const releaseUnsubscribedLoadingPromises = () => {
+      [...loadingPromises.entries()]
+        .filter(([query]) => !subscribedQueries.has(query))
+        .forEach(([query, loadingPromise]) => {
+          if (loadingPromise.promise.status === "fulfilled") {
+            loadingPromises.delete(query);
+          } else {
+            loadingPromise.releaseOnResolve = true;
+          }
+        });
+    };
+
+    const mutate = ((): Mutate => {
+      let queue: ReadonlyArray<[Mutation, MutateOnComplete | undefined]> = [];
+      return (table, { id, ...values }, onComplete) => {
+        const isInsert = id == null;
+        if (isInsert) id = nanoIdGenerator.rowId.pipe(runSync);
+        queue = [...queue, [{ table, id, values, isInsert }, onComplete]];
+        if (queue.length === 1)
+          queueMicrotask(() => {
+            const [mutations /*, onCompletes*/] = ReadonlyArray.unzip(queue);
+            const queriesToRefresh = [...subscribedQueries.keys()];
+            // TODO: Call onCompletes
+            dbWorker.mutate({ mutations, queriesToRefresh }).pipe(runFork);
+            queue = [];
+            releaseUnsubscribedLoadingPromises();
+          });
+        return { id };
+      };
     })();
-
-    // const MutateLive = Layer.effect(
-    //   Mutate,
-    //   Effect.gen(function* (_) {
-    //     const { nanoid } = yield* _(NanoIdGenerator);
-    //     let mutations: ReadonlyArray<Mutation> = [];
-
-    //     return Mutate.of((table, { id, ...values }, onComplete) => {
-    //       const isInsert = id == null;
-    //       if (isInsert) id = Effect.runSync(nanoid) as never;
-
-    //       const onCompleteId = onComplete
-    //         ? onCompletes.add(onComplete).pipe(Effect.runSync)
-    //         : null;
-
-    //       mutations = [
-    //         ...mutations,
-    //         {
-    //           table: table.toString(),
-    //           id,
-    //           values,
-    //           isInsert,
-    //           onCompleteId,
-    //         },
-    //       ];
-
-    //       if (mutations.length === 1)
-    //         queueMicrotask(() => {
-    //           if (ReadonlyArray.isNonEmptyReadonlyArray(mutations))
-    //             dbWorker.postMessage({
-    //               _tag: "mutate",
-    //               mutations,
-    //               queries: subscribedQueries.getSubscribedQueries(),
-    //             });
-    //           loadingPromises.release();
-    //           mutations = [];
-    //         });
-
-    //       return { id };
-    //     });
-    //   }),
-    // );
 
     createSqliteSchema(schema).pipe(
       Effect.flatMap(dbWorker.init),
@@ -670,10 +674,10 @@ const createEvolu = (
           if (isNew) queue = [...queue, query];
           if (queue.length === 1) {
             queueMicrotask(() => {
-              if (!ReadonlyArray.isNonEmptyReadonlyArray(queue)) return;
-              dbWorker
-                .loadQueries(queue)
-                .pipe(Effect.flatMap(handlePatches), runFork);
+              dbWorker.loadQueries(queue).pipe(
+                Effect.flatMap((patches) => handlePatches(patches)),
+                runFork,
+              );
               queue = [];
             });
           }
@@ -718,17 +722,9 @@ const createEvolu = (
         return { _tag: "SyncStateInitial" };
       },
 
-      create: () => {
-        return { id: "123" as Id };
-      },
-
-      update: () => {
-        return { id: "123" as Id };
-      },
-
-      createOrUpdate: () => {
-        return { id: "123" as Id };
-      },
+      create: mutate as Mutate<DatabaseSchema, "create">,
+      update: mutate,
+      createOrUpdate: mutate as Mutate<DatabaseSchema, "createOrUpdate">,
 
       resetOwner: () => {
         //
@@ -751,7 +747,7 @@ const createEvolu = (
 
       dispose: () =>
         Effect.logTrace("dispose Evolu").pipe(
-          Effect.andThen(Scope.close(scope, Exit.succeed("Evolu disposed"))),
+          Effect.zipRight(Scope.close(scope, Exit.succeed("Evolu disposed"))),
           runPromise,
         ),
     };
@@ -812,16 +808,6 @@ export const createIndexes = (
       sql: index.compile().sql,
     }),
   );
-
-// "For example, a data framework can set the status and value fields on a promise
-// preemptively, before passing to React, so that React can unwrap it without waiting
-// a microtask."
-// https://github.com/acdlite/rfcs/blob/first-class-promises/text/0000-first-class-support-for-promises.md
-const setPromiseAsResolved =
-  <T>(promise: Promise<T>) =>
-  (value: unknown) => {
-    Object.assign(promise, { status: "fulfilled", value });
-  };
 
 /** Create a namespaced lock name. */
 export const lockName = (name: string): Effect.Effect<string, never, Config> =>

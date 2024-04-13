@@ -43,7 +43,8 @@ export const SqliteLive = Layer.effect(
           );
           return { rows: [], changes };
         }),
-      transaction: (effect) => effect,
+      // TODO: Exclusive via Promise/Deferred.
+      transaction: () => (effect) => effect,
     });
   }),
 );

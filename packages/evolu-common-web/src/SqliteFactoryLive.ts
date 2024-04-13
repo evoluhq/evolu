@@ -113,7 +113,7 @@ export const SqliteFactoryLive = Layer.effect(
 
         Effect.logTrace("SqliteWeb connection lock request")
           .pipe(
-            Effect.andThen(lockName("SqliteConnection")),
+            Effect.zipRight(lockName("SqliteConnection")),
             Effect.flatMap((lockName) =>
               Effect.async<Sqlite3Static>((resume) => {
                 navigator.locks.request(
@@ -215,11 +215,12 @@ export const SqliteFactoryLive = Layer.effect(
                 channel.postMessage({ _tag: "Exec", id, query });
               }),
             ),
-          transaction: (effect) =>
+          transaction: (mode) => (effect) =>
             Effect.acquireUseRelease(
               Effect.async<() => void>((resume) => {
                 navigator.locks.request(
                   transactionName,
+                  { mode },
                   () =>
                     new Promise<void>((resolve) => {
                       resume(Effect.succeed(resolve));

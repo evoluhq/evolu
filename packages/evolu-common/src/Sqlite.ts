@@ -18,12 +18,23 @@ export class Sqlite extends Context.Tag("Sqlite")<
   Sqlite,
   {
     readonly exec: (query: SqliteQuery) => Effect.Effect<SqliteExecResult>;
-    // TODO: Consider execMany, it could make web platform faster.
-    readonly transaction: <A, E, R>(
+    readonly transaction: (
+      /**
+       * Use `exclusive` for mutations and `shared` for read-only queries. This
+       * shared/exclusive lock pattern allows multiple simultaneous readers but
+       * only one writer. In Evolu, this pattern also ensures that every write
+       * can be immediately read without waiting to complete. For example, we
+       * can add data on one page and then immediately redirect to another, and
+       * the data will be there without flickering.
+       */
+      mode: SqliteTransactionMode,
+    ) => <A, E, R>(
       effect: Effect.Effect<A, E, R>,
     ) => Effect.Effect<A, E, Sqlite | R>;
   }
 >() {}
+
+export type SqliteTransactionMode = "exclusive" | "shared";
 
 /**
  * Usually, Tag and Service can have the same name, but in this case, we create
@@ -47,32 +58,35 @@ export class SqliteFactory extends Context.Tag("SqliteFactory")<
     SqliteFactory,
     Effect.map(SqliteFactory, (sqliteFactory) => ({
       createSqlite: Effect.logTrace("SqliteFactory createSqlite").pipe(
-        Effect.andThen(sqliteFactory.createSqlite),
+        Effect.zipRight(sqliteFactory.createSqlite),
         Effect.map(
-          (sqlite): SqliteService => ({
+          (platformSqlite): SqliteService => ({
             exec: (query) =>
-              sqlite.exec(query).pipe(
+              platformSqlite.exec(query).pipe(
                 Effect.tap((result) => {
                   maybeParseJson(result.rows);
                 }),
                 Effect.tap((result) =>
-                  Effect.logDebug(["SQLiteCommon exec", query, result]),
+                  ["begin", "rollback", "commit"].includes(query.sql)
+                    ? Effect.logDebug(`SQLiteCommon ${query.sql} transaction`)
+                    : Effect.logDebug(["SQLiteCommon exec", query, result]),
                 ),
               ),
-            transaction: (effect) =>
-              Sqlite.pipe(
-                Effect.flatMap((sqlite) =>
-                  Effect.acquireUseRelease(
-                    sqlite.exec({ sql: "begin" }),
-                    () => effect,
-                    (_, exit) =>
-                      Exit.isFailure(exit)
-                        ? sqlite.exec({ sql: "rollback" })
-                        : sqlite.exec({ sql: "end" }),
-                  ),
+            transaction: (mode) => (effect) => {
+              // Shared is for readonly queries.
+              if (mode === "shared")
+                return platformSqlite.transaction(mode)(effect);
+              return Effect.flatMap(Sqlite, (sqlite) =>
+                Effect.acquireUseRelease(
+                  sqlite.exec({ sql: "begin" }),
+                  () => effect,
+                  (_, exit) =>
+                    Exit.isFailure(exit)
+                      ? sqlite.exec({ sql: "rollback" })
+                      : sqlite.exec({ sql: "commit" }),
                 ),
-                sqlite.transaction,
-              ),
+              ).pipe(platformSqlite.transaction(mode));
+            },
           }),
         ),
       ),

@@ -1,4 +1,9 @@
-import { NanoIdGenerator, SqliteFactory, createDbWorker } from "@evolu/common";
+import {
+  NanoIdGenerator,
+  SqliteFactory,
+  Time,
+  createDbWorker,
+} from "@evolu/common";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { Bip39Live } from "./PlatformLive.js";
@@ -12,6 +17,7 @@ const layer = Layer.mergeAll(
     Layer.provide(NanoIdGenerator.Live),
   ),
   NanoIdGenerator.Live,
+  Time.Live,
 );
 
 const worker = createDbWorker.pipe(Effect.provide(layer), Effect.runSync);

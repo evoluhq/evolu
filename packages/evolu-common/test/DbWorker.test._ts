@@ -39,7 +39,7 @@ test("upsertValueIntoTableRowColumn should ensure schema", () => {
     [message, message],
     millis,
   ).pipe(
-    Effect.andThen(Sqlite),
+    Effect.zipRight(Sqlite),
     Effect.flatMap(({ exec }) => exec({ sql: "select * from a" })),
     Effect.provide(SqliteTest),
     Effect.runSync,

@@ -33,14 +33,14 @@ test("InitialTimestampLive", () => {
       NanoIdGenerator,
       NanoIdGenerator.of({
         nanoid: Effect.succeed("nanoid" as NanoId),
-        nanoidAsNodeId: Effect.succeed("nanoidAsNodeId" as NodeId),
+        nodeId: Effect.succeed("nodeId" as NodeId),
       }),
     ),
     Effect.runSync,
   );
   expect(timestamp.counter).toBe(0);
   expect(timestamp.millis).toBe(860934420000);
-  expect(timestamp.node).toBe("nanoidAsNodeId");
+  expect(timestamp.node).toBe("nodeId");
 });
 
 test("createSyncTimestamp", () => {

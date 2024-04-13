@@ -272,7 +272,7 @@ export type SqliteNoSuchTableOrColumnError = S.Schema.Type<
   typeof SqliteNoSuchTableOrColumnError
 >;
 
-const sqliteDefectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
+export const sqliteDefectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
   (error) =>
     S.is(SqliteNoSuchTableOrColumnError)(error)
       ? Option.some(
@@ -302,7 +302,7 @@ export const createOwner = (
   mnemonic?: Mnemonic,
 ): Effect.Effect<Owner, never, Sqlite | Bip39 | NanoIdGenerator> =>
   Effect.logTrace("Db createOwner").pipe(
-    Effect.andThen(
+    Effect.zipRight(
       Effect.all([makeOwner(mnemonic), Sqlite, makeInitialTimestamp]),
     ),
     Effect.tap(([owner, sqlite, initialTimestampString]) =>

@@ -2,10 +2,28 @@ import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import { pipe } from "effect/Function";
+import * as Option from "effect/Option";
+import * as Predicate from "effect/Predicate";
 import * as ReadonlyArray from "effect/ReadonlyArray";
 import * as ReadonlyRecord from "effect/ReadonlyRecord";
 import * as Scope from "effect/Scope";
 import { Config } from "./Config.js";
+import {
+  MerkleTree,
+  Millis,
+  Time,
+  Timestamp,
+  TimestampCounterOverflowError,
+  TimestampDriftError,
+  TimestampString,
+  TimestampTimeOutOfRangeError,
+  insertIntoMerkleTree,
+  merkleTreeToString,
+  sendTimestamp,
+  timestampToString,
+  unsafeTimestampFromString,
+} from "./Crdt.js";
 import { Bip39, NanoIdGenerator } from "./Crypto.js";
 import {
   Query,
@@ -14,11 +32,26 @@ import {
   getOrCreateOwner,
   makeRowsStore,
   maybeExplainQueryPlan,
+  sqliteDefectToNoSuchTableOrColumnError,
 } from "./Db.js";
 import { QueryPatches, makePatches } from "./Diff.js";
+import { Id, cast } from "./Model.js";
 import { Owner } from "./Owner.js";
-import { Sqlite, SqliteFactory, SqliteSchema, Value } from "./Sqlite.js";
-import { Id } from "./Model.js";
+import {
+  insertIntoMessagesIfNew,
+  selectLastTimestampForTableRowColumn,
+  selectOwnerTimestampAndMerkleTree,
+  updateOwnerTimestampAndMerkleTree,
+} from "./Sql.js";
+import {
+  Sqlite,
+  SqliteFactory,
+  SqliteSchema,
+  SqliteTransactionMode,
+  Table,
+  Value,
+} from "./Sqlite.js";
+import { Message, NewMessage } from "./SyncWorker.js";
 
 export interface DbWorker {
   readonly init: (
@@ -26,12 +59,19 @@ export interface DbWorker {
   ) => Effect.Effect<Owner, NotSupportedPlatformError, Config>;
 
   readonly loadQueries: (
-    queries: ReadonlyArray.NonEmptyReadonlyArray<Query>,
+    queries: ReadonlyArray<Query>,
   ) => Effect.Effect<ReadonlyArray<QueryPatches>>;
 
-  readonly mutate: (
-    mutations: ReadonlyArray.NonEmptyReadonlyArray<Mutation>,
-  ) => Effect.Effect<ReadonlyArray<QueryPatches>>;
+  readonly mutate: (params: {
+    readonly mutations: ReadonlyArray<Mutation>;
+    readonly queriesToRefresh: ReadonlyArray<Query>;
+  }) => Effect.Effect<
+    ReadonlyArray<QueryPatches>,
+    | TimestampTimeOutOfRangeError
+    | TimestampDriftError
+    | TimestampCounterOverflowError,
+    Config
+  >;
 
   readonly ensureSchema: (schema: SqliteSchema) => Effect.Effect<void>;
 
@@ -59,96 +99,317 @@ export class DbWorkerFactory extends Context.Tag("DbWorkerFactory")<
   }
 >() {}
 
-/** It's a function because it's called from Web Worker. */
 export const createDbWorker: Effect.Effect<
   DbWorker,
   never,
-  SqliteFactory | Bip39 | NanoIdGenerator
+  SqliteFactory | Bip39 | NanoIdGenerator | Time
 > = Effect.gen(function* (_) {
-  const sqliteFactory = yield* _(SqliteFactory);
-  const scope = yield* _(Scope.make());
-  const rowsStore = yield* _(makeRowsStore);
+  const { createSqlite } = yield* _(SqliteFactory);
 
   const initContext = Context.empty().pipe(
     Context.add(Bip39, yield* _(Bip39)),
     Context.add(NanoIdGenerator, yield* _(NanoIdGenerator)),
+    Context.add(Time, yield* _(Time)),
   );
 
-  const deferredContext = yield* _(
-    Deferred.make<Context.Context<Bip39 | NanoIdGenerator | Sqlite | Owner>>(),
+  const afterInitContext = yield* _(
+    Deferred.make<
+      Context.Context<Bip39 | NanoIdGenerator | Time | Sqlite | Owner>
+    >(),
   );
 
-  const afterInit = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-    Deferred.await(deferredContext).pipe(
-      Effect.flatMap((context) => Effect.provide(effect, context)),
+  const afterInit =
+    (options: { readonly transaction: SqliteTransactionMode }) =>
+    <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      Deferred.await(afterInitContext).pipe(
+        Effect.flatMap((context) =>
+          Sqlite.pipe(
+            Effect.flatMap((sqlite) =>
+              sqlite.transaction(options.transaction)(effect),
+            ),
+            Effect.provide(context),
+          ),
+        ),
+      );
+
+  const scope = yield* _(Scope.make());
+  const rowsStore = yield* _(makeRowsStore);
+
+  const loadQueries = (queries: ReadonlyArray<Query>) =>
+    Sqlite.pipe(
+      Effect.bind("queriesRows", (sqlite) =>
+        Effect.forEach(ReadonlyArray.dedupe(queries), (query) => {
+          const sqliteQuery = deserializeQuery(query);
+          return sqlite.exec(sqliteQuery).pipe(
+            Effect.tap(maybeExplainQueryPlan(sqliteQuery)),
+            Effect.map(({ rows }) => [query, rows] as const),
+          );
+        }),
+      ),
+      Effect.let("previousState", () => rowsStore.getState()),
+      Effect.tap(({ queriesRows, previousState }) =>
+        rowsStore.setState(new Map([...previousState, ...queriesRows])),
+      ),
+      Effect.map(({ queriesRows, previousState }) =>
+        queriesRows.map(
+          ([query, rows]): QueryPatches => ({
+            query,
+            patches: makePatches(previousState.get(query), rows),
+          }),
+        ),
+      ),
     );
 
   const dbWorker: DbWorker = {
     init: (schema) =>
       Effect.gen(function* (_) {
         yield* _(Effect.logTrace("DbWorker init"));
-        const sqlite = yield* _(
-          sqliteFactory.createSqlite,
-          Scope.extend(scope),
-        );
+        const sqlite = yield* _(createSqlite, Scope.extend(scope));
+
         const contextWithSqlite = Context.add(initContext, Sqlite, sqlite);
         const owner = yield* _(
-          ensureSchema(schema),
-          Effect.andThen(getOrCreateOwner),
-          sqlite.transaction,
+          getOrCreateOwner,
+          Effect.tap(ensureSchema(schema)),
+          sqlite.transaction("exclusive"),
           Effect.provide(contextWithSqlite),
         );
-        // It's faster than Deferred.succeed and in order (FIFO) we need.
-        // It's not unsafe in this context because it runs within a Effect.
         Deferred.unsafeDone(
-          deferredContext,
+          afterInitContext,
           Effect.succeed(Context.add(contextWithSqlite, Owner, owner)),
         );
         return owner;
       }),
 
-    loadQueries: (queries) => {
-      return Effect.logDebug(["DbWorker loadQueries", queries]).pipe(
-        Effect.zipRight(Sqlite),
-        Effect.bind("previous", () => Effect.succeed(rowsStore.getState())),
-        Effect.bind("queryRows", (sqlite) =>
-          Effect.forEach(ReadonlyArray.dedupe(queries), (query) => {
-            const sqliteQuery = deserializeQuery(query);
-            return sqlite.exec(sqliteQuery).pipe(
-              Effect.tap(maybeExplainQueryPlan(sqliteQuery)),
-              Effect.map(({ rows }) => [query, rows] as const),
+    loadQueries: (queries) =>
+      Effect.logDebug(["DbWorker loadQueries", queries]).pipe(
+        Effect.zipRight(loadQueries(queries)),
+        afterInit({ transaction: "shared" }),
+      ),
+
+    mutate: ({ mutations, queriesToRefresh }) =>
+      Effect.gen(function* (_) {
+        yield* _(
+          Effect.logDebug(["DbWorker mutate", { mutations, queriesToRefresh }]),
+        );
+        const time = yield* _(Time);
+        const sqlite = yield* _(Sqlite);
+
+        const [toSyncMutations, localOnlyMutations] = ReadonlyArray.partition(
+          mutations,
+          isLocalOnlyMutation,
+        );
+
+        for (const mutation of localOnlyMutations)
+          if (isDeleteMutation(mutation)) {
+            yield* _(
+              sqlite.exec({
+                sql: `delete from "${mutation.table}" where "id" = ?;`,
+                parameters: [mutation.id],
+              }),
             );
-          }),
-        ),
-        Effect.tap(({ previous, queryRows }) =>
-          rowsStore.setState(new Map([...previous, ...queryRows])),
-        ),
-        Effect.map(({ queryRows, previous }) =>
-          queryRows.map(
-            ([query, rows]): QueryPatches => ({
-              query,
-              patches: makePatches(previous.get(query), rows),
-            }),
-          ),
-        ),
-        afterInit,
-      );
-    },
+          } else {
+            const messages = mutationToNewMessages(mutation);
+            for (const message of messages) {
+              const now = yield* _(time.now);
+              yield* _(upsertValueIntoTableRowColumn(message, messages, now));
+            }
+          }
 
-    mutate: (_mutations) => {
-      throw "";
-    },
+        if (toSyncMutations.length > 0) {
+          const { timestamp, merkleTree } = yield* _(getTimestampAndMerkleTree);
+          const [nextTimestamp, messages] = yield* _(
+            toSyncMutations.flatMap(mutationToNewMessages),
+            Effect.mapAccum(timestamp, (currentTimestamp, newMessage) =>
+              Effect.map(sendTimestamp(currentTimestamp), (nextTimestamp) => {
+                const message: Message = {
+                  ...newMessage,
+                  timestamp: timestampToString(nextTimestamp),
+                };
+                return [nextTimestamp, message];
+              }),
+            ),
+          );
+          const nextMerkleTree = yield* _(applyMessages(merkleTree, messages));
+          yield* _(setTimestampAndMerkleTree(nextTimestamp, nextMerkleTree));
+          // TODO: Sync
+        }
+        return yield* _(loadQueries(queriesToRefresh));
+      }).pipe(afterInit({ transaction: "exclusive" })),
 
-    ensureSchema: (schema) => ensureSchema(schema).pipe(afterInit),
+    ensureSchema: (schema) =>
+      ensureSchema(schema).pipe(afterInit({ transaction: "exclusive" })),
 
     dispose: () =>
-      Effect.logTrace("dispose DbWorker").pipe(
-        Effect.andThen(Scope.close(scope, Exit.succeed("DbWorker disposed"))),
+      Effect.logTrace("DbWorker dispose").pipe(
+        Effect.zipRight(Scope.close(scope, Exit.succeed("DbWorker disposed"))),
+        afterInit({ transaction: "exclusive" }),
       ),
   };
 
   return dbWorker;
 });
+
+/** A table name starting with '_' (underscore) is local only (no sync). */
+const isLocalOnlyMutation: Predicate.Predicate<Mutation> = (mutation) =>
+  mutation.table.startsWith("_");
+
+const isDeleteMutation: Predicate.Predicate<Mutation> = (mutation) =>
+  mutationToNewMessages(mutation).some(
+    ({ column, value }) => column === "isDeleted" && value === 1,
+  );
+
+const mutationToNewMessages = (mutation: Mutation) =>
+  pipe(
+    Object.entries(mutation.values),
+    ReadonlyArray.filterMap(([column, value]) =>
+      // The value can be undefined if exactOptionalPropertyTypes isn't true.
+      // Don't insert nulls because null is the default value.
+      value === undefined || (mutation.isInsert && value == null)
+        ? Option.none()
+        : Option.some([column, value] as const),
+    ),
+    ReadonlyArray.map(
+      ([column, value]): NewMessage => ({
+        table: mutation.table,
+        row: mutation.id,
+        column,
+        value:
+          typeof value === "boolean"
+            ? cast(value)
+            : value instanceof Date
+              ? cast(value)
+              : value,
+      }),
+    ),
+  );
+
+export const upsertValueIntoTableRowColumn = (
+  message: NewMessage,
+  messages: ReadonlyArray<NewMessage>,
+  millis: Millis,
+): Effect.Effect<void, never, Sqlite> =>
+  Sqlite.pipe(
+    Effect.map((sqlite) => {
+      const now = cast(new Date(millis));
+      return sqlite.exec({
+        sql: `
+insert into
+  "${message.table}" ("id", "${message.column}", "createdAt", "updatedAt")
+values
+  (?, ?, ?, ?)
+on conflict do update set
+  "${message.column}" = ?,
+  "updatedAt" = ?
+    `.trim(),
+        parameters: [message.row, message.value, now, now, message.value, now],
+      });
+    }),
+    Effect.flatMap((insert) =>
+      insert.pipe(
+        sqliteDefectToNoSuchTableOrColumnError,
+        Effect.catchTag("NoSuchTableOrColumnError", () =>
+          // If one message fails, we ensure schema for all messages.
+          ensureSchemaByNewMessages(messages).pipe(Effect.zipRight(insert)),
+        ),
+      ),
+    ),
+  );
+
+const ensureSchemaByNewMessages = (messages: ReadonlyArray<NewMessage>) =>
+  Effect.gen(function* (_) {
+    const tablesMap = new Map<string, Table>();
+    messages.forEach((message) => {
+      const table = tablesMap.get(message.table);
+      if (table == null) {
+        tablesMap.set(message.table, {
+          name: message.table,
+          columns: [message.column, "createdAt", "updatedAt"],
+        });
+        return;
+      }
+      if (table.columns.includes(message.column)) return;
+      tablesMap.set(message.table, {
+        name: message.table,
+        columns: table.columns.concat(message.column),
+      });
+    });
+    const tables = Array.from(tablesMap.values());
+    yield* _(ensureSchema({ tables, indexes: [] }));
+  });
+
+const getTimestampAndMerkleTree = Sqlite.pipe(
+  Effect.flatMap((sqlite) => sqlite.exec(selectOwnerTimestampAndMerkleTree)),
+  Effect.map(({ rows: [{ timestamp, merkleTree }] }) => ({
+    timestamp: unsafeTimestampFromString(timestamp as TimestampString),
+    merkleTree: merkleTree as MerkleTree,
+  })),
+);
+
+const applyMessages = (
+  merkleTree: MerkleTree,
+  messages: ReadonlyArray<Message>,
+): Effect.Effect<MerkleTree, never, Sqlite> =>
+  Effect.logDebug(["DbWorker applyMessages", { merkleTree, messages }]).pipe(
+    Effect.zipRight(Sqlite),
+    Effect.flatMap((sqlite) =>
+      Effect.reduce(messages, merkleTree, (currentMerkleTree, message) =>
+        sqlite
+          .exec({
+            ...selectLastTimestampForTableRowColumn,
+            parameters: [message.table, message.row, message.column, 1],
+          })
+          .pipe(
+            Effect.map(({ rows }) =>
+              rows.length > 0 ? (rows[0].timestamp as TimestampString) : null,
+            ),
+            Effect.tap((timestamp) => {
+              if (timestamp != null && timestamp >= message.timestamp) return;
+              const { millis } = unsafeTimestampFromString(message.timestamp);
+              return upsertValueIntoTableRowColumn(message, messages, millis);
+            }),
+            Effect.flatMap((timestamp) => {
+              if (timestamp != null && timestamp === message.timestamp)
+                return Effect.succeed(currentMerkleTree);
+              return Effect.map(
+                sqlite.exec({
+                  ...insertIntoMessagesIfNew,
+                  parameters: [
+                    message.timestamp,
+                    message.table,
+                    message.row,
+                    message.column,
+                    message.value,
+                  ],
+                }),
+                ({ changes }) => {
+                  if (changes === 0) return currentMerkleTree;
+                  return insertIntoMerkleTree(
+                    currentMerkleTree,
+                    unsafeTimestampFromString(message.timestamp),
+                  );
+                },
+              );
+            }),
+          ),
+      ),
+    ),
+  );
+
+const setTimestampAndMerkleTree = (
+  timestamp: Timestamp,
+  merkleTree: MerkleTree,
+): Effect.Effect<void, never, Sqlite> =>
+  Effect.flatMap(Sqlite, (sqlite) =>
+    sqlite.exec({
+      ...updateOwnerTimestampAndMerkleTree,
+      parameters: [
+        merkleTreeToString(merkleTree),
+        timestampToString(timestamp),
+      ],
+    }),
+  );
+
+// TODO: Write
 
 // import * as Context from "effect/Context";
 // import * as Effect from "effect/Effect";
@@ -386,190 +647,8 @@ export const createDbWorker: Effect.Effect<
 //     dbWorkerOnMessage({ _tag: "onQuery", queriesPatches, onCompleteIds });
 //   });
 
-// interface TimestampAndMerkleTree {
-//   readonly timestamp: Timestamp;
-//   readonly merkleTree: MerkleTree;
-// }
-
-// const readTimestampAndMerkleTree = Sqlite.pipe(
-//   Effect.flatMap((sqlite) =>
-//     sqlite.exec(Sql.selectOwnerTimestampAndMerkleTree),
-//   ),
-//   Effect.map(
-//     ({ rows: [{ timestamp, merkleTree }] }): TimestampAndMerkleTree => ({
-//       timestamp: unsafeTimestampFromString(timestamp as TimestampString),
-//       merkleTree: merkleTree as MerkleTree,
-//     }),
-//   ),
-// );
-
-// export const mutationsToNewMessages = (
-//   mutations: ReadonlyArray<Mutation>,
-// ): ReadonlyArray<NewMessage> =>
-//   pipe(
-//     mutations,
-//     ReadonlyArray.map(({ id, isInsert, table, values }) =>
-//       pipe(
-//         Object.entries(values),
-//         // Filter values.
-//         ReadonlyArray.filterMap(([key, value]) =>
-//           // The value can be undefined if exactOptionalPropertyTypes isn't true.
-//           // Don't insert nulls because null is the default value.
-//           value === undefined || (isInsert && value == null)
-//             ? Option.none()
-//             : Option.some([key, value] as const),
-//         ),
-//         // Cast values.
-//         ReadonlyArray.map(
-//           ([key, value]) =>
-//             [
-//               key,
-//               typeof value === "boolean"
-//                 ? cast(value)
-//                 : value instanceof Date
-//                   ? cast(value)
-//                   : value,
-//             ] as const,
-//         ),
-//         ReadonlyArray.map(
-//           ([key, value]): NewMessage => ({
-//             table,
-//             row: id,
-//             column: key,
-//             value,
-//           }),
-//         ),
-//       ),
-//     ),
-//     (a) => a.flat(),
-//     ReadonlyArray.dedupeWith(NewMessageEquivalence),
-//   );
-
-// const ensureSchemaByNewMessages = (
-//   messages: ReadonlyArray<NewMessage>,
-// ): Effect.Effect<void, never, Sqlite> =>
-//   Effect.gen(function* (_) {
-//     const tablesMap = new Map<string, Table>();
-//     messages.forEach((message) => {
-//       const table = tablesMap.get(message.table);
-//       if (table == null) {
-//         tablesMap.set(message.table, {
-//           name: message.table,
-//           columns: [message.column, "createdAt", "updatedAt"],
-//         });
-//         return;
-//       }
-//       if (table.columns.includes(message.column)) return;
-//       tablesMap.set(message.table, {
-//         name: message.table,
-//         columns: table.columns.concat(message.column),
-//       });
-//     });
-//     const tables = Array.from(tablesMap.values());
-//     yield* _(ensureSchema({ tables, indexes: [] }));
-//   });
-
-// export const upsertValueIntoTableRowColumn = (
-//   message: NewMessage,
-//   messages: ReadonlyArray<NewMessage>,
-//   millis: Millis,
-// ): Effect.Effect<void, never, Sqlite> =>
-//   Effect.gen(function* (_) {
-//     const sqlite = yield* _(Sqlite);
-//     const createdAtOrUpdatedAt = cast(new Date(millis));
-//     const insert = sqlite.exec({
-//       sql: `
-// insert into
-//   "${message.table}" ("id", "${message.column}", "createdAt", "updatedAt")
-// values
-//   (?, ?, ?, ?)
-// on conflict do update set
-//   "${message.column}" = ?,
-//   "updatedAt" = ?
-// `.trim(),
-//       parameters: [
-//         message.row,
-//         message.value,
-//         createdAtOrUpdatedAt,
-//         createdAtOrUpdatedAt,
-//         message.value,
-//         createdAtOrUpdatedAt,
-//       ],
-//     });
-
-//     yield* _(
-//       insert,
-//       someDefectToNoSuchTableOrColumnError,
-//       Effect.catchTag("NoSuchTableOrColumnError", () =>
-//         // If one message fails, we ensure schema for all messages.
-//         ensureSchemaByNewMessages(messages).pipe(Effect.andThen(insert)),
-//       ),
-//     );
-//   });
-
-// const applyMessages = ({
-//   merkleTree,
-//   messages,
-// }: {
-//   merkleTree: MerkleTree;
-//   messages: ReadonlyArray<Message>;
-// }): Effect.Effect<MerkleTree, never, Sqlite> =>
-//   Effect.gen(function* (_) {
-//     const sqlite = yield* _(Sqlite);
-
-//     for (const message of messages) {
-//       const timestamp: TimestampString | null = yield* _(
-//         sqlite.exec({
-//           ...Sql.selectLastTimestampForTableRowColumn,
-//           parameters: [message.table, message.row, message.column, 1],
-//         }),
-//         Effect.map((result) => result.rows),
-//         Effect.flatMap(ReadonlyArray.head),
-//         Effect.map((row) => row.timestamp as TimestampString),
-//         Effect.catchTag("NoSuchElementException", () => Effect.succeed(null)),
-//       );
-
-//       if (timestamp == null || timestamp < message.timestamp) {
-//         const { millis } = unsafeTimestampFromString(message.timestamp);
-//         yield* _(upsertValueIntoTableRowColumn(message, messages, millis));
-//       }
-
-//       if (timestamp == null || timestamp !== message.timestamp) {
-//         const { changes } = yield* _(
-//           sqlite.exec({
-//             ...Sql.insertIntoMessagesIfNew,
-//             parameters: [
-//               message.timestamp,
-//               message.table,
-//               message.row,
-//               message.column,
-//               message.value,
-//             ],
-//           }),
-//         );
-//         if (changes > 0) {
-//           const timestamp = unsafeTimestampFromString(message.timestamp);
-//           merkleTree = insertIntoMerkleTree(timestamp)(merkleTree);
-//         }
-//       }
-//     }
-
 //     return merkleTree;
 //   });
-
-// const writeTimestampAndMerkleTree = ({
-//   timestamp,
-//   merkleTree,
-// }: TimestampAndMerkleTree): Effect.Effect<void, never, Sqlite> =>
-//   Effect.flatMap(Sqlite, (sqlite) =>
-//     sqlite.exec({
-//       ...Sql.updateOwnerTimestampAndMerkleTree,
-//       parameters: [
-//         merkleTreeToString(merkleTree),
-//         timestampToString(timestamp),
-//       ],
-//     }),
-//   );
 
 // const mutate = ({
 //   mutations,
@@ -587,66 +666,6 @@ export const createDbWorker: Effect.Effect<
 //   | DbWorkerOnMessage
 //   | SyncWorkerPostMessage
 // > =>
-//   Effect.gen(function* (_) {
-//     const [toSync, localOnly] = ReadonlyArray.partition(mutations, (item) =>
-//       item.table.startsWith("_"),
-//     );
-//     const [toUpsert, toDelete] = ReadonlyArray.partition(localOnly, (item) =>
-//       mutationsToNewMessages([item]).some(
-//         (message) => message.column === "isDeleted" && message.value === 1,
-//       ),
-//     ).map(mutationsToNewMessages);
-
-//     const time = yield* _(Time);
-//     for (const messageToUpsert of toUpsert) {
-//       const now = yield* _(time.now);
-//       yield* _(upsertValueIntoTableRowColumn(messageToUpsert, toUpsert, now));
-//     }
-
-//     const { exec } = yield* _(Sqlite);
-//     yield* _(
-//       Effect.forEach(toDelete, ({ table, row }) =>
-//         exec({
-//           sql: `delete from "${table}" where "id" = ?;`,
-//           parameters: [row],
-//         }),
-//       ),
-//     );
-
-//     if (toSync.length > 0) {
-//       let { timestamp, merkleTree } = yield* _(readTimestampAndMerkleTree);
-
-//       const messages = yield* _(
-//         mutationsToNewMessages(toSync),
-//         Effect.forEach((message) =>
-//           Effect.map(sendTimestamp(timestamp), (nextTimestamp): Message => {
-//             timestamp = nextTimestamp;
-//             return { ...message, timestamp: timestampToString(timestamp) };
-//           }),
-//         ),
-//       );
-
-//       merkleTree = yield* _(applyMessages({ merkleTree, messages }));
-
-//       yield* _(writeTimestampAndMerkleTree({ timestamp, merkleTree }));
-
-//       (yield* _(SyncWorkerPostMessage))({
-//         _tag: "sync",
-//         syncUrl: (yield* _(Config)).syncUrl,
-//         messages,
-//         timestamp,
-//         merkleTree,
-//         owner: yield* _(Owner),
-//         syncLoopCount: 0,
-//       });
-//     }
-
-//     const onCompleteIds = ReadonlyArray.filterMap(mutations, (item) =>
-//       Option.fromNullable(item.onCompleteId),
-//     );
-//     if (queries.length > 0 || onCompleteIds.length > 0)
-//       yield* _(query({ queries, onCompleteIds }));
-//   });
 
 // const handleSyncResponse = ({
 //   messages,

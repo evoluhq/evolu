@@ -87,7 +87,7 @@ export const makeSyncTimestamp = (
 });
 
 export const makeInitialTimestamp = NanoIdGenerator.pipe(
-  Effect.flatMap(({ nanoidAsNodeId }) => nanoidAsNodeId),
+  Effect.flatMap(({ nodeId }) => nodeId),
   Effect.map(
     (node): Timestamp => ({
       millis: initialMillis,
@@ -97,15 +97,13 @@ export const makeInitialTimestamp = NanoIdGenerator.pipe(
   ),
 );
 
-export interface Time {
-  readonly now: Effect.Effect<Millis, TimestampTimeOutOfRangeError>;
-}
-
-export const Time = Context.GenericTag<Time>("@services/Time");
-
-export const TimeLive = Layer.succeed(
+export class Time extends Context.Tag("Time")<
   Time,
-  Time.of({
+  {
+    readonly now: Effect.Effect<Millis, TimestampTimeOutOfRangeError>;
+  }
+>() {
+  static Live = Layer.succeed(Time, {
     now: Effect.suspend(() => S.decode(Millis)(Date.now())).pipe(
       Effect.catchTag("ParseError", () =>
         Effect.fail<TimestampTimeOutOfRangeError>({
@@ -113,8 +111,8 @@ export const TimeLive = Layer.succeed(
         }),
       ),
     ),
-  }),
-);
+  });
+}
 
 /**
  * The TimestampError type represents all Timestamp-related errors. If such an
@@ -286,17 +284,18 @@ const insertKey = (
   };
 };
 
-export const insertIntoMerkleTree =
-  (timestamp: Timestamp) =>
-  (tree: MerkleTree): MerkleTree => {
-    const path = millisToMerkleTreePath(timestamp.millis);
-    const hash = timestampToHash(timestamp);
-    return insertKey(
-      { ...tree, hash: xorTimestampHashes(tree.hash, hash) },
-      path,
-      hash,
-    );
-  };
+export const insertIntoMerkleTree = (
+  tree: MerkleTree,
+  timestamp: Timestamp,
+): MerkleTree => {
+  const path = millisToMerkleTreePath(timestamp.millis);
+  const hash = timestampToHash(timestamp);
+  return insertKey(
+    { ...tree, hash: xorTimestampHashes(tree.hash, hash) },
+    path,
+    hash,
+  );
+};
 
 const sortedMerkleTreeKeys: ReadonlyArray<MerkleTreeKey> = ["0", "1", "2"];
 

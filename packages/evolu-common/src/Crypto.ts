@@ -9,6 +9,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { customAlphabet, nanoid } from "nanoid";
+import { Id } from "./Model.js";
 
 export class Bip39 extends Context.Tag("Bip39")<
   Bip39,
@@ -40,14 +41,16 @@ export class NanoIdGenerator extends Context.Tag("NanoIdGenerator")<
   NanoIdGenerator,
   {
     readonly nanoid: Effect.Effect<NanoId>;
-    readonly nanoidAsNodeId: Effect.Effect<NodeId>;
+    readonly nodeId: Effect.Effect<NodeId>;
+    readonly rowId: Effect.Effect<Id>;
   }
 >() {
   static Live = Layer.succeed(
     NanoIdGenerator,
     NanoIdGenerator.of({
       nanoid: Effect.sync(() => nanoid() as NanoId),
-      nanoidAsNodeId: Effect.sync(() => nanoidForNodeId() as NodeId),
+      nodeId: Effect.sync(() => nanoidForNodeId() as NodeId),
+      rowId: Effect.sync(() => nanoid() as Id),
     }),
   );
 }

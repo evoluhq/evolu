@@ -39,7 +39,7 @@ export const SqliteTest = Layer.effect(
 
           return { rows, changes };
         }),
-      transaction: (effect) => effect,
+      transaction: () => (effect) => effect,
     });
   }),
 );
