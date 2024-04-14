@@ -7,7 +7,6 @@ export * from "./Diff.js";
 export * from "./Evolu.js";
 export * from "./Model.js";
 export * from "./Murmurhash.js";
-export * from "./OnCompletes.js";
 export * from "./Owner.js";
 export * from "./Platform.js";
 export * from "./Protobuf.js";

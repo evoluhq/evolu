@@ -3,19 +3,14 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 /**
- * FlushSync lets you force React to flush any updates inside the provided
- * callback synchronously. This ensures that the DOM is updated immediately.
+ * FlushSync is a service for libraries like React to synchronously flush
+ * updates inside the provided callback to ensure the DOM is updated
+ * immediately.
  *
- * It's required only for React DOM. The other UI libraries probably don't need
- * that, so it should be a no-op.
+ * https://react.dev/reference/react-dom/flushSync
  */
 export type FlushSync = (callback: () => void) => void;
-
-export const FlushSync = Context.GenericTag<FlushSync>("@services/FlushSync");
-
-export const FlushSyncDefaultLive = Layer.succeed(FlushSync, (callback) =>
-  callback(),
-);
+export const FlushSync = Context.GenericTag<FlushSync>("FlushSync");
 
 export interface SyncLock {
   /**

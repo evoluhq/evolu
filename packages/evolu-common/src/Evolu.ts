@@ -1,6 +1,8 @@
 import * as S from "@effect/schema/Schema";
 import * as Context from "effect/Context";
+import * as Option from "effect/Option";
 import * as Effect from "effect/Effect";
+import * as Predicate from "effect/Predicate";
 import * as Exit from "effect/Exit";
 import { constVoid, flow, pipe } from "effect/Function";
 import * as Layer from "effect/Layer";
@@ -40,6 +42,7 @@ import {
 } from "./Sqlite.js";
 import { Listener, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
+import { FlushSync } from "./Platform.js";
 
 /**
  * The Evolu interface provides a type-safe SQL query building and state
@@ -467,9 +470,18 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
   static Common = Layer.effect(
     EvoluFactory,
     Effect.gen(function* (_) {
+      const flushSync = yield* _(
+        Effect.serviceOption(FlushSync).pipe(
+          Effect.map(
+            Option.getOrElse<FlushSync>(() => (callback) => callback()),
+          ),
+        ),
+      );
+
       const context = Context.empty().pipe(
         Context.add(DbWorkerFactory, yield* _(DbWorkerFactory)),
         Context.add(NanoIdGenerator, yield* _(NanoIdGenerator)),
+        Context.add(FlushSync, flushSync),
       );
 
       // For hot/live reload and future Evolu dynamic import.
@@ -512,6 +524,7 @@ const createEvolu = (
     const loadingPromises = new Map<Query, LoadingPromise>();
     const subscribedQueries = new Map<Query, number>();
     const nanoIdGenerator = yield* _(NanoIdGenerator);
+    const flushSync = yield* _(FlushSync);
 
     const handleAllErrors = <T>(effect: Effect.Effect<T, EvoluError, Config>) =>
       effect.pipe(
@@ -534,16 +547,29 @@ const createEvolu = (
     // We can't extend the scope because the DbWorker code can run in WebWorker.
     Scope.addFinalizer(scope, dbWorker.dispose());
 
-    const handlePatches = (patches: ReadonlyArray<QueryPatches>) =>
-      Effect.logDebug(["Evolu handlePatches", patches]).pipe(
-        Effect.zipRight(rowsStoreStateFromPatches(patches)),
-        Effect.tap((nextState) =>
-          Effect.forEach(patches, ({ query }) =>
-            resolveLoadingPromises(query, nextState.get(query) || emptyRows()),
+    const handlePatches =
+      (options: { readonly flushSync: boolean }) =>
+      (patches: ReadonlyArray<QueryPatches>) =>
+        Effect.logDebug(["Evolu handlePatches", patches]).pipe(
+          Effect.zipRight(rowsStoreStateFromPatches(patches)),
+          Effect.tap((nextState) =>
+            Effect.forEach(patches, ({ query }) =>
+              resolveLoadingPromises(
+                query,
+                nextState.get(query) || emptyRows(),
+              ),
+            ),
           ),
-        ),
-        Effect.flatMap(rowsStore.setState),
-      );
+          Effect.tap((nextState) => {
+            if (options.flushSync) {
+              flushSync(() => {
+                rowsStore.setState(nextState).pipe(runSync);
+              });
+            } else {
+              rowsStore.setState(nextState).pipe(runSync);
+            }
+          }),
+        );
 
     const rowsStoreStateFromPatches = (patches: ReadonlyArray<QueryPatches>) =>
       Effect.sync((): RowsStoreState => {
@@ -555,7 +581,6 @@ const createEvolu = (
             applyPatches(patches, rowsStoreState.get(query) || emptyRows()),
           ],
         );
-        // Spread syntax converts a Map to an Array.
         return new Map([...rowsStoreState, ...queriesRows]);
       });
 
@@ -604,17 +629,34 @@ const createEvolu = (
     const mutate = ((): Mutate => {
       let queue: ReadonlyArray<[Mutation, MutateOnComplete | undefined]> = [];
       return (table, { id, ...values }, onComplete) => {
+        Effect.logDebug(["Evolu mutate", { table, id, values }]).pipe(runSync);
         const isInsert = id == null;
         if (isInsert) id = nanoIdGenerator.rowId.pipe(runSync);
         queue = [...queue, [{ table, id, values, isInsert }, onComplete]];
         if (queue.length === 1)
           queueMicrotask(() => {
-            const [mutations /*, onCompletes*/] = ReadonlyArray.unzip(queue);
-            const queriesToRefresh = [...subscribedQueries.keys()];
-            // TODO: Call onCompletes
-            dbWorker.mutate({ mutations, queriesToRefresh }).pipe(runFork);
+            const [mutations, onCompletes] = ReadonlyArray.unzip(queue);
             queue = [];
+            const queriesToRefresh = [...subscribedQueries.keys()];
+            const onCompletesDef = onCompletes.filter(Predicate.isNotUndefined);
             releaseUnsubscribedLoadingPromises();
+            dbWorker.mutate({ mutations, queriesToRefresh }).pipe(
+              Effect.flatMap(
+                /**
+                 * The flushSync is for onComplete handlers only. For example,
+                 * with React, when we want to focus on a node created by a
+                 * mutation, we must ensure all DOM changes are flushed
+                 * synchronously.
+                 */
+                handlePatches({ flushSync: onCompletesDef.length > 0 }),
+              ),
+              Effect.tap(() => {
+                onCompletesDef.forEach((onComplete) => {
+                  onComplete();
+                });
+              }),
+              runFork,
+            );
           });
         return { id };
       };
@@ -674,10 +716,12 @@ const createEvolu = (
           if (isNew) queue = [...queue, query];
           if (queue.length === 1) {
             queueMicrotask(() => {
-              dbWorker.loadQueries(queue).pipe(
-                Effect.flatMap((patches) => handlePatches(patches)),
-                runFork,
-              );
+              dbWorker
+                .loadQueries(queue)
+                .pipe(
+                  Effect.flatMap(handlePatches({ flushSync: false })),
+                  runFork,
+                );
               queue = [];
             });
           }
