@@ -1,9 +1,9 @@
 import {
   AppState,
   Bip39,
-  InvalidMnemonicError,
   Mnemonic,
   SyncLock,
+  validateMnemonicToEffect,
 } from "@evolu/common";
 import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
 import {
@@ -72,8 +72,6 @@ export const Bip39Live = Layer.succeed(
     toSeed: (mnemonic) => Effect.promise(() => mnemonicToSeed(mnemonic)),
 
     parse: (mnemonic) =>
-      validateMnemonic(mnemonic, wordlist)
-        ? Effect.succeed(mnemonic as Mnemonic)
-        : Effect.fail<InvalidMnemonicError>({ _tag: "InvalidMnemonicError" }),
+      validateMnemonicToEffect(validateMnemonic)(mnemonic, wordlist),
   }),
 );

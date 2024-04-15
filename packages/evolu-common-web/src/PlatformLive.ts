@@ -2,10 +2,10 @@ import {
   AppState,
   Bip39,
   Config,
-  InvalidMnemonicError,
   Mnemonic,
   SyncLock,
   canUseDom,
+  validateMnemonicToEffect,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import { constVoid } from "effect/Function";
@@ -120,11 +120,7 @@ export const Bip39Live = Layer.succeed(
     parse: (mnemonic) =>
       importBip39WithEnglish.pipe(
         Effect.flatMap(([{ validateMnemonic }, { wordlist }]) =>
-          validateMnemonic(mnemonic, wordlist)
-            ? Effect.succeed(mnemonic as Mnemonic)
-            : Effect.fail<InvalidMnemonicError>({
-                _tag: "InvalidMnemonicError",
-              }),
+          validateMnemonicToEffect(validateMnemonic)(mnemonic, wordlist),
         ),
       ),
   }),
