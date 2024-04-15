@@ -35,9 +35,6 @@
     },
     "overrides": {
       "flexsearch": "0.7.31"
-    },
-    "patchedDependencies": {
-      "effect@2.4.18": "patches/effect@2.4.18.patch"
     }
   }
 }

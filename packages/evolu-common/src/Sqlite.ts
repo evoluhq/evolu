@@ -276,9 +276,9 @@ export interface Table {
 }
 
 // TODO: Rename to SqliteIndex
-export const Index = S.struct({
-  name: S.string,
-  sql: S.string,
+export const Index = S.Struct({
+  name: S.String,
+  sql: S.String,
 });
 export type Index = S.Schema.Type<typeof Index>;
 

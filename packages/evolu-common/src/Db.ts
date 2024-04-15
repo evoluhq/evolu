@@ -85,9 +85,9 @@ export const table = <Fields extends TableFields>(
       : EvoluTypeError<"table() called without id column.">
     : EvoluTypeError<"table() called with a reserved column. Reserved columns are createdAt, updatedAt, isDeleted. Those columns are added by default.">
   : EvoluTypeError<"table() called with unsupported type. Supported types are null, string, number, Uint8Array, JSON Object, and JSON Array. Use SqliteDate for dates and SqliteBoolean for booleans."> =>
-  S.struct(fields).pipe(S.extend(ReservedColumns)) as never;
+  S.Struct(fields).pipe(S.extend(ReservedColumns)) as never;
 
-const ReservedColumns = S.struct({
+const ReservedColumns = S.Struct({
   createdAt: SqliteDate,
   updatedAt: SqliteDate,
   isDeleted: SqliteBoolean,
@@ -137,7 +137,7 @@ type ValidateFieldsHasId<Fields extends TableFields> = "id" extends keyof Fields
  *   });
  *   type Database = S.Schema.Type<typeof Database>;
  */
-export const database = S.struct;
+export const database = S.Struct;
 
 // https://blog.beraliv.dev/2021-05-07-opaque-type-in-typescript
 declare const __queryBrand: unique symbol;
@@ -261,11 +261,11 @@ export interface NoSuchTableOrColumnError {
   readonly _tag: "NoSuchTableOrColumnError";
 }
 
-export const SqliteNoSuchTableOrColumnError = S.struct({
-  message: S.union(
-    S.string.pipe(S.includes("no such table")),
-    S.string.pipe(S.includes("no such column")),
-    S.string.pipe(S.includes("has no column")),
+export const SqliteNoSuchTableOrColumnError = S.Struct({
+  message: S.Union(
+    S.String.pipe(S.includes("no such table")),
+    S.String.pipe(S.includes("no such column")),
+    S.String.pipe(S.includes("has no column")),
   ),
 });
 export type SqliteNoSuchTableOrColumnError = S.Schema.Type<

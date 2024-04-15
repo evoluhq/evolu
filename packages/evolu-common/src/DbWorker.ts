@@ -236,8 +236,8 @@ export const createDbWorker: Effect.Effect<
         return yield* _(loadQueries(queriesToRefresh));
       }).pipe(afterInit({ transaction: "exclusive" })),
 
-    reset: (mnemonic) => {
-      console.log(mnemonic);
+    reset: (_mnemonic) => {
+      // console.log(mnemonic);
       return Effect.unit.pipe(afterInit({ transaction: "last" }));
     },
 

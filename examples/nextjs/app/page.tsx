@@ -57,20 +57,20 @@ type NonEmptyString50 = S.Schema.Type<typeof NonEmptyString50>;
 const TodoTable = table({
   id: TodoId,
   title: NonEmptyString1000,
-  isCompleted: S.nullable(SqliteBoolean),
-  categoryId: S.nullable(TodoCategoryId),
+  isCompleted: S.NullOr(SqliteBoolean),
+  categoryId: S.NullOr(TodoCategoryId),
 });
 type TodoTable = S.Schema.Type<typeof TodoTable>;
 
 // Evolu tables can contain typed JSONs.
-const SomeJson = S.struct({ foo: S.string, bar: S.boolean });
+const SomeJson = S.Struct({ foo: S.String, bar: S.Boolean });
 type SomeJson = S.Schema.Type<typeof SomeJson>;
 
 // Let's make a table with JSON value.
 const TodoCategoryTable = table({
   id: TodoCategoryId,
   name: NonEmptyString50,
-  json: S.nullable(SomeJson),
+  json: S.NullOr(SomeJson),
 });
 type TodoCategoryTable = S.Schema.Type<typeof TodoCategoryTable>;
 

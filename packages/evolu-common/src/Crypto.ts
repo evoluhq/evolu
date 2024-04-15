@@ -71,7 +71,7 @@ export class NanoIdGenerator extends Context.Tag("NanoIdGenerator")<
 
 export type NanoId = string & Brand.Brand<"NanoId">;
 
-export const NodeId = S.string.pipe(
+export const NodeId = S.String.pipe(
   S.pattern(/^[\w-]{16}$/),
   S.brand("NodeId"),
 );

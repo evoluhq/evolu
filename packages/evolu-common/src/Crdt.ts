@@ -36,7 +36,7 @@ export const AllowedTimeRange = {
  * the device clock is out of range, Evolu will not store data until it's
  * fixed.
  */
-export const Millis = S.number.pipe(
+export const Millis = S.Number.pipe(
   S.greaterThan(AllowedTimeRange.greaterThan),
   S.lessThan(AllowedTimeRange.lessThan),
   S.brand("Millis"),
@@ -48,7 +48,7 @@ export const initialMillis = S.decodeSync(Millis)(
   AllowedTimeRange.greaterThan + 1,
 );
 
-export const Counter = S.number.pipe(S.between(0, 65535), S.brand("Counter"));
+export const Counter = S.Number.pipe(S.between(0, 65535), S.brand("Counter"));
 export type Counter = S.Schema.Type<typeof Counter>;
 
 const initialCounter = S.decodeSync(Counter)(0);

@@ -2,7 +2,7 @@ import * as S from "@effect/schema/Schema";
 import { maybeJson } from "./Sqlite.js";
 
 /** Branded Id Schema. To create Id Schema for a specific table, use {@link id}. */
-export const Id = S.string.pipe(S.pattern(/^[\w-]{21}$/), S.brand("Id"));
+export const Id = S.String.pipe(S.pattern(/^[\w-]{21}$/), S.brand("Id"));
 export type Id = S.Schema.Type<typeof Id>;
 
 /**
@@ -25,7 +25,7 @@ export const id = <T extends string>(
  * the {@link cast} helper to cast SqliteDate from Date and back.
  * https://www.sqlite.org/quirks.html#no_separate_datetime_datatype
  */
-export const SqliteDate = S.string.pipe(
+export const SqliteDate = S.String.pipe(
   S.filter((s) => !isNaN(Date.parse(s))),
   S.brand("SqliteDate"),
 );
@@ -36,7 +36,7 @@ export type SqliteDate = S.Schema.Type<typeof SqliteDate>;
  * Use the {@link cast} helper to cast SqliteBoolean from boolean and back.
  * https://www.sqlite.org/quirks.html#no_separate_boolean_datatype
  */
-export const SqliteBoolean = S.number.pipe(
+export const SqliteBoolean = S.Number.pipe(
   S.int(),
   S.filter((s) => s === 0 || s === 1),
   S.brand("SqliteBoolean"),
@@ -77,7 +77,7 @@ export function cast(
  * not automatically parsed to a JSON object or array when retrieved. Use String
  * schema for all string-based schemas.
  */
-export const String = S.string.pipe(
+export const String = S.String.pipe(
   S.filter(
     (s) => {
       if (!maybeJson(s)) return true;
@@ -131,7 +131,7 @@ export type NonEmptyString1000 = S.Schema.Type<typeof NonEmptyString1000>;
  *
  *   S.decode(PositiveInt)(value);
  */
-export const PositiveInt = S.number.pipe(
+export const PositiveInt = S.Number.pipe(
   S.int(),
   S.positive(),
   S.brand("PositiveInt"),
