@@ -24,7 +24,7 @@ import {
   timestampToString,
   unsafeTimestampFromString,
 } from "./Crdt.js";
-import { Bip39, NanoIdGenerator } from "./Crypto.js";
+import { Bip39, Mnemonic, NanoIdGenerator } from "./Crypto.js";
 import {
   Query,
   deserializeQuery,
@@ -62,16 +62,18 @@ export interface DbWorker {
     queries: ReadonlyArray<Query>,
   ) => Effect.Effect<ReadonlyArray<QueryPatches>>;
 
-  readonly mutate: (params: {
-    readonly mutations: ReadonlyArray<Mutation>;
-    readonly queriesToRefresh: ReadonlyArray<Query>;
-  }) => Effect.Effect<
+  readonly mutate: (
+    mutations: ReadonlyArray<Mutation>,
+    queriesToRefresh: ReadonlyArray<Query>,
+  ) => Effect.Effect<
     ReadonlyArray<QueryPatches>,
     | TimestampTimeOutOfRangeError
     | TimestampDriftError
     | TimestampCounterOverflowError,
     Config
   >;
+
+  readonly reset: (mnemonic?: Mnemonic) => Effect.Effect<void>;
 
   readonly ensureSchema: (schema: SqliteSchema) => Effect.Effect<void>;
 
@@ -121,14 +123,12 @@ export const createDbWorker: Effect.Effect<
   const afterInit =
     (options: { readonly transaction: SqliteTransactionMode }) =>
     <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-      Deferred.await(afterInitContext).pipe(
-        Effect.flatMap((context) =>
-          Sqlite.pipe(
-            Effect.flatMap((sqlite) =>
-              sqlite.transaction(options.transaction)(effect),
-            ),
-            Effect.provide(context),
+      Effect.flatMap(Deferred.await(afterInitContext), (context) =>
+        Sqlite.pipe(
+          Effect.flatMap((sqlite) =>
+            sqlite.transaction(options.transaction)(effect),
           ),
+          Effect.provide(context),
         ),
       );
 
@@ -186,7 +186,7 @@ export const createDbWorker: Effect.Effect<
         afterInit({ transaction: "shared" }),
       ),
 
-    mutate: ({ mutations, queriesToRefresh }) =>
+    mutate: (mutations, queriesToRefresh) =>
       Effect.gen(function* (_) {
         yield* _(
           Effect.logDebug(["DbWorker mutate", { mutations, queriesToRefresh }]),
@@ -235,6 +235,11 @@ export const createDbWorker: Effect.Effect<
         }
         return yield* _(loadQueries(queriesToRefresh));
       }).pipe(afterInit({ transaction: "exclusive" })),
+
+    reset: (mnemonic) => {
+      console.log(mnemonic);
+      return Effect.unit.pipe(afterInit({ transaction: "last" }));
+    },
 
     ensureSchema: (schema) =>
       ensureSchema(schema).pipe(afterInit({ transaction: "exclusive" })),
@@ -408,6 +413,19 @@ const setTimestampAndMerkleTree = (
       ],
     }),
   );
+
+/** It fails on init, and there is no-op for the rest. */
+export const notSupportedPlatformWorker: DbWorker = {
+  init: () =>
+    Effect.fail<NotSupportedPlatformError>({
+      _tag: "NotSupportedPlatformError",
+    }),
+  loadQueries: () => Effect.succeed([]),
+  mutate: () => Effect.succeed([]),
+  reset: () => Effect.unit,
+  ensureSchema: () => Effect.unit,
+  dispose: () => Effect.unit,
+};
 
 // TODO: Write
 

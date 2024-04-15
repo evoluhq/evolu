@@ -7,27 +7,16 @@ import {
   InvalidMnemonicError,
   Mnemonic,
   NanoIdGenerator,
-  NotSupportedPlatformError,
+  notSupportedPlatformWorker,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { Bip39Live } from "./PlatformLive.js";
 import { wrap } from "./ProxyWorker.js";
 
-const noOpServerWorker: DbWorker = {
-  init: () =>
-    Effect.fail<NotSupportedPlatformError>({
-      _tag: "NotSupportedPlatformError",
-    }),
-  loadQueries: () => Effect.succeed([]),
-  mutate: () => Effect.succeed([]),
-  ensureSchema: () => Effect.unit,
-  dispose: () => Effect.unit,
-};
-
 const DbWorkerFactoryWeb = Layer.succeed(DbWorkerFactory, {
   createDbWorker: Effect.sync(() => {
-    if (!canUseDom) return noOpServerWorker;
+    if (!canUseDom) return notSupportedPlatformWorker;
     const worker = new Worker(new URL("DbWorker.worker.js", import.meta.url), {
       type: "module",
     });
