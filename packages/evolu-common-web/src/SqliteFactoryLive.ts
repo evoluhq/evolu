@@ -220,7 +220,7 @@ export const SqliteFactoryLive = Layer.effect(
               Effect.async<() => void>((resume) => {
                 navigator.locks.request(
                   transactionName,
-                  { mode },
+                  { mode: mode === "last" ? "exclusive" : mode },
                   () =>
                     new Promise<void>((resolve) => {
                       resume(Effect.succeed(resolve));
@@ -228,7 +228,11 @@ export const SqliteFactoryLive = Layer.effect(
                 );
               }),
               () => effect,
-              (resolve) => Effect.sync(resolve),
+              (resolve) =>
+                Effect.sync(() => {
+                  // Don't resolve the last transaction; otherwise, it won't be the last.
+                  if (mode !== "last") resolve();
+                }),
             ),
         });
       }),

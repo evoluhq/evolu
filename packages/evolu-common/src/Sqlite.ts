@@ -25,7 +25,11 @@ export class Sqlite extends Context.Tag("Sqlite")<
        * only one writer. In Evolu, this pattern also ensures that every write
        * can be immediately read without waiting to complete. For example, we
        * can add data on one page and then immediately redirect to another, and
-       * the data will be there without flickering.
+       * the data will be there.
+       *
+       * There is also a `last` mode that ensures no other transaction can run.
+       * It's for DbWorker reset to ensure no data are accidentally saved after
+       * database wipe-out.
        */
       mode: SqliteTransactionMode,
     ) => <A, E, R>(
@@ -34,7 +38,7 @@ export class Sqlite extends Context.Tag("Sqlite")<
   }
 >() {}
 
-export type SqliteTransactionMode = "exclusive" | "shared";
+export type SqliteTransactionMode = "exclusive" | "shared" | "last";
 
 /**
  * Usually, Tag and Service can have the same name, but in this case, we create

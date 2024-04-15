@@ -640,7 +640,7 @@ const createEvolu = (
             const queriesToRefresh = [...subscribedQueries.keys()];
             const onCompletesDef = onCompletes.filter(Predicate.isNotUndefined);
             releaseUnsubscribedLoadingPromises();
-            dbWorker.mutate({ mutations, queriesToRefresh }).pipe(
+            dbWorker.mutate(mutations, queriesToRefresh).pipe(
               Effect.flatMap(
                 /**
                  * The flushSync is for onComplete handlers only. For example,
@@ -771,11 +771,11 @@ const createEvolu = (
       createOrUpdate: mutate as Mutate<DatabaseSchema, "createOrUpdate">,
 
       resetOwner: () => {
-        //
+        dbWorker.reset().pipe(runFork);
       },
 
-      restoreOwner: () => {
-        //
+      restoreOwner: (mnemonic) => {
+        dbWorker.reset(mnemonic).pipe(runFork);
       },
 
       ensureSchema: (schema) => {
