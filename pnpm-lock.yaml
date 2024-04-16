@@ -33,8 +33,8 @@ importers:
   apps/native:
     dependencies:
       '@effect/schema':
-        specifier: ^0.65.0
-        version: 0.65.0(effect@2.4.19)(fast-check@3.17.1)
+        specifier: ^0.66.0
+        version: 0.66.0(effect@3.0.0)(fast-check@3.17.1)
       '@evolu/common':
         specifier: workspace:*
         version: link:../../packages/evolu-common
@@ -57,8 +57,8 @@ importers:
         specifier: ^3.12.0
         version: 3.12.0
       effect:
-        specifier: 2.4.19
-        version: 2.4.19
+        specifier: 3.0.0
+        version: 3.0.0
       events:
         specifier: ^3.3.0
         version: 3.3.0
@@ -100,8 +100,8 @@ importers:
         specifier: ^7.24.1
         version: 7.24.1(@babel/core@7.24.4)
       '@types/react':
-        specifier: ^18.2.78
-        version: 18.2.78
+        specifier: ^18.2.79
+        version: 18.2.79
       eslint:
         specifier: ^8.57.0
         version: 8.57.0
@@ -137,8 +137,8 @@ importers:
   apps/web:
     dependencies:
       '@effect/schema':
-        specifier: ^0.65.0
-        version: 0.65.0(effect@2.4.19)(fast-check@3.17.1)
+        specifier: ^0.66.0
+        version: 0.66.0(effect@3.0.0)(fast-check@3.17.1)
       '@evolu/common':
         specifier: workspace:*
         version: link:../../packages/evolu-common
@@ -149,8 +149,8 @@ importers:
         specifier: ^2.1.0
         version: 2.1.0
       effect:
-        specifier: 2.4.19
-        version: 2.4.19
+        specifier: 3.0.0
+        version: 3.0.0
       next:
         specifier: 14.2.1
         version: 14.2.1(react-dom@18.2.0)(react@18.2.0)
@@ -174,8 +174,8 @@ importers:
         specifier: ^20.12.7
         version: 20.12.7
       '@types/react':
-        specifier: ^18.2.78
-        version: 18.2.78
+        specifier: ^18.2.79
+        version: 18.2.79
       '@types/react-dom':
         specifier: ^18.2.25
         version: 18.2.25
@@ -195,8 +195,8 @@ importers:
         specifier: ^3.2.5
         version: 3.2.5
       prettier-plugin-tailwindcss:
-        specifier: ^0.5.13
-        version: 0.5.13(prettier-plugin-jsdoc@1.3.0)(prettier@3.2.5)
+        specifier: ^0.5.14
+        version: 0.5.14(prettier-plugin-jsdoc@1.3.0)(prettier@3.2.5)
       tailwindcss:
         specifier: ^3.4.3
         version: 3.4.3
@@ -266,8 +266,8 @@ importers:
         version: 5.0.7
     devDependencies:
       '@effect/schema':
-        specifier: ^0.65.0
-        version: 0.65.0(effect@2.4.19)(fast-check@3.17.1)
+        specifier: ^0.66.0
+        version: 0.66.0(effect@3.0.0)(fast-check@3.17.1)
       '@evolu/tsconfig':
         specifier: workspace:*
         version: link:../evolu-tsconfig
@@ -281,8 +281,8 @@ importers:
         specifier: ^3.0.0
         version: 3.0.0
       effect:
-        specifier: 2.4.19
-        version: 2.4.19
+        specifier: 3.0.0
+        version: 3.0.0
       eslint:
         specifier: ^8.57.0
         version: 8.57.0
@@ -305,8 +305,8 @@ importers:
         specifier: workspace:*
         version: link:../evolu-tsconfig
       '@types/react':
-        specifier: ^18.2.78
-        version: 18.2.78
+        specifier: ^18.2.79
+        version: 18.2.79
       eslint:
         specifier: ^8.57.0
         version: 8.57.0
@@ -332,8 +332,8 @@ importers:
         specifier: workspace:*
         version: link:../evolu-tsconfig
       '@sqlite.org/sqlite-wasm':
-        specifier: 3.45.2-build1
-        version: 3.45.2-build1
+        specifier: 3.45.3-build1
+        version: 3.45.3-build1
       '@types/web-locks-api':
         specifier: ^0.0.5
         version: 0.0.5
@@ -438,8 +438,8 @@ importers:
         specifier: ^2.8.5
         version: 2.8.5
       effect:
-        specifier: 2.4.19
-        version: 2.4.19
+        specifier: 3.0.0
+        version: 3.0.0
       express:
         specifier: ^4.19.2
         version: 4.19.2
@@ -2395,13 +2395,13 @@ packages:
       '@jridgewell/trace-mapping': 0.3.9
     dev: true
 
-  /@effect/schema@0.65.0(effect@2.4.19)(fast-check@3.17.1):
-    resolution: {integrity: sha512-YWj13tEfXisJwMeOK+h6obPuVsMSnNi8FQ6zzOpJ1HdnGZJsOaKeOKqZ5uQxYcnfOR39Q5vePat4yLWkszmHrA==}
+  /@effect/schema@0.66.0(effect@3.0.0)(fast-check@3.17.1):
+    resolution: {integrity: sha512-wbmA4vQ0OswEwBt+vWn4oEgw2QdEDchPiNNisPCHvSy5e5qH0usfppJ3fNX9cwrCz6jEQTCE42Q/7Was2BhVHg==}
     peerDependencies:
-      effect: ^2.4.19
+      effect: ^3.0.0
       fast-check: ^3.13.2
     dependencies:
-      effect: 2.4.19
+      effect: 3.0.0
       fast-check: 3.17.1
 
   /@es-joy/jsdoccomment@0.42.0:
@@ -3203,7 +3203,7 @@ packages:
       react: '>=16'
     dependencies:
       '@types/mdx': 2.0.13
-      '@types/react': 18.2.78
+      '@types/react': 18.2.79
       react: 18.2.0
     dev: false
 
@@ -4096,8 +4096,8 @@ packages:
     dependencies:
       '@sinonjs/commons': 3.0.1
 
-  /@sqlite.org/sqlite-wasm@3.45.2-build1:
-    resolution: {integrity: sha512-TeQf8rNFQna8pg95IshtpXkhdMq1iNAXllCoNrhEn18660Hbal9yxKAYv+ZfC1kjfdEXMK6V0XanfX5OT5FyMw==}
+  /@sqlite.org/sqlite-wasm@3.45.3-build1:
+    resolution: {integrity: sha512-/eLqlKmyPoHpYZkg5VmEZpknisOShPX59Rm//zKHFVqqCk/7/mYT/i5CrooRQDqzfhq0Bm8IDynC+fbL0C1WfQ==}
     hasBin: true
     dev: true
 
@@ -4337,11 +4337,11 @@ packages:
   /@types/react-dom@18.2.25:
     resolution: {integrity: sha512-o/V48vf4MQh7juIKZU2QGDfli6p1+OOi5oXx36Hffpc9adsHeXjVp8rHuPkjd8VT8sOJ2Zp05HR7CdpGTIUFUA==}
     dependencies:
-      '@types/react': 18.2.78
+      '@types/react': 18.2.79
     dev: true
 
-  /@types/react@18.2.78:
-    resolution: {integrity: sha512-qOwdPnnitQY4xKlKayt42q5W5UQrSHjgoXNVEtxeqdITJ99k4VXJOP3vt8Rkm9HmgJpH50UNU+rlqfkfWOqp0A==}
+  /@types/react@18.2.79:
+    resolution: {integrity: sha512-RwGAGXPl9kSXwdNTafkOEuFrTBD5SA2B3iEB96xi8+xu5ddUa/cpvyVCSNn+asgLCTHkb5ZxN8gbuibYJi4s1w==}
     dependencies:
       '@types/prop-types': 15.7.12
       csstype: 3.1.3
@@ -6537,8 +6537,8 @@ packages:
   /ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  /effect@2.4.19:
-    resolution: {integrity: sha512-z/rn878Po3n522g/AYUDHD1SsZaZdvRxlTCLQ8xl8H6xA82nBwwooD1mdn/73Uywmp7d84oay3w3528r0Uyd0w==}
+  /effect@3.0.0:
+    resolution: {integrity: sha512-8yVxuahojpD8Y6ynrvIlSWD2xsea/PyGnjA4V5c7v0fOMJafgsKUNUHErBAr6YoPikmtOfR9zqNWRd9u5QaWEQ==}
 
   /electron-to-chromium@1.4.735:
     resolution: {integrity: sha512-pkYpvwg8VyOTQAeBqZ7jsmpCjko1Qc6We1ZtZCjRyYbT5v4AIUKDy5cQTRotQlSSZmMr8jqpEt6JtOj5k7lR7A==}
@@ -11522,8 +11522,8 @@ packages:
       - supports-color
     dev: true
 
-  /prettier-plugin-tailwindcss@0.5.13(prettier-plugin-jsdoc@1.3.0)(prettier@3.2.5):
-    resolution: {integrity: sha512-2tPWHCFNC+WRjAC4SIWQNSOdcL1NNkydXim8w7TDqlZi+/ulZYz2OouAI6qMtkggnPt7lGamboj6LcTMwcCvoQ==}
+  /prettier-plugin-tailwindcss@0.5.14(prettier-plugin-jsdoc@1.3.0)(prettier@3.2.5):
+    resolution: {integrity: sha512-Puaz+wPUAhFp8Lo9HuciYKM2Y2XExESjeT+9NQoVFXZsPPnc9VYss2SpxdQ6vbatmt8/4+SN0oe0I1cPDABg9Q==}
     engines: {node: '>=14.21.3'}
     peerDependencies:
       '@ianvs/prettier-plugin-sort-imports': '*'

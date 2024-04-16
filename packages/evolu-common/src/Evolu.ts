@@ -1,4 +1,5 @@
 import * as S from "@effect/schema/Schema";
+import * as Array from "effect/Array";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -8,8 +9,7 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Number from "effect/Number";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
-import * as ReadonlyArray from "effect/ReadonlyArray";
-import * as ReadonlyRecord from "effect/ReadonlyRecord";
+import * as Record from "effect/Record";
 import * as Scope from "effect/Scope";
 import * as Kysely from "kysely";
 import { Config, createEvoluRuntime, defaultConfig } from "./Config.js";
@@ -362,9 +362,9 @@ export interface Evolu<T extends EvoluSchema = EvoluSchema> {
 }
 
 /** A type to define tables, columns, and column types. */
-export type EvoluSchema = ReadonlyRecord.ReadonlyRecord<
+export type EvoluSchema = Record.ReadonlyRecord<
   string,
-  ReadonlyRecord.ReadonlyRecord<string, Value> & {
+  Record.ReadonlyRecord<string, Value> & {
     readonly id: Id;
   }
 >;
@@ -613,7 +613,7 @@ const createEvolu = (
 
     dbWorker.init(schema).pipe(
       Effect.flatMap(ownerStore.setState),
-      Effect.catchTag("NotSupportedPlatformError", () => Effect.unit), // no-op
+      Effect.catchTag("NotSupportedPlatformError", () => Effect.void), // no-op
       runFork,
     );
 
@@ -655,7 +655,7 @@ const createEvolu = (
     const rowsStoreStateFromPatches = (patches: ReadonlyArray<QueryPatches>) =>
       Effect.sync((): RowsStoreState => {
         const rowsStoreState = rowsStore.getState();
-        const queriesRows = ReadonlyArray.map(
+        const queriesRows = Array.map(
           patches,
           ({ query, patches }): [Query, Rows] => [
             query,
@@ -716,7 +716,7 @@ const createEvolu = (
         queue = [...queue, [{ table, id, values, isInsert }, onComplete]];
         if (queue.length === 1)
           queueMicrotask(() => {
-            const [mutations, onCompletes] = ReadonlyArray.unzip(queue);
+            const [mutations, onCompletes] = Array.unzip(queue);
             queue = [];
             const queriesToRefresh = [...subscribedQueries.keys()];
             const onCompletesDef = onCompletes.filter(Predicate.isNotUndefined);
@@ -939,7 +939,7 @@ export const lockName = (name: string): Effect.Effect<string, never, Config> =>
 // import * as Layer from "effect/Layer";
 // import * as Match from "effect/Match";
 // import * as Number from "effect/Number";
-// import * as ReadonlyArray from "effect/ReadonlyArray";
+// import * as ReadonlyArray from "effect/Array";
 // import * as Kysely from "kysely";
 // import { Config, ConfigLive } from "./Config.js";
 // import { Mnemonic, NanoIdGenerator, NanoIdGeneratorLive } from "./Crypto.js";

@@ -12,7 +12,7 @@ import * as Layer from "effect/Layer";
 export const AppStateLive = Layer.succeed(AppState, {
   init: ({ reloadUrl, onRequestSync }) => {
     if (typeof document === "undefined") {
-      return Effect.succeed(Effect.unit);
+      return Effect.succeed(Effect.void);
     }
 
     const localStorageKey = "evolu:reloadAllTabs";

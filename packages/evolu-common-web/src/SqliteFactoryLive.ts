@@ -16,10 +16,10 @@ import sqlite3InitModule, {
   SAHPoolUtil,
   Sqlite3Static,
 } from "@sqlite.org/sqlite-wasm";
+import * as Array from "effect/Array";
 import * as Effect from "effect/Effect";
 import { absurd, constVoid } from "effect/Function";
 import * as Layer from "effect/Layer";
-import * as ReadonlyArray from "effect/ReadonlyArray";
 import { ensureTransferableError } from "./ensureTransferableError.js";
 
 /**
@@ -74,7 +74,7 @@ export const SqliteFactoryLive = Layer.effect(
                * Remove already handled exec so the other tabs will not process
                * it.
                */
-              execsBeforeSqliteInit = ReadonlyArray.filter(
+              execsBeforeSqliteInit = Array.filter(
                 execsBeforeSqliteInit,
                 (m) => m.id !== message.id,
               );

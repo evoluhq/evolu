@@ -1,5 +1,5 @@
+import * as Array from "effect/Array";
 import * as Predicate from "effect/Predicate";
-import * as ReadonlyArray from "effect/ReadonlyArray";
 import { Query, Row, Rows } from "./Db.js";
 import { Value } from "./Sqlite.js";
 
@@ -30,7 +30,7 @@ export const applyPatches = (
       case "replaceAll":
         return patch.value;
       case "replaceAt": {
-        return ReadonlyArray.replace(next, patch.index, patch.value);
+        return Array.replace(next, patch.index, patch.value);
       }
     }
   }, current);

@@ -1,6 +1,7 @@
 import * as AST from "@effect/schema/AST";
 import * as S from "@effect/schema/Schema";
 import { make } from "@effect/schema/Schema";
+import * as Array from "effect/Array";
 import * as Brand from "effect/Brand";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
@@ -8,11 +9,11 @@ import { Equivalence } from "effect/Equivalence";
 import { constVoid, pipe } from "effect/Function";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
-import * as ReadonlyArray from "effect/ReadonlyArray";
-import * as ReadonlyRecord from "effect/ReadonlyRecord";
+import * as Record from "effect/Record";
 import * as String from "effect/String";
 import * as Types from "effect/Types";
 import * as Kysely from "kysely";
+import { Config } from "./Config.js";
 import {
   MerkleTree,
   Millis,
@@ -57,7 +58,6 @@ import {
 } from "./Sqlite.js";
 import { makeStore } from "./Store.js";
 import { Message, NewMessage } from "./SyncWorker.js";
-import { Config } from "./Config.js";
 
 /**
  * Create table schema.
@@ -184,7 +184,7 @@ export const serializeQuery = <R extends Row>({
     sql,
     parameters: parameters.map((p) =>
       Predicate.isUint8Array(p)
-        ? Array.from(p)
+        ? Array.fromIterable(p)
         : isJsonObjectOrArray(p)
           ? { json: p }
           : p,
@@ -377,7 +377,7 @@ from
           if (!map.has(tableName)) map.set(tableName, []);
           map.get(tableName)?.push(columnName);
         });
-        return Array.from(map, ([name, columns]) => ({
+        return globalThis.Array.from(map, ([name, columns]) => ({
           name,
           columns,
         }));
@@ -398,7 +398,7 @@ where
 `.trim(),
       }),
       Effect.map((result) =>
-        ReadonlyArray.map(
+        Array.map(
           result.rows,
           (row): Index => ({
             name: row.name as string,
@@ -446,7 +446,7 @@ create table ${table.name} (
 );`.trim(),
         );
       } else {
-        ReadonlyArray.differenceWith(String.Equivalence)(
+        Array.differenceWith(String.Equivalence)(
           table.columns,
           currentTable.columns,
         ).forEach((newColumn) => {
@@ -458,9 +458,9 @@ create table ${table.name} (
     });
 
     // Remove old indexes.
-    ReadonlyArray.differenceWith(indexEquivalence)(
+    Array.differenceWith(indexEquivalence)(
       currentSchema.indexes || [],
-      ReadonlyArray.intersectionWith(indexEquivalence)(
+      Array.intersectionWith(indexEquivalence)(
         currentSchema.indexes || [],
         schema.indexes || [],
       ),
@@ -469,7 +469,7 @@ create table ${table.name} (
     });
 
     // Add new indexes.
-    ReadonlyArray.differenceWith(indexEquivalence)(
+    Array.differenceWith(indexEquivalence)(
       schema.indexes || [],
       currentSchema.indexes || [],
     ).forEach((newIndex) => {
@@ -502,7 +502,7 @@ export const makeRowsStore = makeStore<RowsStoreState>(new Map());
 export const maybeExplainQueryPlan = (
   sqliteQuery: SqliteQuery,
 ): Effect.Effect<void, never, Sqlite> => {
-  if (!sqliteQuery.options?.logExplainQueryPlan) return Effect.unit;
+  if (!sqliteQuery.options?.logExplainQueryPlan) return Effect.void;
   return Sqlite.pipe(
     Effect.flatMap((sqlite) =>
       sqlite.exec({
@@ -521,7 +521,7 @@ export const maybeExplainQueryPlan = (
 export interface Mutation {
   readonly table: string;
   readonly id: Id;
-  readonly values: ReadonlyRecord.ReadonlyRecord<
+  readonly values: Record.ReadonlyRecord<
     string,
     Value | Date | boolean | undefined
   >;
@@ -567,14 +567,14 @@ export const applyMutations = (
 export const mutationToNewMessages = (mutation: Mutation): NewMessage[] =>
   pipe(
     Object.entries(mutation.values),
-    ReadonlyArray.filterMap(([column, value]) =>
+    Array.filterMap(([column, value]) =>
       // The value can be undefined if exactOptionalPropertyTypes isn't true.
       // Don't insert nulls because null is the default value.
       value === undefined || (mutation.isInsert && value == null)
         ? Option.none()
         : Option.some([column, value] as const),
     ),
-    ReadonlyArray.map(
+    Array.map(
       ([column, value]): NewMessage => ({
         table: mutation.table,
         row: mutation.id,
@@ -639,7 +639,7 @@ const ensureSchemaByNewMessages = (messages: ReadonlyArray<NewMessage>) =>
         columns: table.columns.concat(message.column),
       });
     });
-    const tables = Array.from(tablesMap.values());
+    const tables = Array.fromIterable(tablesMap.values());
     yield* _(ensureSchema({ tables }));
   });
 
@@ -724,8 +724,8 @@ export interface DbSchema {
 export const schemaToTables = (schema: S.Schema<any>): ReadonlyArray<Table> =>
   pipe(
     getPropertySignatures(schema),
-    ReadonlyRecord.toEntries,
-    ReadonlyArray.map(
+    Record.toEntries,
+    Array.map(
       ([name, schema]): Table => ({
         name,
         columns: Object.keys(getPropertySignatures(schema)),

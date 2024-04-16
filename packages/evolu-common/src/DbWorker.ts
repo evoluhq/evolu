@@ -1,8 +1,8 @@
+import * as Array from "effect/Array";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
-import * as ReadonlyArray from "effect/ReadonlyArray";
 import * as Scope from "effect/Scope";
 import { Config } from "./Config.js";
 import {
@@ -113,7 +113,7 @@ export const createDbWorker: Effect.Effect<
   const loadQueries = (queries: ReadonlyArray<Query>) =>
     Sqlite.pipe(
       Effect.bind("queriesRows", (sqlite) =>
-        Effect.forEach(ReadonlyArray.dedupe(queries), (query) => {
+        Effect.forEach(Array.dedupe(queries), (query) => {
           const sqliteQuery = deserializeQuery(query);
           return sqlite.exec(sqliteQuery).pipe(
             Effect.tap(maybeExplainQueryPlan(sqliteQuery)),
@@ -167,7 +167,7 @@ export const createDbWorker: Effect.Effect<
         const time = yield* _(Time);
         const sqlite = yield* _(Sqlite);
 
-        const [toSyncMutations, localOnlyMutations] = ReadonlyArray.partition(
+        const [toSyncMutations, localOnlyMutations] = Array.partition(
           mutations,
           isLocalOnlyMutation,
         );
@@ -229,8 +229,8 @@ export const notSupportedPlatformWorker: DbWorker = {
     }),
   loadQueries: () => Effect.succeed([]),
   mutate: () => Effect.succeed([]),
-  resetOwner: () => Effect.unit,
-  restoreOwner: () => Effect.unit,
-  ensureSchema: () => Effect.unit,
-  dispose: () => Effect.unit,
+  resetOwner: () => Effect.void,
+  restoreOwner: () => Effect.void,
+  ensureSchema: () => Effect.void,
+  dispose: () => Effect.void,
 };
