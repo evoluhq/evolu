@@ -81,16 +81,17 @@ export const createEvoluRuntime = (
   return ManagedRuntime.make(evoluLayer);
 };
 
-// TODO: Spans and variadic when supported.
+// TODO: Spans and Effect native variadic log args.
 const makeEvoluLogger = (name: string) =>
   Logger.make(({ logLevel, message }) => {
+    // console.log(spans.toJSON());
+
     const fn =
       logLevel._tag === "Warning"
         ? "warn"
         : logLevel._tag === "Error"
           ? "error"
           : "log";
-    // This is temp workaround. Next Effect minor will solve it.
     const messages: unknown[] = Array.isArray(message) ? message : [message];
     globalThis.console[fn](`[${name}]`, ...messages);
   });
