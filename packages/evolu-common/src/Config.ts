@@ -4,27 +4,8 @@ import * as LogLevel from "effect/LogLevel";
 import * as Logger from "effect/Logger";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Match from "effect/Match";
-import type { Index } from "./Sqlite.js";
 
 export interface Config {
-  /**
-   * Use the `indexes` property to define SQLite indexes.
-   *
-   * Table and column names are not typed because Kysely doesn't support it.
-   *
-   * https://medium.com/@JasonWyatt/squeezing-performance-from-sqlite-indexes-indexes-c4e175f3c346
-   *
-   * @example
-   *   const indexes = [
-   *     createIndex("indexTodoCreatedAt").on("todo").column("createdAt"),
-   *
-   *     createIndex("indexTodoCategoryCreatedAt")
-   *       .on("todoCategory")
-   *       .column("createdAt"),
-   *   ];
-   */
-  indexes: ReadonlyArray<Index>;
-
   /**
    * URL to reload browser tabs after {@link Owner} reset or restore.
    *
@@ -65,8 +46,7 @@ export interface Config {
 
 export const Config = Context.GenericTag<Config>("Config");
 
-const defaultConfig: Config = {
-  indexes: [],
+export const defaultConfig: Config = {
   reloadUrl: "/",
   syncUrl: "https://evolu.world",
   name: "Evolu",

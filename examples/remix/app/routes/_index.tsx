@@ -96,37 +96,16 @@ const evolu = createEvolu(Database, {
   // uncomment this line if you would like to enable custom evolu
   // sync server, e.g. this app server
   // syncUrl: "http://localhost:3000",
-});
-
-const createFixtures = () =>
-  Promise.all(
-    evolu.loadQueries([
-      evolu.createQuery((db) => db.selectFrom("todo").selectAll()),
-      evolu.createQuery((db) => db.selectFrom("todoCategory").selectAll()),
-    ]),
-  ).then(([todos, categories]) => {
-    if (todos.row || categories.row) return;
-
-    const { id: notUrgentCategoryId } = evolu.create("todoCategory", {
+  initialData: (evolu) => {
+    const { id: categoryId } = evolu.create("todoCategory", {
       name: S.decodeSync(NonEmptyString50)("Not Urgent"),
     });
-
     evolu.create("todo", {
       title: S.decodeSync(NonEmptyString1000)("Try React Suspense"),
-      categoryId: notUrgentCategoryId,
+      categoryId,
     });
-  });
-
-const isRestoringOwner = (isRestoringOwner?: boolean) => {
-  if (!canUseDom) return false;
-  const key = 'evolu:isRestoringOwner"';
-  if (isRestoringOwner != null)
-    localStorage.setItem(key, isRestoringOwner.toString());
-  return localStorage.getItem(key) === "true";
-};
-
-// Ensure fixtures are not added to the restored owner.
-if (!isRestoringOwner()) createFixtures();
+  },
+});
 
 export default function RemixExample() {
   const [currentTab, setCurrentTab] = useState<"todos" | "categories">("todos");

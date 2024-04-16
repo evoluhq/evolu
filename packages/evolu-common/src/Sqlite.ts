@@ -1,16 +1,9 @@
-import * as AST from "@effect/schema/AST";
-import * as S from "@effect/schema/Schema";
-import { make } from "@effect/schema/Schema";
 import * as Console from "effect/Console";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import { Equivalence } from "effect/Equivalence";
 import * as Exit from "effect/Exit";
-import { pipe } from "effect/Function";
 import * as Layer from "effect/Layer";
 import * as Predicate from "effect/Predicate";
-import * as ReadonlyArray from "effect/ReadonlyArray";
-import * as ReadonlyRecord from "effect/ReadonlyRecord";
 import * as Scope from "effect/Scope";
 import { Config } from "./Config.js";
 
@@ -229,59 +222,3 @@ export const drawSqliteQueryPlan = (rows: SqliteQueryPlanRow[]): string =>
       return `${"  ".repeat(indent)}${row.detail}`;
     })
     .join("\n");
-
-export interface SqliteSchema {
-  readonly tables: ReadonlyArray<Table>;
-  readonly indexes: ReadonlyArray<Index>;
-}
-
-export const createSqliteSchema = (
-  schema: S.Schema<any>,
-  indexes: ReadonlyArray<Index>,
-): SqliteSchema => ({
-  tables: schemaToTables(schema),
-  indexes,
-});
-
-const schemaToTables = (schema: S.Schema<any>) =>
-  pipe(
-    getPropertySignatures(schema),
-    ReadonlyRecord.toEntries,
-    ReadonlyArray.map(
-      ([name, schema]): Table => ({
-        name,
-        columns: Object.keys(getPropertySignatures(schema)),
-      }),
-    ),
-  );
-
-// TODO: https://discord.com/channels/795981131316985866/1218626687546294386/1218796529725476935
-// https://github.com/Effect-TS/schema/releases/tag/v0.18.0
-const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
-  schema: S.Schema<A, I>,
-): { [K in keyof A]: S.Schema<A[K], I[K]> } => {
-  const out: Record<PropertyKey, S.Schema<any>> = {};
-  const propertySignatures = AST.getPropertySignatures(schema.ast);
-  for (let i = 0; i < propertySignatures.length; i++) {
-    const propertySignature = propertySignatures[i];
-    out[propertySignature.name] = make(propertySignature.type);
-  }
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-  return out as any;
-};
-
-export interface Table {
-  readonly name: string;
-  readonly columns: ReadonlyArray<string>;
-}
-
-// TODO: Rename to SqliteIndex
-export const Index = S.Struct({
-  name: S.String,
-  sql: S.String,
-});
-export type Index = S.Schema.Type<typeof Index>;
-
-// TODO: Rename to sqliteIndexEquivalence
-export const indexEquivalence: Equivalence<Index> = (self, that) =>
-  self.name === that.name && self.sql === that.sql;

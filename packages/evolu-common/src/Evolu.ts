@@ -1,21 +1,24 @@
 import * as S from "@effect/schema/Schema";
 import * as Context from "effect/Context";
-import * as Option from "effect/Option";
 import * as Effect from "effect/Effect";
-import * as Predicate from "effect/Predicate";
 import * as Exit from "effect/Exit";
 import { constVoid, flow, pipe } from "effect/Function";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Number from "effect/Number";
+import * as Option from "effect/Option";
+import * as Predicate from "effect/Predicate";
 import * as ReadonlyArray from "effect/ReadonlyArray";
+import * as ReadonlyRecord from "effect/ReadonlyRecord";
 import * as Scope from "effect/Scope";
 import * as Kysely from "kysely";
-import { Config, createEvoluRuntime } from "./Config.js";
+import { Config, createEvoluRuntime, defaultConfig } from "./Config.js";
 import { TimestampError } from "./Crdt.js";
 import { Mnemonic, NanoIdGenerator } from "./Crypto.js";
 import {
-  DatabaseSchema,
+  DbSchema,
+  Index,
+  Mutation,
   Queries,
   Query,
   QueryResult,
@@ -27,22 +30,22 @@ import {
   emptyRows,
   makeRowsStore,
   queryResultFromRows,
+  schemaToTables,
   serializeQuery,
 } from "./Db.js";
-import { DbWorkerFactory, Mutation } from "./DbWorker.js";
+import { DbWorkerFactory } from "./DbWorker.js";
 import { QueryPatches, applyPatches } from "./Diff.js";
-import { SqliteBoolean, SqliteDate } from "./Model.js";
+import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
 import { Owner } from "./Owner.js";
+import { AppState, FlushSync } from "./Platform.js";
 import {
-  Index,
   SqliteQuery,
   SqliteQueryOptions,
-  createSqliteSchema,
+  Value,
   isSqlMutation,
 } from "./Sqlite.js";
 import { Listener, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
-import { AppState, FlushSync } from "./Platform.js";
 
 /**
  * The Evolu interface provides a type-safe SQL query building and state
@@ -64,7 +67,7 @@ import { AppState, FlushSync } from "./Platform.js";
  * - Managing owner data with resetOwner and restoreOwner.
  * - Ensuring the database schema's integrity with ensureSchema.
  */
-export interface Evolu<T extends DatabaseSchema = DatabaseSchema> {
+export interface Evolu<T extends EvoluSchema = EvoluSchema> {
   /**
    * Subscribe to {@link EvoluError} changes.
    *
@@ -336,12 +339,12 @@ export interface Evolu<T extends DatabaseSchema = DatabaseSchema> {
   readonly restoreOwner: (mnemonic: Mnemonic) => void;
 
   /**
-   * Ensure tables and columns defined in {@link DatabaseSchema} exist in the
+   * Ensure tables and columns defined in {@link EvoluSchema} exist in the
    * database.
    *
    * This function is for hot/live reloading.
    */
-  readonly ensureSchema: <T, I>(schema: S.Schema<T, I>) => void;
+  readonly ensureSchema: (schema: DbSchema) => void;
 
   /**
    * Force sync with Evolu Server.
@@ -357,6 +360,14 @@ export interface Evolu<T extends DatabaseSchema = DatabaseSchema> {
 
   readonly dispose: () => Promise<void>;
 }
+
+/** A type to define tables, columns, and column types. */
+export type EvoluSchema = ReadonlyRecord.ReadonlyRecord<
+  string,
+  ReadonlyRecord.ReadonlyRecord<string, Value> & {
+    readonly id: Id;
+  }
+>;
 
 /** The EvoluError type is used to represent errors that can occur in Evolu. */
 export type EvoluError = TimestampError | UnexpectedError;
@@ -377,26 +388,26 @@ type NullableExceptIdCreatedAtUpdatedAt<T> = {
 };
 
 type Mutate<
-  S extends DatabaseSchema = DatabaseSchema,
+  T extends EvoluSchema = EvoluSchema,
   Mode extends "create" | "update" | "createOrUpdate" = "update",
-> = <K extends keyof S>(
+> = <K extends keyof T>(
   table: K,
   values: Kysely.Simplify<
     Mode extends "create"
       ? PartialForNullable<
-          Castable<Omit<S[K], "id" | "createdAt" | "updatedAt" | "isDeleted">>
+          Castable<Omit<T[K], "id" | "createdAt" | "updatedAt" | "isDeleted">>
         >
       : Mode extends "update"
-        ? Partial<Castable<Omit<S[K], "id" | "createdAt" | "updatedAt">>> & {
-            readonly id: S[K]["id"];
+        ? Partial<Castable<Omit<T[K], "id" | "createdAt" | "updatedAt">>> & {
+            readonly id: T[K]["id"];
           }
         : PartialForNullable<
-            Castable<Omit<S[K], "createdAt" | "updatedAt" | "isDeleted">>
+            Castable<Omit<T[K], "createdAt" | "updatedAt" | "isDeleted">>
           >
   >,
   onComplete?: MutateOnComplete,
 ) => {
-  readonly id: S[K]["id"];
+  readonly id: T[K]["id"];
 };
 
 type MutateOnComplete = () => void;
@@ -461,9 +472,9 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
      *
      *   const evolu = E.createEvolu(Database);
      */
-    readonly createEvolu: <T extends DatabaseSchema, I>(
+    readonly createEvolu: <T extends EvoluSchema, I>(
       schema: S.Schema<T, I>,
-      config?: Partial<Config>,
+      config?: Partial<EvoluConfig<T>>,
     ) => Evolu<T>;
   }
 >() {
@@ -489,21 +500,28 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
       const instances = new Map<string, Evolu>();
 
       return EvoluFactory.of({
-        createEvolu: <T extends DatabaseSchema, I>(
+        createEvolu: <T extends EvoluSchema, I>(
           schema: S.Schema<T, I>,
-          config?: Partial<Config>,
+          { indexes, initialData, ...config }: Partial<EvoluConfig<T>> = {},
         ): Evolu<T> => {
           const runtime = createEvoluRuntime(config);
-          const { name } = Config.pipe(runtime.runSync);
+          const name = config?.name || defaultConfig.name;
+          const dbSchema: DbSchema = {
+            tables: schemaToTables(schema),
+            indexes,
+            initialData: initialDataToMutations(
+              initialData as EvoluConfig["initialData"],
+            ).pipe(Effect.provide(context), runtime.runSync),
+          };
           let evolu = instances.get(name);
           if (evolu == null) {
-            evolu = createEvolu(schema, runtime).pipe(
+            evolu = createEvolu(dbSchema, runtime).pipe(
               Effect.provide(context),
               runtime.runSync,
             );
             instances.set(name, evolu);
           } else {
-            evolu.ensureSchema(schema);
+            evolu.ensureSchema(dbSchema);
           }
           return evolu as Evolu<T>;
         },
@@ -512,8 +530,53 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
   );
 }
 
+const initialDataToMutations = (initialData: EvoluConfig["initialData"]) =>
+  Effect.map(NanoIdGenerator, (nanoIdGenerator) => {
+    const mutations: Mutation[] = [];
+    const mutate: Mutate = (table, { id, ...values }) => {
+      if (id == null) id = nanoIdGenerator.rowId.pipe(Effect.runSync);
+      mutations.push({ isInsert: true, id, table, values });
+      return { id };
+    };
+    const evolu: EvoluForInitialData = {
+      create: mutate as Mutate<any, "create">,
+      createOrUpdate: mutate as Mutate<any, "createOrUpdate">,
+    };
+    initialData(evolu);
+    return mutations;
+  });
+
+export interface EvoluConfig<T extends EvoluSchema = EvoluSchema>
+  extends Config {
+  /**
+   * Use the `indexes` property to define SQLite indexes.
+   *
+   * Table and column names are not typed because Kysely doesn't support it.
+   *
+   * https://medium.com/@JasonWyatt/squeezing-performance-from-sqlite-indexes-indexes-c4e175f3c346
+   *
+   * @example
+   *   const indexes = [
+   *     createIndex("indexTodoCreatedAt").on("todo").column("createdAt"),
+   *
+   *     createIndex("indexTodoCategoryCreatedAt")
+   *       .on("todoCategory")
+   *       .column("createdAt"),
+   *   ];
+   */
+  indexes: ReadonlyArray<Index>;
+
+  /** Use this option to create initial data (fixtures). */
+  initialData: (evolu: EvoluForInitialData<T>) => void;
+}
+
+interface EvoluForInitialData<T extends EvoluSchema = EvoluSchema> {
+  create: Mutate<T, "create">;
+  createOrUpdate: Mutate<T, "createOrUpdate">;
+}
+
 const createEvolu = (
-  schema: S.Schema<any>,
+  schema: DbSchema,
   runtime: ManagedRuntime.ManagedRuntime<Config, never>,
 ) =>
   Effect.gen(function* (_) {
@@ -548,7 +611,7 @@ const createEvolu = (
       Effect.flatMap(({ createDbWorker }) => createDbWorker),
     );
 
-    dbWorker.init(createSqliteSchema(schema, config.indexes)).pipe(
+    dbWorker.init(schema).pipe(
       Effect.flatMap(ownerStore.setState),
       Effect.catchTag("NotSupportedPlatformError", () => Effect.unit), // no-op
       runFork,
@@ -777,22 +840,22 @@ const createEvolu = (
         return { _tag: "SyncStateInitial" };
       },
 
-      create: mutate as Mutate<DatabaseSchema, "create">,
+      create: mutate as Mutate<EvoluSchema, "create">,
       update: mutate,
-      createOrUpdate: mutate as Mutate<DatabaseSchema, "createOrUpdate">,
+      createOrUpdate: mutate as Mutate<EvoluSchema, "createOrUpdate">,
 
       resetOwner: () => {
-        dbWorker.reset().pipe(Effect.zipRight(resetAppState), runFork);
+        dbWorker.resetOwner().pipe(Effect.zipRight(resetAppState), runFork);
       },
 
       restoreOwner: (mnemonic) => {
-        dbWorker.reset(mnemonic).pipe(Effect.zipRight(resetAppState), runFork);
+        dbWorker
+          .restoreOwner(schema, mnemonic)
+          .pipe(Effect.zipRight(resetAppState), runFork);
       },
 
       ensureSchema: (schema) => {
-        dbWorker
-          .ensureSchema(createSqliteSchema(schema, config.indexes))
-          .pipe(runFork);
+        dbWorker.ensureSchema(schema).pipe(runFork);
       },
 
       sync: () => {

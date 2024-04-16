@@ -1,8 +1,11 @@
+import * as AST from "@effect/schema/AST";
 import * as S from "@effect/schema/Schema";
+import { make } from "@effect/schema/Schema";
 import * as Brand from "effect/Brand";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
-import { constVoid } from "effect/Function";
+import { Equivalence } from "effect/Equivalence";
+import { constVoid, pipe } from "effect/Function";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
 import * as ReadonlyArray from "effect/ReadonlyArray";
@@ -11,42 +14,50 @@ import * as String from "effect/String";
 import * as Types from "effect/Types";
 import * as Kysely from "kysely";
 import {
+  MerkleTree,
+  Millis,
+  Time,
+  Timestamp,
+  TimestampCounterOverflowError,
+  TimestampDriftError,
+  TimestampString,
+  TimestampTimeOutOfRangeError,
   initialMerkleTree,
+  insertIntoMerkleTree,
   makeInitialTimestamp,
   merkleTreeToString,
+  sendTimestamp,
   timestampToString,
+  unsafeTimestampFromString,
 } from "./Crdt.js";
 import { Bip39, Mnemonic, NanoIdGenerator } from "./Crypto.js";
 import { EvoluTypeError } from "./ErrorStore.js";
-import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
+import { Id, SqliteBoolean, SqliteDate, cast } from "./Model.js";
 import { Owner, OwnerId, makeOwner } from "./Owner.js";
 import {
   createMessageTable,
   createMessageTableIndex,
   createOwnerTable,
+  insertIntoMessagesIfNew,
   insertOwner,
+  selectLastTimestampForTableRowColumn,
   selectOwner,
+  selectOwnerTimestampAndMerkleTree,
+  updateOwnerTimestampAndMerkleTree,
 } from "./Sql.js";
 import {
-  Index,
   JsonObjectOrArray,
   Sqlite,
   SqliteQuery,
   SqliteQueryOptions,
   SqliteQueryPlanRow,
-  SqliteSchema,
   Value,
   drawSqliteQueryPlan,
-  indexEquivalence,
   isJsonObjectOrArray,
 } from "./Sqlite.js";
 import { makeStore } from "./Store.js";
-
-export type DatabaseSchema = ReadonlyRecord.ReadonlyRecord<string, TableSchema>;
-
-type TableSchema = ReadonlyRecord.ReadonlyRecord<string, Value> & {
-  readonly id: Id;
-};
+import { Message, NewMessage } from "./SyncWorker.js";
+import { Config } from "./Config.js";
 
 /**
  * Create table schema.
@@ -283,25 +294,33 @@ export const sqliteDefectToNoSuchTableOrColumnError = Effect.catchSomeDefect(
       : Option.none(),
 );
 
-export const getOrCreateOwner = Effect.logTrace("Db getOrCreateOwner").pipe(
-  Effect.zipRight(Sqlite),
-  Effect.flatMap((sqlite) => sqlite.exec(selectOwner)),
-  Effect.map(
-    ({ rows: [row] }): Owner => ({
-      id: row.id as OwnerId,
-      mnemonic: row.mnemonic as Mnemonic,
-      encryptionKey: row.encryptionKey as Uint8Array,
-    }),
-  ),
-  // Lazy init.
-  sqliteDefectToNoSuchTableOrColumnError,
-  Effect.catchTag("NoSuchTableOrColumnError", () => createOwner()),
-);
-
-export const createOwner = (
-  mnemonic?: Mnemonic,
+export const init = (
+  schema: DbSchema,
 ): Effect.Effect<Owner, never, Sqlite | Bip39 | NanoIdGenerator> =>
-  Effect.logTrace("Db createOwner").pipe(
+  Sqlite.pipe(
+    Effect.flatMap((sqlite) => sqlite.exec(selectOwner)),
+    Effect.map(
+      ({ rows: [row] }): Owner => ({
+        id: row.id as OwnerId,
+        mnemonic: row.mnemonic as Mnemonic,
+        encryptionKey: row.encryptionKey as Uint8Array,
+      }),
+    ),
+    Effect.tap(ensureSchema(schema)),
+    sqliteDefectToNoSuchTableOrColumnError,
+    Effect.catchTag("NoSuchTableOrColumnError", () => lazyInit({ schema })),
+  );
+
+export const lazyInit = ({
+  schema,
+  mnemonic,
+  isRestore,
+}: {
+  readonly schema: DbSchema;
+  readonly mnemonic?: Mnemonic;
+  readonly isRestore?: boolean;
+}): Effect.Effect<Owner, never, Sqlite | Bip39 | NanoIdGenerator> =>
+  Effect.logTrace("Db lazyInit").pipe(
     Effect.zipRight(
       Effect.all([makeOwner(mnemonic), Sqlite, makeInitialTimestamp]),
     ),
@@ -322,10 +341,17 @@ export const createOwner = (
         }),
       ]),
     ),
+    Effect.tap(ensureSchema(schema)),
+    Effect.tap(() => {
+      if (!schema.initialData || isRestore) return;
+      return Effect.logTrace("Db initialData").pipe(
+        Effect.zipRight(applyMutations(schema.initialData)),
+      );
+    }),
     Effect.map(([owner]) => owner),
   );
 
-const getSchema: Effect.Effect<SqliteSchema, never, Sqlite> = Effect.gen(
+const getSchema: Effect.Effect<DbSchema, never, Sqlite> = Effect.gen(
   function* (_) {
     const sqlite = yield* _(Sqlite);
 
@@ -387,12 +413,12 @@ where
       ),
     );
 
-    return { tables, indexes };
+    return { tables, indexes, initialData: [] };
   },
 );
 
 export const ensureSchema = (
-  schema: SqliteSchema,
+  schema: DbSchema,
 ): Effect.Effect<void, never, Sqlite> =>
   Effect.gen(function* (_) {
     yield* _(Effect.logTrace("Db ensureSchema"));
@@ -433,10 +459,10 @@ create table ${table.name} (
 
     // Remove old indexes.
     ReadonlyArray.differenceWith(indexEquivalence)(
-      currentSchema.indexes,
+      currentSchema.indexes || [],
       ReadonlyArray.intersectionWith(indexEquivalence)(
-        currentSchema.indexes,
-        schema.indexes,
+        currentSchema.indexes || [],
+        schema.indexes || [],
       ),
     ).forEach((indexToDrop) => {
       sql.push(`drop index "${indexToDrop.name}";`);
@@ -444,8 +470,8 @@ create table ${table.name} (
 
     // Add new indexes.
     ReadonlyArray.differenceWith(indexEquivalence)(
-      schema.indexes,
-      currentSchema.indexes,
+      schema.indexes || [],
+      currentSchema.indexes || [],
     ).forEach((newIndex) => {
       sql.push(`${newIndex.sql};`);
     });
@@ -491,3 +517,247 @@ export const maybeExplainQueryPlan = (
     Effect.map(constVoid),
   );
 };
+
+export interface Mutation {
+  readonly table: string;
+  readonly id: Id;
+  readonly values: ReadonlyRecord.ReadonlyRecord<
+    string,
+    Value | Date | boolean | undefined
+  >;
+  readonly isInsert: boolean;
+}
+
+/** A table name starting with '_' (underscore) is local only (no sync). */
+export const isLocalOnlyMutation: Predicate.Predicate<Mutation> = (mutation) =>
+  mutation.table.startsWith("_");
+
+export const isDeleteMutation: Predicate.Predicate<Mutation> = (mutation) =>
+  mutationToNewMessages(mutation).some(
+    ({ column, value }) => column === "isDeleted" && value === 1,
+  );
+
+export const applyMutations = (
+  mutations: ReadonlyArray<Mutation>,
+): Effect.Effect<
+  void,
+  | TimestampDriftError
+  | TimestampCounterOverflowError
+  | TimestampTimeOutOfRangeError,
+  Config | Sqlite | Time
+> =>
+  Effect.gen(function* (_) {
+    const { timestamp, merkleTree } = yield* _(getTimestampAndMerkleTree);
+    const [nextTimestamp, messages] = yield* _(
+      mutations.flatMap(mutationToNewMessages),
+      Effect.mapAccum(timestamp, (currentTimestamp, newMessage) =>
+        Effect.map(sendTimestamp(currentTimestamp), (nextTimestamp) => {
+          const message: Message = {
+            ...newMessage,
+            timestamp: timestampToString(nextTimestamp),
+          };
+          return [nextTimestamp, message];
+        }),
+      ),
+    );
+    const nextMerkleTree = yield* _(applyMessages(merkleTree, messages));
+    yield* _(setTimestampAndMerkleTree(nextTimestamp, nextMerkleTree));
+  });
+
+export const mutationToNewMessages = (mutation: Mutation): NewMessage[] =>
+  pipe(
+    Object.entries(mutation.values),
+    ReadonlyArray.filterMap(([column, value]) =>
+      // The value can be undefined if exactOptionalPropertyTypes isn't true.
+      // Don't insert nulls because null is the default value.
+      value === undefined || (mutation.isInsert && value == null)
+        ? Option.none()
+        : Option.some([column, value] as const),
+    ),
+    ReadonlyArray.map(
+      ([column, value]): NewMessage => ({
+        table: mutation.table,
+        row: mutation.id,
+        column,
+        value:
+          typeof value === "boolean"
+            ? cast(value)
+            : value instanceof Date
+              ? cast(value)
+              : value,
+      }),
+    ),
+  );
+
+export const upsertValueIntoTableRowColumn = (
+  message: NewMessage,
+  messages: ReadonlyArray<NewMessage>,
+  millis: Millis,
+): Effect.Effect<void, never, Sqlite> =>
+  Sqlite.pipe(
+    Effect.map((sqlite) => {
+      const now = cast(new Date(millis));
+      return sqlite.exec({
+        sql: `
+  insert into
+    "${message.table}" ("id", "${message.column}", "createdAt", "updatedAt")
+  values
+    (?, ?, ?, ?)
+  on conflict do update set
+    "${message.column}" = ?,
+    "updatedAt" = ?
+      `.trim(),
+        parameters: [message.row, message.value, now, now, message.value, now],
+      });
+    }),
+    Effect.flatMap((insert) =>
+      insert.pipe(
+        sqliteDefectToNoSuchTableOrColumnError,
+        Effect.catchTag("NoSuchTableOrColumnError", () =>
+          // If one message fails, we ensure schema for all messages.
+          ensureSchemaByNewMessages(messages).pipe(Effect.zipRight(insert)),
+        ),
+      ),
+    ),
+  );
+
+const ensureSchemaByNewMessages = (messages: ReadonlyArray<NewMessage>) =>
+  Effect.gen(function* (_) {
+    const tablesMap = new Map<string, Table>();
+    messages.forEach((message) => {
+      const table = tablesMap.get(message.table);
+      if (table == null) {
+        tablesMap.set(message.table, {
+          name: message.table,
+          columns: [message.column, "createdAt", "updatedAt"],
+        });
+        return;
+      }
+      if (table.columns.includes(message.column)) return;
+      tablesMap.set(message.table, {
+        name: message.table,
+        columns: table.columns.concat(message.column),
+      });
+    });
+    const tables = Array.from(tablesMap.values());
+    yield* _(ensureSchema({ tables }));
+  });
+
+const getTimestampAndMerkleTree = Sqlite.pipe(
+  Effect.flatMap((sqlite) => sqlite.exec(selectOwnerTimestampAndMerkleTree)),
+  Effect.map(({ rows: [{ timestamp, merkleTree }] }) => ({
+    timestamp: unsafeTimestampFromString(timestamp as TimestampString),
+    merkleTree: merkleTree as MerkleTree,
+  })),
+);
+
+const applyMessages = (
+  merkleTree: MerkleTree,
+  messages: ReadonlyArray<Message>,
+): Effect.Effect<MerkleTree, never, Sqlite> =>
+  Effect.logDebug(["Db applyMessages", { merkleTree, messages }]).pipe(
+    Effect.zipRight(Sqlite),
+    Effect.flatMap((sqlite) =>
+      Effect.reduce(messages, merkleTree, (currentMerkleTree, message) =>
+        sqlite
+          .exec({
+            ...selectLastTimestampForTableRowColumn,
+            parameters: [message.table, message.row, message.column, 1],
+          })
+          .pipe(
+            Effect.map(({ rows }) =>
+              rows.length > 0 ? (rows[0].timestamp as TimestampString) : null,
+            ),
+            Effect.tap((timestamp) => {
+              if (timestamp != null && timestamp >= message.timestamp) return;
+              const { millis } = unsafeTimestampFromString(message.timestamp);
+              return upsertValueIntoTableRowColumn(message, messages, millis);
+            }),
+            Effect.flatMap((timestamp) => {
+              if (timestamp != null && timestamp === message.timestamp)
+                return Effect.succeed(currentMerkleTree);
+              return Effect.map(
+                sqlite.exec({
+                  ...insertIntoMessagesIfNew,
+                  parameters: [
+                    message.timestamp,
+                    message.table,
+                    message.row,
+                    message.column,
+                    message.value,
+                  ],
+                }),
+                ({ changes }) => {
+                  if (changes === 0) return currentMerkleTree;
+                  return insertIntoMerkleTree(
+                    currentMerkleTree,
+                    unsafeTimestampFromString(message.timestamp),
+                  );
+                },
+              );
+            }),
+          ),
+      ),
+    ),
+  );
+
+const setTimestampAndMerkleTree = (
+  timestamp: Timestamp,
+  merkleTree: MerkleTree,
+): Effect.Effect<void, never, Sqlite> =>
+  Effect.flatMap(Sqlite, (sqlite) =>
+    sqlite.exec({
+      ...updateOwnerTimestampAndMerkleTree,
+      parameters: [
+        merkleTreeToString(merkleTree),
+        timestampToString(timestamp),
+      ],
+    }),
+  );
+
+export interface DbSchema {
+  readonly tables: ReadonlyArray<Table>;
+  readonly indexes?: ReadonlyArray<Index> | undefined;
+  readonly initialData?: ReadonlyArray<Mutation> | undefined;
+}
+
+export const schemaToTables = (schema: S.Schema<any>): ReadonlyArray<Table> =>
+  pipe(
+    getPropertySignatures(schema),
+    ReadonlyRecord.toEntries,
+    ReadonlyArray.map(
+      ([name, schema]): Table => ({
+        name,
+        columns: Object.keys(getPropertySignatures(schema)),
+      }),
+    ),
+  );
+
+// TODO: https://discord.com/channels/795981131316985866/1218626687546294386/1218796529725476935
+// https://github.com/Effect-TS/schema/releases/tag/v0.18.0
+const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
+  schema: S.Schema<A, I>,
+): { [K in keyof A]: S.Schema<A[K], I[K]> } => {
+  const out: Record<PropertyKey, S.Schema<any>> = {};
+  const propertySignatures = AST.getPropertySignatures(schema.ast);
+  for (let i = 0; i < propertySignatures.length; i++) {
+    const propertySignature = propertySignatures[i];
+    out[propertySignature.name] = make(propertySignature.type);
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+  return out as any;
+};
+
+export interface Table {
+  readonly name: string;
+  readonly columns: ReadonlyArray<string>;
+}
+
+export const Index = S.Struct({
+  name: S.String,
+  sql: S.String,
+});
+export type Index = S.Schema.Type<typeof Index>;
+
+export const indexEquivalence: Equivalence<Index> = (self, that) =>
+  self.name === that.name && self.sql === that.sql;

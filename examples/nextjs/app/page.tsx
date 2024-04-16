@@ -9,7 +9,6 @@ import {
   NotNull,
   SqliteBoolean,
   String,
-  canUseDom,
   cast,
   createEvolu,
   createIndexes,
@@ -93,37 +92,18 @@ const indexes = createIndexes((create) => [
   create("indexTodoCategoryCreatedAt").on("todoCategory").column("createdAt"),
 ]);
 
-const evolu = createEvolu(Database, { indexes });
-
-const createFixtures = () =>
-  Promise.all(
-    evolu.loadQueries([
-      evolu.createQuery((db) => db.selectFrom("todo").selectAll()),
-      evolu.createQuery((db) => db.selectFrom("todoCategory").selectAll()),
-    ]),
-  ).then(([todos, categories]) => {
-    if (todos.row || categories.row) return;
-
-    const { id: notUrgentCategoryId } = evolu.create("todoCategory", {
+const evolu = createEvolu(Database, {
+  indexes,
+  initialData: (evolu) => {
+    const { id: categoryId } = evolu.create("todoCategory", {
       name: S.decodeSync(NonEmptyString50)("Not Urgent"),
     });
-
     evolu.create("todo", {
       title: S.decodeSync(NonEmptyString1000)("Try React Suspense"),
-      categoryId: notUrgentCategoryId,
+      categoryId,
     });
-  });
-
-const isRestoringOwner = (isRestoringOwner?: boolean) => {
-  if (!canUseDom) return false;
-  const key = 'evolu:isRestoringOwner"';
-  if (isRestoringOwner != null)
-    localStorage.setItem(key, isRestoringOwner.toString());
-  return localStorage.getItem(key) === "true";
-};
-
-// Ensure fixtures are not added to the restored owner.
-if (!isRestoringOwner()) createFixtures();
+  },
+});
 
 const NextJsExample = memo(function NextJsExample() {
   const [currentTab, setCurrentTab] = useState<"todos" | "categories">("todos");

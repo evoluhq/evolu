@@ -8,11 +8,10 @@ import {
 import * as Effect from "effect/Effect";
 import { constVoid } from "effect/Function";
 import * as Layer from "effect/Layer";
-import { canUseDom } from "./canUseDom.js";
 
 export const AppStateLive = Layer.succeed(AppState, {
   init: ({ reloadUrl, onRequestSync }) => {
-    if (!canUseDom) {
+    if (typeof document === "undefined") {
       return Effect.succeed(Effect.unit);
     }
 

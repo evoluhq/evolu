@@ -101,6 +101,15 @@ const evolu = createEvolu(Database, {
   ...(process.env.NODE_ENV === "development" && {
     syncUrl: "http://localhost:4000",
   }),
+  initialData: (evolu) => {
+    const { id: categoryId } = evolu.create("todoCategory", {
+      name: S.decodeSync(NonEmptyString50)("Not Urgent"),
+    });
+    evolu.create("todo", {
+      title: S.decodeSync(NonEmptyString1000)("Try React Suspense"),
+      categoryId,
+    });
+  },
 });
 
 export default function App(): JSX.Element {

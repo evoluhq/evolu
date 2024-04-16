@@ -12,11 +12,12 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { AppStateLive, Bip39Live } from "./PlatformLive.js";
 import { wrap } from "./ProxyWorker.js";
-import { canUseDom } from "./canUseDom.js";
 
 const DbWorkerFactoryWeb = Layer.succeed(DbWorkerFactory, {
   createDbWorker: Effect.sync(() => {
-    if (!canUseDom) return notSupportedPlatformWorker;
+    if (typeof document === "undefined") {
+      return notSupportedPlatformWorker;
+    }
     const worker = new Worker(new URL("DbWorker.worker.js", import.meta.url), {
       type: "module",
     });

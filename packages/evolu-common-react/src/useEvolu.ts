@@ -1,4 +1,4 @@
-import { Evolu, DatabaseSchema } from "@evolu/common";
+import { Evolu, EvoluSchema } from "@evolu/common";
 import { useContext } from "react";
 import { EvoluContext } from "./EvoluContext.js";
 
@@ -18,7 +18,7 @@ import { EvoluContext } from "./EvoluContext.js";
  *   // Or make an alias:
  *   // const useEvolu = Evolu.useEvolu<Database>;
  */
-export const useEvolu = <S extends DatabaseSchema>(): Evolu<S> => {
+export const useEvolu = <S extends EvoluSchema>(): Evolu<S> => {
   const evolu = useContext(EvoluContext);
   if (evolu == null)
     throw new Error(
