@@ -17,6 +17,41 @@ import * as Layer from "effect/Layer";
 import { reloadAsync } from "expo-updates";
 import { DevSettings, AppState as ReactNativeAppState } from "react-native";
 
+export const AppStateLive = Layer.succeed(
+  AppState,
+  AppState.of({
+    init: ({ onRequestSync }) =>
+      Effect.sync(() => {
+        let appStateStatus = ReactNativeAppState.currentState;
+        ReactNativeAppState.addEventListener("change", (current) => {
+          if (
+            appStateStatus.match(/inactive|background/) &&
+            current === "active"
+          )
+            onRequestSync();
+          appStateStatus = current;
+        });
+
+        let netInfoState: NetInfoState | null = null;
+        NetInfo.addEventListener((current) => {
+          if (
+            netInfoState?.isInternetReachable === false &&
+            current.isConnected &&
+            current.isInternetReachable
+          )
+            onRequestSync();
+          netInfoState = current;
+        });
+
+        return process.env.NODE_ENV === "development"
+          ? Effect.sync(() => {
+              DevSettings.reload();
+            })
+          : Effect.promise(() => reloadAsync());
+      }),
+  }),
+);
+
 export const SyncLockLive = Layer.effect(
   SyncLock,
   Effect.sync(() => {
@@ -31,36 +66,6 @@ export const SyncLockLive = Layer.effect(
         hasSyncLock = false;
       }),
     });
-  }),
-);
-
-export const AppStateLive = Layer.succeed(
-  AppState,
-  AppState.of({
-    init: ({ onRequestSync }) => {
-      let appStateStatus = ReactNativeAppState.currentState;
-      ReactNativeAppState.addEventListener("change", (current) => {
-        if (appStateStatus.match(/inactive|background/) && current === "active")
-          onRequestSync();
-        appStateStatus = current;
-      });
-
-      let netInfoState: NetInfoState | null = null;
-      NetInfo.addEventListener((current) => {
-        if (
-          netInfoState?.isInternetReachable === false &&
-          current.isConnected &&
-          current.isInternetReachable
-        )
-          onRequestSync();
-        netInfoState = current;
-      });
-    },
-
-    reset: Effect.sync(() => {
-      if (process.env.NODE_ENV === "development") DevSettings.reload();
-      else reloadAsync();
-    }),
   }),
 );
 

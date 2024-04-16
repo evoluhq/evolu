@@ -8,7 +8,7 @@ import {
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { Bip39Live } from "./PlatformLive.js";
+import { AppStateLive, Bip39Live } from "./PlatformLive.js";
 
 export * from "@evolu/common/public";
 
@@ -29,6 +29,7 @@ export const EvoluFactoryReactNative = Layer.provide(
       }),
     }),
     NanoIdGenerator.Live,
+    AppStateLive,
   ),
 );
 
