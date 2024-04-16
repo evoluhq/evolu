@@ -7,7 +7,6 @@ import {
   NotNull,
   SqliteBoolean,
   String,
-  canUseDom,
   cast,
   createEvolu,
   createIndexes,
@@ -130,16 +129,16 @@ const createFixtures = () =>
     });
   });
 
-const isRestoringOwner = (isRestoringOwner?: boolean) => {
-  if (!canUseDom) return false;
-  const key = 'evolu:isRestoringOwner"';
-  if (isRestoringOwner != null)
-    localStorage.setItem(key, isRestoringOwner.toString());
-  return localStorage.getItem(key) === "true";
-};
+// const isRestoringOwner = (isRestoringOwner?: boolean) => {
+//   if (!canUseDom) return false;
+//   const key = 'evolu:isRestoringOwner"';
+//   if (isRestoringOwner != null)
+//     localStorage.setItem(key, isRestoringOwner.toString());
+//   return localStorage.getItem(key) === "true";
+// };
 
 // Ensure fixtures are not added to the restored owner.
-if (!isRestoringOwner()) createFixtures();
+// if (!isRestoringOwner()) createFixtures();
 
 export const NextJsExample = memo(function NextJsExample() {
   const [currentTab, setCurrentTab] = useState<"todos" | "categories">("todos");
@@ -401,7 +400,7 @@ const OwnerActions: FC = () => {
               alert(JSON.stringify(error, null, 2));
             },
             onSuccess: (mnemonic) => {
-              isRestoringOwner(true);
+              // isRestoringOwner(true);
               evolu.restoreOwner(mnemonic);
             },
           }),
@@ -411,7 +410,7 @@ const OwnerActions: FC = () => {
 
   const handleResetOwnerClick = () => {
     if (confirm("Are you sure? It will delete all your local data.")) {
-      isRestoringOwner(false);
+      // isRestoringOwner(false);
       evolu.resetOwner();
     }
   };

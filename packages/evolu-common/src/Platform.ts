@@ -12,6 +12,16 @@ import * as Layer from "effect/Layer";
 export type FlushSync = (callback: () => void) => void;
 export const FlushSync = Context.GenericTag<FlushSync>("FlushSync");
 
+export class AppState extends Context.Tag("AppState")<
+  AppState,
+  {
+    readonly init: (options: {
+      readonly reloadUrl: string;
+      readonly onRequestSync: () => void;
+    }) => Effect.Effect<Effect.Effect<void>>;
+  }
+>() {}
+
 export interface SyncLock {
   /**
    * Try to acquire a sync lock. The caller must not call sync if a sync lock
@@ -57,29 +67,3 @@ export const FetchLive = Layer.succeed(
     }),
   ),
 );
-
-interface AppStateConfig {
-  readonly onRequestSync: () => void;
-}
-
-export interface AppState {
-  readonly init: (config: AppStateConfig) => void;
-  readonly reset: Effect.Effect<void>;
-}
-
-export const AppState = Context.GenericTag<AppState>("@services/AppState");
-
-/** To detect whether DOM can be used. */
-export const canUseDom = ((): boolean => {
-  // IDK why try-catch is necessary, but it is.
-  // "ReferenceError: window is not defined" should not happen, but it does.
-  try {
-    return !!(
-      typeof window !== "undefined" &&
-      window.document &&
-      window.document.createElement
-    );
-  } catch (e) {
-    return false;
-  }
-})();

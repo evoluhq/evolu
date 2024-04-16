@@ -237,11 +237,11 @@ export interface SqliteSchema {
 
 export const createSqliteSchema = (
   schema: S.Schema<any>,
-): Effect.Effect<SqliteSchema, never, Config> =>
-  Effect.map(Config, (config) => ({
-    tables: schemaToTables(schema),
-    indexes: config?.indexes,
-  }));
+  indexes: ReadonlyArray<Index>,
+): SqliteSchema => ({
+  tables: schemaToTables(schema),
+  indexes,
+});
 
 const schemaToTables = (schema: S.Schema<any>) =>
   pipe(

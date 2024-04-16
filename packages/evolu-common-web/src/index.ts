@@ -1,6 +1,5 @@
 import {
   Bip39,
-  canUseDom,
   DbWorker,
   DbWorkerFactory,
   EvoluFactory,
@@ -11,8 +10,9 @@ import {
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { Bip39Live } from "./PlatformLive.js";
+import { AppStateLive, Bip39Live } from "./PlatformLive.js";
 import { wrap } from "./ProxyWorker.js";
+import { canUseDom } from "./canUseDom.js";
 
 const DbWorkerFactoryWeb = Layer.succeed(DbWorkerFactory, {
   createDbWorker: Effect.sync(() => {
@@ -26,7 +26,7 @@ const DbWorkerFactoryWeb = Layer.succeed(DbWorkerFactory, {
 
 export const EvoluFactoryWeb = Layer.provide(
   EvoluFactory.Common,
-  Layer.mergeAll(DbWorkerFactoryWeb, NanoIdGenerator.Live),
+  Layer.mergeAll(DbWorkerFactoryWeb, NanoIdGenerator.Live, AppStateLive),
 );
 
 /**

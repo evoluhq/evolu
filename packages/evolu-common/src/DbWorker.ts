@@ -27,7 +27,9 @@ import {
 import { Bip39, Mnemonic, NanoIdGenerator } from "./Crypto.js";
 import {
   Query,
+  createOwner,
   deserializeQuery,
+  dropAllTables,
   ensureSchema,
   getOrCreateOwner,
   makeRowsStore,
@@ -236,10 +238,14 @@ export const createDbWorker: Effect.Effect<
         return yield* _(loadQueries(queriesToRefresh));
       }).pipe(afterInit({ transaction: "exclusive" })),
 
-    reset: (_mnemonic) => {
-      // console.log(mnemonic);
-      return Effect.unit.pipe(afterInit({ transaction: "last" }));
-    },
+    reset: (mnemonic) =>
+      Effect.logDebug(["DbWorker reset", mnemonic]).pipe(
+        Effect.tap(dropAllTables),
+        Effect.tap(() => {
+          if (mnemonic) return createOwner(mnemonic);
+        }),
+        afterInit({ transaction: "last" }),
+      ),
 
     ensureSchema: (schema) =>
       ensureSchema(schema).pipe(afterInit({ transaction: "exclusive" })),

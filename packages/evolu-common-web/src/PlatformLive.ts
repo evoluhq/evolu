@@ -1,15 +1,45 @@
 import {
   AppState,
   Bip39,
-  Config,
   Mnemonic,
   SyncLock,
-  canUseDom,
   validateMnemonicToEffect,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import { constVoid } from "effect/Function";
 import * as Layer from "effect/Layer";
+import { canUseDom } from "./canUseDom.js";
+
+export const AppStateLive = Layer.succeed(AppState, {
+  init: ({ reloadUrl, onRequestSync }) => {
+    if (!canUseDom) {
+      return Effect.succeed(Effect.unit);
+    }
+
+    const localStorageKey = "evolu:reloadAllTabs";
+
+    const replaceLocation = () => {
+      location.replace(reloadUrl);
+    };
+
+    window.addEventListener("storage", (e) => {
+      if (e.key === localStorageKey) replaceLocation();
+    });
+
+    window.addEventListener("online", onRequestSync);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "hidden") onRequestSync();
+    });
+    window.addEventListener("focus", onRequestSync);
+
+    const resetAppState = Effect.sync(() => {
+      localStorage.setItem(localStorageKey, Date.now().toString());
+      replaceLocation();
+    });
+
+    return Effect.succeed(resetAppState);
+  },
+});
 
 export const SyncLockLive = Layer.effect(
   SyncLock,
@@ -42,53 +72,6 @@ export const SyncLockLive = Layer.effect(
       release: Effect.sync(() => {
         if (release) release();
         release = null;
-      }),
-    });
-  }),
-);
-
-export const AppStateLive = Layer.effect(
-  AppState,
-  Effect.gen(function* (_) {
-    if (!canUseDom)
-      return AppState.of({
-        init: constVoid,
-        reset: Effect.succeed(undefined),
-      });
-
-    const { reloadUrl } = yield* _(Config);
-    const localStorageKey = "evolu:reloadAllTabs";
-
-    const reloadLocation = () => {
-      /**
-       * Using replace() will not save the current page in session History,
-       * meaning the user will not be able to use the back button to navigate to
-       * it.
-       *
-       * It also fixes a bug in Safari, probably related to leaking SQLite WASM.
-       */
-      location.replace(reloadUrl);
-    };
-
-    window.addEventListener("storage", (e) => {
-      if (e.key === localStorageKey) reloadLocation();
-    });
-
-    return AppState.of({
-      init: ({ onRequestSync }) => {
-        // On network reconnect.
-        window.addEventListener("online", onRequestSync);
-
-        document.addEventListener("visibilitychange", () => {
-          if (document.visibilityState !== "hidden") onRequestSync();
-        });
-        // visibilitychange isn't enough
-        window.addEventListener("focus", onRequestSync);
-      },
-
-      reset: Effect.sync(() => {
-        localStorage.setItem(localStorageKey, Date.now().toString());
-        reloadLocation();
       }),
     });
   }),

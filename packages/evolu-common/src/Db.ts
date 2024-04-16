@@ -455,6 +455,7 @@ create table ${table.name} (
 
 export const dropAllTables: Effect.Effect<void, never, Sqlite> = Effect.gen(
   function* (_) {
+    yield* _(Effect.logTrace("Db dropAllTables"));
     const sqlite = yield* _(Sqlite);
     const schema = yield* _(getSchema);
     const sql = schema.tables

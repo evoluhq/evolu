@@ -42,7 +42,7 @@ import {
 } from "./Sqlite.js";
 import { Listener, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState } from "./SyncWorker.js";
-import { FlushSync } from "./Platform.js";
+import { AppState, FlushSync } from "./Platform.js";
 
 /**
  * The Evolu interface provides a type-safe SQL query building and state
@@ -482,6 +482,7 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
         Context.add(DbWorkerFactory, yield* _(DbWorkerFactory)),
         Context.add(NanoIdGenerator, yield* _(NanoIdGenerator)),
         Context.add(FlushSync, flushSync),
+        Context.add(AppState, yield* _(AppState)),
       );
 
       // For hot/live reload and future Evolu dynamic import.
@@ -517,6 +518,8 @@ const createEvolu = (
 ) =>
   Effect.gen(function* (_) {
     yield* _(Effect.logTrace("EvoluFactory createEvolu"));
+
+    const config = yield* _(Config);
     const scope = yield* _(Scope.make());
     const errorStore = yield* _(makeStore<EvoluError | null>(null));
     const ownerStore = yield* _(makeStore<Owner | null>(null));
@@ -525,6 +528,7 @@ const createEvolu = (
     const subscribedQueries = new Map<Query, number>();
     const nanoIdGenerator = yield* _(NanoIdGenerator);
     const flushSync = yield* _(FlushSync);
+    const appState = yield* _(AppState);
 
     const handleAllErrors = <T>(effect: Effect.Effect<T, EvoluError, Config>) =>
       effect.pipe(
@@ -544,7 +548,21 @@ const createEvolu = (
       Effect.flatMap(({ createDbWorker }) => createDbWorker),
     );
 
-    // We can't extend the scope because the DbWorker code can run in WebWorker.
+    dbWorker.init(createSqliteSchema(schema, config.indexes)).pipe(
+      Effect.flatMap(ownerStore.setState),
+      Effect.catchTag("NotSupportedPlatformError", () => Effect.unit), // no-op
+      runFork,
+    );
+
+    const resetAppState = yield* _(
+      appState.init({
+        onRequestSync: () => {
+          // TODO
+        },
+        reloadUrl: config.reloadUrl,
+      }),
+    );
+
     Scope.addFinalizer(scope, dbWorker.dispose());
 
     const handlePatches =
@@ -662,13 +680,6 @@ const createEvolu = (
       };
     })();
 
-    createSqliteSchema(schema).pipe(
-      Effect.flatMap(dbWorker.init),
-      Effect.flatMap(ownerStore.setState),
-      Effect.catchTag("NotSupportedPlatformError", () => Effect.unit), // no-op
-      runFork,
-    );
-
     const evolu: Evolu = {
       subscribeError: errorStore.subscribe,
       getError: errorStore.getState,
@@ -771,18 +782,17 @@ const createEvolu = (
       createOrUpdate: mutate as Mutate<DatabaseSchema, "createOrUpdate">,
 
       resetOwner: () => {
-        dbWorker.reset().pipe(runFork);
+        dbWorker.reset().pipe(Effect.zipRight(resetAppState), runFork);
       },
 
       restoreOwner: (mnemonic) => {
-        dbWorker.reset(mnemonic).pipe(runFork);
+        dbWorker.reset(mnemonic).pipe(Effect.zipRight(resetAppState), runFork);
       },
 
       ensureSchema: (schema) => {
-        createSqliteSchema(schema).pipe(
-          Effect.flatMap(dbWorker.ensureSchema),
-          runFork,
-        );
+        dbWorker
+          .ensureSchema(createSqliteSchema(schema, config.indexes))
+          .pipe(runFork);
       },
 
       sync: () => {
