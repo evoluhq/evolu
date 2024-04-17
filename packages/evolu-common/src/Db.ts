@@ -32,7 +32,6 @@ import {
   unsafeTimestampFromString,
 } from "./Crdt.js";
 import { Bip39, Mnemonic, NanoIdGenerator } from "./Crypto.js";
-import { EvoluTypeError } from "./ErrorStore.js";
 import { Id, SqliteBoolean, SqliteDate, cast } from "./Model.js";
 import { Owner, OwnerId, makeOwner } from "./Owner.js";
 import {
@@ -57,6 +56,10 @@ import {
   isJsonObjectOrArray,
 } from "./Sqlite.js";
 import { makeStore } from "./Store.js";
+
+interface EvoluTypeError<E extends string> {
+  readonly __evoluTypeError__: E;
+}
 
 /**
  * Create table schema.
