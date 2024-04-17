@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 import { Config, createEvoluRuntime } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import { ManagedRuntime } from "effect/ManagedRuntime";
@@ -20,9 +22,30 @@ import { ensureTransferableError } from "./ensureTransferableError.js";
 interface PostMessage {
   readonly id: string;
   readonly name: string;
-  readonly args: unknown[];
+  readonly args: PostMessageData[];
   readonly config: Config;
 }
+
+export type PostMessageData =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | PostMessageObject
+  | PostMessageArray
+  | ArrayBuffer
+  | Blob
+  | File
+  | MessagePort
+  | ImageBitmap
+  | ((...args: PostMessageData[]) => void);
+
+interface PostMessageObject {
+  [key: string]: PostMessageData;
+}
+
+interface PostMessageArray extends Array<PostMessageData> {}
 
 interface OnMessage {
   readonly id: string;
@@ -59,16 +82,27 @@ export const wrap = <T>(worker: Worker): T => {
 
   const proxy = new Proxy(worker, {
     get(target: Worker, name: string) {
-      return (...args: unknown[]) =>
+      return (...argsMaybeWithCallback: PostMessageData[]) =>
         Effect.flatMap(Config, (config) =>
           Effect.async<unknown, unknown>((resume) => {
+            const ports: MessagePort[] = [];
+            const args = argsMaybeWithCallback.map((arg) => {
+              if (typeof arg !== "function") return arg;
+              const channel = new MessageChannel();
+              channel.port1.onmessage = ({ data }) => {
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+                arg(...data);
+              };
+              ports.push(channel.port2);
+              return channel.port2;
+            });
             // Nanoid is pretty fast. No reason to use incremented counter.
             const id = nanoid();
             callbacks.set(id, (response) => {
               resume(Effect[response._tag](response.value));
             });
             const message: PostMessage = { id, name, args, config };
-            target.postMessage(message);
+            target.postMessage(message, ports);
           }),
         );
     },
@@ -77,14 +111,10 @@ export const wrap = <T>(worker: Worker): T => {
   return proxy as T;
 };
 
-/** An object with functions returning Effect. */
-type ExposableObject = Record<
-  any,
-  (...args: unknown[]) => Effect.Effect<unknown, unknown>
->;
-
-// ExposableObject doesn't match class instance 🤔
-export const expose = (object: object): void => {
+/** Expose an object with functions returning Effect. */
+export const expose = <FnName extends string>(
+  object: Record<FnName, (...args: any[]) => Effect.Effect<any, any, any>>,
+): void => {
   let runtime: ManagedRuntime<Config, never> | null = null;
 
   onmessage = ({
@@ -92,8 +122,15 @@ export const expose = (object: object): void => {
   }: MessageEvent<PostMessage>) => {
     if (runtime == null) runtime = createEvoluRuntime(config);
 
+    const argsMaybeWithCallback = args.map((arg) => {
+      if (!(arg instanceof MessagePort)) return arg;
+      return (...args: unknown[]) => {
+        arg.postMessage(args);
+      };
+    });
+
     runtime.runFork(
-      (object as ExposableObject)[name](...args).pipe(
+      object[name as FnName](...argsMaybeWithCallback).pipe(
         Effect.map(
           (value): OnMessage => ({ id, response: { _tag: "succeed", value } }),
         ),
