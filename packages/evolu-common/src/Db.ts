@@ -57,7 +57,6 @@ import {
   isJsonObjectOrArray,
 } from "./Sqlite.js";
 import { makeStore } from "./Store.js";
-import { Message, NewMessage } from "./SyncWorker.js";
 
 /**
  * Create table schema.
@@ -526,6 +525,17 @@ export interface Mutation {
     Value | Date | boolean | undefined
   >;
   readonly isInsert: boolean;
+}
+
+export interface NewMessage {
+  readonly table: string;
+  readonly row: Id;
+  readonly column: string;
+  readonly value: Value;
+}
+
+export interface Message extends NewMessage {
+  readonly timestamp: TimestampString;
 }
 
 /** A table name starting with '_' (underscore) is local only (no sync). */

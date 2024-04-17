@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
-import { Config, createEvoluRuntime } from "@evolu/common";
+import { Config, createRuntime } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import { ManagedRuntime } from "effect/ManagedRuntime";
 import { nanoid } from "nanoid";
@@ -120,7 +120,7 @@ export const expose = <FnName extends string>(
   onmessage = ({
     data: { id, name, args, config },
   }: MessageEvent<PostMessage>) => {
-    if (runtime == null) runtime = createEvoluRuntime(config);
+    if (runtime == null) runtime = createRuntime(config);
 
     const argsMaybeWithCallback = args.map((arg) => {
       if (!(arg instanceof MessagePort)) return arg;

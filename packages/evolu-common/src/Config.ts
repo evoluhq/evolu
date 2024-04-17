@@ -14,15 +14,16 @@ export interface Config {
   reloadUrl: string;
 
   /**
-   * URL for Evolu sync and backup server
+   * URL for Evolu sync and backup server.
    *
    * The default value is `https://evolu.world`.
    */
   syncUrl: string;
 
   /**
-   * Evolu application name. For now, this is only useful for localhost
-   * development, where we want each application to have its own database.
+   * Evolu is multitenant - it can run more instances concurrently. Every Evolu
+   * instance has to have its own unique name. Database files are separated and
+   * invisible to each other.
    *
    * The default value is: `Evolu`.
    */
@@ -55,7 +56,7 @@ export const defaultConfig: Config = {
 };
 
 /** https://effect.website/docs/guides/runtime */
-export const createEvoluRuntime = (
+export const createRuntime = (
   partialConfig?: Partial<Config>,
 ): ManagedRuntime.ManagedRuntime<Config, never> => {
   const config = { ...defaultConfig, ...partialConfig };

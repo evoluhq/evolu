@@ -106,7 +106,7 @@ const evolu = createEvolu(Database, {
       categoryId,
     });
   },
-  minimumLogLevel: "trace",
+  // minimumLogLevel: "trace",
 });
 
 // const evolu2 = createEvolu(Database, {

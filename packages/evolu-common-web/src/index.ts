@@ -13,7 +13,7 @@ import * as Layer from "effect/Layer";
 import { AppStateLive, Bip39Live } from "./PlatformLive.js";
 import { wrap } from "./ProxyWorker.js";
 
-const DbWorkerFactoryWeb = Layer.succeed(DbWorkerFactory, {
+const DbWorkerFactoryLive = Layer.succeed(DbWorkerFactory, {
   createDbWorker: Effect.sync(() => {
     if (typeof document === "undefined") {
       return notSupportedPlatformWorker;
@@ -27,7 +27,7 @@ const DbWorkerFactoryWeb = Layer.succeed(DbWorkerFactory, {
 
 export const EvoluFactoryWeb = Layer.provide(
   EvoluFactory.Common,
-  Layer.mergeAll(DbWorkerFactoryWeb, NanoIdGenerator.Live, AppStateLive),
+  Layer.mergeAll(DbWorkerFactoryLive, NanoIdGenerator.Live, AppStateLive),
 );
 
 /**

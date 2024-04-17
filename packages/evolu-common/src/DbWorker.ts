@@ -32,10 +32,12 @@ import {
 import { QueryPatches, makePatches } from "./Diff.js";
 import { Owner } from "./Owner.js";
 import { Sqlite, SqliteFactory, SqliteTransactionMode } from "./Sqlite.js";
+import { SyncWorkerFactory } from "./SyncWorker.js";
 
 export interface DbWorker {
   readonly init: (
     schema: DbSchema,
+    // TODO: onError
   ) => Effect.Effect<Owner, NotSupportedPlatformError, Config>;
 
   readonly loadQueries: (
@@ -79,9 +81,16 @@ export class DbWorkerFactory extends Context.Tag("DbWorkerFactory")<
 export const createDbWorker: Effect.Effect<
   DbWorker,
   never,
-  SqliteFactory | Bip39 | NanoIdGenerator | Time
+  SqliteFactory | Bip39 | NanoIdGenerator | Time | SyncWorkerFactory
 > = Effect.gen(function* (_) {
+  /**
+   * SQLite must be created in the `init` function because it needs a config.
+   * DbWorker can run within Web Worker, so it has to wait for the `init`
+   * message. The same for SyncWorker.
+   */
   const { createSqlite } = yield* _(SqliteFactory);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { createSyncWorker } = yield* _(SyncWorkerFactory);
 
   const initContext = Context.empty().pipe(
     Context.add(Bip39, yield* _(Bip39)),
@@ -166,6 +175,7 @@ export const createDbWorker: Effect.Effect<
         );
         const time = yield* _(Time);
         const sqlite = yield* _(Sqlite);
+        // const syncWorker = yield* _(SyncWorker);
 
         const [toSyncMutations, localOnlyMutations] = Array.partition(
           mutations,
@@ -190,6 +200,7 @@ export const createDbWorker: Effect.Effect<
 
         if (toSyncMutations.length > 0) {
           yield* _(applyMutations(toSyncMutations));
+          // syncWorker.sync(data).pipe()
           // TODO: Sync
         }
         return yield* _(loadQueries(queriesToRefresh));

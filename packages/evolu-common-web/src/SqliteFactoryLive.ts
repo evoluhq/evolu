@@ -7,7 +7,7 @@ import {
   SqliteFactory,
   SqliteQuery,
   SqliteRow,
-  createEvoluRuntime,
+  createRuntime,
   lockName,
   maybeLogSqliteQueryExecutionTime,
   valuesToSqliteValues,
@@ -109,7 +109,7 @@ export const SqliteFactoryLive = Layer.effect(
         // yield* _(Effect.addFinalizer(() => ...));
 
         const config = yield* _(Config);
-        const runtime = createEvoluRuntime(config);
+        const runtime = createRuntime(config);
 
         Effect.logTrace("SqliteWeb connection lock request")
           .pipe(
