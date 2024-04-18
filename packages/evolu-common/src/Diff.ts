@@ -1,6 +1,6 @@
 import * as Array from "effect/Array";
 import * as Predicate from "effect/Predicate";
-import { Query, Row, Rows } from "./Db.js";
+import type { Query, Row } from "./Db.js";
 import { Value } from "./Sqlite.js";
 
 export interface QueryPatches {
@@ -12,7 +12,7 @@ export type Patch = ReplaceAllPatch | ReplaceAtPatch;
 
 export interface ReplaceAllPatch {
   readonly op: "replaceAll";
-  readonly value: Rows;
+  readonly value: ReadonlyArray<Row>;
 }
 
 export interface ReplaceAtPatch {
@@ -23,8 +23,8 @@ export interface ReplaceAtPatch {
 
 export const applyPatches = (
   patches: ReadonlyArray<Patch>,
-  current: Rows,
-): Rows =>
+  current: ReadonlyArray<Row>,
+): ReadonlyArray<Row> =>
   patches.reduce((next, patch) => {
     switch (patch.op) {
       case "replaceAll":
@@ -35,15 +35,16 @@ export const applyPatches = (
     }
   }, current);
 
-// We detect only a change in the whole result and in-place edits.
-// In the future, we will add more heuristics. We will probably not implement
-// the Myers diff algorithm because it's faster to rerender all than
-// to compute many detailed patches. We will only implement a logic
-// a developer would implement manually, if necessary.
-// Another idea is to make makePatches configurable via custom functions.
+/**
+ * We detect only changes in the whole result and in-place edits. In the future,
+ * we will add more heuristics. We will probably not implement the Myers diff
+ * algorithm because it's faster to rerender all than to compute many detailed
+ * patches. We will only implement logic a developer would implement manually,
+ * if necessary.
+ */
 export const makePatches = (
-  previousRows: Rows | undefined,
-  nextRows: Rows,
+  previousRows: ReadonlyArray<Row> | undefined,
+  nextRows: ReadonlyArray<Row>,
 ): readonly Patch[] => {
   if (previousRows === undefined)
     return [{ op: "replaceAll", value: nextRows }];
@@ -74,8 +75,8 @@ export const makePatches = (
 };
 
 export const areEqual = (
-  a: Value | Row | Rows,
-  b: Value | Row | Rows,
+  a: Value | Row | ReadonlyArray<Row>,
+  b: Value | Row | ReadonlyArray<Row>,
 ): boolean => {
   // Compare string, number, null ASAP.
   if (a === b) return true;

@@ -21,7 +21,7 @@ export class Sqlite extends Context.Tag("Sqlite")<
        * the data will be there.
        *
        * There is also a `last` mode that ensures no other transaction can run.
-       * It's for DbWorker reset to ensure no data are accidentally saved after
+       * It's for Db reset to ensure no data are accidentally saved after
        * database wipe-out.
        */
       mode: SqliteTransactionMode,

@@ -95,7 +95,7 @@ messages we receive from other devices. We use the same logic for all
 messages describing database changes to ensure messages are processed
 always in the same manner.
 
-The `applyMessages` function in the `DbWorker.ts` stores messages in a
+The `applyMessages` function in the `Db.ts` stores messages in a
 separate table and updates the database if a message is new. It's the
 simple last-write-win approach. The `applyMessages` function also maintains
 the Merkle tree, which is used to find the last timestamp when both the

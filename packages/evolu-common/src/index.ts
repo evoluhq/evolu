@@ -2,7 +2,6 @@ export * from "./Config.js";
 export * from "./Crdt.js";
 export * from "./Crypto.js";
 export * from "./Db.js";
-export * from "./DbWorker.js";
 export * from "./Diff.js";
 export * from "./Evolu.js";
 export * from "./Model.js";

@@ -1,5 +1,6 @@
 import * as S from "@effect/schema/Schema";
-import { maybeJson } from "./Sqlite.js";
+import * as Types from "effect/Types";
+import { Value, maybeJson } from "./Sqlite.js";
 
 /** Branded Id Schema. To create Id Schema for a specific table, use {@link id}. */
 export const Id = S.String.pipe(S.pattern(/^[\w-]{21}$/), S.brand("Id"));
@@ -70,6 +71,101 @@ export function cast(
   if (value instanceof Date) return value.toISOString() as SqliteDate;
   return new Date(value);
 }
+
+interface EvoluTypeError<E extends string> {
+  readonly __evoluTypeError__: E;
+}
+
+/**
+ * Create table schema.
+ *
+ * Supported types are null, string, number, Uint8Array, JSON Object, and JSON
+ * Array. Use SqliteDate for dates and SqliteBoolean for booleans.
+ *
+ * Reserved columns are createdAt, updatedAt, isDeleted. Those columns are added
+ * by default.
+ *
+ * @example
+ *   const TodoId = id("Todo");
+ *   type TodoId = S.Schema.Type<typeof TodoId>;
+ *
+ *   const TodoTable = table({
+ *     id: TodoId,
+ *     title: NonEmptyString1000,
+ *     isCompleted: S.nullable(SqliteBoolean),
+ *   });
+ *   type TodoTable = S.Schema.Type<typeof TodoTable>;
+ */
+export const table = <Fields extends TableFields>(
+  fields: Fields,
+  // Because Schema is invariant, we have to do validation like this.
+): ValidateFieldsTypes<Fields> extends true
+  ? ValidateFieldsNames<Fields> extends true
+    ? ValidateFieldsHasId<Fields> extends true
+      ? S.Schema<
+          Types.Simplify<
+            S.Struct.Type<Fields> & S.Schema.Type<typeof ReservedColumns>
+          >,
+          Types.Simplify<
+            S.Struct.Encoded<Fields> & S.Schema.Encoded<typeof ReservedColumns>
+          >
+        >
+      : EvoluTypeError<"table() called without id column.">
+    : EvoluTypeError<"table() called with a reserved column. Reserved columns are createdAt, updatedAt, isDeleted. Those columns are added by default.">
+  : EvoluTypeError<"table() called with unsupported type. Supported types are null, string, number, Uint8Array, JSON Object, and JSON Array. Use SqliteDate for dates and SqliteBoolean for booleans."> =>
+  S.Struct(fields).pipe(S.extend(ReservedColumns)) as never;
+
+const ReservedColumns = S.Struct({
+  createdAt: SqliteDate,
+  updatedAt: SqliteDate,
+  isDeleted: SqliteBoolean,
+});
+
+type TableFields = Record<string, S.Schema<any>>;
+
+type ValidateFieldsTypes<Fields extends TableFields> =
+  keyof Fields extends infer K
+    ? K extends keyof Fields
+      ? Fields[K] extends TableFields
+        ? ValidateFieldsTypes<Fields[K]>
+        : // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          Fields[K] extends S.Schema<infer A, infer _I>
+          ? A extends Value
+            ? true
+            : false
+          : never
+      : never
+    : never;
+
+type ValidateFieldsNames<Fields extends TableFields> =
+  keyof Fields extends infer K
+    ? K extends keyof Fields
+      ? K extends "createdAt" | "updatedAt" | "isDeleted"
+        ? false
+        : true
+      : never
+    : never;
+
+type ValidateFieldsHasId<Fields extends TableFields> = "id" extends keyof Fields
+  ? true
+  : false;
+
+/**
+ * Create database schema.
+ *
+ * Tables with a name prefixed with _ are local-only, which means they are not
+ * synced. Local-only tables are useful for device-specific or temporal data.
+ *
+ * @example
+ *   const Database = database({
+ *     // A local-only table.
+ *     _todo: TodoTable,
+ *     todo: TodoTable,
+ *     todoCategory: TodoCategoryTable,
+ *   });
+ *   type Database = S.Schema.Type<typeof Database>;
+ */
+export const database = S.Struct;
 
 /**
  * String schema represents a string that is not stringified JSON. Using String

@@ -1,7 +1,7 @@
 import {
   Bip39,
-  DbWorker,
-  DbWorkerFactory,
+  Db,
+  DbFactory,
   EvoluFactory,
   InvalidMnemonicError,
   Mnemonic,
@@ -13,21 +13,22 @@ import * as Layer from "effect/Layer";
 import { AppStateLive, Bip39Live } from "./PlatformLive.js";
 import { wrap } from "./ProxyWorker.js";
 
-const DbWorkerFactoryLive = Layer.succeed(DbWorkerFactory, {
-  createDbWorker: Effect.sync(() => {
+const DbFactoryLive = Layer.succeed(DbFactory, {
+  createDb: Effect.sync(() => {
     if (typeof document === "undefined") {
       return notSupportedPlatformWorker;
     }
-    const worker = new Worker(new URL("DbWorker.worker.js", import.meta.url), {
-      type: "module",
-    });
-    return wrap<DbWorker>(worker);
+    return wrap<Db>(
+      new Worker(new URL("Db.worker.js", import.meta.url), {
+        type: "module",
+      }),
+    );
   }),
 });
 
 export const EvoluFactoryWeb = Layer.provide(
   EvoluFactory.Common,
-  Layer.mergeAll(DbWorkerFactoryLive, NanoIdGenerator.Live, AppStateLive),
+  Layer.mergeAll(DbFactoryLive, NanoIdGenerator.Live, AppStateLive),
 );
 
 /**

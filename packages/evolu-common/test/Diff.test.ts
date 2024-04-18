@@ -1,10 +1,10 @@
 import { expect, test } from "vitest";
-import { Row, Rows } from "../src/Db.js";
+import { Row } from "../src/Db.js";
 import { applyPatches, areEqual, makePatches } from "../src/Diff.js";
 
 test("makePatches", () => {
   const row: Row = { a: 1 };
-  const rows: Rows = [row];
+  const rows: ReadonlyArray<Row> = [row];
 
   expect(makePatches([], []).length).toBe(0);
   const p0 = [{ op: "replaceAll", value: [] }];
@@ -65,10 +65,10 @@ test("areEqual", () => {
 });
 
 test("applyPatches", () => {
-  const current: Rows = [];
+  const current: ReadonlyArray<Row> = [];
   expect(applyPatches([], current)).toBe(current);
 
-  const value: Rows = [];
+  const value: ReadonlyArray<Row> = [];
   expect(applyPatches([{ op: "replaceAll", value }], current)).toBe(value);
 
   const replaceUntouched = { b: 2 };

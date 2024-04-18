@@ -1,4 +1,6 @@
+import * as AST from "@effect/schema/AST";
 import * as S from "@effect/schema/Schema";
+import { make } from "@effect/schema/Schema";
 import * as Array from "effect/Array";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -16,6 +18,7 @@ import { Config, createRuntime, defaultConfig } from "./Config.js";
 import { TimestampError } from "./Crdt.js";
 import { Mnemonic, NanoIdGenerator } from "./Crypto.js";
 import {
+  DbFactory,
   DbSchema,
   Index,
   Mutation,
@@ -24,16 +27,14 @@ import {
   QueryResult,
   QueryResultsPromisesFromQueries,
   Row,
-  Rows,
   RowsStoreState,
+  Table,
   deserializeQuery,
   emptyRows,
   makeRowsStore,
   queryResultFromRows,
-  schemaToTables,
   serializeQuery,
 } from "./Db.js";
-import { DbWorkerFactory } from "./DbWorker.js";
 import { QueryPatches, applyPatches } from "./Diff.js";
 import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
 import { Owner } from "./Owner.js";
@@ -482,15 +483,12 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
     EvoluFactory,
     Effect.gen(function* (_) {
       const flushSync = yield* _(
-        Effect.serviceOption(FlushSync).pipe(
-          Effect.map(
-            Option.getOrElse<FlushSync>(() => (callback) => callback()),
-          ),
-        ),
+        Effect.serviceOption(FlushSync),
+        Effect.map(Option.getOrElse<FlushSync>(() => (callback) => callback())),
       );
 
       const context = Context.empty().pipe(
-        Context.add(DbWorkerFactory, yield* _(DbWorkerFactory)),
+        Context.add(DbFactory, yield* _(DbFactory)),
         Context.add(NanoIdGenerator, yield* _(NanoIdGenerator)),
         Context.add(FlushSync, flushSync),
         Context.add(AppState, yield* _(AppState)),
@@ -508,17 +506,15 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
           const name = config?.name || defaultConfig.name;
           const dbSchema: DbSchema = {
             tables: schemaToTables(schema),
-            indexes,
-            initialData: initialDataToMutations(
-              initialData as EvoluConfig["initialData"],
-            ).pipe(Effect.provide(context), runtime.runSync),
+            indexes: indexes || [],
           };
           let evolu = instances.get(name);
           if (evolu == null) {
-            evolu = createEvolu(dbSchema, runtime).pipe(
-              Effect.provide(context),
-              runtime.runSync,
-            );
+            evolu = createEvolu(
+              dbSchema,
+              runtime,
+              initialData as EvoluConfig["initialData"],
+            ).pipe(Effect.provide(context), runtime.runSync);
             instances.set(name, evolu);
           } else {
             evolu.ensureSchema(dbSchema);
@@ -530,21 +526,32 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
   );
 }
 
-const initialDataToMutations = (initialData: EvoluConfig["initialData"]) =>
-  Effect.map(NanoIdGenerator, (nanoIdGenerator) => {
-    const mutations: Mutation[] = [];
-    const mutate: Mutate = (table, { id, ...values }) => {
-      if (id == null) id = nanoIdGenerator.rowId.pipe(Effect.runSync);
-      mutations.push({ isInsert: true, id, table, values });
-      return { id };
-    };
-    const evolu: EvoluForInitialData = {
-      create: mutate as Mutate<any, "create">,
-      createOrUpdate: mutate as Mutate<any, "createOrUpdate">,
-    };
-    initialData(evolu);
-    return mutations;
-  });
+const schemaToTables = (schema: S.Schema<any>) =>
+  pipe(
+    getPropertySignatures(schema),
+    Record.toEntries,
+    Array.map(
+      ([name, schema]): Table => ({
+        name,
+        columns: Object.keys(getPropertySignatures(schema)),
+      }),
+    ),
+  );
+
+// TODO: Simplify.
+// https://discord.com/channels/795981131316985866/1218626687546294386/1218796529725476935
+const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
+  schema: S.Schema<A, I>,
+): { [K in keyof A]: S.Schema<A[K], I[K]> } => {
+  const out: Record<PropertyKey, S.Schema<any>> = {};
+  const propertySignatures = AST.getPropertySignatures(schema.ast);
+  for (let i = 0; i < propertySignatures.length; i++) {
+    const propertySignature = propertySignatures[i];
+    out[propertySignature.name] = make(propertySignature.type);
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+  return out as any;
+};
 
 export interface EvoluConfig<T extends EvoluSchema = EvoluSchema>
   extends Config {
@@ -578,6 +585,7 @@ interface EvoluForInitialData<T extends EvoluSchema = EvoluSchema> {
 const createEvolu = (
   schema: DbSchema,
   runtime: ManagedRuntime.ManagedRuntime<Config, never>,
+  initialData?: EvoluConfig["initialData"],
 ) =>
   Effect.gen(function* (_) {
     yield* _(Effect.logTrace("EvoluFactory createEvolu"));
@@ -606,12 +614,19 @@ const createEvolu = (
     const runSync = flow(handleAllErrors, runtime.runSync);
     const runPromise = flow(handleAllErrors, runtime.runPromise);
 
-    const dbWorker = yield* _(
-      DbWorkerFactory,
-      Effect.flatMap(({ createDbWorker }) => createDbWorker),
+    const db = yield* _(
+      DbFactory,
+      Effect.flatMap(({ createDb }) => createDb),
     );
 
-    dbWorker.init(schema).pipe(
+    const initialDataAsMutations = initialData
+      ? yield* _(
+          initialDataToMutations(initialData),
+          Effect.provideService(NanoIdGenerator, nanoIdGenerator),
+        )
+      : [];
+
+    db.init(schema, initialDataAsMutations).pipe(
       Effect.flatMap(ownerStore.setState),
       Effect.catchTag("NotSupportedPlatformError", () => Effect.void), // no-op
       runFork,
@@ -626,7 +641,7 @@ const createEvolu = (
       }),
     );
 
-    Scope.addFinalizer(scope, dbWorker.dispose());
+    Scope.addFinalizer(scope, db.dispose());
 
     const handlePatches =
       (options: { readonly flushSync: boolean }) =>
@@ -657,7 +672,7 @@ const createEvolu = (
         const rowsStoreState = rowsStore.getState();
         const queriesRows = Array.map(
           patches,
-          ({ query, patches }): [Query, Rows] => [
+          ({ query, patches }): [Query, ReadonlyArray<Row>] => [
             query,
             applyPatches(patches, rowsStoreState.get(query) || emptyRows()),
           ],
@@ -665,7 +680,7 @@ const createEvolu = (
         return new Map([...rowsStoreState, ...queriesRows]);
       });
 
-    const resolveLoadingPromises = (query: Query, rows: Rows) =>
+    const resolveLoadingPromises = (query: Query, rows: ReadonlyArray<Row>) =>
       Effect.sync(() => {
         const loadingPromise = loadingPromises.get(query);
         if (!loadingPromise) return;
@@ -721,7 +736,7 @@ const createEvolu = (
             const queriesToRefresh = [...subscribedQueries.keys()];
             const onCompletesDef = onCompletes.filter(Predicate.isNotUndefined);
             releaseUnsubscribedLoadingPromises();
-            dbWorker.mutate(mutations, queriesToRefresh).pipe(
+            db.mutate(mutations, queriesToRefresh).pipe(
               Effect.flatMap(
                 /**
                  * The flushSync is for onComplete handlers only. For example,
@@ -790,12 +805,10 @@ const createEvolu = (
           if (isNew) queue = [...queue, query];
           if (queue.length === 1) {
             queueMicrotask(() => {
-              dbWorker
-                .loadQueries(queue)
-                .pipe(
-                  Effect.flatMap(handlePatches({ flushSync: false })),
-                  runFork,
-                );
+              db.loadQueries(queue).pipe(
+                Effect.flatMap(handlePatches({ flushSync: false })),
+                runFork,
+              );
               queue = [];
             });
           }
@@ -845,17 +858,18 @@ const createEvolu = (
       createOrUpdate: mutate as Mutate<EvoluSchema, "createOrUpdate">,
 
       resetOwner: () => {
-        dbWorker.resetOwner().pipe(Effect.zipRight(resetAppState), runFork);
+        db.resetOwner().pipe(Effect.zipRight(resetAppState), runFork);
       },
 
       restoreOwner: (mnemonic) => {
-        dbWorker
-          .restoreOwner(schema, mnemonic)
-          .pipe(Effect.zipRight(resetAppState), runFork);
+        db.restoreOwner(schema, mnemonic).pipe(
+          Effect.zipRight(resetAppState),
+          runFork,
+        );
       },
 
       ensureSchema: (schema) => {
-        dbWorker.ensureSchema(schema).pipe(runFork);
+        db.ensureSchema(schema).pipe(runFork);
       },
 
       sync: () => {
@@ -870,6 +884,22 @@ const createEvolu = (
     };
 
     return evolu;
+  });
+
+const initialDataToMutations = (initialData: EvoluConfig["initialData"]) =>
+  Effect.map(NanoIdGenerator, (nanoIdGenerator) => {
+    const mutations: Mutation[] = [];
+    const mutate: Mutate = (table, { id, ...values }) => {
+      if (id == null) id = nanoIdGenerator.rowId.pipe(Effect.runSync) as never;
+      mutations.push({ isInsert: true, id, table: table as string, values });
+      return { id };
+    };
+    const evolu: EvoluForInitialData = {
+      create: mutate as Mutate<EvoluSchema, "create">,
+      createOrUpdate: mutate as Mutate<EvoluSchema, "createOrUpdate">,
+    };
+    initialData(evolu);
+    return mutations;
   });
 
 interface LoadingPromise {
@@ -929,298 +959,3 @@ export const createIndexes = (
 /** Create a namespaced lock name. */
 export const lockName = (name: string): Effect.Effect<string, never, Config> =>
   Effect.map(Config, (config) => `evolu:${config.name}:${name}`);
-
-// type CreateQuery<S extends DatabaseSchema> = <R extends Row>(
-//   queryCallback: QueryCallback<S, R>,
-//   options?: SqliteQueryOptions,
-// ) => Query<R>;
-
-// type QueryCallback<S extends DatabaseSchema, R extends Row> = (
-//   db: Pick<
-//     Kysely.Kysely<QuerySchema<S>>,
-//     "selectFrom" | "fn" | "with" | "withRecursive"
-//   >,
-// ) => Kysely.SelectQueryBuilder<any, any, R>;
-
-// type QuerySchema<S extends DatabaseSchema> = {
-//   readonly [Table in keyof S]: NullableExceptForIdAndAutomaticColumns<{
-//     readonly [Column in keyof S[Table]]: S[Table][Column];
-//   }>;
-// };
-
-// type NullableExceptForIdAndAutomaticColumns<T> = {
-//   readonly [K in keyof T]: K extends "id" | "createdAt" | "updatedAt"
-//     ? T[K]
-//     : T[K] | null;
-// };
-
-// // https://kysely.dev/docs/recipes/splitting-query-building-and-execution
-// const kysely = new Kysely.Kysely<QuerySchema<DatabaseSchema>>({
-//   dialect: {
-//     createAdapter: (): Kysely.DialectAdapter => new Kysely.SqliteAdapter(),
-//     createDriver: (): Kysely.Driver => new Kysely.DummyDriver(),
-//     createIntrospector(): Kysely.DatabaseIntrospector {
-//       throw "Not implemeneted";
-//     },
-//     createQueryCompiler: (): Kysely.QueryCompiler =>
-//       new Kysely.SqliteQueryCompiler(),
-//   },
-// });
-
-// export const createIndex = kysely.schema.createIndex.bind(kysely.schema);
-
-// export const makeCreateQuery =
-//   <S extends DatabaseSchema = DatabaseSchema>(): CreateQuery<S> =>
-//   <R extends Row>(
-//     queryCallback: QueryCallback<S, R>,
-//     options?: SqliteQueryOptions,
-//   ) =>
-//     pipe(
-//       queryCallback(kysely as Kysely.Kysely<QuerySchema<S>>).compile(),
-//       (compiledQuery): SqliteQuery => {
-//         if (isSqlMutation(compiledQuery.sql))
-//           throw new Error(
-//             "SQL mutation (INSERT, UPDATE, DELETE, etc.) isn't allowed in the Evolu `createQuery` function. Kysely suggests it because there is no read-only Kysely yet, and removing such an API is not possible. For mutations, use Evolu mutation API.",
-//           );
-//         const parameters = compiledQuery.parameters as NonNullable<
-//           SqliteQuery["parameters"]
-//         >;
-//         return {
-//           sql: compiledQuery.sql,
-//           parameters,
-//           ...(options && { options }),
-//         };
-//       },
-//       (query) => serializeQuery<R>(query),
-//     );
-
-// export interface LoadingPromises {
-//   readonly get: <R extends Row>(
-//     query: Query<R>,
-//   ) => {
-//     readonly promise: LoadingPromise<R>;
-//     readonly isNew: boolean;
-//   };
-
-//   readonly resolve: <R extends Row>(
-//     query: Query<R>,
-//     rows: ReadonlyArray<R>,
-//   ) => void;
-
-//   /**
-//    * Release all unsubscribed queries on mutation because only subscribed
-//    * queries are automatically updated.
-//    */
-//   readonly release: () => void;
-// }
-
-// export const LoadingPromises = Context.GenericTag<LoadingPromises>(
-//   "@services/LoadingPromises",
-// );
-
-// export type LoadingPromise<R extends Row> = Promise<QueryResult<R>> & {
-//   status?: "pending" | "fulfilled" | "rejected";
-//   value?: QueryResult<R>;
-//   reason?: unknown;
-// };
-
-// export const LoadingPromiseLive = Layer.effect(
-//   LoadingPromises,
-//   Effect.gen(function* (_) {
-//     interface LoadingPromiseWithResolve<R extends Row> {
-//       promise: LoadingPromise<R>;
-//       readonly resolve: Resolve<R>;
-//       releaseOnResolve: boolean;
-//     }
-//     type Resolve<R extends Row> = (rows: QueryResult<R>) => void;
-
-//     const subscribedQueries = yield* _(SubscribedQueries);
-//     const promises = new Map<Query, LoadingPromiseWithResolve<Row>>();
-
-//     return LoadingPromises.of({
-//       get<R extends Row>(query: Query<R>) {
-//         let isNew = false;
-//         let promiseWithResolve = promises.get(query);
-
-//         if (!promiseWithResolve) {
-//           isNew = true;
-//           let resolve: Resolve<Row> = Function.constVoid;
-//           const promise: LoadingPromise<Row> = new Promise((_resolve) => {
-//             resolve = _resolve;
-//           });
-//           promiseWithResolve = { promise, resolve, releaseOnResolve: false };
-//           promises.set(query, promiseWithResolve);
-//         }
-
-//         return {
-//           promise: promiseWithResolve.promise as LoadingPromise<R>,
-//           isNew,
-//         };
-//       },
-
-//       resolve(query, rows) {
-//         const promiseWithResolve = promises.get(query);
-//         if (!promiseWithResolve) return;
-//         const result = queryResultFromRows(rows);
-//         if (promiseWithResolve.promise.status !== "fulfilled")
-//           promiseWithResolve.resolve(result);
-//         else promiseWithResolve.promise = Promise.resolve(result);
-//         setPromiseAsResolved(promiseWithResolve.promise)(result);
-//         if (promiseWithResolve.releaseOnResolve) promises.delete(query);
-//       },
-
-//       release() {
-//         const keep = subscribedQueries.getSubscribedQueries();
-//         promises.forEach((promiseWithResolve, query) => {
-//           if (keep.includes(query)) return;
-//           if (promiseWithResolve.promise.status === "fulfilled")
-//             promises.delete(query);
-//           else promiseWithResolve.releaseOnResolve = true;
-//         });
-//       },
-//     });
-//   }),
-// );
-
-// type OnQuery = (
-//   dbWorkerOutputOnQuery: DbWorkerOutputOnQuery,
-// ) => Effect.Effect<void>;
-
-// export const Mutate = Context.GenericTag<Mutate>("@services/Mutate");
-
-// // https://stackoverflow.com/a/54713648/233902
-// type PartialForNullable<
-//   T,
-//   NK extends keyof T = {
-//     [K in keyof T]: null extends T[K] ? K : never;
-//   }[keyof T],
-//   NP = Pick<T, Exclude<keyof T, NK>> & Partial<Pick<T, NK>>,
-// > = { [K in keyof NP]: NP[K] };
-
-// /**
-//  * SQLite doesn't support Date nor Boolean types, so Evolu emulates them with
-//  * {@link SqliteBoolean} and {@link SqliteDate}.
-//  *
-//  * For {@link SqliteBoolean}, you can use JavaScript boolean. For
-//  * {@link SqliteDate}, you can use JavaScript Date.
-//  */
-// type Castable<T> = {
-//   readonly [K in keyof T]: T[K] extends SqliteBoolean
-//     ? boolean | SqliteBoolean
-//     : T[K] extends null | SqliteBoolean
-//       ? null | boolean | SqliteBoolean
-//       : T[K] extends SqliteDate
-//         ? Date | SqliteDate
-//         : T[K] extends null | SqliteDate
-//           ? null | Date | SqliteDate
-//           : T[K];
-// };
-
-// /** EvoluCommon is without side effects, so it's unit-testable. */
-// const EvoluCommon = Layer.effect(
-//   Evolu,
-//   Effect.gen(function* (_) {
-//     const dbWorker = yield* _(DbWorker);
-//     const errorStore = yield* _(makeErrorStore);
-//     const loadQuery = yield* _(LoadQuery);
-//     const onQuery = yield* _(OnQuery);
-//     const { subscribeQuery, getQuery, getSubscribedQueries } =
-//       yield* _(SubscribedQueries);
-//     const syncStateStore = yield* _(
-//       makeStore<SyncState>({ _tag: "SyncStateInitial" }),
-//     );
-//     const mutate = yield* _(Mutate);
-//     const ownerStore = yield* _(makeStore<Owner | null>(null));
-//     const loadingPromises = yield* _(LoadingPromises);
-//     const appState = yield* _(AppState);
-
-//     dbWorker.onMessage = (output): void =>
-//       Match.value(output).pipe(
-//         Match.tagsExhaustive({
-//           onError: ({ error }) => errorStore.setState(error),
-//           onQuery,
-//           onOwner: ({ owner }) => ownerStore.setState(owner),
-//           onSyncState: ({ state }) => syncStateStore.setState(state),
-//           onReceive: () =>
-//             Effect.sync(() => {
-//               loadingPromises.release();
-//               const queries = getSubscribedQueries();
-//               if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
-//                 dbWorker.postMessage({ _tag: "query", queries });
-//             }),
-//           onResetOrRestore: () => appState.reset,
-//         }),
-//         Effect.runSync,
-//       );
-
-//     dbWorker.postMessage({
-//       _tag: "init",
-//       config: yield* _(Config),
-//     });
-
-//     const sync = (): void => {
-//       dbWorker.postMessage({ _tag: "sync", queries: getSubscribedQueries() });
-//     };
-
-//     appState.init({ onRequestSync: sync });
-//     sync();
-
-//     return Evolu.of({
-//       subscribeError: errorStore.subscribe,
-//       getError: errorStore.getState,
-
-//       createQuery: makeCreateQuery(),
-//       loadQuery,
-
-//       loadQueries: <R extends Row, Q extends Queries<R>>(queries: [...Q]) =>
-//         queries.map(loadQuery) as [...QueryResultsPromisesFromQueries<Q>],
-
-//       subscribeQuery,
-//       getQuery,
-
-//       subscribeOwner: ownerStore.subscribe,
-//       getOwner: ownerStore.getState,
-
-//       subscribeSyncState: syncStateStore.subscribe,
-//       getSyncState: syncStateStore.getState,
-
-//       create: mutate as Mutate<DatabaseSchema, "create">,
-//       update: mutate,
-//       createOrUpdate: mutate as Mutate<DatabaseSchema, "createOrUpdate">,
-
-//       resetOwner: () => dbWorker.postMessage({ _tag: "reset" }),
-
-//       restoreOwner: (mnemonic) =>
-//         dbWorker.postMessage({ _tag: "reset", mnemonic }),
-
-//       ensureSchema: (schema, indexes = []) =>
-//         dbWorker.postMessage({
-//           _tag: "ensureSchema",
-//           tables: schemaToTables(schema),
-//           indexes,
-//         }),
-
-//       sync,
-//     });
-//   }),
-// ).pipe(
-//   Layer.provide(Layer.mergeAll(LoadQueryLive, OnQueryLive, MutateLive)),
-//   Layer.provide(LoadingPromiseLive),
-//   Layer.provide(SubscribedQueriesLive),
-//   Layer.provide(Layer.merge(RowsStoreLive, OnCompletesLive)),
-// );
-
-// export const EvoluCommonLive = EvoluCommon.pipe(
-//   Layer.provide(NanoIdGeneratorLive),
-// );
-
-// /**
-//  * The recipe for creating Evolu for a platform and UI library:
-//  *
-//  * 1. Export everything from "@evolu/common/public"
-//  * 2. Export platform-specific parseMnemonic. If the platform supports lazy import,
-//  *    use it because dictionaries have a few hundred KBs.
-//  * 3. Export `createEvolu` for a platform. The TS docs must be copy-pasted, and
-//  *    remember to update the import.
-//  * 4. Export UI library API code.
-//  */

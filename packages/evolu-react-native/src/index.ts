@@ -1,6 +1,6 @@
 import {
   Bip39,
-  DbWorkerFactory,
+  DbFactory,
   EvoluFactory,
   InvalidMnemonicError,
   Mnemonic,
@@ -23,8 +23,8 @@ export const parseMnemonic: (
 export const EvoluFactoryReactNative = Layer.provide(
   EvoluFactory.Common,
   Layer.mergeAll(
-    Layer.succeed(DbWorkerFactory, {
-      createDbWorker: Effect.sync(() => {
+    Layer.succeed(DbFactory, {
+      createDb: Effect.sync(() => {
         throw "";
       }),
     }),
@@ -70,7 +70,7 @@ export const {
 } = EvoluFactory.pipe(Effect.provide(EvoluFactoryReactNative), Effect.runSync);
 
 // } = EvoluFactory.pipe(
-//   Effect.provide(EvoluFactory.Common.pipe(Layer.provide(DbWorkerFactoryCommon))),
+//   Effect.provide(EvoluFactory.Common.pipe(Layer.provide(DbFactoryCommon))),
 //   Effect.runSync,
 // );
 

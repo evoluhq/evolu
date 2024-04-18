@@ -4,7 +4,7 @@ import {
   SyncWorkerFactory,
   SyncWorkerService,
   Time,
-  createDbWorker,
+  createDb,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -33,9 +33,6 @@ const layer = Layer.mergeAll(
   SyncWorkerFactoryLive,
 );
 
-// jo, tohle by slo, ale proc?
-// DbWorker.pipe(Effect.provide(DbWorker.Live))
-
-const worker = createDbWorker.pipe(Effect.provide(layer), Effect.runSync);
+const worker = createDb.pipe(Effect.provide(layer), Effect.runSync);
 
 expose(worker);
