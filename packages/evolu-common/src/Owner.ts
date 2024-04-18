@@ -41,11 +41,8 @@ export const makeOwner = (
 ): Effect.Effect<Owner, never, Bip39> =>
   Effect.gen(function* (_) {
     const bip39 = yield* _(Bip39);
-
     if (mnemonic == null) mnemonic = yield* _(bip39.make);
-
     const seed = yield* _(bip39.toSeed(mnemonic));
-
     const id = yield* _(
       slip21Derive(seed, ["Evolu", "Owner Id"]).pipe(
         Effect.map((key) => {
@@ -58,10 +55,8 @@ export const makeOwner = (
         }),
       ),
     );
-
     const encryptionKey = yield* _(
       slip21Derive(seed, ["Evolu", "Encryption Key"]),
     );
-
     return { mnemonic, id, encryptionKey };
   });
