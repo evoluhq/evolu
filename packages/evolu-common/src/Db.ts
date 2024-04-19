@@ -60,7 +60,7 @@ import {
   isJsonObjectOrArray,
 } from "./Sqlite.js";
 import { makeStore } from "./Store.js";
-import { SyncWorkerFactory } from "./SyncWorker.js";
+import { SyncFactory } from "./Sync.js";
 
 export interface Db {
   readonly init: (
@@ -160,10 +160,10 @@ export class DbFactory extends Context.Tag("DbFactory")<
 export const createDb: Effect.Effect<
   Db,
   never,
-  SqliteFactory | Bip39 | NanoIdGenerator | Time | SyncWorkerFactory
+  SqliteFactory | Bip39 | NanoIdGenerator | Time | SyncFactory
 > = Effect.gen(function* (_) {
   const { createSqlite } = yield* _(SqliteFactory);
-  const { createSyncWorker } = yield* _(SyncWorkerFactory);
+  const { createSync } = yield* _(SyncFactory);
 
   const initContext = Context.empty().pipe(
     Context.add(Bip39, yield* _(Bip39)),
@@ -229,7 +229,6 @@ export const createDb: Effect.Effect<
         );
         const time = yield* _(Time);
         const sqlite = yield* _(Sqlite);
-        // const syncWorker = yield* _(SyncWorker);
 
         const [toSyncMutations, localOnlyMutations] = Arr.partition(
           mutations,

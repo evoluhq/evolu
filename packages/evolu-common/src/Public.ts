@@ -8,4 +8,4 @@ export { createIndexes } from "./Evolu.js";
 export type { EvoluError, UnexpectedError } from "./Evolu.js";
 export * from "./Model.js";
 export type { Owner, OwnerId } from "./Owner.js";
-export type { SyncState } from "./SyncWorker.js";
+export type { SyncState } from "./Sync.js";

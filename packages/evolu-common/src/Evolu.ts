@@ -46,7 +46,7 @@ import {
   isSqlMutation,
 } from "./Sqlite.js";
 import { Listener, Unsubscribe, makeStore } from "./Store.js";
-import { SyncState } from "./SyncWorker.js";
+import { SyncState } from "./Sync.js";
 
 /**
  * The Evolu interface provides a type-safe SQL query building and state

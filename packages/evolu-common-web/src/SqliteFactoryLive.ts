@@ -39,7 +39,7 @@ import { ensureTransferableError } from "./ensureTransferableError.js";
  * This implementation doesn't need SharedWorker or ServiceWorker and does not
  * use dedicated broadcast channels to keep code as simple as possible. Browsers
  * are updating OPFS rapidly, so we may not need this workaround at all in the
- * near future.
+ * future.
  */
 
 // https://github.com/sqlite/sqlite-wasm/issues/62

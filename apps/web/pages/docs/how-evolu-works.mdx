@@ -40,23 +40,22 @@ const { id } = create("todo", { title, isCompleted: false });
 update("todo", { id, isCompleted: true });
 ```
 
-Evolu uses `queueMicrotask` to make an array of `MutateItem` to send
+Evolu uses `queueMicrotask` to make an array of `Mutation` to send
 a batch to a WebWorker to not block the main thread.
 
 ```ts
-export interface MutateItem {
+export interface Mutation {
   readonly table: string;
   readonly id: Id;
-  readonly values: ReadonlyRecord.ReadonlyRecord<
+  readonly values: Record.ReadonlyRecord<
+    string,
     Value | Date | boolean | undefined
   >;
   readonly isInsert: boolean;
-  readonly now: SqliteDate;
-  readonly onCompleteId: OnCompleteId | null;
 }
 ```
 
-In the WebWorker, Evolu maps `MutateItem` to `Message`.
+In the WebWorker, Evolu maps `Mutation` to `Message`.
 
 ```ts
 export interface NewMessage {

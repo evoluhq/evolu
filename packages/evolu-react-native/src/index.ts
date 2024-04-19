@@ -69,27 +69,4 @@ export const {
   createEvolu,
 } = EvoluFactory.pipe(Effect.provide(EvoluFactoryReactNative), Effect.runSync);
 
-// } = EvoluFactory.pipe(
-//   Effect.provide(EvoluFactory.Common.pipe(Layer.provide(DbFactoryCommon))),
-//   Effect.runSync,
-// );
-
-// export const createEvolu = makeCreateEvolu(
-//   EvoluCommonLive.pipe(
-//     Layer.provide(
-//       Layer.mergeAll(FlushSyncDefaultLive, AppStateLive, DbWorkerCommonLive),
-//     ),
-//     Layer.provide(
-//       Layer.mergeAll(
-//         Bip39Live,
-//         NanoIdGeneratorLive,
-//         SqliteLive,
-//         SyncWorkerCommonLive,
-//         DbWorkerLockLive,
-//       ),
-//     ),
-//     Layer.provide(Layer.mergeAll(SecretBoxLive, SyncLockLive, FetchLive)),
-//   ),
-// );
-
 export * from "@evolu/common-react";

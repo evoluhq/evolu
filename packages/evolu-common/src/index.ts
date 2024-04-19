@@ -11,4 +11,4 @@ export * from "./Platform.js";
 export * from "./Protobuf.js";
 export * from "./Sqlite.js";
 export * from "./Store.js";
-export * from "./SyncWorker.js";
+export * from "./Sync.js";

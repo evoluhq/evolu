@@ -1,8 +1,8 @@
 import {
   NanoIdGenerator,
   SqliteFactory,
-  SyncWorkerFactory,
-  SyncWorkerService,
+  SyncFactory,
+  SyncService,
   Time,
   createDb,
 } from "@evolu/common";
@@ -12,13 +12,13 @@ import { Bip39Live } from "./PlatformLive.js";
 import { expose, wrap } from "./ProxyWorker.js";
 import { SqliteFactoryLive } from "./SqliteFactoryLive.js";
 
-const SyncWorkerFactoryLive = Layer.succeed(SyncWorkerFactory, {
-  createSyncWorker: Effect.sync(() => {
-    const worker = new Worker(
-      new URL("SyncWorker.worker.js", import.meta.url),
-      { type: "module" },
+const SyncFactoryLive = Layer.succeed(SyncFactory, {
+  createSync: Effect.sync(() => {
+    return wrap<SyncService>(
+      new Worker(new URL("Sync.worker.js", import.meta.url), {
+        type: "module",
+      }),
     );
-    return wrap<SyncWorkerService>(worker);
   }),
 });
 
@@ -30,7 +30,7 @@ const layer = Layer.mergeAll(
   ),
   NanoIdGenerator.Live,
   Time.Live,
-  SyncWorkerFactoryLive,
+  SyncFactoryLive,
 );
 
 const worker = createDb.pipe(Effect.provide(layer), Effect.runSync);
