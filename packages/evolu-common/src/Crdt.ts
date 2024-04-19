@@ -1,5 +1,5 @@
 import * as S from "@effect/schema/Schema";
-import * as Array from "effect/Array";
+import * as Arr from "effect/Array";
 import * as Brand from "effect/Brand";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -317,7 +317,7 @@ export const diffMerkleTrees = (
   // the top of this function should pass)
   // eslint-disable-next-line no-constant-condition
   while (1) {
-    const keys = Array.dedupeWith(
+    const keys = Arr.dedupeWith(
       getSortedMerkleTreeKeys(node1).concat(getSortedMerkleTreeKeys(node2)),
       String.Equivalence,
     );

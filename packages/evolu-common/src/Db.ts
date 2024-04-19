@@ -1,5 +1,5 @@
 import * as S from "@effect/schema/Schema";
-import * as Array from "effect/Array";
+import * as Arr from "effect/Array";
 import * as Brand from "effect/Brand";
 import * as Console from "effect/Console";
 import * as Context from "effect/Context";
@@ -231,7 +231,7 @@ export const createDb: Effect.Effect<
         const sqlite = yield* _(Sqlite);
         // const syncWorker = yield* _(SyncWorker);
 
-        const [toSyncMutations, localOnlyMutations] = Array.partition(
+        const [toSyncMutations, localOnlyMutations] = Arr.partition(
           mutations,
           /** Table name starting with '_' is local only (not synced). */
           (mutation) => mutation.table.startsWith("_"),
@@ -301,7 +301,7 @@ const createLoadQueries = Effect.gen(function* (_) {
   ): Effect.Effect<QueryPatches[], never, Sqlite> =>
     Sqlite.pipe(
       Effect.bind("queriesRows", (sqlite) =>
-        Effect.forEach(Array.dedupe(queries), (query) => {
+        Effect.forEach(Arr.dedupe(queries), (query) => {
           const sqliteQuery = deserializeQuery(query);
           return sqlite.exec(sqliteQuery).pipe(
             Effect.tap(maybeExplainQueryPlan(sqliteQuery)),
@@ -392,7 +392,7 @@ const getSchema: Effect.Effect<DbSchema, never, Sqlite> = Effect.gen(
   `.trim(),
       }),
       Effect.map((result) =>
-        Array.map(
+        Arr.map(
           result.rows,
           (row): Index => ({
             name: row.name as string,
@@ -435,7 +435,7 @@ const ensureSchema = (newSchema: DbSchema) => (currentSchema: DbSchema) =>
   );`.trim(),
         );
       } else {
-        Array.differenceWith(String.Equivalence)(
+        Arr.differenceWith(String.Equivalence)(
           table.columns,
           currentTable.columns,
         ).forEach((newColumn) => {
@@ -447,9 +447,9 @@ const ensureSchema = (newSchema: DbSchema) => (currentSchema: DbSchema) =>
     });
 
     // Remove old indexes.
-    Array.differenceWith(indexEquivalence)(
+    Arr.differenceWith(indexEquivalence)(
       currentSchema.indexes,
-      Array.intersectionWith(indexEquivalence)(
+      Arr.intersectionWith(indexEquivalence)(
         currentSchema.indexes,
         newSchema.indexes,
       ),
@@ -458,7 +458,7 @@ const ensureSchema = (newSchema: DbSchema) => (currentSchema: DbSchema) =>
     });
 
     // Add new indexes.
-    Array.differenceWith(indexEquivalence)(
+    Arr.differenceWith(indexEquivalence)(
       newSchema.indexes,
       currentSchema.indexes,
     ).forEach((newIndex) => {
@@ -551,14 +551,14 @@ export interface Message extends NewMessage {
 const mutationToNewMessages = (mutation: Mutation) =>
   pipe(
     Object.entries(mutation.values),
-    Array.filterMap(([column, value]) =>
+    Arr.filterMap(([column, value]) =>
       // The value can be undefined if exactOptionalPropertyTypes isn't true.
       // Don't insert nulls because null is the default value.
       value === undefined || (mutation.isInsert && value == null)
         ? Option.none()
         : Option.some([column, value] as const),
     ),
-    Array.map(
+    Arr.map(
       ([column, value]): NewMessage => ({
         table: mutation.table,
         row: mutation.id,
@@ -682,7 +682,7 @@ const ensureSchemaByNewMessages = (messages: ReadonlyArray<NewMessage>) =>
         columns: table.columns.concat(message.column),
       });
     });
-    const tables = Array.fromIterable(tablesMap.values());
+    const tables = Arr.fromIterable(tablesMap.values());
     yield* _(getSchema, Effect.flatMap(ensureSchema({ tables, indexes: [] })));
   });
 
@@ -736,7 +736,7 @@ export const serializeQuery = <R extends Row>({
     sql,
     parameters: parameters.map((p) =>
       Predicate.isUint8Array(p)
-        ? Array.fromIterable(p)
+        ? Arr.fromIterable(p)
         : isJsonObjectOrArray(p)
           ? { json: p }
           : p,
@@ -753,7 +753,7 @@ export const deserializeQuery = <R extends Row>(
   return {
     ...serializedSqliteQuery,
     parameters: serializedSqliteQuery.parameters.map((p) =>
-      Array.isArray(p)
+      Arr.isArray(p)
         ? new Uint8Array(p)
         : typeof p === "object" && p != null
           ? p.json

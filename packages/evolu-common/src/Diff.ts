@@ -1,4 +1,4 @@
-import * as Array from "effect/Array";
+import * as Arr from "effect/Array";
 import * as Predicate from "effect/Predicate";
 import type { Query, Row } from "./Db.js";
 import { Value } from "./Sqlite.js";
@@ -30,7 +30,7 @@ export const applyPatches = (
       case "replaceAll":
         return patch.value;
       case "replaceAt": {
-        return Array.replace(next, patch.index, patch.value);
+        return Arr.replace(next, patch.index, patch.value);
       }
     }
   }, current);
@@ -92,8 +92,8 @@ export const areEqual = (
       return true;
     }
 
-    const aIsArray = Array.isArray(a);
-    const bIsArray = Array.isArray(b);
+    const aIsArray = Arr.isArray(a);
+    const bIsArray = Arr.isArray(b);
     if (aIsArray && bIsArray) {
       if (a.length !== b.length) return false;
       for (let i = 0; i < a.length; i++)

@@ -16,7 +16,7 @@ import sqlite3InitModule, {
   SAHPoolUtil,
   Sqlite3Static,
 } from "@sqlite.org/sqlite-wasm";
-import * as Array from "effect/Array";
+import * as Arr from "effect/Array";
 import * as Effect from "effect/Effect";
 import { absurd, constVoid } from "effect/Function";
 import * as Layer from "effect/Layer";
@@ -74,7 +74,7 @@ export const SqliteFactoryLive = Layer.effect(
                * Remove already handled exec so the other tabs will not process
                * it.
                */
-              execsBeforeSqliteInit = Array.filter(
+              execsBeforeSqliteInit = Arr.filter(
                 execsBeforeSqliteInit,
                 (m) => m.id !== message.id,
               );

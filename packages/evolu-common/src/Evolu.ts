@@ -1,7 +1,7 @@
 import * as AST from "@effect/schema/AST";
 import * as S from "@effect/schema/Schema";
 import { make } from "@effect/schema/Schema";
-import * as Array from "effect/Array";
+import * as Arr from "effect/Array";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -530,7 +530,7 @@ const schemaToTables = (schema: S.Schema<any>) =>
   pipe(
     getPropertySignatures(schema),
     Record.toEntries,
-    Array.map(
+    Arr.map(
       ([name, schema]): Table => ({
         name,
         columns: Object.keys(getPropertySignatures(schema)),
@@ -670,7 +670,7 @@ const createEvolu = (
     const rowsStoreStateFromPatches = (patches: ReadonlyArray<QueryPatches>) =>
       Effect.sync((): RowsStoreState => {
         const rowsStoreState = rowsStore.getState();
-        const queriesRows = Array.map(
+        const queriesRows = Arr.map(
           patches,
           ({ query, patches }): [Query, ReadonlyArray<Row>] => [
             query,
@@ -731,7 +731,7 @@ const createEvolu = (
         queue = [...queue, [{ table, id, values, isInsert }, onComplete]];
         if (queue.length === 1)
           queueMicrotask(() => {
-            const [mutations, onCompletes] = Array.unzip(queue);
+            const [mutations, onCompletes] = Arr.unzip(queue);
             queue = [];
             const queriesToRefresh = [...subscribedQueries.keys()];
             const onCompletesDef = onCompletes.filter(Predicate.isNotUndefined);

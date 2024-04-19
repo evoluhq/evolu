@@ -78,7 +78,7 @@ export interface SyncStatePaymentRequiredError {
 // import * as S from "@effect/schema/Schema";
 // import { concatBytes } from "@noble/ciphers/utils";
 // import { BinaryReader, BinaryWriter } from "@protobuf-ts/runtime";
-// import * as Array from "effect/Array";
+// import * as Arr from "effect/Array";
 // import * as Context from "effect/Context";
 // import * as Effect from "effect/Effect";
 // import { absurd, constVoid, identity } from "effect/Function";
