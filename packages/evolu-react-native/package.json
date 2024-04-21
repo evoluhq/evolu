@@ -48,7 +48,7 @@
     "eslint-config-evolu": "workspace:*",
     "expo": "^50.0.17",
     "expo-sqlite": "~13.4.0",
-    "react-native": "^0.73.6",
+    "react-native": "^0.73.7",
     "typescript": "^5.4.5",
     "vitest": "^1.5.0"
   },
