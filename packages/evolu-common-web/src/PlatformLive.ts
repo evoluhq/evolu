@@ -3,78 +3,83 @@ import {
   Bip39,
   Mnemonic,
   SyncLock,
+  SyncLockRelease,
+  lockName,
   validateMnemonicToEffect,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
-import { constVoid } from "effect/Function";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 
 export const AppStateLive = Layer.succeed(AppState, {
-  init: ({ reloadUrl, onRequestSync }) => {
-    if (typeof document === "undefined") {
-      return Effect.succeed(Effect.void);
-    }
+  init: ({ reloadUrl, onRequestSync }) =>
+    Effect.sync(() => {
+      if (typeof document === "undefined") {
+        return { reset: Effect.void };
+      }
 
-    const localStorageKey = "evolu:reloadAllTabs";
+      const localStorageKey = "evolu:reloadAllTabs";
 
-    const replaceLocation = () => {
-      location.replace(reloadUrl);
-    };
+      const replaceLocation = () => {
+        location.replace(reloadUrl);
+      };
 
-    window.addEventListener("storage", (e) => {
-      if (e.key === localStorageKey) replaceLocation();
-    });
+      window.addEventListener("storage", (e) => {
+        if (e.key === localStorageKey) replaceLocation();
+      });
 
-    window.addEventListener("online", onRequestSync);
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState !== "hidden") onRequestSync();
-    });
-    window.addEventListener("focus", onRequestSync);
+      let timer: null | number;
+      const handleRequestSyncEvents = () => {
+        if (timer != null) return;
+        onRequestSync();
+        timer = window.setTimeout(() => {
+          timer = null;
+        }, 50);
+      };
 
-    const resetAppState = Effect.sync(() => {
-      localStorage.setItem(localStorageKey, Date.now().toString());
-      replaceLocation();
-    });
+      window.addEventListener("online", handleRequestSyncEvents);
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState !== "hidden") handleRequestSyncEvents();
+      });
+      window.addEventListener("focus", handleRequestSyncEvents);
 
-    return Effect.succeed(resetAppState);
-  },
+      const reset = Effect.sync(() => {
+        localStorage.setItem(localStorageKey, Date.now().toString());
+        replaceLocation();
+      });
+
+      return { reset };
+    }),
 });
 
-export const SyncLockLive = Layer.effect(
-  SyncLock,
-  Effect.sync(() => {
-    // No multitenantLockName because this will be redesigned.
-    const lockName = "evolu:sync";
-    let release: null | (() => void) = null;
-
-    return SyncLock.of({
-      acquire: Effect.gen(function* (_) {
-        if (release) return false;
-        release = constVoid;
-        return yield* _(
-          Effect.async<boolean>((resume) => {
-            navigator.locks.request(lockName, { ifAvailable: true }, (lock) => {
-              if (lock == null) {
-                release = null;
-                resume(Effect.succeed(false));
-                return;
-              }
-              resume(Effect.succeed(true));
-              return new Promise<void>((resolve) => {
-                release = resolve;
-              });
-            });
-          }),
-        );
+// TODO: Ask the Effect team for review.
+export const SyncLockLive = Layer.succeed(SyncLock, {
+  tryAcquire: Effect.logTrace("SyncLock acquire").pipe(
+    Effect.zipRight(lockName("SyncLock")),
+    Effect.flatMap((lockName) =>
+      Effect.async<Option.Option<SyncLockRelease>>((resume) => {
+        navigator.locks.request(lockName, { ifAvailable: true }, (lock) => {
+          if (lock == null) {
+            resume(Effect.succeed(Option.none()));
+            return;
+          }
+          return new Promise<void>((resolve) => {
+            resume(
+              Effect.succeed(
+                Option.some({
+                  release: Effect.zipRight(
+                    Effect.logTrace("SyncLock release"),
+                    Effect.sync(resolve),
+                  ),
+                }),
+              ),
+            );
+          });
+        });
       }),
-
-      release: Effect.sync(() => {
-        if (release) release();
-        release = null;
-      }),
-    });
-  }),
-);
+    ),
+  ),
+});
 
 const importBip39WithEnglish = Effect.all(
   [

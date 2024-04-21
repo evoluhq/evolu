@@ -347,15 +347,6 @@ export interface Evolu<T extends EvoluSchema = EvoluSchema> {
    */
   readonly ensureSchema: (schema: DbSchema) => void;
 
-  /**
-   * Force sync with Evolu Server.
-   *
-   * Evolu syncs on every mutation, tab focus, and network reconnect, so it's
-   * generally not required to sync manually, but if you need it, you can do
-   * it.
-   */
-  readonly sync: () => void;
-
   // TODO:
   // readonly exportSqliteFile: () => Promise<Uint8Array>
 
@@ -610,6 +601,7 @@ const createEvolu = (
         Effect.tapError(errorStore.setState),
       );
 
+    // TODO: Ask the Effect team for review.
     const runFork = flow(handleAllErrors, runtime.runFork);
     const runSync = flow(handleAllErrors, runtime.runSync);
     const runPromise = flow(handleAllErrors, runtime.runPromise);
@@ -618,29 +610,6 @@ const createEvolu = (
       DbFactory,
       Effect.flatMap(({ createDb }) => createDb),
     );
-
-    const initialDataAsMutations = initialData
-      ? yield* _(
-          initialDataToMutations(initialData),
-          Effect.provideService(NanoIdGenerator, nanoIdGenerator),
-        )
-      : [];
-
-    db.init(schema, initialDataAsMutations).pipe(
-      Effect.flatMap(ownerStore.setState),
-      Effect.catchTag("NotSupportedPlatformError", () => Effect.void), // no-op
-      runFork,
-    );
-
-    const resetAppState = yield* _(
-      appState.init({
-        onRequestSync: () => {
-          // TODO
-        },
-        reloadUrl: config.reloadUrl,
-      }),
-    );
-
     Scope.addFinalizer(scope, db.dispose());
 
     const handlePatches =
@@ -670,6 +639,7 @@ const createEvolu = (
     const rowsStoreStateFromPatches = (patches: ReadonlyArray<QueryPatches>) =>
       Effect.sync((): RowsStoreState => {
         const rowsStoreState = rowsStore.getState();
+        if (patches.length === 0) return rowsStoreState;
         const queriesRows = Arr.map(
           patches,
           ({ query, patches }): [Query, ReadonlyArray<Row>] => [
@@ -733,10 +703,9 @@ const createEvolu = (
           queueMicrotask(() => {
             const [mutations, onCompletes] = Arr.unzip(queue);
             queue = [];
-            const queriesToRefresh = [...subscribedQueries.keys()];
             const onCompletesDef = onCompletes.filter(Predicate.isNotUndefined);
             releaseUnsubscribedLoadingPromises();
-            db.mutate(mutations, queriesToRefresh).pipe(
+            db.mutate(mutations, [...subscribedQueries.keys()]).pipe(
               Effect.flatMap(
                 /**
                  * The flushSync is for onComplete handlers only. For example,
@@ -757,6 +726,32 @@ const createEvolu = (
         return { id };
       };
     })();
+
+    const initialDataAsMutations = initialData
+      ? yield* _(
+          initialDataToMutations(initialData),
+          Effect.provideService(NanoIdGenerator, nanoIdGenerator),
+        )
+      : [];
+
+    db.init(schema, initialDataAsMutations).pipe(
+      Effect.flatMap(ownerStore.setState),
+      Effect.catchTag("NotSupportedPlatformError", () => Effect.void), // no-op
+      runFork,
+    );
+
+    const sync = () => {
+      db.sync([...subscribedQueries.keys()]).pipe(
+        Effect.flatMap(handlePatches({ flushSync: false })),
+        runFork,
+      );
+    };
+
+    const appStateReset = yield* _(
+      appState.init({ onRequestSync: sync, reloadUrl: config.reloadUrl }),
+    );
+
+    sync();
 
     const evolu: Evolu = {
       subscribeError: errorStore.subscribe,
@@ -858,22 +853,18 @@ const createEvolu = (
       createOrUpdate: mutate as Mutate<EvoluSchema, "createOrUpdate">,
 
       resetOwner: () => {
-        db.resetOwner().pipe(Effect.zipRight(resetAppState), runFork);
+        db.resetOwner().pipe(Effect.zipRight(appStateReset.reset), runFork);
       },
 
       restoreOwner: (mnemonic) => {
         db.restoreOwner(schema, mnemonic).pipe(
-          Effect.zipRight(resetAppState),
+          Effect.zipRight(appStateReset.reset),
           runFork,
         );
       },
 
       ensureSchema: (schema) => {
         db.ensureSchema(schema).pipe(runFork);
-      },
-
-      sync: () => {
-        //
       },
 
       dispose: () =>

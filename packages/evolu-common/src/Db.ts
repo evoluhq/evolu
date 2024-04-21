@@ -36,6 +36,7 @@ import { Bip39, Mnemonic, NanoIdGenerator } from "./Crypto.js";
 import { QueryPatches, makePatches } from "./Diff.js";
 import { Id, cast } from "./Model.js";
 import { Owner, OwnerId, makeOwner } from "./Owner.js";
+import { SyncLock } from "./Platform.js";
 import {
   createMessageTable,
   createMessageTableIndex,
@@ -60,7 +61,7 @@ import {
   isJsonObjectOrArray,
 } from "./Sqlite.js";
 import { makeStore } from "./Store.js";
-import { SyncFactory } from "./Sync.js";
+import { Message, NewMessage, Sync, SyncFactory } from "./Sync.js";
 
 export interface Db {
   readonly init: (
@@ -99,6 +100,10 @@ export interface Db {
   ) => Effect.Effect<void>;
 
   readonly ensureSchema: (schema: DbSchema) => Effect.Effect<void>;
+
+  readonly sync: (
+    queriesToRefresh: ReadonlyArray<Query>,
+  ) => Effect.Effect<ReadonlyArray<QueryPatches>, never, Config>;
 
   readonly dispose: () => Effect.Effect<void>;
 }
@@ -153,14 +158,14 @@ export type Row = {
 export class DbFactory extends Context.Tag("DbFactory")<
   DbFactory,
   {
-    readonly createDb: Effect.Effect<Db, never, Config>;
+    readonly createDb: Effect.Effect<Db>;
   }
 >() {}
 
 export const createDb: Effect.Effect<
   Db,
   never,
-  SqliteFactory | Bip39 | NanoIdGenerator | Time | SyncFactory
+  SqliteFactory | Bip39 | NanoIdGenerator | Time | SyncFactory | SyncLock
 > = Effect.gen(function* (_) {
   const { createSqlite } = yield* _(SqliteFactory);
   const { createSync } = yield* _(SyncFactory);
@@ -169,11 +174,14 @@ export const createDb: Effect.Effect<
     Context.add(Bip39, yield* _(Bip39)),
     Context.add(NanoIdGenerator, yield* _(NanoIdGenerator)),
     Context.add(Time, yield* _(Time)),
+    Context.add(SyncLock, yield* _(SyncLock)),
   );
 
   const afterInitContext = yield* _(
     Deferred.make<
-      Context.Context<Sqlite | Owner | Bip39 | NanoIdGenerator | Time>
+      Context.Context<
+        Bip39 | NanoIdGenerator | Time | SyncLock | Sqlite | Owner | Sync
+      >
     >(),
   );
 
@@ -192,6 +200,27 @@ export const createDb: Effect.Effect<
   const scope = yield* _(Scope.make());
   const loadQueries = yield* _(createLoadQueries);
 
+  const sync = (messages: ReadonlyArray<Message> = []) =>
+    Effect.gen(function* (_) {
+      yield* _(Effect.logTrace("Db sync"));
+      const sync = yield* _(Sync);
+      const syncLock = yield* _(SyncLock);
+      const syncLockRelease = yield* _(syncLock.tryAcquire);
+      if (Option.isNone(syncLockRelease)) return;
+
+      const { merkleTree, timestamp } = yield* _(readTimestampAndMerkleTree);
+      yield* _(
+        sync.sync({
+          merkleTree,
+          timestamp,
+          messages,
+        }),
+        // dostanu vysledek, zpracuju...
+        // nemam tam mit repeat furt?
+      );
+      // syncLockRelease.value.release
+    });
+
   const db: Db = {
     init: (schema, initialData) =>
       Effect.gen(function* (_) {
@@ -209,9 +238,16 @@ export const createDb: Effect.Effect<
           sqlite.transaction("exclusive"),
           Effect.provide(contextWithSqlite),
         );
+        const sync = yield* _(createSync, Scope.extend(scope));
+        yield* _(sync.init(owner));
         Deferred.unsafeDone(
           afterInitContext,
-          Effect.succeed(Context.add(contextWithSqlite, Owner, owner)),
+          Effect.succeed(
+            contextWithSqlite.pipe(
+              Context.add(Owner, owner),
+              Context.add(Sync, sync),
+            ),
+          ),
         );
         return owner;
       }),
@@ -257,8 +293,9 @@ export const createDb: Effect.Effect<
         }
 
         if (toSyncMutations.length > 0) {
-          yield* _(applyMutations(toSyncMutations));
-          // TODO: Sync
+          const messages = yield* _(applyMutations(toSyncMutations));
+          // TODO: Ask the Effect team for review.
+          yield* _(Effect.forkIn(sync(messages), scope));
         }
         return yield* _(loadQueries(queriesToRefresh));
       }).pipe(afterInit({ transaction: "exclusive" })),
@@ -283,9 +320,16 @@ export const createDb: Effect.Effect<
         afterInit({ transaction: "exclusive" }),
       ),
 
+    sync: (queriesToRefresh) =>
+      // TODO: Ask the Effect team for review.
+      Effect.forkIn(sync(), scope).pipe(
+        Effect.zipRight(loadQueries(queriesToRefresh)),
+        afterInit({ transaction: "shared" }),
+      ),
+
     dispose: () =>
       Effect.logTrace("Db dispose").pipe(
-        Effect.zipRight(Scope.close(scope, Exit.succeed("Db disposed"))),
+        Effect.tap(Scope.close(scope, Exit.succeed("Db disposed"))),
         afterInit({ transaction: "exclusive" }),
       ),
   };
@@ -526,6 +570,7 @@ const applyMutations = (mutations: ReadonlyArray<Mutation>) =>
     );
     const nextMerkleTree = yield* _(applyMessages(merkleTree, messages));
     yield* _(writeTimestampAndMerkleTree(nextTimestamp, nextMerkleTree));
+    return messages;
   });
 
 const readTimestampAndMerkleTree = Sqlite.pipe(
@@ -535,17 +580,6 @@ const readTimestampAndMerkleTree = Sqlite.pipe(
     merkleTree: merkleTree as MerkleTree,
   })),
 );
-
-export interface NewMessage {
-  readonly table: string;
-  readonly row: Id;
-  readonly column: string;
-  readonly value: Value;
-}
-
-export interface Message extends NewMessage {
-  readonly timestamp: TimestampString;
-}
 
 const mutationToNewMessages = (mutation: Mutation) =>
   pipe(
@@ -822,5 +856,6 @@ export const notSupportedPlatformWorker: Db = {
   resetOwner: () => Effect.void,
   restoreOwner: () => Effect.void,
   ensureSchema: () => Effect.void,
+  sync: () => Effect.succeed([]),
   dispose: () => Effect.void,
 };

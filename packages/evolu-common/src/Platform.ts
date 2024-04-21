@@ -1,6 +1,8 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import { Config } from "./Config.js";
 
 /**
  * FlushSync is a service for libraries like React to synchronously flush
@@ -18,22 +20,29 @@ export class AppState extends Context.Tag("AppState")<
     readonly init: (options: {
       readonly reloadUrl: string;
       readonly onRequestSync: () => void;
-    }) => Effect.Effect<Effect.Effect<void>>;
+    }) => Effect.Effect<AppStateReset>;
   }
 >() {}
 
-export interface SyncLock {
-  /**
-   * Try to acquire a sync lock. The caller must not call sync if a sync lock
-   * can't be acquired.
-   */
-  readonly acquire: Effect.Effect<boolean>;
-
-  /** Release a sync lock. */
-  readonly release: Effect.Effect<void>;
+interface AppStateReset {
+  readonly reset: Effect.Effect<void>;
 }
 
-export const SyncLock = Context.GenericTag<SyncLock>("@services/SyncLock");
+// TODO: Ask the Effect team for review.
+export class SyncLock extends Context.Tag("SyncLock")<
+  SyncLock,
+  {
+    readonly tryAcquire: Effect.Effect<
+      Option.Option<SyncLockRelease>,
+      never,
+      Config
+    >;
+  }
+>() {}
+
+export interface SyncLockRelease {
+  readonly release: Effect.Effect<void>;
+}
 
 export type Fetch = (
   url: string,
