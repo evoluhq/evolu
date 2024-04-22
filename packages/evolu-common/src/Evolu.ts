@@ -615,33 +615,39 @@ const createEvolu = (
     );
     Scope.addFinalizer(scope, db.dispose());
 
-    const initialDataAsMutations = initialData
-      ? yield* _(
-          initialDataToMutations(initialData),
-          Effect.provideService(NanoIdGenerator, nanoIdGenerator),
-        )
-      : [];
-
-    const onSyncStateChange = (state: SyncState) => {
-      syncStateStore.setState(state).pipe(runFork);
-    };
-
-    db.init(schema, initialDataAsMutations, onSyncStateChange).pipe(
-      Effect.flatMap(ownerStore.setState),
-      Effect.catchTag("NotSupportedPlatformError", () => Effect.void), // no-op
-      runFork,
-    );
+    const sync =
+      ({ refreshQueries }: { refreshQueries: boolean }) =>
+      () => {
+        Effect.flatMap(
+          db.sync(refreshQueries ? [...subscribedQueries.keys()] : []),
+          handlePatches({ flushSync: false }),
+        ).pipe(runFork);
+      };
 
     const appStateReset = yield* _(
       appState.init({
-        onRequestSync: () => {
-          db.sync([...subscribedQueries.keys()]).pipe(
-            Effect.flatMap(handlePatches({ flushSync: false })),
-            runFork,
-          );
-        },
+        onRequestSync: sync({ refreshQueries: true }),
         reloadUrl: config.reloadUrl,
       }),
+    );
+
+    const initialDataAsMutations = yield* _(
+      initialDataToMutations(initialData),
+      Effect.provideService(NanoIdGenerator, nanoIdGenerator),
+    );
+
+    const onSyncStateChange = (state: SyncState) => {
+      Effect.logDebug(["Evolu onSyncStateChange", { state }]).pipe(
+        Effect.zipRight(syncStateStore.setState(state)),
+        runFork,
+      );
+    };
+
+    db.init(schema, initialDataAsMutations, onSyncStateChange).pipe(
+      Effect.tap(sync({ refreshQueries: false })),
+      Effect.flatMap(ownerStore.setState),
+      Effect.catchTag("NotSupportedPlatformError", () => Effect.void), // no-op
+      runFork,
     );
 
     const handlePatches =
@@ -879,7 +885,9 @@ const createEvolu = (
     return evolu;
   });
 
-const initialDataToMutations = (initialData: EvoluConfig["initialData"]) =>
+const initialDataToMutations = (
+  initialData: EvoluConfig["initialData"] = constVoid,
+) =>
   Effect.map(NanoIdGenerator, (nanoIdGenerator) => {
     const mutations: Mutation[] = [];
     const mutate: Mutate = (table, { id, ...values }) => {
