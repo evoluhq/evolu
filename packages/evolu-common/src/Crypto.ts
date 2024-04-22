@@ -97,35 +97,35 @@ export const slip21Derive = (
     return m.slice(32, 64);
   });
 
-/** Alias to xsalsa20poly1305, for compatibility with libsodium/nacl */
-export interface SecretBox {
-  readonly seal: (
-    key: Uint8Array,
-    plaintext: Uint8Array,
-  ) => Effect.Effect<Uint8Array>;
-
-  readonly open: (
-    key: Uint8Array,
-    ciphertext: Uint8Array,
-  ) => Effect.Effect<Uint8Array>;
-}
-
-export const SecretBox = Context.GenericTag<SecretBox>("@services/SecretBox");
-
-export const SecretBoxLive = Layer.succeed(
+export class SecretBox extends Context.Tag("SecretBox")<
   SecretBox,
-  SecretBox.of({
-    seal: (key, plaintext) =>
-      Effect.sync(() => {
-        const nonce = randomBytes(24);
-        const ciphertext = secretbox(key, nonce).seal(plaintext);
-        return concatBytes(nonce, ciphertext);
-      }),
-    open: (key, ciphertext) =>
-      Effect.sync(() => {
-        const nonce = ciphertext.subarray(0, 24);
-        const ciphertextWithoutNonce = ciphertext.subarray(24);
-        return secretbox(key, nonce).open(ciphertextWithoutNonce);
-      }),
-  }),
-);
+  {
+    readonly seal: (
+      key: Uint8Array,
+      plaintext: Uint8Array,
+    ) => Effect.Effect<Uint8Array>;
+
+    readonly open: (
+      key: Uint8Array,
+      ciphertext: Uint8Array,
+    ) => Effect.Effect<Uint8Array>;
+  }
+>() {
+  static Live = Layer.succeed(
+    SecretBox,
+    SecretBox.of({
+      seal: (key, plaintext) =>
+        Effect.sync(() => {
+          const nonce = randomBytes(24);
+          const ciphertext = secretbox(key, nonce).seal(plaintext);
+          return concatBytes(nonce, ciphertext);
+        }),
+      open: (key, ciphertext) =>
+        Effect.sync(() => {
+          const nonce = ciphertext.subarray(0, 24);
+          const ciphertextWithoutNonce = ciphertext.subarray(24);
+          return secretbox(key, nonce).open(ciphertextWithoutNonce);
+        }),
+    }),
+  );
+}
