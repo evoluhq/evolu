@@ -37,17 +37,7 @@ import { QueryPatches, makePatches } from "./Diff.js";
 import { Id, cast } from "./Model.js";
 import { Owner, OwnerId, makeOwner } from "./Owner.js";
 import { SyncLock } from "./Platform.js";
-import {
-  createMessageTable,
-  createMessageTableIndex,
-  createOwnerTable,
-  insertIntoMessagesIfNew,
-  insertOwner,
-  selectLastTimestampForTableRowColumn,
-  selectOwner,
-  selectOwnerTimestampAndMerkleTree,
-  updateOwnerTimestampAndMerkleTree,
-} from "./Sql.js";
+import * as Sql from "./Sql.js";
 import {
   JsonObjectOrArray,
   Sqlite,
@@ -61,13 +51,22 @@ import {
   isJsonObjectOrArray,
 } from "./Sqlite.js";
 import { makeStore } from "./Store.js";
-import { Message, NewMessage, Sync, SyncFactory } from "./Sync.js";
+import {
+  Message,
+  NewMessage,
+  Sync,
+  SyncData,
+  SyncFactory,
+  SyncState,
+} from "./Sync.js";
 
 export interface Db {
   readonly init: (
     schema: DbSchema,
     initialData: ReadonlyArray<Mutation>,
-    // TODO: onError
+    onSyncStateChange: (state: SyncState) => void,
+    //
+    // TODO: onError, onReceive, onSyncStateChange
   ) => Effect.Effect<
     Owner,
     | NotSupportedPlatformError
@@ -180,7 +179,14 @@ export const createDb: Effect.Effect<
   const afterInitContext = yield* _(
     Deferred.make<
       Context.Context<
-        Bip39 | NanoIdGenerator | Time | SyncLock | Sqlite | Owner | Sync
+        | Bip39
+        | NanoIdGenerator
+        | Time
+        | SyncLock
+        | Sqlite
+        | Owner
+        | Sync
+        | Callbacks
       >
     >(),
   );
@@ -200,31 +206,10 @@ export const createDb: Effect.Effect<
   const scope = yield* _(Scope.make());
   const loadQueries = yield* _(createLoadQueries);
 
-  const sync = (messages: ReadonlyArray<Message> = []) =>
-    Effect.gen(function* (_) {
-      yield* _(Effect.logTrace("Db sync"));
-      const sync = yield* _(Sync);
-      const syncLock = yield* _(SyncLock);
-      const syncLockRelease = yield* _(syncLock.tryAcquire);
-      if (Option.isNone(syncLockRelease)) return;
-
-      const { merkleTree, timestamp } = yield* _(readTimestampAndMerkleTree);
-      yield* _(
-        sync.sync({
-          merkleTree,
-          timestamp,
-          messages,
-        }),
-        // dostanu vysledek, zpracuju...
-        // nemam tam mit repeat furt?
-      );
-      // syncLockRelease.value.release
-    });
-
   const db: Db = {
-    init: (schema, initialData) =>
+    init: (schema, initialData, onSyncStateChange) =>
       Effect.gen(function* (_) {
-        yield* _(Effect.logDebug(["Db init", schema]));
+        yield* _(Effect.logDebug(["Db init", { schema }]));
         const sqlite = yield* _(createSqlite, Scope.extend(scope));
         const contextWithSqlite = Context.add(initContext, Sqlite, sqlite);
         const owner = yield* _(
@@ -238,7 +223,11 @@ export const createDb: Effect.Effect<
           sqlite.transaction("exclusive"),
           Effect.provide(contextWithSqlite),
         );
-        const sync = yield* _(createSync, Scope.extend(scope));
+        const sync = yield* _(
+          createSync,
+          Effect.provide(initContext),
+          Scope.extend(scope),
+        );
         yield* _(sync.init(owner));
         Deferred.unsafeDone(
           afterInitContext,
@@ -246,6 +235,7 @@ export const createDb: Effect.Effect<
             contextWithSqlite.pipe(
               Context.add(Owner, owner),
               Context.add(Sync, sync),
+              Context.add(Callbacks, { onSyncStateChange }),
             ),
           ),
         );
@@ -253,7 +243,7 @@ export const createDb: Effect.Effect<
       }),
 
     loadQueries: (queries) =>
-      Effect.logDebug(["Db loadQueries", queries]).pipe(
+      Effect.logDebug(["Db loadQueries", { queries }]).pipe(
         Effect.zipRight(loadQueries(queries)),
         afterInit({ transaction: "shared" }),
       ),
@@ -293,9 +283,10 @@ export const createDb: Effect.Effect<
         }
 
         if (toSyncMutations.length > 0) {
-          const messages = yield* _(applyMutations(toSyncMutations));
-          // TODO: Ask the Effect team for review.
-          yield* _(Effect.forkIn(sync(messages), scope));
+          yield* _(
+            applyMutations(toSyncMutations),
+            Effect.tap((syncData) => Effect.forkIn(sync(syncData), scope)),
+          );
         }
         return yield* _(loadQueries(queriesToRefresh));
       }).pipe(afterInit({ transaction: "exclusive" })),
@@ -321,8 +312,10 @@ export const createDb: Effect.Effect<
       ),
 
     sync: (queriesToRefresh) =>
-      // TODO: Ask the Effect team for review.
-      Effect.forkIn(sync(), scope).pipe(
+      Effect.logDebug(["Db sync", { queriesToRefresh }]).pipe(
+        Effect.zipRight(readTimestampAndMerkleTree),
+        // TODO: Ask the Effect team for review. Is scope usage OK?
+        Effect.tap((syncData) => Effect.forkIn(sync(syncData), scope)),
         Effect.zipRight(loadQueries(queriesToRefresh)),
         afterInit({ transaction: "shared" }),
       ),
@@ -336,6 +329,13 @@ export const createDb: Effect.Effect<
 
   return db;
 });
+
+class Callbacks extends Context.Tag("Callbacks")<
+  Callbacks,
+  {
+    readonly onSyncStateChange: (state: SyncState) => void;
+  }
+>() {}
 
 const createLoadQueries = Effect.gen(function* (_) {
   const rowsStore = yield* _(makeRowsStore);
@@ -518,7 +518,7 @@ const indexEquivalence: Equivalence<Index> = (self, that) =>
 
 const readOwner = Effect.logTrace("Db readOwner").pipe(
   Effect.zipRight(Sqlite),
-  Effect.flatMap((sqlite) => sqlite.exec(selectOwner)),
+  Effect.flatMap((sqlite) => sqlite.exec(Sql.selectOwner)),
   Effect.map(
     ({ rows: [row] }): Owner => ({
       id: row.id as OwnerId,
@@ -535,11 +535,11 @@ const createOwner = (mnemonic?: Mnemonic) =>
     ),
     Effect.tap(([owner, sqlite, initialTimestampString]) =>
       Effect.all([
-        sqlite.exec(createMessageTable),
-        sqlite.exec(createMessageTableIndex),
-        sqlite.exec(createOwnerTable),
+        sqlite.exec(Sql.createMessageTable),
+        sqlite.exec(Sql.createMessageTableIndex),
+        sqlite.exec(Sql.createOwnerTable),
         sqlite.exec({
-          ...insertOwner,
+          ...Sql.insertOwner,
           parameters: [
             owner.id,
             owner.mnemonic,
@@ -570,11 +570,18 @@ const applyMutations = (mutations: ReadonlyArray<Mutation>) =>
     );
     const nextMerkleTree = yield* _(applyMessages(merkleTree, messages));
     yield* _(writeTimestampAndMerkleTree(nextTimestamp, nextMerkleTree));
-    return messages;
+    const syncData: SyncData = {
+      messages,
+      timestamp: nextTimestamp,
+      merkleTree: nextMerkleTree,
+    };
+    return syncData;
   });
 
 const readTimestampAndMerkleTree = Sqlite.pipe(
-  Effect.flatMap((sqlite) => sqlite.exec(selectOwnerTimestampAndMerkleTree)),
+  Effect.flatMap((sqlite) =>
+    sqlite.exec(Sql.selectOwnerTimestampAndMerkleTree),
+  ),
   Effect.map(({ rows: [{ timestamp, merkleTree }] }) => ({
     timestamp: unsafeTimestampFromString(timestamp as TimestampString),
     merkleTree: merkleTree as MerkleTree,
@@ -616,7 +623,7 @@ const applyMessages = (
       Effect.reduce(messages, merkleTree, (currentMerkleTree, message) =>
         sqlite
           .exec({
-            ...selectLastTimestampForTableRowColumn,
+            ...Sql.selectLastTimestampForTableRowColumn,
             parameters: [message.table, message.row, message.column, 1],
           })
           .pipe(
@@ -633,7 +640,7 @@ const applyMessages = (
                 return Effect.succeed(currentMerkleTree);
               return Effect.map(
                 sqlite.exec({
-                  ...insertIntoMessagesIfNew,
+                  ...Sql.insertIntoMessagesIfNew,
                   parameters: [
                     message.timestamp,
                     message.table,
@@ -725,7 +732,7 @@ const writeTimestampAndMerkleTree = (
 ) =>
   Effect.flatMap(Sqlite, (sqlite) =>
     sqlite.exec({
-      ...updateOwnerTimestampAndMerkleTree,
+      ...Sql.updateOwnerTimestampAndMerkleTree,
       parameters: [
         merkleTreeToString(merkleTree),
         timestampToString(timestamp),
@@ -746,6 +753,80 @@ const dropAllTables = Effect.gen(function* (_) {
     .join("");
   yield* _(sqlite.exec({ sql }));
 });
+
+const sync = (
+  _syncData: SyncData,
+): Effect.Effect<void, never, Sqlite | SyncLock | Config | Sync | Callbacks> =>
+  Effect.gen(function* (_) {
+    const syncLockRelease = yield* _(
+      Effect.flatMap(SyncLock, (syncLock) => syncLock.tryAcquire),
+    );
+    if (Option.isNone(syncLockRelease)) return;
+    const callbacks = yield* _(Callbacks);
+    callbacks.onSyncStateChange({ _tag: "SyncStateIsSyncing" });
+
+    // syncWorkerOnMessage({ _tag: "SyncStateIsSyncing" });
+    // const { sync } = yield* _(Sync);
+
+    // const receivedMessages = yield* _(sync(syncData));
+
+    // yield* _(
+    //   sync(syncData),
+    //   Effect.map(() => {
+    //     // let { timestamp, merkleTree } = yield* _(readTimestampAndMerkleTree);
+    //     // const dbWorkerOnMessage = yield* _(DbWorkerOnMessage);
+    //     // if (messages.length > 0) {
+    //     //   for (const message of messages)
+    //     //     timestamp = yield* _(
+    //     //       unsafeTimestampFromString(message.timestamp),
+    //     //       (remote) => receiveTimestamp({ local: timestamp, remote }),
+    //     //     );
+    //     //   merkleTree = yield* _(applyMessages({ merkleTree, messages }));
+    //     //   yield* _(writeTimestampAndMerkleTree({ timestamp, merkleTree }));
+    //     //   dbWorkerOnMessage({ _tag: "onReceive" });
+    //     // }
+    //     // const diff = diffMerkleTrees(response.merkleTree, merkleTree);
+    //     // const syncWorkerPostMessage = yield* _(SyncWorkerPostMessage);
+    //     // syncLockRelease.value.release
+    //     // if (Option.isNone(diff)) {
+    //     //   syncWorkerPostMessage({ _tag: "syncCompleted" });
+    //     //   dbWorkerOnMessage({
+    //     //     _tag: "onSyncState",
+    //     //     state: {
+    //     //       _tag: "SyncStateIsSynced",
+    //     //       time: yield* _(Time.pipe(Effect.flatMap((time) => time.now))),
+    //     //     },
+    //     //   });
+    //     //   return;
+    //     // }
+    //     // const sqlite = yield* _(Sqlite);
+    //     // const config = yield* _(Config);
+    //     // const owner = yield* _(Owner);
+    //     // const messagesToSync = yield* _(
+    //     //   sqlite.exec({
+    //     //     ...Sql.selectMessagesToSync,
+    //     //     parameters: [timestampToString(makeSyncTimestamp(diff.value))],
+    //     //   }),
+    //     //   Effect.map(({ rows }) => rows as unknown as ReadonlyArray<Message>),
+    //     // );
+    //     // if (response.syncLoopCount > 100) {
+    //     //   // TODO: dbWorkerOnMessage({ _tag: "onError" });
+    //     //   // eslint-disable-next-line no-console
+    //     //   console.error("Evolu: syncLoopCount > 100");
+    //     //   return;
+    //     // }
+    //     // syncWorkerPostMessage({
+    //     //   _tag: "sync",
+    //     //   syncUrl: config.syncUrl,
+    //     //   messages: messagesToSync,
+    //     //   timestamp,
+    //     //   merkleTree,
+    //     //   owner,
+    //     //   syncLoopCount: response.syncLoopCount + 1,
+    //     // });
+    //   }),
+    // );
+  });
 
 interface SerializedSqliteQuery {
   readonly sql: string;

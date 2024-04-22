@@ -1,6 +1,5 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import { Config } from "./Config.js";
 
@@ -43,36 +42,3 @@ export class SyncLock extends Context.Tag("SyncLock")<
 export interface SyncLockRelease {
   readonly release: Effect.Effect<void>;
 }
-
-export type Fetch = (
-  url: string,
-  body: Uint8Array,
-) => Effect.Effect<Response, FetchError>;
-
-export const Fetch = Context.GenericTag<Fetch>("@services/Fetch");
-
-/**
- * This error occurs when there is a problem with the network connection, or the
- * server cannot be reached.
- */
-export interface FetchError {
-  readonly _tag: "FetchError";
-}
-
-export const FetchLive = Layer.succeed(
-  Fetch,
-  Fetch.of((url, body) =>
-    Effect.tryPromise({
-      try: () =>
-        fetch(url, {
-          method: "POST",
-          body,
-          headers: {
-            "Content-Type": "application/x-protobuf",
-            "Content-Length": body.length.toString(),
-          },
-        }),
-      catch: (): FetchError => ({ _tag: "FetchError" }),
-    }),
-  ),
-);

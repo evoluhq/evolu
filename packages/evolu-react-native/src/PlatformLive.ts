@@ -43,11 +43,13 @@ export const AppStateLive = Layer.succeed(
           netInfoState = current;
         });
 
-        return process.env.NODE_ENV === "development"
-          ? Effect.sync(() => {
-              DevSettings.reload();
-            })
-          : Effect.promise(() => reloadAsync());
+        const reset =
+          process.env.NODE_ENV === "development"
+            ? Effect.sync(() => {
+                DevSettings.reload();
+              })
+            : Effect.promise(() => reloadAsync());
+        return { reset };
       }),
   }),
 );
@@ -55,15 +57,13 @@ export const AppStateLive = Layer.succeed(
 export const SyncLockLive = Layer.effect(
   SyncLock,
   Effect.sync(() => {
-    let hasSyncLock = false;
+    // let hasSyncLock = false;
     return SyncLock.of({
-      acquire: Effect.sync(() => {
-        if (hasSyncLock) return false;
-        hasSyncLock = true;
-        return true;
-      }),
-      release: Effect.sync(() => {
-        hasSyncLock = false;
+      tryAcquire: Effect.sync(() => {
+        throw "TODO";
+        // if (hasSyncLock) return false;
+        // hasSyncLock = true;
+        // return true;
       }),
     });
   }),

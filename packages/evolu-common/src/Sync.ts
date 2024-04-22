@@ -1,24 +1,49 @@
+import * as Http from "@effect/platform/HttpClient";
+import * as S from "@effect/schema/Schema";
+import { concatBytes } from "@noble/ciphers/utils";
+import { BinaryReader, BinaryWriter } from "@protobuf-ts/runtime";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
+import * as Arr from "effect/Array";
 import * as Effect from "effect/Effect";
+import * as Function from "effect/Function";
+import * as Option from "effect/Option";
+import * as Predicate from "effect/Predicate";
 import * as Scope from "effect/Scope";
 import { Config } from "./Config.js";
-import { MerkleTree, Millis, Timestamp, TimestampString } from "./Crdt.js";
+import {
+  MerkleTree,
+  Millis,
+  Timestamp,
+  TimestampString,
+  merkleTreeToString,
+} from "./Crdt.js";
+import { SecretBox } from "./Crypto.js";
 import { Id } from "./Model.js";
 import { Owner } from "./Owner.js";
-import { Value } from "./Sqlite.js";
+import {
+  EncryptedMessage,
+  MessageContent,
+  SyncRequest,
+  SyncResponse,
+} from "./Protobuf.js";
+import { JsonObjectOrArray, Value } from "./Sqlite.js";
 
 export class Sync extends Context.Tag("Sync")<
   Sync,
   {
-    readonly init: (owner: Owner) => Effect.Effect<void, never, Config>;
-    readonly sync: (options: {
-      merkleTree: MerkleTree;
-      timestamp: Timestamp;
-      messages: ReadonlyArray<Message>;
-    }) => Effect.Effect<void>;
+    readonly init: (owner: Owner) => Effect.Effect<void>;
+    readonly sync: (
+      syncData: SyncData,
+    ) => Effect.Effect<ReadonlyArray<Message>, SyncStateIsNotSynced, Config>;
   }
 >() {}
+
+export interface SyncData {
+  merkleTree: MerkleTree;
+  timestamp: Timestamp;
+  messages?: ReadonlyArray<Message>;
+}
 
 export interface Message extends NewMessage {
   readonly timestamp: TimestampString;
@@ -60,23 +85,20 @@ export interface SyncStateIsSynced {
 
 export interface SyncStateIsNotSynced {
   readonly _tag: "SyncStateIsNotSynced";
-  readonly error:
-    | SyncStateNetworkError
-    | SyncStateServerError
-    | SyncStatePaymentRequiredError;
+  readonly error: NetworkError | ServerError | PaymentRequiredError;
 }
 
-export interface SyncStateNetworkError {
-  readonly _tag: "SyncStateNetworkError";
+export interface NetworkError {
+  readonly _tag: "NetworkError";
 }
 
-export interface SyncStateServerError {
-  readonly _tag: "SyncStateServerError";
+export interface ServerError {
+  readonly _tag: "ServerError";
   readonly status: number;
 }
 
-export interface SyncStatePaymentRequiredError {
-  readonly _tag: "SyncStatePaymentRequiredError";
+export interface PaymentRequiredError {
+  readonly _tag: "PaymentRequiredError";
 }
 
 export interface SyncService extends Context.Tag.Service<typeof Sync> {}
@@ -88,287 +110,188 @@ export class SyncFactory extends Context.Tag("SyncFactory")<
   }
 >() {}
 
-export const createSync: Effect.Effect<SyncService, never, never> = Effect.gen(
-  function* (_) {
-    const afterInitContext = yield* _(
-      Deferred.make<Context.Context<Config | Owner>>(),
-    );
+export const createSync = Effect.gen(function* (_) {
+  const initContext = Context.empty().pipe(
+    Context.add(SecretBox, yield* _(SecretBox)),
+  );
 
-    return Sync.of({
-      init: (owner) =>
-        Effect.flatMap(Config, (config) =>
+  const afterInitContext = yield* _(
+    Deferred.make<Context.Context<SecretBox | Owner>>(),
+  );
+
+  return Sync.of({
+    init: (owner) =>
+      Effect.logDebug(["Sync init", { owner }]).pipe(
+        Effect.tap(
           Deferred.succeed(
             afterInitContext,
-            Context.empty().pipe(
-              Context.add(Config, config),
-              Context.add(Owner, owner),
+            initContext.pipe(Context.add(Owner, owner)),
+          ),
+        ),
+      ),
+    sync: ({ merkleTree, timestamp, messages }) =>
+      Effect.gen(function* (_) {
+        yield* _(
+          Effect.logDebug(["Sync sync", { merkleTree, timestamp, messages }]),
+        );
+        const secretBox = yield* _(SecretBox);
+        const owner = yield* _(Owner);
+        const config = yield* _(Config);
+
+        return yield* _(
+          Effect.forEach(messages || [], ({ timestamp, ...newMessage }) =>
+            Effect.map(
+              secretBox.seal(
+                owner.encryptionKey,
+                newMessageToBinary(newMessage),
+              ),
+              (content): EncryptedMessage => ({ timestamp, content }),
             ),
           ),
-        ),
-      sync: ({ merkleTree, timestamp, messages }) =>
-        Effect.gen(function* (_) {
-          const config = yield* _(Config);
-          // eslint-disable-next-line no-console
-          console.log({
-            config,
-            merkleTree,
-            timestamp,
-            messages,
-          });
-
-          // const config = yield* _(Config)
-        }).pipe((effect) =>
-          Effect.flatMap(Deferred.await(afterInitContext), (context) =>
-            Effect.provide(effect, context),
+          Effect.map((encrypedMessages) =>
+            SyncRequest.toBinary(
+              {
+                messages: encrypedMessages,
+                userId: owner.id,
+                nodeId: timestamp.node,
+                merkleTree: merkleTreeToString(merkleTree),
+              },
+              binaryWriteOptions,
+            ),
           ),
+          Effect.flatMap((body) =>
+            Http.request
+              .post(config.syncUrl)
+              .pipe(
+                Http.request.uint8ArrayBody(body, "application/x-protobuf"),
+                Http.client.fetchOk,
+                Http.response.arrayBuffer,
+              ),
+          ),
+          Effect.map((buffer) =>
+            SyncResponse.fromBinary(new Uint8Array(buffer), binaryReadOptions),
+          ),
+          Effect.flatMap((syncResponse) =>
+            Effect.forEach(syncResponse.messages, (encrypedMessage) =>
+              Effect.map(
+                secretBox.open(owner.encryptionKey, encrypedMessage.content),
+                (binary) => [binary, encrypedMessage.timestamp] as const,
+              ),
+            ),
+          ),
+          Effect.map(
+            Arr.filterMap(([binary, timestamp]) =>
+              Option.map(
+                newMessageFromBinary(binary),
+                (newMessage): Message => ({ ...newMessage, timestamp }),
+              ),
+            ),
+          ),
+          Effect.catchTag("RequestError", () =>
+            Effect.fail<SyncStateIsNotSynced>({
+              _tag: "SyncStateIsNotSynced",
+              error: { _tag: "NetworkError" },
+            }),
+          ),
+          Effect.catchTag("ResponseError", ({ response: { status } }) => {
+            switch (status) {
+              case 402:
+                return Effect.fail<SyncStateIsNotSynced>({
+                  _tag: "SyncStateIsNotSynced",
+                  error: { _tag: "PaymentRequiredError" },
+                });
+              default:
+                return Effect.fail<SyncStateIsNotSynced>({
+                  _tag: "SyncStateIsNotSynced",
+                  error: { _tag: "ServerError", status },
+                });
+            }
+          }),
+        );
+      }).pipe((effect) =>
+        Effect.flatMap(Deferred.await(afterInitContext), (context) =>
+          Effect.provide(effect, context),
         ),
-    });
-  },
-);
+      ),
+  });
+});
 
-// import * as S from "@effect/schema/Schema";
-// import { concatBytes } from "@noble/ciphers/utils";
-// import { BinaryReader, BinaryWriter } from "@protobuf-ts/runtime";
-// import * as Context from "effect/Context";
-// import * as Effect from "effect/Effect";
-// import * as Equivalence from "effect/Equivalence";
-// import * as Function from "effect/Function";
-// import { absurd, identity } from "effect/Function";
-// import * as Layer from "effect/Layer";
-// import * as Match from "effect/Match";
-// import * as Option from "effect/Option";
-// import * as Predicate from "effect/Predicate";
-// import * as ReadonlyArray from "effect/ReadonlyArray";
-// import {
-//   MerkleTree,
-//   Millis,
-//   Timestamp,
-//   TimestampString,
-//   merkleTreeToString,
-//   unsafeMerkleTreeFromString,
-// } from "./Crdt.js";
-// import { SecretBox } from "./Crypto.js";
-// import { UnexpectedError, makeUnexpectedError } from "./ErrorStore.js";
-// import { Id } from "./Model.js";
-// import { Owner } from "./Owner.js";
-// import { Fetch, SyncLock } from "./Platform.js";
-// import {
-//   EncryptedMessage,
-//   MessageContent,
-//   SyncRequest,
-//   SyncResponse,
-// } from "./Protobuf.js";
-// import { JsonObjectOrArray, Value } from "./Sqlite.js";
-// import { Messaging } from "./Types.js";
+const newMessageToBinary = ({ value, ...rest }: NewMessage): Uint8Array =>
+  concatBytes(
+    version1,
+    MessageContent.toBinary(
+      { value: valueToProtobuf(value), ...rest },
+      binaryWriteOptions,
+    ),
+  );
 
-// const version1 = new Uint8Array([0, 1]);
+const version1 = new Uint8Array([0, 1]);
 
-// const valueToProtobuf = (value: Value): MessageContent["value"] => {
-//   switch (typeof value) {
-//     case "string":
-//       return { oneofKind: "stringValue", stringValue: value };
-//     case "number":
-//       return {
-//         oneofKind: "numberValue",
-//         numberValue: S.encodeSync(S.NumberFromString)(value),
-//       };
-//   }
-//   if (value == null) return { oneofKind: undefined };
-//   if (Predicate.isUint8Array(value))
-//     return { oneofKind: "bytesValue", bytesValue: value };
-//   return { oneofKind: "jsonValue", jsonValue: JSON.stringify(value) };
-// };
+const valueToProtobuf = (value: Value): MessageContent["value"] => {
+  switch (typeof value) {
+    case "string":
+      return { oneofKind: "stringValue", stringValue: value };
+    case "number":
+      return {
+        oneofKind: "numberValue",
+        numberValue: S.encodeSync(S.NumberFromString)(value),
+      };
+  }
+  if (value == null) return { oneofKind: undefined };
+  if (Predicate.isUint8Array(value))
+    return { oneofKind: "bytesValue", bytesValue: value };
+  return { oneofKind: "jsonValue", jsonValue: JSON.stringify(value) };
+};
 
-// const valueFromProtobuf = (value: MessageContent["value"]): Value => {
-//   switch (value.oneofKind) {
-//     case "numberValue":
-//       return S.decodeSync(S.NumberFromString)(value.numberValue);
-//     case "stringValue":
-//       return value.stringValue;
-//     case "bytesValue":
-//       return value.bytesValue;
-//     case "jsonValue":
-//       return JSON.parse(value.jsonValue) as JsonObjectOrArray;
-//     case undefined:
-//       return null;
-//     default:
-//       return absurd(value);
-//   }
-// };
+// The 'protobuf-ts' uses TextEncoder, but polyfill fast-text-encoding
+// doesn't support the fatal option.
+// https://github.com/timostamm/protobuf-ts/issues/184#issuecomment-1658443836
+const binaryWriteOptions = {
+  writerFactory: (): BinaryWriter =>
+    new BinaryWriter({
+      encode: (input: string): Uint8Array => new TextEncoder().encode(input),
+    }),
+};
 
-// const newMessageToBinary = ({ value, ...rest }: NewMessage): Uint8Array =>
-//   concatBytes(
-//     version1,
-//     MessageContent.toBinary(
-//       { value: valueToProtobuf(value), ...rest },
-//       binaryWriteOptions,
-//     ),
-//   );
+const binaryReadOptions = {
+  readerFactory: (bytes: Uint8Array): BinaryReader =>
+    new BinaryReader(bytes, {
+      decode: (input: Uint8Array): string => new TextDecoder().decode(input),
+    }),
+};
 
-// const startsWithArray = (array: Uint8Array, prefix: Uint8Array): boolean => {
-//   if (prefix.length > array.length) return false;
-//   for (let i = 0; i < prefix.length; i++) {
-//     if (array[i] !== prefix[i]) return false;
-//   }
-//   return true;
-// };
+const newMessageFromBinary = (
+  binary: Uint8Array,
+): Option.Option<NewMessage> => {
+  if (!startsWithArray(binary, version1)) return Option.none();
+  const { value, ...content } = MessageContent.fromBinary(
+    binary.slice(version1.length),
+    binaryReadOptions,
+  );
+  return Option.some({ value: valueFromProtobuf(value), ...content });
+};
 
-// const newMessageFromBinary = (
-//   binary: Uint8Array,
-// ): Option.Option<NewMessage> => {
-//   if (!startsWithArray(binary, version1)) return Option.none();
-//   const { value, ...content } = MessageContent.fromBinary(
-//     binary.slice(version1.length),
-//     binaryReadOptions,
-//   );
-//   return Option.some({ value: valueFromProtobuf(value), ...content });
-// };
+const startsWithArray = (array: Uint8Array, prefix: Uint8Array): boolean => {
+  if (prefix.length > array.length) return false;
+  for (let i = 0; i < prefix.length; i++) {
+    if (array[i] !== prefix[i]) return false;
+  }
+  return true;
+};
 
-// // The 'protobuf-ts' uses TextEncoder, but polyfill fast-text-encoding
-// // doesn't support the fatal option.
-// // https://github.com/timostamm/protobuf-ts/issues/184#issuecomment-1658443836
-// const binaryWriteOptions = {
-//   writerFactory: (): BinaryWriter =>
-//     new BinaryWriter({
-//       encode: (input: string): Uint8Array => new TextEncoder().encode(input),
-//     }),
-// };
-// const binaryReadOptions = {
-//   readerFactory: (bytes: Uint8Array): BinaryReader =>
-//     new BinaryReader(bytes, {
-//       decode: (input: Uint8Array): string => new TextDecoder().decode(input),
-//     }),
-// };
-
-// const sync = (
-//   input: SyncWorkerInputSync,
-// ): Effect.Effect<
-//   void,
-//   never,
-//   SyncLock | SyncWorkerOnMessage | Fetch | SecretBox
-// > =>
-//   Effect.gen(function* (_) {
-//     const syncLock = yield* _(SyncLock);
-//     const syncWorkerOnMessage = yield* _(SyncWorkerOnMessage);
-//     const fetch = yield* _(Fetch);
-//     const secretBox = yield* _(SecretBox);
-
-//     if (input.syncLoopCount === 0) {
-//       if (!(yield* _(syncLock.acquire))) return;
-//       syncWorkerOnMessage({ _tag: "SyncStateIsSyncing" });
-//     }
-
-//     yield* _(
-//       Effect.forEach(input.messages, ({ timestamp, ...newMessage }) =>
-//         secretBox
-//           .seal(input.owner.encryptionKey, newMessageToBinary(newMessage))
-//           .pipe(
-//             Effect.map((content): EncryptedMessage => ({ timestamp, content })),
-//           ),
-//       ),
-//       Effect.map((messages) =>
-//         SyncRequest.toBinary(
-//           {
-//             messages,
-//             userId: input.owner.id,
-//             nodeId: input.timestamp.node,
-//             merkleTree: merkleTreeToString(input.merkleTree),
-//           },
-//           binaryWriteOptions,
-//         ),
-//       ),
-//       Effect.flatMap((body) => fetch(input.syncUrl, body)),
-//       Effect.catchTag("FetchError", () =>
-//         Effect.fail<SyncStateIsNotSyncedError>({
-//           _tag: "SyncStateIsNotSyncedError",
-//           error: { _tag: "NetworkError" },
-//         }),
-//       ),
-//       Effect.flatMap((response) => {
-//         switch (response.status) {
-//           case 402:
-//             return Effect.fail<SyncStateIsNotSyncedError>({
-//               _tag: "SyncStateIsNotSyncedError",
-//               error: { _tag: "PaymentRequiredError" },
-//             });
-//           case 200:
-//             return Effect.promise(() =>
-//               response
-//                 .arrayBuffer()
-//                 .then((buffer) => new Uint8Array(buffer))
-//                 .then((array) =>
-//                   SyncResponse.fromBinary(array, binaryReadOptions),
-//                 ),
-//             );
-//           default:
-//             return Effect.fail<SyncStateIsNotSyncedError>({
-//               _tag: "SyncStateIsNotSyncedError",
-//               error: { _tag: "ServerError", status: response.status },
-//             });
-//         }
-//       }),
-//       Effect.flatMap((syncResponse) =>
-//         Effect.forEach(syncResponse.messages, ({ timestamp, content }) =>
-//           secretBox
-//             .open(input.owner.encryptionKey, content)
-//             .pipe(
-//               Effect.map(newMessageFromBinary),
-//               Effect.map(
-//                 Option.map(
-//                   (newMessage): Message => ({ timestamp, ...newMessage }),
-//                 ),
-//               ),
-//             ),
-//         ).pipe(
-//           Effect.map(
-//             (messages): SyncWorkerOutputSyncResponse => ({
-//               _tag: "SyncWorkerOutputSyncResponse",
-//               messages: ReadonlyArray.filterMap(messages, identity),
-//               merkleTree: unsafeMerkleTreeFromString(syncResponse.merkleTree),
-//               syncLoopCount: input.syncLoopCount,
-//             }),
-//           ),
-//         ),
-//       ),
-//       Effect.tapError(() => syncLock.release),
-//       Effect.merge,
-//       Effect.map(syncWorkerOnMessage),
-//     );
-//   });
-
-// export const SyncWorkerCommonLive = Layer.effect(
-//   SyncWorker,
-//   Effect.gen(function* (_) {
-//     const syncLock = yield* _(SyncLock);
-
-//     const onError = (error: UnexpectedError): Effect.Effect<void> =>
-//       Effect.sync(() => {
-//         syncWorker.onMessage(error);
-//       });
-
-//     const context = Context.empty().pipe(
-//       Context.add(SyncLock, syncLock),
-//       Context.add(Fetch, yield* _(Fetch)),
-//       Context.add(SecretBox, yield* _(SecretBox)),
-//     );
-
-//     const syncWorker: SyncWorker = {
-//       postMessage: (input) => {
-//         Match.value(input).pipe(
-//           Match.tagsExhaustive({
-//             sync,
-//             syncCompleted: () => syncLock.release,
-//           }),
-//           Effect.catchAllDefect(makeUnexpectedError),
-//           Effect.catchAll(onError),
-//           Effect.provide(context),
-//           Effect.provideService(SyncWorkerOnMessage, syncWorker.onMessage),
-//           Effect.runPromise,
-//         );
-//       },
-//       onMessage: Function.constVoid,
-//     };
-
-//     return syncWorker;
-//   }),
-// );
+const valueFromProtobuf = (value: MessageContent["value"]): Value => {
+  switch (value.oneofKind) {
+    case "numberValue":
+      return S.decodeSync(S.NumberFromString)(value.numberValue);
+    case "stringValue":
+      return value.stringValue;
+    case "bytesValue":
+      return value.bytesValue;
+    case "jsonValue":
+      return JSON.parse(value.jsonValue) as JsonObjectOrArray;
+    case undefined:
+      return null;
+    default:
+      return Function.absurd(value);
+  }
+};

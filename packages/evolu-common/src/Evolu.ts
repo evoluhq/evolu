@@ -591,6 +591,9 @@ const createEvolu = (
     const nanoIdGenerator = yield* _(NanoIdGenerator);
     const flushSync = yield* _(FlushSync);
     const appState = yield* _(AppState);
+    const syncStateStore = yield* _(
+      makeStore<SyncState>({ _tag: "SyncStateInitial" }),
+    );
 
     const handleAllErrors = <T>(effect: Effect.Effect<T, EvoluError, Config>) =>
       effect.pipe(
@@ -612,10 +615,39 @@ const createEvolu = (
     );
     Scope.addFinalizer(scope, db.dispose());
 
+    const initialDataAsMutations = initialData
+      ? yield* _(
+          initialDataToMutations(initialData),
+          Effect.provideService(NanoIdGenerator, nanoIdGenerator),
+        )
+      : [];
+
+    const onSyncStateChange = (state: SyncState) => {
+      syncStateStore.setState(state).pipe(runFork);
+    };
+
+    db.init(schema, initialDataAsMutations, onSyncStateChange).pipe(
+      Effect.flatMap(ownerStore.setState),
+      Effect.catchTag("NotSupportedPlatformError", () => Effect.void), // no-op
+      runFork,
+    );
+
+    const appStateReset = yield* _(
+      appState.init({
+        onRequestSync: () => {
+          db.sync([...subscribedQueries.keys()]).pipe(
+            Effect.flatMap(handlePatches({ flushSync: false })),
+            runFork,
+          );
+        },
+        reloadUrl: config.reloadUrl,
+      }),
+    );
+
     const handlePatches =
       (options: { readonly flushSync: boolean }) =>
       (patches: ReadonlyArray<QueryPatches>) =>
-        Effect.logDebug(["Evolu handlePatches", patches]).pipe(
+        Effect.logDebug(["Evolu handlePatches", { patches }]).pipe(
           Effect.zipRight(rowsStoreStateFromPatches(patches)),
           Effect.tap((nextState) =>
             Effect.forEach(patches, ({ query }) =>
@@ -727,32 +759,6 @@ const createEvolu = (
       };
     })();
 
-    const initialDataAsMutations = initialData
-      ? yield* _(
-          initialDataToMutations(initialData),
-          Effect.provideService(NanoIdGenerator, nanoIdGenerator),
-        )
-      : [];
-
-    db.init(schema, initialDataAsMutations).pipe(
-      Effect.flatMap(ownerStore.setState),
-      Effect.catchTag("NotSupportedPlatformError", () => Effect.void), // no-op
-      runFork,
-    );
-
-    const sync = () => {
-      db.sync([...subscribedQueries.keys()]).pipe(
-        Effect.flatMap(handlePatches({ flushSync: false })),
-        runFork,
-      );
-    };
-
-    const appStateReset = yield* _(
-      appState.init({ onRequestSync: sync, reloadUrl: config.reloadUrl }),
-    );
-
-    sync();
-
     const evolu: Evolu = {
       subscribeError: errorStore.subscribe,
       getError: errorStore.getState,
@@ -781,9 +787,10 @@ const createEvolu = (
         let queue: ReadonlyArray<Query> = [];
 
         return <R extends Row>(query: Query<R>): Promise<QueryResult<R>> => {
-          Effect.logDebug(["Evolu loadQuery", deserializeQuery(query)]).pipe(
-            runSync,
-          );
+          Effect.logDebug([
+            "Evolu loadQuery",
+            { query: deserializeQuery(query) },
+          ]).pipe(runSync);
           let isNew = false;
           let loadingPromise = loadingPromises.get(query);
           if (!loadingPromise) {
@@ -840,13 +847,8 @@ const createEvolu = (
       subscribeOwner: ownerStore.subscribe,
       getOwner: ownerStore.getState,
 
-      subscribeSyncState: () => {
-        return () => () => {};
-      },
-
-      getSyncState: () => {
-        return { _tag: "SyncStateInitial" };
-      },
+      subscribeSyncState: syncStateStore.subscribe,
+      getSyncState: syncStateStore.getState,
 
       create: mutate as Mutate<EvoluSchema, "create">,
       update: mutate,
