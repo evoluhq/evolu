@@ -50,7 +50,7 @@
     "expo-sqlite": "~13.4.0",
     "react-native": "^0.73.7",
     "typescript": "^5.4.5",
-    "vitest": "^1.5.0"
+    "vitest": "^1.5.1"
   },
   "peerDependencies": {
     "@evolu/common-react": "^7.0.0",
