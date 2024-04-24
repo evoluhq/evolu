@@ -11,8 +11,10 @@ import { constVoid, pipe } from "effect/Function";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
 import * as Record from "effect/Record";
+import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
 import * as String from "effect/String";
+import * as SynchronizedRef from "effect/SynchronizedRef";
 import * as Kysely from "kysely";
 import { Config } from "./Config.js";
 import {
@@ -24,10 +26,13 @@ import {
   TimestampDriftError,
   TimestampString,
   TimestampTimeOutOfRangeError,
+  diffMerkleTrees,
   initialMerkleTree,
   insertIntoMerkleTree,
   makeInitialTimestamp,
+  makeSyncTimestamp,
   merkleTreeToString,
+  receiveTimestamp,
   sendTimestamp,
   timestampToString,
   unsafeTimestampFromString,
@@ -36,7 +41,7 @@ import { Bip39, Mnemonic, NanoIdGenerator } from "./Crypto.js";
 import { QueryPatches, makePatches } from "./Diff.js";
 import { Id, cast } from "./Model.js";
 import { Owner, OwnerId, makeOwner } from "./Owner.js";
-import { SyncLock } from "./Platform.js";
+import { SyncLock, SyncLockRelease } from "./Platform.js";
 import * as Sql from "./Sql.js";
 import {
   JsonObjectOrArray,
@@ -50,7 +55,6 @@ import {
   drawSqliteQueryPlan,
   isJsonObjectOrArray,
 } from "./Sqlite.js";
-import { makeStore } from "./Store.js";
 import {
   Message,
   NewMessage,
@@ -65,8 +69,7 @@ export interface Db {
     schema: DbSchema,
     initialData: ReadonlyArray<Mutation>,
     onSyncStateChange: (state: SyncState) => void,
-    //
-    // TODO: onError, onReceive, onSyncStateChange
+    // TODO: onError, onReceive
   ) => Effect.Effect<
     Owner,
     | NotSupportedPlatformError
@@ -165,19 +168,19 @@ export const createDb: Effect.Effect<
   Db,
   never,
   SqliteFactory | Bip39 | NanoIdGenerator | Time | SyncFactory | SyncLock
-> = Effect.gen(function* (_) {
-  const { createSqlite } = yield* _(SqliteFactory);
-  const { createSync } = yield* _(SyncFactory);
+> = Effect.gen(function* () {
+  const { createSqlite } = yield* SqliteFactory;
+  const { createSync } = yield* SyncFactory;
 
   const initContext = Context.empty().pipe(
-    Context.add(Bip39, yield* _(Bip39)),
-    Context.add(NanoIdGenerator, yield* _(NanoIdGenerator)),
-    Context.add(Time, yield* _(Time)),
-    Context.add(SyncLock, yield* _(SyncLock)),
+    Context.add(Bip39, yield* Bip39),
+    Context.add(NanoIdGenerator, yield* NanoIdGenerator),
+    Context.add(Time, yield* Time),
+    Context.add(SyncLock, yield* SyncLock),
   );
 
-  const afterInitContext = yield* _(
-    Deferred.make<
+  const afterInitContext =
+    yield* Deferred.make<
       Context.Context<
         | Bip39
         | NanoIdGenerator
@@ -188,32 +191,27 @@ export const createDb: Effect.Effect<
         | Sync
         | Callbacks
       >
-    >(),
-  );
+    >();
 
   const afterInit =
     (options: { readonly transaction: SqliteTransactionMode }) =>
     <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       Effect.flatMap(Deferred.await(afterInitContext), (context) =>
-        Sqlite.pipe(
-          Effect.flatMap((sqlite) =>
-            sqlite.transaction(options.transaction)(effect),
-          ),
-          Effect.provide(context),
-        ),
+        Effect.flatMap(Sqlite, (sqlite) =>
+          sqlite.transaction(options.transaction)(effect),
+        ).pipe(Effect.provide(context)),
       );
 
-  const scope = yield* _(Scope.make());
-  const loadQueries = yield* _(createLoadQueries);
+  const scope = yield* Scope.make();
+  const queryRowsRef = yield* SynchronizedRef.make<QueryRowsMap>(new Map());
 
   const db: Db = {
     init: (schema, initialData, onSyncStateChange) =>
-      Effect.gen(function* (_) {
-        yield* _(Effect.logDebug(["Db init", { schema }]));
-        const sqlite = yield* _(createSqlite, Scope.extend(scope));
+      Effect.gen(function* () {
+        yield* Effect.logDebug(["Db init", { schema }]);
+        const sqlite = yield* createSqlite.pipe(Scope.extend(scope));
         const contextWithSqlite = Context.add(initContext, Sqlite, sqlite);
-        const owner = yield* _(
-          getSchema,
+        const owner = yield* getSchema.pipe(
           Effect.tap(ensureSchema(schema)),
           Effect.flatMap((currentSchema) => {
             if (currentSchema.tables.map((t) => t.name).includes("evolu_owner"))
@@ -223,12 +221,11 @@ export const createDb: Effect.Effect<
           sqlite.transaction("exclusive"),
           Effect.provide(contextWithSqlite),
         );
-        const sync = yield* _(
-          createSync,
+        const sync = yield* createSync.pipe(
           Effect.provide(initContext),
           Scope.extend(scope),
         );
-        yield* _(sync.init(owner));
+        yield* sync.init(owner);
         Deferred.unsafeDone(
           afterInitContext,
           Effect.succeed(
@@ -244,17 +241,15 @@ export const createDb: Effect.Effect<
 
     loadQueries: (queries) =>
       Effect.logDebug(["Db loadQueries", { queries }]).pipe(
-        Effect.zipRight(loadQueries(queries)),
+        Effect.zipRight(loadQueries(queries, queryRowsRef)),
         afterInit({ transaction: "shared" }),
       ),
 
     mutate: (mutations, queriesToRefresh) =>
-      Effect.gen(function* (_) {
-        yield* _(
-          Effect.logDebug(["Db mutate", { mutations, queriesToRefresh }]),
-        );
-        const time = yield* _(Time);
-        const sqlite = yield* _(Sqlite);
+      Effect.gen(function* () {
+        yield* Effect.logDebug(["Db mutate", { mutations, queriesToRefresh }]);
+        const time = yield* Time;
+        const sqlite = yield* Sqlite;
 
         const [toSyncMutations, localOnlyMutations] = Arr.partition(
           mutations,
@@ -267,28 +262,22 @@ export const createDb: Effect.Effect<
             ({ column, value }) => column === "isDeleted" && value === 1,
           );
           if (isDeleteMutation) {
-            yield* _(
-              sqlite.exec({
-                sql: `delete from "${mutation.table}" where "id" = ?;`,
-                parameters: [mutation.id],
-              }),
-            );
+            yield* sqlite.exec({
+              sql: `delete from "${mutation.table}" where "id" = ?;`,
+              parameters: [mutation.id],
+            });
           } else {
             const messages = mutationToNewMessages(mutation);
             for (const message of messages) {
-              const now = yield* _(time.now);
-              yield* _(upsertValueIntoTableRowColumn(message, messages, now));
+              const now = yield* time.now;
+              yield* upsertValueIntoTableRowColumn(message, messages, now);
             }
           }
         }
-
         if (toSyncMutations.length > 0) {
-          yield* _(
-            applyMutations(toSyncMutations),
-            Effect.tap((syncData) => Effect.forkIn(sync(syncData), scope)),
-          );
+          yield* Effect.tap(applyMutations(toSyncMutations), sync);
         }
-        return yield* _(loadQueries(queriesToRefresh));
+        return yield* loadQueries(queriesToRefresh, queryRowsRef);
       }).pipe(afterInit({ transaction: "exclusive" })),
 
     resetOwner: () =>
@@ -313,10 +302,8 @@ export const createDb: Effect.Effect<
 
     sync: (queriesToRefresh) =>
       Effect.logDebug(["Db sync", { queriesToRefresh }]).pipe(
-        Effect.zipRight(readTimestampAndMerkleTree),
-        // TODO: Ask the Effect team for review. Is scope usage OK?
-        Effect.tap((syncData) => Effect.forkIn(sync(syncData), scope)),
-        Effect.zipRight(loadQueries(queriesToRefresh)),
+        Effect.zipRight(sync()),
+        Effect.zipRight(loadQueries(queriesToRefresh, queryRowsRef)),
         afterInit({ transaction: "shared" }),
       ),
 
@@ -337,38 +324,39 @@ class Callbacks extends Context.Tag("Callbacks")<
   }
 >() {}
 
-const createLoadQueries = Effect.gen(function* (_) {
-  const rowsStore = yield* _(makeRowsStore);
-  return (
-    queries: ReadonlyArray<Query>,
-  ): Effect.Effect<QueryPatches[], never, Sqlite> =>
-    Sqlite.pipe(
-      Effect.bind("queriesRows", (sqlite) =>
-        Effect.forEach(Arr.dedupe(queries), (query) => {
-          const sqliteQuery = deserializeQuery(query);
-          return sqlite.exec(sqliteQuery).pipe(
-            Effect.tap(maybeExplainQueryPlan(sqliteQuery)),
-            Effect.map(({ rows }) => [query, rows] as const),
-          );
-        }),
-      ),
-      Effect.let("previousState", () => rowsStore.getState()),
-      Effect.tap(({ queriesRows, previousState }) =>
-        rowsStore.setState(new Map([...previousState, ...queriesRows])),
-      ),
-      Effect.map(({ queriesRows, previousState }) =>
-        queriesRows.map(
-          ([query, rows]): QueryPatches => ({
-            query,
-            patches: makePatches(previousState.get(query), rows),
-          }),
-        ),
-      ),
-    );
-});
+export type QueryRowsMap = ReadonlyMap<Query, ReadonlyArray<Row>>;
 
-export type RowsStoreState = ReadonlyMap<Query, ReadonlyArray<Row>>;
-export const makeRowsStore = makeStore<RowsStoreState>(new Map());
+const loadQueries = (
+  queries: ReadonlyArray<Query>,
+  queryRowsRef: SynchronizedRef.SynchronizedRef<QueryRowsMap>,
+) =>
+  Effect.gen(function* () {
+    const sqlite = yield* Sqlite;
+    const previousState = yield* SynchronizedRef.getAndUpdateEffect(
+      queryRowsRef,
+      (previousState) =>
+        Effect.map(
+          Effect.forEach(queries, (query) => {
+            const sqliteQuery = deserializeQuery(query);
+            return sqlite.exec(sqliteQuery).pipe(
+              Effect.tap(maybeExplainQueryPlan(sqliteQuery)),
+              Effect.map(({ rows }) => [query, rows] as const),
+            );
+          }),
+          (queriesRows) => new Map([...previousState, ...queriesRows]),
+        ),
+    );
+    const currentState = yield* SynchronizedRef.get(queryRowsRef);
+    return queries.map(
+      (query): QueryPatches => ({
+        query,
+        patches: makePatches(
+          previousState.get(query),
+          currentState.get(query) || [],
+        ),
+      }),
+    );
+  });
 
 const maybeExplainQueryPlan = (sqliteQuery: SqliteQuery) => {
   if (!sqliteQuery.options?.logExplainQueryPlan) return Effect.void;
@@ -388,23 +376,23 @@ const maybeExplainQueryPlan = (sqliteQuery: SqliteQuery) => {
 };
 
 const getSchema: Effect.Effect<DbSchema, never, Sqlite> = Effect.gen(
+  // TODO: Remove _, it's a bug.
   function* (_) {
-    yield* _(Effect.logTrace("Db getSchema"));
-    const sqlite = yield* _(Sqlite);
-
-    const tables = yield* _(
+    yield* Effect.logTrace("Db getSchema");
+    const sqlite = yield* Sqlite;
+    const tables = yield* Effect.map(
       sqlite.exec({
         // https://til.simonwillison.net/sqlite/list-all-columns-in-a-database
         sql: `
-  select
-    sqlite_master.name as tableName,
-    table_info.name as columnName
-  from
-    sqlite_master
-    join pragma_table_info(sqlite_master.name) as table_info
-  `.trim(),
+select
+  sqlite_master.name as tableName,
+  table_info.name as columnName
+from
+  sqlite_master
+  join pragma_table_info(sqlite_master.name) as table_info
+    `.trim(),
       }),
-      Effect.map(({ rows }) => {
+      ({ rows }) => {
         const map = new Map<string, string[]>();
         rows.forEach((row) => {
           const { tableName, columnName } = row as {
@@ -418,23 +406,23 @@ const getSchema: Effect.Effect<DbSchema, never, Sqlite> = Effect.gen(
           name,
           columns,
         }));
-      }),
+      },
     );
 
-    const indexes = yield* _(
+    const indexes = yield* Effect.map(
       sqlite.exec({
         sql: `
-  select
-    name, sql
-  from
-    sqlite_master
-  where
-    type='index' and
-    name not like 'sqlite_%' and
-    name not like 'index_evolu_%'
-  `.trim(),
+select
+  name, sql
+from
+  sqlite_master
+where
+  type='index' and
+  name not like 'sqlite_%' and
+  name not like 'index_evolu_%'
+`.trim(),
       }),
-      Effect.map((result) =>
+      (result) =>
         Arr.map(
           result.rows,
           (row): Index => ({
@@ -447,7 +435,6 @@ const getSchema: Effect.Effect<DbSchema, never, Sqlite> = Effect.gen(
             sql: (row.sql as string).replace("CREATE INDEX", "create index"),
           }),
         ),
-      ),
     );
 
     return { tables, indexes };
@@ -455,8 +442,8 @@ const getSchema: Effect.Effect<DbSchema, never, Sqlite> = Effect.gen(
 );
 
 const ensureSchema = (newSchema: DbSchema) => (currentSchema: DbSchema) =>
-  Effect.gen(function* (_) {
-    yield* _(Effect.logTrace("Db ensureSchema"));
+  Effect.gen(function* () {
+    yield* Effect.logTrace("Db ensureSchema");
     const sql: string[] = [];
 
     newSchema.tables.forEach((table) => {
@@ -508,8 +495,8 @@ const ensureSchema = (newSchema: DbSchema) => (currentSchema: DbSchema) =>
       sql.push(`${newIndex.sql};`);
     });
     if (sql.length > 0) {
-      const sqlite = yield* _(Sqlite);
-      yield* _(sqlite.exec({ sql: sql.join("\n") }));
+      const sqlite = yield* Sqlite;
+      yield* sqlite.exec({ sql: sql.join("\n") });
     }
   });
 
@@ -554,11 +541,13 @@ const createOwner = (mnemonic?: Mnemonic) =>
   );
 
 const applyMutations = (mutations: ReadonlyArray<Mutation>) =>
+  // TODO: Remove _, it's a bug.
   Effect.gen(function* (_) {
-    const { timestamp, merkleTree } = yield* _(readTimestampAndMerkleTree);
-    const [nextTimestamp, messages] = yield* _(
+    const { timestamp, merkleTree } = yield* readTimestampAndMerkleTree;
+    const [nextTimestamp, messages] = yield* Effect.mapAccum(
       mutations.flatMap(mutationToNewMessages),
-      Effect.mapAccum(timestamp, (currentTimestamp, newMessage) =>
+      timestamp,
+      (currentTimestamp, newMessage) =>
         Effect.map(sendTimestamp(currentTimestamp), (nextTimestamp) => {
           const message: Message = {
             ...newMessage,
@@ -566,16 +555,10 @@ const applyMutations = (mutations: ReadonlyArray<Mutation>) =>
           };
           return [nextTimestamp, message];
         }),
-      ),
     );
-    const nextMerkleTree = yield* _(applyMessages(merkleTree, messages));
-    yield* _(writeTimestampAndMerkleTree(nextTimestamp, nextMerkleTree));
-    const syncData: SyncData = {
-      messages,
-      timestamp: nextTimestamp,
-      merkleTree: nextMerkleTree,
-    };
-    return syncData;
+    const nextMerkleTree = yield* applyMessages(merkleTree, messages);
+    yield* writeTimestampAndMerkleTree(nextTimestamp, nextMerkleTree);
+    return messages;
   });
 
 const readTimestampAndMerkleTree = Sqlite.pipe(
@@ -616,7 +599,7 @@ const mutationToNewMessages = (mutation: Mutation) =>
 const applyMessages = (
   merkleTree: MerkleTree,
   messages: ReadonlyArray<Message>,
-) =>
+): Effect.Effect<MerkleTree, never, Sqlite> =>
   Effect.logDebug(["Db applyMessages", { merkleTree, messages }]).pipe(
     Effect.zipRight(Sqlite),
     Effect.flatMap((sqlite) =>
@@ -705,7 +688,7 @@ const SqliteNoSuchTableOrColumnError = S.Struct({
 });
 
 const ensureSchemaByNewMessages = (messages: ReadonlyArray<NewMessage>) =>
-  Effect.gen(function* (_) {
+  Effect.gen(function* () {
     const tablesMap = new Map<string, Table>();
     messages.forEach((message) => {
       const table = tablesMap.get(message.table);
@@ -723,7 +706,7 @@ const ensureSchemaByNewMessages = (messages: ReadonlyArray<NewMessage>) =>
       });
     });
     const tables = Arr.fromIterable(tablesMap.values());
-    yield* _(getSchema, Effect.flatMap(ensureSchema({ tables, indexes: [] })));
+    yield* Effect.flatMap(getSchema, ensureSchema({ tables, indexes: [] }));
   });
 
 const writeTimestampAndMerkleTree = (
@@ -740,10 +723,10 @@ const writeTimestampAndMerkleTree = (
     }),
   );
 
-const dropAllTables = Effect.gen(function* (_) {
-  yield* _(Effect.logTrace("Db dropAllTables"));
-  const sqlite = yield* _(Sqlite);
-  const schema = yield* _(getSchema);
+const dropAllTables = Effect.gen(function* () {
+  yield* Effect.logTrace("Db dropAllTables");
+  const sqlite = yield* Sqlite;
+  const schema = yield* getSchema;
   const sql = schema.tables
     // The dropped table is completely removed from the database schema and
     // the disk file. The table can not be recovered.
@@ -751,81 +734,101 @@ const dropAllTables = Effect.gen(function* (_) {
     // https://sqlite.org/lang_droptable.html
     .map((table) => `drop table "${table.name}";`)
     .join("");
-  yield* _(sqlite.exec({ sql }));
+  yield* sqlite.exec({ sql });
 });
 
-const sync = (
-  _syncData: SyncData,
-): Effect.Effect<void, never, Sqlite | SyncLock | Config | Sync | Callbacks> =>
+const sync = (messages: ReadonlyArray<Message> = []) =>
+  // TODO: local scope
+  Effect.forkDaemon(
+    Effect.gen(function* () {
+      const syncLock = yield* SyncLock;
+      const callbacks = yield* Callbacks;
+      // TODO: Use Scope.
+      const syncLockRelease = yield* syncLock.tryAcquire;
+      if (Option.isNone(syncLockRelease)) return;
+      callbacks.onSyncStateChange({ _tag: "SyncStateIsSyncing" });
+      yield* syncLoop(messages, syncLockRelease.value);
+    }),
+  );
+
+const syncLoop = (
+  messages: ReadonlyArray<Message> = [],
+  syncLockRelease: SyncLockRelease,
+) =>
   Effect.gen(function* (_) {
-    const syncLockRelease = yield* _(
-      Effect.flatMap(SyncLock, (syncLock) => syncLock.tryAcquire),
+    yield* Effect.logTrace("Db syncLoop start");
+    const sync = yield* Sync;
+    const callbacks = yield* Callbacks;
+    const time = yield* Time;
+    const sqlite = yield* Sqlite;
+
+    const syncDataRef = yield* readTimestampAndMerkleTree.pipe(
+      Effect.map((a): SyncData => ({ ...a, messages })),
+      Effect.flatMap(Ref.make),
     );
-    if (Option.isNone(syncLockRelease)) return;
-    const callbacks = yield* _(Callbacks);
-    callbacks.onSyncStateChange({ _tag: "SyncStateIsSyncing" });
 
-    // syncWorkerOnMessage({ _tag: "SyncStateIsSyncing" });
-    // const { sync } = yield* _(Sync);
+    yield* Effect.repeat(
+      Effect.gen(function* (_) {
+        const syncData = yield* Ref.get(syncDataRef);
+        const response = yield* sync.sync(syncData);
 
-    // const receivedMessages = yield* _(sync(syncData));
+        // TODO: transaction after sync
+        // const sqlite = yield* Sqlite;
+        // sqlite.transaction("exclusive"),
 
-    // yield* _(
-    //   sync(syncData),
-    //   Effect.map(() => {
-    //     // let { timestamp, merkleTree } = yield* _(readTimestampAndMerkleTree);
-    //     // const dbWorkerOnMessage = yield* _(DbWorkerOnMessage);
-    //     // if (messages.length > 0) {
-    //     //   for (const message of messages)
-    //     //     timestamp = yield* _(
-    //     //       unsafeTimestampFromString(message.timestamp),
-    //     //       (remote) => receiveTimestamp({ local: timestamp, remote }),
-    //     //     );
-    //     //   merkleTree = yield* _(applyMessages({ merkleTree, messages }));
-    //     //   yield* _(writeTimestampAndMerkleTree({ timestamp, merkleTree }));
-    //     //   dbWorkerOnMessage({ _tag: "onReceive" });
-    //     // }
-    //     // const diff = diffMerkleTrees(response.merkleTree, merkleTree);
-    //     // const syncWorkerPostMessage = yield* _(SyncWorkerPostMessage);
-    //     // syncLockRelease.value.release
-    //     // if (Option.isNone(diff)) {
-    //     //   syncWorkerPostMessage({ _tag: "syncCompleted" });
-    //     //   dbWorkerOnMessage({
-    //     //     _tag: "onSyncState",
-    //     //     state: {
-    //     //       _tag: "SyncStateIsSynced",
-    //     //       time: yield* _(Time.pipe(Effect.flatMap((time) => time.now))),
-    //     //     },
-    //     //   });
-    //     //   return;
-    //     // }
-    //     // const sqlite = yield* _(Sqlite);
-    //     // const config = yield* _(Config);
-    //     // const owner = yield* _(Owner);
-    //     // const messagesToSync = yield* _(
-    //     //   sqlite.exec({
-    //     //     ...Sql.selectMessagesToSync,
-    //     //     parameters: [timestampToString(makeSyncTimestamp(diff.value))],
-    //     //   }),
-    //     //   Effect.map(({ rows }) => rows as unknown as ReadonlyArray<Message>),
-    //     // );
-    //     // if (response.syncLoopCount > 100) {
-    //     //   // TODO: dbWorkerOnMessage({ _tag: "onError" });
-    //     //   // eslint-disable-next-line no-console
-    //     //   console.error("Evolu: syncLoopCount > 100");
-    //     //   return;
-    //     // }
-    //     // syncWorkerPostMessage({
-    //     //   _tag: "sync",
-    //     //   syncUrl: config.syncUrl,
-    //     //   messages: messagesToSync,
-    //     //   timestamp,
-    //     //   merkleTree,
-    //     //   owner,
-    //     //   syncLoopCount: response.syncLoopCount + 1,
-    //     // });
-    //   }),
-    // );
+        const current = yield* readTimestampAndMerkleTree;
+        const timestamp = yield* Effect.reduce(
+          response.messages,
+          current.timestamp,
+          (local, message) =>
+            receiveTimestamp({
+              local,
+              remote: unsafeTimestampFromString(message.timestamp),
+            }),
+        );
+        const merkleTree = yield* applyMessages(
+          current.merkleTree,
+          response.messages,
+        );
+        if (response.messages.length > 0) {
+          yield* writeTimestampAndMerkleTree(timestamp, merkleTree);
+          // TODO: onReceive
+        }
+        const diff = diffMerkleTrees(response.merkleTree, merkleTree);
+        yield* Effect.logDebug([
+          "Db syncLoop diffMerkleTrees",
+          { diff: Option.getOrNull(diff) },
+        ]);
+        return { timestamp, merkleTree, diff };
+      }),
+      {
+        until: ({ timestamp, merkleTree, diff }) =>
+          Effect.gen(function* () {
+            if (Option.isNone(diff)) {
+              yield* Effect.logTrace("Db syncLoop end");
+              yield* syncLockRelease.release;
+              callbacks.onSyncStateChange({
+                _tag: "SyncStateIsSynced",
+                time: yield* time.now,
+              });
+              return true;
+            }
+            const messages = yield* Effect.map(
+              sqlite.exec({
+                ...Sql.selectMessagesToSync,
+                parameters: [timestampToString(makeSyncTimestamp(diff.value))],
+              }),
+              ({ rows }) => rows as unknown as ReadonlyArray<Message>,
+            );
+            yield* Ref.set(syncDataRef, {
+              merkleTree,
+              timestamp,
+              messages,
+            });
+            return false;
+          }),
+      },
+    );
   });
 
 interface SerializedSqliteQuery {

@@ -2,9 +2,9 @@ import * as Http from "@effect/platform/HttpClient";
 import * as S from "@effect/schema/Schema";
 import { concatBytes } from "@noble/ciphers/utils";
 import { BinaryReader, BinaryWriter } from "@protobuf-ts/runtime";
+import * as Arr from "effect/Array";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
-import * as Arr from "effect/Array";
 import * as Effect from "effect/Effect";
 import * as Function from "effect/Function";
 import * as Option from "effect/Option";
@@ -17,25 +17,26 @@ import {
   Timestamp,
   TimestampString,
   merkleTreeToString,
+  unsafeMerkleTreeFromString,
 } from "./Crdt.js";
 import { SecretBox } from "./Crypto.js";
 import { Id } from "./Model.js";
 import { Owner } from "./Owner.js";
-import {
-  EncryptedMessage,
-  MessageContent,
-  SyncRequest,
-  SyncResponse,
-} from "./Protobuf.js";
+import * as Protobuf from "./Protobuf.js";
 import { JsonObjectOrArray, Value } from "./Sqlite.js";
 
 export class Sync extends Context.Tag("Sync")<
   Sync,
   {
     readonly init: (owner: Owner) => Effect.Effect<void>;
-    readonly sync: (
-      syncData: SyncData,
-    ) => Effect.Effect<ReadonlyArray<Message>, SyncStateIsNotSynced, Config>;
+    readonly sync: (syncData: SyncData) => Effect.Effect<
+      {
+        readonly messages: ReadonlyArray<Message>;
+        readonly merkleTree: MerkleTree;
+      },
+      SyncStateIsNotSynced,
+      Config
+    >;
   }
 >() {}
 
@@ -132,7 +133,10 @@ export const createSync = Effect.gen(function* (_) {
     sync: ({ merkleTree, timestamp, messages }) =>
       Effect.gen(function* (_) {
         yield* _(
-          Effect.logDebug(["Sync sync", { merkleTree, timestamp, messages }]),
+          Effect.logDebug([
+            "Sync request",
+            { merkleTree, timestamp, messages },
+          ]),
         );
         const secretBox = yield* _(SecretBox);
         const owner = yield* _(Owner);
@@ -145,11 +149,11 @@ export const createSync = Effect.gen(function* (_) {
                 owner.encryptionKey,
                 newMessageToBinary(newMessage),
               ),
-              (content): EncryptedMessage => ({ timestamp, content }),
+              (content): Protobuf.EncryptedMessage => ({ timestamp, content }),
             ),
           ),
           Effect.map((encrypedMessages) =>
-            SyncRequest.toBinary(
+            Protobuf.SyncRequest.toBinary(
               {
                 messages: encrypedMessages,
                 userId: owner.id,
@@ -169,7 +173,10 @@ export const createSync = Effect.gen(function* (_) {
               ),
           ),
           Effect.map((buffer) =>
-            SyncResponse.fromBinary(new Uint8Array(buffer), binaryReadOptions),
+            Protobuf.SyncResponse.fromBinary(
+              new Uint8Array(buffer),
+              binaryReadOptions,
+            ),
           ),
           Effect.flatMap((syncResponse) =>
             Effect.forEach(syncResponse.messages, (encrypedMessage) =>
@@ -177,13 +184,21 @@ export const createSync = Effect.gen(function* (_) {
                 secretBox.open(owner.encryptionKey, encrypedMessage.content),
                 (binary) => [binary, encrypedMessage.timestamp] as const,
               ),
-            ),
-          ),
-          Effect.map(
-            Arr.filterMap(([binary, timestamp]) =>
-              Option.map(
-                newMessageFromBinary(binary),
-                (newMessage): Message => ({ ...newMessage, timestamp }),
+            ).pipe(
+              Effect.map(
+                Arr.filterMap(([binary, timestamp]) =>
+                  Option.map(
+                    newMessageFromBinary(binary),
+                    (newMessage): Message => ({ ...newMessage, timestamp }),
+                  ),
+                ),
+              ),
+              Effect.map((messages) => ({
+                messages,
+                merkleTree: unsafeMerkleTreeFromString(syncResponse.merkleTree),
+              })),
+              Effect.tap((response) =>
+                Effect.logDebug(["Sync response", response]),
               ),
             ),
           ),
@@ -219,7 +234,7 @@ export const createSync = Effect.gen(function* (_) {
 const newMessageToBinary = ({ value, ...rest }: NewMessage): Uint8Array =>
   concatBytes(
     version1,
-    MessageContent.toBinary(
+    Protobuf.MessageContent.toBinary(
       { value: valueToProtobuf(value), ...rest },
       binaryWriteOptions,
     ),
@@ -227,7 +242,7 @@ const newMessageToBinary = ({ value, ...rest }: NewMessage): Uint8Array =>
 
 const version1 = new Uint8Array([0, 1]);
 
-const valueToProtobuf = (value: Value): MessageContent["value"] => {
+const valueToProtobuf = (value: Value): Protobuf.MessageContent["value"] => {
   switch (typeof value) {
     case "string":
       return { oneofKind: "stringValue", stringValue: value };
@@ -264,7 +279,7 @@ const newMessageFromBinary = (
   binary: Uint8Array,
 ): Option.Option<NewMessage> => {
   if (!startsWithArray(binary, version1)) return Option.none();
-  const { value, ...content } = MessageContent.fromBinary(
+  const { value, ...content } = Protobuf.MessageContent.fromBinary(
     binary.slice(version1.length),
     binaryReadOptions,
   );
@@ -279,7 +294,7 @@ const startsWithArray = (array: Uint8Array, prefix: Uint8Array): boolean => {
   return true;
 };
 
-const valueFromProtobuf = (value: MessageContent["value"]): Value => {
+const valueFromProtobuf = (value: Protobuf.MessageContent["value"]): Value => {
   switch (value.oneofKind) {
     case "numberValue":
       return S.decodeSync(S.NumberFromString)(value.numberValue);

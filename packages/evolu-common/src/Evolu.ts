@@ -26,12 +26,11 @@ import {
   Query,
   QueryResult,
   QueryResultsPromisesFromQueries,
+  QueryRowsMap,
   Row,
-  RowsStoreState,
   Table,
   deserializeQuery,
   emptyRows,
-  makeRowsStore,
   queryResultFromRows,
   serializeQuery,
 } from "./Db.js";
@@ -585,7 +584,7 @@ const createEvolu = (
     const scope = yield* _(Scope.make());
     const errorStore = yield* _(makeStore<EvoluError | null>(null));
     const ownerStore = yield* _(makeStore<Owner | null>(null));
-    const rowsStore = yield* _(makeRowsStore);
+    const rowsStore = yield* _(makeStore<QueryRowsMap>(new Map()));
     const loadingPromises = new Map<Query, LoadingPromise>();
     const subscribedQueries = new Map<Query, number>();
     const nanoIdGenerator = yield* _(NanoIdGenerator);
@@ -675,7 +674,7 @@ const createEvolu = (
         );
 
     const rowsStoreStateFromPatches = (patches: ReadonlyArray<QueryPatches>) =>
-      Effect.sync((): RowsStoreState => {
+      Effect.sync((): QueryRowsMap => {
         const rowsStoreState = rowsStore.getState();
         if (patches.length === 0) return rowsStoreState;
         const queriesRows = Arr.map(
@@ -791,16 +790,13 @@ const createEvolu = (
 
       loadQuery: (() => {
         let queue: ReadonlyArray<Query> = [];
-
         return <R extends Row>(query: Query<R>): Promise<QueryResult<R>> => {
           Effect.logDebug([
             "Evolu loadQuery",
             { query: deserializeQuery(query) },
           ]).pipe(runSync);
-          let isNew = false;
           let loadingPromise = loadingPromises.get(query);
           if (!loadingPromise) {
-            isNew = true;
             let resolve: LoadingPromise["resolve"] = constVoid;
             const promise: LoadingPromise["promise"] = new Promise(
               (_resolve) => {
@@ -809,16 +805,16 @@ const createEvolu = (
             );
             loadingPromise = { resolve, promise, releaseOnResolve: false };
             loadingPromises.set(query, loadingPromise);
-          }
-          if (isNew) queue = [...queue, query];
-          if (queue.length === 1) {
-            queueMicrotask(() => {
-              db.loadQueries(queue).pipe(
-                Effect.flatMap(handlePatches({ flushSync: false })),
-                runFork,
-              );
-              queue = [];
-            });
+            queue = [...queue, query];
+            if (queue.length === 1) {
+              queueMicrotask(() => {
+                db.loadQueries(Arr.dedupe(queue)).pipe(
+                  Effect.flatMap(handlePatches({ flushSync: false })),
+                  runFork,
+                );
+                queue = [];
+              });
+            }
           }
           return loadingPromise.promise as Promise<QueryResult<R>>;
         };
