@@ -54,24 +54,32 @@ export const AppStateLive = Layer.succeed(AppState, {
 
 // TODO: Ask the Effect team for review.
 export const SyncLockLive = Layer.succeed(SyncLock, {
-  tryAcquire: Effect.logTrace("SyncLock acquire").pipe(
+  tryAcquire: Effect.logTrace("SyncLock tryAcquire").pipe(
     Effect.zipRight(lockName("SyncLock")),
     Effect.flatMap((lockName) =>
       Effect.async<Option.Option<SyncLockRelease>>((resume) => {
         navigator.locks.request(lockName, { ifAvailable: true }, (lock) => {
           if (lock == null) {
-            resume(Effect.succeed(Option.none()));
+            resume(
+              Effect.zipRight(
+                Effect.logTrace("SyncLock not acquired"),
+                Effect.succeed(Option.none()),
+              ),
+            );
             return;
           }
           return new Promise<void>((resolve) => {
             resume(
-              Effect.succeed(
-                Option.some({
-                  release: Effect.zipRight(
-                    Effect.logTrace("SyncLock release"),
-                    Effect.sync(resolve),
-                  ),
-                }),
+              Effect.zipRight(
+                Effect.logTrace("SyncLock acquired"),
+                Effect.succeed(
+                  Option.some({
+                    release: Effect.zipRight(
+                      Effect.logTrace("SyncLock release"),
+                      Effect.sync(resolve),
+                    ),
+                  }),
+                ),
               ),
             );
           });
