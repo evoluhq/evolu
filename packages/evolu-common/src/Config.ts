@@ -84,15 +84,20 @@ export const createRuntime = (
 
 // TODO: Spans and Effect native variadic log args.
 const makeEvoluLogger = (name: string) =>
-  Logger.make(({ logLevel, message }) => {
-    // console.log(spans.toJSON());
-
+  Logger.make(({ logLevel, message, date }) => {
     const fn =
       logLevel._tag === "Warning"
         ? "warn"
         : logLevel._tag === "Error"
           ? "error"
           : "log";
+
+    const hours = date.getHours().toString().padStart(2, "0");
+    const minutes = date.getMinutes().toString().padStart(2, "0");
+    const seconds = date.getSeconds().toString().padStart(2, "0");
+    const milliseconds = date.getMilliseconds().toString().padStart(3, "0");
+    const formattedDate = `${hours}:${minutes}:${seconds}:${milliseconds}`;
+
     const messages: unknown[] = Array.isArray(message) ? message : [message];
-    globalThis.console[fn](`[${name}]`, ...messages);
+    globalThis.console[fn](`${formattedDate} [${name}]`, ...messages);
   });
