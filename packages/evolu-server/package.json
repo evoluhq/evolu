@@ -31,7 +31,7 @@
     "better-sqlite3": "^9.5.0",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
-    "effect": "^3.0.4",
+    "effect": "^3.0.5",
     "express": "^4.19.2",
     "kysely": "^0.27.3"
   },
@@ -45,7 +45,7 @@
     "eslint": "^8.57.0",
     "eslint-config-evolu": "workspace:*",
     "typescript": "^5.4.5",
-    "vitest": "^1.5.1"
+    "vitest": "^1.5.2"
   },
   "peerDependencies": {
     "@evolu/common": "^4.1.1",

@@ -3,6 +3,7 @@ export * from "./Crdt.js";
 export * from "./Crypto.js";
 export * from "./Db.js";
 export * from "./Diff.js";
+export * from "./Error.js";
 export * from "./Evolu.js";
 export * from "./Model.js";
 export * from "./Murmurhash.js";

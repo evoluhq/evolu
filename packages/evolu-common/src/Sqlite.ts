@@ -7,48 +7,35 @@ import * as Predicate from "effect/Predicate";
 import * as Scope from "effect/Scope";
 import { Config } from "./Config.js";
 
-export class Sqlite extends Context.Tag("Sqlite")<
-  Sqlite,
-  {
-    readonly exec: (query: SqliteQuery) => Effect.Effect<SqliteExecResult>;
-    readonly transaction: (
-      /**
-       * Use `exclusive` for mutations and `shared` for read-only queries. This
-       * shared/exclusive lock pattern allows multiple simultaneous readers but
-       * only one writer. In Evolu, this pattern also ensures that every write
-       * can be immediately read without waiting to complete. For example, we
-       * can add data on one page and then immediately redirect to another, and
-       * the data will be there.
-       *
-       * There is also a `last` mode that ensures no other transaction can run.
-       * It's for Db reset to ensure no data are accidentally saved after
-       * database wipe-out.
-       */
-      mode: SqliteTransactionMode,
-    ) => <A, E, R>(
-      effect: Effect.Effect<A, E, R>,
-    ) => Effect.Effect<A, E, Sqlite | R>;
-  }
->() {}
+export interface Sqlite {
+  readonly exec: (query: SqliteQuery) => Effect.Effect<SqliteExecResult>;
+  readonly transaction: (
+    /**
+     * Use `exclusive` for mutations and `shared` for read-only queries. This
+     * shared/exclusive lock pattern allows multiple simultaneous readers but
+     * only one writer. In Evolu, this pattern also ensures that every write can
+     * be immediately read without waiting to complete. For example, we can add
+     * data on one page and then immediately redirect to another, and the data
+     * will be there.
+     *
+     * There is also a `last` mode that ensures no other transaction can run.
+     * It's for Db reset to ensure no data are accidentally saved after database
+     * wipe-out.
+     */
+    mode: SqliteTransactionMode,
+  ) => <A, E, R>(
+    effect: Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, E, Sqlite | R>;
+}
+
+export const Sqlite = Context.GenericTag<Sqlite>("Sqlite");
 
 export type SqliteTransactionMode = "exclusive" | "shared" | "last";
-
-/**
- * Usually, Tag and Service can have the same name, but in this case, we create
- * instances dynamically via `createSqlite` and not via Layer, so we need
- * Context.Tag.Service type. Logically, `createSqlite` creates a service, not a
- * tag.
- */
-export interface SqliteService extends Context.Tag.Service<typeof Sqlite> {}
 
 export class SqliteFactory extends Context.Tag("SqliteFactory")<
   SqliteFactory,
   {
-    readonly createSqlite: Effect.Effect<
-      SqliteService,
-      never,
-      Config | Scope.Scope
-    >;
+    readonly createSqlite: Effect.Effect<Sqlite, never, Config | Scope.Scope>;
   }
 >() {
   static Common = Layer.effect(
@@ -58,7 +45,7 @@ export class SqliteFactory extends Context.Tag("SqliteFactory")<
       createSqlite: Effect.logTrace("SqliteFactory createSqlite").pipe(
         Effect.zipRight(platformSqliteFactory.createSqlite),
         Effect.map(
-          (platformSqlite): SqliteService => ({
+          (platformSqlite): Sqlite => ({
             exec: (query) =>
               platformSqlite.exec(query).pipe(
                 Effect.tap((result) => {

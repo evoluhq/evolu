@@ -15,7 +15,6 @@ import * as Record from "effect/Record";
 import * as Scope from "effect/Scope";
 import * as Kysely from "kysely";
 import { Config, createRuntime, defaultConfig } from "./Config.js";
-import { TimestampError } from "./Crdt.js";
 import { Mnemonic, NanoIdGenerator } from "./Crypto.js";
 import {
   DbFactory,
@@ -35,6 +34,7 @@ import {
   serializeQuery,
 } from "./Db.js";
 import { QueryPatches, applyPatches } from "./Diff.js";
+import { EvoluError, makeUnexpectedError } from "./Error.js";
 import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
 import { Owner } from "./Owner.js";
 import { AppState, FlushSync } from "./Platform.js";
@@ -360,18 +360,6 @@ export type EvoluSchema = Record.ReadonlyRecord<
   }
 >;
 
-/** The EvoluError type is used to represent errors that can occur in Evolu. */
-export type EvoluError = TimestampError | UnexpectedError;
-
-/**
- * UnexpectedError represents errors that can occur unexpectedly anywhere, even
- * in third-party libraries, because Evolu uses Effect to track all errors.
- */
-export interface UnexpectedError {
-  readonly _tag: "UnexpectedError";
-  readonly error: unknown;
-}
-
 type NullableExceptIdCreatedAtUpdatedAt<T> = {
   readonly [K in keyof T]: K extends "id" | "createdAt" | "updatedAt"
     ? T[K]
@@ -597,7 +585,7 @@ const createEvolu = (
     const handleAllErrors = <T>(effect: Effect.Effect<T, EvoluError, Config>) =>
       effect.pipe(
         Effect.catchAllDefect((error) =>
-          Effect.fail<EvoluError>({ _tag: "UnexpectedError", error }),
+          Effect.fail(makeUnexpectedError(error)),
         ),
         Effect.tapError(Effect.logError),
         Effect.tapError(errorStore.setState),
@@ -619,7 +607,7 @@ const createEvolu = (
       () => {
         Effect.flatMap(
           db.sync(refreshQueries ? [...subscribedQueries.keys()] : []),
-          handlePatches({ flushSync: false }),
+          handlePatches(),
         ).pipe(runFork);
       };
 
@@ -635,14 +623,35 @@ const createEvolu = (
       Effect.provideService(NanoIdGenerator, nanoIdGenerator),
     );
 
-    const onSyncStateChange = (state: SyncState) => {
-      Effect.logDebug(["Evolu onSyncStateChange", { state }]).pipe(
+    const handleDbError = (error: EvoluError) => {
+      Effect.fail(error).pipe(runFork);
+    };
+
+    const handleSyncStateChange = (state: SyncState) => {
+      Effect.logDebug(["Evolu handleSyncStateChange", { state }]).pipe(
         Effect.zipRight(syncStateStore.setState(state)),
         runFork,
       );
     };
 
-    db.init(schema, initialDataAsMutations, onSyncStateChange).pipe(
+    const handleDbReceive = () => {
+      Effect.gen(function* () {
+        yield* Effect.logTrace("Evolu handleDbReceive");
+        releaseUnsubscribedLoadingPromises();
+        const queries = [...subscribedQueries.keys()];
+        if (queries.length > 0) {
+          yield* Effect.flatMap(db.loadQueries(queries), handlePatches());
+        }
+      }).pipe(runFork);
+    };
+
+    db.init(
+      schema,
+      initialDataAsMutations,
+      handleDbError,
+      handleSyncStateChange,
+      handleDbReceive,
+    ).pipe(
       Effect.tap(sync({ refreshQueries: false })),
       Effect.flatMap(ownerStore.setState),
       Effect.catchTag("NotSupportedPlatformError", () => Effect.void), // no-op
@@ -650,7 +659,14 @@ const createEvolu = (
     );
 
     const handlePatches =
-      (options: { readonly flushSync: boolean }) =>
+      (options?: {
+        /**
+         * The flushSync is for onComplete handlers only. For example, with
+         * React, when we want to focus on a node created by a mutation, we must
+         * ensure all DOM changes are flushed synchronously.
+         */
+        readonly flushSync: boolean;
+      }) =>
       (patches: ReadonlyArray<QueryPatches>) =>
         Effect.logDebug(["Evolu handlePatches", { patches }]).pipe(
           Effect.zipRight(rowsStoreStateFromPatches(patches)),
@@ -663,7 +679,7 @@ const createEvolu = (
             ),
           ),
           Effect.tap((nextState) => {
-            if (options.flushSync) {
+            if (options?.flushSync) {
               flushSync(() => {
                 rowsStore.setState(nextState).pipe(runSync);
               });
@@ -744,18 +760,10 @@ const createEvolu = (
             releaseUnsubscribedLoadingPromises();
             db.mutate(mutations, [...subscribedQueries.keys()]).pipe(
               Effect.flatMap(
-                /**
-                 * The flushSync is for onComplete handlers only. For example,
-                 * with React, when we want to focus on a node created by a
-                 * mutation, we must ensure all DOM changes are flushed
-                 * synchronously.
-                 */
                 handlePatches({ flushSync: onCompletesDef.length > 0 }),
               ),
               Effect.tap(() => {
-                onCompletesDef.forEach((onComplete) => {
-                  onComplete();
-                });
+                onCompletesDef.forEach((onComplete) => onComplete());
               }),
               runFork,
             );
@@ -809,7 +817,7 @@ const createEvolu = (
             if (queue.length === 1) {
               queueMicrotask(() => {
                 db.loadQueries(Arr.dedupe(queue)).pipe(
-                  Effect.flatMap(handlePatches({ flushSync: false })),
+                  Effect.flatMap(handlePatches()),
                   runFork,
                 );
                 queue = [];

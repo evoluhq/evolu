@@ -1,10 +1,9 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
-import { Config, createRuntime } from "@evolu/common";
+import { Config, createRuntime, ensureTransferableError } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import { ManagedRuntime } from "effect/ManagedRuntime";
 import { nanoid } from "nanoid";
-import { ensureTransferableError } from "./ensureTransferableError.js";
 
 /**
  * Something like Comlink but simplified and with Effect API.

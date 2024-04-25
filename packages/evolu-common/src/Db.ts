@@ -12,6 +12,7 @@ import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
 import * as Record from "effect/Record";
 import * as Ref from "effect/Ref";
+import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
 import * as String from "effect/String";
 import * as SynchronizedRef from "effect/SynchronizedRef";
@@ -39,6 +40,11 @@ import {
 } from "./Crdt.js";
 import { Bip39, Mnemonic, NanoIdGenerator } from "./Crypto.js";
 import { QueryPatches, makePatches } from "./Diff.js";
+import {
+  EvoluError,
+  ensureTransferableError,
+  makeUnexpectedError,
+} from "./Error.js";
 import { Id, cast } from "./Model.js";
 import { Owner, OwnerId, makeOwner } from "./Owner.js";
 import { SyncLock, SyncLockRelease } from "./Platform.js";
@@ -61,6 +67,7 @@ import {
   Sync,
   SyncData,
   SyncFactory,
+  SyncResult,
   SyncState,
 } from "./Sync.js";
 
@@ -68,8 +75,9 @@ export interface Db {
   readonly init: (
     schema: DbSchema,
     initialData: ReadonlyArray<Mutation>,
-    onSyncStateChange: (state: SyncState) => void,
-    // TODO: onError, onReceive
+    onError: Callbacks["onError"],
+    onSyncStateChange: Callbacks["onSyncStateChange"],
+    onReceive: Callbacks["onReceive"],
   ) => Effect.Effect<
     Owner,
     | NotSupportedPlatformError
@@ -206,7 +214,7 @@ export const createDb: Effect.Effect<
   const queryRowsRef = yield* SynchronizedRef.make<QueryRowsMap>(new Map());
 
   const db: Db = {
-    init: (schema, initialData, onSyncStateChange) =>
+    init: (schema, initialData, onError, onSyncStateChange, onReceive) =>
       Effect.gen(function* () {
         yield* Effect.logDebug(["Db init", { schema }]);
         const sqlite = yield* createSqlite.pipe(Scope.extend(scope));
@@ -232,7 +240,7 @@ export const createDb: Effect.Effect<
             contextWithSqlite.pipe(
               Context.add(Owner, owner),
               Context.add(Sync, sync),
-              Context.add(Callbacks, { onSyncStateChange }),
+              Context.add(Callbacks, { onError, onSyncStateChange, onReceive }),
             ),
           ),
         );
@@ -275,7 +283,7 @@ export const createDb: Effect.Effect<
           }
         }
         if (toSyncMutations.length > 0) {
-          yield* Effect.tap(applyMutations(toSyncMutations), sync);
+          yield* Effect.tap(applyMutations(toSyncMutations), forkSync);
         }
         return yield* loadQueries(queriesToRefresh, queryRowsRef);
       }).pipe(afterInit({ transaction: "exclusive" })),
@@ -302,7 +310,7 @@ export const createDb: Effect.Effect<
 
     sync: (queriesToRefresh) =>
       Effect.logDebug(["Db sync", { queriesToRefresh }]).pipe(
-        Effect.zipRight(sync()),
+        Effect.zipRight(forkSync()),
         Effect.zipRight(loadQueries(queriesToRefresh, queryRowsRef)),
         afterInit({ transaction: "shared" }),
       ),
@@ -317,12 +325,13 @@ export const createDb: Effect.Effect<
   return db;
 });
 
-class Callbacks extends Context.Tag("Callbacks")<
-  Callbacks,
-  {
-    readonly onSyncStateChange: (state: SyncState) => void;
-  }
->() {}
+export interface Callbacks {
+  readonly onError: (error: EvoluError) => void;
+  readonly onSyncStateChange: (state: SyncState) => void;
+  readonly onReceive: () => void;
+}
+
+export const Callbacks = Context.GenericTag<Callbacks>("Callbacks");
 
 export type QueryRowsMap = ReadonlyMap<Query, ReadonlyArray<Row>>;
 
@@ -376,7 +385,6 @@ const maybeExplainQueryPlan = (sqliteQuery: SqliteQuery) => {
 };
 
 const getSchema: Effect.Effect<DbSchema, never, Sqlite> = Effect.gen(
-  // TODO: Remove _, it's a bug.
   function* (_) {
     yield* Effect.logTrace("Db getSchema");
     const sqlite = yield* Sqlite;
@@ -541,7 +549,6 @@ const createOwner = (mnemonic?: Mnemonic) =>
   );
 
 const applyMutations = (mutations: ReadonlyArray<Mutation>) =>
-  // TODO: Remove _, it's a bug.
   Effect.gen(function* (_) {
     const { timestamp, merkleTree } = yield* readTimestampAndMerkleTree;
     const [nextTimestamp, messages] = yield* Effect.mapAccum(
@@ -600,51 +607,43 @@ const applyMessages = (
   merkleTree: MerkleTree,
   messages: ReadonlyArray<Message>,
 ): Effect.Effect<MerkleTree, never, Sqlite> =>
-  Effect.logDebug(["Db applyMessages", { merkleTree, messages }]).pipe(
-    Effect.zipRight(Sqlite),
-    Effect.flatMap((sqlite) =>
-      Effect.reduce(messages, merkleTree, (currentMerkleTree, message) =>
-        sqlite
-          .exec({
-            ...Sql.selectLastTimestampForTableRowColumn,
-            parameters: [message.table, message.row, message.column, 1],
-          })
-          .pipe(
-            Effect.map(({ rows }) =>
-              rows.length > 0 ? (rows[0].timestamp as TimestampString) : null,
-            ),
-            Effect.tap((timestamp) => {
-              if (timestamp != null && timestamp >= message.timestamp) return;
-              const { millis } = unsafeTimestampFromString(message.timestamp);
-              return upsertValueIntoTableRowColumn(message, messages, millis);
-            }),
-            Effect.flatMap((timestamp) => {
-              if (timestamp != null && timestamp === message.timestamp)
-                return Effect.succeed(currentMerkleTree);
-              return Effect.map(
-                sqlite.exec({
-                  ...Sql.insertIntoMessagesIfNew,
-                  parameters: [
-                    message.timestamp,
-                    message.table,
-                    message.row,
-                    message.column,
-                    message.value,
-                  ],
-                }),
-                ({ changes }) => {
-                  if (changes === 0) return currentMerkleTree;
-                  return insertIntoMerkleTree(
-                    currentMerkleTree,
-                    unsafeTimestampFromString(message.timestamp),
-                  );
-                },
-              );
-            }),
-          ),
-      ),
-    ),
-  );
+  Effect.gen(function* () {
+    yield* Effect.logDebug(["Db applyMessages", { merkleTree, messages }]);
+    const sqlite = yield* Sqlite;
+    for (const message of messages) {
+      const messageTimestamp = unsafeTimestampFromString(message.timestamp);
+      const lastTimestamp = yield* Effect.map(
+        sqlite.exec({
+          ...Sql.selectLastTimestampForTableRowColumn,
+          parameters: [message.table, message.row, message.column, 1],
+        }),
+        ({ rows }) =>
+          rows.length > 0 ? (rows[0].timestamp as TimestampString) : null,
+      );
+      if (lastTimestamp == null || lastTimestamp < message.timestamp) {
+        yield* upsertValueIntoTableRowColumn(
+          message,
+          messages,
+          messageTimestamp.millis,
+        );
+      }
+      if (lastTimestamp == null || lastTimestamp !== message.timestamp) {
+        const { changes } = yield* sqlite.exec({
+          ...Sql.insertIntoMessagesIfNew,
+          parameters: [
+            message.timestamp,
+            message.table,
+            message.row,
+            message.column,
+            message.value,
+          ],
+        });
+        if (changes === 1)
+          merkleTree = insertIntoMerkleTree(merkleTree, messageTimestamp);
+      }
+    }
+    return merkleTree;
+  });
 
 const upsertValueIntoTableRowColumn = (
   message: NewMessage,
@@ -737,7 +736,7 @@ const dropAllTables = Effect.gen(function* () {
   yield* sqlite.exec({ sql });
 });
 
-const sync = (messages: ReadonlyArray<Message> = []) =>
+const forkSync = (messages: ReadonlyArray<Message> = []) =>
   // TODO: local scope
   Effect.forkDaemon(
     Effect.gen(function* () {
@@ -754,82 +753,96 @@ const sync = (messages: ReadonlyArray<Message> = []) =>
 const syncLoop = (
   messages: ReadonlyArray<Message> = [],
   syncLockRelease: SyncLockRelease,
-) =>
+): Effect.Effect<void, never, Sync | Callbacks | Time | Sqlite | Config> =>
   Effect.gen(function* (_) {
-    yield* Effect.logTrace("Db syncLoop start");
+    const sqlite = yield* Sqlite;
     const sync = yield* Sync;
     const callbacks = yield* Callbacks;
     const time = yield* Time;
-    const sqlite = yield* Sqlite;
 
     const syncDataRef = yield* readTimestampAndMerkleTree.pipe(
+      sqlite.transaction("shared"),
       Effect.map((a): SyncData => ({ ...a, messages })),
       Effect.flatMap(Ref.make),
     );
 
-    yield* Effect.repeat(
-      Effect.gen(function* (_) {
-        const syncData = yield* Ref.get(syncDataRef);
-        const response = yield* sync.sync(syncData);
-
-        // TODO: transaction after sync
-        // const sqlite = yield* Sqlite;
-        // sqlite.transaction("exclusive"),
-
-        const current = yield* readTimestampAndMerkleTree;
-        const timestamp = yield* Effect.reduce(
-          response.messages,
-          current.timestamp,
-          (local, message) =>
-            receiveTimestamp({
-              local,
-              remote: unsafeTimestampFromString(message.timestamp),
-            }),
-        );
-        const merkleTree = yield* applyMessages(
-          current.merkleTree,
-          response.messages,
-        );
-        if (response.messages.length > 0) {
-          yield* writeTimestampAndMerkleTree(timestamp, merkleTree);
-          // TODO: onReceive
-        }
-        const diff = diffMerkleTrees(response.merkleTree, merkleTree);
-        yield* Effect.logDebug([
-          "Db syncLoop diffMerkleTrees",
-          { diff: Option.getOrNull(diff) },
-        ]);
-        return { timestamp, merkleTree, diff };
-      }),
-      {
-        until: ({ timestamp, merkleTree, diff }) =>
-          Effect.gen(function* () {
-            if (Option.isNone(diff)) {
-              yield* Effect.logTrace("Db syncLoop end");
-              yield* syncLockRelease.release;
+    yield* Ref.get(syncDataRef).pipe(
+      Effect.flatMap(sync.sync),
+      Effect.flatMap(handleSyncResult),
+      Effect.repeat({
+        schedule: Schedule.recurs(50),
+        until: Option.match({
+          onNone: () =>
+            Effect.gen(function* () {
               callbacks.onSyncStateChange({
                 _tag: "SyncStateIsSynced",
                 time: yield* time.now,
               });
               return true;
-            }
-            const messages = yield* Effect.map(
-              sqlite.exec({
-                ...Sql.selectMessagesToSync,
-                parameters: [timestampToString(makeSyncTimestamp(diff.value))],
-              }),
-              ({ rows }) => rows as unknown as ReadonlyArray<Message>,
-            );
-            yield* Ref.set(syncDataRef, {
-              merkleTree,
-              timestamp,
-              messages,
-            });
-            return false;
-          }),
-      },
+            }),
+          onSome: (syncData) =>
+            Effect.gen(function* () {
+              yield* Ref.set(syncDataRef, syncData);
+              return false;
+            }),
+        }),
+      }),
+      Effect.tapBoth({
+        onFailure: () => syncLockRelease.release,
+        onSuccess: () => syncLockRelease.release,
+      }),
+      Effect.catchAllDefect((error) =>
+        // Db can run in a Web Worker, so we must ensure transferable error.
+        Effect.fail(makeUnexpectedError(ensureTransferableError(error))),
+      ),
+      Effect.catchTag("SyncStateIsNotSynced", (state) =>
+        Effect.succeed(callbacks.onSyncStateChange(state)),
+      ),
+      Effect.catchAll((error) => Effect.succeed(callbacks.onError(error))),
     );
   });
+
+const handleSyncResult = (result: SyncResult) =>
+  Effect.flatMap(Sqlite, (sqlite) =>
+    Effect.gen(function* () {
+      yield* Effect.logDebug(["Db handleSyncResult", { result }]);
+      const { onReceive } = yield* Callbacks;
+      const current = yield* readTimestampAndMerkleTree;
+      const nextTimestamp = yield* Effect.reduce(
+        result.messages,
+        current.timestamp,
+        (local, message) =>
+          receiveTimestamp({
+            local,
+            remote: unsafeTimestampFromString(message.timestamp),
+          }),
+      );
+      const nextMerkleTree = yield* applyMessages(
+        current.merkleTree,
+        result.messages,
+      );
+      if (result.messages.length > 0) {
+        yield* writeTimestampAndMerkleTree(nextTimestamp, nextMerkleTree);
+        onReceive();
+      }
+      return yield* diffMerkleTrees(result.merkleTree, nextMerkleTree).pipe(
+        Effect.flatMap((diff) =>
+          sqlite.exec({
+            ...Sql.selectMessagesToSync,
+            parameters: [timestampToString(makeSyncTimestamp(diff))],
+          }),
+        ),
+        Effect.map(
+          ({ rows }): SyncData => ({
+            messages: rows as unknown as ReadonlyArray<Message>,
+            merkleTree: nextMerkleTree,
+            timestamp: nextTimestamp,
+          }),
+        ),
+        Effect.option,
+      );
+    }).pipe(sqlite.transaction("exclusive")),
+  );
 
 interface SerializedSqliteQuery {
   readonly sql: string;

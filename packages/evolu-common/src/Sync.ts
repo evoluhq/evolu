@@ -25,20 +25,14 @@ import { Owner } from "./Owner.js";
 import * as Protobuf from "./Protobuf.js";
 import { JsonObjectOrArray, Value } from "./Sqlite.js";
 
-export class Sync extends Context.Tag("Sync")<
-  Sync,
-  {
-    readonly init: (owner: Owner) => Effect.Effect<void>;
-    readonly sync: (syncData: SyncData) => Effect.Effect<
-      {
-        readonly messages: ReadonlyArray<Message>;
-        readonly merkleTree: MerkleTree;
-      },
-      SyncStateIsNotSynced,
-      Config
-    >;
-  }
->() {}
+export interface Sync {
+  readonly init: (owner: Owner) => Effect.Effect<void>;
+  readonly sync: (
+    syncData: SyncData,
+  ) => Effect.Effect<SyncResult, SyncStateIsNotSynced, Config>;
+}
+
+export const Sync = Context.GenericTag<Sync>("Sync");
 
 export interface SyncData {
   merkleTree: MerkleTree;
@@ -55,6 +49,11 @@ export interface NewMessage {
   readonly row: Id;
   readonly column: string;
   readonly value: Value;
+}
+
+export interface SyncResult {
+  readonly messages: ReadonlyArray<Message>;
+  readonly merkleTree: MerkleTree;
 }
 
 /**
@@ -102,12 +101,10 @@ export interface PaymentRequiredError {
   readonly _tag: "PaymentRequiredError";
 }
 
-export interface SyncService extends Context.Tag.Service<typeof Sync> {}
-
 export class SyncFactory extends Context.Tag("SyncFactory")<
   SyncFactory,
   {
-    readonly createSync: Effect.Effect<SyncService, never, Scope.Scope>;
+    readonly createSync: Effect.Effect<Sync, never, Scope.Scope>;
   }
 >() {}
 

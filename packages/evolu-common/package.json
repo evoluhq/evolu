@@ -61,17 +61,17 @@
     "nanoid": "^5.0.7"
   },
   "devDependencies": {
-    "@effect/platform": "^0.50.4",
-    "@effect/schema": "^0.66.7",
+    "@effect/platform": "^0.50.5",
+    "@effect/schema": "^0.66.8",
     "@evolu/tsconfig": "workspace:*",
     "@protobuf-ts/plugin": "^2.9.4",
     "@protobuf-ts/protoc": "^2.9.4",
     "array-shuffle": "^3.0.0",
-    "effect": "^3.0.4",
+    "effect": "^3.0.5",
     "eslint": "^8.57.0",
     "eslint-config-evolu": "workspace:*",
     "typescript": "^5.4.5",
-    "vitest": "^1.5.1"
+    "vitest": "^1.5.2"
   },
   "peerDependencies": {
     "@effect/platform": "^0.50.2",

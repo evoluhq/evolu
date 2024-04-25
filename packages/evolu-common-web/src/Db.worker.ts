@@ -1,8 +1,8 @@
 import {
   NanoIdGenerator,
   SqliteFactory,
+  Sync,
   SyncFactory,
-  SyncService,
   Time,
   createDb,
 } from "@evolu/common";
@@ -14,7 +14,7 @@ import { SqliteFactoryLive } from "./SqliteFactoryLive.js";
 
 const SyncFactoryLive = Layer.succeed(SyncFactory, {
   createSync: Effect.sync(() => {
-    return wrap<SyncService>(
+    return wrap<Sync>(
       new Worker(new URL("Sync.worker.js", import.meta.url), {
         type: "module",
       }),

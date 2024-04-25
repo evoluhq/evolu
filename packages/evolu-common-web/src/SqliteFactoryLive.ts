@@ -8,6 +8,7 @@ import {
   SqliteQuery,
   SqliteRow,
   createRuntime,
+  ensureTransferableError,
   lockName,
   maybeLogSqliteQueryExecutionTime,
   valuesToSqliteValues,
@@ -20,7 +21,6 @@ import * as Arr from "effect/Array";
 import * as Effect from "effect/Effect";
 import { absurd, constVoid } from "effect/Function";
 import * as Layer from "effect/Layer";
-import { ensureTransferableError } from "./ensureTransferableError.js";
 
 /**
  * "opfs-sahpool" does not support multiple simultaneous connections, and it can
