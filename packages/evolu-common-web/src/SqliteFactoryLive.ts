@@ -189,10 +189,6 @@ export const SqliteFactoryLive = Layer.effect(
               });
               execsBeforeSqliteInit = [];
             }),
-            // TODO: Use channel to send errors to Evolu.
-            // Effect.catchAllDefect(defect => {
-            //   //
-            // })
           )
           .pipe(Effect.provideService(Config, config), runtime.runPromise);
 
