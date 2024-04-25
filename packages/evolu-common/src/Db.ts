@@ -770,6 +770,7 @@ const syncLoop = (
       Effect.flatMap(sync.sync),
       Effect.flatMap(handleSyncResult),
       Effect.repeat({
+        // TODO: Exponential backoff and jittering
         schedule: Schedule.recurs(50),
         until: Option.match({
           onNone: () =>
