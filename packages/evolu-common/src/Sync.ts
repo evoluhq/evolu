@@ -6,7 +6,7 @@ import * as Arr from "effect/Array";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
-import * as Function from "effect/Function";
+import { absurd } from "effect/Function";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
 import * as Scope from "effect/Scope";
@@ -304,6 +304,6 @@ const valueFromProtobuf = (value: Protobuf.MessageContent["value"]): Value => {
     case undefined:
       return null;
     default:
-      return Function.absurd(value);
+      return absurd(value);
   }
 };
