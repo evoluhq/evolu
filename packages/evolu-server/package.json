@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@evolu/common": "workspace:*",
-    "better-sqlite3": "^9.5.0",
+    "better-sqlite3": "^9.6.0",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
     "effect": "^3.0.5",
