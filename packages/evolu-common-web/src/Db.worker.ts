@@ -13,13 +13,13 @@ import { expose, wrap } from "./ProxyWorker.js";
 import { SqliteFactoryLive } from "./SqliteFactoryLive.js";
 
 const SyncFactoryLive = Layer.succeed(SyncFactory, {
-  createSync: Effect.sync(() => {
-    return wrap<Sync>(
+  createSync: Effect.sync(() =>
+    wrap<Sync>(
       new Worker(new URL("Sync.worker.js", import.meta.url), {
         type: "module",
       }),
-    );
-  }),
+    ),
+  ),
 });
 
 createDb.pipe(

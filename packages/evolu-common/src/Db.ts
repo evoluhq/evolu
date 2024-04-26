@@ -50,6 +50,7 @@ import * as Sql from "./Sql.js";
 import {
   JsonObjectOrArray,
   Sqlite,
+  SqliteExecResult,
   SqliteFactory,
   SqliteQuery,
   SqliteQueryOptions,
@@ -637,11 +638,11 @@ const applyMessages = (
     return merkleTree;
   });
 
-const upsertValueIntoTableRowColumn = (
+export const upsertValueIntoTableRowColumn = (
   message: NewMessage,
   messages: ReadonlyArray<NewMessage>,
   millis: Millis,
-) =>
+): Effect.Effect<SqliteExecResult, never, Sqlite> =>
   Sqlite.pipe(
     Effect.map((sqlite) => {
       const now = cast(new Date(millis));

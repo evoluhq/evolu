@@ -1,6 +1,15 @@
+import { Effect } from "effect";
 import { expect, test } from "vitest";
-import { deserializeQuery, serializeQuery } from "../src/Db.js";
-import { SqliteQuery, isJsonObjectOrArray } from "../src/Sqlite.js";
+import { timestampToString, unsafeTimestampFromString } from "../src/Crdt.js";
+import {
+  deserializeQuery,
+  serializeQuery,
+  upsertValueIntoTableRowColumn,
+} from "../src/Db.js";
+import { Id } from "../src/Model.js";
+import { Sqlite, SqliteQuery, isJsonObjectOrArray } from "../src/Sqlite.js";
+import { Message } from "../src/Sync.js";
+import { SqliteTest, makeNode1Timestamp } from "./utils.js";
 
 test("isJsonObjectOrArray", () => {
   expect(isJsonObjectOrArray(null)).toBe(false);
@@ -22,4 +31,40 @@ test("serializeQuery and deserializeQuery", () => {
   expect(deserializeQuery(serializeQuery(sqliteQuery))).toStrictEqual(
     sqliteQuery,
   );
+});
+
+test("upsertValueIntoTableRowColumn should ensure schema", () => {
+  const message: Message = {
+    table: "a",
+    row: "b" as Id,
+    column: "c",
+    value: "d",
+    timestamp: timestampToString(makeNode1Timestamp()),
+  };
+  const { millis } = unsafeTimestampFromString(message.timestamp);
+
+  const rows = upsertValueIntoTableRowColumn(
+    message,
+    [message, message],
+    millis,
+  ).pipe(
+    Effect.zipRight(Sqlite),
+    Effect.flatMap(({ exec }) => exec({ sql: "select * from a" })),
+    Effect.provide(SqliteTest),
+    Effect.runSync,
+  );
+
+  expect(rows).toMatchInlineSnapshot(`
+    {
+      "changes": 0,
+      "rows": [
+        {
+          "c": "d",
+          "createdAt": "1997-04-13T12:27:00.000Z",
+          "id": "b",
+          "updatedAt": "1997-04-13T12:27:00.000Z",
+        },
+      ],
+    }
+  `);
 });
