@@ -921,16 +921,13 @@ type CreateIndex = typeof createIndex;
  *
  * See https://www.evolu.dev/docs/indexes
  *
- * ### Example
- *
- * ```ts
- * const indexes = createIndexes((create) => [
- *   create("indexTodoCreatedAt").on("todo").column("createdAt"),
- *   create("indexTodoCategoryCreatedAt")
- *     .on("todoCategory")
- *     .column("createdAt"),
- * ]);
- * ```
+ * @example
+ *   const indexes = createIndexes((create) => [
+ *     create("indexTodoCreatedAt").on("todo").column("createdAt"),
+ *     create("indexTodoCategoryCreatedAt")
+ *       .on("todoCategory")
+ *       .column("createdAt"),
+ *   ]);
  */
 export const createIndexes = (
   callback: (
