@@ -50,15 +50,15 @@ globalThis.sqlite3ApiConfig = {
 
 export const SqliteFactoryLive = Layer.effect(
   SqliteFactory,
-  Effect.gen(function* (_) {
-    const nanoIdGenerator = yield* _(NanoIdGenerator);
+  Effect.gen(function* () {
+    const nanoIdGenerator = yield* NanoIdGenerator;
     const sqlite3Promise = sqlite3InitModule();
 
     return SqliteFactory.of({
-      createSqlite: Effect.gen(function* (_) {
-        const channel = yield* _(
+      createSqlite: Effect.gen(function* () {
+        const channel = yield* Effect.flatMap(
           lockName("SqliteBroadcastChannel"),
-          Effect.flatMap(createSqliteBroadcastChannel),
+          createSqliteBroadcastChannel,
         );
 
         /** Handle incoming messages for a tab without initialized Sqlite. */
@@ -108,7 +108,7 @@ export const SqliteFactoryLive = Layer.effect(
         // TODO: Finalize SQLite
         // yield* _(Effect.addFinalizer(() => ...));
 
-        const config = yield* _(Config);
+        const config = yield* Config;
         const runtime = createRuntime(config);
 
         Effect.logTrace("SqliteWeb connection lock request")
@@ -192,7 +192,7 @@ export const SqliteFactoryLive = Layer.effect(
           )
           .pipe(Effect.provideService(Config, config), runtime.runPromise);
 
-        const transactionName = yield* _(lockName("SqliteTransaction"));
+        const transactionName = yield* lockName("SqliteTransaction");
 
         return Sqlite.of({
           exec: (query) =>

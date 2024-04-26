@@ -108,14 +108,13 @@ export class SyncFactory extends Context.Tag("SyncFactory")<
   }
 >() {}
 
-export const createSync = Effect.gen(function* (_) {
+export const createSync = Effect.gen(function* () {
   const initContext = Context.empty().pipe(
-    Context.add(SecretBox, yield* _(SecretBox)),
+    Context.add(SecretBox, yield* SecretBox),
   );
 
-  const afterInitContext = yield* _(
-    Deferred.make<Context.Context<SecretBox | Owner>>(),
-  );
+  const afterInitContext =
+    yield* Deferred.make<Context.Context<SecretBox | Owner>>();
 
   return Sync.of({
     init: (owner) =>
@@ -128,19 +127,18 @@ export const createSync = Effect.gen(function* (_) {
         ),
       ),
     sync: ({ merkleTree, timestamp, messages }) =>
-      Effect.gen(function* (_) {
-        yield* _(
-          Effect.logDebug([
-            "Sync request",
-            { merkleTree, timestamp, messages },
-          ]),
-        );
-        const secretBox = yield* _(SecretBox);
-        const owner = yield* _(Owner);
-        const config = yield* _(Config);
+      Effect.gen(function* () {
+        yield* Effect.logDebug([
+          "Sync request",
+          { merkleTree, timestamp, messages },
+        ]);
+        const secretBox = yield* SecretBox;
+        const owner = yield* Owner;
+        const config = yield* Config;
 
-        return yield* _(
-          Effect.forEach(messages || [], ({ timestamp, ...newMessage }) =>
+        return yield* Effect.forEach(
+          messages || [],
+          ({ timestamp, ...newMessage }) =>
             Effect.map(
               secretBox.seal(
                 owner.encryptionKey,
@@ -148,7 +146,7 @@ export const createSync = Effect.gen(function* (_) {
               ),
               (content): Protobuf.EncryptedMessage => ({ timestamp, content }),
             ),
-          ),
+        ).pipe(
           Effect.map((encrypedMessages) =>
             Protobuf.SyncRequest.toBinary(
               {

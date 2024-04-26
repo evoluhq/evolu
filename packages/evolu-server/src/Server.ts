@@ -29,8 +29,8 @@ export const Server = Context.GenericTag<Server>("@services/Server");
 
 export const ServerLive = Layer.effect(
   Server,
-  Effect.gen(function* (_) {
-    const db = yield* _(Db);
+  Effect.gen(function* () {
+    const db = yield* Db;
 
     return Server.of({
       initDatabase: Effect.promise(async () => {

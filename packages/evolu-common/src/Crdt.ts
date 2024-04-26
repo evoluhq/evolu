@@ -145,21 +145,19 @@ export interface TimestampTimeOutOfRangeError {
 }
 
 const getNextMillis = (millis: ReadonlyArray<Millis>) =>
-  Effect.gen(function* (_) {
-    const time = yield* _(Time);
-    const config = yield* _(Config);
+  Effect.gen(function* () {
+    const time = yield* Time;
+    const config = yield* Config;
 
-    const now = yield* _(time.now);
+    const now = yield* time.now;
     const next = Math.max(now, ...millis) as Millis;
 
     if (next - now > config.maxDrift)
-      yield* _(
-        Effect.fail<TimestampDriftError>({
-          _tag: "TimestampDriftError",
-          now,
-          next,
-        }),
-      );
+      yield* Effect.fail<TimestampDriftError>({
+        _tag: "TimestampDriftError",
+        now,
+        next,
+      });
 
     return next;
   });
@@ -186,11 +184,11 @@ export const sendTimestamp = (
   | TimestampTimeOutOfRangeError,
   Time | Config
 > =>
-  Effect.gen(function* (_) {
-    const millis = yield* _(getNextMillis([timestamp.millis]));
+  Effect.gen(function* () {
+    const millis = yield* getNextMillis([timestamp.millis]);
     const counter =
       millis === timestamp.millis
-        ? yield* _(incrementCounter(timestamp.counter))
+        ? yield* incrementCounter(timestamp.counter)
         : counterMin;
     return { ...timestamp, millis, counter };
   });
@@ -211,23 +209,19 @@ export const receiveTimestamp = ({
 > =>
   Effect.gen(function* (_) {
     if (local.node === remote.node)
-      yield* _(
-        Effect.fail<TimestampDuplicateNodeError>({
-          _tag: "TimestampDuplicateNodeError",
-          node: local.node,
-        }),
-      );
+      yield* Effect.fail<TimestampDuplicateNodeError>({
+        _tag: "TimestampDuplicateNodeError",
+        node: local.node,
+      });
 
-    const millis = yield* _(getNextMillis([local.millis, remote.millis]));
-    const counter = yield* _(
-      millis === local.millis && millis === remote.millis
-        ? incrementCounter(Math.max(local.counter, remote.counter) as Counter)
-        : millis === local.millis
-          ? incrementCounter(local.counter)
-          : millis === remote.millis
-            ? incrementCounter(remote.counter)
-            : Either.right(counterMin),
-    );
+    const millis = yield* getNextMillis([local.millis, remote.millis]);
+    const counter = yield* millis === local.millis && millis === remote.millis
+      ? incrementCounter(Math.max(local.counter, remote.counter) as Counter)
+      : millis === local.millis
+        ? incrementCounter(local.counter)
+        : millis === remote.millis
+          ? incrementCounter(remote.counter)
+          : Either.right(counterMin);
 
     return { ...local, millis, counter };
   });

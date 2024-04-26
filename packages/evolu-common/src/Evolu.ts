@@ -459,17 +459,17 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
 >() {
   static Common = Layer.effect(
     EvoluFactory,
-    Effect.gen(function* (_) {
-      const flushSync = yield* _(
+    Effect.gen(function* () {
+      const flushSync = yield* Effect.map(
         Effect.serviceOption(FlushSync),
-        Effect.map(Option.getOrElse<FlushSync>(() => (callback) => callback())),
+        Option.getOrElse<FlushSync>(() => (callback) => callback()),
       );
 
       const context = Context.empty().pipe(
-        Context.add(DbFactory, yield* _(DbFactory)),
-        Context.add(NanoIdGenerator, yield* _(NanoIdGenerator)),
+        Context.add(DbFactory, yield* DbFactory),
+        Context.add(NanoIdGenerator, yield* NanoIdGenerator),
         Context.add(FlushSync, flushSync),
-        Context.add(AppState, yield* _(AppState)),
+        Context.add(AppState, yield* AppState),
       );
 
       // For hot/live reloading and future Evolu dynamic import.
@@ -565,22 +565,22 @@ const createEvolu = (
   runtime: ManagedRuntime.ManagedRuntime<Config, never>,
   initialData?: EvoluConfig["initialData"],
 ) =>
-  Effect.gen(function* (_) {
-    yield* _(Effect.logTrace("EvoluFactory createEvolu"));
+  Effect.gen(function* () {
+    yield* Effect.logTrace("EvoluFactory createEvolu");
 
-    const config = yield* _(Config);
-    const scope = yield* _(Scope.make());
-    const errorStore = yield* _(makeStore<EvoluError | null>(null));
-    const ownerStore = yield* _(makeStore<Owner | null>(null));
-    const rowsStore = yield* _(makeStore<QueryRowsMap>(new Map()));
+    const config = yield* Config;
+    const scope = yield* Scope.make();
+    const errorStore = yield* makeStore<EvoluError | null>(null);
+    const ownerStore = yield* makeStore<Owner | null>(null);
+    const rowsStore = yield* makeStore<QueryRowsMap>(new Map());
     const loadingPromises = new Map<Query, LoadingPromise>();
     const subscribedQueries = new Map<Query, number>();
-    const nanoIdGenerator = yield* _(NanoIdGenerator);
-    const flushSync = yield* _(FlushSync);
-    const appState = yield* _(AppState);
-    const syncStateStore = yield* _(
-      makeStore<SyncState>({ _tag: "SyncStateInitial" }),
-    );
+    const nanoIdGenerator = yield* NanoIdGenerator;
+    const flushSync = yield* FlushSync;
+    const appState = yield* AppState;
+    const syncStateStore = yield* makeStore<SyncState>({
+      _tag: "SyncStateInitial",
+    });
 
     const handleAllErrors = <T>(effect: Effect.Effect<T, EvoluError, Config>) =>
       effect.pipe(
@@ -596,10 +596,7 @@ const createEvolu = (
     const runSync = flow(handleAllErrors, runtime.runSync);
     const runPromise = flow(handleAllErrors, runtime.runPromise);
 
-    const db = yield* _(
-      DbFactory,
-      Effect.flatMap(({ createDb }) => createDb),
-    );
+    const db = yield* Effect.flatMap(DbFactory, ({ createDb }) => createDb);
     Scope.addFinalizer(scope, db.dispose());
 
     const sync =
@@ -611,16 +608,15 @@ const createEvolu = (
         ).pipe(runFork);
       };
 
-    const appStateReset = yield* _(
-      appState.init({
-        onRequestSync: sync({ refreshQueries: true }),
-        reloadUrl: config.reloadUrl,
-      }),
-    );
+    const appStateReset = yield* appState.init({
+      onRequestSync: sync({ refreshQueries: true }),
+      reloadUrl: config.reloadUrl,
+    });
 
-    const initialDataAsMutations = yield* _(
+    const initialDataAsMutations = yield* Effect.provideService(
       initialDataToMutations(initialData),
-      Effect.provideService(NanoIdGenerator, nanoIdGenerator),
+      NanoIdGenerator,
+      nanoIdGenerator,
     );
 
     const handleDbError = (error: EvoluError) => {
