@@ -9,7 +9,6 @@ import * as Effect from "effect/Effect";
 import { absurd } from "effect/Function";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
-import * as Scope from "effect/Scope";
 import { Config } from "./Config.js";
 import {
   MerkleTree,
@@ -104,7 +103,7 @@ export interface PaymentRequiredError {
 export class SyncFactory extends Context.Tag("SyncFactory")<
   SyncFactory,
   {
-    readonly createSync: Effect.Effect<Sync, never, Scope.Scope>;
+    readonly createSync: Effect.Effect<Sync, never, never>;
   }
 >() {}
 

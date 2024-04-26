@@ -3,13 +3,13 @@ import {
   Bip39,
   Mnemonic,
   SyncLock,
+  SyncLockAlreadySyncingError,
   SyncLockRelease,
-  lockName,
+  getLockName,
   validateMnemonicToEffect,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 
 export const AppStateLive = Layer.succeed(AppState, {
   init: ({ reloadUrl, onRequestSync }) =>
@@ -52,41 +52,39 @@ export const AppStateLive = Layer.succeed(AppState, {
     }),
 });
 
-// TODO: Ask the Effect team for review.
 export const SyncLockLive = Layer.succeed(SyncLock, {
-  tryAcquire: Effect.logTrace("SyncLock tryAcquire").pipe(
-    Effect.zipRight(lockName("SyncLock")),
-    Effect.flatMap((lockName) =>
-      Effect.async<Option.Option<SyncLockRelease>>((resume) => {
+  tryAcquire: Effect.gen(function* () {
+    yield* Effect.logTrace("SyncLock tryAcquire");
+    const lockName = yield* getLockName("SyncLock");
+
+    const acquire = Effect.async<SyncLockRelease, SyncLockAlreadySyncingError>(
+      (resume) => {
         navigator.locks.request(lockName, { ifAvailable: true }, (lock) => {
           if (lock == null) {
-            resume(
-              Effect.zipRight(
-                Effect.logTrace("SyncLock not acquired"),
-                Effect.succeed(Option.none()),
-              ),
+            Effect.logTrace("SyncLock not acquired").pipe(
+              Effect.zipRight(Effect.fail(new SyncLockAlreadySyncingError())),
+              resume,
             );
             return;
           }
           return new Promise<void>((resolve) => {
-            resume(
+            Effect.logTrace("SyncLock acquired").pipe(
               Effect.zipRight(
-                Effect.logTrace("SyncLock acquired"),
-                Effect.succeed(
-                  Option.some({
-                    release: Effect.zipRight(
-                      Effect.logTrace("SyncLock release"),
-                      Effect.sync(resolve),
-                    ),
-                  }),
-                ),
+                Effect.succeed({
+                  release: Effect.logTrace("SyncLock release").pipe(
+                    Effect.tap(Effect.sync(resolve)),
+                  ),
+                }),
               ),
+              resume,
             );
           });
         });
-      }),
-    ),
-  ),
+      },
+    );
+
+    return yield* Effect.acquireRelease(acquire, ({ release }) => release);
+  }),
 });
 
 const importBip39WithEnglish = Effect.all(

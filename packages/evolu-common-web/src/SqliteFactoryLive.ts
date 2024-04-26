@@ -9,7 +9,7 @@ import {
   SqliteRow,
   createRuntime,
   ensureTransferableError,
-  lockName,
+  getLockName,
   maybeLogSqliteQueryExecutionTime,
   valuesToSqliteValues,
 } from "@evolu/common";
@@ -57,7 +57,7 @@ export const SqliteFactoryLive = Layer.effect(
     return SqliteFactory.of({
       createSqlite: Effect.gen(function* () {
         const channel = yield* Effect.flatMap(
-          lockName("SqliteBroadcastChannel"),
+          getLockName("SqliteBroadcastChannel"),
           createSqliteBroadcastChannel,
         );
 
@@ -105,15 +105,12 @@ export const SqliteFactoryLive = Layer.effect(
           (message: ExecSuccess | ExecError) => void
         >();
 
-        // TODO: Finalize SQLite
-        // yield* _(Effect.addFinalizer(() => ...));
-
         const config = yield* Config;
         const runtime = createRuntime(config);
 
         Effect.logTrace("SqliteWeb connection lock request")
           .pipe(
-            Effect.zipRight(lockName("SqliteConnection")),
+            Effect.zipRight(getLockName("SqliteConnection")),
             Effect.flatMap((lockName) =>
               Effect.async<Sqlite3Static>((resume) => {
                 navigator.locks.request(
@@ -192,7 +189,7 @@ export const SqliteFactoryLive = Layer.effect(
           )
           .pipe(Effect.provideService(Config, config), runtime.runPromise);
 
-        const transactionName = yield* lockName("SqliteTransaction");
+        const transactionName = yield* getLockName("SqliteTransaction");
 
         return Sqlite.of({
           exec: (query) =>

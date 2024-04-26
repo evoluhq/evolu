@@ -4,7 +4,6 @@ import { make } from "@effect/schema/Schema";
 import * as Arr from "effect/Array";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
 import { constVoid, flow, pipe } from "effect/Function";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
@@ -12,7 +11,6 @@ import * as Number from "effect/Number";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
 import * as Record from "effect/Record";
-import * as Scope from "effect/Scope";
 import * as Kysely from "kysely";
 import { Config, createRuntime, defaultConfig } from "./Config.js";
 import { Mnemonic, NanoIdGenerator } from "./Crypto.js";
@@ -45,7 +43,7 @@ import {
   isSqlMutation,
 } from "./Sqlite.js";
 import { Listener, Unsubscribe, makeStore } from "./Store.js";
-import { SyncState } from "./Sync.js";
+import { SyncState, initialSyncState } from "./Sync.js";
 
 /**
  * The Evolu interface provides a type-safe SQL query building and state
@@ -348,8 +346,6 @@ export interface Evolu<T extends EvoluSchema = EvoluSchema> {
 
   // TODO:
   // readonly exportSqliteFile: () => Promise<Uint8Array>
-
-  readonly dispose: () => Promise<void>;
 }
 
 /** A type to define tables, columns, and column types. */
@@ -504,6 +500,30 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
   );
 }
 
+export interface EvoluConfig<T extends EvoluSchema = EvoluSchema>
+  extends Config {
+  /**
+   * Use the `indexes` property to define SQLite indexes.
+   *
+   * Table and column names are not typed because Kysely doesn't support it.
+   *
+   * https://medium.com/@JasonWyatt/squeezing-performance-from-sqlite-indexes-indexes-c4e175f3c346
+   *
+   * @example
+   *   const indexes = [
+   *     createIndex("indexTodoCreatedAt").on("todo").column("createdAt"),
+   *
+   *     createIndex("indexTodoCategoryCreatedAt")
+   *       .on("todoCategory")
+   *       .column("createdAt"),
+   *   ];
+   */
+  indexes: ReadonlyArray<Index>;
+
+  /** Use this option to create initial data (fixtures). */
+  initialData: (evolu: EvoluForInitialData<T>) => void;
+}
+
 const schemaToTables = (schema: S.Schema<any>) =>
   pipe(
     getPropertySignatures(schema),
@@ -531,35 +551,6 @@ const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
   return out as any;
 };
 
-export interface EvoluConfig<T extends EvoluSchema = EvoluSchema>
-  extends Config {
-  /**
-   * Use the `indexes` property to define SQLite indexes.
-   *
-   * Table and column names are not typed because Kysely doesn't support it.
-   *
-   * https://medium.com/@JasonWyatt/squeezing-performance-from-sqlite-indexes-indexes-c4e175f3c346
-   *
-   * @example
-   *   const indexes = [
-   *     createIndex("indexTodoCreatedAt").on("todo").column("createdAt"),
-   *
-   *     createIndex("indexTodoCategoryCreatedAt")
-   *       .on("todoCategory")
-   *       .column("createdAt"),
-   *   ];
-   */
-  indexes: ReadonlyArray<Index>;
-
-  /** Use this option to create initial data (fixtures). */
-  initialData: (evolu: EvoluForInitialData<T>) => void;
-}
-
-interface EvoluForInitialData<T extends EvoluSchema = EvoluSchema> {
-  create: Mutate<T, "create">;
-  createOrUpdate: Mutate<T, "createOrUpdate">;
-}
-
 const createEvolu = (
   schema: DbSchema,
   runtime: ManagedRuntime.ManagedRuntime<Config, never>,
@@ -567,20 +558,20 @@ const createEvolu = (
 ) =>
   Effect.gen(function* () {
     yield* Effect.logTrace("EvoluFactory createEvolu");
-
     const config = yield* Config;
-    const scope = yield* Scope.make();
+    const dbFactory = yield* DbFactory;
+    const appState = yield* AppState;
+    const nanoIdGenerator = yield* NanoIdGenerator;
+    const flushSync = yield* FlushSync;
+
+    const db = yield* dbFactory.createDb;
     const errorStore = yield* makeStore<EvoluError | null>(null);
     const ownerStore = yield* makeStore<Owner | null>(null);
     const rowsStore = yield* makeStore<QueryRowsMap>(new Map());
+    const syncStateStore = yield* makeStore<SyncState>(initialSyncState);
+
     const loadingPromises = new Map<Query, LoadingPromise>();
     const subscribedQueries = new Map<Query, number>();
-    const nanoIdGenerator = yield* NanoIdGenerator;
-    const flushSync = yield* FlushSync;
-    const appState = yield* AppState;
-    const syncStateStore = yield* makeStore<SyncState>({
-      _tag: "SyncStateInitial",
-    });
 
     const handleAllErrors = <T>(effect: Effect.Effect<T, EvoluError, Config>) =>
       effect.pipe(
@@ -594,24 +585,7 @@ const createEvolu = (
     // TODO: Ask the Effect team for review.
     const runFork = flow(handleAllErrors, runtime.runFork);
     const runSync = flow(handleAllErrors, runtime.runSync);
-    const runPromise = flow(handleAllErrors, runtime.runPromise);
-
-    const db = yield* Effect.flatMap(DbFactory, ({ createDb }) => createDb);
-    Scope.addFinalizer(scope, db.dispose());
-
-    const sync =
-      ({ refreshQueries }: { refreshQueries: boolean }) =>
-      () => {
-        Effect.flatMap(
-          db.sync(refreshQueries ? [...subscribedQueries.keys()] : []),
-          handlePatches(),
-        ).pipe(runFork);
-      };
-
-    const appStateReset = yield* appState.init({
-      onRequestSync: sync({ refreshQueries: true }),
-      reloadUrl: config.reloadUrl,
-    });
+    // const runPromise = flow(handleAllErrors, runtime.runPromise);
 
     const initialDataAsMutations = yield* Effect.provideService(
       initialDataToMutations(initialData),
@@ -641,6 +615,15 @@ const createEvolu = (
       }).pipe(runFork);
     };
 
+    const sync =
+      ({ refreshQueries }: { refreshQueries: boolean }) =>
+      () => {
+        Effect.flatMap(
+          db.sync(refreshQueries ? [...subscribedQueries.keys()] : []),
+          handlePatches(),
+        ).pipe(runFork);
+      };
+
     db.init(
       schema,
       initialDataAsMutations,
@@ -653,6 +636,11 @@ const createEvolu = (
       Effect.catchTag("NotSupportedPlatformError", () => Effect.void), // no-op
       runFork,
     );
+
+    const appStateReset = yield* appState.init({
+      onRequestSync: sync({ refreshQueries: true }),
+      reloadUrl: config.reloadUrl,
+    });
 
     const handlePatches =
       (options?: {
@@ -874,12 +862,6 @@ const createEvolu = (
       ensureSchema: (schema) => {
         db.ensureSchema(schema).pipe(runFork);
       },
-
-      dispose: () =>
-        Effect.logTrace("dispose Evolu").pipe(
-          Effect.zipRight(Scope.close(scope, Exit.succeed("Evolu disposed"))),
-          runPromise,
-        ),
     };
 
     return evolu;
@@ -902,6 +884,11 @@ const initialDataToMutations = (
     initialData(evolu);
     return mutations;
   });
+
+interface EvoluForInitialData<T extends EvoluSchema = EvoluSchema> {
+  create: Mutate<T, "create">;
+  createOrUpdate: Mutate<T, "createOrUpdate">;
+}
 
 interface LoadingPromise {
   /** Promise with props for the upcoming React use hook. */
@@ -958,5 +945,7 @@ export const createIndexes = (
   );
 
 /** Create a namespaced lock name. */
-export const lockName = (name: string): Effect.Effect<string, never, Config> =>
+export const getLockName = (
+  name: string,
+): Effect.Effect<string, never, Config> =>
   Effect.map(Config, (config) => `evolu:${config.name}:${name}`);

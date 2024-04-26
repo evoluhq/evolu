@@ -6,14 +6,12 @@ import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import { Equivalence } from "effect/Equivalence";
-import * as Exit from "effect/Exit";
 import { constVoid, pipe } from "effect/Function";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
 import * as Record from "effect/Record";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
-import * as Scope from "effect/Scope";
 import * as String from "effect/String";
 import * as SynchronizedRef from "effect/SynchronizedRef";
 import * as Kysely from "kysely";
@@ -47,7 +45,7 @@ import {
 } from "./Error.js";
 import { Id, cast } from "./Model.js";
 import { Owner, OwnerId, makeOwner } from "./Owner.js";
-import { SyncLock, SyncLockRelease } from "./Platform.js";
+import { SyncLock } from "./Platform.js";
 import * as Sql from "./Sql.js";
 import {
   JsonObjectOrArray,
@@ -114,8 +112,6 @@ export interface Db {
   readonly sync: (
     queriesToRefresh: ReadonlyArray<Query>,
   ) => Effect.Effect<ReadonlyArray<QueryPatches>, never, Config>;
-
-  readonly dispose: () => Effect.Effect<void>;
 }
 
 export interface DbSchema {
@@ -210,14 +206,13 @@ export const createDb: Effect.Effect<
         ).pipe(Effect.provide(context)),
       );
 
-  const scope = yield* Scope.make();
   const queryRowsRef = yield* SynchronizedRef.make<QueryRowsMap>(new Map());
 
   const db: Db = {
     init: (schema, initialData, onError, onSyncStateChange, onReceive) =>
       Effect.gen(function* () {
         yield* Effect.logDebug(["Db init", { schema }]);
-        const sqlite = yield* createSqlite.pipe(Scope.extend(scope));
+        const sqlite = yield* createSqlite;
         const contextWithSqlite = Context.add(initContext, Sqlite, sqlite);
         const owner = yield* getSchema.pipe(
           Effect.tap(ensureSchema(schema)),
@@ -229,10 +224,7 @@ export const createDb: Effect.Effect<
           sqlite.transaction("exclusive"),
           Effect.provide(contextWithSqlite),
         );
-        const sync = yield* createSync.pipe(
-          Effect.provide(initContext),
-          Scope.extend(scope),
-        );
+        const sync = yield* createSync.pipe(Effect.provide(initContext));
         yield* sync.init(owner);
         Deferred.unsafeDone(
           afterInitContext,
@@ -315,11 +307,12 @@ export const createDb: Effect.Effect<
         afterInit({ transaction: "shared" }),
       ),
 
-    dispose: () =>
-      Effect.logTrace("Db dispose").pipe(
-        Effect.tap(Scope.close(scope, Exit.succeed("Db disposed"))),
-        afterInit({ transaction: "exclusive" }),
-      ),
+    // TODO:
+    // dispose: () =>
+    //   Effect.logTrace("Db dispose").pipe(
+    //     Effect.tap(Scope.close(scope, Exit.succeed("Db disposed"))),
+    //     afterInit({ transaction: "last" }),
+    //   ),
   };
 
   return db;
@@ -608,7 +601,6 @@ const applyMessages = (
   messages: ReadonlyArray<Message>,
 ): Effect.Effect<MerkleTree, never, Sqlite> =>
   Effect.gen(function* () {
-    yield* Effect.logDebug(["Db applyMessages", { merkleTree, messages }]);
     const sqlite = yield* Sqlite;
     for (const message of messages) {
       const messageTimestamp = unsafeTimestampFromString(message.timestamp);
@@ -737,22 +729,18 @@ const dropAllTables = Effect.gen(function* () {
 });
 
 const forkSync = (messages: ReadonlyArray<Message> = []) =>
-  // TODO: local scope
-  Effect.forkDaemon(
-    Effect.gen(function* () {
-      const syncLock = yield* SyncLock;
-      const callbacks = yield* Callbacks;
-      // TODO: Use Scope.
-      const syncLockRelease = yield* syncLock.tryAcquire;
-      if (Option.isNone(syncLockRelease)) return;
-      callbacks.onSyncStateChange({ _tag: "SyncStateIsSyncing" });
-      yield* syncLoop(messages, syncLockRelease.value);
+  SyncLock.pipe(
+    Effect.flatMap((syncLock) => syncLock.tryAcquire),
+    Effect.matchEffect({
+      onFailure: () => Effect.void,
+      onSuccess: () => syncLoop(messages),
     }),
+    Effect.scoped,
+    Effect.forkDaemon,
   );
 
 const syncLoop = (
   messages: ReadonlyArray<Message> = [],
-  syncLockRelease: SyncLockRelease,
 ): Effect.Effect<void, never, Sync | Callbacks | Time | Sqlite | Config> =>
   Effect.gen(function* (_) {
     const sqlite = yield* Sqlite;
@@ -765,6 +753,8 @@ const syncLoop = (
       Effect.map((a): SyncData => ({ ...a, messages })),
       Effect.flatMap(Ref.make),
     );
+
+    callbacks.onSyncStateChange({ _tag: "SyncStateIsSyncing" });
 
     yield* Ref.get(syncDataRef).pipe(
       Effect.flatMap(sync.sync),
@@ -788,10 +778,6 @@ const syncLoop = (
             }),
         }),
       }),
-      Effect.tapBoth({
-        onFailure: () => syncLockRelease.release,
-        onSuccess: () => syncLockRelease.release,
-      }),
       Effect.catchAllDefect((error) =>
         // Db can run in a Web Worker, so we must ensure transferable error.
         Effect.fail(makeUnexpectedError(ensureTransferableError(error))),
@@ -805,8 +791,7 @@ const syncLoop = (
 
 const handleSyncResult = (result: SyncResult) =>
   Effect.flatMap(Sqlite, (sqlite) =>
-    Effect.gen(function* () {
-      yield* Effect.logDebug(["Db handleSyncResult", { result }]);
+    Effect.gen(function* (_) {
       const { onReceive } = yield* Callbacks;
       const current = yield* readTimestampAndMerkleTree;
       const nextTimestamp = yield* Effect.reduce(
@@ -955,5 +940,4 @@ export const notSupportedPlatformWorker: Db = {
   restoreOwner: () => Effect.void,
   ensureSchema: () => Effect.void,
   sync: () => Effect.succeed([]),
-  dispose: () => Effect.void,
 };

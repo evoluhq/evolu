@@ -4,7 +4,6 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Predicate from "effect/Predicate";
-import * as Scope from "effect/Scope";
 import { Config } from "./Config.js";
 
 export interface Sqlite {
@@ -35,7 +34,7 @@ export type SqliteTransactionMode = "exclusive" | "shared" | "last";
 export class SqliteFactory extends Context.Tag("SqliteFactory")<
   SqliteFactory,
   {
-    readonly createSqlite: Effect.Effect<Sqlite, never, Config | Scope.Scope>;
+    readonly createSqlite: Effect.Effect<Sqlite, never, Config>;
   }
 >() {
   static Common = Layer.effect(

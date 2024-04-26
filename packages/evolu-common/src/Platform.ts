@@ -1,6 +1,6 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
+import * as Scope from "effect/Scope";
 import { Config } from "./Config.js";
 
 /**
@@ -27,18 +27,21 @@ interface AppStateReset {
   readonly reset: Effect.Effect<void>;
 }
 
-// TODO: Ask the Effect team for review.
 export class SyncLock extends Context.Tag("SyncLock")<
   SyncLock,
   {
     readonly tryAcquire: Effect.Effect<
-      Option.Option<SyncLockRelease>,
-      never,
-      Config
+      SyncLockRelease,
+      SyncLockAlreadySyncingError,
+      Config | Scope.Scope
     >;
   }
 >() {}
 
 export interface SyncLockRelease {
   readonly release: Effect.Effect<void>;
+}
+
+export class SyncLockAlreadySyncingError {
+  readonly _tag = "SyncLockAlreadySyncingError";
 }
