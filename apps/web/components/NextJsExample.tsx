@@ -106,18 +106,8 @@ const evolu = createEvolu(Database, {
       categoryId,
     });
   },
-  minimumLogLevel: "trace",
+  // minimumLogLevel: "trace",
 });
-
-// const evolu2 = createEvolu(Database, {
-//   indexes,
-//   reloadUrl: "/examples/nextjs",
-//   ...(process.env.NODE_ENV === "development" && {
-//     syncUrl: "http://localhost:4000",
-//   }),
-//   minimumLogLevel: "trace",
-//   name: "Evolu1",
-// });
 
 export const NextJsExample = memo(function NextJsExample() {
   const [currentTab, setCurrentTab] = useState<"todos" | "categories">("todos");
