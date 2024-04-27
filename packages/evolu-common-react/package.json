@@ -41,16 +41,16 @@
   "devDependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
-    "@types/react": "^18.3.0",
+    "@types/react": "~18.2.45",
     "eslint": "^8.57.0",
     "eslint-config-evolu": "workspace:*",
-    "react": "^18.3.1",
+    "react": "18.2.0",
     "typescript": "^5.4.5",
     "vitest": "^1.5.2"
   },
   "peerDependencies": {
     "@evolu/common": "^4.1.1",
-    "react": "^18.2.0"
+    "react": "18.2.0"
   },
   "publishConfig": {
     "access": "public"
