@@ -719,14 +719,13 @@ const dropAllTables = Effect.gen(function* () {
   yield* Effect.logTrace("Db dropAllTables");
   const sqlite = yield* Sqlite;
   const schema = yield* getSchema;
-  const sql = schema.tables
+  yield* Effect.forEach(schema.tables, (table) =>
     // The dropped table is completely removed from the database schema and
     // the disk file. The table can not be recovered.
     // All indices and triggers associated with the table are also deleted.
     // https://sqlite.org/lang_droptable.html
-    .map((table) => `drop table "${table.name}";`)
-    .join("");
-  yield* sqlite.exec({ sql });
+    sqlite.exec({ sql: `drop table "${table.name}"` }),
+  );
 });
 
 const forkSync = (messages: ReadonlyArray<Message> = []) =>

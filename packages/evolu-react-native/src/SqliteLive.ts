@@ -15,12 +15,12 @@ export const SqliteLive = Layer.effect(
   Effect.gen(function* () {
     const config = yield* Config;
     const db = ExpoSQLite.openDatabaseSync(`evolu1-${config.name}.db`);
+    const mutex = yield* Effect.makeSemaphore(1);
 
     return Sqlite.of({
       exec: (query) =>
         Effect.gen(function* () {
           const parameters = valuesToSqliteValues(query.parameters || []);
-
           if (!isSqlMutation(query.sql)) {
             const rows = (yield* Effect.promise(() =>
               db.getAllAsync(query.sql, parameters),
@@ -32,8 +32,8 @@ export const SqliteLive = Layer.effect(
           );
           return { rows: [], changes };
         }),
-      // TODO: Exclusive via Promise/Deferred.
-      transaction: () => (effect) => effect,
+      // RN doesn't need the "last" mode because there are no tabs.
+      transaction: () => mutex.withPermits(1),
     });
   }),
 );

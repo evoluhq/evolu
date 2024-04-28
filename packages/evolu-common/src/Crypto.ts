@@ -8,7 +8,7 @@ import * as Brand from "effect/Brand";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { customAlphabet, nanoid } from "nanoid";
+
 import { Id } from "./Model.js";
 
 export class Bip39 extends Context.Tag("Bip39")<
@@ -58,8 +58,17 @@ export class NanoIdGenerator extends Context.Tag("NanoIdGenerator")<
     readonly nodeId: Effect.Effect<NodeId>;
     readonly rowId: Effect.Effect<Id>;
   }
->() {
-  static Live = Layer.succeed(
+>() {}
+
+export const createNanoIdGeneratorLive = (
+  customAlphabet: (
+    alphabet: string,
+    defaultSize?: number | undefined,
+  ) => (size?: number | undefined) => string,
+  nanoid: (size?: number) => string,
+): Layer.Layer<NanoIdGenerator, never, never> => {
+  const nanoidForNodeId = customAlphabet("0123456789abcdef", 16);
+  return Layer.succeed(
     NanoIdGenerator,
     NanoIdGenerator.of({
       nanoid: Effect.sync(() => nanoid() as NanoId),
@@ -67,7 +76,7 @@ export class NanoIdGenerator extends Context.Tag("NanoIdGenerator")<
       rowId: Effect.sync(() => nanoid() as Id),
     }),
   );
-}
+};
 
 export type NanoId = string & Brand.Brand<"NanoId">;
 
@@ -76,8 +85,6 @@ export const NodeId = S.String.pipe(
   S.brand("NodeId"),
 );
 export type NodeId = S.Schema.Type<typeof NodeId>;
-
-const nanoidForNodeId = customAlphabet("0123456789abcdef", 16);
 
 // SLIP-21 implementation
 // https://github.com/satoshilabs/slips/blob/master/slip-0021.md

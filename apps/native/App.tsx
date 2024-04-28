@@ -110,6 +110,7 @@ const evolu = createEvolu(Database, {
       categoryId,
     });
   },
+  // minimumLogLevel: "trace",
 });
 
 export default function App(): JSX.Element {

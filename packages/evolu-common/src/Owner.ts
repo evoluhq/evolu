@@ -1,7 +1,6 @@
 import * as Brand from "effect/Brand";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import { urlAlphabet } from "nanoid";
 import { Bip39, Mnemonic, slip21Derive } from "./Crypto.js";
 import { Id } from "./Model.js";
 
@@ -60,3 +59,9 @@ export const makeOwner = (
     ]);
     return { mnemonic, id, encryptionKey };
   });
+
+// From https://github.com/ai/nanoid/blob/main/url-alphabet/index.js
+// It's copy-pasted for now because NanoId import breaks Metro bundler.
+// https://github.com/ai/nanoid/issues/468
+const urlAlphabet =
+  "useandom-26T198340PX75pxJACKVERYMINDBUSHWOLF_GQZbfghjklqvwyzrict";

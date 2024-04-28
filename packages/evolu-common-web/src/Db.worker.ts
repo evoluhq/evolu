@@ -1,5 +1,4 @@
 import {
-  NanoIdGenerator,
   SqliteFactory,
   Sync,
   SyncFactory,
@@ -8,6 +7,7 @@ import {
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import { NanoIdGeneratorLive } from "./NanoIdGeneratorLive.js";
 import { Bip39Live, SyncLockLive } from "./PlatformLive.js";
 import { expose, wrap } from "./ProxyWorker.js";
 import { SqliteFactoryLive } from "./SqliteFactoryLive.js";
@@ -28,9 +28,9 @@ createDb.pipe(
       Bip39Live,
       SqliteFactory.Common.pipe(
         Layer.provide(SqliteFactoryLive),
-        Layer.provide(NanoIdGenerator.Live),
+        Layer.provide(NanoIdGeneratorLive),
       ),
-      NanoIdGenerator.Live,
+      NanoIdGeneratorLive,
       Time.Live,
       SyncFactoryLive,
       SyncLockLive,

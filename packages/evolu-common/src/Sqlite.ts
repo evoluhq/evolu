@@ -39,7 +39,6 @@ export class SqliteFactory extends Context.Tag("SqliteFactory")<
 >() {
   static Common = Layer.effect(
     SqliteFactory,
-    // // TODO: Ask the Effect team for review.
     Effect.map(SqliteFactory, (platformSqliteFactory) => ({
       createSqlite: Effect.logTrace("SqliteFactory createSqlite").pipe(
         Effect.zipRight(platformSqliteFactory.createSqlite),

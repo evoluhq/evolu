@@ -5,11 +5,11 @@ import {
   EvoluFactory,
   InvalidMnemonicError,
   Mnemonic,
-  NanoIdGenerator,
   notSupportedPlatformWorker,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import { NanoIdGeneratorLive } from "./NanoIdGeneratorLive.js";
 import { AppStateLive, Bip39Live } from "./PlatformLive.js";
 import { wrap } from "./ProxyWorker.js";
 
@@ -28,7 +28,7 @@ const DbFactoryLive = Layer.succeed(DbFactory, {
 
 export const EvoluFactoryWeb = Layer.provide(
   EvoluFactory.Common,
-  Layer.mergeAll(DbFactoryLive, NanoIdGenerator.Live, AppStateLive),
+  Layer.mergeAll(DbFactoryLive, NanoIdGeneratorLive, AppStateLive),
 );
 
 /**

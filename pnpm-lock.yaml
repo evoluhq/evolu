@@ -264,7 +264,7 @@ importers:
     devDependencies:
       '@effect/platform':
         specifier: ^0.50.7
-        version: 0.50.7(@effect/schema@0.66.10(effect@3.0.7)(fast-check@3.17.2))(effect@3.0.7)(ws@8.16.0)
+        version: 0.50.7(@effect/schema@0.66.10(effect@3.0.7)(fast-check@3.17.2))(effect@3.0.7)(ws@8.17.0)
       '@effect/schema':
         specifier: ^0.66.10
         version: 0.66.10(effect@3.0.7)(fast-check@3.17.2)
@@ -2803,8 +2803,8 @@ packages:
     resolution: {integrity: sha512-Gmy6FhYlCY7uOElZUSbxo2UCDH8owEk996gkbrpsgGtrJLM3J7jGxl9Ic7Qwwj4ivOE5AWZWRMecDdF7hqGjFA==}
     engines: {node: '>=10'}
 
-  caniuse-lite@1.0.30001612:
-    resolution: {integrity: sha512-lFgnZ07UhaCcsSZgWW0K5j4e69dK1u/ltrL9lTUiFOwNHs12S3UMIEYgBV0Z6C6hRDev7iRnMzzYmKabYdXF9g==}
+  caniuse-lite@1.0.30001613:
+    resolution: {integrity: sha512-BNjJULJfOONQERivfxte7alLfeLW4QnwHvNW4wEcLEbXfV6VSCYvr+REbf2Sojv8tC1THpjPXBxWgDbq4NtLWg==}
 
   ccount@2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
@@ -7500,8 +7500,8 @@ packages:
       utf-8-validate:
         optional: true
 
-  ws@8.16.0:
-    resolution: {integrity: sha512-HS0c//TP7Ina87TfiPUz1rQzMhHrl/SG2guqRcTOIUYD2q8uhUdNHZYJUaQ8aTGPzCh+c6oawMKW35nFl1dxyQ==}
+  ws@8.17.0:
+    resolution: {integrity: sha512-uJq6108EgZMAl20KagGkzCKfMEjxmKvZHG7Tlq0Z6nOky7YF7aq4mOx6xK8TJ/i1LeK4Qus7INktacctDgY8Ow==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -8649,12 +8649,12 @@ snapshots:
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
 
-  '@effect/platform@0.50.7(@effect/schema@0.66.10(effect@3.0.7)(fast-check@3.17.2))(effect@3.0.7)(ws@8.16.0)':
+  '@effect/platform@0.50.7(@effect/schema@0.66.10(effect@3.0.7)(fast-check@3.17.2))(effect@3.0.7)(ws@8.17.0)':
     dependencies:
       '@effect/schema': 0.66.10(effect@3.0.7)(fast-check@3.17.2)
       effect: 3.0.7
       find-my-way-ts: 0.1.1
-      isows: 1.0.4(ws@8.16.0)
+      isows: 1.0.4(ws@8.17.0)
       multipasta: 0.2.0
       path-browserify: 1.0.1
     transitivePeerDependencies:
@@ -8847,7 +8847,7 @@ snapshots:
       text-table: 0.2.0
       url-join: 4.0.0
       wrap-ansi: 7.0.0
-      ws: 8.16.0
+      ws: 8.17.0
     transitivePeerDependencies:
       - '@react-native/babel-preset'
       - bluebird
@@ -10320,7 +10320,7 @@ snapshots:
   autoprefixer@10.4.19(postcss@8.4.38):
     dependencies:
       browserslist: 4.23.0
-      caniuse-lite: 1.0.30001612
+      caniuse-lite: 1.0.30001613
       fraction.js: 4.3.7
       normalize-range: 0.1.2
       picocolors: 1.0.0
@@ -10560,7 +10560,7 @@ snapshots:
 
   browserslist@4.23.0:
     dependencies:
-      caniuse-lite: 1.0.30001612
+      caniuse-lite: 1.0.30001613
       electron-to-chromium: 1.4.750
       node-releases: 2.0.14
       update-browserslist-db: 1.0.13(browserslist@4.23.0)
@@ -10656,7 +10656,7 @@ snapshots:
 
   camelcase@6.3.0: {}
 
-  caniuse-lite@1.0.30001612: {}
+  caniuse-lite@1.0.30001613: {}
 
   ccount@2.0.1: {}
 
@@ -12876,9 +12876,9 @@ snapshots:
 
   isobject@3.0.1: {}
 
-  isows@1.0.4(ws@8.16.0):
+  isows@1.0.4(ws@8.17.0):
     dependencies:
-      ws: 8.16.0
+      ws: 8.17.0
 
   iterator.prototype@1.1.2:
     dependencies:
@@ -14264,7 +14264,7 @@ snapshots:
       '@next/env': 14.2.3
       '@swc/helpers': 0.5.5
       busboy: 1.6.0
-      caniuse-lite: 1.0.30001612
+      caniuse-lite: 1.0.30001613
       graceful-fs: 4.2.11
       postcss: 8.4.31
       react: 18.2.0
@@ -16436,7 +16436,7 @@ snapshots:
 
   ws@7.5.9: {}
 
-  ws@8.16.0: {}
+  ws@8.17.0: {}
 
   xcode@3.0.1:
     dependencies:

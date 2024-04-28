@@ -56,7 +56,6 @@ export const SyncLockLive = Layer.succeed(SyncLock, {
   tryAcquire: Effect.gen(function* () {
     yield* Effect.logTrace("SyncLock tryAcquire");
     const lockName = yield* getLockName("SyncLock");
-
     const acquire = Effect.async<SyncLockRelease, SyncLockAlreadySyncingError>(
       (resume) => {
         navigator.locks.request(lockName, { ifAvailable: true }, (lock) => {
@@ -71,7 +70,7 @@ export const SyncLockLive = Layer.succeed(SyncLock, {
             Effect.logTrace("SyncLock acquired").pipe(
               Effect.zipRight(
                 Effect.succeed({
-                  release: Effect.logTrace("SyncLock release").pipe(
+                  release: Effect.logTrace("SyncLock released").pipe(
                     Effect.tap(Effect.sync(resolve)),
                   ),
                 }),
@@ -82,8 +81,8 @@ export const SyncLockLive = Layer.succeed(SyncLock, {
         });
       },
     );
-
-    return yield* Effect.acquireRelease(acquire, ({ release }) => release);
+    const release = ({ release }: SyncLockRelease) => release;
+    return yield* Effect.acquireRelease(acquire, release);
   }),
 });
 

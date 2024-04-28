@@ -3,6 +3,8 @@ import {
   Bip39,
   Mnemonic,
   SyncLock,
+  SyncLockAlreadySyncingError,
+  SyncLockRelease,
   validateMnemonicToEffect,
 } from "@evolu/common";
 import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
@@ -57,13 +59,27 @@ export const AppStateLive = Layer.succeed(
 export const SyncLockLive = Layer.effect(
   SyncLock,
   Effect.sync(() => {
-    // let hasSyncLock = false;
+    let hasSyncLock = false;
     return SyncLock.of({
-      tryAcquire: Effect.sync(() => {
-        throw "TODO";
-        // if (hasSyncLock) return false;
-        // hasSyncLock = true;
-        // return true;
+      tryAcquire: Effect.gen(function* () {
+        yield* Effect.logTrace("SyncLock tryAcquire");
+        const acquire = Effect.gen(function* () {
+          if (hasSyncLock) {
+            yield* Effect.logTrace("SyncLock not acquired");
+            yield* Effect.fail(new SyncLockAlreadySyncingError());
+          }
+          yield* Effect.logTrace("SyncLock acquired");
+          hasSyncLock = true;
+          const syncLockRelease: SyncLockRelease = {
+            release: Effect.gen(function* () {
+              yield* Effect.logTrace("SyncLock released");
+              hasSyncLock = false;
+            }),
+          };
+          return syncLockRelease;
+        });
+        const release = ({ release }: SyncLockRelease) => release;
+        return yield* Effect.acquireRelease(acquire, release);
       }),
     });
   }),
