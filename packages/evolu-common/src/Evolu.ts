@@ -582,7 +582,6 @@ const createEvolu = (
         Effect.tapError(errorStore.setState),
       );
 
-    // TODO: Ask the Effect team for review.
     const runFork = flow(handleAllErrors, runtime.runFork);
     const runSync = flow(handleAllErrors, runtime.runSync);
     // const runPromise = flow(handleAllErrors, runtime.runPromise);
