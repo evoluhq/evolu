@@ -363,7 +363,6 @@ const OwnerActions: FC = () => {
               alert(JSON.stringify(error, null, 2));
             },
             onSuccess: (mnemonic) => {
-              isRestoringOwner(true);
               evolu.restoreOwner(mnemonic);
             },
           }),
@@ -373,7 +372,6 @@ const OwnerActions: FC = () => {
 
   const handleResetOwnerClick = () => {
     if (confirm("Are you sure? It will delete all your local data.")) {
-      isRestoringOwner(false);
       evolu.resetOwner();
     }
   };
