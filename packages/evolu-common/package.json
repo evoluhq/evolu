@@ -74,8 +74,8 @@
     "vitest": "^1.5.2"
   },
   "peerDependencies": {
-    "@effect/platform": "^0.50.2",
-    "@effect/schema": "^0.64.20",
+    "@effect/platform": "^0.50.7",
+    "@effect/schema": "^0.66.10",
     "effect": "^3.0.0"
   },
   "publishConfig": {
