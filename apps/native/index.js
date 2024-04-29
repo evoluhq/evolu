@@ -1,5 +1,4 @@
-import buffer from "buffer";
-global.Buffer = buffer.Buffer;
+// Soon will not be required https://github.com/facebook/hermes/issues/948
 import "fast-text-encoding";
 import "react-native-get-random-values";
 

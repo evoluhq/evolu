@@ -13,13 +13,12 @@ import fs from "fs";
 // https://kysely.dev/docs/recipes/splitting-query-building-and-execution
 const db = new Kysely.Kysely<Database>({
   dialect: {
-    createAdapter: (): Kysely.DialectAdapter => new Kysely.SqliteAdapter(),
-    createDriver: (): Kysely.Driver => new Kysely.DummyDriver(),
-    createIntrospector(): Kysely.DatabaseIntrospector {
+    createAdapter: () => new Kysely.SqliteAdapter(),
+    createDriver: () => new Kysely.DummyDriver(),
+    createIntrospector() {
       throw "Not implemeneted";
     },
-    createQueryCompiler: (): Kysely.QueryCompiler =>
-      new Kysely.SqliteQueryCompiler(),
+    createQueryCompiler: () => new Kysely.SqliteQueryCompiler(),
   },
 });
 

@@ -1,10 +1,10 @@
 "use client";
 
-import { Evolu, DatabaseSchema } from "@evolu/common";
+import { Evolu, EvoluSchema } from "@evolu/common";
 import { ReactNode } from "react";
 import { EvoluContext } from "./EvoluContext.js";
 
-export const EvoluProvider = <S extends DatabaseSchema>({
+export const EvoluProvider = <S extends EvoluSchema>({
   children,
   value,
 }: {

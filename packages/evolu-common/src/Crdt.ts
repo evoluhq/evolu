@@ -1,4 +1,5 @@
 import * as S from "@effect/schema/Schema";
+import * as Arr from "effect/Array";
 import * as Brand from "effect/Brand";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -7,7 +8,6 @@ import { pipe } from "effect/Function";
 import * as Layer from "effect/Layer";
 import * as Number from "effect/Number";
 import * as Option from "effect/Option";
-import * as ReadonlyArray from "effect/ReadonlyArray";
 import * as String from "effect/String";
 import { Config } from "./Config.js";
 import { NanoIdGenerator, NodeId } from "./Crypto.js";
@@ -36,7 +36,7 @@ export const AllowedTimeRange = {
  * the device clock is out of range, Evolu will not store data until it's
  * fixed.
  */
-export const Millis = S.number.pipe(
+export const Millis = S.Number.pipe(
   S.greaterThan(AllowedTimeRange.greaterThan),
   S.lessThan(AllowedTimeRange.lessThan),
   S.brand("Millis"),
@@ -48,7 +48,7 @@ export const initialMillis = S.decodeSync(Millis)(
   AllowedTimeRange.greaterThan + 1,
 );
 
-export const Counter = S.number.pipe(S.between(0, 65535), S.brand("Counter"));
+export const Counter = S.Number.pipe(S.between(0, 65535), S.brand("Counter"));
 export type Counter = S.Schema.Type<typeof Counter>;
 
 const initialCounter = S.decodeSync(Counter)(0);
@@ -87,7 +87,7 @@ export const makeSyncTimestamp = (
 });
 
 export const makeInitialTimestamp = NanoIdGenerator.pipe(
-  Effect.flatMap(({ nanoidAsNodeId }) => nanoidAsNodeId),
+  Effect.flatMap(({ nodeId }) => nodeId),
   Effect.map(
     (node): Timestamp => ({
       millis: initialMillis,
@@ -97,15 +97,13 @@ export const makeInitialTimestamp = NanoIdGenerator.pipe(
   ),
 );
 
-export interface Time {
-  readonly now: Effect.Effect<Millis, TimestampTimeOutOfRangeError>;
-}
-
-export const Time = Context.GenericTag<Time>("@services/Time");
-
-export const TimeLive = Layer.succeed(
+export class Time extends Context.Tag("Time")<
   Time,
-  Time.of({
+  {
+    readonly now: Effect.Effect<Millis, TimestampTimeOutOfRangeError>;
+  }
+>() {
+  static Live = Layer.succeed(Time, {
     now: Effect.suspend(() => S.decode(Millis)(Date.now())).pipe(
       Effect.catchTag("ParseError", () =>
         Effect.fail<TimestampTimeOutOfRangeError>({
@@ -113,8 +111,8 @@ export const TimeLive = Layer.succeed(
         }),
       ),
     ),
-  }),
-);
+  });
+}
 
 /**
  * The TimestampError type represents all Timestamp-related errors. If such an
@@ -146,39 +144,33 @@ export interface TimestampTimeOutOfRangeError {
   readonly _tag: "TimestampTimeOutOfRangeError";
 }
 
-const getNextMillis = (
-  millis: ReadonlyArray<Millis>,
-): Effect.Effect<
-  Millis,
-  TimestampDriftError | TimestampTimeOutOfRangeError,
-  Time | Config
-> =>
-  Effect.gen(function* (_) {
-    const time = yield* _(Time);
-    const config = yield* _(Config);
+const getNextMillis = (millis: ReadonlyArray<Millis>) =>
+  Effect.gen(function* () {
+    const time = yield* Time;
+    const config = yield* Config;
 
-    const now = yield* _(time.now);
+    const now = yield* time.now;
     const next = Math.max(now, ...millis) as Millis;
 
     if (next - now > config.maxDrift)
-      yield* _(
-        Effect.fail<TimestampDriftError>({
-          _tag: "TimestampDriftError",
-          now,
-          next,
-        }),
-      );
+      yield* Effect.fail<TimestampDriftError>({
+        _tag: "TimestampDriftError",
+        now,
+        next,
+      });
 
     return next;
   });
 
-const incrementCounter = (
-  counter: Counter,
-): Either.Either<Counter, TimestampCounterOverflowError> =>
+const incrementCounter = (counter: Counter) =>
   pipe(
     Number.increment(counter),
     S.decodeEither(Counter),
-    Either.mapLeft(() => ({ _tag: "TimestampCounterOverflowError" })),
+    Either.mapLeft(
+      (): TimestampCounterOverflowError => ({
+        _tag: "TimestampCounterOverflowError",
+      }),
+    ),
   );
 
 const counterMin = S.decodeSync(Counter)(0);
@@ -192,11 +184,11 @@ export const sendTimestamp = (
   | TimestampTimeOutOfRangeError,
   Time | Config
 > =>
-  Effect.gen(function* (_) {
-    const millis = yield* _(getNextMillis([timestamp.millis]));
+  Effect.gen(function* () {
+    const millis = yield* getNextMillis([timestamp.millis]);
     const counter =
       millis === timestamp.millis
-        ? yield* _(incrementCounter(timestamp.counter))
+        ? yield* incrementCounter(timestamp.counter)
         : counterMin;
     return { ...timestamp, millis, counter };
   });
@@ -217,23 +209,19 @@ export const receiveTimestamp = ({
 > =>
   Effect.gen(function* (_) {
     if (local.node === remote.node)
-      yield* _(
-        Effect.fail<TimestampDuplicateNodeError>({
-          _tag: "TimestampDuplicateNodeError",
-          node: local.node,
-        }),
-      );
+      yield* Effect.fail<TimestampDuplicateNodeError>({
+        _tag: "TimestampDuplicateNodeError",
+        node: local.node,
+      });
 
-    const millis = yield* _(getNextMillis([local.millis, remote.millis]));
-    const counter = yield* _(
-      millis === local.millis && millis === remote.millis
-        ? incrementCounter(Math.max(local.counter, remote.counter) as Counter)
-        : millis === local.millis
-          ? incrementCounter(local.counter)
-          : millis === remote.millis
-            ? incrementCounter(remote.counter)
-            : Either.right(counterMin),
-    );
+    const millis = yield* getNextMillis([local.millis, remote.millis]);
+    const counter = yield* millis === local.millis && millis === remote.millis
+      ? incrementCounter(Math.max(local.counter, remote.counter) as Counter)
+      : millis === local.millis
+        ? incrementCounter(local.counter)
+        : millis === remote.millis
+          ? incrementCounter(remote.counter)
+          : Either.right(counterMin);
 
     return { ...local, millis, counter };
   });
@@ -262,17 +250,15 @@ export const millisToMerkleTreePath = (millis: Millis): MerkleTreePath =>
     .toString(3)
     .split("") as MerkleTreePath;
 
-const merkleTreePathToMillis = (path: MerkleTreePath): Millis =>
+const merkleTreePathToMillis = (path: MerkleTreePath) =>
   path.length === 0
     ? initialMillis
     : // 16 is the length of the base 3 value of the current time in minutes.
       // Ensure it's padded to create the full value.
       ((parseInt(path.join("").padEnd(16, "0"), 3) * 1000 * 60) as Millis);
 
-const xorTimestampHashes = (
-  a: TimestampHash | undefined,
-  b: TimestampHash,
-): TimestampHash => ((a || 0) ^ b) as TimestampHash;
+const xorTimestampHashes = (a: TimestampHash | undefined, b: TimestampHash) =>
+  ((a || 0) ^ b) as TimestampHash;
 
 const insertKey = (
   tree: MerkleTree,
@@ -292,23 +278,22 @@ const insertKey = (
   };
 };
 
-export const insertIntoMerkleTree =
-  (timestamp: Timestamp) =>
-  (tree: MerkleTree): MerkleTree => {
-    const path = millisToMerkleTreePath(timestamp.millis);
-    const hash = timestampToHash(timestamp);
-    return insertKey(
-      { ...tree, hash: xorTimestampHashes(tree.hash, hash) },
-      path,
-      hash,
-    );
-  };
+export const insertIntoMerkleTree = (
+  tree: MerkleTree,
+  timestamp: Timestamp,
+): MerkleTree => {
+  const path = millisToMerkleTreePath(timestamp.millis);
+  const hash = timestampToHash(timestamp);
+  return insertKey(
+    { ...tree, hash: xorTimestampHashes(tree.hash, hash) },
+    path,
+    hash,
+  );
+};
 
 const sortedMerkleTreeKeys: ReadonlyArray<MerkleTreeKey> = ["0", "1", "2"];
 
-const getSortedMerkleTreeKeys = (
-  tree: MerkleTree,
-): ReadonlyArray<MerkleTreeKey> =>
+const getSortedMerkleTreeKeys = (tree: MerkleTree) =>
   sortedMerkleTreeKeys.filter((key) => key in tree);
 
 export const diffMerkleTrees = (
@@ -326,7 +311,7 @@ export const diffMerkleTrees = (
   // the top of this function should pass)
   // eslint-disable-next-line no-constant-condition
   while (1) {
-    const keys = ReadonlyArray.dedupeWith(
+    const keys = Arr.dedupeWith(
       getSortedMerkleTreeKeys(node1).concat(getSortedMerkleTreeKeys(node2)),
       String.Equivalence,
     );

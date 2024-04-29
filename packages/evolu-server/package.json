@@ -28,28 +28,28 @@
   },
   "dependencies": {
     "@evolu/common": "workspace:*",
-    "better-sqlite3": "^9.4.3",
+    "better-sqlite3": "^9.6.0",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
-    "effect": "2.4.10",
-    "express": "^4.19.1",
+    "effect": "^3.0.7",
+    "express": "^4.19.2",
     "kysely": "^0.27.3"
   },
   "devDependencies": {
     "@evolu/tsconfig": "workspace:*",
-    "@types/better-sqlite3": "^7.6.9",
+    "@types/better-sqlite3": "^7.6.10",
     "@types/body-parser": "^1.19.5",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
-    "@types/node": "^20.11.30",
+    "@types/node": "^20.12.7",
     "eslint": "^8.57.0",
     "eslint-config-evolu": "workspace:*",
-    "typescript": "^5.4.3",
-    "vitest": "^1.4.0"
+    "typescript": "^5.4.5",
+    "vitest": "^1.5.2"
   },
   "peerDependencies": {
     "@evolu/common": "^4.1.1",
-    "effect": "2.4.10"
+    "express": "^4.19.2"
   },
   "publishConfig": {
     "access": "public"

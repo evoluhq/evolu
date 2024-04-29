@@ -55,7 +55,7 @@ Start developing and watch for code changes:
 pnpm dev
 ```
 
-Start iOS developing:
+Start iOS developing (pnpm dev must be running too):
 
 ```
 pnpm ios

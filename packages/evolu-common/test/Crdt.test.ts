@@ -2,7 +2,7 @@ import * as S from "@effect/schema/Schema";
 import { Context, Effect, Either, pipe } from "effect";
 import fs from "fs";
 import { describe, expect, test } from "vitest";
-import { Config, ConfigLive } from "../src/Config.js";
+import { Config, defaultConfig } from "../src/Config.js";
 import {
   AllowedTimeRange,
   Millis,
@@ -25,6 +25,7 @@ import {
   unsafeTimestampFromString,
 } from "../src/Crdt.js";
 import { NanoId, NanoIdGenerator, NodeId } from "../src/Crypto.js";
+import { Id } from "../src/Model.js";
 import { makeNode1Timestamp, makeNode2Timestamp } from "./utils.js";
 
 test("InitialTimestampLive", () => {
@@ -33,14 +34,15 @@ test("InitialTimestampLive", () => {
       NanoIdGenerator,
       NanoIdGenerator.of({
         nanoid: Effect.succeed("nanoid" as NanoId),
-        nanoidAsNodeId: Effect.succeed("nanoidAsNodeId" as NodeId),
+        nodeId: Effect.succeed("nodeId" as NodeId),
+        rowId: Effect.succeed("nodeId" as Id),
       }),
     ),
     Effect.runSync,
   );
   expect(timestamp.counter).toBe(0);
   expect(timestamp.millis).toBe(860934420000);
-  expect(timestamp.node).toBe("nanoidAsNodeId");
+  expect(timestamp.node).toBe("nodeId");
 });
 
 test("createSyncTimestamp", () => {
@@ -67,19 +69,17 @@ test("timestampToHash", () => {
   );
 });
 
-const config = Config.pipe(Effect.provide(ConfigLive()), Effect.runSync);
-
 const makeMillis = (millis: number): Millis => S.decodeSync(Millis)(millis);
 
 const context0 = pipe(
   Context.empty(),
-  Context.add(Config, config),
+  Context.add(Config, defaultConfig),
   Context.add(Time, { now: Effect.succeed(initialMillis) }),
 );
 
 const context1 = pipe(
   Context.empty(),
-  Context.add(Config, config),
+  Context.add(Config, defaultConfig),
   Context.add(Time, { now: Effect.succeed(makeMillis(initialMillis + 1)) }),
 );
 
@@ -142,7 +142,9 @@ describe("sendTimestamp", () => {
   test("should fail with clock drift", () => {
     expect(
       pipe(
-        makeSyncTimestamp(makeMillis(initialMillis + config.maxDrift + 1)),
+        makeSyncTimestamp(
+          makeMillis(initialMillis + defaultConfig.maxDrift + 1),
+        ),
         sendTimestamp,
         Effect.catchAll((e) => Effect.succeed(Either.left(e))),
         Effect.provide(context0),
@@ -237,7 +239,7 @@ describe("receiveTimestamp", () => {
       pipe(
         receiveTimestamp({
           local: makeSyncTimestamp(
-            makeMillis(initialMillis + config.maxDrift + 1),
+            makeMillis(initialMillis + defaultConfig.maxDrift + 1),
           ),
           remote: makeNode2Timestamp(),
         }),
@@ -252,7 +254,7 @@ describe("receiveTimestamp", () => {
         receiveTimestamp({
           local: makeNode2Timestamp(),
           remote: makeSyncTimestamp(
-            makeMillis(initialMillis + config.maxDrift + 1),
+            makeMillis(initialMillis + defaultConfig.maxDrift + 1),
           ),
         }),
         Effect.catchAll((e) => Effect.succeed(Either.left(e))),
@@ -266,9 +268,9 @@ describe("receiveTimestamp", () => {
 const node1TimestampStart = makeNode1Timestamp();
 const node2Timestamp2022 = makeNode2Timestamp(1656873738591);
 
-const someMerkleTree = pipe(
+const someMerkleTree = insertIntoMerkleTree(
   initialMerkleTree,
-  insertIntoMerkleTree(node2Timestamp2022),
+  node2Timestamp2022,
 );
 
 test("createInitialMerkleTree", () => {
@@ -278,38 +280,35 @@ test("createInitialMerkleTree", () => {
 describe("insertIntoMerkleTree", () => {
   test("node1TimestampStart", () => {
     expect(
-      insertIntoMerkleTree(node1TimestampStart)(initialMerkleTree),
+      insertIntoMerkleTree(initialMerkleTree, node1TimestampStart),
     ).toMatchSnapshot();
   });
 
   test("node2Timestamp2022", () => {
     expect(
-      insertIntoMerkleTree(node2Timestamp2022)(initialMerkleTree),
+      insertIntoMerkleTree(initialMerkleTree, node2Timestamp2022),
     ).toMatchSnapshot();
   });
 
   test("node1TimestampStart then node2Timestamp2022", () => {
     expect(
-      pipe(
-        initialMerkleTree,
-        insertIntoMerkleTree(node1TimestampStart),
-        insertIntoMerkleTree(node2Timestamp2022),
+      insertIntoMerkleTree(
+        insertIntoMerkleTree(initialMerkleTree, node1TimestampStart),
+        node2Timestamp2022,
       ),
     ).toMatchSnapshot();
   });
 
   test("the order does not matter", () => {
     expect(
-      pipe(
-        initialMerkleTree,
-        insertIntoMerkleTree(node1TimestampStart),
-        insertIntoMerkleTree(node2Timestamp2022),
+      insertIntoMerkleTree(
+        insertIntoMerkleTree(initialMerkleTree, node1TimestampStart),
+        node2Timestamp2022,
       ),
     ).toEqual(
-      pipe(
-        initialMerkleTree,
-        insertIntoMerkleTree(node2Timestamp2022),
-        insertIntoMerkleTree(node1TimestampStart),
+      insertIntoMerkleTree(
+        insertIntoMerkleTree(initialMerkleTree, node2Timestamp2022),
+        node1TimestampStart,
       ),
     );
 
@@ -347,20 +346,14 @@ describe("diffMerkleTrees", () => {
     expect(
       diffMerkleTrees(
         someMerkleTree,
-        pipe(
-          initialMerkleTree,
-          insertIntoMerkleTree(makeNode2Timestamp(60000 - 1)),
-        ),
+        insertIntoMerkleTree(initialMerkleTree, makeNode2Timestamp(60000 - 1)),
       ),
     ).toMatchSnapshot();
 
     expect(
       diffMerkleTrees(
         someMerkleTree,
-        pipe(
-          initialMerkleTree,
-          insertIntoMerkleTree(makeNode2Timestamp(60000)),
-        ),
+        insertIntoMerkleTree(initialMerkleTree, makeNode2Timestamp(60000)),
       ),
     ).toMatchSnapshot();
   });
@@ -371,15 +364,11 @@ describe("diffMerkleTrees", () => {
     // May 17 2023 12:09:55
     const now = 1684318195723 - initialMillis;
 
-    const t1 = pipe(
-      initialMerkleTree,
-      insertIntoMerkleTree(makeNode1Timestamp(now)),
-      insertIntoMerkleTree(makeNode1Timestamp(now + 10000)),
+    const t1 = insertIntoMerkleTree(
+      insertIntoMerkleTree(initialMerkleTree, makeNode1Timestamp(now)),
+      makeNode1Timestamp(now + 10000),
     );
-    const t2 = pipe(
-      initialMerkleTree,
-      insertIntoMerkleTree(makeNode1Timestamp(now)),
-    );
+    const t2 = insertIntoMerkleTree(initialMerkleTree, makeNode1Timestamp(now));
     expect(diffMerkleTrees(t1, t2)).toMatchInlineSnapshot(`
       {
         "_id": "Option",
@@ -388,14 +377,16 @@ describe("diffMerkleTrees", () => {
       }
     `);
 
-    const t3 = pipe(
-      initialMerkleTree,
-      insertIntoMerkleTree(makeNode1Timestamp(now + twentyYears)),
-      insertIntoMerkleTree(makeNode1Timestamp(now + twentyYears + 10000)),
+    const t3 = insertIntoMerkleTree(
+      insertIntoMerkleTree(
+        initialMerkleTree,
+        makeNode1Timestamp(now + twentyYears),
+      ),
+      makeNode1Timestamp(now + twentyYears + 10000),
     );
-    const t4 = pipe(
+    const t4 = insertIntoMerkleTree(
       initialMerkleTree,
-      insertIntoMerkleTree(makeNode1Timestamp(now + twentyYears)),
+      makeNode1Timestamp(now + twentyYears),
     );
     expect(diffMerkleTrees(t3, t4)).toMatchInlineSnapshot(`
       {
@@ -431,7 +422,7 @@ describe("diffMerkleTrees", () => {
     const addTo1 = (timestamp: Timestamp): void => {
       if (!db1.some((t) => t.millis === timestamp.millis)) {
         db1.push(timestamp);
-        t1 = insertIntoMerkleTree(timestamp)(t1);
+        t1 = insertIntoMerkleTree(t1, timestamp);
       }
     };
 
@@ -440,7 +431,7 @@ describe("diffMerkleTrees", () => {
     const addTo2 = (timestamp: Timestamp): void => {
       if (!db2.some((t) => t.millis === timestamp.millis)) {
         db2.push(timestamp);
-        t2 = insertIntoMerkleTree(timestamp)(t2);
+        t2 = insertIntoMerkleTree(t2, timestamp);
       }
     };
 

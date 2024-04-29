@@ -1,13 +1,81 @@
+import * as Console from "effect/Console";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import { Equivalence } from "effect/Equivalence";
+import * as Exit from "effect/Exit";
+import * as Layer from "effect/Layer";
 import * as Predicate from "effect/Predicate";
+import { Config } from "./Config.js";
 
 export interface Sqlite {
   readonly exec: (query: SqliteQuery) => Effect.Effect<SqliteExecResult>;
+  readonly transaction: (
+    /**
+     * Use `exclusive` for mutations and `shared` for read-only queries. This
+     * shared/exclusive lock pattern allows multiple simultaneous readers but
+     * only one writer. In Evolu, this pattern also ensures that every write can
+     * be immediately read without waiting to complete. For example, we can add
+     * data on one page and then immediately redirect to another, and the data
+     * will be there.
+     *
+     * There is also a `last` mode that ensures no other transaction can run.
+     * It's for Db reset to ensure no data are accidentally saved after database
+     * wipe-out.
+     */
+    mode: SqliteTransactionMode,
+  ) => <A, E, R>(
+    effect: Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, E, Sqlite | R>;
 }
 
-export const Sqlite = Context.GenericTag<Sqlite>("@services/Sqlite");
+export const Sqlite = Context.GenericTag<Sqlite>("Sqlite");
+
+export type SqliteTransactionMode = "exclusive" | "shared" | "last";
+
+export class SqliteFactory extends Context.Tag("SqliteFactory")<
+  SqliteFactory,
+  {
+    readonly createSqlite: Effect.Effect<Sqlite, never, Config>;
+  }
+>() {
+  static Common = Layer.effect(
+    SqliteFactory,
+    Effect.map(SqliteFactory, (platformSqliteFactory) => ({
+      createSqlite: Effect.logTrace("SqliteFactory createSqlite").pipe(
+        Effect.zipRight(platformSqliteFactory.createSqlite),
+        Effect.map(
+          (platformSqlite): Sqlite => ({
+            exec: (query) =>
+              platformSqlite.exec(query).pipe(
+                Effect.tap((result) => {
+                  maybeParseJson(result.rows);
+                }),
+                Effect.tap((result) =>
+                  ["begin", "rollback", "commit"].includes(query.sql)
+                    ? Effect.logDebug(`SQLiteCommon ${query.sql} transaction`)
+                    : Effect.logDebug(["SQLiteCommon exec", query, result]),
+                ),
+              ),
+            transaction: (mode) => (effect) => {
+              // Shared is for readonly queries.
+              if (mode === "shared")
+                return platformSqlite.transaction(mode)(effect);
+              return Effect.flatMap(Sqlite, (sqlite) =>
+                Effect.acquireUseRelease(
+                  sqlite.exec({ sql: "begin" }),
+                  () => effect,
+                  (_, exit) =>
+                    Exit.isFailure(exit)
+                      ? sqlite.exec({ sql: "rollback" })
+                      : sqlite.exec({ sql: "commit" }),
+                ),
+              ).pipe(platformSqlite.transaction(mode));
+            },
+          }),
+        ),
+      ),
+    })),
+  );
+}
 
 export interface SqliteQuery {
   readonly sql: string;
@@ -49,8 +117,10 @@ export const valuesToSqliteValues = (
     isJsonObjectOrArray(value) ? JSON.stringify(value) : value,
   );
 
-export const maybeParseJson = (rows: SqliteRow[]): SqliteRow[] =>
+/** This function mutates for better performance. */
+export const maybeParseJson = (rows: SqliteRow[]): void => {
   parseArray(rows);
+};
 
 const parseArray = <T>(a: T[]): T[] => {
   for (let i = 0; i < a.length; ++i) a[i] = parse(a[i]) as T;
@@ -104,12 +174,14 @@ export const maybeLogSqliteQueryExecutionTime =
   (query: SqliteQuery) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> => {
     if (!query.options?.logQueryExecutionTime) return effect;
-    return effect.pipe(
-      Effect.tap(() => Effect.log("QueryExecutionTime")),
-      // Not using Effect.log because of formating
-      // eslint-disable-next-line no-console
-      Effect.tap(() => console.log(query.sql)),
-      Effect.withLogSpan("duration"),
+    return Effect.Do.pipe(
+      Effect.let("start", () => performance.now()),
+      Effect.bind("result", () => effect),
+      Effect.let("elapsed", ({ start }) => performance.now() - start),
+      Effect.tap(({ elapsed }) =>
+        Console.log(`QueryExecutionTime: ${elapsed}ms`, query),
+      ),
+      Effect.map(({ result }) => result),
     );
   };
 
@@ -136,38 +208,3 @@ export const drawSqliteQueryPlan = (rows: SqliteQueryPlanRow[]): string =>
       return `${"  ".repeat(indent)}${row.detail}`;
     })
     .join("\n");
-
-export interface SqliteSchema {
-  readonly tables: ReadonlyArray<Table>;
-  readonly indexes: ReadonlyArray<Index>;
-}
-
-export interface Table {
-  readonly name: string;
-  readonly columns: ReadonlyArray<string>;
-}
-
-export interface Index {
-  readonly name: string;
-  readonly sql: string;
-}
-
-export const indexEquivalence: Equivalence<Index> = (self, that) =>
-  self.name === that.name && self.sql === that.sql;
-
-export const maybeLogSql =
-  (query: SqliteQuery, logSql: boolean) =>
-  <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> => {
-    if (!logSql) return effect;
-    return effect.pipe(
-      Effect.tap(() => Effect.log("SQL")),
-      // Not using Effect.log because of formating
-      Effect.tap(() => {
-        // eslint-disable-next-line no-console
-        console.log(query.sql);
-        if (query.parameters && query.parameters.length > 0)
-          // eslint-disable-next-line no-console
-          console.log(query.parameters);
-      }),
-    );
-  };

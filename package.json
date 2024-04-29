@@ -3,7 +3,7 @@
   "name": "@evolu/monorepo",
   "scripts": {
     "dev": "turbo dev",
-    "build": "turbo build --filter='./packages/*' --filter='./apps/*'",
+    "build": "turbo build",
     "start": "turbo start",
     "lint": "turbo lint",
     "lint-monorepo": "pnpm dlx sherif@latest",
@@ -22,9 +22,9 @@
     "eslint-config-evolu": "workspace:*",
     "prettier": "^3.2.5",
     "prettier-plugin-jsdoc": "^1.3.0",
-    "turbo": "^1.13.0"
+    "turbo": "^1.13.3"
   },
-  "packageManager": "pnpm@8.6.6",
+  "packageManager": "pnpm@9.0.6",
   "pnpm": {
     "peerDependencyRules": {
       "ignoreMissing": [

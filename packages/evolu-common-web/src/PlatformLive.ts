@@ -1,110 +1,90 @@
 import {
   AppState,
   Bip39,
-  Config,
-  DbWorkerLock,
-  InvalidMnemonicError,
   Mnemonic,
   SyncLock,
-  canUseDom,
+  SyncLockAlreadySyncingError,
+  SyncLockRelease,
+  getLockName,
+  validateMnemonicToEffect,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
-import * as Function from "effect/Function";
 import * as Layer from "effect/Layer";
-import { multitenantLockName } from "./multitenantLockName.js";
 
-export const SyncLockLive = Layer.effect(
-  SyncLock,
-  Effect.sync(() => {
-    // No multitenantLockName because this will be redesigned.
-    const lockName = "evolu:sync";
-    let release: null | (() => void) = null;
+export const AppStateLive = Layer.succeed(AppState, {
+  init: ({ reloadUrl, onRequestSync }) =>
+    Effect.sync(() => {
+      if (typeof document === "undefined") {
+        return { reset: Effect.void };
+      }
 
-    return SyncLock.of({
-      acquire: Effect.gen(function* (_) {
-        if (release) return false;
-        release = Function.constVoid;
-        return yield* _(
-          Effect.async<boolean>((resume) => {
-            navigator.locks.request(lockName, { ifAvailable: true }, (lock) => {
-              if (lock == null) {
-                release = null;
-                resume(Effect.succeed(false));
-                return;
-              }
-              resume(Effect.succeed(true));
-              return new Promise<void>((resolve) => {
-                release = resolve;
-              });
-            });
-          }),
-        );
-      }),
+      const localStorageKey = "evolu:reloadAllTabs";
 
-      release: Effect.sync(() => {
-        if (release) release();
-        release = null;
-      }),
-    });
-  }),
-);
+      const replaceLocation = () => {
+        location.replace(reloadUrl);
+      };
 
-export const DbWorkerLockLive = Layer.effect(
-  DbWorkerLock,
-  Effect.gen(function* (_) {
-    const lockName = yield* _(multitenantLockName("DbWorker"));
-    return DbWorkerLock.of((callback) => {
-      navigator.locks.request(lockName, callback);
-    });
-  }),
-);
-
-export const AppStateLive = Layer.effect(
-  AppState,
-  Effect.gen(function* (_) {
-    if (!canUseDom)
-      return AppState.of({
-        init: Function.constVoid,
-        reset: Effect.succeed(undefined),
+      window.addEventListener("storage", (e) => {
+        if (e.key === localStorageKey) replaceLocation();
       });
 
-    const { reloadUrl } = yield* _(Config);
-    const localStorageKey = "evolu:reloadAllTabs";
+      let timer: null | number;
+      const handleRequestSyncEvents = () => {
+        if (timer != null) return;
+        onRequestSync();
+        timer = window.setTimeout(() => {
+          timer = null;
+        }, 50);
+      };
 
-    const reloadLocation = (): void => {
-      /**
-       * Using replace() will not save the current page in session History,
-       * meaning the user will not be able to use the back button to navigate to
-       * it.
-       *
-       * It also fixes a bug in Safari, probably related to leaking SQLite WASM.
-       */
-      location.replace(reloadUrl);
-    };
+      window.addEventListener("online", handleRequestSyncEvents);
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState !== "hidden") handleRequestSyncEvents();
+      });
+      window.addEventListener("focus", handleRequestSyncEvents);
 
-    window.addEventListener("storage", (e) => {
-      if (e.key === localStorageKey) reloadLocation();
-    });
-
-    return AppState.of({
-      init: ({ onRequestSync }) => {
-        // On network reconnect.
-        window.addEventListener("online", onRequestSync);
-
-        document.addEventListener("visibilitychange", () => {
-          if (document.visibilityState !== "hidden") onRequestSync();
-        });
-        // visibilitychange isn't enough
-        window.addEventListener("focus", onRequestSync);
-      },
-
-      reset: Effect.sync(() => {
+      const reset = Effect.sync(() => {
         localStorage.setItem(localStorageKey, Date.now().toString());
-        reloadLocation();
-      }),
-    });
+        replaceLocation();
+      });
+
+      return { reset };
+    }),
+});
+
+export const SyncLockLive = Layer.succeed(SyncLock, {
+  tryAcquire: Effect.gen(function* () {
+    yield* Effect.logTrace("SyncLock tryAcquire");
+    const lockName = yield* getLockName("SyncLock");
+    const acquire = Effect.async<SyncLockRelease, SyncLockAlreadySyncingError>(
+      (resume) => {
+        navigator.locks.request(lockName, { ifAvailable: true }, (lock) => {
+          if (lock == null) {
+            Effect.logTrace("SyncLock not acquired").pipe(
+              Effect.zipRight(Effect.fail(new SyncLockAlreadySyncingError())),
+              resume,
+            );
+            return;
+          }
+          return new Promise<void>((resolve) => {
+            Effect.logTrace("SyncLock acquired").pipe(
+              Effect.zipRight(
+                Effect.succeed({
+                  release: Effect.logTrace("SyncLock released").pipe(
+                    Effect.tap(Effect.sync(resolve)),
+                  ),
+                }),
+              ),
+              resume,
+            );
+          });
+        });
+      },
+    );
+    const release = ({ release }: SyncLockRelease) => release;
+    return yield* Effect.acquireRelease(acquire, release);
   }),
-);
+});
 
 const importBip39WithEnglish = Effect.all(
   [
@@ -132,11 +112,7 @@ export const Bip39Live = Layer.succeed(
     parse: (mnemonic) =>
       importBip39WithEnglish.pipe(
         Effect.flatMap(([{ validateMnemonic }, { wordlist }]) =>
-          validateMnemonic(mnemonic, wordlist)
-            ? Effect.succeed(mnemonic as Mnemonic)
-            : Effect.fail<InvalidMnemonicError>({
-                _tag: "InvalidMnemonicError",
-              }),
+          validateMnemonicToEffect(validateMnemonic)(mnemonic, wordlist),
         ),
       ),
   }),

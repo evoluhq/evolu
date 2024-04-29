@@ -40,23 +40,22 @@ const { id } = create("todo", { title, isCompleted: false });
 update("todo", { id, isCompleted: true });
 ```
 
-Evolu uses `queueMicrotask` to make an array of `MutateItem` to send
+Evolu uses `queueMicrotask` to make an array of `Mutation` to send
 a batch to a WebWorker to not block the main thread.
 
 ```ts
-export interface MutateItem {
+export interface Mutation {
   readonly table: string;
   readonly id: Id;
-  readonly values: ReadonlyRecord.ReadonlyRecord<
+  readonly values: Record.ReadonlyRecord<
+    string,
     Value | Date | boolean | undefined
   >;
   readonly isInsert: boolean;
-  readonly now: SqliteDate;
-  readonly onCompleteId: OnCompleteId | null;
 }
 ```
 
-In the WebWorker, Evolu maps `MutateItem` to `Message`.
+In the WebWorker, Evolu maps `Mutation` to `Message`.
 
 ```ts
 export interface NewMessage {
@@ -95,7 +94,7 @@ messages we receive from other devices. We use the same logic for all
 messages describing database changes to ensure messages are processed
 always in the same manner.
 
-The `applyMessages` function in the `DbWorker.ts` stores messages in a
+The `applyMessages` function in the `Db.ts` stores messages in a
 separate table and updates the database if a message is new. It's the
 simple last-write-win approach. The `applyMessages` function also maintains
 the Merkle tree, which is used to find the last timestamp when both the

@@ -1,6 +1,6 @@
+import * as Arr from "effect/Array";
 import * as Predicate from "effect/Predicate";
-import * as ReadonlyArray from "effect/ReadonlyArray";
-import { Query, Row } from "./Db.js";
+import type { Query, Row } from "./Db.js";
 import { Value } from "./Sqlite.js";
 
 export interface QueryPatches {
@@ -21,25 +21,27 @@ export interface ReplaceAtPatch {
   readonly value: Row;
 }
 
-export const applyPatches =
-  (patches: ReadonlyArray<Patch>) =>
-  (current: ReadonlyArray<Row>): ReadonlyArray<Row> =>
-    patches.reduce((next, patch) => {
-      switch (patch.op) {
-        case "replaceAll":
-          return patch.value;
-        case "replaceAt": {
-          return ReadonlyArray.replace(next, patch.index, patch.value);
-        }
+export const applyPatches = (
+  patches: ReadonlyArray<Patch>,
+  current: ReadonlyArray<Row>,
+): ReadonlyArray<Row> =>
+  patches.reduce((next, patch) => {
+    switch (patch.op) {
+      case "replaceAll":
+        return patch.value;
+      case "replaceAt": {
+        return Arr.replace(next, patch.index, patch.value);
       }
-    }, current);
+    }
+  }, current);
 
-// We detect only a change in the whole result and in-place edits.
-// In the future, we will add more heuristics. We will probably not implement
-// the Myers diff algorithm because it's faster to rerender all than
-// to compute many detailed patches. We will only implement a logic
-// a developer would implement manually, if necessary.
-// Another idea is to make makePatches configurable via custom functions.
+/**
+ * We detect only changes in the whole result and in-place edits. In the future,
+ * we will add more heuristics. We will probably not implement the Myers diff
+ * algorithm because it's faster to rerender all than to compute many detailed
+ * patches. We will only implement logic a developer would implement manually,
+ * if necessary.
+ */
 export const makePatches = (
   previousRows: ReadonlyArray<Row> | undefined,
   nextRows: ReadonlyArray<Row>,
@@ -90,8 +92,8 @@ export const areEqual = (
       return true;
     }
 
-    const aIsArray = Array.isArray(a);
-    const bIsArray = Array.isArray(b);
+    const aIsArray = Arr.isArray(a);
+    const bIsArray = Arr.isArray(b);
     if (aIsArray && bIsArray) {
       if (a.length !== b.length) return false;
       for (let i = 0; i < a.length; i++)
