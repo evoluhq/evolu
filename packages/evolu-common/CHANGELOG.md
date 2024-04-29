@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 5.0.1
+
+### Patch Changes
+
+- af02cf8: Effect is stable, but the platform and schema aren't yet
+
 ## 5.0.0
 
 ### Major Changes
