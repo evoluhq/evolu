@@ -1,5 +1,12 @@
 # @evolu/server
 
+## 7.0.1
+
+### Patch Changes
+
+- Updated dependencies [af02cf8]
+  - @evolu/common@5.0.1
+
 ## 7.0.0
 
 ### Major Changes
