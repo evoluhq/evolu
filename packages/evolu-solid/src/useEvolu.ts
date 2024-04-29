@@ -1,7 +1,8 @@
+import { pipe } from "effect/Function";
+import * as O from "effect/Option";
 import { Evolu, DatabaseSchema } from "@evolu/common";
 import { useContext } from "solid-js";
 import { EvoluContext } from "./EvoluContext.js";
-
 /**
  * Hook returning an instance of {@link Evolu}.
  *
@@ -18,11 +19,14 @@ import { EvoluContext } from "./EvoluContext.js";
  *   // Or make an alias:
  *   // const useEvolu = Evolu.useEvolu<Database>;
  */
-export const useEvolu = <S extends DatabaseSchema>(): Evolu<S> => {
-  const evolu = useContext(EvoluContext);
-  if (evolu == null)
-    throw new Error(
-      "could not find Evolu context value; please ensure the component is wrapped in a <EvoluProvider>",
-    );
-  return evolu as Evolu<S>;
-};
+export const useEvolu = () =>
+  pipe(
+    useContext(EvoluContext),
+    O.fromNullable,
+    O.getOrThrowWith(
+      () =>
+        new Error(
+          "could not find Evolu context value; please ensure the component is wrapped in a <EvoluProvider>",
+        ),
+    ),
+  );

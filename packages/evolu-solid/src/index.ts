@@ -1,11 +1,9 @@
-import { makeCreateEvolu } from "@evolu/common";
-import { EvoluWebLive } from "@evolu/common-web";
+export { createEvolu } from "@evolu/common-web";
 
 export { parseMnemonic } from "@evolu/common-web";
 export * from "@evolu/common/public";
 
 export * from "./EvoluContext.js";
-export * from "./EvoluProvider.jsx";
 export * from "./useEvolu.js";
 export * from "./useEvoluError.js";
 export * from "./useOwner.js";
@@ -13,6 +11,7 @@ export * from "./useQuerySubscription.js";
 export * from "./useQuery.js";
 export * from "./useSyncExternalStore.js";
 export * from "./useSyncState.js";
+
 /**
  * Create Evolu for Solid.
  *
@@ -41,4 +40,3 @@ export * from "./useSyncState.js";
  *
  *   const evolu = createEvolu(Database);
  */
-export const createEvolu = makeCreateEvolu(EvoluWebLive);

@@ -5,11 +5,16 @@ import {
   createEffect,
   createSignal,
 } from "solid-js";
-import "./app.css";
 
 import * as S from "@effect/schema/Schema";
 import { formatError } from "@effect/schema/TreeFormatter";
+
 import {
+  createEvolu,
+  useEvolu,
+  useEvoluError,
+  useOwner,
+  useQuery,
   ExtractRow,
   NonEmptyString1000,
   NotNull,
@@ -22,20 +27,12 @@ import {
   id,
   jsonArrayFrom,
   table,
-} from "@evolu/common";
-
-import { parseMnemonic } from "@evolu/common-web";
-
-import {
-  EvoluProvider,
-  createEvolu,
-  useEvolu,
-  useEvoluError,
-  useOwner,
-  useQuery,
+  parseMnemonic
 } from "@evolu/solid";
 
+
 import { Effect, Exit } from "effect";
+import { EvoluContext } from "@evolu/solid";
 
 // Let's start with the database schema.
 
@@ -105,6 +102,8 @@ const indexes = [
 
 const evolu = createEvolu(Database, { indexes });
 
+console.log('XXX evolu XXX:', evolu)
+
 const createFixtures = (): Promise<void> =>
   Promise.all(
     evolu.loadQueries([
@@ -143,12 +142,14 @@ export default function App() {
   const handleTabClick = (): void => {
     setCurrentTab(currentTab() === "todos" ? "categories" : "todos");
   };
+
   return (
-    <EvoluProvider value={evolu}>
+    <EvoluContext.Provider value={evolu}>
       <NotificationBar />
       <h2 class="mt-6 text-xl font-semibold">
         {currentTab() === "todos" ? "Todos" : "Categories"}
       </h2>
+             
       <Suspense>
         {currentTab() === "todos" ? <Todos /> : <TodoCategories />}
         <Button title="Switch Tab" onClick={handleTabClick} />
@@ -164,8 +165,9 @@ export default function App() {
           password created on your device.
         </p>
         <OwnerActions />
-      </Suspense>
-    </EvoluProvider>
+      </Suspense> 
+      
+    </EvoluContext.Provider>
   );
 }
 
