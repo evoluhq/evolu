@@ -1,6 +1,6 @@
 import { useRef, useSyncExternalStore } from "react";
 
-const emptySubscribe = () => (): void => {};
+const emptySubscribe = () => () => {};
 
 /**
  * "Unlike the typeof window hack, this ensures that the server and hydration

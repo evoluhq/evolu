@@ -1,8 +1,8 @@
 import { Query, QueryResult, Row } from "@evolu/common";
 import { use } from "./use.js";
 import { useEvolu } from "./useEvolu.js";
-import { useWasSSR } from "./useWasSSR.js";
 import { useQuerySubscription } from "./useQuerySubscription.js";
+import { useWasSSR } from "./useWasSSR.js";
 
 /**
  * Load and subscribe to the Query, and return an object with `rows` and `row`
@@ -43,6 +43,18 @@ export const useQuery = <R extends Row>(
 ): QueryResult<R> => {
   const evolu = useEvolu();
   const wasSSR = useWasSSR();
-  if (!wasSSR) use(options?.promise || evolu.loadQuery(query));
+  /**
+   * `wasSSR` is for correct hydrating without Suspense flashing. For the
+   * initial render, it returns true and nothing else.
+   */
+  if (wasSSR) {
+    /**
+     * On the server, the loadQuery is a no-op. On the client, it preloads the
+     * query and updates its subscription, which invokes a second render phase.
+     */
+    if (!options?.promise) evolu.loadQuery(query);
+  } else {
+    use(options?.promise || evolu.loadQuery(query));
+  }
   return useQuerySubscription(query, options);
 };
