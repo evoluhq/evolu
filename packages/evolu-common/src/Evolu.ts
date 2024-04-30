@@ -703,7 +703,10 @@ const createEvolu = (
          * unwrap it without waiting a microtask."
          * https://github.com/acdlite/rfcs/blob/first-class-promises/text/0000-first-class-support-for-promises.md
          */
-        Object.assign(loadingPromise, { status: "fulfilled", value: result });
+        Object.assign(loadingPromise.promise, {
+          status: "fulfilled",
+          value: result,
+        });
         if (loadingPromise.releaseOnResolve) {
           loadingPromises.delete(query);
         }
