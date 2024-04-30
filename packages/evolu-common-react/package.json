@@ -1,6 +1,6 @@
 {
   "name": "@evolu/common-react",
-  "version": "8.0.1",
+  "version": "8.0.2",
   "description": "Common code for Evolu React libraries",
   "keywords": [
     "evolu",
