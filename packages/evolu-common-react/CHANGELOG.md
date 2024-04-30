@@ -1,5 +1,11 @@
 # @evolu/common-react
 
+## 8.0.2
+
+### Patch Changes
+
+- cea02b6: Fix also useQueries, update comments
+
 ## 8.0.1
 
 ### Patch Changes

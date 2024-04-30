@@ -53,7 +53,7 @@
     "vitest": "^1.5.2"
   },
   "peerDependencies": {
-    "@evolu/common-react": "^8.0.1",
+    "@evolu/common-react": "^8.0.2",
     "expo": "^50.0.14",
     "expo-sqlite": "~13.4.0",
     "react-native": "^0.73.6"
