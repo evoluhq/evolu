@@ -1,5 +1,13 @@
 # @evolu/common-react
 
+## 8.0.1
+
+### Patch Changes
+
+- 035cf55: Fix a bug
+
+  It's explained in the source code.
+
 ## 8.0.0
 
 ### Major Changes
