@@ -263,8 +263,8 @@ importers:
         version: 5.0.7
     devDependencies:
       '@effect/platform':
-        specifier: ^0.50.7
-        version: 0.50.8(@effect/schema@0.66.12(effect@3.1.0)(fast-check@3.18.0))(effect@3.1.0)(ws@8.17.0)
+        specifier: ^0.51.0
+        version: 0.51.0(@effect/schema@0.66.12(effect@3.1.0)(fast-check@3.18.0))(effect@3.1.0)(ws@8.17.0)
       '@effect/schema':
         specifier: ^0.66.10
         version: 0.66.12(effect@3.1.0)(fast-check@3.18.0)
@@ -1297,11 +1297,11 @@ packages:
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
     engines: {node: '>=12'}
 
-  '@effect/platform@0.50.8':
-    resolution: {integrity: sha512-3/3hFBuxSHoqLr4/gAi/XbImVMVPP4oC6HFd4Txip0orUBaR60eXBg8pLE1ZNGPK8bQXku46FgJ2P5/WmO9Dfw==}
+  '@effect/platform@0.51.0':
+    resolution: {integrity: sha512-j5kV5jNsMYjBARYiCYdxuLe5FVqnOpYo8Ox3K0QupmsyUS0bvZ9v+xdhc29e+1Rn7Vtm1YlBsoY8Gi7HZPJAiw==}
     peerDependencies:
-      '@effect/schema': ^0.66.11
-      effect: ^3.0.8
+      '@effect/schema': ^0.66.12
+      effect: ^3.1.0
 
   '@effect/schema@0.66.12':
     resolution: {integrity: sha512-14X3D2FxTFDtll41MWw5OkLQCWqcs6pLYhs38oRK1o7rQ9gM2fdL4sw/gJu4dayAqv122GMgoIEOrzO5PyBuYA==}
@@ -8644,7 +8644,7 @@ snapshots:
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
 
-  '@effect/platform@0.50.8(@effect/schema@0.66.12(effect@3.1.0)(fast-check@3.18.0))(effect@3.1.0)(ws@8.17.0)':
+  '@effect/platform@0.51.0(@effect/schema@0.66.12(effect@3.1.0)(fast-check@3.18.0))(effect@3.1.0)(ws@8.17.0)':
     dependencies:
       '@effect/schema': 0.66.12(effect@3.1.0)(fast-check@3.18.0)
       effect: 3.1.0
