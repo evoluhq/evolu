@@ -1,5 +1,11 @@
 # server
 
+## 1.0.50
+
+### Patch Changes
+
+- @evolu/server@7.0.2
+
 ## 1.0.49
 
 ### Patch Changes
