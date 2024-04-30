@@ -22,13 +22,12 @@ import { useWasSSR } from "./useWasSSR.js";
  *   // Get all rows, but without subscribing to changes.
  *   const { rows } = useQuery(allTodos, { once: true });
  *
- *   // Prefetch all rows
+ *   // Prefetch rows.
  *   const allTodos = evolu.createQuery((db) =>
  *     db.selectFrom("todo").selectAll(),
  *   );
- *   // Load before usage.
  *   const allTodosPromise = evolu.loadQuery(allTodos);
- *   // A usage.
+ *   // Use prefetched rows.
  *   const { rows } = useQuery(allTodos, { promise: allTodosPromise });
  */
 export const useQuery = <R extends Row>(
@@ -43,15 +42,7 @@ export const useQuery = <R extends Row>(
 ): QueryResult<R> => {
   const evolu = useEvolu();
   const wasSSR = useWasSSR();
-  /**
-   * `wasSSR` is for correct hydrating without Suspense flashing. For the
-   * initial render, it returns true and nothing else.
-   */
   if (wasSSR) {
-    /**
-     * On the server, the loadQuery is a no-op. On the client, it preloads the
-     * query and updates its subscription, which invokes a second render phase.
-     */
     if (!options?.promise) evolu.loadQuery(query);
   } else {
     use(options?.promise || evolu.loadQuery(query));
