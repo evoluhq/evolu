@@ -720,9 +720,6 @@ const createEvolu = (
      * expensive) hence this function must be called manually on any mutation.
      */
     const releaseUnsubscribedLoadingPromises = () => {
-      // eslint-disable-next-line no-console
-      console.log("test");
-
       [...loadingPromises.entries()]
         .filter(([query]) => !subscribedQueries.has(query))
         .forEach(([query, loadingPromise]) => {
