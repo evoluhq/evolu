@@ -49,7 +49,7 @@
   },
   "peerDependencies": {
     "@evolu/common": "^5.0.2",
-    "@evolu/common-react": "^8.0.0",
+    "@evolu/common-react": "^8.0.1",
     "@evolu/common-web": "^8.0.0",
     "react-dom": "^18.2.0"
   },
