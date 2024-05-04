@@ -1,5 +1,15 @@
 # @evolu/react
 
+## 8.0.1
+
+### Patch Changes
+
+- e8f293f: Add exportDatabase
+- Updated dependencies [e8f293f]
+  - @evolu/common-react@8.0.3
+  - @evolu/common-web@8.0.1
+  - @evolu/common@5.0.3
+
 ## 8.0.0
 
 ### Major Changes
