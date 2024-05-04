@@ -344,8 +344,8 @@ export interface Evolu<T extends EvoluSchema = EvoluSchema> {
    */
   readonly ensureSchema: (schema: DbSchema) => void;
 
-  // TODO:
-  // readonly exportSqliteFile: () => Promise<Uint8Array>
+  /** Export SQLite database as Uint8Array. */
+  readonly exportDatabase: () => Promise<Uint8Array>;
 }
 
 /** A type to define tables, columns, and column types. */
@@ -584,7 +584,7 @@ const createEvolu = (
 
     const runFork = flow(handleAllErrors, runtime.runFork);
     const runSync = flow(handleAllErrors, runtime.runSync);
-    // const runPromise = flow(handleAllErrors, runtime.runPromise);
+    const runPromise = flow(handleAllErrors, runtime.runPromise);
 
     const initialDataAsMutations = yield* Effect.provideService(
       initialDataToMutations(initialData),
@@ -864,6 +864,8 @@ const createEvolu = (
       ensureSchema: (schema) => {
         db.ensureSchema(schema).pipe(runFork);
       },
+
+      exportDatabase: () => db.exportDatabase().pipe(runPromise),
     };
 
     return evolu;

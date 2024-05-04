@@ -13,10 +13,7 @@ import {
   maybeLogSqliteQueryExecutionTime,
   valuesToSqliteValues,
 } from "@evolu/common";
-import sqlite3InitModule, {
-  SAHPoolUtil,
-  Sqlite3Static,
-} from "@sqlite.org/sqlite-wasm";
+import sqlite3InitModule, { Sqlite3Static } from "@sqlite.org/sqlite-wasm";
 import * as Arr from "effect/Array";
 import * as Effect from "effect/Effect";
 import { absurd, constVoid } from "effect/Function";
@@ -132,21 +129,27 @@ export const SqliteFactoryLive = Layer.effect(
             Effect.flatMap((sqlite3) =>
               Effect.promise(() =>
                 sqlite3.installOpfsSAHPoolVfs({ name: config.name }),
+              ).pipe(
+                Effect.map((poolUtil) => ({
+                  sqlite: new poolUtil.OpfsSAHPoolDb("/evolu1.db"),
+                  sqlite3,
+                })),
               ),
             ),
-            Effect.map(
-              (poolUtil: SAHPoolUtil) =>
-                new poolUtil.OpfsSAHPoolDb("/evolu1.db"),
-            ),
-            Effect.tap((sqlite) => {
+            Effect.tap(({ sqlite, sqlite3 }) => {
               const exec = (query: SqliteQuery, id: NanoId) =>
                 Effect.try({
-                  try: () =>
-                    sqlite.exec(query.sql, {
+                  try: () => {
+                    if (query.sql === exportDatabaseQuery.sql) {
+                      const file = sqlite3.capi.sqlite3_js_db_export(sqlite);
+                      return [{ file }];
+                    }
+                    return sqlite.exec(query.sql, {
                       returnValue: "resultRows",
                       rowMode: "object",
                       bind: valuesToSqliteValues(query.parameters || []),
-                    }) as SqliteRow[],
+                    }) as SqliteRow[];
+                  },
                   catch: ensureTransferableError,
                 }).pipe(
                   maybeLogSqliteQueryExecutionTime(query),
@@ -192,7 +195,7 @@ export const SqliteFactoryLive = Layer.effect(
         const transactionName = yield* getLockName("SqliteTransaction");
 
         return Sqlite.of({
-          exec: (query) =>
+          exec: (query: SqliteQuery) =>
             Effect.flatMap(nanoIdGenerator.nanoid, (id) =>
               Effect.async((resume) => {
                 callbacks.set(id, (message) => {
@@ -208,6 +211,7 @@ export const SqliteFactoryLive = Layer.effect(
                 channel.postMessage({ _tag: "Exec", id, query });
               }),
             ),
+
           transaction: (mode) => (effect) =>
             Effect.acquireUseRelease(
               Effect.async<() => void>((resume) => {
@@ -226,6 +230,31 @@ export const SqliteFactoryLive = Layer.effect(
                   // Don't resolve the last transaction; otherwise, it won't be the last.
                   if (mode !== "last") resolve();
                 }),
+            ),
+
+          export: () =>
+            Effect.flatMap(nanoIdGenerator.nanoid, (id) =>
+              Effect.async((resume) => {
+                callbacks.set(id, (message) => {
+                  switch (message._tag) {
+                    case "ExecSuccess":
+                      resume(
+                        Effect.succeed(
+                          message.result.rows[0].file as Uint8Array,
+                        ),
+                      );
+                      break;
+                    case "ExecError":
+                      resume(Effect.die(message.error));
+                      break;
+                  }
+                });
+                channel.postMessage({
+                  _tag: "Exec",
+                  id,
+                  query: exportDatabaseQuery,
+                });
+              }),
             ),
         });
       }),
@@ -275,3 +304,8 @@ const createSqliteBroadcastChannel = (name: string) =>
     };
     return sqliteChannel;
   });
+
+// There is no such query; we are just hacking API to avoid refactoring.
+const exportDatabaseQuery: SqliteQuery = {
+  sql: "export database",
+};

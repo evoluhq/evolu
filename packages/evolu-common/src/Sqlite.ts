@@ -8,6 +8,7 @@ import { Config } from "./Config.js";
 
 export interface Sqlite {
   readonly exec: (query: SqliteQuery) => Effect.Effect<SqliteExecResult>;
+
   readonly transaction: (
     /**
      * Use `exclusive` for mutations and `shared` for read-only queries. This
@@ -25,6 +26,8 @@ export interface Sqlite {
   ) => <A, E, R>(
     effect: Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E, Sqlite | R>;
+
+  readonly export: () => Effect.Effect<Uint8Array>;
 }
 
 export const Sqlite = Context.GenericTag<Sqlite>("Sqlite");
@@ -44,6 +47,8 @@ export class SqliteFactory extends Context.Tag("SqliteFactory")<
         Effect.zipRight(platformSqliteFactory.createSqlite),
         Effect.map(
           (platformSqlite): Sqlite => ({
+            ...platformSqlite,
+
             exec: (query) =>
               platformSqlite.exec(query).pipe(
                 Effect.tap((result) => {
@@ -55,6 +60,7 @@ export class SqliteFactory extends Context.Tag("SqliteFactory")<
                     : Effect.logDebug(["SQLiteCommon exec", query, result]),
                 ),
               ),
+
             transaction: (mode) => (effect) => {
               // Shared is for readonly queries.
               if (mode === "shared")

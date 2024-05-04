@@ -113,6 +113,8 @@ export interface Db {
   readonly sync: (
     queriesToRefresh: ReadonlyArray<Query>,
   ) => Effect.Effect<ReadonlyArray<QueryPatches>, never, Config>;
+
+  readonly exportDatabase: () => Effect.Effect<Uint8Array>;
 }
 
 export interface DbSchema {
@@ -306,6 +308,13 @@ export const createDb: Effect.Effect<
         Effect.zipRight(forkSync()),
         Effect.zipRight(loadQueries(queriesToRefresh, queryRowsRef)),
         afterInit({ transaction: "shared" }),
+      ),
+
+    exportDatabase: () =>
+      Effect.logTrace("Db exportDatabase").pipe(
+        Effect.zipRight(Sqlite),
+        Effect.flatMap((sqlite) => sqlite.export()),
+        afterInit({ transaction: "exclusive" }),
       ),
 
     // TODO:
@@ -940,4 +949,5 @@ export const notSupportedPlatformWorker: Db = {
   restoreOwner: () => Effect.void,
   ensureSchema: () => Effect.void,
   sync: () => Effect.succeed([]),
+  exportDatabase: () => Effect.succeed(new Uint8Array()),
 };

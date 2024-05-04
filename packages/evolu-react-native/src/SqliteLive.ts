@@ -32,8 +32,15 @@ export const SqliteLive = Layer.effect(
           );
           return { rows: [], changes };
         }),
+
       // RN doesn't need the "last" mode because there are no tabs.
       transaction: () => mutex.withPermits(1),
+
+      export: () =>
+        Effect.sync(() => {
+          throw new Error("expo-sqlite/next does not support serializeSync");
+          return db.serializeSync();
+        }),
     });
   }),
 );

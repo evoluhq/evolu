@@ -382,6 +382,25 @@ const OwnerActions: FC = () => {
     }
   };
 
+  const handleDownloadDatabaseClick = () => {
+    evolu.exportDatabase().then(({ buffer }) => {
+      const blob = new Blob([buffer], {
+        type: "application/x-sqlite3",
+      });
+      const a = document.createElement("a");
+      document.body.appendChild(a);
+      a.href = window.URL.createObjectURL(blob);
+      a.download = "db.sqlite3";
+      a.addEventListener("click", function () {
+        setTimeout(function () {
+          window.URL.revokeObjectURL(a.href);
+          a.remove();
+        }, 1000);
+      });
+      a.click();
+    });
+  };
+
   return (
     <div className="mt-6">
       <p>
@@ -394,6 +413,7 @@ const OwnerActions: FC = () => {
       />
       <Button title="Restore Owner" onClick={handleRestoreOwnerClick} />
       <Button title="Reset Owner" onClick={handleResetOwnerClick} />
+      <Button title="Download Database" onClick={handleDownloadDatabaseClick} />
       {showMnemonic && owner != null && (
         <div>
           <textarea

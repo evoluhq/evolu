@@ -39,7 +39,10 @@ export const SqliteTest = Layer.effect(
 
           return { rows, changes };
         }),
+
       transaction: () => (effect) => effect,
+
+      export: () => Effect.succeed(new Uint8Array()),
     });
   }),
 );
