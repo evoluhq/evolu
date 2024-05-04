@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 5.0.3
+
+### Patch Changes
+
+- e8f293f: Add exportDatabase
+
 ## 5.0.2
 
 ### Patch Changes

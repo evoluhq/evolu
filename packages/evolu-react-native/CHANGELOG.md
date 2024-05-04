@@ -1,5 +1,13 @@
 # @evolu/react-native
 
+## 9.0.1
+
+### Patch Changes
+
+- e8f293f: Add exportDatabase
+- Updated dependencies [e8f293f]
+  - @evolu/common-react@8.0.3
+
 ## 9.0.0
 
 ### Major Changes
