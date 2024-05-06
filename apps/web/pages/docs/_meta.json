@@ -2,7 +2,6 @@
   "index": "Introduction",
   "installation": "Installation",
   "quickstart": "Quickstart",
-  "api": "API",
   "indexes": "Indexes",
   "migrations": "Migrations",
   "patterns": "Patterns",
@@ -10,6 +9,7 @@
   "how-evolu-works": "How Evolu Works",
   "comparison": "Comparison",
   "showcase": "Showcase",
+  "api-reference": "API Reference",
   "faq": "FAQ",
   "changeLog_link": {
     "title": "Changelog",

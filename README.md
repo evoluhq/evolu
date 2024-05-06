@@ -25,6 +25,10 @@ Local-first apps allow users to own their data by storing them on their devices.
 
 For detailed information and usage examples, please visit [evolu.dev](https://www.evolu.dev).
 
+## API Reference
+
+[evoluhq.github.io/evolu](https://evoluhq.github.io/evolu)
+
 ## Community
 
 The Evolu community is on [GitHub Discussions](https://github.com/evoluhq/evolu/discussions), where you can ask questions and voice ideas.
