@@ -86,7 +86,16 @@ const { create, update } = useEvolu<Database>();
 <Callout type="info">
   Note there is no error handling because there is no reason why a mutation
   should fail. Types ensure correctness, and the local SQLite database is always
-  available. DX of local-first apps is the next level.
+  available. For rare cases where Evolu can fail, use global
+  `evolu.subscribeError` or `useEvoluError` React Hook.
+</Callout>
+
+To delete a row, set `isDeleted` to true and filter "deleted" rows in queries.
+
+<Callout>
+  CRDT without an authoritative server doesn't delete data; it just marks them
+  as deleted. This is not a bug; it's a feature that allows data to be merged
+  without conflicts (overridden data can be restored).
 </Callout>
 
 ### Query Data
