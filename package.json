@@ -14,7 +14,8 @@
     "release": "pnpm run build && changeset publish",
     "ios": "cd apps/native && pnpm ios",
     "android": "cd apps/native && pnpm android",
-    "generate-sql": "bun scripts/generateSql.ts"
+    "generate-sql": "bun scripts/generateSql.ts",
+    "docs": "typedoc"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.1",
@@ -22,7 +23,8 @@
     "eslint-config-evolu": "workspace:*",
     "prettier": "^3.2.5",
     "prettier-plugin-jsdoc": "^1.3.0",
-    "turbo": "^1.13.3"
+    "turbo": "^1.13.3",
+    "typedoc": "0.26.0-beta.0"
   },
   "packageManager": "pnpm@9.0.6",
   "pnpm": {
