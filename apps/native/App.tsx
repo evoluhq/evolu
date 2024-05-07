@@ -8,7 +8,7 @@ import {
   String,
   cast,
   createEvolu,
-  createIndex,
+  createIndexes,
   database,
   id,
   jsonArrayFrom,
@@ -61,19 +61,19 @@ type NonEmptyString50 = S.Schema.Type<typeof NonEmptyString50>;
 const TodoTable = table({
   id: TodoId,
   title: NonEmptyString1000,
-  isCompleted: S.nullable(SqliteBoolean),
-  categoryId: S.nullable(TodoCategoryId),
+  isCompleted: S.NullOr(SqliteBoolean),
+  categoryId: S.NullOr(TodoCategoryId),
 });
 type TodoTable = S.Schema.Type<typeof TodoTable>;
 
 // Evolu tables can contain typed JSONs.
-const SomeJson = S.struct({ foo: S.string, bar: S.boolean });
+const SomeJson = S.Struct({ foo: S.String, bar: S.Boolean });
 type SomeJson = S.Schema.Type<typeof SomeJson>;
 
 const TodoCategoryTable = table({
   id: TodoCategoryId,
   name: NonEmptyString50,
-  json: S.nullable(SomeJson),
+  json: S.NullOr(SomeJson),
 });
 type TodoCategoryTable = S.Schema.Type<typeof TodoCategoryTable>;
 
@@ -85,29 +85,32 @@ const Database = database({
 type Database = S.Schema.Type<typeof Database>;
 
 /**
- * Indexes
- *
  * Indexes are not necessary for development but are required for production.
- *
  * Before adding an index, use `logExecutionTime` and `logExplainQueryPlan`
  * createQuery options.
  *
- * SQLite has a tool for Index Recommendations (SQLite Expert)
- * https://sqlite.org/cli.html#index_recommendations_sqlite_expert_
+ * See https://www.evolu.dev/docs/indexes
  */
-const indexes = [
-  createIndex("indexTodoCreatedAt").on("todo").column("createdAt"),
-
-  createIndex("indexTodoCategoryCreatedAt")
-    .on("todoCategory")
-    .column("createdAt"),
-];
+const indexes = createIndexes((create) => [
+  create("indexTodoCreatedAt").on("todo").column("createdAt"),
+  create("indexTodoCategoryCreatedAt").on("todoCategory").column("createdAt"),
+]);
 
 const evolu = createEvolu(Database, {
   indexes,
   ...(process.env.NODE_ENV === "development" && {
     syncUrl: "http://localhost:4000",
   }),
+  initialData: (evolu) => {
+    const { id: categoryId } = evolu.create("todoCategory", {
+      name: S.decodeSync(NonEmptyString50)("Not Urgent"),
+    });
+    evolu.create("todo", {
+      title: S.decodeSync(NonEmptyString1000)("Try React Suspense"),
+      categoryId,
+    });
+  },
+  // minimumLogLevel: "trace",
 });
 
 export default function App(): JSX.Element {
@@ -128,7 +131,7 @@ const ReactNativeExample: FC = () => {
       <View style={{ alignItems: "flex-start" }}>
         <Button
           title="Simulate suspense-enabled router"
-          onPress={(): void => {
+          onPress={() => {
             // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
             startTransition(() => {
               setTodosShown(!todosShown);
@@ -154,7 +157,7 @@ const OwnerActions: FC = () => {
   const [mnemonic, setMnemonic] = useState("");
   const parsedMnemonic = S.decodeUnknownEither(NonEmptyString1000)(mnemonic);
 
-  const handleMnemonicInputEndEditing = (): void => {
+  const handleMnemonicInputEndEditing = () => {
     Either.match(parsedMnemonic, {
       onLeft: (error) => alert(formatError(error)),
       onRight: (mnemonic) => {
@@ -181,15 +184,15 @@ const OwnerActions: FC = () => {
       <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
         <Button
           title={`${!isMnemonicShown ? "Show" : "Hide"} Mnemonic`}
-          onPress={(): void => setIsMnemonicShown(!isMnemonicShown)}
+          onPress={() => setIsMnemonicShown(!isMnemonicShown)}
         />
         <Button
           title="Restore"
-          onPress={(): void => setIsRestoreShown(!isRestoreShown)}
+          onPress={() => setIsRestoreShown(!isRestoreShown)}
         />
         <Button
           title="Reset"
-          onPress={(): void => {
+          onPress={() => {
             evolu.resetOwner();
           }}
         />
@@ -247,7 +250,7 @@ const Todos: FC = () => {
 
   const [text, setText] = useState("");
   const newTodoTitle = S.decodeUnknownEither(NonEmptyString1000)(text);
-  const handleTextInputEndEditing = (): void => {
+  const handleTextInputEndEditing = () => {
     Either.match(newTodoTitle, {
       onLeft: Function.constVoid,
       onRight: (title) => {
@@ -301,7 +304,7 @@ const TodoItem = memo<{
         <TodoCategorySelect
           categories={categories}
           selected={categoryId}
-          onSelect={(categoryId): void => {
+          onSelect={(categoryId) => {
             update("todo", { id, categoryId });
           }}
         />
@@ -309,13 +312,13 @@ const TodoItem = memo<{
       <View style={{ flexDirection: "row" }}>
         <Button
           title={isCompleted ? "Completed" : "Complete"}
-          onPress={(): void => {
+          onPress={() => {
             update("todo", { id, isCompleted: !isCompleted });
           }}
         />
         <Button
           title="Delete"
-          onPress={(): void => {
+          onPress={() => {
             update("todo", { id, isDeleted: true });
           }}
         />
@@ -338,7 +341,7 @@ const TodoCategorySelect: FC<{
   return (
     <RNPickerSelect
       value={value}
-      onValueChange={(value: TodoCategoryId | null): void => {
+      onValueChange={(value: TodoCategoryId | null) => {
         onSelect(value);
       }}
       items={categories.map((row) => ({
@@ -371,7 +374,7 @@ const TodoCategories: FC = () => {
 
   const [text, setText] = useState("");
   const newTodoTitle = S.decodeUnknownEither(NonEmptyString50)(text);
-  const handleTextInputEndEditing = (): void => {
+  const handleTextInputEndEditing = () => {
     Either.match(newTodoTitle, {
       onLeft: Function.constVoid,
       onRight: (name) => {
@@ -402,7 +405,7 @@ const TodoCategories: FC = () => {
           <View style={{ flexDirection: "row" }}>
             <Button
               title="Delete"
-              onPress={(): void => {
+              onPress={() => {
                 update("todoCategory", { id, isDeleted: true });
               }}
             />
@@ -426,7 +429,7 @@ const NotificationBar: FC = () => {
   return (
     <View>
       <Text>{`Error: ${JSON.stringify(evoluError)}`}</Text>
-      <Button title="Close" onPress={(): void => setShowError(false)} />
+      <Button title="Close" onPress={() => setShowError(false)} />
     </View>
   );
 };

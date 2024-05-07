@@ -1,8 +1,8 @@
 import { Query, QueryResult, Row } from "@evolu/common";
 import { use } from "./use.js";
 import { useEvolu } from "./useEvolu.js";
-import { useWasSSR } from "./useWasSSR.js";
 import { useQuerySubscription } from "./useQuerySubscription.js";
+import { useWasSSR } from "./useWasSSR.js";
 
 /**
  * Load and subscribe to the Query, and return an object with `rows` and `row`
@@ -22,13 +22,12 @@ import { useQuerySubscription } from "./useQuerySubscription.js";
  *   // Get all rows, but without subscribing to changes.
  *   const { rows } = useQuery(allTodos, { once: true });
  *
- *   // Prefetch all rows
+ *   // Prefetch rows.
  *   const allTodos = evolu.createQuery((db) =>
  *     db.selectFrom("todo").selectAll(),
  *   );
- *   // Load before usage.
  *   const allTodosPromise = evolu.loadQuery(allTodos);
- *   // A usage.
+ *   // Use prefetched rows.
  *   const { rows } = useQuery(allTodos, { promise: allTodosPromise });
  */
 export const useQuery = <R extends Row>(
@@ -43,6 +42,10 @@ export const useQuery = <R extends Row>(
 ): QueryResult<R> => {
   const evolu = useEvolu();
   const wasSSR = useWasSSR();
-  if (!wasSSR) use(options?.promise || evolu.loadQuery(query));
+  if (wasSSR) {
+    if (!options?.promise) evolu.loadQuery(query);
+  } else {
+    use(options?.promise || evolu.loadQuery(query));
+  }
   return useQuerySubscription(query, options);
 };

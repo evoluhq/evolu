@@ -1,0 +1,6 @@
+{
+  "entryPoints": ["packages/*"],
+  "name": "Evolu",
+  "entryPointStrategy": "packages",
+  "exclude": ["packages/eslint-config-evolu", "packages/evolu-tsconfig"]
+}

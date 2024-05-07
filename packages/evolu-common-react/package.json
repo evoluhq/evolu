@@ -1,6 +1,6 @@
 {
   "name": "@evolu/common-react",
-  "version": "7.0.0",
+  "version": "8.0.3",
   "description": "Common code for Evolu React libraries",
   "keywords": [
     "evolu",
@@ -41,15 +41,15 @@
   "devDependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
-    "@types/react": "^18.2.67",
+    "@types/react": "~18.3.1",
     "eslint": "^8.57.0",
     "eslint-config-evolu": "workspace:*",
     "react": "^18.2.0",
-    "typescript": "^5.4.3",
-    "vitest": "^1.4.0"
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
   },
   "peerDependencies": {
-    "@evolu/common": "^4.1.1",
+    "@evolu/common": "^5.0.3",
     "react": "^18.2.0"
   },
   "publishConfig": {

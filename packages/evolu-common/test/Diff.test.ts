@@ -66,16 +66,19 @@ test("areEqual", () => {
 
 test("applyPatches", () => {
   const current: ReadonlyArray<Row> = [];
-  expect(applyPatches([])(current)).toBe(current);
+  expect(applyPatches([], current)).toBe(current);
 
   const value: ReadonlyArray<Row> = [];
-  expect(applyPatches([{ op: "replaceAll", value }])(current)).toBe(value);
+  expect(applyPatches([{ op: "replaceAll", value }], current)).toBe(value);
 
   const replaceUntouched = { b: 2 };
-  const replaceAtResult = applyPatches([
-    { op: "replaceAt", index: 0, value: { a: 2 } },
-    { op: "replaceAt", index: 2, value: { c: 4 } },
-  ])([{ a: 1 }, replaceUntouched, { c: 3 }]);
+  const replaceAtResult = applyPatches(
+    [
+      { op: "replaceAt", index: 0, value: { a: 2 } },
+      { op: "replaceAt", index: 2, value: { c: 4 } },
+    ],
+    [{ a: 1 }, replaceUntouched, { c: 3 }],
+  );
   expect(replaceAtResult).toEqual([{ a: 2 }, { b: 2 }, { c: 4 }]);
   if (replaceAtResult) expect(replaceAtResult[1]).toBe(replaceUntouched);
 });

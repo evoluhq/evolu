@@ -13,7 +13,7 @@ import path from "path";
 import { Server, ServerLive } from "../Server.js";
 import { Database, Db } from "../Types.js";
 
-const createDb = (fileName: string): Kysely<Database> =>
+const createDb = (fileName: string) =>
   new Kysely<Database>({
     dialect: new SqliteDialect({
       database: new SQLite(path.join(process.cwd(), "/", fileName)),

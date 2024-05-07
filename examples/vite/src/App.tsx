@@ -10,7 +10,7 @@ import {
   canUseDom,
   cast,
   createEvolu,
-  createIndex,
+  createIndexes,
   database,
   id,
   jsonArrayFrom,
@@ -55,20 +55,20 @@ type NonEmptyString50 = S.Schema.Type<typeof NonEmptyString50>;
 const TodoTable = table({
   id: TodoId,
   title: NonEmptyString1000,
-  isCompleted: S.nullable(SqliteBoolean),
-  categoryId: S.nullable(TodoCategoryId),
+  isCompleted: S.NullOr(SqliteBoolean),
+  categoryId: S.NullOr(TodoCategoryId),
 });
 type TodoTable = S.Schema.Type<typeof TodoTable>;
 
 // Evolu tables can contain typed JSONs.
-const SomeJson = S.struct({ foo: S.string, bar: S.boolean });
+const SomeJson = S.Struct({ foo: S.String, bar: S.Boolean });
 type SomeJson = S.Schema.Type<typeof SomeJson>;
 
 // Let's make a table with JSON value.
 const TodoCategoryTable = table({
   id: TodoCategoryId,
   name: NonEmptyString50,
-  json: S.nullable(SomeJson),
+  json: S.NullOr(SomeJson),
 });
 type TodoCategoryTable = S.Schema.Type<typeof TodoCategoryTable>;
 
@@ -80,60 +80,34 @@ const Database = database({
 type Database = S.Schema.Type<typeof Database>;
 
 /**
- * Indexes
- *
  * Indexes are not necessary for development but are required for production.
- *
  * Before adding an index, use `logExecutionTime` and `logExplainQueryPlan`
  * createQuery options.
  *
- * SQLite has a tool for Index Recommendations (SQLite Expert)
- * https://sqlite.org/cli.html#index_recommendations_sqlite_expert_
+ * See https://www.evolu.dev/docs/indexes
  */
-const indexes = [
-  createIndex("indexTodoCreatedAt").on("todo").column("createdAt"),
+const indexes = createIndexes((create) => [
+  create("indexTodoCreatedAt").on("todo").column("createdAt"),
+  create("indexTodoCategoryCreatedAt").on("todoCategory").column("createdAt"),
+]);
 
-  createIndex("indexTodoCategoryCreatedAt")
-    .on("todoCategory")
-    .column("createdAt"),
-];
-
-const evolu = createEvolu(Database, { indexes });
-
-const createFixtures = (): Promise<void> =>
-  Promise.all(
-    evolu.loadQueries([
-      evolu.createQuery((db) => db.selectFrom("todo").selectAll()),
-      evolu.createQuery((db) => db.selectFrom("todoCategory").selectAll()),
-    ]),
-  ).then(([todos, categories]) => {
-    if (todos.row || categories.row) return;
-
-    const { id: notUrgentCategoryId } = evolu.create("todoCategory", {
+const evolu = createEvolu(Database, {
+  indexes,
+  initialData: (evolu) => {
+    const { id: categoryId } = evolu.create("todoCategory", {
       name: S.decodeSync(NonEmptyString50)("Not Urgent"),
     });
-
     evolu.create("todo", {
       title: S.decodeSync(NonEmptyString1000)("Try React Suspense"),
-      categoryId: notUrgentCategoryId,
+      categoryId,
     });
-  });
-
-const isRestoringOwner = (isRestoringOwner?: boolean): boolean => {
-  if (!canUseDom) return false;
-  const key = 'evolu:isRestoringOwner"';
-  if (isRestoringOwner != null)
-    localStorage.setItem(key, isRestoringOwner.toString());
-  return localStorage.getItem(key) === "true";
-};
-
-// Ensure fixtures are not added to the restored owner.
-if (!isRestoringOwner()) createFixtures();
+  },
+});
 
 const ViteExample = memo(function ViteExample() {
   const [currentTab, setCurrentTab] = useState<"todos" | "categories">("todos");
 
-  const handleTabClick = (): void =>
+  const handleTabClick = () =>
     // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
     startTransition(() => {
       setCurrentTab(currentTab === "todos" ? "categories" : "todos");
@@ -178,7 +152,7 @@ const NotificationBar: FC = () => {
   return (
     <div className="mt-3">
       <p>{`Error: ${JSON.stringify(evoluError)}`}</p>
-      <Button title="Close" onClick={(): void => setShowError(false)} />
+      <Button title="Close" onClick={() => setShowError(false)} />
     </div>
   );
 };
@@ -216,7 +190,7 @@ const Todos: FC = () => {
   const { rows } = useQuery(todosWithCategories);
   const { create } = useEvolu<Database>();
 
-  const handleAddTodoClick = (): void => {
+  const handleAddTodoClick = () => {
     prompt(NonEmptyString1000, "What needs to be done?", (title) => {
       create("todo", { title });
     });
@@ -241,17 +215,17 @@ const TodoItem = memo<{
 }) {
   const { update } = useEvolu<Database>();
 
-  const handleToggleCompletedClick = (): void => {
+  const handleToggleCompletedClick = () => {
     update("todo", { id, isCompleted: !isCompleted });
   };
 
-  const handleRenameClick = (): void => {
+  const handleRenameClick = () => {
     prompt(NonEmptyString1000, "New Name", (title) => {
       update("todo", { id, title });
     });
   };
 
-  const handleDeleteClick = (): void => {
+  const handleDeleteClick = () => {
     update("todo", { id, isDeleted: true });
   };
 
@@ -272,7 +246,7 @@ const TodoItem = memo<{
       <TodoCategorySelect
         categories={categories}
         selected={categoryId}
-        onSelect={(categoryId): void => {
+        onSelect={(categoryId) => {
           update("todo", { id, categoryId });
         }}
       />
@@ -294,9 +268,7 @@ const TodoCategorySelect: FC<{
   return (
     <select
       value={value}
-      onChange={({
-        target: { value },
-      }: ChangeEvent<HTMLSelectElement>): void => {
+      onChange={({ target: { value } }: ChangeEvent<HTMLSelectElement>) => {
         onSelect(value === nothingSelected ? null : (value as TodoCategoryId));
       }}
     >
@@ -330,7 +302,7 @@ const TodoCategories: FC = () => {
   // Evolu automatically parses JSONs into typed objects.
   // if (rows[0]) console.log(rows[1].json?.foo);
 
-  const handleAddCategoryClick = (): void => {
+  const handleAddCategoryClick = () => {
     prompt(NonEmptyString50, "Category Name", (name) => {
       create("todoCategory", {
         name,
@@ -356,13 +328,13 @@ const TodoCategoryItem = memo<{
 }>(function TodoItem({ row: { id, name } }) {
   const { update } = useEvolu<Database>();
 
-  const handleRenameClick = (): void => {
+  const handleRenameClick = () => {
     prompt(NonEmptyString50, "Category Name", (name) => {
       update("todoCategory", { id, name });
     });
   };
 
-  const handleDeleteClick = (): void => {
+  const handleDeleteClick = () => {
     update("todoCategory", { id, isDeleted: true });
   };
 
@@ -382,7 +354,7 @@ const OwnerActions: FC = () => {
   const owner = useOwner();
   const [showMnemonic, setShowMnemonic] = useState(false);
 
-  const handleRestoreOwnerClick = (): void => {
+  const handleRestoreOwnerClick = () => {
     prompt(NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
       parseMnemonic(mnemonic)
         .pipe(Effect.runPromiseExit)
@@ -392,7 +364,6 @@ const OwnerActions: FC = () => {
               alert(JSON.stringify(error, null, 2));
             },
             onSuccess: (mnemonic) => {
-              isRestoringOwner(true);
               evolu.restoreOwner(mnemonic);
             },
           }),
@@ -400,9 +371,8 @@ const OwnerActions: FC = () => {
     });
   };
 
-  const handleResetOwnerClick = (): void => {
+  const handleResetOwnerClick = () => {
     if (confirm("Are you sure? It will delete all your local data.")) {
-      isRestoringOwner(false);
       evolu.resetOwner();
     }
   };
@@ -415,7 +385,7 @@ const OwnerActions: FC = () => {
       </p>
       <Button
         title={`${showMnemonic ? "Hide" : "Show"} Mnemonic`}
-        onClick={(): void => setShowMnemonic(!showMnemonic)}
+        onClick={() => setShowMnemonic(!showMnemonic)}
       />
       <Button title="Restore Owner" onClick={handleRestoreOwnerClick} />
       <Button title="Reset Owner" onClick={handleResetOwnerClick} />
@@ -451,7 +421,7 @@ const prompt = <From extends string, To>(
   schema: S.Schema<To, From, never>,
   message: string,
   onSuccess: (value: To) => void,
-): void => {
+) => {
   const value = window.prompt(message);
   if (value == null) return; // on cancel
   const a = S.decodeUnknownEither(schema)(value);

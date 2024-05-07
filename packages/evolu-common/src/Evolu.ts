@@ -1,48 +1,71 @@
+import * as AST from "@effect/schema/AST";
 import * as S from "@effect/schema/Schema";
+import { make } from "@effect/schema/Schema";
+import * as Arr from "effect/Array";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as Function from "effect/Function";
-import { pipe } from "effect/Function";
-import * as O from "effect/Option";
-import * as GlobalValue from "effect/GlobalValue";
+import { constVoid, flow, pipe } from "effect/Function";
 import * as Layer from "effect/Layer";
-import * as Match from "effect/Match";
+import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Number from "effect/Number";
-import * as ReadonlyArray from "effect/ReadonlyArray";
+import * as Option from "effect/Option";
+import * as Predicate from "effect/Predicate";
+import * as Record from "effect/Record";
 import * as Kysely from "kysely";
-import { Config, ConfigLive } from "./Config.js";
-import { Mnemonic, NanoIdGenerator, NanoIdGeneratorLive } from "./Crypto.js";
+import { Config, createRuntime, defaultConfig } from "./Config.js";
+import { Mnemonic, NanoIdGenerator } from "./Crypto.js";
 import {
-  DatabaseSchema,
+  DbFactory,
+  DbSchema,
+  Index,
+  Mutation,
   Queries,
   Query,
   QueryResult,
   QueryResultsPromisesFromQueries,
+  QueryRowsMap,
   Row,
-  RowsStore,
-  RowsStoreLive,
+  Table,
+  deserializeQuery,
   emptyRows,
   queryResultFromRows,
-  schemaToTables,
   serializeQuery,
 } from "./Db.js";
-import { DbWorker, DbWorkerOutputOnQuery, Mutation } from "./DbWorker.js";
-import { applyPatches } from "./Diff.js";
-import { EvoluError, makeErrorStore } from "./ErrorStore.js";
-import { SqliteBoolean, SqliteDate } from "./Model.js";
-import { OnCompletes, OnCompletesLive } from "./OnCompletes.js";
+import { QueryPatches, applyPatches } from "./Diff.js";
+import { EvoluError, makeUnexpectedError } from "./Error.js";
+import { Id, SqliteBoolean, SqliteDate } from "./Model.js";
 import { Owner } from "./Owner.js";
 import { AppState, FlushSync } from "./Platform.js";
 import {
-  Index,
   SqliteQuery,
   SqliteQueryOptions,
+  Value,
   isSqlMutation,
 } from "./Sqlite.js";
-import { Store, Unsubscribe, makeStore } from "./Store.js";
-import { SyncState } from "./SyncWorker.js";
+import { Listener, Unsubscribe, makeStore } from "./Store.js";
+import { SyncState, initialSyncState } from "./Sync.js";
 
-export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
+/**
+ * The Evolu interface provides a type-safe SQL query building and state
+ * management defined by a database schema. It leverages Kysely for creating SQL
+ * queries in TypeScript, enabling operations such as data querying, loading,
+ * subscription to data changes, and mutations (create, update, createOrUpdate).
+ * It also includes functionalities for error handling, syncing state
+ * management, and owner data manipulation. Specifically, Evolu allows:
+ *
+ * - Subscribing to and getting errors via subscribeError and getError.
+ * - Creating type-safe SQL queries with createQuery, leveraging Kysely's
+ *   capabilities.
+ * - Loading queries and subscribing to query result changes using loadQuery,
+ *   loadQueries, subscribeQuery, and getQuery.
+ * - Subscribing to and getting the owner's information and sync state changes.
+ * - Performing mutations on the database with create, update, and createOrUpdate
+ *   methods, which include automatic management of common columns like
+ *   createdAt, updatedAt, and isDeleted.
+ * - Managing owner data with resetOwner and restoreOwner.
+ * - Ensuring the database schema's integrity with ensureSchema.
+ */
+export interface Evolu<T extends EvoluSchema = EvoluSchema> {
   /**
    * Subscribe to {@link EvoluError} changes.
    *
@@ -52,10 +75,10 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
    *     console.log(error);
    *   });
    */
-  readonly subscribeError: Store<O.Option<EvoluError>>["subscribe"];
+  readonly subscribeError: (listener: Listener) => Unsubscribe;
 
   /** Get {@link EvoluError}. */
-  readonly getError: Store<O.Option<EvoluError>>["getState"];
+  readonly getError: () => EvoluError | null;
 
   /**
    * Create type-safe SQL {@link Query}.
@@ -75,7 +98,19 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
    *       db.selectFrom("todo").selectAll().where("id", "=", id),
    *     );
    */
-  readonly createQuery: CreateQuery<S>;
+  readonly createQuery: <R extends Row>(
+    queryCallback: (
+      db: Pick<
+        Kysely.Kysely<{
+          [Table in keyof T]: NullableExceptIdCreatedAtUpdatedAt<{
+            [Column in keyof T[Table]]: T[Table][Column];
+          }>;
+        }>,
+        "selectFrom" | "fn" | "with" | "withRecursive"
+      >,
+    ) => Kysely.SelectQueryBuilder<any, any, R>,
+    options?: SqliteQueryOptions,
+  ) => Query<R>;
 
   /**
    * Load {@link Query} and return a promise with {@link QueryResult}.
@@ -126,7 +161,9 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
    *     console.log(rows);
    *   });
    */
-  readonly loadQuery: LoadQuery;
+  readonly loadQuery: <R extends Row>(
+    query: Query<R>,
+  ) => Promise<QueryResult<R>>;
 
   /**
    * Load an array of {@link Query} queries and return an array of
@@ -148,7 +185,9 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
    *     const { rows } = evolu.getQuery(allTodos);
    *   });
    */
-  readonly subscribeQuery: SubscribedQueries["subscribeQuery"];
+  readonly subscribeQuery: (
+    query: Query,
+  ) => (listener: Listener) => Unsubscribe;
 
   /**
    * Get {@link Query} {@link QueryResult}.
@@ -158,7 +197,7 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
    *     const { rows } = evolu.getQuery(allTodos);
    *   });
    */
-  readonly getQuery: SubscribedQueries["getQuery"];
+  readonly getQuery: <R extends Row>(query: Query<R>) => QueryResult<R>;
 
   /**
    * Subscribe to {@link Owner} changes.
@@ -168,7 +207,7 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
    *     const owner = evolu.getOwner();
    *   });
    */
-  readonly subscribeOwner: Store<O.Option<Owner>>["subscribe"];
+  readonly subscribeOwner: (listener: Listener) => Unsubscribe;
 
   /**
    * Get {@link Owner}.
@@ -178,7 +217,7 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
    *     const owner = evolu.getOwner();
    *   });
    */
-  readonly getOwner: Store<O.Option<Owner>>["getState"];
+  readonly getOwner: () => Owner | null;
 
   /**
    * Subscribe to {@link SyncState} changes.
@@ -188,7 +227,7 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
    *     const syncState = evolu.getSyncState();
    *   });
    */
-  readonly subscribeSyncState: Store<SyncState>["subscribe"];
+  readonly subscribeSyncState: (listener: Listener) => Unsubscribe;
 
   /**
    * Get {@link SyncState}.
@@ -198,7 +237,7 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
    *     const syncState = evolu.getSyncState();
    *   });
    */
-  readonly getSyncState: Store<SyncState>["getState"];
+  readonly getSyncState: () => SyncState;
 
   /**
    * Create a row in the database and returns a new ID. The first argument is
@@ -226,7 +265,7 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
    *     // onComplete callback
    *   });
    */
-  create: Create<S>;
+  create: Mutate<T, "create">;
 
   /**
    * Update a row in the database and return the existing ID. The first argument
@@ -254,7 +293,7 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
    *   // To delete a row, set `isDeleted` to true.
    *   evolu.update("todo", { id, isDeleted: true });
    */
-  update: Update<S>;
+  update: Mutate<T, "update">;
 
   /**
    * Create or update a row in the database and return the existing ID. The
@@ -285,7 +324,7 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
    *
    *   evolu.createOrUpdate("todo", { id, title });
    */
-  createOrUpdate: CreateOrUpdate<S>;
+  createOrUpdate: Mutate<T, "createOrUpdate">;
 
   /**
    * Delete {@link Owner} and all their data from the current device. After the
@@ -298,350 +337,55 @@ export interface Evolu<S extends DatabaseSchema = DatabaseSchema> {
   readonly restoreOwner: (mnemonic: Mnemonic) => void;
 
   /**
-   * Ensure tables and columns defined in {@link DatabaseSchema} exist in the
+   * Ensure tables and columns defined in {@link EvoluSchema} exist in the
    * database.
-   */
-  readonly ensureSchema: <From, To extends S>(
-    schema: S.Schema<To, From>,
-    indexes?: ReadonlyArray<Index>,
-  ) => void;
-
-  /**
-   * Force sync with Evolu Server.
    *
-   * Evolu syncs on every mutation, tab focus, and network reconnect, so it's
-   * generally not required to sync manually, but if you need it, you can do
-   * it.
+   * This function is for hot/live reloading.
    */
-  readonly sync: () => void;
+  readonly ensureSchema: (schema: DbSchema) => void;
+
+  /** Export SQLite database as Uint8Array. */
+  readonly exportDatabase: () => Promise<Uint8Array>;
 }
 
-export const Evolu = Context.GenericTag<Evolu>("@services/Evolu");
+/** A type to define tables, columns, and column types. */
+export type EvoluSchema = Record.ReadonlyRecord<
+  string,
+  Record.ReadonlyRecord<string, Value> & {
+    readonly id: Id;
+  }
+>;
 
-type CreateQuery<S extends DatabaseSchema> = <R extends Row>(
-  queryCallback: QueryCallback<S, R>,
-  options?: SqliteQueryOptions,
-) => Query<R>;
-
-type QueryCallback<S extends DatabaseSchema, R extends Row> = (
-  db: Pick<
-    Kysely.Kysely<QuerySchema<S>>,
-    "selectFrom" | "fn" | "with" | "withRecursive"
-  >,
-) => Kysely.SelectQueryBuilder<any, any, R>;
-
-type QuerySchema<S extends DatabaseSchema> = {
-  readonly [Table in keyof S]: NullableExceptForIdAndAutomaticColumns<{
-    readonly [Column in keyof S[Table]]: S[Table][Column];
-  }>;
-};
-
-type NullableExceptForIdAndAutomaticColumns<T> = {
+type NullableExceptIdCreatedAtUpdatedAt<T> = {
   readonly [K in keyof T]: K extends "id" | "createdAt" | "updatedAt"
     ? T[K]
     : T[K] | null;
 };
 
-// https://kysely.dev/docs/recipes/splitting-query-building-and-execution
-const kysely = new Kysely.Kysely<QuerySchema<DatabaseSchema>>({
-  dialect: {
-    createAdapter: (): Kysely.DialectAdapter => new Kysely.SqliteAdapter(),
-    createDriver: (): Kysely.Driver => new Kysely.DummyDriver(),
-    createIntrospector(): Kysely.DatabaseIntrospector {
-      throw "Not implemeneted";
-    },
-    createQueryCompiler: (): Kysely.QueryCompiler =>
-      new Kysely.SqliteQueryCompiler(),
-  },
-});
-
-export const createIndex = kysely.schema.createIndex.bind(kysely.schema);
-
-export const makeCreateQuery =
-  <S extends DatabaseSchema = DatabaseSchema>(): CreateQuery<S> =>
-  <R extends Row>(
-    queryCallback: QueryCallback<S, R>,
-    options?: SqliteQueryOptions,
-  ) =>
-    pipe(
-      queryCallback(kysely as Kysely.Kysely<QuerySchema<S>>).compile(),
-      (compiledQuery): SqliteQuery => {
-        if (isSqlMutation(compiledQuery.sql))
-          throw new Error(
-            "SQL mutation (INSERT, UPDATE, DELETE, etc.) isn't allowed in the Evolu `createQuery` function. Kysely suggests it because there is no read-only Kysely yet, and removing such an API is not possible. For mutations, use Evolu mutation API.",
-          );
-        const parameters = compiledQuery.parameters as NonNullable<
-          SqliteQuery["parameters"]
-        >;
-        return {
-          sql: compiledQuery.sql,
-          parameters,
-          ...(options && { options }),
-        };
-      },
-      (query) => serializeQuery<R>(query),
-    );
-
-export interface LoadingPromises {
-  readonly get: <R extends Row>(
-    query: Query<R>,
-  ) => {
-    readonly promise: LoadingPromise<R>;
-    readonly isNew: boolean;
-  };
-
-  readonly resolve: <R extends Row>(
-    query: Query<R>,
-    rows: ReadonlyArray<R>,
-  ) => void;
-
-  /**
-   * Release all unsubscribed queries on mutation because only subscribed
-   * queries are automatically updated.
-   */
-  readonly release: () => void;
-}
-
-export const LoadingPromises = Context.GenericTag<LoadingPromises>(
-  "@services/LoadingPromises",
-);
-
-export type LoadingPromise<R extends Row> = Promise<QueryResult<R>> & {
-  status?: "pending" | "fulfilled" | "rejected";
-  value?: QueryResult<R>;
-  reason?: unknown;
-};
-
-export const LoadingPromiseLive = Layer.effect(
-  LoadingPromises,
-  Effect.gen(function* (_) {
-    interface LoadingPromiseWithResolve<R extends Row> {
-      promise: LoadingPromise<R>;
-      readonly resolve: Resolve<R>;
-      releaseOnResolve: boolean;
-    }
-    type Resolve<R extends Row> = (rows: QueryResult<R>) => void;
-
-    const subscribedQueries = yield* _(SubscribedQueries);
-    const promises = new Map<Query, LoadingPromiseWithResolve<Row>>();
-
-    return LoadingPromises.of({
-      get<R extends Row>(query: Query<R>) {
-        let isNew = false;
-        let promiseWithResolve = promises.get(query);
-
-        if (!promiseWithResolve) {
-          isNew = true;
-          let resolve: Resolve<Row> = Function.constVoid;
-          const promise: LoadingPromise<Row> = new Promise((_resolve) => {
-            resolve = _resolve;
-          });
-          promiseWithResolve = { promise, resolve, releaseOnResolve: false };
-          promises.set(query, promiseWithResolve);
-        }
-
-        return {
-          promise: promiseWithResolve.promise as LoadingPromise<R>,
-          isNew,
-        };
-      },
-
-      resolve(query, rows) {
-        const promiseWithResolve = promises.get(query);
-        if (!promiseWithResolve) return;
-        const result = queryResultFromRows(rows);
-        if (promiseWithResolve.promise.status !== "fulfilled")
-          promiseWithResolve.resolve(result);
-        else promiseWithResolve.promise = Promise.resolve(result);
-        setPromiseAsResolved(promiseWithResolve.promise)(result);
-        if (promiseWithResolve.releaseOnResolve) promises.delete(query);
-      },
-
-      release() {
-        const keep = subscribedQueries.getSubscribedQueries();
-        promises.forEach((promiseWithResolve, query) => {
-          if (keep.includes(query)) return;
-          if (promiseWithResolve.promise.status === "fulfilled")
-            promises.delete(query);
-          else promiseWithResolve.releaseOnResolve = true;
-        });
-      },
-    });
-  }),
-);
-
-// "For example, a data framework can set the status and value fields on a promise
-// preemptively, before passing to React, so that React can unwrap it without waiting
-// a microtask."
-// https://github.com/acdlite/rfcs/blob/first-class-promises/text/0000-first-class-support-for-promises.md
-const setPromiseAsResolved =
-  <T>(promise: Promise<T>) =>
-  (value: unknown): void => {
-    Object.assign(promise, { status: "fulfilled", value });
-  };
-
-type LoadQuery = <R extends Row>(query: Query<R>) => Promise<QueryResult<R>>;
-
-const LoadQuery = Context.GenericTag<LoadQuery>("@services/LoadQuery");
-
-const LoadQueryLive = Layer.effect(
-  LoadQuery,
-  Effect.gen(function* (_) {
-    const loadingPromises = yield* _(LoadingPromises);
-    const dbWorker = yield* _(DbWorker);
-    let queries: ReadonlyArray<Query> = [];
-
-    return LoadQuery.of((query) => {
-      const { promise, isNew } = loadingPromises.get(query);
-      if (isNew) queries = [...queries, query];
-      if (queries.length === 1) {
-        queueMicrotask(() => {
-          if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
-            dbWorker.postMessage({ _tag: "query", queries });
-          queries = [];
-        });
-      }
-      return promise;
-    });
-  }),
-);
-
-type OnQuery = (
-  dbWorkerOutputOnQuery: DbWorkerOutputOnQuery,
-) => Effect.Effect<void>;
-
-const OnQuery = Context.GenericTag<OnQuery>("@services/OnQuery");
-
-const OnQueryLive = Layer.effect(
-  OnQuery,
-  Effect.gen(function* (_) {
-    const rowsStore = yield* _(RowsStore);
-    const loadingPromises = yield* _(LoadingPromises);
-    const flushSync = pipe(
-      Effect.serviceOption(FlushSync),
-      Effect.map(O.getOrElse((): FlushSync => (callback) => callback())),
-      Effect.runSync,
-    );
-    const onCompletes = yield* _(OnCompletes);
-
-    return OnQuery.of(({ queriesPatches, onCompleteIds }) =>
-      Effect.gen(function* (_) {
-        const currentState = rowsStore.getState();
-        const nextState = pipe(
-          queriesPatches,
-          ReadonlyArray.map(
-            ({ query, patches }) =>
-              [
-                query,
-                applyPatches(patches)(currentState.get(query) || emptyRows()),
-              ] as const,
-          ),
-          (map) => new Map([...currentState, ...map]),
-        );
-
-        queriesPatches.forEach(({ query }) => {
-          loadingPromises.resolve(query, nextState.get(query) || emptyRows());
-        });
-
-        // No mutation is using onComplete, so we don't need flushSync.
-        if (onCompleteIds.length === 0) {
-          yield* _(rowsStore.setState(nextState));
-          return;
-        }
-
-        flushSync(() => rowsStore.setState(nextState).pipe(Effect.runSync));
-
-        yield* _(onCompletes.complete(onCompleteIds));
-      }),
-    );
-  }),
-);
-
-export interface SubscribedQueries {
-  readonly subscribeQuery: (query: Query) => Store<Row>["subscribe"];
-  readonly getQuery: <R extends Row>(query: Query<R>) => QueryResult<R>;
-  readonly getSubscribedQueries: () => Queries;
-}
-
-export const SubscribedQueries = Context.GenericTag<SubscribedQueries>(
-  "@services/SubscribedQueries",
-);
-
-export const SubscribedQueriesLive = Layer.effect(
-  SubscribedQueries,
-  Effect.gen(function* (_) {
-    const rowsStore = yield* _(RowsStore);
-    const subscribedQueries = new Map<Query, number>();
-
-    return SubscribedQueries.of({
-      subscribeQuery:
-        (query) =>
-        (listener): Unsubscribe => {
-          subscribedQueries.set(
-            query,
-            Number.increment(subscribedQueries.get(query) ?? 0),
-          );
-          const unsubscribe = rowsStore.subscribe(listener);
-
-          return () => {
-            const count = subscribedQueries.get(query);
-            if (count != null && count > 1)
-              subscribedQueries.set(query, Number.decrement(count));
-            else subscribedQueries.delete(query);
-            unsubscribe();
-          };
-        },
-
-      getQuery: <R extends Row>(query: Query<R>): QueryResult<R> =>
-        queryResultFromRows(
-          rowsStore.getState().get(query) || emptyRows(),
-        ) as QueryResult<R>,
-
-      getSubscribedQueries: () =>
-        ReadonlyArray.fromIterable(subscribedQueries.keys()),
-    });
-  }),
-);
-
-export type Create<S extends DatabaseSchema = DatabaseSchema> = Mutate<
-  S,
-  "create"
->;
-
-export type Update<S extends DatabaseSchema = DatabaseSchema> = Mutate<
-  S,
-  "update"
->;
-
-export type CreateOrUpdate<S extends DatabaseSchema = DatabaseSchema> = Mutate<
-  S,
-  "createOrUpdate"
->;
-
-export type Mutate<
-  S extends DatabaseSchema = DatabaseSchema,
+type Mutate<
+  T extends EvoluSchema = EvoluSchema,
   Mode extends "create" | "update" | "createOrUpdate" = "update",
-> = <K extends keyof S>(
+> = <K extends keyof T>(
   table: K,
   values: Kysely.Simplify<
     Mode extends "create"
       ? PartialForNullable<
-          Castable<Omit<S[K], "id" | "createdAt" | "updatedAt" | "isDeleted">>
+          Castable<Omit<T[K], "id" | "createdAt" | "updatedAt" | "isDeleted">>
         >
       : Mode extends "update"
-        ? Partial<Castable<Omit<S[K], "id" | "createdAt" | "updatedAt">>> & {
-            readonly id: S[K]["id"];
+        ? Partial<Castable<Omit<T[K], "id" | "createdAt" | "updatedAt">>> & {
+            readonly id: T[K]["id"];
           }
         : PartialForNullable<
-            Castable<Omit<S[K], "createdAt" | "updatedAt" | "isDeleted">>
+            Castable<Omit<T[K], "createdAt" | "updatedAt" | "isDeleted">>
           >
   >,
-  onComplete?: () => void,
+  onComplete?: MutateOnComplete,
 ) => {
-  readonly id: S[K]["id"];
+  readonly id: T[K]["id"];
 };
 
-export const Mutate = Context.GenericTag<Mutate>("@services/Mutate");
+type MutateOnComplete = () => void;
 
 // https://stackoverflow.com/a/54713648/233902
 type PartialForNullable<
@@ -655,9 +399,6 @@ type PartialForNullable<
 /**
  * SQLite doesn't support Date nor Boolean types, so Evolu emulates them with
  * {@link SqliteBoolean} and {@link SqliteDate}.
- *
- * For {@link SqliteBoolean}, you can use JavaScript boolean. For
- * {@link SqliteDate}, you can use JavaScript Date.
  */
 type Castable<T> = {
   readonly [K in keyof T]: T[K] extends SqliteBoolean
@@ -671,113 +412,433 @@ type Castable<T> = {
           : T[K];
 };
 
-const MutateLive = Layer.effect(
-  Mutate,
-  Effect.gen(function* (_) {
-    const { nanoid } = yield* _(NanoIdGenerator);
-    const onCompletes = yield* _(OnCompletes);
-    const subscribedQueries = yield* _(SubscribedQueries);
-    const loadingPromises = yield* _(LoadingPromises);
-    const dbWorker = yield* _(DbWorker);
-    let mutations: ReadonlyArray<Mutation> = [];
-
-    return Mutate.of((table, { id, ...values }, onComplete) => {
-      const isInsert = id == null;
-      if (isInsert) id = Effect.runSync(nanoid) as never;
-
-      const onCompleteId = onComplete
-        ? onCompletes.add(onComplete).pipe(Effect.runSync)
-        : null;
-
-      mutations = [
-        ...mutations,
-        {
-          table: table.toString(),
-          id,
-          values,
-          isInsert,
-          onCompleteId,
-        },
-      ];
-
-      if (mutations.length === 1)
-        queueMicrotask(() => {
-          if (ReadonlyArray.isNonEmptyReadonlyArray(mutations))
-            dbWorker.postMessage({
-              _tag: "mutate",
-              mutations,
-              queries: subscribedQueries.getSubscribedQueries(),
-            });
-          loadingPromises.release();
-          mutations = [];
-        });
-
-      return { id };
-    });
-  }),
-);
-
-/** EvoluCommon is without side effects, so it's unit-testable. */
-const EvoluCommon = Layer.effect(
-  Evolu,
-  Effect.gen(function* (_) {
-    const dbWorker = yield* _(DbWorker);
-    const errorStore = yield* _(makeErrorStore);
-    const loadQuery = yield* _(LoadQuery);
-    const onQuery = yield* _(OnQuery);
-    const { subscribeQuery, getQuery, getSubscribedQueries } =
-      yield* _(SubscribedQueries);
-    const syncStateStore = yield* _(
-      makeStore<SyncState>({ _tag: "SyncStateInitial" }),
-    );
-    const mutate = yield* _(Mutate);
-    const ownerStore = yield* _(makeStore<O.Option<Owner>>(O.none()));
-    const loadingPromises = yield* _(LoadingPromises);
-    const appState = yield* _(AppState);
-
-    dbWorker.onMessage = (output): void =>
-      Match.value(output).pipe(
-        Match.tagsExhaustive({
-          onError: ({ error }) => errorStore.setState(O.some(error)),
-          onQuery,
-          onOwner: ({ owner }) => ownerStore.setState(O.some(owner)),
-          onSyncState: ({ state }) => syncStateStore.setState(state),
-          onReceive: () =>
-            Effect.sync(() => {
-              loadingPromises.release();
-              const queries = getSubscribedQueries();
-              if (ReadonlyArray.isNonEmptyReadonlyArray(queries))
-                dbWorker.postMessage({ _tag: "query", queries });
-            }),
-          onResetOrRestore: () => appState.reset,
-        }),
-        Effect.runSync,
+export class EvoluFactory extends Context.Tag("EvoluFactory")<
+  EvoluFactory,
+  {
+    /**
+     * Create Evolu from the database schema.
+     *
+     * Tables with a name prefixed with `_` are local-only, which means they are
+     * never synced. It's useful for device-specific or temporal data.
+     *
+     * @example
+     *   import * as S from "@effect/schema/Schema";
+     *   import * as E from "@evolu/react";
+     *   // The same API for different platforms
+     *   // import * as E from "@evolu/react-native";
+     *   // import * as E from "@evolu/common-web";
+     *
+     *   const TodoId = E.id("Todo");
+     *   type TodoId = S.Schema.Type<typeof TodoId>;
+     *
+     *   const TodoTable = E.table({
+     *     id: TodoId,
+     *     title: E.NonEmptyString1000,
+     *   });
+     *   type TodoTable = S.Schema.Type<typeof TodoTable>;
+     *
+     *   const Database = E.database({
+     *     todo: TodoTable,
+     *
+     *     // Prefix `_` makes the table local-only (it will not sync)
+     *     _todo: TodoTable,
+     *   });
+     *   type Database = S.Schema.Type<typeof Database>;
+     *
+     *   const evolu = E.createEvolu(Database);
+     */
+    readonly createEvolu: <T extends EvoluSchema, I>(
+      schema: S.Schema<T, I>,
+      config?: Partial<EvoluConfig<T>>,
+    ) => Evolu<T>;
+  }
+>() {
+  static Common = Layer.effect(
+    EvoluFactory,
+    Effect.gen(function* () {
+      const flushSync = yield* Effect.map(
+        Effect.serviceOption(FlushSync),
+        Option.getOrElse<FlushSync>(() => (callback) => callback()),
       );
 
-    dbWorker.postMessage({
-      _tag: "init",
-      config: yield* _(Config),
-    });
+      const context = Context.empty().pipe(
+        Context.add(DbFactory, yield* DbFactory),
+        Context.add(NanoIdGenerator, yield* NanoIdGenerator),
+        Context.add(FlushSync, flushSync),
+        Context.add(AppState, yield* AppState),
+      );
 
-    const sync = (): void => {
-      dbWorker.postMessage({ _tag: "sync", queries: getSubscribedQueries() });
+      // For hot/live reloading and future Evolu dynamic import.
+      const instances = new Map<string, Evolu>();
+
+      return EvoluFactory.of({
+        createEvolu: <T extends EvoluSchema, I>(
+          schema: S.Schema<T, I>,
+          { indexes, initialData, ...config }: Partial<EvoluConfig<T>> = {},
+        ): Evolu<T> => {
+          const runtime = createRuntime(config);
+          const name = config?.name || defaultConfig.name;
+          const dbSchema: DbSchema = {
+            tables: schemaToTables(schema),
+            indexes: indexes || [],
+          };
+          let evolu = instances.get(name);
+          if (evolu == null) {
+            evolu = createEvolu(
+              dbSchema,
+              runtime,
+              initialData as EvoluConfig["initialData"],
+            ).pipe(Effect.provide(context), runtime.runSync);
+            instances.set(name, evolu);
+          } else {
+            evolu.ensureSchema(dbSchema);
+          }
+          return evolu as Evolu<T>;
+        },
+      });
+    }),
+  );
+}
+
+export interface EvoluConfig<T extends EvoluSchema = EvoluSchema>
+  extends Config {
+  /**
+   * Use the `indexes` property to define SQLite indexes.
+   *
+   * Table and column names are not typed because Kysely doesn't support it.
+   *
+   * https://medium.com/@JasonWyatt/squeezing-performance-from-sqlite-indexes-indexes-c4e175f3c346
+   *
+   * @example
+   *   const indexes = [
+   *     createIndex("indexTodoCreatedAt").on("todo").column("createdAt"),
+   *
+   *     createIndex("indexTodoCategoryCreatedAt")
+   *       .on("todoCategory")
+   *       .column("createdAt"),
+   *   ];
+   */
+  indexes: ReadonlyArray<Index>;
+
+  /** Use this option to create initial data (fixtures). */
+  initialData: (evolu: EvoluForInitialData<T>) => void;
+}
+
+const schemaToTables = (schema: S.Schema<any>) =>
+  pipe(
+    getPropertySignatures(schema),
+    Record.toEntries,
+    Arr.map(
+      ([name, schema]): Table => ({
+        name,
+        columns: Object.keys(getPropertySignatures(schema)),
+      }),
+    ),
+  );
+
+// TODO: Simplify.
+// https://discord.com/channels/795981131316985866/1218626687546294386/1218796529725476935
+const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
+  schema: S.Schema<A, I>,
+): { [K in keyof A]: S.Schema<A[K], I[K]> } => {
+  const out: Record<PropertyKey, S.Schema<any>> = {};
+  const propertySignatures = AST.getPropertySignatures(schema.ast);
+  for (let i = 0; i < propertySignatures.length; i++) {
+    const propertySignature = propertySignatures[i];
+    out[propertySignature.name] = make(propertySignature.type);
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+  return out as any;
+};
+
+const createEvolu = (
+  schema: DbSchema,
+  runtime: ManagedRuntime.ManagedRuntime<Config, never>,
+  initialData?: EvoluConfig["initialData"],
+) =>
+  Effect.gen(function* () {
+    yield* Effect.logTrace("EvoluFactory createEvolu");
+    const config = yield* Config;
+    const dbFactory = yield* DbFactory;
+    const appState = yield* AppState;
+    const nanoIdGenerator = yield* NanoIdGenerator;
+    const flushSync = yield* FlushSync;
+
+    const db = yield* dbFactory.createDb;
+    const errorStore = yield* makeStore<EvoluError | null>(null);
+    const ownerStore = yield* makeStore<Owner | null>(null);
+    const rowsStore = yield* makeStore<QueryRowsMap>(new Map());
+    const syncStateStore = yield* makeStore<SyncState>(initialSyncState);
+
+    const loadingPromises = new Map<Query, LoadingPromise>();
+    const subscribedQueries = new Map<Query, number>();
+
+    const handleAllErrors = <T>(effect: Effect.Effect<T, EvoluError, Config>) =>
+      effect.pipe(
+        Effect.catchAllDefect((error) =>
+          Effect.fail(makeUnexpectedError(error)),
+        ),
+        Effect.tapError(Effect.logError),
+        Effect.tapError(errorStore.setState),
+      );
+
+    const runFork = flow(handleAllErrors, runtime.runFork);
+    const runSync = flow(handleAllErrors, runtime.runSync);
+    const runPromise = flow(handleAllErrors, runtime.runPromise);
+
+    const initialDataAsMutations = yield* Effect.provideService(
+      initialDataToMutations(initialData),
+      NanoIdGenerator,
+      nanoIdGenerator,
+    );
+
+    const handleDbError = (error: EvoluError) => {
+      Effect.fail(error).pipe(runFork);
     };
 
-    appState.init({ onRequestSync: sync });
-    sync();
+    const handleSyncStateChange = (state: SyncState) => {
+      Effect.logDebug(["Evolu handleSyncStateChange", { state }]).pipe(
+        Effect.zipRight(syncStateStore.setState(state)),
+        runFork,
+      );
+    };
 
-    return Evolu.of({
+    const handleDbReceive = () => {
+      Effect.gen(function* () {
+        yield* Effect.logTrace("Evolu handleDbReceive");
+        releaseUnsubscribedLoadingPromises();
+        const queries = [...subscribedQueries.keys()];
+        if (queries.length > 0) {
+          yield* Effect.flatMap(db.loadQueries(queries), handlePatches());
+        }
+      }).pipe(runFork);
+    };
+
+    const sync =
+      ({ refreshQueries }: { refreshQueries: boolean }) =>
+      () => {
+        Effect.flatMap(
+          db.sync(refreshQueries ? [...subscribedQueries.keys()] : []),
+          handlePatches(),
+        ).pipe(runFork);
+      };
+
+    db.init(
+      schema,
+      initialDataAsMutations,
+      handleDbError,
+      handleSyncStateChange,
+      handleDbReceive,
+    ).pipe(
+      Effect.tap(sync({ refreshQueries: false })),
+      Effect.flatMap(ownerStore.setState),
+      Effect.catchTag("NotSupportedPlatformError", () => Effect.void), // no-op
+      runFork,
+    );
+
+    const appStateReset = yield* appState.init({
+      onRequestSync: sync({ refreshQueries: true }),
+      reloadUrl: config.reloadUrl,
+    });
+
+    const handlePatches =
+      (options?: {
+        /**
+         * The flushSync is for onComplete handlers only. For example, with
+         * React, when we want to focus on a node created by a mutation, we must
+         * ensure all DOM changes are flushed synchronously.
+         */
+        readonly flushSync: boolean;
+      }) =>
+      (patches: ReadonlyArray<QueryPatches>) =>
+        Effect.logDebug(["Evolu handlePatches", { patches }]).pipe(
+          Effect.zipRight(rowsStoreStateFromPatches(patches)),
+          Effect.tap((nextState) =>
+            Effect.forEach(patches, ({ query }) =>
+              resolveLoadingPromises(
+                query,
+                nextState.get(query) || emptyRows(),
+              ),
+            ),
+          ),
+          Effect.tap((nextState) => {
+            if (options?.flushSync) {
+              flushSync(() => {
+                rowsStore.setState(nextState).pipe(runSync);
+              });
+            } else {
+              rowsStore.setState(nextState).pipe(runSync);
+            }
+          }),
+        );
+
+    const rowsStoreStateFromPatches = (patches: ReadonlyArray<QueryPatches>) =>
+      Effect.sync((): QueryRowsMap => {
+        const rowsStoreState = rowsStore.getState();
+        if (patches.length === 0) return rowsStoreState;
+        const queriesRows = Arr.map(
+          patches,
+          ({ query, patches }): [Query, ReadonlyArray<Row>] => [
+            query,
+            applyPatches(patches, rowsStoreState.get(query) || emptyRows()),
+          ],
+        );
+        return new Map([...rowsStoreState, ...queriesRows]);
+      });
+
+    const resolveLoadingPromises = (query: Query, rows: ReadonlyArray<Row>) =>
+      Effect.sync(() => {
+        const loadingPromise = loadingPromises.get(query);
+        if (!loadingPromise) return;
+        const result = queryResultFromRows(rows);
+        if (loadingPromise.promise.status !== "fulfilled") {
+          loadingPromise.resolve(result);
+        } else {
+          // A promise can't be fulfilled 2x, so we need a new one.
+          loadingPromise.promise = Promise.resolve(result);
+        }
+        /**
+         * "For example, a data framework can set the status and value fields on
+         * a promise preemptively, before passing to React, so that React can
+         * unwrap it without waiting a microtask."
+         * https://github.com/acdlite/rfcs/blob/first-class-promises/text/0000-first-class-support-for-promises.md
+         */
+        Object.assign(loadingPromise.promise, {
+          status: "fulfilled",
+          value: result,
+        });
+        if (loadingPromise.releaseOnResolve) {
+          loadingPromises.delete(query);
+        }
+      });
+
+    /**
+     * We can't delete loading promises in `resolveLoadingPromises` because they
+     * must be cached, so repeated calls to `loadQuery` will always return the
+     * same promise until the data changes, and we also can't cache them forever
+     * because only subscribed queries are automatically updated (reactivity is
+     * expensive) hence this function must be called manually on any mutation.
+     */
+    const releaseUnsubscribedLoadingPromises = () => {
+      [...loadingPromises.entries()]
+        .filter(([query]) => !subscribedQueries.has(query))
+        .forEach(([query, loadingPromise]) => {
+          if (loadingPromise.promise.status === "fulfilled") {
+            loadingPromises.delete(query);
+          } else {
+            loadingPromise.releaseOnResolve = true;
+          }
+        });
+    };
+
+    const mutate = ((): Mutate => {
+      let queue: ReadonlyArray<[Mutation, MutateOnComplete | undefined]> = [];
+      return (table, { id, ...values }, onComplete) => {
+        Effect.logDebug(["Evolu mutate", { table, id, values }]).pipe(runSync);
+        const isInsert = id == null;
+        if (isInsert) id = nanoIdGenerator.rowId.pipe(runSync);
+        queue = [...queue, [{ table, id, values, isInsert }, onComplete]];
+        if (queue.length === 1)
+          queueMicrotask(() => {
+            const [mutations, onCompletes] = Arr.unzip(queue);
+            queue = [];
+            const onCompletesDef = onCompletes.filter(Predicate.isNotUndefined);
+            releaseUnsubscribedLoadingPromises();
+            db.mutate(mutations, [...subscribedQueries.keys()]).pipe(
+              Effect.flatMap(
+                handlePatches({ flushSync: onCompletesDef.length > 0 }),
+              ),
+              Effect.tap(() => {
+                onCompletesDef.forEach((onComplete) => onComplete());
+              }),
+              runFork,
+            );
+          });
+        return { id };
+      };
+    })();
+
+    const evolu: Evolu = {
       subscribeError: errorStore.subscribe,
       getError: errorStore.getState,
 
-      createQuery: makeCreateQuery(),
-      loadQuery,
+      createQuery: (queryCallback, options) =>
+        pipe(
+          queryCallback(kysely).compile(),
+          (compiledQuery): SqliteQuery => {
+            if (isSqlMutation(compiledQuery.sql))
+              throw new Error(
+                "SQL mutation (INSERT, UPDATE, DELETE, etc.) isn't allowed in the Evolu `createQuery` function. Kysely suggests it because there is no read-only Kysely yet, and removing such an API is not possible. For mutations, use Evolu mutation API.",
+              );
+            const parameters = compiledQuery.parameters as NonNullable<
+              SqliteQuery["parameters"]
+            >;
+            return {
+              sql: compiledQuery.sql,
+              parameters,
+              ...(options && { options }),
+            };
+          },
+          (query) => serializeQuery(query),
+        ),
 
-      loadQueries: <R extends Row, Q extends Queries<R>>(queries: [...Q]) =>
-        queries.map(loadQuery) as [...QueryResultsPromisesFromQueries<Q>],
+      loadQuery: (() => {
+        let queue: ReadonlyArray<Query> = [];
+        return <R extends Row>(query: Query<R>): Promise<QueryResult<R>> => {
+          Effect.logDebug([
+            "Evolu loadQuery",
+            { query: deserializeQuery(query) },
+          ]).pipe(runSync);
+          let loadingPromise = loadingPromises.get(query);
+          if (!loadingPromise) {
+            let resolve: LoadingPromise["resolve"] = constVoid;
+            const promise: LoadingPromise["promise"] = new Promise(
+              (_resolve) => {
+                resolve = _resolve;
+              },
+            );
+            loadingPromise = { resolve, promise, releaseOnResolve: false };
+            loadingPromises.set(query, loadingPromise);
+            queue = [...queue, query];
+            if (queue.length === 1) {
+              queueMicrotask(() => {
+                db.loadQueries(Arr.dedupe(queue)).pipe(
+                  Effect.flatMap(handlePatches()),
+                  runFork,
+                );
+                queue = [];
+              });
+            }
+          }
+          return loadingPromise.promise as Promise<QueryResult<R>>;
+        };
+      })(),
 
-      subscribeQuery,
-      getQuery,
+      loadQueries: <R extends Row, Q extends Queries<R>>(
+        queries: [...Q],
+      ): [...QueryResultsPromisesFromQueries<Q>] =>
+        queries.map(evolu.loadQuery) as [...QueryResultsPromisesFromQueries<Q>],
+
+      subscribeQuery: (query) => (listener) => {
+        subscribedQueries.set(
+          query,
+          Number.increment(subscribedQueries.get(query) ?? 0),
+        );
+        const unsubscribe = rowsStore.subscribe(listener);
+
+        return () => {
+          const count = subscribedQueries.get(query);
+          if (count != null && count > 1)
+            subscribedQueries.set(query, Number.decrement(count));
+          else subscribedQueries.delete(query);
+          unsubscribe();
+        };
+      },
+
+      getQuery: <R extends Row>(query: Query<R>): QueryResult<R> =>
+        queryResultFromRows(
+          rowsStore.getState().get(query) || emptyRows(),
+        ) as QueryResult<R>,
 
       subscribeOwner: ownerStore.subscribe,
       getOwner: ownerStore.getState,
@@ -785,69 +846,107 @@ const EvoluCommon = Layer.effect(
       subscribeSyncState: syncStateStore.subscribe,
       getSyncState: syncStateStore.getState,
 
-      create: mutate as Mutate<DatabaseSchema, "create">,
+      create: mutate as Mutate<EvoluSchema, "create">,
       update: mutate,
-      createOrUpdate: mutate as Mutate<DatabaseSchema, "createOrUpdate">,
+      createOrUpdate: mutate as Mutate<EvoluSchema, "createOrUpdate">,
 
-      resetOwner: () => dbWorker.postMessage({ _tag: "reset" }),
+      resetOwner: () => {
+        db.resetOwner().pipe(Effect.zipRight(appStateReset.reset), runFork);
+      },
 
-      restoreOwner: (mnemonic) =>
-        dbWorker.postMessage({ _tag: "reset", mnemonic }),
+      restoreOwner: (mnemonic) => {
+        db.restoreOwner(schema, mnemonic).pipe(
+          Effect.zipRight(appStateReset.reset),
+          runFork,
+        );
+      },
 
-      ensureSchema: (schema, indexes = []) =>
-        dbWorker.postMessage({
-          _tag: "ensureSchema",
-          tables: schemaToTables(schema),
-          indexes,
-        }),
+      ensureSchema: (schema) => {
+        db.ensureSchema(schema).pipe(runFork);
+      },
 
-      sync,
-    });
-  }),
-).pipe(
-  Layer.provide(Layer.mergeAll(LoadQueryLive, OnQueryLive, MutateLive)),
-  Layer.provide(LoadingPromiseLive),
-  Layer.provide(SubscribedQueriesLive),
-  Layer.provide(Layer.merge(RowsStoreLive, OnCompletesLive)),
-);
+      exportDatabase: () => db.exportDatabase().pipe(runPromise),
+    };
 
-export const EvoluCommonLive = EvoluCommon.pipe(
-  Layer.provide(NanoIdGeneratorLive),
-);
+    return evolu;
+  });
+
+const initialDataToMutations = (
+  initialData: EvoluConfig["initialData"] = constVoid,
+) =>
+  Effect.map(NanoIdGenerator, (nanoIdGenerator) => {
+    const mutations: Mutation[] = [];
+    const mutate: Mutate = (table, { id, ...values }) => {
+      if (id == null) id = nanoIdGenerator.rowId.pipe(Effect.runSync) as never;
+      mutations.push({ isInsert: true, id, table: table as string, values });
+      return { id };
+    };
+    const evolu: EvoluForInitialData = {
+      create: mutate as Mutate<EvoluSchema, "create">,
+      createOrUpdate: mutate as Mutate<EvoluSchema, "createOrUpdate">,
+    };
+    initialData(evolu);
+    return mutations;
+  });
+
+interface EvoluForInitialData<T extends EvoluSchema = EvoluSchema> {
+  create: Mutate<T, "create">;
+  createOrUpdate: Mutate<T, "createOrUpdate">;
+}
+
+interface LoadingPromise {
+  /** Promise with props for the upcoming React use hook. */
+  promise: Promise<QueryResult> & {
+    status?: "pending" | "fulfilled" | "rejected";
+    value?: QueryResult;
+    reason?: unknown;
+  };
+  resolve: (rows: QueryResult) => void;
+  releaseOnResolve: boolean;
+}
+
+// https://kysely.dev/docs/recipes/splitting-query-building-and-execution
+const kysely = new Kysely.Kysely({
+  dialect: {
+    createAdapter: () => new Kysely.SqliteAdapter(),
+    createDriver: () => new Kysely.DummyDriver(),
+    createIntrospector() {
+      throw "Not implemeneted";
+    },
+    createQueryCompiler: () => new Kysely.SqliteQueryCompiler(),
+  },
+});
+
+const createIndex = kysely.schema.createIndex.bind(kysely.schema);
+type CreateIndex = typeof createIndex;
 
 /**
- * The recipe for creating Evolu for a platform and UI library:
+ * Create SQLite indexes.
  *
- * 1. Export everything from "@evolu/common/public"
- * 2. Export platform-specific parseMnemonic. If the platform supports lazy import,
- *    use it because dictionaries have a few hundred KBs.
- * 3. Export `createEvolu` for a platform. The TS docs must be copy-pasted, and
- *    remember to update the import.
- * 4. Export UI library API code.
+ * See https://www.evolu.dev/docs/indexes
+ *
+ * @example
+ *   const indexes = createIndexes((create) => [
+ *     create("indexTodoCreatedAt").on("todo").column("createdAt"),
+ *     create("indexTodoCategoryCreatedAt")
+ *       .on("todoCategory")
+ *       .column("createdAt"),
+ *   ]);
  */
+export const createIndexes = (
+  callback: (
+    create: CreateIndex,
+  ) => ReadonlyArray<Kysely.CreateIndexBuilder<any>>,
+): ReadonlyArray<Index> =>
+  callback(createIndex).map(
+    (index): Index => ({
+      name: index.toOperationNode().name.name,
+      sql: index.compile().sql,
+    }),
+  );
 
-export const makeCreateEvolu =
-  (EvoluLive: Layer.Layer<Evolu, never, Config>) =>
-  <From, To extends DatabaseSchema>(
-    schema: S.Schema<To, From>,
-    config?: Partial<Config>,
-  ): Evolu<To> => {
-    // For https://nextjs.org/docs/architecture/fast-refresh etc.
-    const evolu = GlobalValue.globalValue("@evolu/common", () =>
-      Evolu.pipe(
-        Effect.provide(EvoluLive),
-        Effect.provide(ConfigLive(config)),
-        Effect.runSync,
-      ),
-    );
-
-    const indexes = config?.indexes?.map(
-      (index): Index => ({
-        name: index.toOperationNode().name.name,
-        sql: index.compile().sql,
-      }),
-    );
-
-    evolu.ensureSchema(schema, indexes);
-    return evolu as Evolu<To>;
-  };
+/** Create a namespaced lock name. */
+export const getLockName = (
+  name: string,
+): Effect.Effect<string, never, Config> =>
+  Effect.map(Config, (config) => `evolu:${config.name}:${name}`);

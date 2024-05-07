@@ -32,7 +32,9 @@ export const useQueries = <
   const once = useRef(options).current.once;
   const allQueries = once ? queries.concat(once) : queries;
   const wasSSR = useWasSSR();
-  if (!wasSSR) {
+  if (wasSSR) {
+    if (!options.promises) evolu.loadQueries(allQueries);
+  } else {
     if (options.promises) options.promises.map(use);
     else evolu.loadQueries(allQueries).map(use);
   }

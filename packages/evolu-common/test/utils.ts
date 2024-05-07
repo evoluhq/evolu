@@ -24,20 +24,26 @@ export const SqliteTest = Layer.effect(
   Effect.sync(() => {
     const db = new Database(":memory:");
 
-    const exec: Sqlite["exec"] = (query) =>
-      Effect.sync(() => {
-        const isSelect = query.sql.toLowerCase().includes("select");
+    return Sqlite.of({
+      exec: (query) =>
+        Effect.sync(() => {
+          const isSelect = query.sql.toLowerCase().includes("select");
 
-        const prepared = db.prepare(query.sql);
-        const parameters = query.parameters || [];
+          const prepared = db.prepare(query.sql);
+          const parameters = query.parameters || [];
 
-        const rows = isSelect ? (prepared.all(parameters) as SqliteRow[]) : [];
-        const changes = isSelect ? 0 : prepared.run(parameters).changes;
+          const rows = isSelect
+            ? (prepared.all(parameters) as SqliteRow[])
+            : [];
+          const changes = isSelect ? 0 : prepared.run(parameters).changes;
 
-        return { rows, changes };
-      });
+          return { rows, changes };
+        }),
 
-    return { exec };
+      transaction: () => (effect) => effect,
+
+      export: () => Effect.succeed(new Uint8Array()),
+    });
   }),
 );
 

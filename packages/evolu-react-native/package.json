@@ -1,6 +1,6 @@
 {
   "name": "@evolu/react-native",
-  "version": "8.0.1",
+  "version": "9.0.1",
   "description": "Evolu for React Native",
   "keywords": [
     "evolu",
@@ -38,7 +38,7 @@
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "dependencies": {
-    "expo-updates": "^0.24.11"
+    "expo-updates": "^0.24.12"
   },
   "devDependencies": {
     "@evolu/common": "workspace:*",
@@ -46,17 +46,17 @@
     "@evolu/tsconfig": "workspace:*",
     "eslint": "^8.57.0",
     "eslint-config-evolu": "workspace:*",
-    "expo": "^50.0.14",
+    "expo": "^50.0.17",
     "expo-sqlite": "~13.4.0",
     "react-native": "0.73.6",
-    "typescript": "^5.4.3",
-    "vitest": "^1.4.0"
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
   },
   "peerDependencies": {
-    "@evolu/common-react": "^7.0.0",
+    "@evolu/common-react": "^8.0.3",
     "expo": "^50.0.14",
     "expo-sqlite": "~13.4.0",
-    "react-native": "0.73.6"
+    "react-native": "^0.73.6"
   },
   "publishConfig": {
     "access": "public"

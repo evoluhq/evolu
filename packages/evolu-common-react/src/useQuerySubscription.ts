@@ -5,7 +5,7 @@ import {
   emptyRows,
   queryResultFromRows,
 } from "@evolu/common";
-import * as Function from "effect/Function";
+import { constVoid } from "effect/Function";
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useEvolu } from "./useEvolu.js";
 
@@ -27,7 +27,7 @@ export const useQuerySubscription = <R extends Row>(
     /* eslint-disable react-hooks/rules-of-hooks */
     useEffect(
       // No useSyncExternalStore, no unnecessary updates.
-      () => evolu.subscribeQuery(query)(Function.constVoid),
+      () => evolu.subscribeQuery(query)(constVoid),
       [evolu, query],
     );
     return evolu.getQuery(query);

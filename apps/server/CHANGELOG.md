@@ -1,5 +1,31 @@
 # server
 
+## 1.0.51
+
+### Patch Changes
+
+- Updated dependencies [e8f293f]
+  - @evolu/server@7.0.3
+
+## 1.0.50
+
+### Patch Changes
+
+- @evolu/server@7.0.2
+
+## 1.0.49
+
+### Patch Changes
+
+- @evolu/server@7.0.1
+
+## 1.0.48
+
+### Patch Changes
+
+- Updated dependencies [d156e67]
+  - @evolu/server@7.0.0
+
 ## 1.0.47
 
 ### Patch Changes

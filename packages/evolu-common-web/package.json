@@ -1,6 +1,6 @@
 {
   "name": "@evolu/common-web",
-  "version": "7.0.1",
+  "version": "8.0.1",
   "description": "Common code for Evolu libraries targeting web",
   "keywords": [
     "evolu",
@@ -37,16 +37,16 @@
   "devDependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
-    "@sqlite.org/sqlite-wasm": "3.45.2-build1",
+    "@sqlite.org/sqlite-wasm": "3.45.3-build1",
     "@types/web-locks-api": "^0.0.5",
     "eslint": "^8.57.0",
     "eslint-config-evolu": "workspace:*",
-    "typescript": "^5.4.3",
+    "typescript": "^5.4.5",
     "user-agent-data-types": "^0.4.2",
-    "vitest": "^1.4.0"
+    "vitest": "^1.6.0"
   },
   "peerDependencies": {
-    "@evolu/common": "^4.1.1",
+    "@evolu/common": "^5.0.3",
     "@sqlite.org/sqlite-wasm": "3.45.1-build1"
   },
   "publishConfig": {

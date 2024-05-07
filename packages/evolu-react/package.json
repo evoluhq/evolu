@@ -1,6 +1,6 @@
 {
   "name": "@evolu/react",
-  "version": "7.0.0",
+  "version": "8.0.1",
   "description": "Evolu for React",
   "keywords": [
     "evolu",
@@ -40,17 +40,17 @@
     "@evolu/common-react": "workspace:*",
     "@evolu/common-web": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
-    "@types/react-dom": "^18.2.22",
+    "@types/react-dom": "~18.3.0",
     "eslint": "^8.57.0",
     "eslint-config-evolu": "workspace:*",
-    "react-dom": "^18.2.0",
-    "typescript": "^5.4.3",
-    "vitest": "^1.4.0"
+    "react-dom": "^18.3.1",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
   },
   "peerDependencies": {
-    "@evolu/common": "^4.1.1",
-    "@evolu/common-react": "^7.0.0",
-    "@evolu/common-web": "^7.0.1",
+    "@evolu/common": "^5.0.3",
+    "@evolu/common-react": "^8.0.3",
+    "@evolu/common-web": "^8.0.1",
     "react-dom": "^18.2.0"
   },
   "publishConfig": {
