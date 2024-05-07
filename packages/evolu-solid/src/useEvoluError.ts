@@ -10,6 +10,6 @@ export const useEvoluError = (): Accessor<EvoluError | null> => {
   const evolu = useEvolu();
   return pipe(
     useSyncExternalStore(evolu.subscribeError, evolu.getError),
-    (v) => () => O.getOrNull(v()),
+    (v) => () => v()
   );
 };

@@ -1,6 +1,6 @@
 import { pipe } from "effect/Function";
 import * as O from "effect/Option";
-import { Evolu, DatabaseSchema } from "@evolu/common";
+import { Evolu } from "@evolu/common";
 import { useContext } from "solid-js";
 import { EvoluContext } from "./EvoluContext.js";
 /**

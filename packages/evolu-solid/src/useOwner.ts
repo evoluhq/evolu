@@ -10,6 +10,6 @@ export const useOwner = (): Accessor<Owner | null> => {
   const evolu = useEvolu();
   return pipe(
     useSyncExternalStore(evolu.subscribeOwner, evolu.getOwner),
-    (v) => () => O.getOrNull(v()),
+    (v) => () => v(),
   );
 };
