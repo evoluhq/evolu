@@ -20,7 +20,6 @@ import {
   NotNull,
   SqliteBoolean,
   String,
-  canUseDom,
   cast,
   createIndexes,
   database,
@@ -57,20 +56,20 @@ type NonEmptyString50 = S.Schema.Type<typeof NonEmptyString50>;
 const TodoTable = table({
   id: TodoId,
   title: NonEmptyString1000,
-  isCompleted: S.nullable(SqliteBoolean),
-  categoryId: S.nullable(TodoCategoryId),
+  isCompleted: S.NullOr(SqliteBoolean),
+  categoryId: S.NullOr(TodoCategoryId),
 });
 type TodoTable = S.Schema.Type<typeof TodoTable>;
 
 // Evolu tables can contain typed JSONs.
-const SomeJson = S.struct({ foo: S.string, bar: S.boolean });
+const SomeJson = S.Struct({ foo: S.String, bar: S.Boolean });
 type SomeJson = S.Schema.Type<typeof SomeJson>;
 
 // Let's make a table with JSON value.
 const TodoCategoryTable = table({
   id: TodoCategoryId,
   name: NonEmptyString50,
-  json: S.nullable(SomeJson),
+  json: S.NullOr(SomeJson),
 });
 type TodoCategoryTable = S.Schema.Type<typeof TodoCategoryTable>;
 
@@ -82,46 +81,29 @@ const Database = database({
 type Database = S.Schema.Type<typeof Database>;
 
 /**
- * Indexes
- *
  * Indexes are not necessary for development but are required for production.
- *
  * Before adding an index, use `logExecutionTime` and `logExplainQueryPlan`
  * createQuery options.
  *
- * SQLite has a tool for Index Recommendations (SQLite Expert)
- * https://sqlite.org/cli.html#index_recommendations_sqlite_expert_
+ * See https://www.evolu.dev/docs/indexes
  */
-const indexes = [
-  createIndexes("indexTodoCreatedAt").on("todo").column("createdAt"),
+const indexes = createIndexes((create) => [
+  create("indexTodoCreatedAt").on("todo").column("createdAt"),
+  create("indexTodoCategoryCreatedAt").on("todoCategory").column("createdAt"),
+]);
 
-  createIndexes("indexTodoCategoryCreatedAt")
-    .on("todoCategory")
-    .column("createdAt"),
-];
-
-const evolu = createEvolu(Database, { indexes });
-
-console.log('XXX evolu XXX:', evolu)
-
-const createFixtures = (): Promise<void> =>
-  Promise.all(
-    evolu.loadQueries([
-      evolu.createQuery((db) => db.selectFrom("todo").selectAll()),
-      evolu.createQuery((db) => db.selectFrom("todoCategory").selectAll()),
-    ]),
-  ).then(([todos, categories]) => {
-    if (todos.row || categories.row) return;
-
-    const { id: notUrgentCategoryId } = evolu.create("todoCategory", {
+const evolu = createEvolu(Database, {
+  indexes,
+  initialData: (evolu) => {
+    const { id: categoryId } = evolu.create("todoCategory", {
       name: S.decodeSync(NonEmptyString50)("Not Urgent"),
     });
-
     evolu.create("todo", {
       title: S.decodeSync(NonEmptyString1000)("Try React Suspense"),
-      categoryId: notUrgentCategoryId,
+      categoryId,
     });
-  });
+  },
+});
 
 export default function App() {
   const [currentTab, setCurrentTab] = createSignal<"todos" | "categories">(
@@ -393,7 +375,6 @@ const OwnerActions: Component = () => {
 
   const handleResetOwnerClick = (): void => {
     if (confirm("Are you sure? It will delete all your local data.")) {
-      isRestoringOwner(false);
       evolu.resetOwner();
     }
   };
