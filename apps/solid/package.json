@@ -1,8 +1,8 @@
 {
   "name": "vite-template-solid",
   "version": "0.0.0",
-  "description": "",
   "type": "module",
+  "private": true,
   "scripts": {
     "start": "vite",
     "dev": "vite",
@@ -10,13 +10,16 @@
     "serve": "vite preview"
   },
   "dependencies": {
-    "@evolu/solid": "latest",
-    "solid-js": "^1.8.17"
+    "@effect/schema": "^0.66.14",
+    "@evolu/common": "workspace:*",
+    "@evolu/solid": "workspace:*",
+    "effect": "^3.1.2",
+    "solid-js": "^1.8.17"    
   },
   "devDependencies": {
     "solid-devtools": "^0.29.2",
-    "typescript": "^5.3.3",
+    "typescript": "^5.4.5",
     "vite": "^5.0.11",
-    "vite-plugin-solid": "^2.8.2"
+    "vite-plugin-solid": "^2.10.2"
   }
 }

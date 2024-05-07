@@ -136,6 +136,9 @@ importers:
 
   apps/solid:
     dependencies:
+      '@effect/schema':
+        specifier: ^0.66.14
+        version: 0.66.14(effect@3.1.2)(fast-check@3.18.0)
       '@evolu/common':
         specifier: workspace:*
         version: link:../../packages/evolu-common

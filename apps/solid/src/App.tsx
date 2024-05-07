@@ -22,7 +22,7 @@ import {
   String,
   canUseDom,
   cast,
-  createIndex,
+  createIndexes,
   database,
   id,
   jsonArrayFrom,
@@ -93,9 +93,9 @@ type Database = S.Schema.Type<typeof Database>;
  * https://sqlite.org/cli.html#index_recommendations_sqlite_expert_
  */
 const indexes = [
-  createIndex("indexTodoCreatedAt").on("todo").column("createdAt"),
+  createIndexes("indexTodoCreatedAt").on("todo").column("createdAt"),
 
-  createIndex("indexTodoCategoryCreatedAt")
+  createIndexes("indexTodoCategoryCreatedAt")
     .on("todoCategory")
     .column("createdAt"),
 ];
@@ -122,17 +122,6 @@ const createFixtures = (): Promise<void> =>
       categoryId: notUrgentCategoryId,
     });
   });
-
-const isRestoringOwner = (isRestoringOwner?: boolean): boolean => {
-  if (!canUseDom) return false;
-  const key = 'evolu:isRestoringOwner"';
-  if (isRestoringOwner != null)
-    localStorage.setItem(key, isRestoringOwner.toString());
-  return localStorage.getItem(key) === "true";
-};
-
-// Ensure fixtures are not added to the restored owner.
-if (!isRestoringOwner()) createFixtures();
 
 export default function App() {
   const [currentTab, setCurrentTab] = createSignal<"todos" | "categories">(
@@ -395,7 +384,6 @@ const OwnerActions: Component = () => {
               alert(JSON.stringify(error, null, 2));
             },
             onSuccess: (mnemonic) => {
-              isRestoringOwner(true);
               evolu.restoreOwner(mnemonic);
             },
           }),

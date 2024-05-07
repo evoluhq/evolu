@@ -7,7 +7,6 @@ import {
   NotNull,
   SqliteBoolean,
   String,
-  canUseDom,
   cast,
   createEvolu,
   createIndexes,
