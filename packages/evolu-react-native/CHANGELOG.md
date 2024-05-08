@@ -1,5 +1,11 @@
 # @evolu/react-native
 
+## 10.0.0
+
+### Major Changes
+
+- 2d8f5bc: Expo 51
+
 ## 9.0.1
 
 ### Patch Changes
