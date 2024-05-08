@@ -44,6 +44,7 @@ import {
 } from "./Sqlite.js";
 import { Listener, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState, initialSyncState } from "./Sync.js";
+import { TimestampString } from "./Crdt.js";
 
 /**
  * The Evolu interface provides a type-safe SQL query building and state
@@ -101,11 +102,21 @@ export interface Evolu<T extends EvoluSchema = EvoluSchema> {
   readonly createQuery: <R extends Row>(
     queryCallback: (
       db: Pick<
-        Kysely.Kysely<{
-          [Table in keyof T]: NullableExceptIdCreatedAtUpdatedAt<{
-            [Column in keyof T[Table]]: T[Table][Column];
-          }>;
-        }>,
+        Kysely.Kysely<
+          {
+            [Table in keyof T]: NullableExceptIdCreatedAtUpdatedAt<{
+              [Column in keyof T[Table]]: T[Table][Column];
+            }>;
+          } & {
+            readonly evolu_message: {
+              readonly timestamp: TimestampString;
+              readonly table: keyof T;
+              readonly row: Id;
+              readonly column: string;
+              readonly value: Value;
+            };
+          }
+        >,
         "selectFrom" | "fn" | "with" | "withRecursive"
       >,
     ) => Kysely.SelectQueryBuilder<any, any, R>,
@@ -764,7 +775,7 @@ const createEvolu = (
 
       createQuery: (queryCallback, options) =>
         pipe(
-          queryCallback(kysely).compile(),
+          queryCallback(kysely as never).compile(),
           (compiledQuery): SqliteQuery => {
             if (isSqlMutation(compiledQuery.sql))
               throw new Error(
