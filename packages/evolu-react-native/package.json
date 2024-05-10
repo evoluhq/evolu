@@ -38,7 +38,7 @@
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "dependencies": {
-    "expo-updates": "^0.24.12"
+    "expo-updates": "^0.25.11"
   },
   "devDependencies": {
     "@evolu/common": "workspace:*",
@@ -46,7 +46,7 @@
     "@evolu/tsconfig": "workspace:*",
     "eslint": "^8.57.0",
     "eslint-config-evolu": "workspace:*",
-    "expo": "^51.0.0",
+    "expo": "^51.0.2",
     "expo-sqlite": "^14.0.3",
     "react-native": "^0.74.1",
     "typescript": "^5.4.5",
