@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 5.1.1
+
+### Patch Changes
+
+- 5b6419a: Schema 0.67
+
 ## 5.1.0
 
 ### Minor Changes

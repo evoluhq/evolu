@@ -1,5 +1,15 @@
 # @evolu/react
 
+## 8.0.2
+
+### Patch Changes
+
+- 5b6419a: Schema 0.67
+- Updated dependencies [5b6419a]
+  - @evolu/common-react@8.0.4
+  - @evolu/common-web@8.0.2
+  - @evolu/common@5.1.1
+
 ## 8.0.1
 
 ### Patch Changes

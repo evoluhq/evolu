@@ -1,5 +1,13 @@
 # @evolu/react-native
 
+## 10.0.1
+
+### Patch Changes
+
+- 5b6419a: Schema 0.67
+- Updated dependencies [5b6419a]
+  - @evolu/common-react@8.0.4
+
 ## 10.0.0
 
 ### Major Changes
