@@ -11,7 +11,7 @@ import { EvoluContext } from "./EvoluContext.js";
  *   const Database = database({
  *     todo: TodoTable,
  *   });
- *   type Database = S.Schema.Type<typeof Database>;
+ *   type Database = typeof Database.Type;
  *
  *   const { create, update } = useEvolu<Database>();
  *

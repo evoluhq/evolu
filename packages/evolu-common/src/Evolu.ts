@@ -440,13 +440,13 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
      *   // import * as E from "@evolu/common-web";
      *
      *   const TodoId = E.id("Todo");
-     *   type TodoId = S.Schema.Type<typeof TodoId>;
+     *   type TodoId = typeof TodoId.Type;
      *
      *   const TodoTable = E.table({
      *     id: TodoId,
      *     title: E.NonEmptyString1000,
      *   });
-     *   type TodoTable = S.Schema.Type<typeof TodoTable>;
+     *   type TodoTable = typeof TodoTable.Type;
      *
      *   const Database = E.database({
      *     todo: TodoTable,
@@ -454,7 +454,7 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
      *     // Prefix `_` makes the table local-only (it will not sync)
      *     _todo: TodoTable,
      *   });
-     *   type Database = S.Schema.Type<typeof Database>;
+     *   type Database = typeof Database.Type;
      *
      *   const evolu = E.createEvolu(Database);
      */

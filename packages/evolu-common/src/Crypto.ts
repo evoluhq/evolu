@@ -84,7 +84,7 @@ export const NodeId = S.String.pipe(
   S.pattern(/^[\w-]{16}$/),
   S.brand("NodeId"),
 );
-export type NodeId = S.Schema.Type<typeof NodeId>;
+export type NodeId = typeof NodeId.Type;
 
 // SLIP-21 implementation
 // https://github.com/satoshilabs/slips/blob/master/slip-0021.md

@@ -131,7 +131,7 @@ export const Index = S.Struct({
   name: S.String,
   sql: S.String,
 });
-export type Index = S.Schema.Type<typeof Index>;
+export type Index = typeof Index.Type;
 
 export interface Mutation {
   readonly table: string;

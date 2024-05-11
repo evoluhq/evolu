@@ -42,14 +42,14 @@ export const Millis = S.Number.pipe(
   S.brand("Millis"),
 );
 
-export type Millis = S.Schema.Type<typeof Millis>;
+export type Millis = typeof Millis.Type;
 
 export const initialMillis = S.decodeSync(Millis)(
   AllowedTimeRange.greaterThan + 1,
 );
 
 export const Counter = S.Number.pipe(S.between(0, 65535), S.brand("Counter"));
-export type Counter = S.Schema.Type<typeof Counter>;
+export type Counter = typeof Counter.Type;
 
 const initialCounter = S.decodeSync(Counter)(0);
 

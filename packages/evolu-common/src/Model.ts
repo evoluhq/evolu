@@ -4,7 +4,7 @@ import { Value, maybeJson } from "./Sqlite.js";
 
 /** Branded Id Schema. To create Id Schema for a specific table, use {@link id}. */
 export const Id = S.String.pipe(S.pattern(/^[\w-]{21}$/), S.brand("Id"));
-export type Id = S.Schema.Type<typeof Id>;
+export type Id = typeof Id.Type;
 
 /**
  * A factory function to create {@link Id} Schema for a specific table.
@@ -14,7 +14,7 @@ export type Id = S.Schema.Type<typeof Id>;
  *   import { id } from "@evolu/react";
  *
  *   const TodoId = id("Todo");
- *   type TodoId = S.Schema.Type<typeof TodoId>;
+ *   type TodoId = typeof TodoId.Type;
  */
 export const id = <T extends string>(
   table: T,
@@ -30,7 +30,7 @@ export const SqliteDate = S.String.pipe(
   S.filter((s) => !isNaN(Date.parse(s))),
   S.brand("SqliteDate"),
 );
-export type SqliteDate = S.Schema.Type<typeof SqliteDate>;
+export type SqliteDate = typeof SqliteDate.Type;
 
 /**
  * SQLite doesn't support the boolean type, so Evolu uses SqliteBoolean instead.
@@ -42,7 +42,7 @@ export const SqliteBoolean = S.Number.pipe(
   S.filter((s) => s === 0 || s === 1),
   S.brand("SqliteBoolean"),
 );
-export type SqliteBoolean = S.Schema.Type<typeof SqliteBoolean>;
+export type SqliteBoolean = typeof SqliteBoolean.Type;
 
 /**
  * A helper for casting types not supported by SQLite. SQLite doesn't support
@@ -87,14 +87,14 @@ interface EvoluTypeError<E extends string> {
  *
  * @example
  *   const TodoId = id("Todo");
- *   type TodoId = S.Schema.Type<typeof TodoId>;
+ *   type TodoId = typeof TodoId.Type;
  *
  *   const TodoTable = table({
  *     id: TodoId,
  *     title: NonEmptyString1000,
  *     isCompleted: S.nullable(SqliteBoolean),
  *   });
- *   type TodoTable = S.Schema.Type<typeof TodoTable>;
+ *   type TodoTable = typeof TodoTable.Type;
  */
 export const table = <Fields extends TableFields>(
   fields: Fields,
@@ -103,11 +103,9 @@ export const table = <Fields extends TableFields>(
   ? ValidateFieldsNames<Fields> extends true
     ? ValidateFieldsHasId<Fields> extends true
       ? S.Schema<
+          Types.Simplify<S.Struct.Type<Fields> & typeof ReservedColumns.Type>,
           Types.Simplify<
-            S.Struct.Type<Fields> & S.Schema.Type<typeof ReservedColumns>
-          >,
-          Types.Simplify<
-            S.Struct.Encoded<Fields> & S.Schema.Encoded<typeof ReservedColumns>
+            S.Struct.Encoded<Fields> & typeof ReservedColumns.Encoded
           >
         >
       : EvoluTypeError<"table() called without id column.">
@@ -163,7 +161,7 @@ type ValidateFieldsHasId<Fields extends TableFields> = "id" extends keyof Fields
  *     todo: TodoTable,
  *     todoCategory: TodoCategoryTable,
  *   });
- *   type Database = S.Schema.Type<typeof Database>;
+ *   type Database = typeof Database.Type;
  */
 export const database = S.Struct;
 
@@ -188,7 +186,7 @@ export const String = S.String.pipe(
   ),
   S.brand("String"),
 );
-export type String = S.Schema.Type<typeof String>;
+export type String = typeof String.Type;
 
 /**
  * A string with a maximum length of 1000 characters.
@@ -200,7 +198,7 @@ export type String = S.Schema.Type<typeof String>;
  *   S.decode(String1000)(value);
  */
 export const String1000 = String.pipe(S.maxLength(1000), S.brand("String1000"));
-export type String1000 = S.Schema.Type<typeof String1000>;
+export type String1000 = typeof String1000.Type;
 
 /**
  * A nonempty string with a maximum length of 1000 characters.
@@ -216,7 +214,7 @@ export const NonEmptyString1000 = String.pipe(
   S.maxLength(1000),
   S.brand("NonEmptyString1000"),
 );
-export type NonEmptyString1000 = S.Schema.Type<typeof NonEmptyString1000>;
+export type NonEmptyString1000 = typeof NonEmptyString1000.Type;
 
 /**
  * A positive integer.
@@ -232,4 +230,4 @@ export const PositiveInt = S.Number.pipe(
   S.positive(),
   S.brand("PositiveInt"),
 );
-export type PositiveInt = S.Schema.Type<typeof PositiveInt>;
+export type PositiveInt = typeof PositiveInt.Type;

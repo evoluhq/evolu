@@ -43,10 +43,10 @@ import RNPickerSelect from "react-native-picker-select";
 // Every table needs Id. It's defined as a branded type.
 // Branded types make database types super safe.
 const TodoId = id("Todo");
-type TodoId = S.Schema.Type<typeof TodoId>;
+type TodoId = typeof TodoId.Type;
 
 const TodoCategoryId = id("TodoCategory");
-type TodoCategoryId = S.Schema.Type<typeof TodoCategoryId>;
+type TodoCategoryId = typeof TodoCategoryId.Type;
 
 // This branded type ensures a string must be validated before being put
 // into the database.
@@ -55,7 +55,7 @@ const NonEmptyString50 = String.pipe(
   S.maxLength(50),
   S.brand("NonEmptyString50"),
 );
-type NonEmptyString50 = S.Schema.Type<typeof NonEmptyString50>;
+type NonEmptyString50 = typeof NonEmptyString50.Type;
 
 // Now we can define tables.
 const TodoTable = table({
@@ -64,25 +64,25 @@ const TodoTable = table({
   isCompleted: S.NullOr(SqliteBoolean),
   categoryId: S.NullOr(TodoCategoryId),
 });
-type TodoTable = S.Schema.Type<typeof TodoTable>;
+type TodoTable = typeof TodoTable.Type;
 
 // Evolu tables can contain typed JSONs.
 const SomeJson = S.Struct({ foo: S.String, bar: S.Boolean });
-type SomeJson = S.Schema.Type<typeof SomeJson>;
+type SomeJson = typeof SomeJson.Type;
 
 const TodoCategoryTable = table({
   id: TodoCategoryId,
   name: NonEmptyString50,
   json: S.NullOr(SomeJson),
 });
-type TodoCategoryTable = S.Schema.Type<typeof TodoCategoryTable>;
+type TodoCategoryTable = typeof TodoCategoryTable.Type;
 
 // Now, we can define the database schema.
 const Database = database({
   todo: TodoTable,
   todoCategory: TodoCategoryTable,
 });
-type Database = S.Schema.Type<typeof Database>;
+type Database = typeof Database.Type;
 
 /**
  * Indexes are not necessary for development but are required for production.

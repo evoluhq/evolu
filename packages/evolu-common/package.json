@@ -62,7 +62,7 @@
   },
   "devDependencies": {
     "@effect/platform": "^0.53.2",
-    "@effect/schema": "^0.66.16",
+    "@effect/schema": "^0.67.0",
     "@evolu/tsconfig": "workspace:*",
     "@protobuf-ts/plugin": "^2.9.4",
     "@protobuf-ts/protoc": "^2.9.4",
@@ -75,7 +75,7 @@
   },
   "peerDependencies": {
     "@effect/platform": "^0.53.0",
-    "@effect/schema": "^0.66.14",
+    "@effect/schema": "^0.67.0",
     "effect": "^3.1.2"
   },
   "publishConfig": {
