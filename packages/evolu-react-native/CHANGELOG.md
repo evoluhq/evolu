@@ -1,5 +1,13 @@
 # @evolu/react-native
 
+## 10.0.2
+
+### Patch Changes
+
+- 657262c: Update deps
+- Updated dependencies [657262c]
+  - @evolu/common-react@8.0.5
+
 ## 10.0.1
 
 ### Patch Changes

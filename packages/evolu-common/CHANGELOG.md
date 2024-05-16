@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 5.1.2
+
+### Patch Changes
+
+- 657262c: Update deps
+
 ## 5.1.1
 
 ### Patch Changes
