@@ -1,5 +1,13 @@
 # @evolu/common-web
 
+## 8.0.3
+
+### Patch Changes
+
+- 657262c: Update deps
+- Updated dependencies [657262c]
+  - @evolu/common@5.1.2
+
 ## 8.0.2
 
 ### Patch Changes
