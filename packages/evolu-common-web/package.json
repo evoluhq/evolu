@@ -47,7 +47,7 @@
   },
   "peerDependencies": {
     "@evolu/common": "^5.1.2",
-    "@sqlite.org/sqlite-wasm": "3.45.1-build2"
+    "@sqlite.org/sqlite-wasm": "^3.45.3-build2"
   },
   "publishConfig": {
     "access": "public"
