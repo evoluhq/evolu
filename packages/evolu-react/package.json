@@ -50,7 +50,7 @@
   "peerDependencies": {
     "@evolu/common": "^5.1.2",
     "@evolu/common-react": "^8.0.5",
-    "@evolu/common-web": "^8.0.3",
+    "@evolu/common-web": "^8.0.4",
     "react-dom": "^18.2.0"
   },
   "publishConfig": {

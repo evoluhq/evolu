@@ -1,5 +1,11 @@
 # @evolu/common-web
 
+## 8.0.4
+
+### Patch Changes
+
+- 5620c50: Fix @sqlite.org/sqlite-wasm peer dependency
+
 ## 8.0.3
 
 ### Patch Changes
