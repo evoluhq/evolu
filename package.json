@@ -18,7 +18,7 @@
     "docs": "typedoc"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.27.1",
+    "@changesets/cli": "^2.27.3",
     "eslint": "^8.57.0",
     "eslint-config-evolu": "workspace:*",
     "prettier": "^3.2.5",
@@ -26,7 +26,7 @@
     "turbo": "^1.13.3",
     "typedoc": "0.26.0-beta.0"
   },
-  "packageManager": "pnpm@9.1.1",
+  "packageManager": "pnpm@9.1.2",
   "pnpm": {
     "patchedDependencies": {
       "@changesets/assemble-release-plan@6.0.0": "patches/@changesets__assemble-release-plan@6.0.0.patch"

@@ -61,13 +61,13 @@
     "nanoid": "^5.0.7"
   },
   "devDependencies": {
-    "@effect/platform": "^0.53.8",
-    "@effect/schema": "^0.67.5",
+    "@effect/platform": "^0.53.12",
+    "@effect/schema": "^0.67.9",
     "@evolu/tsconfig": "workspace:*",
     "@protobuf-ts/plugin": "^2.9.4",
     "@protobuf-ts/protoc": "^2.9.4",
     "array-shuffle": "^3.0.0",
-    "effect": "^3.1.5",
+    "effect": "^3.2.1",
     "eslint": "^8.57.0",
     "eslint-config-evolu": "workspace:*",
     "typescript": "^5.4.5",
