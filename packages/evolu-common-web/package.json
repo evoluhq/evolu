@@ -37,7 +37,7 @@
   "devDependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
-    "@sqlite.org/sqlite-wasm": "3.45.3-build2",
+    "@sqlite.org/sqlite-wasm": "3.45.3-build3",
     "@types/web-locks-api": "^0.0.5",
     "eslint": "^8.57.0",
     "eslint-config-evolu": "workspace:*",
@@ -47,7 +47,7 @@
   },
   "peerDependencies": {
     "@evolu/common": "^5.1.2",
-    "@sqlite.org/sqlite-wasm": "^3.45.3-build2"
+    "@sqlite.org/sqlite-wasm": "^3.45.3-build3"
   },
   "publishConfig": {
     "access": "public"
