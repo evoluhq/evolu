@@ -1,5 +1,11 @@
 # @evolu/common-web
 
+## 8.0.5
+
+### Patch Changes
+
+- 48089be: Update SQLite
+
 ## 8.0.4
 
 ### Patch Changes
