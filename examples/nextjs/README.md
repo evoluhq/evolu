@@ -2,6 +2,8 @@
 
 Evolu recommends Next.js Pager Router until the App Router supports dynamic routing.
 
+- https://github.com/vercel/next.js/discussions/64660
+
 ```bash
 npm install
 npm run dev
