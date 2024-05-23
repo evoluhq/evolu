@@ -42,7 +42,7 @@ importers:
     dependencies:
       '@effect/schema':
         specifier: ^0.67.9
-        version: 0.67.11(effect@3.2.3)
+        version: 0.67.12(effect@3.2.4)
       '@evolu/common':
         specifier: workspace:*
         version: link:../../packages/evolu-common
@@ -63,7 +63,7 @@ importers:
         version: 3.12.0
       effect:
         specifier: ^3.2.1
-        version: 3.2.3
+        version: 3.2.4
       events:
         specifier: ^3.3.0
         version: 3.3.0
@@ -143,7 +143,7 @@ importers:
     dependencies:
       '@effect/schema':
         specifier: ^0.67.9
-        version: 0.67.11(effect@3.2.3)
+        version: 0.67.12(effect@3.2.4)
       '@evolu/common':
         specifier: workspace:*
         version: link:../../packages/evolu-common
@@ -155,7 +155,7 @@ importers:
         version: 2.1.1
       effect:
         specifier: ^3.2.1
-        version: 3.2.3
+        version: 3.2.4
       next:
         specifier: ^14.2.3
         version: 14.2.3(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -228,7 +228,7 @@ importers:
         version: 1.13.3(eslint@8.57.0)
       eslint-plugin-jsdoc:
         specifier: ^48.2.5
-        version: 48.2.5(eslint@8.57.0)
+        version: 48.2.6(eslint@8.57.0)
       eslint-plugin-node:
         specifier: ^11.1.0
         version: 11.1.0(eslint@8.57.0)
@@ -271,11 +271,11 @@ importers:
         version: 5.0.7
     devDependencies:
       '@effect/platform':
-        specifier: ^0.53.12
-        version: 0.53.14(@effect/schema@0.67.11(effect@3.2.3))(effect@3.2.3)
+        specifier: ^0.54.0
+        version: 0.54.0(@effect/schema@0.67.12(effect@3.2.4))(effect@3.2.4)
       '@effect/schema':
         specifier: ^0.67.9
-        version: 0.67.11(effect@3.2.3)
+        version: 0.67.12(effect@3.2.4)
       '@evolu/tsconfig':
         specifier: workspace:*
         version: link:../evolu-tsconfig
@@ -290,7 +290,7 @@ importers:
         version: 3.0.0
       effect:
         specifier: ^3.2.1
-        version: 3.2.3
+        version: 3.2.4
       eslint:
         specifier: ^8.57.0
         version: 8.57.0
@@ -447,7 +447,7 @@ importers:
         version: 2.8.5
       effect:
         specifier: ^3.2.1
-        version: 3.2.3
+        version: 3.2.4
       express:
         specifier: ^4.19.2
         version: 4.19.2
@@ -1312,16 +1312,16 @@ packages:
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
     engines: {node: '>=12'}
 
-  '@effect/platform@0.53.14':
-    resolution: {integrity: sha512-i8RKR4eE4FwJBegwvUuyvJ1FfT3q0RMnJ5/T0FLEwlnOXCTzjBf/VAtFGMFeECcDFhlLdvjvMxevHjei/fd+Iw==}
+  '@effect/platform@0.54.0':
+    resolution: {integrity: sha512-9WQis8lD2GC5yyUAS3vzUtgQGZb/9DhB/py95EjIDgWum/36/iqJOQj3tssZe9zkwdALSQxDU67oa3tQHXeX/g==}
     peerDependencies:
-      '@effect/schema': ^0.67.11
-      effect: ^3.2.3
+      '@effect/schema': ^0.67.12
+      effect: ^3.2.4
 
-  '@effect/schema@0.67.11':
-    resolution: {integrity: sha512-khpzzYpsnIIGfI4Ac+EsUF+E6uZ78eJ+EatKHyfFOLGDEZMX2w5/z0R4bHISzFqiwObcuZEUT7KwFZdFZWrDJA==}
+  '@effect/schema@0.67.12':
+    resolution: {integrity: sha512-kQ+VJi/oAqfV+R/UU8KbA/2NRhjOsqfIhVFQ4H4Xo7vgWxJ8w284OT9ujJ66/HpjGdooXrSemv3HHjATtJbzPg==}
     peerDependencies:
-      effect: ^3.2.3
+      effect: ^3.2.4
 
   '@es-joy/jsdoccomment@0.43.0':
     resolution: {integrity: sha512-Q1CnsQrytI3TlCB1IVWXWeqUIPGVEKGaE7IbVdt13Nq/3i0JESAkQQERrfiQkmlpijl+++qyqPgaS31Bvc1jRQ==}
@@ -2745,10 +2745,6 @@ packages:
   buffer@5.7.1:
     resolution: {integrity: sha512-EHcyIPBQ4BSGlvjB16k5KgAJ27CIsHY/2JBmCRReo48y9rQ3MaUzWX3KVlBa4U7MyX02HdVj0K7C3WaB3ju7FQ==}
 
-  builtin-modules@3.3.0:
-    resolution: {integrity: sha512-zhaCDicdLuWN5UbN5IMnFqNMhNfo919sH85y2/ea+5Yg9TsTkeZxpL+JLbp6cgYFS4sRLp3YV4S6yDuqVWHYOw==}
-    engines: {node: '>=6'}
-
   builtins@1.0.3:
     resolution: {integrity: sha512-uYBjakWipfaO/bXI7E8rq6kpwHRZK5cNYrUv2OzZSI/FvmdMyXJ2tG9dKcjEC5YHmHpUAwsargWIZNWdxb/bnQ==}
 
@@ -3440,11 +3436,11 @@ packages:
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  effect@3.2.3:
-    resolution: {integrity: sha512-tI0pzouV9BnZFHXNDoMCn9L76RFr23FMyzQ8syl+hxNtkn5aRdcQLeapv8acix+O4sQjQA4MpT8H3X9jfTs6hg==}
+  effect@3.2.4:
+    resolution: {integrity: sha512-w7MvlKBKs0oHeoe+S+xyXVzFpR+g3abY5KmjZksTAMgTTpJx8XZ0Tz0Pv+LWlGyD9R1dJNAsSc+RE0+NMl9JSw==}
 
-  electron-to-chromium@1.4.777:
-    resolution: {integrity: sha512-n02NCwLJ3wexLfK/yQeqfywCblZqLcXphzmid5e8yVPdtEcida7li0A5WQKghHNG0FeOMCzeFOzEbtAh5riXFw==}
+  electron-to-chromium@1.4.780:
+    resolution: {integrity: sha512-NPtACGFe7vunRYzvYqVRhQvsDrTevxpgDKxG/Vcbe0BTNOY+5+/2mOXSw2ls7ToNbE5Bf/+uQbjTxcmwMozpCw==}
 
   elkjs@0.9.3:
     resolution: {integrity: sha512-f/ZeWvW/BCXbhGEf1Ujp29EASo/lk1FDnETgNKwJrsVvGZhUWCZyg3xLJjAsxfOmt8KjswHmI5EwCQcPMpOYhQ==}
@@ -3628,8 +3624,8 @@ packages:
       '@typescript-eslint/parser':
         optional: true
 
-  eslint-plugin-jsdoc@48.2.5:
-    resolution: {integrity: sha512-ZeTfKV474W1N9niWfawpwsXGu+ZoMXu4417eBROX31d7ZuOk8zyG66SO77DpJ2+A9Wa2scw/jRqBPnnQo7VbcQ==}
+  eslint-plugin-jsdoc@48.2.6:
+    resolution: {integrity: sha512-GNk9jtpYmoEVeD/U6yYYmd6T8vSOoPs7CL8ZeX85iD8P3qifDdLQGze6+cw9boobDthmYnnxvIoHrhuSffj09g==}
     engines: {node: '>=18'}
     peerDependencies:
       eslint: ^7.0.0 || ^8.0.0 || ^9.0.0
@@ -3859,8 +3855,8 @@ packages:
   fast-base64-decode@1.0.0:
     resolution: {integrity: sha512-qwaScUgUGBYeDNRnbc/KyllVU88Jk1pRHPStuF/lO7B0/RTRLj7U0lkdTAutlBblY08rwZDff6tNU9cjv6j//Q==}
 
-  fast-check@3.18.0:
-    resolution: {integrity: sha512-/951xaT0kA40w0GXRsZXEwSTE7LugjZtSA/8vPgFkiPQ8wNp8tRvqWuNDHBgLxJYXtsK11e/7Q4ObkKW5BdTFQ==}
+  fast-check@3.19.0:
+    resolution: {integrity: sha512-CO2JX/8/PT9bDGO1iXa5h5ey1skaKI1dvecERyhH4pp3PGjwd3KIjMAXEg79Ps9nclsdt4oPbfqiAnLU0EwrAQ==}
     engines: {node: '>=8.0.0'}
 
   fast-decode-uri-component@1.0.1:
@@ -4357,6 +4353,7 @@ packages:
 
   inflight@1.0.6:
     resolution: {integrity: sha512-k92I/b08q4wvFscXCLvqfsHCrjrF7yiXsQuIVvVE7N82W3+aqpzuUdBbfhWcy/FZR3/4IgflMgKLOsvPDrGCJA==}
+    deprecated: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.
 
   inherits@2.0.4:
     resolution: {integrity: sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==}
@@ -4430,10 +4427,6 @@ packages:
   is-buffer@2.0.5:
     resolution: {integrity: sha512-i2R6zNFDwgEHJyQUtJEk0XFi1i0dPFn/oqjK3/vPCcDeJvW5NQ83V8QbicfF1SupOaB0h8ntgBC2YiE7dfyctQ==}
     engines: {node: '>=4'}
-
-  is-builtin-module@3.2.1:
-    resolution: {integrity: sha512-BSLE3HnV2syZ0FK0iMA/yUGplUeMmNz4AW5fnTunbCIqZi4vG3WjJT9FHMy5D69xmAYBHXQhJdALdpwVxV501A==}
-    engines: {node: '>=6'}
 
   is-callable@1.2.7:
     resolution: {integrity: sha512-1BC0BVFhS/p0qtw6enp8e+8OD0UrK0oFLztSjNzhcKA3WDuJxxAPXzPuPtKkjEY9UUoEWlX/8fgKeu2S8i9JTA==}
@@ -8674,18 +8667,18 @@ snapshots:
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
 
-  '@effect/platform@0.53.14(@effect/schema@0.67.11(effect@3.2.3))(effect@3.2.3)':
+  '@effect/platform@0.54.0(@effect/schema@0.67.12(effect@3.2.4))(effect@3.2.4)':
     dependencies:
-      '@effect/schema': 0.67.11(effect@3.2.3)
-      effect: 3.2.3
+      '@effect/schema': 0.67.12(effect@3.2.4)
+      effect: 3.2.4
       find-my-way-ts: 0.1.2
       multipasta: 0.2.1
       path-browserify: 1.0.1
 
-  '@effect/schema@0.67.11(effect@3.2.3)':
+  '@effect/schema@0.67.12(effect@3.2.4)':
     dependencies:
-      effect: 3.2.3
-      fast-check: 3.18.0
+      effect: 3.2.4
+      fast-check: 3.19.0
 
   '@es-joy/jsdoccomment@0.43.0':
     dependencies:
@@ -10547,7 +10540,7 @@ snapshots:
   browserslist@4.23.0:
     dependencies:
       caniuse-lite: 1.0.30001621
-      electron-to-chromium: 1.4.777
+      electron-to-chromium: 1.4.780
       node-releases: 2.0.14
       update-browserslist-db: 1.0.16(browserslist@4.23.0)
 
@@ -10572,8 +10565,6 @@ snapshots:
     dependencies:
       base64-js: 1.5.1
       ieee754: 1.2.1
-
-  builtin-modules@3.3.0: {}
 
   builtins@1.0.3: {}
 
@@ -11293,9 +11284,9 @@ snapshots:
 
   ee-first@1.1.1: {}
 
-  effect@3.2.3: {}
+  effect@3.2.4: {}
 
-  electron-to-chromium@1.4.777: {}
+  electron-to-chromium@1.4.780: {}
 
   elkjs@0.9.3: {}
 
@@ -11588,7 +11579,7 @@ snapshots:
       - eslint-import-resolver-webpack
       - supports-color
 
-  eslint-plugin-jsdoc@48.2.5(eslint@8.57.0):
+  eslint-plugin-jsdoc@48.2.6(eslint@8.57.0):
     dependencies:
       '@es-joy/jsdoccomment': 0.43.0
       are-docs-informative: 0.0.2
@@ -11597,7 +11588,6 @@ snapshots:
       escape-string-regexp: 4.0.0
       eslint: 8.57.0
       esquery: 1.5.0
-      is-builtin-module: 3.2.1
       semver: 7.6.2
       spdx-expression-parse: 4.0.0
     transitivePeerDependencies:
@@ -11996,7 +11986,7 @@ snapshots:
 
   fast-base64-decode@1.0.0: {}
 
-  fast-check@3.18.0:
+  fast-check@3.19.0:
     dependencies:
       pure-rand: 6.1.0
 
@@ -12679,10 +12669,6 @@ snapshots:
   is-buffer@1.1.6: {}
 
   is-buffer@2.0.5: {}
-
-  is-builtin-module@3.2.1:
-    dependencies:
-      builtin-modules: 3.3.0
 
   is-callable@1.2.7: {}
 
