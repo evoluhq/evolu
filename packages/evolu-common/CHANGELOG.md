@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 5.1.3
+
+### Patch Changes
+
+- 8e519ca: Update peerDependencies
+
 ## 5.1.2
 
 ### Patch Changes
