@@ -1,6 +1,8 @@
 {
   "nextjs": "Next.js",
   "electron": "Electron",
+  "expo": "Expo",
   "vite": "Vite",
+  "vite-react-pwa": "Vite React PWA",
   "remix": "Remix"
 }
