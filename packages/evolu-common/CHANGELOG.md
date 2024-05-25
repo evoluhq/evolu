@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 5.1.4
+
+### Patch Changes
+
+- f1a8bcd: Update @effect/platform
+
 ## 5.1.3
 
 ### Patch Changes
