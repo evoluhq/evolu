@@ -1,5 +1,8 @@
 ---
 "@evolu/common": minor
+"@evolu/common-web": minor
+"@evolu/react": minor
+"@evolu/react-native": minor
 ---
 
 New API for working with Evolu instances
