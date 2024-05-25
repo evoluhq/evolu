@@ -1,7 +1,12 @@
 import * as Brand from "effect/Brand";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import { Bip39, Mnemonic, slip21Derive } from "./Crypto.js";
+import {
+  Mnemonic,
+  createMnemonic,
+  mnemonicToSeed,
+  slip21Derive,
+} from "./Crypto.js";
 import { Id } from "./Model.js";
 
 /**
@@ -35,13 +40,10 @@ export const Owner = Context.GenericTag<Owner>("Owner");
  */
 export type OwnerId = Id & Brand.Brand<"Owner">;
 
-export const makeOwner = (
-  mnemonic?: Mnemonic,
-): Effect.Effect<Owner, never, Bip39> =>
+export const makeOwner = (mnemonic?: Mnemonic): Effect.Effect<Owner> =>
   Effect.gen(function* (_) {
-    const bip39 = yield* Bip39;
-    if (mnemonic == null) mnemonic = yield* bip39.make;
-    const seed = yield* bip39.toSeed(mnemonic);
+    if (mnemonic == null) mnemonic = createMnemonic();
+    const seed = mnemonicToSeed(mnemonic);
     const id = yield* Effect.map(
       slip21Derive(seed, ["Evolu", "Owner Id"]),
       (key) => {

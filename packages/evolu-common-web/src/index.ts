@@ -1,16 +1,13 @@
 import {
-  Bip39,
   Db,
   DbFactory,
   EvoluFactory,
-  InvalidMnemonicError,
-  Mnemonic,
   notSupportedPlatformWorker,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { NanoIdGeneratorLive } from "./NanoIdGeneratorLive.js";
-import { AppStateLive, Bip39Live } from "./PlatformLive.js";
+import { AppStateLive } from "./PlatformLive.js";
 import { wrap } from "./ProxyWorker.js";
 
 const DbFactoryLive = Layer.succeed(DbFactory, {
@@ -30,18 +27,6 @@ export const EvoluFactoryWeb = Layer.provide(
   EvoluFactory.Common,
   Layer.mergeAll(DbFactoryLive, NanoIdGeneratorLive, AppStateLive),
 );
-
-/**
- * Parse a string to {@link Mnemonic}.
- *
- * This function is async because Bip39 is imported dynamically.
- */
-export const parseMnemonic: (
-  mnemonic: string,
-) => Effect.Effect<Mnemonic, InvalidMnemonicError> = Bip39.pipe(
-  Effect.provide(Bip39Live),
-  Effect.runSync,
-).parse;
 
 // JSDoc doesn't support destructured parameters, so we must copy-paste
 // createEvolu docs from `evolu-common/src/Evolu.ts`.

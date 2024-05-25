@@ -4,7 +4,6 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { flushSync } from "react-dom";
 
-export { parseMnemonic } from "@evolu/common-web";
 export * from "@evolu/common/public";
 
 const EvoluFactoryWebReact = EvoluFactoryWeb.pipe(

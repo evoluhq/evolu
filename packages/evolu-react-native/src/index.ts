@@ -1,9 +1,6 @@
 import {
-  Bip39,
   DbFactory,
   EvoluFactory,
-  InvalidMnemonicError,
-  Mnemonic,
   SecretBox,
   Sqlite,
   SqliteFactory,
@@ -17,21 +14,13 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 // @ts-expect-error https://github.com/ai/nanoid/issues/468
 import { customAlphabet, nanoid } from "nanoid/index.browser.js";
-import { AppStateLive, Bip39Live, SyncLockLive } from "./PlatformLive.js";
+import { AppStateLive, SyncLockLive } from "./PlatformLive.js";
 import { SqliteLive } from "./SqliteLive.js";
-
-// eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-const NanoIdGeneratorLive = createNanoIdGeneratorLive(customAlphabet, nanoid);
 
 export * from "@evolu/common/public";
 
-/** Parse a string to {@link Mnemonic}. */
-export const parseMnemonic: (
-  mnemonic: string,
-) => Effect.Effect<Mnemonic, InvalidMnemonicError> = Bip39.pipe(
-  Effect.provide(Bip39Live),
-  Effect.runSync,
-).parse;
+// eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+const NanoIdGeneratorLive = createNanoIdGeneratorLive(customAlphabet, nanoid);
 
 const SyncFactoryLive = Layer.succeed(SyncFactory, {
   createSync: Effect.provide(createSync, SecretBox.Live),
@@ -48,7 +37,6 @@ export const EvoluFactoryReactNative = Layer.provide(
       createDb: createDb.pipe(
         Effect.provide(
           Layer.mergeAll(
-            Bip39Live,
             SqliteFactory.Common.pipe(
               Layer.provide(SqliteFactoryLive),
               Layer.provide(NanoIdGeneratorLive),

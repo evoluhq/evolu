@@ -2,6 +2,7 @@ export { sql } from "kysely";
 export type { NotNull } from "kysely";
 export { jsonArrayFrom, jsonObjectFrom } from "kysely/helpers/sqlite";
 export type { Timestamp, TimestampError } from "./Crdt.js";
+export { createMnemonic, parseMnemonic } from "./Crypto.js";
 export type { InvalidMnemonicError, Mnemonic } from "./Crypto.js";
 export type { ExtractRow, QueryResult } from "./Db.js";
 export * from "./Error.js";
