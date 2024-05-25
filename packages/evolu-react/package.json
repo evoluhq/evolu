@@ -1,6 +1,6 @@
 {
   "name": "@evolu/react",
-  "version": "8.0.2",
+  "version": "8.1.0",
   "description": "Evolu for React",
   "keywords": [
     "evolu",
@@ -48,9 +48,9 @@
     "vitest": "^1.6.0"
   },
   "peerDependencies": {
-    "@evolu/common": "^5.1.4",
+    "@evolu/common": "^5.2.0",
     "@evolu/common-react": "^8.0.5",
-    "@evolu/common-web": "^8.0.5",
+    "@evolu/common-web": "^8.1.0",
     "react-dom": "^18.2.0"
   },
   "publishConfig": {

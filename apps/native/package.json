@@ -1,6 +1,6 @@
 {
   "name": "native",
-  "version": "1.0.42",
+  "version": "1.0.43",
   "private": true,
   "main": "index.js",
   "scripts": {
