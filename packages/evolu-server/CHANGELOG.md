@@ -1,5 +1,12 @@
 # @evolu/server
 
+## 7.0.9
+
+### Patch Changes
+
+- Updated dependencies [e420fec]
+  - @evolu/common@5.2.0
+
 ## 7.0.8
 
 ### Patch Changes
