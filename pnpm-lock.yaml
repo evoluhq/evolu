@@ -7,6 +7,11 @@ settings:
 overrides:
   flexsearch: 0.7.31
 
+patchedDependencies:
+  '@changesets/assemble-release-plan@6.0.1':
+    hash: zurdc2rhdwq47ocujld2bctf64
+    path: patches/@changesets__assemble-release-plan@6.0.1.patch
+
 importers:
 
   .:
@@ -8534,7 +8539,7 @@ snapshots:
       resolve-from: 5.0.0
       semver: 7.6.2
 
-  '@changesets/assemble-release-plan@6.0.1':
+  '@changesets/assemble-release-plan@6.0.1(patch_hash=zurdc2rhdwq47ocujld2bctf64)':
     dependencies:
       '@babel/runtime': 7.24.6
       '@changesets/errors': 0.2.0
@@ -8552,7 +8557,7 @@ snapshots:
     dependencies:
       '@babel/runtime': 7.24.6
       '@changesets/apply-release-plan': 7.0.2
-      '@changesets/assemble-release-plan': 6.0.1
+      '@changesets/assemble-release-plan': 6.0.1(patch_hash=zurdc2rhdwq47ocujld2bctf64)
       '@changesets/changelog-git': 0.2.0
       '@changesets/config': 3.0.0
       '@changesets/errors': 0.2.0
@@ -8609,7 +8614,7 @@ snapshots:
   '@changesets/get-release-plan@4.0.1':
     dependencies:
       '@babel/runtime': 7.24.6
-      '@changesets/assemble-release-plan': 6.0.1
+      '@changesets/assemble-release-plan': 6.0.1(patch_hash=zurdc2rhdwq47ocujld2bctf64)
       '@changesets/config': 3.0.0
       '@changesets/pre': 2.0.0
       '@changesets/read': 0.6.0

@@ -37,6 +37,9 @@
     },
     "overrides": {
       "flexsearch": "0.7.31"
+    },
+    "patchedDependencies": {
+      "@changesets/assemble-release-plan@6.0.1": "patches/@changesets__assemble-release-plan@6.0.1.patch"
     }
   }
 }
