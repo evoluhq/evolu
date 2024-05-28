@@ -1,5 +1,11 @@
 # @evolu/common-web
 
+## 8.1.1
+
+### Patch Changes
+
+- 79b41a0: sqlite-wasm 3.46.0-build1
+
 ## 8.1.0
 
 ### Minor Changes
