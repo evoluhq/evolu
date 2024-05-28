@@ -7,6 +7,11 @@ settings:
 overrides:
   flexsearch: 0.7.31
 
+patchedDependencies:
+  '@changesets/assemble-release-plan@6.0.1':
+    hash: zurdc2rhdwq47ocujld2bctf64
+    path: patches/@changesets__assemble-release-plan@6.0.1.patch
+
 importers:
 
   .:
@@ -7366,8 +7371,8 @@ packages:
     engines: {node: '>=14.17'}
     hasBin: true
 
-  ua-parser-js@1.0.37:
-    resolution: {integrity: sha512-bhTyI94tZofjo+Dn8SN6Zv8nBDvyXTymAdM3LDI/0IboIUwTu1rEhW7v2TfiVsoYWgkQ4kOVqnI8APUFbIQIFQ==}
+  ua-parser-js@1.0.38:
+    resolution: {integrity: sha512-Aq5ppTOfvrCMgAPneW1HfWj66Xi7XL+/mIy996R1/CLS/rcyJQm6QZdsKrUeivDFQ+Oc9Wyuwor8Ze8peEoUoQ==}
 
   uc.micro@2.1.0:
     resolution: {integrity: sha512-ARDJmphmdvUk6Glw7y9DQ2bFkKBHwQHLi2lsaH6PPmz/Ka9sFOBsBluozhDltWmnv9u/cF6Rt87znRTPV+yp/A==}
@@ -8781,7 +8786,7 @@ snapshots:
       resolve-from: 5.0.0
       semver: 7.6.2
 
-  '@changesets/assemble-release-plan@6.0.1':
+  '@changesets/assemble-release-plan@6.0.1(patch_hash=zurdc2rhdwq47ocujld2bctf64)':
     dependencies:
       '@babel/runtime': 7.24.6
       '@changesets/errors': 0.2.0
@@ -8799,7 +8804,7 @@ snapshots:
     dependencies:
       '@babel/runtime': 7.24.6
       '@changesets/apply-release-plan': 7.0.2
-      '@changesets/assemble-release-plan': 6.0.1
+      '@changesets/assemble-release-plan': 6.0.1(patch_hash=zurdc2rhdwq47ocujld2bctf64)
       '@changesets/changelog-git': 0.2.0
       '@changesets/config': 3.0.0
       '@changesets/errors': 0.2.0
@@ -8856,7 +8861,7 @@ snapshots:
   '@changesets/get-release-plan@4.0.1':
     dependencies:
       '@babel/runtime': 7.24.6
-      '@changesets/assemble-release-plan': 6.0.1
+      '@changesets/assemble-release-plan': 6.0.1(patch_hash=zurdc2rhdwq47ocujld2bctf64)
       '@changesets/config': 3.0.0
       '@changesets/pre': 2.0.0
       '@changesets/read': 0.6.0
@@ -12444,7 +12449,7 @@ snapshots:
       object-assign: 4.1.1
       promise: 7.3.1
       setimmediate: 1.0.5
-      ua-parser-js: 1.0.37
+      ua-parser-js: 1.0.38
     transitivePeerDependencies:
       - encoding
 
@@ -16440,7 +16445,7 @@ snapshots:
 
   typescript@5.4.5: {}
 
-  ua-parser-js@1.0.37: {}
+  ua-parser-js@1.0.38: {}
 
   uc.micro@2.1.0: {}
 
