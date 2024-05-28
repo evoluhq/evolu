@@ -28,9 +28,6 @@
   },
   "packageManager": "pnpm@9.1.3",
   "pnpm": {
-    "patchedDependencies": {
-      "@changesets/assemble-release-plan@6.0.0": "patches/@changesets__assemble-release-plan@6.0.0.patch"
-    },
     "peerDependencyRules": {
       "ignoreMissing": [
         "@babel/*",
