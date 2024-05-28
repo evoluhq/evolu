@@ -8,7 +8,13 @@
       overlays = [
         (final: prev: rec {
           nodejs = prev.nodejs_18;
-          pnpm = prev.nodePackages.pnpm;
+          pnpm = prev.nodePackages.pnpm.override rec {
+            version = "9.1.3";
+            src = prev.fetchurl {
+              url = "https://registry.npmjs.org/pnpm/-/pnpm-${version}.tgz";
+              sha256 = "sha256-f2MAHtwHfxz/lsrLqQHzUHlih6KADfqD/omPlBg+T18=";
+            };
+          };
         })
       ];
       supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
