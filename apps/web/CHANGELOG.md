@@ -1,5 +1,53 @@
 # web
 
+## 1.0.57
+
+### Patch Changes
+
+- Updated dependencies [e420fec]
+  - @evolu/common@5.2.0
+  - @evolu/react@8.1.0
+
+## 1.0.56
+
+### Patch Changes
+
+- Updated dependencies [f1a8bcd]
+  - @evolu/common@5.1.4
+  - @evolu/react@8.0.2
+
+## 1.0.55
+
+### Patch Changes
+
+- Updated dependencies [8e519ca]
+  - @evolu/common@5.1.3
+  - @evolu/react@8.0.2
+
+## 1.0.54
+
+### Patch Changes
+
+- Updated dependencies [657262c]
+  - @evolu/common@5.1.2
+  - @evolu/react@8.0.2
+
+## 1.0.53
+
+### Patch Changes
+
+- Updated dependencies [5b6419a]
+  - @evolu/common@5.1.1
+  - @evolu/react@8.0.2
+
+## 1.0.52
+
+### Patch Changes
+
+- Updated dependencies [79a6d0c]
+  - @evolu/common@5.1.0
+  - @evolu/react@8.0.1
+
 ## 1.0.51
 
 ### Patch Changes

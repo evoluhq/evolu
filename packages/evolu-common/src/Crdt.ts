@@ -13,10 +13,10 @@ import { Config } from "./Config.js";
 import { NanoIdGenerator, NodeId } from "./Crypto.js";
 import { murmurhash } from "./Murmurhash.js";
 
+// https://sergeiturukin.com/2017/06/26/hybrid-logical-clocks.html
 // https://muratbuffalo.blogspot.com/2014/07/hybrid-logical-clocks.html
 // https://jaredforsyth.com/posts/hybrid-logical-clocks/
 // https://github.com/clintharris/crdt-example-app_annotated/blob/master/shared/timestamp.js
-// https://github.com/actualbudget/actual/tree/master/packages/crdt
 
 export interface Timestamp {
   readonly node: NodeId;
@@ -42,14 +42,14 @@ export const Millis = S.Number.pipe(
   S.brand("Millis"),
 );
 
-export type Millis = S.Schema.Type<typeof Millis>;
+export type Millis = typeof Millis.Type;
 
 export const initialMillis = S.decodeSync(Millis)(
   AllowedTimeRange.greaterThan + 1,
 );
 
 export const Counter = S.Number.pipe(S.between(0, 65535), S.brand("Counter"));
-export type Counter = S.Schema.Type<typeof Counter>;
+export type Counter = typeof Counter.Type;
 
 const initialCounter = S.decodeSync(Counter)(0);
 

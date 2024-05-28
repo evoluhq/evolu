@@ -4,7 +4,6 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { flushSync } from "react-dom";
 
-export { parseMnemonic } from "@evolu/common-web";
 export * from "@evolu/common/public";
 
 const EvoluFactoryWebReact = EvoluFactoryWeb.pipe(
@@ -26,13 +25,13 @@ export const {
    *   import * as E from "@evolu/react";
    *
    *   const TodoId = E.id("Todo");
-   *   type TodoId = S.Schema.Type<typeof TodoId>;
+   *   type TodoId = typeof TodoId.Type;
    *
    *   const TodoTable = E.table({
    *     id: TodoId,
    *     title: E.NonEmptyString1000,
    *   });
-   *   type TodoTable = S.Schema.Type<typeof TodoTable>;
+   *   type TodoTable = typeof TodoTable.Type;
    *
    *   const Database = E.database({
    *     todo: TodoTable,
@@ -40,7 +39,7 @@ export const {
    *     // Prefix `_` makes the table local-only (it will not sync)
    *     _todo: TodoTable,
    *   });
-   *   type Database = S.Schema.Type<typeof Database>;
+   *   type Database = typeof Database.Type;
    *
    *   const evolu = E.createEvolu(Database);
    */

@@ -31,19 +31,19 @@ import {
 } from "@evolu/react";
 
 const TodoId = id("Todo");
-type TodoId = S.Schema.Type<typeof TodoId>;
+type TodoId = typeof TodoId.Type;
 
 const TodoTable = table({
   id: TodoId,
   title: NonEmptyString1000,
   isCompleted: SqliteBoolean,
 });
-type TodoTable = S.Schema.Type<typeof TodoTable>;
+type TodoTable = typeof TodoTable.Type;
 
 const Database = database({
   todo: TodoTable,
 });
-type Database = S.Schema.Type<typeof Database>;
+type Database = typeof Database.Type;
 
 const evolu = createEvolu(Database);
 ```

@@ -36,7 +36,7 @@ import {
   timestampToString,
   unsafeTimestampFromString,
 } from "./Crdt.js";
-import { Bip39, Mnemonic, NanoIdGenerator } from "./Crypto.js";
+import { Mnemonic, NanoIdGenerator } from "./Crypto.js";
 import { QueryPatches, makePatches } from "./Diff.js";
 import {
   EvoluError,
@@ -77,6 +77,7 @@ export interface Db {
     onError: Callbacks["onError"],
     onSyncStateChange: Callbacks["onSyncStateChange"],
     onReceive: Callbacks["onReceive"],
+    mnemonic: Mnemonic | undefined,
   ) => Effect.Effect<
     Owner,
     | NotSupportedPlatformError
@@ -131,7 +132,7 @@ export const Index = S.Struct({
   name: S.String,
   sql: S.String,
 });
-export type Index = S.Schema.Type<typeof Index>;
+export type Index = typeof Index.Type;
 
 export interface Mutation {
   readonly table: string;
@@ -174,13 +175,12 @@ export class DbFactory extends Context.Tag("DbFactory")<
 export const createDb: Effect.Effect<
   Db,
   never,
-  SqliteFactory | Bip39 | NanoIdGenerator | Time | SyncFactory | SyncLock
+  SqliteFactory | NanoIdGenerator | Time | SyncFactory | SyncLock
 > = Effect.gen(function* () {
   const { createSqlite } = yield* SqliteFactory;
   const { createSync } = yield* SyncFactory;
 
   const initContext = Context.empty().pipe(
-    Context.add(Bip39, yield* Bip39),
     Context.add(NanoIdGenerator, yield* NanoIdGenerator),
     Context.add(Time, yield* Time),
     Context.add(SyncLock, yield* SyncLock),
@@ -189,14 +189,7 @@ export const createDb: Effect.Effect<
   const afterInitContext =
     yield* Deferred.make<
       Context.Context<
-        | Bip39
-        | NanoIdGenerator
-        | Time
-        | SyncLock
-        | Sqlite
-        | Owner
-        | Sync
-        | Callbacks
+        NanoIdGenerator | Time | SyncLock | Sqlite | Owner | Sync | Callbacks
       >
     >();
 
@@ -212,7 +205,14 @@ export const createDb: Effect.Effect<
   const queryRowsRef = yield* SynchronizedRef.make<QueryRowsMap>(new Map());
 
   const db: Db = {
-    init: (schema, initialData, onError, onSyncStateChange, onReceive) =>
+    init: (
+      schema,
+      initialData,
+      onError,
+      onSyncStateChange,
+      onReceive,
+      mnemonic,
+    ) =>
       Effect.gen(function* () {
         yield* Effect.logDebug(["Db init", { schema }]);
         const sqlite = yield* createSqlite;
@@ -222,7 +222,9 @@ export const createDb: Effect.Effect<
           Effect.flatMap((currentSchema) => {
             if (currentSchema.tables.map((t) => t.name).includes("evolu_owner"))
               return readOwner;
-            return createOwner().pipe(Effect.tap(applyMutations(initialData)));
+            return createOwner(mnemonic).pipe(
+              Effect.tap(applyMutations(initialData)),
+            );
           }),
           sqlite.transaction("exclusive"),
           Effect.provide(contextWithSqlite),
@@ -526,7 +528,7 @@ const readOwner = Effect.logTrace("Db readOwner").pipe(
   ),
 );
 
-const createOwner = (mnemonic?: Mnemonic) =>
+const createOwner = (mnemonic: Mnemonic | undefined) =>
   Effect.logTrace("Db createOwner").pipe(
     Effect.zipRight(
       Effect.all([makeOwner(mnemonic), Sqlite, makeInitialTimestamp]),

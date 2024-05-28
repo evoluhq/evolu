@@ -13,6 +13,7 @@ import * as Predicate from "effect/Predicate";
 import * as Record from "effect/Record";
 import * as Kysely from "kysely";
 import { Config, createRuntime, defaultConfig } from "./Config.js";
+import { TimestampString } from "./Crdt.js";
 import { Mnemonic, NanoIdGenerator } from "./Crypto.js";
 import {
   DbFactory,
@@ -101,11 +102,21 @@ export interface Evolu<T extends EvoluSchema = EvoluSchema> {
   readonly createQuery: <R extends Row>(
     queryCallback: (
       db: Pick<
-        Kysely.Kysely<{
-          [Table in keyof T]: NullableExceptIdCreatedAtUpdatedAt<{
-            [Column in keyof T[Table]]: T[Table][Column];
-          }>;
-        }>,
+        Kysely.Kysely<
+          {
+            [Table in keyof T]: NullableExceptIdCreatedAtUpdatedAt<{
+              [Column in keyof T[Table]]: T[Table][Column];
+            }>;
+          } & {
+            readonly evolu_message: {
+              readonly timestamp: TimestampString;
+              readonly table: keyof T;
+              readonly row: Id;
+              readonly column: string;
+              readonly value: Value;
+            };
+          }
+        >,
         "selectFrom" | "fn" | "with" | "withRecursive"
       >,
     ) => Kysely.SelectQueryBuilder<any, any, R>,
@@ -330,11 +341,30 @@ export interface Evolu<T extends EvoluSchema = EvoluSchema> {
    * Delete {@link Owner} and all their data from the current device. After the
    * deletion, Evolu will purge the application state. For browsers, this will
    * reload all tabs using Evolu. For native apps, it will restart the app.
+   *
+   * Reloading can be turned off via options if you want to provide a different
+   * UX.
    */
-  readonly resetOwner: () => void;
+  readonly resetOwner: (options?: {
+    readonly reload: boolean;
+  }) => Promise<void>;
 
-  /** Restore {@link Owner} with all their synced data. */
-  readonly restoreOwner: (mnemonic: Mnemonic) => void;
+  /**
+   * Restore {@link Owner} with all their synced data. It uses {@link resetOwner},
+   * so be careful.
+   */
+  readonly restoreOwner: (
+    mnemonic: Mnemonic,
+    options?: {
+      readonly reload: boolean;
+    },
+  ) => Promise<void>;
+
+  /**
+   * Reload the app in a platform-specific way. For browsers, this will reload
+   * all tabs using Evolu. For native apps, it will restart the app.
+   */
+  readonly reloadApp: () => void;
 
   /**
    * Ensure tables and columns defined in {@link EvoluSchema} exist in the
@@ -429,13 +459,13 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
      *   // import * as E from "@evolu/common-web";
      *
      *   const TodoId = E.id("Todo");
-     *   type TodoId = S.Schema.Type<typeof TodoId>;
+     *   type TodoId = typeof TodoId.Type;
      *
      *   const TodoTable = E.table({
      *     id: TodoId,
      *     title: E.NonEmptyString1000,
      *   });
-     *   type TodoTable = S.Schema.Type<typeof TodoTable>;
+     *   type TodoTable = typeof TodoTable.Type;
      *
      *   const Database = E.database({
      *     todo: TodoTable,
@@ -443,7 +473,7 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
      *     // Prefix `_` makes the table local-only (it will not sync)
      *     _todo: TodoTable,
      *   });
-     *   type Database = S.Schema.Type<typeof Database>;
+     *   type Database = typeof Database.Type;
      *
      *   const evolu = E.createEvolu(Database);
      */
@@ -474,7 +504,12 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
       return EvoluFactory.of({
         createEvolu: <T extends EvoluSchema, I>(
           schema: S.Schema<T, I>,
-          { indexes, initialData, ...config }: Partial<EvoluConfig<T>> = {},
+          {
+            indexes,
+            initialData,
+            mnemonic,
+            ...config
+          }: Partial<EvoluConfig<T>> = {},
         ): Evolu<T> => {
           const runtime = createRuntime(config);
           const name = config?.name || defaultConfig.name;
@@ -488,6 +523,7 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
               dbSchema,
               runtime,
               initialData as EvoluConfig["initialData"],
+              mnemonic,
             ).pipe(Effect.provide(context), runtime.runSync);
             instances.set(name, evolu);
           } else {
@@ -503,7 +539,7 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
 export interface EvoluConfig<T extends EvoluSchema = EvoluSchema>
   extends Config {
   /**
-   * Use the `indexes` property to define SQLite indexes.
+   * Use the `indexes` option to define SQLite indexes.
    *
    * Table and column names are not typed because Kysely doesn't support it.
    *
@@ -522,6 +558,13 @@ export interface EvoluConfig<T extends EvoluSchema = EvoluSchema>
 
   /** Use this option to create initial data (fixtures). */
   initialData: (evolu: EvoluForInitialData<T>) => void;
+
+  /**
+   * Use this option to create Evolu with the specified mnemonic. If omitted,
+   * the mnemonic will be autogenerated. That should be the default behavior
+   * until special UX requirements are needed (e.g., multitenancy).
+   */
+  mnemonic: Mnemonic;
 }
 
 const schemaToTables = (schema: S.Schema<any>) =>
@@ -554,7 +597,8 @@ const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
 const createEvolu = (
   schema: DbSchema,
   runtime: ManagedRuntime.ManagedRuntime<Config, never>,
-  initialData?: EvoluConfig["initialData"],
+  initialData: EvoluConfig["initialData"],
+  mnemonic: Mnemonic | undefined,
 ) =>
   Effect.gen(function* () {
     yield* Effect.logTrace("EvoluFactory createEvolu");
@@ -629,6 +673,7 @@ const createEvolu = (
       handleDbError,
       handleSyncStateChange,
       handleDbReceive,
+      mnemonic,
     ).pipe(
       Effect.tap(sync({ refreshQueries: false })),
       Effect.flatMap(ownerStore.setState),
@@ -764,7 +809,7 @@ const createEvolu = (
 
       createQuery: (queryCallback, options) =>
         pipe(
-          queryCallback(kysely).compile(),
+          queryCallback(kysely as never).compile(),
           (compiledQuery): SqliteQuery => {
             if (isSqlMutation(compiledQuery.sql))
               throw new Error(
@@ -850,15 +895,20 @@ const createEvolu = (
       update: mutate,
       createOrUpdate: mutate as Mutate<EvoluSchema, "createOrUpdate">,
 
-      resetOwner: () => {
-        db.resetOwner().pipe(Effect.zipRight(appStateReset.reset), runFork);
-      },
+      resetOwner: (options) =>
+        Effect.gen(function* () {
+          yield* db.resetOwner();
+          if (options?.reload !== false) yield* appStateReset.reset;
+        }).pipe(runPromise),
 
-      restoreOwner: (mnemonic) => {
-        db.restoreOwner(schema, mnemonic).pipe(
-          Effect.zipRight(appStateReset.reset),
-          runFork,
-        );
+      restoreOwner: (mnemonic, options) =>
+        Effect.gen(function* () {
+          yield* db.restoreOwner(schema, mnemonic);
+          if (options?.reload !== false) yield* appStateReset.reset;
+        }).pipe(runPromise),
+
+      reloadApp: () => {
+        appStateReset.reset.pipe(runFork);
       },
 
       ensureSchema: (schema) => {

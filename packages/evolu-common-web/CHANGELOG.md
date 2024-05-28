@@ -1,5 +1,54 @@
 # @evolu/common-web
 
+## 8.1.1
+
+### Patch Changes
+
+- 79b41a0: sqlite-wasm 3.46.0-build1
+
+## 8.1.0
+
+### Minor Changes
+
+- e420fec: New API for working with Evolu instances
+
+  The functions `resetOwner` and `restoreOwner` automatically reload the app to ensure no user data remains in memory. The new option `reload` allows us to opt out of this default behavior. For that reason, both functions return a promise that can be used to provide custom UX. There is also a new `reloadApp` function to reload the app in a platform-specific way (e.g., browsers will reload all tabs with Evolu instances).
+
+  The `createEvolu` function has a new option, `mnemonic`. This option is useful for Evolu multitenancy when creating an Evolu instance with a predefined mnemonic. To create a mnemonic, use the new `createMnemonic` function.
+
+### Patch Changes
+
+- Updated dependencies [e420fec]
+  - @evolu/common@5.2.0
+
+## 8.0.5
+
+### Patch Changes
+
+- 48089be: Update SQLite
+
+## 8.0.4
+
+### Patch Changes
+
+- 5620c50: Fix @sqlite.org/sqlite-wasm peer dependency
+
+## 8.0.3
+
+### Patch Changes
+
+- 657262c: Update deps
+- Updated dependencies [657262c]
+  - @evolu/common@5.1.2
+
+## 8.0.2
+
+### Patch Changes
+
+- 5b6419a: Schema 0.67
+- Updated dependencies [5b6419a]
+  - @evolu/common@5.1.1
+
 ## 8.0.1
 
 ### Patch Changes

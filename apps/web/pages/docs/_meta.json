@@ -4,6 +4,7 @@
   "quickstart": "Quickstart",
   "indexes": "Indexes",
   "migrations": "Migrations",
+  "time-travel": "Time Travel",
   "patterns": "Patterns",
   "evolu-server": "Evolu Server",
   "how-evolu-works": "How Evolu Works",

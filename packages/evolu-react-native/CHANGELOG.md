@@ -1,5 +1,41 @@
 # @evolu/react-native
 
+## 10.1.0
+
+### Minor Changes
+
+- e420fec: New API for working with Evolu instances
+
+  The functions `resetOwner` and `restoreOwner` automatically reload the app to ensure no user data remains in memory. The new option `reload` allows us to opt out of this default behavior. For that reason, both functions return a promise that can be used to provide custom UX. There is also a new `reloadApp` function to reload the app in a platform-specific way (e.g., browsers will reload all tabs with Evolu instances).
+
+  The `createEvolu` function has a new option, `mnemonic`. This option is useful for Evolu multitenancy when creating an Evolu instance with a predefined mnemonic. To create a mnemonic, use the new `createMnemonic` function.
+
+### Patch Changes
+
+- @evolu/common-react@8.0.5
+
+## 10.0.2
+
+### Patch Changes
+
+- 657262c: Update deps
+- Updated dependencies [657262c]
+  - @evolu/common-react@8.0.5
+
+## 10.0.1
+
+### Patch Changes
+
+- 5b6419a: Schema 0.67
+- Updated dependencies [5b6419a]
+  - @evolu/common-react@8.0.4
+
+## 10.0.0
+
+### Major Changes
+
+- 2d8f5bc: Expo 51
+
 ## 9.0.1
 
 ### Patch Changes

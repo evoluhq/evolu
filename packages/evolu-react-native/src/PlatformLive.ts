@@ -1,19 +1,10 @@
 import {
   AppState,
-  Bip39,
-  Mnemonic,
   SyncLock,
   SyncLockAlreadySyncingError,
   SyncLockRelease,
-  validateMnemonicToEffect,
 } from "@evolu/common";
 import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
-import {
-  generateMnemonic,
-  mnemonicToSeed,
-  validateMnemonic,
-} from "@scure/bip39";
-import { wordlist } from "@scure/bip39/wordlists/english";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { reloadAsync } from "expo-updates";
@@ -82,17 +73,5 @@ export const SyncLockLive = Layer.effect(
         return yield* Effect.acquireRelease(acquire, release);
       }),
     });
-  }),
-);
-
-export const Bip39Live = Layer.succeed(
-  Bip39,
-  Bip39.of({
-    make: Effect.sync(() => generateMnemonic(wordlist, 128) as Mnemonic),
-
-    toSeed: (mnemonic) => Effect.promise(() => mnemonicToSeed(mnemonic)),
-
-    parse: (mnemonic) =>
-      validateMnemonicToEffect(validateMnemonic)(mnemonic, wordlist),
   }),
 );

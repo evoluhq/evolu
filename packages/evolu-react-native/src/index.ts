@@ -1,9 +1,6 @@
 import {
-  Bip39,
   DbFactory,
   EvoluFactory,
-  InvalidMnemonicError,
-  Mnemonic,
   SecretBox,
   Sqlite,
   SqliteFactory,
@@ -17,21 +14,13 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 // @ts-expect-error https://github.com/ai/nanoid/issues/468
 import { customAlphabet, nanoid } from "nanoid/index.browser.js";
-import { AppStateLive, Bip39Live, SyncLockLive } from "./PlatformLive.js";
+import { AppStateLive, SyncLockLive } from "./PlatformLive.js";
 import { SqliteLive } from "./SqliteLive.js";
-
-// eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-const NanoIdGeneratorLive = createNanoIdGeneratorLive(customAlphabet, nanoid);
 
 export * from "@evolu/common/public";
 
-/** Parse a string to {@link Mnemonic}. */
-export const parseMnemonic: (
-  mnemonic: string,
-) => Effect.Effect<Mnemonic, InvalidMnemonicError> = Bip39.pipe(
-  Effect.provide(Bip39Live),
-  Effect.runSync,
-).parse;
+// eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+const NanoIdGeneratorLive = createNanoIdGeneratorLive(customAlphabet, nanoid);
 
 const SyncFactoryLive = Layer.succeed(SyncFactory, {
   createSync: Effect.provide(createSync, SecretBox.Live),
@@ -48,7 +37,6 @@ export const EvoluFactoryReactNative = Layer.provide(
       createDb: createDb.pipe(
         Effect.provide(
           Layer.mergeAll(
-            Bip39Live,
             SqliteFactory.Common.pipe(
               Layer.provide(SqliteFactoryLive),
               Layer.provide(NanoIdGeneratorLive),
@@ -81,13 +69,13 @@ export const {
    *   import * as E from "@evolu/react-native";
    *
    *   const TodoId = E.id("Todo");
-   *   type TodoId = S.Schema.Type<typeof TodoId>;
+   *   type TodoId = typeof TodoId.Type;
    *
    *   const TodoTable = E.table({
    *     id: TodoId,
    *     title: E.NonEmptyString1000,
    *   });
-   *   type TodoTable = S.Schema.Type<typeof TodoTable>;
+   *   type TodoTable = typeof TodoTable.Type;
    *
    *   const Database = E.database({
    *     todo: TodoTable,
@@ -95,7 +83,7 @@ export const {
    *     // Prefix `_` makes the table local-only (it will not sync)
    *     _todo: TodoTable,
    *   });
-   *   type Database = S.Schema.Type<typeof Database>;
+   *   type Database = typeof Database.Type;
    *
    *   const evolu = E.createEvolu(Database);
    */

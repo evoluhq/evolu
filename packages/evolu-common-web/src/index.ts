@@ -1,16 +1,13 @@
 import {
-  Bip39,
   Db,
   DbFactory,
   EvoluFactory,
-  InvalidMnemonicError,
-  Mnemonic,
   notSupportedPlatformWorker,
 } from "@evolu/common";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { NanoIdGeneratorLive } from "./NanoIdGeneratorLive.js";
-import { AppStateLive, Bip39Live } from "./PlatformLive.js";
+import { AppStateLive } from "./PlatformLive.js";
 import { wrap } from "./ProxyWorker.js";
 
 const DbFactoryLive = Layer.succeed(DbFactory, {
@@ -31,18 +28,6 @@ export const EvoluFactoryWeb = Layer.provide(
   Layer.mergeAll(DbFactoryLive, NanoIdGeneratorLive, AppStateLive),
 );
 
-/**
- * Parse a string to {@link Mnemonic}.
- *
- * This function is async because Bip39 is imported dynamically.
- */
-export const parseMnemonic: (
-  mnemonic: string,
-) => Effect.Effect<Mnemonic, InvalidMnemonicError> = Bip39.pipe(
-  Effect.provide(Bip39Live),
-  Effect.runSync,
-).parse;
-
 // JSDoc doesn't support destructured parameters, so we must copy-paste
 // createEvolu docs from `evolu-common/src/Evolu.ts`.
 // https://github.com/microsoft/TypeScript/issues/11859
@@ -58,13 +43,13 @@ export const {
    *   import * as E from "@evolu/common-web";
    *
    *   const TodoId = E.id("Todo");
-   *   type TodoId = S.Schema.Type<typeof TodoId>;
+   *   type TodoId = typeof TodoId.Type;
    *
    *   const TodoTable = E.table({
    *     id: TodoId,
    *     title: E.NonEmptyString1000,
    *   });
-   *   type TodoTable = S.Schema.Type<typeof TodoTable>;
+   *   type TodoTable = typeof TodoTable.Type;
    *
    *   const Database = E.database({
    *     todo: TodoTable,
@@ -72,7 +57,7 @@ export const {
    *     // Prefix `_` makes the table local-only (it will not sync)
    *     _todo: TodoTable,
    *   });
-   *   type Database = S.Schema.Type<typeof Database>;
+   *   type Database = typeof Database.Type;
    *
    *   const evolu = E.createEvolu(Database);
    */

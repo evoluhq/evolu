@@ -1,6 +1,6 @@
 {
   "name": "web",
-  "version": "1.0.51",
+  "version": "1.0.57",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -10,21 +10,21 @@
     "clean": "rm -rf .turbo .next node_modules"
   },
   "dependencies": {
-    "@effect/schema": "^0.66.14",
+    "@effect/schema": "^0.67.9",
     "@evolu/common": "workspace:*",
     "@evolu/react": "workspace:*",
     "clsx": "^2.1.1",
-    "effect": "^3.1.2",
+    "effect": "^3.2.1",
     "next": "^14.2.3",
     "nextra": "^2.13.4",
     "nextra-theme-docs": "^2.13.4",
-    "react": "^18.2.0",
+    "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@evolu/tsconfig": "workspace:*",
-    "@types/node": "^20.12.8",
-    "@types/react": "~18.3.1",
+    "@types/node": "^20.12.12",
+    "@types/react": "~18.3.2",
     "@types/react-dom": "~18.3.0",
     "autoprefixer": "^10.4.19",
     "eslint": "^8.57.0",

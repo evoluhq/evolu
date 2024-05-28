@@ -1,5 +1,66 @@
 # native
 
+## 1.0.43
+
+### Patch Changes
+
+- Updated dependencies [e420fec]
+  - @evolu/common@5.2.0
+  - @evolu/react-native@10.1.0
+  - @evolu/common-react@8.0.5
+
+## 1.0.42
+
+### Patch Changes
+
+- Updated dependencies [f1a8bcd]
+  - @evolu/common@5.1.4
+  - @evolu/common-react@8.0.5
+  - @evolu/react-native@10.0.2
+
+## 1.0.41
+
+### Patch Changes
+
+- Updated dependencies [8e519ca]
+  - @evolu/common@5.1.3
+  - @evolu/common-react@8.0.5
+  - @evolu/react-native@10.0.2
+
+## 1.0.40
+
+### Patch Changes
+
+- Updated dependencies [657262c]
+  - @evolu/common-react@8.0.5
+  - @evolu/react-native@10.0.2
+  - @evolu/common@5.1.2
+
+## 1.0.39
+
+### Patch Changes
+
+- Updated dependencies [5b6419a]
+  - @evolu/common-react@8.0.4
+  - @evolu/react-native@10.0.1
+  - @evolu/common@5.1.1
+
+## 1.0.38
+
+### Patch Changes
+
+- Updated dependencies [2d8f5bc]
+  - @evolu/react-native@10.0.0
+
+## 1.0.37
+
+### Patch Changes
+
+- Updated dependencies [79a6d0c]
+  - @evolu/common@5.1.0
+  - @evolu/common-react@8.0.3
+  - @evolu/react-native@9.0.1
+
 ## 1.0.36
 
 ### Patch Changes

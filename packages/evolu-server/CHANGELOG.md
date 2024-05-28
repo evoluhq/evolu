@@ -1,5 +1,48 @@
 # @evolu/server
 
+## 7.0.9
+
+### Patch Changes
+
+- Updated dependencies [e420fec]
+  - @evolu/common@5.2.0
+
+## 7.0.8
+
+### Patch Changes
+
+- Updated dependencies [f1a8bcd]
+  - @evolu/common@5.1.4
+
+## 7.0.7
+
+### Patch Changes
+
+- Updated dependencies [8e519ca]
+  - @evolu/common@5.1.3
+
+## 7.0.6
+
+### Patch Changes
+
+- 657262c: Update deps
+- Updated dependencies [657262c]
+  - @evolu/common@5.1.2
+
+## 7.0.5
+
+### Patch Changes
+
+- Updated dependencies [5b6419a]
+  - @evolu/common@5.1.1
+
+## 7.0.4
+
+### Patch Changes
+
+- Updated dependencies [79a6d0c]
+  - @evolu/common@5.1.0
+
 ## 7.0.3
 
 ### Patch Changes
