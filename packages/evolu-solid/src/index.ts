@@ -1,6 +1,5 @@
 export { createEvolu } from "@evolu/common-web";
 
-export { parseMnemonic } from "@evolu/common-web";
 export * from "@evolu/common/public";
 
 export * from "./EvoluContext.js";
