@@ -13,10 +13,10 @@ import { Config } from "./Config.js";
 import { NanoIdGenerator, NodeId } from "./Crypto.js";
 import { murmurhash } from "./Murmurhash.js";
 
+// https://sergeiturukin.com/2017/06/26/hybrid-logical-clocks.html
 // https://muratbuffalo.blogspot.com/2014/07/hybrid-logical-clocks.html
 // https://jaredforsyth.com/posts/hybrid-logical-clocks/
 // https://github.com/clintharris/crdt-example-app_annotated/blob/master/shared/timestamp.js
-// https://github.com/actualbudget/actual/tree/master/packages/crdt
 
 export interface Timestamp {
   readonly node: NodeId;
