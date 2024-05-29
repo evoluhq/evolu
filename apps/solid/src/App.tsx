@@ -1,45 +1,47 @@
+import {
+  Component,
+  Show,
+  Suspense,
+  createEffect,
+  createSignal,
+} from "solid-js";
+
 import * as S from "@effect/schema/Schema";
 import { formatError } from "@effect/schema/TreeFormatter";
+
 import {
-  EvoluProvider,
+  createEvolu,
+  useEvolu,
+  useEvoluError,
+  useOwner,
+  useQuery,
   ExtractRow,
   NonEmptyString1000,
   NotNull,
   SqliteBoolean,
   String,
   cast,
-  createEvolu,
   createIndexes,
   database,
   id,
   jsonArrayFrom,
-  parseMnemonic,
   table,
-  useEvolu,
-  useEvoluError,
-  useOwner,
-  useQuery,
-} from "@evolu/react";
+  parseMnemonic
+} from "@evolu/solid";
+
+
 import { Effect, Exit } from "effect";
-import {
-  ChangeEvent,
-  FC,
-  Suspense,
-  memo,
-  startTransition,
-  useEffect,
-  useState,
-} from "react";
+import { EvoluContext } from "@evolu/solid";
 
 // Let's start with the database schema.
 
 // Every table needs Id. It's defined as a branded type.
 // Branded types make database types super safe.
 const TodoId = id("Todo");
-type TodoId = typeof TodoId.Type;
+type TodoId = S.Schema.Type<typeof TodoId>;
 
 const TodoCategoryId = id("TodoCategory");
-type TodoCategoryId = typeof TodoCategoryId.Type;
+type TodoCategoryId = S.Schema.Type<typeof TodoCategoryId>;
 
 // This branded type ensures a string must be validated before being put
 // into the database. Check the prompt function to see Schema validation.
@@ -48,7 +50,7 @@ const NonEmptyString50 = String.pipe(
   S.maxLength(50),
   S.brand("NonEmptyString50"),
 );
-type NonEmptyString50 = typeof NonEmptyString50.Type;
+type NonEmptyString50 = S.Schema.Type<typeof NonEmptyString50>;
 
 // Now we can define tables.
 const TodoTable = table({
@@ -57,11 +59,11 @@ const TodoTable = table({
   isCompleted: S.NullOr(SqliteBoolean),
   categoryId: S.NullOr(TodoCategoryId),
 });
-type TodoTable = typeof TodoTable.Type;
+type TodoTable = S.Schema.Type<typeof TodoTable>;
 
 // Evolu tables can contain typed JSONs.
 const SomeJson = S.Struct({ foo: S.String, bar: S.Boolean });
-type SomeJson = typeof SomeJson.Type;
+type SomeJson = S.Schema.Type<typeof SomeJson>;
 
 // Let's make a table with JSON value.
 const TodoCategoryTable = table({
@@ -69,14 +71,14 @@ const TodoCategoryTable = table({
   name: NonEmptyString50,
   json: S.NullOr(SomeJson),
 });
-type TodoCategoryTable = typeof TodoCategoryTable.Type;
+type TodoCategoryTable = S.Schema.Type<typeof TodoCategoryTable>;
 
 // Now, we can define the database schema.
 const Database = database({
   todo: TodoTable,
   todoCategory: TodoCategoryTable,
 });
-type Database = typeof Database.Type;
+type Database = S.Schema.Type<typeof Database>;
 
 /**
  * Indexes are not necessary for development but are required for production.
@@ -103,56 +105,63 @@ const evolu = createEvolu(Database, {
   },
 });
 
-const ViteExample = memo(function ViteExample() {
-  const [currentTab, setCurrentTab] = useState<"todos" | "categories">("todos");
+export default function App() {
+  const [currentTab, setCurrentTab] = createSignal<"todos" | "categories">(
+    "todos",
+  );
 
-  const handleTabClick = () =>
-    // https://react.dev/reference/react/useTransition#building-a-suspense-enabled-router
-    startTransition(() => {
-      setCurrentTab(currentTab === "todos" ? "categories" : "todos");
-    });
+  const handleTabClick = (): void => {
+    setCurrentTab(currentTab() === "todos" ? "categories" : "todos");
+  };
 
   return (
-    <EvoluProvider value={evolu}>
+    <EvoluContext.Provider value={evolu}>
       <NotificationBar />
-      <h2 className="mt-6 text-xl font-semibold">
-        {currentTab === "todos" ? "Todos" : "Categories"}
+      <h2 class="mt-6 text-xl font-semibold">
+        {currentTab() === "todos" ? "Todos" : "Categories"}
       </h2>
+             
       <Suspense>
-        {currentTab === "todos" ? <Todos /> : <TodoCategories />}
+        {currentTab() === "todos" ? <Todos /> : <TodoCategories />}
         <Button title="Switch Tab" onClick={handleTabClick} />
-        <p className="my-4">
+        <p class="my-4">
           To try React Suspense, click the `Switch Tab` button and rename a
           category. Then click the `Switch Tab` again to see the updated
           category name without any loading state. React Suspense is excellent
           for UX.
         </p>
-        <p className="my-4">
+        <p class="my-4">
           The data created in this example are stored locally in SQLite. Evolu
           encrypts the data for backup and sync with a Mnemonic, a unique safe
           password created on your device.
         </p>
         <OwnerActions />
-      </Suspense>
-    </EvoluProvider>
+      </Suspense> 
+      
+    </EvoluContext.Provider>
   );
-});
+}
 
-const NotificationBar: FC = () => {
+const NotificationBar: Component = () => {
   const evoluError = useEvoluError();
-  const [showError, setShowError] = useState(false);
+  const [showError, setShowError] = createSignal(!!evoluError());
 
-  useEffect(() => {
-    if (evoluError) setShowError(true);
-  }, [evoluError]);
-
-  if (!evoluError || !showError) return null;
+  createEffect(() => {
+    if (evoluError()) setShowError(true);
+  });
 
   return (
-    <div className="mt-3">
-      <p>{`Error: ${JSON.stringify(evoluError)}`}</p>
-      <Button title="Close" onClick={() => setShowError(false)} />
-    </div>
+    <Show when={evoluError() && showError()}>
+      <div class="mt-3">
+        <p>{`Error: ${JSON.stringify(evoluError())}`}</p>
+        <Button
+          title="Close"
+          onClick={(): void => {
+            setShowError(false);
+          }}
+        />
+      </div>
+    </Show>
   );
 };
 
@@ -185,11 +194,11 @@ const todosWithCategories = evolu.createQuery(
 
 type TodosWithCategoriesRow = ExtractRow<typeof todosWithCategories>;
 
-const Todos: FC = () => {
-  const { rows } = useQuery(todosWithCategories);
+const Todos: Component = () => {
+  const query = useQuery(todosWithCategories);
   const { create } = useEvolu<Database>();
 
-  const handleAddTodoClick = () => {
+  const handleAddTodoClick = (): void => {
     prompt(NonEmptyString1000, "What needs to be done?", (title) => {
       create("todo", { title });
     });
@@ -197,9 +206,9 @@ const Todos: FC = () => {
 
   return (
     <>
-      <ul className="py-2">
-        {rows.map((row) => (
-          <TodoItem key={row.id} row={row} />
+      <ul class="py-2">
+        {query().rows.map((row) => (
+          <TodoItem row={row} />
         ))}
       </ul>
       <Button title="Add Todo" onClick={handleAddTodoClick} />
@@ -207,33 +216,28 @@ const Todos: FC = () => {
   );
 };
 
-const TodoItem = memo<{
+const TodoItem: Component<{
   row: TodosWithCategoriesRow;
-}>(function TodoItem({
-  row: { id, title, isCompleted, categoryId, categories },
-}) {
+}> = ({ row: { id, title, isCompleted, categoryId, categories } }) => {
   const { update } = useEvolu<Database>();
 
-  const handleToggleCompletedClick = () => {
+  const handleToggleCompletedClick = (): void => {
     update("todo", { id, isCompleted: !isCompleted });
   };
 
-  const handleRenameClick = () => {
+  const handleRenameClick = (): void => {
     prompt(NonEmptyString1000, "New Name", (title) => {
       update("todo", { id, title });
     });
   };
 
-  const handleDeleteClick = () => {
+  const handleDeleteClick = (): void => {
     update("todo", { id, isDeleted: true });
   };
 
   return (
     <li>
-      <span
-        className="text-sm font-bold"
-        style={{ textDecoration: isCompleted ? "line-through" : "none" }}
-      >
+      <span class={`text-sm font-bold ${isCompleted ? "line-through" : ""}`}>
         {title}
       </span>
       <Button
@@ -245,15 +249,15 @@ const TodoItem = memo<{
       <TodoCategorySelect
         categories={categories}
         selected={categoryId}
-        onSelect={(categoryId) => {
+        onSelect={(categoryId): void => {
           update("todo", { id, categoryId });
         }}
       />
     </li>
   );
-});
+};
 
-const TodoCategorySelect: FC<{
+const TodoCategorySelect: Component<{
   categories: TodosWithCategoriesRow["categories"];
   selected: TodoCategoryId | null;
   onSelect: (value: TodoCategoryId | null) => void;
@@ -267,15 +271,13 @@ const TodoCategorySelect: FC<{
   return (
     <select
       value={value}
-      onChange={({ target: { value } }: ChangeEvent<HTMLSelectElement>) => {
+      onChange={({ target: { value } }): void => {
         onSelect(value === nothingSelected ? null : (value as TodoCategoryId));
       }}
     >
       <option value={nothingSelected}>-- no category --</option>
       {categories.map(({ id, name }) => (
-        <option key={id} value={id}>
-          {name}
-        </option>
+        <option value={id}>{name}</option>
       ))}
     </select>
   );
@@ -294,14 +296,15 @@ const todoCategories = evolu.createQuery((db) =>
 
 type TodoCategoriesRow = ExtractRow<typeof todoCategories>;
 
-const TodoCategories: FC = () => {
-  const { rows } = useQuery(todoCategories);
+const TodoCategories: Component = () => {
+  const query = useQuery(todoCategories);
+  const rows = query().rows;
   const { create } = useEvolu<Database>();
 
   // Evolu automatically parses JSONs into typed objects.
   // if (rows[0]) console.log(rows[1].json?.foo);
 
-  const handleAddCategoryClick = () => {
+  const handleAddCategoryClick = (): void => {
     prompt(NonEmptyString50, "Category Name", (name) => {
       create("todoCategory", {
         name,
@@ -312,9 +315,9 @@ const TodoCategories: FC = () => {
 
   return (
     <>
-      <ul className="py-2">
+      <ul class="py-2">
         {rows.map((row) => (
-          <TodoCategoryItem row={row} key={row.id} />
+          <TodoCategoryItem row={row} />
         ))}
       </ul>
       <Button title="Add Category" onClick={handleAddCategoryClick} />
@@ -322,38 +325,38 @@ const TodoCategories: FC = () => {
   );
 };
 
-const TodoCategoryItem = memo<{
+const TodoCategoryItem: Component<{
   row: TodoCategoriesRow;
-}>(function TodoItem({ row: { id, name } }) {
+}> = ({ row: { id, name } }) => {
   const { update } = useEvolu<Database>();
 
-  const handleRenameClick = () => {
+  const handleRenameClick = (): void => {
     prompt(NonEmptyString50, "Category Name", (name) => {
       update("todoCategory", { id, name });
     });
   };
 
-  const handleDeleteClick = () => {
+  const handleDeleteClick = (): void => {
     update("todoCategory", { id, isDeleted: true });
   };
 
   return (
     <>
-      <li key={id}>
-        <span className="text-sm font-bold">{name}</span>
+      <li>
+        <span class="text-sm font-bold">{name}</span>
         <Button title="Rename" onClick={handleRenameClick} />
         <Button title="Delete" onClick={handleDeleteClick} />
       </li>
     </>
   );
-});
+};
 
-const OwnerActions: FC = () => {
+const OwnerActions: Component = () => {
   const evolu = useEvolu<Database>();
   const owner = useOwner();
-  const [showMnemonic, setShowMnemonic] = useState(false);
+  const [showMnemonic, setShowMnemonic] = createSignal(false);
 
-  const handleRestoreOwnerClick = () => {
+  const handleRestoreOwnerClick = (): void => {
     prompt(NonEmptyString1000, "Your Mnemonic", (mnemonic) => {
       parseMnemonic(mnemonic)
         .pipe(Effect.runPromiseExit)
@@ -370,45 +373,47 @@ const OwnerActions: FC = () => {
     });
   };
 
-  const handleResetOwnerClick = () => {
+  const handleResetOwnerClick = (): void => {
     if (confirm("Are you sure? It will delete all your local data.")) {
       evolu.resetOwner();
     }
   };
 
   return (
-    <div className="mt-6">
+    <div class="mt-6">
       <p>
         Open this page on a different device and use your mnemonic to restore
         your data.
       </p>
       <Button
-        title={`${showMnemonic ? "Hide" : "Show"} Mnemonic`}
-        onClick={() => setShowMnemonic(!showMnemonic)}
+        title={`${showMnemonic() ? "Hide" : "Show"} Mnemonic`}
+        onClick={(): void => {
+          setShowMnemonic((current) => !current);
+        }}
       />
       <Button title="Restore Owner" onClick={handleRestoreOwnerClick} />
       <Button title="Reset Owner" onClick={handleResetOwnerClick} />
-      {showMnemonic && owner != null && (
+      <Show when={!!owner()}>
         <div>
           <textarea
-            value={owner.mnemonic}
+            value={owner()?.mnemonic}
             readOnly
             rows={2}
-            style={{ width: 320 }}
+            style={{ width: "320px" }}
           />
         </div>
-      )}
+      </Show>
     </div>
   );
 };
 
-const Button: FC<{
+const Button: Component<{
   title: string;
   onClick: () => void;
 }> = ({ title, onClick }) => {
   return (
     <button
-      className="m-1 rounded-md border border-current px-1 text-sm active:opacity-80"
+      class="m-1 rounded-md border border-current px-1 text-sm active:opacity-80"
       onClick={onClick}
     >
       {title}
@@ -420,7 +425,7 @@ const prompt = <From extends string, To>(
   schema: S.Schema<To, From, never>,
   message: string,
   onSuccess: (value: To) => void,
-) => {
+): void => {
   const value = window.prompt(message);
   if (value == null) return; // on cancel
   const a = S.decodeUnknownEither(schema)(value);
@@ -430,9 +435,3 @@ const prompt = <From extends string, To>(
   }
   onSuccess(a.right);
 };
-
-function App() {
-  return <ViteExample />;
-}
-
-export default App;
