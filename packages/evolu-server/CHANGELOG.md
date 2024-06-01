@@ -1,5 +1,11 @@
 # @evolu/server
 
+## 7.0.10
+
+### Patch Changes
+
+- 16e9d4b: better-sqlite3 11
+
 ## 7.0.9
 
 ### Patch Changes
