@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 5.2.1
+
+### Patch Changes
+
+- 2183e61: Updated @effect/platform dependency
+
 ## 5.2.0
 
 ### Minor Changes
