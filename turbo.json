@@ -1,7 +1,9 @@
 {
   "$schema": "https://turborepo.org/schema.json",
-  "globalEnv": ["NODE_ENV"],
-  "pipeline": {
+  "globalEnv": [
+    "NODE_ENV"
+  ],
+  "tasks": {
     "build": {
       "outputs": [
         "dist/**",
@@ -9,7 +11,9 @@
         "!.next/cache/**",
         "node_modules/.cache/metro/**"
       ],
-      "dependsOn": ["^build"]
+      "dependsOn": [
+        "^build"
+      ]
     },
     "dev": {
       "cache": false,
@@ -20,7 +24,9 @@
       "persistent": true
     },
     "test": {
-      "outputs": ["coverage/**"]
+      "outputs": [
+        "coverage/**"
+      ]
     },
     "lint": {
       "outputs": []
