@@ -14,7 +14,7 @@
     "release": "pnpm run build && changeset publish",
     "ios": "cd apps/native && pnpm ios",
     "android": "cd apps/native && pnpm android",
-    "eas:android":"cd apps/native && eas build --platform android",
+    "eas:android":"cd apps/native && eas build --platform android --profile preview",
     "generate-sql": "bun scripts/generateSql.ts",
     "docs": "typedoc"
   },

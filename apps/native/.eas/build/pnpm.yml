@@ -1,5 +1,5 @@
 build:
-  name: pnpm install
+  name: build with packages
   steps:
     - eas/checkout
     - run:

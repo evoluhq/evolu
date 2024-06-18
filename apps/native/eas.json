@@ -13,7 +13,10 @@
       "config":"pnpm.yml"
     },
     "production": {
-      "config":"pnpm.yml"
+      "config":"pnpm.yml",
+      "android": {
+        "image": "latest"
+      }
     }
   },
   "submit": {

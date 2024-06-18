@@ -52,8 +52,6 @@ const babelLoaderConfiguration = {
 module.exports = async function (env, argv) {
   const config = await createExpoWebpackConfigAsync(env, argv);
   let babel = getExpoBabelLoader(config);
-  // console.info(babel)
-  // config.mode
   if (babel) {
     babel.use = babelLoaderConfiguration.use;
   }
