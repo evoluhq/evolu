@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@effect/schema": "^0.67.16",
+    "@effect/schema": "^0.68.0",
     "@evolu/react": "^8.0.2",
     "effect": "^3.2.7",
     "react": "^18.3.1",
