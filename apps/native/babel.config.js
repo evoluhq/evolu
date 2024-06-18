@@ -3,6 +3,7 @@ module.exports = function (api) {
   return {
     presets: ["babel-preset-expo"],
     plugins: [
+      "@babel/plugin-syntax-import-attributes",
       // For Kysely to work with Hermes
       ["@babel/plugin-transform-private-methods", { loose: true }],
       // For Kysely to work with Hermes
@@ -12,6 +13,7 @@ module.exports = function (api) {
         {
           alias: {
             crypto: "crypto-browserify",
+            vm: "vm-browserify",
           },
         },
       ],

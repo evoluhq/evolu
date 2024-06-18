@@ -1,0 +1,11 @@
+build:
+  name: pnpm install
+  steps:
+    - eas/checkout
+    - run:
+        name: Install dependencies
+        command: pnpm install --shamefully-hoist
+    - run:
+        name: Build packages
+        command: cd ../../ && pnpm build && cd apps/native
+    - eas/build

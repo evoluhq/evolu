@@ -1,0 +1,22 @@
+{
+  "cli": {
+    "version": ">= 10.0.2"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "config":"pnpm.yml"
+    },
+    "preview": {
+      "distribution": "internal",
+      "config":"pnpm.yml"
+    },
+    "production": {
+      "config":"pnpm.yml"
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

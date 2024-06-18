@@ -1,6 +1,6 @@
 {
   "name": "@evolu/react-native",
-  "version": "10.1.0",
+  "version": "10.1.1",
   "description": "Evolu for React Native",
   "keywords": [
     "evolu",
@@ -15,15 +15,10 @@
   },
   "homepage": "https://evolu.dev",
   "type": "module",
-  "types": "./dist/index.d.ts",
+  "types": "./dist/index.native.d.ts",
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
-  },
-  "react-native": {
-    "./index.js": "./dist/index.js"
+    "react-native": "./dist/index.native.js",
+    "default": "./dist/index.web.js"
   },
   "files": [
     "dist/**",
@@ -43,6 +38,7 @@
   "devDependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/common-react": "workspace:*",
+    "@evolu/react": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
     "eslint": "^8.57.0",
     "eslint-config-evolu": "workspace:*",
