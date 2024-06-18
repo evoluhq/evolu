@@ -40,9 +40,6 @@ importers:
 
   apps/native:
     dependencies:
-      '@babel/preset-react':
-        specifier: ^7.24.7
-        version: 7.24.7(@babel/core@7.24.7)
       '@effect/schema':
         specifier: ^0.68.0
         version: 0.68.0(effect@3.3.4)
