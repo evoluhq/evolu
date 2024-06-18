@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 5.2.2
+
+### Patch Changes
+
+- 08758d8: @effect/schema 0.68
+
 ## 5.2.1
 
 ### Patch Changes
