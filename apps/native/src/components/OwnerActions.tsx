@@ -18,8 +18,7 @@ export const OwnerActions: FC = () => {
   const handleMnemonicInputEndEditing = () => {
     Either.match(parsedMnemonic, {
       onLeft: (error) => alert(formatError(error)),
-      onRight: (nmnemonic) => 
-        evolu.restoreOwner(nmnemonic, { reload: false })
+      onRight: (nmnemonic) => evolu.restoreOwner(nmnemonic, { reload: false }),
     });
   };
 
