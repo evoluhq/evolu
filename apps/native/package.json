@@ -10,7 +10,9 @@
     "android": "expo start --android",
     "build-native": "expo start --no-dev --minify",
     "lint": "eslint . --ext .ts,.tsx",
-    "clean": "rm -rf .turbo .expo node_modules dist"
+    "clean": "rm -rf .turbo .expo node_modules dist",
+    "eas-build-pre-install": "./eas-hooks/eas-build-pre-install.sh",
+    "eas-build-on-success": "./eas-hooks/eas-build-on-success.sh"
   },
   "dependencies": {
     "@effect/schema": "^0.68.0",
@@ -51,6 +53,9 @@
     "eslint-config-evolu": "workspace:*",
     "metro-react-native-babel-preset": "^0.77.0",
     "prettier": "^3.2.5",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "@config-plugins/detox": "^8.0.0",
+    "detox":"20.22.2",
+    "jest":"29.7.0"
   }
 }
