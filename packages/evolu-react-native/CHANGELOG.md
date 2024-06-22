@@ -1,5 +1,11 @@
 # @evolu/react-native
 
+## 11.0.0
+
+### Major Changes
+
+- 49b1170: fix for react-native-web
+
 ## 10.1.0
 
 ### Minor Changes
