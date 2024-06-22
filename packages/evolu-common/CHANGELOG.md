@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 5.2.3
+
+### Patch Changes
+
+- 91298f3: @effect/platform 0.58
+
 ## 5.2.2
 
 ### Patch Changes
