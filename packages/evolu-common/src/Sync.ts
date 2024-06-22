@@ -1,4 +1,4 @@
-import * as Http from "@effect/platform/HttpClient";
+import * as Platform from "@effect/platform";
 import * as S from "@effect/schema/Schema";
 import { concatBytes } from "@noble/ciphers/utils";
 import { BinaryReader, BinaryWriter } from "@protobuf-ts/runtime";
@@ -158,13 +158,14 @@ export const createSync = Effect.gen(function* () {
             ),
           ),
           Effect.flatMap((body) =>
-            Http.request
-              .post(config.syncUrl)
-              .pipe(
-                Http.request.uint8ArrayBody(body, "application/x-protobuf"),
-                Http.client.fetchOk,
-                Http.response.arrayBuffer,
+            Platform.HttpClientRequest.post(config.syncUrl).pipe(
+              Platform.HttpClientRequest.uint8ArrayBody(
+                body,
+                "application/x-protobuf",
               ),
+              Platform.HttpClient.fetchOk,
+              Platform.HttpClientResponse.arrayBuffer,
+            ),
           ),
           Effect.map((buffer) =>
             Protobuf.SyncResponse.fromBinary(
