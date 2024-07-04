@@ -1,12 +1,7 @@
-## Getting Started
+# Next.js
 
-Evolu recommends Next.js Pager Router until the App Router supports dynamic routing.
+- Evolu recommends Next.js Pager Router until the App Router supports dynamic routing, see [github.com/vercel/next.js/discussions/64660](https://github.com/vercel/next.js/discussions/64660).
 
-- https://github.com/vercel/next.js/discussions/64660
+## Live Preview
 
-```bash
-npm install
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+[Stackblitz](https://stackblitz.com/github/evoluhq/evolu/tree/main/examples/nextjs)
