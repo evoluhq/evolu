@@ -40,7 +40,7 @@
       "flexsearch": "0.7.31"
     },
     "patchedDependencies": {
-      "@changesets/assemble-release-plan@6.0.2": "patches/@changesets__assemble-release-plan@6.0.2.patch"
+      "@changesets/assemble-release-plan@6.0.3": "patches/@changesets__assemble-release-plan@6.0.3.patch"
     }
   }
 }
