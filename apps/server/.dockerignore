@@ -1,3 +1,4 @@
 .turbo
 node_modules
 db.sqlite
+dist

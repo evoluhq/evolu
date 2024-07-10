@@ -5,7 +5,7 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   optimizeDeps: {
-    exclude: ["@evolu/common-web"]
+    exclude: ["@evolu/common-web"],
   },
-  worker: { format: "es" }
+  worker: { format: "es" },
 });

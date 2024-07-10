@@ -1,7 +1,8 @@
 {
   "$schema": "https://turborepo.org/schema.json",
   "globalEnv": [
-    "NODE_ENV"
+    "NODE_ENV",
+    "PORT"
   ],
   "tasks": {
     "build": {

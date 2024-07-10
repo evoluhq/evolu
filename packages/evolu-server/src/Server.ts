@@ -16,14 +16,29 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { sql } from "kysely";
 import { BadRequestError, Db } from "./Types.js";
+import WebSocket, { WebSocketServer } from "ws";
 
 export interface Server {
   /** Create database tables and indexes if they do not exist. */
   readonly initDatabase: Effect.Effect<void>;
 
   /** Sync data. */
-  readonly sync: (body: Uint8Array) => Effect.Effect<Buffer, BadRequestError>;
+  readonly sync: (
+    body: Uint8Array,
+    socketUserMap: { [key: string]: WebSocket[] | undefined },
+  ) => Effect.Effect<Buffer, BadRequestError>;
 }
+const broadcastByMap = (
+  data: ArrayBufferLike,
+  socketUserMap: { [key: string]: WebSocket[] | undefined },
+  userId: string,
+) => {
+  socketUserMap[userId]?.map((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(data);
+    }
+  });
+};
 
 export const Server = Context.GenericTag<Server>("@services/Server");
 
@@ -58,7 +73,7 @@ export const ServerLive = Layer.effect(
           .execute();
       }),
 
-      sync: (body) =>
+      sync: (body, socketUserMap) =>
         Effect.gen(function* (_) {
           const request = yield* _(
             Effect.try({
@@ -69,7 +84,7 @@ export const ServerLive = Layer.effect(
               }),
             }),
           );
-
+          broadcastByMap(body, socketUserMap, request.userId);
           const merkleTree = yield* _(
             Effect.promise(() =>
               db
@@ -124,7 +139,6 @@ export const ServerLive = Layer.effect(
                 }),
             ),
           );
-
           const messages = yield* _(
             diffMerkleTrees(
               merkleTree,

@@ -21,6 +21,22 @@
 
 Local-first apps allow users to own their data by storing them on their devices. Modern browsers provide API designed precisely for that. How is it different from keeping files on disk? Files are not the right abstraction for apps and cannot synchronize among devices. That's why traditional apps use the client-server architecture. But using client-server architecture also means that users' ability to use an app depends on some server that can be offline, temporarily or forever, if a company decides to ban a user or even goes bankrupt. That's unfortunate. Luckily, a way to restore data ownership exists. It's Evolu.
 
+## Running the server
+
+Currently the easiest solution to run an evolu server would be to use the docker image:
+
+1. Pull the docker image
+
+`docker pull evoluhq/evolu:main`
+
+2. Create an empty sqlite file for mounting the database
+
+`touch db.sqlite`
+
+3. startup the evolu server on `port` `4000` and `mount` database file on `./db.sqlite` that we created previously
+
+`docker run --name evolu -p 4000:4000 -v $(pwd)/db.sqlite:/home/node/app/apps/server/db.sqlite -d evoluhq/evolu:main`
+
 ## Documentation
 
 For detailed information and usage examples, please visit [evolu.dev](https://www.evolu.dev).

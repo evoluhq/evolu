@@ -18,6 +18,7 @@
     "generate-sql": "bun scripts/generateSql.ts",
     "docs": "typedoc"
   },
+  "workspaces": ["packages/*"],
   "devDependencies": {
     "@changesets/cli": "^2.27.5",
     "eslint": "^8.57.0",

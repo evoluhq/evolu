@@ -15,6 +15,7 @@ export const createDatabase = () =>
     indexes,
     ...(process.env.NODE_ENV === "development" && {
       syncUrl: "http://localhost:4000",
+      enableWebsocketConnection: true,
     }),
     initialData: (evolu) => {
       const { id: categoryId } = evolu.create("todoCategory", {
