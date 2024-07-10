@@ -19,6 +19,7 @@
     "@evolu/react-native": "workspace:*",
     "@expo/metro-runtime": "~3.2.1",
     "@react-native-community/netinfo": "11.3.1",
+    "@types/react-native": "^0.73.0",
     "babel-plugin-module-resolver": "^5.0.2",
     "crypto-browserify": "^3.12.0",
     "effect": "^3.2.1",
