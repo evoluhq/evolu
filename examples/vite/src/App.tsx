@@ -1,21 +1,22 @@
 import * as S from "@effect/schema/Schema";
 import { formatError } from "@effect/schema/TreeFormatter";
 import {
-  EvoluProvider,
   ExtractRow,
   NonEmptyString1000,
-  NotNull,
   SqliteBoolean,
   String,
-  canUseDom,
   cast,
-  createEvolu,
   createIndexes,
   database,
   id,
-  jsonArrayFrom,
   parseMnemonic,
   table,
+} from "@evolu/common";
+import { createEvolu } from "@evolu/common-web";
+import {
+  EvoluProvider,
+  NotNull,
+  jsonArrayFrom,
   useEvolu,
   useEvoluError,
   useOwner,
