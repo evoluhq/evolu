@@ -27,7 +27,7 @@
     "turbo": "^2.0.4",
     "typedoc": "^0.26.0"
   },
-  "packageManager": "pnpm@9.4.0",
+  "packageManager": "pnpm@9.5.0",
   "pnpm": {
     "peerDependencyRules": {
       "ignoreMissing": [
