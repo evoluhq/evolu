@@ -1,5 +1,19 @@
 # @evolu/server
 
+## 7.1.0
+
+### Minor Changes
+
+- ab24e09: Experimental Websocket integration and realtime updates.
+
+  It's only for Evolu Server for now.
+
+### Patch Changes
+
+- Updated dependencies [ab24e09]
+- Updated dependencies [c63a2b8]
+  - @evolu/common@5.3.0
+
 ## 7.0.13
 
 ### Patch Changes

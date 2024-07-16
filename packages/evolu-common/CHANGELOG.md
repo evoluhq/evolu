@@ -1,5 +1,17 @@
 # @evolu/common
 
+## 5.3.0
+
+### Minor Changes
+
+- ab24e09: Experimental Websocket integration and realtime updates.
+
+  It's only for Evolu Server for now.
+
+### Patch Changes
+
+- c63a2b8: @effect/platform 0.59
+
 ## 5.2.3
 
 ### Patch Changes
