@@ -16,7 +16,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { sql } from "kysely";
 import { BadRequestError, Db } from "./Types.js";
-import WebSocket, { WebSocketServer } from "ws";
+import WebSocket from "ws";
 
 export interface Server {
   /** Create database tables and indexes if they do not exist. */

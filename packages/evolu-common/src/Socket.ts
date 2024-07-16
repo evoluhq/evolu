@@ -10,10 +10,6 @@ const SyncTimeout = 500;
 const SyncLockTimeout = 500;
 let socket: WebSocket;
 
-export type EvoluSocketCallback = (
-  cb: (event: MessageEvent<Buffer | String | Object>) => void,
-) => void;
-
 type ForceSyncMethod = ({
   refreshQueries,
 }: {
@@ -31,7 +27,7 @@ const processWebsocketEvent = (
     isLocked = true;
     sync({ refreshQueries: true })();
     clearTimeout(syncTimeout);
-    syncTimeout = undefined;
+    clearTimeout(lockTimeout);
     lockTimeout = setTimeout(() => {
       isLocked = false;
     }, SyncLockTimeout);
@@ -42,7 +38,7 @@ export const createSocket = (
   sync: ForceSyncMethod,
   config: Config,
   owner: Owner,
-) => {
+): WebSocket | undefined => {
   if (config.externalWebsocketConnection) {
     // Hook up to an external WebSocket connection
     config.externalWebsocketConnection.send(
@@ -64,6 +60,7 @@ export const createSocket = (
 
     // Handle WebSocket errors
     socket.onerror = (error) => {
+      // eslint-disable-next-line no-console
       console.error("WebSocket error:", error);
     };
 
