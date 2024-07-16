@@ -48,7 +48,7 @@ type TodoCategoryId = typeof TodoCategoryId.Type;
 const NonEmptyString50 = String.pipe(
   S.minLength(1),
   S.maxLength(50),
-  S.brand("NonEmptyString50")
+  S.brand("NonEmptyString50"),
 );
 type NonEmptyString50 = typeof NonEmptyString50.Type;
 
@@ -179,13 +179,13 @@ const todosWithCategories = evolu.createQuery(
             .selectFrom("todoCategory")
             .select(["todoCategory.id", "todoCategory.name"])
             .where("isDeleted", "is not", cast(true))
-            .orderBy("createdAt")
+            .orderBy("createdAt"),
         ).as("categories"),
       ]),
   {
     // logQueryExecutionTime: true,
     // logExplainQueryPlan: true,
-  }
+  },
 );
 
 type TodosWithCategoriesRow = ExtractRow<typeof todosWithCategories>;
@@ -294,7 +294,7 @@ const todoCategories = evolu.createQuery((db) =>
     // Filter null value and ensure non-null type.
     .where("name", "is not", null)
     .$narrowType<{ name: NotNull }>()
-    .orderBy("createdAt")
+    .orderBy("createdAt"),
 );
 
 type TodoCategoriesRow = ExtractRow<typeof todoCategories>;
@@ -370,7 +370,7 @@ const OwnerActions: FC = () => {
             onSuccess: (mnemonic) => {
               evolu.restoreOwner(mnemonic);
             },
-          })
+          }),
         );
     });
   };
@@ -424,7 +424,7 @@ const Button: FC<{
 const prompt = <From extends string, To>(
   schema: S.Schema<To, From, never>,
   message: string,
-  onSuccess: (value: To) => void
+  onSuccess: (value: To) => void,
 ) => {
   const value = window.prompt(message);
   if (value == null) return; // on cancel

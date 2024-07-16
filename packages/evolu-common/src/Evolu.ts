@@ -15,6 +15,7 @@ import * as Kysely from "kysely";
 import { Config, createRuntime, defaultConfig } from "./Config.js";
 import { TimestampString } from "./Crdt.js";
 import { Mnemonic, NanoIdGenerator } from "./Crypto.js";
+import { createSocket } from "./Socket.js";
 import {
   DbFactory,
   DbSchema,
@@ -45,6 +46,7 @@ import {
 } from "./Sqlite.js";
 import { Listener, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState, initialSyncState } from "./Sync.js";
+import { Nullable } from "kysely";
 
 /**
  * The Evolu interface provides a type-safe SQL query building and state
@@ -67,6 +69,7 @@ import { SyncState, initialSyncState } from "./Sync.js";
  * - Ensuring the database schema's integrity with ensureSchema.
  */
 export interface Evolu<T extends EvoluSchema = EvoluSchema> {
+  readonly socket: Promise<WebSocket | undefined>;
   /**
    * Subscribe to {@link EvoluError} changes.
    *
@@ -680,6 +683,16 @@ const createEvolu = (
       Effect.catchTag("NotSupportedPlatformError", () => Effect.void), // no-op
       runFork,
     );
+    let socketResolved = false;
+    const socket: Promise<WebSocket | undefined> = new Promise((resolve) => {
+      ownerStore.subscribe(() => {
+        const owner = ownerStore.getState() as Owner;
+        if (!socketResolved && typeof owner?.id === "string") {
+          socketResolved = true;
+          resolve(createSocket(sync, config, owner));
+        }
+      });
+    });
 
     const appStateReset = yield* appState.init({
       onRequestSync: sync({ refreshQueries: true }),
@@ -804,6 +817,7 @@ const createEvolu = (
     })();
 
     const evolu: Evolu = {
+      socket,
       subscribeError: errorStore.subscribe,
       getError: errorStore.getState,
 

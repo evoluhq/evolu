@@ -30,3 +30,9 @@ message MessageContent {
     string jsonValue = 7;
   };
 }
+
+message SubscribeRequest {
+  string userId = 1;
+  string nodeId = 2;
+  string messageType = 3;
+}
