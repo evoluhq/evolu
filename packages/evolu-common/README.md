@@ -23,7 +23,7 @@ Local-first apps allow users to own their data by storing them on their devices.
 
 ## Running the server
 
-Currently the easiest solution to run an evolu server would be to use the docker image:
+Currently the easiest solution to run Evolu server would be to use the docker image:
 
 1. Pull the docker image
 
