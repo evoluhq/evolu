@@ -92,7 +92,7 @@ export const createExpressAppWithWebsocket = async (
       ws.on("message", (message: WebSocket.RawData) => {
         try {
           // Convert message to JSON if it is not already
-          let json = JSON.parse(message.toString("utf-8")) as {
+          const json = JSON.parse((message as Buffer).toString("utf-8")) as {
             channelId: string;
           };
           if (json.channelId) {
@@ -102,6 +102,7 @@ export const createExpressAppWithWebsocket = async (
             return;
           }
         } catch (err) {
+          // eslint-disable-next-line no-console
           console.error(
             "Error handling json request:",
             (err as Error)?.message || err,

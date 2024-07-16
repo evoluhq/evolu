@@ -46,7 +46,6 @@ import {
 } from "./Sqlite.js";
 import { Listener, Unsubscribe, makeStore } from "./Store.js";
 import { SyncState, initialSyncState } from "./Sync.js";
-import { Nullable } from "kysely";
 
 /**
  * The Evolu interface provides a type-safe SQL query building and state
