@@ -18,9 +18,10 @@ import { customAlphabet, nanoid } from "nanoid/index.browser.js";
 import { AppStateLive, SyncLockLive } from "./PlatformLive.js";
 import { SqliteLive } from "./SqliteLive.js";
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-argument
 export const NanoIdGeneratorLive = createNanoIdGeneratorLive(
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
   customAlphabet,
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
   nanoid,
 );
 
