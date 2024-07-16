@@ -10,6 +10,7 @@ import { Database, indexes, NonEmptyString50 } from "./schema";
 
 export * from "./schema";
 
+// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
 export const createDatabase = () =>
   createEvolu(Database, {
     indexes,

@@ -18,7 +18,7 @@ export const TodoCategories: FC = () => {
       onLeft: Function.constVoid,
       onRight: (name) => {
         create("todoCategory", {
-          name: name as any,
+          name,
           json: { foo: "a", bar: false },
         });
         setText("");
