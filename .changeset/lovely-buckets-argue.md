@@ -1,7 +1,9 @@
 ---
-"@evolu/common": major
-"@evolu/server": major
-"server": major
+"@evolu/common": minor
+"@evolu/server": minor
+"server": minor
 ---
 
-websocket integration and realtime updates
+Experimental Websocket integration and realtime updates.
+
+It's only for Evolu Server for now.
