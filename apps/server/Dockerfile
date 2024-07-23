@@ -47,20 +47,12 @@ RUN mv /home/node/app/node_modules/fast-check/* /home/node/app/packages/evolu-co
 RUN mkdir /home/node/app/packages/evolu-common/node_modules/find-my-way-ts/
 RUN mv /home/node/app/node_modules/find-my-way-ts/* /home/node/app/packages/evolu-common/node_modules/find-my-way-ts/
 
-RUN mkdir /home/node/app/packages/evolu-common/node_modules/path-browserify/
-RUN mv /home/node/app/node_modules/path-browserify/* /home/node/app/packages/evolu-common/node_modules/path-browserify/
-
 RUN mkdir /home/node/app/packages/evolu-common/node_modules/multipasta/
 RUN mv /home/node/app/node_modules/multipasta/* /home/node/app/packages/evolu-common/node_modules/multipasta/
 
 RUN mkdir /home/node/app/packages/evolu-common/node_modules/pure-rand/
 RUN mv /home/node/app/node_modules/pure-rand/* /home/node/app/packages/evolu-common/node_modules/pure-rand/
 
-RUN mkdir /home/node/app/packages/evolu-common/node_modules/fast-querystring/
-RUN mv /home/node/app/node_modules/fast-querystring/* /home/node/app/packages/evolu-common/node_modules/fast-querystring/
-
-RUN mkdir /home/node/app/packages/evolu-common/node_modules/fast-decode-uri-component/
-RUN mv /home/node/app/node_modules/fast-decode-uri-component/* /home/node/app/packages/evolu-common/node_modules/fast-decode-uri-component/
 RUN mkdir /home/node/app/packages/evolu-server/node_modules/kysely/
 RUN mkdir /home/node/app/packages/evolu-common/node_modules/kysely/
 RUN cp -r /home/node/app/node_modules/kysely/* /home/node/app/packages/evolu-server/node_modules/kysely/
