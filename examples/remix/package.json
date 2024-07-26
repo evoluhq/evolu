@@ -11,7 +11,7 @@
     "typecheck": "tsc"
   },
   "dependencies": {
-    "@effect/schema": "^0.68.17",
+    "@effect/schema": "^0.69.0",
     "@evolu/common": "5.2.3",
     "@evolu/common-web": "8.1.1",
     "@evolu/react": "8.1.0",
