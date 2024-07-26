@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 5.4.0
+
+### Minor Changes
+
+- 19f7d85: Update peer dependencies @effect/platform, @effect/schema
+
 ## 5.3.0
 
 ### Minor Changes

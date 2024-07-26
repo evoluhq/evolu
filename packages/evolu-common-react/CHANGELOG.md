@@ -1,5 +1,16 @@
 # @evolu/common-react
 
+## 8.1.0
+
+### Minor Changes
+
+- 4e431e4: Update peer dependencies @effect/platform, @effect/schema
+
+### Patch Changes
+
+- Updated dependencies [19f7d85]
+  - @evolu/common@5.4.0
+
 ## 8.0.5
 
 ### Patch Changes
