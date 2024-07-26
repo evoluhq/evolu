@@ -1,5 +1,16 @@
 # @evolu/react-native
 
+## 11.1.0
+
+### Minor Changes
+
+- 4e431e4: Update peer dependencies @effect/platform, @effect/schema
+
+### Patch Changes
+
+- Updated dependencies [4e431e4]
+  - @evolu/common-react@8.1.0
+
 ## 11.0.0
 
 ### Major Changes

@@ -1,5 +1,16 @@
 # @evolu/server
 
+## 7.2.0
+
+### Minor Changes
+
+- 4e431e4: Update peer dependencies @effect/platform, @effect/schema
+
+### Patch Changes
+
+- Updated dependencies [19f7d85]
+  - @evolu/common@5.4.0
+
 ## 7.1.0
 
 ### Minor Changes
