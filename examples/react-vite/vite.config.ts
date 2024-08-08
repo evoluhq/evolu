@@ -5,7 +5,8 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   optimizeDeps: {
-    exclude: ["@evolu/common-web"],
+    exclude: ["@evolu/common-web", "@sqlite.org/sqlite-wasm"],
+    include: ["react-dom"],
   },
   worker: { format: "es" },
 });

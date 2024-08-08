@@ -103,7 +103,7 @@ const evolu = createEvolu(Database, {
   },
 });
 
-export const NextJsExample = memo(function NextJsExample() {
+export const Example = memo(function NextJsExample() {
   const [currentTab, setCurrentTab] = useState<"todos" | "categories">("todos");
 
   const handleTabClick = () =>
