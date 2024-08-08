@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 5.4.1
+
+### Patch Changes
+
+- bd1d22e: Update peer dependencies
+
 ## 5.4.0
 
 ### Minor Changes
