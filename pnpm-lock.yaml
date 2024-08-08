@@ -251,7 +251,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/evolu-react
       next:
-        specifier: ~14.2.5
+        specifier: ^14.2.3
         version: 14.2.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react:
         specifier: 18.3.1
@@ -273,7 +273,7 @@ importers:
         specifier: ^10.4.20
         version: 10.4.20(postcss@8.4.41)
       eslint:
-        specifier: '8'
+        specifier: 8.57.0
         version: 8.57.0
       eslint-config-next:
         specifier: ~14.2.5
@@ -337,7 +337,7 @@ importers:
         specifier: 31.3.1
         version: 31.3.1
       eslint:
-        specifier: '8'
+        specifier: 8.57.0
         version: 8.57.0
       eslint-plugin-import:
         specifier: ^2.29.1
@@ -395,7 +395,7 @@ importers:
         specifier: ^4.3.1
         version: 4.3.1(vite@5.4.0(@types/node@22.1.0)(terser@5.31.5))
       eslint:
-        specifier: '8'
+        specifier: 8.57.0
         version: 8.57.0
       eslint-plugin-react-hooks:
         specifier: ^4.6.2
@@ -450,7 +450,7 @@ importers:
         specifier: ^4.3.1
         version: 4.3.1(vite@5.4.0(@types/node@22.1.0)(terser@5.31.5))
       eslint:
-        specifier: '8'
+        specifier: 8.57.0
         version: 8.57.0
       eslint-plugin-react-hooks:
         specifier: ^4.6.2
@@ -529,7 +529,7 @@ importers:
         specifier: ^10.4.20
         version: 10.4.20(postcss@8.4.41)
       eslint:
-        specifier: '8'
+        specifier: 8.57.0
         version: 8.57.0
       eslint-import-resolver-typescript:
         specifier: ^3.6.1
