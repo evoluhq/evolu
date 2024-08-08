@@ -48,3 +48,14 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: Test Build Docker Image
+        id: docker-build
+        uses: docker/build-push-action@v6
+        with:
+          platforms: linux/amd64
+          context: .
+          file: ./apps/server/Dockerfile
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
