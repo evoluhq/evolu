@@ -2,12 +2,12 @@
   "private": true,
   "name": "@evolu/monorepo",
   "scripts": {
-    "dev": "turbo dev",
-    "build": "turbo build",
-    "start": "turbo start",
-    "lint": "turbo lint",
-    "lint-monorepo": "pnpm dlx sherif@latest",
-    "test": "turbo test",
+    "dev": "turbo dev --filter=!./examples/*",
+    "build": "turbo build --filter=!./examples/*",
+    "start": "turbo start --filter=!./examples/*",
+    "lint": "turbo lint --filter=!./examples/*",
+    "lint-monorepo": "pnpm dlx sherif@latest -p @example/*",
+    "test": "turbo test --filter=!./examples/*",
     "clean": "turbo clean && rm -rf node_modules pnpm-lock.yaml",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "version": "changeset version && pnpm install --no-frozen-lockfile && pnpm format",
@@ -16,7 +16,9 @@
     "android": "cd apps/native && pnpm android",
     "eas:android": "cd apps/native && eas build --platform android --profile preview",
     "generate-sql": "bun scripts/generateSql.ts",
-    "docs": "typedoc"
+    "docs": "typedoc",
+    "examples:dev": "turbo dev --filter=./examples/*",
+    "examples:build": "turbo build --filter=./examples/*"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.5",

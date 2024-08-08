@@ -14,7 +14,7 @@ export default defineConfig({
     tsconfigPaths(),
   ],
   optimizeDeps: {
-    exclude: ["@evolu/common-web"],
+    exclude: ["@evolu/common-web", "@sqlite.org/sqlite-wasm"],
   },
   worker: { format: "es" },
 });
