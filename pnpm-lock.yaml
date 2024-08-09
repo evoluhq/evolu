@@ -42,7 +42,7 @@ importers:
     dependencies:
       '@effect/schema':
         specifier: ^0.70.0
-        version: 0.70.2(effect@3.6.1)
+        version: 0.70.3(effect@3.6.2)
       '@evolu/common':
         specifier: workspace:*
         version: link:../../packages/evolu-common
@@ -69,7 +69,7 @@ importers:
         version: 3.12.0
       effect:
         specifier: ^3.2.1
-        version: 3.6.1
+        version: 3.6.2
       events:
         specifier: ^3.3.0
         version: 3.3.0
@@ -179,7 +179,7 @@ importers:
     dependencies:
       '@effect/schema':
         specifier: ^0.70.0
-        version: 0.70.2(effect@3.6.1)
+        version: 0.70.3(effect@3.6.2)
       '@evolu/common':
         specifier: workspace:*
         version: link:../../packages/evolu-common
@@ -191,7 +191,7 @@ importers:
         version: 2.1.1
       effect:
         specifier: ^3.2.1
-        version: 3.6.1
+        version: 3.6.2
       next:
         specifier: ^14.2.3
         version: 14.2.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -248,8 +248,8 @@ importers:
   examples/nextjs:
     dependencies:
       '@evolu/react':
-        specifier: workspace:*
-        version: link:../../packages/evolu-react
+        specifier: latest
+        version: 8.2.0(@evolu/common-react@8.1.0(@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(react@18.3.1))(@evolu/common-web@8.2.0(@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@sqlite.org/sqlite-wasm@3.46.0-build2))(@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(react-dom@18.3.1(react@18.3.1))
       next:
         specifier: ^14.2.3
         version: 14.2.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -291,8 +291,8 @@ importers:
   examples/react-electron:
     dependencies:
       '@evolu/react':
-        specifier: workspace:*
-        version: link:../../packages/evolu-react
+        specifier: latest
+        version: 8.2.0(@evolu/common-react@8.1.0(@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(react@18.3.1))(@evolu/common-web@8.2.0(@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@sqlite.org/sqlite-wasm@3.46.0-build2))(@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(react-dom@18.3.1(react@18.3.1))
       '@types/react-dom':
         specifier: ~18.3.0
         version: 18.3.0
@@ -365,13 +365,13 @@ importers:
     dependencies:
       '@effect/schema':
         specifier: ^0.70.2
-        version: 0.70.2(effect@3.6.1)
+        version: 0.70.3(effect@3.6.2)
       '@evolu/react':
-        specifier: workspace:*
-        version: link:../../packages/evolu-react
+        specifier: latest
+        version: 8.2.0(@evolu/common-react@8.1.0(@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(react@18.3.1))(@evolu/common-web@8.2.0(@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@sqlite.org/sqlite-wasm@3.46.0-build2))(@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(react-dom@18.3.1(react@18.3.1))
       effect:
         specifier: ^3.6.1
-        version: 3.6.1
+        version: 3.6.2
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -414,13 +414,13 @@ importers:
     dependencies:
       '@effect/schema':
         specifier: ^0.70.2
-        version: 0.70.2(effect@3.6.1)
+        version: 0.70.3(effect@3.6.2)
       '@evolu/react':
-        specifier: workspace:*
-        version: link:../../packages/evolu-react
+        specifier: latest
+        version: 8.2.0(@evolu/common-react@8.1.0(@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(react@18.3.1))(@evolu/common-web@8.2.0(@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@sqlite.org/sqlite-wasm@3.46.0-build2))(@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(react-dom@18.3.1(react@18.3.1))
       effect:
         specifier: ^3.6.1
-        version: 3.6.1
+        version: 3.6.2
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -475,19 +475,19 @@ importers:
     dependencies:
       '@effect/schema':
         specifier: ^0.70.2
-        version: 0.70.2(effect@3.6.1)
+        version: 0.70.3(effect@3.6.2)
       '@evolu/common':
-        specifier: workspace:*
-        version: link:../../packages/evolu-common
+        specifier: latest
+        version: 5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2)
       '@evolu/common-web':
-        specifier: workspace:*
-        version: link:../../packages/evolu-common-web
+        specifier: latest
+        version: 8.2.0(@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@sqlite.org/sqlite-wasm@3.46.0-build2)
       '@evolu/react':
-        specifier: workspace:*
-        version: link:../../packages/evolu-react
+        specifier: latest
+        version: 8.2.0(@evolu/common-react@8.1.0(@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(react@18.3.1))(@evolu/common-web@8.2.0(@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@sqlite.org/sqlite-wasm@3.46.0-build2))(@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(react-dom@18.3.1(react@18.3.1))
       '@evolu/server':
-        specifier: workspace:*
-        version: link:../../packages/evolu-server
+        specifier: latest
+        version: 7.2.1(@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(express@4.19.2)
       '@remix-run/node':
         specifier: ^2.11.1
         version: 2.11.1(typescript@5.5.4)
@@ -499,7 +499,7 @@ importers:
         version: 2.11.1(typescript@5.5.4)
       effect:
         specifier: ^3.6.1
-        version: 3.6.1
+        version: 3.6.2
       isbot:
         specifier: ^5.1.14
         version: 5.1.14
@@ -560,7 +560,7 @@ importers:
         version: 5.4.0(@types/node@22.1.0)(terser@5.31.5)
       vite-tsconfig-paths:
         specifier: ^5.0.0
-        version: 5.0.0(typescript@5.5.4)(vite@5.4.0(@types/node@22.1.0)(terser@5.31.5))
+        version: 5.0.1(typescript@5.5.4)(vite@5.4.0(@types/node@22.1.0)(terser@5.31.5))
 
   packages/eslint-config-evolu:
     dependencies:
@@ -625,10 +625,10 @@ importers:
     devDependencies:
       '@effect/platform':
         specifier: ^0.61.0
-        version: 0.61.5(@effect/schema@0.70.2(effect@3.6.1))(effect@3.6.1)
+        version: 0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2)
       '@effect/schema':
         specifier: ^0.70.0
-        version: 0.70.2(effect@3.6.1)
+        version: 0.70.3(effect@3.6.2)
       '@evolu/tsconfig':
         specifier: workspace:*
         version: link:../evolu-tsconfig
@@ -643,7 +643,7 @@ importers:
         version: 3.0.0
       effect:
         specifier: ^3.2.1
-        version: 3.6.1
+        version: 3.6.2
       eslint:
         specifier: ^8.57.0
         version: 8.57.0
@@ -803,7 +803,7 @@ importers:
         version: 2.8.5
       effect:
         specifier: ^3.2.1
-        version: 3.6.1
+        version: 3.6.2
       express:
         specifier: ^4.19.2
         version: 4.19.2
@@ -1696,16 +1696,16 @@ packages:
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
     engines: {node: '>=12'}
 
-  '@effect/platform@0.61.5':
-    resolution: {integrity: sha512-76kyzyBFj8Lod3zXOHbuDL8ptFo3gjil4/6OWiIlm6izwcoB/IXetfvBnXCDiyjywuVZmSFwMfANiPEO0Q4hLA==}
+  '@effect/platform@0.61.6':
+    resolution: {integrity: sha512-B84alXSJSBah98JYbQMwBZxZC/3h6YMZhLsetRk+Wt2t4AiRoawRqtdqZ+M56zE/h1MfK057XL++3mKN4tjbuA==}
     peerDependencies:
-      '@effect/schema': ^0.70.2
-      effect: ^3.6.1
+      '@effect/schema': ^0.70.3
+      effect: ^3.6.2
 
-  '@effect/schema@0.70.2':
-    resolution: {integrity: sha512-uZcUtgnmmzqpMikFr4FBmVX0didYBp33UhpYZrIvlW5/fiENsnrGas3DOanqxXPgP6mnwx9q/kv6912Ix+NjSw==}
+  '@effect/schema@0.70.3':
+    resolution: {integrity: sha512-9JG3x3oTWUERrFgFDNvOHtITRRm+GuooYeckJkUnjylE++aGDQbWzaKlfvKBXfi+LEqrJsl7rCkxxr3akRMq1g==}
     peerDependencies:
-      effect: ^3.6.1
+      effect: ^3.6.2
 
   '@electron-forge/cli@7.4.0':
     resolution: {integrity: sha512-a+zZv3ja/IxkJzNyx4sOHSZv6DPV85S0PEVF6pcRjUpbDL5r+DxjRFsNc0Nq4UIWyFm1nw7RWoPdd9uDst4Tvg==}
@@ -2123,6 +2123,44 @@ packages:
   '@eslint/js@8.57.0':
     resolution: {integrity: sha512-Ys+3g2TaW7gADOJzPt83SJtCDhMjndcDMFVQ/Tj9iA1BfJzFKD9mAUXT3OenpuPHbI6P/myECxRJrofUsDx/5g==}
     engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
+
+  '@evolu/common-react@8.1.0':
+    resolution: {integrity: sha512-U+vg24FK8/dPRxOMBLjBjtV/0SLtm0Hlw6wUOjnIEiBA2ZrXI9lIehAhJYXCUGu8FV2O/i0J/fpg+f/d36r9/w==}
+    engines: {node: '>=18.16'}
+    peerDependencies:
+      '@evolu/common': ^5.4.0
+      react: ^18.2.0
+
+  '@evolu/common-web@8.2.0':
+    resolution: {integrity: sha512-/kzAwh/ipmSm94z2hZ3hpmYbGRpoqB3I+k9n9rAcLv3//COQKI3KH0w82euElUxOwsFBtWybpXMUPhvtZ9nXpg==}
+    engines: {node: '>=18.16'}
+    peerDependencies:
+      '@evolu/common': ^5.4.0
+      '@sqlite.org/sqlite-wasm': ^3.46.0-build1
+
+  '@evolu/common@5.4.1':
+    resolution: {integrity: sha512-Hludhbzl6WOsn1n0MvskudiXgw2U298mBUskYl6urhb2b8CVN/6U8SphMj0dXWaQRgXszEYNaB2zmmS+L0jnsg==}
+    engines: {node: '>=18.16'}
+    peerDependencies:
+      '@effect/platform': ^0.61.0
+      '@effect/schema': ^0.70.0
+      effect: ^3.1.2
+
+  '@evolu/react@8.2.0':
+    resolution: {integrity: sha512-7N5HIqtqpeA4qKQFZFGdB/2UFAv+az7MUVgHoQhmoIdoMM/HsiGVdZzu5SFS5LkMKEoKwZiScRt00r7H2LI1KA==}
+    engines: {node: '>=18.16'}
+    peerDependencies:
+      '@evolu/common': ^5.4.0
+      '@evolu/common-react': ^8.1.0
+      '@evolu/common-web': ^8.2.0
+      react-dom: ^18.2.0
+
+  '@evolu/server@7.2.1':
+    resolution: {integrity: sha512-gyv1bdgwj0NC8LJWtKLt1lr0DDV2VbxM2CPmcoCgG5Te2TpbV+u0I6PIZlH8IP/DiP9j8VIRfXcu0zhilv/pFw==}
+    engines: {node: '>=16.15'}
+    peerDependencies:
+      '@evolu/common': ^5.4.1
+      express: ^4.19.2
 
   '@expo/bunyan@4.0.1':
     resolution: {integrity: sha512-+Lla7nYSiHZirgK+U/uYzsLv/X+HaJienbD5AKX1UQZHYfWaP+9uuQluRB4GrEVWF0GZ7vEVp/jzaOT9k/SQlg==}
@@ -2946,14 +2984,14 @@ packages:
     resolution: {integrity: sha512-4BAffykYOgO+5nzBWYwE3W90sBgLJoUPRWWcL8wlyiM8IB8ipJz3UMJ9KXQd1RKQXpKp8Tutn80HZtWsu2u76w==}
     engines: {node: '>=10'}
 
-  '@tanstack/react-virtual@3.8.4':
-    resolution: {integrity: sha512-Dq0VQr3QlTS2qL35g360QaJWBt7tCn/0xw4uZ0dHXPLO1Ak4Z4nVX4vuj1Npg1b/jqNMDToRtR5OIxM2NXRBWg==}
+  '@tanstack/react-virtual@3.8.6':
+    resolution: {integrity: sha512-YcOQAxccjIqiC8cQ8QQiDU6F+JZtfpKNvYsw/ju5Q6S5/m9KDs5SaJvKz1kLj3RKNAOBMIFA9snN2MDmyT9lBQ==}
     peerDependencies:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0
       react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0
 
-  '@tanstack/virtual-core@3.8.4':
-    resolution: {integrity: sha512-iO5Ujgw3O1yIxWDe9FgUPNkGjyT657b1WNX52u+Wv1DyBFEpdCdGkuVaky0M3hHFqNWjAmHWTn4wgj9rTr7ZQg==}
+  '@tanstack/virtual-core@3.8.6':
+    resolution: {integrity: sha512-UJeU4SBrx3hqULNzJ3oC0kgJ5miIAg+FwomxMTlQNxob6ppTInifANHd9ukETvzdzxr6zt3CjQ0rttQpVjbt6Q==}
 
   '@theguild/remark-mermaid@0.0.5':
     resolution: {integrity: sha512-e+ZIyJkEv9jabI4m7q29wZtZv+2iwPGsXJ2d46Zi7e+QcFudiyuqhLhHG/3gX3ZEB+hxTch+fpItyMS8jwbIcw==}
@@ -4435,11 +4473,17 @@ packages:
   css-in-js-utils@3.1.0:
     resolution: {integrity: sha512-fJAcud6B3rRu+KHYk+Bwf+WFL2MDCJJ1XG9x137tJQ0xYxor7XziQtuGFbWNdqrvF4Tk26O3H73nfVqXt/fW1A==}
 
-  css-loader@6.8.1:
-    resolution: {integrity: sha512-xDAXtEVGlD0gJ07iclwWVkLoZOpEvAWaSyf6W18S2pOC//K8+qUDIx8IIT3D+HjnmkJPQeesOPv5aiUaJsCM2g==}
+  css-loader@6.11.0:
+    resolution: {integrity: sha512-CTJ+AEQJjq5NzLga5pE39qdiSV56F8ywCIsqNIRF0r7BDgWsN25aazToqAFg7ZrtA/U016xudB3ffgweORxX7g==}
     engines: {node: '>= 12.13.0'}
     peerDependencies:
+      '@rspack/core': 0.x || 1.x
       webpack: ^5.0.0
+    peerDependenciesMeta:
+      '@rspack/core':
+        optional: true
+      webpack:
+        optional: true
 
   css-loader@7.1.2:
     resolution: {integrity: sha512-6WvYYn7l/XEGN8Xu2vWFt9nVzrCn39vKyTEFf/ExEyoksJjjSZV/0/35XPlMbpnr6VGhZIUg5yJrL8tGfes/FA==}
@@ -4931,8 +4975,8 @@ packages:
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  effect@3.6.1:
-    resolution: {integrity: sha512-RdHsRMuEUKgkhs3z2d5XI5SDADX0THDx6GjP1oJAAAM/w+oT5/3BpKZyg/05VHy7YfOUdaQbcDzFO6YowkqsSQ==}
+  effect@3.6.2:
+    resolution: {integrity: sha512-7ug9kTf14PWs5AojEEmB1Ay3YTHCcIZq92K0nOhze1VUsqENxICf06M2z0wfVbHwIqJFOdomasfTysxdu+Xi9A==}
 
   ejs@3.1.10:
     resolution: {integrity: sha512-UeJmFfOrAQS8OJWPZ4qtgHyWExa088/MtK5UEyoJGFH67cDEXkZSviOiKRCZ4Xij0zxI3JECgYs3oKx+AizQBA==}
@@ -9505,8 +9549,8 @@ packages:
   structured-headers@0.4.1:
     resolution: {integrity: sha512-0MP/Cxx5SzeeZ10p/bZI0S6MpgD+yxAhi1BOQ34jgnMXsCq3j1t6tQnZu+KdlL7dvJTLT3g9xN8tl10TqgFMcg==}
 
-  style-loader@3.3.3:
-    resolution: {integrity: sha512-53BiGLXAcll9maCYtZi2RCQZKa8NQQai5C4horqKyRmHj9H7QmcUyucrH+4KW/gBQbXM2AsB0axoEcFZPlfPcw==}
+  style-loader@3.3.4:
+    resolution: {integrity: sha512-0WqXzrsMTyb8yjZJHDqwmnwRJvhALK9LfRtRc6B4UTWe8AijYLZYZ9thuJTZc2VfQWINADW/j+LiJnfy2RoC1w==}
     engines: {node: '>= 12.13.0'}
     peerDependencies:
       webpack: ^5.0.0
@@ -9986,8 +10030,8 @@ packages:
   undici-types@6.13.0:
     resolution: {integrity: sha512-xtFJHudx8S2DSoujjMd1WeWvn7KKWFRESZTMeL1RptAYERu29D6jphMjjY+vn96jvN3kVPDNxU/E13VTaXj6jg==}
 
-  undici@6.19.5:
-    resolution: {integrity: sha512-LryC15SWzqQsREHIOUybavaIHF5IoL0dJ9aWWxL/PgT1KfqAW5225FZpDUFlt9xiDMS2/S7DOKhFWA7RLksWdg==}
+  undici@6.19.6:
+    resolution: {integrity: sha512-KfINKY5js30ub8NAGQlUyxldk2NTvNkyKBnJtMpSVCk8fqrPpUDEvDkHV6t+lTHCv9NwbUcHU3Jnm2ohE01G+Q==}
     engines: {node: '>=18.17'}
 
   unicode-canonical-property-names-ecmascript@2.0.0:
@@ -10219,8 +10263,8 @@ packages:
       '@vite-pwa/assets-generator':
         optional: true
 
-  vite-tsconfig-paths@5.0.0:
-    resolution: {integrity: sha512-sCdKc6uC7ir102lW8deBiMnS0NGEs0100OJX8WZQmf3Uf7tJ/T3uQnzznq/tZWph7tkG+44JYOsKE7YTZjDn+Q==}
+  vite-tsconfig-paths@5.0.1:
+    resolution: {integrity: sha512-yqwv+LstU7NwPeNqajZzLEBVpUFU6Dugtb2P84FXuvaoYA+/70l9MHE+GYfYAycVyPSDYZ7mjOFuYBRqlEpTig==}
     peerDependencies:
       vite: '*'
     peerDependenciesMeta:
@@ -11830,16 +11874,16 @@ snapshots:
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
 
-  '@effect/platform@0.61.5(@effect/schema@0.70.2(effect@3.6.1))(effect@3.6.1)':
+  '@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2)':
     dependencies:
-      '@effect/schema': 0.70.2(effect@3.6.1)
-      effect: 3.6.1
+      '@effect/schema': 0.70.3(effect@3.6.2)
+      effect: 3.6.2
       find-my-way-ts: 0.1.5
       multipasta: 0.2.5
 
-  '@effect/schema@0.70.2(effect@3.6.1)':
+  '@effect/schema@0.70.3(effect@3.6.2)':
     dependencies:
-      effect: 3.6.1
+      effect: 3.6.2
       fast-check: 3.21.0
 
   '@electron-forge/cli@7.4.0(encoding@0.1.13)':
@@ -12373,6 +12417,50 @@ snapshots:
 
   '@eslint/js@8.57.0': {}
 
+  '@evolu/common-react@8.1.0(@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(react@18.3.1)':
+    dependencies:
+      '@evolu/common': 5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2)
+      react: 18.3.1
+
+  '@evolu/common-web@8.2.0(@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@sqlite.org/sqlite-wasm@3.46.0-build2)':
+    dependencies:
+      '@evolu/common': 5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2)
+      '@sqlite.org/sqlite-wasm': 3.46.0-build2
+
+  '@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2)':
+    dependencies:
+      '@effect/platform': 0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2)
+      '@effect/schema': 0.70.3(effect@3.6.2)
+      '@noble/ciphers': 0.6.0
+      '@noble/hashes': 1.4.0
+      '@protobuf-ts/runtime': 2.9.4
+      '@scure/bip39': 1.3.0
+      effect: 3.6.2
+      kysely: 0.27.4
+      nanoid: 5.0.7
+
+  '@evolu/react@8.2.0(@evolu/common-react@8.1.0(@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(react@18.3.1))(@evolu/common-web@8.2.0(@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@sqlite.org/sqlite-wasm@3.46.0-build2))(@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(react-dom@18.3.1(react@18.3.1))':
+    dependencies:
+      '@evolu/common': 5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2)
+      '@evolu/common-react': 8.1.0(@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(react@18.3.1)
+      '@evolu/common-web': 8.2.0(@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@sqlite.org/sqlite-wasm@3.46.0-build2)
+      react-dom: 18.3.1(react@18.3.1)
+
+  '@evolu/server@7.2.1(@evolu/common@5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(express@4.19.2)':
+    dependencies:
+      '@evolu/common': 5.4.1(@effect/platform@0.61.6(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2))(@effect/schema@0.70.3(effect@3.6.2))(effect@3.6.2)
+      better-sqlite3: 11.1.2
+      body-parser: 1.20.2
+      cors: 2.8.5
+      effect: 3.6.2
+      express: 4.19.2
+      kysely: 0.27.4
+      ws: 8.18.0
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+
   '@expo/bunyan@4.0.1':
     dependencies:
       uuid: 8.3.2
@@ -12687,7 +12775,7 @@ snapshots:
       chalk: 4.1.2
       clean-webpack-plugin: 4.0.0(webpack@5.93.0)
       copy-webpack-plugin: 10.2.4(webpack@5.93.0)
-      css-loader: 6.8.1(webpack@5.93.0)
+      css-loader: 6.11.0(webpack@5.93.0)
       css-minimizer-webpack-plugin: 3.4.1(webpack@5.93.0)
       expo: 51.0.26(@babel/core@7.25.2)(@babel/preset-env@7.25.3(@babel/core@7.25.2))(encoding@0.1.13)
       expo-pwa: 0.0.127(encoding@0.1.13)(expo@51.0.26(@babel/core@7.25.2)(@babel/preset-env@7.25.3(@babel/core@7.25.2))(encoding@0.1.13))
@@ -12701,7 +12789,7 @@ snapshots:
       node-html-parser: 5.4.2
       semver: 7.5.4
       source-map-loader: 3.0.2(webpack@5.93.0)
-      style-loader: 3.3.3(webpack@5.93.0)
+      style-loader: 3.3.4(webpack@5.93.0)
       terser-webpack-plugin: 5.3.10(webpack@5.93.0)
       webpack: 5.93.0
       webpack-dev-server: 4.15.2(debug@4.3.6)(webpack@5.93.0)
@@ -12750,7 +12838,7 @@ snapshots:
 
   '@headlessui/react@1.7.19(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
-      '@tanstack/react-virtual': 3.8.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@tanstack/react-virtual': 3.8.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       client-only: 0.0.1
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
@@ -13495,7 +13583,7 @@ snapshots:
       cookie-signature: 1.2.1
       source-map-support: 0.5.21
       stream-slice: 0.1.2
-      undici: 6.19.5
+      undici: 6.19.6
     optionalDependencies:
       typescript: 5.5.4
 
@@ -13735,13 +13823,13 @@ snapshots:
     dependencies:
       defer-to-connect: 2.0.1
 
-  '@tanstack/react-virtual@3.8.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+  '@tanstack/react-virtual@3.8.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
-      '@tanstack/virtual-core': 3.8.4
+      '@tanstack/virtual-core': 3.8.6
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
-  '@tanstack/virtual-core@3.8.4': {}
+  '@tanstack/virtual-core@3.8.6': {}
 
   '@theguild/remark-mermaid@0.0.5(react@18.3.1)':
     dependencies:
@@ -13795,12 +13883,12 @@ snapshots:
 
   '@types/better-sqlite3@7.6.11':
     dependencies:
-      '@types/node': 22.1.0
+      '@types/node': 20.14.14
 
   '@types/body-parser@1.19.5':
     dependencies:
       '@types/connect': 3.4.38
-      '@types/node': 22.1.0
+      '@types/node': 20.14.14
 
   '@types/bonjour@3.5.13':
     dependencies:
@@ -13820,13 +13908,13 @@ snapshots:
 
   '@types/connect@3.4.38':
     dependencies:
-      '@types/node': 22.1.0
+      '@types/node': 20.14.14
 
   '@types/cookie@0.6.0': {}
 
   '@types/cors@2.8.17':
     dependencies:
-      '@types/node': 22.1.0
+      '@types/node': 20.14.14
 
   '@types/d3-scale-chromatic@3.0.3': {}
 
@@ -13860,7 +13948,7 @@ snapshots:
 
   '@types/express-serve-static-core@4.19.5':
     dependencies:
-      '@types/node': 22.1.0
+      '@types/node': 20.14.14
       '@types/qs': 6.9.15
       '@types/range-parser': 1.2.7
       '@types/send': 0.17.4
@@ -13997,7 +14085,7 @@ snapshots:
   '@types/send@0.17.4':
     dependencies:
       '@types/mime': 1.3.5
-      '@types/node': 22.1.0
+      '@types/node': 20.14.14
 
   '@types/serve-index@1.9.4':
     dependencies:
@@ -14006,7 +14094,7 @@ snapshots:
   '@types/serve-static@1.15.7':
     dependencies:
       '@types/http-errors': 2.0.4
-      '@types/node': 22.1.0
+      '@types/node': 20.14.14
       '@types/send': 0.17.4
 
   '@types/sockjs@0.3.36':
@@ -14025,7 +14113,7 @@ snapshots:
 
   '@types/ws@8.5.12':
     dependencies:
-      '@types/node': 22.1.0
+      '@types/node': 20.14.14
 
   '@types/yargs-parser@21.0.3': {}
 
@@ -14039,7 +14127,7 @@ snapshots:
 
   '@types/yauzl@2.10.3':
     dependencies:
-      '@types/node': 22.1.0
+      '@types/node': 20.14.14
     optional: true
 
   '@typescript-eslint/eslint-plugin@7.18.0(@typescript-eslint/parser@7.18.0(eslint@8.57.0)(typescript@5.5.4))(eslint@8.57.0)(typescript@5.5.4)':
@@ -15531,7 +15619,7 @@ snapshots:
     dependencies:
       hyphenate-style-name: 1.1.0
 
-  css-loader@6.8.1(webpack@5.93.0):
+  css-loader@6.11.0(webpack@5.93.0):
     dependencies:
       icss-utils: 5.1.0(postcss@8.4.41)
       postcss: 8.4.41
@@ -15540,7 +15628,8 @@ snapshots:
       postcss-modules-scope: 3.2.0(postcss@8.4.41)
       postcss-modules-values: 4.0.0(postcss@8.4.41)
       postcss-value-parser: 4.2.0
-      semver: 7.6.3
+      semver: 7.5.4
+    optionalDependencies:
       webpack: 5.93.0
 
   css-loader@7.1.2(webpack@5.93.0):
@@ -16074,7 +16163,7 @@ snapshots:
 
   ee-first@1.1.1: {}
 
-  effect@3.6.1: {}
+  effect@3.6.2: {}
 
   ejs@3.1.10:
     dependencies:
@@ -21985,7 +22074,7 @@ snapshots:
 
   structured-headers@0.4.1: {}
 
-  style-loader@3.3.3(webpack@5.93.0):
+  style-loader@3.3.4(webpack@5.93.0):
     dependencies:
       webpack: 5.93.0
 
@@ -22541,7 +22630,7 @@ snapshots:
 
   undici-types@6.13.0: {}
 
-  undici@6.19.5: {}
+  undici@6.19.6: {}
 
   unicode-canonical-property-names-ecmascript@2.0.0: {}
 
@@ -22851,7 +22940,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  vite-tsconfig-paths@5.0.0(typescript@5.5.4)(vite@5.4.0(@types/node@22.1.0)(terser@5.31.5)):
+  vite-tsconfig-paths@5.0.1(typescript@5.5.4)(vite@5.4.0(@types/node@22.1.0)(terser@5.31.5)):
     dependencies:
       debug: 4.3.6
       globrex: 0.1.2

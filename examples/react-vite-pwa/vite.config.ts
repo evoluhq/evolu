@@ -5,7 +5,7 @@ import { VitePWA } from "vite-plugin-pwa";
 // https://vitejs.dev/config/
 export default defineConfig({
   optimizeDeps: {
-    exclude: ["@evolu/common-web", "@sqlite.org/sqlite-wasm"],
+    exclude: ["@evolu/react", "@sqlite.org/sqlite-wasm"],
     include: ["react-dom"],
   },
   worker: {
