@@ -1,5 +1,6 @@
 {
 	"name": "@example/react-electron",
+	"private": true,
 	"productName": "react-electron-app",
 	"version": "0.1.0",
 	"description": "My Electron application description",
