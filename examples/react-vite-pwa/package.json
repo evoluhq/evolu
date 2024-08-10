@@ -1,5 +1,5 @@
 {
-  "name": "vite-react-pwa",
+  "name": "@example/react-vite-pwa",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,26 +10,26 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@effect/schema": "^0.70.0",
-    "@evolu/react": "^8.0.2",
-    "effect": "^3.2.7",
+    "@effect/schema": "^0.70.2",
+    "@evolu/react": "latest",
+    "effect": "^3.6.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "workbox-window": "^7.1.0"
   },
   "devDependencies": {
-    "@types/react": "^18.3.1",
+    "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
-    "@typescript-eslint/eslint-plugin": "^7.8.0",
-    "@typescript-eslint/parser": "^7.8.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.1",
+    "@typescript-eslint/parser": "^8.0.1",
     "@vite-pwa/assets-generator": "^0.2.4",
-    "@vitejs/plugin-react": "^4.2.1",
-    "eslint": "^8.57.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "eslint": "8.57.0",
     "eslint-plugin-react-hooks": "^4.6.2",
-    "eslint-plugin-react-refresh": "^0.4.6",
-    "typescript": "^5.2.2",
-    "vite": "^5.2.10",
-    "vite-plugin-pwa": "^0.20.0",
+    "eslint-plugin-react-refresh": "^0.4.9",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.0",
+    "vite-plugin-pwa": "^0.20.1",
     "workbox-core": "^7.1.0"
   },
   "resolutions": {
