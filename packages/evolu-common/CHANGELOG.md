@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 5.4.2
+
+### Patch Changes
+
+- fbc692d: Update peer dependencies
+
 ## 5.4.1
 
 ### Patch Changes
