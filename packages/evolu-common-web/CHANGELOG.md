@@ -1,5 +1,11 @@
 # @evolu/common-web
 
+## 8.2.1
+
+### Patch Changes
+
+- 6d476fe: Update SQLite WASM dependency
+
 ## 8.2.0
 
 ### Minor Changes
