@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 5.4.3
+
+### Patch Changes
+
+- 81524ef: Update Effect Schema and Platform
+
 ## 5.4.2
 
 ### Patch Changes
