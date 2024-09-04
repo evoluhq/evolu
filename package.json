@@ -29,7 +29,7 @@
     "turbo": "^2.0.4",
     "typedoc": "^0.26.0"
   },
-  "packageManager": "pnpm@9.8.0",
+  "packageManager": "pnpm@9.9.0",
   "pnpm": {
     "peerDependencyRules": {
       "ignoreMissing": [
@@ -42,7 +42,7 @@
       "flexsearch": "0.7.31"
     },
     "patchedDependencies": {
-      "@changesets/assemble-release-plan@6.0.3": "patches/@changesets__assemble-release-plan@6.0.3.patch"
+      "@changesets/assemble-release-plan@6.0.4": "patches/@changesets__assemble-release-plan@6.0.4.patch"
     }
   }
 }
