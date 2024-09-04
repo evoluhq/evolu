@@ -249,7 +249,7 @@ importers:
     dependencies:
       '@evolu/react':
         specifier: latest
-        version: 8.2.0(@evolu/common-react@8.1.0(@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react@18.3.1))(@evolu/common-web@8.2.1(@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@sqlite.org/sqlite-wasm@3.46.1-build3))(@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react-dom@18.3.1(react@18.3.1))
+        version: 8.2.0(@evolu/common-react@8.1.0(@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react@18.3.1))(@evolu/common-web@8.2.1(@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@sqlite.org/sqlite-wasm@3.46.1-build3))(@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react-dom@18.3.1(react@18.3.1))
       next:
         specifier: ^14.2.3
         version: 14.2.7(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -292,7 +292,7 @@ importers:
     dependencies:
       '@evolu/react':
         specifier: latest
-        version: 8.2.0(@evolu/common-react@8.1.0(@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react@18.3.1))(@evolu/common-web@8.2.1(@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@sqlite.org/sqlite-wasm@3.46.1-build3))(@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react-dom@18.3.1(react@18.3.1))
+        version: 8.2.0(@evolu/common-react@8.1.0(@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react@18.3.1))(@evolu/common-web@8.2.1(@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@sqlite.org/sqlite-wasm@3.46.1-build3))(@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react-dom@18.3.1(react@18.3.1))
       '@types/react-dom':
         specifier: ~18.3.0
         version: 18.3.0
@@ -368,7 +368,7 @@ importers:
         version: 0.72.2(effect@3.7.2)
       '@evolu/react':
         specifier: latest
-        version: 8.2.0(@evolu/common-react@8.1.0(@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react@18.3.1))(@evolu/common-web@8.2.1(@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@sqlite.org/sqlite-wasm@3.46.1-build3))(@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react-dom@18.3.1(react@18.3.1))
+        version: 8.2.0(@evolu/common-react@8.1.0(@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react@18.3.1))(@evolu/common-web@8.2.1(@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@sqlite.org/sqlite-wasm@3.46.1-build3))(@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react-dom@18.3.1(react@18.3.1))
       effect:
         specifier: ^3.6.1
         version: 3.7.2
@@ -417,7 +417,7 @@ importers:
         version: 0.72.2(effect@3.7.2)
       '@evolu/react':
         specifier: latest
-        version: 8.2.0(@evolu/common-react@8.1.0(@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react@18.3.1))(@evolu/common-web@8.2.1(@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@sqlite.org/sqlite-wasm@3.46.1-build3))(@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react-dom@18.3.1(react@18.3.1))
+        version: 8.2.0(@evolu/common-react@8.1.0(@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react@18.3.1))(@evolu/common-web@8.2.1(@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@sqlite.org/sqlite-wasm@3.46.1-build3))(@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react-dom@18.3.1(react@18.3.1))
       effect:
         specifier: ^3.6.1
         version: 3.7.2
@@ -478,16 +478,16 @@ importers:
         version: 0.72.2(effect@3.7.2)
       '@evolu/common':
         specifier: latest
-        version: 5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2)
+        version: 5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2)
       '@evolu/common-web':
         specifier: latest
-        version: 8.2.1(@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@sqlite.org/sqlite-wasm@3.46.1-build3)
+        version: 8.2.1(@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@sqlite.org/sqlite-wasm@3.46.1-build3)
       '@evolu/react':
         specifier: latest
-        version: 8.2.0(@evolu/common-react@8.1.0(@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react@18.3.1))(@evolu/common-web@8.2.1(@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@sqlite.org/sqlite-wasm@3.46.1-build3))(@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react-dom@18.3.1(react@18.3.1))
+        version: 8.2.0(@evolu/common-react@8.1.0(@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react@18.3.1))(@evolu/common-web@8.2.1(@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@sqlite.org/sqlite-wasm@3.46.1-build3))(@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react-dom@18.3.1(react@18.3.1))
       '@evolu/server':
         specifier: latest
-        version: 7.2.2(@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(express@4.19.2)
+        version: 7.2.3(@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(express@4.19.2)
       '@remix-run/node':
         specifier: ^2.11.1
         version: 2.11.2(typescript@5.5.4)
@@ -2138,12 +2138,12 @@ packages:
       '@evolu/common': ^5.4.2
       '@sqlite.org/sqlite-wasm': ^3.46.1-build1
 
-  '@evolu/common@5.4.2':
-    resolution: {integrity: sha512-A82KFs2AL3PcvCsdtOwUUNSwtdoCql/HbM9wzq07ZuksSr5rSE0fldwfcaLsoZ30nSXUbKjGW7Eek8ipv7hJ/A==}
+  '@evolu/common@5.4.3':
+    resolution: {integrity: sha512-72BMfwGzE/6z0yzoYvhGURkFz5oo4fjLVegnW01D4c37triOklOxDEuAx2RMVTBiDV/BQIbAlYjoYPeu3ecIwg==}
     engines: {node: '>=18.16'}
     peerDependencies:
-      '@effect/platform': ^0.62.0
-      '@effect/schema': ^0.71.0
+      '@effect/platform': ^0.63.0
+      '@effect/schema': ^0.72.0
       effect: ^3.1.2
 
   '@evolu/react@8.2.0':
@@ -2155,11 +2155,11 @@ packages:
       '@evolu/common-web': ^8.2.0
       react-dom: ^18.2.0
 
-  '@evolu/server@7.2.2':
-    resolution: {integrity: sha512-dh+o+XqOm/ClIhc6HXJszVe/jE7CvJB8xJ/ohCQu1L9icYw4cXna2mToJ6M5tgKcd3biLLV5San4t2lFoSLAiA==}
+  '@evolu/server@7.2.3':
+    resolution: {integrity: sha512-L9H8aOGlsZxm6VY5bD2BITZBF3nsNH1//2ILPWv/E0XoXUYqgCmrxi4Hjm5unld0Cy5g4JOz8CQvp6RmYIAbvg==}
     engines: {node: '>=16.15'}
     peerDependencies:
-      '@evolu/common': ^5.4.2
+      '@evolu/common': ^5.4.3
       express: ^4.19.2
 
   '@expo/bunyan@4.0.1':
@@ -12410,17 +12410,17 @@ snapshots:
 
   '@eslint/js@8.57.0': {}
 
-  '@evolu/common-react@8.1.0(@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react@18.3.1)':
+  '@evolu/common-react@8.1.0(@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react@18.3.1)':
     dependencies:
-      '@evolu/common': 5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2)
+      '@evolu/common': 5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2)
       react: 18.3.1
 
-  '@evolu/common-web@8.2.1(@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@sqlite.org/sqlite-wasm@3.46.1-build3)':
+  '@evolu/common-web@8.2.1(@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@sqlite.org/sqlite-wasm@3.46.1-build3)':
     dependencies:
-      '@evolu/common': 5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2)
+      '@evolu/common': 5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2)
       '@sqlite.org/sqlite-wasm': 3.46.1-build3
 
-  '@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2)':
+  '@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2)':
     dependencies:
       '@effect/platform': 0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2)
       '@effect/schema': 0.72.2(effect@3.7.2)
@@ -12432,16 +12432,16 @@ snapshots:
       kysely: 0.27.4
       nanoid: 5.0.7
 
-  '@evolu/react@8.2.0(@evolu/common-react@8.1.0(@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react@18.3.1))(@evolu/common-web@8.2.1(@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@sqlite.org/sqlite-wasm@3.46.1-build3))(@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react-dom@18.3.1(react@18.3.1))':
+  '@evolu/react@8.2.0(@evolu/common-react@8.1.0(@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react@18.3.1))(@evolu/common-web@8.2.1(@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@sqlite.org/sqlite-wasm@3.46.1-build3))(@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react-dom@18.3.1(react@18.3.1))':
     dependencies:
-      '@evolu/common': 5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2)
-      '@evolu/common-react': 8.1.0(@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react@18.3.1)
-      '@evolu/common-web': 8.2.1(@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@sqlite.org/sqlite-wasm@3.46.1-build3)
+      '@evolu/common': 5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2)
+      '@evolu/common-react': 8.1.0(@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(react@18.3.1)
+      '@evolu/common-web': 8.2.1(@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@sqlite.org/sqlite-wasm@3.46.1-build3)
       react-dom: 18.3.1(react@18.3.1)
 
-  '@evolu/server@7.2.2(@evolu/common@5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(express@4.19.2)':
+  '@evolu/server@7.2.3(@evolu/common@5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(express@4.19.2)':
     dependencies:
-      '@evolu/common': 5.4.2(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2)
+      '@evolu/common': 5.4.3(@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2))(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2)
       better-sqlite3: 11.2.1
       body-parser: 1.20.2
       cors: 2.8.5
