@@ -649,6 +649,37 @@ export const createEvoluEffect = (
       );
     };
 
+    const handlePatches =
+      (options?: {
+        /**
+         * The flushSync is for onComplete handlers only. For example, with
+         * React, when we want to focus on a node created by a mutation, we must
+         * ensure all DOM changes are flushed synchronously.
+         */
+        readonly flushSync: boolean;
+      }) =>
+      (patches: ReadonlyArray<QueryPatches>) =>
+        Effect.logDebug(["Evolu handlePatches", { patches }]).pipe(
+          Effect.zipRight(rowsStoreStateFromPatches(patches)),
+          Effect.tap((nextState) =>
+            Effect.forEach(patches, ({ query }) =>
+              resolveLoadingPromises(
+                query,
+                nextState.get(query) || emptyRows(),
+              ),
+            ),
+          ),
+          Effect.tap((nextState) => {
+            if (options?.flushSync) {
+              flushSync(() => {
+                rowsStore.setState(nextState).pipe(runSync);
+              });
+            } else {
+              rowsStore.setState(nextState).pipe(runSync);
+            }
+          }),
+        );
+
     const handleDbReceive = () => {
       Effect.gen(function* () {
         yield* Effect.logTrace("Evolu handleDbReceive");
@@ -697,37 +728,6 @@ export const createEvoluEffect = (
       onRequestSync: sync({ refreshQueries: true }),
       reloadUrl: config.reloadUrl,
     });
-
-    const handlePatches =
-      (options?: {
-        /**
-         * The flushSync is for onComplete handlers only. For example, with
-         * React, when we want to focus on a node created by a mutation, we must
-         * ensure all DOM changes are flushed synchronously.
-         */
-        readonly flushSync: boolean;
-      }) =>
-      (patches: ReadonlyArray<QueryPatches>) =>
-        Effect.logDebug(["Evolu handlePatches", { patches }]).pipe(
-          Effect.zipRight(rowsStoreStateFromPatches(patches)),
-          Effect.tap((nextState) =>
-            Effect.forEach(patches, ({ query }) =>
-              resolveLoadingPromises(
-                query,
-                nextState.get(query) || emptyRows(),
-              ),
-            ),
-          ),
-          Effect.tap((nextState) => {
-            if (options?.flushSync) {
-              flushSync(() => {
-                rowsStore.setState(nextState).pipe(runSync);
-              });
-            } else {
-              rowsStore.setState(nextState).pipe(runSync);
-            }
-          }),
-        );
 
     const rowsStoreStateFromPatches = (patches: ReadonlyArray<QueryPatches>) =>
       Effect.sync((): QueryRowsMap => {
