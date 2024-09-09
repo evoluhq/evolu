@@ -521,7 +521,7 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
           };
           let evolu = instances.get(name);
           if (evolu == null) {
-            evolu = createEvolu(
+            evolu = createEvoluEffect(
               dbSchema,
               runtime,
               initialData as EvoluConfig["initialData"],
@@ -596,12 +596,12 @@ const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
   return out as any;
 };
 
-const createEvolu = (
+export const createEvoluEffect = (
   schema: DbSchema,
   runtime: ManagedRuntime.ManagedRuntime<Config, never>,
   initialData: EvoluConfig["initialData"],
   mnemonic: Mnemonic | undefined,
-) =>
+): Effect.Effect<Evolu<EvoluSchema>, never, Config | DbFactory | AppState | NanoIdGenerator | FlushSync> =>
   Effect.gen(function* () {
     yield* Effect.logTrace("EvoluFactory createEvolu");
     const config = yield* Config;
