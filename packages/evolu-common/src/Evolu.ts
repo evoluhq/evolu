@@ -569,7 +569,7 @@ export interface EvoluConfig<T extends EvoluSchema = EvoluSchema>
   mnemonic: Mnemonic;
 }
 
-const schemaToTables = (schema: S.Schema<any>) =>
+export const schemaToTables = (schema: S.Schema<any>): Table[] =>
   pipe(
     getPropertySignatures(schema),
     Record.toEntries,
@@ -599,8 +599,8 @@ const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
 export const createEvoluEffect = (
   schema: DbSchema,
   runtime: ManagedRuntime.ManagedRuntime<Config, never>,
-  initialData: EvoluConfig["initialData"],
-  mnemonic: Mnemonic | undefined,
+  initialData?: EvoluConfig["initialData"],
+  mnemonic?: Mnemonic,
 ): Effect.Effect<Evolu<EvoluSchema>, never, Config | DbFactory | AppState | NanoIdGenerator | FlushSync> =>
   Effect.gen(function* () {
     yield* Effect.logTrace("EvoluFactory createEvolu");

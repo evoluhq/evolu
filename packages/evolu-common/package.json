@@ -48,6 +48,7 @@
     "build": "rm -rf dist ./README.md && tsc && cp ../../README.md ./",
     "lint": "eslint src --ext .ts,.tsx",
     "test": "vitest run",
+    "test:watch": "vitest",
     "clean": "rm -rf .turbo node_modules dist",
     "format": "prettier --write \"src/*.{ts,tsx,md}\"",
     "protobuf": "pnpm protoc --ts_out ./src --proto_path protobuf protobuf/Protobuf.proto --ts_opt eslint_disable --ts_opt optimize_code_size && pnpm format"
