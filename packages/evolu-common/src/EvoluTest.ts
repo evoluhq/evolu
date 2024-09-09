@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect";
+import { Context, Effect, Layer } from "effect";
 import { createRuntime } from "./Config.js";
 import { createDb, DbFactory, DbSchema } from "./Db.js";
 import {
@@ -17,8 +17,8 @@ import { customAlphabet, nanoid } from "nanoid";
 import { Schema } from "@effect/schema";
 import Database from "better-sqlite3";
 
-const sqliteFromDatabase = (db: Database.Database) => Effect.sync(() => {
-  return Sqlite.of({
+const sqliteFromDatabase = (db: Database.Database) =>
+  Sqlite.of({
     exec: (query) =>
       Effect.sync(() => {
         // Use a prepared statement to tell if the query returns data or not.
@@ -36,29 +36,17 @@ const sqliteFromDatabase = (db: Database.Database) => Effect.sync(() => {
 
     export: () => Effect.succeed(new Uint8Array()),
   });
-})
 
 export const SqliteTest = Layer.effect(
   Sqlite,
-  Effect.gen(function*() {
+  Effect.sync(() => {
     const db = new Database(":memory:");
 
-    const sqlite = yield* sqliteFromDatabase(db);
-
-    return sqlite
+    return sqliteFromDatabase(db);
   })
 );
 
-
-const SqliteFactoryTest = Layer.effect(
-  SqliteFactory,
-  Effect.gen(function* () {
-    const hi = yield* Sqlite;
-    return {
-      createSqlite: Effect.succeed(hi),
-    };
-  }).pipe(Effect.provide(SqliteTest)),
-);
+const SqliteFactoryTest = Layer.map(SqliteTest, (layer) => Context.add(layer, SqliteFactory, SqliteFactory.of({ createSqlite: Effect.succeed(Context.get(layer, Sqlite)) })))
 
 /**
  * Creates a DbFactory effect that wraps the createDb function.
@@ -84,11 +72,11 @@ const createSyncTest = Effect.succeed(
   }),
 );
 
-const SyncFactoryTest = Layer.effect(
+const SyncFactoryTest = Layer.succeed(
   SyncFactory,
-  createSyncTest.pipe(
-    Effect.map((sync) => SyncFactory.of({ createSync: Effect.succeed(sync) })),
-  ),
+  SyncFactory.of({
+    createSync: createSyncTest,
+  }),
 );
 
 const AppStateTest = Layer.succeed(
