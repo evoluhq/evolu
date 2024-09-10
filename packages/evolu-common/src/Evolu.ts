@@ -521,7 +521,7 @@ export class EvoluFactory extends Context.Tag("EvoluFactory")<
           };
           let evolu = instances.get(name);
           if (evolu == null) {
-            evolu = createEvolu(
+            evolu = createEvoluEffect(
               dbSchema,
               runtime,
               initialData as EvoluConfig["initialData"],
@@ -569,7 +569,7 @@ export interface EvoluConfig<T extends EvoluSchema = EvoluSchema>
   mnemonic: Mnemonic;
 }
 
-const schemaToTables = (schema: S.Schema<any>) =>
+export const schemaToTables = (schema: S.Schema<any>): Table[] =>
   pipe(
     getPropertySignatures(schema),
     Record.toEntries,
@@ -596,12 +596,16 @@ const getPropertySignatures = <I extends { [K in keyof A]: any }, A>(
   return out as any;
 };
 
-const createEvolu = (
+export const createEvoluEffect = (
   schema: DbSchema,
   runtime: ManagedRuntime.ManagedRuntime<Config, never>,
-  initialData: EvoluConfig["initialData"],
-  mnemonic: Mnemonic | undefined,
-) =>
+  initialData?: EvoluConfig["initialData"],
+  mnemonic?: Mnemonic,
+): Effect.Effect<
+  Evolu<EvoluSchema>,
+  never,
+  Config | DbFactory | AppState | NanoIdGenerator | FlushSync
+> =>
   Effect.gen(function* () {
     yield* Effect.logTrace("EvoluFactory createEvolu");
     const config = yield* Config;
@@ -648,6 +652,37 @@ const createEvolu = (
         runFork,
       );
     };
+
+    const handlePatches =
+      (options?: {
+        /**
+         * The flushSync is for onComplete handlers only. For example, with
+         * React, when we want to focus on a node created by a mutation, we must
+         * ensure all DOM changes are flushed synchronously.
+         */
+        readonly flushSync: boolean;
+      }) =>
+      (patches: ReadonlyArray<QueryPatches>) =>
+        Effect.logDebug(["Evolu handlePatches", { patches }]).pipe(
+          Effect.zipRight(rowsStoreStateFromPatches(patches)),
+          Effect.tap((nextState) =>
+            Effect.forEach(patches, ({ query }) =>
+              resolveLoadingPromises(
+                query,
+                nextState.get(query) || emptyRows(),
+              ),
+            ),
+          ),
+          Effect.tap((nextState) => {
+            if (options?.flushSync) {
+              flushSync(() => {
+                rowsStore.setState(nextState).pipe(runSync);
+              });
+            } else {
+              rowsStore.setState(nextState).pipe(runSync);
+            }
+          }),
+        );
 
     const handleDbReceive = () => {
       Effect.gen(function* () {
@@ -697,37 +732,6 @@ const createEvolu = (
       onRequestSync: sync({ refreshQueries: true }),
       reloadUrl: config.reloadUrl,
     });
-
-    const handlePatches =
-      (options?: {
-        /**
-         * The flushSync is for onComplete handlers only. For example, with
-         * React, when we want to focus on a node created by a mutation, we must
-         * ensure all DOM changes are flushed synchronously.
-         */
-        readonly flushSync: boolean;
-      }) =>
-      (patches: ReadonlyArray<QueryPatches>) =>
-        Effect.logDebug(["Evolu handlePatches", { patches }]).pipe(
-          Effect.zipRight(rowsStoreStateFromPatches(patches)),
-          Effect.tap((nextState) =>
-            Effect.forEach(patches, ({ query }) =>
-              resolveLoadingPromises(
-                query,
-                nextState.get(query) || emptyRows(),
-              ),
-            ),
-          ),
-          Effect.tap((nextState) => {
-            if (options?.flushSync) {
-              flushSync(() => {
-                rowsStore.setState(nextState).pipe(runSync);
-              });
-            } else {
-              rowsStore.setState(nextState).pipe(runSync);
-            }
-          }),
-        );
 
     const rowsStoreStateFromPatches = (patches: ReadonlyArray<QueryPatches>) =>
       Effect.sync((): QueryRowsMap => {
