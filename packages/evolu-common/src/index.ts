@@ -13,4 +13,4 @@ export * from "./Protobuf.js";
 export * from "./Sqlite.js";
 export * from "./Store.js";
 export * from "./Sync.js";
-export * from "./EvoluTest.js";
+export * from "./TestEvolu.js";

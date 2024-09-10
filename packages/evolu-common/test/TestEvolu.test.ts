@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { createTestEvolu } from "../src/EvoluTest.js";
+import { createTestEvolu } from "../src/TestEvolu.js";
 import { cast, database, id, NonEmptyString1000, table } from "../src/Model.js";
 import { Schema } from "@effect/schema";
 import { Effect } from "effect";
