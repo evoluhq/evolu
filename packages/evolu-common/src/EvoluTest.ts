@@ -107,7 +107,7 @@ const DependenciesLayer = Layer.mergeAll(
   AppStateTest,
 );
 
-interface TestEvolu<T extends EvoluSchema> extends Evolu<T> {
+export interface TestEvolu<T extends EvoluSchema> extends Evolu<T> {
   fork: () => Promise<TestEvolu<T>>;
 }
 

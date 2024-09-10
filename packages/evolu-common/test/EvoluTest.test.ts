@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { createTestEvolu } from "../src/EvoluTest.js";
 import { cast, database, id, NonEmptyString1000, table } from "../src/Model.js";
 import { Schema } from "@effect/schema";
@@ -107,6 +107,25 @@ describe("createTestEvolu", () => {
       );
       const forkQueryResult = await fork.loadQuery(forkQuery);
       expect(forkQueryResult.rows).toHaveLength(3);
+    });
+
+    it("does not modify the fork if the parent is mutated", async () => {
+      const parent = createTestEvolu(db, {});
+      const fork = await parent.fork();
+
+      await createTodoAsync("New Todo", parent);
+
+      const forkQuery = fork.createQuery((db) =>
+        db.selectFrom("todo").selectAll(),
+      );
+      const forkQueryResult = await fork.loadQuery(forkQuery);
+      expect(forkQueryResult.rows).toHaveLength(0);
+
+      const parentQuery = parent.createQuery((db) =>
+        db.selectFrom("todo").selectAll(),
+      );
+      const parentQueryResult = await parent.loadQuery(parentQuery);
+      expect(parentQueryResult.rows).toHaveLength(1);
     });
 
     describe("multiple forks", () => {
