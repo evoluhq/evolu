@@ -1,48 +1,48 @@
 {
-	"name": "@example/react-electron",
-	"private": true,
-	"productName": "react-electron-app",
-	"version": "0.1.0",
-	"description": "My Electron application description",
-	"main": ".webpack/main",
-	"scripts": {
-		"start": "electron-forge start",
-		"package": "electron-forge package",
-		"make": "electron-forge make",
-		"publish": "electron-forge publish",
-		"lint": "eslint --ext .ts,.tsx ."
-	},
-	"keywords": [],
-	"author": {
-		"name": "Daniel Steigerwald",
-		"email": "daniel@steigerwald.cz"
-	},
-	"license": "MIT",
-	"devDependencies": {
-		"@electron-forge/cli": "7.4.0",
-		"@electron-forge/maker-deb": "7.4.0",
-		"@electron-forge/maker-rpm": "7.4.0",
-		"@electron-forge/maker-squirrel": "7.4.0",
-		"@electron-forge/maker-zip": "7.4.0",
-		"@electron-forge/plugin-auto-unpack-natives": "7.4.0",
-		"@electron-forge/plugin-webpack": "7.4.0",
-		"@vercel/webpack-asset-relocator-loader": "1.7.4",
-		"css-loader": "7.1.2",
-		"electron": "31.3.1",
-		"eslint": "8.57.0",
-		"eslint-plugin-import": "^2.29.1",
-		"fork-ts-checker-webpack-plugin": "9.0.2",
-		"node-loader": "2.0.0",
-		"style-loader": "4.0.0",
-		"ts-loader": "9.5.1",
-		"ts-node": "10.9.2",
-		"typescript": "5.5.4"
-	},
-	"dependencies": {
-		"@evolu/react": "latest",
-		"@types/react-dom": "~18.3.0",
-		"electron-squirrel-startup": "1.0.1",
-		"react": "18.3.1",
-		"react-dom": "18.3.1"
-	}
+  "name": "@example/react-electron",
+  "private": true,
+  "productName": "react-electron-app",
+  "version": "0.1.0",
+  "description": "My Electron application description",
+  "main": ".webpack/main",
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "publish": "electron-forge publish",
+    "lint": "eslint --ext .ts,.tsx ."
+  },
+  "keywords": [],
+  "author": {
+    "name": "Daniel Steigerwald",
+    "email": "daniel@steigerwald.cz"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@electron-forge/cli": "7.4.0",
+    "@electron-forge/maker-deb": "7.4.0",
+    "@electron-forge/maker-rpm": "7.4.0",
+    "@electron-forge/maker-squirrel": "7.4.0",
+    "@electron-forge/maker-zip": "7.4.0",
+    "@electron-forge/plugin-auto-unpack-natives": "7.4.0",
+    "@electron-forge/plugin-webpack": "7.4.0",
+    "@vercel/webpack-asset-relocator-loader": "1.7.4",
+    "css-loader": "7.1.2",
+    "electron": "31.3.1",
+    "eslint": "8.57.0",
+    "eslint-plugin-import": "^2.29.1",
+    "fork-ts-checker-webpack-plugin": "9.0.2",
+    "node-loader": "2.0.0",
+    "style-loader": "4.0.0",
+    "ts-loader": "9.5.1",
+    "ts-node": "10.9.2",
+    "typescript": "^5.5.4"
+  },
+  "dependencies": {
+    "@evolu/react": "latest",
+    "@types/react-dom": "~18.3.0",
+    "electron-squirrel-startup": "1.0.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  }
 }

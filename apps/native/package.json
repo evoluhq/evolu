@@ -1,6 +1,6 @@
 {
   "name": "native",
-  "version": "1.0.53",
+  "version": "1.0.54",
   "private": true,
   "main": "index.js",
   "scripts": {
@@ -19,7 +19,6 @@
     "@evolu/react-native": "workspace:*",
     "@expo/metro-runtime": "~3.2.1",
     "@react-native-community/netinfo": "11.3.1",
-    "@types/react-native": "^0.73.0",
     "babel-plugin-module-resolver": "^5.0.2",
     "crypto-browserify": "^3.12.0",
     "effect": "^3.2.1",
@@ -39,6 +38,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.24.5",
+    "@types/react-native": "^0.73.0",
     "@babel/plugin-proposal-export-namespace-from": "^7.18.9",
     "@babel/plugin-syntax-import-attributes": "^7.24.7",
     "@babel/plugin-transform-dynamic-import": "^7.24.1",
@@ -51,7 +51,7 @@
     "eslint": "^8.57.0",
     "eslint-config-evolu": "workspace:*",
     "metro-react-native-babel-preset": "^0.77.0",
-    "prettier": "^3.2.5",
+    "prettier": "^3.3.2",
     "typescript": "^5.4.5"
   }
 }

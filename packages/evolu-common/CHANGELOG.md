@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 5.4.4
+
+### Patch Changes
+
+- 60d6fdd: Update Effect Platform dependency
+
 ## 5.4.3
 
 ### Patch Changes

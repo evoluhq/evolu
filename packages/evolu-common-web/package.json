@@ -46,7 +46,7 @@
     "vitest": "^2.0.0"
   },
   "peerDependencies": {
-    "@evolu/common": "^5.4.3",
+    "@evolu/common": "^5.4.4",
     "@sqlite.org/sqlite-wasm": "^3.46.1-build1"
   },
   "publishConfig": {
