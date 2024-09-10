@@ -37,21 +37,20 @@ const sqliteFromDatabase = (db: Database.Database) =>
     export: () => Effect.succeed(new Uint8Array()),
   });
 
-export const SqliteTest = Layer.effect(
-  Sqlite,
-  Effect.sync(() => {
-    const db = new Database(":memory:");
-
-    return sqliteFromDatabase(db);
-  })
-);
-
-const SqliteFactoryTest = Layer.map(SqliteTest, (layer) => Context.add(layer, SqliteFactory, SqliteFactory.of({ createSqlite: Effect.succeed(Context.get(layer, Sqlite)) })))
+const sqliteFactoryFromDb = (
+  db: Database.Database,
+): Layer.Layer<SqliteFactory> => {
+  const sqlite = sqliteFromDatabase(db);
+  return Layer.succeed(
+    SqliteFactory,
+    SqliteFactory.of({ createSqlite: Effect.succeed(sqlite) }),
+  );
+};
 
 /**
- * Creates a DbFactory effect that wraps the createDb function.
- * This effect maps the createDb function to a DbFactory instance,
- * ensuring that the createDb operation is wrapped in an Effect.succeed.
+ * Creates a DbFactory effect that wraps the createDb function. This effect maps
+ * the createDb function to a DbFactory instance, ensuring that the createDb
+ * operation is wrapped in an Effect.succeed.
  */
 const createDbFactoryEffect = createDb.pipe(
   Effect.map((createDb) =>
@@ -102,16 +101,94 @@ const DependenciesLayer = Layer.mergeAll(
     Layer.provideMerge(SyncLockTest),
     Layer.provideMerge(SyncFactoryTest),
     Layer.provideMerge(NanoidGeneratorTest),
-    Layer.provide(SqliteFactoryTest),
     Layer.provide(Time.Live),
   ),
   FlushSyncTest,
   AppStateTest,
 );
 
+interface TestEvolu<T extends EvoluSchema> extends Evolu<T> {
+  fork: () => Promise<TestEvolu<T>>;
+}
+
+function testEvoluFromDb<T extends EvoluSchema, I>(
+  tableSchema: Schema.Schema<T, I>,
+  config: Partial<EvoluConfig<T>> = {},
+  db: Database.Database,
+): TestEvolu<T> {
+  const schema = {
+    indexes: config.indexes ?? [],
+    tables: schemaToTables(tableSchema),
+  } satisfies DbSchema;
+
+  const runtime = createRuntime(config);
+
+  const sqliteFactory = sqliteFactoryFromDb(db);
+
+  const evolu = createEvoluEffect(schema, runtime).pipe(
+    Effect.provide(DependenciesLayer.pipe(Layer.provide(sqliteFactory))),
+    runtime.runSync,
+  ) as Evolu<T>;
+
+  let promises: Promise<void>[] = [];
+
+  const withResolve = () => {
+    let resolve: () => void;
+    const promise = new Promise<void>((r) => {
+      resolve = r;
+    });
+
+    return {
+      promise,
+      resolve: resolve!,
+    };
+  };
+
+  const resolvableCallback = (callback?: () => void) => {
+    const { promise, resolve } = withResolve();
+
+    promises.push(promise);
+
+    return () => {
+      resolve();
+      if (callback) {
+        callback();
+      }
+    };
+  };
+
+  return {
+    fork: async () => {
+      await Promise.all(promises);
+      const serialized = db.serialize();
+
+      const newDb = new Database(serialized);
+
+      return testEvoluFromDb(tableSchema, config, newDb);
+    },
+    ...evolu,
+    create: (a, b, onComplete) => {
+      const callback = resolvableCallback(onComplete);
+
+      return evolu.create(a, b, callback);
+    },
+    update: (a, b, onComplete) => {
+      const callback = resolvableCallback(onComplete);
+
+      return evolu.update(a, b, callback);
+    },
+    createOrUpdate: (a, b, onComplete) => {
+      const callback = resolvableCallback(onComplete);
+
+      return evolu.createOrUpdate(a, b, callback);
+    },
+  };
+}
+
 /**
- * Creates a test instance of Evolu with mocked dependencies for testing purposes.
- * 
+ * Creates a test instance of Evolu with mocked dependencies for testing
+ * purposes.
+ *
  * @param tableSchema - The schema definition for the database tables.
  * @param config - Optional configuration for Evolu, including custom indexes.
  * @returns An instance of Evolu<T> configured for testing.
@@ -119,19 +196,8 @@ const DependenciesLayer = Layer.mergeAll(
 export function createTestEvolu<T extends EvoluSchema, I>(
   tableSchema: Schema.Schema<T, I>,
   config: Partial<EvoluConfig<T>> = {},
-): Evolu<T> {
-  // Create a DbSchema object from the provided table schema and optional indexes
-  const schema = {
-    indexes: config.indexes ?? [],
-    tables: schemaToTables(tableSchema),
-  } satisfies DbSchema;
+): TestEvolu<T> {
+  const db = new Database(":memory:");
 
-  // Create a runtime environment based on the provided config
-  const runtime = createRuntime(config);
-
-  // Create and run the Evolu effect with mocked dependencies
-  return createEvoluEffect(schema, runtime).pipe(
-    Effect.provide(DependenciesLayer),
-    runtime.runSync,
-  ) as Evolu<T>;
+  return testEvoluFromDb(tableSchema, config, db);
 }

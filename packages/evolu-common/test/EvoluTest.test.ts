@@ -15,11 +15,25 @@ const db = database({
 });
 type Database = (typeof db)["Type"];
 
-const createTodo = (name: string, evolu: Evolu<Database>) => {
+const createTodo = (
+  name: string,
+  evolu: Evolu<Database>,
+  callback?: () => void,
+) => {
   return Effect.gen(function* () {
-    const title = yield* Schema.decode(NonEmptyString1000)("test title");
-    return evolu.create("todo", { title });
+    const title = yield* Schema.decode(NonEmptyString1000)(name);
+    return evolu.create("todo", { title }, callback);
   }).pipe(Effect.runSync);
+};
+
+const createTodoAsync = (
+  name: string,
+  evolu: Evolu<Database>,
+  callback?: () => void,
+) => {
+  return new Promise<void>((resolve) => {
+    createTodo(name, evolu, resolve);
+  });
 };
 
 describe("createTestEvolu", () => {
@@ -62,5 +76,128 @@ describe("createTestEvolu", () => {
     const newQueryResult = await evoluTwo.loadQuery(newQuery);
 
     expect(newQueryResult.row).toBeUndefined();
+  });
+
+  describe("forking", async () => {
+    const parent = createTestEvolu(db, {});
+    createTodo("Example One", parent);
+    createTodo("Example Two", parent);
+
+    it("includes the data from the parent", async () => {
+      const fork = await parent.fork();
+
+      const query = fork.createQuery((db) => db.selectFrom("todo").selectAll());
+      const queryResult = await fork.loadQuery(query);
+      expect(queryResult.rows).toHaveLength(2);
+    });
+
+    it("does not modify the parent when the fork is mutated", async () => {
+      const fork = await parent.fork();
+
+      await createTodoAsync("New Other Todo", fork);
+
+      const parentQuery = parent.createQuery((db) =>
+        db.selectFrom("todo").selectAll(),
+      );
+      const parentQueryResult = await parent.loadQuery(parentQuery);
+      expect(parentQueryResult.rows).toHaveLength(2);
+
+      const forkQuery = fork.createQuery((db) =>
+        db.selectFrom("todo").selectAll(),
+      );
+      const forkQueryResult = await fork.loadQuery(forkQuery);
+      expect(forkQueryResult.rows).toHaveLength(3);
+    });
+
+    describe("multiple forks", () => {
+      it("the forks are independent", async () => {
+        const forkOne = await parent.fork();
+        const forkTwo = await parent.fork();
+
+        await createTodoAsync("Todo in Fork One", forkOne);
+        await createTodoAsync("Todo in Fork Two", forkTwo);
+
+        const forkOneQuery = forkOne.createQuery((db) =>
+          db.selectFrom("todo").selectAll(),
+        );
+
+        const forkOneQueryResult = await forkOne.loadQuery(forkOneQuery);
+        expect(forkOneQueryResult.rows.map((x) => x.title)).toContain(
+          "Todo in Fork One",
+        );
+        expect(forkOneQueryResult.rows.map((x) => x.title)).not.toContain(
+          "Todo in Fork Two",
+        );
+
+        const forkTwoQuery = forkTwo.createQuery((db) =>
+          db.selectFrom("todo").selectAll(),
+        );
+        const forkTwoQueryResult = await forkTwo.loadQuery(forkTwoQuery);
+        expect(forkTwoQueryResult.rows.map((x) => x.title)).toContain(
+          "Todo in Fork Two",
+        );
+        expect(forkTwoQueryResult.rows.map((x) => x.title)).not.toContain(
+          "Todo in Fork One",
+        );
+      });
+
+      it("both forks include the same parent data", async () => {
+        const forkOne = await parent.fork();
+        const forkTwo = await parent.fork();
+
+        const forkOneQuery = forkOne.createQuery((db) =>
+          db.selectFrom("todo").selectAll(),
+        );
+
+        const forkOneQueryResult = await forkOne.loadQuery(forkOneQuery);
+        expect(forkOneQueryResult.rows.map((x) => x.title)).toContain(
+          "Example One",
+        );
+        expect(forkOneQueryResult.rows).toHaveLength(2);
+
+        const forkTwoQuery = forkTwo.createQuery((db) =>
+          db.selectFrom("todo").selectAll(),
+        );
+
+        const forkTwoQueryResult = await forkTwo.loadQuery(forkTwoQuery);
+        expect(forkTwoQueryResult.rows.map((x) => x.title)).toContain(
+          "Example One",
+        );
+        expect(forkTwoQueryResult.rows).toHaveLength(2);
+      });
+    });
+
+    describe("nested forks", async () => {
+      const parentFork = await parent.fork();
+
+      it("includes the data from the parent", async () => {
+        const fork = await parentFork.fork();
+
+        const query = fork.createQuery((db) =>
+          db.selectFrom("todo").selectAll(),
+        );
+        const queryResult = await fork.loadQuery(query);
+        expect(queryResult.rows).toHaveLength(2);
+      });
+
+      it("does not modify the parent fork or the parent's parent", async () => {
+        const fork = await parentFork.fork();
+
+        await createTodoAsync("New Todo", fork);
+
+        const parentQuery = parent.createQuery((db) =>
+          db.selectFrom("todo").selectAll(),
+        );
+        const parentQueryResult = await parent.loadQuery(parentQuery);
+        expect(parentQueryResult.rows).toHaveLength(2);
+
+        const parentForkQuery = parentFork.createQuery((db) =>
+          db.selectFrom("todo").selectAll(),
+        );
+        const parentForkQueryResult =
+          await parentFork.loadQuery(parentForkQuery);
+        expect(parentForkQueryResult.rows).toHaveLength(2);
+      });
+    });
   });
 });

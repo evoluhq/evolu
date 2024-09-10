@@ -601,7 +601,11 @@ export const createEvoluEffect = (
   runtime: ManagedRuntime.ManagedRuntime<Config, never>,
   initialData?: EvoluConfig["initialData"],
   mnemonic?: Mnemonic,
-): Effect.Effect<Evolu<EvoluSchema>, never, Config | DbFactory | AppState | NanoIdGenerator | FlushSync> =>
+): Effect.Effect<
+  Evolu<EvoluSchema>,
+  never,
+  Config | DbFactory | AppState | NanoIdGenerator | FlushSync
+> =>
   Effect.gen(function* () {
     yield* Effect.logTrace("EvoluFactory createEvolu");
     const config = yield* Config;
