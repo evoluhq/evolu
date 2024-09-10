@@ -1,5 +1,12 @@
 # @evolu/server
 
+## 7.2.4
+
+### Patch Changes
+
+- Updated dependencies [60d6fdd]
+  - @evolu/common@5.4.4
+
 ## 7.2.3
 
 ### Patch Changes
