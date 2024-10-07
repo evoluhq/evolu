@@ -11,7 +11,6 @@ dist-ssr
 .idea
 server/dist
 public/dist
-storybook-static/
-pnpm-lock.yaml
+storybook-static
 
 .direnv
