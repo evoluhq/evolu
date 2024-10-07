@@ -62,8 +62,8 @@ export class NanoIdGenerator extends Context.Tag("NanoIdGenerator")<
 export const createNanoIdGeneratorLive = (
   customAlphabet: (
     alphabet: string,
-    defaultSize?: number | undefined,
-  ) => (size?: number | undefined) => string,
+    defaultSize?: number,
+  ) => (size?: number) => string,
   nanoid: (size?: number) => string,
 ): Layer.Layer<NanoIdGenerator, never, never> => {
   const nanoidForNodeId = customAlphabet("0123456789abcdef", 16);

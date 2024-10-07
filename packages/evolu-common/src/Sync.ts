@@ -158,14 +158,22 @@ export const createSync = Effect.gen(function* () {
             ),
           ),
           Effect.flatMap((body) =>
-            Platform.HttpClientRequest.post(config.syncUrl).pipe(
-              Platform.HttpClientRequest.uint8ArrayBody(
-                body,
-                "application/x-protobuf",
-              ),
-              Platform.HttpClient.fetchOk,
-              Platform.HttpClientResponse.arrayBuffer,
-            ),
+            Effect.gen(function* () {
+              const client = (yield* Platform.HttpClient.HttpClient).pipe(
+                Platform.HttpClient.filterStatusOk,
+              );
+              return yield* Platform.HttpClientRequest.post(
+                config.syncUrl,
+              ).pipe(
+                Platform.HttpClientRequest.bodyUint8Array(
+                  body,
+                  "application/x-protobuf",
+                ),
+                client.execute,
+                Effect.flatMap((response) => response.arrayBuffer),
+                Effect.scoped,
+              );
+            }).pipe(Effect.provide(Platform.FetchHttpClient.layer)),
           ),
           Effect.map((buffer) =>
             Protobuf.SyncResponse.fromBinary(

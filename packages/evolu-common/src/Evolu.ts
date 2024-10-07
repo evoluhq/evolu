@@ -974,6 +974,7 @@ const kysely = new Kysely.Kysely({
     createAdapter: () => new Kysely.SqliteAdapter(),
     createDriver: () => new Kysely.DummyDriver(),
     createIntrospector() {
+      // eslint-disable-next-line @typescript-eslint/only-throw-error
       throw "Not implemeneted";
     },
     createQueryCompiler: () => new Kysely.SqliteQueryCompiler(),

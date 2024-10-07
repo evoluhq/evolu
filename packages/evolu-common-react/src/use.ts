@@ -17,6 +17,7 @@ export const use =
     },
   ): T => {
     if (promise.status === "pending") {
+      // eslint-disable-next-line @typescript-eslint/only-throw-error
       throw promise;
     } else if (promise.status === "fulfilled") {
       return promise.value as T;
@@ -34,6 +35,7 @@ export const use =
           promise.reason = e;
         },
       );
+      // eslint-disable-next-line @typescript-eslint/only-throw-error
       throw promise;
     }
   });
