@@ -1,5 +1,13 @@
 # @evolu/react-native
 
+## 11.1.1
+
+### Patch Changes
+
+- 664004a: Update dependencies
+- Updated dependencies [664004a]
+  - @evolu/common-react@8.1.1
+
 ## 11.1.0
 
 ### Minor Changes
