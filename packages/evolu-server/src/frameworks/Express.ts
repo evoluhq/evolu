@@ -7,7 +7,7 @@ import * as Either from "effect/Either";
 import * as Exit from "effect/Exit";
 import { flow } from "effect/Function";
 import * as Match from "effect/Match";
-import express from "express";
+import express, { Express } from "express";
 import { Kysely, SqliteDialect } from "kysely";
 import path from "path";
 import { Server, ServerLive } from "../Server.js";
@@ -26,7 +26,14 @@ const createDb = (fileName: string) =>
     }),
   });
 
-export const createExpressApp = Effect.gen(function* (_) {
+export const createExpressApp: Effect.Effect<
+  {
+    app: Express;
+    server: Server;
+  },
+  never,
+  never
+> = Effect.gen(function* (_) {
   const server = yield* _(
     Server.pipe(
       Effect.provide(ServerLive),
