@@ -1,5 +1,15 @@
 # @evolu/react
 
+## 8.2.1
+
+### Patch Changes
+
+- d1c619d: Update dependencies
+- Updated dependencies [d1c619d]
+  - @evolu/common@5.4.5
+  - @evolu/common-react@8.1.1
+  - @evolu/common-web@8.2.2
+
 ## 8.2.0
 
 ### Minor Changes

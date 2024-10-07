@@ -1,5 +1,13 @@
 # @evolu/common-web
 
+## 8.2.2
+
+### Patch Changes
+
+- d1c619d: Update dependencies
+- Updated dependencies [d1c619d]
+  - @evolu/common@5.4.5
+
 ## 8.2.1
 
 ### Patch Changes
