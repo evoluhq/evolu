@@ -1,11 +1,5 @@
 # @evolu/common
 
-## 5.4.5
-
-### Patch Changes
-
-- 2bc2c19: Update dependencies
-
 ## 5.4.4
 
 ### Patch Changes
