@@ -9,7 +9,7 @@ import { nanoid } from "nanoid";
  * Something like Comlink but simplified and with Effect API.
  *
  * We can't use Comlink, because:
- * https://twitter.com/_baxuz/status/1760627954928009604
+ * https://x.com/_baxuz/status/1760627954928009604
  *
  * We can't use Effect Worker because we need max performance and it's nice to
  * have Proxy.
