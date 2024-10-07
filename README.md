@@ -35,7 +35,7 @@ The Evolu community is on [GitHub Discussions](https://github.com/evoluhq/evolu/
 
 To chat with other community members, you can join the [Evolu Discord](https://discord.gg/2J8yyyyxtZ).
 
-[![Twitter URL](https://img.shields.io/twitter/url/https/twitter.com/evoluhq.svg?style=social&label=Follow%20%40evoluhq)](https://twitter.com/evoluhq)
+[![Twitter URL](https://img.shields.io/twitter/url/https/x.com/evoluhq.svg?style=social&label=Follow%20%40evoluhq)](https://x.com/evoluhq)
 
 ## Contributing
 

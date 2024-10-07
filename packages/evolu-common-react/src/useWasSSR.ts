@@ -7,7 +7,7 @@ const emptySubscribe = () => () => {};
  * sees the same thing."
  *
  * The magic ingredient is useRef; check Sebastian's tweet.
- * https://twitter.com/sebmarkbage/status/1763640725088923668
+ * https://x.com/sebmarkbage/status/1763640725088923668
  */
 export const useWasSSR = (): boolean => {
   const ref = useRef(false);

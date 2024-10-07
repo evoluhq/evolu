@@ -24,7 +24,7 @@ export default {
     }
   },
   chat: {
-    link: "https://twitter.com/evoluhq",
+    link: "https://x.com/evoluhq",
     icon: (
       <svg width="24" height="24" viewBox="0 0 248 204">
         <path
