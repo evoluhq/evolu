@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 5.4.6
+
+### Patch Changes
+
+- 441cfe9: Update peer dependencies.
+
 ## 5.4.5
 
 ### Patch Changes
