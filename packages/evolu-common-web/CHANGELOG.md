@@ -1,5 +1,13 @@
 # @evolu/common-web
 
+## 8.2.3
+
+### Patch Changes
+
+- 441cfe9: Update peer dependencies.
+- Updated dependencies [441cfe9]
+  - @evolu/common@5.4.6
+
 ## 8.2.2
 
 ### Patch Changes
