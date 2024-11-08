@@ -1,5 +1,13 @@
 # @evolu/server
 
+## 7.2.8
+
+### Patch Changes
+
+- 9b8cb9d: Fix version of Effect Platform and Schema.
+- Updated dependencies [9b8cb9d]
+  - @evolu/common@5.4.8
+
 ## 7.2.7
 
 ### Patch Changes

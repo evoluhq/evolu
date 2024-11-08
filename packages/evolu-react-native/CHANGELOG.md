@@ -1,5 +1,13 @@
 # @evolu/react-native
 
+## 11.1.2
+
+### Patch Changes
+
+- 9b8cb9d: Fix version of Effect Platform and Schema.
+- Updated dependencies [9b8cb9d]
+  - @evolu/common-react@8.1.2
+
 ## 11.1.1
 
 ### Patch Changes

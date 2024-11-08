@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 5.4.8
+
+### Patch Changes
+
+- 9b8cb9d: Fix version of Effect Platform and Schema.
+
 ## 5.4.7
 
 ### Patch Changes
