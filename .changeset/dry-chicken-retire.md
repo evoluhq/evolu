@@ -7,4 +7,4 @@
 "@evolu/server": patch
 ---
 
-Fix version of @effect/platform.
+Fix version of Effect Platform and Schema.

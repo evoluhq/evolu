@@ -178,7 +178,7 @@ importers:
   apps/web:
     dependencies:
       '@effect/schema':
-        specifier: ^0.75.0
+        specifier: 0.75.5
         version: 0.75.5(effect@3.10.4)
       '@evolu/common':
         specifier: workspace:*
@@ -364,7 +364,7 @@ importers:
   examples/react-vite:
     dependencies:
       '@effect/schema':
-        specifier: ^0.75.0
+        specifier: 0.75.5
         version: 0.75.5(effect@3.10.4)
       '@evolu/react':
         specifier: latest
@@ -413,7 +413,7 @@ importers:
   examples/react-vite-pwa:
     dependencies:
       '@effect/schema':
-        specifier: ^0.75.0
+        specifier: 0.75.5
         version: 0.75.5(effect@3.10.4)
       '@evolu/react':
         specifier: latest
@@ -474,7 +474,7 @@ importers:
   examples/remix:
     dependencies:
       '@effect/schema':
-        specifier: ^0.75.0
+        specifier: 0.75.5
         version: 0.75.5(effect@3.10.4)
       '@evolu/common':
         specifier: latest
@@ -627,7 +627,7 @@ importers:
         specifier: 0.69.9
         version: 0.69.9(effect@3.10.4)
       '@effect/schema':
-        specifier: ^0.75.0
+        specifier: 0.75.5
         version: 0.75.5(effect@3.10.4)
       '@evolu/tsconfig':
         specifier: workspace:*
