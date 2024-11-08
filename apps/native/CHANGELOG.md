@@ -1,5 +1,14 @@
 # native
 
+## 1.0.57
+
+### Patch Changes
+
+- Updated dependencies [e31327a]
+  - @evolu/common@5.4.7
+  - @evolu/react@8.2.1
+  - @evolu/react-native@11.1.1
+
 ## 1.0.56
 
 ### Patch Changes
