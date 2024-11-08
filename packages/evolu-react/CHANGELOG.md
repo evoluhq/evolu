@@ -1,5 +1,15 @@
 # @evolu/react
 
+## 8.2.2
+
+### Patch Changes
+
+- 9b8cb9d: Fix version of Effect Platform and Schema.
+- Updated dependencies [9b8cb9d]
+  - @evolu/common@5.4.8
+  - @evolu/common-react@8.1.2
+  - @evolu/common-web@8.2.4
+
 ## 8.2.1
 
 ### Patch Changes
