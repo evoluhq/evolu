@@ -1,3 +1,17 @@
+# 🚧 Important Announcement: Evolu Codebase is Being Rewritten
+
+We are currently **rewriting the entire Evolu codebase** to implement a new synchronization protocol and **remove the dependency on Effect**. This rewrite aims to make Evolu more efficient, flexible, and easier to use while enabling powerful new features.
+
+## What This Means:
+- **New Sync Protocol**: Introducing a more robust and scalable approach to synchronization.
+- **No Dependency on Effect**: Simplifying the core library by removing external dependencies.
+- **Breaking Changes**: No breaking changes, API is the same, and everything is backward compatible. Evolu will migrate automatically; only internal tables have been changed.
+
+## Timeline:
+The rewrite has been completed, and the new sync is almost done. Expect experimental releases before the final stable version.
+
+Thank you for your support and patience as we make Evolu better than ever! 💡
+
 # Evolu
 
 [Local-first](https://www.inkandswitch.com/local-first) platform designed for privacy, ease of use, and no vendor lock-in
