@@ -1,6 +1,6 @@
 {
   "$schema": "https://turborepo.org/schema.json",
-  "globalEnv": ["NODE_ENV", "PORT"],
+  "globalEnv": ["NODE_ENV", "PORT", "ENABLE_EXPERIMENTAL_COREPACK"],
   "tasks": {
     "build": {
       "outputs": [
