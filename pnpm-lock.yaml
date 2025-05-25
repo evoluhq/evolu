@@ -541,7 +541,7 @@ importers:
         specifier: ^0.2.6
         version: 0.2.6
       typescript:
-        specifier: ~5.8.3
+        specifier: ^5.8.3
         version: 5.8.3
       vite:
         specifier: ^6.3.5
