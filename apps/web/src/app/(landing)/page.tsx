@@ -3,7 +3,6 @@ import { Features } from "@/components/Features";
 import { Guides } from "@/components/Guides";
 import { HeroText } from "@/components/HeroText";
 import { Logo } from "@/components/Logo";
-import { InlineNote } from "@/components/mdx";
 export const metadata = {
   title: "Evolu",
   description: "Privacy-focused local-first platform that scales.",
