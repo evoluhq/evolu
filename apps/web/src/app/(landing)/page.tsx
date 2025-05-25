@@ -25,16 +25,6 @@ export default function Page(): React.ReactElement {
           </Button>
         </div>
 
-        <div className="flex justify-center">
-          <InlineNote>
-            Heads up: The new version of Evolu is now open-sourced but hasn’t
-            been published to NPM yet.
-            <br /> <br />
-            If you're interested, feel free to ⭐️ star and 👀 watch the GitHub
-            repo to be notified when it’s released.
-          </InlineNote>
-        </div>
-
         <Features />
         <Guides className="!mt-10" />
       </div>
