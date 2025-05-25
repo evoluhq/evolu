@@ -1,0 +1,398 @@
+import { Heading } from "@/components/Heading";
+
+export const metadata = {
+  title: "Dependency Injection",
+};
+
+# Dependency Injection
+
+Also known as "passing arguments"
+
+## Intro
+
+What is Dependency Injection? Someone once called it 'really just a pretentious way to say "taking an argument,"' and while it does involve taking or passing arguments, not every instance of that qualifies as Dependency Injection.
+
+Some function arguments are local—say, the return value of one function passed to another—and often used just once. Others, like a database instance, are global and needed across many functions.
+
+Traditionally, when something must be shared across functions, we might make it global using a 'service locator,' a well-known antipattern. This approach is problematic because it creates code that’s hard to test and compose (e.g., replacing a dependency becomes difficult).
+
+```ts
+// 🚨 Don't do that! It's a 'service locator', a well-known antipattern.
+export const db = createDb("...");
+```
+
+So, what’s the alternative? We can pass the argument manually where it's required or use a framework (an Inversion of Control container). Evolu, however, argues we don’t need a framework for that—all we need is a convention.
+
+Imagine we have a function that does something with time:
+
+```ts
+// 🚨 Antipattern: Using global Date directly (service locator style)
+const timeUntilEvent = (eventTimestamp: number): number => {
+  const currentTime = Date.now(); // Implicitly depends on global Date
+  return eventTimestamp - currentTime;
+};
+```
+
+This is better, but still not ideal:
+
+```ts
+const timeUntilEvent = (date: Date, eventTimestamp: number): number => {
+  const currentTime = date.getTime();
+  return eventTimestamp - currentTime;
+};
+```
+
+- We are mixing function dependencies (`Date`) with function arguments (`eventTimestamp`)
+- Passing dependencies like that is tedious and verbose.
+- We only need the current time, but we’re using the entire `Date` class (which is hard to mock).
+
+We can do better. Let’s start with a simple interface:
+
+```ts
+/** Retrieves the current time in milliseconds, similar to `Date.now()`. */
+export interface Time {
+  readonly now: () => number;
+}
+```
+
+Note we’re using an interface instead of a class. This is called "programming against interfaces."
+
+<Note>
+  Defining dependencies as interfaces rather than concrete implementations
+  simplifies testing with mocks, enhances composition by decoupling components,
+  and improves maintainability by allowing swaps without rewriting logic.
+</Note>
+
+Let's use the `Time` dependency:
+
+```ts
+// Currying splits dependencies from the function’s arguments
+const timeUntilEvent =
+  (time: Time) =>
+  (eventTimestamp: number): number => {
+    const currentTime = time.now();
+    return eventTimestamp - currentTime;
+  };
+```
+
+This is better, but what if we need another dependency, like a `Logger`?
+
+```ts
+export interface Logger {
+  readonly log: (message?: any, ...optionalParams: Array<any>) => void;
+}
+```
+
+Passing multiple dependencies can get verbose:
+
+```ts
+const timeUntilEvent =
+  (time: Time, logger: Logger) =>
+  (eventTimestamp: number): number => {
+    logger.log("...");
+    const currentTime = time.now();
+    return eventTimestamp - currentTime;
+  };
+```
+
+This attempt isn’t ideal either:
+
+```ts
+// 🚨 Don't do that.
+const timeUntilEvent =
+  (deps: Time & Logger) =>
+  (eventTimestamp: number): number => {
+    deps.log("...");
+    const currentTime = deps.now();
+    return eventTimestamp - currentTime;
+  };
+```
+
+The previous example isn't perfect because dependencies with overlapping property names would clash.
+And we even haven’t yet addressed creating dependencies or making them optional. Long story short, let’s look at the complete example.
+
+## Example
+
+The example demonstrates a simple yet robust approach to Dependency Injection (DI) in TypeScript without relying on a framework. It calculates the time remaining until a given event timestamp using a `Time` dependency, with an optional `Logger` for logging. Dependencies are defined as interfaces (`Time` and `Logger`) and wrapped in distinct types (`TimeDep` and `LoggerDep`) to avoid clashes.
+
+Factory functions (`createTime` and `createLogger`) instantiate these dependencies, and they’re passed as a single deps object to the `timeUntilEvent` function. The use of `Partial<LoggerDep>` makes the logger optional.
+
+```ts
+export interface Time {
+  readonly now: () => number;
+}
+
+export interface TimeDep {
+  readonly time: Time;
+}
+
+export interface Logger {
+  readonly log: (message?: any, ...optionalParams: Array<any>) => void;
+}
+
+export interface LoggerDep {
+  readonly logger: Logger;
+}
+
+const timeUntilEvent =
+  // Partial makes LoggerDep optional
+  (deps: TimeDep & Partial<LoggerDep>) =>
+    (eventTimestamp: number): number => {
+      deps.logger?.log("Calculating time until event...");
+      const currentTime = deps.time.now();
+      return eventTimestamp - currentTime;
+    };
+
+/** Creates a {@link Time} using Date.now(). */
+export const createTime = (): Time => ({
+  now: () => Date.now(),
+});
+
+/** Creates a {@link Logger} using console.log. */
+export const createLogger = (): Logger => ({
+  log: (...args) => {
+    console.log(...args);
+  },
+});
+
+const enableLogging = true;
+
+const deps: TimeDep & Partial<LoggerDep> = {
+  time: createTime(),
+  // Inject a dependency conditionally
+  ...(enableLogging && { logger: createLogger() }),
+};
+
+timeUntilEvent(deps)(1742329310767);
+```
+
+As you can see, we don't need a framework. Evolu prefers simplicity, conventions, and
+explicit code.
+
+Note that passing `deps` manually isn't as verbose as you might think:
+
+```ts
+export interface TimeDep {
+  readonly time: Time;
+}
+
+export interface LoggerDep {
+  logger: Logger;
+}
+
+const app = (deps: TimeDep & LoggerDep) => {
+  // Over-providing is OK—pass the whole `deps` object
+  doSomethingWithTime(deps);
+  doSomethingWithLogger(deps);
+};
+
+const doSomethingWithTime = (deps: TimeDep) => {
+  deps.time.now();
+};
+
+// Over-depending is not OK—don’t require unused dependencies
+const doSomethingWithLogger = (deps: TimeDep & LoggerDep) => {
+  deps.logger.log("foo");
+};
+
+type AppDeps = TimeDep & LoggerDep;
+
+const appDeps: AppDeps = {
+  time: createTime(),
+  logger: createLogger(),
+};
+
+app(appDeps);
+```
+
+Remember:
+
+- ✅ **Over-providing is OK**: A function requires `ADep`, but you provide `ADep & BDep`—just pass the whole `deps` object.
+- 🚫 **Over-depending is not**: A function requires `ADep & BDep` but only uses `ADep`—keep dependencies lean.
+
+The last thing you need to know is that factory functions can also be dependencies. Sometimes, we must delay creating a dependency until a prerequisite is available (e.g., a `Logger` needs a `Config` that’s not ready yet, like in a Web Worker).
+
+A factory function as a dependency:
+
+```ts
+export interface LoggerConfig {
+  readonly level: "info" | "debug";
+}
+
+export interface Logger {
+  readonly log: (message?: any, ...optionalParams: Array<any>) => void;
+}
+
+export type CreateLogger = (config: LoggerConfig) => Logger;
+
+export interface CreateLoggerDep {
+  readonly createLogger: CreateLogger;
+}
+
+export const createLogger: CreateLogger = (config) => ({
+  log: (...args) => {
+    console.log(`[${config.level}]`, ...args);
+  },
+});
+
+type AppDeps = TimeDep & CreateLoggerDep;
+
+const appDeps: AppDeps = {
+  time: createTime(),
+  // Note we haven't run `createLogger` yet; it will be called later.
+  createLogger,
+};
+
+app(appDeps);
+```
+
+## Guidelines
+
+- Start with an interface or type—everything can be a dependency.
+- To avoid clashes, wrap dependencies (`TimeDep`, `LoggerDep`).
+- Write factory function (`createTime`, `createTestTime`)
+- Both regular functions and factory functions accept a single argument named `deps`, combining one or more dependencies (e.g., `A & B & C`).
+
+<Note>
+  Never create a global static mutable instance (e.g., `export const logger =
+  createLogger()`). Developers might use it instead of proper DI, turning it
+  into a service locator—a code smell that’s hard to test and refactor.
+</Note>
+
+Btw, Evolu provides
+[Console](/docs/api-reference/common/Console), so you probably
+don't need a Logger.
+
+## Testing
+
+Avoiding global state makes testing and composition easier. Here’s an example with mocked dependencies:
+
+```ts
+const createTestTime = (): Time => ({
+  now: () => 1234567890, // Fixed time for testing
+});
+
+test("timeUntilEvent calculates correctly", () => {
+  const deps = { time: createTestTime() };
+  expect(timeUntilEvent(deps)(1234567990)).toBe(1000);
+});
+```
+
+## Tips
+
+### Merging Deps
+
+Since deps are regular JS objects, you can spread them:
+
+```ts
+const appDeps: AppDeps = {
+  ...fooDeps,
+  ...barDeps,
+};
+```
+
+### Refining Deps
+
+To reuse existing deps while swapping specific parts, use `Omit`. For example, if `AppDeps` includes `CreateSqliteDriverDep` and other deps, but you want to replace `CreateSqliteDriverDep` with `SqliteDep`:
+
+```ts
+export type AppDeps = CreateSqliteDriverDep & TimeDep & LoggerDep;
+
+export type AppInstanceDeps = Omit<AppDeps, keyof CreateSqliteDriverDep> &
+  SqliteDep;
+```
+
+To remove multiple deps, like `CreateSqliteDriverDep` and `LoggerDep`, use a union of keys:
+
+```ts
+export type TimeOnlyDeps = Omit<
+  AppDeps,
+  keyof CreateSqliteDriverDep | keyof LoggerDep
+>;
+```
+
+### Optional Deps
+
+Use `Partial` and conditional spreading to make deps optional:
+
+```ts
+const deps: TimeDep & Partial<LoggerDep> = {
+  time: createTime(),
+  // Inject logger only if enabled
+  ...(enableLogging && { logger: createLogger() }),
+};
+```
+
+### Handling Clashes
+
+When combining deps with `&` (e.g., `TimeDep & LoggerDep`), property clashes are rare but possible. The fix is simple—use distinct wrappers:
+
+```ts
+export interface LoggerADep {
+  readonly loggerA: LoggerA;
+}
+
+export interface LoggerBDep {
+  readonly loggerB: LoggerB;
+}
+```
+
+## FAQ
+
+**Do I have to pass everything as a dependency?**
+
+No, not at all! Dependency Injection is about managing things that interact with the outside world—like time (`Date`), logging (`console`), or databases—because these are tricky to test or swap out. Regular function arguments, like a number or a string, don’t need to be dependencies unless they represent something external.
+
+Think of your app as having a `composition root`: a central place where you "wire up" all your dependencies and pass them to the functions that need them. This is typically at the top level of your app. From there, you pass the `deps` object down to your functions, but not every argument needs to be part of it.
+
+For example:
+
+```ts
+// Composition root (e.g., main.ts)
+const deps = {
+  time: createTime(),
+  logger: createLogger(),
+};
+
+// A function with a dependency and a regular argument
+const timeUntilEvent =
+  (deps: TimeDep) =>
+  (eventTimestamp: number): number => {
+    return eventTimestamp - deps.time.now();
+  };
+
+// Usage
+const result = timeUntilEvent(deps)(1742329310767);
+```
+
+- `eventTimestamp` is just a number—it's not a dependency because it’s local to the function’s logic.
+- `time` is a dependency because it interacts with the outside world (`Date.now()`).
+
+**Key takeaway**: Use dependencies for external interactions (I/O, side effects) and keep regular arguments for pure, local data. At the composition root, assemble your `deps` object once and pass it where needed—over-providing is fine, as shown in the Example (#example) section!
+
+**Why shouldn't dependencies use generic arguments?**
+
+Dependencies must not use generic type parameters because it tightly couples function signatures to specific implementations and leaks implementation details into business logic. This reduces flexibility and composability.
+
+- **Decoupling:** By avoiding generics in dependencies, code remains agnostic to the underlying implementation (e.g., SQLite, IndexedDB, in-memory, etc.).
+- **Simplicity:** Consumers of the API must not know about implementation-specific types.
+- **Testability:** It is easy to swap or mock dependencies in tests without worrying about matching generic parameters.
+
+**Example:**
+
+```ts
+// ✅ Good: Result with business/domain error
+export type BusinessError = { type: "NotFound" } | { type: "PermissionDenied" };
+
+export interface UserService {
+  getUser: (id: UserId) => Result<User, BusinessError>;
+}
+
+// 🚫 Not recommended: Result with implementation error
+export interface Storage {
+  writeMessages: (...) => Result<boolean, SqliteError>; // Avoid this!
+}
+```
+
+**Summary:**  
+Use `Result` for business/domain errors, but keep implementation errors internal to the dependency implementation.

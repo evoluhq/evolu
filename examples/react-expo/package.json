@@ -1,0 +1,44 @@
+{
+  "name": "@example/react-expo",
+  "main": "expo-router/entry",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android --no-build-cache",
+    "android:go": "expo start --android",
+    "ios": "expo run:ios",
+    "ios:go": "expo start --ios",
+    "_dev": "expo start --web",
+    "test": "jest --watchAll",
+    "lint": "expo lint",
+    "clean": "shx rm -rf .expo android ios node_modules"
+  },
+  "jest": {
+    "preset": "jest-expo"
+  },
+  "dependencies": {
+    "@evolu/common": "workspace:*",
+    "@evolu/react": "workspace:*",
+    "@evolu/react-native": "workspace:*",
+    "@expo/vector-icons": "^14.1.0",
+    "@react-native-picker/picker": "^2.11.0",
+    "babel-plugin-module-resolver": "^5.0.2",
+    "expo": "^53.0.9",
+    "expo-linking": "^7.1.5",
+    "expo-router": "^5.0.7",
+    "expo-splash-screen": "~0.30.8",
+    "expo-sqlite": "~15.2.10",
+    "react": "^19.1.0",
+    "react-native": "^0.79.2",
+    "react-native-picker-select": "^9.3.1",
+    "react-native-quick-crypto": "^0.7.13",
+    "react-native-safe-area-context": "^5.4.0",
+    "react-native-screens": "^4.10.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.27.1",
+    "@types/react": "^19.1.2",
+    "typescript": "^5.8.3"
+  },
+  "private": true
+}

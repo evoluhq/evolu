@@ -1,0 +1,32 @@
+{
+  "$schema": "https://turborepo.org/schema.json",
+  "globalEnv": ["NODE_ENV", "PORT"],
+  "tasks": {
+    "build": {
+      "outputs": [
+        "dist/**",
+        ".next/**",
+        "!.next/cache/**",
+        "node_modules/.cache/metro/**"
+      ],
+      "dependsOn": ["^build"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "start": {
+      "cache": false,
+      "persistent": true
+    },
+    "test": {
+      "outputs": ["coverage/**"]
+    },
+    "clean": {
+      "cache": false
+    },
+    "bench": {
+      "cache": false
+    }
+  }
+}

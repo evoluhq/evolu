@@ -1,0 +1,14 @@
+/node_modules
+/dist
+
+# misc
+.DS_Store
+*.pem
+
+# typescript
+*.tsbuildinfo
+
+db.sqlite
+package-lock.json
+evolu-relay-0.db
+

@@ -1,0 +1,57 @@
+{
+  "extends": ["../../typedoc.base.json"],
+  "categoryOrder": [
+    "Base Factories",
+    "Base Types",
+    "String",
+    "Number",
+    "Array",
+    "Object",
+    "Utilities",
+    "*"
+  ],
+  "entryPoints": [
+    "src/Array.ts",
+    "src/Assert.ts",
+    "src/BigInt.ts",
+    "src/Buffer.ts",
+    "src/Callbacks.ts",
+    "src/Console.ts",
+    "src/Crypto.ts",
+    "src/Eq.ts",
+    "src/Error.ts",
+    "src/Evolu/Internal.ts",
+    "src/Evolu/Public.ts",
+    "src/Evolu/Protocol.ts",
+    "src/Evolu/Storage.ts",
+    "src/Function.ts",
+    "src/ManyToManyMap.ts",
+    "src/NanoId.ts",
+    "src/Number.ts",
+    "src/Object.ts",
+    "src/Order.ts",
+    "src/Promise.ts",
+    "src/Random.ts",
+    "src/Result.ts",
+    "src/Sqlite.ts",
+    "src/Store.ts",
+    "src/String.ts",
+    "src/Time.ts",
+    "src/Type.ts",
+    "src/Types.ts",
+    "src/WebSocket.ts",
+    "src/Worker.ts"
+  ],
+  "intentionallyNotExported": [
+    /**
+     * Suppresses warnings for 'Type.Type' when referenced in patterns like:
+     *
+     * ```ts
+     * export type Foo = typeof Foo.Type;
+     * ```
+     */
+    "Type.Type",
+    /** That's Kysely stuff. */
+    "SelectQueryBuilderExpression"
+  ]
+}

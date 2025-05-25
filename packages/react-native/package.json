@@ -1,0 +1,93 @@
+{
+  "name": "@evolu/react-native",
+  "version": "12.0.0",
+  "description": "Evolu for React Native and Expo",
+  "keywords": [
+    "evolu",
+    "expo",
+    "expo-sqlite",
+    "op-sqlite",
+    "react-native",
+    "react-hooks"
+  ],
+  "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
+  "license": "MIT",
+  "repository": "evoluhq/evolu",
+  "bugs": {
+    "url": "https://github.com/evoluhq/evolu/issues"
+  },
+  "homepage": "https://evolu.dev",
+  "type": "module",
+  "exports": {
+    "./expo-sqlite": {
+      "types": "./dist/expo-sqlite.d.ts",
+      "default": "./dist/expo-sqlite.js",
+      "react-native": "./dist/expo-sqlite.js",
+      "browser": "./dist/web.js"
+    },
+    "./op-sqlite": {
+      "types": "./dist/op-sqlite.d.ts",
+      "default": "./dist/op-sqlite.js",
+      "react-native": "./dist/op-sqlite.js",
+      "browser": "./dist/web.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "expo-sqlite": [
+        "./dist/expo-sqlite.d.ts"
+      ],
+      "op-sqlite": [
+        "./dist/op-sqlite.d.ts"
+      ]
+    }
+  },
+  "files": [
+    "dist/**",
+    "src/**",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "tsc --watch",
+    "build": "shx rm -rf dist && tsc",
+    "clean": "shx rm -rf .turbo node_modules dist",
+    "format": "prettier --write \"src/*.{ts,tsx,md}\""
+  },
+  "devDependencies": {
+    "@evolu/common": "workspace:*",
+    "@evolu/react": "workspace:*",
+    "@evolu/tsconfig": "workspace:*",
+    "@op-engineering/op-sqlite": "^14.0.1",
+    "expo": "^53.0.9",
+    "expo-sqlite": "~15.2.10",
+    "react-native": "^0.79.2",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.2"
+  },
+  "peerDependencies": {
+    "@evolu/common": "^5.4.0",
+    "@evolu/react": "^8.1.0",
+    "@op-engineering/op-sqlite": ">=12",
+    "expo": ">=52",
+    "expo-sqlite": ">=15",
+    "react-native": ">=0.76"
+  },
+  "peerDependenciesMeta": {
+    "@op-engineering/op-sqlite": {
+      "optional": true
+    },
+    "expo": {
+      "optional": true
+    },
+    "expo-sqlite": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "sideEffects": []
+}

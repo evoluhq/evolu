@@ -1,0 +1,43 @@
+export const metadata = {
+  title: "Relay",
+  description: "Learn Evolu Relay",
+};
+
+export const sections = [];
+
+# Evolu Relay
+
+Evolu Relay provides sync and backup for Evolu clients. While it's technically possible to sync and backup Evolu devices among themselves (P2P), it's not practical because devices are often offline and geographically close. Backups should be stored in locations that are geographically distant from each other to ensure protection against localized disasters.
+
+Evolu Relay is a simple message buffer and storage generic (the same) for all Evolu apps. Only UserId, NodeId, and messages timestamps are visible. Everything else is encrypted.
+
+Evolu Relay is open-sourced and anyone can easily run their own. The core logic is a SQL database and web framework agnostic, so it's highly portable.
+
+<Note>
+  We provide a free `evolu.world` relay built on the Cloudflare Workers and D1
+  database for testing and personal usage. Our super secret master plan on how
+  to make money on that is simple: We will sell hardware.
+</Note>
+---
+
+## Running the server
+
+Currently the easiest solution to run Evolu server would be to use the docker image:
+
+1. Pull the docker image.
+
+```bash
+docker pull evoluhq/evolu:main
+```
+
+2. Create an empty sqlite file for mounting the database.
+
+```bash
+touch db.sqlite
+```
+
+3. startup the evolu server on `port` `4000` and `mount` database file on `./db.sqlite` that we created previously.
+
+```bash
+docker run --name evolu -p 4000:4000 -v $(pwd)/db.sqlite:/home/node/app/apps/server/db.sqlite -d evoluhq/evolu:main
+```

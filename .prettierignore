@@ -1,0 +1,3 @@
+pnpm-lock.yaml
+apps/web/src/app/docs/api-reference/**/*.mdx
+apps/web/src/app/(docs)/docs/api-reference/**/*.mdx

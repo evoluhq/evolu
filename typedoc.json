@@ -1,0 +1,42 @@
+{
+  "$schema": "https://typedoc-plugin-markdown.org/schema.json",
+  "entryPoints": ["packages/*"],
+  "name": "API Reference",
+  "entryPointStrategy": "packages",
+  "exclude": ["packages/tsconfig"],
+  "plugin": ["typedoc-plugin-markdown"],
+  "publicPath": "/docs/api-reference",
+  "fileExtension": ".mdx",
+  "githubPages": false,
+  "hideBreadcrumbs": false,
+  "entryFileName": "page",
+  "mergeReadme": false,
+  "hidePageHeader": true,
+  "useCodeBlocks": true,
+  "readme": "none",
+  "hideGroupHeadings": true,
+  "indexFormat": "table",
+  "parametersFormat": "table",
+  "interfacePropertiesFormat": "table",
+  "classPropertiesFormat": "table",
+  "enumMembersFormat": "table",
+  "propertyMembersFormat": "table",
+  "typeDeclarationFormat": "table",
+  "excludeScopesInPaths": true,
+  "outputFileStrategy": "members",
+  "cleanOutputDir": true,
+  "headings": {
+    "readme": false,
+    "document": false
+  },
+  "packageOptions": {
+    "alwaysCreateEntryPointModule": true
+  },
+  "treatWarningsAsErrors": true,
+  "outputs": [
+    {
+      "name": "markdown",
+      "path": "./apps/web/src/app/(docs)/docs/api-reference"
+    }
+  ]
+}

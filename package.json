@@ -1,0 +1,71 @@
+{
+  "private": true,
+  "name": "@evolu/monorepo",
+  "scripts": {
+    "dev": "turbo --filter @evolu/* dev --filter web --concurrency=11",
+    "build": "turbo --filter @evolu/* build",
+    "build:web": "pnpm typedoc && turbo --filter web build",
+    "test": "turbo --filter @evolu/* test",
+    "start": "turbo start",
+    "lint": "eslint --cache",
+    "lint-monorepo": "pnpm dlx sherif@latest",
+    "clean": "turbo clean && shx rm -rf node_modules pnpm-lock.yaml .turbo .eslintcache",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,md,mdx}\"",
+    "version": "changeset version && pnpm install --no-frozen-lockfile && pnpm format",
+    "release": "pnpm run build && changeset publish",
+    "ios": "cd examples/react-expo && pnpm ios",
+    "android": "cd examples/react-expo && pnpm android",
+    "typedoc": "typedoc && pnpm --filter=web run fix:docs",
+    "bench": "turbo bench",
+    "examples:toggle": "tsx ./scripts/toggle-examples.ts",
+    "examples:build": "turbo --filter @example/* build",
+    "examples:react-nextjs:dev": "turbo --filter @example/react-nextjs dev",
+    "examples:react-vite-pwa:dev": "turbo --filter @example/react-vite-pwa dev",
+    "examples:react-electron:dev": "turbo --filter @example/react-electron dev",
+    "examples:svelte-vite-pwa:dev": "turbo --filter @example/svelte-vite-pwa dev",
+    "publish:local": "tsx ./scripts/publish-local.ts"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.29.3",
+    "@eslint/js": "^9.26.0",
+    "@types/inquirer": "^9.0.7",
+    "eslint": "^9.26.0",
+    "eslint-import-resolver-typescript": "^4.3.4",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-import-x": "^4.11.0",
+    "eslint-plugin-jsdoc": "^50.6.11",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "inquirer": "^12.6.0",
+    "prettier": "^3.5.3",
+    "prettier-plugin-embed": "^0.5.0",
+    "prettier-plugin-jsdoc": "^1.3.2",
+    "prettier-plugin-sql-cst": "^0.13.0",
+    "tsx": "^4.19.4",
+    "turbo": "^2.5.2",
+    "typedoc": "^0.28.4",
+    "typedoc-plugin-markdown": "^4.6.3",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.31.1"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "packageManager": "pnpm@10.11.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "electron",
+      "electron-winstaller",
+      "esbuild",
+      "msgpackr-extract",
+      "sharp"
+    ],
+    "peerDependencyRules": {
+      "ignoreMissing": [
+        "@babel/*",
+        "expo-modules-*",
+        "typescript"
+      ]
+    }
+  }
+}

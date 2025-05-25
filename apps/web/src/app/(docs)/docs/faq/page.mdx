@@ -1,0 +1,43 @@
+export const metadata = {
+  title: "FAQ",
+  description:
+    "On this page, we’ll dive into the different group endpoints you can use to manage groups programmatically.",
+};
+
+export const sections = [];
+
+# FAQ
+
+Frequently asked questions about Evolu.
+
+## Is Evolu ready for production?
+
+Yes, Evolu is stable and backward compatible from version one.
+
+## What is the SQLite database size limit?
+
+The size limit depends on the storage quotas and eviction criteria of the browser or platform in use. For detailed information, refer to the [Storage quotas and eviction criteria](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria) documentation.
+
+## How can I check the current database filesize?
+
+Use the OPFS Explorer Chrome DevTools extension to monitor the database file size.
+
+## How does Evolu handle data synchronization across devices?
+
+Evolu utilizes Conflict-free Replicated Data Types (CRDTs) to manage data synchronization seamlessly across multiple devices, ensuring consistency without conflicts.
+
+## Is it possible to run my own Evolu Relay/Server?
+
+Yes, Evolu provides an open-source server that you can deploy independently. For more information, refer to the [Evolu Relay](/docs/evolu-relay) documentation.
+
+## How is data encrypted in Evolu?
+
+Evolu implements end-to-end encryption using modern cryptographic standards to ensure that only the intended users can access the data.
+
+## What makes Evolu different from other CRDT libraries?
+
+Evolu integrates CRDT with SQLite, offering a familiar SQL interface and robust data conflict resolution.
+
+## Does Evolu work offline?
+
+Yes, Evolu is designed to work offline-first, with data syncing automatically when the app regains connectivity.

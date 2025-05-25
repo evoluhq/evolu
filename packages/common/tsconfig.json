@@ -1,0 +1,10 @@
+{
+  "extends": "@evolu/tsconfig/universal-esm.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "allowJs": true,
+    "resolveJsonModule": true
+  },
+  "include": ["src", "test"],
+  "exclude": ["dist", "node_modules"]
+}

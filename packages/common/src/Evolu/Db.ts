@@ -1,0 +1,1258 @@
+import {
+  isNonEmptyArray,
+  isNonEmptyReadonlyArray,
+  NonEmptyReadonlyArray,
+} from "../Array.js";
+import { assert, assertNonEmptyReadonlyArray } from "../Assert.js";
+import { CallbackId } from "../Callbacks.js";
+import { ConsoleDep } from "../Console.js";
+import {
+  CreateMnemonicDep,
+  CreateRandomBytesDep,
+  createSymmetricCrypto,
+  SymmetricCryptoDecryptError,
+  SymmetricCryptoDep,
+} from "../Crypto.js";
+import { eqArrayNumber } from "../Eq.js";
+import { TransferableError } from "../Error.js";
+import { constFalse, exhaustiveCheck } from "../Function.js";
+import { NanoIdLibDep } from "../NanoId.js";
+import { objectToEntries } from "../Object.js";
+import { RandomDep } from "../Random.js";
+import { err, ok, Result } from "../Result.js";
+import {
+  createSqlite,
+  CreateSqliteDriverDep,
+  explainSqliteQueryPlan,
+  SafeSql,
+  sql,
+  SqliteDep,
+  SqliteError,
+  SqliteQuery,
+  SqliteRow,
+  SqliteValue,
+} from "../Sqlite.js";
+import { createStore, Store } from "../Store.js";
+import { TimeDep } from "../Time.js";
+import { Id, Mnemonic, object, SimpleName, String } from "../Type.js";
+import {
+  createInitializedWorker,
+  Worker,
+  WorkerPostMessageDep,
+} from "../Worker.js";
+import { Config } from "./Config.js";
+import { makePatches, QueryPatches } from "./Diff.js";
+import {
+  AppOwner,
+  createAppOwner,
+  createOwnerRow,
+  OwnerRow,
+  OwnerWithWriteAccess,
+} from "./Owner.js";
+import {
+  applyProtocolMessageAsClient,
+  BinaryId,
+  binaryIdToId,
+  ColumnName,
+  CrdtMessage,
+  createProtocolMessageForSync,
+  createProtocolMessageFromCrdtMessages,
+  DbChange,
+  decryptDbChange,
+  encryptDbChange,
+  idToBinaryId,
+  ownerIdToBinaryOwnerId,
+  ProtocolError,
+  protocolVersion,
+  Storage,
+  StorageDep,
+  TableName,
+} from "./Protocol.js";
+import {
+  createQueryRowsCache,
+  deserializeQuery,
+  emptyRows,
+  Query,
+  QueryRowsCache,
+} from "./Query.js";
+import {
+  createSqliteStorageBase,
+  CreateSqliteStorageBaseOptions,
+  SqliteStorageBase,
+} from "./Storage.js";
+import { CreateSyncDep, SyncConfig, SyncDep } from "./Sync.js";
+import {
+  Millis,
+  receiveTimestamp,
+  sendTimestamp,
+  Timestamp,
+  TimestampConfigDep,
+  TimestampCounterOverflowError,
+  TimestampDriftError,
+  TimestampError,
+  TimestampString,
+  timestampStringToTimestamp,
+  TimestampTimeOutOfRangeError,
+  timestampToBinaryTimestamp,
+  timestampToTimestampString,
+} from "./Timestamp.js";
+
+export interface DbSchema {
+  readonly tables: ReadonlyArray<Table>;
+  readonly indexes: ReadonlyArray<Index>;
+}
+
+export interface Table {
+  readonly name: TableName;
+  readonly columns: ReadonlyArray<ColumnName>;
+}
+
+export const Index = object({ name: String, sql: String });
+export type Index = typeof Index.Type;
+
+export type DbWorker = Worker<DbWorkerInput, DbWorkerOutput>;
+
+export type CreateDbWorker = (name: SimpleName) => DbWorker;
+
+export interface CreateDbWorkerDep {
+  readonly createDbWorker: CreateDbWorker;
+}
+
+export type DbWorkerInput =
+  | {
+      readonly type: "init";
+      readonly config: Config;
+      readonly dbSchema: DbSchema;
+      readonly initialData: ReadonlyArray<DbChange>;
+    }
+  | {
+      readonly type: "mutate";
+      readonly tabId: Id;
+      readonly changes: NonEmptyReadonlyArray<DbChange>;
+      readonly onCompleteIds: ReadonlyArray<CallbackId>;
+      readonly subscribedQueries: ReadonlyArray<Query>;
+    }
+  | {
+      readonly type: "query";
+      readonly tabId: Id;
+      readonly queries: NonEmptyReadonlyArray<Query>;
+    }
+  | {
+      readonly type: "reset";
+      readonly onCompleteId: CallbackId;
+      readonly reload: boolean;
+      readonly restore?: {
+        readonly dbSchema: DbSchema;
+        readonly mnemonic: Mnemonic;
+      };
+    }
+  | {
+      readonly type: "ensureSchema";
+      readonly dbSchema: DbSchema;
+    }
+  | {
+      readonly type: "export";
+      readonly onCompleteId: CallbackId;
+    };
+
+export type DbWorkerOutput =
+  | {
+      readonly type: "onInit";
+      readonly owner: AppOwner;
+    }
+  | {
+      readonly type: "onError";
+      readonly error:
+        | SqliteError
+        | TransferableError
+        | TimestampError
+        | ProtocolError
+        | SymmetricCryptoDecryptError;
+    }
+  | {
+      readonly type: "onChange";
+      readonly tabId: Id;
+      readonly patches: ReadonlyArray<QueryPatches>;
+      readonly onCompleteIds: ReadonlyArray<CallbackId>;
+    }
+  | {
+      readonly type: "onReceive";
+      readonly tabId?: Id;
+    }
+  | {
+      readonly type: "onReset";
+      readonly onCompleteId: CallbackId;
+      readonly reload: boolean;
+    }
+  | {
+      readonly type: "onExport";
+      readonly onCompleteId: CallbackId;
+      readonly file: Uint8Array;
+    };
+
+export type DbWorkerPlatformDeps = CreateSqliteDriverDep &
+  CreateSyncDep &
+  ConsoleDep &
+  TimeDep &
+  RandomDep &
+  NanoIdLibDep &
+  CreateMnemonicDep &
+  CreateRandomBytesDep;
+
+type DbWorkerDeps = Omit<
+  DbWorkerPlatformDeps,
+  keyof CreateSqliteDriverDep | keyof CreateSyncDep
+> &
+  SqliteDep &
+  SyncDep &
+  TimestampConfigDep &
+  SymmetricCryptoDep &
+  PostMessageDep &
+  OwnerRowStoreDep &
+  GetQueryRowsCacheDep &
+  ClientStorageDep;
+
+type PostMessageDep = WorkerPostMessageDep<DbWorkerOutput>;
+
+// TODO: More owners (the whole table with ad-hoc added)
+export interface OwnerRowStoreDep {
+  readonly ownerRowStore: Store<OwnerRow>;
+}
+
+interface GetQueryRowsCacheDep {
+  readonly getQueryRowsCache: (tabId: Id) => QueryRowsCache;
+}
+
+export const createDbWorkerForPlatform = (
+  platformDeps: DbWorkerPlatformDeps,
+): DbWorker => {
+  const tabQueryRowsCacheMap = new Map<Id, QueryRowsCache>();
+  const getQueryRowsCache = (tabId: Id) => {
+    let cache = tabQueryRowsCacheMap.get(tabId);
+    if (!cache) {
+      cache = createQueryRowsCache();
+      tabQueryRowsCacheMap.set(tabId, cache);
+    }
+    return cache;
+  };
+
+  return createInitializedWorker<DbWorkerInput, DbWorkerOutput, DbWorkerDeps>({
+    init: async (initMessage, postMessage, safeHandler) => {
+      platformDeps.console.enabled = initMessage.config.enableLogging ?? false;
+
+      const sqliteResult = await createSqlite(platformDeps)(
+        initMessage.config.name,
+      );
+
+      if (!sqliteResult.ok) {
+        postMessage({ type: "onError", error: sqliteResult.error });
+        return null;
+      }
+      const sqlite = sqliteResult.value;
+
+      const deps = sqlite.transaction(() => {
+        const currentDbSchema = getDbSchema({ sqlite })();
+        if (!currentDbSchema.ok) return currentDbSchema;
+
+        const ensure = ensureDbSchema({ sqlite })(
+          initMessage.dbSchema,
+          currentDbSchema.value,
+        );
+        if (!ensure.ok) return ensure;
+
+        const maybeMigrate = maybeMigrateToVersion0({ sqlite })(
+          currentDbSchema.value,
+        );
+        if (!maybeMigrate.ok) return maybeMigrate;
+
+        const ownerExists = currentDbSchema.value.tables.some(
+          (table) => table.name === "evolu_owner",
+        );
+
+        const appOwnerAndOwnerRow = ownerExists
+          ? selectAppOwner({ sqlite })
+          : initializeDb({ ...platformDeps, sqlite })(
+              maybeMigrate.value?.mnemonic ?? initMessage.config.mnemonic,
+            );
+        if (!appOwnerAndOwnerRow.ok) return appOwnerAndOwnerRow;
+
+        const [appOwner, ownerRow] = appOwnerAndOwnerRow.value;
+
+        const depsWithoutSyncAndStorage = {
+          ...platformDeps,
+          postMessage,
+          sqlite,
+          timestampConfig: initMessage.config,
+          symmetricCrypto: createSymmetricCrypto(platformDeps),
+          getQueryRowsCache,
+          ownerRowStore: createStore<OwnerRow>(ownerRow),
+        };
+
+        const storage = createClientStorage(depsWithoutSyncAndStorage)({
+          onStorageError: (error) => {
+            postMessage({ type: "onError", error });
+          },
+        });
+        if (!storage.ok) return storage;
+
+        const depsWithoutSync = {
+          ...depsWithoutSyncAndStorage,
+          storage: storage.value,
+        };
+
+        if (maybeMigrate.value) {
+          const result = applyMessages(depsWithoutSync)(
+            maybeMigrate.value.messages,
+            maybeMigrate.value.lastTimestamp,
+          );
+          if (!result.ok) return result;
+        }
+
+        if (!ownerExists && isNonEmptyReadonlyArray(initMessage.initialData)) {
+          const result = applyChanges(depsWithoutSync)(initMessage.initialData);
+          if (!result.ok) return result;
+        }
+
+        postMessage({ type: "onInit", owner: appOwner });
+
+        const sync = platformDeps.createSync(platformDeps)({
+          ...initMessage.config,
+          onOpen: safeHandler(handleSyncOpen(depsWithoutSync)),
+          onMessage: safeHandler(createHandleSyncMessage(depsWithoutSync)),
+        });
+
+        return ok({ ...depsWithoutSync, sync });
+      });
+
+      if (!deps.ok) {
+        postMessage({ type: "onError", error: deps.error });
+        return null;
+      }
+
+      return deps.value;
+    },
+
+    onMessage: (deps) => (message) => {
+      switch (message.type) {
+        case "mutate": {
+          const mutate = deps.sqlite.transaction(() => {
+            const toSyncChanges = [];
+            const localOnlyChanges = [];
+
+            for (const change of message.changes) {
+              // Table name starting with '_' is local-only (not synced).
+              if (change.table.startsWith("_")) localOnlyChanges.push(change);
+              else toSyncChanges.push(change);
+            }
+
+            for (const change of localOnlyChanges) {
+              if (change.values["isDeleted" as ColumnName] === 1) {
+                const result = deps.sqlite.exec(sql`
+                  delete from ${sql.identifier(change.table)}
+                  where id = ${change.id};
+                `);
+                if (!result.ok) return result;
+              } else {
+                const millis = Millis.from(deps.time.now());
+                if (!millis.ok) {
+                  return err<TimestampTimeOutOfRangeError>({
+                    type: "TimestampTimeOutOfRangeError",
+                  });
+                }
+                const date = new Date(millis.value).toISOString();
+                for (const [column, value] of objectToEntries(change.values)) {
+                  const result = deps.sqlite.exec(sql.prepared`
+                    insert into ${sql.identifier(change.table)}
+                      ("id", ${sql.identifier(column)}, createdAt, updatedAt)
+                    values (${change.id}, ${value}, ${date}, ${date})
+                    on conflict ("id") do update
+                      set
+                        ${sql.identifier(column)} = ${value},
+                        updatedAt = ${date};
+                  `);
+                  if (!result.ok) return result;
+                }
+              }
+            }
+
+            /**
+             * We don't have to wait for the transaction to end because changes
+             * are idempotent, so there is no reason why they should fail. We
+             * want to call onChange ASAP.
+             */
+            const onChange = () => {
+              deps.console.log("[db]", "onChange");
+              const patches = loadQueries(deps)(
+                message.tabId,
+                message.subscribedQueries,
+              );
+              if (!patches.ok) {
+                deps.postMessage({ type: "onError", error: patches.error });
+                return;
+              }
+              // Notify the tab that performed the mutation.
+              deps.postMessage({
+                type: "onChange",
+                tabId: message.tabId,
+                patches: patches.value,
+                onCompleteIds: message.onCompleteIds,
+              });
+              // Notify other tabs to refresh their queries.
+              deps.postMessage({ type: "onReceive", tabId: message.tabId });
+            };
+
+            if (!isNonEmptyArray(toSyncChanges)) {
+              onChange();
+              return ok();
+            }
+
+            const messages = applyChanges(deps)(toSyncChanges, onChange);
+            if (!messages.ok) return messages;
+
+            const owner = deps.ownerRowStore.getState();
+            // TODO: Check owner whether it's allowed to write, return an
+            // error if not.
+            if (owner.writeKey == null) {
+              return ok();
+            }
+
+            const protocolMessage = createProtocolMessageFromCrdtMessages(deps)(
+              owner as OwnerWithWriteAccess,
+              messages.value,
+            );
+
+            deps.console.log("[db]", "send data message", protocolMessage);
+            deps.sync.send(protocolMessage);
+
+            return ok();
+          });
+
+          if (!mutate.ok) {
+            deps.postMessage({ type: "onError", error: mutate.error });
+            return;
+          }
+
+          break;
+        }
+
+        case "query": {
+          const patches = loadQueries(deps)(message.tabId, message.queries);
+
+          if (!patches.ok) {
+            deps.postMessage({ type: "onError", error: patches.error });
+            return;
+          }
+
+          deps.postMessage({
+            type: "onChange",
+            tabId: message.tabId,
+            patches: patches.value,
+            onCompleteIds: [],
+          });
+          break;
+        }
+
+        case "reset": {
+          const reset = deps.sqlite.transaction(() => {
+            const drop = dropAllTables(deps);
+            if (!drop.ok) return drop;
+
+            if (message.restore) {
+              const dbSchema = getDbSchema(deps)();
+              if (!dbSchema.ok) return dbSchema;
+
+              const ensure = ensureDbSchema(deps)(
+                message.restore.dbSchema,
+                dbSchema.value,
+              );
+              if (!ensure.ok) return ensure;
+
+              const init = initializeDb(deps)(message.restore.mnemonic);
+              if (!init.ok) return init;
+            }
+            return ok();
+          });
+
+          if (!reset.ok) {
+            deps.postMessage({ type: "onError", error: reset.error });
+            return;
+          }
+
+          deps.postMessage({
+            type: "onReset",
+            onCompleteId: message.onCompleteId,
+            reload: message.reload,
+          });
+          deps.sqlite[Symbol.dispose]();
+
+          break;
+        }
+
+        case "ensureSchema": {
+          const ensureSchema = deps.sqlite.transaction(() => {
+            const schema = getDbSchema(deps)();
+            if (!schema.ok) return schema;
+
+            const ensure = ensureDbSchema(deps)(message.dbSchema, schema.value);
+            if (!ensure.ok) return ensure;
+
+            return ok();
+          });
+
+          if (!ensureSchema.ok) {
+            deps.postMessage({ type: "onError", error: ensureSchema.error });
+            return;
+          }
+          break;
+        }
+
+        case "export": {
+          const file = deps.sqlite.export();
+
+          if (!file.ok) {
+            deps.postMessage({ type: "onError", error: file.error });
+            return;
+          }
+
+          deps.postMessage({
+            type: "onExport",
+            onCompleteId: message.onCompleteId,
+            file: file.value,
+          });
+          break;
+        }
+
+        default:
+          exhaustiveCheck(message);
+      }
+    },
+  });
+};
+
+// TODO: Refactor out Evolu stuff and move it to Sqlite.
+export const getDbSchema =
+  (deps: SqliteDep) =>
+  ({ allIndexes = false }: { allIndexes?: boolean } = {}): Result<
+    DbSchema,
+    SqliteError
+  > => {
+    const map = new Map<TableName, Array<ColumnName>>();
+
+    const tableAndColumnInfoRows = deps.sqlite.exec(sql`
+      select
+        sqlite_master.name as tableName,
+        table_info.name as columnName
+      from
+        sqlite_master
+        join pragma_table_info(sqlite_master.name) as table_info;
+    `);
+
+    if (!tableAndColumnInfoRows.ok) return tableAndColumnInfoRows;
+
+    tableAndColumnInfoRows.value.rows.forEach((row) => {
+      const { tableName, columnName } = row as unknown as {
+        tableName: TableName;
+        columnName: ColumnName;
+      };
+      if (!map.has(tableName)) map.set(tableName, []);
+      map.get(tableName)?.push(columnName);
+    });
+
+    const tables = Array.from(map, ([name, columns]) => ({ name, columns }));
+
+    const indexesRows = deps.sqlite.exec(
+      allIndexes
+        ? sql`
+            select name, sql
+            from sqlite_master
+            where type = 'index' and name not like 'sqlite_%';
+          `
+        : sql`
+            select name, sql
+            from sqlite_master
+            where
+              type = 'index'
+              and name not like 'sqlite_%'
+              and name not like 'evolu_%';
+          `,
+    );
+
+    if (!indexesRows.ok) return indexesRows;
+
+    const indexes = indexesRows.value.rows.map(
+      (row): Index => ({
+        name: row.name as string,
+        /**
+         * SQLite returns "CREATE INDEX" for "create index" for some reason.
+         * Other keywords remain unchanged. We have to normalize the casing for
+         * {@link indexesAreEqual} manually.
+         */
+        sql: (row.sql as string)
+          .replace("CREATE INDEX", "create index")
+          .replace("CREATE UNIQUE INDEX", "create unique index"),
+      }),
+    );
+
+    return ok({ tables, indexes });
+  };
+
+const indexesAreEqual = (self: Index, that: Index): boolean =>
+  self.name === that.name && self.sql === that.sql;
+
+export interface DbSnapshot {
+  readonly schema: DbSchema;
+  readonly rows: Array<{
+    rows: ReadonlyArray<SqliteRow>;
+    name: TableName;
+  }>;
+}
+
+// TODO: Move it to Sqlite.
+export const getDbSnapshot = (
+  deps: SqliteDep,
+): Result<DbSnapshot, SqliteError> => {
+  const schema = getDbSchema(deps)({ allIndexes: true });
+  if (!schema.ok) return schema;
+
+  const rows = [];
+
+  for (const table of schema.value.tables) {
+    const result = deps.sqlite.exec(sql`
+      select * from ${sql.identifier(table.name)};
+    `);
+    if (!result.ok) return result;
+
+    rows.push({
+      rows: result.value.rows,
+      name: table.name,
+    });
+  }
+
+  return ok({ schema: schema.value, rows });
+};
+
+const ensureDbSchema =
+  (deps: SqliteDep) =>
+  (
+    newSchema: DbSchema,
+    currentSchema: DbSchema,
+    options?: { ignoreIndexes: boolean },
+  ): Result<void, SqliteError> => {
+    const queries: Array<SqliteQuery> = [];
+
+    newSchema.tables.forEach((newTable) => {
+      const currentTable = currentSchema.tables.find(
+        (t) => t.name === newTable.name,
+      );
+      if (!currentTable) {
+        queries.push({
+          sql: createAppTable(newTable.name, newTable.columns),
+          parameters: [],
+        });
+      } else {
+        newTable.columns
+          .filter((newColumn) => !currentTable.columns.includes(newColumn))
+          .forEach((newColumn) => {
+            queries.push(sql`
+              alter table ${sql.identifier(newTable.name)}
+              add column ${sql.identifier(newColumn)} blob;
+            `);
+          });
+      }
+    });
+
+    if (options?.ignoreIndexes !== true) {
+      // Remove current indexes that are not in the newSchema.
+      currentSchema.indexes
+        .filter(
+          (currentIndex) =>
+            !newSchema.indexes.some((newIndex) =>
+              indexesAreEqual(newIndex, currentIndex),
+            ),
+        )
+        .forEach((index) => {
+          queries.push(sql`drop index ${sql.identifier(index.name)};`);
+        });
+
+      // Add new indexes that are not in the currentSchema.
+      newSchema.indexes
+        .filter(
+          (newIndex) =>
+            !currentSchema.indexes.some((currentIndex) =>
+              indexesAreEqual(newIndex, currentIndex),
+            ),
+        )
+        .forEach((newIndex) => {
+          queries.push({ sql: `${newIndex.sql};` as SafeSql, parameters: [] });
+        });
+    }
+
+    for (const query of queries) {
+      const result = deps.sqlite.exec(query);
+      if (!result.ok) return result;
+    }
+    return ok();
+  };
+
+export const createAppTable = (
+  tableName: TableName,
+  columns: ReadonlyArray<ColumnName>,
+): SafeSql =>
+  `
+    create table ${sql.identifier(tableName).sql} (
+      "id" text primary key,
+      ${columns
+        .filter((c) => c !== "id")
+        // "A column with affinity BLOB does not prefer one storage class over another
+        // and no attempt is made to coerce data from one storage class into another."
+        // https://www.sqlite.org/datatype3.html
+        .map((name) => `${sql.identifier(name).sql} blob`)
+        .join(", ")}
+    );
+  ` as SafeSql;
+
+const selectAppOwner = (
+  deps: SqliteDep,
+): Result<[AppOwner, OwnerRow], SqliteError> => {
+  const result = deps.sqlite.exec<OwnerRow>(sql`
+    select mnemonic, id, createdAt, encryptionKey, writeKey, timestamp
+    from evolu_owner
+    order by createdAt asc
+    limit 1;
+  `);
+
+  if (!result.ok) return result;
+
+  const {
+    rows: [ownerRow],
+  } = result.value;
+
+  assert(ownerRow.writeKey != null, "The writeKey is null");
+
+  const appOwner: AppOwner = {
+    type: "AppOwner",
+    mnemonic: ownerRow.mnemonic,
+    createdAt: ownerRow.createdAt,
+    id: ownerRow.id,
+    encryptionKey: ownerRow.encryptionKey,
+    writeKey: ownerRow.writeKey,
+  };
+
+  return ok([appOwner, ownerRow]);
+};
+
+const initializeDb =
+  (
+    deps: SqliteDep &
+      NanoIdLibDep &
+      CreateMnemonicDep &
+      TimeDep &
+      CreateRandomBytesDep,
+  ) =>
+  (mnemonic?: Mnemonic): Result<[AppOwner, OwnerRow], SqliteError> => {
+    for (const query of [
+      sql`
+        create table evolu_config (
+          "key" text not null primary key,
+          "value" any not null
+        )
+        strict;
+      `,
+
+      sql`
+        insert into evolu_config (key, value)
+        values ('protocolVersion', ${protocolVersion});
+      `,
+
+      /**
+       * The History table stores all values per timestamp, table, row, and
+       * column. It's required for merging without conflicts. Evolu uses
+       * last-write-win CRDT. In case of last-write-win value isn't what we
+       * want, we can use time travel. The current implementation prefers
+       * performance over storage size. The History table denormalizes Timestamp
+       * and DbChange to leverage a covering index. Hence, every value change
+       * has its timestamp, table, row, and column. In the future, we will
+       * rethink that and store history more efficiently.
+       *
+       * There is no need to use `OwnerId` on the client, because timestamps
+       * (which include a `NodeId`) are globally unique. The relay needs
+       * `OwnerId` because it hosts multiple apps/owners, but client storage
+       * represents one DB, and even when it hosts multiple owners, their
+       * timestamps remain unique.
+       */
+      sql`
+        create table evolu_history (
+          "timestamp" blob not null,
+          "table" text not null,
+          "row" blob not null,
+          "column" text not null,
+          "value" any
+        )
+        strict;
+      `,
+
+      sql`
+        create index evolu_history_timestamp on evolu_history ("timestamp");
+      `,
+
+      sql`
+        create unique index evolu_history_row_column_table_timestampDesc on evolu_history (
+          "row",
+          "column",
+          "table",
+          "timestamp" desc
+        );
+      `,
+
+      sql`
+        create table evolu_owner (
+          "mnemonic" text not null primary key,
+          "id" text not null,
+          "encryptionKey" blob not null,
+          "createdAt" text not null,
+          "writeKey" blob,
+          "timestamp" text not null
+        )
+        strict;
+      `,
+    ]) {
+      const result = deps.sqlite.exec(query);
+      if (!result.ok) return result;
+    }
+
+    const appOwner = createAppOwner(deps)(mnemonic);
+    const ownerRow = createOwnerRow(deps)(appOwner);
+
+    const result = deps.sqlite.exec(sql`
+      insert into evolu_owner
+        (mnemonic, id, encryptionKey, createdAt, writeKey, timestamp)
+      values
+        (
+          ${ownerRow.mnemonic},
+          ${ownerRow.id},
+          ${ownerRow.encryptionKey},
+          ${ownerRow.createdAt},
+          ${ownerRow.writeKey},
+          ${ownerRow.timestamp}
+        );
+    `);
+
+    if (!result.ok) return result;
+
+    return ok([appOwner, ownerRow]);
+  };
+
+const applyChanges =
+  (
+    deps: SqliteDep &
+      TimeDep &
+      TimestampConfigDep &
+      RandomDep &
+      OwnerRowStoreDep &
+      ClientStorageDep,
+  ) =>
+  (
+    changes: NonEmptyReadonlyArray<DbChange>,
+    onChange?: () => void,
+  ): Result<
+    NonEmptyReadonlyArray<CrdtMessage>,
+    | TimestampTimeOutOfRangeError
+    | TimestampDriftError
+    | TimestampCounterOverflowError
+    | SqliteError
+  > => {
+    let lastTimestamp = timestampStringToTimestamp(
+      deps.ownerRowStore.getState().timestamp,
+    );
+
+    const messages: Array<CrdtMessage> = [];
+
+    for (const change of changes) {
+      const nextTimestamp = sendTimestamp(deps)(lastTimestamp);
+      if (!nextTimestamp.ok) return nextTimestamp;
+      lastTimestamp = nextTimestamp.value;
+      messages.push({ timestamp: lastTimestamp, change });
+    }
+
+    const apply = applyMessages(deps)(messages, lastTimestamp);
+    if (!apply.ok) return apply;
+
+    if (onChange) onChange();
+
+    assertNonEmptyReadonlyArray(messages);
+    return ok(messages);
+  };
+
+const applyMessages =
+  (deps: SqliteDep & RandomDep & OwnerRowStoreDep & ClientStorageDep) =>
+  (
+    messages: ReadonlyArray<CrdtMessage>,
+    lastTimestamp: Timestamp,
+    options: { isMigrationFromVersion0?: boolean } = {},
+  ): Result<void, SqliteError> => {
+    for (const message of messages) {
+      if (!options.isMigrationFromVersion0) {
+        const apply1 = applyMessageToAppTable(deps)(message);
+        if (!apply1.ok) return apply1;
+      }
+
+      const apply2 = applyMessageToTimestampAndHistoryTables(deps)(message);
+      if (!apply2.ok) return apply2;
+    }
+
+    const timestamp = timestampToTimestampString(lastTimestamp);
+    deps.ownerRowStore.modifyState((owner) => ({ ...owner, timestamp }));
+    const saveTimestamp = deps.sqlite.exec(sql.prepared`
+      update evolu_owner set "timestamp" = ${timestamp};
+    `);
+    if (!saveTimestamp.ok) return saveTimestamp;
+
+    return ok();
+  };
+
+const applyMessageToAppTable =
+  (deps: SqliteDep) =>
+  (message: CrdtMessage): Result<void, SqliteError> => {
+    const date = new Date(message.timestamp.millis).toISOString();
+    const timestamp = timestampToBinaryTimestamp(message.timestamp);
+
+    for (const [column, value] of objectToEntries(message.change.values)) {
+      const result = deps.sqlite.exec(sql.prepared`
+        with
+          lastTimestamp as (
+            select timestamp
+            from evolu_history
+            where
+              "row" = ${message.change.id}
+              and "column" = ${column}
+              and "table" = ${message.change.table}
+            order by timestamp desc
+            limit 1
+          )
+        insert into ${sql.identifier(message.change.table)}
+          ("id", ${sql.identifier(column)}, createdAt, updatedAt)
+        select ${message.change.id}, ${value}, ${date}, ${date}
+        where
+          (select timestamp from lastTimestamp) is null
+          or (select timestamp from lastTimestamp) < ${timestamp}
+        on conflict ("id") do update
+          set
+            ${sql.identifier(column)} = ${value},
+            updatedAt = ${date}
+          where
+            (select timestamp from lastTimestamp) is null
+            or (select timestamp from lastTimestamp) < ${timestamp};
+      `);
+
+      if (!result.ok) return result;
+    }
+
+    return ok();
+  };
+
+export const applyMessageToTimestampAndHistoryTables =
+  (deps: SqliteDep & RandomDep & OwnerRowStoreDep & ClientStorageDep) =>
+  (message: CrdtMessage): Result<void, SqliteError> => {
+    const timestamp = timestampToBinaryTimestamp(message.timestamp);
+    const ownerId = ownerIdToBinaryOwnerId(deps.ownerRowStore.getState().id);
+    const id = idToBinaryId(message.change.id);
+
+    const result = deps.storage.insertTimestamp(ownerId, timestamp);
+    if (!result.ok) return result;
+
+    for (const [column, value] of Object.entries(message.change.values)) {
+      const result = deps.sqlite.exec(sql.prepared`
+        insert into evolu_history
+          ("timestamp", "table", "row", "column", "value")
+        values
+          (${timestamp}, ${message.change.table}, ${id}, ${column}, ${value})
+        on conflict do nothing;
+      `);
+      if (!result.ok) return result;
+    }
+
+    return ok();
+  };
+
+const loadQueries =
+  (deps: GetQueryRowsCacheDep & SqliteDep) =>
+  (
+    tabId: Id,
+    queries: ReadonlyArray<Query>,
+  ): Result<ReadonlyArray<QueryPatches>, SqliteError> => {
+    const queriesRows = [];
+
+    for (const query of queries) {
+      const sqlQuery = deserializeQuery(query);
+      const result = deps.sqlite.exec(sqlQuery);
+      if (!result.ok) return result;
+
+      queriesRows.push([query, result.value.rows] as const);
+      if (sqlQuery.options?.logExplainQueryPlan) {
+        explainSqliteQueryPlan(deps)(sqlQuery);
+      }
+    }
+
+    const queryRowsCache = deps.getQueryRowsCache(tabId);
+
+    const previousState = queryRowsCache.get();
+    queryRowsCache.set(queriesRows);
+
+    const currentState = queryRowsCache.get();
+
+    const queryPatchesArray = queries.map(
+      (query): QueryPatches => ({
+        query,
+        patches: makePatches(
+          previousState.get(query),
+          currentState.get(query) ?? emptyRows,
+        ),
+      }),
+    );
+    return ok(queryPatchesArray);
+  };
+
+export const maybeMigrateToVersion0 =
+  (deps: SqliteDep) =>
+  (
+    schema: DbSchema,
+  ): Result<
+    {
+      readonly messages: ReadonlyArray<CrdtMessage>;
+      readonly mnemonic: Mnemonic;
+      readonly lastTimestamp: Timestamp;
+    } | null,
+    SqliteError
+  > => {
+    // evolu_history is a new table
+    const hasOwnerButNoHistory =
+      schema.tables.some((t) => t.name === "evolu_owner") &&
+      !schema.tables.some((t) => t.name === "evolu_history");
+    if (!hasOwnerButNoHistory) {
+      return ok(null);
+    }
+
+    const mnemonicAndLastTimestamp = deps.sqlite.exec<{
+      mnemonic: Mnemonic;
+      timestamp: TimestampString;
+    }>(sql` select mnemonic, timestamp from evolu_owner limit 1; `);
+    if (!mnemonicAndLastTimestamp.ok) return mnemonicAndLastTimestamp;
+
+    for (const query of [
+      sql`drop table evolu_owner;`,
+      sql`drop table evolu_message;`,
+    ]) {
+      const result = deps.sqlite.exec(query);
+      if (!result.ok) return result;
+    }
+
+    const messagesRows = deps.sqlite.exec<{
+      timestamp: TimestampString;
+      table: TableName;
+      row: Id;
+      column: ColumnName;
+      value: SqliteValue;
+    }>(sql`
+      select "timestamp", "table", "row", "column", "value" from evolu_message;
+    `);
+
+    if (!messagesRows.ok) return messagesRows;
+
+    const messages = messagesRows.value.rows.map((message) => ({
+      timestamp: timestampStringToTimestamp(message.timestamp),
+      change: {
+        id: message.row,
+        table: message.table,
+        values: { [message.column]: message.value },
+      },
+    }));
+
+    const {
+      rows: [{ mnemonic, timestamp }],
+    } = mnemonicAndLastTimestamp.value;
+    const lastTimestamp = timestampStringToTimestamp(timestamp);
+
+    return ok({ messages, mnemonic, lastTimestamp });
+  };
+
+const dropAllTables = (deps: SqliteDep): Result<void, SqliteError> => {
+  const schema = getDbSchema(deps)();
+  if (!schema.ok) return schema;
+  for (const table of schema.value.tables) {
+    /**
+     * The dropped table is completely removed from the database schema and the
+     * disk file. The table can not be recovered. All indices and triggers
+     * associated with the table are also deleted.
+     * https://sqlite.org/lang_droptable.html
+     */
+    const result = deps.sqlite.exec(sql`
+      drop table ${sql.identifier(table.name)};
+    `);
+    if (!result.ok) return result;
+  }
+  return ok();
+};
+
+const handleSyncOpen =
+  (deps: OwnerRowStoreDep & StorageDep & ConsoleDep): SyncConfig["onOpen"] =>
+  (send) => {
+    const ownerId = deps.ownerRowStore.getState().id;
+    const message = createProtocolMessageForSync(deps)(ownerId);
+    if (message) {
+      deps.console.log("[db]", "send initial sync message", message);
+      send(message);
+    }
+  };
+
+const createHandleSyncMessage =
+  (
+    deps: PostMessageDep &
+      StorageDep &
+      SqliteDep &
+      ConsoleDep &
+      OwnerRowStoreDep,
+  ): SyncConfig["onMessage"] =>
+  (input, send) => {
+    deps.console.log("[db]", "receive sync message", input);
+    const { writeKey } = deps.ownerRowStore.getState();
+
+    const output = deps.sqlite.transaction(() =>
+      applyProtocolMessageAsClient(deps)(input, {
+        getWriteKey: (_ownerId) => writeKey,
+      }),
+    );
+    if (!output.ok) {
+      deps.postMessage({ type: "onError", error: output.error });
+      return;
+    }
+
+    if (output.value) {
+      deps.console.log("[db]", "respond sync message", output.value);
+      send(output.value);
+    }
+  };
+
+export interface ClientStorage extends SqliteStorageBase, Storage {}
+
+export interface ClientStorageDep {
+  readonly storage: ClientStorage;
+}
+
+const createClientStorage =
+  (
+    deps: SqliteDep &
+      PostMessageDep &
+      SymmetricCryptoDep &
+      OwnerRowStoreDep &
+      RandomDep &
+      TimeDep &
+      TimestampConfigDep,
+  ) =>
+  (
+    options: CreateSqliteStorageBaseOptions,
+  ): Result<ClientStorage, SqliteError> => {
+    const sqliteStorageBase = createSqliteStorageBase(deps)(options);
+    if (!sqliteStorageBase.ok) return sqliteStorageBase;
+
+    const storage: ClientStorage = {
+      ...sqliteStorageBase.value,
+
+      validateWriteKey: constFalse,
+
+      writeMessages: (_ownerId, messages) => {
+        // TODO: Get owner by _ownerId when we support more.
+        const owner = deps.ownerRowStore.getState();
+        const decryptedMessages: Array<CrdtMessage> = [];
+
+        for (const message of messages) {
+          const decryptedChange = decryptDbChange(deps)(
+            message.change,
+            owner.encryptionKey,
+          );
+
+          if (!decryptedChange.ok) {
+            deps.postMessage({
+              type: "onError",
+              error: decryptedChange.error,
+            });
+            return false;
+          }
+
+          decryptedMessages.push({
+            timestamp: message.timestamp,
+            change: decryptedChange.value,
+          });
+        }
+
+        let timestamp = timestampStringToTimestamp(owner.timestamp);
+
+        for (const message of messages) {
+          const receive = receiveTimestamp(deps)(timestamp, message.timestamp);
+          if (!receive.ok) {
+            deps.postMessage({ type: "onError", error: receive.error });
+            return false;
+          }
+          timestamp = receive.value;
+        }
+
+        const result = applyMessages({ ...deps, storage })(
+          decryptedMessages,
+          timestamp,
+        );
+
+        if (!result.ok) {
+          deps.postMessage({ type: "onError", error: result.error });
+          return false;
+        }
+
+        deps.postMessage({ type: "onReceive" });
+
+        return true;
+      },
+
+      readDbChange: (_ownerId, timestamp) => {
+        const result = deps.sqlite.exec<{
+          table: TableName;
+          row: BinaryId;
+          column: ColumnName;
+          value: SqliteValue;
+        }>(sql`
+          select "table", "row", "column", "value"
+          from evolu_history
+          where "timestamp" = ${timestamp};
+        `);
+
+        if (!result.ok) {
+          deps.postMessage({ type: "onError", error: result.error });
+          return null;
+        }
+
+        const { rows } = result.value;
+
+        assert(rows.length > 0, "Rows must not be empty");
+
+        const values: Record<ColumnName, SqliteValue> = {};
+
+        const { table, row } = rows[0];
+        for (const r of rows) {
+          assert(r.table === table, "All rows must have the same table");
+          assert(eqArrayNumber(r.row, row), "All rows must have the same row");
+          values[r.column] = r.value;
+        }
+
+        const change: DbChange = {
+          table: rows[0].table,
+          id: binaryIdToId(rows[0].row),
+          values,
+        };
+
+        const { encryptionKey } = deps.ownerRowStore.getState();
+
+        const encryptedDbChange = encryptDbChange(deps)(change, encryptionKey);
+
+        return encryptedDbChange;
+      },
+    };
+
+    return ok(storage);
+  };

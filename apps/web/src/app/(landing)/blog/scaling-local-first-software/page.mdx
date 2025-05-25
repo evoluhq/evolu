@@ -1,0 +1,397 @@
+import { ArticleLayout } from "@/components/ArticleLayout";
+import Image from "next/image";
+
+export const article = {
+  author: "Daniel Steigerwald",
+  date: "2025-05-24",
+  title: "Scaling Local-First Software",
+  description:
+    "Building local-first apps is already a challenge, and making them scalable is an even greater one. It’s not just about keeping data local; scalability touches multiple dimensions—from data volume and user count, to varying authentication models, growing code complexity, developer experience, and support for diverse use cases.",
+};
+
+export const metadata = {
+  title: article.title,
+  description: article.description,
+};
+
+export default (props) => <ArticleLayout article={article} {...props} />;
+
+Client-server architecture has largely shaped how we interact with apps and manage data. While this approach offers convenience, it has significant trade-offs, such as privacy concerns, dependency on external services, and limited user control over their data. Enter **local-first apps**—a paradigm prioritizing user autonomy, data ownership, and resilience.
+
+Building local-first apps is already a challenge, and making them scalable is an even greater one. It’s not just about keeping data local; scalability touches multiple dimensions—from data volume and user count to varying authentication models, growing code complexity, developer experience, and support for diverse use cases.
+
+---
+
+# Where It All Began: A Mission to Restore Ownership
+
+When I discovered the concept of local-first software, I immediately knew I didn't want to build apps any other way. Ownership is the foundation of a free society—without it, there is no freedom. Outside programming, I often speak about the state, anarchism, Bitcoin, and economics. I'm currently writing a book called [Deconstruction of the State](https://www.startovac.cz/projekty/kniha-dekonstrukce-statu), which aims to return the state to the people.
+
+A few years ago, it became clear to me that my life's mission is to restore ownership—of software (data) and the state. These are two of the most complex systems in human society. That's why I created the first version of Evolu. But I soon realized that the way I had built it didn't scale. Scaling peer-to-peer systems is hard—but, as Bitcoin has demonstrated, entirely achievable.
+
+What worked well in the first version of Evolu was my decision to build on SQL. I wasn’t trying to reinvent the database. While creating a new one is a noble goal, it takes years. Instead, I chose to build on top of SQLite—a stable, battle-tested engine that’s more than good enough. For serious, large-scale applications, SQL remains essential. The timestamp design I adopted from James Long’s [ActualBudget](https://actualbudget.org/) also proved to be well-designed. There was no need to change anything. The same goes for the Evolu API, which I only refined slightly. Everything else changed. ActualBudget used a Merkle tree, which doesn’t scale for local-first apps because it can’t precisely identify what data changed—only when nodes last had the same data.
+
+## How Distributed Systems Work
+
+At this point, I want to briefly explain how distributed systems—because local-first apps are distributed systems—work. They don’t rely on a central server to store or coordinate changes. Instead, each device can make updates independently and sync later. The foundation of this model is a stream of events—descriptions of what changed and when.
+
+To reason about when events happened and how they relate, distributed systems use various types of clocks: Lamport clocks, vector clocks, causal graphs, and hybrid logical clocks (HLCs). Evolu uses HLCs, which combine physical time with a logical counter to produce unique, causally ordered timestamps. They're compact, deterministic, and good enough for resolving conflicts.
+
+But here’s the catch: knowing when something happened isn’t enough. To sync two peers, we don’t just need causality—we need to know which exact events the other peer has already seen. Clocks describe order and causality, but not which specific events a peer has seen. This becomes a serious limitation in peer-to-peer systems, where events (messages) might take different paths to different nodes. Without a way to compare sets of events directly, we risk syncing inefficiencies: unnecessary retransmissions, duplicated events, or bloated metadata. These issues limit scalability.
+
+# Set Reconciliation
+
+> Imagine two computers connected over a network, and each computer holds a set of values. Set reconciliation is the problem of efficiently exchanging messages between them such that in the end both hold the union of the two sets. If there is a total order on the items, and if items can be hashed to smaller fingerprints with negligible collision probability, this can be done in logarithmic time in a fairly simple manner.
+
+That quote is from Aljoscha Meyer, the author of [Range-Based Set Reconciliation](https://arxiv.org/pdf/2212.13567) paper.
+
+RBSR isn’t the only set reconciliation technique, but it stands out for being both simple and powerful—and it fits Evolu particularly well. I discovered it through [Negentropy](https://logperiodic.com/rbsr.html), a sync protocol designed for [Nostr](https://nostr.com/). Another approach is RIBLT (Practical Rateless Set Reconciliation), which is used by the new [Automerge](https://automerge.org/). Doug, the author of Negentropy, ran [experimental comparisons](https://github.com/hoytech/riblet). His conclusion is worth reading.
+
+A curious reader might ask: why doesn’t Evolu use Negentropy—or even Nostr? I’d love to, but local-first apps have different requirements. For example, Evolu relies on globally unique timestamps that also serve as IDs, rather than using traditional identifiers. Additionally, Nostr is a specification with many different implementations—none of which are suited to Evolu’s needs.
+
+There’s another reason: while Negentropy has a JavaScript implementation, it focuses on finding differences—not on transferring actual data. And most importantly, the scalable storage implementation exists only in C++, whereas Evolu needs to run in both the browser and native environments.
+
+Exactly one year ago, at the Local-First Conference in Berlin, I stumbled—quite literally—onto the solution. I had slipped out of a talk and stepped outside into the rain. Under a small canopy, two people were standing, sheltering. I walked over and said something like: “Everything here kind of sucks—almost nothing is truly local-first, and nothing scales. The only thing that looks promising is RBSR, but I have no idea how to make it work with SQLite.”
+
+By pure luck, one of them turned out to be Aljoscha Meyer. I didn’t fully grasp everything he told me, but one word stuck: [Skiplist](https://stackoverflow.com/questions/61944198/what-is-a-zip-tree-and-how-does-it-work).
+
+Back in Prague, I began diving deep into tree structures. As Doug [explains](https://logperiodic.com/rbsr.html#tree-friendly-functions), a tree structure is essential for incremental fingerprint computation. Compared to B+ trees, skiplists have a key advantage: because they’re probabilistic, they avoid the complexity of node splitting, merging, and balancing. But the big question remained—how do you make that work efficiently in SQLite? Traversing a tree can require up to 20 queries. Surely that must be painfully slow, especially if done in JavaScript.
+
+## RBSR with(in) SQLite
+
+Long story short, I bet on something pretty unconventional: I decided to write the entire logic in SQL. No C extensions—because I wanted it to be portable across SQL databases. With skiplists, all we really need is data traversal and minimal manipulation—no need for node splitting, merging, or balancing.
+
+SQLite compiles SQL to bytecode and runs it in its virtual machine. That’s exactly where the data is, and that’s where the processing should happen. It’s not Rust—unless you’re building a new database. It’s not JavaScript—because that would mean costly roundtrips. It’s SQL.
+
+Is it doable? Yes, it is. In hindsight, I probably could’ve saved myself some trouble by writing a SQLite extension—but at least I finally learned SQL properly.
+
+The result is fast—very fast—and surprisingly concise. It would be even more elegant if SQLite had better binary manipulation and true procedural conditionals, but that’s not essential. I’m satisfied: there are no roundtrips, and what would need dozens of queries now takes just one or two idempotent ones. As for binary manipulation—yes, we XOR hashes directly within SQLite to compute fingerprints incrementally. Evolu uses the first 12 bytes of a SHA-256 hash, converted into two integers. While SQLite still doesn’t support XORing integers natively, it can be easily emulated.
+
+It may not be ideal—ideally, we’d have a key-value WASM storage—but it’s minimal, fast, and it scales to millions of rows. For skiplist levels, Evolu leverages SQLite indexes. Not only can we insert almost 60,000 timestamps per second (check the benchmarks in the tests), but we can also store millions of rows with performance degrading only logarithmically—that’s the beauty of range-based set reconciliation.
+
+Does this fully solve the challenge of handling large amounts of data? No—and I’ll write more about that later. But for now, let’s shift focus to something else: the Evolu code itself.
+
+# Rewriting Evolu: fp-ts → Effect → Evolu Library
+
+I've always been a fan of functional programming—but it took me a while to figure out exactly why. It definitely wasn’t because of the cryptic code or the heavy terminology. What I like the most are typed errors (like the Result type), dependency injection, and immutability. These patterns make code more composable, testable, and easier to reason about. i.e., scalable.
+
+The first version of Evolu was written with [fp-ts](https://github.com/gcanti/fp-ts), using pipes everywhere. When Giulio Canti joined Effect, I rewrote the entire codebase to use it—mainly to learn Effect properly. After some time, I decided that I didn’t want to use Effect in Evolu. Not because it’s a bad library—but because Evolu doesn’t need it, and it doesn’t really fit. If you're curious about the details, the main reason I removed Effect is that Evolu doesn’t need a runtime to run its code. That doesn’t mean Effect is bad—just that it’s unnecessary here. Evolu uses synchronous code as much as possible for performance reasons (see issues in better-sqlite3). Using Effect's sync would mean having to rely on pipe everywhere—or adopting a generator-based API. While pipe is fine for transformations, it’s not great for logic. And Do syntax doesn’t really help. The real strength of Effect is in composing async code. If you need that, I recommend giving Effect a try. It offers a lot of useful tools—along with many abstractions. Do we need those abstractions? That depends—on your requirements, experience, team, and more. In Evolu’s case, we don’t.
+
+Removing Effect from Evolu left me in an awkward spot: I suddenly had no idea what to write code in. Plain TypeScript with a massive utils.ts? No way. After years of teaching programming and web app development, I found myself without anything I could in good conscience recommend to others.
+
+I never wanted to become the author of a TypeScript library—I have better things to do—but there was no other option. So I decided to write the smallest possible library that would still be solid. And if I was going to write something, I was going to document and test everything properly. Part of the blame goes to [Nedim Arabacı](https://github.com/needim), who made a new website for Evolu and convinced me that generating docs directly from JSDoc into the site was a good idea. That meant all I had to do was write clear JSDoc comments and tests.
+
+Every time I wrote a piece of the new Evolu code that I thought might be useful to someone else, I wrote it in isolation. And that’s how **Evolu Library** was born.
+It provides typed errors via [Result](/docs/api-reference/common/Result), conventions-based (runtime-free) [dependency injection](/docs/dependency-injection), and [more](/docs/api-reference/common). The new Evolu is like a LEGO[^1].
+
+**Evolu Library is how I want to write TypeScript**: straightforward patterns, laser-focused functions, no ambiguities, consistent naming. It’s functional—but only as much as necessary. There’s almost nothing to learn. It’s idiomatic TypeScript. After years spent with functional programming, I’ve come to the conclusion that I prefer imperative code over pipes and sophisticated one-liners. It’s easier to read, reason about, and maintain.
+
+## Evolu Type
+
+Without Effect, I could no longer use Effect Schema. I hoped another library might replace it—but unfortunately, I have high standards. Or maybe I’m just picky. Who knows.
+
+[Evolu Type](/docs/api-reference/common/Type) exists because no existing validation, parsing, or transformation library fully met the needs of Evolu:
+
+- **Result-based error handling**: Built on top of Result, not exceptions.
+- **Consistent constraints**: Uses Brand for enforcing constraints uniformly.
+- **Typed errors with decoupled formatters**: Keeps error messages separate from validation logic.
+- **No user-land chaining**: Designed to work cleanly with the upcoming ES pipe operator.
+- **Selective validation and transformation**: Skips redundant parent validations when TypeScript’s type system already guarantees safety.
+- **Bidirectional transformations**: Supports mapping values in both directions.
+- **Minimal and transparent**: No runtime dependencies or hidden magic.
+
+**Done. TDD FTW.** Here are a few examples of what it looks like:
+
+```ts
+const CurrencyCode = brand("CurrencyCode", String, (value) =>
+  /^[A-Z]{3}$/.test(value)
+    ? ok(value)
+    : err<CurrencyCodeError>({ type: "CurrencyCode", value }),
+);
+
+// string & Brand<"CurrencyCode">
+type CurrencyCode = typeof CurrencyCode.Type;
+
+interface CurrencyCodeError extends TypeError<"CurrencyCode"> {}
+
+const formatCurrencyCodeError = createTypeErrorFormatter<CurrencyCodeError>(
+  (error) => `Invalid currency code: ${error.value}`,
+);
+
+// Usage
+const result = CurrencyCode.from("USD");
+if (result.ok) {
+  console.log("Valid currency code:", result.value);
+} else {
+  console.error(formatCurrencyCodeError(result.error));
+}
+```
+
+Branded Types are often better as reusable factories—for example, instead of a `TrimmedString`:
+
+```ts
+const trimmed: BrandFactory<"Trimmed", string, TrimmedError> = (parent) =>
+  brand("Trimmed", parent, (value) =>
+    value.trim().length === value.length
+      ? ok(value)
+      : err<TrimmedError>({ type: "Trimmed", value }),
+  );
+
+interface TrimmedError extends TypeError<"Trimmed"> {}
+
+const formatTrimmedError = createTypeErrorFormatter<TrimmedError>(
+  (error) => `A value ${error.value} is not trimmed`,
+);
+
+const TrimmedString = trimmed(String);
+
+// string & Brand<"Trimmed">
+type TrimmedString = typeof TrimmedString.Type;
+
+const TrimmedNote = trimmed(Note);
+```
+
+Sometimes it's useful to add semantic meaning to an existing type without changing its behavior:
+
+```ts
+const SimplePassword = brand(
+  "SimplePassword",
+  minLength(8)(maxLength(64)(TrimmedString)),
+);
+// string & Brand<"Trimmed"> & Brand<"MinLength8"> & Brand<"MaxLength64"> & Brand<"SimplePassword">
+type SimplePassword = typeof SimplePassword.Type;
+```
+
+It turns out we don’t need pipe or chaining at all—just `Result` and plain functions. Evolu Type lives in a single file, yet does a lot.
+
+Now let’s return to the new Evolu—its local-first architecture and the ongoing challenge of scaling. That brings us to the Evolu Protocol.
+
+# Evolu Protocol
+
+Evolu Protocol is a local-first, end-to-end encrypted binary synchronization
+protocol optimized for minimal size and maximum speed. It enables data sync
+between a client and a relay, clients in a peer-to-peer (P2P) setup, or
+relays with each other. Evolu Protocol is designed for SQLite but can be extended to any database. It
+implements [Range-Based Set Reconciliation](https://arxiv.org/abs/2212.13567)
+by Aljoscha Meyer.
+
+## Why Binary?
+
+The protocol avoids JSON because:
+
+- **Encrypted data doesn’t compress well**, unlike plain JSON.
+- **Message size must be controlled** precisely at creation time.
+- **Sequential byte reading is faster** than JSON parsing and can avoid unnecessary conversions.
+
+It uses structure-aware encoding, significantly outperforming generic binary
+serialization formats. Take a look at this message:
+
+```ts
+[
+  0, 59, 193, 30, 13, 197, 129, 241, 80, 15, 255, 45, 234, 249, 223, 59, 136, 0,
+  1, 2, 31, 153, 253, 156, 250, 238, 50, 128, 220, 15, 246, 3, 165, 3, 194, 1,
+  183, 1, 183, 1, 157, 1, 168, 1, 180, 1, 165, 1, 247, 2, 219, 64, 252, 1, 179,
+  1, 203, 2, 193, 1, 227, 1, 200, 1, 222, 150, 18, 226, 55, 217, 28, 212, 64,
+  171, 66, 134, 3, 198, 1, 159, 1, 151, 1, 196, 1, 173, 62, 135, 33, 0, 31, 77,
+  160, 38, 240, 26, 164, 100, 89, 31,
+];
+```
+
+Here’s how to interpret it:
+
+- The **first byte** is the protocol version.
+- The **next 16 bytes** represent the `OwnerId`.
+
+Then comes the sync phase metadata:
+
+```ts
+[0, 1, 2, 31];
+```
+
+- `0` - no data yet; we’re in the syncing phase
+- `1` - a single range
+- `2` - it’s a `TimestampsRange`
+- `31` - the range contains 31 timestamps
+
+The remaining bytes encode those timestamps using:
+
+- **Delta encoding** for millis — storing only the difference from the previous timestamp
+- **Run-length encoding** (RLE) for `Counter` and `NodeId` — compressing repeated values
+
+A single `Timestamp` normally takes 16 bytes:
+
+- 6 bytes for `Millis`
+- 2 bytes for `Counter`
+- 8 bytes for `NodeId`
+
+Thanks to aforementioned optimizations, the entire message fits in just **100 bytes**.
+
+On the next sync, say we have **32 timestamps** instead of 31. At that point, the protocol switches strategy: it sends **16 fingerprints** instead of full timestamp data.
+
+```ts
+[
+  0, 185, 172, 128, 111, 7, 182, 206, 234, 32, 23, 112, 226, 170, 156, 211, 88,
+  0, 16, 247, 138, 215, 250, 238, 50, 203, 2, 187, 2, 200, 2, 201, 2, 205, 2,
+  217, 2, 201, 2, 131, 28, 230, 2, 217, 2, 175, 2, 205, 2, 238, 25, 135, 20, 0,
+  15, 183, 244, 1, 145, 23, 166, 60, 55, 15, 1,
+]; // trimmed for preview — full message has only 272 bytes
+```
+
+That's **272 bytes** for **16 fingerprints**, representing the entire database (or part of it)—not the data itself, just compact summaries used for reconciliation.
+
+Again, to understand how **Range-Based Set Reconciliation works**, I highly recommend [this great article](https://logperiodic.com/rbsr.html) by Doug. Now let’s take a closer look at the protocol message structure:
+
+## Protocol Message Structure
+
+| Field                    | Notes                                    |
+| :----------------------- | :--------------------------------------- |
+| **Header**               |                                          |
+| - `protocolVersion`      |                                          |
+| - `OwnerId`              |                                          |
+| - `ProtocolErrorCode`    | Present only in non-initiator responses. |
+| **Messages**             |                                          |
+| - `NonNegativeInt`       | Indicates the number of messages.        |
+| - `EncryptedCrdtMessage` | `Timestamp` + `EncryptedDbChange`        |
+| - `WriteKey`             | Included only in initiator requests.     |
+| **Ranges**               |                                          |
+| - `NonNegativeInt`       | Number of ranges.                        |
+| - `Range`                |                                          |
+
+It’s simple—but is it too simple? No. Let’s look at how it can support **authentication**, **collaboration**, and **partial sync**.
+
+# Auth, Collaboration, and Partial Sync
+
+When I started thinking about local-first auth and collaboration for Evolu, I struggled to find a model that could **scale to all use cases**. That’s why the first version of Evolu didn’t support collaboration. Rather than implement something half-baked, I decided to postpone it.
+
+It took me a while to realize there is no such thing as a single auth model that fits every app. Some apps don’t need collaboration at all. Others want to integrate with Nostr NIPs. And some—especially security-critical apps—may require post-quantum cryptography. Each model has its own costs (or no costs at all).
+
+The key insight is that it’s not the responsibility of the Evolu Protocol or Relay to handle auth (for collaboration). That responsibility belongs to the app. All the protocol and relays need to sync data is:
+
+- `OwnerId` - A unique identifier for the data owner.
+- `Timestamp` - A causally ordered, globally unique identifier for each change.
+- `EncryptedDbChange` - The actual change, encrypted end-to-end.
+- `WriteKey` - A secure token proving the initiator is allowed to write.
+
+That’s it. These four basic primitives are enough to implement authentication, collaboration, and even partial sync.
+
+<blockquote>
+  <p>Make every detail perfect and limit the number of details.</p>
+  <footer>— Jack Dorsey</footer>
+</blockquote>
+
+The `Owner` is an entity in Evolu that owns data, meaning it is locally stored on
+a device under the user’s control. Data can be personal private, peer-to-peer
+shared, or aggregated from multiple owners. An owner has a Mnemonic[^2] from which `OwnerId` and `EncryptionKey` are deterministically derived using SLIP-21, and an optional `WriteKey` that, when present, enables writing to the Evolu Relay or peers. The `WriteKey` can be rotated.
+
+There are four basic variants of Owner with specific roles:
+
+- `AppOwner` - The owner of an Evolu app.
+- `SharedOwner` - Used to share data among one or more users, enabling collaboration.
+- `SharedReadonlyOwner` - Used for sharing data that can only be read.
+- `ShardOwner` - Used to shard data within an app for partial or deferred sync.
+
+It’s important to understand that while these owners are _default_ in Evolu, from the perspective of the Evolu Protocol and Relay, **they’re just owners**. There can be—and will be—different types of owners, including third-party ones.
+
+The goal was to make Evolu Protocol and Relay as **generic and application-agnostic** as possible. They should **know nothing** about what applications are using them.
+This is the only way to guarantee **maximum privacy** and **true scalability**—as we’ll explore next.
+
+## Partial Sync
+
+It’s clear that no single device can hold all the data. You can’t download the whole of Facebook to your phone. Traditional client-server applications handle this by selectively downloading parts of the data using some form of
+fine-grained "select"—via REST, RPC, GraphQL, and so on.
+
+But local-first applications can’t work this way. The data is encrypted, and **the Evolu Relay is blind by design**—it must not, and cannot, understand the shape or meaning of the data it transmits.
+
+At this point, it's helpful to clarify the difference between a **server** and a **relay**. A **relay** is a server that serves (joke, not joke). Unlike traditional servers, relays are **completely interchangeable**. This “limitation” is actually a superpower—it enables **infinite scaling**. I’m serious.
+
+So how does Evolu scale in practice? In two complementary ways:
+
+1. **Temporal scaling** with RBSR: We can sync data from a specific time range—whether it’s the last hour, a given day, or even an entire year—making it efficient for apps that work with time-based data.
+2. **Logical scaling** with `ShardOwner`: When we need to sync all data of a certain type (e.g., a specific project, user, or resource), ShardOwner lets the app define logical partitions. The app decides what to sync; the relay remains unaware.
+
+It's up to the Evolu app to know which owner should be synced for which data and when. Relays must know nothing.
+
+# From Local-First Apps to Local-First Clouds
+
+Evolu’s strict design has a surprising consequence: the **limitations** of local-first apps are exactly what allow them to **scale better** than traditional client-server applications.
+
+In the traditional model, the limiting factor is always the server. Scaling a server is hard. Only a handful of companies (AWS, Cloudflare, etc.) know how to do it—and they charge a lot of money for it.
+
+Evolu deliberately imposes constraints on itself to stay true to the local-first philosophy. **Relays** must be completely replaceable—no central authoritative server to depend on.
+
+Sound familiar? Thousands of cheap machines, any of which can fail and be replaced instantly. That’s how traditional cloud infrastructure works—but it’s also how real (not fake) local-first software should work.
+
+Local-first is, in essence, a **local server model**. Relays are just there to improve sync and provide backup—they’re not in control. I hope I’m not wrong, but…
+I think I might have accidentally created a **local-first cloud**.
+
+Traditional cloud infrastructure solves scaling through **centralized management of syncing and sharding**. Evolu flips that model. Instead of relying on the server to manage distribution, **the logic lives in the app**. The relay simply transmits encrypted data—it doesn’t orchestrate it.
+
+This inversion pushes complexity to the edge, but also enables **true decentralization** and **massive horizontal scalability** with minimal infrastructure. Maybe this is what Martin Kleppmann meant by the “local-first endgame.”
+
+## It's Evolu(tion)
+
+The life of an application is an evolution.
+
+At the beginning, everything can be synced. But as data grows, the initial sync becomes too slow. That’s when **sharding** enters the picture. And the beauty is: **the migration happens in the app code**—the relay knows nothing. All it sees are new owners.
+
+We can shard however we need: by user, by user + resource, alphabetically—whatever fits a domain.
+We can even throw away the entire app and rebuild it. Evolu has supported multitenancy for years.
+
+As more users arrive, one relay may no longer handle the load. No problem—spin up **identical relays**, let them sync with each other, and distribute the load (by `AppOwnerId`, for example).
+Still not enough? The data outgrows a single relay’s storage?
+Still not a problem. Shard again.
+
+That mirrors how large-scale cloud infrastructure works—data is distributed across many storage systems. Evolu can scale the same way, but with a **radically simpler, local-first architecture**.
+
+Let’s summarize why I believe Evolu can scale:
+
+- **Built on SQLite**: Evolu isn't a custom binary format or even a JSON. It builds on battle-tested SQL. That means no need to load all data into memory, no complex decoding logic—just fast, indexed queries with minimal overhead.
+
+- **Minimal and understandable**: The code is (hopefully) simple enough for anyone to read, with many tests. Evolu keeps dependencies to a minimum—just [SQLite](https://sqlite.org/), [Kysely](https://github.com/kysely-org/kysely), [Msgpackr](https://github.com/kriszyp/msgpackr), [Nanoid](https://github.com/ai/nanoid), and cryptographic utilities from [Paulmillr](https://paulmillr.com/). All libraries used are zero-dependency.
+
+- **Range-Based Set Reconciliation**: Evolu uses RBSR, which scales logarithmically with data size. From Doug’s [article](https://logperiodic.com/rbsr.html) on Negentropy:
+
+  > To reconcile a set of 1 million, we expect to need 3 round-trips. For 1 billion:
+  > log(1_000_000_000)/log(16)/2 = 3.74 → 4 round-trips.
+  > This slow, predictable growth is exactly what makes divide-and-conquer syncing so effective.
+
+- **Partial sync**: Evolu supports **temporal syncing** (e.g., last hour, a day, whatever) and **logical sharding**.
+
+- **Pluggable authentication**: Evolu doesn’t dictate how local-first auth should work. The protocol and relays don’t care. That makes it flexible enough for anything from Nostr to post-quantum crypto.
+
+- **Relay infrastructure**: Even though Evolu is peer-to-peer, it uses relays to simplify sync, backup, and eventual delivery—without breaking the local-first model.
+
+- **Peer scalability through stateless sync**: Evolu scales to virtually unlimited peers by using content-based synchronization instead of shared state. With range-based set reconciliation, peers compare data fingerprints, not sync histories. Relays remain stateless, remembering nothing about past syncs. This enables massive horizontal scaling with no centralized bottlenecks.
+
+# Conclusion
+
+Today, I’m open-sourcing what I have. The tests and benchmarks say that Evolu is ready. It’s not a production release yet—just a few details remain, like managing owners and a few other tasks tracked in [GitHub Issues](https://github.com/evoluhq/evolu/issues). I also still need to write the free, open-source Evolu Relay.
+
+I’m not releasing it to NPM yet. But I wanted to open-source it today—because the Local-First Conference starts tomorrow, and I want to have a nice topic to discuss: scaling local-first. And honestly, I just want to relax and enjoy the conference, knowing Evolu is finally out.
+
+How do I plan to make money with Evolu? One thing’s for sure: I’m not looking for VC investment. My ideal scenario would be for Evolu to become a nonprofit foundation—something like [Signal](https://signal.org/). I believe Evolu can be a Signal for local-first apps.
+
+It’s been an interesting journey. I want to thank everyone who helped along the way:
+
+- James Long — for his talk CRDTs for Mortals and ActualBudget. The very first version of Evolu was almost a copy.
+
+- Aljoscha Meyer — for RBSR.
+
+- Doug Hoyte — for Negentropy.
+
+- Ink & Switch — for the local-first essay that inspired so many of us.
+
+- Nedim, Negue, and Syntax from the Evolu inner circle—thank you for believing in me and supporting the project.
+
+- And most of all, my wife Eva, who took care of me and our three children the whole time, and patiently endured my long lectures.
+
+**Disclaimer**: I’ve done my best to ensure everything in this post is accurate, but I’m always learning. If you spot any mistakes or have suggestions for improvement, [open an issue on GitHub](https://github.com/evoluhq/evolu/issues). You can also email me at daniel@steigerwald.cz.
+
+If you’d like to support me, you can do so via [GitHub Sponsors](https://github.com/steida).
+
+---
+
+[^1]:
+    I mean the old LEGO—where we had a few basic pieces and could build anything.
+    Not the new LEGO with thousands of specialized, theme-based pieces meant to build exactly one thing on the box. The new LEGO is exactly how software should not be made.
+
+[^2]: A mnemonic is a human-readable phrase (usually 12, 18, or 24 words) that represents a cryptographic seed. It’s part of a standard called BIP-39 (Bitcoin Improvement Proposal 39).

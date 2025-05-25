@@ -1,0 +1,15 @@
+.turbo
+node_modules
+db.sqlite
+**/node_modules
+**/**/node_modules
+apps/native
+apps/web
+packages/-react
+packages/-react-native
+packages/-common-react
+packages/-common-web
+pnpm-lock.yaml
+dist
+**/dist
+**/**/dist

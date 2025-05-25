@@ -1,0 +1,98 @@
+import { Heading } from "@/components/Heading";
+
+export const metadata = {
+  title: "Conventions",
+};
+
+# Conventions
+
+Conventions minimize decision-making and improve consistency.
+
+## Named Imports
+
+Use named imports. Refactor modules with excessive imports.
+
+```ts
+import { bar, baz } from "Foo.ts";
+```
+
+## Unique Exported Members
+
+Avoid namespaces. Use unique and descriptive names for exported members to prevent conflicts and improve clarity.
+
+```ts
+// Avoid
+export const Utils = { ok, trySync };
+
+// Prefer
+export const ok = ...;
+export const trySync = ...;
+
+// eqStrict
+// eqBoolean
+// orderString
+// orderNumber
+// isBetween
+// isBetweenBigInt
+```
+
+## Internal Code Organization
+
+Separate public and internal code. Use package.json exports to define boundaries clearly.
+
+```ts
+// Evolu "public" code.
+export * from "./Evolu/Public.js";
+
+// Evolu "internal" code is exported in `package.json`.
+"exports": {
+  "./evolu": {
+    "import": "./dist/src/Evolu/Internal.js"
+  }
+},
+```
+
+## Order (Top-Down Readability)
+
+Many developers naturally write code bottom-up, starting with small helpers and building up to the public API. However, Evolu optimizes for reading, not writing, because source code is read far more often than it is written. By presenting the public API first—interfaces and types—followed by the implementation and implementation details, we ensure that the developer-facing contract is immediately clear, making it easier to understand the purpose and structure of the code.
+
+Another way to think about it is that we approach the code from the whole to the detail, like a painter painting a picture. The painter never starts with details but with the overall layout and gradually adds details.
+
+```ts
+// Public interface first: the contract developers rely on.
+interface Foo {
+  readonly bar: Bar;
+}
+
+// Supporting types next: details of the contract.
+interface Bar {
+  //
+}
+
+// Implementation after: how the contract is fulfilled.
+const foo = () => {
+  bar();
+};
+
+// Implementation details below the implementation, if any.
+const bar = () => {
+  //
+};
+```
+
+## Immutability
+
+Mutable state can be tricky because it increases the risk of unintended side effects, makes code harder to predict, and complicates debugging—especially in complex applications where data might be shared or modified unexpectedly.
+
+Favor immutable values using TypeScript’s type system to reduce these risks and improve clarity. Use `ReadonlyArray` and `NonEmptyReadonlyArray` for arrays and prefix interface properties with readonly to enforce immutability at the type level.
+
+```ts
+// Use ReadonlyArray for immutable arrays.
+const values: ReadonlyArray<string> = ["a", "b", "c"];
+
+// Use readonly for interface properties.
+interface Example {
+  readonly id: number;
+  readonly items: ReadonlyArray<string>;
+}
+```

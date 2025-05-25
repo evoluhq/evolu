@@ -1,0 +1,4003 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`createDbWorker > logArgs 1`] = `
+[
+  [
+    "[sql] begin",
+  ],
+  [
+    "[sql]",
+    {
+      "parameters": [],
+      "sql": "
+      select
+        sqlite_master.name as tableName,
+        table_info.name as columnName
+      from
+        sqlite_master
+        join pragma_table_info(sqlite_master.name) as table_info;
+    ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 0,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "parameters": [],
+      "sql": "
+            select name, sql
+            from sqlite_master
+            where
+              type = 'index'
+              and name not like 'sqlite_%'
+              and name not like 'evolu_%';
+          ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 0,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "parameters": [],
+      "sql": "
+    create table "_table1" (
+      "id" text primary key,
+      "column1" blob, "createdAt" blob, "updatedAt" blob, "isDeleted" blob
+    );
+  ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 0,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "parameters": [],
+      "sql": "
+    create table "table1" (
+      "id" text primary key,
+      "column1" blob, "createdAt" blob, "updatedAt" blob, "isDeleted" blob
+    );
+  ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 0,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "parameters": [],
+      "sql": "
+        create table evolu_config (
+          "key" text not null primary key,
+          "value" any not null
+        )
+        strict;
+      ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 0,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "parameters": [
+        0,
+      ],
+      "sql": "
+        insert into evolu_config (key, value)
+        values ('protocolVersion', ?);
+      ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 1,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "parameters": [],
+      "sql": "
+        create table evolu_history (
+          "timestamp" blob not null,
+          "table" text not null,
+          "row" blob not null,
+          "column" text not null,
+          "value" any
+        )
+        strict;
+      ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 0,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "parameters": [],
+      "sql": "
+        create index evolu_history_timestamp on evolu_history ("timestamp");
+      ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 0,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "parameters": [],
+      "sql": "
+        create unique index evolu_history_row_column_table_timestampDesc on evolu_history (
+          "row",
+          "column",
+          "table",
+          "timestamp" desc
+        );
+      ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 0,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "parameters": [],
+      "sql": "
+        create table evolu_owner (
+          "mnemonic" text not null primary key,
+          "id" text not null,
+          "encryptionKey" blob not null,
+          "createdAt" text not null,
+          "writeKey" blob,
+          "timestamp" text not null
+        )
+        strict;
+      ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 0,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "parameters": [
+        "knee easy fork attitude drink gloom head latin spider grab spy reason",
+        "MdVYFAxShUluuZKVWQfYL",
+        Uint8Array [
+          173,
+          165,
+          204,
+          225,
+          74,
+          240,
+          76,
+          99,
+          46,
+          18,
+          104,
+          4,
+          0,
+          136,
+          188,
+          132,
+          99,
+          57,
+          151,
+          4,
+          147,
+          44,
+          59,
+          91,
+          61,
+          162,
+          116,
+          243,
+          186,
+          98,
+          25,
+          4,
+        ],
+        "1970-01-01T00:00:00.003Z",
+        Uint8Array [
+          111,
+          64,
+          118,
+          108,
+          245,
+          65,
+          176,
+          98,
+          173,
+          247,
+          85,
+          78,
+          30,
+          167,
+          192,
+          203,
+        ],
+        "1970-01-01T00:00:00.000Z-0000-1343c7b25d0253ac",
+      ],
+      "sql": "
+      insert into evolu_owner
+        (mnemonic, id, encryptionKey, createdAt, writeKey, timestamp)
+      values
+        (
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?
+        );
+    ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 1,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "parameters": [],
+      "sql": "
+      create table if not exists evolu_timestamp (
+        "ownerId" blob not null,
+        "t" blob not null,
+        "h1" integer,
+        "h2" integer,
+        "c" integer,
+        "l" integer not null,
+        primary key ("ownerId", "t")
+      )
+      strict;
+    ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 0,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "parameters": [],
+      "sql": "
+      create index if not exists evolu_timestamp_index on evolu_timestamp (
+        "ownerId",
+        "l",
+        "t",
+        "h1",
+        "h2",
+        "c"
+      );
+    ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 0,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "options": {
+        "prepare": true,
+      },
+      "parameters": [
+        "JV0Ui1_SJB3CshOb3rX5C",
+        "column1",
+        "table1",
+        "JV0Ui1_SJB3CshOb3rX5C",
+        "foo",
+        "1970-01-01T00:00:00.003Z",
+        "1970-01-01T00:00:00.003Z",
+        Uint8Array [
+          0,
+          0,
+          0,
+          0,
+          0,
+          3,
+          0,
+          0,
+          19,
+          67,
+          199,
+          178,
+          93,
+          2,
+          83,
+          172,
+        ],
+        "foo",
+        "1970-01-01T00:00:00.003Z",
+        Uint8Array [
+          0,
+          0,
+          0,
+          0,
+          0,
+          3,
+          0,
+          0,
+          19,
+          67,
+          199,
+          178,
+          93,
+          2,
+          83,
+          172,
+        ],
+      ],
+      "sql": "
+        with
+          lastTimestamp as (
+            select timestamp
+            from evolu_history
+            where
+              "row" = ?
+              and "column" = ?
+              and "table" = ?
+            order by timestamp desc
+            limit 1
+          )
+        insert into "table1"
+          ("id", "column1", createdAt, updatedAt)
+        select ?, ?, ?, ?
+        where
+          (select timestamp from lastTimestamp) is null
+          or (select timestamp from lastTimestamp) < ?
+        on conflict ("id") do update
+          set
+            "column1" = ?,
+            updatedAt = ?
+          where
+            (select timestamp from lastTimestamp) is null
+            or (select timestamp from lastTimestamp) < ?;
+      ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 1,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "options": {
+        "prepare": true,
+      },
+      "parameters": [
+        Uint8Array [
+          128,
+          87,
+          31,
+          173,
+          149,
+          230,
+          206,
+          93,
+          128,
+          2,
+          246,
+          220,
+          162,
+          236,
+          95,
+          168,
+        ],
+      ],
+      "sql": "
+            select min(t) as minT, max(t) as maxT
+            from evolu_timestamp
+            where ownerId = ?;
+          ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 0,
+      "rows": [
+        {
+          "maxT": null,
+          "minT": null,
+        },
+      ],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "options": {
+        "prepare": true,
+      },
+      "parameters": [
+        Uint8Array [
+          128,
+          87,
+          31,
+          173,
+          149,
+          230,
+          206,
+          93,
+          128,
+          2,
+          246,
+          220,
+          162,
+          236,
+          95,
+          168,
+        ],
+        Uint8Array [
+          0,
+          0,
+          0,
+          0,
+          0,
+          3,
+          0,
+          0,
+          19,
+          67,
+          199,
+          178,
+          93,
+          2,
+          83,
+          172,
+        ],
+        "189813757563447",
+        "216178336280373",
+      ],
+      "sql": "
+                  insert into evolu_timestamp
+                    (ownerId, l, t, h1, h2, c)
+                  values
+                    (?, 1, ?, ?, ?, 1)
+                  on conflict do nothing;
+                ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 1,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "options": {
+        "prepare": true,
+      },
+      "parameters": [
+        Uint8Array [
+          128,
+          87,
+          31,
+          173,
+          149,
+          230,
+          206,
+          93,
+          128,
+          2,
+          246,
+          220,
+          162,
+          236,
+          95,
+          168,
+        ],
+        Uint8Array [
+          128,
+          87,
+          31,
+          173,
+          149,
+          230,
+          206,
+          93,
+          128,
+          2,
+          246,
+          220,
+          162,
+          236,
+          95,
+          168,
+        ],
+        Uint8Array [
+          0,
+          0,
+          0,
+          0,
+          0,
+          3,
+          0,
+          0,
+          19,
+          67,
+          199,
+          178,
+          93,
+          2,
+          83,
+          172,
+        ],
+        Uint8Array [
+          128,
+          87,
+          31,
+          173,
+          149,
+          230,
+          206,
+          93,
+          128,
+          2,
+          246,
+          220,
+          162,
+          236,
+          95,
+          168,
+        ],
+        Uint8Array [
+          0,
+          0,
+          0,
+          0,
+          0,
+          3,
+          0,
+          0,
+          19,
+          67,
+          199,
+          178,
+          93,
+          2,
+          83,
+          172,
+        ],
+        Uint8Array [
+          128,
+          87,
+          31,
+          173,
+          149,
+          230,
+          206,
+          93,
+          128,
+          2,
+          246,
+          220,
+          162,
+          236,
+          95,
+          168,
+        ],
+        Uint8Array [
+          0,
+          0,
+          0,
+          0,
+          0,
+          3,
+          0,
+          0,
+          19,
+          67,
+          199,
+          178,
+          93,
+          2,
+          83,
+          172,
+        ],
+        "189813757563447",
+        "189813757563447",
+        "216178336280373",
+        "216178336280373",
+        Uint8Array [
+          128,
+          87,
+          31,
+          173,
+          149,
+          230,
+          206,
+          93,
+          128,
+          2,
+          246,
+          220,
+          162,
+          236,
+          95,
+          168,
+        ],
+      ],
+      "sql": "
+                  with
+                    p(l, t, h1, h2) as (
+                      select
+                        (
+                          select max(l) + 1
+                          from evolu_timestamp
+                          where ownerId = ?
+                        ),
+                        null,
+                        null,
+                        null
+                      union all
+                      select
+                        p.l - 1,
+                        ifnull(
+                          (
+                            select t
+                            from evolu_timestamp
+                            where
+                              ownerId = ?
+                              and l = p.l - 1
+                              and t > ?
+                              and (p.t is null or p.t > t)
+                            order by t
+                            limit 1
+                          ),
+                          p.t
+                        ),
+                        (
+                          select h1
+                          from evolu_timestamp
+                          where
+                            ownerId = ?
+                            and l = p.l - 1
+                            and t > ?
+                            and (p.t is null or p.t > t)
+                          order by t
+                          limit 1
+                        ),
+                        (
+                          select h2
+                          from evolu_timestamp
+                          where
+                            ownerId = ?
+                            and l = p.l - 1
+                            and t > ?
+                            and (p.t is null or p.t > t)
+                          order by t
+                          limit 1
+                        )
+                      from p
+                      where p.l > 2
+                      -- Check skiplistMaxLevel docs.
+                      limit 10
+                    ),
+                    u(t, h1, h2) as (
+                      select
+                        t,
+                        (? | h1) - (? & h1),
+                        (? | h2) - (? & h2)
+                      from p
+                      where h1 is not null
+                    )
+                  update evolu_timestamp
+                  set
+                    h1 = u.h1,
+                    h2 = u.h2,
+                    c = c + 1
+                  from u
+                  where
+                    changes() > 0
+                    and ownerId = ?
+                    and evolu_timestamp.t = u.t;
+                ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 0,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "options": {
+        "prepare": true,
+      },
+      "parameters": [
+        Uint8Array [
+          0,
+          0,
+          0,
+          0,
+          0,
+          3,
+          0,
+          0,
+          19,
+          67,
+          199,
+          178,
+          93,
+          2,
+          83,
+          172,
+        ],
+        "table1",
+        Uint8Array [
+          97,
+          196,
+          101,
+          244,
+          203,
+          38,
+          98,
+          67,
+          218,
+          7,
+          58,
+          112,
+          63,
+          196,
+          213,
+          104,
+        ],
+        "column1",
+        "foo",
+      ],
+      "sql": "
+        insert into evolu_history
+          ("timestamp", "table", "row", "column", "value")
+        values
+          (?, ?, ?, ?, ?)
+        on conflict do nothing;
+      ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 1,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "options": {
+        "prepare": true,
+      },
+      "parameters": [
+        "1970-01-01T00:00:00.003Z-0000-1343c7b25d0253ac",
+      ],
+      "sql": "
+      update evolu_owner set "timestamp" = ?;
+    ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 1,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql] commit",
+  ],
+  [
+    "[sql] begin",
+  ],
+  [
+    "[sql]",
+    {
+      "options": {
+        "prepare": true,
+      },
+      "parameters": [
+        "s9rNnUeri8bzhS5AX_mRy",
+        "bar",
+        "1970-01-01T00:00:00.005Z",
+        "1970-01-01T00:00:00.005Z",
+        "bar",
+        "1970-01-01T00:00:00.005Z",
+      ],
+      "sql": "
+                    insert into "_table1"
+                      ("id", "column1", createdAt, updatedAt)
+                    values (?, ?, ?, ?)
+                    on conflict ("id") do update
+                      set
+                        "column1" = ?,
+                        updatedAt = ?;
+                  ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 1,
+      "rows": [],
+    },
+  ],
+  [
+    "[db]",
+    "onChange",
+  ],
+  [
+    "[sql] commit",
+  ],
+  [
+    "[sql] begin",
+  ],
+  [
+    "[sql]",
+    {
+      "parameters": [
+        "e37rn9q4lwirRDIx1Y9e4",
+      ],
+      "sql": "
+                  delete from "_table1"
+                  where id = ?;
+                ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 0,
+      "rows": [],
+    },
+  ],
+  [
+    "[db]",
+    "onChange",
+  ],
+  [
+    "[sql] commit",
+  ],
+  [
+    "[sql] begin",
+  ],
+  [
+    "[sql]",
+    {
+      "options": {
+        "prepare": true,
+      },
+      "parameters": [
+        "ZUN-T4MZhx0p9fO9i2LT9",
+        "column1",
+        "Table1",
+        "ZUN-T4MZhx0p9fO9i2LT9",
+        "foo",
+        "1970-01-01T00:00:00.005Z",
+        "1970-01-01T00:00:00.005Z",
+        Uint8Array [
+          0,
+          0,
+          0,
+          0,
+          0,
+          5,
+          0,
+          0,
+          19,
+          67,
+          199,
+          178,
+          93,
+          2,
+          83,
+          172,
+        ],
+        "foo",
+        "1970-01-01T00:00:00.005Z",
+        Uint8Array [
+          0,
+          0,
+          0,
+          0,
+          0,
+          5,
+          0,
+          0,
+          19,
+          67,
+          199,
+          178,
+          93,
+          2,
+          83,
+          172,
+        ],
+      ],
+      "sql": "
+        with
+          lastTimestamp as (
+            select timestamp
+            from evolu_history
+            where
+              "row" = ?
+              and "column" = ?
+              and "table" = ?
+            order by timestamp desc
+            limit 1
+          )
+        insert into "Table1"
+          ("id", "column1", createdAt, updatedAt)
+        select ?, ?, ?, ?
+        where
+          (select timestamp from lastTimestamp) is null
+          or (select timestamp from lastTimestamp) < ?
+        on conflict ("id") do update
+          set
+            "column1" = ?,
+            updatedAt = ?
+          where
+            (select timestamp from lastTimestamp) is null
+            or (select timestamp from lastTimestamp) < ?;
+      ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 1,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "options": {
+        "prepare": true,
+      },
+      "parameters": [
+        Uint8Array [
+          128,
+          87,
+          31,
+          173,
+          149,
+          230,
+          206,
+          93,
+          128,
+          2,
+          246,
+          220,
+          162,
+          236,
+          95,
+          168,
+        ],
+        Uint8Array [
+          0,
+          0,
+          0,
+          0,
+          0,
+          5,
+          0,
+          0,
+          19,
+          67,
+          199,
+          178,
+          93,
+          2,
+          83,
+          172,
+        ],
+        "102044051867141",
+        "193391649105209",
+      ],
+      "sql": "
+                insert into evolu_timestamp
+                  (ownerId, l, t, h1, h2, c)
+                values
+                  (?, 1, ?, ?, ?, 1)
+                on conflict do nothing;
+              ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 1,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "options": {
+        "prepare": true,
+      },
+      "parameters": [
+        Uint8Array [
+          0,
+          0,
+          0,
+          0,
+          0,
+          5,
+          0,
+          0,
+          19,
+          67,
+          199,
+          178,
+          93,
+          2,
+          83,
+          172,
+        ],
+        "Table1",
+        Uint8Array [
+          190,
+          88,
+          136,
+          45,
+          8,
+          47,
+          205,
+          116,
+          86,
+          55,
+          26,
+          77,
+          244,
+          154,
+          139,
+          52,
+        ],
+        "column1",
+        "foo",
+      ],
+      "sql": "
+        insert into evolu_history
+          ("timestamp", "table", "row", "column", "value")
+        values
+          (?, ?, ?, ?, ?)
+        on conflict do nothing;
+      ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 1,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "options": {
+        "prepare": true,
+      },
+      "parameters": [
+        "1970-01-01T00:00:00.005Z-0000-1343c7b25d0253ac",
+      ],
+      "sql": "
+      update evolu_owner set "timestamp" = ?;
+    ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 1,
+      "rows": [],
+    },
+  ],
+  [
+    "[db]",
+    "onChange",
+  ],
+  [
+    "[db]",
+    "send data message",
+    Uint8Array [
+      0,
+      128,
+      87,
+      31,
+      173,
+      149,
+      230,
+      206,
+      93,
+      128,
+      2,
+      246,
+      220,
+      162,
+      236,
+      95,
+      168,
+      1,
+      5,
+      0,
+      1,
+      19,
+      67,
+      199,
+      178,
+      93,
+      2,
+      83,
+      172,
+      1,
+      76,
+      172,
+      255,
+      220,
+      74,
+      253,
+      218,
+      21,
+      203,
+      97,
+      177,
+      108,
+      31,
+      114,
+      81,
+      57,
+      217,
+      125,
+      215,
+      203,
+      26,
+      52,
+      141,
+      40,
+      100,
+      51,
+      192,
+      75,
+      45,
+      91,
+      50,
+      163,
+      101,
+      77,
+      116,
+      35,
+      164,
+      191,
+      102,
+      32,
+      144,
+      120,
+      22,
+      165,
+      126,
+      140,
+      75,
+      64,
+      166,
+      141,
+      210,
+      157,
+      250,
+      95,
+      111,
+      15,
+      144,
+      236,
+      75,
+      181,
+      126,
+      65,
+      182,
+      174,
+      244,
+      171,
+      51,
+      27,
+      5,
+      127,
+      113,
+      15,
+      241,
+      167,
+      4,
+      200,
+      211,
+      111,
+      64,
+      118,
+      108,
+      245,
+      65,
+      176,
+      98,
+      173,
+      247,
+      85,
+      78,
+      30,
+      167,
+      192,
+      203,
+    ],
+  ],
+  [
+    "[sql] commit",
+  ],
+  [
+    "[sql] begin",
+  ],
+  [
+    "[sql]",
+    {
+      "parameters": [],
+      "sql": "
+      select
+        sqlite_master.name as tableName,
+        table_info.name as columnName
+      from
+        sqlite_master
+        join pragma_table_info(sqlite_master.name) as table_info;
+    ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 0,
+      "rows": [
+        {
+          "columnName": "id",
+          "tableName": "_table1",
+        },
+        {
+          "columnName": "column1",
+          "tableName": "_table1",
+        },
+        {
+          "columnName": "createdAt",
+          "tableName": "_table1",
+        },
+        {
+          "columnName": "updatedAt",
+          "tableName": "_table1",
+        },
+        {
+          "columnName": "isDeleted",
+          "tableName": "_table1",
+        },
+        {
+          "columnName": "id",
+          "tableName": "table1",
+        },
+        {
+          "columnName": "column1",
+          "tableName": "table1",
+        },
+        {
+          "columnName": "createdAt",
+          "tableName": "table1",
+        },
+        {
+          "columnName": "updatedAt",
+          "tableName": "table1",
+        },
+        {
+          "columnName": "isDeleted",
+          "tableName": "table1",
+        },
+        {
+          "columnName": "key",
+          "tableName": "evolu_config",
+        },
+        {
+          "columnName": "value",
+          "tableName": "evolu_config",
+        },
+        {
+          "columnName": "timestamp",
+          "tableName": "evolu_history",
+        },
+        {
+          "columnName": "table",
+          "tableName": "evolu_history",
+        },
+        {
+          "columnName": "row",
+          "tableName": "evolu_history",
+        },
+        {
+          "columnName": "column",
+          "tableName": "evolu_history",
+        },
+        {
+          "columnName": "value",
+          "tableName": "evolu_history",
+        },
+        {
+          "columnName": "mnemonic",
+          "tableName": "evolu_owner",
+        },
+        {
+          "columnName": "id",
+          "tableName": "evolu_owner",
+        },
+        {
+          "columnName": "encryptionKey",
+          "tableName": "evolu_owner",
+        },
+        {
+          "columnName": "createdAt",
+          "tableName": "evolu_owner",
+        },
+        {
+          "columnName": "writeKey",
+          "tableName": "evolu_owner",
+        },
+        {
+          "columnName": "timestamp",
+          "tableName": "evolu_owner",
+        },
+        {
+          "columnName": "ownerId",
+          "tableName": "evolu_timestamp",
+        },
+        {
+          "columnName": "t",
+          "tableName": "evolu_timestamp",
+        },
+        {
+          "columnName": "h1",
+          "tableName": "evolu_timestamp",
+        },
+        {
+          "columnName": "h2",
+          "tableName": "evolu_timestamp",
+        },
+        {
+          "columnName": "c",
+          "tableName": "evolu_timestamp",
+        },
+        {
+          "columnName": "l",
+          "tableName": "evolu_timestamp",
+        },
+      ],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "parameters": [],
+      "sql": "
+            select name, sql
+            from sqlite_master
+            where
+              type = 'index'
+              and name not like 'sqlite_%'
+              and name not like 'evolu_%';
+          ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 0,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "parameters": [],
+      "sql": "
+      drop table "_table1";
+    ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 0,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "parameters": [],
+      "sql": "
+      drop table "table1";
+    ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 0,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "parameters": [],
+      "sql": "
+      drop table "evolu_config";
+    ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 0,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "parameters": [],
+      "sql": "
+      drop table "evolu_history";
+    ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 0,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "parameters": [],
+      "sql": "
+      drop table "evolu_owner";
+    ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 0,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "parameters": [],
+      "sql": "
+      drop table "evolu_timestamp";
+    ",
+    },
+  ],
+  [
+    "[sql]",
+    {
+      "changes": 0,
+      "rows": [],
+    },
+  ],
+  [
+    "[sql] commit",
+  ],
+]
+`;
+
+exports[`createDbWorker > onMessageMessagesAndDbSnapshots 1`] = `
+[
+  {
+    "message": {
+      "owner": {
+        "createdAt": "1970-01-01T00:00:00.003Z",
+        "encryptionKey": Uint8Array [
+          173,
+          165,
+          204,
+          225,
+          74,
+          240,
+          76,
+          99,
+          46,
+          18,
+          104,
+          4,
+          0,
+          136,
+          188,
+          132,
+          99,
+          57,
+          151,
+          4,
+          147,
+          44,
+          59,
+          91,
+          61,
+          162,
+          116,
+          243,
+          186,
+          98,
+          25,
+          4,
+        ],
+        "id": "MdVYFAxShUluuZKVWQfYL",
+        "mnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
+        "type": "AppOwner",
+        "writeKey": Uint8Array [
+          111,
+          64,
+          118,
+          108,
+          245,
+          65,
+          176,
+          98,
+          173,
+          247,
+          85,
+          78,
+          30,
+          167,
+          192,
+          203,
+        ],
+      },
+      "type": "onInit",
+    },
+    "snapshot": {
+      "rows": [
+        {
+          "name": "_table1",
+          "rows": [],
+        },
+        {
+          "name": "table1",
+          "rows": [
+            {
+              "column1": "foo",
+              "createdAt": "1970-01-01T00:00:00.003Z",
+              "id": "JV0Ui1_SJB3CshOb3rX5C",
+              "isDeleted": null,
+              "updatedAt": "1970-01-01T00:00:00.003Z",
+            },
+          ],
+        },
+        {
+          "name": "evolu_config",
+          "rows": [
+            {
+              "key": "protocolVersion",
+              "value": 0,
+            },
+          ],
+        },
+        {
+          "name": "evolu_history",
+          "rows": [
+            {
+              "column": "column1",
+              "row": {
+                "data": [
+                  97,
+                  196,
+                  101,
+                  244,
+                  203,
+                  38,
+                  98,
+                  67,
+                  218,
+                  7,
+                  58,
+                  112,
+                  63,
+                  196,
+                  213,
+                  104,
+                ],
+                "type": "Buffer",
+              },
+              "table": "table1",
+              "timestamp": {
+                "data": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  3,
+                  0,
+                  0,
+                  19,
+                  67,
+                  199,
+                  178,
+                  93,
+                  2,
+                  83,
+                  172,
+                ],
+                "type": "Buffer",
+              },
+              "value": "foo",
+            },
+          ],
+        },
+        {
+          "name": "evolu_owner",
+          "rows": [
+            {
+              "createdAt": "1970-01-01T00:00:00.003Z",
+              "encryptionKey": {
+                "data": [
+                  173,
+                  165,
+                  204,
+                  225,
+                  74,
+                  240,
+                  76,
+                  99,
+                  46,
+                  18,
+                  104,
+                  4,
+                  0,
+                  136,
+                  188,
+                  132,
+                  99,
+                  57,
+                  151,
+                  4,
+                  147,
+                  44,
+                  59,
+                  91,
+                  61,
+                  162,
+                  116,
+                  243,
+                  186,
+                  98,
+                  25,
+                  4,
+                ],
+                "type": "Buffer",
+              },
+              "id": "MdVYFAxShUluuZKVWQfYL",
+              "mnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
+              "timestamp": "1970-01-01T00:00:00.003Z-0000-1343c7b25d0253ac",
+              "writeKey": {
+                "data": [
+                  111,
+                  64,
+                  118,
+                  108,
+                  245,
+                  65,
+                  176,
+                  98,
+                  173,
+                  247,
+                  85,
+                  78,
+                  30,
+                  167,
+                  192,
+                  203,
+                ],
+                "type": "Buffer",
+              },
+            },
+          ],
+        },
+        {
+          "name": "evolu_timestamp",
+          "rows": [
+            {
+              "c": 1,
+              "h1": 189813757563447,
+              "h2": 216178336280373,
+              "l": 1,
+              "ownerId": {
+                "data": [
+                  128,
+                  87,
+                  31,
+                  173,
+                  149,
+                  230,
+                  206,
+                  93,
+                  128,
+                  2,
+                  246,
+                  220,
+                  162,
+                  236,
+                  95,
+                  168,
+                ],
+                "type": "Buffer",
+              },
+              "t": {
+                "data": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  3,
+                  0,
+                  0,
+                  19,
+                  67,
+                  199,
+                  178,
+                  93,
+                  2,
+                  83,
+                  172,
+                ],
+                "type": "Buffer",
+              },
+            },
+          ],
+        },
+      ],
+      "schema": {
+        "indexes": [
+          {
+            "name": "evolu_history_timestamp",
+            "sql": "create index evolu_history_timestamp on evolu_history ("timestamp")",
+          },
+          {
+            "name": "evolu_history_row_column_table_timestampDesc",
+            "sql": "create unique index evolu_history_row_column_table_timestampDesc on evolu_history (
+          "row",
+          "column",
+          "table",
+          "timestamp" desc
+        )",
+          },
+          {
+            "name": "evolu_timestamp_index",
+            "sql": "create index evolu_timestamp_index on evolu_timestamp (
+        "ownerId",
+        "l",
+        "t",
+        "h1",
+        "h2",
+        "c"
+      )",
+          },
+        ],
+        "tables": [
+          {
+            "columns": [
+              "id",
+              "column1",
+              "createdAt",
+              "updatedAt",
+              "isDeleted",
+            ],
+            "name": "_table1",
+          },
+          {
+            "columns": [
+              "id",
+              "column1",
+              "createdAt",
+              "updatedAt",
+              "isDeleted",
+            ],
+            "name": "table1",
+          },
+          {
+            "columns": [
+              "key",
+              "value",
+            ],
+            "name": "evolu_config",
+          },
+          {
+            "columns": [
+              "timestamp",
+              "table",
+              "row",
+              "column",
+              "value",
+            ],
+            "name": "evolu_history",
+          },
+          {
+            "columns": [
+              "mnemonic",
+              "id",
+              "encryptionKey",
+              "createdAt",
+              "writeKey",
+              "timestamp",
+            ],
+            "name": "evolu_owner",
+          },
+          {
+            "columns": [
+              "ownerId",
+              "t",
+              "h1",
+              "h2",
+              "c",
+              "l",
+            ],
+            "name": "evolu_timestamp",
+          },
+        ],
+      },
+    },
+  },
+  {
+    "message": {
+      "onCompleteIds": [],
+      "patches": [],
+      "tabId": "esTwHwplqLBSE8Ou8ffX4",
+      "type": "onChange",
+    },
+    "snapshot": {
+      "rows": [
+        {
+          "name": "_table1",
+          "rows": [
+            {
+              "column1": "bar",
+              "createdAt": "1970-01-01T00:00:00.005Z",
+              "id": "s9rNnUeri8bzhS5AX_mRy",
+              "isDeleted": null,
+              "updatedAt": "1970-01-01T00:00:00.005Z",
+            },
+          ],
+        },
+        {
+          "name": "table1",
+          "rows": [
+            {
+              "column1": "foo",
+              "createdAt": "1970-01-01T00:00:00.003Z",
+              "id": "JV0Ui1_SJB3CshOb3rX5C",
+              "isDeleted": null,
+              "updatedAt": "1970-01-01T00:00:00.003Z",
+            },
+          ],
+        },
+        {
+          "name": "evolu_config",
+          "rows": [
+            {
+              "key": "protocolVersion",
+              "value": 0,
+            },
+          ],
+        },
+        {
+          "name": "evolu_history",
+          "rows": [
+            {
+              "column": "column1",
+              "row": {
+                "data": [
+                  97,
+                  196,
+                  101,
+                  244,
+                  203,
+                  38,
+                  98,
+                  67,
+                  218,
+                  7,
+                  58,
+                  112,
+                  63,
+                  196,
+                  213,
+                  104,
+                ],
+                "type": "Buffer",
+              },
+              "table": "table1",
+              "timestamp": {
+                "data": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  3,
+                  0,
+                  0,
+                  19,
+                  67,
+                  199,
+                  178,
+                  93,
+                  2,
+                  83,
+                  172,
+                ],
+                "type": "Buffer",
+              },
+              "value": "foo",
+            },
+          ],
+        },
+        {
+          "name": "evolu_owner",
+          "rows": [
+            {
+              "createdAt": "1970-01-01T00:00:00.003Z",
+              "encryptionKey": {
+                "data": [
+                  173,
+                  165,
+                  204,
+                  225,
+                  74,
+                  240,
+                  76,
+                  99,
+                  46,
+                  18,
+                  104,
+                  4,
+                  0,
+                  136,
+                  188,
+                  132,
+                  99,
+                  57,
+                  151,
+                  4,
+                  147,
+                  44,
+                  59,
+                  91,
+                  61,
+                  162,
+                  116,
+                  243,
+                  186,
+                  98,
+                  25,
+                  4,
+                ],
+                "type": "Buffer",
+              },
+              "id": "MdVYFAxShUluuZKVWQfYL",
+              "mnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
+              "timestamp": "1970-01-01T00:00:00.003Z-0000-1343c7b25d0253ac",
+              "writeKey": {
+                "data": [
+                  111,
+                  64,
+                  118,
+                  108,
+                  245,
+                  65,
+                  176,
+                  98,
+                  173,
+                  247,
+                  85,
+                  78,
+                  30,
+                  167,
+                  192,
+                  203,
+                ],
+                "type": "Buffer",
+              },
+            },
+          ],
+        },
+        {
+          "name": "evolu_timestamp",
+          "rows": [
+            {
+              "c": 1,
+              "h1": 189813757563447,
+              "h2": 216178336280373,
+              "l": 1,
+              "ownerId": {
+                "data": [
+                  128,
+                  87,
+                  31,
+                  173,
+                  149,
+                  230,
+                  206,
+                  93,
+                  128,
+                  2,
+                  246,
+                  220,
+                  162,
+                  236,
+                  95,
+                  168,
+                ],
+                "type": "Buffer",
+              },
+              "t": {
+                "data": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  3,
+                  0,
+                  0,
+                  19,
+                  67,
+                  199,
+                  178,
+                  93,
+                  2,
+                  83,
+                  172,
+                ],
+                "type": "Buffer",
+              },
+            },
+          ],
+        },
+      ],
+      "schema": {
+        "indexes": [
+          {
+            "name": "evolu_history_timestamp",
+            "sql": "create index evolu_history_timestamp on evolu_history ("timestamp")",
+          },
+          {
+            "name": "evolu_history_row_column_table_timestampDesc",
+            "sql": "create unique index evolu_history_row_column_table_timestampDesc on evolu_history (
+          "row",
+          "column",
+          "table",
+          "timestamp" desc
+        )",
+          },
+          {
+            "name": "evolu_timestamp_index",
+            "sql": "create index evolu_timestamp_index on evolu_timestamp (
+        "ownerId",
+        "l",
+        "t",
+        "h1",
+        "h2",
+        "c"
+      )",
+          },
+        ],
+        "tables": [
+          {
+            "columns": [
+              "id",
+              "column1",
+              "createdAt",
+              "updatedAt",
+              "isDeleted",
+            ],
+            "name": "_table1",
+          },
+          {
+            "columns": [
+              "id",
+              "column1",
+              "createdAt",
+              "updatedAt",
+              "isDeleted",
+            ],
+            "name": "table1",
+          },
+          {
+            "columns": [
+              "key",
+              "value",
+            ],
+            "name": "evolu_config",
+          },
+          {
+            "columns": [
+              "timestamp",
+              "table",
+              "row",
+              "column",
+              "value",
+            ],
+            "name": "evolu_history",
+          },
+          {
+            "columns": [
+              "mnemonic",
+              "id",
+              "encryptionKey",
+              "createdAt",
+              "writeKey",
+              "timestamp",
+            ],
+            "name": "evolu_owner",
+          },
+          {
+            "columns": [
+              "ownerId",
+              "t",
+              "h1",
+              "h2",
+              "c",
+              "l",
+            ],
+            "name": "evolu_timestamp",
+          },
+        ],
+      },
+    },
+  },
+  {
+    "message": {
+      "tabId": "esTwHwplqLBSE8Ou8ffX4",
+      "type": "onReceive",
+    },
+    "snapshot": {
+      "rows": [
+        {
+          "name": "_table1",
+          "rows": [
+            {
+              "column1": "bar",
+              "createdAt": "1970-01-01T00:00:00.005Z",
+              "id": "s9rNnUeri8bzhS5AX_mRy",
+              "isDeleted": null,
+              "updatedAt": "1970-01-01T00:00:00.005Z",
+            },
+          ],
+        },
+        {
+          "name": "table1",
+          "rows": [
+            {
+              "column1": "foo",
+              "createdAt": "1970-01-01T00:00:00.003Z",
+              "id": "JV0Ui1_SJB3CshOb3rX5C",
+              "isDeleted": null,
+              "updatedAt": "1970-01-01T00:00:00.003Z",
+            },
+          ],
+        },
+        {
+          "name": "evolu_config",
+          "rows": [
+            {
+              "key": "protocolVersion",
+              "value": 0,
+            },
+          ],
+        },
+        {
+          "name": "evolu_history",
+          "rows": [
+            {
+              "column": "column1",
+              "row": {
+                "data": [
+                  97,
+                  196,
+                  101,
+                  244,
+                  203,
+                  38,
+                  98,
+                  67,
+                  218,
+                  7,
+                  58,
+                  112,
+                  63,
+                  196,
+                  213,
+                  104,
+                ],
+                "type": "Buffer",
+              },
+              "table": "table1",
+              "timestamp": {
+                "data": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  3,
+                  0,
+                  0,
+                  19,
+                  67,
+                  199,
+                  178,
+                  93,
+                  2,
+                  83,
+                  172,
+                ],
+                "type": "Buffer",
+              },
+              "value": "foo",
+            },
+          ],
+        },
+        {
+          "name": "evolu_owner",
+          "rows": [
+            {
+              "createdAt": "1970-01-01T00:00:00.003Z",
+              "encryptionKey": {
+                "data": [
+                  173,
+                  165,
+                  204,
+                  225,
+                  74,
+                  240,
+                  76,
+                  99,
+                  46,
+                  18,
+                  104,
+                  4,
+                  0,
+                  136,
+                  188,
+                  132,
+                  99,
+                  57,
+                  151,
+                  4,
+                  147,
+                  44,
+                  59,
+                  91,
+                  61,
+                  162,
+                  116,
+                  243,
+                  186,
+                  98,
+                  25,
+                  4,
+                ],
+                "type": "Buffer",
+              },
+              "id": "MdVYFAxShUluuZKVWQfYL",
+              "mnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
+              "timestamp": "1970-01-01T00:00:00.003Z-0000-1343c7b25d0253ac",
+              "writeKey": {
+                "data": [
+                  111,
+                  64,
+                  118,
+                  108,
+                  245,
+                  65,
+                  176,
+                  98,
+                  173,
+                  247,
+                  85,
+                  78,
+                  30,
+                  167,
+                  192,
+                  203,
+                ],
+                "type": "Buffer",
+              },
+            },
+          ],
+        },
+        {
+          "name": "evolu_timestamp",
+          "rows": [
+            {
+              "c": 1,
+              "h1": 189813757563447,
+              "h2": 216178336280373,
+              "l": 1,
+              "ownerId": {
+                "data": [
+                  128,
+                  87,
+                  31,
+                  173,
+                  149,
+                  230,
+                  206,
+                  93,
+                  128,
+                  2,
+                  246,
+                  220,
+                  162,
+                  236,
+                  95,
+                  168,
+                ],
+                "type": "Buffer",
+              },
+              "t": {
+                "data": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  3,
+                  0,
+                  0,
+                  19,
+                  67,
+                  199,
+                  178,
+                  93,
+                  2,
+                  83,
+                  172,
+                ],
+                "type": "Buffer",
+              },
+            },
+          ],
+        },
+      ],
+      "schema": {
+        "indexes": [
+          {
+            "name": "evolu_history_timestamp",
+            "sql": "create index evolu_history_timestamp on evolu_history ("timestamp")",
+          },
+          {
+            "name": "evolu_history_row_column_table_timestampDesc",
+            "sql": "create unique index evolu_history_row_column_table_timestampDesc on evolu_history (
+          "row",
+          "column",
+          "table",
+          "timestamp" desc
+        )",
+          },
+          {
+            "name": "evolu_timestamp_index",
+            "sql": "create index evolu_timestamp_index on evolu_timestamp (
+        "ownerId",
+        "l",
+        "t",
+        "h1",
+        "h2",
+        "c"
+      )",
+          },
+        ],
+        "tables": [
+          {
+            "columns": [
+              "id",
+              "column1",
+              "createdAt",
+              "updatedAt",
+              "isDeleted",
+            ],
+            "name": "_table1",
+          },
+          {
+            "columns": [
+              "id",
+              "column1",
+              "createdAt",
+              "updatedAt",
+              "isDeleted",
+            ],
+            "name": "table1",
+          },
+          {
+            "columns": [
+              "key",
+              "value",
+            ],
+            "name": "evolu_config",
+          },
+          {
+            "columns": [
+              "timestamp",
+              "table",
+              "row",
+              "column",
+              "value",
+            ],
+            "name": "evolu_history",
+          },
+          {
+            "columns": [
+              "mnemonic",
+              "id",
+              "encryptionKey",
+              "createdAt",
+              "writeKey",
+              "timestamp",
+            ],
+            "name": "evolu_owner",
+          },
+          {
+            "columns": [
+              "ownerId",
+              "t",
+              "h1",
+              "h2",
+              "c",
+              "l",
+            ],
+            "name": "evolu_timestamp",
+          },
+        ],
+      },
+    },
+  },
+  {
+    "message": {
+      "onCompleteIds": [],
+      "patches": [],
+      "tabId": "esTwHwplqLBSE8Ou8ffX4",
+      "type": "onChange",
+    },
+    "snapshot": {
+      "rows": [
+        {
+          "name": "_table1",
+          "rows": [
+            {
+              "column1": "bar",
+              "createdAt": "1970-01-01T00:00:00.005Z",
+              "id": "s9rNnUeri8bzhS5AX_mRy",
+              "isDeleted": null,
+              "updatedAt": "1970-01-01T00:00:00.005Z",
+            },
+          ],
+        },
+        {
+          "name": "table1",
+          "rows": [
+            {
+              "column1": "foo",
+              "createdAt": "1970-01-01T00:00:00.003Z",
+              "id": "JV0Ui1_SJB3CshOb3rX5C",
+              "isDeleted": null,
+              "updatedAt": "1970-01-01T00:00:00.003Z",
+            },
+          ],
+        },
+        {
+          "name": "evolu_config",
+          "rows": [
+            {
+              "key": "protocolVersion",
+              "value": 0,
+            },
+          ],
+        },
+        {
+          "name": "evolu_history",
+          "rows": [
+            {
+              "column": "column1",
+              "row": {
+                "data": [
+                  97,
+                  196,
+                  101,
+                  244,
+                  203,
+                  38,
+                  98,
+                  67,
+                  218,
+                  7,
+                  58,
+                  112,
+                  63,
+                  196,
+                  213,
+                  104,
+                ],
+                "type": "Buffer",
+              },
+              "table": "table1",
+              "timestamp": {
+                "data": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  3,
+                  0,
+                  0,
+                  19,
+                  67,
+                  199,
+                  178,
+                  93,
+                  2,
+                  83,
+                  172,
+                ],
+                "type": "Buffer",
+              },
+              "value": "foo",
+            },
+          ],
+        },
+        {
+          "name": "evolu_owner",
+          "rows": [
+            {
+              "createdAt": "1970-01-01T00:00:00.003Z",
+              "encryptionKey": {
+                "data": [
+                  173,
+                  165,
+                  204,
+                  225,
+                  74,
+                  240,
+                  76,
+                  99,
+                  46,
+                  18,
+                  104,
+                  4,
+                  0,
+                  136,
+                  188,
+                  132,
+                  99,
+                  57,
+                  151,
+                  4,
+                  147,
+                  44,
+                  59,
+                  91,
+                  61,
+                  162,
+                  116,
+                  243,
+                  186,
+                  98,
+                  25,
+                  4,
+                ],
+                "type": "Buffer",
+              },
+              "id": "MdVYFAxShUluuZKVWQfYL",
+              "mnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
+              "timestamp": "1970-01-01T00:00:00.003Z-0000-1343c7b25d0253ac",
+              "writeKey": {
+                "data": [
+                  111,
+                  64,
+                  118,
+                  108,
+                  245,
+                  65,
+                  176,
+                  98,
+                  173,
+                  247,
+                  85,
+                  78,
+                  30,
+                  167,
+                  192,
+                  203,
+                ],
+                "type": "Buffer",
+              },
+            },
+          ],
+        },
+        {
+          "name": "evolu_timestamp",
+          "rows": [
+            {
+              "c": 1,
+              "h1": 189813757563447,
+              "h2": 216178336280373,
+              "l": 1,
+              "ownerId": {
+                "data": [
+                  128,
+                  87,
+                  31,
+                  173,
+                  149,
+                  230,
+                  206,
+                  93,
+                  128,
+                  2,
+                  246,
+                  220,
+                  162,
+                  236,
+                  95,
+                  168,
+                ],
+                "type": "Buffer",
+              },
+              "t": {
+                "data": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  3,
+                  0,
+                  0,
+                  19,
+                  67,
+                  199,
+                  178,
+                  93,
+                  2,
+                  83,
+                  172,
+                ],
+                "type": "Buffer",
+              },
+            },
+          ],
+        },
+      ],
+      "schema": {
+        "indexes": [
+          {
+            "name": "evolu_history_timestamp",
+            "sql": "create index evolu_history_timestamp on evolu_history ("timestamp")",
+          },
+          {
+            "name": "evolu_history_row_column_table_timestampDesc",
+            "sql": "create unique index evolu_history_row_column_table_timestampDesc on evolu_history (
+          "row",
+          "column",
+          "table",
+          "timestamp" desc
+        )",
+          },
+          {
+            "name": "evolu_timestamp_index",
+            "sql": "create index evolu_timestamp_index on evolu_timestamp (
+        "ownerId",
+        "l",
+        "t",
+        "h1",
+        "h2",
+        "c"
+      )",
+          },
+        ],
+        "tables": [
+          {
+            "columns": [
+              "id",
+              "column1",
+              "createdAt",
+              "updatedAt",
+              "isDeleted",
+            ],
+            "name": "_table1",
+          },
+          {
+            "columns": [
+              "id",
+              "column1",
+              "createdAt",
+              "updatedAt",
+              "isDeleted",
+            ],
+            "name": "table1",
+          },
+          {
+            "columns": [
+              "key",
+              "value",
+            ],
+            "name": "evolu_config",
+          },
+          {
+            "columns": [
+              "timestamp",
+              "table",
+              "row",
+              "column",
+              "value",
+            ],
+            "name": "evolu_history",
+          },
+          {
+            "columns": [
+              "mnemonic",
+              "id",
+              "encryptionKey",
+              "createdAt",
+              "writeKey",
+              "timestamp",
+            ],
+            "name": "evolu_owner",
+          },
+          {
+            "columns": [
+              "ownerId",
+              "t",
+              "h1",
+              "h2",
+              "c",
+              "l",
+            ],
+            "name": "evolu_timestamp",
+          },
+        ],
+      },
+    },
+  },
+  {
+    "message": {
+      "tabId": "esTwHwplqLBSE8Ou8ffX4",
+      "type": "onReceive",
+    },
+    "snapshot": {
+      "rows": [
+        {
+          "name": "_table1",
+          "rows": [
+            {
+              "column1": "bar",
+              "createdAt": "1970-01-01T00:00:00.005Z",
+              "id": "s9rNnUeri8bzhS5AX_mRy",
+              "isDeleted": null,
+              "updatedAt": "1970-01-01T00:00:00.005Z",
+            },
+          ],
+        },
+        {
+          "name": "table1",
+          "rows": [
+            {
+              "column1": "foo",
+              "createdAt": "1970-01-01T00:00:00.003Z",
+              "id": "JV0Ui1_SJB3CshOb3rX5C",
+              "isDeleted": null,
+              "updatedAt": "1970-01-01T00:00:00.003Z",
+            },
+          ],
+        },
+        {
+          "name": "evolu_config",
+          "rows": [
+            {
+              "key": "protocolVersion",
+              "value": 0,
+            },
+          ],
+        },
+        {
+          "name": "evolu_history",
+          "rows": [
+            {
+              "column": "column1",
+              "row": {
+                "data": [
+                  97,
+                  196,
+                  101,
+                  244,
+                  203,
+                  38,
+                  98,
+                  67,
+                  218,
+                  7,
+                  58,
+                  112,
+                  63,
+                  196,
+                  213,
+                  104,
+                ],
+                "type": "Buffer",
+              },
+              "table": "table1",
+              "timestamp": {
+                "data": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  3,
+                  0,
+                  0,
+                  19,
+                  67,
+                  199,
+                  178,
+                  93,
+                  2,
+                  83,
+                  172,
+                ],
+                "type": "Buffer",
+              },
+              "value": "foo",
+            },
+          ],
+        },
+        {
+          "name": "evolu_owner",
+          "rows": [
+            {
+              "createdAt": "1970-01-01T00:00:00.003Z",
+              "encryptionKey": {
+                "data": [
+                  173,
+                  165,
+                  204,
+                  225,
+                  74,
+                  240,
+                  76,
+                  99,
+                  46,
+                  18,
+                  104,
+                  4,
+                  0,
+                  136,
+                  188,
+                  132,
+                  99,
+                  57,
+                  151,
+                  4,
+                  147,
+                  44,
+                  59,
+                  91,
+                  61,
+                  162,
+                  116,
+                  243,
+                  186,
+                  98,
+                  25,
+                  4,
+                ],
+                "type": "Buffer",
+              },
+              "id": "MdVYFAxShUluuZKVWQfYL",
+              "mnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
+              "timestamp": "1970-01-01T00:00:00.003Z-0000-1343c7b25d0253ac",
+              "writeKey": {
+                "data": [
+                  111,
+                  64,
+                  118,
+                  108,
+                  245,
+                  65,
+                  176,
+                  98,
+                  173,
+                  247,
+                  85,
+                  78,
+                  30,
+                  167,
+                  192,
+                  203,
+                ],
+                "type": "Buffer",
+              },
+            },
+          ],
+        },
+        {
+          "name": "evolu_timestamp",
+          "rows": [
+            {
+              "c": 1,
+              "h1": 189813757563447,
+              "h2": 216178336280373,
+              "l": 1,
+              "ownerId": {
+                "data": [
+                  128,
+                  87,
+                  31,
+                  173,
+                  149,
+                  230,
+                  206,
+                  93,
+                  128,
+                  2,
+                  246,
+                  220,
+                  162,
+                  236,
+                  95,
+                  168,
+                ],
+                "type": "Buffer",
+              },
+              "t": {
+                "data": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  3,
+                  0,
+                  0,
+                  19,
+                  67,
+                  199,
+                  178,
+                  93,
+                  2,
+                  83,
+                  172,
+                ],
+                "type": "Buffer",
+              },
+            },
+          ],
+        },
+      ],
+      "schema": {
+        "indexes": [
+          {
+            "name": "evolu_history_timestamp",
+            "sql": "create index evolu_history_timestamp on evolu_history ("timestamp")",
+          },
+          {
+            "name": "evolu_history_row_column_table_timestampDesc",
+            "sql": "create unique index evolu_history_row_column_table_timestampDesc on evolu_history (
+          "row",
+          "column",
+          "table",
+          "timestamp" desc
+        )",
+          },
+          {
+            "name": "evolu_timestamp_index",
+            "sql": "create index evolu_timestamp_index on evolu_timestamp (
+        "ownerId",
+        "l",
+        "t",
+        "h1",
+        "h2",
+        "c"
+      )",
+          },
+        ],
+        "tables": [
+          {
+            "columns": [
+              "id",
+              "column1",
+              "createdAt",
+              "updatedAt",
+              "isDeleted",
+            ],
+            "name": "_table1",
+          },
+          {
+            "columns": [
+              "id",
+              "column1",
+              "createdAt",
+              "updatedAt",
+              "isDeleted",
+            ],
+            "name": "table1",
+          },
+          {
+            "columns": [
+              "key",
+              "value",
+            ],
+            "name": "evolu_config",
+          },
+          {
+            "columns": [
+              "timestamp",
+              "table",
+              "row",
+              "column",
+              "value",
+            ],
+            "name": "evolu_history",
+          },
+          {
+            "columns": [
+              "mnemonic",
+              "id",
+              "encryptionKey",
+              "createdAt",
+              "writeKey",
+              "timestamp",
+            ],
+            "name": "evolu_owner",
+          },
+          {
+            "columns": [
+              "ownerId",
+              "t",
+              "h1",
+              "h2",
+              "c",
+              "l",
+            ],
+            "name": "evolu_timestamp",
+          },
+        ],
+      },
+    },
+  },
+  {
+    "message": {
+      "onCompleteIds": [],
+      "patches": [],
+      "tabId": "esTwHwplqLBSE8Ou8ffX4",
+      "type": "onChange",
+    },
+    "snapshot": {
+      "rows": [
+        {
+          "name": "_table1",
+          "rows": [
+            {
+              "column1": "bar",
+              "createdAt": "1970-01-01T00:00:00.005Z",
+              "id": "s9rNnUeri8bzhS5AX_mRy",
+              "isDeleted": null,
+              "updatedAt": "1970-01-01T00:00:00.005Z",
+            },
+          ],
+        },
+        {
+          "name": "table1",
+          "rows": [
+            {
+              "column1": "foo",
+              "createdAt": "1970-01-01T00:00:00.003Z",
+              "id": "JV0Ui1_SJB3CshOb3rX5C",
+              "isDeleted": null,
+              "updatedAt": "1970-01-01T00:00:00.003Z",
+            },
+            {
+              "column1": "foo",
+              "createdAt": "1970-01-01T00:00:00.005Z",
+              "id": "ZUN-T4MZhx0p9fO9i2LT9",
+              "isDeleted": null,
+              "updatedAt": "1970-01-01T00:00:00.005Z",
+            },
+          ],
+        },
+        {
+          "name": "evolu_config",
+          "rows": [
+            {
+              "key": "protocolVersion",
+              "value": 0,
+            },
+          ],
+        },
+        {
+          "name": "evolu_history",
+          "rows": [
+            {
+              "column": "column1",
+              "row": {
+                "data": [
+                  97,
+                  196,
+                  101,
+                  244,
+                  203,
+                  38,
+                  98,
+                  67,
+                  218,
+                  7,
+                  58,
+                  112,
+                  63,
+                  196,
+                  213,
+                  104,
+                ],
+                "type": "Buffer",
+              },
+              "table": "table1",
+              "timestamp": {
+                "data": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  3,
+                  0,
+                  0,
+                  19,
+                  67,
+                  199,
+                  178,
+                  93,
+                  2,
+                  83,
+                  172,
+                ],
+                "type": "Buffer",
+              },
+              "value": "foo",
+            },
+            {
+              "column": "column1",
+              "row": {
+                "data": [
+                  190,
+                  88,
+                  136,
+                  45,
+                  8,
+                  47,
+                  205,
+                  116,
+                  86,
+                  55,
+                  26,
+                  77,
+                  244,
+                  154,
+                  139,
+                  52,
+                ],
+                "type": "Buffer",
+              },
+              "table": "Table1",
+              "timestamp": {
+                "data": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  5,
+                  0,
+                  0,
+                  19,
+                  67,
+                  199,
+                  178,
+                  93,
+                  2,
+                  83,
+                  172,
+                ],
+                "type": "Buffer",
+              },
+              "value": "foo",
+            },
+          ],
+        },
+        {
+          "name": "evolu_owner",
+          "rows": [
+            {
+              "createdAt": "1970-01-01T00:00:00.003Z",
+              "encryptionKey": {
+                "data": [
+                  173,
+                  165,
+                  204,
+                  225,
+                  74,
+                  240,
+                  76,
+                  99,
+                  46,
+                  18,
+                  104,
+                  4,
+                  0,
+                  136,
+                  188,
+                  132,
+                  99,
+                  57,
+                  151,
+                  4,
+                  147,
+                  44,
+                  59,
+                  91,
+                  61,
+                  162,
+                  116,
+                  243,
+                  186,
+                  98,
+                  25,
+                  4,
+                ],
+                "type": "Buffer",
+              },
+              "id": "MdVYFAxShUluuZKVWQfYL",
+              "mnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
+              "timestamp": "1970-01-01T00:00:00.005Z-0000-1343c7b25d0253ac",
+              "writeKey": {
+                "data": [
+                  111,
+                  64,
+                  118,
+                  108,
+                  245,
+                  65,
+                  176,
+                  98,
+                  173,
+                  247,
+                  85,
+                  78,
+                  30,
+                  167,
+                  192,
+                  203,
+                ],
+                "type": "Buffer",
+              },
+            },
+          ],
+        },
+        {
+          "name": "evolu_timestamp",
+          "rows": [
+            {
+              "c": 1,
+              "h1": 189813757563447,
+              "h2": 216178336280373,
+              "l": 1,
+              "ownerId": {
+                "data": [
+                  128,
+                  87,
+                  31,
+                  173,
+                  149,
+                  230,
+                  206,
+                  93,
+                  128,
+                  2,
+                  246,
+                  220,
+                  162,
+                  236,
+                  95,
+                  168,
+                ],
+                "type": "Buffer",
+              },
+              "t": {
+                "data": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  3,
+                  0,
+                  0,
+                  19,
+                  67,
+                  199,
+                  178,
+                  93,
+                  2,
+                  83,
+                  172,
+                ],
+                "type": "Buffer",
+              },
+            },
+            {
+              "c": 1,
+              "h1": 102044051867141,
+              "h2": 193391649105209,
+              "l": 1,
+              "ownerId": {
+                "data": [
+                  128,
+                  87,
+                  31,
+                  173,
+                  149,
+                  230,
+                  206,
+                  93,
+                  128,
+                  2,
+                  246,
+                  220,
+                  162,
+                  236,
+                  95,
+                  168,
+                ],
+                "type": "Buffer",
+              },
+              "t": {
+                "data": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  5,
+                  0,
+                  0,
+                  19,
+                  67,
+                  199,
+                  178,
+                  93,
+                  2,
+                  83,
+                  172,
+                ],
+                "type": "Buffer",
+              },
+            },
+          ],
+        },
+      ],
+      "schema": {
+        "indexes": [
+          {
+            "name": "evolu_history_timestamp",
+            "sql": "create index evolu_history_timestamp on evolu_history ("timestamp")",
+          },
+          {
+            "name": "evolu_history_row_column_table_timestampDesc",
+            "sql": "create unique index evolu_history_row_column_table_timestampDesc on evolu_history (
+          "row",
+          "column",
+          "table",
+          "timestamp" desc
+        )",
+          },
+          {
+            "name": "evolu_timestamp_index",
+            "sql": "create index evolu_timestamp_index on evolu_timestamp (
+        "ownerId",
+        "l",
+        "t",
+        "h1",
+        "h2",
+        "c"
+      )",
+          },
+        ],
+        "tables": [
+          {
+            "columns": [
+              "id",
+              "column1",
+              "createdAt",
+              "updatedAt",
+              "isDeleted",
+            ],
+            "name": "_table1",
+          },
+          {
+            "columns": [
+              "id",
+              "column1",
+              "createdAt",
+              "updatedAt",
+              "isDeleted",
+            ],
+            "name": "table1",
+          },
+          {
+            "columns": [
+              "key",
+              "value",
+            ],
+            "name": "evolu_config",
+          },
+          {
+            "columns": [
+              "timestamp",
+              "table",
+              "row",
+              "column",
+              "value",
+            ],
+            "name": "evolu_history",
+          },
+          {
+            "columns": [
+              "mnemonic",
+              "id",
+              "encryptionKey",
+              "createdAt",
+              "writeKey",
+              "timestamp",
+            ],
+            "name": "evolu_owner",
+          },
+          {
+            "columns": [
+              "ownerId",
+              "t",
+              "h1",
+              "h2",
+              "c",
+              "l",
+            ],
+            "name": "evolu_timestamp",
+          },
+        ],
+      },
+    },
+  },
+  {
+    "message": {
+      "tabId": "esTwHwplqLBSE8Ou8ffX4",
+      "type": "onReceive",
+    },
+    "snapshot": {
+      "rows": [
+        {
+          "name": "_table1",
+          "rows": [
+            {
+              "column1": "bar",
+              "createdAt": "1970-01-01T00:00:00.005Z",
+              "id": "s9rNnUeri8bzhS5AX_mRy",
+              "isDeleted": null,
+              "updatedAt": "1970-01-01T00:00:00.005Z",
+            },
+          ],
+        },
+        {
+          "name": "table1",
+          "rows": [
+            {
+              "column1": "foo",
+              "createdAt": "1970-01-01T00:00:00.003Z",
+              "id": "JV0Ui1_SJB3CshOb3rX5C",
+              "isDeleted": null,
+              "updatedAt": "1970-01-01T00:00:00.003Z",
+            },
+            {
+              "column1": "foo",
+              "createdAt": "1970-01-01T00:00:00.005Z",
+              "id": "ZUN-T4MZhx0p9fO9i2LT9",
+              "isDeleted": null,
+              "updatedAt": "1970-01-01T00:00:00.005Z",
+            },
+          ],
+        },
+        {
+          "name": "evolu_config",
+          "rows": [
+            {
+              "key": "protocolVersion",
+              "value": 0,
+            },
+          ],
+        },
+        {
+          "name": "evolu_history",
+          "rows": [
+            {
+              "column": "column1",
+              "row": {
+                "data": [
+                  97,
+                  196,
+                  101,
+                  244,
+                  203,
+                  38,
+                  98,
+                  67,
+                  218,
+                  7,
+                  58,
+                  112,
+                  63,
+                  196,
+                  213,
+                  104,
+                ],
+                "type": "Buffer",
+              },
+              "table": "table1",
+              "timestamp": {
+                "data": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  3,
+                  0,
+                  0,
+                  19,
+                  67,
+                  199,
+                  178,
+                  93,
+                  2,
+                  83,
+                  172,
+                ],
+                "type": "Buffer",
+              },
+              "value": "foo",
+            },
+            {
+              "column": "column1",
+              "row": {
+                "data": [
+                  190,
+                  88,
+                  136,
+                  45,
+                  8,
+                  47,
+                  205,
+                  116,
+                  86,
+                  55,
+                  26,
+                  77,
+                  244,
+                  154,
+                  139,
+                  52,
+                ],
+                "type": "Buffer",
+              },
+              "table": "Table1",
+              "timestamp": {
+                "data": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  5,
+                  0,
+                  0,
+                  19,
+                  67,
+                  199,
+                  178,
+                  93,
+                  2,
+                  83,
+                  172,
+                ],
+                "type": "Buffer",
+              },
+              "value": "foo",
+            },
+          ],
+        },
+        {
+          "name": "evolu_owner",
+          "rows": [
+            {
+              "createdAt": "1970-01-01T00:00:00.003Z",
+              "encryptionKey": {
+                "data": [
+                  173,
+                  165,
+                  204,
+                  225,
+                  74,
+                  240,
+                  76,
+                  99,
+                  46,
+                  18,
+                  104,
+                  4,
+                  0,
+                  136,
+                  188,
+                  132,
+                  99,
+                  57,
+                  151,
+                  4,
+                  147,
+                  44,
+                  59,
+                  91,
+                  61,
+                  162,
+                  116,
+                  243,
+                  186,
+                  98,
+                  25,
+                  4,
+                ],
+                "type": "Buffer",
+              },
+              "id": "MdVYFAxShUluuZKVWQfYL",
+              "mnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
+              "timestamp": "1970-01-01T00:00:00.005Z-0000-1343c7b25d0253ac",
+              "writeKey": {
+                "data": [
+                  111,
+                  64,
+                  118,
+                  108,
+                  245,
+                  65,
+                  176,
+                  98,
+                  173,
+                  247,
+                  85,
+                  78,
+                  30,
+                  167,
+                  192,
+                  203,
+                ],
+                "type": "Buffer",
+              },
+            },
+          ],
+        },
+        {
+          "name": "evolu_timestamp",
+          "rows": [
+            {
+              "c": 1,
+              "h1": 189813757563447,
+              "h2": 216178336280373,
+              "l": 1,
+              "ownerId": {
+                "data": [
+                  128,
+                  87,
+                  31,
+                  173,
+                  149,
+                  230,
+                  206,
+                  93,
+                  128,
+                  2,
+                  246,
+                  220,
+                  162,
+                  236,
+                  95,
+                  168,
+                ],
+                "type": "Buffer",
+              },
+              "t": {
+                "data": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  3,
+                  0,
+                  0,
+                  19,
+                  67,
+                  199,
+                  178,
+                  93,
+                  2,
+                  83,
+                  172,
+                ],
+                "type": "Buffer",
+              },
+            },
+            {
+              "c": 1,
+              "h1": 102044051867141,
+              "h2": 193391649105209,
+              "l": 1,
+              "ownerId": {
+                "data": [
+                  128,
+                  87,
+                  31,
+                  173,
+                  149,
+                  230,
+                  206,
+                  93,
+                  128,
+                  2,
+                  246,
+                  220,
+                  162,
+                  236,
+                  95,
+                  168,
+                ],
+                "type": "Buffer",
+              },
+              "t": {
+                "data": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  5,
+                  0,
+                  0,
+                  19,
+                  67,
+                  199,
+                  178,
+                  93,
+                  2,
+                  83,
+                  172,
+                ],
+                "type": "Buffer",
+              },
+            },
+          ],
+        },
+      ],
+      "schema": {
+        "indexes": [
+          {
+            "name": "evolu_history_timestamp",
+            "sql": "create index evolu_history_timestamp on evolu_history ("timestamp")",
+          },
+          {
+            "name": "evolu_history_row_column_table_timestampDesc",
+            "sql": "create unique index evolu_history_row_column_table_timestampDesc on evolu_history (
+          "row",
+          "column",
+          "table",
+          "timestamp" desc
+        )",
+          },
+          {
+            "name": "evolu_timestamp_index",
+            "sql": "create index evolu_timestamp_index on evolu_timestamp (
+        "ownerId",
+        "l",
+        "t",
+        "h1",
+        "h2",
+        "c"
+      )",
+          },
+        ],
+        "tables": [
+          {
+            "columns": [
+              "id",
+              "column1",
+              "createdAt",
+              "updatedAt",
+              "isDeleted",
+            ],
+            "name": "_table1",
+          },
+          {
+            "columns": [
+              "id",
+              "column1",
+              "createdAt",
+              "updatedAt",
+              "isDeleted",
+            ],
+            "name": "table1",
+          },
+          {
+            "columns": [
+              "key",
+              "value",
+            ],
+            "name": "evolu_config",
+          },
+          {
+            "columns": [
+              "timestamp",
+              "table",
+              "row",
+              "column",
+              "value",
+            ],
+            "name": "evolu_history",
+          },
+          {
+            "columns": [
+              "mnemonic",
+              "id",
+              "encryptionKey",
+              "createdAt",
+              "writeKey",
+              "timestamp",
+            ],
+            "name": "evolu_owner",
+          },
+          {
+            "columns": [
+              "ownerId",
+              "t",
+              "h1",
+              "h2",
+              "c",
+              "l",
+            ],
+            "name": "evolu_timestamp",
+          },
+        ],
+      },
+    },
+  },
+  {
+    "message": {
+      "onCompleteId": "yKrUtl5RZ4mz12WZ_SQtm",
+      "reload": false,
+      "type": "onReset",
+    },
+    "snapshot": {
+      "rows": [],
+      "schema": {
+        "indexes": [],
+        "tables": [],
+      },
+    },
+  },
+]
+`;
+
+exports[`maybeMigrateTo0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "rows": [],
+    "schema": {
+      "indexes": [],
+      "tables": [],
+    },
+  },
+}
+`;

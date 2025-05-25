@@ -1,0 +1,35 @@
+name: Web Build
+
+on:
+  pull_request:
+    branches: ["*"]
+    paths:
+      - "apps/web/**"
+  push:
+    branches: ["main"]
+    paths:
+      - "apps/web/**"
+  merge_group:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+# You can leverage Vercel Remote Caching with Turbo to speed up your builds
+# @link https://turborepo.org/docs/core-concepts/remote-caching#remote-caching-on-vercel-builds
+env:
+  FORCE_COLOR: 3
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm-install
+
+      - name: Build Web
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        run: pnpm build && pnpm build:web
