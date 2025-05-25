@@ -3,6 +3,7 @@ import { Features } from "@/components/Features";
 import { Guides } from "@/components/Guides";
 import { HeroText } from "@/components/HeroText";
 import { Logo } from "@/components/Logo";
+import { InlineNote } from "@/components/mdx";
 export const metadata = {
   title: "Evolu",
   description: "Privacy-focused local-first platform that scales.",
@@ -22,6 +23,16 @@ export default function Page(): React.ReactElement {
           >
             Quickstart
           </Button>
+        </div>
+
+        <div className="flex justify-center">
+          <InlineNote>
+            Heads up: The new version of Evolu is now open-sourced but hasn’t
+            been published to NPM yet.
+            <br /> <br />
+            If you're interested, feel free to ⭐️ star and 👀 watch the GitHub
+            repo to be notified when it’s released.
+          </InlineNote>
         </div>
 
         <Features />

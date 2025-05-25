@@ -50,6 +50,21 @@ export function Note({
   );
 }
 
+export function InlineNote({
+  children,
+}: {
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <div className="my-6 inline-flex w-fit gap-2.5 rounded-2xl border border-yellow-600/20 bg-yellow-50/50 p-4 leading-6 text-blue-900 dark:border-yellow-500/30 dark:bg-yellow-500/5 dark:text-zinc-100 dark:[--tw-prose-links-hover:var(--color-blue-300)] dark:[--tw-prose-links:var(--color-white)]">
+      <IconInfoCircleFilled className="mt-1 size-5 flex-none text-yellow-500 dark:text-yellow-500" />
+      <div className="max-w-md [&>:first-child]:mt-0 [&>:last-child]:mb-0">
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export function Warn({
   children,
 }: {
