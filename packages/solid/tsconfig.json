@@ -1,0 +1,10 @@
+{
+  "extends": "@evolu/tsconfig/universal-esm.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+    "allowJs": true
+  },
+  "include": ["src/**/*"]
+}
