@@ -22,6 +22,7 @@
     "examples:react-nextjs:dev": "turbo --filter @example/react-nextjs dev",
     "examples:react-vite-pwa:dev": "turbo --filter @example/react-vite-pwa dev",
     "examples:react-electron:dev": "turbo --filter @example/react-electron dev",
+    "examples:solid-pwa:dev": "turbo --filter @example/solid-vite-pwa dev",
     "examples:svelte-vite-pwa:dev": "turbo --filter @example/svelte-vite-pwa dev",
     "publish:local": "tsx ./scripts/publish-local.ts"
   },
