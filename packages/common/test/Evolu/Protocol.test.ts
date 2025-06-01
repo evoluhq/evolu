@@ -551,286 +551,81 @@ test("createTimestampsBuffer maxTimestamp", () => {
   expect(buffer.getLength()).toBe(21);
 });
 
-// describe("createProtocolMessageBuffer", () => {
-//   it("should allow no ranges", () => {
-//     const buffer = createProtocolMessageBuffer(testOwner.id);
-//     expect(() => buffer.unwrap()).not.toThrow();
-//   });
+describe("createProtocolMessageBuffer", () => {
+  it("should allow no ranges", () => {
+    const buffer = createProtocolMessageBuffer(testOwner.id);
+    expect(() => buffer.unwrap()).not.toThrow();
+  });
 
-//   it("should allow single range with InfiniteUpperBound", () => {
-//     const buffer = createProtocolMessageBuffer(testOwner.id);
-//     buffer.addRange({
-//       type: RangeType.Skip,
-//       upperBound: InfiniteUpperBound,
-//     });
-//     expect(() => buffer.unwrap()).not.toThrow();
-//   });
+  it("should allow single range with InfiniteUpperBound", () => {
+    const buffer = createProtocolMessageBuffer(testOwner.id);
+    buffer.addRange({
+      type: RangeType.Skip,
+      upperBound: InfiniteUpperBound,
+    });
+    expect(() => buffer.unwrap()).not.toThrow();
+  });
 
-//   it("should reject single range without InfiniteUpperBound", () => {
-//     const buffer = createProtocolMessageBuffer(testOwner.id);
-//     buffer.addRange({
-//       type: RangeType.Skip,
-//       upperBound: testTimestampsAsc[0],
-//     });
-//     expect(() => buffer.unwrap()).toThrow(
-//       "The last range's upperBound must be InfiniteUpperBound",
-//     );
-//   });
+  it("should reject single range without InfiniteUpperBound", () => {
+    const buffer = createProtocolMessageBuffer(testOwner.id);
+    buffer.addRange({
+      type: RangeType.Skip,
+      upperBound: testTimestampsAsc[0],
+    });
+    expect(() => buffer.unwrap()).toThrow(
+      "The last range's upperBound must be InfiniteUpperBound",
+    );
+  });
 
-//   it("should allow multiple ranges with only last InfiniteUpperBound", () => {
-//     const buffer = createProtocolMessageBuffer(testOwner.id);
-//     buffer.addRange({
-//       type: RangeType.Skip,
-//       upperBound: testTimestampsAsc[0],
-//     });
-//     buffer.addRange({
-//       type: RangeType.Skip,
-//       upperBound: testTimestampsAsc[1],
-//     });
-//     buffer.addRange({
-//       type: RangeType.Skip,
-//       upperBound: InfiniteUpperBound,
-//     });
-//     expect(() => buffer.unwrap()).not.toThrow();
-//   });
+  it("should allow multiple ranges with only last InfiniteUpperBound", () => {
+    const buffer = createProtocolMessageBuffer(testOwner.id);
+    buffer.addRange({
+      type: RangeType.Skip,
+      upperBound: testTimestampsAsc[0],
+    });
+    buffer.addRange({
+      type: RangeType.Skip,
+      upperBound: testTimestampsAsc[1],
+    });
+    buffer.addRange({
+      type: RangeType.Skip,
+      upperBound: InfiniteUpperBound,
+    });
+    expect(() => buffer.unwrap()).not.toThrow();
+  });
 
-//   it("should reject range added after InfiniteUpperBound", () => {
-//     const buffer = createProtocolMessageBuffer(testOwner.id);
-//     buffer.addRange({
-//       type: RangeType.Skip,
-//       upperBound: InfiniteUpperBound,
-//     });
-//     expect(() =>
-//       buffer.addRange({
-//         type: RangeType.Skip,
-//         upperBound: testTimestampsAsc[0],
-//       }),
-//     ).toThrow("Cannot add a range after an InfiniteUpperBound range");
-//   });
+  it("should reject range added after InfiniteUpperBound", () => {
+    const buffer = createProtocolMessageBuffer(testOwner.id);
+    buffer.addRange({
+      type: RangeType.Skip,
+      upperBound: InfiniteUpperBound,
+    });
+    expect(() => {
+      buffer.addRange({
+        type: RangeType.Skip,
+        upperBound: testTimestampsAsc[0],
+      });
+    }).toThrow("Cannot add a range after an InfiniteUpperBound range");
+  });
 
-//   it("should reject multiple InfiniteUpperBounds", () => {
-//     const buffer = createProtocolMessageBuffer(testOwner.id);
-//     buffer.addRange({
-//       type: RangeType.Skip,
-//       upperBound: testTimestampsAsc[0],
-//     });
-//     buffer.addRange({
-//       type: RangeType.Skip,
-//       upperBound: InfiniteUpperBound,
-//     });
-//     expect(() =>
-//       buffer.addRange({
-//         type: RangeType.Skip,
-//         upperBound: InfiniteUpperBound,
-//       }),
-//     ).toThrow("Cannot add a range after an InfiniteUpperBound range");
-//   });
-
-//   it("hasEnoughSpaceForSplitRange", () => {
-//     expect(
-//       createProtocolMessageBuffer(testOwner.id, {
-//         rangesMaxSize: 999 as PositiveInt,
-//       }).hasEnoughSpaceForSplitRange(),
-//     ).toBe(false);
-
-//     expect(
-//       createProtocolMessageBuffer(testOwner.id, {
-//         rangesMaxSize: 1000 as PositiveInt,
-//       }).hasEnoughSpaceForSplitRange(),
-//     ).toBe(true);
-//   });
-// });
-
-// describe("decodeRanges", () => {
-//   const fingerprint = binaryTimestampToFingerprint(testTimestampsRandom[0]);
-
-//   const decodeHeaderAndMessages = (buffer: Buffer) => {
-//     buffer.shiftN(1 as NonNegativeInt);
-//     buffer.shiftN(16 as NonNegativeInt);
-//     buffer.shiftN(1 as NonNegativeInt);
-//   };
-
-//   it("should handle no ranges", () => {
-//     const buffer = createProtocolMessageBuffer(testOwner.id);
-//     const protocolMessage = buffer.unwrap();
-//     expect(protocolMessage.join()).toMatchInlineSnapshot(
-//       `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0"`,
-//     );
-
-//     const output = createBuffer(protocolMessage);
-//     decodeHeaderAndMessages(output);
-
-//     const decodedRanges = decodeRanges(output);
-//     expect(decodedRanges).toEqual([]);
-//     expect(output.getLength()).toBe(0);
-//   });
-
-//   it("should handle single range with InfiniteUpperBound", () => {
-//     const buffer = createProtocolMessageBuffer(testOwner.id);
-//     const range: FingerprintRange = {
-//       type: RangeType.Fingerprint,
-//       upperBound: InfiniteUpperBound,
-//       fingerprint,
-//     };
-//     buffer.addRange(range);
-//     const protocolMessage = buffer.unwrap();
-//     expect(protocolMessage.join()).toMatchInlineSnapshot(
-//       `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0,1,1,182,187,38,109,89,6,62,199,219,193,245,246"`,
-//     );
-
-//     const output = createBuffer(protocolMessage);
-//     decodeHeaderAndMessages(output);
-
-//     const decodedRanges = decodeRanges(output);
-//     expect(decodedRanges).toEqual([range]);
-//     expect(output.getLength()).toBe(0);
-//   });
-
-//   it("should handle multiple ranges with last InfiniteUpperBound", () => {
-//     const buffer = createProtocolMessageBuffer(testOwner.id);
-
-//     const range1 = {
-//       type: RangeType.Skip,
-//       upperBound: testTimestampsAsc[1],
-//     };
-//     const range2 = {
-//       type: RangeType.Fingerprint,
-//       upperBound: testTimestampsAsc[2],
-//       fingerprint,
-//     };
-//     const range3 = {
-//       type: RangeType.Timestamps,
-//       upperBound: InfiniteUpperBound,
-//       timestamps: [testTimestampsAsc[3], testTimestampsAsc[4]],
-//     };
-
-//     expect(buffer.addRange(range1)).toBe(true);
-//     expect(buffer.addRange(range2)).toBe(true);
-
-//     const timestamps = createTimestampsBuffer();
-//     timestamps.add(binaryTimestampToTimestamp(testTimestampsAsc[3]));
-//     timestamps.add(binaryTimestampToTimestamp(testTimestampsAsc[4]));
-
-//     expect(
-//       buffer.addRange({
-//         type: RangeType.Timestamps,
-//         upperBound: InfiniteUpperBound,
-//         timestamps,
-//       }),
-//     ).toBe(true);
-
-//     const protocolMessage = buffer.unwrap();
-//     expect(protocolMessage.join()).toMatchInlineSnapshot(
-//       `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0,3,163,205,139,2,152,222,222,3,0,2,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,0,1,2,182,187,38,109,89,6,62,199,219,193,245,246,2,200,238,138,6,138,221,210,1,0,2,104,162,167,191,63,133,160,150,2"`,
-//     );
-
-//     const output = createBuffer(protocolMessage);
-//     decodeHeaderAndMessages(output);
-
-//     const decodedRanges = decodeRanges(output);
-
-//     expect(decodedRanges).toEqual([range1, range2, range3]);
-//     expect(output.getLength()).toBe(0);
-//   });
-
-//   it("should handle single empty TimestampsRange with InfiniteUpperBound", () => {
-//     const buffer = createProtocolMessageBuffer(testOwner.id);
-//     const range: TimestampsRangeWithTimestampsBuffer = {
-//       type: RangeType.Timestamps,
-//       upperBound: InfiniteUpperBound,
-//       timestamps: createTimestampsBuffer(),
-//     };
-//     expect(buffer.addRange(range)).toBe(true);
-//     const protocolMessage = buffer.unwrap();
-//     expect(protocolMessage.join()).toMatchInlineSnapshot(
-//       `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0,1,2,0"`,
-//     );
-
-//     const output = createBuffer(protocolMessage);
-//     decodeHeaderAndMessages(output);
-
-//     const decodedRanges = decodeRanges(output);
-//     expect(decodedRanges).toEqual([
-//       {
-//         type: RangeType.Timestamps,
-//         upperBound: InfiniteUpperBound,
-//         timestamps: [],
-//       },
-//     ]);
-//     expect(output.getLength()).toBe(0);
-//   });
-
-//   const createSkipRange = (index: number): SkipRange => ({
-//     type: RangeType.Skip,
-//     upperBound: testTimestampsAsc[index],
-//   });
-
-//   const createFingerprintRange = (index: number): FingerprintRange => ({
-//     type: RangeType.Fingerprint,
-//     upperBound: testTimestampsAsc[index],
-//     fingerprint,
-//   });
-
-//   const lastFingerprintRange: FingerprintRange = {
-//     type: RangeType.Fingerprint,
-//     upperBound: InfiniteUpperBound,
-//     fingerprint,
-//   };
-
-//   const headerLength = 17;
-
-//   it("should add ranges up to rangesMaxSize without exceeding it", () => {
-//     const rangesMaxSize = 98 as PositiveInt;
-//     const buffer = createProtocolMessageBuffer(testOwner.id, { rangesMaxSize });
-
-//     const addedRanges: Array<SkipRange> = [];
-//     for (let i = 0; i < testTimestampsAsc.length; i++) {
-//       const range = createSkipRange(i);
-//       if (!buffer.addRange(range)) {
-//         break;
-//       }
-//       addedRanges.push(range);
-//     }
-
-//     expect(buffer.addRange(lastFingerprintRange)).toBe(true);
-
-//     const protocolMessage = buffer.unwrap();
-//     expect(protocolMessage.length).toBe(rangesMaxSize + headerLength);
-
-//     const output = createBuffer(protocolMessage);
-//     decodeHeaderAndMessages(output);
-
-//     const decodedRanges = decodeRanges(output);
-//     expect(decodedRanges.length).toBe(addedRanges.length + 1);
-//     expect(decodedRanges.slice(0, -1)).toEqual(addedRanges);
-//     expect(decodedRanges[decodedRanges.length - 1]).toEqual(
-//       lastFingerprintRange,
-//     );
-//     expect(output.getLength()).toBe(0);
-//   });
-
-//   it("should reject a range that exceeds rangesMaxSize", () => {
-//     const rangesMaxSize = 40 as PositiveInt;
-//     const buffer = createProtocolMessageBuffer(testOwner.id, { rangesMaxSize });
-
-//     const range1 = createFingerprintRange(0);
-//     expect(buffer.addRange(range1)).toBe(true);
-
-//     const range2 = createSkipRange(1);
-//     expect(buffer.addRange(range2)).toBe(false);
-
-//     expect(buffer.addRange(lastFingerprintRange)).toBe(true);
-
-//     const protocolMessage = buffer.unwrap();
-//     expect(protocolMessage.length).toBe(rangesMaxSize + headerLength);
-
-//     const output = createBuffer(protocolMessage);
-//     decodeHeaderAndMessages(output);
-//     const decodedRanges = decodeRanges(output);
-//     expect(decodedRanges).toEqual([range1, lastFingerprintRange]);
-//     expect(output.getLength()).toBe(0);
-//   });
-// });
+  it("should reject multiple InfiniteUpperBounds", () => {
+    const buffer = createProtocolMessageBuffer(testOwner.id);
+    buffer.addRange({
+      type: RangeType.Skip,
+      upperBound: testTimestampsAsc[0],
+    });
+    buffer.addRange({
+      type: RangeType.Skip,
+      upperBound: InfiniteUpperBound,
+    });
+    expect(() => {
+      buffer.addRange({
+        type: RangeType.Skip,
+        upperBound: InfiniteUpperBound,
+      });
+    }).toThrow("Cannot add a range after an InfiniteUpperBound range");
+  });
+});
 
 test("createProtocolMessageForSync", async () => {
   const storageDep = await createStorageDep();
