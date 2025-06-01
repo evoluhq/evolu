@@ -1270,7 +1270,7 @@ const splitRange =
     }
   };
 
-export const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
+const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
   if (buffer.getLength() === 0) return [];
 
   const rangesCount = decodeNonNegativeInt(buffer);
