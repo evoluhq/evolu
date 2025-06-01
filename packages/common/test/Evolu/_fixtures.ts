@@ -41,10 +41,10 @@ export const testTimestampsAsc = timestamps
     timestampToBinaryTimestamp(createTimestamp({ millis, counter, nodeId })),
   )
   .toSorted(orderBinaryTimestamp)
-  .slice(0, 1000 - 2); //  for two edges
+  .slice(0, 5000 - 2); //  for two edges
 
 const minTimestamp = timestampToBinaryTimestamp(createTimestamp());
-const maxTimestamp = timestampToBinaryTimestamp(
+export const maxTimestamp = timestampToBinaryTimestamp(
   createTimestamp({
     millis: maxMillis,
     counter: maxCounter,
