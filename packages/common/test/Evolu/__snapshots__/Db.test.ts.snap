@@ -3988,16 +3988,3 @@ exports[`createDbWorker > onMessageMessagesAndDbSnapshots 1`] = `
   },
 ]
 `;
-
-exports[`maybeMigrateTo0 1`] = `
-{
-  "ok": true,
-  "value": {
-    "rows": [],
-    "schema": {
-      "indexes": [],
-      "tables": [],
-    },
-  },
-}
-`;

@@ -1038,14 +1038,6 @@ export const maybeMigrateToVersion0 =
     }>(sql` select mnemonic, timestamp from evolu_owner limit 1; `);
     if (!mnemonicAndLastTimestamp.ok) return mnemonicAndLastTimestamp;
 
-    for (const query of [
-      sql`drop table evolu_owner;`,
-      sql`drop table evolu_message;`,
-    ]) {
-      const result = deps.sqlite.exec(query);
-      if (!result.ok) return result;
-    }
-
     const messagesRows = deps.sqlite.exec<{
       timestamp: TimestampString;
       table: TableName;
@@ -1057,6 +1049,14 @@ export const maybeMigrateToVersion0 =
     `);
 
     if (!messagesRows.ok) return messagesRows;
+
+    for (const query of [
+      sql`drop table evolu_owner;`,
+      sql`drop table evolu_message;`,
+    ]) {
+      const result = deps.sqlite.exec(query);
+      if (!result.ok) return result;
+    }
 
     const messages = messagesRows.value.rows.map((message) => ({
       timestamp: timestampStringToTimestamp(message.timestamp),

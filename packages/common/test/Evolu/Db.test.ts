@@ -139,22 +139,19 @@ export const testCreateVersion0 = ({ exec }: Sqlite): void => {
   exec(sql`commit;`);
 };
 
-// TODO: Migration works, but we have to update the test.
-test.skip("maybeMigrateTo0", async () => {
+test("maybeMigrateTo0", async () => {
   const sqlite = await testCreateSqlite();
   testCreateVersion0(sqlite);
 
   const schema = getDbSchema({ sqlite })();
   assert(schema.ok);
 
-  maybeMigrateToVersion0({
+  const messagesMnemonicLastTimestamp = maybeMigrateToVersion0({
     ...testCreateRandomBytesDep,
     sqlite,
   })(schema.value);
 
-  const snapshot = getDbSnapshot({ sqlite });
-
-  expect(snapshot).toMatchSnapshot();
+  assert(messagesMnemonicLastTimestamp.ok);
 });
 
 test("createDbWorker", async () => {
