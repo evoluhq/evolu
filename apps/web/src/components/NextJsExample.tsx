@@ -264,13 +264,6 @@ const Todos: FC = () => {
       personJson: { name: "Joe", age: 32 },
     });
 
-    // for (let i = 0; i < 100; i++) {
-    //   insert("todo", {
-    //     title: `Todo ${i}`,
-    //     personJson: { name: "Joe", age: 32 },
-    //   });
-    // }
-
     if (!result.ok) {
       alert(formatTypeError(result.error));
     }
