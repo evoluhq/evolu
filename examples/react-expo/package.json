@@ -32,12 +32,12 @@
     "react-native": "^0.79.2",
     "react-native-picker-select": "^9.3.1",
     "react-native-quick-crypto": "^0.7.13",
-    "react-native-safe-area-context": "^5.4.0",
-    "react-native-screens": "^4.10.0"
+    "react-native-safe-area-context": "^5.4.1",
+    "react-native-screens": "^4.11.1"
   },
   "devDependencies": {
-    "@babel/core": "^7.27.1",
-    "@types/react": "^19.1.2",
+    "@babel/core": "^7.27.4",
+    "@types/react": "^19.1.6",
     "typescript": "^5.8.3"
   },
   "private": true

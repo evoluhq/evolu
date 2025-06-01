@@ -42,8 +42,8 @@
     "@evolu/web": "workspace:*",
     "@sveltejs/package": "^2.3.11",
     "@tsconfig/svelte": "^5.0.4",
-    "svelte": "^5.28.2",
-    "svelte-check": "^4.1.7",
+    "svelte": "^5.33.11",
+    "svelte-check": "^4.2.1",
     "typescript": "^5.8.3"
   },
   "peerDependencies": {
