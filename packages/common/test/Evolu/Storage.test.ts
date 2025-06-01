@@ -384,7 +384,7 @@ test.skip("insert 1_000_000", longTimeout, async () => {
   // 1m timestamps asc in 22s, the first 10k: 57742 inserts/sec, it's stable.
   await benchmarkTimestamps(timestampsAsc, "asc");
 
-  // // 1m timestamps desc in 87s, the first 10k: 26882 inserts/sec, it's stable.
+  // 1m timestamps desc in 87s, the first 10k: 26882 inserts/sec, it's stable.
   await benchmarkTimestamps(timestampsDesc, "desc");
 
   // The first 10k: 11912 inserts/sec, then it degrades,
