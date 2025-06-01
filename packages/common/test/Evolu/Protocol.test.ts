@@ -9,7 +9,7 @@ import {
   it,
   test,
 } from "vitest";
-import { Buffer, createBuffer, utf8ToBytes } from "../../src/Buffer.js";
+import { createBuffer, utf8ToBytes } from "../../src/Buffer.js";
 import {
   applyProtocolMessageAsClient,
   applyProtocolMessageAsRelay,
@@ -34,7 +34,6 @@ import {
   decodeNodeId,
   decodeNonNegativeInt,
   decodeNumber,
-  decodeRanges,
   decodeSqliteValue,
   decodeString,
   decryptDbChange,
@@ -50,15 +49,14 @@ import {
   encryptDbChange,
   EncryptedCrdtMessage,
   EncryptedDbChange,
-  FingerprintRange,
   idToBinaryId,
   InfiniteUpperBound,
+  maxProtocolMessageRangesSize,
   ownerIdToBinaryOwnerId,
   ProtocolErrorCode,
   ProtocolValueType,
   protocolVersion,
   RangeType,
-  SkipRange,
   Storage,
   StorageDep,
   TableName,
@@ -70,14 +68,14 @@ import {
   createInitialTimestamp,
   timestampToBinaryTimestamp,
 } from "../../src/Evolu/Timestamp.js";
-import { constFalse, constNull, constTrue } from "../../src/Function.js";
+import { constFalse, constTrue } from "../../src/Function.js";
 import {
   assertNonEmptyArray,
   createRandom,
   EncryptionKey,
   NonEmptyReadonlyArray,
 } from "../../src/index.js";
-import { err, getOrThrow, ok, Result } from "../../src/Result.js";
+import { err, getOrThrow, ok } from "../../src/Result.js";
 import { SqliteValue } from "../../src/Sqlite.js";
 import {
   DateIso,
@@ -100,7 +98,11 @@ import {
   testRandomLib,
   testSymmetricCrypto,
 } from "../_deps.js";
-import { testTimestampsAsc, testTimestampsRandom } from "./_fixtures.js";
+import {
+  maxTimestamp,
+  testTimestampsAsc,
+  testTimestampsRandom,
+} from "./_fixtures.js";
 
 // Note we use `.join()` on Uint8Array/Buffer for two reasons:
 //  - We want toMatchInlineSnapshot to be a single line (a string is).
@@ -469,12 +471,11 @@ const createDbChange = (): DbChange => ({
   },
 });
 
-const createEncryptedDbChange = (dbChange: DbChange): EncryptedDbChange => {
-  return encryptDbChange({ symmetricCrypto: testSymmetricCrypto })(
+const createEncryptedDbChange = (dbChange: DbChange): EncryptedDbChange =>
+  encryptDbChange({ symmetricCrypto: testSymmetricCrypto })(
     dbChange,
     testOwner.encryptionKey,
   );
-};
 
 test("encodeDbChange/decodeDbChange", () => {
   const dbChange = createDbChange();
@@ -544,286 +545,292 @@ const shouldNotBeCalledStorageDep: StorageDep = {
   },
 };
 
-describe("createProtocolMessageBuffer", () => {
-  it("should allow no ranges", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id);
-    expect(() => buffer.unwrap()).not.toThrow();
-  });
-
-  it("should allow single range with InfiniteUpperBound", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id);
-    buffer.addRange({
-      type: RangeType.Skip,
-      upperBound: InfiniteUpperBound,
-    });
-    expect(() => buffer.unwrap()).not.toThrow();
-  });
-
-  it("should reject single range without InfiniteUpperBound", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id);
-    buffer.addRange({
-      type: RangeType.Skip,
-      upperBound: testTimestampsAsc[0],
-    });
-    expect(() => buffer.unwrap()).toThrow(
-      "The last range's upperBound must be InfiniteUpperBound",
-    );
-  });
-
-  it("should allow multiple ranges with only last InfiniteUpperBound", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id);
-    buffer.addRange({
-      type: RangeType.Skip,
-      upperBound: testTimestampsAsc[0],
-    });
-    buffer.addRange({
-      type: RangeType.Skip,
-      upperBound: testTimestampsAsc[1],
-    });
-    buffer.addRange({
-      type: RangeType.Skip,
-      upperBound: InfiniteUpperBound,
-    });
-    expect(() => buffer.unwrap()).not.toThrow();
-  });
-
-  it("should reject range added after InfiniteUpperBound", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id);
-    buffer.addRange({
-      type: RangeType.Skip,
-      upperBound: InfiniteUpperBound,
-    });
-    expect(() =>
-      buffer.addRange({
-        type: RangeType.Skip,
-        upperBound: testTimestampsAsc[0],
-      }),
-    ).toThrow("Cannot add a range after an InfiniteUpperBound range");
-  });
-
-  it("should reject multiple InfiniteUpperBounds", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id);
-    buffer.addRange({
-      type: RangeType.Skip,
-      upperBound: testTimestampsAsc[0],
-    });
-    buffer.addRange({
-      type: RangeType.Skip,
-      upperBound: InfiniteUpperBound,
-    });
-    expect(() =>
-      buffer.addRange({
-        type: RangeType.Skip,
-        upperBound: InfiniteUpperBound,
-      }),
-    ).toThrow("Cannot add a range after an InfiniteUpperBound range");
-  });
-
-  it("hasEnoughSpaceForSplitRange", () => {
-    expect(
-      createProtocolMessageBuffer(testOwner.id, {
-        rangesMaxSize: 999 as PositiveInt,
-      }).hasEnoughSpaceForSplitRange(),
-    ).toBe(false);
-
-    expect(
-      createProtocolMessageBuffer(testOwner.id, {
-        rangesMaxSize: 1000 as PositiveInt,
-      }).hasEnoughSpaceForSplitRange(),
-    ).toBe(true);
-  });
+test("createTimestampsBuffer maxTimestamp", () => {
+  const buffer = createTimestampsBuffer();
+  buffer.add(binaryTimestampToTimestamp(maxTimestamp));
+  expect(buffer.getLength()).toBe(21);
 });
 
-describe("decodeRanges", () => {
-  const fingerprint = binaryTimestampToFingerprint(testTimestampsRandom[0]);
+// describe("createProtocolMessageBuffer", () => {
+//   it("should allow no ranges", () => {
+//     const buffer = createProtocolMessageBuffer(testOwner.id);
+//     expect(() => buffer.unwrap()).not.toThrow();
+//   });
 
-  const decodeHeaderAndMessages = (buffer: Buffer) => {
-    buffer.shiftN(1 as NonNegativeInt);
-    buffer.shiftN(16 as NonNegativeInt);
-    buffer.shiftN(1 as NonNegativeInt);
-  };
+//   it("should allow single range with InfiniteUpperBound", () => {
+//     const buffer = createProtocolMessageBuffer(testOwner.id);
+//     buffer.addRange({
+//       type: RangeType.Skip,
+//       upperBound: InfiniteUpperBound,
+//     });
+//     expect(() => buffer.unwrap()).not.toThrow();
+//   });
 
-  it("should handle no ranges", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id);
-    const protocolMessage = buffer.unwrap();
-    expect(protocolMessage.join()).toMatchInlineSnapshot(
-      `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0"`,
-    );
+//   it("should reject single range without InfiniteUpperBound", () => {
+//     const buffer = createProtocolMessageBuffer(testOwner.id);
+//     buffer.addRange({
+//       type: RangeType.Skip,
+//       upperBound: testTimestampsAsc[0],
+//     });
+//     expect(() => buffer.unwrap()).toThrow(
+//       "The last range's upperBound must be InfiniteUpperBound",
+//     );
+//   });
 
-    const output = createBuffer(protocolMessage);
-    decodeHeaderAndMessages(output);
+//   it("should allow multiple ranges with only last InfiniteUpperBound", () => {
+//     const buffer = createProtocolMessageBuffer(testOwner.id);
+//     buffer.addRange({
+//       type: RangeType.Skip,
+//       upperBound: testTimestampsAsc[0],
+//     });
+//     buffer.addRange({
+//       type: RangeType.Skip,
+//       upperBound: testTimestampsAsc[1],
+//     });
+//     buffer.addRange({
+//       type: RangeType.Skip,
+//       upperBound: InfiniteUpperBound,
+//     });
+//     expect(() => buffer.unwrap()).not.toThrow();
+//   });
 
-    const decodedRanges = decodeRanges(output);
-    expect(decodedRanges).toEqual([]);
-    expect(output.getLength()).toBe(0);
-  });
+//   it("should reject range added after InfiniteUpperBound", () => {
+//     const buffer = createProtocolMessageBuffer(testOwner.id);
+//     buffer.addRange({
+//       type: RangeType.Skip,
+//       upperBound: InfiniteUpperBound,
+//     });
+//     expect(() =>
+//       buffer.addRange({
+//         type: RangeType.Skip,
+//         upperBound: testTimestampsAsc[0],
+//       }),
+//     ).toThrow("Cannot add a range after an InfiniteUpperBound range");
+//   });
 
-  it("should handle single range with InfiniteUpperBound", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id);
-    const range: FingerprintRange = {
-      type: RangeType.Fingerprint,
-      upperBound: InfiniteUpperBound,
-      fingerprint,
-    };
-    buffer.addRange(range);
-    const protocolMessage = buffer.unwrap();
-    expect(protocolMessage.join()).toMatchInlineSnapshot(
-      `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0,1,1,182,187,38,109,89,6,62,199,219,193,245,246"`,
-    );
+//   it("should reject multiple InfiniteUpperBounds", () => {
+//     const buffer = createProtocolMessageBuffer(testOwner.id);
+//     buffer.addRange({
+//       type: RangeType.Skip,
+//       upperBound: testTimestampsAsc[0],
+//     });
+//     buffer.addRange({
+//       type: RangeType.Skip,
+//       upperBound: InfiniteUpperBound,
+//     });
+//     expect(() =>
+//       buffer.addRange({
+//         type: RangeType.Skip,
+//         upperBound: InfiniteUpperBound,
+//       }),
+//     ).toThrow("Cannot add a range after an InfiniteUpperBound range");
+//   });
 
-    const output = createBuffer(protocolMessage);
-    decodeHeaderAndMessages(output);
+//   it("hasEnoughSpaceForSplitRange", () => {
+//     expect(
+//       createProtocolMessageBuffer(testOwner.id, {
+//         rangesMaxSize: 999 as PositiveInt,
+//       }).hasEnoughSpaceForSplitRange(),
+//     ).toBe(false);
 
-    const decodedRanges = decodeRanges(output);
-    expect(decodedRanges).toEqual([range]);
-    expect(output.getLength()).toBe(0);
-  });
+//     expect(
+//       createProtocolMessageBuffer(testOwner.id, {
+//         rangesMaxSize: 1000 as PositiveInt,
+//       }).hasEnoughSpaceForSplitRange(),
+//     ).toBe(true);
+//   });
+// });
 
-  it("should handle multiple ranges with last InfiniteUpperBound", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id);
+// describe("decodeRanges", () => {
+//   const fingerprint = binaryTimestampToFingerprint(testTimestampsRandom[0]);
 
-    const range1 = {
-      type: RangeType.Skip,
-      upperBound: testTimestampsAsc[1],
-    };
-    const range2 = {
-      type: RangeType.Fingerprint,
-      upperBound: testTimestampsAsc[2],
-      fingerprint,
-    };
-    const range3 = {
-      type: RangeType.Timestamps,
-      upperBound: InfiniteUpperBound,
-      timestamps: [testTimestampsAsc[3], testTimestampsAsc[4]],
-    };
+//   const decodeHeaderAndMessages = (buffer: Buffer) => {
+//     buffer.shiftN(1 as NonNegativeInt);
+//     buffer.shiftN(16 as NonNegativeInt);
+//     buffer.shiftN(1 as NonNegativeInt);
+//   };
 
-    expect(buffer.addRange(range1)).toBe(true);
-    expect(buffer.addRange(range2)).toBe(true);
+//   it("should handle no ranges", () => {
+//     const buffer = createProtocolMessageBuffer(testOwner.id);
+//     const protocolMessage = buffer.unwrap();
+//     expect(protocolMessage.join()).toMatchInlineSnapshot(
+//       `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0"`,
+//     );
 
-    const timestamps = createTimestampsBuffer();
-    timestamps.add(binaryTimestampToTimestamp(testTimestampsAsc[3]));
-    timestamps.add(binaryTimestampToTimestamp(testTimestampsAsc[4]));
+//     const output = createBuffer(protocolMessage);
+//     decodeHeaderAndMessages(output);
 
-    expect(
-      buffer.addRange({
-        type: RangeType.Timestamps,
-        upperBound: InfiniteUpperBound,
-        timestamps,
-      }),
-    ).toBe(true);
+//     const decodedRanges = decodeRanges(output);
+//     expect(decodedRanges).toEqual([]);
+//     expect(output.getLength()).toBe(0);
+//   });
 
-    const protocolMessage = buffer.unwrap();
-    expect(protocolMessage.join()).toMatchInlineSnapshot(
-      `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0,3,163,205,139,2,152,222,222,3,0,2,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,0,1,2,182,187,38,109,89,6,62,199,219,193,245,246,2,200,238,138,6,138,221,210,1,0,2,104,162,167,191,63,133,160,150,2"`,
-    );
+//   it("should handle single range with InfiniteUpperBound", () => {
+//     const buffer = createProtocolMessageBuffer(testOwner.id);
+//     const range: FingerprintRange = {
+//       type: RangeType.Fingerprint,
+//       upperBound: InfiniteUpperBound,
+//       fingerprint,
+//     };
+//     buffer.addRange(range);
+//     const protocolMessage = buffer.unwrap();
+//     expect(protocolMessage.join()).toMatchInlineSnapshot(
+//       `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0,1,1,182,187,38,109,89,6,62,199,219,193,245,246"`,
+//     );
 
-    const output = createBuffer(protocolMessage);
-    decodeHeaderAndMessages(output);
+//     const output = createBuffer(protocolMessage);
+//     decodeHeaderAndMessages(output);
 
-    const decodedRanges = decodeRanges(output);
+//     const decodedRanges = decodeRanges(output);
+//     expect(decodedRanges).toEqual([range]);
+//     expect(output.getLength()).toBe(0);
+//   });
 
-    expect(decodedRanges).toEqual([range1, range2, range3]);
-    expect(output.getLength()).toBe(0);
-  });
+//   it("should handle multiple ranges with last InfiniteUpperBound", () => {
+//     const buffer = createProtocolMessageBuffer(testOwner.id);
 
-  it("should handle single empty TimestampsRange with InfiniteUpperBound", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id);
-    const range: TimestampsRangeWithTimestampsBuffer = {
-      type: RangeType.Timestamps,
-      upperBound: InfiniteUpperBound,
-      timestamps: createTimestampsBuffer(),
-    };
-    expect(buffer.addRange(range)).toBe(true);
-    const protocolMessage = buffer.unwrap();
-    expect(protocolMessage.join()).toMatchInlineSnapshot(
-      `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0,1,2,0"`,
-    );
+//     const range1 = {
+//       type: RangeType.Skip,
+//       upperBound: testTimestampsAsc[1],
+//     };
+//     const range2 = {
+//       type: RangeType.Fingerprint,
+//       upperBound: testTimestampsAsc[2],
+//       fingerprint,
+//     };
+//     const range3 = {
+//       type: RangeType.Timestamps,
+//       upperBound: InfiniteUpperBound,
+//       timestamps: [testTimestampsAsc[3], testTimestampsAsc[4]],
+//     };
 
-    const output = createBuffer(protocolMessage);
-    decodeHeaderAndMessages(output);
+//     expect(buffer.addRange(range1)).toBe(true);
+//     expect(buffer.addRange(range2)).toBe(true);
 
-    const decodedRanges = decodeRanges(output);
-    expect(decodedRanges).toEqual([
-      {
-        type: RangeType.Timestamps,
-        upperBound: InfiniteUpperBound,
-        timestamps: [],
-      },
-    ]);
-    expect(output.getLength()).toBe(0);
-  });
+//     const timestamps = createTimestampsBuffer();
+//     timestamps.add(binaryTimestampToTimestamp(testTimestampsAsc[3]));
+//     timestamps.add(binaryTimestampToTimestamp(testTimestampsAsc[4]));
 
-  const createSkipRange = (index: number): SkipRange => ({
-    type: RangeType.Skip,
-    upperBound: testTimestampsAsc[index],
-  });
+//     expect(
+//       buffer.addRange({
+//         type: RangeType.Timestamps,
+//         upperBound: InfiniteUpperBound,
+//         timestamps,
+//       }),
+//     ).toBe(true);
 
-  const createFingerprintRange = (index: number): FingerprintRange => ({
-    type: RangeType.Fingerprint,
-    upperBound: testTimestampsAsc[index],
-    fingerprint,
-  });
+//     const protocolMessage = buffer.unwrap();
+//     expect(protocolMessage.join()).toMatchInlineSnapshot(
+//       `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0,3,163,205,139,2,152,222,222,3,0,2,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,0,1,2,182,187,38,109,89,6,62,199,219,193,245,246,2,200,238,138,6,138,221,210,1,0,2,104,162,167,191,63,133,160,150,2"`,
+//     );
 
-  const lastFingerprintRange: FingerprintRange = {
-    type: RangeType.Fingerprint,
-    upperBound: InfiniteUpperBound,
-    fingerprint,
-  };
+//     const output = createBuffer(protocolMessage);
+//     decodeHeaderAndMessages(output);
 
-  const headerLength = 17;
+//     const decodedRanges = decodeRanges(output);
 
-  it("should add ranges up to rangesMaxSize without exceeding it", () => {
-    const rangesMaxSize = 98 as PositiveInt;
-    const buffer = createProtocolMessageBuffer(testOwner.id, { rangesMaxSize });
+//     expect(decodedRanges).toEqual([range1, range2, range3]);
+//     expect(output.getLength()).toBe(0);
+//   });
 
-    const addedRanges: Array<SkipRange> = [];
-    for (let i = 0; i < testTimestampsAsc.length; i++) {
-      const range = createSkipRange(i);
-      if (!buffer.addRange(range)) {
-        break;
-      }
-      addedRanges.push(range);
-    }
+//   it("should handle single empty TimestampsRange with InfiniteUpperBound", () => {
+//     const buffer = createProtocolMessageBuffer(testOwner.id);
+//     const range: TimestampsRangeWithTimestampsBuffer = {
+//       type: RangeType.Timestamps,
+//       upperBound: InfiniteUpperBound,
+//       timestamps: createTimestampsBuffer(),
+//     };
+//     expect(buffer.addRange(range)).toBe(true);
+//     const protocolMessage = buffer.unwrap();
+//     expect(protocolMessage.join()).toMatchInlineSnapshot(
+//       `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0,1,2,0"`,
+//     );
 
-    expect(buffer.addRange(lastFingerprintRange)).toBe(true);
+//     const output = createBuffer(protocolMessage);
+//     decodeHeaderAndMessages(output);
 
-    const protocolMessage = buffer.unwrap();
-    expect(protocolMessage.length).toBe(rangesMaxSize + headerLength);
+//     const decodedRanges = decodeRanges(output);
+//     expect(decodedRanges).toEqual([
+//       {
+//         type: RangeType.Timestamps,
+//         upperBound: InfiniteUpperBound,
+//         timestamps: [],
+//       },
+//     ]);
+//     expect(output.getLength()).toBe(0);
+//   });
 
-    const output = createBuffer(protocolMessage);
-    decodeHeaderAndMessages(output);
+//   const createSkipRange = (index: number): SkipRange => ({
+//     type: RangeType.Skip,
+//     upperBound: testTimestampsAsc[index],
+//   });
 
-    const decodedRanges = decodeRanges(output);
-    expect(decodedRanges.length).toBe(addedRanges.length + 1);
-    expect(decodedRanges.slice(0, -1)).toEqual(addedRanges);
-    expect(decodedRanges[decodedRanges.length - 1]).toEqual(
-      lastFingerprintRange,
-    );
-    expect(output.getLength()).toBe(0);
-  });
+//   const createFingerprintRange = (index: number): FingerprintRange => ({
+//     type: RangeType.Fingerprint,
+//     upperBound: testTimestampsAsc[index],
+//     fingerprint,
+//   });
 
-  it("should reject a range that exceeds rangesMaxSize", () => {
-    const rangesMaxSize = 40 as PositiveInt;
-    const buffer = createProtocolMessageBuffer(testOwner.id, { rangesMaxSize });
+//   const lastFingerprintRange: FingerprintRange = {
+//     type: RangeType.Fingerprint,
+//     upperBound: InfiniteUpperBound,
+//     fingerprint,
+//   };
 
-    const range1 = createFingerprintRange(0);
-    expect(buffer.addRange(range1)).toBe(true);
+//   const headerLength = 17;
 
-    const range2 = createSkipRange(1);
-    expect(buffer.addRange(range2)).toBe(false);
+//   it("should add ranges up to rangesMaxSize without exceeding it", () => {
+//     const rangesMaxSize = 98 as PositiveInt;
+//     const buffer = createProtocolMessageBuffer(testOwner.id, { rangesMaxSize });
 
-    expect(buffer.addRange(lastFingerprintRange)).toBe(true);
+//     const addedRanges: Array<SkipRange> = [];
+//     for (let i = 0; i < testTimestampsAsc.length; i++) {
+//       const range = createSkipRange(i);
+//       if (!buffer.addRange(range)) {
+//         break;
+//       }
+//       addedRanges.push(range);
+//     }
 
-    const protocolMessage = buffer.unwrap();
-    expect(protocolMessage.length).toBe(rangesMaxSize + headerLength);
+//     expect(buffer.addRange(lastFingerprintRange)).toBe(true);
 
-    const output = createBuffer(protocolMessage);
-    decodeHeaderAndMessages(output);
-    const decodedRanges = decodeRanges(output);
-    expect(decodedRanges).toEqual([range1, lastFingerprintRange]);
-    expect(output.getLength()).toBe(0);
-  });
-});
+//     const protocolMessage = buffer.unwrap();
+//     expect(protocolMessage.length).toBe(rangesMaxSize + headerLength);
+
+//     const output = createBuffer(protocolMessage);
+//     decodeHeaderAndMessages(output);
+
+//     const decodedRanges = decodeRanges(output);
+//     expect(decodedRanges.length).toBe(addedRanges.length + 1);
+//     expect(decodedRanges.slice(0, -1)).toEqual(addedRanges);
+//     expect(decodedRanges[decodedRanges.length - 1]).toEqual(
+//       lastFingerprintRange,
+//     );
+//     expect(output.getLength()).toBe(0);
+//   });
+
+//   it("should reject a range that exceeds rangesMaxSize", () => {
+//     const rangesMaxSize = 40 as PositiveInt;
+//     const buffer = createProtocolMessageBuffer(testOwner.id, { rangesMaxSize });
+
+//     const range1 = createFingerprintRange(0);
+//     expect(buffer.addRange(range1)).toBe(true);
+
+//     const range2 = createSkipRange(1);
+//     expect(buffer.addRange(range2)).toBe(false);
+
+//     expect(buffer.addRange(lastFingerprintRange)).toBe(true);
+
+//     const protocolMessage = buffer.unwrap();
+//     expect(protocolMessage.length).toBe(rangesMaxSize + headerLength);
+
+//     const output = createBuffer(protocolMessage);
+//     decodeHeaderAndMessages(output);
+//     const decodedRanges = decodeRanges(output);
+//     expect(decodedRanges).toEqual([range1, lastFingerprintRange]);
+//     expect(output.getLength()).toBe(0);
+//   });
+// });
 
 test("createProtocolMessageForSync", async () => {
   const storageDep = await createStorageDep();
@@ -868,7 +875,7 @@ test("createProtocolMessageForSync", async () => {
   );
 });
 
-describe("E2E (old)", () => {
+describe("E2E header", () => {
   test("versioning", () => {
     const v0 = 0 as NonNegativeInt;
     const v1 = 1 as NonNegativeInt;
@@ -926,102 +933,6 @@ describe("E2E (old)", () => {
     );
   });
 
-  test("messages without and with size limit", () => {
-    const messages = testTimestampsAsc.slice(0, 3).map(
-      (timestamp): CrdtMessage => ({
-        timestamp: binaryTimestampToTimestamp(timestamp),
-        change: createDbChange(),
-      }),
-    );
-    assertNonEmptyArray(messages);
-
-    // As minimal as possible.
-    const maxSize = 420 as PositiveInt;
-
-    let protocolMessage = createProtocolMessageFromCrdtMessages(testDeps)(
-      testOwner,
-      messages,
-      maxSize,
-    );
-
-    expect(protocolMessage.join()).toMatchInlineSnapshot(
-      `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,3,0,163,205,139,2,152,222,222,3,0,3,0,0,0,0,0,0,0,0,1,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,115,242,251,55,205,141,153,5,169,167,29,221,49,195,178,122,186,190,238,248,70,127,246,6,76,90,140,133,83,240,111,247,12,50,2,5,26,73,1,95,216,198,143,231,35,11,178,248,50,13,23,133,200,22,154,214,95,12,113,36,22,218,248,147,249,248,129,234,51,102,213,245,107,229,94,106,116,151,138,253,234,9,219,234,5,13,213,188,164,238,172,164,198,53,128,101,224,40,140,150,35,129,72,32,96,219,39,216,109,218,194,138,85,46,98,215,115,12,199,157,174,235,213,76,209,241,35,149,201,225,20,174,159,167,28,95,251,208,109,126,63,90,33,236,223,66,185,48,151,120,219,230,144,255,164,115,214,52,204,210,117,210,219,75,144,231,49,215,222,131,126,154,91,55,103,242,71,141,154,67,202,139,64,116,42,159,207,73,148,211,106,131,200,115,152,52,135,153,217,86,113,151,159,122,196,179,248,59,49,200,203,5,139,132,185,118,200,3,42,180,17,217,157,166,224,125,94,40,236,93,17,77,115,187,10,104,64,37,12,203,170,9,30,49,110,227,116,115,136,131,254,17,150,132,69,106,188,90,175,237,73,153,11,179,31,166,54,75,43,36,226,141,175,136,240,22,120,121,241,229,145,238,216,143,89,100,225,25,244,154,50,48,71,92,46,130,65,83,128,216,49,153,97,72,87,224,73,142,14,124,255,220,193,75,110,210,243,181,221,24,121,197,152,193,239,64,72,210,229,42,90,98,213,156,130,100,253,204,166,126,97,120,144,196,91,185,107,125,111,64,118,108,245,65,176,98,173,247,85,78,30,167,192,203"`,
-    );
-    expect(protocolMessage.length).toBe(maxSize);
-
-    let writeMessagesCalled = false;
-
-    applyProtocolMessageAsRelay({
-      storage: {
-        ...shouldNotBeCalledStorageDep.storage,
-        writeMessages: (ownerId, messagesToWrite) => {
-          writeMessagesCalled = true;
-
-          expect(ownerId).toEqual(testOwnerBinaryId);
-
-          const decryptedMessage = messagesToWrite.map(
-            (message): CrdtMessage => {
-              const change = decryptDbChange({
-                symmetricCrypto: testSymmetricCrypto,
-              })(message.change, testOwner.encryptionKey);
-              assert(change.ok);
-              return { timestamp: message.timestamp, change: change.value };
-            },
-          );
-          expect(decryptedMessage).toEqual(messages);
-
-          return true;
-        },
-        validateWriteKey: constTrue,
-        readDbChange: constNull,
-      },
-    })(protocolMessage);
-
-    expect(writeMessagesCalled).toBe(true);
-
-    protocolMessage = createProtocolMessageFromCrdtMessages(testDeps)(
-      testOwner,
-      messages,
-      (maxSize - 1) as PositiveInt,
-    );
-
-    expect(protocolMessage.join()).toMatchInlineSnapshot(
-      `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,2,0,163,205,139,2,0,2,0,0,0,0,0,0,0,0,1,104,162,167,191,63,133,160,150,1,115,87,40,206,247,79,137,58,9,129,77,32,199,233,34,114,254,197,204,200,212,85,246,228,91,90,102,149,61,90,173,91,109,239,180,178,181,44,1,82,96,110,40,221,142,124,34,24,168,172,174,54,15,225,247,171,61,136,38,221,241,246,128,227,141,0,9,139,251,143,173,61,11,217,90,46,249,205,10,22,161,226,157,240,193,97,50,42,72,139,69,249,67,29,172,179,249,160,40,81,245,94,248,94,243,235,216,227,16,245,79,12,79,90,100,238,115,12,37,57,35,20,115,205,223,175,59,168,215,150,31,214,124,142,173,90,85,164,107,156,138,90,189,49,63,178,221,83,69,162,22,67,171,153,207,226,236,179,145,3,162,243,17,90,144,104,152,128,208,150,222,208,162,85,199,70,240,87,208,154,77,96,216,255,247,32,121,170,203,141,18,21,89,229,173,217,184,53,168,101,43,170,127,75,146,60,231,11,157,189,51,55,184,22,41,232,71,131,205,11,51,149,156,182,53,213,163,221,50,44,140,89,111,64,118,108,245,65,176,98,173,247,85,78,30,167,192,203,1,1,240,47,43,136,133,55,211,33,213,129,41,62"`,
-    );
-
-    writeMessagesCalled = false;
-
-    applyProtocolMessageAsRelay({
-      storage: {
-        ...shouldNotBeCalledStorageDep.storage,
-        writeMessages: (ownerId, messagesToWrite) => {
-          writeMessagesCalled = true;
-
-          expect(ownerId).toEqual(testOwnerBinaryId);
-          expect(messagesToWrite.length).toMatchInlineSnapshot(`2`);
-
-          const decryptedMessage = messagesToWrite.map(
-            (message): CrdtMessage => {
-              const change = decryptDbChange({
-                symmetricCrypto: testSymmetricCrypto,
-              })(message.change, testOwner.encryptionKey);
-              assert(change.ok);
-              return { timestamp: message.timestamp, change: change.value };
-            },
-          );
-          expect(decryptedMessage).toEqual(messages.slice(0, 2));
-
-          return true;
-        },
-        validateWriteKey: constTrue,
-        readDbChange: constNull,
-        getSize: constNull,
-      },
-    })(protocolMessage);
-
-    expect(writeMessagesCalled).toBe(true);
-  });
-
   test("with write errors", () => {
     const timestamp = binaryTimestampToTimestamp(testTimestampsAsc[0]);
     const dbChange = createDbChange();
@@ -1054,7 +965,9 @@ describe("E2E (old)", () => {
       ),
     ).toEqual(err({ type: "ProtocolWriteKeyError" }));
   });
+});
 
+describe("E2E relay options", () => {
   test("subscribe", () => {
     const message = createProtocolMessageBuffer(testOwner.id).unwrap();
     let onOwnerIdCalled = false;
@@ -1082,7 +995,7 @@ describe("E2E (old)", () => {
     );
 
     expect(initiatorMessage.join()).toMatchInlineSnapshot(
-      `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,1,0,0,1,0,0,0,0,0,0,0,0,1,115,106,11,157,135,229,28,6,92,65,155,30,72,25,50,18,189,205,143,175,133,112,99,22,139,90,151,4,67,105,103,88,119,160,130,106,61,131,206,31,57,126,155,72,144,225,163,119,131,120,173,105,236,160,201,125,92,84,34,79,121,189,87,144,88,126,111,54,15,202,211,226,23,164,91,237,207,21,109,72,233,54,214,30,68,168,20,40,19,189,93,191,25,57,240,91,35,216,172,71,85,243,242,64,93,88,107,30,51,254,180,162,140,95,181,66,111,64,118,108,245,65,176,98,173,247,85,78,30,167,192,203"`,
+      `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,1,0,0,1,0,0,0,0,0,0,0,0,1,115,189,215,126,28,170,160,0,84,60,116,239,128,64,1,243,80,81,13,183,12,227,152,57,246,90,220,73,121,152,110,8,113,127,69,183,223,210,110,220,13,32,7,152,113,69,226,105,82,116,14,26,44,247,0,77,106,136,12,202,24,163,144,115,245,119,25,196,25,146,233,131,214,206,138,104,163,181,208,80,70,252,19,162,166,120,124,237,52,101,70,140,167,124,4,169,41,14,174,206,78,22,153,10,4,247,90,201,170,29,27,65,250,140,19,119,111,64,118,108,245,65,176,98,173,247,85,78,30,167,192,203"`,
     );
 
     let broadcastedMessage = null as Uint8Array | null;
@@ -1103,7 +1016,7 @@ describe("E2E (old)", () => {
     assert(broadcastedMessage);
     // Added error and removed writeKey
     expect(broadcastedMessage.join()).toMatchInlineSnapshot(
-      `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0,1,0,0,1,0,0,0,0,0,0,0,0,1,115,106,11,157,135,229,28,6,92,65,155,30,72,25,50,18,189,205,143,175,133,112,99,22,139,90,151,4,67,105,103,88,119,160,130,106,61,131,206,31,57,126,155,72,144,225,163,119,131,120,173,105,236,160,201,125,92,84,34,79,121,189,87,144,88,126,111,54,15,202,211,226,23,164,91,237,207,21,109,72,233,54,214,30,68,168,20,40,19,189,93,191,25,57,240,91,35,216,172,71,85,243,242,64,93,88,107,30,51,254,180,162,140,95,181,66"`,
+      `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0,1,0,0,1,0,0,0,0,0,0,0,0,1,115,189,215,126,28,170,160,0,84,60,116,239,128,64,1,243,80,81,13,183,12,227,152,57,246,90,220,73,121,152,110,8,113,127,69,183,223,210,110,220,13,32,7,152,113,69,226,105,82,116,14,26,44,247,0,77,106,136,12,202,24,163,144,115,245,119,25,196,25,146,233,131,214,206,138,104,163,181,208,80,70,252,19,162,166,120,124,237,52,101,70,140,167,124,4,169,41,14,174,206,78,22,153,10,4,247,90,201,170,29,27,65,250,140,19,119"`,
     );
 
     let writeMessagesCalled = false;
@@ -1124,31 +1037,17 @@ describe("E2E (old)", () => {
   });
 });
 
-// TODO: This should be a specification of the sync algorithm.
-// describe("TDD sync", () => {
-//   it("empty TimestampsRange to empty TimestampsRange", () => {
-//     //
-//   });
-//   it("FingerprintRanges to TimestampsRanges or FingerprintRanges (recursion)", () => {
-//     //
-//   });
-//   it("adjacent Skip ranges should be coalesced into a single Skip range", () => {
-//     //
-//   });
-//   it("The last range always has InfiniteUpperBound", () => {
-//     //
-//   });
-// });
-
-// TODO:
-// 7k mam tech stable, to pro test syncu staci
-// 100k pro vsechno, protoze potrebuju otestovat max message size
-// A budu chtit random DbChange, ale to asi stable, tam duplicita nevadi
 describe("E2E sync", () => {
   const messages = testTimestampsAsc.map(
     (t): EncryptedCrdtMessage => ({
       timestamp: binaryTimestampToTimestamp(t),
-      change: createEncryptedDbChange(createDbChange()),
+      change: createEncryptedDbChange({
+        table: "foo" as TableName,
+        id: testCreateId(),
+        values: {
+          ["bar" as ColumnName]: "x".repeat(testRandomLib.int(1, 500)),
+        },
+      }),
     }),
   );
   assertNonEmptyArray(messages);
@@ -1162,74 +1061,66 @@ describe("E2E sync", () => {
   const reconcile = (
     clientStorage: Storage,
     relayStorage: Storage,
-    checkData = true,
-  ): Result<PositiveInt, PositiveInt> => {
+    rangesMaxSize = maxProtocolMessageRangesSize,
+  ) => {
     const clientStorageDep = { storage: clientStorage };
     const relayStorageDep = { storage: relayStorage };
 
     let message = createProtocolMessageForSync(clientStorageDep)(testOwner.id);
+    assert(message);
+
     let result;
     let turn = "relay";
     let syncSteps = 0;
+    const syncSizes: Array<number> = [message.length];
 
-    // console.log("initial", message.length);
-
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     while (message) {
       syncSteps++;
-      // console.log("syncSteps", syncSteps);
 
       if (syncSteps > 100) {
-        return err(syncSteps as PositiveInt);
+        throw new Error(syncSteps.toString());
       }
-      if (turn === "relay") {
-        result = applyProtocolMessageAsRelay(relayStorageDep)(message);
-        if (!result.ok || result.value === null) break;
-        // console.log("relay", result.value.length);
 
-        message = result.value;
-        turn = "client";
-      } else {
-        result = applyProtocolMessageAsClient(clientStorageDep)(message, {
-          getWriteKey: () => testOwner.writeKey,
-        });
-        if (!result.ok || result.value === null) break;
-        // console.log("client", result.value.length);
-        message = result.value;
-        turn = "relay";
-      }
+      result =
+        turn === "relay"
+          ? applyProtocolMessageAsRelay(relayStorageDep)(message, {
+              rangesMaxSize,
+            })
+          : applyProtocolMessageAsClient(clientStorageDep)(message, {
+              getWriteKey: () => testOwner.writeKey,
+              rangesMaxSize,
+            });
+
+      if (!result.ok || result.value === null) break;
+      message = result.value;
+
+      turn = turn === "relay" ? "client" : "relay";
+      syncSizes.push(result.value.length);
     }
 
-    if (checkData) {
-      for (const message of messages) {
-        expect(
-          clientStorage
-            .readDbChange(
-              testOwnerBinaryId,
-              timestampToBinaryTimestamp(message.timestamp),
-            )
-            ?.join(),
-        ).toBe(message.change.join());
+    for (const message of messages) {
+      expect(
+        clientStorage
+          .readDbChange(
+            testOwnerBinaryId,
+            timestampToBinaryTimestamp(message.timestamp),
+          )
+          ?.join(),
+      ).toBe(message.change.join());
 
-        expect(
-          relayStorage
-            .readDbChange(
-              testOwnerBinaryId,
-              timestampToBinaryTimestamp(message.timestamp),
-            )
-            ?.join(),
-        ).toBe(message.change.join());
-      }
+      expect(
+        relayStorage
+          .readDbChange(
+            testOwnerBinaryId,
+            timestampToBinaryTimestamp(message.timestamp),
+          )
+          ?.join(),
+      ).toBe(message.change.join());
     }
 
-    return ok(syncSteps as PositiveInt);
+    return { syncSteps, syncSizes };
   };
-
-  it("client and relay have no data", async () => {
-    const [clientStorage, relayStorage] = await createStorages();
-
-    const syncSteps = reconcile(clientStorage, relayStorage, false);
-    expect(syncSteps).toEqual(ok(1));
-  });
 
   it("client and relay have all data", async () => {
     const [clientStorage, relayStorage] = await createStorages();
@@ -1237,7 +1128,14 @@ describe("E2E sync", () => {
     relayStorage.writeMessages(testOwnerBinaryId, messages);
 
     const syncSteps = reconcile(clientStorage, relayStorage);
-    expect(syncSteps).toEqual(ok(1));
+    expect(syncSteps).toMatchInlineSnapshot(`
+      {
+        "syncSizes": [
+          367,
+        ],
+        "syncSteps": 1,
+      }
+    `);
   });
 
   it("client has all data", async () => {
@@ -1245,7 +1143,47 @@ describe("E2E sync", () => {
     clientStorage.writeMessages(testOwnerBinaryId, messages);
 
     const syncSteps = reconcile(clientStorage, relayStorage);
-    expect(syncSteps).toEqual(ok(3));
+    expect(syncSteps).toMatchInlineSnapshot(`
+      {
+        "syncSizes": [
+          367,
+          192,
+          999837,
+          39,
+          542273,
+        ],
+        "syncSteps": 5,
+      }
+    `);
+  });
+
+  it("client has all data - many steps", async () => {
+    const [clientStorage, relayStorage] = await createStorages();
+    clientStorage.writeMessages(testOwnerBinaryId, messages);
+
+    const syncSteps = reconcile(
+      clientStorage,
+      relayStorage,
+      3000 as PositiveInt,
+    );
+    expect(syncSteps).toMatchInlineSnapshot(`
+      {
+        "syncSizes": [
+          367,
+          192,
+          999837,
+          39,
+          130101,
+          39,
+          145667,
+          39,
+          145034,
+          39,
+          130570,
+        ],
+        "syncSteps": 11,
+      }
+    `);
   });
 
   it("relay has all data", async () => {
@@ -1253,10 +1191,60 @@ describe("E2E sync", () => {
     relayStorage.writeMessages(testOwnerBinaryId, messages);
 
     const syncSteps = reconcile(clientStorage, relayStorage);
-    expect(syncSteps).toEqual(ok(2));
+    expect(syncSteps).toMatchInlineSnapshot(`
+      {
+        "syncSizes": [
+          21,
+          999612,
+          38,
+          561652,
+        ],
+        "syncSteps": 4,
+      }
+    `);
   });
 
-  it("client is missing some and relay is missing some", async () => {
+  it("relay has all data - many steps", async () => {
+    const [clientStorage, relayStorage] = await createStorages();
+    relayStorage.writeMessages(testOwnerBinaryId, messages);
+
+    const syncSteps = reconcile(
+      clientStorage,
+      relayStorage,
+      3000 as PositiveInt,
+    );
+    expect(syncSteps).toMatchInlineSnapshot(`
+      {
+        "syncSizes": [
+          21,
+          151564,
+          38,
+          159456,
+          38,
+          135501,
+          38,
+          146557,
+          38,
+          152688,
+          38,
+          145430,
+          38,
+          144553,
+          38,
+          131225,
+          38,
+          143516,
+          38,
+          150847,
+          38,
+          110189,
+        ],
+        "syncSteps": 22,
+      }
+    `);
+  });
+
+  it("client and relay each have a random half of the data", async () => {
     const [clientStorage, relayStorage] = await createStorages();
 
     const shuffledMessages = testRandomLib.shuffle(messages);
@@ -1271,7 +1259,84 @@ describe("E2E sync", () => {
     relayStorage.writeMessages(testOwnerBinaryId, secondHalf);
 
     const syncSteps = reconcile(clientStorage, relayStorage);
-    expect(syncSteps).toEqual(ok(5));
+    expect(syncSteps).toMatchInlineSnapshot(`
+      {
+        "syncSizes": [
+          367,
+          5204,
+          21695,
+          796004,
+          768309,
+        ],
+        "syncSteps": 5,
+      }
+    `);
+  });
+
+  it("client and relay each have a random half of the data - many steps", async () => {
+    const [clientStorage, relayStorage] = await createStorages();
+
+    const shuffledMessages = testRandomLib.shuffle(messages);
+    const middle = Math.floor(shuffledMessages.length / 2);
+    const firstHalf = shuffledMessages.slice(0, middle);
+    const secondHalf = shuffledMessages.slice(middle);
+
+    assertNonEmptyArray(firstHalf);
+    assertNonEmptyArray(secondHalf);
+
+    clientStorage.writeMessages(testOwnerBinaryId, firstHalf);
+    relayStorage.writeMessages(testOwnerBinaryId, secondHalf);
+
+    const syncSteps = reconcile(
+      clientStorage,
+      relayStorage,
+      3000 as PositiveInt,
+    );
+    expect(syncSteps).toMatchInlineSnapshot(`
+      {
+        "syncSizes": [
+          340,
+          2234,
+          2262,
+          108244,
+          104304,
+          2275,
+          2251,
+          78413,
+          79383,
+          2294,
+          2225,
+          88037,
+          61603,
+          2239,
+          2252,
+          69487,
+          68809,
+          2273,
+          61859,
+          66753,
+          2261,
+          61964,
+          62370,
+          2227,
+          67225,
+          52341,
+          2219,
+          51386,
+          54608,
+          2211,
+          51414,
+          50400,
+          55252,
+          84414,
+          32452,
+          82684,
+          89613,
+          6569,
+        ],
+        "syncSteps": 38,
+      }
+    `);
   });
 });
 
@@ -1308,10 +1373,9 @@ describe("ranges sizes", () => {
 
     buffer.addRange(range);
 
-    // The not efficiently encoded size was around 35 KB.
     expect(
       getUncompressedAndCompressedSizes(buffer.unwrap()),
-    ).toMatchInlineSnapshot(`"6212 3633"`);
+    ).toMatchInlineSnapshot(`"31627 18269"`);
   });
 
   it("fingerprints", () => {

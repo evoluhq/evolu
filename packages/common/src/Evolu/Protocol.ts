@@ -94,10 +94,6 @@
  * compatibility, for example, by sending version-only messages to multiple
  * relays before starting synchronization.
  *
- * ### Storages
- *
- * TODO: Explain Evolu Protocol Storages.
- *
  * @module
  */
 
@@ -157,17 +153,11 @@ import {
 } from "./Timestamp.js";
 import { eqArrayNumber } from "../Eq.js";
 
-/**
- * Maximum size of the entire protocol message (header, messages, and ranges) in
- * bytes (1 MB).
- */
-export const maxProtocolMessageSize = (1024 * 1024) as PositiveInt;
+/** Maximum size of the entire protocol message in bytes. */
+export const maxProtocolMessageSize = 1_000_000 as PositiveInt;
 
-/**
- * Maximum size of the ranges portion (timestamps, types, and payloads) in bytes
- * (50 KB).
- */
-export const maxProtocolMessageRangesSize = (50 * 1024) as PositiveInt;
+/** Maximum size of the ranges in bytes. */
+export const maxProtocolMessageRangesSize = 30_000 as PositiveInt;
 
 /** Evolu Protocol Message. */
 export type ProtocolMessage = Uint8Array & Brand<"ProtocolMessage">;
@@ -429,13 +419,15 @@ export const createProtocolMessageFromCrdtMessages =
 
     for (const message of messages) {
       const change = encryptDbChange(deps)(message.change, owner.encryptionKey);
-      if (!buffer.addMessage({ timestamp: message.timestamp, change })) {
+      const encryptedMessage = { timestamp: message.timestamp, change };
+      if (buffer.canAddMessage(encryptedMessage)) {
+        buffer.addMessage(encryptedMessage);
+      } else {
         notAllMessagesSent = true;
         break;
       }
     }
 
-    // TODO: Add test.
     if (notAllMessagesSent) {
       /**
        * DEV: If not all messages fit due to size limits, we trigger a sync
@@ -450,7 +442,7 @@ export const createProtocolMessageFromCrdtMessages =
        * {@link TimestampsRange}, so no need to restart syncing.
        *
        * For now, using a random fingerprint avoids extra complexity and is good
-       * enough for this IMHO rare case.
+       * enough for this case.
        */
       const randomFingerprint = deps.createRandomBytes(
         fingerprintSize,
@@ -494,34 +486,22 @@ export const createProtocolMessageForSync =
  * limits.
  */
 export interface ProtocolMessageBuffer {
-  /**
-   * Add an encrypted message to the buffer. Returns false if adding would
-   * exceed size limits.
-   */
-  readonly addMessage: (message: EncryptedCrdtMessage) => boolean;
+  readonly canAddMessage: (message: EncryptedCrdtMessage) => boolean;
 
-  /**
-   * Adds a range to the protocol message.
-   *
-   * Returns false if adding the range exceeds maxSize.
-   */
-  readonly addRange: (
-    range: SkipRange | FingerprintRange | TimestampsRangeWithTimestampsBuffer,
+  readonly addMessage: (message: EncryptedCrdtMessage) => void;
+
+  readonly canSplitRange: () => boolean;
+
+  readonly canAddTimestampsRangeAndMessage: (
+    timestamps: TimestampsBuffer,
+    message: EncryptedCrdtMessage | null,
   ) => boolean;
 
-  /** Finalize and return the {@link ProtocolMessage}. */
+  readonly addRange: (
+    range: SkipRange | FingerprintRange | TimestampsRangeWithTimestampsBuffer,
+  ) => void;
+
   readonly unwrap: () => ProtocolMessage;
-
-  /**
-   * Checks if there is enough space left in the buffer.
-   *
-   * We want to skip processing the whole range in case there is no available
-   * space.
-   */
-  readonly hasEnoughSpaceForSplitRange: () => boolean;
-
-  // hasEnoughSpaceForTimestampsRange
-
   readonly getSize: () => PositiveInt;
 }
 
@@ -530,8 +510,8 @@ export const createProtocolMessageBuffer = (
   options: {
     readonly errorCode?: ProtocolErrorCode;
     readonly writeKey?: WriteKey;
-    readonly totalMaxSize?: PositiveInt;
-    readonly rangesMaxSize?: PositiveInt;
+    readonly totalMaxSize?: PositiveInt | undefined;
+    readonly rangesMaxSize?: PositiveInt | undefined;
     readonly version?: NonNegativeInt;
   } = {},
 ): ProtocolMessageBuffer => {
@@ -543,67 +523,102 @@ export const createProtocolMessageBuffer = (
     version = protocolVersion,
   } = options;
 
-  const headerBuffer = createBuffer();
-  encodeNonNegativeInt(headerBuffer, version);
-  headerBuffer.extend(ownerIdToBinaryOwnerId(ownerId));
-  if (errorCode != null) headerBuffer.extend([errorCode]);
-
-  const messagesTimestamps = createTimestampsBuffer();
-  const messagesChanges = createBuffer();
-
-  const rangesTimestamps = createTimestampsBuffer();
-  const rangesTypes = createBuffer();
-  const rangesPayloads = createBuffer();
-
-  let prevRangesPayloadsLength = 0 as NonNegativeInt;
-
-  let isLastRangeInfinite = false;
-  let rangesLimitExceeded = false;
-
-  const isWithinSizeLimits = () => {
-    const rangesSize = getRangesSize();
-    if (rangesSize > rangesMaxSize) {
-      rangesLimitExceeded = true;
-      return false;
-    }
-    const totalSize = getHeaderAndMessagesSize() + rangesSize;
-    return totalSize <= totalMaxSize;
+  const buffers = {
+    header: createBuffer(),
+    messages: {
+      timestamps: createTimestampsBuffer(),
+      dbChanges: createBuffer(),
+    },
+    ranges: {
+      timestamps: createTimestampsBuffer(),
+      types: createBuffer(),
+      payloads: createBuffer(),
+    },
   };
 
-  const getRangesSize = () =>
-    rangesTimestamps.getCount() > 0
-      ? rangesTimestamps.getLength() +
-        rangesTypes.getLength() +
-        rangesPayloads.getLength() +
-        reservedLastFingerprintRangeSize
-      : 0;
+  encodeNonNegativeInt(buffers.header, version);
+  buffers.header.extend(ownerIdToBinaryOwnerId(ownerId));
+  if (errorCode != null) buffers.header.extend([errorCode]);
 
-  // Size reserved for the last FingerprintRange with InfiniteUpperBound.
-  const reservedLastFingerprintRangeSize =
-    // type + fingerprintSize + 1 byte for potential count varint increase.
-    (1 + fingerprintSize + 1) as PositiveInt;
+  let isLastRangeInfinite = false;
+
+  const isWithinSizeLimits = () => getSize() <= totalMaxSize;
+
+  const getSize = () =>
+    (getHeaderAndMessagesSize() + getRangesSize()) as PositiveInt;
 
   const getHeaderAndMessagesSize = () =>
-    headerBuffer.getLength() +
-    messagesTimestamps.getLength() +
-    messagesChanges.getLength() +
-    (messagesTimestamps.getCount() > 0 && writeKey ? writeKeyLength : 0);
+    buffers.header.getLength() +
+    buffers.messages.timestamps.getLength() +
+    buffers.messages.dbChanges.getLength() +
+    (buffers.messages.timestamps.getCount() > 0 && writeKey
+      ? writeKeyLength
+      : 0);
+
+  const getRangesSize = () =>
+    buffers.ranges.timestamps.getCount() > 0
+      ? buffers.ranges.timestamps.getLength() +
+        buffers.ranges.types.getLength() +
+        buffers.ranges.payloads.getLength() +
+        safeMargins.remainingRange
+      : 0;
+
+  /**
+   * We calculated worst-case sizes as closely as possible and added a small
+   * safety margin, since computing exact worst cases is difficult due to
+   * variable-length, run-length, and delta encoding.
+   *
+   * Runtime assertions (`assert`) are used to guarantee that size limits are
+   * never exceeded. If a limit is exceeded, the assertion will fail at the
+   * precise location, making it easy to identify and fix the issue.
+   *
+   * While it would be possible to avoid the safety margin by snapshotting
+   * buffer states and rolling back changes, this would likely impact
+   * performance. If someone has time and wants to experiment with this
+   * approach, contributions are welcome.
+   */
+  const safeMargins = {
+    remainingRange: fingerprintSize + 10, // bytes: range type + possible increased count varint
+    timestamp: 30, // bytes: max millis + max count + NodeId
+    dbChangeLength: 8, // bytes: maximum encoded DbChange length varint
+    splitRange: 800, // bytes: worst case is around 650 bytes
+    timestampsRange: 50, // bytes: range type + its upperBound + possible increased count varint
+  };
+
+  const addMessageSafeMargin =
+    safeMargins.timestamp +
+    safeMargins.dbChangeLength +
+    safeMargins.remainingRange;
 
   return {
-    addMessage: ({ timestamp, change }) => {
-      messagesTimestamps.add(timestamp);
+    canAddMessage: (message) =>
+      getSize() + addMessageSafeMargin + message.change.length <= totalMaxSize,
 
-      const prevChangesLength = messagesChanges.getLength();
-      encodeLength(messagesChanges, change);
-      messagesChanges.extend(change);
+    addMessage: (message) => {
+      buffers.messages.timestamps.add(message.timestamp);
+      encodeLength(buffers.messages.dbChanges, message.change);
+      buffers.messages.dbChanges.extend(message.change);
+      assert(isWithinSizeLimits(), "the message is too big");
+    },
 
-      if (!isWithinSizeLimits()) {
-        messagesTimestamps.rollback();
-        messagesChanges.truncate(prevChangesLength);
-        return false;
-      }
+    canSplitRange: () => {
+      return getRangesSize() + safeMargins.splitRange <= rangesMaxSize;
+    },
 
-      return true;
+    canAddTimestampsRangeAndMessage: (timestamps, message) => {
+      const rangesNewSize =
+        getRangesSize() + timestamps.getLength() + safeMargins.timestampsRange;
+
+      return (
+        rangesNewSize <= rangesMaxSize &&
+        (message
+          ? getHeaderAndMessagesSize() +
+              rangesNewSize +
+              addMessageSafeMargin +
+              message.change.length <=
+            totalMaxSize
+          : true)
+      );
     },
 
     addRange: (range) => {
@@ -611,99 +626,67 @@ export const createProtocolMessageBuffer = (
         !isLastRangeInfinite,
         "Cannot add a range after an InfiniteUpperBound range",
       );
+      isLastRangeInfinite = range.upperBound === InfiniteUpperBound;
 
-      if (rangesLimitExceeded) {
-        assert(
-          range.type === RangeType.Fingerprint,
-          "The last range must be a FingerprintRange with InfiniteUpperBound when rangesMaxSize was exceeded",
-        );
-      }
-
-      // We don't have to encode InfiniteUpperBound since it's always the last.
-      // That's how we save 16 bytes. Also, ranges must cover the full universe.
-      // For partial sync, we use SkipRange.
+      /**
+       * We don't have to encode InfiniteUpperBound timestamp since it's always
+       * the last because ranges cover the whole universe. For partial sync, we
+       * use SkipRange.
+       */
       if (range.upperBound !== InfiniteUpperBound)
-        rangesTimestamps.add(binaryTimestampToTimestamp(range.upperBound));
+        buffers.ranges.timestamps.add(
+          binaryTimestampToTimestamp(range.upperBound),
+        );
       else {
-        rangesTimestamps.addInfinite();
+        buffers.ranges.timestamps.addInfinite();
       }
 
-      const prevRangesTypesLength = rangesTypes.getLength();
-      prevRangesPayloadsLength = rangesPayloads.getLength();
-
-      encodeNonNegativeInt(rangesTypes, range.type as NonNegativeInt);
+      encodeNonNegativeInt(buffers.ranges.types, range.type as NonNegativeInt);
 
       switch (range.type) {
         case RangeType.Skip:
           break;
         case RangeType.Fingerprint:
-          rangesPayloads.extend(range.fingerprint);
+          buffers.ranges.payloads.extend(range.fingerprint);
           break;
         case RangeType.Timestamps: {
-          range.timestamps.append(rangesPayloads);
+          range.timestamps.append(buffers.ranges.payloads);
           break;
         }
       }
 
-      if (!rangesLimitExceeded && !isWithinSizeLimits()) {
-        if (range.upperBound !== InfiniteUpperBound)
-          rangesTimestamps.rollback();
-        rangesTypes.truncate(prevRangesTypesLength);
-        rangesPayloads.truncate(prevRangesPayloadsLength);
-        return false;
-      }
-
-      isLastRangeInfinite = range.upperBound === InfiniteUpperBound;
-
-      return true;
+      assert(isWithinSizeLimits(), `the range ${range.type} is too big`);
     },
 
     unwrap: () => {
-      if (rangesTimestamps.getCount() > 0) {
+      if (buffers.ranges.timestamps.getCount() > 0) {
         assert(
           isLastRangeInfinite,
           "The last range's upperBound must be InfiniteUpperBound",
         );
       }
 
-      messagesTimestamps.append(headerBuffer);
-      headerBuffer.extend(messagesChanges.unwrap());
-      if (messagesTimestamps.getCount() > 0 && writeKey)
-        headerBuffer.extend(writeKey);
+      buffers.messages.timestamps.append(buffers.header);
+      buffers.header.extend(buffers.messages.dbChanges.unwrap());
+      if (buffers.messages.timestamps.getCount() > 0 && writeKey)
+        buffers.header.extend(writeKey);
 
-      if (rangesTimestamps.getCount() > 0) {
-        rangesTimestamps.append(headerBuffer);
-        headerBuffer.extend(rangesTypes.unwrap());
-        headerBuffer.extend(rangesPayloads.unwrap());
+      if (buffers.ranges.timestamps.getCount() > 0) {
+        buffers.ranges.timestamps.append(buffers.header);
+        buffers.header.extend(buffers.ranges.types.unwrap());
+        buffers.header.extend(buffers.ranges.payloads.unwrap());
       }
 
-      return headerBuffer.unwrap() as ProtocolMessage;
+      return buffers.header.unwrap() as ProtocolMessage;
     },
 
-    hasEnoughSpaceForSplitRange: () => {
-      /**
-       * The {@link splitRange} can add 31 {@link TimestampsRange}s (max 16 bytes
-       * per {@link Timestamp}) or 16 {@link FingerprintRange}s (max 29 bytes per
-       * range). It's around 500 bytes, but because we use RLE often much less
-       * or slightly more in the worst case (unique NodeIds), 1000 bytes is a
-       * safe magic constant for now.
-       *
-       * TODO: We should compute the worst case and add a test for it.
-       */
-      const reservedSpaceForSplitRange = 1000;
-      return getRangesSize() + reservedSpaceForSplitRange <= rangesMaxSize;
-    },
-
-    getSize: () => {
-      return (getHeaderAndMessagesSize() + getRangesSize()) as PositiveInt;
-    },
+    getSize,
   };
 };
 
 export interface TimestampsBuffer {
   readonly add: (timestamp: Timestamp) => void;
   readonly addInfinite: () => void;
-  readonly rollback: () => void;
   readonly getCount: () => NonNegativeInt;
   readonly getLength: () => number;
   readonly append: (buffer: Buffer) => void;
@@ -717,11 +700,11 @@ export const createTimestampsBuffer = (): TimestampsBuffer => {
     countBuffer.reset();
     encodeNonNegativeInt(countBuffer, count);
   };
+
   syncCount();
 
   const millisBuffer = createBuffer();
   let previousMillis = 0 as Millis;
-  let previousMillisLength = 0 as NonNegativeInt;
 
   const counterEncoder = createRunLengthEncoder<Counter>((buffer, value) => {
     encodeNonNegativeInt(buffer, value);
@@ -739,7 +722,6 @@ export const createTimestampsBuffer = (): TimestampsBuffer => {
       syncCount();
 
       previousMillis = timestamp.millis;
-      previousMillisLength = millisBuffer.getLength();
       encodeNonNegativeInt(millisBuffer, delta);
 
       counterEncoder.add(timestamp.counter);
@@ -749,14 +731,6 @@ export const createTimestampsBuffer = (): TimestampsBuffer => {
     addInfinite: () => {
       count++;
       syncCount();
-    },
-
-    rollback: () => {
-      count--;
-      syncCount();
-      millisBuffer.truncate(previousMillisLength);
-      counterEncoder.rollback();
-      nodeIdEncoder.rollback();
     },
 
     getCount: () => count,
@@ -779,7 +753,6 @@ export const createTimestampsBuffer = (): TimestampsBuffer => {
 interface RunLengthEncoder<T> {
   add: (value: T) => void;
   getLength: () => NonNegativeInt;
-  rollback: () => void;
   unwrap: () => Uint8Array;
 }
 
@@ -807,15 +780,6 @@ const createRunLengthEncoder = <T>(
 
     getLength: () => buffer.getLength(),
 
-    rollback: () => {
-      buffer.truncate(previousLength);
-      if (previousValue != null && runLength > 1) {
-        runLength--;
-        encodeValue(buffer, previousValue);
-        encodeNonNegativeInt(buffer, runLength);
-      }
-    },
-
     unwrap: () => buffer.unwrap(),
   };
 };
@@ -825,6 +789,9 @@ export interface ApplyProtocolMessageAsClientOptions {
 
   /** For testing purposes only; should not be used in production. */
   version?: NonNegativeInt;
+
+  totalMaxSize?: PositiveInt;
+  rangesMaxSize?: PositiveInt;
 }
 
 export const applyProtocolMessageAsClient =
@@ -834,6 +801,8 @@ export const applyProtocolMessageAsClient =
     {
       getWriteKey,
       version = protocolVersion,
+      totalMaxSize,
+      rangesMaxSize,
     }: ApplyProtocolMessageAsClientOptions = {},
   ): Result<ProtocolMessage | null, ProtocolError> =>
     tryDecodeProtocolData<ProtocolMessage | null, ProtocolError>(
@@ -887,9 +856,13 @@ export const applyProtocolMessageAsClient =
         const writeKey = getWriteKey(ownerId);
         if (writeKey == null) return ok(null);
 
-        const output = createProtocolMessageBuffer(ownerId, { writeKey });
+        const output = createProtocolMessageBuffer(ownerId, {
+          writeKey,
+          totalMaxSize,
+          rangesMaxSize,
+        });
 
-        return sync(deps)(input, output, binaryOwnerId);
+        return sync(deps)("initiator", input, output, binaryOwnerId);
       },
     );
 
@@ -899,13 +872,21 @@ export interface ApplyProtocolMessageAsRelayOptions {
 
   /** To broadcast a protocol message to all subscribers. */
   broadcast?: (ownerId: OwnerId, message: ProtocolMessage) => void;
+
+  totalMaxSize?: PositiveInt;
+  rangesMaxSize?: PositiveInt;
 }
 
 export const applyProtocolMessageAsRelay =
   (deps: StorageDep) =>
   (
     inputMessage: Uint8Array,
-    options: ApplyProtocolMessageAsRelayOptions = {},
+    {
+      subscribe,
+      broadcast,
+      totalMaxSize,
+      rangesMaxSize,
+    }: ApplyProtocolMessageAsRelayOptions = {},
     /** For testing purposes only; should not be used in production. */
     version = protocolVersion,
   ): Result<ProtocolMessage | null, ProtocolInvalidDataError> =>
@@ -922,7 +903,7 @@ export const applyProtocolMessageAsRelay =
       const ownerId = decodeOwnerId(input);
       const binaryOwnerId = ownerIdToBinaryOwnerId(ownerId);
 
-      options.subscribe?.(ownerId);
+      subscribe?.(ownerId);
 
       const messages = decodeMessages(input);
 
@@ -942,7 +923,7 @@ export const applyProtocolMessageAsRelay =
             }).unwrap(),
           );
 
-        if (options.broadcast) {
+        if (broadcast) {
           // Instead of encoding a new protocol message, we reuse the inputMessage.
           const broadcastMessage = concatBytes(
             inputMessage.slice(0, 17),
@@ -950,7 +931,7 @@ export const applyProtocolMessageAsRelay =
             inputMessage.slice(17, messagesEnd),
           ) as ProtocolMessage;
 
-          options.broadcast(ownerId, broadcastMessage);
+          broadcast(ownerId, broadcastMessage);
         }
 
         if (!deps.storage.writeMessages(binaryOwnerId, messages))
@@ -963,9 +944,11 @@ export const applyProtocolMessageAsRelay =
 
       const output = createProtocolMessageBuffer(ownerId, {
         errorCode: ProtocolErrorCode.NoError,
+        totalMaxSize,
+        rangesMaxSize,
       });
 
-      return sync(deps)(input, output, binaryOwnerId);
+      return sync(deps)("non-initiator", input, output, binaryOwnerId);
     });
 
 /**
@@ -1022,36 +1005,46 @@ const decodeMessages = (
 const sync =
   (deps: StorageDep) =>
   (
+    role: "initiator" | "non-initiator",
     input: Buffer,
     output: ProtocolMessageBuffer,
     ownerId: BinaryOwnerId,
   ): Result<ProtocolMessage | null, never> => {
     const ranges = decodeRanges(input);
-    // console.log("ranges", ranges);
 
     if (!isNonEmptyReadonlyArray(ranges)) {
+      // Nothing to sync.
       return ok(null);
     }
+
     const binaryOwnerId = binaryOwnerIdToOwnerId(ownerId);
     const outputInitialSize = output.getSize();
 
+    const syncFail = () => {
+      // Only the relay (non-initiator) reports sync errors, not the client (initiator).
+      if (role === "initiator") {
+        return ok(null);
+      }
+      const message = createProtocolMessageBuffer(binaryOwnerId, {
+        errorCode: ProtocolErrorCode.SyncError,
+      });
+      return ok(message.unwrap());
+    };
+
     const storageSize = deps.storage.getSize(ownerId);
-    if (storageSize == null) return ok(null);
+    if (storageSize == null) return syncFail();
 
     let prevUpperBound: RangeUpperBound | null = null;
     let prevIndex = 0 as NonNegativeInt;
 
     let skip = false;
-    let rangeAdded = false;
+    let nonSkipRangeAdded = false;
 
     const skipRange = (
       range: SkipRange | FingerprintRange | TimestampsRange,
     ) => {
-      // If nothing has been added, sync is completed and there is no
-      // reason to add a Skip range with InfiniteUpperBound.
-      // But if something has been added, then we have to ensure the
-      // last range is a Skip range with InfiniteUpperBound.
-      if (rangeAdded && range.upperBound === InfiniteUpperBound) {
+      // The last range, if any non skip was added, must have InfiniteUpperBound.
+      if (nonSkipRangeAdded && range.upperBound === InfiniteUpperBound) {
         output.addRange({
           type: RangeType.Skip,
           upperBound: InfiniteUpperBound,
@@ -1061,31 +1054,46 @@ const sync =
       }
     };
 
-    const coalesceSkipBeforeAdd = () => {
-      rangeAdded = true;
-      if (!skip) return;
-      skip = false;
-      // We always have to set `skip` to true; otherwise, there is nothing to skip.
-      // And when we set `skip`, we have `prevUpperBound != null` in the next step.
-      assert(prevUpperBound != null, "a bug");
-      // TODO: Terminate pokud nejde pridat skip.
+    const coalesceSkipsBeforeAdd = () => {
+      // Set to true because we are going to add a non skip range.
+      nonSkipRangeAdded = true;
+      if (skip) {
+        skip = false;
+        assert(prevUpperBound != null, "prevUpperBound is null");
+        // There is always a space for a skip range before adding.
+        output.addRange({
+          type: RangeType.Skip,
+          upperBound: prevUpperBound,
+        });
+      }
+    };
+
+    // When we don't have a space...
+    const addFingerprintForRemainingRange = (
+      begin: NonNegativeInt,
+    ): boolean => {
+      const fingerprint = deps.storage.fingerprint(ownerId, begin, storageSize);
+      if (!fingerprint) return false;
+      // There is always a space for a ramaining range.
       output.addRange({
-        type: RangeType.Skip,
-        upperBound: prevUpperBound,
+        type: RangeType.Fingerprint,
+        upperBound: InfiniteUpperBound,
+        fingerprint,
       });
+      return true;
     };
 
     for (const range of ranges) {
       const currentUpperBound = range.upperBound;
 
       const lower = prevIndex;
-      const upper = deps.storage.findLowerBound(
+      let upper = deps.storage.findLowerBound(
         ownerId,
         prevIndex,
         storageSize,
         currentUpperBound,
       );
-      if (upper == null) return ok(null);
+      if (upper == null) return syncFail();
 
       switch (range.type) {
         case RangeType.Skip: {
@@ -1099,80 +1107,97 @@ const sync =
             lower,
             upper,
           );
-          if (ourFingerprint == null) return ok(null);
+          if (ourFingerprint == null) return syncFail();
 
           if (eqArrayNumber(range.fingerprint, ourFingerprint)) {
             skipRange(range);
           } else {
-            coalesceSkipBeforeAdd();
-            // TODO: output.hasEnoughSpaceForSplitRange a terminate
-            splitRange(deps)(ownerId, lower, upper, currentUpperBound, output);
+            if (output.canSplitRange()) {
+              coalesceSkipsBeforeAdd();
+              splitRange(deps)(
+                ownerId,
+                lower,
+                upper,
+                currentUpperBound,
+                output,
+              );
+            } else {
+              if (!addFingerprintForRemainingRange(upper)) return syncFail();
+              return ok(output.unwrap());
+            }
           }
           break;
         }
 
         case RangeType.Timestamps: {
-          const endBound = currentUpperBound;
-          const theirTimestamps = new Map(
+          let endBound = currentUpperBound;
+
+          const timestampsWeNeed = new Map(
             range.timestamps.map((t) => [t.join(), true]),
           );
-          let theyNeed = 0;
           const ourTimestamps = createTimestampsBuffer();
 
           let storageError = false as boolean;
+          let exceeded = false as boolean;
 
-          deps.storage.iterate(
-            ownerId,
-            lower,
-            upper,
-            (ourTimestamp, _index) => {
-              const ourTimestampString = ourTimestamp.join();
-              ourTimestamps.add(binaryTimestampToTimestamp(ourTimestamp));
+          deps.storage.iterate(ownerId, lower, upper, (timestamp, index) => {
+            const timestampString = timestamp.join();
+            const timestampBinary = binaryTimestampToTimestamp(timestamp);
 
-              if (theirTimestamps.has(ourTimestampString)) {
-                theirTimestamps.delete(ourTimestampString);
-              } else {
-                theyNeed++;
+            let message: EncryptedCrdtMessage | null = null;
 
-                const dbChange = deps.storage.readDbChange(
-                  ownerId,
-                  ourTimestamp,
-                );
-                if (dbChange == null) {
-                  storageError = true;
-                  return false;
-                }
-
-                // console.log("dbChange", dbChange);
-
-                // TODO: Check size
-                output.addMessage({
-                  timestamp: binaryTimestampToTimestamp(ourTimestamp),
-                  change: dbChange,
-                });
+            if (timestampsWeNeed.has(timestampString)) {
+              timestampsWeNeed.delete(timestampString);
+            } else {
+              const dbChange = deps.storage.readDbChange(ownerId, timestamp);
+              if (dbChange == null) {
+                storageError = true;
+                return false;
               }
+              message = {
+                timestamp: timestampBinary,
+                change: dbChange,
+              };
+            }
 
-              return true;
-            },
-          );
+            if (
+              !output.canAddTimestampsRangeAndMessage(ourTimestamps, message)
+            ) {
+              exceeded = true;
+              endBound = timestamp;
+              upper = index;
+              return false;
+            }
+
+            ourTimestamps.add(timestampBinary);
+            if (message) output.addMessage(message);
+            return true;
+          });
 
           if (storageError) {
-            const message = createProtocolMessageBuffer(binaryOwnerId, {
-              errorCode: ProtocolErrorCode.SyncError,
-            });
-            return ok(message.unwrap());
+            return syncFail();
           }
 
-          const weNeed = theirTimestamps.size > 0;
-          if (weNeed || theyNeed > 0) {
-            coalesceSkipBeforeAdd();
-            // TODO: Tohle pujde pridat, ale checkovat assertem pro jistotu
-            const _added = output.addRange({
+          const addRange = () => {
+            coalesceSkipsBeforeAdd();
+            output.addRange({
               type: RangeType.Timestamps,
               upperBound: endBound,
               timestamps: ourTimestamps,
             });
-            // console.log(added, endBound);
+          };
+
+          if (exceeded) {
+            addRange();
+            if (!addFingerprintForRemainingRange(upper)) {
+              return syncFail();
+            }
+            return ok(output.unwrap());
+          }
+
+          // If we need something, we have to respond with our timestamps.
+          if (timestampsWeNeed.size > 0) {
+            addRange();
           } else {
             skipRange(range);
           }
@@ -1185,7 +1210,9 @@ const sync =
       prevUpperBound = currentUpperBound;
     }
 
-    return ok(output.getSize() > outputInitialSize ? output.unwrap() : null);
+    // If all ranges were skipped, there are no changes and sync is complete.
+    const hasChange = output.getSize() > outputInitialSize;
+    return ok(hasChange ? output.unwrap() : null);
   };
 
 const splitRange =
@@ -1217,12 +1244,11 @@ const splitRange =
         },
       );
 
-      assertMaxProtocolMessageRangesSize(buffer.addRange(range));
+      buffer.addRange(range);
       return;
     }
 
     // Check Storage.ts `fingerprint` and `fingerprintRanges` docs.
-    // TLDR; It's smart performance improvement.
     const fingerprintRangesBuckets =
       lower === 0
         ? buckets.value
@@ -1240,17 +1266,9 @@ const splitRange =
       lower > 0 ? fingerprintRanges.slice(1) : fingerprintRanges;
 
     for (const range of rangesToUse) {
-      assertMaxProtocolMessageRangesSize(buffer.addRange(range));
+      buffer.addRange(range);
     }
   };
-
-/**
- * Asserts that the protocol message ranges portion does not exceed
- * {@link maxProtocolMessageRangesSize}.
- */
-const assertMaxProtocolMessageRangesSize = (added: boolean) => {
-  assert(added, "maxProtocolMessageRangesSize is too small");
-};
 
 export const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
   if (buffer.getLength() === 0) return [];
