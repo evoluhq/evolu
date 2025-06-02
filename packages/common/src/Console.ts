@@ -7,6 +7,18 @@
  * Output formatting may vary (e.g., interactive UI in browsers vs. text in
  * Node.js/React Native), but functionality is consistent across platforms.
  *
+ * **Convention**: Use a tag (e.g., `[db]`) as the first argument for log
+ * filtering.
+ *
+ * ### Example
+ *
+ * ```ts
+ * deps.console.log("[db]", "send data message", protocolMessage);
+ * ```
+ *
+ * **Tip**: In browser dev tools, you can filter logs by tag (e.g., `[db]`) to
+ * quickly find relevant messages.
+ *
  * **Warning**: If you encounter platform-specific issues or missing methods,
  * please contribute a PR with details about the environment and behavior.
  *
@@ -71,10 +83,10 @@ export interface ConsoleDep {
 
 export interface ConsoleConfig {
   /**
-   * Enable or disable console logging. When true, logs are output to the
-   * {@link Console}; when false, logging is disabled for all methods except
-   * `error`, which always outputs to ensure critical issues are not missed.
-   * Default is false.
+   * Enable or disable console logging (default: false). When true, logs are
+   * output to the {@link Console}; when false, logging is disabled for all
+   * methods except `error`, which always outputs to ensure critical issues are
+   * not missed.
    */
   readonly enableLogging?: boolean;
 }
