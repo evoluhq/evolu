@@ -22,7 +22,7 @@
     "@mdx-js/react": "^3.1.0",
     "@next/mdx": "^15.3.3",
     "@sindresorhus/slugify": "^2.2.1",
-    "@tabler/icons-react": "^3.33.0",
+    "@tabler/icons-react": "^3.34.0",
     "@tailwindcss/forms": "^0.5.10",
     "@tailwindcss/postcss": "^4.1.8",
     "@tailwindcss/typography": "^0.5.16",

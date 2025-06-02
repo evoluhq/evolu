@@ -42,7 +42,7 @@
     "@types/web-locks-api": "^0.0.5",
     "typescript": "^5.8.3",
     "user-agent-data-types": "^0.4.2",
-    "vitest": "^3.1.4"
+    "vitest": "^3.2.0"
   },
   "peerDependencies": {
     "@evolu/common": "^5.4.0"

@@ -41,7 +41,7 @@
     "@types/react-dom": "^19.1.5",
     "react": "^19.1.0",
     "typescript": "^5.8.3",
-    "vitest": "^3.1.4"
+    "vitest": "^3.2.0"
   },
   "peerDependencies": {
     "@evolu/common": "^5.4.0",

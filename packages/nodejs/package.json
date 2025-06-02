@@ -35,7 +35,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.15.29",
     "typescript": "^5.8.3",
-    "vitest": "^3.1.4"
+    "vitest": "^3.2.0"
   },
   "peerDependencies": {
     "@evolu/common": "^5.4.4"
