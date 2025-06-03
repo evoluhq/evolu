@@ -1551,12 +1551,6 @@ export const encryptDbChange =
     encodeDbChange(buffer, change);
     const plaintext = buffer.unwrap();
 
-    /**
-     * TODO: XChaCha20-Poly1305 nonce requires 24 bytes. Since our Timestamp is
-     * globally unique, we could use it as the nonce, padded to 24 bytes with 8
-     * random bytes. This should be safe, but a cryptography review is
-     * recommended.
-     */
     const { nonce, ciphertext } = deps.symmetricCrypto.encrypt(plaintext, key);
 
     buffer.reset();
