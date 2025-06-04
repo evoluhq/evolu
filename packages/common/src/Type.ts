@@ -25,24 +25,7 @@
  * practical demonstrations of the API. Or dang, just read the code. It's
  * simple.
  *
- * @module
- */
-
-import * as bip39 from "@scure/bip39";
-import { wordlist } from "@scure/bip39/wordlists/english";
-import { assert } from "./Assert.js";
-import { identity } from "./Function.js";
-import { NanoIdLibDep } from "./NanoId.js";
-import { isPlainObject } from "./Object.js";
-import { Err, err, Ok, ok, Result, trySync } from "./Result.js";
-import { safelyStringifyUnknownValue } from "./String.js";
-import type { Brand, Literal, Simplify, WidenLiteral } from "./Types.js";
-import { IntentionalNever } from "./Types.js";
-
-/**
- * 🧩 Validation, Parsing, and Transformation
- *
- * Evolu `Type` is:
+ * - Evolu `Type` is:
  *
  * - A TypeScript type with a {@link Brand} whenever it's possible.
  * - A function to create a value of that type, which may fail.
@@ -84,8 +67,20 @@ import { IntentionalNever } from "./Types.js";
  * output, eliminating the risk of edge cases caused by irreversible
  * operations.
  *
- * // TODO: Links to examples.
+ * @module
  */
+
+import * as bip39 from "@scure/bip39";
+import { wordlist } from "@scure/bip39/wordlists/english";
+import { assert } from "./Assert.js";
+import { identity } from "./Function.js";
+import { NanoIdLibDep } from "./NanoId.js";
+import { isPlainObject } from "./Object.js";
+import { Err, err, Ok, ok, Result, trySync } from "./Result.js";
+import { safelyStringifyUnknownValue } from "./String.js";
+import type { Brand, Literal, Simplify, WidenLiteral } from "./Types.js";
+import { IntentionalNever } from "./Types.js";
+
 export interface Type<
   Name extends TypeName,
   /** The type this Type resolves to. */
