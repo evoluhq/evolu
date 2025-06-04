@@ -114,28 +114,30 @@
  * schema, and initializes the database, stopping on the first error:
  *
  * ```ts
- * const reset = deps.sqlite.transaction(() => {
- *   const drop = dropAllTables(deps);
- *   if (!drop.ok) return drop;
+ * const resetResult = deps.sqlite.transaction(() => {
+ *   const dropAllTablesResult = dropAllTables(deps);
+ *   if (!dropAllTablesResult.ok) return dropAllTablesResult;
  *
  *   if (message.restore) {
  *     const dbSchema = getDbSchema(deps)();
  *     if (!dbSchema.ok) return dbSchema;
  *
- *     const ensure = ensureDbSchema(deps)(
+ *     const ensureDbSchemaResult = ensureDbSchema(deps)(
  *       message.restore.dbSchema,
  *       dbSchema.value,
  *     );
- *     if (!ensure.ok) return ensure;
+ *     if (!ensureDbSchemaResult.ok) return ensureDbSchemaResult;
  *
- *     const init = initializeDb(deps)(message.restore.mnemonic);
- *     if (!init.ok) return init;
+ *     const initializeDbResult = initializeDb(deps)(
+ *       message.restore.mnemonic,
+ *     );
+ *     if (!initializeDbResult.ok) return initializeDbResult;
  *   }
  *   return ok();
  * });
  *
- * if (!reset.ok) {
- *   deps.postMessage({ type: "onError", error: reset.error });
+ * if (!resetResult.ok) {
+ *   deps.postMessage({ type: "onError", error: resetResult.error });
  *   return;
  * }
  * ```
