@@ -1,5 +1,5 @@
 /**
- * TypeScript Utility Types
+ * TypeScript utility types
  *
  * @module
  */

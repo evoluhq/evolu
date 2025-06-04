@@ -1,5 +1,5 @@
 /**
- * Cross-Platform Worker Abstraction
+ * Cross-platform worker abstraction
  *
  * @module
  */

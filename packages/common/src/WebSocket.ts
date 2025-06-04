@@ -1,5 +1,5 @@
 /**
- * Websocket with Auto-Reconnect and Offline Support
+ * Websocket with auto-reconnect and offline support
  *
  * @module
  */

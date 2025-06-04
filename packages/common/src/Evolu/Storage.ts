@@ -1,5 +1,5 @@
 /**
- * Evolu Storage for SQLite.
+ * Evolu Storage for SQLite
  *
  * Evolu uses a Skiplist, which leverages SQLite indexes. The core logic is
  * implemented in SQL, so it doesn't have to make roundtrips to the DB.

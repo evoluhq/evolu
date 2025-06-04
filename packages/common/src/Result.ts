@@ -1,5 +1,5 @@
 /**
- * 🛡️ Type-Safe Errors
+ * 🛡️ Type-safe errors
  *
  * ## Intro
  *
