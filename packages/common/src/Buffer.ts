@@ -93,7 +93,13 @@ export interface Buffer {
    */
   truncate: (length: NonNegativeInt) => void;
 
-  /** Resets the buffer to its initial empty state, preserving its capacity. */
+  /**
+   * Resets the buffer to its initial empty state, preserving its capacity.
+   *
+   * This allows efficient buffer reuse without reallocating memory. Use this
+   * when you want to clear the buffer and write new data, avoiding unnecessary
+   * allocations.
+   */
   reset: () => void;
 
   /**
