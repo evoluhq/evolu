@@ -32,6 +32,7 @@
     "src/Order.ts",
     "src/Promise.ts",
     "src/Random.ts",
+    "src/Ref.ts",
     "src/Result.ts",
     "src/Sqlite.ts",
     "src/Store.ts",

@@ -16,6 +16,7 @@ export * from "./Object.js";
 export * from "./Order.js";
 export * from "./Promise.js";
 export * from "./Random.js";
+export * from "./Ref.js";
 export * from "./Result.js";
 export * from "./Sqlite.js";
 export * from "./Store.js";
