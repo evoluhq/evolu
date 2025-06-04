@@ -483,19 +483,19 @@ const createEvoluInstance =
     dbWorker.onMessage((message) => {
       switch (message.type) {
         case "onInit": {
-          ownerStore.setState(message.owner);
+          ownerStore.set(message.owner);
           break;
         }
 
         case "onError": {
-          errorStore.setState(message.error);
+          errorStore.set(message.error);
           break;
         }
 
         case "onChange": {
           if (message.tabId !== getTabId()) return;
 
-          const state = rowsStore.getState();
+          const state = rowsStore.get();
           const nextState = new Map([
             ...state,
             ...message.patches.map(
@@ -512,10 +512,10 @@ const createEvoluInstance =
 
           if (deps.flushSync && message.onCompleteIds.length > 0) {
             deps.flushSync(() => {
-              rowsStore.setState(nextState);
+              rowsStore.set(nextState);
             });
           } else {
-            rowsStore.setState(nextState);
+            rowsStore.set(nextState);
           }
 
           for (const id of message.onCompleteIds) {
@@ -708,7 +708,7 @@ const createEvoluInstance =
 
     const evolu: InternalEvoluInstance = {
       subscribeError: errorStore.subscribe,
-      getError: errorStore.getState,
+      getError: errorStore.get,
 
       createQuery: (queryCallback, options) => {
         const compiledQuery = queryCallback(
@@ -773,13 +773,13 @@ const createEvoluInstance =
       },
 
       getQueryRows: <R extends Row>(query: Query<R>): QueryRows<R> =>
-        (rowsStore.getState().get(query) ?? emptyRows) as QueryRows<R>,
+        (rowsStore.get().get(query) ?? emptyRows) as QueryRows<R>,
 
       subscribeAppOwner: ownerStore.subscribe,
-      getAppOwner: ownerStore.getState,
+      getAppOwner: ownerStore.get,
 
       subscribeSyncState: syncStore.subscribe,
-      getSyncState: syncStore.getState,
+      getSyncState: syncStore.get,
 
       insert: createMutation("insert"),
       update: createMutation("update"),
@@ -824,7 +824,7 @@ const createEvoluInstance =
         mutationTypesCache.clear();
         const validSchema = assertValidEvoluSchema(schema);
         dbWorker.postMessage({
-          type: "ensureSchema",
+          type: "ensureDbSchema",
           dbSchema: validEvoluSchemaToDbSchema(validSchema),
         });
       },

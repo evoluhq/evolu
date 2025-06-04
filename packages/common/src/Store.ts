@@ -19,19 +19,19 @@ export interface Store<T> extends Ref<T> {
   readonly subscribe: StoreSubscribe;
 
   /** Returns the current state of the store. */
-  readonly getState: () => T;
+  readonly get: () => T;
 
   /**
    * Updates the store's state and notifies all subscribed listeners if the new
    * state differs from the current one.
    */
-  readonly setState: (state: T) => void;
+  readonly set: (state: T) => void;
 
   /**
    * Modifies the store's state by applying a callback function to the current
    * state and notifies listeners if the state changes.
    */
-  readonly modifyState: (updater: (current: T) => T) => void;
+  readonly modify: (updater: (current: T) => T) => void;
 }
 
 /** Registers a listener for state changes, returning an unsubscribe function. */
@@ -45,8 +45,8 @@ export type StoreUnsubscribe = () => void;
 
 /**
  * Creates a store with the given initial state. The store encapsulates its
- * state, which can be read with `getState` and updated with `setState` or
- * `modifyState`. All changes are broadcast to subscribers.
+ * state, which can be read with `get` and updated with `set` or `modify`. All
+ * changes are broadcast to subscribers.
  *
  * By default, state changes are detected using `===` (shallow equality). You
  * can provide a custom equality function as the second argument.
@@ -72,13 +72,13 @@ export const createStore = <T>(
       return () => listeners.delete(listener);
     },
 
-    getState: () => currentState,
+    get: () => currentState,
 
-    setState: (state) => {
+    set: (state) => {
       updateState(state);
     },
 
-    modifyState: (updater) => {
+    modify: (updater) => {
       updateState(updater(currentState));
     },
   };

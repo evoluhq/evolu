@@ -15,16 +15,15 @@ import type { Store } from "./Store.js";
  * {@link Store}.
  *
  * Updating in a controlled way means all changes go through specific methods
- * (`setState` or `modifyState`), making state updates predictable and easy to
- * track.
+ * (`set` or `modify`), making state updates predictable and easy to track.
  *
  * ### Example
  *
  * ```ts
  * const count = createRef(0);
- * count.setState(1);
- * count.modifyState((n) => n + 1);
- * console.log(count.getState()); // 2
+ * count.set(1);
+ * count.modify((n) => n + 1);
+ * console.log(count.get()); // 2
  * ```
  *
  * ### Example of using Ref as a dependency
@@ -37,13 +36,13 @@ import type { Store } from "./Store.js";
  */
 export interface Ref<T> {
   /** Returns the current state. */
-  readonly getState: () => T;
+  readonly get: () => T;
 
   /** Sets the state. */
-  readonly setState: (state: T) => void;
+  readonly set: (state: T) => void;
 
   /** Modifies the state using an updater function. */
-  readonly modifyState: (updater: (current: T) => T) => void;
+  readonly modify: (updater: (current: T) => T) => void;
 }
 
 /** Creates a {@link Ref} with the given initial state. */
@@ -51,11 +50,13 @@ export const createRef = <T>(initialState: T): Ref<T> => {
   let currentState = initialState;
 
   return {
-    getState: () => currentState,
-    setState: (state) => {
+    get: () => currentState,
+
+    set: (state) => {
       currentState = state;
     },
-    modifyState: (updater) => {
+
+    modify: (updater) => {
       currentState = updater(currentState);
     },
   };
