@@ -1,11 +1,17 @@
 /**
- * A store for managing state with change notifications. Provides methods to
- * retrieve the current state, update it, and notify listeners of changes. The
- * state is immutable externally, with updates controlled via `setState`. Think
- * of it as a lightweight, observable reference (akin to a Ref in functional
- * programming) tailored for reactive state management.
+ * A mutable reference for managing state with change notifications
+ *
+ * @module
  */
-export interface Store<T> {
+import { Eq, eqStrict } from "./Eq.js";
+import { Ref } from "./Ref.js";
+
+/**
+ * A store for managing state with change notifications. Extends {@link Ref} with
+ * subscriptions. Provides methods to get, set, and modify state, and to notify
+ * listeners when the state changes.
+ */
+export interface Store<T> extends Ref<T> {
   /**
    * Registers a listener to be called on state changes and returns a function
    * to unsubscribe.
@@ -17,8 +23,7 @@ export interface Store<T> {
 
   /**
    * Updates the store's state and notifies all subscribed listeners if the new
-   * state differs from the current one. Does nothing if the state is
-   * unchanged.
+   * state differs from the current one.
    */
   readonly setState: (state: T) => void;
 
@@ -39,16 +44,22 @@ export type StoreListener = () => void;
 export type StoreUnsubscribe = () => void;
 
 /**
- * Creates a store with the given initial state. The store encapsulates a
- * mutable reference to its state, exposed immutably via `getState` and updated
- * via `setState`, with changes broadcast to subscribers.
+ * Creates a store with the given initial state. The store encapsulates its
+ * state, which can be read with `getState` and updated with `setState` or
+ * `modifyState`. All changes are broadcast to subscribers.
+ *
+ * By default, state changes are detected using `===` (shallow equality). You
+ * can provide a custom equality function as the second argument.
  */
-export const createStore = <T>(initialState: T): Store<T> => {
+export const createStore = <T>(
+  initialState: T,
+  eq: Eq<T> = eqStrict,
+): Store<T> => {
   const listeners = new Set<StoreListener>();
   let currentState = initialState;
 
   const updateState = (newState: T) => {
-    if (newState === currentState) return;
+    if (eq(newState, currentState)) return;
     currentState = newState;
     listeners.forEach((listener) => {
       listener();
