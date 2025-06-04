@@ -115,7 +115,8 @@ const evolu = createEvolu(evoluReactWebDeps)(Schema, {
       name: "Not Urgent",
     });
 
-    // This is a developer error, which should be fixed immediately.
+    // This assert makes sure the inserted data is valid.
+    // If it fails, it means there is a bug in the code that should be fixed.
     assert(todoCategory.ok, "invalid initial data");
 
     evolu.insert("todo", {
