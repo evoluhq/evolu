@@ -9,7 +9,6 @@ describe("createTransferableError", () => {
     expect(result.type).toBe("TransferableError");
     expect(result.error).toMatchObject({
       message: "Test error",
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       stack: expect.any(String),
     });
   });
@@ -22,11 +21,9 @@ describe("createTransferableError", () => {
     expect(result.type).toBe("TransferableError");
     expect(result.error).toMatchObject({
       message: "Outer error",
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       stack: expect.any(String),
       cause: {
         message: "Inner error",
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         stack: expect.any(String),
       },
     });
