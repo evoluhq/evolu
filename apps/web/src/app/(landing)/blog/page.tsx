@@ -41,7 +41,7 @@ export default async function ArticlesIndex(): Promise<React.ReactElement> {
   const articles = await getAllArticles();
 
   return (
-    <SimpleLayout title="Evolu Blog" intro="Restore data ownership">
+    <SimpleLayout title="Evolu blog" intro="Restore data ownership">
       <div className="mb-16 md:dark:border-zinc-700/40">
         <div className="flex w-full max-w-5xl flex-col space-y-16">
           {articles.map((article) => (

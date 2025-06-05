@@ -4,9 +4,9 @@ import Image from "next/image";
 export const article = {
   author: "Daniel Steigerwald",
   date: "2025-05-24",
-  title: "Scaling Local-First Software",
+  title: "Scaling local-first software",
   description:
-    "Building local-first apps is already a challenge, and making them scalable is an even greater one. It’s not just about keeping data local; scalability touches multiple dimensions—from data volume and user count, to varying authentication models, growing code complexity, developer experience, and support for diverse use cases.",
+    "Building local-first apps is already a challenge, and making them scalable is an even greater one. It's not just about keeping data local; scalability touches multiple dimensions—from data volume and user count, to varying authentication models, growing code complexity, developer experience, and support for diverse use cases.",
 };
 
 export const metadata = {
@@ -22,7 +22,7 @@ Building local-first apps is already a challenge, and making them scalable is an
 
 ---
 
-# Where It All Began: A Mission to Restore Ownership
+# Where it all began: a mission to restore ownership
 
 When I discovered the concept of local-first software, I immediately knew I didn't want to build apps any other way. Ownership is the foundation of a free society—without it, there is no freedom. Outside programming, I often speak about the state, anarchism, Bitcoin, and economics. I'm currently writing a book called [Deconstruction of the State](https://www.startovac.cz/projekty/kniha-dekonstrukce-statu), which aims to return the state to the people.
 
@@ -30,7 +30,7 @@ A few years ago, it became clear to me that my life's mission is to restore owne
 
 What worked well in the first version of Evolu was my decision to build on SQL. I wasn’t trying to reinvent the database. While creating a new one is a noble goal, it takes years. Instead, I chose to build on top of SQLite—a stable, battle-tested engine that’s more than good enough. For serious, large-scale applications, SQL remains essential. The timestamp design I adopted from James Long’s [ActualBudget](https://actualbudget.org/) also proved to be well-designed. There was no need to change anything. The same goes for the Evolu API, which I only refined slightly. Everything else changed. ActualBudget used a Merkle tree, which doesn’t scale for local-first apps because it can’t precisely identify what data changed—only when nodes last had the same data.
 
-## How Distributed Systems Work
+## How distributed systems work
 
 At this point, I want to briefly explain how distributed systems—because local-first apps are distributed systems—work. They don’t rely on a central server to store or coordinate changes. Instead, each device can make updates independently and sync later. The foundation of this model is a stream of events—descriptions of what changed and when.
 
@@ -38,7 +38,7 @@ To reason about when events happened and how they relate, distributed systems us
 
 But here’s the catch: knowing when something happened isn’t enough. To sync two peers, we don’t just need causality—we need to know which exact events the other peer has already seen. Clocks describe order and causality, but not which specific events a peer has seen. This becomes a serious limitation in peer-to-peer systems, where events (messages) might take different paths to different nodes. Without a way to compare sets of events directly, we risk syncing inefficiencies: unnecessary retransmissions, duplicated events, or bloated metadata. These issues limit scalability.
 
-# Set Reconciliation
+# Set reconciliation
 
 > Imagine two computers connected over a network, and each computer holds a set of values. Set reconciliation is the problem of efficiently exchanging messages between them such that in the end both hold the union of the two sets. If there is a total order on the items, and if items can be hashed to smaller fingerprints with negligible collision probability, this can be done in logarithmic time in a fairly simple manner.
 
@@ -174,7 +174,7 @@ relays with each other. Evolu Protocol is designed for SQLite but can be extende
 implements [Range-Based Set Reconciliation](https://arxiv.org/abs/2212.13567)
 by Aljoscha Meyer.
 
-## Why Binary?
+## Why binary?
 
 The protocol avoids JSON because:
 
@@ -240,7 +240,7 @@ That's **272 bytes** for **16 fingerprints**, representing the entire database (
 
 Again, to understand how **Range-Based Set Reconciliation works**, I highly recommend [this great article](https://logperiodic.com/rbsr.html) by Doug. Now let’s take a closer look at the protocol message structure:
 
-## Protocol Message Structure
+## Protocol message structure
 
 | Field                    | Notes                                    |
 | :----------------------- | :--------------------------------------- |
@@ -258,7 +258,7 @@ Again, to understand how **Range-Based Set Reconciliation works**, I highly reco
 
 It’s simple—but is it too simple? No. Let’s look at how it can support **authentication**, **collaboration**, and **partial sync**.
 
-# Auth, Collaboration, and Partial Sync
+# Auth, collaboration, and partial sync
 
 When I started thinking about local-first auth and collaboration for Evolu, I struggled to find a model that could **scale to all use cases**. That’s why the first version of Evolu didn’t support collaboration. Rather than implement something half-baked, I decided to postpone it.
 
@@ -294,7 +294,7 @@ It’s important to understand that while these owners are _default_ in Evolu, f
 The goal was to make Evolu Protocol and Relay as **generic and application-agnostic** as possible. They should **know nothing** about what applications are using them.
 This is the only way to guarantee **maximum privacy** and **true scalability**—as we’ll explore next.
 
-## Partial Sync
+## Partial sync
 
 It’s clear that no single device can hold all the data. You can’t download the whole of Facebook to your phone. Traditional client-server applications handle this by selectively downloading parts of the data using some form of
 fine-grained "select"—via REST, RPC, GraphQL, and so on.
@@ -310,7 +310,7 @@ So how does Evolu scale in practice? In two complementary ways:
 
 It's up to the Evolu app to know which owner should be synced for which data and when. Relays must know nothing.
 
-# From Local-First Apps to Local-First Clouds
+# From local-first apps to local-first clouds
 
 Evolu’s strict design has a surprising consequence: the **limitations** of local-first apps are exactly what allow them to **scale better** than traditional client-server applications.
 

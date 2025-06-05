@@ -22,10 +22,10 @@ function rearrangeMdxFilesRecursively(dir: string) {
         fs.renameSync(fullPath, path.join(newFolder, "page.mdx"));
         fixLinksInMdxFile(
           path.join(newFolder, "page.mdx"),
-          `${baseName} - API Reference`,
+          `${baseName} - API reference`,
         );
       } else {
-        fixLinksInMdxFile(fullPath, "API Reference");
+        fixLinksInMdxFile(fullPath, "API reference");
       }
     }
   }
@@ -37,13 +37,13 @@ function fixLinksInMdxFile(filePath: string, title: string) {
   let newContent = content.replace(/\/page.mdx/g, "");
   newContent = newContent.replace(/\(([^)]+)\.mdx\)/g, "($1)");
 
-  // fix API Reference breadcrumb link
+  // fix API reference breadcrumb link
   newContent = newContent.replace(
     /\[API Reference\]\([^)]*\)/g,
-    "[API Reference](/docs/api-reference)",
+    "[API reference](/docs/api-reference)",
   );
 
-  // Remove Call Signatures
+  // Remove call signatures
   newContent = newContent.replace(
     /##\s*Call Signature\r?\n\s*```ts[\s\S]*?```/g,
     "",
@@ -62,5 +62,5 @@ ${newContent}`;
 rearrangeMdxFilesRecursively(reference);
 
 console.log("--------------------------------------");
-console.log("API Reference rearranged successfully.");
+console.log("API reference rearranged successfully.");
 console.log("--------------------------------------");
