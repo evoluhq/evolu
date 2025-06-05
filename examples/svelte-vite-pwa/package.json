@@ -13,7 +13,7 @@
     "@evolu/common": "workspace:*",
     "@evolu/svelte": "workspace:*",
     "@evolu/web": "workspace:*",
-    "@sveltejs/vite-plugin-svelte": "^5.0.3",
+    "@sveltejs/vite-plugin-svelte": "^5.1.0",
     "@tsconfig/svelte": "^5.0.4",
     "svelte": "^5.33.14",
     "svelte-check": "^4.2.1",
