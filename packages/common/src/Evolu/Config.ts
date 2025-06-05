@@ -1,7 +1,7 @@
 import { ConsoleConfig } from "../Console.js";
 import { getOrThrow } from "../Result.js";
 import { Mnemonic, SimpleName } from "../Type.js";
-import type { Indexex } from "./Kysely.js";
+import type { DbIndexesBuilder } from "./Kysely.js";
 
 export interface Config extends ConsoleConfig {
   /**
@@ -60,7 +60,7 @@ export interface Config extends ConsoleConfig {
    * });
    * ```
    */
-  readonly indexes?: Indexex;
+  readonly indexes?: DbIndexesBuilder;
 
   /**
    * Use this option to create Evolu with the specified mnemonic. If omitted,

@@ -83,23 +83,19 @@ test("init postMessage call", () => {
             "tables": [
               {
                 "columns": [
+                  "isDeleted",
                   "id",
                   "title",
                   "isCompleted",
                   "categoryId",
-                  "createdAt",
-                  "updatedAt",
-                  "isDeleted",
                 ],
                 "name": "todo",
               },
               {
                 "columns": [
+                  "isDeleted",
                   "id",
                   "name",
-                  "createdAt",
-                  "updatedAt",
-                  "isDeleted",
                 ],
                 "name": "todoCategory",
               },

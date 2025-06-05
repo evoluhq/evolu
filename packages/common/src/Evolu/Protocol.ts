@@ -114,22 +114,22 @@ import {
 import {
   CreateRandomBytesDep,
   EncryptionKey,
+  padmePaddedLength,
   SymmetricCryptoDecryptError,
   SymmetricCryptoDep,
 } from "../Crypto.js";
+import { eqArrayNumber } from "../Eq.js";
 import { computeBalancedBuckets } from "../Number.js";
 import { objectToEntries, ReadonlyRecord } from "../Object.js";
 import { err, ok, Result } from "../Result.js";
 import { SqliteValue } from "../Sqlite.js";
 import {
   Base64Url,
-  brand,
   DateIsoString,
   Id,
   idTypeValueLength,
   JsonValueFromString,
   maxLength,
-  minLength,
   NanoId,
   NonNegativeInt,
   Number,
@@ -151,7 +151,6 @@ import {
   Timestamp,
   timestampToBinaryTimestamp,
 } from "./Timestamp.js";
-import { eqArrayNumber } from "../Eq.js";
 
 /** Maximum size of the entire protocol message in bytes. */
 export const maxProtocolMessageSize = 1_000_000 as PositiveInt;
@@ -271,28 +270,24 @@ export interface CrdtMessage {
 /**
  * A DbChange is a change to a table row. Together with a unique
  * {@link Timestamp}, it forms a {@link CrdtMessage}.
- *
- * TODO: Remove schema from DbChange and use NonNegativeInts instead. There is
- * really no reason why we should encode table and column names. App knows it.
  */
 export interface DbChange {
-  readonly table: TableName;
+  readonly table: string;
   readonly id: Id;
-  readonly values: ReadonlyRecord<ColumnName, SqliteValue>;
+  readonly values: ReadonlyRecord<string, SqliteValue>;
 }
 
 /**
- * `DbIdentifier` is used for database (tables and columns) names. It enforces
- * that the string length is at least 1 character and does not exceed 42.
+ * An array of tables with a fixed order. Each table has a fixed order of
+ * columns. Used for mapping table and column names to numeric indexes in
+ * protocol message encoding.
  */
-export const DbIdentifier = minLength(1)(maxLength(42)(Base64Url));
-export type DbIdentifier = typeof DbIdentifier.Type;
+export type DbTables = ReadonlyArray<DbTable>;
 
-export const TableName = brand("TableName", DbIdentifier);
-export type TableName = typeof TableName.Type;
-
-export const ColumnName = brand("ColumnName", DbIdentifier);
-export type ColumnName = typeof ColumnName.Type;
+export interface DbTable {
+  readonly name: string;
+  readonly columns: ReadonlyArray<string>;
+}
 
 export const RangeType = {
   Fingerprint: 1,
@@ -408,6 +403,7 @@ export const createProtocolMessageFromCrdtMessages =
   (
     owner: OwnerWithWriteAccess,
     messages: NonEmptyReadonlyArray<CrdtMessage>,
+    schema: DbTables,
     maxSize?: PositiveInt,
   ): ProtocolMessage => {
     const buffer = createProtocolMessageBuffer(owner.id, {
@@ -418,10 +414,14 @@ export const createProtocolMessageFromCrdtMessages =
     let notAllMessagesSent = false;
 
     for (const message of messages) {
-      const change = encryptDbChange(deps)(message.change, owner.encryptionKey);
-      const encryptedMessage = { timestamp: message.timestamp, change };
-      if (buffer.canAddMessage(encryptedMessage)) {
-        buffer.addMessage(encryptedMessage);
+      const change = encodeAndEncryptDbChange(deps)(
+        message.change,
+        schema,
+        owner.encryptionKey,
+      );
+      const encryptedCrdtMessage = { timestamp: message.timestamp, change };
+      if (buffer.canAddMessage(encryptedCrdtMessage)) {
+        buffer.addMessage(encryptedCrdtMessage);
       } else {
         notAllMessagesSent = true;
         break;
@@ -1419,12 +1419,7 @@ export type Base64Url256 = typeof Base64Url256.Type;
  * Union type for all variants of Base64Url strings with limited length. All
  * these types use Base64Url alphabet and are < 256 characters.
  */
-export type Base64Url256Variant =
-  | Base64Url256
-  | Id
-  | NanoId
-  | OwnerId
-  | DbIdentifier;
+export type Base64Url256Variant = Base64Url256 | Id | NanoId | OwnerId;
 
 /**
  * Alphabet used for Base64Url encoding. This is copied from the `nanoid`
@@ -1540,21 +1535,58 @@ export const binaryTimestampToFingerprint = (
 };
 
 /**
- * Encrypts a {@link DbChange} using the provided owner's encryption key. Returns
- * an encrypted binary representation as {@link EncryptedDbChange}.
+ * Encodes and encrypts a {@link DbChange} using the provided owner's encryption
+ * key and {@link DbTables}. Table and column names are replaced with their
+ * numeric indexes based on the order in the schema, resulting in a compact
+ * binary representation. Returns an encrypted binary representation as
+ * {@link EncryptedDbChange}.
  */
-export const encryptDbChange =
+export const encodeAndEncryptDbChange =
   (deps: SymmetricCryptoDep) =>
-  (change: DbChange, key: EncryptionKey): EncryptedDbChange => {
+  (
+    change: DbChange,
+    schema: DbTables,
+    key: EncryptionKey,
+  ): EncryptedDbChange => {
     const buffer = createBuffer();
 
-    encodeDbChange(buffer, change);
-    const plaintext = buffer.unwrap();
+    const tableIndex = schema.findIndex((t) => t.name === change.table);
+    assert(tableIndex !== -1, `Table "${change.table}" not found in schema`);
+    encodeNonNegativeInt(buffer, tableIndex as NonNegativeInt);
 
-    const { nonce, ciphertext } = deps.symmetricCrypto.encrypt(plaintext, key);
+    buffer.extend(idToBinaryId(change.id));
+
+    const table = schema[tableIndex];
+    const entries = objectToEntries(change.values).map(([col, value]) => {
+      const colIndex = table.columns.findIndex((c) => c === col);
+      assert(
+        colIndex !== -1,
+        `Column "${col}" not found in table "${table.name}"`,
+      );
+      return [colIndex, value] as [NonNegativeInt, SqliteValue];
+    });
+
+    encodeLength(buffer, entries);
+
+    for (const [colIndex, value] of entries) {
+      encodeNonNegativeInt(buffer, colIndex);
+      encodeSqliteValue(buffer, value);
+    }
+
+    const plaintext = buffer.unwrap();
+    const paddedLength = padmePaddedLength(plaintext.length as NonNegativeInt);
+
+    const paddedPlaintext = new Uint8Array(paddedLength);
+    paddedPlaintext.set(plaintext);
+
+    const { nonce, ciphertext } = deps.symmetricCrypto.encrypt(
+      paddedPlaintext,
+      key,
+    );
 
     buffer.reset();
     buffer.extend(nonce);
+    encodeLength(buffer, plaintext);
     encodeLength(buffer, ciphertext);
     buffer.extend(ciphertext);
 
@@ -1562,13 +1594,15 @@ export const encryptDbChange =
   };
 
 /**
- * Decrypts an {@link EncryptedDbChange} using the provided owner's encryption
- * key.
+ * Decrypts and decodes an {@link EncryptedDbChange} using the provided owner's
+ * encryption key and the provided {@link DbTables}. Table and column names are
+ * decoded from their numeric indexes.
  */
-export const decryptDbChange =
+export const decryptAndDecodeDbChange =
   (deps: SymmetricCryptoDep) =>
   (
     change: EncryptedDbChange,
+    schema: DbTables,
     key: EncryptionKey,
   ): Result<DbChange, SymmetricCryptoDecryptError | ProtocolInvalidDataError> =>
     tryDecodeProtocolData<DbChange, SymmetricCryptoDecryptError>(
@@ -1576,6 +1610,7 @@ export const decryptDbChange =
       (buffer) => {
         const nonce = buffer.shiftN(deps.symmetricCrypto.nonceLength);
 
+        const originalLength = decodeLength(buffer);
         const ciphertextLength = decodeLength(buffer);
         const ciphertext = buffer.shiftN(ciphertextLength);
 
@@ -1586,11 +1621,35 @@ export const decryptDbChange =
         );
         if (!plaintextBytes.ok) return plaintextBytes;
 
-        // Reuse existing buffer.
         buffer.reset();
-        buffer.extend(plaintextBytes.value);
+        buffer.extend(plaintextBytes.value.slice(0, originalLength));
 
-        return ok(decodeDbChange(buffer));
+        const tableIndex = decodeNonNegativeInt(buffer);
+        if (tableIndex >= schema.length) {
+          throw new ProtocolDecodeError(`Invalid table index: ${tableIndex}`);
+        }
+        const table = schema[tableIndex];
+
+        const id = decodeId(buffer);
+
+        const length = decodeLength(buffer);
+        const values = Object.create(null) as Record<string, SqliteValue>;
+
+        for (let i = 0; i < length; i++) {
+          const colIndex = decodeNonNegativeInt(buffer);
+          if (colIndex >= table.columns.length) {
+            throw new ProtocolDecodeError(
+              `Invalid column index: ${colIndex} for table "${table.name}"`,
+            );
+          }
+          const columnName = table.columns[colIndex];
+          const dbValue = decodeSqliteValue(buffer);
+          values[columnName] = dbValue;
+        }
+
+        const dbChange = { table: table.name, id, values };
+
+        return ok(dbChange);
       },
     );
 
@@ -1688,35 +1747,6 @@ export const decodeBase64Url256WithLength = (buffer: Buffer): Base64Url256 => {
   const length = decodeLength(buffer);
   return decodeBase64Url256(buffer, length) as Base64Url256;
 };
-
-export const encodeDbIdentifier = (
-  buffer: Buffer,
-  dbIdentifier: DbIdentifier,
-): void => {
-  encodeBase64Url256(buffer, dbIdentifier);
-};
-
-export const decodeDbIdentifier = (buffer: Buffer): DbIdentifier => {
-  const length = decodeLength(buffer);
-  const identifier = decodeBase64Url256(buffer, length);
-  const result = DbIdentifier.from(identifier);
-  if (!result.ok) throw new ProtocolDecodeError(result.error.type);
-  return result.value;
-};
-
-export const encodeTableName = (buffer: Buffer, name: TableName): void => {
-  encodeDbIdentifier(buffer, name);
-};
-
-export const decodeTableName = (buffer: Buffer): TableName =>
-  decodeDbIdentifier(buffer) as TableName;
-
-export const encodeColumnName = (buffer: Buffer, name: ColumnName): void => {
-  encodeDbIdentifier(buffer, name);
-};
-
-export const decodeColumnName = (buffer: Buffer): ColumnName =>
-  decodeDbIdentifier(buffer) as ColumnName;
 
 // Small ints are encoded into ProtocolValueType, saving one byte per int.
 const isSmallInt: Predicate<number> = (value: number) =>
@@ -1868,34 +1898,4 @@ export const decodeSqliteValue = (buffer: Buffer): SqliteValue => {
     default:
       throw new ProtocolDecodeError("invalid ProtocolValueType");
   }
-};
-
-export const encodeDbChange = (buffer: Buffer, change: DbChange): void => {
-  encodeTableName(buffer, change.table);
-  buffer.extend(idToBinaryId(change.id));
-
-  const entries = objectToEntries(change.values);
-  encodeLength(buffer, entries);
-
-  for (const [name, value] of entries) {
-    encodeColumnName(buffer, name);
-    encodeSqliteValue(buffer, value);
-  }
-};
-
-export const decodeDbChange = (buffer: Buffer): DbChange => {
-  const table = decodeTableName(buffer);
-
-  const id = decodeId(buffer);
-
-  const length = decodeLength(buffer);
-  const values = Object.create(null) as Record<ColumnName, SqliteValue>;
-
-  for (let i = 0; i < length; i++) {
-    const columnName = decodeColumnName(buffer);
-    const dbValue = decodeSqliteValue(buffer);
-    values[columnName] = dbValue;
-  }
-
-  return { table, id, values };
 };

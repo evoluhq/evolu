@@ -5,7 +5,7 @@ import {
   SqliteAdapter,
   SqliteQueryCompiler,
 } from "kysely";
-import { Index } from "./Db.js";
+import { DbIndex } from "./Db.js";
 
 // https://kysely.dev/docs/recipes/splitting-query-building-and-execution
 export const kysely = new Kysely({
@@ -19,16 +19,18 @@ export const kysely = new Kysely({
   },
 });
 
-export const createIndex = kysely.schema.createIndex.bind(kysely.schema);
-
-export type Indexex = (
-  create: typeof createIndex,
+export type DbIndexesBuilder = (
+  create: (indexName: string) => CreateIndexBuilder,
 ) => ReadonlyArray<CreateIndexBuilder<any>>;
 
-export const createIndexes = (indexes?: Indexex): ReadonlyArray<Index> => {
+const createIndex = kysely.schema.createIndex.bind(kysely.schema);
+
+export const createIndexes = (
+  indexes?: DbIndexesBuilder,
+): ReadonlyArray<DbIndex> => {
   if (!indexes) return [];
   return indexes(createIndex).map(
-    (index): Index => ({
+    (index): DbIndex => ({
       name: index.toOperationNode().name.name,
       sql: index.compile().sql,
     }),

@@ -24,15 +24,16 @@ import {
   optional,
   OptionalType,
   record,
+  String,
   Type,
   TypeError,
   Unknown,
 } from "../Type.js";
 import { Simplify } from "../Types.js";
-import { DbSchema, Table } from "./Db.js";
-import { createIndexes, Indexex } from "./Kysely.js";
+import { DbSchema } from "./Db.js";
+import { createIndexes, DbIndexesBuilder } from "./Kysely.js";
 import { AppOwner, ShardOwner, SharedOwner } from "./Owner.js";
-import { BinaryId, ColumnName, TableName } from "./Protocol.js";
+import { BinaryId, maxProtocolMessageRangesSize, DbTable } from "./Protocol.js";
 import { Query, Row } from "./Query.js";
 import { BinaryTimestamp } from "./Timestamp.js";
 
@@ -119,12 +120,6 @@ export const DefaultColumns = object({
 });
 export type DefaultColumns = typeof DefaultColumns.Type;
 
-export const defaultColumnsNames = [
-  "createdAt" as ColumnName,
-  "updatedAt" as ColumnName,
-  "isDeleted" as ColumnName,
-];
-
 const isDefaultColumnName = (value: string): boolean =>
   value === "createdAt" || value === "updatedAt" || value === "isDeleted";
 
@@ -137,7 +132,7 @@ const isDefaultColumnName = (value: string): boolean =>
  */
 export const ValidEvoluSchema = brand(
   "ValidEvoluSchema",
-  record(TableName, object({ id: EvoluType }, record(ColumnName, Unknown))),
+  record(String, object({ id: EvoluType }, record(String, Unknown))),
   (value) => {
     for (const tableName in value) {
       for (const columnName in value[tableName as never]) {
@@ -187,11 +182,8 @@ const formatValidEvoluSchemaError = (
   error: typeof ValidEvoluSchema.Error | typeof ValidEvoluSchema.ParentError,
 ): string => {
   if (error.type === "Record") {
-    if (
-      error.reason.kind === "Key" &&
-      error.reason.error.parentError.type === "Regex"
-    ) {
-      return `The table "${error.reason.key}" has invalid name. A table name must be Base64Url (A-Z, a-z, 0-9, -, _) string.`;
+    if (error.reason.kind === "Key") {
+      return `The table "${error.reason.key}" has invalid name. A table name must be string.`;
     }
 
     if (
@@ -204,10 +196,9 @@ const formatValidEvoluSchemaError = (
 
     if (
       error.reason.kind === "Value" &&
-      error.reason.error.reason.kind === "IndexKey" &&
-      error.reason.error.reason.error.parentError.type === "Regex"
+      error.reason.error.reason.kind === "IndexKey"
     ) {
-      return `The table "${error.reason.key}" has invalid column name: "${error.reason.error.reason.key}". A column name must be Base64Url (A-Z, a-z, 0-9, -, _) string.`;
+      return `The table "${error.reason.key}" has invalid column name. A column name must be string.`;
     }
   }
 
@@ -216,14 +207,13 @@ const formatValidEvoluSchemaError = (
 
 export const validEvoluSchemaToDbSchema = (
   validEvoluSchema: ValidEvoluSchema,
-  indexes?: Indexex,
+  indexes?: DbIndexesBuilder,
 ): DbSchema => {
   const tables = objectToEntries(validEvoluSchema).map(
-    ([tableName, table]): Table => ({
+    ([tableName, table]): DbTable => ({
       name: tableName,
-      columns: objectToEntries(table)
-        .map(([columnName]) => columnName as ColumnName)
-        .concat(defaultColumnsNames),
+      // Every table has the "isDeleted" column by default for soft deletes.
+      columns: ["isDeleted", ...Object.keys(table)],
     }),
   );
   return {
@@ -275,8 +265,9 @@ export interface MutationOptions {
 
 /**
  * Evolu has to limit the maximum mutation size. Otherwise, sync couldn't use
- * the max frame size. The max size is 640KB in bytes, measured via MessagePack.
- * Evolu Protocol DbChange will be smaller thanks to various optimizations.
+ * the {@link maxProtocolMessageRangesSize}. The max size is 640KB in bytes,
+ * measured via MessagePack. Evolu Protocol DbChange will be smaller thanks to
+ * various optimizations.
  */
 export const maxMutationSize = 655360;
 

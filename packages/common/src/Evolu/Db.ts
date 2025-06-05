@@ -19,6 +19,7 @@ import { constFalse, exhaustiveCheck } from "../Function.js";
 import { NanoIdLibDep } from "../NanoId.js";
 import { objectToEntries } from "../Object.js";
 import { RandomDep } from "../Random.js";
+import { createRef, Ref } from "../Ref.js";
 import { err, ok, Result } from "../Result.js";
 import {
   createSqlite,
@@ -32,7 +33,6 @@ import {
   SqliteRow,
   SqliteValue,
 } from "../Sqlite.js";
-import { createStore, Store } from "../Store.js";
 import { TimeDep } from "../Time.js";
 import { Id, Mnemonic, object, SimpleName, String } from "../Type.js";
 import {
@@ -53,20 +53,19 @@ import {
   applyProtocolMessageAsClient,
   BinaryId,
   binaryIdToId,
-  ColumnName,
   CrdtMessage,
   createProtocolMessageForSync,
   createProtocolMessageFromCrdtMessages,
   DbChange,
-  decryptDbChange,
-  encryptDbChange,
+  decryptAndDecodeDbChange,
+  encodeAndEncryptDbChange,
   idToBinaryId,
   ownerIdToBinaryOwnerId,
+  DbTables,
   ProtocolError,
   protocolVersion,
   Storage,
   StorageDep,
-  TableName,
 } from "./Protocol.js";
 import {
   createQueryRowsCache,
@@ -97,18 +96,17 @@ import {
   timestampToTimestampString,
 } from "./Timestamp.js";
 
+/**
+ * DbSchema defines the structure of the database: an ordered array of tables
+ * (with ordered columns) and an array of indexes.
+ */
 export interface DbSchema {
-  readonly tables: ReadonlyArray<Table>;
-  readonly indexes: ReadonlyArray<Index>;
+  readonly tables: DbTables;
+  readonly indexes: ReadonlyArray<DbIndex>;
 }
 
-export interface Table {
-  readonly name: TableName;
-  readonly columns: ReadonlyArray<ColumnName>;
-}
-
-export const Index = object({ name: String, sql: String });
-export type Index = typeof Index.Type;
+export const DbIndex = object({ name: String, sql: String });
+export type DbIndex = typeof DbIndex.Type;
 
 export type DbWorker = Worker<DbWorkerInput, DbWorkerOutput>;
 
@@ -147,7 +145,7 @@ export type DbWorkerInput =
       };
     }
   | {
-      readonly type: "ensureSchema";
+      readonly type: "ensureDbSchema";
       readonly dbSchema: DbSchema;
     }
   | {
@@ -208,19 +206,24 @@ type DbWorkerDeps = Omit<
   TimestampConfigDep &
   SymmetricCryptoDep &
   PostMessageDep &
-  OwnerRowStoreDep &
+  OwnerRowRefDep &
   GetQueryRowsCacheDep &
-  ClientStorageDep;
+  ClientStorageDep &
+  DbSchemaRef;
 
 type PostMessageDep = WorkerPostMessageDep<DbWorkerOutput>;
 
 // TODO: More owners (the whole table with ad-hoc added)
-export interface OwnerRowStoreDep {
-  readonly ownerRowStore: Store<OwnerRow>;
+export interface OwnerRowRefDep {
+  readonly ownerRowRef: Ref<OwnerRow>;
 }
 
 interface GetQueryRowsCacheDep {
   readonly getQueryRowsCache: (tabId: Id) => QueryRowsCache;
+}
+
+interface DbSchemaRef {
+  dbSchemaRef: Ref<DbSchema>;
 }
 
 export const createDbWorkerForPlatform = (
@@ -254,16 +257,17 @@ export const createDbWorkerForPlatform = (
         const currentDbSchema = getDbSchema({ sqlite })();
         if (!currentDbSchema.ok) return currentDbSchema;
 
-        const ensure = ensureDbSchema({ sqlite })(
+        const ensureDbSchemaResult = ensureDbSchema({ sqlite })(
           initMessage.dbSchema,
           currentDbSchema.value,
         );
-        if (!ensure.ok) return ensure;
+        if (!ensureDbSchemaResult.ok) return ensureDbSchemaResult;
 
-        const maybeMigrate = maybeMigrateToVersion0({ sqlite })(
+        const maybeMigrateToVersion0Result = maybeMigrateToVersion0({ sqlite })(
           currentDbSchema.value,
         );
-        if (!maybeMigrate.ok) return maybeMigrate;
+        if (!maybeMigrateToVersion0Result.ok)
+          return maybeMigrateToVersion0Result;
 
         const ownerExists = currentDbSchema.value.tables.some(
           (table) => table.name === "evolu_owner",
@@ -272,7 +276,8 @@ export const createDbWorkerForPlatform = (
         const appOwnerAndOwnerRow = ownerExists
           ? selectAppOwner({ sqlite })
           : initializeDb({ ...platformDeps, sqlite })(
-              maybeMigrate.value?.mnemonic ?? initMessage.config.mnemonic,
+              maybeMigrateToVersion0Result.value?.mnemonic ??
+                initMessage.config.mnemonic,
             );
         if (!appOwnerAndOwnerRow.ok) return appOwnerAndOwnerRow;
 
@@ -285,7 +290,8 @@ export const createDbWorkerForPlatform = (
           timestampConfig: initMessage.config,
           symmetricCrypto: createSymmetricCrypto(platformDeps),
           getQueryRowsCache,
-          ownerRowStore: createStore<OwnerRow>(ownerRow),
+          ownerRowRef: createRef(ownerRow),
+          dbSchemaRef: createRef(initMessage.dbSchema),
         };
 
         const storage = createClientStorage(depsWithoutSyncAndStorage)({
@@ -300,10 +306,10 @@ export const createDbWorkerForPlatform = (
           storage: storage.value,
         };
 
-        if (maybeMigrate.value) {
+        if (maybeMigrateToVersion0Result.value) {
           const result = applyMessages(depsWithoutSync)(
-            maybeMigrate.value.messages,
-            maybeMigrate.value.lastTimestamp,
+            maybeMigrateToVersion0Result.value.messages,
+            maybeMigrateToVersion0Result.value.lastTimestamp,
           );
           if (!result.ok) return result;
         }
@@ -346,7 +352,7 @@ export const createDbWorkerForPlatform = (
             }
 
             for (const change of localOnlyChanges) {
-              if (change.values["isDeleted" as ColumnName] === 1) {
+              if (change.values.isDeleted === 1) {
                 const result = deps.sqlite.exec(sql`
                   delete from ${sql.identifier(change.table)}
                   where id = ${change.id};
@@ -381,7 +387,9 @@ export const createDbWorkerForPlatform = (
              * want to call onChange ASAP.
              */
             const onChange = () => {
-              deps.console.log("[db]", "onChange");
+              deps.console.log("[db]", "onChange", {
+                subscribedQueries: message.subscribedQueries,
+              });
               const patches = loadQueries(deps)(
                 message.tabId,
                 message.subscribedQueries,
@@ -409,7 +417,7 @@ export const createDbWorkerForPlatform = (
             const messages = applyChanges(deps)(toSyncChanges, onChange);
             if (!messages.ok) return messages;
 
-            const owner = deps.ownerRowStore.getState();
+            const owner = deps.ownerRowRef.get();
             // TODO: Check owner whether it's allowed to write, return an
             // error if not.
             if (owner.writeKey == null) {
@@ -419,9 +427,15 @@ export const createDbWorkerForPlatform = (
             const protocolMessage = createProtocolMessageFromCrdtMessages(deps)(
               owner as OwnerWithWriteAccess,
               messages.value,
+              deps.dbSchemaRef.get().tables,
             );
 
-            deps.console.log("[db]", "send data message", protocolMessage);
+            deps.console.log(
+              "[db]",
+              "send data message",
+              messages.value,
+              protocolMessage,
+            );
             deps.sync.send(protocolMessage);
 
             return ok();
@@ -453,28 +467,30 @@ export const createDbWorkerForPlatform = (
         }
 
         case "reset": {
-          const reset = deps.sqlite.transaction(() => {
-            const drop = dropAllTables(deps);
-            if (!drop.ok) return drop;
+          const resetResult = deps.sqlite.transaction(() => {
+            const dropAllTablesResult = dropAllTables(deps);
+            if (!dropAllTablesResult.ok) return dropAllTablesResult;
 
             if (message.restore) {
               const dbSchema = getDbSchema(deps)();
               if (!dbSchema.ok) return dbSchema;
 
-              const ensure = ensureDbSchema(deps)(
+              const ensureDbSchemaResult = ensureDbSchema(deps)(
                 message.restore.dbSchema,
                 dbSchema.value,
               );
-              if (!ensure.ok) return ensure;
+              if (!ensureDbSchemaResult.ok) return ensureDbSchemaResult;
 
-              const init = initializeDb(deps)(message.restore.mnemonic);
-              if (!init.ok) return init;
+              const initializeDbResult = initializeDb(deps)(
+                message.restore.mnemonic,
+              );
+              if (!initializeDbResult.ok) return initializeDbResult;
             }
             return ok();
           });
 
-          if (!reset.ok) {
-            deps.postMessage({ type: "onError", error: reset.error });
+          if (!resetResult.ok) {
+            deps.postMessage({ type: "onError", error: resetResult.error });
             return;
           }
 
@@ -488,13 +504,18 @@ export const createDbWorkerForPlatform = (
           break;
         }
 
-        case "ensureSchema": {
+        case "ensureDbSchema": {
           const ensureSchema = deps.sqlite.transaction(() => {
-            const schema = getDbSchema(deps)();
-            if (!schema.ok) return schema;
+            const dbSchema = getDbSchema(deps)();
+            if (!dbSchema.ok) return dbSchema;
 
-            const ensure = ensureDbSchema(deps)(message.dbSchema, schema.value);
-            if (!ensure.ok) return ensure;
+            const ensureDbSchemaResult = ensureDbSchema(deps)(
+              message.dbSchema,
+              dbSchema.value,
+            );
+            if (!ensureDbSchemaResult.ok) return ensureDbSchemaResult;
+
+            deps.dbSchemaRef.set(message.dbSchema);
 
             return ok();
           });
@@ -536,7 +557,7 @@ export const getDbSchema =
     DbSchema,
     SqliteError
   > => {
-    const map = new Map<TableName, Array<ColumnName>>();
+    const map = new Map<string, Array<string>>();
 
     const tableAndColumnInfoRows = deps.sqlite.exec(sql`
       select
@@ -551,8 +572,8 @@ export const getDbSchema =
 
     tableAndColumnInfoRows.value.rows.forEach((row) => {
       const { tableName, columnName } = row as unknown as {
-        tableName: TableName;
-        columnName: ColumnName;
+        tableName: string;
+        columnName: string;
       };
       if (!map.has(tableName)) map.set(tableName, []);
       map.get(tableName)?.push(columnName);
@@ -580,7 +601,7 @@ export const getDbSchema =
     if (!indexesRows.ok) return indexesRows;
 
     const indexes = indexesRows.value.rows.map(
-      (row): Index => ({
+      (row): DbIndex => ({
         name: row.name as string,
         /**
          * SQLite returns "CREATE INDEX" for "create index" for some reason.
@@ -596,14 +617,14 @@ export const getDbSchema =
     return ok({ tables, indexes });
   };
 
-const indexesAreEqual = (self: Index, that: Index): boolean =>
+const indexesAreEqual = (self: DbIndex, that: DbIndex): boolean =>
   self.name === that.name && self.sql === that.sql;
 
 export interface DbSnapshot {
   readonly schema: DbSchema;
   readonly rows: Array<{
     rows: ReadonlyArray<SqliteRow>;
-    name: TableName;
+    name: string;
   }>;
 }
 
@@ -695,13 +716,15 @@ const ensureDbSchema =
   };
 
 export const createAppTable = (
-  tableName: TableName,
-  columns: ReadonlyArray<ColumnName>,
+  tableName: string,
+  columns: ReadonlyArray<string>,
 ): SafeSql =>
   `
     create table ${sql.identifier(tableName).sql} (
       "id" text primary key,
       ${columns
+        // "createdAt" and "updatedAt" are default columns
+        .concat(["createdAt", "updatedAt"])
         .filter((c) => c !== "id")
         // "A column with affinity BLOB does not prefer one storage class over another
         // and no attempt is made to coerce data from one storage class into another."
@@ -848,7 +871,7 @@ const applyChanges =
       TimeDep &
       TimestampConfigDep &
       RandomDep &
-      OwnerRowStoreDep &
+      OwnerRowRefDep &
       ClientStorageDep,
   ) =>
   (
@@ -862,7 +885,7 @@ const applyChanges =
     | SqliteError
   > => {
     let lastTimestamp = timestampStringToTimestamp(
-      deps.ownerRowStore.getState().timestamp,
+      deps.ownerRowRef.get().timestamp,
     );
 
     const messages: Array<CrdtMessage> = [];
@@ -884,7 +907,7 @@ const applyChanges =
   };
 
 const applyMessages =
-  (deps: SqliteDep & RandomDep & OwnerRowStoreDep & ClientStorageDep) =>
+  (deps: SqliteDep & RandomDep & OwnerRowRefDep & ClientStorageDep) =>
   (
     messages: ReadonlyArray<CrdtMessage>,
     lastTimestamp: Timestamp,
@@ -901,7 +924,7 @@ const applyMessages =
     }
 
     const timestamp = timestampToTimestampString(lastTimestamp);
-    deps.ownerRowStore.modifyState((owner) => ({ ...owner, timestamp }));
+    deps.ownerRowRef.modify((owner) => ({ ...owner, timestamp }));
     const saveTimestamp = deps.sqlite.exec(sql.prepared`
       update evolu_owner set "timestamp" = ${timestamp};
     `);
@@ -951,10 +974,10 @@ const applyMessageToAppTable =
   };
 
 export const applyMessageToTimestampAndHistoryTables =
-  (deps: SqliteDep & RandomDep & OwnerRowStoreDep & ClientStorageDep) =>
+  (deps: SqliteDep & RandomDep & OwnerRowRefDep & ClientStorageDep) =>
   (message: CrdtMessage): Result<void, SqliteError> => {
     const timestamp = timestampToBinaryTimestamp(message.timestamp);
-    const ownerId = ownerIdToBinaryOwnerId(deps.ownerRowStore.getState().id);
+    const ownerId = ownerIdToBinaryOwnerId(deps.ownerRowRef.get().id);
     const id = idToBinaryId(message.change.id);
 
     const result = deps.storage.insertTimestamp(ownerId, timestamp);
@@ -1040,9 +1063,9 @@ export const maybeMigrateToVersion0 =
 
     const messagesRows = deps.sqlite.exec<{
       timestamp: TimestampString;
-      table: TableName;
+      table: string;
       row: Id;
-      column: ColumnName;
+      column: string;
       value: SqliteValue;
     }>(sql`
       select "timestamp", "table", "row", "column", "value" from evolu_message;
@@ -1094,9 +1117,9 @@ const dropAllTables = (deps: SqliteDep): Result<void, SqliteError> => {
 };
 
 const handleSyncOpen =
-  (deps: OwnerRowStoreDep & StorageDep & ConsoleDep): SyncConfig["onOpen"] =>
+  (deps: OwnerRowRefDep & StorageDep & ConsoleDep): SyncConfig["onOpen"] =>
   (send) => {
-    const ownerId = deps.ownerRowStore.getState().id;
+    const ownerId = deps.ownerRowRef.get().id;
     const message = createProtocolMessageForSync(deps)(ownerId);
     if (message) {
       deps.console.log("[db]", "send initial sync message", message);
@@ -1106,15 +1129,11 @@ const handleSyncOpen =
 
 const createHandleSyncMessage =
   (
-    deps: PostMessageDep &
-      StorageDep &
-      SqliteDep &
-      ConsoleDep &
-      OwnerRowStoreDep,
+    deps: PostMessageDep & StorageDep & SqliteDep & ConsoleDep & OwnerRowRefDep,
   ): SyncConfig["onMessage"] =>
   (input, send) => {
     deps.console.log("[db]", "receive sync message", input);
-    const { writeKey } = deps.ownerRowStore.getState();
+    const { writeKey } = deps.ownerRowRef.get();
 
     const output = deps.sqlite.transaction(() =>
       applyProtocolMessageAsClient(deps)(input, {
@@ -1143,10 +1162,11 @@ const createClientStorage =
     deps: SqliteDep &
       PostMessageDep &
       SymmetricCryptoDep &
-      OwnerRowStoreDep &
+      OwnerRowRefDep &
       RandomDep &
       TimeDep &
-      TimestampConfigDep,
+      TimestampConfigDep &
+      DbSchemaRef,
   ) =>
   (
     options: CreateSqliteStorageBaseOptions,
@@ -1161,26 +1181,27 @@ const createClientStorage =
 
       writeMessages: (_ownerId, messages) => {
         // TODO: Get owner by _ownerId when we support more.
-        const owner = deps.ownerRowStore.getState();
-        const decryptedMessages: Array<CrdtMessage> = [];
+        const owner = deps.ownerRowRef.get();
+        const decodedAndDecryptedMessages: Array<CrdtMessage> = [];
 
         for (const message of messages) {
-          const decryptedChange = decryptDbChange(deps)(
+          const dbChange = decryptAndDecodeDbChange(deps)(
             message.change,
+            deps.dbSchemaRef.get().tables,
             owner.encryptionKey,
           );
 
-          if (!decryptedChange.ok) {
+          if (!dbChange.ok) {
             deps.postMessage({
               type: "onError",
-              error: decryptedChange.error,
+              error: dbChange.error,
             });
             return false;
           }
 
-          decryptedMessages.push({
+          decodedAndDecryptedMessages.push({
             timestamp: message.timestamp,
-            change: decryptedChange.value,
+            change: dbChange.value,
           });
         }
 
@@ -1195,13 +1216,16 @@ const createClientStorage =
           timestamp = receive.value;
         }
 
-        const result = applyMessages({ ...deps, storage })(
-          decryptedMessages,
+        const applyMessagesResult = applyMessages({ ...deps, storage })(
+          decodedAndDecryptedMessages,
           timestamp,
         );
 
-        if (!result.ok) {
-          deps.postMessage({ type: "onError", error: result.error });
+        if (!applyMessagesResult.ok) {
+          deps.postMessage({
+            type: "onError",
+            error: applyMessagesResult.error,
+          });
           return false;
         }
 
@@ -1212,31 +1236,29 @@ const createClientStorage =
 
       readDbChange: (_ownerId, timestamp) => {
         const result = deps.sqlite.exec<{
-          table: TableName;
+          table: string;
           row: BinaryId;
-          column: ColumnName;
+          column: string;
           value: SqliteValue;
         }>(sql`
           select "table", "row", "column", "value"
           from evolu_history
           where "timestamp" = ${timestamp};
         `);
-
         if (!result.ok) {
           deps.postMessage({ type: "onError", error: result.error });
           return null;
         }
 
         const { rows } = result.value;
-
         assert(rows.length > 0, "Rows must not be empty");
 
-        const values: Record<ColumnName, SqliteValue> = {};
-
         const { table, row } = rows[0];
+        const values: Record<string, SqliteValue> = {};
+
         for (const r of rows) {
           assert(r.table === table, "All rows must have the same table");
-          assert(eqArrayNumber(r.row, row), "All rows must have the same row");
+          assert(eqArrayNumber(r.row, row), "All rows must have the same Id");
           values[r.column] = r.value;
         }
 
@@ -1246,11 +1268,10 @@ const createClientStorage =
           values,
         };
 
-        const { encryptionKey } = deps.ownerRowStore.getState();
+        const { encryptionKey } = deps.ownerRowRef.get();
+        const { tables } = deps.dbSchemaRef.get();
 
-        const encryptedDbChange = encryptDbChange(deps)(change, encryptionKey);
-
-        return encryptedDbChange;
+        return encodeAndEncryptDbChange(deps)(change, tables, encryptionKey);
       },
     };
 

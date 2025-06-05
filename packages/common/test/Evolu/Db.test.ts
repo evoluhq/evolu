@@ -11,8 +11,6 @@ import {
   getDbSnapshot,
   maybeMigrateToVersion0,
 } from "../../src/Evolu/Db.js";
-import { ColumnName, TableName } from "../../src/Evolu/Protocol.js";
-import { defaultColumnsNames } from "../../src/Evolu/Schema.js";
 import { constVoid } from "../../src/Function.js";
 import { wait } from "../../src/Promise.js";
 import { createRandomWithSeed } from "../../src/Random.js";
@@ -204,9 +202,9 @@ test("createDbWorker", async () => {
     changes: [
       {
         id: testCreateId(),
-        table: "_table1" as TableName,
+        table: "_table1",
         values: {
-          ["column1" as ColumnName]: "bar",
+          column1: "bar",
         },
       },
     ],
@@ -217,16 +215,12 @@ test("createDbWorker", async () => {
   const testDbSchema: DbSchema = {
     tables: [
       {
-        name: "_table1" as TableName,
-        columns: ["id" as ColumnName, "column1" as ColumnName].concat(
-          defaultColumnsNames,
-        ),
+        name: "_table1",
+        columns: ["id", "column1"],
       },
       {
-        name: "table1" as TableName,
-        columns: ["id" as ColumnName, "column1" as ColumnName].concat(
-          defaultColumnsNames,
-        ),
+        name: "table1",
+        columns: ["id", "column1"],
       },
     ],
     indexes: [],
@@ -239,9 +233,9 @@ test("createDbWorker", async () => {
     initialData: [
       {
         id: testCreateId(),
-        table: "table1" as TableName,
+        table: "table1",
         values: {
-          ["column1" as ColumnName]: "foo",
+          column1: "foo",
         },
       },
     ],
@@ -253,9 +247,9 @@ test("createDbWorker", async () => {
     changes: [
       {
         id: testCreateId(),
-        table: "_table1" as TableName,
+        table: "_table1",
         values: {
-          ["isDeleted" as ColumnName]: 1,
+          isDeleted: 1,
         },
       },
     ],
@@ -269,9 +263,9 @@ test("createDbWorker", async () => {
     changes: [
       {
         id: testCreateId(),
-        table: "Table1" as TableName,
+        table: "table1",
         values: {
-          ["column1" as ColumnName]: "foo",
+          column1: "foo",
         },
       },
     ],
@@ -292,17 +286,4 @@ test("createDbWorker", async () => {
   expect(onMessageMessagesAndDbSnapshots).toMatchSnapshot(
     "onMessageMessagesAndDbSnapshots",
   );
-
-  // TODO:
-  // db.ensureDbSchema({ tables: [], indexes: [] });
-  // getDatabaseSnapshot.toMatchSnapshot(
-  //   "ensureDbSchema doesn't remove tables nor app indexes",
-  // );
-  // const indexes = createIndexes((create) => [
-  //   create("indexTodoCreatedAt").on("todo").column("createdAt"),
-  // ]);
-  // db.ensureDbSchema({ tables: [], indexes })
-  // getDatabaseSnapshot.toMatchSnapshot(
-  //   "ensureDbSchema adds user indexes",
-  // );
 });
