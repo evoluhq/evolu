@@ -8,7 +8,7 @@ export interface NavGroup {
 
 export const navigation: Array<NavGroup> = [
   {
-    title: "Getting Started",
+    title: "Getting started",
     links: [{ title: "Quickstart", href: "/docs/quickstart" }],
   },
   {
@@ -16,14 +16,15 @@ export const navigation: Array<NavGroup> = [
     links: [
       { title: "Result", href: "/docs/api-reference/common/Result" },
       { title: "Type", href: "/docs/api-reference/common/Type" },
-      { title: "Dependency Injection", href: "/docs/dependency-injection" },
+      { title: "Dependency injection", href: "/docs/dependency-injection" },
       { title: "Conventions", href: "/docs/conventions" },
     ],
   },
   {
-    title: "Local-First",
+    title: "Local-first",
     links: [
-      { title: "How It Works", href: "/docs/how-evolu-works" },
+      { title: "How it works", href: "/docs/how-evolu-works" },
+      { title: "Privacy", href: "/docs/privacy" },
       { title: "Indexes", href: "/docs/indexes" },
       { title: "Migrations", href: "/docs/migrations" },
       { title: "Patterns", href: "/docs/patterns" },
@@ -34,7 +35,7 @@ export const navigation: Array<NavGroup> = [
   {
     title: "Other",
     links: [
-      { title: "API Reference", href: "/docs/api-reference" },
+      { title: "API reference", href: "/docs/api-reference" },
       { title: "Comparison", href: "/docs/comparison" },
       { title: "Showcase", href: "/docs/showcase" },
       { title: "FAQ", href: "/docs/faq" },
