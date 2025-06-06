@@ -5,6 +5,7 @@
   "keywords": [],
   "license": "MIT",
   "main": ".vite/build/main.js",
+  "private": true,
   "scripts": {
     "build": "electron-forge make",
     "clean": "shx rm -rf node_modules .vite out",
