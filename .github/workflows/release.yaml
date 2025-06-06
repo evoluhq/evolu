@@ -5,6 +5,11 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+  pull-requests: write
+  packages: write
+
 jobs:
   release:
     # prevents this action from running on forks
