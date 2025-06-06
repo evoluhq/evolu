@@ -1,0 +1,2 @@
+# This directory is used for persistent SQLite database storage in production deployments
+# The .gitkeep file ensures this directory exists in git while ignoring its contents 

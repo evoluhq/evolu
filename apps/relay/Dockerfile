@@ -1,138 +1,75 @@
-FROM node:20-alpine AS builder
+# Use Node.js 22 Alpine for smaller base image
+FROM node:22-alpine AS base
 
-RUN mkdir -p /home/node/app
+# Install pnpm globally
+RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
 
-ENV NPM_CONFIG_PREFIX=/home/node/.npm-global
+# Set working directory
+WORKDIR /app
 
-ENV PATH=$PATH:/home/node/.npm-global/bin 
+# Copy dependency files
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY .npmrc ./
+COPY turbo.json ./
+COPY README.md ./
 
-WORKDIR /home/node/app
+# Copy source code
+COPY packages/ ./packages/
+COPY apps/relay/ ./apps/relay/
 
-RUN npm i -g pnpm
+# Install all dependencies (including dev dependencies for building)
+RUN pnpm install --frozen-lockfile --filter @evolu/relay...
 
-RUN ls -l /home/node/.npm-global
+# Build stage
+FROM base AS builder
 
-COPY . /home/node/app/
+# Build packages in dependency order
+RUN cd packages/common && pnpm run build
+RUN cd packages/nodejs && pnpm run build 
+RUN cd apps/relay && pnpm run build
 
-RUN ls -l /home/node/app/
+# Production stage - optimized for size
+FROM node:22-alpine AS production
 
-RUN pnpm i --shamefully-hoist
+# Create non-root user first
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S evolu -u 1001 -G nodejs
 
-RUN pnpm build
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
 
-RUN rm -rf /home/node/app/apps/server/.dockerignore
+# Set working directory and create with proper ownership
+WORKDIR /app
+RUN chown evolu:nodejs /app
 
-RUN ls /home/node/app/node_modules/
+# Switch to non-root user early
+USER evolu
 
-#MANUALLY LINK PACKAGES TO REDUCE THE DOCKER IMAGE SIZE
-RUN mkdir /home/node/app/packages/server/node_modules/effect/
-RUN mkdir /home/node/app/packages/common/node_modules/effect/
-RUN mkdir /home/node/app/packages/common/node_modules/@effect/
-RUN cp -r /home/node/app/node_modules/effect/* /home/node/app/packages/server/node_modules/effect/
-RUN cp -r /home/node/app/node_modules/effect/* /home/node/app/packages/common/node_modules/effect/
-RUN cp -r /home/node/app/node_modules/@effect/* /home/node/app/packages/common/node_modules/@effect/
+# Copy only necessary files for production install
+COPY --chown=evolu:nodejs package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY --chown=evolu:nodejs .npmrc ./
+COPY --chown=evolu:nodejs turbo.json ./
 
-RUN mkdir /home/node/app/packages/common/node_modules/@noble/
-RUN mv /home/node/app/node_modules/@noble/* /home/node/app/packages/common/node_modules/@noble/
+# Copy built packages and relay app (include built assets and package.json)
+COPY --from=builder --chown=evolu:nodejs /app/packages/ ./packages/
+COPY --from=builder --chown=evolu:nodejs /app/apps/relay/ ./apps/relay/
 
-RUN mkdir /home/node/app/packages/common/node_modules/@scure/
-RUN mv /home/node/app/node_modules/@scure/* /home/node/app/packages/common/node_modules/@scure/
+# Install only production dependencies
+RUN pnpm install --frozen-lockfile --filter @evolu/relay... --production
 
-RUN mkdir /home/node/app/packages/common/node_modules/fast-check/
-RUN mv /home/node/app/node_modules/fast-check/* /home/node/app/packages/common/node_modules/fast-check/
+# Clean up pnpm cache and temporary files
+RUN pnpm store prune && \
+    rm -rf ~/.pnpm-store
 
-RUN mkdir /home/node/app/packages/common/node_modules/find-my-way-ts/
-RUN mv /home/node/app/node_modules/find-my-way-ts/* /home/node/app/packages/common/node_modules/find-my-way-ts/
+# Set working directory to relay app
+WORKDIR /app/apps/relay
 
-RUN mkdir /home/node/app/packages/common/node_modules/path-browserify/
-RUN mv /home/node/app/node_modules/path-browserify/* /home/node/app/packages/common/node_modules/path-browserify/
+# Expose port
+EXPOSE 4000
 
-RUN mkdir /home/node/app/packages/common/node_modules/multipasta/
-RUN mv /home/node/app/node_modules/multipasta/* /home/node/app/packages/common/node_modules/multipasta/
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:4000 || exit 1
 
-RUN mkdir /home/node/app/packages/common/node_modules/pure-rand/
-RUN mv /home/node/app/node_modules/pure-rand/* /home/node/app/packages/common/node_modules/pure-rand/
-
-RUN mkdir /home/node/app/packages/common/node_modules/fast-querystring/
-RUN mv /home/node/app/node_modules/fast-querystring/* /home/node/app/packages/common/node_modules/fast-querystring/
-
-RUN mkdir /home/node/app/packages/common/node_modules/fast-decode-uri-component/
-RUN mv /home/node/app/node_modules/fast-decode-uri-component/* /home/node/app/packages/common/node_modules/fast-decode-uri-component/
-RUN mkdir /home/node/app/packages/server/node_modules/kysely/
-RUN mkdir /home/node/app/packages/common/node_modules/kysely/
-RUN cp -r /home/node/app/node_modules/kysely/* /home/node/app/packages/server/node_modules/kysely/
-RUN cp -r /home/node/app/node_modules/kysely/* /home/node/app/packages/common/node_modules/kysely/
-
-RUN mkdir /home/node/app/packages/server/node_modules/better-sqlite3/
-RUN mv /home/node/app/node_modules/better-sqlite3/* /home/node/app/packages/server/node_modules/better-sqlite3/
-
-RUN mkdir /home/node/app/packages/server/node_modules/express/
-RUN mv /home/node/app/node_modules/express/* /home/node/app/packages/server/node_modules/express/
-
-RUN mkdir /home/node/app/packages/server/node_modules/body-parser/
-RUN mv /home/node/app/node_modules/body-parser/* /home/node/app/packages/server/node_modules/body-parser/
-
-RUN mkdir /home/node/app/packages/server/node_modules/depd/
-RUN mv /home/node/app/node_modules/depd/* /home/node/app/packages/server/node_modules/depd/
-
-RUN mkdir /home/node/app/packages/server/node_modules/vary/
-RUN mv /home/node/app/node_modules/vary/* /home/node/app/packages/server/node_modules/vary/
-
-RUN mkdir /home/node/app/packages/server/node_modules/cors/
-RUN mv /home/node/app/node_modules/cors/* /home/node/app/packages/server/node_modules/cors/
-
-RUN mkdir /home/node/app/packages/server/node_modules/ws/
-RUN mv /home/node/app/node_modules/ws/* /home/node/app/packages/server/node_modules/ws/
-
-RUN mkdir /home/node/app/packages/server/node_modules/object-assign/
-RUN mv /home/node/app/node_modules/object-assign/* /home/node/app/packages/server/node_modules/object-assign/
-
-RUN mkdir /home/node/app/packages/server/node_modules/bindings/
-RUN mv /home/node/app/node_modules/bindings/* /home/node/app/packages/server/node_modules/bindings/
-
-RUN mkdir /home/node/app/packages/server/node_modules/prebuild-install/
-RUN mv /home/node/app/node_modules/prebuild-install/* /home/node/app/packages/server/node_modules/prebuild-install/
-
-RUN mkdir /home/node/app/packages/server/node_modules/file-uri-to-path/
-RUN mv /home/node/app/node_modules/file-uri-to-path/* /home/node/app/packages/server/node_modules/file-uri-to-path/
-
-#EXPRESS LINKING FIX
-RUN npm i -g express
-
-RUN ls -l /home/node/.npm-global/lib/node_modules/
-
-RUN rm -rf /home/node/app/packages/server/node_modules/express
-
-RUN cp -r /home/node/.npm-global/lib/node_modules/express /home/node/app/packages/server/node_modules/
-
-WORKDIR /home/node/.npm-global/lib/node_modules/express
-
-RUN yarn
-
-WORKDIR /home/node/app
-
-RUN cp -r /home/node/.npm-global/lib/node_modules/express/node_modules/* /home/node/app/packages/server/node_modules/
-
-FROM node:20-alpine
-
-ENV PORT=4000
-
-COPY --from=builder /home/node/app/apps/server /home/node/app/apps/server
-
-COPY --from=builder /home/node/app/packages/server /home/node/app/packages/server
-
-COPY --from=builder /home/node/app/packages/common /home/node/app/packages/common
-
-RUN cd /home/node/app/apps/server
-
-WORKDIR /home/node/app/
-
-RUN ls -l /home/node/app/packages/server/node_modules
-
-RUN cat /home/node/app/apps/server/package.json
-
-WORKDIR /home/node/app/apps/server
-
-EXPOSE $PORT
-
-CMD [ "npm", "start" ]
+# Start the application
+CMD ["pnpm", "start"] 
