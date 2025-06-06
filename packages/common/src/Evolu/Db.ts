@@ -51,6 +51,7 @@ import {
 } from "./Owner.js";
 import {
   applyProtocolMessageAsClient,
+  Base64Url256,
   BinaryId,
   binaryIdToId,
   CrdtMessage,
@@ -61,7 +62,6 @@ import {
   encodeAndEncryptDbChange,
   idToBinaryId,
   ownerIdToBinaryOwnerId,
-  DbTables,
   ProtocolError,
   protocolVersion,
   Storage,
@@ -96,13 +96,14 @@ import {
   timestampToTimestampString,
 } from "./Timestamp.js";
 
-/**
- * DbSchema defines the structure of the database: an ordered array of tables
- * (with ordered columns) and an array of indexes.
- */
 export interface DbSchema {
-  readonly tables: DbTables;
+  readonly tables: ReadonlyArray<DbTable>;
   readonly indexes: ReadonlyArray<DbIndex>;
+}
+
+export interface DbTable {
+  readonly name: Base64Url256;
+  readonly columns: ReadonlyArray<Base64Url256>;
 }
 
 export const DbIndex = object({ name: String, sql: String });
@@ -208,8 +209,7 @@ type DbWorkerDeps = Omit<
   PostMessageDep &
   OwnerRowRefDep &
   GetQueryRowsCacheDep &
-  ClientStorageDep &
-  DbSchemaRef;
+  ClientStorageDep;
 
 type PostMessageDep = WorkerPostMessageDep<DbWorkerOutput>;
 
@@ -220,10 +220,6 @@ export interface OwnerRowRefDep {
 
 interface GetQueryRowsCacheDep {
   readonly getQueryRowsCache: (tabId: Id) => QueryRowsCache;
-}
-
-interface DbSchemaRef {
-  dbSchemaRef: Ref<DbSchema>;
 }
 
 export const createDbWorkerForPlatform = (
@@ -291,7 +287,6 @@ export const createDbWorkerForPlatform = (
           symmetricCrypto: createSymmetricCrypto(platformDeps),
           getQueryRowsCache,
           ownerRowRef: createRef(ownerRow),
-          dbSchemaRef: createRef(initMessage.dbSchema),
         };
 
         const storage = createClientStorage(depsWithoutSyncAndStorage)({
@@ -352,7 +347,10 @@ export const createDbWorkerForPlatform = (
             }
 
             for (const change of localOnlyChanges) {
-              if (change.values.isDeleted === 1) {
+              if (
+                "isDeleted" in change.values &&
+                change.values.isDeleted === 1
+              ) {
                 const result = deps.sqlite.exec(sql`
                   delete from ${sql.identifier(change.table)}
                   where id = ${change.id};
@@ -427,7 +425,6 @@ export const createDbWorkerForPlatform = (
             const protocolMessage = createProtocolMessageFromCrdtMessages(deps)(
               owner as OwnerWithWriteAccess,
               messages.value,
-              deps.dbSchemaRef.get().tables,
             );
 
             deps.console.log(
@@ -515,8 +512,6 @@ export const createDbWorkerForPlatform = (
             );
             if (!ensureDbSchemaResult.ok) return ensureDbSchemaResult;
 
-            deps.dbSchemaRef.set(message.dbSchema);
-
             return ok();
           });
 
@@ -550,14 +545,18 @@ export const createDbWorkerForPlatform = (
   });
 };
 
-// TODO: Refactor out Evolu stuff and move it to Sqlite.
+/**
+ * Get the current database schema by reading SQLite metadata.
+ *
+ * TODO: Refactor out Evolu stuff and move it to Sqlite.
+ */
 export const getDbSchema =
   (deps: SqliteDep) =>
   ({ allIndexes = false }: { allIndexes?: boolean } = {}): Result<
     DbSchema,
     SqliteError
   > => {
-    const map = new Map<string, Array<string>>();
+    const map = new Map<Base64Url256, Array<Base64Url256>>();
 
     const tableAndColumnInfoRows = deps.sqlite.exec(sql`
       select
@@ -572,8 +571,8 @@ export const getDbSchema =
 
     tableAndColumnInfoRows.value.rows.forEach((row) => {
       const { tableName, columnName } = row as unknown as {
-        tableName: string;
-        columnName: string;
+        tableName: Base64Url256;
+        columnName: Base64Url256;
       };
       if (!map.has(tableName)) map.set(tableName, []);
       map.get(tableName)?.push(columnName);
@@ -723,8 +722,8 @@ export const createAppTable = (
     create table ${sql.identifier(tableName).sql} (
       "id" text primary key,
       ${columns
-        // "createdAt" and "updatedAt" are default columns
-        .concat(["createdAt", "updatedAt"])
+        // Add default columns.
+        .concat(["createdAt", "updatedAt", "isDeleted"])
         .filter((c) => c !== "id")
         // "A column with affinity BLOB does not prefer one storage class over another
         // and no attempt is made to coerce data from one storage class into another."
@@ -783,7 +782,7 @@ const initializeDb =
       `,
 
       sql`
-        insert into evolu_config (key, value)
+        insert into evolu_config ("key", "value")
         values ('protocolVersion', ${protocolVersion});
       `,
 
@@ -1063,9 +1062,9 @@ export const maybeMigrateToVersion0 =
 
     const messagesRows = deps.sqlite.exec<{
       timestamp: TimestampString;
-      table: string;
+      table: Base64Url256;
       row: Id;
-      column: string;
+      column: Base64Url256;
       value: SqliteValue;
     }>(sql`
       select "timestamp", "table", "row", "column", "value" from evolu_message;
@@ -1165,8 +1164,7 @@ const createClientStorage =
       OwnerRowRefDep &
       RandomDep &
       TimeDep &
-      TimestampConfigDep &
-      DbSchemaRef,
+      TimestampConfigDep,
   ) =>
   (
     options: CreateSqliteStorageBaseOptions,
@@ -1187,7 +1185,6 @@ const createClientStorage =
         for (const message of messages) {
           const dbChange = decryptAndDecodeDbChange(deps)(
             message.change,
-            deps.dbSchemaRef.get().tables,
             owner.encryptionKey,
           );
 
@@ -1236,9 +1233,9 @@ const createClientStorage =
 
       readDbChange: (_ownerId, timestamp) => {
         const result = deps.sqlite.exec<{
-          table: string;
+          table: Base64Url256;
           row: BinaryId;
-          column: string;
+          column: Base64Url256;
           value: SqliteValue;
         }>(sql`
           select "table", "row", "column", "value"
@@ -1269,9 +1266,8 @@ const createClientStorage =
         };
 
         const { encryptionKey } = deps.ownerRowRef.get();
-        const { tables } = deps.dbSchemaRef.get();
 
-        return encodeAndEncryptDbChange(deps)(change, tables, encryptionKey);
+        return encodeAndEncryptDbChange(deps)(change, encryptionKey);
       },
     };
 

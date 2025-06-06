@@ -11,6 +11,7 @@ import {
   getDbSnapshot,
   maybeMigrateToVersion0,
 } from "../../src/Evolu/Db.js";
+import { Base64Url256 } from "../../src/Evolu/Protocol.js";
 import { constVoid } from "../../src/Function.js";
 import { wait } from "../../src/Promise.js";
 import { createRandomWithSeed } from "../../src/Random.js";
@@ -202,9 +203,9 @@ test("createDbWorker", async () => {
     changes: [
       {
         id: testCreateId(),
-        table: "_table1",
+        table: "_table1" as Base64Url256,
         values: {
-          column1: "bar",
+          ["column1" as Base64Url256]: "bar",
         },
       },
     ],
@@ -215,12 +216,12 @@ test("createDbWorker", async () => {
   const testDbSchema: DbSchema = {
     tables: [
       {
-        name: "_table1",
-        columns: ["id", "column1"],
+        name: "_table1" as Base64Url256,
+        columns: ["id" as Base64Url256, "column1" as Base64Url256],
       },
       {
-        name: "table1",
-        columns: ["id", "column1"],
+        name: "table1" as Base64Url256,
+        columns: ["id" as Base64Url256, "column1" as Base64Url256],
       },
     ],
     indexes: [],
@@ -233,9 +234,9 @@ test("createDbWorker", async () => {
     initialData: [
       {
         id: testCreateId(),
-        table: "table1",
+        table: "table1" as Base64Url256,
         values: {
-          column1: "foo",
+          ["column1" as Base64Url256]: "foo",
         },
       },
     ],
@@ -247,9 +248,9 @@ test("createDbWorker", async () => {
     changes: [
       {
         id: testCreateId(),
-        table: "_table1",
+        table: "_table1" as Base64Url256,
         values: {
-          isDeleted: 1,
+          ["isDeleted" as Base64Url256]: 1,
         },
       },
     ],
@@ -263,9 +264,9 @@ test("createDbWorker", async () => {
     changes: [
       {
         id: testCreateId(),
-        table: "table1",
+        table: "table1" as Base64Url256,
         values: {
-          column1: "foo",
+          ["column1" as Base64Url256]: "foo",
         },
       },
     ],

@@ -24,16 +24,19 @@ import {
   optional,
   OptionalType,
   record,
-  String,
   Type,
   TypeError,
   Unknown,
 } from "../Type.js";
 import { Simplify } from "../Types.js";
-import { DbSchema } from "./Db.js";
+import { DbSchema, DbTable } from "./Db.js";
 import { createIndexes, DbIndexesBuilder } from "./Kysely.js";
 import { AppOwner, ShardOwner, SharedOwner } from "./Owner.js";
-import { BinaryId, maxProtocolMessageRangesSize, DbTable } from "./Protocol.js";
+import {
+  Base64Url256,
+  BinaryId,
+  maxProtocolMessageRangesSize,
+} from "./Protocol.js";
 import { Query, Row } from "./Query.js";
 import { BinaryTimestamp } from "./Timestamp.js";
 
@@ -132,7 +135,10 @@ const isDefaultColumnName = (value: string): boolean =>
  */
 export const ValidEvoluSchema = brand(
   "ValidEvoluSchema",
-  record(String, object({ id: EvoluType }, record(String, Unknown))),
+  record(
+    Base64Url256,
+    object({ id: EvoluType }, record(Base64Url256, Unknown)),
+  ),
   (value) => {
     for (const tableName in value) {
       for (const columnName in value[tableName as never]) {
@@ -183,7 +189,7 @@ const formatValidEvoluSchemaError = (
 ): string => {
   if (error.type === "Record") {
     if (error.reason.kind === "Key") {
-      return `The table "${error.reason.key}" has invalid name. A table name must be string.`;
+      return `The table "${error.reason.key}" has invalid name. A table name must be Base64Url256 string (A-Z, a-z, 0-9, -, _).`;
     }
 
     if (
@@ -198,8 +204,12 @@ const formatValidEvoluSchemaError = (
       error.reason.kind === "Value" &&
       error.reason.error.reason.kind === "IndexKey"
     ) {
-      return `The table "${error.reason.key}" has invalid column name. A column name must be string.`;
+      return `The table "${error.reason.key}" has invalid column name "${error.reason.error.reason.key}". A column name must be Base64Url256 string (A-Z, a-z, 0-9, -, _).`;
     }
+  }
+
+  if (error.type === "ValidEvoluSchema") {
+    return `The table "${error.reason.tableName}" uses reserved column name "${error.reason.columnName}". Reserved column names are: createdAt, updatedAt, isDeleted.`;
   }
 
   return JSON.stringify(error, null, 2);
@@ -212,8 +222,9 @@ export const validEvoluSchemaToDbSchema = (
   const tables = objectToEntries(validEvoluSchema).map(
     ([tableName, table]): DbTable => ({
       name: tableName,
-      // Every table has the "isDeleted" column by default for soft deletes.
-      columns: ["isDeleted", ...Object.keys(table)],
+      columns: objectToEntries(table)
+        .filter(([k]) => k !== "id")
+        .map(([k]) => k as Base64Url256),
     }),
   );
   return {

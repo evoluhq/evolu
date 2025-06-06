@@ -7,13 +7,13 @@ export const sections = [];
 
 # Privacy
 
-Privacy is fundamental to local-first software, and Evolu takes it seriously. Unlike traditional client-server applications where your data lives on someone else's servers, Evolu ensures that your data remains under your complete control while providing the synchronization and backup benefits you need.
+Privacy is fundamental to local-first software, and Evolu takes it seriously. Unlike traditional client-server applications where data lives on someone else's servers, Evolu ensures that data remains under complete control while providing the synchronization and backup benefits needed.
 
 ## End-to-end encryption by default
 
 **Everything in Evolu is encrypted end-to-end.** This means:
 
-- Data is encrypted on your device before it ever leaves
+- Data is encrypted on the device before it ever leaves
 - The Evolu Relay receives only encrypted binary data
 - Only devices with the correct encryption keys can decrypt the data
 - Even if someone intercepts the data in transit or gains access to the relay, they see only meaningless encrypted bytes
@@ -31,28 +31,11 @@ This eliminates an entire class of privacy breaches that occur when developers a
 
 ## Traffic analysis protection
 
-To prevent traffic analysis attacks, Evolu uses two complementary techniques:
-
-### Message padding (PADMÉ)
-
-Evolu implements **[PADMÉ](https://lbarman.ch/blog/padme/) (padding binary messages)** to obscure message patterns:
-
-- Binary messages are padded to hide their actual size
-- This prevents attackers from inferring information based on message sizes
-- Even patterns in data synchronization become harder to analyze
-- The padding adds an extra layer of privacy protection beyond encryption
-
-### Schema-free messages
-
-Evolu **doesn't encode table and column names** in its messages—primarily to keep message sizes as small as possible. This size optimization also provides privacy benefits.
-
-Together, these techniques make it extremely difficult for anyone monitoring network traffic to extract meaningful information about your data structure, content patterns, or usage behaviors.
+To prevent traffic analysis attacks, Evolu uses **message padding (PADMÉ)**—a [technique](https://lbarman.ch/blog/padme/) that pads binary messages to obscure their actual size. Combined with end-to-end encryption, this ensures that traffic analysis cannot reveal information about data or usage patterns.
 
 ## Relay blindness by design
 
-The **Evolu Relay is completely blind** to your meaningful data. Here's exactly what it can and cannot see:
-
-**What the relay sees:**
+The **Evolu Relay is completely blind** to users data. What the relay sees:
 
 - **OwnerId**: A unique identifier for the data owner (but not who that owner is)
 - **Timestamps**: When changes occurred (for synchronization ordering)
@@ -61,13 +44,9 @@ The **Evolu Relay is completely blind** to your meaningful data. Here's exactly 
 
 The relay functions purely as a message buffer for synchronization and backup—it stores and forwards encrypted messages without any ability to decrypt, analyze, or understand them.
 
-## Relay replaceability ensures no lock-in
-
-Because the relay is blind and generic:
+Because the relay is blind:
 
 - **Any relay can be replaced with another** without losing functionality
-- You can run your own relay if desired
+- **Self-hosting is possible** if desired
 - The relay cannot become a single point of failure for privacy
 - There's no vendor lock-in or dependency on a specific service
-
-This replaceability is crucial for long-term privacy guarantees—you're never dependent on a single provider who might change their privacy policies.

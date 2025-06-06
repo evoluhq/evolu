@@ -272,21 +272,9 @@ export interface CrdtMessage {
  * {@link Timestamp}, it forms a {@link CrdtMessage}.
  */
 export interface DbChange {
-  readonly table: string;
+  readonly table: Base64Url256;
   readonly id: Id;
-  readonly values: ReadonlyRecord<string, SqliteValue>;
-}
-
-/**
- * An array of tables with a fixed order. Each table has a fixed order of
- * columns. Used for mapping table and column names to numeric indexes in
- * protocol message encoding.
- */
-export type DbTables = ReadonlyArray<DbTable>;
-
-export interface DbTable {
-  readonly name: string;
-  readonly columns: ReadonlyArray<string>;
+  readonly values: ReadonlyRecord<Base64Url256, SqliteValue>;
 }
 
 export const RangeType = {
@@ -403,7 +391,6 @@ export const createProtocolMessageFromCrdtMessages =
   (
     owner: OwnerWithWriteAccess,
     messages: NonEmptyReadonlyArray<CrdtMessage>,
-    schema: DbTables,
     maxSize?: PositiveInt,
   ): ProtocolMessage => {
     const buffer = createProtocolMessageBuffer(owner.id, {
@@ -416,7 +403,6 @@ export const createProtocolMessageFromCrdtMessages =
     for (const message of messages) {
       const change = encodeAndEncryptDbChange(deps)(
         message.change,
-        schema,
         owner.encryptionKey,
       );
       const encryptedCrdtMessage = { timestamp: message.timestamp, change };
@@ -1536,40 +1522,27 @@ export const binaryTimestampToFingerprint = (
 
 /**
  * Encodes and encrypts a {@link DbChange} using the provided owner's encryption
- * key and {@link DbTables}. Table and column names are replaced with their
- * numeric indexes based on the order in the schema, resulting in a compact
- * binary representation. Returns an encrypted binary representation as
- * {@link EncryptedDbChange}.
+ * key. Returns an encrypted binary representation as {@link EncryptedDbChange}.
  */
 export const encodeAndEncryptDbChange =
   (deps: SymmetricCryptoDep) =>
-  (
-    change: DbChange,
-    schema: DbTables,
-    key: EncryptionKey,
-  ): EncryptedDbChange => {
+  (change: DbChange, key: EncryptionKey): EncryptedDbChange => {
     const buffer = createBuffer();
 
-    const tableIndex = schema.findIndex((t) => t.name === change.table);
-    assert(tableIndex !== -1, `Table "${change.table}" not found in schema`);
-    encodeNonNegativeInt(buffer, tableIndex as NonNegativeInt);
+    encodeBase64Url256(buffer, change.table);
 
     buffer.extend(idToBinaryId(change.id));
 
-    const table = schema[tableIndex];
-    const entries = objectToEntries(change.values).map(([col, value]) => {
-      const colIndex = table.columns.findIndex((c) => c === col);
-      assert(
-        colIndex !== -1,
-        `Column "${col}" not found in table "${table.name}"`,
-      );
-      return [colIndex, value] as [NonNegativeInt, SqliteValue];
-    });
+    const entries = objectToEntries(change.values).map(
+      ([column, value]): [Base64Url256, SqliteValue] => {
+        return [column, value];
+      },
+    );
 
     encodeLength(buffer, entries);
 
-    for (const [colIndex, value] of entries) {
-      encodeNonNegativeInt(buffer, colIndex);
+    for (const [column, value] of entries) {
+      encodeBase64Url256(buffer, column);
       encodeSqliteValue(buffer, value);
     }
 
@@ -1595,14 +1568,12 @@ export const encodeAndEncryptDbChange =
 
 /**
  * Decrypts and decodes an {@link EncryptedDbChange} using the provided owner's
- * encryption key and the provided {@link DbTables}. Table and column names are
- * decoded from their numeric indexes.
+ * encryption key.
  */
 export const decryptAndDecodeDbChange =
   (deps: SymmetricCryptoDep) =>
   (
     change: EncryptedDbChange,
-    schema: DbTables,
     key: EncryptionKey,
   ): Result<DbChange, SymmetricCryptoDecryptError | ProtocolInvalidDataError> =>
     tryDecodeProtocolData<DbChange, SymmetricCryptoDecryptError>(
@@ -1624,30 +1595,19 @@ export const decryptAndDecodeDbChange =
         buffer.reset();
         buffer.extend(plaintextBytes.value.slice(0, originalLength));
 
-        const tableIndex = decodeNonNegativeInt(buffer);
-        if (tableIndex >= schema.length) {
-          throw new ProtocolDecodeError(`Invalid table index: ${tableIndex}`);
-        }
-        const table = schema[tableIndex];
-
+        const table = decodeBase64Url256WithLength(buffer);
         const id = decodeId(buffer);
 
         const length = decodeLength(buffer);
         const values = Object.create(null) as Record<string, SqliteValue>;
 
         for (let i = 0; i < length; i++) {
-          const colIndex = decodeNonNegativeInt(buffer);
-          if (colIndex >= table.columns.length) {
-            throw new ProtocolDecodeError(
-              `Invalid column index: ${colIndex} for table "${table.name}"`,
-            );
-          }
-          const columnName = table.columns[colIndex];
-          const dbValue = decodeSqliteValue(buffer);
-          values[columnName] = dbValue;
+          const column = decodeBase64Url256WithLength(buffer);
+          const value = decodeSqliteValue(buffer);
+          values[column] = value;
         }
 
-        const dbChange = { table: table.name, id, values };
+        const dbChange = { table, id, values };
 
         return ok(dbChange);
       },
