@@ -1,8 +1,8 @@
 # Use Node.js 22 Alpine for smaller base image
 FROM node:22-alpine AS base
 
-# Install pnpm globally
-RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
+# Install pnpm globally using packageManager field from package.json
+RUN corepack enable
 
 # Set working directory
 WORKDIR /app
@@ -13,12 +13,15 @@ COPY .npmrc ./
 COPY turbo.json ./
 COPY README.md ./
 
+# Prepare pnpm using the exact version from packageManager field
+RUN corepack install
+
 # Copy source code
 COPY packages/ ./packages/
 COPY apps/relay/ ./apps/relay/
 
 # Install all dependencies (including dev dependencies for building)
-RUN pnpm install --frozen-lockfile --filter @evolu/relay...
+RUN pnpm install --no-frozen-lockfile --filter @evolu/relay...
 
 # Build stage
 FROM base AS builder
@@ -35,8 +38,8 @@ FROM node:22-alpine AS production
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S evolu -u 1001 -G nodejs
 
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
+# Install pnpm using packageManager field from package.json
+RUN corepack enable
 
 # Set working directory and create with proper ownership
 WORKDIR /app
@@ -50,12 +53,15 @@ COPY --chown=evolu:nodejs package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY --chown=evolu:nodejs .npmrc ./
 COPY --chown=evolu:nodejs turbo.json ./
 
+# Prepare pnpm using the exact version from packageManager field
+RUN corepack install
+
 # Copy built packages and relay app (include built assets and package.json)
 COPY --from=builder --chown=evolu:nodejs /app/packages/ ./packages/
 COPY --from=builder --chown=evolu:nodejs /app/apps/relay/ ./apps/relay/
 
-# Install only production dependencies
-RUN pnpm install --frozen-lockfile --filter @evolu/relay... --production
+# Install all dependencies (runtime dependencies are in devDependencies for packages)
+RUN pnpm install --no-frozen-lockfile --filter @evolu/relay...
 
 # Clean up pnpm cache and temporary files
 RUN pnpm store prune && \
