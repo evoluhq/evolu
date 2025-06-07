@@ -33,9 +33,9 @@ services:
     #   targetCPUPercent: 70
     #   targetMemoryPercent: 80
 
-    # Note: change to your own domain
-    domains:
-      - free.evoluhq.com
+    # Note: for custom domains, change to your own
+    # domains:
+    #  - free.evoluhq.com
   
 # Note: enable for preview deploys
 # previews:
