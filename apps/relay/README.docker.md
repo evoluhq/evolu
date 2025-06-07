@@ -1,6 +1,6 @@
 # Evolu Relay - Docker Setup
 
-This directory contains the Docker configuration for the Evolu Relay application.
+Docker configuration for the Evolu Relay.
 
 ## 🚀 Quick Start for Developers
 
@@ -152,26 +152,3 @@ ps aux                           # Check running processes
 top                              # Monitor resource usage
 netstat -tlnp                    # Check port bindings
 ```
-
-## 🚀 Production Considerations
-
-### For Production Deployment
-
-Consider using **Kamal** for production deployment instead of Docker Compose. See [README.kamal.md](./README.kamal.md) for:
-
-- ✅ **Automatic server provisioning** (Docker installation, security, etc.)
-- ✅ **Zero-downtime deployments** with health checks
-- ✅ **Complete security hardening** (firewall, fail2ban)
-- ✅ **Production monitoring** and management tools
-- ✅ **Backup and rollback** capabilities
-
-### Quick Production Start
-
-```bash
-# Complete production deployment
-pnpm deploy:full
-```
-
----
-
-**Development Ready**: Your Evolu Relay Docker setup is complete! 🐳
