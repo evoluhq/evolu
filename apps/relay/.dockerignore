@@ -1,0 +1,15 @@
+node_modules
+.turbo
+dist
+*.log
+.env
+.env.local
+.DS_Store
+coverage
+.nyc_output
+*.db
+*.sqlite
+.git
+.gitignore
+README.md
+CHANGELOG.md 
