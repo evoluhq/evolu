@@ -14,3 +14,4 @@ public/dist
 storybook-static
 .direnv
 .eslintcache
+out
