@@ -1,12 +1,16 @@
 # Evolu Relay for https://render.com/
 services:
   - type: web
+    # Note: update to your plan
     plan: free
     name: evolu-relay
+    # Note: choose a region closest to clients
     region: virginia
     runtime: image
+    # Note: lock to a specific hash or use "latest"
     image:
       url: evoluhq/relay:latest
+    # Note: set to "commit" for no checks, "off" for manual deploys
     autoDeployTrigger: checksPass
     envVars:
       - key: PORT
@@ -16,13 +20,13 @@ services:
       - key: LOG_LEVEL
         value: info
 
-    # Note: requires paid plan
+    # Note: for persisting sqlite data (requires paid plan)
     # disk:
     #   name: evolu-relay-data
     #   mountPath: /app/apps/relay/data
     #   sizeGB: 10
 
-    # Note: enable for auto-scaling
+    # Note: for auto-scaling (requires paid plan)
     # scaling:
     #   minInstances: 1
     #   maxInstances: 3
@@ -33,7 +37,7 @@ services:
     domains:
       - free.evoluhq.com
   
-# Note: enable for preview environments
+# Note: enable for preview deploys
 # previews:
 #   generation: automatic
 #   expireAfterDays: 7
