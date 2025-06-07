@@ -33,7 +33,7 @@
     "@evolu/common": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^22.15.29",
+    "@types/node": "^22.15.30",
     "typescript": "^5.8.3",
     "vitest": "^3.2.2"
   },

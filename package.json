@@ -30,7 +30,7 @@
     "@eslint/js": "^9.28.0",
     "@types/inquirer": "^9.0.8",
     "eslint": "^9.28.0",
-    "eslint-import-resolver-typescript": "^4.4.2",
+    "eslint-import-resolver-typescript": "^4.4.3",
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-import-x": "^4.15.1",
     "eslint-plugin-jsdoc": "^50.7.1",
@@ -50,7 +50,7 @@
   "engines": {
     "node": ">=22.0.0"
   },
-  "packageManager": "pnpm@10.11.0",
+  "packageManager": "pnpm@10.11.1",
   "pnpm": {
     "onlyBuiltDependencies": [
       "better-sqlite3",
