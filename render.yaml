@@ -1,0 +1,39 @@
+# Evolu Relay for https://render.com/
+services:
+  - type: web
+    plan: free
+    name: evolu-relay
+    region: virginia
+    runtime: image
+    image:
+      url: evoluhq/relay:latest
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: PORT
+        value: 4000
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+
+    # Note: requires paid plan
+    # disk:
+    #   name: evolu-relay-data
+    #   mountPath: /app/apps/relay/data
+    #   sizeGB: 10
+
+    # Note: enable for auto-scaling
+    # scaling:
+    #   minInstances: 1
+    #   maxInstances: 3
+    #   targetCPUPercent: 70
+    #   targetMemoryPercent: 80
+
+    # TIP: change to your own domain
+    domains:
+      - free.evoluhq.com
+  
+# TIP: enable for preview environments
+# previews:
+#   generation: automatic
+#   expireAfterDays: 7
