@@ -12,3 +12,6 @@ db.sqlite
 package-lock.json
 evolu-relay-0.db
 
+# Persistent data directory contents (but keep the directory)
+data/*
+!data/.gitkeep
