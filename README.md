@@ -14,6 +14,18 @@ To chat with other community members, you can join the [Evolu Discord](https://d
 
 [![Twitter URL](https://img.shields.io/twitter/url/https/twitter.com/evoluhq.svg?style=social&label=Follow%20%40evoluhq)](https://twitter.com/evoluhq)
 
+## Hosting Evolu Relay
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2Fevoluhq%2Fevolu)
+
+We provide a free relay `free.evoluhq.com` for testing and personal usage.
+
+The Evolu Relay source along with the Docker files can be in the [/apps/relay](/apps/relay) directory.
+
+Alternatively, a pre-built image `evoluhq/relay:latest` is hosted on [Docker Hub](https://hub.docker.com/r/evoluhq/relay).
+
+For more information, reference the [Evolu Relay](https://www.evolu.dev/docs/evolu-relay) documentation.
+
 ## Developing
 
 Evolu monorepo uses [pnpm](https://pnpm.io).
