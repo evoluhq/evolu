@@ -29,11 +29,11 @@ services:
     #   targetCPUPercent: 70
     #   targetMemoryPercent: 80
 
-    # TIP: change to your own domain
+    # Note: change to your own domain
     domains:
       - free.evoluhq.com
   
-# TIP: enable for preview environments
+# Note: enable for preview environments
 # previews:
 #   generation: automatic
 #   expireAfterDays: 7
