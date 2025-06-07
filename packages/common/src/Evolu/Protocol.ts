@@ -114,7 +114,7 @@ import {
 import {
   CreateRandomBytesDep,
   EncryptionKey,
-  padmePaddedLength,
+  padmePaddingLength,
   SymmetricCryptoDecryptError,
   SymmetricCryptoDep,
 } from "../Crypto.js";
@@ -1546,20 +1546,17 @@ export const encodeAndEncryptDbChange =
       encodeSqliteValue(buffer, value);
     }
 
-    const plaintext = buffer.unwrap();
-    const paddedLength = padmePaddedLength(plaintext.length as NonNegativeInt);
-
-    const paddedPlaintext = new Uint8Array(paddedLength);
-    paddedPlaintext.set(plaintext);
+    const paddingLength = padmePaddingLength(buffer.getLength());
+    // Add zero bytes as PADMÉ padding - these will be ignored during decoding.
+    buffer.extend(new Uint8Array(paddingLength));
 
     const { nonce, ciphertext } = deps.symmetricCrypto.encrypt(
-      paddedPlaintext,
+      buffer.unwrap(),
       key,
     );
 
     buffer.reset();
     buffer.extend(nonce);
-    encodeLength(buffer, plaintext);
     encodeLength(buffer, ciphertext);
     buffer.extend(ciphertext);
 
@@ -1581,7 +1578,6 @@ export const decryptAndDecodeDbChange =
       (buffer) => {
         const nonce = buffer.shiftN(deps.symmetricCrypto.nonceLength);
 
-        const originalLength = decodeLength(buffer);
         const ciphertextLength = decodeLength(buffer);
         const ciphertext = buffer.shiftN(ciphertextLength);
 
@@ -1593,7 +1589,7 @@ export const decryptAndDecodeDbChange =
         if (!plaintextBytes.ok) return plaintextBytes;
 
         buffer.reset();
-        buffer.extend(plaintextBytes.value.slice(0, originalLength));
+        buffer.extend(plaintextBytes.value);
 
         const table = decodeBase64Url256WithLength(buffer);
         const id = decodeId(buffer);

@@ -180,3 +180,12 @@ export const padmePaddedLength = (length: NonNegativeInt): NonNegativeInt => {
   const mask = (1 << z) - 1;
   return ((length + mask) & ~mask) as NonNegativeInt;
 };
+
+/**
+ * Returns the PADMÉ padding length for a given input length. Uses
+ * {@link padmePaddedLength}.
+ */
+
+export const padmePaddingLength = (length: NonNegativeInt): NonNegativeInt => {
+  return (padmePaddedLength(length) - length) as NonNegativeInt;
+};
