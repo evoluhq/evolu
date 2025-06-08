@@ -1,6 +1,7 @@
 import { expect, test, vi } from "vitest";
 import { createConsole } from "../../src/Console.js";
 import { createEvolu } from "../../src/Evolu/Evolu.js";
+import { getOrThrow } from "../../src/Result.js";
 import { SqliteBoolean } from "../../src/Sqlite.js";
 import {
   id,
@@ -11,7 +12,6 @@ import {
   SimpleName,
 } from "../../src/Type.js";
 import { testCreateId, testNanoIdLib, testTime } from "../_deps.js";
-import { getOrThrow } from "../../src/Result.js";
 
 const TodoId = id("Todo");
 type TodoId = InferType<typeof TodoId>;
@@ -76,7 +76,7 @@ test("init postMessage call", () => {
             "maxDrift": 300000,
             "name": "instance0",
             "reloadUrl": "/",
-            "syncUrl": "https://evolu.world",
+            "syncUrl": "https://free.evoluhq.com",
           },
           "dbSchema": {
             "indexes": [],
