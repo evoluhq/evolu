@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 6.0.1-preview.0
+
+### Patch Changes
+
+- 632768f: Preview release
+
 ## 6.0.0
 
 ### Major Changes
