@@ -1,6 +1,6 @@
 # @evolu/common
 
-## 6.0.0
+## 6.0.0-preview.0
 
 ### Major Changes
 
@@ -11,8 +11,7 @@
   - Message chunking and improved mutation API
   - Binary database change padding for enhanced privacy
   - Foundation for upcoming ephemeral messages, redacted deletion, and collaboration features
-
-- 3feda97: TODO: write more descriptive changelog.
+  - TODO: write more descriptive changelog.
 
 ## 5.4.0
 

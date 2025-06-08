@@ -9,14 +9,14 @@
     "@example/react-nextjs": "0.1.0",
     "@example/react-vite-pwa": "0.0.0",
     "@example/svelte-vite-pwa": "0.0.0",
-    "@evolu/common": "6.0.0",
-    "@evolu/nodejs": "1.0.0",
-    "@evolu/react": "9.0.0",
-    "@evolu/react-native": "13.0.0",
-    "@evolu/react-web": "1.0.0",
-    "@evolu/svelte": "1.0.0",
+    "@evolu/common": "5.4.8",
+    "@evolu/nodejs": "0.0.0",
+    "@evolu/react": "8.2.2",
+    "@evolu/react-native": "11.1.2",
+    "@evolu/react-web": "0.0.0",
+    "@evolu/svelte": "0.0.0",
     "@evolu/tsconfig": "0.0.2",
-    "@evolu/web": "1.0.0"
+    "@evolu/web": "0.0.0"
   },
   "changesets": []
 }
