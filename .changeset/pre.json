@@ -1,5 +1,5 @@
 {
-  "mode": "pre",
+  "mode": "exit",
   "tag": "preview",
   "initialVersions": {
     "@evolu/relay": "1.1.1",
