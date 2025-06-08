@@ -37,6 +37,7 @@ jobs:
           publish: pnpm exec changeset publish
           commit: "[ci] release"
           title: "[ci] release"
+          createGithubReleases: false # TODO: enable this later
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
