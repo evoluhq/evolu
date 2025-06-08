@@ -14,30 +14,16 @@ Evolu Relay is a simple message buffer and storage generic (the same) for all Ev
 Evolu Relay is open-sourced and anyone can easily run their own. The core logic is a SQL database and web framework agnostic, so it's highly portable.
 
 <Note>
-  We provide a free `evolu.world` relay built on the Cloudflare Workers and D1
-  database for testing and personal usage. Our super secret master plan on how
-  to make money on that is simple: We will sell hardware.
+  We provide a free `free.evoluhq.com` relay for testing and personal usage. Our
+  super secret master plan on how to make money on that is simple: We will sell
+  hardware.
 </Note>
 ---
 
-## Running the server
+## Hosting Evolu Relay
 
-Currently the easiest solution to run Evolu server would be to use the docker image:
+We provide a free relay `free.evoluhq.com` for testing and personal usage.
 
-1. Pull the docker image.
+The Evolu Relay source along with the Docker files can be in the [/apps/relay](https://github.com/evoluhq/evolu/tree/main/apps/relay) directory.
 
-```bash
-docker pull evoluhq/evolu:main
-```
-
-2. Create an empty sqlite file for mounting the database.
-
-```bash
-touch db.sqlite
-```
-
-3. startup the evolu server on `port` `4000` and `mount` database file on `./db.sqlite` that we created previously.
-
-```bash
-docker run --name evolu -p 4000:4000 -v $(pwd)/db.sqlite:/home/node/app/apps/server/db.sqlite -d evoluhq/evolu:main
-```
+Alternatively, a pre-built image `evoluhq/relay:latest` is hosted on [Docker Hub](https://hub.docker.com/r/evoluhq/relay).

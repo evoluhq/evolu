@@ -1,13 +1,15 @@
+import { IconBrandNpm } from "@tabler/icons-react";
+
 export const metadata = {
   title: "Quickstart",
   description: "This guide will get you all set up and ready to use Evolu.",
 };
 
-<Warn>
-  The new version of Evolu is now open-sourced but hasn’t been published to NPM
-  yet. If you're interested, feel free to ⭐️ star and 👀 watch the [GitHub
-  repo](https://github.com/evoluhq/evolu/) to be notified when it’s released.
-</Warn>
+<Announcement>
+  The new version of Evolu is now available on
+  <span className="font-black">npm</span> under the
+  <span className="font-black">preview</span> tag. 🎉
+</Announcement>
 
 # Quickstart
 
@@ -25,23 +27,23 @@ Evolu offers SDKs for a variety of frameworks, including React, Svelte, React Na
 <CodeGroup>
 
 ```bash {{ title: 'React' }}
-npm install @evolu/common @evolu/react @evolu/react-web
+npm install @evolu/common@preview @evolu/react@preview @evolu/react-web@preview
 ```
 
 ```bash {{ title: 'React Native' }}
-npm install @evolu/common @evolu/react @evolu/react-native @op-engineering/op-sqlite react-native-quick-crypto
+npm install @evolu/common@preview @evolu/react@preview @evolu/react-native@preview @op-engineering/op-sqlite react-native-quick-crypto
 ```
 
 ```bash {{ title: 'Expo' }}
-npm install @evolu/common @evolu/react @evolu/react-native expo-sqlite react-native-quick-crypto
+npm install @evolu/common@preview @evolu/react@preview @evolu/react-native@preview expo-sqlite react-native-quick-crypto
 ```
 
 ```bash {{ title: 'Svelte' }}
-npm install @evolu/common @evolu/web @evolu/svelte
+npm install @evolu/common@preview @evolu/web@preview @evolu/svelte@preview
 ```
 
 ```bash {{ title: 'Vanilla JS' }}
-npm install @evolu/common @evolu/web
+npm install @evolu/common@preview @evolu/web@preview
 ```
 
 </CodeGroup>
@@ -123,7 +125,7 @@ import { evoluReactWebDeps } from "@evolu/react-web";
 
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
 	name: getOrThrow(SimpleName.from("your-app-name")),
-	syncUrl: "https://your-sync-url", // optional, defaults to https://evolu.world
+	syncUrl: "https://your-sync-url", // optional, defaults to https://free.evoluhq.com
 });
 
 // Wrap your app with <EvoluProvider>
@@ -145,7 +147,7 @@ import { evoluSqliteDeps } from "@evolu/react-native/op-sqlite";
 
 const evolu = createEvolu(evoluSqliteDeps)(Schema, {
 	name: getOrThrow(SimpleName.from("your-app-name")),
-	syncUrl: "https://your-sync-url", // optional, defaults to https://evolu.world
+	syncUrl: "https://your-sync-url", // optional, defaults to https://free.evoluhq.com
 });
 
 // Wrap your app with <EvoluProvider>
@@ -167,7 +169,7 @@ import { evoluSqliteDeps } from "@evolu/react-native/expo-sqlite";
 
 const evolu = createEvolu(evoluSqliteDeps)(Schema, {
 	name: getOrThrow(SimpleName.from("your-app-name")),
-	syncUrl: "https://your-sync-url", // optional, defaults to https://evolu.world
+	syncUrl: "https://your-sync-url", // optional, defaults to https://free.evoluhq.com
 });
 
 // Wrap your app with <EvoluProvider>
@@ -188,7 +190,7 @@ import { evoluSvelteDeps } from "@evolu/svelte";
 
 const evolu = createEvolu(evoluSvelteDeps)(Schema, {
   name: getOrThrow(SimpleName.from("your-app-name")),
-  syncUrl: "https://your-sync-url", // optional, defaults to https://evolu.world
+  syncUrl: "https://your-sync-url", // optional, defaults to https://free.evoluhq.com
 });
 ```
 
@@ -198,7 +200,7 @@ import { evoluWebDeps } from "@evolu/web";
 
 const evolu = createEvolu(evoluWebDeps)(Schema, {
   name: getOrThrow(SimpleName.from("your-app-name")),
-  syncUrl: "https://your-sync-url", // optional, defaults to https://evolu.world
+  syncUrl: "https://your-sync-url", // optional, defaults to https://free.evoluhq.com
 });
 ```
 
