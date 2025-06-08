@@ -1,6 +1,6 @@
 # @evolu/common
 
-## 6.0.0-preview.0
+## 6.0.0
 
 ### Major Changes
 

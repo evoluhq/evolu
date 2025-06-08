@@ -33,10 +33,7 @@ jobs:
         id: changesets
         uses: changesets/action@v1
         with:
-          version: pnpm run version
           publish: pnpm exec changeset publish
-          commit: "[ci] release"
-          title: "[ci] release"
           createGithubReleases: false # TODO: enable this later
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

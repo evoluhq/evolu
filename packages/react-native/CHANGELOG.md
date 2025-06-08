@@ -1,18 +1,10 @@
 # @evolu/react-native
 
-## 12.0.0-preview.0
+## 12.0.0
 
 ### Major Changes
 
 - Updated to use new Evolu architecture
-
-### Patch Changes
-
-- Updated dependencies
-- Updated dependencies
-- Updated dependencies [3feda97]
-  - @evolu/react@9.0.0
-  - @evolu/common@6.0.0
 
 ## 11.1.0
 
