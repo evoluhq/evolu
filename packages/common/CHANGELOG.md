@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 6.0.0
+
+### Major Changes
+
+- 3feda97: TODO: Write about no breaking changes, except for max row size and restricted DbIdentifier. Both are easily migrable, explain how.
+
 ## 5.4.0
 
 ### Minor Changes

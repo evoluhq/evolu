@@ -26,7 +26,6 @@
  * simple.
  *
  * - Evolu `Type` is:
- *
  * - A TypeScript type with a {@link Brand} whenever it's possible.
  * - A function to create a value of that type, which may fail.
  * - A function to transform value back to its original representation, which
