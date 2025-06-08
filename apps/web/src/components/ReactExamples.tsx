@@ -46,7 +46,7 @@ export function ReactExamples(): React.ReactElement {
                 {example.description}
               </p>
               <p className="mt-4 flex items-center gap-3">
-                {example.demo && process.env.NODE_ENV !== "production" && (
+                {example.demo && (
                   <Button
                     href={example.demo}
                     target="_self"
