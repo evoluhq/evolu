@@ -3,7 +3,7 @@ import { Heading } from "@/components/Heading";
 export const metadata = {
   title: "Indexes",
   description:
-    "Use indexes to speed up your queries. In this guide, we’ll look at how to create and use indexes in Evolu.",
+    "Learn how to use indexes in Evolu to speed up your queries, with tips for both development and production.",
 };
 
 # Indexes
@@ -21,13 +21,13 @@ const allTodos = evolu.createQuery(
 ```
 
 <Note>
-  While indexes aren't necessary during development, they’re almost always
-  essential in production. Before adding indexes, measure and analyze your
-  queries using the `logQueryExecutionTime` and `logExplainQueryPlan` options in
-  `createQuery`.
+  While indexes may not be needed during early development, they are crucial for
+  production performance. Use the `logQueryExecutionTime` and
+  `logExplainQueryPlan` options in `createQuery` to measure and analyze
+  performance.
 </Note>
 
-If you're new to indexes or want to better understand how to use them effectively, check out this great article: [squeezing-performance-from-sqlite-indexes](https://medium.com/@JasonWyatt/squeezing-performance-from-sqlite-indexes-indexes-c4e175f3c346).
+For deeper insights into how SQLite indexes work under the hood, read [this in-depth guide](https://medium.com/@JasonWyatt/squeezing-performance-from-sqlite-indexes-indexes-c4e175f3c346).
 
 <Heading level={2} id="usage">
   Usage
@@ -40,7 +40,7 @@ const evolu = createEvolu(evoluReactWebDeps)(Schema, {
 });
 ```
 
-That’s all you need to do. Evolu will automatically create any new indexes you define and drop any that are no longer listed in the indexes array.
+Evolu handles this automatically—it will create any new indexes you define and drop those no longer present in the `indexes` array.
 
 <Heading level={2} id="recommendations">
   Recommendations

@@ -53,11 +53,10 @@ export interface MDXModule {
 
 export const customOrder: Record<string, number> = {
   quickstart: 1,
-  "how-evolu-works": 2,
-  patterns: 3,
-  indexes: 4,
-  migrations: 5,
-  "time-travel": 6,
+  patterns: 2,
+  indexes: 3,
+  migrations: 4,
+  "time-travel": 5,
   "api-reference": 100,
 };
 

@@ -23,13 +23,12 @@ export const navigation: Array<NavGroup> = [
   {
     title: "Local-first",
     links: [
-      { title: "How it works", href: "/docs/how-evolu-works" },
-      { title: "Privacy", href: "/docs/privacy" },
       { title: "Indexes", href: "/docs/indexes" },
       { title: "Migrations", href: "/docs/migrations" },
       { title: "Patterns", href: "/docs/patterns" },
       { title: "Time travel", href: "/docs/time-travel" },
       { title: "Examples", href: "/docs/examples" },
+      { title: "Privacy", href: "/docs/privacy" },
     ],
   },
   {
