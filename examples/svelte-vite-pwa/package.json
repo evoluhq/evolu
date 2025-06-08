@@ -1,13 +1,13 @@
 {
   "name": "@example/svelte-vite-pwa",
-  "private": true,
   "version": "0.0.0",
+  "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.json && tsc -p tsconfig.node.json"
+    "check": "svelte-check --tsconfig ./tsconfig.json && tsc -p tsconfig.node.json",
+    "dev": "vite",
+    "preview": "vite preview"
   },
   "devDependencies": {
     "@evolu/common": "workspace:*",

@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "next build",
-    "dev": "next dev",
-    "lint": "next lint",
     "_start": "next start",
-    "clean": "shx rm -rf .turbo .next node_modules"
+    "build": "next build",
+    "clean": "shx rm -rf .turbo .next node_modules",
+    "dev": "next dev",
+    "lint": "next lint"
   },
   "dependencies": {
     "@evolu/common": "workspace:*",

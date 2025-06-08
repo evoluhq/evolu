@@ -1,17 +1,18 @@
 {
   "name": "@example/react-expo",
-  "main": "expo-router/entry",
   "version": "1.0.0",
+  "private": true,
+  "main": "expo-router/entry",
   "scripts": {
-    "start": "expo start",
+    "_dev": "expo start --web",
     "android": "expo run:android --no-build-cache",
     "android:go": "expo start --android",
+    "clean": "shx rm -rf .expo android ios node_modules",
     "ios": "expo run:ios",
     "ios:go": "expo start --ios",
-    "_dev": "expo start --web",
-    "test": "jest --watchAll",
     "lint": "expo lint",
-    "clean": "shx rm -rf .expo android ios node_modules"
+    "start": "expo start",
+    "test": "jest --watchAll"
   },
   "jest": {
     "preset": "jest-expo"
@@ -39,6 +40,5 @@
     "@babel/core": "^7.27.4",
     "@types/react": "^19.1.6",
     "typescript": "^5.8.3"
-  },
-  "private": true
+  }
 }

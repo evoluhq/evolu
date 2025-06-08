@@ -1,11 +1,8 @@
 {
   "name": "@example/react-electron",
   "version": "1.0.0",
-  "description": "My Electron application description",
-  "keywords": [],
-  "license": "MIT",
-  "main": ".vite/build/main.js",
   "private": true,
+  "main": ".vite/build/main.js",
   "scripts": {
     "build": "electron-forge make",
     "clean": "shx rm -rf node_modules .vite out",

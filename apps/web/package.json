@@ -3,12 +3,12 @@
   "version": "2.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
     "build": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next build",
-    "start": "next start",
-    "lint": "next lint",
+    "clean": "shx rm -rf .turbo .next node_modules",
+    "dev": "next dev",
     "fix:docs": "tsx ./scripts/fix-api-reference.ts",
-    "clean": "shx rm -rf .turbo .next node_modules"
+    "lint": "next lint",
+    "start": "next start"
   },
   "browserslist": "defaults, not ie <= 11",
   "dependencies": {
