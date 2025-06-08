@@ -22,7 +22,7 @@ export interface Config extends ConsoleConfig {
   /**
    * URL for Evolu sync and backup server.
    *
-   * The default value is `https://evolu.world`.
+   * The default value is `https://free.evoluhq.com`.
    */
   readonly syncUrl: string;
 
