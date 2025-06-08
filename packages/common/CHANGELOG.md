@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 7.0.0-preview.0
+
+### Major Changes
+
+- 099de98: prerelease test
+
 ## 6.0.0
 
 ### Major Changes

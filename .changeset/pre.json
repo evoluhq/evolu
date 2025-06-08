@@ -18,5 +18,7 @@
     "@evolu/tsconfig": "0.0.2",
     "@evolu/web": "1.0.0"
   },
-  "changesets": []
+  "changesets": [
+    "tender-guests-help"
+  ]
 }

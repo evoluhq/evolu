@@ -1,5 +1,16 @@
 # @evolu/react
 
+## 10.0.0-preview.0
+
+### Major Changes
+
+- 099de98: prerelease test
+
+### Patch Changes
+
+- Updated dependencies [099de98]
+  - @evolu/common@7.0.0-preview.0
+
 ## 9.0.0
 
 ### Major Changes
