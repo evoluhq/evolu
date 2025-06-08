@@ -1,5 +1,12 @@
 # @evolu/react
 
+## 9.0.0
+
+### Patch Changes
+
+- Updated dependencies [3feda97]
+  - @evolu/common@6.0.0
+
 ## 8.2.0
 
 ### Minor Changes
