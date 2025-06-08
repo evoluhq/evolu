@@ -1,5 +1,19 @@
 # @evolu/common
 
+## 6.0.0
+
+### Major Changes
+
+- Major architectural overhaul:
+
+  - Removed Effect dependency, introduced Evolu Library
+  - New binary protocol with RBSR sync for efficient peer-to-peer synchronization
+  - Message chunking and improved mutation API
+  - Binary database change padding for enhanced privacy
+  - Foundation for upcoming ephemeral messages, redacted deletion, and collaboration features
+
+- 3feda97: TODO: write more descriptive changelog.
+
 ## 5.4.0
 
 ### Minor Changes

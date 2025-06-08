@@ -38,7 +38,7 @@
     "vitest": "^3.2.2"
   },
   "peerDependencies": {
-    "@evolu/common": "^5.4.4"
+    "@evolu/common": "^6.0.0"
   },
   "engines": {
     "node": ">=22.0.0"
