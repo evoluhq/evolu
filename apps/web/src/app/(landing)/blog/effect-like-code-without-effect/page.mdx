@@ -1,0 +1,156 @@
+import { ArticleLayout } from "@/components/ArticleLayout";
+import Image from "next/image";
+
+export const article = {
+  author: "Daniel Steigerwald",
+  date: "2025-06-09",
+  title: "Effect-like code without Effect",
+  description:
+    "Effect is a vast ecosystem that embraces proven patterns like structured concurrency, tracing, resource safety, and dependency injection. But if you don’t want to—or can’t—use the full Effect, you can still write Effect-like code (to some extent). This post explores how to apply some of its core ideas using simple, focused TypeScript utilities, without committing to the full framework.",
+};
+
+export const metadata = {
+  title: article.title,
+  description: article.description,
+};
+
+export default (props) => <ArticleLayout article={article} {...props} />;
+
+Effect is a vast ecosystem that embraces proven patterns like structured concurrency, tracing, resource safety, and dependency injection. But if you don’t want to—or can’t—use the full Effect, you can still write Effect-like code (to some extent). This post explores how to apply some of its core ideas using simple, focused TypeScript utilities, without committing to the full framework.
+
+Writing exact Effect code without Effect is obviously not possible—Effect is a sophisticated runtime that runs your code. I previously used fp-ts, then Effect, but for Evolu, I chose a different path for reasons I’ve explained elsewhere. I wanted to keep some of the patterns without relying on Effect. You don’t even need to use the Evolu library—you can simply copy-paste a few files and follow the Evolu conventions.
+
+## Typed errors
+
+The main reason many people fell in love with fp-ts was its Either type. It’s essentially a typed error. Once you understand it, you want to use it everywhere. Evolu has [Result](/docs/api-reference/common/Result), and it looks like this:
+
+```ts
+type Result<T, E> = Ok<T> | Err<E>;
+
+interface Ok<T> {
+  readonly ok: true;
+  readonly value: T;
+}
+
+interface Err<E> {
+  readonly ok: false;
+  readonly error: E;
+}
+
+const ok = <T>(value: T): Ok<T> => ({ ok: true, value });
+const err = <E>(error: E): Err<E> => ({ ok: false, error });
+```
+
+`Result` works with both sync and async code, comes with a few handy helpers, and that’s it. Learn more in the [Result docs](/docs/api-reference/common/Result).
+
+## Dependency injection
+
+Evolu uses a convention-based approach to dependency injection—no runtime, no libraries, just plain TypeScript. Dependencies are defined as interfaces, grouped into objects, and passed explicitly. Optional dependencies use Partial, and you can conditionally inject them as needed.
+
+```ts
+export interface Time {
+  readonly now: () => number;
+}
+
+export interface TimeDep {
+  readonly time: Time;
+}
+
+export interface Logger {
+  readonly log: (message?: any, ...optionalParams: Array<any>) => void;
+}
+
+export interface LoggerDep {
+  readonly logger: Logger;
+}
+
+const timeUntilEvent =
+  // Partial makes LoggerDep optional
+  (deps: TimeDep & Partial<LoggerDep>) =>
+    (eventTimestamp: number): number => {
+      deps.logger?.log("Calculating time until event...");
+      const currentTime = deps.time.now();
+      return eventTimestamp - currentTime;
+    };
+
+/** Creates a {@link Time} using Date.now(). */
+export const createTime = (): Time => ({
+  now: () => Date.now(),
+});
+
+/** Creates a {@link Logger} using console.log. */
+export const createLogger = (): Logger => ({
+  log: (...args) => {
+    console.log(...args);
+  },
+});
+
+const enableLogging = true;
+
+const deps: TimeDep & Partial<LoggerDep> = {
+  time: createTime(),
+  // Inject a dependency conditionally
+  ...(enableLogging && { logger: createLogger() }),
+};
+
+timeUntilEvent(deps)(1742329310767);
+```
+
+This pattern keeps your code testable, composable, and easy to understand—without any external DI framework. Learn more in the [Dependency Injection docs](http://localhost:3000/docs/dependency-injection).
+
+## Runtime types
+
+Evolu has [Type](/docs/api-reference/common/Type)—a validation, parsing, and transformation library similar to Zod, but designed around `Result` instead of throwing exceptions. It provides branded types for constraints, typed errors with decoupled formatters, and bidirectional transformations.
+
+```ts
+// Branded constraints
+const NonEmptyString = minLength(1)(String);
+// string & Brand<"MinLength1">
+type NonEmptyString = typeof NonEmptyString.Type;
+
+// Basic validation with Result
+const result = NonEmptyString.from("hello"); // Ok<NonEmptyString>
+const error = NonEmptyString.from(""); // Err<MinLengthError<1>>
+
+// Many factories
+export const SimpleName = regex(
+  "SimpleName",
+  /^[a-z0-9-]{1,42}$/i,
+)(NonEmptyString);
+
+// string & Brand<"MinLength1"> & Brand<"SimpleName">
+export type SimpleName = typeof SimpleName.Type;
+
+// Composable transformations with bidirectional transformations
+const DateIso = transform(
+  Date,
+  DateIsoString,
+  (date) => DateIsoString.fromParent(date.toISOString()),
+  (iso) => new Date(iso),
+);
+
+const now = new Date();
+const isoResult = DateIso.from(now); // Ok<DateIso>
+if (isoResult.ok) {
+  const backToDate = DateIso.to(isoResult.value); // Date
+  console.log(backToDate.getTime() === now.getTime()); // true
+}
+
+// Complex objects
+const User = object({
+  id: Id,
+  email: Email,
+  createdAt: optional(DateIso),
+});
+```
+
+And much more—yet the entire Evolu Type is just one file with comprehensive tests, designed to be understood by reading the source (as the whole Evolu Library was). Learn more in the [Type docs](/docs/api-reference/common/Type).
+
+## Other stuff
+
+Typed errors and proper dependency injection probably cover 80% of what most apps’ source code actually needs to be more maintainable and robust. But of course, real-world apps often need more—like retry logic, WebSocket support, assertions, time and randomness utilities, SQLite, Ref (mutable value holders), Store (state container), helpers for primitive values (Array, String, Number), type-level utilities, and more depending on your needs.
+
+Here’s what we ended up needing to build Evolu:
+[Explore the Evolu API reference](/docs/api-reference/common).
+
+The point of the Evolu Library isn’t to compete with Effect. Effect is a complete ecosystem that will (sooner or later) absorb your entire codebase—sometimes that’s exactly what you want, sometimes it’s not. As always, use the right tool for your job—there are no solutions, only trade-offs.
