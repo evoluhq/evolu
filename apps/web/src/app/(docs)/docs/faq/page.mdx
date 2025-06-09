@@ -10,34 +10,28 @@ export const sections = [];
 
 Frequently asked questions about Evolu.
 
-## Is Evolu ready for production?
-
-Yes, Evolu is stable and backward compatible from version one.
-
 ## What is the SQLite database size limit?
 
 The size limit depends on the storage quotas and eviction criteria of the browser or platform in use. For detailed information, refer to the [Storage quotas and eviction criteria](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria) documentation.
 
 ## How can I check the current database filesize?
 
-Use the OPFS Explorer Chrome DevTools extension to monitor the database file size.
+Use `exportDatabase` method on Evolu instance.
 
-## How does Evolu handle data synchronization across devices?
+```ts
+const database = await evolu.exportDatabase();
+const sizeInBytes = database.length;
+console.log(`Database size: ${sizeInBytes} bytes`);
+```
 
-Evolu utilizes Conflict-free Replicated Data Types (CRDTs) to manage data synchronization seamlessly across multiple devices, ensuring consistency without conflicts.
+## How to delete OPFS Sqlite in browser?
 
-## Is it possible to run my own Evolu Relay/Server?
+To clear the OPFS (Origin Private File System) SQLite database:
 
-Yes, Evolu provides an open-source server that you can deploy independently. For more information, refer to the [Evolu Relay](/docs/evolu-relay) documentation.
-
-## How is data encrypted in Evolu?
-
-Evolu implements end-to-end encryption using modern cryptographic standards to ensure that only the intended users can access the data.
-
-## What makes Evolu different from other CRDT libraries?
-
-Evolu integrates CRDT with SQLite, offering a familiar SQL interface and robust data conflict resolution.
-
-## Does Evolu work offline?
-
-Yes, Evolu is designed to work offline-first, with data syncing automatically when the app regains connectivity.
+1. Install the [OPFS Explorer Chrome DevTools extension](https://chrome.google.com/webstore/detail/opfs-explorer/acndjpgkpaclldomagafnognkcgjignd)
+2. Disable JavaScript in your browser
+3. Reload the page
+4. Open DevTools and navigate to the OPFS Explorer tab
+5. Remove the SQLite database file
+6. Re-enable JavaScript
+7. Reload the page

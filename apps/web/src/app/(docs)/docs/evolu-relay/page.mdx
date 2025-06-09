@@ -7,23 +7,16 @@ export const sections = [];
 
 # Evolu Relay
 
-Evolu Relay provides sync and backup for Evolu clients. While it's technically possible to sync and backup Evolu devices among themselves (P2P), it's not practical because devices are often offline and geographically close. Backups should be stored in locations that are geographically distant from each other to ensure protection against localized disasters.
+Evolu Relay provides sync and backup for Evolu clients. While it's possible to sync and backup Evolu clients among themselves (P2P), it's not practical because devices are often offline and geographically close. Backups should be stored in locations that are geographically distant from each other to ensure protection against local disasters. Evolu Relay is a simple message buffer and storage generic for all Evolu apps. Only `OwnerId` and `Timestamp` are visible. Everything else is encrypted.
 
-Evolu Relay is a simple message buffer and storage generic (the same) for all Evolu apps. Only UserId, NodeId, and messages timestamps are visible. Everything else is encrypted.
-
-Evolu Relay is open-sourced and anyone can easily run their own. The core logic is a SQL database and web framework agnostic, so it's highly portable.
+Evolu Relay is open-sourced and anyone can easily run their own.
 
 <Note>
-  We provide a free `free.evoluhq.com` relay for testing and personal usage. Our
-  super secret master plan on how to make money on that is simple: We will sell
-  hardware.
+  We provide a free `free.evoluhq.com` relay for testing. Our super secret
+  master plan on how to make money on that is simple: We will write apps on top
+  of Evolu.
 </Note>
----
 
 ## Hosting Evolu Relay
 
-We provide a free relay `free.evoluhq.com` for testing and personal usage.
-
-The Evolu Relay source along with the Docker files can be in the [/apps/relay](https://github.com/evoluhq/evolu/tree/main/apps/relay) directory.
-
-Alternatively, a pre-built image `evoluhq/relay:latest` is hosted on [Docker Hub](https://hub.docker.com/r/evoluhq/relay).
+The Evolu Relay source code along with the Docker files can be found in the `/apps/relay` directory.
