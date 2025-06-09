@@ -1,6 +1,6 @@
 {
   "name": "@evolu/web",
-  "version": "1.0.1-preview.0",
+  "version": "1.0.1-preview.1",
   "description": "Evolu for web",
   "keywords": [
     "evolu",
@@ -45,7 +45,7 @@
     "vitest": "^3.2.2"
   },
   "peerDependencies": {
-    "@evolu/common": "^6.0.1-preview.1"
+    "@evolu/common": "^6.0.1-preview.2"
   },
   "publishConfig": {
     "access": "public"

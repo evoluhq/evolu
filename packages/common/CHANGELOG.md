@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 6.0.1-preview.2
+
+### Patch Changes
+
+- 8ff21e5: GitHub release
+
 ## 6.0.1-preview.1
 
 ### Patch Changes
