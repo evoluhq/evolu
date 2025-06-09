@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch: # for manual triggering
 
 jobs:
   release:
@@ -34,7 +35,7 @@ jobs:
         uses: changesets/action@v1
         with:
           publish: pnpm exec changeset publish
-          createGithubReleases: false # TODO: enable this later
+          createGithubReleases: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
