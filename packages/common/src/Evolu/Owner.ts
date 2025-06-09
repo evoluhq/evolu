@@ -1,3 +1,9 @@
+/**
+ * TODO:
+ *
+ * @module
+ */
+
 import { assert } from "../Assert.js";
 import {
   createEncryptionKey,
@@ -50,7 +56,7 @@ import {
  * {@link SharedReadonlyOwner}, each with specific roles and properties detailed
  * in their respective definitions.
  *
- * Public-key cryptography isn’t included here as it belongs to data and varies
+ * Public-key cryptography isn’t included here as it belongs to app and varies
  * by use case. An Evolu app without collaboration doesn’t need it, while a
  * Nostr-like app can leverage Nostr NIPs, or a super-safe app can use
  * post-quantum cryptography.

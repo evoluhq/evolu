@@ -23,7 +23,6 @@ import {
   createProtocolMessageFromCrdtMessages,
   createTimestampsBuffer,
   DbChange,
-  decryptAndDecodeDbChange,
   decodeBase64Url256,
   decodeBase64Url256WithLength,
   decodeLength,
@@ -32,6 +31,7 @@ import {
   decodeNumber,
   decodeSqliteValue,
   decodeString,
+  decryptAndDecodeDbChange,
   encodeAndEncryptDbChange,
   encodeBase64Url256,
   encodeLength,
@@ -46,7 +46,6 @@ import {
   InfiniteUpperBound,
   maxProtocolMessageRangesSize,
   ownerIdToBinaryOwnerId,
-  ProtocolErrorCode,
   ProtocolValueType,
   protocolVersion,
   RangeType,
@@ -598,65 +597,90 @@ test("createProtocolMessageForSync", async () => {
   );
 });
 
-describe("E2E header", () => {
-  test("versioning", () => {
+describe("E2E versioning", () => {
+  test("same versions", () => {
+    const v0 = 0 as NonNegativeInt;
+
+    const clientMessage = createProtocolMessageBuffer(testOwner.id, {
+      version: v0,
+    }).unwrap();
+
+    const relayResponse = applyProtocolMessageAsRelay(
+      shouldNotBeCalledStorageDep,
+    )(clientMessage, {}, v0);
+
+    expect(relayResponse).toEqual(ok(null));
+  });
+
+  test("non-initiator version is higher", () => {
     const v0 = 0 as NonNegativeInt;
     const v1 = 1 as NonNegativeInt;
 
-    expect(
-      applyProtocolMessageAsRelay(shouldNotBeCalledStorageDep)(
-        createProtocolMessageBuffer(testOwner.id, {
-          version: v0,
-        }).unwrap(),
-        {},
-        v0,
-      ),
-    ).toEqual(ok(null));
+    const clientMessage = createProtocolMessageBuffer(testOwner.id, {
+      version: v0,
+    }).unwrap();
 
-    expect(
-      applyProtocolMessageAsClient(shouldNotBeCalledStorageDep)(
-        createProtocolMessageBuffer(testOwner.id, {
-          errorCode: ProtocolErrorCode.NoError,
-          version: v0,
-        }).unwrap(),
-        { version: v0 },
-      ),
-    ).toEqual(ok(null));
+    const relayResponse = applyProtocolMessageAsRelay(
+      shouldNotBeCalledStorageDep,
+    )(clientMessage, {}, v1);
+    assert(relayResponse.ok);
+    assert(relayResponse.value);
 
-    expect(
-      applyProtocolMessageAsClient(shouldNotBeCalledStorageDep)(
-        createProtocolMessageBuffer(testOwner.id, {
-          errorCode: ProtocolErrorCode.NoError,
-          version: v0,
-        }).unwrap(),
-        { version: v1 },
-      ),
-    ).toEqual(
-      err({
-        type: "ProtocolUnsupportedVersionError",
-        unsupportedVersion: 0,
-        isInitiator: false,
-      }),
-    );
-
-    expect(
-      applyProtocolMessageAsClient(shouldNotBeCalledStorageDep)(
-        createProtocolMessageBuffer(testOwner.id, {
-          errorCode: ProtocolErrorCode.NoError,
-          version: v1,
-        }).unwrap(),
-        { version: v0 },
-      ),
-    ).toEqual(
+    const clientResult = applyProtocolMessageAsClient(
+      shouldNotBeCalledStorageDep,
+    )(relayResponse.value, { version: v0 });
+    expect(clientResult).toEqual(
       err({
         type: "ProtocolUnsupportedVersionError",
         unsupportedVersion: 1,
         isInitiator: true,
+        ownerId: testOwner.id,
       }),
     );
   });
 
-  test("with write errors", () => {
+  test("initiator version is higher", () => {
+    const v0 = 0 as NonNegativeInt;
+    const v1 = 1 as NonNegativeInt;
+
+    const clientMessage = createProtocolMessageBuffer(testOwner.id, {
+      version: v1,
+    }).unwrap();
+
+    const relayResponse = applyProtocolMessageAsRelay(
+      shouldNotBeCalledStorageDep,
+    )(clientMessage, {}, v0);
+    assert(relayResponse.ok);
+    assert(relayResponse.value);
+
+    const clientResult = applyProtocolMessageAsClient(
+      shouldNotBeCalledStorageDep,
+    )(relayResponse.value, { version: v1 });
+    expect(clientResult).toEqual(
+      err({
+        type: "ProtocolUnsupportedVersionError",
+        unsupportedVersion: 0,
+        isInitiator: false,
+        ownerId: testOwner.id,
+      }),
+    );
+  });
+});
+
+describe.only("E2E errors", () => {
+  test("ProtocolInvalidDataError", () => {
+    const malformedMessage = createBuffer();
+    encodeNonNegativeInt(malformedMessage, 1 as NonNegativeInt); // Only version, no ownerId
+
+    const clientResult = applyProtocolMessageAsClient(
+      shouldNotBeCalledStorageDep,
+    )(malformedMessage.unwrap(), { version: 0 as NonNegativeInt });
+
+    assert(!clientResult.ok);
+    expect(clientResult.error.type).toBe("ProtocolInvalidDataError");
+  });
+
+  test("ProtocolWriteKeyError", () => {
     const timestamp = binaryTimestampToTimestamp(testTimestampsAsc[0]);
     const dbChange = createDbChange();
 
@@ -686,7 +710,9 @@ describe("E2E header", () => {
       applyProtocolMessageAsClient(shouldNotBeCalledStorageDep)(
         responseWithWriteKeyError.value,
       ),
-    ).toEqual(err({ type: "ProtocolWriteKeyError" }));
+    ).toEqual(
+      err({ type: "ProtocolWriteKeyError", ownerId: "MdVYFAxShUluuZKVWQfYL" }),
+    );
   });
 });
 

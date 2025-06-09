@@ -7,13 +7,11 @@
  * relays with each other.
  *
  * Evolu Protocol is designed for SQLite but can be extended to any database. It
- * implements [Range-Based Set Reconciliation](https://arxiv.org/abs/2212.13567)
- * by Aljoscha Meyer.
- *
- * To learn how RBSR works, check
- * [Negentropy](https://logperiodic.com/rbsr.html). Evolu Protocol is similar to
- * Negentropy but uses different encoding and also provides data transfer and
- * ownership.
+ * implements [Range-Based Set
+ * Reconciliation](https://arxiv.org/abs/2212.13567). To learn how RBSR works,
+ * check [Negentropy](https://logperiodic.com/rbsr.html). Evolu Protocol is
+ * similar to Negentropy but uses different encoding and also provides data
+ * transfer and ownership.
  *
  * ### Message Structure
  *
@@ -31,7 +29,7 @@
  * | - {@link NonNegativeInt}       | Number of ranges.          |
  * | - {@link Range}                |                            |
  *
- * Every protocol message belongs to an owner.
+ * Every protocol message belongs to an {@link Owner}.
  *
  * ### Synchronization
  *
@@ -48,21 +46,34 @@
  * Both **Messages** and **Ranges** are optional, allowing each side to send,
  * sync, or only subscribe data as needed.
  *
- * When the initiator sends data, the {@link WriteKey} is **required** in
- * **Messages** as a secure token proving the initiator can write changes. The
- * non-initiator responds without a {@link WriteKey}, since the initiator’s
- * request already signals it wants data. If the non-initiator detects an issue
- * (e.g., an invalid {@link WriteKey} causing a {@link ProtocolWriteKeyError}, or
- * a write failure causing a {@link ProtocolWriteError}), it sends an error code
- * via the `Error` field in the header back to the initiator. In relay-to-relay
- * or P2P sync, both sides may require the {@link WriteKey} depending on who is
- * the initiator.
+ * When the initiator sends data, the {@link WriteKey} is required in Messages as
+ * a secure token proving the initiator can write changes. The non-initiator
+ * responds without a {@link WriteKey}, since the initiator’s request already
+ * signals it wants data. If the non-initiator detects an issue, it sends an
+ * error code via the `Error` field in the header back to the initiator. In
+ * relay-to-relay or P2P sync, both sides may require the {@link WriteKey}
+ * depending on who is the initiator.
+ *
+ * ### Protocol Errors
+ *
+ * The protocol uses error codes in the header to signal issues:
+ *
+ * - {@link ProtocolWriteKeyError}: The provided WriteKey is invalid or missing.
+ * - {@link ProtocolWriteError}: A write operation failed (e.g., due to storage
+ *   limits or billing).
+ * - {@link ProtocolSyncError}: A generic or unexpected synchronization failure
+ *   occurred.
+ * - {@link ProtocolUnsupportedVersionError}: Protocol version mismatch.
+ * - {@link ProtocolInvalidDataError}: The message is malformed or corrupted.
+ *
+ * All protocol errors except `ProtocolInvalidDataError` include the `ownerId`
+ * to allow clients to associate errors with the correct owner.
  *
  * ### Message Size Limit
  *
  * The protocol enforces a strict maximum size for all messages, defined by
- * {@link maxProtocolMessageSize}. This ensures every `ProtocolMessage` is less
- * than or equal to this limit, eliminating the need for applications to
+ * {@link maxProtocolMessageSize}. This ensures every {@link ProtocolMessage} is
+ * less than or equal to this limit, eliminating the need for applications to
  * fragment and reconstruct messages during transmission.
  *
  * ### Why Binary?
@@ -88,11 +99,24 @@
  *
  * ### Versioning
  *
- * The initiator sends a versioned `ProtocolMessage`. If the non-initiator uses
- * a different version, it responds with a message containing only its protocol
- * version—**without an `ownerId`**. This allows the initiator to check protocol
- * compatibility, for example, by sending version-only messages to multiple
- * relays before starting synchronization.
+ * Evolu Protocol uses explicit versioning to ensure compatibility between
+ * clients and relays (or peers). Each protocol message begins with a version
+ * number and an `ownerId` in its header.
+ *
+ * **How version negotiation works:**
+ *
+ * - The initiator (usually a client) sends a `ProtocolMessage` that includes its
+ *   protocol version and the `ownerId`.
+ * - The non-initiator (usually a relay or peer) checks the version.
+ *
+ *   - If the versions match, synchronization proceeds as normal.
+ *   - If the versions do not match, the non-initiator responds with a message
+ *       containing **its own protocol version and the same `ownerId`**.
+ * - The initiator can then detect the version mismatch for that specific owner
+ *   and handle it appropriately (e.g., prompt for an update or halt sync).
+ *
+ * Version negotiation is per-owner, allowing Evolu Protocol to evolve safely
+ * over time and provide clear feedback about version mismatches.
  *
  * @module
  */
@@ -137,6 +161,8 @@ import {
 } from "../Type.js";
 import { Brand, Predicate } from "../Types.js";
 import {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  Owner,
   OwnerId,
   OwnerWithWriteAccess,
   WriteKey,
@@ -340,11 +366,16 @@ export type ProtocolError =
   | ProtocolWriteError
   | ProtocolSyncError;
 
+/** Base interface for all protocol errors. */
+export interface ProtocolErrorBase {
+  readonly ownerId: OwnerId;
+}
+
 /**
  * Represents a version mismatch in the Evolu Protocol. Occurs when the
  * initiator and non-initiator are using incompatible protocol versions.
  */
-export interface ProtocolUnsupportedVersionError {
+export interface ProtocolUnsupportedVersionError extends ProtocolErrorBase {
   readonly type: "ProtocolUnsupportedVersionError";
   readonly unsupportedVersion: NonNegativeInt;
   /** Indicates which side is obsolete and should update. */
@@ -359,7 +390,7 @@ export interface ProtocolInvalidDataError {
 }
 
 /** Error when a {@link WriteKey} is invalid, missing, or fails validation. */
-export interface ProtocolWriteKeyError {
+export interface ProtocolWriteKeyError extends ProtocolErrorBase {
   readonly type: "ProtocolWriteKeyError";
 }
 
@@ -367,7 +398,7 @@ export interface ProtocolWriteKeyError {
  * Error when a write fails due to storage limits or billing requirements.
  * Indicates the need to expand capacity or resolve payment issues.
  */
-export interface ProtocolWriteError {
+export interface ProtocolWriteError extends ProtocolErrorBase {
   readonly type: "ProtocolWriteError";
 }
 
@@ -375,7 +406,7 @@ export interface ProtocolWriteError {
  * Error indicating a synchronization failure during the protocol exchange. Used
  * for unexpected or generic sync errors not covered by other error types.
  */
-export interface ProtocolSyncError {
+export interface ProtocolSyncError extends ProtocolErrorBase {
   readonly type: "ProtocolSyncError";
 }
 
@@ -794,17 +825,17 @@ export const applyProtocolMessageAsClient =
     tryDecodeProtocolData<ProtocolMessage | null, ProtocolError>(
       inputMessage,
       (input) => {
-        const requestedVersion = decodeNonNegativeInt(input);
+        const [requestedVersion, ownerId] = decodeVersionAndOwner(input);
 
         if (requestedVersion !== version) {
           return err<ProtocolUnsupportedVersionError>({
             type: "ProtocolUnsupportedVersionError",
             unsupportedVersion: requestedVersion,
             isInitiator: version < requestedVersion,
+            ownerId,
           });
         }
 
-        const ownerId = decodeOwnerId(input);
         const binaryOwnerId = ownerIdToBinaryOwnerId(ownerId);
 
         const errorCode = input.shift() as ProtocolErrorCode;
@@ -813,14 +844,17 @@ export const applyProtocolMessageAsClient =
             case ProtocolErrorCode.WriteKeyError:
               return err<ProtocolWriteKeyError>({
                 type: "ProtocolWriteKeyError",
+                ownerId,
               });
             case ProtocolErrorCode.WriteError:
               return err<ProtocolWriteError>({
                 type: "ProtocolWriteError",
+                ownerId,
               });
             case ProtocolErrorCode.SyncError:
               return err<ProtocolSyncError>({
                 type: "ProtocolSyncError",
+                ownerId,
               });
             default:
               throw new ProtocolDecodeError(
@@ -878,16 +912,16 @@ export const applyProtocolMessageAsRelay =
   ): Result<ProtocolMessage | null, ProtocolInvalidDataError> =>
     tryDecodeProtocolData(inputMessage, (input) => {
       const requestedVersion = decodeNonNegativeInt(input);
-
-      if (requestedVersion !== version) {
-        // Non-initiator responds with its version.
-        const output = createBuffer();
-        encodeNonNegativeInt(output, version);
-        return ok(output.unwrap() as ProtocolMessage);
-      }
-
       const ownerId = decodeOwnerId(input);
       const binaryOwnerId = ownerIdToBinaryOwnerId(ownerId);
+
+      if (requestedVersion !== version) {
+        // Non-initiator responds with its version and ownerId.
+        const output = createBuffer();
+        encodeNonNegativeInt(output, version);
+        output.extend(binaryOwnerId);
+        return ok(output.unwrap() as ProtocolMessage);
+      }
 
       subscribe?.(ownerId);
 
@@ -958,6 +992,12 @@ const tryDecodeProtocolData = <T, E>(
 
     throw error;
   }
+};
+
+const decodeVersionAndOwner = (input: Buffer): [NonNegativeInt, OwnerId] => {
+  const version = decodeNonNegativeInt(input);
+  const ownerId = decodeOwnerId(input);
+  return [version, ownerId];
 };
 
 /**
