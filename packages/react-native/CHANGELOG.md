@@ -1,5 +1,14 @@
 # @evolu/react-native
 
+## 12.0.1-preview.1
+
+### Patch Changes
+
+- 8ff21e5: GitHub release
+- Updated dependencies [8ff21e5]
+  - @evolu/common@6.0.1-preview.2
+  - @evolu/react@9.0.1-preview.1
+
 ## 12.0.1-preview.0
 
 ### Patch Changes
