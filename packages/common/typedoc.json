@@ -23,6 +23,7 @@
     "src/Evolu/Internal.ts",
     "src/Evolu/Public.ts",
     "src/Evolu/Protocol.ts",
+    "src/Evolu/Owner.ts",
     "src/Evolu/Storage.ts",
     "src/Function.ts",
     "src/ManyToManyMap.ts",
