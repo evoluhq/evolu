@@ -1,5 +1,5 @@
 ---
-"@evolu/common": minor
+"@evolu/common": patch
 ---
 
 Add ownerId to all protocol errors (except ProtocolInvalidDataError) and update version negotiation to always include ownerId.
