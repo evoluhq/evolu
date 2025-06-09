@@ -667,7 +667,7 @@ describe("E2E versioning", () => {
   });
 });
 
-describe.only("E2E errors", () => {
+describe("E2E errors", () => {
   test("ProtocolInvalidDataError", () => {
     const malformedMessage = createBuffer();
     encodeNonNegativeInt(malformedMessage, 1 as NonNegativeInt); // Only version, no ownerId
