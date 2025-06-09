@@ -1,5 +1,16 @@
 # @evolu/react
 
+## 10.0.0-preview.1
+
+### Major Changes
+
+- 8ff21e5: GitHub release
+
+### Patch Changes
+
+- Updated dependencies [8ff21e5]
+  - @evolu/common@7.0.0-preview.2
+
 ## 9.0.1-preview.0
 
 ### Patch Changes

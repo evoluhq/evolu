@@ -1,6 +1,6 @@
 {
   "name": "@evolu/react-native",
-  "version": "12.0.1-preview.0",
+  "version": "13.0.0-preview.1",
   "description": "Evolu for React Native and Expo",
   "keywords": [
     "evolu",
@@ -65,8 +65,8 @@
     "vitest": "^3.2.2"
   },
   "peerDependencies": {
-    "@evolu/common": "^6.0.1-preview.1",
-    "@evolu/react": "^9.0.1-preview.0",
+    "@evolu/common": "^7.0.0-preview.2",
+    "@evolu/react": "^10.0.0-preview.1",
     "@op-engineering/op-sqlite": ">=12",
     "expo": ">=52",
     "expo-sqlite": ">=15",
