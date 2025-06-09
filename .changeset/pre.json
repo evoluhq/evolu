@@ -19,6 +19,7 @@
     "@evolu/web": "1.0.0"
   },
   "changesets": [
-    "mean-rats-start"
+    "mean-rats-start",
+    "true-teams-wash"
   ]
 }
