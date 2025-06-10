@@ -1,8 +1,8 @@
 import { assert, expect, test } from "vitest";
 import { createSymmetricCrypto, padmePaddedLength } from "../src/Crypto.js";
 import { ok } from "../src/Result.js";
-import { testCreateRandomBytesDep, testOwner } from "./_deps.js";
 import { NonNegativeInt } from "../src/Type.js";
+import { testCreateRandomBytesDep, testOwner } from "./_deps.js";
 
 test("SymmetricCrypto", () => {
   const symmetricCrypto = createSymmetricCrypto(testCreateRandomBytesDep);

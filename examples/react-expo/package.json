@@ -24,11 +24,11 @@
     "@expo/vector-icons": "^14.1.0",
     "@react-native-picker/picker": "^2.11.0",
     "babel-plugin-module-resolver": "^5.0.2",
-    "expo": "^53.0.10",
+    "expo": "^53.0.11",
     "expo-linking": "^7.1.5",
     "expo-router": "^5.0.7",
     "expo-splash-screen": "~0.30.9",
-    "expo-sqlite": "~15.2.11",
+    "expo-sqlite": "~15.2.12",
     "react": "^19.1.0",
     "react-native": "^0.79.3",
     "react-native-picker-select": "^9.3.1",
@@ -38,7 +38,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.27.4",
-    "@types/react": "^19.1.6",
+    "@types/react": "^19.1.7",
     "typescript": "^5.8.3"
   }
 }

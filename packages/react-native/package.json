@@ -58,11 +58,11 @@
     "@evolu/react": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
     "@op-engineering/op-sqlite": "^14.0.3",
-    "expo": "^53.0.10",
-    "expo-sqlite": "~15.2.11",
+    "expo": "^53.0.11",
+    "expo-sqlite": "~15.2.12",
     "react-native": "^0.79.3",
     "typescript": "^5.8.3",
-    "vitest": "^3.2.2"
+    "vitest": "^3.2.3"
   },
   "peerDependencies": {
     "@evolu/common": "^6.0.1-preview.2",
