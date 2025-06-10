@@ -4,9 +4,9 @@ import { Button } from "@/components/Button";
 
 const guides = [
   {
-    href: "/docs/how-evolu-works",
-    name: "How Evolu Works?",
-    description: "Evolu is simple. That's the feature, not a bug.",
+    href: "/docs/privacy",
+    name: "Privacy",
+    description: "Privacy is fundamental, and Evolu takes it seriously.",
   },
   {
     href: "/docs/evolu-relay",
