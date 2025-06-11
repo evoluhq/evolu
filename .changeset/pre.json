@@ -19,7 +19,9 @@
     "@evolu/web": "1.0.0"
   },
   "changesets": [
+    "fast-peas-laugh",
     "mean-rats-start",
+    "ninety-rockets-listen",
     "slow-lemons-go",
     "true-teams-wash"
   ]
