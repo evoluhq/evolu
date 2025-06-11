@@ -309,7 +309,7 @@ const TodoItem: FC<{
       .selectFrom("evolu_history")
       .select(["value", "timestamp"])
       .where("table", "==", "todo")
-      .where("row", "==", idToBinaryId(id))
+      .where("id", "==", idToBinaryId(id))
       .where("column", "==", "title")
       // `value` isn't typed; this is how we can narrow its type.
       .$narrowType<{ value: (typeof Schema)["todo"]["title"]["Type"] }>()

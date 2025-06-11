@@ -54,6 +54,7 @@ import {
   Base64Url256,
   BinaryId,
   binaryIdToId,
+  BinaryOwnerId,
   CrdtMessage,
   createProtocolMessageForSync,
   createProtocolMessageFromCrdtMessages,
@@ -496,7 +497,6 @@ export const createDbWorkerForPlatform = (
             onCompleteId: message.onCompleteId,
             reload: message.reload,
           });
-          deps.sqlite[Symbol.dispose]();
 
           break;
         }
@@ -621,34 +621,32 @@ const indexesAreEqual = (self: DbIndex, that: DbIndex): boolean =>
 
 export interface DbSnapshot {
   readonly schema: DbSchema;
-  readonly rows: Array<{
-    rows: ReadonlyArray<SqliteRow>;
+  readonly tables: Array<{
     name: string;
+    rows: ReadonlyArray<SqliteRow>;
   }>;
 }
 
-// TODO: Move it to Sqlite.
-export const getDbSnapshot = (
-  deps: SqliteDep,
-): Result<DbSnapshot, SqliteError> => {
+// TODO: Move to test helpers.
+export const getDbSnapshot = (deps: SqliteDep): DbSnapshot => {
   const schema = getDbSchema(deps)({ allIndexes: true });
-  if (!schema.ok) return schema;
+  assert(schema.ok, "bug");
 
-  const rows = [];
+  const tables = [];
 
   for (const table of schema.value.tables) {
     const result = deps.sqlite.exec(sql`
       select * from ${sql.identifier(table.name)};
     `);
-    if (!result.ok) return result;
+    assert(result.ok, "bug");
 
-    rows.push({
-      rows: result.value.rows,
+    tables.push({
       name: table.name,
+      rows: result.value.rows,
     });
   }
 
-  return ok({ schema: schema.value, rows });
+  return { schema: schema.value, tables };
 };
 
 const ensureDbSchema =
@@ -787,41 +785,37 @@ const initializeDb =
       `,
 
       /**
-       * The History table stores all values per timestamp, table, row, and
-       * column. It's required for merging without conflicts. Evolu uses
-       * last-write-win CRDT. In case of last-write-win value isn't what we
-       * want, we can use time travel. The current implementation prefers
-       * performance over storage size. The History table denormalizes Timestamp
-       * and DbChange to leverage a covering index. Hence, every value change
-       * has its timestamp, table, row, and column. In the future, we will
-       * rethink that and store history more efficiently.
-       *
-       * There is no need to use `OwnerId` on the client, because timestamps
-       * (which include a `NodeId`) are globally unique. The relay needs
-       * `OwnerId` because it hosts multiple apps/owners, but client storage
-       * represents one DB, and even when it hosts multiple owners, their
-       * timestamps remain unique.
+       * The History table stores all values per ownerId, timestamp, table, id,
+       * and column for conflict-free merging using last-write-win CRDT.
+       * Denormalizes Timestamp and DbChange for covering index performance.
+       * Time travel is available when last-write-win isn't desired. Future
+       * optimization will store history more efficiently.
        */
       sql`
         create table evolu_history (
-          "timestamp" blob not null,
+          "ownerId" blob not null,
           "table" text not null,
-          "row" blob not null,
+          "id" blob not null,
           "column" text not null,
+          "timestamp" blob not null,
           "value" any
         )
         strict;
       `,
 
       sql`
-        create index evolu_history_timestamp on evolu_history ("timestamp");
+        create index evolu_history_ownerId_timestamp on evolu_history (
+          "ownerId",
+          "timestamp"
+        );
       `,
 
       sql`
-        create unique index evolu_history_row_column_table_timestampDesc on evolu_history (
-          "row",
-          "column",
+        create unique index evolu_history_ownerId_table_id_column_timestampDesc on evolu_history (
+          "ownerId",
           "table",
+          "id",
+          "column",
           "timestamp" desc
         );
       `,
@@ -847,7 +841,14 @@ const initializeDb =
 
     const result = deps.sqlite.exec(sql`
       insert into evolu_owner
-        (mnemonic, id, encryptionKey, createdAt, writeKey, timestamp)
+        (
+          "mnemonic",
+          "id",
+          "encryptionKey",
+          "createdAt",
+          "writeKey",
+          "timestamp"
+        )
       values
         (
           ${ownerRow.mnemonic},
@@ -910,16 +911,18 @@ const applyMessages =
   (
     messages: ReadonlyArray<CrdtMessage>,
     lastTimestamp: Timestamp,
-    options: { isMigrationFromVersion0?: boolean } = {},
   ): Result<void, SqliteError> => {
-    for (const message of messages) {
-      if (!options.isMigrationFromVersion0) {
-        const apply1 = applyMessageToAppTable(deps)(message);
-        if (!apply1.ok) return apply1;
-      }
+    const ownerId = ownerIdToBinaryOwnerId(deps.ownerRowRef.get().id);
 
-      const apply2 = applyMessageToTimestampAndHistoryTables(deps)(message);
-      if (!apply2.ok) return apply2;
+    for (const message of messages) {
+      const result1 = applyMessageToAppTable(deps)(ownerId, message);
+      if (!result1.ok) return result1;
+
+      const result2 = applyMessageToTimestampAndHistoryTables(deps)(
+        ownerId,
+        message,
+      );
+      if (!result2.ok) return result2;
     }
 
     const timestamp = timestampToTimestampString(lastTimestamp);
@@ -933,8 +936,8 @@ const applyMessages =
   };
 
 const applyMessageToAppTable =
-  (deps: SqliteDep) =>
-  (message: CrdtMessage): Result<void, SqliteError> => {
+  (deps: SqliteDep & OwnerRowRefDep) =>
+  (ownerId: BinaryOwnerId, message: CrdtMessage): Result<void, SqliteError> => {
     const date = new Date(message.timestamp.millis).toISOString();
     const timestamp = timestampToBinaryTimestamp(message.timestamp);
 
@@ -942,28 +945,29 @@ const applyMessageToAppTable =
       const result = deps.sqlite.exec(sql.prepared`
         with
           lastTimestamp as (
-            select timestamp
+            select "timestamp"
             from evolu_history
             where
-              "row" = ${message.change.id}
-              and "column" = ${column}
+              "ownerId" = ${ownerId}
               and "table" = ${message.change.table}
-            order by timestamp desc
+              and "id" = ${message.change.id}
+              and "column" = ${column}
+            order by "timestamp" desc
             limit 1
           )
         insert into ${sql.identifier(message.change.table)}
           ("id", ${sql.identifier(column)}, createdAt, updatedAt)
         select ${message.change.id}, ${value}, ${date}, ${date}
         where
-          (select timestamp from lastTimestamp) is null
-          or (select timestamp from lastTimestamp) < ${timestamp}
+          (select "timestamp" from lastTimestamp) is null
+          or (select "timestamp" from lastTimestamp) < ${timestamp}
         on conflict ("id") do update
           set
             ${sql.identifier(column)} = ${value},
             updatedAt = ${date}
           where
-            (select timestamp from lastTimestamp) is null
-            or (select timestamp from lastTimestamp) < ${timestamp};
+            (select "timestamp" from lastTimestamp) is null
+            or (select "timestamp" from lastTimestamp) < ${timestamp};
       `);
 
       if (!result.ok) return result;
@@ -973,10 +977,9 @@ const applyMessageToAppTable =
   };
 
 export const applyMessageToTimestampAndHistoryTables =
-  (deps: SqliteDep & RandomDep & OwnerRowRefDep & ClientStorageDep) =>
-  (message: CrdtMessage): Result<void, SqliteError> => {
+  (deps: SqliteDep & ClientStorageDep) =>
+  (ownerId: BinaryOwnerId, message: CrdtMessage): Result<void, SqliteError> => {
     const timestamp = timestampToBinaryTimestamp(message.timestamp);
-    const ownerId = ownerIdToBinaryOwnerId(deps.ownerRowRef.get().id);
     const id = idToBinaryId(message.change.id);
 
     const result = deps.storage.insertTimestamp(ownerId, timestamp);
@@ -985,9 +988,16 @@ export const applyMessageToTimestampAndHistoryTables =
     for (const [column, value] of Object.entries(message.change.values)) {
       const result = deps.sqlite.exec(sql.prepared`
         insert into evolu_history
-          ("timestamp", "table", "row", "column", "value")
+          ("ownerId", "table", "id", "column", "value", "timestamp")
         values
-          (${timestamp}, ${message.change.table}, ${id}, ${column}, ${value})
+          (
+            ${ownerId},
+            ${message.change.table},
+            ${id},
+            ${column},
+            ${value},
+            ${timestamp}
+          )
         on conflict do nothing;
       `);
       if (!result.ok) return result;
@@ -1063,11 +1073,11 @@ export const maybeMigrateToVersion0 =
     const messagesRows = deps.sqlite.exec<{
       timestamp: TimestampString;
       table: Base64Url256;
-      row: Id;
+      id: Id;
       column: Base64Url256;
       value: SqliteValue;
     }>(sql`
-      select "timestamp", "table", "row", "column", "value" from evolu_message;
+      select "timestamp", "table", "id", "column", "value" from evolu_message;
     `);
 
     if (!messagesRows.ok) return messagesRows;
@@ -1083,7 +1093,7 @@ export const maybeMigrateToVersion0 =
     const messages = messagesRows.value.rows.map((message) => ({
       timestamp: timestampStringToTimestamp(message.timestamp),
       change: {
-        id: message.row,
+        id: message.id,
         table: message.table,
         values: { [message.column]: message.value },
       },
@@ -1179,6 +1189,7 @@ const createClientStorage =
 
       writeMessages: (_ownerId, messages) => {
         // TODO: Get owner by _ownerId when we support more.
+        // Use ownerId!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         const owner = deps.ownerRowRef.get();
         const decodedAndDecryptedMessages: Array<CrdtMessage> = [];
 
@@ -1231,16 +1242,16 @@ const createClientStorage =
         return true;
       },
 
-      readDbChange: (_ownerId, timestamp) => {
+      readDbChange: (ownerId, timestamp) => {
         const result = deps.sqlite.exec<{
           table: Base64Url256;
-          row: BinaryId;
+          id: BinaryId;
           column: Base64Url256;
           value: SqliteValue;
         }>(sql`
-          select "table", "row", "column", "value"
+          select "table", "id", "column", "value"
           from evolu_history
-          where "timestamp" = ${timestamp};
+          where "ownerId" = ${ownerId} and "timestamp" = ${timestamp};
         `);
         if (!result.ok) {
           deps.postMessage({ type: "onError", error: result.error });
@@ -1250,18 +1261,18 @@ const createClientStorage =
         const { rows } = result.value;
         assert(rows.length > 0, "Rows must not be empty");
 
-        const { table, row } = rows[0];
+        const { table, id } = rows[0];
         const values: Record<string, SqliteValue> = {};
 
         for (const r of rows) {
           assert(r.table === table, "All rows must have the same table");
-          assert(eqArrayNumber(r.row, row), "All rows must have the same Id");
+          assert(eqArrayNumber(r.id, id), "All rows must have the same Id");
           values[r.column] = r.value;
         }
 
         const change: DbChange = {
           table: rows[0].table,
-          id: binaryIdToId(rows[0].row),
+          id: binaryIdToId(rows[0].id),
           values,
         };
 

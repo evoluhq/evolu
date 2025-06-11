@@ -104,7 +104,7 @@ export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
           readonly evolu_history: {
             readonly timestamp: BinaryTimestamp;
             readonly table: keyof S;
-            readonly row: BinaryId;
+            readonly id: BinaryId;
             readonly column: string;
             readonly value: SqliteValue;
           };

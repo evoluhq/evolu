@@ -1,23 +1,25 @@
 import { assert, expect, test } from "vitest";
 import { CallbackId } from "../../src/Callbacks.js";
-import { Console } from "../../src/Console.js";
+import { createConsole } from "../../src/Console.js";
 import {
   createDbWorkerForPlatform,
   DbSchema,
-  DbSnapshot,
+  DbWorker,
   DbWorkerOutput,
   DbWorkerPlatformDeps,
   getDbSchema,
   getDbSnapshot,
   maybeMigrateToVersion0,
 } from "../../src/Evolu/Db.js";
-import { Base64Url256 } from "../../src/Evolu/Protocol.js";
+import {
+  Base64Url256,
+  DbChange,
+  idToBinaryId,
+} from "../../src/Evolu/Protocol.js";
 import { constVoid } from "../../src/Function.js";
 import { wait } from "../../src/Promise.js";
-import { createRandomWithSeed } from "../../src/Random.js";
 import { getOrThrow } from "../../src/Result.js";
 import { createSqlite, sql, Sqlite } from "../../src/Sqlite.js";
-import { createId } from "../../src/Type.js";
 import {
   testCreateId,
   testCreateMnemonic,
@@ -26,19 +28,21 @@ import {
   testCreateSqliteDriver,
   testDbConfig,
   testNanoIdLib,
-  testNanoIdLibDep,
+  testOwnerBinaryId,
+  testRandom,
   testSimpleName,
   testTime,
 } from "../_deps.js";
+import { testTimestampsAsc } from "./_fixtures.js";
 
-export const testCreateVersion0 = ({ exec }: Sqlite): void => {
+const testCreateVersion0 = ({ exec }: Sqlite): void => {
   exec(sql`begin;`);
 
   exec(sql`
     create table "evolu_message" (
       "timestamp" blob primary key,
       "table" blob,
-      "row" blob,
+      "id" blob,
       "column" blob,
       "value" blob
     );
@@ -47,7 +51,7 @@ export const testCreateVersion0 = ({ exec }: Sqlite): void => {
   exec(sql`
     create index "index_evolu_message" on "evolu_message" (
       "table",
-      "row",
+      "id",
       "column",
       "timestamp" desc
     );
@@ -153,13 +157,25 @@ test("maybeMigrateTo0", async () => {
   assert(messagesMnemonicLastTimestamp.ok);
 });
 
-test("createDbWorker", async () => {
-  const onMessageMessagesAndDbSnapshots: Array<{
-    message: DbWorkerOutput;
-    snapshot: DbSnapshot;
-  }> = [];
-  const logArgs: Array<unknown> = [];
+const createSimpleTestSchema = (): DbSchema => {
+  return {
+    tables: [
+      {
+        name: "testTable" as Base64Url256,
+        columns: ["id" as Base64Url256, "name" as Base64Url256],
+      },
+      {
+        name: "_testTable" as Base64Url256,
+        columns: ["id" as Base64Url256, "name" as Base64Url256],
+      },
+    ],
+    indexes: [],
+  };
+};
 
+const createSqliteWithDbWorkerPlatformDeps = async (): Promise<
+  [Sqlite, DbWorkerPlatformDeps]
+> => {
   const sqliteDriver = await testCreateSqliteDriver(testSimpleName);
   const createSqliteDriver = () => Promise.resolve(sqliteDriver);
   const sqlite = getOrThrow(
@@ -171,85 +187,121 @@ test("createDbWorker", async () => {
     createSync: () => () => ({
       send: constVoid,
     }),
-    console: {
-      log: (...args) => {
-        logArgs.push(args);
-      },
-    } as Console,
+    console: createConsole(),
     time: testTime,
-    random: createRandomWithSeed("test"),
+    random: testRandom,
     nanoIdLib: testNanoIdLib,
     createMnemonic: testCreateMnemonic,
     ...testCreateRandomBytesDep,
   };
+  return [sqlite, deps];
+};
 
+const setupInitializedDbWorker = async (
+  callback?: (db: DbWorker) => void,
+): Promise<[Array<DbWorkerOutput>, Sqlite, DbWorker]> => {
+  const [sqlite, deps] = await createSqliteWithDbWorkerPlatformDeps();
   const db = createDbWorkerForPlatform(deps);
 
-  db.onMessage((message) => {
-    const snapshot = getDbSnapshot({ sqlite });
-    assert(snapshot.ok);
-    onMessageMessagesAndDbSnapshots.push({
-      message,
-      snapshot: snapshot.value,
-    });
+  const dbWorkerOutput: Array<DbWorkerOutput> = [];
+  db.onMessage((message) => dbWorkerOutput.push(message));
+
+  // Execute callback before initialization if provided
+  if (callback) {
+    callback(db);
+  }
+
+  db.postMessage({
+    type: "init",
+    config: testDbConfig,
+    dbSchema: createSimpleTestSchema(),
+    initialData: [],
   });
 
-  const tabId = createId(testNanoIdLibDep);
+  // async createSqliteDriver
+  await wait(10);
 
-  // Run mutate before the init to test the init is handled first and mutate waits.
+  return [dbWorkerOutput, sqlite, db];
+};
+
+test("createDbWorker initializes correctly", async () => {
+  const [dbWorkerOutput, sqlite] = await setupInitializedDbWorker();
+
+  expect(dbWorkerOutput).toMatchSnapshot();
+  expect(getDbSnapshot({ sqlite })).toMatchSnapshot();
+});
+
+test("mutations", async () => {
+  const [dbWorkerOutput, sqlite, db] = await setupInitializedDbWorker();
+
   db.postMessage({
     type: "mutate",
-    tabId,
+    tabId: testCreateId(),
     changes: [
       {
         id: testCreateId(),
-        table: "_table1" as Base64Url256,
-        values: {
-          ["column1" as Base64Url256]: "bar",
-        },
+        table: "testTable" as Base64Url256,
+        values: { ["name" as Base64Url256]: "test" },
       },
     ],
     onCompleteIds: [],
     subscribedQueries: [],
   });
 
-  const testDbSchema: DbSchema = {
-    tables: [
-      {
-        name: "_table1" as Base64Url256,
-        columns: ["id" as Base64Url256, "column1" as Base64Url256],
-      },
-      {
-        name: "table1" as Base64Url256,
-        columns: ["id" as Base64Url256, "column1" as Base64Url256],
-      },
-    ],
-    indexes: [],
+  expect(dbWorkerOutput).toMatchSnapshot();
+  expect(getDbSnapshot({ sqlite }).tables).toMatchSnapshot();
+});
+
+test("mutate before init", async () => {
+  const [dbWorkerOutput, sqlite] = await setupInitializedDbWorker((db) => {
+    // This runs BEFORE init
+    db.postMessage({
+      type: "mutate",
+      tabId: testCreateId(),
+      changes: [
+        {
+          id: testCreateId(),
+          table: "_testTable" as Base64Url256,
+          values: { ["name" as Base64Url256]: "test" },
+        },
+      ],
+      onCompleteIds: [],
+      subscribedQueries: [],
+    });
+  });
+
+  expect(dbWorkerOutput).toMatchSnapshot();
+  expect(getDbSnapshot({ sqlite }).tables).toMatchSnapshot();
+});
+
+test("local mutation", async () => {
+  const [dbWorkerOutput, sqlite, db] = await setupInitializedDbWorker();
+
+  const change: DbChange = {
+    id: testCreateId(),
+    table: "_testTable" as Base64Url256,
+    values: { ["name" as Base64Url256]: "test" },
   };
 
   db.postMessage({
-    type: "init",
-    config: { ...testDbConfig, enableLogging: true },
-    dbSchema: testDbSchema,
-    initialData: [
-      {
-        id: testCreateId(),
-        table: "table1" as Base64Url256,
-        values: {
-          ["column1" as Base64Url256]: "foo",
-        },
-      },
-    ],
+    type: "mutate",
+    tabId: testCreateId(),
+    changes: [change],
+    onCompleteIds: [],
+    subscribedQueries: [],
   });
+
+  expect(dbWorkerOutput).toMatchSnapshot();
+  expect(getDbSnapshot({ sqlite }).tables).toMatchSnapshot();
 
   db.postMessage({
     type: "mutate",
-    tabId,
+    tabId: testCreateId(),
     changes: [
       {
-        id: testCreateId(),
-        table: "_table1" as Base64Url256,
+        ...change,
         values: {
+          ...change.values,
           ["isDeleted" as Base64Url256]: 1,
         },
       },
@@ -258,21 +310,11 @@ test("createDbWorker", async () => {
     subscribedQueries: [],
   });
 
-  db.postMessage({
-    type: "mutate",
-    tabId,
-    changes: [
-      {
-        id: testCreateId(),
-        table: "table1" as Base64Url256,
-        values: {
-          ["column1" as Base64Url256]: "foo",
-        },
-      },
-    ],
-    onCompleteIds: [],
-    subscribedQueries: [],
-  });
+  expect(getDbSnapshot({ sqlite }).tables).toMatchSnapshot();
+});
+
+test("reset", async () => {
+  const [, sqlite, db] = await setupInitializedDbWorker();
 
   db.postMessage({
     type: "reset",
@@ -280,11 +322,39 @@ test("createDbWorker", async () => {
     onCompleteId: testNanoIdLib.nanoid() as CallbackId,
   });
 
-  await wait(10);
+  expect(getDbSnapshot({ sqlite })).toMatchSnapshot();
+});
 
-  expect(logArgs).toMatchSnapshot("logArgs");
+test("evolu_history unique index prevents duplicates", async () => {
+  const [, sqlite] = await setupInitializedDbWorker();
 
-  expect(onMessageMessagesAndDbSnapshots).toMatchSnapshot(
-    "onMessageMessagesAndDbSnapshots",
+  const ownerId = testOwnerBinaryId;
+  const table = "testTable";
+  const id = idToBinaryId(testCreateId());
+  const column = "name";
+  const value = "test value";
+  const timestamp = testTimestampsAsc[0];
+
+  // Manually insert the same record twice
+  sqlite.exec(sql`
+    insert into evolu_history
+      ("ownerId", "table", "id", "column", "value", "timestamp")
+    values
+      (${ownerId}, ${table}, ${id}, ${column}, ${value}, ${timestamp})
+    on conflict do nothing;
+  `);
+  sqlite.exec(sql`
+    insert into evolu_history
+      ("ownerId", "table", "id", "column", "value", "timestamp")
+    values
+      (${ownerId}, ${table}, ${id}, ${column}, ${value}, ${timestamp})
+    on conflict do nothing;
+  `);
+
+  const count = getOrThrow(
+    sqlite.exec<{ count: number }>(sql`
+      select count(*) as count from evolu_history;
+    `),
   );
+  expect(count.rows[0].count).toBe(1);
 });
