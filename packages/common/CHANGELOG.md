@@ -1,5 +1,12 @@
 # @evolu/common
 
+## 6.0.1-preview.3
+
+### Patch Changes
+
+- 2a37317: Update dependencies
+- 39cbd9b: Add ownerId into evolu_history table
+
 ## 6.0.1-preview.2
 
 ### Patch Changes

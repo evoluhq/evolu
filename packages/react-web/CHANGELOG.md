@@ -1,5 +1,15 @@
 # @evolu/react-web
 
+## 1.0.1-preview.2
+
+### Patch Changes
+
+- 2a37317: Update dependencies
+- Updated dependencies [2a37317]
+- Updated dependencies [39cbd9b]
+  - @evolu/common@6.0.1-preview.3
+  - @evolu/web@1.0.1-preview.2
+
 ## 1.0.1-preview.1
 
 ### Patch Changes

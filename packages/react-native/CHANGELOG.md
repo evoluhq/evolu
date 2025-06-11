@@ -1,5 +1,15 @@
 # @evolu/react-native
 
+## 12.0.1-preview.2
+
+### Patch Changes
+
+- 2a37317: Update dependencies
+- Updated dependencies [2a37317]
+- Updated dependencies [39cbd9b]
+  - @evolu/common@6.0.1-preview.3
+  - @evolu/react@9.0.1-preview.2
+
 ## 12.0.1-preview.1
 
 ### Patch Changes
