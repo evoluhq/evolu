@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  assert,
   binaryTimestampToTimestamp,
   createEvolu,
   createFormatTypeError,
@@ -111,17 +110,15 @@ const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   }),
 
   initialData: (evolu) => {
-    const todoCategory = evolu.insert("todoCategory", {
-      name: "Not Urgent",
-    });
-
-    // This assert makes sure the inserted data is valid.
-    // If it fails, it means there is a bug in the code that should be fixed.
-    assert(todoCategory.ok, "invalid initial data");
+    const todoCategoryId = getOrThrow(
+      evolu.insert("todoCategory", {
+        name: "Not Urgent",
+      }),
+    );
 
     evolu.insert("todo", {
       title: "Try React Suspense",
-      categoryId: todoCategory.value.id,
+      categoryId: todoCategoryId.id,
     });
   },
 
