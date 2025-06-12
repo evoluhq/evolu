@@ -1,5 +1,6 @@
 import { Kysely, SelectQueryBuilder } from "kysely";
 import { pack } from "msgpackr";
+import { assert } from "../Assert.js";
 import { mapObject, objectToEntries, ReadonlyRecord } from "../Object.js";
 import { err, ok, Result } from "../Result.js";
 import { SqliteBoolean, SqliteQueryOptions, SqliteValue } from "../Sqlite.js";
@@ -9,8 +10,7 @@ import {
   BrandType,
   createTypeErrorFormatter,
   DateIsoString,
-  EvoluType,
-  Id,
+  IdType,
   InferErrors,
   InferInput,
   InferType,
@@ -23,31 +23,19 @@ import {
   omit,
   optional,
   OptionalType,
-  record,
   Type,
   TypeError,
-  Unknown,
 } from "../Type.js";
 import { Simplify } from "../Types.js";
-import { DbSchema, DbTable } from "./Db.js";
+import { DbSchema } from "./Db.js";
 import { createIndexes, DbIndexesBuilder } from "./Kysely.js";
 import { AppOwner, ShardOwner, SharedOwner } from "./Owner.js";
-import {
-  Base64Url256,
-  BinaryId,
-  maxProtocolMessageRangesSize,
-} from "./Protocol.js";
+import { BinaryId, maxProtocolMessageRangesSize } from "./Protocol.js";
 import { Query, Row } from "./Query.js";
 import { BinaryTimestamp } from "./Timestamp.js";
 
 /**
  * Defines the schema of an Evolu database.
- *
- * - Each top-level key represents a table name.
- * - The value for each table name is a record of column names mapped to their
- *   respective data types, defined by {@link Type}.
- * - Each table must include a mandatory `id` column of type {@link Id}.
- * - No table may contain {@link DefaultColumns}.
  *
  * Table schema defines columns that are required for table rows. For not
  * required columns, use {@link nullOr}.
@@ -82,10 +70,104 @@ import { BinaryTimestamp } from "./Timestamp.js";
  */
 export type EvoluSchema = ReadonlyRecord<
   string,
-  ReadonlyRecord<string, Type<any, any, any, any, any>> & {
-    readonly id: Type<any, any, any, any, any>;
-  }
+  // TypeScript errors are cryptic so we use ValidateSchema.
+  ReadonlyRecord<string, Type<any, any, any, any, any>>
 >;
+
+/**
+ * Validates an {@link EvoluSchema} at compile time, returning the first error
+ * found as a readable string literal type. This approach provides much clearer
+ * and more actionable TypeScript errors than the default, which are often hard
+ * to read.
+ *
+ * Validates the following schema requirements:
+ *
+ * 1. All tables must have an 'id' column
+ * 2. The 'id' column must be a branded ID type (created with id() function)
+ * 3. Tables cannot use default column names (createdAt, updatedAt, isDeleted)
+ * 4. All column types must be compatible with SQLite (extend SqliteValue)
+ */
+export type ValidateSchema<S extends EvoluSchema> =
+  ValidateSchemaHasId<S> extends never
+    ? ValidateIdColumnType<S> extends never
+      ? ValidateNoDefaultColumns<S> extends never
+        ? ValidateColumnTypes<S> extends never
+          ? S
+          : ValidateColumnTypes<S>
+        : ValidateNoDefaultColumns<S>
+      : ValidateIdColumnType<S>
+    : ValidateSchemaHasId<S>;
+
+export type ValidateSchemaHasId<S extends EvoluSchema> =
+  keyof S extends infer TableName
+    ? TableName extends keyof S
+      ? "id" extends keyof S[TableName]
+        ? never
+        : SchemaValidationError<`Table "${TableName & string}" is missing required id column.`>
+      : never
+    : never;
+
+export type ValidateIdColumnType<S extends EvoluSchema> =
+  keyof S extends infer TableName
+    ? TableName extends keyof S
+      ? "id" extends keyof S[TableName]
+        ? S[TableName]["id"] extends IdType<any>
+          ? never
+          : SchemaValidationError<`Table "${TableName & string}" id column must be a branded ID type (created with id("${TableName & string}")).`>
+        : never
+      : never
+    : never;
+
+export type ValidateNoDefaultColumns<S extends EvoluSchema> =
+  keyof S extends infer TableName
+    ? TableName extends keyof S
+      ? keyof S[TableName] extends infer ColumnName
+        ? ColumnName extends keyof S[TableName]
+          ? ColumnName extends "createdAt" | "updatedAt" | "isDeleted"
+            ? SchemaValidationError<`Table "${TableName & string}" uses default column name "${ColumnName & string}". Default columns (createdAt, updatedAt, isDeleted) are added automatically.`>
+            : never
+          : never
+        : never
+      : never
+    : never;
+
+export type ValidateColumnTypes<S extends EvoluSchema> =
+  keyof S extends infer TableName
+    ? TableName extends keyof S
+      ? keyof S[TableName] extends infer ColumnName
+        ? ColumnName extends keyof S[TableName]
+          ? InferType<S[TableName][ColumnName]> extends SqliteValue
+            ? never
+            : SchemaValidationError<`Table "${TableName & string}" column "${ColumnName & string}" type is not compatible with SQLite. Column types must extend SqliteValue (string, number, Uint8Array, or null).`>
+          : never
+        : never
+      : never
+    : never;
+
+/** Schema validation error that shows clear, readable messages */
+export type SchemaValidationError<Message extends string> =
+  `❌ Schema Error: ${Message}`;
+
+export const evoluSchemaToDbSchema = (
+  schema: EvoluSchema,
+  indexes?: DbIndexesBuilder,
+): DbSchema => {
+  const tables = objectToEntries(schema).map(([tableName, table]) => ({
+    name: tableName,
+    columns: objectToEntries(table)
+      .filter(([k]) => k !== "id")
+      .map(([k]) => k),
+  }));
+
+  const dbSchema = { tables, indexes: createIndexes(indexes) };
+
+  assert(
+    DbSchema.is(dbSchema),
+    "Invalid EvoluSchema: Table and column names must use only characters A-Za-z0-9_- and be at most 256 characters long.",
+  );
+
+  return dbSchema;
+};
 
 export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
   queryCallback: (
@@ -122,116 +204,6 @@ export const DefaultColumns = object({
   isDeleted: nullOr(SqliteBoolean),
 });
 export type DefaultColumns = typeof DefaultColumns.Type;
-
-const isDefaultColumnName = (value: string): boolean =>
-  value === "createdAt" || value === "updatedAt" || value === "isDeleted";
-
-/**
- * Valid {@link EvoluSchema}.
- *
- * - Table and column names must be Base64Url strings.
- * - Each table must include an `id` column of type {@link Id}.
- * - Default column names (`createdAt`, `updatedAt`, `isDeleted`) are not allowed.
- */
-export const ValidEvoluSchema = brand(
-  "ValidEvoluSchema",
-  record(
-    Base64Url256,
-    object({ id: EvoluType }, record(Base64Url256, Unknown)),
-  ),
-  (value) => {
-    for (const tableName in value) {
-      for (const columnName in value[tableName as never]) {
-        if (isDefaultColumnName(columnName)) {
-          return err<ValidEvoluSchemaError>({
-            type: "ValidEvoluSchema",
-            value,
-            reason: {
-              kind: "DefaultColumnError",
-              tableName,
-              columnName,
-            },
-          });
-        }
-      }
-    }
-
-    return ok(value);
-  },
-);
-
-export type ValidEvoluSchema = typeof ValidEvoluSchema.Type;
-
-export interface ValidEvoluSchemaError extends TypeError<"ValidEvoluSchema"> {
-  readonly reason: {
-    kind: "DefaultColumnError";
-    tableName: string;
-    columnName: string;
-  };
-}
-
-/**
- * Asserts that the given value is {@link ValidEvoluSchema}.
- *
- * Throws an error if the value is not a valid Evolu schema.
- */
-export const assertValidEvoluSchema = (value: unknown): ValidEvoluSchema => {
-  const validEvoluSchema = ValidEvoluSchema.fromUnknown(value);
-  if (!validEvoluSchema.ok) {
-    const message = formatValidEvoluSchemaError(validEvoluSchema.error);
-    throw new Error(`Invalid Evolu schema: ${message}`);
-  }
-  return validEvoluSchema.value;
-};
-
-const formatValidEvoluSchemaError = (
-  error: typeof ValidEvoluSchema.Error | typeof ValidEvoluSchema.ParentError,
-): string => {
-  if (error.type === "Record") {
-    if (error.reason.kind === "Key") {
-      return `The table "${error.reason.key}" has invalid name. A table name must be Base64Url256 string (A-Z, a-z, 0-9, -, _).`;
-    }
-
-    if (
-      error.reason.kind === "Value" &&
-      error.reason.error.reason.kind === "Props" &&
-      error.reason.error.reason.errors.id?.type === "EvoluType"
-    ) {
-      return `The table "${error.reason.key}" has invalid ID column. Check examples.`;
-    }
-
-    if (
-      error.reason.kind === "Value" &&
-      error.reason.error.reason.kind === "IndexKey"
-    ) {
-      return `The table "${error.reason.key}" has invalid column name "${error.reason.error.reason.key}". A column name must be Base64Url256 string (A-Z, a-z, 0-9, -, _).`;
-    }
-  }
-
-  if (error.type === "ValidEvoluSchema") {
-    return `The table "${error.reason.tableName}" uses reserved column name "${error.reason.columnName}". Reserved column names are: createdAt, updatedAt, isDeleted.`;
-  }
-
-  return JSON.stringify(error, null, 2);
-};
-
-export const validEvoluSchemaToDbSchema = (
-  validEvoluSchema: ValidEvoluSchema,
-  indexes?: DbIndexesBuilder,
-): DbSchema => {
-  const tables = objectToEntries(validEvoluSchema).map(
-    ([tableName, table]): DbTable => ({
-      name: tableName,
-      columns: objectToEntries(table)
-        .filter(([k]) => k !== "id")
-        .map(([k]) => k as Base64Url256),
-    }),
-  );
-  return {
-    tables,
-    indexes: createIndexes(indexes),
-  };
-};
 
 export type MutationKind = "insert" | "update" | "upsert";
 

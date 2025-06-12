@@ -1,5 +1,5 @@
 import { isNonEmptyArray, isNonEmptyReadonlyArray } from "../Array.js";
-import { assertNonEmptyArray } from "../Assert.js";
+import { assert, assertNonEmptyArray } from "../Assert.js";
 import { createCallbacks } from "../Callbacks.js";
 import { ConsoleDep } from "../Console.js";
 import { SymmetricCryptoDecryptError } from "../Crypto.js";
@@ -44,9 +44,9 @@ import {
   SubscribedQueries,
 } from "./Query.js";
 import {
-  assertValidEvoluSchema,
   CreateQuery,
   EvoluSchema,
+  evoluSchemaToDbSchema,
   insertable,
   Mutation,
   MutationKind,
@@ -54,7 +54,7 @@ import {
   MutationOptions,
   updateable,
   upsertable,
-  validEvoluSchemaToDbSchema,
+  ValidateSchema,
   ValidMutationSize,
   ValidMutationSizeError,
 } from "./Schema.js";
@@ -431,9 +431,7 @@ let tabId: Id | null = null;
 export const createEvolu =
   (deps: EvoluDeps) =>
   <S extends EvoluSchema>(
-    // TODO: Validate missing Id, unsupported types, used default types via TS types
-    // with type errors messages as we had it in the old Evolu.
-    schema: S,
+    schema: ValidateSchema<S> extends never ? S : ValidateSchema<S>,
     partialConfig: Partial<EvoluConfigWithInitialData<S>> = {},
   ): Evolu<S> => {
     const config = { ...defaultConfig, ...partialConfig };
@@ -441,11 +439,14 @@ export const createEvolu =
     let evolu = evoluInstances.get(config.name);
 
     if (evolu == null) {
-      evolu = createEvoluInstance(deps)(schema, config as IntentionalNever);
+      evolu = createEvoluInstance(deps)(
+        schema as EvoluSchema,
+        config as IntentionalNever,
+      );
       evoluInstances.set(config.name, evolu);
     } else {
       // Hot reloading. Note that indexes are intentionally omitted.
-      evolu.ensureSchema(schema);
+      evolu.ensureSchema(schema as EvoluSchema);
     }
 
     return evolu as IntentionalNever;
@@ -554,10 +555,7 @@ const createEvoluInstance =
       }
     });
 
-    const dbSchema = validEvoluSchemaToDbSchema(
-      assertValidEvoluSchema(schema),
-      indexes,
-    );
+    const dbSchema = evoluSchemaToDbSchema(schema, indexes);
 
     const mutationTypesCache = new Map<
       MutationKind,
@@ -592,21 +590,17 @@ const createEvoluInstance =
     if (initialData)
       initialData({
         insert: (table, props) => {
-          const Type = getMutationType(table, "insert");
           const id = createId(deps);
+          const values = getMutationType(table, "insert").fromUnknown(props);
 
-          const result = Type.fromUnknown(props);
-
-          if (result.ok) {
-            initialDataDbChanges.push({
-              id,
-              table,
-              values: result.value,
-            } as unknown as DbChange);
+          if (values.ok) {
+            const dbChange = { table, id, values: values.value };
+            assertValidDbChange(dbChange);
+            initialDataDbChanges.push(dbChange);
             return ok({ id });
           }
 
-          return result;
+          return values;
         },
       });
 
@@ -654,14 +648,14 @@ const createEvoluInstance =
           } else {
             // Remove `id` from values.
             const { id: _id, ...values } = result.value;
-            // EvoluSchema Types ensure valid types.
-            const change = { table, id, values } as unknown as DbChange;
-            mutateMicrotaskQueue.push([change, options?.onComplete]);
+            const dbChange = { table, id, values };
+            assertValidDbChange(dbChange);
+            mutateMicrotaskQueue.push([dbChange, options?.onComplete]);
           }
 
           if (mutateMicrotaskQueue.length === 1)
             queueMicrotask(() => {
-              const changes = [];
+              const changes: Array<DbChange> = [];
               const onCompletes = [];
 
               for (const [change, onComplete] of mutateMicrotaskQueue) {
@@ -807,6 +801,7 @@ const createEvoluInstance =
         const onCompleteId = callbacks.register(() => {
           resolve();
         });
+
         dbWorker.postMessage({
           type: "reset",
           onCompleteId,
@@ -822,11 +817,8 @@ const createEvoluInstance =
 
       ensureSchema: (schema) => {
         mutationTypesCache.clear();
-        const validSchema = assertValidEvoluSchema(schema);
-        dbWorker.postMessage({
-          type: "ensureDbSchema",
-          dbSchema: validEvoluSchemaToDbSchema(validSchema),
-        });
+        const dbSchema = evoluSchemaToDbSchema(schema);
+        dbWorker.postMessage({ type: "ensureDbSchema", dbSchema });
       },
 
       exportDatabase: () => {
@@ -944,4 +936,15 @@ const createLoadingPromises = (
   };
 
   return loadingPromises;
+};
+
+const assertValidDbChange: (dbChange: {
+  table: string;
+  id: Id;
+  values: unknown;
+}) => asserts dbChange is DbChange = (dbChange) => {
+  assert(
+    DbChange.is(dbChange),
+    `Failed to create DbChange for table "${dbChange.table}". If you see this message, you either disabled EvoluSchema validation or Evolu has a bug - please report it.`,
+  );
 };

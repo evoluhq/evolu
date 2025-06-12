@@ -34,7 +34,7 @@ import {
   SqliteValue,
 } from "../Sqlite.js";
 import { TimeDep } from "../Time.js";
-import { Id, Mnemonic, object, SimpleName, String } from "../Type.js";
+import { array, Id, Mnemonic, object, SimpleName, String } from "../Type.js";
 import {
   createInitializedWorker,
   Worker,
@@ -97,18 +97,20 @@ import {
   timestampToTimestampString,
 } from "./Timestamp.js";
 
-export interface DbSchema {
-  readonly tables: ReadonlyArray<DbTable>;
-  readonly indexes: ReadonlyArray<DbIndex>;
-}
-
-export interface DbTable {
-  readonly name: Base64Url256;
-  readonly columns: ReadonlyArray<Base64Url256>;
-}
+export const DbTable = object({
+  name: Base64Url256,
+  columns: array(Base64Url256),
+});
+export type DbTable = typeof DbTable.Type;
 
 export const DbIndex = object({ name: String, sql: String });
 export type DbIndex = typeof DbIndex.Type;
+
+export const DbSchema = object({
+  tables: array(DbTable),
+  indexes: array(DbIndex),
+});
+export type DbSchema = typeof DbSchema.Type;
 
 export type DbWorker = Worker<DbWorkerInput, DbWorkerOutput>;
 
@@ -803,6 +805,8 @@ const initializeDb =
         strict;
       `,
 
+      // Index for reading database changes by owner and timestamp.
+      // Timestamp always corresponds to a DbChange.
       sql`
         create index evolu_history_ownerId_timestamp on evolu_history (
           "ownerId",
@@ -1189,7 +1193,6 @@ const createClientStorage =
 
       writeMessages: (_ownerId, messages) => {
         // TODO: Get owner by _ownerId when we support more.
-        // Use ownerId!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         const owner = deps.ownerRowRef.get();
         const decodedAndDecryptedMessages: Array<CrdtMessage> = [];
 

@@ -1,9 +1,10 @@
-import { expect, test, vi } from "vitest";
+import { describe, expect, expectTypeOf, test, vi } from "vitest";
 import { createConsole } from "../../src/Console.js";
 import { createEvolu } from "../../src/Evolu/Evolu.js";
 import { getOrThrow } from "../../src/Result.js";
 import { SqliteBoolean } from "../../src/Sqlite.js";
 import {
+  Boolean,
   id,
   InferType,
   maxLength,
@@ -11,7 +12,18 @@ import {
   nullOr,
   SimpleName,
 } from "../../src/Type.js";
-import { testCreateId, testNanoIdLib, testTime } from "../_deps.js";
+import {
+  testCreateId,
+  testNanoIdLib,
+  testSimpleName,
+  testTime,
+} from "../_deps.js";
+import {
+  ValidateColumnTypes,
+  ValidateIdColumnType,
+  ValidateNoDefaultColumns,
+  ValidateSchemaHasId,
+} from "../../src/Evolu/Schema.js";
 
 const TodoId = id("Todo");
 type TodoId = InferType<typeof TodoId>;
@@ -393,4 +405,133 @@ test("mutations should fail as a transaction when any mutation fails", async () 
 
   // Only init should be called, not the mutations since one failed
   expect(dbWorker.postMessage).toHaveBeenCalledTimes(1);
+});
+
+describe("EvoluSchema validation", () => {
+  test("schema without id column", () => {
+    const deps = mockDeps();
+
+    const SchemaWithoutId = {
+      todo: {
+        // Missing id column - should cause TypeScript error
+        title: NonEmptyString50,
+      },
+    };
+
+    // Type-level assertion for the exact error message
+    type ValidationResult = ValidateSchemaHasId<typeof SchemaWithoutId>;
+    expectTypeOf<ValidationResult>().toEqualTypeOf<'❌ Schema Error: Table "todo" is missing required id column.'>();
+
+    // @ts-expect-error - Schema validation should catch missing id column
+    createEvolu(deps)(SchemaWithoutId, {
+      name: testSimpleName,
+    });
+  });
+
+  test("schema with default column createdAt", () => {
+    const deps = mockDeps();
+
+    const SchemaWithDefaultColumn = {
+      todo: {
+        id: TodoId,
+        createdAt: NonEmptyString50,
+      },
+    };
+
+    // Type-level assertion for the exact error message
+    type ValidationResult = ValidateNoDefaultColumns<
+      typeof SchemaWithDefaultColumn
+    >;
+    expectTypeOf<ValidationResult>().toEqualTypeOf<'❌ Schema Error: Table "todo" uses default column name "createdAt". Default columns (createdAt, updatedAt, isDeleted) are added automatically.'>();
+
+    // @ts-expect-error - Schema validation should catch default column name
+    createEvolu(deps)(SchemaWithDefaultColumn, {
+      name: testSimpleName,
+    });
+  });
+
+  test("schema with default column updatedAt", () => {
+    const deps = mockDeps();
+
+    const SchemaWithDefaultColumn = {
+      todo: {
+        id: TodoId,
+        updatedAt: NonEmptyString50,
+      },
+    };
+
+    // Type-level assertion for the exact error message
+    type ValidationResult = ValidateNoDefaultColumns<
+      typeof SchemaWithDefaultColumn
+    >;
+    expectTypeOf<ValidationResult>().toEqualTypeOf<'❌ Schema Error: Table "todo" uses default column name "updatedAt". Default columns (createdAt, updatedAt, isDeleted) are added automatically.'>();
+
+    // @ts-expect-error - Schema validation should catch default column name
+    createEvolu(deps)(SchemaWithDefaultColumn, {
+      name: testSimpleName,
+    });
+  });
+
+  test("schema with default column isDeleted", () => {
+    const deps = mockDeps();
+
+    const SchemaWithDefaultColumn = {
+      todo: {
+        id: TodoId,
+        isDeleted: NonEmptyString50,
+      },
+    };
+
+    // Type-level assertion for the exact error message
+    type ValidationResult = ValidateNoDefaultColumns<
+      typeof SchemaWithDefaultColumn
+    >;
+    expectTypeOf<ValidationResult>().toEqualTypeOf<'❌ Schema Error: Table "todo" uses default column name "isDeleted". Default columns (createdAt, updatedAt, isDeleted) are added automatically.'>();
+
+    // @ts-expect-error - Schema validation should catch default column name
+    createEvolu(deps)(SchemaWithDefaultColumn, {
+      name: testSimpleName,
+    });
+  });
+
+  test("schema with non-branded id column", () => {
+    const deps = mockDeps();
+
+    const SchemaWithInvalidId = {
+      todo: {
+        id: NonEmptyString50,
+        title: NonEmptyString50,
+      },
+    };
+
+    // Type-level assertion for the exact error message
+    type ValidationResult = ValidateIdColumnType<typeof SchemaWithInvalidId>;
+    expectTypeOf<ValidationResult>().toEqualTypeOf<'❌ Schema Error: Table "todo" id column must be a branded ID type (created with id("todo")).'>();
+
+    // @ts-expect-error - Schema validation should catch non-branded id column
+    createEvolu(deps)(SchemaWithInvalidId, {
+      name: testSimpleName,
+    });
+  });
+
+  test("schema with incompatible column type", () => {
+    const deps = mockDeps();
+
+    const SchemaWithInvalidType = {
+      todo: {
+        id: TodoId,
+        title: NonEmptyString50,
+        invalidColumn: Boolean, // Boolean is not compatible with SQLite
+      },
+    };
+
+    // Type-level assertion for the exact error message
+    type ValidationResult = ValidateColumnTypes<typeof SchemaWithInvalidType>;
+    expectTypeOf<ValidationResult>().toEqualTypeOf<'❌ Schema Error: Table "todo" column "invalidColumn" type is not compatible with SQLite. Column types must extend SqliteValue (string, number, Uint8Array, or null).'>();
+
+    // @ts-expect-error - Schema validation should catch incompatible column type
+    createEvolu(deps)(SchemaWithInvalidType, {
+      name: testSimpleName,
+    });
+  });
 });

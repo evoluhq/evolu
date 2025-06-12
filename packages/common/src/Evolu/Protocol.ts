@@ -144,7 +144,7 @@ import {
 } from "../Crypto.js";
 import { eqArrayNumber } from "../Eq.js";
 import { computeBalancedBuckets } from "../Number.js";
-import { objectToEntries, ReadonlyRecord } from "../Object.js";
+import { objectToEntries } from "../Object.js";
 import { err, ok, Result } from "../Result.js";
 import { SqliteValue } from "../Sqlite.js";
 import {
@@ -157,7 +157,9 @@ import {
   NanoId,
   NonNegativeInt,
   Number,
+  object,
   PositiveInt,
+  record,
 } from "../Type.js";
 import { Brand, Predicate } from "../Types.js";
 import {
@@ -294,14 +296,22 @@ export interface CrdtMessage {
 }
 
 /**
+ * Base64Url string with maximum length of 256 characters. Encoding strings as
+ * Base64UrlString saves up to 25% in size compared to regular strings.
+ */
+export const Base64Url256 = maxLength(256)(Base64Url);
+export type Base64Url256 = typeof Base64Url256.Type;
+
+/**
  * A DbChange is a change to a table row. Together with a unique
  * {@link Timestamp}, it forms a {@link CrdtMessage}.
  */
-export interface DbChange {
-  readonly table: Base64Url256;
-  readonly id: Id;
-  readonly values: ReadonlyRecord<Base64Url256, SqliteValue>;
-}
+export const DbChange = object({
+  table: Base64Url256,
+  id: Id,
+  values: record(Base64Url256, SqliteValue),
+});
+export type DbChange = typeof DbChange.Type;
 
 export const RangeType = {
   Fingerprint: 1,
@@ -1433,13 +1443,6 @@ export const ownerIdToBinaryOwnerId = (ownerId: OwnerId): BinaryOwnerId =>
 
 export const binaryOwnerIdToOwnerId = (binaryOwnerId: BinaryOwnerId): OwnerId =>
   decodeOwnerId(createBuffer(binaryOwnerId));
-
-/**
- * Base64Url string with maximum length of 256 characters. Encoding strings as
- * Base64UrlString saves up to 25% in size compared to regular strings.
- */
-export const Base64Url256 = maxLength(256)(Base64Url);
-export type Base64Url256 = typeof Base64Url256.Type;
 
 /**
  * Union type for all variants of Base64Url strings with limited length. All
