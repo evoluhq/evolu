@@ -104,7 +104,7 @@ const formatTypeError = createFormatTypeError<
 
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   reloadUrl: "/docs/examples/react/nextjs",
-  name: getOrThrow(SimpleName.from("evolu-nextjs-example")),
+  name: getOrThrow(SimpleName.from("evolu-nextjs-example-v120625")),
 
   ...(process.env.NODE_ENV === "development" && {
     syncUrl: "http://localhost:4000",
