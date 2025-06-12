@@ -2,7 +2,7 @@
 import clsx from "clsx";
 import { useTheme } from "next-themes";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const LetterGlitch = ({
   glitchColors = ["#f5f5f5", "#e5e5e5", "#d4d4d4", "#a3a3a3"],
@@ -20,14 +20,13 @@ const LetterGlitch = ({
   className?: string;
 }): React.ReactElement => {
   const { resolvedTheme } = useTheme();
-
   const pathname = usePathname();
 
-  if (resolvedTheme === "dark") {
-    glitchColors = ["#f5f5f5", "#e5e5e5", "#d4d4d4", "#a3a3a3"];
-  } else {
-    glitchColors = ["#404040", "#525252", "#737373"];
-  }
+  // Mobile detection state
+  const [isMobile, setIsMobile] = useState(false);
+  const [hasPlayedOnMobile, setHasPlayedOnMobile] = useState(false);
+
+  // All refs
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationRef = useRef<number | null>(null);
   const letters = useRef<
@@ -43,6 +42,68 @@ const LetterGlitch = ({
   const grid = useRef({ columns: 0, rows: 0 });
   const context = useRef<CanvasRenderingContext2D | null>(null);
   const lastGlitchTime = useRef(Date.now());
+
+  // Check if device is mobile
+  useEffect(() => {
+    const checkIsMobile = () => {
+      setIsMobile(window.innerWidth < 768); // Tailwind's md breakpoint
+    };
+
+    // Check on mount
+    checkIsMobile();
+
+    // Add resize listener
+    window.addEventListener("resize", checkIsMobile);
+
+    return () => {
+      window.removeEventListener("resize", checkIsMobile);
+    };
+  }, []);
+
+  // Main animation useEffect
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    context.current = canvas.getContext("2d");
+    resizeCanvas();
+    animate();
+
+    let resizeTimeout: NodeJS.Timeout;
+
+    const handleResize = () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        cancelAnimationFrame(animationRef.current!);
+        resizeCanvas();
+        animate();
+      }, 100);
+    };
+
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      cancelAnimationFrame(animationRef.current!);
+      window.removeEventListener("resize", handleResize);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [glitchSpeed, smooth, resolvedTheme]);
+
+  // Early return for non-homepage
+  if (pathname !== "/") {
+    return <></>;
+  }
+
+  // Early return for mobile that has already played
+  if (isMobile && hasPlayedOnMobile) {
+    return <></>;
+  }
+
+  if (resolvedTheme === "dark") {
+    glitchColors = ["#f5f5f5", "#e5e5e5", "#d4d4d4", "#a3a3a3"];
+  } else {
+    glitchColors = ["#404040", "#525252", "#737373"];
+  }
 
   const fontSize = 16;
   const charWidth = 10;
@@ -102,6 +163,11 @@ const LetterGlitch = ({
   const initDisappearSequence = () => {
     const startTime = Date.now();
     const endTime = startTime + 5000; // 5 seconds
+
+    // Set mobile animation start time
+    if (isMobile && !hasPlayedOnMobile) {
+      setHasPlayedOnMobile(true);
+    }
 
     // Distribute disappear times across the 10 second window
     letters.current.forEach((letter) => {
@@ -187,12 +253,7 @@ const LetterGlitch = ({
   };
 
   const drawLetters = () => {
-    if (
-      !context.current ||
-      letters.current.length === 0 ||
-      pathname !== "/" ||
-      !canvasRef.current
-    )
+    if (!context.current || letters.current.length === 0 || !canvasRef.current)
       return;
     const ctx = context.current;
     const { width, height } = canvasRef.current.getBoundingClientRect();
@@ -303,38 +364,6 @@ const LetterGlitch = ({
 
     animationRef.current = requestAnimationFrame(animate);
   };
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || pathname !== "/") return;
-
-    context.current = canvas.getContext("2d");
-    resizeCanvas();
-    animate();
-
-    let resizeTimeout: NodeJS.Timeout;
-
-    const handleResize = () => {
-      clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(() => {
-        cancelAnimationFrame(animationRef.current!);
-        resizeCanvas();
-        animate();
-      }, 100);
-    };
-
-    window.addEventListener("resize", handleResize);
-
-    return () => {
-      cancelAnimationFrame(animationRef.current!);
-      window.removeEventListener("resize", handleResize);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [glitchSpeed, smooth, resolvedTheme]);
-
-  if (pathname !== "/") {
-    return <></>;
-  }
 
   return (
     <div
