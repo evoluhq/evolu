@@ -1,6 +1,6 @@
 import { isNonEmptyReadonlyArray } from "../Array.js";
 import { ConsoleConfig } from "../Console.js";
-import { eqArrayNumber } from "../Eq.js";
+import { TimingSafeEqualDep } from "../Crypto.js";
 import { ok, Result } from "../Result.js";
 import { sql, SqliteError } from "../Sqlite.js";
 import { SimpleName } from "../Type.js";
@@ -19,8 +19,10 @@ export interface RelayConfig extends ConsoleConfig {
   readonly name?: SimpleName;
 }
 
+export type RelaySqliteStorageDeps = SqliteStorageDeps & TimingSafeEqualDep;
+
 export const createRelayStorage =
-  (deps: SqliteStorageDeps) =>
+  (deps: RelaySqliteStorageDeps) =>
   (options: CreateSqliteStorageBaseOptions): Result<Storage, SqliteError> => {
     const sqliteStorageBase = createSqliteStorageBase(deps)(options);
     if (!sqliteStorageBase.ok) return sqliteStorageBase;
@@ -87,7 +89,7 @@ export const createRelayStorage =
           return true;
         }
 
-        return eqArrayNumber(rows[0].writeKey, writeKey);
+        return deps.timingSafeEqual(rows[0].writeKey, writeKey);
       },
 
       writeMessages: (ownerId, messages) => {

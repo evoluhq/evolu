@@ -73,6 +73,7 @@ import { Brand } from "../../src/Types.js";
 import {
   testCreateId,
   testCreateSqlite,
+  testCreateTimingSafeEqual,
   testDeps,
   testNanoIdLib,
   testNanoIdLibDep,
@@ -104,7 +105,11 @@ const getUncompressedAndCompressedSizes = (array: Uint8Array) => {
 const createStorageDep = async (): Promise<StorageDep> => {
   const sqlite = await testCreateSqlite();
   const storage = getOrThrow(
-    createRelayStorage({ sqlite, random: createRandom() })({
+    createRelayStorage({
+      sqlite,
+      random: createRandom(),
+      timingSafeEqual: testCreateTimingSafeEqual(),
+    })({
       onStorageError: (error) => {
         throw new Error(error.type);
       },

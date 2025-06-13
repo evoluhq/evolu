@@ -2,6 +2,7 @@
   "extends": "@evolu/tsconfig/universal-esm.json",
   "compilerOptions": {
     "outDir": "dist",
+    "rootDir": ".",
     "allowJs": true,
     "resolveJsonModule": true
   },

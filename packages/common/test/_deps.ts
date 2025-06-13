@@ -1,4 +1,6 @@
+import { TimingSafeEqual } from "@evolu/common";
 import BetterSQLite, { Statement } from "better-sqlite3";
+import { timingSafeEqual } from "crypto";
 import { customRandom, urlAlphabet } from "nanoid";
 import {
   CreateMnemonic,
@@ -201,3 +203,5 @@ export const testCreateSqlite = async (): Promise<Sqlite> => {
   })(testSimpleName);
   return getOrThrow(sqlite);
 };
+
+export const testCreateTimingSafeEqual = (): TimingSafeEqual => timingSafeEqual;

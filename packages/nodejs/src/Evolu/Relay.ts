@@ -16,10 +16,11 @@ import {
   protocolVersion,
   Relay,
   RelayConfig,
-  SqliteStorageDeps,
+  RelaySqliteStorageDeps,
 } from "@evolu/common/evolu";
 import { WebSocket, WebSocketServer } from "ws";
 import { createBetterSqliteDriver } from "../BetterSqliteDriver.js";
+import { createTimingSafeEqual } from "../Crypto.js";
 
 export interface NodeJsRelayConfig extends RelayConfig {
   readonly port?: number;
@@ -49,13 +50,14 @@ export const createNodeJsRelay =
       })(versionedName),
     );
 
-    const sqliteStorageDeps: SqliteStorageDeps = {
+    const relaySqliteStorageDeps: RelaySqliteStorageDeps = {
       sqlite,
       random: createRandom(),
+      timingSafeEqual: createTimingSafeEqual(),
     };
 
     const storage = getOrThrow(
-      createRelayStorage(sqliteStorageDeps)({
+      createRelayStorage(relaySqliteStorageDeps)({
         onStorageError: (error) => {
           deps.console.error("[relay]", "[storage]", error);
         },

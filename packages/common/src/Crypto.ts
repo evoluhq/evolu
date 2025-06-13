@@ -189,3 +189,16 @@ export const padmePaddedLength = (length: NonNegativeInt): NonNegativeInt => {
 export const padmePaddingLength = (length: NonNegativeInt): NonNegativeInt => {
   return (padmePaddedLength(length) - length) as NonNegativeInt;
 };
+
+/**
+ * Performs a timing-safe comparison of two Uint8Arrays. Returns true if they
+ * are equal, false otherwise. Takes constant time regardless of where the
+ * arrays differ.
+ *
+ * @see https://nodejs.org/api/crypto.html#cryptotimingsafeequala-b
+ */
+export type TimingSafeEqual = (a: Uint8Array, b: Uint8Array) => boolean;
+
+export interface TimingSafeEqualDep {
+  readonly timingSafeEqual: TimingSafeEqual;
+}

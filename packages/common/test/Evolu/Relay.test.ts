@@ -4,6 +4,7 @@ import { constVoid } from "../../src/Function.js";
 import { getOrThrow } from "../../src/Result.js";
 import {
   testCreateSqlite,
+  testCreateTimingSafeEqual,
   testOwner,
   testOwner2,
   testOwnerBinaryId,
@@ -14,7 +15,11 @@ test("createRelayStorage", async () => {
   const sqlite = await testCreateSqlite();
 
   const storage = getOrThrow(
-    createRelayStorage({ sqlite, random: testRandom })({
+    createRelayStorage({
+      sqlite,
+      random: testRandom,
+      timingSafeEqual: testCreateTimingSafeEqual(),
+    })({
       onStorageError: constVoid,
     }),
   );
