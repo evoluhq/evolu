@@ -1998,3 +1998,27 @@ export const decodeSqliteValue = (buffer: Buffer): SqliteValue => {
       throw new ProtocolDecodeError("invalid ProtocolValueType");
   }
 };
+
+/**
+ * Decodes a ProtocolMessage into a readable JSON object for debugging.
+ *
+ * Note: This is a stub for future implementation. It should use:
+ *
+ * - DecodeVersionAndOwner
+ * - DecodeError or decodeWriteKeys (depending on context)
+ * - DecodeMessages
+ * - DecodeRanges
+ *
+ * If you want to help, please contribute to this function.
+ */
+export const decodeProtocolMessageToJson = (
+  _protocolMessage: ProtocolMessage,
+  _isInitiator: boolean,
+): unknown => {
+  // TODO: Implement using
+  // - decodeVersionAndOwner
+  // -- decodeError or decodeWriteKeys (should be refactored out),
+  // -- decodeMessages, and decodeRanges.
+  // This is a stub for PRs and community contributions.
+  throw new Error("decodeProtocolMessageToJson is not implemented yet.");
+};
