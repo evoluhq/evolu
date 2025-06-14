@@ -221,7 +221,7 @@ export const ProtocolErrorCode = {
 type ProtocolErrorCode =
   (typeof ProtocolErrorCode)[keyof typeof ProtocolErrorCode];
 
-const WriteKeyMode = {
+export const WriteKeyMode = {
   None: 0,
   Single: 1,
   Rotation: 2,
