@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 6.0.1-preview.7
+
+### Patch Changes
+
+- f5e4232: Added deleteOwner(ownerId) method to the Storage interface and implementations, enabling complete removal of all data for a given owner, including timestamps, messages, and write keys.
+
 ## 6.0.1-preview.6
 
 ### Patch Changes
