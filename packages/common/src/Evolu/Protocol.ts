@@ -293,6 +293,9 @@ export interface Storage {
     ownerId: BinaryOwnerId,
     timestamp: BinaryTimestamp,
   ) => EncryptedDbChange | null;
+
+  /** Delete all data for the given {@link Owner}. */
+  readonly deleteOwner: (ownerId: BinaryOwnerId) => boolean;
 }
 
 export interface StorageDep {

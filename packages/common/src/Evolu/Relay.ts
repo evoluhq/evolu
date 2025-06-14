@@ -1,7 +1,7 @@
 import { isNonEmptyReadonlyArray } from "../Array.js";
 import { ConsoleConfig } from "../Console.js";
 import { TimingSafeEqualDep } from "../Crypto.js";
-import { ok, Result } from "../Result.js";
+import { err, ok, Result } from "../Result.js";
 import { sql, SqliteError } from "../Sqlite.js";
 import { SimpleName } from "../Type.js";
 import { OwnerId, WriteKey } from "./Owner.js";
@@ -154,6 +154,30 @@ export const createRelayStorage =
         }
 
         return result.value.rows[0]?.change;
+      },
+
+      deleteOwner: (ownerId) => {
+        const result = deps.sqlite.transaction(() => {
+          const del1 = deps.sqlite.exec(sql`
+            delete from evolu_writeKey where ownerId = ${ownerId};
+          `);
+          if (!del1.ok) return del1;
+
+          const del2 = deps.sqlite.exec(sql`
+            delete from evolu_message where ownerId = ${ownerId};
+          `);
+          if (!del2.ok) return del2;
+
+          const del3 = sqliteStorageBase.value.deleteOwner(ownerId);
+          if (!del3) return err(null);
+
+          return ok();
+        });
+        if (!result.ok) {
+          if (result.error) options.onStorageError(result.error);
+          return false;
+        }
+        return true;
       },
     });
   };

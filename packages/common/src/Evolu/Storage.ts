@@ -57,6 +57,7 @@ export interface SqliteStorageBase {
   readonly fingerprintRanges: Storage["fingerprintRanges"];
   readonly findLowerBound: Storage["findLowerBound"];
   readonly iterate: Storage["iterate"];
+  readonly deleteOwner: Storage["deleteOwner"];
 }
 
 export interface SqliteStorageBaseDep {
@@ -208,6 +209,17 @@ export const createSqliteStorageBase =
           const index = (begin + 1 + i) as NonNegativeInt;
           if (!callback(result.value.rows[i].t, index)) return;
         }
+      },
+
+      deleteOwner: (ownerId) => {
+        const result = deps.sqlite.exec(sql`
+          delete from evolu_timestamp where ownerId = ${ownerId};
+        `);
+        if (!result.ok) {
+          options.onStorageError(result.error);
+          return false;
+        }
+        return true;
       },
     });
   };

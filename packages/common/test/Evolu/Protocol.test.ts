@@ -478,6 +478,7 @@ const shouldNotBeCalledStorageDep: StorageDep = {
     setWriteKey: shouldNotBeCalled,
     writeMessages: shouldNotBeCalled,
     readDbChange: shouldNotBeCalled,
+    deleteOwner: shouldNotBeCalled,
   },
 };
 

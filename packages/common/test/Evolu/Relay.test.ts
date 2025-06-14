@@ -10,10 +10,15 @@ import {
   testOwnerBinaryId,
   testRandom,
 } from "../_deps.js";
+import { testTimestampsAsc } from "./_fixtures.js";
+import {
+  EncryptedCrdtMessage,
+  EncryptedDbChange,
+} from "../../src/Evolu/Protocol.js";
+import { binaryTimestampToTimestamp, sql } from "../../src/index.js";
 
-test("createRelayStorage", async () => {
+const createTestRelayStorage = async () => {
   const sqlite = await testCreateSqlite();
-
   const storage = getOrThrow(
     createRelayStorage({
       sqlite,
@@ -23,6 +28,11 @@ test("createRelayStorage", async () => {
       onStorageError: constVoid,
     }),
   );
+  return [storage, sqlite] as const;
+};
+
+test("validateWriteKey", async () => {
+  const [storage] = await createTestRelayStorage();
 
   const writeKey = testOwner.writeKey;
   const differentWriteKey = testOwner2.writeKey;
@@ -41,4 +51,31 @@ test("createRelayStorage", async () => {
     differentWriteKey,
   );
   expect(result3).toBe(false);
+});
+
+test("deleteOwner", async () => {
+  const [storage, sqlite] = await createTestRelayStorage();
+
+  storage.setWriteKey(testOwnerBinaryId, testOwner.writeKey);
+
+  const message: EncryptedCrdtMessage = {
+    timestamp: binaryTimestampToTimestamp(testTimestampsAsc[0]),
+    change: new Uint8Array([1, 2, 3]) as EncryptedDbChange,
+  };
+
+  storage.writeMessages(testOwnerBinaryId, [message]);
+
+  expect(storage.getSize(testOwnerBinaryId)).toBe(1);
+
+  const deleteResult = storage.deleteOwner(testOwnerBinaryId);
+  expect(deleteResult).toBe(true);
+
+  for (const table of ["evolu_timestamp", "evolu_message", "evolu_writeKey"]) {
+    const countResult = sqlite.exec<{ count: number }>(sql`
+      select count(*) as count
+      from ${sql.raw(table)}
+      where ownerId = ${testOwnerBinaryId};
+    `);
+    expect(countResult.ok && countResult.value.rows[0].count).toBe(0);
+  }
 });
