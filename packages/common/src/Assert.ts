@@ -32,9 +32,12 @@ import type { Type } from "./Type.js";
  * assert(true, "true is not true"); // no-op
  * assert(false, "true is not true"); // throws Error
  *
- * const size = fooSize - buffer.getLength();
- * // Ensure required type
- * assert(PositiveInt.is(size), "size is not positive int");
+ * const length = buffer.getLength();
+ * // We know length is logically non-negative, but TypeScript doesn't
+ * assert(
+ *   NonNegativeInt.is(length),
+ *   "buffer length should be non-negative",
+ * );
  * ```
  */
 export const assert: (
