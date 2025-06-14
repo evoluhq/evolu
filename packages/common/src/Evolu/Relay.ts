@@ -92,6 +92,21 @@ export const createRelayStorage =
         return deps.timingSafeEqual(rows[0].writeKey, writeKey);
       },
 
+      setWriteKey: (ownerId, writeKey) => {
+        const upsertWriteKey = deps.sqlite.exec(sql`
+          insert into evolu_writeKey (ownerId, writeKey)
+          values (${ownerId}, ${writeKey})
+          on conflict (ownerId) do update
+            set writeKey = excluded.writeKey;
+        `);
+        if (!upsertWriteKey.ok) {
+          options.onStorageError(upsertWriteKey.error);
+          return false;
+        }
+
+        return true;
+      },
+
       writeMessages: (ownerId, messages) => {
         const result = deps.sqlite.transaction(() => {
           for (const message of messages) {

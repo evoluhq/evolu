@@ -1190,6 +1190,7 @@ const createClientStorage =
       ...sqliteStorageBase.value,
 
       validateWriteKey: constFalse,
+      setWriteKey: constFalse,
 
       writeMessages: (_ownerId, messages) => {
         // TODO: Get owner by _ownerId when we support more.

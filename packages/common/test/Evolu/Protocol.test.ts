@@ -20,6 +20,7 @@ import {
   CrdtMessage,
   createProtocolMessageBuffer,
   createProtocolMessageForSync,
+  createProtocolMessageForWriteKeyRotation,
   createProtocolMessageFromCrdtMessages,
   createTimestampsBuffer,
   DbChange,
@@ -62,7 +63,9 @@ import {
 import { constFalse, constTrue } from "../../src/Function.js";
 import {
   assertNonEmptyArray,
+  createOwner,
   createRandom,
+  createWriteKey,
   EncryptionKey,
   NonEmptyReadonlyArray,
 } from "../../src/index.js";
@@ -472,6 +475,7 @@ const shouldNotBeCalledStorageDep: StorageDep = {
     findLowerBound: shouldNotBeCalled,
     iterate: shouldNotBeCalled,
     validateWriteKey: shouldNotBeCalled,
+    setWriteKey: shouldNotBeCalled,
     writeMessages: shouldNotBeCalled,
     readDbChange: shouldNotBeCalled,
   },
@@ -485,12 +489,16 @@ test("createTimestampsBuffer maxTimestamp", () => {
 
 describe("createProtocolMessageBuffer", () => {
   it("should allow no ranges", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id);
+    const buffer = createProtocolMessageBuffer(testOwner.id, {
+      type: "initiator",
+    });
     expect(() => buffer.unwrap()).not.toThrow();
   });
 
   it("should allow single range with InfiniteUpperBound", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id);
+    const buffer = createProtocolMessageBuffer(testOwner.id, {
+      type: "initiator",
+    });
     buffer.addRange({
       type: RangeType.Skip,
       upperBound: InfiniteUpperBound,
@@ -499,7 +507,9 @@ describe("createProtocolMessageBuffer", () => {
   });
 
   it("should reject single range without InfiniteUpperBound", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id);
+    const buffer = createProtocolMessageBuffer(testOwner.id, {
+      type: "initiator",
+    });
     buffer.addRange({
       type: RangeType.Skip,
       upperBound: testTimestampsAsc[0],
@@ -510,7 +520,9 @@ describe("createProtocolMessageBuffer", () => {
   });
 
   it("should allow multiple ranges with only last InfiniteUpperBound", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id);
+    const buffer = createProtocolMessageBuffer(testOwner.id, {
+      type: "initiator",
+    });
     buffer.addRange({
       type: RangeType.Skip,
       upperBound: testTimestampsAsc[0],
@@ -527,7 +539,9 @@ describe("createProtocolMessageBuffer", () => {
   });
 
   it("should reject range added after InfiniteUpperBound", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id);
+    const buffer = createProtocolMessageBuffer(testOwner.id, {
+      type: "initiator",
+    });
     buffer.addRange({
       type: RangeType.Skip,
       upperBound: InfiniteUpperBound,
@@ -541,7 +555,9 @@ describe("createProtocolMessageBuffer", () => {
   });
 
   it("should reject multiple InfiniteUpperBounds", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id);
+    const buffer = createProtocolMessageBuffer(testOwner.id, {
+      type: "initiator",
+    });
     buffer.addRange({
       type: RangeType.Skip,
       upperBound: testTimestampsAsc[0],
@@ -566,7 +582,7 @@ test("createProtocolMessageForSync", async () => {
   expect(
     createProtocolMessageForSync(storageDep)(testOwner.id)?.join(),
   ).toMatchInlineSnapshot(
-    `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0,1,2,0"`,
+    `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0,0,1,2,0"`,
   );
 
   const messages31 = testTimestampsAsc.slice(0, 31).map(
@@ -582,7 +598,7 @@ test("createProtocolMessageForSync", async () => {
   expect(
     createProtocolMessageForSync(storageDep)(testOwner.id)?.join(),
   ).toMatchInlineSnapshot(
-    `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0,1,2,31,0,163,205,139,2,152,222,222,3,141,195,32,138,221,210,1,216,167,200,1,243,155,45,128,152,244,5,167,136,182,1,199,139,225,5,131,234,154,8,0,150,132,58,233,134,161,1,222,244,220,1,250,141,170,3,248,167,204,1,0,161,234,59,0,192,227,115,181,188,169,1,224,169,247,4,205,177,37,143,161,242,1,137,231,180,2,161,244,87,235,207,53,133,244,180,1,142,243,223,10,158,141,113,0,11,1,1,0,5,1,1,0,1,1,1,0,11,0,0,0,0,0,0,0,0,1,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,11,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,6,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,6,153,201,144,40,214,99,106,145,1"`,
+    `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0,0,1,2,31,0,163,205,139,2,152,222,222,3,141,195,32,138,221,210,1,216,167,200,1,243,155,45,128,152,244,5,167,136,182,1,199,139,225,5,131,234,154,8,0,150,132,58,233,134,161,1,222,244,220,1,250,141,170,3,248,167,204,1,0,161,234,59,0,192,227,115,181,188,169,1,224,169,247,4,205,177,37,143,161,242,1,137,231,180,2,161,244,87,235,207,53,133,244,180,1,142,243,223,10,158,141,113,0,11,1,1,0,5,1,1,0,1,1,1,0,11,0,0,0,0,0,0,0,0,1,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,11,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,6,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,6,153,201,144,40,214,99,106,145,1"`,
   );
 
   const message32 = testTimestampsAsc.slice(32, 33).map(
@@ -598,8 +614,43 @@ test("createProtocolMessageForSync", async () => {
   expect(
     createProtocolMessageForSync(storageDep)(testOwner.id)?.join(),
   ).toMatchInlineSnapshot(
-    `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0,16,187,171,234,5,151,160,243,1,203,195,245,1,167,160,170,7,202,245,251,13,150,132,58,199,251,253,2,242,181,246,4,161,234,59,192,227,115,149,230,160,6,220,210,151,2,170,219,140,3,240,195,234,1,172,128,209,11,0,15,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,5,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,7,153,201,144,40,214,99,106,145,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,79,199,221,49,166,129,34,35,99,27,109,221,72,203,113,173,13,174,108,244,220,53,10,79,91,208,39,170,201,18,73,253,152,51,99,124,0,152,50,246,239,212,6,13,80,19,126,71,76,18,73,200,62,200,42,99,188,63,73,207,154,238,98,14,224,33,103,255,188,202,60,84,33,248,184,78,240,231,221,198,98,244,79,237,208,100,110,251,209,4,221,129,70,179,162,173,26,9,38,199,115,85,231,208,141,13,135,35,144,151,124,233,151,6,119,79,51,128,236,157,32,91,160,104,143,239,236,16,148,246,215,168,225,200,73,253,182,117,53,113,24,52,165,196,73,55,66,212,228,27,187,1,71,143,234,75,93,129,254,145,224,183,203,200,8,205,21,142,6,139,145,237,12,30,146,233,222,152,203,251,132,199,125,55,190,43,113,63,180,29,179,161"`,
+    `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0,0,16,187,171,234,5,151,160,243,1,203,195,245,1,167,160,170,7,202,245,251,13,150,132,58,199,251,253,2,242,181,246,4,161,234,59,192,227,115,149,230,160,6,220,210,151,2,170,219,140,3,240,195,234,1,172,128,209,11,0,15,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,5,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,7,153,201,144,40,214,99,106,145,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,79,199,221,49,166,129,34,35,99,27,109,221,72,203,113,173,13,174,108,244,220,53,10,79,91,208,39,170,201,18,73,253,152,51,99,124,0,152,50,246,239,212,6,13,80,19,126,71,76,18,73,200,62,200,42,99,188,63,73,207,154,238,98,14,224,33,103,255,188,202,60,84,33,248,184,78,240,231,221,198,98,244,79,237,208,100,110,251,209,4,221,129,70,179,162,173,26,9,38,199,115,85,231,208,141,13,135,35,144,151,124,233,151,6,119,79,51,128,236,157,32,91,160,104,143,239,236,16,148,246,215,168,225,200,73,253,182,117,53,113,24,52,165,196,73,55,66,212,228,27,187,1,71,143,234,75,93,129,254,145,224,183,203,200,8,205,21,142,6,139,145,237,12,30,146,233,222,152,203,251,132,199,125,55,190,43,113,63,180,29,179,161"`,
   );
+});
+
+test("E2E key rotation", async () => {
+  const storageDep = await createStorageDep();
+
+  const owner = createOwner(testDeps)();
+  const binaryOwnerId = ownerIdToBinaryOwnerId(owner.id);
+  const currentWriteKey = owner.writeKey;
+  const newWriteKey = createWriteKey(testDeps)();
+
+  storageDep.storage.setWriteKey(binaryOwnerId, currentWriteKey);
+
+  const rotationMessage = createProtocolMessageForWriteKeyRotation(
+    owner.id,
+    currentWriteKey,
+    newWriteKey,
+  );
+  expect(rotationMessage.join()).toMatchInlineSnapshot(
+    `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,2,111,64,118,108,245,65,176,98,173,247,85,78,30,167,192,203,231,8,204,198,34,139,105,1,201,240,45,188,237,211,180,215,0"`,
+  );
+
+  const result = applyProtocolMessageAsRelay(storageDep)(rotationMessage);
+  expect(result).toEqual(ok(null));
+
+  const oldKeyValidation = storageDep.storage.validateWriteKey(
+    binaryOwnerId,
+    currentWriteKey,
+  );
+  expect(oldKeyValidation).toBe(false);
+
+  const newKeyValidation = storageDep.storage.validateWriteKey(
+    binaryOwnerId,
+    newWriteKey,
+  );
+  expect(newKeyValidation).toBe(true);
 });
 
 describe("E2E versioning", () => {
@@ -608,6 +659,7 @@ describe("E2E versioning", () => {
 
     const clientMessage = createProtocolMessageBuffer(testOwner.id, {
       version: v0,
+      type: "initiator",
     }).unwrap();
 
     const relayResponse = applyProtocolMessageAsRelay(
@@ -623,6 +675,7 @@ describe("E2E versioning", () => {
 
     const clientMessage = createProtocolMessageBuffer(testOwner.id, {
       version: v0,
+      type: "initiator",
     }).unwrap();
 
     const relayResponse = applyProtocolMessageAsRelay(
@@ -650,6 +703,7 @@ describe("E2E versioning", () => {
 
     const clientMessage = createProtocolMessageBuffer(testOwner.id, {
       version: v1,
+      type: "initiator",
     }).unwrap();
 
     const relayResponse = applyProtocolMessageAsRelay(
@@ -723,7 +777,9 @@ describe("E2E errors", () => {
 
 describe("E2E relay options", () => {
   test("subscribe", () => {
-    const message = createProtocolMessageBuffer(testOwner.id).unwrap();
+    const message = createProtocolMessageBuffer(testOwner.id, {
+      type: "initiator",
+    }).unwrap();
     let onOwnerIdCalled = false;
 
     applyProtocolMessageAsRelay(shouldNotBeCalledStorageDep)(message, {
@@ -749,7 +805,7 @@ describe("E2E relay options", () => {
     );
 
     expect(initiatorMessage.join()).toMatchInlineSnapshot(
-      `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,1,0,0,1,0,0,0,0,0,0,0,0,1,121,235,79,47,164,24,131,5,12,119,244,182,193,94,33,37,51,202,213,38,65,135,221,126,28,96,175,218,215,150,85,153,142,150,34,165,114,241,253,52,87,132,63,71,37,193,90,105,62,125,99,60,111,182,251,117,229,71,141,63,204,7,51,221,31,44,176,61,61,97,121,167,227,237,4,123,162,97,100,32,1,105,93,161,208,29,124,115,207,63,183,51,90,214,6,235,164,234,128,146,109,114,160,167,2,229,25,7,234,83,164,111,193,85,131,141,189,144,122,107,75,193,111,64,118,108,245,65,176,98,173,247,85,78,30,167,192,203"`,
+      `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,1,111,64,118,108,245,65,176,98,173,247,85,78,30,167,192,203,1,0,0,1,0,0,0,0,0,0,0,0,1,121,202,213,38,65,135,221,126,28,115,101,81,26,175,143,158,172,118,188,221,46,140,142,67,193,96,130,145,23,212,79,155,120,89,141,1,166,91,40,34,96,217,204,80,43,183,56,123,57,6,141,82,216,206,241,8,121,218,19,69,182,148,141,163,53,200,236,22,193,57,20,173,57,161,107,235,129,115,148,70,133,155,0,135,138,252,107,92,153,180,255,30,205,22,26,186,163,175,202,255,70,169,167,55,197,29,173,218,0,92,69,86,208,102,60,217,229,58,213,167,203,97"`,
     );
 
     let broadcastedMessage = null as Uint8Array | null;
@@ -770,7 +826,7 @@ describe("E2E relay options", () => {
     assert(broadcastedMessage);
     // Added error and removed writeKey
     expect(broadcastedMessage.join()).toMatchInlineSnapshot(
-      `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0,1,0,0,1,0,0,0,0,0,0,0,0,1,121,235,79,47,164,24,131,5,12,119,244,182,193,94,33,37,51,202,213,38,65,135,221,126,28,96,175,218,215,150,85,153,142,150,34,165,114,241,253,52,87,132,63,71,37,193,90,105,62,125,99,60,111,182,251,117,229,71,141,63,204,7,51,221,31,44,176,61,61,97,121,167,227,237,4,123,162,97,100,32,1,105,93,161,208,29,124,115,207,63,183,51,90,214,6,235,164,234,128,146,109,114,160,167,2,229,25,7,234,83,164,111,193,85,131,141,189,144,122,107,75,193"`,
+      `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0,1,0,0,1,0,0,0,0,0,0,0,0,1,121,202,213,38,65,135,221,126,28,115,101,81,26,175,143,158,172,118,188,221,46,140,142,67,193,96,130,145,23,212,79,155,120,89,141,1,166,91,40,34,96,217,204,80,43,183,56,123,57,6,141,82,216,206,241,8,121,218,19,69,182,148,141,163,53,200,236,22,193,57,20,173,57,161,107,235,129,115,148,70,133,155,0,135,138,252,107,92,153,180,255,30,205,22,26,186,163,175,202,255,70,169,167,55,197,29,173,218,0,92,69,86,208,102,60,217,229,58,213,167,203,97"`,
     );
 
     let writeMessagesCalled = false;
@@ -885,7 +941,7 @@ describe("E2E sync", () => {
     expect(syncSteps).toMatchInlineSnapshot(`
       {
         "syncSizes": [
-          367,
+          368,
         ],
         "syncSteps": 1,
       }
@@ -900,11 +956,11 @@ describe("E2E sync", () => {
     expect(syncSteps).toMatchInlineSnapshot(`
       {
         "syncSizes": [
-          367,
+          368,
           192,
-          999667,
+          999668,
           39,
-          575235,
+          575236,
         ],
         "syncSteps": 5,
       }
@@ -923,17 +979,17 @@ describe("E2E sync", () => {
     expect(syncSteps).toMatchInlineSnapshot(`
       {
         "syncSizes": [
-          367,
+          368,
           192,
-          999667,
+          999668,
           39,
-          138900,
+          138901,
           39,
-          144790,
+          144791,
           39,
-          149659,
+          149660,
           39,
-          151015,
+          151016,
         ],
         "syncSteps": 11,
       }
@@ -948,9 +1004,9 @@ describe("E2E sync", () => {
     expect(syncSteps).toMatchInlineSnapshot(`
       {
         "syncSizes": [
-          21,
+          22,
           999802,
-          38,
+          55,
           594211,
         ],
         "syncSteps": 4,
@@ -970,27 +1026,27 @@ describe("E2E sync", () => {
     expect(syncSteps).toMatchInlineSnapshot(`
       {
         "syncSizes": [
-          21,
+          22,
           154738,
-          38,
+          55,
           162675,
-          38,
+          55,
           138014,
-          38,
+          55,
           149811,
-          38,
+          55,
           156013,
-          38,
+          55,
           148563,
-          38,
+          55,
           147632,
-          38,
+          55,
           134103,
-          38,
+          55,
           146468,
-          38,
+          55,
           154044,
-          38,
+          55,
           112585,
         ],
         "syncSteps": 22,
@@ -1016,11 +1072,11 @@ describe("E2E sync", () => {
     expect(syncSteps).toMatchInlineSnapshot(`
       {
         "syncSizes": [
-          385,
-          5179,
-          21173,
-          814501,
-          782975,
+          382,
+          5242,
+          21213,
+          810781,
+          786916,
         ],
         "syncSteps": 5,
       }
@@ -1049,45 +1105,46 @@ describe("E2E sync", () => {
     expect(syncSteps).toMatchInlineSnapshot(`
       {
         "syncSizes": [
-          378,
-          2331,
-          2211,
-          106144,
-          103101,
-          2234,
-          2261,
-          80813,
-          84207,
-          2310,
-          2274,
-          80312,
-          73304,
-          2464,
-          2277,
-          70919,
-          71934,
-          2222,
-          72552,
-          62055,
+          412,
+          2533,
+          2275,
+          115627,
+          106907,
+          2292,
+          2239,
+          78470,
+          81951,
+          2253,
+          58103,
+          69600,
+          2242,
+          63592,
+          70303,
+          2218,
+          59819,
+          69501,
+          2286,
+          65918,
+          62070,
+          2232,
+          58434,
+          57550,
           2289,
-          58520,
-          66931,
-          2280,
-          58326,
-          59012,
-          2233,
-          54764,
-          54241,
-          2260,
-          59372,
-          50776,
-          54405,
-          70688,
-          26512,
-          105738,
-          96796,
+          51918,
+          58920,
+          2230,
+          64200,
+          51003,
+          2264,
+          56370,
+          49854,
+          48903,
+          77545,
+          25127,
+          70812,
+          55711,
         ],
-        "syncSteps": 37,
+        "syncSteps": 38,
       }
     `);
   });
@@ -1095,7 +1152,9 @@ describe("E2E sync", () => {
 
 describe("ranges sizes", () => {
   it("31 timestamps", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id);
+    const buffer = createProtocolMessageBuffer(testOwner.id, {
+      type: "initiator",
+    });
     const range: TimestampsRangeWithTimestampsBuffer = {
       type: RangeType.Timestamps,
       upperBound: InfiniteUpperBound,
@@ -1109,11 +1168,13 @@ describe("ranges sizes", () => {
 
     expect(
       getUncompressedAndCompressedSizes(buffer.unwrap()),
-    ).toMatchInlineSnapshot(`"237 188"`);
+    ).toMatchInlineSnapshot(`"238 189"`);
   });
 
   it("testTimestampsAsc", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id);
+    const buffer = createProtocolMessageBuffer(testOwner.id, {
+      type: "initiator",
+    });
 
     const range: TimestampsRangeWithTimestampsBuffer = {
       type: RangeType.Timestamps,
@@ -1128,11 +1189,13 @@ describe("ranges sizes", () => {
 
     expect(
       getUncompressedAndCompressedSizes(buffer.unwrap()),
-    ).toMatchInlineSnapshot(`"31627 18269"`);
+    ).toMatchInlineSnapshot(`"31628 18270"`);
   });
 
   it("fingerprints", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id);
+    const buffer = createProtocolMessageBuffer(testOwner.id, {
+      type: "initiator",
+    });
 
     testTimestampsAsc.slice(0, 16).forEach((timestamp, i) => {
       buffer.addRange({
@@ -1144,6 +1207,6 @@ describe("ranges sizes", () => {
 
     expect(
       getUncompressedAndCompressedSizes(buffer.unwrap()),
-    ).toMatchInlineSnapshot(`"329 312"`);
+    ).toMatchInlineSnapshot(`"330 313"`);
   });
 });

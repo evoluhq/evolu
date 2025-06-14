@@ -15,21 +15,39 @@
  *
  * ### Message Structure
  *
- * | Field                          | Notes                      |
- * | :----------------------------- | :------------------------- |
- * | **Header**                     |                            |
- * | - {@link protocolVersion}      |                            |
- * | - {@link OwnerId}              |                            |
- * | - {@link ProtocolErrorCode}    | In non-initiator response. |
- * | **Messages**                   |                            |
- * | - {@link NonNegativeInt}       | A number of messages.      |
- * | - {@link EncryptedCrdtMessage} |                            |
- * | - {@link WriteKey}             | In initiator request.      |
- * | **Ranges**                     |                            |
- * | - {@link NonNegativeInt}       | Number of ranges.          |
- * | - {@link Range}                |                            |
+ * | Field                          | Notes                     |
+ * | :----------------------------- | :------------------------ |
+ * | **Header**                     |                           |
+ * | - {@link protocolVersion}      |                           |
+ * | - {@link OwnerId}              | {@link Owner}             |
+ * | **Initiator**                  |                           |
+ * | - {@link WriteKeyMode}         |                           |
+ * | - {@link WriteKey}             | If WriteKeyMode >= 1      |
+ * | - {@link WriteKey}             | If WriteKeyMode = 2 (new) |
+ * | **Non-initiator**              |                           |
+ * | - {@link ProtocolErrorCode}    |                           |
+ * | **Messages**                   |                           |
+ * | - {@link NonNegativeInt}       | A number of messages.     |
+ * | - {@link EncryptedCrdtMessage} |                           |
+ * | **Ranges**                     |                           |
+ * | - {@link NonNegativeInt}       | Number of ranges.         |
+ * | - {@link Range}                |                           |
  *
- * Every protocol message belongs to an {@link Owner}.
+ * ### WriteKey Validation
+ *
+ * The initiator sends WriteKeyMode and optionally one or two WriteKeys. One key
+ * for write operations and two for key rotation (current and new). Note that
+ * it's ok to not send any key if initiator is going to be synced with readonly
+ * owner. The non-initiator validates them immediately after parsing the
+ * initiator header, before processing any messages or ranges.
+ *
+ * ### WriteKey Rotation
+ *
+ * When initiator's {@link WriteKeyMode} is `Rotation`, two WriteKeys are
+ * present:
+ *
+ * 1. Current WriteKey (for validation)
+ * 2. New WriteKey (to be stored)
  *
  * ### Synchronization
  *
@@ -130,7 +148,6 @@ import {
   BufferError,
   bytesToHex,
   bytesToUtf8,
-  concatBytes,
   createBuffer,
   hexToBytes,
   utf8ToBytes,
@@ -163,7 +180,6 @@ import {
 } from "../Type.js";
 import { Brand, Predicate } from "../Types.js";
 import {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   Owner,
   OwnerId,
   OwnerWithWriteAccess,
@@ -204,6 +220,14 @@ export const ProtocolErrorCode = {
 
 type ProtocolErrorCode =
   (typeof ProtocolErrorCode)[keyof typeof ProtocolErrorCode];
+
+const WriteKeyMode = {
+  None: 0,
+  Single: 1,
+  Rotation: 2,
+} as const;
+
+type WriteKeyMode = (typeof WriteKeyMode)[keyof typeof WriteKeyMode];
 
 /**
  * Evolu Protocol Storage
@@ -249,16 +273,14 @@ export interface Storage {
     callback: (timestamp: BinaryTimestamp, index: NonNegativeInt) => boolean,
   ) => void;
 
-  /**
-   * Authorizes the initiator's {@link WriteKey} for the given
-   * {@link BinaryOwnerId}.
-   *
-   * For a client that does not expect foreign writes, return `false`.
-   */
+  /** Validates the {@link WriteKey} for the given {@link Owner}. */
   readonly validateWriteKey: (
     ownerId: BinaryOwnerId,
     writeKey: WriteKey,
   ) => boolean;
+
+  /** Sets the {@link WriteKey} for the given {@link Owner}. */
+  readonly setWriteKey: (ownerId: BinaryOwnerId, writeKey: WriteKey) => boolean;
 
   /** Write encrypted {@link CrdtMessage}s to storage. */
   readonly writeMessages: (
@@ -435,6 +457,7 @@ export const createProtocolMessageFromCrdtMessages =
     maxSize?: PositiveInt,
   ): ProtocolMessage => {
     const buffer = createProtocolMessageBuffer(owner.id, {
+      type: "initiator",
       totalMaxSize: maxSize ?? maxProtocolMessageSize,
       writeKey: owner.writeKey,
     });
@@ -490,7 +513,7 @@ export const createProtocolMessageFromCrdtMessages =
 export const createProtocolMessageForSync =
   (deps: StorageDep) =>
   (ownerId: OwnerId): ProtocolMessage | null => {
-    const buffer = createProtocolMessageBuffer(ownerId);
+    const buffer = createProtocolMessageBuffer(ownerId, { type: "initiator" });
     const binaryOwnerId = ownerIdToBinaryOwnerId(ownerId);
 
     const size = deps.storage.getSize(binaryOwnerId);
@@ -507,6 +530,19 @@ export const createProtocolMessageForSync =
 
     return buffer.unwrap();
   };
+
+/** Creates a ProtocolMessage for {@link WriteKey} rotation. */
+export const createProtocolMessageForWriteKeyRotation = (
+  ownerId: OwnerId,
+  currentWriteKey: WriteKey,
+  newWriteKey: WriteKey,
+): ProtocolMessage => {
+  const buffer = createProtocolMessageBuffer(ownerId, {
+    type: "initiator",
+    writeKey: [currentWriteKey, newWriteKey],
+  });
+  return buffer.unwrap();
+};
 
 /**
  * Mutable builder for constructing {@link ProtocolMessage} respecting size
@@ -535,16 +571,22 @@ export interface ProtocolMessageBuffer {
 export const createProtocolMessageBuffer = (
   ownerId: OwnerId,
   options: {
-    readonly errorCode?: ProtocolErrorCode;
-    readonly writeKey?: WriteKey;
     readonly totalMaxSize?: PositiveInt | undefined;
     readonly rangesMaxSize?: PositiveInt | undefined;
     readonly version?: NonNegativeInt;
-  } = {},
+  } & (
+    | {
+        readonly type: "initiator";
+        /** Single key or [current, new] for rotation. */
+        readonly writeKey?: WriteKey | readonly [WriteKey, WriteKey];
+      }
+    | {
+        readonly type: "non-initiator";
+        readonly errorCode: ProtocolErrorCode;
+      }
+  ),
 ): ProtocolMessageBuffer => {
   const {
-    errorCode,
-    writeKey,
     totalMaxSize = maxProtocolMessageSize,
     rangesMaxSize = maxProtocolMessageRangesSize,
     version = protocolVersion,
@@ -565,7 +607,21 @@ export const createProtocolMessageBuffer = (
 
   encodeNonNegativeInt(buffers.header, version);
   buffers.header.extend(ownerIdToBinaryOwnerId(ownerId));
-  if (errorCode != null) buffers.header.extend([errorCode]);
+
+  if (options.type === "initiator") {
+    if (!options.writeKey) {
+      buffers.header.extend([WriteKeyMode.None]);
+    } else if (!Array.isArray(options.writeKey)) {
+      buffers.header.extend([WriteKeyMode.Single]);
+      buffers.header.extend(options.writeKey as WriteKey);
+    } else {
+      buffers.header.extend([WriteKeyMode.Rotation]);
+      buffers.header.extend(options.writeKey[0] as WriteKey); // current
+      buffers.header.extend(options.writeKey[1] as WriteKey); // new
+    }
+  } else {
+    buffers.header.extend([options.errorCode]);
+  }
 
   let isLastRangeInfinite = false;
 
@@ -577,10 +633,7 @@ export const createProtocolMessageBuffer = (
   const getHeaderAndMessagesSize = () =>
     buffers.header.getLength() +
     buffers.messages.timestamps.getLength() +
-    buffers.messages.dbChanges.getLength() +
-    (buffers.messages.timestamps.getCount() > 0 && writeKey
-      ? writeKeyLength
-      : 0);
+    buffers.messages.dbChanges.getLength();
 
   const getRangesSize = () =>
     buffers.ranges.timestamps.getCount() > 0
@@ -695,8 +748,6 @@ export const createProtocolMessageBuffer = (
 
       buffers.messages.timestamps.append(buffers.header);
       buffers.header.extend(buffers.messages.dbChanges.unwrap());
-      if (buffers.messages.timestamps.getCount() > 0 && writeKey)
-        buffers.header.extend(writeKey);
 
       if (buffers.ranges.timestamps.getCount() > 0) {
         buffers.ranges.timestamps.append(buffers.header);
@@ -846,8 +897,6 @@ export const applyProtocolMessageAsClient =
           });
         }
 
-        const binaryOwnerId = ownerIdToBinaryOwnerId(ownerId);
-
         const errorCode = input.shift() as ProtocolErrorCode;
         if (errorCode !== ProtocolErrorCode.NoError) {
           switch (errorCode) {
@@ -874,6 +923,7 @@ export const applyProtocolMessageAsClient =
         }
 
         const messages = decodeMessages(input);
+        const binaryOwnerId = ownerIdToBinaryOwnerId(ownerId);
 
         if (
           isNonEmptyReadonlyArray(messages) &&
@@ -887,6 +937,7 @@ export const applyProtocolMessageAsClient =
         if (writeKey == null) return ok(null);
 
         const output = createProtocolMessageBuffer(ownerId, {
+          type: "initiator",
           writeKey,
           totalMaxSize,
           rangesMaxSize,
@@ -921,8 +972,7 @@ export const applyProtocolMessageAsRelay =
     version = protocolVersion,
   ): Result<ProtocolMessage | null, ProtocolInvalidDataError> =>
     tryDecodeProtocolData(inputMessage, (input) => {
-      const requestedVersion = decodeNonNegativeInt(input);
-      const ownerId = decodeOwnerId(input);
+      const [requestedVersion, ownerId] = decodeVersionAndOwner(input);
       const binaryOwnerId = ownerIdToBinaryOwnerId(ownerId);
 
       if (requestedVersion !== version) {
@@ -935,44 +985,89 @@ export const applyProtocolMessageAsRelay =
 
       subscribe?.(ownerId);
 
+      const writeKeyMode = input.shift() as WriteKeyMode;
+      let writeKey: WriteKey | undefined;
+      let newWriteKey: WriteKey | undefined;
+
+      if (writeKeyMode !== WriteKeyMode.None) {
+        writeKey = input.shiftN(writeKeyLength) as WriteKey;
+        switch (writeKeyMode) {
+          case WriteKeyMode.Single:
+            break;
+          case WriteKeyMode.Rotation:
+            newWriteKey = input.shiftN(writeKeyLength) as WriteKey;
+            break;
+          default:
+            throw new ProtocolDecodeError(
+              `Invalid WriteKeyMode: ${writeKeyMode}`,
+            );
+        }
+      }
+
+      if (writeKey) {
+        const isValid = deps.storage.validateWriteKey(binaryOwnerId, writeKey);
+        if (!isValid) {
+          return ok(
+            createProtocolMessageBuffer(ownerId, {
+              type: "non-initiator",
+              errorCode: ProtocolErrorCode.WriteKeyError,
+            }).unwrap(),
+          );
+        }
+
+        if (newWriteKey) {
+          const rotationSuccess = deps.storage.setWriteKey(
+            binaryOwnerId,
+            newWriteKey,
+          );
+          if (!rotationSuccess) {
+            return ok(
+              createProtocolMessageBuffer(ownerId, {
+                type: "non-initiator",
+                errorCode: ProtocolErrorCode.WriteError,
+              }).unwrap(),
+            );
+          }
+        }
+      }
+
       const messages = decodeMessages(input);
 
       if (isNonEmptyReadonlyArray(messages)) {
-        const messagesEnd = inputMessage.length - input.getLength();
-        const writeKey = input.shiftN(writeKeyLength) as WriteKey;
-
-        const writeKeyIsValid = deps.storage.validateWriteKey(
-          binaryOwnerId,
-          writeKey,
-        );
-
-        if (!writeKeyIsValid)
+        if (!writeKey)
           return ok(
             createProtocolMessageBuffer(ownerId, {
+              type: "non-initiator",
               errorCode: ProtocolErrorCode.WriteKeyError,
             }).unwrap(),
           );
 
-        if (broadcast) {
-          // Instead of encoding a new protocol message, we reuse the inputMessage.
-          const broadcastMessage = concatBytes(
-            inputMessage.slice(0, 17),
-            new Uint8Array([ProtocolErrorCode.NoError]),
-            inputMessage.slice(17, messagesEnd),
-          ) as ProtocolMessage;
-
-          broadcast(ownerId, broadcastMessage);
+        // Only broadcast if there's no ranges.
+        if (broadcast && input.getLength() === 0) {
+          const broadcastBuffer = createProtocolMessageBuffer(ownerId, {
+            type: "non-initiator",
+            errorCode: ProtocolErrorCode.NoError,
+            totalMaxSize,
+            rangesMaxSize,
+            version,
+          });
+          for (const message of messages) {
+            broadcastBuffer.addMessage(message);
+          }
+          broadcast(ownerId, broadcastBuffer.unwrap());
         }
 
         if (!deps.storage.writeMessages(binaryOwnerId, messages))
           return ok(
             createProtocolMessageBuffer(ownerId, {
+              type: "non-initiator",
               errorCode: ProtocolErrorCode.WriteError,
             }).unwrap(),
           );
       }
 
       const output = createProtocolMessageBuffer(ownerId, {
+        type: "non-initiator",
         errorCode: ProtocolErrorCode.NoError,
         totalMaxSize,
         rangesMaxSize,
@@ -1005,6 +1100,10 @@ const tryDecodeProtocolData = <T, E>(
 };
 
 const decodeVersionAndOwner = (input: Buffer): [NonNegativeInt, OwnerId] => {
+  // This structure must never change across protocol versions. The version
+  // and owner ID must always be the first two fields in every protocol message
+  // to enable version negotiation and owner identification before any other
+  // processing occurs.
   const version = decodeNonNegativeInt(input);
   const ownerId = decodeOwnerId(input);
   return [version, ownerId];
@@ -1062,6 +1161,7 @@ const sync =
         return ok(null);
       }
       const message = createProtocolMessageBuffer(binaryOwnerId, {
+        type: "non-initiator",
         errorCode: ProtocolErrorCode.SyncError,
       });
       return ok(message.unwrap());
