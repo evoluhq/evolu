@@ -1244,3 +1244,6 @@ describe("ranges sizes", () => {
     ).toMatchInlineSnapshot(`"330 313"`);
   });
 });
+
+// TODO:
+// - protocol message with ranges isn't broadcasted
