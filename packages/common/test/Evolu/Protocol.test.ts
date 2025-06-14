@@ -1148,6 +1148,40 @@ describe("E2E sync", () => {
       }
     `);
   });
+
+  it("starts sync from createProtocolMessageFromCrdtMessages", async () => {
+    const owner = testOwner;
+    const crdtMessages = testTimestampsAsc.map(
+      (t): CrdtMessage => ({
+        timestamp: binaryTimestampToTimestamp(t),
+        change: {
+          table: "foo" as Base64Url256,
+          id: testCreateId(),
+          values: { ["bar" as Base64Url256]: "baz" },
+        },
+      }),
+    );
+    assertNonEmptyArray(crdtMessages);
+
+    const protocolMessage = createProtocolMessageFromCrdtMessages(testDeps)(
+      owner,
+      crdtMessages,
+      // Enforce a sync
+      1000 as PositiveInt,
+    );
+
+    const relayStorageDep = await createStorageDep();
+
+    const relayResult =
+      applyProtocolMessageAsRelay(relayStorageDep)(protocolMessage);
+
+    assert(relayResult.ok);
+    expect(relayResult.value?.join()).toMatchInlineSnapshot(
+      `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0,0,1,2,11,0,163,205,139,2,152,222,222,3,141,195,32,138,221,210,1,216,167,200,1,243,155,45,128,152,244,5,167,136,182,1,199,139,225,5,131,234,154,8,0,11,0,0,0,0,0,0,0,0,1,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,8"`,
+    );
+    // Sync continue
+    expect(relayResult.value).not.toBe(null);
+  });
 });
 
 describe("ranges sizes", () => {
