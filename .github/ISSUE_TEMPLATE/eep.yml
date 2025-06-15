@@ -1,0 +1,38 @@
+name: Evolu Evolution Proposal (EEP)
+description: A formal design for a proposed Evolu feature or change.
+title: "EEP-XXX: Feature or change title"
+
+labels: [eep]
+
+body:
+  - type: textarea
+    id: abstract
+    attributes:
+      label: Abstract
+      placeholder: Brief summary of the feature or change.
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      placeholder: Why is this needed? What problem does it solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation
+      placeholder: How will this be implemented? Technical sketch, affected parts, or steps.
+    validations:
+      required: true
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      placeholder: Related EEPs, issues, discussions, or external resources.
+    validations:
+      required: false
