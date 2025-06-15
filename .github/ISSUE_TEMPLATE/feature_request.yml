@@ -1,0 +1,28 @@
+name: Feature Request
+description: Suggest a new feature or enhancement
+title: "Feature: <short description>"
+
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or Opportunity
+      placeholder: What are you trying to solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Suggested Solution
+      placeholder: What do you propose?
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      placeholder: Related links, similar tools, etc.
+    validations:
+      required: false
