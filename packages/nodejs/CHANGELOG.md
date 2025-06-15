@@ -1,5 +1,13 @@
 # @evolu/nodejs
 
+## 1.0.1-preview.4
+
+### Patch Changes
+
+- d319317: Ensure "Evolu Relay started" is always logged
+- Updated dependencies [f5e4232]
+  - @evolu/common@6.0.1-preview.7
+
 ## 1.0.1-preview.3
 
 ### Patch Changes
