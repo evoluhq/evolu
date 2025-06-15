@@ -18,11 +18,11 @@
           nodejs = prev.nodejs_22;
           pnpm = prev.nodePackages.pnpm.override rec {
             # NOTE: see package.json packageManager
-            version = "10.5.2";
+            version = "10.12.1";
             src = prev.fetchurl {
               url = "https://registry.npmjs.org/pnpm/-/pnpm-${version}.tgz";
               # generate sha256 hash using `nix-hash --type sha256 --flat pnpm-*.tgz`
-              sha256 = "79a98daa90248b50815e31460790f118c56fe099113370826caa0153be6daba5";
+              sha256 = "889bac470ec93ccc3764488a19d6ba8f9c648ad5e50a9a6e4be3768a5de387a3";
             };
           };
         })
