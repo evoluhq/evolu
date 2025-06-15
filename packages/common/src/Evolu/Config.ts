@@ -76,7 +76,7 @@ export interface ConfigDep {
 
 export const defaultConfig: Config = {
   name: getOrThrow(SimpleName.fromParent("Evolu")),
-  syncUrl: "https://free.evoluhq.com",
+  syncUrl: "wss://free.evoluhq.com",
   reloadUrl: "/",
   maxDrift: 5 * 60 * 1000,
   enableLogging: false,

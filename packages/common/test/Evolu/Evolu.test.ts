@@ -88,7 +88,7 @@ test("init postMessage call", () => {
             "maxDrift": 300000,
             "name": "instance0",
             "reloadUrl": "/",
-            "syncUrl": "https://free.evoluhq.com",
+            "syncUrl": "wss://free.evoluhq.com",
           },
           "dbSchema": {
             "indexes": [],
