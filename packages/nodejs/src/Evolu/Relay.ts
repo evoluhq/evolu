@@ -35,8 +35,8 @@ export const createNodeJsRelay =
       enableLogging = false,
     } = config;
 
+    deps.console.enabled = true;
     deps.console.log(`Evolu Relay started on port ${port}`);
-
     deps.console.enabled = enableLogging;
 
     const versionedName = getOrThrow(
