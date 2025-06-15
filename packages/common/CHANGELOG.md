@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 6.0.1-preview.8
+
+### Patch Changes
+
+- 04ca08f: Update default syncUrl
+
 ## 6.0.1-preview.7
 
 ### Patch Changes
