@@ -237,7 +237,10 @@ export function Navigation(
     <nav {...props}>
       <ul role="list">
         <TopLevelNavItem href="/blog">Blog</TopLevelNavItem>
-        <TopLevelNavItem target="_blank" href="https://evoluhq.github.io/evolu">
+        <TopLevelNavItem
+          target="_blank"
+          href="https://github.com/evoluhq/evolu"
+        >
           GitHub <IconArrowUpRight />
         </TopLevelNavItem>
         <TopLevelNavItem
