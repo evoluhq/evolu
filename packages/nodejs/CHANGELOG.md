@@ -1,5 +1,13 @@
 # @evolu/nodejs
 
+## 1.0.1-preview.5
+
+### Patch Changes
+
+- 7283ca1: Update better-sqlite3 version
+- Updated dependencies [7283ca1]
+  - @evolu/common@6.0.1-preview.9
+
 ## 1.0.1-preview.4
 
 ### Patch Changes
@@ -15,7 +23,6 @@
 - c86cb14: Add timing-safe comparison for WriteKey validation
 
   ### Security Improvements
-
   - Add `TimingSafeEqual` type and `TimingSafeEqualDep` interface for platform-independent timing-safe comparison
   - Implement Node.js timing-safe comparison using `crypto.timingSafeEqual()`
   - Replace vulnerable `eqArrayNumber` WriteKey comparison with constant-time algorithm to prevent timing attacks

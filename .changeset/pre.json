@@ -19,6 +19,7 @@
     "@evolu/web": "1.0.0"
   },
   "changesets": [
+    "dull-poets-wash",
     "fast-peas-laugh",
     "heavy-parts-own",
     "mean-rats-start",
@@ -29,6 +30,7 @@
     "small-years-visit",
     "solid-cameras-study",
     "tall-hands-swim",
-    "true-teams-wash"
+    "true-teams-wash",
+    "twenty-friends-bake"
   ]
 }
