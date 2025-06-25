@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 6.0.1-preview.9
+
+### Patch Changes
+
+- 7283ca1: Don't rethrow the decode error
+
 ## 6.0.1-preview.8
 
 ### Patch Changes
@@ -17,7 +23,6 @@
 ### Patch Changes
 
 - 7cd78bf: Added WriteKey rotation protocol support
-
   - Added WriteKeyMode enum for protocol header (None/Single/Rotation)
   - Updated protocol message structure with separate initiator/non-initiator headers
   - Added createProtocolMessageForWriteKeyRotation function
@@ -30,7 +35,6 @@
 - c86cb14: Add timing-safe comparison for WriteKey validation
 
   ### Security Improvements
-
   - Add `TimingSafeEqual` type and `TimingSafeEqualDep` interface for platform-independent timing-safe comparison
   - Implement Node.js timing-safe comparison using `crypto.timingSafeEqual()`
   - Replace vulnerable `eqArrayNumber` WriteKey comparison with constant-time algorithm to prevent timing attacks
@@ -40,7 +44,6 @@
 ### Patch Changes
 
 - 4cc79bb: Added compile-time schema validation with clear error messages
-
   - Added ValidateSchema type that validates Evolu schemas at compile-time and returns readable error messages instead of cryptic TypeScript errors
   - Schema validation now enforces:
     - All tables must have an 'id' column
@@ -68,7 +71,6 @@
 ### Patch Changes
 
 - de37bd1: Add ownerId to all protocol errors (except ProtocolInvalidDataError) and update version negotiation to always include ownerId.
-
   - Improved protocol documentation for versioning and error handling.
   - Improved E2E tests for protocol version negotiation.
   - Ensured all protocol errors (except for malformed data) are associated with the correct owner.
@@ -84,7 +86,6 @@
 ### Major Changes
 
 - Major architectural overhaul:
-
   - Removed Effect dependency, introduced Evolu Library
   - New binary protocol with RBSR sync for efficient peer-to-peer synchronization
   - Message chunking and improved mutation API
@@ -225,7 +226,6 @@
   The great news is that Effect is stable now, so there will be no more releases with deps updates. Let's dance 🪩
 
   New features:
-
   - Multitenancy (we can run more Evolu instances side by side)
   - Initial data (to define fixtures)
   - Logging (you can see what's happening inside Evolu step by step)
