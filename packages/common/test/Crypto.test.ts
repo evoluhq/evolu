@@ -1,7 +1,13 @@
+import { bytesToHex } from "@noble/ciphers/utils";
 import { assert, expect, test } from "vitest";
-import { createSymmetricCrypto, padmePaddedLength } from "../src/Crypto.js";
-import { ok } from "../src/Result.js";
-import { NonNegativeInt } from "../src/Type.js";
+import {
+  createSlip21,
+  createSymmetricCrypto,
+  mnemonicToMnemonicSeed,
+  padmePaddedLength,
+} from "../src/Crypto.js";
+import { getOrThrow, ok } from "../src/Result.js";
+import { Mnemonic, NonNegativeInt } from "../src/Type.js";
 import { testCreateRandomBytesDep, testOwner } from "./_deps.js";
 
 test("SymmetricCrypto", () => {
@@ -63,4 +69,22 @@ test("padmePaddedLength", () => {
   ].forEach(([input, expected]) => {
     expect(padmePaddedLength(input as NonNegativeInt)).toBe(expected);
   });
+});
+
+test("createSlip21", () => {
+  const seed = mnemonicToMnemonicSeed(
+    getOrThrow(
+      Mnemonic.from("all all all all all all all all all all all all"),
+    ),
+  );
+
+  const ownerId = createSlip21(seed, ["Evolu", "Owner Id"]);
+  expect(bytesToHex(ownerId)).toEqual(
+    "0940d9f3e307f3bcedbcc8361ae136b619603a686386ecd329c3ed2337cb831d",
+  );
+
+  const encryptionKey = createSlip21(seed, ["Evolu", "Encryption Key"]);
+  expect(bytesToHex(encryptionKey)).toEqual(
+    "9ad06a43e9d4739502d59c8cafdaa6babb0481cdd0b3acb8455f080b38847642",
+  );
 });
