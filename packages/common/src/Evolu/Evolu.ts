@@ -88,7 +88,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
    * All this function does is compile the Kysely query and serialize it into a
    * unique string. Both operations are fast and cheap.
    *
-   * For mutations, use {@link Evolu.insert} and {@link Evolu.update}.
+   * For mutations, use {@link Evolu#insert} and {@link Evolu#update}.
    *
    * ### Example
    *
@@ -111,7 +111,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
    * A returned promise always resolves successfully because there is no reason
    * why loading should fail. All data are local, and the query is typed. A
    * serious unexpected Evolu error shall be handled with
-   * {@link Evolu.subscribeError}.
+   * {@link Evolu#subscribeError}.
    *
    * Loading is batched, and returned promises are cached, so there is no need
    * for an additional cache. Evolu's internal cache is invalidated on
@@ -144,7 +144,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
    * If you are curious why Evolu does not do that for all queries by default,
    * the answer is simple: performance. Tracking changes is costly and
    * meaningful only for visible (hence subscribed) queries anyway. To subscribe
-   * to a query, use {@link Evolu.subscribeQuery}.
+   * to a query, use {@link Evolu#subscribeQuery}.
    *
    * ### Example
    *
@@ -300,7 +300,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
 
   /**
    * Restore {@link AppOwner} with all their synced data. It uses
-   * {@link Evolu.resetAppOwner}, so be careful.
+   * {@link Evolu#resetAppOwner}, so be careful.
    */
   readonly restoreAppOwner: (
     mnemonic: Mnemonic,

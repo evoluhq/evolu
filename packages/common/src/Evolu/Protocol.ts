@@ -145,7 +145,6 @@ import { isNonEmptyReadonlyArray, NonEmptyReadonlyArray } from "../Array.js";
 import { assert } from "../Assert.js";
 import {
   Buffer,
-  BufferError,
   bytesToHex,
   bytesToUtf8,
   createBuffer,
@@ -1091,14 +1090,11 @@ const tryDecodeProtocolData = <T, E>(
   try {
     return callback(createBuffer(data));
   } catch (error: unknown) {
-    if (error instanceof ProtocolDecodeError || error instanceof BufferError)
-      return err<ProtocolInvalidDataError>({
-        type: "ProtocolInvalidDataError",
-        data,
-        error,
-      });
-
-    throw error;
+    return err<ProtocolInvalidDataError>({
+      type: "ProtocolInvalidDataError",
+      data,
+      error,
+    });
   }
 };
 
