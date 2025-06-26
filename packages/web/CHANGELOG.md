@@ -1,5 +1,28 @@
 # @evolu/web
 
+## 1.0.1-preview.3
+
+### Patch Changes
+
+- 45c8ca9: Add in-memory database support for testing and temporary data
+
+  This change introduces a new `inMemory` configuration option that allows creating SQLite databases in memory instead of persistent storage. In-memory databases exist only in RAM and are completely destroyed when the process ends, making them ideal for:
+
+  - Testing scenarios where data persistence isn't needed
+  - Temporary data processing
+  - Forensically safe handling of sensitive data
+
+  **Usage:**
+
+  ```ts
+  const evolu = createEvolu(deps)(Schema, {
+    inMemory: true, // Creates database in memory instead of file
+  });
+  ```
+
+- Updated dependencies [45c8ca9]
+  - @evolu/common@6.0.1-preview.10
+
 ## 1.0.1-preview.2
 
 ### Patch Changes

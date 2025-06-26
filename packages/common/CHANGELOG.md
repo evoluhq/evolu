@@ -1,5 +1,25 @@
 # @evolu/common
 
+## 6.0.1-preview.10
+
+### Patch Changes
+
+- 45c8ca9: Add in-memory database support for testing and temporary data
+
+  This change introduces a new `inMemory` configuration option that allows creating SQLite databases in memory instead of persistent storage. In-memory databases exist only in RAM and are completely destroyed when the process ends, making them ideal for:
+
+  - Testing scenarios where data persistence isn't needed
+  - Temporary data processing
+  - Forensically safe handling of sensitive data
+
+  **Usage:**
+
+  ```ts
+  const evolu = createEvolu(deps)(Schema, {
+    inMemory: true, // Creates database in memory instead of file
+  });
+  ```
+
 ## 6.0.1-preview.9
 
 ### Patch Changes
@@ -35,6 +55,7 @@
 - c86cb14: Add timing-safe comparison for WriteKey validation
 
   ### Security Improvements
+
   - Add `TimingSafeEqual` type and `TimingSafeEqualDep` interface for platform-independent timing-safe comparison
   - Implement Node.js timing-safe comparison using `crypto.timingSafeEqual()`
   - Replace vulnerable `eqArrayNumber` WriteKey comparison with constant-time algorithm to prevent timing attacks
@@ -226,6 +247,7 @@
   The great news is that Effect is stable now, so there will be no more releases with deps updates. Let's dance 🪩
 
   New features:
+
   - Multitenancy (we can run more Evolu instances side by side)
   - Initial data (to define fixtures)
   - Logging (you can see what's happening inside Evolu step by step)
