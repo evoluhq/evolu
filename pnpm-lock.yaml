@@ -224,7 +224,7 @@ importers:
         specifier: ^7.0.3
         version: 7.0.3
       prettier:
-        specifier: ^3.5.3
+        specifier: ~3.5.3
         version: 3.5.3
       prettier-plugin-tailwindcss:
         specifier: ^0.6.12
@@ -609,6 +609,8 @@ importers:
       ws:
         specifier: ^8.18.2
         version: 8.18.2
+
+  packages/evolu-common: {}
 
   packages/nodejs:
     dependencies:
