@@ -5,9 +5,12 @@ import type { DbIndexesBuilder } from "./Kysely.js";
 
 export interface Config extends ConsoleConfig {
   /**
-   * The name of Evolu instances. Evolu is multitenant - it can run more
-   * instances concurrently. Every Evolu instance has to have its own unique
-   * name. Database files are separated and invisible to each other.
+   * The name of the Evolu instance. Evolu is multitenant - it can run multiple
+   * instances concurrently. Each instance must have a unique name.
+   *
+   * The instance name is used as the SQLite database filename for persistent
+   * storage, ensuring that database files are separated and invisible to each
+   * other.
    *
    * The default value is: `Evolu`.
    *
@@ -68,6 +71,17 @@ export interface Config extends ConsoleConfig {
    * until special UX requirements are needed (e.g., multitenancy).
    */
   readonly mnemonic?: Mnemonic;
+
+  /**
+   * Use in-memory SQLite database instead of persistent storage. Useful for
+   * testing or temporary data that doesn't need persistence.
+   *
+   * In-memory databases exist only in RAM and are completely destroyed when
+   * the process ends, making them forensically safe for sensitive data.
+   *
+   * The default value is: `false`.
+   */
+  readonly inMemory?: boolean;
 }
 
 export interface ConfigDep {

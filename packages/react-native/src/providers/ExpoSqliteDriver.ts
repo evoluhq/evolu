@@ -7,8 +7,10 @@ import {
 
 import { openDatabaseSync, SQLiteStatement } from "expo-sqlite";
 
-export const createExpoSqliteDriver: CreateSqliteDriver = (name) => {
-  const db = openDatabaseSync(`evolu1-${name}.db`);
+export const createExpoSqliteDriver: CreateSqliteDriver = (name, options) => {
+  const db = openDatabaseSync(
+    options?.memory ? ":memory:" : `evolu1-${name}.db`,
+  );
   let isDisposed = false;
 
   const cache = createPreparedStatementsCache<SQLiteStatement>(

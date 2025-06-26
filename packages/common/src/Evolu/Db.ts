@@ -244,6 +244,7 @@ export const createDbWorkerForPlatform = (
 
       const sqliteResult = await createSqlite(platformDeps)(
         initMessage.config.name,
+        { memory: initMessage.config.inMemory ?? false },
       );
 
       if (!sqliteResult.ok) {

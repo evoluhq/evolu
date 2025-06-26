@@ -9,8 +9,13 @@ import {
 
 import { open, PreparedStatement } from "@op-engineering/op-sqlite";
 
-export const createOpSqliteDriver: CreateSqliteDriver = (name) => {
-  const db = open({ name: `evolu1-${name}.db` });
+export const createOpSqliteDriver: CreateSqliteDriver = (name, options) => {
+  // https://op-engineering.github.io/op-sqlite/docs/configuration#in-memory
+  const db = open(
+    options?.memory
+      ? { name: `inMemoryDb`, location: ":memory:" }
+      : { name: `evolu1-${name}.db` },
+  );
   let isDisposed = false;
 
   const cache = createPreparedStatementsCache<PreparedStatement>(

@@ -17,10 +17,17 @@ globalThis.sqlite3ApiConfig = {
 // Init ASAP.
 const sqlite3Promise = sqlite3InitModule();
 
-export const createWasmSqliteDriver: CreateSqliteDriver = async (name) => {
+export const createWasmSqliteDriver: CreateSqliteDriver = async (
+  name,
+  options,
+) => {
   const sqlite3 = await sqlite3Promise;
-  const poolUtil = await sqlite3.installOpfsSAHPoolVfs({ name });
-  const db = new poolUtil.OpfsSAHPoolDb("/evolu1.db");
+
+  const db = options?.memory
+    ? new sqlite3.oo1.DB(":memory:")
+    : new (await sqlite3.installOpfsSAHPoolVfs({ name })).OpfsSAHPoolDb(
+        "/evolu1.db",
+      );
   let isDisposed = false;
 
   const cache = createPreparedStatementsCache<PreparedStatement>(
