@@ -124,7 +124,7 @@ import { createUseEvolu, EvoluProvider } from "@evolu/react";
 import { evoluReactWebDeps } from "@evolu/react-web";
 
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
-	name: getOrThrow(SimpleName.from("your-app-name")),
+  name: getOrThrow(SimpleName.from("your-app-name")),
   syncUrl: "wss://your-sync-url", // optional, defaults to wss://free.evoluhq.com
 });
 
