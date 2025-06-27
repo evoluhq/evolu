@@ -36,5 +36,8 @@ jobs:
       - name: Setup
         uses: ./.github/actions/setup-node-pnpm-install
 
+      - name: Build all packages
+        run: pnpm build
+
       - name: Test
         run: pnpm test
