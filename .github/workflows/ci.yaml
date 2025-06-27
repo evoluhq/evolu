@@ -25,8 +25,14 @@ jobs:
       - name: Setup
         uses: ./.github/actions/setup-node-pnpm-install
 
+      - name: Build
+        run: pnpm build
+
       - name: Lint
-        run: pnpm build && pnpm lint && pnpm lint-monorepo
+        run: pnpm lint
+
+      - name: Lint Monorepo
+        run: pnpm lint-monorepo
 
   test:
     runs-on: ubuntu-latest
@@ -36,7 +42,7 @@ jobs:
       - name: Setup
         uses: ./.github/actions/setup-node-pnpm-install
 
-      - name: Build all packages
+      - name: Build
         run: pnpm build
 
       - name: Test
