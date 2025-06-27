@@ -17,9 +17,9 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "browser": "./dist/index.js"
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "browser": "./dist/src/index.js"
     }
   },
   "files": [
@@ -30,6 +30,7 @@
   "scripts": {
     "dev": "tsc --watch",
     "build": "shx rm -rf dist && tsc",
+    "test": "vitest",
     "clean": "shx rm -rf .turbo node_modules dist",
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
