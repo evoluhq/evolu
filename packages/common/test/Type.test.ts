@@ -949,7 +949,8 @@ test("createId", () => {
 
 test("createIdFromString", () => {
   const id = createIdFromString("abc");
-  expect(Id.from(id)).toEqual(ok("QHMpZvrshcOs47aRxCvN-"));
+  expect(Id.is(id)).toBe(true);
+  expect(id).toEqual("QHMpZvrshcOs47aRxCvN-");
 
   const id1 = createIdFromString("user-api-123");
   const id2 = createIdFromString("user-api-123");
@@ -959,6 +960,27 @@ test("createIdFromString", () => {
   expect(id1).toBe(id2); // Deterministic
   expectTypeOf<typeof id1>().toEqualTypeOf<Id>();
   expectTypeOf<typeof todoId>().toEqualTypeOf<Id & Brand<"Todo">>();
+
+  const emptyId = createIdFromString("");
+  expect(Id.is(emptyId)).toBe(true);
+  expect(emptyId).toHaveLength(21);
+
+  const longString = "a".repeat(1000);
+  const longId = createIdFromString(longString);
+  expect(Id.is(longId)).toBe(true);
+  expect(longId).toHaveLength(21);
+
+  const specialId = createIdFromString("test!@#$%^&*()_+-={}[]|\\:;\"'<>?,./");
+  expect(Id.is(specialId)).toBe(true);
+  expect(specialId).toHaveLength(21);
+
+  const unicodeId = createIdFromString("测试🚀💡");
+  expect(Id.is(unicodeId)).toBe(true);
+  expect(unicodeId).toHaveLength(21);
+
+  const id3 = createIdFromString("test1");
+  const id4 = createIdFromString("test2");
+  expect(id3).not.toBe(id4);
 });
 
 test("PositiveNumber", () => {

@@ -1377,19 +1377,19 @@ export const createId = <B extends string = never>(
 export const createIdFromString = <B extends string = never>(
   value: string,
 ): [B] extends [never] ? Id : Id & Brand<B> => {
-  const hash = sha256(utf8ToBytes(value)); // 32 bytes = 256 bits
+  const hash = sha256(utf8ToBytes(value));
 
   let output = "";
   let buffer = 0;
   let bits = 0;
 
-  for (let i = 0; i < hash.length && output.length < 21; i++) {
-    buffer = (buffer << 8) | hash[i]; // push 8 bits
+  for (const byte of hash) {
+    buffer = (buffer << 8) | byte;
     bits += 8;
 
-    while (bits >= 6 && output.length < 21) {
+    while (bits >= 6 && output.length < idTypeValueLength) {
       bits -= 6;
-      const index = (buffer >> bits) & 0b111111; // extract top 6 bits
+      const index = (buffer >> bits) & 0b111111;
       output += base64UrlAlphabet[index];
     }
   }
