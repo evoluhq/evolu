@@ -47,7 +47,7 @@
     "typescript": "^5.8.3"
   },
   "peerDependencies": {
-    "@evolu/common": "^6.0.1-preview.10",
+    "@evolu/common": "^6.0.1-preview.11",
     "@evolu/web": "^1.0.1-preview.3",
     "svelte": "^5.0.0"
   },
