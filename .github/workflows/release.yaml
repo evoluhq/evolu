@@ -21,14 +21,14 @@ jobs:
           cache: "pnpm"
       - run: pnpm install --frozen-lockfile
 
-      - name: Test
-        run: pnpm test
-
       - name: Build
         run: pnpm build
 
       - name: Lint
         run: pnpm lint
+
+      - name: Test
+        run: pnpm test
 
       - name: Create Release Pull Request or Publish
         id: changesets
