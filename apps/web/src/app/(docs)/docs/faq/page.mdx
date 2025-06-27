@@ -1,7 +1,6 @@
 export const metadata = {
   title: "FAQ",
-  description:
-    "On this page, we’ll dive into the different group endpoints you can use to manage groups programmatically.",
+  description: "Frequently asked questions about Evolu.",
 };
 
 export const sections = [];
@@ -9,6 +8,13 @@ export const sections = [];
 # FAQ
 
 Frequently asked questions about Evolu.
+
+## Questions
+
+- [What is the SQLite database size limit?](#what-is-the-sqlite-database-size-limit)
+- [How can I check the current database filesize?](#how-can-i-check-the-current-database-filesize)
+- [How to delete OPFS Sqlite in browser?](#how-to-delete-opfs-sqlite-in-browser)
+- [How do I integrate with external systems that have their own IDs?](#how-do-i-integrate-with-external-systems-that-have-their-own-ids)
 
 ## What is the SQLite database size limit?
 
@@ -35,3 +41,26 @@ To clear the OPFS (Origin Private File System) SQLite database:
 5. Remove the SQLite database file
 6. Re-enable JavaScript
 7. Reload the page
+
+## How do I integrate with external systems that have their own IDs?
+
+Use `createIdFromString` to convert external IDs into valid Evolu IDs:
+
+```ts
+import { createIdFromString } from "@evolu/common";
+
+// Convert external API ID to Evolu ID
+const evoluId = createIdFromString("user-api-123");
+
+upsert("todo", {
+  id: evoluId,
+  title: "Task from external system",
+});
+
+// With table branding for type safety
+const todoId = createIdFromString<"Todo">("external-todo-456");
+```
+
+This ensures that multiple clients creating records with the same external identifier will generate the same Evolu ID.
+
+**Important**: This transformation is one-way. If you need to preserve the original external ID, store it in a separate column.

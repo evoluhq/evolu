@@ -26,7 +26,6 @@
  * simple.
  *
  * - Evolu `Type` is:
- *
  * - A TypeScript type with a {@link Brand} whenever it's possible.
  * - A function to create a value of that type, which may fail.
  * - A function to transform value back to its original representation, which
@@ -70,6 +69,8 @@
  * @module
  */
 
+import { utf8ToBytes } from "@noble/ciphers/utils";
+import { sha256 } from "@noble/hashes/sha2";
 import * as bip39 from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english";
 import { assert } from "./Assert.js";
@@ -1244,6 +1245,13 @@ export type Base64Url = typeof Base64Url.Type;
 export type Base64UrlError = typeof Base64Url.Error;
 
 /**
+ * Alphabet used for Base64Url encoding. This is copied from the `nanoid`
+ * library to avoid dependency on a specific version of `nanoid`.
+ */
+export const base64UrlAlphabet =
+  "useandom-26T198340PX75pxJACKVERYMINDBUSHWOLF_GQZbfghjklqvwyzrict";
+
+/**
  * Simple alphanumeric string for naming.
  *
  * A `SimpleName` string uses a limited, safe alphabet for naming purposes:
@@ -1324,10 +1332,70 @@ export const idTypeValueLength = 21;
  * ```ts
  * // string & Brand<"Id">
  * const id = createId(deps);
+ *
+ * // string & Brand<"Id"> & Brand<"Todo">
+ * const todoId = createId<"Todo">(deps);
  * ```
  */
-export const createId = (deps: NanoIdLibDep): Id =>
-  deps.nanoIdLib.nanoid() as Id;
+export const createId = <B extends string = never>(
+  deps: NanoIdLibDep,
+): [B] extends [never] ? Id : Id & Brand<B> =>
+  deps.nanoIdLib.nanoid() as [B] extends [never] ? Id : Id & Brand<B>;
+
+/**
+ * Creates an {@link Id} from a string using SHA-256.
+ *
+ * Evolu table IDs must follow a fixed 21-character NanoID format. When
+ * integrating with external systems that use different ID formats, use this
+ * function to convert external IDs into valid Evolu IDs.
+ *
+ * In Evolu's CRDT, the ID serves as the unique identifier for conflict
+ * resolution across distributed clients. When multiple clients create records
+ * with the same external identifier, they must resolve to the same Evolu ID to
+ * ensure data consistency.
+ *
+ * ### Example
+ *
+ * ```ts
+ * // Both clients will generate the same ID
+ * const id1 = createIdFromString("user-api-123");
+ * const id2 = createIdFromString("user-api-123");
+ * console.log(id1 === id2); // true
+ *
+ * upsert("todo", {
+ *   id: createIdFromString("external-todo-456"),
+ *   title: "Synced from external system",
+ * });
+ * ```
+ *
+ * **Important**: This transformation is one-way. You cannot recover the
+ * original external string from the generated {@link Id}. If you need to
+ * preserve the original external ID, store it in a separate column.
+ *
+ * @category String
+ */
+export const createIdFromString = <B extends string = never>(
+  value: string,
+): [B] extends [never] ? Id : Id & Brand<B> => {
+  const hash = sha256(utf8ToBytes(value)); // 32 bytes = 256 bits
+
+  let output = "";
+  let buffer = 0;
+  let bits = 0;
+
+  for (let i = 0; i < hash.length && output.length < 21; i++) {
+    buffer = (buffer << 8) | hash[i]; // push 8 bits
+    bits += 8;
+
+    while (bits >= 6 && output.length < 21) {
+      bits -= 6;
+      const index = (buffer >> bits) & 0b111111; // extract top 6 bits
+      output += base64UrlAlphabet[index];
+    }
+  }
+
+  return output as [B] extends [never] ? Id : Id & Brand<B>;
+};
 
 /**
  * Type Factory to create branded {@link Id} Type for a specific table.

@@ -165,6 +165,7 @@ import { err, ok, Result } from "../Result.js";
 import { SqliteValue } from "../Sqlite.js";
 import {
   Base64Url,
+  base64UrlAlphabet,
   DateIsoString,
   Id,
   idTypeValueLength,
@@ -1550,13 +1551,6 @@ export const binaryOwnerIdToOwnerId = (binaryOwnerId: BinaryOwnerId): OwnerId =>
 export type Base64Url256Variant = Base64Url256 | Id | NanoId | OwnerId;
 
 /**
- * Alphabet used for Base64Url encoding. This is copied from the `nanoid`
- * library to avoid dependency on a specific version of `nanoid`.
- */
-const urlAlphabet =
-  "useandom-26T198340PX75pxJACKVERYMINDBUSHWOLF_GQZbfghjklqvwyzrict";
-
-/**
  * Converts a Base64Url string to a Uint8Array for binary storage. This encoding
  * is more space-efficient than UTF-8 for Base64Url strings.
  */
@@ -1572,7 +1566,7 @@ export const base64Url256ToBytes = (
   let byteIndex = 0;
 
   for (const char of string) {
-    const charValue = urlAlphabet.indexOf(char);
+    const charValue = base64UrlAlphabet.indexOf(char);
     bitBuffer = (bitBuffer << 6) | charValue;
     bitsInBuffer += 6;
     while (bitsInBuffer >= 8) {
@@ -1607,10 +1601,10 @@ export const decodeBase64Url256 = (
       bitsInBuffer -= 6;
       if (string.length < stringLength) {
         const charValue = (bitBuffer >> bitsInBuffer) & 0x3f;
-        if (charValue < 0 || charValue >= urlAlphabet.length) {
+        if (charValue < 0 || charValue >= base64UrlAlphabet.length) {
           throw new ProtocolDecodeError("invalid charValue");
         }
-        string += urlAlphabet[charValue];
+        string += base64UrlAlphabet[charValue];
       }
     }
   }

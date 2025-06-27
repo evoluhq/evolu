@@ -12,6 +12,8 @@ import {
   brand,
   BrandWithoutRefineError,
   createFormatTypeError,
+  createId,
+  createIdFromString,
   Date,
   DateIso,
   DateIsoString,
@@ -21,6 +23,7 @@ import {
   formatStringError,
   greaterThan,
   greaterThanOrEqualTo,
+  Id,
   id,
   IdError,
   InferError,
@@ -115,6 +118,7 @@ import {
   Unknown,
 } from "../src/Type.js";
 import { Brand } from "../src/Types.js";
+import { testNanoIdLib } from "./_deps.js";
 
 test("Base Types", () => {
   expect(Unknown.from(42)).toEqual({ ok: true, value: 42 });
@@ -930,6 +934,31 @@ test("id", () => {
   const OrderId = id("Order");
   type OrderId = typeof OrderId.Type;
   expectTypeOf<UserId>().not.toEqualTypeOf<OrderId>();
+});
+
+test("createId", () => {
+  const id = createId({ nanoIdLib: testNanoIdLib });
+  expect(id).toMatchInlineSnapshot(`"esTwHwplqLBSE8Ou8ffX4"`);
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const todoId = createId<"Todo">({ nanoIdLib: testNanoIdLib });
+
+  expectTypeOf<typeof id>().toEqualTypeOf<Id>();
+  expectTypeOf<typeof todoId>().toEqualTypeOf<Id & Brand<"Todo">>();
+});
+
+test("createIdFromString", () => {
+  const id = createIdFromString("abc");
+  expect(Id.from(id)).toEqual(ok("QHMpZvrshcOs47aRxCvN-"));
+
+  const id1 = createIdFromString("user-api-123");
+  const id2 = createIdFromString("user-api-123");
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const todoId = createIdFromString<"Todo">("external-todo-456");
+
+  expect(id1).toBe(id2); // Deterministic
+  expectTypeOf<typeof id1>().toEqualTypeOf<Id>();
+  expectTypeOf<typeof todoId>().toEqualTypeOf<Id & Brand<"Todo">>();
 });
 
 test("PositiveNumber", () => {
