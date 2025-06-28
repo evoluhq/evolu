@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 6.0.1-preview.13
+
+### Patch Changes
+
+- c4fb4b0: Docs for insert, update, and upsert methods
+
 ## 6.0.1-preview.12
 
 ### Patch Changes

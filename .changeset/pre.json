@@ -19,6 +19,7 @@
     "@evolu/web": "1.0.0"
   },
   "changesets": [
+    "cute-breads-count",
     "dry-cobras-listen",
     "dull-poets-wash",
     "fast-peas-laugh",
