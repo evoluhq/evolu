@@ -253,34 +253,153 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
   readonly getSyncState: () => SyncState;
 
   /**
-   * Inserts a row.
+   * Inserts a row into the database and returns a {@link Result} with the new
+   * {@link Id}.
+   *
+   * The first argument is the table name, and the second is an object
+   * containing the row data. An optional third argument provides mutation
+   * options including an `onComplete` callback and `onlyValidate` flag.
+   *
+   * Returns a Result type - use `.ok` to check if the insertion succeeded, and
+   * `.value.id` to access the generated ID on success, or `.error` to handle
+   * validation errors.
+   *
+   * Evolu does not use SQL for mutations to ensure data can be safely and
+   * predictably merged without conflicts.
+   *
+   * Explicit mutations also allow Evolu to automatically add and update a few
+   * useful columns common to all tables. Those columns are: `createdAt`,
+   * `updatedAt`, and `isDeleted`.
    *
    * ### Example
    *
    * ```ts
-   * // TODO:
+   * const result = evolu.insert("todo", {
+   *   title: "Learn Evolu",
+   *   isCompleted: false,
+   * });
+   *
+   * if (result.ok) {
+   *   console.log("Todo created with ID:", result.value.id);
+   * } else {
+   *   console.error("Validation error:", result.error);
+   * }
+   *
+   * // With onComplete callback
+   * evolu.insert(
+   *   "todo",
+   *   { title: "Another todo" },
+   *   {
+   *     onComplete: () => {
+   *       console.log("Insert completed");
+   *     },
+   *   },
+   * );
    * ```
    */
   insert: Mutation<S, "insert">;
 
   /**
-   * Updates a row.
+   * Updates a row in the database and returns a Result with the existing ID.
+   *
+   * The first argument is the table name, and the second is an object
+   * containing the row data including the required `id` field. An optional
+   * third argument provides mutation options including an `onComplete` callback
+   * and `onlyValidate` flag.
+   *
+   * Returns a Result type - use `.ok` to check if the update succeeded, and
+   * `.value.id` to access the ID on success, or `.error` to handle validation
+   * errors.
+   *
+   * Evolu does not use SQL for mutations to ensure data can be safely and
+   * predictably merged without conflicts.
+   *
+   * Explicit mutations also allow Evolu to automatically add and update a few
+   * useful columns common to all tables. Those columns are: `createdAt`,
+   * `updatedAt`, and `isDeleted`.
    *
    * ### Example
    *
    * ```ts
-   * // TODO:
+   * const result = evolu.update("todo", {
+   *   id: todoId,
+   *   title: "Updated title",
+   *   isCompleted: true,
+   * });
+   *
+   * if (result.ok) {
+   *   console.log("Todo updated with ID:", result.value.id);
+   * } else {
+   *   console.error("Validation error:", result.error);
+   * }
+   *
+   * // To delete a row, set isDeleted to true
+   * evolu.update("todo", { id: todoId, isDeleted: true });
+   *
+   * // With onComplete callback
+   * evolu.update(
+   *   "todo",
+   *   { id: todoId, title: "New title" },
+   *   {
+   *     onComplete: () => {
+   *       console.log("Update completed");
+   *     },
+   *   },
+   * );
    * ```
    */
   update: Mutation<S, "update">;
 
   /**
-   * Upserts a row.
+   * Upserts a row in the database and returns a Result with the ID.
+   *
+   * The first argument is the table name, and the second is an object containing
+   * the row data including the required `id` field. An optional third argument
+   * provides mutation options including an `onComplete` callback and
+   * `onlyValidate` flag.
+   *
+   * This function is useful when you already have an `id` and want to create a
+   * new row or update an existing one in a single operation.
+   *
+   * Returns a Result type - use `.ok` to check if the upsert succeeded, and
+   * `.value.id` to access the ID on success, or `.error` to handle validation
+   * errors.
+   *
+   * Evolu does not use SQL for mutations to ensure data can be safely and
+   * predictably merged without conflicts.
+   *
+   * Explicit mutations also allow Evolu to automatically add and update a few
+   * useful columns common to all tables. Those columns are: `createdAt`,
+   * `updatedAt`, and `isDeleted`.
    *
    * ### Example
    *
    * ```ts
-   * // TODO:
+   * // Use deterministic ID for stable upserts
+   * const stableId = createIdFromString("my-todo-1");
+   *
+   * const result = evolu.upsert("todo", {
+   *   id: stableId,
+   *   title: "Learn Evolu",
+   *   isCompleted: false,
+   * });
+   *
+   * if (result.ok) {
+   *   console.log("Todo upserted with ID:", result.value.id);
+   * } else {
+   *   console.error("Validation error:", result.error);
+   * }
+   *
+   * // With onComplete callback
+   * evolu.upsert(
+   *   "todo",
+   *   { id: stableId, title: "Updated title" },
+   *   {
+   *     onComplete: () => {
+   *       console.log("Upsert completed");
+   *     },
+   *   },
+   * );
    * ```
    */
   upsert: Mutation<S, "upsert">;
@@ -634,6 +753,8 @@ const createEvoluInstance =
       > => {
         const Type = getMutationType(table, kind);
         const result = Type.fromUnknown(props);
+
+        // upsert je ok?
 
         const id =
           kind === "insert"
