@@ -19,6 +19,7 @@
     "@evolu/web": "1.0.0"
   },
   "changesets": [
+    "dry-cobras-listen",
     "dull-poets-wash",
     "fast-peas-laugh",
     "heavy-parts-own",
