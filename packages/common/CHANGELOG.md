@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 6.0.1-preview.12
+
+### Patch Changes
+
+- 3e824af: Refactor createIdFromString, add tests
+
 ## 6.0.1-preview.11
 
 ### Patch Changes
