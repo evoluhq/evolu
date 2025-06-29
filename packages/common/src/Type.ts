@@ -1994,7 +1994,11 @@ export const TrimString = trim(String);
  *
  * ### Example
  *
- * TODO:
+ * ```ts
+ * DateIso.from(new Date("2023-12-25T10:30:00.000Z")); // ok("2023-12-25T10:30:00.000Z")
+ * DateIso.to("2023-12-25T10:30:00.000Z"); // Date object
+ * DateIso.from(new Date("invalid")); // err({ type: "DateIsoString", value: "Invalid Date" })
+ * ```
  *
  * @category String
  */
