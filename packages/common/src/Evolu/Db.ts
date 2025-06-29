@@ -90,7 +90,6 @@ import {
   TimestampCounterOverflowError,
   TimestampDriftError,
   TimestampError,
-  TimestampString,
   timestampStringToTimestamp,
   TimestampTimeOutOfRangeError,
   timestampToBinaryTimestamp,
@@ -263,12 +262,6 @@ export const createDbWorkerForPlatform = (
         );
         if (!ensureDbSchemaResult.ok) return ensureDbSchemaResult;
 
-        const maybeMigrateToVersion0Result = maybeMigrateToVersion0({ sqlite })(
-          currentDbSchema.value,
-        );
-        if (!maybeMigrateToVersion0Result.ok)
-          return maybeMigrateToVersion0Result;
-
         const ownerExists = currentDbSchema.value.tables.some(
           (table) => table.name === "evolu_owner",
         );
@@ -276,8 +269,7 @@ export const createDbWorkerForPlatform = (
         const appOwnerAndOwnerRow = ownerExists
           ? selectAppOwner({ sqlite })
           : initializeDb({ ...platformDeps, sqlite })(
-              maybeMigrateToVersion0Result.value?.mnemonic ??
-                initMessage.config.mnemonic,
+              initMessage.config.mnemonic,
             );
         if (!appOwnerAndOwnerRow.ok) return appOwnerAndOwnerRow;
 
@@ -304,14 +296,6 @@ export const createDbWorkerForPlatform = (
           ...depsWithoutSyncAndStorage,
           storage: storage.value,
         };
-
-        if (maybeMigrateToVersion0Result.value) {
-          const result = applyMessages(depsWithoutSync)(
-            maybeMigrateToVersion0Result.value.messages,
-            maybeMigrateToVersion0Result.value.lastTimestamp,
-          );
-          if (!result.ok) return result;
-        }
 
         if (!ownerExists && isNonEmptyReadonlyArray(initMessage.initialData)) {
           const result = applyChanges(depsWithoutSync)(initMessage.initialData);
@@ -1047,69 +1031,6 @@ const loadQueries =
       }),
     );
     return ok(queryPatchesArray);
-  };
-
-export const maybeMigrateToVersion0 =
-  (deps: SqliteDep) =>
-  (
-    schema: DbSchema,
-  ): Result<
-    {
-      readonly messages: ReadonlyArray<CrdtMessage>;
-      readonly mnemonic: Mnemonic;
-      readonly lastTimestamp: Timestamp;
-    } | null,
-    SqliteError
-  > => {
-    // evolu_history is a new table
-    const hasOwnerButNoHistory =
-      schema.tables.some((t) => t.name === "evolu_owner") &&
-      !schema.tables.some((t) => t.name === "evolu_history");
-    if (!hasOwnerButNoHistory) {
-      return ok(null);
-    }
-
-    const mnemonicAndLastTimestamp = deps.sqlite.exec<{
-      mnemonic: Mnemonic;
-      timestamp: TimestampString;
-    }>(sql` select mnemonic, timestamp from evolu_owner limit 1; `);
-    if (!mnemonicAndLastTimestamp.ok) return mnemonicAndLastTimestamp;
-
-    const messagesRows = deps.sqlite.exec<{
-      timestamp: TimestampString;
-      table: Base64Url256;
-      id: Id;
-      column: Base64Url256;
-      value: SqliteValue;
-    }>(sql`
-      select "timestamp", "table", "id", "column", "value" from evolu_message;
-    `);
-
-    if (!messagesRows.ok) return messagesRows;
-
-    for (const query of [
-      sql`drop table evolu_owner;`,
-      sql`drop table evolu_message;`,
-    ]) {
-      const result = deps.sqlite.exec(query);
-      if (!result.ok) return result;
-    }
-
-    const messages = messagesRows.value.rows.map((message) => ({
-      timestamp: timestampStringToTimestamp(message.timestamp),
-      change: {
-        id: message.id,
-        table: message.table,
-        values: { [message.column]: message.value },
-      },
-    }));
-
-    const {
-      rows: [{ mnemonic, timestamp }],
-    } = mnemonicAndLastTimestamp.value;
-    const lastTimestamp = timestampStringToTimestamp(timestamp);
-
-    return ok({ messages, mnemonic, lastTimestamp });
   };
 
 const dropAllTables = (deps: SqliteDep): Result<void, SqliteError> => {
