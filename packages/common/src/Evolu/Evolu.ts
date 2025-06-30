@@ -45,6 +45,7 @@ import {
 } from "./Query.js";
 import {
   CreateQuery,
+  DefaultColumns,
   EvoluSchema,
   evoluSchemaToDbSchema,
   insertable,
@@ -265,11 +266,8 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
    * validation errors.
    *
    * Evolu does not use SQL for mutations to ensure data can be safely and
-   * predictably merged without conflicts.
-   *
-   * Explicit mutations also allow Evolu to automatically add and update a few
-   * useful columns common to all tables. Those columns are: `createdAt`,
-   * `updatedAt`, and `isDeleted`.
+   * predictably merged without conflicts. Explicit mutations also allow Evolu
+   * to automatically add and update {@link DefaultColumns}.
    *
    * ### Example
    *
@@ -300,7 +298,8 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
   insert: Mutation<S, "insert">;
 
   /**
-   * Updates a row in the database and returns a Result with the existing ID.
+   * Updates a row in the database and returns a {@link Result} with the existing
+   * {@link Id}.
    *
    * The first argument is the table name, and the second is an object
    * containing the row data including the required `id` field. An optional
@@ -312,11 +311,8 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
    * errors.
    *
    * Evolu does not use SQL for mutations to ensure data can be safely and
-   * predictably merged without conflicts.
-   *
-   * Explicit mutations also allow Evolu to automatically add and update a few
-   * useful columns common to all tables. Those columns are: `createdAt`,
-   * `updatedAt`, and `isDeleted`.
+   * predictably merged without conflicts. Explicit mutations also allow Evolu
+   * to automatically add and update {@link DefaultColumns}.
    *
    * ### Example
    *
@@ -351,31 +347,30 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
   update: Mutation<S, "update">;
 
   /**
-   * Upserts a row in the database and returns a Result with the ID.
+   * Upserts a row in the database and returns a {@link Result} with the existing
+   * {@link Id}.
    *
-   * The first argument is the table name, and the second is an object containing
-   * the row data including the required `id` field. An optional third argument
-   * provides mutation options including an `onComplete` callback and
-   * `onlyValidate` flag.
+   * The first argument is the table name, and the second is an object
+   * containing the row data including the required `id` field. An optional
+   * third argument provides mutation options including an `onComplete` callback
+   * and `onlyValidate` flag.
    *
-   * This function is useful when you already have an `id` and want to create a
-   * new row or update an existing one in a single operation.
+   * This function allows you to use custom IDs and optionally set `createdAt`,
+   * which is useful for external systems, data migrations, or when the same row
+   * may already be created on a different device.
    *
    * Returns a Result type - use `.ok` to check if the upsert succeeded, and
    * `.value.id` to access the ID on success, or `.error` to handle validation
    * errors.
    *
    * Evolu does not use SQL for mutations to ensure data can be safely and
-   * predictably merged without conflicts.
-   *
-   * Explicit mutations also allow Evolu to automatically add and update a few
-   * useful columns common to all tables. Those columns are: `createdAt`,
-   * `updatedAt`, and `isDeleted`.
+   * predictably merged without conflicts. Explicit mutations also allow Evolu
+   * to automatically add and update {@link DefaultColumns}.
    *
    * ### Example
    *
    * ```ts
-   * // Use deterministic ID for stable upserts
+   * // Use deterministic ID for stable upserts across devices
    * const stableId = createIdFromString("my-todo-1");
    *
    * const result = evolu.upsert("todo", {
@@ -389,6 +384,13 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
    * } else {
    *   console.error("Validation error:", result.error);
    * }
+   *
+   * // Data migration with custom createdAt
+   * evolu.upsert("todo", {
+   *   id: externalId,
+   *   title: "Migrated todo",
+   *   createdAt: new Date("2023-01-01"), // Preserve original timestamp
+   * });
    *
    * // With onComplete callback
    * evolu.upsert(
@@ -713,7 +715,11 @@ const createEvoluInstance =
           const values = getMutationType(table, "insert").fromUnknown(props);
 
           if (values.ok) {
-            const dbChange = { table, id, values: values.value };
+            const valuesWithCreatedAt = {
+              ...values.value,
+              createdAt: new Date(deps.time.now()).toISOString(),
+            };
+            const dbChange = { table, id, values: valuesWithCreatedAt };
             assertValidDbChange(dbChange);
             initialDataDbChanges.push(dbChange);
             return ok({ id });
@@ -754,8 +760,6 @@ const createEvoluInstance =
         const Type = getMutationType(table, kind);
         const result = Type.fromUnknown(props);
 
-        // upsert je ok?
-
         const id =
           kind === "insert"
             ? createId(deps)
@@ -767,10 +771,23 @@ const createEvoluInstance =
             // We insert `undefined` to detect such a situation.
             mutateMicrotaskQueue.push([undefined, undefined]);
           } else {
-            // Remove `id` from values.
-            const { id: _id, ...values } = result.value;
-            const dbChange = { table, id, values };
+            const values = { ...result.value };
+
+            delete values.id;
+            if (kind === "insert" || kind === "upsert") {
+              // Only set createdAt if not provided by user
+              if (!("createdAt" in values)) {
+                values.createdAt = new Date(deps.time.now()).toISOString();
+              }
+            }
+
+            const dbChange = {
+              table,
+              id,
+              values,
+            };
             assertValidDbChange(dbChange);
+
             mutateMicrotaskQueue.push([dbChange, options?.onComplete]);
           }
 

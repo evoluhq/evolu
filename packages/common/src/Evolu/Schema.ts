@@ -9,6 +9,7 @@ import {
   brand,
   BrandType,
   createTypeErrorFormatter,
+  DateIso,
   DateIsoString,
   IdType,
   InferErrors,
@@ -30,7 +31,11 @@ import { Simplify } from "../Types.js";
 import { DbSchema } from "./Db.js";
 import { createIndexes, DbIndexesBuilder } from "./Kysely.js";
 import { AppOwner, ShardOwner, SharedOwner } from "./Owner.js";
-import { BinaryId, maxProtocolMessageRangesSize } from "./Protocol.js";
+import {
+  BinaryId,
+  maxProtocolMessageRangesSize,
+  CrdtMessage,
+} from "./Protocol.js";
 import { Query, Row } from "./Query.js";
 import { BinaryTimestamp } from "./Timestamp.js";
 
@@ -198,6 +203,16 @@ export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
   options?: SqliteQueryOptions,
 ) => Query<Simplify<R>>;
 
+/**
+ * Default columns automatically added to all tables.
+ *
+ * - `createdAt`: Set by Evolu when `insert` is called, or can be custom with
+ *   `upsert`.
+ * - `updatedAt`: Always set by Evolu, derived from {@link CrdtMessage} timestamp.
+ *   If you defer sync to avoid leaking time activity, use a custom column to
+ *   preserve real update time.
+ * - `isDeleted`: Soft delete flag.
+ */
 export const DefaultColumns = object({
   createdAt: DateIsoString,
   updatedAt: DateIsoString,
@@ -346,25 +361,41 @@ export type Updateable<Props extends Record<string, AnyType>> = InferInput<
 >;
 
 /**
- * Type Factory to create upsertable Type. It makes nullable Types optional and
- * ensures the {@link maxMutationSize}.
+ * Type Factory to create upsertable Type. It makes nullable Types optional,
+ * includes optional default columns (createdAt, isDeleted), and ensures the
+ * {@link maxMutationSize}.
  *
  * ### Example
  *
  * ```ts
  * const UpsertableTodo = upsertable(Schema.todo);
  * type UpsertableTodo = typeof UpsertableTodo.Type;
- * const todo = UpsertableTodo.from({ id, title });
+ * const todo = UpsertableTodo.from({
+ *   id,
+ *   title,
+ *   createdAt: "2023-01-01T00:00:00.000Z",
+ * });
  * if (!todo.ok) return; // handle errors
  * ```
  */
 export const upsertable = <Props extends Record<string, AnyType>>(
   props: Props,
-): ValidMutationSize<UpsertableProps<Props>> =>
-  validMutationSize(nullableToOptional(props));
+): ValidMutationSize<UpsertableProps<Props>> => {
+  const propsWithDefaults = {
+    ...props,
+    createdAt: optional(DateIso),
+    isDeleted: optional(SqliteBoolean),
+  };
+  return validMutationSize(nullableToOptional(propsWithDefaults));
+};
 
 export type UpsertableProps<Props extends Record<string, AnyType>> =
-  NullableToOptionalProps<Props>;
+  NullableToOptionalProps<
+    Props & {
+      createdAt: OptionalType<typeof DateIso>;
+      isDeleted: OptionalType<typeof SqliteBoolean>;
+    }
+  >;
 
 export type Upsertable<Props extends Record<string, AnyType>> = InferInput<
   ObjectType<UpsertableProps<Props>>

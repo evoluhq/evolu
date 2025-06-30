@@ -808,7 +808,7 @@ exports[`mutations 2`] = `
     "name": "testTable",
     "rows": [
       {
-        "createdAt": "1970-01-01T00:00:00.005Z",
+        "createdAt": null,
         "id": "CdVEpB2gvl_fqBEkmGiGH",
         "isDeleted": null,
         "name": "test",

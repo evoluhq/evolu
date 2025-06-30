@@ -20,7 +20,7 @@ import { NanoIdLibDep } from "../NanoId.js";
 import { objectToEntries } from "../Object.js";
 import { RandomDep } from "../Random.js";
 import { createRef, Ref } from "../Ref.js";
-import { err, ok, Result } from "../Result.js";
+import { ok, Result } from "../Result.js";
 import {
   createSqlite,
   CreateSqliteDriverDep,
@@ -82,7 +82,6 @@ import {
 } from "./Storage.js";
 import { CreateSyncDep, SyncConfig, SyncDep } from "./Sync.js";
 import {
-  Millis,
   receiveTimestamp,
   sendTimestamp,
   Timestamp,
@@ -345,13 +344,7 @@ export const createDbWorkerForPlatform = (
                 `);
                 if (!result.ok) return result;
               } else {
-                const millis = Millis.from(deps.time.now());
-                if (!millis.ok) {
-                  return err<TimestampTimeOutOfRangeError>({
-                    type: "TimestampTimeOutOfRangeError",
-                  });
-                }
-                const date = new Date(millis.value).toISOString();
+                const date = new Date(deps.time.now()).toISOString();
                 for (const [column, value] of objectToEntries(change.values)) {
                   const result = deps.sqlite.exec(sql.prepared`
                     insert into ${sql.identifier(change.table)}
@@ -927,8 +920,8 @@ const applyMessages =
 const applyMessageToAppTable =
   (deps: SqliteDep & OwnerRowRefDep) =>
   (ownerId: BinaryOwnerId, message: CrdtMessage): Result<void, SqliteError> => {
-    const date = new Date(message.timestamp.millis).toISOString();
     const timestamp = timestampToBinaryTimestamp(message.timestamp);
+    const updatedAt = new Date(message.timestamp.millis).toISOString();
 
     for (const [column, value] of objectToEntries(message.change.values)) {
       const result = deps.sqlite.exec(sql.prepared`
@@ -945,15 +938,15 @@ const applyMessageToAppTable =
             limit 1
           )
         insert into ${sql.identifier(message.change.table)}
-          ("id", ${sql.identifier(column)}, createdAt, updatedAt)
-        select ${message.change.id}, ${value}, ${date}, ${date}
+          ("id", ${sql.identifier(column)}, updatedAt)
+        select ${message.change.id}, ${value}, ${updatedAt}
         where
           (select "timestamp" from lastTimestamp) is null
           or (select "timestamp" from lastTimestamp) < ${timestamp}
         on conflict ("id") do update
           set
             ${sql.identifier(column)} = ${value},
-            updatedAt = ${date}
+            updatedAt = ${updatedAt}
           where
             (select "timestamp" from lastTimestamp) is null
             or (select "timestamp" from lastTimestamp) < ${timestamp};

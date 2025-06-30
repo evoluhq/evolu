@@ -141,6 +141,7 @@ test("insert should validate input and call postMessage", async () => {
             "id": "esTwHwplqLBSE8Ou8ffX4",
             "table": "todo",
             "values": {
+              "createdAt": "1970-01-01T00:00:00.003Z",
               "title": "Test Todo",
             },
           },
@@ -286,6 +287,7 @@ test("upsert should validate input and call postMessage", async () => {
             "id": "ZUN-T4MZhx0p9fO9i2LT9",
             "table": "todo",
             "values": {
+              "createdAt": "1970-01-01T00:00:00.004Z",
               "title": "Upserted Todo",
             },
           },
@@ -355,6 +357,7 @@ test("mutations should be processed in microtask queue", async () => {
             "id": "fIT5Ci6Vt_fajhVHzg5iu",
             "table": "todo",
             "values": {
+              "createdAt": "1970-01-01T00:00:00.005Z",
               "title": "Todo 1",
             },
           },
@@ -362,6 +365,7 @@ test("mutations should be processed in microtask queue", async () => {
             "id": "oSfTGGJoCBJ9xgjl8Ky6B",
             "table": "todo",
             "values": {
+              "createdAt": "1970-01-01T00:00:00.005Z",
               "title": "Todo 2",
             },
           },
@@ -369,6 +373,7 @@ test("mutations should be processed in microtask queue", async () => {
             "id": "pXftCAjUskTmno2dqqyjQ",
             "table": "todo",
             "values": {
+              "createdAt": "1970-01-01T00:00:00.005Z",
               "title": "Todo 3",
             },
           },
@@ -533,5 +538,131 @@ describe("EvoluSchema validation", () => {
     createEvolu(deps)(SchemaWithInvalidType, {
       name: testSimpleName,
     });
+  });
+});
+
+describe("createdAt behavior", () => {
+  test("insert should set createdAt to current time", async () => {
+    const { evolu, dbWorker } = setupEvoluTest();
+
+    const result = evolu.insert("todo", { title: "Test Todo" });
+    expect(result.ok).toBe(true);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Verify the postMessage was called with createdAt in the change values
+    expect(dbWorker.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "mutate",
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        changes: expect.arrayContaining([
+          expect.objectContaining({
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            values: expect.objectContaining({
+              title: "Test Todo",
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+              createdAt: expect.stringMatching(
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+              ),
+            }),
+          }),
+        ]),
+      }),
+    );
+  });
+
+  test("upsert should set createdAt to current time", async () => {
+    const { evolu, dbWorker } = setupEvoluTest();
+
+    const testId = testCreateId();
+    const result = evolu.upsert("todo", { id: testId, title: "Upserted Todo" });
+    expect(result.ok).toBe(true);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(dbWorker.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "mutate",
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        changes: expect.arrayContaining([
+          expect.objectContaining({
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            values: expect.objectContaining({
+              title: "Upserted Todo",
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+              createdAt: expect.stringMatching(
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+              ),
+            }),
+          }),
+        ]),
+      }),
+    );
+  });
+
+  test("update should NOT set createdAt", async () => {
+    const { evolu, dbWorker } = setupEvoluTest();
+
+    const testId = testCreateId();
+    const result = evolu.update("todo", { id: testId, title: "Updated Todo" });
+    expect(result.ok).toBe(true);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Get the actual call to inspect the values
+    const calls = dbWorker.postMessage.mock.calls;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const mutateCall = calls.find((call) => call[0]?.type === "mutate");
+    expect(mutateCall).toBeDefined();
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+    const change = mutateCall?.[0]?.changes?.[0];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    expect(change?.values).toEqual({
+      title: "Updated Todo",
+    });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    expect(change?.values).not.toHaveProperty("createdAt");
+  });
+
+  test("initialData should set createdAt for all inserted records", () => {
+    const deps = mockDeps();
+
+    createEvolu(deps)(Schema, {
+      name: getOrThrow(SimpleName.from("test-initial-data")),
+      initialData: (evolu) => {
+        evolu.insert("todoCategory", { name: "Category 1" });
+        evolu.insert("todo", { title: "Initial Todo" });
+      },
+    });
+
+    expect(deps.createDbWorker().postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "init",
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        initialData: expect.arrayContaining([
+          expect.objectContaining({
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            values: expect.objectContaining({
+              name: "Category 1",
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+              createdAt: expect.stringMatching(
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+              ),
+            }),
+          }),
+          expect.objectContaining({
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            values: expect.objectContaining({
+              title: "Initial Todo",
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+              createdAt: expect.stringMatching(
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+              ),
+            }),
+          }),
+        ]),
+      }),
+    );
   });
 });
