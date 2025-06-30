@@ -19,6 +19,7 @@
     "@evolu/web": "1.0.0"
   },
   "changesets": [
+    "cute-breads-count",
     "dry-cobras-listen",
     "dull-poets-wash",
     "fast-peas-laugh",
@@ -27,6 +28,7 @@
     "modern-zebras-clean",
     "ninety-rockets-listen",
     "plenty-carrots-lead",
+    "rich-garlics-sort",
     "rotten-gifts-write",
     "seven-cups-stand",
     "slow-lemons-go",
