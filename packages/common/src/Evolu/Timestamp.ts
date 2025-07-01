@@ -1,4 +1,5 @@
 import { assert } from "../Assert.js";
+import { createEqObject, eqNumber, eqString } from "../Eq.js";
 import { NanoIdLibDep } from "../NanoId.js";
 import { increment } from "../Number.js";
 import { Order, orderUint8Array } from "../Order.js";
@@ -123,6 +124,13 @@ export const Timestamp = object({
   nodeId: NodeId,
 });
 export type Timestamp = typeof Timestamp.Type;
+
+/** Equality function for comparing {@link Timestamp}. */
+export const eqTimestamp = createEqObject<Timestamp>({
+  millis: eqNumber,
+  counter: eqNumber,
+  nodeId: eqString,
+});
 
 export const createTimestamp = ({
   millis = minMillis,

@@ -82,6 +82,7 @@ import {
 } from "./Storage.js";
 import { CreateSyncDep, SyncConfig, SyncDep } from "./Sync.js";
 import {
+  binaryTimestampToTimestamp,
   receiveTimestamp,
   sendTimestamp,
   Timestamp,
@@ -1114,7 +1115,7 @@ const createClientStorage =
 
         for (const message of messages) {
           const dbChange = decryptAndDecodeDbChange(deps)(
-            message.change,
+            message,
             owner.encryptionKey,
           );
 
@@ -1189,15 +1190,17 @@ const createClientStorage =
           values[r.column] = r.value;
         }
 
-        const change: DbChange = {
-          table: rows[0].table,
-          id: binaryIdToId(rows[0].id),
-          values,
+        const message: CrdtMessage = {
+          timestamp: binaryTimestampToTimestamp(timestamp),
+          change: {
+            table: rows[0].table,
+            id: binaryIdToId(rows[0].id),
+            values,
+          },
         };
-
         const { encryptionKey } = deps.ownerRowRef.get();
 
-        return encodeAndEncryptDbChange(deps)(change, encryptionKey);
+        return encodeAndEncryptDbChange(deps)(message, encryptionKey);
       },
     };
 

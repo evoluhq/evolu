@@ -188,8 +188,10 @@ import {
 } from "./Owner.js";
 import {
   BinaryTimestamp,
+  binaryTimestampLength,
   binaryTimestampToTimestamp,
   Counter,
+  eqTimestamp,
   Millis,
   NodeId,
   Timestamp,
@@ -399,7 +401,8 @@ export type ProtocolError =
   | ProtocolInvalidDataError
   | ProtocolWriteKeyError
   | ProtocolWriteError
-  | ProtocolSyncError;
+  | ProtocolSyncError
+  | ProtocolTimestampMismatchError;
 
 /** Base interface for all protocol errors. */
 export interface ProtocolErrorBase {
@@ -446,6 +449,17 @@ export interface ProtocolSyncError extends ProtocolErrorBase {
 }
 
 /**
+ * Error when embedded timestamp doesn't match expected timestamp in
+ * EncryptedDbChange. Indicates potential tampering or corruption of CRDT
+ * messages.
+ */
+export interface ProtocolTimestampMismatchError {
+  readonly type: "ProtocolTimestampMismatchError";
+  readonly expected: Timestamp;
+  readonly embedded: Timestamp;
+}
+
+/**
  * Creates a {@link ProtocolMessage} from CRDT messages.
  *
  * If the message size would exceed {@link maxProtocolMessageSize}, the protocol
@@ -469,7 +483,7 @@ export const createProtocolMessageFromCrdtMessages =
 
     for (const message of messages) {
       const change = encodeAndEncryptDbChange(deps)(
-        message.change,
+        message,
         owner.encryptionKey,
       );
       const encryptedCrdtMessage = { timestamp: message.timestamp, change };
@@ -1484,7 +1498,7 @@ const decodeTimestamps = (
   for (let i = 0; i < length; i++) {
     const deltaMillis = decodeNonNegativeInt(buffer);
     const millis = Millis.from(previousMillis + deltaMillis);
-    if (!millis.ok) throw new Error(millis.error.type);
+    if (!millis.ok) throw new ProtocolDecodeError(millis.error.type);
     millises.push(millis.value);
     previousMillis = millis.value;
   }
@@ -1493,7 +1507,7 @@ const decodeTimestamps = (
   let counterIndex = 0;
   while (counterIndex < length) {
     const counter = Counter.from(decodeNonNegativeInt(buffer));
-    if (!counter.ok) throw new Error(counter.error.type);
+    if (!counter.ok) throw new ProtocolDecodeError(counter.error.type);
     const runLength = decodeNonNegativeInt(buffer);
     for (let i = 0; i < runLength; i++) {
       counters.push(counter.value);
@@ -1659,11 +1673,19 @@ export const binaryTimestampToFingerprint = (
 /**
  * Encodes and encrypts a {@link DbChange} using the provided owner's encryption
  * key. Returns an encrypted binary representation as {@link EncryptedDbChange}.
+ *
+ * The timestamp is included within the encrypted data to ensure tamper-proof
+ * verification that the timestamp matches the change data.
  */
 export const encodeAndEncryptDbChange =
   (deps: SymmetricCryptoDep) =>
-  (change: DbChange, key: EncryptionKey): EncryptedDbChange => {
+  (message: CrdtMessage, key: EncryptionKey): EncryptedDbChange => {
+    const change = message.change;
     const buffer = createBuffer();
+
+    // Encode the timestamp first (before the change data) for tamper verification
+    const binaryTimestamp = timestampToBinaryTimestamp(message.timestamp);
+    buffer.extend(binaryTimestamp);
 
     encodeBase64Url256(buffer, change.table);
 
@@ -1700,50 +1722,73 @@ export const encodeAndEncryptDbChange =
   };
 
 /**
- * Decrypts and decodes an {@link EncryptedDbChange} using the provided owner's
- * encryption key.
+ * Decrypts and decodes an {@link EncryptedCrdtMessage} using the provided
+ * owner's encryption key. Verifies that the embedded timestamp matches the
+ * expected timestamp to ensure message integrity.
  */
 export const decryptAndDecodeDbChange =
   (deps: SymmetricCryptoDep) =>
   (
-    change: EncryptedDbChange,
+    message: EncryptedCrdtMessage,
     key: EncryptionKey,
-  ): Result<DbChange, SymmetricCryptoDecryptError | ProtocolInvalidDataError> =>
-    tryDecodeProtocolData<DbChange, SymmetricCryptoDecryptError>(
-      change,
-      (buffer) => {
-        const nonce = buffer.shiftN(deps.symmetricCrypto.nonceLength);
+  ): Result<
+    DbChange,
+    | SymmetricCryptoDecryptError
+    | ProtocolInvalidDataError
+    | ProtocolTimestampMismatchError
+  > =>
+    tryDecodeProtocolData<
+      DbChange,
+      SymmetricCryptoDecryptError | ProtocolTimestampMismatchError
+    >(message.change, (buffer) => {
+      const nonce = buffer.shiftN(deps.symmetricCrypto.nonceLength);
 
-        const ciphertextLength = decodeLength(buffer);
-        const ciphertext = buffer.shiftN(ciphertextLength);
+      const ciphertextLength = decodeLength(buffer);
+      const ciphertext = buffer.shiftN(ciphertextLength);
 
-        const plaintextBytes = deps.symmetricCrypto.decrypt(
-          ciphertext,
-          key,
-          nonce,
-        );
-        if (!plaintextBytes.ok) return plaintextBytes;
+      const plaintextBytes = deps.symmetricCrypto.decrypt(
+        ciphertext,
+        key,
+        nonce,
+      );
+      if (!plaintextBytes.ok) return plaintextBytes;
 
-        buffer.reset();
-        buffer.extend(plaintextBytes.value);
+      buffer.reset();
+      buffer.extend(plaintextBytes.value);
 
-        const table = decodeBase64Url256WithLength(buffer);
-        const id = decodeId(buffer);
+      // Decode and verify the embedded timestamp
+      const embeddedBinaryTimestamp = buffer.shiftN(
+        binaryTimestampLength,
+      ) as BinaryTimestamp;
+      const embeddedTimestamp = binaryTimestampToTimestamp(
+        embeddedBinaryTimestamp,
+      );
 
-        const length = decodeLength(buffer);
-        const values = Object.create(null) as Record<string, SqliteValue>;
+      // Verify timestamp integrity
+      if (!eqTimestamp(embeddedTimestamp, message.timestamp)) {
+        return err<ProtocolTimestampMismatchError>({
+          type: "ProtocolTimestampMismatchError",
+          expected: message.timestamp,
+          embedded: embeddedTimestamp,
+        });
+      }
 
-        for (let i = 0; i < length; i++) {
-          const column = decodeBase64Url256WithLength(buffer);
-          const value = decodeSqliteValue(buffer);
-          values[column] = value;
-        }
+      const table = decodeBase64Url256WithLength(buffer);
+      const id = decodeId(buffer);
 
-        const dbChange = { table, id, values };
+      const length = decodeLength(buffer);
+      const values = Object.create(null) as Record<string, SqliteValue>;
 
-        return ok(dbChange);
-      },
-    );
+      for (let i = 0; i < length; i++) {
+        const column = decodeBase64Url256WithLength(buffer);
+        const value = decodeSqliteValue(buffer);
+        values[column] = value;
+      }
+
+      const dbChange = { table, id, values };
+
+      return ok(dbChange);
+    });
 
 /**
  * Encodes a non-negative integer into a variable-length integer format. It's
