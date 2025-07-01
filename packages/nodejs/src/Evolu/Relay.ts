@@ -13,7 +13,6 @@ import {
   ApplyProtocolMessageAsRelayOptions,
   createRelayStorage,
   maxProtocolMessageSize,
-  protocolVersion,
   Relay,
   RelayConfig,
   RelaySqliteStorageDeps,
@@ -39,15 +38,11 @@ export const createNodeJsRelay =
     deps.console.log(`Evolu Relay started on port ${port}`);
     deps.console.enabled = enableLogging;
 
-    const versionedName = getOrThrow(
-      SimpleName.from(`${name}-${protocolVersion}`),
-    );
-
     const sqlite = getOrThrow(
       await createSqlite({
         ...deps,
         createSqliteDriver: createBetterSqliteDriver,
-      })(versionedName),
+      })(name),
     );
 
     const relaySqliteStorageDeps: RelaySqliteStorageDeps = {
