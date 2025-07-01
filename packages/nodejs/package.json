@@ -1,6 +1,6 @@
 {
   "name": "@evolu/nodejs",
-  "version": "1.0.1-preview.5",
+  "version": "1.0.1-preview.6",
   "description": "Evolu for Node.js",
   "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
   "license": "MIT",

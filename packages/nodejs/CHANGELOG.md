@@ -1,5 +1,11 @@
 # @evolu/nodejs
 
+## 1.0.1-preview.6
+
+### Patch Changes
+
+- d636768: Remove versioned database naming from relay
+
 ## 1.0.1-preview.5
 
 ### Patch Changes
@@ -23,6 +29,7 @@
 - c86cb14: Add timing-safe comparison for WriteKey validation
 
   ### Security Improvements
+
   - Add `TimingSafeEqual` type and `TimingSafeEqualDep` interface for platform-independent timing-safe comparison
   - Implement Node.js timing-safe comparison using `crypto.timingSafeEqual()`
   - Replace vulnerable `eqArrayNumber` WriteKey comparison with constant-time algorithm to prevent timing attacks
