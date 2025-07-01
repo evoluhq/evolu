@@ -19,8 +19,8 @@ import { useWasSSR } from "./useWasSSR.js";
  * // Get all rows.
  * const rows = useQuery(allTodos);
  *
- * // Get the first row (it can be null).
- * const row = useQuery(todoById(1));
+ * // Get rows for a specific todo (the first row can be null).
+ * const rows = useQuery(todoById(1));
  *
  * // Get all rows, but without subscribing to changes.
  * const rows = useQuery(allTodos, { once: true });
