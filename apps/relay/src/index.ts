@@ -6,10 +6,8 @@ const deps = {
   console: createConsole(),
 };
 
-// Ensure data directory exists
+// Ensure the database is created in a predictable location for Docker.
 mkdirSync("data", { recursive: true });
-
-// Change to data directory so database file is created there
 process.chdir("data");
 
 const relay = await createNodeJsRelay(deps)({
