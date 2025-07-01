@@ -11,8 +11,7 @@
     "ios": "expo run:ios",
     "ios:go": "expo start --ios",
     "lint": "expo lint",
-    "start": "expo start",
-    "test": "jest --watchAll"
+    "start": "expo start"
   },
   "jest": {
     "preset": "jest-expo"

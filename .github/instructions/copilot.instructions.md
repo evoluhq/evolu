@@ -212,6 +212,8 @@ const deps: TimeDep & Partial<LoggerDep> = {
 
 ## Testing
 
+- **Run tests using pnpm** - use `pnpm test` from the project root to run all tests
+- **Run specific test files** - use `pnpm test --filter @evolu/package-name -- test-file-pattern` from project root (e.g., `pnpm test --filter @evolu/common -- Protocol`)
 - Mock dependencies using the same interfaces
 - Create test factories (e.g., `createTestTime`)
 - Never rely on global state
