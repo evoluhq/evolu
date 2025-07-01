@@ -1674,8 +1674,9 @@ export const binaryTimestampToFingerprint = (
  * Encodes and encrypts a {@link DbChange} using the provided owner's encryption
  * key. Returns an encrypted binary representation as {@link EncryptedDbChange}.
  *
- * The timestamp is included within the encrypted data to ensure tamper-proof
- * verification that the timestamp matches the change data.
+ * The format includes the protocol version for backward compatibility and the
+ * timestamp for tamper-proof verification that the timestamp matches the change
+ * data.
  */
 export const encodeAndEncryptDbChange =
   (deps: SymmetricCryptoDep) =>
@@ -1683,7 +1684,10 @@ export const encodeAndEncryptDbChange =
     const change = message.change;
     const buffer = createBuffer();
 
-    // Encode the timestamp first (before the change data) for tamper verification
+    // Encode protocol version first for backward compatibility
+    encodeNonNegativeInt(buffer, protocolVersion);
+
+    // Encode the timestamp (after version) for tamper verification
     const binaryTimestamp = timestampToBinaryTimestamp(message.timestamp);
     buffer.extend(binaryTimestamp);
 
@@ -1755,6 +1759,9 @@ export const decryptAndDecodeDbChange =
 
       buffer.reset();
       buffer.extend(plaintextBytes.value);
+
+      // Decode version (for future compatibility, no validation needed for now)
+      decodeNonNegativeInt(buffer);
 
       // Decode and verify the embedded timestamp
       const embeddedBinaryTimestamp = buffer.shiftN(
