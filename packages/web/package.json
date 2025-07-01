@@ -30,7 +30,8 @@
   "scripts": {
     "dev": "tsc --watch",
     "build": "shx rm -rf dist && tsc",
-    "test": "vitest",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "clean": "shx rm -rf .turbo node_modules dist",
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },

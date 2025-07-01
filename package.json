@@ -6,6 +6,7 @@
     "build": "turbo --filter @evolu/* build",
     "build:web": "pnpm typedoc && turbo --filter web build",
     "test": "turbo --filter @evolu/* test",
+    "test:watch": "turbo --filter @evolu/* test:watch",
     "start": "turbo start",
     "lint": "eslint --cache",
     "lint-monorepo": "pnpm dlx sherif@latest",

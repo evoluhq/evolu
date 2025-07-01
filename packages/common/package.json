@@ -44,7 +44,8 @@
   "scripts": {
     "dev": "tsc --watch",
     "build": "shx rm -rf dist ./README.md && tsc && shx cp ../../README.md ./",
-    "test": "vitest --disableConsoleIntercept",
+    "test": "vitest run --disableConsoleIntercept",
+    "test:watch": "vitest --disableConsoleIntercept",
     "clean": "shx rm -rf .turbo node_modules dist",
     "format": "prettier --write \"src/*.{ts,tsx,md}\"",
     "bench": "vitest bench"
