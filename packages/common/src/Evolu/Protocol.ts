@@ -61,6 +61,10 @@
  * if further sync is needed or possible, continuing until both sides are
  * synchronized.
  *
+ * The **non-initiator always responds** to provide sync completion feedback,
+ * even with empty messages containing only the header and no error. This allows
+ * the initiator to reliably detect when synchronization is complete.
+ *
  * Both **Messages** and **Ranges** are optional, allowing each side to send,
  * sync, or only subscribe data as needed.
  *
@@ -1162,6 +1166,11 @@ const sync =
     const ranges = decodeRanges(input);
 
     if (!isNonEmptyReadonlyArray(ranges)) {
+      // Non-initiators always respond to provide sync completion feedback,
+      // even when there's nothing to sync.
+      if (role === "non-initiator") {
+        return ok(output.unwrap());
+      }
       // Nothing to sync.
       return ok(null);
     }
@@ -1362,6 +1371,13 @@ const sync =
 
     // If all ranges were skipped, there are no changes and sync is complete.
     const hasChange = output.getSize() > outputInitialSize;
+
+    // Non-initiators always respond to provide sync completion feedback,
+    // even with empty messages. This allows clients to detect sync completion.
+    if (role === "non-initiator" && !hasChange) {
+      return ok(output.unwrap());
+    }
+
     return ok(hasChange ? output.unwrap() : null);
   };
 

@@ -69,7 +69,7 @@ import {
   EncryptionKey,
   NonEmptyReadonlyArray,
 } from "../../src/index.js";
-import { err, getOrThrow, ok } from "../../src/Result.js";
+import { err, getOrThrow } from "../../src/Result.js";
 import { SqliteValue } from "../../src/Sqlite.js";
 import { DateIso, NonNegativeInt, PositiveInt } from "../../src/Type.js";
 import { Brand } from "../../src/Types.js";
@@ -690,7 +690,11 @@ test("E2E key rotation", async () => {
   );
 
   const result = applyProtocolMessageAsRelay(storageDep)(rotationMessage);
-  expect(result).toEqual(ok(null));
+  expect(result.ok).toBe(true);
+  if (result.ok) {
+    expect(result.value).not.toBe(null); // Non-initiator always responds
+    expect(result.value!.length).toBe(19); // Empty message (header only)
+  }
 
   const oldKeyValidation = storageDep.storage.validateWriteKey(
     binaryOwnerId,
@@ -718,7 +722,11 @@ describe("E2E versioning", () => {
       shouldNotBeCalledStorageDep,
     )(clientMessage, {}, v0);
 
-    expect(relayResponse).toEqual(ok(null));
+    expect(relayResponse.ok).toBe(true);
+    if (relayResponse.ok) {
+      expect(relayResponse.value).not.toBe(null); // Non-initiator always responds
+      expect(relayResponse.value!.length).toBe(19); // Empty message (header only)
+    }
   });
 
   test("non-initiator version is higher", () => {
@@ -997,8 +1005,9 @@ describe("E2E sync", () => {
       {
         "syncSizes": [
           368,
+          19,
         ],
-        "syncSteps": 1,
+        "syncSteps": 2,
       }
     `);
   });
@@ -1016,8 +1025,9 @@ describe("E2E sync", () => {
           999840,
           39,
           664131,
+          19,
         ],
-        "syncSteps": 5,
+        "syncSteps": 6,
       }
     `);
   });
@@ -1047,8 +1057,9 @@ describe("E2E sync", () => {
           169709,
           39,
           53989,
+          19,
         ],
-        "syncSteps": 13,
+        "syncSteps": 14,
       }
     `);
   });
@@ -1134,8 +1145,9 @@ describe("E2E sync", () => {
           19478,
           853234,
           832391,
+          19,
         ],
-        "syncSteps": 5,
+        "syncSteps": 6,
       }
     `);
   });
