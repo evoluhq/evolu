@@ -1,5 +1,13 @@
 # @evolu/react
 
+## 9.0.1-preview.3
+
+### Patch Changes
+
+- fdbecb8: Fix comment
+- Updated dependencies [6452d57]
+  - @evolu/common@6.0.1-preview.15
+
 ## 9.0.1-preview.2
 
 ### Patch Changes
