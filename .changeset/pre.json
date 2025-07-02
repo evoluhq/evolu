@@ -19,9 +19,11 @@
     "@evolu/web": "1.0.0"
   },
   "changesets": [
+    "blue-lions-tease",
     "cute-breads-count",
     "dry-cobras-listen",
     "dull-poets-wash",
+    "easy-radios-decide",
     "fast-peas-laugh",
     "heavy-parts-own",
     "mean-rats-start",

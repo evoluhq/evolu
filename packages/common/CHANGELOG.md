@@ -1,5 +1,13 @@
 # @evolu/common
 
+## 6.0.1-preview.15
+
+### Patch Changes
+
+- 6452d57: Non-initiator always responds in sync protocol for completion feedback
+
+  The non-initiator (relay/server) now always responds to sync requests, even when there's no data to send, by returning an empty message (19 bytes). This enables reliable sync completion detection for initiators (clients).
+
 ## 6.0.1-preview.14
 
 ### Patch Changes
