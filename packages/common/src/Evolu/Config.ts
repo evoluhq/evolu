@@ -76,8 +76,8 @@ export interface Config extends ConsoleConfig {
    * Use in-memory SQLite database instead of persistent storage. Useful for
    * testing or temporary data that doesn't need persistence.
    *
-   * In-memory databases exist only in RAM and are completely destroyed when
-   * the process ends, making them forensically safe for sensitive data.
+   * In-memory databases exist only in RAM and are completely destroyed when the
+   * process ends, making them forensically safe for sensitive data.
    *
    * The default value is: `false`.
    */

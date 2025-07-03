@@ -37,7 +37,7 @@
     "eslint-plugin-jsdoc": "^51.0.1",
     "eslint-plugin-react-hooks": "^5.2.0",
     "inquirer": "^12.6.3",
-    "prettier": "~3.5.3",
+    "prettier": "^3.5.3",
     "prettier-plugin-embed": "^0.5.0",
     "prettier-plugin-jsdoc": "^1.3.2",
     "prettier-plugin-sql-cst": "^0.13.0",
