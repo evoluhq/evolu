@@ -11,7 +11,6 @@ import {
   CreateAppState,
   CreateDbWorker,
   createDbWorkerForPlatform,
-  createWebSocketSync,
   EvoluDeps,
 } from "@evolu/common/evolu";
 
@@ -19,6 +18,7 @@ import * as Expo from "expo";
 
 import { createExpoSqliteDriver } from "./providers/ExpoSqliteDriver.js";
 import { polyfillHermes } from "./utils/Hermes.js";
+import { createWebSocketSyncWithAppState } from "./WebSocketSyncWithAppState.js";
 
 polyfillHermes();
 
@@ -35,7 +35,7 @@ const time = createTime();
 const createDbWorker: CreateDbWorker = () =>
   createDbWorkerForPlatform({
     createSqliteDriver: createExpoSqliteDriver,
-    createSync: createWebSocketSync,
+    createSync: createWebSocketSyncWithAppState,
     console,
     time,
     random: createRandom(),

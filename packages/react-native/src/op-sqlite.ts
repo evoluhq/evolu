@@ -11,13 +11,13 @@ import {
   CreateAppState,
   CreateDbWorker,
   createDbWorkerForPlatform,
-  createWebSocketSync,
   EvoluDeps,
 } from "@evolu/common/evolu";
 
 import { DevSettings } from "react-native";
 import { createOpSqliteDriver } from "./providers/OpSqliteDriver.js";
 import { polyfillHermes } from "./utils/Hermes.js";
+import { createWebSocketSyncWithAppState } from "./WebSocketSyncWithAppState.js";
 
 polyfillHermes();
 
@@ -38,7 +38,7 @@ const time = createTime();
 const createDbWorker: CreateDbWorker = () =>
   createDbWorkerForPlatform({
     createSqliteDriver: createOpSqliteDriver,
-    createSync: createWebSocketSync,
+    createSync: createWebSocketSyncWithAppState,
     console,
     time,
     random: createRandom(),
