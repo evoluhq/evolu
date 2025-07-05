@@ -6,16 +6,14 @@ import {
   createRandomBytes,
   createTime,
 } from "@evolu/common";
-import {
-  createDbWorkerForPlatform,
-  createWebSocketSync,
-} from "@evolu/common/evolu";
+import { createDbWorkerForPlatform } from "@evolu/common/evolu";
 import { createWasmSqliteDriver } from "../WasmSqliteDriver.js";
 import { wrapWebWorkerSelf } from "../WebWorker.js";
+import { createWebSocketSyncWithVisibility } from "./WebSocketSyncWithVisibility.js";
 
 const dbWorker = createDbWorkerForPlatform({
   createSqliteDriver: createWasmSqliteDriver,
-  createSync: createWebSocketSync,
+  createSync: createWebSocketSyncWithVisibility,
   console: createConsole(),
   time: createTime(),
   random: createRandom(),
