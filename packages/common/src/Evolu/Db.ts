@@ -10,6 +10,7 @@ import {
   CreateMnemonicDep,
   CreateRandomBytesDep,
   createSymmetricCrypto,
+  EncryptionKey,
   SymmetricCryptoDecryptError,
   SymmetricCryptoDep,
 } from "../Crypto.js";
@@ -19,7 +20,6 @@ import { constFalse, exhaustiveCheck } from "../Function.js";
 import { NanoIdLibDep } from "../NanoId.js";
 import { objectToEntries } from "../Object.js";
 import { RandomDep } from "../Random.js";
-import { createRef, Ref } from "../Ref.js";
 import { ok, Result } from "../Result.js";
 import {
   createSqlite,
@@ -42,19 +42,14 @@ import {
 } from "../Worker.js";
 import { Config } from "./Config.js";
 import { makePatches, QueryPatches } from "./Diff.js";
-import {
-  AppOwner,
-  createAppOwner,
-  createOwnerRow,
-  OwnerRow,
-  OwnerWithWriteAccess,
-} from "./Owner.js";
+import { AppOwner, createAppOwner, OwnerId, WriteKey } from "./Owner.js";
 import {
   applyProtocolMessageAsClient,
   Base64Url256,
   BinaryId,
   binaryIdToId,
   BinaryOwnerId,
+  binaryOwnerIdToOwnerId,
   CrdtMessage,
   createProtocolMessageForSync,
   createProtocolMessageFromCrdtMessages,
@@ -83,6 +78,7 @@ import {
 import { CreateSyncDep, SyncConfig, SyncDep } from "./Sync.js";
 import {
   binaryTimestampToTimestamp,
+  createInitialTimestamp,
   receiveTimestamp,
   sendTimestamp,
   Timestamp,
@@ -90,6 +86,7 @@ import {
   TimestampCounterOverflowError,
   TimestampDriftError,
   TimestampError,
+  TimestampString,
   timestampStringToTimestamp,
   TimestampTimeOutOfRangeError,
   timestampToBinaryTimestamp,
@@ -159,7 +156,7 @@ export type DbWorkerInput =
 export type DbWorkerOutput =
   | {
       readonly type: "onInit";
-      readonly owner: AppOwner;
+      readonly appOwner: AppOwner;
     }
   | {
       readonly type: "onError";
@@ -209,20 +206,52 @@ type DbWorkerDeps = Omit<
   TimestampConfigDep &
   SymmetricCryptoDep &
   PostMessageDep &
-  OwnerRowRefDep &
+  OwnersDep &
+  ClockDep &
   GetQueryRowsCacheDep &
   ClientStorageDep;
 
 type PostMessageDep = WorkerPostMessageDep<DbWorkerOutput>;
 
-// TODO: More owners (the whole table with ad-hoc added)
-export interface OwnerRowRefDep {
-  readonly ownerRowRef: Ref<OwnerRow>;
+interface OwnersDep {
+  readonly owners: Owners;
+}
+
+type Owners = Map<OwnerId, AppOwner>;
+
+interface ClockDep {
+  readonly clock: Clock;
+}
+
+interface Clock {
+  readonly get: () => Timestamp;
+  readonly save: (timestamp: Timestamp) => Result<void, SqliteError>;
 }
 
 interface GetQueryRowsCacheDep {
   readonly getQueryRowsCache: (tabId: Id) => QueryRowsCache;
 }
+
+const createClock =
+  (deps: NanoIdLibDep & SqliteDep) =>
+  (initialTimestamp = createInitialTimestamp(deps)): Clock => {
+    let currentTimestamp = initialTimestamp;
+
+    return {
+      get: () => currentTimestamp,
+      save: (timestamp) => {
+        currentTimestamp = timestamp;
+
+        const timestampString = timestampToTimestampString(timestamp);
+        const saveTimestamp = deps.sqlite.exec(sql.prepared`
+          update evolu_config set "clock" = ${timestampString};
+        `);
+        if (!saveTimestamp.ok) return saveTimestamp;
+
+        return ok();
+      },
+    };
+  };
 
 export const createDbWorkerForPlatform = (
   platformDeps: DbWorkerPlatformDeps,
@@ -245,16 +274,82 @@ export const createDbWorkerForPlatform = (
         initMessage.config.name,
         { memory: initMessage.config.inMemory ?? false },
       );
-
       if (!sqliteResult.ok) {
         postMessage({ type: "onError", error: sqliteResult.error });
         return null;
       }
+
       const sqlite = sqliteResult.value;
+      const platformDepsWithSqlite = { ...platformDeps, sqlite };
 
       const deps = sqlite.transaction(() => {
         const currentDbSchema = getDbSchema({ sqlite })();
         if (!currentDbSchema.ok) return currentDbSchema;
+
+        let appOwner: AppOwner;
+        let clock: Clock;
+
+        const versionTableExists = currentDbSchema.value.tables.some(
+          (table) => table.name === "evolu_version",
+        );
+
+        if (versionTableExists) {
+          const versionResult = sqlite.exec<{
+            protocolVersion: number;
+          }>(sql`select protocolVersion from evolu_version limit 1;`);
+          if (!versionResult.ok) return versionResult;
+
+          // TODO: Handle version migrations here if needed
+          // const [{ protocolVersion }] = protocolVersionResult.value.rows;
+          // if (protocolVersion < currentProtocolVersion) {
+          //   const migrateResult = migrateDatabase({ sqlite })(
+          //     protocolVersion,
+          //     currentProtocolVersion
+          //   );
+          //   if (!migrateResult.ok) return migrateResult;
+          // }
+
+          const configResult = sqlite.exec<{
+            clock: TimestampString;
+            appOwnerId: OwnerId;
+            appOwnerEncryptionKey: EncryptionKey;
+            appOwnerWriteKey: WriteKey;
+            appOwnerMnemonic: Mnemonic | null;
+          }>(sql`
+            select
+              clock,
+              appOwnerId,
+              appOwnerEncryptionKey,
+              appOwnerWriteKey,
+              appOwnerMnemonic
+            from evolu_config
+            limit 1;
+          `);
+          if (!configResult.ok) return configResult;
+
+          const [config] = configResult.value.rows;
+
+          appOwner = {
+            type: "AppOwner",
+            id: config.appOwnerId,
+            encryptionKey: config.appOwnerEncryptionKey,
+            writeKey: config.appOwnerWriteKey,
+            mnemonic: config.appOwnerMnemonic,
+          };
+          clock = createClock(platformDepsWithSqlite)(
+            timestampStringToTimestamp(config.clock),
+          );
+        } else {
+          appOwner =
+            initMessage.config.initialAppOwner ??
+            createAppOwner(platformDeps.createMnemonic());
+          clock = createClock(platformDepsWithSqlite)();
+          const initializeDbResult = initializeDb(platformDepsWithSqlite)(
+            appOwner,
+            clock,
+          );
+          if (!initializeDbResult.ok) return initializeDbResult;
+        }
 
         const ensureDbSchemaResult = ensureDbSchema({ sqlite })(
           initMessage.dbSchema,
@@ -262,18 +357,8 @@ export const createDbWorkerForPlatform = (
         );
         if (!ensureDbSchemaResult.ok) return ensureDbSchemaResult;
 
-        const ownerExists = currentDbSchema.value.tables.some(
-          (table) => table.name === "evolu_owner",
-        );
-
-        const appOwnerAndOwnerRow = ownerExists
-          ? selectAppOwner({ sqlite })
-          : initializeDb({ ...platformDeps, sqlite })(
-              initMessage.config.mnemonic,
-            );
-        if (!appOwnerAndOwnerRow.ok) return appOwnerAndOwnerRow;
-
-        const [appOwner, ownerRow] = appOwnerAndOwnerRow.value;
+        const owners: Owners = new Map();
+        owners.set(appOwner.id, appOwner);
 
         const depsWithoutSyncAndStorage = {
           ...platformDeps,
@@ -282,7 +367,8 @@ export const createDbWorkerForPlatform = (
           timestampConfig: initMessage.config,
           symmetricCrypto: createSymmetricCrypto(platformDeps),
           getQueryRowsCache,
-          ownerRowRef: createRef(ownerRow),
+          clock,
+          owners,
         };
 
         const storage = createClientStorage(depsWithoutSyncAndStorage)({
@@ -297,12 +383,15 @@ export const createDbWorkerForPlatform = (
           storage: storage.value,
         };
 
-        if (!ownerExists && isNonEmptyReadonlyArray(initMessage.initialData)) {
+        if (
+          !versionTableExists &&
+          isNonEmptyReadonlyArray(initMessage.initialData)
+        ) {
           const result = applyChanges(depsWithoutSync)(initMessage.initialData);
           if (!result.ok) return result;
         }
 
-        postMessage({ type: "onInit", owner: appOwner });
+        postMessage({ type: "onInit", appOwner });
 
         const sync = platformDeps.createSync(platformDeps)({
           ...initMessage.config,
@@ -397,15 +486,11 @@ export const createDbWorkerForPlatform = (
             const messages = applyChanges(deps)(toSyncChanges, onChange);
             if (!messages.ok) return messages;
 
-            const owner = deps.ownerRowRef.get();
-            // TODO: Check owner whether it's allowed to write, return an
-            // error if not.
-            if (owner.writeKey == null) {
-              return ok();
-            }
+            // TODO: Use owner from db change or AppOwner
+            const owner = Array.from(deps.owners.values())[0];
 
             const protocolMessage = createProtocolMessageFromCrdtMessages(deps)(
-              owner as OwnerWithWriteAccess,
+              owner,
               messages.value,
             );
 
@@ -460,9 +545,10 @@ export const createDbWorkerForPlatform = (
               );
               if (!ensureDbSchemaResult.ok) return ensureDbSchemaResult;
 
-              const initializeDbResult = initializeDb(deps)(
-                message.restore.mnemonic,
-              );
+              const appOwner = createAppOwner(message.restore.mnemonic);
+              const clock = createClock(deps)();
+
+              const initializeDbResult = initializeDb(deps)(appOwner, clock);
               if (!initializeDbResult.ok) return initializeDbResult;
             }
             return ok();
@@ -712,57 +798,54 @@ export const createAppTable = (
     );
   ` as SafeSql;
 
-const selectAppOwner = (
-  deps: SqliteDep,
-): Result<[AppOwner, OwnerRow], SqliteError> => {
-  const result = deps.sqlite.exec<OwnerRow>(sql`
-    select mnemonic, id, createdAt, encryptionKey, writeKey, timestamp
-    from evolu_owner
-    order by createdAt asc
-    limit 1;
-  `);
-
-  if (!result.ok) return result;
-
-  const {
-    rows: [ownerRow],
-  } = result.value;
-
-  assert(ownerRow.writeKey != null, "The writeKey is null");
-
-  const appOwner: AppOwner = {
-    type: "AppOwner",
-    mnemonic: ownerRow.mnemonic,
-    createdAt: ownerRow.createdAt,
-    id: ownerRow.id,
-    encryptionKey: ownerRow.encryptionKey,
-    writeKey: ownerRow.writeKey,
-  };
-
-  return ok([appOwner, ownerRow]);
-};
-
 const initializeDb =
+  (deps: SqliteDep & CreateMnemonicDep & TimeDep & CreateRandomBytesDep) =>
   (
-    deps: SqliteDep &
-      NanoIdLibDep &
-      CreateMnemonicDep &
-      TimeDep &
-      CreateRandomBytesDep,
-  ) =>
-  (mnemonic?: Mnemonic): Result<[AppOwner, OwnerRow], SqliteError> => {
+    initialAppOwner: AppOwner,
+    initialClock: Clock,
+  ): Result<void, SqliteError> => {
     for (const query of [
+      // Never change structure to ensure all versions can read it.
       sql`
-        create table evolu_config (
-          "key" text not null primary key,
-          "value" any not null
+        create table evolu_version (
+          "protocolVersion" integer not null
         )
         strict;
       `,
 
       sql`
-        insert into evolu_config ("key", "value")
-        values ('protocolVersion', ${protocolVersion});
+        insert into evolu_version ("protocolVersion")
+        values (${protocolVersion});
+      `,
+
+      sql`
+        create table evolu_config (
+          "clock" text not null,
+          "appOwnerId" text not null,
+          "appOwnerEncryptionKey" blob not null,
+          "appOwnerWriteKey" blob not null,
+          "appOwnerMnemonic" text
+        )
+        strict;
+      `,
+
+      sql`
+        insert into evolu_config
+          (
+            "clock",
+            "appOwnerId",
+            "appOwnerEncryptionKey",
+            "appOwnerWriteKey",
+            "appOwnerMnemonic"
+          )
+        values
+          (
+            ${timestampToTimestampString(initialClock.get())},
+            ${initialAppOwner.id},
+            ${initialAppOwner.encryptionKey},
+            ${initialAppOwner.writeKey},
+            ${initialAppOwner.mnemonic ?? null}
+          );
       `,
 
       /**
@@ -802,50 +885,12 @@ const initializeDb =
           "timestamp" desc
         );
       `,
-
-      sql`
-        create table evolu_owner (
-          "mnemonic" text not null primary key,
-          "id" text not null,
-          "encryptionKey" blob not null,
-          "createdAt" text not null,
-          "writeKey" blob,
-          "timestamp" text not null
-        )
-        strict;
-      `,
     ]) {
       const result = deps.sqlite.exec(query);
       if (!result.ok) return result;
     }
 
-    const appOwner = createAppOwner(deps)(mnemonic);
-    const ownerRow = createOwnerRow(deps)(appOwner);
-
-    const result = deps.sqlite.exec(sql`
-      insert into evolu_owner
-        (
-          "mnemonic",
-          "id",
-          "encryptionKey",
-          "createdAt",
-          "writeKey",
-          "timestamp"
-        )
-      values
-        (
-          ${ownerRow.mnemonic},
-          ${ownerRow.id},
-          ${ownerRow.encryptionKey},
-          ${ownerRow.createdAt},
-          ${ownerRow.writeKey},
-          ${ownerRow.timestamp}
-        );
-    `);
-
-    if (!result.ok) return result;
-
-    return ok([appOwner, ownerRow]);
+    return ok();
   };
 
 const applyChanges =
@@ -854,8 +899,9 @@ const applyChanges =
       TimeDep &
       TimestampConfigDep &
       RandomDep &
-      OwnerRowRefDep &
-      ClientStorageDep,
+      ClientStorageDep &
+      OwnersDep &
+      ClockDep,
   ) =>
   (
     changes: NonEmptyReadonlyArray<DbChange>,
@@ -867,20 +913,18 @@ const applyChanges =
     | TimestampCounterOverflowError
     | SqliteError
   > => {
-    let lastTimestamp = timestampStringToTimestamp(
-      deps.ownerRowRef.get().timestamp,
-    );
+    let clockTimestamp = deps.clock.get();
 
     const messages: Array<CrdtMessage> = [];
 
     for (const change of changes) {
-      const nextTimestamp = sendTimestamp(deps)(lastTimestamp);
+      const nextTimestamp = sendTimestamp(deps)(clockTimestamp);
       if (!nextTimestamp.ok) return nextTimestamp;
-      lastTimestamp = nextTimestamp.value;
-      messages.push({ timestamp: lastTimestamp, change });
+      clockTimestamp = nextTimestamp.value;
+      messages.push({ timestamp: clockTimestamp, change });
     }
 
-    const apply = applyMessages(deps)(messages, lastTimestamp);
+    const apply = applyMessages(deps)(messages, clockTimestamp);
     if (!apply.ok) return apply;
 
     if (onChange) onChange();
@@ -890,12 +934,14 @@ const applyChanges =
   };
 
 const applyMessages =
-  (deps: SqliteDep & RandomDep & OwnerRowRefDep & ClientStorageDep) =>
+  (deps: SqliteDep & RandomDep & ClientStorageDep & ClockDep & OwnersDep) =>
   (
     messages: ReadonlyArray<CrdtMessage>,
-    lastTimestamp: Timestamp,
+    clockTimestamp: Timestamp,
   ): Result<void, SqliteError> => {
-    const ownerId = ownerIdToBinaryOwnerId(deps.ownerRowRef.get().id);
+    const ownerId = ownerIdToBinaryOwnerId(
+      Array.from(deps.owners.values())[0].id,
+    );
 
     for (const message of messages) {
       const result1 = applyMessageToAppTable(deps)(ownerId, message);
@@ -908,18 +954,14 @@ const applyMessages =
       if (!result2.ok) return result2;
     }
 
-    const timestamp = timestampToTimestampString(lastTimestamp);
-    deps.ownerRowRef.modify((owner) => ({ ...owner, timestamp }));
-    const saveTimestamp = deps.sqlite.exec(sql.prepared`
-      update evolu_owner set "timestamp" = ${timestamp};
-    `);
-    if (!saveTimestamp.ok) return saveTimestamp;
+    const saveClockResult = deps.clock.save(clockTimestamp);
+    if (!saveClockResult.ok) return saveClockResult;
 
     return ok();
   };
 
 const applyMessageToAppTable =
-  (deps: SqliteDep & OwnerRowRefDep) =>
+  (deps: SqliteDep) =>
   (ownerId: BinaryOwnerId, message: CrdtMessage): Result<void, SqliteError> => {
     const timestamp = timestampToBinaryTimestamp(message.timestamp);
     const updatedAt = new Date(message.timestamp.millis).toISOString();
@@ -1046,11 +1088,11 @@ const dropAllTables = (deps: SqliteDep): Result<void, SqliteError> => {
 };
 
 const handleSyncOpen =
-  (deps: OwnerRowRefDep & StorageDep & ConsoleDep): SyncConfig["onOpen"] =>
+  (deps: StorageDep & ConsoleDep & OwnersDep): SyncConfig["onOpen"] =>
   (send) => {
-    const ownerId = deps.ownerRowRef.get().id;
-    const message = createProtocolMessageForSync(deps)(ownerId);
-    if (message) {
+    for (const [id] of deps.owners) {
+      const message = createProtocolMessageForSync(deps)(id);
+      if (!message) return;
       deps.console.log("[db]", "send initial sync message", message);
       send(message);
     }
@@ -1058,15 +1100,14 @@ const handleSyncOpen =
 
 const createHandleSyncMessage =
   (
-    deps: PostMessageDep & StorageDep & SqliteDep & ConsoleDep & OwnerRowRefDep,
+    deps: PostMessageDep & StorageDep & SqliteDep & ConsoleDep & OwnersDep,
   ): SyncConfig["onMessage"] =>
   (input, send) => {
     deps.console.log("[db]", "receive sync message", input);
-    const { writeKey } = deps.ownerRowRef.get();
 
     const output = deps.sqlite.transaction(() =>
       applyProtocolMessageAsClient(deps)(input, {
-        getWriteKey: (_ownerId) => writeKey,
+        getWriteKey: (ownerId) => deps.owners.get(ownerId)?.writeKey ?? null,
       }),
     );
     if (!output.ok) {
@@ -1080,20 +1121,21 @@ const createHandleSyncMessage =
     }
   };
 
-export interface ClientStorage extends SqliteStorageBase, Storage {}
-
 export interface ClientStorageDep {
   readonly storage: ClientStorage;
 }
+
+export interface ClientStorage extends SqliteStorageBase, Storage {}
 
 const createClientStorage =
   (
     deps: SqliteDep &
       PostMessageDep &
       SymmetricCryptoDep &
-      OwnerRowRefDep &
       RandomDep &
       TimeDep &
+      OwnersDep &
+      ClockDep &
       TimestampConfigDep,
   ) =>
   (
@@ -1108,9 +1150,10 @@ const createClientStorage =
       validateWriteKey: constFalse,
       setWriteKey: constFalse,
 
-      writeMessages: (_ownerId, messages) => {
-        // TODO: Get owner by _ownerId when we support more.
-        const owner = deps.ownerRowRef.get();
+      writeMessages: (ownerId, messages) => {
+        const owner = deps.owners.get(binaryOwnerIdToOwnerId(ownerId));
+        assert(owner, "Missing owner");
+
         const decodedAndDecryptedMessages: Array<CrdtMessage> = [];
 
         for (const message of messages) {
@@ -1133,20 +1176,23 @@ const createClientStorage =
           });
         }
 
-        let timestamp = timestampStringToTimestamp(owner.timestamp);
+        let clockTimestamp = deps.clock.get();
 
         for (const message of messages) {
-          const receive = receiveTimestamp(deps)(timestamp, message.timestamp);
+          const receive = receiveTimestamp(deps)(
+            clockTimestamp,
+            message.timestamp,
+          );
           if (!receive.ok) {
             deps.postMessage({ type: "onError", error: receive.error });
             return false;
           }
-          timestamp = receive.value;
+          clockTimestamp = receive.value;
         }
 
         const applyMessagesResult = applyMessages({ ...deps, storage })(
           decodedAndDecryptedMessages,
-          timestamp,
+          clockTimestamp,
         );
 
         if (!applyMessagesResult.ok) {
@@ -1163,6 +1209,9 @@ const createClientStorage =
       },
 
       readDbChange: (ownerId, timestamp) => {
+        const owner = deps.owners.get(binaryOwnerIdToOwnerId(ownerId));
+        assert(owner, "Missing owner");
+
         const result = deps.sqlite.exec<{
           table: Base64Url256;
           id: BinaryId;
@@ -1198,9 +1247,8 @@ const createClientStorage =
             values,
           },
         };
-        const { encryptionKey } = deps.ownerRowRef.get();
 
-        return encodeAndEncryptDbChange(deps)(message, encryptionKey);
+        return encodeAndEncryptDbChange(deps)(message, owner.encryptionKey);
       },
     };
 

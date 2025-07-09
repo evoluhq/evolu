@@ -30,7 +30,6 @@ import {
 import { Simplify } from "../Types.js";
 import { DbSchema } from "./Db.js";
 import { createIndexes, DbIndexesBuilder } from "./Kysely.js";
-import { AppOwner, ShardOwner, SharedOwner } from "./Owner.js";
 import {
   BinaryId,
   maxProtocolMessageRangesSize,
@@ -253,12 +252,12 @@ export interface MutationOptions {
    */
   readonly onlyValidate?: boolean;
 
-  /**
-   * The owner to use for this mutation. Can be a {@link ShardOwner} for sharding
-   * app data or a {@link SharedOwner} for collaborative write access. If
-   * omitted, defaults to the app's {@link AppOwner}.
-   */
-  readonly owner?: ShardOwner | SharedOwner;
+  // /**
+  //  * The owner to use for this mutation. Can be a {@link ShardOwner} for sharding
+  //  * app data or a {@link SharedOwner} for collaborative write access. If
+  //  * omitted, defaults to the app's {@link AppOwner}.
+  //  */
+  // readonly owner?: ShardOwner | SharedOwner;
 }
 
 /**

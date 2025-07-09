@@ -103,7 +103,7 @@ const formatTypeError = createFormatTypeError<
 
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   reloadUrl: "/docs/examples/react/nextjs",
-  name: getOrThrow(SimpleName.from("evolu-nextjs-example-v010725")),
+  name: getOrThrow(SimpleName.from("evolu-nextjs-example-v090725")),
 
   ...(process.env.NODE_ENV === "development" && {
     syncUrl: "http://localhost:4000",
@@ -560,7 +560,7 @@ const OwnerActions: FC = () => {
           onClick={handleDownloadDatabaseClick}
         />
       </div>
-      {showMnemonic && owner != null && (
+      {showMnemonic && owner?.mnemonic && (
         <div>
           <textarea
             value={owner.mnemonic}

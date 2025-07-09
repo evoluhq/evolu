@@ -1,0 +1,194 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`initialAppOwner should use provided owner 1`] = `
+{
+  "schema": {
+    "indexes": [
+      {
+        "name": "evolu_history_ownerId_timestamp",
+        "sql": "create index evolu_history_ownerId_timestamp on evolu_history (
+          "ownerId",
+          "timestamp"
+        )",
+      },
+      {
+        "name": "evolu_history_ownerId_table_id_column_timestampDesc",
+        "sql": "create unique index evolu_history_ownerId_table_id_column_timestampDesc on evolu_history (
+          "ownerId",
+          "table",
+          "id",
+          "column",
+          "timestamp" desc
+        )",
+      },
+      {
+        "name": "evolu_timestamp_index",
+        "sql": "create index evolu_timestamp_index on evolu_timestamp (
+        "ownerId",
+        "l",
+        "t",
+        "h1",
+        "h2",
+        "c"
+      )",
+      },
+    ],
+    "tables": [
+      {
+        "columns": [
+          "protocolVersion",
+        ],
+        "name": "evolu_version",
+      },
+      {
+        "columns": [
+          "clock",
+          "appOwnerId",
+          "appOwnerEncryptionKey",
+          "appOwnerWriteKey",
+          "appOwnerMnemonic",
+        ],
+        "name": "evolu_config",
+      },
+      {
+        "columns": [
+          "ownerId",
+          "table",
+          "id",
+          "column",
+          "timestamp",
+          "value",
+        ],
+        "name": "evolu_history",
+      },
+      {
+        "columns": [
+          "id",
+          "title",
+          "isCompleted",
+          "categoryId",
+          "createdAt",
+          "updatedAt",
+          "isDeleted",
+        ],
+        "name": "todo",
+      },
+      {
+        "columns": [
+          "id",
+          "name",
+          "createdAt",
+          "updatedAt",
+          "isDeleted",
+        ],
+        "name": "todoCategory",
+      },
+      {
+        "columns": [
+          "ownerId",
+          "t",
+          "h1",
+          "h2",
+          "c",
+          "l",
+        ],
+        "name": "evolu_timestamp",
+      },
+    ],
+  },
+  "tables": [
+    {
+      "name": "evolu_version",
+      "rows": [
+        {
+          "protocolVersion": 0,
+        },
+      ],
+    },
+    {
+      "name": "evolu_config",
+      "rows": [
+        {
+          "appOwnerEncryptionKey": {
+            "data": [
+              173,
+              165,
+              204,
+              225,
+              74,
+              240,
+              76,
+              99,
+              46,
+              18,
+              104,
+              4,
+              0,
+              136,
+              188,
+              132,
+              99,
+              57,
+              151,
+              4,
+              147,
+              44,
+              59,
+              91,
+              61,
+              162,
+              116,
+              243,
+              186,
+              98,
+              25,
+              4,
+            ],
+            "type": "Buffer",
+          },
+          "appOwnerId": "MdVYFAxShUluuZKVWQfYL",
+          "appOwnerMnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
+          "appOwnerWriteKey": {
+            "data": [
+              111,
+              64,
+              118,
+              108,
+              245,
+              65,
+              176,
+              98,
+              173,
+              247,
+              85,
+              78,
+              30,
+              167,
+              192,
+              203,
+            ],
+            "type": "Buffer",
+          },
+          "clock": "1970-01-01T00:00:00.000Z-0000-a1d85311b2b347eb",
+        },
+      ],
+    },
+    {
+      "name": "evolu_history",
+      "rows": [],
+    },
+    {
+      "name": "todo",
+      "rows": [],
+    },
+    {
+      "name": "todoCategory",
+      "rows": [],
+    },
+    {
+      "name": "evolu_timestamp",
+      "rows": [],
+    },
+  ],
+}
+`;

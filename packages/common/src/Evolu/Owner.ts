@@ -1,12 +1,35 @@
 /**
- * TODO:
+ * Evolu Owner - Data Ownership and Collaboration
+ *
+ * An {@link Owner} is an entity that represents ownership of data in Evolu. It
+ * consists of cryptographic keys derived from a {@link Mnemonic} via SLIP-21:
+ *
+ * - **{@link OwnerId}**: Globally unique public identifier
+ * - **{@link EncryptionKey}**: Symmetric encryption key for data protection
+ * - **{@link WriteKey}**: Authentication token for write operations
+ *
+ * Every Evolu app has at least one owner, the {@link AppOwner}. There are
+ * several owner variants for different use cases:
+ *
+ * **{@link ShardOwner}**: Derived from {@link AppOwner} for partitioning data and
+ * selective synchronization using {@link createShardOwner}
+ *
+ * **{@link SharedOwner}**: Created for collaboration with write access, not
+ * meant to be shared directly
+ *
+ * **{@link SharedReadonlyOwner}**: Read-only version for safe data sharing,
+ * created from {@link SharedOwner} using {@link createSharedReadonlyOwner}
+ *
+ * Owners are designed for data synchronization and backup. Authentication
+ * systems built on public/private key cryptography use these primitives. This
+ * design ensures Evolu Relay knows as little as possible - it only sees
+ * Timestamp, OwnerId, and EncryptedDbChange.
  *
  * @module
  */
 
-import { assert } from "../Assert.js";
+import { NonEmptyReadonlyArray } from "../Array.js";
 import {
-  createEncryptionKey,
   CreateMnemonicDep,
   CreateRandomBytesDep,
   createSlip21,
@@ -15,61 +38,26 @@ import {
   MnemonicSeed,
   mnemonicToMnemonicSeed,
 } from "../Crypto.js";
-import { NanoIdLibDep } from "../NanoId.js";
-import { TimeDep } from "../Time.js";
 import {
   Base64Url,
   brand,
-  DateIso,
-  DateIsoString,
   Id,
   length,
   Mnemonic,
   NonNegativeInt,
   Uint8Array,
 } from "../Type.js";
-import {
-  createInitialTimestamp,
-  TimestampString,
-  timestampToTimestampString,
-} from "./Timestamp.js";
-
-// TODO: Clean API
-// - createOwner should be createAppOwner
-// - Docs mention WriteKey is optional but it's required in Owner.
-// - For Protocol, we need only ownerId, encryptionKey, and writeKey.
-// - Not sure whether we need JSDoc for this module, and we don't
-//   use modules for Evolu internal API yet.
-// It's not single responsibility API.
 
 /**
- * `Owner` is an entity in Evolu that owns data, meaning it is locally stored on
- * a device under the user’s control. Data can be personal private, peer-to-peer
- * shared, or aggregated from multiple owners.
+ * Represents ownership of data in Evolu. Created from a {@link Mnemonic} via
+ * SLIP-21 key derivation using {@link createOwner}, providing cryptographic keys
+ * for data access and authentication.
  *
- * An owner has a {@link Mnemonic} from which {@link OwnerId} and
- * {@link EncryptionKey} are deterministically derived using SLIP-21, and an
- * optional {@link WriteKey} that, when present, enables writing to the Evolu
- * Relay or peers. The {@link WriteKey} can be rotated.
- *
- * Variants include {@link AppOwner}, {@link ShardOwner}, {@link SharedOwner}, and
- * {@link SharedReadonlyOwner}, each with specific roles and properties detailed
- * in their respective definitions.
- *
- * Public-key cryptography isn’t included here as it belongs to app and varies
- * by use case. An Evolu app without collaboration doesn’t need it, while a
- * Nostr-like app can leverage Nostr NIPs, or a super-safe app can use
- * post-quantum cryptography.
+ * - {@link OwnerId}: Globally unique public identifier
+ * - {@link EncryptionKey}: Symmetric encryption key for data protection
+ * - {@link WriteKey}: Authentication token for write operations (rotatable)
  */
 export interface Owner {
-  readonly mnemonic: Mnemonic;
-  readonly createdAt: DateIsoString;
-  readonly id: OwnerId;
-  readonly encryptionKey: EncryptionKey;
-  readonly writeKey: WriteKey;
-}
-
-export interface OwnerWithWriteAccess {
   readonly id: OwnerId;
   readonly encryptionKey: EncryptionKey;
   readonly writeKey: WriteKey;
@@ -89,203 +77,140 @@ export type OwnerId = typeof OwnerId.Type;
 export const writeKeyLength = 16 as NonNegativeInt;
 
 /**
- * A secure token proving the initiator can write changes. Derived from a
- * mnemonic or randomly generated. It's rotatable.
+ * A secure token proving that the initiator can write changes. Derived from a
+ * mnemonic or randomly generated via {@link createWriteKey}. It is rotatable.
  */
 export const WriteKey = brand("WriteKey", length(writeKeyLength)(Uint8Array));
 export type WriteKey = typeof WriteKey.Type;
 
+/** Creates a randomly generated {@link WriteKey}. */
+export const createWriteKey = (deps: CreateRandomBytesDep): WriteKey =>
+  deps.createRandomBytes(16) as unknown as WriteKey;
+
+/** Creates an {@link Owner} from a {@link Mnemonic} using SLIP-21 key derivation. */
+export const createOwner = (mnemonic: Mnemonic): Owner => {
+  const seed = mnemonicToMnemonicSeed(mnemonic);
+  return createOwnerFromMnemonicSeed(seed);
+};
+
 /**
- * The root owner of an Evolu app, created from a mnemonic safely generated on a
- * device when the app is initialized or restored on another device using an
- * existing mnemonic. It manages the app's core data, including the storage of
- * other owners' mnemonics in an encrypted app table. Its `writeKey` is
- * deterministic and rotatable. Never share the AppOwner mnemonic with anyone.
+ * Creates an {@link Owner} from a {@link MnemonicSeed} using SLIP-21 key
+ * derivation.
+ */
+export const createOwnerFromMnemonicSeed = (seed: MnemonicSeed): Owner => ({
+  id: createSlip21Id(seed, ["Evolu", "Owner Id"]) as OwnerId,
+
+  encryptionKey: createSlip21(seed, [
+    "Evolu",
+    "Encryption Key",
+  ]) as EncryptionKey,
+
+  writeKey: createSlip21(seed, ["Evolu", "Write Key"]).slice(0, 16) as WriteKey,
+});
+
+/**
+ * The owner representing app data. Can be created from a {@link Mnemonic} or
+ * from external keys when the mnemonic should not be shared with the Evolu
+ * app.
  */
 export interface AppOwner extends Owner {
   readonly type: "AppOwner";
+
+  /**
+   * The mnemonic that was used to derive the AppOwner keys. Optional when the
+   * AppOwner is created from external keys to avoid sharing the mnemonic with
+   * the Evolu app.
+   */
+  readonly mnemonic?: Mnemonic | null;
 }
 
+export const createAppOwner = (mnemonic: Mnemonic): AppOwner => ({
+  type: "AppOwner",
+  mnemonic,
+  ...createOwner(mnemonic),
+});
+
 /**
- * Used to shard data within an app for partial or deferred sync. Created in the
- * Evolu `initialData` function or dynamically as needed. Its mnemonic is stored
- * in an app table (encrypted by `AppOwner`) and synced between devices. Its
- * `writeKey` is deterministic and rotatable, enabling selective syncing of data
- * subsets. Not intended for sharing outside the app.
- *
- * This type omits `id`, `encryptionKey`, and `createdAt` as they are derived by
- * Evolu from the `mnemonic`, reducing storage overhead.
+ * Owner for sharding app data. Allows partitioning of database changes for
+ * selective synchronization.
  */
-export interface ShardOwner {
+export interface ShardOwner extends Owner {
   readonly type: "ShardOwner";
-  readonly mnemonic: Mnemonic;
-  readonly writeKey: WriteKey;
 }
 
 /**
- * Used to share data among one or more users, enabling collaboration or
- * controlled access. Its `writeKey` is random (not derived from the mnemonic,
- * stored alongside it in the app table) and rotatable, ensuring it cannot be
- * regenerated by others if shared. Share the `mnemonic` alone for read-only
- * access (as `SharedReadonlyOwner`) or share SharedOwner itself for write
- * access.
+ * Creates a {@link ShardOwner} derived from an {@link AppOwner} using the
+ * specified path.
  *
- * This type omits `id`, `encryptionKey`, and `createdAt` as they are derived by
- * Evolu from the `mnemonic`, reducing storage overhead.
- */
-export interface SharedOwner {
-  readonly type: "SharedOwner";
-  readonly mnemonic: Mnemonic;
-  readonly writeKey: WriteKey;
-}
-
-/**
- * Used for sharing data that can only be read, such as with followers or peers
- * in a read-only sync scenario. It lacks a `writeKey`, containing only the
- * `mnemonic` from which `id` and `encryptionKey` are derived by Evolu.
- * Typically derived from a `SharedOwner` by sharing its `mnemonic` without the
- * `writeKey`.
- */
-export interface SharedReadonlyOwner {
-  readonly type: "SharedReadonlyOwner";
-  readonly mnemonic: Mnemonic;
-}
-
-/**
- * Creates an {@link AppOwner}, optionally from an existing mnemonic to restore
- * it on another device; otherwise, generates a new mnemonic.
- */
-export const createAppOwner =
-  (deps: TimeDep & CreateRandomBytesDep & CreateMnemonicDep) =>
-  (mnemonic = deps.createMnemonic()): AppOwner => {
-    const owner = createOwner(deps)(mnemonic);
-    return { type: "AppOwner", ...owner };
-  };
-
-/**
- * Creates a {@link ShardOwner} for sharding app data with a freshly generated
- * mnemonic. Unlike {@link createAppOwner}, it doesn’t accept an existing
- * mnemonic because ShardOwner mnemonics are always generated and restored
- * automatically via database sync.
+ * ### Example
+ *
+ * ```ts
+ * const contactsShard = createShardOwner(appOwner, ["contacts"]);
+ * const projectShard = createShardOwner(appOwner, [
+ *   "projects",
+ *   "project-1",
+ * ]);
+ * ```
  */
 export const createShardOwner = (
-  deps: TimeDep & CreateRandomBytesDep & CreateMnemonicDep,
+  appOwner: AppOwner,
+  path: NonEmptyReadonlyArray<string>,
 ): ShardOwner => {
-  const owner = createOwner(deps)();
+  /**
+   * The shardSeed is never shared or persisted, only used for SLIP-21
+   * derivation to create shard-specific keys.
+   */
+  const shardSeed = createSlip21(
+    appOwner.encryptionKey as unknown as MnemonicSeed,
+    path,
+  ) as MnemonicSeed;
+
   return {
     type: "ShardOwner",
-    mnemonic: owner.mnemonic,
-    writeKey: owner.writeKey,
+    ...createOwnerFromMnemonicSeed(shardSeed),
   };
 };
 
 /**
- * Creates a fresh {@link SharedOwner} for sharing data with write access. Takes
- * no arguments as both `mnemonic` and rotatable `writeKey` are newly generated;
- * when shared, recipients use the provided `mnemonic` and `writeKey` directly
- * as a {@link SharedOwner} without needing to recreate it.
+ * Owner for collaborative data with write access. Created by a user for their
+ * own use, not meant to be shared directly. To share data, use
+ * {@link createSharedReadonlyOwner} to create a {@link SharedReadonlyOwner} for
+ * read-only access.
  */
-export const createSharedOwner = (
-  deps: CreateRandomBytesDep & CreateMnemonicDep,
-): SharedOwner => {
+export interface SharedOwner extends Owner {
+  readonly type: "SharedOwner";
+  readonly mnemonic: Mnemonic;
+}
+
+/** Creates a {@link SharedOwner} with a freshly generated {@link Mnemonic}. */
+export const createSharedOwner = (deps: CreateMnemonicDep): SharedOwner => {
   const mnemonic = deps.createMnemonic();
-  const writeKey = createWriteKey(deps)(); // Random, no seed
   return {
     type: "SharedOwner",
     mnemonic,
-    writeKey,
+    ...createOwner(mnemonic),
   };
 };
 
 /**
- * Creates a {@link SharedReadonlyOwner} from a {@link SharedOwner} for read-only
- * data sharing. Extracts the `mnemonic` from the provided {@link SharedOwner},
- * omitting its `writeKey` to ensure read-only access.
+ * Read-only version of a {@link SharedOwner} for data sharing. Contains only the
+ * {@link OwnerId} and {@link EncryptionKey} needed for others to read the shared
+ * data without write access.
  */
+export interface SharedReadonlyOwner {
+  readonly type: "SharedReadonlyOwner";
+  readonly id: OwnerId;
+  readonly encryptionKey: EncryptionKey;
+}
+
+/** Creates a {@link SharedReadonlyOwner} from a {@link SharedOwner}. */
 export const createSharedReadonlyOwner = (
   sharedOwner: SharedOwner,
-): SharedReadonlyOwner => {
-  return {
-    type: "SharedReadonlyOwner",
-    mnemonic: sharedOwner.mnemonic,
-  };
-};
-
-/** Creates an {@link Owner} with optional `mnemonic` and `writeKey`. */
-export const createOwner =
-  (deps: TimeDep & CreateRandomBytesDep & CreateMnemonicDep) =>
-  (mnemonic = deps.createMnemonic(), writeKey?: WriteKey): Owner => {
-    const seed = mnemonicToMnemonicSeed(mnemonic);
-
-    const id = createSlip21Id(seed, ["Evolu", "Owner Id"]) as OwnerId;
-    const encryptionKey = createEncryptionKey(seed);
-
-    const createdAt = DateIso.fromParent(new Date(deps.time.now()));
-    assert(createdAt.ok, "Invalid DateIso: bad system clock");
-
-    return {
-      mnemonic,
-      createdAt: createdAt.value,
-      id,
-      encryptionKey,
-      writeKey: writeKey ?? createWriteKey(deps)(seed),
-    };
-  };
-
-export const createWriteKey =
-  (deps: CreateRandomBytesDep) =>
-  (seed?: MnemonicSeed): WriteKey => {
-    const key = seed
-      ? createSlip21(seed, ["Evolu", "Write Key"]).slice(0, 16)
-      : deps.createRandomBytes(16);
-
-    const writeKey = WriteKey.from(key);
-    assert(writeKey.ok, "Ensure valid WriteKey");
-
-    return writeKey.value;
-  };
-
-/**
- * An `OwnerRow` represents a row in the `evolu_owner` table, based on an
- * {@link Owner} with an added `timestamp` ({@link TimestampString}) for CRDT
- * sync. It supports all {@link Owner} variants with an optional `writeKey`; use
- * {@link createOwnerRow} to align it with a specific {@link Owner}.
- */
-export type OwnerRow = Omit<Owner, "writeKey"> & {
-  readonly writeKey: WriteKey | null;
-  readonly timestamp: TimestampString;
-};
-
-/**
- * Creates an {@link OwnerRow} from any {@link Owner} variant for the
- * `evolu_owner` table, adding a `timestamp` ({@link TimestampString}) for CRDT
- * sync.
- */
-export const createOwnerRow =
-  (deps: TimeDep & CreateRandomBytesDep & CreateMnemonicDep & NanoIdLibDep) =>
-  (
-    owner: AppOwner | ShardOwner | SharedOwner | SharedReadonlyOwner,
-  ): OwnerRow => {
-    const timestamp = timestampToTimestampString(createInitialTimestamp(deps));
-    switch (owner.type) {
-      case "AppOwner": {
-        const { type, ...rest } = owner;
-        return { ...rest, timestamp };
-      }
-      case "ShardOwner":
-      case "SharedOwner":
-        return {
-          ...createOwner(deps)(owner.mnemonic, owner.writeKey),
-          timestamp,
-        };
-      case "SharedReadonlyOwner":
-        return {
-          ...createOwner(deps)(owner.mnemonic),
-          writeKey: null,
-          timestamp,
-        };
-    }
-  };
+): SharedReadonlyOwner => ({
+  type: "SharedReadonlyOwner",
+  id: sharedOwner.id,
+  encryptionKey: sharedOwner.encryptionKey,
+});
 
 /**
  * Rotates the {@link WriteKey} for an {@link AppOwner}, {@link ShardOwner}, or

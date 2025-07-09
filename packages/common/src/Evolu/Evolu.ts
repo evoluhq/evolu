@@ -583,11 +583,13 @@ const createEvoluInstance =
 
     deps.console.log("[evolu]", "createEvoluInstance");
 
+    // evoluConfig.mnemonic
+
     const { initialData, indexes, ...config } = evoluConfig;
 
     const errorStore = createStore<EvoluError | null>(null);
     const rowsStore = createStore<QueryRowsMap>(new Map());
-    const ownerStore = createStore<AppOwner | null>(null);
+    const appOwnerStore = createStore<AppOwner | null>(null);
     const syncStore = createStore<SyncState>(initialSyncState);
 
     const subscribedQueries = createSubscribedQueries(rowsStore);
@@ -605,7 +607,7 @@ const createEvoluInstance =
     dbWorker.onMessage((message) => {
       switch (message.type) {
         case "onInit": {
-          ownerStore.set(message.owner);
+          appOwnerStore.set(message.appOwner);
           break;
         }
 
@@ -907,8 +909,8 @@ const createEvoluInstance =
       getQueryRows: <R extends Row>(query: Query<R>): QueryRows<R> =>
         (rowsStore.get().get(query) ?? emptyRows) as QueryRows<R>,
 
-      subscribeAppOwner: ownerStore.subscribe,
-      getAppOwner: ownerStore.get,
+      subscribeAppOwner: appOwnerStore.subscribe,
+      getAppOwner: appOwnerStore.get,
 
       subscribeSyncState: syncStore.subscribe,
       getSyncState: syncStore.get,

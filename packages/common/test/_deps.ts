@@ -12,12 +12,7 @@ import {
   SymmetricCryptoDep,
 } from "../src/Crypto.js";
 import { Config, defaultConfig } from "../src/Evolu/Config.js";
-import {
-  createAppOwner,
-  createOwner,
-  createOwnerRow,
-  Owner,
-} from "../src/Evolu/Owner.js";
+import { createAppOwner, createOwner } from "../src/Evolu/Owner.js";
 import { ownerIdToBinaryOwnerId } from "../src/Evolu/Protocol.js";
 import { constVoid } from "../src/Function.js";
 import { NanoIdLib } from "../src/NanoId.js";
@@ -91,7 +86,7 @@ export const testMnemonicSeed = mnemonicToMnemonicSeed(testMnemonic);
 
 export const testDbConfig: Config = {
   ...defaultConfig,
-  mnemonic: testMnemonic,
+  initialAppOwner: createAppOwner(testMnemonic),
 };
 
 export const testCreateRandomBytesDep: CreateRandomBytesDep = {
@@ -119,18 +114,10 @@ const ownerDeps = {
   nanoIdLib: testNanoIdLib,
 };
 
-export const testOwner: Owner = createOwner(ownerDeps)(testMnemonic);
-
-const appOwner = createAppOwner(ownerDeps)();
-export const testOwnerRow = createOwnerRow(ownerDeps)(appOwner);
-
+export const testOwner = createOwner(testMnemonic);
 export const testOwnerBinaryId = ownerIdToBinaryOwnerId(testOwner.id);
 
-export const testOwner2: Owner = createOwner({
-  time: testTime,
-  ...testCreateRandomBytesDep2,
-  createMnemonic: testCreateMnemonic2,
-})(testMnemonic2);
+export const testOwner2 = createOwner(testMnemonic2);
 
 export const testSymmetricCrypto = createSymmetricCrypto(
   testCreateRandomBytesDep,

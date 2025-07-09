@@ -433,7 +433,7 @@ const OwnerActions: FC = () => {
           onClick={handleDownloadDatabaseClick}
         />
       </div>
-      {showMnemonic && owner != null && (
+      {showMnemonic && owner?.mnemonic && (
         <div>
           <textarea
             style={{
