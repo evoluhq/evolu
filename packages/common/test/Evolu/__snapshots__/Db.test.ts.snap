@@ -3,8 +3,7 @@
 exports[`createDbWorker initializes correctly 1`] = `
 [
   {
-    "owner": {
-      "createdAt": "1970-01-01T00:00:00.003Z",
+    "appOwner": {
       "encryptionKey": Uint8Array [
         173,
         165,
@@ -102,6 +101,33 @@ exports[`createDbWorker initializes correctly 2`] = `
     "tables": [
       {
         "columns": [
+          "protocolVersion",
+        ],
+        "name": "evolu_version",
+      },
+      {
+        "columns": [
+          "clock",
+          "appOwnerId",
+          "appOwnerEncryptionKey",
+          "appOwnerWriteKey",
+          "appOwnerMnemonic",
+        ],
+        "name": "evolu_config",
+      },
+      {
+        "columns": [
+          "ownerId",
+          "table",
+          "id",
+          "column",
+          "timestamp",
+          "value",
+        ],
+        "name": "evolu_history",
+      },
+      {
+        "columns": [
           "id",
           "name",
           "createdAt",
@@ -122,35 +148,6 @@ exports[`createDbWorker initializes correctly 2`] = `
       },
       {
         "columns": [
-          "key",
-          "value",
-        ],
-        "name": "evolu_config",
-      },
-      {
-        "columns": [
-          "ownerId",
-          "table",
-          "id",
-          "column",
-          "timestamp",
-          "value",
-        ],
-        "name": "evolu_history",
-      },
-      {
-        "columns": [
-          "mnemonic",
-          "id",
-          "encryptionKey",
-          "createdAt",
-          "writeKey",
-          "timestamp",
-        ],
-        "name": "evolu_owner",
-      },
-      {
-        "columns": [
           "ownerId",
           "t",
           "h1",
@@ -164,32 +161,18 @@ exports[`createDbWorker initializes correctly 2`] = `
   },
   "tables": [
     {
-      "name": "testTable",
-      "rows": [],
-    },
-    {
-      "name": "_testTable",
-      "rows": [],
+      "name": "evolu_version",
+      "rows": [
+        {
+          "protocolVersion": 0,
+        },
+      ],
     },
     {
       "name": "evolu_config",
       "rows": [
         {
-          "key": "protocolVersion",
-          "value": 0,
-        },
-      ],
-    },
-    {
-      "name": "evolu_history",
-      "rows": [],
-    },
-    {
-      "name": "evolu_owner",
-      "rows": [
-        {
-          "createdAt": "1970-01-01T00:00:00.003Z",
-          "encryptionKey": {
+          "appOwnerEncryptionKey": {
             "data": [
               173,
               165,
@@ -226,10 +209,9 @@ exports[`createDbWorker initializes correctly 2`] = `
             ],
             "type": "Buffer",
           },
-          "id": "MdVYFAxShUluuZKVWQfYL",
-          "mnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
-          "timestamp": "1970-01-01T00:00:00.000Z-0000-b7912c7c1fca40aa",
-          "writeKey": {
+          "appOwnerId": "MdVYFAxShUluuZKVWQfYL",
+          "appOwnerMnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
+          "appOwnerWriteKey": {
             "data": [
               111,
               64,
@@ -250,8 +232,21 @@ exports[`createDbWorker initializes correctly 2`] = `
             ],
             "type": "Buffer",
           },
+          "clock": "1970-01-01T00:00:00.000Z-0000-40aaf4d24f2982ba",
         },
       ],
+    },
+    {
+      "name": "evolu_history",
+      "rows": [],
+    },
+    {
+      "name": "testTable",
+      "rows": [],
+    },
+    {
+      "name": "_testTable",
+      "rows": [],
     },
     {
       "name": "evolu_timestamp",
@@ -264,8 +259,7 @@ exports[`createDbWorker initializes correctly 2`] = `
 exports[`local mutation 1`] = `
 [
   {
-    "owner": {
-      "createdAt": "1970-01-01T00:00:00.008Z",
+    "appOwner": {
       "encryptionKey": Uint8Array [
         173,
         165,
@@ -327,11 +321,11 @@ exports[`local mutation 1`] = `
   {
     "onCompleteIds": [],
     "patches": [],
-    "tabId": "gh9kwKG2sAKxc3jir3c4A",
+    "tabId": "c3jir3c4AAUWg7IbJo2Xp",
     "type": "onChange",
   },
   {
-    "tabId": "gh9kwKG2sAKxc3jir3c4A",
+    "tabId": "c3jir3c4AAUWg7IbJo2Xp",
     "type": "onReceive",
   },
 ]
@@ -340,18 +334,10 @@ exports[`local mutation 1`] = `
 exports[`local mutation 2`] = `
 [
   {
-    "name": "testTable",
-    "rows": [],
-  },
-  {
-    "name": "_testTable",
+    "name": "evolu_version",
     "rows": [
       {
-        "createdAt": "1970-01-01T00:00:00.009Z",
-        "id": "icKJoimhRPBjgFeyTa9pE",
-        "isDeleted": null,
-        "name": "test",
-        "updatedAt": "1970-01-01T00:00:00.009Z",
+        "protocolVersion": 0,
       },
     ],
   },
@@ -359,21 +345,7 @@ exports[`local mutation 2`] = `
     "name": "evolu_config",
     "rows": [
       {
-        "key": "protocolVersion",
-        "value": 0,
-      },
-    ],
-  },
-  {
-    "name": "evolu_history",
-    "rows": [],
-  },
-  {
-    "name": "evolu_owner",
-    "rows": [
-      {
-        "createdAt": "1970-01-01T00:00:00.008Z",
-        "encryptionKey": {
+        "appOwnerEncryptionKey": {
           "data": [
             173,
             165,
@@ -410,10 +382,9 @@ exports[`local mutation 2`] = `
           ],
           "type": "Buffer",
         },
-        "id": "MdVYFAxShUluuZKVWQfYL",
-        "mnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
-        "timestamp": "1970-01-01T00:00:00.000Z-0000-9c113e2fe27d7cd5",
-        "writeKey": {
+        "appOwnerId": "MdVYFAxShUluuZKVWQfYL",
+        "appOwnerMnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
+        "appOwnerWriteKey": {
           "data": [
             111,
             64,
@@ -434,6 +405,27 @@ exports[`local mutation 2`] = `
           ],
           "type": "Buffer",
         },
+        "clock": "1970-01-01T00:00:00.000Z-0000-7cd5aa540db883b2",
+      },
+    ],
+  },
+  {
+    "name": "evolu_history",
+    "rows": [],
+  },
+  {
+    "name": "testTable",
+    "rows": [],
+  },
+  {
+    "name": "_testTable",
+    "rows": [
+      {
+        "createdAt": "1970-01-01T00:00:00.002Z",
+        "id": "gFeyTa9pE7z9KY-wzYDMk",
+        "isDeleted": null,
+        "name": "test",
+        "updatedAt": "1970-01-01T00:00:00.002Z",
       },
     ],
   },
@@ -447,32 +439,18 @@ exports[`local mutation 2`] = `
 exports[`local mutation 3`] = `
 [
   {
-    "name": "testTable",
-    "rows": [],
-  },
-  {
-    "name": "_testTable",
-    "rows": [],
+    "name": "evolu_version",
+    "rows": [
+      {
+        "protocolVersion": 0,
+      },
+    ],
   },
   {
     "name": "evolu_config",
     "rows": [
       {
-        "key": "protocolVersion",
-        "value": 0,
-      },
-    ],
-  },
-  {
-    "name": "evolu_history",
-    "rows": [],
-  },
-  {
-    "name": "evolu_owner",
-    "rows": [
-      {
-        "createdAt": "1970-01-01T00:00:00.008Z",
-        "encryptionKey": {
+        "appOwnerEncryptionKey": {
           "data": [
             173,
             165,
@@ -509,10 +487,9 @@ exports[`local mutation 3`] = `
           ],
           "type": "Buffer",
         },
-        "id": "MdVYFAxShUluuZKVWQfYL",
-        "mnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
-        "timestamp": "1970-01-01T00:00:00.000Z-0000-9c113e2fe27d7cd5",
-        "writeKey": {
+        "appOwnerId": "MdVYFAxShUluuZKVWQfYL",
+        "appOwnerMnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
+        "appOwnerWriteKey": {
           "data": [
             111,
             64,
@@ -533,8 +510,21 @@ exports[`local mutation 3`] = `
           ],
           "type": "Buffer",
         },
+        "clock": "1970-01-01T00:00:00.000Z-0000-7cd5aa540db883b2",
       },
     ],
+  },
+  {
+    "name": "evolu_history",
+    "rows": [],
+  },
+  {
+    "name": "testTable",
+    "rows": [],
+  },
+  {
+    "name": "_testTable",
+    "rows": [],
   },
   {
     "name": "evolu_timestamp",
@@ -546,8 +536,7 @@ exports[`local mutation 3`] = `
 exports[`mutate before init 1`] = `
 [
   {
-    "owner": {
-      "createdAt": "1970-01-01T00:00:00.006Z",
+    "appOwner": {
       "encryptionKey": Uint8Array [
         173,
         165,
@@ -609,11 +598,11 @@ exports[`mutate before init 1`] = `
   {
     "onCompleteIds": [],
     "patches": [],
-    "tabId": "tdhdvUIv7-7QDf11mF2BA",
+    "tabId": "Df11mF2BAPRJEKIftYOy3",
     "type": "onChange",
   },
   {
-    "tabId": "tdhdvUIv7-7QDf11mF2BA",
+    "tabId": "Df11mF2BAPRJEKIftYOy3",
     "type": "onReceive",
   },
 ]
@@ -622,18 +611,10 @@ exports[`mutate before init 1`] = `
 exports[`mutate before init 2`] = `
 [
   {
-    "name": "testTable",
-    "rows": [],
-  },
-  {
-    "name": "_testTable",
+    "name": "evolu_version",
     "rows": [
       {
-        "createdAt": "1970-01-01T00:00:00.007Z",
-        "id": "gEx0z1duDCZbms4ropUP_",
-        "isDeleted": null,
-        "name": "test",
-        "updatedAt": "1970-01-01T00:00:00.007Z",
+        "protocolVersion": 0,
       },
     ],
   },
@@ -641,21 +622,7 @@ exports[`mutate before init 2`] = `
     "name": "evolu_config",
     "rows": [
       {
-        "key": "protocolVersion",
-        "value": 0,
-      },
-    ],
-  },
-  {
-    "name": "evolu_history",
-    "rows": [],
-  },
-  {
-    "name": "evolu_owner",
-    "rows": [
-      {
-        "createdAt": "1970-01-01T00:00:00.006Z",
-        "encryptionKey": {
+        "appOwnerEncryptionKey": {
           "data": [
             173,
             165,
@@ -692,10 +659,9 @@ exports[`mutate before init 2`] = `
           ],
           "type": "Buffer",
         },
-        "id": "MdVYFAxShUluuZKVWQfYL",
-        "mnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
-        "timestamp": "1970-01-01T00:00:00.000Z-0000-83b25f327a104112",
-        "writeKey": {
+        "appOwnerId": "MdVYFAxShUluuZKVWQfYL",
+        "appOwnerMnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
+        "appOwnerWriteKey": {
           "data": [
             111,
             64,
@@ -716,6 +682,27 @@ exports[`mutate before init 2`] = `
           ],
           "type": "Buffer",
         },
+        "clock": "1970-01-01T00:00:00.000Z-0000-41123f05b8442d71",
+      },
+    ],
+  },
+  {
+    "name": "evolu_history",
+    "rows": [],
+  },
+  {
+    "name": "testTable",
+    "rows": [],
+  },
+  {
+    "name": "_testTable",
+    "rows": [
+      {
+        "createdAt": "1970-01-01T00:00:00.001Z",
+        "id": "ms4ropUP_dGi2jCaTw-bM",
+        "isDeleted": null,
+        "name": "test",
+        "updatedAt": "1970-01-01T00:00:00.001Z",
       },
     ],
   },
@@ -729,8 +716,7 @@ exports[`mutate before init 2`] = `
 exports[`mutations 1`] = `
 [
   {
-    "owner": {
-      "createdAt": "1970-01-01T00:00:00.004Z",
+    "appOwner": {
       "encryptionKey": Uint8Array [
         173,
         165,
@@ -792,11 +778,11 @@ exports[`mutations 1`] = `
   {
     "onCompleteIds": [],
     "patches": [],
-    "tabId": "8Oy2YBz9_EC0v62hCHsxO",
+    "tabId": "v62hCHsxOuqK4AbttUxKh",
     "type": "onChange",
   },
   {
-    "tabId": "8Oy2YBz9_EC0v62hCHsxO",
+    "tabId": "v62hCHsxOuqK4AbttUxKh",
     "type": "onReceive",
   },
 ]
@@ -805,27 +791,78 @@ exports[`mutations 1`] = `
 exports[`mutations 2`] = `
 [
   {
-    "name": "testTable",
+    "name": "evolu_version",
     "rows": [
       {
-        "createdAt": null,
-        "id": "CdVEpB2gvl_fqBEkmGiGH",
-        "isDeleted": null,
-        "name": "test",
-        "updatedAt": "1970-01-01T00:00:00.005Z",
+        "protocolVersion": 0,
       },
     ],
-  },
-  {
-    "name": "_testTable",
-    "rows": [],
   },
   {
     "name": "evolu_config",
     "rows": [
       {
-        "key": "protocolVersion",
-        "value": 0,
+        "appOwnerEncryptionKey": {
+          "data": [
+            173,
+            165,
+            204,
+            225,
+            74,
+            240,
+            76,
+            99,
+            46,
+            18,
+            104,
+            4,
+            0,
+            136,
+            188,
+            132,
+            99,
+            57,
+            151,
+            4,
+            147,
+            44,
+            59,
+            91,
+            61,
+            162,
+            116,
+            243,
+            186,
+            98,
+            25,
+            4,
+          ],
+          "type": "Buffer",
+        },
+        "appOwnerId": "MdVYFAxShUluuZKVWQfYL",
+        "appOwnerMnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
+        "appOwnerWriteKey": {
+          "data": [
+            111,
+            64,
+            118,
+            108,
+            245,
+            65,
+            176,
+            98,
+            173,
+            247,
+            85,
+            78,
+            30,
+            167,
+            192,
+            203,
+          ],
+          "type": "Buffer",
+        },
+        "clock": "1970-01-01T00:00:00.000Z-0001-a8d0151b0fb0b791",
       },
     ],
   },
@@ -836,22 +873,22 @@ exports[`mutations 2`] = `
         "column": "name",
         "id": {
           "data": [
-            104,
-            87,
-            29,
-            90,
-            66,
-            114,
-            227,
-            107,
-            49,
             222,
             71,
             117,
             30,
             223,
             109,
-            156,
+            157,
+            93,
+            143,
+            80,
+            64,
+            84,
+            254,
+            164,
+            40,
+            176,
           ],
           "type": "Buffer",
         },
@@ -884,17 +921,17 @@ exports[`mutations 2`] = `
             0,
             0,
             0,
-            5,
             0,
             0,
-            229,
-            196,
-            24,
-            202,
-            82,
-            195,
+            1,
             168,
             208,
+            21,
+            27,
+            15,
+            176,
+            183,
+            145,
           ],
           "type": "Buffer",
         },
@@ -903,81 +940,28 @@ exports[`mutations 2`] = `
     ],
   },
   {
-    "name": "evolu_owner",
+    "name": "testTable",
     "rows": [
       {
-        "createdAt": "1970-01-01T00:00:00.004Z",
-        "encryptionKey": {
-          "data": [
-            173,
-            165,
-            204,
-            225,
-            74,
-            240,
-            76,
-            99,
-            46,
-            18,
-            104,
-            4,
-            0,
-            136,
-            188,
-            132,
-            99,
-            57,
-            151,
-            4,
-            147,
-            44,
-            59,
-            91,
-            61,
-            162,
-            116,
-            243,
-            186,
-            98,
-            25,
-            4,
-          ],
-          "type": "Buffer",
-        },
-        "id": "MdVYFAxShUluuZKVWQfYL",
-        "mnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
-        "timestamp": "1970-01-01T00:00:00.005Z-0000-e5c418ca52c3a8d0",
-        "writeKey": {
-          "data": [
-            111,
-            64,
-            118,
-            108,
-            245,
-            65,
-            176,
-            98,
-            173,
-            247,
-            85,
-            78,
-            30,
-            167,
-            192,
-            203,
-          ],
-          "type": "Buffer",
-        },
+        "createdAt": null,
+        "id": "qBEkmGiGH5l37ns7tL4W_",
+        "isDeleted": null,
+        "name": "test",
+        "updatedAt": "1970-01-01T00:00:00.000Z",
       },
     ],
+  },
+  {
+    "name": "_testTable",
+    "rows": [],
   },
   {
     "name": "evolu_timestamp",
     "rows": [
       {
         "c": 1,
-        "h1": 17195181136307,
-        "h2": 186395576389922,
+        "h1": 255490510088691,
+        "h2": 18088005276510,
         "l": 2,
         "ownerId": {
           "data": [
@@ -1007,17 +991,17 @@ exports[`mutations 2`] = `
             0,
             0,
             0,
-            5,
             0,
             0,
-            229,
-            196,
-            24,
-            202,
-            82,
-            195,
+            1,
             168,
             208,
+            21,
+            27,
+            15,
+            176,
+            183,
+            145,
           ],
           "type": "Buffer",
         },
