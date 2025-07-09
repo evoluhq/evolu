@@ -954,10 +954,7 @@ const applyMessages =
       if (!result2.ok) return result2;
     }
 
-    const saveClockResult = deps.clock.save(clockTimestamp);
-    if (!saveClockResult.ok) return saveClockResult;
-
-    return ok();
+    return deps.clock.save(clockTimestamp);
   };
 
 const applyMessageToAppTable =
