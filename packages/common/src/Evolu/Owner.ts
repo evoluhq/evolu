@@ -1,3 +1,4 @@
+/* eslint-disable jsdoc/no-undefined-types */
 /**
  * Evolu Owner - Data Ownership and Collaboration
  *

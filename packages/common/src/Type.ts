@@ -1,3 +1,4 @@
+/* eslint-disable jsdoc/no-undefined-types */
 /**
  * 🧩 Validation, Parsing, and Transformation
  *
