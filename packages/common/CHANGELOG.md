@@ -1,5 +1,15 @@
 # @evolu/common
 
+## 6.0.1-preview.17
+
+### Patch Changes
+
+- 6eca947: Replace initialData with onInit callback
+  - Remove `initialData` function from Config interface
+  - Add `onInit` callback with `isFirst` parameter for one-time initialization
+  - Simplify database initialization by removing pre-init data handling
+  - Provide better control over initialization lifecycle
+
 ## 6.0.1-preview.16
 
 ### Patch Changes
