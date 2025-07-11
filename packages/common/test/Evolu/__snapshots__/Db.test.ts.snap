@@ -60,6 +60,7 @@ exports[`createDbWorker initializes correctly 1`] = `
         203,
       ],
     },
+    "isFirst": true,
     "type": "onInit",
   },
 ]
@@ -316,6 +317,7 @@ exports[`local mutation 1`] = `
         203,
       ],
     },
+    "isFirst": true,
     "type": "onInit",
   },
   {
@@ -593,6 +595,7 @@ exports[`mutate before init 1`] = `
         203,
       ],
     },
+    "isFirst": true,
     "type": "onInit",
   },
   {
@@ -773,6 +776,7 @@ exports[`mutations 1`] = `
         203,
       ],
     },
+    "isFirst": true,
     "type": "onInit",
   },
   {

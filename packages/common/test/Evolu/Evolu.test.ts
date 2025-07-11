@@ -35,6 +35,7 @@ import {
   getDbSnapshot,
 } from "../../src/Evolu/Db.js";
 import { constVoid } from "../../src/Function.js";
+import { wait } from "../../src/Promise.js";
 
 const TodoId = id("Todo");
 type TodoId = InferType<typeof TodoId>;
@@ -151,7 +152,6 @@ test("init postMessage call", () => {
               },
             ],
           },
-          "initialData": [],
           "type": "init",
         },
       ],
@@ -173,7 +173,7 @@ test("insert should validate input and call postMessage", async () => {
     `"3C22DRVU0AHGjXpOEP-WJ"`,
   );
 
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await wait(0);
 
   expect(dbWorker.postMessage.mock.calls[1]).toMatchInlineSnapshot(`
     [
@@ -246,7 +246,7 @@ test("update should validate input and call postMessage", async () => {
   expect(result.ok).toBe(true);
   expect(result.ok && result.value.id).toBe(testId);
 
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await wait(0);
 
   expect(dbWorker.postMessage.mock.calls[1]).toMatchInlineSnapshot(`
     [
@@ -319,7 +319,7 @@ test("upsert should validate input and call postMessage", async () => {
   expect(result.ok).toBe(true);
   expect(result.ok && result.value.id).toBe(testId);
 
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await wait(0);
 
   expect(dbWorker.postMessage.mock.calls[1]).toMatchInlineSnapshot(`
     [
@@ -387,7 +387,7 @@ test("mutations should be processed in microtask queue", async () => {
   evolu.insert("todo", { title: "Todo 2" });
   evolu.insert("todo", { title: "Todo 3" });
 
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await wait(0);
 
   // Only one postMessage call should happen with all changes
   expect(dbWorker.postMessage).toHaveBeenCalledTimes(2); // 1 for init, 1 for mutations
@@ -434,7 +434,7 @@ test("mutation with onlyValidate should not call postMessage", async () => {
 
   evolu.insert("todo", { title: "Validation only" }, { onlyValidate: true });
 
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await wait(0);
 
   // Only init should be called, not the mutation
   expect(dbWorker.postMessage).toHaveBeenCalledTimes(1);
@@ -448,7 +448,7 @@ test("mutations should fail as a transaction when any mutation fails", async () 
   evolu.insert("todo", { title: "" }); // Invalid - empty title
   evolu.insert("todo", { title: "Another Valid Todo" });
 
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await wait(0);
 
   // Only init should be called, not the mutations since one failed
   expect(dbWorker.postMessage).toHaveBeenCalledTimes(1);
@@ -590,7 +590,7 @@ describe("createdAt behavior", () => {
     const result = evolu.insert("todo", { title: "Test Todo" });
     expect(result.ok).toBe(true);
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await wait(0);
 
     // Verify the postMessage was called with createdAt in the change values
     expect(dbWorker.postMessage).toHaveBeenCalledWith(
@@ -620,7 +620,7 @@ describe("createdAt behavior", () => {
     const result = evolu.upsert("todo", { id: testId, title: "Upserted Todo" });
     expect(result.ok).toBe(true);
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await wait(0);
 
     expect(dbWorker.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -649,7 +649,7 @@ describe("createdAt behavior", () => {
     const result = evolu.update("todo", { id: testId, title: "Updated Todo" });
     expect(result.ok).toBe(true);
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await wait(0);
 
     // Get the actual call to inspect the values
     const calls = dbWorker.postMessage.mock.calls;
@@ -666,47 +666,6 @@ describe("createdAt behavior", () => {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     expect(change?.values).not.toHaveProperty("createdAt");
   });
-
-  test("initialData should set createdAt for all inserted records", () => {
-    const deps = mockDeps();
-
-    createEvolu(deps)(Schema, {
-      name: getOrThrow(SimpleName.from("test-initial-data")),
-      initialData: (evolu) => {
-        evolu.insert("todoCategory", { name: "Category 1" });
-        evolu.insert("todo", { title: "Initial Todo" });
-      },
-    });
-
-    expect(deps.createDbWorker().postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "init",
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        initialData: expect.arrayContaining([
-          expect.objectContaining({
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            values: expect.objectContaining({
-              name: "Category 1",
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-              createdAt: expect.stringMatching(
-                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
-              ),
-            }),
-          }),
-          expect.objectContaining({
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            values: expect.objectContaining({
-              title: "Initial Todo",
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-              createdAt: expect.stringMatching(
-                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
-              ),
-            }),
-          }),
-        ]),
-      }),
-    );
-  });
 });
 
 test("initialAppOwner should use provided owner", async () => {
@@ -714,9 +673,12 @@ test("initialAppOwner should use provided owner", async () => {
 
   const initialAppOwner = createAppOwner(testMnemonic);
 
-  createEvolu(deps)(Schema, { initialAppOwner });
+  createEvolu(deps)(Schema, {
+    name: getOrThrow(SimpleName.from(`instance${instancesCount++}`)),
+    initialAppOwner,
+  });
 
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await wait(10);
 
   const snapshot = getDbSnapshot({ sqlite });
   expect(snapshot).toMatchSnapshot();
@@ -725,4 +687,57 @@ test("initialAppOwner should use provided owner", async () => {
     (table) => table.name === "evolu_config",
   );
   expect(configTable?.rows[0].appOwnerId).toBe(initialAppOwner.id);
+});
+
+test("onInit callback should be called with correct parameters and can seed initial data", async () => {
+  const { deps, sqlite } = await createEvoluDepsWithSqlite();
+
+  const initialAppOwner = createAppOwner(testMnemonic);
+  const initCalls: Array<{
+    appOwner: typeof initialAppOwner;
+    isFirst: boolean;
+  }> = [];
+
+  const name = getOrThrow(SimpleName.from(`instance${instancesCount++}`));
+
+  const evolu1 = createEvolu(deps)(Schema, {
+    initialAppOwner,
+    name,
+    onInit: ({ appOwner, isFirst }) => {
+      initCalls.push({ appOwner, isFirst });
+
+      if (isFirst) {
+        const todoCategoryId = getOrThrow(
+          evolu1.insert("todoCategory", {
+            name: "Not Urgent",
+          }),
+        );
+
+        evolu1.insert("todo", {
+          title: "Try React Suspense",
+          categoryId: todoCategoryId.id,
+        });
+      }
+    },
+  });
+
+  await wait(10);
+
+  expect(initCalls).toHaveLength(1);
+
+  const snapshot = getDbSnapshot({ sqlite });
+  expect(snapshot).toMatchSnapshot();
+
+  // Create
+  createEvolu(deps)(Schema, {
+    name,
+    initialAppOwner,
+    onInit: ({ appOwner, isFirst }) => {
+      initCalls.push({ appOwner, isFirst });
+    },
+  });
+
+  await wait(10);
+
+  expect(initCalls).toHaveLength(1);
 });

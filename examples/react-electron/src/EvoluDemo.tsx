@@ -1,5 +1,4 @@
 import {
-  assert,
   createEvolu,
   createFormatTypeError,
   FiniteNumber,
@@ -21,8 +20,8 @@ import {
 import {
   createUseEvolu,
   EvoluProvider,
-  useEvoluError,
   useAppOwner,
+  useEvoluError,
   useQuery,
 } from "@evolu/react";
 import { evoluReactWebDeps } from "@evolu/react-web";
@@ -77,18 +76,19 @@ const evolu = createEvolu(evoluReactWebDeps)(Schema, {
     syncUrl: "http://localhost:4000",
   }),
 
-  initialData: (evolu) => {
-    const todoCategory = evolu.insert("todoCategory", {
-      name: "Not Urgent",
-    });
+  onInit: ({ isFirst }) => {
+    if (isFirst) {
+      const todoCategoryId = getOrThrow(
+        evolu.insert("todoCategory", {
+          name: "Not Urgent",
+        }),
+      );
 
-    // This is a developer error, which should be fixed immediately.
-    assert(todoCategory.ok, "invalid initial data");
-
-    evolu.insert("todo", {
-      title: "Try React Suspense",
-      categoryId: todoCategory.value.id,
-    });
+      evolu.insert("todo", {
+        title: "Try React Suspense",
+        categoryId: todoCategoryId.id,
+      });
+    }
   },
 
   // Indexes are not necessary for development but are recommended for production.

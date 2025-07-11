@@ -109,17 +109,19 @@ const evolu = createEvolu(evoluReactWebDeps)(Schema, {
     syncUrl: "http://localhost:4000",
   }),
 
-  initialData: (evolu) => {
-    const todoCategoryId = getOrThrow(
-      evolu.insert("todoCategory", {
-        name: "Not Urgent",
-      }),
-    );
+  onInit: ({ isFirst }) => {
+    if (isFirst) {
+      const todoCategoryId = getOrThrow(
+        evolu.insert("todoCategory", {
+          name: "Not Urgent",
+        }),
+      );
 
-    evolu.insert("todo", {
-      title: "Try React Suspense",
-      categoryId: todoCategoryId.id,
-    });
+      evolu.insert("todo", {
+        title: "Try React Suspense",
+        categoryId: todoCategoryId.id,
+      });
+    }
   },
 
   // Indexes are not required for development but are recommended for production.

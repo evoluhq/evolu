@@ -5,12 +5,7 @@
  */
 
 export { createEvolu } from "./Evolu.js";
-export type {
-  Evolu,
-  EvoluConfigWithInitialData,
-  EvoluDeps,
-  EvoluError,
-} from "./Evolu.js";
+export type { Evolu, EvoluDeps, EvoluError } from "./Evolu.js";
 export * from "./Owner.js";
 export { binaryIdToId, idToBinaryId } from "./Protocol.js";
 export type { BinaryId } from "./Protocol.js";

@@ -1,8 +1,4 @@
-import {
-  isNonEmptyArray,
-  isNonEmptyReadonlyArray,
-  NonEmptyReadonlyArray,
-} from "../Array.js";
+import { isNonEmptyArray, NonEmptyReadonlyArray } from "../Array.js";
 import { assert, assertNonEmptyReadonlyArray } from "../Assert.js";
 import { CallbackId } from "../Callbacks.js";
 import { ConsoleDep } from "../Console.js";
@@ -121,7 +117,6 @@ export type DbWorkerInput =
       readonly type: "init";
       readonly config: Config;
       readonly dbSchema: DbSchema;
-      readonly initialData: ReadonlyArray<DbChange>;
     }
   | {
       readonly type: "mutate";
@@ -157,6 +152,7 @@ export type DbWorkerOutput =
   | {
       readonly type: "onInit";
       readonly appOwner: AppOwner;
+      readonly isFirst: boolean;
     }
   | {
       readonly type: "onError";
@@ -289,11 +285,11 @@ export const createDbWorkerForPlatform = (
         let appOwner: AppOwner;
         let clock: Clock;
 
-        const versionTableExists = currentDbSchema.value.tables.some(
+        const dbIsInitialized = currentDbSchema.value.tables.some(
           (table) => table.name === "evolu_version",
         );
 
-        if (versionTableExists) {
+        if (dbIsInitialized) {
           const versionResult = sqlite.exec<{
             protocolVersion: number;
           }>(sql`select protocolVersion from evolu_version limit 1;`);
@@ -383,15 +379,11 @@ export const createDbWorkerForPlatform = (
           storage: storage.value,
         };
 
-        if (
-          !versionTableExists &&
-          isNonEmptyReadonlyArray(initMessage.initialData)
-        ) {
-          const result = applyChanges(depsWithoutSync)(initMessage.initialData);
-          if (!result.ok) return result;
-        }
-
-        postMessage({ type: "onInit", appOwner });
+        postMessage({
+          type: "onInit",
+          appOwner,
+          isFirst: !dbIsInitialized,
+        });
 
         const sync = platformDeps.createSync(platformDeps)({
           ...initMessage.config,

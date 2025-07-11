@@ -90,7 +90,6 @@ const setupInitializedDbWorker = async (
     type: "init",
     config: testDbConfig,
     dbSchema: createSimpleTestSchema(),
-    initialData: [],
   });
 
   // async createSqliteDriver
