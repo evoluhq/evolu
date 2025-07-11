@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import WebSocket, { WebSocketServer } from "ws";
-import { RetryError } from "../src/Promise.js";
+import { RetryError, wait } from "../src/Promise.js";
 import { err, ok } from "../src/Result.js";
 import {
   createWebSocket,
@@ -299,7 +299,7 @@ test("cleans up all resources when dispose is called", async () => {
   expect(sendResult).toEqual(err({ type: "WebSocketSendError" }));
 
   // Wait a bit to ensure no reconnection attempts
-  await new Promise((resolve) => setTimeout(resolve, 500));
+  await wait(500);
 
   // No additional onOpen calls should happen after disposal
   expect(onOpen).toHaveBeenCalledTimes(1);
@@ -436,7 +436,7 @@ test("aborts connection attempts when disposed", async () => {
   const callCountAtDispose = onRetry.mock.calls.length;
 
   // Wait some time to ensure no more retries happen
-  await new Promise((resolve) => setTimeout(resolve, 500));
+  await wait(500);
 
   // Verify no additional retry calls happened after dispose
   expect(onRetry.mock.calls.length).toBe(callCountAtDispose);
