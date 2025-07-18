@@ -1,0 +1,57 @@
+{
+  "name": "@evolu/vue",
+  "version": "9.0.1-preview.3",
+  "description": "Evolu for Vue",
+  "keywords": [
+    "evolu",
+    "vue"
+  ],
+  "author": "Trevor Profitt <t.a.profitt@gmail.com>",
+  "license": "MIT",
+  "repository": "evoluhq/evolu",
+  "bugs": {
+    "url": "https://github.com/evoluhq/evolu/issues"
+  },
+  "homepage": "https://evolu.dev",
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "browser": "./dist/index.js",
+      "react-native": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/**",
+    "src/**",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "tsc --watch",
+    "build": "shx rm -rf dist && tsc",
+    "clean": "shx rm -rf .turbo node_modules dist",
+    "format": "prettier --write \"src/*.{ts,tsx,md}\""
+  },
+  "dependencies": {
+    "vue": "^3.5.17"
+  },
+  "devDependencies": {
+    "@evolu/common": "workspace:*",
+    "@evolu/tsconfig": "workspace:*",
+    "@types/react-dom": "^19.1.6",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.3"
+  },
+  "peerDependencies": {
+    "@evolu/common": "^6.0.1-preview.15"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "sideEffects": []
+}
