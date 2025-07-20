@@ -6,5 +6,4 @@ export * from "./useEvolu.js";
 export * from "./useEvoluError.js";
 export * from "./useQueries.js";
 export * from "./useQuery.js";
-export * from "./useQuerySubscription.js";
 export * from "./useSyncState.js";
