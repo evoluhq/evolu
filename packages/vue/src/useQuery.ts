@@ -45,6 +45,8 @@ export const useQuery = <R extends Row>(
 
   const rows = shallowRef(emptyRows as QueryRows<R>);
 
+  // TODO: this had suspense before. Vue's is in beta and not stable yet. Should we add it back?
+  //       https://vuejs.org/guide/built-ins/suspense
   void (options.promise ?? evolu.loadQuery(query)).then((result) => {
     rows.value = result;
   });
