@@ -1,32 +1,21 @@
 <script setup lang="ts">
-import HelloWorld from './components/HelloWorld.vue'
-import PWABadge from './components/PWABadge.vue'
+import { EvoluProvider } from "@evolu/vue";
+import { evolu } from "./composables/useEvolu";
+import TodoList from "./components/TodoList.vue";
 </script>
 
 <template>
-  <div>
-    <a href="https://vite.dev" target="_blank">
-      <img src="/favicon.svg" class="logo" alt="vue-vite-pwa logo" />
-    </a>
-    <a href="https://vuejs.org/" target="_blank">
-      <img src="./assets/vue.svg" class="logo vue" alt="Vue logo" />
-    </a>
-  </div>
-  <HelloWorld msg="vue-vite-pwa" />
-  <PWABadge />
+  <EvoluProvider :evolu="evolu">
+    <TodoList />
+  </EvoluProvider>
 </template>
 
-<style scoped>
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
+<style>
+.completed {
+  text-decoration: line-through;
 }
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.vue:hover {
-  filter: drop-shadow(0 0 2em #42b883aa);
+
+.owner-actions {
+  margin-top: 2rem;
 }
 </style>
