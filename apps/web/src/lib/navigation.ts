@@ -23,14 +23,14 @@ export const navigation: Array<NavGroup> = [
   {
     title: "Local-first",
     links: [
+      { title: "Overview", href: "/docs/overview" },
       { title: "Examples", href: "/docs/examples" },
-      { title: "Protocol", href: "/docs/api-reference/common/Evolu/Protocol" },
-      { title: "Relay", href: "/docs/evolu-relay" },
-      { title: "Owner", href: "/docs/api-reference/common/Evolu/Owner" },
       { title: "Indexes", href: "/docs/indexes" },
-      { title: "Migrations", href: "/docs/migrations" },
+      { title: "Relay", href: "/docs/evolu-relay" },
       { title: "Patterns", href: "/docs/patterns" },
       { title: "Time travel", href: "/docs/time-travel" },
+      { title: "Migrations", href: "/docs/migrations" },
+      { title: "Protocol", href: "/docs/api-reference/common/Evolu/Protocol" },
       { title: "Privacy", href: "/docs/privacy" },
       { title: "FAQ", href: "/docs/faq" },
     ],
