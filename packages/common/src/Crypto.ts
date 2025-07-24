@@ -3,30 +3,16 @@
  *
  * @module
  */
-
 import { xchacha20poly1305 } from "@noble/ciphers/chacha";
 import { hmac } from "@noble/hashes/hmac";
 import { sha512 } from "@noble/hashes/sha2";
 import { randomBytes } from "@noble/hashes/utils";
-import * as bip39 from "@scure/bip39";
-import { wordlist } from "@scure/bip39/wordlists/english";
 import { urlAlphabet } from "nanoid";
-import { getOrThrow, Result, trySync } from "./Result.js";
-import {
-  brand,
-  Id,
-  length,
-  Mnemonic,
-  NonNegativeInt,
-  Uint8Array,
-} from "./Type.js";
-import { Brand } from "./Types.js";
 import { assert } from "./Assert.js";
+import { getOrThrow, Result, trySync } from "./Result.js";
+import { brand, Id, length, NonNegativeInt, Uint8Array } from "./Type.js";
 
-/** `Uint8Array` created by {@link createRandomBytes}. */
-export type RandomBytes = Uint8Array & Brand<"RandomBytes">;
-
-export type CreateRandomBytes = (bytesLength?: number) => RandomBytes;
+export type CreateRandomBytes = (bytesLength?: number) => Uint8Array;
 
 export interface CreateRandomBytesDep {
   readonly createRandomBytes: CreateRandomBytes;
@@ -34,21 +20,7 @@ export interface CreateRandomBytesDep {
 
 /** Cryptographically secure PRNG. Uses internal OS-level crypto.getRandomValues. */
 export const createRandomBytes: CreateRandomBytes = (bytesLength = 32) =>
-  randomBytes(bytesLength) as RandomBytes;
-
-export type CreateMnemonic = () => Mnemonic;
-
-export interface CreateMnemonicDep {
-  readonly createMnemonic: CreateMnemonic;
-}
-
-export const createEnglishMnemonic: CreateMnemonic = () =>
-  bip39.generateMnemonic(wordlist, 128) as Mnemonic;
-
-export type MnemonicSeed = Uint8Array & Brand<"MnemonicSeed">;
-
-export const mnemonicToMnemonicSeed = (mnemonic: Mnemonic): MnemonicSeed =>
-  bip39.mnemonicToSeedSync(mnemonic) as MnemonicSeed;
+  randomBytes(bytesLength);
 
 /**
  * SLIP21.
@@ -56,7 +28,7 @@ export const mnemonicToMnemonicSeed = (mnemonic: Mnemonic): MnemonicSeed =>
  * https://github.com/satoshilabs/slips/blob/master/slip-0021.md
  */
 export const createSlip21 = (
-  seed: MnemonicSeed,
+  seed: Uint8Array,
   path: ReadonlyArray<string>,
 ): Uint8Array => {
   assert(
@@ -88,7 +60,7 @@ export const createSlip21 = (
  * See https://github.com/satoshilabs/slips/blob/master/slip-0021.md
  */
 export const createSlip21Id = (
-  seed: MnemonicSeed,
+  seed: Uint8Array,
   path: ReadonlyArray<string>,
 ): Id => {
   const slip21 = createSlip21(seed, path);

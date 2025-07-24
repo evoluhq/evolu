@@ -1,7 +1,19 @@
 import { describe, expect, expectTypeOf, test, vi } from "vitest";
 import { createConsole } from "../../src/Console.js";
+import {
+  createDbWorkerForPlatform,
+  getDbSnapshot,
+} from "../../src/Evolu/Db.js";
 import { createEvolu } from "../../src/Evolu/Evolu.js";
 import { createAppOwner } from "../../src/Evolu/Owner.js";
+import {
+  ValidateColumnTypes,
+  ValidateIdColumnType,
+  ValidateNoDefaultColumns,
+  ValidateSchemaHasId,
+} from "../../src/Evolu/Schema.js";
+import { constVoid } from "../../src/Function.js";
+import { wait } from "../../src/Promise.js";
 import { getOrThrow } from "../../src/Result.js";
 import { createSqlite, SqliteBoolean } from "../../src/Sqlite.js";
 import {
@@ -15,27 +27,14 @@ import {
 } from "../../src/Type.js";
 import {
   testCreateId,
-  testCreateMnemonic,
   testCreateRandomBytesDep,
   testCreateSqliteDriver,
-  testMnemonic,
   testNanoIdLib,
+  testOwnerSecret,
   testRandom,
   testSimpleName,
   testTime,
 } from "../_deps.js";
-import {
-  ValidateColumnTypes,
-  ValidateIdColumnType,
-  ValidateNoDefaultColumns,
-  ValidateSchemaHasId,
-} from "../../src/Evolu/Schema.js";
-import {
-  createDbWorkerForPlatform,
-  getDbSnapshot,
-} from "../../src/Evolu/Db.js";
-import { constVoid } from "../../src/Function.js";
-import { wait } from "../../src/Promise.js";
 
 const TodoId = id("Todo");
 type TodoId = InferType<typeof TodoId>;
@@ -98,7 +97,6 @@ const createEvoluDepsWithSqlite = async () => {
     time: testTime,
     random: testRandom,
     nanoIdLib: testNanoIdLib,
-    createMnemonic: testCreateMnemonic,
     createRandomBytes: testCreateRandomBytesDep.createRandomBytes,
   });
 
@@ -170,7 +168,7 @@ test("insert should validate input and call postMessage", async () => {
 
   expect(result.ok).toBe(true);
   expect(result.ok && result.value.id).toMatchInlineSnapshot(
-    `"3C22DRVU0AHGjXpOEP-WJ"`,
+    `"F3FmbitSesTwHwplqLBSE"`,
   );
 
   await wait(0);
@@ -180,7 +178,7 @@ test("insert should validate input and call postMessage", async () => {
       {
         "changes": [
           {
-            "id": "3C22DRVU0AHGjXpOEP-WJ",
+            "id": "F3FmbitSesTwHwplqLBSE",
             "table": "todo",
             "values": {
               "createdAt": "1970-01-01T00:00:00.000Z",
@@ -190,7 +188,7 @@ test("insert should validate input and call postMessage", async () => {
         ],
         "onCompleteIds": [],
         "subscribedQueries": [],
-        "tabId": "kYF3FmbitSesTwHwplqLB",
+        "tabId": "eKLhGnhts9rNnUeri8bzh",
         "type": "mutate",
       },
     ]
@@ -253,7 +251,7 @@ test("update should validate input and call postMessage", async () => {
       {
         "changes": [
           {
-            "id": "D2PtSrFu-SJV0Ui1_SJB3",
+            "id": "rPltodHge37rn9q4lwirR",
             "table": "todo",
             "values": {
               "title": "Updated Todo",
@@ -262,7 +260,7 @@ test("update should validate input and call postMessage", async () => {
         ],
         "onCompleteIds": [],
         "subscribedQueries": [],
-        "tabId": "kYF3FmbitSesTwHwplqLB",
+        "tabId": "eKLhGnhts9rNnUeri8bzh",
         "type": "mutate",
       },
     ]
@@ -326,7 +324,7 @@ test("upsert should validate input and call postMessage", async () => {
       {
         "changes": [
           {
-            "id": "v5rPltodHge37rn9q4lwi",
+            "id": "wHpK2ZkuZUN-T4MZhx0p9",
             "table": "todo",
             "values": {
               "createdAt": "1970-01-01T00:00:00.001Z",
@@ -336,7 +334,7 @@ test("upsert should validate input and call postMessage", async () => {
         ],
         "onCompleteIds": [],
         "subscribedQueries": [],
-        "tabId": "kYF3FmbitSesTwHwplqLB",
+        "tabId": "eKLhGnhts9rNnUeri8bzh",
         "type": "mutate",
       },
     ]
@@ -370,7 +368,7 @@ test("upsert should reject invalid input", () => {
         },
         "type": "Object",
         "value": {
-          "id": "6xwHpK2ZkuZUN-T4MZhx0",
+          "id": "RcpEppKHyKrUtl5RZ4mz1",
           "title": "",
         },
       },
@@ -396,7 +394,7 @@ test("mutations should be processed in microtask queue", async () => {
       {
         "changes": [
           {
-            "id": "yVRcpEppKHyKrUtl5RZ4m",
+            "id": "xiAw0gY_fIT5Ci6Vt_faj",
             "table": "todo",
             "values": {
               "createdAt": "1970-01-01T00:00:00.002Z",
@@ -404,7 +402,7 @@ test("mutations should be processed in microtask queue", async () => {
             },
           },
           {
-            "id": "CTxiAw0gY_fIT5Ci6Vt_f",
+            "id": "P-KUG7NKoSfTGGJoCBJ9x",
             "table": "todo",
             "values": {
               "createdAt": "1970-01-01T00:00:00.002Z",
@@ -412,7 +410,7 @@ test("mutations should be processed in microtask queue", async () => {
             },
           },
           {
-            "id": "kbP-KUG7NKoSfTGGJoCBJ",
+            "id": "roU2zm2npXftCAjUskTmn",
             "table": "todo",
             "values": {
               "createdAt": "1970-01-01T00:00:00.002Z",
@@ -422,7 +420,7 @@ test("mutations should be processed in microtask queue", async () => {
         ],
         "onCompleteIds": [],
         "subscribedQueries": [],
-        "tabId": "kYF3FmbitSesTwHwplqLB",
+        "tabId": "eKLhGnhts9rNnUeri8bzh",
         "type": "mutate",
       },
     ]
@@ -671,7 +669,7 @@ describe("createdAt behavior", () => {
 test("initialAppOwner should use provided owner", async () => {
   const { deps, sqlite } = await createEvoluDepsWithSqlite();
 
-  const initialAppOwner = createAppOwner(testMnemonic);
+  const initialAppOwner = createAppOwner(testOwnerSecret);
 
   createEvolu(deps)(Schema, {
     name: getOrThrow(SimpleName.from(`instance${instancesCount++}`)),
@@ -692,7 +690,7 @@ test("initialAppOwner should use provided owner", async () => {
 test("onInit callback should be called with correct parameters and can seed initial data", async () => {
   const { deps, sqlite } = await createEvoluDepsWithSqlite();
 
-  const initialAppOwner = createAppOwner(testMnemonic);
+  const initialAppOwner = createAppOwner(testOwnerSecret);
   const initCalls: Array<{
     appOwner: typeof initialAppOwner;
     isFirst: boolean;

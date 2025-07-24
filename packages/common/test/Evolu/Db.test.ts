@@ -20,7 +20,6 @@ import { getOrThrow } from "../../src/Result.js";
 import { createSqlite, sql, Sqlite } from "../../src/Sqlite.js";
 import {
   testCreateId,
-  testCreateMnemonic,
   testCreateRandomBytesDep,
   testCreateSqliteDriver,
   testDbConfig,
@@ -66,7 +65,6 @@ const createSqliteWithDbWorkerPlatformDeps = async (): Promise<
     time: testTime,
     random: testRandom,
     nanoIdLib: testNanoIdLib,
-    createMnemonic: testCreateMnemonic,
     ...testCreateRandomBytesDep,
   };
   return [sqlite, deps];

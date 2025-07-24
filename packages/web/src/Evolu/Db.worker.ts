@@ -1,6 +1,5 @@
 import {
   createConsole,
-  createEnglishMnemonic,
   createNanoIdLib,
   createRandom,
   createRandomBytes,
@@ -20,7 +19,6 @@ const dbWorker = createDbWorkerForPlatform({
   time: createTime(),
   random: createRandom(),
   nanoIdLib: createNanoIdLib(),
-  createMnemonic: createEnglishMnemonic,
   createRandomBytes,
 });
 

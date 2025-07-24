@@ -1,6 +1,5 @@
 import {
   createConsole,
-  createEnglishMnemonic,
   createNanoIdLib,
   createRandom,
   createRandomBytes,
@@ -43,7 +42,6 @@ const createDbWorker: CreateDbWorker = () =>
     time,
     random: createRandom(),
     nanoIdLib,
-    createMnemonic: createEnglishMnemonic,
     createRandomBytes,
   });
 

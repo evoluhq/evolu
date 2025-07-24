@@ -3,16 +3,16 @@ import BetterSQLite, { Statement } from "better-sqlite3";
 import { timingSafeEqual } from "crypto";
 import { customRandom, urlAlphabet } from "nanoid";
 import {
-  CreateMnemonic,
-  CreateMnemonicDep,
   CreateRandomBytesDep,
   createSymmetricCrypto,
-  mnemonicToMnemonicSeed,
-  RandomBytes,
   SymmetricCryptoDep,
 } from "../src/Crypto.js";
 import { Config, defaultConfig } from "../src/Evolu/Config.js";
-import { createAppOwner, createOwner } from "../src/Evolu/Owner.js";
+import {
+  createAppOwner,
+  createOwner,
+  createOwnerSecret,
+} from "../src/Evolu/Owner.js";
 import { ownerIdToBinaryOwnerId } from "../src/Evolu/Protocol.js";
 import { constVoid } from "../src/Function.js";
 import { NanoIdLib } from "../src/NanoId.js";
@@ -30,7 +30,7 @@ import {
   SqliteRow,
 } from "../src/Sqlite.js";
 import { createTestTime, TimeDep } from "../src/Time.js";
-import { createId, Id, Mnemonic, SimpleName } from "../src/Type.js";
+import { createId, Id, SimpleName } from "../src/Type.js";
 // import { existsSync, unlinkSync } from "fs";
 
 export const testRandom = createRandomWithSeed("evolu");
@@ -67,66 +67,39 @@ export const testNanoIdLibDep = { nanoIdLib: testNanoIdLib };
 
 export const testCreateId = (): Id => createId(testNanoIdLibDep);
 
-export const testMnemonic = getOrThrow(
-  Mnemonic.from(
-    "knee easy fork attitude drink gloom head latin spider grab spy reason",
-  ),
-);
-
-export const testMnemonic2 = getOrThrow(
-  Mnemonic.from(
-    "borrow movie sniff dismiss only speak ethics material judge machine return snack",
-  ),
-);
-
-export const testCreateMnemonic: CreateMnemonic = () => testMnemonic;
-export const testCreateMnemonic2: CreateMnemonic = () => testMnemonic2;
-
-export const testMnemonicSeed = mnemonicToMnemonicSeed(testMnemonic);
-
-export const testDbConfig: Config = {
-  ...defaultConfig,
-  initialAppOwner: createAppOwner(testMnemonic),
-};
-
 export const testCreateRandomBytesDep: CreateRandomBytesDep = {
   createRandomBytes: (bytesLength = 32) => {
     const array = Array.from({ length: bytesLength }, () =>
       testRandomLib.int(0, 255),
     );
-    return new Uint8Array(array) as RandomBytes;
+    return new Uint8Array(array);
   },
 };
 
-export const testCreateRandomBytesDep2: CreateRandomBytesDep = {
-  createRandomBytes: (bytesLength = 32) => {
-    const array = Array.from({ length: bytesLength }, () =>
-      testRandomLib2.int(0, 255),
-    );
-    return new Uint8Array(array) as RandomBytes;
-  },
+export const testOwnerSecret = createOwnerSecret(testCreateRandomBytesDep);
+export const testOwnerSecret2 = createOwnerSecret(testCreateRandomBytesDep);
+
+export const testDbConfig: Config = {
+  ...defaultConfig,
+  initialAppOwner: createAppOwner(testOwnerSecret),
 };
 
 const ownerDeps = {
   time: testTime,
   ...testCreateRandomBytesDep,
-  createMnemonic: testCreateMnemonic,
   nanoIdLib: testNanoIdLib,
 };
 
-export const testOwner = createOwner(testMnemonic);
+export const testOwner = createOwner(testOwnerSecret);
 export const testOwnerBinaryId = ownerIdToBinaryOwnerId(testOwner.id);
 
-export const testOwner2 = createOwner(testMnemonic2);
+export const testOwner2 = createOwner(testOwnerSecret2);
 
 export const testSymmetricCrypto = createSymmetricCrypto(
   testCreateRandomBytesDep,
 );
 
-export const testDeps: TimeDep &
-  CreateRandomBytesDep &
-  CreateMnemonicDep &
-  SymmetricCryptoDep = {
+export const testDeps: TimeDep & CreateRandomBytesDep & SymmetricCryptoDep = {
   ...ownerDeps,
   symmetricCrypto: testSymmetricCrypto,
 };

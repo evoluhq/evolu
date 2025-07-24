@@ -3,7 +3,6 @@ import { assert, assertNonEmptyReadonlyArray } from "../Assert.js";
 import { CallbackId } from "../Callbacks.js";
 import { ConsoleDep } from "../Console.js";
 import {
-  CreateMnemonicDep,
   CreateRandomBytesDep,
   createSymmetricCrypto,
   EncryptionKey,
@@ -38,7 +37,14 @@ import {
 } from "../Worker.js";
 import { Config } from "./Config.js";
 import { makePatches, QueryPatches } from "./Diff.js";
-import { AppOwner, createAppOwner, OwnerId, WriteKey } from "./Owner.js";
+import {
+  AppOwner,
+  createAppOwner,
+  createOwnerSecret,
+  mnemonicToOwnerSecret,
+  OwnerId,
+  WriteKey,
+} from "./Owner.js";
 import {
   applyProtocolMessageAsClient,
   Base64Url256,
@@ -190,7 +196,6 @@ export type DbWorkerPlatformDeps = CreateSqliteDriverDep &
   TimeDep &
   RandomDep &
   NanoIdLibDep &
-  CreateMnemonicDep &
   CreateRandomBytesDep;
 
 type DbWorkerDeps = Omit<
@@ -338,7 +343,7 @@ export const createDbWorkerForPlatform = (
         } else {
           appOwner =
             initMessage.config.initialAppOwner ??
-            createAppOwner(platformDeps.createMnemonic());
+            createAppOwner(createOwnerSecret(platformDeps));
           clock = createClock(platformDepsWithSqlite)();
           const initializeDbResult = initializeDb(platformDepsWithSqlite)(
             appOwner,
@@ -537,7 +542,8 @@ export const createDbWorkerForPlatform = (
               );
               if (!ensureDbSchemaResult.ok) return ensureDbSchemaResult;
 
-              const appOwner = createAppOwner(message.restore.mnemonic);
+              const secret = mnemonicToOwnerSecret(message.restore.mnemonic);
+              const appOwner = createAppOwner(secret);
               const clock = createClock(deps)();
 
               const initializeDbResult = initializeDb(deps)(appOwner, clock);
@@ -791,7 +797,7 @@ export const createAppTable = (
   ` as SafeSql;
 
 const initializeDb =
-  (deps: SqliteDep & CreateMnemonicDep & TimeDep & CreateRandomBytesDep) =>
+  (deps: SqliteDep & TimeDep & CreateRandomBytesDep) =>
   (
     initialAppOwner: AppOwner,
     initialClock: Clock,

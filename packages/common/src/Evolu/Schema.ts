@@ -30,9 +30,11 @@ import {
 import { Simplify } from "../Types.js";
 import { DbSchema } from "./Db.js";
 import { createIndexes, DbIndexesBuilder } from "./Kysely.js";
+import { AppOwner, ShardOwner, SharedOwner } from "./Owner.js";
 import {
   BinaryId,
   CrdtMessage,
+  DbChange,
   maxProtocolMessageRangesSize,
 } from "./Protocol.js";
 import { Query, Row } from "./Query.js";
@@ -243,7 +245,30 @@ export type MutationMapping<
     : UpsertableProps<P>;
 
 export interface MutationOptions {
+  /**
+   * Called after the mutation is completed and the local state is updated.
+   * Useful for triggering side effects (e.g., notifications, UI updates) after
+   * insert, update, or upsert.
+   */
   readonly onComplete?: () => void;
+
+  /**
+   * Specifies the owner for this mutation.
+   *
+   * - Use {@link ShardOwner} to partition data (e.g., per project, workspace, or
+   *   user).
+   * - Use {@link SharedOwner} to enable collaborative write access.
+   * - If omitted, the default {@link AppOwner} is used.
+   *
+   * Owners control data isolation and sharing. Choose the owner to determine
+   * who can access or collaborate on the mutated data.
+   *
+   * ### Example
+   *
+   * TODO:
+   */
+  readonly owner?: ShardOwner | SharedOwner;
+
   /**
    * Only validate, don't mutate.
    *
@@ -251,6 +276,10 @@ export interface MutationOptions {
    * `onlyValidate: true`.
    */
   readonly onlyValidate?: boolean;
+}
+
+export interface DbChangeWithOwner extends DbChange {
+  readonly owner?: ShardOwner | SharedOwner;
 }
 
 /**

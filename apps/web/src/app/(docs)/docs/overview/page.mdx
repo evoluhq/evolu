@@ -15,7 +15,7 @@ The Owner represents ownership of data in Evolu. By default, all changes are ass
 - **Collaboration**: `SharedOwner` for collaborative write access
 - **Data sharing**: `SharedReadonlyOwner` for read-only access to shared data
 
-Owners are cryptographically derived from a mnemonic (a list of 12 human-readable words) using SLIP-21 key derivation, ensuring secure and deterministic key generation:
+Owners are cryptographically derived from 16 bytes of random entropy using SLIP-21 key derivation, ensuring secure and deterministic key generation:
 
 - **OwnerId**: Globally unique public identifier
 - **EncryptionKey**: Symmetric encryption key for data protection
