@@ -1,6 +1,6 @@
 import { Evolu } from "@evolu/common/evolu";
-import { EvoluContext } from "./EvoluContext.js";
-import { defineComponent, provide } from "vue";
+import { defineComponent } from "vue";
+import { provideEvolu } from "./provideEvolu.js";
 
 export const EvoluProvider = defineComponent({
   name: "EvoluProvider",
@@ -11,7 +11,7 @@ export const EvoluProvider = defineComponent({
     },
   },
   setup(props, { slots }) {
-    provide(EvoluContext, props.evolu);
+    provideEvolu(props.evolu);
     return () => slots.default?.();
   },
 });
