@@ -3,12 +3,8 @@ import { useEvolu } from "./useEvolu.js";
 import { onScopeDispose, Ref, shallowReadonly, shallowRef } from "vue";
 
 /**
- * Load and subscribe to the Query, and return an object with `rows` and `row`
- * properties that are automatically updated when data changes.
- *
- * Note that {@link useQuery} uses React Suspense. It means every usage of
- * {@link useQuery} blocks rendering until loading is completed. To avoid loading
- * waterfall with more queries, use {@link useQueries}.
+ * Load and subscribe to the Query, and return a ref of rows that are
+ * automatically updated when data changes.
  *
  * ### Example
  *

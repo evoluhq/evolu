@@ -19,8 +19,7 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "browser": "./dist/index.js",
-      "react-native": "./dist/index.js"
+      "browser": "./dist/index.js"
     }
   },
   "files": [
@@ -40,7 +39,6 @@
   "devDependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
-    "@types/react-dom": "^19.1.6",
     "typescript": "^5.8.3",
     "vitest": "^3.2.3"
   },

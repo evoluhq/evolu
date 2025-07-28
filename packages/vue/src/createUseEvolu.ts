@@ -2,7 +2,7 @@ import { Evolu, EvoluSchema } from "@evolu/common";
 import { useEvolu } from "./useEvolu.js";
 
 /**
- * Creates a typed React Hook returning an instance of {@link Evolu}.
+ * Creates a helper function returning a type-aware instance of {@link Evolu}.
  *
  * ### Example
  *
