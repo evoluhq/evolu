@@ -412,20 +412,22 @@ export const createDbWorkerForPlatform = (
       switch (message.type) {
         case "mutate": {
           const mutate = deps.sqlite.transaction(() => {
-            const toSyncChanges = [];
+            // 1. Partition changes: local-only vs sync
+            const syncChanges = [];
             const localOnlyChanges = [];
 
             for (const change of message.changes) {
               // Table name starting with '_' is local-only (not synced).
               if (change.table.startsWith("_")) localOnlyChanges.push(change);
-              else toSyncChanges.push(change);
+              else syncChanges.push(change);
             }
 
+            // 2. Apply local-only changes immediately
             for (const change of localOnlyChanges) {
-              if (
-                "isDeleted" in change.values &&
-                change.values.isDeleted === 1
-              ) {
+              const isDeletion =
+                "isDeleted" in change.values && change.values.isDeleted === 1;
+
+              if (isDeletion) {
                 const result = deps.sqlite.exec(sql`
                   delete from ${sql.identifier(change.table)}
                   where id = ${change.id};
@@ -448,11 +450,10 @@ export const createDbWorkerForPlatform = (
               }
             }
 
-            /**
-             * We don't have to wait for the transaction to end because changes
-             * are idempotent, so there is no reason why they should fail. We
-             * want to call onChange ASAP.
-             */
+            // 3. Define change notification handler
+            // Note: We can call this before the transaction commits because
+            // there's no reason why it should fail and we want to update
+            // the UI as soon as possible.
             const onChange = () => {
               deps.console.log("[db]", "onChange", {
                 subscribedQueries: message.subscribedQueries,
@@ -476,12 +477,14 @@ export const createDbWorkerForPlatform = (
               deps.postMessage({ type: "onReceive", tabId: message.tabId });
             };
 
-            if (!isNonEmptyArray(toSyncChanges)) {
+            // 4. Handle case with no sync changes
+            if (!isNonEmptyArray(syncChanges)) {
               onChange();
               return ok();
             }
 
-            const messages = applyChanges(deps)(toSyncChanges, onChange);
+            // 5. Apply sync changes and send them
+            const messages = applyChanges(deps)(syncChanges, onChange);
             if (!messages.ok) return messages;
 
             // TODO: Use owner from db change or AppOwner
