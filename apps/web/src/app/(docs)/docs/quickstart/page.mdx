@@ -125,7 +125,7 @@ import { evoluReactWebDeps } from "@evolu/react-web";
 
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   name: getOrThrow(SimpleName.from("your-app-name")),
-  syncUrl: "wss://your-sync-url", // optional, defaults to wss://free.evoluhq.com
+  transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
 
 // Wrap your app with <EvoluProvider>
@@ -147,7 +147,7 @@ import { evoluSqliteDeps } from "@evolu/react-native/op-sqlite";
 
 const evolu = createEvolu(evoluSqliteDeps)(Schema, {
 	name: getOrThrow(SimpleName.from("your-app-name")),
-	syncUrl: "wss://your-sync-url", // optional, defaults to wss://free.evoluhq.com
+	transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
 
 // Wrap your app with <EvoluProvider>
@@ -169,7 +169,7 @@ import { evoluSqliteDeps } from "@evolu/react-native/expo-sqlite";
 
 const evolu = createEvolu(evoluSqliteDeps)(Schema, {
 	name: getOrThrow(SimpleName.from("your-app-name")),
-	syncUrl: "wss://your-sync-url", // optional, defaults to wss://free.evoluhq.com
+	transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
 
 // Wrap your app with <EvoluProvider>
@@ -190,7 +190,7 @@ import { evoluSvelteDeps } from "@evolu/svelte";
 
 const evolu = createEvolu(evoluSvelteDeps)(Schema, {
   name: getOrThrow(SimpleName.from("your-app-name")),
-  syncUrl: "wss://your-sync-url", // optional, defaults to wss://free.evoluhq.com
+  transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
 ```
 
@@ -200,7 +200,7 @@ import { evoluWebDeps } from "@evolu/web";
 
 const evolu = createEvolu(evoluWebDeps)(Schema, {
   name: getOrThrow(SimpleName.from("your-app-name")),
-  syncUrl: "wss://your-sync-url", // optional, defaults to wss://free.evoluhq.com
+  transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
 ```
 

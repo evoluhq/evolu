@@ -103,10 +103,10 @@ const formatTypeError = createFormatTypeError<
 
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   reloadUrl: "/docs/examples/react/nextjs",
-  name: getOrThrow(SimpleName.from("evolu-nextjs-example-v090725")),
+  name: getOrThrow(SimpleName.from("evolu-nextjs-example")),
 
   ...(process.env.NODE_ENV === "development" && {
-    syncUrl: "http://localhost:4000",
+    transports: [{ type: "WebSocket", url: "http://localhost:4000" }],
   }),
 
   onInit: ({ isFirst }) => {

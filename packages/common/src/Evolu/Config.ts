@@ -3,6 +3,7 @@ import { getOrThrow } from "../Result.js";
 import { SimpleName } from "../Type.js";
 import type { DbIndexesBuilder } from "./Kysely.js";
 import type { AppOwner } from "./Owner.js";
+import type { Transport } from "./Sync.js";
 
 export interface Config extends ConsoleConfig {
   /**
@@ -24,11 +25,38 @@ export interface Config extends ConsoleConfig {
   readonly name: SimpleName;
 
   /**
-   * URL for Evolu sync and backup server.
+   * Transport configurations for data sync and backup. Supports multiple
+   * transports simultaneously for redundancy.
    *
-   * The default value is `wss://free.evoluhq.com`.
+   * Currently supports:
+   *
+   * - WebSocket: Real-time bidirectional communication with relay servers
+   *
+   * Future transports will include:
+   *
+   * - FetchRelay: HTTP-based polling/push for environments without WebSocket
+   *   support
+   * - Bluetooth: P2P sync for offline collaboration
+   * - LocalNetwork: LAN/mesh sync for local networks
+   *
+   * The default value is: `[{ type: "WebSocket", url: "wss://free.evoluhq.com"
+   * }]`.
+   *
+   * ### Example
+   *
+   * ```ts
+   * // Single WebSocket relay
+   * transports: [{ type: "WebSocket", url: "wss://relay1.example.com" }];
+   *
+   * // Multiple WebSocket relays for redundancy
+   * transports: [
+   *   { type: "WebSocket", url: "wss://relay1.example.com" },
+   *   { type: "WebSocket", url: "wss://relay2.example.com" },
+   *   { type: "WebSocket", url: "wss://relay3.example.com" },
+   * ];
+   * ```
    */
-  readonly syncUrl: string;
+  readonly transports: ReadonlyArray<Transport>;
 
   /**
    * URL to reload browser tabs after reset or restore.
@@ -90,7 +118,7 @@ export interface ConfigDep {
 
 export const defaultConfig: Config = {
   name: getOrThrow(SimpleName.fromParent("Evolu")),
-  syncUrl: "wss://free.evoluhq.com",
+  transports: [{ type: "WebSocket", url: "wss://free.evoluhq.com" }],
   reloadUrl: "/",
   maxDrift: 5 * 60 * 1000,
   enableLogging: false,

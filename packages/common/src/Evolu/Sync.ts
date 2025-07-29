@@ -3,6 +3,13 @@ import { createWebSocket } from "../WebSocket.js";
 import { ProtocolMessage } from "./Protocol.js";
 import { Millis } from "./Timestamp.js";
 
+// eslint-disable-next-line @typescript-eslint/consistent-type-definitions
+export type Transport = { readonly type: "WebSocket"; readonly url: string };
+// Future transport types (not yet implemented):
+// | { readonly type: "FetchRelay"; readonly url: string }    // HTTP-based polling/push
+// | { readonly type: "Bluetooth" }                           // P2P Bluetooth
+// | { readonly type: "LocalNetwork"; readonly host: string } // LAN/mesh sync
+
 export interface Sync {
   readonly send: (message: ProtocolMessage) => void;
 }
@@ -18,36 +25,54 @@ export interface CreateSyncDep {
 }
 
 export interface SyncConfig extends ConsoleConfig {
-  readonly syncUrl: string;
+  readonly transports: ReadonlyArray<Transport>;
   readonly onOpen: (send: Sync["send"]) => void;
   readonly onMessage: (message: Uint8Array, send: Sync["send"]) => void;
 }
 
 export const createWebSocketSync: CreateSync = (_deps) => (config) => {
+  // Currently only WebSocket transports are supported
+  // Future: Add support for other transport types here
+  const webSocketTransports = config.transports;
+
+  const sockets = new Map<string, ReturnType<typeof createWebSocket>>();
+
   const sync: Sync = {
     send: (message) => {
       /**
        * We don't need an in-memory queue; apps can be offline for a long time,
        * and mutations are stored in SQLite. Dropped CRDT messages are synced
        * when the web socket connection is open.
+       *
+       * Send the message to all connected WebSocket transports simultaneously.
        */
-      if (socket.getReadyState() !== "open") return;
-      socket.send(message);
+      for (const socket of sockets.values()) {
+        if (socket.getReadyState() === "open") {
+          socket.send(message);
+        }
+      }
     },
   };
 
-  const socket = createWebSocket(config.syncUrl, {
-    binaryType: "arraybuffer",
-    onOpen: () => {
-      config.onOpen(sync.send);
-    },
-    onMessage: (data) => {
-      if (data instanceof ArrayBuffer) {
-        const messages = new Uint8Array(data);
-        config.onMessage(messages, sync.send);
-      }
-    },
-  });
+  // Create connections to all WebSocket transports simultaneously
+  for (const transport of webSocketTransports) {
+    const socket = createWebSocket(transport.url, {
+      binaryType: "arraybuffer",
+      onOpen: () => {
+        config.onOpen(sync.send);
+      },
+      onMessage: (data) => {
+        if (data instanceof ArrayBuffer) {
+          const messages = new Uint8Array(data);
+          config.onMessage(messages, sync.send);
+        }
+      },
+      // Don't remove sockets on close/error - let them auto-reconnect
+      // The WebSocket implementation handles reconnection automatically
+    });
+
+    sockets.set(transport.url, socket);
+  }
 
   return sync;
 };

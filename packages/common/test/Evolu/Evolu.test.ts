@@ -129,7 +129,12 @@ test("init postMessage call", () => {
             "maxDrift": 300000,
             "name": "instance0",
             "reloadUrl": "/",
-            "syncUrl": "wss://free.evoluhq.com",
+            "transports": [
+              {
+                "type": "WebSocket",
+                "url": "wss://free.evoluhq.com",
+              },
+            ],
           },
           "dbSchema": {
             "indexes": [],
