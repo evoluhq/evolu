@@ -6,14 +6,20 @@ import {
   provide,
 } from "vue";
 
+/**
+ * Stores the Evolu instance for a Vue component. This is most useful at the
+ * root component where provide/inject doesn't work.
+ */
 export const evoluInstanceMap = new WeakMap<
   ComponentInternalInstance,
   Evolu<any>
 >();
 
+/** The injection key for providing Evolu */
 export const EvoluContext: InjectionKey<Evolu<any> | null> =
   Symbol("EvoluContext");
 
+/** Provide the Evolu instance to components via Vue's provide/inject system */
 export function provideEvolu(evolu: Evolu<any> | (() => Evolu<any>)): void {
   const vueInstance = getCurrentInstance();
 
