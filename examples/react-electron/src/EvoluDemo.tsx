@@ -73,7 +73,7 @@ const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   name: getOrThrow(SimpleName.from("evolu-react-electron-example")),
 
   ...(process.env.NODE_ENV === "development" && {
-    transports: [{ type: "WebSocket", url: "http://localhost:4000" }],
+    transport: { type: "WebSocket", url: "http://localhost:4000" },
   }),
 
   onInit: ({ isFirst }) => {

@@ -6,12 +6,14 @@
 
 # Transport-Based Configuration System
 
-**BREAKING CHANGE**: Replaced `syncUrl` with extensible `transports` array configuration for multiple sync endpoints and future transport types.
+# Transport-Based Configuration System
+
+**BREAKING CHANGE**: Replaced `syncUrl` with flexible `transport` property supporting single transport or array of transports for multiple sync endpoints.
 
 ## What Changed
 
 - **Removed** `syncUrl` property from Evolu config
-- **Added** `transports` property accepting an array of `Transport` objects
+- **Added** `transport` property accepting a single `Transport` object or array of `Transport` objects
 - **Added** `Transport` type union with initial WebSocket support
 - **Updated** sync system to support Nostr-style relay pools with simultaneous connections
 - **Updated** all examples and documentation to use new transport configuration
@@ -26,19 +28,31 @@ const evolu = createEvolu(deps)(Schema, {
 });
 ```
 
-**After:**
+**After (single transport):**
 
 ```ts
 const evolu = createEvolu(deps)(Schema, {
-  transports: [{ type: "WebSocket", url: "wss://relay.example.com" }],
+  transport: { type: "WebSocket", url: "wss://relay.example.com" },
+});
+```
+
+**After (multiple transports):**
+
+```ts
+const evolu = createEvolu(deps)(Schema, {
+  transport: [
+    { type: "WebSocket", url: "wss://relay1.example.com" },
+    { type: "WebSocket", url: "wss://relay2.example.com" },
+  ],
 });
 ```
 
 ## Benefits
 
-- **Multiple relay support**: Configure multiple WebSocket relays for redundancy
+- **Single or multiple relay support**: Use one transport for simplicity or multiple for redundancy
+- **Intuitive API**: Singular property name that accepts both single item and array
 - **Future extensibility**: Ready for upcoming transport types (FetchRelay, Bluetooth, LocalNetwork)
-- **Nostr-style resilience**: Messages broadcast to all connected relays simultaneously
+- **Nostr-style resilience**: Messages broadcast to all connected relays simultaneously when using arrays
 - **Type safety**: Full TypeScript support for transport configurations
 
 ## Future Transport Types
@@ -51,9 +65,10 @@ The new system is designed to support upcoming transport types:
 
 ## Technical Details
 
-- CRDT messages are now sent to all connected transports simultaneously
+- Single transports are automatically normalized to arrays internally
+- CRDT messages are sent to all connected transports simultaneously
 - Duplicate message handling relies on CRDT idempotency (no deduplication needed)
 - WebSocket connections auto-reconnect independently
 - Backwards compatibility removed (preview version breaking change)
 
-This change positions Evolu for a more resilient, multi-transport future while maintaining the simplicity of the current WebSocket-based sync.
+This change provides an intuitive API that scales from simple single-transport setups to complex multi-transport configurations, positioning Evolu for a more resilient, multi-transport future.

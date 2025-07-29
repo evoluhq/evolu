@@ -65,7 +65,7 @@
     name: getOrThrow(SimpleName.from("evolu-svelte-example")),
 
     ...(process.env.NODE_ENV === "development" && {
-      transports: [{ type: "WebSocket", url: "http://localhost:4000" }],
+      transport: { type: "WebSocket", url: "http://localhost:4000" },
     }),
 
     onInit: ({ isFirst }) => {

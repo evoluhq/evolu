@@ -25,8 +25,8 @@ export interface Config extends ConsoleConfig {
   readonly name: SimpleName;
 
   /**
-   * Transport configurations for data sync and backup. Supports multiple
-   * transports simultaneously for redundancy.
+   * Transport configuration for data sync and backup. Supports single transport
+   * or multiple transports simultaneously for redundancy.
    *
    * Currently supports:
    *
@@ -39,24 +39,24 @@ export interface Config extends ConsoleConfig {
    * - Bluetooth: P2P sync for offline collaboration
    * - LocalNetwork: LAN/mesh sync for local networks
    *
-   * The default value is: `[{ type: "WebSocket", url: "wss://free.evoluhq.com"
-   * }]`.
+   * The default value is: `{ type: "WebSocket", url: "wss://free.evoluhq.com"
+   * }`.
    *
    * ### Example
    *
    * ```ts
    * // Single WebSocket relay
-   * transports: [{ type: "WebSocket", url: "wss://relay1.example.com" }];
+   * transport: { type: "WebSocket", url: "wss://relay1.example.com" }
    *
    * // Multiple WebSocket relays for redundancy
-   * transports: [
+   * transport: [
    *   { type: "WebSocket", url: "wss://relay1.example.com" },
    *   { type: "WebSocket", url: "wss://relay2.example.com" },
    *   { type: "WebSocket", url: "wss://relay3.example.com" },
-   * ];
+   * ]
    * ```
    */
-  readonly transports: ReadonlyArray<Transport>;
+  readonly transport: Transport | ReadonlyArray<Transport>;
 
   /**
    * URL to reload browser tabs after reset or restore.
@@ -118,7 +118,7 @@ export interface ConfigDep {
 
 export const defaultConfig: Config = {
   name: getOrThrow(SimpleName.fromParent("Evolu")),
-  transports: [{ type: "WebSocket", url: "wss://free.evoluhq.com" }],
+  transport: { type: "WebSocket", url: "wss://free.evoluhq.com" },
   reloadUrl: "/",
   maxDrift: 5 * 60 * 1000,
   enableLogging: false,

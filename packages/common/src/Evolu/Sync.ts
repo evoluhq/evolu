@@ -25,15 +25,21 @@ export interface CreateSyncDep {
 }
 
 export interface SyncConfig extends ConsoleConfig {
-  readonly transports: ReadonlyArray<Transport>;
+  readonly transport: Transport | ReadonlyArray<Transport>;
   readonly onOpen: (send: Sync["send"]) => void;
   readonly onMessage: (message: Uint8Array, send: Sync["send"]) => void;
 }
 
 export const createWebSocketSync: CreateSync = (_deps) => (config) => {
+  const allTransports = Array.isArray(config.transport)
+    ? config.transport
+    : [config.transport];
+
   // Currently only WebSocket transports are supported
   // Future: Add support for other transport types here
-  const webSocketTransports = config.transports;
+  const webSocketTransports = allTransports as ReadonlyArray<
+    Extract<Transport, { type: "WebSocket" }>
+  >;
 
   const sockets = new Map<string, ReturnType<typeof createWebSocket>>();
 
@@ -54,7 +60,6 @@ export const createWebSocketSync: CreateSync = (_deps) => (config) => {
     },
   };
 
-  // Create connections to all WebSocket transports simultaneously
   for (const transport of webSocketTransports) {
     const socket = createWebSocket(transport.url, {
       binaryType: "arraybuffer",
@@ -67,8 +72,6 @@ export const createWebSocketSync: CreateSync = (_deps) => (config) => {
           config.onMessage(messages, sync.send);
         }
       },
-      // Don't remove sockets on close/error - let them auto-reconnect
-      // The WebSocket implementation handles reconnection automatically
     });
 
     sockets.set(transport.url, socket);
