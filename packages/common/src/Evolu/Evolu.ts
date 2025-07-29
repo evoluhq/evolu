@@ -713,7 +713,7 @@ const createEvoluInstance =
     const loadQueryMicrotaskQueue: Array<Query> = [];
 
     const mutateMicrotaskQueue: Array<
-      [DbChange | undefined, MutationOptions["onComplete"] | undefined]
+      [DbChange | null, MutationOptions["onComplete"] | undefined]
     > = [];
 
     const createMutation =
@@ -741,9 +741,8 @@ const createEvoluInstance =
 
         if (options?.onlyValidate !== true) {
           if (!result.ok) {
-            // One error must invalidate the whole queue.
-            // We insert `undefined` to detect such a situation.
-            mutateMicrotaskQueue.push([undefined, undefined]);
+            // Mark the transaction as invalid by pushing null
+            mutateMicrotaskQueue.push([null, undefined]);
           } else {
             const values = { ...result.value };
 
@@ -760,6 +759,7 @@ const createEvoluInstance =
               id,
               values,
             };
+
             assertValidDbChange(dbChange);
 
             mutateMicrotaskQueue.push([dbChange, options?.onComplete]);
@@ -771,16 +771,16 @@ const createEvoluInstance =
               const onCompletes = [];
 
               for (const [change, onComplete] of mutateMicrotaskQueue) {
-                if (change) changes.push(change);
+                if (change !== null) changes.push(change);
                 if (onComplete) onCompletes.push(onComplete);
               }
 
-              const mutateMicrotaskQueueLength = mutateMicrotaskQueue.length;
+              const queueLength = mutateMicrotaskQueue.length;
               mutateMicrotaskQueue.length = 0;
 
-              // Don't mutate anything if there was a validation error.
-              // All mutations within a queue are considered to be a transaction.
-              if (changes.length !== mutateMicrotaskQueueLength) {
+              // Don't execute any mutations if there was a validation error.
+              // All mutations within a queue run as a single transaction.
+              if (changes.length !== queueLength) {
                 return;
               }
 
