@@ -21,9 +21,5 @@
     "vue": "^3.5.13",
     "vue-tsc": "^2.2.0",
     "workbox-window": "^7.3.0"
-  },
-  "resolutions": {
-    "sharp": "0.32.6",
-    "sharp-ico": "0.1.5"
   }
 }
