@@ -211,6 +211,8 @@ const deps: TimeDep & Partial<LoggerDep> = {
 
 - **Run tests using pnpm** - use `pnpm test` from the project root to run all tests
 - **Run specific test files** - use `pnpm test --filter @evolu/package-name -- test-file-pattern` from project root (e.g., `pnpm test --filter @evolu/common -- Protocol`)
+- **Check compilation** - use `pnpm build` to check TypeScript compilation across all packages
+- **Run linting** - use `pnpm lint` to check code style and linting rules
 - **Leverage `_deps.ts`** - use existing test utilities and mocks from `packages/common/test/_deps.ts` (e.g., `testCreateId`, `testTime`, `testOwner`)
 - Mock dependencies using the same interfaces
 - Create test factories (e.g., `createTestTime`)
