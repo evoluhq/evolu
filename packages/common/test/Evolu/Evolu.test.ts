@@ -129,10 +129,12 @@ test("init postMessage call", () => {
             "maxDrift": 300000,
             "name": "instance0",
             "reloadUrl": "/",
-            "transport": {
-              "type": "WebSocket",
-              "url": "wss://free.evoluhq.com",
-            },
+            "transports": [
+              {
+                "type": "WebSocket",
+                "url": "wss://free.evoluhq.com",
+              },
+            ],
           },
           "dbSchema": {
             "indexes": [],
@@ -182,6 +184,7 @@ test("insert should validate input and call postMessage", async () => {
         "changes": [
           {
             "id": "F3FmbitSesTwHwplqLBSE",
+            "owner": undefined,
             "table": "todo",
             "values": {
               "createdAt": "1970-01-01T00:00:00.000Z",
@@ -255,6 +258,7 @@ test("update should validate input and call postMessage", async () => {
         "changes": [
           {
             "id": "rPltodHge37rn9q4lwirR",
+            "owner": undefined,
             "table": "todo",
             "values": {
               "title": "Updated Todo",
@@ -328,6 +332,7 @@ test("upsert should validate input and call postMessage", async () => {
         "changes": [
           {
             "id": "wHpK2ZkuZUN-T4MZhx0p9",
+            "owner": undefined,
             "table": "todo",
             "values": {
               "createdAt": "1970-01-01T00:00:00.001Z",
@@ -398,6 +403,7 @@ test("mutations should be processed in microtask queue", async () => {
         "changes": [
           {
             "id": "xiAw0gY_fIT5Ci6Vt_faj",
+            "owner": undefined,
             "table": "todo",
             "values": {
               "createdAt": "1970-01-01T00:00:00.002Z",
@@ -406,6 +412,7 @@ test("mutations should be processed in microtask queue", async () => {
           },
           {
             "id": "P-KUG7NKoSfTGGJoCBJ9x",
+            "owner": undefined,
             "table": "todo",
             "values": {
               "createdAt": "1970-01-01T00:00:00.002Z",
@@ -414,6 +421,7 @@ test("mutations should be processed in microtask queue", async () => {
           },
           {
             "id": "roU2zm2npXftCAjUskTmn",
+            "owner": undefined,
             "table": "todo",
             "values": {
               "createdAt": "1970-01-01T00:00:00.002Z",

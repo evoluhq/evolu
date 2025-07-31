@@ -398,7 +398,7 @@ export const createDbWorkerForPlatform = (
 
         const sync = platformDeps.createSync(platformDeps)({
           ...initMessage.config,
-          transport: initMessage.config.transport,
+          transports: initMessage.config.transports,
           onOpen: safeHandler(handleSyncOpen(depsWithoutSync)),
           onMessage: safeHandler(createHandleSyncMessage(depsWithoutSync)),
         });

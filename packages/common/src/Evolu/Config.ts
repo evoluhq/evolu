@@ -46,17 +46,17 @@ export interface Config extends ConsoleConfig {
    *
    * ```ts
    * // Single WebSocket relay
-   * transport: { type: "WebSocket", url: "wss://relay1.example.com" }
+   * transports: [{ type: "WebSocket", url: "wss://relay1.example.com" }];
    *
    * // Multiple WebSocket relays for redundancy
-   * transport: [
+   * transports: [
    *   { type: "WebSocket", url: "wss://relay1.example.com" },
    *   { type: "WebSocket", url: "wss://relay2.example.com" },
    *   { type: "WebSocket", url: "wss://relay3.example.com" },
-   * ]
+   * ];
    * ```
    */
-  readonly transport: Transport | ReadonlyArray<Transport>;
+  readonly transports: ReadonlyArray<Transport>;
 
   /**
    * URL to reload browser tabs after reset or restore.
@@ -118,7 +118,7 @@ export interface ConfigDep {
 
 export const defaultConfig: Config = {
   name: getOrThrow(SimpleName.fromParent("Evolu")),
-  transport: { type: "WebSocket", url: "wss://free.evoluhq.com" },
+  transports: [{ type: "WebSocket", url: "wss://free.evoluhq.com" }],
   reloadUrl: "/",
   maxDrift: 5 * 60 * 1000,
   enableLogging: false,

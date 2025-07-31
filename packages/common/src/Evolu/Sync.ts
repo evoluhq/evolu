@@ -25,21 +25,13 @@ export interface CreateSyncDep {
 }
 
 export interface SyncConfig extends ConsoleConfig {
-  readonly transport: Transport | ReadonlyArray<Transport>;
+  readonly transports: ReadonlyArray<Transport>;
   readonly onOpen: (send: Sync["send"]) => void;
   readonly onMessage: (message: Uint8Array, send: Sync["send"]) => void;
 }
 
 export const createWebSocketSync: CreateSync = (_deps) => (config) => {
-  const allTransports = Array.isArray(config.transport)
-    ? config.transport
-    : [config.transport];
-
-  // Currently only WebSocket transports are supported
-  // Future: Add support for other transport types here
-  const webSocketTransports = allTransports as ReadonlyArray<
-    Extract<Transport, { type: "WebSocket" }>
-  >;
+  const webSocketTransports = config.transports;
 
   const sockets = new Map<string, ReturnType<typeof createWebSocket>>();
 
