@@ -34,7 +34,6 @@ import { AppOwner, ShardOwner, SharedOwner } from "./Owner.js";
 import {
   BinaryId,
   CrdtMessage,
-  DbChange,
   maxProtocolMessageRangesSize,
 } from "./Protocol.js";
 import { Query, Row } from "./Query.js";
@@ -276,10 +275,6 @@ export interface MutationOptions {
    * `onlyValidate: true`.
    */
   readonly onlyValidate?: boolean;
-}
-
-export interface DbChangeWithOwner extends DbChange {
-  readonly owner?: ShardOwner | SharedOwner;
 }
 
 /**

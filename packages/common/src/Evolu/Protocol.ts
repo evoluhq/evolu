@@ -1291,7 +1291,7 @@ const sync =
           );
           const ourTimestamps = createTimestampsBuffer();
 
-          let storageError = false as boolean;
+          let cantReadDbChange = false as boolean;
           let exceeded = false as boolean;
 
           deps.storage.iterate(ownerId, lower, upper, (timestamp, index) => {
@@ -1305,7 +1305,7 @@ const sync =
             } else {
               const dbChange = deps.storage.readDbChange(ownerId, timestamp);
               if (dbChange == null) {
-                storageError = true;
+                cantReadDbChange = true;
                 return false;
               }
               message = {
@@ -1328,7 +1328,7 @@ const sync =
             return true;
           });
 
-          if (storageError) {
+          if (cantReadDbChange) {
             return syncFail();
           }
 

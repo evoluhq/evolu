@@ -43,6 +43,8 @@ import {
   createOwnerSecret,
   mnemonicToOwnerSecret,
   OwnerId,
+  ShardOwner,
+  SharedOwner,
   WriteKey,
 } from "./Owner.js";
 import {
@@ -110,6 +112,10 @@ export const DbSchema = object({
 });
 export type DbSchema = typeof DbSchema.Type;
 
+export interface MutationChange extends DbChange {
+  readonly owner?: ShardOwner | SharedOwner | undefined;
+}
+
 export type DbWorker = Worker<DbWorkerInput, DbWorkerOutput>;
 
 export type CreateDbWorker = (name: SimpleName) => DbWorker;
@@ -127,7 +133,7 @@ export type DbWorkerInput =
   | {
       readonly type: "mutate";
       readonly tabId: Id;
-      readonly changes: NonEmptyReadonlyArray<DbChange>;
+      readonly changes: NonEmptyReadonlyArray<MutationChange>;
       readonly onCompleteIds: ReadonlyArray<CallbackId>;
       readonly subscribedQueries: ReadonlyArray<Query>;
     }
@@ -218,7 +224,7 @@ interface OwnersDep {
   readonly owners: Owners;
 }
 
-type Owners = Map<OwnerId, AppOwner>;
+type Owners = Map<OwnerId, AppOwner | ShardOwner | SharedOwner>;
 
 interface ClockDep {
   readonly clock: Clock;
@@ -413,8 +419,8 @@ export const createDbWorkerForPlatform = (
         case "mutate": {
           const mutate = deps.sqlite.transaction(() => {
             // 1. Partition changes: local-only vs sync
-            const syncChanges = [];
-            const localOnlyChanges = [];
+            const syncChanges: Array<MutationChange> = [];
+            const localOnlyChanges: Array<MutationChange> = [];
 
             for (const change of message.changes) {
               // Table name starting with '_' is local-only (not synced).
@@ -422,24 +428,32 @@ export const createDbWorkerForPlatform = (
               else syncChanges.push(change);
             }
 
-            // 2. Apply local-only changes immediately
+            // 2. Apply local-only changes immediately (convert to DbChange for processing)
             for (const change of localOnlyChanges) {
+              const dbChange: DbChange = {
+                table: change.table,
+                id: change.id,
+                values: change.values,
+              };
               const isDeletion =
-                "isDeleted" in change.values && change.values.isDeleted === 1;
+                "isDeleted" in dbChange.values &&
+                dbChange.values.isDeleted === 1;
 
               if (isDeletion) {
                 const result = deps.sqlite.exec(sql`
-                  delete from ${sql.identifier(change.table)}
-                  where id = ${change.id};
+                  delete from ${sql.identifier(dbChange.table)}
+                  where id = ${dbChange.id};
                 `);
                 if (!result.ok) return result;
               } else {
                 const date = new Date(deps.time.now()).toISOString();
-                for (const [column, value] of objectToEntries(change.values)) {
+                for (const [column, value] of objectToEntries(
+                  dbChange.values,
+                )) {
                   const result = deps.sqlite.exec(sql.prepared`
-                    insert into ${sql.identifier(change.table)}
+                    insert into ${sql.identifier(dbChange.table)}
                       ("id", ${sql.identifier(column)}, createdAt, updatedAt)
-                    values (${change.id}, ${value}, ${date}, ${date})
+                    values (${dbChange.id}, ${value}, ${date}, ${date})
                     on conflict ("id") do update
                       set
                         ${sql.identifier(column)} = ${value},
@@ -483,25 +497,47 @@ export const createDbWorkerForPlatform = (
               return ok();
             }
 
-            // 5. Apply sync changes and send them
-            const messages = applyChanges(deps)(syncChanges, onChange);
-            if (!messages.ok) return messages;
-
-            // TODO: Use owner from db change or AppOwner
-            const owner = Array.from(deps.owners.values())[0];
-
-            const protocolMessage = createProtocolMessageFromCrdtMessages(deps)(
-              owner,
-              messages.value,
+            // 5. Group sync changes by owner
+            const appOwner = Array.from(deps.owners.values()).find(
+              (owner) => owner.type === "AppOwner",
             );
+            assert(appOwner, "app owner not found");
 
-            deps.console.log(
-              "[db]",
-              "send data message",
-              messages.value,
-              protocolMessage,
-            );
-            deps.sync.send(protocolMessage);
+            const changesByOwner = new Map<
+              OwnerId,
+              [AppOwner | ShardOwner | SharedOwner, Array<DbChange>]
+            >();
+            for (const mutationChange of syncChanges) {
+              const { owner, ...dbChange } = mutationChange;
+              const actualOwner = owner ?? appOwner;
+              if (!changesByOwner.has(actualOwner.id)) {
+                changesByOwner.set(actualOwner.id, [actualOwner, []]);
+              }
+              changesByOwner.get(actualOwner.id)![1].push(dbChange);
+            }
+
+            // 6. Apply changes and send protocol messages for each owner
+            for (const [_ownerId, [owner, ownerChanges]] of changesByOwner) {
+              if (!isNonEmptyArray(ownerChanges)) continue;
+
+              const messages = applyChanges(deps)(owner, ownerChanges);
+              if (!messages.ok) return messages;
+
+              const protocolMessage = createProtocolMessageFromCrdtMessages(
+                deps,
+              )(owner, messages.value);
+
+              deps.console.log(
+                "[db]",
+                "send data message for owner",
+                owner.id,
+                messages.value,
+                protocolMessage,
+              );
+              deps.sync.send(protocolMessage);
+            }
+
+            onChange();
 
             return ok();
           });
@@ -902,12 +938,11 @@ const applyChanges =
       TimestampConfigDep &
       RandomDep &
       ClientStorageDep &
-      OwnersDep &
       ClockDep,
   ) =>
   (
+    owner: AppOwner | ShardOwner | SharedOwner,
     changes: NonEmptyReadonlyArray<DbChange>,
-    onChange?: () => void,
   ): Result<
     NonEmptyReadonlyArray<CrdtMessage>,
     | TimestampTimeOutOfRangeError
@@ -926,24 +961,21 @@ const applyChanges =
       messages.push({ timestamp: clockTimestamp, change });
     }
 
-    const apply = applyMessages(deps)(messages, clockTimestamp);
+    const apply = applyMessages(deps)(owner, messages, clockTimestamp);
     if (!apply.ok) return apply;
-
-    if (onChange) onChange();
 
     assertNonEmptyReadonlyArray(messages);
     return ok(messages);
   };
 
 const applyMessages =
-  (deps: SqliteDep & RandomDep & ClientStorageDep & ClockDep & OwnersDep) =>
+  (deps: SqliteDep & RandomDep & ClientStorageDep & ClockDep) =>
   (
+    owner: AppOwner | ShardOwner | SharedOwner,
     messages: ReadonlyArray<CrdtMessage>,
     clockTimestamp: Timestamp,
   ): Result<void, SqliteError> => {
-    const ownerId = ownerIdToBinaryOwnerId(
-      Array.from(deps.owners.values())[0].id,
-    );
+    const ownerId = ownerIdToBinaryOwnerId(owner.id);
 
     for (const message of messages) {
       const result1 = applyMessageToAppTable(deps)(ownerId, message);
@@ -1151,7 +1183,10 @@ const createClientStorage =
 
       writeMessages: (ownerId, messages) => {
         const owner = deps.owners.get(binaryOwnerIdToOwnerId(ownerId));
-        assert(owner, "Missing owner");
+        if (!owner) {
+          // Owner was removed to stop syncing for this owner
+          return false;
+        }
 
         const decodedAndDecryptedMessages: Array<CrdtMessage> = [];
 
@@ -1190,6 +1225,7 @@ const createClientStorage =
         }
 
         const applyMessagesResult = applyMessages({ ...deps, storage })(
+          owner,
           decodedAndDecryptedMessages,
           clockTimestamp,
         );
@@ -1209,7 +1245,10 @@ const createClientStorage =
 
       readDbChange: (ownerId, timestamp) => {
         const owner = deps.owners.get(binaryOwnerIdToOwnerId(ownerId));
-        assert(owner, "Missing owner");
+        if (!owner) {
+          // Owner was removed to stop syncing for this owner
+          return null;
+        }
 
         const result = deps.sqlite.exec<{
           table: Base64Url256;

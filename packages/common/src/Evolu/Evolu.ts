@@ -21,7 +21,7 @@ import {
 } from "../Type.js";
 import { IntentionalNever } from "../Types.js";
 import { Config, defaultConfig } from "./Config.js";
-import { CreateDbWorkerDep } from "./Db.js";
+import { CreateDbWorkerDep, MutationChange } from "./Db.js";
 import { applyPatches } from "./Diff.js";
 import { kysely } from "./Kysely.js";
 import { AppOwner } from "./Owner.js";
@@ -713,7 +713,7 @@ const createEvoluInstance =
     const loadQueryMicrotaskQueue: Array<Query> = [];
 
     const mutateMicrotaskQueue: Array<
-      [DbChange | null, MutationOptions["onComplete"] | undefined]
+      [MutationChange | null, MutationOptions["onComplete"] | undefined]
     > = [];
 
     const createMutation =
@@ -754,20 +754,19 @@ const createEvoluInstance =
               }
             }
 
-            const dbChange = {
-              table,
-              id,
-              values,
-            };
+            const dbChange = { table, id, values };
+            assert(
+              DbChange.is(dbChange),
+              `Failed to create DbChange for table "${dbChange.table}"`,
+            );
 
-            assertValidDbChange(dbChange);
-
-            mutateMicrotaskQueue.push([dbChange, options?.onComplete]);
+            const mutationChange = { ...dbChange, owner: options?.owner };
+            mutateMicrotaskQueue.push([mutationChange, options?.onComplete]);
           }
 
           if (mutateMicrotaskQueue.length === 1)
             queueMicrotask(() => {
-              const changes: Array<DbChange> = [];
+              const changes: Array<MutationChange> = [];
               const onCompletes = [];
 
               for (const [change, onComplete] of mutateMicrotaskQueue) {
@@ -1048,15 +1047,4 @@ const createLoadingPromises = (
   };
 
   return loadingPromises;
-};
-
-const assertValidDbChange: (dbChange: {
-  table: string;
-  id: Id;
-  values: unknown;
-}) => asserts dbChange is DbChange = (dbChange) => {
-  assert(
-    DbChange.is(dbChange),
-    `Failed to create DbChange for table "${dbChange.table}". If you see this message, you either disabled EvoluSchema validation or Evolu has a bug - please report it.`,
-  );
 };
