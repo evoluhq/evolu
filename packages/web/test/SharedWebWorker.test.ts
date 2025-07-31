@@ -4,7 +4,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { expect, test, vi, beforeEach, afterEach } from "vitest";
 import { createSharedWebWorker } from "../src/SharedWebWorker.js";
-import { getOrThrow, SimpleName } from "@evolu/common";
+import { getOrThrow, SimpleName, wait } from "@evolu/common";
 
 // Mock BroadcastChannel
 class MockBroadcastChannel {
@@ -231,7 +231,7 @@ test("createSharedWebWorker handles multiple tabs - first tab becomes owner", as
   });
 
   // Wait for lock acquisition
-  await new Promise((resolve) => setTimeout(resolve, 10));
+  await wait(10);
 
   // Only first tab should create worker (it became owner)
   expect(mockCreateWorker).toHaveBeenCalledTimes(1);

@@ -1,8 +1,9 @@
 import { describe, expect, expectTypeOf, test, vi } from "vitest";
 import { createConsole } from "../../src/Console.js";
 import { createEvolu } from "../../src/Evolu/Evolu.js";
+import { createAppOwner } from "../../src/Evolu/Owner.js";
 import { getOrThrow } from "../../src/Result.js";
-import { SqliteBoolean } from "../../src/Sqlite.js";
+import { createSqlite, SqliteBoolean } from "../../src/Sqlite.js";
 import {
   Boolean,
   id,
@@ -14,7 +15,12 @@ import {
 } from "../../src/Type.js";
 import {
   testCreateId,
+  testCreateMnemonic,
+  testCreateRandomBytesDep,
+  testCreateSqliteDriver,
+  testMnemonic,
   testNanoIdLib,
+  testRandom,
   testSimpleName,
   testTime,
 } from "../_deps.js";
@@ -24,6 +30,12 @@ import {
   ValidateNoDefaultColumns,
   ValidateSchemaHasId,
 } from "../../src/Evolu/Schema.js";
+import {
+  createDbWorkerForPlatform,
+  getDbSnapshot,
+} from "../../src/Evolu/Db.js";
+import { constVoid } from "../../src/Function.js";
+import { wait } from "../../src/Promise.js";
 
 const TodoId = id("Todo");
 type TodoId = InferType<typeof TodoId>;
@@ -76,6 +88,37 @@ const setupEvoluTest = () => {
   return { deps, evolu, dbWorker };
 };
 
+const createEvoluDepsWithSqlite = async () => {
+  const sqliteDriver = testCreateSqliteDriver(testSimpleName);
+
+  const dbWorker = createDbWorkerForPlatform({
+    createSqliteDriver: () => sqliteDriver,
+    createSync: () => () => ({ send: constVoid }),
+    console: createConsole(),
+    time: testTime,
+    random: testRandom,
+    nanoIdLib: testNanoIdLib,
+    createMnemonic: testCreateMnemonic,
+    createRandomBytes: testCreateRandomBytesDep.createRandomBytes,
+  });
+
+  const deps = {
+    createDbWorker: () => dbWorker,
+    time: testTime,
+    nanoIdLib: testNanoIdLib,
+    console: createConsole(),
+    createAppState: () => ({ reset: vi.fn() }),
+  };
+
+  const sqlite = getOrThrow(
+    await createSqlite({
+      createSqliteDriver: () => sqliteDriver,
+    })(testSimpleName),
+  );
+
+  return { deps, sqliteDriver, sqlite };
+};
+
 test("init postMessage call", () => {
   const { dbWorker } = setupEvoluTest();
 
@@ -109,7 +152,6 @@ test("init postMessage call", () => {
               },
             ],
           },
-          "initialData": [],
           "type": "init",
         },
       ],
@@ -128,27 +170,27 @@ test("insert should validate input and call postMessage", async () => {
 
   expect(result.ok).toBe(true);
   expect(result.ok && result.value.id).toMatchInlineSnapshot(
-    `"esTwHwplqLBSE8Ou8ffX4"`,
+    `"3C22DRVU0AHGjXpOEP-WJ"`,
   );
 
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await wait(0);
 
   expect(dbWorker.postMessage.mock.calls[1]).toMatchInlineSnapshot(`
     [
       {
         "changes": [
           {
-            "id": "esTwHwplqLBSE8Ou8ffX4",
+            "id": "3C22DRVU0AHGjXpOEP-WJ",
             "table": "todo",
             "values": {
-              "createdAt": "1970-01-01T00:00:00.003Z",
+              "createdAt": "1970-01-01T00:00:00.000Z",
               "title": "Test Todo",
             },
           },
         ],
         "onCompleteIds": [],
         "subscribedQueries": [],
-        "tabId": "s9rNnUeri8bzhS5AX_mRy",
+        "tabId": "kYF3FmbitSesTwHwplqLB",
         "type": "mutate",
       },
     ]
@@ -204,14 +246,14 @@ test("update should validate input and call postMessage", async () => {
   expect(result.ok).toBe(true);
   expect(result.ok && result.value.id).toBe(testId);
 
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await wait(0);
 
   expect(dbWorker.postMessage.mock.calls[1]).toMatchInlineSnapshot(`
     [
       {
         "changes": [
           {
-            "id": "e37rn9q4lwirRDIx1Y9e4",
+            "id": "D2PtSrFu-SJV0Ui1_SJB3",
             "table": "todo",
             "values": {
               "title": "Updated Todo",
@@ -220,7 +262,7 @@ test("update should validate input and call postMessage", async () => {
         ],
         "onCompleteIds": [],
         "subscribedQueries": [],
-        "tabId": "s9rNnUeri8bzhS5AX_mRy",
+        "tabId": "kYF3FmbitSesTwHwplqLB",
         "type": "mutate",
       },
     ]
@@ -277,24 +319,24 @@ test("upsert should validate input and call postMessage", async () => {
   expect(result.ok).toBe(true);
   expect(result.ok && result.value.id).toBe(testId);
 
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await wait(0);
 
   expect(dbWorker.postMessage.mock.calls[1]).toMatchInlineSnapshot(`
     [
       {
         "changes": [
           {
-            "id": "ZUN-T4MZhx0p9fO9i2LT9",
+            "id": "v5rPltodHge37rn9q4lwi",
             "table": "todo",
             "values": {
-              "createdAt": "1970-01-01T00:00:00.004Z",
+              "createdAt": "1970-01-01T00:00:00.001Z",
               "title": "Upserted Todo",
             },
           },
         ],
         "onCompleteIds": [],
         "subscribedQueries": [],
-        "tabId": "s9rNnUeri8bzhS5AX_mRy",
+        "tabId": "kYF3FmbitSesTwHwplqLB",
         "type": "mutate",
       },
     ]
@@ -328,7 +370,7 @@ test("upsert should reject invalid input", () => {
         },
         "type": "Object",
         "value": {
-          "id": "yKrUtl5RZ4mz12WZ_SQtm",
+          "id": "6xwHpK2ZkuZUN-T4MZhx0",
           "title": "",
         },
       },
@@ -345,7 +387,7 @@ test("mutations should be processed in microtask queue", async () => {
   evolu.insert("todo", { title: "Todo 2" });
   evolu.insert("todo", { title: "Todo 3" });
 
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await wait(0);
 
   // Only one postMessage call should happen with all changes
   expect(dbWorker.postMessage).toHaveBeenCalledTimes(2); // 1 for init, 1 for mutations
@@ -354,33 +396,33 @@ test("mutations should be processed in microtask queue", async () => {
       {
         "changes": [
           {
-            "id": "fIT5Ci6Vt_fajhVHzg5iu",
+            "id": "yVRcpEppKHyKrUtl5RZ4m",
             "table": "todo",
             "values": {
-              "createdAt": "1970-01-01T00:00:00.005Z",
+              "createdAt": "1970-01-01T00:00:00.002Z",
               "title": "Todo 1",
             },
           },
           {
-            "id": "oSfTGGJoCBJ9xgjl8Ky6B",
+            "id": "CTxiAw0gY_fIT5Ci6Vt_f",
             "table": "todo",
             "values": {
-              "createdAt": "1970-01-01T00:00:00.005Z",
+              "createdAt": "1970-01-01T00:00:00.002Z",
               "title": "Todo 2",
             },
           },
           {
-            "id": "pXftCAjUskTmno2dqqyjQ",
+            "id": "kbP-KUG7NKoSfTGGJoCBJ",
             "table": "todo",
             "values": {
-              "createdAt": "1970-01-01T00:00:00.005Z",
+              "createdAt": "1970-01-01T00:00:00.002Z",
               "title": "Todo 3",
             },
           },
         ],
         "onCompleteIds": [],
         "subscribedQueries": [],
-        "tabId": "s9rNnUeri8bzhS5AX_mRy",
+        "tabId": "kYF3FmbitSesTwHwplqLB",
         "type": "mutate",
       },
     ]
@@ -392,7 +434,7 @@ test("mutation with onlyValidate should not call postMessage", async () => {
 
   evolu.insert("todo", { title: "Validation only" }, { onlyValidate: true });
 
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await wait(0);
 
   // Only init should be called, not the mutation
   expect(dbWorker.postMessage).toHaveBeenCalledTimes(1);
@@ -406,7 +448,7 @@ test("mutations should fail as a transaction when any mutation fails", async () 
   evolu.insert("todo", { title: "" }); // Invalid - empty title
   evolu.insert("todo", { title: "Another Valid Todo" });
 
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await wait(0);
 
   // Only init should be called, not the mutations since one failed
   expect(dbWorker.postMessage).toHaveBeenCalledTimes(1);
@@ -548,7 +590,7 @@ describe("createdAt behavior", () => {
     const result = evolu.insert("todo", { title: "Test Todo" });
     expect(result.ok).toBe(true);
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await wait(0);
 
     // Verify the postMessage was called with createdAt in the change values
     expect(dbWorker.postMessage).toHaveBeenCalledWith(
@@ -578,7 +620,7 @@ describe("createdAt behavior", () => {
     const result = evolu.upsert("todo", { id: testId, title: "Upserted Todo" });
     expect(result.ok).toBe(true);
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await wait(0);
 
     expect(dbWorker.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -607,7 +649,7 @@ describe("createdAt behavior", () => {
     const result = evolu.update("todo", { id: testId, title: "Updated Todo" });
     expect(result.ok).toBe(true);
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await wait(0);
 
     // Get the actual call to inspect the values
     const calls = dbWorker.postMessage.mock.calls;
@@ -624,45 +666,78 @@ describe("createdAt behavior", () => {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     expect(change?.values).not.toHaveProperty("createdAt");
   });
+});
 
-  test("initialData should set createdAt for all inserted records", () => {
-    const deps = mockDeps();
+test("initialAppOwner should use provided owner", async () => {
+  const { deps, sqlite } = await createEvoluDepsWithSqlite();
 
-    createEvolu(deps)(Schema, {
-      name: getOrThrow(SimpleName.from("test-initial-data")),
-      initialData: (evolu) => {
-        evolu.insert("todoCategory", { name: "Category 1" });
-        evolu.insert("todo", { title: "Initial Todo" });
-      },
-    });
+  const initialAppOwner = createAppOwner(testMnemonic);
 
-    expect(deps.createDbWorker().postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "init",
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        initialData: expect.arrayContaining([
-          expect.objectContaining({
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            values: expect.objectContaining({
-              name: "Category 1",
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-              createdAt: expect.stringMatching(
-                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
-              ),
-            }),
-          }),
-          expect.objectContaining({
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            values: expect.objectContaining({
-              title: "Initial Todo",
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-              createdAt: expect.stringMatching(
-                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
-              ),
-            }),
-          }),
-        ]),
-      }),
-    );
+  createEvolu(deps)(Schema, {
+    name: getOrThrow(SimpleName.from(`instance${instancesCount++}`)),
+    initialAppOwner,
   });
+
+  await wait(10);
+
+  const snapshot = getDbSnapshot({ sqlite });
+  expect(snapshot).toMatchSnapshot();
+
+  const configTable = snapshot.tables.find(
+    (table) => table.name === "evolu_config",
+  );
+  expect(configTable?.rows[0].appOwnerId).toBe(initialAppOwner.id);
+});
+
+test("onInit callback should be called with correct parameters and can seed initial data", async () => {
+  const { deps, sqlite } = await createEvoluDepsWithSqlite();
+
+  const initialAppOwner = createAppOwner(testMnemonic);
+  const initCalls: Array<{
+    appOwner: typeof initialAppOwner;
+    isFirst: boolean;
+  }> = [];
+
+  const name = getOrThrow(SimpleName.from(`instance${instancesCount++}`));
+
+  const evolu1 = createEvolu(deps)(Schema, {
+    initialAppOwner,
+    name,
+    onInit: ({ appOwner, isFirst }) => {
+      initCalls.push({ appOwner, isFirst });
+
+      if (isFirst) {
+        const todoCategoryId = getOrThrow(
+          evolu1.insert("todoCategory", {
+            name: "Not Urgent",
+          }),
+        );
+
+        evolu1.insert("todo", {
+          title: "Try React Suspense",
+          categoryId: todoCategoryId.id,
+        });
+      }
+    },
+  });
+
+  await wait(10);
+
+  expect(initCalls).toHaveLength(1);
+
+  const snapshot = getDbSnapshot({ sqlite });
+  expect(snapshot).toMatchSnapshot();
+
+  // Create
+  createEvolu(deps)(Schema, {
+    name,
+    initialAppOwner,
+    onInit: ({ appOwner, isFirst }) => {
+      initCalls.push({ appOwner, isFirst });
+    },
+  });
+
+  await wait(10);
+
+  expect(initCalls).toHaveLength(1);
 });

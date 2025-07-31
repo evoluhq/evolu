@@ -30,11 +30,10 @@ import {
 import { Simplify } from "../Types.js";
 import { DbSchema } from "./Db.js";
 import { createIndexes, DbIndexesBuilder } from "./Kysely.js";
-import { AppOwner, ShardOwner, SharedOwner } from "./Owner.js";
 import {
   BinaryId,
-  maxProtocolMessageRangesSize,
   CrdtMessage,
+  maxProtocolMessageRangesSize,
 } from "./Protocol.js";
 import { Query, Row } from "./Query.js";
 import { BinaryTimestamp } from "./Timestamp.js";
@@ -252,13 +251,6 @@ export interface MutationOptions {
    * `onlyValidate: true`.
    */
   readonly onlyValidate?: boolean;
-
-  /**
-   * The owner to use for this mutation. Can be a {@link ShardOwner} for sharding
-   * app data or a {@link SharedOwner} for collaborative write access. If
-   * omitted, defaults to the app's {@link AppOwner}.
-   */
-  readonly owner?: ShardOwner | SharedOwner;
 }
 
 /**

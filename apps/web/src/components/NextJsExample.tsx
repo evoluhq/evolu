@@ -103,23 +103,25 @@ const formatTypeError = createFormatTypeError<
 
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   reloadUrl: "/docs/examples/react/nextjs",
-  name: getOrThrow(SimpleName.from("evolu-nextjs-example-v010725")),
+  name: getOrThrow(SimpleName.from("evolu-nextjs-example-v090725")),
 
   ...(process.env.NODE_ENV === "development" && {
     syncUrl: "http://localhost:4000",
   }),
 
-  initialData: (evolu) => {
-    const todoCategoryId = getOrThrow(
-      evolu.insert("todoCategory", {
-        name: "Not Urgent",
-      }),
-    );
+  onInit: ({ isFirst }) => {
+    if (isFirst) {
+      const todoCategoryId = getOrThrow(
+        evolu.insert("todoCategory", {
+          name: "Not Urgent",
+        }),
+      );
 
-    evolu.insert("todo", {
-      title: "Try React Suspense",
-      categoryId: todoCategoryId.id,
-    });
+      evolu.insert("todo", {
+        title: "Try React Suspense",
+        categoryId: todoCategoryId.id,
+      });
+    }
   },
 
   // Indexes are not required for development but are recommended for production.
@@ -560,7 +562,7 @@ const OwnerActions: FC = () => {
           onClick={handleDownloadDatabaseClick}
         />
       </div>
-      {showMnemonic && owner != null && (
+      {showMnemonic && owner?.mnemonic && (
         <div>
           <textarea
             value={owner.mnemonic}

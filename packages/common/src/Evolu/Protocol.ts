@@ -1,3 +1,4 @@
+/* eslint-disable jsdoc/no-undefined-types */
 /**
  * Evolu Protocol
  *
@@ -183,13 +184,7 @@ import {
   record,
 } from "../Type.js";
 import { Brand, Predicate } from "../Types.js";
-import {
-  Owner,
-  OwnerId,
-  OwnerWithWriteAccess,
-  WriteKey,
-  writeKeyLength,
-} from "./Owner.js";
+import { Owner, OwnerId, WriteKey, writeKeyLength } from "./Owner.js";
 import {
   BinaryTimestamp,
   binaryTimestampLength,
@@ -473,7 +468,7 @@ export interface ProtocolTimestampMismatchError {
 export const createProtocolMessageFromCrdtMessages =
   (deps: SymmetricCryptoDep & CreateRandomBytesDep) =>
   (
-    owner: OwnerWithWriteAccess,
+    owner: Owner,
     messages: NonEmptyReadonlyArray<CrdtMessage>,
     maxSize?: PositiveInt,
   ): ProtocolMessage => {

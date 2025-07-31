@@ -465,36 +465,36 @@ export type EvoluDeps = CreateDbWorkerDep &
   ConsoleDep &
   CreateAppStateDep;
 
-export interface EvoluConfigWithInitialData<S extends EvoluSchema = EvoluSchema>
-  extends Config {
+export interface EvoluConfigWithFunctions extends Config {
   /**
-   * Use this option to create initial data (fixtures).
+   * Callback invoked when the database is initialized. Use `isFirst` to perform
+   * one-time setup like initial data seeding.
    *
    * ### Example
    *
    * ```ts
    * const evolu = createEvolu(evoluReactWebDeps)(Schema, {
-   *   initialData: (evolu) => {
-   *     const todoCategory = evolu.insert("todoCategory", {
-   *       name: "Not Urgent",
-   *     });
+   *   onInit: ({ appOwner, isFirst }) => {
+   *     if (isFirst) {
+   *       const todoCategoryId = getOrThrow(
+   *         evolu.insert("todoCategory", {
+   *           name: "Not Urgent",
+   *         }),
+   *       );
    *
-   *     // This is a developer error, which should be fixed immediately.
-   *     assert(todoCategory.ok, "invalid initial data");
-   *
-   *     evolu.insert("todo", {
-   *       title: "Try React Suspense",
-   *       categoryId: todoCategory.value.id,
-   *     });
+   *       evolu.insert("todo", {
+   *         title: "Try React Suspense",
+   *         categoryId: todoCategoryId.id,
+   *       });
+   *     }
    *   },
    * });
    * ```
    */
-  initialData?: (evolu: EvoluForInitialData<S>) => void;
-}
-
-export interface EvoluForInitialData<S extends EvoluSchema = EvoluSchema> {
-  insert: Mutation<S, "insert">;
+  readonly onInit?: (params: {
+    readonly appOwner: AppOwner;
+    readonly isFirst: boolean;
+  }) => void;
 }
 
 // For hot reloading and Evolu multitenancy.
@@ -553,7 +553,7 @@ export const createEvolu =
   (deps: EvoluDeps) =>
   <S extends EvoluSchema>(
     schema: ValidateSchema<S> extends never ? S : ValidateSchema<S>,
-    partialConfig: Partial<EvoluConfigWithInitialData<S>> = {},
+    partialConfig: Partial<EvoluConfigWithFunctions> = {},
   ): Evolu<S> => {
     const config = { ...defaultConfig, ...partialConfig };
 
@@ -577,17 +577,17 @@ const createEvoluInstance =
   (deps: EvoluDeps) =>
   (
     schema: EvoluSchema,
-    evoluConfig: EvoluConfigWithInitialData,
+    evoluConfig: EvoluConfigWithFunctions,
   ): InternalEvoluInstance => {
     deps.console.enabled = evoluConfig.enableLogging ?? false;
 
     deps.console.log("[evolu]", "createEvoluInstance");
 
-    const { initialData, indexes, ...config } = evoluConfig;
+    const { onInit, indexes, ...config } = evoluConfig;
 
     const errorStore = createStore<EvoluError | null>(null);
     const rowsStore = createStore<QueryRowsMap>(new Map());
-    const ownerStore = createStore<AppOwner | null>(null);
+    const appOwnerStore = createStore<AppOwner | null>(null);
     const syncStore = createStore<SyncState>(initialSyncState);
 
     const subscribedQueries = createSubscribedQueries(rowsStore);
@@ -605,7 +605,11 @@ const createEvoluInstance =
     dbWorker.onMessage((message) => {
       switch (message.type) {
         case "onInit": {
-          ownerStore.set(message.owner);
+          appOwnerStore.set(message.appOwner);
+          onInit?.({
+            appOwner: message.appOwner,
+            isFirst: message.isFirst,
+          });
           break;
         }
 
@@ -700,40 +704,10 @@ const createEvoluInstance =
       return type;
     };
 
-    const initialDataDbChanges: Array<DbChange> = [];
-
-    /**
-     * Note that the initial data function is called even if it is unnecessary
-     * (initial data are already in the DB) because we don't want to wait for
-     * SQLite's response. Initial data should be small (because they are inlined
-     * in the code), so it's ok.
-     */
-    if (initialData)
-      initialData({
-        insert: (table, props) => {
-          const id = createId(deps);
-          const values = getMutationType(table, "insert").fromUnknown(props);
-
-          if (values.ok) {
-            const valuesWithCreatedAt = {
-              ...values.value,
-              createdAt: new Date(deps.time.now()).toISOString(),
-            };
-            const dbChange = { table, id, values: valuesWithCreatedAt };
-            assertValidDbChange(dbChange);
-            initialDataDbChanges.push(dbChange);
-            return ok({ id });
-          }
-
-          return values;
-        },
-      });
-
     dbWorker.postMessage({
       type: "init",
       config,
       dbSchema,
-      initialData: initialDataDbChanges,
     });
 
     const loadQueryMicrotaskQueue: Array<Query> = [];
@@ -907,8 +881,8 @@ const createEvoluInstance =
       getQueryRows: <R extends Row>(query: Query<R>): QueryRows<R> =>
         (rowsStore.get().get(query) ?? emptyRows) as QueryRows<R>,
 
-      subscribeAppOwner: ownerStore.subscribe,
-      getAppOwner: ownerStore.get,
+      subscribeAppOwner: appOwnerStore.subscribe,
+      getAppOwner: appOwnerStore.get,
 
       subscribeSyncState: syncStore.subscribe,
       getSyncState: syncStore.get,

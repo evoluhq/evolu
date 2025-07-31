@@ -5,7 +5,6 @@
     NonEmptyString1000,
     SimpleName,
     SqliteBoolean,
-    assert,
     createEvolu,
     createFormatTypeError,
     getOrThrow,
@@ -69,18 +68,20 @@
       syncUrl: "http://localhost:4000",
     }),
 
-    initialData: (_evolu) => {
-      const todoCategory = _evolu.insert("todoCategory", {
-        name: getOrThrow(NonEmptyString50.from("Not Urgent")),
-      });
+    onInit: ({ isFirst }) => {
+      if (isFirst) {
+        const todoCategoryId = getOrThrow(
+          evolu.insert("todoCategory", {
+            name: "Not Urgent",
+          }),
+        );
 
-      assert(todoCategory.ok, "invalid initial data");
-
-      _evolu.insert("todo", {
-        title: getOrThrow(NonEmptyString1000.from("Try svelte $derived")),
-        categoryId: todoCategory.value.id,
-        priority: "low",
-      });
+        evolu.insert("todo", {
+          title: "Try React Suspense",
+          categoryId: todoCategoryId.id,
+          priority: "low",
+        });
+      }
     },
 
     // Indexes are not necessary for development but are recommended for production.

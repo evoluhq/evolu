@@ -1,0 +1,1388 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Config.initialAppOwner > should generate new AppOwner when initialAppOwner is not provided 1`] = `
+[
+  {
+    "appOwner": {
+      "encryptionKey": Uint8Array [
+        173,
+        165,
+        204,
+        225,
+        74,
+        240,
+        76,
+        99,
+        46,
+        18,
+        104,
+        4,
+        0,
+        136,
+        188,
+        132,
+        99,
+        57,
+        151,
+        4,
+        147,
+        44,
+        59,
+        91,
+        61,
+        162,
+        116,
+        243,
+        186,
+        98,
+        25,
+        4,
+      ],
+      "id": "MdVYFAxShUluuZKVWQfYL",
+      "mnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
+      "type": "AppOwner",
+      "writeKey": Uint8Array [
+        111,
+        64,
+        118,
+        108,
+        245,
+        65,
+        176,
+        98,
+        173,
+        247,
+        85,
+        78,
+        30,
+        167,
+        192,
+        203,
+      ],
+    },
+    "type": "onInit",
+  },
+]
+`;
+
+exports[`Config.initialAppOwner > should generate new AppOwner when initialAppOwner is not provided 2`] = `
+{
+  "schema": {
+    "indexes": [
+      {
+        "name": "evolu_history_ownerId_timestamp",
+        "sql": "create index evolu_history_ownerId_timestamp on evolu_history (
+          "ownerId",
+          "timestamp"
+        )",
+      },
+      {
+        "name": "evolu_history_ownerId_table_id_column_timestampDesc",
+        "sql": "create unique index evolu_history_ownerId_table_id_column_timestampDesc on evolu_history (
+          "ownerId",
+          "table",
+          "id",
+          "column",
+          "timestamp" desc
+        )",
+      },
+      {
+        "name": "evolu_timestamp_index",
+        "sql": "create index evolu_timestamp_index on evolu_timestamp (
+        "ownerId",
+        "l",
+        "t",
+        "h1",
+        "h2",
+        "c"
+      )",
+      },
+    ],
+    "tables": [
+      {
+        "columns": [
+          "protocolVersion",
+        ],
+        "name": "evolu_version",
+      },
+      {
+        "columns": [
+          "clock",
+          "appOwnerId",
+          "appOwnerEncryptionKey",
+          "appOwnerWriteKey",
+          "appOwnerMnemonic",
+        ],
+        "name": "evolu_config",
+      },
+      {
+        "columns": [
+          "ownerId",
+          "table",
+          "id",
+          "column",
+          "timestamp",
+          "value",
+        ],
+        "name": "evolu_history",
+      },
+      {
+        "columns": [
+          "id",
+          "name",
+          "createdAt",
+          "updatedAt",
+          "isDeleted",
+        ],
+        "name": "testTable",
+      },
+      {
+        "columns": [
+          "ownerId",
+          "t",
+          "h1",
+          "h2",
+          "c",
+          "l",
+        ],
+        "name": "evolu_timestamp",
+      },
+    ],
+  },
+  "tables": [
+    {
+      "name": "evolu_version",
+      "rows": [
+        {
+          "protocolVersion": 0,
+        },
+      ],
+    },
+    {
+      "name": "evolu_config",
+      "rows": [
+        {
+          "appOwnerEncryptionKey": {
+            "data": [
+              173,
+              165,
+              204,
+              225,
+              74,
+              240,
+              76,
+              99,
+              46,
+              18,
+              104,
+              4,
+              0,
+              136,
+              188,
+              132,
+              99,
+              57,
+              151,
+              4,
+              147,
+              44,
+              59,
+              91,
+              61,
+              162,
+              116,
+              243,
+              186,
+              98,
+              25,
+              4,
+            ],
+            "type": "Buffer",
+          },
+          "appOwnerId": "MdVYFAxShUluuZKVWQfYL",
+          "appOwnerMnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
+          "appOwnerWriteKey": {
+            "data": [
+              111,
+              64,
+              118,
+              108,
+              245,
+              65,
+              176,
+              98,
+              173,
+              247,
+              85,
+              78,
+              30,
+              167,
+              192,
+              203,
+            ],
+            "type": "Buffer",
+          },
+          "clock": "1970-01-01T00:00:00.000Z-0000-7d4369d2888e0950",
+        },
+      ],
+    },
+    {
+      "name": "evolu_history",
+      "rows": [],
+    },
+    {
+      "name": "testTable",
+      "rows": [],
+    },
+    {
+      "name": "evolu_timestamp",
+      "rows": [],
+    },
+  ],
+}
+`;
+
+exports[`Config.initialAppOwner > should handle initialAppOwner with inMemory database 1`] = `
+[
+  {
+    "appOwner": {
+      "encryptionKey": Uint8Array [
+        173,
+        165,
+        204,
+        225,
+        74,
+        240,
+        76,
+        99,
+        46,
+        18,
+        104,
+        4,
+        0,
+        136,
+        188,
+        132,
+        99,
+        57,
+        151,
+        4,
+        147,
+        44,
+        59,
+        91,
+        61,
+        162,
+        116,
+        243,
+        186,
+        98,
+        25,
+        4,
+      ],
+      "id": "MdVYFAxShUluuZKVWQfYL",
+      "mnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
+      "type": "AppOwner",
+      "writeKey": Uint8Array [
+        111,
+        64,
+        118,
+        108,
+        245,
+        65,
+        176,
+        98,
+        173,
+        247,
+        85,
+        78,
+        30,
+        167,
+        192,
+        203,
+      ],
+    },
+    "type": "onInit",
+  },
+]
+`;
+
+exports[`Config.initialAppOwner > should handle initialAppOwner with inMemory database 2`] = `
+{
+  "schema": {
+    "indexes": [
+      {
+        "name": "evolu_history_ownerId_timestamp",
+        "sql": "create index evolu_history_ownerId_timestamp on evolu_history (
+          "ownerId",
+          "timestamp"
+        )",
+      },
+      {
+        "name": "evolu_history_ownerId_table_id_column_timestampDesc",
+        "sql": "create unique index evolu_history_ownerId_table_id_column_timestampDesc on evolu_history (
+          "ownerId",
+          "table",
+          "id",
+          "column",
+          "timestamp" desc
+        )",
+      },
+      {
+        "name": "evolu_timestamp_index",
+        "sql": "create index evolu_timestamp_index on evolu_timestamp (
+        "ownerId",
+        "l",
+        "t",
+        "h1",
+        "h2",
+        "c"
+      )",
+      },
+    ],
+    "tables": [
+      {
+        "columns": [
+          "protocolVersion",
+        ],
+        "name": "evolu_version",
+      },
+      {
+        "columns": [
+          "clock",
+          "appOwnerId",
+          "appOwnerEncryptionKey",
+          "appOwnerWriteKey",
+          "appOwnerMnemonic",
+        ],
+        "name": "evolu_config",
+      },
+      {
+        "columns": [
+          "ownerId",
+          "table",
+          "id",
+          "column",
+          "timestamp",
+          "value",
+        ],
+        "name": "evolu_history",
+      },
+      {
+        "columns": [
+          "id",
+          "name",
+          "createdAt",
+          "updatedAt",
+          "isDeleted",
+        ],
+        "name": "testTable",
+      },
+      {
+        "columns": [
+          "ownerId",
+          "t",
+          "h1",
+          "h2",
+          "c",
+          "l",
+        ],
+        "name": "evolu_timestamp",
+      },
+    ],
+  },
+  "tables": [
+    {
+      "name": "evolu_version",
+      "rows": [
+        {
+          "protocolVersion": 0,
+        },
+      ],
+    },
+    {
+      "name": "evolu_config",
+      "rows": [
+        {
+          "appOwnerEncryptionKey": {
+            "data": [
+              173,
+              165,
+              204,
+              225,
+              74,
+              240,
+              76,
+              99,
+              46,
+              18,
+              104,
+              4,
+              0,
+              136,
+              188,
+              132,
+              99,
+              57,
+              151,
+              4,
+              147,
+              44,
+              59,
+              91,
+              61,
+              162,
+              116,
+              243,
+              186,
+              98,
+              25,
+              4,
+            ],
+            "type": "Buffer",
+          },
+          "appOwnerId": "MdVYFAxShUluuZKVWQfYL",
+          "appOwnerMnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
+          "appOwnerWriteKey": {
+            "data": [
+              111,
+              64,
+              118,
+              108,
+              245,
+              65,
+              176,
+              98,
+              173,
+              247,
+              85,
+              78,
+              30,
+              167,
+              192,
+              203,
+            ],
+            "type": "Buffer",
+          },
+          "clock": "1970-01-01T00:00:00.000Z-0000-cfd205be392f6cb0",
+        },
+      ],
+    },
+    {
+      "name": "evolu_history",
+      "rows": [],
+    },
+    {
+      "name": "testTable",
+      "rows": [],
+    },
+    {
+      "name": "evolu_timestamp",
+      "rows": [],
+    },
+  ],
+}
+`;
+
+exports[`Config.initialAppOwner > should persist initialAppOwner data in SQLite database 1`] = `
+{
+  "schema": {
+    "indexes": [
+      {
+        "name": "evolu_history_ownerId_timestamp",
+        "sql": "create index evolu_history_ownerId_timestamp on evolu_history (
+          "ownerId",
+          "timestamp"
+        )",
+      },
+      {
+        "name": "evolu_history_ownerId_table_id_column_timestampDesc",
+        "sql": "create unique index evolu_history_ownerId_table_id_column_timestampDesc on evolu_history (
+          "ownerId",
+          "table",
+          "id",
+          "column",
+          "timestamp" desc
+        )",
+      },
+      {
+        "name": "evolu_timestamp_index",
+        "sql": "create index evolu_timestamp_index on evolu_timestamp (
+        "ownerId",
+        "l",
+        "t",
+        "h1",
+        "h2",
+        "c"
+      )",
+      },
+    ],
+    "tables": [
+      {
+        "columns": [
+          "protocolVersion",
+        ],
+        "name": "evolu_version",
+      },
+      {
+        "columns": [
+          "clock",
+          "appOwnerId",
+          "appOwnerEncryptionKey",
+          "appOwnerWriteKey",
+          "appOwnerMnemonic",
+        ],
+        "name": "evolu_config",
+      },
+      {
+        "columns": [
+          "ownerId",
+          "table",
+          "id",
+          "column",
+          "timestamp",
+          "value",
+        ],
+        "name": "evolu_history",
+      },
+      {
+        "columns": [
+          "id",
+          "name",
+          "createdAt",
+          "updatedAt",
+          "isDeleted",
+        ],
+        "name": "testTable",
+      },
+      {
+        "columns": [
+          "ownerId",
+          "t",
+          "h1",
+          "h2",
+          "c",
+          "l",
+        ],
+        "name": "evolu_timestamp",
+      },
+    ],
+  },
+  "tables": [
+    {
+      "name": "evolu_version",
+      "rows": [
+        {
+          "protocolVersion": 0,
+        },
+      ],
+    },
+    {
+      "name": "evolu_config",
+      "rows": [
+        {
+          "appOwnerEncryptionKey": {
+            "data": [
+              173,
+              165,
+              204,
+              225,
+              74,
+              240,
+              76,
+              99,
+              46,
+              18,
+              104,
+              4,
+              0,
+              136,
+              188,
+              132,
+              99,
+              57,
+              151,
+              4,
+              147,
+              44,
+              59,
+              91,
+              61,
+              162,
+              116,
+              243,
+              186,
+              98,
+              25,
+              4,
+            ],
+            "type": "Buffer",
+          },
+          "appOwnerId": "MdVYFAxShUluuZKVWQfYL",
+          "appOwnerMnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
+          "appOwnerWriteKey": {
+            "data": [
+              111,
+              64,
+              118,
+              108,
+              245,
+              65,
+              176,
+              98,
+              173,
+              247,
+              85,
+              78,
+              30,
+              167,
+              192,
+              203,
+            ],
+            "type": "Buffer",
+          },
+          "clock": "1970-01-01T00:00:00.000Z-0000-c684fa1390fc35af",
+        },
+      ],
+    },
+    {
+      "name": "evolu_history",
+      "rows": [],
+    },
+    {
+      "name": "testTable",
+      "rows": [],
+    },
+    {
+      "name": "evolu_timestamp",
+      "rows": [],
+    },
+  ],
+}
+`;
+
+exports[`Config.initialAppOwner > should use different initialAppOwner for different instances 1`] = `
+[
+  {
+    "appOwner": {
+      "encryptionKey": Uint8Array [
+        173,
+        165,
+        204,
+        225,
+        74,
+        240,
+        76,
+        99,
+        46,
+        18,
+        104,
+        4,
+        0,
+        136,
+        188,
+        132,
+        99,
+        57,
+        151,
+        4,
+        147,
+        44,
+        59,
+        91,
+        61,
+        162,
+        116,
+        243,
+        186,
+        98,
+        25,
+        4,
+      ],
+      "id": "MdVYFAxShUluuZKVWQfYL",
+      "mnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
+      "type": "AppOwner",
+      "writeKey": Uint8Array [
+        111,
+        64,
+        118,
+        108,
+        245,
+        65,
+        176,
+        98,
+        173,
+        247,
+        85,
+        78,
+        30,
+        167,
+        192,
+        203,
+      ],
+    },
+    "type": "onInit",
+  },
+]
+`;
+
+exports[`Config.initialAppOwner > should use different initialAppOwner for different instances 2`] = `
+[
+  {
+    "appOwner": {
+      "encryptionKey": Uint8Array [
+        219,
+        84,
+        120,
+        153,
+        76,
+        76,
+        174,
+        159,
+        35,
+        75,
+        129,
+        170,
+        189,
+        41,
+        212,
+        139,
+        68,
+        2,
+        155,
+        186,
+        179,
+        168,
+        77,
+        162,
+        255,
+        36,
+        27,
+        169,
+        108,
+        198,
+        253,
+        140,
+      ],
+      "id": "NEuBQRHbNGXYNBbkEdLHe",
+      "mnemonic": "borrow movie sniff dismiss only speak ethics material judge machine return snack",
+      "type": "AppOwner",
+      "writeKey": Uint8Array [
+        251,
+        111,
+        137,
+        162,
+        87,
+        132,
+        214,
+        168,
+        143,
+        63,
+        69,
+        3,
+        44,
+        206,
+        182,
+        122,
+      ],
+    },
+    "type": "onInit",
+  },
+]
+`;
+
+exports[`Config.initialAppOwner > should use different initialAppOwner for different instances 3`] = `
+{
+  "schema": {
+    "indexes": [
+      {
+        "name": "evolu_history_ownerId_timestamp",
+        "sql": "create index evolu_history_ownerId_timestamp on evolu_history (
+          "ownerId",
+          "timestamp"
+        )",
+      },
+      {
+        "name": "evolu_history_ownerId_table_id_column_timestampDesc",
+        "sql": "create unique index evolu_history_ownerId_table_id_column_timestampDesc on evolu_history (
+          "ownerId",
+          "table",
+          "id",
+          "column",
+          "timestamp" desc
+        )",
+      },
+      {
+        "name": "evolu_timestamp_index",
+        "sql": "create index evolu_timestamp_index on evolu_timestamp (
+        "ownerId",
+        "l",
+        "t",
+        "h1",
+        "h2",
+        "c"
+      )",
+      },
+    ],
+    "tables": [
+      {
+        "columns": [
+          "protocolVersion",
+        ],
+        "name": "evolu_version",
+      },
+      {
+        "columns": [
+          "clock",
+          "appOwnerId",
+          "appOwnerEncryptionKey",
+          "appOwnerWriteKey",
+          "appOwnerMnemonic",
+        ],
+        "name": "evolu_config",
+      },
+      {
+        "columns": [
+          "ownerId",
+          "table",
+          "id",
+          "column",
+          "timestamp",
+          "value",
+        ],
+        "name": "evolu_history",
+      },
+      {
+        "columns": [
+          "id",
+          "name",
+          "createdAt",
+          "updatedAt",
+          "isDeleted",
+        ],
+        "name": "testTable",
+      },
+      {
+        "columns": [
+          "ownerId",
+          "t",
+          "h1",
+          "h2",
+          "c",
+          "l",
+        ],
+        "name": "evolu_timestamp",
+      },
+    ],
+  },
+  "tables": [
+    {
+      "name": "evolu_version",
+      "rows": [
+        {
+          "protocolVersion": 0,
+        },
+      ],
+    },
+    {
+      "name": "evolu_config",
+      "rows": [
+        {
+          "appOwnerEncryptionKey": {
+            "data": [
+              173,
+              165,
+              204,
+              225,
+              74,
+              240,
+              76,
+              99,
+              46,
+              18,
+              104,
+              4,
+              0,
+              136,
+              188,
+              132,
+              99,
+              57,
+              151,
+              4,
+              147,
+              44,
+              59,
+              91,
+              61,
+              162,
+              116,
+              243,
+              186,
+              98,
+              25,
+              4,
+            ],
+            "type": "Buffer",
+          },
+          "appOwnerId": "MdVYFAxShUluuZKVWQfYL",
+          "appOwnerMnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
+          "appOwnerWriteKey": {
+            "data": [
+              111,
+              64,
+              118,
+              108,
+              245,
+              65,
+              176,
+              98,
+              173,
+              247,
+              85,
+              78,
+              30,
+              167,
+              192,
+              203,
+            ],
+            "type": "Buffer",
+          },
+          "clock": "1970-01-01T00:00:00.000Z-0000-ab805fbfb70df621",
+        },
+      ],
+    },
+    {
+      "name": "evolu_history",
+      "rows": [],
+    },
+    {
+      "name": "testTable",
+      "rows": [],
+    },
+    {
+      "name": "evolu_timestamp",
+      "rows": [],
+    },
+  ],
+}
+`;
+
+exports[`Config.initialAppOwner > should use different initialAppOwner for different instances 4`] = `
+{
+  "schema": {
+    "indexes": [
+      {
+        "name": "evolu_history_ownerId_timestamp",
+        "sql": "create index evolu_history_ownerId_timestamp on evolu_history (
+          "ownerId",
+          "timestamp"
+        )",
+      },
+      {
+        "name": "evolu_history_ownerId_table_id_column_timestampDesc",
+        "sql": "create unique index evolu_history_ownerId_table_id_column_timestampDesc on evolu_history (
+          "ownerId",
+          "table",
+          "id",
+          "column",
+          "timestamp" desc
+        )",
+      },
+      {
+        "name": "evolu_timestamp_index",
+        "sql": "create index evolu_timestamp_index on evolu_timestamp (
+        "ownerId",
+        "l",
+        "t",
+        "h1",
+        "h2",
+        "c"
+      )",
+      },
+    ],
+    "tables": [
+      {
+        "columns": [
+          "protocolVersion",
+        ],
+        "name": "evolu_version",
+      },
+      {
+        "columns": [
+          "clock",
+          "appOwnerId",
+          "appOwnerEncryptionKey",
+          "appOwnerWriteKey",
+          "appOwnerMnemonic",
+        ],
+        "name": "evolu_config",
+      },
+      {
+        "columns": [
+          "ownerId",
+          "table",
+          "id",
+          "column",
+          "timestamp",
+          "value",
+        ],
+        "name": "evolu_history",
+      },
+      {
+        "columns": [
+          "id",
+          "name",
+          "createdAt",
+          "updatedAt",
+          "isDeleted",
+        ],
+        "name": "testTable",
+      },
+      {
+        "columns": [
+          "ownerId",
+          "t",
+          "h1",
+          "h2",
+          "c",
+          "l",
+        ],
+        "name": "evolu_timestamp",
+      },
+    ],
+  },
+  "tables": [
+    {
+      "name": "evolu_version",
+      "rows": [
+        {
+          "protocolVersion": 0,
+        },
+      ],
+    },
+    {
+      "name": "evolu_config",
+      "rows": [
+        {
+          "appOwnerEncryptionKey": {
+            "data": [
+              219,
+              84,
+              120,
+              153,
+              76,
+              76,
+              174,
+              159,
+              35,
+              75,
+              129,
+              170,
+              189,
+              41,
+              212,
+              139,
+              68,
+              2,
+              155,
+              186,
+              179,
+              168,
+              77,
+              162,
+              255,
+              36,
+              27,
+              169,
+              108,
+              198,
+              253,
+              140,
+            ],
+            "type": "Buffer",
+          },
+          "appOwnerId": "NEuBQRHbNGXYNBbkEdLHe",
+          "appOwnerMnemonic": "borrow movie sniff dismiss only speak ethics material judge machine return snack",
+          "appOwnerWriteKey": {
+            "data": [
+              251,
+              111,
+              137,
+              162,
+              87,
+              132,
+              214,
+              168,
+              143,
+              63,
+              69,
+              3,
+              44,
+              206,
+              182,
+              122,
+            ],
+            "type": "Buffer",
+          },
+          "clock": "1970-01-01T00:00:00.000Z-0000-d43f1dc2452cde0b",
+        },
+      ],
+    },
+    {
+      "name": "evolu_history",
+      "rows": [],
+    },
+    {
+      "name": "testTable",
+      "rows": [],
+    },
+    {
+      "name": "evolu_timestamp",
+      "rows": [],
+    },
+  ],
+}
+`;
+
+exports[`Config.initialAppOwner > should use provided initialAppOwner 1`] = `
+[
+  {
+    "appOwner": {
+      "encryptionKey": Uint8Array [
+        173,
+        165,
+        204,
+        225,
+        74,
+        240,
+        76,
+        99,
+        46,
+        18,
+        104,
+        4,
+        0,
+        136,
+        188,
+        132,
+        99,
+        57,
+        151,
+        4,
+        147,
+        44,
+        59,
+        91,
+        61,
+        162,
+        116,
+        243,
+        186,
+        98,
+        25,
+        4,
+      ],
+      "id": "MdVYFAxShUluuZKVWQfYL",
+      "mnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
+      "type": "AppOwner",
+      "writeKey": Uint8Array [
+        111,
+        64,
+        118,
+        108,
+        245,
+        65,
+        176,
+        98,
+        173,
+        247,
+        85,
+        78,
+        30,
+        167,
+        192,
+        203,
+      ],
+    },
+    "type": "onInit",
+  },
+]
+`;
+
+exports[`Config.initialAppOwner > should use provided initialAppOwner 2`] = `
+{
+  "schema": {
+    "indexes": [
+      {
+        "name": "evolu_history_ownerId_timestamp",
+        "sql": "create index evolu_history_ownerId_timestamp on evolu_history (
+          "ownerId",
+          "timestamp"
+        )",
+      },
+      {
+        "name": "evolu_history_ownerId_table_id_column_timestampDesc",
+        "sql": "create unique index evolu_history_ownerId_table_id_column_timestampDesc on evolu_history (
+          "ownerId",
+          "table",
+          "id",
+          "column",
+          "timestamp" desc
+        )",
+      },
+      {
+        "name": "evolu_timestamp_index",
+        "sql": "create index evolu_timestamp_index on evolu_timestamp (
+        "ownerId",
+        "l",
+        "t",
+        "h1",
+        "h2",
+        "c"
+      )",
+      },
+    ],
+    "tables": [
+      {
+        "columns": [
+          "protocolVersion",
+        ],
+        "name": "evolu_version",
+      },
+      {
+        "columns": [
+          "clock",
+          "appOwnerId",
+          "appOwnerEncryptionKey",
+          "appOwnerWriteKey",
+          "appOwnerMnemonic",
+        ],
+        "name": "evolu_config",
+      },
+      {
+        "columns": [
+          "ownerId",
+          "table",
+          "id",
+          "column",
+          "timestamp",
+          "value",
+        ],
+        "name": "evolu_history",
+      },
+      {
+        "columns": [
+          "id",
+          "name",
+          "createdAt",
+          "updatedAt",
+          "isDeleted",
+        ],
+        "name": "testTable",
+      },
+      {
+        "columns": [
+          "ownerId",
+          "t",
+          "h1",
+          "h2",
+          "c",
+          "l",
+        ],
+        "name": "evolu_timestamp",
+      },
+    ],
+  },
+  "tables": [
+    {
+      "name": "evolu_version",
+      "rows": [
+        {
+          "protocolVersion": 0,
+        },
+      ],
+    },
+    {
+      "name": "evolu_config",
+      "rows": [
+        {
+          "appOwnerEncryptionKey": {
+            "data": [
+              173,
+              165,
+              204,
+              225,
+              74,
+              240,
+              76,
+              99,
+              46,
+              18,
+              104,
+              4,
+              0,
+              136,
+              188,
+              132,
+              99,
+              57,
+              151,
+              4,
+              147,
+              44,
+              59,
+              91,
+              61,
+              162,
+              116,
+              243,
+              186,
+              98,
+              25,
+              4,
+            ],
+            "type": "Buffer",
+          },
+          "appOwnerId": "MdVYFAxShUluuZKVWQfYL",
+          "appOwnerMnemonic": "knee easy fork attitude drink gloom head latin spider grab spy reason",
+          "appOwnerWriteKey": {
+            "data": [
+              111,
+              64,
+              118,
+              108,
+              245,
+              65,
+              176,
+              98,
+              173,
+              247,
+              85,
+              78,
+              30,
+              167,
+              192,
+              203,
+            ],
+            "type": "Buffer",
+          },
+          "clock": "1970-01-01T00:00:00.000Z-0000-7d4369d2888e0950",
+        },
+      ],
+    },
+    {
+      "name": "evolu_history",
+      "rows": [],
+    },
+    {
+      "name": "testTable",
+      "rows": [],
+    },
+    {
+      "name": "evolu_timestamp",
+      "rows": [],
+    },
+  ],
+}
+`;

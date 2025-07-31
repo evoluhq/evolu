@@ -21,6 +21,7 @@ import {
   Uint8Array,
 } from "./Type.js";
 import { Brand } from "./Types.js";
+import { assert } from "./Assert.js";
 
 /** `Uint8Array` created by {@link createRandomBytes}. */
 export type RandomBytes = Uint8Array & Brand<"RandomBytes">;
@@ -58,6 +59,11 @@ export const createSlip21 = (
   seed: MnemonicSeed,
   path: ReadonlyArray<string>,
 ): Uint8Array => {
+  assert(
+    seed.length >= 16 && seed.length <= 64,
+    `Unusual SLIP-0021 seed length: ${seed.length} bytes`,
+  );
+
   let m = hmac(sha512, "Symmetric key seed", seed);
   for (const component of path) {
     const p = new TextEncoder().encode(component);
@@ -99,9 +105,6 @@ export const createSlip21Id = (
 /** The encryption key for {@link SymmetricCrypto}. */
 export const EncryptionKey = brand("EncryptionKey", length(32)(Uint8Array));
 export type EncryptionKey = typeof EncryptionKey.Type;
-
-export const createEncryptionKey = (seed: MnemonicSeed): EncryptionKey =>
-  createSlip21(seed, ["Evolu", "Encryption Key"]) as EncryptionKey;
 
 /** Symmetric cryptography. */
 export interface SymmetricCrypto {
@@ -185,7 +188,6 @@ export const padmePaddedLength = (length: NonNegativeInt): NonNegativeInt => {
  * Returns the PADMÉ padding length for a given input length. Uses
  * {@link padmePaddedLength}.
  */
-
 export const padmePaddingLength = (length: NonNegativeInt): NonNegativeInt => {
   return (padmePaddedLength(length) - length) as NonNegativeInt;
 };
