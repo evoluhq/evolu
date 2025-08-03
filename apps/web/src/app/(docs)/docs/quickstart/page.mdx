@@ -143,9 +143,9 @@ const { insert, update } = useEvolu();
 ```ts {{ title: 'React Native', language: 'tsx' }}
 import { createEvolu, getOrThrow, SimpleName } from "@evolu/common";
 import { createUseEvolu, EvoluProvider } from "@evolu/react";
-import { evoluSqliteDeps } from "@evolu/react-native/op-sqlite";
+import { evoluReactNativeDeps } from "@evolu/react-native/op-sqlite";
 
-const evolu = createEvolu(evoluSqliteDeps)(Schema, {
+const evolu = createEvolu(evoluReactNativeDeps)(Schema, {
 	name: getOrThrow(SimpleName.from("your-app-name")),
 	syncUrl: "wss://your-sync-url", // optional, defaults to wss://free.evoluhq.com
 });
@@ -165,9 +165,9 @@ const { insert, update } = useEvolu();
 ```ts {{ title: 'Expo', language: 'tsx' }}
 import { createEvolu, getOrThrow, SimpleName } from "@evolu/common";
 import { createUseEvolu, EvoluProvider } from "@evolu/react";
-import { evoluSqliteDeps } from "@evolu/react-native/expo-sqlite";
+import { evoluReactNativeDeps } from "@evolu/react-native/expo-sqlite";
 
-const evolu = createEvolu(evoluSqliteDeps)(Schema, {
+const evolu = createEvolu(evoluReactNativeDeps)(Schema, {
 	name: getOrThrow(SimpleName.from("your-app-name")),
 	syncUrl: "wss://your-sync-url", // optional, defaults to wss://free.evoluhq.com
 });
