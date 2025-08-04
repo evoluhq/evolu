@@ -24,6 +24,7 @@
     "examples:react-vite-pwa:dev": "turbo --filter @example/react-vite-pwa dev",
     "examples:react-electron:dev": "turbo --filter @example/react-electron dev",
     "examples:svelte-vite-pwa:dev": "turbo --filter @example/svelte-vite-pwa dev",
+    "examples:vue-vite-pwa:dev": "turbo --filter @example/vue-vite-pwa dev",
     "publish:local": "tsx ./scripts/publish-local.ts"
   },
   "devDependencies": {
