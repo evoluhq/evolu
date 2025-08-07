@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "build": "tsc && vite build",
-    "clean": "shx rm -rf node_modules dist .vite",
+    "clean": "shx rm -rf node_modules dist .vite .turbo dev-dist",
     "dev": "vite",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "generate-pwa-assets": "pwa-assets-generator"
   },
   "dependencies": {
     "@evolu/common": "workspace:*",
@@ -29,8 +30,6 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.3.0",
-    "sharp": "^0.34.3",
-    "sharp-ico": "0.1.5",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.39.0",
     "vite": "^7.1.0",

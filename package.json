@@ -10,7 +10,7 @@
     "start": "turbo start",
     "lint": "eslint --cache",
     "lint-monorepo": "pnpm dlx sherif@latest",
-    "clean": "turbo clean && shx rm -rf node_modules pnpm-lock.yaml .turbo .eslintcache",
+    "clean": "turbo clean && shx rm -rf node_modules pnpm-lock.yaml .turbo .eslintcache out",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,md,mdx}\"",
     "version": "changeset version",
     "release": "pnpm run build && changeset publish",

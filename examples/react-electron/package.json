@@ -5,7 +5,7 @@
   "main": ".vite/build/main.js",
   "scripts": {
     "build": "electron-forge make",
-    "clean": "shx rm -rf node_modules .vite out",
+    "clean": "shx rm -rf node_modules .vite out .turbo .webpack",
     "dev": "electron-forge start",
     "lint": "eslint --ext .ts,.tsx .",
     "package": "electron-forge package",
