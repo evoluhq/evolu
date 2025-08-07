@@ -151,7 +151,9 @@ function CodePanel({
   label?: string;
   code?: string;
 }) {
-  const child = Children.only(children);
+  // Handle cases where children might be multiple nodes, text, or empty
+  const childrenArray = Children.toArray(children);
+  const child = childrenArray.length === 1 ? childrenArray[0] : null;
 
   if (isValidElement(child)) {
     // @ts-expect-error TODO: Fix this somehow
@@ -163,6 +165,43 @@ function CodePanel({
     // @ts-expect-error TODO: Fix this somehow
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     code = child.props.code ?? code;
+  }
+
+  // If no code prop is provided, try to extract it from children
+  if (!code) {
+    if (typeof children === "string") {
+      code = children;
+    } else if (
+      childrenArray.length === 1 &&
+      typeof childrenArray[0] === "string"
+    ) {
+      code = childrenArray[0];
+    } else {
+      // Try to extract text content from children
+      const extractTextFromChildren = (
+        nodes: Array<React.ReactNode>,
+      ): string => {
+        return nodes
+          .map((node) => {
+            if (typeof node === "string") return node;
+            if (typeof node === "number") return String(node);
+            if (
+              isValidElement(node) &&
+              node.props &&
+              typeof node.props === "object" &&
+              "children" in node.props
+            ) {
+              return extractTextFromChildren(
+                Children.toArray(node.props.children as React.ReactNode),
+              );
+            }
+            return "";
+          })
+          .join("");
+      };
+
+      code = extractTextFromChildren(childrenArray);
+    }
   }
 
   if (!code) {
