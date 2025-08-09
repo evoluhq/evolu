@@ -388,7 +388,7 @@ const OwnerActions: FC = () => {
 
   const handleDownloadDatabaseClick = () => {
     void evolu.exportDatabase().then((array) => {
-      const blob = new Blob([array], {
+      const blob = new Blob([array.slice()], {
         type: "application/x-sqlite3",
       });
       const a = document.createElement("a");
