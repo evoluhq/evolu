@@ -742,8 +742,8 @@ importers:
   packages/web:
     dependencies:
       '@sqlite.org/sqlite-wasm':
-        specifier: 3.50.1-build1
-        version: 3.50.1-build1
+        specifier: 3.50.3-build1
+        version: 3.50.3-build1
     devDependencies:
       '@evolu/common':
         specifier: workspace:*
@@ -3090,8 +3090,8 @@ packages:
   '@sinonjs/fake-timers@10.3.0':
     resolution: {integrity: sha512-V4BG07kuYSUkTCSBHG8G8TNhM+F19jXFWnQtzj+we8DrkpSBCee9Z3Ms8yiGer/dlmhe35/Xdgyo3/0rQKg7YA==}
 
-  '@sqlite.org/sqlite-wasm@3.50.1-build1':
-    resolution: {integrity: sha512-yH4M/SHN98NibniIwTVk6rwTJjy7n39l7zwWY3u+qsfZBGTi4lC1uEl2NDvIlkzsFtfCBvHBJJFJ1iuU3UzzEQ==}
+  '@sqlite.org/sqlite-wasm@3.50.3-build1':
+    resolution: {integrity: sha512-NU+I7KJ5kpMZNyZtJ9hOLlhQHJAA3fJhtkE7kf3C0SlGg4ayz6AkqxcaDcR4qOsrz1XP2+yM1yORaLCt55XDQg==}
     hasBin: true
 
   '@surma/rollup-plugin-off-main-thread@2.2.3':
@@ -7816,6 +7816,7 @@ packages:
   source-map@0.8.0-beta.0:
     resolution: {integrity: sha512-2ymg6oRBpebeZi9UUNsgQ89bhx01TcTkmNTGnNO88imTmbSgy4nfujrgVEFKWpMTEGA11EDkTt7mqObTPdigIA==}
     engines: {node: '>= 8'}
+    deprecated: The work that was done in this beta branch won't be included in future versions
 
   sourcemap-codec@1.4.8:
     resolution: {integrity: sha512-9NykojV5Uih4lgo5So5dtw+f0JgJX30KCNI8gwhz2J9A15wD0Ml6tjHKwf6fTSa6fAdVBdZeNOs9eJ71qCk8vA==}
@@ -11857,7 +11858,7 @@ snapshots:
     dependencies:
       '@sinonjs/commons': 3.0.1
 
-  '@sqlite.org/sqlite-wasm@3.50.1-build1': {}
+  '@sqlite.org/sqlite-wasm@3.50.3-build1': {}
 
   '@surma/rollup-plugin-off-main-thread@2.2.3':
     dependencies:
