@@ -20,13 +20,13 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
     "@tailwindcss/postcss": "^4.1.8",
-    "@types/node": "^22.15.31",
-    "@types/react": "^19.1.7",
-    "@types/react-dom": "^19.1.6",
+    "@types/node": "^22.17.1",
+    "@types/react": "^19.1.9",
+    "@types/react-dom": "^19.1.7",
     "eslint": "^9.33.0",
-    "eslint-config-next": "^15.3.3",
+    "eslint-config-next": "^15.4.6",
     "postcss": "^8.5.4",
     "tailwindcss": "^4.1.8",
-    "typescript": "^5.8.3"
+    "typescript": "^5.9.2"
   }
 }

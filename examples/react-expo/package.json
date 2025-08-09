@@ -23,21 +23,21 @@
     "@expo/vector-icons": "^14.1.0",
     "@react-native-picker/picker": "^2.11.0",
     "babel-plugin-module-resolver": "^5.0.2",
-    "expo": "^53.0.11",
+    "expo": "^53.0.20",
     "expo-linking": "^7.1.5",
-    "expo-router": "^5.0.7",
+    "expo-router": "^5.1.4",
     "expo-splash-screen": "~0.30.9",
     "expo-sqlite": "~15.2.12",
     "react": "^19.1.1",
     "react-native": "^0.79.3",
     "react-native-picker-select": "^9.3.1",
-    "react-native-quick-crypto": "^0.7.14",
-    "react-native-safe-area-context": "^5.4.1",
-    "react-native-screens": "^4.11.1"
+    "react-native-quick-crypto": "^0.7.17",
+    "react-native-safe-area-context": "^5.6.0",
+    "react-native-screens": "^4.13.1"
   },
   "devDependencies": {
     "@babel/core": "^7.27.4",
-    "@types/react": "^19.1.7",
-    "typescript": "^5.8.3"
+    "@types/react": "^19.1.9",
+    "typescript": "^5.9.2"
   }
 }

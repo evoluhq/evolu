@@ -39,7 +39,7 @@
     "@evolu/tsconfig": "workspace:*",
     "@evolu/web": "workspace:*",
     "react-dom": "^19.1.1",
-    "typescript": "^5.8.3",
+    "typescript": "^5.9.2",
     "vitest": "^3.2.3"
   },
   "peerDependencies": {
