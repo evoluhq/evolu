@@ -39,7 +39,7 @@
     "@evolu/common": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
     "@types/react-dom": "^19.1.6",
-    "react": "^19.1.0",
+    "react": "^19.1.1",
     "typescript": "^5.8.3",
     "vitest": "^3.2.3"
   },

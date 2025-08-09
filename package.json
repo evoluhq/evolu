@@ -30,7 +30,7 @@
     "@changesets/cli": "^2.29.4",
     "@eslint/js": "^9.28.0",
     "@types/inquirer": "^9.0.8",
-    "eslint": "^9.28.0",
+    "eslint": "^9.33.0",
     "eslint-import-resolver-typescript": "^4.4.3",
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-import-x": "^4.15.1",
@@ -54,12 +54,14 @@
   "packageManager": "pnpm@10.14.0",
   "pnpm": {
     "onlyBuiltDependencies": [
+      "@tailwindcss/oxide",
       "better-sqlite3",
       "electron",
       "electron-winstaller",
       "esbuild",
       "msgpackr-extract",
-      "sharp"
+      "sharp",
+      "unrs-resolver"
     ],
     "peerDependencyRules": {
       "ignoreMissing": [

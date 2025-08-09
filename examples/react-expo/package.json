@@ -28,7 +28,7 @@
     "expo-router": "^5.0.7",
     "expo-splash-screen": "~0.30.9",
     "expo-sqlite": "~15.2.12",
-    "react": "^19.1.0",
+    "react": "^19.1.1",
     "react-native": "^0.79.3",
     "react-native-picker-select": "^9.3.1",
     "react-native-quick-crypto": "^0.7.14",
