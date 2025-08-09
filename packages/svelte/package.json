@@ -48,7 +48,7 @@
   },
   "peerDependencies": {
     "@evolu/common": "^6.0.1-preview.17",
-    "@evolu/web": "^1.0.1-preview.3",
+    "@evolu/web": "^1.0.1-preview.4",
     "svelte": "^5.0.0"
   },
   "publishConfig": {
