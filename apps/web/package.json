@@ -32,8 +32,8 @@
     "flexsearch": "^0.8.205",
     "mdast-util-to-string": "^4.0.0",
     "mdx-annotations": "^0.1.4",
-    "next": "^15.4.6",
     "motion": "^12.23.12",
+    "next": "^15.4.6",
     "next-themes": "^0.4.6",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
@@ -59,7 +59,7 @@
     "@types/react-highlight-words": "^0.20.0",
     "cross-env": "^7.0.3",
     "prettier": "^3.6.2",
-    "sharp": "^0.34.3",
-    "prettier-plugin-tailwindcss": "^0.6.14"
+    "prettier-plugin-tailwindcss": "^0.6.14",
+    "sharp": "^0.34.3"
   }
 }

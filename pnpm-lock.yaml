@@ -39,7 +39,7 @@ importers:
         specifier: ^12.9.1
         version: 12.9.1(@types/node@22.17.1)
       prettier:
-        specifier: ^3.5.3
+        specifier: ^3.6.2
         version: 3.6.2
       prettier-plugin-embed:
         specifier: ^0.5.0
@@ -51,7 +51,7 @@ importers:
         specifier: ^0.13.0
         version: 0.13.0
       tsx:
-        specifier: ^4.19.4
+        specifier: ^4.20.3
         version: 4.20.3
       turbo:
         specifier: ^2.5.5
@@ -671,7 +671,7 @@ importers:
         specifier: ^53.0.20
         version: 53.0.20(@babel/core@7.28.0)(@expo/metro-runtime@5.0.4(react-native@0.79.5(@babel/core@7.28.0)(@types/react@19.1.9)(react@19.1.1)))(react-native@0.79.5(@babel/core@7.28.0)(@types/react@19.1.9)(react@19.1.1))(react@19.1.1)
       expo-sqlite:
-        specifier: ~15.2.12
+        specifier: ~15.2.14
         version: 15.2.14(expo@53.0.20(@babel/core@7.28.0)(@expo/metro-runtime@5.0.4(react-native@0.79.5(@babel/core@7.28.0)(@types/react@19.1.9)(react@19.1.1)))(react-native@0.79.5(@babel/core@7.28.0)(@types/react@19.1.9)(react@19.1.1))(react@19.1.1))(react-native@0.79.5(@babel/core@7.28.0)(@types/react@19.1.9)(react@19.1.1))(react@19.1.1)
       react-native:
         specifier: ^0.79.3
