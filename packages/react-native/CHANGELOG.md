@@ -1,5 +1,15 @@
 # @evolu/react-native
 
+## 12.0.1-preview.4
+
+### Patch Changes
+
+- 2f30dcd: Update deps
+- Updated dependencies [2f30dcd]
+- Updated dependencies [4a82c06]
+  - @evolu/common@6.0.1-preview.18
+  - @evolu/react@9.0.1-preview.4
+
 ## 12.0.1-preview.3
 
 ### Patch Changes
@@ -7,7 +17,6 @@
 - 45c8ca9: Add in-memory database support for testing and temporary data
 
   This change introduces a new `inMemory` configuration option that allows creating SQLite databases in memory instead of persistent storage. In-memory databases exist only in RAM and are completely destroyed when the process ends, making them ideal for:
-
   - Testing scenarios where data persistence isn't needed
   - Temporary data processing
   - Forensically safe handling of sensitive data
@@ -136,7 +145,6 @@
   The great news is that Effect is stable now, so there will be no more releases with deps updates. Let's dance 🪩
 
   New features:
-
   - Multitenancy (we can run more Evolu instances side by side)
   - Initial data (to define fixtures)
   - Logging (you can see what's happening inside Evolu step by step)
@@ -193,7 +201,6 @@
 - aa06cbe: Allow using Kysely `with` and `withRecursive`
 
   And throw on forbidden SQL mutations.
-
   - @evolu/common-react@6.0.0
 
 ## 7.0.0
