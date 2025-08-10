@@ -2,12 +2,8 @@ import { NonEmptyReadonlyArray } from "./Array.js";
 import { assertNonEmptyReadonlyArray } from "./Assert.js";
 import { err, ok, Result } from "./Result.js";
 import { NonNegativeInt, PositiveInt } from "./Type.js";
-import {
-  IntentionalNever,
-  IsBranded,
-  Predicate,
-  WidenLiteral,
-} from "./Types.js";
+import { IntentionalNever, Predicate, WidenLiteral } from "./Types.js";
+import { IsBranded } from "./Brand.js";
 
 export const increment = (n: number): number => n + 1;
 

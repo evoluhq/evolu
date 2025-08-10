@@ -183,7 +183,8 @@ import {
   PositiveInt,
   record,
 } from "../Type.js";
-import { Brand, Predicate } from "../Types.js";
+import { Predicate } from "../Types.js";
+import { Brand } from "../Brand.js";
 import { Owner, OwnerId, WriteKey, writeKeyLength } from "./Owner.js";
 import {
   BinaryTimestamp,

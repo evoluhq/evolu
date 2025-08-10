@@ -11,7 +11,8 @@ import {
   Uint8Array,
   union,
 } from "./Type.js";
-import { Brand, Predicate, IntentionalNever } from "./Types.js";
+import { Predicate, IntentionalNever } from "./Types.js";
+import { Brand } from "./Brand.js";
 
 /**
  * SQLite driver interface. This is the minimal interface that platform-specific

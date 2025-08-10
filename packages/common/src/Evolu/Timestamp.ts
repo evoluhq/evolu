@@ -13,7 +13,7 @@ import {
   regex,
   String,
 } from "../Type.js";
-import { Brand } from "../Types.js";
+import { Brand } from "../Brand.js";
 
 export interface TimestampConfig {
   /**

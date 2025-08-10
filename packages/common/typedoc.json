@@ -14,6 +14,7 @@
     "src/Array.ts",
     "src/Assert.ts",
     "src/BigInt.ts",
+    "src/Brand.ts",
     "src/Buffer.ts",
     "src/Callbacks.ts",
     "src/Console.ts",

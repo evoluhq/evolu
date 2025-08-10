@@ -20,7 +20,7 @@ import {
   NonNegativeInt,
   Uint8Array,
 } from "./Type.js";
-import { Brand } from "./Types.js";
+import { Brand } from "./Brand.js";
 import { assert } from "./Assert.js";
 
 /** `Uint8Array` created by {@link createRandomBytes}. */
