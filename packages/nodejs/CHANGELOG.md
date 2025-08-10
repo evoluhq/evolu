@@ -1,5 +1,14 @@
 # @evolu/nodejs
 
+## 1.0.1-preview.7
+
+### Patch Changes
+
+- 2f30dcd: Update deps
+- Updated dependencies [2f30dcd]
+- Updated dependencies [4a82c06]
+  - @evolu/common@6.0.1-preview.18
+
 ## 1.0.1-preview.6
 
 ### Patch Changes
@@ -29,7 +38,6 @@
 - c86cb14: Add timing-safe comparison for WriteKey validation
 
   ### Security Improvements
-
   - Add `TimingSafeEqual` type and `TimingSafeEqualDep` interface for platform-independent timing-safe comparison
   - Implement Node.js timing-safe comparison using `crypto.timingSafeEqual()`
   - Replace vulnerable `eqArrayNumber` WriteKey comparison with constant-time algorithm to prevent timing attacks
