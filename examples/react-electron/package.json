@@ -16,8 +16,8 @@
     "@evolu/react": "workspace:*",
     "@evolu/react-web": "workspace:*",
     "electron-squirrel-startup": "^1.0.1",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
   },
   "devDependencies": {
     "@electron-forge/cli": "^7.8.3",
@@ -29,22 +29,22 @@
     "@electron-forge/plugin-fuses": "^7.8.3",
     "@electron-forge/plugin-vite": "^7.8.3",
     "@electron/fuses": "^2.0.0",
-    "@eslint/js": "^9.32.0",
-    "@types/react": "^19.1.7",
-    "@types/react-dom": "^19.1.6",
+    "@eslint/js": "^9.33.0",
+    "@types/react": "^19.1.9",
+    "@types/react-dom": "^19.1.7",
     "@typescript-eslint/eslint-plugin": "^8.39.0",
     "@typescript-eslint/parser": "^8.39.0",
-    "@vitejs/plugin-react": "^4.7.0",
+    "@vitejs/plugin-react": "^5.0.0",
     "electron": "^37.2.6",
-    "eslint": "^9.32.0",
+    "eslint": "^9.33.0",
     "eslint-plugin-electron": "^7.0.0",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.3.0",
-    "typescript": "^5.8.3",
+    "typescript": "^5.9.2",
     "typescript-eslint": "^8.39.0",
-    "vite": "^7.1.0"
+    "vite": "^7.1.1"
   },
   "productName": "react-electron"
 }

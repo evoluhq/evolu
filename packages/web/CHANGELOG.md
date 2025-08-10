@@ -1,5 +1,11 @@
 # @evolu/web
 
+## 1.0.1-preview.4
+
+### Patch Changes
+
+- 570d28d: Update @sqlite.org/sqlite-wasm to 3.50.3-build1
+
 ## 1.0.1-preview.3
 
 ### Patch Changes
@@ -7,7 +13,6 @@
 - 45c8ca9: Add in-memory database support for testing and temporary data
 
   This change introduces a new `inMemory` configuration option that allows creating SQLite databases in memory instead of persistent storage. In-memory databases exist only in RAM and are completely destroyed when the process ends, making them ideal for:
-
   - Testing scenarios where data persistence isn't needed
   - Temporary data processing
   - Forensically safe handling of sensitive data
