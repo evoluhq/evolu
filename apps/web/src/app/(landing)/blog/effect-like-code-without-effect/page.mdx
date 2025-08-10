@@ -22,7 +22,7 @@ Writing exact Effect code without Effect is obviously not possible—Effect is a
 
 ## Typed errors
 
-The main reason many people fell in love with fp-ts was its Either type. It’s essentially a typed error. Once you understand it, you want to use it everywhere. Evolu has [Result](/docs/api-reference/common/Result), and it looks like this:
+The main reason many people fell in love with fp-ts was its Either type. It’s essentially a typed error. Once you understand it, you want to use it everywhere. Evolu has [Result](/docs/api-reference/common/Result/type-aliases/Result), and it looks like this:
 
 ```ts
 type Result<T, E> = Ok<T> | Err<E>;
@@ -41,7 +41,7 @@ const ok = <T>(value: T): Ok<T> => ({ ok: true, value });
 const err = <E>(error: E): Err<E> => ({ ok: false, error });
 ```
 
-`Result` works with both sync and async code, comes with a few handy helpers, and that’s it. Learn more in the [Result docs](/docs/api-reference/common/Result).
+`Result` works with both sync and async code, comes with a few handy helpers, and that’s it. Learn more in the [Result docs](/docs/api-reference/common/Result/type-aliases/Result).
 
 ## Dependency injection
 
