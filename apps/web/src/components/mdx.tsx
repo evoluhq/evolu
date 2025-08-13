@@ -12,6 +12,7 @@ import {
 export const a = Link;
 export { Button } from "@/components/Button";
 export { Code as code, CodeGroup, Pre as pre } from "@/components/Code";
+export { ConditionalPlatformAlert } from "@/components/ConditionalPlatformAlert";
 
 export function wrapper({
   children,

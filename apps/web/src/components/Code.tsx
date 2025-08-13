@@ -124,7 +124,7 @@ function CodePanelHeader({
   }
 
   return (
-    <div className="flex h-9 items-center gap-2 border-y border-t-transparent border-b-white/7.5 bg-white/2.5 bg-zinc-900 px-4 dark:border-b-white/5 dark:bg-white/1">
+    <div className="flex h-9 items-center gap-2 border-y border-t-transparent border-b-white/7.5 bg-zinc-900 px-4 dark:border-b-white/5 dark:bg-white/1">
       {tag && (
         <div className="dark flex">
           <Tag variant="small">{tag}</Tag>
@@ -244,11 +244,11 @@ function CodeGroupHeader({
         </h3>
       )}
       {hasTabs && (
-        <TabList className="-mb-px flex gap-4 text-xs font-medium">
+        <TabList className="-mb-px flex gap-4 overflow-x-auto text-xs font-medium [scrollbar-width:none] [-webkit-scrollbar]:hidden">
           {Children.map(children, (child, childIndex) => (
             <Tab
               className={clsx(
-                "border-b py-3 outline-hidden transition",
+                "flex-shrink-0 border-b py-3 whitespace-nowrap outline-hidden transition",
                 childIndex === selectedIndex
                   ? "border-blue-500 text-blue-400"
                   : "border-transparent text-zinc-400 hover:text-zinc-300",
@@ -319,7 +319,7 @@ function usePreventLayoutShift() {
   };
 }
 
-const usePreferredLanguageStore = create<{
+export const usePreferredLanguageStore = create<{
   preferredLanguages: Array<string>;
   addPreferredLanguage: (language: string) => void;
 }>()((set) => ({
