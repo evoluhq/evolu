@@ -1,7 +1,9 @@
 import { type Metadata } from "next";
+import Link from "next/link";
 
 import { Card } from "@/components/Card";
 import { SimpleLayout } from "@/components/SimpleLayout";
+import { RssIcon } from "@/components/icons/RssIcon";
 import { type ArticleWithSlug, getAllArticles } from "@/lib/blog";
 import { formatDate } from "@/lib/formatDate";
 
@@ -47,6 +49,18 @@ export default async function ArticlesIndex(): Promise<React.ReactElement> {
           {articles.map((article) => (
             <Article key={article.slug} article={article} />
           ))}
+        </div>
+      </div>
+      <div className="mt-8 mb-16 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Link
+            href="/blog/rss.xml"
+            className="flex items-center gap-2 text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+            target="_blank"
+          >
+            <RssIcon className="h-4 w-4" />
+            RSS Feed
+          </Link>
         </div>
       </div>
     </SimpleLayout>
