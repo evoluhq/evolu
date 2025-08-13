@@ -1,7 +1,7 @@
 "use client";
 
+import { Announcement, Note, Warn } from "@/components/Alerts";
 import { usePreferredLanguageStore } from "@/components/Code";
-import { Announcement, Note, Warn } from "@/components/mdx";
 
 type AlertType = "warning" | "info" | "announcement";
 
