@@ -6,6 +6,16 @@ export const metadata: Metadata = {
     default:
       "Local-First Platform Designed for Privacy, Ease of Use, and No Vendor Lock-In",
   },
+  alternates: {
+    types: {
+      "application/rss+xml": [
+        {
+          title: "Evolu Blog",
+          url: "https://www.evolu.dev/blog/rss.xml",
+        },
+      ],
+    },
+  },
 };
 
 export default function RootLayout({
