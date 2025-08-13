@@ -2,6 +2,10 @@ import { type ArticleWithSlug, getAllArticles } from "@/lib/blog";
 import RSS from "rss";
 
 function getSiteUrl(request: Request): string {
+  if (process.env.NODE_ENV === "production") {
+    return "https://www.evolu.dev";
+  }
+
   const url = new URL(request.url);
   return `${url.protocol}//${url.host}`;
 }
