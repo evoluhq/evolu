@@ -1,5 +1,4 @@
 import { ArticleLayout } from "@/components/ArticleLayout";
-import Image from "next/image";
 
 export const article = {
   author: "Daniel Steigerwald",
@@ -81,7 +80,7 @@ Removing Effect from Evolu left me in an awkward spot: I suddenly had no idea wh
 I never wanted to become the author of a TypeScript library—I have better things to do—but there was no other option. So I decided to write the smallest possible library that would still be solid. And if I was going to write something, I was going to document and test everything properly. Part of the blame goes to [Nedim Arabacı](https://github.com/needim), who made a new website for Evolu and convinced me that generating docs directly from JSDoc into the site was a good idea. That meant all I had to do was write clear JSDoc comments and tests.
 
 Every time I wrote a piece of the new Evolu code that I thought might be useful to someone else, I wrote it in isolation. And that’s how **Evolu Library** was born.
-It provides typed errors via [Result](/docs/api-reference/common/Result), conventions-based (runtime-free) [dependency injection](/docs/dependency-injection), and [more](/docs/api-reference/common). The new Evolu is like a LEGO[^1].
+It provides typed errors via [Result](/docs/api-reference/common/Result/type-aliases/Result), conventions-based (runtime-free) [dependency injection](/docs/dependency-injection), and [more](/docs/api-reference/common). The new Evolu is like a LEGO[^1].
 
 **Evolu Library is how I want to write TypeScript**: straightforward patterns, laser-focused functions, no ambiguities, consistent naming. It’s functional—but only as much as necessary. There’s almost nothing to learn. It’s idiomatic TypeScript. After years spent with functional programming, I’ve come to the conclusion that I prefer imperative code over pipes and sophisticated one-liners. It’s easier to read, reason about, and maintain.
 

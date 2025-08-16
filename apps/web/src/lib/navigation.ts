@@ -14,7 +14,10 @@ export const navigation: Array<NavGroup> = [
   {
     title: "Library",
     links: [
-      { title: "Result", href: "/docs/api-reference/common/Result" },
+      {
+        title: "Result",
+        href: "/docs/api-reference/common/Result/type-aliases/Result",
+      },
       { title: "Type", href: "/docs/api-reference/common/Type" },
       { title: "Dependency injection", href: "/docs/dependency-injection" },
       { title: "Conventions", href: "/docs/conventions" },

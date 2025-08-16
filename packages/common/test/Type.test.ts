@@ -117,7 +117,7 @@ import {
   UnionError,
   Unknown,
 } from "../src/Type.js";
-import { Brand } from "../src/Types.js";
+import { Brand } from "../src/Brand.js";
 import { testNanoIdLib } from "./_deps.js";
 
 test("Base Types", () => {

@@ -1,5 +1,14 @@
 # @evolu/react
 
+## 9.0.1-preview.4
+
+### Patch Changes
+
+- 2f30dcd: Update deps
+- Updated dependencies [2f30dcd]
+- Updated dependencies [4a82c06]
+  - @evolu/common@6.0.1-preview.18
+
 ## 9.0.1-preview.3
 
 ### Patch Changes
@@ -107,7 +116,6 @@
   The great news is that Effect is stable now, so there will be no more releases with deps updates. Let's dance 🪩
 
   New features:
-
   - Multitenancy (we can run more Evolu instances side by side)
   - Initial data (to define fixtures)
   - Logging (you can see what's happening inside Evolu step by step)

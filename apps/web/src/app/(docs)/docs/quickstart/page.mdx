@@ -48,6 +48,19 @@ npm install @evolu/common@preview @evolu/web@preview
 
 </CodeGroup>
 
+<ConditionalPlatformAlert platform={["Expo"]} type="warning">
+  **Expo Go is not supported.** You must use a [development
+  build](https://docs.expo.dev/develop/development-builds/introduction/) or
+  create a production build to use Evolu with Expo, as it requires native
+  dependencies.
+</ConditionalPlatformAlert>
+
+<ConditionalPlatformAlert platform={["Expo", "React Native"]} type="info">
+  Make sure to follow the [react-native-quick-crypto setup
+  instructions](https://github.com/margelo/react-native-quick-crypto#installation)
+  for proper native dependency configuration.
+</ConditionalPlatformAlert>
+
 ## Define your Schema
 
 First, define your database schema—tables, columns, and types.
@@ -143,9 +156,9 @@ const { insert, update } = useEvolu();
 ```ts {{ title: 'React Native', language: 'tsx' }}
 import { createEvolu, getOrThrow, SimpleName } from "@evolu/common";
 import { createUseEvolu, EvoluProvider } from "@evolu/react";
-import { evoluSqliteDeps } from "@evolu/react-native/op-sqlite";
+import { evoluReactNativeDeps } from "@evolu/react-native/op-sqlite";
 
-const evolu = createEvolu(evoluSqliteDeps)(Schema, {
+const evolu = createEvolu(evoluReactNativeDeps)(Schema, {
 	name: getOrThrow(SimpleName.from("your-app-name")),
 	transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
@@ -165,9 +178,9 @@ const { insert, update } = useEvolu();
 ```ts {{ title: 'Expo', language: 'tsx' }}
 import { createEvolu, getOrThrow, SimpleName } from "@evolu/common";
 import { createUseEvolu, EvoluProvider } from "@evolu/react";
-import { evoluSqliteDeps } from "@evolu/react-native/expo-sqlite";
+import { evoluReactNativeDeps } from "@evolu/react-native/expo-sqlite";
 
-const evolu = createEvolu(evoluSqliteDeps)(Schema, {
+const evolu = createEvolu(evoluReactNativeDeps)(Schema, {
 	name: getOrThrow(SimpleName.from("your-app-name")),
 	transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });

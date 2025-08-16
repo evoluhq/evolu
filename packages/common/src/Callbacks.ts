@@ -1,5 +1,5 @@
 import { NanoIdLibDep } from "./NanoId.js";
-import { Brand } from "./Types.js";
+import { Brand } from "./Brand.js";
 
 /**
  * Manages one-time callback functions.

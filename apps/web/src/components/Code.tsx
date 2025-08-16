@@ -124,7 +124,7 @@ function CodePanelHeader({
   }
 
   return (
-    <div className="flex h-9 items-center gap-2 border-y border-t-transparent border-b-white/7.5 bg-white/2.5 bg-zinc-900 px-4 dark:border-b-white/5 dark:bg-white/1">
+    <div className="flex h-9 items-center gap-2 border-y border-t-transparent border-b-white/7.5 bg-zinc-900 px-4 dark:border-b-white/5 dark:bg-white/1">
       {tag && (
         <div className="dark flex">
           <Tag variant="small">{tag}</Tag>
@@ -151,7 +151,9 @@ function CodePanel({
   label?: string;
   code?: string;
 }) {
-  const child = Children.only(children);
+  // Handle cases where children might be multiple nodes, text, or empty
+  const childrenArray = Children.toArray(children);
+  const child = childrenArray.length === 1 ? childrenArray[0] : null;
 
   if (isValidElement(child)) {
     // @ts-expect-error TODO: Fix this somehow
@@ -163,6 +165,43 @@ function CodePanel({
     // @ts-expect-error TODO: Fix this somehow
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     code = child.props.code ?? code;
+  }
+
+  // If no code prop is provided, try to extract it from children
+  if (!code) {
+    if (typeof children === "string") {
+      code = children;
+    } else if (
+      childrenArray.length === 1 &&
+      typeof childrenArray[0] === "string"
+    ) {
+      code = childrenArray[0];
+    } else {
+      // Try to extract text content from children
+      const extractTextFromChildren = (
+        nodes: Array<React.ReactNode>,
+      ): string => {
+        return nodes
+          .map((node) => {
+            if (typeof node === "string") return node;
+            if (typeof node === "number") return String(node);
+            if (
+              isValidElement(node) &&
+              node.props &&
+              typeof node.props === "object" &&
+              "children" in node.props
+            ) {
+              return extractTextFromChildren(
+                Children.toArray(node.props.children as React.ReactNode),
+              );
+            }
+            return "";
+          })
+          .join("");
+      };
+
+      code = extractTextFromChildren(childrenArray);
+    }
   }
 
   if (!code) {
@@ -205,11 +244,11 @@ function CodeGroupHeader({
         </h3>
       )}
       {hasTabs && (
-        <TabList className="-mb-px flex gap-4 text-xs font-medium">
+        <TabList className="-mb-px flex gap-4 overflow-x-auto text-xs font-medium [scrollbar-width:none] [-webkit-scrollbar]:hidden">
           {Children.map(children, (child, childIndex) => (
             <Tab
               className={clsx(
-                "border-b py-3 outline-hidden transition",
+                "flex-shrink-0 border-b py-3 whitespace-nowrap outline-hidden transition",
                 childIndex === selectedIndex
                   ? "border-blue-500 text-blue-400"
                   : "border-transparent text-zinc-400 hover:text-zinc-300",
@@ -280,7 +319,7 @@ function usePreventLayoutShift() {
   };
 }
 
-const usePreferredLanguageStore = create<{
+export const usePreferredLanguageStore = create<{
   preferredLanguages: Array<string>;
   addPreferredLanguage: (language: string) => void;
 }>()((set) => ({

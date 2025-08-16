@@ -22,8 +22,28 @@ test("err", () => {
 test("getOrThrow", () => {
   expect(getOrThrow(ok(42))).toBe(42);
   expect(() => getOrThrow(err("error"))).toThrowErrorMatchingInlineSnapshot(
-    `[Error: Result error: "error"]`,
+    `[Error: getOrThrow failed]`,
   );
+
+  // Inspect cause for a primitive error value
+  let thrown: unknown;
+  try {
+    getOrThrow(err("error"));
+  } catch (e) {
+    thrown = e;
+  }
+  const error1 = thrown as Error & { cause?: unknown };
+  expect(error1.cause).toBe("error");
+
+  // Inspect cause for an Error instance
+  const original = new TypeError("boom");
+  try {
+    getOrThrow(err(original));
+  } catch (e) {
+    thrown = e;
+  }
+  const error2 = thrown as Error & { cause?: unknown };
+  expect(error2.cause).toBe(original);
 });
 
 test("trySync", () => {

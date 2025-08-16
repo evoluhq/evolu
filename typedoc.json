@@ -24,6 +24,7 @@
   "typeDeclarationFormat": "table",
   "excludeScopesInPaths": true,
   "outputFileStrategy": "members",
+  "formatWithPrettier": true,
   "cleanOutputDir": true,
   "headings": {
     "readme": false,

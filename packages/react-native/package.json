@@ -1,6 +1,6 @@
 {
   "name": "@evolu/react-native",
-  "version": "12.0.1-preview.3",
+  "version": "12.0.1-preview.4",
   "description": "Evolu for React Native and Expo",
   "keywords": [
     "evolu",
@@ -57,16 +57,16 @@
     "@evolu/common": "workspace:*",
     "@evolu/react": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
-    "@op-engineering/op-sqlite": "^14.0.3",
-    "expo": "^53.0.11",
-    "expo-sqlite": "~15.2.12",
+    "@op-engineering/op-sqlite": "^14.1.4",
+    "expo": "^53.0.20",
+    "expo-sqlite": "~15.2.14",
     "react-native": "^0.79.3",
-    "typescript": "^5.8.3",
+    "typescript": "^5.9.2",
     "vitest": "^3.2.3"
   },
   "peerDependencies": {
-    "@evolu/common": "^6.0.1-preview.17",
-    "@evolu/react": "^9.0.1-preview.3",
+    "@evolu/common": "^6.0.1-preview.18",
+    "@evolu/react": "^9.0.1-preview.4",
     "@op-engineering/op-sqlite": ">=12",
     "expo": ">=52",
     "expo-sqlite": ">=15",

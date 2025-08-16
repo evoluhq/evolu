@@ -1,37 +1,17 @@
-/* eslint-disable jsdoc/no-undefined-types */
 /**
  * 🛡️ Type-safe errors
- *
- * ## Intro
  *
  * The problem with throwing an exception in JavaScript is that the caught error
  * is always of an unknown type. The unknown type is a problem because we can't
  * be sure all errors have been handled because the TypeScript compiler can't
- * help us.
+ * tell us. Some other languages like Rust 🦀 or Haskell 📚 use a type-safe
+ * approach to error handling, where errors are explicitly represented as part
+ * of the return type, such as Result or Either, allowing the developer to
+ * handle all errors safely. ✅
  *
- * Some other languages like Rust 🦀 or Haskell 📚 use a type-safe approach to
- * error handling, where errors are explicitly represented as part of the return
- * type, such as Result or Either, allowing the developer to handle all errors
- * safely. ✅
- *
- * ✨ Evolu uses {@link Result}, and it looks like this:
- *
- * ```ts
- * type Result<T, E> = Ok<T> | Err<E>;
- *
- * interface Ok<T> {
- *   readonly ok: true;
- *   readonly value: T;
- * }
- *
- * interface Err<E> {
- *   readonly ok: false;
- *   readonly error: E;
- * }
- *
- * const ok = <T>(value: T): Ok<T> => ({ ok: true, value });
- * const err = <E>(error: E): Err<E> => ({ ok: false, error });
- * ```
+ * This type models that approach in TypeScript. A `Result` can be either
+ * {@link Ok} (success) or {@link Err} (error). Use {@link ok} to create a
+ * successful result and {@link err} to create an error result.
  *
  * Now let's look at how `Result` can be used for safe JSON parsing:
  *
@@ -198,9 +178,8 @@
  * ### How do I handle an array of operations and short-circuit on the first error?
  *
  * If you have an array of operations (not results), you should make them
- * _lazy_—that is, represent each operation as a function (see `LazyValue` in
- * `Function.ts`). This way, you only execute each operation as needed, and can
- * stop on the first error:
+ * _lazy_—that is, represent each operation as a function. This way, you only
+ * execute each operation as needed, and can stop on the first error:
  *
  * ```ts
  * import type { LazyValue } from "./Function";
@@ -235,15 +214,6 @@
  * developers. While monads and functional helpers can be powerful, they often
  * obscure control flow and make debugging harder. Evolu's approach keeps error
  * handling explicit and straightforward.
- *
- * @module
- */
-
-/**
- * A `Result` can be either {@link Ok} (success) or {@link Err} (error).
- *
- * Use {@link ok} to create a successful result and {@link err} to create an error
- * result.
  */
 export type Result<T, E> = Ok<T> | Err<E>;
 
@@ -356,12 +326,14 @@ export const err = <E>(error: E): Err<E> => ({ ok: false, error });
  * const config = getOrThrow(loadConfig());
  * // Safe to use config here
  * ```
+ *
+ * Throws: `Error` with the original error attached as `cause`.
  */
 export const getOrThrow = <T, E>(result: Result<T, E>): T => {
   if (result.ok) {
     return result.value;
   } else {
-    throw new Error(`Result error: ${JSON.stringify(result.error)}`);
+    throw new Error("getOrThrow failed", { cause: result.error });
   }
 };
 

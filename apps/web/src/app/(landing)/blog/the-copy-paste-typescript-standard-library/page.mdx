@@ -1,0 +1,96 @@
+import { ArticleLayout } from "@/components/ArticleLayout";
+
+export const article = {
+  author: "Daniel Steigerwald",
+  date: "2025-08-10",
+  title: "The Copy‑Paste TypeScript Standard Library",
+  description:
+    "I have an idea for a copy‑pasteable TypeScript standard library — a collection of code snippets so small and simple that you can just copy-paste them.",
+};
+
+export const metadata = {
+  title: article.title,
+  description: article.description,
+};
+
+export default (props) => <ArticleLayout article={article} {...props} />;
+
+I have an idea for a copy‑pasteable TypeScript standard library — a collection of code snippets so small and simple that you can just copy-paste them.
+
+## Why not a dependency?
+
+- A dependency means “this thing will change and it will suck.”
+- Every dependency is a kind of vendor lock‑in.
+- You import tons of code you don’t fully understand.
+- It will break eventually, and you’ll be forced to react on someone else’s schedule.
+
+Let’s normalize copy‑pasting. If it breaks, you probably copy-pasted something you didn’t understand — and that’s on you.
+
+## What qualifies as copy‑pasteable
+
+- One file, no imports, no side effects.
+- Clear name, obvious API, readable in one sitting.
+- Works across environments (Node/Browser/ESM) with no build tricks.
+
+## The convention
+
+Put vendored snippets under a clearly marked folder. No headers, no links, no “go check upstream.” The path itself tells the story.
+
+- `_copypaste/Evolu/Result.ts`
+  - `_copypaste` signals “we copied this on purpose”
+  - `Evolu` indicates the source
+  - `Result.ts` keeps the canonical name
+
+Example import:
+
+```ts
+import {
+  Result,
+  ok,
+  err,
+  trySync,
+  tryAsync,
+  getOrThrow,
+} from "./_copypaste/Evolu/Result.js";
+```
+
+Optional project structure:
+
+```text
+src/
+  _copypaste/
+    Evolu/
+      Result.ts
+  app/
+    ...
+```
+
+## Updates (when you actually need them)
+
+- Replace the file wholesale with a fresh copy.
+- Local edits are encouraged — it’s your code. Modify freely to fit your needs.
+
+## Tests
+
+Ideally, a copy‑pasted file would include tests written in a style that doubles as documentation, but there’s no standard for in‑code tests (yet). So copy‑paste the tests and hope they run everywhere (hint: Bun and Vitest can run many Jest tests).
+
+## But I need imports!
+
+Copy‑pasteable code can have imports only to dependencies that are considered to be completed and have zero deps. They have to manifest breaking changes only via types, so TypeScript can detect that. With such an approach, we don't need versioning. Types are a strong enough contract.
+
+## Is this a joke?
+
+It’s half a joke and half the truth. Programmers should understand the code they use, deps should be stable, and ethically copy‑pasted code you can trust is OK. We don’t need more deps; we need fewer, smaller, more understandable pieces of code we own — the local‑first code 🙃.
+
+## Here’s some code you can copy‑paste
+
+- [Result](https://github.com/evoluhq/evolu/blob/main/packages/common/src/Result.ts) (type‑safe errors)
+- [Brand](https://github.com/evoluhq/evolu/blob/main/packages/common/src/Brand.ts) (prevents mixing incompatible values, e.g., `type UserId = string & Brand<"UserId">`)
+- [Assert](https://github.com/evoluhq/evolu/blob/main/packages/common/src/Assert.ts) (fail‑fast helpers: `assert`, `assertNonEmptyArray`, `assertNoErrorInCatch`)
+- [Array](https://github.com/evoluhq/evolu/blob/main/packages/common/src/Array.ts) (non‑empty arrays and helpers: `NonEmptyArray`, `isNonEmptyArray`, `appendToArray`)
+- [Function](https://github.com/evoluhq/evolu/blob/main/packages/common/src/Function.ts) (small function utils: `exhaustiveCheck`, `identity`, `LazyValue`)
+- [Object](https://github.com/evoluhq/evolu/blob/main/packages/common/src/Object.ts) (object helpers: `isPlainObject`, `mapObject`, `objectToEntries`, `excludeProp`)
+- [Order](https://github.com/evoluhq/evolu/blob/main/packages/common/src/Order.ts) (ordering utilities: `orderNumber`, `orderString`, `reverseOrder`, `orderUint8Array`)
+- [Time](https://github.com/evoluhq/evolu/blob/main/packages/common/src/Time.ts) (DI‑friendly time: `Time`, `createTime`, `createTestTime`)
+
+As for "DI‑friendly", check conventions-based [dependency injection](/docs/dependency-injection).

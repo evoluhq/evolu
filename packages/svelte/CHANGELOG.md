@@ -1,5 +1,15 @@
 # @evolu/svelte
 
+## 1.0.1-preview.3
+
+### Patch Changes
+
+- 2f30dcd: Update deps
+- Updated dependencies [2f30dcd]
+- Updated dependencies [4a82c06]
+  - @evolu/common@6.0.1-preview.18
+  - @evolu/web@1.0.1-preview.4
+
 ## 1.0.1-preview.2
 
 ### Patch Changes

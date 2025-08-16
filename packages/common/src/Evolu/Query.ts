@@ -8,7 +8,8 @@ import {
   SqliteValue,
 } from "../Sqlite.js";
 import { Store, StoreSubscribe } from "../Store.js";
-import { Brand, Simplify } from "../Types.js";
+import { Simplify } from "../Types.js";
+import { Brand } from "../Brand.js";
 
 /**
  * A type-safe SQL query.

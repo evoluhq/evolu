@@ -72,7 +72,7 @@ import {
 import { err, getOrThrow } from "../../src/Result.js";
 import { SqliteValue } from "../../src/Sqlite.js";
 import { DateIso, NonNegativeInt, PositiveInt } from "../../src/Type.js";
-import { Brand } from "../../src/Types.js";
+import { Brand } from "../../src/Brand.js";
 import {
   testCreateId,
   testCreateSqlite,

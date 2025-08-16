@@ -1,6 +1,6 @@
 {
   "name": "@evolu/nodejs",
-  "version": "1.0.1-preview.6",
+  "version": "1.0.1-preview.7",
   "description": "Evolu for Node.js",
   "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
   "license": "MIT",
@@ -33,12 +33,12 @@
     "@evolu/common": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^22.15.31",
-    "typescript": "^5.8.3",
+    "@types/node": "^22.17.1",
+    "typescript": "^5.9.2",
     "vitest": "^3.2.3"
   },
   "peerDependencies": {
-    "@evolu/common": "^6.0.1-preview.17"
+    "@evolu/common": "^6.0.1-preview.18"
   },
   "engines": {
     "node": ">=22.0.0"

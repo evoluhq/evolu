@@ -1,6 +1,6 @@
 {
   "name": "@evolu/react",
-  "version": "9.0.1-preview.3",
+  "version": "9.0.1-preview.4",
   "description": "Evolu for React",
   "keywords": [
     "evolu",
@@ -38,13 +38,13 @@
   "devDependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
-    "@types/react-dom": "^19.1.6",
-    "react": "^19.1.0",
-    "typescript": "^5.8.3",
+    "@types/react-dom": "^19.1.7",
+    "react": "^19.1.1",
+    "typescript": "^5.9.2",
     "vitest": "^3.2.3"
   },
   "peerDependencies": {
-    "@evolu/common": "^6.0.1-preview.17",
+    "@evolu/common": "^6.0.1-preview.18",
     "react": "^19.0.0"
   },
   "publishConfig": {

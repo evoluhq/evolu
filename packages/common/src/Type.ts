@@ -80,7 +80,8 @@ import { NanoIdLibDep } from "./NanoId.js";
 import { isPlainObject } from "./Object.js";
 import { Err, err, Ok, ok, Result, trySync } from "./Result.js";
 import { safelyStringifyUnknownValue } from "./String.js";
-import type { Brand, Literal, Simplify, WidenLiteral } from "./Types.js";
+import type { Literal, Simplify, WidenLiteral } from "./Types.js";
+import type { Brand } from "./Brand.js";
 import { IntentionalNever } from "./Types.js";
 
 export interface Type<

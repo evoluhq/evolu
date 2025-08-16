@@ -70,7 +70,7 @@ const Schema = {
 
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   reloadUrl: "/",
-  name: getOrThrow(SimpleName.from("evolu-react-electron-example")),
+  name: getOrThrow(SimpleName.from("evolu-react-electron-example-2")),
 
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "http://localhost:4000" }],
@@ -388,7 +388,7 @@ const OwnerActions: FC = () => {
 
   const handleDownloadDatabaseClick = () => {
     void evolu.exportDatabase().then((array) => {
-      const blob = new Blob([array], {
+      const blob = new Blob([array.slice()], {
         type: "application/x-sqlite3",
       });
       const a = document.createElement("a");
