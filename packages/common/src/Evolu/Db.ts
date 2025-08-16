@@ -507,8 +507,7 @@ export const createDbWorkerForPlatform = (
               OwnerId,
               [AppOwner | ShardOwner | SharedOwner, Array<DbChange>]
             >();
-            for (const mutationChange of syncChanges) {
-              const { owner, ...dbChange } = mutationChange;
+            for (const { owner, ...dbChange } of syncChanges) {
               const actualOwner = owner ?? appOwner;
               if (!changesByOwner.has(actualOwner.id)) {
                 changesByOwner.set(actualOwner.id, [actualOwner, []]);

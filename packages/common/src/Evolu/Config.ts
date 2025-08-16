@@ -3,7 +3,7 @@ import { getOrThrow } from "../Result.js";
 import { SimpleName } from "../Type.js";
 import type { DbIndexesBuilder } from "./Kysely.js";
 import type { AppOwner } from "./Owner.js";
-import type { Transport } from "./Sync.js";
+import type { Transport } from "./Transport.js";
 
 export interface Config extends ConsoleConfig {
   /**

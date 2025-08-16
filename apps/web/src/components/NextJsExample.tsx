@@ -106,7 +106,7 @@ const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   name: getOrThrow(SimpleName.from("evolu-nextjs-example")),
 
   ...(process.env.NODE_ENV === "development" && {
-    transport: { type: "WebSocket", url: "http://localhost:4000" },
+    transports: [{ type: "WebSocket", url: "http://localhost:4000" }],
   }),
 
   onInit: ({ isFirst }) => {
@@ -263,6 +263,27 @@ const Todos: FC = () => {
       // This object is automatically converted to a JSON string.
       personJson: { name: "Joe", age: 32 },
     });
+
+    // const secret = createOwnerSecret({ createRandomBytes });
+    // const sharedOwner = createSharedOwner(secret);
+    // // eslint-disable-next-line no-console
+    // console.log(sharedOwner);
+
+    // const result = insert(
+    //   "todo",
+    //   {
+    //     title,
+    //     // This object is automatically converted to a JSON string.
+    //     personJson: { name: "Joe", age: 32 },
+    //   },
+    //   {
+    //     owner: sharedOwner,
+    //   },
+    // );
+
+    if (!result.ok) {
+      alert(formatTypeError(result.error));
+    }
 
     if (!result.ok) {
       alert(formatTypeError(result.error));

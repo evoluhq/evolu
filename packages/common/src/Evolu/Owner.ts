@@ -15,6 +15,7 @@ import {
   NonNegativeInt,
   Uint8Array,
 } from "../Type.js";
+import { Transport } from "./Transport.js";
 
 /** 16 bytes of cryptographic entropy used to derive {@link Owner} keys. */
 export const OwnerSecret = brand("OwnerSecret", length(16)(Uint8Array));
@@ -130,13 +131,18 @@ export const createAppOwner = (secret: OwnerSecret): AppOwner => ({
  */
 export interface ShardOwner extends Owner {
   readonly type: "ShardOwner";
+  readonly transports?: ReadonlyArray<Transport>;
 }
 
 /** Creates a {@link ShardOwner} from an {@link OwnerSecret}. */
-export const createShardOwner = (secret: OwnerSecret): ShardOwner => {
+export const createShardOwner = (
+  secret: OwnerSecret,
+  transports?: ReadonlyArray<Transport>,
+): ShardOwner => {
   return {
     type: "ShardOwner",
     ...createOwner(secret),
+    ...(transports && { transports }),
   };
 };
 
@@ -148,6 +154,7 @@ export const createShardOwner = (secret: OwnerSecret): ShardOwner => {
 export const deriveShardOwner = (
   owner: AppOwner,
   path: NonEmptyReadonlyArray<string>,
+  transports?: ReadonlyArray<Transport>,
 ): ShardOwner => {
   const secret = createSlip21(owner.encryptionKey, path).slice(
     0,
@@ -157,12 +164,14 @@ export const deriveShardOwner = (
   return {
     type: "ShardOwner",
     ...createOwner(secret),
+    ...(transports && { transports }),
   };
 };
 
 /** An {@link Owner} for collaborative data with write access. */
 export interface SharedOwner extends Owner {
   readonly type: "SharedOwner";
+  readonly transports?: ReadonlyArray<Transport>;
 }
 
 /**
@@ -172,10 +181,14 @@ export interface SharedOwner extends Owner {
  * Use {@link createSharedReadonlyOwner} to create a read-only version for
  * sharing.
  */
-export const createSharedOwner = (secret: OwnerSecret): SharedOwner => {
+export const createSharedOwner = (
+  secret: OwnerSecret,
+  transports?: ReadonlyArray<Transport>,
+): SharedOwner => {
   return {
     type: "SharedOwner",
     ...createOwner(secret),
+    ...(transports && { transports }),
   };
 };
 
