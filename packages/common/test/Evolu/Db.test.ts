@@ -3,11 +3,9 @@ import { CallbackId } from "../../src/Callbacks.js";
 import { createConsole } from "../../src/Console.js";
 import {
   createDbWorkerForPlatform,
-  DbSchema,
   DbWorker,
   DbWorkerOutput,
   DbWorkerPlatformDeps,
-  getDbSnapshot,
 } from "../../src/Evolu/Db.js";
 import {
   Base64Url256,
@@ -30,6 +28,8 @@ import {
   testTime,
 } from "../_deps.js";
 import { testTimestampsAsc } from "./_fixtures.js";
+import { DbSchema } from "../../src/Evolu/DbSchema.js";
+import { getDbSnapshot } from "./_utils.js";
 
 const createSimpleTestSchema = (): DbSchema => {
   return {

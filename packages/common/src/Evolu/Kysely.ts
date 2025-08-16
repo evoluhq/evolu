@@ -5,7 +5,7 @@ import {
   SqliteAdapter,
   SqliteQueryCompiler,
 } from "kysely";
-import { DbIndex } from "./Db.js";
+import { DbIndex } from "./DbSchema.js";
 
 // https://kysely.dev/docs/recipes/splitting-query-building-and-execution
 export const kysely = new Kysely({

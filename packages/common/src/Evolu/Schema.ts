@@ -28,7 +28,7 @@ import {
   TypeError,
 } from "../Type.js";
 import { Simplify } from "../Types.js";
-import { DbSchema } from "./Db.js";
+import { DbSchema } from "./DbSchema.js";
 import { createIndexes, DbIndexesBuilder } from "./Kysely.js";
 import { AppOwner, ShardOwner, SharedOwner } from "./Owner.js";
 import {

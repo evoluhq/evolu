@@ -1,9 +1,6 @@
 import { describe, expect, expectTypeOf, test, vi } from "vitest";
 import { createConsole } from "../../src/Console.js";
-import {
-  createDbWorkerForPlatform,
-  getDbSnapshot,
-} from "../../src/Evolu/Db.js";
+import { createDbWorkerForPlatform } from "../../src/Evolu/Db.js";
 import { createEvolu } from "../../src/Evolu/Evolu.js";
 import { createAppOwner } from "../../src/Evolu/Owner.js";
 import {
@@ -35,6 +32,7 @@ import {
   testSimpleName,
   testTime,
 } from "../_deps.js";
+import { getDbSnapshot } from "./_utils.js";
 
 const TodoId = id("Todo");
 type TodoId = InferType<typeof TodoId>;
