@@ -44,7 +44,7 @@
   },
   "peerDependencies": {
     "@evolu/common": "^6.0.1-preview.18",
-    "@evolu/web": "^1.0.1-preview.4",
+    "@evolu/web": "^1.0.1-preview.5",
     "react-dom": "^19.0.0"
   },
   "publishConfig": {
