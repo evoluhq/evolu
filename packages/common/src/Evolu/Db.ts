@@ -57,16 +57,12 @@ import {
 } from "./Owner.js";
 import {
   applyProtocolMessageAsClient,
-  CrdtMessage,
   createProtocolMessageForSync,
   createProtocolMessageFromCrdtMessages,
-  DbChange,
   decryptAndDecodeDbChange,
   encodeAndEncryptDbChange,
   ProtocolError,
   protocolVersion,
-  Storage,
-  StorageDep,
 } from "./Protocol.js";
 import {
   createQueryRowsCache,
@@ -76,9 +72,13 @@ import {
   QueryRowsCache,
 } from "./Query.js";
 import {
+  CrdtMessage,
   createSqliteStorageBase,
   CreateSqliteStorageBaseOptions,
+  DbChange,
   SqliteStorageBase,
+  Storage,
+  StorageDep,
 } from "./Storage.js";
 import { CreateSyncDep, SyncConfig, SyncDep } from "./Sync.js";
 import {

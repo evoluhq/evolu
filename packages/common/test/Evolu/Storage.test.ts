@@ -2,12 +2,10 @@ import { sha256 } from "@noble/hashes/sha2";
 import { assert, expect, test } from "vitest";
 import {
   binaryTimestampToFingerprint,
-  Fingerprint,
-  InfiniteUpperBound,
-} from "../../src/Evolu/Protocol.js";
-import {
   createSqliteStorageBase,
+  Fingerprint,
   getTimestampByIndex,
+  InfiniteUpperBound,
   SqliteStorageBaseDep,
 } from "../../src/Evolu/Storage.js";
 import {

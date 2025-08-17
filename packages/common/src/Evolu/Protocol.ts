@@ -143,7 +143,6 @@
  * @module
  */
 
-import { sha256 } from "@noble/hashes/sha2";
 import { pack, unpack, unpackMultiple } from "msgpackr";
 import { isNonEmptyReadonlyArray, NonEmptyReadonlyArray } from "../Array.js";
 import { assert } from "../Assert.js";
@@ -178,10 +177,7 @@ import {
   JsonValueFromString,
   NonNegativeInt,
   Number,
-  object,
   PositiveInt,
-  record,
-  String,
 } from "../Type.js";
 import { Predicate } from "../Types.js";
 import {
@@ -193,6 +189,23 @@ import {
   WriteKey,
   writeKeyLength,
 } from "./Owner.js";
+import {
+  BaseRange,
+  CrdtMessage,
+  DbChange,
+  EncryptedCrdtMessage,
+  EncryptedDbChange,
+  Fingerprint,
+  FingerprintRange,
+  fingerprintSize,
+  InfiniteUpperBound,
+  Range,
+  RangeType,
+  RangeUpperBound,
+  SkipRange,
+  StorageDep,
+  TimestampsRange,
+} from "./Storage.js";
 import {
   BinaryTimestamp,
   binaryTimestampLength,
@@ -237,164 +250,6 @@ export const WriteKeyMode = {
 } as const;
 
 type WriteKeyMode = (typeof WriteKeyMode)[keyof typeof WriteKeyMode];
-
-/**
- * Evolu Protocol Storage
- *
- * The protocol is agnostic to storage implementation details—any storage can be
- * plugged in, as long as it implements this interface. Implementations must
- * handle their own errors; return values only indicates overall success or
- * failure.
- */
-export interface Storage {
-  readonly getSize: (ownerId: BinaryOwnerId) => NonNegativeInt | null;
-
-  readonly fingerprint: (
-    ownerId: BinaryOwnerId,
-    begin: NonNegativeInt,
-    end: NonNegativeInt,
-  ) => Fingerprint | null;
-
-  /**
-   * Computes fingerprints with their upper bounds in one call.
-   *
-   * This function can be replaced with many fingerprint/findLowerBound calls,
-   * but implementations can leverage it for batching and more efficient
-   * fingerprint computation.
-   */
-  readonly fingerprintRanges: (
-    ownerId: BinaryOwnerId,
-    buckets: ReadonlyArray<NonNegativeInt>,
-    upperBound?: RangeUpperBound,
-  ) => ReadonlyArray<FingerprintRange> | null;
-
-  readonly findLowerBound: (
-    ownerId: BinaryOwnerId,
-    begin: NonNegativeInt,
-    end: NonNegativeInt,
-    upperBound: RangeUpperBound,
-  ) => NonNegativeInt | null;
-
-  readonly iterate: (
-    ownerId: BinaryOwnerId,
-    begin: NonNegativeInt,
-    end: NonNegativeInt,
-    callback: (timestamp: BinaryTimestamp, index: NonNegativeInt) => boolean,
-  ) => void;
-
-  /** Validates the {@link WriteKey} for the given {@link Owner}. */
-  readonly validateWriteKey: (
-    ownerId: BinaryOwnerId,
-    writeKey: WriteKey,
-  ) => boolean;
-
-  /** Sets the {@link WriteKey} for the given {@link Owner}. */
-  readonly setWriteKey: (ownerId: BinaryOwnerId, writeKey: WriteKey) => boolean;
-
-  /** Write encrypted {@link CrdtMessage}s to storage. */
-  readonly writeMessages: (
-    ownerId: BinaryOwnerId,
-    messages: NonEmptyReadonlyArray<EncryptedCrdtMessage>,
-  ) => boolean;
-
-  /** Read encrypted {@link DbChange}s from storage. */
-  readonly readDbChange: (
-    ownerId: BinaryOwnerId,
-    timestamp: BinaryTimestamp,
-  ) => EncryptedDbChange | null;
-
-  /** Delete all data for the given {@link Owner}. */
-  readonly deleteOwner: (ownerId: BinaryOwnerId) => boolean;
-}
-
-export interface StorageDep {
-  readonly storage: Storage;
-}
-
-/** An encrypted {@link CrdtMessage}. */
-export interface EncryptedCrdtMessage {
-  readonly timestamp: Timestamp;
-  readonly change: EncryptedDbChange;
-}
-
-/** Encrypted DbChange */
-export type EncryptedDbChange = Uint8Array & Brand<"EncryptedDbChange">;
-
-/**
- * A CRDT message that combines a unique {@link Timestamp} with a
- * {@link DbChange}.
- */
-export interface CrdtMessage {
-  readonly timestamp: Timestamp;
-  readonly change: DbChange;
-}
-
-/**
- * A DbChange is a change to a table row. Together with a unique
- * {@link Timestamp}, it forms a {@link CrdtMessage}.
- */
-export const DbChange = object({
-  table: String,
-  id: Id,
-  values: record(String, SqliteValue),
-});
-export type DbChange = typeof DbChange.Type;
-
-export const RangeType = {
-  Fingerprint: 1,
-  Skip: 0,
-  Timestamps: 2,
-} as const;
-
-export type RangeType = (typeof RangeType)[keyof typeof RangeType];
-
-export const InfiniteUpperBound = Symbol("InfiniteUpperBound");
-export type InfiniteUpperBound = typeof InfiniteUpperBound;
-
-/**
- * Union type for Range's upperBound: either a {@link BinaryTimestamp} or
- * {@link InfiniteUpperBound}.
- */
-export type RangeUpperBound = BinaryTimestamp | InfiniteUpperBound;
-
-interface BaseRange {
-  readonly upperBound: RangeUpperBound;
-}
-
-export interface SkipRange extends BaseRange {
-  readonly type: typeof RangeType.Skip;
-}
-
-export interface FingerprintRange extends BaseRange {
-  readonly type: typeof RangeType.Fingerprint;
-  readonly fingerprint: Fingerprint;
-}
-
-/**
- * A cryptographic hash used for efficiently comparing collections of
- * {@link BinaryTimestamp}s.
- *
- * It consists of the first {@link fingerprintSize} bytes of the SHA-256 hash of
- * one or more timestamps.
- */
-export type Fingerprint = Uint8Array & Brand<"Fingerprint">;
-
-export const fingerprintSize = 12 as NonNegativeInt;
-
-/** A fingerprint of an empty range. */
-export const zeroFingerprint = new Uint8Array(fingerprintSize) as Fingerprint;
-
-export interface TimestampsRange extends BaseRange {
-  readonly type: typeof RangeType.Timestamps;
-  readonly timestamps: ReadonlyArray<BinaryTimestamp>;
-}
-
-export interface TimestampsRangeWithTimestampsBuffer extends BaseRange {
-  readonly type: typeof RangeType.Timestamps;
-  readonly timestamps: TimestampsBuffer;
-}
-
-export type Range = SkipRange | FingerprintRange | TimestampsRange;
 
 export type ProtocolError =
   | ProtocolUnsupportedVersionError
@@ -778,6 +633,11 @@ export const createProtocolMessageBuffer = (
     getSize,
   };
 };
+
+export interface TimestampsRangeWithTimestampsBuffer extends BaseRange {
+  readonly type: typeof RangeType.Timestamps;
+  readonly timestamps: TimestampsBuffer;
+}
 
 export interface TimestampsBuffer {
   readonly add: (timestamp: Timestamp) => void;
@@ -1583,13 +1443,6 @@ export const decodeNumber = (buffer: Buffer): number => {
 
   buffer.shiftN(endResult.value);
   return numberResult.value;
-};
-
-export const binaryTimestampToFingerprint = (
-  timestamp: BinaryTimestamp,
-): Fingerprint => {
-  const hash = sha256(timestamp).slice(0, fingerprintSize);
-  return hash as Fingerprint;
 };
 
 /**

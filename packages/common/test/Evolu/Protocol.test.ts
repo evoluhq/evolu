@@ -4,14 +4,11 @@ import { createBuffer } from "../../src/Buffer.js";
 import {
   applyProtocolMessageAsClient,
   applyProtocolMessageAsRelay,
-  binaryTimestampToFingerprint,
-  CrdtMessage,
   createProtocolMessageBuffer,
   createProtocolMessageForSync,
   createProtocolMessageForWriteKeyRotation,
   createProtocolMessageFromCrdtMessages,
   createTimestampsBuffer,
-  DbChange,
   decodeLength,
   decodeNodeId,
   decodeNonNegativeInt,
@@ -26,18 +23,23 @@ import {
   encodeNumber,
   encodeSqliteValue,
   encodeString,
-  EncryptedCrdtMessage,
-  EncryptedDbChange,
-  InfiniteUpperBound,
   maxProtocolMessageRangesSize,
   ProtocolValueType,
   protocolVersion,
-  RangeType,
-  Storage,
-  StorageDep,
   TimestampsRangeWithTimestampsBuffer,
 } from "../../src/Evolu/Protocol.js";
 import { createRelayStorage } from "../../src/Evolu/Relay.js";
+import {
+  binaryTimestampToFingerprint,
+  CrdtMessage,
+  DbChange,
+  EncryptedCrdtMessage,
+  EncryptedDbChange,
+  InfiniteUpperBound,
+  RangeType,
+  Storage,
+  StorageDep,
+} from "../../src/Evolu/Storage.js";
 import {
   binaryTimestampToTimestamp,
   createInitialTimestamp,
@@ -1172,6 +1174,3 @@ describe("ranges sizes", () => {
     ).toMatchInlineSnapshot(`"330 313"`);
   });
 });
-
-// TODO:
-// - protocol message with ranges isn't broadcasted

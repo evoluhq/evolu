@@ -26,11 +26,7 @@ import { applyPatches } from "./Diff.js";
 import { kysely } from "./Kysely.js";
 import { AppOwner } from "./Owner.js";
 import { CreateAppStateDep, FlushSyncDep } from "./Platform.js";
-import {
-  DbChange,
-  ProtocolError,
-  ProtocolUnsupportedVersionError,
-} from "./Protocol.js";
+import { ProtocolError, ProtocolUnsupportedVersionError } from "./Protocol.js";
 import {
   createSubscribedQueries,
   emptyRows,
@@ -59,6 +55,7 @@ import {
   ValidMutationSize,
   ValidMutationSizeError,
 } from "./Schema.js";
+import { DbChange } from "./Storage.js";
 import { initialSyncState, SyncState } from "./Sync.js";
 import { TimestampError } from "./Timestamp.js";
 

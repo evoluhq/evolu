@@ -31,8 +31,9 @@ import { Simplify } from "../Types.js";
 import { DbSchema } from "./DbSchema.js";
 import { createIndexes, DbIndexesBuilder } from "./Kysely.js";
 import { AppOwner, ShardOwner, SharedOwner } from "./Owner.js";
-import { CrdtMessage, maxProtocolMessageRangesSize } from "./Protocol.js";
+import { maxProtocolMessageRangesSize } from "./Protocol.js";
 import { Query, Row } from "./Query.js";
+import { CrdtMessage } from "./Storage.js";
 import { BinaryTimestamp } from "./Timestamp.js";
 
 /**

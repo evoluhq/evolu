@@ -1,6 +1,11 @@
 import { expect, test } from "vitest";
 import { createRelayStorage } from "../../src/Evolu/Relay.js";
+import {
+  EncryptedCrdtMessage,
+  EncryptedDbChange,
+} from "../../src/Evolu/Storage.js";
 import { constVoid } from "../../src/Function.js";
+import { binaryTimestampToTimestamp, sql } from "../../src/index.js";
 import { getOrThrow } from "../../src/Result.js";
 import {
   testCreateSqlite,
@@ -11,11 +16,6 @@ import {
   testRandom,
 } from "../_deps.js";
 import { testTimestampsAsc } from "./_fixtures.js";
-import {
-  EncryptedCrdtMessage,
-  EncryptedDbChange,
-} from "../../src/Evolu/Protocol.js";
-import { binaryTimestampToTimestamp, sql } from "../../src/index.js";
 
 const createTestRelayStorage = async () => {
   const sqlite = await testCreateSqlite();
