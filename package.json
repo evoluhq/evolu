@@ -10,7 +10,7 @@
     "start": "turbo start",
     "lint": "eslint --cache",
     "lint-monorepo": "pnpm dlx sherif@latest",
-    "verify": "pnpm lint && pnpm lint-monorepo && pnpm build && pnpm test",
+    "verify": "pnpm lint && pnpm lint-monorepo && pnpm typedoc && pnpm build && pnpm test",
     "clean": "turbo clean && shx rm -rf node_modules pnpm-lock.yaml .turbo .eslintcache out",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,md,mdx}\"",
     "version": "changeset version",
