@@ -1,8 +1,8 @@
 import { ConsoleConfig } from "../Console.js";
 import { getOrThrow } from "../Result.js";
 import { SimpleName } from "../Type.js";
-import type { DbIndexesBuilder } from "./Kysely.js";
 import type { AppOwner } from "./Owner.js";
+import type { DbIndexesBuilder } from "./Schema.js";
 import type { Transport } from "./Transport.js";
 
 export interface Config extends ConsoleConfig {

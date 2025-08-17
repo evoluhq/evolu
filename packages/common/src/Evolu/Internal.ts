@@ -12,10 +12,8 @@
 
 export * from "./Config.js";
 export * from "./Db.js";
-export * from "./DbSchema.js";
 export * from "./Diff.js";
 export * from "./Evolu.js";
-export * from "./Kysely.js";
 export * from "./Owner.js";
 export * from "./Platform.js";
 export * from "./Protocol.js";

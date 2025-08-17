@@ -1,5 +1,5 @@
 import { assert } from "../../src/Assert.js";
-import { DbSchema, getDbSchema } from "../../src/Evolu/DbSchema.js";
+import { DbSchema, getDbSchema } from "../../src/Evolu/Schema.js";
 import { sql, SqliteDep, SqliteRow } from "../../src/Sqlite.js";
 
 export interface DbSnapshot {

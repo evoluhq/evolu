@@ -7,7 +7,7 @@ import {
   DbWorkerOutput,
   DbWorkerPlatformDeps,
 } from "../../src/Evolu/Db.js";
-import { DbSchema } from "../../src/Evolu/DbSchema.js";
+import { DbSchema } from "../../src/Evolu/Schema.js";
 import { DbChange } from "../../src/Evolu/Storage.js";
 import { constVoid } from "../../src/Function.js";
 import { wait } from "../../src/Promise.js";

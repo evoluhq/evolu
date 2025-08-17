@@ -40,7 +40,7 @@ import {
   WorkerPostMessageDep,
 } from "../Worker.js";
 import { Config } from "./Config.js";
-import { DbSchema, ensureDbSchema, getDbSchema } from "./DbSchema.js";
+import { DbSchema, ensureDbSchema, getDbSchema } from "./Schema.js";
 import { makePatches, QueryPatches } from "./Diff.js";
 import {
   AppOwner,

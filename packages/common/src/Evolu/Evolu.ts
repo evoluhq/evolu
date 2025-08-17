@@ -23,7 +23,6 @@ import { IntentionalNever } from "../Types.js";
 import { Config, defaultConfig } from "./Config.js";
 import { CreateDbWorkerDep, MutationChange } from "./Db.js";
 import { applyPatches } from "./Diff.js";
-import { kysely } from "./Kysely.js";
 import { AppOwner } from "./Owner.js";
 import { CreateAppStateDep, FlushSyncDep } from "./Platform.js";
 import { ProtocolError, ProtocolUnsupportedVersionError } from "./Protocol.js";
@@ -45,6 +44,7 @@ import {
   EvoluSchema,
   evoluSchemaToDbSchema,
   insertable,
+  kysely,
   Mutation,
   MutationKind,
   MutationMapping,
