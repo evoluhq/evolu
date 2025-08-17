@@ -6,7 +6,6 @@ import {
   applyProtocolMessageAsRelay,
   createProtocolMessageBuffer,
   createProtocolMessageForSync,
-  createProtocolMessageForWriteKeyRotation,
   createProtocolMessageFromCrdtMessages,
   createTimestampsBuffer,
   decodeLength,
@@ -48,12 +47,9 @@ import {
 import { constFalse, constTrue } from "../../src/Function.js";
 import {
   assertNonEmptyArray,
-  createOwner,
   createRandom,
-  createWriteKey,
   EncryptionKey,
   NonEmptyReadonlyArray,
-  ownerIdToBinaryOwnerId,
 } from "../../src/index.js";
 import { err, getOrThrow } from "../../src/Result.js";
 import { SqliteValue } from "../../src/Sqlite.js";
@@ -66,7 +62,6 @@ import {
   testNanoIdLibDep,
   testOwner,
   testOwnerBinaryId,
-  testOwnerSecret,
   testRandomLib,
   testSymmetricCrypto,
 } from "../_deps.js";
@@ -529,45 +524,6 @@ test("createProtocolMessageForSync", async () => {
   );
 });
 
-test("E2E key rotation", async () => {
-  const storageDep = await createStorageDep();
-
-  const owner = createOwner(testOwnerSecret);
-  const binaryOwnerId = ownerIdToBinaryOwnerId(owner.id);
-  const currentWriteKey = owner.writeKey;
-  const newWriteKey = createWriteKey(testDeps);
-
-  storageDep.storage.setWriteKey(binaryOwnerId, currentWriteKey);
-
-  const rotationMessage = createProtocolMessageForWriteKeyRotation(
-    owner.id,
-    currentWriteKey,
-    newWriteKey,
-  );
-  expect(rotationMessage.join()).toMatchInlineSnapshot(
-    `"0,155,132,176,110,14,207,188,99,233,19,32,127,171,130,88,244,2,193,200,155,104,173,156,172,55,27,230,228,51,167,204,43,8,170,136,201,113,39,222,186,169,38,57,3,87,246,94,18,109,0"`,
-  );
-
-  const result = applyProtocolMessageAsRelay(storageDep)(rotationMessage);
-  expect(result.ok).toBe(true);
-  if (result.ok) {
-    expect(result.value).not.toBe(null); // Non-initiator always responds
-    expect(result.value!.length).toBe(19); // Empty message (header only)
-  }
-
-  const oldKeyValidation = storageDep.storage.validateWriteKey(
-    binaryOwnerId,
-    currentWriteKey,
-  );
-  expect(oldKeyValidation).toBe(false);
-
-  const newKeyValidation = storageDep.storage.validateWriteKey(
-    binaryOwnerId,
-    newWriteKey,
-  );
-  expect(newKeyValidation).toBe(true);
-});
-
 describe("E2E versioning", () => {
   test("same versions", () => {
     const v0 = 0 as NonNegativeInt;
@@ -724,7 +680,7 @@ describe("E2E relay options", () => {
     );
 
     expect(initiatorMessage.join()).toMatchInlineSnapshot(
-      `"0,155,132,176,110,14,207,188,99,233,19,32,127,171,130,88,244,1,193,200,155,104,173,156,172,55,27,230,228,51,167,204,43,8,1,0,0,1,0,0,0,0,0,0,0,0,1,145,1,56,50,8,90,26,78,242,214,20,252,52,39,201,138,92,106,247,122,181,175,132,241,48,78,120,247,139,38,86,101,157,203,184,103,237,33,250,52,178,48,253,143,78,147,162,185,228,50,161,99,80,233,42,249,155,111,93,119,203,156,159,192,38,35,6,85,127,203,254,57,137,227,25,166,3,246,135,216,110,127,230,222,73,18,215,150,50,111,213,20,145,16,187,63,255,197,24,178,244,193,36,130,112,225,165,206,93,101,98,29,176,63,237,222,13,205,58,34,18,44,32,242,246,127,222,184,2,89,50,63,255,146,121,219,120,173,175,117,135,224,242,219,76,150,220"`,
+      `"0,155,132,176,110,14,207,188,99,233,19,32,127,171,130,88,244,1,193,200,155,104,173,156,172,55,27,230,228,51,167,204,43,8,1,0,0,1,0,0,0,0,0,0,0,0,1,145,1,53,18,19,113,206,182,216,46,168,242,97,82,226,112,13,25,56,50,8,90,26,78,242,214,120,39,110,167,124,58,221,98,46,35,140,77,61,31,46,53,198,25,228,1,66,82,143,144,187,131,154,138,48,222,166,211,65,50,9,194,254,139,76,162,117,41,183,167,202,196,126,19,180,43,187,227,77,241,52,171,43,69,113,75,196,231,70,95,201,72,0,216,231,77,237,242,194,33,24,183,35,15,75,29,230,140,218,58,64,216,249,18,202,245,9,117,252,139,97,227,143,102,35,204,20,103,180,21,250,165,27,206,62,182,152,100,245,21,96,198,172,151,205,220,137"`,
     );
 
     let broadcastedMessage = null as Uint8Array | null;
@@ -745,7 +701,7 @@ describe("E2E relay options", () => {
     assert(broadcastedMessage);
     // Added error and removed writeKey
     expect(broadcastedMessage.join()).toMatchInlineSnapshot(
-      `"0,155,132,176,110,14,207,188,99,233,19,32,127,171,130,88,244,0,1,0,0,1,0,0,0,0,0,0,0,0,1,145,1,56,50,8,90,26,78,242,214,20,252,52,39,201,138,92,106,247,122,181,175,132,241,48,78,120,247,139,38,86,101,157,203,184,103,237,33,250,52,178,48,253,143,78,147,162,185,228,50,161,99,80,233,42,249,155,111,93,119,203,156,159,192,38,35,6,85,127,203,254,57,137,227,25,166,3,246,135,216,110,127,230,222,73,18,215,150,50,111,213,20,145,16,187,63,255,197,24,178,244,193,36,130,112,225,165,206,93,101,98,29,176,63,237,222,13,205,58,34,18,44,32,242,246,127,222,184,2,89,50,63,255,146,121,219,120,173,175,117,135,224,242,219,76,150,220"`,
+      `"0,155,132,176,110,14,207,188,99,233,19,32,127,171,130,88,244,0,1,0,0,1,0,0,0,0,0,0,0,0,1,145,1,53,18,19,113,206,182,216,46,168,242,97,82,226,112,13,25,56,50,8,90,26,78,242,214,120,39,110,167,124,58,221,98,46,35,140,77,61,31,46,53,198,25,228,1,66,82,143,144,187,131,154,138,48,222,166,211,65,50,9,194,254,139,76,162,117,41,183,167,202,196,126,19,180,43,187,227,77,241,52,171,43,69,113,75,196,231,70,95,201,72,0,216,231,77,237,242,194,33,24,183,35,15,75,29,230,140,218,58,64,216,249,18,202,245,9,117,252,139,97,227,143,102,35,204,20,103,180,21,250,165,27,206,62,182,152,100,245,21,96,198,172,151,205,220,137"`,
     );
 
     let writeMessagesCalled = false;
@@ -999,11 +955,11 @@ describe("E2E sync", () => {
     expect(syncSteps).toMatchInlineSnapshot(`
       {
         "syncSizes": [
-          368,
-          5120,
-          17773,
-          893355,
-          879591,
+          340,
+          5105,
+          18376,
+          895275,
+          877244,
           19,
         ],
         "syncSteps": 6,
@@ -1033,45 +989,45 @@ describe("E2E sync", () => {
     expect(syncSteps).toMatchInlineSnapshot(`
       {
         "syncSizes": [
-          336,
-          2274,
-          2236,
-          125473,
-          113121,
-          2327,
-          2275,
-          88907,
-          84936,
-          2329,
-          2292,
-          72881,
-          77544,
-          2281,
-          68029,
-          78090,
-          2249,
-          58650,
-          73560,
+          358,
+          2357,
+          2299,
+          135226,
+          116737,
+          2218,
+          2262,
+          91063,
+          85326,
+          2493,
           2260,
-          67801,
-          70093,
-          2245,
-          69551,
-          64958,
-          2224,
-          61898,
-          58423,
-          2243,
-          63188,
-          55813,
-          2239,
-          55344,
-          53039,
-          63720,
-          87542,
-          33760,
-          82297,
-          73139,
+          74133,
+          74377,
+          2238,
+          68625,
+          78421,
+          2272,
+          61023,
+          79064,
+          2226,
+          74103,
+          69453,
+          2269,
+          65898,
+          68740,
+          2232,
+          50447,
+          59254,
+          2276,
+          62842,
+          57760,
+          14375,
+          61707,
+          47247,
+          126799,
+          112634,
+          1009,
+          35649,
+          29072,
           19,
         ],
         "syncSteps": 40,

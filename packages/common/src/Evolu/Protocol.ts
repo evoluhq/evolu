@@ -16,39 +16,31 @@
  *
  * ### Message Structure
  *
- * | Field                          | Notes                     |
- * | :----------------------------- | :------------------------ |
- * | **Header**                     |                           |
- * | - {@link protocolVersion}      |                           |
- * | - {@link OwnerId}              | {@link Owner}             |
- * | **Initiator**                  |                           |
- * | - {@link WriteKeyMode}         |                           |
- * | - {@link WriteKey}             | If WriteKeyMode >= 1      |
- * | - {@link WriteKey}             | If WriteKeyMode = 2 (new) |
- * | **Non-initiator**              |                           |
- * | - {@link ProtocolErrorCode}    |                           |
- * | **Messages**                   |                           |
- * | - {@link NonNegativeInt}       | A number of messages.     |
- * | - {@link EncryptedCrdtMessage} |                           |
- * | **Ranges**                     |                           |
- * | - {@link NonNegativeInt}       | Number of ranges.         |
- * | - {@link Range}                |                           |
+ * | Field                          | Notes                 |
+ * | :----------------------------- | :-------------------- |
+ * | **Header**                     |                       |
+ * | - {@link protocolVersion}      |                       |
+ * | - {@link OwnerId}              | {@link Owner}         |
+ * | **Initiator**                  |                       |
+ * | - hasWriteKey                  | 0 = no, 1 = yes       |
+ * | - {@link WriteKey}             | If hasWriteKey = 1    |
+ * | **Non-initiator**              |                       |
+ * | - {@link ProtocolErrorCode}    |                       |
+ * | **Messages**                   |                       |
+ * | - {@link NonNegativeInt}       | A number of messages. |
+ * | - {@link EncryptedCrdtMessage} |                       |
+ * | **Ranges**                     |                       |
+ * | - {@link NonNegativeInt}       | Number of ranges.     |
+ * | - {@link Range}                |                       |
  *
  * ### WriteKey Validation
  *
- * The initiator sends WriteKeyMode and optionally one or two WriteKeys. One key
- * for write operations and two for key rotation (current and new). Note that
- * it's ok to not send any key if initiator is going to be synced with readonly
- * owner. The non-initiator validates them immediately after parsing the
- * initiator header, before processing any messages or ranges.
- *
- * ### WriteKey Rotation
- *
- * When initiator's {@link WriteKeyMode} is `Rotation`, two WriteKeys are
- * present:
- *
- * 1. Current WriteKey (for validation)
- * 2. New WriteKey (to be stored)
+ * The initiator sends a hasWriteKey flag and optionally a WriteKey. The
+ * WriteKey is required when sending messages as a secure token proving the
+ * initiator can write changes. It's ok to not send any key if the initiator is
+ * only syncing (read-only) and not sending messages. The non-initiator
+ * validates the WriteKey immediately after parsing the initiator header, before
+ * processing any messages or ranges.
  *
  * ### Synchronization
  *
@@ -69,13 +61,13 @@
  * Both **Messages** and **Ranges** are optional, allowing each side to send,
  * sync, or only subscribe data as needed.
  *
- * When the initiator sends data, the {@link WriteKey} is required in Messages as
- * a secure token proving the initiator can write changes. The non-initiator
- * responds without a {@link WriteKey}, since the initiator’s request already
- * signals it wants data. If the non-initiator detects an issue, it sends an
- * error code via the `Error` field in the header back to the initiator. In
- * relay-to-relay or P2P sync, both sides may require the {@link WriteKey}
- * depending on who is the initiator.
+ * When the initiator sends data, the {@link WriteKey} is required as a secure
+ * token proving the initiator can write changes. The non-initiator responds
+ * without a {@link WriteKey}, since the initiator’s request already signals it
+ * wants data. If the non-initiator detects an issue, it sends an error code via
+ * the `Error` field in the header back to the initiator. In relay-to-relay or
+ * P2P sync, both sides may require the {@link WriteKey} depending on who is the
+ * initiator.
  *
  * ### Protocol Errors
  *
@@ -243,14 +235,6 @@ export const ProtocolErrorCode = {
 type ProtocolErrorCode =
   (typeof ProtocolErrorCode)[keyof typeof ProtocolErrorCode];
 
-export const WriteKeyMode = {
-  None: 0,
-  Single: 1,
-  Rotation: 2,
-} as const;
-
-type WriteKeyMode = (typeof WriteKeyMode)[keyof typeof WriteKeyMode];
-
 export type ProtocolError =
   | ProtocolUnsupportedVersionError
   | ProtocolInvalidDataError
@@ -403,19 +387,6 @@ export const createProtocolMessageForSync =
     return buffer.unwrap();
   };
 
-/** Creates a ProtocolMessage for {@link WriteKey} rotation. */
-export const createProtocolMessageForWriteKeyRotation = (
-  ownerId: OwnerId,
-  currentWriteKey: WriteKey,
-  newWriteKey: WriteKey,
-): ProtocolMessage => {
-  const buffer = createProtocolMessageBuffer(ownerId, {
-    type: "initiator",
-    writeKey: [currentWriteKey, newWriteKey],
-  });
-  return buffer.unwrap();
-};
-
 /**
  * Mutable builder for constructing {@link ProtocolMessage} respecting size
  * limits.
@@ -449,8 +420,7 @@ export const createProtocolMessageBuffer = (
   } & (
     | {
         readonly type: "initiator";
-        /** Single key or [current, new] for rotation. */
-        readonly writeKey?: WriteKey | readonly [WriteKey, WriteKey];
+        readonly writeKey?: WriteKey;
       }
     | {
         readonly type: "non-initiator";
@@ -482,14 +452,10 @@ export const createProtocolMessageBuffer = (
 
   if (options.type === "initiator") {
     if (!options.writeKey) {
-      buffers.header.extend([WriteKeyMode.None]);
-    } else if (!Array.isArray(options.writeKey)) {
-      buffers.header.extend([WriteKeyMode.Single]);
-      buffers.header.extend(options.writeKey as WriteKey);
+      buffers.header.extend([0]); // No WriteKey
     } else {
-      buffers.header.extend([WriteKeyMode.Rotation]);
-      buffers.header.extend(options.writeKey[0] as WriteKey); // current
-      buffers.header.extend(options.writeKey[1] as WriteKey); // new
+      buffers.header.extend([1]); // WriteKey present
+      buffers.header.extend(options.writeKey);
     }
   } else {
     buffers.header.extend([options.errorCode]);
@@ -862,23 +828,11 @@ export const applyProtocolMessageAsRelay =
 
       subscribe?.(ownerId);
 
-      const writeKeyMode = input.shift() as WriteKeyMode;
+      const hasWriteKey = input.shift();
       let writeKey: WriteKey | undefined;
-      let newWriteKey: WriteKey | undefined;
 
-      if (writeKeyMode !== WriteKeyMode.None) {
+      if (hasWriteKey === 1) {
         writeKey = input.shiftN(writeKeyLength) as WriteKey;
-        switch (writeKeyMode) {
-          case WriteKeyMode.Single:
-            break;
-          case WriteKeyMode.Rotation:
-            newWriteKey = input.shiftN(writeKeyLength) as WriteKey;
-            break;
-          default:
-            throw new ProtocolDecodeError(
-              `Invalid WriteKeyMode: ${writeKeyMode}`,
-            );
-        }
       }
 
       if (writeKey) {
@@ -890,21 +844,6 @@ export const applyProtocolMessageAsRelay =
               errorCode: ProtocolErrorCode.WriteKeyError,
             }).unwrap(),
           );
-        }
-
-        if (newWriteKey) {
-          const rotationSuccess = deps.storage.setWriteKey(
-            binaryOwnerId,
-            newWriteKey,
-          );
-          if (!rotationSuccess) {
-            return ok(
-              createProtocolMessageBuffer(ownerId, {
-                type: "non-initiator",
-                errorCode: ProtocolErrorCode.WriteError,
-              }).unwrap(),
-            );
-          }
         }
       }
 
