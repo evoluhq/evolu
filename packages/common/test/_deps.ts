@@ -12,8 +12,8 @@ import {
   createAppOwner,
   createOwner,
   createOwnerSecret,
+  ownerIdToBinaryOwnerId,
 } from "../src/Evolu/Owner.js";
-import { ownerIdToBinaryOwnerId } from "../src/Evolu/Protocol.js";
 import { constVoid } from "../src/Function.js";
 import { NanoIdLib } from "../src/NanoId.js";
 import {

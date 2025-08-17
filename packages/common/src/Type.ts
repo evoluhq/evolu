@@ -75,14 +75,17 @@ import { sha256 } from "@noble/hashes/sha2";
 import * as bip39 from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english";
 import { assert } from "./Assert.js";
+import type { Brand } from "./Brand.js";
 import { identity } from "./Function.js";
 import { NanoIdLibDep } from "./NanoId.js";
 import { isPlainObject } from "./Object.js";
 import { Err, err, Ok, ok, Result, trySync } from "./Result.js";
 import { safelyStringifyUnknownValue } from "./String.js";
 import type { Literal, Simplify, WidenLiteral } from "./Types.js";
-import type { Brand } from "./Brand.js";
 import { IntentionalNever } from "./Types.js";
+
+// DEV: Remove once supported everywhere (soon).
+import "es-arraybuffer-base64/auto";
 
 export interface Type<
   Name extends TypeName,
@@ -1458,6 +1461,38 @@ export interface IdError<Table extends TypeName = TypeName>
 export const formatIdError = createTypeErrorFormatter<IdError>(
   (error) => `Invalid ${error.type} table Id: ${error.value}`,
 );
+
+export const BinaryId = brand("BinaryId", Uint8Array, (value) =>
+  value.length === 16 && (value[15] & 0b11) === 0
+    ? ok(value)
+    : err<BinaryIdError>({ type: "BinaryId", value }),
+);
+export type BinaryId = typeof BinaryId.Type;
+
+export interface BinaryIdError extends TypeError<"BinaryId"> {}
+
+export const formatBinaryIdError = createTypeErrorFormatter<BinaryIdError>(
+  (error) => `Invalid BinaryId: ${error.value}`,
+);
+
+export const binaryIdTypeValueLength = 16 as NonNegativeInt;
+
+const base64UrlOptions = { alphabet: "base64url", omitPadding: true };
+
+export const idToBinaryId = (id: Id): BinaryId => {
+  // Append 'A' (sextet 000000) to make length canonical (22) and decode natively.
+  // @ts-expect-error: proposal API is not typed in TS yet
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call
+  return globalThis.Uint8Array.fromBase64(id + "A", base64UrlOptions);
+};
+
+export const binaryIdToId = (binaryId: BinaryId): Id => {
+  // Encode 16 bytes canonically to Base64URL (→ 22 chars, ending with 'A')
+  // @ts-expect-error: proposal API is not typed in TS yet
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+  const s: string = binaryId.toBase64(base64UrlOptions);
+  return s.slice(0, 21) as Id;
+};
 
 /**
  * Positive number.

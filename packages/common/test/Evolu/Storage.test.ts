@@ -4,7 +4,6 @@ import {
   binaryTimestampToFingerprint,
   Fingerprint,
   InfiniteUpperBound,
-  ownerIdToBinaryOwnerId,
 } from "../../src/Evolu/Protocol.js";
 import {
   createSqliteStorageBase,
@@ -25,6 +24,7 @@ import {
   getOrThrow,
   NonNegativeInt,
   ok,
+  ownerIdToBinaryOwnerId,
   PositiveInt,
   sql,
   SqliteDep,

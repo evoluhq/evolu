@@ -7,8 +7,6 @@
 export { createEvolu } from "./Evolu.js";
 export type { Evolu, EvoluDeps, EvoluError } from "./Evolu.js";
 export * from "./Owner.js";
-export { binaryIdToId, idToBinaryId } from "./Protocol.js";
-export type { BinaryId } from "./Protocol.js";
 export * as kysely from "./PublicKysely.js";
 export type { InferRow, Query, QueryRows, Row } from "./Query.js";
 export { formatValidMutationSizeError } from "./Schema.js";

@@ -1,3 +1,5 @@
+// DEV: It will not be here.
+
 // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
 export type Transport = { readonly type: "WebSocket"; readonly url: string };
 // Future transport types (not yet implemented):

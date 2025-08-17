@@ -1,16 +1,24 @@
 import { expect, test } from "vitest";
 import {
+  binaryOwnerIdToOwnerId,
   createAppOwner,
   createOwnerSecret,
   deriveShardOwner,
   mnemonicToOwnerSecret,
+  ownerIdToBinaryOwnerId,
   ownerSecretToMnemonic,
 } from "../../src/index.js";
 import {
   testCreateRandomBytesDep,
+  testOwner,
   testOwnerSecret,
   testOwnerSecret2,
 } from "../_deps.js";
+
+test("ownerIdToBinaryOwnerId/binaryOwnerIdToOwnerId", () => {
+  const id = testOwner.id;
+  expect(binaryOwnerIdToOwnerId(ownerIdToBinaryOwnerId(id))).toStrictEqual(id);
+});
 
 test("ownerSecretToMnemonic and mnemonicToOwnerSecret are inverses", () => {
   const secret = createOwnerSecret(testCreateRandomBytesDep);

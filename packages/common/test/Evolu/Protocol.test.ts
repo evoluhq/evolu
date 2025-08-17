@@ -1,21 +1,9 @@
 import { compress, init } from "@bokuweb/zstd-wasm";
-import {
-  assert,
-  beforeAll,
-  describe,
-  expect,
-  expectTypeOf,
-  it,
-  test,
-} from "vitest";
+import { assert, beforeAll, describe, expect, it, test } from "vitest";
 import { createBuffer } from "../../src/Buffer.js";
 import {
   applyProtocolMessageAsClient,
   applyProtocolMessageAsRelay,
-  Base64Url256,
-  base64Url256ToBytes,
-  binaryIdToId,
-  binaryOwnerIdToOwnerId,
   binaryTimestampToFingerprint,
   CrdtMessage,
   createProtocolMessageBuffer,
@@ -24,8 +12,6 @@ import {
   createProtocolMessageFromCrdtMessages,
   createTimestampsBuffer,
   DbChange,
-  decodeBase64Url256,
-  decodeBase64Url256WithLength,
   decodeLength,
   decodeNodeId,
   decodeNonNegativeInt,
@@ -34,7 +20,6 @@ import {
   decodeString,
   decryptAndDecodeDbChange,
   encodeAndEncryptDbChange,
-  encodeBase64Url256,
   encodeLength,
   encodeNodeId,
   encodeNonNegativeInt,
@@ -43,10 +28,8 @@ import {
   encodeString,
   EncryptedCrdtMessage,
   EncryptedDbChange,
-  idToBinaryId,
   InfiniteUpperBound,
   maxProtocolMessageRangesSize,
-  ownerIdToBinaryOwnerId,
   ProtocolValueType,
   protocolVersion,
   RangeType,
@@ -68,17 +51,16 @@ import {
   createWriteKey,
   EncryptionKey,
   NonEmptyReadonlyArray,
+  ownerIdToBinaryOwnerId,
 } from "../../src/index.js";
 import { err, getOrThrow } from "../../src/Result.js";
 import { SqliteValue } from "../../src/Sqlite.js";
 import { DateIso, NonNegativeInt, PositiveInt } from "../../src/Type.js";
-import { Brand } from "../../src/Brand.js";
 import {
   testCreateId,
   testCreateSqlite,
   testCreateTimingSafeEqual,
   testDeps,
-  testNanoIdLib,
   testNanoIdLibDep,
   testOwner,
   testOwnerBinaryId,
@@ -121,101 +103,6 @@ const createStorageDep = async (): Promise<StorageDep> => {
   );
   return { storage };
 };
-
-test("Base64Url256", () => {
-  expectTypeOf<Base64Url256>().toEqualTypeOf<
-    string & Brand<"Base64Url"> & Brand<"MaxLength256">
-  >();
-
-  const s = "a".repeat(256);
-  expect(Base64Url256.from(s).ok).toBe(true);
-  expect(Base64Url256.from(s + "a").ok).toBe(false);
-
-  expect(Base64Url256.from("")).toEqual(
-    err({
-      type: "Regex",
-      name: "Base64Url",
-      pattern: /^[A-Za-z0-9_-]+$/,
-      value: "",
-    }),
-  );
-});
-
-test("idToBinaryId/binaryIdToId", () => {
-  const testCases = Array.from({ length: 100 }).map(() => testCreateId());
-
-  testCases.forEach((id) => {
-    expect(binaryIdToId(idToBinaryId(id))).toBe(id);
-    expect(idToBinaryId(id).length).toBe(16);
-  });
-});
-
-test("ownerIdToBinaryOwnerId/binaryOwnerIdToOwnerId", () => {
-  const id = testOwner.id;
-  expect(binaryOwnerIdToOwnerId(ownerIdToBinaryOwnerId(id))).toStrictEqual(id);
-});
-
-test("base64Url256ToBytes/decodeBase64Url256", () => {
-  const buffer = createBuffer();
-
-  const testCasesSuccess = [
-    "A",
-    "ABC",
-    "abcdefghijklmnopqrstuvwxyz0123456789_-",
-    "HelloWorld123_-",
-    testNanoIdLib.nanoid(),
-  ];
-
-  testCasesSuccess.forEach((string) => {
-    const encoded = base64Url256ToBytes(getOrThrow(Base64Url256.from(string)));
-    buffer.extend(encoded);
-    expect(decodeBase64Url256(createBuffer(encoded), string.length)).toBe(
-      string,
-    );
-  });
-
-  expect(buffer.unwrap().join()).toMatchInlineSnapshot(
-    `"100,102,70,128,15,15,133,11,28,179,247,77,118,28,65,150,223,192,127,3,142,87,235,180,76,36,244,21,41,67,141,176,128,156,45,182,26,129,188,216,83,9,62,194,0,32,92,221,89,128,9,37,219,76,175,47,66,221,75,72,212"`,
-  );
-
-  Array.from({ length: 256 }).forEach((_, i) => {
-    // Empty string isn't Base64Url256.
-    if (i === 0) return;
-    const s = "a".repeat(i);
-    expect(
-      decodeBase64Url256(
-        createBuffer(base64Url256ToBytes(s as Base64Url256)),
-        s.length,
-      ),
-    ).toBe(s);
-  });
-
-  const tooLong = "a".repeat(257) as Base64Url256;
-
-  expect(() =>
-    decodeBase64Url256(
-      createBuffer(base64Url256ToBytes(tooLong)),
-      tooLong.length,
-    ),
-  ).toThrow("MaxLength");
-
-  // From 21 to 16
-  expect(
-    base64Url256ToBytes(getOrThrow(Base64Url256.from(testNanoIdLib.nanoid())))
-      .length,
-  ).toBe(16);
-
-  expect(
-    JSON.stringify(
-      Array.from({ length: 30 }).map((_, i) => [
-        i + 1,
-        base64Url256ToBytes("a".repeat(i + 1) as Base64Url256).length,
-      ]),
-    ),
-  ).toMatchInlineSnapshot(
-    `"[[1,1],[2,2],[3,3],[4,3],[5,4],[6,5],[7,6],[8,6],[9,7],[10,8],[11,9],[12,9],[13,10],[14,11],[15,12],[16,12],[17,13],[18,14],[19,15],[20,15],[21,16],[22,17],[23,18],[24,18],[25,19],[26,20],[27,21],[28,21],[29,22],[30,23]]"`,
-  );
-});
 
 test("encodeNumber/decodeNumber", () => {
   const testCases = [
@@ -336,35 +223,20 @@ test("encodeNodeId/decodeNodeId", () => {
   });
 });
 
-test("encodeBase64Url256WithLength/decodeBase64Url256WithLength", () => {
-  const testCasesSuccess = [
-    "A",
-    "ABC",
-    "abcdefghijklmnopqrstuvwxyz0123456789_-",
-    "HelloWorld123_-",
-    testNanoIdLib.nanoid(),
-  ];
-
-  testCasesSuccess.forEach((string) => {
-    const buffer = createBuffer();
-    encodeBase64Url256(buffer, getOrThrow(Base64Url256.from(string)));
-    expect(decodeBase64Url256WithLength(buffer)).toBe(string);
-  });
-});
-
 test("ProtocolValueType", () => {
-  expect(ProtocolValueType).toStrictEqual({
-    String: 20,
-    Number: 21,
-    Null: 22,
-    Binary: 23,
-    Id: 30,
-    Base64Url256: 31,
-    NonNegativeInt: 32,
-    Json: 33,
-    DateIsoWithNonNegativeTime: 34,
-    DateIsoWithNegativeTime: 35,
-  });
+  expect(ProtocolValueType).toMatchInlineSnapshot(`
+    {
+      "Binary": 23,
+      "DateIsoWithNegativeTime": 34,
+      "DateIsoWithNonNegativeTime": 33,
+      "Id": 30,
+      "Json": 32,
+      "NonNegativeInt": 31,
+      "Null": 22,
+      "Number": 21,
+      "String": 20,
+    }
+  `);
 });
 
 test("encodeSqliteValue/decodeSqliteValue", () => {
@@ -375,7 +247,6 @@ test("encodeSqliteValue/decodeSqliteValue", () => {
     [null, 1],
     [new Uint8Array([1, 2, 3]), 5],
     [testCreateId(), 17],
-    ["aaaaaaaaaaaa", 11], // Base64Url256
     [0, 1], // small ints 0-19
     [19, 1], // small ints 0-19
     [123, 2], // NonNegativeInt
@@ -389,7 +260,7 @@ test("encodeSqliteValue/decodeSqliteValue", () => {
     [getOrThrow(DateIso.fromParent(new Date("9999-12-31T23:59:59.999Z"))), 8],
   ];
 
-  let buffer = createBuffer();
+  const buffer = createBuffer();
   testCasesSuccess.forEach(([value, bytesLength]) => {
     const encoded = createBuffer();
     encodeSqliteValue(encoded, value);
@@ -399,32 +270,17 @@ test("encodeSqliteValue/decodeSqliteValue", () => {
     expect(decodeSqliteValue(encoded)).toStrictEqual(value);
   });
   expect(buffer.unwrap().join()).toMatchInlineSnapshot(
-    `"20,12,97,97,97,97,97,97,97,97,97,97,97,33,21,203,64,94,224,0,0,0,0,0,21,208,133,22,23,3,1,2,3,30,35,145,210,103,102,107,10,197,201,53,161,13,77,89,167,44,31,12,12,48,195,12,48,195,12,48,195,0,19,32,123,32,255,127,33,20,222,0,2,167,99,111,109,112,97,99,116,195,166,115,99,104,101,109,97,0,35,203,194,204,69,55,130,48,0,0,34,128,232,252,254,173,50,34,128,168,131,232,192,127,34,128,128,200,165,182,128,1,34,255,183,255,144,253,206,57"`,
+    `"20,12,97,97,97,97,97,97,97,97,97,97,97,33,21,203,64,94,224,0,0,0,0,0,21,208,133,22,23,3,1,2,3,30,226,141,159,9,137,92,221,127,235,243,90,48,128,135,128,240,0,19,31,123,31,255,127,32,20,222,0,2,167,99,111,109,112,97,99,116,195,166,115,99,104,101,109,97,0,34,203,194,204,69,55,130,48,0,0,33,128,232,252,254,173,50,33,128,168,131,232,192,127,33,128,128,200,165,182,128,1,33,255,183,255,144,253,206,57"`,
   );
-
-  // string
-  buffer = createBuffer();
-  encodeSqliteValue(buffer, "." + "a".repeat(255));
-  expect(buffer.getLength()).toBe(
-    // 256 + string length (2 bytes) + type (1 byte)
-    259,
-  );
-
-  // Base64Url256
-  buffer = createBuffer();
-  encodeSqliteValue(buffer, "a" + "a".repeat(255));
-  expect(buffer.getLength()).toBe(195);
 });
 
 const createDbChange = (): DbChange => ({
-  table: "employee" as Base64Url256,
+  table: "employee",
   id: testCreateId(),
   values: {
-    ["name" as Base64Url256]: "Victoria",
-    ["hiredAt" as Base64Url256]: getOrThrow(
-      DateIso.from(new Date("2024-10-31")),
-    ),
-    ["officeId" as Base64Url256]: testCreateId(),
+    name: "Victoria",
+    hiredAt: getOrThrow(DateIso.from(new Date("2024-10-31"))),
+    officeId: testCreateId(),
   },
 });
 
@@ -450,7 +306,7 @@ test("encodeAndEncryptDbChange/decryptAndDecodeDbChange", () => {
   const crdtMessage = createTestCrdtMessage();
   const encryptedMessage = createEncryptedCrdtMessage(crdtMessage);
   expect(encryptedMessage.change.join()).toMatchInlineSnapshot(
-    `"50,12,233,89,143,169,92,123,149,145,188,150,38,102,88,76,117,90,162,252,207,229,8,81,112,64,129,34,77,115,236,123,154,217,3,42,160,39,170,138,120,61,43,10,79,224,235,121,101,37,76,151,142,74,59,213,108,5,109,90,237,226,165,57,240,100,26,121,39,200,140,2,201,129,5,69,175,3,56,223,119,254,112,104,123,150,141,146,108,11,89,125,130,237,80,124,249,105,147,230,45,66,217,200,26,96,124,239,251,81,28,98,96,175,224,42,59,150,28,15,226,99,233,179,205,168,62,252,232,250,243,127,144,228,186,173,52"`,
+    `"32,2,13,48,234,235,52,133,86,38,216,1,145,194,201,195,117,206,161,84,61,153,79,138,120,44,212,141,98,128,165,119,142,238,59,95,17,164,165,5,121,1,150,217,217,96,54,179,77,233,36,11,22,107,116,40,138,227,192,155,68,136,227,73,55,60,115,80,139,143,200,84,165,31,187,242,6,39,245,43,230,32,236,4,10,148,118,137,41,178,149,49,125,40,205,249,1,134,180,247,89,51,40,20,121,36,243,164,15,96,158,192,254,111,74,88,114,158,148,225,82,203,55,54,207,36,87,187,55,25,228,89,41,70,157,4,190,25,238,9,250,180,224,214,115"`,
   );
   const decrypted = decryptAndDecodeDbChange({
     symmetricCrypto: testSymmetricCrypto,
@@ -629,7 +485,7 @@ test("createProtocolMessageForSync", async () => {
   expect(
     createProtocolMessageForSync(storageDep)(testOwner.id)?.join(),
   ).toMatchInlineSnapshot(
-    `"0,29,9,185,195,37,18,226,212,150,119,169,44,221,6,31,52,0,0,1,2,0"`,
+    `"0,155,132,176,110,14,207,188,99,233,19,32,127,171,130,88,244,0,0,1,2,0"`,
   );
 
   const messages31 = testTimestampsAsc.slice(0, 31).map(
@@ -648,7 +504,7 @@ test("createProtocolMessageForSync", async () => {
   expect(
     createProtocolMessageForSync(storageDep)(testOwner.id)?.join(),
   ).toMatchInlineSnapshot(
-    `"0,29,9,185,195,37,18,226,212,150,119,169,44,221,6,31,52,0,0,1,2,31,0,163,205,139,2,152,222,222,3,141,195,32,138,221,210,1,216,167,200,1,243,155,45,128,152,244,5,167,136,182,1,199,139,225,5,131,234,154,8,0,150,132,58,233,134,161,1,222,244,220,1,250,141,170,3,248,167,204,1,0,161,234,59,0,192,227,115,181,188,169,1,224,169,247,4,205,177,37,143,161,242,1,137,231,180,2,161,244,87,235,207,53,133,244,180,1,142,243,223,10,158,141,113,0,11,1,1,0,5,1,1,0,1,1,1,0,11,0,0,0,0,0,0,0,0,1,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,11,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,6,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,6,153,201,144,40,214,99,106,145,1"`,
+    `"0,155,132,176,110,14,207,188,99,233,19,32,127,171,130,88,244,0,0,1,2,31,0,163,205,139,2,152,222,222,3,141,195,32,138,221,210,1,216,167,200,1,243,155,45,128,152,244,5,167,136,182,1,199,139,225,5,131,234,154,8,0,150,132,58,233,134,161,1,222,244,220,1,250,141,170,3,248,167,204,1,0,161,234,59,0,192,227,115,181,188,169,1,224,169,247,4,205,177,37,143,161,242,1,137,231,180,2,161,244,87,235,207,53,133,244,180,1,142,243,223,10,158,141,113,0,11,1,1,0,5,1,1,0,1,1,1,0,11,0,0,0,0,0,0,0,0,1,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,11,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,6,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,6,153,201,144,40,214,99,106,145,1"`,
   );
 
   const message32 = testTimestampsAsc.slice(32, 33).map(
@@ -667,7 +523,7 @@ test("createProtocolMessageForSync", async () => {
   expect(
     createProtocolMessageForSync(storageDep)(testOwner.id)?.join(),
   ).toMatchInlineSnapshot(
-    `"0,29,9,185,195,37,18,226,212,150,119,169,44,221,6,31,52,0,0,16,187,171,234,5,151,160,243,1,203,195,245,1,167,160,170,7,202,245,251,13,150,132,58,199,251,253,2,242,181,246,4,161,234,59,192,227,115,149,230,160,6,220,210,151,2,170,219,140,3,240,195,234,1,172,128,209,11,0,15,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,5,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,7,153,201,144,40,214,99,106,145,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,79,199,221,49,166,129,34,35,99,27,109,221,72,203,113,173,13,174,108,244,220,53,10,79,91,208,39,170,201,18,73,253,152,51,99,124,0,152,50,246,239,212,6,13,80,19,126,71,76,18,73,200,62,200,42,99,188,63,73,207,154,238,98,14,224,33,103,255,188,202,60,84,33,248,184,78,240,231,221,198,98,244,79,237,208,100,110,251,209,4,221,129,70,179,162,173,26,9,38,199,115,85,231,208,141,13,135,35,144,151,124,233,151,6,119,79,51,128,236,157,32,91,160,104,143,239,236,16,148,246,215,168,225,200,73,253,182,117,53,113,24,52,165,196,73,55,66,212,228,27,187,1,71,143,234,75,93,129,254,145,224,183,203,200,8,205,21,142,6,139,145,237,12,30,146,233,222,152,203,251,132,199,125,55,190,43,113,63,180,29,179,161"`,
+    `"0,155,132,176,110,14,207,188,99,233,19,32,127,171,130,88,244,0,0,16,187,171,234,5,151,160,243,1,203,195,245,1,167,160,170,7,202,245,251,13,150,132,58,199,251,253,2,242,181,246,4,161,234,59,192,227,115,149,230,160,6,220,210,151,2,170,219,140,3,240,195,234,1,172,128,209,11,0,15,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,5,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,7,153,201,144,40,214,99,106,145,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,79,199,221,49,166,129,34,35,99,27,109,221,72,203,113,173,13,174,108,244,220,53,10,79,91,208,39,170,201,18,73,253,152,51,99,124,0,152,50,246,239,212,6,13,80,19,126,71,76,18,73,200,62,200,42,99,188,63,73,207,154,238,98,14,224,33,103,255,188,202,60,84,33,248,184,78,240,231,221,198,98,244,79,237,208,100,110,251,209,4,221,129,70,179,162,173,26,9,38,199,115,85,231,208,141,13,135,35,144,151,124,233,151,6,119,79,51,128,236,157,32,91,160,104,143,239,236,16,148,246,215,168,225,200,73,253,182,117,53,113,24,52,165,196,73,55,66,212,228,27,187,1,71,143,234,75,93,129,254,145,224,183,203,200,8,205,21,142,6,139,145,237,12,30,146,233,222,152,203,251,132,199,125,55,190,43,113,63,180,29,179,161"`,
   );
 });
 
@@ -687,7 +543,7 @@ test("E2E key rotation", async () => {
     newWriteKey,
   );
   expect(rotationMessage.join()).toMatchInlineSnapshot(
-    `"0,29,9,185,195,37,18,226,212,150,119,169,44,221,6,31,52,2,193,200,155,104,173,156,172,55,27,230,228,51,167,204,43,8,119,244,182,193,94,33,37,51,202,213,38,65,135,221,126,28,0"`,
+    `"0,155,132,176,110,14,207,188,99,233,19,32,127,171,130,88,244,2,193,200,155,104,173,156,172,55,27,230,228,51,167,204,43,8,170,136,201,113,39,222,186,169,38,57,3,87,246,94,18,109,0"`,
   );
 
   const result = applyProtocolMessageAsRelay(storageDep)(rotationMessage);
@@ -823,7 +679,7 @@ describe("E2E errors", () => {
     assert(responseWithWriteKeyError.ok);
     assert(responseWithWriteKeyError.value);
     expect(responseWithWriteKeyError.value.join()).toMatchInlineSnapshot(
-      `"0,29,9,185,195,37,18,226,212,150,119,169,44,221,6,31,52,1,0"`,
+      `"0,155,132,176,110,14,207,188,99,233,19,32,127,171,130,88,244,1,0"`,
     );
 
     expect(
@@ -866,7 +722,7 @@ describe("E2E relay options", () => {
     );
 
     expect(initiatorMessage.join()).toMatchInlineSnapshot(
-      `"0,29,9,185,195,37,18,226,212,150,119,169,44,221,6,31,52,1,193,200,155,104,173,156,172,55,27,230,228,51,167,204,43,8,1,0,0,1,0,0,0,0,0,0,0,0,1,137,1,87,40,206,247,79,137,58,9,129,77,32,199,233,34,114,254,197,204,200,212,85,246,228,91,112,50,230,149,253,92,11,87,139,49,110,123,120,212,156,63,134,76,92,68,159,224,189,210,200,172,248,201,57,127,148,232,135,132,166,234,64,194,120,194,237,62,2,223,3,106,177,177,231,219,29,45,48,255,53,15,0,215,137,50,191,94,82,1,145,54,150,109,132,136,83,145,77,8,252,175,114,168,182,187,54,138,130,70,117,10,102,93,127,163,165,103,250,135,249,176,79,237,62,192,237,19,80,166,90,118,147,64,205,177,96,242,4"`,
+      `"0,155,132,176,110,14,207,188,99,233,19,32,127,171,130,88,244,1,193,200,155,104,173,156,172,55,27,230,228,51,167,204,43,8,1,0,0,1,0,0,0,0,0,0,0,0,1,145,1,56,50,8,90,26,78,242,214,20,252,52,39,201,138,92,106,247,122,181,175,132,241,48,78,120,247,139,38,86,101,157,203,184,103,237,33,250,52,178,48,253,143,78,147,162,185,228,50,161,99,80,233,42,249,155,111,93,119,203,156,159,192,38,35,6,85,127,203,254,57,137,227,25,166,3,246,135,216,110,127,230,222,73,18,215,150,50,111,213,20,145,16,187,63,255,197,24,178,244,193,36,130,112,225,165,206,93,101,98,29,176,63,237,222,13,205,58,34,18,44,32,242,246,127,222,184,2,89,50,63,255,146,121,219,120,173,175,117,135,224,242,219,76,150,220"`,
     );
 
     let broadcastedMessage = null as Uint8Array | null;
@@ -887,7 +743,7 @@ describe("E2E relay options", () => {
     assert(broadcastedMessage);
     // Added error and removed writeKey
     expect(broadcastedMessage.join()).toMatchInlineSnapshot(
-      `"0,29,9,185,195,37,18,226,212,150,119,169,44,221,6,31,52,0,1,0,0,1,0,0,0,0,0,0,0,0,1,137,1,87,40,206,247,79,137,58,9,129,77,32,199,233,34,114,254,197,204,200,212,85,246,228,91,112,50,230,149,253,92,11,87,139,49,110,123,120,212,156,63,134,76,92,68,159,224,189,210,200,172,248,201,57,127,148,232,135,132,166,234,64,194,120,194,237,62,2,223,3,106,177,177,231,219,29,45,48,255,53,15,0,215,137,50,191,94,82,1,145,54,150,109,132,136,83,145,77,8,252,175,114,168,182,187,54,138,130,70,117,10,102,93,127,163,165,103,250,135,249,176,79,237,62,192,237,19,80,166,90,118,147,64,205,177,96,242,4"`,
+      `"0,155,132,176,110,14,207,188,99,233,19,32,127,171,130,88,244,0,1,0,0,1,0,0,0,0,0,0,0,0,1,145,1,56,50,8,90,26,78,242,214,20,252,52,39,201,138,92,106,247,122,181,175,132,241,48,78,120,247,139,38,86,101,157,203,184,103,237,33,250,52,178,48,253,143,78,147,162,185,228,50,161,99,80,233,42,249,155,111,93,119,203,156,159,192,38,35,6,85,127,203,254,57,137,227,25,166,3,246,135,216,110,127,230,222,73,18,215,150,50,111,213,20,145,16,187,63,255,197,24,178,244,193,36,130,112,225,165,206,93,101,98,29,176,63,237,222,13,205,58,34,18,44,32,242,246,127,222,184,2,89,50,63,255,146,121,219,120,173,175,117,135,224,242,219,76,150,220"`,
     );
 
     let writeMessagesCalled = false;
@@ -915,10 +771,10 @@ describe("E2E sync", () => {
       change: createEncryptedDbChange({
         timestamp: binaryTimestampToTimestamp(t),
         change: {
-          table: "foo" as Base64Url256,
+          table: "foo",
           id: testCreateId(),
           values: {
-            ["bar" as Base64Url256]: "x".repeat(testRandomLib.int(1, 500)),
+            bar: "x".repeat(testRandomLib.int(1, 500)),
           },
         },
       }),
@@ -1023,9 +879,9 @@ describe("E2E sync", () => {
         "syncSizes": [
           404,
           228,
-          999884,
+          999875,
           39,
-          668655,
+          750711,
           19,
         ],
         "syncSteps": 6,
@@ -1047,17 +903,17 @@ describe("E2E sync", () => {
         "syncSizes": [
           404,
           228,
-          999884,
+          999875,
           39,
-          152722,
+          167688,
           39,
-          146506,
+          149748,
           39,
-          151496,
+          161258,
           39,
-          170680,
+          170566,
           39,
-          59431,
+          113639,
           19,
         ],
         "syncSteps": 14,
@@ -1074,9 +930,9 @@ describe("E2E sync", () => {
       {
         "syncSizes": [
           22,
-          999737,
+          999559,
           55,
-          685867,
+          768045,
         ],
         "syncSteps": 4,
       }
@@ -1096,27 +952,27 @@ describe("E2E sync", () => {
       {
         "syncSizes": [
           22,
-          165071,
+          173169,
           55,
-          167402,
+          174471,
           55,
-          148461,
+          156028,
           55,
-          160272,
+          168314,
           55,
-          163651,
+          171542,
           55,
-          155276,
+          163409,
           55,
-          157397,
+          164805,
           55,
-          140120,
+          147558,
           55,
-          152617,
+          159519,
           55,
-          167346,
+          175914,
           55,
-          119755,
+          125510,
         ],
         "syncSteps": 22,
       }
@@ -1141,11 +997,11 @@ describe("E2E sync", () => {
     expect(syncSteps).toMatchInlineSnapshot(`
       {
         "syncSizes": [
-          350,
-          5083,
-          19570,
-          854123,
-          836216,
+          368,
+          5120,
+          17773,
+          893355,
+          879591,
           19,
         ],
         "syncSteps": 6,
@@ -1175,46 +1031,46 @@ describe("E2E sync", () => {
     expect(syncSteps).toMatchInlineSnapshot(`
       {
         "syncSizes": [
-          394,
-          2255,
-          2267,
-          118071,
-          109648,
-          2293,
-          2248,
-          87807,
-          83324,
-          2441,
+          336,
+          2274,
+          2236,
+          125473,
+          113121,
+          2327,
+          2275,
+          88907,
+          84936,
+          2329,
+          2292,
+          72881,
+          77544,
           2281,
-          79455,
-          73428,
-          2284,
-          2264,
-          72612,
-          74639,
-          2276,
-          63596,
-          73603,
-          2264,
-          67262,
-          64009,
-          2215,
-          57715,
-          63396,
-          2262,
-          60600,
-          63850,
-          2254,
-          63816,
-          54380,
-          38700,
-          58046,
-          35139,
-          86221,
-          100671,
-          15341,
-          29351,
-          21865,
+          68029,
+          78090,
+          2249,
+          58650,
+          73560,
+          2260,
+          67801,
+          70093,
+          2245,
+          69551,
+          64958,
+          2224,
+          61898,
+          58423,
+          2243,
+          63188,
+          55813,
+          2239,
+          55344,
+          53039,
+          63720,
+          87542,
+          33760,
+          82297,
+          73139,
+          19,
         ],
         "syncSteps": 40,
       }
@@ -1227,9 +1083,9 @@ describe("E2E sync", () => {
       (t): CrdtMessage => ({
         timestamp: binaryTimestampToTimestamp(t),
         change: {
-          table: "foo" as Base64Url256,
+          table: "foo",
           id: testCreateId(),
-          values: { ["bar" as Base64Url256]: "baz" },
+          values: { bar: "baz" },
         },
       }),
     );
@@ -1249,7 +1105,7 @@ describe("E2E sync", () => {
 
     assert(relayResult.ok);
     expect(relayResult.value?.join()).toMatchInlineSnapshot(
-      `"0,29,9,185,195,37,18,226,212,150,119,169,44,221,6,31,52,0,0,1,2,9,0,163,205,139,2,152,222,222,3,141,195,32,138,221,210,1,216,167,200,1,243,155,45,128,152,244,5,167,136,182,1,0,9,0,0,0,0,0,0,0,0,1,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,6"`,
+      `"0,155,132,176,110,14,207,188,99,233,19,32,127,171,130,88,244,0,0,1,2,9,0,163,205,139,2,152,222,222,3,141,195,32,138,221,210,1,216,167,200,1,243,155,45,128,152,244,5,167,136,182,1,0,9,0,0,0,0,0,0,0,0,1,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,6"`,
     );
     // Sync continue
     expect(relayResult.value).not.toBe(null);
@@ -1295,7 +1151,7 @@ describe("ranges sizes", () => {
 
     expect(
       getUncompressedAndCompressedSizes(buffer.unwrap()),
-    ).toMatchInlineSnapshot(`"31613 18208"`);
+    ).toMatchInlineSnapshot(`"31613 18207"`);
   });
 
   it("fingerprints", () => {

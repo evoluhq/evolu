@@ -24,16 +24,14 @@
  */
 
 import { assert } from "../Assert.js";
+import { Brand } from "../Brand.js";
 import { decrement } from "../Number.js";
 import { RandomDep } from "../Random.js";
 import { ok, Result } from "../Result.js";
 import { sql, SqliteDep, SqliteError } from "../Sqlite.js";
 import { Int64String, NonNegativeInt, PositiveInt } from "../Type.js";
-import { Brand } from "../Brand.js";
-import { OwnerId } from "./Owner.js";
+import { BinaryOwnerId, binaryOwnerIdToOwnerId, OwnerId } from "./Owner.js";
 import {
-  BinaryOwnerId,
-  binaryOwnerIdToOwnerId,
   binaryTimestampToFingerprint,
   Fingerprint,
   FingerprintRange,

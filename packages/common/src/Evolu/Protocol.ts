@@ -111,7 +111,6 @@
  * serialization formats with the following optimizations:
  *
  * - **NonNegativeInt:** Up to 33% smaller than MessagePack.
- * - **Base64Url Strings:** Up to 25% size reduction.
  * - **DateIso:** Up to 75% smaller.
  * - **Timestamp Encoding:** Delta encoding for milliseconds and run-length
  *   encoding (RLE) for counters and NodeIds.
@@ -148,6 +147,7 @@ import { sha256 } from "@noble/hashes/sha2";
 import { pack, unpack, unpackMultiple } from "msgpackr";
 import { isNonEmptyReadonlyArray, NonEmptyReadonlyArray } from "../Array.js";
 import { assert } from "../Assert.js";
+import { Brand } from "../Brand.js";
 import {
   Buffer,
   bytesToHex,
@@ -169,23 +169,30 @@ import { objectToEntries } from "../Object.js";
 import { err, ok, Result } from "../Result.js";
 import { SqliteValue } from "../Sqlite.js";
 import {
-  Base64Url,
-  base64UrlAlphabet,
+  BinaryId,
+  binaryIdToId,
+  binaryIdTypeValueLength,
   DateIsoString,
   Id,
-  idTypeValueLength,
+  idToBinaryId,
   JsonValueFromString,
-  maxLength,
-  NanoId,
   NonNegativeInt,
   Number,
   object,
   PositiveInt,
   record,
+  String,
 } from "../Type.js";
 import { Predicate } from "../Types.js";
-import { Brand } from "../Brand.js";
-import { Owner, OwnerId, WriteKey, writeKeyLength } from "./Owner.js";
+import {
+  BinaryOwnerId,
+  binaryOwnerIdToOwnerId,
+  Owner,
+  OwnerId,
+  ownerIdToBinaryOwnerId,
+  WriteKey,
+  writeKeyLength,
+} from "./Owner.js";
 import {
   BinaryTimestamp,
   binaryTimestampLength,
@@ -323,20 +330,13 @@ export interface CrdtMessage {
 }
 
 /**
- * Base64Url string with maximum length of 256 characters. Encoding strings as
- * Base64UrlString saves up to 25% in size compared to regular strings.
- */
-export const Base64Url256 = maxLength(256)(Base64Url);
-export type Base64Url256 = typeof Base64Url256.Type;
-
-/**
  * A DbChange is a change to a table row. Together with a unique
  * {@link Timestamp}, it forms a {@link CrdtMessage}.
  */
 export const DbChange = object({
-  table: Base64Url256,
+  table: String,
   id: Id,
-  values: record(Base64Url256, SqliteValue),
+  values: record(String, SqliteValue),
 });
 export type DbChange = typeof DbChange.Type;
 
@@ -1119,7 +1119,7 @@ const decodeVersionAndOwner = (input: Buffer): [NonNegativeInt, OwnerId] => {
   // to enable version negotiation and owner identification before any other
   // processing occurs.
   const version = decodeNonNegativeInt(input);
-  const ownerId = decodeOwnerId(input);
+  const ownerId = decodeId(input) as OwnerId;
   return [version, ownerId];
 };
 
@@ -1550,102 +1550,12 @@ const decodeTimestamps = (
   return timestamps;
 };
 
-/** Binary representation of {@link Id}. */
-export type BinaryId = Uint8Array & Brand<"BinaryId">;
-
-export const binaryIdLength = 16 as NonNegativeInt;
-
-export const idToBinaryId = (id: Id): BinaryId =>
-  base64Url256ToBytes(id) as BinaryId;
-
-export const binaryIdToId = (binaryId: BinaryId): Id =>
-  decodeId(createBuffer(binaryId));
-
-/** Binary representation of {@link OwnerId}. */
-export type BinaryOwnerId = Uint8Array & Brand<"BinaryOwnerId">;
-
-export const ownerIdToBinaryOwnerId = (ownerId: OwnerId): BinaryOwnerId =>
-  base64Url256ToBytes(ownerId) as BinaryOwnerId;
-
-export const binaryOwnerIdToOwnerId = (binaryOwnerId: BinaryOwnerId): OwnerId =>
-  decodeOwnerId(createBuffer(binaryOwnerId));
-
-/**
- * Union type for all variants of Base64Url strings with limited length. All
- * these types use Base64Url alphabet and are < 256 characters.
- */
-export type Base64Url256Variant = Base64Url256 | Id | NanoId | OwnerId;
-
-/**
- * Converts a Base64Url string to a Uint8Array for binary storage. This encoding
- * is more space-efficient than UTF-8 for Base64Url strings.
- */
-export const base64Url256ToBytes = (
-  string: Base64Url256Variant,
-): globalThis.Uint8Array => {
-  const totalBits = string.length * 6; // 6 bits per character
-  const byteLength = Math.ceil(totalBits / 8);
-  const value = new globalThis.Uint8Array(byteLength);
-
-  let bitBuffer = 0;
-  let bitsInBuffer = 0;
-  let byteIndex = 0;
-
-  for (const char of string) {
-    const charValue = base64UrlAlphabet.indexOf(char);
-    bitBuffer = (bitBuffer << 6) | charValue;
-    bitsInBuffer += 6;
-    while (bitsInBuffer >= 8) {
-      bitsInBuffer -= 8;
-      value[byteIndex++] = (bitBuffer >> bitsInBuffer) & 0xff;
-    }
-  }
-
-  if (bitsInBuffer > 0 && byteIndex < byteLength) {
-    value[byteIndex] = (bitBuffer << (8 - bitsInBuffer)) & 0xff;
-  }
-
-  return value;
+const decodeId = (buffer: Buffer): Id => {
+  const bytes = buffer.shiftN(binaryIdTypeValueLength);
+  const binaryId = BinaryId.fromParent(bytes);
+  if (!binaryId.ok) throw new ProtocolDecodeError(binaryId.error.type);
+  return binaryIdToId(binaryId.value);
 };
-
-export const decodeBase64Url256 = (
-  buffer: Buffer,
-  stringLength: number,
-): Base64Url256Variant => {
-  const bytes = buffer.shiftN(
-    Math.ceil((stringLength * 6) / 8) as NonNegativeInt,
-  );
-
-  let bitBuffer = 0;
-  let bitsInBuffer = 0;
-  let string = "";
-
-  for (const byte of bytes) {
-    bitBuffer = (bitBuffer << 8) | byte;
-    bitsInBuffer += 8;
-    while (bitsInBuffer >= 6) {
-      bitsInBuffer -= 6;
-      if (string.length < stringLength) {
-        const charValue = (bitBuffer >> bitsInBuffer) & 0x3f;
-        if (charValue < 0 || charValue >= base64UrlAlphabet.length) {
-          throw new ProtocolDecodeError("invalid charValue");
-        }
-        string += base64UrlAlphabet[charValue];
-      }
-    }
-  }
-
-  const result = Base64Url256.from(string);
-  if (!result.ok) throw new ProtocolDecodeError(result.error.type);
-
-  return result.value;
-};
-
-const decodeId = (buffer: Buffer): Id =>
-  decodeBase64Url256(buffer, idTypeValueLength) as Id;
-
-/** Not all 16 bytes are valid {@link OwnerId}. */
-const decodeOwnerId = (buffer: Buffer): OwnerId => decodeId(buffer) as OwnerId;
 
 /**
  * Evolu uses MessagePack to handle all number variants except for
@@ -1703,12 +1613,12 @@ export const encodeAndEncryptDbChange =
     const binaryTimestamp = timestampToBinaryTimestamp(message.timestamp);
     buffer.extend(binaryTimestamp);
 
-    encodeBase64Url256(buffer, change.table);
+    encodeString(buffer, change.table);
 
     buffer.extend(idToBinaryId(change.id));
 
     const entries = objectToEntries(change.values).map(
-      ([column, value]): [Base64Url256, SqliteValue] => {
+      ([column, value]): [string, SqliteValue] => {
         return [column, value];
       },
     );
@@ -1716,7 +1626,7 @@ export const encodeAndEncryptDbChange =
     encodeLength(buffer, entries);
 
     for (const [column, value] of entries) {
-      encodeBase64Url256(buffer, column);
+      encodeString(buffer, column);
       encodeSqliteValue(buffer, value);
     }
 
@@ -1792,14 +1702,14 @@ export const decryptAndDecodeDbChange =
         });
       }
 
-      const table = decodeBase64Url256WithLength(buffer);
+      const table = decodeString(buffer);
       const id = decodeId(buffer);
 
       const length = decodeLength(buffer);
       const values = Object.create(null) as Record<string, SqliteValue>;
 
       for (let i = 0; i < length; i++) {
-        const column = decodeBase64Url256WithLength(buffer);
+        const column = decodeString(buffer);
         const value = decodeSqliteValue(buffer);
         values[column] = value;
       }
@@ -1891,19 +1801,6 @@ export const decodeNodeId = (buffer: Buffer): NodeId => {
   return bytesToHex(bytes) as NodeId;
 };
 
-export const encodeBase64Url256 = (
-  buffer: Buffer,
-  string: Base64Url256Variant,
-): void => {
-  encodeLength(buffer, string);
-  buffer.extend(base64Url256ToBytes(string));
-};
-
-export const decodeBase64Url256WithLength = (buffer: Buffer): Base64Url256 => {
-  const length = decodeLength(buffer);
-  return decodeBase64Url256(buffer, length) as Base64Url256;
-};
-
 // Small ints are encoded into ProtocolValueType, saving one byte per int.
 const isSmallInt: Predicate<number> = (value: number) =>
   value >= 0 && value < 20;
@@ -1920,15 +1817,14 @@ export const ProtocolValueType = {
 
   // Optimized types
   Id: 30 as NonNegativeInt,
-  Base64Url256: 31 as NonNegativeInt,
-  NonNegativeInt: 32 as NonNegativeInt,
-  Json: 33 as NonNegativeInt,
+  NonNegativeInt: 31 as NonNegativeInt,
+  Json: 32 as NonNegativeInt,
 
   // new Date().toISOString()   - 24 bytes
   // encoded with fixed length  - 8 bytes
   // encode as NonNegativeInt   - 6 bytes (additional 25% reduction)
-  DateIsoWithNonNegativeTime: 34 as NonNegativeInt,
-  DateIsoWithNegativeTime: 35 as NonNegativeInt, // 9 bytes
+  DateIsoWithNonNegativeTime: 33 as NonNegativeInt,
+  DateIsoWithNegativeTime: 34 as NonNegativeInt, // 9 bytes
 
   // TODO: Operations (from 40)
   // Increment, Decrement, Patch, whatever.
@@ -1961,15 +1857,10 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
         return;
       }
 
-      const base64Url256 = Base64Url256.from(value);
-      if (base64Url256.ok) {
-        if (base64Url256.value.length === idTypeValueLength) {
-          encodeNonNegativeInt(buffer, ProtocolValueType.Id);
-          buffer.extend(base64Url256ToBytes(base64Url256.value));
-          return;
-        }
-        encodeNonNegativeInt(buffer, ProtocolValueType.Base64Url256);
-        encodeBase64Url256(buffer, base64Url256.value);
+      const id = Id.from(value);
+      if (id.ok) {
+        encodeNonNegativeInt(buffer, ProtocolValueType.Id);
+        buffer.extend(idToBinaryId(id.value));
         return;
       }
 
@@ -2029,8 +1920,6 @@ export const decodeSqliteValue = (buffer: Buffer): SqliteValue => {
     case ProtocolValueType.Id: {
       return decodeId(buffer);
     }
-    case ProtocolValueType.Base64Url256:
-      return decodeBase64Url256WithLength(buffer);
     case ProtocolValueType.NonNegativeInt:
       return decodeNonNegativeInt(buffer);
     case ProtocolValueType.Json: {

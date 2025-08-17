@@ -7,11 +7,10 @@ import {
   SqliteQuery,
 } from "../Sqlite.js";
 import { array, object, String } from "../Type.js";
-import { Base64Url256 } from "./Protocol.js";
 
 export const DbTable = object({
-  name: Base64Url256,
-  columns: array(Base64Url256),
+  name: String,
+  columns: array(String),
 });
 export type DbTable = typeof DbTable.Type;
 
@@ -31,7 +30,7 @@ export const getDbSchema =
     DbSchema,
     SqliteError
   > => {
-    const map = new Map<Base64Url256, Array<Base64Url256>>();
+    const map = new Map<string, Array<string>>();
 
     const tableAndColumnInfoRows = deps.sqlite.exec(sql`
       select
@@ -46,8 +45,8 @@ export const getDbSchema =
 
     tableAndColumnInfoRows.value.rows.forEach((row) => {
       const { tableName, columnName } = row as unknown as {
-        tableName: Base64Url256;
-        columnName: Base64Url256;
+        tableName: string;
+        columnName: string;
       };
       if (!map.has(tableName)) map.set(tableName, []);
       map.get(tableName)?.push(columnName);

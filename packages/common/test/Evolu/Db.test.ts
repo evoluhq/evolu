@@ -7,15 +7,13 @@ import {
   DbWorkerOutput,
   DbWorkerPlatformDeps,
 } from "../../src/Evolu/Db.js";
-import {
-  Base64Url256,
-  DbChange,
-  idToBinaryId,
-} from "../../src/Evolu/Protocol.js";
+import { DbSchema } from "../../src/Evolu/DbSchema.js";
+import { DbChange } from "../../src/Evolu/Protocol.js";
 import { constVoid } from "../../src/Function.js";
 import { wait } from "../../src/Promise.js";
 import { getOrThrow } from "../../src/Result.js";
 import { createSqlite, sql, Sqlite } from "../../src/Sqlite.js";
+import { idToBinaryId } from "../../src/Type.js";
 import {
   testCreateId,
   testCreateRandomBytesDep,
@@ -28,19 +26,18 @@ import {
   testTime,
 } from "../_deps.js";
 import { testTimestampsAsc } from "./_fixtures.js";
-import { DbSchema } from "../../src/Evolu/DbSchema.js";
 import { getDbSnapshot } from "./_utils.js";
 
 const createSimpleTestSchema = (): DbSchema => {
   return {
     tables: [
       {
-        name: "testTable" as Base64Url256,
-        columns: ["id" as Base64Url256, "name" as Base64Url256],
+        name: "testTable",
+        columns: ["id", "name"],
       },
       {
-        name: "_testTable" as Base64Url256,
-        columns: ["id" as Base64Url256, "name" as Base64Url256],
+        name: "_testTable",
+        columns: ["id", "name"],
       },
     ],
     indexes: [],
@@ -112,8 +109,8 @@ test("mutations", async () => {
     changes: [
       {
         id: testCreateId(),
-        table: "testTable" as Base64Url256,
-        values: { ["name" as Base64Url256]: "test" },
+        table: "testTable",
+        values: { name: "test" },
       },
     ],
     onCompleteIds: [],
@@ -133,8 +130,8 @@ test("mutate before init", async () => {
       changes: [
         {
           id: testCreateId(),
-          table: "_testTable" as Base64Url256,
-          values: { ["name" as Base64Url256]: "test" },
+          table: "_testTable",
+          values: { name: "test" },
         },
       ],
       onCompleteIds: [],
@@ -151,8 +148,8 @@ test("local mutation", async () => {
 
   const change: DbChange = {
     id: testCreateId(),
-    table: "_testTable" as Base64Url256,
-    values: { ["name" as Base64Url256]: "test" },
+    table: "_testTable",
+    values: { name: "test" },
   };
 
   db.postMessage({
@@ -174,7 +171,7 @@ test("local mutation", async () => {
         ...change,
         values: {
           ...change.values,
-          ["isDeleted" as Base64Url256]: 1,
+          isDeleted: 1,
         },
       },
     ],
@@ -243,8 +240,8 @@ test("timestamp ordering - newer mutations overwrite older ones", async () => {
     changes: [
       {
         id: recordId,
-        table: "testTable" as Base64Url256,
-        values: { ["name" as Base64Url256]: "first_value" },
+        table: "testTable",
+        values: { name: "first_value" },
       },
     ],
     onCompleteIds: [],
@@ -260,8 +257,8 @@ test("timestamp ordering - newer mutations overwrite older ones", async () => {
     changes: [
       {
         id: recordId,
-        table: "testTable" as Base64Url256,
-        values: { ["name" as Base64Url256]: "second_value" },
+        table: "testTable",
+        values: { name: "second_value" },
       },
     ],
     onCompleteIds: [],
@@ -304,8 +301,8 @@ test("timestamp ordering - multiple columns update independently", async () => {
     changes: [
       {
         id: recordId,
-        table: "testTable" as Base64Url256,
-        values: { ["name" as Base64Url256]: "original_name" },
+        table: "testTable",
+        values: { name: "original_name" },
       },
     ],
     onCompleteIds: [],
@@ -321,8 +318,8 @@ test("timestamp ordering - multiple columns update independently", async () => {
     changes: [
       {
         id: recordId,
-        table: "testTable" as Base64Url256,
-        values: { ["name" as Base64Url256]: "updated_name" },
+        table: "testTable",
+        values: { name: "updated_name" },
       },
     ],
     onCompleteIds: [],
@@ -381,13 +378,13 @@ test("timestamp ordering - concurrent mutations on different records", async () 
     changes: [
       {
         id: recordId1,
-        table: "testTable" as Base64Url256,
-        values: { ["name" as Base64Url256]: "record1_value" },
+        table: "testTable",
+        values: { name: "record1_value" },
       },
       {
         id: recordId2,
-        table: "testTable" as Base64Url256,
-        values: { ["name" as Base64Url256]: "record2_value" },
+        table: "testTable",
+        values: { name: "record2_value" },
       },
     ],
     onCompleteIds: [],
@@ -436,8 +433,8 @@ test("timestamp ordering - verify CRDT last-write-wins behavior", async () => {
     changes: [
       {
         id: recordId,
-        table: "testTable" as Base64Url256,
-        values: { ["name" as Base64Url256]: "initial" },
+        table: "testTable",
+        values: { name: "initial" },
       },
     ],
     onCompleteIds: [],
@@ -453,8 +450,8 @@ test("timestamp ordering - verify CRDT last-write-wins behavior", async () => {
     changes: [
       {
         id: recordId,
-        table: "testTable" as Base64Url256,
-        values: { ["name" as Base64Url256]: "second" },
+        table: "testTable",
+        values: { name: "second" },
       },
     ],
     onCompleteIds: [],
@@ -469,8 +466,8 @@ test("timestamp ordering - verify CRDT last-write-wins behavior", async () => {
     changes: [
       {
         id: recordId,
-        table: "testTable" as Base64Url256,
-        values: { ["name" as Base64Url256]: "third" },
+        table: "testTable",
+        values: { name: "third" },
       },
     ],
     onCompleteIds: [],
@@ -485,8 +482,8 @@ test("timestamp ordering - verify CRDT last-write-wins behavior", async () => {
     changes: [
       {
         id: recordId,
-        table: "testTable" as Base64Url256,
-        values: { ["name" as Base64Url256]: "final" },
+        table: "testTable",
+        values: { name: "final" },
       },
     ],
     onCompleteIds: [],

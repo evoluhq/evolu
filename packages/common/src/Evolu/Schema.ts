@@ -1,11 +1,11 @@
 import { Kysely, SelectQueryBuilder } from "kysely";
 import { pack } from "msgpackr";
-import { assert } from "../Assert.js";
 import { mapObject, objectToEntries, ReadonlyRecord } from "../Object.js";
 import { err, ok, Result } from "../Result.js";
 import { SqliteBoolean, SqliteQueryOptions, SqliteValue } from "../Sqlite.js";
 import {
   AnyType,
+  BinaryId,
   brand,
   BrandType,
   createTypeErrorFormatter,
@@ -31,11 +31,7 @@ import { Simplify } from "../Types.js";
 import { DbSchema } from "./DbSchema.js";
 import { createIndexes, DbIndexesBuilder } from "./Kysely.js";
 import { AppOwner, ShardOwner, SharedOwner } from "./Owner.js";
-import {
-  BinaryId,
-  CrdtMessage,
-  maxProtocolMessageRangesSize,
-} from "./Protocol.js";
+import { CrdtMessage, maxProtocolMessageRangesSize } from "./Protocol.js";
 import { Query, Row } from "./Query.js";
 import { BinaryTimestamp } from "./Timestamp.js";
 
@@ -164,14 +160,10 @@ export const evoluSchemaToDbSchema = (
       .map(([k]) => k),
   }));
 
-  const dbSchema = { tables, indexes: createIndexes(indexes) };
-
-  assert(
-    DbSchema.is(dbSchema),
-    "Invalid EvoluSchema: Table and column names must use only characters A-Za-z0-9_- and be at most 256 characters long.",
-  );
-
-  return dbSchema;
+  return {
+    tables,
+    indexes: createIndexes(indexes),
+  };
 };
 
 export type CreateQuery<S extends EvoluSchema> = <R extends Row>(

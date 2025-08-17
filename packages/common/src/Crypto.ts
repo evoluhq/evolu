@@ -48,8 +48,7 @@ export const createSlip21 = (
 };
 
 /**
- * Creates a 21-character Base64URL ID (also known as nanoid) from a SLIP-21
- * derived key.
+ * Creates a {@link Id} from a SLIP-21 derived key.
  *
  * Reduces the 256-bit SLIP-21 output to 126 bits (21 chars × 6 bits) for a
  * compact, human-readable, and shareable identifier suitable for UI display or
@@ -66,7 +65,7 @@ export const createSlip21Id = (
   const slip21 = createSlip21(seed, path);
   let id = "" as Id;
 
-  // Convert the key to the Id/NanoId/Base64Url format.
+  // Convert the key to the Id format.
   for (let i = 0; i < 21; i++) {
     id = (id + urlAlphabet[slip21[i] & 63]) as Id;
   }

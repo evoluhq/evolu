@@ -8,14 +8,18 @@ import {
   EncryptionKey,
 } from "../Crypto.js";
 import {
+  BinaryId,
+  binaryIdToId,
   brand,
   Id,
+  idToBinaryId,
   length,
   Mnemonic,
   NonNegativeInt,
   Uint8Array,
 } from "../Type.js";
 import { Transport } from "./Transport.js";
+import { Brand } from "../Brand.js";
 
 /** 16 bytes of cryptographic entropy used to derive {@link Owner} keys. */
 export const OwnerSecret = brand("OwnerSecret", length(16)(Uint8Array));
@@ -63,6 +67,15 @@ export interface Owner {
 /** The unique identifier of an {@link Owner}. */
 export const OwnerId = brand("OwnerId", Id);
 export type OwnerId = typeof OwnerId.Type;
+
+/** Binary representation of {@link OwnerId}. */
+export type BinaryOwnerId = BinaryId & Brand<"BinaryOwnerId">;
+
+export const ownerIdToBinaryOwnerId = (ownerId: OwnerId): BinaryOwnerId =>
+  idToBinaryId(ownerId) as BinaryOwnerId;
+
+export const binaryOwnerIdToOwnerId = (binaryOwnerId: BinaryOwnerId): OwnerId =>
+  binaryIdToId(binaryOwnerId as BinaryId) as OwnerId;
 
 export const writeKeyLength = 16 as NonNegativeInt;
 

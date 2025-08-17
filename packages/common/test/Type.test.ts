@@ -7,6 +7,8 @@ import {
   Base64Url,
   Between1And10,
   BigIntError,
+  BinaryId,
+  binaryIdToId,
   Boolean,
   BooleanError,
   brand,
@@ -26,6 +28,7 @@ import {
   Id,
   id,
   IdError,
+  idToBinaryId,
   InferError,
   InferInput,
   InferParent,
@@ -119,6 +122,7 @@ import {
 } from "../src/Type.js";
 import { Brand } from "../src/Brand.js";
 import { testNanoIdLib } from "./_deps.js";
+import { createNanoIdLib } from "../src/NanoId.js";
 
 test("Base Types", () => {
   expect(Unknown.from(42)).toEqual({ ok: true, value: 42 });
@@ -981,6 +985,16 @@ test("createIdFromString", () => {
   const id3 = createIdFromString("test1");
   const id4 = createIdFromString("test2");
   expect(id3).not.toBe(id4);
+});
+
+test("BinaryId/idToBinaryId/binaryIdToId", () => {
+  const deps = { nanoIdLib: createNanoIdLib() };
+  for (let i = 0; i < 100; i++) {
+    const originalId = createId(deps);
+    const binaryId = idToBinaryId(originalId);
+    expect(BinaryId.is(binaryId)).toBe(true);
+    expect(binaryIdToId(binaryId)).toBe(originalId);
+  }
 });
 
 test("PositiveNumber", () => {

@@ -26,7 +26,14 @@ import {
   SqliteValue,
 } from "../Sqlite.js";
 import { TimeDep } from "../Time.js";
-import { Id, Mnemonic, SimpleName } from "../Type.js";
+import {
+  BinaryId,
+  binaryIdToId,
+  Id,
+  idToBinaryId,
+  Mnemonic,
+  SimpleName,
+} from "../Type.js";
 import {
   createInitializedWorker,
   Worker,
@@ -37,29 +44,25 @@ import { DbSchema, ensureDbSchema, getDbSchema } from "./DbSchema.js";
 import { makePatches, QueryPatches } from "./Diff.js";
 import {
   AppOwner,
+  BinaryOwnerId,
+  binaryOwnerIdToOwnerId,
   createAppOwner,
   createOwnerSecret,
   mnemonicToOwnerSecret,
   OwnerId,
+  ownerIdToBinaryOwnerId,
   ShardOwner,
   SharedOwner,
   WriteKey,
 } from "./Owner.js";
 import {
   applyProtocolMessageAsClient,
-  Base64Url256,
-  BinaryId,
-  binaryIdToId,
-  BinaryOwnerId,
-  binaryOwnerIdToOwnerId,
   CrdtMessage,
   createProtocolMessageForSync,
   createProtocolMessageFromCrdtMessages,
   DbChange,
   decryptAndDecodeDbChange,
   encodeAndEncryptDbChange,
-  idToBinaryId,
-  ownerIdToBinaryOwnerId,
   ProtocolError,
   protocolVersion,
   Storage,
@@ -1047,9 +1050,9 @@ const createClientStorage =
         }
 
         const result = deps.sqlite.exec<{
-          table: Base64Url256;
+          table: string;
           id: BinaryId;
-          column: Base64Url256;
+          column: string;
           value: SqliteValue;
         }>(sql`
           select "table", "id", "column", "value"
