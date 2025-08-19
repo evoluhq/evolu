@@ -6,8 +6,8 @@
  * - Provides O(1) (amortized) forward lookup (key -> values) and reverse lookup
  *   (value -> keys) without maintaining two maps manually and risking them
  *   diverging.
- * - Natural fit for pub/sub style relations such as ownerId <-> WebSocket, tag
- *   <-> item, user <-> role, entity <-> subscription where both directions are
+ * - Natural fit for pub/sub style relations such as ownerId ↔ WebSocket, tag ↔
+ *   item, user ↔ role, entity ↔ subscription where both directions are
  *   frequently queried.
  * - Supports fast membership tests via `hasPair`, `hasKey`, and `hasValue`.
  * - Iteration helpers (`forEach`, iterator) allow treating the structure as an
