@@ -274,20 +274,6 @@ describe("receiveTimestamp", () => {
       `);
     });
 
-    test("TimestampDuplicateNodeError", () => {
-      expect(
-        receiveTimestamp(deps1)(makeNode1Timestamp(), makeNode1Timestamp()),
-      ).toMatchInlineSnapshot(`
-        {
-          "error": {
-            "nodeId": "0000000000000001",
-            "type": "TimestampDuplicateNodeError",
-          },
-          "ok": false,
-        }
-      `);
-    });
-
     test("should fail with clock drift", () => {
       expect(
         receiveTimestamp(deps0)(

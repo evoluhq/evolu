@@ -452,9 +452,9 @@ export const createProtocolMessageBuffer = (
 
   if (options.type === "initiator") {
     if (!options.writeKey) {
-      buffers.header.extend([0]); // No WriteKey
+      buffers.header.extend([0]);
     } else {
-      buffers.header.extend([1]); // WriteKey present
+      buffers.header.extend([1]);
       buffers.header.extend(options.writeKey);
     }
   } else {
@@ -768,6 +768,8 @@ export const applyProtocolMessageAsClient =
         const messages = decodeMessages(input);
         const binaryOwnerId = ownerIdToBinaryOwnerId(ownerId);
 
+        // TODO: async writeMessages via the main thread validation and processing
+        // pipeline. storage.writeMessages will use mutex/asyncqueue imho
         if (
           isNonEmptyReadonlyArray(messages) &&
           !deps.storage.writeMessages(binaryOwnerId, messages)
@@ -775,8 +777,13 @@ export const applyProtocolMessageAsClient =
           return ok(null);
         }
 
-        if (!getWriteKey) return ok(null);
-        const writeKey = getWriteKey(ownerId);
+        // Now: No writeKey, no sync.
+        // TODO: Allow to sync SharedReadonlyOwner
+        // Without local changes, writeKey will not be required.
+        // With local changes, writeKey will be required and if not provided,
+        // the sync should stop.
+        // getWriteKey should be moved to sync fn.
+        const writeKey = getWriteKey?.(ownerId);
         if (writeKey == null) return ok(null);
 
         const output = createProtocolMessageBuffer(ownerId, {
@@ -858,8 +865,17 @@ export const applyProtocolMessageAsRelay =
             }).unwrap(),
           );
 
-        // Only broadcast if there's no ranges.
-        if (broadcast && input.getLength() === 0) {
+        /**
+         * Broadcast messages to all subscribed devices. This ensures real-time
+         * synchronization between clients. When a relay's database is deleted
+         * or clients migrate to a new relay (without data migration), clients
+         * will sync their data to the relay, and the relay will broadcast those
+         * messages to other connected clients. Those clients may receive
+         * messages they already have, but this is safe because `applyMessages`
+         * is idempotent. As the relay becomes more synchronized with clients
+         * over time, fewer duplicate messages will be broadcasted.
+         */
+        if (broadcast) {
           const broadcastBuffer = createProtocolMessageBuffer(ownerId, {
             type: "non-initiator",
             errorCode: ProtocolErrorCode.NoError,
@@ -973,8 +989,12 @@ const sync =
     const binaryOwnerId = binaryOwnerIdToOwnerId(ownerId);
     const outputInitialSize = output.getSize();
 
+    /**
+     * Only the relay (non-initiator) reports sync errors, not the client
+     * (initiator). The specific error is handled by storage itself; protocol
+     * only reports a generic sync error.
+     */
     const syncFail = () => {
-      // Only the relay (non-initiator) reports sync errors, not the client (initiator).
       if (role === "initiator") {
         return ok(null);
       }

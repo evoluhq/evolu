@@ -31,7 +31,6 @@ export interface TimestampConfigDep {
 export type TimestampError =
   | TimestampDriftError
   | TimestampCounterOverflowError
-  | TimestampDuplicateNodeError
   | TimestampTimeOutOfRangeError;
 
 export interface TimestampDriftError {
@@ -42,11 +41,6 @@ export interface TimestampDriftError {
 
 export interface TimestampCounterOverflowError {
   readonly type: "TimestampCounterOverflowError";
-}
-
-export interface TimestampDuplicateNodeError {
-  readonly type: "TimestampDuplicateNodeError";
-  readonly nodeId: NodeId;
 }
 
 export interface TimestampTimeOutOfRangeError {
@@ -96,14 +90,17 @@ export const maxCounter = 65535 as Counter;
  *
  * https://lemire.me/blog/2019/12/12/are-64-bit-random-identifiers-free-from-collision
  *
- * What will happen if a different device generates the same NodeId?
+ * What happens if different devices generate the same NodeId?
  *
- * If the device belongs to a different owner, nothing will happen because
- * different owner have different owner IDs. Timestamps are partitioned by
- * OwnerId.
+ * If devices with the same NodeId use different owners, no issues occur.
  *
- * If the device belongs to the same owner, the other device will return
- * {@link TimestampDuplicateNodeError}.
+ * If devices with the same NodeId use the same owner, problems only arise when
+ * they generate CRDT messages with identical timestamps (same millis, counter,
+ * and NodeId). In this case, the protocol sync algorithm treats them as the
+ * same message: the first will be synced with the relay, while the affected
+ * message will not be delivered. The affected devices will see different data
+ * yet they will think they are synced. This is extremely rare and can be
+ * resolved by resetting one device to generate a new NodeId.
  */
 export const NodeId = regex("NodeId", /^[a-f0-9]{16}$/)(String);
 export type NodeId = typeof NodeId.Type;
@@ -230,12 +227,8 @@ export const receiveTimestamp =
     Timestamp,
     | TimestampDriftError
     | TimestampCounterOverflowError
-    | TimestampDuplicateNodeError
     | TimestampTimeOutOfRangeError
   > => {
-    if (local.nodeId === remote.nodeId) {
-      return err({ type: "TimestampDuplicateNodeError", nodeId: local.nodeId });
-    }
     const millis = getNextMillis(deps)([local.millis, remote.millis]);
     if (!millis.ok) return millis;
 

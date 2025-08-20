@@ -30,7 +30,6 @@ export type {
   BinaryTimestamp,
   TimestampCounterOverflowError,
   TimestampDriftError,
-  TimestampDuplicateNodeError,
   TimestampError,
   TimestampTimeOutOfRangeError,
 } from "./Timestamp.js";
