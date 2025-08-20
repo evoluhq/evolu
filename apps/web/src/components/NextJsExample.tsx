@@ -103,10 +103,11 @@ const formatTypeError = createFormatTypeError<
 
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   reloadUrl: "/docs/examples/react/nextjs",
-  name: getOrThrow(SimpleName.from("evolu-nextjs-example")),
+  name: getOrThrow(SimpleName.from("evolu-nextjs-example-v200825")),
 
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "http://localhost:4000" }],
+    // transports: [],
   }),
 
   onInit: ({ isFirst }) => {
@@ -264,7 +265,9 @@ const Todos: FC = () => {
       personJson: { name: "Joe", age: 32 },
     });
 
-    // const secret = createOwnerSecret({ createRandomBytes });
+    // const secret = new Uint8Array(16) as OwnerSecret;
+    // console.log(secret);
+
     // const sharedOwner = createSharedOwner(secret);
     // // eslint-disable-next-line no-console
     // console.log(sharedOwner);
