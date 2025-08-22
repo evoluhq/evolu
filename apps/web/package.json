@@ -55,7 +55,7 @@
     "@evolu/tsconfig": "workspace:*",
     "@types/mdx": "^2.0.13",
     "@types/node": "^22.17.1",
-    "@types/react": "^19.1.9",
+    "@types/react": "^19.1.11",
     "@types/react-dom": "^19.1.7",
     "@types/react-highlight-words": "^0.20.0",
     "@types/rss": "^0.0.32",
