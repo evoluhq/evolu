@@ -16,22 +16,23 @@
  *
  * ### Message Structure
  *
- * | Field                          | Notes                 |
- * | :----------------------------- | :-------------------- |
- * | **Header**                     |                       |
- * | - {@link protocolVersion}      |                       |
- * | - {@link OwnerId}              | {@link Owner}         |
- * | **Initiator**                  |                       |
- * | - hasWriteKey                  | 0 = no, 1 = yes       |
- * | - {@link WriteKey}             | If hasWriteKey = 1    |
- * | **Non-initiator**              |                       |
- * | - {@link ProtocolErrorCode}    |                       |
- * | **Messages**                   |                       |
- * | - {@link NonNegativeInt}       | A number of messages. |
- * | - {@link EncryptedCrdtMessage} |                       |
- * | **Ranges**                     |                       |
- * | - {@link NonNegativeInt}       | Number of ranges.     |
- * | - {@link Range}                |                       |
+ * | Field                          | Notes                     |
+ * | :----------------------------- | :------------------------ |
+ * | **Header**                     |                           |
+ * | - {@link protocolVersion}      |                           |
+ * | - {@link OwnerId}              | {@link Owner}             |
+ * | **Initiator**                  |                           |
+ * | - hasWriteKey                  | 0 = no, 1 = yes           |
+ * | - {@link WriteKey}             | If hasWriteKey = 1        |
+ * | - subscriptionFlag             | {@link SubscriptionFlags} |
+ * | **Non-initiator**              |                           |
+ * | - {@link ProtocolErrorCode}    |                           |
+ * | **Messages**                   |                           |
+ * | - {@link NonNegativeInt}       | A number of messages.     |
+ * | - {@link EncryptedCrdtMessage} |                           |
+ * | **Ranges**                     |                           |
+ * | - {@link NonNegativeInt}       | Number of ranges.         |
+ * | - {@link Range}                |                           |
  *
  * ### WriteKey Validation
  *
@@ -221,6 +222,18 @@ export type ProtocolMessage = Uint8Array & Brand<"ProtocolMessage">;
 
 /** Evolu Protocol version. */
 export const protocolVersion = 0 as NonNegativeInt;
+
+export const SubscriptionFlags = {
+  /** No subscription changes for this owner. */
+  None: 0,
+  /** Subscribe to updates for this owner. */
+  Subscribe: 1,
+  /** Unsubscribe from updates for this owner. */
+  Unsubscribe: 2,
+} as const;
+
+export type SubscriptionFlag =
+  (typeof SubscriptionFlags)[keyof typeof SubscriptionFlags];
 
 export const ProtocolErrorCode = {
   NoError: 0,
@@ -421,6 +434,7 @@ export const createProtocolMessageBuffer = (
     | {
         readonly type: "initiator";
         readonly writeKey?: WriteKey;
+        readonly subscriptionFlag?: SubscriptionFlag;
       }
     | {
         readonly type: "non-initiator";
@@ -457,6 +471,9 @@ export const createProtocolMessageBuffer = (
       buffers.header.extend([1]);
       buffers.header.extend(options.writeKey);
     }
+
+    const subscriptionFlag = options.subscriptionFlag ?? SubscriptionFlags.None;
+    buffers.header.extend([subscriptionFlag]);
   } else {
     buffers.header.extend([options.errorCode]);
   }
@@ -801,6 +818,9 @@ export interface ApplyProtocolMessageAsRelayOptions {
   /** To subscribe an owner for broadcasting. */
   subscribe?: (ownerId: OwnerId) => void;
 
+  /** To unsubscribe an owner from broadcasting. */
+  unsubscribe?: (ownerId: OwnerId) => void;
+
   /** To broadcast a protocol message to all subscribers. */
   broadcast?: (ownerId: OwnerId, message: ProtocolMessage) => void;
 
@@ -814,6 +834,7 @@ export const applyProtocolMessageAsRelay =
     inputMessage: Uint8Array,
     {
       subscribe,
+      unsubscribe,
       broadcast,
       totalMaxSize,
       rangesMaxSize,
@@ -833,13 +854,24 @@ export const applyProtocolMessageAsRelay =
         return ok(output.unwrap() as ProtocolMessage);
       }
 
-      subscribe?.(ownerId);
-
       const hasWriteKey = input.shift();
       let writeKey: WriteKey | undefined;
 
       if (hasWriteKey === 1) {
         writeKey = input.shiftN(writeKeyLength) as WriteKey;
+      }
+
+      const subscriptionFlag = input.shift() as SubscriptionFlag;
+
+      switch (subscriptionFlag) {
+        case SubscriptionFlags.Subscribe:
+          subscribe?.(ownerId);
+          break;
+        case SubscriptionFlags.Unsubscribe:
+          unsubscribe?.(ownerId);
+          break;
+        case SubscriptionFlags.None:
+          break;
       }
 
       if (writeKey) {
@@ -889,7 +921,12 @@ export const applyProtocolMessageAsRelay =
           broadcast(ownerId, broadcastBuffer.unwrap());
         }
 
-        if (!deps.storage.writeMessages(binaryOwnerId, messages))
+        const messagesWritten = deps.storage.writeMessages(
+          binaryOwnerId,
+          messages,
+        );
+
+        if (!messagesWritten)
           return ok(
             createProtocolMessageBuffer(ownerId, {
               type: "non-initiator",
