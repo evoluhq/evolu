@@ -23,7 +23,12 @@ import { IntentionalNever } from "../Types.js";
 import { Config, defaultConfig } from "./Config.js";
 import { CreateDbWorkerDep, MutationChange } from "./Db.js";
 import { applyPatches } from "./Diff.js";
-import { AppOwner } from "./Owner.js";
+import {
+  AppOwner,
+  ShardOwner,
+  SharedOwner,
+  SharedReadonlyOwner,
+} from "./Owner.js";
 import { CreateAppStateDep, FlushSyncDep } from "./Platform.js";
 import { ProtocolError, ProtocolUnsupportedVersionError } from "./Protocol.js";
 import {
@@ -435,6 +440,31 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
 
   /** Export SQLite database file as Uint8Array. */
   readonly exportDatabase: () => Promise<Uint8Array>;
+
+  /**
+   * Sync and subscribe to changes for an owner, returning an unuse function.
+   *
+   * Transport connections are automatically deduplicated and reference-counted,
+   * so multiple owners using the same transport will share a single
+   * connection.
+   *
+   * ### Example
+   *
+   * ```ts
+   * // Sync and subscribe to a shard owner
+   * const unuse = evolu.useOwner(shardOwner);
+   *
+   * // Later, stop syncing (if in progress) and unsubscribe
+   * unuse();
+   *
+   * // Bulk operations
+   * const unuses = owners.map((owner) => evolu.useOwner(owner));
+   * // Later: unuses.forEach(unuse => unuse());
+   * ```
+   */
+  readonly useOwner: (
+    owner: ShardOwner | SharedOwner | SharedReadonlyOwner,
+  ) => () => void;
 }
 
 /** Represent errors that can occur in Evolu. */
@@ -742,8 +772,8 @@ const createEvoluInstance =
             mutateMicrotaskQueue.push([null, undefined]);
           } else {
             const values = { ...result.value };
-
             delete values.id;
+
             if (kind === "insert" || kind === "upsert") {
               // Only set createdAt if not provided by user
               if (!("createdAt" in values)) {
@@ -757,7 +787,7 @@ const createEvoluInstance =
               `Failed to create DbChange for table "${dbChange.table}"`,
             );
 
-            const mutationChange = { ...dbChange, owner: options?.owner };
+            const mutationChange = { ...dbChange, ownerId: options?.ownerId };
             mutateMicrotaskQueue.push([mutationChange, options?.onComplete]);
           }
 
@@ -936,6 +966,16 @@ const createEvoluInstance =
         });
         dbWorker.postMessage({ type: "export", onCompleteId });
         return promise;
+      },
+
+      useOwner: (owner) => {
+        dbWorker.postMessage({ type: "useOwner", owner, use: true });
+
+        const unuse = () => {
+          dbWorker.postMessage({ type: "useOwner", owner, use: false });
+        };
+
+        return unuse;
       },
     };
 
