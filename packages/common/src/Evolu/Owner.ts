@@ -1,6 +1,7 @@
 import * as bip39 from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english";
 import { NonEmptyReadonlyArray } from "../Array.js";
+import { Brand } from "../Brand.js";
 import {
   CreateRandomBytesDep,
   createSlip21,
@@ -18,8 +19,7 @@ import {
   NonNegativeInt,
   Uint8Array,
 } from "../Type.js";
-import { Transport } from "./Transport.js";
-import { Brand } from "../Brand.js";
+import { TransportConfig } from "./Transport.js";
 
 /** 16 bytes of cryptographic entropy used to derive {@link Owner} keys. */
 export const OwnerSecret = brand("OwnerSecret", length(16)(Uint8Array));
@@ -144,13 +144,13 @@ export const createAppOwner = (secret: OwnerSecret): AppOwner => ({
  */
 export interface ShardOwner extends Owner {
   readonly type: "ShardOwner";
-  readonly transports?: ReadonlyArray<Transport>;
+  readonly transports?: ReadonlyArray<TransportConfig>;
 }
 
 /** Creates a {@link ShardOwner} from an {@link OwnerSecret}. */
 export const createShardOwner = (
   secret: OwnerSecret,
-  transports?: ReadonlyArray<Transport>,
+  transports?: ReadonlyArray<TransportConfig>,
 ): ShardOwner => {
   return {
     type: "ShardOwner",
@@ -167,7 +167,7 @@ export const createShardOwner = (
 export const deriveShardOwner = (
   owner: AppOwner,
   path: NonEmptyReadonlyArray<string>,
-  transports?: ReadonlyArray<Transport>,
+  transports?: ReadonlyArray<TransportConfig>,
 ): ShardOwner => {
   const secret = createSlip21(owner.encryptionKey, path).slice(
     0,
@@ -184,7 +184,7 @@ export const deriveShardOwner = (
 /** An {@link Owner} for collaborative data with write access. */
 export interface SharedOwner extends Owner {
   readonly type: "SharedOwner";
-  readonly transports?: ReadonlyArray<Transport>;
+  readonly transports?: ReadonlyArray<TransportConfig>;
 }
 
 /**
@@ -196,7 +196,7 @@ export interface SharedOwner extends Owner {
  */
 export const createSharedOwner = (
   secret: OwnerSecret,
-  transports?: ReadonlyArray<Transport>,
+  transports?: ReadonlyArray<TransportConfig>,
 ): SharedOwner => {
   return {
     type: "SharedOwner",

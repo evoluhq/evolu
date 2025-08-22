@@ -39,7 +39,7 @@ import {
   TypeError,
 } from "../Type.js";
 import { Simplify } from "../Types.js";
-import { AppOwner, ShardOwner, SharedOwner } from "./Owner.js";
+import { AppOwner, OwnerId, ShardOwner, SharedOwner } from "./Owner.js";
 import { maxProtocolMessageRangesSize } from "./Protocol.js";
 import { Query, Row } from "./Query.js";
 import { CrdtMessage } from "./Storage.js";
@@ -268,21 +268,22 @@ export interface MutationOptions {
   readonly onComplete?: () => void;
 
   /**
-   * Specifies the owner for this mutation.
+   * Specifies the owner ID for this mutation.
    *
-   * - Use {@link ShardOwner} to partition data (e.g., per project, workspace, or
-   *   user).
-   * - Use {@link SharedOwner} to enable collaborative write access.
+   * - Use {@link ShardOwner} ID to partition data (e.g., per project, workspace,
+   *   or user).
+   * - Use {@link SharedOwner} ID to enable collaborative write access.
    * - If omitted, the default {@link AppOwner} is used.
    *
-   * Owners control data isolation and sharing. Choose the owner to determine
-   * who can access or collaborate on the mutated data.
+   * The owner must be used with `evolu.useOwner()` to enable sync. Mutations
+   * with unused owners are stored locally but not synced until the owner is
+   * used.
    *
    * ### Example
    *
    * TODO:
    */
-  readonly owner?: ShardOwner | SharedOwner;
+  readonly ownerId?: OwnerId;
 
   /**
    * Only validate, don't mutate.

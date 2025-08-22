@@ -73,8 +73,12 @@ export const createNodeJsRelay =
         subscribe: (ownerId) => {
           ownerSocketsMap.add(ownerId, ws);
         },
+        unsubscribe: (ownerId) => {
+          ownerSocketsMap.remove(ownerId, ws);
+        },
         broadcast: (ownerId, message) => {
-          const sockets = ownerSocketsMap.getValues(ownerId)!;
+          const sockets = ownerSocketsMap.getValues(ownerId);
+          if (!sockets) return;
           for (const socket of sockets) {
             if (socket !== ws && socket.readyState === WebSocket.OPEN) {
               socket.send(message, { binary: true });
@@ -92,7 +96,7 @@ export const createNodeJsRelay =
         );
 
         if (!response.ok) {
-          deps.console.warn(response.error.type);
+          deps.console.error(response.error);
           return;
         }
 

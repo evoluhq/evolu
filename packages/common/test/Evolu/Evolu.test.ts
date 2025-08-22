@@ -9,7 +9,6 @@ import {
   ValidateNoDefaultColumns,
   ValidateSchemaHasId,
 } from "../../src/Evolu/Schema.js";
-import { constVoid } from "../../src/Function.js";
 import { wait } from "../../src/Promise.js";
 import { getOrThrow } from "../../src/Result.js";
 import { createSqlite, SqliteBoolean } from "../../src/Sqlite.js";
@@ -23,6 +22,7 @@ import {
   SimpleName,
 } from "../../src/Type.js";
 import {
+  testCreateDummyWebSocket,
   testCreateId,
   testCreateRandomBytesDep,
   testCreateSqliteDriver,
@@ -90,7 +90,7 @@ const createEvoluDepsWithSqlite = async () => {
 
   const dbWorker = createDbWorkerForPlatform({
     createSqliteDriver: () => sqliteDriver,
-    createSync: () => () => ({ send: constVoid }),
+    createWebSocket: testCreateDummyWebSocket,
     console: createConsole(),
     time: testTime,
     random: testRandom,
@@ -182,7 +182,7 @@ test("insert should validate input and call postMessage", async () => {
         "changes": [
           {
             "id": "F3FmbitSesTwHwplqLBSE",
-            "owner": undefined,
+            "ownerId": undefined,
             "table": "todo",
             "values": {
               "createdAt": "1970-01-01T00:00:00.000Z",
@@ -256,7 +256,7 @@ test("update should validate input and call postMessage", async () => {
         "changes": [
           {
             "id": "rPltodHge37rn9q4lwirR",
-            "owner": undefined,
+            "ownerId": undefined,
             "table": "todo",
             "values": {
               "title": "Updated Todo",
@@ -330,7 +330,7 @@ test("upsert should validate input and call postMessage", async () => {
         "changes": [
           {
             "id": "wHpK2ZkuZUN-T4MZhx0p9",
-            "owner": undefined,
+            "ownerId": undefined,
             "table": "todo",
             "values": {
               "createdAt": "1970-01-01T00:00:00.001Z",
@@ -401,7 +401,7 @@ test("mutations should be processed in microtask queue", async () => {
         "changes": [
           {
             "id": "xiAw0gY_fIT5Ci6Vt_faj",
-            "owner": undefined,
+            "ownerId": undefined,
             "table": "todo",
             "values": {
               "createdAt": "1970-01-01T00:00:00.002Z",
@@ -410,7 +410,7 @@ test("mutations should be processed in microtask queue", async () => {
           },
           {
             "id": "P-KUG7NKoSfTGGJoCBJ9x",
-            "owner": undefined,
+            "ownerId": undefined,
             "table": "todo",
             "values": {
               "createdAt": "1970-01-01T00:00:00.002Z",
@@ -419,7 +419,7 @@ test("mutations should be processed in microtask queue", async () => {
           },
           {
             "id": "roU2zm2npXftCAjUskTmn",
-            "owner": undefined,
+            "ownerId": undefined,
             "table": "todo",
             "values": {
               "createdAt": "1970-01-01T00:00:00.002Z",

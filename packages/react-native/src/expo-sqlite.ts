@@ -4,13 +4,13 @@ import {
   createRandom,
   createRandomBytes,
   createTime,
+  createWebSocket,
 } from "@evolu/common";
 
 import {
   CreateAppState,
   CreateDbWorker,
   createDbWorkerForPlatform,
-  createWebSocketSync,
   EvoluDeps,
 } from "@evolu/common/evolu";
 
@@ -34,7 +34,7 @@ const time = createTime();
 const createDbWorker: CreateDbWorker = () =>
   createDbWorkerForPlatform({
     createSqliteDriver: createExpoSqliteDriver,
-    createSync: createWebSocketSync,
+    createWebSocket,
     console,
     time,
     random: createRandom(),

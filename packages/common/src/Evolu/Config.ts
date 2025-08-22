@@ -3,7 +3,7 @@ import { getOrThrow } from "../Result.js";
 import { SimpleName } from "../Type.js";
 import type { AppOwner } from "./Owner.js";
 import type { DbIndexesBuilder } from "./Schema.js";
-import type { Transport } from "./Transport.js";
+import type { TransportConfig } from "./Transport.js";
 
 export interface Config extends ConsoleConfig {
   /**
@@ -39,8 +39,9 @@ export interface Config extends ConsoleConfig {
    * - Bluetooth: P2P sync for offline collaboration
    * - LocalNetwork: LAN/mesh sync for local networks
    *
-   * The default value is: `{ type: "WebSocket", url: "wss://free.evoluhq.com"
-   * }`.
+   * The default value is:
+   *
+   * `{ type: "WebSocket", url: "wss://free.evoluhq.com" }`.
    *
    * ### Example
    *
@@ -56,7 +57,7 @@ export interface Config extends ConsoleConfig {
    * ];
    * ```
    */
-  readonly transports: ReadonlyArray<Transport>;
+  readonly transports: ReadonlyArray<TransportConfig>;
 
   /**
    * URL to reload browser tabs after reset or restore.

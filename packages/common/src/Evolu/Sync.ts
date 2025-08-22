@@ -2,7 +2,7 @@ import { ConsoleConfig, ConsoleDep } from "../Console.js";
 import { createWebSocket } from "../WebSocket.js";
 import { ProtocolMessage } from "./Protocol.js";
 import { Millis } from "./Timestamp.js";
-import { Transport } from "./Transport.js";
+import { TransportConfig } from "./Transport.js";
 
 export interface Sync {
   readonly send: (message: ProtocolMessage) => void;
@@ -19,11 +19,12 @@ export interface CreateSyncDep {
 }
 
 export interface SyncConfig extends ConsoleConfig {
-  readonly transports: ReadonlyArray<Transport>;
+  readonly transports: ReadonlyArray<TransportConfig>;
   readonly onOpen: (send: Sync["send"]) => void;
   readonly onMessage: (message: Uint8Array, send: Sync["send"]) => void;
 }
 
+// tohle je spatne
 export const createWebSocketSync: CreateSync = (_deps) => (config) => {
   const webSocketTransports = config.transports;
 
@@ -32,9 +33,9 @@ export const createWebSocketSync: CreateSync = (_deps) => (config) => {
   const sync: Sync = {
     send: (message) => {
       /**
-       * We don't need an in-memory queue; apps can be offline for a long time,
-       * and mutations are stored in SQLite. Dropped CRDT messages are synced
-       * when the web socket connection is open.
+       * Evolu don't need an in-memory queue; apps can be offline for a long
+       * time, and mutations are stored in SQLite. Dropped CRDT messages are
+       * synced when the web socket connection is open.
        *
        * Send the message to all connected WebSocket transports simultaneously.
        */
@@ -50,6 +51,7 @@ export const createWebSocketSync: CreateSync = (_deps) => (config) => {
     const socket = createWebSocket(transport.url, {
       binaryType: "arraybuffer",
       onOpen: () => {
+        // console.log("sync onOpen");
         config.onOpen(sync.send);
       },
       onMessage: (data) => {

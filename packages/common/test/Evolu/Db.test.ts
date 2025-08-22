@@ -9,12 +9,12 @@ import {
 } from "../../src/Evolu/Db.js";
 import { DbSchema } from "../../src/Evolu/Schema.js";
 import { DbChange } from "../../src/Evolu/Storage.js";
-import { constVoid } from "../../src/Function.js";
 import { wait } from "../../src/Promise.js";
 import { getOrThrow } from "../../src/Result.js";
 import { createSqlite, sql, Sqlite } from "../../src/Sqlite.js";
 import { idToBinaryId } from "../../src/Type.js";
 import {
+  testCreateDummyWebSocket,
   testCreateId,
   testCreateRandomBytesDep,
   testCreateSqliteDriver,
@@ -55,9 +55,7 @@ const createSqliteWithDbWorkerPlatformDeps = async (): Promise<
 
   const deps: DbWorkerPlatformDeps = {
     createSqliteDriver,
-    createSync: () => () => ({
-      send: constVoid,
-    }),
+    createWebSocket: testCreateDummyWebSocket,
     console: createConsole(),
     time: testTime,
     random: testRandom,

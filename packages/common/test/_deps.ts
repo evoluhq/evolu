@@ -1,4 +1,4 @@
-import { TimingSafeEqual } from "@evolu/common";
+import { CreateWebSocket, TimingSafeEqual } from "@evolu/common";
 import BetterSQLite, { Statement } from "better-sqlite3";
 import { timingSafeEqual } from "crypto";
 import { customRandom, urlAlphabet } from "nanoid";
@@ -20,7 +20,7 @@ import {
   createRandomLibWithSeed,
   createRandomWithSeed,
 } from "../src/Random.js";
-import { getOrThrow } from "../src/Result.js";
+import { getOrThrow, ok } from "../src/Result.js";
 import {
   createPreparedStatementsCache,
   createSqlite,
@@ -165,3 +165,9 @@ export const testCreateSqlite = async (): Promise<Sqlite> => {
 };
 
 export const testCreateTimingSafeEqual = (): TimingSafeEqual => timingSafeEqual;
+
+export const testCreateDummyWebSocket: CreateWebSocket = () => ({
+  send: () => ok(),
+  getReadyState: () => "connecting",
+  [Symbol.dispose]: constVoid,
+});
