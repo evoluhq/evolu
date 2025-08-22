@@ -94,6 +94,7 @@ export default tseslint.config(
       "@typescript-eslint/no-non-null-assertion": "off",
       "no-console": "error",
       "@typescript-eslint/restrict-template-expressions": "off",
+      "@typescript-eslint/triple-slash-reference": "off",
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "error",
       "jsdoc/require-jsdoc": "off",

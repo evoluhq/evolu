@@ -1,6 +1,6 @@
 "use client";
 
-import { lazy, Suspense } from "react";
+import { JSX, lazy, Suspense } from "react";
 
 const NextJsExample = lazy(() =>
   import("@/components/NextJsExample").then((mod) => ({
@@ -8,7 +8,7 @@ const NextJsExample = lazy(() =>
   })),
 );
 
-export function LazyNextJsWrapper() {
+export function LazyNextJsWrapper(): JSX.Element {
   return (
     <Suspense
       fallback={

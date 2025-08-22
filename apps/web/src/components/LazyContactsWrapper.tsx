@@ -1,6 +1,6 @@
 "use client";
 
-import { lazy, Suspense } from "react";
+import { JSX, lazy, Suspense } from "react";
 
 const ContactsExample = lazy(() =>
   import("@/components/Contacts").then((mod) => ({
@@ -8,7 +8,7 @@ const ContactsExample = lazy(() =>
   })),
 );
 
-export function LazyContactsWrapper() {
+export function LazyContactsWrapper(): JSX.Element {
   return (
     <Suspense
       fallback={

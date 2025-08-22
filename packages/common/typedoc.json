@@ -40,7 +40,6 @@
     "src/Store.ts",
     "src/String.ts",
     "src/Time.ts",
-    "src/Transport.ts",
     "src/Type.ts",
     "src/Types.ts",
     "src/WebSocket.ts",
