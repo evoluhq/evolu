@@ -14,7 +14,7 @@ import {
   createOwnerSecret,
   ownerIdToBinaryOwnerId,
 } from "../src/Evolu/Owner.js";
-import { constVoid } from "../src/Function.js";
+import { constFalse, constVoid } from "../src/Function.js";
 import { NanoIdLib } from "../src/NanoId.js";
 import {
   createRandomLibWithSeed,
@@ -169,5 +169,6 @@ export const testCreateTimingSafeEqual = (): TimingSafeEqual => timingSafeEqual;
 export const testCreateDummyWebSocket: CreateWebSocket = () => ({
   send: () => ok(),
   getReadyState: () => "connecting",
+  isOpen: constFalse,
   [Symbol.dispose]: constVoid,
 });

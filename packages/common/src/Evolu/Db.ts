@@ -1,10 +1,5 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import {
-  isNonEmptyArray,
-  isNonEmptyReadonlyArray,
-  NonEmptyReadonlyArray,
-} from "../Array.js";
-import { assertNonEmptyReadonlyArray } from "../Assert.js";
+import assert from "assert";
+import { isNonEmptyArray, NonEmptyReadonlyArray } from "../Array.js";
 import { CallbackId } from "../Callbacks.js";
 import { ConsoleDep } from "../Console.js";
 import {
@@ -14,8 +9,9 @@ import {
   SymmetricCryptoDecryptError,
   SymmetricCryptoDep,
 } from "../Crypto.js";
+import { eqArrayNumber } from "../Eq.js";
 import { TransferableError } from "../Error.js";
-import { constFalse, exhaustiveCheck } from "../Function.js";
+import { constFalse } from "../Function.js";
 import { NanoIdLibDep } from "../NanoId.js";
 import { objectToEntries } from "../Object.js";
 import { RandomDep } from "../Random.js";
@@ -27,33 +23,44 @@ import {
   sql,
   SqliteDep,
   SqliteError,
+  SqliteValue,
 } from "../Sqlite.js";
 import { TimeDep } from "../Time.js";
-import { Id, idToBinaryId, Mnemonic, SimpleName } from "../Type.js";
+import {
+  BinaryId,
+  binaryIdToId,
+  Id,
+  idToBinaryId,
+  Mnemonic,
+  SimpleName,
+} from "../Type.js";
 import { CreateWebSocketDep } from "../WebSocket.js";
 import {
   createInitializedWorkerWithHandlers,
   MessageHandlers,
   WithErrorReporting,
   Worker,
-  WorkerPostMessageDep,
 } from "../Worker.js";
 import { Config } from "./Config.js";
 import { makePatches, QueryPatches } from "./Diff.js";
 import {
   AppOwner,
   BinaryOwnerId,
+  binaryOwnerIdToOwnerId,
   createAppOwner,
   createOwnerSecret,
   mnemonicToOwnerSecret,
   OwnerId,
   ownerIdToBinaryOwnerId,
-  ShardOwner,
-  SharedOwner,
-  SharedReadonlyOwner,
   WriteKey,
 } from "./Owner.js";
-import { ProtocolError, protocolVersion } from "./Protocol.js";
+import {
+  applyProtocolMessageAsClient,
+  decryptAndDecodeDbChange,
+  encodeAndEncryptDbChange,
+  ProtocolError,
+  protocolVersion,
+} from "./Protocol.js";
 import {
   createQueryRowsCache,
   deserializeQuery,
@@ -70,9 +77,11 @@ import {
   SqliteStorageBase,
   Storage,
 } from "./Storage.js";
-import { SyncDep } from "./Sync.js";
+import { createSync, SyncConfig, SyncDep, SyncOwner } from "./Sync.js";
 import {
+  binaryTimestampToTimestamp,
   createInitialTimestamp,
+  receiveTimestamp,
   sendTimestamp,
   Timestamp,
   TimestampConfigDep,
@@ -131,7 +140,7 @@ export type DbWorkerInput =
     }
   | {
       readonly type: "useOwner";
-      readonly owner: ShardOwner | SharedOwner | SharedReadonlyOwner;
+      readonly owner: SyncOwner;
       readonly use: boolean;
     };
 
@@ -189,7 +198,7 @@ type DbWorkerDeps = Omit<
   keyof CreateSqliteDriverDep | keyof CreateWebSocketDep
 > &
   SqliteDep &
-  // SyncDep &
+  SyncDep &
   TimestampConfigDep &
   SymmetricCryptoDep &
   AppOwnerDep &
@@ -202,7 +211,9 @@ interface AppOwnerDep {
   readonly appOwner: AppOwner;
 }
 
-type PostMessageDep = WorkerPostMessageDep<DbWorkerOutput>;
+interface PostMessageDep {
+  readonly postMessage: (message: DbWorkerOutput) => void;
+}
 
 interface ClockDep {
   readonly clock: Clock;
@@ -237,15 +248,15 @@ const createDbWorkerDeps =
 
     const sqliteResult = await createSqlite(platformDeps)(
       initMessage.config.name,
-      { memory: initMessage.config.inMemory ?? false },
+      {
+        memory: initMessage.config.inMemory ?? false,
+      },
     );
     if (!sqliteResult.ok) {
       postMessage({ type: "onError", error: sqliteResult.error });
       return null;
     }
-
     const sqlite = sqliteResult.value;
-    const platformDepsWithSqlite = { ...platformDeps, sqlite };
 
     const deps = sqlite.transaction(() => {
       const currentDbSchema = getDbSchema({ sqlite })();
@@ -258,11 +269,13 @@ const createDbWorkerDeps =
         (table) => table.name === "evolu_version",
       );
 
+      const platformDepsWithSqlite = { ...platformDeps, sqlite };
+
       if (dbIsInitialized) {
-        const versionResult = sqlite.exec<{
+        const currentVersion = sqlite.exec<{
           protocolVersion: number;
         }>(sql`select protocolVersion from evolu_version limit 1;`);
-        if (!versionResult.ok) return versionResult;
+        if (!currentVersion.ok) return currentVersion;
 
         // TODO: Handle version migrations here if needed
         // const [{ protocolVersion }] = protocolVersionResult.value.rows;
@@ -308,9 +321,13 @@ const createDbWorkerDeps =
           initMessage.config.initialAppOwner ??
           createAppOwner(createOwnerSecret(platformDeps));
         clock = createClock(platformDepsWithSqlite)();
+
         const result = initializeDb(platformDepsWithSqlite)(appOwner, clock);
         if (!result.ok) return result;
       }
+
+      // Return onInit ASAP, schema updates and sync setup can happen after.
+      postMessage({ type: "onInit", appOwner, isFirst: !dbIsInitialized });
 
       const result = ensureDbSchema({ sqlite })(
         initMessage.dbSchema,
@@ -319,7 +336,6 @@ const createDbWorkerDeps =
       if (!result.ok) return result;
 
       const tabQueryRowsCacheMap = new Map<Id, QueryRowsCache>();
-
       const getQueryRowsCache = (tabId: Id) => {
         let cache = tabQueryRowsCacheMap.get(tabId);
         if (!cache) {
@@ -329,10 +345,9 @@ const createDbWorkerDeps =
         return cache;
       };
 
-      const depsWithoutSyncAndStorage = {
-        ...platformDeps,
+      const depsWithoutStorage = {
+        ...platformDepsWithSqlite,
         postMessage,
-        sqlite,
         appOwner,
         timestampConfig: initMessage.config,
         symmetricCrypto: createSymmetricCrypto(platformDeps),
@@ -340,35 +355,26 @@ const createDbWorkerDeps =
         getQueryRowsCache,
       };
 
-      const storage = createClientStorage(depsWithoutSyncAndStorage)({
+      const storage = createClientStorage({
+        ...depsWithoutStorage,
+        getSyncOwner: (ownerId) => sync.getOwner(ownerId),
+      })({
         onStorageError: (error) => {
           postMessage({ type: "onError", error });
         },
       });
       if (!storage.ok) return storage;
 
-      const depsWithoutSync = {
-        ...depsWithoutSyncAndStorage,
-        storage: storage.value,
-      };
+      const depsWithoutSync = { ...depsWithoutStorage, storage: storage.value };
 
-      postMessage({
-        type: "onInit",
-        appOwner,
-        isFirst: !dbIsInitialized,
+      const sync = createSync(depsWithoutStorage)({
+        onOpen: withErrorReporting(handleSyncOpen(depsWithoutSync)),
+        onMessage: withErrorReporting(handleSyncMessage(depsWithoutSync)),
       });
 
-      // const sync = "foo" as never;
-      // platformDeps.createSync(platformDeps)({
-      //   ...initMessage.config,
-      //   transports: initMessage.config.transports,
-      //   // onOpen: withErrorReporting(handleSyncOpen(depsWithoutSync)),
-      //   // onMessage: withErrorReporting(createHandleSyncMessage(depsWithoutSync)),
-      // });
-      return ok({
-        ...depsWithoutSync,
-        // sync
-      });
+      sync.addOwner({ ...appOwner, transports: initMessage.config.transports });
+
+      return ok({ ...depsWithoutSync, sync });
     });
 
     if (!deps.ok) {
@@ -390,10 +396,10 @@ const createClock =
         currentTimestamp = timestamp;
 
         const timestampString = timestampToTimestampString(timestamp);
-        const saveTimestamp = deps.sqlite.exec(sql.prepared`
+        const result = deps.sqlite.exec(sql.prepared`
           update evolu_config set "clock" = ${timestampString};
         `);
-        if (!saveTimestamp.ok) return saveTimestamp;
+        if (!result.ok) return result;
 
         return ok();
       },
@@ -630,7 +636,7 @@ const handlers: Omit<MessageHandlers<DbWorkerInput, DbWorkerDeps>, "init"> = {
     });
   },
 
-  useOwner: (deps) => (message) => {
+  useOwner: (_deps) => (_message) => {
     // des
     // if (message.use) {
     //   // Add owner to used owners
@@ -887,49 +893,54 @@ const dropAllTables = (deps: SqliteDep): Result<void, SqliteError> => {
   return ok();
 };
 
-// const handleSyncOpen =
-//   (deps: StorageDep & ConsoleDep & UsedOwnersDep): SyncConfig["onOpen"] =>
-//   (send) => {
-//     for (const [id] of deps.owners) {
-//       const message = createProtocolMessageForSync(deps)(id);
-//       if (!message) return;
-//       deps.console.log("[db]", "send initial sync message", message);
-//       send(message);
-//     }
-//   };
+const handleSyncOpen =
+  (_deps: ClientStorageDep & ConsoleDep): SyncConfig["onOpen"] =>
+  (_ownerIds, _send) => {
+    // for (const [id] of deps.owners) {
+    //   const message = createProtocolMessageForSync(deps)(id);
+    //   if (!message) return;
+    //   deps.console.log("[db]", "send initial sync message", message);
+    //   send(message);
+    // }
+  };
 
-// const createHandleSyncMessage =
-//   (
-//     deps: PostMessageDep & StorageDep & SqliteDep & ConsoleDep & UsedOwnersDep,
-//   ): SyncConfig["onMessage"] =>
-//   (input, send) => {
-//     deps.console.log("[db]", "receive sync message", input);
+const handleSyncMessage =
+  (
+    deps: ClientStorageDep & PostMessageDep & SqliteDep & ConsoleDep,
+  ): SyncConfig["onMessage"] =>
+  (input, send) => {
+    deps.console.log("[db]", "receive sync message", input);
 
-//     const output = deps.sqlite.transaction(() =>
-//       applyProtocolMessageAsClient(deps)(input, {
-//         getWriteKey: (ownerId) => {
-//           const owner = deps.owners.get(ownerId);
-//           if (!owner || owner.type === "SharedReadonlyOwner") return null;
-//           return owner.writeKey;
-//         },
-//       }),
-//     );
-//     if (!output.ok) {
-//       deps.postMessage({ type: "onError", error: output.error });
-//       return;
-//     }
+    const output = deps.sqlite.transaction(() =>
+      applyProtocolMessageAsClient(deps)(input, {
+        getWriteKey: (_ownerId) => {
+          // const owner = deps.owners.get(ownerId);
+          // if (!owner || owner.type === "SharedReadonlyOwner") return null;
+          // return owner.writeKey;
+          return null;
+        },
+      }),
+    );
+    if (!output.ok) {
+      deps.postMessage({ type: "onError", error: output.error });
+      return;
+    }
 
-//     if (output.value) {
-//       deps.console.log("[db]", "respond sync message", output.value);
-//       send(output.value);
-//     }
-//   };
+    if (output.value) {
+      deps.console.log("[db]", "respond sync message", output.value);
+      send(output.value);
+    }
+  };
 
 export interface ClientStorageDep {
   readonly storage: ClientStorage;
 }
 
 export interface ClientStorage extends SqliteStorageBase, Storage {}
+
+interface GetSyncOwnerDep {
+  readonly getSyncOwner: (ownerId: OwnerId) => SyncOwner | null;
+}
 
 const createClientStorage =
   (
@@ -939,7 +950,8 @@ const createClientStorage =
       RandomDep &
       TimeDep &
       ClockDep &
-      TimestampConfigDep,
+      TimestampConfigDep &
+      GetSyncOwnerDep,
   ) =>
   (
     options: CreateSqliteStorageBaseOptions,
@@ -954,113 +966,108 @@ const createClientStorage =
       setWriteKey: constFalse,
 
       writeMessages: (ownerId, messages) => {
-        // const owner = deps.owners.get(binaryOwnerIdToOwnerId(ownerId));
-        // if (!owner) {
-        //   // Owner was removed to stop syncing for this owner
-        //   return false;
-        // }
+        const owner = deps.getSyncOwner(binaryOwnerIdToOwnerId(ownerId));
+        // Owner can be removed to stop syncing.
+        if (!owner) return false;
 
-        // const decodedAndDecryptedMessages: Array<CrdtMessage> = [];
+        const decodedAndDecryptedMessages: Array<CrdtMessage> = [];
 
-        // for (const message of messages) {
-        //   const dbChange = decryptAndDecodeDbChange(deps)(
-        //     message,
-        //     owner.encryptionKey,
-        //   );
+        for (const message of messages) {
+          const dbChange = decryptAndDecodeDbChange(deps)(
+            message,
+            owner.encryptionKey,
+          );
 
-        //   if (!dbChange.ok) {
-        //     deps.postMessage({
-        //       type: "onError",
-        //       error: dbChange.error,
-        //     });
-        //     return false;
-        //   }
+          if (!dbChange.ok) {
+            deps.postMessage({ type: "onError", error: dbChange.error });
+            return false;
+          }
 
-        //   decodedAndDecryptedMessages.push({
-        //     timestamp: message.timestamp,
-        //     change: dbChange.value,
-        //   });
-        // }
+          decodedAndDecryptedMessages.push({
+            timestamp: message.timestamp,
+            change: dbChange.value,
+          });
+        }
 
-        // let clockTimestamp = deps.clock.get();
+        let clockTimestamp = deps.clock.get();
 
-        // for (const message of messages) {
-        //   const receive = receiveTimestamp(deps)(
-        //     clockTimestamp,
-        //     message.timestamp,
-        //   );
-        //   if (!receive.ok) {
-        //     deps.postMessage({ type: "onError", error: receive.error });
-        //     return false;
-        //   }
-        //   clockTimestamp = receive.value;
-        // }
+        for (const message of messages) {
+          const result = receiveTimestamp(deps)(
+            clockTimestamp,
+            message.timestamp,
+          );
+          if (!result.ok) {
+            deps.postMessage({ type: "onError", error: result.error });
+            return false;
+          }
+          clockTimestamp = result.value;
+        }
 
-        // const applyMessagesResult = applyMessages({ ...deps, storage })(
-        //   owner.id,
-        //   decodedAndDecryptedMessages,
-        //   // clockTimestamp,
-        // );
-        // deps.clock.save(clockTimestamp);
+        const applyMessagesResult = applyMessages({ ...deps, storage })(
+          owner.id,
+          decodedAndDecryptedMessages,
+        );
+        if (!applyMessagesResult.ok) {
+          deps.postMessage({
+            type: "onError",
+            error: applyMessagesResult.error,
+          });
+          return false;
+        }
 
-        // if (!applyMessagesResult.ok) {
-        //   deps.postMessage({
-        //     type: "onError",
-        //     error: applyMessagesResult.error,
-        //   });
-        //   return false;
-        // }
+        const saveResult = deps.clock.save(clockTimestamp);
+        if (!saveResult.ok) {
+          deps.postMessage({ type: "onError", error: saveResult.error });
+          return false;
+        }
 
-        // deps.postMessage({ type: "onReceive" });
+        deps.postMessage({ type: "onReceive" });
 
         return true;
       },
 
       readDbChange: (ownerId, timestamp) => {
-        // const owner = deps.owners.get(binaryOwnerIdToOwnerId(ownerId));
-        // if (!owner) {
-        //   // Owner was removed to stop syncing for this owner
-        //   return null;
-        // }
+        const owner = deps.getSyncOwner(binaryOwnerIdToOwnerId(ownerId));
+        // Owner can be removed to stop syncing.
+        if (!owner) return null;
 
-        // const result = deps.sqlite.exec<{
-        //   table: string;
-        //   id: BinaryId;
-        //   column: string;
-        //   value: SqliteValue;
-        // }>(sql`
-        //   select "table", "id", "column", "value"
-        //   from evolu_history
-        //   where "ownerId" = ${ownerId} and "timestamp" = ${timestamp};
-        // `);
-        // if (!result.ok) {
-        //   deps.postMessage({ type: "onError", error: result.error });
-        //   return null;
-        // }
+        const result = deps.sqlite.exec<{
+          table: string;
+          id: BinaryId;
+          column: string;
+          value: SqliteValue;
+        }>(sql`
+          select "table", "id", "column", "value"
+          from evolu_history
+          where "ownerId" = ${ownerId} and "timestamp" = ${timestamp};
+        `);
+        if (!result.ok) {
+          deps.postMessage({ type: "onError", error: result.error });
+          return null;
+        }
 
-        // const { rows } = result.value;
-        // assert(rows.length > 0, "Rows must not be empty");
+        const { rows } = result.value;
+        assert(rows.length > 0, "Rows must not be empty");
 
-        // const { table, id } = rows[0];
-        // const values: Record<string, SqliteValue> = {};
+        const { table, id } = rows[0];
+        const values: Record<string, SqliteValue> = {};
 
-        // for (const r of rows) {
-        //   assert(r.table === table, "All rows must have the same table");
-        //   assert(eqArrayNumber(r.id, id), "All rows must have the same Id");
-        //   values[r.column] = r.value;
-        // }
+        for (const r of rows) {
+          assert(r.table === table, "All rows must have the same table");
+          assert(eqArrayNumber(r.id, id), "All rows must have the same Id");
+          values[r.column] = r.value;
+        }
 
-        // const message: CrdtMessage = {
-        //   timestamp: binaryTimestampToTimestamp(timestamp),
-        //   change: {
-        //     table: rows[0].table,
-        //     id: binaryIdToId(rows[0].id),
-        //     values,
-        //   },
-        // };
+        const message: CrdtMessage = {
+          timestamp: binaryTimestampToTimestamp(timestamp),
+          change: {
+            table: rows[0].table,
+            id: binaryIdToId(rows[0].id),
+            values,
+          },
+        };
 
-        // return encodeAndEncryptDbChange(deps)(message, owner.encryptionKey);
-        throw new Error("todo");
+        return encodeAndEncryptDbChange(deps)(message, owner.encryptionKey);
       },
     };
 

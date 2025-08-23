@@ -39,7 +39,7 @@ import {
   TypeError,
 } from "../Type.js";
 import { Simplify } from "../Types.js";
-import { AppOwner, OwnerId, ShardOwner, SharedOwner } from "./Owner.js";
+import { AppOwner, OwnerId } from "./Owner.js";
 import { maxProtocolMessageRangesSize } from "./Protocol.js";
 import { Query, Row } from "./Query.js";
 import { CrdtMessage } from "./Storage.js";
@@ -268,12 +268,8 @@ export interface MutationOptions {
   readonly onComplete?: () => void;
 
   /**
-   * Specifies the owner ID for this mutation.
-   *
-   * - Use {@link ShardOwner} ID to partition data (e.g., per project, workspace,
-   *   or user).
-   * - Use {@link SharedOwner} ID to enable collaborative write access.
-   * - If omitted, the default {@link AppOwner} is used.
+   * Specifies the owner ID for this mutation. If omitted, the default
+   * {@link AppOwner} is used.
    *
    * The owner must be used with `evolu.useOwner()` to enable sync. Mutations
    * with unused owners are stored locally but not synced until the owner is
@@ -281,7 +277,26 @@ export interface MutationOptions {
    *
    * ### Example
    *
-   * TODO:
+   * ```ts
+   * // Partition your own data by project (derived from your AppOwner)
+   * const projectOwner = deriveShardOwner(appOwner, [
+   *   "project",
+   *   projectId,
+   * ]);
+   * evolu.insert(
+   *   "task",
+   *   { title: "Task 1" },
+   *   { ownerId: projectOwner.id },
+   * );
+   *
+   * // Collaborative data (independent owner shared with others)
+   * const sharedOwner = createSharedOwner(sharedSecret);
+   * evolu.insert(
+   *   "comment",
+   *   { text: "Hello" },
+   *   { ownerId: sharedOwner.id },
+   * );
+   * ```
    */
   readonly ownerId?: OwnerId;
 

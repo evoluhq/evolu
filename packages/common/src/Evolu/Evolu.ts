@@ -23,12 +23,7 @@ import { IntentionalNever } from "../Types.js";
 import { Config, defaultConfig } from "./Config.js";
 import { CreateDbWorkerDep, MutationChange } from "./Db.js";
 import { applyPatches } from "./Diff.js";
-import {
-  AppOwner,
-  ShardOwner,
-  SharedOwner,
-  SharedReadonlyOwner,
-} from "./Owner.js";
+import { AppOwner } from "./Owner.js";
 import { CreateAppStateDep, FlushSyncDep } from "./Platform.js";
 import { ProtocolError, ProtocolUnsupportedVersionError } from "./Protocol.js";
 import {
@@ -61,7 +56,7 @@ import {
   ValidMutationSizeError,
 } from "./Schema.js";
 import { DbChange } from "./Storage.js";
-import { initialSyncState, SyncState } from "./Sync.js";
+import { initialSyncState, SyncOwner, SyncState } from "./Sync.js";
 import { TimestampError } from "./Timestamp.js";
 
 export interface Evolu<S extends EvoluSchema = EvoluSchema> {
@@ -462,9 +457,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
    * // Later: unuses.forEach(unuse => unuse());
    * ```
    */
-  readonly useOwner: (
-    owner: ShardOwner | SharedOwner | SharedReadonlyOwner,
-  ) => () => void;
+  readonly useOwner: (owner: SyncOwner) => () => void;
 }
 
 /** Represent errors that can occur in Evolu. */

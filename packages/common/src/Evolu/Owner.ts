@@ -41,10 +41,14 @@ export const mnemonicToOwnerSecret = (mnemonic: Mnemonic): OwnerSecret =>
  * The Owner represents ownership of data in Evolu. Every database change is
  * assigned to an owner, enabling sync functionality and access control.
  *
+ * Owners enable **partial sync** - applications can choose which owners to
+ * sync, allowing selective data synchronization based on specific needs.
+ *
  * By default, all changes are assigned to the {@link AppOwner}, but additional
  * owners can be used for:
  *
- * - **Partial sync**: {@link ShardOwner} for isolating optional or heavy data
+ * - **Data partitioning**: {@link ShardOwner} for partitioning application data
+ *   (e.g., per project, workspace)
  * - **Collaboration**: {@link SharedOwner} for collaborative write access
  * - **Data sharing**: {@link SharedReadonlyOwner} for read-only access to shared
  *   data
@@ -139,8 +143,9 @@ export const createAppOwner = (secret: OwnerSecret): AppOwner => ({
 });
 
 /**
- * An {@link Owner} to isolate data that is optional, heavy, or not needed during
- * the initial sync.
+ * An {@link Owner} for partitioning your own data (e.g., per project,
+ * workspace). Can be created independently or derived from {@link AppOwner} for
+ * deterministic partitioning.
  */
 export interface ShardOwner extends Owner {
   readonly type: "ShardOwner";
@@ -161,8 +166,8 @@ export const createShardOwner = (
 
 /**
  * Derives a {@link ShardOwner} from an {@link AppOwner} using the specified path.
- * The advantage of derived ShardOwner is that it can be hardcoded so different
- * devices can use it immediately before they are synced.
+ * The advantage of derived owners is that they can be hardcoded so different
+ * devices can use them immediately before they are synced.
  */
 export const deriveShardOwner = (
   owner: AppOwner,
@@ -214,6 +219,7 @@ export interface SharedReadonlyOwner {
   readonly type: "SharedReadonlyOwner";
   readonly id: OwnerId;
   readonly encryptionKey: EncryptionKey;
+  readonly transports?: ReadonlyArray<TransportConfig>;
 }
 
 /** Creates a {@link SharedReadonlyOwner} from a {@link SharedOwner}. */
@@ -223,4 +229,5 @@ export const createSharedReadonlyOwner = (
   type: "SharedReadonlyOwner",
   id: sharedOwner.id,
   encryptionKey: sharedOwner.encryptionKey,
+  ...(sharedOwner.transports && { transports: sharedOwner.transports }),
 });
