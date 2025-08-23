@@ -20,10 +20,14 @@ export interface WebSocket extends Disposable {
   ) => Result<void, WebSocketSendError>;
 
   readonly getReadyState: () => WebSocketReadyState;
+
+  /** Returns true if the WebSocket is open and ready to send data. */
+  readonly isOpen: () => boolean;
 }
 
 /**
- * An error that occurs when trying to send data but WebSocket is connecting.
+ * An error that occurs when trying to send data but WebSocket is not available
+ * or is in the CONNECTING state.
  *
  * https://developer.mozilla.org/en-US/docs/Web/API/WebSocket/send
  */
@@ -240,7 +244,7 @@ export const createWebSocket: CreateWebSocket = (url, options = {}) => {
       assertNoErrorInCatch("WebSocket retry", error);
     });
 
-  const webSocket: WebSocket = {
+  return {
     send: (data) => {
       // https://developer.mozilla.org/en-US/docs/Web/API/WebSocket/send
       if (!socket || socket.readyState === socket.CONNECTING) {
@@ -253,6 +257,8 @@ export const createWebSocket: CreateWebSocket = (url, options = {}) => {
     getReadyState: () =>
       socket ? nativeToStringState[socket.readyState] : "connecting",
 
+    isOpen: () => (socket ? socket.readyState === socket.OPEN : false),
+
     [Symbol.dispose]() {
       if (isDisposed) return;
       isDisposed = true;
@@ -261,8 +267,6 @@ export const createWebSocket: CreateWebSocket = (url, options = {}) => {
       disposePromise?.();
     },
   };
-
-  return webSocket;
 };
 
 const nativeToStringState: Record<number, WebSocketReadyState> = {
