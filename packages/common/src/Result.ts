@@ -4,14 +4,16 @@
  * The problem with throwing an exception in JavaScript is that the caught error
  * is always of an unknown type. The unknown type is a problem because we can't
  * be sure all errors have been handled because the TypeScript compiler can't
- * tell us. Some other languages like Rust 🦀 or Haskell 📚 use a type-safe
- * approach to error handling, where errors are explicitly represented as part
- * of the return type, such as Result or Either, allowing the developer to
- * handle all errors safely. ✅
+ * tell us.
  *
- * This type models that approach in TypeScript. A `Result` can be either
- * {@link Ok} (success) or {@link Err} (error). Use {@link ok} to create a
- * successful result and {@link err} to create an error result.
+ * Languages like Rust 🦀 or Haskell 📚 use a type-safe approach to error
+ * handling, where errors are explicitly represented as part of the return type,
+ * such as Result or Either, allowing the developer to handle errors safely.
+ * TypeScript can have this too via the `Result` type.
+ *
+ * The `Result` type can be either {@link Ok} (success) or {@link Err} (error).
+ * Use {@link ok} to create a successful result and {@link err} to create an error
+ * result.
  *
  * Now let's look at how `Result` can be used for safe JSON parsing:
  *
@@ -58,12 +60,10 @@
  *
  * Let's summarize it:
  *
- * - For synchronous safe code, use `ok` and `err`.
+ * - For safe code, use `ok` and `err`.
  * - For unsafe code, use `trySync` or `tryAsync`.
- * - For asynchronous safe code, use `Promise` with {@link Result}.
  *
- * Asynchronous safe (because of a Promise using Result) code is
- * straightforward:
+ * Asynchronous safe (because of a Promise using Result) code:
  *
  * ```ts
  * const fetchUser = async (
@@ -84,9 +84,33 @@
  * };
  * ```
  *
- * ## Examples
+ * ### Naming Convention
  *
- * ### Sequential Operations with Short-Circuiting
+ * - For values: `const user = getUser()`
+ * - For void operations: `const result = foo()` (unless it would clash)
+ * - For clashes, suffix the name: `const saveResult = save()`
+ *
+ * ```ts
+ * const processUser = () => {
+ *   // we have a value
+ *   const user = getUser();
+ *   if (!user.ok) return user;
+ *
+ *   // void operation
+ *   const result = saveToDatabase(user.value);
+ *   if (!result.ok) return result;
+ *
+ *   // avoiding clash
+ *   const deleteFromCacheResult = deleteFromCache();
+ *   if (!deleteFromCacheResult.ok) return deleteFromCacheResult;
+ *
+ *   return ok();
+ * };
+ * ```
+ *
+ * ### Examples
+ *
+ * #### Sequential Operations with Short-Circuiting
  *
  * When performing a sequence of operations where any failure should stop
  * further processing, use the `Result` type with early returns.
@@ -136,30 +160,30 @@
  * This approach ensures type-safe error handling, avoids nested try/catch
  * blocks, and clearly communicates the control flow.
  *
- * ### A function with two different errors:
+ * #### A function with two different errors:
  *
  * ```ts
  * const example = (value: string): Result<number, FooError | BarError> => {
  *   const foo = getFoo(value);
  *   if (!foo.ok) return foo;
  *
- *   const bar = barize(foo.value);
+ *   const bar = getBar(foo.value);
  *   if (!bar.ok) return bar;
  *
  *   return ok(barToNumber(bar.value));
  * };
  * ```
  *
- * ## FAQ
+ * ### FAQ
  *
- * ### What if my function doesn't return a value on success?
+ * #### What if my function doesn't return a value on success?
  *
  * If your function performs an operation but doesn't need to return a value on
  * success, you can use `Result<void, E>`. Using `Result<void, E>` is clearer
  * than using `Result<true, E>` or `Result<null, E>` because it communicates
  * that the function doesn't produce a value but can produce errors.
  *
- * ### How do I short-circuit processing of an array on the first error?
+ * #### How do I short-circuit processing of an array on the first error?
  *
  * If you want to stop processing as soon as an error occurs (short-circuit),
  * you should produce and check each `Result` inside a loop:
@@ -175,7 +199,7 @@
  * // All queries succeeded
  * ```
  *
- * ### How do I handle an array of operations and short-circuit on the first error?
+ * #### How do I handle an array of operations and short-circuit on the first error?
  *
  * If you have an array of operations (not results), you should make them
  * _lazy_—that is, represent each operation as a function. This way, you only
@@ -212,8 +236,7 @@
  * above) over monadic helpers. Imperative code is generally more readable,
  * easier to debug, and more familiar to most JavaScript and TypeScript
  * developers. While monads and functional helpers can be powerful, they often
- * obscure control flow and make debugging harder. Evolu's approach keeps error
- * handling explicit and straightforward.
+ * obscure control flow and make debugging harder.
  */
 export type Result<T, E> = Ok<T> | Err<E>;
 
