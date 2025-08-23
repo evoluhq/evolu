@@ -1,3 +1,5 @@
+import { assert } from "./Assert.js";
+
 /**
  * Bidirectional many-to-many map between keys and values.
  *
@@ -134,11 +136,11 @@ export const createManyToManyMap = <K, V>(): ManyToManyMap<K, V> => {
       }
 
       const keys = reverseMap.get(value);
-      if (keys?.size) {
-        keys.delete(key);
-        if (keys.size === 0) {
-          reverseMap.delete(value);
-        }
+      assert(keys, "Key-value mapping inconsistency");
+
+      keys.delete(key);
+      if (keys.size === 0) {
+        reverseMap.delete(value);
       }
       pairCountInternal--;
       return true;
@@ -227,9 +229,11 @@ export const createManyToManyMap = <K, V>(): ManyToManyMap<K, V> => {
     keyCount() {
       return forwardMap.size;
     },
+
     valueCount() {
       return reverseMap.size;
     },
+
     pairCount() {
       return pairCountInternal;
     },
