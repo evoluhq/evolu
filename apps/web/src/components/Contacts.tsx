@@ -105,7 +105,7 @@ const AddContact: FC = () => {
       {
         name: getOrThrow(NonEmptyString1000.from("Joe")),
       },
-      { owner },
+      { ownerId: owner.id },
     );
     // console.log(result);
   };
