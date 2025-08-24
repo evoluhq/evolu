@@ -221,7 +221,7 @@ export interface SqliteStorageBaseDep {
   readonly storage: SqliteStorageBase;
 }
 
-export type SqliteStorageDeps = SqliteDep & RandomDep;
+export type SqliteStorageDeps = RandomDep & SqliteDep;
 
 export interface CreateSqliteStorageBaseOptions {
   onStorageError: (error: SqliteError) => void;

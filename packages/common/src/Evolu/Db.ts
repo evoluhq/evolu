@@ -1,5 +1,9 @@
 import assert from "assert";
-import { isNonEmptyArray, NonEmptyReadonlyArray } from "../Array.js";
+import {
+  isNonEmptyArray,
+  NonEmptyArray,
+  NonEmptyReadonlyArray,
+} from "../Array.js";
 import { CallbackId } from "../Callbacks.js";
 import { ConsoleDep } from "../Console.js";
 import {
@@ -185,34 +189,30 @@ export type DbWorkerOutput =
       readonly file: Uint8Array;
     };
 
-export type DbWorkerPlatformDeps = CreateSqliteDriverDep &
+export type DbWorkerPlatformDeps = ConsoleDep &
+  CreateRandomBytesDep &
+  CreateSqliteDriverDep &
   CreateWebSocketDep &
-  ConsoleDep &
-  TimeDep &
-  RandomDep &
   NanoIdLibDep &
-  CreateRandomBytesDep;
+  RandomDep &
+  TimeDep;
 
 type DbWorkerDeps = Omit<
   DbWorkerPlatformDeps,
   keyof CreateSqliteDriverDep | keyof CreateWebSocketDep
 > &
-  SqliteDep &
-  SyncDep &
-  TimestampConfigDep &
-  SymmetricCryptoDep &
   AppOwnerDep &
-  PostMessageDep &
+  ClientStorageDep &
   ClockDep &
   GetQueryRowsCacheDep &
-  ClientStorageDep;
+  PostMessageDep &
+  SqliteDep &
+  SymmetricCryptoDep &
+  SyncDep &
+  TimestampConfigDep;
 
 interface AppOwnerDep {
   readonly appOwner: AppOwner;
-}
-
-interface PostMessageDep {
-  readonly postMessage: (message: DbWorkerOutput) => void;
 }
 
 interface ClockDep {
@@ -226,6 +226,10 @@ interface Clock {
 
 interface GetQueryRowsCacheDep {
   readonly getQueryRowsCache: (tabId: Id) => QueryRowsCache;
+}
+
+interface PostMessageDep {
+  readonly postMessage: (message: DbWorkerOutput) => void;
 }
 
 export const createDbWorkerForPlatform = (
@@ -347,17 +351,20 @@ const createDbWorkerDeps =
 
       const depsWithoutStorage = {
         ...platformDepsWithSqlite,
-        postMessage,
         appOwner,
-        timestampConfig: initMessage.config,
-        symmetricCrypto: createSymmetricCrypto(platformDeps),
         clock,
         getQueryRowsCache,
+        postMessage,
+        symmetricCrypto: createSymmetricCrypto(platformDeps),
+        timestampConfig: initMessage.config,
       };
 
       const storage = createClientStorage({
         ...depsWithoutStorage,
-        getSyncOwner: (ownerId) => sync.getOwner(ownerId),
+        getSyncOwner: (_ownerId) => {
+          return appOwner;
+          // return sync.getOwner(ownerId);
+        },
       })({
         onStorageError: (error) => {
           postMessage({ type: "onError", error });
@@ -372,7 +379,12 @@ const createDbWorkerDeps =
         onMessage: withErrorReporting(handleSyncMessage(depsWithoutSync)),
       });
 
-      sync.addOwner({ ...appOwner, transports: initMessage.config.transports });
+      sync.addOwner({
+        id: appOwner.id,
+        encryptionKey: appOwner.encryptionKey,
+        writeKey: appOwner.writeKey,
+        transports: initMessage.config.transports,
+      });
 
       return ok({ ...depsWithoutSync, sync });
     });
@@ -407,7 +419,7 @@ const createClock =
   };
 
 const initializeDb =
-  (deps: SqliteDep & TimeDep & CreateRandomBytesDep) =>
+  (deps: CreateRandomBytesDep & SqliteDep & TimeDep) =>
   (
     initialAppOwner: AppOwner,
     initialClock: Clock,
@@ -636,17 +648,12 @@ const handlers: Omit<MessageHandlers<DbWorkerInput, DbWorkerDeps>, "init"> = {
     });
   },
 
-  useOwner: (_deps) => (_message) => {
-    // des
-    // if (message.use) {
-    //   // Add owner to used owners
-    //   deps.owners.set(message.owner.id, message.owner);
-    //   deps.console.log("[db]", "using owner", message.owner.id);
-    // } else {
-    //   // Remove owner from used owners
-    //   deps.owners.delete(message.owner.id);
-    //   deps.console.log("[db]", "unused owner", message.owner.id);
-    // }
+  useOwner: (deps) => (message) => {
+    if (message.use) {
+      deps.sync.addOwner(message.owner);
+    } else {
+      deps.sync.removeOwner(message.owner);
+    }
   },
 };
 
@@ -689,25 +696,29 @@ const applyLocalOnlyChange =
 
 const applySyncChanges =
   (
-    deps: SqliteDep &
-      AppOwnerDep &
-      TimeDep &
-      TimestampConfigDep &
-      RandomDep &
+    deps: AppOwnerDep &
       ClientStorageDep &
-      ClockDep,
+      ClockDep &
+      ConsoleDep &
+      CreateRandomBytesDep &
+      RandomDep &
+      SqliteDep &
+      SymmetricCryptoDep &
+      SyncDep &
+      TimeDep &
+      TimestampConfigDep,
   ) =>
   (
     changes: NonEmptyReadonlyArray<MutationChange>,
   ): Result<
     void,
-    | TimestampTimeOutOfRangeError
-    | TimestampDriftError
-    | TimestampCounterOverflowError
     | SqliteError
+    | TimestampCounterOverflowError
+    | TimestampDriftError
+    | TimestampTimeOutOfRangeError
   > => {
     let clockTimestamp = deps.clock.get();
-    const ownerMessages = new Map<OwnerId, Array<CrdtMessage>>();
+    const ownerMessages = new Map<OwnerId, NonEmptyArray<CrdtMessage>>();
 
     for (const change of changes) {
       const nextTimestamp = sendTimestamp(deps)(clockTimestamp);
@@ -717,8 +728,8 @@ const applySyncChanges =
       const { ownerId = deps.appOwner.id, ...dbChange } = change;
       const message = { timestamp: clockTimestamp, change: dbChange };
 
-      const existingChanges = ownerMessages.get(ownerId);
-      if (existingChanges) existingChanges.push(message);
+      const messages = ownerMessages.get(ownerId);
+      if (messages) messages.push(message);
       else ownerMessages.set(ownerId, [message]);
     }
 
@@ -726,26 +737,21 @@ const applySyncChanges =
       const result = applyMessages(deps)(ownerId, messages);
       if (!result.ok) return result;
 
-      // if (owner && owner.type !== "SharedReadonlyOwner") {
-      //   const protocolMessage = createProtocolMessageFromCrdtMessages(
-      //     deps,
-      //   )(owner, messages.value);
-      //   deps.console.log(
-      //     "[db]",
-      //     "send mutation message for owner",
-      //     owner.id,
-      //     messages.value,
-      //     protocolMessage,
-      //   );
-      //   deps.sync.send(protocolMessage);
-      // }
+      // const owner = deps.sync.getOwner(ownerId);
+      // if (!owner?.writeKey) continue;
+
+      // const protocolMessage = createProtocolMessageFromCrdtMessages(deps)(
+      //   owner as Owner,
+      //   messages,
+      // );
+      // deps.sync.send(ownerId, protocolMessage);
     }
 
     return deps.clock.save(clockTimestamp);
   };
 
 const applyMessages =
-  (deps: SqliteDep & RandomDep & ClientStorageDep & ClockDep) =>
+  (deps: ClientStorageDep & ClockDep & RandomDep & SqliteDep) =>
   (
     ownerId: OwnerId,
     messages: ReadonlyArray<CrdtMessage>,
@@ -808,7 +814,7 @@ const applyMessageToAppTable =
   };
 
 export const applyMessageToTimestampAndHistoryTables =
-  (deps: SqliteDep & ClientStorageDep) =>
+  (deps: ClientStorageDep & SqliteDep) =>
   (ownerId: BinaryOwnerId, message: CrdtMessage): Result<void, SqliteError> => {
     const timestamp = timestampToBinaryTimestamp(message.timestamp);
     const id = idToBinaryId(message.change.id);
@@ -906,10 +912,11 @@ const handleSyncOpen =
 
 const handleSyncMessage =
   (
-    deps: ClientStorageDep & PostMessageDep & SqliteDep & ConsoleDep,
+    deps: ClientStorageDep & ConsoleDep & PostMessageDep & SqliteDep,
   ): SyncConfig["onMessage"] =>
-  (input, send) => {
-    deps.console.log("[db]", "receive sync message", input);
+  (input, _send) => {
+    // patri do syncu
+    // deps.console.log("[db]", "receive sync message", input);
 
     const output = deps.sqlite.transaction(() =>
       applyProtocolMessageAsClient(deps)(input, {
@@ -927,8 +934,13 @@ const handleSyncMessage =
     }
 
     if (output.value) {
-      deps.console.log("[db]", "respond sync message", output.value);
-      send(output.value);
+      // patri do syncu
+      // deps.console.log("[db]", "respond sync message", output.value);
+      // ups, co to ma bejt?
+      // prijde mi nejaka sync message
+      // komu ji posilam, no?
+      // tohle musi bejt per transport!
+      // send(output.value);
     }
   };
 
@@ -944,14 +956,14 @@ interface GetSyncOwnerDep {
 
 const createClientStorage =
   (
-    deps: SqliteDep &
+    deps: ClockDep &
+      GetSyncOwnerDep &
       PostMessageDep &
-      SymmetricCryptoDep &
       RandomDep &
+      SqliteDep &
+      SymmetricCryptoDep &
       TimeDep &
-      ClockDep &
-      TimestampConfigDep &
-      GetSyncOwnerDep,
+      TimestampConfigDep,
   ) =>
   (
     options: CreateSqliteStorageBaseOptions,

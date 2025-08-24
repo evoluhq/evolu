@@ -319,7 +319,7 @@ export interface ProtocolTimestampMismatchError {
  * unidirectional and stateless transports.
  */
 export const createProtocolMessageFromCrdtMessages =
-  (deps: SymmetricCryptoDep & CreateRandomBytesDep) =>
+  (deps: CreateRandomBytesDep & SymmetricCryptoDep) =>
   (
     owner: Owner,
     messages: NonEmptyReadonlyArray<CrdtMessage>,

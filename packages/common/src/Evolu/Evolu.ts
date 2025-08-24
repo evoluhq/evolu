@@ -478,12 +478,12 @@ interface InternalEvoluInstance<S extends EvoluSchema = EvoluSchema>
   readonly ensureSchema: (schema: EvoluSchema) => void;
 }
 
-export type EvoluDeps = CreateDbWorkerDep &
-  TimeDep &
+export type EvoluDeps = ConsoleDep &
+  CreateAppStateDep &
+  CreateDbWorkerDep &
   NanoIdLibDep &
   Partial<FlushSyncDep> &
-  ConsoleDep &
-  CreateAppStateDep;
+  TimeDep;
 
 export interface EvoluConfigWithFunctions extends Config {
   /**
@@ -600,7 +600,6 @@ const createEvoluInstance =
     evoluConfig: EvoluConfigWithFunctions,
   ): InternalEvoluInstance => {
     deps.console.enabled = evoluConfig.enableLogging ?? false;
-
     deps.console.log("[evolu]", "createEvoluInstance");
 
     const { onInit, indexes, ...config } = evoluConfig;
