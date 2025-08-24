@@ -33,13 +33,13 @@ const time = createTime();
 
 const createDbWorker: CreateDbWorker = () =>
   createDbWorkerForPlatform({
+    console,
+    createRandomBytes,
     createSqliteDriver: createExpoSqliteDriver,
     createWebSocket,
-    console,
-    time,
-    random: createRandom(),
     nanoIdLib,
-    createRandomBytes,
+    random: createRandom(),
+    time,
   });
 
 export const evoluReactNativeDeps: EvoluDeps = {

@@ -11,13 +11,13 @@ import { createWasmSqliteDriver } from "../WasmSqliteDriver.js";
 import { wrapWebWorkerSelf } from "../WebWorker.js";
 
 const dbWorker = createDbWorkerForPlatform({
+  console: createConsole(),
+  createRandomBytes,
   createSqliteDriver: createWasmSqliteDriver,
   createWebSocket,
-  console: createConsole(),
-  time: createTime(),
-  random: createRandom(),
   nanoIdLib: createNanoIdLib(),
-  createRandomBytes,
+  random: createRandom(),
+  time: createTime(),
 });
 
 wrapWebWorkerSelf(dbWorker);
