@@ -4,6 +4,10 @@
 
 **Date: August 6, 2025**
 
+> **⚠️ Work in Progress**
+>
+> This whitepaper is currently work in progress. Some sections may be incomplete or subject to change as we continue to refine the content and technical specifications.
+
 ## Abstract
 
 Traditional client-server architectures centralize data control, creating dependencies on external services and limiting user autonomy. Local-first software emerged as a response, promoting apps that store data locally and work offline. However, the term has grown broad, often encompassing apps that still rely on external infrastructure, lack end-to-end encryption, or offer limited user control. This flexibility has driven adoption, but leaves developers without a clear framework for building truly autonomous, privacy-preserving applications.
