@@ -30,7 +30,6 @@ export const navigation: Array<NavGroup> = [
       { title: "Examples", href: "/docs/examples" },
       { title: "Indexes", href: "/docs/indexes" },
       { title: "Relay", href: "/docs/evolu-relay" },
-      { title: "Patterns", href: "/docs/patterns" },
       { title: "Time travel", href: "/docs/time-travel" },
       { title: "Migrations", href: "/docs/migrations" },
       { title: "Protocol", href: "/docs/api-reference/common/Evolu/Protocol" },
