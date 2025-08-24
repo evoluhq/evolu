@@ -1,9 +1,8 @@
+import * as Kysely from "kysely";
 import { ConsoleConfig } from "../Console.js";
 import { getOrThrow } from "../Result.js";
 import { SimpleName } from "../Type.js";
 import type { AppOwner } from "./Owner.js";
-import type { DbIndexesBuilder } from "./Schema.js";
-import type { TransportConfig } from "./Transport.js";
 
 export interface Config extends ConsoleConfig {
   /**
@@ -89,7 +88,7 @@ export interface Config extends ConsoleConfig {
    * });
    * ```
    */
-  readonly indexes?: DbIndexesBuilder;
+  readonly indexes?: IndexesConfig;
 
   /**
    * External AppOwner to use when creating Evolu instance. Use this when you
@@ -144,6 +143,18 @@ export interface Config extends ConsoleConfig {
 export interface ConfigDep {
   readonly config: Config;
 }
+
+// DEV: Future transports: Bluetooth, LocalNetwork, etc.
+export type TransportConfig = WebSocketTransportConfig;
+
+export interface WebSocketTransportConfig {
+  readonly type: "WebSocket";
+  readonly url: string;
+}
+
+export type IndexesConfig = (
+  create: (indexName: string) => Kysely.CreateIndexBuilder,
+) => ReadonlyArray<Kysely.CreateIndexBuilder<any>>;
 
 export const defaultConfig: Config = {
   name: getOrThrow(SimpleName.fromParent("Evolu")),

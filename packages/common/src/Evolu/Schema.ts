@@ -44,6 +44,7 @@ import { maxProtocolMessageRangesSize } from "./Protocol.js";
 import { Query, Row } from "./Query.js";
 import { CrdtMessage } from "./Storage.js";
 import { BinaryTimestamp } from "./Timestamp.js";
+import { IndexesConfig } from "./Config.js";
 
 /**
  * Defines the schema of an Evolu database.
@@ -159,13 +160,9 @@ export type ValidateColumnTypes<S extends EvoluSchema> =
 export type SchemaValidationError<Message extends string> =
   `❌ Schema Error: ${Message}`;
 
-export type DbIndexesBuilder = (
-  create: (indexName: string) => Kysely.CreateIndexBuilder,
-) => ReadonlyArray<Kysely.CreateIndexBuilder<any>>;
-
 export const evoluSchemaToDbSchema = (
   schema: EvoluSchema,
-  indexes?: DbIndexesBuilder,
+  indexesConfig?: IndexesConfig,
 ): DbSchema => {
   const tables = objectToEntries(schema).map(([tableName, table]) => ({
     name: tableName,
@@ -174,20 +171,16 @@ export const evoluSchemaToDbSchema = (
       .map(([k]) => k),
   }));
 
-  return {
-    tables,
-    indexes: createIndexes(indexes),
-  };
-};
+  const indexes = indexesConfig
+    ? indexesConfig(createIndex).map(
+        (index): DbIndex => ({
+          name: index.toOperationNode().name.name,
+          sql: index.compile().sql,
+        }),
+      )
+    : [];
 
-const createIndexes = (indexes?: DbIndexesBuilder): ReadonlyArray<DbIndex> => {
-  if (!indexes) return [];
-  return indexes(createIndex).map(
-    (index): DbIndex => ({
-      name: index.toOperationNode().name.name,
-      sql: index.compile().sql,
-    }),
-  );
+  return { tables, indexes };
 };
 
 export type CreateQuery<S extends EvoluSchema> = <R extends Row>(

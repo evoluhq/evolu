@@ -11,7 +11,7 @@ import {
 } from "./Owner.js";
 import { ProtocolMessage } from "./Protocol.js";
 import { Millis } from "./Timestamp.js";
-import { TransportConfig } from "./Transport.js";
+import { TransportConfig } from "./Config.js";
 
 export interface Sync {
   readonly send: (ownerId: OwnerId, message: ProtocolMessage) => void;
@@ -127,6 +127,19 @@ export const createSync =
 
 //   return sync;
 // };
+
+// /** Unique identifier for a transport configuration used for deduplication. */
+// export const TransportId = brand("TransportId", String);
+// export type TransportId = typeof TransportId.Type;
+
+// /** Creates a unique identifier for a transport configuration. */
+// export const getTransportId = (
+//   transportConfig: TransportConfig,
+// ): TransportId => {
+//   return `ws:${transportConfig.url}` as TransportId;
+// };
+
+// // export type Transport
 
 /**
  * The possible states of a synchronization process. The `SyncState` can be one

@@ -19,7 +19,7 @@ import {
   NonNegativeInt,
   Uint8Array,
 } from "../Type.js";
-import { TransportConfig } from "./Transport.js";
+import { TransportConfig } from "./Config.js";
 
 /** 16 bytes of cryptographic entropy used to derive {@link Owner} keys. */
 export const OwnerSecret = brand("OwnerSecret", length(16)(Uint8Array));

@@ -23,4 +23,3 @@ export * from "./Schema.js";
 export * from "./Storage.js";
 export * from "./Sync.js";
 export * from "./Timestamp.js";
-export * from "./Transport.js";
