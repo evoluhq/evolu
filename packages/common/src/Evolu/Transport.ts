@@ -11,13 +11,6 @@ export interface WebSocketTransportConfig {
 // | { readonly type: "LocalNetwork"; readonly host: string }
 export type TransportConfig = WebSocketTransportConfig;
 
-// Base interface for transport instances
-// TODO: extends Disposable.
-export interface TransportInstance {
-  readonly send: (message: string) => void;
-  readonly close: () => void;
-}
-
 /** Unique identifier for a transport configuration used for deduplication. */
 export const TransportId = brand("TransportId", String);
 export type TransportId = typeof TransportId.Type;
@@ -28,3 +21,5 @@ export const getTransportId = (
 ): TransportId => {
   return `ws:${transportConfig.url}` as TransportId;
 };
+
+// export type Transport

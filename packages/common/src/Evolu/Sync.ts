@@ -1,6 +1,7 @@
 import { NonEmptyReadonlyArray } from "../Array.js";
 import { ConsoleDep } from "../Console.js";
 import { EncryptionKey } from "../Crypto.js";
+import { CreateWebSocketDep } from "../WebSocket.js";
 import {
   OwnerId,
   WriteKey,
@@ -13,7 +14,7 @@ import { Millis } from "./Timestamp.js";
 import { TransportConfig } from "./Transport.js";
 
 export interface Sync {
-  readonly send: (message: ProtocolMessage) => void;
+  readonly send: (ownerId: OwnerId, message: ProtocolMessage) => void;
 
   readonly getOwner: (ownerId: OwnerId) => SyncOwner | null;
 
@@ -52,29 +53,38 @@ export interface SyncConfig {
 }
 
 export const createSync =
-  (_deps: ConsoleDep) =>
+  (_deps: ConsoleDep & CreateWebSocketDep) =>
   (_config: SyncConfig): Sync => {
     return {
-      send: (message) => {
-        // eslint-disable-next-line no-console
-        console.log(message);
+      send: (_ownerId, _message) => {
+        //   deps.console.log(
+        //   "[db]",
+        //   "send mutation message for owner",
+        //   owner.id,
+        //   messages,
+        //   protocolMessage,
+        // );
+        // console.log(message);
       },
 
       getOwner: () => {
-        throw new Error("todo");
+        throw new Error("todo sync getOwner");
       },
 
       addOwner: (_owner) => {
+        // console.log("addOwner", owner);
+        //   deps.console.log("[db]", "using owner", message.owner.id);
+        //   deps.console.log("[db]", "unused owner", message.owner.id);
         // throw new Error("todo");
       },
 
       removeOwner: (_owner) => {
+        // console.log("removeOwner", owner);
         // throw new Error("todo");
       },
     };
   };
 
-// // tohle je spatne
 // export const createWebSocketSync: CreateSync = (_deps) => (config) => {
 //   const webSocketTransports = config.transports;
 
