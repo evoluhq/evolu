@@ -32,13 +32,6 @@ export interface Config extends ConsoleConfig {
    *
    * - WebSocket: Real-time bidirectional communication with relay servers
    *
-   * Future transports will include:
-   *
-   * - FetchRelay: HTTP-based polling/push for environments without WebSocket
-   *   support
-   * - Bluetooth: P2P sync for offline collaboration
-   * - LocalNetwork: LAN/mesh sync for local networks
-   *
    * The default value is:
    *
    * `{ type: "WebSocket", url: "wss://free.evoluhq.com" }`.
@@ -55,6 +48,9 @@ export interface Config extends ConsoleConfig {
    *   { type: "WebSocket", url: "wss://relay2.example.com" },
    *   { type: "WebSocket", url: "wss://relay3.example.com" },
    * ];
+   *
+   * // Local-only instance (no sync) - useful for device settings
+   * transports: [];
    * ```
    */
   readonly transports: ReadonlyArray<TransportConfig>;
@@ -96,10 +92,42 @@ export interface Config extends ConsoleConfig {
   readonly indexes?: DbIndexesBuilder;
 
   /**
-   * Initial AppOwner to use when creating Evolu instance. If omitted, a new
-   * AppOwner will be generated automatically.
+   * External AppOwner to use when creating Evolu instance. Use this when you
+   * want to manage AppOwner creation and persistence externally (e.g., with
+   * your own authentication system). If omitted, Evolu will automatically
+   * create and persist an AppOwner locally.
+   *
+   * For device-specific settings and account management state, we can use a
+   * separate local-only Evolu instance via `transports: []`.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const ConfigId = id("Config");
+   * type ConfigId = typeof ConfigId.Type;
+   *
+   * const DeviceSchema = {
+   *   config: {
+   *     id: ConfigId,
+   *     key: NonEmptyString50,
+   *     value: NonEmptyString50,
+   *   },
+   * };
+   *
+   * // Local-only instance for device settings (no sync)
+   * const deviceEvolu = createEvolu(evoluReactWebDeps)(DeviceSchema, {
+   *   name: getOrThrow(SimpleName.from("MyApp-Device")),
+   *   transports: [], // No sync - stays local to device
+   * });
+   *
+   * // Main synced instance for user data
+   * const evolu = createEvolu(evoluReactWebDeps)(MainSchema, {
+   *   name: getOrThrow(SimpleName.from("MyApp")),
+   *   // Default transports for sync
+   * });
+   * ```
    */
-  readonly initialAppOwner?: AppOwner;
+  readonly externalAppOwner?: AppOwner;
 
   /**
    * Use in-memory SQLite database instead of persistent storage. Useful for

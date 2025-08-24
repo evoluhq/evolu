@@ -81,7 +81,7 @@ export const testOwnerSecret2 = createOwnerSecret(testCreateRandomBytesDep);
 
 export const testDbConfig: Config = {
   ...defaultConfig,
-  initialAppOwner: createAppOwner(testOwnerSecret),
+  externalAppOwner: createAppOwner(testOwnerSecret),
 };
 
 const ownerDeps = {

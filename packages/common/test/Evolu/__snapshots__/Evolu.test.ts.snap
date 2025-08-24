@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`initialAppOwner should use provided owner 1`] = `
+exports[`externalAppOwner should use provided owner 1`] = `
 {
   "schema": {
     "indexes": [

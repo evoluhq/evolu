@@ -322,7 +322,7 @@ const createDbWorkerDeps =
         );
       } else {
         appOwner =
-          initMessage.config.initialAppOwner ??
+          initMessage.config.externalAppOwner ??
           createAppOwner(createOwnerSecret(platformDeps));
         clock = createClock(platformDepsWithSqlite)();
 

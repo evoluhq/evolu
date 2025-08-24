@@ -675,14 +675,14 @@ describe("createdAt behavior", () => {
   });
 });
 
-test("initialAppOwner should use provided owner", async () => {
+test("externalAppOwner should use provided owner", async () => {
   const { deps, sqlite } = await createEvoluDepsWithSqlite();
 
-  const initialAppOwner = createAppOwner(testOwnerSecret);
+  const externalAppOwner = createAppOwner(testOwnerSecret);
 
   createEvolu(deps)(Schema, {
     name: getOrThrow(SimpleName.from(`instance${instancesCount++}`)),
-    initialAppOwner,
+    externalAppOwner,
   });
 
   await wait(10);
@@ -693,22 +693,22 @@ test("initialAppOwner should use provided owner", async () => {
   const configTable = snapshot.tables.find(
     (table) => table.name === "evolu_config",
   );
-  expect(configTable?.rows[0].appOwnerId).toBe(initialAppOwner.id);
+  expect(configTable?.rows[0].appOwnerId).toBe(externalAppOwner.id);
 });
 
 test("onInit callback should be called with correct parameters and can seed initial data", async () => {
   const { deps, sqlite } = await createEvoluDepsWithSqlite();
 
-  const initialAppOwner = createAppOwner(testOwnerSecret);
+  const externalAppOwner = createAppOwner(testOwnerSecret);
   const initCalls: Array<{
-    appOwner: typeof initialAppOwner;
+    appOwner: typeof externalAppOwner;
     isFirst: boolean;
   }> = [];
 
   const name = getOrThrow(SimpleName.from(`instance${instancesCount++}`));
 
   const evolu1 = createEvolu(deps)(Schema, {
-    initialAppOwner,
+    externalAppOwner,
     name,
     onInit: ({ appOwner, isFirst }) => {
       initCalls.push({ appOwner, isFirst });
@@ -738,7 +738,7 @@ test("onInit callback should be called with correct parameters and can seed init
   // Create
   createEvolu(deps)(Schema, {
     name,
-    initialAppOwner,
+    externalAppOwner,
     onInit: ({ appOwner, isFirst }) => {
       initCalls.push({ appOwner, isFirst });
     },
