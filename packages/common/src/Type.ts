@@ -1462,7 +1462,11 @@ export const formatIdError = createTypeErrorFormatter<IdError>(
   (error) => `Invalid ${error.type} table Id: ${error.value}`,
 );
 
+/** Binary representation of an {@link Id}. */
 export const BinaryId = brand("BinaryId", Uint8Array, (value) =>
+  // A BinaryId is exactly 16 bytes (128 bits) representing a 21-character Id (126
+  // bits of entropy). The validation ensures the last 2 bits are zero, which
+  // guarantees lossless conversion between Id and BinaryId formats.
   value.length === 16 && (value[15] & 0b11) === 0
     ? ok(value)
     : err<BinaryIdError>({ type: "BinaryId", value }),
@@ -1484,7 +1488,9 @@ const hasNodeBuffer = typeof globalThis.Buffer !== "undefined";
 const base64UrlOptions = { alphabet: "base64url", omitPadding: true };
 
 export const idToBinaryId = (id: Id): BinaryId => {
-  // Append 'A' (sextet 000000) to make length canonical (22) and decode
+  // Convert 21-char base64url string (126 bits) to 16-byte array (128 bits).
+  // Append 'A' (sextet 000000) to make it 22 chars for canonical base64url decoding.
+  // The extra 2 bits in the 16th byte will be zero, satisfying BinaryId constraints.
   if (hasNodeBuffer) {
     // Use Node.js Buffer for better performance
     const nodeBuffer = globalThis.Buffer.from(id + "A", "base64url");
@@ -1498,18 +1504,19 @@ export const idToBinaryId = (id: Id): BinaryId => {
 };
 
 export const binaryIdToId = (binaryId: BinaryId): Id => {
-  // Encode 16 bytes canonically to Base64URL (→ 22 chars, ending with 'A')
+  // Convert 16-byte array back to 21-char base64url string.
+  // Encode 16 bytes canonically to base64url (→ 22 chars), then slice off
+  // the last char ('A') which represents the 2 padding bits that are always zero.
   if (hasNodeBuffer) {
     // Use Node.js Buffer for better performance
-    const nodeBuffer = globalThis.Buffer.from(binaryId);
-    const s = nodeBuffer.toString("base64url");
-    return s.slice(0, 21) as Id;
+    return globalThis.Buffer.from(binaryId)
+      .toString("base64url")
+      .slice(0, 21) as Id;
   } else {
     // Use polyfill for browsers
     // @ts-expect-error: proposal API is not typed in TS yet
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
-    const s: string = binaryId.toBase64(base64UrlOptions);
-    return s.slice(0, 21) as Id;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+    return binaryId.toBase64(base64UrlOptions).slice(0, 21) as Id;
   }
 };
 
