@@ -60,6 +60,7 @@ import {
 } from "./Owner.js";
 import {
   applyProtocolMessageAsClient,
+  createProtocolMessageForSync,
   decryptAndDecodeDbChange,
   encodeAndEncryptDbChange,
   ProtocolError,
@@ -144,8 +145,8 @@ export type DbWorkerInput =
     }
   | {
       readonly type: "useOwner";
-      readonly owner: SyncOwner;
       readonly use: boolean;
+      readonly owner: SyncOwner;
     };
 
 export interface MutationChange extends DbChange {
@@ -375,16 +376,12 @@ const createDbWorkerDeps =
       const depsWithoutSync = { ...depsWithoutStorage, storage: storage.value };
 
       const sync = createSync(depsWithoutStorage)({
+        transports: initMessage.config.transports,
         onOpen: withErrorReporting(handleSyncOpen(depsWithoutSync)),
         onMessage: withErrorReporting(handleSyncMessage(depsWithoutSync)),
       });
 
-      sync.addOwner({
-        id: appOwner.id,
-        encryptionKey: appOwner.encryptionKey,
-        writeKey: appOwner.writeKey,
-        transports: initMessage.config.transports,
-      });
+      sync.useOwner(true, appOwner);
 
       return ok({ ...depsWithoutSync, sync });
     });
@@ -649,11 +646,7 @@ const handlers: Omit<MessageHandlers<DbWorkerInput, DbWorkerDeps>, "init"> = {
   },
 
   useOwner: (deps) => (message) => {
-    if (message.use) {
-      deps.sync.addOwner(message.owner);
-    } else {
-      deps.sync.removeOwner(message.owner);
-    }
+    deps.sync.useOwner(message.use, message.owner);
   },
 };
 
@@ -900,14 +893,14 @@ const dropAllTables = (deps: SqliteDep): Result<void, SqliteError> => {
 };
 
 const handleSyncOpen =
-  (_deps: ClientStorageDep & ConsoleDep): SyncConfig["onOpen"] =>
-  (_ownerIds, _send) => {
-    // for (const [id] of deps.owners) {
-    //   const message = createProtocolMessageForSync(deps)(id);
-    //   if (!message) return;
-    //   deps.console.log("[db]", "send initial sync message", message);
-    //   send(message);
-    // }
+  (deps: ClientStorageDep & ConsoleDep): SyncConfig["onOpen"] =>
+  (ownerIds, send) => {
+    for (const ownerId of ownerIds) {
+      const message = createProtocolMessageForSync(deps)(ownerId);
+      if (!message) continue;
+      deps.console.log("[db]", "send initial sync message for owner", ownerId);
+      send(message);
+    }
   };
 
 const handleSyncMessage =

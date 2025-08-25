@@ -1410,6 +1410,7 @@ const decodeId = (buffer: Buffer): Id => {
   const bytes = buffer.shiftN(binaryIdTypeValueLength);
   const binaryId = BinaryId.fromParent(bytes);
   if (!binaryId.ok) throw new ProtocolDecodeError(binaryId.error.type);
+
   return binaryIdToId(binaryId.value);
 };
 

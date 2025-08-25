@@ -1,26 +1,39 @@
 import { NonEmptyReadonlyArray } from "../Array.js";
+import { assert, assertNonEmptyReadonlyArray } from "../Assert.js";
 import { ConsoleDep } from "../Console.js";
 import { EncryptionKey } from "../Crypto.js";
-import { CreateWebSocketDep } from "../WebSocket.js";
+import { getOrThrow } from "../Result.js";
+import { brand, PositiveInt, String } from "../Type.js";
+import { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
+import { TransportConfig } from "./Config.js";
 import {
   OwnerId,
-  WriteKey,
   ShardOwner,
   SharedOwner,
   SharedReadonlyOwner,
+  WriteKey,
 } from "./Owner.js";
 import { ProtocolMessage } from "./Protocol.js";
 import { Millis } from "./Timestamp.js";
-import { TransportConfig } from "./Config.js";
 
-export interface Sync {
-  readonly send: (ownerId: OwnerId, message: ProtocolMessage) => void;
+export interface Sync extends Disposable {
+  /**
+   * Assigns or removes an owner to/from transports with reference counting.
+   *
+   * Owners are only "active" if assigned to at least one transport. Uses
+   * `owner.transports` or falls back to config transports. Multiple calls
+   * increment/decrement reference counts (useful for React Hooks).
+   */
+  readonly useOwner: (use: boolean, owner: SyncOwner) => void;
 
+  /** Returns owner data only if actively assigned to at least one transport. */
   readonly getOwner: (ownerId: OwnerId) => SyncOwner | null;
 
-  readonly addOwner: (owner: SyncOwner) => void;
+  readonly send: (ownerId: OwnerId, message: ProtocolMessage) => void;
+}
 
-  readonly removeOwner: (owner: SyncOwner) => void;
+export interface SyncDep {
+  readonly sync: Sync;
 }
 
 /**
@@ -39,107 +52,236 @@ export interface SyncOwner {
   readonly transports?: ReadonlyArray<TransportConfig>;
 }
 
-export interface SyncDep {
-  readonly sync: Sync;
-}
-
 export interface SyncConfig {
+  readonly transports: ReadonlyArray<TransportConfig>;
+
+  /**
+   * Delay in milliseconds before disposing unused WebSocket connections.
+   * Defaults to 100ms.
+   */
+  readonly disposalDelayMs?: number;
+
   readonly onOpen: (
     ownerIds: NonEmptyReadonlyArray<OwnerId>,
-    send: Sync["send"],
+    send: (message: ProtocolMessage) => void,
   ) => void;
 
   readonly onMessage: (message: Uint8Array, send: Sync["send"]) => void;
 }
 
 export const createSync =
-  (_deps: ConsoleDep & CreateWebSocketDep) =>
-  (_config: SyncConfig): Sync => {
+  (deps: ConsoleDep & CreateWebSocketDep) =>
+  (config: SyncConfig): Sync => {
+    const transportOwnerIdRefCounts = new Map<
+      TransportId,
+      Map<OwnerId, PositiveInt>
+    >();
+    const ownersById = new Map<OwnerId, SyncOwner>();
+    const transports = new Map<TransportId, WebSocket>();
+    const disposalTimeouts = new Map<
+      TransportId,
+      ReturnType<typeof setTimeout>
+    >();
+
+    let isDisposed = false;
+    const disposalDelayMs = config.disposalDelayMs ?? 100;
+
+    const handleWebSocketOpen = (transportId: TransportId) => () => {
+      if (isDisposed) return;
+
+      const webSocket = transports.get(transportId);
+      if (!webSocket) return;
+
+      const ownerIdRefCounts = transportOwnerIdRefCounts.get(transportId);
+      if (!ownerIdRefCounts?.size) return;
+
+      const ownerIds = Array.from(ownerIdRefCounts.keys());
+      assertNonEmptyReadonlyArray(ownerIds);
+
+      config.onOpen(ownerIds, webSocket.send);
+    };
+
+    const handleWebSocketMessage =
+      (_transportId: TransportId) => (data: string | ArrayBuffer | Blob) => {
+        if (isDisposed) return;
+
+        //         if (data instanceof ArrayBuffer) {
+        //           const messages = new Uint8Array(data);
+        //           config.onMessage(messages, sync.send);
+        //         }
+
+        // Only handle ArrayBuffer data for sync messages
+        if (!(data instanceof ArrayBuffer)) return;
+
+        const message = new Uint8Array(data);
+        config.onMessage(message, (ownerId, _protocolMessage) => {
+          // TODO: Implement send logic
+          deps.console.log(
+            "[sync]",
+            "send response message for owner",
+            ownerId,
+          );
+        });
+      };
+
+    /**
+     * Schedules delayed disposal of a transport to avoid connection churn.
+     *
+     * Instead of immediately closing WebSocket connections when no owners are
+     * using them, we wait briefly in case new owners are added soon. This
+     * prevents expensive reconnection cycles in scenarios like React component
+     * remounts or rapid owner assignment changes.
+     */
+    const scheduleTransportDisposal = (transportId: TransportId) => {
+      const timeoutId = setTimeout(() => {
+        if (isDisposed) return;
+
+        const webSocket = transports.get(transportId);
+        if (!webSocket) return;
+
+        webSocket[Symbol.dispose]();
+        transports.delete(transportId);
+      }, disposalDelayMs);
+      disposalTimeouts.set(transportId, timeoutId);
+    };
+
+    /**
+     * Checks if an owner is assigned to at least one transport.
+     *
+     * NOTE: This is O(transports) which is fast enough for typical usage (few
+     * transports, early break on first match). If needed, we can optimize it.
+     */
+    const hasOwnerAnyTransport = (ownerId: OwnerId): boolean => {
+      for (const [, ownerIdRefCounts] of transportOwnerIdRefCounts) {
+        if (ownerIdRefCounts.has(ownerId)) return true;
+      }
+      return false;
+    };
+
     return {
+      useOwner: (use, owner) => {
+        if (isDisposed) {
+          deps.console.warn(
+            "[sync]",
+            "useOwner called on disposed Sync instance",
+          );
+          return;
+        }
+
+        deps.console.log("[sync]", "useOwner", use, owner);
+
+        const transportsToUse = owner.transports ?? config.transports;
+
+        // If no transports available, owner cannot be used.
+        if (transportsToUse.length === 0) return;
+
+        if (use) {
+          // Store owner data (last added owner for this ID)
+          ownersById.set(owner.id, owner);
+
+          // Add owner to each transport and increment reference count
+          for (const transportConfig of transportsToUse) {
+            const transportId = createTransportId(transportConfig);
+
+            let ownerIdRefCounts = transportOwnerIdRefCounts.get(transportId);
+            if (!ownerIdRefCounts) {
+              ownerIdRefCounts = new Map<OwnerId, PositiveInt>();
+              transportOwnerIdRefCounts.set(transportId, ownerIdRefCounts);
+
+              const timeoutId = disposalTimeouts.get(transportId);
+              if (timeoutId) {
+                clearTimeout(timeoutId);
+                disposalTimeouts.delete(transportId);
+              }
+
+              if (!transports.has(transportId)) {
+                const webSocket = deps.createWebSocket(transportConfig.url, {
+                  binaryType: "arraybuffer",
+                  onOpen: handleWebSocketOpen(transportId),
+                  onMessage: handleWebSocketMessage(transportId),
+                });
+                transports.set(transportId, webSocket);
+              }
+            }
+
+            const currentRefCount = ownerIdRefCounts.get(owner.id) ?? 0;
+            ownerIdRefCounts.set(
+              owner.id,
+              getOrThrow(PositiveInt.from(currentRefCount + 1)),
+            );
+          }
+        } else {
+          for (const transportConfig of transportsToUse) {
+            const transportId = createTransportId(transportConfig);
+            const ownerIdRefCounts = transportOwnerIdRefCounts.get(transportId);
+
+            assert(
+              ownerIdRefCounts,
+              `Transport ${transportId} should exist when removing owner ${owner.id}`,
+            );
+
+            const currentRefCount = ownerIdRefCounts.get(owner.id) ?? 0;
+
+            if (currentRefCount <= 1) {
+              ownerIdRefCounts.delete(owner.id);
+              if (ownerIdRefCounts.size === 0) {
+                transportOwnerIdRefCounts.delete(transportId);
+                scheduleTransportDisposal(transportId);
+              }
+            } else {
+              ownerIdRefCounts.set(
+                owner.id,
+                getOrThrow(PositiveInt.from(currentRefCount - 1)),
+              );
+            }
+          }
+
+          if (!hasOwnerAnyTransport(owner.id)) {
+            ownersById.delete(owner.id);
+          }
+        }
+      },
+
+      getOwner: (ownerId) => {
+        if (isDisposed || !hasOwnerAnyTransport(ownerId)) return null;
+        return ownersById.get(ownerId) ?? null;
+      },
+
       send: (_ownerId, _message) => {
-        //   deps.console.log(
-        //   "[db]",
-        //   "send mutation message for owner",
-        //   owner.id,
-        //   messages,
-        //   protocolMessage,
-        // );
-        // console.log(message);
+        if (isDisposed) {
+          deps.console.warn("[sync]", "send called on disposed Sync instance");
+          return;
+        }
       },
 
-      getOwner: () => {
-        throw new Error("todo sync getOwner");
-      },
+      [Symbol.dispose]: () => {
+        if (isDisposed) return;
+        isDisposed = true;
 
-      addOwner: (_owner) => {
-        // console.log("addOwner", owner);
-        //   deps.console.log("[db]", "using owner", message.owner.id);
-        //   deps.console.log("[db]", "unused owner", message.owner.id);
-        // throw new Error("todo");
-      },
+        for (const timeoutId of disposalTimeouts.values()) {
+          clearTimeout(timeoutId);
+        }
+        disposalTimeouts.clear();
 
-      removeOwner: (_owner) => {
-        // console.log("removeOwner", owner);
-        // throw new Error("todo");
+        for (const webSocket of transports.values()) {
+          webSocket[Symbol.dispose]();
+        }
+        transports.clear();
+
+        transportOwnerIdRefCounts.clear();
+        ownersById.clear();
       },
     };
   };
 
-// export const createWebSocketSync: CreateSync = (_deps) => (config) => {
-//   const webSocketTransports = config.transports;
+/** Unique identifier for a transport configuration used for deduplication. */
+const TransportId = brand("TransportId", String);
+type TransportId = typeof TransportId.Type;
 
-//   const sockets = new Map<string, ReturnType<typeof createWebSocket>>();
-
-//   const sync: Sync = {
-//     send: (message) => {
-//       /**
-//        * Evolu don't need an in-memory queue; apps can be offline for a long
-//        * time, and mutations are stored in SQLite. Dropped CRDT messages are
-//        * synced when the web socket connection is open.
-//        *
-//        * Send the message to all connected WebSocket transports simultaneously.
-//        */
-//       for (const socket of sockets.values()) {
-//         if (socket.getReadyState() === "open") {
-//           socket.send(message);
-//         }
-//       }
-//     },
-//   };
-
-//   for (const transport of webSocketTransports) {
-//     const socket = createWebSocket(transport.url, {
-//       binaryType: "arraybuffer",
-//       onOpen: () => {
-//         // console.log("sync onOpen");
-//         config.onOpen(sync.send);
-//       },
-//       onMessage: (data) => {
-//         if (data instanceof ArrayBuffer) {
-//           const messages = new Uint8Array(data);
-//           config.onMessage(messages, sync.send);
-//         }
-//       },
-//     });
-
-//     sockets.set(transport.url, socket);
-//   }
-
-//   return sync;
-// };
-
-// /** Unique identifier for a transport configuration used for deduplication. */
-// export const TransportId = brand("TransportId", String);
-// export type TransportId = typeof TransportId.Type;
-
-// /** Creates a unique identifier for a transport configuration. */
-// export const getTransportId = (
-//   transportConfig: TransportConfig,
-// ): TransportId => {
-//   return `ws:${transportConfig.url}` as TransportId;
-// };
-
-// // export type Transport
+/** Creates a unique identifier for a transport configuration. */
+const createTransportId = (transportConfig: TransportConfig): TransportId => {
+  return `ws:${transportConfig.url}` as TransportId;
+};
 
 /**
  * The possible states of a synchronization process. The `SyncState` can be one
