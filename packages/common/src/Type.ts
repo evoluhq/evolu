@@ -1477,21 +1477,40 @@ export const formatBinaryIdError = createTypeErrorFormatter<BinaryIdError>(
 
 export const binaryIdTypeValueLength = 16 as NonNegativeInt;
 
+// DEV: The es-arraybuffer-base64 polyfill is very slow in Node.js, so we use
+// native Node.js Buffer instead. We can remove this runtime detection once
+// Node.js supports the native Uint8Array.fromBase64/toBase64 methods.
+const hasNodeBuffer = typeof globalThis.Buffer !== "undefined";
 const base64UrlOptions = { alphabet: "base64url", omitPadding: true };
 
 export const idToBinaryId = (id: Id): BinaryId => {
-  // Append 'A' (sextet 000000) to make length canonical (22) and decode natively.
-  // @ts-expect-error: proposal API is not typed in TS yet
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call
-  return globalThis.Uint8Array.fromBase64(id + "A", base64UrlOptions);
+  // Append 'A' (sextet 000000) to make length canonical (22) and decode
+  if (hasNodeBuffer) {
+    // Use Node.js Buffer for better performance
+    const nodeBuffer = globalThis.Buffer.from(id + "A", "base64url");
+    return new globalThis.Uint8Array(nodeBuffer) as BinaryId;
+  } else {
+    // Use polyfill for browsers
+    // @ts-expect-error: proposal API is not typed in TS yet
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call
+    return globalThis.Uint8Array.fromBase64(id + "A", base64UrlOptions);
+  }
 };
 
 export const binaryIdToId = (binaryId: BinaryId): Id => {
   // Encode 16 bytes canonically to Base64URL (→ 22 chars, ending with 'A')
-  // @ts-expect-error: proposal API is not typed in TS yet
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
-  const s: string = binaryId.toBase64(base64UrlOptions);
-  return s.slice(0, 21) as Id;
+  if (hasNodeBuffer) {
+    // Use Node.js Buffer for better performance
+    const nodeBuffer = globalThis.Buffer.from(binaryId);
+    const s = nodeBuffer.toString("base64url");
+    return s.slice(0, 21) as Id;
+  } else {
+    // Use polyfill for browsers
+    // @ts-expect-error: proposal API is not typed in TS yet
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+    const s: string = binaryId.toBase64(base64UrlOptions);
+    return s.slice(0, 21) as Id;
+  }
 };
 
 /**
