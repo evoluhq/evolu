@@ -1,5 +1,7 @@
 import { assert, expect, expectTypeOf, test } from "vitest";
+import { Brand } from "../src/Brand.js";
 import { constVoid } from "../src/Function.js";
+import { createNanoIdLib } from "../src/NanoId.js";
 import { err, ok } from "../src/Result.js";
 import {
   array,
@@ -120,9 +122,7 @@ import {
   UnionError,
   Unknown,
 } from "../src/Type.js";
-import { Brand } from "../src/Brand.js";
 import { testNanoIdLib } from "./_deps.js";
-import { createNanoIdLib } from "../src/NanoId.js";
 
 test("Base Types", () => {
   expect(Unknown.from(42)).toEqual({ ok: true, value: 42 });
@@ -995,6 +995,28 @@ test("BinaryId/idToBinaryId/binaryIdToId", () => {
     expect(BinaryId.is(binaryId)).toBe(true);
     expect(binaryIdToId(binaryId)).toBe(originalId);
   }
+});
+
+test("BinaryId.fromParent with invalid data", () => {
+  const tooShort = new Uint8Array(15);
+  expect(BinaryId.fromParent(tooShort)).toEqual(
+    err({ type: "BinaryId", value: tooShort }),
+  );
+
+  const tooLong = new Uint8Array(17);
+  expect(BinaryId.fromParent(tooLong)).toEqual(
+    err({ type: "BinaryId", value: tooLong }),
+  );
+
+  const invalidBits = new Uint8Array(16);
+  invalidBits[15] = 0b11; // Set last 2 bits to 1
+  expect(BinaryId.fromParent(invalidBits)).toEqual(
+    err({ type: "BinaryId", value: invalidBits }),
+  );
+
+  const valid = new Uint8Array(16);
+  valid[15] = 0b00; // Ensure last 2 bits are zero
+  expect(BinaryId.fromParent(valid)).toEqual(ok(valid));
 });
 
 test("PositiveNumber", () => {
