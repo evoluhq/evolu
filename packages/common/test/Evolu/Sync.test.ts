@@ -1,38 +1,76 @@
 import { expect, test } from "vitest";
 import { createConsole } from "../../src/Console.js";
-import { createSync } from "../../src/Evolu/Sync.js";
-import { testCreateDummyWebSocket, testOwner, testOwner2 } from "../_deps.js";
-import { ok } from "../../src/Result.js";
-import { constFalse } from "../../src/Function.js";
 import { OwnerId } from "../../src/Evolu/Owner.js";
 import { ProtocolMessage } from "../../src/Evolu/Protocol.js";
+import { createSync } from "../../src/Evolu/Sync.js";
+import { constFalse } from "../../src/Function.js";
+import { wait } from "../../src/Promise.js";
+import { ok } from "../../src/Result.js";
+import { WebSocket } from "../../src/WebSocket.js";
+import { testCreateDummyWebSocket, testOwner, testOwner2 } from "../_deps.js";
 
-const testConfig = {
-  transports: [
-    {
-      type: "WebSocket",
-      url: "ws://localhost:3000",
+interface MockWebSocket extends WebSocket {
+  readonly onOpen?: (() => void) | undefined;
+}
+
+const createMockWebSocketTracker = () => {
+  const createdWebSockets = new Map<string, MockWebSocket>();
+  const disposedWebSockets = new Set<string>();
+
+  const mockCreateWebSocket = (
+    url: string,
+    options?: { onOpen?: () => void },
+  ) => {
+    const webSocket: MockWebSocket = {
+      send: () => ok(),
+      getReadyState: () => "connecting" as const,
+      isOpen: constFalse,
+      onOpen: options?.onOpen ?? undefined,
+      [Symbol.dispose]: () => {
+        disposedWebSockets.add(url);
+      },
+    };
+    createdWebSockets.set(url, webSocket);
+    return webSocket;
+  };
+
+  return {
+    mockCreateWebSocket,
+    createdWebSockets,
+    disposedWebSockets,
+    expectCreated: (count: number) => {
+      expect(createdWebSockets.size).toBe(count);
     },
-  ],
-  onOpen: () => {
-    // TODO: implement
-  },
-  onMessage: () => {
-    // TODO: implement
-  },
-} as const;
+    expectDisposed: (count: number) => {
+      expect(disposedWebSockets.size).toBe(count);
+    },
+    expectWebSocketExists: (url: string) => {
+      expect(createdWebSockets.has(url)).toBe(true);
+    },
+    expectWebSocketDisposed: (url: string) => {
+      expect(disposedWebSockets.has(url)).toBe(true);
+    },
+  };
+};
 
-const testConfigWithEmptyTransports = {
-  transports: [],
-  onOpen: () => {
-    // TODO: implement
-  },
-  onMessage: () => {
-    // TODO: implement
-  },
-} as const;
+const createTestConfig = (overrides = {}) =>
+  ({
+    transports: [{ type: "WebSocket", url: "ws://localhost:3000" }],
+    onOpen: () => {
+      // TODO: implement
+    },
+    onMessage: () => {
+      // TODO: implement
+    },
+    ...overrides,
+  }) as const;
 
-// Create test owner without transports (will use config transports)
+const createTestDeps = (createWebSocket = testCreateDummyWebSocket) => ({
+  console: createConsole(),
+  createWebSocket,
+});
+
+// Test owners
 const testOwnerWithoutTransports = {
   id: testOwner.id,
   encryptionKey: testOwner.encryptionKey,
@@ -40,13 +78,8 @@ const testOwnerWithoutTransports = {
   // No transports property - should use config transports
 };
 
-const createTestDeps = () => ({
-  console: createConsole(),
-  createWebSocket: testCreateDummyWebSocket,
-});
-
 test("useOwner stores and removes owners correctly", () => {
-  const sync = createSync(createTestDeps())(testConfig);
+  const sync = createSync(createTestDeps())(createTestConfig());
 
   // Initially owner doesn't exist
   expect(sync.getOwner(testOwner.id)).toBe(null);
@@ -63,7 +96,7 @@ test("useOwner stores and removes owners correctly", () => {
 });
 
 test("useOwner with owner without transports uses config transports", () => {
-  const sync = createSync(createTestDeps())(testConfig);
+  const sync = createSync(createTestDeps())(createTestConfig());
 
   // Initially owner doesn't exist
   expect(sync.getOwner(testOwnerWithoutTransports.id)).toBe(null);
@@ -82,7 +115,9 @@ test("useOwner with owner without transports uses config transports", () => {
 });
 
 test("useOwner with owner without transports and empty config transports returns null", () => {
-  const sync = createSync(createTestDeps())(testConfigWithEmptyTransports);
+  const sync = createSync(createTestDeps())(
+    createTestConfig({ transports: [] }),
+  );
 
   // Initially owner doesn't exist
   expect(sync.getOwner(testOwnerWithoutTransports.id)).toBe(null);
@@ -99,7 +134,7 @@ test("useOwner with owner without transports and empty config transports returns
 });
 
 test("useOwner with reference counting - owner persists with multiple uses", () => {
-  const sync = createSync(createTestDeps())(testConfig);
+  const sync = createSync(createTestDeps())(createTestConfig());
 
   // Use the owner twice
   sync.useOwner(true, testOwner);
@@ -116,382 +151,196 @@ test("useOwner with reference counting - owner persists with multiple uses", () 
 });
 
 test("WebSocket lifecycle - creates connection when first owner is added", async () => {
-  const createdWebSockets = new Map<string, any>();
-  const disposedWebSockets = new Set<string>();
-
-  const mockCreateWebSocket = (url: string) => {
-    const webSocket = {
-      send: () => ok(),
-      getReadyState: () => "connecting" as const,
-      isOpen: constFalse,
-      [Symbol.dispose]: () => {
-        disposedWebSockets.add(url);
-      },
-    };
-    createdWebSockets.set(url, webSocket);
-    return webSocket;
-  };
-
-  const sync = createSync({
-    console: createConsole(),
-    createWebSocket: mockCreateWebSocket,
-  })(testConfig);
+  const tracker = createMockWebSocketTracker();
+  const sync = createSync(createTestDeps(tracker.mockCreateWebSocket))(
+    createTestConfig(),
+  );
 
   // Initially no WebSockets created
-  expect(createdWebSockets.size).toBe(0);
+  tracker.expectCreated(0);
 
   // Add first owner - should create WebSocket
   sync.useOwner(true, testOwner);
-  expect(createdWebSockets.size).toBe(1);
-  expect(createdWebSockets.has("ws://localhost:3000")).toBe(true);
-  expect(disposedWebSockets.size).toBe(0);
+  tracker.expectCreated(1);
+  tracker.expectWebSocketExists("ws://localhost:3000");
+  tracker.expectDisposed(0);
 
   // Remove owner - should dispose WebSocket (after delay)
   sync.useOwner(false, testOwner);
 
   // Wait for delayed disposal to complete
-  await new Promise((resolve) => setTimeout(resolve, 150));
-  expect(disposedWebSockets.size).toBe(1);
-  expect(disposedWebSockets.has("ws://localhost:3000")).toBe(true);
+  await wait(150);
+  tracker.expectDisposed(1);
+  tracker.expectWebSocketDisposed("ws://localhost:3000");
 });
 
 test("WebSocket lifecycle - reuses connection for multiple owners", async () => {
-  const createdWebSockets = new Map<string, any>();
-  const disposedWebSockets = new Set<string>();
-
-  const mockCreateWebSocket = (url: string) => {
-    const webSocket = {
-      send: () => ok(),
-      getReadyState: () => "connecting" as const,
-      isOpen: constFalse,
-      [Symbol.dispose]: () => {
-        disposedWebSockets.add(url);
-      },
-    };
-    createdWebSockets.set(url, webSocket);
-    return webSocket;
-  };
-
-  const sync = createSync({
-    console: createConsole(),
-    createWebSocket: mockCreateWebSocket,
-  })(testConfig);
+  const tracker = createMockWebSocketTracker();
+  const sync = createSync(createTestDeps(tracker.mockCreateWebSocket))(
+    createTestConfig(),
+  );
 
   // Add first owner - creates WebSocket
   sync.useOwner(true, testOwner);
-  expect(createdWebSockets.size).toBe(1);
+  tracker.expectCreated(1);
 
   // Add second owner - reuses WebSocket
   sync.useOwner(true, testOwner2);
-  expect(createdWebSockets.size).toBe(1); // Still only one WebSocket
-  expect(disposedWebSockets.size).toBe(0);
+  tracker.expectCreated(1); // Still only one WebSocket
+  tracker.expectDisposed(0);
 
   // Remove first owner - WebSocket should remain
   sync.useOwner(false, testOwner);
-  expect(disposedWebSockets.size).toBe(0);
+  tracker.expectDisposed(0);
 
   // Remove second owner - now WebSocket should be disposed (after delay)
   sync.useOwner(false, testOwner2);
 
   // Wait for delayed disposal to complete
-  await new Promise((resolve) => setTimeout(resolve, 150));
-  expect(disposedWebSockets.size).toBe(1);
-  expect(disposedWebSockets.has("ws://localhost:3000")).toBe(true);
+  await wait(150);
+  tracker.expectDisposed(1);
+  tracker.expectWebSocketDisposed("ws://localhost:3000");
 });
 
 test("WebSocket lifecycle - handles multiple transports", async () => {
-  const createdWebSockets = new Map<string, any>();
-  const disposedWebSockets = new Set<string>();
-
-  const mockCreateWebSocket = (url: string) => {
-    const webSocket = {
-      send: () => ok(),
-      getReadyState: () => "connecting" as const,
-      isOpen: constFalse,
-      [Symbol.dispose]: () => {
-        disposedWebSockets.add(url);
-      },
-    };
-    createdWebSockets.set(url, webSocket);
-    return webSocket;
-  };
-
-  const multiTransportConfig = {
+  const tracker = createMockWebSocketTracker();
+  const multiTransportConfig = createTestConfig({
     transports: [
       { type: "WebSocket", url: "ws://server1.com" },
       { type: "WebSocket", url: "ws://server2.com" },
     ],
-    onOpen: () => {
-      // TODO: implement WebSocket onOpen
-    },
-    onMessage: () => {
-      // TODO: implement WebSocket onMessage
-    },
-  } as const;
+  });
 
-  const sync = createSync({
-    console: createConsole(),
-    createWebSocket: mockCreateWebSocket,
-  })(multiTransportConfig);
+  const sync = createSync(createTestDeps(tracker.mockCreateWebSocket))(
+    multiTransportConfig,
+  );
 
-  // Add owner - should create WebSockets for both transports
   sync.useOwner(true, testOwner);
-  expect(createdWebSockets.size).toBe(2);
-  expect(createdWebSockets.has("ws://server1.com")).toBe(true);
-  expect(createdWebSockets.has("ws://server2.com")).toBe(true);
+  tracker.expectCreated(2);
+  tracker.expectWebSocketExists("ws://server1.com");
+  tracker.expectWebSocketExists("ws://server2.com");
 
   // Remove owner - should dispose both WebSockets (after delay)
   sync.useOwner(false, testOwner);
 
   // Wait for delayed disposal to complete
-  await new Promise((resolve) => setTimeout(resolve, 150));
-  expect(disposedWebSockets.size).toBe(2);
-  expect(disposedWebSockets.has("ws://server1.com")).toBe(true);
-  expect(disposedWebSockets.has("ws://server2.com")).toBe(true);
+  await wait(150);
+  tracker.expectDisposed(2);
+  tracker.expectWebSocketDisposed("ws://server1.com");
+  tracker.expectWebSocketDisposed("ws://server2.com");
 });
 
 test("WebSocket lifecycle - avoids unnecessary disposal and recreation", () => {
-  const createdWebSockets = new Map<string, unknown>();
-  const disposedWebSockets = new Set<string>();
+  const tracker = createMockWebSocketTracker();
+  const sync = createSync(createTestDeps(tracker.mockCreateWebSocket))(
+    createTestConfig(),
+  );
 
-  const mockCreateWebSocket = (url: string) => {
-    const webSocket = {
-      send: () => ok(),
-      getReadyState: () => "connecting" as const,
-      isOpen: constFalse,
-      [Symbol.dispose]: () => {
-        disposedWebSockets.add(url);
-      },
-    };
-    createdWebSockets.set(url, webSocket);
-    return webSocket;
-  };
-
-  const sync = createSync({
-    console: createConsole(),
-    createWebSocket: mockCreateWebSocket,
-  })(testConfig);
-
-  // Add owner - creates WebSocket
   sync.useOwner(true, testOwner);
-  expect(createdWebSockets.size).toBe(1);
-  expect(disposedWebSockets.size).toBe(0);
+  tracker.expectCreated(1);
+  tracker.expectDisposed(0);
 
-  const originalWebSocket = createdWebSockets.get("ws://localhost:3000");
+  const originalWebSocket = tracker.createdWebSockets.get(
+    "ws://localhost:3000",
+  );
 
   // Remove owner - should NOT immediately dispose WebSocket
   sync.useOwner(false, testOwner);
-  expect(disposedWebSockets.size).toBe(0); // Should not dispose yet
+  tracker.expectDisposed(0); // Should not dispose yet
 
   // Re-add same owner quickly (simulating React re-render)
   sync.useOwner(true, testOwner);
 
   // Should reuse the same WebSocket, not create a new one
-  expect(createdWebSockets.size).toBe(1); // Still only one WebSocket
-  expect(disposedWebSockets.size).toBe(0); // Should not have disposed
-  expect(createdWebSockets.get("ws://localhost:3000")).toBe(originalWebSocket); // Same instance
-
-  // Clean up
-  sync.useOwner(false, testOwner);
+  tracker.expectCreated(1); // Still only one WebSocket
+  tracker.expectDisposed(0); // Should not have disposed
+  expect(tracker.createdWebSockets.get("ws://localhost:3000")).toBe(
+    originalWebSocket,
+  ); // Same instance
 });
 
-test("Sync dispose - cancels pending timeouts and disposes all WebSockets", () => {
-  const createdWebSockets = new Map<string, unknown>();
-  const disposedWebSockets = new Set<string>();
+test("Sync dispose - cancels pending timeouts and disposes all WebSockets", async () => {
+  const tracker = createMockWebSocketTracker();
+  const sync = createSync(createTestDeps(tracker.mockCreateWebSocket))(
+    createTestConfig(),
+  );
 
-  const mockCreateWebSocket = (url: string) => {
-    const webSocket = {
-      send: () => ok(),
-      getReadyState: () => "connecting" as const,
-      isOpen: constFalse,
-      [Symbol.dispose]: () => {
-        disposedWebSockets.add(url);
-      },
-    };
-    createdWebSockets.set(url, webSocket);
-    return webSocket;
-  };
-
-  const sync = createSync({
-    console: createConsole(),
-    createWebSocket: mockCreateWebSocket,
-  })(testConfig);
-
-  // Add owner - creates WebSocket
   sync.useOwner(true, testOwner);
-  expect(createdWebSockets.size).toBe(1);
-  expect(disposedWebSockets.size).toBe(0);
+  tracker.expectCreated(1);
+  tracker.expectDisposed(0);
 
   // Remove owner - schedules delayed disposal
   sync.useOwner(false, testOwner);
-  expect(disposedWebSockets.size).toBe(0); // Not disposed yet due to delay
+  tracker.expectDisposed(0); // Not disposed yet due to delay
 
-  // Dispose sync - should immediately dispose WebSocket and cancel timeout
   sync[Symbol.dispose]();
-  expect(disposedWebSockets.size).toBe(1);
-  expect(disposedWebSockets.has("ws://localhost:3000")).toBe(true);
-});
-
-test("Sync dispose - cancels pending timeouts preventing delayed disposal", async () => {
-  const createdWebSockets = new Map<string, unknown>();
-  const disposedWebSockets = new Set<string>();
-
-  const mockCreateWebSocket = (url: string) => {
-    const webSocket = {
-      send: () => ok(),
-      getReadyState: () => "connecting" as const,
-      isOpen: constFalse,
-      [Symbol.dispose]: () => {
-        disposedWebSockets.add(url);
-      },
-    };
-    createdWebSockets.set(url, webSocket);
-    return webSocket;
-  };
-
-  const sync = createSync({
-    console: createConsole(),
-    createWebSocket: mockCreateWebSocket,
-  })(testConfig);
-
-  // Add and remove owner to schedule delayed disposal
-  sync.useOwner(true, testOwner);
-  sync.useOwner(false, testOwner);
-  expect(disposedWebSockets.size).toBe(0); // Not disposed yet
-
-  // Dispose sync immediately - should cancel pending timeout
-  sync[Symbol.dispose]();
-  expect(disposedWebSockets.size).toBe(1); // Disposed by sync.dispose()
+  tracker.expectDisposed(1);
+  tracker.expectWebSocketDisposed("ws://localhost:3000");
 
   // Wait longer than the timeout delay to ensure timeout was canceled
-  await new Promise((resolve) => setTimeout(resolve, 150));
-  expect(disposedWebSockets.size).toBe(1); // Should still be 1, not 2
+  await wait(150);
+  tracker.expectDisposed(1); // Should still be 1, not 2 (timeout was canceled)
 });
 
 test("Sync dispose - prevents operations after disposal", () => {
-  const createdWebSockets = new Map<string, unknown>();
-  const disposedWebSockets = new Set<string>();
-
-  const mockCreateWebSocket = (url: string) => {
-    const webSocket = {
-      send: () => ok(),
-      getReadyState: () => "connecting" as const,
-      isOpen: constFalse,
-      [Symbol.dispose]: () => {
-        disposedWebSockets.add(url);
-      },
-    };
-    createdWebSockets.set(url, webSocket);
-    return webSocket;
-  };
-
-  const sync = createSync({
-    console: createConsole(),
-    createWebSocket: mockCreateWebSocket,
-  })(testConfig);
+  const tracker = createMockWebSocketTracker();
+  const sync = createSync(createTestDeps(tracker.mockCreateWebSocket))(
+    createTestConfig(),
+  );
 
   // Add owner before disposal
   sync.useOwner(true, testOwner);
-  expect(createdWebSockets.size).toBe(1);
+  tracker.expectCreated(1);
 
-  // Dispose sync
   sync[Symbol.dispose]();
 
   // Operations after disposal should be no-ops
   sync.useOwner(true, testOwner); // Should be ignored
-  expect(createdWebSockets.size).toBe(1); // No new WebSocket created
+  tracker.expectCreated(1); // No new WebSocket created
 
-  expect(sync.getOwner(testOwner.id)).toBeNull(); // Should return null
-
-  // Multiple dispose calls should be safe
-  sync[Symbol.dispose]();
-  sync[Symbol.dispose]();
+  expect(sync.getOwner(testOwner.id)).toBeNull();
 });
 
 test("Sync configurable disposal delay", async () => {
-  const createdWebSockets = new Map<string, unknown>();
-  const disposedWebSockets = new Set<string>();
+  const tracker = createMockWebSocketTracker();
+  const customConfig = createTestConfig({ disposalDelayMs: 50 });
+  const sync = createSync(createTestDeps(tracker.mockCreateWebSocket))(
+    customConfig,
+  );
 
-  const mockCreateWebSocket = (url: string) => {
-    const webSocket = {
-      send: () => ok(),
-      getReadyState: () => "connecting" as const,
-      isOpen: constFalse,
-      [Symbol.dispose]: () => {
-        disposedWebSockets.add(url);
-      },
-    };
-    createdWebSockets.set(url, webSocket);
-    return webSocket;
-  };
-
-  const customConfig = {
-    ...testConfig,
-    disposalDelayMs: 50, // Custom 50ms delay
-  };
-
-  const sync = createSync({
-    console: createConsole(),
-    createWebSocket: mockCreateWebSocket,
-  })(customConfig);
-
-  // Add and remove owner
   sync.useOwner(true, testOwner);
   sync.useOwner(false, testOwner);
-  expect(disposedWebSockets.size).toBe(0);
+  tracker.expectDisposed(0);
 
   // Wait for less than the delay - should not be disposed yet
-  await new Promise((resolve) => setTimeout(resolve, 25));
-  expect(disposedWebSockets.size).toBe(0);
+  await wait(25);
+  tracker.expectDisposed(0);
 
   // Wait for the full delay - should now be disposed
-  await new Promise((resolve) => setTimeout(resolve, 50));
-  expect(disposedWebSockets.size).toBe(1);
+  await wait(50);
+  tracker.expectDisposed(1);
 });
 
 test("WebSocket onOpen calls sync config onOpen with owner IDs", () => {
-  const createdWebSockets = new Map<string, { onOpen: (() => void) | null }>();
+  const tracker = createMockWebSocketTracker();
   const onOpenCalls: Array<{ ownerIds: ReadonlyArray<OwnerId> }> = [];
 
-  const mockCreateWebSocket = (
-    url: string,
-    options?: { onOpen?: () => void },
-  ) => {
-    const webSocket = {
-      send: () => ok(),
-      getReadyState: () => "connecting" as const,
-      isOpen: constFalse,
-      onOpen: options?.onOpen ?? null, // Store the onOpen callback from options
-      [Symbol.dispose]: () => {
-        // No-op for testing
+  const sync = createSync(createTestDeps(tracker.mockCreateWebSocket))(
+    createTestConfig({
+      onOpen: (
+        ownerIds: ReadonlyArray<OwnerId>,
+        _send: (message: ProtocolMessage) => void,
+      ) => {
+        onOpenCalls.push({ ownerIds });
       },
-    };
-    createdWebSockets.set(url, webSocket);
-    return webSocket;
-  };
+    }),
+  );
 
-  const sync = createSync({
-    console: createConsole(),
-    createWebSocket: mockCreateWebSocket,
-  })({
-    ...testConfig,
-    onOpen: (
-      ownerIds: ReadonlyArray<OwnerId>,
-      _send: (message: ProtocolMessage) => void,
-    ) => {
-      onOpenCalls.push({ ownerIds });
-    },
-  });
-
-  // Add owner - creates WebSocket
   sync.useOwner(true, testOwner);
 
-  const webSocket = createdWebSockets.get("ws://localhost:3000");
-
-  // Simulate WebSocket opening
+  const webSocket = tracker.createdWebSockets.get("ws://localhost:3000");
   webSocket?.onOpen?.();
 
-  // Should have called config.onOpen with the owner ID
   expect(onOpenCalls.length).toBe(1);
   expect(onOpenCalls[0].ownerIds).toEqual([testOwner.id]);
 });
