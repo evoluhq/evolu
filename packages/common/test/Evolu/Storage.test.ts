@@ -1,4 +1,4 @@
-import { sha256 } from "@noble/hashes/sha2";
+import { sha256 } from "@noble/hashes/sha2.js";
 import { assert, expect, test } from "vitest";
 import {
   binaryTimestampToFingerprint,

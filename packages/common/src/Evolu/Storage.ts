@@ -1,4 +1,4 @@
-import { sha256 } from "@noble/hashes/sha2";
+import { sha256 } from "@noble/hashes/sha2.js";
 import { NonEmptyReadonlyArray } from "../Array.js";
 import { assert } from "../Assert.js";
 import { Brand } from "../Brand.js";

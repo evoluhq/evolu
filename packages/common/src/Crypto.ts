@@ -3,10 +3,10 @@
  *
  * @module
  */
-import { xchacha20poly1305 } from "@noble/ciphers/chacha";
-import { hmac } from "@noble/hashes/hmac";
-import { sha512 } from "@noble/hashes/sha2";
-import { randomBytes } from "@noble/hashes/utils";
+import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
+import { hmac } from "@noble/hashes/hmac.js";
+import { sha512 } from "@noble/hashes/sha2.js";
+import { randomBytes, utf8ToBytes } from "@noble/hashes/utils.js";
 import { urlAlphabet } from "nanoid";
 import { assert } from "./Assert.js";
 import { getOrThrow, Result, trySync } from "./Result.js";
@@ -36,7 +36,7 @@ export const createSlip21 = (
     `Unusual SLIP-0021 seed length: ${seed.length} bytes`,
   );
 
-  let m = hmac(sha512, "Symmetric key seed", seed);
+  let m = hmac(sha512, utf8ToBytes("Symmetric key seed"), seed);
   for (const component of path) {
     const p = new TextEncoder().encode(component);
     const e = new globalThis.Uint8Array(p.byteLength + 1);

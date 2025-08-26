@@ -70,10 +70,10 @@
  * @module
  */
 
-import { utf8ToBytes } from "@noble/ciphers/utils";
-import { sha256 } from "@noble/hashes/sha2";
+import { utf8ToBytes } from "@noble/ciphers/utils.js";
+import { sha256 } from "@noble/hashes/sha2.js";
 import * as bip39 from "@scure/bip39";
-import { wordlist } from "@scure/bip39/wordlists/english";
+import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { assert } from "./Assert.js";
 import type { Brand } from "./Brand.js";
 import { identity } from "./Function.js";

@@ -1,4 +1,4 @@
-import { bytesToHex } from "@noble/ciphers/utils";
+import { bytesToHex } from "@noble/ciphers/utils.js";
 import { assert, expect, test } from "vitest";
 import {
   createSlip21,
