@@ -955,7 +955,7 @@ test("createId", () => {
 test("createIdFromString", () => {
   const id = createIdFromString("abc");
   expect(Id.is(id)).toBe(true);
-  expect(id).toEqual("QHMpZvrshcOs47aRxCvN-");
+  expect(id).toMatchInlineSnapshot(`"ungWv48Bz-pBQUDeXa4iI"`);
 
   const id1 = createIdFromString("user-api-123");
   const id2 = createIdFromString("user-api-123");

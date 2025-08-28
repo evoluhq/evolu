@@ -1290,13 +1290,6 @@ export const formatBase64UrlError = createTypeErrorFormatter<Base64UrlError>(
 );
 
 /**
- * Alphabet used for Base64Url encoding. This is copied from the `nanoid`
- * library to avoid dependency on a specific version of `nanoid`.
- */
-export const base64UrlAlphabet =
-  "useandom-26T198340PX75pxJACKVERYMINDBUSHWOLF_GQZbfghjklqvwyzrict";
-
-/**
  * Simple alphanumeric string for naming.
  *
  * A `SimpleName` string uses a limited, safe alphabet for naming purposes:
@@ -1424,22 +1417,20 @@ export const createIdFromString = <B extends string = never>(
 ): [B] extends [never] ? Id : Id & Brand<B> => {
   const hash = sha256(utf8ToBytes(value));
 
-  let output = "";
-  let buffer = 0;
-  let bits = 0;
+  const binaryIdBytes = hash.slice(0, binaryIdTypeValueLength);
 
-  for (const byte of hash) {
-    buffer = (buffer << 8) | byte;
-    bits += 8;
+  // Ensure last 2 bits are zero for valid BinaryId format
+  binaryIdBytes[15] &= 0b11111100;
 
-    while (bits >= 6 && output.length < idTypeValueLength) {
-      bits -= 6;
-      const index = (buffer >> bits) & 0b111111;
-      output += base64UrlAlphabet[index];
-    }
-  }
+  const binaryIdResult = BinaryId.from(binaryIdBytes);
+  assert(
+    binaryIdResult.ok,
+    "BinaryId creation should never fail with proper masking",
+  );
 
-  return output as [B] extends [never] ? Id : Id & Brand<B>;
+  const id = binaryIdToId(binaryIdResult.value);
+
+  return id as [B] extends [never] ? Id : Id & Brand<B>;
 };
 
 /**
