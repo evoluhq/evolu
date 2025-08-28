@@ -136,7 +136,8 @@
  * @module
  */
 
-import { pack, unpack, unpackMultiple } from "msgpackr";
+import { Packr } from "msgpackr";
+import { fromBase64Url, toBase64Url } from "../Base64Url.js";
 import { isNonEmptyReadonlyArray, NonEmptyReadonlyArray } from "../Array.js";
 import { assert } from "../Assert.js";
 import { Brand } from "../Brand.js";
@@ -164,6 +165,7 @@ import {
   BinaryId,
   binaryIdToId,
   binaryIdTypeValueLength,
+  Base64Url,
   DateIsoString,
   Id,
   idToBinaryId,
@@ -210,6 +212,14 @@ import {
   Timestamp,
   timestampToBinaryTimestamp,
 } from "./Timestamp.js";
+
+/**
+ * MessagePack serializer for standard compatibility and compact encoding.
+ *
+ * - `variableMapSize: true` - More compact maps, ~5-10% slower encoding
+ * - `useRecords: false` - Standard MessagePack without extensions
+ */
+const packr = new Packr({ variableMapSize: true, useRecords: false });
 
 /** Maximum size of the entire protocol message in bytes. */
 export const maxProtocolMessageSize = 1_000_000 as PositiveInt;
@@ -1419,18 +1429,21 @@ const decodeId = (buffer: Buffer): Id => {
  * NonNegativeInt. For NonNegativeInt, Evolu provides more efficient encoding.
  */
 export const encodeNumber = (buffer: Buffer, number: number): void => {
-  buffer.extend(pack(number));
+  buffer.extend(packr.pack(number));
 };
 
 export const decodeNumber = (buffer: Buffer): number => {
   let number: unknown;
   let end: unknown;
 
-  unpackMultiple(buffer.unwrap(), (n, _, e) => {
-    number = n;
-    end = e;
-    return false;
-  });
+  packr.unpackMultiple(
+    buffer.unwrap(),
+    (n: unknown, _: unknown, e: unknown) => {
+      number = n;
+      end = e;
+      return false;
+    },
+  );
 
   const endResult = NonNegativeInt.fromUnknown(end);
   if (!endResult.ok) throw new ProtocolDecodeError(endResult.error.type);
@@ -1666,15 +1679,19 @@ export const ProtocolValueType = {
   // We can add more types for other DBs or anything else later.
 
   // Optimized types
-  Id: 30 as NonNegativeInt,
-  NonNegativeInt: 31 as NonNegativeInt,
-  Json: 32 as NonNegativeInt,
+  NonNegativeInt: 30 as NonNegativeInt,
+
+  // String optimizations
+  EmptyString: 31 as NonNegativeInt, // 1 byte vs 2 bytes (50% reduction)
+  Base64Url: 32 as NonNegativeInt,
+  Id: 33 as NonNegativeInt,
+  Json: 34 as NonNegativeInt,
 
   // new Date().toISOString()   - 24 bytes
   // encoded with fixed length  - 8 bytes
   // encode as NonNegativeInt   - 6 bytes (additional 25% reduction)
-  DateIsoWithNonNegativeTime: 33 as NonNegativeInt,
-  DateIsoWithNegativeTime: 34 as NonNegativeInt, // 9 bytes
+  DateIsoWithNonNegativeTime: 35 as NonNegativeInt,
+  DateIsoWithNegativeTime: 36 as NonNegativeInt, // 9 bytes
 
   // TODO: Operations (from 40)
   // Increment, Decrement, Patch, whatever.
@@ -1688,6 +1705,11 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
 
   switch (typeof value) {
     case "string": {
+      if (value === "") {
+        encodeNonNegativeInt(buffer, ProtocolValueType.EmptyString);
+        return;
+      }
+
       const dateIsoString = DateIsoString.from(value);
       if (dateIsoString.ok) {
         const time = new Date(dateIsoString.value).getTime();
@@ -1715,11 +1737,19 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
       }
 
       const jsonValue = JsonValueFromString.fromParent(value);
-      if (jsonValue.ok) {
-        const jsonBytes = pack(jsonValue.value);
+      if (jsonValue.ok && JSON.stringify(jsonValue.value) === value) {
+        const jsonBytes = packr.pack(jsonValue.value);
         encodeNonNegativeInt(buffer, ProtocolValueType.Json);
         encodeLength(buffer, jsonBytes);
         buffer.extend(jsonBytes);
+        return;
+      }
+
+      if (Base64Url.is(value)) {
+        encodeNonNegativeInt(buffer, ProtocolValueType.Base64Url);
+        const bytes = fromBase64Url(value);
+        encodeLength(buffer, bytes);
+        buffer.extend(bytes);
         return;
       }
 
@@ -1759,24 +1789,30 @@ export const decodeSqliteValue = (buffer: Buffer): SqliteValue => {
   switch (type) {
     case ProtocolValueType.String:
       return decodeString(buffer);
+
     case ProtocolValueType.Number:
       return decodeNumber(buffer);
+
     case ProtocolValueType.Null:
       return null;
+
     case ProtocolValueType.Binary: {
       const length = decodeLength(buffer);
       return buffer.shiftN(length);
     }
-    case ProtocolValueType.Id: {
+
+    case ProtocolValueType.Id:
       return decodeId(buffer);
-    }
+
     case ProtocolValueType.NonNegativeInt:
       return decodeNonNegativeInt(buffer);
+
     case ProtocolValueType.Json: {
       const length = decodeLength(buffer);
       const bytes = buffer.shiftN(length);
-      return JSON.stringify(unpack(bytes));
+      return JSON.stringify(packr.unpack(bytes));
     }
+
     case ProtocolValueType.DateIsoWithNonNegativeTime:
     case ProtocolValueType.DateIsoWithNegativeTime: {
       const time =
@@ -1790,6 +1826,16 @@ export const decodeSqliteValue = (buffer: Buffer): SqliteValue => {
         throw new ProtocolDecodeError(dateIsoString.error.type);
       return dateIsoString.value;
     }
+
+    case ProtocolValueType.EmptyString:
+      return "";
+
+    case ProtocolValueType.Base64Url: {
+      const length = decodeLength(buffer);
+      const bytes = buffer.shiftN(length);
+      return toBase64Url(bytes);
+    }
+
     default:
       throw new ProtocolDecodeError("invalid ProtocolValueType");
   }

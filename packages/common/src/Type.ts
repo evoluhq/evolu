@@ -75,6 +75,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import * as bip39 from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { assert } from "./Assert.js";
+import { fromBase64Url, toBase64Url } from "./Base64Url.js";
 import type { Brand } from "./Brand.js";
 import { identity } from "./Function.js";
 import { NanoIdLibDep } from "./NanoId.js";
@@ -83,9 +84,6 @@ import { Err, err, Ok, ok, Result, trySync } from "./Result.js";
 import { safelyStringifyUnknownValue } from "./String.js";
 import type { Literal, Simplify, WidenLiteral } from "./Types.js";
 import { IntentionalNever } from "./Types.js";
-
-// DEV: Remove once supported everywhere (soon).
-import "es-arraybuffer-base64/auto";
 
 export interface Type<
   Name extends TypeName,
@@ -1219,9 +1217,9 @@ export const formatRegexError = createTypeErrorFormatter<RegexError>(
 );
 
 /**
- * URL-safe Base64 string.
+ * URL-safe string.
  *
- * A `Base64Url` string uses a limited alphabet that is URL-safe:
+ * A `UrlSafeString` uses a limited alphabet that is safe for URLs:
  *
  * - Uppercase letters (`A-Z`)
  * - Lowercase letters (`a-z`)
@@ -1229,10 +1227,46 @@ export const formatRegexError = createTypeErrorFormatter<RegexError>(
  * - Dash (`-`)
  * - Underscore (`_`)
  *
+ * This is the same character set used by Base64Url encoding, but this type does
+ * not validate that the string is actually Base64Url-encoded data.
+ *
  * ### Example
  *
  * ```ts
- * const result = Base64Url.from("abc123_-");
+ * const result = UrlSafeString.from("abc123_-");
+ * if (result.ok) {
+ *   console.log("Valid URL-safe string:", result.value);
+ * } else {
+ *   console.error("Invalid URL-safe string:", result.error);
+ * }
+ * ```
+ *
+ * @category String
+ */
+export const UrlSafeString = regex(
+  "UrlSafeString",
+  /^[A-Za-z0-9_-]+$/, // URL-safe alphabet (same as Base64Url)
+)(String);
+export type UrlSafeString = typeof UrlSafeString.Type;
+export type UrlSafeStringError = typeof UrlSafeString.Error;
+
+/**
+ * Base64Url encoded string.
+ *
+ * A `Base64Url` string is a URL-safe string that follows Base64Url encoding
+ * conventions:
+ *
+ * - Uses the URL-safe alphabet (`A-Z`, `a-z`, `0-9`, `-`, `_`)
+ * - Length must be a multiple of 4 (for proper Base64Url decoding)
+ * - No padding characters (padding is omitted in Base64Url)
+ *
+ * This type validates both the character set and the length constraint required
+ * for valid Base64Url encoded data.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const result = Base64Url.from("SGVsbG8gV29ybGQ");
  * if (result.ok) {
  *   console.log("Valid Base64Url string:", result.value);
  * } else {
@@ -1242,12 +1276,18 @@ export const formatRegexError = createTypeErrorFormatter<RegexError>(
  *
  * @category String
  */
-export const Base64Url = regex(
-  "Base64Url",
-  /^[A-Za-z0-9_-]+$/, // URL-safe Base64 alphabet
-)(String);
+export const Base64Url = brand("Base64Url", UrlSafeString, (value) =>
+  value.length % 4 === 0
+    ? ok(value)
+    : err<Base64UrlError>({ type: "Base64Url", value }),
+);
 export type Base64Url = typeof Base64Url.Type;
-export type Base64UrlError = typeof Base64Url.Error;
+export interface Base64UrlError extends TypeError<"Base64Url"> {}
+
+export const formatBase64UrlError = createTypeErrorFormatter<Base64UrlError>(
+  (error) =>
+    `Value ${error.value} is not a valid Base64Url string (length must be a multiple of 4)`,
+);
 
 /**
  * Alphabet used for Base64Url encoding. This is copied from the `nanoid`
@@ -1481,44 +1521,11 @@ export const formatBinaryIdError = createTypeErrorFormatter<BinaryIdError>(
 
 export const binaryIdTypeValueLength = 16 as NonNegativeInt;
 
-// DEV: The es-arraybuffer-base64 polyfill is very slow in Node.js, so we use
-// native Node.js Buffer instead. We can remove this runtime detection once
-// Node.js supports the native Uint8Array.fromBase64/toBase64 methods.
-const hasNodeBuffer = typeof globalThis.Buffer !== "undefined";
-const base64UrlOptions = { alphabet: "base64url", omitPadding: true };
+export const idToBinaryId = (id: Id): BinaryId =>
+  fromBase64Url(id + "A") as BinaryId;
 
-export const idToBinaryId = (id: Id): BinaryId => {
-  // Convert 21-char base64url string (126 bits) to 16-byte array (128 bits).
-  // Append 'A' (sextet 000000) to make it 22 chars for canonical base64url decoding.
-  // The extra 2 bits in the 16th byte will be zero, satisfying BinaryId constraints.
-  if (hasNodeBuffer) {
-    // Use Node.js Buffer for better performance
-    const nodeBuffer = globalThis.Buffer.from(id + "A", "base64url");
-    return new globalThis.Uint8Array(nodeBuffer) as BinaryId;
-  } else {
-    // Use polyfill for browsers
-    // @ts-expect-error: proposal API is not typed in TS yet
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call
-    return globalThis.Uint8Array.fromBase64(id + "A", base64UrlOptions);
-  }
-};
-
-export const binaryIdToId = (binaryId: BinaryId): Id => {
-  // Convert 16-byte array back to 21-char base64url string.
-  // Encode 16 bytes canonically to base64url (→ 22 chars), then slice off
-  // the last char ('A') which represents the 2 padding bits that are always zero.
-  if (hasNodeBuffer) {
-    // Use Node.js Buffer for better performance
-    return globalThis.Buffer.from(binaryId)
-      .toString("base64url")
-      .slice(0, 21) as Id;
-  } else {
-    // Use polyfill for browsers
-    // @ts-expect-error: proposal API is not typed in TS yet
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-    return binaryId.toBase64(base64UrlOptions).slice(0, 21) as Id;
-  }
-};
+export const binaryIdToId = (binaryId: BinaryId): Id =>
+  toBase64Url(binaryId).slice(0, 21) as Id;
 
 /**
  * Positive number.

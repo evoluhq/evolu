@@ -6,7 +6,6 @@ import { err, ok } from "../src/Result.js";
 import {
   array,
   ArrayError,
-  Base64Url,
   Between1And10,
   BigIntError,
   BinaryId,
@@ -121,6 +120,7 @@ import {
   union,
   UnionError,
   Unknown,
+  UrlSafeString,
 } from "../src/Type.js";
 import { testNanoIdLib } from "./_deps.js";
 
@@ -698,47 +698,48 @@ test("regex", () => {
   expect(GlobalRegex.from("abc")).toEqual(ok("abc"));
 });
 
-test("Base64Url", () => {
-  expect(Base64Url.from("abc123_-")).toEqual(ok("abc123_-"));
-  expect(Base64Url.from("ABC123_-")).toEqual(ok("ABC123_-"));
+test("UrlSafeString", () => {
+  expect(UrlSafeString.from("abc123_-")).toEqual(ok("abc123_-"));
+  expect(UrlSafeString.from("ABC123_-")).toEqual(ok("ABC123_-"));
 
-  expect(Base64Url.from("abc!123")).toEqual(
-    err<RegexError<"Base64Url">>({
+  expect(UrlSafeString.from("abc!123")).toEqual(
+    err<RegexError<"UrlSafeString">>({
       type: "Regex",
-      name: "Base64Url",
+      name: "UrlSafeString",
       value: "abc!123",
       pattern: /^[A-Za-z0-9_-]+$/,
     }),
   );
-  expect(Base64Url.from("abc/123")).toEqual(
-    err<RegexError<"Base64Url">>({
+  expect(UrlSafeString.from("abc/123")).toEqual(
+    err<RegexError<"UrlSafeString">>({
       type: "Regex",
-      name: "Base64Url",
+      name: "UrlSafeString",
       value: "abc/123",
       pattern: /^[A-Za-z0-9_-]+$/,
     }),
   );
 
-  expect(Base64Url.to("abc123_-" as typeof Base64Url.Type)).toBe("abc123_-");
-  expect(Base64Url.toParent("abc123_-" as typeof Base64Url.Type)).toBe(
+  expect(UrlSafeString.to("abc123_-" as typeof UrlSafeString.Type)).toBe(
+    "abc123_-",
+  );
+  expect(UrlSafeString.toParent("abc123_-" as typeof UrlSafeString.Type)).toBe(
     "abc123_-",
   );
 
-  expect(Base64Url.is("abc123_-")).toBe(true);
-  expect(Base64Url.is("abc/123")).toBe(false);
+  expect(UrlSafeString.is("abc123_-")).toBe(true);
+  expect(UrlSafeString.is("abc/123")).toBe(false);
 
-  expect(Base64Url.name).toBe("Brand");
-  expect(Base64Url.brand).toBe("Base64Url");
+  expect(UrlSafeString.name).toBe("Brand");
+  expect(UrlSafeString.brand).toBe("UrlSafeString");
 
-  expectTypeOf<typeof Base64Url.Type>().toEqualTypeOf<
-    string & Brand<"Base64Url">
+  expectTypeOf<typeof UrlSafeString.Type>().toEqualTypeOf<
+    string & Brand<"UrlSafeString">
   >();
-  expectTypeOf<typeof Base64Url.Input>().toEqualTypeOf<string>();
-  expectTypeOf<typeof Base64Url.Error>().toEqualTypeOf<
-    RegexError<"Base64Url">
+  expectTypeOf<typeof UrlSafeString.Input>().toEqualTypeOf<string>();
+  expectTypeOf<typeof UrlSafeString.Error>().toEqualTypeOf<
+    RegexError<"UrlSafeString">
   >();
-  expectTypeOf<typeof Base64Url.Parent>().toEqualTypeOf<string>();
-  expectTypeOf<typeof Base64Url.ParentError>().toEqualTypeOf<StringError>();
+  expectTypeOf<typeof UrlSafeString.Parent>().toEqualTypeOf<string>();
 });
 
 test("DateIsoString", () => {
@@ -989,7 +990,7 @@ test("createIdFromString", () => {
 
 test("BinaryId/idToBinaryId/binaryIdToId", () => {
   const deps = { nanoIdLib: createNanoIdLib() };
-  for (let i = 0; i < 100; i++) {
+  for (let i = 0; i < 10000; i++) {
     const originalId = createId(deps);
     const binaryId = idToBinaryId(originalId);
     expect(BinaryId.is(binaryId)).toBe(true);
