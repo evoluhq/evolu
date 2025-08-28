@@ -285,6 +285,20 @@ test("encodeSqliteValue/decodeSqliteValue property tests", () => {
         fc.string(), // Regular strings
         fc.double().filter((n) => !Number.isNaN(n)), // Numbers (exclude NaN)
         fc.uint8Array(), // Binary data
+
+        // Special number cases
+        fc.constantFrom(Infinity, -Infinity, NaN),
+        fc.integer({ min: 0, max: 19 }), // Small ints (0-19) - special encoding
+        fc.integer({ min: 20, max: Number.MAX_SAFE_INTEGER }), // Non-negative ints
+        fc.integer({ min: Number.MIN_SAFE_INTEGER, max: -1 }), // Negative numbers
+        fc.float({ min: -1000, max: 1000 }), // Regular floats
+
+        // Id optimization cases
+        fc.constantFrom(testCreateId()), // Valid Id
+        fc
+          .string({ minLength: 21, maxLength: 21 })
+          .map((s) => s.replace(/[^A-Za-z0-9_-]/g, "a")), // Id-like strings
+
         // URL-safe strings with length % 4 === 0 (Base64Url optimization)
         fc
           .stringMatching(/^[A-Za-z0-9_-]*$/)
@@ -293,34 +307,74 @@ test("encodeSqliteValue/decodeSqliteValue property tests", () => {
         fc
           .stringMatching(/^[A-Za-z0-9_-]*$/)
           .filter((s) => s.length % 4 !== 0 && s.length > 0),
-        // Empty string (optimization)
-        fc.constant(""),
-        // Simple JSON strings
+
+        // Base64Url edge cases
+        fc.constant(""), // Empty string (optimization)
+        fc
+          .stringMatching(/^[A-Za-z0-9_-]{4,}$/)
+          .filter((s) => s.length % 4 === 0), // Valid Base64Url
+        fc.string().filter((s) => /[^A-Za-z0-9_-]/.test(s)), // Invalid Base64Url chars
+
+        // JSON optimization cases
         fc
           .record({
             name: fc.string(),
             value: fc.oneof(fc.string(), fc.integer(), fc.boolean()),
           })
           .map((obj) => JSON.stringify(obj)),
-        // Date ISO strings
+        fc
+          .array(fc.oneof(fc.string(), fc.integer(), fc.boolean()))
+          .map((arr) => JSON.stringify(arr)),
+        fc.constantFrom('{"a":1}', "[]", "null", "true", "false", '"string"'), // Simple JSON
+        fc.string().filter((s) => {
+          try {
+            JSON.parse(s);
+            return false;
+          } catch {
+            return true;
+          }
+        }), // Non-JSON strings
+
+        // Date ISO strings - both valid and invalid
         fc
           .date({ min: new Date("1970-01-01"), max: new Date("2100-01-01") })
           .filter((d) => !isNaN(d.getTime()))
           .map((d) => d.toISOString()),
-        // Non-negative integers
-        fc.nat(),
+        fc
+          .date({ min: new Date("0000-01-01"), max: new Date("9999-12-31") })
+          .filter((d) => !isNaN(d.getTime()))
+          .map((d) => d.toISOString()),
+        fc.constantFrom(
+          "0000-01-01T00:00:00.000Z",
+          "9999-12-31T23:59:59.999Z",
+          "not-a-date-2024-01-01T00:00:00.000Z", // Invalid date format
+          "2024-13-01T00:00:00.000Z", // Invalid month
+        ),
+
+        // Binary data edge cases
+        fc.constant(new Uint8Array(0)), // Empty binary
+        fc.uint8Array({ minLength: 1, maxLength: 1000 }), // Variable size binary
+        fc.constant(new Uint8Array(1000).fill(255)), // Large binary with pattern
+        fc.constant(new Uint8Array([0, 1, 2, 3, 4, 5])), // Small binary pattern
       ),
       (value) => {
         const buffer = createBuffer();
         encodeSqliteValue(buffer, value);
         const decoded = decodeSqliteValue(buffer);
 
-        // Handle Uint8Array comparison specially
+        // Handle special cases for comparison
         if (value instanceof Uint8Array && decoded instanceof Uint8Array) {
           return (
             value.length === decoded.length &&
             value.every((byte, i) => byte === decoded[i])
           );
+        }
+
+        // Handle NaN specially since NaN !== NaN
+        if (typeof value === "number" && typeof decoded === "number") {
+          if (Number.isNaN(value)) {
+            return Number.isNaN(decoded);
+          }
         }
 
         return decoded === value;
@@ -362,7 +416,7 @@ test("encodeAndEncryptDbChange/decryptAndDecodeDbChange", () => {
   const crdtMessage = createTestCrdtMessage();
   const encryptedMessage = createEncryptedCrdtMessage(crdtMessage);
   expect(encryptedMessage.change.join()).toMatchInlineSnapshot(
-    `"32,2,13,48,234,235,52,133,86,38,216,1,145,194,201,195,117,206,161,84,61,153,79,138,120,44,212,141,98,128,165,119,142,238,59,95,17,164,165,5,121,1,150,217,217,96,54,179,77,233,36,11,22,107,116,40,138,227,192,155,68,136,227,73,55,60,115,80,139,143,200,84,165,43,181,242,72,105,35,252,14,78,229,106,16,152,96,173,57,208,97,248,1,62,156,53,164,219,218,254,86,54,36,62,120,76,37,73,4,97,227,42,92,255,51,116,197,178,104,148,237,18,220,18,207,36,87,187,55,131,61,110,54,100,78,44,119,111,113,122,121,202,152,210,91"`,
+    `"201,239,23,164,18,26,210,82,34,120,121,6,243,112,24,232,149,88,168,255,159,170,32,144,120,220,125,109,52,134,159,131,8,5,229,174,229,57,138,235,93,254,133,74,233,222,82,209,161,79,3,72,96,24,124,45,215,124,220,189,222,29,0,0,212,39,238,161,140,52,231,65,229,167,35,232,197,229,27,169,119,231,24,79,247,14,96,13,192,150,152,75,52,141,43,202,103,54,41,109,199,147,154,1,138,113,22,111,52,64,33,218,138,78,28,83,192,166,19,45,55,30,137,250,4,210,84,108,231,42,148,11,38,0,61,78,152,3,4,170,144,91,206,33,136"`,
   );
   const decrypted = decryptAndDecodeDbChange({
     symmetricCrypto: testSymmetricCrypto,
@@ -797,7 +851,7 @@ describe("E2E relay options", () => {
     );
 
     expect(initiatorMessage.join()).toMatchInlineSnapshot(
-      `"0,155,132,176,110,14,207,188,99,233,19,32,127,171,130,88,244,1,193,200,155,104,173,156,172,55,27,230,228,51,167,204,43,8,0,1,0,0,1,0,0,0,0,0,0,0,0,1,145,1,53,18,19,113,206,182,216,46,168,242,97,82,226,112,13,25,56,50,8,90,26,78,242,214,120,39,110,167,124,58,221,98,46,35,140,77,61,31,46,53,198,25,228,1,66,82,143,144,187,131,154,138,48,222,166,211,65,50,9,194,254,139,76,162,117,41,183,167,202,196,126,19,180,31,181,227,3,191,226,124,195,43,120,37,222,235,80,123,217,42,244,17,155,91,188,62,103,124,118,190,44,10,71,55,231,228,34,168,239,208,167,44,177,251,240,105,234,55,78,182,89,23,35,252,20,103,180,21,250,214,87,248,54,7,25,107,118,254,0,242,63,187,185,141,133"`,
+      `"0,155,132,176,110,14,207,188,99,233,19,32,127,171,130,88,244,1,193,200,155,104,173,156,172,55,27,230,228,51,167,204,43,8,0,1,0,0,1,0,0,0,0,0,0,0,0,1,145,1,181,175,132,241,48,78,214,216,243,28,135,91,204,9,137,173,126,237,229,95,73,192,255,134,120,239,50,254,5,234,187,92,160,90,240,164,121,1,91,100,115,198,62,165,177,122,46,67,49,95,56,115,18,49,158,158,177,25,44,33,203,238,192,178,207,214,199,191,4,26,77,35,242,31,48,142,174,209,150,240,51,48,160,191,211,231,6,109,69,250,65,140,46,135,60,164,228,203,205,21,19,44,232,9,143,139,56,218,63,62,138,147,25,172,76,38,23,49,230,25,168,189,95,185,147,166,53,183,137,6,251,57,204,85,82,18,96,12,169,170,172,83,13,224,217"`,
     );
 
     let broadcastedMessage = null as Uint8Array | null;
@@ -818,7 +872,7 @@ describe("E2E relay options", () => {
     assert(broadcastedMessage);
     // Added error and removed writeKey, added subscription flag
     expect(broadcastedMessage.join()).toMatchInlineSnapshot(
-      `"0,155,132,176,110,14,207,188,99,233,19,32,127,171,130,88,244,0,1,0,0,1,0,0,0,0,0,0,0,0,1,145,1,53,18,19,113,206,182,216,46,168,242,97,82,226,112,13,25,56,50,8,90,26,78,242,214,120,39,110,167,124,58,221,98,46,35,140,77,61,31,46,53,198,25,228,1,66,82,143,144,187,131,154,138,48,222,166,211,65,50,9,194,254,139,76,162,117,41,183,167,202,196,126,19,180,31,181,227,3,191,226,124,195,43,120,37,222,235,80,123,217,42,244,17,155,91,188,62,103,124,118,190,44,10,71,55,231,228,34,168,239,208,167,44,177,251,240,105,234,55,78,182,89,23,35,252,20,103,180,21,250,214,87,248,54,7,25,107,118,254,0,242,63,187,185,141,133"`,
+      `"0,155,132,176,110,14,207,188,99,233,19,32,127,171,130,88,244,0,1,0,0,1,0,0,0,0,0,0,0,0,1,145,1,181,175,132,241,48,78,214,216,243,28,135,91,204,9,137,173,126,237,229,95,73,192,255,134,120,239,50,254,5,234,187,92,160,90,240,164,121,1,91,100,115,198,62,165,177,122,46,67,49,95,56,115,18,49,158,158,177,25,44,33,203,238,192,178,207,214,199,191,4,26,77,35,242,31,48,142,174,209,150,240,51,48,160,191,211,231,6,109,69,250,65,140,46,135,60,164,228,203,205,21,19,44,232,9,143,139,56,218,63,62,138,147,25,172,76,38,23,49,230,25,168,189,95,185,147,166,53,183,137,6,251,57,204,85,82,18,96,12,169,170,172,83,13,224,217"`,
     );
 
     let writeMessagesCalled = false;
@@ -1072,11 +1126,11 @@ describe("E2E sync", () => {
     expect(syncSteps).toMatchInlineSnapshot(`
       {
         "syncSizes": [
-          341,
-          5105,
-          18377,
-          856068,
-          835785,
+          351,
+          5068,
+          18503,
+          858191,
+          833441,
           19,
         ],
         "syncSteps": 6,
@@ -1106,45 +1160,45 @@ describe("E2E sync", () => {
     expect(syncSteps).toMatchInlineSnapshot(`
       {
         "syncSizes": [
-          359,
-          2357,
-          2300,
-          128876,
-          111643,
-          2218,
-          2263,
-          86995,
-          81180,
-          2493,
-          2261,
-          69870,
-          71822,
-          2238,
-          65435,
-          74663,
-          2273,
-          58955,
-          75585,
-          2226,
-          71161,
-          66690,
-          2270,
-          62726,
-          65688,
-          2232,
-          47981,
-          56606,
-          2277,
-          59933,
-          55520,
-          13623,
-          58638,
-          45645,
-          121176,
-          107320,
-          1010,
-          34304,
-          27285,
+          369,
+          2305,
+          2242,
+          118829,
+          107508,
+          2262,
+          2266,
+          91974,
+          78855,
+          2268,
+          2239,
+          65613,
+          74534,
+          2291,
+          79997,
+          77930,
+          2252,
+          63000,
+          69553,
+          2259,
+          64562,
+          65482,
+          2257,
+          65318,
+          60742,
+          2221,
+          57076,
+          58570,
+          2231,
+          54881,
+          55861,
+          13212,
+          61662,
+          44848,
+          21802,
+          63117,
+          35785,
+          83383,
+          89548,
           19,
         ],
         "syncSteps": 40,
