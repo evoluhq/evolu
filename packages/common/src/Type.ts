@@ -1422,13 +1422,13 @@ export const createIdFromString = <B extends string = never>(
   // Ensure last 2 bits are zero for valid BinaryId format
   binaryIdBytes[15] &= 0b11111100;
 
-  const binaryIdResult = BinaryId.from(binaryIdBytes);
-  assert(
-    binaryIdResult.ok,
-    "BinaryId creation should never fail with proper masking",
-  );
-
-  const id = binaryIdToId(binaryIdResult.value);
+  /**
+   * Type assertion is safe: BinaryId requires exactly 16 bytes with last 2 bits
+   * zero. We guarantee both constraints programmatically. This format is stable
+   * and cannot change without breaking existing data/protocol compatibility.
+   */
+  const binaryId = binaryIdBytes as BinaryId;
+  const id = binaryIdToId(binaryId);
 
   return id as [B] extends [never] ? Id : Id & Brand<B>;
 };
