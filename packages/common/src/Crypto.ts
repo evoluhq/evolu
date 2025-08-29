@@ -22,6 +22,7 @@ import {
 } from "./Type.js";
 import { Brand } from "./Brand.js";
 import { assert } from "./Assert.js";
+import { utf8ToBytes } from "./Buffer.js";
 
 /** `Uint8Array` created by {@link createRandomBytes}. */
 export type RandomBytes = Uint8Array & Brand<"RandomBytes">;
@@ -56,7 +57,7 @@ export const mnemonicToMnemonicSeed = (mnemonic: Mnemonic): MnemonicSeed =>
  * https://github.com/satoshilabs/slips/blob/master/slip-0021.md
  */
 export const createSlip21 = (
-  seed: MnemonicSeed,
+  seed: Uint8Array,
   path: ReadonlyArray<string>,
 ): Uint8Array => {
   assert(
@@ -64,15 +65,27 @@ export const createSlip21 = (
     `Unusual SLIP-0021 seed length: ${seed.length} bytes`,
   );
 
-  let m = hmac(sha512, "Symmetric key seed", seed);
+  let m = hmac(sha512, utf8ToBytes("Symmetric key seed"), seed);
   for (const component of path) {
-    const p = new TextEncoder().encode(component);
-    const e = new globalThis.Uint8Array(p.byteLength + 1);
-    e[0] = 0;
-    e.set(p, 1);
-    m = hmac(sha512, m.slice(0, 32), e);
+    m = deriveSlip21Node(component, m);
   }
   return m.slice(32, 64);
+};
+
+/**
+ * Derives a single node in the SLIP-21 hierarchical key derivation.
+ *
+ * @see {@link createSlip21}
+ */
+export const deriveSlip21Node = (
+  component: string,
+  m: Uint8Array,
+): Uint8Array => {
+  const p = utf8ToBytes(component);
+  const e = new globalThis.Uint8Array(p.byteLength + 1);
+  e[0] = 0;
+  e.set(p, 1);
+  return hmac(sha512, m.slice(0, 32), e);
 };
 
 /**
