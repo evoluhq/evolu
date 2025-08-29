@@ -38,13 +38,25 @@ export const createSlip21 = (
 
   let m = hmac(sha512, utf8ToBytes("Symmetric key seed"), seed);
   for (const component of path) {
-    const p = new TextEncoder().encode(component);
-    const e = new globalThis.Uint8Array(p.byteLength + 1);
-    e[0] = 0;
-    e.set(p, 1);
-    m = hmac(sha512, m.slice(0, 32), e);
+    m = deriveSlip21Node(component, m);
   }
   return m.slice(32, 64);
+};
+
+/**
+ * Derives a single node in the SLIP-21 hierarchical key derivation.
+ *
+ * @see {@link createSlip21}
+ */
+export const deriveSlip21Node = (
+  component: string,
+  m: Uint8Array,
+): Uint8Array => {
+  const p = utf8ToBytes(component);
+  const e = new globalThis.Uint8Array(p.byteLength + 1);
+  e[0] = 0;
+  e.set(p, 1);
+  return hmac(sha512, m.slice(0, 32), e);
 };
 
 /**

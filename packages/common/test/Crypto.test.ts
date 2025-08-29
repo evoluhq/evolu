@@ -1,4 +1,4 @@
-import { bytesToHex } from "@noble/ciphers/utils.js";
+import { bytesToHex, utf8ToBytes } from "@noble/ciphers/utils.js";
 import { assert, expect, test } from "vitest";
 import {
   createSlip21,
@@ -13,7 +13,7 @@ import { testCreateRandomBytesDep, testOwner } from "./_deps.js";
 test("SymmetricCrypto", () => {
   const symmetricCrypto = createSymmetricCrypto(testCreateRandomBytesDep);
 
-  const plaintext = new TextEncoder().encode("Hello, world!");
+  const plaintext = utf8ToBytes("Hello, world!");
   const encryptionKey = testOwner.encryptionKey;
 
   const { nonce, ciphertext } = symmetricCrypto.encrypt(
