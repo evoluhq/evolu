@@ -1,4 +1,7 @@
 // Import specific polyfill functions instead of using auto-polyfill
+
+import type { Base64Url } from "./Type.js";
+
 /* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-member-access */
 const fromBase64Implementation = require("es-arraybuffer-base64/Uint8Array.fromBase64");
 const toBase64Implementation = require("es-arraybuffer-base64/Uint8Array.prototype.toBase64");
@@ -45,10 +48,10 @@ export const fromBase64Url = (str: string): Uint8Array => {
  * Buffer for better performance when available, otherwise uses native
  * implementation or falls back to polyfill.
  */
-export const toBase64Url = (bytes: Uint8Array): string => {
+export const toBase64Url = (bytes: Uint8Array): Base64Url => {
   // Use Node.js Buffer for better performance when available
   if (hasNodeBuffer) {
-    return globalThis.Buffer.from(bytes).toString("base64url");
+    return globalThis.Buffer.from(bytes).toString("base64url") as Base64Url;
   }
 
   // Check if native implementation is available
@@ -57,6 +60,6 @@ export const toBase64Url = (bytes: Uint8Array): string => {
     return nativeToBase64.call(bytes, base64UrlOptions);
   } else {
     // Use polyfill implementation
-    return toBase64Implementation(bytes, base64UrlOptions) as string;
+    return toBase64Implementation(bytes, base64UrlOptions) as Base64Url;
   }
 };
