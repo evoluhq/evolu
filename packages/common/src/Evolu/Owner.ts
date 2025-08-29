@@ -5,13 +5,13 @@ import { Brand } from "../Brand.js";
 import {
   CreateRandomBytesDep,
   createSlip21,
-  createSlip21Id,
   EncryptionKey,
 } from "../Crypto.js";
 import {
   BinaryId,
   binaryIdToId,
   brand,
+  createIdFromHash,
   Id,
   idToBinaryId,
   length,
@@ -106,7 +106,7 @@ export const createWriteKey = (deps: CreateRandomBytesDep): WriteKey =>
  * - {@link createSharedReadonlyOwner}
  */
 export const createOwner = (secret: OwnerSecret): Owner => ({
-  id: createSlip21Id(secret, ["Evolu", "Owner Id"]) as OwnerId,
+  id: createIdFromHash(createSlip21(secret, ["Evolu", "Owner Id"])) as OwnerId,
 
   encryptionKey: createSlip21(secret, [
     "Evolu",

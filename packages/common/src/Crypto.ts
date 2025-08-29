@@ -7,10 +7,9 @@ import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
 import { hmac } from "@noble/hashes/hmac.js";
 import { sha512 } from "@noble/hashes/sha2.js";
 import { randomBytes, utf8ToBytes } from "@noble/hashes/utils.js";
-import { urlAlphabet } from "nanoid";
 import { assert } from "./Assert.js";
 import { getOrThrow, Result, trySync } from "./Result.js";
-import { brand, Id, length, NonNegativeInt, Uint8Array } from "./Type.js";
+import { brand, length, NonNegativeInt, Uint8Array } from "./Type.js";
 
 export type CreateRandomBytes = (bytesLength?: number) => Uint8Array;
 
@@ -57,32 +56,6 @@ export const deriveSlip21Node = (
   e[0] = 0;
   e.set(p, 1);
   return hmac(sha512, m.slice(0, 32), e);
-};
-
-/**
- * Creates a {@link Id} from a SLIP-21 derived key.
- *
- * Reduces the 256-bit SLIP-21 output to 126 bits (21 chars × 6 bits) for a
- * compact, human-readable, and shareable identifier suitable for UI display or
- * URL use. While this lowers entropy, 126 bits remains cryptographically secure
- * for uniqueness and unpredictability in most applications (comparable to
- * UUIDv4's 122 bits).
- *
- * See https://github.com/satoshilabs/slips/blob/master/slip-0021.md
- */
-export const createSlip21Id = (
-  seed: Uint8Array,
-  path: ReadonlyArray<string>,
-): Id => {
-  const slip21 = createSlip21(seed, path);
-  let id = "" as Id;
-
-  // Convert the key to the Id format.
-  for (let i = 0; i < 21; i++) {
-    id = (id + urlAlphabet[slip21[i] & 63]) as Id;
-  }
-
-  return id;
 };
 
 /** The encryption key for {@link SymmetricCrypto}. */

@@ -364,7 +364,7 @@ importers:
         version: 7.1.7(expo@53.0.20(@babel/core@7.28.3)(@expo/metro-runtime@5.0.4(react-native@0.79.6(@babel/core@7.28.3)(@types/react@19.1.12)(react@19.1.1)))(react-native@0.79.6(@babel/core@7.28.3)(@types/react@19.1.12)(react@19.1.1))(react@19.1.1))(react-native@0.79.6(@babel/core@7.28.3)(@types/react@19.1.12)(react@19.1.1))(react@19.1.1)
       expo-router:
         specifier: ^5.1.4
-        version: 5.1.4(225q3x2v42d4gei3jsjtst7d4q)
+        version: 5.1.4(dccb7f6385faacca2b2f9ae63947c6c1)
       expo-splash-screen:
         specifier: ~0.30.10
         version: 0.30.10(expo@53.0.20(@babel/core@7.28.3)(@expo/metro-runtime@5.0.4(react-native@0.79.6(@babel/core@7.28.3)(@types/react@19.1.12)(react@19.1.1)))(react-native@0.79.6(@babel/core@7.28.3)(@types/react@19.1.12)(react@19.1.1))(react@19.1.1))
@@ -13894,7 +13894,7 @@ snapshots:
     dependencies:
       invariant: 2.2.4
 
-  expo-router@5.1.4(225q3x2v42d4gei3jsjtst7d4q):
+  expo-router@5.1.4(dccb7f6385faacca2b2f9ae63947c6c1):
     dependencies:
       '@expo/metro-runtime': 5.0.4(react-native@0.79.6(@babel/core@7.28.3)(@types/react@19.1.12)(react@19.1.1))
       '@expo/server': 0.6.3
