@@ -137,7 +137,6 @@
  */
 
 import { Packr } from "msgpackr";
-import { fromBase64Url, toBase64Url } from "../Base64Url.js";
 import { isNonEmptyReadonlyArray, NonEmptyReadonlyArray } from "../Array.js";
 import { assert } from "../Assert.js";
 import { Brand } from "../Brand.js";
@@ -162,10 +161,11 @@ import { objectToEntries } from "../Object.js";
 import { err, ok, Result } from "../Result.js";
 import { SqliteValue } from "../Sqlite.js";
 import {
+  Base64Url,
+  base64UrlToUint8Array,
   BinaryId,
   binaryIdToId,
   binaryIdTypeValueLength,
-  Base64Url,
   DateIsoString,
   Id,
   idToBinaryId,
@@ -173,6 +173,7 @@ import {
   NonNegativeInt,
   Number,
   PositiveInt,
+  uint8ArrayToBase64Url,
 } from "../Type.js";
 import { Predicate } from "../Types.js";
 import {
@@ -1747,7 +1748,7 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
 
       if (Base64Url.is(value)) {
         encodeNonNegativeInt(buffer, ProtocolValueType.Base64Url);
-        const bytes = fromBase64Url(value);
+        const bytes = base64UrlToUint8Array(value);
         encodeLength(buffer, bytes);
         buffer.extend(bytes);
         return;
@@ -1833,7 +1834,7 @@ export const decodeSqliteValue = (buffer: Buffer): SqliteValue => {
     case ProtocolValueType.Base64Url: {
       const length = decodeLength(buffer);
       const bytes = buffer.shiftN(length);
-      return toBase64Url(bytes);
+      return uint8ArrayToBase64Url(bytes);
     }
 
     default:

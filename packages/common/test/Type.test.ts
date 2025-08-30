@@ -6,6 +6,9 @@ import { err, ok } from "../src/Result.js";
 import {
   array,
   ArrayError,
+  Base64Url,
+  Base64UrlError,
+  base64UrlToUint8Array,
   Between1And10,
   BigIntError,
   BinaryId,
@@ -115,6 +118,7 @@ import {
   TypeError,
   TypeErrorFormatter,
   TypeErrors,
+  uint8ArrayToBase64Url,
   UndefinedError,
   undefinedOr,
   union,
@@ -740,6 +744,82 @@ test("UrlSafeString", () => {
     RegexError<"UrlSafeString">
   >();
   expectTypeOf<typeof UrlSafeString.Parent>().toEqualTypeOf<string>();
+});
+
+test("Base64Url", () => {
+  // Valid Base64Url strings (length multiple of 4, URL-safe alphabet)
+  expect(Base64Url.from("ABCD")).toEqual(ok("ABCD")); // length 4
+  expect(Base64Url.from("SGVsbG8g")).toEqual(ok("SGVsbG8g")); // length 8
+
+  // Invalid characters (should fail at UrlSafeString level)
+  expect(Base64Url.from("SGVs!")).toEqual(
+    err<RegexError<"UrlSafeString">>({
+      type: "Regex",
+      name: "UrlSafeString",
+      value: "SGVs!",
+      pattern: /^[A-Za-z0-9_-]+$/,
+    }),
+  );
+
+  // Invalid length (not multiple of 4)
+  expect(Base64Url.from("SGV")).toEqual(
+    err<Base64UrlError>({
+      type: "Base64Url",
+      value: "SGV",
+    }),
+  );
+
+  expect(Base64Url.to("SGVs" as typeof Base64Url.Type)).toBe("SGVs");
+  expect(Base64Url.toParent("SGVs" as typeof Base64Url.Type)).toBe("SGVs");
+
+  expect(Base64Url.is("SGVs")).toBe(true);
+  expect(Base64Url.is("SGV")).toBe(false);
+  expect(Base64Url.is("SGVs!")).toBe(false);
+
+  expect(Base64Url.name).toBe("Brand");
+  expect(Base64Url.brand).toBe("Base64Url");
+
+  expectTypeOf<typeof Base64Url.Type>().toEqualTypeOf<Base64Url>();
+  expectTypeOf<typeof Base64Url.Input>().toEqualTypeOf<string>();
+  expectTypeOf<typeof Base64Url.Parent>().toEqualTypeOf<
+    string & Brand<"UrlSafeString">
+  >();
+});
+
+test("base64UrlToUint8Array and uint8ArrayToBase64Url", () => {
+  // Test round-trip conversion
+  const originalBytes = new Uint8Array([72, 101, 108, 108, 111]); // "Hello"
+  const base64String = uint8ArrayToBase64Url(originalBytes);
+  const decodedBytes = base64UrlToUint8Array(base64String);
+
+  expect(decodedBytes).toEqual(originalBytes);
+  expect(base64String).toBe("SGVsbG8");
+
+  // Test with different data
+  const testData = [
+    new Uint8Array([1, 2, 3, 4]),
+    new Uint8Array([255, 254, 253]),
+    new Uint8Array([]),
+    new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
+  ];
+
+  for (const bytes of testData) {
+    const encoded = uint8ArrayToBase64Url(bytes);
+    const decoded = base64UrlToUint8Array(encoded);
+    expect(decoded).toEqual(bytes);
+  }
+
+  // Test that the result is properly typed
+  expectTypeOf(base64String).toEqualTypeOf<Base64Url>();
+  expectTypeOf(decodedBytes).toEqualTypeOf<Uint8Array>();
+
+  // Test with known Base64Url values
+  expect(base64UrlToUint8Array("SGVsbG8" as Base64Url)).toEqual(
+    new Uint8Array([72, 101, 108, 108, 111]),
+  );
+  expect(uint8ArrayToBase64Url(new Uint8Array([72, 101, 108, 108, 111]))).toBe(
+    "SGVsbG8",
+  );
 });
 
 test("DateIsoString", () => {

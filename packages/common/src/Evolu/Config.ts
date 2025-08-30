@@ -157,7 +157,7 @@ export type IndexesConfig = (
 ) => ReadonlyArray<Kysely.CreateIndexBuilder<any>>;
 
 export const defaultConfig: Config = {
-  name: getOrThrow(SimpleName.fromParent("Evolu")),
+  name: getOrThrow(SimpleName.from("Evolu")),
   transports: [{ type: "WebSocket", url: "wss://free.evoluhq.com" }],
   reloadUrl: "/",
   maxDrift: 5 * 60 * 1000,

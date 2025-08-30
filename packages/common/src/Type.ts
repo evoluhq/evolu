@@ -75,7 +75,6 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import * as bip39 from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { assert } from "./Assert.js";
-import { fromBase64Url, toBase64Url } from "./Base64Url.js";
 import type { Brand } from "./Brand.js";
 import { identity } from "./Function.js";
 import { NanoIdLibDep } from "./NanoId.js";
@@ -84,6 +83,10 @@ import { Err, err, Ok, ok, Result, trySync } from "./Result.js";
 import { safelyStringifyUnknownValue } from "./String.js";
 import type { Literal, Simplify, WidenLiteral } from "./Types.js";
 import { IntentionalNever } from "./Types.js";
+// @ts-expect-error: Module lacks type declarations
+import fromBase64Implementation from "es-arraybuffer-base64/Uint8Array.fromBase64";
+// @ts-expect-error: Module lacks type declarations
+import toBase64Implementation from "es-arraybuffer-base64/Uint8Array.prototype.toBase64";
 
 export interface Type<
   Name extends TypeName,
@@ -1289,15 +1292,61 @@ export const formatBase64UrlError = createTypeErrorFormatter<Base64UrlError>(
     `Value ${error.value} is not a valid Base64Url string (length must be a multiple of 4)`,
 );
 
+const base64UrlOptions = { alphabet: "base64url", omitPadding: true };
+
 /**
- * Simple alphanumeric string for naming.
+ * Node.js Buffer-based utilities for better performance when available. These
+ * maintain the same behavior as the polyfill but with better performance.
+ */
+const hasNodeBuffer = typeof globalThis.Buffer !== "undefined";
+
+// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+const fromBase64Fn =
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+  (globalThis.Uint8Array as any)?.fromBase64 ?? fromBase64Implementation;
+
+// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+const toBase64Fn =
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+  (globalThis.Uint8Array as any)?.prototype?.toBase64 ?? toBase64Implementation;
+
+/**
+ * Decodes a Base64Url string to bytes using consistent validation. Uses Node.js
+ * Buffer for better performance when available, otherwise uses native
+ * implementation or falls back to polyfill.
+ */
+export const base64UrlToUint8Array = (str: Base64Url): Uint8Array => {
+  // Use Node.js Buffer for better performance when available
+  if (hasNodeBuffer) {
+    const nodeBuffer = globalThis.Buffer.from(str, "base64url");
+    return new globalThis.Uint8Array(nodeBuffer);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+  return fromBase64Fn(str, base64UrlOptions) as Uint8Array;
+};
+
+/**
+ * Encodes bytes to a Base64Url string using consistent validation. Uses Node.js
+ * Buffer for better performance when available, otherwise uses native
+ * implementation or falls back to polyfill.
+ */
+export const uint8ArrayToBase64Url = (bytes: Uint8Array): Base64Url => {
+  // Use Node.js Buffer for better performance when available
+  if (hasNodeBuffer) {
+    return globalThis.Buffer.from(bytes).toString("base64url") as Base64Url;
+  }
+
+  // Use native or polyfill implementation
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+  return toBase64Fn.call(bytes, base64UrlOptions) as Base64Url;
+};
+
+/**
+ * Simple alphanumeric string for naming in file systems, URLs, and identifiers.
  *
- * A `SimpleName` string uses a limited, safe alphabet for naming purposes:
- *
- * - Uppercase letters (`A-Z`)
- * - Lowercase letters (`a-z`)
- * - Digits (`0-9`)
- * - Dash (`-`)
+ * Uses the same safe alphabet as {@link UrlSafeString} (letters, digits, `-`,
+ * `_`). See `UrlSafeString` for details.
  *
  * The string must be between 1 and 42 characters.
  *
@@ -1314,9 +1363,13 @@ export const formatBase64UrlError = createTypeErrorFormatter<Base64UrlError>(
  *
  * @category String
  */
-export const SimpleName = regex("SimpleName", /^[a-z0-9-]{1,42}$/i)(String);
+export const SimpleName = brand("SimpleName", UrlSafeString, (value) =>
+  value.length >= 1 && value.length <= 42
+    ? ok(value)
+    : err<SimpleNameError>({ type: "SimpleName", value }),
+);
 export type SimpleName = typeof SimpleName.Type;
-export type SimpleNameError = typeof SimpleName.Error;
+export interface SimpleNameError extends TypeError<"SimpleName"> {}
 
 /**
  * Default NanoId.
@@ -1535,10 +1588,12 @@ export const formatBinaryIdError = createTypeErrorFormatter<BinaryIdError>(
 export const binaryIdTypeValueLength = 16 as NonNegativeInt;
 
 export const idToBinaryId = (id: Id): BinaryId =>
-  fromBase64Url(id + "A") as BinaryId;
+  // Add "A" to make 22 chars so Base64URL decodes to exactly 16 bytes.
+  base64UrlToUint8Array((id + "A") as Base64Url) as BinaryId;
 
 export const binaryIdToId = (binaryId: BinaryId): Id =>
-  toBase64Url(binaryId).slice(0, 21) as Id;
+  // Remove padding - 16 bytes encode to 22 chars, Id is 21 chars.
+  uint8ArrayToBase64Url(binaryId).slice(0, 21) as Id;
 
 /**
  * Positive number.
