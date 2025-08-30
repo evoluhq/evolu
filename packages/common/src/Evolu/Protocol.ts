@@ -392,8 +392,14 @@ export const createProtocolMessageFromCrdtMessages =
 /** Creates a {@link ProtocolMessage} for sync. */
 export const createProtocolMessageForSync =
   (deps: StorageDep) =>
-  (ownerId: OwnerId): ProtocolMessage | null => {
-    const buffer = createProtocolMessageBuffer(ownerId, { type: "initiator" });
+  (
+    ownerId: OwnerId,
+    subscriptionFlag?: SubscriptionFlag,
+  ): ProtocolMessage | null => {
+    const buffer = createProtocolMessageBuffer(ownerId, {
+      type: "initiator",
+      subscriptionFlag: subscriptionFlag ?? SubscriptionFlags.None,
+    });
     const binaryOwnerId = ownerIdToBinaryOwnerId(ownerId);
 
     const size = deps.storage.getSize(binaryOwnerId);

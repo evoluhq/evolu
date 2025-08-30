@@ -66,6 +66,7 @@ import {
   encodeAndEncryptDbChange,
   ProtocolError,
   protocolVersion,
+  SubscriptionFlags,
 } from "./Protocol.js";
 import {
   createQueryRowsCache,
@@ -901,7 +902,10 @@ const handleSyncOpen =
   (deps: ClientStorageDep & ConsoleDep): SyncConfig["onOpen"] =>
   (ownerIds, send) => {
     for (const ownerId of ownerIds) {
-      const message = createProtocolMessageForSync(deps)(ownerId);
+      const message = createProtocolMessageForSync(deps)(
+        ownerId,
+        SubscriptionFlags.Subscribe,
+      );
       // Errors are handled in ClientStorageDep.
       if (message) send(message);
     }
