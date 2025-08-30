@@ -1023,7 +1023,7 @@ test("id", () => {
 
 test("createId", () => {
   const id = createId({ nanoIdLib: testNanoIdLib });
-  expect(id).toMatchInlineSnapshot(`"F3FmbitSesTwHwplqLBSE"`);
+  expect(id).toMatchInlineSnapshot(`"LhGnhts9rNnUeri8bzhS5"`);
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const todoId = createId<"Todo">({ nanoIdLib: testNanoIdLib });

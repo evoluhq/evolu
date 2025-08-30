@@ -171,7 +171,7 @@ test("insert should validate input and call postMessage", async () => {
 
   expect(result.ok).toBe(true);
   expect(result.ok && result.value.id).toMatchInlineSnapshot(
-    `"F3FmbitSesTwHwplqLBSE"`,
+    `"LhGnhts9rNnUeri8bzhS5"`,
   );
 
   await wait(0);
@@ -181,7 +181,7 @@ test("insert should validate input and call postMessage", async () => {
       {
         "changes": [
           {
-            "id": "F3FmbitSesTwHwplqLBSE",
+            "id": "LhGnhts9rNnUeri8bzhS5",
             "ownerId": undefined,
             "table": "todo",
             "values": {
@@ -192,7 +192,7 @@ test("insert should validate input and call postMessage", async () => {
         ],
         "onCompleteIds": [],
         "subscribedQueries": [],
-        "tabId": "eKLhGnhts9rNnUeri8bzh",
+        "tabId": "SrFu-SJV0Ui1_SJB3CshO",
         "type": "mutate",
       },
     ]
@@ -255,7 +255,7 @@ test("update should validate input and call postMessage", async () => {
       {
         "changes": [
           {
-            "id": "rPltodHge37rn9q4lwirR",
+            "id": "pK2ZkuZUN-T4MZhx0p9fO",
             "ownerId": undefined,
             "table": "todo",
             "values": {
@@ -265,7 +265,7 @@ test("update should validate input and call postMessage", async () => {
         ],
         "onCompleteIds": [],
         "subscribedQueries": [],
-        "tabId": "eKLhGnhts9rNnUeri8bzh",
+        "tabId": "SrFu-SJV0Ui1_SJB3CshO",
         "type": "mutate",
       },
     ]
@@ -329,7 +329,7 @@ test("upsert should validate input and call postMessage", async () => {
       {
         "changes": [
           {
-            "id": "wHpK2ZkuZUN-T4MZhx0p9",
+            "id": "pEppKHyKrUtl5RZ4mz12W",
             "ownerId": undefined,
             "table": "todo",
             "values": {
@@ -340,7 +340,7 @@ test("upsert should validate input and call postMessage", async () => {
         ],
         "onCompleteIds": [],
         "subscribedQueries": [],
-        "tabId": "eKLhGnhts9rNnUeri8bzh",
+        "tabId": "SrFu-SJV0Ui1_SJB3CshO",
         "type": "mutate",
       },
     ]
@@ -374,7 +374,7 @@ test("upsert should reject invalid input", () => {
         },
         "type": "Object",
         "value": {
-          "id": "RcpEppKHyKrUtl5RZ4mz1",
+          "id": "Aw0gY_fIT5Ci6Vt_fajhV",
           "title": "",
         },
       },
@@ -400,7 +400,7 @@ test("mutations should be processed in microtask queue", async () => {
       {
         "changes": [
           {
-            "id": "xiAw0gY_fIT5Ci6Vt_faj",
+            "id": "KUG7NKoSfTGGJoCBJ9xgj",
             "ownerId": undefined,
             "table": "todo",
             "values": {
@@ -409,7 +409,7 @@ test("mutations should be processed in microtask queue", async () => {
             },
           },
           {
-            "id": "P-KUG7NKoSfTGGJoCBJ9x",
+            "id": "U2zm2npXftCAjUskTmno2",
             "ownerId": undefined,
             "table": "todo",
             "values": {
@@ -418,7 +418,7 @@ test("mutations should be processed in microtask queue", async () => {
             },
           },
           {
-            "id": "roU2zm2npXftCAjUskTmn",
+            "id": "cuxG6clxIS9iEBxWDelXE",
             "ownerId": undefined,
             "table": "todo",
             "values": {
@@ -429,7 +429,7 @@ test("mutations should be processed in microtask queue", async () => {
         ],
         "onCompleteIds": [],
         "subscribedQueries": [],
-        "tabId": "eKLhGnhts9rNnUeri8bzh",
+        "tabId": "SrFu-SJV0Ui1_SJB3CshO",
         "type": "mutate",
       },
     ]

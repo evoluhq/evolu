@@ -21,13 +21,13 @@ import {
 } from "../Type.js";
 import { TransportConfig } from "./Config.js";
 
-/** 16 bytes of cryptographic entropy used to derive {@link Owner} keys. */
-export const OwnerSecret = brand("OwnerSecret", length(16)(Uint8Array));
+/** 32 bytes of cryptographic entropy used to derive {@link Owner} keys. */
+export const OwnerSecret = brand("OwnerSecret", length(32)(Uint8Array));
 export type OwnerSecret = typeof OwnerSecret.Type;
 
 /** Creates a randomly generated {@link OwnerSecret}. */
 export const createOwnerSecret = (deps: CreateRandomBytesDep): OwnerSecret =>
-  deps.createRandomBytes(16) as OwnerSecret;
+  deps.createRandomBytes(32) as OwnerSecret;
 
 /** Converts an {@link OwnerSecret} to a {@link Mnemonic}. */
 export const ownerSecretToMnemonic = (secret: OwnerSecret): Mnemonic =>
@@ -174,10 +174,7 @@ export const deriveShardOwner = (
   path: NonEmptyReadonlyArray<string>,
   transports?: ReadonlyArray<TransportConfig>,
 ): ShardOwner => {
-  const secret = createSlip21(owner.encryptionKey, path).slice(
-    0,
-    16,
-  ) as OwnerSecret;
+  const secret = createSlip21(owner.encryptionKey, path) as OwnerSecret;
 
   return {
     type: "ShardOwner",
