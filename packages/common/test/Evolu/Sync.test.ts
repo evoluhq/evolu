@@ -3,7 +3,7 @@ import { createConsole } from "../../src/Console.js";
 import { OwnerId } from "../../src/Evolu/Owner.js";
 import { ProtocolMessage } from "../../src/Evolu/Protocol.js";
 import { createSync } from "../../src/Evolu/Sync.js";
-import { constFalse } from "../../src/Function.js";
+import { constFalse, constVoid } from "../../src/Function.js";
 import { wait } from "../../src/Promise.js";
 import { ok } from "../../src/Result.js";
 import { WebSocket } from "../../src/WebSocket.js";
@@ -11,6 +11,10 @@ import { testCreateDummyWebSocket, testOwner, testOwner2 } from "../_deps.js";
 
 interface MockWebSocket extends WebSocket {
   readonly onOpen?: (() => void) | undefined;
+  readonly onMessage?:
+    | ((data: string | ArrayBuffer | Blob) => void)
+    | undefined;
+  readonly sentMessages: Array<ProtocolMessage>;
 }
 
 const createMockWebSocketTracker = () => {
@@ -19,13 +23,23 @@ const createMockWebSocketTracker = () => {
 
   const mockCreateWebSocket = (
     url: string,
-    options?: { onOpen?: () => void },
+    options?: {
+      onOpen?: () => void;
+      onMessage?: (data: string | ArrayBuffer | Blob) => void;
+    },
   ) => {
+    const sentMessages: Array<ProtocolMessage> = [];
     const webSocket: MockWebSocket = {
-      send: () => ok(),
+      send: (data) => {
+        // Cast to ProtocolMessage for tracking - in real usage this would be a ProtocolMessage
+        sentMessages.push(data as ProtocolMessage);
+        return ok();
+      },
       getReadyState: () => "connecting" as const,
       isOpen: constFalse,
       onOpen: options?.onOpen ?? undefined,
+      onMessage: options?.onMessage ?? undefined,
+      sentMessages,
       [Symbol.dispose]: () => {
         disposedWebSockets.add(url);
       },
@@ -50,18 +64,22 @@ const createMockWebSocketTracker = () => {
     expectWebSocketDisposed: (url: string) => {
       expect(disposedWebSockets.has(url)).toBe(true);
     },
+    getSentMessages: (url: string) => {
+      const webSocket = createdWebSockets.get(url);
+      return webSocket?.sentMessages ?? [];
+    },
+    expectMessagesSent: (url: string, count: number) => {
+      const messages = createdWebSockets.get(url)?.sentMessages ?? [];
+      expect(messages.length).toBe(count);
+    },
   };
 };
 
 const createTestConfig = (overrides = {}) =>
   ({
     transports: [{ type: "WebSocket", url: "ws://localhost:3000" }],
-    onOpen: () => {
-      // TODO: implement
-    },
-    onMessage: () => {
-      // TODO: implement
-    },
+    onOpen: constVoid,
+    onMessage: constVoid,
     ...overrides,
   }) as const;
 
@@ -343,4 +361,200 @@ test("WebSocket onOpen calls sync config onOpen with owner IDs", () => {
 
   expect(onOpenCalls.length).toBe(1);
   expect(onOpenCalls[0].ownerIds).toEqual([testOwner.id]);
+});
+
+test("WebSocket onMessage calls sync config onMessage with message data", () => {
+  const tracker = createMockWebSocketTracker();
+  const onMessageCalls: Array<{
+    message: Uint8Array;
+    hasGetOwner: boolean;
+    hasSend: boolean;
+  }> = [];
+
+  const sync = createSync(createTestDeps(tracker.mockCreateWebSocket))(
+    createTestConfig({
+      onMessage: (
+        message: Uint8Array,
+        send: (message: ProtocolMessage) => void,
+        getOwner: (ownerId: OwnerId) => any,
+      ) => {
+        onMessageCalls.push({
+          message,
+          hasGetOwner: typeof getOwner === "function",
+          hasSend: typeof send === "function",
+        });
+      },
+    }),
+  );
+
+  sync.useOwner(true, testOwner);
+
+  const webSocket = tracker.createdWebSockets.get("ws://localhost:3000");
+
+  // Create test message data
+  const testMessage = new ArrayBuffer(10);
+  const testView = new Uint8Array(testMessage);
+  testView[0] = 42; // Set some test data
+
+  // Simulate WebSocket message
+  webSocket?.onMessage?.(testMessage);
+
+  expect(onMessageCalls.length).toBe(1);
+  expect(onMessageCalls[0].message).toEqual(new Uint8Array(testMessage));
+  expect(onMessageCalls[0].hasGetOwner).toBe(true);
+  expect(onMessageCalls[0].hasSend).toBe(true);
+});
+
+test("WebSocket onMessage ignores non-ArrayBuffer messages", () => {
+  const tracker = createMockWebSocketTracker();
+  const onMessageCalls: Array<any> = [];
+
+  const sync = createSync(createTestDeps(tracker.mockCreateWebSocket))(
+    createTestConfig({
+      onMessage: () => {
+        onMessageCalls.push("called");
+      },
+    }),
+  );
+
+  sync.useOwner(true, testOwner);
+
+  const webSocket = tracker.createdWebSockets.get("ws://localhost:3000");
+
+  // Simulate string message (should be ignored)
+  webSocket?.onMessage?.("string message");
+
+  // Simulate Blob message (should be ignored)
+  webSocket?.onMessage?.(new Blob(["blob data"]));
+
+  // No calls should have been made
+  expect(onMessageCalls.length).toBe(0);
+});
+
+test("WebSocket onMessage provides getOwner that returns active owners", () => {
+  const tracker = createMockWebSocketTracker();
+  let capturedGetOwner: ((ownerId: OwnerId) => any) | null = null;
+
+  const sync = createSync(createTestDeps(tracker.mockCreateWebSocket))(
+    createTestConfig({
+      onMessage: (
+        _message: Uint8Array,
+        _send: (message: ProtocolMessage) => void,
+        getOwner: (ownerId: OwnerId) => any,
+      ) => {
+        capturedGetOwner = getOwner;
+      },
+    }),
+  );
+
+  sync.useOwner(true, testOwner);
+
+  const webSocket = tracker.createdWebSockets.get("ws://localhost:3000");
+
+  // Trigger onMessage to capture the getOwner function
+  const testMessage = new ArrayBuffer(1);
+  webSocket?.onMessage?.(testMessage);
+
+  // Test that getOwner returns the active owner
+  expect(capturedGetOwner).not.toBeNull();
+  expect(capturedGetOwner!(testOwner.id)).toBe(testOwner);
+
+  // Test that getOwner returns null for inactive owner
+  expect(capturedGetOwner!(testOwner2.id)).toBeNull();
+});
+
+test("send messages to all transports for an active owner", () => {
+  const tracker = createMockWebSocketTracker();
+  const sync = createSync(createTestDeps(tracker.mockCreateWebSocket))(
+    createTestConfig(),
+  );
+
+  // Add owner to activate transport
+  sync.useOwner(true, testOwner);
+
+  // Create a test protocol message
+  const testMessage = new Uint8Array([1, 2, 3, 4, 5]) as ProtocolMessage;
+
+  // Send message
+  sync.send(testOwner.id, testMessage);
+
+  // Verify message was sent to the transport
+  tracker.expectMessagesSent("ws://localhost:3000", 1);
+  const sentMessages = tracker.getSentMessages("ws://localhost:3000");
+  expect(sentMessages[0]).toBe(testMessage);
+});
+
+test("send messages to multiple transports for owner with custom transports", () => {
+  const tracker = createMockWebSocketTracker();
+  const sync = createSync(createTestDeps(tracker.mockCreateWebSocket))(
+    createTestConfig({
+      transports: [], // Empty config transports
+    }),
+  );
+
+  // Owner with custom transports
+  const ownerWithMultipleTransports = {
+    ...testOwner,
+    transports: [
+      { type: "WebSocket" as const, url: "ws://server1.com" },
+      { type: "WebSocket" as const, url: "ws://server2.com" },
+    ],
+  };
+
+  // Add owner with multiple transports
+  sync.useOwner(true, ownerWithMultipleTransports);
+
+  // Create a test protocol message
+  const testMessage = new Uint8Array([1, 2, 3, 4, 5]) as ProtocolMessage;
+
+  // Send message
+  sync.send(testOwner.id, testMessage);
+
+  // Verify message was sent to both transports
+  tracker.expectMessagesSent("ws://server1.com", 1);
+  tracker.expectMessagesSent("ws://server2.com", 1);
+
+  const messages1 = tracker.getSentMessages("ws://server1.com");
+  const messages2 = tracker.getSentMessages("ws://server2.com");
+  expect(messages1[0]).toBe(testMessage);
+  expect(messages2[0]).toBe(testMessage);
+});
+
+test("send does not send messages for inactive owners", () => {
+  const tracker = createMockWebSocketTracker();
+  const sync = createSync(createTestDeps(tracker.mockCreateWebSocket))(
+    createTestConfig(),
+  );
+
+  // Don't add any owners - transport should not be created
+  tracker.expectCreated(0);
+
+  // Create a test protocol message
+  const testMessage = new Uint8Array([1, 2, 3, 4, 5]) as ProtocolMessage;
+
+  // Try to send message for inactive owner
+  sync.send(testOwner.id, testMessage);
+
+  // No transports should be created, no messages sent
+  tracker.expectCreated(0);
+});
+
+test("send does not send messages for removed owners", () => {
+  const tracker = createMockWebSocketTracker();
+  const sync = createSync(createTestDeps(tracker.mockCreateWebSocket))(
+    createTestConfig(),
+  );
+
+  // Add and then remove owner
+  sync.useOwner(true, testOwner);
+  sync.useOwner(false, testOwner);
+
+  // Create a test protocol message
+  const testMessage = new Uint8Array([1, 2, 3, 4, 5]) as ProtocolMessage;
+
+  // Try to send message for removed owner
+  sync.send(testOwner.id, testMessage);
+
+  // No messages should be sent
+  tracker.expectMessagesSent("ws://localhost:3000", 0);
 });

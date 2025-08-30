@@ -66,7 +66,11 @@ export interface SyncConfig {
     send: (message: ProtocolMessage) => void,
   ) => void;
 
-  readonly onMessage: (message: Uint8Array, send: Sync["send"]) => void;
+  readonly onMessage: (
+    message: Uint8Array,
+    send: (message: ProtocolMessage) => void,
+    getOwner: Sync["getOwner"],
+  ) => void;
 }
 
 export const createSync =
@@ -98,30 +102,36 @@ export const createSync =
       const ownerIds = Array.from(ownerIdRefCounts.keys());
       assertNonEmptyReadonlyArray(ownerIds);
 
-      config.onOpen(ownerIds, webSocket.send);
+      deps.console.log("[sync]", "onOpen", { ownerIds });
+
+      config.onOpen(ownerIds, (message) => {
+        deps.console.log("[sync]", "onOpen", "send", { message });
+        // Ignore send errors - WebSocket auto-reconnection handles retry
+        void webSocket.send(message);
+      });
     };
 
     const handleWebSocketMessage =
-      (_transportId: TransportId) => (data: string | ArrayBuffer | Blob) => {
+      (transportId: TransportId) => (data: string | ArrayBuffer | Blob) => {
         if (isDisposed) return;
 
-        //         if (data instanceof ArrayBuffer) {
-        //           const messages = new Uint8Array(data);
-        //           config.onMessage(messages, sync.send);
-        //         }
+        const webSocket = transports.get(transportId);
+        if (!webSocket) return;
 
         // Only handle ArrayBuffer data for sync messages
         if (!(data instanceof ArrayBuffer)) return;
-
         const message = new Uint8Array(data);
-        config.onMessage(message, (ownerId, _protocolMessage) => {
-          // TODO: Implement send logic
-          deps.console.log(
-            "[sync]",
-            "send response message for owner",
-            ownerId,
-          );
-        });
+
+        deps.console.log("[sync]", "onMessage", { transportId, message });
+
+        config.onMessage(
+          message,
+          (message) => {
+            // Ignore send errors - WebSocket auto-reconnection handles retry
+            void webSocket.send(message);
+          },
+          sync.getOwner,
+        );
       };
 
     /**
@@ -158,17 +168,18 @@ export const createSync =
       return false;
     };
 
-    return {
+    const sync: Sync = {
       useOwner: (use, owner) => {
         if (isDisposed) {
           deps.console.warn(
             "[sync]",
             "useOwner called on disposed Sync instance",
+            { owner },
           );
           return;
         }
 
-        deps.console.log("[sync]", "useOwner", use, owner);
+        deps.console.log("[sync]", "useOwner", { use, owner });
 
         const transportsToUse = owner.transports ?? config.transports;
 
@@ -247,10 +258,28 @@ export const createSync =
         return ownersById.get(ownerId) ?? null;
       },
 
-      send: (_ownerId, _message) => {
+      send: (ownerId, message) => {
         if (isDisposed) {
-          deps.console.warn("[sync]", "send called on disposed Sync instance");
+          deps.console.warn("[sync]", "send called on disposed Sync instance", {
+            ownerId,
+            message,
+          });
           return;
+        }
+
+        const owner = ownersById.get(ownerId);
+        if (!owner) return;
+
+        const transportsToUse = owner.transports ?? config.transports;
+
+        // Send message to all transports for this owner
+        for (const transportConfig of transportsToUse) {
+          const transportId = createTransportId(transportConfig);
+          const webSocket = transports.get(transportId);
+          if (!webSocket) continue;
+          deps.console.log("[sync]", "send", { transportId, message });
+          // Ignore send errors - WebSocket auto-reconnection handles retry
+          void webSocket.send(message);
         }
       },
 
@@ -272,6 +301,8 @@ export const createSync =
         ownersById.clear();
       },
     };
+
+    return sync;
   };
 
 /** Unique identifier for a transport configuration used for deduplication. */
