@@ -1305,11 +1305,6 @@ const fromBase64Fn =
   // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
   (globalThis.Uint8Array as any)?.fromBase64 ?? fromBase64Implementation;
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-const toBase64Fn =
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-  (globalThis.Uint8Array as any)?.prototype?.toBase64 ?? toBase64Implementation;
-
 /**
  * Decodes a Base64Url string to bytes using consistent validation. Uses Node.js
  * Buffer for better performance when available, otherwise uses native
@@ -1337,9 +1332,16 @@ export const uint8ArrayToBase64Url = (bytes: Uint8Array): Base64Url => {
     return globalThis.Buffer.from(bytes).toString("base64url") as Base64Url;
   }
 
-  // Use native or polyfill implementation
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-  return toBase64Fn.call(bytes, base64UrlOptions) as Base64Url;
+  // Use native implementation if available
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+  if ((bytes as any).toBase64) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+    return (bytes as any).toBase64(base64UrlOptions) as Base64Url;
+  }
+
+  // Fall back to polyfill implementation
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+  return toBase64Implementation(bytes, base64UrlOptions) as Base64Url;
 };
 
 /**
