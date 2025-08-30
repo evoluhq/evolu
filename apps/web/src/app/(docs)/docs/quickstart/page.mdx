@@ -31,11 +31,11 @@ npm install @evolu/common@preview @evolu/react@preview @evolu/react-web@preview
 ```
 
 ```bash {{ title: 'React Native' }}
-npm install @evolu/common@preview @evolu/react@preview @evolu/react-native@preview @op-engineering/op-sqlite react-native-quick-crypto
+npm install @evolu/common@preview @evolu/react@preview @evolu/react-native@preview @op-engineering/op-sqlite react-native-quick-crypto react-native-quick-base64
 ```
 
 ```bash {{ title: 'Expo' }}
-npm install @evolu/common@preview @evolu/react@preview @evolu/react-native@preview expo-sqlite react-native-quick-crypto
+npm install @evolu/common@preview @evolu/react@preview @evolu/react-native@preview expo-sqlite react-native-quick-crypto react-native-quick-base64
 ```
 
 ```bash {{ title: 'Svelte' }}
@@ -58,6 +58,8 @@ npm install @evolu/common@preview @evolu/web@preview
 <ConditionalPlatformAlert platform={["Expo", "React Native"]} type="info">
   Make sure to follow the [react-native-quick-crypto setup
   instructions](https://github.com/margelo/react-native-quick-crypto#installation)
+  and [react-native-quick-base64 setup
+  instructions](https://github.com/craftzdog/react-native-quick-base64#installation)
   for proper native dependency configuration.
 </ConditionalPlatformAlert>
 
@@ -143,7 +145,7 @@ const evolu = createEvolu(evoluReactWebDeps)(Schema, {
 
 // Wrap your app with <EvoluProvider>
 <EvoluProvider value={evolu}>
-	{/* ... */}
+ {/* ... */}
 </EvoluProvider>
 
 // Create a typed React Hook returning an instance of Evolu
@@ -159,13 +161,13 @@ import { createUseEvolu, EvoluProvider } from "@evolu/react";
 import { evoluReactNativeDeps } from "@evolu/react-native/op-sqlite";
 
 const evolu = createEvolu(evoluReactNativeDeps)(Schema, {
-	name: getOrThrow(SimpleName.from("your-app-name")),
-	transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
+ name: getOrThrow(SimpleName.from("your-app-name")),
+ transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
 
 // Wrap your app with <EvoluProvider>
 <EvoluProvider value={evolu}>
-	{/* ... */}
+ {/* ... */}
 </EvoluProvider>
 
 // Create a typed React Hook returning an instance of Evolu
@@ -181,13 +183,13 @@ import { createUseEvolu, EvoluProvider } from "@evolu/react";
 import { evoluReactNativeDeps } from "@evolu/react-native/expo-sqlite";
 
 const evolu = createEvolu(evoluReactNativeDeps)(Schema, {
-	name: getOrThrow(SimpleName.from("your-app-name")),
-	transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
+ name: getOrThrow(SimpleName.from("your-app-name")),
+ transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
 
 // Wrap your app with <EvoluProvider>
 <EvoluProvider value={evolu}>
-	{/* ... */}
+ {/* ... */}
 </EvoluProvider>
 
 // Create a typed React Hook returning an instance of Evolu
