@@ -356,7 +356,7 @@ export const getOrThrow = <T, E>(result: Result<T, E>): T => {
   if (result.ok) {
     return result.value;
   } else {
-    throw new Error("getOrThrow failed", { cause: result.error });
+    throw new Error("getOrThrow", { cause: result.error });
   }
 };
 
