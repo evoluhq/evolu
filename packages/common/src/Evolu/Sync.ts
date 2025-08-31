@@ -204,10 +204,6 @@ export const createSync =
       [Symbol.dispose]: () => {
         if (isDisposed) return;
         isDisposed = true;
-
-        // using stack = new DisposableStack();
-        // stack.
-
         transports[Symbol.dispose]();
       },
     };
