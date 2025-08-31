@@ -364,10 +364,7 @@ const createDbWorkerDeps =
 
       const storage = createClientStorage({
         ...depsWithoutStorage,
-        getSyncOwner: (_ownerId) => {
-          return appOwner;
-          // return sync.getOwner(ownerId);
-        },
+        getSyncOwner: (ownerId) => sync.getOwner(ownerId),
       })({
         onStorageError: (error) => {
           postMessage({ type: "onError", error });
