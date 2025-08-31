@@ -1,6 +1,7 @@
 import { createConsole } from "@evolu/common";
 import { createNodeJsRelay } from "@evolu/nodejs";
 import { mkdirSync } from "fs";
+import { once } from "node:events";
 
 const deps = {
   console: createConsole(),
@@ -15,5 +16,12 @@ const relay = await createNodeJsRelay(deps)({
   enableLogging: false,
 });
 
-process.on("SIGINT", relay[Symbol.dispose]);
-process.on("SIGTERM", relay[Symbol.dispose]);
+deps.console.log("Relay server started on port 4000");
+
+await Promise.race([
+  once(process, "SIGINT"), // Ctrl-C
+  once(process, "SIGTERM"), // OS/k8s/etc requested termination
+]);
+
+deps.console.log("Shutting down relay server");
+relay[Symbol.dispose]();
