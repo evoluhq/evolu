@@ -61,10 +61,12 @@ import {
 import {
   applyProtocolMessageAsClient,
   createProtocolMessageForSync,
+  createProtocolMessageFromCrdtMessages,
   decryptAndDecodeDbChange,
   encodeAndEncryptDbChange,
   ProtocolError,
   protocolVersion,
+  SubscriptionFlags,
 } from "./Protocol.js";
 import {
   createQueryRowsCache,
@@ -362,10 +364,7 @@ const createDbWorkerDeps =
 
       const storage = createClientStorage({
         ...depsWithoutStorage,
-        getSyncOwner: (_ownerId) => {
-          return appOwner;
-          // return sync.getOwner(ownerId);
-        },
+        getSyncOwner: (ownerId) => sync.getOwner(ownerId),
       })({
         onStorageError: (error) => {
           postMessage({ type: "onError", error });
@@ -730,14 +729,18 @@ const applySyncChanges =
       const result = applyMessages(deps)(ownerId, messages);
       if (!result.ok) return result;
 
-      // const owner = deps.sync.getOwner(ownerId);
-      // if (!owner?.writeKey) continue;
+      const owner = deps.sync.getOwner(ownerId);
+      if (!owner?.writeKey) continue;
 
-      // const protocolMessage = createProtocolMessageFromCrdtMessages(deps)(
-      //   owner as Owner,
-      //   messages,
-      // );
-      // deps.sync.send(ownerId, protocolMessage);
+      const protocolMessage = createProtocolMessageFromCrdtMessages(deps)(
+        {
+          id: owner.id,
+          encryptionKey: owner.encryptionKey,
+          writeKey: owner.writeKey,
+        },
+        messages,
+      );
+      deps.sync.send(ownerId, protocolMessage);
     }
 
     return deps.clock.save(clockTimestamp);
@@ -896,10 +899,12 @@ const handleSyncOpen =
   (deps: ClientStorageDep & ConsoleDep): SyncConfig["onOpen"] =>
   (ownerIds, send) => {
     for (const ownerId of ownerIds) {
-      const message = createProtocolMessageForSync(deps)(ownerId);
-      if (!message) continue;
-      deps.console.log("[db]", "send initial sync message for owner", ownerId);
-      send(message);
+      const message = createProtocolMessageForSync(deps)(
+        ownerId,
+        SubscriptionFlags.Subscribe,
+      );
+      // Errors are handled in ClientStorageDep.
+      if (message) send(message);
     }
   };
 
@@ -907,34 +912,21 @@ const handleSyncMessage =
   (
     deps: ClientStorageDep & ConsoleDep & PostMessageDep & SqliteDep,
   ): SyncConfig["onMessage"] =>
-  (input, _send) => {
-    // patri do syncu
-    // deps.console.log("[db]", "receive sync message", input);
-
+  (input, send, getOwner) => {
     const output = deps.sqlite.transaction(() =>
       applyProtocolMessageAsClient(deps)(input, {
-        getWriteKey: (_ownerId) => {
-          // const owner = deps.owners.get(ownerId);
-          // if (!owner || owner.type === "SharedReadonlyOwner") return null;
-          // return owner.writeKey;
-          return null;
-        },
+        // Returns the write key for an owner if available. When an owner is
+        // removed, getOwner returns null, effectively stopping sync.
+        getWriteKey: (ownerId) => getOwner(ownerId)?.writeKey ?? null,
       }),
     );
+
     if (!output.ok) {
       deps.postMessage({ type: "onError", error: output.error });
       return;
     }
 
-    if (output.value) {
-      // patri do syncu
-      // deps.console.log("[db]", "respond sync message", output.value);
-      // ups, co to ma bejt?
-      // prijde mi nejaka sync message
-      // komu ji posilam, no?
-      // tohle musi bejt per transport!
-      // send(output.value);
-    }
+    if (output.value) send(output.value);
   };
 
 export interface ClientStorageDep {

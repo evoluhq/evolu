@@ -6,7 +6,7 @@ import { ExpoLogo } from "@/components/icons/frameworks/Expo";
 import { SvelteLogo } from "@/components/icons/frameworks/Svelte";
 import { JavaScriptLogo } from "@/components/icons/frameworks/JavaScript";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, Suspense } from "react";
 
 const platforms = [
   {
@@ -36,7 +36,8 @@ const platforms = [
   },
 ];
 
-export function PlatformSelector(): React.ReactElement {
+// Component with URL state - needs to be wrapped in Suspense
+function PlatformSelectorWithURL(): React.ReactElement {
   const { preferredLanguages, addPreferredLanguage } =
     usePreferredLanguageStore();
   const searchParams = useSearchParams();
@@ -87,6 +88,42 @@ export function PlatformSelector(): React.ReactElement {
   };
 
   return (
+    <PlatformSelectorUI
+      currentPlatform={currentPlatform}
+      onPlatformChange={handlePlatformChange}
+    />
+  );
+}
+
+// Fallback component without URL state
+function PlatformSelectorFallback(): React.ReactElement {
+  const { preferredLanguages, addPreferredLanguage } =
+    usePreferredLanguageStore();
+
+  const currentPlatform =
+    preferredLanguages[preferredLanguages.length - 1] ?? "React";
+
+  const handlePlatformChange = (platformId: string) => {
+    addPreferredLanguage(platformId);
+  };
+
+  return (
+    <PlatformSelectorUI
+      currentPlatform={currentPlatform}
+      onPlatformChange={handlePlatformChange}
+    />
+  );
+}
+
+// Shared UI component
+function PlatformSelectorUI({
+  currentPlatform,
+  onPlatformChange,
+}: {
+  currentPlatform: string;
+  onPlatformChange: (platformId: string) => void;
+}): React.ReactElement {
+  return (
     <fieldset className="mb-6">
       <legend className="text-sm/6 font-semibold">Choose a platform</legend>
       <div className="mt-2 flex flex-wrap gap-2">
@@ -104,7 +141,7 @@ export function PlatformSelector(): React.ReactElement {
                 name="platform"
                 type="radio"
                 onChange={(e) => {
-                  handlePlatformChange(e.target.value);
+                  onPlatformChange(e.target.value);
                 }}
                 className="absolute inset-0 appearance-none focus:outline-none"
               />
@@ -122,5 +159,14 @@ export function PlatformSelector(): React.ReactElement {
         This selection will apply to all code examples on this page.
       </div>
     </fieldset>
+  );
+}
+
+// Main export with Suspense boundary
+export function PlatformSelector(): React.ReactElement {
+  return (
+    <Suspense fallback={<PlatformSelectorFallback />}>
+      <PlatformSelectorWithURL />
+    </Suspense>
   );
 }

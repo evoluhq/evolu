@@ -6,7 +6,7 @@ import {
   padmePaddedLength,
 } from "../src/Crypto.js";
 import { mnemonicToOwnerSecret } from "../src/index.js";
-import { getOrThrow, ok } from "../src/Result.js";
+import { ok } from "../src/Result.js";
 import { Mnemonic, NonNegativeInt } from "../src/Type.js";
 import { testCreateRandomBytesDep, testOwner } from "./_deps.js";
 
@@ -72,8 +72,8 @@ test("padmePaddedLength", () => {
 });
 
 test("createSlip21", () => {
-  const mnemonic = getOrThrow(
-    Mnemonic.from("all all all all all all all all all all all all"),
+  const mnemonic = Mnemonic.fromOrThrow(
+    "all all all all all all all all all all all all",
   );
   const ownerSecret = mnemonicToOwnerSecret(mnemonic);
 

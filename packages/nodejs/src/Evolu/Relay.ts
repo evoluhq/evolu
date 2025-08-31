@@ -30,7 +30,7 @@ export const createNodeJsRelay =
   async (config: NodeJsRelayConfig): Promise<Relay> => {
     const {
       port = 443,
-      name = getOrThrow(SimpleName.from("evolu-relay")),
+      name = SimpleName.fromOrThrow("evolu-relay"),
       enableLogging = false,
     } = config;
 

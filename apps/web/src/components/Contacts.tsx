@@ -6,7 +6,6 @@ import {
   createRandomBytes,
   CreateRandomBytesDep,
   createSharedOwner,
-  getOrThrow,
   id,
   NonEmptyString1000,
   nullOr,
@@ -36,7 +35,7 @@ const Schema = {
 
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   reloadUrl: "/docs/examples/react/contacts",
-  name: getOrThrow(SimpleName.from("evolu-contacts-example-v090725")),
+  name: SimpleName.fromOrThrow("evolu-contacts-example-v090725"),
 
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "http://localhost:4000" }],
@@ -103,7 +102,7 @@ const AddContact: FC = () => {
     const _result = insert(
       "contact",
       {
-        name: getOrThrow(NonEmptyString1000.from("Joe")),
+        name: NonEmptyString1000.fromOrThrow("Joe"),
       },
       { ownerId: owner.id },
     );
