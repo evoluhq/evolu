@@ -1,8 +1,9 @@
 import { NonEmptyReadonlyArray } from "../Array.js";
-import { assert, assertNonEmptyReadonlyArray } from "../Assert.js";
+import { assertNonEmptyReadonlyArray } from "../Assert.js";
+import type { Brand } from "../Brand.js";
 import { ConsoleDep } from "../Console.js";
 import { EncryptionKey } from "../Crypto.js";
-import { brand, PositiveInt, String } from "../Type.js";
+import { createRefCountedResourceManager } from "../RefCountedResourceManager.js";
 import { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
 import { TransportConfig } from "./Config.js";
 import {
@@ -75,98 +76,71 @@ export interface SyncConfig {
 export const createSync =
   (deps: ConsoleDep & CreateWebSocketDep) =>
   (config: SyncConfig): Sync => {
-    const transportOwnerIdRefCounts = new Map<
-      TransportId,
-      Map<OwnerId, PositiveInt>
-    >();
-    const ownersById = new Map<OwnerId, SyncOwner>();
-    const transports = new Map<TransportId, WebSocket>();
-    const disposalTimeouts = new Map<
-      TransportId,
-      ReturnType<typeof setTimeout>
-    >();
-
     let isDisposed = false;
-    const disposalDelayMs = config.disposalDelayMs ?? 100;
 
-    const handleWebSocketOpen = (transportId: TransportId) => () => {
-      if (isDisposed) return;
+    const createResource = (transportConfig: TransportConfig): WebSocket => {
+      const transportKey = createTransportKey(transportConfig);
+      return deps.createWebSocket(transportConfig.url, {
+        binaryType: "arraybuffer",
 
-      const webSocket = transports.get(transportId);
-      if (!webSocket) return;
+        onOpen: () => {
+          if (isDisposed) return;
 
-      const ownerIdRefCounts = transportOwnerIdRefCounts.get(transportId);
-      if (!ownerIdRefCounts?.size) return;
+          const webSocket = transports.getResource(transportKey);
+          if (!webSocket) return;
 
-      const ownerIds = Array.from(ownerIdRefCounts.keys());
-      assertNonEmptyReadonlyArray(ownerIds);
+          const ownerIds = transports.getConsumersForResource(transportKey);
+          if (ownerIds.length === 0) return;
 
-      deps.console.log("[sync]", "onOpen", { ownerIds });
+          assertNonEmptyReadonlyArray(ownerIds);
 
-      config.onOpen(ownerIds, (message) => {
-        deps.console.log("[sync]", "onOpen", "send", { message });
-        // Ignore send errors - WebSocket auto-reconnection handles retry
-        void webSocket.send(message);
+          deps.console.log("[sync]", "onOpen", { ownerIds });
+
+          config.onOpen(ownerIds, (message) => {
+            deps.console.log("[sync]", "onOpen", "send", { message });
+            // Ignore send errors - WebSocket auto-reconnection handles retry
+            void webSocket.send(message);
+          });
+        },
+
+        onMessage: (data: string | ArrayBuffer | Blob) => {
+          if (isDisposed) return;
+
+          const webSocket = transports.getResource(transportKey);
+          if (!webSocket) return;
+
+          // Only handle ArrayBuffer data for sync messages
+          if (!(data instanceof ArrayBuffer)) return;
+          const message = new Uint8Array(data);
+
+          deps.console.log("[sync]", "onMessage", { transportKey, message });
+
+          config.onMessage(
+            message,
+            (message) => {
+              // Ignore send errors - WebSocket auto-reconnection handles retry
+              void webSocket.send(message);
+            },
+            sync.getOwner,
+          );
+        },
       });
     };
 
-    const handleWebSocketMessage =
-      (transportId: TransportId) => (data: string | ArrayBuffer | Blob) => {
-        if (isDisposed) return;
+    const transports = createRefCountedResourceManager<
+      WebSocket,
+      TransportKey,
+      TransportConfig,
+      SyncOwner,
+      OwnerId
+    >({
+      createResource,
+      getResourceKey: createTransportKey,
+      getConsumerId: (owner) => owner.id,
+      disposalDelay: config.disposalDelayMs ?? 100,
+    });
 
-        const webSocket = transports.get(transportId);
-        if (!webSocket) return;
-
-        // Only handle ArrayBuffer data for sync messages
-        if (!(data instanceof ArrayBuffer)) return;
-        const message = new Uint8Array(data);
-
-        deps.console.log("[sync]", "onMessage", { transportId, message });
-
-        config.onMessage(
-          message,
-          (message) => {
-            // Ignore send errors - WebSocket auto-reconnection handles retry
-            void webSocket.send(message);
-          },
-          sync.getOwner,
-        );
-      };
-
-    /**
-     * Schedules delayed disposal of a transport to avoid connection churn.
-     *
-     * Instead of immediately closing WebSocket connections when no owners are
-     * using them, we wait briefly in case new owners are added soon. This
-     * prevents expensive reconnection cycles in scenarios like React component
-     * remounts or rapid owner assignment changes.
-     */
-    const scheduleTransportDisposal = (transportId: TransportId) => {
-      const timeoutId = setTimeout(() => {
-        if (isDisposed) return;
-
-        const webSocket = transports.get(transportId);
-        if (!webSocket) return;
-
-        webSocket[Symbol.dispose]();
-        transports.delete(transportId);
-      }, disposalDelayMs);
-      disposalTimeouts.set(transportId, timeoutId);
-    };
-
-    /**
-     * Checks if an owner is assigned to at least one transport.
-     *
-     * NOTE: This is O(transports) which is fast enough for typical usage (few
-     * transports, early break on first match). If needed, we can optimize it.
-     */
-    const hasOwnerAnyTransport = (ownerId: OwnerId): boolean => {
-      for (const [, ownerIdRefCounts] of transportOwnerIdRefCounts) {
-        if (ownerIdRefCounts.has(ownerId)) return true;
-      }
-      return false;
-    };
-
+    // Create sync object first so handlers can reference it
     const sync: Sync = {
       useOwner: (use, owner) => {
         if (isDisposed) {
@@ -179,82 +153,26 @@ export const createSync =
         }
 
         deps.console.log("[sync]", "useOwner", { use, owner });
-
         const transportsToUse = owner.transports ?? config.transports;
 
-        // If no transports available, owner cannot be used.
-        if (transportsToUse.length === 0) return;
-
         if (use) {
-          // Store owner data (last added owner for this ID)
-          ownersById.set(owner.id, owner);
-
-          // Add owner to each transport and increment reference count
-          for (const transportConfig of transportsToUse) {
-            const transportId = createTransportId(transportConfig);
-
-            let ownerIdRefCounts = transportOwnerIdRefCounts.get(transportId);
-            if (!ownerIdRefCounts) {
-              ownerIdRefCounts = new Map<OwnerId, PositiveInt>();
-              transportOwnerIdRefCounts.set(transportId, ownerIdRefCounts);
-
-              const timeoutId = disposalTimeouts.get(transportId);
-              if (timeoutId) {
-                clearTimeout(timeoutId);
-                disposalTimeouts.delete(transportId);
-              }
-
-              if (!transports.has(transportId)) {
-                const webSocket = deps.createWebSocket(transportConfig.url, {
-                  binaryType: "arraybuffer",
-                  onOpen: handleWebSocketOpen(transportId),
-                  onMessage: handleWebSocketMessage(transportId),
-                });
-                transports.set(transportId, webSocket);
-              }
-            }
-
-            const currentRefCount = ownerIdRefCounts.get(owner.id) ?? 0;
-            ownerIdRefCounts.set(
-              owner.id,
-              PositiveInt.fromOrThrow(currentRefCount + 1),
-            );
-          }
+          transports.addConsumer(owner, transportsToUse);
         } else {
-          for (const transportConfig of transportsToUse) {
-            const transportId = createTransportId(transportConfig);
-            const ownerIdRefCounts = transportOwnerIdRefCounts.get(transportId);
+          const result = transports.removeConsumer(owner, transportsToUse);
 
-            assert(
-              ownerIdRefCounts,
-              `Transport ${transportId} should exist when removing owner ${owner.id}`,
-            );
-
-            const currentRefCount = ownerIdRefCounts.get(owner.id) ?? 0;
-
-            if (currentRefCount <= 1) {
-              ownerIdRefCounts.delete(owner.id);
-              if (ownerIdRefCounts.size === 0) {
-                transportOwnerIdRefCounts.delete(transportId);
-                scheduleTransportDisposal(transportId);
-              }
-            } else {
-              ownerIdRefCounts.set(
-                owner.id,
-                PositiveInt.fromOrThrow(currentRefCount - 1),
-              );
-            }
-          }
-
-          if (!hasOwnerAnyTransport(owner.id)) {
-            ownersById.delete(owner.id);
+          if (!result.ok) {
+            deps.console.warn("[sync]", "Failed to remove consumer", {
+              transportsToUse,
+              ownerId: owner.id,
+              error: result.error,
+            });
           }
         }
       },
 
       getOwner: (ownerId) => {
-        if (isDisposed || !hasOwnerAnyTransport(ownerId)) return null;
-        return ownersById.get(ownerId) ?? null;
+        if (isDisposed) return null;
+        return transports.getConsumer(ownerId);
       },
 
       send: (ownerId, message) => {
@@ -266,17 +184,18 @@ export const createSync =
           return;
         }
 
-        const owner = ownersById.get(ownerId);
+        const owner = transports.getConsumer(ownerId);
         if (!owner) return;
 
         const transportsToUse = owner.transports ?? config.transports;
 
         // Send message to all transports for this owner
         for (const transportConfig of transportsToUse) {
-          const transportId = createTransportId(transportConfig);
-          const webSocket = transports.get(transportId);
+          const transportKey = createTransportKey(transportConfig);
+          const webSocket = transports.getResource(transportKey);
           if (!webSocket) continue;
-          deps.console.log("[sync]", "send", { transportId, message });
+
+          deps.console.log("[sync]", "send", { transportKey, message });
           // Ignore send errors - WebSocket auto-reconnection handles retry
           void webSocket.send(message);
         }
@@ -286,31 +205,21 @@ export const createSync =
         if (isDisposed) return;
         isDisposed = true;
 
-        for (const timeoutId of disposalTimeouts.values()) {
-          clearTimeout(timeoutId);
-        }
-        disposalTimeouts.clear();
+        // using stack = new DisposableStack();
+        // stack.
 
-        for (const webSocket of transports.values()) {
-          webSocket[Symbol.dispose]();
-        }
-        transports.clear();
-
-        transportOwnerIdRefCounts.clear();
-        ownersById.clear();
+        transports[Symbol.dispose]();
       },
     };
 
     return sync;
   };
 
-/** Unique identifier for a transport configuration used for deduplication. */
-const TransportId = brand("TransportId", String);
-type TransportId = typeof TransportId.Type;
+type TransportKey = string & Brand<"TransportKey">;
 
 /** Creates a unique identifier for a transport configuration. */
-const createTransportId = (transportConfig: TransportConfig): TransportId => {
-  return `ws:${transportConfig.url}` as TransportId;
+const createTransportKey = (transportConfig: TransportConfig): TransportKey => {
+  return `ws:${transportConfig.url}` as TransportKey;
 };
 
 /**
