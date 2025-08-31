@@ -283,7 +283,7 @@ export const createRefCountedResourceManager = <
     getConsumersForResource: (key) => {
       if (isDisposed) return [];
       const counts = consumerCounts.get(key);
-      return counts ? Array.from(counts.keys()) : [];
+      return counts ? counts.keys().toArray() : [];
     },
 
     hasConsumerAnyResource: (consumer) => {
