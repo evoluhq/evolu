@@ -600,7 +600,9 @@ const createEvoluInstance =
     evoluConfig: EvoluConfigWithFunctions,
   ): InternalEvoluInstance => {
     deps.console.enabled = evoluConfig.enableLogging ?? false;
-    deps.console.log("[evolu]", "createEvoluInstance");
+    deps.console.log("[evolu]", "createEvoluInstance", {
+      name: evoluConfig.name,
+    });
 
     const { onInit, indexes, ...config } = evoluConfig;
 

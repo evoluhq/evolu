@@ -4,6 +4,7 @@ import {
   binaryTimestampToTimestamp,
   createEvolu,
   createFormatTypeError,
+  createSharedOwner,
   FiniteNumber,
   getOrThrow,
   id,
@@ -17,6 +18,7 @@ import {
   NonEmptyString1000,
   nullOr,
   object,
+  OwnerSecret,
   SimpleName,
   SqliteBoolean,
   ValidMutationSizeError,
@@ -76,34 +78,9 @@ const Schema = {
   },
 };
 
-/**
- * The `createFormatTypeError` function creates a unified error formatter that
- * handles both Evolu Type's built-in errors and custom errors. It also lets us
- * override the default formatting for specific errors.
- *
- * If you prefer not to reuse built-in error formatters, you can write your own
- * `formatTypeError` function from scratch. See the commented-out example at
- * the end of this file.
- */
-const formatTypeError = createFormatTypeError<
-  ValidMutationSizeError | MinLengthError
->((error): string => {
-  switch (error.type) {
-    /**
-     * If schema types are used correctly (e.g., maxLength), this error should
-     * not occur. If it does, it indicates a developer mistake.
-     */
-    case "ValidMutationSize":
-      return "This is a developer error, it should not happen 🤨";
-    // Overrides a built-in error formatter.
-    case "MinLength":
-      return `Minimal length is: ${error.min}`;
-  }
-});
-
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   reloadUrl: "/docs/examples/react/nextjs",
-  name: getOrThrow(SimpleName.from("evolu-nextjs-example-v200825")),
+  name: SimpleName.fromOrThrow("evolu-nextjs-example-v200825"),
 
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "http://localhost:4000" }],
@@ -132,7 +109,7 @@ const evolu = createEvolu(evoluReactWebDeps)(Schema, {
     create("todoCategoryCreatedAt").on("todoCategory").column("createdAt"),
   ],
 
-  enableLogging: false,
+  enableLogging: true,
 });
 
 const useEvolu = createUseEvolu(evolu);
@@ -253,24 +230,30 @@ const Button: FC<{
 const Todos: FC = () => {
   const rows = useQuery(todosWithCategories);
 
+  const secret = new Uint8Array(16) as OwnerSecret;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const sharedOwner = createSharedOwner(secret);
+
+  // useOwner(sharedOwner)
+  // evolu.useOwner
+
   const { insert } = useEvolu();
 
   const handleAddTodoClick = () => {
     const title = window.prompt("What needs to be done?");
     if (title == null) return; // escape or cancel
 
-    const result = insert("todo", {
-      title,
-      // This object is automatically converted to a JSON string.
-      personJson: { name: "Joe", age: 32 },
-    });
-
-    // const secret = new Uint8Array(16) as OwnerSecret;
-    // console.log(secret);
-
-    // const sharedOwner = createSharedOwner(secret);
-    // // eslint-disable-next-line no-console
-    // console.log(sharedOwner);
+    const result = insert(
+      "todo",
+      {
+        title,
+        // This object is automatically converted to a JSON string.
+        personJson: { name: "Joe", age: 32 },
+      },
+      {
+        // ownerId: sharedOwner.id,
+      },
+    );
 
     // const result = insert(
     //   "todo",
@@ -599,6 +582,31 @@ const OwnerActions: FC = () => {
     </div>
   );
 };
+
+/**
+ * The `createFormatTypeError` function creates a unified error formatter that
+ * handles both Evolu Type's built-in errors and custom errors. It also lets us
+ * override the default formatting for specific errors.
+ *
+ * If you prefer not to reuse built-in error formatters, you can write your own
+ * `formatTypeError` function from scratch. See the commented-out example at
+ * the end of this file.
+ */
+const formatTypeError = createFormatTypeError<
+  ValidMutationSizeError | MinLengthError
+>((error): string => {
+  switch (error.type) {
+    /**
+     * If schema types are used correctly (e.g., maxLength), this error should
+     * not occur. If it does, it indicates a developer mistake.
+     */
+    case "ValidMutationSize":
+      return "This is a developer error, it should not happen 🤨";
+    // Overrides a built-in error formatter.
+    case "MinLength":
+      return `Minimal length is: ${error.min}`;
+  }
+});
 
 // // Note: We only need to specify the errors actually used in the app.
 // type AppErrors =

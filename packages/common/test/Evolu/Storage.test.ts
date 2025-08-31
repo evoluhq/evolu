@@ -144,8 +144,8 @@ const testTimestamps = async (timestamps: ReadonlyArray<BinaryTimestamp>) => {
 
     const fingerprintResult = deps.storage.fingerprint(
       testOwnerBinaryId,
-      getOrThrow(NonNegativeInt.from(i > 0 ? buckets.value[i - 1] : 0)),
-      getOrThrow(NonNegativeInt.from(buckets.value[i])),
+      NonNegativeInt.fromOrThrow(i > 0 ? buckets.value[i - 1] : 0),
+      NonNegativeInt.fromOrThrow(buckets.value[i]),
     );
     assert(fingerprintResult);
     expect(fingerprintResult).toEqual(bruteForceRangeFingerprint);
@@ -278,8 +278,8 @@ test("findLowerBound", async () => {
   }
 
   const ownerId = testOwnerBinaryId;
-  const begin = getOrThrow(NonNegativeInt.from(0));
-  const end = getOrThrow(NonNegativeInt.from(10));
+  const begin = NonNegativeInt.fromOrThrow(0);
+  const end = NonNegativeInt.fromOrThrow(10);
 
   const beforeAll = timestampToBinaryTimestamp(createTimestamp());
   expect(storage.findLowerBound(ownerId, begin, end, beforeAll)).toEqual(begin);

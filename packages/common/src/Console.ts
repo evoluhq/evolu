@@ -13,7 +13,7 @@
  * ### Example
  *
  * ```ts
- * deps.console.log("[db]", "send data message", protocolMessage);
+ * deps.console.log("[evolu]", "createEvoluInstance", { name });
  * ```
  *
  * **Tip**: In browser dev tools, you can filter logs by tag (e.g., `[db]`) to

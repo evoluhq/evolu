@@ -70,7 +70,7 @@ const DeviceSchema = {
 
 // Local-only instance for device settings (no sync)
 const deviceEvolu = createEvolu(evoluReactWebDeps)(DeviceSchema, {
-  name: getOrThrow(SimpleName.from("MyApp-Device")),
+  name: SimpleName.fromOrThrow("MyApp-Device"),
   transports: [], // No sync - stays local to device
 });
 ```

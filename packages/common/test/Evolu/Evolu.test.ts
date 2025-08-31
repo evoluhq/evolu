@@ -78,7 +78,7 @@ let instancesCount = 0;
 const setupEvoluTest = () => {
   const deps = mockDeps();
   const evolu = createEvolu(deps)(Schema, {
-    name: getOrThrow(SimpleName.from(`instance${instancesCount++}`)),
+    name: SimpleName.fromOrThrow(`instance${instancesCount++}`),
   });
   const dbWorker = deps.createDbWorker();
 
@@ -681,7 +681,7 @@ test("externalAppOwner should use provided owner", async () => {
   const externalAppOwner = createAppOwner(testOwnerSecret);
 
   createEvolu(deps)(Schema, {
-    name: getOrThrow(SimpleName.from(`instance${instancesCount++}`)),
+    name: SimpleName.fromOrThrow(`instance${instancesCount++}`),
     externalAppOwner,
   });
 
@@ -705,7 +705,7 @@ test("onInit callback should be called with correct parameters and can seed init
     isFirst: boolean;
   }> = [];
 
-  const name = getOrThrow(SimpleName.from(`instance${instancesCount++}`));
+  const name = SimpleName.fromOrThrow(`instance${instancesCount++}`);
 
   const evolu1 = createEvolu(deps)(Schema, {
     externalAppOwner,

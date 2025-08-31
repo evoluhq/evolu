@@ -1,6 +1,5 @@
 import * as Kysely from "kysely";
 import { ConsoleConfig } from "../Console.js";
-import { getOrThrow } from "../Result.js";
 import { SimpleName } from "../Type.js";
 import type { AppOwner } from "./Owner.js";
 
@@ -18,7 +17,7 @@ export interface Config extends ConsoleConfig {
    * ### Example
    *
    * ```ts
-   * // name: getOrThrow(SimpleName.from("MyApp"))
+   * // name: SimpleName.fromOrThrow("MyApp")
    * ```
    */
   readonly name: SimpleName;
@@ -115,13 +114,13 @@ export interface Config extends ConsoleConfig {
    *
    * // Local-only instance for device settings (no sync)
    * const deviceEvolu = createEvolu(evoluReactWebDeps)(DeviceSchema, {
-   *   name: getOrThrow(SimpleName.from("MyApp-Device")),
+   *   name: SimpleName.fromOrThrow("MyApp-Device"),
    *   transports: [], // No sync - stays local to device
    * });
    *
    * // Main synced instance for user data
    * const evolu = createEvolu(evoluReactWebDeps)(MainSchema, {
-   *   name: getOrThrow(SimpleName.from("MyApp")),
+   *   name: SimpleName.fromOrThrow("MyApp"),
    *   // Default transports for sync
    * });
    * ```
@@ -157,7 +156,7 @@ export type IndexesConfig = (
 ) => ReadonlyArray<Kysely.CreateIndexBuilder<any>>;
 
 export const defaultConfig: Config = {
-  name: getOrThrow(SimpleName.from("Evolu")),
+  name: SimpleName.fromOrThrow("Evolu"),
   transports: [{ type: "WebSocket", url: "wss://free.evoluhq.com" }],
   reloadUrl: "/",
   maxDrift: 5 * 60 * 1000,

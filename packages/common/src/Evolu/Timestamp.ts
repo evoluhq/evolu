@@ -1,9 +1,10 @@
 import { assert } from "../Assert.js";
+import { Brand } from "../Brand.js";
 import { createEqObject, eqNumber, eqString } from "../Eq.js";
 import { NanoIdLibDep } from "../NanoId.js";
 import { increment } from "../Number.js";
 import { Order, orderUint8Array } from "../Order.js";
-import { err, getOrThrow, ok, Result } from "../Result.js";
+import { err, ok, Result } from "../Result.js";
 import { TimeDep } from "../Time.js";
 import {
   brand,
@@ -13,7 +14,6 @@ import {
   regex,
   String,
 } from "../Type.js";
-import { Brand } from "../Brand.js";
 
 export interface TimestampConfig {
   /**
@@ -253,7 +253,7 @@ export const receiveTimestamp =
 /** BinaryTimestamp is a binary and sortable version of {@link Timestamp} for DB. */
 export type BinaryTimestamp = Uint8Array & Brand<"BinaryTimestamp">;
 
-export const binaryTimestampLength = getOrThrow(NonNegativeInt.from(16));
+export const binaryTimestampLength = NonNegativeInt.fromOrThrow(16);
 
 export const timestampToBinaryTimestamp = (
   timestamp: Timestamp,
