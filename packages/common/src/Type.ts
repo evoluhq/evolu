@@ -79,7 +79,7 @@ import type { Brand } from "./Brand.js";
 import { identity } from "./Function.js";
 import { NanoIdLibDep } from "./NanoId.js";
 import { isPlainObject } from "./Object.js";
-import { Err, err, Ok, ok, Result, trySync } from "./Result.js";
+import { Err, err, getOrThrow, Ok, ok, Result, trySync } from "./Result.js";
 import { safelyStringifyUnknownValue } from "./String.js";
 import type { Literal, Simplify, WidenLiteral } from "./Types.js";
 import { IntentionalNever } from "./Types.js";
@@ -111,6 +111,19 @@ export interface Type<
    * `from` is a typed alias of `fromUnknown`.
    */
   readonly from: (value: Input) => Result<T, ParentError | Error>;
+
+  /**
+   * Creates `T` from an `Input` value, throwing an error if validation fails.
+   *
+   * This is a convenience method that combines `from` with `getOrThrow`.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const duration = Duration.fromOrThrow(minutes(1) + seconds(20));
+   * ```
+   */
+  readonly fromOrThrow: (value: Input) => T;
 
   /**
    * Creates `T` from an unknown value.
@@ -317,6 +330,7 @@ const createType = <
     | "name"
     | "is"
     | "from"
+    | "fromOrThrow"
     | typeof EvoluTypeSymbol
     | "Type"
     | "Input"
@@ -330,6 +344,7 @@ const createType = <
   name,
   is: (value: unknown): value is T => definition.fromUnknown(value).ok,
   from: definition.fromUnknown,
+  fromOrThrow: (value: Input): T => getOrThrow(definition.fromUnknown(value)),
   [EvoluTypeSymbol]: true,
   Type: undefined as unknown as T,
   Input: undefined as unknown as Input,

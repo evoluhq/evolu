@@ -2,7 +2,6 @@ import { NonEmptyReadonlyArray } from "../Array.js";
 import { assert, assertNonEmptyReadonlyArray } from "../Assert.js";
 import { ConsoleDep } from "../Console.js";
 import { EncryptionKey } from "../Crypto.js";
-import { getOrThrow } from "../Result.js";
 import { brand, PositiveInt, String } from "../Type.js";
 import { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
 import { TransportConfig } from "./Config.js";
@@ -218,7 +217,7 @@ export const createSync =
             const currentRefCount = ownerIdRefCounts.get(owner.id) ?? 0;
             ownerIdRefCounts.set(
               owner.id,
-              getOrThrow(PositiveInt.from(currentRefCount + 1)),
+              PositiveInt.fromOrThrow(currentRefCount + 1),
             );
           }
         } else {
@@ -242,7 +241,7 @@ export const createSync =
             } else {
               ownerIdRefCounts.set(
                 owner.id,
-                getOrThrow(PositiveInt.from(currentRefCount - 1)),
+                PositiveInt.fromOrThrow(currentRefCount - 1),
               );
             }
           }

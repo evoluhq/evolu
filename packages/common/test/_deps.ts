@@ -155,7 +155,7 @@ export const testCreateSqliteDriver: CreateSqliteDriver = () => {
   return Promise.resolve(driver);
 };
 
-export const testSimpleName = getOrThrow(SimpleName.from("Test"));
+export const testSimpleName = SimpleName.fromOrThrow("Test");
 
 export const testCreateSqlite = async (): Promise<Sqlite> => {
   const sqlite = await createSqlite({
