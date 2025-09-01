@@ -94,6 +94,27 @@ export interface ResourceManagerConfig<
    * resource churn during rapid add/remove cycles. Defaults to 100ms.
    */
   readonly disposalDelay?: number;
+
+  /**
+   * Called when a consumer is added to a resource for the first time. This
+   * happens when the consumer's reference count goes from 0 to 1 for this
+   * resource.
+   */
+  readonly onConsumerAdded?: (
+    consumer: TConsumer,
+    resourceKey: TResourceKey,
+    resource: TResource,
+  ) => void;
+
+  /**
+   * Called when a consumer is completely removed from a resource. This happens
+   * when the consumer's reference count goes from 1 to 0 for this resource.
+   */
+  readonly onConsumerRemoved?: (
+    consumer: TConsumer,
+    resourceKey: TResourceKey,
+    resource: TResource,
+  ) => void;
 }
 
 /**
@@ -231,7 +252,16 @@ export const createRefCountedResourceManager = <
         }
 
         const currentCount = counts.get(consumerId) ?? 0;
-        counts.set(consumerId, PositiveInt.fromOrThrow(currentCount + 1));
+        const newCount = currentCount + 1;
+        counts.set(consumerId, PositiveInt.fromOrThrow(newCount));
+
+        // Call onConsumerAdded callback only when consumer is added for the first time (0 -> 1)
+        if (currentCount === 0 && config.onConsumerAdded) {
+          const resource = resources.get(resourceKey);
+          if (resource) {
+            config.onConsumerAdded(consumer, resourceKey, resource);
+          }
+        }
       }
     },
 
@@ -258,6 +288,14 @@ export const createRefCountedResourceManager = <
 
         if (currentCount === 1) {
           counts.delete(consumerId);
+
+          // Call onConsumerRemoved callback only when consumer is completely removed (1 -> 0)
+          if (config.onConsumerRemoved) {
+            const resource = resources.get(key);
+            if (resource) {
+              config.onConsumerRemoved(consumer, key, resource);
+            }
+          }
 
           if (counts.size === 0) {
             consumerCounts.delete(key);

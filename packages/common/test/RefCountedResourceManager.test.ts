@@ -84,6 +84,27 @@ describe("RefCountedResourceManager", () => {
     ]);
   });
 
+  test("deduplicates resources - multiple consumers get same resource instance", () => {
+    const manager = createTestManager();
+
+    // Add two consumers to the same resource config
+    manager.addConsumer(consumer1, [resourceConfig1]);
+    manager.addConsumer(consumer2, [resourceConfig1]);
+
+    // They should get the exact same resource instance
+    const resource1 = manager.getResource(resourceConfig1.key);
+    const resource2 = manager.getResource(resourceConfig1.key);
+
+    expect(resource1).toBe(resource2);
+    expect(resource1).not.toBeNull();
+
+    // Verify both consumers are tracked for the same resource
+    expect(manager.getConsumersForResource(resourceConfig1.key)).toEqual([
+      "consumer1",
+      "consumer2",
+    ]);
+  });
+
   test("increments reference counts for same consumer", () => {
     const manager = createTestManager();
 
@@ -142,7 +163,6 @@ describe("RefCountedResourceManager", () => {
     // Wait for disposal delay
     await wait(100);
 
-    // Resource should be disposed and removed
     expect(manager.getResource(resourceConfig1.key)).toBeNull();
     expect(resource?.disposed).toBe(true);
   });
@@ -333,6 +353,73 @@ describe("RefCountedResourceManager", () => {
     // removeConsumer should return ok (no-op)
     const result = manager.removeConsumer(consumer1, [resourceConfig1]);
     expect(result.ok).toBe(true);
+  });
+
+  test("calls onConsumerAdded and onConsumerRemoved callbacks", () => {
+    const addedCalls: Array<{
+      consumer: Consumer;
+      resourceKey: ResourceKey;
+      resource: Resource;
+    }> = [];
+    const removedCalls: Array<{
+      consumer: Consumer;
+      resourceKey: ResourceKey;
+      resource: Resource;
+    }> = [];
+
+    const manager = createRefCountedResourceManager<
+      Resource,
+      ResourceKey,
+      ResourceConfig,
+      Consumer,
+      ConsumerId
+    >({
+      createResource: (config) => {
+        let disposed = false;
+        return {
+          id: config.key,
+          get disposed() {
+            return disposed;
+          },
+          [Symbol.dispose]() {
+            disposed = true;
+          },
+        };
+      },
+      getResourceKey: (config) => config.key,
+      getConsumerId: (consumer) => consumer.id,
+      disposalDelay: 10,
+      onConsumerAdded: (consumer, resourceKey, resource) => {
+        addedCalls.push({ consumer, resourceKey, resource });
+      },
+      onConsumerRemoved: (consumer, resourceKey, resource) => {
+        removedCalls.push({ consumer, resourceKey, resource });
+      },
+    });
+
+    // Add consumer - should call onConsumerAdded
+    manager.addConsumer(consumer1, [resourceConfig1]);
+    expect(addedCalls).toHaveLength(1);
+    expect(addedCalls[0].consumer).toBe(consumer1);
+    expect(addedCalls[0].resourceKey).toBe(resourceConfig1.key);
+    expect(removedCalls).toHaveLength(0);
+
+    // Add same consumer again - should NOT call onConsumerAdded (just increment)
+    manager.addConsumer(consumer1, [resourceConfig1]);
+    expect(addedCalls).toHaveLength(1); // Still 1, not 2
+    expect(removedCalls).toHaveLength(0);
+
+    // Remove consumer - should NOT call onConsumerRemoved (just decrement)
+    manager.removeConsumer(consumer1, [resourceConfig1]);
+    expect(addedCalls).toHaveLength(1);
+    expect(removedCalls).toHaveLength(0); // Still 0
+
+    // Remove consumer again - should call onConsumerRemoved (completely removed)
+    manager.removeConsumer(consumer1, [resourceConfig1]);
+    expect(addedCalls).toHaveLength(1);
+    expect(removedCalls).toHaveLength(1);
+    expect(removedCalls[0].consumer).toBe(consumer1);
+    expect(removedCalls[0].resourceKey).toBe(resourceConfig1.key);
   });
 
   test("multiple dispose calls are safe", () => {
