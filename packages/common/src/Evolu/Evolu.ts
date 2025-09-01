@@ -21,7 +21,7 @@ import {
 } from "../Type.js";
 import { IntentionalNever } from "../Types.js";
 import { Config, defaultConfig } from "./Config.js";
-import { CreateDbWorkerDep, MutationChange } from "./Db.js";
+import { CreateDbWorkerDep } from "./Db.js";
 import { applyPatches } from "./Diff.js";
 import { AppOwner } from "./Owner.js";
 import { CreateAppStateDep, FlushSyncDep } from "./Platform.js";
@@ -46,6 +46,7 @@ import {
   insertable,
   kysely,
   Mutation,
+  MutationChange,
   MutationKind,
   MutationMapping,
   MutationOptions,

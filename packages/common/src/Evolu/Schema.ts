@@ -39,12 +39,12 @@ import {
   TypeError,
 } from "../Type.js";
 import { Simplify } from "../Types.js";
+import { IndexesConfig } from "./Config.js";
 import { AppOwner, OwnerId } from "./Owner.js";
 import { maxProtocolMessageRangesSize } from "./Protocol.js";
 import { Query, Row } from "./Query.js";
-import { CrdtMessage } from "./Storage.js";
+import { CrdtMessage, DbChange } from "./Storage.js";
 import { BinaryTimestamp } from "./Timestamp.js";
-import { IndexesConfig } from "./Config.js";
 
 /**
  * Defines the schema of an Evolu database.
@@ -300,6 +300,11 @@ export interface MutationOptions {
    * `onlyValidate: true`.
    */
   readonly onlyValidate?: boolean;
+}
+
+export interface MutationChange extends DbChange {
+  /** Owner of the change. If undefined, the change belongs to the AppOwner. */
+  readonly ownerId?: OwnerId | undefined;
 }
 
 /**

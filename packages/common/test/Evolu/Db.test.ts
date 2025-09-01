@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import { NonEmptyReadonlyArray } from "../../src/Array.js";
 import { CallbackId } from "../../src/Callbacks.js";
 import { createConsole } from "../../src/Console.js";
 import {
@@ -7,12 +8,12 @@ import {
   DbWorkerOutput,
   DbWorkerPlatformDeps,
 } from "../../src/Evolu/Db.js";
-import { DbSchema } from "../../src/Evolu/Schema.js";
+import { DbSchema, MutationChange } from "../../src/Evolu/Schema.js";
 import { DbChange } from "../../src/Evolu/Storage.js";
 import { wait } from "../../src/Promise.js";
 import { getOrThrow } from "../../src/Result.js";
 import { createSqlite, sql, Sqlite } from "../../src/Sqlite.js";
-import { idToBinaryId } from "../../src/Type.js";
+import { Id, idToBinaryId } from "../../src/Type.js";
 import {
   testCreateDummyWebSocket,
   testCreateId,
@@ -91,6 +92,86 @@ const setupInitializedDbWorker = async (
   return [dbWorkerOutput, sqlite, db];
 };
 
+// Helper for posting mutations with common defaults
+const postMutation = (
+  db: DbWorker,
+  changes: NonEmptyReadonlyArray<MutationChange>,
+  tabId = testCreateId(),
+): void => {
+  db.postMessage({
+    type: "mutate",
+    tabId,
+    changes,
+    onCompleteIds: [],
+    subscribedQueries: [],
+  });
+};
+
+// Helper for creating a basic test change
+const createTestChange = (
+  id = testCreateId(),
+  table = "testTable",
+  values: Record<string, string | number | null> = { name: "test" },
+): DbChange => ({ id, table, values });
+
+// Helper for getting record count from history table
+const getHistoryCount = (
+  sqlite: Sqlite,
+  table: string,
+  recordId: Id,
+  column: string,
+): number => {
+  const result = getOrThrow(
+    sqlite.exec<{ count: number }>(sql`
+      select count(*) as count
+      from evolu_history
+      where
+        "table" = ${table}
+        and "id" = ${idToBinaryId(recordId)}
+        and "column" = ${column};
+    `),
+  );
+  return result.rows[0].count;
+};
+
+// Helper for getting latest value from app table
+const getLatestValue = (
+  sqlite: Sqlite,
+  table: string,
+  recordId: Id,
+  column: string,
+): string => {
+  const result = getOrThrow(
+    sqlite.exec<Record<string, string>>(sql`
+      select ${sql.identifier(column)}
+      from ${sql.identifier(table)}
+      where id = ${recordId};
+    `),
+  );
+  return result.rows[0][column];
+};
+
+// Helper for getting history values in timestamp order
+const getHistoryValues = (
+  sqlite: Sqlite,
+  table: string,
+  recordId: Id,
+  column: string,
+): Array<string> => {
+  const result = getOrThrow(
+    sqlite.exec<{ value: string }>(sql`
+      select value
+      from evolu_history
+      where
+        "table" = ${table}
+        and "id" = ${idToBinaryId(recordId)}
+        and "column" = ${column}
+      order by timestamp;
+    `),
+  );
+  return result.rows.map((row) => row.value);
+};
+
 test("createDbWorker initializes correctly", async () => {
   const [dbWorkerOutput, sqlite] = await setupInitializedDbWorker();
 
@@ -101,19 +182,7 @@ test("createDbWorker initializes correctly", async () => {
 test("mutations", async () => {
   const [dbWorkerOutput, sqlite, db] = await setupInitializedDbWorker();
 
-  db.postMessage({
-    type: "mutate",
-    tabId: testCreateId(),
-    changes: [
-      {
-        id: testCreateId(),
-        table: "testTable",
-        values: { name: "test" },
-      },
-    ],
-    onCompleteIds: [],
-    subscribedQueries: [],
-  });
+  postMutation(db, [createTestChange()]);
 
   expect(dbWorkerOutput).toMatchSnapshot();
   expect(getDbSnapshot({ sqlite }).tables).toMatchSnapshot();
@@ -122,19 +191,7 @@ test("mutations", async () => {
 test("mutate before init", async () => {
   const [dbWorkerOutput, sqlite] = await setupInitializedDbWorker((db) => {
     // This runs BEFORE init
-    db.postMessage({
-      type: "mutate",
-      tabId: testCreateId(),
-      changes: [
-        {
-          id: testCreateId(),
-          table: "_testTable",
-          values: { name: "test" },
-        },
-      ],
-      onCompleteIds: [],
-      subscribedQueries: [],
-    });
+    postMutation(db, [createTestChange(testCreateId(), "_testTable")]);
   });
 
   expect(dbWorkerOutput).toMatchSnapshot();
@@ -144,38 +201,23 @@ test("mutate before init", async () => {
 test("local mutation", async () => {
   const [dbWorkerOutput, sqlite, db] = await setupInitializedDbWorker();
 
-  const change: DbChange = {
-    id: testCreateId(),
-    table: "_testTable",
-    values: { name: "test" },
-  };
+  const change = createTestChange(testCreateId(), "_testTable");
 
-  db.postMessage({
-    type: "mutate",
-    tabId: testCreateId(),
-    changes: [change],
-    onCompleteIds: [],
-    subscribedQueries: [],
-  });
+  postMutation(db, [change]);
 
   expect(dbWorkerOutput).toMatchSnapshot();
   expect(getDbSnapshot({ sqlite }).tables).toMatchSnapshot();
 
-  db.postMessage({
-    type: "mutate",
-    tabId: testCreateId(),
-    changes: [
-      {
-        ...change,
-        values: {
-          ...change.values,
-          isDeleted: 1,
-        },
+  // Test deletion
+  postMutation(db, [
+    {
+      ...change,
+      values: {
+        ...change.values,
+        isDeleted: 1,
       },
-    ],
-    onCompleteIds: [],
-    subscribedQueries: [],
-  });
+    },
+  ]);
 
   expect(getDbSnapshot({ sqlite }).tables).toMatchSnapshot();
 });
@@ -232,59 +274,24 @@ test("timestamp ordering - newer mutations overwrite older ones", async () => {
   const recordId = testCreateId();
 
   // Create first mutation
-  db.postMessage({
-    type: "mutate",
-    tabId: testCreateId(),
-    changes: [
-      {
-        id: recordId,
-        table: "testTable",
-        values: { name: "first_value" },
-      },
-    ],
-    onCompleteIds: [],
-    subscribedQueries: [],
-  });
-
+  postMutation(db, [
+    createTestChange(recordId, "testTable", { name: "first_value" }),
+  ]);
   await wait(10);
 
   // Create second mutation on same record (will have newer timestamp)
-  db.postMessage({
-    type: "mutate",
-    tabId: testCreateId(),
-    changes: [
-      {
-        id: recordId,
-        table: "testTable",
-        values: { name: "second_value" },
-      },
-    ],
-    onCompleteIds: [],
-    subscribedQueries: [],
-  });
-
+  postMutation(db, [
+    createTestChange(recordId, "testTable", { name: "second_value" }),
+  ]);
   await wait(10);
 
   // Verify the app table has the latest value
-  const finalResult = getOrThrow(
-    sqlite.exec<{ name: string }>(sql`
-      select name from testTable where id = ${recordId};
-    `),
+  expect(getLatestValue(sqlite, "testTable", recordId, "name")).toBe(
+    "second_value",
   );
-  expect(finalResult.rows[0].name).toBe("second_value");
 
   // Verify both mutations are stored in history
-  const historyCount = getOrThrow(
-    sqlite.exec<{ count: number }>(sql`
-      select count(*) as count
-      from evolu_history
-      where
-        "table" = 'testTable'
-        and "id" = ${idToBinaryId(recordId)}
-        and "column" = 'name';
-    `),
-  );
-  expect(historyCount.rows[0].count).toBe(2);
+  expect(getHistoryCount(sqlite, "testTable", recordId, "name")).toBe(2);
 });
 
 test("timestamp ordering - multiple columns update independently", async () => {
@@ -293,74 +300,29 @@ test("timestamp ordering - multiple columns update independently", async () => {
   const recordId = testCreateId();
 
   // Create first mutation that sets the name
-  db.postMessage({
-    type: "mutate",
-    tabId: testCreateId(),
-    changes: [
-      {
-        id: recordId,
-        table: "testTable",
-        values: { name: "original_name" },
-      },
-    ],
-    onCompleteIds: [],
-    subscribedQueries: [],
-  });
-
+  postMutation(db, [
+    createTestChange(recordId, "testTable", { name: "original_name" }),
+  ]);
   await wait(10);
 
   // Update the same record with a different value for name
-  db.postMessage({
-    type: "mutate",
-    tabId: testCreateId(),
-    changes: [
-      {
-        id: recordId,
-        table: "testTable",
-        values: { name: "updated_name" },
-      },
-    ],
-    onCompleteIds: [],
-    subscribedQueries: [],
-  });
-
+  postMutation(db, [
+    createTestChange(recordId, "testTable", { name: "updated_name" }),
+  ]);
   await wait(10);
 
   // Verify the app table has the latest name value
-  const finalResult = getOrThrow(
-    sqlite.exec<{ name: string }>(sql`
-      select name from testTable where id = ${recordId};
-    `),
+  expect(getLatestValue(sqlite, "testTable", recordId, "name")).toBe(
+    "updated_name",
   );
-  expect(finalResult.rows[0].name).toBe("updated_name");
 
   // Verify we have two entries in history for the name column
-  const nameHistoryCount = getOrThrow(
-    sqlite.exec<{ count: number }>(sql`
-      select count(*) as count
-      from evolu_history
-      where
-        "table" = 'testTable'
-        and "id" = ${idToBinaryId(recordId)}
-        and "column" = 'name';
-    `),
-  );
-  expect(nameHistoryCount.rows[0].count).toBe(2);
+  expect(getHistoryCount(sqlite, "testTable", recordId, "name")).toBe(2);
 
   // Verify the values are stored in chronological order in history
-  const historyValues = getOrThrow(
-    sqlite.exec<{ value: string }>(sql`
-      select value
-      from evolu_history
-      where
-        "table" = 'testTable'
-        and "id" = ${idToBinaryId(recordId)}
-        and "column" = 'name'
-      order by timestamp;
-    `),
-  );
-  expect(historyValues.rows[0].value).toBe("original_name");
-  expect(historyValues.rows[1].value).toBe("updated_name");
+  const historyValues = getHistoryValues(sqlite, "testTable", recordId, "name");
+  expect(historyValues[0]).toBe("original_name");
+  expect(historyValues[1]).toBe("updated_name");
 });
 
 test("timestamp ordering - concurrent mutations on different records", async () => {
@@ -370,43 +332,19 @@ test("timestamp ordering - concurrent mutations on different records", async () 
   const recordId2 = testCreateId();
 
   // Create mutations on different records in quick succession
-  db.postMessage({
-    type: "mutate",
-    tabId: testCreateId(),
-    changes: [
-      {
-        id: recordId1,
-        table: "testTable",
-        values: { name: "record1_value" },
-      },
-      {
-        id: recordId2,
-        table: "testTable",
-        values: { name: "record2_value" },
-      },
-    ],
-    onCompleteIds: [],
-    subscribedQueries: [],
-  });
-
+  postMutation(db, [
+    createTestChange(recordId1, "testTable", { name: "record1_value" }),
+    createTestChange(recordId2, "testTable", { name: "record2_value" }),
+  ]);
   await wait(10);
 
   // Verify both records exist with correct values
-  const allRecords = getOrThrow(
-    sqlite.exec<{ id: string; name: string }>(sql`
-      select id, name
-      from testTable
-      where id in (${recordId1}, ${recordId2})
-      order by id;
-    `),
+  expect(getLatestValue(sqlite, "testTable", recordId1, "name")).toBe(
+    "record1_value",
   );
-  expect(allRecords.rows).toHaveLength(2);
-
-  const record1 = allRecords.rows.find((r) => r.id === recordId1);
-  const record2 = allRecords.rows.find((r) => r.id === recordId2);
-
-  expect(record1?.name).toBe("record1_value");
-  expect(record2?.name).toBe("record2_value");
+  expect(getLatestValue(sqlite, "testTable", recordId2, "name")).toBe(
+    "record2_value",
+  );
 
   // Verify both records have entries in history
   const totalHistoryCount = getOrThrow(
@@ -423,99 +361,31 @@ test("timestamp ordering - verify CRDT last-write-wins behavior", async () => {
   const [, sqlite, db] = await setupInitializedDbWorker();
 
   const recordId = testCreateId();
+  const mutations = ["initial", "second", "third", "final"];
 
   // Create initial value
-  db.postMessage({
-    type: "mutate",
-    tabId: testCreateId(),
-    changes: [
-      {
-        id: recordId,
-        table: "testTable",
-        values: { name: "initial" },
-      },
-    ],
-    onCompleteIds: [],
-    subscribedQueries: [],
-  });
-
+  postMutation(db, [
+    createTestChange(recordId, "testTable", { name: mutations[0] }),
+  ]);
   await wait(10);
 
   // Update multiple times rapidly to ensure different timestamps
-  db.postMessage({
-    type: "mutate",
-    tabId: testCreateId(),
-    changes: [
-      {
-        id: recordId,
-        table: "testTable",
-        values: { name: "second" },
-      },
-    ],
-    onCompleteIds: [],
-    subscribedQueries: [],
-  });
-
-  await wait(5);
-
-  db.postMessage({
-    type: "mutate",
-    tabId: testCreateId(),
-    changes: [
-      {
-        id: recordId,
-        table: "testTable",
-        values: { name: "third" },
-      },
-    ],
-    onCompleteIds: [],
-    subscribedQueries: [],
-  });
-
-  await wait(5);
-
-  db.postMessage({
-    type: "mutate",
-    tabId: testCreateId(),
-    changes: [
-      {
-        id: recordId,
-        table: "testTable",
-        values: { name: "final" },
-      },
-    ],
-    onCompleteIds: [],
-    subscribedQueries: [],
-  });
+  for (let i = 1; i < mutations.length; i++) {
+    postMutation(db, [
+      createTestChange(recordId, "testTable", { name: mutations[i] }),
+    ]);
+    await wait(5);
+  }
 
   await wait(10);
 
   // Verify app table has the final value (last write wins)
-  const appTableResult = getOrThrow(
-    sqlite.exec<{ name: string }>(sql`
-      select name from testTable where id = ${recordId};
-    `),
-  );
-  expect(appTableResult.rows[0].name).toBe("final");
+  expect(getLatestValue(sqlite, "testTable", recordId, "name")).toBe("final");
 
   // Verify all mutations are preserved in history in timestamp order
-  const historyResults = getOrThrow(
-    sqlite.exec<{ value: string }>(sql`
-      select value
-      from evolu_history
-      where
-        "table" = 'testTable'
-        and "id" = ${idToBinaryId(recordId)}
-        and "column" = 'name'
-      order by timestamp;
-    `),
-  );
-
-  expect(historyResults.rows).toHaveLength(4);
-  expect(historyResults.rows[0].value).toBe("initial");
-  expect(historyResults.rows[1].value).toBe("second");
-  expect(historyResults.rows[2].value).toBe("third");
-  expect(historyResults.rows[3].value).toBe("final");
+  const historyValues = getHistoryValues(sqlite, "testTable", recordId, "name");
+  expect(historyValues).toHaveLength(4);
+  expect(historyValues).toEqual(mutations);
 
   // Verify that the app table always reflects the value with the highest timestamp
   const timestampResults = getOrThrow(
