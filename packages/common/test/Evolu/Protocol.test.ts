@@ -505,7 +505,9 @@ describe("createProtocolMessageBuffer", () => {
     const buffer = createProtocolMessageBuffer(testOwner.id, {
       type: "initiator",
     });
-    expect(() => buffer.unwrap()).not.toThrow();
+    expect(buffer.unwrap().join()).toMatchInlineSnapshot(
+      `"0,26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56,0,0,0"`,
+    );
   });
 
   it("should allow single range with InfiniteUpperBound", () => {
