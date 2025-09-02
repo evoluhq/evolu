@@ -149,13 +149,13 @@ export const createSqlite =
         exec: (query) =>
           trySync(
             () => {
-              deps.console?.log("[sql]", query);
+              deps.console?.log("[sql]", { query });
 
               const result = maybeLogSqliteQueryExecutionTime(query, () =>
                 driver.exec(query, isSqlMutation(query.sql)),
               );
 
-              deps.console?.log("[sql]", result);
+              deps.console?.log("[sql]", { result });
 
               return result as IntentionalNever;
             },

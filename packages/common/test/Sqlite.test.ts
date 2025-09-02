@@ -55,15 +55,19 @@ test("transaction fails and rolls back on SQL error", async () => {
       [
         "[sql]",
         {
-          "parameters": [],
-          "sql": "create table a (data);",
+          "query": {
+            "parameters": [],
+            "sql": "create table a (data);",
+          },
         },
       ],
       [
         "[sql]",
         {
-          "changes": 0,
-          "rows": [],
+          "result": {
+            "changes": 0,
+            "rows": [],
+          },
         },
       ],
       [
@@ -72,10 +76,12 @@ test("transaction fails and rolls back on SQL error", async () => {
       [
         "[sql]",
         {
-          "parameters": [
-            "foo",
-          ],
-          "sql": "insert into notexisting (data) values (?);",
+          "query": {
+            "parameters": [
+              "foo",
+            ],
+            "sql": "insert into notexisting (data) values (?);",
+          },
         },
       ],
       [
@@ -100,15 +106,19 @@ test("transaction fails and rolls back on callback error", async () => {
       [
         "[sql]",
         {
-          "parameters": [],
-          "sql": "create table a (data);",
+          "query": {
+            "parameters": [],
+            "sql": "create table a (data);",
+          },
         },
       ],
       [
         "[sql]",
         {
-          "changes": 0,
-          "rows": [],
+          "result": {
+            "changes": 0,
+            "rows": [],
+          },
         },
       ],
       [
