@@ -1,10 +1,10 @@
-import { createConsole } from "@evolu/common";
+import { createConsoleWithTime } from "@evolu/common";
 import { createNodeJsRelay } from "@evolu/nodejs";
 import { mkdirSync } from "fs";
 import { once } from "node:events";
 
 const deps = {
-  console: createConsole(),
+  console: createConsoleWithTime(),
 };
 
 // Ensure the database is created in a predictable location for Docker.
@@ -13,7 +13,7 @@ process.chdir("data");
 
 const relay = await createNodeJsRelay(deps)({
   port: 4000,
-  enableLogging: false,
+  enableLogging: true,
 });
 
 deps.console.log("Relay server started on port 4000");
