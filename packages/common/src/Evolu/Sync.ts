@@ -34,6 +34,7 @@ import {
 import {
   applyProtocolMessageAsClient,
   createProtocolMessageForSync,
+  createProtocolMessageForUnsubscribe,
   createProtocolMessageFromCrdtMessages,
   decryptAndDecodeDbChange,
   encodeAndEncryptDbChange,
@@ -169,6 +170,11 @@ export const createSync =
     const createResource = (transportConfig: TransportConfig): WebSocket => {
       const transportKey = createTransportKey(transportConfig);
 
+      deps.console.log("[sync]", "createWebSocket", {
+        transportKey,
+        url: transportConfig.url,
+      });
+
       return deps.createWebSocket(transportConfig.url, {
         binaryType: "arraybuffer",
 
@@ -186,8 +192,23 @@ export const createSync =
               ownerId,
               SubscriptionFlags.Subscribe,
             );
-            if (message) webSocket.send(message);
+            if (!message) continue;
+            deps.console.log("[sync]", "send", { message });
+            webSocket.send(message);
           }
+        },
+
+        onClose: (event) => {
+          deps.console.log("[sync]", "onClose", {
+            transportKey,
+            code: event.code,
+            reason: event.reason,
+            wasClean: event.wasClean,
+          });
+        },
+
+        onError: (error) => {
+          deps.console.warn("[sync]", "onError", { transportKey, error });
         },
 
         onMessage: (data: string | ArrayBuffer | Blob) => {
@@ -214,7 +235,17 @@ export const createSync =
             return;
           }
 
-          if (message.value) webSocket.send(message.value);
+          switch (message.value.type) {
+            case "response":
+              webSocket.send(message.value.message);
+              break;
+            case "no-response":
+              // Sync complete, no response needed
+              break;
+            case "broadcast":
+              // This was a broadcast message, don't affect sync counter
+              break;
+          }
         },
       });
     };
@@ -230,9 +261,33 @@ export const createSync =
       getResourceKey: createTransportKey,
       getConsumerId: (owner) => owner.id,
       disposalDelay: config.disposalDelayMs ?? 100,
+
+      onConsumerAdded: (owner, webSocket) => {
+        deps.console.log("[sync]", "onConsumerAdded", {
+          ownerId: owner.id,
+          isOpen: webSocket.isOpen(),
+        });
+
+        // The onOpen handler will sync it.
+        if (!webSocket.isOpen()) return;
+        const message = createProtocolMessageForSync({ storage })(
+          owner.id,
+          SubscriptionFlags.Subscribe,
+        );
+        if (message) webSocket.send(message);
+      },
+
+      onConsumerRemoved: (owner, webSocket) => {
+        deps.console.log("[sync]", "onConsumerRemoved", {
+          ownerId: owner.id,
+          isOpen: webSocket.isOpen(),
+        });
+
+        const message = createProtocolMessageForUnsubscribe(owner.id);
+        webSocket.send(message);
+      },
     });
 
-    // Create sync object first so handlers can reference it
     const sync: Sync = {
       useOwner: (use, owner) => {
         if (isDisposed) {
@@ -263,6 +318,8 @@ export const createSync =
       },
 
       applyChanges: (changes) => {
+        deps.console.log("[sync]", "applyChanges", { changes });
+
         let clockTimestamp = deps.clock.get();
         const ownerMessages = new Map<OwnerId, NonEmptyArray<CrdtMessage>>();
 
@@ -304,9 +361,9 @@ export const createSync =
             const webSocket = transports.getResource(transportKey);
             if (!webSocket) continue;
 
-            const result = webSocket.send(message);
-            if (result.ok) {
+            if (webSocket.isOpen()) {
               deps.console.log("[sync]", "send", { transportKey, message });
+              webSocket.send(message);
             }
           }
         }
