@@ -3,6 +3,7 @@ import { assert, assertNonEmptyArray } from "../Assert.js";
 import { createCallbacks } from "../Callbacks.js";
 import { ConsoleDep } from "../Console.js";
 import { SymmetricCryptoDecryptError } from "../Crypto.js";
+import { eqArrayNumber } from "../Eq.js";
 import { TransferableError } from "../Error.js";
 import { exhaustiveCheck } from "../Function.js";
 import { NanoIdLibDep } from "../NanoId.js";
@@ -59,6 +60,7 @@ import {
 import { DbChange } from "./Storage.js";
 import { initialSyncState, SyncOwner, SyncState } from "./Sync.js";
 import { TimestampError } from "./Timestamp.js";
+import { pack } from "msgpackr";
 
 export interface Evolu<S extends EvoluSchema = EvoluSchema> {
   /**
@@ -738,6 +740,8 @@ const createEvoluInstance =
       [MutationChange | null, MutationOptions["onComplete"] | undefined]
     > = [];
 
+    const useOwnerMicrotaskQueue: Array<[SyncOwner, boolean, Uint8Array]> = [];
+
     const createMutation =
       <Kind extends MutationKind>(kind: Kind) =>
       <TableName extends keyof typeof schema>(
@@ -964,10 +968,54 @@ const createEvoluInstance =
       },
 
       useOwner: (owner) => {
-        dbWorker.postMessage({ type: "useOwner", owner, use: true });
+        const scheduleOwnerQueueProcessing = () => {
+          if (useOwnerMicrotaskQueue.length !== 1) return;
+          queueMicrotask(() => {
+            const queue = [...useOwnerMicrotaskQueue];
+            useOwnerMicrotaskQueue.length = 0;
+
+            const result: Array<[SyncOwner, boolean, Uint8Array]> = [];
+            const skipIndices = new Set<number>();
+
+            for (let i = 0; i < queue.length; i++) {
+              if (skipIndices.has(i)) continue;
+
+              const [currentOwner, currentUse, currentOwnerSerialized] =
+                queue[i];
+
+              // Look for opposite action with same owner
+              for (let j = i + 1; j < queue.length; j++) {
+                if (skipIndices.has(j)) continue;
+
+                const [, otherUse, otherOwnerSerialized] = queue[j];
+
+                if (
+                  currentUse !== otherUse &&
+                  eqArrayNumber(currentOwnerSerialized, otherOwnerSerialized)
+                ) {
+                  // Found cancel-out pair, skip both
+                  skipIndices.add(i).add(j);
+                  break;
+                }
+              }
+
+              if (!skipIndices.has(i)) {
+                result.push([currentOwner, currentUse, currentOwnerSerialized]);
+              }
+            }
+
+            for (const [owner, use] of result) {
+              dbWorker.postMessage({ type: "useOwner", owner, use });
+            }
+          });
+        };
+
+        useOwnerMicrotaskQueue.push([owner, true, pack(owner)]);
+        scheduleOwnerQueueProcessing();
 
         const unuse = () => {
-          dbWorker.postMessage({ type: "useOwner", owner, use: false });
+          useOwnerMicrotaskQueue.push([owner, false, pack(owner)]);
+          scheduleOwnerQueueProcessing();
         };
 
         return unuse;

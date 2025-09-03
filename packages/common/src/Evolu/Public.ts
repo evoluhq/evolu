@@ -15,6 +15,7 @@ export type {
   NetworkError,
   PaymentRequiredError,
   ServerError,
+  SyncOwner,
   SyncState,
   SyncStateInitial,
   SyncStateIsNotSynced,

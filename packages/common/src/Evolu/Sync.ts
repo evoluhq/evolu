@@ -94,8 +94,8 @@ export interface SyncDep {
 }
 
 /**
- * Internal representation of an owner for sync operations. This is a unified
- * interface that abstracts over the specific owner types ({@link ShardOwner},
+ * Represents an owner for sync operations. This is a unified interface that
+ * abstracts over the specific owner types ({@link ShardOwner},
  * {@link SharedOwner}, {@link SharedReadonlyOwner}) for the sync layer.
  *
  * The sync layer only needs the essential data for synchronization and doesn't

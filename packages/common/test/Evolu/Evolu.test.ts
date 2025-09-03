@@ -9,6 +9,7 @@ import {
   ValidateNoDefaultColumns,
   ValidateSchemaHasId,
 } from "../../src/Evolu/Schema.js";
+import { SyncOwner } from "../../src/Evolu/Sync.js";
 import { wait } from "../../src/Promise.js";
 import { getOrThrow } from "../../src/Result.js";
 import { createSqlite, SqliteBoolean } from "../../src/Sqlite.js";
@@ -27,6 +28,8 @@ import {
   testCreateRandomBytesDep,
   testCreateSqliteDriver,
   testNanoIdLib,
+  testOwner,
+  testOwner2,
   testOwnerSecret,
   testRandom,
   testSimpleName,
@@ -747,4 +750,192 @@ test("onInit callback should be called with correct parameters and can seed init
   await wait(10);
 
   expect(initCalls).toHaveLength(1);
+});
+
+describe("useOwner", () => {
+  const ownerMessage = (owner: SyncOwner, use: boolean) => ({
+    type: "useOwner",
+    owner,
+    use,
+  });
+
+  test("single useOwner call", async () => {
+    const { evolu, dbWorker } = setupEvoluTest();
+    vi.clearAllMocks();
+
+    evolu.useOwner(testOwner);
+
+    await wait(1);
+
+    expect(dbWorker.postMessage).toHaveBeenCalledTimes(1);
+    expect(dbWorker.postMessage).toHaveBeenCalledWith(
+      ownerMessage(testOwner, true),
+    );
+  });
+
+  test("multiple useOwner calls for same owner preserves count", async () => {
+    const { evolu, dbWorker } = setupEvoluTest();
+    vi.clearAllMocks();
+
+    // Each call should result in a separate postMessage for reference counting
+    evolu.useOwner(testOwner);
+    evolu.useOwner(testOwner);
+    evolu.useOwner(testOwner);
+
+    await wait(1);
+
+    expect(dbWorker.postMessage).toHaveBeenCalledTimes(3);
+    for (let i = 1; i <= 3; i++) {
+      expect(dbWorker.postMessage).toHaveBeenNthCalledWith(
+        i,
+        ownerMessage(testOwner, true),
+      );
+    }
+  });
+
+  test("exact use/unuse pair cancels out", async () => {
+    const { evolu, dbWorker } = setupEvoluTest();
+    vi.clearAllMocks();
+
+    // Add testOwner, then remove it - should cancel out
+    const unuse1 = evolu.useOwner(testOwner);
+    unuse1();
+
+    queueMicrotask(() => {
+      expect(dbWorker.postMessage).not.toHaveBeenCalled();
+    });
+
+    await wait(1);
+  });
+
+  test("multiple exact pairs cancel out", async () => {
+    const { evolu, dbWorker } = setupEvoluTest();
+    vi.clearAllMocks();
+
+    // Two separate use/unuse pairs - both should cancel out
+    const unuse1 = evolu.useOwner(testOwner);
+    const unuse2 = evolu.useOwner(testOwner);
+    unuse1();
+    unuse2();
+
+    queueMicrotask(() => {
+      expect(dbWorker.postMessage).not.toHaveBeenCalled();
+    });
+
+    await wait(1);
+  });
+
+  test("partial pairs leave remainder", async () => {
+    const { evolu, dbWorker } = setupEvoluTest();
+    vi.clearAllMocks();
+
+    // Three uses, one unuse - should result in two remaining uses
+    evolu.useOwner(testOwner);
+    evolu.useOwner(testOwner);
+    const unuse3 = evolu.useOwner(testOwner);
+    unuse3();
+
+    await wait(1);
+
+    expect(dbWorker.postMessage).toHaveBeenCalledTimes(2);
+    for (let i = 1; i <= 2; i++) {
+      expect(dbWorker.postMessage).toHaveBeenNthCalledWith(
+        i,
+        ownerMessage(testOwner, true),
+      );
+    }
+  });
+
+  test("different owners don't interfere", async () => {
+    const { evolu, dbWorker } = setupEvoluTest();
+    vi.clearAllMocks();
+
+    // Different owners should not cancel each other
+    evolu.useOwner(testOwner);
+    const unuse2 = evolu.useOwner(testOwner2);
+    unuse2();
+
+    await wait(1);
+
+    expect(dbWorker.postMessage).toHaveBeenCalledTimes(1);
+    expect(dbWorker.postMessage).toHaveBeenCalledWith(
+      ownerMessage(testOwner, true),
+    );
+  });
+
+  test("order preservation with mixed operations", async () => {
+    const { evolu, dbWorker } = setupEvoluTest();
+    vi.clearAllMocks();
+
+    // Mixed operations: use, use, unuse, use
+    // Should cancel one pair and leave: use, use
+    evolu.useOwner(testOwner); // use #1
+    const unuse2 = evolu.useOwner(testOwner); // use #2
+    unuse2(); // unuse (cancels with use #2)
+    evolu.useOwner(testOwner); // use #3
+
+    await wait(1);
+
+    expect(dbWorker.postMessage).toHaveBeenCalledTimes(2);
+    for (let i = 1; i <= 2; i++) {
+      expect(dbWorker.postMessage).toHaveBeenNthCalledWith(
+        i,
+        ownerMessage(testOwner, true),
+      );
+    }
+  });
+
+  test("remove before add - processed owner requires explicit remove", async () => {
+    const { evolu, dbWorker } = setupEvoluTest();
+    vi.clearAllMocks();
+
+    // Add owner and wait for it to be processed
+    const unuse1 = evolu.useOwner(testOwner);
+
+    await wait(1);
+
+    // Verify it was added
+    expect(dbWorker.postMessage).toHaveBeenCalledTimes(1);
+    expect(dbWorker.postMessage).toHaveBeenCalledWith(
+      ownerMessage(testOwner, true),
+    );
+
+    vi.clearAllMocks();
+
+    // Now remove and immediately add again
+    unuse1(); // Remove
+    evolu.useOwner(testOwner); // Add again
+
+    await wait(1);
+
+    // Should result in no calls since remove/add cancel out
+    expect(dbWorker.postMessage).not.toHaveBeenCalled();
+  });
+
+  test("delayed unuse call is processed", async () => {
+    const { evolu, dbWorker } = setupEvoluTest();
+    vi.clearAllMocks();
+
+    const unuse = evolu.useOwner(testOwner);
+
+    await wait(1);
+    expect(dbWorker.postMessage).toHaveBeenCalledTimes(1);
+    expect(dbWorker.postMessage).toHaveBeenCalledWith(
+      ownerMessage(testOwner, true),
+    );
+
+    vi.clearAllMocks();
+
+    // Delayed unuse without any subsequent useOwner calls
+    setTimeout(() => {
+      unuse();
+    }, 10);
+
+    await wait(20);
+
+    expect(dbWorker.postMessage).toHaveBeenCalledTimes(1);
+    expect(dbWorker.postMessage).toHaveBeenCalledWith(
+      ownerMessage(testOwner, false),
+    );
+  });
 });
