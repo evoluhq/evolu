@@ -37,6 +37,44 @@ interface Example {
 }
 ```
 
+## Documentation & JSDoc
+
+- **Avoid `@param` and `@return` tags** - TypeScript provides type information, focus on describing the function's purpose
+- **Use `### Example` instead of `@example`** - for better markdown rendering and consistency
+- **Write clear descriptions** - explain what the function does, not how to use it
+
+````ts
+// ✅ Good
+/**
+ * Creates a new user with the provided data.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const user = createUser({ name: "John", email: "john@example.com" });
+ * ```
+ */
+export const createUser = (data: UserData): User => {
+  // implementation
+};
+
+// ❌ Avoid
+/**
+ * Creates a new user with the provided data.
+ *
+ * @example
+ *   ```ts
+ *   const user = createUser({ name: "John", email: "john@example.com" });
+ *   ```;
+ *
+ * @param data The user data to create the user with
+ * @returns The created user
+ */
+export const createUser = (data: UserData): User => {
+  // implementation
+};
+````
+
 ## Error Handling with Result
 
 - Use `Result<T, E>` for business/domain errors in public APIs
