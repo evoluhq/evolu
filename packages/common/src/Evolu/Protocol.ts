@@ -21,12 +21,15 @@
  * | **Header**                     |                           |
  * | - {@link protocolVersion}      |                           |
  * | - {@link OwnerId}              | {@link Owner}             |
- * | **Initiator**                  |                           |
+ * | - messageType                  | {@link MessageType}       |
+ * | **Request (messageType=0)**    |                           |
  * | - hasWriteKey                  | 0 = no, 1 = yes           |
  * | - {@link WriteKey}             | If hasWriteKey = 1        |
  * | - subscriptionFlag             | {@link SubscriptionFlags} |
- * | **Non-initiator**              |                           |
+ * | **Response (messageType=1)**   |                           |
  * | - {@link ProtocolErrorCode}    |                           |
+ * | **Broadcast (messageType=2)**  |                           |
+ * | - (no additional fields)       |                           |
  * | **Messages**                   |                           |
  * | - {@link NonNegativeInt}       | A number of messages.     |
  * | - {@link EncryptedCrdtMessage} |                           |
@@ -178,7 +181,6 @@ import {
 import { Predicate } from "../Types.js";
 import {
   BinaryOwnerId,
-  binaryOwnerIdToOwnerId,
   Owner,
   OwnerId,
   ownerIdToBinaryOwnerId,
@@ -233,6 +235,17 @@ export type ProtocolMessage = Uint8Array & Brand<"ProtocolMessage">;
 
 /** Evolu Protocol version. */
 export const protocolVersion = 0 as NonNegativeInt;
+
+export const MessageType = {
+  /** Request message from initiator (client) to non-initiator (relay). */
+  Request: 0,
+  /** Response message from non-initiator (relay) to initiator (client). */
+  Response: 1,
+  /** Broadcast message from non-initiator (relay) to subscribed clients. */
+  Broadcast: 2,
+} as const;
+
+export type MessageType = (typeof MessageType)[keyof typeof MessageType];
 
 export const SubscriptionFlags = {
   /** No subscription changes for this owner. */
@@ -337,7 +350,7 @@ export const createProtocolMessageFromCrdtMessages =
     maxSize?: PositiveInt,
   ): ProtocolMessage => {
     const buffer = createProtocolMessageBuffer(owner.id, {
-      type: "initiator",
+      messageType: MessageType.Request,
       totalMaxSize: maxSize ?? maxProtocolMessageSize,
       writeKey: owner.writeKey,
     });
@@ -397,7 +410,7 @@ export const createProtocolMessageForSync =
     subscriptionFlag?: SubscriptionFlag,
   ): ProtocolMessage | null => {
     const buffer = createProtocolMessageBuffer(ownerId, {
-      type: "initiator",
+      messageType: MessageType.Request,
       subscriptionFlag: subscriptionFlag ?? SubscriptionFlags.None,
     });
     const binaryOwnerId = ownerIdToBinaryOwnerId(ownerId);
@@ -416,6 +429,14 @@ export const createProtocolMessageForSync =
 
     return buffer.unwrap();
   };
+
+export const createProtocolMessageForUnsubscribe = (
+  ownerId: OwnerId,
+): ProtocolMessage =>
+  createProtocolMessageBuffer(ownerId, {
+    messageType: MessageType.Request,
+    subscriptionFlag: SubscriptionFlags.Unsubscribe,
+  }).unwrap();
 
 /**
  * Mutable builder for constructing {@link ProtocolMessage} respecting size
@@ -449,13 +470,16 @@ export const createProtocolMessageBuffer = (
     readonly version?: NonNegativeInt;
   } & (
     | {
-        readonly type: "initiator";
+        readonly messageType: typeof MessageType.Request;
         readonly writeKey?: WriteKey;
         readonly subscriptionFlag?: SubscriptionFlag;
       }
     | {
-        readonly type: "non-initiator";
+        readonly messageType: typeof MessageType.Response;
         readonly errorCode: ProtocolErrorCode;
+      }
+    | {
+        readonly messageType: typeof MessageType.Broadcast;
       }
   ),
 ): ProtocolMessageBuffer => {
@@ -480,18 +504,18 @@ export const createProtocolMessageBuffer = (
 
   encodeNonNegativeInt(buffers.header, version);
   buffers.header.extend(ownerIdToBinaryOwnerId(ownerId));
+  buffers.header.extend([options.messageType]);
 
-  if (options.type === "initiator") {
+  if (options.messageType === MessageType.Request) {
     if (!options.writeKey) {
       buffers.header.extend([0]);
     } else {
       buffers.header.extend([1]);
       buffers.header.extend(options.writeKey);
     }
-
     const subscriptionFlag = options.subscriptionFlag ?? SubscriptionFlags.None;
     buffers.header.extend([subscriptionFlag]);
-  } else {
+  } else if (options.messageType === MessageType.Response) {
     buffers.header.extend([options.errorCode]);
   }
 
@@ -575,9 +599,14 @@ export const createProtocolMessageBuffer = (
 
     addRange: (range) => {
       assert(
+        options.messageType !== MessageType.Broadcast,
+        "Cannot add a range into broadcast message",
+      );
+      assert(
         !isLastRangeInfinite,
         "Cannot add a range after an InfiniteUpperBound range",
       );
+
       isLastRangeInfinite = range.upperBound === InfiniteUpperBound;
 
       /**
@@ -749,6 +778,15 @@ export interface ApplyProtocolMessageAsClientOptions {
   rangesMaxSize?: PositiveInt;
 }
 
+/**
+ * Result type for {@link applyProtocolMessageAsClient} that distinguishes
+ * between responses to client requests and unsolicited broadcast messages.
+ */
+export type ApplyProtocolMessageAsClientResult =
+  | { readonly type: "response"; readonly message: ProtocolMessage }
+  | { readonly type: "no-response" }
+  | { readonly type: "broadcast" };
+
 export const applyProtocolMessageAsClient =
   (deps: StorageDep) =>
   (
@@ -759,8 +797,8 @@ export const applyProtocolMessageAsClient =
       totalMaxSize,
       rangesMaxSize,
     }: ApplyProtocolMessageAsClientOptions = {},
-  ): Result<ProtocolMessage | null, ProtocolError> =>
-    tryDecodeProtocolData<ProtocolMessage | null, ProtocolError>(
+  ): Result<ApplyProtocolMessageAsClientResult, ProtocolError> =>
+    tryDecodeProtocolData<ApplyProtocolMessageAsClientResult, ProtocolError>(
       inputMessage,
       (input) => {
         const [requestedVersion, ownerId] = decodeVersionAndOwner(input);
@@ -774,28 +812,37 @@ export const applyProtocolMessageAsClient =
           });
         }
 
-        const errorCode = input.shift() as ProtocolErrorCode;
-        if (errorCode !== ProtocolErrorCode.NoError) {
-          switch (errorCode) {
-            case ProtocolErrorCode.WriteKeyError:
-              return err<ProtocolWriteKeyError>({
-                type: "ProtocolWriteKeyError",
-                ownerId,
-              });
-            case ProtocolErrorCode.WriteError:
-              return err<ProtocolWriteError>({
-                type: "ProtocolWriteError",
-                ownerId,
-              });
-            case ProtocolErrorCode.SyncError:
-              return err<ProtocolSyncError>({
-                type: "ProtocolSyncError",
-                ownerId,
-              });
-            default:
-              throw new ProtocolDecodeError(
-                `Invalid ProtocolErrorCode: ${errorCode}`,
-              );
+        const messageType = input.shift() as MessageType;
+        assert(
+          messageType === MessageType.Response ||
+            messageType === MessageType.Broadcast,
+          "Invalid MessageType",
+        );
+
+        if (messageType === MessageType.Response) {
+          const errorCode = input.shift() as ProtocolErrorCode;
+          if (errorCode !== ProtocolErrorCode.NoError) {
+            switch (errorCode) {
+              case ProtocolErrorCode.WriteKeyError:
+                return err<ProtocolWriteKeyError>({
+                  type: "ProtocolWriteKeyError",
+                  ownerId,
+                });
+              case ProtocolErrorCode.WriteError:
+                return err<ProtocolWriteError>({
+                  type: "ProtocolWriteError",
+                  ownerId,
+                });
+              case ProtocolErrorCode.SyncError:
+                return err<ProtocolSyncError>({
+                  type: "ProtocolSyncError",
+                  ownerId,
+                });
+              default:
+                throw new ProtocolDecodeError(
+                  `Invalid ProtocolErrorCode: ${errorCode}`,
+                );
+            }
           }
         }
 
@@ -808,7 +855,7 @@ export const applyProtocolMessageAsClient =
           isNonEmptyReadonlyArray(messages) &&
           !deps.storage.writeMessages(binaryOwnerId, messages)
         ) {
-          return ok(null);
+          return ok({ type: "no-response" });
         }
 
         // Now: No writeKey, no sync.
@@ -818,16 +865,35 @@ export const applyProtocolMessageAsClient =
         // the sync should stop.
         // getWriteKey should be moved to sync fn.
         const writeKey = getWriteKey?.(ownerId);
-        if (writeKey == null) return ok(null);
+        if (writeKey == null) {
+          return ok({ type: "no-response" });
+        }
+
+        if (messageType === MessageType.Broadcast) {
+          return ok({ type: "broadcast" });
+        }
+
+        const ranges = decodeRanges(input);
+
+        if (!isNonEmptyReadonlyArray(ranges)) {
+          return ok({ type: "no-response" });
+        }
 
         const output = createProtocolMessageBuffer(ownerId, {
-          type: "initiator",
+          messageType: MessageType.Request,
           writeKey,
           totalMaxSize,
           rangesMaxSize,
         });
 
-        return sync(deps)("initiator", input, output, binaryOwnerId);
+        const syncResult = sync(deps)(ranges, output, binaryOwnerId);
+
+        // Client sync error (handled via Storage) or no changes.
+        if (!syncResult.ok || !syncResult.value) {
+          return ok({ type: "no-response" });
+        }
+
+        return ok({ type: "response", message: output.unwrap() });
       },
     );
 
@@ -845,21 +911,32 @@ export interface ApplyProtocolMessageAsRelayOptions {
   rangesMaxSize?: PositiveInt;
 }
 
+/**
+ * Result type for {@link applyProtocolMessageAsRelay}.
+ *
+ * Unlike {@link ApplyProtocolMessageAsClientResult}, relays always respond with
+ * a message to provide sync completion feedback. This ensures the initiator can
+ * reliably detect when synchronization is complete, even when there's nothing
+ * to sync. Clients may choose not to respond in certain cases (like when they
+ * receive broadcast messages or when they lack a write key for syncing).
+ */
+export interface ApplyProtocolMessageAsRelayResult {
+  readonly type: "response";
+  readonly message: ProtocolMessage;
+}
+
 export const applyProtocolMessageAsRelay =
   (deps: StorageDep) =>
   (
     inputMessage: Uint8Array,
-    {
-      subscribe,
-      unsubscribe,
-      broadcast,
-      totalMaxSize,
-      rangesMaxSize,
-    }: ApplyProtocolMessageAsRelayOptions = {},
+    options: ApplyProtocolMessageAsRelayOptions = {},
     /** For testing purposes only; should not be used in production. */
     version = protocolVersion,
-  ): Result<ProtocolMessage | null, ProtocolInvalidDataError> =>
-    tryDecodeProtocolData(inputMessage, (input) => {
+  ): Result<ApplyProtocolMessageAsRelayResult, ProtocolInvalidDataError> =>
+    tryDecodeProtocolData<
+      ApplyProtocolMessageAsRelayResult,
+      ProtocolInvalidDataError
+    >(inputMessage, (input) => {
       const [requestedVersion, ownerId] = decodeVersionAndOwner(input);
       const binaryOwnerId = ownerIdToBinaryOwnerId(ownerId);
 
@@ -868,8 +945,14 @@ export const applyProtocolMessageAsRelay =
         const output = createBuffer();
         encodeNonNegativeInt(output, version);
         output.extend(binaryOwnerId);
-        return ok(output.unwrap() as ProtocolMessage);
+        return ok({
+          type: "response",
+          message: output.unwrap() as ProtocolMessage,
+        });
       }
+
+      const messageType = input.shift() as MessageType;
+      assert(messageType === MessageType.Request, "Invalid MessageType");
 
       const hasWriteKey = input.shift();
       let writeKey: WriteKey | undefined;
@@ -882,10 +965,10 @@ export const applyProtocolMessageAsRelay =
 
       switch (subscriptionFlag) {
         case SubscriptionFlags.Subscribe:
-          subscribe?.(ownerId);
+          options.subscribe?.(ownerId);
           break;
         case SubscriptionFlags.Unsubscribe:
-          unsubscribe?.(ownerId);
+          options.unsubscribe?.(ownerId);
           break;
         case SubscriptionFlags.None:
           break;
@@ -894,48 +977,52 @@ export const applyProtocolMessageAsRelay =
       if (writeKey) {
         const isValid = deps.storage.validateWriteKey(binaryOwnerId, writeKey);
         if (!isValid) {
-          return ok(
-            createProtocolMessageBuffer(ownerId, {
-              type: "non-initiator",
+          return ok({
+            type: "response",
+            message: createProtocolMessageBuffer(ownerId, {
+              messageType: MessageType.Response,
               errorCode: ProtocolErrorCode.WriteKeyError,
             }).unwrap(),
-          );
+          });
         }
       }
 
       const messages = decodeMessages(input);
 
       if (isNonEmptyReadonlyArray(messages)) {
-        if (!writeKey)
-          return ok(
-            createProtocolMessageBuffer(ownerId, {
-              type: "non-initiator",
+        if (!writeKey) {
+          return ok({
+            type: "response",
+            message: createProtocolMessageBuffer(ownerId, {
+              messageType: MessageType.Response,
               errorCode: ProtocolErrorCode.WriteKeyError,
             }).unwrap(),
-          );
+          });
+        }
 
         /**
          * Broadcast messages to all subscribed devices. This ensures real-time
-         * synchronization between clients. When a relay's database is deleted
-         * or clients migrate to a new relay (without data migration), clients
-         * will sync their data to the relay, and the relay will broadcast those
-         * messages to other connected clients. Those clients may receive
-         * messages they already have, but this is safe because `applyMessages`
-         * is idempotent. As the relay becomes more synchronized with clients
-         * over time, fewer duplicate messages will be broadcasted.
+         * synchronization between clients.
+         *
+         * When a relay's database is deleted or clients migrate to a new relay
+         * (without data migration), clients will sync their data to the relay,
+         * and the relay will broadcast those messages to other connected
+         * clients. Those clients may receive messages they already have, but
+         * this is safe because `applyMessages` is idempotent. As the relay
+         * becomes more synchronized with clients over time, fewer duplicate
+         * messages will be broadcasted.
          */
-        if (broadcast) {
+        if (options.broadcast) {
           const broadcastBuffer = createProtocolMessageBuffer(ownerId, {
-            type: "non-initiator",
-            errorCode: ProtocolErrorCode.NoError,
-            totalMaxSize,
-            rangesMaxSize,
+            messageType: MessageType.Broadcast,
+            totalMaxSize: options.totalMaxSize,
+            rangesMaxSize: options.rangesMaxSize,
             version,
           });
           for (const message of messages) {
             broadcastBuffer.addMessage(message);
           }
-          broadcast(ownerId, broadcastBuffer.unwrap());
+          options.broadcast(ownerId, broadcastBuffer.unwrap());
         }
 
         const messagesWritten = deps.storage.writeMessages(
@@ -944,22 +1031,41 @@ export const applyProtocolMessageAsRelay =
         );
 
         if (!messagesWritten)
-          return ok(
-            createProtocolMessageBuffer(ownerId, {
-              type: "non-initiator",
+          return ok({
+            type: "response",
+            message: createProtocolMessageBuffer(ownerId, {
+              messageType: MessageType.Response,
               errorCode: ProtocolErrorCode.WriteError,
             }).unwrap(),
-          );
+          });
       }
 
+      const ranges = decodeRanges(input);
+
       const output = createProtocolMessageBuffer(ownerId, {
-        type: "non-initiator",
+        messageType: MessageType.Response,
         errorCode: ProtocolErrorCode.NoError,
-        totalMaxSize,
-        rangesMaxSize,
+        totalMaxSize: options.totalMaxSize,
+        rangesMaxSize: options.rangesMaxSize,
       });
 
-      return sync(deps)("non-initiator", input, output, binaryOwnerId);
+      // Non-initiators always respond to provide sync completion feedback,
+      // even when there's nothing to sync.
+      if (!isNonEmptyReadonlyArray(ranges)) {
+        return ok({ type: "response", message: output.unwrap() });
+      }
+
+      const syncResult = sync(deps)(ranges, output, binaryOwnerId);
+
+      const message = syncResult.ok
+        ? output.unwrap()
+        : createProtocolMessageBuffer(ownerId, {
+            messageType: MessageType.Response,
+            errorCode: syncResult.error,
+          }).unwrap();
+
+      // Non-initiators always respond to provide sync completion feedback,
+      return ok({ type: "response", message });
     });
 
 /**
@@ -1023,44 +1129,14 @@ const decodeMessages = (
 const sync =
   (deps: StorageDep) =>
   (
-    role: "initiator" | "non-initiator",
-    input: Buffer,
+    ranges: NonEmptyReadonlyArray<Range>,
     output: ProtocolMessageBuffer,
-    ownerId: BinaryOwnerId,
-  ): Result<ProtocolMessage | null, never> => {
-    const ranges = decodeRanges(input);
-
-    if (!isNonEmptyReadonlyArray(ranges)) {
-      // Non-initiators always respond to provide sync completion feedback,
-      // even when there's nothing to sync.
-      if (role === "non-initiator") {
-        return ok(output.unwrap());
-      }
-      // Nothing to sync.
-      return ok(null);
-    }
-
-    const binaryOwnerId = binaryOwnerIdToOwnerId(ownerId);
+    binaryOwnerId: BinaryOwnerId,
+  ): Result<boolean, typeof ProtocolErrorCode.SyncError> => {
     const outputInitialSize = output.getSize();
 
-    /**
-     * Only the relay (non-initiator) reports sync errors, not the client
-     * (initiator). The specific error is handled by storage itself; protocol
-     * only reports a generic sync error.
-     */
-    const syncFail = () => {
-      if (role === "initiator") {
-        return ok(null);
-      }
-      const message = createProtocolMessageBuffer(binaryOwnerId, {
-        type: "non-initiator",
-        errorCode: ProtocolErrorCode.SyncError,
-      });
-      return ok(message.unwrap());
-    };
-
-    const storageSize = deps.storage.getSize(ownerId);
-    if (storageSize == null) return syncFail();
+    const storageSize = deps.storage.getSize(binaryOwnerId);
+    if (storageSize == null) return err(ProtocolErrorCode.SyncError);
 
     let prevUpperBound: RangeUpperBound | null = null;
     let prevIndex = 0 as NonNegativeInt;
@@ -1100,7 +1176,11 @@ const sync =
     const addFingerprintForRemainingRange = (
       begin: NonNegativeInt,
     ): boolean => {
-      const fingerprint = deps.storage.fingerprint(ownerId, begin, storageSize);
+      const fingerprint = deps.storage.fingerprint(
+        binaryOwnerId,
+        begin,
+        storageSize,
+      );
       if (!fingerprint) return false;
       // There is always a space for a ramaining range.
       output.addRange({
@@ -1116,12 +1196,12 @@ const sync =
 
       const lower = prevIndex;
       let upper = deps.storage.findLowerBound(
-        ownerId,
+        binaryOwnerId,
         prevIndex,
         storageSize,
         currentUpperBound,
       );
-      if (upper == null) return syncFail();
+      if (upper == null) return err(ProtocolErrorCode.SyncError);
 
       switch (range.type) {
         case RangeType.Skip: {
@@ -1131,11 +1211,11 @@ const sync =
 
         case RangeType.Fingerprint: {
           const ourFingerprint = deps.storage.fingerprint(
-            ownerId,
+            binaryOwnerId,
             lower,
             upper,
           );
-          if (ourFingerprint == null) return syncFail();
+          if (ourFingerprint == null) return err(ProtocolErrorCode.SyncError);
 
           if (eqArrayNumber(range.fingerprint, ourFingerprint)) {
             skipRange(range);
@@ -1143,15 +1223,16 @@ const sync =
             if (output.canSplitRange()) {
               coalesceSkipsBeforeAdd();
               splitRange(deps)(
-                ownerId,
+                binaryOwnerId,
                 lower,
                 upper,
                 currentUpperBound,
                 output,
               );
             } else {
-              if (!addFingerprintForRemainingRange(upper)) return syncFail();
-              return ok(output.unwrap());
+              return addFingerprintForRemainingRange(upper)
+                ? ok(true)
+                : err(ProtocolErrorCode.SyncError);
             }
           }
           break;
@@ -1168,42 +1249,50 @@ const sync =
           let cantReadDbChange = false as boolean;
           let exceeded = false as boolean;
 
-          deps.storage.iterate(ownerId, lower, upper, (timestamp, index) => {
-            const timestampString = timestamp.join();
-            const timestampBinary = binaryTimestampToTimestamp(timestamp);
+          deps.storage.iterate(
+            binaryOwnerId,
+            lower,
+            upper,
+            (timestamp, index) => {
+              const timestampString = timestamp.join();
+              const timestampBinary = binaryTimestampToTimestamp(timestamp);
 
-            let message: EncryptedCrdtMessage | null = null;
+              let message: EncryptedCrdtMessage | null = null;
 
-            if (timestampsWeNeed.has(timestampString)) {
-              timestampsWeNeed.delete(timestampString);
-            } else {
-              const dbChange = deps.storage.readDbChange(ownerId, timestamp);
-              if (dbChange == null) {
-                cantReadDbChange = true;
+              if (timestampsWeNeed.has(timestampString)) {
+                timestampsWeNeed.delete(timestampString);
+              } else {
+                const dbChange = deps.storage.readDbChange(
+                  binaryOwnerId,
+                  timestamp,
+                );
+                if (dbChange == null) {
+                  cantReadDbChange = true;
+                  return false;
+                }
+                message = {
+                  timestamp: timestampBinary,
+                  change: dbChange,
+                };
+              }
+
+              if (
+                !output.canAddTimestampsRangeAndMessage(ourTimestamps, message)
+              ) {
+                exceeded = true;
+                endBound = timestamp;
+                upper = index;
                 return false;
               }
-              message = {
-                timestamp: timestampBinary,
-                change: dbChange,
-              };
-            }
 
-            if (
-              !output.canAddTimestampsRangeAndMessage(ourTimestamps, message)
-            ) {
-              exceeded = true;
-              endBound = timestamp;
-              upper = index;
-              return false;
-            }
-
-            ourTimestamps.add(timestampBinary);
-            if (message) output.addMessage(message);
-            return true;
-          });
+              ourTimestamps.add(timestampBinary);
+              if (message) output.addMessage(message);
+              return true;
+            },
+          );
 
           if (cantReadDbChange) {
-            return syncFail();
+            return err(ProtocolErrorCode.SyncError);
           }
 
           const addRange = () => {
@@ -1218,9 +1307,9 @@ const sync =
           if (exceeded) {
             addRange();
             if (!addFingerprintForRemainingRange(upper)) {
-              return syncFail();
+              return err(ProtocolErrorCode.SyncError);
             }
-            return ok(output.unwrap());
+            return ok(true);
           }
 
           // If we need something, we have to respond with our timestamps.
@@ -1241,13 +1330,7 @@ const sync =
     // If all ranges were skipped, there are no changes and sync is complete.
     const hasChange = output.getSize() > outputInitialSize;
 
-    // Non-initiators always respond to provide sync completion feedback,
-    // even with empty messages. This allows clients to detect sync completion.
-    if (role === "non-initiator" && !hasChange) {
-      return ok(output.unwrap());
-    }
-
-    return ok(hasChange ? output.unwrap() : null);
+    return ok(hasChange);
   };
 
 const splitRange =
