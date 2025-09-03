@@ -880,7 +880,13 @@ export const DateIsoString = brand("DateIso", String, (value) => {
   if (value.length !== 24) {
     return err<DateIsoStringError>({ type: "DateIsoString", value });
   }
-  if (isNaN(globalThis.Date.parse(value))) {
+  const parsed = globalThis.Date.parse(value);
+  if (isNaN(parsed)) {
+    return err<DateIsoStringError>({ type: "DateIsoString", value });
+  }
+  // Round-trip test: ensure the string is actually a proper ISO format
+  const roundTrip = new globalThis.Date(parsed).toISOString();
+  if (roundTrip !== value) {
     return err<DateIsoStringError>({ type: "DateIsoString", value });
   }
   return ok(value);

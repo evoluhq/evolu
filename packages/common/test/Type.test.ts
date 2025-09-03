@@ -859,6 +859,8 @@ test("DateIsoString", () => {
     "2022-12-01T25:00:00.000Z", // Invalid hour
     "2022-12-01T00:00:00.000", // Missing 'Z'
     "2022-12-01T00:00:00.000+01:00", // Timezone offset not allowed
+    // This was the failing case from property tests - should be rejected
+    `["0 (      ",-100000000]`, // JSON string that Date.parse accepts but isn't ISO format
   ];
 
   for (const date of invalidDates) {
