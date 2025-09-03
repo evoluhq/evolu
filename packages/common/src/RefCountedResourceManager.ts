@@ -102,8 +102,8 @@ export interface ResourceManagerConfig<
    */
   readonly onConsumerAdded?: (
     consumer: TConsumer,
-    resourceKey: TResourceKey,
     resource: TResource,
+    resourceKey: TResourceKey,
   ) => void;
 
   /**
@@ -112,8 +112,8 @@ export interface ResourceManagerConfig<
    */
   readonly onConsumerRemoved?: (
     consumer: TConsumer,
-    resourceKey: TResourceKey,
     resource: TResource,
+    resourceKey: TResourceKey,
   ) => void;
 }
 
@@ -259,7 +259,7 @@ export const createRefCountedResourceManager = <
         if (currentCount === 0 && config.onConsumerAdded) {
           const resource = resources.get(resourceKey);
           if (resource) {
-            config.onConsumerAdded(consumer, resourceKey, resource);
+            config.onConsumerAdded(consumer, resource, resourceKey);
           }
         }
       }
@@ -293,7 +293,7 @@ export const createRefCountedResourceManager = <
           if (config.onConsumerRemoved) {
             const resource = resources.get(key);
             if (resource) {
-              config.onConsumerRemoved(consumer, key, resource);
+              config.onConsumerRemoved(consumer, resource, key);
             }
           }
 
