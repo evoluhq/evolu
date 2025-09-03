@@ -67,28 +67,56 @@ export const createNodeJsRelay =
     const ownerSocketsMap = createManyToManyMap<OwnerId, WebSocket>();
 
     wss.on("connection", (ws) => {
-      ws.on("error", deps.console.error);
+      deps.console.log("[relay]", "connection", {
+        clientCount: wss.clients.size,
+      });
+
+      ws.on("error", (error) => {
+        deps.console.warn("[relay]", "error", { error });
+        deps.console.error(error);
+      });
 
       const options: ApplyProtocolMessageAsRelayOptions = {
         subscribe: (ownerId) => {
           ownerSocketsMap.add(ownerId, ws);
+          deps.console.log("[relay]", "subscribe", {
+            ownerId,
+            subscriberCount: ownerSocketsMap.getValues(ownerId)?.size ?? 0,
+          });
         },
         unsubscribe: (ownerId) => {
           ownerSocketsMap.remove(ownerId, ws);
+          deps.console.log("[relay]", "unsubscribe", {
+            ownerId,
+            subscriberCount: ownerSocketsMap.getValues(ownerId)?.size ?? 0,
+          });
         },
         broadcast: (ownerId, message) => {
           const sockets = ownerSocketsMap.getValues(ownerId);
           if (!sockets) return;
+
+          let broadcastCount = 0;
           for (const socket of sockets) {
             if (socket !== ws && socket.readyState === WebSocket.OPEN) {
               socket.send(message, { binary: true });
+              broadcastCount++;
             }
           }
+
+          deps.console.log("[relay]", "broadcast", {
+            ownerId,
+            broadcastCount,
+            totalSubscribers: sockets.size,
+          });
         },
       };
 
       ws.on("message", (message) => {
         if (!Uint8Array.is(message)) return;
+
+        deps.console.log("[relay]", "on message", {
+          messageSize: message.length,
+        });
 
         const response = applyProtocolMessageAsRelay({ storage })(
           message,
@@ -96,17 +124,22 @@ export const createNodeJsRelay =
         );
 
         if (!response.ok) {
+          deps.console.error("[relay]", "protocol error", response.error);
           deps.console.error(response.error);
           return;
         }
 
-        if (response.value) {
-          ws.send(response.value, { binary: true });
-        }
+        ws.send(response.value.message, { binary: true });
+        deps.console.log("[relay]", "response", {
+          responseSize: response.value.message.length,
+        });
       });
 
       ws.on("close", () => {
         ownerSocketsMap.deleteValue(ws);
+        deps.console.log("[relay]", "close", {
+          clientCount: wss.clients.size,
+        });
       });
     });
 
