@@ -231,7 +231,6 @@ const Todos: FC = () => {
   const rows = useQuery(todosWithCategories);
 
   const secret = new Uint8Array(16) as OwnerSecret;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const sharedOwner = createSharedOwner(secret);
 
   // useOwner(sharedOwner)
@@ -243,6 +242,12 @@ const Todos: FC = () => {
     const title = window.prompt("What needs to be done?");
     if (title == null) return; // escape or cancel
 
+    const unuse = evolu.useOwner(sharedOwner);
+
+    setTimeout(() => {
+      unuse();
+    }, 3000);
+
     const result = insert(
       "todo",
       {
@@ -251,7 +256,7 @@ const Todos: FC = () => {
         personJson: { name: "Joe", age: 32 },
       },
       {
-        // ownerId: sharedOwner.id,
+        ownerId: sharedOwner.id,
       },
     );
 
@@ -531,6 +536,7 @@ const OwnerActions: FC = () => {
   };
 
   const handleDownloadDatabaseClick = () => {
+    // TODO: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Resource_management#automatically_releasing_object_urls
     void evolu.exportDatabase().then((array) => {
       const blob = new Blob([array.slice()], {
         type: "application/x-sqlite3",
