@@ -12,11 +12,11 @@ import { wrapWebWorkerSelf } from "../WebWorker.js";
 
 const dbWorker = createDbWorkerForPlatform({
   console: createConsole(),
-  createRandomBytes,
   createSqliteDriver: createWasmSqliteDriver,
   createWebSocket,
   nanoIdLib: createNanoIdLib(),
   random: createRandom(),
+  randomBytes: createRandomBytes(),
   time: createTime(),
 });
 

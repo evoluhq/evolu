@@ -498,18 +498,17 @@ export interface EvoluConfigWithFunctions extends Config {
    * ```ts
    * const evolu = createEvolu(evoluReactWebDeps)(Schema, {
    *   onInit: ({ appOwner, isFirst }) => {
-   *     if (isFirst) {
-   *       const todoCategoryId = getOrThrow(
-   *         evolu.insert("todoCategory", {
-   *           name: "Not Urgent",
-   *         }),
-   *       );
+   *     if (!isFirst) return;
    *
-   *       evolu.insert("todo", {
-   *         title: "Try React Suspense",
-   *         categoryId: todoCategoryId.id,
-   *       });
-   *     }
+   *     const todoCategoryId = getOrThrow(
+   *       evolu.insert("todoCategory", {
+   *         name: "Not Urgent",
+   *       }),
+   *     );
+   *     evolu.insert("todo", {
+   *       title: "Try React Suspense",
+   *       categoryId: todoCategoryId.id,
+   *     });
    *   },
    * });
    * ```

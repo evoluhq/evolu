@@ -7,8 +7,9 @@
 import { Random as RandomLib } from "random";
 
 /**
- * A simple wrapper around Math.random(). Most apps need only this. For more
- * complex needs check {@link RandomLibDep}.
+ * A simple wrapper around Math.random().
+ *
+ * For more complex needs check {@link RandomLibDep}.
  *
  * ### Example
  *

@@ -3,9 +3,11 @@ import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { NonEmptyReadonlyArray } from "../Array.js";
 import { Brand } from "../Brand.js";
 import {
-  CreateRandomBytesDep,
   createSlip21,
   EncryptionKey,
+  Entropy16,
+  Entropy32,
+  RandomBytesDep,
 } from "../Crypto.js";
 import {
   BinaryId,
@@ -14,20 +16,18 @@ import {
   createIdFromHash,
   Id,
   idToBinaryId,
-  length,
   Mnemonic,
   NonNegativeInt,
-  Uint8Array,
 } from "../Type.js";
 import { TransportConfig } from "./Config.js";
 
 /** 32 bytes of cryptographic entropy used to derive {@link Owner} keys. */
-export const OwnerSecret = brand("OwnerSecret", length(32)(Uint8Array));
+export const OwnerSecret = brand("OwnerSecret", Entropy32);
 export type OwnerSecret = typeof OwnerSecret.Type;
 
 /** Creates a randomly generated {@link OwnerSecret}. */
-export const createOwnerSecret = (deps: CreateRandomBytesDep): OwnerSecret =>
-  deps.createRandomBytes(32) as OwnerSecret;
+export const createOwnerSecret = (deps: RandomBytesDep): OwnerSecret =>
+  deps.randomBytes.create(32) as OwnerSecret;
 
 /** Converts an {@link OwnerSecret} to a {@link Mnemonic}. */
 export const ownerSecretToMnemonic = (secret: OwnerSecret): Mnemonic =>
@@ -87,12 +87,12 @@ export const writeKeyLength = 16 as NonNegativeInt;
  * A secure token for write operations. Can be generated via
  * {@link createWriteKey} and is rotatable.
  */
-export const WriteKey = brand("WriteKey", length(writeKeyLength)(Uint8Array));
+export const WriteKey = brand("WriteKey", Entropy16);
 export type WriteKey = typeof WriteKey.Type;
 
 /** Creates a randomly generated {@link WriteKey}. */
-export const createWriteKey = (deps: CreateRandomBytesDep): WriteKey =>
-  deps.createRandomBytes(16) as unknown as WriteKey;
+export const createWriteKey = (deps: RandomBytesDep): WriteKey =>
+  deps.randomBytes.create(16) as WriteKey;
 
 /**
  * Creates an {@link Owner} from a {@link OwnerSecret} using SLIP-21 key

@@ -17,12 +17,12 @@ import { Id, idToBinaryId } from "../../src/Type.js";
 import {
   testCreateDummyWebSocket,
   testCreateId,
-  testCreateRandomBytesDep,
   testCreateSqliteDriver,
   testDbConfig,
   testNanoIdLib,
   testOwnerBinaryId,
   testRandom,
+  testRandomBytes,
   testSimpleName,
   testTime,
 } from "../_deps.js";
@@ -55,13 +55,13 @@ const createSqliteWithDbWorkerPlatformDeps = async (): Promise<
   );
 
   const deps: DbWorkerPlatformDeps = {
+    console: createConsole(),
     createSqliteDriver,
     createWebSocket: testCreateDummyWebSocket,
-    console: createConsole(),
-    time: testTime,
-    random: testRandom,
     nanoIdLib: testNanoIdLib,
-    ...testCreateRandomBytesDep,
+    random: testRandom,
+    randomBytes: testRandomBytes,
+    time: testTime,
   };
   return [sqlite, deps];
 };

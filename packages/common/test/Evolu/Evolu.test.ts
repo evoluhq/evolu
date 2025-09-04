@@ -25,13 +25,13 @@ import {
 import {
   testCreateDummyWebSocket,
   testCreateId,
-  testCreateRandomBytesDep,
   testCreateSqliteDriver,
   testNanoIdLib,
   testOwner,
   testOwner2,
   testOwnerSecret,
   testRandom,
+  testRandomBytes,
   testSimpleName,
   testTime,
 } from "../_deps.js";
@@ -92,13 +92,13 @@ const createEvoluDepsWithSqlite = async () => {
   const sqliteDriver = testCreateSqliteDriver(testSimpleName);
 
   const dbWorker = createDbWorkerForPlatform({
+    console: createConsole(),
     createSqliteDriver: () => sqliteDriver,
     createWebSocket: testCreateDummyWebSocket,
-    console: createConsole(),
-    time: testTime,
-    random: testRandom,
     nanoIdLib: testNanoIdLib,
-    createRandomBytes: testCreateRandomBytesDep.createRandomBytes,
+    random: testRandom,
+    randomBytes: testRandomBytes,
+    time: testTime,
   });
 
   const deps = {

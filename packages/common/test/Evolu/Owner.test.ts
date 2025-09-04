@@ -9,7 +9,7 @@ import {
   ownerSecretToMnemonic,
 } from "../../src/index.js";
 import {
-  testCreateRandomBytesDep,
+  testDeps,
   testOwner,
   testOwnerSecret,
   testOwnerSecret2,
@@ -21,7 +21,7 @@ test("ownerIdToBinaryOwnerId/binaryOwnerIdToOwnerId", () => {
 });
 
 test("ownerSecretToMnemonic and mnemonicToOwnerSecret are inverses", () => {
-  const secret = createOwnerSecret(testCreateRandomBytesDep);
+  const secret = createOwnerSecret(testDeps);
   const mnemonic = ownerSecretToMnemonic(secret);
   const backToSecret = mnemonicToOwnerSecret(mnemonic);
 

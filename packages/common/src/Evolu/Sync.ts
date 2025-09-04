@@ -3,8 +3,8 @@ import { assert } from "../Assert.js";
 import type { Brand } from "../Brand.js";
 import { ConsoleDep } from "../Console.js";
 import {
-  CreateRandomBytesDep,
   EncryptionKey,
+  RandomBytesDep,
   SymmetricCryptoDecryptError,
   SymmetricCryptoDep,
 } from "../Crypto.js";
@@ -142,8 +142,8 @@ export const createSync =
   (
     deps: ClockDep &
       ConsoleDep &
-      CreateRandomBytesDep &
       CreateWebSocketDep &
+      RandomBytesDep &
       RandomDep &
       SqliteDep &
       SymmetricCryptoDep &

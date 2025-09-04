@@ -2,9 +2,9 @@ import { isNonEmptyArray, NonEmptyReadonlyArray } from "../Array.js";
 import { CallbackId } from "../Callbacks.js";
 import { ConsoleDep } from "../Console.js";
 import {
-  CreateRandomBytesDep,
   createSymmetricCrypto,
   EncryptionKey,
+  RandomBytesDep,
   SymmetricCryptoDecryptError,
 } from "../Crypto.js";
 import { TransferableError } from "../Error.js";
@@ -147,10 +147,10 @@ export type DbWorkerOutput =
     };
 
 export type DbWorkerPlatformDeps = ConsoleDep &
-  CreateRandomBytesDep &
   CreateSqliteDriverDep &
   CreateWebSocketDep &
   NanoIdLibDep &
+  RandomBytesDep &
   RandomDep &
   TimeDep;
 
@@ -323,11 +323,12 @@ const createDbWorkerDeps =
   };
 
 const initializeDb =
-  (deps: CreateRandomBytesDep & SqliteDep & TimeDep) =>
+  (deps: RandomBytesDep & SqliteDep & TimeDep) =>
   (
     initialAppOwner: AppOwner,
     initialClock: Clock,
   ): Result<void, SqliteError> => {
+    // deps.
     for (const query of [
       // Never change structure to ensure all versions can read it.
       sql`

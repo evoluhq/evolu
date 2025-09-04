@@ -27,25 +27,25 @@ export const createAppState: CreateAppState = () => ({
   },
 });
 
-const nanoIdLib = createNanoIdLib();
 const console = createConsole();
+const nanoIdLib = createNanoIdLib();
 const time = createTime();
 
 const createDbWorker: CreateDbWorker = () =>
   createDbWorkerForPlatform({
     console,
-    createRandomBytes,
     createSqliteDriver: createExpoSqliteDriver,
     createWebSocket,
     nanoIdLib,
     random: createRandom(),
+    randomBytes: createRandomBytes(),
     time,
   });
 
 export const evoluReactNativeDeps: EvoluDeps = {
-  time,
-  nanoIdLib,
   console,
   createAppState,
   createDbWorker,
+  nanoIdLib,
+  time,
 };

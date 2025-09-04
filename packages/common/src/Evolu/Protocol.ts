@@ -152,9 +152,9 @@ import {
   utf8ToBytes,
 } from "../Buffer.js";
 import {
-  CreateRandomBytesDep,
   EncryptionKey,
   padmePaddingLength,
+  RandomBytesDep,
   SymmetricCryptoDecryptError,
   SymmetricCryptoDep,
 } from "../Crypto.js";
@@ -343,7 +343,7 @@ export interface ProtocolTimestampMismatchError {
  * unidirectional and stateless transports.
  */
 export const createProtocolMessageFromCrdtMessages =
-  (deps: CreateRandomBytesDep & SymmetricCryptoDep) =>
+  (deps: RandomBytesDep & SymmetricCryptoDep) =>
   (
     owner: Owner,
     messages: NonEmptyReadonlyArray<CrdtMessage>,
@@ -387,7 +387,7 @@ export const createProtocolMessageFromCrdtMessages =
        * For now, using a random fingerprint avoids extra complexity and is good
        * enough for this case.
        */
-      const randomFingerprint = deps.createRandomBytes(
+      const randomFingerprint = deps.randomBytes.create(
         fingerprintSize,
       ) as unknown as Fingerprint;
 

@@ -8,10 +8,10 @@ import {
 import { mnemonicToOwnerSecret } from "../src/index.js";
 import { ok } from "../src/Result.js";
 import { Mnemonic, NonNegativeInt } from "../src/Type.js";
-import { testCreateRandomBytesDep, testOwner } from "./_deps.js";
+import { testDeps, testOwner } from "./_deps.js";
 
 test("SymmetricCrypto", () => {
-  const symmetricCrypto = createSymmetricCrypto(testCreateRandomBytesDep);
+  const symmetricCrypto = createSymmetricCrypto(testDeps);
 
   const plaintext = utf8ToBytes("Hello, world!");
   const encryptionKey = testOwner.encryptionKey;

@@ -3,8 +3,9 @@ import BetterSQLite, { Statement } from "better-sqlite3";
 import { timingSafeEqual } from "crypto";
 import { customRandom, urlAlphabet } from "nanoid";
 import {
-  CreateRandomBytesDep,
   createSymmetricCrypto,
+  RandomBytes,
+  RandomBytesDep,
   SymmetricCryptoDep,
 } from "../src/Crypto.js";
 import { Config, defaultConfig } from "../src/Evolu/Config.js";
@@ -15,7 +16,7 @@ import {
   ownerIdToBinaryOwnerId,
 } from "../src/Evolu/Owner.js";
 import { constFalse, constVoid } from "../src/Function.js";
-import { NanoIdLib } from "../src/NanoId.js";
+import { NanoIdLib, NanoIdLibDep } from "../src/NanoId.js";
 import {
   createRandomLibWithSeed,
   createRandomWithSeed,
@@ -67,42 +68,40 @@ export const testNanoIdLibDep = { nanoIdLib: testNanoIdLib };
 
 export const testCreateId = (): Id => createId(testNanoIdLibDep);
 
-export const testCreateRandomBytesDep: CreateRandomBytesDep = {
-  createRandomBytes: (bytesLength = 32) => {
+export const testRandomBytes: RandomBytes = {
+  create: (bytesLength) => {
     const array = Array.from({ length: bytesLength }, () =>
       testRandomLib.int(0, 255),
     );
     return new Uint8Array(array);
   },
-};
+} as RandomBytes;
 
-export const testOwnerSecret = createOwnerSecret(testCreateRandomBytesDep);
-export const testOwnerSecret2 = createOwnerSecret(testCreateRandomBytesDep);
+const randomBytesDep = { randomBytes: testRandomBytes };
+
+export const testOwnerSecret = createOwnerSecret(randomBytesDep);
+export const testOwnerSecret2 = createOwnerSecret(randomBytesDep);
 
 export const testDbConfig: Config = {
   ...defaultConfig,
   externalAppOwner: createAppOwner(testOwnerSecret),
 };
 
-const ownerDeps = {
-  time: testTime,
-  ...testCreateRandomBytesDep,
+export const testSymmetricCrypto = createSymmetricCrypto(randomBytesDep);
+
+type TestDeps = NanoIdLibDep & RandomBytesDep & SymmetricCryptoDep & TimeDep;
+
+export const testDeps: TestDeps = {
   nanoIdLib: testNanoIdLib,
+  randomBytes: testRandomBytes,
+  symmetricCrypto: testSymmetricCrypto,
+  time: testTime,
 };
 
 export const testOwner = createOwner(testOwnerSecret);
 export const testOwnerBinaryId = ownerIdToBinaryOwnerId(testOwner.id);
 
 export const testOwner2 = createOwner(testOwnerSecret2);
-
-export const testSymmetricCrypto = createSymmetricCrypto(
-  testCreateRandomBytesDep,
-);
-
-export const testDeps: TimeDep & CreateRandomBytesDep & SymmetricCryptoDep = {
-  ...ownerDeps,
-  symmetricCrypto: testSymmetricCrypto,
-};
 
 //   /**
 //    * Log for SQL.
