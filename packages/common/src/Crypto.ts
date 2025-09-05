@@ -70,14 +70,20 @@ export const createRandomBytes = (): RandomBytes => ({
  */
 export const createSlip21 = (
   seed: Entropy16 | Entropy32 | Entropy64,
-  path: ReadonlyArray<string>,
+  path: ReadonlyArray<string | number>,
 ): Entropy32 => {
-  let m = hmac(sha512, utf8ToBytes("Symmetric key seed"), seed) as Entropy64;
+  let currentNode = hmac(
+    sha512,
+    utf8ToBytes("Symmetric key seed"),
+    seed,
+  ) as Entropy64;
 
-  for (const component of path) {
-    m = deriveSlip21Node(component, m);
+  for (const element of path) {
+    const label = typeof element === "number" ? element.toString() : element;
+    currentNode = deriveSlip21Node(label, currentNode);
   }
-  return m.slice(32, 64) as Entropy32;
+
+  return currentNode.slice(32, 64) as Entropy32;
 };
 
 /**
@@ -86,14 +92,14 @@ export const createSlip21 = (
  * @see {@link createSlip21}
  */
 export const deriveSlip21Node = (
-  component: string,
-  m: Entropy64,
+  label: string,
+  parentNode: Entropy64,
 ): Entropy64 => {
-  const p = utf8ToBytes(component);
-  const e = new globalThis.Uint8Array(p.byteLength + 1);
-  e[0] = 0;
-  e.set(p, 1);
-  return hmac(sha512, m.slice(0, 32), e) as Entropy64;
+  const labelBytes = utf8ToBytes(label);
+  const message = new globalThis.Uint8Array(labelBytes.byteLength + 1);
+  message[0] = 0;
+  message.set(labelBytes, 1);
+  return hmac(sha512, parentNode.slice(0, 32), message) as Entropy64;
 };
 
 /** The encryption key for {@link SymmetricCrypto}. */
