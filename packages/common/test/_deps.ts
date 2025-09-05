@@ -8,9 +8,7 @@ import {
   RandomBytesDep,
   SymmetricCryptoDep,
 } from "../src/Crypto.js";
-import { Config, defaultConfig } from "../src/Evolu/Config.js";
 import {
-  createAppOwner,
   createOwner,
   createOwnerSecret,
   ownerIdToBinaryOwnerId,
@@ -81,11 +79,6 @@ const randomBytesDep = { randomBytes: testRandomBytes };
 
 export const testOwnerSecret = createOwnerSecret(randomBytesDep);
 export const testOwnerSecret2 = createOwnerSecret(randomBytesDep);
-
-export const testDbConfig: Config = {
-  ...defaultConfig,
-  externalAppOwner: createAppOwner(testOwnerSecret),
-};
 
 export const testSymmetricCrypto = createSymmetricCrypto(randomBytesDep);
 

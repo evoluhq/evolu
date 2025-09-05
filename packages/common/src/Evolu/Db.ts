@@ -269,9 +269,6 @@ const createDbWorkerDeps =
         if (!result.ok) return result;
       }
 
-      // Return onInit ASAP, schema updates and sync setup can happen after.
-      postMessage({ type: "onInit", appOwner, isFirst: !dbIsInitialized });
-
       const result = ensureDbSchema({ sqlite })(
         initMessage.dbSchema,
         currentDbSchema.value,
@@ -310,6 +307,8 @@ const createDbWorkerDeps =
       if (!sync.ok) return sync;
 
       sync.value.useOwner(true, appOwner);
+
+      postMessage({ type: "onInit", appOwner, isFirst: !dbIsInitialized });
 
       return ok({ ...depsWithoutSync, sync: sync.value });
     });

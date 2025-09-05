@@ -1,7 +1,8 @@
-import { expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { NonEmptyReadonlyArray } from "../../src/Array.js";
 import { CallbackId } from "../../src/Callbacks.js";
 import { createConsole } from "../../src/Console.js";
+import { Config, defaultConfig } from "../../src/Evolu/Config.js";
 import {
   createDbWorkerForPlatform,
   DbWorker,
@@ -18,9 +19,9 @@ import {
   testCreateDummyWebSocket,
   testCreateId,
   testCreateSqliteDriver,
-  testDbConfig,
   testNanoIdLib,
   testOwnerBinaryId,
+  testOwnerSecret,
   testRandom,
   testRandomBytes,
   testSimpleName,
@@ -28,6 +29,7 @@ import {
 } from "../_deps.js";
 import { testTimestampsAsc } from "./_fixtures.js";
 import { getDbSnapshot } from "./_utils.js";
+import { createAppOwner } from "../../src/index.js";
 
 const createSimpleTestSchema = (): DbSchema => {
   return {
@@ -66,9 +68,13 @@ const createSqliteWithDbWorkerPlatformDeps = async (): Promise<
   return [sqlite, deps];
 };
 
-const setupInitializedDbWorker = async (
-  callback?: (db: DbWorker) => void,
-): Promise<[Array<DbWorkerOutput>, Sqlite, DbWorker]> => {
+const setupInitializedDbWorker = async ({
+  callbackBeforeInit,
+  externalAppOwner,
+}: {
+  callbackBeforeInit?: (db: DbWorker) => void;
+  externalAppOwner?: boolean;
+} = {}): Promise<[Array<DbWorkerOutput>, Sqlite, DbWorker]> => {
   const [sqlite, deps] = await createSqliteWithDbWorkerPlatformDeps();
   const db = createDbWorkerForPlatform(deps);
 
@@ -76,13 +82,20 @@ const setupInitializedDbWorker = async (
   db.onMessage((message) => dbWorkerOutput.push(message));
 
   // Execute callback before initialization if provided
-  if (callback) {
-    callback(db);
+  if (callbackBeforeInit) {
+    callbackBeforeInit(db);
   }
+
+  const config: Config = externalAppOwner
+    ? {
+        ...defaultConfig,
+        externalAppOwner: createAppOwner(testOwnerSecret),
+      }
+    : defaultConfig;
 
   db.postMessage({
     type: "init",
-    config: testDbConfig,
+    config,
     dbSchema: createSimpleTestSchema(),
   });
 
@@ -107,14 +120,12 @@ const postMutation = (
   });
 };
 
-// Helper for creating a basic test change
 const createTestChange = (
   id = testCreateId(),
   table = "testTable",
   values: Record<string, string | number | null> = { name: "test" },
 ): DbChange => ({ id, table, values });
 
-// Helper for getting record count from history table
 const getHistoryCount = (
   sqlite: Sqlite,
   table: string,
@@ -134,7 +145,6 @@ const getHistoryCount = (
   return result.rows[0].count;
 };
 
-// Helper for getting latest value from app table
 const getLatestValue = (
   sqlite: Sqlite,
   table: string,
@@ -151,7 +161,6 @@ const getLatestValue = (
   return result.rows[0][column];
 };
 
-// Helper for getting history values in timestamp order
 const getHistoryValues = (
   sqlite: Sqlite,
   table: string,
@@ -172,11 +181,22 @@ const getHistoryValues = (
   return result.rows.map((row) => row.value);
 };
 
-test("createDbWorker initializes correctly", async () => {
-  const [dbWorkerOutput, sqlite] = await setupInitializedDbWorker();
+describe("createDbWorker initializes", () => {
+  test("with on-device created AppOwner", async () => {
+    const [dbWorkerOutput, sqlite] = await setupInitializedDbWorker();
 
-  expect(dbWorkerOutput).toMatchSnapshot();
-  expect(getDbSnapshot({ sqlite })).toMatchSnapshot();
+    expect(dbWorkerOutput).toMatchSnapshot();
+    expect(getDbSnapshot({ sqlite })).toMatchSnapshot();
+  });
+
+  test("with external AppOwner", async () => {
+    const [dbWorkerOutput, sqlite] = await setupInitializedDbWorker({
+      externalAppOwner: true,
+    });
+
+    expect(dbWorkerOutput).toMatchSnapshot();
+    expect(getDbSnapshot({ sqlite })).toMatchSnapshot();
+  });
 });
 
 test("mutations", async () => {
@@ -189,9 +209,11 @@ test("mutations", async () => {
 });
 
 test("mutate before init", async () => {
-  const [dbWorkerOutput, sqlite] = await setupInitializedDbWorker((db) => {
-    // This runs BEFORE init
-    postMutation(db, [createTestChange(testCreateId(), "_testTable")]);
+  const [dbWorkerOutput, sqlite] = await setupInitializedDbWorker({
+    callbackBeforeInit: (db) => {
+      // This runs BEFORE init
+      postMutation(db, [createTestChange(testCreateId(), "_testTable")]);
+    },
   });
 
   expect(dbWorkerOutput).toMatchSnapshot();
