@@ -21,11 +21,16 @@ import {
 } from "../Type.js";
 import { TransportConfig } from "./Config.js";
 
-/** 32 bytes of cryptographic entropy used to derive {@link Owner} keys. */
+/**
+ * 32 bytes of cryptographic entropy used to derive {@link Owner} keys.
+ *
+ * Can be created using {@link createOwnerSecret} or converted from a
+ * {@link Mnemonic} using {@link mnemonicToOwnerSecret}.
+ */
 export const OwnerSecret = brand("OwnerSecret", Entropy32);
 export type OwnerSecret = typeof OwnerSecret.Type;
 
-/** Creates a randomly generated {@link OwnerSecret}. */
+/** Creates a {@link OwnerSecret}. */
 export const createOwnerSecret = (deps: RandomBytesDep): OwnerSecret =>
   deps.randomBytes.create(32) as OwnerSecret;
 
@@ -44,17 +49,22 @@ export const mnemonicToOwnerSecret = (mnemonic: Mnemonic): OwnerSecret =>
  * Owners enable **partial sync** - applications can choose which owners to
  * sync, allowing selective data synchronization based on specific needs.
  *
- * By default, all changes are assigned to the {@link AppOwner}, but additional
- * owners can be used for:
+ * Owners also provide **real data deletion** - while individual changes in
+ * local-first/distributed systems can only be marked as deleted, entire owners
+ * can be completely deleted from both relays and devices (except for
+ * {@link AppOwner}, which must be preserved for sync coordination).
  *
+ * Evolu provides different owner types depending on their use case:
+ *
+ * - **Coordination**: {@link AppOwner} for sync coordination and long-term
+ *   persistence
  * - **Data partitioning**: {@link ShardOwner} for partitioning application data
- *   (e.g., per project, workspace)
  * - **Collaboration**: {@link SharedOwner} for collaborative write access
  * - **Data sharing**: {@link SharedReadonlyOwner} for read-only access to shared
  *   data
  *
- * Owners are cryptographically derived from an {@link OwnerSecret} using SLIP-21
- * key derivation, ensuring secure and deterministic key generation:
+ * Owners are cryptographically derived from an {@link OwnerSecret} using
+ * SLIP-21, ensuring secure and deterministic key generation:
  *
  * - {@link OwnerId}: Globally unique public identifier
  * - {@link EncryptionKey}: Symmetric encryption key for data protection
@@ -84,8 +94,8 @@ export const binaryOwnerIdToOwnerId = (binaryOwnerId: BinaryOwnerId): OwnerId =>
 export const writeKeyLength = 16 as NonNegativeInt;
 
 /**
- * A secure token for write operations. Can be generated via
- * {@link createWriteKey} and is rotatable.
+ * A secure token for write operations. It's derived from {@link OwnerSecret} by
+ * default and can be rotated via {@link createWriteKey}.
  */
 export const WriteKey = brand("WriteKey", Entropy16);
 export type WriteKey = typeof WriteKey.Type;
@@ -105,24 +115,41 @@ export const createWriteKey = (deps: RandomBytesDep): WriteKey =>
  * - {@link createSharedOwner}
  * - {@link createSharedReadonlyOwner}
  */
-export const createOwner = (secret: OwnerSecret): Owner => ({
-  id: createIdFromHash(createSlip21(secret, ["Evolu", "Owner Id"])) as OwnerId,
+export const createOwner = (secret: OwnerSecret): Owner => {
+  const id = OwnerId.fromOrThrow(
+    createIdFromHash(createSlip21(secret, ["Evolu", "Owner Id"])),
+  );
 
-  encryptionKey: createSlip21(secret, [
-    "Evolu",
-    "Encryption Key",
-  ]) as EncryptionKey,
+  const encryptionKey = EncryptionKey.fromOrThrow(
+    createSlip21(secret, ["Evolu", "Encryption Key"]),
+  );
 
-  writeKey: createSlip21(secret, ["Evolu", "Write Key"]).slice(
-    0,
-    16,
-  ) as WriteKey,
-});
+  const writeKey = WriteKey.fromOrThrow(
+    createSlip21(secret, ["Evolu", "Write Key"]).slice(0, 16),
+  );
+
+  return { id, encryptionKey, writeKey };
+};
 
 /**
- * The owner representing app data. Can be created from a {@link Mnemonic} or
- * from external keys when the mnemonic should not be shared with the Evolu
- * app.
+ * The AppOwner represents the application owner. It's created using a
+ * cryptographically secure random generator or derived from an external source,
+ * e.g., mnemonic stored securely in a hardware device.
+ *
+ * While it's possible to store all application data in AppOwner, the better
+ * approach is to use it only for sync coordination. Storing all app data in
+ * AppOwner means that data will be stored/synced forever. And that's a problem
+ * if we want to provide real data deletion or in-app data migration without
+ * data duplication. In local-first apps/distributed systems, we can't delete
+ * individual changes, we only mark them as deleted, otherwise sync could not
+ * work.
+ *
+ * If we really want to delete data or at least avoid syncing it, we must store
+ * it using a different owner than AppOwner, e.g. {@link ShardOwner} or
+ * {@link SharedOwner}, and delete that owner. The AppOwner itself must be
+ * preserved because it coordinates deletion information across devices. Other
+ * devices need to sync the information that an owner was deleted so they can
+ * delete their local data as well.
  */
 export interface AppOwner extends Owner {
   readonly type: "AppOwner";
@@ -143,9 +170,15 @@ export const createAppOwner = (secret: OwnerSecret): AppOwner => ({
 });
 
 /**
- * An {@link Owner} for partitioning your own data (e.g., per project,
- * workspace). Can be created independently or derived from {@link AppOwner} for
- * deterministic partitioning.
+ * An {@link Owner} for sharding data.
+ *
+ * ShardOwners are the recommended storage location for most application data
+ * because they can be completely deleted (both on relays and devices) and
+ * conditionally synced.
+ *
+ * Can be created from {@link OwnerSecret} via {@link createShardOwner} or
+ * deterministically derived from {@link AppOwner} using
+ * {@link deriveShardOwner}.
  */
 export interface ShardOwner extends Owner {
   readonly type: "ShardOwner";
@@ -166,12 +199,25 @@ export const createShardOwner = (
 
 /**
  * Derives a {@link ShardOwner} from an {@link AppOwner} using the specified path.
- * The advantage of derived owners is that they can be hardcoded so different
- * devices can use them immediately before they are synced.
+ *
+ * **Advantages of derived owners:**
+ *
+ * - **Deterministic**: Same path always produces the same ShardOwner across all
+ *   devices
+ * - **Immediate availability**: Can be hardcoded and used before sync occurs
+ * - **Consistent setup**: All devices start with identical data structure
+ * - **Lifecycle management**: Can implement epoch patterns for clean data
+ *   deletion and recreation
+ *
+ * **Common patterns:**
+ *
+ * - Use paths like `["shard", 1]` for versioned data lifecycle
+ * - Use paths like `["project", "MyApp", 1]` for named partitions with versions
+ * - Each device can derive the same owners and set up initial structure
  */
 export const deriveShardOwner = (
   owner: AppOwner,
-  path: NonEmptyReadonlyArray<string>,
+  path: NonEmptyReadonlyArray<string | number>,
   transports?: ReadonlyArray<TransportConfig>,
 ): ShardOwner => {
   const secret = createSlip21(owner.encryptionKey, path) as OwnerSecret;
