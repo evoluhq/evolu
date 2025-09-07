@@ -27,6 +27,7 @@ export const navigation: Array<NavGroup> = [
     title: "Local-first",
     links: [
       { title: "Overview", href: "/docs/overview" },
+      { title: "Playgrounds", href: "/docs/playgrounds" },
       { title: "Examples", href: "/docs/examples" },
       { title: "Indexes", href: "/docs/indexes" },
       { title: "Relay", href: "/docs/evolu-relay" },
