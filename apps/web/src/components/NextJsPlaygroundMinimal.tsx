@@ -3,6 +3,7 @@
 import {
   createEvolu,
   createFormatTypeError,
+  createIdFromString,
   id,
   kysely,
   MinLengthError,
@@ -42,12 +43,21 @@ const Schema = {
 
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   reloadUrl: "/playgrounds/minimal",
-  name: SimpleName.fromOrThrow("evolu-playground-minimal"),
+  name: SimpleName.fromOrThrow("evolu-playground-minimal-v2"),
 
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "http://localhost:4000" }],
     // transports: [],
   }),
+
+  onInit: ({ isFirst }) => {
+    if (isFirst) {
+      evolu.upsert("todo", {
+        id: createIdFromString<TodoId>("welcome-todo"),
+        title: "Welcome to Evolu!",
+      });
+    }
+  },
 
   // Indexes are not required for development but are recommended for production.
   // https://www.evolu.dev/docs/indexes

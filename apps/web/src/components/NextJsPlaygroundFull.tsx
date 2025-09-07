@@ -3,6 +3,7 @@
 import {
   createEvolu,
   createFormatTypeError,
+  createIdFromString,
   id,
   kysely,
   MinLengthError,
@@ -50,7 +51,7 @@ const Schema = {
 
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   reloadUrl: "/playgrounds/full",
-  name: SimpleName.fromOrThrow("evolu-playground-minimal"),
+  name: SimpleName.fromOrThrow("evolu-playground-full-v2"),
 
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "http://localhost:4000" }],
@@ -60,7 +61,8 @@ const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   onInit: ({ isFirst }) => {
     if (isFirst) {
       // Create a default project
-      evolu.insert("project", {
+      evolu.upsert("project", {
+        id: createIdFromString<ProjectId>("personal-project"),
         name: "Personal",
       });
     }
