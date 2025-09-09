@@ -89,7 +89,8 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
    * All this function does is compile the Kysely query and serialize it into a
    * unique string. Both operations are fast and cheap.
    *
-   * For mutations, use {@link Evolu#insert} and {@link Evolu#update}.
+   * For mutations, use {@link Evolu#insert}, {@link Evolu#update}, or
+   * {@link Evolu#upsert}.
    *
    * ### Example
    *
@@ -704,7 +705,7 @@ const createEvoluInstance =
           const state = rowsStore.get();
           const nextState = new Map([
             ...state,
-            ...message.patches.map(
+            ...message.queryPatches.map(
               ({ query, patches }): [Query, ReadonlyArray<Row>] => [
                 query,
                 applyPatches(patches, state.get(query) ?? emptyRows),
@@ -712,7 +713,7 @@ const createEvoluInstance =
             ),
           ]);
 
-          for (const { query } of message.patches) {
+          for (const { query } of message.queryPatches) {
             loadingPromises.resolve(query, nextState.get(query) ?? emptyRows);
           }
 
@@ -897,24 +898,7 @@ const createEvoluInstance =
       subscribeError: errorStore.subscribe,
       getError: errorStore.get,
 
-      createQuery: (queryCallback, options) => {
-        const compiledQuery = queryCallback(
-          kysely as IntentionalNever,
-        ).compile();
-
-        if (isSqlMutation(compiledQuery.sql))
-          throw new Error(
-            "SQL mutation (INSERT, UPDATE, DELETE, etc.) isn't allowed in the Evolu `createQuery` function. Kysely suggests it because there is no read-only Kysely yet, and removing such an API is not possible. For mutations, use Evolu Mutation API.",
-          );
-
-        return serializeQuery({
-          sql: compiledQuery.sql as SafeSql,
-          parameters: compiledQuery.parameters as NonNullable<
-            SqliteQuery["parameters"]
-          >,
-          ...(options && { options }),
-        });
-      },
+      createQuery,
 
       loadQuery: <R extends Row>(query: Query<R>): Promise<QueryRows<R>> => {
         const { promise, isNew } = loadingPromises.get(query);
@@ -1081,10 +1065,25 @@ const createEvoluInstance =
     return evolu;
   };
 
-export const createNamespaceName =
-  (config: Config) =>
-  (name: string): string =>
-    `evolu:${config.name}:${name}`;
+export const createQuery = <R extends Row>(
+  queryCallback: Parameters<CreateQuery<EvoluSchema>>[0],
+  options?: Parameters<CreateQuery<EvoluSchema>>[1],
+): Query<R> => {
+  const compiledQuery = queryCallback(kysely as IntentionalNever).compile();
+
+  if (isSqlMutation(compiledQuery.sql))
+    throw new Error(
+      "SQL mutation (INSERT, UPDATE, DELETE, etc.) isn't allowed in the Evolu `createQuery` function. Kysely suggests it because there is no read-only Kysely yet, and removing such an API is not possible. For mutations, use Evolu Mutation API.",
+    );
+
+  return serializeQuery({
+    sql: compiledQuery.sql as SafeSql,
+    parameters: compiledQuery.parameters as NonNullable<
+      SqliteQuery["parameters"]
+    >,
+    ...(options && { options }),
+  });
+};
 
 interface LoadingPromises {
   get: <R extends Row>(
