@@ -1,3 +1,4 @@
+import { pack } from "msgpackr";
 import { isNonEmptyArray, isNonEmptyReadonlyArray } from "../Array.js";
 import { assert, assertNonEmptyArray } from "../Assert.js";
 import { createCallbacks } from "../Callbacks.js";
@@ -60,7 +61,6 @@ import {
 import { DbChange } from "./Storage.js";
 import { initialSyncState, SyncOwner, SyncState } from "./Sync.js";
 import { TimestampError } from "./Timestamp.js";
-import { pack } from "msgpackr";
 
 export interface Evolu<S extends EvoluSchema = EvoluSchema> {
   /**
@@ -466,12 +466,12 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
 
 /** Represent errors that can occur in Evolu. */
 export type EvoluError =
-  | TimestampError
   | ProtocolError
-  | TransferableError
-  | SymmetricCryptoDecryptError
   | ProtocolUnsupportedVersionError
-  | SqliteError;
+  | SqliteError
+  | SymmetricCryptoDecryptError
+  | TimestampError
+  | TransferableError;
 
 interface InternalEvoluInstance<S extends EvoluSchema = EvoluSchema>
   extends Evolu<S> {
