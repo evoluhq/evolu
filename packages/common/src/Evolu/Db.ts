@@ -55,6 +55,7 @@ import {
 import { DbChange } from "./Storage.js";
 import { Clock, createClock, createSync, SyncDep, SyncOwner } from "./Sync.js";
 import {
+  Timestamp,
   TimestampError,
   TimestampString,
   timestampStringToTimestamp,
@@ -119,11 +120,11 @@ export type DbWorkerOutput =
   | {
       readonly type: "onError";
       readonly error:
-        | SqliteError
-        | TransferableError
-        | TimestampError
         | ProtocolError
-        | SymmetricCryptoDecryptError;
+        | SqliteError
+        | SymmetricCryptoDecryptError
+        | TimestampError
+        | TransferableError;
     }
   | {
       readonly type: "onChange";
@@ -211,8 +212,6 @@ const createDbWorkerDeps =
         (table) => table.name === "evolu_version",
       );
 
-      const platformDepsWithSqlite = { ...platformDeps, sqlite };
-
       if (dbIsInitialized) {
         const currentVersion = sqlite.exec<{
           protocolVersion: number;
@@ -256,16 +255,18 @@ const createDbWorkerDeps =
           writeKey: config.appOwnerWriteKey,
           mnemonic: config.appOwnerMnemonic,
         };
-        clock = createClock(platformDepsWithSqlite)(
+
+        clock = createClock({ ...platformDeps, sqlite })(
           timestampStringToTimestamp(config.clock),
         );
       } else {
         appOwner =
           initMessage.config.externalAppOwner ??
           createAppOwner(createOwnerSecret(platformDeps));
-        clock = createClock(platformDepsWithSqlite)();
 
-        const result = initializeDb(platformDepsWithSqlite)(appOwner, clock);
+        clock = createClock({ ...platformDeps, sqlite })();
+
+        const result = initializeDb({ sqlite })(appOwner, clock.get());
         if (!result.ok) return result;
       }
 
@@ -275,26 +276,13 @@ const createDbWorkerDeps =
       );
       if (!result.ok) return result;
 
-      const tabQueryRowsCacheMap = new Map<Id, QueryRowsCache>();
-      const getQueryRowsCache = (tabId: Id) => {
-        let cache = tabQueryRowsCacheMap.get(tabId);
-        if (!cache) {
-          cache = createQueryRowsCache();
-          tabQueryRowsCacheMap.set(tabId, cache);
-        }
-        return cache;
-      };
-
-      const depsWithoutSync = {
-        ...platformDepsWithSqlite,
+      const sync = createSync({
+        ...platformDeps,
         clock,
-        getQueryRowsCache,
-        postMessage,
+        sqlite,
         symmetricCrypto: createSymmetricCrypto(platformDeps),
         timestampConfig: initMessage.config,
-      };
-
-      const sync = createSync(depsWithoutSync)({
+      })({
         appOwner,
         transports: initMessage.config.transports,
         onError: (error) => {
@@ -310,7 +298,25 @@ const createDbWorkerDeps =
 
       postMessage({ type: "onInit", appOwner, isFirst: !dbIsInitialized });
 
-      return ok({ ...depsWithoutSync, sync: sync.value });
+      const tabQueryRowsCacheMap = new Map<Id, QueryRowsCache>();
+      const getQueryRowsCache = (tabId: Id) => {
+        let cache = tabQueryRowsCacheMap.get(tabId);
+        if (!cache) {
+          cache = createQueryRowsCache();
+          tabQueryRowsCacheMap.set(tabId, cache);
+        }
+        return cache;
+      };
+
+      const deps: DbWorkerDeps = {
+        ...platformDeps,
+        getQueryRowsCache,
+        postMessage,
+        sqlite,
+        sync: sync.value,
+      };
+
+      return ok(deps);
     });
 
     if (!deps.ok) {
@@ -322,12 +328,11 @@ const createDbWorkerDeps =
   };
 
 const initializeDb =
-  (deps: RandomBytesDep & SqliteDep & TimeDep) =>
+  (deps: SqliteDep) =>
   (
     initialAppOwner: AppOwner,
-    initialClock: Clock,
+    initialClock: Timestamp,
   ): Result<void, SqliteError> => {
-    // deps.
     for (const query of [
       // Never change structure to ensure all versions can read it.
       sql`
@@ -364,7 +369,7 @@ const initializeDb =
           )
         values
           (
-            ${timestampToTimestampString(initialClock.get())},
+            ${timestampToTimestampString(initialClock)},
             ${initialAppOwner.id},
             ${initialAppOwner.encryptionKey},
             ${initialAppOwner.writeKey},
@@ -512,7 +517,7 @@ const handlers: Omit<MessageHandlers<DbWorkerInput, DbWorkerDeps>, "init"> = {
         const appOwner = createAppOwner(secret);
         const clock = createClock(deps)();
 
-        const initializeDbResult = initializeDb(deps)(appOwner, clock);
+        const initializeDbResult = initializeDb(deps)(appOwner, clock.get());
         if (!initializeDbResult.ok) return initializeDbResult;
       }
 
