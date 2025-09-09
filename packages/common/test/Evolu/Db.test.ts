@@ -1,427 +1,941 @@
-import { describe, expect, test } from "vitest";
-import { NonEmptyReadonlyArray } from "../../src/Array.js";
+import { expect, test } from "vitest";
 import { CallbackId } from "../../src/Callbacks.js";
 import { createConsole } from "../../src/Console.js";
-import { Config, defaultConfig } from "../../src/Evolu/Config.js";
+import { defaultConfig } from "../../src/Evolu/Config.js";
 import {
   createDbWorkerForPlatform,
   DbWorker,
-  DbWorkerOutput,
   DbWorkerPlatformDeps,
 } from "../../src/Evolu/Db.js";
-import { DbSchema, MutationChange } from "../../src/Evolu/Schema.js";
-import { DbChange } from "../../src/Evolu/Storage.js";
+import { createQuery } from "../../src/Evolu/Evolu.js";
+import { createAppOwner } from "../../src/Evolu/Owner.js";
 import { wait } from "../../src/Promise.js";
 import { getOrThrow } from "../../src/Result.js";
-import { createSqlite, sql, Sqlite } from "../../src/Sqlite.js";
-import { Id, idToBinaryId } from "../../src/Type.js";
+import { createSqlite, Sqlite } from "../../src/Sqlite.js";
 import {
-  testCreateDummyWebSocket,
+  createTestWebSocket,
   testCreateId,
   testCreateSqliteDriver,
   testNanoIdLib,
-  testOwnerBinaryId,
   testOwnerSecret,
   testRandom,
   testRandomBytes,
   testSimpleName,
   testTime,
+  TestWebSocket,
 } from "../_deps.js";
-import { testTimestampsAsc } from "./_fixtures.js";
 import { getDbSnapshot } from "./_utils.js";
-import { createAppOwner } from "../../src/index.js";
 
-const createSimpleTestSchema = (): DbSchema => {
-  return {
-    tables: [
-      {
-        name: "testTable",
-        columns: ["id", "name"],
-      },
-      {
-        name: "_testTable",
-        columns: ["id", "name"],
-      },
-    ],
-    indexes: [],
-  };
-};
-
-const createSqliteWithDbWorkerPlatformDeps = async (): Promise<
-  [Sqlite, DbWorkerPlatformDeps]
-> => {
+const createDbWorkerWithDeps = async (): Promise<{
+  readonly worker: DbWorker;
+  readonly sqlite: Sqlite;
+  readonly webSocket: TestWebSocket;
+}> => {
   const sqliteDriver = await testCreateSqliteDriver(testSimpleName);
-  const createSqliteDriver = () => Promise.resolve(sqliteDriver);
-  const sqlite = getOrThrow(
-    await createSqlite({ createSqliteDriver })(testSimpleName),
-  );
+  const sqliteResult = await createSqlite({
+    createSqliteDriver: () => Promise.resolve(sqliteDriver),
+  })(testSimpleName);
+  const sqlite = getOrThrow(sqliteResult);
+  const testWebSocket = createTestWebSocket();
 
   const deps: DbWorkerPlatformDeps = {
     console: createConsole(),
-    createSqliteDriver,
-    createWebSocket: testCreateDummyWebSocket,
+    createSqliteDriver: () => Promise.resolve(sqliteDriver),
+    createWebSocket: () => testWebSocket,
     nanoIdLib: testNanoIdLib,
     random: testRandom,
     randomBytes: testRandomBytes,
     time: testTime,
   };
-  return [sqlite, deps];
+
+  const worker = createDbWorkerForPlatform(deps);
+
+  return {
+    worker,
+    sqlite,
+    webSocket: testWebSocket,
+  };
 };
 
-const setupInitializedDbWorker = async ({
-  callbackBeforeInit,
-  externalAppOwner,
-}: {
-  callbackBeforeInit?: (db: DbWorker) => void;
-  externalAppOwner?: boolean;
-} = {}): Promise<[Array<DbWorkerOutput>, Sqlite, DbWorker]> => {
-  const [sqlite, deps] = await createSqliteWithDbWorkerPlatformDeps();
-  const db = createDbWorkerForPlatform(deps);
+const testAppOwner = createAppOwner(testOwnerSecret);
 
-  const dbWorkerOutput: Array<DbWorkerOutput> = [];
-  db.onMessage((message) => dbWorkerOutput.push(message));
+const createInitializedDbWorker = async (): Promise<{
+  readonly worker: DbWorker;
+  readonly sqlite: Sqlite;
+  readonly webSocket: TestWebSocket;
+  readonly workerOutput: Array<unknown>;
+}> => {
+  const { worker, sqlite, webSocket } = await createDbWorkerWithDeps();
 
-  // Execute callback before initialization if provided
-  if (callbackBeforeInit) {
-    callbackBeforeInit(db);
-  }
+  // Track worker output messages
+  const workerOutput: Array<unknown> = [];
+  worker.onMessage((message) => workerOutput.push(message));
 
-  const config: Config = externalAppOwner
-    ? {
-        ...defaultConfig,
-        externalAppOwner: createAppOwner(testOwnerSecret),
-      }
-    : defaultConfig;
-
-  db.postMessage({
+  // Initialize with external AppOwner
+  worker.postMessage({
     type: "init",
-    config,
-    dbSchema: createSimpleTestSchema(),
-  });
-
-  // async createSqliteDriver
-  await wait(10);
-
-  return [dbWorkerOutput, sqlite, db];
-};
-
-// Helper for posting mutations with common defaults
-const postMutation = (
-  db: DbWorker,
-  changes: NonEmptyReadonlyArray<MutationChange>,
-  tabId = testCreateId(),
-): void => {
-  db.postMessage({
-    type: "mutate",
-    tabId,
-    changes,
-    onCompleteIds: [],
-    subscribedQueries: [],
-  });
-};
-
-const createTestChange = (
-  id = testCreateId(),
-  table = "testTable",
-  values: Record<string, string | number | null> = { name: "test" },
-): DbChange => ({ id, table, values });
-
-const getHistoryCount = (
-  sqlite: Sqlite,
-  table: string,
-  recordId: Id,
-  column: string,
-): number => {
-  const result = getOrThrow(
-    sqlite.exec<{ count: number }>(sql`
-      select count(*) as count
-      from evolu_history
-      where
-        "table" = ${table}
-        and "id" = ${idToBinaryId(recordId)}
-        and "column" = ${column};
-    `),
-  );
-  return result.rows[0].count;
-};
-
-const getLatestValue = (
-  sqlite: Sqlite,
-  table: string,
-  recordId: Id,
-  column: string,
-): string => {
-  const result = getOrThrow(
-    sqlite.exec<Record<string, string>>(sql`
-      select ${sql.identifier(column)}
-      from ${sql.identifier(table)}
-      where id = ${recordId};
-    `),
-  );
-  return result.rows[0][column];
-};
-
-const getHistoryValues = (
-  sqlite: Sqlite,
-  table: string,
-  recordId: Id,
-  column: string,
-): Array<string> => {
-  const result = getOrThrow(
-    sqlite.exec<{ value: string }>(sql`
-      select value
-      from evolu_history
-      where
-        "table" = ${table}
-        and "id" = ${idToBinaryId(recordId)}
-        and "column" = ${column}
-      order by timestamp;
-    `),
-  );
-  return result.rows.map((row) => row.value);
-};
-
-describe("createDbWorker initializes", () => {
-  test("with on-device created AppOwner", async () => {
-    const [dbWorkerOutput, sqlite] = await setupInitializedDbWorker();
-
-    expect(dbWorkerOutput).toMatchSnapshot();
-    expect(getDbSnapshot({ sqlite })).toMatchSnapshot();
-  });
-
-  test("with external AppOwner", async () => {
-    const [dbWorkerOutput, sqlite] = await setupInitializedDbWorker({
-      externalAppOwner: true,
-    });
-
-    expect(dbWorkerOutput).toMatchSnapshot();
-    expect(getDbSnapshot({ sqlite })).toMatchSnapshot();
-  });
-});
-
-test("mutations", async () => {
-  const [dbWorkerOutput, sqlite, db] = await setupInitializedDbWorker();
-
-  postMutation(db, [createTestChange()]);
-
-  expect(dbWorkerOutput).toMatchSnapshot();
-  expect(getDbSnapshot({ sqlite }).tables).toMatchSnapshot();
-});
-
-test("mutate before init", async () => {
-  const [dbWorkerOutput, sqlite] = await setupInitializedDbWorker({
-    callbackBeforeInit: (db) => {
-      // This runs BEFORE init
-      postMutation(db, [createTestChange(testCreateId(), "_testTable")]);
+    config: {
+      ...defaultConfig,
+      externalAppOwner: testAppOwner,
+    },
+    dbSchema: {
+      tables: [
+        {
+          name: "testTable",
+          columns: ["id", "name"],
+        },
+        {
+          name: "_localTable",
+          columns: ["id", "value"],
+        },
+      ],
+      indexes: [],
     },
   });
 
-  expect(dbWorkerOutput).toMatchSnapshot();
-  expect(getDbSnapshot({ sqlite }).tables).toMatchSnapshot();
-});
+  // Wait for initialization to complete
+  await wait(10);
 
-test("local mutation", async () => {
-  const [dbWorkerOutput, sqlite, db] = await setupInitializedDbWorker();
-
-  const change = createTestChange(testCreateId(), "_testTable");
-
-  postMutation(db, [change]);
-
-  expect(dbWorkerOutput).toMatchSnapshot();
-  expect(getDbSnapshot({ sqlite }).tables).toMatchSnapshot();
-
-  // Test deletion
-  postMutation(db, [
+  expect(workerOutput).toEqual([
     {
-      ...change,
-      values: {
-        ...change.values,
-        isDeleted: 1,
-      },
+      type: "onInit",
+      appOwner: testAppOwner,
+      isFirst: true,
     },
   ]);
 
-  expect(getDbSnapshot({ sqlite }).tables).toMatchSnapshot();
+  workerOutput.length = 0;
+
+  return {
+    worker,
+    sqlite,
+    webSocket,
+    workerOutput,
+  };
+};
+
+test("initializes DbWorker with external AppOwner", async () => {
+  const { webSocket, sqlite } = await createInitializedDbWorker();
+
+  expect(getDbSnapshot({ sqlite })).toMatchInlineSnapshot(`
+    {
+      "schema": {
+        "indexes": [
+          {
+            "name": "evolu_history_ownerId_timestamp",
+            "sql": "create index evolu_history_ownerId_timestamp on evolu_history (
+              "ownerId",
+              "timestamp"
+            )",
+          },
+          {
+            "name": "evolu_history_ownerId_table_id_column_timestampDesc",
+            "sql": "create unique index evolu_history_ownerId_table_id_column_timestampDesc on evolu_history (
+              "ownerId",
+              "table",
+              "id",
+              "column",
+              "timestamp" desc
+            )",
+          },
+          {
+            "name": "evolu_timestamp_index",
+            "sql": "create index evolu_timestamp_index on evolu_timestamp (
+            "ownerId",
+            "l",
+            "t",
+            "h1",
+            "h2",
+            "c"
+          )",
+          },
+        ],
+        "tables": [
+          {
+            "columns": [
+              "protocolVersion",
+            ],
+            "name": "evolu_version",
+          },
+          {
+            "columns": [
+              "clock",
+              "appOwnerId",
+              "appOwnerEncryptionKey",
+              "appOwnerWriteKey",
+              "appOwnerMnemonic",
+            ],
+            "name": "evolu_config",
+          },
+          {
+            "columns": [
+              "ownerId",
+              "table",
+              "id",
+              "column",
+              "timestamp",
+              "value",
+            ],
+            "name": "evolu_history",
+          },
+          {
+            "columns": [
+              "id",
+              "name",
+              "createdAt",
+              "updatedAt",
+              "isDeleted",
+            ],
+            "name": "testTable",
+          },
+          {
+            "columns": [
+              "id",
+              "value",
+              "createdAt",
+              "updatedAt",
+              "isDeleted",
+            ],
+            "name": "_localTable",
+          },
+          {
+            "columns": [
+              "ownerId",
+              "t",
+              "h1",
+              "h2",
+              "c",
+              "l",
+            ],
+            "name": "evolu_timestamp",
+          },
+        ],
+      },
+      "tables": [
+        {
+          "name": "evolu_version",
+          "rows": [
+            {
+              "protocolVersion": 0,
+            },
+          ],
+        },
+        {
+          "name": "evolu_config",
+          "rows": [
+            {
+              "appOwnerEncryptionKey": "uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18]",
+              "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
+              "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
+              "appOwnerWriteKey": "uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233]",
+              "clock": "1970-01-01T00:00:00.000Z-0000-452cde0b36593c7e",
+            },
+          ],
+        },
+        {
+          "name": "evolu_history",
+          "rows": [],
+        },
+        {
+          "name": "testTable",
+          "rows": [],
+        },
+        {
+          "name": "_localTable",
+          "rows": [],
+        },
+        {
+          "name": "evolu_timestamp",
+          "rows": [],
+        },
+      ],
+    }
+  `);
+
+  // Check that we have no WebSocket messages yet (no sync)
+  expect(webSocket.sentMessages).toEqual([]);
 });
 
-test("reset", async () => {
-  const [, sqlite, db] = await setupInitializedDbWorker();
+test("local mutations", async () => {
+  const { worker, sqlite, webSocket, workerOutput } =
+    await createInitializedDbWorker();
 
-  db.postMessage({
-    type: "reset",
-    reload: false,
-    onCompleteId: testNanoIdLib.nanoid() as CallbackId,
+  // Create a mutation on local table (underscore prefix)
+  const recordId = testCreateId();
+
+  // Create a subscribed query to see patches in onChange
+  const subscribedQuery = createQuery((db) =>
+    db.selectFrom("_localTable").selectAll().where("isDeleted", "is", null),
+  );
+
+  worker.postMessage({
+    type: "mutate",
+    tabId: testCreateId(),
+    changes: [
+      {
+        id: recordId,
+        table: "_localTable",
+        values: { value: "local data" },
+      },
+    ],
+    onCompleteIds: [],
+    subscribedQueries: [subscribedQuery],
   });
 
-  expect(getDbSnapshot({ sqlite })).toMatchSnapshot();
-});
-
-test("evolu_history unique index prevents duplicates", async () => {
-  const [, sqlite] = await setupInitializedDbWorker();
-
-  const ownerId = testOwnerBinaryId;
-  const table = "testTable";
-  const id = idToBinaryId(testCreateId());
-  const column = "name";
-  const value = "test value";
-  const timestamp = testTimestampsAsc[0];
-
-  // Manually insert the same record twice
-  sqlite.exec(sql`
-    insert into evolu_history
-      ("ownerId", "table", "id", "column", "value", "timestamp")
-    values
-      (${ownerId}, ${table}, ${id}, ${column}, ${value}, ${timestamp})
-    on conflict do nothing;
+  // Check that data was inserted into local table
+  expect(getDbSnapshot({ sqlite }).tables).toMatchInlineSnapshot(`
+    [
+      {
+        "name": "evolu_version",
+        "rows": [
+          {
+            "protocolVersion": 0,
+          },
+        ],
+      },
+      {
+        "name": "evolu_config",
+        "rows": [
+          {
+            "appOwnerEncryptionKey": "uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18]",
+            "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
+            "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
+            "appOwnerWriteKey": "uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233]",
+            "clock": "1970-01-01T00:00:00.000Z-0000-90fc35af44162ba3",
+          },
+        ],
+      },
+      {
+        "name": "evolu_history",
+        "rows": [],
+      },
+      {
+        "name": "testTable",
+        "rows": [],
+      },
+      {
+        "name": "_localTable",
+        "rows": [
+          {
+            "createdAt": "1970-01-01T00:00:00.000Z",
+            "id": "Ix1Y9e4dzcD2PtSrFu-SJ",
+            "isDeleted": null,
+            "updatedAt": "1970-01-01T00:00:00.000Z",
+            "value": "local data",
+          },
+        ],
+      },
+      {
+        "name": "evolu_timestamp",
+        "rows": [],
+      },
+    ]
   `);
-  sqlite.exec(sql`
-    insert into evolu_history
-      ("ownerId", "table", "id", "column", "value", "timestamp")
-    values
-      (${ownerId}, ${table}, ${id}, ${column}, ${value}, ${timestamp})
-    on conflict do nothing;
+
+  expect(workerOutput).toMatchInlineSnapshot(`
+    [
+      {
+        "onCompleteIds": [],
+        "queryPatches": [
+          {
+            "patches": [
+              {
+                "op": "replaceAll",
+                "value": [
+                  {
+                    "createdAt": "1970-01-01T00:00:00.000Z",
+                    "id": "Ix1Y9e4dzcD2PtSrFu-SJ",
+                    "isDeleted": null,
+                    "updatedAt": "1970-01-01T00:00:00.000Z",
+                    "value": "local data",
+                  },
+                ],
+              },
+            ],
+            "query": "["select * from \\"_localTable\\" where \\"isDeleted\\" is null",[],[]]",
+          },
+        ],
+        "tabId": "O9i2LT9BlFv5rPltodHge",
+        "type": "onChange",
+      },
+      {
+        "tabId": "O9i2LT9BlFv5rPltodHge",
+        "type": "onReceive",
+      },
+    ]
   `);
 
-  const count = getOrThrow(
-    sqlite.exec<{ count: number }>(sql`
-      select count(*) as count from evolu_history;
-    `),
-  );
-  expect(count.rows[0].count).toBe(1);
+  workerOutput.length = 0;
+
+  // Test querying the data
+  worker.postMessage({
+    type: "query",
+    tabId: testCreateId(),
+    queries: [subscribedQuery],
+  });
+
+  expect(workerOutput).toMatchInlineSnapshot(`
+    [
+      {
+        "onCompleteIds": [],
+        "queryPatches": [
+          {
+            "patches": [
+              {
+                "op": "replaceAll",
+                "value": [
+                  {
+                    "createdAt": "1970-01-01T00:00:00.000Z",
+                    "id": "Ix1Y9e4dzcD2PtSrFu-SJ",
+                    "isDeleted": null,
+                    "updatedAt": "1970-01-01T00:00:00.000Z",
+                    "value": "local data",
+                  },
+                ],
+              },
+            ],
+            "query": "["select * from \\"_localTable\\" where \\"isDeleted\\" is null",[],[]]",
+          },
+        ],
+        "tabId": "WZ_SQtmCvz6xwHpK2ZkuZ",
+        "type": "onChange",
+      },
+    ]
+  `);
+
+  workerOutput.length = 0;
+
+  // Now test deletion of the same record
+  worker.postMessage({
+    type: "mutate",
+    tabId: testCreateId(),
+    changes: [
+      {
+        id: recordId,
+        table: "_localTable",
+        values: { value: "local data", isDeleted: 1 },
+      },
+    ],
+    onCompleteIds: [],
+    subscribedQueries: [subscribedQuery],
+  });
+
+  expect(getDbSnapshot({ sqlite }).tables).toMatchInlineSnapshot(`
+    [
+      {
+        "name": "evolu_version",
+        "rows": [
+          {
+            "protocolVersion": 0,
+          },
+        ],
+      },
+      {
+        "name": "evolu_config",
+        "rows": [
+          {
+            "appOwnerEncryptionKey": "uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18]",
+            "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
+            "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
+            "appOwnerWriteKey": "uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233]",
+            "clock": "1970-01-01T00:00:00.000Z-0000-90fc35af44162ba3",
+          },
+        ],
+      },
+      {
+        "name": "evolu_history",
+        "rows": [],
+      },
+      {
+        "name": "testTable",
+        "rows": [],
+      },
+      {
+        "name": "_localTable",
+        "rows": [],
+      },
+      {
+        "name": "evolu_timestamp",
+        "rows": [],
+      },
+    ]
+  `);
+
+  expect(workerOutput).toMatchInlineSnapshot(`
+    [
+      {
+        "onCompleteIds": [],
+        "queryPatches": [
+          {
+            "patches": [
+              {
+                "op": "replaceAll",
+                "value": [],
+              },
+            ],
+            "query": "["select * from \\"_localTable\\" where \\"isDeleted\\" is null",[],[]]",
+          },
+        ],
+        "tabId": "VHzg5iuekXyVRcpEppKHy",
+        "type": "onChange",
+      },
+      {
+        "tabId": "VHzg5iuekXyVRcpEppKHy",
+        "type": "onReceive",
+      },
+    ]
+  `);
+
+  // Test reset functionality
+  workerOutput.length = 0;
+
+  // Reset the database
+  const onCompleteId = testNanoIdLib.nanoid() as CallbackId;
+  worker.postMessage({
+    type: "reset",
+    onCompleteId,
+    reload: false,
+  });
+
+  // Check that reset completed
+  expect(workerOutput).toMatchInlineSnapshot(`
+    [
+      {
+        "onCompleteId": "jl8Ky6BW9jCTxiAw0gY_f",
+        "reload": false,
+        "type": "onReset",
+      },
+    ]
+  `);
+
+  expect(getDbSnapshot({ sqlite }).tables).toMatchInlineSnapshot(`[]`);
+
+  // No WebSocket messages (local mutations don't sync)
+  expect(webSocket.sentMessages).toEqual([]);
 });
 
-test("timestamp ordering - newer mutations overwrite older ones", async () => {
-  const [, sqlite, db] = await setupInitializedDbWorker();
+test("sync mutations", async () => {
+  const { worker, sqlite, webSocket, workerOutput } =
+    await createInitializedDbWorker();
 
   const recordId = testCreateId();
 
-  // Create first mutation
-  postMutation(db, [
-    createTestChange(recordId, "testTable", { name: "first_value" }),
-  ]);
-  await wait(10);
-
-  // Create second mutation on same record (will have newer timestamp)
-  postMutation(db, [
-    createTestChange(recordId, "testTable", { name: "second_value" }),
-  ]);
-  await wait(10);
-
-  // Verify the app table has the latest value
-  expect(getLatestValue(sqlite, "testTable", recordId, "name")).toBe(
-    "second_value",
+  // Create a subscribed query to see patches in onChange
+  const subscribedQuery = createQuery((db) =>
+    db.selectFrom("testTable").selectAll().where("isDeleted", "is", null),
   );
 
-  // Verify both mutations are stored in history
-  expect(getHistoryCount(sqlite, "testTable", recordId, "name")).toBe(2);
-});
+  worker.postMessage({
+    type: "mutate",
+    tabId: testCreateId(),
+    changes: [
+      {
+        id: recordId,
+        table: "testTable",
+        values: {
+          createdAt: new Date(testTime.now()).toISOString(),
+          name: "sync data",
+        },
+      },
+    ],
+    onCompleteIds: [],
+    subscribedQueries: [subscribedQuery],
+  });
 
-test("timestamp ordering - multiple columns update independently", async () => {
-  const [, sqlite, db] = await setupInitializedDbWorker();
+  // Check that data was inserted into regular table
+  expect(getDbSnapshot({ sqlite }).tables).toMatchInlineSnapshot(`
+    [
+      {
+        "name": "evolu_version",
+        "rows": [
+          {
+            "protocolVersion": 0,
+          },
+        ],
+      },
+      {
+        "name": "evolu_config",
+        "rows": [
+          {
+            "appOwnerEncryptionKey": "uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18]",
+            "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
+            "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
+            "appOwnerWriteKey": "uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233]",
+            "clock": "1970-01-01T00:00:00.001Z-0000-5028b5d42b661bdd",
+          },
+        ],
+      },
+      {
+        "name": "evolu_history",
+        "rows": [
+          {
+            "column": "createdAt",
+            "id": "uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76]",
+            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
+            "table": "testTable",
+            "timestamp": "uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221]",
+            "value": "1970-01-01T00:00:00.001Z",
+          },
+          {
+            "column": "name",
+            "id": "uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76]",
+            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
+            "table": "testTable",
+            "timestamp": "uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221]",
+            "value": "sync data",
+          },
+        ],
+      },
+      {
+        "name": "testTable",
+        "rows": [
+          {
+            "createdAt": "1970-01-01T00:00:00.001Z",
+            "id": "jYroU2zm2npXftCAjUskT",
+            "isDeleted": null,
+            "name": "sync data",
+            "updatedAt": "1970-01-01T00:00:00.001Z",
+          },
+        ],
+      },
+      {
+        "name": "_localTable",
+        "rows": [],
+      },
+      {
+        "name": "evolu_timestamp",
+        "rows": [
+          {
+            "c": 1,
+            "h1": 273847295500364,
+            "h2": 38036290989003,
+            "l": 2,
+            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
+            "t": "uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221]",
+          },
+        ],
+      },
+    ]
+  `);
 
-  const recordId = testCreateId();
+  expect(workerOutput).toMatchInlineSnapshot(`
+    [
+      {
+        "onCompleteIds": [],
+        "queryPatches": [
+          {
+            "patches": [
+              {
+                "op": "replaceAll",
+                "value": [
+                  {
+                    "createdAt": "1970-01-01T00:00:00.001Z",
+                    "id": "jYroU2zm2npXftCAjUskT",
+                    "isDeleted": null,
+                    "name": "sync data",
+                    "updatedAt": "1970-01-01T00:00:00.001Z",
+                  },
+                ],
+              },
+            ],
+            "query": "["select * from \\"testTable\\" where \\"isDeleted\\" is null",[],[]]",
+          },
+        ],
+        "tabId": "V83IcuxG6clxIS9iEBxWD",
+        "type": "onChange",
+      },
+      {
+        "tabId": "V83IcuxG6clxIS9iEBxWD",
+        "type": "onReceive",
+      },
+    ]
+  `);
 
-  // Create first mutation that sets the name
-  postMutation(db, [
-    createTestChange(recordId, "testTable", { name: "original_name" }),
-  ]);
+  // Test last-write-wins: update the same record before deletion
+  workerOutput.length = 0;
+
+  worker.postMessage({
+    type: "mutate",
+    tabId: testCreateId(),
+    changes: [
+      {
+        id: recordId,
+        table: "testTable",
+        values: { name: "updated data" },
+      },
+    ],
+    onCompleteIds: [],
+    subscribedQueries: [subscribedQuery],
+  });
+
   await wait(10);
 
-  // Update the same record with a different value for name
-  postMutation(db, [
-    createTestChange(recordId, "testTable", { name: "updated_name" }),
-  ]);
-  await wait(10);
+  // Verify that last write wins - should show "updated data"
+  expect(getDbSnapshot({ sqlite }).tables).toMatchInlineSnapshot(`
+    [
+      {
+        "name": "evolu_version",
+        "rows": [
+          {
+            "protocolVersion": 0,
+          },
+        ],
+      },
+      {
+        "name": "evolu_config",
+        "rows": [
+          {
+            "appOwnerEncryptionKey": "uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18]",
+            "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
+            "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
+            "appOwnerWriteKey": "uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233]",
+            "clock": "1970-01-01T00:00:00.001Z-0001-5028b5d42b661bdd",
+          },
+        ],
+      },
+      {
+        "name": "evolu_history",
+        "rows": [
+          {
+            "column": "createdAt",
+            "id": "uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76]",
+            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
+            "table": "testTable",
+            "timestamp": "uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221]",
+            "value": "1970-01-01T00:00:00.001Z",
+          },
+          {
+            "column": "name",
+            "id": "uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76]",
+            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
+            "table": "testTable",
+            "timestamp": "uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221]",
+            "value": "sync data",
+          },
+          {
+            "column": "name",
+            "id": "uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76]",
+            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
+            "table": "testTable",
+            "timestamp": "uint8:[0,0,0,0,0,1,0,1,80,40,181,212,43,102,27,221]",
+            "value": "updated data",
+          },
+        ],
+      },
+      {
+        "name": "testTable",
+        "rows": [
+          {
+            "createdAt": "1970-01-01T00:00:00.001Z",
+            "id": "jYroU2zm2npXftCAjUskT",
+            "isDeleted": null,
+            "name": "updated data",
+            "updatedAt": "1970-01-01T00:00:00.001Z",
+          },
+        ],
+      },
+      {
+        "name": "_localTable",
+        "rows": [],
+      },
+      {
+        "name": "evolu_timestamp",
+        "rows": [
+          {
+            "c": 1,
+            "h1": 273847295500364,
+            "h2": 38036290989003,
+            "l": 2,
+            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
+            "t": "uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221]",
+          },
+          {
+            "c": 1,
+            "h1": 222117604733632,
+            "h2": 196050759167509,
+            "l": 1,
+            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
+            "t": "uint8:[0,0,0,0,0,1,0,1,80,40,181,212,43,102,27,221]",
+          },
+        ],
+      },
+    ]
+  `);
 
-  // Verify the app table has the latest name value
-  expect(getLatestValue(sqlite, "testTable", recordId, "name")).toBe(
-    "updated_name",
-  );
+  // Test deletion of the sync record
+  workerOutput.length = 0;
 
-  // Verify we have two entries in history for the name column
-  expect(getHistoryCount(sqlite, "testTable", recordId, "name")).toBe(2);
+  worker.postMessage({
+    type: "mutate",
+    tabId: testCreateId(),
+    changes: [
+      {
+        id: recordId,
+        table: "testTable",
+        values: { isDeleted: 1 },
+      },
+    ],
+    onCompleteIds: [],
+    subscribedQueries: [subscribedQuery],
+  });
 
-  // Verify the values are stored in chronological order in history
-  const historyValues = getHistoryValues(sqlite, "testTable", recordId, "name");
-  expect(historyValues[0]).toBe("original_name");
-  expect(historyValues[1]).toBe("updated_name");
-});
+  // Check that record is now marked as deleted in sync tables
+  expect(getDbSnapshot({ sqlite }).tables).toMatchInlineSnapshot(`
+    [
+      {
+        "name": "evolu_version",
+        "rows": [
+          {
+            "protocolVersion": 0,
+          },
+        ],
+      },
+      {
+        "name": "evolu_config",
+        "rows": [
+          {
+            "appOwnerEncryptionKey": "uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18]",
+            "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
+            "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
+            "appOwnerWriteKey": "uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233]",
+            "clock": "1970-01-01T00:00:00.004Z-0000-5028b5d42b661bdd",
+          },
+        ],
+      },
+      {
+        "name": "evolu_history",
+        "rows": [
+          {
+            "column": "createdAt",
+            "id": "uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76]",
+            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
+            "table": "testTable",
+            "timestamp": "uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221]",
+            "value": "1970-01-01T00:00:00.001Z",
+          },
+          {
+            "column": "name",
+            "id": "uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76]",
+            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
+            "table": "testTable",
+            "timestamp": "uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221]",
+            "value": "sync data",
+          },
+          {
+            "column": "name",
+            "id": "uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76]",
+            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
+            "table": "testTable",
+            "timestamp": "uint8:[0,0,0,0,0,1,0,1,80,40,181,212,43,102,27,221]",
+            "value": "updated data",
+          },
+          {
+            "column": "isDeleted",
+            "id": "uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76]",
+            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
+            "table": "testTable",
+            "timestamp": "uint8:[0,0,0,0,0,4,0,0,80,40,181,212,43,102,27,221]",
+            "value": 1,
+          },
+        ],
+      },
+      {
+        "name": "testTable",
+        "rows": [
+          {
+            "createdAt": "1970-01-01T00:00:00.001Z",
+            "id": "jYroU2zm2npXftCAjUskT",
+            "isDeleted": 1,
+            "name": "updated data",
+            "updatedAt": "1970-01-01T00:00:00.004Z",
+          },
+        ],
+      },
+      {
+        "name": "_localTable",
+        "rows": [],
+      },
+      {
+        "name": "evolu_timestamp",
+        "rows": [
+          {
+            "c": 1,
+            "h1": 273847295500364,
+            "h2": 38036290989003,
+            "l": 2,
+            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
+            "t": "uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221]",
+          },
+          {
+            "c": 1,
+            "h1": 222117604733632,
+            "h2": 196050759167509,
+            "l": 1,
+            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
+            "t": "uint8:[0,0,0,0,0,1,0,1,80,40,181,212,43,102,27,221]",
+          },
+          {
+            "c": 1,
+            "h1": 232573821234168,
+            "h2": 231480427562672,
+            "l": 1,
+            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
+            "t": "uint8:[0,0,0,0,0,4,0,0,80,40,181,212,43,102,27,221]",
+          },
+        ],
+      },
+    ]
+  `);
 
-test("timestamp ordering - concurrent mutations on different records", async () => {
-  const [, sqlite, db] = await setupInitializedDbWorker();
+  expect(workerOutput).toMatchInlineSnapshot(`
+    [
+      {
+        "onCompleteIds": [],
+        "queryPatches": [
+          {
+            "patches": [
+              {
+                "op": "replaceAll",
+                "value": [],
+              },
+            ],
+            "query": "["select * from \\"testTable\\" where \\"isDeleted\\" is null",[],[]]",
+          },
+        ],
+        "tabId": "NSX7ssTYhFI2lFtcq9dZb",
+        "type": "onChange",
+      },
+      {
+        "tabId": "NSX7ssTYhFI2lFtcq9dZb",
+        "type": "onReceive",
+      },
+    ]
+  `);
 
-  const recordId1 = testCreateId();
-  const recordId2 = testCreateId();
+  // Test reset functionality
+  workerOutput.length = 0;
 
-  // Create mutations on different records in quick succession
-  postMutation(db, [
-    createTestChange(recordId1, "testTable", { name: "record1_value" }),
-    createTestChange(recordId2, "testTable", { name: "record2_value" }),
-  ]);
-  await wait(10);
+  // Reset the database
+  const onCompleteId = testNanoIdLib.nanoid() as CallbackId;
+  worker.postMessage({
+    type: "reset",
+    onCompleteId,
+    reload: false,
+  });
 
-  // Verify both records exist with correct values
-  expect(getLatestValue(sqlite, "testTable", recordId1, "name")).toBe(
-    "record1_value",
-  );
-  expect(getLatestValue(sqlite, "testTable", recordId2, "name")).toBe(
-    "record2_value",
-  );
+  // Check that reset completed
+  expect(workerOutput).toMatchInlineSnapshot(`
+    [
+      {
+        "onCompleteId": "sVAus_7j-a98-R9rQCnOb",
+        "reload": false,
+        "type": "onReset",
+      },
+    ]
+  `);
 
-  // Verify both records have entries in history
-  const totalHistoryCount = getOrThrow(
-    sqlite.exec<{ count: number }>(sql`
-      select count(*) as count
-      from evolu_history
-      where "table" = 'testTable' and "column" = 'name';
-    `),
-  );
-  expect(totalHistoryCount.rows[0].count).toBe(2);
-});
+  expect(getDbSnapshot({ sqlite }).tables).toMatchInlineSnapshot(`[]`);
 
-test("timestamp ordering - verify CRDT last-write-wins behavior", async () => {
-  const [, sqlite, db] = await setupInitializedDbWorker();
-
-  const recordId = testCreateId();
-  const mutations = ["initial", "second", "third", "final"];
-
-  // Create initial value
-  postMutation(db, [
-    createTestChange(recordId, "testTable", { name: mutations[0] }),
-  ]);
-  await wait(10);
-
-  // Update multiple times rapidly to ensure different timestamps
-  for (let i = 1; i < mutations.length; i++) {
-    postMutation(db, [
-      createTestChange(recordId, "testTable", { name: mutations[i] }),
-    ]);
-    await wait(5);
-  }
-
-  await wait(10);
-
-  // Verify app table has the final value (last write wins)
-  expect(getLatestValue(sqlite, "testTable", recordId, "name")).toBe("final");
-
-  // Verify all mutations are preserved in history in timestamp order
-  const historyValues = getHistoryValues(sqlite, "testTable", recordId, "name");
-  expect(historyValues).toHaveLength(4);
-  expect(historyValues).toEqual(mutations);
-
-  // Verify that the app table always reflects the value with the highest timestamp
-  const timestampResults = getOrThrow(
-    sqlite.exec<{ value: string; timestamp: Uint8Array }>(sql`
-      select value, timestamp
-      from evolu_history
-      where
-        "table" = 'testTable'
-        and "id" = ${idToBinaryId(recordId)}
-        and "column" = 'name'
-      order by timestamp desc
-      limit 1;
-    `),
-  );
-
-  expect(timestampResults.rows[0].value).toBe("final");
+  // WebSocket is not opened.
+  expect(webSocket.sentMessages).toEqual([]);
 });
