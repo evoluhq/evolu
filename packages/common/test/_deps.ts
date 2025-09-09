@@ -1,4 +1,4 @@
-import { CreateWebSocket, TimingSafeEqual } from "@evolu/common";
+import { CreateWebSocket, TimingSafeEqual, WebSocket } from "@evolu/common";
 import BetterSQLite, { Statement } from "better-sqlite3";
 import { timingSafeEqual } from "crypto";
 import { customRandom, urlAlphabet } from "nanoid";
@@ -158,6 +158,45 @@ export const testCreateSqlite = async (): Promise<Sqlite> => {
 };
 
 export const testCreateTimingSafeEqual = (): TimingSafeEqual => timingSafeEqual;
+
+export interface TestWebSocket extends WebSocket {
+  readonly sentMessages: ReadonlyArray<Uint8Array>;
+  readonly simulateMessage: (message: Uint8Array) => void;
+  readonly simulateOpen: () => void;
+  readonly simulateClose: () => void;
+}
+
+export const createTestWebSocket = (): TestWebSocket => {
+  const sentMessages: Array<Uint8Array> = [];
+  let messageHandler: ((message: MessageEvent<Uint8Array>) => void) | undefined;
+  let openHandler: (() => void) | undefined;
+  let closeHandler: (() => void) | undefined;
+
+  return {
+    get sentMessages() {
+      return sentMessages;
+    },
+    send: (data: string | ArrayBufferLike | Blob | ArrayBufferView) => {
+      sentMessages.push(data as Uint8Array);
+      return ok();
+    },
+    getReadyState: () => "connecting",
+    isOpen: constFalse,
+    simulateMessage: (message: Uint8Array) => {
+      if (messageHandler) {
+        const event = { data: message } as MessageEvent<Uint8Array>;
+        messageHandler(event);
+      }
+    },
+    simulateOpen: () => {
+      if (openHandler) openHandler();
+    },
+    simulateClose: () => {
+      if (closeHandler) closeHandler();
+    },
+    [Symbol.dispose]: constVoid,
+  };
+};
 
 export const testCreateDummyWebSocket: CreateWebSocket = () => ({
   send: () => ok(),
