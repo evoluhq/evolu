@@ -166,11 +166,17 @@ export interface TestWebSocket extends WebSocket {
   readonly simulateClose: () => void;
 }
 
-export const createTestWebSocket = (): TestWebSocket => {
+export const createTestWebSocket = (
+  _url?: string,
+  options?: {
+    onOpen?: () => void;
+    onClose?: (event: CloseEvent) => void;
+    onError?: (error: any) => void;
+    onMessage?: (data: string | ArrayBuffer | Blob) => void;
+  },
+): TestWebSocket => {
   const sentMessages: Array<Uint8Array> = [];
-  let messageHandler: ((message: MessageEvent<Uint8Array>) => void) | undefined;
-  let openHandler: (() => void) | undefined;
-  let closeHandler: (() => void) | undefined;
+  let isWebSocketOpen = false;
 
   return {
     get sentMessages() {
@@ -180,19 +186,24 @@ export const createTestWebSocket = (): TestWebSocket => {
       sentMessages.push(data as Uint8Array);
       return ok();
     },
-    getReadyState: () => "connecting",
-    isOpen: constFalse,
+    getReadyState: () => (isWebSocketOpen ? "open" : "connecting"),
+    isOpen: () => isWebSocketOpen,
     simulateMessage: (message: Uint8Array) => {
-      if (messageHandler) {
-        const event = { data: message } as MessageEvent<Uint8Array>;
-        messageHandler(event);
+      if (options?.onMessage) {
+        options.onMessage(message.buffer as ArrayBuffer);
       }
     },
     simulateOpen: () => {
-      if (openHandler) openHandler();
+      isWebSocketOpen = true;
+      if (options?.onOpen) {
+        options.onOpen();
+      }
     },
     simulateClose: () => {
-      if (closeHandler) closeHandler();
+      isWebSocketOpen = false;
+      if (options?.onClose) {
+        options.onClose({} as CloseEvent);
+      }
     },
     [Symbol.dispose]: constVoid,
   };
