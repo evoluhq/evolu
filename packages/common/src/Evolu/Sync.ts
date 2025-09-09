@@ -1,6 +1,11 @@
-import { NonEmptyArray, NonEmptyReadonlyArray } from "../Array.js";
+import {
+  mapNonEmptyArray,
+  NonEmptyArray,
+  NonEmptyReadonlyArray,
+} from "../Array.js";
 import { assert } from "../Assert.js";
-import type { Brand } from "../Brand.js";
+import { Brand } from "../Brand.js";
+import { concatBytes } from "../Buffer.js";
 import { ConsoleDep } from "../Console.js";
 import {
   EncryptionKey,
@@ -38,12 +43,9 @@ import {
   createProtocolMessageFromCrdtMessages,
   decryptAndDecodeDbChange,
   encodeAndEncryptDbChange,
+  ProtocolError,
   ProtocolInvalidDataError,
-  ProtocolSyncError,
   ProtocolTimestampMismatchError,
-  ProtocolUnsupportedVersionError,
-  ProtocolWriteError,
-  ProtocolWriteKeyError,
   SubscriptionFlags,
 } from "./Protocol.js";
 import { MutationChange } from "./Schema.js";
@@ -54,6 +56,7 @@ import {
   Storage,
 } from "./Storage.js";
 import {
+  BinaryTimestamp,
   binaryTimestampToTimestamp,
   createInitialTimestamp,
   Millis,
@@ -122,12 +125,9 @@ export interface SyncConfig {
 
   readonly onError: (
     error:
+      | ProtocolError
       | ProtocolInvalidDataError
-      | ProtocolSyncError
       | ProtocolTimestampMismatchError
-      | ProtocolUnsupportedVersionError
-      | ProtocolWriteError
-      | ProtocolWriteKeyError
       | SqliteError
       | SymmetricCryptoDecryptError
       | TimestampCounterOverflowError
@@ -224,11 +224,10 @@ export const createSync =
             message: input,
           });
 
-          const message = deps.sqlite.transaction(() =>
-            applyProtocolMessageAsClient({ storage })(input, {
-              getWriteKey: (ownerId) => getSyncOwner(ownerId)?.writeKey ?? null,
-            }),
-          );
+          const message = applyProtocolMessageAsClient({ storage })(input, {
+            // No write key, no sync (for a case when an owner was unused).
+            getWriteKey: (ownerId) => getSyncOwner(ownerId)?.writeKey ?? null,
+          });
 
           if (!message.ok) {
             config.onError(message.error);
@@ -385,6 +384,7 @@ export interface ClockDep {
   readonly clock: Clock;
 }
 
+// HLC
 export interface Clock {
   readonly get: () => Timestamp;
   readonly save: (timestamp: Timestamp) => Result<void, SqliteError>;
@@ -455,56 +455,80 @@ const createClientStorage =
       validateWriteKey: constFalse,
       setWriteKey: constFalse,
 
-      writeMessages: (ownerId, messages) => {
-        const owner = deps.getSyncOwner(binaryOwnerIdToOwnerId(ownerId));
+      writeMessages: (binaryOwnerId, encryptedMessages) => {
+        const ownerId = binaryOwnerIdToOwnerId(binaryOwnerId);
+        const owner = deps.getSyncOwner(ownerId);
         // Owner can be removed to stop syncing.
         if (!owner) return false;
 
-        const decodedAndDecryptedMessages: Array<CrdtMessage> = [];
+        const binaryTimestamps = mapNonEmptyArray(encryptedMessages, (m) =>
+          timestampToBinaryTimestamp(m.timestamp),
+        );
 
-        for (const message of messages) {
+        const existingTimestamps = getExistingTimestamps(
+          deps,
+          binaryOwnerId,
+          binaryTimestamps,
+        );
+
+        if (!existingTimestamps.ok) {
+          config.onError(existingTimestamps.error);
+          return false;
+        }
+
+        const existingTimestampsSet = new Set(
+          existingTimestamps.value.map((timestamp) => timestamp.toString()),
+        );
+
+        const messages: Array<CrdtMessage> = [];
+        for (let i = 0; i < encryptedMessages.length; i++) {
+          const message = encryptedMessages[i];
+
+          // Only decrypt and decode messages with timestamps we don't already have
+          const binaryTimestamp = binaryTimestamps[i];
+          if (existingTimestampsSet.has(binaryTimestamp.toString())) {
+            continue;
+          }
+
           const dbChange = decryptAndDecodeDbChange(deps)(
             message,
             owner.encryptionKey,
           );
-
           if (!dbChange.ok) {
             config.onError(dbChange.error);
             return false;
           }
 
-          decodedAndDecryptedMessages.push({
+          messages.push({
             timestamp: message.timestamp,
             change: dbChange.value,
           });
         }
 
-        let clockTimestamp = deps.clock.get();
+        const transaction = deps.sqlite.transaction(() => {
+          let clockTimestamp = deps.clock.get();
 
-        for (const message of messages) {
-          const result = receiveTimestamp(deps)(
-            clockTimestamp,
-            message.timestamp,
-          );
-          if (!result.ok) {
-            config.onError(result.error);
-            return false;
+          for (const message of messages) {
+            const nextTimestamp = receiveTimestamp(deps)(
+              clockTimestamp,
+              message.timestamp,
+            );
+            if (!nextTimestamp.ok) return nextTimestamp;
+
+            clockTimestamp = nextTimestamp.value;
           }
-          clockTimestamp = result.value;
-        }
 
-        const applyMessagesResult = applyMessages({ ...deps, storage })(
-          owner.id,
-          decodedAndDecryptedMessages,
-        );
-        if (!applyMessagesResult.ok) {
-          config.onError(applyMessagesResult.error);
-          return false;
-        }
+          const applyMessagesResult = applyMessages({ ...deps, storage })(
+            owner.id,
+            messages,
+          );
+          if (!applyMessagesResult.ok) return applyMessagesResult;
 
-        const saveResult = deps.clock.save(clockTimestamp);
-        if (!saveResult.ok) {
-          config.onError(saveResult.error);
+          return deps.clock.save(clockTimestamp);
+        });
+
+        if (!transaction.ok) {
+          config.onError(transaction.error);
           return false;
         }
 
@@ -662,6 +686,8 @@ export const applyMessageToTimestampAndHistoryTables =
   };
 
 /**
+ * TODO: Rework for the new owners API.
+ *
  * The possible states of a synchronization process. The `SyncState` can be one
  * of the following:
  *
@@ -712,3 +738,42 @@ export interface PaymentRequiredError {
 }
 
 export const initialSyncState: SyncStateInitial = { type: "SyncStateInitial" };
+
+/**
+ * Efficiently checks which binary timestamps already exist in the database
+ * using a single CTE query instead of N individual queries. This is crucial for
+ * WASM SQLite performance where JS↔WASM boundary crossings are expensive.
+ */
+export const getExistingTimestamps = (
+  deps: SqliteDep,
+  binaryOwnerId: BinaryOwnerId,
+  binaryTimestamps: NonEmptyReadonlyArray<BinaryTimestamp>,
+): Result<ReadonlyArray<BinaryTimestamp>, SqliteError> => {
+  const concatenatedTimestamps = concatBytes(...binaryTimestamps);
+
+  const result = deps.sqlite.exec<{
+    binaryTimestamp: BinaryTimestamp;
+  }>(sql`
+    with recursive
+      split_timestamps(binaryTimestamp, pos) as (
+        select
+          substr(${concatenatedTimestamps}, 1, 16),
+          17 as pos
+        union all
+        select
+          substr(${concatenatedTimestamps}, pos, 16),
+          pos + 16
+        from split_timestamps
+        where pos <= length(${concatenatedTimestamps})
+      )
+    select s.binaryTimestamp
+    from
+      split_timestamps s
+      join evolu_timestamp t
+        on t.ownerId = ${binaryOwnerId} and s.binaryTimestamp = t.t;
+  `);
+
+  if (!result.ok) return result;
+
+  return ok(result.value.rows.map((row) => row.binaryTimestamp));
+};
