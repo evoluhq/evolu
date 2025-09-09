@@ -1,3 +1,5 @@
+import BetterSQLite from "better-sqlite3";
+import { existsSync, unlinkSync } from "fs";
 import { assert, expect, expectTypeOf, test } from "vitest";
 import { constVoid } from "../src/Function.js";
 import { err, getOrThrow, ok } from "../src/Result.js";
@@ -244,4 +246,139 @@ test("SqliteBoolean", () => {
   expectTypeOf<
     typeof SqliteBoolean.ParentError
   >().toEqualTypeOf<BooleanError>();
+});
+
+// Speedup: 6.44x
+test.skip("SQLite performance: individual queries vs CTE with concatenated blobs", () => {
+  const dbFile = "performance-test.db";
+
+  if (existsSync(dbFile)) unlinkSync(dbFile);
+  const db = new BetterSQLite(dbFile);
+
+  // Create test table with binary ID
+  db.exec(`
+    CREATE TABLE test_entities (
+      id BLOB PRIMARY KEY,
+      data TEXT
+    );
+  `);
+
+  // Generate test data - 1000 random binary IDs (16 bytes each)
+  const generateRandomId = (): Uint8Array => {
+    const id = new Uint8Array(16);
+    for (let i = 0; i < 16; i++) {
+      id[i] = Math.floor(Math.random() * 256);
+    }
+    return id;
+  };
+
+  const totalRows = 1000;
+  const testIds: Array<Uint8Array> = [];
+
+  // Insert test data
+  const insertStmt = db.prepare(
+    "INSERT INTO test_entities (id, data) VALUES (?, ?)",
+  );
+  for (let i = 0; i < totalRows; i++) {
+    const id = generateRandomId();
+    testIds.push(id);
+    insertStmt.run(id, `test_data_${i}`);
+  }
+
+  // Generate query set: mix of existing and non-existing IDs
+  const queryIds: Array<Uint8Array> = [];
+
+  // Add 500 existing IDs (randomly selected)
+  for (let i = 0; i < 500; i++) {
+    const randomIndex = Math.floor(Math.random() * testIds.length);
+    queryIds.push(testIds[randomIndex]);
+  }
+
+  // Add 500 non-existing IDs
+  for (let i = 0; i < 500; i++) {
+    queryIds.push(generateRandomId());
+  }
+
+  // Method 1: Individual queries
+  // eslint-disable-next-line no-console
+  console.log(
+    `Testing ${queryIds.length} ID lookups against ${totalRows} rows`,
+  );
+
+  const individualStart = performance.now();
+  const individualResults: Array<Uint8Array> = [];
+  const selectStmt = db.prepare(
+    "SELECT id FROM test_entities WHERE id = ? LIMIT 1",
+  );
+
+  for (const id of queryIds) {
+    const result = selectStmt.get(id) as { id: Uint8Array } | undefined;
+    if (result !== undefined) {
+      individualResults.push(result.id);
+    }
+  }
+
+  const individualTime = performance.now() - individualStart;
+
+  // Method 2: Single CTE query with concatenated blob parameter
+  const cteStart = performance.now();
+
+  // Concatenate all IDs into a single blob
+  const concatenatedIds = new Uint8Array(queryIds.length * 16);
+  for (let i = 0; i < queryIds.length; i++) {
+    concatenatedIds.set(queryIds[i], i * 16);
+  }
+
+  const cteStmt = db.prepare(`
+    WITH RECURSIVE split_ids(id_blob, pos) AS (
+      SELECT 
+        substr(@concatenatedIds, 1, 16) as id_blob,
+        17 as pos
+      UNION ALL
+      SELECT 
+        substr(@concatenatedIds, pos, 16) as id_blob,
+        pos + 16
+      FROM split_ids 
+      WHERE pos <= length(@concatenatedIds)
+    )
+    SELECT s.id_blob
+    FROM split_ids s
+    JOIN test_entities t ON s.id_blob = t.id;
+  `);
+
+  const cteResults = cteStmt.all({
+    concatenatedIds: concatenatedIds,
+  }) as Array<{
+    id_blob: Uint8Array;
+  }>;
+
+  const cteTime = performance.now() - cteStart;
+
+  // Verify results match exactly
+  expect(cteResults.length).toBe(individualResults.length);
+
+  // Sort both arrays for proper comparison
+  const sortedIndividualResults = individualResults
+    .slice()
+    .sort((a, b) => a.toString().localeCompare(b.toString()));
+  const sortedCteResults = cteResults
+    .map((row) => row.id_blob)
+    .sort((a, b) => a.toString().localeCompare(b.toString()));
+
+  expect(sortedCteResults).toEqual(sortedIndividualResults);
+
+  // eslint-disable-next-line no-console
+  console.log(`Individual queries: ${individualTime.toFixed(2)}ms`);
+  // eslint-disable-next-line no-console
+  console.log(`CTE query: ${cteTime.toFixed(2)}ms`);
+  // eslint-disable-next-line no-console
+  console.log(`Speedup: ${(individualTime / cteTime).toFixed(2)}x`);
+
+  // eslint-disable-next-line no-console
+  console.log(
+    `CTE approach is ${cteTime < individualTime ? "faster" : "slower"} than individual queries`,
+  );
+
+  db.close();
+  unlinkSync(dbFile);
 });
