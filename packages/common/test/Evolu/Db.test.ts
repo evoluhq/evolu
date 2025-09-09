@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { CallbackId } from "../../src/Callbacks.js";
 import { createConsole } from "../../src/Console.js";
 import { defaultConfig } from "../../src/Evolu/Config.js";
@@ -29,19 +29,25 @@ import { getDbSnapshot } from "./_utils.js";
 const createDbWorkerWithDeps = async (): Promise<{
   readonly worker: DbWorker;
   readonly sqlite: Sqlite;
-  readonly webSocket: TestWebSocket;
+  readonly transports: ReadonlyArray<TestWebSocket>;
 }> => {
   const sqliteDriver = await testCreateSqliteDriver(testSimpleName);
   const sqliteResult = await createSqlite({
     createSqliteDriver: () => Promise.resolve(sqliteDriver),
   })(testSimpleName);
   const sqlite = getOrThrow(sqliteResult);
-  const testWebSocket = createTestWebSocket();
+
+  // Track all created WebSocket transports
+  const transports: Array<TestWebSocket> = [];
 
   const deps: DbWorkerPlatformDeps = {
     console: createConsole(),
     createSqliteDriver: () => Promise.resolve(sqliteDriver),
-    createWebSocket: () => testWebSocket,
+    createWebSocket: (url, options) => {
+      const testWebSocket = createTestWebSocket(url, options);
+      transports.push(testWebSocket);
+      return testWebSocket;
+    },
     nanoIdLib: testNanoIdLib,
     random: testRandom,
     randomBytes: testRandomBytes,
@@ -53,7 +59,7 @@ const createDbWorkerWithDeps = async (): Promise<{
   return {
     worker,
     sqlite,
-    webSocket: testWebSocket,
+    transports,
   };
 };
 
@@ -62,10 +68,10 @@ const testAppOwner = createAppOwner(testOwnerSecret);
 const createInitializedDbWorker = async (): Promise<{
   readonly worker: DbWorker;
   readonly sqlite: Sqlite;
-  readonly webSocket: TestWebSocket;
+  readonly transports: ReadonlyArray<TestWebSocket>;
   readonly workerOutput: Array<unknown>;
 }> => {
-  const { worker, sqlite, webSocket } = await createDbWorkerWithDeps();
+  const { worker, sqlite, transports } = await createDbWorkerWithDeps();
 
   // Track worker output messages
   const workerOutput: Array<unknown> = [];
@@ -109,13 +115,13 @@ const createInitializedDbWorker = async (): Promise<{
   return {
     worker,
     sqlite,
-    webSocket,
+    transports,
     workerOutput,
   };
 };
 
 test("initializes DbWorker with external AppOwner", async () => {
-  const { webSocket, sqlite } = await createInitializedDbWorker();
+  const { transports, sqlite } = await createInitializedDbWorker();
 
   expect(getDbSnapshot({ sqlite })).toMatchInlineSnapshot(`
     {
@@ -224,10 +230,10 @@ test("initializes DbWorker with external AppOwner", async () => {
           "name": "evolu_config",
           "rows": [
             {
-              "appOwnerEncryptionKey": "uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18]",
+              "appOwnerEncryptionKey": uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18],
               "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
               "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
-              "appOwnerWriteKey": "uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233]",
+              "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
               "clock": "1970-01-01T00:00:00.000Z-0000-452cde0b36593c7e",
             },
           ],
@@ -253,11 +259,11 @@ test("initializes DbWorker with external AppOwner", async () => {
   `);
 
   // Check that we have no WebSocket messages yet (no sync)
-  expect(webSocket.sentMessages).toEqual([]);
+  expect(transports[0]?.sentMessages ?? []).toEqual([]);
 });
 
 test("local mutations", async () => {
-  const { worker, sqlite, webSocket, workerOutput } =
+  const { worker, sqlite, transports, workerOutput } =
     await createInitializedDbWorker();
 
   // Create a mutation on local table (underscore prefix)
@@ -297,10 +303,10 @@ test("local mutations", async () => {
         "name": "evolu_config",
         "rows": [
           {
-            "appOwnerEncryptionKey": "uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18]",
+            "appOwnerEncryptionKey": uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18],
             "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
             "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
-            "appOwnerWriteKey": "uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233]",
+            "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
             "clock": "1970-01-01T00:00:00.000Z-0000-90fc35af44162ba3",
           },
         ],
@@ -434,10 +440,10 @@ test("local mutations", async () => {
         "name": "evolu_config",
         "rows": [
           {
-            "appOwnerEncryptionKey": "uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18]",
+            "appOwnerEncryptionKey": uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18],
             "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
             "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
-            "appOwnerWriteKey": "uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233]",
+            "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
             "clock": "1970-01-01T00:00:00.000Z-0000-90fc35af44162ba3",
           },
         ],
@@ -511,11 +517,11 @@ test("local mutations", async () => {
   expect(getDbSnapshot({ sqlite }).tables).toMatchInlineSnapshot(`[]`);
 
   // No WebSocket messages (local mutations don't sync)
-  expect(webSocket.sentMessages).toEqual([]);
+  expect(transports[0]?.sentMessages ?? []).toEqual([]);
 });
 
 test("sync mutations", async () => {
-  const { worker, sqlite, webSocket, workerOutput } =
+  const { worker, sqlite, transports, workerOutput } =
     await createInitializedDbWorker();
 
   const recordId = testCreateId();
@@ -557,10 +563,10 @@ test("sync mutations", async () => {
         "name": "evolu_config",
         "rows": [
           {
-            "appOwnerEncryptionKey": "uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18]",
+            "appOwnerEncryptionKey": uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18],
             "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
             "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
-            "appOwnerWriteKey": "uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233]",
+            "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
             "clock": "1970-01-01T00:00:00.001Z-0000-5028b5d42b661bdd",
           },
         ],
@@ -570,18 +576,18 @@ test("sync mutations", async () => {
         "rows": [
           {
             "column": "createdAt",
-            "id": "uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76]",
-            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
+            "id": uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76],
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
             "table": "testTable",
-            "timestamp": "uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221]",
+            "timestamp": uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221],
             "value": "1970-01-01T00:00:00.001Z",
           },
           {
             "column": "name",
-            "id": "uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76]",
-            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
+            "id": uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76],
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
             "table": "testTable",
-            "timestamp": "uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221]",
+            "timestamp": uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221],
             "value": "sync data",
           },
         ],
@@ -610,8 +616,8 @@ test("sync mutations", async () => {
             "h1": 273847295500364,
             "h2": 38036290989003,
             "l": 2,
-            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
-            "t": "uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221]",
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
+            "t": uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221],
           },
         ],
       },
@@ -685,10 +691,10 @@ test("sync mutations", async () => {
         "name": "evolu_config",
         "rows": [
           {
-            "appOwnerEncryptionKey": "uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18]",
+            "appOwnerEncryptionKey": uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18],
             "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
             "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
-            "appOwnerWriteKey": "uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233]",
+            "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
             "clock": "1970-01-01T00:00:00.001Z-0001-5028b5d42b661bdd",
           },
         ],
@@ -698,26 +704,26 @@ test("sync mutations", async () => {
         "rows": [
           {
             "column": "createdAt",
-            "id": "uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76]",
-            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
+            "id": uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76],
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
             "table": "testTable",
-            "timestamp": "uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221]",
+            "timestamp": uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221],
             "value": "1970-01-01T00:00:00.001Z",
           },
           {
             "column": "name",
-            "id": "uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76]",
-            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
+            "id": uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76],
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
             "table": "testTable",
-            "timestamp": "uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221]",
+            "timestamp": uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221],
             "value": "sync data",
           },
           {
             "column": "name",
-            "id": "uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76]",
-            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
+            "id": uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76],
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
             "table": "testTable",
-            "timestamp": "uint8:[0,0,0,0,0,1,0,1,80,40,181,212,43,102,27,221]",
+            "timestamp": uint8:[0,0,0,0,0,1,0,1,80,40,181,212,43,102,27,221],
             "value": "updated data",
           },
         ],
@@ -746,16 +752,16 @@ test("sync mutations", async () => {
             "h1": 273847295500364,
             "h2": 38036290989003,
             "l": 2,
-            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
-            "t": "uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221]",
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
+            "t": uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221],
           },
           {
             "c": 1,
             "h1": 222117604733632,
             "h2": 196050759167509,
             "l": 1,
-            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
-            "t": "uint8:[0,0,0,0,0,1,0,1,80,40,181,212,43,102,27,221]",
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
+            "t": uint8:[0,0,0,0,0,1,0,1,80,40,181,212,43,102,27,221],
           },
         ],
       },
@@ -794,10 +800,10 @@ test("sync mutations", async () => {
         "name": "evolu_config",
         "rows": [
           {
-            "appOwnerEncryptionKey": "uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18]",
+            "appOwnerEncryptionKey": uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18],
             "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
             "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
-            "appOwnerWriteKey": "uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233]",
+            "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
             "clock": "1970-01-01T00:00:00.004Z-0000-5028b5d42b661bdd",
           },
         ],
@@ -807,34 +813,34 @@ test("sync mutations", async () => {
         "rows": [
           {
             "column": "createdAt",
-            "id": "uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76]",
-            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
+            "id": uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76],
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
             "table": "testTable",
-            "timestamp": "uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221]",
+            "timestamp": uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221],
             "value": "1970-01-01T00:00:00.001Z",
           },
           {
             "column": "name",
-            "id": "uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76]",
-            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
+            "id": uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76],
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
             "table": "testTable",
-            "timestamp": "uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221]",
+            "timestamp": uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221],
             "value": "sync data",
           },
           {
             "column": "name",
-            "id": "uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76]",
-            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
+            "id": uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76],
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
             "table": "testTable",
-            "timestamp": "uint8:[0,0,0,0,0,1,0,1,80,40,181,212,43,102,27,221]",
+            "timestamp": uint8:[0,0,0,0,0,1,0,1,80,40,181,212,43,102,27,221],
             "value": "updated data",
           },
           {
             "column": "isDeleted",
-            "id": "uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76]",
-            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
+            "id": uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76],
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
             "table": "testTable",
-            "timestamp": "uint8:[0,0,0,0,0,4,0,0,80,40,181,212,43,102,27,221]",
+            "timestamp": uint8:[0,0,0,0,0,4,0,0,80,40,181,212,43,102,27,221],
             "value": 1,
           },
         ],
@@ -863,24 +869,24 @@ test("sync mutations", async () => {
             "h1": 273847295500364,
             "h2": 38036290989003,
             "l": 2,
-            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
-            "t": "uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221]",
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
+            "t": uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221],
           },
           {
             "c": 1,
             "h1": 222117604733632,
             "h2": 196050759167509,
             "l": 1,
-            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
-            "t": "uint8:[0,0,0,0,0,1,0,1,80,40,181,212,43,102,27,221]",
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
+            "t": uint8:[0,0,0,0,0,1,0,1,80,40,181,212,43,102,27,221],
           },
           {
             "c": 1,
             "h1": 232573821234168,
             "h2": 231480427562672,
             "l": 1,
-            "ownerId": "uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]",
-            "t": "uint8:[0,0,0,0,0,4,0,0,80,40,181,212,43,102,27,221]",
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
+            "t": uint8:[0,0,0,0,0,4,0,0,80,40,181,212,43,102,27,221],
           },
         ],
       },
@@ -937,5 +943,64 @@ test("sync mutations", async () => {
   expect(getDbSnapshot({ sqlite }).tables).toMatchInlineSnapshot(`[]`);
 
   // WebSocket is not opened.
-  expect(webSocket.sentMessages).toEqual([]);
+  expect(transports[0]?.sentMessages ?? []).toEqual([]);
+});
+
+describe("WebSocket", () => {
+  test("sends messages when socket is opened", async () => {
+    const { worker, transports } = await createInitializedDbWorker();
+
+    const recordId = testCreateId();
+
+    // Create a sync mutation first to have data to send
+    worker.postMessage({
+      type: "mutate",
+      tabId: testCreateId(),
+      changes: [
+        {
+          id: recordId,
+          table: "testTable",
+          values: { name: "sync data" },
+        },
+      ],
+      onCompleteIds: [],
+      subscribedQueries: [],
+    });
+
+    const webSocket = transports[0];
+
+    // Before opening WebSocket, no messages should be sent
+    expect(webSocket.sentMessages).toEqual([]);
+
+    // Simulate WebSocket opening
+    webSocket.simulateOpen();
+
+    // After opening, WebSocket should send sync messages
+    expect(webSocket.sentMessages).toMatchInlineSnapshot(
+      /**
+       * This protocol message decodes to:
+       *
+       * - Protocol version: 0
+       * - Owner ID: [26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]
+       * - Message type: 0 (Request)
+       * - Write key: 0 (none - read-only sync)
+       * - Subscription flag: 1 (Subscribe for updates)
+       * - Messages: 0 (no messages to send)
+       * - Ranges: 1 range of type 2 (Timestamps)
+       * - Timestamp: 5ms after epoch
+       * - Counter RLE: 0 (single counter value, not a range)
+       * - Counter: 1
+       * - NodeId RLE: [117,13,222,168,226,197,162,215] (single nodeId, not a
+       *   range)
+       * - Final RLE: 1 (single timestamp entry)
+       */
+      `
+      [
+        uint8:[0,26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56,0,0,1,0,1,2,1,5,0,1,117,13,222,168,226,197,162,215,1],
+      ]
+    `,
+    );
+  });
+
+  // TODO: test on message (a received message)
 });
