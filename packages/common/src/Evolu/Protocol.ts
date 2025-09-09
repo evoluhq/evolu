@@ -780,7 +780,7 @@ export interface ApplyProtocolMessageAsClientOptions {
 
 /**
  * Result type for {@link applyProtocolMessageAsClient} that distinguishes
- * between responses to client requests and unsolicited broadcast messages.
+ * between responses to client requests and broadcast messages.
  */
 export type ApplyProtocolMessageAsClientResult =
   | { readonly type: "response"; readonly message: ProtocolMessage }
@@ -791,17 +791,13 @@ export const applyProtocolMessageAsClient =
   (deps: StorageDep) =>
   (
     inputMessage: Uint8Array,
-    {
-      getWriteKey,
-      version = protocolVersion,
-      totalMaxSize,
-      rangesMaxSize,
-    }: ApplyProtocolMessageAsClientOptions = {},
+    options: ApplyProtocolMessageAsClientOptions = {},
   ): Result<ApplyProtocolMessageAsClientResult, ProtocolError> =>
     tryDecodeProtocolData<ApplyProtocolMessageAsClientResult, ProtocolError>(
       inputMessage,
       (input) => {
         const [requestedVersion, ownerId] = decodeVersionAndOwner(input);
+        const version = options.version ?? protocolVersion;
 
         if (requestedVersion !== version) {
           return err<ProtocolUnsupportedVersionError>({
@@ -864,7 +860,7 @@ export const applyProtocolMessageAsClient =
         // With local changes, writeKey will be required and if not provided,
         // the sync should stop.
         // getWriteKey should be moved to sync fn.
-        const writeKey = getWriteKey?.(ownerId);
+        const writeKey = options.getWriteKey?.(ownerId);
         if (writeKey == null) {
           return ok({ type: "no-response" });
         }
@@ -882,8 +878,8 @@ export const applyProtocolMessageAsClient =
         const output = createProtocolMessageBuffer(ownerId, {
           messageType: MessageType.Request,
           writeKey,
-          totalMaxSize,
-          rangesMaxSize,
+          totalMaxSize: options.totalMaxSize,
+          rangesMaxSize: options.rangesMaxSize,
         });
 
         const syncResult = sync(deps)(ranges, output, binaryOwnerId);
