@@ -95,6 +95,7 @@ export const testOwner = createOwner(testOwnerSecret);
 export const testOwnerBinaryId = ownerIdToBinaryOwnerId(testOwner.id);
 
 export const testOwner2 = createOwner(testOwnerSecret2);
+export const testOwnerBinaryId2 = ownerIdToBinaryOwnerId(testOwner2.id);
 
 //   /**
 //    * Log for SQL.
