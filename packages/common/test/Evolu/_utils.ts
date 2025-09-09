@@ -6,7 +6,7 @@ export interface DbSnapshot {
   readonly schema: DbSchema;
   readonly tables: Array<{
     name: string;
-    rows: ReadonlyArray<Record<string, string | number | null>>;
+    rows: ReadonlyArray<Record<string, string | number | Uint8Array | null>>;
   }>;
 }
 
@@ -22,28 +22,9 @@ export const getDbSnapshot = (deps: SqliteDep): DbSnapshot => {
     `);
     assert(result.ok, "bug");
 
-    // Process rows to make snapshots more readable
-    const processedRows = result.value.rows.map((row) => {
-      const processedRow: Record<string, string | number | null> = {};
-      for (const [key, value] of Object.entries(row)) {
-        if (value == null) {
-          processedRow[key] = null;
-        } else if (value instanceof Uint8Array) {
-          // Prefix Uint8Array with type info
-          processedRow[key] = `uint8:[${Array.from(value).join()}]`;
-        } else if (Array.isArray(value)) {
-          // Prefix regular arrays with type info
-          processedRow[key] = `array:[${value.join()}]`;
-        } else {
-          processedRow[key] = value;
-        }
-      }
-      return processedRow;
-    });
-
     tables.push({
       name: table.name,
-      rows: processedRows,
+      rows: result.value.rows,
     });
   }
 

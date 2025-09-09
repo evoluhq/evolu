@@ -17,6 +17,16 @@ export default tseslint.config(
     ],
   },
   {
+    files: ["packages/**/vitest.config.ts"],
+    extends: [eslint.configs.recommended, ...tseslint.configs.recommended],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        project: null, // Don't use project service for vitest configs
+      },
+    },
+  },
+  {
     files: [
       "apps/**/*.{ts,tsx}",
       "packages/**/*.{ts,tsx}",
