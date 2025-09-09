@@ -129,7 +129,7 @@ export type DbWorkerOutput =
   | {
       readonly type: "onChange";
       readonly tabId: Id;
-      readonly patches: ReadonlyArray<QueryPatches>;
+      readonly queryPatches: ReadonlyArray<QueryPatches>;
       readonly onCompleteIds: ReadonlyArray<CallbackId>;
     }
   | {
@@ -443,17 +443,17 @@ const handlers: Omit<MessageHandlers<DbWorkerInput, DbWorkerDeps>, "init"> = {
       }
 
       // Read writes before commit to update UI ASAP
-      const patches = loadQueries(deps)(
+      const queryPatches = loadQueries(deps)(
         message.tabId,
         message.subscribedQueries,
       );
-      if (!patches.ok) return patches;
+      if (!queryPatches.ok) return queryPatches;
 
       // Notify the tab that performed the mutation.
       deps.postMessage({
         type: "onChange",
         tabId: message.tabId,
-        patches: patches.value,
+        queryPatches: queryPatches.value,
         onCompleteIds: message.onCompleteIds,
       });
 
@@ -470,17 +470,17 @@ const handlers: Omit<MessageHandlers<DbWorkerInput, DbWorkerDeps>, "init"> = {
   },
 
   query: (deps) => (message) => {
-    const patches = loadQueries(deps)(message.tabId, message.queries);
+    const queryPatches = loadQueries(deps)(message.tabId, message.queries);
 
-    if (!patches.ok) {
-      deps.postMessage({ type: "onError", error: patches.error });
+    if (!queryPatches.ok) {
+      deps.postMessage({ type: "onError", error: queryPatches.error });
       return;
     }
 
     deps.postMessage({
       type: "onChange",
       tabId: message.tabId,
-      patches: patches.value,
+      queryPatches: queryPatches.value,
       onCompleteIds: [],
     });
   },
