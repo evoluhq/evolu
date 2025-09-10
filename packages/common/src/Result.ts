@@ -380,7 +380,10 @@ export const getOrThrow = <T, E>(result: Result<T, E>): T => {
  * const parseJson = (value: string): Result<unknown, ParseJsonError> =>
  *   trySync(
  *     () => JSON.parse(value) as unknown,
- *     (error) => ({ type: "ParseJsonError", message: String(error) }),
+ *     (error): ParseJsonError => ({
+ *       type: "ParseJsonError",
+ *       message: String(error),
+ *     }),
  *   );
  * ```
  */
