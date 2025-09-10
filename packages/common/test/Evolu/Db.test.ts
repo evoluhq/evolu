@@ -63,8 +63,6 @@ const createDbWorkerWithDeps = async (): Promise<{
   };
 };
 
-const testAppOwner = createAppOwner(testOwnerSecret);
-
 const createInitializedDbWorker = async (): Promise<{
   readonly worker: DbWorker;
   readonly sqlite: Sqlite;
@@ -80,10 +78,7 @@ const createInitializedDbWorker = async (): Promise<{
   // Initialize with external AppOwner
   worker.postMessage({
     type: "init",
-    config: {
-      ...defaultConfig,
-      externalAppOwner: testAppOwner,
-    },
+    config: { ...defaultConfig, externalAppOwner: appOwner },
     dbSchema: {
       tables: [
         {
@@ -99,18 +94,16 @@ const createInitializedDbWorker = async (): Promise<{
     },
   });
 
-  // Wait for initialization to complete
+  // Wait for initialization to complete (async createSqlite)
   await wait(10);
 
-  expect(workerOutput).toEqual([
+  expect(workerOutput.splice(0)).toEqual([
     {
       type: "onInit",
-      appOwner: testAppOwner,
+      appOwner,
       isFirst: true,
     },
   ]);
-
-  workerOutput.length = 0;
 
   return {
     worker,
@@ -120,9 +113,13 @@ const createInitializedDbWorker = async (): Promise<{
   };
 };
 
+const appOwner = createAppOwner(testOwnerSecret);
+const tabId = testCreateId();
+
 test("initializes DbWorker with external AppOwner", async () => {
   const { transports, sqlite } = await createInitializedDbWorker();
 
+  // Should show empty database with Evolu system tables created
   expect(getDbSnapshot({ sqlite })).toMatchInlineSnapshot(`
     {
       "schema": {
@@ -234,7 +231,7 @@ test("initializes DbWorker with external AppOwner", async () => {
               "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
               "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
               "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
-              "clock": "1970-01-01T00:00:00.000Z-0000-452cde0b36593c7e",
+              "clock": "1970-01-01T00:00:00.000Z-0000-dcc684fa1390fc35",
             },
           ],
         },
@@ -266,17 +263,15 @@ test("local mutations", async () => {
   const { worker, sqlite, transports, workerOutput } =
     await createInitializedDbWorker();
 
-  // Create a mutation on local table (underscore prefix)
   const recordId = testCreateId();
 
-  // Create a subscribed query to see patches in onChange
   const subscribedQuery = createQuery((db) =>
     db.selectFrom("_localTable").selectAll().where("isDeleted", "is", null),
   );
 
   worker.postMessage({
     type: "mutate",
-    tabId: testCreateId(),
+    tabId,
     changes: [
       {
         id: recordId,
@@ -288,7 +283,7 @@ test("local mutations", async () => {
     subscribedQueries: [subscribedQuery],
   });
 
-  // Check that data was inserted into local table
+  // Should show the local table with created data
   expect(getDbSnapshot({ sqlite }).tables).toMatchInlineSnapshot(`
     [
       {
@@ -307,7 +302,7 @@ test("local mutations", async () => {
             "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
             "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
             "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
-            "clock": "1970-01-01T00:00:00.000Z-0000-90fc35af44162ba3",
+            "clock": "1970-01-01T00:00:00.000Z-0000-17cfd205be392f6c",
           },
         ],
       },
@@ -324,7 +319,7 @@ test("local mutations", async () => {
         "rows": [
           {
             "createdAt": "1970-01-01T00:00:00.000Z",
-            "id": "Ix1Y9e4dzcD2PtSrFu-SJ",
+            "id": "O9i2LT9BlFv5rPltodHge",
             "isDeleted": null,
             "updatedAt": "1970-01-01T00:00:00.000Z",
             "value": "local data",
@@ -338,7 +333,8 @@ test("local mutations", async () => {
     ]
   `);
 
-  expect(workerOutput).toMatchInlineSnapshot(`
+  // Should show replaceAll patch with the new record since query is subscribed
+  expect(workerOutput.splice(0)).toMatchInlineSnapshot(`
     [
       {
         "onCompleteIds": [],
@@ -350,7 +346,7 @@ test("local mutations", async () => {
                 "value": [
                   {
                     "createdAt": "1970-01-01T00:00:00.000Z",
-                    "id": "Ix1Y9e4dzcD2PtSrFu-SJ",
+                    "id": "O9i2LT9BlFv5rPltodHge",
                     "isDeleted": null,
                     "updatedAt": "1970-01-01T00:00:00.000Z",
                     "value": "local data",
@@ -361,60 +357,45 @@ test("local mutations", async () => {
             "query": "["select * from \\"_localTable\\" where \\"isDeleted\\" is null",[],[]]",
           },
         ],
-        "tabId": "O9i2LT9BlFv5rPltodHge",
+        "tabId": "LhGnhts9rNnUeri8bzhS5",
         "type": "onChange",
       },
       {
-        "tabId": "O9i2LT9BlFv5rPltodHge",
+        "tabId": "LhGnhts9rNnUeri8bzhS5",
         "type": "onReceive",
       },
     ]
   `);
 
-  workerOutput.length = 0;
-
-  // Test querying the data
   worker.postMessage({
     type: "query",
-    tabId: testCreateId(),
+    tabId,
     queries: [subscribedQuery],
   });
 
-  expect(workerOutput).toMatchInlineSnapshot(`
+  // Query operation should return empty patches since no data changed
+  expect(workerOutput.splice(0)).toMatchInlineSnapshot(
+    `
     [
       {
         "onCompleteIds": [],
         "queryPatches": [
           {
-            "patches": [
-              {
-                "op": "replaceAll",
-                "value": [
-                  {
-                    "createdAt": "1970-01-01T00:00:00.000Z",
-                    "id": "Ix1Y9e4dzcD2PtSrFu-SJ",
-                    "isDeleted": null,
-                    "updatedAt": "1970-01-01T00:00:00.000Z",
-                    "value": "local data",
-                  },
-                ],
-              },
-            ],
+            "patches": [],
             "query": "["select * from \\"_localTable\\" where \\"isDeleted\\" is null",[],[]]",
           },
         ],
-        "tabId": "WZ_SQtmCvz6xwHpK2ZkuZ",
+        "tabId": "LhGnhts9rNnUeri8bzhS5",
         "type": "onChange",
       },
     ]
-  `);
-
-  workerOutput.length = 0;
+  `,
+  );
 
   // Now test deletion of the same record
   worker.postMessage({
     type: "mutate",
-    tabId: testCreateId(),
+    tabId,
     changes: [
       {
         id: recordId,
@@ -426,6 +407,7 @@ test("local mutations", async () => {
     subscribedQueries: [subscribedQuery],
   });
 
+  // _localTable should be emptu
   expect(getDbSnapshot({ sqlite }).tables).toMatchInlineSnapshot(`
     [
       {
@@ -444,7 +426,7 @@ test("local mutations", async () => {
             "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
             "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
             "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
-            "clock": "1970-01-01T00:00:00.000Z-0000-90fc35af44162ba3",
+            "clock": "1970-01-01T00:00:00.000Z-0000-17cfd205be392f6c",
           },
         ],
       },
@@ -467,7 +449,8 @@ test("local mutations", async () => {
     ]
   `);
 
-  expect(workerOutput).toMatchInlineSnapshot(`
+  // Should show replaceAll patch with empty array
+  expect(workerOutput.splice(0)).toMatchInlineSnapshot(`
     [
       {
         "onCompleteIds": [],
@@ -482,39 +465,33 @@ test("local mutations", async () => {
             "query": "["select * from \\"_localTable\\" where \\"isDeleted\\" is null",[],[]]",
           },
         ],
-        "tabId": "VHzg5iuekXyVRcpEppKHy",
+        "tabId": "LhGnhts9rNnUeri8bzhS5",
         "type": "onChange",
       },
       {
-        "tabId": "VHzg5iuekXyVRcpEppKHy",
+        "tabId": "LhGnhts9rNnUeri8bzhS5",
         "type": "onReceive",
       },
     ]
   `);
 
-  // Test reset functionality
-  workerOutput.length = 0;
-
-  // Reset the database
-  const onCompleteId = testNanoIdLib.nanoid() as CallbackId;
   worker.postMessage({
     type: "reset",
-    onCompleteId,
+    onCompleteId: testNanoIdLib.nanoid() as CallbackId,
     reload: false,
   });
 
-  // Check that reset completed
-  expect(workerOutput).toMatchInlineSnapshot(`
+  expect(getDbSnapshot({ sqlite }).tables).toMatchInlineSnapshot(`[]`);
+
+  expect(workerOutput.splice(0)).toMatchInlineSnapshot(`
     [
       {
-        "onCompleteId": "jl8Ky6BW9jCTxiAw0gY_f",
+        "onCompleteId": "WZ_SQtmCvz6xwHpK2ZkuZ",
         "reload": false,
         "type": "onReset",
       },
     ]
   `);
-
-  expect(getDbSnapshot({ sqlite }).tables).toMatchInlineSnapshot(`[]`);
 
   // No WebSocket messages (local mutations don't sync)
   expect(transports[0]?.sentMessages ?? []).toEqual([]);
@@ -526,14 +503,13 @@ test("sync mutations", async () => {
 
   const recordId = testCreateId();
 
-  // Create a subscribed query to see patches in onChange
   const subscribedQuery = createQuery((db) =>
     db.selectFrom("testTable").selectAll().where("isDeleted", "is", null),
   );
 
   worker.postMessage({
     type: "mutate",
-    tabId: testCreateId(),
+    tabId,
     changes: [
       {
         id: recordId,
@@ -548,7 +524,7 @@ test("sync mutations", async () => {
     subscribedQueries: [subscribedQuery],
   });
 
-  // Check that data was inserted into regular table
+  // Should show tables with the new testTable record
   expect(getDbSnapshot({ sqlite }).tables).toMatchInlineSnapshot(`
     [
       {
@@ -567,7 +543,7 @@ test("sync mutations", async () => {
             "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
             "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
             "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
-            "clock": "1970-01-01T00:00:00.001Z-0000-5028b5d42b661bdd",
+            "clock": "1970-01-01T00:00:00.001Z-0000-acee6d66b7abc5f6",
           },
         ],
       },
@@ -576,18 +552,18 @@ test("sync mutations", async () => {
         "rows": [
           {
             "column": "createdAt",
-            "id": uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76],
+            "id": uint8:[9,60,98,3,13,32,99,247,200,79,144,162,233,91,127,124],
             "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
             "table": "testTable",
-            "timestamp": uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221],
+            "timestamp": uint8:[0,0,0,0,0,1,0,0,172,238,109,102,183,171,197,246],
             "value": "1970-01-01T00:00:00.001Z",
           },
           {
             "column": "name",
-            "id": uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76],
+            "id": uint8:[9,60,98,3,13,32,99,247,200,79,144,162,233,91,127,124],
             "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
             "table": "testTable",
-            "timestamp": uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221],
+            "timestamp": uint8:[0,0,0,0,0,1,0,0,172,238,109,102,183,171,197,246],
             "value": "sync data",
           },
         ],
@@ -597,7 +573,7 @@ test("sync mutations", async () => {
         "rows": [
           {
             "createdAt": "1970-01-01T00:00:00.001Z",
-            "id": "jYroU2zm2npXftCAjUskT",
+            "id": "CTxiAw0gY_fIT5Ci6Vt_f",
             "isDeleted": null,
             "name": "sync data",
             "updatedAt": "1970-01-01T00:00:00.001Z",
@@ -613,18 +589,19 @@ test("sync mutations", async () => {
         "rows": [
           {
             "c": 1,
-            "h1": 273847295500364,
-            "h2": 38036290989003,
+            "h1": 126806530230506,
+            "h2": 89189876735078,
             "l": 2,
             "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
-            "t": uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221],
+            "t": uint8:[0,0,0,0,0,1,0,0,172,238,109,102,183,171,197,246],
           },
         ],
       },
     ]
   `);
 
-  expect(workerOutput).toMatchInlineSnapshot(`
+  // Should show replaceAll patch with the new record data
+  expect(workerOutput.splice(0)).toMatchInlineSnapshot(`
     [
       {
         "onCompleteIds": [],
@@ -636,7 +613,7 @@ test("sync mutations", async () => {
                 "value": [
                   {
                     "createdAt": "1970-01-01T00:00:00.001Z",
-                    "id": "jYroU2zm2npXftCAjUskT",
+                    "id": "CTxiAw0gY_fIT5Ci6Vt_f",
                     "isDeleted": null,
                     "name": "sync data",
                     "updatedAt": "1970-01-01T00:00:00.001Z",
@@ -647,22 +624,20 @@ test("sync mutations", async () => {
             "query": "["select * from \\"testTable\\" where \\"isDeleted\\" is null",[],[]]",
           },
         ],
-        "tabId": "V83IcuxG6clxIS9iEBxWD",
+        "tabId": "LhGnhts9rNnUeri8bzhS5",
         "type": "onChange",
       },
       {
-        "tabId": "V83IcuxG6clxIS9iEBxWD",
+        "tabId": "LhGnhts9rNnUeri8bzhS5",
         "type": "onReceive",
       },
     ]
   `);
 
   // Test last-write-wins: update the same record before deletion
-  workerOutput.length = 0;
-
   worker.postMessage({
     type: "mutate",
-    tabId: testCreateId(),
+    tabId,
     changes: [
       {
         id: recordId,
@@ -674,9 +649,7 @@ test("sync mutations", async () => {
     subscribedQueries: [subscribedQuery],
   });
 
-  await wait(10);
-
-  // Verify that last write wins - should show "updated data"
+  // Verify that last write wins - should show "updated data" and other stuff
   expect(getDbSnapshot({ sqlite }).tables).toMatchInlineSnapshot(`
     [
       {
@@ -695,7 +668,7 @@ test("sync mutations", async () => {
             "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
             "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
             "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
-            "clock": "1970-01-01T00:00:00.001Z-0001-5028b5d42b661bdd",
+            "clock": "1970-01-01T00:00:00.001Z-0001-acee6d66b7abc5f6",
           },
         ],
       },
@@ -704,26 +677,26 @@ test("sync mutations", async () => {
         "rows": [
           {
             "column": "createdAt",
-            "id": uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76],
+            "id": uint8:[9,60,98,3,13,32,99,247,200,79,144,162,233,91,127,124],
             "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
             "table": "testTable",
-            "timestamp": uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221],
+            "timestamp": uint8:[0,0,0,0,0,1,0,0,172,238,109,102,183,171,197,246],
             "value": "1970-01-01T00:00:00.001Z",
           },
           {
             "column": "name",
-            "id": uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76],
+            "id": uint8:[9,60,98,3,13,32,99,247,200,79,144,162,233,91,127,124],
             "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
             "table": "testTable",
-            "timestamp": uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221],
+            "timestamp": uint8:[0,0,0,0,0,1,0,0,172,238,109,102,183,171,197,246],
             "value": "sync data",
           },
           {
             "column": "name",
-            "id": uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76],
+            "id": uint8:[9,60,98,3,13,32,99,247,200,79,144,162,233,91,127,124],
             "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
             "table": "testTable",
-            "timestamp": uint8:[0,0,0,0,0,1,0,1,80,40,181,212,43,102,27,221],
+            "timestamp": uint8:[0,0,0,0,0,1,0,1,172,238,109,102,183,171,197,246],
             "value": "updated data",
           },
         ],
@@ -733,7 +706,7 @@ test("sync mutations", async () => {
         "rows": [
           {
             "createdAt": "1970-01-01T00:00:00.001Z",
-            "id": "jYroU2zm2npXftCAjUskT",
+            "id": "CTxiAw0gY_fIT5Ci6Vt_f",
             "isDeleted": null,
             "name": "updated data",
             "updatedAt": "1970-01-01T00:00:00.001Z",
@@ -749,31 +722,62 @@ test("sync mutations", async () => {
         "rows": [
           {
             "c": 1,
-            "h1": 273847295500364,
-            "h2": 38036290989003,
+            "h1": 126806530230506,
+            "h2": 89189876735078,
             "l": 2,
             "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
-            "t": uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221],
+            "t": uint8:[0,0,0,0,0,1,0,0,172,238,109,102,183,171,197,246],
           },
           {
             "c": 1,
-            "h1": 222117604733632,
-            "h2": 196050759167509,
+            "h1": 259463229193581,
+            "h2": 206627421859385,
             "l": 1,
             "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
-            "t": uint8:[0,0,0,0,0,1,0,1,80,40,181,212,43,102,27,221],
+            "t": uint8:[0,0,0,0,0,1,0,1,172,238,109,102,183,171,197,246],
           },
         ],
       },
     ]
   `);
 
-  // Test deletion of the sync record
-  workerOutput.length = 0;
+  expect(workerOutput.splice(0)).toMatchInlineSnapshot(`
+    [
+      {
+        "onCompleteIds": [],
+        "queryPatches": [
+          {
+            "patches": [
+              {
+                "op": "replaceAll",
+                "value": [
+                  {
+                    "createdAt": "1970-01-01T00:00:00.001Z",
+                    "id": "CTxiAw0gY_fIT5Ci6Vt_f",
+                    "isDeleted": null,
+                    "name": "updated data",
+                    "updatedAt": "1970-01-01T00:00:00.001Z",
+                  },
+                ],
+              },
+            ],
+            "query": "["select * from \\"testTable\\" where \\"isDeleted\\" is null",[],[]]",
+          },
+        ],
+        "tabId": "LhGnhts9rNnUeri8bzhS5",
+        "type": "onChange",
+      },
+      {
+        "tabId": "LhGnhts9rNnUeri8bzhS5",
+        "type": "onReceive",
+      },
+    ]
+  `);
 
+  // Test deletion of the sync record
   worker.postMessage({
     type: "mutate",
-    tabId: testCreateId(),
+    tabId,
     changes: [
       {
         id: recordId,
@@ -804,7 +808,7 @@ test("sync mutations", async () => {
             "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
             "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
             "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
-            "clock": "1970-01-01T00:00:00.004Z-0000-5028b5d42b661bdd",
+            "clock": "1970-01-01T00:00:00.001Z-0002-acee6d66b7abc5f6",
           },
         ],
       },
@@ -813,34 +817,34 @@ test("sync mutations", async () => {
         "rows": [
           {
             "column": "createdAt",
-            "id": uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76],
+            "id": uint8:[9,60,98,3,13,32,99,247,200,79,144,162,233,91,127,124],
             "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
             "table": "testTable",
-            "timestamp": uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221],
+            "timestamp": uint8:[0,0,0,0,0,1,0,0,172,238,109,102,183,171,197,246],
             "value": "1970-01-01T00:00:00.001Z",
           },
           {
             "column": "name",
-            "id": uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76],
+            "id": uint8:[9,60,98,3,13,32,99,247,200,79,144,162,233,91,127,124],
             "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
             "table": "testTable",
-            "timestamp": uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221],
+            "timestamp": uint8:[0,0,0,0,0,1,0,0,172,238,109,102,183,171,197,246],
             "value": "sync data",
           },
           {
             "column": "name",
-            "id": uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76],
+            "id": uint8:[9,60,98,3,13,32,99,247,200,79,144,162,233,91,127,124],
             "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
             "table": "testTable",
-            "timestamp": uint8:[0,0,0,0,0,1,0,1,80,40,181,212,43,102,27,221],
+            "timestamp": uint8:[0,0,0,0,0,1,0,1,172,238,109,102,183,171,197,246],
             "value": "updated data",
           },
           {
             "column": "isDeleted",
-            "id": uint8:[141,138,232,83,108,230,218,122,87,126,208,128,141,75,36,76],
+            "id": uint8:[9,60,98,3,13,32,99,247,200,79,144,162,233,91,127,124],
             "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
             "table": "testTable",
-            "timestamp": uint8:[0,0,0,0,0,4,0,0,80,40,181,212,43,102,27,221],
+            "timestamp": uint8:[0,0,0,0,0,1,0,2,172,238,109,102,183,171,197,246],
             "value": 1,
           },
         ],
@@ -850,10 +854,10 @@ test("sync mutations", async () => {
         "rows": [
           {
             "createdAt": "1970-01-01T00:00:00.001Z",
-            "id": "jYroU2zm2npXftCAjUskT",
+            "id": "CTxiAw0gY_fIT5Ci6Vt_f",
             "isDeleted": 1,
             "name": "updated data",
-            "updatedAt": "1970-01-01T00:00:00.004Z",
+            "updatedAt": "1970-01-01T00:00:00.001Z",
           },
         ],
       },
@@ -866,34 +870,34 @@ test("sync mutations", async () => {
         "rows": [
           {
             "c": 1,
-            "h1": 273847295500364,
-            "h2": 38036290989003,
+            "h1": 126806530230506,
+            "h2": 89189876735078,
             "l": 2,
             "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
-            "t": uint8:[0,0,0,0,0,1,0,0,80,40,181,212,43,102,27,221],
+            "t": uint8:[0,0,0,0,0,1,0,0,172,238,109,102,183,171,197,246],
           },
           {
             "c": 1,
-            "h1": 222117604733632,
-            "h2": 196050759167509,
+            "h1": 259463229193581,
+            "h2": 206627421859385,
             "l": 1,
             "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
-            "t": uint8:[0,0,0,0,0,1,0,1,80,40,181,212,43,102,27,221],
+            "t": uint8:[0,0,0,0,0,1,0,1,172,238,109,102,183,171,197,246],
           },
           {
             "c": 1,
-            "h1": 232573821234168,
-            "h2": 231480427562672,
+            "h1": 258666984155276,
+            "h2": 58650870936463,
             "l": 1,
             "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
-            "t": uint8:[0,0,0,0,0,4,0,0,80,40,181,212,43,102,27,221],
+            "t": uint8:[0,0,0,0,0,1,0,2,172,238,109,102,183,171,197,246],
           },
         ],
       },
     ]
   `);
 
-  expect(workerOutput).toMatchInlineSnapshot(`
+  expect(workerOutput.splice(0)).toMatchInlineSnapshot(`
     [
       {
         "onCompleteIds": [],
@@ -908,41 +912,35 @@ test("sync mutations", async () => {
             "query": "["select * from \\"testTable\\" where \\"isDeleted\\" is null",[],[]]",
           },
         ],
-        "tabId": "NSX7ssTYhFI2lFtcq9dZb",
+        "tabId": "LhGnhts9rNnUeri8bzhS5",
         "type": "onChange",
       },
       {
-        "tabId": "NSX7ssTYhFI2lFtcq9dZb",
+        "tabId": "LhGnhts9rNnUeri8bzhS5",
         "type": "onReceive",
       },
     ]
   `);
 
-  // Test reset functionality
-  workerOutput.length = 0;
-
-  // Reset the database
-  const onCompleteId = testNanoIdLib.nanoid() as CallbackId;
   worker.postMessage({
     type: "reset",
-    onCompleteId,
+    onCompleteId: testNanoIdLib.nanoid() as CallbackId,
     reload: false,
   });
 
-  // Check that reset completed
-  expect(workerOutput).toMatchInlineSnapshot(`
+  expect(getDbSnapshot({ sqlite }).tables).toMatchInlineSnapshot(`[]`);
+
+  expect(workerOutput.splice(0)).toMatchInlineSnapshot(`
     [
       {
-        "onCompleteId": "sVAus_7j-a98-R9rQCnOb",
+        "onCompleteId": "wEnwV83IcuxG6clxIS9iE",
         "reload": false,
         "type": "onReset",
       },
     ]
   `);
 
-  expect(getDbSnapshot({ sqlite }).tables).toMatchInlineSnapshot(`[]`);
-
-  // WebSocket is not opened.
+  // WebSocket was not opened.
   expect(transports[0]?.sentMessages ?? []).toEqual([]);
 });
 
@@ -955,7 +953,7 @@ describe("WebSocket", () => {
     // Create a sync mutation first to have data to send
     worker.postMessage({
       type: "mutate",
-      tabId: testCreateId(),
+      tabId,
       changes: [
         {
           id: recordId,
@@ -977,26 +975,9 @@ describe("WebSocket", () => {
 
     // After opening, WebSocket should send sync messages
     expect(webSocket.sentMessages).toMatchInlineSnapshot(
-      /**
-       * This protocol message decodes to:
-       *
-       * - Protocol version: 0
-       * - Owner ID: [26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56]
-       * - Message type: 0 (Request)
-       * - Write key: 0 (none - read-only sync)
-       * - Subscription flag: 1 (Subscribe for updates)
-       * - Messages: 0 (no messages to send)
-       * - Ranges: 1 range of type 2 (Timestamps)
-       * - Timestamp: 5ms after epoch
-       * - Counter RLE: 0 (single counter value, not a range)
-       * - Counter: 1
-       * - NodeId RLE: [117,13,222,168,226,197,162,215] (single nodeId, not a
-       *   range)
-       * - Final RLE: 1 (single timestamp entry)
-       */
       `
       [
-        uint8:[0,26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56,0,0,1,0,1,2,1,5,0,1,117,13,222,168,226,197,162,215,1],
+        uint8:[0,26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56,0,0,1,0,1,2,1,5,0,1,190,196,31,138,64,8,182,63,1],
       ]
     `,
     );
