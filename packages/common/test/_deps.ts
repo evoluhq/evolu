@@ -2,6 +2,7 @@ import { CreateWebSocket, TimingSafeEqual, WebSocket } from "@evolu/common";
 import BetterSQLite, { Statement } from "better-sqlite3";
 import { timingSafeEqual } from "crypto";
 import { customRandom, urlAlphabet } from "nanoid";
+import { Console } from "../src/Console.js";
 import {
   createSymmetricCrypto,
   RandomBytes,
@@ -215,3 +216,102 @@ export const testCreateDummyWebSocket: CreateWebSocket = () => ({
   isOpen: constFalse,
   [Symbol.dispose]: constVoid,
 });
+
+/**
+ * A test console that captures all console output for snapshot testing.
+ *
+ * Use this as a drop-in replacement for `createConsole` in tests where you want
+ * to capture and verify console output.
+ */
+export interface TestConsole extends Console {
+  /**
+   * Gets all captured console logs. Clears the captured logs after returning
+   * them.
+   */
+  readonly getLogsSnapshot: () => ReadonlyArray<Array<unknown>>;
+
+  /** Clears all captured logs. */
+  readonly clearLogs: () => void;
+}
+
+/**
+ * Creates a test console that captures all console output for testing.
+ *
+ * ### Example
+ *
+ * ```ts
+ * test("console output", () => {
+ *   const testConsole = createTestConsole();
+ *
+ *   // Use it in place of createConsole()
+ *   const deps = { console: testConsole };
+ *
+ *   // ... run code that logs to console
+ *
+ *   expect(testConsole.getLogsSnapshot()).toMatchInlineSnapshot();
+ * });
+ * ```
+ */
+export const createTestConsole = (): TestConsole => {
+  const logs: Array<Array<unknown>> = [];
+
+  return {
+    enabled: true,
+
+    log: (...args) => {
+      logs.push(args);
+    },
+    info: (...args) => {
+      logs.push(args);
+    },
+    warn: (...args) => {
+      logs.push(args);
+    },
+    error: (...args) => {
+      logs.push(args);
+    },
+    debug: (...args) => {
+      logs.push(args);
+    },
+    time: (label) => {
+      logs.push(["time", label]);
+    },
+    timeLog: (label, ...data) => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      logs.push(["timeLog", label, ...data]);
+    },
+    timeEnd: (label) => {
+      logs.push(["timeEnd", label]);
+    },
+    dir: (object, options) => {
+      logs.push(["dir", object, options]);
+    },
+    table: (tabularData, properties) => {
+      logs.push(["table", tabularData, properties]);
+    },
+    count: (label) => {
+      logs.push(["count", label]);
+    },
+    countReset: (label) => {
+      logs.push(["countReset", label]);
+    },
+    assert: (value, message, ...optionalParams) => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      logs.push(["assert", value, message, ...optionalParams]);
+    },
+    trace: (message, ...optionalParams) => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      logs.push(["trace", message, ...optionalParams]);
+    },
+
+    getLogsSnapshot: () => {
+      const snapshot = [...logs];
+      logs.length = 0; // Clear captured logs
+      return snapshot;
+    },
+
+    clearLogs: () => {
+      logs.length = 0;
+    },
+  };
+};
