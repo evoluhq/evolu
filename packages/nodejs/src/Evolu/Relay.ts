@@ -54,7 +54,7 @@ export const createNodeJsRelay =
     const storage = getOrThrow(
       createRelayStorage(relaySqliteStorageDeps)({
         onStorageError: (error) => {
-          deps.console.error("[relay]", "[storage]", error);
+          deps.console.error("[relay]", "storage", error);
         },
       }),
     );
@@ -118,21 +118,22 @@ export const createNodeJsRelay =
           messageSize: message.length,
         });
 
-        const response = applyProtocolMessageAsRelay({ storage })(
-          message,
-          options,
-        );
+        applyProtocolMessageAsRelay({ storage })(message, options)
+          .then((response) => {
+            if (!response.ok) {
+              deps.console.error("[relay]", "protocol", response.error);
+              deps.console.error(response.error);
+              return;
+            }
 
-        if (!response.ok) {
-          deps.console.error("[relay]", "protocol error", response.error);
-          deps.console.error(response.error);
-          return;
-        }
-
-        ws.send(response.value.message, { binary: true });
-        deps.console.log("[relay]", "response", {
-          responseSize: response.value.message.length,
-        });
+            ws.send(response.value.message, { binary: true });
+            deps.console.log("[relay]", "response", {
+              responseSize: response.value.message.length,
+            });
+          })
+          .catch((error: unknown) => {
+            deps.console.error("[relay]", "applyProtocolMessageAsRelay", error);
+          });
       });
 
       ws.on("close", () => {

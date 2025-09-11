@@ -14,6 +14,7 @@ import {
   SymmetricCryptoDep,
 } from "../Crypto.js";
 import { eqArrayNumber } from "../Eq.js";
+import { createTransferableError, TransferableError } from "../Error.js";
 import { constFalse } from "../Function.js";
 import { NanoIdLibDep } from "../NanoId.js";
 import { objectToEntries } from "../Object.js";
@@ -132,7 +133,8 @@ export interface SyncConfig {
       | SymmetricCryptoDecryptError
       | TimestampCounterOverflowError
       | TimestampDriftError
-      | TimestampTimeOutOfRangeError,
+      | TimestampTimeOutOfRangeError
+      | TransferableError,
   ) => void;
 
   readonly onReceive: () => void;
@@ -224,27 +226,31 @@ export const createSync =
             message: input,
           });
 
-          const message = applyProtocolMessageAsClient({ storage })(input, {
+          applyProtocolMessageAsClient({ storage })(input, {
             // No write key, no sync (for a case when an owner was unused).
             getWriteKey: (ownerId) => getSyncOwner(ownerId)?.writeKey ?? null,
-          });
+          })
+            .then((message) => {
+              if (!message.ok) {
+                config.onError(message.error);
+                return;
+              }
 
-          if (!message.ok) {
-            config.onError(message.error);
-            return;
-          }
-
-          switch (message.value.type) {
-            case "response":
-              webSocket.send(message.value.message);
-              break;
-            case "no-response":
-              // Sync complete, no response needed
-              break;
-            case "broadcast":
-              // This was a broadcast message, don't affect sync counter
-              break;
-          }
+              switch (message.value.type) {
+                case "response":
+                  webSocket.send(message.value.message);
+                  break;
+                case "no-response":
+                  // Sync complete, no response needed
+                  break;
+                case "broadcast":
+                  // This was a broadcast message, don't affect sync counter
+                  break;
+              }
+            })
+            .catch((error: unknown) => {
+              config.onError(createTransferableError(error));
+            });
         },
       });
     };
@@ -455,7 +461,11 @@ const createClientStorage =
       validateWriteKey: constFalse,
       setWriteKey: constFalse,
 
-      writeMessages: (binaryOwnerId, encryptedMessages) => {
+      // https://eslint.org/docs/latest/rules/require-await#when-not-to-use-it
+      // eslint-disable-next-line @typescript-eslint/require-await
+      writeMessages: async (binaryOwnerId, encryptedMessages) => {
+        // TODO: Tady bude mutex, najs.
+
         const ownerId = binaryOwnerIdToOwnerId(binaryOwnerId);
         const owner = deps.getSyncOwner(ownerId);
         // Owner can be removed to stop syncing.
@@ -480,7 +490,7 @@ const createClientStorage =
           existingTimestamps.value.map((timestamp) => timestamp.toString()),
         );
 
-        const messages: Array<CrdtMessage> = [];
+        const newMessages: Array<CrdtMessage> = [];
         for (let i = 0; i < encryptedMessages.length; i++) {
           const message = encryptedMessages[i];
 
@@ -499,7 +509,7 @@ const createClientStorage =
             return false;
           }
 
-          messages.push({
+          newMessages.push({
             timestamp: message.timestamp,
             change: dbChange.value,
           });
@@ -508,7 +518,7 @@ const createClientStorage =
         const transaction = deps.sqlite.transaction(() => {
           let clockTimestamp = deps.clock.get();
 
-          for (const message of messages) {
+          for (const message of newMessages) {
             const nextTimestamp = receiveTimestamp(deps)(
               clockTimestamp,
               message.timestamp,
@@ -520,7 +530,7 @@ const createClientStorage =
 
           const applyMessagesResult = applyMessages({ ...deps, storage })(
             owner.id,
-            messages,
+            newMessages,
           );
           if (!applyMessagesResult.ok) return applyMessagesResult;
 

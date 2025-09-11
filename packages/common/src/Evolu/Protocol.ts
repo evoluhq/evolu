@@ -789,109 +789,122 @@ export type ApplyProtocolMessageAsClientResult =
 
 export const applyProtocolMessageAsClient =
   (deps: StorageDep) =>
-  (
+  async (
     inputMessage: Uint8Array,
     options: ApplyProtocolMessageAsClientOptions = {},
-  ): Result<ApplyProtocolMessageAsClientResult, ProtocolError> =>
-    tryDecodeProtocolData<ApplyProtocolMessageAsClientResult, ProtocolError>(
-      inputMessage,
-      (input) => {
-        const [requestedVersion, ownerId] = decodeVersionAndOwner(input);
-        const version = options.version ?? protocolVersion;
+  ): Promise<
+    Result<
+      ApplyProtocolMessageAsClientResult,
+      | ProtocolInvalidDataError
+      | ProtocolSyncError
+      | ProtocolUnsupportedVersionError
+      | ProtocolWriteError
+      | ProtocolWriteKeyError
+    >
+  > => {
+    // try-catch instead of Result for performance and stacktraces
+    try {
+      const input = createBuffer(inputMessage);
+      const [requestedVersion, ownerId] = decodeVersionAndOwner(input);
+      const version = options.version ?? protocolVersion;
 
-        if (requestedVersion !== version) {
-          return err<ProtocolUnsupportedVersionError>({
-            type: "ProtocolUnsupportedVersionError",
-            unsupportedVersion: requestedVersion,
-            isInitiator: version < requestedVersion,
-            ownerId,
-          });
-        }
+      if (requestedVersion !== version) {
+        return err<ProtocolUnsupportedVersionError>({
+          type: "ProtocolUnsupportedVersionError",
+          unsupportedVersion: requestedVersion,
+          isInitiator: version < requestedVersion,
+          ownerId,
+        });
+      }
 
-        const messageType = input.shift() as MessageType;
-        assert(
-          messageType === MessageType.Response ||
-            messageType === MessageType.Broadcast,
-          "Invalid MessageType",
-        );
+      const messageType = input.shift() as MessageType;
+      assert(
+        messageType === MessageType.Response ||
+          messageType === MessageType.Broadcast,
+        "Invalid MessageType",
+      );
 
-        if (messageType === MessageType.Response) {
-          const errorCode = input.shift() as ProtocolErrorCode;
-          if (errorCode !== ProtocolErrorCode.NoError) {
-            switch (errorCode) {
-              case ProtocolErrorCode.WriteKeyError:
-                return err<ProtocolWriteKeyError>({
-                  type: "ProtocolWriteKeyError",
-                  ownerId,
-                });
-              case ProtocolErrorCode.WriteError:
-                return err<ProtocolWriteError>({
-                  type: "ProtocolWriteError",
-                  ownerId,
-                });
-              case ProtocolErrorCode.SyncError:
-                return err<ProtocolSyncError>({
-                  type: "ProtocolSyncError",
-                  ownerId,
-                });
-              default:
-                throw new ProtocolDecodeError(
-                  `Invalid ProtocolErrorCode: ${errorCode}`,
-                );
-            }
+      if (messageType === MessageType.Response) {
+        const errorCode = input.shift() as ProtocolErrorCode;
+        if (errorCode !== ProtocolErrorCode.NoError) {
+          switch (errorCode) {
+            case ProtocolErrorCode.WriteKeyError:
+              return err<ProtocolWriteKeyError>({
+                type: "ProtocolWriteKeyError",
+                ownerId,
+              });
+            case ProtocolErrorCode.WriteError:
+              return err<ProtocolWriteError>({
+                type: "ProtocolWriteError",
+                ownerId,
+              });
+            case ProtocolErrorCode.SyncError:
+              return err<ProtocolSyncError>({
+                type: "ProtocolSyncError",
+                ownerId,
+              });
+            default:
+              throw new ProtocolDecodeError(
+                `Invalid ProtocolErrorCode: ${errorCode}`,
+              );
           }
         }
+      }
 
-        const messages = decodeMessages(input);
-        const binaryOwnerId = ownerIdToBinaryOwnerId(ownerId);
+      const messages = decodeMessages(input);
+      const binaryOwnerId = ownerIdToBinaryOwnerId(ownerId);
 
-        // TODO: async writeMessages via the main thread validation and processing
-        // pipeline. storage.writeMessages will use mutex/asyncqueue imho
-        if (
-          isNonEmptyReadonlyArray(messages) &&
-          !deps.storage.writeMessages(binaryOwnerId, messages)
-        ) {
-          return ok({ type: "no-response" });
-        }
+      if (
+        isNonEmptyReadonlyArray(messages) &&
+        !(await deps.storage.writeMessages(binaryOwnerId, messages))
+      ) {
+        return ok({ type: "no-response" });
+      }
 
-        // Now: No writeKey, no sync.
-        // TODO: Allow to sync SharedReadonlyOwner
-        // Without local changes, writeKey will not be required.
-        // With local changes, writeKey will be required and if not provided,
-        // the sync should stop.
-        // getWriteKey should be moved to sync fn.
-        const writeKey = options.getWriteKey?.(ownerId);
-        if (writeKey == null) {
-          return ok({ type: "no-response" });
-        }
+      // Now: No writeKey, no sync.
+      // TODO: Allow to sync SharedReadonlyOwner
+      // Without local changes, writeKey will not be required.
+      // With local changes, writeKey will be required and if not provided,
+      // the sync should stop.
+      // getWriteKey should be moved to sync fn.
+      const writeKey = options.getWriteKey?.(ownerId);
+      if (writeKey == null) {
+        return ok({ type: "no-response" });
+      }
 
-        if (messageType === MessageType.Broadcast) {
-          return ok({ type: "broadcast" });
-        }
+      if (messageType === MessageType.Broadcast) {
+        return ok({ type: "broadcast" });
+      }
 
-        const ranges = decodeRanges(input);
+      const ranges = decodeRanges(input);
 
-        if (!isNonEmptyReadonlyArray(ranges)) {
-          return ok({ type: "no-response" });
-        }
+      if (!isNonEmptyReadonlyArray(ranges)) {
+        return ok({ type: "no-response" });
+      }
 
-        const output = createProtocolMessageBuffer(ownerId, {
-          messageType: MessageType.Request,
-          writeKey,
-          totalMaxSize: options.totalMaxSize,
-          rangesMaxSize: options.rangesMaxSize,
-        });
+      const output = createProtocolMessageBuffer(ownerId, {
+        messageType: MessageType.Request,
+        writeKey,
+        totalMaxSize: options.totalMaxSize,
+        rangesMaxSize: options.rangesMaxSize,
+      });
 
-        const syncResult = sync(deps)(ranges, output, binaryOwnerId);
+      const syncResult = sync(deps)(ranges, output, binaryOwnerId);
 
-        // Client sync error (handled via Storage) or no changes.
-        if (!syncResult.ok || !syncResult.value) {
-          return ok({ type: "no-response" });
-        }
+      // Client sync error (handled via Storage) or no changes.
+      if (!syncResult.ok || !syncResult.value) {
+        return ok({ type: "no-response" });
+      }
 
-        return ok({ type: "response", message: output.unwrap() });
-      },
-    );
+      return ok({ type: "response", message: output.unwrap() });
+    } catch (error) {
+      return err<ProtocolInvalidDataError>({
+        type: "ProtocolInvalidDataError",
+        data: inputMessage,
+        error,
+      });
+    }
+  };
 
 export interface ApplyProtocolMessageAsRelayOptions {
   /** To subscribe an owner for broadcasting. */
@@ -923,16 +936,17 @@ export interface ApplyProtocolMessageAsRelayResult {
 
 export const applyProtocolMessageAsRelay =
   (deps: StorageDep) =>
-  (
+  async (
     inputMessage: Uint8Array,
     options: ApplyProtocolMessageAsRelayOptions = {},
     /** For testing purposes only; should not be used in production. */
     version = protocolVersion,
-  ): Result<ApplyProtocolMessageAsRelayResult, ProtocolInvalidDataError> =>
-    tryDecodeProtocolData<
-      ApplyProtocolMessageAsRelayResult,
-      ProtocolInvalidDataError
-    >(inputMessage, (input) => {
+  ): Promise<
+    Result<ApplyProtocolMessageAsRelayResult, ProtocolInvalidDataError>
+  > => {
+    // try-catch instead of Result for performance and stacktraces
+    try {
+      const input = createBuffer(inputMessage);
       const [requestedVersion, ownerId] = decodeVersionAndOwner(input);
       const binaryOwnerId = ownerIdToBinaryOwnerId(ownerId);
 
@@ -1021,12 +1035,7 @@ export const applyProtocolMessageAsRelay =
           options.broadcast(ownerId, broadcastBuffer.unwrap());
         }
 
-        const messagesWritten = deps.storage.writeMessages(
-          binaryOwnerId,
-          messages,
-        );
-
-        if (!messagesWritten)
+        if (!(await deps.storage.writeMessages(binaryOwnerId, messages))) {
           return ok({
             type: "response",
             message: createProtocolMessageBuffer(ownerId, {
@@ -1034,6 +1043,7 @@ export const applyProtocolMessageAsRelay =
               errorCode: ProtocolErrorCode.WriteError,
             }).unwrap(),
           });
+        }
       }
 
       const ranges = decodeRanges(input);
@@ -1062,27 +1072,14 @@ export const applyProtocolMessageAsRelay =
 
       // Non-initiators always respond to provide sync completion feedback,
       return ok({ type: "response", message });
-    });
-
-/**
- * Wraps Evolu Protocol decoding functions, which use exceptions instead of
- * {@link Result} to provide stack traces for debugging and reduce allocation
- * overhead in success cases.
- */
-const tryDecodeProtocolData = <T, E>(
-  data: Uint8Array,
-  callback: (buffer: Buffer) => Result<T, E | ProtocolInvalidDataError>,
-) => {
-  try {
-    return callback(createBuffer(data));
-  } catch (error: unknown) {
-    return err<ProtocolInvalidDataError>({
-      type: "ProtocolInvalidDataError",
-      data,
-      error,
-    });
-  }
-};
+    } catch (error) {
+      return err<ProtocolInvalidDataError>({
+        type: "ProtocolInvalidDataError",
+        data: inputMessage,
+        error,
+      });
+    }
+  };
 
 const decodeVersionAndOwner = (input: Buffer): [NonNegativeInt, OwnerId] => {
   // This structure must never change across protocol versions. The version
@@ -1611,11 +1608,10 @@ export const decryptAndDecodeDbChange =
     | SymmetricCryptoDecryptError
     | ProtocolInvalidDataError
     | ProtocolTimestampMismatchError
-  > =>
-    tryDecodeProtocolData<
-      DbChange,
-      SymmetricCryptoDecryptError | ProtocolTimestampMismatchError
-    >(message.change, (buffer) => {
+  > => {
+    // try-catch instead of Result for performance and stacktraces
+    try {
+      const buffer = createBuffer(message.change);
       const nonce = buffer.shiftN(deps.symmetricCrypto.nonceLength);
 
       const ciphertextLength = decodeLength(buffer);
@@ -1666,7 +1662,14 @@ export const decryptAndDecodeDbChange =
       const dbChange = { table, id, values };
 
       return ok(dbChange);
-    });
+    } catch (error) {
+      return err<ProtocolInvalidDataError>({
+        type: "ProtocolInvalidDataError",
+        data: message.change,
+        error,
+      });
+    }
+  };
 
 /**
  * Encodes a non-negative integer into a variable-length integer format. It's

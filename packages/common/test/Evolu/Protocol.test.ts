@@ -619,7 +619,7 @@ test("createProtocolMessageForSync", async () => {
     }),
   );
   assertNonEmptyArray(messages31);
-  storageDep.storage.writeMessages(testOwnerBinaryId, messages31);
+  await storageDep.storage.writeMessages(testOwnerBinaryId, messages31);
 
   // DB with 31 timestamps: version, ownerId, 0 messages, one full (31) TimestampsRange.
   expect(
@@ -638,7 +638,7 @@ test("createProtocolMessageForSync", async () => {
     }),
   );
   assertNonEmptyArray(message32);
-  storageDep.storage.writeMessages(testOwnerBinaryId, message32);
+  await storageDep.storage.writeMessages(testOwnerBinaryId, message32);
 
   // DB with 32 timestamps: version, ownerId, 0 messages, 16x FingerprintRange.
   expect(
@@ -649,7 +649,7 @@ test("createProtocolMessageForSync", async () => {
 });
 
 describe("E2E versioning", () => {
-  test("same versions", () => {
+  test("same versions", async () => {
     const v0 = 0 as NonNegativeInt;
 
     const clientMessage = createProtocolMessageBuffer(testOwner.id, {
@@ -657,7 +657,7 @@ describe("E2E versioning", () => {
       messageType: MessageType.Request,
     }).unwrap();
 
-    const relayResponse = applyProtocolMessageAsRelay(
+    const relayResponse = await applyProtocolMessageAsRelay(
       shouldNotBeCalledStorageDep,
     )(clientMessage, {}, v0);
 
@@ -665,7 +665,7 @@ describe("E2E versioning", () => {
     expect(relayResponse.value.message.length).toMatchInlineSnapshot(`20`);
   });
 
-  test("non-initiator version is higher", () => {
+  test("non-initiator version is higher", async () => {
     const v0 = 0 as NonNegativeInt;
     const v1 = 1 as NonNegativeInt;
 
@@ -674,12 +674,12 @@ describe("E2E versioning", () => {
       messageType: MessageType.Request,
     }).unwrap();
 
-    const relayResponse = applyProtocolMessageAsRelay(
+    const relayResponse = await applyProtocolMessageAsRelay(
       shouldNotBeCalledStorageDep,
     )(clientMessage, {}, v1);
     assert(relayResponse.ok);
 
-    const clientResult = applyProtocolMessageAsClient(
+    const clientResult = await applyProtocolMessageAsClient(
       shouldNotBeCalledStorageDep,
     )(relayResponse.value.message, { version: v0 });
     expect(clientResult).toEqual(
@@ -692,7 +692,7 @@ describe("E2E versioning", () => {
     );
   });
 
-  test("initiator version is higher", () => {
+  test("initiator version is higher", async () => {
     const v0 = 0 as NonNegativeInt;
     const v1 = 1 as NonNegativeInt;
 
@@ -701,12 +701,12 @@ describe("E2E versioning", () => {
       messageType: MessageType.Request,
     }).unwrap();
 
-    const relayResponse = applyProtocolMessageAsRelay(
+    const relayResponse = await applyProtocolMessageAsRelay(
       shouldNotBeCalledStorageDep,
     )(clientMessage, {}, v0);
     assert(relayResponse.ok);
 
-    const clientResult = applyProtocolMessageAsClient(
+    const clientResult = await applyProtocolMessageAsClient(
       shouldNotBeCalledStorageDep,
     )(relayResponse.value.message, { version: v1 });
     expect(clientResult).toEqual(
@@ -721,11 +721,11 @@ describe("E2E versioning", () => {
 });
 
 describe("E2E errors", () => {
-  test("ProtocolInvalidDataError", () => {
+  test("ProtocolInvalidDataError", async () => {
     const malformedMessage = createBuffer();
     encodeNonNegativeInt(malformedMessage, 1 as NonNegativeInt); // Only version, no ownerId
 
-    const clientResult = applyProtocolMessageAsClient(
+    const clientResult = await applyProtocolMessageAsClient(
       shouldNotBeCalledStorageDep,
     )(malformedMessage.unwrap(), { version: 0 as NonNegativeInt });
 
@@ -733,7 +733,7 @@ describe("E2E errors", () => {
     expect(clientResult.error.type).toBe("ProtocolInvalidDataError");
   });
 
-  test("ProtocolWriteKeyError", () => {
+  test("ProtocolWriteKeyError", async () => {
     const timestamp = binaryTimestampToTimestamp(testTimestampsAsc[0]);
     const dbChange = createDbChange();
 
@@ -746,7 +746,7 @@ describe("E2E errors", () => {
       messages,
     );
 
-    const responseWithWriteKeyError = applyProtocolMessageAsRelay({
+    const responseWithWriteKeyError = await applyProtocolMessageAsRelay({
       storage: {
         ...shouldNotBeCalledStorageDep.storage,
         validateWriteKey: constFalse,
@@ -759,7 +759,7 @@ describe("E2E errors", () => {
     );
 
     expect(
-      applyProtocolMessageAsClient(shouldNotBeCalledStorageDep)(
+      await applyProtocolMessageAsClient(shouldNotBeCalledStorageDep)(
         responseWithWriteKeyError.value.message,
       ),
     ).toEqual(err({ type: "ProtocolWriteKeyError", ownerId: testOwner.id }));
@@ -767,14 +767,14 @@ describe("E2E errors", () => {
 });
 
 describe("E2E relay options", () => {
-  test("subscribe", () => {
+  test("subscribe", async () => {
     const message = createProtocolMessageBuffer(testOwner.id, {
       messageType: MessageType.Request,
       subscriptionFlag: SubscriptionFlags.Subscribe,
     }).unwrap();
     let subscribeCalledWithOwnerId: string | null = null;
 
-    applyProtocolMessageAsRelay(shouldNotBeCalledStorageDep)(message, {
+    await applyProtocolMessageAsRelay(shouldNotBeCalledStorageDep)(message, {
       subscribe: (ownerId) => {
         subscribeCalledWithOwnerId = ownerId;
       },
@@ -783,14 +783,14 @@ describe("E2E relay options", () => {
     expect(subscribeCalledWithOwnerId).toBe(testOwner.id);
   });
 
-  test("unsubscribe", () => {
+  test("unsubscribe", async () => {
     const message = createProtocolMessageBuffer(testOwner.id, {
       messageType: MessageType.Request,
       subscriptionFlag: SubscriptionFlags.Unsubscribe,
     }).unwrap();
     let unsubscribeCalledWithOwnerId: string | null = null;
 
-    applyProtocolMessageAsRelay(shouldNotBeCalledStorageDep)(message, {
+    await applyProtocolMessageAsRelay(shouldNotBeCalledStorageDep)(message, {
       unsubscribe: (ownerId) => {
         unsubscribeCalledWithOwnerId = ownerId;
       },
@@ -799,7 +799,7 @@ describe("E2E relay options", () => {
     expect(unsubscribeCalledWithOwnerId).toBe(testOwner.id);
   });
 
-  test("no subscription flag (None)", () => {
+  test("no subscription flag (None)", async () => {
     const message = createProtocolMessageBuffer(testOwner.id, {
       messageType: MessageType.Request,
       subscriptionFlag: SubscriptionFlags.None,
@@ -807,7 +807,7 @@ describe("E2E relay options", () => {
     let subscribeWasCalled = false;
     let unsubscribeWasCalled = false;
 
-    applyProtocolMessageAsRelay(shouldNotBeCalledStorageDep)(message, {
+    await applyProtocolMessageAsRelay(shouldNotBeCalledStorageDep)(message, {
       subscribe: () => {
         subscribeWasCalled = true;
       },
@@ -820,7 +820,7 @@ describe("E2E relay options", () => {
     expect(unsubscribeWasCalled).toBe(false);
   });
 
-  test("default subscription flag (undefined)", () => {
+  test("default subscription flag (undefined)", async () => {
     const message = createProtocolMessageBuffer(testOwner.id, {
       messageType: MessageType.Request,
       // No subscriptionFlag provided, should default to None
@@ -828,7 +828,7 @@ describe("E2E relay options", () => {
     let subscribeWasCalled = false;
     let unsubscribeWasCalled = false;
 
-    applyProtocolMessageAsRelay(shouldNotBeCalledStorageDep)(message, {
+    await applyProtocolMessageAsRelay(shouldNotBeCalledStorageDep)(message, {
       subscribe: () => {
         subscribeWasCalled = true;
       },
@@ -841,7 +841,7 @@ describe("E2E relay options", () => {
     expect(unsubscribeWasCalled).toBe(false);
   });
 
-  test("broadcast message", () => {
+  test("broadcast message", async () => {
     const timestamp = binaryTimestampToTimestamp(testTimestampsAsc[0]);
     const dbChange = createDbChange();
     const messages: NonEmptyReadonlyArray<CrdtMessage> = [
@@ -859,11 +859,11 @@ describe("E2E relay options", () => {
 
     let broadcastedMessage = null as Uint8Array | null;
 
-    applyProtocolMessageAsRelay({
+    await applyProtocolMessageAsRelay({
       storage: {
         ...shouldNotBeCalledStorageDep.storage,
         validateWriteKey: constTrue,
-        writeMessages: constTrue,
+        writeMessages: () => Promise.resolve(true),
       },
     })(initiatorMessage, {
       broadcast: (ownerId, message) => {
@@ -879,10 +879,11 @@ describe("E2E relay options", () => {
     );
 
     let writeMessagesCalled = false;
-    const result = applyProtocolMessageAsClient({
+    const result = await applyProtocolMessageAsClient({
       storage: {
         ...shouldNotBeCalledStorageDep.storage,
-        writeMessages: (ownerId, encryptedMessages) => {
+        // eslint-disable-next-line @typescript-eslint/require-await
+        writeMessages: async (ownerId, encryptedMessages) => {
           writeMessagesCalled = true;
           expect(ownerId).toEqual(testOwnerBinaryId);
           expect(encryptedMessages.length).toBe(messages.length);
@@ -920,7 +921,7 @@ describe("E2E sync", () => {
     return [clientStorageDep.storage, relayStorageDep.storage];
   };
 
-  const reconcile = (
+  const reconcile = async (
     clientStorage: Storage,
     relayStorage: Storage,
     rangesMaxSize = maxProtocolMessageRangesSize,
@@ -946,10 +947,10 @@ describe("E2E sync", () => {
 
       result =
         turn === "relay"
-          ? applyProtocolMessageAsRelay(relayStorageDep)(message, {
+          ? await applyProtocolMessageAsRelay(relayStorageDep)(message, {
               rangesMaxSize,
             })
-          : applyProtocolMessageAsClient(clientStorageDep)(message, {
+          : await applyProtocolMessageAsClient(clientStorageDep)(message, {
               getWriteKey: () => testOwner.writeKey,
               rangesMaxSize,
             });
@@ -990,10 +991,10 @@ describe("E2E sync", () => {
 
   it("client and relay have all data", async () => {
     const [clientStorage, relayStorage] = await createStorages();
-    clientStorage.writeMessages(testOwnerBinaryId, messages);
-    relayStorage.writeMessages(testOwnerBinaryId, messages);
+    await clientStorage.writeMessages(testOwnerBinaryId, messages);
+    await relayStorage.writeMessages(testOwnerBinaryId, messages);
 
-    const syncSteps = reconcile(clientStorage, relayStorage);
+    const syncSteps = await reconcile(clientStorage, relayStorage);
     expect(syncSteps).toMatchInlineSnapshot(`
       {
         "syncSizes": [
@@ -1007,9 +1008,9 @@ describe("E2E sync", () => {
 
   it("client has all data", async () => {
     const [clientStorage, relayStorage] = await createStorages();
-    clientStorage.writeMessages(testOwnerBinaryId, messages);
+    await clientStorage.writeMessages(testOwnerBinaryId, messages);
 
-    const syncSteps = reconcile(clientStorage, relayStorage);
+    const syncSteps = await reconcile(clientStorage, relayStorage);
     expect(syncSteps).toMatchInlineSnapshot(`
       {
         "syncSizes": [
@@ -1027,9 +1028,9 @@ describe("E2E sync", () => {
 
   it("client has all data - many steps", async () => {
     const [clientStorage, relayStorage] = await createStorages();
-    clientStorage.writeMessages(testOwnerBinaryId, messages);
+    await clientStorage.writeMessages(testOwnerBinaryId, messages);
 
-    const syncSteps = reconcile(
+    const syncSteps = await reconcile(
       clientStorage,
       relayStorage,
       3000 as PositiveInt,
@@ -1059,9 +1060,9 @@ describe("E2E sync", () => {
 
   it("relay has all data", async () => {
     const [clientStorage, relayStorage] = await createStorages();
-    relayStorage.writeMessages(testOwnerBinaryId, messages);
+    await relayStorage.writeMessages(testOwnerBinaryId, messages);
 
-    const syncSteps = reconcile(clientStorage, relayStorage);
+    const syncSteps = await reconcile(clientStorage, relayStorage);
     expect(syncSteps).toMatchInlineSnapshot(`
       {
         "syncSizes": [
@@ -1077,9 +1078,9 @@ describe("E2E sync", () => {
 
   it("relay has all data - many steps", async () => {
     const [clientStorage, relayStorage] = await createStorages();
-    relayStorage.writeMessages(testOwnerBinaryId, messages);
+    await relayStorage.writeMessages(testOwnerBinaryId, messages);
 
-    const syncSteps = reconcile(
+    const syncSteps = await reconcile(
       clientStorage,
       relayStorage,
       3000 as PositiveInt,
@@ -1126,10 +1127,10 @@ describe("E2E sync", () => {
     assertNonEmptyArray(firstHalf);
     assertNonEmptyArray(secondHalf);
 
-    clientStorage.writeMessages(testOwnerBinaryId, firstHalf);
-    relayStorage.writeMessages(testOwnerBinaryId, secondHalf);
+    await clientStorage.writeMessages(testOwnerBinaryId, firstHalf);
+    await relayStorage.writeMessages(testOwnerBinaryId, secondHalf);
 
-    const syncSteps = reconcile(clientStorage, relayStorage);
+    const syncSteps = await reconcile(clientStorage, relayStorage);
     expect(syncSteps).toMatchInlineSnapshot(`
       {
         "syncSizes": [
@@ -1156,10 +1157,10 @@ describe("E2E sync", () => {
     assertNonEmptyArray(firstHalf);
     assertNonEmptyArray(secondHalf);
 
-    clientStorage.writeMessages(testOwnerBinaryId, firstHalf);
-    relayStorage.writeMessages(testOwnerBinaryId, secondHalf);
+    await clientStorage.writeMessages(testOwnerBinaryId, firstHalf);
+    await relayStorage.writeMessages(testOwnerBinaryId, secondHalf);
 
-    const syncSteps = reconcile(
+    const syncSteps = await reconcile(
       clientStorage,
       relayStorage,
       3000 as PositiveInt,
@@ -1237,7 +1238,7 @@ describe("E2E sync", () => {
     const relayStorageDep = await createStorageDep();
 
     const relayResult =
-      applyProtocolMessageAsRelay(relayStorageDep)(protocolMessage);
+      await applyProtocolMessageAsRelay(relayStorageDep)(protocolMessage);
 
     assert(relayResult.ok);
     expect(relayResult.value.message).toMatchInlineSnapshot(

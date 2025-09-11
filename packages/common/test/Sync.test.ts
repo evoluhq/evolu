@@ -9,11 +9,6 @@ import {
 } from "./_deps.js";
 import { testTimestampsAsc } from "./Evolu/_fixtures.js";
 
-/**
- * Sync functionality is integration-tested via Db.ts tests. This tests the pure
- * CTE performance optimization in isolation.
- */
-
 test("getExistingTimestamps works correctly with CTE", async () => {
   const sqlite = await testCreateSqlite();
 
@@ -80,3 +75,5 @@ test("getExistingTimestamps works correctly with CTE", async () => {
     ok([binaryTimestamp1].map((t) => Buffer.from(t))),
   );
 });
+
+// Sync is integration-tested in `Db.test.ts`.
