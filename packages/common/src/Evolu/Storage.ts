@@ -33,8 +33,14 @@ import {
  *
  * The protocol using Storage is agnostic to storage implementation details—any
  * storage can be plugged in, as long as it implements this interface.
- * Implementations must handle their own errors; return values only indicates
+ * Implementations must handle their own errors; return values only indicate
  * overall success or failure.
+ *
+ * The Storage API is designed to be synchronous because SQLite's synchronous
+ * API is the recommended and most performant way to use SQLite. Asynchronous
+ * SQLite wrappers add unnecessary overhead and complexity. Only
+ * {@link Storage#writeMessages} is async because of SQLite WASM requirements
+ * (see its documentation for details).
  */
 export interface Storage {
   readonly getSize: (ownerId: BinaryOwnerId) => NonNegativeInt | null;
@@ -81,11 +87,23 @@ export interface Storage {
   /** Sets the {@link WriteKey} for the given {@link Owner}. */
   readonly setWriteKey: (ownerId: BinaryOwnerId, writeKey: WriteKey) => boolean;
 
-  /** Write encrypted {@link CrdtMessage}s to storage. */
+  /**
+   * Write encrypted {@link CrdtMessage}s to storage.
+   *
+   * Returns `Promise<boolean>` because SQLite WASM must run in a web worker
+   * while message validation must occur on the main thread. This requires async
+   * communication between worker and main thread.
+   *
+   * The async nature means other operations can interleave between
+   * `writeMessages` and subsequent sync operations during protocol message
+   * application. This is safe because storage is append-only and the only
+   * possible deletion is whole owner deletion. In that case, the sync operation
+   * must fail anyway (to prevent current and future sync operations).
+   */
   readonly writeMessages: (
     ownerId: BinaryOwnerId,
     messages: NonEmptyReadonlyArray<EncryptedCrdtMessage>,
-  ) => boolean;
+  ) => Promise<boolean>;
 
   /** Read encrypted {@link DbChange}s from storage. */
   readonly readDbChange: (
