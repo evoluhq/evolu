@@ -57,7 +57,7 @@
     "@evolu/common": "workspace:*",
     "@evolu/react": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
-    "@op-engineering/op-sqlite": "^14.1.4",
+    "@op-engineering/op-sqlite": "^15.0.3",
     "expo": "^53.0.20",
     "expo-sqlite": "~15.2.14",
     "react-native": "^0.79.3",

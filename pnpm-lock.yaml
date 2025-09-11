@@ -680,8 +680,8 @@ importers:
         specifier: workspace:*
         version: link:../tsconfig
       '@op-engineering/op-sqlite':
-        specifier: ^14.1.4
-        version: 14.1.4(react-native@0.79.6(@babel/core@7.28.4)(@types/react@19.1.12)(react@19.1.1))(react@19.1.1)
+        specifier: ^15.0.3
+        version: 15.0.3(react-native@0.79.6(@babel/core@7.28.4)(@types/react@19.1.12)(react@19.1.1))(react@19.1.1)
       expo:
         specifier: ^53.0.20
         version: 53.0.22(@babel/core@7.28.4)(@expo/metro-runtime@5.0.4(react-native@0.79.6(@babel/core@7.28.4)(@types/react@19.1.12)(react@19.1.1)))(react-native@0.79.6(@babel/core@7.28.4)(@types/react@19.1.12)(react@19.1.1))(react@19.1.1)
@@ -2751,8 +2751,8 @@ packages:
     engines: {node: ^12.13.0 || ^14.15.0 || >=16.0.0}
     deprecated: This functionality has been moved to @npmcli/fs
 
-  '@op-engineering/op-sqlite@14.1.4':
-    resolution: {integrity: sha512-ZIZAqfHUKIjSxhaxWovEz4kCp6Gtoi8RPnJ36lPwTr73c7pEFNidE2vFm0dMBEj2ikm9wfYkab1/boW98SkVKA==}
+  '@op-engineering/op-sqlite@15.0.3':
+    resolution: {integrity: sha512-vAUrw2hg2TQTDNM6tAsjtxQiyNTZCynjbV6F+FsiSYgbmfuqIL7gRu94IqmLM5/dPvqbBaDZdo4a9n6KMGN8RQ==}
     peerDependencies:
       react: '*'
       react-native: '*'
@@ -11432,7 +11432,7 @@ snapshots:
       mkdirp: 1.0.4
       rimraf: 3.0.2
 
-  '@op-engineering/op-sqlite@14.1.4(react-native@0.79.6(@babel/core@7.28.4)(@types/react@19.1.12)(react@19.1.1))(react@19.1.1)':
+  '@op-engineering/op-sqlite@15.0.3(react-native@0.79.6(@babel/core@7.28.4)(@types/react@19.1.12)(react@19.1.1))(react@19.1.1)':
     dependencies:
       react: 19.1.1
       react-native: 0.79.6(@babel/core@7.28.4)(@types/react@19.1.12)(react@19.1.1)
