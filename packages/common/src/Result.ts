@@ -174,6 +174,52 @@
  * };
  * ```
  *
+ * ### Handling Unexpected Errors
+ *
+ * Even with disciplined use of `trySync` and `tryAsync`, unexpected errors can
+ * still occur due to programming mistakes, third-party library bugs, or edge
+ * cases. These should be logged for debugging while maintaining application
+ * stability.
+ *
+ * #### In Browser Environments
+ *
+ * ```ts
+ * // Global error handler for unexpected errors
+ * window.addEventListener("error", (event) => {
+ *   console.error("Uncaught error:", event.error);
+ *   // Send to error reporting service
+ *   errorReportingService.report(event.error);
+ * });
+ *
+ * // For unhandled promise rejections
+ * window.addEventListener("unhandledrejection", (event) => {
+ *   console.error("Unhandled promise rejection:", event.reason);
+ *   errorReportingService.report(event.reason);
+ * });
+ * ```
+ *
+ * #### In Node.js Environments
+ *
+ * ```ts
+ * // Handle uncaught exceptions (avoid process crash)
+ * process.on("uncaughtException", (error) => {
+ *   console.error("Uncaught exception:", error);
+ *   errorReportingService.report(error);
+ *   // Gracefully shutdown if needed
+ *   process.exit(1);
+ * });
+ *
+ * // Handle unhandled promise rejections
+ * process.on("unhandledRejection", (reason) => {
+ *   console.error("Unhandled promise rejection:", reason);
+ *   errorReportingService.report(reason);
+ * });
+ * ```
+ *
+ * These global handlers serve as a safety net for unexpected errors while
+ * maintaining the discipline of explicit error handling through the `Result`
+ * pattern.
+ *
  * ### FAQ
  *
  * #### What if my function doesn't return a value on success?
@@ -182,6 +228,38 @@
  * success, you can use `Result<void, E>`. Using `Result<void, E>` is clearer
  * than using `Result<true, E>` or `Result<null, E>` because it communicates
  * that the function doesn't produce a value but can produce errors.
+ *
+ * #### When can a function return `void` instead of `Result<void, E>`?
+ *
+ * A function can safely return `void` (instead of `Result<void, E>`) when all
+ * unsafe code within it is properly wrapped with `trySync` or `tryAsync`. If
+ * developers consistently wrap all potentially throwing operations, then any
+ * function returning `void` is guaranteed not to throw and can be called
+ * without error handling.
+ *
+ * ```ts
+ * // ✅ Safe to return void - all unsafe code is wrapped
+ * const processData = (data: string): void => {
+ *   const parseResult = trySync(
+ *     () => JSON.parse(data),
+ *     (error) => ({ type: "ParseError", message: String(error) }),
+ *   );
+ *
+ *   if (!parseResult.ok) {
+ *     logError(parseResult.error); // Handle error appropriately
+ *     return;
+ *   }
+ *
+ *   // Continue with safe operations...
+ * };
+ *
+ * // ✅ Can call without try-catch since it returns void
+ * processData(jsonString);
+ * ```
+ *
+ * This approach creates a clear contract: functions returning `void` are safe
+ * to call, while functions returning `Result<T, E>` require explicit error
+ * handling.
  *
  * #### How do I short-circuit processing of an array on the first error?
  *
