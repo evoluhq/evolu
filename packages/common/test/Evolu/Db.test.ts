@@ -1,6 +1,5 @@
 import { describe, expect, test } from "vitest";
 import { CallbackId } from "../../src/CallbackRegistry.js";
-import { createConsole } from "../../src/Console.js";
 import { defaultConfig } from "../../src/Evolu/Config.js";
 import {
   createDbWorkerForPlatform,
@@ -13,7 +12,9 @@ import { wait } from "../../src/Promise.js";
 import { getOrThrow } from "../../src/Result.js";
 import { createSqlite, Sqlite } from "../../src/Sqlite.js";
 import {
+  createTestConsole,
   createTestWebSocket,
+  TestConsole,
   testCreateId,
   testCreateSqliteDriver,
   testNanoIdLib,
@@ -26,50 +27,15 @@ import {
 } from "../_deps.js";
 import { getDbSnapshot } from "./_utils.js";
 
-const createDbWorkerWithDeps = async (): Promise<{
-  readonly worker: DbWorker;
-  readonly sqlite: Sqlite;
-  readonly transports: ReadonlyArray<TestWebSocket>;
-}> => {
-  const sqliteDriver = await testCreateSqliteDriver(testSimpleName);
-  const sqliteResult = await createSqlite({
-    createSqliteDriver: () => Promise.resolve(sqliteDriver),
-  })(testSimpleName);
-  const sqlite = getOrThrow(sqliteResult);
-
-  // Track all created WebSocket transports
-  const transports: Array<TestWebSocket> = [];
-
-  const deps: DbWorkerPlatformDeps = {
-    console: createConsole(),
-    createSqliteDriver: () => Promise.resolve(sqliteDriver),
-    createWebSocket: (url, options) => {
-      const testWebSocket = createTestWebSocket(url, options);
-      transports.push(testWebSocket);
-      return testWebSocket;
-    },
-    nanoIdLib: testNanoIdLib,
-    random: testRandom,
-    randomBytes: testRandomBytes,
-    time: testTime,
-  };
-
-  const worker = createDbWorkerForPlatform(deps);
-
-  return {
-    worker,
-    sqlite,
-    transports,
-  };
-};
-
 const createInitializedDbWorker = async (): Promise<{
   readonly worker: DbWorker;
   readonly sqlite: Sqlite;
   readonly transports: ReadonlyArray<TestWebSocket>;
   readonly workerOutput: Array<unknown>;
+  readonly testConsole: ReturnType<typeof createTestConsole>;
 }> => {
-  const { worker, sqlite, transports } = await createDbWorkerWithDeps();
+  const { worker, sqlite, transports, testConsole } =
+    await createDbWorkerWithDeps();
 
   // Track worker output messages
   const workerOutput: Array<unknown> = [];
@@ -110,14 +76,90 @@ const createInitializedDbWorker = async (): Promise<{
     sqlite,
     transports,
     workerOutput,
+    testConsole,
+  };
+};
+
+const createDbWorkerWithDeps = async (): Promise<{
+  readonly worker: DbWorker;
+  readonly sqlite: Sqlite;
+  readonly transports: ReadonlyArray<TestWebSocket>;
+  readonly testConsole: ReturnType<typeof createTestConsole>;
+}> => {
+  const sqliteDriver = await testCreateSqliteDriver(testSimpleName);
+  const testConsole = createTestConsole();
+  const sqliteResult = await createSqlite({
+    createSqliteDriver: () => Promise.resolve(sqliteDriver),
+    console: testConsole,
+  })(testSimpleName);
+  const sqlite = getOrThrow(sqliteResult);
+
+  // Track all created WebSocket transports
+  const transports: Array<TestWebSocket> = [];
+
+  const deps: DbWorkerPlatformDeps = {
+    console: testConsole,
+    createSqliteDriver: () => Promise.resolve(sqliteDriver),
+    createWebSocket: (url, options) => {
+      const testWebSocket = createTestWebSocket(url, options);
+      transports.push(testWebSocket);
+      return testWebSocket;
+    },
+    nanoIdLib: testNanoIdLib,
+    random: testRandom,
+    randomBytes: testRandomBytes,
+    time: testTime,
+  };
+
+  const worker = createDbWorkerForPlatform(deps);
+
+  return {
+    worker,
+    sqlite,
+    transports,
+    testConsole,
   };
 };
 
 const appOwner = createAppOwner(testOwnerSecret);
 const tabId = testCreateId();
 
+const checkSqlOperations = (testConsole: TestConsole): void => {
+  const logs = testConsole.getLogsSnapshot();
+
+  // Only capture SQL strings from query logs: deps.console?.log("[sql]", { query });
+  const sqlStrings = logs
+    .filter(
+      (log) =>
+        Array.isArray(log) &&
+        log[0] === "[sql]" &&
+        log[1] &&
+        typeof log[1] === "object" &&
+        "query" in log[1],
+    )
+    .map((log) => {
+      const query = log[1] as { query: { sql: string } };
+      return normalizeSql(query.query.sql);
+    });
+
+  // Snapshot the normalized SQL strings for easy review
+  expect(sqlStrings).toMatchSnapshot();
+};
+
+const normalizeSql = (sql: string): string => {
+  // Remove extra whitespace and normalize to single line
+  const normalized = sql.replace(/\s+/g, " ").trim();
+
+  // Truncate if too long, with ellipsis
+  if (normalized.length > 80) {
+    return normalized.substring(0, 77) + "...";
+  }
+
+  return normalized;
+};
+
 test("initializes DbWorker with external AppOwner", async () => {
-  const { transports, sqlite } = await createInitializedDbWorker();
+  const { transports, sqlite, testConsole } = await createInitializedDbWorker();
 
   // Should show empty database with Evolu system tables created
   expect(getDbSnapshot({ sqlite })).toMatchInlineSnapshot(`
@@ -257,10 +299,13 @@ test("initializes DbWorker with external AppOwner", async () => {
 
   // Check that we have no WebSocket messages yet (no sync)
   expect(transports[0]?.sentMessages ?? []).toEqual([]);
+
+  // Check SQL operations
+  checkSqlOperations(testConsole);
 });
 
 test("local mutations", async () => {
-  const { worker, sqlite, transports, workerOutput } =
+  const { worker, sqlite, transports, workerOutput, testConsole } =
     await createInitializedDbWorker();
 
   const recordId = testCreateId();
@@ -407,7 +452,7 @@ test("local mutations", async () => {
     subscribedQueries: [subscribedQuery],
   });
 
-  // _localTable should be emptu
+  // _localTable should be empty
   expect(getDbSnapshot({ sqlite }).tables).toMatchInlineSnapshot(`
     [
       {
@@ -495,10 +540,12 @@ test("local mutations", async () => {
 
   // No WebSocket messages (local mutations don't sync)
   expect(transports[0]?.sentMessages ?? []).toEqual([]);
+
+  checkSqlOperations(testConsole);
 });
 
 test("sync mutations", async () => {
-  const { worker, sqlite, transports, workerOutput } =
+  const { worker, sqlite, transports, workerOutput, testConsole } =
     await createInitializedDbWorker();
 
   const recordId = testCreateId();
@@ -942,11 +989,14 @@ test("sync mutations", async () => {
 
   // WebSocket was not opened.
   expect(transports[0]?.sentMessages ?? []).toEqual([]);
+
+  checkSqlOperations(testConsole);
 });
 
 describe("WebSocket", () => {
   test("sends messages when socket is opened", async () => {
-    const { worker, transports } = await createInitializedDbWorker();
+    const { worker, transports, testConsole } =
+      await createInitializedDbWorker();
 
     const recordId = testCreateId();
 
@@ -981,6 +1031,8 @@ describe("WebSocket", () => {
       ]
     `,
     );
+
+    checkSqlOperations(testConsole);
   });
 
   // TODO: test on message (a received message)
