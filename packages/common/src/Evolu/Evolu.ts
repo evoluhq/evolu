@@ -673,7 +673,8 @@ const createEvoluInstance =
 
     const subscribedQueries = createSubscribedQueries(rowsStore);
     const loadingPromises = createLoadingPromises(subscribedQueries);
-    const callbackRegistry = createCallbackRegistry(deps);
+    const onCompleteRegistry = createCallbackRegistry(deps);
+    const exportRegistry = createCallbackRegistry<Uint8Array>(deps);
 
     const appState = deps.createAppState(config);
     const dbWorker = deps.createDbWorker(config.name);
@@ -726,7 +727,7 @@ const createEvoluInstance =
           }
 
           for (const id of message.onCompleteIds) {
-            callbackRegistry.execute(id);
+            onCompleteRegistry.execute(id);
           }
           break;
         }
@@ -746,13 +747,13 @@ const createEvoluInstance =
           if (message.reload) {
             appState.reset();
           } else {
-            callbackRegistry.execute(message.onCompleteId);
+            onCompleteRegistry.execute(message.onCompleteId);
           }
           break;
         }
 
         case "onExport": {
-          callbackRegistry.execute(message.onCompleteId, message.file);
+          exportRegistry.execute(message.onCompleteId, message.file);
           break;
         }
 
@@ -850,11 +851,11 @@ const createEvoluInstance =
           if (mutateMicrotaskQueue.length === 1)
             queueMicrotask(() => {
               const changes: Array<MutationChange> = [];
-              const onCompletes = [];
+              const onCompleteCallbacks = [];
 
               for (const [change, onComplete] of mutateMicrotaskQueue) {
                 if (change !== null) changes.push(change);
-                if (onComplete) onCompletes.push(onComplete);
+                if (onComplete) onCompleteCallbacks.push(onComplete);
               }
 
               const queueLength = mutateMicrotaskQueue.length;
@@ -866,8 +867,8 @@ const createEvoluInstance =
                 return;
               }
 
-              const onCompleteIds = onCompletes.map((onComplete) =>
-                callbackRegistry.register(onComplete),
+              const onCompleteIds = onCompleteCallbacks.map(
+                onCompleteRegistry.register,
               );
 
               loadingPromises.releaseUnsubscribed();
@@ -957,12 +958,8 @@ const createEvoluInstance =
       upsert: createMutation("upsert"),
 
       resetAppOwner: (options) => {
-        // Eslint bug, Promise<void> is correct by docs.
-        // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
-        const { promise, resolve } = Promise.withResolvers<void>();
-        const onCompleteId = callbackRegistry.register(() => {
-          resolve();
-        });
+        const { promise, resolve } = Promise.withResolvers<undefined>();
+        const onCompleteId = onCompleteRegistry.register(resolve);
         dbWorker.postMessage({
           type: "reset",
           onCompleteId,
@@ -972,13 +969,8 @@ const createEvoluInstance =
       },
 
       restoreAppOwner: (mnemonic, options) => {
-        // Eslint bug, Promise<void> is correct by docs.
-        // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
-        const { promise, resolve } = Promise.withResolvers<void>();
-        const onCompleteId = callbackRegistry.register(() => {
-          resolve();
-        });
-
+        const { promise, resolve } = Promise.withResolvers<undefined>();
+        const onCompleteId = onCompleteRegistry.register(resolve);
         dbWorker.postMessage({
           type: "reset",
           onCompleteId,
@@ -1000,9 +992,7 @@ const createEvoluInstance =
 
       exportDatabase: () => {
         const { promise, resolve } = Promise.withResolvers<Uint8Array>();
-        const onCompleteId = callbackRegistry.register((arg) => {
-          if (arg instanceof Uint8Array) resolve(arg);
-        });
+        const onCompleteId = exportRegistry.register(resolve);
         dbWorker.postMessage({ type: "export", onCompleteId });
         return promise;
       },
