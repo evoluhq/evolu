@@ -127,13 +127,13 @@ export type DbWorkerOutput =
         | TransferableError;
     }
   | {
-      readonly type: "onChange";
+      readonly type: "onQueryPatches";
       readonly tabId: Id;
       readonly queryPatches: ReadonlyArray<QueryPatches>;
       readonly onCompleteIds: ReadonlyArray<CallbackId>;
     }
   | {
-      readonly type: "onReceive";
+      readonly type: "refreshQueries";
       readonly tabId?: Id;
     }
   | {
@@ -289,7 +289,7 @@ const createDbWorkerDeps =
           postMessage({ type: "onError", error });
         },
         onReceive: () => {
-          postMessage({ type: "onReceive" });
+          postMessage({ type: "refreshQueries" });
         },
       });
       if (!sync.ok) return sync;
@@ -449,16 +449,16 @@ const handlers: Omit<MessageHandlers<DbWorkerInput, DbWorkerDeps>, "init"> = {
       );
       if (!queryPatches.ok) return queryPatches;
 
-      // Notify the tab that performed the mutation.
+      // Update the tab that performed the mutation.
       deps.postMessage({
-        type: "onChange",
+        type: "onQueryPatches",
         tabId: message.tabId,
         queryPatches: queryPatches.value,
         onCompleteIds: message.onCompleteIds,
       });
 
       // Notify other tabs to refresh their queries.
-      deps.postMessage({ type: "onReceive", tabId: message.tabId });
+      deps.postMessage({ type: "refreshQueries", tabId: message.tabId });
 
       return ok();
     });
@@ -478,7 +478,7 @@ const handlers: Omit<MessageHandlers<DbWorkerInput, DbWorkerDeps>, "init"> = {
     }
 
     deps.postMessage({
-      type: "onChange",
+      type: "onQueryPatches",
       tabId: message.tabId,
       queryPatches: queryPatches.value,
       onCompleteIds: [],

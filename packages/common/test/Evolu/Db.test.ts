@@ -358,11 +358,11 @@ test("local mutations", async () => {
           },
         ],
         "tabId": "LhGnhts9rNnUeri8bzhS5",
-        "type": "onChange",
+        "type": "onQueryPatches",
       },
       {
         "tabId": "LhGnhts9rNnUeri8bzhS5",
-        "type": "onReceive",
+        "type": "refreshQueries",
       },
     ]
   `);
@@ -386,7 +386,7 @@ test("local mutations", async () => {
           },
         ],
         "tabId": "LhGnhts9rNnUeri8bzhS5",
-        "type": "onChange",
+        "type": "onQueryPatches",
       },
     ]
   `,
@@ -466,11 +466,11 @@ test("local mutations", async () => {
           },
         ],
         "tabId": "LhGnhts9rNnUeri8bzhS5",
-        "type": "onChange",
+        "type": "onQueryPatches",
       },
       {
         "tabId": "LhGnhts9rNnUeri8bzhS5",
-        "type": "onReceive",
+        "type": "refreshQueries",
       },
     ]
   `);
@@ -625,11 +625,11 @@ test("sync mutations", async () => {
           },
         ],
         "tabId": "LhGnhts9rNnUeri8bzhS5",
-        "type": "onChange",
+        "type": "onQueryPatches",
       },
       {
         "tabId": "LhGnhts9rNnUeri8bzhS5",
-        "type": "onReceive",
+        "type": "refreshQueries",
       },
     ]
   `);
@@ -765,11 +765,11 @@ test("sync mutations", async () => {
           },
         ],
         "tabId": "LhGnhts9rNnUeri8bzhS5",
-        "type": "onChange",
+        "type": "onQueryPatches",
       },
       {
         "tabId": "LhGnhts9rNnUeri8bzhS5",
-        "type": "onReceive",
+        "type": "refreshQueries",
       },
     ]
   `);
@@ -913,11 +913,11 @@ test("sync mutations", async () => {
           },
         ],
         "tabId": "LhGnhts9rNnUeri8bzhS5",
-        "type": "onChange",
+        "type": "onQueryPatches",
       },
       {
         "tabId": "LhGnhts9rNnUeri8bzhS5",
-        "type": "onReceive",
+        "type": "refreshQueries",
       },
     ]
   `);

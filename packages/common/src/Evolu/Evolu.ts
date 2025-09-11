@@ -699,7 +699,7 @@ const createEvoluInstance =
           break;
         }
 
-        case "onChange": {
+        case "onQueryPatches": {
           if (message.tabId !== getTabId()) return;
 
           const state = rowsStore.get();
@@ -731,7 +731,7 @@ const createEvoluInstance =
           break;
         }
 
-        case "onReceive": {
+        case "refreshQueries": {
           if (message.tabId && message.tabId === getTabId()) return;
 
           loadingPromises.releaseUnsubscribed();
