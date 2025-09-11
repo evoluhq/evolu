@@ -16,7 +16,7 @@
     "src/BigInt.ts",
     "src/Brand.ts",
     "src/Buffer.ts",
-    "src/Callbacks.ts",
+    "src/CallbackRegistry.ts",
     "src/Console.ts",
     "src/Crypto.ts",
     "src/Eq.ts",

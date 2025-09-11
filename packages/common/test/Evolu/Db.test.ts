@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { CallbackId } from "../../src/Callbacks.js";
+import { CallbackId } from "../../src/CallbackRegistry.js";
 import { createConsole } from "../../src/Console.js";
 import { defaultConfig } from "../../src/Evolu/Config.js";
 import {

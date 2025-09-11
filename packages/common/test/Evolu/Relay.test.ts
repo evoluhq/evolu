@@ -63,7 +63,7 @@ test("deleteOwner", async () => {
     change: new Uint8Array([1, 2, 3]) as EncryptedDbChange,
   };
 
-  storage.writeMessages(testOwnerBinaryId, [message]);
+  await storage.writeMessages(testOwnerBinaryId, [message]);
 
   expect(storage.getSize(testOwnerBinaryId)).toBe(1);
 

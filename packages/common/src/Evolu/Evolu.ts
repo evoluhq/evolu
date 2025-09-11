@@ -1,7 +1,7 @@
 import { pack } from "msgpackr";
 import { isNonEmptyArray, isNonEmptyReadonlyArray } from "../Array.js";
 import { assert, assertNonEmptyArray } from "../Assert.js";
-import { createCallbacks } from "../Callbacks.js";
+import { createCallbackRegistry } from "../CallbackRegistry.js";
 import { ConsoleDep } from "../Console.js";
 import { SymmetricCryptoDecryptError } from "../Crypto.js";
 import { eqArrayNumber } from "../Eq.js";
@@ -673,7 +673,7 @@ const createEvoluInstance =
 
     const subscribedQueries = createSubscribedQueries(rowsStore);
     const loadingPromises = createLoadingPromises(subscribedQueries);
-    const callbacks = createCallbacks(deps);
+    const callbackRegistry = createCallbackRegistry(deps);
 
     const appState = deps.createAppState(config);
     const dbWorker = deps.createDbWorker(config.name);
@@ -726,7 +726,7 @@ const createEvoluInstance =
           }
 
           for (const id of message.onCompleteIds) {
-            callbacks.execute(id);
+            callbackRegistry.execute(id);
           }
           break;
         }
@@ -746,13 +746,13 @@ const createEvoluInstance =
           if (message.reload) {
             appState.reset();
           } else {
-            callbacks.execute(message.onCompleteId);
+            callbackRegistry.execute(message.onCompleteId);
           }
           break;
         }
 
         case "onExport": {
-          callbacks.execute(message.onCompleteId, message.file);
+          callbackRegistry.execute(message.onCompleteId, message.file);
           break;
         }
 
@@ -867,7 +867,7 @@ const createEvoluInstance =
               }
 
               const onCompleteIds = onCompletes.map((onComplete) =>
-                callbacks.register(onComplete),
+                callbackRegistry.register(onComplete),
               );
 
               loadingPromises.releaseUnsubscribed();
@@ -960,7 +960,7 @@ const createEvoluInstance =
         // Eslint bug, Promise<void> is correct by docs.
         // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
         const { promise, resolve } = Promise.withResolvers<void>();
-        const onCompleteId = callbacks.register(() => {
+        const onCompleteId = callbackRegistry.register(() => {
           resolve();
         });
         dbWorker.postMessage({
@@ -975,7 +975,7 @@ const createEvoluInstance =
         // Eslint bug, Promise<void> is correct by docs.
         // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
         const { promise, resolve } = Promise.withResolvers<void>();
-        const onCompleteId = callbacks.register(() => {
+        const onCompleteId = callbackRegistry.register(() => {
           resolve();
         });
 
@@ -1000,7 +1000,7 @@ const createEvoluInstance =
 
       exportDatabase: () => {
         const { promise, resolve } = Promise.withResolvers<Uint8Array>();
-        const onCompleteId = callbacks.register((arg) => {
+        const onCompleteId = callbackRegistry.register((arg) => {
           if (arg instanceof Uint8Array) resolve(arg);
         });
         dbWorker.postMessage({ type: "export", onCompleteId });

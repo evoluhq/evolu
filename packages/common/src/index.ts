@@ -3,7 +3,7 @@ export * from "./Assert.js";
 export * from "./BigInt.js";
 export * from "./Brand.js";
 export * from "./Buffer.js";
-export * from "./Callbacks.js";
+export * from "./CallbackRegistry.js";
 export * from "./Console.js";
 export * from "./Crypto.js";
 export * from "./Eq.js";
