@@ -1,12 +1,15 @@
 import { describe, expect, test, vi } from "vitest";
 import {
   RetryOptions,
+  createMutex,
+  createSemaphore,
   retry,
   wait,
   withAbort,
   withTimeout,
 } from "../src/Promise.js";
 import { Result, err, ok } from "../src/Result.js";
+import { PositiveInt } from "../src/Type.js";
 
 describe("wait", () => {
   test("delays execution for specified milliseconds", async () => {
@@ -448,5 +451,131 @@ describe("withTimeout", () => {
 
     expect(fn).toHaveBeenCalledTimes(1);
     expect(innerSignal).not.toBeNull();
+  });
+});
+
+describe("createSemaphore", () => {
+  test("allows concurrent operations up to limit", async () => {
+    const semaphore = createSemaphore(PositiveInt.fromOrThrow(2));
+    let runningCount = 0;
+    let maxRunning = 0;
+
+    const operation = async (duration: number) => {
+      runningCount++;
+      maxRunning = Math.max(maxRunning, runningCount);
+      await wait(duration);
+      runningCount--;
+      return runningCount;
+    };
+
+    // Start 4 operations, but only 2 should run concurrently
+    await Promise.all([
+      semaphore.withPermit(() => operation(50)),
+      semaphore.withPermit(() => operation(50)),
+      semaphore.withPermit(() => operation(50)),
+      semaphore.withPermit(() => operation(50)),
+    ]);
+
+    // Should never have more than 2 running at once
+    expect(maxRunning).toBe(2);
+  });
+
+  test("executes operations sequentially with limit of 1", async () => {
+    const semaphore = createSemaphore(PositiveInt.fromOrThrow(1));
+    const events: Array<{
+      id: number;
+      event: "start" | "end";
+      timestamp: number;
+    }> = [];
+
+    const operation = async (id: number) => {
+      events.push({ id, event: "start", timestamp: Date.now() });
+      await wait(20); // Longer delay to ensure overlap would be detectable
+      events.push({ id, event: "end", timestamp: Date.now() });
+      return id;
+    };
+
+    await Promise.all([
+      semaphore.withPermit(() => operation(1)),
+      semaphore.withPermit(() => operation(2)),
+      semaphore.withPermit(() => operation(3)),
+    ]);
+
+    // Verify sequential execution: each operation must fully complete before the next starts
+    expect(events).toEqual([
+      expect.objectContaining({ id: 1, event: "start" }),
+      expect.objectContaining({ id: 1, event: "end" }),
+      expect.objectContaining({ id: 2, event: "start" }),
+      expect.objectContaining({ id: 2, event: "end" }),
+      expect.objectContaining({ id: 3, event: "start" }),
+      expect.objectContaining({ id: 3, event: "end" }),
+    ]);
+  });
+
+  test("fails fast on unexpected errors without releasing permits", async () => {
+    const semaphore = createSemaphore(PositiveInt.fromOrThrow(1));
+
+    const failingOperation = () => {
+      throw new Error("Unexpected error");
+    };
+
+    // Operation throws unexpected error - should bubble up
+    await expect(semaphore.withPermit(failingOperation)).rejects.toThrow(
+      "Unexpected error",
+    );
+
+    // Note: In real code, the app would have crashed at this point.
+    // The semaphore permit is intentionally "leaked" because we don't
+    // attempt to recover from unexpected errors.
+  });
+});
+
+describe("createMutex", () => {
+  test("executes operations sequentially", async () => {
+    const mutex = createMutex();
+    const events: Array<string> = [];
+
+    const operation = async (id: number) => {
+      events.push(`start-${id}`);
+      await wait(10);
+      events.push(`end-${id}`);
+      return id;
+    };
+
+    const results = await Promise.all([
+      mutex.withLock(() => operation(1)),
+      mutex.withLock(() => operation(2)),
+    ]);
+
+    expect(results).toEqual([1, 2]);
+    expect(events).toEqual(["start-1", "end-1", "start-2", "end-2"]);
+  });
+
+  test("behaves as semaphore with permit count of 1", async () => {
+    const mutex = createMutex();
+    const semaphore = createSemaphore(PositiveInt.fromOrThrow(1));
+
+    const mutexEvents: Array<string> = [];
+    const semaphoreEvents: Array<string> = [];
+
+    const operation = async (id: number, events: Array<string>) => {
+      events.push(`start-${id}`);
+      await wait(10);
+      events.push(`end-${id}`);
+      return id;
+    };
+
+    await Promise.all([
+      mutex.withLock(() => operation(1, mutexEvents)),
+      mutex.withLock(() => operation(2, mutexEvents)),
+    ]);
+
+    await Promise.all([
+      semaphore.withPermit(() => operation(1, semaphoreEvents)),
+      semaphore.withPermit(() => operation(2, semaphoreEvents)),
+    ]);
+
+    // Both should exhibit identical behavior
+    expect(mutexEvents).toEqual(semaphoreEvents);
   });
 });

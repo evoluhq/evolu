@@ -1,5 +1,7 @@
+import { isNonEmptyArray, shiftArray } from "./Array.js";
 import { constTrue } from "./Function.js";
 import { Result, err, ok } from "./Result.js";
+import { PositiveInt } from "./Type.js";
 import { Predicate } from "./Types.js";
 
 /**
@@ -129,10 +131,6 @@ export interface RetryAbortError {
 /**
  * Executes a function with retry logic using exponential backoff and jitter.
  *
- * The provided function must return a `Promise<Result<T, E>>` and should not
- * throw unexpected errors. If the function might throw, wrap it with `tryAsync`
- * first (see examples below).
- *
  * ### Example with Result-based API
  *
  * ```ts
@@ -170,7 +168,7 @@ export interface RetryAbortError {
  * // Use result.value
  * ```
  *
- * ### Example with tryAsync for exception-based API
+ * ### Example with exception-based API (can throw)
  *
  * ```ts
  * interface FetchError {
@@ -292,10 +290,6 @@ export interface TimeoutError {
  * Wraps an async function with a timeout, returning {@link Result} that fails
  * with {@link TimeoutError} if the timeout is exceeded.
  *
- * The provided function must accept an AbortSignal, return a `Promise<Result<T,
- * E>>`, and should not throw unexpected errors. If the function might throw,
- * wrap it with `tryAsync` first.
- *
  * ### Example
  *
  * ```ts
@@ -320,4 +314,123 @@ export const withTimeout = async <T, E>(
   const operationPromise = fn(controller.signal);
 
   return Promise.race([operationPromise, timeoutPromise]);
+};
+
+/**
+ * A semaphore that limits the number of concurrent async operations.
+ *
+ * For mutual exclusion (limiting to exactly one operation), consider using
+ * {@link Mutex} instead.
+ */
+export interface Semaphore {
+  /**
+   * Executes an async operation while holding a semaphore permit.
+   *
+   * The operation will wait until a permit is available before executing. If
+   * the operation throws an unexpected error, the permit will not be released
+   * and the error will bubble up (fail fast).
+   */
+  readonly withPermit: <T>(operation: () => Promise<T>) => Promise<T>;
+}
+
+/**
+ * Creates a semaphore that limits concurrent async operations to the specified
+ * count.
+ *
+ * A semaphore controls access to a resource by maintaining a count of available
+ * permits. Operations acquire a permit before executing and release it when
+ * complete.
+ *
+ * For mutual exclusion (exactly one operation at a time), consider using
+ * {@link createMutex} instead.
+ *
+ * ### Example
+ *
+ * ```ts
+ * // Allow maximum 3 concurrent operations
+ * const semaphore = createSemaphore(3);
+ *
+ * // These will execute with at most 3 running concurrently
+ * const results = await Promise.all([
+ *   semaphore.withPermit(() => fetchData(1)),
+ *   semaphore.withPermit(() => fetchData(2)),
+ *   semaphore.withPermit(() => fetchData(3)),
+ *   semaphore.withPermit(() => fetchData(4)), // waits for one above to complete
+ *   semaphore.withPermit(() => fetchData(5)), // waits for permit
+ * ]);
+ * ```
+ */
+export const createSemaphore = (maxConcurrent: PositiveInt): Semaphore => {
+  let availablePermits = maxConcurrent;
+  const waitingQueue: Array<() => void> = [];
+
+  const acquire = (): Promise<void> => {
+    if (availablePermits > 0) {
+      availablePermits--;
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve) => {
+      waitingQueue.push(resolve);
+    });
+  };
+
+  const release = (): void => {
+    if (isNonEmptyArray(waitingQueue)) {
+      shiftArray(waitingQueue)();
+    } else {
+      availablePermits++;
+    }
+  };
+
+  return {
+    withPermit: async <T>(operation: () => Promise<T>): Promise<T> => {
+      await acquire();
+      const result = await operation();
+      release();
+      return result;
+    },
+  };
+};
+
+/**
+ * A mutex (mutual exclusion) that ensures only one operation runs at a time.
+ *
+ * This is a specialized version of a {@link Semaphore} with a permit count of 1.
+ */
+export interface Mutex {
+  /**
+   * Executes an operation while holding the mutex lock.
+   *
+   * Only one operation can hold the lock at a time. Other operations will wait
+   * until the lock is released.
+   */
+  readonly withLock: <T>(operation: () => Promise<T>) => Promise<T>;
+}
+
+/**
+ * Creates a new mutex for ensuring mutual exclusion.
+ *
+ * A mutex is a {@link createSemaphore} with exactly one permit, ensuring that
+ * only one operation can execute at a time.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const mutex = createMutex();
+ *
+ * // These operations will execute one at a time
+ * const results = await Promise.all([
+ *   mutex.withLock(() => updateSharedResource(1)),
+ *   mutex.withLock(() => updateSharedResource(2)),
+ *   mutex.withLock(() => updateSharedResource(3)),
+ * ]);
+ * ```
+ */
+export const createMutex = (): Mutex => {
+  const semaphore = createSemaphore(1 as PositiveInt);
+
+  return {
+    withLock: semaphore.withPermit,
+  };
 };
