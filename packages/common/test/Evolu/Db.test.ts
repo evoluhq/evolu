@@ -1,10 +1,10 @@
 import { describe, expect, test } from "vitest";
 import { CallbackId } from "../../src/CallbackRegistry.js";
-import { defaultConfig } from "../../src/Evolu/Config.js";
 import {
   createDbWorkerForPlatform,
   DbWorker,
   DbWorkerPlatformDeps,
+  defaultDbConfig,
 } from "../../src/Evolu/Db.js";
 import { createQuery } from "../../src/Evolu/Evolu.js";
 import { createAppOwner } from "../../src/Evolu/Owner.js";
@@ -44,7 +44,7 @@ const createInitializedDbWorker = async (): Promise<{
   // Initialize with external AppOwner
   worker.postMessage({
     type: "init",
-    config: { ...defaultConfig, externalAppOwner: appOwner },
+    config: { ...defaultDbConfig, externalAppOwner: appOwner },
     dbSchema: {
       tables: [
         {

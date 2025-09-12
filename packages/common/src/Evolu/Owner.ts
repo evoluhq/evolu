@@ -19,7 +19,6 @@ import {
   Mnemonic,
   NonNegativeInt,
 } from "../Type.js";
-import { TransportConfig } from "./Config.js";
 
 /**
  * 32 bytes of cryptographic entropy used to derive {@link Owner} keys.
@@ -168,6 +167,14 @@ export const createAppOwner = (secret: OwnerSecret): AppOwner => ({
   mnemonic: ownerSecretToMnemonic(secret),
   ...createOwner(secret),
 });
+
+// DEV: Future transports: Bluetooth, LocalNetwork, etc.
+export type TransportConfig = WebSocketTransportConfig;
+
+export interface WebSocketTransportConfig {
+  readonly type: "WebSocket";
+  readonly url: string;
+}
 
 /**
  * An {@link Owner} for sharding data.

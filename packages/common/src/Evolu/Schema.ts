@@ -39,7 +39,6 @@ import {
   TypeError,
 } from "../Type.js";
 import { Simplify } from "../Types.js";
-import { IndexesConfig } from "./Config.js";
 import { AppOwner, OwnerId } from "./Owner.js";
 import { maxProtocolMessageRangesSize } from "./Protocol.js";
 import { Query, Row } from "./Query.js";
@@ -159,6 +158,10 @@ export type ValidateColumnTypes<S extends EvoluSchema> =
 /** Schema validation error that shows clear, readable messages */
 export type SchemaValidationError<Message extends string> =
   `❌ Schema Error: ${Message}`;
+
+export type IndexesConfig = (
+  create: (indexName: string) => Kysely.CreateIndexBuilder,
+) => ReadonlyArray<Kysely.CreateIndexBuilder<any>>;
 
 export const evoluSchemaToDbSchema = (
   schema: EvoluSchema,

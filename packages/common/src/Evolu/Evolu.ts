@@ -22,11 +22,10 @@ import {
   ObjectType,
 } from "../Type.js";
 import { IntentionalNever } from "../Types.js";
-import { Config, defaultConfig } from "./Config.js";
-import { CreateDbWorkerDep } from "./Db.js";
+import { CreateDbWorkerDep, DbConfig, defaultDbConfig } from "./Db.js";
 import { applyPatches } from "./Diff.js";
 import { AppOwner } from "./Owner.js";
-import { ReloadAppDep, FlushSyncDep } from "./Platform.js";
+import { FlushSyncDep, ReloadAppDep } from "./Platform.js";
 import { ProtocolError, ProtocolUnsupportedVersionError } from "./Protocol.js";
 import {
   createSubscribedQueries,
@@ -490,7 +489,7 @@ export type EvoluDeps = ConsoleDep &
   ReloadAppDep &
   TimeDep;
 
-export interface EvoluConfigWithFunctions extends Config {
+export interface EvoluConfig extends DbConfig {
   /**
    * Callback invoked when Evolu is successfully initialized.
    *
@@ -633,32 +632,26 @@ export const createEvolu =
   (deps: EvoluDeps) =>
   <S extends EvoluSchema>(
     schema: ValidateSchema<S> extends never ? S : ValidateSchema<S>,
-    partialConfig: Partial<EvoluConfigWithFunctions> = {},
+    partialConfig: Partial<EvoluConfig> = {},
   ): Evolu<S> => {
-    const config = { ...defaultConfig, ...partialConfig };
+    const config: EvoluConfig = { ...defaultDbConfig, ...partialConfig };
 
     let evolu = evoluInstances.get(config.name);
 
     if (evolu == null) {
-      evolu = createEvoluInstance(deps)(
-        schema as EvoluSchema,
-        config as IntentionalNever,
-      );
+      evolu = createEvoluInstance(deps)(schema as EvoluSchema, config);
       evoluInstances.set(config.name, evolu);
     } else {
       // Hot reloading. Note that indexes are intentionally omitted.
       evolu.ensureSchema(schema as EvoluSchema);
     }
 
-    return evolu as IntentionalNever;
+    return evolu as Evolu<S>;
   };
 
 const createEvoluInstance =
   (deps: EvoluDeps) =>
-  (
-    schema: EvoluSchema,
-    evoluConfig: EvoluConfigWithFunctions,
-  ): InternalEvoluInstance => {
+  (schema: EvoluSchema, evoluConfig: EvoluConfig): InternalEvoluInstance => {
     deps.console.enabled = evoluConfig.enableLogging ?? false;
     deps.console.log("[evolu]", "createEvoluInstance", {
       name: evoluConfig.name,

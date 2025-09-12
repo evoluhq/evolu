@@ -1,6 +1,6 @@
 import { isNonEmptyArray, NonEmptyReadonlyArray } from "../Array.js";
 import { CallbackId } from "../CallbackRegistry.js";
-import { ConsoleDep } from "../Console.js";
+import { ConsoleConfig, ConsoleDep } from "../Console.js";
 import {
   createSymmetricCrypto,
   EncryptionKey,
@@ -28,7 +28,6 @@ import {
   MessageHandlers,
   Worker,
 } from "../Worker.js";
-import { Config } from "./Config.js";
 import { makePatches, QueryPatches } from "./Diff.js";
 import {
   AppOwner,
@@ -36,6 +35,7 @@ import {
   createOwnerSecret,
   mnemonicToOwnerSecret,
   OwnerId,
+  TransportConfig,
   WriteKey,
 } from "./Owner.js";
 import { ProtocolError, protocolVersion } from "./Protocol.js";
@@ -50,17 +50,156 @@ import {
   DbSchema,
   ensureDbSchema,
   getDbSchema,
+  IndexesConfig,
   MutationChange,
 } from "./Schema.js";
 import { DbChange } from "./Storage.js";
 import { Clock, createClock, createSync, SyncDep, SyncOwner } from "./Sync.js";
 import {
   Timestamp,
+  TimestampConfig,
   TimestampError,
   TimestampString,
   timestampStringToTimestamp,
   timestampToTimestampString,
 } from "./Timestamp.js";
+
+export interface DbConfig extends ConsoleConfig, TimestampConfig {
+  /**
+   * The name of the Evolu instance. Evolu is multitenant - it can run multiple
+   * instances concurrently. Each instance must have a unique name.
+   *
+   * The instance name is used as the SQLite database filename for persistent
+   * storage, ensuring that database files are separated and invisible to each
+   * other.
+   *
+   * The default value is: `Evolu`.
+   *
+   * ### Example
+   *
+   * ```ts
+   * // name: SimpleName.fromOrThrow("MyApp")
+   * ```
+   */
+  readonly name: SimpleName;
+
+  /**
+   * Transport configuration for data sync and backup. Supports single transport
+   * or multiple transports simultaneously for redundancy.
+   *
+   * Currently supports:
+   *
+   * - WebSocket: Real-time bidirectional communication with relay servers
+   *
+   * The default value is:
+   *
+   * `{ type: "WebSocket", url: "wss://free.evoluhq.com" }`.
+   *
+   * ### Example
+   *
+   * ```ts
+   * // Single WebSocket relay
+   * transports: [{ type: "WebSocket", url: "wss://relay1.example.com" }];
+   *
+   * // Multiple WebSocket relays for redundancy
+   * transports: [
+   *   { type: "WebSocket", url: "wss://relay1.example.com" },
+   *   { type: "WebSocket", url: "wss://relay2.example.com" },
+   *   { type: "WebSocket", url: "wss://relay3.example.com" },
+   * ];
+   *
+   * // Local-only instance (no sync) - useful for device settings
+   * transports: [];
+   * ```
+   */
+  readonly transports: ReadonlyArray<TransportConfig>;
+
+  /**
+   * URL to reload browser tabs after reset or restore.
+   *
+   * The default value is `/`.
+   */
+  readonly reloadUrl: string;
+
+  /**
+   * Use the `indexes` option to define SQLite indexes.
+   *
+   * Table and column names are not typed because Kysely doesn't support it.
+   *
+   * https://medium.com/@JasonWyatt/squeezing-performance-from-sqlite-indexes-indexes-c4e175f3c346
+   *
+   * ### Example
+   *
+   * ```ts
+   * const evolu = createEvolu(evoluReactDeps)(Schema, {
+   *   indexes: (create) => [
+   *     create("todoCreatedAt").on("todo").column("createdAt"),
+   *     create("todoCategoryCreatedAt")
+   *       .on("todoCategory")
+   *       .column("createdAt"),
+   *   ],
+   * });
+   * ```
+   */
+  readonly indexes?: IndexesConfig;
+
+  /**
+   * External AppOwner to use when creating Evolu instance. Use this when you
+   * want to manage AppOwner creation and persistence externally (e.g., with
+   * your own authentication system). If omitted, Evolu will automatically
+   * create and persist an AppOwner locally.
+   *
+   * For device-specific settings and account management state, we can use a
+   * separate local-only Evolu instance via `transports: []`.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const ConfigId = id("Config");
+   * type ConfigId = typeof ConfigId.Type;
+   *
+   * const DeviceSchema = {
+   *   config: {
+   *     id: ConfigId,
+   *     key: NonEmptyString50,
+   *     value: NonEmptyString50,
+   *   },
+   * };
+   *
+   * // Local-only instance for device settings (no sync)
+   * const deviceEvolu = createEvolu(evoluReactWebDeps)(DeviceSchema, {
+   *   name: SimpleName.fromOrThrow("MyApp-Device"),
+   *   transports: [], // No sync - stays local to device
+   * });
+   *
+   * // Main synced instance for user data
+   * const evolu = createEvolu(evoluReactWebDeps)(MainSchema, {
+   *   name: SimpleName.fromOrThrow("MyApp"),
+   *   // Default transports for sync
+   * });
+   * ```
+   */
+  readonly externalAppOwner?: AppOwner;
+
+  /**
+   * Use in-memory SQLite database instead of persistent storage. Useful for
+   * testing or temporary data that doesn't need persistence.
+   *
+   * In-memory databases exist only in RAM and are completely destroyed when the
+   * process ends, making them forensically safe for sensitive data.
+   *
+   * The default value is: `false`.
+   */
+  readonly inMemory?: boolean;
+}
+
+export const defaultDbConfig: DbConfig = {
+  name: SimpleName.fromOrThrow("Evolu"),
+  transports: [{ type: "WebSocket", url: "wss://free.evoluhq.com" }],
+  reloadUrl: "/",
+  maxDrift: 5 * 60 * 1000,
+  enableLogging: false,
+};
 
 export type DbWorker = Worker<DbWorkerInput, DbWorkerOutput>;
 
@@ -73,7 +212,7 @@ export interface CreateDbWorkerDep {
 export type DbWorkerInput =
   | {
       readonly type: "init";
-      readonly config: Config;
+      readonly config: DbConfig;
       readonly dbSchema: DbSchema;
     }
   | {

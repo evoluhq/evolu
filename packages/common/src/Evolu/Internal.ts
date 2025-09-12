@@ -10,7 +10,6 @@
  * @module
  */
 
-export * from "./Config.js";
 export * from "./Db.js";
 export * from "./Diff.js";
 export * from "./Evolu.js";

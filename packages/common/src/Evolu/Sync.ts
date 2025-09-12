@@ -25,7 +25,6 @@ import { sql, SqliteDep, SqliteError, SqliteValue } from "../Sqlite.js";
 import { TimeDep } from "../Time.js";
 import { BinaryId, binaryIdToId, idToBinaryId } from "../Type.js";
 import { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
-import { TransportConfig } from "./Config.js";
 import {
   AppOwner,
   BinaryOwnerId,
@@ -35,6 +34,7 @@ import {
   ShardOwner,
   SharedOwner,
   SharedReadonlyOwner,
+  TransportConfig,
   WriteKey,
 } from "./Owner.js";
 import {
@@ -464,8 +464,6 @@ const createClientStorage =
       // https://eslint.org/docs/latest/rules/require-await#when-not-to-use-it
       // eslint-disable-next-line @typescript-eslint/require-await
       writeMessages: async (binaryOwnerId, encryptedMessages) => {
-        // TODO: Tady bude mutex, najs.
-
         const ownerId = binaryOwnerIdToOwnerId(binaryOwnerId);
         const owner = deps.getSyncOwner(ownerId);
         // Owner can be removed to stop syncing.
@@ -493,9 +491,9 @@ const createClientStorage =
         const newMessages: Array<CrdtMessage> = [];
         for (let i = 0; i < encryptedMessages.length; i++) {
           const message = encryptedMessages[i];
+          const binaryTimestamp = binaryTimestamps[i];
 
           // Only decrypt and decode messages with timestamps we don't already have
-          const binaryTimestamp = binaryTimestamps[i];
           if (existingTimestampsSet.has(binaryTimestamp.toString())) {
             continue;
           }

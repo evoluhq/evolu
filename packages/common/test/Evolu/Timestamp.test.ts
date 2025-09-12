@@ -1,6 +1,6 @@
 import SQLite from "better-sqlite3";
 import { describe, expect, test } from "vitest";
-import { defaultConfig } from "../../src/Evolu/Config.js";
+import { defaultDbConfig } from "../../src/Evolu/Db.js";
 import {
   BinaryTimestamp,
   Counter,
@@ -83,12 +83,12 @@ const makeMillis = (millis: number): Millis => Millis.fromOrThrow(millis);
 
 const deps0: TimeDep & TimestampConfigDep = {
   time: { now: () => minMillis },
-  timestampConfig: { maxDrift: defaultConfig.maxDrift },
+  timestampConfig: { maxDrift: defaultDbConfig.maxDrift },
 };
 
 const deps1: TimeDep & TimestampConfigDep = {
   time: { now: () => minMillis + 1 },
-  timestampConfig: { maxDrift: defaultConfig.maxDrift },
+  timestampConfig: { maxDrift: defaultDbConfig.maxDrift },
 };
 
 describe("sendTimestamp", () => {
@@ -164,7 +164,7 @@ describe("sendTimestamp", () => {
     expect(
       sendTimestamp(deps0)(
         createTimestamp({
-          millis: makeMillis(minMillis + defaultConfig.maxDrift + 1),
+          millis: makeMillis(minMillis + defaultDbConfig.maxDrift + 1),
         }),
       ),
     ).toMatchInlineSnapshot(`
@@ -278,7 +278,7 @@ describe("receiveTimestamp", () => {
       expect(
         receiveTimestamp(deps0)(
           createTimestamp({
-            millis: makeMillis(minMillis + defaultConfig.maxDrift + 1),
+            millis: makeMillis(minMillis + defaultDbConfig.maxDrift + 1),
           }),
           makeNode2Timestamp(),
         ),
@@ -297,7 +297,7 @@ describe("receiveTimestamp", () => {
         receiveTimestamp(deps0)(
           makeNode2Timestamp(),
           createTimestamp({
-            millis: makeMillis(minMillis + defaultConfig.maxDrift + 1),
+            millis: makeMillis(minMillis + defaultDbConfig.maxDrift + 1),
           }),
         ),
       ).toMatchInlineSnapshot(`
