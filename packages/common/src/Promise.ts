@@ -18,6 +18,41 @@ export const wait = (ms: number): Promise<Result<void, never>> =>
     }, ms),
   );
 
+/**
+ * Makes any Promise cancellable with an AbortSignal.
+ *
+ * This utility allows you to add cancellation support to any Promise using an
+ * external AbortSignal.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const result = await withAbort(wait(1000), signal);
+ * if (!result.ok) {
+ *   // Operation was cancelled
+ * }
+ * ```
+ */
+export const withAbort = async <T, E>(
+  promise: Promise<Result<T, E>>,
+  signal: AbortSignal,
+): Promise<Result<T, E | { type: "AbortError" }>> => {
+  if (signal.aborted) {
+    return err({ type: "AbortError" });
+  }
+
+  const abortPromise = new Promise<Result<never, { type: "AbortError" }>>(
+    (resolve) => {
+      const onAbort = () => {
+        resolve(err({ type: "AbortError" }));
+      };
+      signal.addEventListener("abort", onAbort, { once: true });
+    },
+  );
+
+  return Promise.race([promise, abortPromise]);
+};
+
 /** Options for configuring retry behavior. */
 export interface RetryOptions<E> {
   /**
@@ -231,24 +266,12 @@ export const retry = async <T, E>(
       return err({ type: "RetryAbortError", abortedBeforeExecution: false });
     }
 
-    // Wait with abort support
+    // Wait with abort support using the withAbort utility
     if (signal) {
-      const abortPromise = new Promise<Result<never, RetryAbortError>>(
-        (resolve) => {
-          const onAbort = () => {
-            resolve(
-              err({ type: "RetryAbortError", abortedBeforeExecution: false }),
-            );
-          };
-          signal.addEventListener("abort", onAbort, { once: true });
-        },
-      );
+      const delayResult = await withAbort(wait(delay), signal);
 
-      const delayPromise = wait(delay);
-      const raceResult = await Promise.race([abortPromise, delayPromise]);
-
-      if (!raceResult.ok) {
-        return raceResult;
+      if (!delayResult.ok) {
+        return err({ type: "RetryAbortError", abortedBeforeExecution: false });
       }
     } else {
       await wait(delay);
@@ -279,17 +302,15 @@ export const withTimeout = async <T, E>(
   timeoutMs: number,
 ): Promise<Result<T, E | TimeoutError>> => {
   const controller = new AbortController();
-  const signal = controller.signal;
-  const timeoutId = setTimeout(() => {
-    controller.abort();
-  }, timeoutMs);
 
-  const result = await fn(signal);
-  clearTimeout(timeoutId);
+  const timeoutPromise = wait(timeoutMs).then(
+    (): Result<never, TimeoutError> => {
+      controller.abort();
+      return err({ type: "TimeoutError", timeoutMs });
+    },
+  );
 
-  if (signal.aborted) {
-    return err({ type: "TimeoutError", timeoutMs });
-  }
+  const operationPromise = fn(controller.signal);
 
-  return result;
+  return Promise.race([operationPromise, timeoutPromise]);
 };
