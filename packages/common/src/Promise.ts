@@ -129,6 +129,10 @@ export interface RetryAbortError {
 /**
  * Executes a function with retry logic using exponential backoff and jitter.
  *
+ * The provided function must return a `Promise<Result<T, E>>` and should not
+ * throw unexpected errors. If the function might throw, wrap it with `tryAsync`
+ * first (see examples below).
+ *
  * ### Example with Result-based API
  *
  * ```ts
@@ -286,8 +290,11 @@ export interface TimeoutError {
 
 /**
  * Wraps an async function with a timeout, returning {@link Result} that fails
- * with {@link TimeoutError} if the timeout is exceeded. The provided function
- * must accept an AbortSignal and return a Result.
+ * with {@link TimeoutError} if the timeout is exceeded.
+ *
+ * The provided function must accept an AbortSignal, return a `Promise<Result<T,
+ * E>>`, and should not throw unexpected errors. If the function might throw,
+ * wrap it with `tryAsync` first.
  *
  * ### Example
  *
