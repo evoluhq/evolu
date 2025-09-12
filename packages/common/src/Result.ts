@@ -178,8 +178,12 @@
  *
  * Even with disciplined use of `trySync` and `tryAsync`, unexpected errors can
  * still occur due to programming mistakes, third-party library bugs, or edge
- * cases. These should be logged for debugging while maintaining application
- * stability.
+ * cases. These should be logged for debugging, but **unexpected errors are not
+ * recoverable** - they represent bugs that must be fixed.
+ *
+ * **Important**: "Graceful shutdown" and error recovery can only come from
+ * expected errors handled via the `Result` type. Unexpected errors should fail
+ * fast - the operation fails immediately and the error bubbles up.
  *
  * #### In Browser Environments
  *
@@ -201,11 +205,11 @@
  * #### In Node.js Environments
  *
  * ```ts
- * // Handle uncaught exceptions (avoid process crash)
+ * // Handle uncaught exceptions - log and fail fast
  * process.on("uncaughtException", (error) => {
  *   console.error("Uncaught exception:", error);
  *   errorReportingService.report(error);
- *   // Gracefully shutdown if needed
+ *   // Exit immediately - unexpected errors are not recoverable
  *   process.exit(1);
  * });
  *
@@ -216,9 +220,11 @@
  * });
  * ```
  *
- * These global handlers serve as a safety net for unexpected errors while
- * maintaining the discipline of explicit error handling through the `Result`
- * pattern.
+ * These global handlers serve as a safety net to log and report unexpected
+ * errors for debugging purposes. They do not attempt recovery - unexpected
+ * errors represent bugs that must be fixed. The discipline of explicit error
+ * handling through the `Result` pattern remains the primary approach for all
+ * recoverable scenarios.
  *
  * ### FAQ
  *
