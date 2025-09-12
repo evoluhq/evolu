@@ -6,7 +6,7 @@ import {
   EvoluDeps,
 } from "@evolu/common/evolu";
 import { createSharedWebWorker } from "../SharedWebWorker.js";
-import { createAppState } from "./AppState.js";
+import { reloadApp } from "./Platform.js";
 
 const createDbWorker: CreateDbWorker = (name) =>
   createSharedWebWorker<DbWorkerInput, DbWorkerOutput>(
@@ -18,9 +18,9 @@ const createDbWorker: CreateDbWorker = (name) =>
   );
 
 export const evoluWebDeps: EvoluDeps = {
-  time: createTime(),
   console: createConsole(),
-  nanoIdLib: createNanoIdLib(),
-  createAppState,
   createDbWorker,
+  nanoIdLib: createNanoIdLib(),
+  reloadApp,
+  time: createTime(),
 };

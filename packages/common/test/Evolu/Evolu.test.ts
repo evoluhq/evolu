@@ -70,9 +70,7 @@ const mockDeps = () => {
     time: testTime,
     nanoIdLib: testNanoIdLib,
     console: createConsole(),
-    createAppState: () => ({
-      reset: vi.fn(),
-    }),
+    reloadApp: vi.fn(),
   };
 };
 
@@ -106,7 +104,7 @@ const createEvoluDepsWithSqlite = async () => {
     time: testTime,
     nanoIdLib: testNanoIdLib,
     console: createConsole(),
-    createAppState: () => ({ reset: vi.fn() }),
+    reloadApp: vi.fn(),
   };
 
   const sqlite = getOrThrow(

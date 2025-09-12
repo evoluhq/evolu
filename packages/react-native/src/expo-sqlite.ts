@@ -8,7 +8,7 @@ import {
 } from "@evolu/common";
 
 import {
-  CreateAppState,
+  ReloadApp,
   CreateDbWorker,
   createDbWorkerForPlatform,
   EvoluDeps,
@@ -20,12 +20,6 @@ import { createExpoSqliteDriver } from "./providers/ExpoSqliteDriver.js";
 import { polyfillHermes } from "./utils/Hermes.js";
 
 polyfillHermes();
-
-export const createAppState: CreateAppState = () => ({
-  reset: () => {
-    void Expo.reloadAppAsync();
-  },
-});
 
 const console = createConsole();
 const nanoIdLib = createNanoIdLib();
@@ -42,10 +36,14 @@ const createDbWorker: CreateDbWorker = () =>
     time,
   });
 
+const reloadApp: ReloadApp = () => {
+  void Expo.reloadAppAsync();
+};
+
 export const evoluReactNativeDeps: EvoluDeps = {
   console,
-  createAppState,
   createDbWorker,
   nanoIdLib,
+  reloadApp,
   time,
 };

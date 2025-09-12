@@ -8,7 +8,7 @@ import {
 } from "@evolu/common";
 
 import {
-  CreateAppState,
+  ReloadApp,
   CreateDbWorker,
   createDbWorkerForPlatform,
   EvoluDeps,
@@ -19,16 +19,6 @@ import { createOpSqliteDriver } from "./providers/OpSqliteDriver.js";
 import { polyfillHermes } from "./utils/Hermes.js";
 
 polyfillHermes();
-
-export const createAppState: CreateAppState = () => ({
-  reset: () => {
-    if (process.env.NODE_ENV === "development") {
-      DevSettings.reload();
-    } else {
-      // TODO: reload not implemented for bare rn
-    }
-  },
-});
 
 const console = createConsole();
 const nanoIdLib = createNanoIdLib();
@@ -45,10 +35,18 @@ const createDbWorker: CreateDbWorker = () =>
     time,
   });
 
+const reloadApp: ReloadApp = () => {
+  if (process.env.NODE_ENV === "development") {
+    DevSettings.reload();
+  } else {
+    // TODO: reload not implemented for bare rn
+  }
+};
+
 export const evoluReactNativeDeps: EvoluDeps = {
   console,
-  createAppState,
   createDbWorker,
   nanoIdLib,
+  reloadApp,
   time,
 };

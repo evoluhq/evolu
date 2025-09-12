@@ -26,7 +26,7 @@ import { Config, defaultConfig } from "./Config.js";
 import { CreateDbWorkerDep } from "./Db.js";
 import { applyPatches } from "./Diff.js";
 import { AppOwner } from "./Owner.js";
-import { CreateAppStateDep, FlushSyncDep } from "./Platform.js";
+import { ReloadAppDep, FlushSyncDep } from "./Platform.js";
 import { ProtocolError, ProtocolUnsupportedVersionError } from "./Protocol.js";
 import {
   createSubscribedQueries,
@@ -484,10 +484,10 @@ interface InternalEvoluInstance<S extends EvoluSchema = EvoluSchema>
 }
 
 export type EvoluDeps = ConsoleDep &
-  CreateAppStateDep &
   CreateDbWorkerDep &
   NanoIdLibDep &
   Partial<FlushSyncDep> &
+  ReloadAppDep &
   TimeDep;
 
 export interface EvoluConfigWithFunctions extends Config {
@@ -676,7 +676,6 @@ const createEvoluInstance =
     const onCompleteRegistry = createCallbackRegistry(deps);
     const exportRegistry = createCallbackRegistry<Uint8Array>(deps);
 
-    const appState = deps.createAppState(config);
     const dbWorker = deps.createDbWorker(config.name);
 
     const getTabId = () => {
@@ -745,7 +744,7 @@ const createEvoluInstance =
 
         case "onReset": {
           if (message.reload) {
-            appState.reset();
+            deps.reloadApp(config.reloadUrl);
           } else {
             onCompleteRegistry.execute(message.onCompleteId);
           }
@@ -981,7 +980,7 @@ const createEvoluInstance =
       },
 
       reloadApp: () => {
-        appState.reset();
+        deps.reloadApp(config.reloadUrl);
       },
 
       ensureSchema: (schema) => {
