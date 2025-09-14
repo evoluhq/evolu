@@ -1,326 +1,361 @@
 import { isNonEmptyArray, shiftArray } from "./Array.js";
-import { constTrue } from "./Function.js";
 import { Result, err, ok } from "./Result.js";
-import { PositiveInt } from "./Type.js";
+import { Duration, durationToNonNegativeInt } from "./Time.js";
+import { NonNegativeInt, PositiveInt } from "./Type.js";
 import { Predicate } from "./Types.js";
 
 /**
- * Helper function to delay execution for a specified number of milliseconds.
+ * A lazy, cancellable Promise that returns a typed {@link Result} instead of
+ * throwing.
  *
- * ### Example
+ * Tasks are functions that create Promises when called. This laziness allows
+ * safe composition, e.g. retry logic because it prevents eager execution.
  *
- * ```ts
- * await wait(10);
- * ```
+ * ### Cancellation
+ *
+ * Tasks support cancellation via
+ * [AbortSignal](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal).
+ * When called without a signal, the operation cannot be cancelled and
+ * AbortError will never be returned. When called with a signal, the operation
+ * can be cancelled and AbortError is added to the error union with precise type
+ * safety.
+ *
+ * ### Task Helpers
+ *
+ * - {@link toTask} - Convert async function to Task
+ * - {@link wait} - Delay execution for a specified duration
+ * - {@link timeout} - Add timeout to any Task operation
+ * - {@link retry} - Retry failed operations with configurable backoff
  */
-export const wait = (ms: number): Promise<Result<void, never>> =>
-  new Promise((resolve) =>
-    setTimeout(() => {
-      resolve(ok());
-    }, ms),
-  );
+export type Task<T, E> = <TContext extends TaskContext | undefined = undefined>(
+  context?: TContext,
+) => Promise<
+  Result<T, TContext extends { signal: AbortSignal } ? E | AbortError : E>
+>;
 
-/**
- * Makes any Promise cancellable with an AbortSignal.
- *
- * This utility allows you to add cancellation support to any Promise using an
- * external AbortSignal.
- *
- * ### Example
- *
- * ```ts
- * const result = await withAbort(wait(1000), signal);
- * if (!result.ok) {
- *   // Operation was cancelled
- * }
- * ```
- */
-export const withAbort = async <T, E>(
-  promise: Promise<Result<T, E>>,
-  signal: AbortSignal,
-): Promise<Result<T, E | { type: "AbortError" }>> => {
-  if (signal.aborted) {
-    return err({ type: "AbortError" });
-  }
-
-  const abortPromise = new Promise<Result<never, { type: "AbortError" }>>(
-    (resolve) => {
-      const onAbort = () => {
-        resolve(err({ type: "AbortError" }));
-      };
-      signal.addEventListener("abort", onAbort, { once: true });
-    },
-  );
-
-  return Promise.race([promise, abortPromise]);
-};
-
-/** Options for configuring retry behavior. */
-export interface RetryOptions<E> {
-  /**
-   * Maximum number of retry attempts after the initial attempt (default: 3).
-   * For example, with maxRetries = 3, the function will be called up to 4 times
-   * (1 initial attempt + 3 retries).
-   */
-  maxRetries?: number;
-
-  /**
-   * Initial delay between retry attempts in milliseconds (default: 100). This
-   * is the delay after the first failed attempt. Subsequent delays increase
-   * exponentially according to the factor option.
-   */
-  initialDelay?: number;
-
-  /**
-   * Maximum delay between retry attempts in milliseconds (default: 10000). This
-   * caps the exponential backoff to prevent extremely long delays after many
-   * retries.
-   */
-  maxDelay?: number;
-
-  /**
-   * Multiplier that determines how quickly the delay increases (default: 2).
-   * With the default value, each successive delay is twice as long as the
-   * previous one (e.g., 100ms, 200ms, 400ms, 800ms, etc).
-   */
-  factor?: number;
-
-  /**
-   * Random jitter factor between 0 and 1 (default: 0.1). Adds randomness to
-   * delay times to prevent retry storms in distributed systems.
-   */
-  jitter?: number;
-
-  /**
-   * Optional AbortSignal to cancel retries. If the signal is aborted, the retry
-   * operation stops and returns a RetryAbortError.
-   */
-  signal?: AbortSignal;
-
-  /**
-   * Optional predicate to determine if an error should be retried. Returns true
-   * if the error is retryable, false otherwise. This allows selectively
-   * retrying only certain types of errors. By default, all errors are
-   * considered retryable.
-   */
-  retryable?: Predicate<E>;
-
-  /**
-   * Optional callback called before each retry attempt. Receives the error that
-   * caused the retry, the current attempt number (starting at 1), and the delay
-   * in milliseconds before the next attempt.
-   */
-  onRetry?: (error: E, attempt: number, delay: number) => void;
+/** Context passed to {@link Task} operations for cancellation. */
+export interface TaskContext {
+  /** Signal for cancellation */
+  readonly signal?: AbortSignal | null;
 }
 
-/** Error representing a retry operation that failed after multiple attempts. */
-export interface RetryError<E> {
-  readonly type: "RetryError";
-  /** The original error that caused the retry to fail */
-  readonly cause: E;
-  /** Number of retry attempts made */
-  readonly attempts: number;
-}
-
-/** Error representing a retry operation that was aborted. */
-export interface RetryAbortError {
-  readonly type: "RetryAbortError";
-  readonly abortedBeforeExecution: boolean;
+/** Error returned when a {@link Task} is cancelled via AbortSignal. */
+export interface AbortError {
+  readonly type: "AbortError";
+  readonly reason?: unknown;
 }
 
 /**
- * Executes a function with retry logic using exponential backoff and jitter.
+ * Converts async function returning {@link Result} to a {@link Task}.
  *
- * ### Example with Result-based API
- *
- * ```ts
- * interface ApiError {
- *   type: "ApiError";
- *   statusCode: number;
- * }
- *
- * const fetchData = async (
- *   url: string,
- * ): Promise<Result<Data, ApiError>> => {
- *   // Implementation that returns Result
- * };
- *
- * const result = await retry(
- *   async () => fetchData("https://api.example.com/data"),
- *   {
- *     maxRetries: 5,
- *     initialDelay: 200,
- *     // Only retry on specific status codes
- *     retryable: (error) =>
- *       error.type === "ApiError" && [429, 503].includes(error.statusCode),
- *   },
- * );
- *
- * if (!result.ok) {
- *   if (result.error.type === "RetryAbortError") {
- *     console.log("Operation was aborted");
- *   } else {
- *     console.log(`Failed after ${result.error.attempts} attempts`);
- *   }
- *   return;
- * }
- *
- * // Use result.value
- * ```
- *
- * ### Example with exception-based API (can throw)
+ * ### Example
  *
  * ```ts
  * interface FetchError {
- *   type: "FetchError";
- *   message: string;
+ *   readonly type: "FetchError";
+ *   readonly error: unknown;
  * }
  *
- * const controller = new AbortController();
- *
- * const result = await retry(
- *   async () =>
+ * const fetchTask = (url: string) =>
+ *   toTask((signal) =>
  *     tryAsync(
- *       async () => {
- *         const response = await fetch("https://api.example.com/data", {
- *           signal: controller.signal,
- *         });
- *
- *         if (!response.ok) {
- *           throw new Error(`HTTP error ${response.status}`);
- *         }
- *
- *         return await response.json();
- *       },
- *       (error): FetchError => ({
- *         type: "FetchError",
- *         message: String(error),
- *       }),
+ *       () => fetch(url, { signal }),
+ *       (error): FetchError => ({ type: "FetchError", error }),
  *     ),
- *   {
- *     maxRetries: 3,
- *     signal: controller.signal,
- *   },
- * );
+ *   );
+ *
+ * const result1 = await fetchTask("https://api.example.com/data")();
+ * expectTypeOf(result1).toEqualTypeOf<Result<Response, FetchError>>();
+ *
+ * // With AbortController
+ * const controller = new AbortController();
+ * const result2 = await fetchTask("https://api.example.com/data")({
+ *   signal: controller.signal,
+ * });
+ * expectTypeOf(result2).toEqualTypeOf<
+ *   Result<Response, FetchError | AbortError>
+ * >();
  * ```
- *
- * ## HTTP Request Recommendations
- *
- * For HTTP requests, configure the `retryable` option to only retry on
- * appropriate errors:
- *
- * - **DO retry**: 429 (Too Many Requests), 503 (Service Unavailable), network
- *   errors
- * - **DON'T retry**: 4xx client errors (except 429), most 5xx server errors
  */
-export const retry = async <T, E>(
-  fn: () => Promise<Result<T, E>>,
-  options: RetryOptions<E> = {},
-): Promise<Result<T, RetryError<E> | RetryAbortError>> => {
-  const {
-    maxRetries = 3,
-    initialDelay = 100,
-    maxDelay = 10000,
-    factor = 2,
-    jitter = 0.1,
-    signal,
-    retryable = constTrue,
-    onRetry,
-  } = options;
+export function toTask<T, E>(
+  fn: (signal: AbortSignal | null) => Promise<Result<T, E>>,
+): Task<T, E> {
+  return (async (context) => {
+    const signal = context?.signal;
 
-  let attempt = 0;
-
-  if (signal?.aborted) {
-    return err({ type: "RetryAbortError", abortedBeforeExecution: true });
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-  while (true) {
-    const result = await fn();
-
-    if (result.ok) {
-      return result;
+    // Fast path when no signal
+    if (!signal) {
+      return fn(null);
     }
 
-    attempt += 1;
-
-    if (attempt > maxRetries || !retryable(result.error)) {
-      return err({
-        type: "RetryError",
-        cause: result.error,
-        attempts: attempt,
-      });
+    // Check if already aborted
+    if (signal.aborted) {
+      return err({ type: "AbortError", reason: signal.reason as unknown });
     }
 
-    // Calculate delay with exponential backoff
-    const exponentialDelay = initialDelay * Math.pow(factor, attempt);
-    const cappedDelay = Math.min(exponentialDelay, maxDelay);
+    // Use Promise.withResolvers for clean abort handling and cleanup
+    const { promise: abortPromise, resolve: resolveAbort } =
+      Promise.withResolvers<Result<never, AbortError>>();
 
-    // Apply jitter to prevent thundering herd problem
-    const randomFactor = 1 - jitter + Math.random() * jitter * 2;
-    const delay = Math.floor(cappedDelay * randomFactor);
+    const handleAbort = () => {
+      resolveAbort(
+        err({ type: "AbortError", reason: signal.reason as unknown }),
+      );
+    };
 
-    if (onRetry) {
-      onRetry(result.error, attempt, delay);
-    }
+    signal.addEventListener("abort", handleAbort, { once: true });
 
-    if (signal?.aborted) {
-      return err({ type: "RetryAbortError", abortedBeforeExecution: false });
-    }
+    return Promise.race([
+      abortPromise,
+      fn(signal).then((result) => {
+        signal.removeEventListener("abort", handleAbort);
+        return result;
+      }),
+    ]);
+  }) as Task<T, E>;
+}
 
-    // Wait with abort support using the withAbort utility
-    if (signal) {
-      const delayResult = await withAbort(wait(delay), signal);
+/**
+ * Creates a {@link Task} that waits for the specified duration.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const result1 = await wait("10ms")();
+ * expect(result1).toEqual(ok());
+ * expectTypeOf(result1).toEqualTypeOf<Result<void, never>>();
+ *
+ * // With AbortController
+ * const controller = new AbortController();
+ * const result2 = await wait("10ms")(controller);
+ * expectTypeOf(result2).toEqualTypeOf<Result<void, AbortError>>();
+ * ```
+ */
+export const wait = (duration: Duration): Task<void, never> =>
+  toTask(
+    (signal) =>
+      new Promise<Result<void, never>>((resolve) => {
+        const ms = durationToNonNegativeInt(duration);
+        const timeoutSignal = AbortSignal.timeout(ms);
 
-      if (!delayResult.ok) {
-        return err({ type: "RetryAbortError", abortedBeforeExecution: false });
-      }
-    } else {
-      await wait(delay);
-    }
-  }
-};
+        const combinedSignal = signal
+          ? AbortSignal.any([signal, timeoutSignal])
+          : timeoutSignal;
 
+        // Listen for abort - either from timeout completion or external abort
+        combinedSignal.addEventListener(
+          "abort",
+          () => {
+            resolve(ok());
+          },
+          { once: true },
+        );
+      }),
+  );
+
+/** Error returned when {@link timeout} exceeds the specified duration. */
 export interface TimeoutError {
   readonly type: "TimeoutError";
   readonly timeoutMs: number;
 }
 
 /**
- * Wraps an async function with a timeout, returning {@link Result} that fails
- * with {@link TimeoutError} if the timeout is exceeded.
+ * Adds timeout behavior to a {@link Task}.
  *
  * ### Example
  *
  * ```ts
- * const fetchWithTimeout = () =>
- *   withTimeout((signal) => fetch("url", signal), 5000);
- * const result = await retry(fetchWithTimeout, { maxRetries: 3 });
+ * interface FetchError {
+ *   readonly type: "FetchError";
+ *   readonly error: unknown;
+ * }
+ *
+ * const fetchTask = (url: string) =>
+ *   toTask((signal) =>
+ *     tryAsync(
+ *       () => fetch(url, { signal }),
+ *       (error): FetchError => ({ type: "FetchError", error }),
+ *     ),
+ *   );
+ *
+ * const fetchWithTimeout = (url: string) => timeout("2m", fetchTask(url));
+ *
+ * const result1 = await fetchWithTimeout("https://api.example.com/data")();
+ * expectTypeOf(result1).toEqualTypeOf<
+ *   Result<Response, FetchError | TimeoutError>
+ * >();
+ *
+ * // With AbortController
+ * const controller = new AbortController();
+ * const result2 = await fetchWithTimeout("https://api.example.com/data")({
+ *   signal: controller.signal,
+ * });
+ * expectTypeOf(result2).toEqualTypeOf<
+ *   Result<Response, FetchError | TimeoutError | AbortError>
+ * >();
  * ```
  */
-export const withTimeout = async <T, E>(
-  fn: (signal: AbortSignal) => Promise<Result<T, E>>,
-  timeoutMs: number,
-): Promise<Result<T, E | TimeoutError>> => {
-  const controller = new AbortController();
+export const timeout = <T, E>(
+  duration: Duration,
+  task: Task<T, E>,
+): Task<T, E | TimeoutError> =>
+  toTask(async (signal) => {
+    const timeoutMs = durationToNonNegativeInt(duration);
+    const timeoutSignal = AbortSignal.timeout(timeoutMs);
 
-  const timeoutPromise = wait(timeoutMs).then(
-    (): Result<never, TimeoutError> => {
-      controller.abort();
+    const combinedSignal = signal
+      ? AbortSignal.any([signal, timeoutSignal])
+      : timeoutSignal;
+
+    const result = await task({ signal: combinedSignal });
+
+    // If the task was aborted and it was due to timeout (not external signal)
+    if (!result.ok && timeoutSignal.aborted && !signal?.aborted) {
       return err({ type: "TimeoutError", timeoutMs });
-    },
-  );
+    }
 
-  const operationPromise = fn(controller.signal);
+    return result as Result<T, E | TimeoutError>;
+  });
 
-  return Promise.race([operationPromise, timeoutPromise]);
-};
+/** Options for configuring {@link retry} behavior. */
+export interface RetryOptions<E> {
+  /** Number of retry attempts after the initial failure. */
+  readonly retries: PositiveInt;
+
+  /**
+   * Initial delay for exponential backoff (1st retry uses this, 2nd uses
+   * this×factor, 3rd uses this×factor², etc.). Actual delays are randomized by
+   * {@link RetryOptions.jitter}.
+   */
+  readonly initialDelay?: Duration;
+
+  /** Maximum delay between retries. */
+  readonly maxDelay?: Duration;
+
+  /** Exponential backoff multiplier. */
+  readonly factor?: number;
+
+  /** Random jitter factor (0-1) to prevent thundering herd. */
+  readonly jitter?: number;
+
+  /** {@link Predicate} to determine if error should trigger retry. */
+  readonly retryable?: Predicate<E>;
+
+  /** Callback invoked before each retry attempt. */
+  readonly onRetry?: (error: E, attempt: number, delay: number) => void;
+}
+
+/** Error returned when {@link retry} exhausts all retry attempts. */
+export interface RetryError<E> {
+  readonly type: "RetryError";
+  readonly cause: E;
+  readonly attempts: number;
+}
+
+/**
+ * Adds retry logic with exponential backoff and jitter to a {@link Task}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * interface FetchError {
+ *   readonly type: "FetchError";
+ *   readonly error: unknown;
+ * }
+ *
+ * const fetchTask = (url: string) =>
+ *   toTask((signal) =>
+ *     tryAsync(
+ *       () => fetch(url, { signal }),
+ *       (error): FetchError => ({ type: "FetchError", error }),
+ *     ),
+ *   );
+ *
+ * const fetchWithRetry = (url: string) =>
+ *   retry({ retries: PositiveInt.fromOrThrow(3) }, fetchTask(url));
+ *
+ * const result1 = await fetchWithRetry("https://api.example.com/data")();
+ * expectTypeOf(result1).toEqualTypeOf<
+ *   Result<Response, FetchError | RetryError<FetchError>>
+ * >();
+ *
+ * // With AbortController
+ * const controller = new AbortController();
+ * const result2 = await fetchWithRetry("https://api.example.com/data")({
+ *   signal: controller.signal,
+ * });
+ * expectTypeOf(result2).toEqualTypeOf<
+ *   Result<Response, FetchError | RetryError<FetchError> | AbortError>
+ * >();
+ * ```
+ */
+export const retry = <T, E>(
+  options: RetryOptions<E>,
+  task: Task<T, E>,
+): Task<T, E | RetryError<E>> =>
+  toTask(async (signal): Promise<Result<T, E | RetryError<E>>> => {
+    const {
+      retries,
+      initialDelay = "100ms",
+      maxDelay = "10s",
+      factor = 2,
+      jitter = 0.1,
+      retryable = () => true,
+      onRetry,
+    } = options;
+
+    const initialDelayMs = durationToNonNegativeInt(initialDelay);
+    const maxDelayMs = durationToNonNegativeInt(maxDelay);
+    const maxRetries = PositiveInt.fromOrThrow(retries);
+
+    let attempt = 0;
+
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    while (true) {
+      const result = await task({ signal });
+
+      if (result.ok) {
+        return result;
+      }
+
+      attempt += 1;
+
+      if (attempt > maxRetries || !retryable(result.error)) {
+        return err({
+          type: "RetryError",
+          cause: result.error,
+          attempts: attempt,
+        });
+      }
+
+      // Calculate delay with exponential backoff
+      const exponentialDelay = initialDelayMs * Math.pow(factor, attempt - 1);
+      const cappedDelay = Math.min(exponentialDelay, maxDelayMs);
+
+      // Apply jitter to prevent thundering herd problem
+      const randomFactor = 1 - jitter + Math.random() * jitter * 2;
+      const delay = Math.floor(cappedDelay * randomFactor);
+
+      if (onRetry) {
+        onRetry(result.error, attempt, delay);
+      }
+
+      // Wait before retry
+      const delayResult = await wait(delay as NonNegativeInt)({ signal });
+      if (!delayResult.ok) {
+        // If delay was aborted, return AbortError (will be handled by toTask)
+        return delayResult;
+      }
+    }
+  });
 
 /**
  * A semaphore that limits the number of concurrent async operations.
  *
  * For mutual exclusion (limiting to exactly one operation), consider using
  * {@link Mutex} instead.
+ *
+ * @see {@link createSemaphore} to create a semaphore instance.
  */
 export interface Semaphore {
   /**
@@ -328,7 +363,7 @@ export interface Semaphore {
    *
    * The operation will wait until a permit is available before executing. If
    * the operation throws an unexpected error, the permit will not be released
-   * and the error will bubble up (fail fast).
+   * and the error will bubble up (fail fast, check {@link Result} docs).
    */
   readonly withPermit: <T>(operation: () => Promise<T>) => Promise<T>;
 }
@@ -360,7 +395,7 @@ export interface Semaphore {
  * ]);
  * ```
  */
-export const createSemaphore = (maxConcurrent: PositiveInt): Semaphore => {
+export const createSemaphore = (maxConcurrent: number): Semaphore => {
   let availablePermits = maxConcurrent;
   const waitingQueue: Array<() => void> = [];
 
@@ -397,6 +432,8 @@ export const createSemaphore = (maxConcurrent: PositiveInt): Semaphore => {
  * A mutex (mutual exclusion) that ensures only one operation runs at a time.
  *
  * This is a specialized version of a {@link Semaphore} with a permit count of 1.
+ *
+ * @see {@link createMutex} to create a mutex instance.
  */
 export interface Mutex {
   /**

@@ -231,7 +231,7 @@ test("createSharedWebWorker handles multiple tabs - first tab becomes owner", as
   });
 
   // Wait for lock acquisition
-  await wait(10);
+  await wait("10ms")();
 
   // Only first tab should create worker (it became owner)
   expect(mockCreateWorker).toHaveBeenCalledTimes(1);

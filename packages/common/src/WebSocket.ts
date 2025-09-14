@@ -8,6 +8,7 @@ import { assertNoErrorInCatch } from "./Assert.js";
 import { constVoid } from "./Function.js";
 import { retry, RetryError, RetryOptions } from "./Promise.js";
 import { err, ok, Result } from "./Result.js";
+import { maxPositiveInt } from "./Type.js";
 
 /** WebSocket with auto-reconnect and offline support. */
 export interface WebSocket extends Disposable {
@@ -161,8 +162,7 @@ export const createWebSocket: CreateWebSocket = (url, options = {}) => {
   const reconnectController = new AbortController();
 
   const defaultRetryOptions: RetryOptions<WebSocketRetryError> = {
-    signal: reconnectController.signal,
-    maxRetries: Infinity,
+    retries: maxPositiveInt, // Practically infinite retries
   };
 
   let socket: globalThis.WebSocket | null = null;
@@ -191,6 +191,10 @@ export const createWebSocket: CreateWebSocket = (url, options = {}) => {
    * - Is resolved when WebSocket is disposed().
    */
   retry(
+    {
+      ...defaultRetryOptions,
+      ...retryOptions,
+    },
     (): Promise<Result<void, WebSocketRetryError>> =>
       new Promise((resolve) => {
         disposePromise = () => {
@@ -231,14 +235,10 @@ export const createWebSocket: CreateWebSocket = (url, options = {}) => {
           onMessage?.(event.data as string | ArrayBuffer | Blob);
         };
       }),
-    {
-      ...defaultRetryOptions,
-      ...retryOptions,
-    },
-  )
+  )({ signal: reconnectController.signal })
     .then((result) => {
-      if (result.ok || result.error.type === "RetryAbortError") return;
-      onError?.(result.error);
+      if (result.ok || result.error.type === "AbortError") return;
+      onError?.(result.error as WebSocketError);
     })
     .catch((error: unknown) => {
       assertNoErrorInCatch("WebSocket retry", error);

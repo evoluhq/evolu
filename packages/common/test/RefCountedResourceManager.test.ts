@@ -160,7 +160,7 @@ test("schedules resource disposal when no consumers remain", async () => {
   expect(resource?.disposed).toBe(false);
 
   // Wait for disposal delay
-  await wait(100);
+  await wait("100ms")();
 
   expect(manager.getResource(resourceConfig1.key)).toBeNull();
   expect(resource?.disposed).toBe(true);
@@ -176,13 +176,13 @@ test("cancels pending disposal when consumer is re-added", async () => {
   expect(removeResult.ok).toBe(true);
 
   // Wait a bit but not the full disposal delay
-  await wait(25);
+  await wait("25ms")();
 
   // Re-add consumer before disposal
   manager.addConsumer(consumer1, [resourceConfig1]);
 
   // Wait past the original disposal time
-  await wait(50);
+  await wait("50ms")();
 
   // Resource should still be alive
   expect(manager.getResource(resourceConfig1.key)).toBeTruthy();

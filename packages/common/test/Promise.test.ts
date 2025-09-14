@@ -1,101 +1,351 @@
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, expectTypeOf, test, vi } from "vitest";
 import {
-  RetryOptions,
+  AbortError,
   createMutex,
   createSemaphore,
   retry,
+  RetryError,
+  timeout,
+  TimeoutError,
+  toTask,
   wait,
-  withAbort,
-  withTimeout,
 } from "../src/Promise.js";
-import { Result, err, ok } from "../src/Result.js";
-import { PositiveInt } from "../src/Type.js";
+import { err, ok, Result, tryAsync } from "../src/Result.js";
+import { NonNegativeInt, PositiveInt } from "../src/Type.js";
 
-describe("wait", () => {
-  test("delays execution for specified milliseconds", async () => {
-    vi.useFakeTimers();
+describe("toTask", () => {
+  test("returns correct types based on context", async () => {
+    const mockFn = () => Promise.resolve<Result<void, never>>(ok());
+    const task = toTask(mockFn);
 
-    const cbSpy = vi.fn();
-    const waitWrapper = async (ms: number, cb: () => void) => {
-      await wait(ms);
-      cb();
-    };
+    // Without context: Result<void, never> (no AbortError possible)
+    const result1 = await task();
+    expect(result1).toEqual(ok());
+    expectTypeOf(result1).toEqualTypeOf<Result<void, never>>();
 
-    void waitWrapper(10, cbSpy);
-    expect(cbSpy).not.toHaveBeenCalled();
+    // With empty context: Result<void, never> (no AbortError - same as fast path)
+    const result2 = await task({});
+    expect(result2).toEqual(ok());
+    expectTypeOf(result2).toEqualTypeOf<Result<void, never>>();
 
-    await vi.advanceTimersByTimeAsync(10);
+    // With context containing signal: Result<void, AbortError>
+    const controller = new AbortController();
+    const result3 = await task(controller);
+    expect(result3).toEqual(ok());
+    expectTypeOf(result3).toEqualTypeOf<Result<void, AbortError>>();
+  });
 
-    expect(cbSpy).toHaveBeenCalled();
+  test("supports cancellation when signal is provided", async () => {
+    const mockFn = () =>
+      new Promise<Result<void, never>>((resolve) => {
+        setTimeout(() => {
+          resolve(ok());
+        }, 100);
+      });
 
-    vi.useRealTimers();
+    const task = toTask(mockFn);
+    const controller = new AbortController();
+
+    // Start the task
+    const promise = task(controller);
+
+    // Abort immediately
+    controller.abort("test abort");
+
+    const result = await promise;
+    expect(result).toEqual(
+      err({
+        type: "AbortError",
+        reason: "test abort",
+      }),
+    );
+  });
+
+  test("fast path when no context provided", async () => {
+    const mockFn = () => Promise.resolve<Result<void, never>>(ok());
+    const task = toTask(mockFn);
+
+    const result = await task();
+    expect(result).toEqual(ok());
+
+    // Verify this is the fast path type without AbortError
+    expectTypeOf(result).toEqualTypeOf<Result<void, never>>();
   });
 });
 
-describe("withAbort", () => {
-  test("allows promise to complete when not aborted", async () => {
+describe("wait", () => {
+  test("returns correct types based on context", async () => {
+    const waitTask = wait("5ms");
+
+    // Without context: Result<void, never> (no AbortError possible)
+    const result1 = await waitTask();
+    expect(result1).toEqual(ok());
+    expectTypeOf(result1).toEqualTypeOf<Result<void, never>>();
+
+    // With empty context: Result<void, never> (no AbortError - same as fast path)
+    const result2 = await waitTask({});
+    expect(result2).toEqual(ok());
+    expectTypeOf(result2).toEqualTypeOf<Result<void, never>>();
+
+    // With context containing signal: Result<void, AbortError>
     const controller = new AbortController();
-    const promise = wait(10);
-
-    const result = await withAbort(promise, controller.signal);
-
-    expect(result).toEqual(ok());
+    const result3 = await waitTask(controller);
+    expect(result3).toEqual(ok());
+    expectTypeOf(result3).toEqualTypeOf<Result<void, AbortError>>();
   });
 
-  test("cancels promise when signal is aborted", async () => {
+  test("supports cancellation when signal is provided", async () => {
     const controller = new AbortController();
-    const promise = wait(100); // Long delay
+    const start = Date.now();
 
-    // Abort after a short delay
+    // Start the wait
+    const promise = wait("100ms")(controller);
+
+    // Abort after 25ms
     setTimeout(() => {
-      controller.abort();
-    }, 10);
+      controller.abort("test abort");
+    }, 25);
 
-    const result = await withAbort(promise, controller.signal);
+    const result = await promise;
+    const elapsed = Date.now() - start;
 
-    expect(result).toEqual(err({ type: "AbortError" }));
+    expect(result).toEqual(
+      err({
+        type: "AbortError",
+        reason: "test abort",
+      }),
+    );
+    expect(elapsed).toBeLessThan(50); // Should abort early
   });
 
-  test("returns AbortError immediately when signal is already aborted", async () => {
+  test("handles already aborted signal", async () => {
     const controller = new AbortController();
-    controller.abort();
+    controller.abort("already aborted");
 
-    const promise = wait(10);
-    const result = await withAbort(promise, controller.signal);
+    const result = await wait("100ms")(controller);
 
-    expect(result).toEqual(err({ type: "AbortError" }));
+    expect(result).toEqual(
+      err({
+        type: "AbortError",
+        reason: "already aborted",
+      }),
+    );
+  });
+});
+
+describe("timeout", () => {
+  test("returns correct types based on context", async () => {
+    const mockTask = toTask(() => Promise.resolve<Result<void, never>>(ok()));
+    const timeoutTask = timeout("100ms", mockTask);
+
+    // Without context: Result<void, TimeoutError>
+    const result1 = await timeoutTask();
+    expectTypeOf(result1).toEqualTypeOf<Result<void, TimeoutError>>();
+
+    // With empty context: Result<void, TimeoutError>
+    const result2 = await timeoutTask({});
+    expectTypeOf(result2).toEqualTypeOf<Result<void, TimeoutError>>();
+
+    // With context containing signal: Result<void, TimeoutError | AbortError>
+    const controller = new AbortController();
+    const result3 = await timeoutTask(controller);
+    expectTypeOf(result3).toEqualTypeOf<
+      Result<void, TimeoutError | AbortError>
+    >();
+  });
+
+  test("returns result when task completes before timeout", async () => {
+    const fastTask = toTask(() =>
+      Promise.resolve<Result<string, never>>(ok("success")),
+    );
+    const timeoutTask = timeout("100ms", fastTask);
+
+    const result = await timeoutTask();
+    expect(result).toEqual(ok("success"));
+  });
+
+  test("returns TimeoutError when task exceeds timeout", async () => {
+    const slowTask = toTask(
+      () =>
+        new Promise<Result<string, never>>((resolve) => {
+          setTimeout(() => {
+            resolve(ok("too late"));
+          }, 100);
+        }),
+    );
+    const timeoutTask = timeout("50ms", slowTask);
+
+    const result = await timeoutTask();
+    expect(result).toEqual(err({ type: "TimeoutError", timeoutMs: 50 }));
+  });
+
+  test("supports cancellation when signal is provided", async () => {
+    const slowTask = toTask(
+      () =>
+        new Promise<Result<string, never>>((resolve) => {
+          setTimeout(() => {
+            resolve(ok("should not complete"));
+          }, 100);
+        }),
+    );
+    const timeoutTask = timeout("200ms", slowTask);
+    const controller = new AbortController();
+
+    // Start the timeout task
+    const promise = timeoutTask(controller);
+
+    // Abort after 25ms
+    setTimeout(() => {
+      controller.abort("test abort");
+    }, 25);
+
+    const result = await promise;
+    expect(result).toEqual(
+      err({
+        type: "AbortError",
+        reason: "test abort",
+      }),
+    );
+  });
+
+  test("handles already aborted signal", async () => {
+    const task = toTask(() =>
+      Promise.resolve<Result<string, never>>(ok("success")),
+    );
+    const timeoutTask = timeout("100ms", task);
+    const controller = new AbortController();
+    controller.abort("already aborted");
+
+    const result = await timeoutTask(controller);
+
+    expect(result).toEqual(
+      err({
+        type: "AbortError",
+        reason: "already aborted",
+      }),
+    );
+  });
+
+  test("correctly returns AbortError when signal is aborted before timeout", async () => {
+    const slowTask = toTask(
+      () =>
+        new Promise<Result<string, never>>((resolve) => {
+          setTimeout(() => {
+            resolve(ok("should not complete"));
+          }, 1000); // Long delay
+        }),
+    );
+    const timeoutTask = timeout("500ms", slowTask); // Timeout longer than abort
+    const controller = new AbortController();
+
+    const promise = timeoutTask(controller);
+
+    // Abort before timeout fires
+    setTimeout(() => {
+      controller.abort("external abort");
+    }, 100);
+
+    const result = await promise;
+
+    // This works correctly - external abort is handled by toTask wrapper
+    expect(result).toEqual(
+      err({
+        type: "AbortError",
+        reason: "external abort",
+      }),
+    );
+  });
+
+  test("cancels underlying task when timeout fires", async () => {
+    let taskAborted = false;
+    const slowTask = toTask(
+      (signal) =>
+        new Promise<Result<string, never>>((resolve) => {
+          signal?.addEventListener("abort", () => {
+            taskAborted = true;
+          });
+
+          setTimeout(() => {
+            resolve(ok("completed"));
+          }, 1000);
+        }),
+    );
+
+    const timeoutTask = timeout("100ms", slowTask);
+    const result = await timeoutTask();
+
+    expect(result).toEqual(err({ type: "TimeoutError", timeoutMs: 100 }));
+
+    // Task should be cancelled when timeout fires
+    expect(taskAborted).toBe(true);
   });
 });
 
 describe("retry", () => {
-  test("succeeds on first attempt", async () => {
-    const fn = vi.fn().mockResolvedValue(ok());
+  test("returns correct types based on context", async () => {
+    const mockTask = toTask(() => Promise.resolve<Result<void, never>>(ok()));
+    const retryTask = retry({ retries: PositiveInt.fromOrThrow(1) }, mockTask);
 
-    const result = await retry(fn);
+    // Without context: Result<void, RetryError<never>>
+    const result1 = await retryTask();
+    expectTypeOf(result1).toEqualTypeOf<Result<void, RetryError<never>>>();
+
+    // With empty context: Result<void, RetryError<never>>
+    const result2 = await retryTask({});
+    expectTypeOf(result2).toEqualTypeOf<Result<void, RetryError<never>>>();
+
+    // With context containing signal: Result<void, RetryError<never> | AbortError>
+    const controller = new AbortController();
+    const result3 = await retryTask(controller);
+    expectTypeOf(result3).toEqualTypeOf<
+      Result<void, RetryError<never> | AbortError>
+    >();
+  });
+
+  test("succeeds on first attempt", async () => {
+    const mockTask = toTask(() => Promise.resolve<Result<void, never>>(ok()));
+    const retryTask = retry({ retries: PositiveInt.fromOrThrow(1) }, mockTask);
+
+    const result = await retryTask();
 
     expect(result).toEqual(ok());
-    expect(fn).toHaveBeenCalledTimes(1);
   });
 
   test("succeeds after several attempts", async () => {
-    // Mock function fails twice then succeeds
-    const fn = vi
-      .fn()
-      .mockResolvedValueOnce(err({ type: "TestError", message: "Error 1" }))
-      .mockResolvedValueOnce(err({ type: "TestError", message: "Error 2" }))
-      .mockResolvedValueOnce(ok());
+    let attempts = 0;
+    const flakyTask = toTask(() => {
+      attempts++;
+      if (attempts < 3) {
+        return Promise.resolve<
+          Result<void, { type: "TestError"; message: string }>
+        >(err({ type: "TestError", message: `Error ${attempts}` }));
+      }
+      return Promise.resolve<
+        Result<void, { type: "TestError"; message: string }>
+      >(ok());
+    });
 
-    const result = await retry(fn, { initialDelay: 1 });
+    const retryTask = retry(
+      { retries: PositiveInt.fromOrThrow(2), initialDelay: "1ms" },
+      flakyTask,
+    );
+    const result = await retryTask();
 
     expect(result).toEqual(ok());
-    expect(fn).toHaveBeenCalledTimes(3);
+    expect(attempts).toBe(3);
   });
 
   test("returns error after max retries", async () => {
     const testError = { type: "TestError", message: "Failed" };
-    const fn = vi.fn().mockResolvedValue(err(testError));
+    const failingTask = toTask(() =>
+      Promise.resolve<Result<never, typeof testError>>(err(testError)),
+    );
 
-    const result = await retry(fn, { maxRetries: 3, initialDelay: 1 });
+    const retryTask = retry(
+      { retries: PositiveInt.fromOrThrow(3), initialDelay: "1ms" },
+      failingTask,
+    );
+    const result = await retryTask();
 
     expect(result).toEqual(
       err({
@@ -104,51 +354,42 @@ describe("retry", () => {
         attempts: 4, // initial + 3 retries = 4 attempts
       }),
     );
-    expect(fn).toHaveBeenCalledTimes(4); // initial + 3 retries = 4 attempts
   });
 
-  test("handles abort before execution", async () => {
-    const fn = vi.fn();
-    const controller = new AbortController();
-
-    // Abort before calling retry
-    controller.abort();
-
-    const result = await retry(fn, { signal: controller.signal });
-
-    expect(result).toEqual(
-      err({ type: "RetryAbortError", abortedBeforeExecution: true }),
+  test("supports cancellation when signal is provided", async () => {
+    const slowTask = toTask(
+      () =>
+        new Promise<Result<never, { type: "TestError" }>>((resolve) => {
+          setTimeout(() => {
+            resolve(err({ type: "TestError" }));
+          }, 50);
+        }),
     );
-    expect(fn).not.toHaveBeenCalled();
-  });
 
-  test("handles abort during delay", async () => {
-    // Function that fails on first call
-    const fn = vi
-      .fn()
-      .mockResolvedValueOnce(err({ type: "TestError" }))
-      .mockResolvedValueOnce(ok());
-
+    const retryTask = retry(
+      { retries: PositiveInt.fromOrThrow(1), initialDelay: "20ms" },
+      slowTask,
+    );
     const controller = new AbortController();
 
-    // Set up a delayed abort
+    // Start the retry task
+    const promise = retryTask(controller);
+
+    // Abort after 10ms (should abort during first attempt or delay)
     setTimeout(() => {
-      controller.abort();
-    }, 5);
+      controller.abort("test abort");
+    }, 10);
 
-    const result = await retry(fn, {
-      signal: controller.signal,
-      initialDelay: 10, // longer than our abort timeout,
-    });
-
+    const result = await promise;
     expect(result).toEqual(
-      err({ type: "RetryAbortError", abortedBeforeExecution: false }),
+      err({
+        type: "AbortError",
+        reason: "test abort",
+      }),
     );
-    expect(fn).toHaveBeenCalledTimes(1);
   });
 
   test("uses retryable predicate", async () => {
-    // Error types we'll use
     interface RetryableError {
       type: "RetryableError";
       attempt: number;
@@ -158,25 +399,29 @@ describe("retry", () => {
       reason: string;
     }
 
-    // Function that returns different error types
-    const fn = vi
-      .fn()
-      .mockResolvedValueOnce(err({ type: "RetryableError", attempt: 1 }))
-      .mockResolvedValueOnce(
+    let attempts = 0;
+    const taskWithMixedErrors = toTask(() => {
+      attempts++;
+      if (attempts === 1) {
+        return Promise.resolve<
+          Result<never, RetryableError | NonRetryableError>
+        >(err({ type: "RetryableError", attempt: 1 }));
+      }
+      return Promise.resolve<Result<never, RetryableError | NonRetryableError>>(
         err({ type: "NonRetryableError", reason: "fatal" }),
-      )
-      .mockResolvedValueOnce(ok());
+      );
+    });
 
-    // Create options with retryable predicate
-    const options: RetryOptions<RetryableError | NonRetryableError> = {
-      initialDelay: 1,
-      retryable: (error) => error.type === "RetryableError",
-    };
-
-    const result = await retry<string, RetryableError | NonRetryableError>(
-      fn,
-      options,
+    const retryTask = retry(
+      {
+        retries: PositiveInt.fromOrThrow(1),
+        initialDelay: "1ms",
+        retryable: (error) => error.type === "RetryableError",
+      },
+      taskWithMixedErrors,
     );
+
+    const result = await retryTask();
 
     expect(result).toEqual(
       err({
@@ -185,24 +430,32 @@ describe("retry", () => {
         attempts: 2,
       }),
     );
-    expect(fn).toHaveBeenCalledTimes(2);
+    expect(attempts).toBe(2);
   });
 
   test("calls onRetry callback", async () => {
     const onRetry = vi.fn();
     const testError = { type: "TestError", message: "Failed" };
 
-    // Function that fails twice then succeeds
-    const fn = vi
-      .fn()
-      .mockResolvedValueOnce(err(testError))
-      .mockResolvedValueOnce(err(testError))
-      .mockResolvedValueOnce(ok());
-
-    const result = await retry(fn, {
-      initialDelay: 1,
-      onRetry,
+    let attempts = 0;
+    const flakyTask = toTask(() => {
+      attempts++;
+      if (attempts < 3) {
+        return Promise.resolve<Result<never, typeof testError>>(err(testError));
+      }
+      return Promise.resolve<Result<void, typeof testError>>(ok());
     });
+
+    const retryTask = retry(
+      {
+        retries: PositiveInt.fromOrThrow(2),
+        initialDelay: "1ms",
+        onRetry,
+      },
+      flakyTask,
+    );
+
+    const result = await retryTask();
 
     expect(result).toEqual(ok());
     expect(onRetry).toHaveBeenCalledTimes(2);
@@ -210,45 +463,83 @@ describe("retry", () => {
     expect(onRetry).toHaveBeenCalledWith(testError, 2, expect.any(Number));
   });
 
+  test("handles already aborted signal", async () => {
+    const task = toTask(() => Promise.resolve<Result<void, never>>(ok()));
+    const retryTask = retry({ retries: PositiveInt.fromOrThrow(1) }, task);
+    const controller = new AbortController();
+    controller.abort("already aborted");
+
+    const result = await retryTask(controller);
+
+    expect(result).toEqual(
+      err({
+        type: "AbortError",
+        reason: "already aborted",
+      }),
+    );
+  });
+
   test("uses exponential backoff with jitter", async () => {
-    vi.useFakeTimers();
-    const fn = vi
-      .fn()
-      .mockResolvedValueOnce(err({ type: "TestError" }))
-      .mockResolvedValueOnce(err({ type: "TestError" }))
-      .mockResolvedValueOnce(ok());
-
-    // Create a promise we can resolve later
-    let resolvePromise: (value: Result<string, unknown>) => void;
-    const promise = new Promise<Result<string, unknown>>((resolve) => {
-      resolvePromise = resolve;
+    const onRetry = vi.fn();
+    let attempts = 0;
+    const failingTask = toTask(() => {
+      attempts++;
+      if (attempts < 4) {
+        return Promise.resolve<Result<never, { type: "TestError" }>>(
+          err({ type: "TestError" }),
+        );
+      }
+      return Promise.resolve<Result<void, { type: "TestError" }>>(ok());
     });
 
-    // Start the retry process but don't await it
-    const _retryPromise = retry<string, { type: "TestError" }>(fn, {
-      initialDelay: 100,
-      factor: 2,
-      jitter: 0.1,
-    }).then((result) => {
-      resolvePromise(result);
-      return result;
-    });
+    const result = await retry(
+      {
+        retries: PositiveInt.fromOrThrow(3),
+        initialDelay: "10ms", // Use small delays for fast test
+        factor: 2,
+        jitter: 0.1,
+        onRetry,
+      },
+      failingTask,
+    )();
 
-    // First attempt happens immediately
-    expect(fn).toHaveBeenCalledTimes(1);
-
-    // Wait for first delay (~100ms with jitter)
-    await vi.advanceTimersToNextTimerAsync();
-    expect(fn).toHaveBeenCalledTimes(2);
-
-    // Wait for second delay (~200ms with jitter)
-    await vi.advanceTimersToNextTimerAsync();
-    expect(fn).toHaveBeenCalledTimes(3);
-
-    const result = await promise;
     expect(result).toEqual(ok());
+    expect(attempts).toBe(4); // initial + 3 retries
+    expect(onRetry).toHaveBeenCalledTimes(3);
 
-    vi.useRealTimers();
+    // Verify delays are called with exponential backoff
+    // First retry: ~10ms (10 * 2^0 = 10)
+    expect(onRetry).toHaveBeenNthCalledWith(
+      1,
+      { type: "TestError" },
+      1,
+      expect.any(Number),
+    );
+    const firstDelay = onRetry.mock.calls[0]?.[2] as number;
+    expect(firstDelay).toBeGreaterThanOrEqual(9); // 10 * (1 - 0.1) = 9
+    expect(firstDelay).toBeLessThanOrEqual(12); // 10 * (1 + 0.1) = 11, rounded up
+
+    // Second retry: ~20ms (10 * 2^1 = 20)
+    expect(onRetry).toHaveBeenNthCalledWith(
+      2,
+      { type: "TestError" },
+      2,
+      expect.any(Number),
+    );
+    const secondDelay = onRetry.mock.calls[1]?.[2] as number;
+    expect(secondDelay).toBeGreaterThanOrEqual(18); // 20 * (1 - 0.1) = 18
+    expect(secondDelay).toBeLessThanOrEqual(24); // 20 * (1 + 0.1) = 22, rounded up
+
+    // Third retry: ~40ms (10 * 2^2 = 40)
+    expect(onRetry).toHaveBeenNthCalledWith(
+      3,
+      { type: "TestError" },
+      3,
+      expect.any(Number),
+    );
+    const thirdDelay = onRetry.mock.calls[2]?.[2] as number;
+    expect(thirdDelay).toBeGreaterThanOrEqual(36); // 40 * (1 - 0.1) = 36
+    expect(thirdDelay).toBeLessThanOrEqual(48); // 40 * (1 + 0.1) = 44, rounded up
   });
 
   test("with real delays works as expected", async () => {
@@ -257,29 +548,36 @@ describe("retry", () => {
     const onRetry = vi.fn();
 
     // Function that fails 3 times then succeeds
-    const fn = vi.fn().mockImplementation(() => {
+    let attempts = 0;
+    const failingTask = toTask(() => {
+      attempts++;
       const now = Date.now();
       attemptTimes.push(now);
 
-      if (attemptTimes.length <= 3) {
-        return Promise.resolve(err({ type: "TestError" }));
+      if (attempts <= 3) {
+        return Promise.resolve<Result<never, { type: "TestError" }>>(
+          err({ type: "TestError" }),
+        );
       } else {
-        return Promise.resolve(ok());
+        return Promise.resolve<Result<void, { type: "TestError" }>>(ok());
       }
     });
 
     // Use real short delays
-    const result = await retry(fn, {
-      maxRetries: 3,
-      initialDelay: 50, // 50ms initial delay
-      factor: 2, // Double each time
-      jitter: 0, // No jitter for predictable testing
-      onRetry,
-    });
+    const result = await retry(
+      {
+        retries: PositiveInt.fromOrThrow(3),
+        initialDelay: "50ms", // 50ms initial delay
+        factor: 2, // Double each time
+        jitter: 0, // No jitter for predictable testing
+        onRetry,
+      },
+      failingTask,
+    )();
 
     // Should succeed after 4 attempts (1 initial + 3 retries)
     expect(result).toEqual(ok());
-    expect(fn).toHaveBeenCalledTimes(4);
+    expect(attempts).toBe(4);
     expect(onRetry).toHaveBeenCalledTimes(3);
 
     // Check delays between attempts
@@ -302,21 +600,28 @@ describe("retry", () => {
     const onRetry = vi.fn();
 
     // Function that always fails
-    const fn = vi.fn().mockImplementation(() => {
+    let attempts = 0;
+    const failingTask = toTask(() => {
+      attempts++;
       const now = Date.now();
       attemptTimes.push(now);
-      return Promise.resolve(err({ type: "TestError" }));
+      return Promise.resolve<Result<never, { type: "TestError" }>>(
+        err({ type: "TestError" }),
+      );
     });
 
     // Use a very short maxDelay to demonstrate the capping effect
-    const result = await retry(fn, {
-      maxRetries: 3,
-      initialDelay: 50, // 50ms initial delay
-      factor: 10, // Would normally increase 50 -> 500 -> 5000, but maxDelay caps it
-      maxDelay: 100, // Cap delays at 100ms
-      jitter: 0, // No jitter for predictable testing
-      onRetry,
-    });
+    const result = await retry(
+      {
+        retries: PositiveInt.fromOrThrow(3),
+        initialDelay: "50ms", // 50ms initial delay
+        factor: 10, // Would normally increase 50 -> 500 -> 5000, but maxDelay caps it
+        maxDelay: "100ms", // Cap delays at 100ms
+        jitter: 0, // No jitter for predictable testing
+        onRetry,
+      },
+      failingTask,
+    )();
 
     // Should fail after 4 attempts (1 initial + 3 retries)
     expect(result).toEqual(
@@ -326,7 +631,7 @@ describe("retry", () => {
         attempts: 4,
       }),
     );
-    expect(fn).toHaveBeenCalledTimes(4);
+    expect(attempts).toBe(4);
     expect(onRetry).toHaveBeenCalledTimes(3);
 
     // First retry should be ~50ms after initial attempt
@@ -342,118 +647,6 @@ describe("retry", () => {
   });
 });
 
-describe("withTimeout", () => {
-  test("returns result when function completes before timeout", async () => {
-    const expectedResult = ok();
-    const fn = vi.fn().mockImplementation((signal: AbortSignal) => {
-      expect(signal).toBeInstanceOf(AbortSignal);
-      expect(signal.aborted).toBe(false);
-      return Promise.resolve(expectedResult);
-    });
-
-    const result = await withTimeout(fn, 100);
-
-    expect(result).toEqual(expectedResult);
-    expect(fn).toHaveBeenCalledTimes(1);
-  });
-
-  test("returns TimeoutError when function exceeds timeout", async () => {
-    // Use a small timeout for faster test execution
-    const timeoutMs = 10;
-
-    // Create a function that never resolves within our timeout
-    const fn = vi.fn().mockImplementation((_signal: AbortSignal) => {
-      return new Promise<Result<string, never>>((resolve) => {
-        // This promise intentionally doesn't resolve during our timeout
-        const id = setTimeout(() => {
-          resolve(ok("too late"));
-        }, 1000);
-        return () => {
-          clearTimeout(id); // Just to avoid hanging promises
-        };
-      });
-    });
-
-    const result = await withTimeout(fn, timeoutMs);
-
-    // Should return a TimeoutError
-    expect(result).toEqual(err({ type: "TimeoutError", timeoutMs }));
-    expect(fn).toHaveBeenCalledTimes(1);
-  });
-
-  test("passes AbortSignal to function", async () => {
-    const fn = vi.fn().mockImplementation((signal: AbortSignal) => {
-      expect(signal).toBeInstanceOf(AbortSignal);
-      expect(signal.aborted).toBe(false);
-      return Promise.resolve(ok());
-    });
-
-    await withTimeout(fn, 100);
-
-    expect(fn).toHaveBeenCalledWith(expect.any(AbortSignal));
-  });
-
-  test("handles function completion efficiently", async () => {
-    // This test verifies that withTimeout works correctly when the function completes
-    // before the timeout, without relying on implementation details
-    const fn = vi.fn().mockResolvedValue(ok("completed"));
-
-    const result = await withTimeout(fn, 100);
-
-    expect(result).toEqual(ok("completed"));
-    expect(fn).toHaveBeenCalledTimes(1);
-  });
-
-  test("works with a function returning an error result", async () => {
-    const expectedError = { type: "CustomError", message: "Failed" };
-    const fn = vi.fn().mockResolvedValue(err(expectedError));
-
-    const result = await withTimeout(fn, 100);
-
-    expect(result).toEqual(err(expectedError));
-    expect(fn).toHaveBeenCalledTimes(1);
-  });
-
-  test("integrates with AbortController from outside", async () => {
-    const externalController = new AbortController();
-    let innerSignal: AbortSignal | null = null;
-
-    const fn = vi.fn().mockImplementation((signal: AbortSignal) => {
-      innerSignal = signal;
-      return new Promise<Result<void, "aborted">>((resolve) => {
-        const timeoutId = setTimeout(() => {
-          resolve(ok());
-        }, 200);
-
-        signal.addEventListener("abort", () => {
-          clearTimeout(timeoutId);
-          resolve(err("aborted"));
-        });
-      });
-    });
-
-    const timeoutPromise = withTimeout((signal) => {
-      // Pass the signal to our function but also make sure to respect the external abort
-      externalController.signal.addEventListener("abort", () => {
-        if (!signal.aborted) {
-          // This would happen if the external controller aborts before the timeout
-          // In a real implementation, you would handle this appropriately
-        }
-      });
-
-      return fn(signal) as never;
-    }, 100);
-
-    // Abort from the external controller
-    externalController.abort();
-
-    const _result = await timeoutPromise;
-
-    expect(fn).toHaveBeenCalledTimes(1);
-    expect(innerSignal).not.toBeNull();
-  });
-});
-
 describe("createSemaphore", () => {
   test("allows concurrent operations up to limit", async () => {
     const semaphore = createSemaphore(PositiveInt.fromOrThrow(2));
@@ -463,7 +656,7 @@ describe("createSemaphore", () => {
     const operation = async (duration: number) => {
       runningCount++;
       maxRunning = Math.max(maxRunning, runningCount);
-      await wait(duration);
+      await wait(duration as NonNegativeInt)();
       runningCount--;
       return runningCount;
     };
@@ -490,7 +683,7 @@ describe("createSemaphore", () => {
 
     const operation = async (id: number) => {
       events.push({ id, event: "start", timestamp: Date.now() });
-      await wait(20); // Longer delay to ensure overlap would be detectable
+      await wait("20ms")(); // Longer delay to ensure overlap would be detectable
       events.push({ id, event: "end", timestamp: Date.now() });
       return id;
     };
@@ -528,6 +721,42 @@ describe("createSemaphore", () => {
     // The semaphore permit is intentionally "leaked" because we don't
     // attempt to recover from unexpected errors.
   });
+
+  test("example", async () => {
+    // Allow maximum 3 concurrent operations
+    const semaphore = createSemaphore(3);
+
+    let currentConcurrent = 0;
+    let maxConcurrent = 0;
+    const events: Array<string> = [];
+
+    const fetchData = async (id: number): Promise<number> => {
+      currentConcurrent++;
+      maxConcurrent = Math.max(maxConcurrent, currentConcurrent);
+      events.push(`start ${id} (concurrent: ${currentConcurrent})`);
+
+      await wait("50ms")();
+
+      currentConcurrent--;
+      events.push(`end ${id} (concurrent: ${currentConcurrent})`);
+      return id * 10;
+    };
+
+    // These will execute with at most 3 running concurrently
+    const results = await Promise.all([
+      semaphore.withPermit(() => fetchData(1)),
+      semaphore.withPermit(() => fetchData(2)),
+      semaphore.withPermit(() => fetchData(3)),
+      semaphore.withPermit(() => fetchData(4)), // waits for one above to complete
+      semaphore.withPermit(() => fetchData(5)), // waits for permit
+    ]);
+
+    expect(results).toEqual([10, 20, 30, 40, 50]);
+    expect(maxConcurrent).toBe(3); // Never exceeded the limit
+    expect(
+      events.filter((e) => e.includes("concurrent: 3")).length,
+    ).toBeGreaterThan(0);
+  });
 });
 
 describe("createMutex", () => {
@@ -537,7 +766,7 @@ describe("createMutex", () => {
 
     const operation = async (id: number) => {
       events.push(`start-${id}`);
-      await wait(10);
+      await wait("10ms")();
       events.push(`end-${id}`);
       return id;
     };
@@ -560,7 +789,7 @@ describe("createMutex", () => {
 
     const operation = async (id: number, events: Array<string>) => {
       events.push(`start-${id}`);
-      await wait(10);
+      await wait("10ms")();
       events.push(`end-${id}`);
       return id;
     };
@@ -577,5 +806,101 @@ describe("createMutex", () => {
 
     // Both should exhibit identical behavior
     expect(mutexEvents).toEqual(semaphoreEvents);
+  });
+});
+
+describe("Examples", () => {
+  // Mock fetch for testing
+  const mockFetch = vi.fn<ReturnType<typeof fetchTask>>();
+  beforeEach(() => {
+    vi.stubGlobal("fetch", mockFetch);
+    mockFetch.mockClear();
+  });
+
+  interface FetchError {
+    readonly type: "FetchError";
+    readonly error: unknown;
+  }
+
+  const fetchTask = (url: string) =>
+    toTask((signal) =>
+      tryAsync(
+        () => fetch(url, { signal }),
+        (error): FetchError => ({ type: "FetchError", error }),
+      ),
+    );
+
+  test("toTask", async () => {
+    mockFetch.mockResolvedValue(new Response("success"));
+
+    const result1 = await fetchTask("https://api.example.com/data")();
+    expectTypeOf(result1).toEqualTypeOf<Result<Response, FetchError>>();
+
+    // With AbortController
+    const controller = new AbortController();
+    const result2 = await fetchTask("https://api.example.com/data")(controller);
+    expectTypeOf(result2).toEqualTypeOf<
+      Result<Response, FetchError | AbortError>
+    >();
+  });
+
+  test("wait", async () => {
+    const result1 = await wait("10ms")();
+    expect(result1).toEqual(ok());
+    expectTypeOf(result1).toEqualTypeOf<Result<void, never>>();
+
+    // With AbortController
+    const controller = new AbortController();
+    const result2 = await wait("10ms")(controller);
+    expectTypeOf(result2).toEqualTypeOf<Result<void, AbortError>>();
+  });
+
+  test("timeout", async () => {
+    mockFetch.mockResolvedValue(new Response("success"));
+
+    const fetchWithTimeout = (url: string) => timeout("2m", fetchTask(url));
+
+    const result1 = await fetchWithTimeout("https://api.example.com/data")();
+    expectTypeOf(result1).toEqualTypeOf<
+      Result<Response, FetchError | TimeoutError>
+    >();
+
+    // With AbortController
+    const controller = new AbortController();
+    const result2 = await fetchWithTimeout("https://api.example.com/data")(
+      controller,
+    );
+    expectTypeOf(result2).toEqualTypeOf<
+      Result<Response, FetchError | TimeoutError | AbortError>
+    >();
+  });
+
+  test("retry", async () => {
+    mockFetch.mockResolvedValue(new Response("success"));
+
+    const fetchWithRetry = (url: string) =>
+      retry({ retries: PositiveInt.fromOrThrow(3) }, fetchTask(url));
+
+    const result1 = await fetchWithRetry("https://api.example.com/data")();
+    expectTypeOf(result1).toEqualTypeOf<
+      Result<Response, FetchError | RetryError<FetchError>>
+    >();
+
+    // With AbortController
+    const controller = new AbortController();
+    const result2 = await fetchWithRetry("https://api.example.com/data")({
+      signal: controller.signal,
+    });
+    expectTypeOf(result2).toEqualTypeOf<
+      Result<Response, FetchError | RetryError<FetchError> | AbortError>
+    >();
+  });
+
+  test("semaphore", async () => {
+    // TODO.
+  });
+
+  test("Task - fetchTask with timeout, retry, and semaphore", async () => {
+    // TODO.
   });
 });
