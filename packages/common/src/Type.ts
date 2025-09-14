@@ -120,7 +120,7 @@ export interface Type<
    * ### Example
    *
    * ```ts
-   * const duration = Duration.fromOrThrow(minutes(1) + seconds(20));
+   * const foo = PositiveNumber.fromOrThrow(42);
    * ```
    */
   readonly fromOrThrow: (value: Input) => T;
@@ -1782,6 +1782,11 @@ export type NonNegativeInt = typeof NonNegativeInt.Type;
 /** @category Number */
 export const PositiveInt = positive(NonNegativeInt);
 export type PositiveInt = typeof PositiveInt.Type;
+
+/** Maximum safe positive integer value for practically infinite operations. */
+export const maxPositiveInt = PositiveInt.fromOrThrow(
+  globalThis.Number.MAX_SAFE_INTEGER,
+);
 
 /** @category Number */
 export const NonPositiveInt = nonPositive(Int);
