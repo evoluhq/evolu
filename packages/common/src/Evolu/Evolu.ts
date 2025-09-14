@@ -57,9 +57,102 @@ import {
   ValidMutationSize,
   ValidMutationSizeError,
 } from "./Schema.js";
-import { DbChange } from "./Storage.js";
+import { CrdtMessage, DbChange } from "./Storage.js";
 import { initialSyncState, SyncOwner, SyncState } from "./Sync.js";
 import { TimestampError } from "./Timestamp.js";
+
+export interface EvoluConfig extends DbConfig {
+  /**
+   * Callback invoked when Evolu is successfully initialized.
+   *
+   * Useful for showing welcome messages and initial data seeding.
+   *
+   * ### Examples
+   *
+   * #### Welcome message
+   *
+   * ```ts
+   * const evolu = createEvolu(evoluReactWebDeps)(Schema, {
+   *   onInit: ({ isFirst }) => {
+   *     // Show welcome message only once when DB is initialized on a device
+   *     if (isFirst) {
+   *       alert("Welcome to your new local-first app!");
+   *     }
+   *   },
+   * });
+   * ```
+   *
+   * #### Explicit initial data seeding
+   *
+   * When we know it's the first time the app is initialized (user clicked a
+   * button), we can seed initial data on the device. When the user restores
+   * their {@link AppOwner} on a different device (again, by clicking a button),
+   * we should not use onInit at all to avoid data duplication.
+   *
+   * If we need to store device-specific information (whether an owner was
+   * created, how many owners exist on the instance, etc.), we can use a
+   * local-only Evolu instance.
+   *
+   * ```ts
+   * // Local-only instance for device settings (no sync)
+   * const deviceEvolu = createEvolu(evoluReactWebDeps)(DeviceSchema, {
+   *   name: SimpleName.fromOrThrow("MyApp-Device"),
+   *   transports: [], // No sync - stays local to device
+   * });
+   *
+   * const createNewAppOwner = () => {
+   *   const evolu = createEvolu(evoluReactWebDeps)(Schema, {
+   *     onInit: () => {
+   *       const todoCategoryId = getOrThrow(
+   *         evolu.insert("todoCategory", {
+   *           name: "Not Urgent",
+   *         }),
+   *       );
+   *       evolu.insert("todo", {
+   *         title: "Try React Suspense",
+   *         categoryId: todoCategoryId.id,
+   *       });
+   *     },
+   *   });
+   * };
+   *
+   * const restoreAppOwner = () => {
+   *   const evolu = createEvolu(evoluReactWebDeps)(Schema, {
+   *     externalAppOwner: appOwner,
+   *   });
+   * };
+   * ```
+   *
+   * #### Implicit initial data seeding
+   *
+   * If the {@link AppOwner} is always provided from an external source, and we
+   * don't know whether we're creating or restoring it, and we still want
+   * initial data, then we must upsert it with stable deterministic IDs derived
+   * from the AppOwner.
+   *
+   * ```ts
+   * const setupAppOwner = () => {
+   *   const evolu = createEvolu(evoluReactWebDeps)(Schema, {
+   *     externalAppOwner: appOwner,
+   *     onInit: ({ appOwner }) => {
+   *       // Derive deterministic ShardOwner for data
+   *       // TODO:
+   *     },
+   *   });
+   * };
+   * ```
+   */
+  readonly onInit?: (params: {
+    readonly appOwner: AppOwner;
+    readonly isFirst: boolean;
+  }) => void;
+
+  /** A */
+  readonly onMessage?: onMessage;
+}
+
+/** B */
+export type onMessage = (message: CrdtMessage) => Promise<boolean>;
 
 export interface Evolu<S extends EvoluSchema = EvoluSchema> {
   /**
@@ -488,93 +581,6 @@ export type EvoluDeps = ConsoleDep &
   Partial<FlushSyncDep> &
   ReloadAppDep &
   TimeDep;
-
-export interface EvoluConfig extends DbConfig {
-  /**
-   * Callback invoked when Evolu is successfully initialized.
-   *
-   * Useful for showing welcome messages and initial data seeding.
-   *
-   * ### Examples
-   *
-   * #### Welcome message
-   *
-   * ```ts
-   * const evolu = createEvolu(evoluReactWebDeps)(Schema, {
-   *   onInit: ({ isFirst }) => {
-   *     // Show welcome message only once when DB is initialized on a device
-   *     if (isFirst) {
-   *       alert("Welcome to your new local-first app!");
-   *     }
-   *   },
-   * });
-   * ```
-   *
-   * #### Explicit initial data seeding
-   *
-   * When we know it's the first time the app is initialized (user clicked a
-   * button), we can seed initial data on the device. When the user restores
-   * their {@link AppOwner} on a different device (again, by clicking a button),
-   * we should not use onInit at all to avoid data duplication.
-   *
-   * If we need to store device-specific information (whether an owner was
-   * created, how many owners exist on the instance, etc.), we can use a
-   * local-only Evolu instance.
-   *
-   * ```ts
-   * // Local-only instance for device settings (no sync)
-   * const deviceEvolu = createEvolu(evoluReactWebDeps)(DeviceSchema, {
-   *   name: SimpleName.fromOrThrow("MyApp-Device"),
-   *   transports: [], // No sync - stays local to device
-   * });
-   *
-   * const createNewAppOwner = () => {
-   *   const evolu = createEvolu(evoluReactWebDeps)(Schema, {
-   *     onInit: () => {
-   *       const todoCategoryId = getOrThrow(
-   *         evolu.insert("todoCategory", {
-   *           name: "Not Urgent",
-   *         }),
-   *       );
-   *       evolu.insert("todo", {
-   *         title: "Try React Suspense",
-   *         categoryId: todoCategoryId.id,
-   *       });
-   *     },
-   *   });
-   * };
-   *
-   * const restoreAppOwner = () => {
-   *   const evolu = createEvolu(evoluReactWebDeps)(Schema, {
-   *     externalAppOwner: appOwner,
-   *   });
-   * };
-   * ```
-   *
-   * #### Implicit initial data seeding
-   *
-   * If the {@link AppOwner} is always provided from an external source, and we
-   * don't know whether we're creating or restoring it, and we still want
-   * initial data, then we must upsert it with stable deterministic IDs derived
-   * from the AppOwner.
-   *
-   * ```ts
-   * const setupAppOwner = () => {
-   *   const evolu = createEvolu(evoluReactWebDeps)(Schema, {
-   *     externalAppOwner: appOwner,
-   *     onInit: ({ appOwner }) => {
-   *       // Derive deterministic ShardOwner for data
-   *       // TODO:
-   *     },
-   *   });
-   * };
-   * ```
-   */
-  readonly onInit?: (params: {
-    readonly appOwner: AppOwner;
-    readonly isFirst: boolean;
-  }) => void;
-}
 
 // For hot reloading and Evolu multitenancy.
 const evoluInstances = new Map<string, InternalEvoluInstance>();
