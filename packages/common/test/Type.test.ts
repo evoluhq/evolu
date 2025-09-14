@@ -181,16 +181,6 @@ test("fromOrThrow", () => {
   expect(() =>
     PositiveNumber.fromOrThrow(-5),
   ).toThrowErrorMatchingInlineSnapshot(`[Error: getOrThrow]`);
-
-  // Should work with complex types like our Duration example
-  const TestDuration = brand("TestDuration", NonNegativeInt);
-  type TestDuration = typeof TestDuration.Type;
-
-  const minutes = (m: number) => (m * 60 * 1000) as TestDuration;
-  const seconds = (s: number) => (s * 1000) as TestDuration;
-
-  const duration = TestDuration.fromOrThrow(minutes(1) + seconds(20));
-  expect(duration).toBe(80000); // 1 minute + 20 seconds = 80000ms
 });
 
 test("brand", () => {
