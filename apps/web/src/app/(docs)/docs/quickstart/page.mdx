@@ -143,7 +143,7 @@ import { createUseEvolu, EvoluProvider } from "@evolu/react";
 import { evoluReactWebDeps } from "@evolu/react-web";
 
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
-  name: SimpleName.fromOrThrow("your-app-name"),
+  name: SimpleName.orThrow("your-app-name"),
   transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
 
@@ -165,7 +165,7 @@ import { createUseEvolu, EvoluProvider } from "@evolu/react";
 import { evoluReactNativeDeps } from "@evolu/react-native/op-sqlite";
 
 const evolu = createEvolu(evoluReactNativeDeps)(Schema, {
- name: SimpleName.fromOrThrow("your-app-name"),
+ name: SimpleName.orThrow("your-app-name"),
  transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
 
@@ -187,7 +187,7 @@ import { createUseEvolu, EvoluProvider } from "@evolu/react";
 import { evoluReactNativeDeps } from "@evolu/react-native/expo-sqlite";
 
 const evolu = createEvolu(evoluReactNativeDeps)(Schema, {
- name: SimpleName.fromOrThrow("your-app-name"),
+ name: SimpleName.orThrow("your-app-name"),
  transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
 
@@ -208,7 +208,7 @@ import { createEvolu, getOrThrow, SimpleName } from "@evolu/common";
 import { evoluSvelteDeps } from "@evolu/svelte";
 
 const evolu = createEvolu(evoluSvelteDeps)(Schema, {
-  name: SimpleName.fromOrThrow("your-app-name"),
+  name: SimpleName.orThrow("your-app-name"),
   transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
 ```
@@ -218,7 +218,7 @@ import { createEvolu, getOrThrow, SimpleName } from "@evolu/common";
 import { evoluWebDeps } from "@evolu/web";
 
 const evolu = createEvolu(evoluWebDeps)(Schema, {
-  name: SimpleName.fromOrThrow("your-app-name"),
+  name: SimpleName.orThrow("your-app-name"),
   transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
 ```

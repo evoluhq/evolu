@@ -72,7 +72,7 @@ test("padmePaddedLength", () => {
 });
 
 test("createSlip21", () => {
-  const mnemonic = Mnemonic.fromOrThrow(
+  const mnemonic = Mnemonic.orThrow(
     "all all all all all all all all all all all all",
   );
   const ownerSecret = mnemonicToOwnerSecret(mnemonic);

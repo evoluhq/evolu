@@ -115,15 +115,15 @@ export const createWriteKey = (deps: RandomBytesDep): WriteKey =>
  * - {@link createSharedReadonlyOwner}
  */
 export const createOwner = (secret: OwnerSecret): Owner => {
-  const id = OwnerId.fromOrThrow(
+  const id = OwnerId.orThrow(
     createIdFromHash(createSlip21(secret, ["Evolu", "Owner Id"])),
   );
 
-  const encryptionKey = EncryptionKey.fromOrThrow(
+  const encryptionKey = EncryptionKey.orThrow(
     createSlip21(secret, ["Evolu", "Encryption Key"]),
   );
 
-  const writeKey = WriteKey.fromOrThrow(
+  const writeKey = WriteKey.orThrow(
     createSlip21(secret, ["Evolu", "Write Key"]).slice(0, 16),
   );
 

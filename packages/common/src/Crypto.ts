@@ -142,7 +142,7 @@ export interface SymmetricCryptoDecryptError {
 export const createSymmetricCrypto = (
   deps: RandomBytesDep,
 ): SymmetricCrypto => {
-  const nonceLength = NonNegativeInt.fromOrThrow(24);
+  const nonceLength = NonNegativeInt.orThrow(24);
 
   const symmetricCrypto: SymmetricCrypto = {
     nonceLength,

@@ -175,7 +175,7 @@ test("calls onRetry during reconnection attempts", async () => {
   });
 
   const socket = createWebSocket(INVALID_URL, {
-    retryOptions: { retries: PositiveInt.fromOrThrow(1), onRetry },
+    retryOptions: { retries: PositiveInt.orThrow(1), onRetry },
   });
 
   const error = await promise;
@@ -377,7 +377,7 @@ test("respects maxRetries limit", async () => {
 
   const socket = createWebSocket(INVALID_URL, {
     retryOptions: {
-      retries: PositiveInt.fromOrThrow(MAX_RETRIES),
+      retries: PositiveInt.orThrow(MAX_RETRIES),
       onRetry,
     },
     onError: (error) => {
@@ -415,7 +415,7 @@ test("aborts connection attempts when disposed", async () => {
 
   const socket = createWebSocket(INVALID_URL, {
     retryOptions: {
-      retries: PositiveInt.fromOrThrow(1),
+      retries: PositiveInt.orThrow(1),
       onRetry: (error) => {
         onRetry(error);
         retryCallCount++;
@@ -458,7 +458,7 @@ test("retries only on specific error types", async () => {
 
   const socket = createWebSocket(INVALID_URL, {
     retryOptions: {
-      retries: PositiveInt.fromOrThrow(1),
+      retries: PositiveInt.orThrow(1),
       onRetry: (error) => {
         onRetry(error);
       },
@@ -499,7 +499,7 @@ test("retries with increasing delays", async () => {
       // Use specific backoff parameters for predictable testing
       initialDelay: "10ms",
       factor: 2,
-      retries: PositiveInt.fromOrThrow(3),
+      retries: PositiveInt.orThrow(3),
       onRetry: (_error, _attempt, delay) => {
         delays.push(delay);
         if (delays.length === 3) {
@@ -563,7 +563,7 @@ test("should not retry on invalid payload data close code", async () => {
       openResolve(undefined);
     },
     retryOptions: {
-      retries: PositiveInt.fromOrThrow(1),
+      retries: PositiveInt.orThrow(1),
       retryable: retryablePredicate,
       onRetry,
     },

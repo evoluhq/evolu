@@ -176,11 +176,11 @@ test("Base Types", () => {
   // TODO: Test other Base Types.
 });
 
-test("fromOrThrow", () => {
-  expect(PositiveNumber.fromOrThrow(42)).toBe(42);
-  expect(() =>
-    PositiveNumber.fromOrThrow(-5),
-  ).toThrowErrorMatchingInlineSnapshot(`[Error: getOrThrow]`);
+test("orThrow", () => {
+  expect(PositiveNumber.orThrow(42)).toBe(42);
+  expect(() => PositiveNumber.orThrow(-5)).toThrowErrorMatchingInlineSnapshot(
+    `[Error: getOrThrow]`,
+  );
 });
 
 test("brand", () => {

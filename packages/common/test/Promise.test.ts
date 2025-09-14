@@ -284,7 +284,7 @@ describe("timeout", () => {
 describe("retry", () => {
   test("returns correct types based on context", async () => {
     const mockTask = toTask(() => Promise.resolve<Result<void, never>>(ok()));
-    const retryTask = retry({ retries: PositiveInt.fromOrThrow(1) }, mockTask);
+    const retryTask = retry({ retries: PositiveInt.orThrow(1) }, mockTask);
 
     // Without context: Result<void, RetryError<never>>
     const result1 = await retryTask();
@@ -304,7 +304,7 @@ describe("retry", () => {
 
   test("succeeds on first attempt", async () => {
     const mockTask = toTask(() => Promise.resolve<Result<void, never>>(ok()));
-    const retryTask = retry({ retries: PositiveInt.fromOrThrow(1) }, mockTask);
+    const retryTask = retry({ retries: PositiveInt.orThrow(1) }, mockTask);
 
     const result = await retryTask();
 
@@ -326,7 +326,7 @@ describe("retry", () => {
     });
 
     const retryTask = retry(
-      { retries: PositiveInt.fromOrThrow(2), initialDelay: "1ms" },
+      { retries: PositiveInt.orThrow(2), initialDelay: "1ms" },
       flakyTask,
     );
     const result = await retryTask();
@@ -342,7 +342,7 @@ describe("retry", () => {
     );
 
     const retryTask = retry(
-      { retries: PositiveInt.fromOrThrow(3), initialDelay: "1ms" },
+      { retries: PositiveInt.orThrow(3), initialDelay: "1ms" },
       failingTask,
     );
     const result = await retryTask();
@@ -367,7 +367,7 @@ describe("retry", () => {
     );
 
     const retryTask = retry(
-      { retries: PositiveInt.fromOrThrow(1), initialDelay: "20ms" },
+      { retries: PositiveInt.orThrow(1), initialDelay: "20ms" },
       slowTask,
     );
     const controller = new AbortController();
@@ -414,7 +414,7 @@ describe("retry", () => {
 
     const retryTask = retry(
       {
-        retries: PositiveInt.fromOrThrow(1),
+        retries: PositiveInt.orThrow(1),
         initialDelay: "1ms",
         retryable: (error) => error.type === "RetryableError",
       },
@@ -448,7 +448,7 @@ describe("retry", () => {
 
     const retryTask = retry(
       {
-        retries: PositiveInt.fromOrThrow(2),
+        retries: PositiveInt.orThrow(2),
         initialDelay: "1ms",
         onRetry,
       },
@@ -465,7 +465,7 @@ describe("retry", () => {
 
   test("handles already aborted signal", async () => {
     const task = toTask(() => Promise.resolve<Result<void, never>>(ok()));
-    const retryTask = retry({ retries: PositiveInt.fromOrThrow(1) }, task);
+    const retryTask = retry({ retries: PositiveInt.orThrow(1) }, task);
     const controller = new AbortController();
     controller.abort("already aborted");
 
@@ -494,7 +494,7 @@ describe("retry", () => {
 
     const result = await retry(
       {
-        retries: PositiveInt.fromOrThrow(3),
+        retries: PositiveInt.orThrow(3),
         initialDelay: "10ms", // Use small delays for fast test
         factor: 2,
         jitter: 0.1,
@@ -566,7 +566,7 @@ describe("retry", () => {
     // Use real short delays
     const result = await retry(
       {
-        retries: PositiveInt.fromOrThrow(3),
+        retries: PositiveInt.orThrow(3),
         initialDelay: "50ms", // 50ms initial delay
         factor: 2, // Double each time
         jitter: 0, // No jitter for predictable testing
@@ -613,7 +613,7 @@ describe("retry", () => {
     // Use a very short maxDelay to demonstrate the capping effect
     const result = await retry(
       {
-        retries: PositiveInt.fromOrThrow(3),
+        retries: PositiveInt.orThrow(3),
         initialDelay: "50ms", // 50ms initial delay
         factor: 10, // Would normally increase 50 -> 500 -> 5000, but maxDelay caps it
         maxDelay: "100ms", // Cap delays at 100ms
@@ -649,7 +649,7 @@ describe("retry", () => {
 
 describe("createSemaphore", () => {
   test("allows concurrent operations up to limit", async () => {
-    const semaphore = createSemaphore(PositiveInt.fromOrThrow(2));
+    const semaphore = createSemaphore(PositiveInt.orThrow(2));
     let runningCount = 0;
     let maxRunning = 0;
 
@@ -674,7 +674,7 @@ describe("createSemaphore", () => {
   });
 
   test("executes operations sequentially with limit of 1", async () => {
-    const semaphore = createSemaphore(PositiveInt.fromOrThrow(1));
+    const semaphore = createSemaphore(PositiveInt.orThrow(1));
     const events: Array<{
       id: number;
       event: "start" | "end";
@@ -706,7 +706,7 @@ describe("createSemaphore", () => {
   });
 
   test("fails fast on unexpected errors without releasing permits", async () => {
-    const semaphore = createSemaphore(PositiveInt.fromOrThrow(1));
+    const semaphore = createSemaphore(PositiveInt.orThrow(1));
 
     const failingOperation = () => {
       throw new Error("Unexpected error");
@@ -782,7 +782,7 @@ describe("createMutex", () => {
 
   test("behaves as semaphore with permit count of 1", async () => {
     const mutex = createMutex();
-    const semaphore = createSemaphore(PositiveInt.fromOrThrow(1));
+    const semaphore = createSemaphore(PositiveInt.orThrow(1));
 
     const mutexEvents: Array<string> = [];
     const semaphoreEvents: Array<string> = [];
@@ -879,7 +879,7 @@ describe("Examples", () => {
     mockFetch.mockResolvedValue(new Response("success"));
 
     const fetchWithRetry = (url: string) =>
-      retry({ retries: PositiveInt.fromOrThrow(3) }, fetchTask(url));
+      retry({ retries: PositiveInt.orThrow(3) }, fetchTask(url));
 
     const result1 = await fetchWithRetry("https://api.example.com/data")();
     expectTypeOf(result1).toEqualTypeOf<

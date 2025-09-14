@@ -102,7 +102,7 @@ const formatTypeError = createFormatTypeError<
 });
 
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
-  name: SimpleName.fromOrThrow("evolu-react-vite-pwa-example"),
+  name: SimpleName.orThrow("evolu-react-vite-pwa-example"),
   reloadUrl: "/",
 
   ...(process.env.NODE_ENV === "development" && {

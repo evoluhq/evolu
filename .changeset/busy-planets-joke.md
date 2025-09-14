@@ -65,7 +65,7 @@ interface FetchError {
   readonly error: unknown;
 }
 const task = fetchTask("/api");
-const withRetry = retry({ retries: PositiveInt.fromOrThrow(3) }, task);
+const withRetry = retry({ retries: PositiveInt.orThrow(3) }, task);
 const r = await withRetry(); // Result<Response, FetchError | RetryError<FetchError>>
 ```
 

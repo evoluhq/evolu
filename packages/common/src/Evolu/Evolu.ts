@@ -96,7 +96,7 @@ export interface EvoluConfig extends DbConfig {
    * ```ts
    * // Local-only instance for device settings (no sync)
    * const deviceEvolu = createEvolu(evoluReactWebDeps)(DeviceSchema, {
-   *   name: SimpleName.fromOrThrow("MyApp-Device"),
+   *   name: SimpleName.orThrow("MyApp-Device"),
    *   transports: [], // No sync - stays local to device
    * });
    *

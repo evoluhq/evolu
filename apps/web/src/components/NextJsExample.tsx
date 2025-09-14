@@ -80,7 +80,7 @@ const Schema = {
 
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   reloadUrl: "/docs/examples/react/nextjs",
-  name: SimpleName.fromOrThrow("evolu-nextjs-example-v200825"),
+  name: SimpleName.orThrow("evolu-nextjs-example-v200825"),
 
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "http://localhost:4000" }],

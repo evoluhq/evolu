@@ -79,7 +79,7 @@ test("timestampToTimestampString", () => {
   );
 });
 
-const makeMillis = (millis: number): Millis => Millis.fromOrThrow(millis);
+const makeMillis = (millis: number): Millis => Millis.orThrow(millis);
 
 const deps0: TimeDep & TimestampConfigDep = {
   time: { now: () => minMillis },
@@ -330,7 +330,7 @@ describe("receiveTimestamp", () => {
     );
     const t2 = timestampToBinaryTimestamp(
       createTimestamp({
-        millis: Millis.fromOrThrow(increment(minMillis)),
+        millis: Millis.orThrow(increment(minMillis)),
       }),
     );
     expect(orderBinaryTimestamp(t1, t2)).toBe(-1);
@@ -342,7 +342,7 @@ describe("receiveTimestamp", () => {
     );
     const t4 = timestampToBinaryTimestamp(
       createTimestamp({
-        counter: Counter.fromOrThrow(increment(minCounter)),
+        counter: Counter.orThrow(increment(minCounter)),
       }),
     );
     expect(orderBinaryTimestamp(t3, t4)).toBe(-1);

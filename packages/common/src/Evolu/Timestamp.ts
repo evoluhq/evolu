@@ -253,7 +253,7 @@ export const receiveTimestamp =
 /** BinaryTimestamp is a binary and sortable version of {@link Timestamp} for DB. */
 export type BinaryTimestamp = Uint8Array & Brand<"BinaryTimestamp">;
 
-export const binaryTimestampLength = NonNegativeInt.fromOrThrow(16);
+export const binaryTimestampLength = NonNegativeInt.orThrow(16);
 
 export const timestampToBinaryTimestamp = (
   timestamp: Timestamp,

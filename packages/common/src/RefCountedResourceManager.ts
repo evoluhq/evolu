@@ -253,7 +253,7 @@ export const createRefCountedResourceManager = <
 
         const currentCount = counts.get(consumerId) ?? 0;
         const newCount = currentCount + 1;
-        counts.set(consumerId, PositiveInt.fromOrThrow(newCount));
+        counts.set(consumerId, PositiveInt.orThrow(newCount));
 
         // Call onConsumerAdded callback only when consumer is added for the first time (0 -> 1)
         if (currentCount === 0 && config.onConsumerAdded) {
@@ -302,7 +302,7 @@ export const createRefCountedResourceManager = <
             scheduleDisposal(key);
           }
         } else {
-          counts.set(consumerId, PositiveInt.fromOrThrow(currentCount - 1));
+          counts.set(consumerId, PositiveInt.orThrow(currentCount - 1));
         }
       }
 

@@ -62,7 +62,7 @@
 
   const evolu = createEvolu(evoluSvelteDeps)(DatabaseSchema, {
     reloadUrl: "/",
-    name: SimpleName.fromOrThrow("evolu-svelte-example"),
+    name: SimpleName.orThrow("evolu-svelte-example"),
 
     ...(process.env.NODE_ENV === "development" && {
       transports: [{ type: "WebSocket", url: "http://localhost:4000" }],

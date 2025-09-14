@@ -43,7 +43,7 @@ const Schema = {
 
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   reloadUrl: "/playgrounds/minimal",
-  name: SimpleName.fromOrThrow("evolu-playground-minimal-v2"),
+  name: SimpleName.orThrow("evolu-playground-minimal-v2"),
 
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "http://localhost:4000" }],

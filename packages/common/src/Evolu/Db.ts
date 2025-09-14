@@ -78,7 +78,7 @@ export interface DbConfig extends ConsoleConfig, TimestampConfig {
    * ### Example
    *
    * ```ts
-   * // name: SimpleName.fromOrThrow("MyApp")
+   * // name: SimpleName.orThrow("MyApp")
    * ```
    */
   readonly name: SimpleName;
@@ -168,13 +168,13 @@ export interface DbConfig extends ConsoleConfig, TimestampConfig {
    *
    * // Local-only instance for device settings (no sync)
    * const deviceEvolu = createEvolu(evoluReactWebDeps)(DeviceSchema, {
-   *   name: SimpleName.fromOrThrow("MyApp-Device"),
+   *   name: SimpleName.orThrow("MyApp-Device"),
    *   transports: [], // No sync - stays local to device
    * });
    *
    * // Main synced instance for user data
    * const evolu = createEvolu(evoluReactWebDeps)(MainSchema, {
-   *   name: SimpleName.fromOrThrow("MyApp"),
+   *   name: SimpleName.orThrow("MyApp"),
    *   // Default transports for sync
    * });
    * ```
@@ -194,7 +194,7 @@ export interface DbConfig extends ConsoleConfig, TimestampConfig {
 }
 
 export const defaultDbConfig: DbConfig = {
-  name: SimpleName.fromOrThrow("Evolu"),
+  name: SimpleName.orThrow("Evolu"),
   transports: [{ type: "WebSocket", url: "wss://free.evoluhq.com" }],
   reloadUrl: "/",
   maxDrift: 5 * 60 * 1000,

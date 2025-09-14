@@ -272,7 +272,7 @@ export interface RetryError<E> {
  *   );
  *
  * const fetchWithRetry = (url: string) =>
- *   retry({ retries: PositiveInt.fromOrThrow(3) }, fetchTask(url));
+ *   retry({ retries: PositiveInt.orThrow(3) }, fetchTask(url));
  *
  * const result1 = await fetchWithRetry("https://api.example.com/data")();
  * expectTypeOf(result1).toEqualTypeOf<
@@ -306,7 +306,7 @@ export const retry = <T, E>(
 
     const initialDelayMs = durationToNonNegativeInt(initialDelay);
     const maxDelayMs = durationToNonNegativeInt(maxDelay);
-    const maxRetries = PositiveInt.fromOrThrow(retries);
+    const maxRetries = PositiveInt.orThrow(retries);
 
     let attempt = 0;
 
