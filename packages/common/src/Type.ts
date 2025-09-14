@@ -117,13 +117,42 @@ export interface Type<
    *
    * This is a convenience method that combines `from` with `getOrThrow`.
    *
+   * **When to use:**
+   *
+   * - Configuration values that are guaranteed to be valid (e.g., hardcoded
+   *   constants)
+   * - Application startup where failure should crash the program
+   * - Test code with known valid inputs
+   * - Converting from trusted sources where validation failure indicates a
+   *   programming error
+   *
+   * **When NOT to use:**
+   *
+   * - User input validation - use `from` and handle errors gracefully
+   * - Data from external APIs or files - use `from` for proper error handling
+   * - Any scenario where you want to recover from validation errors
+   * - Library code that should return Results rather than throw
+   *
    * ### Example
    *
    * ```ts
-   * const foo = PositiveNumber.fromOrThrow(42);
+   * // ✅ Good: Known valid constant
+   * const maxRetries = PositiveInt.orThrow(3);
+   *
+   * // ✅ Good: App configuration that should crash on invalid values
+   * const appName = SimpleName.orThrow("MyApp");
+   *
+   * // ❌ Avoid: User input (use `from` instead)
+   * const userAge = PositiveInt.orThrow(userInput); // Could crash!
+   *
+   * // ✅ Better: Handle user input gracefully
+   * const ageResult = PositiveInt.from(userInput);
+   * if (!ageResult.ok) {
+   *   // Handle validation error
+   * }
    * ```
    */
-  readonly fromOrThrow: (value: Input) => T;
+  readonly orThrow: (value: Input) => T;
 
   /**
    * Creates `T` from an unknown value.
@@ -330,7 +359,7 @@ const createType = <
     | "name"
     | "is"
     | "from"
-    | "fromOrThrow"
+    | "orThrow"
     | typeof EvoluTypeSymbol
     | "Type"
     | "Input"
@@ -344,7 +373,7 @@ const createType = <
   name,
   is: (value: unknown): value is T => definition.fromUnknown(value).ok,
   from: definition.fromUnknown,
-  fromOrThrow: (value: Input): T => getOrThrow(definition.fromUnknown(value)),
+  orThrow: (value: Input): T => getOrThrow(definition.fromUnknown(value)),
   [EvoluTypeSymbol]: true,
   Type: undefined as unknown as T,
   Input: undefined as unknown as Input,
@@ -1784,7 +1813,7 @@ export const PositiveInt = positive(NonNegativeInt);
 export type PositiveInt = typeof PositiveInt.Type;
 
 /** Maximum safe positive integer value for practically infinite operations. */
-export const maxPositiveInt = PositiveInt.fromOrThrow(
+export const maxPositiveInt = PositiveInt.orThrow(
   globalThis.Number.MAX_SAFE_INTEGER,
 );
 
