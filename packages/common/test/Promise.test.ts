@@ -10,13 +10,16 @@ import {
   toTask,
   wait,
 } from "../src/Promise.js";
-import { err, ok, Result, tryAsync } from "../src/Result.js";
+import { err, getOrThrow, ok, Result, tryAsync } from "../src/Result.js";
 import { NonNegativeInt, PositiveInt } from "../src/Type.js";
 
 describe("toTask", () => {
   test("returns correct types based on context", async () => {
     const mockFn = () => Promise.resolve<Result<void, never>>(ok());
     const task = toTask(mockFn);
+
+    // const task: Task<void, never>
+    // How to get JSDoc here?
 
     // Without context: Result<void, never> (no AbortError possible)
     const result1 = await task();
@@ -259,9 +262,9 @@ describe("timeout", () => {
   test("cancels underlying task when timeout fires", async () => {
     let taskAborted = false;
     const slowTask = toTask(
-      (signal) =>
+      (context) =>
         new Promise<Result<string, never>>((resolve) => {
-          signal?.addEventListener("abort", () => {
+          context?.signal?.addEventListener("abort", () => {
             taskAborted = true;
           });
 
@@ -648,32 +651,33 @@ describe("retry", () => {
 });
 
 describe("createSemaphore", () => {
-  test("allows concurrent operations up to limit", async () => {
+  test("allows concurrent Tasks up to limit", async () => {
     const semaphore = createSemaphore(PositiveInt.orThrow(2));
     let runningCount = 0;
     let maxRunning = 0;
 
-    const operation = async (duration: number) => {
-      runningCount++;
-      maxRunning = Math.max(maxRunning, runningCount);
-      await wait(duration as NonNegativeInt)();
-      runningCount--;
-      return runningCount;
-    };
+    const task = (duration: number) =>
+      toTask<number, never>(async () => {
+        runningCount++;
+        maxRunning = Math.max(maxRunning, runningCount);
+        await wait(duration as NonNegativeInt)();
+        runningCount--;
+        return ok(runningCount);
+      });
 
-    // Start 4 operations, but only 2 should run concurrently
+    // Start 4 Tasks, but only 2 should run concurrently
     await Promise.all([
-      semaphore.withPermit(() => operation(50)),
-      semaphore.withPermit(() => operation(50)),
-      semaphore.withPermit(() => operation(50)),
-      semaphore.withPermit(() => operation(50)),
+      semaphore.withPermit(task(50))(),
+      semaphore.withPermit(task(50))(),
+      semaphore.withPermit(task(50))(),
+      semaphore.withPermit(task(50))(),
     ]);
 
     // Should never have more than 2 running at once
     expect(maxRunning).toBe(2);
   });
 
-  test("executes operations sequentially with limit of 1", async () => {
+  test("executes Tasks sequentially with limit of 1", async () => {
     const semaphore = createSemaphore(PositiveInt.orThrow(1));
     const events: Array<{
       id: number;
@@ -681,20 +685,21 @@ describe("createSemaphore", () => {
       timestamp: number;
     }> = [];
 
-    const operation = async (id: number) => {
-      events.push({ id, event: "start", timestamp: Date.now() });
-      await wait("20ms")(); // Longer delay to ensure overlap would be detectable
-      events.push({ id, event: "end", timestamp: Date.now() });
-      return id;
-    };
+    const task = (id: number) =>
+      toTask<number, never>(async () => {
+        events.push({ id, event: "start", timestamp: Date.now() });
+        await wait("20ms")(); // Longer delay to ensure overlap would be detectable
+        events.push({ id, event: "end", timestamp: Date.now() });
+        return ok(id);
+      });
 
     await Promise.all([
-      semaphore.withPermit(() => operation(1)),
-      semaphore.withPermit(() => operation(2)),
-      semaphore.withPermit(() => operation(3)),
+      semaphore.withPermit(task(1))(),
+      semaphore.withPermit(task(2))(),
+      semaphore.withPermit(task(3))(),
     ]);
 
-    // Verify sequential execution: each operation must fully complete before the next starts
+    // Verify sequential execution: each Task must fully complete before the next starts
     expect(events).toEqual([
       expect.objectContaining({ id: 1, event: "start" }),
       expect.objectContaining({ id: 1, event: "end" }),
@@ -708,12 +713,12 @@ describe("createSemaphore", () => {
   test("fails fast on unexpected errors without releasing permits", async () => {
     const semaphore = createSemaphore(PositiveInt.orThrow(1));
 
-    const failingOperation = () => {
+    const failingTask = () => {
       throw new Error("Unexpected error");
     };
 
-    // Operation throws unexpected error - should bubble up
-    await expect(semaphore.withPermit(failingOperation)).rejects.toThrow(
+    // Task throws unexpected error - should bubble up
+    await expect(semaphore.withPermit(failingTask)).rejects.toThrow(
       "Unexpected error",
     );
 
@@ -722,61 +727,207 @@ describe("createSemaphore", () => {
     // attempt to recover from unexpected errors.
   });
 
-  test("example", async () => {
-    // Allow maximum 3 concurrent operations
-    const semaphore = createSemaphore(3);
+  test("aborting individual tasks", async () => {
+    // Allow maximum 3 concurrent Tasks
+    const semaphore = createSemaphore(PositiveInt.orThrow(3));
 
     let currentConcurrent = 0;
-    let maxConcurrent = 0;
     const events: Array<string> = [];
 
-    const fetchData = async (id: number): Promise<number> => {
-      currentConcurrent++;
-      maxConcurrent = Math.max(maxConcurrent, currentConcurrent);
-      events.push(`start ${id} (concurrent: ${currentConcurrent})`);
+    const fetchData = (id: number) =>
+      toTask<number, never>(async (context) => {
+        currentConcurrent++;
+        events.push(`start ${id} (concurrent: ${currentConcurrent})`);
 
-      await wait("50ms")();
+        await wait("100ms")(context);
 
-      currentConcurrent--;
-      events.push(`end ${id} (concurrent: ${currentConcurrent})`);
-      return id * 10;
-    };
+        currentConcurrent--;
+        events.push(`end ${id} (concurrent: ${currentConcurrent})`);
+        return ok(id * 10);
+      });
+
+    // Create individual controllers for some tasks
+    const controller2 = new AbortController();
+    const controller4 = new AbortController();
+
+    // Start multiple tasks, some with individual abort controllers
+    const promises = [
+      semaphore.withPermit(fetchData(1))(), // No individual controller
+      semaphore.withPermit(fetchData(2))(controller2), // Individual controller - will be running
+      semaphore.withPermit(fetchData(3))(), // No individual controller
+      semaphore.withPermit(fetchData(4))(controller4), // Individual controller - will be pending
+      semaphore.withPermit(fetchData(5))(), // No individual controller - will be pending
+    ];
+
+    // Give tasks time to start (1, 2, 3 should be running, 4, 5 pending)
+    await wait("20ms")();
+
+    // Abort task 2 while it's running
+    controller2.abort("Individual abort task 2");
+
+    // Abort task 4 while it's pending (hasn't started yet)
+    controller4.abort("Individual abort task 4");
+
+    // Wait for all tasks to complete or abort
+    const results = await Promise.all(promises);
+
+    // Check results
+    expect(results[0]).toEqual(ok(10)); // Task 1 should succeed
+    expect(results[1]).toEqual(
+      err({ type: "AbortError", reason: "Individual abort task 2" }),
+    );
+    expect(results[2]).toEqual(ok(30)); // Task 3 should succeed
+    expect(results[3]).toEqual(
+      err({ type: "AbortError", reason: "Individual abort task 4" }),
+    );
+    expect(results[4]).toEqual(ok(50)); // Task 5 should succeed
+
+    // Verify the sequence of events - properly limited to 3 concurrent
+    // Note: aborted tasks may or may not reach "end" events depending on timing
+    expect(events).toMatchInlineSnapshot(`
+      [
+        "start 1 (concurrent: 1)",
+        "start 2 (concurrent: 2)",
+        "start 3 (concurrent: 3)",
+        "end 2 (concurrent: 2)",
+        "start 5 (concurrent: 3)",
+        "end 1 (concurrent: 2)",
+        "end 3 (concurrent: 1)",
+        "end 5 (concurrent: 0)",
+      ]
+    `);
+  });
+
+  test("disposal cancels tasks", async () => {
+    const semaphore = createSemaphore(PositiveInt.orThrow(1));
+
+    const slowTask = wait("100ms");
+    const waitingTask = wait("10ms");
+
+    // Start a slow task that will hold the permit
+    const firstPromise = semaphore.withPermit(slowTask)();
+
+    // Start a second task that will wait for permit
+    const secondPromise = semaphore.withPermit(waitingTask)();
+
+    // Give tasks time to start
+    await wait("20ms")();
+
+    // Dispose the semaphore while second task is waiting
+    semaphore[Symbol.dispose]();
+
+    // Running task should be cancelled with AbortError
+    expect(await firstPromise).toEqual(
+      err({
+        type: "AbortError",
+        reason: "Semaphore disposed",
+      }),
+    );
+
+    // Waiting task should be cancelled with AbortError
+    expect(await secondPromise).toEqual(
+      err({
+        type: "AbortError",
+        reason: "Semaphore disposed",
+      }),
+    );
+  });
+
+  test("disposal prevents new Tasks from being accepted", async () => {
+    const semaphore = createSemaphore(PositiveInt.orThrow(1));
+
+    // Dispose the semaphore
+    semaphore[Symbol.dispose]();
+
+    const task = toTask(() => Promise.resolve(ok("should-not-run")));
+
+    // Try to execute a task on disposed semaphore
+    const result = await semaphore.withPermit(task)();
+
+    expect(result).toEqual(
+      err({
+        type: "AbortError",
+        reason: "Semaphore disposed",
+      }),
+    );
+  });
+
+  test("disposal is idempotent", () => {
+    const semaphore = createSemaphore(PositiveInt.orThrow(1));
+
+    // Multiple disposals should not throw
+    expect(() => {
+      semaphore[Symbol.dispose]();
+      semaphore[Symbol.dispose]();
+      semaphore[Symbol.dispose]();
+    }).not.toThrow();
+  });
+
+  test("example", async () => {
+    // Allow maximum 3 concurrent Tasks
+    const semaphore = createSemaphore(PositiveInt.orThrow(3));
+
+    let currentConcurrent = 0;
+    const events: Array<string> = [];
+
+    const fetchData = (id: number) =>
+      toTask<number, never>(async (context) => {
+        currentConcurrent++;
+        events.push(`start ${id} (concurrent: ${currentConcurrent})`);
+
+        await wait("10ms")(context);
+
+        currentConcurrent--;
+        events.push(`end ${id} (concurrent: ${currentConcurrent})`);
+        return ok(id * 10);
+      });
 
     // These will execute with at most 3 running concurrently
     const results = await Promise.all([
-      semaphore.withPermit(() => fetchData(1)),
-      semaphore.withPermit(() => fetchData(2)),
-      semaphore.withPermit(() => fetchData(3)),
-      semaphore.withPermit(() => fetchData(4)), // waits for one above to complete
-      semaphore.withPermit(() => fetchData(5)), // waits for permit
+      semaphore.withPermit(fetchData(1))(),
+      semaphore.withPermit(fetchData(2))(),
+      semaphore.withPermit(fetchData(3))(),
+      semaphore.withPermit(fetchData(4))(), // waits for one above to complete
+      semaphore.withPermit(fetchData(5))(), // waits for permit
     ]);
 
-    expect(results).toEqual([10, 20, 30, 40, 50]);
-    expect(maxConcurrent).toBe(3); // Never exceeded the limit
-    expect(
-      events.filter((e) => e.includes("concurrent: 3")).length,
-    ).toBeGreaterThan(0);
+    expect(results.map(getOrThrow)).toEqual([10, 20, 30, 40, 50]);
+    expect(events).toMatchInlineSnapshot(`
+      [
+        "start 1 (concurrent: 1)",
+        "start 2 (concurrent: 2)",
+        "start 3 (concurrent: 3)",
+        "end 1 (concurrent: 2)",
+        "start 4 (concurrent: 3)",
+        "end 2 (concurrent: 2)",
+        "start 5 (concurrent: 3)",
+        "end 3 (concurrent: 2)",
+        "end 4 (concurrent: 1)",
+        "end 5 (concurrent: 0)",
+      ]
+    `);
   });
 });
 
 describe("createMutex", () => {
-  test("executes operations sequentially", async () => {
+  test("executes Tasks sequentially", async () => {
     const mutex = createMutex();
     const events: Array<string> = [];
 
-    const operation = async (id: number) => {
-      events.push(`start-${id}`);
-      await wait("10ms")();
-      events.push(`end-${id}`);
-      return id;
-    };
+    const task = (id: number) =>
+      toTask(async () => {
+        events.push(`start-${id}`);
+        await wait("10ms")();
+        events.push(`end-${id}`);
+        return ok(id);
+      });
 
     const results = await Promise.all([
-      mutex.withLock(() => operation(1)),
-      mutex.withLock(() => operation(2)),
+      mutex.withLock(task(1))(),
+      mutex.withLock(task(2))(),
     ]);
 
-    expect(results).toEqual([1, 2]);
+    expect(results.map((r) => (r.ok ? r.value : null))).toEqual([1, 2]);
     expect(events).toEqual(["start-1", "end-1", "start-2", "end-2"]);
   });
 
@@ -787,25 +938,95 @@ describe("createMutex", () => {
     const mutexEvents: Array<string> = [];
     const semaphoreEvents: Array<string> = [];
 
-    const operation = async (id: number, events: Array<string>) => {
-      events.push(`start-${id}`);
-      await wait("10ms")();
-      events.push(`end-${id}`);
-      return id;
-    };
+    const task = (id: number, events: Array<string>) =>
+      toTask(async () => {
+        events.push(`start-${id}`);
+        await wait("10ms")();
+        events.push(`end-${id}`);
+        return ok(id);
+      });
 
     await Promise.all([
-      mutex.withLock(() => operation(1, mutexEvents)),
-      mutex.withLock(() => operation(2, mutexEvents)),
+      mutex.withLock(task(1, mutexEvents))(),
+      mutex.withLock(task(2, mutexEvents))(),
     ]);
 
     await Promise.all([
-      semaphore.withPermit(() => operation(1, semaphoreEvents)),
-      semaphore.withPermit(() => operation(2, semaphoreEvents)),
+      semaphore.withPermit(task(1, semaphoreEvents))(),
+      semaphore.withPermit(task(2, semaphoreEvents))(),
     ]);
 
     // Both should exhibit identical behavior
     expect(mutexEvents).toEqual(semaphoreEvents);
+  });
+
+  test("disposal cancels running and waiting tasks", async () => {
+    const mutex = createMutex();
+
+    const slowTask = wait("100ms");
+    const waitingTask = wait("10ms");
+
+    // Start a slow task that will hold the lock
+    const firstPromise = mutex.withLock(slowTask)();
+
+    // Start a second task that will wait for lock
+    const secondPromise = mutex.withLock(waitingTask)();
+
+    // Give tasks time to start
+    await wait("20ms")();
+
+    // Dispose the mutex while second task is waiting
+    mutex[Symbol.dispose]();
+
+    // Running task should be cancelled with AbortError
+    const firstResult = await firstPromise;
+    expect(firstResult).toEqual(
+      err({
+        type: "AbortError",
+        reason: "Semaphore disposed",
+      }),
+    );
+
+    // Waiting task should be cancelled with AbortError
+    const secondResult = await secondPromise;
+    expect(secondResult).toEqual(
+      err({
+        type: "AbortError",
+        reason: "Semaphore disposed",
+      }),
+    );
+  });
+
+  test("disposal prevents new Tasks from being accepted", async () => {
+    const mutex = createMutex();
+
+    // Dispose the mutex
+    mutex[Symbol.dispose]();
+
+    const task = toTask(() => {
+      return Promise.resolve(ok("should-not-run"));
+    });
+
+    // Try to execute a task on disposed mutex
+    const result = await mutex.withLock(task)();
+
+    expect(result).toEqual(
+      err({
+        type: "AbortError",
+        reason: "Semaphore disposed",
+      }),
+    );
+  });
+
+  test("disposal is idempotent", () => {
+    const mutex = createMutex();
+
+    // Multiple disposals should not throw
+    expect(() => {
+      mutex[Symbol.dispose]();
+      mutex[Symbol.dispose]();
+      mutex[Symbol.dispose]();
+    }).not.toThrow();
   });
 });
 
@@ -823,9 +1044,9 @@ describe("Examples", () => {
   }
 
   const fetchTask = (url: string) =>
-    toTask((signal) =>
+    toTask((context) =>
       tryAsync(
-        () => fetch(url, { signal }),
+        () => fetch(url, { signal: context?.signal ?? null }),
         (error): FetchError => ({ type: "FetchError", error }),
       ),
     );
@@ -888,9 +1109,9 @@ describe("Examples", () => {
 
     // With AbortController
     const controller = new AbortController();
-    const result2 = await fetchWithRetry("https://api.example.com/data")({
-      signal: controller.signal,
-    });
+    const result2 = await fetchWithRetry("https://api.example.com/data")(
+      controller,
+    );
     expectTypeOf(result2).toEqualTypeOf<
       Result<Response, FetchError | RetryError<FetchError> | AbortError>
     >();

@@ -32,9 +32,9 @@ Tasks provide precise type safety for cancellation - AbortError is only included
 ```ts
 // Convert an async function to a Task<Result<T, E>> with AbortSignal support
 const fetchTask = (url: string) =>
-  toTask((signal) =>
+  toTask((context) =>
     tryAsync(
-      () => fetch(url, { signal }),
+      () => fetch(url, { signal: context?.signal ?? null })
       (error) => ({ type: "FetchError", error }),
     ),
   );

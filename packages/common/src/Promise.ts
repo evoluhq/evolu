@@ -15,28 +15,66 @@ import { Predicate } from "./Types.js";
  *
  * Tasks support cancellation via
  * [AbortSignal](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal).
- * When called without a signal, the operation cannot be cancelled and
- * AbortError will never be returned. When called with a signal, the operation
- * can be cancelled and AbortError is added to the error union with precise type
- * safety.
+ * When called without a signal, the Task cannot be cancelled and AbortError
+ * will never be returned. When called with a signal, the Task can be cancelled
+ * and AbortError is added to the error union with precise type safety.
  *
  * ### Task Helpers
  *
  * - {@link toTask} - Convert async function to Task
  * - {@link wait} - Delay execution for a specified duration
- * - {@link timeout} - Add timeout to any Task operation
- * - {@link retry} - Retry failed operations with configurable backoff
+ * - {@link timeout} - Add timeout to any Task
+ * - {@link retry} - Retry failed Tasks with configurable backoff
  */
-export type Task<T, E> = <TContext extends TaskContext | undefined = undefined>(
-  context?: TContext,
-) => Promise<
-  Result<T, TContext extends { signal: AbortSignal } ? E | AbortError : E>
->;
+export interface Task<T, E> {
+  /**
+   * Invoke the Task.
+   *
+   * Provide a context with an AbortSignal to enable cancellation. When called
+   * without a signal, {@link AbortError} cannot occur and the error type narrows
+   * accordingly.
+   *
+   * ### Example
+   *
+   * ```ts
+   * interface FetchError {
+   *   readonly type: "FetchError";
+   *   readonly error: unknown;
+   * }
+   *
+   * const fetchTask = (url: string) =>
+   *   toTask((context) =>
+   *     tryAsync(
+   *       () => fetch(url, { signal: context?.signal ?? null })
+   *       (error): FetchError => ({ type: "FetchError", error }),
+   *     ),
+   *   );
+   *
+   * const result1 = await fetchTask("https://api.example.com/data")();
+   * expectTypeOf(result1).toEqualTypeOf<Result<Response, FetchError>>();
+   *
+   * // With AbortController
+   * const controller = new AbortController();
+   * const result2 = await fetchTask("https://api.example.com/data")(
+   *   controller,
+   * );
+   * expectTypeOf(result2).toEqualTypeOf<
+   *   Result<Response, FetchError | AbortError>
+   * >();
+   * ```
+   */
+  // eslint-disable-next-line @typescript-eslint/prefer-function-type
+  <TContext extends TaskContext | undefined = undefined>(
+    context?: TContext,
+  ): Promise<
+    Result<T, TContext extends { signal: AbortSignal } ? E | AbortError : E>
+  >;
+}
 
-/** Context passed to {@link Task} operations for cancellation. */
+/** Context passed to {@link Task}s for cancellation. */
 export interface TaskContext {
   /** Signal for cancellation */
-  readonly signal?: AbortSignal | null;
+  readonly signal?: AbortSignal;
 }
 
 /** Error returned when a {@link Task} is cancelled via AbortSignal. */
@@ -44,6 +82,20 @@ export interface AbortError {
   readonly type: "AbortError";
   readonly reason?: unknown;
 }
+
+/**
+ * Combines user signal from context with an internal signal.
+ *
+ * If the context has a signal, combines both signals using AbortSignal.any().
+ * Otherwise, returns just the internal signal.
+ */
+const combineSignal = (
+  context: TaskContext | undefined,
+  internalSignal: AbortSignal,
+): AbortSignal =>
+  context?.signal
+    ? AbortSignal.any([context.signal, internalSignal])
+    : internalSignal;
 
 /**
  * Converts async function returning {@link Result} to a {@link Task}.
@@ -57,9 +109,9 @@ export interface AbortError {
  * }
  *
  * const fetchTask = (url: string) =>
- *   toTask((signal) =>
+ *   toTask((context) =>
  *     tryAsync(
- *       () => fetch(url, { signal }),
+ *       () => fetch(url, { signal: context?.signal ?? null })
  *       (error): FetchError => ({ type: "FetchError", error }),
  *     ),
  *   );
@@ -69,28 +121,30 @@ export interface AbortError {
  *
  * // With AbortController
  * const controller = new AbortController();
- * const result2 = await fetchTask("https://api.example.com/data")({
- *   signal: controller.signal,
- * });
+ * const result2 = await fetchTask("https://api.example.com/data")(
+ *   controller,
+ * );
  * expectTypeOf(result2).toEqualTypeOf<
  *   Result<Response, FetchError | AbortError>
  * >();
  * ```
  */
-export function toTask<T, E>(
-  fn: (signal: AbortSignal | null) => Promise<Result<T, E>>,
-): Task<T, E> {
-  return (async (context) => {
+export const toTask = <T, E>(
+  fn: (context?: TaskContext) => Promise<Result<T, E>>,
+): Task<T, E> =>
+  // Note: Not using async to avoid Promise wrapper overhead in fast path
+  ((context) => {
     const signal = context?.signal;
 
-    // Fast path when no signal
+    // Fast path when no signal - return promise directly
     if (!signal) {
-      return fn(null);
+      return fn();
     }
 
-    // Check if already aborted
     if (signal.aborted) {
-      return err({ type: "AbortError", reason: signal.reason as unknown });
+      return Promise.resolve(
+        err({ type: "AbortError", reason: signal.reason as unknown }),
+      );
     }
 
     // Use Promise.withResolvers for clean abort handling and cleanup
@@ -107,13 +161,12 @@ export function toTask<T, E>(
 
     return Promise.race([
       abortPromise,
-      fn(signal).then((result) => {
+      fn(context).then((result) => {
         signal.removeEventListener("abort", handleAbort);
         return result;
       }),
     ]);
   }) as Task<T, E>;
-}
 
 /**
  * Creates a {@link Task} that waits for the specified duration.
@@ -133,17 +186,15 @@ export function toTask<T, E>(
  */
 export const wait = (duration: Duration): Task<void, never> =>
   toTask(
-    (signal) =>
+    (context) =>
       new Promise<Result<void, never>>((resolve) => {
         const ms = durationToNonNegativeInt(duration);
         const timeoutSignal = AbortSignal.timeout(ms);
 
-        const combinedSignal = signal
-          ? AbortSignal.any([signal, timeoutSignal])
-          : timeoutSignal;
+        const signal = combineSignal(context, timeoutSignal);
 
         // Listen for abort - either from timeout completion or external abort
-        combinedSignal.addEventListener(
+        signal.addEventListener(
           "abort",
           () => {
             resolve(ok());
@@ -173,7 +224,7 @@ export interface TimeoutError {
  * const fetchTask = (url: string) =>
  *   toTask((signal) =>
  *     tryAsync(
- *       () => fetch(url, { signal }),
+ *       () => fetch(url, { signal: context?.signal ?? null })
  *       (error): FetchError => ({ type: "FetchError", error }),
  *     ),
  *   );
@@ -187,9 +238,9 @@ export interface TimeoutError {
  *
  * // With AbortController
  * const controller = new AbortController();
- * const result2 = await fetchWithTimeout("https://api.example.com/data")({
- *   signal: controller.signal,
- * });
+ * const result2 = await fetchWithTimeout("https://api.example.com/data")(
+ *   controller,
+ * );
  * expectTypeOf(result2).toEqualTypeOf<
  *   Result<Response, FetchError | TimeoutError | AbortError>
  * >();
@@ -199,18 +250,15 @@ export const timeout = <T, E>(
   duration: Duration,
   task: Task<T, E>,
 ): Task<T, E | TimeoutError> =>
-  toTask(async (signal) => {
+  toTask(async (context) => {
     const timeoutMs = durationToNonNegativeInt(duration);
     const timeoutSignal = AbortSignal.timeout(timeoutMs);
 
-    const combinedSignal = signal
-      ? AbortSignal.any([signal, timeoutSignal])
-      : timeoutSignal;
+    const signal = combineSignal(context, timeoutSignal);
 
-    const result = await task({ signal: combinedSignal });
+    const result = await task({ signal });
 
-    // If the task was aborted and it was due to timeout (not external signal)
-    if (!result.ok && timeoutSignal.aborted && !signal?.aborted) {
+    if (!result.ok && timeoutSignal.aborted) {
       return err({ type: "TimeoutError", timeoutMs });
     }
 
@@ -264,9 +312,9 @@ export interface RetryError<E> {
  * }
  *
  * const fetchTask = (url: string) =>
- *   toTask((signal) =>
+ *   toTask((context) =>
  *     tryAsync(
- *       () => fetch(url, { signal }),
+ *       () => fetch(url, { signal: context?.signal ?? null })
  *       (error): FetchError => ({ type: "FetchError", error }),
  *     ),
  *   );
@@ -281,29 +329,27 @@ export interface RetryError<E> {
  *
  * // With AbortController
  * const controller = new AbortController();
- * const result2 = await fetchWithRetry("https://api.example.com/data")({
- *   signal: controller.signal,
- * });
+ * const result2 = await fetchWithRetry("https://api.example.com/data")(
+ *   controller,
+ * );
  * expectTypeOf(result2).toEqualTypeOf<
  *   Result<Response, FetchError | RetryError<FetchError> | AbortError>
  * >();
  * ```
  */
 export const retry = <T, E>(
-  options: RetryOptions<E>,
+  {
+    retries,
+    initialDelay = "100ms",
+    maxDelay = "10s",
+    factor = 2,
+    jitter = 0.1,
+    retryable = () => true,
+    onRetry,
+  }: RetryOptions<E>,
   task: Task<T, E>,
 ): Task<T, E | RetryError<E>> =>
-  toTask(async (signal): Promise<Result<T, E | RetryError<E>>> => {
-    const {
-      retries,
-      initialDelay = "100ms",
-      maxDelay = "10s",
-      factor = 2,
-      jitter = 0.1,
-      retryable = () => true,
-      onRetry,
-    } = options;
-
+  toTask(async (context): Promise<Result<T, E | RetryError<E>>> => {
     const initialDelayMs = durationToNonNegativeInt(initialDelay);
     const maxDelayMs = durationToNonNegativeInt(maxDelay);
     const maxRetries = PositiveInt.orThrow(retries);
@@ -312,7 +358,7 @@ export const retry = <T, E>(
 
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     while (true) {
-      const result = await task({ signal });
+      const result = await task(context);
 
       if (result.ok) {
         return result;
@@ -341,7 +387,7 @@ export const retry = <T, E>(
       }
 
       // Wait before retry
-      const delayResult = await wait(delay as NonNegativeInt)({ signal });
+      const delayResult = await wait(delay as NonNegativeInt)(context);
       if (!delayResult.ok) {
         // If delay was aborted, return AbortError (will be handled by toTask)
         return delayResult;
@@ -350,54 +396,69 @@ export const retry = <T, E>(
   });
 
 /**
- * A semaphore that limits the number of concurrent async operations.
+ * A semaphore that limits the number of concurrent async Tasks.
  *
- * For mutual exclusion (limiting to exactly one operation), consider using
+ * For mutual exclusion (limiting to exactly one Task), consider using
  * {@link Mutex} instead.
  *
  * @see {@link createSemaphore} to create a semaphore instance.
  */
-export interface Semaphore {
+export interface Semaphore extends Disposable {
   /**
-   * Executes an async operation while holding a semaphore permit.
+   * Executes a Task while holding a semaphore permit.
    *
-   * The operation will wait until a permit is available before executing. If
-   * the operation throws an unexpected error, the permit will not be released
-   * and the error will bubble up (fail fast, check {@link Result} docs).
+   * The Task will wait until a permit is available before executing. Supports
+   * cancellation via AbortSignal - if the signal is aborted while waiting for a
+   * permit or during execution, the Task is cancelled and permits are properly
+   * released.
    */
-  readonly withPermit: <T>(operation: () => Promise<T>) => Promise<T>;
+  readonly withPermit: <T, E>(task: Task<T, E>) => Task<T, E | AbortError>;
 }
 
 /**
- * Creates a semaphore that limits concurrent async operations to the specified
+ * Creates a semaphore that limits concurrent async Tasks to the specified
  * count.
  *
  * A semaphore controls access to a resource by maintaining a count of available
- * permits. Operations acquire a permit before executing and release it when
+ * permits. Tasks acquire a permit before executing and release it when
  * complete.
  *
- * For mutual exclusion (exactly one operation at a time), consider using
+ * The semaphore supports cancellation via AbortSignal. If a Task is cancelled
+ * while waiting for a permit or during execution, permits are properly
+ * released.
+ *
+ * For mutual exclusion (exactly one Task at a time), consider using
  * {@link createMutex} instead.
  *
  * ### Example
  *
  * ```ts
- * // Allow maximum 3 concurrent operations
+ * // Allow maximum 3 concurrent Tasks
  * const semaphore = createSemaphore(3);
+ *
+ * const fetchTask = (id: number) =>
+ *   toTask((context) =>
+ *     tryAsync(
+ *       () => fetch(`/api/data/${id}`, context),
+ *       (error): FetchError => ({ type: "FetchError", error }),
+ *     ),
+ *   );
  *
  * // These will execute with at most 3 running concurrently
  * const results = await Promise.all([
- *   semaphore.withPermit(() => fetchData(1)),
- *   semaphore.withPermit(() => fetchData(2)),
- *   semaphore.withPermit(() => fetchData(3)),
- *   semaphore.withPermit(() => fetchData(4)), // waits for one above to complete
- *   semaphore.withPermit(() => fetchData(5)), // waits for permit
+ *   semaphore.withPermit(fetchTask(1))(),
+ *   semaphore.withPermit(fetchTask(2))(),
+ *   semaphore.withPermit(fetchTask(3))(),
+ *   semaphore.withPermit(fetchTask(4))(), // waits for one above to complete
+ *   semaphore.withPermit(fetchTask(5))(), // waits for permit
  * ]);
  * ```
  */
-export const createSemaphore = (maxConcurrent: number): Semaphore => {
+export const createSemaphore = (maxConcurrent: PositiveInt): Semaphore => {
+  let isDisposed = false;
   let availablePermits = maxConcurrent;
   const waitingQueue: Array<() => void> = [];
+  const semaphoreController = new AbortController();
 
   const acquire = (): Promise<void> => {
     if (availablePermits > 0) {
@@ -419,55 +480,91 @@ export const createSemaphore = (maxConcurrent: number): Semaphore => {
   };
 
   return {
-    withPermit: async <T>(operation: () => Promise<T>): Promise<T> => {
-      await acquire();
-      const result = await operation();
-      release();
-      return result;
+    withPermit: <T, E>(task: Task<T, E>): Task<T, E | AbortError> =>
+      toTask(async (context): Promise<Result<T, E | AbortError>> => {
+        await acquire();
+
+        // Check if semaphore was disposed while waiting
+        if (isDisposed) {
+          return err({
+            type: "AbortError",
+            reason: "Semaphore disposed",
+          });
+        }
+
+        const signal = combineSignal(context, semaphoreController.signal);
+
+        const result = await task({ signal });
+
+        release();
+
+        return result;
+      }),
+
+    [Symbol.dispose]: () => {
+      if (isDisposed) return;
+      isDisposed = true;
+
+      // Cancel all running and waiting tasks
+      semaphoreController.abort("Semaphore disposed");
+
+      // Release all waiting tasks so they can continue and check isDisposed
+      while (isNonEmptyArray(waitingQueue)) {
+        shiftArray(waitingQueue)();
+      }
     },
   };
 };
 
 /**
- * A mutex (mutual exclusion) that ensures only one operation runs at a time.
+ * A mutex (mutual exclusion) that ensures only one Task runs at a time.
  *
  * This is a specialized version of a {@link Semaphore} with a permit count of 1.
  *
  * @see {@link createMutex} to create a mutex instance.
  */
-export interface Mutex {
+export interface Mutex extends Disposable {
   /**
-   * Executes an operation while holding the mutex lock.
+   * Executes a Task while holding the mutex lock.
    *
-   * Only one operation can hold the lock at a time. Other operations will wait
-   * until the lock is released.
+   * Only one Task can hold the lock at a time. Other Tasks will wait until the
+   * lock is released. Supports cancellation via AbortSignal.
    */
-  readonly withLock: <T>(operation: () => Promise<T>) => Promise<T>;
+  readonly withLock: <T, E>(task: Task<T, E>) => Task<T, E | AbortError>;
 }
 
 /**
  * Creates a new mutex for ensuring mutual exclusion.
  *
  * A mutex is a {@link createSemaphore} with exactly one permit, ensuring that
- * only one operation can execute at a time.
+ * only one Task can execute at a time.
  *
  * ### Example
  *
  * ```ts
  * const mutex = createMutex();
  *
- * // These operations will execute one at a time
+ * const updateTask = (id: number) =>
+ *   toTask((context) =>
+ *     tryAsync(
+ *       () => updateSharedResource(id, context),
+ *       (error): UpdateError => ({ type: "UpdateError", error }),
+ *     ),
+ *   );
+ *
+ * // These Tasks will execute one at a time
  * const results = await Promise.all([
- *   mutex.withLock(() => updateSharedResource(1)),
- *   mutex.withLock(() => updateSharedResource(2)),
- *   mutex.withLock(() => updateSharedResource(3)),
+ *   mutex.withLock(updateTask(1))(),
+ *   mutex.withLock(updateTask(2))(),
+ *   mutex.withLock(updateTask(3))(),
  * ]);
  * ```
  */
 export const createMutex = (): Mutex => {
-  const semaphore = createSemaphore(1 as PositiveInt);
+  const mutex = createSemaphore(1 as PositiveInt);
 
   return {
-    withLock: semaphore.withPermit,
+    withLock: mutex.withPermit,
+    [Symbol.dispose]: mutex[Symbol.dispose],
   };
 };
