@@ -32,6 +32,80 @@ import { Predicate } from "./Types.js";
  * - {@link wait} - Delay execution for a specified duration
  * - {@link timeout} - Add timeout to any Task
  * - {@link retry} - Retry failed Tasks with configurable backoff
+ *
+ * ### Example
+ *
+ * ```ts
+ * interface FetchError {
+ *   readonly type: "FetchError";
+ *   readonly error: unknown;
+ * }
+ *
+ * const fetchTask = (url: string) =>
+ *   toTask((context) =>
+ *     tryAsync(
+ *       () => fetch(url, { signal: context?.signal ?? null }),
+ *       (error): FetchError => ({ type: "FetchError", error }),
+ *     ),
+ *   );
+ *
+ * // Add timeout to prevent hanging
+ * const fetchWithTimeout = (url: string) => timeout("30s", fetchTask(url));
+ *
+ * // Add retry for resilience
+ * const resilientFetch = (url: string) =>
+ *   retry(
+ *     {
+ *       retries: PositiveInt.orThrow(3),
+ *       initialDelay: "100ms",
+ *       retryable: (error: FetchError | TimeoutError) =>
+ *         error.type === "FetchError",
+ *     },
+ *     fetchWithTimeout(url),
+ *   );
+ *
+ * // Control concurrency with semaphore
+ * const semaphore = createSemaphore(PositiveInt.orThrow(2));
+ *
+ * const rateLimitedFetch = (url: string) =>
+ *   semaphore.withPermit(resilientFetch(url));
+ *
+ * // Usage: Fetch multiple URLs with timeout, retry, and concurrency control
+ * const results = await Promise.all(
+ *   [
+ *     "https://api.example.com/users",
+ *     "https://api.example.com/posts",
+ *     "https://api.example.com/comments",
+ *   ].map((url) => rateLimitedFetch(url)()),
+ * );
+ *
+ * // Handle results
+ * for (const result of results) {
+ *   if (result.ok) {
+ *     // Process successful response
+ *     const response = result.value;
+ *     expect(response).toBeInstanceOf(Response);
+ *   } else {
+ *     // Handle error (TimeoutError, FetchError, RetryError, or AbortError)
+ *     expect(result.error).toBeDefined();
+ *   }
+ * }
+ *
+ * // Cancellation support
+ * const controller = new AbortController();
+ * const cancelableTask = rateLimitedFetch("https://api.example.com/data");
+ *
+ * // Start task
+ * const promise = cancelableTask(controller);
+ *
+ * // Cancel after some time
+ * setTimeout(() => {
+ *   controller.abort("User cancelled");
+ * }, 1000);
+ *
+ * const _result = await promise;
+ * // Result will be AbortError if cancelled
+ * ```
  */
 export interface Task<T, E> {
   /**

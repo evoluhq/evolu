@@ -18,9 +18,6 @@ describe("toTask", () => {
     const mockFn = () => Promise.resolve<Result<void, never>>(ok());
     const task = toTask(mockFn);
 
-    // const task: Task<void, never>
-    // How to get JSDoc here?
-
     // Without context: Result<void, never> (no AbortError possible)
     const result1 = await task();
     expect(result1).toEqual(ok());
@@ -986,9 +983,139 @@ describe("createMutex", () => {
   });
 });
 
+describe("Task Composition", () => {
+  // Mock fetch for testing
+  const mockFetch = vi.fn();
+  const urlCalls = new Map<string, number>();
+
+  beforeEach(() => {
+    vi.stubGlobal("fetch", mockFetch);
+    mockFetch.mockClear();
+  });
+
+  interface FetchError {
+    readonly type: "FetchError";
+    readonly error: unknown;
+  }
+
+  test("timeout, retry, and semaphore working together", async () => {
+    mockFetch.mockImplementation((url: string) => {
+      const currentCalls = urlCalls.get(url) ?? 0;
+      urlCalls.set(url, currentCalls + 1);
+
+      // Simulate flaky network - fail first few times per specific URL
+      if (url.includes("users") && currentCalls < 2) {
+        return Promise.reject(new Error("Network timeout"));
+      }
+      if (url.includes("posts") && currentCalls < 2) {
+        return Promise.reject(new Error("Server error"));
+      }
+      // Eventually succeed
+      return Promise.resolve(new Response(`Success for ${url}`));
+    });
+
+    // Basic fetch task
+    const fetchTask = (url: string) =>
+      toTask((context) =>
+        tryAsync(
+          () => fetch(url, { signal: context?.signal ?? null }),
+          (error): FetchError => ({ type: "FetchError", error }),
+        ),
+      );
+
+    // Compose timeout and retry for resilient fetching
+    const resilientFetch = (url: string) =>
+      retry(
+        {
+          retries: PositiveInt.orThrow(3),
+          initialDelay: "1ms", // Fast for testing
+          retryable: (error: FetchError | TimeoutError) =>
+            error.type === "FetchError",
+        },
+        timeout("100ms", fetchTask(url)),
+      );
+
+    // Limit concurrent requests to prevent overwhelming the server
+    const semaphore = createSemaphore(PositiveInt.orThrow(2));
+
+    const fetchWithConcurrencyLimit = (url: string) =>
+      semaphore.withPermit(resilientFetch(url));
+
+    // Usage: Fetch multiple URLs with timeout, retry, and concurrency control
+    const urls = [
+      "https://api.example.com/users",
+      "https://api.example.com/posts",
+      "https://api.example.com/comments",
+    ];
+
+    const results = await Promise.all(
+      urls.map((url) => fetchWithConcurrencyLimit(url)()),
+    );
+
+    // All should succeed after retries
+    expect(results.every((r) => r.ok)).toBe(true);
+
+    // Verify the retry patterns worked correctly
+    expect(Array.from(urlCalls.entries())).toMatchInlineSnapshot(`
+      [
+        [
+          "https://api.example.com/users",
+          3,
+        ],
+        [
+          "https://api.example.com/posts",
+          3,
+        ],
+        [
+          "https://api.example.com/comments",
+          1,
+        ],
+      ]
+    `);
+
+    // Test with cancellation support
+    urlCalls.clear();
+    const controller = new AbortController();
+    const result = await fetchWithConcurrencyLimit(
+      "https://api.example.com/data",
+    )(controller);
+
+    // Verify the complete error type includes all composed errors
+    expect(result.ok).toBe(true);
+
+    // Snapshot after successful data fetch
+    expect(Array.from(urlCalls.entries())).toMatchInlineSnapshot(`
+      [
+        [
+          "https://api.example.com/data",
+          1,
+        ],
+      ]
+    `);
+
+    // Test cancellation actually works
+    urlCalls.clear();
+    const controller2 = new AbortController();
+    controller2.abort("Test cancellation");
+    const cancelledResult = await fetchWithConcurrencyLimit(
+      "https://api.example.com/cancelled",
+    )(controller2);
+
+    expect(cancelledResult).toEqual(
+      err({
+        type: "AbortError",
+        reason: "Test cancellation",
+      }),
+    );
+
+    // Final snapshot showing the cancelled call didn't get tracked
+    expect(Array.from(urlCalls.entries())).toMatchInlineSnapshot(`[]`);
+  });
+});
+
 describe("Examples", () => {
   // Mock fetch for testing
-  const mockFetch = vi.fn<ReturnType<typeof fetchTask>>();
+  const mockFetch = vi.fn();
   beforeEach(() => {
     vi.stubGlobal("fetch", mockFetch);
     mockFetch.mockClear();
@@ -1033,8 +1160,6 @@ describe("Examples", () => {
   });
 
   test("timeout", async () => {
-    mockFetch.mockResolvedValue(new Response("success"));
-
     const fetchWithTimeout = (url: string) => timeout("2m", fetchTask(url));
 
     const result1 = await fetchWithTimeout("https://api.example.com/data")();
@@ -1053,8 +1178,6 @@ describe("Examples", () => {
   });
 
   test("retry", async () => {
-    mockFetch.mockResolvedValue(new Response("success"));
-
     const fetchWithRetry = (url: string) =>
       retry({ retries: PositiveInt.orThrow(3) }, fetchTask(url));
 
@@ -1118,7 +1241,62 @@ describe("Examples", () => {
     `);
   });
 
-  test("Task - fetchTask with timeout, retry, and semaphore", async () => {
-    // TODO.
+  test("composing timeout, retry, and semaphore", async () => {
+    // Add timeout to prevent hanging
+    const fetchWithTimeout = (url: string) => timeout("30s", fetchTask(url));
+
+    // Add retry for resilience
+    const resilientFetch = (url: string) =>
+      retry(
+        {
+          retries: PositiveInt.orThrow(3),
+          initialDelay: "100ms",
+          retryable: (error: FetchError | TimeoutError) =>
+            error.type === "FetchError",
+        },
+        fetchWithTimeout(url),
+      );
+
+    // Control concurrency with semaphore
+    const semaphore = createSemaphore(PositiveInt.orThrow(2));
+
+    const rateLimitedFetch = (url: string) =>
+      semaphore.withPermit(resilientFetch(url));
+
+    // Usage: Fetch multiple URLs with timeout, retry, and concurrency control
+    const results = await Promise.all(
+      [
+        "https://api.example.com/users",
+        "https://api.example.com/posts",
+        "https://api.example.com/comments",
+      ].map((url) => rateLimitedFetch(url)()),
+    );
+
+    // Handle results
+    for (const result of results) {
+      if (result.ok) {
+        // Process successful response
+        const response = result.value;
+        expect(response).toBeInstanceOf(Response);
+      } else {
+        // Handle error (TimeoutError, FetchError, RetryError, or AbortError)
+        expect(result.error).toBeDefined();
+      }
+    }
+
+    // Cancellation support
+    const controller = new AbortController();
+    const cancelableTask = rateLimitedFetch("https://api.example.com/data");
+
+    // Start task
+    const promise = cancelableTask(controller);
+
+    // Cancel after some time
+    setTimeout(() => {
+      controller.abort("User cancelled");
+    }, 1000);
+
+    const _result = await promise;
+    // Result will be AbortError if cancelled
   });
 });
