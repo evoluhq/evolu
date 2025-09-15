@@ -430,10 +430,6 @@ export interface Semaphore extends Disposable {
  * permits. Tasks acquire a permit before executing and release it when
  * complete.
  *
- * The semaphore supports cancellation via AbortSignal. If a Task is cancelled
- * while waiting for a permit or during execution, permits are properly
- * released.
- *
  * For mutual exclusion (exactly one Task at a time), consider using
  * {@link createMutex} instead.
  *
@@ -441,24 +437,47 @@ export interface Semaphore extends Disposable {
  *
  * ```ts
  * // Allow maximum 3 concurrent Tasks
- * const semaphore = createSemaphore(3);
+ * const semaphore = createSemaphore(PositiveInt.orThrow(3));
  *
- * const fetchTask = (id: number) =>
- *   toTask((context) =>
- *     tryAsync(
- *       () => fetch(`/api/data/${id}`, context),
- *       (error): FetchError => ({ type: "FetchError", error }),
- *     ),
- *   );
+ * let currentConcurrent = 0;
+ * const events: Array<string> = [];
+ *
+ * const fetchData = (id: number) =>
+ *   toTask<number, never>(async (context) => {
+ *     currentConcurrent++;
+ *     events.push(`start ${id} (concurrent: ${currentConcurrent})`);
+ *
+ *     await wait("10ms")(context);
+ *
+ *     currentConcurrent--;
+ *     events.push(`end ${id} (concurrent: ${currentConcurrent})`);
+ *     return ok(id * 10);
+ *   });
  *
  * // These will execute with at most 3 running concurrently
  * const results = await Promise.all([
- *   semaphore.withPermit(fetchTask(1))(),
- *   semaphore.withPermit(fetchTask(2))(),
- *   semaphore.withPermit(fetchTask(3))(),
- *   semaphore.withPermit(fetchTask(4))(), // waits for one above to complete
- *   semaphore.withPermit(fetchTask(5))(), // waits for permit
+ *   semaphore.withPermit(fetchData(1))(),
+ *   semaphore.withPermit(fetchData(2))(),
+ *   semaphore.withPermit(fetchData(3))(),
+ *   semaphore.withPermit(fetchData(4))(), // waits for one above to complete
+ *   semaphore.withPermit(fetchData(5))(), // waits for permit
  * ]);
+ *
+ * expect(results.map(getOrThrow)).toEqual([10, 20, 30, 40, 50]);
+ * expect(events).toMatchInlineSnapshot(`
+ *   [
+ *     "start 1 (concurrent: 1)",
+ *     "start 2 (concurrent: 2)",
+ *     "start 3 (concurrent: 3)",
+ *     "end 1 (concurrent: 2)",
+ *     "start 4 (concurrent: 3)",
+ *     "end 2 (concurrent: 2)",
+ *     "start 5 (concurrent: 3)",
+ *     "end 3 (concurrent: 2)",
+ *     "end 4 (concurrent: 1)",
+ *     "end 5 (concurrent: 0)",
+ *   ]
+ * `);
  * ```
  */
 export const createSemaphore = (maxConcurrent: PositiveInt): Semaphore => {

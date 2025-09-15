@@ -682,14 +682,13 @@ describe("createSemaphore", () => {
     const events: Array<{
       id: number;
       event: "start" | "end";
-      timestamp: number;
     }> = [];
 
     const task = (id: number) =>
       toTask<number, never>(async () => {
-        events.push({ id, event: "start", timestamp: Date.now() });
+        events.push({ id, event: "start" });
         await wait("20ms")(); // Longer delay to ensure overlap would be detectable
-        events.push({ id, event: "end", timestamp: Date.now() });
+        events.push({ id, event: "end" });
         return ok(id);
       });
 
@@ -700,14 +699,16 @@ describe("createSemaphore", () => {
     ]);
 
     // Verify sequential execution: each Task must fully complete before the next starts
-    expect(events).toEqual([
-      expect.objectContaining({ id: 1, event: "start" }),
-      expect.objectContaining({ id: 1, event: "end" }),
-      expect.objectContaining({ id: 2, event: "start" }),
-      expect.objectContaining({ id: 2, event: "end" }),
-      expect.objectContaining({ id: 3, event: "start" }),
-      expect.objectContaining({ id: 3, event: "end" }),
-    ]);
+    expect(events.map((i) => JSON.stringify(i))).toMatchInlineSnapshot(`
+      [
+        "{"id":1,"event":"start"}",
+        "{"id":1,"event":"end"}",
+        "{"id":2,"event":"start"}",
+        "{"id":2,"event":"end"}",
+        "{"id":3,"event":"start"}",
+        "{"id":3,"event":"end"}",
+      ]
+    `);
   });
 
   test("fails fast on unexpected errors without releasing permits", async () => {
@@ -861,51 +862,6 @@ describe("createSemaphore", () => {
       semaphore[Symbol.dispose]();
       semaphore[Symbol.dispose]();
     }).not.toThrow();
-  });
-
-  test("example", async () => {
-    // Allow maximum 3 concurrent Tasks
-    const semaphore = createSemaphore(PositiveInt.orThrow(3));
-
-    let currentConcurrent = 0;
-    const events: Array<string> = [];
-
-    const fetchData = (id: number) =>
-      toTask<number, never>(async (context) => {
-        currentConcurrent++;
-        events.push(`start ${id} (concurrent: ${currentConcurrent})`);
-
-        await wait("10ms")(context);
-
-        currentConcurrent--;
-        events.push(`end ${id} (concurrent: ${currentConcurrent})`);
-        return ok(id * 10);
-      });
-
-    // These will execute with at most 3 running concurrently
-    const results = await Promise.all([
-      semaphore.withPermit(fetchData(1))(),
-      semaphore.withPermit(fetchData(2))(),
-      semaphore.withPermit(fetchData(3))(),
-      semaphore.withPermit(fetchData(4))(), // waits for one above to complete
-      semaphore.withPermit(fetchData(5))(), // waits for permit
-    ]);
-
-    expect(results.map(getOrThrow)).toEqual([10, 20, 30, 40, 50]);
-    expect(events).toMatchInlineSnapshot(`
-      [
-        "start 1 (concurrent: 1)",
-        "start 2 (concurrent: 2)",
-        "start 3 (concurrent: 3)",
-        "end 1 (concurrent: 2)",
-        "start 4 (concurrent: 3)",
-        "end 2 (concurrent: 2)",
-        "start 5 (concurrent: 3)",
-        "end 3 (concurrent: 2)",
-        "end 4 (concurrent: 1)",
-        "end 5 (concurrent: 0)",
-      ]
-    `);
   });
 });
 
@@ -1118,7 +1074,48 @@ describe("Examples", () => {
   });
 
   test("semaphore", async () => {
-    // TODO.
+    // Allow maximum 3 concurrent Tasks
+    const semaphore = createSemaphore(PositiveInt.orThrow(3));
+
+    let currentConcurrent = 0;
+    const events: Array<string> = [];
+
+    const fetchData = (id: number) =>
+      toTask<number, never>(async (context) => {
+        currentConcurrent++;
+        events.push(`start ${id} (concurrent: ${currentConcurrent})`);
+
+        await wait("10ms")(context);
+
+        currentConcurrent--;
+        events.push(`end ${id} (concurrent: ${currentConcurrent})`);
+        return ok(id * 10);
+      });
+
+    // These will execute with at most 3 running concurrently
+    const results = await Promise.all([
+      semaphore.withPermit(fetchData(1))(),
+      semaphore.withPermit(fetchData(2))(),
+      semaphore.withPermit(fetchData(3))(),
+      semaphore.withPermit(fetchData(4))(), // waits for one above to complete
+      semaphore.withPermit(fetchData(5))(), // waits for permit
+    ]);
+
+    expect(results.map(getOrThrow)).toEqual([10, 20, 30, 40, 50]);
+    expect(events).toMatchInlineSnapshot(`
+      [
+        "start 1 (concurrent: 1)",
+        "start 2 (concurrent: 2)",
+        "start 3 (concurrent: 3)",
+        "end 1 (concurrent: 2)",
+        "start 4 (concurrent: 3)",
+        "end 2 (concurrent: 2)",
+        "start 5 (concurrent: 3)",
+        "end 3 (concurrent: 2)",
+        "end 4 (concurrent: 1)",
+        "end 5 (concurrent: 0)",
+      ]
+    `);
   });
 
   test("Task - fetchTask with timeout, retry, and semaphore", async () => {
