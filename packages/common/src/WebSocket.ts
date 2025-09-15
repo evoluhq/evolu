@@ -146,8 +146,9 @@ export interface WebSocketConnectionCloseError {
  *
  * TODO:
  */
-export const createWebSocket: CreateWebSocket = (url, options = {}) => {
-  const {
+export const createWebSocket: CreateWebSocket = (
+  url,
+  {
     protocols,
     binaryType,
     onOpen,
@@ -156,7 +157,8 @@ export const createWebSocket: CreateWebSocket = (url, options = {}) => {
     onError,
     retryOptions,
     WebSocketConstructor = globalThis.WebSocket,
-  } = options;
+  } = {},
+) => {
   let isDisposed = false;
 
   const reconnectController = new AbortController();
