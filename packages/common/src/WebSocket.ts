@@ -237,7 +237,7 @@ export const createWebSocket: CreateWebSocket = (
           onMessage?.(event.data as string | ArrayBuffer | Blob);
         };
       }),
-  )({ signal: reconnectController.signal })
+  )(reconnectController)
     .then((result) => {
       if (result.ok || result.error.type === "AbortError") return;
       onError?.(result.error as WebSocketError);
