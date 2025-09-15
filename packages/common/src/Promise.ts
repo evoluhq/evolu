@@ -13,11 +13,18 @@ import { Predicate } from "./Types.js";
  *
  * ### Cancellation
  *
- * Tasks support cancellation via
+ * Tasks support optional cancellation via
  * [AbortSignal](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal).
  * When called without a signal, the Task cannot be cancelled and AbortError
  * will never be returned. When called with a signal, the Task can be cancelled
  * and AbortError is added to the error union with precise type safety.
+ *
+ * **When to pass context?** If we have one or we need one.
+ *
+ * When composing tasks, we typically have context and want to abort ASAP by
+ * passing it through. However, there are valid cases where we don't want to
+ * abort because we need some atomic unit to complete. For simple scripts and
+ * tests, omitting context is perfectly fine.
  *
  * ### Task Helpers
  *
