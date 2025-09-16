@@ -722,3 +722,10 @@ export const createMutex = (): Mutex => {
     [Symbol.dispose]: mutex[Symbol.dispose],
   };
 };
+
+// TODO: Add tracing support
+// - Extend TaskContext with optional tracing field
+// - Add traced(name, task) helper that wraps Task execution
+// - Collect span data (name, timing, parent-child relationships, status)
+// - Support OpenTelemetry export format with proper traceId/spanId generation
+// - Automatic parent-child span relationships through context propagation
