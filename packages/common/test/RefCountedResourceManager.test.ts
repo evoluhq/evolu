@@ -1,8 +1,8 @@
 import { expect, test } from "vitest";
 import type { Brand } from "../src/Brand.js";
-import { wait } from "../src/Promise.js";
 import { createRefCountedResourceManager } from "../src/RefCountedResourceManager.js";
 import { err } from "../src/Result.js";
+import { wait } from "../src/Task.js";
 
 interface Resource extends Disposable {
   readonly id: ResourceKey;

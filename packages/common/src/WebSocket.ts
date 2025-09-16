@@ -6,8 +6,8 @@
 
 import { assertNoErrorInCatch } from "./Assert.js";
 import { constVoid } from "./Function.js";
-import { retry, RetryError, RetryOptions } from "./Promise.js";
 import { err, ok, Result } from "./Result.js";
+import { retry, RetryError, RetryOptions } from "./Task.js";
 import { maxPositiveInt } from "./Type.js";
 
 /** WebSocket with auto-reconnect and offline support. */

@@ -1,16 +1,17 @@
 import { beforeEach, describe, expect, expectTypeOf, test, vi } from "vitest";
+import { err, getOrThrow, ok, Result, tryAsync } from "../src/Result.js";
 import {
   AbortError,
   createMutex,
   createSemaphore,
   retry,
   RetryError,
+  Task,
   timeout,
   TimeoutError,
   toTask,
   wait,
-} from "../src/Promise.js";
-import { err, getOrThrow, ok, Result, tryAsync } from "../src/Result.js";
+} from "../src/Task.js";
 import { NonNegativeInt, PositiveInt } from "../src/Type.js";
 
 describe("toTask", () => {
@@ -1126,74 +1127,70 @@ describe("Examples", () => {
     readonly error: unknown;
   }
 
-  const fetchTask = (url: string) =>
+  // Task version of fetch with proper error handling and cancellation support.
+  const fetch = (url: string) =>
     toTask((context) =>
       tryAsync(
-        () => fetch(url, { signal: context?.signal ?? null }),
+        () => globalThis.fetch(url, { signal: context?.signal ?? null }),
         (error): FetchError => ({ type: "FetchError", error }),
       ),
     );
 
+  // `satisfies` shows the expected type signature.
+  fetch satisfies (url: string) => Task<Response, FetchError>;
+
   test("toTask", async () => {
     mockFetch.mockResolvedValue(new Response("success"));
 
-    const result1 = await fetchTask("https://api.example.com/data")();
-    expectTypeOf(result1).toEqualTypeOf<Result<Response, FetchError>>();
+    const result1 = await fetch("https://api.example.com/data")();
+    result1 satisfies Result<Response, FetchError>;
 
     // With AbortController
     const controller = new AbortController();
-    const result2 = await fetchTask("https://api.example.com/data")(controller);
-    expectTypeOf(result2).toEqualTypeOf<
-      Result<Response, FetchError | AbortError>
-    >();
+    const result2 = await fetch("https://api.example.com/data")(controller);
+    result2 satisfies Result<Response, FetchError | AbortError>;
   });
 
   test("wait", async () => {
     const result1 = await wait("10ms")();
-    expect(result1).toEqual(ok());
-    expectTypeOf(result1).toEqualTypeOf<Result<void, never>>();
+    result1 satisfies Result<void, never>;
 
     // With AbortController
     const controller = new AbortController();
     const result2 = await wait("10ms")(controller);
-    expectTypeOf(result2).toEqualTypeOf<Result<void, AbortError>>();
+    result2 satisfies Result<void, AbortError>;
   });
 
   test("timeout", async () => {
-    const fetchWithTimeout = (url: string) => timeout("2m", fetchTask(url));
+    const fetchWithTimeout = (url: string) => timeout("2m", fetch(url));
 
     const result1 = await fetchWithTimeout("https://api.example.com/data")();
-    expectTypeOf(result1).toEqualTypeOf<
-      Result<Response, FetchError | TimeoutError>
-    >();
+    result1 satisfies Result<Response, FetchError | TimeoutError>;
 
     // With AbortController
     const controller = new AbortController();
     const result2 = await fetchWithTimeout("https://api.example.com/data")(
       controller,
     );
-    expectTypeOf(result2).toEqualTypeOf<
-      Result<Response, FetchError | TimeoutError | AbortError>
-    >();
+    result2 satisfies Result<Response, FetchError | TimeoutError | AbortError>;
   });
 
   test("retry", async () => {
     const fetchWithRetry = (url: string) =>
-      retry({ retries: PositiveInt.orThrow(3) }, fetchTask(url));
+      retry({ retries: PositiveInt.orThrow(3) }, fetch(url));
 
     const result1 = await fetchWithRetry("https://api.example.com/data")();
-    expectTypeOf(result1).toEqualTypeOf<
-      Result<Response, FetchError | RetryError<FetchError>>
-    >();
+    result1 satisfies Result<Response, FetchError | RetryError<FetchError>>;
 
     // With AbortController
     const controller = new AbortController();
     const result2 = await fetchWithRetry("https://api.example.com/data")(
       controller,
     );
-    expectTypeOf(result2).toEqualTypeOf<
-      Result<Response, FetchError | RetryError<FetchError> | AbortError>
-    >();
+    result2 satisfies Result<
+      Response,
+      FetchError | RetryError<FetchError> | AbortError
+    >;
   });
 
   test("semaphore", async () => {
@@ -1243,34 +1240,64 @@ describe("Examples", () => {
 
   test("composing timeout, retry, and semaphore", async () => {
     // Add timeout to prevent hanging
-    const fetchWithTimeout = (url: string) => timeout("30s", fetchTask(url));
+    const fetchWithTimeout = (url: string) => timeout("30s", fetch(url));
+
+    fetchWithTimeout satisfies (
+      url: string,
+    ) => Task<Response, TimeoutError | FetchError>;
 
     // Add retry for resilience
-    const resilientFetch = (url: string) =>
+    const fetchWithRetry = (url: string) =>
       retry(
         {
           retries: PositiveInt.orThrow(3),
           initialDelay: "100ms",
-          retryable: (error: FetchError | TimeoutError) =>
-            error.type === "FetchError",
+          retryable: (error) => error.type === "FetchError",
         },
         fetchWithTimeout(url),
       );
 
-    // Control concurrency with semaphore
+    fetchWithRetry satisfies (
+      url: string,
+    ) => Task<
+      Response,
+      TimeoutError | FetchError | RetryError<TimeoutError | FetchError>
+    >;
+
     const semaphore = createSemaphore(PositiveInt.orThrow(2));
 
-    const rateLimitedFetch = (url: string) =>
-      semaphore.withPermit(resilientFetch(url));
+    // Control concurrency with semaphore
+    const fetchWithPermit = (url: string) =>
+      semaphore.withPermit(fetchWithRetry(url));
 
-    // Usage: Fetch multiple URLs with timeout, retry, and concurrency control
+    fetchWithPermit satisfies (url: string) => Task<
+      Response,
+      | TimeoutError
+      | FetchError
+      | AbortError // Semaphore dispose aborts Tasks
+      | RetryError<TimeoutError | FetchError>
+    >;
+
+    // Usage
     const results = await Promise.all(
       [
         "https://api.example.com/users",
         "https://api.example.com/posts",
         "https://api.example.com/comments",
-      ].map((url) => rateLimitedFetch(url)()),
+      ]
+        .map(fetchWithPermit)
+        .map((task) => task()),
     );
+
+    results satisfies Array<
+      Result<
+        Response,
+        | AbortError
+        | TimeoutError
+        | FetchError
+        | RetryError<TimeoutError | FetchError>
+      >
+    >;
 
     // Handle results
     for (const result of results) {
@@ -1286,7 +1313,7 @@ describe("Examples", () => {
 
     // Cancellation support
     const controller = new AbortController();
-    const cancelableTask = rateLimitedFetch("https://api.example.com/data");
+    const cancelableTask = fetchWithPermit("https://api.example.com/data");
 
     // Start task
     const promise = cancelableTask(controller);

@@ -8,9 +8,9 @@ import {
 } from "../../src/Evolu/Db.js";
 import { createQuery } from "../../src/Evolu/Evolu.js";
 import { createAppOwner } from "../../src/Evolu/Owner.js";
-import { wait } from "../../src/Promise.js";
 import { getOrThrow } from "../../src/Result.js";
 import { createSqlite, Sqlite } from "../../src/Sqlite.js";
+import { wait } from "../../src/Task.js";
 import {
   createTestConsole,
   createTestWebSocket,

@@ -10,9 +10,9 @@ import {
   ValidateSchemaHasId,
 } from "../../src/Evolu/Schema.js";
 import { SyncOwner } from "../../src/Evolu/Sync.js";
-import { wait } from "../../src/Promise.js";
 import { getOrThrow } from "../../src/Result.js";
 import { createSqlite, SqliteBoolean } from "../../src/Sqlite.js";
+import { wait } from "../../src/Task.js";
 import {
   Boolean,
   id,

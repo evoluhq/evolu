@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import WebSocket, { WebSocketServer } from "ws";
-import { RetryError, wait } from "../src/Promise.js";
 import { err, ok } from "../src/Result.js";
+import { RetryError, wait } from "../src/Task.js";
 import { PositiveInt } from "../src/Type.js";
 import {
   createWebSocket,
