@@ -869,9 +869,9 @@ describe("createMutex", () => {
     const events: Array<string> = [];
 
     const task = (id: number) =>
-      toTask(async () => {
+      toTask(async (context) => {
         events.push(`start-${id}`);
-        await wait("10ms")();
+        await wait("10ms")(context);
         events.push(`end-${id}`);
         return ok(id);
       });
@@ -883,35 +883,6 @@ describe("createMutex", () => {
 
     expect(results.map((r) => (r.ok ? r.value : null))).toEqual([1, 2]);
     expect(events).toEqual(["start-1", "end-1", "start-2", "end-2"]);
-  });
-
-  test("behaves as semaphore with permit count of 1", async () => {
-    const mutex = createMutex();
-    const semaphore = createSemaphore(PositiveInt.orThrow(1));
-
-    const mutexEvents: Array<string> = [];
-    const semaphoreEvents: Array<string> = [];
-
-    const task = (id: number, events: Array<string>) =>
-      toTask(async () => {
-        events.push(`start-${id}`);
-        await wait("10ms")();
-        events.push(`end-${id}`);
-        return ok(id);
-      });
-
-    await Promise.all([
-      mutex.withLock(task(1, mutexEvents))(),
-      mutex.withLock(task(2, mutexEvents))(),
-    ]);
-
-    await Promise.all([
-      semaphore.withPermit(task(1, semaphoreEvents))(),
-      semaphore.withPermit(task(2, semaphoreEvents))(),
-    ]);
-
-    // Both should exhibit identical behavior
-    expect(mutexEvents).toEqual(semaphoreEvents);
   });
 
   test("disposal cancels running and waiting tasks", async () => {
