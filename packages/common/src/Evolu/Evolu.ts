@@ -663,7 +663,7 @@ const createEvoluInstance =
       name: evoluConfig.name,
     });
 
-    const { onInit, indexes, ...config } = evoluConfig;
+    const { onInit, indexes, onMessage, ...config } = evoluConfig;
 
     const errorStore = createStore<EvoluError | null>(null);
     const rowsStore = createStore<QueryRowsMap>(new Map());
