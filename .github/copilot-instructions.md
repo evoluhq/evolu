@@ -271,6 +271,10 @@ test("timeUntilEvent calculates correctly", () => {
 });
 ```
 
+## Project Verification
+
+- **Run `pnpm verify` after significant changes** – This command runs build, lint, monorepo lint, typedoc, and all tests to ensure the project is healthy after major updates. It is the recommended way to check the integrity of the entire monorepo.
+
 ## Git Commit Messages
 
 - **Write as sentences** - use proper sentence case without trailing period
