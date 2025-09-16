@@ -44,10 +44,6 @@ import { Predicate } from "./Types.js";
  *   readonly type: "FetchError";
  *   readonly error: unknown;
  * }
- *
- * interface FetchError {
- *   readonly type: "FetchError";
- *   readonly error: unknown;
  * }
  *
  * // Task version of fetch with proper error handling and cancellation support.
@@ -149,6 +145,12 @@ import { Predicate } from "./Types.js";
  * const _result = await promise;
  * // Result will be AbortError if cancelled
  * ```
+ *
+ * ### Dependency Injection Integration
+ *
+ * Tasks integrate naturally with Evolu's DI pattern. Use `deps` for static
+ * dependencies and `TaskContext` for execution context like cancellation. Usage
+ * follows the pattern: deps → arguments → execution context.
  */
 export interface Task<T, E> {
   /**
@@ -178,12 +180,12 @@ export interface Task<T, E> {
    * // `satisfies` shows the expected type signature.
    * fetch satisfies (url: string) => Task<Response, FetchError>;
    *
-   * const result1 = await fetchTask("https://api.example.com/data")();
+   * const result1 = await fetch("https://api.example.com/data")();
    * expectTypeOf(result1).toEqualTypeOf<Result<Response, FetchError>>();
    *
    * // With AbortController
    * const controller = new AbortController();
-   * const result2 = await fetchTask("https://api.example.com/data")(
+   * const result2 = await fetch("https://api.example.com/data")(
    *   controller,
    * );
    * expectTypeOf(result2).toEqualTypeOf<
