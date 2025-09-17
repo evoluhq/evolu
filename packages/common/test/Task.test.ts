@@ -7,6 +7,7 @@ import {
   retry,
   RetryError,
   Task,
+  TaskContext,
   timeout,
   TimeoutError,
   toTask,
@@ -62,6 +63,39 @@ describe("toTask", () => {
     );
   });
 
+  test("does not retry on AbortError by default", async () => {
+    const onRetry = vi.fn();
+
+    const task = toTask<string, { type: "E" } | AbortError>(async (context) => {
+      // Immediately return AbortError when context signal is present and aborted
+      if (context?.signal?.aborted) {
+        return err({
+          type: "AbortError",
+          reason: context.signal.reason as unknown,
+        });
+      }
+      return new Promise((resolve) => {
+        // Will be aborted externally before resolving
+        setTimeout(() => {
+          resolve(ok("should-not-resolve"));
+        }, 100);
+      });
+    });
+
+    const r = retry(
+      { retries: PositiveInt.orThrow(3), initialDelay: "1ms", onRetry },
+      task,
+    );
+
+    const controller = new AbortController();
+    const p = r(controller);
+    controller.abort("stop");
+    const result = await p;
+
+    expect(result).toEqual(err({ type: "AbortError", reason: "stop" }));
+    expect(onRetry).not.toHaveBeenCalled();
+  });
+
   test("fast path when no context provided", async () => {
     const mockFn = () => Promise.resolve<Result<void, never>>(ok());
     const task = toTask(mockFn);
@@ -71,6 +105,25 @@ describe("toTask", () => {
 
     // Verify this is the fast path type without AbortError
     expectTypeOf(result).toEqualTypeOf<Result<void, never>>();
+  });
+
+  test("forwards context to inner fn when no signal", async () => {
+    // Arrange: capture the context seen inside the inner function
+    let seenContext: TaskContext | undefined;
+    const task = toTask<string, never>((context) => {
+      seenContext = context;
+      return Promise.resolve(ok("ok"));
+    });
+
+    // Provide a context object without a signal
+    const providedContext = {} as TaskContext;
+
+    // Act: call the task with our context
+    const result = await task(providedContext);
+
+    // Assert: result ok and the inner function received the same context object
+    expect(result).toEqual(ok("ok"));
+    expect(seenContext).toBe(providedContext);
   });
 });
 
@@ -1001,8 +1054,6 @@ describe("Task Composition", () => {
         {
           retries: PositiveInt.orThrow(3),
           initialDelay: "1ms", // Fast for testing
-          retryable: (error: FetchError | TimeoutError) =>
-            error.type === "FetchError",
         },
         timeout("100ms", fetchTask(url)),
       );
@@ -1223,7 +1274,6 @@ describe("Examples", () => {
         {
           retries: PositiveInt.orThrow(3),
           initialDelay: "100ms",
-          retryable: (error) => error.type === "FetchError",
         },
         fetchWithTimeout(url),
       );
