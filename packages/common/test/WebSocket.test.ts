@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import WebSocket, { WebSocketServer } from "ws";
 import { err, ok } from "../src/Result.js";
-import { RetryError, wait } from "../src/Task.js";
+import { AbortError, RetryError, wait } from "../src/Task.js";
 import { PositiveInt } from "../src/Type.js";
 import {
   createWebSocket,
@@ -451,10 +451,12 @@ test("retries only on specific error types", async () => {
   const { promise, resolve } = Promise.withResolvers<WebSocketRetryError>();
 
   // Create a predicate that only retries WebSocketConnectionCloseError but not WebSocketConnectError
-  const retryablePredicate = vi.fn((error: WebSocketRetryError) => {
-    // Only retry on connection close errors, not on connect errors
-    return error.type === "WebSocketConnectionCloseError";
-  });
+  const retryablePredicate = vi.fn(
+    (error: WebSocketRetryError | AbortError) => {
+      // Only retry on connection close errors, not on connect errors
+      return error.type === "WebSocketConnectionCloseError";
+    },
+  );
 
   const socket = createWebSocket(INVALID_URL, {
     retryOptions: {
@@ -548,13 +550,15 @@ test("should not retry on invalid payload data close code", async () => {
   });
 
   // Create a retryable predicate that doesn't retry on invalid payload data
-  const retryablePredicate = vi.fn((error: WebSocketRetryError) => {
-    if (error.type === "WebSocketConnectionCloseError") {
-      // Don't retry on Invalid Payload Data (1007)
-      return error.event.code !== 1007;
-    }
-    return true;
-  });
+  const retryablePredicate = vi.fn(
+    (error: WebSocketRetryError | AbortError) => {
+      if (error.type === "WebSocketConnectionCloseError") {
+        // Don't retry on Invalid Payload Data (1007)
+        return error.event.code !== 1007;
+      }
+      return true;
+    },
+  );
 
   const onRetry = vi.fn();
 
