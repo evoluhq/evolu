@@ -396,7 +396,7 @@ export const timeout = <T, E>(
 
     const result = await task({ signal });
 
-    if (!result.ok && timeoutSignal.aborted) {
+    if (timeoutSignal.aborted) {
       return err({ type: "TimeoutError", timeoutMs });
     }
 
