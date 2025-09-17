@@ -35,6 +35,7 @@
     "src/Random.ts",
     "src/Ref.ts",
     "src/Result.ts",
+    "src/Scheduler.ts",
     "src/Sqlite.ts",
     "src/Store.ts",
     "src/String.ts",
