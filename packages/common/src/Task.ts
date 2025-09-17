@@ -8,7 +8,6 @@ import { isNonEmptyArray, shiftArray } from "./Array.js";
 import { Result, err, ok } from "./Result.js";
 import { Duration, durationToNonNegativeInt } from "./Time.js";
 import { NonNegativeInt, PositiveInt } from "./Type.js";
-import { Predicate } from "./Types.js";
 
 /**
  * `Task` is a lazy, cancellable Promise that returns {@link Result} instead of
@@ -44,7 +43,6 @@ import { Predicate } from "./Types.js";
  *   readonly type: "FetchError";
  *   readonly error: unknown;
  * }
- * }
  *
  * // Task version of fetch with proper error handling and cancellation support.
  * const fetch = (url: string) =>
@@ -71,7 +69,6 @@ import { Predicate } from "./Types.js";
  *     {
  *       retries: PositiveInt.orThrow(3),
  *       initialDelay: "100ms",
- *       retryable: (error) => error.type === "FetchError",
  *     },
  *     fetchWithTimeout(url),
  *   );
@@ -213,6 +210,12 @@ export interface AbortError {
   readonly reason?: unknown;
 }
 
+/** Narrower check to detect AbortError objects at runtime. */
+const isAbortError = (error: unknown): error is AbortError =>
+  typeof error === "object" &&
+  error !== null &&
+  (error as { type?: unknown }).type === "AbortError";
+
 /**
  * Combines user signal from context with an internal signal.
  *
@@ -266,9 +269,10 @@ export const toTask = <T, E>(
   ((context) => {
     const signal = context?.signal;
 
-    // Fast path when no signal - return promise directly
+    // Fast path when no signal – return promise directly
     if (!signal) {
-      return fn();
+      // Preserve future context fields (e.g., tracing) even without a signal
+      return fn(context);
     }
 
     if (signal.aborted) {
@@ -289,6 +293,8 @@ export const toTask = <T, E>(
 
     signal.addEventListener("abort", handleAbort, { once: true });
 
+    // No finally: we expect no throws in normal flow; Result path removes listener.
+    // Unexpected throws indicate a bug and are allowed to crash (no recovery here).
     return Promise.race([
       abortPromise,
       fn(context).then((result) => {
@@ -418,8 +424,11 @@ export interface RetryOptions<E> {
   /** Random jitter factor (0-1) to prevent thundering herd. */
   readonly jitter?: number;
 
-  /** {@link Predicate} to determine if error should trigger retry. */
-  readonly retryable?: Predicate<E>;
+  /**
+   * Predicate to determine if error should trigger retry. Receives AbortError
+   * too.
+   */
+  readonly retryable?: (error: E | AbortError) => boolean;
 
   /** Callback invoked before each retry attempt. */
   readonly onRetry?: (error: E, attempt: number, delay: number) => void;
@@ -479,7 +488,7 @@ export const retry = <T, E>(
     maxDelay = "10s",
     factor = 2,
     jitter = 0.1,
-    retryable = () => true,
+    retryable = (error: E | AbortError) => !isAbortError(error),
     onRetry,
   }: RetryOptions<E>,
   task: Task<T, E>,
@@ -497,6 +506,11 @@ export const retry = <T, E>(
 
       if (result.ok) {
         return result;
+      }
+
+      // Never retry on AbortError; propagate it directly
+      if (isAbortError(result.error)) {
+        return err(result.error) as Result<T, E | RetryError<E>>;
       }
 
       attempt += 1;
