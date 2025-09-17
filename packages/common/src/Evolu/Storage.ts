@@ -180,8 +180,11 @@ export interface EncryptedCrdtMessage {
 export type EncryptedDbChange = Uint8Array & Brand<"EncryptedDbChange">;
 
 /**
- * A CRDT message that combines a unique {@link Timestamp} with a
- * {@link DbChange}.
+ * A CRDT message combining a unique {@link Timestamp} with a {@link DbChange}.
+ *
+ * Used in Evolu's sync protocol to replicate data changes across devices. Evolu
+ * operates as a durable queue, providing exactly-once delivery guarantees for
+ * reliable synchronization across application restarts and network failures.
  */
 export interface CrdtMessage {
   readonly timestamp: Timestamp;

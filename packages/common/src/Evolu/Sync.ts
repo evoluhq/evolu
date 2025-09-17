@@ -22,9 +22,11 @@ import { RandomDep } from "../Random.js";
 import { createRefCountedResourceManager } from "../RefCountedResourceManager.js";
 import { ok, Result } from "../Result.js";
 import { sql, SqliteDep, SqliteError, SqliteValue } from "../Sqlite.js";
+import { AbortError, createMutex } from "../Task.js";
 import { TimeDep } from "../Time.js";
 import { BinaryId, binaryIdToId, idToBinaryId } from "../Type.js";
 import { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
+import type { PostMessageDep, WriteMessagesCallbackRegistryDep } from "./Db.js";
 import {
   AppOwner,
   BinaryOwnerId,
@@ -145,12 +147,15 @@ export const createSync =
     deps: ClockDep &
       ConsoleDep &
       CreateWebSocketDep &
+      NanoIdLibDep &
+      PostMessageDep &
       RandomBytesDep &
       RandomDep &
       SqliteDep &
       SymmetricCryptoDep &
       TimeDep &
-      TimestampConfigDep,
+      TimestampConfigDep &
+      WriteMessagesCallbackRegistryDep,
   ) =>
   (config: SyncConfig): Result<Sync, SqliteError> => {
     let isDisposed = false;
@@ -431,11 +436,14 @@ const createClientStorage =
   (
     deps: ClockDep &
       GetSyncOwnerDep &
+      NanoIdLibDep &
       RandomDep &
       SqliteDep &
       SymmetricCryptoDep &
       TimeDep &
-      TimestampConfigDep,
+      TimestampConfigDep &
+      PostMessageDep &
+      WriteMessagesCallbackRegistryDep,
   ) =>
   (config: {
     onError: (
@@ -455,88 +463,116 @@ const createClientStorage =
     });
     if (!sqliteStorageBase.ok) return sqliteStorageBase;
 
+    const mutex = createMutex();
+
     const storage: ClientStorage = {
       ...sqliteStorageBase.value,
 
       validateWriteKey: constFalse,
       setWriteKey: constFalse,
 
-      // https://eslint.org/docs/latest/rules/require-await#when-not-to-use-it
-      // eslint-disable-next-line @typescript-eslint/require-await
       writeMessages: async (binaryOwnerId, encryptedMessages) => {
-        const ownerId = binaryOwnerIdToOwnerId(binaryOwnerId);
-        const owner = deps.getSyncOwner(ownerId);
-        // Owner can be removed to stop syncing.
-        if (!owner) return false;
+        const writeResult = await mutex.withLock<
+          boolean,
+          | AbortError
+          | ProtocolInvalidDataError
+          | ProtocolTimestampMismatchError
+          | SqliteError
+          | SymmetricCryptoDecryptError
+          | TimestampCounterOverflowError
+          | TimestampDriftError
+          | TimestampTimeOutOfRangeError
+        >(async () => {
+          const ownerId = binaryOwnerIdToOwnerId(binaryOwnerId);
+          const owner = deps.getSyncOwner(ownerId);
+          // Owner can be removed during syncing.
+          if (!owner) return ok(false);
 
-        const binaryTimestamps = mapNonEmptyArray(encryptedMessages, (m) =>
-          timestampToBinaryTimestamp(m.timestamp),
-        );
-
-        const existingTimestamps = getExistingTimestamps(
-          deps,
-          binaryOwnerId,
-          binaryTimestamps,
-        );
-
-        if (!existingTimestamps.ok) {
-          config.onError(existingTimestamps.error);
-          return false;
-        }
-
-        const existingTimestampsSet = new Set(
-          existingTimestamps.value.map((timestamp) => timestamp.toString()),
-        );
-
-        const newMessages: Array<CrdtMessage> = [];
-        for (let i = 0; i < encryptedMessages.length; i++) {
-          const message = encryptedMessages[i];
-          const binaryTimestamp = binaryTimestamps[i];
-
-          // Only decrypt and decode messages with timestamps we don't already have
-          if (existingTimestampsSet.has(binaryTimestamp.toString())) {
-            continue;
-          }
-
-          const dbChange = decryptAndDecodeDbChange(deps)(
-            message,
-            owner.encryptionKey,
+          const existingTimestamps = getExistingTimestamps(deps)(
+            binaryOwnerId,
+            mapNonEmptyArray(encryptedMessages, (m) =>
+              timestampToBinaryTimestamp(m.timestamp),
+            ),
           );
-          if (!dbChange.ok) {
-            config.onError(dbChange.error);
-            return false;
-          }
 
-          newMessages.push({
-            timestamp: message.timestamp,
-            change: dbChange.value,
-          });
-        }
+          if (!existingTimestamps.ok) return existingTimestamps;
 
-        const transaction = deps.sqlite.transaction(() => {
-          let clockTimestamp = deps.clock.get();
+          const existingTimestampsSet = new Set(
+            existingTimestamps.value
+              .map(binaryTimestampToTimestamp)
+              .map(timestampToTimestampString),
+          );
 
-          for (const message of newMessages) {
-            const nextTimestamp = receiveTimestamp(deps)(
-              clockTimestamp,
-              message.timestamp,
+          const newMessages: Array<CrdtMessage> = [];
+
+          for (const message of encryptedMessages) {
+            const timestampAlreadyExists = existingTimestampsSet.has(
+              timestampToTimestampString(message.timestamp),
             );
-            if (!nextTimestamp.ok) return nextTimestamp;
+            if (timestampAlreadyExists) continue;
 
-            clockTimestamp = nextTimestamp.value;
+            const change = decryptAndDecodeDbChange(deps)(
+              message,
+              owner.encryptionKey,
+            );
+
+            if (!change.ok) return change;
+
+            newMessages.push({
+              timestamp: message.timestamp,
+              change: change.value,
+            });
           }
 
-          const applyMessagesResult = applyMessages({ ...deps, storage })(
-            owner.id,
-            newMessages,
+          // Register callback for completion and post processNewMessages to main thread
+          const { promise, resolve } =
+            Promise.withResolvers<ReadonlyArray<CrdtMessage>>();
+          const onCompleteId = deps.writeMessagesCallbackRegistry.register(
+            (processedMessages) => {
+              resolve(processedMessages);
+            },
           );
-          if (!applyMessagesResult.ok) return applyMessagesResult;
 
-          return deps.clock.save(clockTimestamp);
-        });
+          deps.postMessage({
+            type: "processNewMessages",
+            ownerId,
+            messages: newMessages,
+            onCompleteId,
+          });
 
-        if (!transaction.ok) {
-          config.onError(transaction.error);
+          const processedMessages = await promise;
+
+          const transaction = deps.sqlite.transaction(() => {
+            let clockTimestamp = deps.clock.get();
+
+            for (const message of processedMessages) {
+              const nextTimestamp = receiveTimestamp(deps)(
+                clockTimestamp,
+                message.timestamp,
+              );
+              if (!nextTimestamp.ok) return nextTimestamp;
+
+              clockTimestamp = nextTimestamp.value;
+            }
+
+            const applyMessagesResult = applyMessages({ ...deps, storage })(
+              owner.id,
+              processedMessages,
+            );
+            if (!applyMessagesResult.ok) return applyMessagesResult;
+
+            return deps.clock.save(clockTimestamp);
+          });
+
+          if (!transaction.ok) return transaction;
+
+          return ok(true);
+        })();
+
+        if (!writeResult.ok) {
+          if (writeResult.error.type !== "AbortError") {
+            config.onError(writeResult.error);
+          }
           return false;
         }
 
@@ -749,39 +785,44 @@ export const initialSyncState: SyncStateInitial = { type: "SyncStateInitial" };
 
 /**
  * Efficiently checks which binary timestamps already exist in the database
- * using a single CTE query instead of N individual queries. This is crucial for
- * WASM SQLite performance where JS↔WASM boundary crossings are expensive.
+ * using a single CTE query instead of N individual queries. Crucial for WASM
+ * SQLite performance where JS↔WASM boundary crossings are expensive.
+ *
+ * Used for fast idempotency detection in writeMessages before onMessage
+ * validation. While applyMessages ensures internal idempotency, this pre-check
+ * is faster and required for main thread message validation.
  */
-export const getExistingTimestamps = (
-  deps: SqliteDep,
-  binaryOwnerId: BinaryOwnerId,
-  binaryTimestamps: NonEmptyReadonlyArray<BinaryTimestamp>,
-): Result<ReadonlyArray<BinaryTimestamp>, SqliteError> => {
-  const concatenatedTimestamps = concatBytes(...binaryTimestamps);
+export const getExistingTimestamps =
+  (deps: SqliteDep) =>
+  (
+    binaryOwnerId: BinaryOwnerId,
+    binaryTimestamps: NonEmptyReadonlyArray<BinaryTimestamp>,
+  ): Result<ReadonlyArray<BinaryTimestamp>, SqliteError> => {
+    const concatenatedTimestamps = concatBytes(...binaryTimestamps);
 
-  const result = deps.sqlite.exec<{
-    binaryTimestamp: BinaryTimestamp;
-  }>(sql`
-    with recursive
-      split_timestamps(binaryTimestamp, pos) as (
-        select
-          substr(${concatenatedTimestamps}, 1, 16),
-          17 as pos
-        union all
-        select
-          substr(${concatenatedTimestamps}, pos, 16),
-          pos + 16
-        from split_timestamps
-        where pos <= length(${concatenatedTimestamps})
-      )
-    select s.binaryTimestamp
-    from
-      split_timestamps s
-      join evolu_timestamp t
-        on t.ownerId = ${binaryOwnerId} and s.binaryTimestamp = t.t;
-  `);
+    const result = deps.sqlite.exec<{
+      binaryTimestamp: BinaryTimestamp;
+    }>(sql`
+      with recursive
+        split_timestamps(binaryTimestamp, pos) as (
+          select
+            substr(${concatenatedTimestamps}, 1, 16),
+            17 as pos
+          union all
+          select
+            substr(${concatenatedTimestamps}, pos, 16),
+            pos + 16
+          from split_timestamps
+          where pos <= length(${concatenatedTimestamps})
+        )
+      select s.binaryTimestamp
+      from
+        split_timestamps s
+        join evolu_timestamp t
+          on t.ownerId = ${binaryOwnerId} and s.binaryTimestamp = t.t;
+    `);
 
-  if (!result.ok) return result;
+    if (!result.ok) return result;
 
-  return ok(result.value.rows.map((row) => row.binaryTimestamp));
-};
+    return ok(result.value.rows.map((row) => row.binaryTimestamp));
+  };

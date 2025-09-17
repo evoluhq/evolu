@@ -31,8 +31,7 @@ test("getExistingTimestamps works correctly with CTE", async () => {
   ] as const;
 
   // Test 1: No existing timestamps - should return empty array
-  const emptyResult = getExistingTimestamps(
-    { sqlite },
+  const emptyResult = getExistingTimestamps({ sqlite })(
     testOwnerBinaryId,
     allTimestamps,
   );
@@ -50,8 +49,7 @@ test("getExistingTimestamps works correctly with CTE", async () => {
   `);
 
   // Check for all three timestamps - only first two should be found
-  const result = getExistingTimestamps(
-    { sqlite },
+  const result = getExistingTimestamps({ sqlite })(
     testOwnerBinaryId,
     allTimestamps,
   );
@@ -59,15 +57,14 @@ test("getExistingTimestamps works correctly with CTE", async () => {
     ok([binaryTimestamp1, binaryTimestamp2].map((t) => Buffer.from(t))),
   );
 
-  const resultOtherOwner = getExistingTimestamps(
-    { sqlite },
+  const resultOtherOwner = getExistingTimestamps({ sqlite })(
     testOwnerBinaryId2,
     allTimestamps,
   );
   expect(resultOtherOwner).toEqual(ok([]));
 
   // Test 4: Test with single timestamp
-  const singleResult = getExistingTimestamps({ sqlite }, testOwnerBinaryId, [
+  const singleResult = getExistingTimestamps({ sqlite })(testOwnerBinaryId, [
     binaryTimestamp1,
   ]);
 

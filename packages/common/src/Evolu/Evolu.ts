@@ -9,6 +9,7 @@ import { TransferableError } from "../Error.js";
 import { exhaustiveCheck } from "../Function.js";
 import { NanoIdLibDep } from "../NanoId.js";
 import { err, ok, Result } from "../Result.js";
+import { SchedulerDep } from "../Scheduler.js";
 import { isSqlMutation, SafeSql, SqliteError, SqliteQuery } from "../Sqlite.js";
 import { createStore, StoreSubscribe } from "../Store.js";
 import { TimeDep } from "../Time.js";
@@ -147,12 +148,16 @@ export interface EvoluConfig extends DbConfig {
     readonly isFirst: boolean;
   }) => void;
 
-  /** A */
-  readonly onMessage?: onMessage;
+  /**
+   * Callback to process incoming {@link CrdtMessage} messages.
+   *
+   * Evolu operates as a durable queue, providing exactly-once delivery
+   * guarantees. Return false to filter invalid changes. Local-only mutations
+   * can be performed and are executed atomically within the same transaction as
+   * message application, ensuring all-or-nothing consistency.
+   */
+  readonly onMessage?: (message: CrdtMessage) => Promise<boolean>;
 }
-
-/** B */
-export type onMessage = (message: CrdtMessage) => Promise<boolean>;
 
 export interface Evolu<S extends EvoluSchema = EvoluSchema> {
   /**
@@ -580,6 +585,7 @@ export type EvoluDeps = ConsoleDep &
   NanoIdLibDep &
   Partial<FlushSyncDep> &
   ReloadAppDep &
+  SchedulerDep &
   TimeDep;
 
 // For hot reloading and Evolu multitenancy.
@@ -747,6 +753,37 @@ const createEvoluInstance =
           } else {
             onCompleteRegistry.execute(message.onCompleteId);
           }
+          break;
+        }
+
+        case "processNewMessages": {
+          void deps.scheduler.runAfterInteractions(async () => {
+            const processedMessages: Array<CrdtMessage> = [];
+
+            for (const crdtMessage of message.messages) {
+              let isValid = true;
+
+              if (onMessage) {
+                isValid = await onMessage(crdtMessage);
+              }
+
+              processedMessages.push({
+                ...crdtMessage,
+                change: {
+                  ...crdtMessage.change,
+                  values: isValid ? crdtMessage.change.values : {},
+                },
+              });
+            }
+
+            dbWorker.postMessage({
+              type: "onProcessNewMessages",
+              onCompleteId: message.onCompleteId,
+              messages: processedMessages,
+            });
+
+            return ok();
+          })();
           break;
         }
 

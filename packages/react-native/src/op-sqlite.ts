@@ -16,6 +16,7 @@ import {
 
 import { DevSettings } from "react-native";
 import { createOpSqliteDriver } from "./providers/OpSqliteDriver.js";
+import { createReactNativeScheduler } from "./Scheduler.js";
 import { polyfillHermes } from "./utils/Hermes.js";
 
 polyfillHermes();
@@ -48,5 +49,6 @@ export const evoluReactNativeDeps: EvoluDeps = {
   createDbWorker,
   nanoIdLib,
   reloadApp,
+  scheduler: createReactNativeScheduler(),
   time,
 };

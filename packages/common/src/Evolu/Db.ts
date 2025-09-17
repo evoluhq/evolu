@@ -1,5 +1,9 @@
 import { isNonEmptyArray, NonEmptyReadonlyArray } from "../Array.js";
-import { CallbackId } from "../CallbackRegistry.js";
+import {
+  CallbackId,
+  CallbackRegistry,
+  createCallbackRegistry,
+} from "../CallbackRegistry.js";
 import { ConsoleConfig, ConsoleDep } from "../Console.js";
 import {
   createSymmetricCrypto,
@@ -53,7 +57,7 @@ import {
   IndexesConfig,
   MutationChange,
 } from "./Schema.js";
-import { DbChange } from "./Storage.js";
+import { CrdtMessage, DbChange } from "./Storage.js";
 import { Clock, createClock, createSync, SyncDep, SyncOwner } from "./Sync.js";
 import {
   Timestamp,
@@ -248,6 +252,11 @@ export type DbWorkerInput =
       readonly type: "useOwner";
       readonly use: boolean;
       readonly owner: SyncOwner;
+    }
+  | {
+      readonly type: "onProcessNewMessages";
+      readonly onCompleteId: CallbackId;
+      readonly messages: ReadonlyArray<CrdtMessage>;
     };
 
 export type DbWorkerOutput =
@@ -284,6 +293,12 @@ export type DbWorkerOutput =
       readonly type: "onExport";
       readonly onCompleteId: CallbackId;
       readonly file: Uint8Array;
+    }
+  | {
+      readonly type: "processNewMessages";
+      readonly ownerId: OwnerId;
+      readonly messages: ReadonlyArray<CrdtMessage>;
+      readonly onCompleteId: CallbackId;
     };
 
 export type DbWorkerPlatformDeps = ConsoleDep &
@@ -301,14 +316,21 @@ type DbWorkerDeps = Omit<
   GetQueryRowsCacheDep &
   PostMessageDep &
   SqliteDep &
-  SyncDep;
+  SyncDep &
+  WriteMessagesCallbackRegistryDep;
 
 interface GetQueryRowsCacheDep {
   readonly getQueryRowsCache: (tabId: Id) => QueryRowsCache;
 }
 
-interface PostMessageDep {
+export interface PostMessageDep {
   readonly postMessage: (message: DbWorkerOutput) => void;
+}
+
+export interface WriteMessagesCallbackRegistryDep {
+  readonly writeMessagesCallbackRegistry: CallbackRegistry<
+    ReadonlyArray<CrdtMessage>
+  >;
 }
 
 export const createDbWorkerForPlatform = (
@@ -415,12 +437,17 @@ const createDbWorkerDeps =
       );
       if (!result.ok) return result;
 
+      const writeMessagesCallbackRegistry =
+        createCallbackRegistry<ReadonlyArray<CrdtMessage>>(platformDeps);
+
       const sync = createSync({
         ...platformDeps,
         clock,
         sqlite,
         symmetricCrypto: createSymmetricCrypto(platformDeps),
         timestampConfig: initMessage.config,
+        postMessage,
+        writeMessagesCallbackRegistry,
       })({
         appOwner,
         transports: initMessage.config.transports,
@@ -453,6 +480,7 @@ const createDbWorkerDeps =
         postMessage,
         sqlite,
         sync: sync.value,
+        writeMessagesCallbackRegistry,
       };
 
       return ok(deps);
@@ -712,6 +740,13 @@ const handlers: Omit<MessageHandlers<DbWorkerInput, DbWorkerDeps>, "init"> = {
 
   useOwner: (deps) => (message) => {
     deps.sync.useOwner(message.use, message.owner);
+  },
+
+  onProcessNewMessages: (deps) => (message) => {
+    deps.writeMessagesCallbackRegistry.execute(
+      message.onCompleteId,
+      message.messages,
+    );
   },
 };
 

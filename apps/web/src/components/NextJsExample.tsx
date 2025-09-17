@@ -4,9 +4,8 @@ import {
   binaryTimestampToTimestamp,
   createEvolu,
   createFormatTypeError,
-  createSharedOwner,
+  EvoluConfig,
   FiniteNumber,
-  getOrThrow,
   id,
   idToBinaryId,
   json,
@@ -18,7 +17,6 @@ import {
   NonEmptyString1000,
   nullOr,
   object,
-  OwnerSecret,
   SimpleName,
   SqliteBoolean,
   ValidMutationSizeError,
@@ -33,8 +31,7 @@ import { evoluReactWebDeps } from "@evolu/react-web";
 import clsx from "clsx";
 import { ChangeEvent, FC, startTransition, Suspense, useState } from "react";
 
-// Define the Evolu schema that describes the database tables and column types.
-// First, define the typed IDs.
+// Evolu schema that describes the database tables and column types.
 
 const TodoId = id("Todo");
 type TodoId = typeof TodoId.Type;
@@ -78,29 +75,16 @@ const Schema = {
   },
 };
 
-const evolu = createEvolu(evoluReactWebDeps)(Schema, {
-  reloadUrl: "/docs/examples/react/nextjs",
+const config: Partial<EvoluConfig> = {
   name: SimpleName.orThrow("evolu-nextjs-example-v200825"),
+
+  reloadUrl: "/docs/examples/react/nextjs",
 
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "http://localhost:4000" }],
-    // transports: [],
   }),
 
-  onInit: ({ isFirst }) => {
-    if (isFirst) {
-      const todoCategoryId = getOrThrow(
-        evolu.insert("todoCategory", {
-          name: "Not Urgent",
-        }),
-      );
-
-      evolu.insert("todo", {
-        title: "Try React Suspense",
-        categoryId: todoCategoryId.id,
-      });
-    }
-  },
+  enableLogging: false,
 
   // Indexes are not required for development but are recommended for production.
   // https://www.evolu.dev/docs/indexes
@@ -109,8 +93,14 @@ const evolu = createEvolu(evoluReactWebDeps)(Schema, {
     create("todoCategoryCreatedAt").on("todoCategory").column("createdAt"),
   ],
 
-  enableLogging: true,
-});
+  onMessage: (message) => {
+    // eslint-disable-next-line no-console
+    console.log("onMessage", { message });
+    return Promise.resolve(true);
+  },
+};
+
+const evolu = createEvolu(evoluReactWebDeps)(Schema, config);
 
 const useEvolu = createUseEvolu(evolu);
 
@@ -230,47 +220,17 @@ const Button: FC<{
 const Todos: FC = () => {
   const rows = useQuery(todosWithCategories);
 
-  const secret = new Uint8Array(16) as OwnerSecret;
-  const sharedOwner = createSharedOwner(secret);
-
-  // useOwner(sharedOwner)
-  // evolu.useOwner
-
   const { insert } = useEvolu();
 
   const handleAddTodoClick = () => {
     const title = window.prompt("What needs to be done?");
     if (title == null) return; // escape or cancel
 
-    const unuse = evolu.useOwner(sharedOwner);
-
-    setTimeout(() => {
-      unuse();
-    }, 3000);
-
-    const result = insert(
-      "todo",
-      {
-        title,
-        // This object is automatically converted to a JSON string.
-        personJson: { name: "Joe", age: 32 },
-      },
-      {
-        ownerId: sharedOwner.id,
-      },
-    );
-
-    // const result = insert(
-    //   "todo",
-    //   {
-    //     title,
-    //     // This object is automatically converted to a JSON string.
-    //     personJson: { name: "Joe", age: 32 },
-    //   },
-    //   {
-    //     owner: sharedOwner,
-    //   },
-    // );
+    const result = insert("todo", {
+      title,
+      // This object is automatically converted to a JSON string.
+      personJson: { name: "Joe", age: 32 },
+    });
 
     if (!result.ok) {
       alert(formatTypeError(result.error));
