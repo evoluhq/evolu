@@ -54,7 +54,6 @@ import {
   DbSchema,
   ensureDbSchema,
   getDbSchema,
-  IndexesConfig,
   MutationChange,
 } from "./Schema.js";
 import { CrdtMessage, DbChange } from "./Storage.js";
@@ -119,35 +118,6 @@ export interface DbConfig extends ConsoleConfig, TimestampConfig {
   readonly transports: ReadonlyArray<TransportConfig>;
 
   /**
-   * URL to reload browser tabs after reset or restore.
-   *
-   * The default value is `/`.
-   */
-  readonly reloadUrl: string;
-
-  /**
-   * Use the `indexes` option to define SQLite indexes.
-   *
-   * Table and column names are not typed because Kysely doesn't support it.
-   *
-   * https://medium.com/@JasonWyatt/squeezing-performance-from-sqlite-indexes-indexes-c4e175f3c346
-   *
-   * ### Example
-   *
-   * ```ts
-   * const evolu = createEvolu(evoluReactDeps)(Schema, {
-   *   indexes: (create) => [
-   *     create("todoCreatedAt").on("todo").column("createdAt"),
-   *     create("todoCategoryCreatedAt")
-   *       .on("todoCategory")
-   *       .column("createdAt"),
-   *   ],
-   * });
-   * ```
-   */
-  readonly indexes?: IndexesConfig;
-
-  /**
    * External AppOwner to use when creating Evolu instance. Use this when you
    * want to manage AppOwner creation and persistence externally (e.g., with
    * your own authentication system). If omitted, Evolu will automatically
@@ -200,7 +170,6 @@ export interface DbConfig extends ConsoleConfig, TimestampConfig {
 export const defaultDbConfig: DbConfig = {
   name: SimpleName.orThrow("Evolu"),
   transports: [{ type: "WebSocket", url: "wss://free.evoluhq.com" }],
-  reloadUrl: "/",
   maxDrift: 5 * 60 * 1000,
   enableLogging: false,
 };

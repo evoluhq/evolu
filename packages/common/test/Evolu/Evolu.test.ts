@@ -130,7 +130,6 @@ test("init postMessage call", () => {
             "enableLogging": false,
             "maxDrift": 300000,
             "name": "instance0",
-            "reloadUrl": "/",
             "transports": [
               {
                 "type": "WebSocket",
@@ -698,59 +697,6 @@ test("externalAppOwner should use provided owner", async () => {
     (table) => table.name === "evolu_config",
   );
   expect(configTable?.rows[0].appOwnerId).toBe(externalAppOwner.id);
-});
-
-test("onInit callback should be called with correct parameters and can seed initial data", async () => {
-  const { deps, sqlite } = await createEvoluDepsWithSqlite();
-
-  const externalAppOwner = createAppOwner(testOwnerSecret);
-  const initCalls: Array<{
-    appOwner: typeof externalAppOwner;
-    isFirst: boolean;
-  }> = [];
-
-  const name = SimpleName.orThrow(`instance${instancesCount++}`);
-
-  const evolu1 = createEvolu(deps)(Schema, {
-    externalAppOwner,
-    name,
-    onInit: ({ appOwner, isFirst }) => {
-      initCalls.push({ appOwner, isFirst });
-
-      if (isFirst) {
-        const todoCategoryId = getOrThrow(
-          evolu1.insert("todoCategory", {
-            name: "Not Urgent",
-          }),
-        );
-
-        evolu1.insert("todo", {
-          title: "Try React Suspense",
-          categoryId: todoCategoryId.id,
-        });
-      }
-    },
-  });
-
-  await wait("10ms")();
-
-  expect(initCalls).toHaveLength(1);
-
-  const snapshot = getDbSnapshot({ sqlite });
-  expect(snapshot).toMatchSnapshot();
-
-  // Create
-  createEvolu(deps)(Schema, {
-    name,
-    externalAppOwner,
-    onInit: ({ appOwner, isFirst }) => {
-      initCalls.push({ appOwner, isFirst });
-    },
-  });
-
-  await wait("10ms")();
-
-  expect(initCalls).toHaveLength(1);
 });
 
 describe("useOwner", () => {

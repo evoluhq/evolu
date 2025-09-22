@@ -24,12 +24,19 @@ import {
 import {
   createUseEvolu,
   EvoluProvider,
-  useAppOwner,
   useQuery,
+  useWasSSR,
 } from "@evolu/react";
 import { evoluReactWebDeps } from "@evolu/react-web";
 import clsx from "clsx";
-import { ChangeEvent, FC, startTransition, Suspense, useState } from "react";
+import {
+  ChangeEvent,
+  FC,
+  startTransition,
+  Suspense,
+  use,
+  useState,
+} from "react";
 
 // Evolu schema that describes the database tables and column types.
 
@@ -75,7 +82,7 @@ const Schema = {
   },
 };
 
-const config: Partial<EvoluConfig> = {
+const config: EvoluConfig = {
   name: SimpleName.orThrow("evolu-nextjs-example-v200825"),
 
   reloadUrl: "/docs/examples/react/nextjs",
@@ -474,9 +481,13 @@ const Tabs: FC<{
 
 const OwnerActions: FC = () => {
   const evolu = useEvolu();
-  const owner = useAppOwner();
-
   const [showMnemonic, setShowMnemonic] = useState(false);
+
+  // evolu.appOwner is never resolved on the server.
+  const wasSSR = useWasSSR();
+  if (wasSSR) return null;
+
+  const owner = use(evolu.appOwner);
 
   const handleRestoreAppOwnerClick = () => {
     const mnemonic = window.prompt("Your Mnemonic");
@@ -535,7 +546,7 @@ const OwnerActions: FC = () => {
           onClick={handleDownloadDatabaseClick}
         />
       </div>
-      {showMnemonic && owner?.mnemonic && (
+      {showMnemonic && owner.mnemonic && (
         <div>
           <textarea
             value={owner.mnemonic}

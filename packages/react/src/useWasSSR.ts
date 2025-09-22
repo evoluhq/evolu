@@ -4,8 +4,8 @@ import { useRef, useSyncExternalStore } from "react";
 const emptySubscribe = () => () => {};
 
 /**
- * "Unlike the typeof window hack, this ensures that the server and hydration
- * sees the same thing."
+ * Unlike the `typeof window === 'undefined'`, this ensures that the server and
+ * hydration sees the same thing.
  */
 export const useWasSSR = (): boolean => {
   const ref = useRef(false);

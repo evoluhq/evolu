@@ -45,6 +45,7 @@ import {
   DefaultColumns,
   EvoluSchema,
   evoluSchemaToDbSchema,
+  IndexesConfig,
   insertable,
   kysely,
   Mutation,
@@ -62,92 +63,7 @@ import { CrdtMessage, DbChange } from "./Storage.js";
 import { initialSyncState, SyncOwner, SyncState } from "./Sync.js";
 import { TimestampError } from "./Timestamp.js";
 
-export interface EvoluConfig extends DbConfig {
-  /**
-   * Callback invoked when Evolu is successfully initialized.
-   *
-   * Useful for showing welcome messages and initial data seeding.
-   *
-   * ### Examples
-   *
-   * #### Welcome message
-   *
-   * ```ts
-   * const evolu = createEvolu(evoluReactWebDeps)(Schema, {
-   *   onInit: ({ isFirst }) => {
-   *     // Show welcome message only once when DB is initialized on a device
-   *     if (isFirst) {
-   *       alert("Welcome to your new local-first app!");
-   *     }
-   *   },
-   * });
-   * ```
-   *
-   * #### Explicit initial data seeding
-   *
-   * When we know it's the first time the app is initialized (user clicked a
-   * button), we can seed initial data on the device. When the user restores
-   * their {@link AppOwner} on a different device (again, by clicking a button),
-   * we should not use onInit at all to avoid data duplication.
-   *
-   * If we need to store device-specific information (whether an owner was
-   * created, how many owners exist on the instance, etc.), we can use a
-   * local-only Evolu instance.
-   *
-   * ```ts
-   * // Local-only instance for device settings (no sync)
-   * const deviceEvolu = createEvolu(evoluReactWebDeps)(DeviceSchema, {
-   *   name: SimpleName.orThrow("MyApp-Device"),
-   *   transports: [], // No sync - stays local to device
-   * });
-   *
-   * const createNewAppOwner = () => {
-   *   const evolu = createEvolu(evoluReactWebDeps)(Schema, {
-   *     onInit: () => {
-   *       const todoCategoryId = getOrThrow(
-   *         evolu.insert("todoCategory", {
-   *           name: "Not Urgent",
-   *         }),
-   *       );
-   *       evolu.insert("todo", {
-   *         title: "Try React Suspense",
-   *         categoryId: todoCategoryId.id,
-   *       });
-   *     },
-   *   });
-   * };
-   *
-   * const restoreAppOwner = () => {
-   *   const evolu = createEvolu(evoluReactWebDeps)(Schema, {
-   *     externalAppOwner: appOwner,
-   *   });
-   * };
-   * ```
-   *
-   * #### Implicit initial data seeding
-   *
-   * If the {@link AppOwner} is always provided from an external source, and we
-   * don't know whether we're creating or restoring it, and we still want
-   * initial data, then we must upsert it with stable deterministic IDs derived
-   * from the AppOwner.
-   *
-   * ```ts
-   * const setupAppOwner = () => {
-   *   const evolu = createEvolu(evoluReactWebDeps)(Schema, {
-   *     externalAppOwner: appOwner,
-   *     onInit: ({ appOwner }) => {
-   *       // Derive deterministic ShardOwner for data
-   *       // TODO:
-   *     },
-   *   });
-   * };
-   * ```
-   */
-  readonly onInit?: (params: {
-    readonly appOwner: AppOwner;
-    readonly isFirst: boolean;
-  }) => void;
-
+export interface EvoluConfig extends Partial<DbConfig> {
   /**
    * Callback to process incoming {@link CrdtMessage} messages.
    *
@@ -157,6 +73,35 @@ export interface EvoluConfig extends DbConfig {
    * message application, ensuring all-or-nothing consistency.
    */
   readonly onMessage?: (message: CrdtMessage) => Promise<boolean>;
+
+  /**
+   * Use the `indexes` option to define SQLite indexes.
+   *
+   * Table and column names are not typed because Kysely doesn't support it.
+   *
+   * https://medium.com/@JasonWyatt/squeezing-performance-from-sqlite-indexes-indexes-c4e175f3c346
+   *
+   * ### Example
+   *
+   * ```ts
+   * const evolu = createEvolu(evoluReactDeps)(Schema, {
+   *   indexes: (create) => [
+   *     create("todoCreatedAt").on("todo").column("createdAt"),
+   *     create("todoCategoryCreatedAt")
+   *       .on("todoCategory")
+   *       .column("createdAt"),
+   *   ],
+   * });
+   * ```
+   */
+  readonly indexes?: IndexesConfig;
+
+  /**
+   * URL to reload browser tabs after reset or restore.
+   *
+   * The default value is `/`.
+   */
+  readonly reloadUrl?: string;
 }
 
 export interface Evolu<S extends EvoluSchema = EvoluSchema> {
@@ -300,30 +245,15 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
   readonly getQueryRows: <R extends Row>(query: Query<R>) => QueryRows<R>;
 
   /**
-   * Subscribe to {@link AppOwner} changes.
-   *
-   * ### Example
-   *
-   * ```ts
-   * const unsubscribe = evolu.subscribeAppOwner(() => {
-   *   const owner = evolu.getAppOwner();
-   * });
-   * ```
-   */
-  readonly subscribeAppOwner: StoreSubscribe;
-
-  /**
    * Get {@link AppOwner}.
    *
    * ### Example
    *
    * ```ts
-   * const unsubscribe = evolu.subscribeAppOwner(() => {
-   *   const owner = evolu.getAppOwner();
-   * });
+   * const owner = await evolu.appOwner;
    * ```
    */
-  readonly getAppOwner: () => AppOwner | null;
+  readonly appOwner: Promise<AppOwner>;
 
   /**
    * Subscribe to {@link SyncState} changes.
@@ -644,15 +574,14 @@ export const createEvolu =
   (deps: EvoluDeps) =>
   <S extends EvoluSchema>(
     schema: ValidateSchema<S> extends never ? S : ValidateSchema<S>,
-    partialConfig: Partial<EvoluConfig> = {},
+    config?: EvoluConfig,
   ): Evolu<S> => {
-    const config: EvoluConfig = { ...defaultDbConfig, ...partialConfig };
-
-    let evolu = evoluInstances.get(config.name);
+    const name = config?.name ?? defaultDbConfig.name;
+    let evolu = evoluInstances.get(name);
 
     if (evolu == null) {
       evolu = createEvoluInstance(deps)(schema as EvoluSchema, config);
-      evoluInstances.set(config.name, evolu);
+      evoluInstances.set(name, evolu);
     } else {
       // Hot reloading. Note that indexes are intentionally omitted.
       evolu.ensureSchema(schema as EvoluSchema);
@@ -663,17 +592,27 @@ export const createEvolu =
 
 const createEvoluInstance =
   (deps: EvoluDeps) =>
-  (schema: EvoluSchema, evoluConfig: EvoluConfig): InternalEvoluInstance => {
-    deps.console.enabled = evoluConfig.enableLogging ?? false;
+  (schema: EvoluSchema, config?: EvoluConfig): InternalEvoluInstance => {
+    deps.console.enabled = config?.enableLogging ?? false;
+
+    const {
+      onMessage,
+      indexes,
+      reloadUrl = "/",
+      ...partialDbConfig
+    } = config ?? {};
+
+    const dbConfig: DbConfig = { ...defaultDbConfig, ...partialDbConfig };
+
     deps.console.log("[evolu]", "createEvoluInstance", {
-      name: evoluConfig.name,
+      name: dbConfig.name,
     });
 
-    const { onInit, indexes, onMessage, ...config } = evoluConfig;
+    const { promise: appOwner, resolve: resolveAppOwner } =
+      Promise.withResolvers<AppOwner>();
 
     const errorStore = createStore<EvoluError | null>(null);
     const rowsStore = createStore<QueryRowsMap>(new Map());
-    const appOwnerStore = createStore<AppOwner | null>(null);
     const syncStore = createStore<SyncState>(initialSyncState);
 
     const subscribedQueries = createSubscribedQueries(rowsStore);
@@ -681,7 +620,7 @@ const createEvoluInstance =
     const onCompleteRegistry = createCallbackRegistry(deps);
     const exportRegistry = createCallbackRegistry<Uint8Array>(deps);
 
-    const dbWorker = deps.createDbWorker(config.name);
+    const dbWorker = deps.createDbWorker(dbConfig.name);
 
     const getTabId = () => {
       tabId ??= createId(deps);
@@ -691,11 +630,7 @@ const createEvoluInstance =
     dbWorker.onMessage((message) => {
       switch (message.type) {
         case "onInit": {
-          appOwnerStore.set(message.appOwner);
-          onInit?.({
-            appOwner: message.appOwner,
-            isFirst: message.isFirst,
-          });
+          resolveAppOwner(message.appOwner);
           break;
         }
 
@@ -749,7 +684,7 @@ const createEvoluInstance =
 
         case "onReset": {
           if (message.reload) {
-            deps.reloadApp(config.reloadUrl);
+            deps.reloadApp(reloadUrl);
           } else {
             onCompleteRegistry.execute(message.onCompleteId);
           }
@@ -821,11 +756,7 @@ const createEvoluInstance =
       return type;
     };
 
-    dbWorker.postMessage({
-      type: "init",
-      config,
-      dbSchema,
-    });
+    dbWorker.postMessage({ type: "init", config: dbConfig, dbSchema });
 
     const loadQueryMicrotaskQueue: Array<Query> = [];
 
@@ -982,8 +913,7 @@ const createEvoluInstance =
       getQueryRows: <R extends Row>(query: Query<R>): QueryRows<R> =>
         (rowsStore.get().get(query) ?? emptyRows) as QueryRows<R>,
 
-      subscribeAppOwner: appOwnerStore.subscribe,
-      getAppOwner: appOwnerStore.get,
+      appOwner,
 
       subscribeSyncState: syncStore.subscribe,
       getSyncState: syncStore.get,
@@ -1016,7 +946,7 @@ const createEvoluInstance =
       },
 
       reloadApp: () => {
-        deps.reloadApp(config.reloadUrl);
+        deps.reloadApp(reloadUrl);
       },
 
       ensureSchema: (schema) => {
