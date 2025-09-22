@@ -35,7 +35,7 @@
     "eslint-import-resolver-typescript": "^4.4.3",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-import-x": "^4.15.1",
-    "eslint-plugin-jsdoc": "^55.1.2",
+    "eslint-plugin-jsdoc": "^60.1.1",
     "eslint-plugin-react-hooks": "^5.2.0",
     "inquirer": "^12.9.3",
     "prettier": "^3.6.2",
@@ -52,7 +52,7 @@
   "engines": {
     "node": ">=22.0.0"
   },
-  "packageManager": "pnpm@10.16.1",
+  "packageManager": "pnpm@10.17.1",
   "pnpm": {
     "onlyBuiltDependencies": [
       "@tailwindcss/oxide",
