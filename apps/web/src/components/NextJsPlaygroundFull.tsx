@@ -179,7 +179,7 @@ const AppShell: FC = () => {
           Create your first project to get started
         </p>
         <Button
-          title="Add Project"
+          title="Add new project"
           onClick={handleAddProjectClick}
           variant="primary"
         />
@@ -262,19 +262,18 @@ const ProjectsTab: FC = () => {
 
   return (
     <div>
-      <div className="mb-6 flex min-h-12 items-center justify-between">
-        <h2 className="text-xl font-semibold text-gray-900">Projects</h2>
-        <Button
-          title="Add Project"
-          onClick={handleAddProjectClick}
-          variant="primary"
-        />
-      </div>
-
       <div className="space-y-3">
         {projects.map((project) => (
           <ProjectItem key={project.id} project={project} />
         ))}
+        <div className="flex justify-center pt-4">
+          <Button
+            title="Add new project"
+            onClick={handleAddProjectClick}
+            variant="primary"
+            className="w-full py-3 !text-base font-semibold"
+          />
+        </div>
       </div>
     </div>
   );
@@ -283,9 +282,6 @@ const ProjectsTab: FC = () => {
 const DataManagementTab: FC = () => {
   return (
     <div>
-      <div className="mb-6 flex min-h-12 items-center justify-between">
-        <h2 className="text-xl font-semibold text-gray-900">Data Management</h2>
-      </div>
       <OwnerActions />
     </div>
   );
@@ -306,10 +302,6 @@ const ProjectsPage: FC = () => {
   );
   return (
     <div>
-      <div className="mb-6 flex min-h-12 items-center justify-between">
-        <h2 className="text-xl font-semibold text-gray-900">Home</h2>
-      </div>
-
       <div className="flex flex-col gap-8">
         {projects.map((project) => (
           <ProjectSection
