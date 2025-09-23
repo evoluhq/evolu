@@ -16,7 +16,12 @@ import {
 import { createUseEvolu, EvoluProvider, useQuery } from "@evolu/react";
 import { evoluReactWebDeps } from "@evolu/react-web";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
-import { IconEdit, IconStackFront, IconTrash } from "@tabler/icons-react";
+import {
+  IconEdit,
+  IconRestore,
+  IconStackFront,
+  IconTrash,
+} from "@tabler/icons-react";
 import clsx from "clsx";
 import { FC, startTransition, Suspense, use, useState } from "react";
 
@@ -97,8 +102,40 @@ const todosWithProject = evolu.createQuery(
   },
 );
 
+const deletedProjectsQuery = evolu.createQuery(
+  (db) =>
+    db
+      .selectFrom("project")
+      .select(["id", "name", "updatedAt"])
+      .where("isDeleted", "is", 1)
+      .where("name", "is not", null)
+      .$narrowType<{ name: kysely.NotNull }>()
+      .orderBy("updatedAt", "desc"),
+  {
+    // logQueryExecutionTime: true,
+    // logExplainQueryPlan: true,
+  },
+);
+
+const deletedTodosQuery = evolu.createQuery(
+  (db) =>
+    db
+      .selectFrom("todo")
+      .select(["id", "title", "isCompleted", "projectId", "updatedAt"])
+      .where("isDeleted", "is", 1)
+      .where("title", "is not", null)
+      .$narrowType<{ title: kysely.NotNull }>()
+      .orderBy("updatedAt", "desc"),
+  {
+    // logQueryExecutionTime: true,
+    // logExplainQueryPlan: true,
+  },
+);
+
 type ProjectsRow = typeof projectsQuery.Row;
 type TodosWithProjectRow = typeof todosWithProject.Row;
+type DeletedProjectsRow = typeof deletedProjectsQuery.Row;
+type DeletedTodosRow = typeof deletedTodosQuery.Row;
 
 evolu.subscribeError(() => {
   const error = evolu.getError();
@@ -150,7 +187,7 @@ const AppShell: FC = () => {
   const { insert } = useEvolu();
 
   const [activeTab, setActiveTab] = useState<
-    "home" | "projects" | "dataManagement"
+    "home" | "projects" | "dataManagement" | "trash"
   >("home");
 
   const handleAddProjectClick = () => {
@@ -229,7 +266,20 @@ const AppShell: FC = () => {
               });
             }}
           >
-            Data Management
+            Account
+          </button>
+          <button
+            className={clsx(
+              "cursor-pointer border-b-2 border-b-transparent whitespace-nowrap text-gray-500",
+              activeTab === "trash" && "!border-blue-600 !text-blue-600",
+            )}
+            onClick={() => {
+              startTransition(() => {
+                setActiveTab("trash");
+              });
+            }}
+          >
+            Trash
           </button>
         </div>
       </div>
@@ -238,6 +288,7 @@ const AppShell: FC = () => {
         {activeTab === "home" && <ProjectsPage />}
         {activeTab === "projects" && <ProjectsTab />}
         {activeTab === "dataManagement" && <DataManagementTab />}
+        {activeTab === "trash" && <TrashTab />}
       </Suspense>
     </div>
   );
@@ -283,6 +334,145 @@ const DataManagementTab: FC = () => {
   return (
     <div>
       <OwnerActions />
+    </div>
+  );
+};
+
+const TrashTab: FC = () => {
+  const deletedProjects = useQuery(deletedProjectsQuery);
+  const deletedTodos = useQuery(deletedTodosQuery);
+  const projects = useQuery(projectsQuery); // For getting project names
+
+  if (deletedProjects.length === 0 && deletedTodos.length === 0) {
+    return (
+      <div className="py-12 text-center">
+        <div className="mb-4 text-gray-700">
+          <IconTrash className="mx-auto h-12 w-12" />
+        </div>
+        <h3 className="mb-2 text-lg font-medium text-gray-900">
+          Trash is empty
+        </h3>
+        <p className="text-gray-500">
+          Deleted projects and todos will appear here
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {deletedProjects.length > 0 && (
+        <div>
+          <h3 className="mb-3 text-lg font-semibold text-gray-900">
+            Deleted Projects
+          </h3>
+          <div className="space-y-2">
+            {deletedProjects.map((project) => (
+              <DeletedProjectItem key={project.id} project={project} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {deletedTodos.length > 0 && (
+        <div>
+          <h3 className="mb-3 text-lg font-semibold text-gray-900">
+            Deleted Todos
+          </h3>
+          <div className="space-y-2">
+            {deletedTodos.map((todo) => (
+              <DeletedTodoItem
+                key={todo.id}
+                todo={todo}
+                projects={[...projects]}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const DeletedProjectItem: FC<{
+  project: DeletedProjectsRow;
+}> = ({ project }) => {
+  const { update } = useEvolu();
+
+  const handleRestoreClick = () => {
+    if (
+      confirm(`Are you sure you want to restore project "${project.name}"?`)
+    ) {
+      update("project", { id: project.id, isDeleted: false });
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-3 rounded-lg bg-white p-4 shadow-sm">
+      <div className="flex flex-1 items-start gap-3">
+        <IconStackFront className="size-6 text-gray-400" />
+        <div className="flex-1">
+          <h3 className="font-medium text-gray-900">{project.name}</h3>
+          <p className="text-sm text-gray-500">
+            Deleted{" "}
+            {project.updatedAt
+              ? new Date(project.updatedAt).toLocaleString()
+              : "recently"}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={handleRestoreClick}
+          className="p-2 text-gray-400 transition-colors hover:text-green-600"
+          title="Restore Project"
+        >
+          <IconRestore className="size-4" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const DeletedTodoItem: FC<{
+  todo: DeletedTodosRow;
+  projects: Array<ProjectsRow>;
+}> = ({ todo, projects }) => {
+  const { update } = useEvolu();
+
+  const handleRestoreClick = () => {
+    if (confirm(`Are you sure you want to restore todo "${todo.title}"?`)) {
+      update("todo", { id: todo.id, isDeleted: false });
+    }
+  };
+
+  const getProjectName = (projectId: ProjectId | null) => {
+    const project = projects.find((p) => p.id === projectId);
+    return project ? project.name : "Unknown Project (Orphan)";
+  };
+
+  return (
+    <div className="flex items-center gap-3 rounded-lg bg-white p-4 shadow-sm">
+      <div className="flex flex-1 items-center gap-3">
+        <div className="flex-1">
+          <h3 className="font-medium text-gray-900">{todo.title}</h3>
+          <p className="text-sm text-gray-500">
+            {getProjectName(todo.projectId)} • Deleted{" "}
+            {todo.updatedAt
+              ? new Date(todo.updatedAt).toLocaleString()
+              : "recently"}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={handleRestoreClick}
+          className="p-2 text-gray-400 transition-colors hover:text-green-600"
+          title="Restore Todo"
+        >
+          <IconRestore className="size-4" />
+        </button>
+      </div>
     </div>
   );
 };
