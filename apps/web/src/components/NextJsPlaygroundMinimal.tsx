@@ -83,6 +83,12 @@ export const NextJsPlaygroundMinimal: FC = () => {
   return (
     <div className="min-h-screen px-8 py-8">
       <div className="mx-auto max-w-md">
+        <div className="mb-2 flex items-center justify-between pb-4">
+          <h1 className="w-full text-center text-xl font-semibold text-gray-900">
+            Minimal Todo App
+          </h1>
+        </div>
+
         <EvoluProvider value={evolu}>
           <Suspense>
             <Todos />
@@ -125,13 +131,19 @@ const Todos: FC = () => {
   const handleAddTodo = () => {
     if (!newTodoTitle.trim()) return;
 
-    const result = insert("todo", {
-      title: newTodoTitle.trim(),
-    });
+    const result = insert(
+      "todo",
+      {
+        title: newTodoTitle.trim(),
+      },
+      {
+        onComplete: () => {
+          setNewTodoTitle("");
+        },
+      },
+    );
 
-    if (result.ok) {
-      setNewTodoTitle("");
-    } else {
+    if (!result.ok) {
       alert(formatTypeError(result.error));
     }
   };
@@ -144,12 +156,6 @@ const Todos: FC = () => {
 
   return (
     <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
-      <div className="mb-2 flex items-center justify-between pb-4">
-        <h1 className="w-full text-center text-xl font-semibold text-gray-900">
-          Minimal Todo App
-        </h1>
-      </div>
-
       <div className="mb-6 space-y-2">
         {todos.map((todo) => (
           <TodoItem key={todo.id} row={todo} />

@@ -306,14 +306,20 @@ const ProjectSection: FC<{
   const handleAddTodo = () => {
     if (!newTodoTitle.trim()) return;
 
-    const result = insert("todo", {
-      title: newTodoTitle.trim(),
-      projectId: project.id,
-    });
+    const result = insert(
+      "todo",
+      {
+        title: newTodoTitle.trim(),
+        projectId: project.id,
+      },
+      {
+        onComplete: () => {
+          setNewTodoTitle("");
+        },
+      },
+    );
 
-    if (result.ok) {
-      setNewTodoTitle("");
-    } else {
+    if (!result.ok) {
       alert(formatTypeError(result.error));
     }
   };
