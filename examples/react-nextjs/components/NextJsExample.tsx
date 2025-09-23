@@ -5,7 +5,6 @@ import {
   createEvolu,
   createFormatTypeError,
   FiniteNumber,
-  getOrThrow,
   id,
   idToBinaryId,
   json,
@@ -21,14 +20,16 @@ import {
   SqliteBoolean,
   ValidMutationSizeError,
 } from "@evolu/common";
-import {
-  createUseEvolu,
-  EvoluProvider,
-  useAppOwner,
-  useQuery,
-} from "@evolu/react";
+import { createUseEvolu, EvoluProvider, useQuery } from "@evolu/react";
 import { evoluReactWebDeps } from "@evolu/react-web";
-import { ChangeEvent, FC, startTransition, Suspense, useState } from "react";
+import {
+  ChangeEvent,
+  FC,
+  startTransition,
+  Suspense,
+  use,
+  useState,
+} from "react";
 
 // Define the Evolu schema that describes the database tables and column types.
 // First, define the typed IDs.
@@ -106,21 +107,6 @@ const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "http://localhost:4000" }],
   }),
-
-  onInit: ({ isFirst }) => {
-    if (isFirst) {
-      const todoCategoryId = getOrThrow(
-        evolu.insert("todoCategory", {
-          name: "Not Urgent",
-        }),
-      );
-
-      evolu.insert("todo", {
-        title: "Try React Suspense",
-        categoryId: todoCategoryId.id,
-      });
-    }
-  },
 
   // Indexes are not required for development but are recommended for production.
   // https://www.evolu.dev/docs/indexes
@@ -493,7 +479,7 @@ const Tabs: FC<{
 
 const OwnerActions: FC = () => {
   const evolu = useEvolu();
-  const owner = useAppOwner();
+  const owner = use(evolu.appOwner);
   const [showMnemonic, setShowMnemonic] = useState(false);
 
   const handleRestoreAppOwnerClick = () => {

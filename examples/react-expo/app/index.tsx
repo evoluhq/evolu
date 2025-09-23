@@ -1,6 +1,5 @@
 import {
   createEvolu,
-  getOrThrow,
   id,
   kysely,
   maxLength,
@@ -14,7 +13,7 @@ import {
 } from "@evolu/common";
 import { createUseEvolu, EvoluProvider, useQuery } from "@evolu/react";
 import { evoluReactNativeDeps } from "@evolu/react-native/expo-sqlite";
-import { useState } from "react";
+import { use, useState } from "react";
 import {
   Button,
   ScrollView,
@@ -60,21 +59,6 @@ const evolu = createEvolu(evoluReactNativeDeps)(Schema, {
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "http://localhost:4000" }],
   }),
-
-  onInit: ({ isFirst }) => {
-    if (isFirst) {
-      const todoCategoryId = getOrThrow(
-        evolu.insert("todoCategory", {
-          name: "Not Urgent",
-        }),
-      );
-
-      evolu.insert("todo", {
-        title: "Try React Suspense",
-        categoryId: todoCategoryId.id,
-      });
-    }
-  },
 
   // Indexes are not required for development but are recommended for production.
   // https://www.evolu.dev/docs/indexes
@@ -135,10 +119,6 @@ evolu.subscribeError(() => {
   const error = evolu.getError();
   // eslint-disable-next-line no-console
   console.log(error);
-});
-
-evolu.subscribeAppOwner(() => {
-  // console.log(evolu.getAppOwner());
 });
 
 export default function Index(): React.ReactNode {
@@ -342,7 +322,7 @@ function TodoCategorySelect({
 
 function OwnerActions() {
   const evolu = useEvolu();
-  const owner = evolu.getAppOwner();
+  const owner = use(evolu.appOwner);
 
   const [isMnemonicShown, setIsMnemonicShown] = useState(false);
   const [isRestoreShown, setIsRestoreShown] = useState(false);
