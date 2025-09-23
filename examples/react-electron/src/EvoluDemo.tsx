@@ -2,7 +2,6 @@ import {
   createEvolu,
   createFormatTypeError,
   FiniteNumber,
-  getOrThrow,
   id,
   json,
   kysely,
@@ -20,12 +19,19 @@ import {
 import {
   createUseEvolu,
   EvoluProvider,
-  useAppOwner,
   useEvoluError,
   useQuery,
 } from "@evolu/react";
 import { evoluReactWebDeps } from "@evolu/react-web";
-import { ChangeEvent, FC, memo, Suspense, useEffect, useState } from "react";
+import {
+  ChangeEvent,
+  FC,
+  memo,
+  Suspense,
+  use,
+  useEffect,
+  useState,
+} from "react";
 const TodoId = id("Todo");
 type TodoId = typeof TodoId.Type;
 
@@ -75,21 +81,6 @@ const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "http://localhost:4000" }],
   }),
-
-  onInit: ({ isFirst }) => {
-    if (isFirst) {
-      const todoCategoryId = getOrThrow(
-        evolu.insert("todoCategory", {
-          name: "Not Urgent",
-        }),
-      );
-
-      evolu.insert("todo", {
-        title: "Try React Suspense",
-        categoryId: todoCategoryId.id,
-      });
-    }
-  },
 
   // Indexes are not necessary for development but are recommended for production.
   // https://www.evolu.dev/docs/indexes
@@ -375,7 +366,7 @@ const TodoCategoryItem = memo<{
 
 const OwnerActions: FC = () => {
   const evolu = useEvolu();
-  const owner = useAppOwner();
+  const owner = use(evolu.appOwner);
   const [showMnemonic, setShowMnemonic] = useState(false);
   const [showRestoreTextarea, setShowRestoreTextarea] = useState(false);
   const [restoreMnemonic, setRestoreMnemonic] = useState("");

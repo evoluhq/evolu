@@ -7,7 +7,6 @@
     SqliteBoolean,
     createEvolu,
     createFormatTypeError,
-    getOrThrow,
     id,
     kysely,
     maxLength,
@@ -67,22 +66,6 @@
     ...(process.env.NODE_ENV === "development" && {
       transports: [{ type: "WebSocket", url: "http://localhost:4000" }],
     }),
-
-    onInit: ({ isFirst }) => {
-      if (isFirst) {
-        const todoCategoryId = getOrThrow(
-          evolu.insert("todoCategory", {
-            name: "Not Urgent",
-          }),
-        );
-
-        evolu.insert("todo", {
-          title: "Try React Suspense",
-          categoryId: todoCategoryId.id,
-          priority: "low",
-        });
-      }
-    },
 
     // Indexes are not necessary for development but are recommended for production.
     // https://www.evolu.dev/docs/indexes
