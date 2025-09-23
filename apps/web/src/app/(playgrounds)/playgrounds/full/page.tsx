@@ -1,14 +1,21 @@
 "use client";
 
-import { NextJsPlaygroundFull } from "@/components/NextJsPlaygroundFull";
-import noSsr from "@/lib/noSsr";
+import dynamic from "next/dynamic";
 
-function Page(): React.ReactElement {
+const Playground = dynamic(
+  () =>
+    import("@/components/NextJsPlaygroundFull").then(
+      (mod) => mod.NextJsPlaygroundFull,
+    ),
+  {
+    ssr: false,
+  },
+);
+
+export default function Page(): React.ReactElement {
   return (
     <div className="flex h-screen flex-col items-center justify-center gap-4">
-      <NextJsPlaygroundFull />
+      <Playground />
     </div>
   );
 }
-
-export default noSsr(Page);
