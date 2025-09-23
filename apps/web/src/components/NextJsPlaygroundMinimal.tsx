@@ -81,11 +81,11 @@ evolu.subscribeError(() => {
 
 export const NextJsPlaygroundMinimal: FC = () => {
   return (
-    <div className="min-h-screen bg-white px-8 py-8">
+    <div className="min-h-screen px-8 py-8">
       <div className="mx-auto max-w-md">
         <EvoluProvider value={evolu}>
           <Suspense>
-            <ProjectsAndTodos />
+            <Todos />
             <OwnerActions />
           </Suspense>
         </EvoluProvider>
@@ -101,7 +101,7 @@ const Button: FC<{
   variant?: "primary" | "secondary";
 }> = ({ title, className, onClick, variant = "secondary" }) => {
   const baseClasses =
-    "px-3 py-2 text-sm font-medium rounded-md transition-colors";
+    "px-3 py-2 text-sm font-medium rounded-lg transition-colors";
   const variantClasses =
     variant === "primary"
       ? "bg-blue-600 text-white hover:bg-blue-700"
@@ -117,7 +117,7 @@ const Button: FC<{
   );
 };
 
-const ProjectsAndTodos: FC = () => {
+const Todos: FC = () => {
   const todos = useQuery(todosQuery);
   const { insert } = useEvolu();
   const [newTodoTitle, setNewTodoTitle] = useState("");
@@ -143,9 +143,9 @@ const ProjectsAndTodos: FC = () => {
   };
 
   return (
-    <div className="p-6">
-      <div className="mb-6 flex items-center justify-between pb-4">
-        <h1 className="text-xl font-semibold text-gray-900">
+    <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
+      <div className="mb-2 flex items-center justify-between pb-4">
+        <h1 className="w-full text-center text-xl font-semibold text-gray-900">
           Minimal Todo App
         </h1>
       </div>
@@ -165,7 +165,7 @@ const ProjectsAndTodos: FC = () => {
           }}
           onKeyDown={handleKeyPress}
           placeholder="Add a new todo..."
-          className="flex-1 border-b border-gray-300 px-2 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
         />
         <Button title="Add" onClick={handleAddTodo} variant="primary" />
       </div>
@@ -202,7 +202,7 @@ const TodoItem: FC<{
           type="checkbox"
           checked={!!isCompleted}
           onChange={handleToggleCompletedClick}
-          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          className="col-start-1 row-start-1 appearance-none rounded-sm border border-gray-300 bg-white checked:border-blue-600 checked:bg-blue-600 indeterminate:border-blue-600 indeterminate:bg-blue-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:border-gray-300 disabled:bg-gray-100 disabled:checked:bg-gray-100 forced-colors:appearance-auto"
         />
         <span
           className={clsx(
@@ -219,14 +219,14 @@ const TodoItem: FC<{
           className="p-1 text-gray-400 transition-colors hover:text-blue-600"
           title="Edit"
         >
-          <IconEdit className="h-4 w-4" />
+          <IconEdit className="size-4" />
         </button>
         <button
           onClick={handleDeleteClick}
           className="p-1 text-gray-400 transition-colors hover:text-red-600"
           title="Delete"
         >
-          <IconTrash className="h-4 w-4" />
+          <IconTrash className="size-4" />
         </button>
       </div>
     </li>
@@ -273,7 +273,7 @@ const OwnerActions: FC = () => {
   };
 
   return (
-    <div className="mt-8 p-6">
+    <div className="mt-8 rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
       <h2 className="mb-4 text-lg font-medium text-gray-900">
         Data Management
       </h2>

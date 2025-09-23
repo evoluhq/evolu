@@ -14,7 +14,7 @@ const Playground = dynamic(
 
 export default function Page(): React.ReactElement {
   return (
-    <div className="flex h-screen flex-col items-center justify-center gap-4">
+    <div className="flex h-full flex-col items-center justify-center gap-4 bg-zinc-100">
       <Playground />
     </div>
   );

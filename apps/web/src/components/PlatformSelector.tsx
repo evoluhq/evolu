@@ -1,12 +1,12 @@
 "use client";
 
 import { usePreferredLanguageStore } from "@/components/Code";
-import { ReactLogo } from "@/components/icons/frameworks/React";
 import { ExpoLogo } from "@/components/icons/frameworks/Expo";
-import { SvelteLogo } from "@/components/icons/frameworks/Svelte";
 import { JavaScriptLogo } from "@/components/icons/frameworks/JavaScript";
-import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { useEffect, Suspense } from "react";
+import { ReactLogo } from "@/components/icons/frameworks/React";
+import { SvelteLogo } from "@/components/icons/frameworks/Svelte";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect } from "react";
 
 const platforms = [
   {
@@ -143,7 +143,7 @@ function PlatformSelectorUI({
                 onChange={(e) => {
                   onPlatformChange(e.target.value);
                 }}
-                className="absolute inset-0 appearance-none focus:outline-none"
+                className="hidden"
               />
               <div className="flex items-center gap-1.5">
                 <IconComponent className="size-4 text-zinc-600 group-has-[:checked]:text-blue-700 dark:text-zinc-400 dark:group-has-[:checked]:text-blue-200" />

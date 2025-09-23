@@ -15,9 +15,10 @@ import {
 } from "@evolu/common";
 import { createUseEvolu, EvoluProvider, useQuery } from "@evolu/react";
 import { evoluReactWebDeps } from "@evolu/react-web";
+import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import { IconEdit, IconStackFront, IconTrash } from "@tabler/icons-react";
 import clsx from "clsx";
-import { FC, Suspense, use, useState } from "react";
+import { FC, startTransition, Suspense, use, useState } from "react";
 
 // Define the Evolu schema that describes the database tables and column types.
 // First, define the typed IDs.
@@ -109,11 +110,11 @@ evolu.subscribeError(() => {
 
 export const NextJsPlaygroundFull: FC = () => {
   return (
-    <div className="min-h-screen bg-white px-8 py-8">
+    <div className="min-h-screen px-8 py-8">
       <div className="mx-auto max-w-md">
         <EvoluProvider value={evolu}>
           <Suspense>
-            <ProjectsAndTodos />
+            <AppShell />
             <OwnerActions />
           </Suspense>
         </EvoluProvider>
@@ -129,7 +130,7 @@ const Button: FC<{
   variant?: "primary" | "secondary";
 }> = ({ title, className, onClick, variant = "secondary" }) => {
   const baseClasses =
-    "px-3 py-2 text-sm font-medium rounded-md transition-colors";
+    "px-3 py-2 text-sm font-medium rounded-lg transition-colors";
   const variantClasses =
     variant === "primary"
       ? "bg-blue-600 text-white hover:bg-blue-700"
@@ -145,9 +146,89 @@ const Button: FC<{
   );
 };
 
-const ProjectsAndTodos: FC = () => {
+const AppShell: FC = () => {
   const projects = useQuery(projectsQuery);
-  const todos = useQuery(todosWithProject);
+  const { insert } = useEvolu();
+
+  const [activeTab, setActiveTab] = useState<"home" | "projects">("home");
+
+  const handleAddProjectClick = () => {
+    const name = window.prompt("What's the project name?");
+    if (name == null) return; // escape or cancel
+
+    const result = insert("project", {
+      name,
+    });
+
+    if (!result.ok) {
+      alert(formatTypeError(result.error));
+    }
+  };
+
+  if (projects.length === 0) {
+    return (
+      <div className="py-12 text-center">
+        <div className="mb-4 text-gray-700">
+          <IconStackFront className="mx-auto h-12 w-12" />
+        </div>
+        <h3 className="mb-2 text-lg font-medium text-gray-900">
+          No projects yet
+        </h3>
+        <p className="mb-6 text-gray-500">
+          Create your first project to get started
+        </p>
+        <Button
+          title="Add Project"
+          onClick={handleAddProjectClick}
+          variant="primary"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-6 flex items-center justify-between pb-4">
+        <div className="flex w-full items-center justify-center gap-5 text-lg font-semibold">
+          <button
+            className={clsx(
+              "cursor-pointer border-b-2 border-b-transparent whitespace-nowrap text-gray-500",
+              activeTab === "home" && "!border-blue-600 !text-blue-600",
+            )}
+            onClick={() => {
+              startTransition(() => {
+                setActiveTab("home");
+              });
+            }}
+          >
+            Home
+          </button>
+          <button
+            className={clsx(
+              "cursor-pointer border-b-2 border-b-transparent whitespace-nowrap text-gray-500",
+              activeTab === "projects" && "!border-blue-600 !text-blue-600",
+            )}
+            onClick={() => {
+              startTransition(() => {
+                setActiveTab("projects");
+              });
+            }}
+          >
+            Projects
+          </button>
+        </div>
+      </div>
+
+      <Suspense>
+        {activeTab === "home" && <ProjectsPage />}
+        {activeTab === "projects" && <ProjectsTab />}
+      </Suspense>
+    </div>
+  );
+};
+
+const ProjectsTab: FC = () => {
+  const projects = useQuery(projectsQuery);
   const { insert } = useEvolu();
 
   const handleAddProjectClick = () => {
@@ -163,6 +244,30 @@ const ProjectsAndTodos: FC = () => {
     }
   };
 
+  return (
+    <div>
+      <div className="mb-6 flex min-h-12 items-center justify-between">
+        <h2 className="text-xl font-semibold text-gray-900">Projects</h2>
+        <Button
+          title="Add Project"
+          onClick={handleAddProjectClick}
+          variant="primary"
+        />
+      </div>
+
+      <div className="space-y-3">
+        {projects.map((project) => (
+          <ProjectItem key={project.id} project={project} />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const ProjectsPage: FC = () => {
+  const todos = useQuery(todosWithProject);
+  const projects = useQuery(projectsQuery);
+
   const groupedTodos = todos.reduce<Record<string, Array<TodosWithProjectRow>>>(
     (acc, todo) => {
       const projectId = todo.projectId ?? "no-project";
@@ -172,40 +277,13 @@ const ProjectsAndTodos: FC = () => {
     },
     {},
   );
-
-  const unassignedTodos = groupedTodos["no-project"] ?? [];
-
-  if (projects.length === 0 && unassignedTodos.length === 0) {
-    return (
-      <div className="p-6">
-        <div className="py-12 text-center">
-          <div className="mb-4 text-gray-700">
-            <IconStackFront className="mx-auto h-12 w-12" />
-          </div>
-          <h3 className="mb-2 text-lg font-medium text-gray-900">
-            No projects yet
-          </h3>
-          <p className="mb-6 text-gray-500">
-            Create your first project to get started
-          </p>
-          <Button
-            title="Add Project"
-            onClick={handleAddProjectClick}
-            variant="primary"
-          />
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="p-6">
-      <div className="mb-6 flex items-center justify-between pb-4">
-        <h1 className="text-xl font-semibold text-gray-900">Todo App</h1>
-        <Button title="Add Project" onClick={handleAddProjectClick} />
+    <div>
+      <div className="mb-6 flex min-h-12 items-center justify-between">
+        <h2 className="text-xl font-semibold text-gray-900">Home</h2>
       </div>
 
-      <div className="space-y-6">
+      <div className="flex flex-col gap-8">
         {projects.map((project) => (
           <ProjectSection
             key={project.id}
@@ -213,18 +291,6 @@ const ProjectsAndTodos: FC = () => {
             todos={groupedTodos[project.id] ?? []}
           />
         ))}
-
-        {/* Orphaned todos (todos without a project) */}
-        {unassignedTodos.length > 0 && (
-          <div className="mb-6">
-            <h3 className="mb-3 font-medium text-gray-900">Unassigned Todos</h3>
-            <div className="space-y-2">
-              {unassignedTodos.map((todo) => (
-                <TodoItem key={todo.id} row={todo} />
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -275,9 +341,12 @@ const ProjectSection: FC<{
   };
 
   return (
-    <div className="mb-6">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="font-medium text-gray-900">{project.name}</h3>
+    <div className="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200">
+      <div className="mb-3 flex items-center justify-between border-b border-gray-100 pb-2">
+        <h3 className="flex items-center gap-2 font-medium text-gray-900">
+          <IconStackFront className="size-5 text-gray-500" />
+          {project.name}
+        </h3>
         <button
           onClick={handleDeleteProject}
           className="p-1 text-gray-400 transition-colors hover:text-red-600"
@@ -304,7 +373,7 @@ const ProjectSection: FC<{
           }}
           onKeyDown={handleKeyPress}
           placeholder="Add a new todo..."
-          className="flex-1 border-b border-gray-300 px-2 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
         />
         <Button title="Add" onClick={handleAddTodo} variant="primary" />
       </div>
@@ -312,10 +381,59 @@ const ProjectSection: FC<{
   );
 };
 
+const ProjectItem: FC<{
+  project: ProjectsRow;
+}> = ({ project }) => {
+  const { update } = useEvolu();
+
+  const handleRenameClick = () => {
+    const newName = window.prompt("Edit project name", project.name);
+    if (newName == null) return; // escape or cancel
+    const result = update("project", { id: project.id, name: newName });
+    if (!result.ok) {
+      alert(formatTypeError(result.error));
+    }
+  };
+
+  const handleDeleteClick = () => {
+    if (confirm(`Are you sure you want to delete project "${project.name}"?`)) {
+      update("project", { id: project.id, isDeleted: true });
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-3 rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200">
+      <div className="flex flex-1 items-center gap-3">
+        <IconStackFront className="size-6 text-gray-500" />
+        <div className="flex-1">
+          <h3 className="font-medium text-gray-900">{project.name}</h3>
+        </div>
+      </div>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={handleRenameClick}
+          className="p-2 text-gray-400 transition-colors hover:text-blue-600"
+          title="Rename Project"
+        >
+          <IconEdit className="size-4" />
+        </button>
+        <button
+          onClick={handleDeleteClick}
+          className="p-2 text-gray-400 transition-colors hover:text-red-600"
+          title="Delete Project"
+        >
+          <IconTrash className="size-4" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const TodoItem: FC<{
   row: TodosWithProjectRow;
-}> = ({ row: { id, title, isCompleted } }) => {
+}> = ({ row: { id, title, isCompleted, projectId } }) => {
   const { update } = useEvolu();
+  const projects = useQuery(projectsQuery);
 
   const handleToggleCompletedClick = () => {
     update("todo", { id, isCompleted: !isCompleted });
@@ -334,39 +452,80 @@ const TodoItem: FC<{
     update("todo", { id, isDeleted: true });
   };
 
+  const handleProjectChange = (newProjectId: ProjectId | null) => {
+    update("todo", { id, projectId: newProjectId });
+  };
+
   return (
     <li className="-mx-2 flex items-center gap-3 px-2 py-2 hover:bg-gray-50">
-      <label className="flex flex-1 cursor-pointer items-center gap-3">
+      <label className="flex flex-1 cursor-pointer items-center gap-2">
         <input
           type="checkbox"
           checked={!!isCompleted}
           onChange={handleToggleCompletedClick}
-          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          className="col-start-1 row-start-1 appearance-none rounded-sm border border-gray-300 bg-white checked:border-blue-600 checked:bg-blue-600 indeterminate:border-blue-600 indeterminate:bg-blue-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:border-gray-300 disabled:bg-gray-100 disabled:checked:bg-gray-100 forced-colors:appearance-auto"
         />
-        <span
-          className={clsx(
-            "flex-1 text-sm",
-            isCompleted ? "text-gray-500 line-through" : "text-gray-900",
-          )}
-        >
-          {title}
-        </span>
+        <span className={clsx("flex-1 text-sm")}>{title}</span>
       </label>
-      <div className="flex gap-1">
-        <button
-          onClick={handleRenameClick}
-          className="p-1 text-gray-400 transition-colors hover:text-blue-600"
-          title="Edit"
-        >
-          <IconEdit className="h-4 w-4" />
-        </button>
-        <button
-          onClick={handleDeleteClick}
-          className="p-1 text-gray-400 transition-colors hover:text-red-600"
-          title="Delete"
-        >
-          <IconTrash className="h-4 w-4" />
-        </button>
+      <div className="flex items-center gap-2">
+        <div className="flex gap-1">
+          <Menu as="div" className="relative">
+            <MenuButton
+              className="p-1 text-gray-400 transition-colors hover:text-blue-600"
+              title="Change Project"
+            >
+              <IconStackFront className="size-4" />
+            </MenuButton>
+            <MenuItems
+              transition
+              className="absolute right-0 z-10 mt-2 w-56 origin-top-right rounded-md bg-white shadow-lg outline-1 outline-black/5 transition data-closed:scale-95 data-closed:transform data-closed:opacity-0 data-enter:duration-100 data-enter:ease-out data-leave:duration-75 data-leave:ease-in"
+            >
+              <div className="py-1">
+                <MenuItem>
+                  <button
+                    onClick={() => {
+                      handleProjectChange(null);
+                    }}
+                    className="block w-full px-4 py-2 text-left text-sm text-gray-700 data-focus:bg-gray-100 data-focus:text-gray-900 data-focus:outline-hidden"
+                  >
+                    No Project
+                  </button>
+                </MenuItem>
+                {projects.map((project) => (
+                  <MenuItem key={project.id}>
+                    <button
+                      onClick={() => {
+                        handleProjectChange(project.id);
+                      }}
+                      className={clsx(
+                        "block w-full px-4 py-2 text-left text-sm data-focus:bg-gray-100 data-focus:text-gray-900 data-focus:outline-hidden",
+                        project.id === projectId
+                          ? "bg-blue-50 text-blue-700"
+                          : "text-gray-700",
+                      )}
+                    >
+                      {project.name}
+                    </button>
+                  </MenuItem>
+                ))}
+              </div>
+            </MenuItems>
+          </Menu>
+          <button
+            onClick={handleRenameClick}
+            className="p-1 text-gray-400 transition-colors hover:text-blue-600"
+            title="Edit"
+          >
+            <IconEdit className="size-4" />
+          </button>
+          <button
+            onClick={handleDeleteClick}
+            className="p-1 text-gray-400 transition-colors hover:text-red-600"
+            title="Delete"
+          >
+            <IconTrash className="size-4" />
+          </button>
+        </div>
       </div>
     </li>
   );
@@ -412,7 +571,7 @@ const OwnerActions: FC = () => {
   };
 
   return (
-    <div className="mt-8 p-6">
+    <div className="mt-8 rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
       <h2 className="mb-4 text-lg font-medium text-gray-900">
         Data Management
       </h2>
