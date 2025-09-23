@@ -373,6 +373,7 @@ const ProjectSection: FC<{
           onChange={(e) => {
             setNewTodoTitle(e.target.value);
           }}
+          data-1p-ignore // ignore this input from 1password, ugly hack but works
           onKeyDown={handleKeyPress}
           placeholder="Add a new todo..."
           className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
