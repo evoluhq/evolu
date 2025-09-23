@@ -86,20 +86,28 @@ const projectsQuery = evolu.createQuery(
   },
 );
 
-const todosWithProject = evolu.createQuery(
-  (db) =>
-    db
-      .selectFrom("todo")
-      .select(["id", "title", "isCompleted", "projectId"])
-      .where("isDeleted", "is not", 1)
-      // Filter null value and ensure non-null type.
-      .where("title", "is not", null)
-      .$narrowType<{ title: kysely.NotNull }>()
-      .orderBy("createdAt"),
-  {
-    // logQueryExecutionTime: true,
-    // logExplainQueryPlan: true,
-  },
+const projectWithTodos = evolu.createQuery((db) =>
+  db
+    .selectFrom("project")
+    .select(["id", "name"])
+    .select((eb) => [
+      kysely
+        .jsonArrayFrom(
+          eb
+            .selectFrom("todo")
+            .select([
+              "todo.id",
+              "todo.title",
+              "todo.isCompleted",
+              "todo.projectId",
+            ])
+            .where("todo.isDeleted", "is not", 1)
+            .orderBy("createdAt"),
+        )
+        .as("todos"),
+    ])
+    .where("project.isDeleted", "is not", 1)
+    .orderBy("createdAt"),
 );
 
 const deletedProjectsQuery = evolu.createQuery(
@@ -133,7 +141,7 @@ const deletedTodosQuery = evolu.createQuery(
 );
 
 type ProjectsRow = typeof projectsQuery.Row;
-type TodosWithProjectRow = typeof todosWithProject.Row;
+type ProjectWithTodosRow = typeof projectWithTodos.Row;
 type DeletedProjectsRow = typeof deletedProjectsQuery.Row;
 type DeletedTodosRow = typeof deletedTodosQuery.Row;
 
@@ -478,18 +486,8 @@ const DeletedTodoItem: FC<{
 };
 
 const ProjectsPage: FC = () => {
-  const todos = useQuery(todosWithProject);
-  const projects = useQuery(projectsQuery);
+  const projects = useQuery(projectWithTodos);
 
-  const groupedTodos = todos.reduce<Record<string, Array<TodosWithProjectRow>>>(
-    (acc, todo) => {
-      const projectId = todo.projectId ?? "no-project";
-      acc[projectId] = acc[projectId] ?? [];
-      acc[projectId].push(todo);
-      return acc;
-    },
-    {},
-  );
   return (
     <div>
       <div className="flex flex-col gap-8">
@@ -497,7 +495,7 @@ const ProjectsPage: FC = () => {
           <ProjectSection
             key={project.id}
             project={project}
-            todos={groupedTodos[project.id] ?? []}
+            todos={project.todos}
           />
         ))}
       </div>
@@ -506,8 +504,8 @@ const ProjectsPage: FC = () => {
 };
 
 const ProjectSection: FC<{
-  project: ProjectsRow;
-  todos: Array<TodosWithProjectRow>;
+  project: ProjectWithTodosRow;
+  todos: ProjectWithTodosRow["todos"];
 }> = ({ project, todos }) => {
   const { insert } = useEvolu();
   const [newTodoTitle, setNewTodoTitle] = useState("");
@@ -623,7 +621,7 @@ const ProjectItem: FC<{
 };
 
 const TodoItem: FC<{
-  row: TodosWithProjectRow;
+  row: ProjectWithTodosRow["todos"][number];
 }> = ({ row: { id, title, isCompleted, projectId } }) => {
   const { update } = useEvolu();
   const projects = useQuery(projectsQuery);
@@ -633,7 +631,7 @@ const TodoItem: FC<{
   };
 
   const handleRenameClick = () => {
-    const newTitle = window.prompt("Edit todo", title);
+    const newTitle = window.prompt("Edit todo", title ?? undefined);
     if (newTitle == null) return; // escape or cancel
     const result = update("todo", { id, title: newTitle });
     if (!result.ok) {
