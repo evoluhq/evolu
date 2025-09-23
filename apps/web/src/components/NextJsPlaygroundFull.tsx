@@ -111,11 +111,10 @@ evolu.subscribeError(() => {
 export const NextJsPlaygroundFull: FC = () => {
   return (
     <div className="min-h-screen px-8 py-8">
-      <div className="mx-auto max-w-md">
+      <div className="mx-auto max-w-md min-w-sm md:min-w-md">
         <EvoluProvider value={evolu}>
           <Suspense>
             <AppShell />
-            <OwnerActions />
           </Suspense>
         </EvoluProvider>
       </div>
@@ -150,7 +149,9 @@ const AppShell: FC = () => {
   const projects = useQuery(projectsQuery);
   const { insert } = useEvolu();
 
-  const [activeTab, setActiveTab] = useState<"home" | "projects">("home");
+  const [activeTab, setActiveTab] = useState<
+    "home" | "projects" | "dataManagement"
+  >("home");
 
   const handleAddProjectClick = () => {
     const name = window.prompt("What's the project name?");
@@ -216,12 +217,27 @@ const AppShell: FC = () => {
           >
             Projects
           </button>
+          <button
+            className={clsx(
+              "cursor-pointer border-b-2 border-b-transparent whitespace-nowrap text-gray-500",
+              activeTab === "dataManagement" &&
+                "!border-blue-600 !text-blue-600",
+            )}
+            onClick={() => {
+              startTransition(() => {
+                setActiveTab("dataManagement");
+              });
+            }}
+          >
+            Data Management
+          </button>
         </div>
       </div>
 
       <Suspense>
         {activeTab === "home" && <ProjectsPage />}
         {activeTab === "projects" && <ProjectsTab />}
+        {activeTab === "dataManagement" && <DataManagementTab />}
       </Suspense>
     </div>
   );
@@ -264,6 +280,17 @@ const ProjectsTab: FC = () => {
   );
 };
 
+const DataManagementTab: FC = () => {
+  return (
+    <div>
+      <div className="mb-6 flex min-h-12 items-center justify-between">
+        <h2 className="text-xl font-semibold text-gray-900">Data Management</h2>
+      </div>
+      <OwnerActions />
+    </div>
+  );
+};
+
 const ProjectsPage: FC = () => {
   const todos = useQuery(todosWithProject);
   const projects = useQuery(projectsQuery);
@@ -300,7 +327,7 @@ const ProjectSection: FC<{
   project: ProjectsRow;
   todos: Array<TodosWithProjectRow>;
 }> = ({ project, todos }) => {
-  const { insert, update } = useEvolu();
+  const { insert } = useEvolu();
   const [newTodoTitle, setNewTodoTitle] = useState("");
 
   const handleAddTodo = () => {
@@ -330,22 +357,6 @@ const ProjectSection: FC<{
     }
   };
 
-  const handleDeleteProject = () => {
-    if (
-      confirm(
-        `Are you sure you want to delete project "${project.name}"? All todos in this project will be unassigned.`,
-      )
-    ) {
-      // First, unassign all todos from this project
-      todos.forEach((todo) => {
-        update("todo", { id: todo.id, projectId: null });
-      });
-
-      // Then delete the project
-      update("project", { id: project.id, isDeleted: true });
-    }
-  };
-
   return (
     <div className="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200">
       <div className="mb-3 flex items-center justify-between border-b border-gray-100 pb-2">
@@ -353,13 +364,6 @@ const ProjectSection: FC<{
           <IconStackFront className="size-5 text-gray-500" />
           {project.name}
         </h3>
-        <button
-          onClick={handleDeleteProject}
-          className="p-1 text-gray-400 transition-colors hover:text-red-600"
-          title="Delete Project"
-        >
-          <IconTrash className="h-4 w-4" />
-        </button>
       </div>
 
       {todos.length > 0 && (
@@ -577,10 +581,7 @@ const OwnerActions: FC = () => {
   };
 
   return (
-    <div className="mt-8 rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
-      <h2 className="mb-4 text-lg font-medium text-gray-900">
-        Data Management
-      </h2>
+    <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
       <p className="mb-4 text-sm text-gray-600">
         Your todos are stored locally and encrypted. Use your mnemonic to sync
         across devices.
