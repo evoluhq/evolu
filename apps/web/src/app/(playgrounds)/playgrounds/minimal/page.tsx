@@ -4,9 +4,9 @@ import dynamic from "next/dynamic";
 
 const NextJsPlaygroundMinimal = dynamic(
   () =>
-    import("@/components/NextJsPlaygroundMinimal").then((mod) => ({
-      default: mod.NextJsPlaygroundMinimal,
-    })),
+    import("@/components/NextJsPlaygroundMinimal").then(
+      (mod) => mod.NextJsPlaygroundMinimal,
+    ),
   { ssr: false },
 );
 

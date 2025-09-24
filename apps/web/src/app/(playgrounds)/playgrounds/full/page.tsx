@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 
-const Playground = dynamic(
+const NextJsPlaygroundFull = dynamic(
   () =>
     import("@/components/NextJsPlaygroundFull").then(
       (mod) => mod.NextJsPlaygroundFull,
@@ -15,7 +15,7 @@ const Playground = dynamic(
 export default function Page(): React.ReactElement {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 bg-zinc-100">
-      <Playground />
+      <NextJsPlaygroundFull />
     </div>
   );
 }
