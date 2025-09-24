@@ -107,6 +107,7 @@ const projectWithTodos = evolu.createQuery((db) =>
               "todo.projectId",
             ])
             .where("todo.isDeleted", "is not", 1)
+            .whereRef("todo.projectId", "=", "project.id")
             .orderBy("createdAt"),
         )
         .as("todos"),
