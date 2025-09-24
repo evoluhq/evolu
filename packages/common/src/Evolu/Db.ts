@@ -189,6 +189,9 @@ export type DbWorkerInput =
       readonly dbSchema: DbSchema;
     }
   | {
+      readonly type: "getAppOwner";
+    }
+  | {
       readonly type: "mutate";
       readonly tabId: Id;
       readonly changes: NonEmptyReadonlyArray<MutationChange>;
@@ -225,15 +228,10 @@ export type DbWorkerInput =
   | {
       readonly type: "onProcessNewMessages";
       readonly onCompleteId: CallbackId;
-      readonly messages: ReadonlyArray<CrdtMessage>;
+      readonly approvedTimestamps: ReadonlyArray<Timestamp>;
     };
 
 export type DbWorkerOutput =
-  | {
-      readonly type: "onInit";
-      readonly appOwner: AppOwner;
-      readonly isFirst: boolean;
-    }
   | {
       readonly type: "onError";
       readonly error:
@@ -242,6 +240,10 @@ export type DbWorkerOutput =
         | SymmetricCryptoDecryptError
         | TimestampError
         | TransferableError;
+    }
+  | {
+      readonly type: "onGetAppOwner";
+      readonly appOwner: AppOwner;
     }
   | {
       readonly type: "onQueryPatches";
@@ -286,7 +288,8 @@ type DbWorkerDeps = Omit<
   PostMessageDep &
   SqliteDep &
   SyncDep &
-  WriteMessagesCallbackRegistryDep;
+  WriteMessagesCallbackRegistryDep &
+  AppOwnerDep;
 
 interface GetQueryRowsCacheDep {
   readonly getQueryRowsCache: (tabId: Id) => QueryRowsCache;
@@ -298,8 +301,12 @@ export interface PostMessageDep {
 
 export interface WriteMessagesCallbackRegistryDep {
   readonly writeMessagesCallbackRegistry: CallbackRegistry<
-    ReadonlyArray<CrdtMessage>
+    ReadonlyArray<Timestamp>
   >;
+}
+
+export interface AppOwnerDep {
+  readonly appOwner: AppOwner;
 }
 
 export const createDbWorkerForPlatform = (
@@ -407,7 +414,7 @@ const createDbWorkerDeps =
       if (!result.ok) return result;
 
       const writeMessagesCallbackRegistry =
-        createCallbackRegistry<ReadonlyArray<CrdtMessage>>(platformDeps);
+        createCallbackRegistry<ReadonlyArray<Timestamp>>(platformDeps);
 
       const sync = createSync({
         ...platformDeps,
@@ -431,8 +438,6 @@ const createDbWorkerDeps =
 
       sync.value.useOwner(true, appOwner);
 
-      postMessage({ type: "onInit", appOwner, isFirst: !dbIsInitialized });
-
       const tabQueryRowsCacheMap = new Map<Id, QueryRowsCache>();
       const getQueryRowsCache = (tabId: Id) => {
         let cache = tabQueryRowsCacheMap.get(tabId);
@@ -450,6 +455,7 @@ const createDbWorkerDeps =
         sqlite,
         sync: sync.value,
         writeMessagesCallbackRegistry,
+        appOwner,
       };
 
       return ok(deps);
@@ -559,6 +565,13 @@ const initializeDb =
   };
 
 const handlers: Omit<MessageHandlers<DbWorkerInput, DbWorkerDeps>, "init"> = {
+  getAppOwner: (deps) => () => {
+    deps.postMessage({
+      type: "onGetAppOwner",
+      appOwner: deps.appOwner,
+    });
+  },
+
   mutate: (deps) => (message) => {
     const mutate = deps.sqlite.transaction(() => {
       const syncChanges: Array<MutationChange> = [];
@@ -714,7 +727,7 @@ const handlers: Omit<MessageHandlers<DbWorkerInput, DbWorkerDeps>, "init"> = {
   onProcessNewMessages: (deps) => (message) => {
     deps.writeMessagesCallbackRegistry.execute(
       message.onCompleteId,
-      message.messages,
+      message.approvedTimestamps,
     );
   },
 };

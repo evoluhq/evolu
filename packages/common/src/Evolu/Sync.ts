@@ -526,10 +526,10 @@ const createClientStorage =
 
           // Register callback for completion and post processNewMessages to main thread
           const { promise, resolve } =
-            Promise.withResolvers<ReadonlyArray<CrdtMessage>>();
+            Promise.withResolvers<ReadonlyArray<Timestamp>>();
           const onCompleteId = deps.writeMessagesCallbackRegistry.register(
-            (processedMessages) => {
-              resolve(processedMessages);
+            (approvedTimestamps) => {
+              resolve(approvedTimestamps);
             },
           );
 
@@ -540,12 +540,22 @@ const createClientStorage =
             onCompleteId,
           });
 
-          const processedMessages = await promise;
+          const approvedTimestamps = await promise;
+
+          const approvedTimestampsSet = new Set(
+            approvedTimestamps.map(timestampToTimestampString),
+          );
+
+          const approvedMessages = newMessages.filter((message) =>
+            approvedTimestampsSet.has(
+              timestampToTimestampString(message.timestamp),
+            ),
+          );
 
           const transaction = deps.sqlite.transaction(() => {
             let clockTimestamp = deps.clock.get();
 
-            for (const message of processedMessages) {
+            for (const message of approvedMessages) {
               const nextTimestamp = receiveTimestamp(deps)(
                 clockTimestamp,
                 message.timestamp,
@@ -557,7 +567,7 @@ const createClientStorage =
 
             const applyMessagesResult = applyMessages({ ...deps, storage })(
               owner.id,
-              processedMessages,
+              approvedMessages,
             );
             if (!applyMessagesResult.ok) return applyMessagesResult;
 

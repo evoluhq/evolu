@@ -61,7 +61,7 @@ import {
 } from "./Schema.js";
 import { CrdtMessage, DbChange } from "./Storage.js";
 import { initialSyncState, SyncOwner, SyncState } from "./Sync.js";
-import { TimestampError } from "./Timestamp.js";
+import { Timestamp, TimestampError } from "./Timestamp.js";
 
 export interface EvoluConfig extends Partial<DbConfig> {
   /**
@@ -245,15 +245,31 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
   readonly getQueryRows: <R extends Row>(query: Query<R>) => QueryRows<R>;
 
   /**
+   * Subscribe to {@link AppOwner}.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const unsubscribe = evolu.subscribeAppOwner(() => {
+   *   const owner = evolu.getAppOwner();
+   * });
+   * ```
+   */
+  readonly subscribeAppOwner: StoreSubscribe;
+
+  /**
    * Get {@link AppOwner}.
    *
    * ### Example
    *
    * ```ts
+   * const unsubscribe = evolu.subscribeAppOwner(() => {
+   *   const owner = evolu.getAppOwner();
+   * });
    * const owner = await evolu.appOwner;
    * ```
    */
-  readonly appOwner: Promise<AppOwner>;
+  readonly getAppOwner: () => AppOwner | null;
 
   /**
    * Subscribe to {@link SyncState} changes.
@@ -608,11 +624,11 @@ const createEvoluInstance =
       name: dbConfig.name,
     });
 
-    const { promise: appOwner, resolve: resolveAppOwner } =
-      Promise.withResolvers<AppOwner>();
-
     const errorStore = createStore<EvoluError | null>(null);
     const rowsStore = createStore<QueryRowsMap>(new Map());
+    const appOwnerStore = createStore<AppOwner | null>(
+      config?.externalAppOwner ?? null,
+    );
     const syncStore = createStore<SyncState>(initialSyncState);
 
     const subscribedQueries = createSubscribedQueries(rowsStore);
@@ -629,13 +645,16 @@ const createEvoluInstance =
 
     dbWorker.onMessage((message) => {
       switch (message.type) {
-        case "onInit": {
-          resolveAppOwner(message.appOwner);
+        case "onError": {
+          errorStore.set(message.error);
           break;
         }
 
-        case "onError": {
-          errorStore.set(message.error);
+        case "onGetAppOwner": {
+          // AppOwner is immutable so we can ignore onGetAppOwner from other tabs.
+          if (appOwnerStore.get() == null) {
+            appOwnerStore.set(message.appOwner);
+          }
           break;
         }
 
@@ -693,28 +712,42 @@ const createEvoluInstance =
 
         case "processNewMessages": {
           void deps.scheduler.runAfterInteractions(async () => {
-            const processedMessages: Array<CrdtMessage> = [];
+            const approvedTimestamps: Array<Timestamp> = [];
 
             for (const crdtMessage of message.messages) {
               let isValid = true;
 
-              if (onMessage) {
+              // Validate CrdtMessage.change against the schema
+              const table = crdtMessage.change.table;
+              if (table in schema) {
+                const UpdateType = getMutationType(table, "update");
+                const updateObj = {
+                  id: crdtMessage.change.id,
+                  ...crdtMessage.change.values,
+                };
+                const result = UpdateType.fromUnknown(updateObj);
+                if (!result.ok) {
+                  isValid = false;
+                }
+              } else {
+                // Table not in schema, mark as invalid
+                isValid = false;
+              }
+
+              // Call user-provided onMessage callback if schema validation passed
+              if (isValid && onMessage) {
                 isValid = await onMessage(crdtMessage);
               }
 
-              processedMessages.push({
-                ...crdtMessage,
-                change: {
-                  ...crdtMessage.change,
-                  values: isValid ? crdtMessage.change.values : {},
-                },
-              });
+              if (isValid) {
+                approvedTimestamps.push(crdtMessage.timestamp);
+              }
             }
 
             dbWorker.postMessage({
               type: "onProcessNewMessages",
               onCompleteId: message.onCompleteId,
-              messages: processedMessages,
+              approvedTimestamps,
             });
 
             return ok();
@@ -757,6 +790,9 @@ const createEvoluInstance =
     };
 
     dbWorker.postMessage({ type: "init", config: dbConfig, dbSchema });
+
+    // We can't use `init` to get AppOwner because `init` runs only once per n tabs.
+    dbWorker.postMessage({ type: "getAppOwner" });
 
     const loadQueryMicrotaskQueue: Array<Query> = [];
 
@@ -913,7 +949,8 @@ const createEvoluInstance =
       getQueryRows: <R extends Row>(query: Query<R>): QueryRows<R> =>
         (rowsStore.get().get(query) ?? emptyRows) as QueryRows<R>,
 
-      appOwner,
+      subscribeAppOwner: appOwnerStore.subscribe,
+      getAppOwner: appOwnerStore.get,
 
       subscribeSyncState: syncStore.subscribe,
       getSyncState: syncStore.get,

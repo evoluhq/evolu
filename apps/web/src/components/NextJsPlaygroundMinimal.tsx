@@ -13,11 +13,16 @@ import {
   SqliteBoolean,
   ValidMutationSizeError,
 } from "@evolu/common";
-import { createUseEvolu, EvoluProvider, useQuery } from "@evolu/react";
+import {
+  createUseEvolu,
+  EvoluProvider,
+  useAppOwner,
+  useQuery,
+} from "@evolu/react";
 import { evoluReactWebDeps } from "@evolu/react-web";
 import { IconEdit, IconTrash } from "@tabler/icons-react";
 import clsx from "clsx";
-import { FC, Suspense, use, useState } from "react";
+import { FC, Suspense, useState } from "react";
 
 // Define the Evolu schema that describes the database tables and column types.
 // First, define the typed IDs.
@@ -48,7 +53,7 @@ const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   // https://www.evolu.dev/docs/indexes
   indexes: (create) => [create("todoCreatedAt").on("todo").column("createdAt")],
 
-  enableLogging: true,
+  // enableLogging: true,
 });
 
 const useEvolu = createUseEvolu(evolu);
@@ -240,8 +245,8 @@ const TodoItem: FC<{
 };
 
 const OwnerActions: FC = () => {
-  const evolu = useEvolu();
-  const owner = use(evolu.appOwner);
+  const owner = useAppOwner();
+
   const [showMnemonic, setShowMnemonic] = useState(false);
 
   const handleRestoreAppOwnerClick = () => {
@@ -297,7 +302,7 @@ const OwnerActions: FC = () => {
           className="w-full"
         />
 
-        {showMnemonic && owner.mnemonic && (
+        {showMnemonic && owner?.mnemonic && (
           <div className="bg-gray-50 p-3">
             <label className="mb-2 block text-xs font-medium text-gray-700">
               Your Mnemonic (keep this safe!)
