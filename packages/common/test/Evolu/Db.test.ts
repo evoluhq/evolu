@@ -63,13 +63,7 @@ const createInitializedDbWorker = async (): Promise<{
   // Wait for initialization to complete (async createSqlite)
   await wait("10ms")();
 
-  expect(workerOutput.splice(0)).toEqual([
-    {
-      type: "onInit",
-      appOwner,
-      isFirst: true,
-    },
-  ]);
+  expect(workerOutput.splice(0)).toEqual([]);
 
   return {
     worker,

@@ -159,6 +159,11 @@ test("init postMessage call", () => {
           "type": "init",
         },
       ],
+      [
+        {
+          "type": "getAppOwner",
+        },
+      ],
     ]
   `);
 });
@@ -179,7 +184,7 @@ test("insert should validate input and call postMessage", async () => {
 
   await wait("0ms")();
 
-  expect(dbWorker.postMessage.mock.calls[1]).toMatchInlineSnapshot(`
+  expect(dbWorker.postMessage.mock.calls[2]).toMatchInlineSnapshot(`
     [
       {
         "changes": [
@@ -253,7 +258,7 @@ test("update should validate input and call postMessage", async () => {
 
   await wait("0ms")();
 
-  expect(dbWorker.postMessage.mock.calls[1]).toMatchInlineSnapshot(`
+  expect(dbWorker.postMessage.mock.calls[2]).toMatchInlineSnapshot(`
     [
       {
         "changes": [
@@ -327,7 +332,7 @@ test("upsert should validate input and call postMessage", async () => {
 
   await wait("0ms")();
 
-  expect(dbWorker.postMessage.mock.calls[1]).toMatchInlineSnapshot(`
+  expect(dbWorker.postMessage.mock.calls[2]).toMatchInlineSnapshot(`
     [
       {
         "changes": [
@@ -397,8 +402,8 @@ test("mutations should be processed in microtask queue", async () => {
   await wait("0ms")();
 
   // Only one postMessage call should happen with all changes
-  expect(dbWorker.postMessage).toHaveBeenCalledTimes(2); // 1 for init, 1 for mutations
-  expect(dbWorker.postMessage.mock.calls[1]).toMatchInlineSnapshot(`
+  expect(dbWorker.postMessage).toHaveBeenCalledTimes(3); // init, getAppOwner, 1 mutation
+  expect(dbWorker.postMessage.mock.calls[2]).toMatchInlineSnapshot(`
     [
       {
         "changes": [
@@ -446,8 +451,8 @@ test("mutation with onlyValidate should not call postMessage", async () => {
 
   await wait("0ms")();
 
-  // Only init should be called, not the mutation
-  expect(dbWorker.postMessage).toHaveBeenCalledTimes(1);
+  // Only init and getAppOwner should be called, not the mutation
+  expect(dbWorker.postMessage).toHaveBeenCalledTimes(2);
 });
 
 test("mutations should fail as a transaction when any mutation fails", async () => {
@@ -460,8 +465,8 @@ test("mutations should fail as a transaction when any mutation fails", async () 
 
   await wait("0ms")();
 
-  // Only init should be called, not the mutations since one failed
-  expect(dbWorker.postMessage).toHaveBeenCalledTimes(1);
+  // Only init and getAppOwner should be called, not the mutations since one failed
+  expect(dbWorker.postMessage).toHaveBeenCalledTimes(2);
 });
 
 describe("EvoluSchema validation", () => {
