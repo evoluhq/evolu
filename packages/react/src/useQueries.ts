@@ -8,7 +8,7 @@ import { use, useRef } from "react";
 import { useEvolu } from "./useEvolu.js";
 import type { useQuery } from "./useQuery.js";
 import { useQuerySubscription } from "./useQuerySubscription.js";
-import { useWasSSR } from "./useWasSSR.js";
+import { useWasSsr } from "./useWasSsr.js";
 
 /** The same as {@link useQuery}, but for many queries. */
 export const useQueries = <
@@ -31,7 +31,7 @@ export const useQueries = <
   const evolu = useEvolu();
   const once = useRef(options).current.once;
   const allQueries = once ? queries.concat(once) : queries;
-  const wasSSR = useWasSSR();
+  const wasSSR = useWasSsr();
   if (wasSSR) {
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
     if (!options.promises) evolu.loadQueries(allQueries);

@@ -3,7 +3,7 @@ import { use } from "react";
 import { useEvolu } from "./useEvolu.js";
 import type { useQueries } from "./useQueries.js";
 import { useQuerySubscription } from "./useQuerySubscription.js";
-import { useWasSSR } from "./useWasSSR.js";
+import { useWasSsr } from "./useWasSsr.js";
 
 /**
  * Load and subscribe to the Query, and return an object with `rows` and `row`
@@ -45,7 +45,8 @@ export const useQuery = <R extends Row>(
   }> = {},
 ): QueryRows<R> => {
   const evolu = useEvolu();
-  const wasSSR = useWasSSR();
+  const wasSSR = useWasSsr();
+
   if (wasSSR) {
     if (!options.promise) void evolu.loadQuery(query);
   } else {
