@@ -13,6 +13,10 @@ module.exports = tseslint.config(
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.browser,
+      parserOptions: {
+        tsconfigRootDir: __dirname,
+        project: "./tsconfig.json",
+      },
     },
     plugins: {
       electron: electron,

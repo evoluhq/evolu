@@ -19,19 +19,12 @@ import {
 import {
   createUseEvolu,
   EvoluProvider,
+  useAppOwner,
   useEvoluError,
   useQuery,
 } from "@evolu/react";
 import { evoluReactWebDeps } from "@evolu/react-web";
-import {
-  ChangeEvent,
-  FC,
-  memo,
-  Suspense,
-  use,
-  useEffect,
-  useState,
-} from "react";
+import { ChangeEvent, FC, memo, Suspense, useEffect, useState } from "react";
 const TodoId = id("Todo");
 type TodoId = typeof TodoId.Type;
 
@@ -366,7 +359,7 @@ const TodoCategoryItem = memo<{
 
 const OwnerActions: FC = () => {
   const evolu = useEvolu();
-  const owner = use(evolu.appOwner);
+  const owner = useAppOwner();
   const [showMnemonic, setShowMnemonic] = useState(false);
   const [showRestoreTextarea, setShowRestoreTextarea] = useState(false);
   const [restoreMnemonic, setRestoreMnemonic] = useState("");

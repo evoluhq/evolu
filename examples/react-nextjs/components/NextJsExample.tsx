@@ -20,16 +20,14 @@ import {
   SqliteBoolean,
   ValidMutationSizeError,
 } from "@evolu/common";
-import { createUseEvolu, EvoluProvider, useQuery } from "@evolu/react";
-import { evoluReactWebDeps } from "@evolu/react-web";
 import {
-  ChangeEvent,
-  FC,
-  startTransition,
-  Suspense,
-  use,
-  useState,
-} from "react";
+  createUseEvolu,
+  EvoluProvider,
+  useAppOwner,
+  useQuery,
+} from "@evolu/react";
+import { evoluReactWebDeps } from "@evolu/react-web";
+import { ChangeEvent, FC, startTransition, Suspense, useState } from "react";
 
 // Define the Evolu schema that describes the database tables and column types.
 // First, define the typed IDs.
@@ -479,7 +477,7 @@ const Tabs: FC<{
 
 const OwnerActions: FC = () => {
   const evolu = useEvolu();
-  const owner = use(evolu.appOwner);
+  const owner = useAppOwner();
   const [showMnemonic, setShowMnemonic] = useState(false);
 
   const handleRestoreAppOwnerClick = () => {
