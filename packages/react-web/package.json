@@ -51,8 +51,8 @@
   "peerDependencies": {
     "@evolu/common": "^6.0.1-preview.18",
     "@evolu/web": "^1.0.1-preview.4",
-    "react": ">=19",
-    "react-dom": ">=19"
+    "react": "catalog:react19",
+    "react-dom": "catalog:react19"
   },
   "engines": {
     "node": ">=22.0.0"
