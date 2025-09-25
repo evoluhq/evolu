@@ -15,6 +15,8 @@ export const createReactNativeScheduler = (): Scheduler => ({
     toTask(
       async (context?: TaskContext) =>
         new Promise<Result<T, E>>((resolve) => {
+          //TODO: replace with requestIdleCallback
+          // eslint-disable-next-line @typescript-eslint/no-deprecated
           InteractionManager.runAfterInteractions(() => {
             void task(context).then(resolve);
           });

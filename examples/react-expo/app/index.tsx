@@ -59,7 +59,7 @@ const Schema = {
 };
 
 const evolu = createEvolu(evoluReactNativeDeps)(Schema, {
-  name: SimpleName.orThrow("evolu-expo-sqlite-example-qwe"),
+  name: SimpleName.orThrow("evolu-expo-sqlite-example-v54"),
 
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "http://localhost:4000" }],

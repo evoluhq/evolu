@@ -7,4 +7,4 @@ export default {
   test(val) {
     return val instanceof Uint8Array;
   },
-} satisfies SnapshotSerializer;
+} as SnapshotSerializer;

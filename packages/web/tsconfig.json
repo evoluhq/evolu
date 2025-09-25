@@ -3,7 +3,7 @@
   "compilerOptions": {
     "outDir": "dist",
     "allowJs": true,
-    "types": ["../../node_modules/user-agent-data-types"]
+    "types": ["./node_modules/user-agent-data-types"]
   },
   "include": ["src", "test"],
   "exclude": ["dist", "node_modules"]

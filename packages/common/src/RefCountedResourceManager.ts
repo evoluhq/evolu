@@ -321,14 +321,16 @@ export const createRefCountedResourceManager = <
     getConsumersForResource: (key) => {
       if (isDisposed) return [];
       const counts = consumerCounts.get(key);
-      return counts ? counts.keys().toArray() : [];
+      return counts ? Array.from(counts.keys()) : [];
     },
 
     hasConsumerAnyResource: (consumer) => {
       if (isDisposed) return false;
       const consumerId = config.getConsumerId(consumer);
       // If slow, can be optimized with reverse index
-      return consumerCounts.values().some((counts) => counts.has(consumerId));
+      return Array.from(consumerCounts.values()).some((counts) =>
+        counts.has(consumerId),
+      );
     },
 
     getConsumer: (consumerId) => {
