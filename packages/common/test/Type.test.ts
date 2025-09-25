@@ -1350,9 +1350,9 @@ test("transform", () => {
   expect(BooleanFromOnOff.to(true)).toBe("on");
   expect(BooleanFromOnOff.to(false)).toBe("off");
 
-  expect(BooleanFromOnOff.is(true)).toBe(true);
-  expect(BooleanFromOnOff.is(false)).toBe(true);
-  expect(BooleanFromOnOff.is("on")).toBe(false);
+  expect(BooleanFromOnOff.is("on")).toBe(true);
+  expect(BooleanFromOnOff.is("off")).toBe(true);
+  expect(BooleanFromOnOff.is(true)).toBe(false);
 
   expect(BooleanFromOnOff.name).toBe("Transform");
   expect(BooleanFromOnOff.fromType).toBe(OnOff);
@@ -1433,9 +1433,9 @@ test("transform", () => {
   );
   expect(NumberFromString.toParent(42 as FiniteNumber)).toEqual("42");
 
-  expect(NumberFromString.is(42)).toBe(true);
-  expect(NumberFromString.is("42")).toBe(false);
-  expect(NumberFromString.is(NaN)).toBe(false);
+  expect(NumberFromString.is("42")).toBe(true);
+  expect(NumberFromString.is(42)).toBe(false);
+  expect(NumberFromString.is("")).toBe(false); // empty string not allowed
 
   expect(NumberFromString.name).toBe("Transform");
 
@@ -2785,7 +2785,8 @@ test("JsonValueFromString", () => {
   );
 
   expect(JsonValueFromString.is(`{}`)).toBe(true);
-  expect(JsonValueFromString.is(`string`)).toBe(true);
+  expect(JsonValueFromString.is(`"string"`)).toBe(true); // quoted string is valid JSON
+  expect(JsonValueFromString.is(42)).toBe(false); // not a string
 
   expect(JsonValueFromString.name).toBe("Transform");
 

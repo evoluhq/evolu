@@ -2125,7 +2125,6 @@ export const transform = <
       fromParent,
       toParent,
     }),
-    is: toType.is,
     fromType,
     toType,
   } as TransformType<FromType, ToType, TransformError>;
