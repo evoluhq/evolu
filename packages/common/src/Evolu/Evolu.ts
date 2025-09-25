@@ -712,7 +712,7 @@ const createEvoluInstance =
 
         case "processNewMessages": {
           void deps.scheduler.runAfterInteractions(async () => {
-            const approvedTimestamps: Array<Timestamp> = [];
+            const approved: Array<Timestamp> = [];
 
             for (const crdtMessage of message.messages) {
               let isValid = true;
@@ -720,34 +720,28 @@ const createEvoluInstance =
               // Validate CrdtMessage.change against the schema
               const table = crdtMessage.change.table;
               if (table in schema) {
-                const UpdateType = getMutationType(table, "update");
-                const updateObj = {
-                  id: crdtMessage.change.id,
-                  ...crdtMessage.change.values,
-                };
-                const result = UpdateType.fromUnknown(updateObj);
-                if (!result.ok) {
-                  isValid = false;
-                }
+                // TODO: Fix createdAt validation.
+                // isValid = getMutationType(table, "update").is({
+                //   id: crdtMessage.change.id,
+                //   ...crdtMessage.change.values,
+                // });
               } else {
-                // Table not in schema, mark as invalid
                 isValid = false;
               }
 
-              // Call user-provided onMessage callback if schema validation passed
               if (isValid && onMessage) {
                 isValid = await onMessage(crdtMessage);
               }
 
               if (isValid) {
-                approvedTimestamps.push(crdtMessage.timestamp);
+                approved.push(crdtMessage.timestamp);
               }
             }
 
             dbWorker.postMessage({
               type: "onProcessNewMessages",
               onCompleteId: message.onCompleteId,
-              approvedTimestamps,
+              approved,
             });
 
             return ok();

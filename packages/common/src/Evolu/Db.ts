@@ -228,7 +228,7 @@ export type DbWorkerInput =
   | {
       readonly type: "onProcessNewMessages";
       readonly onCompleteId: CallbackId;
-      readonly approvedTimestamps: ReadonlyArray<Timestamp>;
+      readonly approved: ReadonlyArray<Timestamp>;
     };
 
 export type DbWorkerOutput =
@@ -727,7 +727,7 @@ const handlers: Omit<MessageHandlers<DbWorkerInput, DbWorkerDeps>, "init"> = {
   onProcessNewMessages: (deps) => (message) => {
     deps.writeMessagesCallbackRegistry.execute(
       message.onCompleteId,
-      message.approvedTimestamps,
+      message.approved,
     );
   },
 };
