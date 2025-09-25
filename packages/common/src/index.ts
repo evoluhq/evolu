@@ -18,7 +18,6 @@ export * from "./Order.js";
 export * from "./Random.js";
 export * from "./Ref.js";
 export * from "./Result.js";
-export * from "./Scheduler.js";
 export * from "./Sqlite.js";
 export * from "./Store.js";
 export * from "./String.js";

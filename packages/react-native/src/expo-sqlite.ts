@@ -17,7 +17,6 @@ import {
 import * as Expo from "expo";
 
 import { createExpoSqliteDriver } from "./providers/ExpoSqliteDriver.js";
-import { createReactNativeScheduler } from "./Scheduler.js";
 import { polyfillHermes } from "./utils/Hermes.js";
 
 polyfillHermes();
@@ -46,6 +45,5 @@ export const evoluReactNativeDeps: EvoluDeps = {
   createDbWorker,
   nanoIdLib,
   reloadApp,
-  scheduler: createReactNativeScheduler(),
   time,
 };

@@ -11,7 +11,6 @@ import {
 } from "../../src/Evolu/Schema.js";
 import { SyncOwner } from "../../src/Evolu/Sync.js";
 import { getOrThrow } from "../../src/Result.js";
-import { createBasicScheduler } from "../../src/Scheduler.js";
 import { createSqlite, SqliteBoolean } from "../../src/Sqlite.js";
 import { wait } from "../../src/Task.js";
 import {
@@ -72,7 +71,6 @@ const mockDeps = () => {
     nanoIdLib: testNanoIdLib,
     console: createConsole(),
     reloadApp: vi.fn(),
-    scheduler: createBasicScheduler(),
   };
 };
 
@@ -107,7 +105,6 @@ const createEvoluDepsWithSqlite = async () => {
     nanoIdLib: testNanoIdLib,
     console: createConsole(),
     reloadApp: vi.fn(),
-    scheduler: createBasicScheduler(),
   };
 
   const sqlite = getOrThrow(

@@ -4,6 +4,7 @@ import {
   AbortError,
   createMutex,
   createSemaphore,
+  requestIdleTask,
   retry,
   RetryError,
   Task,
@@ -1346,5 +1347,31 @@ describe("Examples", () => {
 
     const _result = await promise;
     // Result will be AbortError if cancelled
+  });
+});
+
+describe("requestIdleTask", () => {
+  test("should execute task asynchronously", async () => {
+    let executed = false;
+
+    const task = toTask(() => {
+      executed = true;
+      return Promise.resolve(ok());
+    });
+
+    const result = await requestIdleTask(task)();
+
+    expect(executed).toBe(true);
+    expect(result).toEqual(ok());
+  });
+
+  test("should handle task errors properly", async () => {
+    const task = toTask(() => {
+      return Promise.resolve(err("Task failed"));
+    });
+
+    const result = await requestIdleTask(task)();
+
+    expect(result).toEqual(err("Task failed"));
   });
 });

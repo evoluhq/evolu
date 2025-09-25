@@ -743,3 +743,37 @@ export const createMutex = (): Mutex => {
 // - Collect span data (name, timing, parent-child relationships, status)
 // - Support OpenTelemetry export format with proper traceId/spanId generation
 // - Automatic parent-child span relationships through context propagation
+
+/**
+ * Schedule a task to run after all interactions (animations, gestures,
+ * navigation) have completed.
+ *
+ * This uses `requestIdleCallback` when available, otherwise falls back to
+ * `setTimeout(0)` for cross-platform compatibility.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const processDataTask: Task<void, ProcessError> = toTask(async () => {
+ *   // Heavy processing work
+ *   return ok();
+ * });
+ *
+ * // Schedule the task to run when idle
+ * void requestIdleTask(processDataTask)();
+ * ```
+ */
+export const requestIdleTask = <T, E>(task: Task<T, E>): Task<T, E> =>
+  toTask(
+    async (context?: TaskContext) =>
+      new Promise<Result<T, E>>((resolve) => {
+        idleCallback(() => {
+          void task(context).then(resolve);
+        });
+      }),
+  );
+
+const idleCallback: (callback: () => void) => void =
+  typeof globalThis.requestIdleCallback === "function"
+    ? globalThis.requestIdleCallback
+    : (callback) => setTimeout(callback, 0);

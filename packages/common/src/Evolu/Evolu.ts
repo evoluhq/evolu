@@ -9,9 +9,9 @@ import { TransferableError } from "../Error.js";
 import { exhaustiveCheck } from "../Function.js";
 import { NanoIdLibDep } from "../NanoId.js";
 import { err, ok, Result } from "../Result.js";
-import { SchedulerDep } from "../Scheduler.js";
 import { isSqlMutation, SafeSql, SqliteError, SqliteQuery } from "../Sqlite.js";
 import { createStore, StoreSubscribe } from "../Store.js";
+import { requestIdleTask, toTask } from "../Task.js";
 import { TimeDep } from "../Time.js";
 import {
   createId,
@@ -531,7 +531,6 @@ export type EvoluDeps = ConsoleDep &
   NanoIdLibDep &
   Partial<FlushSyncDep> &
   ReloadAppDep &
-  SchedulerDep &
   TimeDep;
 
 // For hot reloading and Evolu multitenancy.
@@ -711,41 +710,43 @@ const createEvoluInstance =
         }
 
         case "processNewMessages": {
-          void deps.scheduler.runAfterInteractions(async () => {
-            const approved: Array<Timestamp> = [];
+          void requestIdleTask(
+            toTask(async () => {
+              const approved: Array<Timestamp> = [];
 
-            for (const crdtMessage of message.messages) {
-              let isValid = true;
+              for (const crdtMessage of message.messages) {
+                let isValid = true;
 
-              // Validate CrdtMessage.change against the schema
-              const table = crdtMessage.change.table;
-              if (table in schema) {
-                // TODO: Fix createdAt validation.
-                // isValid = getMutationType(table, "update").is({
-                //   id: crdtMessage.change.id,
-                //   ...crdtMessage.change.values,
-                // });
-              } else {
-                isValid = false;
+                // Validate CrdtMessage.change against the schema
+                const table = crdtMessage.change.table;
+                if (table in schema) {
+                  // TODO: Fix createdAt validation.
+                  // isValid = getMutationType(table, "update").is({
+                  //   id: crdtMessage.change.id,
+                  //   ...crdtMessage.change.values,
+                  // });
+                } else {
+                  isValid = false;
+                }
+
+                if (isValid && onMessage) {
+                  isValid = await onMessage(crdtMessage);
+                }
+
+                if (isValid) {
+                  approved.push(crdtMessage.timestamp);
+                }
               }
 
-              if (isValid && onMessage) {
-                isValid = await onMessage(crdtMessage);
-              }
+              dbWorker.postMessage({
+                type: "onProcessNewMessages",
+                onCompleteId: message.onCompleteId,
+                approved,
+              });
 
-              if (isValid) {
-                approved.push(crdtMessage.timestamp);
-              }
-            }
-
-            dbWorker.postMessage({
-              type: "onProcessNewMessages",
-              onCompleteId: message.onCompleteId,
-              approved,
-            });
-
-            return ok();
-          })();
+              return ok();
+            }),
+          )();
           break;
         }
 

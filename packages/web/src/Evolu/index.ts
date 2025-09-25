@@ -5,7 +5,6 @@ import {
   DbWorkerOutput,
   EvoluDeps,
 } from "@evolu/common/evolu";
-import { createWebScheduler } from "../Scheduler.js";
 import { createSharedWebWorker } from "../SharedWebWorker.js";
 import { reloadApp } from "./Platform.js";
 
@@ -23,6 +22,5 @@ export const evoluWebDeps: EvoluDeps = {
   createDbWorker,
   nanoIdLib: createNanoIdLib(),
   reloadApp,
-  scheduler: createWebScheduler(),
   time: createTime(),
 };
