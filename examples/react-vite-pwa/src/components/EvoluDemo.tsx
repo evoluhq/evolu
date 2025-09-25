@@ -23,19 +23,12 @@ import {
 import {
   createUseEvolu,
   EvoluProvider,
+  useAppOwner,
   useEvoluError,
   useQuery,
 } from "@evolu/react";
 import { evoluReactWebDeps } from "@evolu/react-web";
-import {
-  ChangeEvent,
-  FC,
-  memo,
-  Suspense,
-  use,
-  useEffect,
-  useState,
-} from "react";
+import { ChangeEvent, FC, memo, Suspense, useEffect, useState } from "react";
 
 // Define the Evolu schema that describes the database tables and column types.
 // First, define the typed IDs.
@@ -438,7 +431,7 @@ const TodoCategoryItem: FC<{ row: TodoCategoriesRow }> = ({
 
 const OwnerActions: FC = () => {
   const evolu = useEvolu();
-  const owner = use(evolu.appOwner);
+  const owner = useAppOwner();
 
   const [showMnemonic, setShowMnemonic] = useState(false);
 
@@ -499,7 +492,7 @@ const OwnerActions: FC = () => {
           onClick={handleDownloadDatabaseClick}
         />
       </div>
-      {showMnemonic && owner.mnemonic && (
+      {showMnemonic && owner?.mnemonic && (
         <div>
           <textarea
             value={owner.mnemonic}

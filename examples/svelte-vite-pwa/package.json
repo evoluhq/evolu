@@ -6,8 +6,8 @@
   "scripts": {
     "build": "vite build",
     "check": "svelte-check --tsconfig ./tsconfig.json && tsc -p tsconfig.node.json",
-    "dev": "vite",
     "clean": "shx rm -rf node_modules .turbo dist",
+    "dev": "vite",
     "preview": "vite preview"
   },
   "devDependencies": {
@@ -16,6 +16,7 @@
     "@evolu/web": "workspace:*",
     "@sveltejs/vite-plugin-svelte": "^6.1.1",
     "@tsconfig/svelte": "^5.0.5",
+    "shx": "^0.4.0",
     "svelte": "^5.38.2",
     "svelte-check": "^4.3.1",
     "tslib": "^2.8.1",

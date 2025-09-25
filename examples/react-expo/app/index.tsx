@@ -11,9 +11,14 @@ import {
   SimpleName,
   SqliteBoolean,
 } from "@evolu/common";
-import { createUseEvolu, EvoluProvider, useQuery } from "@evolu/react";
+import {
+  createUseEvolu,
+  EvoluProvider,
+  useAppOwner,
+  useQuery,
+} from "@evolu/react";
 import { evoluReactNativeDeps } from "@evolu/react-native/expo-sqlite";
-import { use, useState } from "react";
+import { useState } from "react";
 import {
   Button,
   ScrollView,
@@ -54,7 +59,7 @@ const Schema = {
 };
 
 const evolu = createEvolu(evoluReactNativeDeps)(Schema, {
-  name: SimpleName.orThrow("evolu-expo-sqlite-example-qwe"),
+  name: SimpleName.orThrow("evolu-expo-sqlite-example-v54"),
 
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "http://localhost:4000" }],
@@ -322,7 +327,7 @@ function TodoCategorySelect({
 
 function OwnerActions() {
   const evolu = useEvolu();
-  const owner = use(evolu.appOwner);
+  const owner = useAppOwner();
 
   const [isMnemonicShown, setIsMnemonicShown] = useState(false);
   const [isRestoreShown, setIsRestoreShown] = useState(false);

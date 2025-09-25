@@ -1,6 +1,13 @@
 minimumReleaseAge: 1440
 
 packages:
-  - "apps/*"
-  - "packages/*"
-  - "examples/*"
+  - apps/*
+  - packages/*
+  - examples/*
+
+catalogs:
+  react19:
+    "@types/react": ^19.1.13
+    "@types/react-dom": ^19.1.9
+    react: 19.1.0
+    react-dom: ^19.1.0

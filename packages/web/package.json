@@ -42,6 +42,7 @@
     "@evolu/common": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
     "@types/web-locks-api": "^0.0.5",
+    "shx": "^0.4.0",
     "typescript": "^5.9.2",
     "user-agent-data-types": "^0.4.2",
     "vitest": "^3.2.3"
