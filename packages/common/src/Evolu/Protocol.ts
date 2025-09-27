@@ -169,10 +169,11 @@ import {
   BinaryId,
   binaryIdToId,
   binaryIdTypeValueLength,
-  DateIsoString,
+  DateIso,
   Id,
   idToBinaryId,
-  JsonValueFromString,
+  Json,
+  jsonToJsonValue,
   NonNegativeInt,
   Number,
   PositiveInt,
@@ -1799,9 +1800,9 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
         return;
       }
 
-      const dateIsoString = DateIsoString.from(value);
-      if (dateIsoString.ok) {
-        const time = new Date(dateIsoString.value).getTime();
+      const dateIso = DateIso.from(value);
+      if (dateIso.ok) {
+        const time = new Date(dateIso.value).getTime();
         if (NonNegativeInt.is(time)) {
           encodeNonNegativeInt(
             buffer,
@@ -1825,9 +1826,12 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
         return;
       }
 
-      const jsonValue = JsonValueFromString.fromParent(value);
-      if (jsonValue.ok && JSON.stringify(jsonValue.value) === value) {
-        const jsonBytes = packr.pack(jsonValue.value);
+      const json = Json.fromParent(value);
+      // Only encode as Json if it survives JSON.parse/JSON.stringify round-trip.
+      // Some valid JSON strings like "-0E0" get normalized to "0" during parsing,
+      // which would cause data corruption if we don't verify round-trip safety.
+      if (json.ok && JSON.stringify(jsonToJsonValue(json.value)) === value) {
+        const jsonBytes = packr.pack(jsonToJsonValue(json.value));
         encodeNonNegativeInt(buffer, ProtocolValueType.Json);
         encodeLength(buffer, jsonBytes);
         buffer.extend(jsonBytes);
@@ -1908,12 +1912,9 @@ export const decodeSqliteValue = (buffer: Buffer): SqliteValue => {
         type === ProtocolValueType.DateIsoWithNonNegativeTime
           ? decodeNonNegativeInt(buffer)
           : decodeNumber(buffer);
-      const dateIsoString = DateIsoString.fromParent(
-        new Date(time).toISOString(),
-      );
-      if (!dateIsoString.ok)
-        throw new ProtocolDecodeError(dateIsoString.error.type);
-      return dateIsoString.value;
+      const dateIso = DateIso.fromParent(new Date(time).toISOString());
+      if (!dateIso.ok) throw new ProtocolDecodeError(dateIso.error.type);
+      return dateIso.value;
     }
 
     case ProtocolValueType.EmptyString:

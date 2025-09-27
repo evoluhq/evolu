@@ -4,11 +4,12 @@
  * @module
  */
 
-import { NonNegativeInt } from "./Type.js";
+import { DateIso, NonNegativeInt } from "./Type.js";
 
 /** Retrieves the current time in milliseconds, similar to `Date.now()`. */
 export interface Time {
   readonly now: () => number;
+  readonly nowIso: () => DateIso;
 }
 
 export interface TimeDep {
@@ -16,9 +17,16 @@ export interface TimeDep {
 }
 
 /** Creates a {@link Time} using Date.now(). */
-export const createTime = (): Time => ({
-  now: () => Date.now(),
-});
+export const createTime = (): Time => {
+  const time: Time = {
+    now: () => {
+      const iso = time.nowIso();
+      return new globalThis.Date(iso).getTime();
+    },
+    nowIso: () => DateIso.orThrow(new globalThis.Date().toISOString()),
+  };
+  return time;
+};
 
 /**
  * Creates a {@link Time} that returns a monotonically increasing number based on
@@ -26,7 +34,7 @@ export const createTime = (): Time => ({
  */
 export const createTestTime = (): Time => {
   let now = 0;
-  return {
+  const time: Time = {
     now: () => {
       const current = now;
       queueMicrotask(() => {
@@ -34,7 +42,10 @@ export const createTestTime = (): Time => {
       });
       return current;
     },
+    nowIso: () =>
+      DateIso.orThrow(new globalThis.Date(time.now()).toISOString()),
   };
+  return time;
 };
 
 /** Single digit 0-9. Used internally for {@link DurationString} validation. */

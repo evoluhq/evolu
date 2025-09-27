@@ -56,7 +56,7 @@ import {
 } from "../../src/index.js";
 import { err, getOrThrow } from "../../src/Result.js";
 import { SqliteValue } from "../../src/Sqlite.js";
-import { DateIso, NonNegativeInt, PositiveInt } from "../../src/Type.js";
+import { dateToDateIso, NonNegativeInt, PositiveInt } from "../../src/Type.js";
 import {
   testCreateId,
   testCreateSqlite,
@@ -250,11 +250,11 @@ test("encodeSqliteValue/decodeSqliteValue", () => {
     [16383, 3], // NonNegativeInt
     ['{"compact":true,"schema":0}', 20], // 18 bytes msgpackr + 2 bytes protocol overhead
     // Protocol encoding ensures 6 bytes till the year 2108.
-    [DateIso.orThrow(new Date("0000-01-01T00:00:00.000Z")), 10],
-    [DateIso.orThrow(new Date("2024-10-31T00:00:00.000Z")), 7],
-    [DateIso.orThrow(new Date("2108-10-31T00:00:00.000Z")), 7],
-    [DateIso.orThrow(new Date("2109-10-31T00:00:00.000Z")), 8],
-    [DateIso.orThrow(new Date("9999-12-31T23:59:59.999Z")), 8],
+    [getOrThrow(dateToDateIso(new Date("0000-01-01T00:00:00.000Z"))), 10],
+    [getOrThrow(dateToDateIso(new Date("2024-10-31T00:00:00.000Z"))), 7],
+    [getOrThrow(dateToDateIso(new Date("2108-10-31T00:00:00.000Z"))), 7],
+    [getOrThrow(dateToDateIso(new Date("2109-10-31T00:00:00.000Z"))), 8],
+    [getOrThrow(dateToDateIso(new Date("9999-12-31T23:59:59.999Z"))), 8],
   ];
 
   const buffer = createBuffer();
@@ -398,7 +398,7 @@ const createDbChange = (): DbChange => ({
   id: testCreateId(),
   values: {
     name: "Victoria",
-    hiredAt: DateIso.orThrow(new Date("2024-10-31")),
+    hiredAt: getOrThrow(dateToDateIso(new Date("2024-10-31"))),
     officeId: testCreateId(),
   },
 });

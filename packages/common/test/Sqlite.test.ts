@@ -1,15 +1,9 @@
 import BetterSQLite from "better-sqlite3";
 import { existsSync, unlinkSync } from "fs";
-import { assert, expect, expectTypeOf, test } from "vitest";
+import { assert, expect, test } from "vitest";
 import { constVoid } from "../src/Function.js";
-import { err, getOrThrow, ok } from "../src/Result.js";
-import {
-  createSqlite,
-  sql,
-  SqliteBoolean,
-  SqliteDriver,
-} from "../src/Sqlite.js";
-import { BooleanError } from "../src/Type.js";
+import { err, getOrThrow } from "../src/Result.js";
+import { createSqlite, sql, SqliteDriver } from "../src/Sqlite.js";
 import { testCreateSqliteDriver, testSimpleName } from "./_deps.js";
 
 const createTestSqlite = async (consoleArgs?: Array<any>) => {
@@ -235,17 +229,6 @@ test("sql", () => {
     parameters: [2],
     options: { prepare: true },
   });
-});
-
-test("SqliteBoolean", () => {
-  expect(SqliteBoolean.from(false)).toStrictEqual(ok(0));
-  expect(SqliteBoolean.from(true)).toStrictEqual(ok(1));
-
-  expectTypeOf<SqliteBoolean>().toEqualTypeOf<0 | 1>();
-  expectTypeOf<typeof SqliteBoolean.Error>().toEqualTypeOf<never>();
-  expectTypeOf<
-    typeof SqliteBoolean.ParentError
-  >().toEqualTypeOf<BooleanError>();
 });
 
 // Speedup: 6.44x

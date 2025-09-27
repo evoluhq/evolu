@@ -26,8 +26,9 @@ import {
 } from "../../src/Evolu/Timestamp.js";
 import { increment } from "../../src/Number.js";
 import { orderNumber } from "../../src/Order.js";
-import { Result, ok } from "../../src/Result.js";
+import { Result, getOrThrow, ok } from "../../src/Result.js";
 import { TimeDep } from "../../src/Time.js";
+import { dateToDateIso } from "../../src/Type.js";
 import { testNanoIdLibDep, testRandomLib } from "../_deps.js";
 
 test("Millis", () => {
@@ -82,12 +83,18 @@ test("timestampToTimestampString", () => {
 const makeMillis = (millis: number): Millis => Millis.orThrow(millis);
 
 const deps0: TimeDep & TimestampConfigDep = {
-  time: { now: () => minMillis },
+  time: {
+    now: () => minMillis,
+    nowIso: () => getOrThrow(dateToDateIso(new Date(minMillis))),
+  },
   timestampConfig: { maxDrift: defaultDbConfig.maxDrift },
 };
 
 const deps1: TimeDep & TimestampConfigDep = {
-  time: { now: () => minMillis + 1 },
+  time: {
+    now: () => minMillis + 1,
+    nowIso: () => getOrThrow(dateToDateIso(new Date(minMillis + 1))),
+  },
   timestampConfig: { maxDrift: defaultDbConfig.maxDrift },
 };
 

@@ -53,25 +53,25 @@ const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   // https://www.evolu.dev/docs/indexes
   indexes: (create) => [create("todoCreatedAt").on("todo").column("createdAt")],
 
-  // enableLogging: true,
+  enableLogging: true,
+
+  onMessage: (_message) => {
+    // message.
+    return Promise.resolve(true);
+  },
 });
 
 const useEvolu = createUseEvolu(evolu);
 
-const todosQuery = evolu.createQuery(
-  (db) =>
-    db
-      .selectFrom("todo")
-      .select(["id", "title", "isCompleted"])
-      .where("isDeleted", "is not", 1)
-      // Filter null value and ensure non-null type.
-      .where("title", "is not", null)
-      .$narrowType<{ title: kysely.NotNull }>()
-      .orderBy("createdAt"),
-  {
-    // logQueryExecutionTime: true,
-    // logExplainQueryPlan: true,
-  },
+const todosQuery = evolu.createQuery((db) =>
+  db
+    .selectFrom("todo")
+    .select(["id", "title", "isCompleted"])
+    .where("isDeleted", "is not", 1)
+    // Filter null value and ensure non-null type.
+    .where("title", "is not", null)
+    .$narrowType<{ title: kysely.NotNull }>()
+    .orderBy("createdAt"),
 );
 
 type TodosRow = typeof todosQuery.Row;
@@ -138,9 +138,7 @@ const Todos: FC = () => {
 
     const result = insert(
       "todo",
-      {
-        title: newTodoTitle.trim(),
-      },
+      { title: newTodoTitle.trim() },
       {
         onComplete: () => {
           setNewTodoTitle("");
@@ -285,9 +283,7 @@ const OwnerActions: FC = () => {
 
   return (
     <div className="mt-8 rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
-      <h2 className="mb-4 text-lg font-medium text-gray-900">
-        Data Management
-      </h2>
+      <h2 className="mb-4 text-lg font-medium text-gray-900">Account</h2>
       <p className="mb-4 text-sm text-gray-600">
         Your todos are stored locally and encrypted. Use your mnemonic to sync
         across devices.

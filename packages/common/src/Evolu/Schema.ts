@@ -20,7 +20,6 @@ import {
   BrandType,
   createTypeErrorFormatter,
   DateIso,
-  DateIsoString,
   IdType,
   InferErrors,
   InferInput,
@@ -226,8 +225,8 @@ export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
  * - `isDeleted`: Soft delete flag.
  */
 export const DefaultColumns = object({
-  createdAt: DateIsoString,
-  updatedAt: DateIsoString,
+  createdAt: DateIso,
+  updatedAt: DateIso,
   isDeleted: nullOr(SqliteBoolean),
 });
 export type DefaultColumns = typeof DefaultColumns.Type;

@@ -1,71 +1,43 @@
-/* eslint-disable jsdoc/no-undefined-types */
 /**
- * 🧩 Validation, Parsing, and Transformation
+ * 🧩 Type-safe runtime types
  *
- * ## Intro
- *
- * You probably know [Zod](https://zod.dev). Evolu has {@link Type}.
+ * Evolu {@link Type} is like type guard returning typed errors, so we either get
+ * a safely typed value or typed errors telling us exactly which validation
+ * failed.
  *
  * Evolu Type exists because no existing validation/parsing/transformation
  * library fully met our needs:
  *
  * - **Result-based error handling**: Leveraging {@link Result} instead of throwing
  *   exceptions.
- * - **Consistent constraints**: Enforcing {@link Brand} for all constraints.
  * - **Typed errors with decoupled formatters**: Avoiding coupling error messages
  *   with validators.
+ * - **Consistent constraints**: Enforcing {@link Brand} for all constraints.
  * - **No user-land chaining**: Designed with ES pipe operator in mind.
- * - **Selective validation/transformation**: Skipping parent Type validations and
- *   transformations when TypeScript's type system can be relied upon.
- * - **Bidirectional transformations**: Supporting transformations in both
- *   directions.
- * - **Minimal and transparent code**: No runtime dependencies or hidden magic.
+ * - **Selective validation**: Skipping parent Type validations when TypeScript's
+ *   type system can be relied upon.
  *
- * **Note**: A proper quickstart guide is on the way. In the meantime, each type
- * includes its own usage example, and you can (and should) check the tests for
- * practical demonstrations of the API. Or dang, just read the code. It's
- * simple.
+ * **Design Decision: No Bidirectional Transformations**
  *
- * - Evolu `Type` is:
- * - A TypeScript type with a {@link Brand} whenever it's possible.
- * - A function to create a value of that type, which may fail.
- * - A function to transform value back to its original representation, which
- *   cannot fail.
+ * Evolu Type intentionally does not support bidirectional transformations. It
+ * did, but we decided to remove that feature because it's hard to implement it
+ * properly with Evolu typed errors and turned otherwise very simple Evolu Type
+ * code into a complex type system. Evolu prefers simplicity and reliability
+ * over complex abstractions. The source code must be readable. Also, most
+ * developers need transformations for persistence, but in Evolu, persistence
+ * storage is SQLite, and in that case we can't rely on automatic
+ * transformations because SQL `select` can return any shape, so values must be
+ * manually transformed anyway.
  *
- * Types are chainable. The chain starts with a Base Type that refines an
- * unknown value into something and can continue with further refinements or
- * transformations. For example, `NonEmptyTrimmedString100` chain looks like
- * this:
- *
- * `Unknown` -> `String` -> `TrimmedString` -> `NonEmptyTrimmedString100`
- *
- * For `NonEmptyTrimmedString100`, the parent Type is `TrimmedString`. For
- * `TrimmedString`, the parent Type is `String`.
- *
- * The parent of the `String` Type is the `String` Type itself. All Base Types
- * `fromParent` functions are just a typed alias to `fromUnknown` to ensure that
- * `fromParent` and `toParent` can be called on any Type.
- *
- * Speaking of `fromParent` and `toParent`, those functions exist to bypass
- * parent Types when we can rely on TypeScript types.
- *
- * `Type` transformations should be reversible. If you need an irreversible
- * transformation, such as `TrimString` (trimming is not reversible as `untrim`
- * can't know what has been trimmed), you can do that, but note in JSDoc that
- * `to` will not restore the original representation. You can also use
- * {@link assert}: `assert(false, "Untrim is not possible")`.
+ * **Note:** We may revisit bidirectional transformations in the future if we
+ * can design a minimal, 100% safe API that maintains Evolu's simplicity and
+ * reliability principles. Remember, other libs do not support typed errors, so
+ * their task is much simpler (and they still often have many bugs).
  *
  * ### Tip
  *
  * If necessary, write `globalThis.String` instead of `String` to avoid naming
- * clashes with Base Types.
- *
- * ### Design Decision:
- *
- * While the `from` function can fail, the `to` function cannot. This simplifies
- * the model by ensuring that every valid input has a corresponding valid
- * output, eliminating the risk of edge cases caused by irreversible
- * operations.
+ * clashes with native types.
  *
  * @module
  */
@@ -76,10 +48,9 @@ import * as bip39 from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { assert } from "./Assert.js";
 import type { Brand } from "./Brand.js";
-import { identity } from "./Function.js";
 import { NanoIdLibDep } from "./NanoId.js";
 import { isPlainObject } from "./Object.js";
-import { Err, err, getOrThrow, Ok, ok, Result, trySync } from "./Result.js";
+import { err, getOrThrow, ok, Result, trySync } from "./Result.js";
 import { safelyStringifyUnknownValue } from "./String.js";
 import type { Literal, Simplify, WidenLiteral } from "./Types.js";
 import { IntentionalNever } from "./Types.js";
@@ -158,34 +129,12 @@ export interface Type<
   readonly fromUnknown: (value: unknown) => Result<T, ParentError | Error>;
 
   /**
-   * The opposite of `from` and `fromUnknown`.
-   *
-   * This is useful to transform `T` back to its `Input` representation.
-   *
-   * For `refine`, it only removes the brand. For `transform`, it changes value.
-   */
-  readonly to: (value: T) => Input;
-
-  /**
    * Creates `T` from `Parent` type.
    *
-   * This function skips parent Types validations/transformations when we have
-   * already partially validated/transformed value.
-   *
-   * For example, `TrimString.from` checks whether a value is a string and trims
-   * it. If we only want to trim a string, we can use `fromParent`.
-   *
-   * ### Example
-   *
-   * ```ts
-   * // string & Brand<"Trimmed">
-   * const value = TrimString.fromParent("a ").value; // as efficient as foo.trim()
-   * ```
+   * This function skips parent Types validations when we have already partially
+   * validated value.
    */
   readonly fromParent: (value: Parent) => Result<T, Error>;
-
-  /** The opposite of `fromParent`. */
-  readonly toParent: (value: T) => Parent;
 
   /**
    * A **type guard** that checks whether an unknown value satisfies the
@@ -412,12 +361,6 @@ export type TypeErrorFormatter<Error extends TypeError> = (
  * Base {@link Type}.
  *
  * A Base Type validates that a value conforms to a specific TypeScript type.
- * Unlike refinements or transformations, Base Types establish the fundamental
- * shape of a value before any branding or transformation occurs.
- *
- * - To **refine** a Base Type further, use the {@link brand} Type Factory.
- * - To **transform** a Base Type into a different representation, use the
- *   {@link transform} Type Factory.
  *
  * ### Example
  *
@@ -443,9 +386,7 @@ export const base = <Name extends TypeName, T, Error extends TypeError>(
 ): Type<Name, T, T, Error> =>
   createType(name, {
     fromUnknown,
-    to: identity,
     fromParent: ok<T>, // `fromParent` relies on types, so it can't fail for the Base Type
-    toParent: identity,
   });
 
 /**
@@ -827,9 +768,7 @@ export function brand<
   return {
     ...createType("Brand", {
       fromUnknown,
-      to: identity,
       fromParent: (refine ?? ok) as IntentionalNever,
-      toParent: identity,
     }),
     brand: name,
     parentType: parent,
@@ -895,36 +834,41 @@ export const formatCurrencyCodeError =
  * ### Example
  *
  * ```ts
- * const result = DateIsoString.from("2023-01-01T12:00:00.000Z"); // ok
- * const error = DateIsoString.from("10000-01-01T00:00:00.000Z"); // err
+ * const result = DateIso.from("2023-01-01T12:00:00.000Z"); // ok
+ * const error = DateIso.from("10000-01-01T00:00:00.000Z"); // err
  * ```
  *
  * @category String
  */
-export const DateIsoString = brand("DateIso", String, (value) => {
+export const DateIso = brand("DateIso", String, (value) => {
   if (value.length !== 24) {
-    return err<DateIsoStringError>({ type: "DateIsoString", value });
+    return err<DateIsoError>({ type: "DateIso", value });
   }
   const parsed = globalThis.Date.parse(value);
   if (isNaN(parsed)) {
-    return err<DateIsoStringError>({ type: "DateIsoString", value });
+    return err<DateIsoError>({ type: "DateIso", value });
   }
   // Round-trip test: ensure the string is actually a proper ISO format
   const roundTrip = new globalThis.Date(parsed).toISOString();
   if (roundTrip !== value) {
-    return err<DateIsoStringError>({ type: "DateIsoString", value });
+    return err<DateIsoError>({ type: "DateIso", value });
   }
   return ok(value);
 });
 
-export type DateIsoString = typeof DateIsoString.Type;
+export type DateIso = typeof DateIso.Type;
 
-export interface DateIsoStringError extends TypeError<"DateIsoString"> {}
+export interface DateIsoError extends TypeError<"DateIso"> {}
 
-export const formatDateIsoStringError =
-  createTypeErrorFormatter<DateIsoStringError>(
-    (error) => `The value ${error.value} is not a valid ISO 8601 date string.`,
-  );
+export const formatDateIsoError = createTypeErrorFormatter<DateIsoError>(
+  (error) => `The value ${error.value} is not a valid ISO 8601 date string.`,
+);
+
+export const dateToDateIso = (value: Date): Result<DateIso, DateIsoError> =>
+  DateIso.fromParent(value.toISOString());
+
+export const dateIsoToDate = (value: DateIso): Date =>
+  new globalThis.Date(value);
 
 /**
  * Helper type for Type Factory that creates a branded Type.
@@ -967,18 +911,12 @@ export type BrandFactory<
 /**
  * Trimmed string.
  *
- * This Type Factory does not transform; it only validates whether a string has
- * no leading or trailing whitespaces. To trim a string, use {@link trim} Type
- * Factory.
+ * This Type Factory validates whether a string has no leading or trailing
+ * whitespaces.
  *
  * ### Examples
  *
  * ```ts
- * // this Type already exists
- * const TrimmedString = trimmed(String);
- * type TrimmedString = typeof TrimmedString.Type;
- *
- * // we can make any branded Type trimmed:
  * const TrimmedNonEmptyString = trimmed(minLength(1)(String));
  * // string & Brand<"MinLength1"> & Brand<"Trimmed">
  * type TrimmedNonEmptyString = typeof TrimmedNonEmptyString.Type;
@@ -1000,64 +938,6 @@ export interface TrimmedError extends TypeError<"Trimmed"> {}
 export const formatTrimmedError = createTypeErrorFormatter<TrimmedError>(
   (error) => `A value ${error.value} is not trimmed`,
 );
-
-export type TransformBrandFactory<
-  Name extends TypeName,
-  Input,
-  TransformError extends TypeError = never,
-> = <
-  PName extends TypeName,
-  P extends Input,
-  PInput,
-  PParent,
-  PError extends TypeError = never,
-  PParentError extends TypeError = never,
->(
-  parent: Type<PName, P, PInput, PError, PParent, PParentError>,
-) => TransformType<
-  Type<PName, P, PInput, PError, PParent, PParentError>,
-  BrandType<
-    Type<PName, P, PInput, PError, PParent, PParentError>,
-    Name,
-    never,
-    PError | PParentError
-  >,
-  TransformError
->;
-
-/**
- * Trims leading and trailing whitespace from a string.
- *
- * This Type Factory **transforms** the input string by removing whitespace from
- * both ends. For validation only, use {@link trimmed} Type Factory.
- *
- * ### Example
- *
- * ```ts
- * const TrimString = trim(String);
- * expect(TrimString.from("a ")).toEqual(ok("a"));
- * expect(TrimString.fromParent("a ").value).toEqual("a");
- *
- * const TrimNonEmptyString = trim(NonEmptyString);
- * expect(TrimNonEmptyString.from("a " as NonEmptyString)).toEqual(ok("a"));
- * expect(
- *   TrimNonEmptyString.fromParent("a " as NonEmptyString).value,
- * ).toEqual("a");
- * ```
- *
- * **Note:** This transformation is irreversible. Calling `toParent` will not
- * restore the original representation.
- *
- * @category String
- */
-
-export const trim: TransformBrandFactory<"Trimmed", string> = (parent) =>
-  transform(
-    parent,
-    trimmed(parent) as BrandType<typeof parent, "Trimmed">,
-    (value) => ok(value.trim() as InferType<typeof parent> & Brand<"Trimmed">),
-    (value) => value,
-  );
 
 /**
  * Trimmed string
@@ -1576,12 +1456,7 @@ export const id = <Table extends TypeName>(table: Table): IdType<Table> => {
   };
 
   return {
-    ...createType("Id", {
-      fromUnknown,
-      to: (value: Id & Brand<Table>) => value as string,
-      fromParent,
-      toParent: (value: Id & Brand<Table>) => value as string,
-    }),
+    ...createType("Id", { fromUnknown, fromParent }),
     table,
   };
 };
@@ -2058,12 +1933,10 @@ export const literal = <T extends Literal>(expected: T): LiteralType<T> => {
   return {
     ...createType("Literal", {
       fromUnknown,
-      to: identity as (value: T) => WidenLiteral<T>,
       fromParent: ok,
-      toParent: identity,
     }),
     expected,
-  };
+  } as LiteralType<T>;
 };
 
 export interface LiteralType<T extends Literal>
@@ -2082,144 +1955,6 @@ export const formatLiteralError = createTypeErrorFormatter<LiteralError>(
       error.expected,
     )}.`,
 );
-
-/**
- * {@link Type} that transforms values between `FromType` and `ToType`.
- *
- * - `fromParent`: Converts `FromType` to `ToType`, may fail.
- * - `toParent`: Converts `ToType` back to `FromType`, must not fail.
- *
- * ### Example
- *
- * // TODO: Examples
- *
- * @category Base Factories
- */
-export const transform = <
-  FromType extends AnyType,
-  ToType extends AnyType,
-  TransformError extends TypeError = never,
->(
-  fromType: FromType,
-  toType: ToType,
-  fromParent: (
-    parentValue: InferType<FromType>,
-  ) => Result<InferType<ToType>, TransformError>,
-  toParent: (value: InferType<ToType>) => InferType<FromType>,
-): TransformType<FromType, ToType, TransformError> => {
-  const fromUnknown = (
-    value: unknown,
-  ): Result<InferType<ToType>, InferErrors<FromType> | TransformError> => {
-    const parentResult = fromType.fromUnknown(value);
-    if (!parentResult.ok) return parentResult;
-    return fromParent(parentResult.value as IntentionalNever);
-  };
-
-  const to = (value: InferType<ToType>): InferInput<FromType> =>
-    fromType.to(toParent(value)) as IntentionalNever;
-
-  return {
-    ...createType("Transform", {
-      fromUnknown,
-      to,
-      fromParent,
-      toParent,
-    }),
-    fromType,
-    toType,
-  } as TransformType<FromType, ToType, TransformError>;
-};
-
-/**
- * TransformType extends {@link Type} with additional `fromType` and `toType`
- * properties for reflection.
- */
-export interface TransformType<
-  FromType extends AnyType,
-  ToType extends AnyType,
-  TransformError extends TypeError = never,
-> extends Type<
-    "Transform",
-    InferType<ToType>,
-    InferInput<FromType>,
-    TransformError,
-    InferType<FromType>,
-    InferErrors<FromType>
-  > {
-  readonly fromType: FromType;
-  readonly toType: ToType;
-
-  readonly fromParent: (
-    value: InferType<FromType>,
-  ) => [TransformError] extends [never]
-    ? Ok<InferType<ToType>>
-    : Result<InferType<ToType>, TransformError>;
-}
-
-/**
- * Trims leading and trailing whitespace from a string.
- *
- * ### Example
- *
- * ```ts
- * expect(TrimString.from("a ")).toEqual(ok("a"));
- * expect(TrimString.fromParent("a ").value).toEqual("a");
- * ```
- *
- * @category String
- */
-export const TrimString = trim(String);
-
-/**
- * Transforms a {@link Date} into a {@link DateIsoString} string and vice versa.
- *
- * ### Example
- *
- * ```ts
- * DateIso.from(new Date("2023-12-25T10:30:00.000Z")); // ok("2023-12-25T10:30:00.000Z")
- * DateIso.to("2023-12-25T10:30:00.000Z"); // Date object
- * DateIso.from(new Date("invalid")); // err({ type: "DateIsoString", value: "Invalid Date" })
- * ```
- *
- * @category String
- */
-export const DateIso = transform(
-  Date,
-  DateIsoString,
-  (value) => DateIsoString.fromParent(value.toISOString()),
-  (value) => new globalThis.Date(value),
-);
-
-/**
- * Transforms a {@link NonEmptyTrimmedString} into a {@link FiniteNumber}.
- *
- * ### Example
- *
- * ```ts
- * NumberFromString.from("42"); // ok(42)
- * NumberFromString.from("abc"); // err({ type: "NumberFromString", value: "abc" })
- * ```
- *
- * @category Number
- */
-export const NumberFromString = transform(
-  NonEmptyTrimmedString,
-  FiniteNumber,
-  (value) => {
-    const result = FiniteNumber.fromParent(globalThis.Number(value));
-    if (!result.ok)
-      return err<NumberFromStringError>({ type: "NumberFromString", value });
-    return result;
-  },
-  (num) => num.toString() as NonEmptyTrimmedString,
-);
-
-export interface NumberFromStringError extends TypeError<"NumberFromString"> {}
-
-export const formatNumberFromStringError =
-  createTypeErrorFormatter<NumberFromStringError>((error) => {
-    return `The value ${error.value} could not be converted to a finite number.`;
-  });
 
 /**
  * Array of a specific {@link Type}.
@@ -2273,9 +2008,6 @@ export const array = <ElementType extends AnyType>(
     return ok(result);
   };
 
-  const to = (value: ReadonlyArray<InferType<ElementType>>) =>
-    value.map(element.to) as ReadonlyArray<InferInput<ElementType>>;
-
   const fromParent = (
     value: ReadonlyArray<InferParent<ElementType>>,
   ): Result<
@@ -2301,18 +2033,10 @@ export const array = <ElementType extends AnyType>(
     return ok(result);
   };
 
-  const toParent = (values: ReadonlyArray<InferType<ElementType>>) =>
-    values.map(element.toParent) as ReadonlyArray<InferParent<ElementType>>;
-
   return {
-    ...createType("Array", {
-      fromUnknown,
-      to,
-      fromParent,
-      toParent,
-    }),
+    ...createType("Array", { fromUnknown, fromParent }),
     element,
-  } as ArrayType<ElementType>;
+  };
 };
 
 /** ArrayType extends Type with an additional `element` property for reflection. */
@@ -2445,16 +2169,6 @@ export const record = <
     return ok(result);
   };
 
-  const to = (
-    value: Readonly<Record<KeyT, InferType<Value>>>,
-  ): Readonly<Record<KeyInput, InferInput<Value>>> =>
-    Object.fromEntries(
-      Object.entries(value).map(([key, val]) => [
-        keyType.to(key as KeyT),
-        valueType.to(val),
-      ]),
-    ) as Readonly<Record<KeyInput, InferInput<Value>>>;
-
   const fromParent = (
     value: Readonly<Record<KeyParent, InferParent<Value>>>,
   ): Result<
@@ -2499,22 +2213,10 @@ export const record = <
     return ok(result);
   };
 
-  const toParent = (
-    value: Readonly<Record<KeyT, InferType<Value>>>,
-  ): Readonly<Record<KeyParent, InferParent<Value>>> =>
-    Object.fromEntries(
-      Object.entries(value).map(([key, val]) => [
-        keyType.toParent(key as KeyT),
-        valueType.toParent(val),
-      ]),
-    ) as Readonly<Record<KeyParent, InferParent<Value>>>;
-
   return {
     ...createType("Record", {
       fromUnknown,
-      to,
       fromParent,
-      toParent,
     }),
     key: keyType,
     value: valueType,
@@ -2814,25 +2516,6 @@ export function object(
     return ok(result);
   };
 
-  const to = (value: any) => {
-    const entries: [string, any][] = [];
-    for (const key of propKeys) {
-      if (!(key in value) && isOptionalType(props[key])) {
-        continue;
-      }
-      entries.push([key, props[key].to(value[key])]);
-    }
-    if (record) {
-      const recordEntries = Object.entries(value).filter(
-        ([key]) => !propKeys.includes(key),
-      );
-      for (const [key, val] of recordEntries) {
-        entries.push([record.key.to(key), record.value.to(val)]);
-      }
-    }
-    return Object.fromEntries(entries);
-  };
-
   const fromParent = (value: any): Result<any, any> => {
     const errors: Record<string, any> = {};
     const result: Record<string, any> = {};
@@ -2884,31 +2567,10 @@ export function object(
     return ok(result);
   };
 
-  const toParent = (value: any) => {
-    const entries: [string, any][] = [];
-    for (const key of propKeys) {
-      if (!(key in value) && isOptionalType(props[key])) {
-        continue;
-      }
-      entries.push([key, props[key].toParent(value[key])]);
-    }
-    if (record) {
-      const recordEntries = Object.entries(value).filter(
-        ([key]) => !propKeys.includes(key),
-      );
-      for (const [key, val] of recordEntries) {
-        entries.push([record.key.toParent(key), record.value.toParent(val)]);
-      }
-    }
-    return Object.fromEntries(entries);
-  };
-
   return {
     ...createType(record ? "ObjectWithRecord" : "Object", {
       fromUnknown,
-      to,
       fromParent,
-      toParent,
     }),
     props,
     ...(record ? { record } : {}),
@@ -3150,7 +2812,6 @@ export function union(...args: ReadonlyArray<any>): any {
    *         cases.
    */
 
-  /* eslint-disable */
   const members = args.map((arg) => (isType(arg) ? arg : literal(arg)));
 
   const fromUnknown = (value: unknown) => {
@@ -3168,23 +2829,13 @@ export function union(...args: ReadonlyArray<any>): any {
     });
   };
 
-  const to = (value: any) => {
-    for (const member of members) {
-      if (member.is(value)) return member.to(value);
-    }
-    assert(false, "No matching member found in Union Type `to` function");
-  };
-
   return {
     ...createType("Union", {
       fromUnknown,
-      to,
       fromParent: fromUnknown,
-      toParent: to,
     }),
     members,
   };
-  /* eslint-enable */
 }
 
 /**
@@ -3278,19 +2929,9 @@ export const recursive = <ParentType extends AnyType>(
       type ??= create();
       return type.fromUnknown(value);
     },
-    to: (value: T) => {
-      type ??= create();
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-      return type.to(value);
-    },
     fromParent: (value: Parent) => {
       type ??= create();
       return type.fromParent(value);
-    },
-    toParent: (value: T) => {
-      type ??= create();
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-      return type.toParent(value);
     },
     is: (value: unknown): value is T => {
       type ??= create();
@@ -3429,9 +3070,6 @@ export const tuple = <Elements extends [AnyType, ...ReadonlyArray<AnyType>]>(
     return ok(result);
   };
 
-  const to = (value: { [K in keyof Elements]: InferType<Elements[K]> }) =>
-    value.map((val, index) => elements[index].to(val) as IntentionalNever);
-
   const fromParent = (value: {
     [K in keyof Elements]: InferParent<Elements[K]>;
   }) => {
@@ -3463,21 +3101,10 @@ export const tuple = <Elements extends [AnyType, ...ReadonlyArray<AnyType>]>(
     return ok(result as { [K in keyof Elements]: InferType<Elements[K]> });
   };
 
-  const toParent = (value: { [K in keyof Elements]: InferType<Elements[K]> }): {
-    [K in keyof Elements]: InferParent<Elements[K]>;
-  } =>
-    value.map(
-      (val, index) => elements[index].toParent(val) as IntentionalNever,
-    ) as {
-      [K in keyof Elements]: InferParent<Elements[K]>;
-    };
-
   return {
     ...createType("Tuple", {
       fromUnknown,
-      to,
       fromParent,
-      toParent,
     }),
     elements,
   } as IntentionalNever;
@@ -3553,37 +3180,41 @@ export const formatInt64Error = createTypeErrorFormatter<Int64Error>(
     `The value ${error.value} is not a valid 64-bit signed integer (Int64).`,
 );
 
-export const BigIntFromString = transform(
-  String,
-  BigInt,
-  (value) =>
-    trySync(
-      () => globalThis.BigInt(value),
-      (): BigIntFromStringError => ({ type: "BigIntFromString", value }),
-    ),
-  (value) => value.toString(),
-);
+// // co s timhle? je to string, ze ktereho lze udelat bigint
 
-export interface BigIntFromStringError extends TypeError<"BigIntFromString"> {}
+// export const BigIntFromString = transform(
+//   String,
+//   BigInt,
+//   (value) =>
+//     trySync(
+//       () => globalThis.BigInt(value),
+//       (): BigIntFromStringError => ({ type: "BigIntFromString", value }),
+//     ),
+//   (value) => value.toString(),
+// );
 
-export const formatBigIntFromStringError =
-  createTypeErrorFormatter<BigIntFromStringError>(
-    (error) => `The value ${error.value} could not be converted to a BigInt.`,
-  );
+// export interface BigIntFromStringError extends TypeError<"BigIntFromString"> {}
+
+// export const formatBigIntFromStringError =
+//   createTypeErrorFormatter<BigIntFromStringError>(
+//     (error) => `The value ${error.value} could not be converted to a BigInt.`,
+//   );
 
 /**
  * Stringified {@link Int64}.
  *
- * @category Number
+ * @category String
  */
-export const Int64String = brand("Int64", String, (value) => {
-  const bigint = BigIntFromString.fromParent(value);
-  if (bigint.ok) {
-    const int64 = Int64.fromParent(globalThis.BigInt(value));
-    if (int64.ok) return ok(value);
-  }
-  return err<Int64StringError>({ type: "Int64String", value });
-});
+export const Int64String = brand("Int64", NonEmptyTrimmedString, (value) =>
+  trySync(
+    () => {
+      const maybeInt = globalThis.BigInt(value);
+      Int64.orThrow(maybeInt);
+      return value;
+    },
+    (): Int64StringError => ({ type: "Int64String", value }),
+  ),
+);
 
 export type Int64String = typeof Int64String.Type;
 
@@ -3688,42 +3319,14 @@ export const JsonArray = array(JsonValue);
  */
 export const JsonObject = record(String, JsonValue);
 
-/**
- * Transform Type that parses a JSON into a {@link JsonValue} and serializes a
- * JsonValue back into a JSON string.
- *
- * ### Example
- *
- * ```ts
- * JsonValueFromString.from(`{"key":"value"}`); // -> ok({ key: "value" })
- * JsonValueFromString.to({ key: "value" }); // -> '{"key":"value"}'
- * ```
- *
- * @category String
- */
-export const JsonValueFromString = transform(
-  String,
-  JsonValue,
-  (value) =>
-    trySync(
-      () => JSON.parse(value) as JsonValue,
-      (error): JsonValueFromStringError => ({
-        type: `JsonValueFromString`,
-        value,
-        message: globalThis.String(error),
-      }),
-    ),
-  (value) => JSON.stringify(value),
-);
-
-export interface JsonValueFromStringError
-  extends TypeError<"JsonValueFromString"> {
-  readonly message: string;
-}
-
-export const formatJsonValueFromStringError =
-  createTypeErrorFormatter<JsonValueFromStringError>(
-    (error) => `Invalid JSONValue: ${error.value}. Error: ${error.message}`,
+export const parseJson = (value: string): Result<JsonValue, JsonError> =>
+  trySync(
+    () => JSON.parse(value) as JsonValue,
+    (error): JsonError => ({
+      type: `Json`,
+      value,
+      message: globalThis.String(error),
+    }),
   );
 
 /**
@@ -3732,20 +3335,15 @@ export const formatJsonValueFromStringError =
  * ### Example
  *
  * ```ts
- * const result = Json.from('{"key":"value"}'); // -> ok('{"key":"value"}')
- * const error = Json.from("invalid json"); // -> err({ type: "Json", value: "invalid json", message: "Unexpected token i in JSON at position 0" })
+ * const result = Json.from('{"key":"value"}'); // ok
+ * const error = Json.from("invalid json"); // err
  * ```
  *
  * @category String
  */
 export const Json = brand("Json", String, (value) => {
-  const result = JsonValueFromString.fromParent(value);
-  if (!result.ok)
-    return err<JsonError>({
-      type: "Json",
-      value,
-      message: result.error.message,
-    });
+  const result = parseJson(value);
+  if (!result.ok) return result;
   return ok(value);
 });
 
@@ -3758,6 +3356,83 @@ export interface JsonError extends TypeError<"Json"> {
 export const formatJsonError = createTypeErrorFormatter<JsonError>(
   (error) => `Invalid JSON: ${error.value}. Error: ${error.message}`,
 );
+
+export const jsonValueToJson = (value: JsonValue): Json =>
+  JSON.stringify(value) as Json;
+
+export const jsonToJsonValue = (value: Json): JsonValue =>
+  JSON.parse(value) as JsonValue;
+
+/**
+ * Creates a branded JSON string {@link Type} and type-safe conversion functions
+ * for a given Type.
+ *
+ * This factory creates:
+ *
+ * 1. A branded string Type that validates JSON parsing and structural conformity
+ * 2. A serialization function (Type → branded JSON string)
+ * 3. A parsing function (branded JSON string → Type, skipping validation)
+ *
+ * Optimized for Evolu's SQLite workflow where we store typed JSON strings and
+ * need type-safe conversions without double parsing.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const Person = object({
+ *   name: NonEmptyString100,
+ *   age: FiniteNumber,
+ * });
+ * type Person = typeof Person.Type;
+ *
+ * const [PersonJson, personToPersonJson, personJsonToPerson] = json(
+ *   Person,
+ *   "PersonJson",
+ * );
+ * // string & Brand<"PersonJson">
+ * type PersonJson = typeof PersonJson.Type;
+ *
+ * // Usage:
+ * const person: Person = { name: "Alice", age: 30 };
+ * const jsonString = personToPersonJson(person); // PersonJson
+ * const backToPerson = personJsonToPerson(jsonString); // Person
+ * ```
+ */
+export const json = <T extends AnyType, Name extends TypeName>(
+  type: T,
+  name: Name,
+): [
+  BrandType<typeof String, Name, JsonError | InferErrors<T>, StringError>,
+  (
+    value: InferType<T>,
+  ) => InferType<
+    BrandType<typeof String, Name, JsonError | InferErrors<T>, StringError>
+  >,
+  (
+    value: InferType<
+      BrandType<typeof String, Name, JsonError | InferErrors<T>, StringError>
+    >,
+  ) => InferType<T>,
+] => {
+  const BrandedJsonType = brand(name, String, (value) => {
+    const parseResult = parseJson(value);
+    if (!parseResult.ok) return parseResult;
+
+    const validationResult = type.fromUnknown(parseResult.value);
+    if (!validationResult.ok) return validationResult;
+
+    return ok(value);
+  }) as BrandType<typeof String, Name, JsonError | InferErrors<T>, StringError>;
+
+  const toJson = (value: InferType<T>) =>
+    JSON.stringify(value) as InferType<typeof BrandedJsonType>;
+
+  const fromJson = (value: InferType<typeof BrandedJsonType>) =>
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+    JSON.parse(value) as InferType<T>;
+
+  return [BrandedJsonType, toJson, fromJson];
+};
 
 /**
  * Optional {@link Type}.
@@ -3783,9 +3458,7 @@ export const formatJsonError = createTypeErrorFormatter<JsonError>(
 export const optional = <T extends AnyType>(type: T): OptionalType<T> => ({
   ...createType("Optional", {
     fromUnknown: type.fromUnknown,
-    to: type.to,
     fromParent: type.fromParent,
-    toParent: type.toParent,
   }),
   parent: type,
 });
@@ -3915,69 +3588,6 @@ export function omit<T extends ObjectType<any>, Keys extends keyof T["props"]>(
 }
 
 /**
- * Creates a transform Type that serializes a given `Type` into a branded JSON
- * string. The transformation is reversible, ensuring that we can safely parse
- * it back.
- *
- * ### Example
- *
- * ```ts
- * const Person = object({
- *   name: NonEmptyString50,
- *   age: FiniteNumber,
- * });
- * type Person = typeof Person.Type;
- *
- * const PersonJson = json(Person, "PersonJson");
- * // string & Brand<"PersonJson">
- * type PersonJson = typeof PersonJson.Type;
- *
- * // Person -> string & Brand<"PersonJson">
- * const personJson = PersonJson.from({ name: "Alice", age: 30 });
- * expect(personJson).toEqual(ok('{"name":"Alice","age":30}'));
- *
- * // string & Brand<"PersonJson"> -> Person
- * const person = PersonJson.to(personJson);
- *
- * // serialize/parse any JSON value
- * const AnyJson = json(JsonValue, "AnyJson");
- * ```
- */
-export const json = <T extends AnyType, Name extends TypeName>(
-  type: T,
-  name: Name,
-): TransformType<
-  T,
-  BrandType<
-    typeof String,
-    Name,
-    JsonValueFromStringError | T["Errors"],
-    StringError
-  >
-> => {
-  type E = JsonValueFromStringError | T["Errors"];
-
-  const BrandedJsonString: BrandType<typeof String, Name, E, StringError> =
-    brand(name, String, (value) => {
-      const jsonValue = JsonValueFromString.fromParent(value);
-      if (!jsonValue.ok) return jsonValue as Err<E>;
-
-      const parsed = type.fromUnknown(jsonValue.value);
-      if (!parsed.ok) return parsed as Err<E>;
-
-      return ok(value as InferType<typeof BrandedJsonString>);
-    });
-
-  return transform(
-    type,
-    BrandedJsonString,
-    (value) => ok(JSON.stringify(value) as InferType<typeof BrandedJsonString>),
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-    (value) => JSON.parse(value) as InferType<T>,
-  );
-};
-
-/**
  * Union of all `TypeError`s defined in the `Type.ts` file, including base type
  * errors (e.g., `StringError`, `NumberError`), composite type errors
  * (`ArrayError`, `ObjectError`), and optionally, user-defined extra errors.
@@ -4002,7 +3612,7 @@ export type TypeErrors<ExtraErrors extends TypeError = never> =
   | InstanceOfError
   | EvoluTypeError
   | CurrencyCodeError
-  | DateIsoStringError
+  | DateIsoError
   | TrimmedError
   | MinLengthError
   | MaxLengthError
@@ -4027,9 +3637,7 @@ export type TypeErrors<ExtraErrors extends TypeError = never> =
   | BetweenError
   | LiteralError
   | Int64Error
-  | BigIntFromStringError
   | Int64StringError
-  | JsonValueFromStringError
   | JsonError
   | ExtraErrors
   // Composite errors
@@ -4155,8 +3763,8 @@ export const createFormatTypeError = <ExtraErrors extends TypeError = never>(
         return formatIsTypeError(error);
       case "CurrencyCode":
         return formatCurrencyCodeError(error);
-      case "DateIsoString":
-        return formatDateIsoStringError(error);
+      case "DateIso":
+        return formatDateIsoError(error);
       case "Trimmed":
         return formatTrimmedError(error);
       case "MinLength":
@@ -4201,12 +3809,8 @@ export const createFormatTypeError = <ExtraErrors extends TypeError = never>(
         return formatLiteralError(error);
       case "Int64":
         return formatInt64Error(error);
-      case "BigIntFromString":
-        return formatBigIntFromStringError(error);
       case "Int64String":
         return formatInt64StringError(error);
-      case "JsonValueFromString":
-        return formatJsonValueFromStringError(error);
       case "Json":
         return formatJsonError(error);
       // Composite Types
