@@ -1228,47 +1228,54 @@ export const formatBase64UrlError = createTypeErrorFormatter<Base64UrlError>(
 );
 
 const hasNodeBuffer = typeof globalThis.Buffer !== "undefined";
-const hasFromBase64 =
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-  typeof (globalThis.Uint8Array as any)?.fromBase64 !== "undefined";
-const hasToBase64 =
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-  typeof (globalThis.Uint8Array.prototype as any)?.toBase64 !== "undefined";
-
 const base64UrlOptions = { alphabet: "base64url", omitPadding: true };
-
-const assertBase64NotSupported = (): never => {
-  assert(
-    false,
-    "Base64 not supported in this environment. React Native requires a Buffer polyfill.",
-  );
-};
 
 /** Decodes a {@link Base64Url} string to a Uint8Array. */
 export const base64UrlToUint8Array: (str: Base64Url) => Uint8Array =
   hasNodeBuffer
-    ? (str) => {
+    ? (str: Base64Url) => {
         const nodeBuffer = globalThis.Buffer.from(str, "base64url");
         return new globalThis.Uint8Array(nodeBuffer);
       }
-    : hasFromBase64
-      ? (str) =>
+    : // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      typeof (globalThis.Uint8Array as any)?.fromBase64 !== "undefined"
+      ? (str: Base64Url) =>
           // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
           (globalThis.Uint8Array as any).fromBase64(
             str,
             base64UrlOptions,
           ) as Uint8Array
-      : assertBase64NotSupported;
+      : (str: Base64Url) => {
+          let base64 = str.replace(/-/g, "+").replace(/_/g, "/");
+          while (base64.length % 4 !== 0) {
+            base64 += "=";
+          }
+          const binaryString = globalThis.atob(base64);
+          return globalThis.Uint8Array.from(binaryString, (c) =>
+            c.charCodeAt(0),
+          );
+        };
 
-/** Encodes a Uint8Array to a Base64Url string. */
+/** Encodes a Uint8Array to a {@link Base64Url} string. */
 export const uint8ArrayToBase64Url: (bytes: Uint8Array) => Base64Url =
   hasNodeBuffer
-    ? (bytes) =>
+    ? (bytes: Uint8Array) =>
         globalThis.Buffer.from(bytes).toString("base64url") as Base64Url
-    : hasToBase64
-      ? // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-        (bytes) => (bytes as any).toBase64(base64UrlOptions) as Base64Url
-      : assertBase64NotSupported;
+    : // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      typeof (globalThis.Uint8Array.prototype as any)?.toBase64 !== "undefined"
+      ? (bytes: Uint8Array) =>
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+          (bytes as any).toBase64(base64UrlOptions) as Base64Url
+      : (bytes: Uint8Array) => {
+          const binaryString = Array.from(bytes, (byte) =>
+            globalThis.String.fromCodePoint(byte),
+          ).join("");
+          const base64 = globalThis.btoa(binaryString);
+          return base64
+            .replace(/\+/g, "-")
+            .replace(/\//g, "_")
+            .replace(/=/g, "") as Base64Url;
+        };
 
 /**
  * Simple alphanumeric string for naming in file systems, URLs, and identifiers.
