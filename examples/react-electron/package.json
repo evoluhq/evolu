@@ -1,0 +1,53 @@
+{
+  "name": "@example/react-electron",
+  "version": "1.0.0",
+  "private": true,
+  "main": ".vite/build/main.js",
+  "scripts": {
+    "build": "electron-forge make",
+    "clean": "shx rm -rf node_modules .vite out .turbo .webpack",
+    "dev": "electron-forge start",
+    "lint": "eslint --ext .ts,.tsx .",
+    "package": "electron-forge package",
+    "publish": "electron-forge publish"
+  },
+  "dependencies": {
+    "@evolu/common": "workspace:*",
+    "@evolu/react": "workspace:*",
+    "@evolu/react-web": "workspace:*",
+    "@rollup/plugin-inject": "^5.0.5",
+    "electron-squirrel-startup": "^1.0.1",
+    "react": "catalog:react19",
+    "react-dom": "catalog:react19"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.8.3",
+    "@electron-forge/maker-deb": "^7.8.3",
+    "@electron-forge/maker-rpm": "^7.8.3",
+    "@electron-forge/maker-squirrel": "^7.8.3",
+    "@electron-forge/maker-zip": "^7.8.3",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.8.3",
+    "@electron-forge/plugin-fuses": "^7.8.3",
+    "@electron-forge/plugin-vite": "^7.8.3",
+    "@electron/fuses": "^1.0.0",
+    "@eslint/js": "^9.36.0",
+    "@types/electron-squirrel-startup": "^1.0.2",
+    "@types/react": "catalog:react19",
+    "@types/react-dom": "catalog:react19",
+    "@typescript-eslint/eslint-plugin": "^8.44.1",
+    "@typescript-eslint/parser": "^8.44.1",
+    "@vitejs/plugin-react": "^5.0.1",
+    "electron": "^38.2.0",
+    "eslint": "^9.36.0",
+    "eslint-plugin-electron": "^7.0.0",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.20",
+    "globals": "^16.3.0",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.44.1",
+    "vite": "^7.1.3",
+    "vite-plugin-node-polyfills": "^0.24.0"
+  },
+  "productName": "react-electron"
+}
