@@ -10,15 +10,17 @@ import {
   QueryRows,
   SimpleName,
   SqliteBoolean,
+  sqliteTrue,
 } from "@evolu/common";
 import {
   createUseEvolu,
   EvoluProvider,
   useAppOwner,
+  useEvoluError,
   useQuery,
 } from "@evolu/react";
 import { evoluReactNativeDeps } from "@evolu/react-native/expo-sqlite";
-import { useState } from "react";
+import { FC, useEffect, useState } from "react";
 import {
   Button,
   ScrollView,
@@ -135,6 +137,7 @@ export default function Index(): React.ReactNode {
           style={{ flex: 1 }}
           automaticallyAdjustKeyboardInsets
         >
+          <NotificationBar />
           <ExampleView />
         </ScrollView>
       </EvoluProvider>
@@ -187,6 +190,32 @@ function ExampleView() {
   );
 }
 
+const NotificationBar: FC = () => {
+  const evoluError = useEvoluError();
+  const [showError, setShowError] = useState(false);
+
+  useEffect(() => {
+    if (evoluError) {
+      console.log("evoluError", evoluError);
+      setShowError(true);
+    }
+  }, [evoluError]);
+
+  if (!evoluError || !showError) return null;
+
+  return (
+    <div>
+      <p>{`Error: ${JSON.stringify(evoluError)}`}</p>
+      <Button
+        title="Close"
+        onPress={() => {
+          setShowError(false);
+        }}
+      />
+    </div>
+  );
+};
+
 function TodoItem({ row }: { row: TodosWithCategoriesRow }) {
   const { update } = useEvolu();
   const categories = useQuery(todoCategories);
@@ -204,7 +233,10 @@ function TodoItem({ row }: { row: TodosWithCategoriesRow }) {
         <View style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}>
           <Switch
             onValueChange={() => {
-              update("todo", { id: row.id, isCompleted: !row.isCompleted });
+              update("todo", {
+                id: row.id,
+                isCompleted: Number(!row.isCompleted),
+              });
             }}
             value={!!row.isCompleted}
           />
@@ -230,7 +262,7 @@ function TodoItem({ row }: { row: TodosWithCategoriesRow }) {
           title="Delete"
           color="red"
           onPress={() => {
-            update("todo", { id: row.id, isDeleted: true });
+            update("todo", { id: row.id, isDeleted: sqliteTrue });
           }}
         />
       </View>
@@ -281,7 +313,7 @@ function TodoCategories() {
               title="Delete"
               color="red"
               onPress={() => {
-                update("todoCategory", { id, isDeleted: true });
+                update("todoCategory", { id, isDeleted: sqliteTrue });
               }}
             />
           </View>

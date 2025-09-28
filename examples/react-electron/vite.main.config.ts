@@ -1,5 +1,5 @@
 import { defineConfig } from "vite";
-import { nodePolyfills } from "vite-plugin-node-polyfills";
+// import { nodePolyfills } from "vite-plugin-node-polyfills";
 
 // https://vitejs.dev/config
 export default defineConfig({
@@ -12,5 +12,5 @@ export default defineConfig({
       "@evolu/react-web",
     ],
   },
-  plugins: [nodePolyfills()],
+  plugins: [],
 });

@@ -73,7 +73,7 @@ const Schema = {
 
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   reloadUrl: "/",
-  name: getOrThrow(SimpleName.from("evolu-react-electron-example-2")),
+  name: getOrThrow(SimpleName.from("evolu-react-electron-example-v3")),
 
   ...(process.env.NODE_ENV === "development" && {
     syncUrl: "http://localhost:4000",

@@ -1,4 +1,4 @@
-import "react-native-quick-base64";
+// import "react-native-quick-base64";
 import { install } from "react-native-quick-crypto";
 install();
 
