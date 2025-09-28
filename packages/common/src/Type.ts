@@ -3433,14 +3433,11 @@ export const json = <T extends AnyType, Name extends TypeName>(
     return ok(value);
   }) as BrandType<typeof String, Name, JsonError | InferErrors<T>, StringError>;
 
-  const toJson = (value: InferType<T>) =>
-    JSON.stringify(value) as InferType<typeof BrandedJsonType>;
-
-  const fromJson = (value: InferType<typeof BrandedJsonType>) =>
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-    JSON.parse(value) as InferType<T>;
-
-  return [BrandedJsonType, toJson, fromJson];
+  return [
+    BrandedJsonType,
+    jsonValueToJson as IntentionalNever,
+    jsonToJsonValue as IntentionalNever,
+  ];
 };
 
 /**
