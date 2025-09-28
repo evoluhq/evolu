@@ -914,7 +914,7 @@ export type BrandFactory<
  * This Type Factory validates whether a string has no leading or trailing
  * whitespaces.
  *
- * ### Examples
+ * ### Example
  *
  * ```ts
  * const TrimmedNonEmptyString = trimmed(minLength(1)(String));
@@ -949,6 +949,9 @@ export const formatTrimmedError = createTypeErrorFormatter<TrimmedError>(
  */
 export const TrimmedString = trimmed(String);
 export type TrimmedString = typeof TrimmedString.Type;
+
+export const trim = (value: string): TrimmedString =>
+  value.trim() as TrimmedString;
 
 /**
  * Minimum length.
