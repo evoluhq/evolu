@@ -914,7 +914,7 @@ export type BrandFactory<
  * This Type Factory validates whether a string has no leading or trailing
  * whitespaces.
  *
- * ### Examples
+ * ### Example
  *
  * ```ts
  * const TrimmedNonEmptyString = trimmed(minLength(1)(String));
@@ -949,6 +949,9 @@ export const formatTrimmedError = createTypeErrorFormatter<TrimmedError>(
  */
 export const TrimmedString = trimmed(String);
 export type TrimmedString = typeof TrimmedString.Type;
+
+export const trim = (value: string): TrimmedString =>
+  value.trim() as TrimmedString;
 
 /**
  * Minimum length.
@@ -1172,50 +1175,56 @@ export const formatRegexError = createTypeErrorFormatter<RegexError>(
  *
  * @category String
  */
-export const UrlSafeString = regex(
-  "UrlSafeString",
-  /^[A-Za-z0-9_-]+$/, // URL-safe alphabet (same as Base64Url)
-)(String);
+export const UrlSafeString = regex("UrlSafeString", /^[A-Za-z0-9_-]+$/)(String);
 export type UrlSafeString = typeof UrlSafeString.Type;
 export type UrlSafeStringError = typeof UrlSafeString.Error;
 
 /**
- * Base64Url encoded string.
+ * Canonical Base64URL string – exactly the output of
+ * {@link uint8ArrayToBase64Url}.
  *
- * A `Base64Url` string is a URL-safe string that follows Base64Url encoding
- * conventions:
+ * Validation is a decode + re-encode round trip:
  *
- * - Uses the URL-safe alphabet (`A-Z`, `a-z`, `0-9`, `-`, `_`)
- * - Length must be a multiple of 4 (for proper Base64Url decoding)
- * - No padding characters (padding is omitted in Base64Url)
+ * - Decode with {@link base64UrlToUint8Array}
+ * - Re-encode with {@link uint8ArrayToBase64Url}
+ * - Accept only if the result is identical (canonical form)
  *
- * This type validates both the character set and the length constraint required
- * for valid Base64Url encoded data.
+ * No padding, URL-safe alphabet, and stable round trip are thus guaranteed.
  *
  * ### Example
  *
  * ```ts
- * const result = Base64Url.from("SGVsbG8gV29ybGQ");
+ * const bytes = new Uint8Array([1, 2, 3]);
+ * const encoded = uint8ArrayToBase64Url(bytes);
+ * const result = Base64Url.from(encoded);
  * if (result.ok) {
- *   console.log("Valid Base64Url string:", result.value);
- * } else {
- *   console.error("Invalid Base64Url string:", result.error);
+ *   const back = base64UrlToUint8Array(result.value);
  * }
  * ```
  *
  * @category String
  */
-export const Base64Url = brand("Base64Url", UrlSafeString, (value) =>
-  value.length % 4 === 0
-    ? ok(value)
-    : err<Base64UrlError>({ type: "Base64Url", value }),
+export const Base64Url = brand(
+  "Base64Url",
+  String,
+  (value: string): Result<string, Base64UrlError> => {
+    try {
+      const reEncoded = uint8ArrayToBase64Url(
+        base64UrlToUint8Array(value as Base64Url),
+      );
+      return reEncoded === value
+        ? ok(value)
+        : err<Base64UrlError>({ type: "Base64Url", value });
+    } catch {
+      return err<Base64UrlError>({ type: "Base64Url", value });
+    }
+  },
 );
 export type Base64Url = typeof Base64Url.Type;
 export interface Base64UrlError extends TypeError<"Base64Url"> {}
 
 export const formatBase64UrlError = createTypeErrorFormatter<Base64UrlError>(
-  (error) =>
-    `Value ${error.value} is not a valid Base64Url string (length must be a multiple of 4)`,
+  (error) => `Value ${error.value} is not a valid Base64Url string`,
 );
 
 const hasNodeBuffer = typeof globalThis.Buffer !== "undefined";
@@ -3424,14 +3433,11 @@ export const json = <T extends AnyType, Name extends TypeName>(
     return ok(value);
   }) as BrandType<typeof String, Name, JsonError | InferErrors<T>, StringError>;
 
-  const toJson = (value: InferType<T>) =>
-    JSON.stringify(value) as InferType<typeof BrandedJsonType>;
-
-  const fromJson = (value: InferType<typeof BrandedJsonType>) =>
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-    JSON.parse(value) as InferType<T>;
-
-  return [BrandedJsonType, toJson, fromJson];
+  return [
+    BrandedJsonType,
+    jsonValueToJson as IntentionalNever,
+    jsonToJsonValue as IntentionalNever,
+  ];
 };
 
 /**
