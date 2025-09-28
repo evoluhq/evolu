@@ -1,31 +1,33 @@
 "use client";
 
 import {
-  createEvolu,
-  createFormatTypeError,
-  id,
-  kysely,
-  MinLengthError,
-  Mnemonic,
-  NonEmptyString1000,
-  nullOr,
-  SimpleName,
-  SqliteBoolean,
-  ValidMutationSizeError,
+	createEvolu,
+	createFormatTypeError,
+	id,
+	kysely,
+	MinLengthError,
+	Mnemonic,
+	NonEmptyString1000,
+	nullOr,
+	SimpleName,
+	SqliteBoolean,
+	sqliteFalse,
+	sqliteTrue,
+	ValidMutationSizeError
 } from "@evolu/common";
 import {
-  createUseEvolu,
-  EvoluProvider,
-  useAppOwner,
-  useQuery,
+	createUseEvolu,
+	EvoluProvider,
+	useAppOwner,
+	useQuery,
 } from "@evolu/react";
 import { evoluReactWebDeps } from "@evolu/react-web";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import {
-  IconEdit,
-  IconRestore,
-  IconStackFront,
-  IconTrash,
+	IconEdit,
+	IconRestore,
+	IconStackFront,
+	IconTrash,
 } from "@tabler/icons-react";
 import clsx from "clsx";
 import { FC, startTransition, Suspense, useState } from "react";
@@ -417,7 +419,7 @@ const DeletedProjectItem: FC<{
     if (
       confirm(`Are you sure you want to restore project "${project.name}"?`)
     ) {
-      update("project", { id: project.id, isDeleted: false });
+      update("project", { id: project.id, isDeleted: sqliteTrue });
     }
   };
 
@@ -456,7 +458,7 @@ const DeletedTodoItem: FC<{
 
   const handleRestoreClick = () => {
     if (confirm(`Are you sure you want to restore todo "${todo.title}"?`)) {
-      update("todo", { id: todo.id, isDeleted: false });
+      update("todo", { id: todo.id, isDeleted: sqliteFalse });
     }
   };
 
@@ -594,7 +596,7 @@ const ProjectItem: FC<{
 
   const handleDeleteClick = () => {
     if (confirm(`Are you sure you want to delete project "${project.name}"?`)) {
-      update("project", { id: project.id, isDeleted: true });
+      update("project", { id: project.id, isDeleted: sqliteTrue });
     }
   };
 
@@ -633,7 +635,7 @@ const TodoItem: FC<{
   const projects = useQuery(projectsQuery);
 
   const handleToggleCompletedClick = () => {
-    update("todo", { id, isCompleted: !isCompleted });
+    update("todo", { id, isCompleted: Number(!isCompleted) });
   };
 
   const handleRenameClick = () => {
@@ -646,7 +648,7 @@ const TodoItem: FC<{
   };
 
   const handleDeleteClick = () => {
-    update("todo", { id, isDeleted: true });
+    update("todo", { id, isDeleted: sqliteTrue });
   };
 
   const handleProjectChange = (newProjectId: ProjectId | null) => {
