@@ -18,6 +18,7 @@ import {
   object,
   SimpleName,
   SqliteBoolean,
+  sqliteTrue,
   ValidMutationSizeError,
 } from "@evolu/common";
 import {
@@ -55,7 +56,10 @@ type Person = typeof Person.Type;
 
 // SQLite stores JSON-compatible values as strings. Fortunately, Evolu provides
 // a convenient `json` Type Factory for type-safe JSON serialization and parsing.
-const PersonJson = json(Person, "PersonJson");
+const [PersonJson, personToPersonJson, _personJsonToPerson] = json(
+  Person,
+  "PersonJson",
+);
 // string & Brand<"PersonJson">
 type PersonJson = typeof PersonJson.Type;
 
@@ -232,10 +236,11 @@ const Todos: FC = () => {
     const title = window.prompt("What needs to be done?");
     if (title == null) return; // escape or cancel
 
+    const person = Person.orThrow({ name: "Joe", age: 32 });
+
     const result = insert("todo", {
       title,
-      // This object is automatically converted to a JSON string.
-      personJson: { name: "Joe", age: 32 },
+      personJson: personToPersonJson(person),
     });
 
     if (!result.ok) {
@@ -262,7 +267,7 @@ const TodoItem: FC<{
   const { update } = useEvolu();
 
   const handleToggleCompletedClick = () => {
-    update("todo", { id, isCompleted: !isCompleted });
+    update("todo", { id, isCompleted: Number(!isCompleted) });
   };
 
   const handleRenameClick = () => {
@@ -275,7 +280,7 @@ const TodoItem: FC<{
   };
 
   const handleDeleteClick = () => {
-    update("todo", { id, isDeleted: true });
+    update("todo", { id, isDeleted: sqliteTrue });
   };
 
   const titleHistory = evolu.createQuery((db) =>
@@ -411,7 +416,7 @@ const TodoCategoryItem: FC<{ row: TodoCategoriesRow }> = ({
   };
 
   const handleDeleteClick = () => {
-    update("todoCategory", { id, isDeleted: true });
+    update("todoCategory", { id, isDeleted: sqliteTrue });
   };
 
   return (

@@ -645,6 +645,8 @@ const createEvoluInstance =
     dbWorker.onMessage((message) => {
       switch (message.type) {
         case "onError": {
+          console.log(message.error);
+
           errorStore.set(message.error);
           break;
         }

@@ -49,7 +49,7 @@ type Person = typeof Person.Type;
 
 // SQLite stores JSON-compatible values as strings. Fortunately, Evolu provides
 // a convenient `json` Type Factory for type-safe JSON serialization and parsing.
-const [PersonJson, personToPersonJson, _personJsonToPerson] = json(
+const [PersonJson, _personToPersonJson, _personJsonToPerson] = json(
   Person,
   "PersonJson",
 );
@@ -76,7 +76,7 @@ const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   name: getOrThrow(SimpleName.from("evolu-react-electron-example-v3")),
 
   ...(process.env.NODE_ENV === "development" && {
-    syncUrl: "http://localhost:4000",
+    transports: [{ type: "WebSocket", url: "http://localhost:4000" }],
   }),
 
   // Indexes are not necessary for development but are recommended for production.

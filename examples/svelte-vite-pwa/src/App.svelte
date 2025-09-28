@@ -1,6 +1,6 @@
 <script lang="ts">
   import {
-    DateIsoString,
+    DateIso,
     NonEmptyString,
     NonEmptyString1000,
     SimpleName,
@@ -11,6 +11,7 @@
     kysely,
     maxLength,
     nullOr,
+    sqliteTrue,
     union,
     type EvoluSchema,
     type InferType,
@@ -46,8 +47,8 @@
       title: NonEmptyString1000,
       // SQLite doesn't support Boolean, so we use SqliteBoolean (0 or 1) instead.
       isCompleted: nullOr(SqliteBoolean),
-      // SQLite doesn't support Date, so we use DateIsoString instead.
-      completedAt: nullOr(DateIsoString),
+      // SQLite doesn't support Date, so we use DateIso instead.
+      completedAt: nullOr(DateIso),
       categoryId: nullOr(TodoCategoryId),
       priority: TodoPriority,
     },
@@ -131,7 +132,7 @@
   };
 
   const handleToggleCompletedClick = (id: TodoId, isCompleted: boolean) => {
-    update("todo", { id, isCompleted: !isCompleted });
+    update("todo", { id, isCompleted: Number(!isCompleted) });
   };
 
   const handleRenameTodoClick = (id: TodoId) => {
@@ -147,11 +148,11 @@
   };
 
   const handleDeleteTodoClick = (id: TodoId) => {
-    update("todo", { id, isDeleted: true });
+    update("todo", { id, isDeleted: sqliteTrue });
   };
 
   const handleDeleteCategoryClick = (id: TodoCategoryIdType) => {
-    update("todoCategory", { id, isDeleted: true });
+    update("todoCategory", { id, isDeleted: sqliteTrue });
   };
 
   /**
