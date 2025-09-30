@@ -643,7 +643,7 @@ type TransportKey = string & Brand<"TransportKey">;
 
 /** Creates a unique identifier for a transport configuration. */
 const createTransportKey = (transportConfig: TransportConfig): TransportKey => {
-  return `ws:${transportConfig.url}` as TransportKey;
+  return `${transportConfig.type}:${transportConfig.url}` as TransportKey;
 };
 
 const applyMessages =
