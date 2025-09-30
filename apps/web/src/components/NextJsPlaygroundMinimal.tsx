@@ -11,6 +11,7 @@ import {
   nullOr,
   SimpleName,
   SqliteBoolean,
+  sqliteTrue,
   ValidMutationSizeError,
 } from "@evolu/common";
 import {
@@ -188,7 +189,7 @@ const TodoItem: FC<{
   const { update } = useEvolu();
 
   const handleToggleCompletedClick = () => {
-    update("todo", { id, isCompleted: !isCompleted });
+    update("todo", { id, isCompleted: Number(!isCompleted) });
   };
 
   const handleRenameClick = () => {
@@ -201,7 +202,7 @@ const TodoItem: FC<{
   };
 
   const handleDeleteClick = () => {
-    update("todo", { id, isDeleted: true });
+    update("todo", { id, isDeleted: sqliteTrue });
   };
 
   return (
