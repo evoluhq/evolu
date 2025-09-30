@@ -113,7 +113,7 @@ exports[`externalAppOwner should use provided owner 1`] = `
           "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
           "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
           "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
-          "clock": "1970-01-01T00:00:00.000Z-0000-5311b2b347ebc9cd",
+          "clock": "1970-01-01T00:00:00.000Z-0000-7860ff5ffa4d7d84",
         },
       ],
     },

@@ -402,7 +402,7 @@ export interface Clock {
 }
 
 export const createClock =
-  (deps: NanoIdLibDep & SqliteDep) =>
+  (deps: RandomBytesDep & SqliteDep) =>
   (initialTimestamp = createInitialTimestamp(deps)): Clock => {
     let currentTimestamp = initialTimestamp;
 

@@ -1,7 +1,8 @@
 import { assert } from "../Assert.js";
 import { Brand } from "../Brand.js";
+import { bytesToHex } from "../Buffer.js";
+import { RandomBytesDep } from "../Crypto.js";
 import { createEqObject, eqNumber, eqString } from "../Eq.js";
-import { NanoIdLibDep } from "../NanoId.js";
 import { increment } from "../Number.js";
 import { Order, orderUint8Array } from "../Order.js";
 import { err, ok, Result } from "../Result.js";
@@ -135,10 +136,8 @@ export const createTimestamp = ({
   nodeId = minNodeId,
 }: Partial<Timestamp> = {}): Timestamp => ({ millis, counter, nodeId });
 
-const hexAlphabet = "0123456789abcdef";
-
-export const createInitialTimestamp = (deps: NanoIdLibDep): Timestamp => {
-  const nodeId = deps.nanoIdLib.customAlphabet(hexAlphabet, 16)() as NodeId;
+export const createInitialTimestamp = (deps: RandomBytesDep): Timestamp => {
+  const nodeId = bytesToHex(deps.randomBytes.create(8)) as NodeId;
   return createTimestamp({ nodeId });
 };
 

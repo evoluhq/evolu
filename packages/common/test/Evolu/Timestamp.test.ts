@@ -29,7 +29,7 @@ import { orderNumber } from "../../src/Order.js";
 import { Result, getOrThrow, ok } from "../../src/Result.js";
 import { TimeDep } from "../../src/Time.js";
 import { dateToDateIso } from "../../src/Type.js";
-import { testNanoIdLibDep, testRandomLib } from "../_deps.js";
+import { testDeps, testRandomLib } from "../_deps.js";
 
 test("Millis", () => {
   expect(Millis.from(-1).ok).toBe(false);
@@ -64,12 +64,12 @@ test("createTimestamp", () => {
 });
 
 test("createInitialTimestamp", () => {
-  const timestamp = createInitialTimestamp(testNanoIdLibDep);
+  const timestamp = createInitialTimestamp(testDeps);
   expect(timestamp).toMatchInlineSnapshot(`
     {
       "counter": 0,
       "millis": 0,
-      "nodeId": "452cde0b36593c7e",
+      "nodeId": "4febdfb5d0782bfa",
     }
   `);
 });
