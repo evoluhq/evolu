@@ -1,33 +1,33 @@
 "use client";
 
 import {
-	createEvolu,
-	createFormatTypeError,
-	id,
-	kysely,
-	MinLengthError,
-	Mnemonic,
-	NonEmptyString1000,
-	nullOr,
-	SimpleName,
-	SqliteBoolean,
-	sqliteFalse,
-	sqliteTrue,
-	ValidMutationSizeError
+  createEvolu,
+  createFormatTypeError,
+  id,
+  kysely,
+  MinLengthError,
+  Mnemonic,
+  NonEmptyString1000,
+  nullOr,
+  SimpleName,
+  SqliteBoolean,
+  sqliteFalse,
+  sqliteTrue,
+  ValidMutationSizeError,
 } from "@evolu/common";
 import {
-	createUseEvolu,
-	EvoluProvider,
-	useAppOwner,
-	useQuery,
+  createUseEvolu,
+  EvoluProvider,
+  useAppOwner,
+  useQuery,
 } from "@evolu/react";
 import { evoluReactWebDeps } from "@evolu/react-web";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import {
-	IconEdit,
-	IconRestore,
-	IconStackFront,
-	IconTrash,
+  IconEdit,
+  IconRestore,
+  IconStackFront,
+  IconTrash,
 } from "@tabler/icons-react";
 import clsx from "clsx";
 import { FC, startTransition, Suspense, useState } from "react";
@@ -166,9 +166,7 @@ export const NextJsPlaygroundFull: FC = () => {
     <div className="min-h-screen px-8 py-8">
       <div className="mx-auto max-w-md min-w-sm md:min-w-md">
         <EvoluProvider value={evolu}>
-          <Suspense>
-            <AppShell />
-          </Suspense>
+          <AppShell />
         </EvoluProvider>
       </div>
     </div>

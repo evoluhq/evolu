@@ -199,15 +199,13 @@ export const NextJsExample: FC = () => {
               },
             ]}
           />
-          <Suspense>
-            {currentTab === "todos" ? <Todos /> : <TodoCategories />}
-            <p className="my-4">
-              The data created in this example are stored locally in SQLite.
-              Evolu encrypts the data for backup and sync with a Mnemonic, a
-              unique safe password created on your device.
-            </p>
-            <OwnerActions />
-          </Suspense>
+          {currentTab === "todos" ? <Todos /> : <TodoCategories />}
+          <p className="my-4">
+            The data created in this example are stored locally in SQLite. Evolu
+            encrypts the data for backup and sync with a Mnemonic, a unique safe
+            password created on your device.
+          </p>
+          <OwnerActions />
         </EvoluProvider>
       </div>
     </div>
