@@ -107,7 +107,7 @@ const config: EvoluConfig = {
   reloadUrl: "/playgrounds/old",
 
   ...(process.env.NODE_ENV === "development" && {
-    transports: [{ type: "WebSocket", url: "http://localhost:4000" }],
+    transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
   }),
 
   enableLogging: false,

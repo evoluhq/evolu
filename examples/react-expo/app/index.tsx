@@ -64,7 +64,7 @@ const evolu = createEvolu(evoluReactNativeDeps)(Schema, {
   name: SimpleName.orThrow("evolu-expo-sqlite-example-v54"),
 
   ...(process.env.NODE_ENV === "development" && {
-    transports: [{ type: "WebSocket", url: "http://localhost:4000" }],
+    transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
   }),
 
   // Indexes are not required for development but are recommended for production.
