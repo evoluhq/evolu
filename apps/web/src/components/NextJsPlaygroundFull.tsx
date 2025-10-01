@@ -166,7 +166,9 @@ export const NextJsPlaygroundFull: FC = () => {
     <div className="min-h-screen px-8 py-8">
       <div className="mx-auto max-w-md min-w-sm md:min-w-md">
         <EvoluProvider value={evolu}>
-          <AppShell />
+          <Suspense>
+            <AppShell />
+          </Suspense>
         </EvoluProvider>
       </div>
     </div>

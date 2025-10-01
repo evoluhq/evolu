@@ -692,11 +692,41 @@ const createEvoluInstance =
         case "refreshQueries": {
           if (message.tabId && message.tabId === getTabId()) return;
 
+          const loadingPromisesQueries = loadingPromises.getQueries();
           loadingPromises.releaseUnsubscribed();
-          const queries = subscribedQueries.get();
+
+          /**
+           * We had to add loadingPromisesQueries to handle a React Suspense
+           * race condition with useQuery.
+           *
+           * The race: useQuery calls loadQuery (which suspends the component)
+           * then useQuerySubscription (which adds to subscribedQueries). If
+           * refreshQueries arrives between these calls, subscribedQueries is
+           * empty, so without loadingPromisesQueries, nothing gets refreshed.
+           *
+           * This manifested as a mysterious bug: after page reload (e.g., via
+           * "restore from mnemonic"), the page rendered with no data until user
+           * interaction (typing in an input) triggered a re-render. The bug
+           * only appeared with dev tools closed because faster execution made
+           * the race condition more likely.
+           *
+           * Why user interaction fixed it: React concurrent rendering
+           * prioritizes user input, causing React to re-check suspended
+           * components. The data was already loaded but React hadn't
+           * re-rendered to show it.
+           *
+           * Including loadingPromisesQueries ensures these in-flight queries
+           * get refreshed even before subscription completes. This may refresh
+           * extra queries, but that's safer than missing updates.
+           */
+          const queries = [
+            ...new Set([...subscribedQueries.get(), ...loadingPromisesQueries]),
+          ];
+
           if (isNonEmptyReadonlyArray(queries)) {
             dbWorker.postMessage({ type: "query", tabId: getTabId(), queries });
           }
+
           break;
         }
 
@@ -1082,11 +1112,20 @@ interface LoadingPromises {
 
   resolve: (query: Query, rows: ReadonlyArray<Row>) => void;
 
+  /**
+   * We can't delete loading promises in `resolve` because they must be cached
+   * for React Suspense (repeated calls return the same promise), but we also
+   * can't cache them forever because only subscribed queries are automatically
+   * updated (reactivity is expensive) hence this function must be called
+   * manually on any mutation.
+   */
   releaseUnsubscribed: () => void;
+
+  getQueries: () => ReadonlyArray<Query>;
 }
 
 interface LoadingPromise {
-  /** Promise with props for the upcoming React use hook. */
+  /** Promise with props for the React use hook. */
   promise: Promise<QueryRows> & {
     status?: "pending" | "fulfilled" | "rejected";
     value?: QueryRows;
@@ -1101,7 +1140,7 @@ const createLoadingPromises = (
 ): LoadingPromises => {
   const loadingPromiseMap = new Map<Query, LoadingPromise>();
 
-  const loadingPromises: LoadingPromises = {
+  return {
     get: <R extends Row>(
       query: Query<R>,
     ): {
@@ -1148,13 +1187,6 @@ const createLoadingPromises = (
       }
     },
 
-    /**
-     * We can't delete loading promises in `resolveLoadingPromises` because they
-     * must be cached, so repeated calls to `loadQuery` will always return the
-     * same promise until the data changes, and we also can't cache them forever
-     * because only subscribed queries are automatically updated (reactivity is
-     * expensive) hence this function must be called manually on any mutation.
-     */
     releaseUnsubscribed: () => {
       [...loadingPromiseMap.entries()]
         .filter(([query]) => !subscribedQueries.has(query))
@@ -1166,7 +1198,7 @@ const createLoadingPromises = (
           }
         });
     },
-  };
 
-  return loadingPromises;
+    getQueries: () => Array.from(loadingPromiseMap.keys()),
+  };
 };

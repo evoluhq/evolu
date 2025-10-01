@@ -20,7 +20,7 @@ import {
   useQuery,
 } from "@evolu/react";
 import { evoluReactNativeDeps } from "@evolu/react-native/expo-sqlite";
-import { FC, useEffect, useState } from "react";
+import { FC, Suspense, useEffect, useState } from "react";
 import {
   Button,
   ScrollView,
@@ -132,14 +132,16 @@ export default function Index(): React.ReactNode {
   return (
     <SafeAreaView style={{ flex: 1 }}>
       <EvoluProvider value={evolu}>
-        <ScrollView
-          keyboardDismissMode="interactive"
-          style={{ flex: 1 }}
-          automaticallyAdjustKeyboardInsets
-        >
-          <NotificationBar />
-          <ExampleView />
-        </ScrollView>
+        <Suspense>
+          <ScrollView
+            keyboardDismissMode="interactive"
+            style={{ flex: 1 }}
+            automaticallyAdjustKeyboardInsets
+          >
+            <NotificationBar />
+            <ExampleView />
+          </ScrollView>
+        </Suspense>
       </EvoluProvider>
     </SafeAreaView>
   );

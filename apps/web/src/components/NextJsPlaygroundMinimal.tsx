@@ -23,7 +23,7 @@ import {
 import { evoluReactWebDeps } from "@evolu/react-web";
 import { IconEdit, IconTrash } from "@tabler/icons-react";
 import clsx from "clsx";
-import { FC, useState } from "react";
+import { FC, Suspense, useState } from "react";
 
 // Define the Evolu schema that describes the database tables and column types.
 // First, define the typed IDs.
@@ -96,8 +96,10 @@ export const NextJsPlaygroundMinimal: FC = () => {
         </div>
 
         <EvoluProvider value={evolu}>
-          <Todos />
-          <OwnerActions />
+          <Suspense>
+            <Todos />
+            <OwnerActions />
+          </Suspense>
         </EvoluProvider>
       </div>
     </div>
