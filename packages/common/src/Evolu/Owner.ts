@@ -81,14 +81,14 @@ export interface Owner {
 export const OwnerId = brand("OwnerId", Id);
 export type OwnerId = typeof OwnerId.Type;
 
-/** Binary representation of {@link OwnerId}. */
-export type BinaryOwnerId = BinaryId & Brand<"BinaryOwnerId">;
+/** Bytes representation of {@link OwnerId}. */
+export type OwnerIdBytes = BinaryId & Brand<"OwnerIdBytes">;
 
-export const ownerIdToBinaryOwnerId = (ownerId: OwnerId): BinaryOwnerId =>
-  idToBinaryId(ownerId) as BinaryOwnerId;
+export const ownerIdToOwnerIdBytes = (ownerId: OwnerId): OwnerIdBytes =>
+  idToBinaryId(ownerId) as OwnerIdBytes;
 
-export const binaryOwnerIdToOwnerId = (binaryOwnerId: BinaryOwnerId): OwnerId =>
-  binaryIdToId(binaryOwnerId as BinaryId) as OwnerId;
+export const ownerIdBytesToOwnerId = (ownerIdBytes: OwnerIdBytes): OwnerId =>
+  binaryIdToId(ownerIdBytes as BinaryId) as OwnerId;
 
 export const writeKeyLength = 16 as NonNegativeInt;
 

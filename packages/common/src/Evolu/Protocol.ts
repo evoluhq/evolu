@@ -181,10 +181,10 @@ import {
 } from "../Type.js";
 import { Predicate } from "../Types.js";
 import {
-  BinaryOwnerId,
+  OwnerIdBytes,
   Owner,
   OwnerId,
-  ownerIdToBinaryOwnerId,
+  ownerIdToOwnerIdBytes,
   WriteKey,
   writeKeyLength,
 } from "./Owner.js";
@@ -414,14 +414,14 @@ export const createProtocolMessageForSync =
       messageType: MessageType.Request,
       subscriptionFlag: subscriptionFlag ?? SubscriptionFlags.None,
     });
-    const binaryOwnerId = ownerIdToBinaryOwnerId(ownerId);
+    const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
 
-    const size = deps.storage.getSize(binaryOwnerId);
+    const size = deps.storage.getSize(ownerIdBytes);
     // Errors are handled by the storage.
     if (size == null) return null;
 
     splitRange(deps)(
-      binaryOwnerId,
+      ownerIdBytes,
       0 as NonNegativeInt,
       size,
       InfiniteUpperBound,
@@ -504,7 +504,7 @@ export const createProtocolMessageBuffer = (
   };
 
   encodeNonNegativeInt(buffers.header, version);
-  buffers.header.extend(ownerIdToBinaryOwnerId(ownerId));
+  buffers.header.extend(ownerIdToOwnerIdBytes(ownerId));
   buffers.header.extend([options.messageType]);
 
   if (options.messageType === MessageType.Request) {
@@ -853,11 +853,11 @@ export const applyProtocolMessageAsClient =
       }
 
       const messages = decodeMessages(input);
-      const binaryOwnerId = ownerIdToBinaryOwnerId(ownerId);
+      const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
 
       if (
         isNonEmptyReadonlyArray(messages) &&
-        !(await deps.storage.writeMessages(binaryOwnerId, messages))
+        !(await deps.storage.writeMessages(ownerIdBytes, messages))
       ) {
         return ok({ type: "no-response" });
       }
@@ -890,7 +890,7 @@ export const applyProtocolMessageAsClient =
         rangesMaxSize: options.rangesMaxSize,
       });
 
-      const syncResult = sync(deps)(ranges, output, binaryOwnerId);
+      const syncResult = sync(deps)(ranges, output, ownerIdBytes);
 
       // Client sync error (handled via Storage) or no changes.
       if (!syncResult.ok || !syncResult.value) {
@@ -949,13 +949,13 @@ export const applyProtocolMessageAsRelay =
     try {
       const input = createBuffer(inputMessage);
       const [requestedVersion, ownerId] = decodeVersionAndOwner(input);
-      const binaryOwnerId = ownerIdToBinaryOwnerId(ownerId);
+      const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
 
       if (requestedVersion !== version) {
         // Non-initiator responds with its version and ownerId.
         const output = createBuffer();
         encodeNonNegativeInt(output, version);
-        output.extend(binaryOwnerId);
+        output.extend(ownerIdBytes);
         return ok({
           type: "response",
           message: output.unwrap() as ProtocolMessage,
@@ -986,7 +986,7 @@ export const applyProtocolMessageAsRelay =
       }
 
       if (writeKey) {
-        const isValid = deps.storage.validateWriteKey(binaryOwnerId, writeKey);
+        const isValid = deps.storage.validateWriteKey(ownerIdBytes, writeKey);
         if (!isValid) {
           return ok({
             type: "response",
@@ -1036,7 +1036,7 @@ export const applyProtocolMessageAsRelay =
           options.broadcast(ownerId, broadcastBuffer.unwrap());
         }
 
-        if (!(await deps.storage.writeMessages(binaryOwnerId, messages))) {
+        if (!(await deps.storage.writeMessages(ownerIdBytes, messages))) {
           return ok({
             type: "response",
             message: createProtocolMessageBuffer(ownerId, {
@@ -1062,7 +1062,7 @@ export const applyProtocolMessageAsRelay =
         return ok({ type: "response", message: output.unwrap() });
       }
 
-      const syncResult = sync(deps)(ranges, output, binaryOwnerId);
+      const syncResult = sync(deps)(ranges, output, ownerIdBytes);
 
       const message = syncResult.ok
         ? output.unwrap()
@@ -1125,11 +1125,11 @@ const sync =
   (
     ranges: NonEmptyReadonlyArray<Range>,
     output: ProtocolMessageBuffer,
-    binaryOwnerId: BinaryOwnerId,
+    ownerIdBytes: OwnerIdBytes,
   ): Result<boolean, typeof ProtocolErrorCode.SyncError> => {
     const outputInitialSize = output.getSize();
 
-    const storageSize = deps.storage.getSize(binaryOwnerId);
+    const storageSize = deps.storage.getSize(ownerIdBytes);
     if (storageSize == null) return err(ProtocolErrorCode.SyncError);
 
     let prevUpperBound: RangeUpperBound | null = null;
@@ -1171,7 +1171,7 @@ const sync =
       begin: NonNegativeInt,
     ): boolean => {
       const fingerprint = deps.storage.fingerprint(
-        binaryOwnerId,
+        ownerIdBytes,
         begin,
         storageSize,
       );
@@ -1190,7 +1190,7 @@ const sync =
 
       const lower = prevIndex;
       let upper = deps.storage.findLowerBound(
-        binaryOwnerId,
+        ownerIdBytes,
         prevIndex,
         storageSize,
         currentUpperBound,
@@ -1205,7 +1205,7 @@ const sync =
 
         case RangeType.Fingerprint: {
           const ourFingerprint = deps.storage.fingerprint(
-            binaryOwnerId,
+            ownerIdBytes,
             lower,
             upper,
           );
@@ -1217,7 +1217,7 @@ const sync =
             if (output.canSplitRange()) {
               coalesceSkipsBeforeAdd();
               splitRange(deps)(
-                binaryOwnerId,
+                ownerIdBytes,
                 lower,
                 upper,
                 currentUpperBound,
@@ -1244,7 +1244,7 @@ const sync =
           let exceeded = false as boolean;
 
           deps.storage.iterate(
-            binaryOwnerId,
+            ownerIdBytes,
             lower,
             upper,
             (timestamp, index) => {
@@ -1257,7 +1257,7 @@ const sync =
                 timestampsWeNeed.delete(timestampString);
               } else {
                 const dbChange = deps.storage.readDbChange(
-                  binaryOwnerId,
+                  ownerIdBytes,
                   timestamp,
                 );
                 if (dbChange == null) {
@@ -1330,7 +1330,7 @@ const sync =
 const splitRange =
   (deps: StorageDep) =>
   (
-    ownerId: BinaryOwnerId,
+    ownerId: OwnerIdBytes,
     lower: NonNegativeInt,
     upper: NonNegativeInt,
     upperBound: RangeUpperBound,

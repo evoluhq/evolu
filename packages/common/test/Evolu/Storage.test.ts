@@ -21,7 +21,7 @@ import {
   getOrThrow,
   NonNegativeInt,
   ok,
-  ownerIdToBinaryOwnerId,
+  ownerIdToOwnerIdBytes,
   PositiveInt,
   sql,
   SqliteDep,
@@ -81,7 +81,7 @@ const testTimestamps = async (timestamps: ReadonlyArray<TimestampBytes>) => {
     // Add similar timestamps of another owner.
     for (const timestamp of testAnotherTimestampsAsc) {
       deps.storage.insertTimestamp(
-        ownerIdToBinaryOwnerId(testOwner2.id),
+        ownerIdToOwnerIdBytes(testOwner2.id),
         timestamp,
       );
     }

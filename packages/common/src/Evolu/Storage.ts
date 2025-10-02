@@ -16,8 +16,8 @@ import {
   String,
 } from "../Type.js";
 import {
-  BinaryOwnerId,
-  binaryOwnerIdToOwnerId,
+  OwnerIdBytes,
+  ownerIdBytesToOwnerId,
   Owner,
   OwnerId,
   WriteKey,
@@ -39,10 +39,10 @@ import { orderTimestampBytes, Timestamp, TimestampBytes } from "./Timestamp.js";
  * (see its documentation for details).
  */
 export interface Storage {
-  readonly getSize: (ownerId: BinaryOwnerId) => NonNegativeInt | null;
+  readonly getSize: (ownerId: OwnerIdBytes) => NonNegativeInt | null;
 
   readonly fingerprint: (
-    ownerId: BinaryOwnerId,
+    ownerId: OwnerIdBytes,
     begin: NonNegativeInt,
     end: NonNegativeInt,
   ) => Fingerprint | null;
@@ -55,20 +55,20 @@ export interface Storage {
    * fingerprint computation.
    */
   readonly fingerprintRanges: (
-    ownerId: BinaryOwnerId,
+    ownerId: OwnerIdBytes,
     buckets: ReadonlyArray<NonNegativeInt>,
     upperBound?: RangeUpperBound,
   ) => ReadonlyArray<FingerprintRange> | null;
 
   readonly findLowerBound: (
-    ownerId: BinaryOwnerId,
+    ownerId: OwnerIdBytes,
     begin: NonNegativeInt,
     end: NonNegativeInt,
     upperBound: RangeUpperBound,
   ) => NonNegativeInt | null;
 
   readonly iterate: (
-    ownerId: BinaryOwnerId,
+    ownerId: OwnerIdBytes,
     begin: NonNegativeInt,
     end: NonNegativeInt,
     callback: (timestamp: TimestampBytes, index: NonNegativeInt) => boolean,
@@ -76,12 +76,12 @@ export interface Storage {
 
   /** Validates the {@link WriteKey} for the given {@link Owner}. */
   readonly validateWriteKey: (
-    ownerId: BinaryOwnerId,
+    ownerId: OwnerIdBytes,
     writeKey: WriteKey,
   ) => boolean;
 
   /** Sets the {@link WriteKey} for the given {@link Owner}. */
-  readonly setWriteKey: (ownerId: BinaryOwnerId, writeKey: WriteKey) => boolean;
+  readonly setWriteKey: (ownerId: OwnerIdBytes, writeKey: WriteKey) => boolean;
 
   /**
    * Write encrypted {@link CrdtMessage}s to storage.
@@ -97,18 +97,18 @@ export interface Storage {
    * must fail anyway (to prevent current and future sync operations).
    */
   readonly writeMessages: (
-    ownerId: BinaryOwnerId,
+    ownerId: OwnerIdBytes,
     messages: NonEmptyReadonlyArray<EncryptedCrdtMessage>,
   ) => Promise<boolean>;
 
   /** Read encrypted {@link DbChange}s from storage. */
   readonly readDbChange: (
-    ownerId: BinaryOwnerId,
+    ownerId: OwnerIdBytes,
     timestamp: TimestampBytes,
   ) => EncryptedDbChange | null;
 
   /** Delete all data for the given {@link Owner}. */
-  readonly deleteOwner: (ownerId: BinaryOwnerId) => boolean;
+  readonly deleteOwner: (ownerId: OwnerIdBytes) => boolean;
 }
 
 export interface StorageDep {
@@ -222,7 +222,7 @@ export type DbChange = typeof DbChange.Type;
  */
 export interface SqliteStorageBase {
   readonly insertTimestamp: (
-    ownerId: BinaryOwnerId,
+    ownerId: OwnerIdBytes,
     timestamp: TimestampBytes,
   ) => Result<void, SqliteError>;
 
@@ -261,8 +261,8 @@ export const createSqliteStorageBase =
     >();
 
     return ok({
-      insertTimestamp: (ownerId: BinaryOwnerId, timestamp: TimestampBytes) => {
-        const ownerIdString = binaryOwnerIdToOwnerId(ownerId);
+      insertTimestamp: (ownerId: OwnerIdBytes, timestamp: TimestampBytes) => {
+        const ownerIdString = ownerIdBytesToOwnerId(ownerId);
         const level = randomSkiplistLevel(deps);
 
         let stats = ownerStats.get(ownerIdString);
@@ -469,7 +469,7 @@ type InsertTimestampStrategy = "append" | "prepend" | "insert";
 const insertTimestamp =
   (deps: SqliteDep) =>
   (
-    ownerId: BinaryOwnerId,
+    ownerId: OwnerIdBytes,
     timestamp: TimestampBytes,
     level: PositiveInt,
     strategy: InsertTimestampStrategy,
@@ -1080,7 +1080,7 @@ const sqliteFingerprintToFingerprint = ([
 
 const getSize =
   (deps: SqliteDep) =>
-  (ownerId: BinaryOwnerId): Result<NonNegativeInt, SqliteError> => {
+  (ownerId: OwnerIdBytes): Result<NonNegativeInt, SqliteError> => {
     const result = deps.sqlite.exec<{ size: NonNegativeInt }>(sql.prepared`
       with
         ml(ml) as (
@@ -1123,7 +1123,7 @@ const getSize =
 const findLowerBound =
   (deps: SqliteDep) =>
   (
-    ownerId: BinaryOwnerId,
+    ownerId: OwnerIdBytes,
     begin: NonNegativeInt,
     end: NonNegativeInt,
     upperBound: RangeUpperBound,
@@ -1159,7 +1159,7 @@ const findLowerBound =
 const getTimestampCount =
   (deps: SqliteDep) =>
   (
-    ownerId: BinaryOwnerId,
+    ownerId: OwnerIdBytes,
     timestamp: TimestampBytes,
   ): Result<PositiveInt, SqliteError> => {
     const result = deps.sqlite.exec<{
@@ -1217,7 +1217,7 @@ const getTimestampCount =
 const fingerprint =
   (deps: SqliteDep) =>
   (
-    ownerId: BinaryOwnerId,
+    ownerId: OwnerIdBytes,
     begin: NonNegativeInt,
     end: NonNegativeInt,
   ): Result<Fingerprint, SqliteError> => {
@@ -1249,7 +1249,7 @@ const fingerprint =
 const fingerprintRanges =
   (deps: SqliteDep) =>
   (
-    ownerId: BinaryOwnerId,
+    ownerId: OwnerIdBytes,
     buckets: ReadonlyArray<NonNegativeInt>,
     upperBound: RangeUpperBound = InfiniteUpperBound,
   ): Result<ReadonlyArray<FingerprintRange>, SqliteError> => {
@@ -1392,7 +1392,7 @@ const x = (a: string, b: string) => sql.raw(`(${a} | ${b}) - (${a} & ${b})`);
 export const getTimestampByIndex =
   (deps: SqliteDep) =>
   (
-    ownerId: BinaryOwnerId,
+    ownerId: OwnerIdBytes,
     index: NonNegativeInt,
   ): Result<TimestampBytes, SqliteError> => {
     const result = deps.sqlite.exec<{

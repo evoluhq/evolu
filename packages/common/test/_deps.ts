@@ -12,7 +12,7 @@ import {
 import {
   createOwner,
   createOwnerSecret,
-  ownerIdToBinaryOwnerId,
+  ownerIdToOwnerIdBytes,
 } from "../src/Evolu/Owner.js";
 import { constFalse, constVoid } from "../src/Function.js";
 import { NanoIdLib, NanoIdLibDep } from "../src/NanoId.js";
@@ -93,10 +93,10 @@ export const testDeps: TestDeps = {
 };
 
 export const testOwner = createOwner(testOwnerSecret);
-export const testOwnerBinaryId = ownerIdToBinaryOwnerId(testOwner.id);
+export const testOwnerBinaryId = ownerIdToOwnerIdBytes(testOwner.id);
 
 export const testOwner2 = createOwner(testOwnerSecret2);
-export const testOwnerBinaryId2 = ownerIdToBinaryOwnerId(testOwner2.id);
+export const testOwnerBinaryId2 = ownerIdToOwnerIdBytes(testOwner2.id);
 
 //   /**
 //    * Log for SQL.

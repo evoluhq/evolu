@@ -29,10 +29,10 @@ import { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
 import type { PostMessageDep, WriteMessagesCallbackRegistryDep } from "./Db.js";
 import {
   AppOwner,
-  BinaryOwnerId,
-  binaryOwnerIdToOwnerId,
+  OwnerIdBytes,
+  ownerIdBytesToOwnerId,
   OwnerId,
-  ownerIdToBinaryOwnerId,
+  ownerIdToOwnerIdBytes,
   ShardOwner,
   SharedOwner,
   SharedReadonlyOwner,
@@ -471,7 +471,7 @@ const createClientStorage =
       validateWriteKey: constFalse,
       setWriteKey: constFalse,
 
-      writeMessages: async (binaryOwnerId, encryptedMessages) => {
+      writeMessages: async (ownerIdBytes, encryptedMessages) => {
         const writeResult = await mutex.withLock<
           boolean,
           | AbortError
@@ -483,13 +483,13 @@ const createClientStorage =
           | TimestampDriftError
           | TimestampTimeOutOfRangeError
         >(async () => {
-          const ownerId = binaryOwnerIdToOwnerId(binaryOwnerId);
+          const ownerId = ownerIdBytesToOwnerId(ownerIdBytes);
           const owner = deps.getSyncOwner(ownerId);
           // Owner can be removed during syncing.
           if (!owner) return ok(false);
 
           const existingTimestamps = getExistingTimestamps(deps)(
-            binaryOwnerId,
+            ownerIdBytes,
             mapNonEmptyArray(encryptedMessages, (m) =>
               timestampToTimestampBytes(m.timestamp),
             ),
@@ -592,7 +592,7 @@ const createClientStorage =
       },
 
       readDbChange: (ownerId, timestamp) => {
-        const owner = deps.getSyncOwner(binaryOwnerIdToOwnerId(ownerId));
+        const owner = deps.getSyncOwner(ownerIdBytesToOwnerId(ownerId));
         // Owner can be removed to stop syncing.
         if (!owner) return null;
 
@@ -652,14 +652,14 @@ const applyMessages =
     ownerId: OwnerId,
     messages: ReadonlyArray<CrdtMessage>,
   ): Result<void, SqliteError> => {
-    const binaryOwnerId = ownerIdToBinaryOwnerId(ownerId);
+    const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
 
     for (const message of messages) {
-      const result1 = applyMessageToAppTable(deps)(binaryOwnerId, message);
+      const result1 = applyMessageToAppTable(deps)(ownerIdBytes, message);
       if (!result1.ok) return result1;
 
       const result2 = applyMessageToTimestampAndHistoryTables(deps)(
-        binaryOwnerId,
+        ownerIdBytes,
         message,
       );
       if (!result2.ok) return result2;
@@ -670,7 +670,7 @@ const applyMessages =
 
 const applyMessageToAppTable =
   (deps: SqliteDep) =>
-  (ownerId: BinaryOwnerId, message: CrdtMessage): Result<void, SqliteError> => {
+  (ownerId: OwnerIdBytes, message: CrdtMessage): Result<void, SqliteError> => {
     const timestamp = timestampToTimestampBytes(message.timestamp);
     const updatedAt = new Date(message.timestamp.millis).toISOString();
 
@@ -711,7 +711,7 @@ const applyMessageToAppTable =
 
 export const applyMessageToTimestampAndHistoryTables =
   (deps: ClientStorageDep & SqliteDep) =>
-  (ownerId: BinaryOwnerId, message: CrdtMessage): Result<void, SqliteError> => {
+  (ownerId: OwnerIdBytes, message: CrdtMessage): Result<void, SqliteError> => {
     const timestamp = timestampToTimestampBytes(message.timestamp);
     const id = idToBinaryId(message.change.id);
 
@@ -805,7 +805,7 @@ export const initialSyncState: SyncStateInitial = { type: "SyncStateInitial" };
 export const getExistingTimestamps =
   (deps: SqliteDep) =>
   (
-    binaryOwnerId: BinaryOwnerId,
+    ownerIdBytes: OwnerIdBytes,
     timestampsBytes: NonEmptyReadonlyArray<TimestampBytes>,
   ): Result<ReadonlyArray<TimestampBytes>, SqliteError> => {
     const concatenatedTimestamps = concatBytes(...timestampsBytes);
@@ -829,7 +829,7 @@ export const getExistingTimestamps =
       from
         split_timestamps s
         join evolu_timestamp t
-          on t.ownerId = ${binaryOwnerId} and s.timestampBytes = t.t;
+          on t.ownerId = ${ownerIdBytes} and s.timestampBytes = t.t;
     `);
 
     if (!result.ok) return result;
