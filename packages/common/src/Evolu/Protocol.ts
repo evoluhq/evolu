@@ -206,15 +206,15 @@ import {
   TimestampsRange,
 } from "./Storage.js";
 import {
-  BinaryTimestamp,
-  binaryTimestampLength,
-  binaryTimestampToTimestamp,
   Counter,
   eqTimestamp,
   Millis,
   NodeId,
   Timestamp,
-  timestampToBinaryTimestamp,
+  TimestampBytes,
+  timestampBytesLength,
+  timestampBytesToTimestamp,
+  timestampToTimestampBytes,
 } from "./Timestamp.js";
 
 /**
@@ -617,7 +617,7 @@ export const createProtocolMessageBuffer = (
        */
       if (range.upperBound !== InfiniteUpperBound)
         buffers.ranges.timestamps.add(
-          binaryTimestampToTimestamp(range.upperBound),
+          timestampBytesToTimestamp(range.upperBound),
         );
       else {
         buffers.ranges.timestamps.addInfinite();
@@ -1249,7 +1249,7 @@ const sync =
             upper,
             (timestamp, index) => {
               const timestampString = timestamp.join();
-              const timestampBinary = binaryTimestampToTimestamp(timestamp);
+              const timestampBinary = timestampBytesToTimestamp(timestamp);
 
               let message: EncryptedCrdtMessage | null = null;
 
@@ -1351,7 +1351,7 @@ const splitRange =
         0 as NonNegativeInt,
         itemCount,
         (timestamp) => {
-          range.timestamps.add(binaryTimestampToTimestamp(timestamp));
+          range.timestamps.add(timestampBytesToTimestamp(timestamp));
           return true;
         },
       );
@@ -1410,7 +1410,7 @@ const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
   for (let i = 0; i < rangesCount; i++) {
     const upperBound =
       i < timestampsCount
-        ? timestampToBinaryTimestamp(timestamps[i])
+        ? timestampToTimestampBytes(timestamps[i])
         : InfiniteUpperBound;
 
     const rangeType = rangeTypes[i];
@@ -1432,7 +1432,7 @@ const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
 
       case RangeType.Timestamps: {
         const timestamps = decodeTimestamps(buffer).map(
-          timestampToBinaryTimestamp,
+          timestampToTimestampBytes,
         );
         ranges.push({
           type: RangeType.Timestamps,
@@ -1557,8 +1557,8 @@ export const encodeAndEncryptDbChange =
     encodeNonNegativeInt(buffer, protocolVersion);
 
     // Encode the timestamp (after version) for tamper verification
-    const binaryTimestamp = timestampToBinaryTimestamp(message.timestamp);
-    buffer.extend(binaryTimestamp);
+    const timestampBytes = timestampToTimestampBytes(message.timestamp);
+    buffer.extend(timestampBytes);
 
     encodeString(buffer, change.table);
 
@@ -1632,11 +1632,9 @@ export const decryptAndDecodeDbChange =
       decodeNonNegativeInt(buffer);
 
       // Decode and verify the embedded timestamp
-      const embeddedBinaryTimestamp = buffer.shiftN(
-        binaryTimestampLength,
-      ) as BinaryTimestamp;
-      const embeddedTimestamp = binaryTimestampToTimestamp(
-        embeddedBinaryTimestamp,
+      const embeddedTimestampBytes = buffer.shiftN(timestampBytesLength);
+      const embeddedTimestamp = timestampBytesToTimestamp(
+        embeddedTimestampBytes as TimestampBytes,
       );
 
       // Verify timestamp integrity

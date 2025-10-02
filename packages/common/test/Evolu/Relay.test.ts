@@ -5,7 +5,7 @@ import {
   EncryptedDbChange,
 } from "../../src/Evolu/Storage.js";
 import { constVoid } from "../../src/Function.js";
-import { binaryTimestampToTimestamp, sql } from "../../src/index.js";
+import { sql, timestampBytesToTimestamp } from "../../src/index.js";
 import { getOrThrow } from "../../src/Result.js";
 import {
   testCreateSqlite,
@@ -59,7 +59,7 @@ test("deleteOwner", async () => {
   storage.setWriteKey(testOwnerBinaryId, testOwner.writeKey);
 
   const message: EncryptedCrdtMessage = {
-    timestamp: binaryTimestampToTimestamp(testTimestampsAsc[0]),
+    timestamp: timestampBytesToTimestamp(testTimestampsAsc[0]),
     change: new Uint8Array([1, 2, 3]) as EncryptedDbChange,
   };
 

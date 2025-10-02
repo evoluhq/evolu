@@ -42,7 +42,7 @@ import { AppOwner, OwnerId } from "./Owner.js";
 import { maxProtocolMessageRangesSize } from "./Protocol.js";
 import { Query, Row } from "./Query.js";
 import { CrdtMessage, DbChange } from "./Storage.js";
-import { BinaryTimestamp } from "./Timestamp.js";
+import { TimestampBytes } from "./Timestamp.js";
 
 /**
  * Defines the schema of an Evolu database.
@@ -200,7 +200,7 @@ export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
           } & DefaultColumns;
         } & {
           readonly evolu_history: {
-            readonly timestamp: BinaryTimestamp;
+            readonly timestamp: TimestampBytes;
             readonly table: keyof S;
             readonly id: BinaryId;
             readonly column: string;

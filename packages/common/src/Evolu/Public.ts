@@ -23,12 +23,12 @@ export type {
   SyncStateIsSyncing,
 } from "./Sync.js";
 export {
-  binaryTimestampToTimestamp,
   Timestamp,
-  timestampToBinaryTimestamp,
+  timestampBytesToTimestamp,
+  timestampToTimestampBytes,
 } from "./Timestamp.js";
 export type {
-  BinaryTimestamp,
+  TimestampBytes,
   TimestampCounterOverflowError,
   TimestampDriftError,
   TimestampError,

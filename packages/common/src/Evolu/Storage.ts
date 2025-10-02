@@ -22,11 +22,7 @@ import {
   OwnerId,
   WriteKey,
 } from "./Owner.js";
-import {
-  BinaryTimestamp,
-  orderBinaryTimestamp,
-  Timestamp,
-} from "./Timestamp.js";
+import { orderTimestampBytes, Timestamp, TimestampBytes } from "./Timestamp.js";
 
 /**
  * Evolu Storage
@@ -75,7 +71,7 @@ export interface Storage {
     ownerId: BinaryOwnerId,
     begin: NonNegativeInt,
     end: NonNegativeInt,
-    callback: (timestamp: BinaryTimestamp, index: NonNegativeInt) => boolean,
+    callback: (timestamp: TimestampBytes, index: NonNegativeInt) => boolean,
   ) => void;
 
   /** Validates the {@link WriteKey} for the given {@link Owner}. */
@@ -108,7 +104,7 @@ export interface Storage {
   /** Read encrypted {@link DbChange}s from storage. */
   readonly readDbChange: (
     ownerId: BinaryOwnerId,
-    timestamp: BinaryTimestamp,
+    timestamp: TimestampBytes,
   ) => EncryptedDbChange | null;
 
   /** Delete all data for the given {@link Owner}. */
@@ -121,7 +117,7 @@ export interface StorageDep {
 
 /**
  * A cryptographic hash used for efficiently comparing collections of
- * {@link BinaryTimestamp}s.
+ * {@link TimestampBytes}s.
  *
  * It consists of the first {@link fingerprintSize} bytes of the SHA-256 hash of
  * one or more timestamps.
@@ -138,10 +134,10 @@ export interface BaseRange {
 }
 
 /**
- * Union type for Range's upperBound: either a {@link BinaryTimestamp} or
+ * Union type for Range's upperBound: either a {@link TimestampBytes} or
  * {@link InfiniteUpperBound}.
  */
-export type RangeUpperBound = BinaryTimestamp | InfiniteUpperBound;
+export type RangeUpperBound = TimestampBytes | InfiniteUpperBound;
 
 export const InfiniteUpperBound = Symbol("InfiniteUpperBound");
 export type InfiniteUpperBound = typeof InfiniteUpperBound;
@@ -165,7 +161,7 @@ export interface FingerprintRange extends BaseRange {
 
 export interface TimestampsRange extends BaseRange {
   readonly type: typeof RangeType.Timestamps;
-  readonly timestamps: ReadonlyArray<BinaryTimestamp>;
+  readonly timestamps: ReadonlyArray<TimestampBytes>;
 }
 
 export type Range = SkipRange | FingerprintRange | TimestampsRange;
@@ -227,7 +223,7 @@ export type DbChange = typeof DbChange.Type;
 export interface SqliteStorageBase {
   readonly insertTimestamp: (
     ownerId: BinaryOwnerId,
-    timestamp: BinaryTimestamp,
+    timestamp: TimestampBytes,
   ) => Result<void, SqliteError>;
 
   readonly getSize: Storage["getSize"];
@@ -259,13 +255,13 @@ export const createSqliteStorageBase =
     const ownerStats = new Map<
       OwnerId,
       {
-        minT: BinaryTimestamp;
-        maxT: BinaryTimestamp;
+        minT: TimestampBytes;
+        maxT: TimestampBytes;
       }
     >();
 
     return ok({
-      insertTimestamp: (ownerId: BinaryOwnerId, timestamp: BinaryTimestamp) => {
+      insertTimestamp: (ownerId: BinaryOwnerId, timestamp: TimestampBytes) => {
         const ownerIdString = binaryOwnerIdToOwnerId(ownerId);
         const level = randomSkiplistLevel(deps);
 
@@ -273,8 +269,8 @@ export const createSqliteStorageBase =
 
         if (!stats) {
           const result = deps.sqlite.exec<{
-            maxT: BinaryTimestamp | null;
-            minT: BinaryTimestamp | null;
+            maxT: TimestampBytes | null;
+            minT: TimestampBytes | null;
           }>(sql.prepared`
             select min(t) as minT, max(t) as maxT
             from evolu_timestamp
@@ -291,10 +287,10 @@ export const createSqliteStorageBase =
 
         let strategy: InsertTimestampStrategy;
 
-        if (orderBinaryTimestamp(timestamp, stats.maxT) === 1) {
+        if (orderTimestampBytes(timestamp, stats.maxT) === 1) {
           strategy = "append";
           stats.maxT = timestamp;
-        } else if (orderBinaryTimestamp(timestamp, stats.minT) === -1) {
+        } else if (orderTimestampBytes(timestamp, stats.minT) === -1) {
           strategy = "prepend";
           stats.minT = timestamp;
         } else {
@@ -371,7 +367,7 @@ export const createSqliteStorageBase =
          * implementing chunking, be sure to run performance tests (including
          * fetching one by one).
          */
-        const result = deps.sqlite.exec<{ t: BinaryTimestamp }>(sql`
+        const result = deps.sqlite.exec<{ t: TimestampBytes }>(sql`
           select t
           from evolu_timestamp
           where ownerId = ${ownerId} and t > ${first.value}
@@ -474,12 +470,12 @@ const insertTimestamp =
   (deps: SqliteDep) =>
   (
     ownerId: BinaryOwnerId,
-    timestamp: BinaryTimestamp,
+    timestamp: TimestampBytes,
     level: PositiveInt,
     strategy: InsertTimestampStrategy,
   ): Result<void, SqliteError> => {
     const [h1, h2] = fingerprintToSqliteFingerprint(
-      binaryTimestampToFingerprint(timestamp),
+      timestampBytesToFingerprint(timestamp),
     );
 
     let queries: Array<ReturnType<typeof sql.prepared>> = [];
@@ -997,8 +993,8 @@ const insertTimestamp =
     return ok();
   };
 
-export const binaryTimestampToFingerprint = (
-  timestamp: BinaryTimestamp,
+export const timestampBytesToFingerprint = (
+  timestamp: TimestampBytes,
 ): Fingerprint => {
   const hash = sha256(timestamp).slice(0, fingerprintSize);
   return hash as Fingerprint;
@@ -1139,7 +1135,7 @@ const findLowerBound =
     }
 
     const result = deps.sqlite.exec<{
-      t: BinaryTimestamp;
+      t: TimestampBytes;
     }>(sql.prepared`
       select t
       from evolu_timestamp
@@ -1164,7 +1160,7 @@ const getTimestampCount =
   (deps: SqliteDep) =>
   (
     ownerId: BinaryOwnerId,
-    timestamp: BinaryTimestamp,
+    timestamp: TimestampBytes,
   ): Result<PositiveInt, SqliteError> => {
     const result = deps.sqlite.exec<{
       count: PositiveInt;
@@ -1260,7 +1256,7 @@ const fingerprintRanges =
     const bucketsJson = JSON.stringify(buckets);
 
     const result = deps.sqlite.exec<{
-      b: BinaryTimestamp | null;
+      b: TimestampBytes | null;
       h1: Int64String;
       h2: Int64String;
     }>(sql.prepared`
@@ -1398,9 +1394,9 @@ export const getTimestampByIndex =
   (
     ownerId: BinaryOwnerId,
     index: NonNegativeInt,
-  ): Result<BinaryTimestamp, SqliteError> => {
+  ): Result<TimestampBytes, SqliteError> => {
     const result = deps.sqlite.exec<{
-      readonly pt: BinaryTimestamp;
+      readonly pt: TimestampBytes;
     }>(sql.prepared`
       with
         fi(b, cl, ic, pt, mt, nt, nc) as (

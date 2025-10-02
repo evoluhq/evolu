@@ -14,6 +14,7 @@ import {
   object,
   regex,
   String,
+  Uint8Array,
 } from "../Type.js";
 
 export interface TimestampConfig {
@@ -141,7 +142,7 @@ export const createInitialTimestamp = (deps: RandomBytesDep): Timestamp => {
   return createTimestamp({ nodeId });
 };
 
-/** TimestampString is a sortable string version of {@link Timestamp}. */
+/** Sortable string representation of {@link Timestamp}. */
 export type TimestampString = string & Brand<"TimestampString">;
 
 export const timestampToTimestampString = (t: Timestamp): TimestampString =>
@@ -249,18 +250,19 @@ export const receiveTimestamp =
     });
   };
 
-/** BinaryTimestamp is a binary and sortable version of {@link Timestamp} for DB. */
-export type BinaryTimestamp = Uint8Array & Brand<"BinaryTimestamp">;
+/** Sortable bytes representation of {@link Timestamp}. */
+export const TimestampBytes = brand("TimestampBytes", Uint8Array);
+export type TimestampBytes = typeof TimestampBytes.Type;
 
-export const binaryTimestampLength = NonNegativeInt.orThrow(16);
+export const timestampBytesLength = NonNegativeInt.orThrow(16);
 
-export const timestampToBinaryTimestamp = (
+export const timestampToTimestampBytes = (
   timestamp: Timestamp,
-): BinaryTimestamp => {
+): TimestampBytes => {
   const { millis, counter, nodeId } = timestamp;
 
   // 6 bytes for millis, 2 bytes for counter, 8 bytes for nodeId.
-  const value = new Uint8Array(16);
+  const value = new globalThis.Uint8Array(16);
 
   // Encode `millis` into the first 6 bytes.
   const millisBigInt = BigInt(millis);
@@ -281,11 +283,11 @@ export const timestampToBinaryTimestamp = (
     value[8 + i] = byte;
   }
 
-  return value as BinaryTimestamp;
+  return value as TimestampBytes;
 };
 
-export const binaryTimestampToTimestamp = (
-  timestamp: BinaryTimestamp,
+export const timestampBytesToTimestamp = (
+  timestamp: TimestampBytes,
 ): Timestamp => {
   // Decode `millis` from the first 6 bytes.
   const millis =
@@ -308,4 +310,4 @@ export const binaryTimestampToTimestamp = (
   return { millis: Number(millis), counter, nodeId } as Timestamp;
 };
 
-export const orderBinaryTimestamp: Order<BinaryTimestamp> = orderUint8Array;
+export const orderTimestampBytes: Order<TimestampBytes> = orderUint8Array;

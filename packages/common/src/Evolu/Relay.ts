@@ -12,7 +12,7 @@ import {
   SqliteStorageDeps,
   Storage,
 } from "./Storage.js";
-import { timestampToBinaryTimestamp } from "./Timestamp.js";
+import { timestampToTimestampBytes } from "./Timestamp.js";
 
 export interface Relay extends Disposable {}
 
@@ -116,7 +116,7 @@ export const createRelayStorage =
             const insertTimestampResult =
               sqliteStorageBase.value.insertTimestamp(
                 ownerId,
-                timestampToBinaryTimestamp(message.timestamp),
+                timestampToTimestampBytes(message.timestamp),
               );
             if (!insertTimestampResult.ok) return insertTimestampResult;
 
@@ -125,7 +125,7 @@ export const createRelayStorage =
               values
                 (
                   ${ownerId},
-                  ${timestampToBinaryTimestamp(message.timestamp)},
+                  ${timestampToTimestampBytes(message.timestamp)},
                   ${message.change}
                 )
               on conflict do nothing;

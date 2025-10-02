@@ -20,14 +20,14 @@ test("getExistingTimestamps works correctly with CTE", async () => {
     );
   `);
 
-  const binaryTimestamp1 = testTimestampsAsc[0];
-  const binaryTimestamp2 = testTimestampsAsc[1];
-  const binaryTimestamp3 = testTimestampsAsc[2];
+  const timestamp1Bytes = testTimestampsAsc[0];
+  const timestamp2Bytes = testTimestampsAsc[1];
+  const timestamp3Bytes = testTimestampsAsc[2];
 
   const allTimestamps = [
-    binaryTimestamp1,
-    binaryTimestamp2,
-    binaryTimestamp3,
+    timestamp1Bytes,
+    timestamp2Bytes,
+    timestamp3Bytes,
   ] as const;
 
   // Test 1: No existing timestamps - should return empty array
@@ -40,12 +40,12 @@ test("getExistingTimestamps works correctly with CTE", async () => {
   // Test 2: Insert some timestamps and verify they are found
   sqlite.exec(sql`
     insert into evolu_timestamp (ownerId, t)
-    values (${testOwnerBinaryId}, ${binaryTimestamp1});
+    values (${testOwnerBinaryId}, ${timestamp1Bytes});
   `);
 
   sqlite.exec(sql`
     insert into evolu_timestamp (ownerId, t)
-    values (${testOwnerBinaryId}, ${binaryTimestamp2});
+    values (${testOwnerBinaryId}, ${timestamp2Bytes});
   `);
 
   // Check for all three timestamps - only first two should be found
@@ -54,7 +54,7 @@ test("getExistingTimestamps works correctly with CTE", async () => {
     allTimestamps,
   );
   expect(result).toEqual(
-    ok([binaryTimestamp1, binaryTimestamp2].map((t) => Buffer.from(t))),
+    ok([timestamp1Bytes, timestamp2Bytes].map((t) => Buffer.from(t))),
   );
 
   const resultOtherOwner = getExistingTimestamps({ sqlite })(
@@ -65,11 +65,11 @@ test("getExistingTimestamps works correctly with CTE", async () => {
 
   // Test 4: Test with single timestamp
   const singleResult = getExistingTimestamps({ sqlite })(testOwnerBinaryId, [
-    binaryTimestamp1,
+    timestamp1Bytes,
   ]);
 
   expect(singleResult).toEqual(
-    ok([binaryTimestamp1].map((t) => Buffer.from(t))),
+    ok([timestamp1Bytes].map((t) => Buffer.from(t))),
   );
 });
 

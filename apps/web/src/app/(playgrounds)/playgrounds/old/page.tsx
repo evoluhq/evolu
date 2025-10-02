@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  binaryTimestampToTimestamp,
+  timestampBytesToTimestamp,
   createEvolu,
   createFormatTypeError,
   EvoluConfig,
@@ -322,7 +322,7 @@ const TodoItem: FC<{
     void evolu.loadQuery(titleHistory).then((rows) => {
       const rowsWithTimestamp = rows.map((row) => ({
         ...row,
-        timestamp: binaryTimestampToTimestamp(row.timestamp),
+        timestamp: timestampBytesToTimestamp(row.timestamp),
       }));
       alert(JSON.stringify(rowsWithTimestamp, null, 2));
     });

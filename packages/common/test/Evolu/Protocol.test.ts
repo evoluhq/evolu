@@ -32,7 +32,7 @@ import {
 } from "../../src/Evolu/Protocol.js";
 import { createRelayStorage } from "../../src/Evolu/Relay.js";
 import {
-  binaryTimestampToFingerprint,
+  timestampBytesToFingerprint,
   CrdtMessage,
   DbChange,
   EncryptedCrdtMessage,
@@ -43,9 +43,9 @@ import {
   StorageDep,
 } from "../../src/Evolu/Storage.js";
 import {
-  binaryTimestampToTimestamp,
+  timestampBytesToTimestamp,
   createInitialTimestamp,
-  timestampToBinaryTimestamp,
+  timestampToTimestampBytes,
 } from "../../src/Evolu/Timestamp.js";
 import { constFalse, constTrue } from "../../src/Function.js";
 import {
@@ -504,7 +504,7 @@ const shouldNotBeCalledStorageDep: StorageDep = {
 
 test("createTimestampsBuffer maxTimestamp", () => {
   const buffer = createTimestampsBuffer();
-  buffer.add(binaryTimestampToTimestamp(maxTimestamp));
+  buffer.add(timestampBytesToTimestamp(maxTimestamp));
   expect(buffer.getLength()).toBe(21);
 });
 
@@ -610,9 +610,9 @@ test("createProtocolMessageForSync", async () => {
 
   const messages31 = testTimestampsAsc.slice(0, 31).map(
     (t): EncryptedCrdtMessage => ({
-      timestamp: binaryTimestampToTimestamp(t),
+      timestamp: timestampBytesToTimestamp(t),
       change: createEncryptedDbChange({
-        timestamp: binaryTimestampToTimestamp(t),
+        timestamp: timestampBytesToTimestamp(t),
         change: createDbChange(),
       }),
     }),
@@ -629,9 +629,9 @@ test("createProtocolMessageForSync", async () => {
 
   const message32 = testTimestampsAsc.slice(32, 33).map(
     (t): EncryptedCrdtMessage => ({
-      timestamp: binaryTimestampToTimestamp(t),
+      timestamp: timestampBytesToTimestamp(t),
       change: createEncryptedDbChange({
-        timestamp: binaryTimestampToTimestamp(t),
+        timestamp: timestampBytesToTimestamp(t),
         change: createDbChange(),
       }),
     }),
@@ -733,7 +733,7 @@ describe("E2E errors", () => {
   });
 
   test("ProtocolWriteKeyError", async () => {
-    const timestamp = binaryTimestampToTimestamp(testTimestampsAsc[0]);
+    const timestamp = timestampBytesToTimestamp(testTimestampsAsc[0]);
     const dbChange = createDbChange();
 
     const messages: NonEmptyReadonlyArray<CrdtMessage> = [
@@ -841,7 +841,7 @@ describe("E2E relay options", () => {
   });
 
   test("broadcast message", async () => {
-    const timestamp = binaryTimestampToTimestamp(testTimestampsAsc[0]);
+    const timestamp = timestampBytesToTimestamp(testTimestampsAsc[0]);
     const dbChange = createDbChange();
     const messages: NonEmptyReadonlyArray<CrdtMessage> = [
       { timestamp, change: dbChange },
@@ -899,9 +899,9 @@ describe("E2E relay options", () => {
 describe("E2E sync", () => {
   const messages = testTimestampsAsc.map(
     (t): EncryptedCrdtMessage => ({
-      timestamp: binaryTimestampToTimestamp(t),
+      timestamp: timestampBytesToTimestamp(t),
       change: createEncryptedDbChange({
-        timestamp: binaryTimestampToTimestamp(t),
+        timestamp: timestampBytesToTimestamp(t),
         change: {
           table: "foo",
           id: testCreateId(),
@@ -967,7 +967,7 @@ describe("E2E sync", () => {
         clientStorage
           .readDbChange(
             testOwnerBinaryId,
-            timestampToBinaryTimestamp(message.timestamp),
+            timestampToTimestampBytes(message.timestamp),
           )
           ?.join(),
       ).toBe(message.change.join());
@@ -976,7 +976,7 @@ describe("E2E sync", () => {
         relayStorage
           .readDbChange(
             testOwnerBinaryId,
-            timestampToBinaryTimestamp(message.timestamp),
+            timestampToTimestampBytes(message.timestamp),
           )
           ?.join(),
       ).toBe(message.change.join());
@@ -1217,7 +1217,7 @@ describe("E2E sync", () => {
     const owner = testOwner;
     const crdtMessages = testTimestampsAsc.map(
       (t): CrdtMessage => ({
-        timestamp: binaryTimestampToTimestamp(t),
+        timestamp: timestampBytesToTimestamp(t),
         change: {
           table: "foo",
           id: testCreateId(),
@@ -1259,7 +1259,7 @@ describe("ranges sizes", () => {
       timestamps: createTimestampsBuffer(),
     };
     testTimestampsAsc.slice(0, 31).forEach((t) => {
-      range.timestamps.add(binaryTimestampToTimestamp(t));
+      range.timestamps.add(timestampBytesToTimestamp(t));
     });
 
     buffer.addRange(range);
@@ -1280,7 +1280,7 @@ describe("ranges sizes", () => {
       timestamps: createTimestampsBuffer(),
     };
     testTimestampsAsc.forEach((t) => {
-      range.timestamps.add(binaryTimestampToTimestamp(t));
+      range.timestamps.add(timestampBytesToTimestamp(t));
     });
 
     buffer.addRange(range);
@@ -1299,7 +1299,7 @@ describe("ranges sizes", () => {
       buffer.addRange({
         type: RangeType.Fingerprint,
         upperBound: i === 15 ? InfiniteUpperBound : timestamp,
-        fingerprint: binaryTimestampToFingerprint(testTimestampsRandom[i]),
+        fingerprint: timestampBytesToFingerprint(testTimestampsRandom[i]),
       });
     });
 

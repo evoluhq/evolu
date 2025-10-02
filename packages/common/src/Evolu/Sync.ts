@@ -59,18 +59,18 @@ import {
   Storage,
 } from "./Storage.js";
 import {
-  BinaryTimestamp,
-  binaryTimestampToTimestamp,
   createInitialTimestamp,
   Millis,
   receiveTimestamp,
   sendTimestamp,
   Timestamp,
+  TimestampBytes,
+  timestampBytesToTimestamp,
   TimestampConfigDep,
   TimestampCounterOverflowError,
   TimestampDriftError,
   TimestampTimeOutOfRangeError,
-  timestampToBinaryTimestamp,
+  timestampToTimestampBytes,
   timestampToTimestampString,
 } from "./Timestamp.js";
 
@@ -491,7 +491,7 @@ const createClientStorage =
           const existingTimestamps = getExistingTimestamps(deps)(
             binaryOwnerId,
             mapNonEmptyArray(encryptedMessages, (m) =>
-              timestampToBinaryTimestamp(m.timestamp),
+              timestampToTimestampBytes(m.timestamp),
             ),
           );
 
@@ -499,7 +499,7 @@ const createClientStorage =
 
           const existingTimestampsSet = new Set(
             existingTimestamps.value
-              .map(binaryTimestampToTimestamp)
+              .map(timestampBytesToTimestamp)
               .map(timestampToTimestampString),
           );
 
@@ -624,7 +624,7 @@ const createClientStorage =
         }
 
         const message: CrdtMessage = {
-          timestamp: binaryTimestampToTimestamp(timestamp),
+          timestamp: timestampBytesToTimestamp(timestamp),
           change: {
             table: rows[0].table,
             id: binaryIdToId(rows[0].id),
@@ -671,7 +671,7 @@ const applyMessages =
 const applyMessageToAppTable =
   (deps: SqliteDep) =>
   (ownerId: BinaryOwnerId, message: CrdtMessage): Result<void, SqliteError> => {
-    const timestamp = timestampToBinaryTimestamp(message.timestamp);
+    const timestamp = timestampToTimestampBytes(message.timestamp);
     const updatedAt = new Date(message.timestamp.millis).toISOString();
 
     for (const [column, value] of objectToEntries(message.change.values)) {
@@ -712,7 +712,7 @@ const applyMessageToAppTable =
 export const applyMessageToTimestampAndHistoryTables =
   (deps: ClientStorageDep & SqliteDep) =>
   (ownerId: BinaryOwnerId, message: CrdtMessage): Result<void, SqliteError> => {
-    const timestamp = timestampToBinaryTimestamp(message.timestamp);
+    const timestamp = timestampToTimestampBytes(message.timestamp);
     const id = idToBinaryId(message.change.id);
 
     const result = deps.storage.insertTimestamp(ownerId, timestamp);
@@ -806,15 +806,15 @@ export const getExistingTimestamps =
   (deps: SqliteDep) =>
   (
     binaryOwnerId: BinaryOwnerId,
-    binaryTimestamps: NonEmptyReadonlyArray<BinaryTimestamp>,
-  ): Result<ReadonlyArray<BinaryTimestamp>, SqliteError> => {
-    const concatenatedTimestamps = concatBytes(...binaryTimestamps);
+    timestampsBytes: NonEmptyReadonlyArray<TimestampBytes>,
+  ): Result<ReadonlyArray<TimestampBytes>, SqliteError> => {
+    const concatenatedTimestamps = concatBytes(...timestampsBytes);
 
     const result = deps.sqlite.exec<{
-      binaryTimestamp: BinaryTimestamp;
+      timestampBytes: TimestampBytes;
     }>(sql`
       with recursive
-        split_timestamps(binaryTimestamp, pos) as (
+        split_timestamps(timestampBytes, pos) as (
           select
             substr(${concatenatedTimestamps}, 1, 16),
             17 as pos
@@ -825,14 +825,14 @@ export const getExistingTimestamps =
           from split_timestamps
           where pos <= length(${concatenatedTimestamps})
         )
-      select s.binaryTimestamp
+      select s.timestampBytes
       from
         split_timestamps s
         join evolu_timestamp t
-          on t.ownerId = ${binaryOwnerId} and s.binaryTimestamp = t.t;
+          on t.ownerId = ${binaryOwnerId} and s.timestampBytes = t.t;
     `);
 
     if (!result.ok) return result;
 
-    return ok(result.value.rows.map((row) => row.binaryTimestamp));
+    return ok(result.value.rows.map((row) => row.timestampBytes));
   };
