@@ -10,8 +10,8 @@ import {
   base64UrlToUint8Array,
   Between1And10,
   BigIntError,
-  BinaryId,
-  binaryIdToId,
+  IdBytes,
+  idBytesToId,
   Boolean,
   BooleanError,
   brand,
@@ -30,7 +30,7 @@ import {
   Id,
   id,
   IdError,
-  idToBinaryId,
+  idToIdBytes,
   InferError,
   InferInput,
   InferParent,
@@ -1005,36 +1005,36 @@ test("createIdFromString", () => {
   expect(id3).not.toBe(id4);
 });
 
-test("BinaryId/idToBinaryId/binaryIdToId", () => {
+test("IdBytes/idToIdBytes/idBytesToId", () => {
   const deps = { nanoIdLib: createNanoIdLib() };
   for (let i = 0; i < 10000; i++) {
     const originalId = createId(deps);
-    const binaryId = idToBinaryId(originalId);
-    expect(BinaryId.is(binaryId)).toBe(true);
-    expect(binaryIdToId(binaryId)).toBe(originalId);
+    const idBytes = idToIdBytes(originalId);
+    expect(IdBytes.is(idBytes)).toBe(true);
+    expect(idBytesToId(idBytes)).toBe(originalId);
   }
 });
 
-test("BinaryId.fromParent with invalid data", () => {
+test("IdBytes.fromParent with invalid data", () => {
   const tooShort = new Uint8Array(15);
-  expect(BinaryId.fromParent(tooShort)).toEqual(
-    err({ type: "BinaryId", value: tooShort }),
+  expect(IdBytes.fromParent(tooShort)).toEqual(
+    err({ type: "IdBytes", value: tooShort }),
   );
 
   const tooLong = new Uint8Array(17);
-  expect(BinaryId.fromParent(tooLong)).toEqual(
-    err({ type: "BinaryId", value: tooLong }),
+  expect(IdBytes.fromParent(tooLong)).toEqual(
+    err({ type: "IdBytes", value: tooLong }),
   );
 
   const invalidBits = new Uint8Array(16);
   invalidBits[15] = 0b11; // Set last 2 bits to 1
-  expect(BinaryId.fromParent(invalidBits)).toEqual(
-    err({ type: "BinaryId", value: invalidBits }),
+  expect(IdBytes.fromParent(invalidBits)).toEqual(
+    err({ type: "IdBytes", value: invalidBits }),
   );
 
   const valid = new Uint8Array(16);
   valid[15] = 0b00; // Ensure last 2 bits are zero
-  expect(BinaryId.fromParent(valid)).toEqual(ok(valid));
+  expect(IdBytes.fromParent(valid)).toEqual(ok(valid));
 });
 
 test("PositiveNumber", () => {

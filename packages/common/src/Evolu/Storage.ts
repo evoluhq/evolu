@@ -415,7 +415,7 @@ const createTables = (deps: SqliteDep): Result<void, SqliteError> => {
      *
      * Columns:
      *
-     * - `t` – globally unique binary timestamp
+     * - `t` – TimestampBytes
      * - `h1`/`h2` – 12-byte fingerprint split into two integers for fast XOR
      * - `c` – incremental count
      * - `l` – Skiplist level (1 to 32)

@@ -63,7 +63,7 @@ import {
   testCreateTimingSafeEqual,
   testDeps,
   testOwner,
-  testOwnerBinaryId,
+  testOwnerIdBytes,
   testRandomLib,
   testSymmetricCrypto,
 } from "../_deps.js";
@@ -221,7 +221,7 @@ test("ProtocolValueType", () => {
   expect(ProtocolValueType).toMatchInlineSnapshot(`
     {
       "Base64Url": 32,
-      "Binary": 23,
+      "Bytes": 23,
       "DateIsoWithNegativeTime": 36,
       "DateIsoWithNonNegativeTime": 35,
       "EmptyString": 31,
@@ -618,7 +618,7 @@ test("createProtocolMessageForSync", async () => {
     }),
   );
   assertNonEmptyArray(messages31);
-  await storageDep.storage.writeMessages(testOwnerBinaryId, messages31);
+  await storageDep.storage.writeMessages(testOwnerIdBytes, messages31);
 
   // DB with 31 timestamps: version, ownerId, 0 messages, one full (31) TimestampsRange.
   expect(
@@ -637,7 +637,7 @@ test("createProtocolMessageForSync", async () => {
     }),
   );
   assertNonEmptyArray(message32);
-  await storageDep.storage.writeMessages(testOwnerBinaryId, message32);
+  await storageDep.storage.writeMessages(testOwnerIdBytes, message32);
 
   // DB with 32 timestamps: version, ownerId, 0 messages, 16x FingerprintRange.
   expect(
@@ -884,7 +884,7 @@ describe("E2E relay options", () => {
         // eslint-disable-next-line @typescript-eslint/require-await
         writeMessages: async (ownerId, encryptedMessages) => {
           writeMessagesCalled = true;
-          expect(ownerId).toEqual(testOwnerBinaryId);
+          expect(ownerId).toEqual(testOwnerIdBytes);
           expect(encryptedMessages.length).toBe(messages.length);
           return true;
         },
@@ -966,7 +966,7 @@ describe("E2E sync", () => {
       expect(
         clientStorage
           .readDbChange(
-            testOwnerBinaryId,
+            testOwnerIdBytes,
             timestampToTimestampBytes(message.timestamp),
           )
           ?.join(),
@@ -975,7 +975,7 @@ describe("E2E sync", () => {
       expect(
         relayStorage
           .readDbChange(
-            testOwnerBinaryId,
+            testOwnerIdBytes,
             timestampToTimestampBytes(message.timestamp),
           )
           ?.join(),
@@ -990,8 +990,8 @@ describe("E2E sync", () => {
 
   it("client and relay have all data", async () => {
     const [clientStorage, relayStorage] = await createStorages();
-    await clientStorage.writeMessages(testOwnerBinaryId, messages);
-    await relayStorage.writeMessages(testOwnerBinaryId, messages);
+    await clientStorage.writeMessages(testOwnerIdBytes, messages);
+    await relayStorage.writeMessages(testOwnerIdBytes, messages);
 
     const syncSteps = await reconcile(clientStorage, relayStorage);
     expect(syncSteps).toMatchInlineSnapshot(`
@@ -1007,7 +1007,7 @@ describe("E2E sync", () => {
 
   it("client has all data", async () => {
     const [clientStorage, relayStorage] = await createStorages();
-    await clientStorage.writeMessages(testOwnerBinaryId, messages);
+    await clientStorage.writeMessages(testOwnerIdBytes, messages);
 
     const syncSteps = await reconcile(clientStorage, relayStorage);
     expect(syncSteps).toMatchInlineSnapshot(`
@@ -1027,7 +1027,7 @@ describe("E2E sync", () => {
 
   it("client has all data - many steps", async () => {
     const [clientStorage, relayStorage] = await createStorages();
-    await clientStorage.writeMessages(testOwnerBinaryId, messages);
+    await clientStorage.writeMessages(testOwnerIdBytes, messages);
 
     const syncSteps = await reconcile(
       clientStorage,
@@ -1059,7 +1059,7 @@ describe("E2E sync", () => {
 
   it("relay has all data", async () => {
     const [clientStorage, relayStorage] = await createStorages();
-    await relayStorage.writeMessages(testOwnerBinaryId, messages);
+    await relayStorage.writeMessages(testOwnerIdBytes, messages);
 
     const syncSteps = await reconcile(clientStorage, relayStorage);
     expect(syncSteps).toMatchInlineSnapshot(`
@@ -1077,7 +1077,7 @@ describe("E2E sync", () => {
 
   it("relay has all data - many steps", async () => {
     const [clientStorage, relayStorage] = await createStorages();
-    await relayStorage.writeMessages(testOwnerBinaryId, messages);
+    await relayStorage.writeMessages(testOwnerIdBytes, messages);
 
     const syncSteps = await reconcile(
       clientStorage,
@@ -1126,8 +1126,8 @@ describe("E2E sync", () => {
     assertNonEmptyArray(firstHalf);
     assertNonEmptyArray(secondHalf);
 
-    await clientStorage.writeMessages(testOwnerBinaryId, firstHalf);
-    await relayStorage.writeMessages(testOwnerBinaryId, secondHalf);
+    await clientStorage.writeMessages(testOwnerIdBytes, firstHalf);
+    await relayStorage.writeMessages(testOwnerIdBytes, secondHalf);
 
     const syncSteps = await reconcile(clientStorage, relayStorage);
     expect(syncSteps).toMatchInlineSnapshot(`
@@ -1156,8 +1156,8 @@ describe("E2E sync", () => {
     assertNonEmptyArray(firstHalf);
     assertNonEmptyArray(secondHalf);
 
-    await clientStorage.writeMessages(testOwnerBinaryId, firstHalf);
-    await relayStorage.writeMessages(testOwnerBinaryId, secondHalf);
+    await clientStorage.writeMessages(testOwnerIdBytes, firstHalf);
+    await relayStorage.writeMessages(testOwnerIdBytes, secondHalf);
 
     const syncSteps = await reconcile(
       clientStorage,

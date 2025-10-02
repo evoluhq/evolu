@@ -1412,7 +1412,7 @@ export const createIdFromString = <B extends string = never>(
 /**
  * Creates an {@link Id} from hash data.
  *
- * Takes the first 16 bytes of hash data, converts to {@link BinaryId}, then to a
+ * Takes the first 16 bytes of hash data, converts to {@link IdBytes}, then to a
  * 21-character {@link Id} using Base64Url encoding. This provides consistent ID
  * generation from cryptographic hashes.
  *
@@ -1429,18 +1429,18 @@ export const createIdFromHash = (hash: Uint8Array): Id => {
     `Hash data must be at least 16 bytes, got ${hash.length}`,
   );
 
-  const binaryIdBytes = hash.slice(0, binaryIdTypeValueLength);
+  const idBytesBytes = hash.slice(0, idBytesTypeValueLength);
 
-  // Ensure last 2 bits are zero for valid BinaryId format
-  binaryIdBytes[15] &= 0b11111100;
+  // Ensure last 2 bits are zero for valid IdBytes format
+  idBytesBytes[15] &= 0b11111100;
 
   /**
-   * Type assertion is safe: BinaryId requires exactly 16 bytes with last 2 bits
+   * Type assertion is safe: IdBytes requires exactly 16 bytes with last 2 bits
    * zero. We guarantee both constraints programmatically. This format is stable
    * and cannot change without breaking existing data/protocol compatibility.
    */
-  const binaryId = binaryIdBytes as BinaryId;
-  return binaryIdToId(binaryId);
+  const idBytes = idBytesBytes as IdBytes;
+  return idBytesToId(idBytes);
 };
 
 /**
@@ -1499,31 +1499,31 @@ export const formatIdError = createTypeErrorFormatter<IdError>(
 );
 
 /** Binary representation of an {@link Id}. */
-export const BinaryId = brand("BinaryId", Uint8Array, (value) =>
-  // A BinaryId is exactly 16 bytes (128 bits) representing a 21-character Id (126
+export const IdBytes = brand("IdBytes", Uint8Array, (value) =>
+  // A IdBytes is exactly 16 bytes (128 bits) representing a 21-character Id (126
   // bits of entropy). The validation ensures the last 2 bits are zero, which
-  // guarantees lossless conversion between Id and BinaryId formats.
+  // guarantees lossless conversion between Id and IdBytes formats.
   value.length === 16 && (value[15] & 0b11) === 0
     ? ok(value)
-    : err<BinaryIdError>({ type: "BinaryId", value }),
+    : err<IdBytesError>({ type: "IdBytes", value }),
 );
-export type BinaryId = typeof BinaryId.Type;
+export type IdBytes = typeof IdBytes.Type;
 
-export interface BinaryIdError extends TypeError<"BinaryId"> {}
+export interface IdBytesError extends TypeError<"IdBytes"> {}
 
-export const formatBinaryIdError = createTypeErrorFormatter<BinaryIdError>(
-  (error) => `Invalid BinaryId: ${error.value}`,
+export const formatIdBytesError = createTypeErrorFormatter<IdBytesError>(
+  (error) => `Invalid IdBytes: ${error.value}`,
 );
 
-export const binaryIdTypeValueLength = 16 as NonNegativeInt;
+export const idBytesTypeValueLength = 16 as NonNegativeInt;
 
-export const idToBinaryId = (id: Id): BinaryId =>
+export const idToIdBytes = (id: Id): IdBytes =>
   // Add "A" to make 22 chars so Base64URL decodes to exactly 16 bytes.
-  base64UrlToUint8Array((id + "A") as Base64Url) as BinaryId;
+  base64UrlToUint8Array((id + "A") as Base64Url) as IdBytes;
 
-export const binaryIdToId = (binaryId: BinaryId): Id =>
+export const idBytesToId = (idBytes: IdBytes): Id =>
   // Remove padding - 16 bytes encode to 22 chars, Id is 21 chars.
-  uint8ArrayToBase64Url(binaryId).slice(0, 21) as Id;
+  uint8ArrayToBase64Url(idBytes).slice(0, 21) as Id;
 
 /**
  * Positive number.

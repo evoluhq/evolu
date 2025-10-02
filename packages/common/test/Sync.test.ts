@@ -4,8 +4,8 @@ import { ok } from "../src/Result.js";
 import { sql } from "../src/Sqlite.js";
 import {
   testCreateSqlite,
-  testOwnerBinaryId,
-  testOwnerBinaryId2,
+  testOwnerIdBytes,
+  testOwnerIdBytes2,
 } from "./_deps.js";
 import { testTimestampsAsc } from "./Evolu/_fixtures.js";
 
@@ -32,7 +32,7 @@ test("getExistingTimestamps works correctly with CTE", async () => {
 
   // Test 1: No existing timestamps - should return empty array
   const emptyResult = getExistingTimestamps({ sqlite })(
-    testOwnerBinaryId,
+    testOwnerIdBytes,
     allTimestamps,
   );
   expect(emptyResult).toEqual(ok([]));
@@ -40,17 +40,17 @@ test("getExistingTimestamps works correctly with CTE", async () => {
   // Test 2: Insert some timestamps and verify they are found
   sqlite.exec(sql`
     insert into evolu_timestamp (ownerId, t)
-    values (${testOwnerBinaryId}, ${timestamp1Bytes});
+    values (${testOwnerIdBytes}, ${timestamp1Bytes});
   `);
 
   sqlite.exec(sql`
     insert into evolu_timestamp (ownerId, t)
-    values (${testOwnerBinaryId}, ${timestamp2Bytes});
+    values (${testOwnerIdBytes}, ${timestamp2Bytes});
   `);
 
   // Check for all three timestamps - only first two should be found
   const result = getExistingTimestamps({ sqlite })(
-    testOwnerBinaryId,
+    testOwnerIdBytes,
     allTimestamps,
   );
   expect(result).toEqual(
@@ -58,13 +58,13 @@ test("getExistingTimestamps works correctly with CTE", async () => {
   );
 
   const resultOtherOwner = getExistingTimestamps({ sqlite })(
-    testOwnerBinaryId2,
+    testOwnerIdBytes2,
     allTimestamps,
   );
   expect(resultOtherOwner).toEqual(ok([]));
 
   // Test 4: Test with single timestamp
-  const singleResult = getExistingTimestamps({ sqlite })(testOwnerBinaryId, [
+  const singleResult = getExistingTimestamps({ sqlite })(testOwnerIdBytes, [
     timestamp1Bytes,
   ]);
 

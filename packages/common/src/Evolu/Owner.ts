@@ -10,12 +10,12 @@ import {
   RandomBytesDep,
 } from "../Crypto.js";
 import {
-  BinaryId,
-  binaryIdToId,
+  IdBytes,
+  idBytesToId,
   brand,
   createIdFromHash,
   Id,
-  idToBinaryId,
+  idToIdBytes,
   Mnemonic,
   NonNegativeInt,
 } from "../Type.js";
@@ -82,13 +82,13 @@ export const OwnerId = brand("OwnerId", Id);
 export type OwnerId = typeof OwnerId.Type;
 
 /** Bytes representation of {@link OwnerId}. */
-export type OwnerIdBytes = BinaryId & Brand<"OwnerIdBytes">;
+export type OwnerIdBytes = IdBytes & Brand<"OwnerIdBytes">;
 
 export const ownerIdToOwnerIdBytes = (ownerId: OwnerId): OwnerIdBytes =>
-  idToBinaryId(ownerId) as OwnerIdBytes;
+  idToIdBytes(ownerId) as OwnerIdBytes;
 
 export const ownerIdBytesToOwnerId = (ownerIdBytes: OwnerIdBytes): OwnerId =>
-  binaryIdToId(ownerIdBytes as BinaryId) as OwnerId;
+  idBytesToId(ownerIdBytes as IdBytes) as OwnerId;
 
 export const writeKeyLength = 16 as NonNegativeInt;
 

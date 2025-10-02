@@ -166,12 +166,12 @@ import { SqliteValue } from "../Sqlite.js";
 import {
   Base64Url,
   base64UrlToUint8Array,
-  BinaryId,
-  binaryIdToId,
-  binaryIdTypeValueLength,
+  IdBytes,
+  idBytesToId,
+  idBytesTypeValueLength,
   DateIso,
   Id,
-  idToBinaryId,
+  idToIdBytes,
   Json,
   jsonToJsonValue,
   NonNegativeInt,
@@ -1501,11 +1501,11 @@ const decodeTimestamps = (
 };
 
 const decodeId = (buffer: Buffer): Id => {
-  const bytes = buffer.shiftN(binaryIdTypeValueLength);
-  const binaryId = BinaryId.fromParent(bytes);
-  if (!binaryId.ok) throw new ProtocolDecodeError(binaryId.error.type);
+  const bytes = buffer.shiftN(idBytesTypeValueLength);
+  const idBytes = IdBytes.fromParent(bytes);
+  if (!idBytes.ok) throw new ProtocolDecodeError(idBytes.error.type);
 
-  return binaryIdToId(binaryId.value);
+  return idBytesToId(idBytes.value);
 };
 
 /**
@@ -1562,7 +1562,7 @@ export const encodeAndEncryptDbChange =
 
     encodeString(buffer, change.table);
 
-    buffer.extend(idToBinaryId(change.id));
+    buffer.extend(idToIdBytes(change.id));
 
     const entries = objectToEntries(change.values).map(
       ([column, value]): [string, SqliteValue] => {
@@ -1763,7 +1763,7 @@ export const ProtocolValueType = {
   String: 20 as NonNegativeInt,
   Number: 21 as NonNegativeInt,
   Null: 22 as NonNegativeInt,
-  Binary: 23 as NonNegativeInt,
+  Bytes: 23 as NonNegativeInt,
   // We can add more types for other DBs or anything else later.
 
   // Optimized types
@@ -1820,7 +1820,7 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
       const id = Id.from(value);
       if (id.ok) {
         encodeNonNegativeInt(buffer, ProtocolValueType.Id);
-        buffer.extend(idToBinaryId(id.value));
+        buffer.extend(idToIdBytes(id.value));
         return;
       }
 
@@ -1865,7 +1865,7 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
     }
   }
 
-  encodeNonNegativeInt(buffer, ProtocolValueType.Binary);
+  encodeNonNegativeInt(buffer, ProtocolValueType.Bytes);
   encodeLength(buffer, value);
   buffer.extend(value);
 };
@@ -1887,7 +1887,7 @@ export const decodeSqliteValue = (buffer: Buffer): SqliteValue => {
     case ProtocolValueType.Null:
       return null;
 
-    case ProtocolValueType.Binary: {
+    case ProtocolValueType.Bytes: {
       const length = decodeLength(buffer);
       return buffer.shiftN(length);
     }

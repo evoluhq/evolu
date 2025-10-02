@@ -93,10 +93,10 @@ export const testDeps: TestDeps = {
 };
 
 export const testOwner = createOwner(testOwnerSecret);
-export const testOwnerBinaryId = ownerIdToOwnerIdBytes(testOwner.id);
+export const testOwnerIdBytes = ownerIdToOwnerIdBytes(testOwner.id);
 
 export const testOwner2 = createOwner(testOwnerSecret2);
-export const testOwnerBinaryId2 = ownerIdToOwnerIdBytes(testOwner2.id);
+export const testOwnerIdBytes2 = ownerIdToOwnerIdBytes(testOwner2.id);
 
 //   /**
 //    * Log for SQL.

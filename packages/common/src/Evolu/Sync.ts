@@ -24,7 +24,7 @@ import { ok, Result } from "../Result.js";
 import { sql, SqliteDep, SqliteError, SqliteValue } from "../Sqlite.js";
 import { AbortError, createMutex } from "../Task.js";
 import { TimeDep } from "../Time.js";
-import { BinaryId, binaryIdToId, idToBinaryId } from "../Type.js";
+import { IdBytes, idBytesToId, idToIdBytes } from "../Type.js";
 import { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
 import type { PostMessageDep, WriteMessagesCallbackRegistryDep } from "./Db.js";
 import {
@@ -598,7 +598,7 @@ const createClientStorage =
 
         const result = deps.sqlite.exec<{
           table: string;
-          id: BinaryId;
+          id: IdBytes;
           column: string;
           value: SqliteValue;
         }>(sql`
@@ -627,7 +627,7 @@ const createClientStorage =
           timestamp: timestampBytesToTimestamp(timestamp),
           change: {
             table: rows[0].table,
-            id: binaryIdToId(rows[0].id),
+            id: idBytesToId(rows[0].id),
             values,
           },
         };
@@ -713,7 +713,7 @@ export const applyMessageToTimestampAndHistoryTables =
   (deps: ClientStorageDep & SqliteDep) =>
   (ownerId: OwnerIdBytes, message: CrdtMessage): Result<void, SqliteError> => {
     const timestamp = timestampToTimestampBytes(message.timestamp);
-    const id = idToBinaryId(message.change.id);
+    const id = idToIdBytes(message.change.id);
 
     const result = deps.storage.insertTimestamp(ownerId, timestamp);
     if (!result.ok) return result;

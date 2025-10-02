@@ -7,7 +7,7 @@ import {
   EvoluConfig,
   FiniteNumber,
   id,
-  idToBinaryId,
+  idToIdBytes,
   json,
   kysely,
   maxLength,
@@ -311,7 +311,7 @@ const TodoItem: FC<{
       .selectFrom("evolu_history")
       .select(["value", "timestamp"])
       .where("table", "==", "todo")
-      .where("id", "==", idToBinaryId(id))
+      .where("id", "==", idToIdBytes(id))
       .where("column", "==", "title")
       // `value` isn't typed; this is how we can narrow its type.
       .$narrowType<{ value: (typeof Schema)["todo"]["title"]["Type"] }>()

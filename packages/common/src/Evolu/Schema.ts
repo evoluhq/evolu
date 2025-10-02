@@ -15,7 +15,7 @@ import {
 import {
   AnyType,
   array,
-  BinaryId,
+  IdBytes,
   brand,
   BrandType,
   createTypeErrorFormatter,
@@ -202,7 +202,7 @@ export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
           readonly evolu_history: {
             readonly timestamp: TimestampBytes;
             readonly table: keyof S;
-            readonly id: BinaryId;
+            readonly id: IdBytes;
             readonly column: string;
             readonly value: SqliteValue;
           };
