@@ -152,43 +152,20 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
   /**
    * Load {@link Query} and return a promise with {@link QueryRows}.
    *
-   * A returned promise always resolves successfully because there is no reason
-   * why loading should fail. All data are local, and the query is typed. A
-   * serious unexpected Evolu error shall be handled with
-   * {@link Evolu#subscribeError}.
+   * The returned promise always resolves successfully because there is no
+   * reason why loading should fail. All data are local, and the query is typed.
+   * Unexpected errors should be handled with {@link Evolu#subscribeError}.
    *
    * Loading is batched, and returned promises are cached, so there is no need
-   * for an additional cache. Evolu's internal cache is invalidated on
-   * mutation.
+   * for an additional cache. Evolu's internal cache is invalidated on mutation.
+   * Unsubscribed queries are removed from the cache, so loading them again will
+   * return a new pending promise. Subscribed queries remain in the cache to
+   * prevent unnecessary Suspense boundaries from activating. Their promises are
+   * replaced with `Promise.resolve(rows)`, allowing React to synchronously
+   * unwrap the updated data without suspending.
    *
-   * The returned promise is enriched with special status and value properties
-   * for the upcoming React `use` Hook, but other UI libraries can also leverage
-   * them. Speaking of React, there are two essential React Suspense-related
-   * patterns that every developer should be aware of—passing promises to
-   * children and caching over mutations.
-   *
-   * With promises passed to children, we can load a query as soon as possible,
-   * but we don't have to use the returned promise immediately. That's useful
-   * for prefetching, which is generally not necessary for local-first apps but
-   * can be if a query takes a long time to load.
-   *
-   * Caching over mutation is a pattern that every developer should know. As we
-   * said, Evolu caches promise until a mutation happens. A query loaded after
-   * that will return a new pending promise. That's okay for general usage but
-   * not for UI with React Suspense because a mutation would suspend rerendered
-   * queries on a page, and that's not a good UX.
-   *
-   * We call this pattern "caching over mutation" because it has no globally
-   * accepted name yet. React RFC for React Cache does not exist yet.
-   *
-   * For better UX, a query must be subscribed for updates. This way, instead of
-   * Suspense flashes, the user sees new data immediately because Evolu replaces
-   * cached promises with fresh, already resolved new ones.
-   *
-   * If you are curious why Evolu does not do that for all queries by default,
-   * the answer is simple: performance. Tracking changes is costly and
-   * meaningful only for visible (hence subscribed) queries anyway. To subscribe
-   * to a query, use {@link Evolu#subscribeQuery}.
+   * To subscribe a query for automatic updates, use
+   * {@link Evolu#subscribeQuery}.
    *
    * ### Example
    *
@@ -196,7 +173,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
    * const allTodos = evolu.createQuery((db) =>
    *   db.selectFrom("todo").selectAll(),
    * );
-   * evolu.loadQuery(allTodos).then(({ rows }) => {
+   * evolu.loadQuery(allTodos).then((rows) => {
    *   console.log(rows);
    * });
    * ```
@@ -266,7 +243,6 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
    * const unsubscribe = evolu.subscribeAppOwner(() => {
    *   const owner = evolu.getAppOwner();
    * });
-   * const owner = await evolu.appOwner;
    * ```
    */
   readonly getAppOwner: () => AppOwner | null;
@@ -508,7 +484,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
   readonly useOwner: (owner: SyncOwner) => () => void;
 }
 
-/** Represent errors that can occur in Evolu. */
+/** Represents errors that can occur in Evolu. */
 export type EvoluError =
   | ProtocolError
   | ProtocolUnsupportedVersionError
@@ -555,7 +531,8 @@ let tabId: Id | null = null;
  *   and merging.
  * - Automatic schema evolution that updates the underlying database with new
  *   columns or tables.
- * - Managing owner data with resetAppOwner and restoreAppOwner.
+ * - Managing owner data with {@link Evolu#resetAppOwner} and
+ *   {@link Evolu#restoreAppOwner}.
  *
  * ### Example
  *
@@ -695,32 +672,24 @@ const createEvoluInstance =
           const loadingPromisesQueries = loadingPromises.getQueries();
           loadingPromises.releaseUnsubscribed();
 
-          /**
-           * We had to add loadingPromisesQueries to handle a React Suspense
-           * race condition with useQuery.
-           *
-           * The race: useQuery calls loadQuery (which suspends the component)
-           * then useQuerySubscription (which adds to subscribedQueries). If
-           * refreshQueries arrives between these calls, subscribedQueries is
-           * empty, so without loadingPromisesQueries, nothing gets refreshed.
-           *
-           * This manifested as a mysterious bug: after page reload (e.g., via
-           * "restore from mnemonic"), the page rendered with no data until user
-           * interaction (typing in an input) triggered a re-render. The bug
-           * only appeared with dev tools closed because faster execution made
-           * the race condition more likely.
-           *
-           * Why user interaction fixed it: React concurrent rendering
-           * prioritizes user input, causing React to re-check suspended
-           * components. The data was already loaded but React hadn't
-           * re-rendered to show it.
-           *
-           * Including loadingPromisesQueries ensures these in-flight queries
-           * get refreshed even before subscription completes. This may refresh
-           * extra queries, but that's safer than missing updates.
-           */
           const queries = [
-            ...new Set([...subscribedQueries.get(), ...loadingPromisesQueries]),
+            ...new Set([
+              ...subscribedQueries.get(),
+              /**
+               * We use `loadingPromisesQueries` to handle a React Suspense race
+               * condition with React useQuery.
+               *
+               * The race: `useQuery` calls `loadQuery` (which suspends the
+               * component) then `useQuerySubscription` (which adds to
+               * `subscribedQueries`). If refreshQueries arrives between these
+               * calls, `subscribedQueries` is empty, so without
+               * `loadingPromisesQueries`, nothing gets refreshed.
+               *
+               * Including `loadingPromisesQueries` may refresh extra queries,
+               * but that's safer than missing updates.
+               */
+              ...loadingPromisesQueries,
+            ]),
           ];
 
           if (isNonEmptyReadonlyArray(queries)) {
@@ -1110,14 +1079,25 @@ interface LoadingPromises {
     readonly isNew: boolean;
   };
 
+  /**
+   * Resolve a cached promise with updated rows.
+   *
+   * If the promise is not yet fulfilled, it will be resolved normally. If
+   * already fulfilled (subscribed query updated after mutation), the promise
+   * property is replaced with a new `Promise.resolve(rows)` while keeping the
+   * same cached object reference. The promise is not removed from the cache
+   * because React Suspense requires repeated calls to return the same promise.
+   */
   resolve: (query: Query, rows: ReadonlyArray<Row>) => void;
 
   /**
-   * We can't delete loading promises in `resolve` because they must be cached
-   * for React Suspense (repeated calls return the same promise), but we also
-   * can't cache them forever because only subscribed queries are automatically
-   * updated (reactivity is expensive) hence this function must be called
-   * manually on any mutation.
+   * Release unsubscribed queries from the cache.
+   *
+   * Loading promises can't be deleted in `resolve` because they must be cached
+   * for React Suspense (repeated calls return the same promise), but they also
+   * can't be cached forever because only subscribed queries are automatically
+   * updated (reactivity is expensive). This function must be called manually on
+   * any mutation to release unsubscribed queries.
    */
   releaseUnsubscribed: () => void;
 
@@ -1167,16 +1147,11 @@ const createLoadingPromises = (
       if (loadingPromise.promise.status !== "fulfilled") {
         loadingPromise.resolve(rows);
       } else {
-        // A promise can't be fulfilled 2x, so we need a new one.
         loadingPromise.promise = Promise.resolve(rows);
       }
 
-      /**
-       * "For example, a data framework can set the status and value fields on a
-       * promise preemptively, before passing to React, so that React can unwrap
-       * it without waiting a microtask."
-       * https://github.com/acdlite/rfcs/blob/first-class-promises/text/0000-first-class-support-for-promises.md
-       */
+      // Set status and value fields for React's `use` Hook to unwrap synchronously.
+      // https://github.com/acdlite/rfcs/blob/first-class-promises/text/0000-first-class-support-for-promises.md
       void Object.assign(loadingPromise.promise, {
         status: "fulfilled",
         value: rows,
