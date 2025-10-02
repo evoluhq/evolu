@@ -670,26 +670,11 @@ const createEvoluInstance =
           if (message.tabId && message.tabId === getTabId()) return;
 
           const loadingPromisesQueries = loadingPromises.getQueries();
-          loadingPromises.releaseUnsubscribed();
+          loadingPromises.releaseUnsubscribedOnMutation();
 
           const queries = [
-            ...new Set([
-              ...subscribedQueries.get(),
-              /**
-               * We use `loadingPromisesQueries` to handle a React Suspense race
-               * condition with React useQuery.
-               *
-               * The race: `useQuery` calls `loadQuery` (which suspends the
-               * component) then `useQuerySubscription` (which adds to
-               * `subscribedQueries`). If refreshQueries arrives between these
-               * calls, `subscribedQueries` is empty, so without
-               * `loadingPromisesQueries`, nothing gets refreshed.
-               *
-               * Including `loadingPromisesQueries` may refresh extra queries,
-               * but that's safer than missing updates.
-               */
-              ...loadingPromisesQueries,
-            ]),
+            // Dedupe
+            ...new Set([...loadingPromisesQueries, ...subscribedQueries.get()]),
           ];
 
           if (isNonEmptyReadonlyArray(queries)) {
@@ -867,7 +852,7 @@ const createEvoluInstance =
                 onCompleteRegistry.register,
               );
 
-              loadingPromises.releaseUnsubscribed();
+              loadingPromises.releaseUnsubscribedOnMutation();
 
               if (isNonEmptyArray(changes))
                 dbWorker.postMessage({
@@ -1093,13 +1078,12 @@ interface LoadingPromises {
   /**
    * Release unsubscribed queries from the cache.
    *
-   * Loading promises can't be deleted in `resolve` because they must be cached
-   * for React Suspense (repeated calls return the same promise), but they also
-   * can't be cached forever because only subscribed queries are automatically
-   * updated (reactivity is expensive). This function must be called manually on
-   * any mutation to release unsubscribed queries.
+   * Loading promises can't be released in `resolve` because they must be cached
+   * for React Suspense, but they also can't be cached forever because only
+   * subscribed queries are automatically updated (reactivity is expensive
+   * because it's implemented via refetching subscribed queries).
    */
-  releaseUnsubscribed: () => void;
+  releaseUnsubscribedOnMutation: () => void;
 
   getQueries: () => ReadonlyArray<Query>;
 }
@@ -1162,7 +1146,7 @@ const createLoadingPromises = (
       }
     },
 
-    releaseUnsubscribed: () => {
+    releaseUnsubscribedOnMutation: () => {
       [...loadingPromiseMap.entries()]
         .filter(([query]) => !subscribedQueries.has(query))
         .forEach(([query, loadingPromise]) => {
