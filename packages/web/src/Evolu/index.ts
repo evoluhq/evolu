@@ -1,4 +1,4 @@
-import { createConsole, createNanoIdLib, createTime } from "@evolu/common";
+import { createConsole, createRandomBytes, createTime } from "@evolu/common";
 import {
   CreateDbWorker,
   DbWorkerInput,
@@ -20,7 +20,7 @@ const createDbWorker: CreateDbWorker = (name) =>
 export const evoluWebDeps: EvoluDeps = {
   console: createConsole(),
   createDbWorker,
-  nanoIdLib: createNanoIdLib(),
+  randomBytes: createRandomBytes(),
   reloadApp,
   time: createTime(),
 };

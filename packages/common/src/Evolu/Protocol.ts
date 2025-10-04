@@ -166,11 +166,11 @@ import { SqliteValue } from "../Sqlite.js";
 import {
   Base64Url,
   base64UrlToUint8Array,
+  DateIso,
+  Id,
   IdBytes,
   idBytesToId,
   idBytesTypeValueLength,
-  DateIso,
-  Id,
   idToIdBytes,
   Json,
   jsonToJsonValue,
@@ -181,9 +181,9 @@ import {
 } from "../Type.js";
 import { Predicate } from "../Types.js";
 import {
-  OwnerIdBytes,
   Owner,
   OwnerId,
+  OwnerIdBytes,
   ownerIdToOwnerIdBytes,
   WriteKey,
   writeKeyLength,
@@ -1502,10 +1502,7 @@ const decodeTimestamps = (
 
 const decodeId = (buffer: Buffer): Id => {
   const bytes = buffer.shiftN(idBytesTypeValueLength);
-  const idBytes = IdBytes.fromParent(bytes);
-  if (!idBytes.ok) throw new ProtocolDecodeError(idBytes.error.type);
-
-  return idBytesToId(idBytes.value);
+  return idBytesToId(bytes as IdBytes);
 };
 
 /**
@@ -1798,7 +1795,7 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
         return;
       }
 
-      const dateIso = DateIso.from(value);
+      const dateIso = DateIso.fromParent(value);
       if (dateIso.ok) {
         const time = new Date(dateIso.value).getTime();
         if (NonNegativeInt.is(time)) {
@@ -1817,7 +1814,7 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
         return;
       }
 
-      const id = Id.from(value);
+      const id = Id.fromParent(value);
       if (id.ok) {
         encodeNonNegativeInt(buffer, ProtocolValueType.Id);
         buffer.extend(idToIdBytes(id.value));
@@ -1836,9 +1833,10 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
         return;
       }
 
-      if (Base64Url.is(value)) {
+      const base64Url = Base64Url.fromParent(value);
+      if (base64Url.ok) {
         encodeNonNegativeInt(buffer, ProtocolValueType.Base64Url);
-        const bytes = base64UrlToUint8Array(value);
+        const bytes = base64UrlToUint8Array(base64Url.value);
         encodeLength(buffer, bytes);
         buffer.extend(bytes);
         return;

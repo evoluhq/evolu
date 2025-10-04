@@ -10,11 +10,10 @@ import {
   RandomBytesDep,
 } from "../Crypto.js";
 import {
+  brand,
+  Id,
   IdBytes,
   idBytesToId,
-  brand,
-  createIdFromHash,
-  Id,
   idToIdBytes,
   Mnemonic,
   NonNegativeInt,
@@ -115,8 +114,8 @@ export const createWriteKey = (deps: RandomBytesDep): WriteKey =>
  * - {@link createSharedReadonlyOwner}
  */
 export const createOwner = (secret: OwnerSecret): Owner => {
-  const id = OwnerId.orThrow(
-    createIdFromHash(createSlip21(secret, ["Evolu", "Owner Id"])),
+  const id = ownerIdBytesToOwnerId(
+    createSlip21(secret, ["Evolu", "Owner Id"]).slice(0, 16) as OwnerIdBytes,
   );
 
   const encryptionKey = EncryptionKey.orThrow(

@@ -1,5 +1,5 @@
 import { Brand } from "./Brand.js";
-import { NanoIdLibDep } from "./NanoId.js";
+import { RandomBytesDep } from "./Crypto.js";
 import { Result } from "./Result.js";
 import { createId, Id } from "./Type.js";
 
@@ -57,7 +57,7 @@ export type CallbackId = Id & Brand<"Callback">;
 
 /** Creates a new {@link CallbackRegistry} for one-time callback functions. */
 export const createCallbackRegistry = <T = undefined>(
-  deps: NanoIdLibDep,
+  deps: RandomBytesDep,
 ): CallbackRegistry<T> => {
   const callbackMap = new Map<CallbackId, (arg: T) => void>();
 

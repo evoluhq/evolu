@@ -26,7 +26,6 @@ import {
   testCreateDummyWebSocket,
   testCreateId,
   testCreateSqliteDriver,
-  testNanoIdLib,
   testOwner,
   testOwner2,
   testOwnerSecret,
@@ -66,11 +65,11 @@ const mockDeps = () => {
   };
 
   return {
-    createDbWorker: () => dbWorker,
-    time: testTime,
-    nanoIdLib: testNanoIdLib,
     console: createConsole(),
+    createDbWorker: () => dbWorker,
+    randomBytes: testRandomBytes,
     reloadApp: vi.fn(),
+    time: testTime,
   };
 };
 
@@ -93,18 +92,17 @@ const createEvoluDepsWithSqlite = async () => {
     console: createConsole(),
     createSqliteDriver: () => sqliteDriver,
     createWebSocket: testCreateDummyWebSocket,
-    nanoIdLib: testNanoIdLib,
     random: testRandom,
     randomBytes: testRandomBytes,
     time: testTime,
   });
 
   const deps = {
-    createDbWorker: () => dbWorker,
-    time: testTime,
-    nanoIdLib: testNanoIdLib,
     console: createConsole(),
+    createDbWorker: () => dbWorker,
+    randomBytes: testRandomBytes,
     reloadApp: vi.fn(),
+    time: testTime,
   };
 
   const sqlite = getOrThrow(
@@ -176,7 +174,7 @@ test("insert should validate input and call postMessage", async () => {
 
   expect(result.ok).toBe(true);
   expect(result.ok && result.value.id).toMatchInlineSnapshot(
-    `"LhGnhts9rNnUeri8bzhS5"`,
+    `"T-vftdB4K_reh6yT2RUm8w"`,
   );
 
   await wait("0ms")();
@@ -186,7 +184,7 @@ test("insert should validate input and call postMessage", async () => {
       {
         "changes": [
           {
-            "id": "LhGnhts9rNnUeri8bzhS5",
+            "id": "T-vftdB4K_reh6yT2RUm8w",
             "ownerId": undefined,
             "table": "todo",
             "values": {
@@ -197,7 +195,7 @@ test("insert should validate input and call postMessage", async () => {
         ],
         "onCompleteIds": [],
         "subscribedQueries": [],
-        "tabId": "SrFu-SJV0Ui1_SJB3CshO",
+        "tabId": "-7BOfTxCJQQifI1Bv_OErQ",
         "type": "mutate",
       },
     ]
@@ -260,7 +258,7 @@ test("update should validate input and call postMessage", async () => {
       {
         "changes": [
           {
-            "id": "pK2ZkuZUN-T4MZhx0p9fO",
+            "id": "s8GaTyQYpixM_eXR3FgmiA",
             "ownerId": undefined,
             "table": "todo",
             "values": {
@@ -270,7 +268,7 @@ test("update should validate input and call postMessage", async () => {
         ],
         "onCompleteIds": [],
         "subscribedQueries": [],
-        "tabId": "SrFu-SJV0Ui1_SJB3CshO",
+        "tabId": "-7BOfTxCJQQifI1Bv_OErQ",
         "type": "mutate",
       },
     ]
@@ -334,7 +332,7 @@ test("upsert should validate input and call postMessage", async () => {
       {
         "changes": [
           {
-            "id": "pEppKHyKrUtl5RZ4mz12W",
+            "id": "gOu85v9SySO-uwVQQg0fDA",
             "ownerId": undefined,
             "table": "todo",
             "values": {
@@ -345,7 +343,7 @@ test("upsert should validate input and call postMessage", async () => {
         ],
         "onCompleteIds": [],
         "subscribedQueries": [],
-        "tabId": "SrFu-SJV0Ui1_SJB3CshO",
+        "tabId": "-7BOfTxCJQQifI1Bv_OErQ",
         "type": "mutate",
       },
     ]
@@ -379,7 +377,7 @@ test("upsert should reject invalid input", () => {
         },
         "type": "Object",
         "value": {
-          "id": "Aw0gY_fIT5Ci6Vt_fajhV",
+          "id": "1yEjXvx9eXaQ900EPJTPgg",
           "title": "",
         },
       },
@@ -405,7 +403,7 @@ test("mutations should be processed in microtask queue", async () => {
       {
         "changes": [
           {
-            "id": "KUG7NKoSfTGGJoCBJ9xgj",
+            "id": "8ucFBn_20jzVeKt2pI3LKg",
             "ownerId": undefined,
             "table": "todo",
             "values": {
@@ -414,7 +412,7 @@ test("mutations should be processed in microtask queue", async () => {
             },
           },
           {
-            "id": "U2zm2npXftCAjUskTmno2",
+            "id": "CX2NabHNVtGXs2-gkMvIIg",
             "ownerId": undefined,
             "table": "todo",
             "values": {
@@ -423,7 +421,7 @@ test("mutations should be processed in microtask queue", async () => {
             },
           },
           {
-            "id": "cuxG6clxIS9iEBxWDelXE",
+            "id": "JS_ANW-JW5bnOddKe_haxw",
             "ownerId": undefined,
             "table": "todo",
             "values": {
@@ -434,7 +432,7 @@ test("mutations should be processed in microtask queue", async () => {
         ],
         "onCompleteIds": [],
         "subscribedQueries": [],
-        "tabId": "SrFu-SJV0Ui1_SJB3CshO",
+        "tabId": "-7BOfTxCJQQifI1Bv_OErQ",
         "type": "mutate",
       },
     ]

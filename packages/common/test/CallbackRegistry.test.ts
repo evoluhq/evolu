@@ -1,9 +1,9 @@
 import { expect, test } from "vitest";
 import { createCallbackRegistry } from "../src/CallbackRegistry.js";
-import { testNanoIdLibDep } from "./_deps.js";
+import { testDeps } from "./_deps.js";
 
 test("CallbackRegistry with no argument", () => {
-  const registry = createCallbackRegistry(testNanoIdLibDep);
+  const registry = createCallbackRegistry(testDeps);
 
   let called = false;
   const id = registry.register(() => {
@@ -19,7 +19,7 @@ test("CallbackRegistry with no argument", () => {
 });
 
 test("CallbackRegistry with string type", () => {
-  const registry = createCallbackRegistry<string>(testNanoIdLibDep);
+  const registry = createCallbackRegistry<string>(testDeps);
 
   let receivedValue: string | null = null;
   const id = registry.register((value) => {
@@ -35,7 +35,7 @@ test("CallbackRegistry with string type", () => {
 });
 
 test("CallbackRegistry with Promise.withResolvers pattern", () => {
-  const registry = createCallbackRegistry<string>(testNanoIdLibDep);
+  const registry = createCallbackRegistry<string>(testDeps);
 
   const { promise, resolve } = Promise.withResolvers<string>();
   const id = registry.register(resolve);

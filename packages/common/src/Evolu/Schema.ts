@@ -15,12 +15,11 @@ import {
 import {
   AnyType,
   array,
-  IdBytes,
   brand,
   BrandType,
   createTypeErrorFormatter,
   DateIso,
-  IdType,
+  IdBytes,
   InferErrors,
   InferInput,
   InferType,
@@ -34,6 +33,7 @@ import {
   optional,
   OptionalType,
   String,
+  TableId,
   Type,
   TypeError,
 } from "../Type.js";
@@ -121,7 +121,7 @@ export type ValidateIdColumnType<S extends EvoluSchema> =
   keyof S extends infer TableName
     ? TableName extends keyof S
       ? "id" extends keyof S[TableName]
-        ? S[TableName]["id"] extends IdType<any>
+        ? S[TableName]["id"] extends TableId<any>
           ? never
           : SchemaValidationError<`Table "${TableName & string}" id column must be a branded ID type (created with id("${TableName & string}")).`>
         : never

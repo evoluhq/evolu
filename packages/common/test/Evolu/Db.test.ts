@@ -11,13 +11,14 @@ import { createAppOwner } from "../../src/Evolu/Owner.js";
 import { getOrThrow } from "../../src/Result.js";
 import { createSqlite, Sqlite } from "../../src/Sqlite.js";
 import { wait } from "../../src/Task.js";
+import { createId } from "../../src/Type.js";
 import {
   createTestConsole,
   createTestWebSocket,
   TestConsole,
   testCreateId,
   testCreateSqliteDriver,
-  testNanoIdLib,
+  testDeps,
   testOwnerSecret,
   testRandom,
   testRandomBytes,
@@ -99,7 +100,6 @@ const createDbWorkerWithDeps = async (): Promise<{
       transports.push(testWebSocket);
       return testWebSocket;
     },
-    nanoIdLib: testNanoIdLib,
     random: testRandom,
     randomBytes: testRandomBytes,
     time: testTime,
@@ -264,10 +264,10 @@ test("initializes DbWorker with external AppOwner", async () => {
           "rows": [
             {
               "appOwnerEncryptionKey": uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18],
-              "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
+              "appOwnerId": "Gm2rxDYibpjp9MLQYgnXOw",
               "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
               "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
-              "clock": "1970-01-01T00:00:00.000Z-0000-9b822631f4146f9a",
+              "clock": "1970-01-01T00:00:00.000Z-0000-fbb04e7d3c422504",
             },
           ],
         },
@@ -338,10 +338,10 @@ test("local mutations", async () => {
         "rows": [
           {
             "appOwnerEncryptionKey": uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18],
-            "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
+            "appOwnerId": "Gm2rxDYibpjp9MLQYgnXOw",
             "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
             "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
-            "clock": "1970-01-01T00:00:00.000Z-0000-5513bc4f7029b3c1",
+            "clock": "1970-01-01T00:00:00.000Z-0000-227c8d41bff384ad",
           },
         ],
       },
@@ -358,7 +358,7 @@ test("local mutations", async () => {
         "rows": [
           {
             "createdAt": "1970-01-01T00:00:00.000Z",
-            "id": "RDIx1Y9e4dzcD2PtSrFu-",
+            "id": "8-qbgiYx9BRvmlUTvE9wKQ",
             "isDeleted": null,
             "updatedAt": "1970-01-01T00:00:00.000Z",
             "value": "local data",
@@ -385,7 +385,7 @@ test("local mutations", async () => {
                 "value": [
                   {
                     "createdAt": "1970-01-01T00:00:00.000Z",
-                    "id": "RDIx1Y9e4dzcD2PtSrFu-",
+                    "id": "8-qbgiYx9BRvmlUTvE9wKQ",
                     "isDeleted": null,
                     "updatedAt": "1970-01-01T00:00:00.000Z",
                     "value": "local data",
@@ -396,11 +396,11 @@ test("local mutations", async () => {
             "query": "["select * from \\"_localTable\\" where \\"isDeleted\\" is null",[],[]]",
           },
         ],
-        "tabId": "LhGnhts9rNnUeri8bzhS5",
+        "tabId": "T-vftdB4K_reh6yT2RUm8w",
         "type": "onQueryPatches",
       },
       {
-        "tabId": "LhGnhts9rNnUeri8bzhS5",
+        "tabId": "T-vftdB4K_reh6yT2RUm8w",
         "type": "refreshQueries",
       },
     ]
@@ -424,7 +424,7 @@ test("local mutations", async () => {
             "query": "["select * from \\"_localTable\\" where \\"isDeleted\\" is null",[],[]]",
           },
         ],
-        "tabId": "LhGnhts9rNnUeri8bzhS5",
+        "tabId": "T-vftdB4K_reh6yT2RUm8w",
         "type": "onQueryPatches",
       },
     ]
@@ -462,10 +462,10 @@ test("local mutations", async () => {
         "rows": [
           {
             "appOwnerEncryptionKey": uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18],
-            "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
+            "appOwnerId": "Gm2rxDYibpjp9MLQYgnXOw",
             "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
             "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
-            "clock": "1970-01-01T00:00:00.000Z-0000-5513bc4f7029b3c1",
+            "clock": "1970-01-01T00:00:00.000Z-0000-227c8d41bff384ad",
           },
         ],
       },
@@ -504,11 +504,11 @@ test("local mutations", async () => {
             "query": "["select * from \\"_localTable\\" where \\"isDeleted\\" is null",[],[]]",
           },
         ],
-        "tabId": "LhGnhts9rNnUeri8bzhS5",
+        "tabId": "T-vftdB4K_reh6yT2RUm8w",
         "type": "onQueryPatches",
       },
       {
-        "tabId": "LhGnhts9rNnUeri8bzhS5",
+        "tabId": "T-vftdB4K_reh6yT2RUm8w",
         "type": "refreshQueries",
       },
     ]
@@ -516,7 +516,7 @@ test("local mutations", async () => {
 
   worker.postMessage({
     type: "reset",
-    onCompleteId: testNanoIdLib.nanoid() as CallbackId,
+    onCompleteId: createId(testDeps) as CallbackId,
     reload: false,
   });
 
@@ -525,7 +525,7 @@ test("local mutations", async () => {
   expect(workerOutput.splice(0)).toMatchInlineSnapshot(`
     [
       {
-        "onCompleteId": "9fO9i2LT9BlFv5rPltodH",
+        "onCompleteId": "s8GaTyQYpixM_eXR3FgmiA",
         "reload": false,
         "type": "onReset",
       },
@@ -581,10 +581,10 @@ test("sync mutations", async () => {
         "rows": [
           {
             "appOwnerEncryptionKey": uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18],
-            "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
+            "appOwnerId": "Gm2rxDYibpjp9MLQYgnXOw",
             "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
             "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
-            "clock": "1970-01-01T00:00:00.001Z-0000-56d197b36fa090cb",
+            "clock": "1970-01-01T00:00:00.001Z-0000-80ebbce6ff52c923",
           },
         ],
       },
@@ -593,18 +593,18 @@ test("sync mutations", async () => {
         "rows": [
           {
             "column": "createdAt",
-            "id": uint8:[182,94,81,103,137,179,215,101,153,253,36,45,152,43,243,232],
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
+            "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
             "table": "testTable",
-            "timestamp": uint8:[0,0,0,0,0,1,0,0,86,209,151,179,111,160,144,203],
+            "timestamp": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
             "value": "1970-01-01T00:00:00.001Z",
           },
           {
             "column": "name",
-            "id": uint8:[182,94,81,103,137,179,215,101,153,253,36,45,152,43,243,232],
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
+            "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
             "table": "testTable",
-            "timestamp": uint8:[0,0,0,0,0,1,0,0,86,209,151,179,111,160,144,203],
+            "timestamp": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
             "value": "sync data",
           },
         ],
@@ -614,7 +614,7 @@ test("sync mutations", async () => {
         "rows": [
           {
             "createdAt": "1970-01-01T00:00:00.001Z",
-            "id": "tl5RZ4mz12WZ_SQtmCvz6",
+            "id": "vrsFUEINHwzXISNe_H15dg",
             "isDeleted": null,
             "name": "sync data",
             "updatedAt": "1970-01-01T00:00:00.001Z",
@@ -630,11 +630,11 @@ test("sync mutations", async () => {
         "rows": [
           {
             "c": 1,
-            "h1": 194164930225761,
-            "h2": 119152584474333,
+            "h1": 129512733105875,
+            "h2": 267434249476759,
             "l": 2,
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
-            "t": uint8:[0,0,0,0,0,1,0,0,86,209,151,179,111,160,144,203],
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
+            "t": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
           },
         ],
       },
@@ -654,7 +654,7 @@ test("sync mutations", async () => {
                 "value": [
                   {
                     "createdAt": "1970-01-01T00:00:00.001Z",
-                    "id": "tl5RZ4mz12WZ_SQtmCvz6",
+                    "id": "vrsFUEINHwzXISNe_H15dg",
                     "isDeleted": null,
                     "name": "sync data",
                     "updatedAt": "1970-01-01T00:00:00.001Z",
@@ -665,11 +665,11 @@ test("sync mutations", async () => {
             "query": "["select * from \\"testTable\\" where \\"isDeleted\\" is null",[],[]]",
           },
         ],
-        "tabId": "LhGnhts9rNnUeri8bzhS5",
+        "tabId": "T-vftdB4K_reh6yT2RUm8w",
         "type": "onQueryPatches",
       },
       {
-        "tabId": "LhGnhts9rNnUeri8bzhS5",
+        "tabId": "T-vftdB4K_reh6yT2RUm8w",
         "type": "refreshQueries",
       },
     ]
@@ -706,10 +706,10 @@ test("sync mutations", async () => {
         "rows": [
           {
             "appOwnerEncryptionKey": uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18],
-            "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
+            "appOwnerId": "Gm2rxDYibpjp9MLQYgnXOw",
             "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
             "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
-            "clock": "1970-01-01T00:00:00.001Z-0001-56d197b36fa090cb",
+            "clock": "1970-01-01T00:00:00.001Z-0001-80ebbce6ff52c923",
           },
         ],
       },
@@ -718,26 +718,26 @@ test("sync mutations", async () => {
         "rows": [
           {
             "column": "createdAt",
-            "id": uint8:[182,94,81,103,137,179,215,101,153,253,36,45,152,43,243,232],
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
+            "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
             "table": "testTable",
-            "timestamp": uint8:[0,0,0,0,0,1,0,0,86,209,151,179,111,160,144,203],
+            "timestamp": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
             "value": "1970-01-01T00:00:00.001Z",
           },
           {
             "column": "name",
-            "id": uint8:[182,94,81,103,137,179,215,101,153,253,36,45,152,43,243,232],
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
+            "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
             "table": "testTable",
-            "timestamp": uint8:[0,0,0,0,0,1,0,0,86,209,151,179,111,160,144,203],
+            "timestamp": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
             "value": "sync data",
           },
           {
             "column": "name",
-            "id": uint8:[182,94,81,103,137,179,215,101,153,253,36,45,152,43,243,232],
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
+            "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
             "table": "testTable",
-            "timestamp": uint8:[0,0,0,0,0,1,0,1,86,209,151,179,111,160,144,203],
+            "timestamp": uint8:[0,0,0,0,0,1,0,1,128,235,188,230,255,82,201,35],
             "value": "updated data",
           },
         ],
@@ -747,7 +747,7 @@ test("sync mutations", async () => {
         "rows": [
           {
             "createdAt": "1970-01-01T00:00:00.001Z",
-            "id": "tl5RZ4mz12WZ_SQtmCvz6",
+            "id": "vrsFUEINHwzXISNe_H15dg",
             "isDeleted": null,
             "name": "updated data",
             "updatedAt": "1970-01-01T00:00:00.001Z",
@@ -763,19 +763,19 @@ test("sync mutations", async () => {
         "rows": [
           {
             "c": 1,
-            "h1": 194164930225761,
-            "h2": 119152584474333,
+            "h1": 129512733105875,
+            "h2": 267434249476759,
             "l": 2,
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
-            "t": uint8:[0,0,0,0,0,1,0,0,86,209,151,179,111,160,144,203],
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
+            "t": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
           },
           {
             "c": 1,
-            "h1": 192963511622877,
-            "h2": 206380938777523,
+            "h1": 112724284071995,
+            "h2": 221257483641481,
             "l": 1,
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
-            "t": uint8:[0,0,0,0,0,1,0,1,86,209,151,179,111,160,144,203],
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
+            "t": uint8:[0,0,0,0,0,1,0,1,128,235,188,230,255,82,201,35],
           },
         ],
       },
@@ -794,7 +794,7 @@ test("sync mutations", async () => {
                 "value": [
                   {
                     "createdAt": "1970-01-01T00:00:00.001Z",
-                    "id": "tl5RZ4mz12WZ_SQtmCvz6",
+                    "id": "vrsFUEINHwzXISNe_H15dg",
                     "isDeleted": null,
                     "name": "updated data",
                     "updatedAt": "1970-01-01T00:00:00.001Z",
@@ -805,11 +805,11 @@ test("sync mutations", async () => {
             "query": "["select * from \\"testTable\\" where \\"isDeleted\\" is null",[],[]]",
           },
         ],
-        "tabId": "LhGnhts9rNnUeri8bzhS5",
+        "tabId": "T-vftdB4K_reh6yT2RUm8w",
         "type": "onQueryPatches",
       },
       {
-        "tabId": "LhGnhts9rNnUeri8bzhS5",
+        "tabId": "T-vftdB4K_reh6yT2RUm8w",
         "type": "refreshQueries",
       },
     ]
@@ -846,10 +846,10 @@ test("sync mutations", async () => {
         "rows": [
           {
             "appOwnerEncryptionKey": uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18],
-            "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
+            "appOwnerId": "Gm2rxDYibpjp9MLQYgnXOw",
             "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
             "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
-            "clock": "1970-01-01T00:00:00.001Z-0002-56d197b36fa090cb",
+            "clock": "1970-01-01T00:00:00.001Z-0002-80ebbce6ff52c923",
           },
         ],
       },
@@ -858,34 +858,34 @@ test("sync mutations", async () => {
         "rows": [
           {
             "column": "createdAt",
-            "id": uint8:[182,94,81,103,137,179,215,101,153,253,36,45,152,43,243,232],
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
+            "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
             "table": "testTable",
-            "timestamp": uint8:[0,0,0,0,0,1,0,0,86,209,151,179,111,160,144,203],
+            "timestamp": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
             "value": "1970-01-01T00:00:00.001Z",
           },
           {
             "column": "name",
-            "id": uint8:[182,94,81,103,137,179,215,101,153,253,36,45,152,43,243,232],
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
+            "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
             "table": "testTable",
-            "timestamp": uint8:[0,0,0,0,0,1,0,0,86,209,151,179,111,160,144,203],
+            "timestamp": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
             "value": "sync data",
           },
           {
             "column": "name",
-            "id": uint8:[182,94,81,103,137,179,215,101,153,253,36,45,152,43,243,232],
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
+            "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
             "table": "testTable",
-            "timestamp": uint8:[0,0,0,0,0,1,0,1,86,209,151,179,111,160,144,203],
+            "timestamp": uint8:[0,0,0,0,0,1,0,1,128,235,188,230,255,82,201,35],
             "value": "updated data",
           },
           {
             "column": "isDeleted",
-            "id": uint8:[182,94,81,103,137,179,215,101,153,253,36,45,152,43,243,232],
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
+            "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
             "table": "testTable",
-            "timestamp": uint8:[0,0,0,0,0,1,0,2,86,209,151,179,111,160,144,203],
+            "timestamp": uint8:[0,0,0,0,0,1,0,2,128,235,188,230,255,82,201,35],
             "value": 1,
           },
         ],
@@ -895,7 +895,7 @@ test("sync mutations", async () => {
         "rows": [
           {
             "createdAt": "1970-01-01T00:00:00.001Z",
-            "id": "tl5RZ4mz12WZ_SQtmCvz6",
+            "id": "vrsFUEINHwzXISNe_H15dg",
             "isDeleted": 1,
             "name": "updated data",
             "updatedAt": "1970-01-01T00:00:00.001Z",
@@ -911,27 +911,27 @@ test("sync mutations", async () => {
         "rows": [
           {
             "c": 1,
-            "h1": 194164930225761,
-            "h2": 119152584474333,
+            "h1": 129512733105875,
+            "h2": 267434249476759,
             "l": 2,
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
-            "t": uint8:[0,0,0,0,0,1,0,0,86,209,151,179,111,160,144,203],
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
+            "t": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
           },
           {
             "c": 1,
-            "h1": 192963511622877,
-            "h2": 206380938777523,
+            "h1": 112724284071995,
+            "h2": 221257483641481,
             "l": 1,
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
-            "t": uint8:[0,0,0,0,0,1,0,1,86,209,151,179,111,160,144,203],
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
+            "t": uint8:[0,0,0,0,0,1,0,1,128,235,188,230,255,82,201,35],
           },
           {
             "c": 1,
-            "h1": 232194233462575,
-            "h2": 97699155513514,
+            "h1": 16701667325350,
+            "h2": 194980779631109,
             "l": 1,
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56],
-            "t": uint8:[0,0,0,0,0,1,0,2,86,209,151,179,111,160,144,203],
+            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
+            "t": uint8:[0,0,0,0,0,1,0,2,128,235,188,230,255,82,201,35],
           },
         ],
       },
@@ -953,11 +953,11 @@ test("sync mutations", async () => {
             "query": "["select * from \\"testTable\\" where \\"isDeleted\\" is null",[],[]]",
           },
         ],
-        "tabId": "LhGnhts9rNnUeri8bzhS5",
+        "tabId": "T-vftdB4K_reh6yT2RUm8w",
         "type": "onQueryPatches",
       },
       {
-        "tabId": "LhGnhts9rNnUeri8bzhS5",
+        "tabId": "T-vftdB4K_reh6yT2RUm8w",
         "type": "refreshQueries",
       },
     ]
@@ -965,7 +965,7 @@ test("sync mutations", async () => {
 
   worker.postMessage({
     type: "reset",
-    onCompleteId: testNanoIdLib.nanoid() as CallbackId,
+    onCompleteId: createId(testDeps) as CallbackId,
     reload: false,
   });
 
@@ -974,7 +974,7 @@ test("sync mutations", async () => {
   expect(workerOutput.splice(0)).toMatchInlineSnapshot(`
     [
       {
-        "onCompleteId": "pXftCAjUskTmno2dqqyjQ",
+        "onCompleteId": "Jbxb-ucbVhZdFj5e3LpT9Q",
         "reload": false,
         "type": "onReset",
       },
@@ -1021,7 +1021,7 @@ describe("WebSocket", () => {
     expect(webSocket.sentMessages).toMatchInlineSnapshot(
       `
       [
-        uint8:[0,26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,56,0,0,1,0,1,2,1,5,0,1,4,201,7,123,137,165,198,188,1],
+        uint8:[0,26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59,0,0,1,0,1,2,1,5,0,1,2,0,125,85,114,123,39,28,1],
       ]
     `,
     );

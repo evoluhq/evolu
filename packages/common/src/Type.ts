@@ -46,9 +46,8 @@ import { utf8ToBytes } from "@noble/ciphers/utils.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import * as bip39 from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
-import { assert } from "./Assert.js";
 import type { Brand } from "./Brand.js";
-import { NanoIdLibDep } from "./NanoId.js";
+import type { RandomBytesDep } from "./Crypto.js";
 import { isPlainObject } from "./Object.js";
 import { err, getOrThrow, ok, Result, trySync } from "./Result.js";
 import { safelyStringifyUnknownValue } from "./String.js";
@@ -1180,27 +1179,10 @@ export type UrlSafeString = typeof UrlSafeString.Type;
 export type UrlSafeStringError = typeof UrlSafeString.Error;
 
 /**
- * Canonical Base64URL string – exactly the output of
- * {@link uint8ArrayToBase64Url}.
+ * Base64Url without padding.
  *
- * Validation is a decode + re-encode round trip:
- *
- * - Decode with {@link base64UrlToUint8Array}
- * - Re-encode with {@link uint8ArrayToBase64Url}
- * - Accept only if the result is identical (canonical form)
- *
- * No padding, URL-safe alphabet, and stable round trip are thus guaranteed.
- *
- * ### Example
- *
- * ```ts
- * const bytes = new Uint8Array([1, 2, 3]);
- * const encoded = uint8ArrayToBase64Url(bytes);
- * const result = Base64Url.from(encoded);
- * if (result.ok) {
- *   const back = base64UrlToUint8Array(result.value);
- * }
- * ```
+ * Encode with {@link uint8ArrayToBase64Url}, decode with
+ * {@link base64UrlToUint8Array}.
  *
  * @category String
  */
@@ -1208,27 +1190,52 @@ export const Base64Url = brand(
   "Base64Url",
   String,
   (value: string): Result<string, Base64UrlError> => {
+    // Round-trip validation ensures consistency across different base64url
+    // implementations (Node.js Buffer, native browser API, manual fallback).
+    // Only strings that decode and encode identically are accepted.
+    let roundTrip;
     try {
-      const reEncoded = uint8ArrayToBase64Url(
+      roundTrip = uint8ArrayToBase64Url(
         base64UrlToUint8Array(value as Base64Url),
       );
-      return reEncoded === value
-        ? ok(value)
-        : err<Base64UrlError>({ type: "Base64Url", value });
     } catch {
-      return err<Base64UrlError>({ type: "Base64Url", value });
+      //
     }
+    return roundTrip === value
+      ? ok(value)
+      : err<Base64UrlError>({ type: "Base64Url", value });
   },
 );
 export type Base64Url = typeof Base64Url.Type;
 export interface Base64UrlError extends TypeError<"Base64Url"> {}
 
 export const formatBase64UrlError = createTypeErrorFormatter<Base64UrlError>(
-  (error) => `Value ${error.value} is not a valid Base64Url string`,
+  (error) => `Value ${error.value} is not a valid Base64Url string.`,
 );
 
 const hasNodeBuffer = typeof globalThis.Buffer !== "undefined";
 const base64UrlOptions = { alphabet: "base64url", omitPadding: true };
+
+/** Encodes a Uint8Array to a {@link Base64Url} string. */
+export const uint8ArrayToBase64Url: (bytes: Uint8Array) => Base64Url =
+  hasNodeBuffer
+    ? (bytes: Uint8Array) =>
+        globalThis.Buffer.from(bytes).toString("base64url") as Base64Url
+    : // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      typeof (globalThis.Uint8Array.prototype as any)?.toBase64 !== "undefined"
+      ? (bytes: Uint8Array) =>
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+          (bytes as any).toBase64(base64UrlOptions) as Base64Url
+      : (bytes: Uint8Array) => {
+          const binaryString = Array.from(bytes, (byte) =>
+            globalThis.String.fromCodePoint(byte),
+          ).join("");
+          const base64 = globalThis.btoa(binaryString);
+          return base64
+            .replace(/\+/g, "-")
+            .replace(/\//g, "_")
+            .replace(/=/g, "") as Base64Url;
+        };
 
 /** Decodes a {@link Base64Url} string to a Uint8Array. */
 export const base64UrlToUint8Array: (str: Base64Url) => Uint8Array =
@@ -1254,27 +1261,6 @@ export const base64UrlToUint8Array: (str: Base64Url) => Uint8Array =
           return globalThis.Uint8Array.from(binaryString, (c) =>
             c.charCodeAt(0),
           );
-        };
-
-/** Encodes a Uint8Array to a {@link Base64Url} string. */
-export const uint8ArrayToBase64Url: (bytes: Uint8Array) => Base64Url =
-  hasNodeBuffer
-    ? (bytes: Uint8Array) =>
-        globalThis.Buffer.from(bytes).toString("base64url") as Base64Url
-    : // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      typeof (globalThis.Uint8Array.prototype as any)?.toBase64 !== "undefined"
-      ? (bytes: Uint8Array) =>
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-          (bytes as any).toBase64(base64UrlOptions) as Base64Url
-      : (bytes: Uint8Array) => {
-          const binaryString = Array.from(bytes, (byte) =>
-            globalThis.String.fromCodePoint(byte),
-          ).join("");
-          const base64 = globalThis.btoa(binaryString);
-          return base64
-            .replace(/\+/g, "-")
-            .replace(/\//g, "_")
-            .replace(/=/g, "") as Base64Url;
         };
 
 /**
@@ -1307,15 +1293,6 @@ export type SimpleName = typeof SimpleName.Type;
 export interface SimpleNameError extends TypeError<"SimpleName"> {}
 
 /**
- * Default NanoId.
- *
- * @category String
- */
-export const NanoId = regex("NanoId", /^[A-Za-z0-9_-]{21}$/)(String);
-export type NanoId = typeof NanoId.Type;
-export type NanoIdError = typeof NanoId.Error;
-
-/**
  * Trimmed string between 8 and 64 characters, branded as `SimplePassword`.
  *
  * @category String
@@ -1338,17 +1315,44 @@ export const formatSimplePasswordError = (
   );
 
 /**
- * Globally unique identifier using NanoID.
+ * Globally unique identifier.
  *
- * A 21-character string generated by the NanoID library using the URL-safe
- * alphabet `A-Za-z0-9_-`.
+ * **Evolu Id** is 16 random bytes from a cryptographically secure random
+ * generator, encoded as 22-character Base64Url string. This provides strong
+ * collision resistance for distributed ID generation.
+ *
+ * ### Design Rationale
+ *
+ * Why Evolu Id over alternatives:
+ *
+ * - **NanoID**: No standard binary serialization format, and uses only ~126 bits
+ *   of entropy (21 characters from 64-symbol alphabet) compared to Evolu Id's
+ *   128 bits.
+ * - **UUID (v4)**: String format is 36 characters (with hyphens) compared to
+ *   Evolu Id's 22 characters. While UUIDs can be stored as 16 bytes, their
+ *   standard string representation is verbose.
+ * - **UUID v7**: Includes timestamp in the ID, which leaks information about when
+ *   data was created. This is a privacy concern for local-first applications
+ *   where creation time must remain private.
+ *
+ * Evolu Id provides 128 bits of entropy, compact string representation (22
+ * characters), standard and native string serialization (Base64Url), and no
+ * privacy leaks.
  *
  * @category String
  */
-export const Id = regex("Id", /^[A-Za-z0-9_-]{21}$/)(String);
+export const Id = brand("Id", String, (value) =>
+  value.length === 22 && Base64Url.fromParent(value).ok
+    ? ok(value)
+    : err<IdError>({ type: "Id", value }),
+);
 export type Id = typeof Id.Type;
 
-export const idTypeValueLength = 21;
+export interface IdError extends TypeError<"Id"> {}
+
+export const formatIdError = createTypeErrorFormatter<IdError>(
+  (error) => `Value ${error.value} is not a valid Id.`,
+);
 
 /**
  * Creates an {@link Id}.
@@ -1364,16 +1368,19 @@ export const idTypeValueLength = 21;
  * ```
  */
 export const createId = <B extends string = never>(
-  deps: NanoIdLibDep,
+  deps: RandomBytesDep,
 ): [B] extends [never] ? Id : Id & Brand<B> =>
-  deps.nanoIdLib.nanoid() as [B] extends [never] ? Id : Id & Brand<B>;
+  uint8ArrayToBase64Url(deps.randomBytes.create(16)) as unknown as [B] extends [
+    never,
+  ]
+    ? Id
+    : Id & Brand<B>;
 
 /**
  * Creates an {@link Id} from a string using SHA-256.
  *
- * Evolu table IDs must follow a fixed 21-character NanoID format. When
- * integrating with external systems that use different ID formats, use this
- * function to convert external IDs into valid Evolu IDs.
+ * When integrating with external systems that use different ID formats, use
+ * this function to convert external IDs into valid Evolu IDs.
  *
  * In Evolu's CRDT, the ID serves as the unique identifier for conflict
  * resolution across distributed clients. When multiple clients create records
@@ -1404,47 +1411,16 @@ export const createIdFromString = <B extends string = never>(
   value: string,
 ): [B] extends [never] ? Id : Id & Brand<B> => {
   const hash = sha256(utf8ToBytes(value));
-  const id = createIdFromHash(hash);
+  // Take first 16 bytes of hash and convert to Id
+  const id = idBytesToId(hash.slice(0, 16) as IdBytes);
 
   return id as [B] extends [never] ? Id : Id & Brand<B>;
 };
 
 /**
- * Creates an {@link Id} from hash data.
+ * Creates a branded {@link Id} Type for a table's primary key.
  *
- * Takes the first 16 bytes of hash data, converts to {@link IdBytes}, then to a
- * 21-character {@link Id} using Base64Url encoding. This provides consistent ID
- * generation from cryptographic hashes.
- *
- * ### Example
- *
- * ```ts
- * const hash = sha256(utf8ToBytes("hello"));
- * const id = createIdFromHash(hash);
- * ```
- */
-export const createIdFromHash = (hash: Uint8Array): Id => {
-  assert(
-    hash.length >= 16,
-    `Hash data must be at least 16 bytes, got ${hash.length}`,
-  );
-
-  const idBytesBytes = hash.slice(0, idBytesTypeValueLength);
-
-  // Ensure last 2 bits are zero for valid IdBytes format
-  idBytesBytes[15] &= 0b11111100;
-
-  /**
-   * Type assertion is safe: IdBytes requires exactly 16 bytes with last 2 bits
-   * zero. We guarantee both constraints programmatically. This format is stable
-   * and cannot change without breaking existing data/protocol compatibility.
-   */
-  const idBytes = idBytesBytes as IdBytes;
-  return idBytesToId(idBytes);
-};
-
-/**
- * Type Factory to create branded {@link Id} Type for a specific table.
+ * The table name becomes an additional brand for type safety.
  *
  * ### Example
  *
@@ -1456,19 +1432,19 @@ export const createIdFromHash = (hash: Uint8Array): Id => {
  *
  * @category String
  */
-export const id = <Table extends TypeName>(table: Table): IdType<Table> => {
-  const fromParent = (value: string) => {
-    const idResult = Id.fromParent(value);
-    if (!idResult.ok) {
-      return err<IdError<Table>>({ type: "Id", value, table });
-    }
-    return ok(idResult.value as Id & Brand<Table>);
-  };
-
+export const id = <Table extends TypeName>(table: Table): TableId<Table> => {
   const fromUnknown = (value: unknown) => {
     const parentResult = String.fromUnknown(value);
     if (!parentResult.ok) return parentResult;
     return fromParent(parentResult.value);
+  };
+
+  const fromParent = (value: string) => {
+    const idResult = Id.fromParent(value);
+    if (!idResult.ok) {
+      return err<TableIdError<Table>>({ type: "TableId", value, table });
+    }
+    return ok(idResult.value as Id & Brand<Table>);
   };
 
   return {
@@ -1477,53 +1453,40 @@ export const id = <Table extends TypeName>(table: Table): IdType<Table> => {
   };
 };
 
-export interface IdType<Table extends TypeName>
+export interface TableId<Table extends TypeName>
   extends Type<
     "Id",
     string & Brand<"Id"> & Brand<Table>,
     string,
-    IdError<Table>,
+    TableIdError<Table>,
     string,
     StringError
   > {
   table: Table;
 }
 
-export interface IdError<Table extends TypeName = TypeName>
-  extends TypeError<"Id"> {
+export interface TableIdError<Table extends TypeName = TypeName>
+  extends TypeError<"TableId"> {
   readonly table: Table;
 }
 
-export const formatIdError = createTypeErrorFormatter<IdError>(
+export const formatTableIdError = createTypeErrorFormatter<TableIdError>(
   (error) => `Invalid ${error.type} table Id: ${error.value}`,
 );
 
 /** Binary representation of an {@link Id}. */
-export const IdBytes = brand("IdBytes", Uint8Array, (value) =>
-  // A IdBytes is exactly 16 bytes (128 bits) representing a 21-character Id (126
-  // bits of entropy). The validation ensures the last 2 bits are zero, which
-  // guarantees lossless conversion between Id and IdBytes formats.
-  value.length === 16 && (value[15] & 0b11) === 0
-    ? ok(value)
-    : err<IdBytesError>({ type: "IdBytes", value }),
-);
+export const IdBytes = brand("IdBytes", length(16)(Uint8Array));
 export type IdBytes = typeof IdBytes.Type;
-
-export interface IdBytesError extends TypeError<"IdBytes"> {}
-
-export const formatIdBytesError = createTypeErrorFormatter<IdBytesError>(
-  (error) => `Invalid IdBytes: ${error.value}`,
-);
 
 export const idBytesTypeValueLength = 16 as NonNegativeInt;
 
 export const idToIdBytes = (id: Id): IdBytes =>
-  // Add "A" to make 22 chars so Base64URL decodes to exactly 16 bytes.
-  base64UrlToUint8Array((id + "A") as Base64Url) as IdBytes;
+  // Id is Base64Url (validated by Id.from), cast is safe
+  base64UrlToUint8Array(id as unknown as Base64Url) as IdBytes;
 
 export const idBytesToId = (idBytes: IdBytes): Id =>
-  // Remove padding - 16 bytes encode to 22 chars, Id is 21 chars.
-  uint8ArrayToBase64Url(idBytes).slice(0, 21) as Id;
+  // Base64Url encoding of 16 bytes always produces valid Id (22 chars)
+  uint8ArrayToBase64Url(idBytes) as unknown as Id;
 
 /**
  * Positive number.
@@ -3632,9 +3595,9 @@ export type TypeErrors<ExtraErrors extends TypeError = never> =
   | LengthError
   | MnemonicError
   | RegexError
-  | NanoIdError
   | SimplePasswordError
   | IdError
+  | TableIdError
   | PositiveError
   | NegativeError
   | NonPositiveError
@@ -3792,6 +3755,8 @@ export const createFormatTypeError = <ExtraErrors extends TypeError = never>(
         return formatRegexError(error);
       case "Id":
         return formatIdError(error);
+      case "TableId":
+        return formatTableIdError(error);
       case "Positive":
         return formatPositiveError(error);
       case "Negative":

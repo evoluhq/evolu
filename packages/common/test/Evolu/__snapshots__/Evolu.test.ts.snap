@@ -110,10 +110,10 @@ exports[`externalAppOwner should use provided owner 1`] = `
       "rows": [
         {
           "appOwnerEncryptionKey": uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18],
-          "appOwnerId": "Gm2rxDYibpjp9MLQYgnXO",
+          "appOwnerId": "Gm2rxDYibpjp9MLQYgnXOw",
           "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
           "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
-          "clock": "1970-01-01T00:00:00.000Z-0000-7860ff5ffa4d7d84",
+          "clock": "1970-01-01T00:00:00.000Z-0000-f58125f4999a7fb1",
         },
       ],
     },

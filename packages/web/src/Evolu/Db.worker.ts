@@ -1,6 +1,5 @@
 import {
   createConsole,
-  createNanoIdLib,
   createRandom,
   createRandomBytes,
   createTime,
@@ -14,7 +13,6 @@ const dbWorker = createDbWorkerForPlatform({
   console: createConsole(),
   createSqliteDriver: createWasmSqliteDriver,
   createWebSocket,
-  nanoIdLib: createNanoIdLib(),
   random: createRandom(),
   randomBytes: createRandomBytes(),
   time: createTime(),

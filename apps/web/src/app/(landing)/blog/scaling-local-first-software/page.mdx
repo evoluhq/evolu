@@ -349,7 +349,7 @@ Let’s summarize why I believe Evolu can scale:
 
 - **Built on SQLite**: Evolu isn't a custom binary format or even a JSON. It builds on battle-tested SQL. That means no need to load all data into memory, no complex decoding logic—just fast, indexed queries with minimal overhead.
 
-- **Minimal and understandable**: The code is (hopefully) simple enough for anyone to read, with many tests. Evolu keeps dependencies to a minimum—just [SQLite](https://sqlite.org/), [Kysely](https://github.com/kysely-org/kysely), [Msgpackr](https://github.com/kriszyp/msgpackr), [Nanoid](https://github.com/ai/nanoid), and cryptographic utilities from [Paulmillr](https://paulmillr.com/). All libraries used are zero-dependency.
+- **Minimal and understandable**: The code is (hopefully) simple enough for anyone to read, with many tests. Evolu keeps dependencies to a minimum—just [SQLite](https://sqlite.org/), [Kysely](https://github.com/kysely-org/kysely), [Msgpackr](https://github.com/kriszyp/msgpackr), and cryptographic utilities from [Paulmillr](https://paulmillr.com/). All libraries used are zero-dependency.
 
 - **Range-Based Set Reconciliation**: Evolu uses RBSR, which scales logarithmically with data size. From Doug’s [article](https://logperiodic.com/rbsr.html) on Negentropy:
 

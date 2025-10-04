@@ -16,7 +16,6 @@ import {
 import { eqArrayNumber } from "../Eq.js";
 import { createTransferableError, TransferableError } from "../Error.js";
 import { constFalse } from "../Function.js";
-import { NanoIdLibDep } from "../NanoId.js";
 import { objectToEntries } from "../Object.js";
 import { RandomDep } from "../Random.js";
 import { createRefCountedResourceManager } from "../RefCountedResourceManager.js";
@@ -147,7 +146,6 @@ export const createSync =
     deps: ClockDep &
       ConsoleDep &
       CreateWebSocketDep &
-      NanoIdLibDep &
       PostMessageDep &
       RandomBytesDep &
       RandomDep &
@@ -436,7 +434,6 @@ const createClientStorage =
   (
     deps: ClockDep &
       GetSyncOwnerDep &
-      NanoIdLibDep &
       RandomDep &
       SqliteDep &
       SymmetricCryptoDep &

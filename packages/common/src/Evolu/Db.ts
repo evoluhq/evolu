@@ -12,7 +12,6 @@ import {
   SymmetricCryptoDecryptError,
 } from "../Crypto.js";
 import { TransferableError } from "../Error.js";
-import { NanoIdLibDep } from "../NanoId.js";
 import { objectToEntries } from "../Object.js";
 import { RandomDep } from "../Random.js";
 import { ok, Result } from "../Result.js";
@@ -275,7 +274,6 @@ export type DbWorkerOutput =
 export type DbWorkerPlatformDeps = ConsoleDep &
   CreateSqliteDriverDep &
   CreateWebSocketDep &
-  NanoIdLibDep &
   RandomBytesDep &
   RandomDep &
   TimeDep;

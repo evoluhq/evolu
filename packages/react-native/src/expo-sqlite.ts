@@ -1,6 +1,5 @@
 import {
   createConsole,
-  createNanoIdLib,
   createRandom,
   createRandomBytes,
   createTime,
@@ -8,10 +7,10 @@ import {
 } from "@evolu/common";
 
 import {
-  ReloadApp,
   CreateDbWorker,
   createDbWorkerForPlatform,
   EvoluDeps,
+  ReloadApp,
 } from "@evolu/common/evolu";
 
 import * as Expo from "expo";
@@ -22,17 +21,16 @@ import { polyfillHermes } from "./utils/Hermes.js";
 polyfillHermes();
 
 const console = createConsole();
-const nanoIdLib = createNanoIdLib();
 const time = createTime();
+const randomBytes = createRandomBytes();
 
 const createDbWorker: CreateDbWorker = () =>
   createDbWorkerForPlatform({
     console,
     createSqliteDriver: createExpoSqliteDriver,
     createWebSocket,
-    nanoIdLib,
     random: createRandom(),
-    randomBytes: createRandomBytes(),
+    randomBytes,
     time,
   });
 
@@ -43,7 +41,7 @@ const reloadApp: ReloadApp = () => {
 export const evoluReactNativeDeps: EvoluDeps = {
   console,
   createDbWorker,
-  nanoIdLib,
+  randomBytes,
   reloadApp,
   time,
 };

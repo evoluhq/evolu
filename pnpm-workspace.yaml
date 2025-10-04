@@ -1,5 +1,3 @@
-minimumReleaseAge: 60
-
 packages:
   - apps/*
   - packages/*

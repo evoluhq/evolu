@@ -1,7 +1,6 @@
 import { assert, expect, expectTypeOf, test } from "vitest";
 import { Brand } from "../src/Brand.js";
 import { constVoid, exhaustiveCheck } from "../src/Function.js";
-import { createNanoIdLib } from "../src/NanoId.js";
 import { err, ok } from "../src/Result.js";
 import {
   array,
@@ -10,8 +9,6 @@ import {
   base64UrlToUint8Array,
   Between1And10,
   BigIntError,
-  IdBytes,
-  idBytesToId,
   Boolean,
   BooleanError,
   brand,
@@ -29,7 +26,8 @@ import {
   greaterThanOrEqualTo,
   Id,
   id,
-  IdError,
+  IdBytes,
+  idBytesToId,
   idToIdBytes,
   InferError,
   InferInput,
@@ -102,6 +100,7 @@ import {
   SimplePassword,
   String,
   StringError,
+  TableIdError,
   trimmed,
   TrimmedError,
   TrimmedString,
@@ -119,7 +118,7 @@ import {
   Unknown,
   UrlSafeString,
 } from "../src/Type.js";
-import { testNanoIdLib } from "./_deps.js";
+import { testDeps } from "./_deps.js";
 
 test("Base Types", () => {
   expect(Unknown.from(42)).toEqual({ ok: true, value: 42 });
@@ -747,7 +746,7 @@ test("Base64Url", () => {
   expectTypeOf<typeof Base64Url.Parent>().toEqualTypeOf<string>();
 });
 
-test("base64UrlToUint8Array and uint8ArrayToBase64Url", () => {
+test("base64UrlToUint8Array/uint8ArrayToBase64Url", () => {
   // Test round-trip conversion
   const originalBytes = new Uint8Array([72, 101, 108, 108, 111]); // "Hello"
   const base64String = uint8ArrayToBase64Url(originalBytes);
@@ -921,7 +920,7 @@ test("id", () => {
   const UserId = id("User");
   type UserId = typeof UserId.Type;
 
-  const validId = "abc123def456ghi789jkl"; // 21-character Base64Url-like string
+  const validId = createId(testDeps);
   expect(UserId.from(validId)).toEqual(ok(validId));
   expect(UserId.fromParent(validId)).toEqual(ok(validId));
   expect(UserId.is(validId)).toBe(true);
@@ -931,13 +930,13 @@ test("id", () => {
   const invalidIdCharacters = "invalid!@#$%^&*()";
 
   expect(UserId.from(invalidIdShort)).toEqual(
-    err({ type: "Id", value: invalidIdShort, table: "User" }),
+    err({ type: "TableId", value: invalidIdShort, table: "User" }),
   );
   expect(UserId.from(invalidIdLong)).toEqual(
-    err({ type: "Id", value: invalidIdLong, table: "User" }),
+    err({ type: "TableId", value: invalidIdLong, table: "User" }),
   );
   expect(UserId.from(invalidIdCharacters)).toEqual(
-    err({ type: "Id", value: invalidIdCharacters, table: "User" }),
+    err({ type: "TableId", value: invalidIdCharacters, table: "User" }),
   );
 
   expect(UserId.name).toBe("Id");
@@ -949,7 +948,7 @@ test("id", () => {
     string & Brand<"Id"> & Brand<"User">
   >();
   expectTypeOf<typeof UserId.Input>().toEqualTypeOf<string>();
-  expectTypeOf<typeof UserId.Error>().toEqualTypeOf<IdError<"User">>();
+  expectTypeOf<typeof UserId.Error>().toEqualTypeOf<TableIdError<"User">>();
   expectTypeOf<typeof UserId.Parent>().toEqualTypeOf<string>();
   expectTypeOf<typeof UserId.ParentError>().toEqualTypeOf<StringError>();
 
@@ -959,46 +958,44 @@ test("id", () => {
 });
 
 test("createId", () => {
-  const id = createId({ nanoIdLib: testNanoIdLib });
-  expect(id).toMatchInlineSnapshot(`"LhGnhts9rNnUeri8bzhS5"`);
+  const id = createId(testDeps);
+  expect(id).toMatchInlineSnapshot(`"-7BOfTxCJQQifI1Bv_OErQ"`);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const todoId = createId<"Todo">({ nanoIdLib: testNanoIdLib });
+  const _todoId = createId<"Todo">(testDeps);
 
   expectTypeOf<typeof id>().toEqualTypeOf<Id>();
-  expectTypeOf<typeof todoId>().toEqualTypeOf<Id & Brand<"Todo">>();
+  expectTypeOf<typeof _todoId>().toEqualTypeOf<Id & Brand<"Todo">>();
 });
 
 test("createIdFromString", () => {
   const id = createIdFromString("abc");
   expect(Id.is(id)).toBe(true);
-  expect(id).toMatchInlineSnapshot(`"ungWv48Bz-pBQUDeXa4iI"`);
+  expect(id).toMatchInlineSnapshot(`"ungWv48Bz-pBQUDeXa4iIw"`);
 
   const id1 = createIdFromString("user-api-123");
   const id2 = createIdFromString("user-api-123");
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const todoId = createIdFromString<"Todo">("external-todo-456");
+  const _todoId = createIdFromString<"Todo">("external-todo-456");
 
   expect(id1).toBe(id2); // Deterministic
   expectTypeOf<typeof id1>().toEqualTypeOf<Id>();
-  expectTypeOf<typeof todoId>().toEqualTypeOf<Id & Brand<"Todo">>();
+  expectTypeOf<typeof _todoId>().toEqualTypeOf<Id & Brand<"Todo">>();
 
   const emptyId = createIdFromString("");
   expect(Id.is(emptyId)).toBe(true);
-  expect(emptyId).toHaveLength(21);
+  expect(emptyId).toHaveLength(22);
 
   const longString = "a".repeat(1000);
   const longId = createIdFromString(longString);
   expect(Id.is(longId)).toBe(true);
-  expect(longId).toHaveLength(21);
+  expect(longId).toHaveLength(22);
 
   const specialId = createIdFromString("test!@#$%^&*()_+-={}[]|\\:;\"'<>?,./");
   expect(Id.is(specialId)).toBe(true);
-  expect(specialId).toHaveLength(21);
+  expect(specialId).toHaveLength(22);
 
   const unicodeId = createIdFromString("测试🚀💡");
   expect(Id.is(unicodeId)).toBe(true);
-  expect(unicodeId).toHaveLength(21);
+  expect(unicodeId).toHaveLength(22);
 
   const id3 = createIdFromString("test1");
   const id4 = createIdFromString("test2");
@@ -1006,35 +1003,10 @@ test("createIdFromString", () => {
 });
 
 test("IdBytes/idToIdBytes/idBytesToId", () => {
-  const deps = { nanoIdLib: createNanoIdLib() };
-  for (let i = 0; i < 10000; i++) {
-    const originalId = createId(deps);
-    const idBytes = idToIdBytes(originalId);
-    expect(IdBytes.is(idBytes)).toBe(true);
-    expect(idBytesToId(idBytes)).toBe(originalId);
-  }
-});
-
-test("IdBytes.fromParent with invalid data", () => {
-  const tooShort = new Uint8Array(15);
-  expect(IdBytes.fromParent(tooShort)).toEqual(
-    err({ type: "IdBytes", value: tooShort }),
-  );
-
-  const tooLong = new Uint8Array(17);
-  expect(IdBytes.fromParent(tooLong)).toEqual(
-    err({ type: "IdBytes", value: tooLong }),
-  );
-
-  const invalidBits = new Uint8Array(16);
-  invalidBits[15] = 0b11; // Set last 2 bits to 1
-  expect(IdBytes.fromParent(invalidBits)).toEqual(
-    err({ type: "IdBytes", value: invalidBits }),
-  );
-
-  const valid = new Uint8Array(16);
-  valid[15] = 0b00; // Ensure last 2 bits are zero
-  expect(IdBytes.fromParent(valid)).toEqual(ok(valid));
+  const originalId = createId(testDeps);
+  const idBytes = idToIdBytes(originalId);
+  expect(IdBytes.is(idBytes)).toBe(true);
+  expect(idBytesToId(idBytes)).toBe(originalId);
 });
 
 test("PositiveNumber", () => {

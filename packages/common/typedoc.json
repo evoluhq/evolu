@@ -28,7 +28,6 @@
     "src/Evolu/Storage.ts",
     "src/Function.ts",
     "src/ManyToManyMap.ts",
-    "src/NanoId.ts",
     "src/Number.ts",
     "src/Object.ts",
     "src/Order.ts",

@@ -3,11 +3,10 @@ import { isNonEmptyArray, isNonEmptyReadonlyArray } from "../Array.js";
 import { assert, assertNonEmptyArray } from "../Assert.js";
 import { createCallbackRegistry } from "../CallbackRegistry.js";
 import { ConsoleDep } from "../Console.js";
-import { SymmetricCryptoDecryptError } from "../Crypto.js";
+import { RandomBytesDep, SymmetricCryptoDecryptError } from "../Crypto.js";
 import { eqArrayNumber } from "../Eq.js";
 import { TransferableError } from "../Error.js";
 import { exhaustiveCheck } from "../Function.js";
-import { NanoIdLibDep } from "../NanoId.js";
 import { err, ok, Result } from "../Result.js";
 import { isSqlMutation, SafeSql, SqliteError, SqliteQuery } from "../Sqlite.js";
 import { createStore, StoreSubscribe } from "../Store.js";
@@ -504,8 +503,8 @@ interface InternalEvoluInstance<S extends EvoluSchema = EvoluSchema>
 
 export type EvoluDeps = ConsoleDep &
   CreateDbWorkerDep &
-  NanoIdLibDep &
   Partial<FlushSyncDep> &
+  RandomBytesDep &
   ReloadAppDep &
   TimeDep;
 
