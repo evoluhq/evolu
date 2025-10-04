@@ -2,7 +2,7 @@
  * 🧩 Type-safe runtime types
  *
  * Evolu {@link Type} is like type guard returning typed errors, so we either get
- * a safely typed value or typed errors telling us exactly which validation
+ * a safely typed value or typed errors telling us exactly why validation
  * failed.
  *
  * Evolu Type exists because no existing validation/parsing/transformation
@@ -16,6 +16,39 @@
  * - **No user-land chaining**: Designed with ES pipe operator in mind.
  * - **Selective validation**: Skipping parent Type validations when TypeScript's
  *   type system can be relied upon.
+ *
+ * ### Examples
+ *
+ * ```ts
+ * // Define a branded Type with type alias
+ * const CurrencyCode = brand("CurrencyCode", String, (value) =>
+ *   /^[A-Z]{3}$/.test(value)
+ *     ? ok(value)
+ *     : err<CurrencyCodeError>({ type: "CurrencyCode", value }),
+ * );
+ *
+ * // string & Brand<"CurrencyCode">
+ * type CurrencyCode = typeof CurrencyCode.Type;
+ *
+ * const User = object({
+ *   name: NonEmptyString100,
+ *   age: PositiveNumber,
+ * });
+ *
+ * // For non primitive types, interface is better
+ * interface User extends InferType<typeof User> {}
+ *
+ * // Usage
+ * const result = User.from({ name: "John", age: 30 });
+ * if (result.ok) {
+ *   console.log("Valid user:", result.value);
+ * }
+ * ```
+ *
+ * ### Tip
+ *
+ * If necessary, write `globalThis.String` instead of `String` to avoid naming
+ * clashes with native types.
  *
  * **Design Decision: No Bidirectional Transformations**
  *
@@ -32,12 +65,7 @@
  * **Note:** We may revisit bidirectional transformations in the future if we
  * can design a minimal, 100% safe API that maintains Evolu's simplicity and
  * reliability principles. Remember, other libs do not support typed errors, so
- * their task is much simpler (and they still often have many bugs).
- *
- * ### Tip
- *
- * If necessary, write `globalThis.String` instead of `String` to avoid naming
- * clashes with native types.
+ * their task is simpler.
  *
  * @module
  */
@@ -254,26 +282,61 @@ export interface TypeErrorWithReason<
 
 export type AnyType = Type<any, any, any, any, any, any>;
 
+/**
+ * Extracts the name from a {@link Type}.
+ *
+ * @category Utilities
+ */
 export type InferName<A extends AnyType> =
   A extends Type<infer Name, any, any, any, any, any> ? Name : never;
 
+/**
+ * Extracts the type from a {@link Type}.
+ *
+ * @category Utilities
+ */
 export type InferType<A extends AnyType> =
   A extends Type<any, infer T, any, any, any, any> ? T : never;
 
+/**
+ * Extracts the input type from a {@link Type}.
+ *
+ * @category Utilities
+ */
 export type InferInput<A extends AnyType> =
   A extends Type<any, any, infer Input, any, any, any> ? Input : never;
 
+/**
+ * Extracts the specific error type from a {@link Type}.
+ *
+ * @category Utilities
+ */
 export type InferError<A extends AnyType> =
   A extends Type<any, any, any, infer Error, any, any> ? Error : never;
 
+/**
+ * Extracts the parent type from a {@link Type}.
+ *
+ * @category Utilities
+ */
 export type InferParent<A extends AnyType> =
   A extends Type<any, any, any, any, infer Parent, any> ? Parent : never;
 
+/**
+ * Extracts the parent error type from a {@link Type}.
+ *
+ * @category Utilities
+ */
 export type InferParentError<A extends AnyType> =
   A extends Type<any, any, any, any, any, infer ParentError>
     ? ParentError
     : never;
 
+/**
+ * Extracts all error types (Error | ParentError) from a {@link Type}.
+ *
+ * @category Utilities
+ */
 export type InferErrors<T extends AnyType> =
   T extends Type<any, any, any, infer Error, any, infer ParentError>
     ? Error | ParentError
