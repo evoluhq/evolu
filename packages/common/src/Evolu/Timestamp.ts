@@ -9,6 +9,7 @@ import { err, ok, Result } from "../Result.js";
 import { TimeDep } from "../Time.js";
 import {
   brand,
+  InferType,
   lessThanOrEqualTo,
   NonNegativeInt,
   object,
@@ -122,7 +123,7 @@ export const Timestamp = object({
   counter: Counter,
   nodeId: NodeId,
 });
-export type Timestamp = typeof Timestamp.Type;
+export interface Timestamp extends InferType<typeof Timestamp> {}
 
 /** Equality function for comparing {@link Timestamp}. */
 export const eqTimestamp = createEqObject<Timestamp>({
