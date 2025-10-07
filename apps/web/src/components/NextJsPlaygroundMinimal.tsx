@@ -7,7 +7,7 @@ import {
   kysely,
   MinLengthError,
   Mnemonic,
-  NonEmptyString1000,
+  NonEmptyTrimmedString1000,
   nullOr,
   SimpleName,
   SqliteBoolean,
@@ -25,69 +25,28 @@ import { IconEdit, IconTrash } from "@tabler/icons-react";
 import clsx from "clsx";
 import { FC, Suspense, useState } from "react";
 
-// Define the Evolu schema that describes the database tables and column types.
-// First, define the typed IDs.
+// Evolu schema describes the database tables and column types.
 
 const TodoId = id("Todo");
 type TodoId = typeof TodoId.Type;
 
 const Schema = {
-  _todo: {
-    id: TodoId,
-    title: NonEmptyString1000,
-    isCompleted: nullOr(SqliteBoolean),
-  },
   todo: {
     id: TodoId,
-    title: NonEmptyString1000,
+    title: NonEmptyTrimmedString1000,
     // SQLite doesn't support the boolean type; it uses 0 (false) and 1 (true) instead.
-    // SqliteBoolean provides seamless conversion.
     isCompleted: nullOr(SqliteBoolean),
   },
 };
 
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
+  name: SimpleName.orThrow("evolu-playground-minimal"),
+
   reloadUrl: "/playgrounds/minimal",
-  name: SimpleName.orThrow("evolu-playground-minimal-v2"),
 
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
-    // transports: [],
   }),
-
-  // Indexes are not required for development but are recommended for production.
-  // https://www.evolu.dev/docs/indexes
-  indexes: (create) => [create("todoCreatedAt").on("todo").column("createdAt")],
-
-  // enableLogging: true,
-
-  onMessage: (change, { localOnly }) => {
-    const _id = localOnly.insert("_todo", {
-      title: `Ahoj ${JSON.stringify(change.values)}` as NonEmptyString1000,
-    });
-    // console.log(id);
-
-    if (change.values.title === "fok") {
-      return false;
-    }
-
-    // const result = await evolu.loadQuery(
-    //   evolu.createQuery((db) =>
-    //     db
-    //       .selectFrom("todo")
-    //       .select(["id", "title", "isCompleted"])
-    //       .where("isDeleted", "is not", 1)
-    //       // Filter null value and ensure non-null type.
-    //       .where("title", "is not", null)
-    //       .$narrowType<{ title: kysely.NotNull }>()
-    //       .orderBy("createdAt"),
-    //   ),
-    // );
-
-    // if (message.change.table === 'todo')
-    // message.
-    return true;
-  },
 });
 
 const useEvolu = createUseEvolu(evolu);
@@ -134,36 +93,13 @@ export const NextJsPlaygroundMinimal: FC = () => {
   );
 };
 
-const Button: FC<{
-  title: string;
-  className?: string;
-  onClick: () => void;
-  variant?: "primary" | "secondary";
-}> = ({ title, className, onClick, variant = "secondary" }) => {
-  const baseClasses =
-    "px-3 py-2 text-sm font-medium rounded-lg transition-colors";
-  const variantClasses =
-    variant === "primary"
-      ? "bg-blue-600 text-white hover:bg-blue-700"
-      : "bg-gray-100 text-gray-700 hover:bg-gray-200";
-
-  return (
-    <button
-      className={clsx(baseClasses, variantClasses, className)}
-      onClick={onClick}
-    >
-      {title}
-    </button>
-  );
-};
-
 const Todos: FC = () => {
   const todos = useQuery(todosQuery);
   const { insert } = useEvolu();
   const [newTodoTitle, setNewTodoTitle] = useState("");
 
   const handleAddTodo = () => {
-    if (!newTodoTitle.trim()) return;
+    // if (!newTodoTitle.trim()) return;
 
     const result = insert(
       "todo",
@@ -314,8 +250,8 @@ const OwnerActions: FC = () => {
     <div className="mt-8 rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
       <h2 className="mb-4 text-lg font-medium text-gray-900">Account</h2>
       <p className="mb-4 text-sm text-gray-600">
-        Your todos are stored locally and encrypted. Use your mnemonic to sync
-        across devices.
+        Todos are stored in local SQLite. When you sync across devices, your
+        data is end-to-end encrypted using your mnemonic.
       </p>
 
       <div className="space-y-3">
@@ -346,14 +282,37 @@ const OwnerActions: FC = () => {
             title="Restore from Mnemonic"
             onClick={handleRestoreAppOwnerClick}
           />
+          <Button title="Reset All Data" onClick={handleResetAppOwnerClick} />
           <Button
             title="Download Backup"
             onClick={handleDownloadDatabaseClick}
           />
-          <Button title="Reset All Data" onClick={handleResetAppOwnerClick} />
         </div>
       </div>
     </div>
+  );
+};
+
+const Button: FC<{
+  title: string;
+  className?: string;
+  onClick: () => void;
+  variant?: "primary" | "secondary";
+}> = ({ title, className, onClick, variant = "secondary" }) => {
+  const baseClasses =
+    "px-3 py-2 text-sm font-medium rounded-lg transition-colors";
+  const variantClasses =
+    variant === "primary"
+      ? "bg-blue-600 text-white hover:bg-blue-700"
+      : "bg-gray-100 text-gray-700 hover:bg-gray-200";
+
+  return (
+    <button
+      className={clsx(baseClasses, variantClasses, className)}
+      onClick={onClick}
+    >
+      {title}
+    </button>
   );
 };
 
@@ -363,8 +322,7 @@ const OwnerActions: FC = () => {
  * override the default formatting for specific errors.
  *
  * If you prefer not to reuse built-in error formatters, you can write your own
- * `formatTypeError` function from scratch. See the commented-out example at
- * the end of this file.
+ * `formatTypeError` function from scratch.
  */
 const formatTypeError = createFormatTypeError<
   ValidMutationSizeError | MinLengthError
@@ -378,61 +336,6 @@ const formatTypeError = createFormatTypeError<
       return "This is a developer error, it should not happen 🤨";
     // Overrides a built-in error formatter.
     case "MinLength":
-      return `Minimal length is: ${error.min}`;
+      return `Hey, the minimal length is: ${error.min}`;
   }
 });
-
-// // Note: We only need to specify the errors actually used in the app.
-// type AppErrors =
-//   | ValidMutationSizeError
-//   | StringError
-//   | MinLengthError
-//   | MaxLengthError
-//   | NullError
-//   | IdError
-//   | TrimmedError
-//   | MnemonicError
-//   | LiteralError
-//   // Composite errors
-//   | ObjectError<Record<string, AppErrors>>
-//   | UnionError<AppErrors>;
-
-// const formatTypeError: TypeErrorFormatter<AppErrors> = (error) => {
-//   // In the real code, we would use the createTypeErrorFormatter helper
-//   // that safely stringifies error value.
-//   switch (error.type) {
-//     case "Id":
-//       return `Invalid Id on table: ${error.table}.`;
-//     case "MaxLength":
-//       return `Max length is ${error.max}.`;
-//     case "MinLength":
-//       return `Min length is ${error.min}.`;
-//     case "Mnemonic":
-//       return `Invalid mnemonic: ${String(error.value)}`;
-//     case "Null":
-//       return `Not null`;
-//     case "String":
-//       // We can reuse existing formatter.
-//       return formatStringError(error);
-//     case "Trimmed":
-//       return "Value is not trimmed.";
-//     case "ValidMutationSize":
-//       return "A developer made an error, this should not happen.";
-//     case "Literal":
-//       return formatLiteralError(error);
-//     // Composite Types
-//     case "Union":
-//       return `Union errors: ${error.errors.map(formatTypeError).join(", ")}`;
-//     case "Object": {
-//       if (
-//         error.reason.kind === "ExtraKeys" ||
-//         error.reason.kind === "NotObject"
-//       )
-//         return "A developer made an error, this should not happen.";
-//       const firstError = Object.values(error.reason.errors).find(
-//         (e) => e !== undefined,
-//       )!;
-//       return formatTypeError(firstError);
-//     }
-//   }
-// };
