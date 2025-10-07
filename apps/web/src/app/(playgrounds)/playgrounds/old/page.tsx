@@ -1,10 +1,8 @@
 "use client";
 
 import {
-  timestampBytesToTimestamp,
   createEvolu,
   createFormatTypeError,
-  EvoluConfig,
   FiniteNumber,
   id,
   idToIdBytes,
@@ -20,6 +18,7 @@ import {
   SimpleName,
   SqliteBoolean,
   sqliteTrue,
+  timestampBytesToTimestamp,
   ValidMutationSizeError,
 } from "@evolu/common";
 import {
@@ -101,7 +100,7 @@ const Schema = {
 //   console.log(b);
 // }
 
-const config: EvoluConfig = {
+const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   name: SimpleName.orThrow("evolu-nextjs-example-v200825"),
 
   reloadUrl: "/playgrounds/old",
@@ -124,9 +123,7 @@ const config: EvoluConfig = {
     console.log("onMessage", { message });
     return Promise.resolve(true);
   },
-};
-
-const evolu = createEvolu(evoluReactWebDeps)(Schema, config);
+});
 
 const useEvolu = createUseEvolu(evolu);
 

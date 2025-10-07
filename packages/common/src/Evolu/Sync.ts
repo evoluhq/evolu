@@ -54,6 +54,7 @@ import { MutationChange } from "./Schema.js";
 import {
   CrdtMessage,
   createSqliteStorageBase,
+  DbChange,
   SqliteStorageBase,
   Storage,
 } from "./Storage.js";
@@ -521,14 +522,13 @@ const createClientStorage =
             });
           }
 
-          // Register callback for completion and post processNewMessages to main thread
           const { promise, resolve } =
-            Promise.withResolvers<ReadonlyArray<Timestamp>>();
-          const onCompleteId = deps.writeMessagesCallbackRegistry.register(
-            (approvedTimestamps) => {
-              resolve(approvedTimestamps);
-            },
-          );
+            Promise.withResolvers<
+              readonly [ReadonlyArray<Timestamp>, ReadonlyArray<MutationChange>]
+            >();
+
+          const onCompleteId =
+            deps.writeMessagesCallbackRegistry.register(resolve);
 
           deps.postMessage({
             type: "processNewMessages",
@@ -537,22 +537,31 @@ const createClientStorage =
             onCompleteId,
           });
 
-          const approvedTimestamps = await promise;
+          const [approvedTimestamps, localMutations] = await promise;
 
           const approvedTimestampsSet = new Set(
             approvedTimestamps.map(timestampToTimestampString),
           );
 
-          const approvedMessages = newMessages.filter((message) =>
-            approvedTimestampsSet.has(
+          const acceptedMessages = newMessages.map((message) => {
+            const isApproved = approvedTimestampsSet.has(
               timestampToTimestampString(message.timestamp),
-            ),
-          );
+            );
+            if (isApproved) return message;
+            /**
+             * For non-approved messages, preserve timestamps to prevent re-sync
+             * attempts, but clear values to skip applying their changes.
+             */
+            return {
+              ...message,
+              change: { ...message.change, values: {} },
+            };
+          });
 
           const transaction = deps.sqlite.transaction(() => {
             let clockTimestamp = deps.clock.get();
 
-            for (const message of approvedMessages) {
+            for (const message of acceptedMessages) {
               const nextTimestamp = receiveTimestamp(deps)(
                 clockTimestamp,
                 message.timestamp,
@@ -564,9 +573,15 @@ const createClientStorage =
 
             const applyMessagesResult = applyMessages({ ...deps, storage })(
               owner.id,
-              approvedMessages,
+              acceptedMessages,
             );
             if (!applyMessagesResult.ok) return applyMessagesResult;
+
+            // Apply local mutations atomically with approved messages
+            for (const change of localMutations) {
+              const result = applyLocalOnlyChange(deps)(change);
+              if (!result.ok) return result;
+            }
 
             return deps.clock.save(clockTimestamp);
           });
@@ -642,6 +657,44 @@ type TransportKey = string & Brand<"TransportKey">;
 const createTransportKey = (transportConfig: TransportConfig): TransportKey => {
   return `${transportConfig.type}:${transportConfig.url}` as TransportKey;
 };
+
+export const applyLocalOnlyChange =
+  (deps: SqliteDep & TimeDep) =>
+  (change: MutationChange): Result<void, SqliteError> => {
+    const dbChange: DbChange = {
+      table: change.table,
+      id: change.id,
+      values: change.values,
+    };
+
+    const isDeletion =
+      "isDeleted" in dbChange.values && dbChange.values.isDeleted === 1;
+
+    if (isDeletion) {
+      const result = deps.sqlite.exec(sql`
+        delete from ${sql.identifier(dbChange.table)}
+        where id = ${dbChange.id};
+      `);
+      if (!result.ok) return result;
+    } else {
+      const date = new Date(deps.time.now()).toISOString();
+
+      for (const [column, value] of objectToEntries(dbChange.values)) {
+        const result = deps.sqlite.exec(sql.prepared`
+          insert into ${sql.identifier(dbChange.table)}
+            ("id", ${sql.identifier(column)}, createdAt, updatedAt)
+          values (${dbChange.id}, ${value}, ${date}, ${date})
+          on conflict ("id") do update
+            set
+              ${sql.identifier(column)} = ${value},
+              updatedAt = ${date};
+        `);
+        if (!result.ok) return result;
+      }
+    }
+
+    return ok();
+  };
 
 const applyMessages =
   (deps: ClientStorageDep & ClockDep & RandomDep & SqliteDep) =>

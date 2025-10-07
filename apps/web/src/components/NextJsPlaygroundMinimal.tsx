@@ -32,6 +32,11 @@ const TodoId = id("Todo");
 type TodoId = typeof TodoId.Type;
 
 const Schema = {
+  _todo: {
+    id: TodoId,
+    title: NonEmptyString1000,
+    isCompleted: nullOr(SqliteBoolean),
+  },
   todo: {
     id: TodoId,
     title: NonEmptyString1000,
@@ -56,9 +61,32 @@ const evolu = createEvolu(evoluReactWebDeps)(Schema, {
 
   // enableLogging: true,
 
-  onMessage: (_message) => {
+  onMessage: (change, { localOnly }) => {
+    const _id = localOnly.insert("_todo", {
+      title: `Ahoj ${JSON.stringify(change.values)}` as NonEmptyString1000,
+    });
+    // console.log(id);
+
+    if (change.values.title === "fok") {
+      return false;
+    }
+
+    // const result = await evolu.loadQuery(
+    //   evolu.createQuery((db) =>
+    //     db
+    //       .selectFrom("todo")
+    //       .select(["id", "title", "isCompleted"])
+    //       .where("isDeleted", "is not", 1)
+    //       // Filter null value and ensure non-null type.
+    //       .where("title", "is not", null)
+    //       .$narrowType<{ title: kysely.NotNull }>()
+    //       .orderBy("createdAt"),
+    //   ),
+    // );
+
+    // if (message.change.table === 'todo')
     // message.
-    return Promise.resolve(true);
+    return true;
   },
 });
 

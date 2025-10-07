@@ -12,7 +12,6 @@ import {
   SymmetricCryptoDecryptError,
 } from "../Crypto.js";
 import { TransferableError } from "../Error.js";
-import { objectToEntries } from "../Object.js";
 import { RandomDep } from "../Random.js";
 import { ok, Result } from "../Result.js";
 import {
@@ -55,8 +54,15 @@ import {
   getDbSchema,
   MutationChange,
 } from "./Schema.js";
-import { CrdtMessage, DbChange } from "./Storage.js";
-import { Clock, createClock, createSync, SyncDep, SyncOwner } from "./Sync.js";
+import { CrdtMessage } from "./Storage.js";
+import {
+  applyLocalOnlyChange,
+  Clock,
+  createClock,
+  createSync,
+  SyncDep,
+  SyncOwner,
+} from "./Sync.js";
 import {
   Timestamp,
   TimestampConfig,
@@ -228,6 +234,7 @@ export type DbWorkerInput =
       readonly type: "onProcessNewMessages";
       readonly onCompleteId: CallbackId;
       readonly approved: ReadonlyArray<Timestamp>;
+      readonly localMutations: ReadonlyArray<MutationChange>;
     };
 
 export type DbWorkerOutput =
@@ -299,7 +306,7 @@ export interface PostMessageDep {
 
 export interface WriteMessagesCallbackRegistryDep {
   readonly writeMessagesCallbackRegistry: CallbackRegistry<
-    ReadonlyArray<Timestamp>
+    readonly [ReadonlyArray<Timestamp>, ReadonlyArray<MutationChange>]
   >;
 }
 
@@ -412,7 +419,9 @@ const createDbWorkerDeps =
       if (!result.ok) return result;
 
       const writeMessagesCallbackRegistry =
-        createCallbackRegistry<ReadonlyArray<Timestamp>>(platformDeps);
+        createCallbackRegistry<
+          readonly [ReadonlyArray<Timestamp>, ReadonlyArray<MutationChange>]
+        >(platformDeps);
 
       const sync = createSync({
         ...platformDeps,
@@ -723,49 +732,12 @@ const handlers: Omit<MessageHandlers<DbWorkerInput, DbWorkerDeps>, "init"> = {
   },
 
   onProcessNewMessages: (deps) => (message) => {
-    deps.writeMessagesCallbackRegistry.execute(
-      message.onCompleteId,
+    deps.writeMessagesCallbackRegistry.execute(message.onCompleteId, [
       message.approved,
-    );
+      message.localMutations,
+    ]);
   },
 };
-
-const applyLocalOnlyChange =
-  (deps: SqliteDep & TimeDep) => (change: MutationChange) => {
-    const dbChange: DbChange = {
-      table: change.table,
-      id: change.id,
-      values: change.values,
-    };
-
-    const isDeletion =
-      "isDeleted" in dbChange.values && dbChange.values.isDeleted === 1;
-
-    if (isDeletion) {
-      const result = deps.sqlite.exec(sql`
-        delete from ${sql.identifier(dbChange.table)}
-        where id = ${dbChange.id};
-      `);
-      if (!result.ok) return result;
-    } else {
-      const date = new Date(deps.time.now()).toISOString();
-
-      for (const [column, value] of objectToEntries(dbChange.values)) {
-        const result = deps.sqlite.exec(sql.prepared`
-          insert into ${sql.identifier(dbChange.table)}
-            ("id", ${sql.identifier(column)}, createdAt, updatedAt)
-          values (${dbChange.id}, ${value}, ${date}, ${date})
-          on conflict ("id") do update
-            set
-              ${sql.identifier(column)} = ${value},
-              updatedAt = ${date};
-        `);
-        if (!result.ok) return result;
-      }
-    }
-
-    return ok();
-  };
 
 const loadQueries =
   (deps: GetQueryRowsCacheDep & SqliteDep) =>
