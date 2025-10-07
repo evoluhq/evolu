@@ -1,71 +1,158 @@
 /**
  * 🧩 Type-safe runtime types
  *
- * Evolu {@link Type} is like type guard returning typed errors, so we either get
- * a safely typed value or typed errors telling us exactly why validation
- * failed.
+ * Evolu {@link Type} is like a type guard that returns typed errors (via
+ * {@link Result}) instead of throwing. We either get a safely typed value or a
+ * precise, composable error value telling us exactly why validation failed.
  *
- * Evolu Type exists because no existing validation/parsing/transformation
- * library fully met our needs:
+ * Why another validation library?
  *
- * - **Result-based error handling**: Leveraging {@link Result} instead of throwing
- *   exceptions.
- * - **Typed errors with decoupled formatters**: Avoiding coupling error messages
- *   with validators.
- * - **Consistent constraints**: Enforcing {@link Brand} for all constraints.
- * - **No user-land chaining**: Designed with ES pipe operator in mind.
- * - **Selective validation**: Skipping parent Type validations when TypeScript's
- *   type system can be relied upon.
+ * - **Result-based error handling** – no exceptions for normal control flow.
+ * - **Typed errors with decoupled formatters** – validation logic ≠ user
+ *   messages.
+ * - **Consistent constraints via {@link Brand}** – every constraint becomes part
+ *   of the type.
+ * - **No user-land chaining DSL** – designed with the upcoming ES pipe operator
+ *   in mind.
+ * - **Selective validation** – parent validations are skipped when already proved
+ *   by typing.
+ * - **Simple, top-down implementation** – readable source code from top to bottom
+ *   with no hidden magic; just plain functions and composition.
  *
- * ### Examples
+ * ### Base Types Quick Start
  *
  * ```ts
- * // Define a branded Type with type alias
+ * // Validate unknown values
+ * const value: unknown = "hello";
+ * const stringResult = String.fromUnknown(value);
+ * if (!stringResult.ok) {
+ *   // console.error(formatStringError(stringResult.error));
+ *   return stringResult; // inside a function returning Result<string, _>
+ * }
+ * // Safe branch: value is now string
+ * const upper = stringResult.value.toUpperCase();
+ *
+ * // Type guard style
+ * if (String.is(value)) {
+ *   // narrowed to string
+ * }
+ *
+ * // Composing: arrays & objects
+ * const Numbers = array(Number); // ReadonlyArray<number>
+ * const Point = object({ x: Number, y: Number });
+ *
+ * Numbers.from([1, 2, 3]); // ok
+ * Point.from({ x: 1, y: 2 }); // ok
+ * Point.from({ x: 1, y: "2" }); // err -> nested Number error
+ * ```
+ *
+ * ### Branding Basics
+ *
+ * Branding adds semantic meaning & constraints while preserving the runtime
+ * shape:
+ *
+ * ```ts
  * const CurrencyCode = brand("CurrencyCode", String, (value) =>
  *   /^[A-Z]{3}$/.test(value)
  *     ? ok(value)
  *     : err<CurrencyCodeError>({ type: "CurrencyCode", value }),
  * );
+ * type CurrencyCode = typeof CurrencyCode.Type; // string & Brand<"CurrencyCode">
  *
- * // string & Brand<"CurrencyCode">
- * type CurrencyCode = typeof CurrencyCode.Type;
+ * interface CurrencyCodeError extends TypeError<"CurrencyCode"> {}
  *
+ * const formatCurrencyCodeError =
+ *   createTypeErrorFormatter<CurrencyCodeError>(
+ *     (error) => `Invalid currency code: ${error.value}`,
+ *   );
+ *
+ * const r = CurrencyCode.from("USD"); // ok("USD")
+ * const e = CurrencyCode.from("usd"); // err(...)
+ * ```
+ *
+ * See also reusable brand factories like `minLength`, `maxLength`, `trimmed`,
+ * `positive`, `between`, etc.
+ *
+ * ### Objects & Optional Fields
+ *
+ * ```ts
  * const User = object({
- *   name: NonEmptyString100,
- *   age: PositiveNumber,
+ *   name: NonEmptyTrimmedString100,
+ *   age: optional(PositiveInt),
+ * });
+ * type User = typeof User.Type;
+ *
+ * User.from({ name: "Alice" }); // ok
+ * User.from({ name: "Alice", age: -1 }); // err(PositiveInt)
+ * ```
+ *
+ * ### Deriving JSON String Types
+ *
+ * ```ts
+ * const Todo = object({ id: Id, title: NonEmptyString100 });
+ * const [TodoJson, todoToJson, jsonToTodo] = json(Todo, "TodoJson");
+ * const t: typeof Todo.Type = {
+ *   id: Id.orThrow("AAAAAAAAAAAAAAAAAAAAAA"),
+ *   title: "Hi",
+ * };
+ * const serialized = todoToJson(t); // TodoJson
+ * const roundTrip = jsonToTodo(serialized); // Todo
+ * ```
+ *
+ * ### Error Formatting
+ *
+ * Evolu separates validation logic from human-readable messages. There are two
+ * layers:
+ *
+ * 1. Per-type formatters (e.g. `formatStringError`) – simple, focused, already
+ *    used earlier in the quick start example.
+ * 2. A unified formatter via `createFormatTypeError` – composes all built-in and
+ *    custom errors (including nested composite types) and lets us override
+ *    selected messages.
+ *
+ * #### 1. Per-Type Formatter (recap)
+ *
+ * ```ts
+ * const r = String.fromUnknown(42);
+ * if (!r.ok) console.error(formatStringError(r.error));
+ * ```
+ *
+ * #### 2. Unified Formatter with Overrides
+ *
+ * ```ts
+ * // Override only what we care about; fall back to built-ins for the rest.
+ * const formatTypeError = createFormatTypeError((error) => {
+ *   if (error.type === "MinLength") return `Min length is ${error.min}`;
  * });
  *
- * // For non primitive types, interface is better
- * interface User extends InferType<typeof User> {}
+ * const User = object({ name: NonEmptyTrimmedString100 });
+ * const resultUser = User.from({ name: "" });
+ * if (!resultUser.ok) console.error(formatTypeError(resultUser.error));
  *
- * // Usage
- * const result = User.from({ name: "John", age: 30 });
- * if (result.ok) {
- *   console.log("Valid user:", result.value);
- * }
+ * const badPoint = object({ x: Number, y: Number }).from({
+ *   x: 1,
+ *   y: "foo",
+ * });
+ * if (!badPoint.ok) console.error(formatTypeError(badPoint.error));
  * ```
+ *
+ * The unified formatter walks nested structures (object / array / record /
+ * tuple / union) and applies overrides only where specified, greatly reducing
+ * boilerplate when formatting complex validation errors.
  *
  * ### Tip
  *
  * If necessary, write `globalThis.String` instead of `String` to avoid naming
  * clashes with native types.
  *
- * **Design Decision: No Bidirectional Transformations**
+ * ### Design Decision: No Bidirectional Transformations
  *
  * Evolu Type intentionally does not support bidirectional transformations. It
- * did, but we decided to remove that feature because it's hard to implement it
- * properly with Evolu typed errors and turned otherwise very simple Evolu Type
- * code into a complex type system. Evolu prefers simplicity and reliability
- * over complex abstractions. The source code must be readable. Also, most
- * developers need transformations for persistence, but in Evolu, persistence
- * storage is SQLite, and in that case we can't rely on automatic
- * transformations because SQL `select` can return any shape, so values must be
- * manually transformed anyway.
- *
- * **Note:** We may revisit bidirectional transformations in the future if we
- * can design a minimal, 100% safe API that maintains Evolu's simplicity and
- * reliability principles. Remember, other libs do not support typed errors, so
- * their task is simpler.
+ * previously did, but supporting that while keeping typed error fidelity added
+ * complexity that hurt readability & reliability. Most persistence pipelines
+ * (e.g. SQLite) already require explicit mapping of query results, so implicit
+ * reverse transforms would not buy much. We may revisit this if we can design a
+ * minimal, 100% safe API that preserves simplicity.
  *
  * @module
  */
@@ -124,7 +211,6 @@ export interface Type<
    *
    * - User input validation - use `from` and handle errors gracefully
    * - Data from external APIs or files - use `from` for proper error handling
-   * - Any scenario where you want to recover from validation errors
    * - Library code that should return Results rather than throw
    *
    * ### Example
@@ -657,7 +743,7 @@ export const formatIsTypeError = createTypeErrorFormatter<EvoluTypeError>(
  * The `brand` Type Factory takes the name of a new {@link Brand}, a parent Type
  * to be branded, and the optional `refine` function for additional constraint.
  *
- * If the `refine` function is omited, TODO:
+ * The `refine` function can be omitted if we only want to add a brand.
  *
  * ### Examples
  *
@@ -1464,9 +1550,9 @@ export const createId = <B extends string = never>(
  * });
  * ```
  *
- * **Important**: This transformation is one-way. You cannot recover the
- * original external string from the generated {@link Id}. If you need to
- * preserve the original external ID, store it in a separate column.
+ * **Important**: This transformation is one-way. We cannot recover the original
+ * external string from the generated {@link Id}. If we need to preserve the
+ * original external ID, store it in a separate column.
  *
  * @category String
  */
@@ -3521,7 +3607,7 @@ export const isOptionalType = (x: unknown): x is OptionalType<any> =>
 /**
  * Creates a partial object type where all properties are optional.
  *
- * This is useful when you want to validate an object in which none of the keys
+ * This is useful when we want to validate an object in which none of the keys
  * are required, but if they are present they must conform to their
  * corresponding Types.
  *
@@ -3696,8 +3782,8 @@ export type TypeErrors<ExtraErrors extends TypeError = never> =
  * {@link TypeErrors} and custom errors. It also lets us override the default
  * formatting for specific errors.
  *
- * If you prefer not to reuse any built-in error formatters, you can write your
- * own `formatTypeError` function from scratch.
+ * If we prefer not to reuse any built-in error formatters, we can write our own
+ * `formatTypeError` function from scratch.
  *
  * ### Examples
  *
