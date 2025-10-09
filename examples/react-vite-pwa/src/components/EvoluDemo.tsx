@@ -63,7 +63,7 @@ export const EvoluDemo: FC = () => {
       <div className="mx-auto max-w-md">
         <div className="mb-2 flex items-center justify-between pb-4">
           <h1 className="w-full text-center text-xl font-semibold text-gray-900">
-            Minimal Todo App
+            Minimal Todo App (Evolu + React + Vite + PWA)
           </h1>
         </div>
 

@@ -172,7 +172,7 @@
 <div class="app-container">
   <div class="content-wrapper">
     <div class="header">
-      <h1>Minimal Todo App (Svelte + Evolu)</h1>
+      <h1>Minimal Todo App (Evolu + Svelte + Vite + PWA)</h1>
     </div>
 
     <!-- Todos Section -->
@@ -281,7 +281,6 @@
   .app-container {
     min-height: 100vh;
     padding: 2rem;
-    background-color: #f9fafb;
   }
 
   .content-wrapper {
