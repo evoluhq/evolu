@@ -60,9 +60,8 @@ import {
   upsertable,
   UpsertableProps,
   ValidateSchema,
-  ValidMutationSize,
-  ValidMutationSizeError,
 } from "./Schema.js";
+import { ValidMutationSize, ValidMutationSizeError } from "../Type.js";
 import { CrdtMessage, DbChange } from "./Storage.js";
 import { initialSyncState, SyncOwner, SyncState } from "./Sync.js";
 import { Timestamp, TimestampError } from "./Timestamp.js";

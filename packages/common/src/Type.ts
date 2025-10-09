@@ -161,6 +161,7 @@ import { utf8ToBytes } from "@noble/ciphers/utils.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import * as bip39 from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
+import { pack } from "msgpackr";
 import type { Brand } from "./Brand.js";
 import type { RandomBytesDep } from "./Crypto.js";
 import { isPlainObject } from "./Object.js";
@@ -2031,10 +2032,6 @@ export const formatBetweenError = createTypeErrorFormatter<BetweenError>(
     `The value ${error.value} is not between ${error.min} and ${error.max}, inclusive.`,
 );
 
-/** @category Number */
-export const Between1And10 = between(1, 10)(Number);
-export type Between1And10 = typeof Between1And10.Type;
-
 /**
  * Literal {@link Type}.
  *
@@ -3712,6 +3709,40 @@ export function omit<T extends ObjectType<any>, Keys extends keyof T["props"]>(
   return object(newProps);
 }
 
+export const maxMutationSize = 655360;
+
+/**
+ * Evolu has to limit the maximum mutation size. Otherwise, sync couldn't use
+ * the `maxProtocolMessageRangesSize`. The max size is 640KB in bytes, measured
+ * via MessagePack. Evolu Protocol DbChange will be smaller thanks to various
+ * optimizations.
+ */
+export const validMutationSize = <T extends AnyType>(
+  type: T,
+): BrandType<T, "ValidMutationSize", ValidMutationSizeError, InferErrors<T>> =>
+  brand("ValidMutationSize", type, (value) =>
+    pack(value).byteLength <= maxMutationSize
+      ? ok(value)
+      : err<ValidMutationSizeError>({ type: "ValidMutationSize", value }),
+  );
+
+export interface ValidMutationSizeError
+  extends TypeError<"ValidMutationSize"> {}
+
+export const formatValidMutationSizeError =
+  createTypeErrorFormatter<ValidMutationSizeError>(
+    (error) =>
+      `The mutation size exceeds the maximum limit of ${maxMutationSize} bytes. The provided mutation has a size of ${pack(error.value).byteLength} bytes.`,
+  );
+
+export type ValidMutationSize<Props extends Record<string, AnyType>> =
+  BrandType<
+    ObjectType<Props>,
+    "ValidMutationSize",
+    ValidMutationSizeError,
+    InferErrors<ObjectType<Props>>
+  >;
+
 /**
  * Union of all `TypeError`s defined in the `Type.ts` file, including base type
  * errors (e.g., `StringError`, `NumberError`), composite type errors
@@ -3764,6 +3795,7 @@ export type TypeErrors<ExtraErrors extends TypeError = never> =
   | Int64Error
   | Int64StringError
   | JsonError
+  | ValidMutationSizeError
   | ExtraErrors
   // Composite errors
   | ArrayError<TypeErrors<ExtraErrors>>
@@ -3940,6 +3972,8 @@ export const createFormatTypeError = <ExtraErrors extends TypeError = never>(
         return formatInt64StringError(error);
       case "Json":
         return formatJsonError(error);
+      case "ValidMutationSize":
+        return formatValidMutationSizeError(error);
       // Composite Types
       case "SimplePassword":
         return formatSimplePasswordError(formatTypeError)(error);

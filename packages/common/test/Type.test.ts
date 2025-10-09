@@ -7,7 +7,6 @@ import {
   ArrayError,
   Base64Url,
   base64UrlToUint8Array,
-  Between1And10,
   BigIntError,
   Boolean,
   BooleanError,
@@ -1125,21 +1124,6 @@ test("multipleOf", () => {
 
   expect(MultipleOf3.name).toBe("Brand");
   expect(MultipleOf3.brand).toBe("MultipleOf3");
-});
-
-test("Between1And10", () => {
-  const result = Between1And10.from(5);
-  expect(result).toEqual(ok(5));
-
-  const tooLow = Between1And10.from(0);
-  expect(tooLow).toEqual(err({ type: "Between", value: 0, min: 1, max: 10 }));
-
-  const tooHigh = Between1And10.from(11);
-  expect(tooHigh).toEqual(err({ type: "Between", value: 11, min: 1, max: 10 }));
-
-  expect(Between1And10.is(7)).toBe(true);
-  expect(Between1And10.is(0)).toBe(false);
-  expect(Between1And10.is(11)).toBe(false);
 });
 
 test("literal", () => {

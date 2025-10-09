@@ -9,8 +9,7 @@ export type { Evolu, EvoluConfig, EvoluDeps, EvoluError } from "./Evolu.js";
 export * from "./Owner.js";
 export * as kysely from "./PublicKysely.js";
 export type { InferRow, Query, QueryRows, Row } from "./Query.js";
-export { formatValidMutationSizeError } from "./Schema.js";
-export type { EvoluSchema, ValidMutationSizeError } from "./Schema.js";
+export type { EvoluSchema } from "./Schema.js";
 export type {
   NetworkError,
   PaymentRequiredError,

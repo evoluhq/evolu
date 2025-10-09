@@ -1,7 +1,6 @@
 import * as Kysely from "kysely";
-import { pack } from "msgpackr";
 import { mapObject, objectToEntries, ReadonlyRecord } from "../Object.js";
-import { err, ok, Result } from "../Result.js";
+import { ok, Result } from "../Result.js";
 import {
   SafeSql,
   sql,
@@ -15,14 +14,12 @@ import {
 import {
   AnyType,
   array,
-  brand,
-  BrandType,
-  createTypeErrorFormatter,
   DateIso,
   IdBytes,
   InferErrors,
   InferInput,
   InferType,
+  maxMutationSize,
   MergeObjectTypeErrors,
   nullableToOptional,
   NullableToOptionalProps,
@@ -35,11 +32,12 @@ import {
   String,
   TableId,
   Type,
-  TypeError,
+  ValidMutationSize,
+  validMutationSize,
+  ValidMutationSizeError,
 } from "../Type.js";
 import { Simplify } from "../Types.js";
 import { AppOwner, OwnerId } from "./Owner.js";
-import { maxProtocolMessageRangesSize } from "./Protocol.js";
 import { Query, Row } from "./Query.js";
 import { CrdtMessage, DbChange } from "./Storage.js";
 import { TimestampBytes } from "./Timestamp.js";
@@ -308,38 +306,6 @@ export interface MutationChange extends DbChange {
   /** Owner of the change. If undefined, the change belongs to the AppOwner. */
   readonly ownerId?: OwnerId | undefined;
 }
-
-/**
- * Evolu has to limit the maximum mutation size. Otherwise, sync couldn't use
- * the {@link maxProtocolMessageRangesSize}. The max size is 640KB in bytes,
- * measured via MessagePack. Evolu Protocol DbChange will be smaller thanks to
- * various optimizations.
- */
-export const maxMutationSize = 655360;
-
-const validMutationSize = <T extends AnyType>(type: T) =>
-  brand("ValidMutationSize", type, (value) =>
-    pack(value).byteLength <= maxMutationSize
-      ? ok(value)
-      : err<ValidMutationSizeError>({ type: "ValidMutationSize", value }),
-  );
-
-export interface ValidMutationSizeError
-  extends TypeError<"ValidMutationSize"> {}
-
-export const formatValidMutationSizeError =
-  createTypeErrorFormatter<ValidMutationSizeError>(
-    (error) =>
-      `The mutation size exceeds the maximum limit of ${maxMutationSize} bytes. The provided mutation has a size of ${pack(error.value).byteLength} bytes.`,
-  );
-
-export type ValidMutationSize<Props extends Record<string, AnyType>> =
-  BrandType<
-    ObjectType<Props>,
-    "ValidMutationSize",
-    ValidMutationSizeError,
-    InferErrors<ObjectType<Props>>
-  >;
 
 /**
  * Type Factory to create insertable {@link Type}. It makes nullable Types
