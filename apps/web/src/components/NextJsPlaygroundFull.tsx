@@ -32,9 +32,6 @@ import {
 import clsx from "clsx";
 import { FC, startTransition, Suspense, useState } from "react";
 
-// Define the Evolu schema that describes the database tables and column types.
-// First, define the typed IDs.
-
 const ProjectId = id("Project");
 type ProjectId = typeof ProjectId.Type;
 
@@ -49,8 +46,6 @@ const Schema = {
   todo: {
     id: TodoId,
     title: NonEmptyString1000,
-    // SQLite doesn't support the boolean type; it uses 0 (false) and 1 (true) instead.
-    // SqliteBoolean provides seamless conversion.
     isCompleted: nullOr(SqliteBoolean),
     projectId: nullOr(ProjectId),
   },
@@ -73,7 +68,7 @@ const evolu = createEvolu(evoluReactWebDeps)(Schema, {
     create("todoProjectId").on("todo").column("projectId"),
   ],
 
-  enableLogging: true,
+  // enableLogging: true,
 });
 
 const useEvolu = createUseEvolu(evolu);
@@ -142,10 +137,7 @@ const deletedTodosQuery = evolu.createQuery(
       .where("title", "is not", null)
       .$narrowType<{ title: kysely.NotNull }>()
       .orderBy("updatedAt", "desc"),
-  {
-    // logQueryExecutionTime: true,
-    // logExplainQueryPlan: true,
-  },
+  {},
 );
 
 type ProjectsRow = typeof projectsQuery.Row;
@@ -166,9 +158,7 @@ export const NextJsPlaygroundFull: FC = () => {
     <div className="min-h-screen px-8 py-8">
       <div className="mx-auto max-w-md min-w-sm md:min-w-md">
         <EvoluProvider value={evolu}>
-          <Suspense>
-            <AppShell />
-          </Suspense>
+          <AppShell />
         </EvoluProvider>
       </div>
     </div>
@@ -290,6 +280,7 @@ const AppShell: FC = () => {
               activeTab === "trash" && "!border-blue-600 !text-blue-600",
             )}
             onClick={() => {
+              // TODO: Explain
               startTransition(() => {
                 setActiveTab("trash");
               });
@@ -771,8 +762,8 @@ const OwnerActions: FC = () => {
   return (
     <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
       <p className="mb-4 text-sm text-gray-600">
-        Your todos are stored locally and encrypted. Use your mnemonic to sync
-        across devices.
+        Todos are stored in local SQLite. When you sync across devices, your
+        data is end-to-end encrypted using your mnemonic.
       </p>
 
       <div className="space-y-3">
@@ -803,11 +794,11 @@ const OwnerActions: FC = () => {
             title="Restore from Mnemonic"
             onClick={handleRestoreAppOwnerClick}
           />
+          <Button title="Reset All Data" onClick={handleResetAppOwnerClick} />
           <Button
             title="Download Backup"
             onClick={handleDownloadDatabaseClick}
           />
-          <Button title="Reset All Data" onClick={handleResetAppOwnerClick} />
         </div>
       </div>
     </div>
