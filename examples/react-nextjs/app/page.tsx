@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 // to avoid layout shift. Evolu supports SSR because some apps may require it
 // but it will not render any data because Evolu data are client only.
 const NextJsExample = dynamic(
-  () => import("@/components/NextJsExample").then((mod) => mod.NextJsExample),
+  () => import("@/components/NextJsExample").then((mod) => mod.EvoluDemo),
   { ssr: false },
 );
 

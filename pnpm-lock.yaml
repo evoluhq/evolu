@@ -402,6 +402,12 @@ importers:
       '@evolu/react-web':
         specifier: workspace:*
         version: link:../../packages/react-web
+      '@tabler/icons-react':
+        specifier: ^3.35.0
+        version: 3.35.0(react@19.1.0)
+      clsx:
+        specifier: ^2.1.1
+        version: 2.1.1
       next:
         specifier: ^15.4.7
         version: 15.5.4(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -415,6 +421,9 @@ importers:
       '@eslint/eslintrc':
         specifier: ^3.3.1
         version: 3.3.1
+      '@tailwindcss/forms':
+        specifier: ^0.5.10
+        version: 0.5.10(tailwindcss@4.1.14)
       '@tailwindcss/postcss':
         specifier: ^4.1.11
         version: 4.1.14
