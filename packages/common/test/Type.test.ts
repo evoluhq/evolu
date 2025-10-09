@@ -67,6 +67,7 @@ import {
   NonEmptyString,
   NonEmptyString100,
   NonEmptyTrimmedString,
+  NonEmptyTrimmedString100,
   NonEmptyTrimmedString1000,
   NonNaNError,
   NonNaNNumber,
@@ -823,13 +824,7 @@ test("SimplePassword", () => {
     }),
   );
 
-  // TODO: use createFormatTypeError for formatSimplePasswordError
-
   assert(!shortResult.ok);
-  // formatSimplePasswordError()
-  // expect(formatSimplePasswordError(shortResult.error)).toBe(
-  //   'Invalid password: Value "short" does not meet the minimum length of 8.',
-  // );
 
   const spacesResult = SimplePassword.from("   spaces   ");
   expect(spacesResult).toEqual(
@@ -841,9 +836,6 @@ test("SimplePassword", () => {
   );
 
   assert(!spacesResult.ok);
-  // expect(formatSimplePasswordError(spacesResult.error)).toBe(
-  //   'Invalid password: A value "   spaces   " is not trimmed',
-  // );
 
   expect(
     SimplePassword.from(
@@ -2533,6 +2525,81 @@ test("createFormatTypeError", () => {
   const nameResult = Name.fromUnknown(1);
   assert(!nameResult.ok);
   expect(formatTypeErrorWithCustomError(nameResult.error)).toBe("name");
+});
+
+test("custom formatTypeError written from scratch", () => {
+  // Demonstrates writing a custom error formatter from scratch,
+  // without using createFormatTypeError.
+
+  const Person = object({
+    name: NonEmptyTrimmedString100,
+    age: optional(PositiveInt),
+  });
+
+  // Define only the errors actually used by Person Type
+  type PersonErrors =
+    | StringError
+    | MaxLengthError
+    | MinLengthError
+    | TrimmedError
+    | PositiveError
+    | NonNegativeError
+    | IntError
+    | NumberError
+    | ObjectError<Record<string, PersonErrors>>;
+
+  const formatTypeError: TypeErrorFormatter<PersonErrors> = (error) => {
+    switch (error.type) {
+      case "String":
+        return formatStringError(error);
+      case "Number":
+        return "Must be a number";
+      case "MinLength":
+        return `Must be at least ${error.min} characters`;
+      case "MaxLength":
+        return `Cannot exceed ${error.max} characters`;
+      case "Trimmed":
+        return "Cannot have leading or trailing spaces";
+      case "Positive":
+        return "Must be a positive number";
+      case "NonNegative":
+        return "Must be zero or positive";
+      case "Int":
+        return "Must be an integer";
+      case "Object": {
+        if (error.reason.kind === "NotObject") return "Must be an object";
+        if (error.reason.kind === "ExtraKeys")
+          return "Contains unexpected fields";
+        const firstError = Object.values(error.reason.errors).find(
+          (e) => e !== undefined,
+        )!;
+        return formatTypeError(firstError);
+      }
+    }
+  };
+
+  // Test various error scenarios
+  const result1 = Person.fromUnknown({ name: 123, age: 30 });
+  assert(!result1.ok);
+  expect(formatTypeError(result1.error)).toBe("A value 123 is not a string.");
+
+  const result2 = Person.from({ name: "", age: 30 });
+  assert(!result2.ok);
+  expect(formatTypeError(result2.error)).toBe("Must be at least 1 characters");
+
+  const result3 = Person.from({ name: "John", age: -5 });
+  assert(!result3.ok);
+  expect(formatTypeError(result3.error)).toBe("Must be zero or positive");
+
+  const result4 = Person.from({ name: "John", age: 25.5 });
+  assert(!result4.ok);
+  expect(formatTypeError(result4.error)).toBe("Must be an integer");
+
+  const result5 = Person.from({ name: " John ", age: 30 });
+  assert(!result5.ok);
+  expect(formatTypeError(result5.error)).toBe(
+    "Cannot have leading or trailing spaces",
+  );
 });
 
 test("json Type Factory", () => {

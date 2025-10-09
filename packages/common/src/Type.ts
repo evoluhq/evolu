@@ -3810,70 +3810,74 @@ export type TypeErrors<ExtraErrors extends TypeError = never> =
   | TupleError<TypeErrors<ExtraErrors>>;
 
 /**
- * Creates a unified error formatter that handles both Evolu Type's built-in
- * {@link TypeErrors} and custom errors. It also lets us override the default
- * formatting for specific errors.
+ * Formats Evolu Type errors into user-friendly messages.
  *
- * If we prefer not to reuse any built-in error formatters, we can write our own
- * `formatTypeError` function from scratch.
+ * Evolu Type typed errors ensure every error type must have a formatter.
+ * TypeScript enforces this at compile-time, preventing unhandled validation
+ * errors from reaching users.
  *
- * ### Examples
+ * The `createFormatTypeError` function handles both built-in {@link TypeErrors}
+ * and custom errors, and lets us override default formatting for specific
+ * errors.
+ *
+ * ### Example
  *
  * ```ts
- * const formatError = createFormatTypeError();
- * console.log(formatError({ type: "String", value: 42 }));
- * // "A value 42 is not a string."
+ * const formatTypeError = createFormatTypeError<
+ *   MinLengthError | MaxLengthError
+ * >((error): string => {
+ *   switch (error.type) {
+ *     case "MinLength":
+ *       return `Text must be at least ${error.min} character${error.min === 1 ? "" : "s"} long`;
+ *     case "MaxLength":
+ *       return `Text is too long (maximum ${error.max} characters)`;
+ *   }
+ * });
  * ```
  *
- * A custom `formatTypeError` function:
+ * Alternatively, write a custom formatter from scratch without using
+ * `createFormatTypeError`. This gives us full control over error formatting:
  *
  * ```ts
- * type AppErrors =
- *   | ValidMutationSizeError
- *   | StringError
- *   | MinLengthError
- *   | MaxLengthError
- *   | NullError
- *   | IdError
- *   | TrimmedError
- *   | MnemonicError
- *   | LiteralError
- *   // Composite errors
- *   | ObjectError<Record<string, AppErrors>>
- *   | UnionError<AppErrors>;
+ * const Person = object({
+ *   name: NonEmptyTrimmedString100,
+ *   age: optional(PositiveInt),
+ * });
  *
- * const formatTypeError: TypeErrorFormatter<AppErrors> = (error) => {
- *   // In the real code, we would use the createTypeErrorFormatter helper
- *   // that safely stringifies error value.
+ * // Define only the errors actually used by Person Type
+ * type PersonErrors =
+ *   | StringError
+ *   | MaxLengthError
+ *   | MinLengthError
+ *   | TrimmedError
+ *   | PositiveError
+ *   | NonNegativeError
+ *   | IntError
+ *   | NumberError
+ *   | ObjectError<Record<string, PersonErrors>>;
+ *
+ * const formatTypeError: TypeErrorFormatter<PersonErrors> = (error) => {
  *   switch (error.type) {
- *     case "Id":
- *       return `Invalid Id on table: ${error.table}.`;
- *     case "MaxLength":
- *       return `Max length is ${error.max}.`;
- *     case "MinLength":
- *       return `Min length is ${error.min}.`;
- *     case "Mnemonic":
- *       return `Invalid mnemonic: ${String(error.value)}`;
- *     case "Null":
- *       return `Not null`;
  *     case "String":
- *       // We can reuse existing formatter.
  *       return formatStringError(error);
+ *     case "Number":
+ *       return "Must be a number";
+ *     case "MinLength":
+ *       return `Must be at least ${error.min} characters`;
+ *     case "MaxLength":
+ *       return `Cannot exceed ${error.max} characters`;
  *     case "Trimmed":
- *       return "Value is not trimmed.";
- *     case "ValidMutationSize":
- *       return "A developer made an error, this should not happen.";
- *     case "Literal":
- *       return formatLiteralError(error);
- *     // Composite Types
- *     case "Union":
- *       return `Union errors: ${error.errors.map(formatTypeError).join(", ")}`;
+ *       return "Cannot have leading or trailing spaces";
+ *     case "Positive":
+ *       return "Must be a positive number";
+ *     case "NonNegative":
+ *       return "Must be zero or positive";
+ *     case "Int":
+ *       return "Must be an integer";
  *     case "Object": {
- *       if (
- *         error.reason.kind === "ExtraKeys" ||
- *         error.reason.kind === "NotObject"
- *       )
- *         return "A developer made an error, this should not happen.";
+ *       if (error.reason.kind === "NotObject") return "Must be an object";
+ *       if (error.reason.kind === "ExtraKeys")
+ *         return "Contains unexpected fields";
  *       const firstError = Object.values(error.reason.errors).find(
  *         (e) => e !== undefined,
  *       )!;
