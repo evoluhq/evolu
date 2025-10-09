@@ -1,453 +1,599 @@
-import {
-  createEvolu,
-  id,
-  kysely,
-  maxLength,
-  Mnemonic,
-  NonEmptyString,
-  NonEmptyString1000,
-  nullOr,
-  QueryRows,
-  SimpleName,
-  SqliteBoolean,
-  sqliteTrue,
-} from "@evolu/common";
+import * as Evolu from "@evolu/common";
 import {
   createUseEvolu,
   EvoluProvider,
   useAppOwner,
-  useEvoluError,
   useQuery,
 } from "@evolu/react";
 import { evoluReactNativeDeps } from "@evolu/react-native/expo-sqlite";
-import { FC, Suspense, useEffect, useState } from "react";
+import { FC, Suspense, useState } from "react";
 import {
-  Button,
+  Alert,
   ScrollView,
-  Switch,
+  StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from "react-native";
-import RNPickerSelect from "react-native-picker-select";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-// Let's start with typed primary keys.
-const TodoId = id("Todo");
+// Primary keys are branded types, preventing accidental use of IDs across
+// different tables (e.g., a TodoId can't be used where a UserId is expected).
+const TodoId = Evolu.id("Todo");
 type TodoId = typeof TodoId.Type;
 
-const TodoCategoryId = id("TodoCategory");
-type TodoCategoryId = typeof TodoCategoryId.Type;
-
-// A custom branded Type.
-const NonEmptyString50 = maxLength(50)(NonEmptyString);
-// string & Brand<"MinLength1"> & Brand<"MaxLength50">
-type NonEmptyString50 = typeof NonEmptyString50.Type;
-
-// Database schema
+// Schema defines database structure with runtime validation.
+// Column types validate data on insert/update/upsert.
 const Schema = {
   todo: {
     id: TodoId,
-    title: NonEmptyString1000,
-    // SQLite doesn't support the boolean type; it uses 0 (false) and 1 (true) instead.
-    // SqliteBoolean provides seamless conversion.
-    isCompleted: nullOr(SqliteBoolean),
-    categoryId: nullOr(TodoCategoryId),
-  },
-  todoCategory: {
-    id: TodoCategoryId,
-    name: NonEmptyString50,
+    // Branded type ensuring titles are non-empty and ≤100 chars.
+    title: Evolu.NonEmptyString100,
+    // SQLite doesn't support the boolean type; it uses 0 and 1 instead.
+    isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
   },
 };
 
-const evolu = createEvolu(evoluReactNativeDeps)(Schema, {
-  name: SimpleName.orThrow("evolu-expo-sqlite-example-v54"),
+// Create Evolu instance for the React Native platform.
+const evolu = Evolu.createEvolu(evoluReactNativeDeps)(Schema, {
+  name: Evolu.SimpleName.orThrow("evolu-expo-minimal"),
 
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
   }),
-
-  // Indexes are not required for development but are recommended for production.
-  // https://www.evolu.dev/docs/indexes
-  indexes: (create) => [
-    create("todoCreatedAt").on("todo").column("createdAt"),
-    create("todoCategoryCreatedAt").on("todoCategory").column("createdAt"),
-  ],
-
-  // enableLogging: true,
 });
 
+// Creates a typed React Hook returning an instance of Evolu.
 const useEvolu = createUseEvolu(evolu);
 
-const todosWithCategories = evolu.createQuery(
-  (db) =>
-    db
-      .selectFrom("todo")
-      .select(["id", "title", "isCompleted", "categoryId"])
-      .where("isDeleted", "is not", 1)
-      // Filter null value and ensure non-null type.
-      .where("title", "is not", null)
-      .$narrowType<{ title: kysely.NotNull }>()
-      .orderBy("createdAt")
-      // https://kysely.dev/docs/recipes/relations
-      .select((eb) => [
-        kysely
-          .jsonArrayFrom(
-            eb
-              .selectFrom("todoCategory")
-              .select(["todoCategory.id", "todoCategory.name"])
-              .where("isDeleted", "is not", 1)
-              .orderBy("createdAt"),
-          )
-          .as("categories"),
-      ]),
-  {
-    // logQueryExecutionTime: true,
-    // logExplainQueryPlan: true,
-  },
-);
-
-type TodosWithCategoriesRow = typeof todosWithCategories.Row;
-
-const todoCategories = evolu.createQuery((db) =>
+// Evolu uses Kysely for type-safe SQL (https://kysely.dev/).
+const todosQuery = evolu.createQuery((db) =>
   db
-    .selectFrom("todoCategory")
-    .select(["id", "name"])
-    .where("isDeleted", "is not", 1)
-    // Filter null value and ensure non-null type.
-    .where("name", "is not", null)
-    .$narrowType<{ name: kysely.NotNull }>()
+    // Type-safe SQL: enjoy autocomplete for table and column names here.
+    .selectFrom("todo")
+    .select(["id", "title", "isCompleted"])
+    // Soft delete: filter out deleted rows (isDeleted is auto-added to all tables).
+    .where("isDeleted", "is not", Evolu.sqliteTrue)
+    // Like GraphQL, Evolu schema makes everything nullable except id. This
+    // enables schema evolution (no migrations/versioning) and handles eventual
+    // consistency. Filter nulls in queries to ensure required shape.
+    .where("title", "is not", null)
+    .$narrowType<{ title: Evolu.kysely.NotNull }>()
     .orderBy("createdAt"),
 );
 
-type TodoCategoriesRow = typeof todoCategories.Row;
+// Extract the row type from the query for type-safe component props.
+type TodosRow = typeof todosQuery.Row;
 
+/**
+ * Subscribe to unexpected Evolu errors (database, network, sync issues). These
+ * should not happen in normal operation, so always log them for debugging. Show
+ * users a friendly error message instead of technical details.
+ */
 evolu.subscribeError(() => {
   const error = evolu.getError();
+  if (!error) return;
+
+  Alert.alert("🚨 Evolu error occurred! Check the console.");
   // eslint-disable-next-line no-console
-  console.log(error);
+  console.error(error);
+});
+
+/**
+ * Formats Evolu Type errors into user-friendly messages.
+ *
+ * Evolu Type typed errors ensure every error type used in schema must have a
+ * formatter. TypeScript enforces this at compile-time, preventing unhandled
+ * validation errors from reaching users.
+ *
+ * The `createFormatTypeError` function handles both built-in and custom errors,
+ * and lets us override default formatting for specific errors.
+ */
+const formatTypeError = Evolu.createFormatTypeError<
+  Evolu.MinLengthError | Evolu.MaxLengthError
+>((error): string => {
+  switch (error.type) {
+    case "MinLength":
+      return `Text must be at least ${error.min} character${error.min === 1 ? "" : "s"} long`;
+    case "MaxLength":
+      return `Text is too long (maximum ${error.max} characters)`;
+  }
 });
 
 export default function Index(): React.ReactNode {
   return (
-    <SafeAreaView style={{ flex: 1 }}>
-      <EvoluProvider value={evolu}>
-        <Suspense>
-          <ScrollView
-            keyboardDismissMode="interactive"
-            style={{ flex: 1 }}
-            automaticallyAdjustKeyboardInsets
-          >
-            <NotificationBar />
-            <ExampleView />
-          </ScrollView>
-        </Suspense>
-      </EvoluProvider>
+    <SafeAreaView style={styles.container}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.contentContainer}
+        keyboardDismissMode="interactive"
+        automaticallyAdjustKeyboardInsets
+      >
+        <View style={styles.maxWidthContainer}>
+          <View style={styles.header}>
+            <Text style={styles.title}>Minimal Todo App (Evolu + Expo)</Text>
+          </View>
+
+          <EvoluProvider value={evolu}>
+            {/*
+              Suspense delivers great UX (no loading flickers) and DX (no loading
+              states to manage). Highly recommended with Evolu.
+            */}
+            <Suspense>
+              <Todos />
+              <OwnerActions />
+            </Suspense>
+          </EvoluProvider>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
-function ExampleView() {
-  const [text, setText] = useState("");
-  const rows = useQuery(todosWithCategories);
-
+const Todos: FC = () => {
+  // useQuery returns live data - component re-renders when data changes.
+  const todos = useQuery(todosQuery);
   const { insert } = useEvolu();
+  const [newTodoTitle, setNewTodoTitle] = useState("");
 
-  return (
-    <View style={{ flex: 1, paddingHorizontal: 10 }}>
-      <Text style={{ fontSize: 20, fontWeight: "600", marginVertical: 10 }}>
-        Todos
-      </Text>
-      <TextInput
-        autoComplete="off"
-        autoCorrect={false}
-        enterKeyHint="send"
-        style={{
-          height: 40,
-          borderColor: "#a1a1aa",
-          borderWidth: 1,
-          borderRadius: 10,
-          paddingInlineStart: 10,
-          flexGrow: 1,
-          marginBottom: 10,
-        }}
-        value={text}
-        onChangeText={setText}
-        placeholder="What needs to be done?"
-        onBlur={() => {
-          if (text) {
-            insert("todo", {
-              title: text,
-            });
-            setText("");
-          }
-        }}
-      />
-      {rows.map((row) => (
-        <TodoItem key={row.id} row={row} />
-      ))}
-      <TodoCategories />
-      <OwnerActions />
-    </View>
-  );
-}
+  const handleAddTodo = () => {
+    const result = insert(
+      "todo",
+      { title: newTodoTitle.trim() },
+      {
+        onComplete: () => {
+          setNewTodoTitle("");
+        },
+      },
+    );
 
-const NotificationBar: FC = () => {
-  const evoluError = useEvoluError();
-  const [showError, setShowError] = useState(false);
-
-  useEffect(() => {
-    if (evoluError) {
-      console.log("evoluError", evoluError);
-      setShowError(true);
+    if (!result.ok) {
+      Alert.alert("Error", formatTypeError(result.error));
     }
-  }, [evoluError]);
-
-  if (!evoluError || !showError) return null;
-
-  return (
-    <div>
-      <p>{`Error: ${JSON.stringify(evoluError)}`}</p>
-      <Button
-        title="Close"
-        onPress={() => {
-          setShowError(false);
-        }}
-      />
-    </div>
-  );
-};
-
-function TodoItem({ row }: { row: TodosWithCategoriesRow }) {
-  const { update } = useEvolu();
-  const categories = useQuery(todoCategories);
+  };
 
   return (
     <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-      }}
+      style={[styles.todosContainer, { paddingTop: todos.length > 0 ? 6 : 24 }]}
     >
       <View
-        style={{ flexDirection: "row", flex: 1, alignItems: "center", gap: 4 }}
+        style={[
+          styles.todosList,
+          { display: todos.length > 0 ? "flex" : "none" },
+        ]}
       >
-        <View style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}>
-          <Switch
-            onValueChange={() => {
-              update("todo", {
-                id: row.id,
-                isCompleted: Number(!row.isCompleted),
-              });
-            }}
-            value={!!row.isCompleted}
-          />
+        {todos.map((todo) => (
+          <TodoItem key={todo.id} row={todo} />
+        ))}
+      </View>
+
+      <View style={styles.addTodoContainer}>
+        <TextInput
+          style={styles.textInput}
+          value={newTodoTitle}
+          onChangeText={setNewTodoTitle}
+          onSubmitEditing={handleAddTodo}
+          placeholder="Add a new todo..."
+          autoComplete="off"
+          placeholderTextColor={"gray"}
+          autoCorrect={false}
+          returnKeyType="done"
+        />
+        <CustomButton title="Add" onPress={handleAddTodo} variant="primary" />
+      </View>
+    </View>
+  );
+};
+
+const TodoItem: FC<{
+  row: TodosRow;
+}> = ({ row: { id, title, isCompleted } }) => {
+  const { update } = useEvolu();
+
+  const handleToggleCompletedPress = () => {
+    update("todo", {
+      id,
+      // Number converts boolean to number.
+      isCompleted: Number(!isCompleted),
+    });
+  };
+
+  const handleRenamePress = () => {
+    Alert.prompt(
+      "Edit Todo",
+      "Enter new title:",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Save",
+          onPress: (newTitle?: string) => {
+            if (newTitle != null && newTitle.trim()) {
+              const result = update("todo", { id, title: newTitle.trim() });
+              if (!result.ok) {
+                Alert.alert("Error", formatTypeError(result.error));
+              }
+            }
+          },
+        },
+      ],
+      "plain-text",
+      title,
+    );
+  };
+
+  const handleDeletePress = () => {
+    update("todo", {
+      id,
+      // Soft delete with isDeleted flag (CRDT-friendly, preserves sync history).
+      isDeleted: Evolu.sqliteTrue,
+    });
+  };
+
+  return (
+    <View style={styles.todoItem}>
+      <TouchableOpacity
+        style={styles.todoCheckbox}
+        onPress={handleToggleCompletedPress}
+      >
+        <View
+          style={[styles.checkbox, isCompleted ? styles.checkboxChecked : null]}
+        >
+          <Text
+            style={[
+              styles.checkmark,
+              { display: isCompleted ? "flex" : "none" },
+            ]}
+          >
+            ✓
+          </Text>
         </View>
         <Text
-          style={{
-            fontSize: 16,
-            textDecorationLine: row.isCompleted ? "line-through" : "none",
-          }}
+          style={[
+            styles.todoTitle,
+            isCompleted ? styles.todoTitleCompleted : null,
+          ]}
         >
-          {row.title}
+          {title}
         </Text>
-      </View>
-      <View style={{ flexDirection: "row", alignItems: "center" }}>
-        <TodoCategorySelect
-          categories={categories}
-          selected={row.categoryId}
-          onSelect={(categoryId) => {
-            update("todo", { id: row.id, categoryId });
-          }}
-        />
-        <Button
-          title="Delete"
-          color="red"
-          onPress={() => {
-            update("todo", { id: row.id, isDeleted: sqliteTrue });
-          }}
-        />
+      </TouchableOpacity>
+
+      <View style={styles.todoActions}>
+        <TouchableOpacity
+          onPress={handleRenamePress}
+          style={styles.actionButton}
+        >
+          <Text style={styles.editIcon}>✏️</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={handleDeletePress}
+          style={styles.actionButton}
+        >
+          <Text style={styles.deleteIcon}>🗑️</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
-}
+};
 
-function TodoCategories() {
-  const categories = useQuery(todoCategories);
-  const { update, insert } = useEvolu();
-  const [text, setText] = useState("");
+const OwnerActions: FC = () => {
+  const appOwner = useAppOwner();
+  const [showMnemonic, setShowMnemonic] = useState(false);
+
+  // Restore owner from mnemonic to sync data across devices.
+  const handleRestoreAppOwnerPress = () => {
+    Alert.prompt(
+      "Restore Account",
+      "Enter your mnemonic to restore your data:",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Restore",
+          onPress: (mnemonic?: string) => {
+            if (mnemonic == null) return;
+
+            const result = Evolu.Mnemonic.from(mnemonic.trim());
+            if (!result.ok) {
+              Alert.alert("Error", formatTypeError(result.error));
+              return;
+            }
+
+            void evolu.restoreAppOwner(result.value);
+          },
+        },
+      ],
+      "plain-text",
+    );
+  };
+
+  const handleResetAppOwnerPress = () => {
+    Alert.alert(
+      "Reset All Data",
+      "Are you sure? This will delete all your local data.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Reset",
+          style: "destructive",
+          onPress: () => {
+            void evolu.resetAppOwner();
+          },
+        },
+      ],
+    );
+  };
 
   return (
-    <View style={{ marginTop: 24 }}>
-      <Text style={{ fontSize: 20, fontWeight: "600", marginVertical: 10 }}>
-        Categories
+    <View style={styles.ownerActionsContainer}>
+      <Text style={styles.sectionTitle}>Account</Text>
+      <Text style={styles.sectionDescription}>
+        Todos are stored in local SQLite. When you sync across devices, your
+        data is end-to-end encrypted using your mnemonic.
       </Text>
-      <TextInput
-        autoComplete="off"
-        autoCorrect={false}
-        enterKeyHint="send"
-        style={{
-          height: 40,
-          borderColor: "#a1a1aa",
-          borderWidth: 1,
-          borderRadius: 10,
-          paddingInlineStart: 10,
-          flexGrow: 1,
-          marginBottom: 10,
-        }}
-        value={text}
-        onChangeText={setText}
-        placeholder="New Category"
-        onBlur={() => {
-          if (text) {
-            insert("todoCategory", {
-              name: text,
-            });
-            setText("");
-          }
-        }}
-      />
-      {categories.map(({ id, name }) => (
-        <View key={id} style={{ flexDirection: "row", alignItems: "center" }}>
-          <Text style={{ fontSize: 16, flexGrow: 1 }}>{name}</Text>
-          <View style={{ flexDirection: "row" }}>
-            <Button
-              title="Delete"
-              color="red"
-              onPress={() => {
-                update("todoCategory", { id, isDeleted: sqliteTrue });
-              }}
+
+      <View style={styles.ownerActionsButtons}>
+        <CustomButton
+          title={`${showMnemonic ? "Hide" : "Show"} Mnemonic`}
+          onPress={() => {
+            setShowMnemonic(!showMnemonic);
+          }}
+          style={styles.fullWidthButton}
+        />
+
+        {showMnemonic && appOwner?.mnemonic && (
+          <View style={styles.mnemonicContainer}>
+            <Text style={styles.mnemonicLabel}>
+              Your Mnemonic (keep this safe!)
+            </Text>
+            <TextInput
+              value={appOwner.mnemonic}
+              editable={false}
+              multiline
+              style={styles.mnemonicTextArea}
             />
           </View>
+        )}
+
+        <View style={styles.actionButtonsRow}>
+          <CustomButton
+            title="Restore from Mnemonic"
+            onPress={handleRestoreAppOwnerPress}
+            style={styles.flexButton}
+          />
+          <CustomButton
+            title="Reset All Data"
+            onPress={handleResetAppOwnerPress}
+            style={styles.flexButton}
+          />
         </View>
-      ))}
-    </View>
-  );
-}
-
-function TodoCategorySelect({
-  categories,
-  selected,
-  onSelect,
-}: {
-  categories: QueryRows<TodoCategoriesRow>;
-  selected: TodoCategoryId | null;
-  onSelect: (categoryId: TodoCategoryId | null) => void;
-}) {
-  return (
-    <RNPickerSelect
-      value={selected}
-      useNativeAndroidPickerStyle={false} // fix for android
-      onValueChange={(value: TodoCategoryId | null) => {
-        onSelect(value);
-      }}
-      pickerProps={{
-        mode: "dropdown",
-      }}
-      style={{
-        inputIOSContainer: { pointerEvents: "none" }, // fix for ios
-        viewContainer: {
-          alignSelf: "center",
-        },
-      }}
-      placeholder={{ label: "No Category", value: null }}
-      items={categories.map(({ id, name }) => ({
-        label: name || "No Category",
-        value: id,
-      }))}
-    />
-  );
-}
-
-function OwnerActions() {
-  const evolu = useEvolu();
-  const owner = useAppOwner();
-
-  const [isMnemonicShown, setIsMnemonicShown] = useState(false);
-  const [isRestoreShown, setIsRestoreShown] = useState(false);
-  const [mnemonic, setMnemonic] = useState("");
-
-  return (
-    <View style={{ marginTop: 24 }}>
-      <Text style={{ fontSize: 20, fontWeight: "600", marginVertical: 10 }}>
-        Owner Actions
-      </Text>
-      <Text style={{ marginBottom: 10 }}>
-        To sync your data across devices, open this app on another device and
-        use the mnemonic phrase to restore your account. The mnemonic acts as
-        your encryption key and backup.
-      </Text>
-      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-        <Button
-          title={`${!isMnemonicShown ? "Show" : "Hide"} Mnemonic`}
-          onPress={() => {
-            setIsRestoreShown(false);
-            setIsMnemonicShown(!isMnemonicShown);
-          }}
-        />
-        <Button
-          title="Restore"
-          onPress={() => {
-            setIsMnemonicShown(false);
-            setIsRestoreShown(!isRestoreShown);
-          }}
-        />
-        <Button
-          title="Reset"
-          onPress={() => {
-            void evolu.resetAppOwner();
-          }}
-        />
       </View>
-
-      {isMnemonicShown && owner != null && (
-        <TextInput
-          style={{
-            borderColor: "#a1a1aa",
-            borderWidth: 1,
-            borderRadius: 10,
-            padding: 16,
-            flexGrow: 1,
-            marginBottom: 10,
-            fontSize: 16,
-          }}
-          readOnly
-          autoComplete="off"
-          autoCorrect={false}
-          multiline
-          selectTextOnFocus
-        >
-          {owner.mnemonic}
-        </TextInput>
-      )}
-
-      {isRestoreShown && (
-        <>
-          <TextInput
-            placeholder="insert your mnemonic"
-            autoComplete="off"
-            autoCorrect={false}
-            style={{
-              borderColor: "#a1a1aa",
-              borderWidth: 1,
-              borderRadius: 10,
-              padding: 16,
-              flexGrow: 1,
-              fontSize: 16,
-            }}
-            value={mnemonic}
-            onChangeText={setMnemonic}
-          />
-          <Button
-            title="Restore"
-            onPress={() => {
-              void evolu.restoreAppOwner(mnemonic as Mnemonic, {
-                reload: true,
-              });
-            }}
-          />
-        </>
-      )}
     </View>
   );
-}
+};
+
+const CustomButton: FC<{
+  title: string;
+  style?: any;
+  onPress: () => void;
+  variant?: "primary" | "secondary";
+}> = ({ title, style, onPress, variant = "secondary" }) => {
+  const buttonStyle = [
+    styles.button,
+    variant === "primary" ? styles.buttonPrimary : styles.buttonSecondary,
+    style,
+  ];
+
+  const textStyle = [
+    styles.buttonText,
+    variant === "primary"
+      ? styles.buttonTextPrimary
+      : styles.buttonTextSecondary,
+  ];
+
+  return (
+    <TouchableOpacity style={buttonStyle} onPress={onPress}>
+      <Text style={textStyle}>{title}</Text>
+    </TouchableOpacity>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#f9fafb",
+  },
+  scrollView: {
+    flex: 1,
+  },
+  contentContainer: {
+    flexGrow: 1,
+    paddingHorizontal: 32,
+    paddingVertical: 32,
+  },
+  maxWidthContainer: {
+    maxWidth: 400,
+    alignSelf: "center",
+    width: "100%",
+  },
+  header: {
+    marginBottom: 8,
+    paddingBottom: 16,
+    alignItems: "center",
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: "#111827",
+    textAlign: "center",
+  },
+  todosContainer: {
+    backgroundColor: "#ffffff",
+    borderRadius: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 24,
+    paddingBottom: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  todosList: {
+    marginBottom: 24,
+  },
+  todoItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    paddingHorizontal: -8,
+    marginHorizontal: -8,
+  },
+  todoCheckbox: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  checkbox: {
+    width: 16,
+    height: 16,
+    borderRadius: 2,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    backgroundColor: "#ffffff",
+    marginRight: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checkboxChecked: {
+    backgroundColor: "#3b82f6",
+    borderColor: "#3b82f6",
+  },
+  checkmark: {
+    color: "#ffffff",
+    fontSize: 10,
+    fontWeight: "bold",
+  },
+  todoTitle: {
+    fontSize: 14,
+    color: "#111827",
+    flex: 1,
+  },
+  todoTitleCompleted: {
+    color: "#6b7280",
+    textDecorationLine: "line-through",
+  },
+  todoActions: {
+    flexDirection: "row",
+    gap: 4,
+  },
+  actionButton: {
+    padding: 4,
+  },
+  editIcon: {
+    fontSize: 16,
+  },
+  deleteIcon: {
+    fontSize: 16,
+  },
+  addTodoContainer: {
+    flexDirection: "row",
+    gap: 8,
+    marginHorizontal: -8,
+  },
+  textInput: {
+    flex: 1,
+    borderRadius: 6,
+    backgroundColor: "#ffffff",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    fontSize: 16,
+    color: "#111827",
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+  },
+  button: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  buttonPrimary: {
+    backgroundColor: "#3b82f6",
+  },
+  buttonSecondary: {
+    backgroundColor: "#f3f4f6",
+  },
+  buttonText: {
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  buttonTextPrimary: {
+    color: "#ffffff",
+  },
+  buttonTextSecondary: {
+    color: "#374151",
+  },
+  ownerActionsContainer: {
+    marginTop: 32,
+    backgroundColor: "#ffffff",
+    borderRadius: 8,
+    padding: 24,
+    paddingTop: 18,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "500",
+    color: "#111827",
+    marginBottom: 16,
+  },
+  sectionDescription: {
+    fontSize: 14,
+    color: "#6b7280",
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  ownerActionsButtons: {
+    gap: 12,
+  },
+  fullWidthButton: {
+    width: "100%",
+  },
+  mnemonicContainer: {
+    backgroundColor: "#f9fafb",
+    padding: 12,
+    borderRadius: 6,
+  },
+  mnemonicLabel: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#374151",
+    marginBottom: 8,
+  },
+  mnemonicTextArea: {
+    backgroundColor: "#ffffff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#d1d5db",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    fontFamily: "monospace",
+    fontSize: 12,
+    color: "#111827",
+  },
+  actionButtonsRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  flexButton: {
+    flex: 1,
+  },
+});
