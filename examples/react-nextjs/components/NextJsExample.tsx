@@ -1,26 +1,6 @@
 "use client";
 
-import {
-  timestampBytesToTimestamp,
-  createEvolu,
-  createFormatTypeError,
-  FiniteNumber,
-  id,
-  idToIdBytes,
-  json,
-  kysely,
-  maxLength,
-  MinLengthError,
-  Mnemonic,
-  NonEmptyString,
-  NonEmptyString1000,
-  nullOr,
-  object,
-  SimpleName,
-  SqliteBoolean,
-  sqliteTrue,
-  ValidMutationSizeError,
-} from "@evolu/common";
+import * as Evolu from "@evolu/common";
 import {
   createUseEvolu,
   EvoluProvider,
@@ -28,184 +8,72 @@ import {
   useQuery,
 } from "@evolu/react";
 import { evoluReactWebDeps } from "@evolu/react-web";
-import { ChangeEvent, FC, startTransition, Suspense, useState } from "react";
+import { IconEdit, IconTrash } from "@tabler/icons-react";
+import clsx from "clsx";
+import { FC, Suspense, useState } from "react";
 
-// Define the Evolu schema that describes the database tables and column types.
-// First, define the typed IDs.
-
-const TodoId = id("Todo");
+// Primary keys are branded types, preventing accidental use of IDs across
+// different tables (e.g., a TodoId can't be used where a UserId is expected).
+const TodoId = Evolu.id("Todo");
 type TodoId = typeof TodoId.Type;
 
-const TodoCategoryId = id("TodoCategory");
-type TodoCategoryId = typeof TodoCategoryId.Type;
-
-// A custom branded Type.
-const NonEmptyString50 = maxLength(50)(NonEmptyString);
-// string & Brand<"MinLength1"> & Brand<"MaxLength50">
-type NonEmptyString50 = typeof NonEmptyString50.Type;
-
-// SQLite supports JSON-compatible values.
-const Person = object({
-  name: NonEmptyString50,
-  // Did you know that JSON.stringify converts NaN (a number) into null?
-  // Now, imagine that `age` accidentally becomes null. To prevent this, use FiniteNumber.
-  age: FiniteNumber,
-});
-type Person = typeof Person.Type;
-
-// SQLite stores JSON-compatible values as strings. Fortunately, Evolu provides
-// a convenient `json` Type Factory for type-safe JSON serialization and parsing.
-const [PersonJson, personToPersonJson, _personJsonToPerson] = json(
-  Person,
-  "PersonJson",
-);
-// string & Brand<"PersonJson">
-type PersonJson = typeof PersonJson.Type;
-
+// Schema defines database structure with runtime validation.
+// Column types validate data on insert/update/upsert.
 const Schema = {
   todo: {
     id: TodoId,
-    title: NonEmptyString1000,
-    // SQLite doesn't support the boolean type; it uses 0 (false) and 1 (true) instead.
-    // SqliteBoolean provides seamless conversion.
-    isCompleted: nullOr(SqliteBoolean),
-    categoryId: nullOr(TodoCategoryId),
-    personJson: nullOr(PersonJson),
-  },
-  todoCategory: {
-    id: TodoCategoryId,
-    name: NonEmptyString50,
+    // Branded type ensuring titles are non-empty and ≤100 chars.
+    title: Evolu.NonEmptyString100,
+    // SQLite doesn't support the boolean type; it uses 0 and 1 instead.
+    isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
   },
 };
 
-/**
- * The `createFormatTypeError` function creates a unified error formatter that
- * handles both Evolu Type's built-in errors and custom errors. It also lets us
- * override the default formatting for specific errors.
- *
- * If you prefer not to reuse built-in error formatters, you can write your own
- * `formatTypeError` function from scratch. See the commented-out example at the
- * end of this file.
- */
-const formatTypeError = createFormatTypeError<
-  ValidMutationSizeError | MinLengthError
->((error): string => {
-  switch (error.type) {
-    /**
-     * If schema types are used correctly (e.g., maxLength), this error should
-     * not occur. If it does, it indicates a developer mistake.
-     */
-    case "ValidMutationSize":
-      return "This is a developer error, it should not happen 🤨";
-    // Overrides a built-in error formatter.
-    case "MinLength":
-      return `Minimal length is: ${error.min}`;
-  }
-});
+// Create Evolu instance for the React web platform.
+const evolu = Evolu.createEvolu(evoluReactWebDeps)(Schema, {
+  name: Evolu.SimpleName.orThrow("evolu-react-nextjs-minimal"),
 
-const evolu = createEvolu(evoluReactWebDeps)(Schema, {
-  name: SimpleName.orThrow("evolu-react-nextjs-example"),
+  reloadUrl: "/",
 
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
   }),
-
-  // Indexes are not required for development but are recommended for production.
-  // https://www.evolu.dev/docs/indexes
-  indexes: (create) => [
-    create("todoCreatedAt").on("todo").column("createdAt"),
-    create("todoCategoryCreatedAt").on("todoCategory").column("createdAt"),
-  ],
-
-  // enableLogging: true,
 });
 
+// Creates a typed React Hook returning an instance of Evolu.
 const useEvolu = createUseEvolu(evolu);
 
-const todosWithCategories = evolu.createQuery(
-  (db) =>
-    db
-      .selectFrom("todo")
-      .select(["id", "title", "isCompleted", "categoryId", "personJson"])
-      .where("isDeleted", "is not", 1)
-      // Filter null value and ensure non-null type.
-      .where("title", "is not", null)
-      .$narrowType<{ title: kysely.NotNull }>()
-      .orderBy("createdAt")
-      // https://kysely.dev/docs/recipes/relations
-      .select((eb) => [
-        kysely
-          .jsonArrayFrom(
-            eb
-              .selectFrom("todoCategory")
-              .select(["todoCategory.id", "todoCategory.name"])
-              .where("isDeleted", "is not", 1)
-              .orderBy("createdAt"),
-          )
-          .as("categories"),
-      ]),
-  {
-    // logQueryExecutionTime: true,
-    // logExplainQueryPlan: true,
-  },
-);
-
-type TodosWithCategoriesRow = typeof todosWithCategories.Row;
-
-const todoCategories = evolu.createQuery((db) =>
-  db
-    .selectFrom("todoCategory")
-    .select(["id", "name"])
-    .where("isDeleted", "is not", 1)
-    // Filter null value and ensure non-null type.
-    .where("name", "is not", null)
-    .$narrowType<{ name: kysely.NotNull }>()
-    .orderBy("createdAt"),
-);
-
-type TodoCategoriesRow = typeof todoCategories.Row;
-
+/**
+ * Subscribe to unexpected Evolu errors (database, network, sync issues). These
+ * should not happen in normal operation, so always log them for debugging. Show
+ * users a friendly error message instead of technical details.
+ */
 evolu.subscribeError(() => {
   const error = evolu.getError();
-  if (error) alert(JSON.stringify(error));
+  if (!error) return;
+
+  alert("🚨 Evolu error occurred! Check the console.");
+  // eslint-disable-next-line no-console
+  console.error(error);
 });
 
-export const NextJsExample: FC = () => {
-  const [currentTab, setCurrentTab] = useState<"todos" | "categories">("todos");
-
+export const EvoluDemo: FC = () => {
   return (
-    <div className="overflow-hidden rounded-lg bg-zinc-50 shadow-xs dark:bg-zinc-950">
-      <div className="px-4 py-5 pt-0 sm:p-6 sm:pt-0">
+    <div className="min-h-screen px-8 py-8">
+      <div className="mx-auto max-w-md">
+        <div className="mb-2 flex items-center justify-between pb-4">
+          <h1 className="w-full text-center text-xl font-semibold text-gray-900">
+            Minimal Todo App (Evolu + Next.js)
+          </h1>
+        </div>
+
         <EvoluProvider value={evolu}>
-          <Tabs
-            tabs={[
-              {
-                name: "Todos",
-                onClick: () => {
-                  startTransition(() => {
-                    setCurrentTab("todos");
-                  });
-                },
-                current: currentTab === "todos",
-              },
-              {
-                name: "Categories",
-                onClick: () => {
-                  startTransition(() => {
-                    setCurrentTab("categories");
-                  });
-                },
-                current: currentTab === "categories",
-              },
-            ]}
-          />
+          {/*
+            Suspense delivers great UX (no loading flickers) and DX (no loading
+            states to manage). Highly recommended with Evolu.
+          */}
           <Suspense>
-            {currentTab === "todos" ? <Todos /> : <TodoCategories />}
-            <p className="my-4">
-              The data created in this example are stored locally in SQLite.
-              Evolu encrypts the data for backup and sync with a Mnemonic, a
-              unique safe password created on your device.
-            </p>
+            <Todos />
             <OwnerActions />
           </Suspense>
         </EvoluProvider>
@@ -214,35 +82,41 @@ export const NextJsExample: FC = () => {
   );
 };
 
-const Button: FC<{
-  title: string;
-  className?: string;
-  onClick: () => void;
-}> = ({ title, className, onClick }) => {
-  return (
-    <button
-      className={`rounded-full bg-white px-2.5 py-1 text-sm font-semibold text-zinc-900 shadow-2xs ring-1 ring-zinc-300 ring-inset hover:bg-zinc-50 ${className}`}
-      onClick={onClick}
-    >
-      {title}
-    </button>
-  );
-};
+// Evolu uses Kysely for type-safe SQL (https://kysely.dev/).
+const todosQuery = evolu.createQuery((db) =>
+  db
+    // Type-safe SQL: enjoy autocomplete for table and column names here.
+    .selectFrom("todo")
+    .select(["id", "title", "isCompleted"])
+    // Soft delete: filter out deleted rows (isDeleted is auto-added to all tables).
+    .where("isDeleted", "is not", Evolu.sqliteTrue)
+    // Like GraphQL, Evolu schema makes everything nullable except id. This
+    // enables schema evolution (no migrations/versioning) and handles eventual
+    // consistency. Filter nulls in queries to ensure required shape.
+    .where("title", "is not", null)
+    .$narrowType<{ title: Evolu.kysely.NotNull }>()
+    .orderBy("createdAt"),
+);
+
+// Extract the row type from the query for type-safe component props.
+type TodosRow = typeof todosQuery.Row;
 
 const Todos: FC = () => {
-  const rows = useQuery(todosWithCategories);
+  // useQuery returns live data - component re-renders when data changes.
+  const todos = useQuery(todosQuery);
   const { insert } = useEvolu();
+  const [newTodoTitle, setNewTodoTitle] = useState("");
 
-  const handleAddTodoClick = () => {
-    const title = window.prompt("What needs to be done?");
-    if (title == null) return; // escape or cancel
-
-    const person = Person.orThrow({ name: "Joe", age: 32 });
-
-    const result = insert("todo", {
-      title,
-      personJson: personToPersonJson(person),
-    });
+  const handleAddTodo = () => {
+    const result = insert(
+      "todo",
+      { title: newTodoTitle.trim() },
+      {
+        onComplete: () => {
+          setNewTodoTitle("");
+        },
+      },
+    );
 
     if (!result.ok) {
       alert(formatTypeError(result.error));
@@ -250,267 +124,135 @@ const Todos: FC = () => {
   };
 
   return (
-    <div className="">
-      <ul className="py-2 pl-0">
-        {rows.map((row) => (
-          <TodoItem key={row.id} row={row} />
+    <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
+      <ul className="mb-6 space-y-2">
+        {todos.map((todo) => (
+          <TodoItem key={todo.id} row={todo} />
         ))}
       </ul>
-      <Button title="Add Todo" onClick={handleAddTodoClick} />
+
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={newTodoTitle}
+          onChange={(e) => {
+            setNewTodoTitle(e.target.value);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              handleAddTodo();
+            }
+          }}
+          placeholder="Add a new todo..."
+          className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
+        />
+        <Button title="Add" onClick={handleAddTodo} variant="primary" />
+      </div>
     </div>
   );
 };
 
 const TodoItem: FC<{
-  row: TodosWithCategoriesRow;
-}> = ({ row: { id, title, isCompleted, categoryId, categories } }) => {
+  row: TodosRow;
+}> = ({ row: { id, title, isCompleted } }) => {
   const { update } = useEvolu();
 
   const handleToggleCompletedClick = () => {
-    update("todo", { id, isCompleted: Number(!isCompleted) });
+    update("todo", {
+      id,
+      // Number converts boolean to number.
+      isCompleted: Number(!isCompleted),
+    });
   };
 
   const handleRenameClick = () => {
-    const title = window.prompt("Todo Name");
-    if (title == null) return; // escape or cancel
-    const result = update("todo", { id, title });
+    const newTitle = window.prompt("Edit todo", title);
+    if (newTitle == null) return;
+
+    const result = update("todo", { id, title: newTitle });
     if (!result.ok) {
       alert(formatTypeError(result.error));
     }
   };
 
   const handleDeleteClick = () => {
-    update("todo", { id, isDeleted: sqliteTrue });
-  };
-
-  const titleHistory = evolu.createQuery((db) =>
-    db
-      .selectFrom("evolu_history")
-      .select(["value", "timestamp"])
-      .where("table", "==", "todo")
-      .where("id", "==", idToIdBytes(id))
-      .where("column", "==", "title")
-      // `value` isn't typed; this is how we can narrow its type.
-      .$narrowType<{ value: (typeof Schema)["todo"]["title"]["Type"] }>()
-      .orderBy("timestamp", "desc"),
-  );
-
-  const handleHistoryClick = () => {
-    void evolu.loadQuery(titleHistory).then((rows) => {
-      const rowsWithTimestamp = rows.map((row) => ({
-        ...row,
-        timestamp: timestampBytesToTimestamp(row.timestamp),
-      }));
-      alert(JSON.stringify(rowsWithTimestamp, null, 2));
+    update("todo", {
+      id,
+      // Soft delete with isDeleted flag (CRDT-friendly, preserves sync history).
+      isDeleted: Evolu.sqliteTrue,
     });
   };
 
-  const handleCategorySelect = (categoryId: TodoCategoryId | null) => {
-    update("todo", { id, categoryId });
-  };
-
   return (
-    <li className="list-none pl-0">
-      <div className="flex items-center gap-1">
-        <label className="w-full">
-          <input
-            type="checkbox"
-            checked={!!isCompleted}
-            onChange={handleToggleCompletedClick}
-            className="relative mr-2 size-4 rounded-xs border-zinc-300 text-blue-600 focus:ring-blue-600"
-          />
-          <span
-            className="text-sm font-semibold"
-            style={{ textDecoration: isCompleted ? "line-through" : "none" }}
-          >
-            {title}
-          </span>
-        </label>
-        <div className="flex gap-1">
-          <TodoCategorySelect
-            categories={categories}
-            selected={categoryId}
-            onSelect={handleCategorySelect}
-          />
-          <Button
-            className="ml-auto"
-            title="Rename"
-            onClick={handleRenameClick}
-          />
-          <Button title="Delete" onClick={handleDeleteClick} />
-          <Button title="History" onClick={handleHistoryClick} />
-        </div>
+    <li className="-mx-2 flex items-center gap-3 px-2 py-2 hover:bg-gray-50">
+      <label className="flex flex-1 cursor-pointer items-center gap-3">
+        <input
+          type="checkbox"
+          checked={!!isCompleted}
+          onChange={handleToggleCompletedClick}
+          className="col-start-1 row-start-1 appearance-none rounded-sm border border-gray-300 bg-white checked:border-blue-600 checked:bg-blue-600 indeterminate:border-blue-600 indeterminate:bg-blue-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:border-gray-300 disabled:bg-gray-100 disabled:checked:bg-gray-100 forced-colors:appearance-auto"
+        />
+        <span
+          className={clsx(
+            "flex-1 text-sm",
+            isCompleted ? "text-gray-500 line-through" : "text-gray-900",
+          )}
+        >
+          {title}
+        </span>
+      </label>
+      <div className="flex gap-1">
+        <button
+          onClick={handleRenameClick}
+          className="p-1 text-gray-400 transition-colors hover:text-blue-600"
+          title="Edit"
+        >
+          <IconEdit className="size-4" />
+        </button>
+        <button
+          onClick={handleDeleteClick}
+          className="p-1 text-gray-400 transition-colors hover:text-red-600"
+          title="Delete"
+        >
+          <IconTrash className="size-4" />
+        </button>
       </div>
     </li>
   );
 };
 
-const TodoCategorySelect: FC<{
-  categories: TodosWithCategoriesRow["categories"];
-  selected: TodoCategoryId | null;
-  onSelect: (value: TodoCategoryId | null) => void;
-}> = ({ categories, selected, onSelect }) => {
-  const nothingSelected = "";
-  const value =
-    selected && categories.find((row) => row.id === selected)
-      ? selected
-      : nothingSelected;
-
-  return (
-    <select
-      value={value}
-      onChange={({ target: { value } }: ChangeEvent<HTMLSelectElement>) => {
-        onSelect(value === nothingSelected ? null : (value as TodoCategoryId));
-      }}
-      className="block w-full max-w-48 min-w-32 shrink rounded-full border-0 py-1 pl-3 text-zinc-900 ring-1 ring-zinc-300 ring-inset focus:ring-2 focus:ring-blue-600 sm:text-sm/6 dark:text-white"
-    >
-      <option value={nothingSelected}>-- no category --</option>
-      {categories.map(({ id, name }) => (
-        <option key={id} value={id}>
-          {name}
-        </option>
-      ))}
-    </select>
-  );
-};
-
-const TodoCategories: FC = () => {
-  const rows = useQuery(todoCategories);
-
-  const { insert } = useEvolu();
-
-  const handleAddCategoryClick = () => {
-    const name = window.prompt("Category Name");
-    if (name == null) return; // escape or cancel
-    const result = insert("todoCategory", { name });
-    if (!result.ok) {
-      alert(formatTypeError(result.error));
-    }
-  };
-
-  return (
-    <div>
-      <ul className="py-2 pl-0">
-        {rows.map((row) => (
-          <TodoCategoryItem row={row} key={row.id} />
-        ))}
-      </ul>
-      <Button title="Add Category" onClick={handleAddCategoryClick} />
-    </div>
-  );
-};
-
-const TodoCategoryItem: FC<{ row: TodoCategoriesRow }> = ({
-  row: { id, name },
-}) => {
-  const { update } = useEvolu();
-
-  const handleRenameClick = () => {
-    const name = window.prompt("Category Name");
-    if (name == null) return; // escape or cancel
-    const result = update("todoCategory", { id, name });
-    if (!result.ok) {
-      alert(formatTypeError(result.error));
-    }
-  };
-
-  const handleDeleteClick = () => {
-    update("todoCategory", { id, isDeleted: sqliteTrue });
-  };
-
-  return (
-    <>
-      <li key={id} className="flex list-none items-center gap-1 pl-0">
-        <span className="text-sm font-semibold">{name}</span>
-        <Button
-          className="ml-auto"
-          title="Rename"
-          onClick={handleRenameClick}
-        />
-        <Button title="Delete" onClick={handleDeleteClick} />
-      </li>
-    </>
-  );
-};
-
-const Tabs: FC<{
-  tabs: Array<{ name: string; onClick: () => void; current: boolean }>;
-}> = ({ tabs }) => {
-  return (
-    <div>
-      <div className="sm:hidden">
-        <label htmlFor="tabs" className="sr-only">
-          Select a tab
-        </label>
-        {/* Use an `onChange` listener to redirect the user to the selected tab URL. */}
-        <select
-          id="tabs"
-          name="tabs"
-          defaultValue={tabs.find((tab) => tab.current)?.name}
-          className="block w-full rounded-md border-zinc-300 py-2 pr-10 pl-3 text-base focus:border-blue-500 focus:ring-blue-500 focus:outline-hidden sm:text-sm dark:border-zinc-800"
-        >
-          {tabs.map((tab) => (
-            <option key={tab.name}>{tab.name}</option>
-          ))}
-        </select>
-      </div>
-      <div className="hidden sm:block">
-        <div className="border-b border-zinc-200 dark:border-zinc-800">
-          <nav aria-label="Tabs" className="-mb-px flex space-x-3">
-            {tabs.map((tab) => (
-              <button
-                key={tab.name}
-                // href={tab.href}
-                onClick={tab.onClick}
-                aria-current={tab.current ? "page" : undefined}
-                className={[
-                  tab.current
-                    ? "border-blue-500 text-blue-600"
-                    : "border-transparent text-zinc-500 hover:border-zinc-300 hover:text-zinc-700 dark:hover:text-zinc-300",
-                  "border-b-2 px-1 py-4 text-sm font-medium whitespace-nowrap",
-                ].join(" ")}
-              >
-                {tab.name}
-              </button>
-            ))}
-          </nav>
-        </div>
-      </div>
-    </div>
-  );
-};
-
 const OwnerActions: FC = () => {
-  const evolu = useEvolu();
-  const owner = useAppOwner();
+  const appOwner = useAppOwner();
+
   const [showMnemonic, setShowMnemonic] = useState(false);
 
+  // Restore owner from mnemonic to sync data across devices.
   const handleRestoreAppOwnerClick = () => {
-    const mnemonic = window.prompt("Your Mnemonic");
-    if (mnemonic == null) return; // escape or cancel
-    const result = Mnemonic.from(mnemonic.trim());
+    const mnemonic = window.prompt("Enter your mnemonic to restore your data:");
+    if (mnemonic == null) return;
+
+    const result = Evolu.Mnemonic.from(mnemonic.trim());
     if (!result.ok) {
       alert(formatTypeError(result.error));
       return;
     }
+
     void evolu.restoreAppOwner(result.value);
   };
 
   const handleResetAppOwnerClick = () => {
-    if (confirm("Are you sure? It will delete all your local data.")) {
+    if (confirm("Are you sure? This will delete all your local data.")) {
       void evolu.resetAppOwner();
     }
   };
 
   const handleDownloadDatabaseClick = () => {
     void evolu.exportDatabase().then((array) => {
-      const blob = new Blob([array.slice()], {
-        type: "application/x-sqlite3",
-      });
+      const blob = new Blob([array.slice()], { type: "application/x-sqlite3" });
       const a = document.createElement("a");
       document.body.appendChild(a);
       a.href = window.URL.createObjectURL(blob);
-      a.download = "db.sqlite3";
+      a.download = "todos.sqlite3";
       a.addEventListener("click", function () {
         setTimeout(function () {
           window.URL.revokeObjectURL(a.href);
@@ -522,90 +264,95 @@ const OwnerActions: FC = () => {
   };
 
   return (
-    <div className="mt-6">
-      <p>
-        Open this page on another device and use your mnemonic to restore your
-        data.
+    <div className="mt-8 rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
+      <h2 className="mb-4 text-lg font-medium text-gray-900">Account</h2>
+      <p className="mb-4 text-sm text-gray-600">
+        Todos are stored in local SQLite. When you sync across devices, your
+        data is end-to-end encrypted using your mnemonic.
       </p>
-      <div className="flex gap-1">
+
+      <div className="space-y-3">
         <Button
           title={`${showMnemonic ? "Hide" : "Show"} Mnemonic`}
           onClick={() => {
             setShowMnemonic(!showMnemonic);
           }}
+          className="w-full"
         />
-        <Button title="Restore Owner" onClick={handleRestoreAppOwnerClick} />
-        <Button title="Reset Owner" onClick={handleResetAppOwnerClick} />
-        <Button
-          title="Download Database"
-          onClick={handleDownloadDatabaseClick}
-        />
-      </div>
-      {showMnemonic && owner?.mnemonic && (
-        <div>
-          <textarea
-            value={owner.mnemonic}
-            readOnly
-            rows={2}
-            style={{ width: 320 }}
+
+        {showMnemonic && appOwner?.mnemonic && (
+          <div className="bg-gray-50 p-3">
+            <label className="mb-2 block text-xs font-medium text-gray-700">
+              Your Mnemonic (keep this safe!)
+            </label>
+            <textarea
+              value={appOwner.mnemonic}
+              readOnly
+              rows={3}
+              className="w-full border-b border-gray-300 bg-white px-2 py-1 font-mono text-xs focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <Button
+            title="Restore from Mnemonic"
+            onClick={handleRestoreAppOwnerClick}
+          />
+          <Button title="Reset All Data" onClick={handleResetAppOwnerClick} />
+          <Button
+            title="Download Backup"
+            onClick={handleDownloadDatabaseClick}
           />
         </div>
-      )}
+      </div>
     </div>
   );
 };
 
-// // Note: We only need to specify the errors actually used in the app.
-// type AppErrors =
-//   | ValidMutationSizeError
-//   | StringError
-//   | MinLengthError
-//   | MaxLengthError
-//   | NullError
-//   | IdError
-//   | TrimmedError
-//   | MnemonicError
-//   | LiteralError
-//   // Composite errors
-//   | ObjectError<Record<string, AppErrors>>
-//   | UnionError<AppErrors>;
+const Button: FC<{
+  title: string;
+  className?: string;
+  onClick: () => void;
+  variant?: "primary" | "secondary";
+}> = ({ title, className, onClick, variant = "secondary" }) => {
+  const baseClasses =
+    "px-3 py-2 text-sm font-medium rounded-lg transition-colors";
+  const variantClasses =
+    variant === "primary"
+      ? "bg-blue-600 text-white hover:bg-blue-700"
+      : "bg-gray-100 text-gray-700 hover:bg-gray-200";
 
-// const formatTypeError: TypeErrorFormatter<AppErrors> = (error) => {
-//   // In the real code, we would use the createTypeErrorFormatter helper
-//   // that safely stringifies error value.
-//   switch (error.type) {
-//     case "Id":
-//       return `Invalid Id on table: ${error.table}.`;
-//     case "MaxLength":
-//       return `Max length is ${error.max}.`;
-//     case "MinLength":
-//       return `Min length is ${error.min}.`;
-//     case "Mnemonic":
-//       return `Invalid mnemonic: ${String(error.value)}`;
-//     case "Null":
-//       return `Not null`;
-//     case "String":
-//       // We can reuse existing formatter.
-//       return formatStringError(error);
-//     case "Trimmed":
-//       return "Value is not trimmed.";
-//     case "ValidMutationSize":
-//       return "A developer made an error, this should not happen.";
-//     case "Literal":
-//       return formatLiteralError(error);
-//     // Composite Types
-//     case "Union":
-//       return `Union errors: ${error.errors.map(formatTypeError).join(", ")}`;
-//     case "Object": {
-//       if (
-//         error.reason.kind === "ExtraKeys" ||
-//         error.reason.kind === "NotObject"
-//       )
-//         return "A developer made an error, this should not happen.";
-//       const firstError = Object.values(error.reason.errors).find(
-//         (e) => e !== undefined,
-//       )!;
-//       return formatTypeError(firstError);
-//     }
-//   }
-// };
+  return (
+    <button
+      className={clsx(baseClasses, variantClasses, className)}
+      onClick={onClick}
+    >
+      {title}
+    </button>
+  );
+};
+
+/**
+ * Formats Evolu Type errors into user-friendly messages.
+ *
+ * Evolu Type typed errors ensure every error type used in schema must have a
+ * formatter. TypeScript enforces this at compile-time, preventing unhandled
+ * validation errors from reaching users.
+ *
+ * The `createFormatTypeError` function handles both built-in and custom errors,
+ * and lets us override default formatting for specific errors.
+ *
+ * Click on `createFormatTypeError` below to see how to write your own
+ * formatter.
+ */
+const formatTypeError = Evolu.createFormatTypeError<
+  Evolu.MinLengthError | Evolu.MaxLengthError
+>((error): string => {
+  switch (error.type) {
+    case "MinLength":
+      return `Text must be at least ${error.min} character${error.min === 1 ? "" : "s"} long`;
+    case "MaxLength":
+      return `Text is too long (maximum ${error.max} characters)`;
+  }
+});
