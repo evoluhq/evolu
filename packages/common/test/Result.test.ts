@@ -22,7 +22,7 @@ test("err", () => {
 test("getOrThrow", () => {
   expect(getOrThrow(ok(42))).toBe(42);
   expect(() => getOrThrow(err("error"))).toThrowErrorMatchingInlineSnapshot(
-    `[Error: getOrThrow failed]`,
+    `[Error: getOrThrow]`,
   );
 
   // Inspect cause for a primitive error value

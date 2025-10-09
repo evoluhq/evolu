@@ -1,35 +1,33 @@
-import { sha256 } from "@noble/hashes/sha2";
+import { sha256 } from "@noble/hashes/sha2.js";
 import { assert, expect, test } from "vitest";
 import {
-  binaryTimestampToFingerprint,
-  Fingerprint,
-  InfiniteUpperBound,
-  ownerIdToBinaryOwnerId,
-} from "../../src/Evolu/Protocol.js";
-import {
   createSqliteStorageBase,
+  Fingerprint,
   getTimestampByIndex,
+  InfiniteUpperBound,
   SqliteStorageBaseDep,
+  timestampBytesToFingerprint,
 } from "../../src/Evolu/Storage.js";
 import {
   Counter,
   createTimestamp,
   Millis,
-  orderBinaryTimestamp,
-  timestampToBinaryTimestamp,
+  orderTimestampBytes,
+  timestampToTimestampBytes,
 } from "../../src/Evolu/Timestamp.js";
 import {
-  BinaryTimestamp,
   computeBalancedBuckets,
   createRandom,
   getOrThrow,
   NonNegativeInt,
   ok,
+  ownerIdToOwnerIdBytes,
   PositiveInt,
   sql,
   SqliteDep,
+  TimestampBytes,
 } from "../../src/index.js";
-import { testCreateSqlite, testOwner2, testOwnerBinaryId } from "../_deps.js";
+import { testCreateSqlite, testOwner2, testOwnerIdBytes } from "../_deps.js";
 import {
   testAnotherTimestampsAsc,
   testTimestampsAsc,
@@ -63,27 +61,27 @@ const xorFingerprints = (arr1: Fingerprint, arr2: Fingerprint): Fingerprint => {
   return result as Fingerprint;
 };
 
-const testTimestamps = async (timestamps: ReadonlyArray<BinaryTimestamp>) => {
+const testTimestamps = async (timestamps: ReadonlyArray<TimestampBytes>) => {
   const deps = await createDeps();
 
   const bruteForceAllTimestampsFingerprint = timestamps
-    .map(binaryTimestampToFingerprint)
+    .map(timestampBytesToFingerprint)
     .reduce((prev, curr) => xorFingerprints(prev, curr));
 
   const txResult = deps.sqlite.transaction(() => {
     for (const timestamp of timestamps) {
-      deps.storage.insertTimestamp(testOwnerBinaryId, timestamp);
+      deps.storage.insertTimestamp(testOwnerIdBytes, timestamp);
     }
 
     // Add the same timestamps again to test idempotency.
     for (const timestamp of timestamps) {
-      deps.storage.insertTimestamp(testOwnerBinaryId, timestamp);
+      deps.storage.insertTimestamp(testOwnerIdBytes, timestamp);
     }
 
     // Add similar timestamps of another owner.
     for (const timestamp of testAnotherTimestampsAsc) {
       deps.storage.insertTimestamp(
-        ownerIdToBinaryOwnerId(testOwner2.id),
+        ownerIdToOwnerIdBytes(testOwner2.id),
         timestamp,
       );
     }
@@ -91,7 +89,7 @@ const testTimestamps = async (timestamps: ReadonlyArray<BinaryTimestamp>) => {
   });
   assert(txResult.ok);
 
-  const count = deps.storage.getSize(testOwnerBinaryId);
+  const count = deps.storage.getSize(testOwnerIdBytes);
   assert(count);
   expect(count).toBe(timestamps.length);
 
@@ -99,7 +97,7 @@ const testTimestamps = async (timestamps: ReadonlyArray<BinaryTimestamp>) => {
   assert(buckets.ok, JSON.stringify(buckets));
 
   const fingerprintRanges = deps.storage.fingerprintRanges(
-    testOwnerBinaryId,
+    testOwnerIdBytes,
     buckets.value,
   );
   assert(fingerprintRanges);
@@ -109,7 +107,7 @@ const testTimestamps = async (timestamps: ReadonlyArray<BinaryTimestamp>) => {
     .filter((bound) => bound !== InfiniteUpperBound);
 
   expect(finiteUpperBounds).toStrictEqual(
-    finiteUpperBounds.toSorted(orderBinaryTimestamp),
+    finiteUpperBounds.toSorted(orderTimestampBytes),
   );
 
   const incrementalCounts: Array<number> = [];
@@ -117,27 +115,27 @@ const testTimestamps = async (timestamps: ReadonlyArray<BinaryTimestamp>) => {
   for (let i = 0; i < fingerprintRanges.length; i++) {
     const lower = (
       i === 0 ? null : fingerprintRanges[i - 1].upperBound
-    ) as BinaryTimestamp | null;
+    ) as TimestampBytes | null;
     const upper =
       fingerprintRanges[i].upperBound === InfiniteUpperBound
         ? null
-        : (fingerprintRanges[i].upperBound as BinaryTimestamp);
+        : (fingerprintRanges[i].upperBound as TimestampBytes);
 
     const { rows: timestampRows } = getOrThrow(
-      deps.sqlite.exec<{ t: BinaryTimestamp }>(sql`
+      deps.sqlite.exec<{ t: TimestampBytes }>(sql`
         select t
         from evolu_timestamp
         where
           (${lower} is null or t >= ${lower})
           and (${upper} is null or t < ${upper})
-          and ownerId = ${testOwnerBinaryId};
+          and ownerId = ${testOwnerIdBytes};
       `),
     );
 
     incrementalCounts.push(timestampRows.length);
 
     const bruteForceRangeFingerprint = timestampRows
-      .map((a) => binaryTimestampToFingerprint(a.t))
+      .map((a) => timestampBytesToFingerprint(a.t))
       .reduce((prev, curr) => xorFingerprints(prev, curr));
 
     expect(fingerprintRanges[i].fingerprint, i.toString()).toStrictEqual(
@@ -145,9 +143,9 @@ const testTimestamps = async (timestamps: ReadonlyArray<BinaryTimestamp>) => {
     );
 
     const fingerprintResult = deps.storage.fingerprint(
-      testOwnerBinaryId,
-      getOrThrow(NonNegativeInt.from(i > 0 ? buckets.value[i - 1] : 0)),
-      getOrThrow(NonNegativeInt.from(buckets.value[i])),
+      testOwnerIdBytes,
+      NonNegativeInt.orThrow(i > 0 ? buckets.value[i - 1] : 0),
+      NonNegativeInt.orThrow(buckets.value[i]),
     );
     assert(fingerprintResult);
     expect(fingerprintResult).toEqual(bruteForceRangeFingerprint);
@@ -160,7 +158,7 @@ const testTimestamps = async (timestamps: ReadonlyArray<BinaryTimestamp>) => {
 
   // The whole DB fingerprint.
   const oneRangeFingerprints = deps.storage.fingerprintRanges(
-    testOwnerBinaryId,
+    testOwnerIdBytes,
     [timestamps.length as PositiveInt],
   );
   assert(oneRangeFingerprints);
@@ -178,7 +176,7 @@ test(
   longTimeout,
   async () => {
     const sequentialTimestampsAsc = Array.from({ length: 10_000 }, (_, i) =>
-      timestampToBinaryTimestamp(createTimestamp({ millis: i as Millis })),
+      timestampToTimestampBytes(createTimestamp({ millis: i as Millis })),
     );
     const sequentialTimestampsDesc = sequentialTimestampsAsc.toReversed();
     const sequentialTimestampsRandom = sequentialTimestampsAsc.toSorted(
@@ -196,18 +194,18 @@ test(
 
 test("empty db", async () => {
   const deps = await createDeps();
-  const size = deps.storage.getSize(testOwnerBinaryId);
+  const size = deps.storage.getSize(testOwnerIdBytes);
   expect(size).toBe(0);
 
   const fingerprint = deps.storage.fingerprint(
-    testOwnerBinaryId,
+    testOwnerIdBytes,
     0 as NonNegativeInt,
     0 as NonNegativeInt,
   );
   expect(fingerprint?.join()).toBe("0,0,0,0,0,0,0,0,0,0,0,0");
 
   const lowerBound = deps.storage.findLowerBound(
-    testOwnerBinaryId,
+    testOwnerIdBytes,
     0 as NonNegativeInt,
     0 as NonNegativeInt,
     testTimestampsAsc[0],
@@ -219,7 +217,7 @@ const count = 1_000_000;
 const batchSize = 10_000;
 
 const benchmarkTimestamps = async (
-  timestamps: ReadonlyArray<BinaryTimestamp>,
+  timestamps: ReadonlyArray<TimestampBytes>,
   label: string,
 ) => {
   const deps = await createDeps();
@@ -235,7 +233,7 @@ const benchmarkTimestamps = async (
     const batchBeginTime = performance.now();
     deps.sqlite.transaction(() => {
       for (let i = batchStart; i < batchEnd; i++) {
-        deps.storage.insertTimestamp(testOwnerBinaryId, timestamps[i]);
+        deps.storage.insertTimestamp(testOwnerIdBytes, timestamps[i]);
       }
       return ok();
     });
@@ -243,12 +241,12 @@ const benchmarkTimestamps = async (
     const insertsPerSec = ((batchEnd - batchStart) / batchTimeSec).toFixed(0);
 
     const bucketsBeginTime = performance.now();
-    const size = deps.storage.getSize(testOwnerBinaryId);
+    const size = deps.storage.getSize(testOwnerIdBytes);
     assert(size);
     const buckets = computeBalancedBuckets(size);
     assert(buckets.ok);
     const fingerprint = deps.storage.fingerprintRanges(
-      testOwnerBinaryId,
+      testOwnerIdBytes,
       buckets.value,
     );
     assert(fingerprint);
@@ -273,20 +271,20 @@ test("findLowerBound", async () => {
   const { storage } = await createDeps();
 
   const timestamps = Array.from({ length: 10 }, (_, i) =>
-    timestampToBinaryTimestamp(createTimestamp({ millis: (i + 1) as Millis })),
+    timestampToTimestampBytes(createTimestamp({ millis: (i + 1) as Millis })),
   );
   for (const t of timestamps) {
-    storage.insertTimestamp(testOwnerBinaryId, t);
+    storage.insertTimestamp(testOwnerIdBytes, t);
   }
 
-  const ownerId = testOwnerBinaryId;
-  const begin = getOrThrow(NonNegativeInt.from(0));
-  const end = getOrThrow(NonNegativeInt.from(10));
+  const ownerId = testOwnerIdBytes;
+  const begin = NonNegativeInt.orThrow(0);
+  const end = NonNegativeInt.orThrow(10);
 
-  const beforeAll = timestampToBinaryTimestamp(createTimestamp());
+  const beforeAll = timestampToTimestampBytes(createTimestamp());
   expect(storage.findLowerBound(ownerId, begin, end, beforeAll)).toEqual(begin);
 
-  const afterAll = timestampToBinaryTimestamp(
+  const afterAll = timestampToTimestampBytes(
     createTimestamp({
       millis: 11 as Millis,
     }),
@@ -305,7 +303,7 @@ test("findLowerBound", async () => {
       ownerId,
       begin,
       end,
-      timestampToBinaryTimestamp(
+      timestampToTimestampBytes(
         createTimestamp({ millis: 2 as Millis, counter: 1 as Counter }),
       ),
     ),
@@ -316,12 +314,12 @@ test("iterate", async () => {
   const deps = await createDeps();
 
   for (const timestamp of testTimestampsAsc) {
-    deps.storage.insertTimestamp(testOwnerBinaryId, timestamp);
+    deps.storage.insertTimestamp(testOwnerIdBytes, timestamp);
   }
 
-  const collected: Array<BinaryTimestamp> = [];
+  const collected: Array<TimestampBytes> = [];
   deps.storage.iterate(
-    testOwnerBinaryId,
+    testOwnerIdBytes,
     0 as NonNegativeInt,
     testTimestampsAsc.length as NonNegativeInt,
     (timestamp, index) => {
@@ -337,9 +335,9 @@ test("iterate", async () => {
   }
 
   const stopAfter = 3;
-  const stopAfterCollected: Array<BinaryTimestamp> = [];
+  const stopAfterCollected: Array<TimestampBytes> = [];
   deps.storage.iterate(
-    testOwnerBinaryId,
+    testOwnerIdBytes,
     0 as NonNegativeInt,
     testTimestampsAsc.length as NonNegativeInt,
     (timestamp) => {
@@ -359,12 +357,12 @@ test("getTimestampByIndex", async () => {
   const deps = await createDeps();
 
   for (const timestamp of testTimestampsAsc) {
-    deps.storage.insertTimestamp(testOwnerBinaryId, timestamp);
+    deps.storage.insertTimestamp(testOwnerIdBytes, timestamp);
   }
 
   for (let i = 0; i < testTimestampsAsc.length; i++) {
     const timestamp = getTimestampByIndex(deps)(
-      testOwnerBinaryId,
+      testOwnerIdBytes,
       i as NonNegativeInt,
     );
     assert(timestamp.ok);
@@ -374,7 +372,7 @@ test("getTimestampByIndex", async () => {
 
 test.skip("insert 1_000_000", longTimeout, async () => {
   const timestampsAsc = Array.from({ length: count }, (_, i) =>
-    timestampToBinaryTimestamp(createTimestamp({ millis: i as Millis })),
+    timestampToTimestampBytes(createTimestamp({ millis: i as Millis })),
   );
   const timestampsDesc = timestampsAsc.toReversed();
   const timestampsRandom = timestampsAsc.toSorted(() => Math.random() - 0.5);
@@ -413,10 +411,10 @@ test.skip(
     let previousHash = Buffer.alloc(hashBytes);
 
     for (let i = 0; i < numRows; i++) {
-      const binaryTimestamp = timestampToBinaryTimestamp(
+      const timestampBytes = timestampToTimestampBytes(
         createTimestamp({ millis: i as Millis }),
       );
-      const hash = sha256(binaryTimestamp);
+      const hash = sha256(timestampBytes);
       const shortHash = hash.slice(0, hashBytes);
 
       const xorHash = Buffer.alloc(hashBytes);

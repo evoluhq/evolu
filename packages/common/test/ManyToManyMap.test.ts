@@ -161,16 +161,69 @@ test("ManyToManyMap - with complex objects as keys and values", () => {
   expect(map.hasPair(alice, london)).toBe(false);
 });
 
-test("ManyToManyMap - duplicate adds", () => {
+test("ManyToManyMap - duplicate adds and return value", () => {
   const map = createManyToManyMap<string, number>();
-  map.add("a", 1);
-  map.add("a", 1); // Duplicate
-  expect(map.getValues("a")?.size).toBe(1);
+  expect(map.add("a", 1)).toBe(true); // new
+  expect(map.add("a", 1)).toBe(false); // duplicate
+  expect(map.add("a", 2)).toBe(true); // new value for existing key
+  expect(map.add("b", 2)).toBe(true); // new key referencing existing value
+  expect(map.getValues("a")?.size).toBe(2);
   expect(map.getKeys(1)?.size).toBe(1);
+  expect(map.getKeys(2)?.size).toBe(2);
 });
 
-test("ManyToManyMap - chaining", () => {
+test("ManyToManyMap - forEach iterates over pairs", () => {
   const map = createManyToManyMap<string, number>();
-  map.add("a", 1).add("a", 2).add("b", 2);
-  expect(map.getValues("a")?.size).toBe(2);
+  map.add("a", 1);
+  map.add("a", 2);
+  map.add("b", 2);
+  const pairs: Array<[string, number]> = [];
+  map.forEach((k, v) => pairs.push([k, v]));
+  expect(pairs).toEqual([
+    ["a", 1],
+    ["a", 2],
+    ["b", 2],
+  ]);
+});
+
+test("ManyToManyMap - iterator yields pairs", () => {
+  const map = createManyToManyMap<string, number>();
+  map.add("a", 1);
+  map.add("a", 2);
+  map.add("b", 2);
+  const pairs = [...map];
+  expect(pairs).toEqual([
+    ["a", 1],
+    ["a", 2],
+    ["b", 2],
+  ]);
+});
+
+test("ManyToManyMap - counts", () => {
+  const map = createManyToManyMap<string, number>();
+  expect(map.keyCount()).toBe(0);
+  expect(map.valueCount()).toBe(0);
+  expect(map.pairCount()).toBe(0);
+  map.add("a", 1); // new pair
+  expect(map.keyCount()).toBe(1);
+  expect(map.valueCount()).toBe(1);
+  expect(map.pairCount()).toBe(1);
+  map.add("a", 2); // new value same key
+  expect(map.keyCount()).toBe(1);
+  expect(map.valueCount()).toBe(2);
+  expect(map.pairCount()).toBe(2);
+  map.add("b", 2); // new key same value
+  expect(map.keyCount()).toBe(2);
+  expect(map.valueCount()).toBe(2);
+  expect(map.pairCount()).toBe(3);
+  map.add("b", 2); // duplicate
+  expect(map.pairCount()).toBe(3);
+  map.remove("a", 1);
+  expect(map.pairCount()).toBe(2);
+  map.deleteKey("b"); // removes (b,2)
+  expect(map.pairCount()).toBe(1);
+  map.deleteValue(2); // removes (a,2)
+  expect(map.pairCount()).toBe(0);
+  expect(map.keyCount()).toBe(0);
+  expect(map.valueCount()).toBe(0);
 });

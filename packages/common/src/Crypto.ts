@@ -3,52 +3,65 @@
  *
  * @module
  */
+import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
+import { hmac } from "@noble/hashes/hmac.js";
+import { sha512 } from "@noble/hashes/sha2.js";
+import { randomBytes, utf8ToBytes } from "@noble/hashes/utils.js";
+import { Result, trySync } from "./Result.js";
+import { brand, length, NonNegativeInt, Uint8Array } from "./Type.js";
 
-import { xchacha20poly1305 } from "@noble/ciphers/chacha";
-import { hmac } from "@noble/hashes/hmac";
-import { sha512 } from "@noble/hashes/sha2";
-import { randomBytes } from "@noble/hashes/utils";
-import * as bip39 from "@scure/bip39";
-import { wordlist } from "@scure/bip39/wordlists/english";
-import { urlAlphabet } from "nanoid";
-import { getOrThrow, Result, trySync } from "./Result.js";
-import {
-  brand,
-  Id,
-  length,
-  Mnemonic,
-  NonNegativeInt,
-  Uint8Array,
-} from "./Type.js";
-import { Brand } from "./Brand.js";
-import { assert } from "./Assert.js";
-
-/** `Uint8Array` created by {@link createRandomBytes}. */
-export type RandomBytes = Uint8Array & Brand<"RandomBytes">;
-
-export type CreateRandomBytes = (bytesLength?: number) => RandomBytes;
-
-export interface CreateRandomBytesDep {
-  readonly createRandomBytes: CreateRandomBytes;
+export interface RandomBytes {
+  /**
+   * Creates cryptographically secure random bytes with type-safe length
+   * branding.
+   *
+   * Uses the operating system's cryptographically secure random number
+   * generator (crypto.getRandomValues) to generate high-quality entropy
+   * suitable for cryptographic operations.
+   *
+   * ### Type Safety
+   *
+   * Returns specific branded types for common sizes:
+   *
+   * - `Random16` for 16-byte values (128 bits)
+   * - `Random32` for 32-byte values (256 bits)
+   * - `Random64` for 64-byte values (512 bits)
+   * - `Random` for any other size
+   *
+   * ### Example
+   *
+   * ```ts
+   * const nonce = randomBytes.create(16); // Type: Random16
+   * const key = randomBytes.create(32); // Type: Random32
+   * const seed = randomBytes.create(64); // Type: Random64
+   * const custom = randomBytes.create(48); // Type: Random
+   * ```
+   */
+  create(bytesLength: 16): Entropy16;
+  create(bytesLength: 32): Entropy32;
+  create(bytesLength: 64): Entropy64;
+  create(bytesLength: number): Entropy;
 }
 
-/** Cryptographically secure PRNG. Uses internal OS-level crypto.getRandomValues. */
-export const createRandomBytes: CreateRandomBytes = (bytesLength = 32) =>
-  randomBytes(bytesLength) as RandomBytes;
-
-export type CreateMnemonic = () => Mnemonic;
-
-export interface CreateMnemonicDep {
-  readonly createMnemonic: CreateMnemonic;
+export interface RandomBytesDep {
+  readonly randomBytes: RandomBytes;
 }
 
-export const createEnglishMnemonic: CreateMnemonic = () =>
-  bip39.generateMnemonic(wordlist, 128) as Mnemonic;
+const Entropy = brand("Entropy", Uint8Array);
+type Entropy = typeof Entropy.Type;
 
-export type MnemonicSeed = Uint8Array & Brand<"MnemonicSeed">;
+export const Entropy16 = length(16)(Entropy);
+export type Entropy16 = typeof Entropy16.Type;
 
-export const mnemonicToMnemonicSeed = (mnemonic: Mnemonic): MnemonicSeed =>
-  bip39.mnemonicToSeedSync(mnemonic) as MnemonicSeed;
+export const Entropy32 = length(32)(Entropy);
+export type Entropy32 = typeof Entropy32.Type;
+
+export const Entropy64 = length(64)(Entropy);
+export type Entropy64 = typeof Entropy64.Type;
+
+export const createRandomBytes = (): RandomBytes => ({
+  create: randomBytes as RandomBytes["create"],
+});
 
 /**
  * SLIP21.
@@ -56,54 +69,41 @@ export const mnemonicToMnemonicSeed = (mnemonic: Mnemonic): MnemonicSeed =>
  * https://github.com/satoshilabs/slips/blob/master/slip-0021.md
  */
 export const createSlip21 = (
-  seed: MnemonicSeed,
-  path: ReadonlyArray<string>,
-): Uint8Array => {
-  assert(
-    seed.length >= 16 && seed.length <= 64,
-    `Unusual SLIP-0021 seed length: ${seed.length} bytes`,
-  );
+  seed: Entropy16 | Entropy32 | Entropy64,
+  path: ReadonlyArray<string | number>,
+): Entropy32 => {
+  let currentNode = hmac(
+    sha512,
+    utf8ToBytes("Symmetric key seed"),
+    seed,
+  ) as Entropy64;
 
-  let m = hmac(sha512, "Symmetric key seed", seed);
-  for (const component of path) {
-    const p = new TextEncoder().encode(component);
-    const e = new globalThis.Uint8Array(p.byteLength + 1);
-    e[0] = 0;
-    e.set(p, 1);
-    m = hmac(sha512, m.slice(0, 32), e);
+  for (const element of path) {
+    const label = typeof element === "number" ? element.toString() : element;
+    currentNode = deriveSlip21Node(label, currentNode);
   }
-  return m.slice(32, 64);
+
+  return currentNode.slice(32, 64) as Entropy32;
 };
 
 /**
- * Creates a 21-character Base64URL ID (also known as nanoid) from a SLIP-21
- * derived key.
+ * Derives a single node in the SLIP-21 hierarchical key derivation.
  *
- * Reduces the 256-bit SLIP-21 output to 126 bits (21 chars × 6 bits) for a
- * compact, human-readable, and shareable identifier suitable for UI display or
- * URL use. While this lowers entropy, 126 bits remains cryptographically secure
- * for uniqueness and unpredictability in most applications (comparable to
- * UUIDv4's 122 bits).
- *
- * See https://github.com/satoshilabs/slips/blob/master/slip-0021.md
+ * @see {@link createSlip21}
  */
-export const createSlip21Id = (
-  seed: MnemonicSeed,
-  path: ReadonlyArray<string>,
-): Id => {
-  const slip21 = createSlip21(seed, path);
-  let id = "" as Id;
-
-  // Convert the key to the Id/NanoId/Base64Url format.
-  for (let i = 0; i < 21; i++) {
-    id = (id + urlAlphabet[slip21[i] & 63]) as Id;
-  }
-
-  return id;
+export const deriveSlip21Node = (
+  label: string,
+  parentNode: Entropy64,
+): Entropy64 => {
+  const labelBytes = utf8ToBytes(label);
+  const message = new globalThis.Uint8Array(labelBytes.byteLength + 1);
+  message[0] = 0;
+  message.set(labelBytes, 1);
+  return hmac(sha512, parentNode.slice(0, 32), message) as Entropy64;
 };
 
 /** The encryption key for {@link SymmetricCrypto}. */
-export const EncryptionKey = brand("EncryptionKey", length(32)(Uint8Array));
+export const EncryptionKey = brand("EncryptionKey", Entropy32);
 export type EncryptionKey = typeof EncryptionKey.Type;
 
 /** Symmetric cryptography. */
@@ -140,15 +140,15 @@ export interface SymmetricCryptoDecryptError {
  * https://github.com/paulmillr/noble-ciphers?tab=readme-ov-file#which-cipher-should-i-pick
  */
 export const createSymmetricCrypto = (
-  deps: CreateRandomBytesDep,
+  deps: RandomBytesDep,
 ): SymmetricCrypto => {
-  const nonceLength = getOrThrow(NonNegativeInt.from(24));
+  const nonceLength = NonNegativeInt.orThrow(24);
 
   const symmetricCrypto: SymmetricCrypto = {
     nonceLength,
 
     encrypt: (plaintext, encryptionKey) => {
-      const nonce = deps.createRandomBytes(nonceLength);
+      const nonce = deps.randomBytes.create(nonceLength);
       const ciphertext = xchacha20poly1305(encryptionKey, nonce).encrypt(
         plaintext,
       );

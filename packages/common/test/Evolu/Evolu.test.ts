@@ -1,9 +1,18 @@
 import { describe, expect, expectTypeOf, test, vi } from "vitest";
 import { createConsole } from "../../src/Console.js";
+import { createDbWorkerForPlatform } from "../../src/Evolu/Db.js";
 import { createEvolu } from "../../src/Evolu/Evolu.js";
 import { createAppOwner } from "../../src/Evolu/Owner.js";
+import {
+  ValidateColumnTypes,
+  ValidateIdColumnType,
+  ValidateNoDefaultColumns,
+  ValidateSchemaHasId,
+} from "../../src/Evolu/Schema.js";
+import { SyncOwner } from "../../src/Evolu/Sync.js";
 import { getOrThrow } from "../../src/Result.js";
 import { createSqlite, SqliteBoolean } from "../../src/Sqlite.js";
+import { wait } from "../../src/Task.js";
 import {
   Boolean,
   id,
@@ -14,28 +23,18 @@ import {
   SimpleName,
 } from "../../src/Type.js";
 import {
+  testCreateDummyWebSocket,
   testCreateId,
-  testCreateMnemonic,
-  testCreateRandomBytesDep,
   testCreateSqliteDriver,
-  testMnemonic,
-  testNanoIdLib,
+  testOwner,
+  testOwner2,
+  testOwnerSecret,
   testRandom,
+  testRandomBytes,
   testSimpleName,
   testTime,
 } from "../_deps.js";
-import {
-  ValidateColumnTypes,
-  ValidateIdColumnType,
-  ValidateNoDefaultColumns,
-  ValidateSchemaHasId,
-} from "../../src/Evolu/Schema.js";
-import {
-  createDbWorkerForPlatform,
-  getDbSnapshot,
-} from "../../src/Evolu/Db.js";
-import { constVoid } from "../../src/Function.js";
-import { wait } from "../../src/Promise.js";
+import { getDbSnapshot } from "./_utils.js";
 
 const TodoId = id("Todo");
 type TodoId = InferType<typeof TodoId>;
@@ -66,13 +65,11 @@ const mockDeps = () => {
   };
 
   return {
-    createDbWorker: () => dbWorker,
-    time: testTime,
-    nanoIdLib: testNanoIdLib,
     console: createConsole(),
-    createAppState: () => ({
-      reset: vi.fn(),
-    }),
+    createDbWorker: () => dbWorker,
+    randomBytes: testRandomBytes,
+    reloadApp: vi.fn(),
+    time: testTime,
   };
 };
 
@@ -81,7 +78,7 @@ let instancesCount = 0;
 const setupEvoluTest = () => {
   const deps = mockDeps();
   const evolu = createEvolu(deps)(Schema, {
-    name: getOrThrow(SimpleName.from(`instance${instancesCount++}`)),
+    name: SimpleName.orThrow(`instance${instancesCount++}`),
   });
   const dbWorker = deps.createDbWorker();
 
@@ -92,22 +89,20 @@ const createEvoluDepsWithSqlite = async () => {
   const sqliteDriver = testCreateSqliteDriver(testSimpleName);
 
   const dbWorker = createDbWorkerForPlatform({
-    createSqliteDriver: () => sqliteDriver,
-    createSync: () => () => ({ send: constVoid }),
     console: createConsole(),
-    time: testTime,
+    createSqliteDriver: () => sqliteDriver,
+    createWebSocket: testCreateDummyWebSocket,
     random: testRandom,
-    nanoIdLib: testNanoIdLib,
-    createMnemonic: testCreateMnemonic,
-    createRandomBytes: testCreateRandomBytesDep.createRandomBytes,
+    randomBytes: testRandomBytes,
+    time: testTime,
   });
 
   const deps = {
-    createDbWorker: () => dbWorker,
-    time: testTime,
-    nanoIdLib: testNanoIdLib,
     console: createConsole(),
-    createAppState: () => ({ reset: vi.fn() }),
+    createDbWorker: () => dbWorker,
+    randomBytes: testRandomBytes,
+    reloadApp: vi.fn(),
+    time: testTime,
   };
 
   const sqlite = getOrThrow(
@@ -130,8 +125,12 @@ test("init postMessage call", () => {
             "enableLogging": false,
             "maxDrift": 300000,
             "name": "instance0",
-            "reloadUrl": "/",
-            "syncUrl": "wss://free.evoluhq.com",
+            "transports": [
+              {
+                "type": "WebSocket",
+                "url": "wss://free.evoluhq.com",
+              },
+            ],
           },
           "dbSchema": {
             "indexes": [],
@@ -155,6 +154,11 @@ test("init postMessage call", () => {
           "type": "init",
         },
       ],
+      [
+        {
+          "type": "getAppOwner",
+        },
+      ],
     ]
   `);
 });
@@ -170,17 +174,18 @@ test("insert should validate input and call postMessage", async () => {
 
   expect(result.ok).toBe(true);
   expect(result.ok && result.value.id).toMatchInlineSnapshot(
-    `"3C22DRVU0AHGjXpOEP-WJ"`,
+    `"T-vftdB4K_reh6yT2RUm8w"`,
   );
 
-  await wait(0);
+  await wait("0ms")();
 
-  expect(dbWorker.postMessage.mock.calls[1]).toMatchInlineSnapshot(`
+  expect(dbWorker.postMessage.mock.calls[2]).toMatchInlineSnapshot(`
     [
       {
         "changes": [
           {
-            "id": "3C22DRVU0AHGjXpOEP-WJ",
+            "id": "T-vftdB4K_reh6yT2RUm8w",
+            "ownerId": undefined,
             "table": "todo",
             "values": {
               "createdAt": "1970-01-01T00:00:00.000Z",
@@ -190,7 +195,7 @@ test("insert should validate input and call postMessage", async () => {
         ],
         "onCompleteIds": [],
         "subscribedQueries": [],
-        "tabId": "kYF3FmbitSesTwHwplqLB",
+        "tabId": "-7BOfTxCJQQifI1Bv_OErQ",
         "type": "mutate",
       },
     ]
@@ -246,14 +251,15 @@ test("update should validate input and call postMessage", async () => {
   expect(result.ok).toBe(true);
   expect(result.ok && result.value.id).toBe(testId);
 
-  await wait(0);
+  await wait("0ms")();
 
-  expect(dbWorker.postMessage.mock.calls[1]).toMatchInlineSnapshot(`
+  expect(dbWorker.postMessage.mock.calls[2]).toMatchInlineSnapshot(`
     [
       {
         "changes": [
           {
-            "id": "D2PtSrFu-SJV0Ui1_SJB3",
+            "id": "s8GaTyQYpixM_eXR3FgmiA",
+            "ownerId": undefined,
             "table": "todo",
             "values": {
               "title": "Updated Todo",
@@ -262,7 +268,7 @@ test("update should validate input and call postMessage", async () => {
         ],
         "onCompleteIds": [],
         "subscribedQueries": [],
-        "tabId": "kYF3FmbitSesTwHwplqLB",
+        "tabId": "-7BOfTxCJQQifI1Bv_OErQ",
         "type": "mutate",
       },
     ]
@@ -319,14 +325,15 @@ test("upsert should validate input and call postMessage", async () => {
   expect(result.ok).toBe(true);
   expect(result.ok && result.value.id).toBe(testId);
 
-  await wait(0);
+  await wait("0ms")();
 
-  expect(dbWorker.postMessage.mock.calls[1]).toMatchInlineSnapshot(`
+  expect(dbWorker.postMessage.mock.calls[2]).toMatchInlineSnapshot(`
     [
       {
         "changes": [
           {
-            "id": "v5rPltodHge37rn9q4lwi",
+            "id": "gOu85v9SySO-uwVQQg0fDA",
+            "ownerId": undefined,
             "table": "todo",
             "values": {
               "createdAt": "1970-01-01T00:00:00.001Z",
@@ -336,7 +343,7 @@ test("upsert should validate input and call postMessage", async () => {
         ],
         "onCompleteIds": [],
         "subscribedQueries": [],
-        "tabId": "kYF3FmbitSesTwHwplqLB",
+        "tabId": "-7BOfTxCJQQifI1Bv_OErQ",
         "type": "mutate",
       },
     ]
@@ -370,7 +377,7 @@ test("upsert should reject invalid input", () => {
         },
         "type": "Object",
         "value": {
-          "id": "6xwHpK2ZkuZUN-T4MZhx0",
+          "id": "1yEjXvx9eXaQ900EPJTPgg",
           "title": "",
         },
       },
@@ -387,16 +394,17 @@ test("mutations should be processed in microtask queue", async () => {
   evolu.insert("todo", { title: "Todo 2" });
   evolu.insert("todo", { title: "Todo 3" });
 
-  await wait(0);
+  await wait("0ms")();
 
   // Only one postMessage call should happen with all changes
-  expect(dbWorker.postMessage).toHaveBeenCalledTimes(2); // 1 for init, 1 for mutations
-  expect(dbWorker.postMessage.mock.calls[1]).toMatchInlineSnapshot(`
+  expect(dbWorker.postMessage).toHaveBeenCalledTimes(3); // init, getAppOwner, 1 mutation
+  expect(dbWorker.postMessage.mock.calls[2]).toMatchInlineSnapshot(`
     [
       {
         "changes": [
           {
-            "id": "yVRcpEppKHyKrUtl5RZ4m",
+            "id": "8ucFBn_20jzVeKt2pI3LKg",
+            "ownerId": undefined,
             "table": "todo",
             "values": {
               "createdAt": "1970-01-01T00:00:00.002Z",
@@ -404,7 +412,8 @@ test("mutations should be processed in microtask queue", async () => {
             },
           },
           {
-            "id": "CTxiAw0gY_fIT5Ci6Vt_f",
+            "id": "CX2NabHNVtGXs2-gkMvIIg",
+            "ownerId": undefined,
             "table": "todo",
             "values": {
               "createdAt": "1970-01-01T00:00:00.002Z",
@@ -412,7 +421,8 @@ test("mutations should be processed in microtask queue", async () => {
             },
           },
           {
-            "id": "kbP-KUG7NKoSfTGGJoCBJ",
+            "id": "JS_ANW-JW5bnOddKe_haxw",
+            "ownerId": undefined,
             "table": "todo",
             "values": {
               "createdAt": "1970-01-01T00:00:00.002Z",
@@ -422,7 +432,7 @@ test("mutations should be processed in microtask queue", async () => {
         ],
         "onCompleteIds": [],
         "subscribedQueries": [],
-        "tabId": "kYF3FmbitSesTwHwplqLB",
+        "tabId": "-7BOfTxCJQQifI1Bv_OErQ",
         "type": "mutate",
       },
     ]
@@ -434,10 +444,10 @@ test("mutation with onlyValidate should not call postMessage", async () => {
 
   evolu.insert("todo", { title: "Validation only" }, { onlyValidate: true });
 
-  await wait(0);
+  await wait("0ms")();
 
-  // Only init should be called, not the mutation
-  expect(dbWorker.postMessage).toHaveBeenCalledTimes(1);
+  // Only init and getAppOwner should be called, not the mutation
+  expect(dbWorker.postMessage).toHaveBeenCalledTimes(2);
 });
 
 test("mutations should fail as a transaction when any mutation fails", async () => {
@@ -448,10 +458,10 @@ test("mutations should fail as a transaction when any mutation fails", async () 
   evolu.insert("todo", { title: "" }); // Invalid - empty title
   evolu.insert("todo", { title: "Another Valid Todo" });
 
-  await wait(0);
+  await wait("0ms")();
 
-  // Only init should be called, not the mutations since one failed
-  expect(dbWorker.postMessage).toHaveBeenCalledTimes(1);
+  // Only init and getAppOwner should be called, not the mutations since one failed
+  expect(dbWorker.postMessage).toHaveBeenCalledTimes(2);
 });
 
 describe("EvoluSchema validation", () => {
@@ -590,7 +600,7 @@ describe("createdAt behavior", () => {
     const result = evolu.insert("todo", { title: "Test Todo" });
     expect(result.ok).toBe(true);
 
-    await wait(0);
+    await wait("0ms")();
 
     // Verify the postMessage was called with createdAt in the change values
     expect(dbWorker.postMessage).toHaveBeenCalledWith(
@@ -620,7 +630,7 @@ describe("createdAt behavior", () => {
     const result = evolu.upsert("todo", { id: testId, title: "Upserted Todo" });
     expect(result.ok).toBe(true);
 
-    await wait(0);
+    await wait("0ms")();
 
     expect(dbWorker.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -649,7 +659,7 @@ describe("createdAt behavior", () => {
     const result = evolu.update("todo", { id: testId, title: "Updated Todo" });
     expect(result.ok).toBe(true);
 
-    await wait(0);
+    await wait("0ms")();
 
     // Get the actual call to inspect the values
     const calls = dbWorker.postMessage.mock.calls;
@@ -668,17 +678,17 @@ describe("createdAt behavior", () => {
   });
 });
 
-test("initialAppOwner should use provided owner", async () => {
+test("externalAppOwner should use provided owner", async () => {
   const { deps, sqlite } = await createEvoluDepsWithSqlite();
 
-  const initialAppOwner = createAppOwner(testMnemonic);
+  const externalAppOwner = createAppOwner(testOwnerSecret);
 
   createEvolu(deps)(Schema, {
-    name: getOrThrow(SimpleName.from(`instance${instancesCount++}`)),
-    initialAppOwner,
+    name: SimpleName.orThrow(`instance${instancesCount++}`),
+    externalAppOwner,
   });
 
-  await wait(10);
+  await wait("10ms")();
 
   const snapshot = getDbSnapshot({ sqlite });
   expect(snapshot).toMatchSnapshot();
@@ -686,58 +696,193 @@ test("initialAppOwner should use provided owner", async () => {
   const configTable = snapshot.tables.find(
     (table) => table.name === "evolu_config",
   );
-  expect(configTable?.rows[0].appOwnerId).toBe(initialAppOwner.id);
+  expect(configTable?.rows[0].appOwnerId).toBe(externalAppOwner.id);
 });
 
-test("onInit callback should be called with correct parameters and can seed initial data", async () => {
-  const { deps, sqlite } = await createEvoluDepsWithSqlite();
-
-  const initialAppOwner = createAppOwner(testMnemonic);
-  const initCalls: Array<{
-    appOwner: typeof initialAppOwner;
-    isFirst: boolean;
-  }> = [];
-
-  const name = getOrThrow(SimpleName.from(`instance${instancesCount++}`));
-
-  const evolu1 = createEvolu(deps)(Schema, {
-    initialAppOwner,
-    name,
-    onInit: ({ appOwner, isFirst }) => {
-      initCalls.push({ appOwner, isFirst });
-
-      if (isFirst) {
-        const todoCategoryId = getOrThrow(
-          evolu1.insert("todoCategory", {
-            name: "Not Urgent",
-          }),
-        );
-
-        evolu1.insert("todo", {
-          title: "Try React Suspense",
-          categoryId: todoCategoryId.id,
-        });
-      }
-    },
+describe("useOwner", () => {
+  const ownerMessage = (owner: SyncOwner, use: boolean) => ({
+    type: "useOwner",
+    owner,
+    use,
   });
 
-  await wait(10);
+  test("single useOwner call", async () => {
+    const { evolu, dbWorker } = setupEvoluTest();
+    vi.clearAllMocks();
 
-  expect(initCalls).toHaveLength(1);
+    evolu.useOwner(testOwner);
 
-  const snapshot = getDbSnapshot({ sqlite });
-  expect(snapshot).toMatchSnapshot();
+    await wait("1ms")();
 
-  // Create
-  createEvolu(deps)(Schema, {
-    name,
-    initialAppOwner,
-    onInit: ({ appOwner, isFirst }) => {
-      initCalls.push({ appOwner, isFirst });
-    },
+    expect(dbWorker.postMessage).toHaveBeenCalledTimes(1);
+    expect(dbWorker.postMessage).toHaveBeenCalledWith(
+      ownerMessage(testOwner, true),
+    );
   });
 
-  await wait(10);
+  test("multiple useOwner calls for same owner preserves count", async () => {
+    const { evolu, dbWorker } = setupEvoluTest();
+    vi.clearAllMocks();
 
-  expect(initCalls).toHaveLength(1);
+    // Each call should result in a separate postMessage for reference counting
+    evolu.useOwner(testOwner);
+    evolu.useOwner(testOwner);
+    evolu.useOwner(testOwner);
+
+    await wait("1ms")();
+
+    expect(dbWorker.postMessage).toHaveBeenCalledTimes(3);
+    for (let i = 1; i <= 3; i++) {
+      expect(dbWorker.postMessage).toHaveBeenNthCalledWith(
+        i,
+        ownerMessage(testOwner, true),
+      );
+    }
+  });
+
+  test("exact use/unuse pair cancels out", async () => {
+    const { evolu, dbWorker } = setupEvoluTest();
+    vi.clearAllMocks();
+
+    // Add testOwner, then remove it - should cancel out
+    const unuse1 = evolu.useOwner(testOwner);
+    unuse1();
+
+    queueMicrotask(() => {
+      expect(dbWorker.postMessage).not.toHaveBeenCalled();
+    });
+
+    await wait("1ms")();
+  });
+
+  test("multiple exact pairs cancel out", async () => {
+    const { evolu, dbWorker } = setupEvoluTest();
+    vi.clearAllMocks();
+
+    // Two separate use/unuse pairs - both should cancel out
+    const unuse1 = evolu.useOwner(testOwner);
+    const unuse2 = evolu.useOwner(testOwner);
+    unuse1();
+    unuse2();
+
+    queueMicrotask(() => {
+      expect(dbWorker.postMessage).not.toHaveBeenCalled();
+    });
+
+    await wait("1ms")();
+  });
+
+  test("partial pairs leave remainder", async () => {
+    const { evolu, dbWorker } = setupEvoluTest();
+    vi.clearAllMocks();
+
+    // Three uses, one unuse - should result in two remaining uses
+    evolu.useOwner(testOwner);
+    evolu.useOwner(testOwner);
+    const unuse3 = evolu.useOwner(testOwner);
+    unuse3();
+
+    await wait("1ms")();
+
+    expect(dbWorker.postMessage).toHaveBeenCalledTimes(2);
+    for (let i = 1; i <= 2; i++) {
+      expect(dbWorker.postMessage).toHaveBeenNthCalledWith(
+        i,
+        ownerMessage(testOwner, true),
+      );
+    }
+  });
+
+  test("different owners don't interfere", async () => {
+    const { evolu, dbWorker } = setupEvoluTest();
+    vi.clearAllMocks();
+
+    // Different owners should not cancel each other
+    evolu.useOwner(testOwner);
+    const unuse2 = evolu.useOwner(testOwner2);
+    unuse2();
+
+    await wait("1ms")();
+
+    expect(dbWorker.postMessage).toHaveBeenCalledTimes(1);
+    expect(dbWorker.postMessage).toHaveBeenCalledWith(
+      ownerMessage(testOwner, true),
+    );
+  });
+
+  test("order preservation with mixed operations", async () => {
+    const { evolu, dbWorker } = setupEvoluTest();
+    vi.clearAllMocks();
+
+    // Mixed operations: use, use, unuse, use
+    // Should cancel one pair and leave: use, use
+    evolu.useOwner(testOwner); // use #1
+    const unuse2 = evolu.useOwner(testOwner); // use #2
+    unuse2(); // unuse (cancels with use #2)
+    evolu.useOwner(testOwner); // use #3
+
+    await wait("1ms")();
+
+    expect(dbWorker.postMessage).toHaveBeenCalledTimes(2);
+    for (let i = 1; i <= 2; i++) {
+      expect(dbWorker.postMessage).toHaveBeenNthCalledWith(
+        i,
+        ownerMessage(testOwner, true),
+      );
+    }
+  });
+
+  test("remove before add - processed owner requires explicit remove", async () => {
+    const { evolu, dbWorker } = setupEvoluTest();
+    vi.clearAllMocks();
+
+    // Add owner and wait for it to be processed
+    const unuse1 = evolu.useOwner(testOwner);
+
+    await wait("1ms")();
+
+    // Verify it was added
+    expect(dbWorker.postMessage).toHaveBeenCalledTimes(1);
+    expect(dbWorker.postMessage).toHaveBeenCalledWith(
+      ownerMessage(testOwner, true),
+    );
+
+    vi.clearAllMocks();
+
+    // Now remove and immediately add again
+    unuse1(); // Remove
+    evolu.useOwner(testOwner); // Add again
+
+    await wait("1ms")();
+
+    // Should result in no calls since remove/add cancel out
+    expect(dbWorker.postMessage).not.toHaveBeenCalled();
+  });
+
+  test("delayed unuse call is processed", async () => {
+    const { evolu, dbWorker } = setupEvoluTest();
+    vi.clearAllMocks();
+
+    const unuse = evolu.useOwner(testOwner);
+
+    await wait("1ms")();
+    expect(dbWorker.postMessage).toHaveBeenCalledTimes(1);
+    expect(dbWorker.postMessage).toHaveBeenCalledWith(
+      ownerMessage(testOwner, true),
+    );
+
+    vi.clearAllMocks();
+
+    // Delayed unuse without any subsequent useOwner calls
+    setTimeout(() => {
+      unuse();
+    }, 10);
+
+    await wait("20ms")();
+
+    expect(dbWorker.postMessage).toHaveBeenCalledTimes(1);
+    expect(dbWorker.postMessage).toHaveBeenCalledWith(
+      ownerMessage(testOwner, false),
+    );
+  });
 });

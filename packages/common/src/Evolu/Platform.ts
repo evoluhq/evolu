@@ -1,5 +1,3 @@
-import { Config } from "./Config.js";
-
 /**
  * FlushSync is for libraries like React to flush updates synchronously inside
  * the provided callback to ensure the DOM is updated immediately.
@@ -16,12 +14,14 @@ export interface FlushSyncDep {
   readonly flushSync: FlushSync;
 }
 
-export interface AppState {
-  readonly reset: () => void;
-}
+/**
+ * Reload the app in a platform-specific way.
+ *
+ * - **Web**: Redirects to the specified URL
+ * - **React Native**: Restarts the app (URL parameter ignored)
+ */
+export type ReloadApp = (url: string) => void;
 
-export type CreateAppState = (config: Config) => AppState;
-
-export interface CreateAppStateDep {
-  readonly createAppState: CreateAppState;
+export interface ReloadAppDep {
+  readonly reloadApp: ReloadApp;
 }
