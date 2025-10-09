@@ -21,6 +21,8 @@ import {
   InferType,
   Mnemonic,
   ObjectType,
+  ValidMutationSize,
+  ValidMutationSizeError,
 } from "../Type.js";
 import { IntentionalNever } from "../Types.js";
 import { CreateDbWorkerDep, DbConfig, defaultDbConfig } from "./Db.js";
@@ -61,7 +63,6 @@ import {
   UpsertableProps,
   ValidateSchema,
 } from "./Schema.js";
-import { ValidMutationSize, ValidMutationSizeError } from "../Type.js";
 import { CrdtMessage, DbChange } from "./Storage.js";
 import { initialSyncState, SyncOwner, SyncState } from "./Sync.js";
 import { Timestamp, TimestampError } from "./Timestamp.js";
