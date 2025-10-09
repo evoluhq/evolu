@@ -1,23 +1,4 @@
-import {
-  createEvolu,
-  createFormatTypeError,
-  FiniteNumber,
-  getOrThrow,
-  id,
-  json,
-  kysely,
-  maxLength,
-  MinLengthError,
-  Mnemonic,
-  NonEmptyString,
-  NonEmptyString1000,
-  nullOr,
-  object,
-  SimpleName,
-  SqliteBoolean,
-  sqliteTrue,
-  ValidMutationSizeError,
-} from "@evolu/common";
+import * as Evolu from "@evolu/common";
 import {
   createUseEvolu,
   EvoluProvider,
@@ -26,113 +7,65 @@ import {
   useQuery,
 } from "@evolu/react";
 import { evoluReactWebDeps } from "@evolu/react-web";
-import { ChangeEvent, FC, memo, Suspense, useEffect, useState } from "react";
-const TodoId = id("Todo");
+import { FC, memo, Suspense, useEffect, useState } from "react";
+
+// Primary keys are branded types, preventing accidental use of IDs across
+// different tables (e.g., a TodoId can't be used where a UserId is expected).
+const TodoId = Evolu.id("Todo");
 type TodoId = typeof TodoId.Type;
 
-const TodoCategoryId = id("TodoCategory");
-type TodoCategoryId = typeof TodoCategoryId.Type;
-
-// A custom branded Type.
-const NonEmptyString50 = maxLength(50)(NonEmptyString);
-// string & Brand<"MinLength1"> & Brand<"MaxLength50">
-type NonEmptyString50 = typeof NonEmptyString50.Type;
-
-// SQLite supports JSON-compatible values.
-const Person = object({
-  name: NonEmptyString50,
-  // Did you know that JSON.stringify converts NaN (a number) into null?
-  // Now, imagine that `age` accidentally becomes null. To prevent this, use FiniteNumber.
-  age: FiniteNumber,
-});
-type Person = typeof Person.Type;
-
-// SQLite stores JSON-compatible values as strings. Fortunately, Evolu provides
-// a convenient `json` Type Factory for type-safe JSON serialization and parsing.
-const [PersonJson, _personToPersonJson, _personJsonToPerson] = json(
-  Person,
-  "PersonJson",
-);
-// string & Brand<"PersonJson">
-type PersonJson = typeof PersonJson.Type;
+// Schema defines database structure with runtime validation.
+// Column types validate data on insert/update/upsert.
 const Schema = {
   todo: {
     id: TodoId,
-    title: NonEmptyString1000,
+    // Branded type ensuring titles are non-empty and ≤100 chars.
+    title: Evolu.NonEmptyString1000,
     // SQLite doesn't support the boolean type; it uses 0 (false) and 1 (true) instead.
     // SqliteBoolean provides seamless conversion.
-    isCompleted: nullOr(SqliteBoolean),
-    categoryId: nullOr(TodoCategoryId),
-    personJson: nullOr(PersonJson),
-  },
-  todoCategory: {
-    id: TodoCategoryId,
-    name: NonEmptyString50,
+    isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
   },
 };
 
-const evolu = createEvolu(evoluReactWebDeps)(Schema, {
+// Create Evolu instance for the React web platform.
+const evolu = Evolu.createEvolu(evoluReactWebDeps)(Schema, {
   reloadUrl: "/",
-  name: getOrThrow(SimpleName.from("evolu-react-electron-example-v3")),
+  name: Evolu.getOrThrow(Evolu.SimpleName.from("evolu-react-electron-minimal")),
 
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
   }),
-
-  // Indexes are not necessary for development but are recommended for production.
-  // https://www.evolu.dev/docs/indexes
-  indexes: (create) => [
-    create("todoCreatedAt").on("todo").column("createdAt"),
-    create("todoCategoryCreatedAt").on("todoCategory").column("createdAt"),
-  ],
-
-  // enableLogging: true,
 });
 
-const todosWithCategories = evolu.createQuery(
-  (db) =>
-    db
-      .selectFrom("todo")
-      .select(["id", "title", "isCompleted", "categoryId", "personJson"])
-      .where("isDeleted", "is not", 1)
-      // Filter null value and ensure non-null type.
-      .where("title", "is not", null)
-      .$narrowType<{ title: kysely.NotNull }>()
-      .orderBy("createdAt")
-      // https://kysely.dev/docs/recipes/relations
-      .select((eb) => [
-        kysely
-          .jsonArrayFrom(
-            eb
-              .selectFrom("todoCategory")
-              .select(["todoCategory.id", "todoCategory.name"])
-              .where("isDeleted", "is not", 1)
-              .orderBy("createdAt"),
-          )
-          .as("categories"),
-      ]),
-  {
-    // logQueryExecutionTime: true,
-    // logExplainQueryPlan: true,
-  },
-);
+// Creates a typed React Hook returning an instance of Evolu.
+const useEvolu = createUseEvolu(evolu);
 
-type TodosWithCategoriesRow = typeof todosWithCategories.Row;
+/**
+ * Subscribe to unexpected Evolu errors (database, network, sync issues). These
+ * should not happen in normal operation, so always log them for debugging. Show
+ * users a friendly error message instead of technical details.
+ */
+evolu.subscribeError(() => {
+  const error = evolu.getError();
+  if (!error) return;
 
-const todoCategories = evolu.createQuery((db) =>
+  alert("🚨 Evolu error occurred! Check the console.");
+  // eslint-disable-next-line no-console
+  console.error(error);
+});
+
+const todosQuery = evolu.createQuery((db) =>
   db
-    .selectFrom("todoCategory")
-    .select(["id", "name"])
+    .selectFrom("todo")
+    .select(["id", "title", "isCompleted"])
     .where("isDeleted", "is not", 1)
     // Filter null value and ensure non-null type.
-    .where("name", "is not", null)
-    .$narrowType<{ name: kysely.NotNull }>()
+    .where("title", "is not", null)
+    .$narrowType<{ title: Evolu.kysely.NotNull }>()
     .orderBy("createdAt"),
 );
 
-type TodoCategoriesRow = typeof todoCategories.Row;
-
-const useEvolu = createUseEvolu(evolu);
+type TodosRow = typeof todosQuery.Row;
 
 export const EvoluExample = memo(function EvoluExample() {
   return (
@@ -142,7 +75,6 @@ export const EvoluExample = memo(function EvoluExample() {
           <NotificationBar />
           <Suspense>
             <Todos />
-            <TodoCategories />
             <OwnerActions />
           </Suspense>
         </EvoluProvider>
@@ -179,14 +111,17 @@ const Button: FC<{
   onClick: () => void;
 }> = ({ title, onClick }) => {
   return (
-    <button style={{ flexShrink: 0 }} onClick={onClick}>
+    <button
+      style={{ flexShrink: 0, backgroundColor: "#000", color: "#fff" }}
+      onClick={onClick}
+    >
       {title}
     </button>
   );
 };
 
 const Todos: FC = () => {
-  const rows = useQuery(todosWithCategories);
+  const rows = useQuery(todosQuery);
 
   const { insert } = useEvolu();
 
@@ -207,7 +142,13 @@ const Todos: FC = () => {
         <input
           type="text"
           placeholder="What needs to be done?"
-          style={{ marginRight: "1rem", width: "100%" }}
+          style={{
+            marginRight: "1rem",
+            width: "100%",
+            paddingLeft: "1rem",
+            paddingRight: "1rem",
+            borderRadius: "0.5rem",
+          }}
           value={text}
           onChange={(v) => {
             setText(v.target.value);
@@ -215,149 +156,71 @@ const Todos: FC = () => {
         />
         <Button title="Add Todo" onClick={handleAddTodoClick} />
       </div>
-      <ul style={{ margin: 0, padding: 0 }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "0.5rem",
+        }}
+      >
         {rows.map((row) => (
           <TodoItem key={row.id} row={row} />
         ))}
-      </ul>
+      </div>
     </div>
   );
 };
 
 const TodoItem = memo<{
-  row: TodosWithCategoriesRow;
-}>(function TodoItem({
-  row: { id, title, isCompleted, categoryId, categories },
-}) {
+  row: TodosRow;
+}>(function TodoItem({ row: { id, title, isCompleted } }) {
   const { update } = useEvolu();
 
   const handleToggleCompletedClick = () => {
-    // const s = performance.now();
     update("todo", { id, isCompleted: Number(!isCompleted) });
   };
 
   const handleDeleteClick = () => {
-    // const s = performance.now();
-    update("todo", { id, isDeleted: sqliteTrue });
+    update("todo", { id, isDeleted: Evolu.sqliteTrue });
   };
 
   return (
-    <li style={{ listStyleType: "none" }}>
-      <div style={{ display: "flex", justifyContent: "space-between" }}>
-        <label>
-          <input
-            type="checkbox"
-            checked={!!isCompleted}
-            onChange={handleToggleCompletedClick}
-          />
-          <span
-            style={{
-              textDecoration: isCompleted ? "line-through" : "none",
-              marginLeft: "0.5rem",
-            }}
-          >
-            {title}
-          </span>
-        </label>
-        <div>
-          <TodoCategorySelect
-            categories={categories}
-            selected={categoryId}
-            onSelect={(categoryId) => {
-              update("todo", { id, categoryId });
-            }}
-          />
-          <Button title="Delete" onClick={handleDeleteClick} />
-        </div>
-      </div>
-    </li>
-  );
-});
-
-const TodoCategorySelect: FC<{
-  categories: TodosWithCategoriesRow["categories"];
-  selected: TodoCategoryId | null;
-  onSelect: (value: TodoCategoryId | null) => void;
-}> = ({ categories, selected, onSelect }) => {
-  const nothingSelected = "";
-  const value =
-    selected && categories.find((row) => row.id === selected)
-      ? selected
-      : nothingSelected;
-
-  return (
-    <select
-      value={value}
-      onChange={({ target: { value } }: ChangeEvent<HTMLSelectElement>) => {
-        onSelect(value === nothingSelected ? null : (value as TodoCategoryId));
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
       }}
     >
-      <option value={nothingSelected}>-- no category --</option>
-      {categories.map(({ id, name }) => (
-        <option key={id} value={id}>
-          {name}
-        </option>
-      ))}
-    </select>
-  );
-};
-
-const TodoCategories: FC = () => {
-  const rows = useQuery(todoCategories);
-  const { insert } = useEvolu();
-  const [text, setText] = useState("");
-
-  const handleAddCategoryClick = () => {
-    if (!text) return;
-    insert("todoCategory", {
-      name: text,
-    });
-    setText("");
-  };
-
-  return (
-    <div>
-      <h2>Categories</h2>
-
-      <div style={{ display: "flex", marginBottom: "1rem" }}>
+      <label
+        style={{
+          display: "flex",
+          flex: 1,
+          alignItems: "center",
+        }}
+      >
         <input
-          type="text"
-          placeholder="Category Name"
-          style={{ marginRight: "1rem", width: "100%" }}
-          value={text}
-          onChange={(v) => {
-            setText(v.target.value);
+          type="checkbox"
+          checked={!!isCompleted}
+          onChange={handleToggleCompletedClick}
+          style={{
+            width: "1rem",
+            height: "1rem",
           }}
         />
-        <Button title="Add Category" onClick={handleAddCategoryClick} />
+        <span
+          style={{
+            textDecoration: isCompleted ? "line-through" : "none",
+            marginLeft: "0.5rem",
+          }}
+        >
+          {title}
+        </span>
+      </label>
+      <div>
+        <Button title="Delete" onClick={handleDeleteClick} />
       </div>
-      <ul style={{ margin: 0, padding: 0 }}>
-        {rows.map((row) => (
-          <TodoCategoryItem row={row} key={row.id} />
-        ))}
-      </ul>
     </div>
-  );
-};
-
-const TodoCategoryItem = memo<{
-  row: TodoCategoriesRow;
-}>(function TodoItem({ row: { id, name } }) {
-  const { update } = useEvolu();
-
-  const handleDeleteClick = () => {
-    update("todoCategory", { id, isDeleted: sqliteTrue });
-  };
-
-  return (
-    <>
-      <li key={id} style={{ display: "flex", justifyContent: "space-between" }}>
-        <span>{name}</span>
-        <div>
-          <Button title="Delete" onClick={handleDeleteClick} />
-        </div>
-      </li>
-    </>
   );
 });
 
@@ -394,13 +257,32 @@ const OwnerActions: FC = () => {
   };
 
   return (
-    <div>
-      <p>
-        To sync your data across devices, open this app on another device and
-        use the mnemonic phrase to restore your account. The mnemonic acts as
-        your encryption key and backup.
-      </p>
-      <div>
+    <div
+      style={{
+        marginTop: "1rem",
+        backgroundColor: "#f5f5f5",
+        padding: "1rem",
+        borderRadius: "0.5rem",
+      }}
+    >
+      <span
+        style={{
+          display: "block",
+          textAlign: "left",
+          marginBottom: "1rem",
+        }}
+      >
+        Todos are stored in local SQLite. When you sync across devices, your
+        data is end-to-end encrypted using your mnemonic.
+      </span>
+      <div
+        style={{
+          display: "flex",
+          gap: "0.5rem",
+          alignItems: "center",
+          justifyContent: "start",
+        }}
+      >
         <Button
           title={`${showMnemonic ? "Hide" : "Show"} Mnemonic`}
           onClick={() => {
@@ -463,7 +345,7 @@ const OwnerActions: FC = () => {
               // }
               // void evolu.restoreAppOwner(result.value);
 
-              const result = Mnemonic.from(restoreMnemonic.trim());
+              const result = Evolu.Mnemonic.from(restoreMnemonic.trim());
               if (!result.ok) {
                 alert(formatTypeError(result.error));
                 return;
@@ -486,8 +368,8 @@ const OwnerActions: FC = () => {
  * `formatTypeError` function from scratch. See the commented-out example at the
  * end of this file.
  */
-const formatTypeError = createFormatTypeError<
-  ValidMutationSizeError | MinLengthError
+const formatTypeError = Evolu.createFormatTypeError<
+  Evolu.ValidMutationSizeError | Evolu.MinLengthError
 >((error): string => {
   switch (error.type) {
     /**
