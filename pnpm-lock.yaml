@@ -145,7 +145,7 @@ importers:
         specifier: ^3.0.0
         version: 3.0.0
       '@tabler/icons-react':
-        specifier: ^3.34.1
+        specifier: ^3.35.0
         version: 3.35.0(react@19.1.0)
       '@tailwindcss/forms':
         specifier: ^0.5.10
@@ -466,6 +466,9 @@ importers:
       '@evolu/react-web':
         specifier: workspace:*
         version: link:../../packages/react-web
+      '@tabler/icons-react':
+        specifier: ^3.35.0
+        version: 3.35.0(react@19.1.0)
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
