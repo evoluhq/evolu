@@ -7,19 +7,23 @@
     "build": "tsc && vite build",
     "clean": "shx rm -rf node_modules dist .vite .turbo dev-dist",
     "dev": "vite",
+    "generate-pwa-assets": "pwa-assets-generator",
     "lint": "eslint .",
-    "preview": "vite preview",
-    "generate-pwa-assets": "pwa-assets-generator"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/react": "workspace:*",
     "@evolu/react-web": "workspace:*",
+    "clsx": "^2.1.1",
     "react": "catalog:react19",
-    "react-dom": "catalog:react19"
+    "react-dom": "catalog:react19",
+    "tailwindcss": "^4.1.11"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
+    "@tailwindcss/forms": "^0.5.10",
+    "@tailwindcss/vite": "^4.1.14",
     "@types/react": "catalog:react19",
     "@types/react-dom": "catalog:react19",
     "@typescript-eslint/eslint-plugin": "^8.44.1",

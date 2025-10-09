@@ -1,20 +1,9 @@
 import "./App.css";
-import { EvoluExample } from "./components/EvoluDemo.tsx";
-import PWABadge from "./PWABadge.tsx";
+import { EvoluDemo } from "./components/EvoluDemo.tsx";
 
 function App() {
   return (
-    <>
-      <h1>evolu/react-vite-pwa</h1>
-      <div
-        style={{
-          textAlign: "left",
-        }}
-      >
-        <EvoluExample />
-      </div>
-      <PWABadge />
-    </>
+		<EvoluDemo />
   );
 }
 
