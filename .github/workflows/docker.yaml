@@ -38,6 +38,10 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      - name: Get Evolu Relay package version
+        id: package_version
+        run: echo "version=$(node -p "require('./apps/relay/package.json').version")" >> $GITHUB_OUTPUT
+
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
@@ -48,6 +52,7 @@ jobs:
             type=ref,event=pr
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.package_version.outputs.version }},enable={{is_default_branch}}
 
       - name: Build and push Docker image
         id: push
