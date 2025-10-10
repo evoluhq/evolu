@@ -85,16 +85,17 @@ export const NextJsPlaygroundMinimal: FC = () => {
 // Evolu uses Kysely for type-safe SQL (https://kysely.dev/).
 const todosQuery = evolu.createQuery((db) =>
   db
-    // Type-safe SQL: enjoy autocomplete for table and column names here.
+    // Type-safe SQL: try autocomplete for table and column names.
     .selectFrom("todo")
     .select(["id", "title", "isCompleted"])
-    // Soft delete: filter out deleted rows (isDeleted is auto-added to all tables).
+    // Soft delete: filter out deleted rows.
     .where("isDeleted", "is not", Evolu.sqliteTrue)
-    // Like GraphQL, Evolu schema makes everything nullable except id. This
-    // enables schema evolution (no migrations/versioning) and handles eventual
-    // consistency. Filter nulls in queries to ensure required shape.
+    // Like GraphQL, all columns except id are nullable in queries (even if
+    // defined as non-nullable in schema). This enables schema evolution (no
+    // migrations/versioning). Filter nulls with where + $narrowType.
     .where("title", "is not", null)
     .$narrowType<{ title: Evolu.kysely.NotNull }>()
+    // Columns createdAt, updatedAt, isDeleted are auto-added to all tables.
     .orderBy("createdAt"),
 );
 
@@ -107,7 +108,7 @@ const Todos: FC = () => {
   const { insert } = useEvolu();
   const [newTodoTitle, setNewTodoTitle] = useState("");
 
-  const handleAddTodo = () => {
+  const addTodo = () => {
     const result = insert(
       "todo",
       { title: newTodoTitle.trim() },
@@ -139,14 +140,12 @@ const Todos: FC = () => {
             setNewTodoTitle(e.target.value);
           }}
           onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              handleAddTodo();
-            }
+            if (e.key === "Enter") addTodo();
           }}
           placeholder="Add a new todo..."
           className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
         />
-        <Button title="Add" onClick={handleAddTodo} variant="primary" />
+        <Button title="Add" onClick={addTodo} variant="primary" />
       </div>
     </div>
   );
@@ -223,7 +222,6 @@ const TodoItem: FC<{
 
 const OwnerActions: FC = () => {
   const appOwner = useAppOwner();
-
   const [showMnemonic, setShowMnemonic] = useState(false);
 
   // Restore owner from mnemonic to sync data across devices.
