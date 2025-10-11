@@ -126,11 +126,11 @@ const Todos: FC = () => {
 
   return (
     <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
-      <ul className="mb-6 space-y-2">
+      <ol className="mb-6 space-y-2">
         {todos.map((todo) => (
           <TodoItem key={todo.id} row={todo} />
         ))}
-      </ul>
+      </ol>
 
       <div className="flex gap-2">
         <input
