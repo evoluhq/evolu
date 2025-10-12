@@ -5,6 +5,7 @@ import {
   createFormatTypeError,
   FiniteNumber,
   id,
+  idToIdBytes,
   json,
   kysely,
   maxLength,
@@ -19,19 +20,22 @@ import {
   SqliteBoolean,
   sqliteFalse,
   sqliteTrue,
+  timestampBytesToTimestamp,
 } from "@evolu/common";
 import {
   createUseEvolu,
   EvoluProvider,
   useAppOwner,
+  useQueries,
   useQuery,
 } from "@evolu/react";
 import { evoluReactWebDeps } from "@evolu/react-web";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import {
+  IconChecklist,
   IconEdit,
+  IconHistory,
   IconRestore,
-  IconStackFront,
   IconTrash,
 } from "@tabler/icons-react";
 import clsx from "clsx";
@@ -60,8 +64,8 @@ const Foo = object({
 });
 type Foo = typeof Foo.Type;
 
-// SQLite stores JSON values as strings. Evolu provides
-// a convenient `json` Type Factory for type-safe JSON serialization and parsing.
+// SQLite stores JSON values as strings. Evolu provides a convenient `json`
+// Type Factory for type-safe JSON serialization and parsing.
 const [FooJson, fooToFooJson, fooJsonToFoo] = json(Foo, "FooJson");
 // string & Brand<"FooJson">
 type FooJson = typeof FooJson.Type;
@@ -70,7 +74,7 @@ const Schema = {
   project: {
     id: ProjectId,
     name: NonEmptyTrimmedString100,
-    fooJson: nullOr(FooJson),
+    fooJson: FooJson,
   },
   todo: {
     id: TodoId,
@@ -116,98 +120,19 @@ export const NextJsPlaygroundFull: FC = () => {
     <div className="min-h-screen px-8 py-8">
       <div className="mx-auto max-w-md min-w-sm md:min-w-md">
         <EvoluProvider value={evolu}>
-          <App />
+          <Suspense>
+            <App />
+          </Suspense>
         </EvoluProvider>
       </div>
     </div>
   );
 };
 
-const projectsWithTodosQuery = evolu.createQuery(
-  (db) =>
-    db
-      .selectFrom("project")
-      .select(["id", "name"])
-      // https://kysely.dev/docs/recipes/relations
-      .select((eb) => [
-        kysely
-          .jsonArrayFrom(
-            eb
-              .selectFrom("todo")
-              .select([
-                "todo.id",
-                "todo.title",
-                "todo.isCompleted",
-                "todo.projectId",
-              ])
-              .whereRef("todo.projectId", "=", "project.id")
-              .where("todo.isDeleted", "is not", sqliteTrue)
-              .where("todo.title", "is not", null)
-              .$narrowType<{ title: kysely.NotNull }>()
-              .orderBy("createdAt"),
-          )
-          .as("todos"),
-      ])
-      .where("project.isDeleted", "is not", sqliteTrue)
-      .where("name", "is not", null)
-      .$narrowType<{ name: kysely.NotNull }>()
-      .orderBy("createdAt"),
-  {
-    // Log how long each query execution takes
-    logQueryExecutionTime: false,
-
-    // Log the SQLite query execution plan for optimization analysis
-    logExplainQueryPlan: false,
-  },
-);
-
-type ProjectsWithTodosRow = typeof projectsWithTodosQuery.Row;
-
 const App: FC = () => {
-  const projectsWithTodos = useQuery(projectsWithTodosQuery);
-  const { insert } = useEvolu();
-
   const [activeTab, setActiveTab] = useState<
     "home" | "projects" | "account" | "trash"
   >("home");
-
-  const handleAddProjectClick = () => {
-    const name = window.prompt("What's the project name?");
-    if (name == null) return;
-
-    // Demonstrate JSON usage. In production, use proper error handling
-    // instead of orThrow. Here we use orThrow for simplicity.
-    const foo = Foo.orThrow({ foo: "baz", bar: 42 });
-
-    const result = insert("project", {
-      name: name.trim(),
-      fooJson: fooToFooJson(foo),
-    });
-    if (!result.ok) {
-      alert(formatTypeError(result.error));
-    }
-  };
-
-  if (projectsWithTodos.length === 0) {
-    return (
-      <div className="py-12 text-center">
-        <div className="mb-4 text-gray-700">
-          <IconStackFront className="mx-auto h-12 w-12" />
-        </div>
-        <h3 className="mb-2 text-lg font-medium text-gray-900">
-          No projects yet
-        </h3>
-        <p className="mb-6 text-gray-500">
-          Create your first project to get started
-        </p>
-        <Button
-          title="Add new project"
-          onClick={handleAddProjectClick}
-          variant="primary"
-        />
-      </div>
-    );
-  }
 
   const createHandleTabClick = (tab: typeof activeTab) => () => {
     // startTransition prevents UI flickers when switching tabs by keeping
@@ -262,27 +187,97 @@ const App: FC = () => {
         </div>
       </div>
 
-      <Suspense>
-        {activeTab === "home" && <HomeTab projects={projectsWithTodos} />}
-        {activeTab === "projects" && <ProjectsTab />}
-        {activeTab === "account" && <AccountTab />}
-        {activeTab === "trash" && <TrashTab />}
-      </Suspense>
+      {activeTab === "home" && <HomeTab />}
+      {activeTab === "projects" && <ProjectsTab />}
+      {activeTab === "account" && <AccountTab />}
+      {activeTab === "trash" && <TrashTab />}
     </div>
   );
 };
 
-const HomeTab: FC<{
-  projects: ReadonlyArray<ProjectsWithTodosRow>;
-}> = ({ projects }) => {
+const projectsWithTodosQuery = evolu.createQuery(
+  (db) =>
+    db
+      .selectFrom("project")
+      .select(["id", "name"])
+      // https://kysely.dev/docs/recipes/relations
+      .select((eb) => [
+        kysely
+          .jsonArrayFrom(
+            eb
+              .selectFrom("todo")
+              .select([
+                "todo.id",
+                "todo.title",
+                "todo.isCompleted",
+                "todo.projectId",
+              ])
+              .whereRef("todo.projectId", "=", "project.id")
+              .where("todo.isDeleted", "is not", sqliteTrue)
+              .where("todo.title", "is not", null)
+              .$narrowType<{ title: kysely.NotNull }>()
+              .orderBy("createdAt"),
+          )
+          .as("todos"),
+      ])
+      .where("project.isDeleted", "is not", sqliteTrue)
+      .where("name", "is not", null)
+      .$narrowType<{ name: kysely.NotNull }>()
+      .orderBy("createdAt"),
+  {
+    // Log how long each query execution takes
+    logQueryExecutionTime: false,
+
+    // Log the SQLite query execution plan for optimization analysis
+    logExplainQueryPlan: false,
+  },
+);
+
+type ProjectsWithTodosRow = typeof projectsWithTodosQuery.Row;
+
+const HomeTab: FC = () => {
+  const [projectsWithTodos, projects] = useQueries([
+    projectsWithTodosQuery,
+    /**
+     * Load projects separately for better cache efficiency. Projects change
+     * less frequently than todos, preventing unnecessary re-renders. Multiple
+     * queries are fine in local-first - no network overhead.
+     */
+    projectsQuery,
+  ]);
+
+  const handleAddProjectClick = useAddProject();
+
+  if (projectsWithTodos.length === 0) {
+    return (
+      <div className="py-12 text-center">
+        <div className="mb-4 text-gray-700">
+          <IconChecklist className="mx-auto h-12 w-12" />
+        </div>
+        <h3 className="mb-2 text-lg font-medium text-gray-900">
+          No projects yet
+        </h3>
+        <p className="mb-6 text-gray-500">
+          Create your first project to get started
+        </p>
+        <Button
+          title="Add new project"
+          onClick={handleAddProjectClick}
+          variant="primary"
+        />
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="flex flex-col gap-8">
-        {projects.map((project) => (
+        {projectsWithTodos.map((project) => (
           <HomeTabProject
             key={project.id}
             project={project}
             todos={project.todos}
+            projects={projects}
           />
         ))}
       </div>
@@ -293,7 +288,8 @@ const HomeTab: FC<{
 const HomeTabProject: FC<{
   project: ProjectsWithTodosRow;
   todos: ProjectsWithTodosRow["todos"];
-}> = ({ project, todos }) => {
+  projects: ReadonlyArray<ProjectsRow>;
+}> = ({ project, todos, projects }) => {
   const { insert } = useEvolu();
   const [newTodoTitle, setNewTodoTitle] = useState("");
 
@@ -326,7 +322,7 @@ const HomeTabProject: FC<{
     <div className="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200">
       <div className="mb-3 flex items-center justify-between border-b border-gray-100 pb-2">
         <h3 className="flex items-center gap-2 font-medium text-gray-900">
-          <IconStackFront className="size-5 text-gray-500" />
+          <IconChecklist className="size-5 text-gray-500" />
           {project.name}
         </h3>
       </div>
@@ -334,7 +330,11 @@ const HomeTabProject: FC<{
       {todos.length > 0 && (
         <ol className="mb-4 space-y-2">
           {todos.map((todo) => (
-            <HomeTabProjectSectionTodoItem key={todo.id} row={todo} />
+            <HomeTabProjectSectionTodoItem
+              key={todo.id}
+              row={todo}
+              projects={projects}
+            />
           ))}
         </ol>
       )}
@@ -360,14 +360,9 @@ const HomeTabProject: FC<{
 const HomeTabProjectSectionTodoItem: FC<{
   // [number] extracts the element type from the todos array
   row: ProjectsWithTodosRow["todos"][number];
-}> = ({ row: { id, title, isCompleted, projectId } }) => {
+  projects: ReadonlyArray<ProjectsRow>;
+}> = ({ row: { id, title, isCompleted, projectId }, projects }) => {
   const { update } = useEvolu();
-
-  // Each todo item queries projects for the dropdown menu. While this appears
-  // inefficient, Evolu's microtask batching deduplicates identical queries
-  // automatically, so only one SQL query actually executes regardless of how
-  // many todo items render. This keeps components self-contained and reusable.
-  const projects = useQuery(projectsQuery);
 
   const handleToggleCompletedClick = () => {
     // No need to check result if a mutation can't fail.
@@ -396,6 +391,30 @@ const HomeTabProjectSectionTodoItem: FC<{
     update("todo", { id, isDeleted: sqliteTrue });
   };
 
+  // Demonstrate history tracking. Evolu automatically tracks all changes
+  // in the evolu_history table, making it easy to build audit logs or undo features.
+  const titleHistoryQuery = evolu.createQuery((db) =>
+    db
+      .selectFrom("evolu_history")
+      .select(["value", "timestamp"])
+      .where("table", "==", "todo")
+      .where("id", "==", idToIdBytes(id))
+      .where("column", "==", "title")
+      // value isn't typed; this is how we narrow its type
+      .$narrowType<{ value: (typeof Schema)["todo"]["title"]["Type"] }>()
+      .orderBy("timestamp", "desc"),
+  );
+
+  const handleHistoryClick = () => {
+    void evolu.loadQuery(titleHistoryQuery).then((rows) => {
+      const rowsWithTimestamp = rows.map((row) => ({
+        value: row.value,
+        timestamp: timestampBytesToTimestamp(row.timestamp),
+      }));
+      alert(JSON.stringify(rowsWithTimestamp, null, 2));
+    });
+  };
+
   return (
     <li className="-mx-2 flex items-center gap-3 px-2 py-2 hover:bg-gray-50">
       <label className="flex flex-1 cursor-pointer items-center gap-2">
@@ -414,7 +433,7 @@ const HomeTabProjectSectionTodoItem: FC<{
               className="p-1 text-gray-400 transition-colors hover:text-blue-600"
               title="Change Project"
             >
-              <IconStackFront className="size-4" />
+              <IconChecklist className="size-4" />
             </MenuButton>
             <MenuItems
               transition
@@ -449,6 +468,13 @@ const HomeTabProjectSectionTodoItem: FC<{
             <IconEdit className="size-4" />
           </button>
           <button
+            onClick={handleHistoryClick}
+            className="p-1 text-gray-400 transition-colors hover:text-purple-600"
+            title="View History"
+          >
+            <IconHistory className="size-4" />
+          </button>
+          <button
             onClick={handleDeleteClick}
             className="p-1 text-gray-400 transition-colors hover:text-red-600"
             title="Delete"
@@ -475,26 +501,30 @@ const projectsQuery = evolu.createQuery((db) =>
 
 type ProjectsRow = typeof projectsQuery.Row;
 
-const ProjectsTab: FC = () => {
-  const projects = useQuery(projectsQuery);
+const useAddProject = () => {
   const { insert } = useEvolu();
 
-  const handleAddProjectClick = () => {
+  return () => {
     const name = window.prompt("What's the project name?");
     if (name == null) return;
 
-    // Demonstrate JSON usage. In production, use proper error handling
-    // instead of orThrow. Here we use orThrow for simplicity.
-    const foo = Foo.orThrow({ foo: "baz", bar: 42 });
+    // Demonstrate JSON usage.
+    const foo = Foo.from({ foo: "baz", bar: 42 });
+    if (!foo.ok) return;
 
     const result = insert("project", {
       name: name.trim(),
-      fooJson: fooToFooJson(foo),
+      fooJson: fooToFooJson(foo.value),
     });
     if (!result.ok) {
       alert(formatTypeError(result.error));
     }
   };
+};
+
+const ProjectsTab: FC = () => {
+  const projects = useQuery(projectsQuery);
+  const handleAddProjectClick = useAddProject();
 
   return (
     <div>
@@ -561,7 +591,7 @@ const ProjectsTabProjectItem: FC<{
   return (
     <div className="flex items-center gap-3 rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200">
       <div className="flex flex-1 items-center gap-3">
-        <IconStackFront className="size-6 text-gray-500" />
+        <IconChecklist className="size-6 text-gray-500" />
         <div className="flex-1">
           <h3 className="font-medium text-gray-900">{project.name}</h3>
         </div>
@@ -776,7 +806,7 @@ const TrashTabDeletedProjectItem: FC<{
   return (
     <div className="flex items-center gap-3 rounded-lg bg-white p-4 shadow-sm">
       <div className="flex flex-1 items-start gap-3">
-        <IconStackFront className="size-6 text-gray-400" />
+        <IconChecklist className="size-6 text-gray-400" />
         <div className="flex-1">
           <h3 className="font-medium text-gray-900">{project.name}</h3>
           <p className="text-sm text-gray-500">
