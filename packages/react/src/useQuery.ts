@@ -13,6 +13,10 @@ import { useWasSsr } from "./useWasSsr.js";
  * {@link useQuery} blocks rendering until loading is completed. To avoid loading
  * waterfall with more queries, use {@link useQueries}.
  *
+ * The `promise` option allows preloading queries before rendering, which can be
+ * useful for complex queries that might take noticeable time even with local
+ * data. However, this is rarely needed as local queries are typically fast.
+ *
  * ### Example
  *
  * ```ts
@@ -25,12 +29,8 @@ import { useWasSsr } from "./useWasSsr.js";
  * // Get all rows, but without subscribing to changes.
  * const rows = useQuery(allTodos, { once: true });
  *
- * // Prefetch rows.
- * const allTodos = evolu.createQuery((db) =>
- *   db.selectFrom("todo").selectAll(),
- * );
+ * // Preload a query (rarely needed).
  * const allTodosPromise = evolu.loadQuery(allTodos);
- * // Use prefetched rows.
  * const rows = useQuery(allTodos, { promise: allTodosPromise });
  * ```
  */
