@@ -99,6 +99,10 @@ export interface DbConfig extends ConsoleConfig, TimestampConfig {
    *
    * - WebSocket: Real-time bidirectional communication with relay servers
    *
+   * Empty transports create local-only instances. Transports can be dynamically
+   * added and removed for any owner (including {@link AppOwner}) via
+   * {@link Evolu#useOwner}.
+   *
    * The default value is:
    *
    * `{ type: "WebSocket", url: "wss://free.evoluhq.com" }`.

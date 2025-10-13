@@ -91,6 +91,8 @@ const evolu = createEvolu(evoluReactWebDeps)(Schema, {
 
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
+
+    // Empty transports for local-only instance.
     // transports: [],
   }),
 
