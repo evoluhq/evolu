@@ -10,7 +10,11 @@ import type { useQuery } from "./useQuery.js";
 import { useQuerySubscription } from "./useQuerySubscription.js";
 import { useWasSsr } from "./useWasSsr.js";
 
-/** The same as {@link useQuery}, but for many queries. */
+/**
+ * The same as {@link useQuery}, but for many queries.
+ *
+ * The number of queries must remain stable across renders.
+ */
 export const useQueries = <
   R extends Row,
   Q extends Queries<R>,
@@ -33,13 +37,15 @@ export const useQueries = <
   const allQueries = once ? queries.concat(once) : queries;
   const wasSSR = useWasSsr();
   if (wasSSR) {
-    // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    if (!options.promises) evolu.loadQueries(allQueries);
+    if (!options.promises) void evolu.loadQueries(allQueries);
   } else {
     if (options.promises) options.promises.map(use);
+    // No waterfall: loadQuery batches all queries in the same microtask,
+    // so React suspends once and all promises resolve together.
     else evolu.loadQueries(allQueries).map(use);
   }
   return allQueries.map((query, i) =>
+    // Safe until the number of queries is stable.
     // eslint-disable-next-line react-hooks/rules-of-hooks
     useQuerySubscription(query, { once: i > queries.length - 1 }),
   ) as never;
