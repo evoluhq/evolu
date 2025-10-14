@@ -17,13 +17,24 @@ jobs:
   check_release:
     runs-on: ubuntu-latest
     if: |
-      github.event.workflow_run.conclusion == 'success' &&
-      !contains(github.event.workflow_run.head_commit.message, 'Version Packages')
+      github.event.workflow_run.conclusion == 'success'
     outputs:
-      should_run: ${{ steps.check.outputs.should_run }}
+      should_run: ${{ steps.commit.outputs.should_run }}
     steps:
-      - id: check
-        run: echo "should_run=true" >> $GITHUB_OUTPUT
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+      - name: Get commit message
+        id: commit
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=format:%s)
+          echo "message=$COMMIT_MSG" >> $GITHUB_OUTPUT
+          echo "Commit message: $COMMIT_MSG"
+          if [[ "$COMMIT_MSG" == *"Version Packages"* ]]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_run=false" >> $GITHUB_OUTPUT
+          fi
 
   push_to_registry:
     needs: check_release
