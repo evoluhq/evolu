@@ -28,14 +28,14 @@ jobs:
         id: commit
         run: |
           COMMIT_MSG=$(git log -1 --pretty=format:%s)
-          echo "message=$COMMIT_MSG" >> $GITHUB_OUTPUT
+          echo "message=$COMMIT_MSG" >> "$GITHUB_OUTPUT"
           echo "Commit message: $COMMIT_MSG"
 
           # Check if this is a merge from changeset-release branch
           if [[ "$COMMIT_MSG" == *"changeset-release"* ]]; then
-            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
           else
-            echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
           fi
 
   push_to_registry:
@@ -69,7 +69,7 @@ jobs:
 
       - name: Get Evolu Relay package version
         id: package_version
-        run: echo "version=$(node -p "require('./apps/relay/package.json').version")" >> $GITHUB_OUTPUT
+        run: echo "version=$(node -p "require('./apps/relay/package.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
@@ -94,11 +94,15 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: |
-            type=gha,scope=relay/${{ github.ref_name }}
+            type=gha,scope=relay
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
           cache-to: |
-            type=gha,scope=relay/${{ github.ref_name }},mode=min
+            type=gha,scope=relay,mode=max
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
           provenance: true
           sbom: true
+          build-args: |
+            RELAY_VERSION=${{ steps.package_version.outputs.version }}
 
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v1
