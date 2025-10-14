@@ -1,5 +1,11 @@
 # server
 
+## 1.1.2-preview.0
+
+### Patch Changes
+
+- 3f09596: relay cli
+
 ## 1.1.1
 
 ### Patch Changes
