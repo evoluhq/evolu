@@ -1,5 +1,11 @@
 # server
 
+## 1.1.2-preview.4
+
+### Patch Changes
+
+- 80c47cf: log relay version
+
 ## 1.1.2-preview.3
 
 ### Patch Changes
