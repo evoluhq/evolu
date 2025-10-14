@@ -28,9 +28,6 @@ function main() {
         .default(4000)
         .argParser(Number),
     )
-    .addOption(
-      new Option("-m, --in-memory", "enable in-memory mode").default(false),
-    )
     // .addOption(
     //   new Option("--platform <platform>", "platform")
     //     .choices(["nodejs", "bun"])
