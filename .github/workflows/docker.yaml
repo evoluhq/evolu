@@ -24,13 +24,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_branch }}
-      - name: Get commit message
+      - name: Check for release
         id: commit
         run: |
           COMMIT_MSG=$(git log -1 --pretty=format:%s)
           echo "message=$COMMIT_MSG" >> $GITHUB_OUTPUT
           echo "Commit message: $COMMIT_MSG"
-          if [[ "$COMMIT_MSG" == *"Version Packages"* ]]; then
+
+          # Check if this is a merge from changeset-release branch
+          if [[ "$COMMIT_MSG" == *"changeset-release"* ]]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
           else
             echo "should_run=false" >> $GITHUB_OUTPUT

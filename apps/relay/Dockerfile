@@ -1,10 +1,12 @@
 FROM node:22-alpine
 
+ARG RELAY_VERSION=latest
+
 # Install required dependencies and create non-root user
 RUN apk add --no-cache wget && \
     addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 evolu --ingroup nodejs && \
-    npm install -g @evolu/relay@latest && \
+    npm install -g @evolu/relay@${RELAY_VERSION} && \
     mkdir -p /app/data && \
     chown -R evolu:nodejs /app
 
@@ -22,4 +24,4 @@ EXPOSE ${RELAY_PORT}
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:${RELAY_PORT}
 
-CMD ["sh", "-c", "node /usr/local/lib/node_modules/@evolu/relay/dist/src/cli.js start --port $RELAY_PORT --name $RELAY_NAME $([ \"$RELAY_ENABLE_LOGGING\" = \"true\" ] && echo --enable-logging)"] 
+CMD ["sh", "-c", "npx @evolu/relay@${RELAY_VERSION} start --port $RELAY_PORT --name $RELAY_NAME $([ \"$RELAY_ENABLE_LOGGING\" = \"true\" ] && echo --enable-logging)"] 
