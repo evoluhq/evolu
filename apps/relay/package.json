@@ -13,7 +13,7 @@
     "docker:build": "docker-compose build --no-cache",
     "docker:up": "docker-compose up --build",
     "docker:up:detached": "docker-compose up -d --build",
-    "docker:down": "docker-compose down",
+    "docker:down": "docker-compose down -v",
     "docker:restart": "docker-compose down && docker-compose up --build",
     "docker:logs": "docker-compose logs -f evolu-relay",
     "docker:shell": "docker exec -it evolu-relay-server sh",
