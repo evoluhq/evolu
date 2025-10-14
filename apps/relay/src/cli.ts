@@ -40,8 +40,6 @@ function main() {
       logger.enabled = true;
       const params = cliParams.fromUnknown(options);
 
-      console.log(params);
-
       if (!params.ok) {
         logger.error(params.error.reason);
         process.exit(1);
