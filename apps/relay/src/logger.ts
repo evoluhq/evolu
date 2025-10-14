@@ -1,3 +1,5 @@
-import { createConsoleWithTime } from "@evolu/common";
+import { createConsole } from "@evolu/common";
 
-export const logger = createConsoleWithTime({ timestampType: "absolute" });
+// TODO: use createConsoleWithTime after release
+// export const logger = createConsoleWithTime({ timestampType: "absolute" });
+export const logger = createConsole();

@@ -5,11 +5,9 @@ import { logger } from "./logger.js";
 import { CliParams } from "./params.js";
 
 export async function startNodeJsRelay(options: CliParams): Promise<void> {
-  if (!options.inMemory) {
-    // Ensure the database directory exists
-    mkdirSync("data", { recursive: true });
-    process.chdir("data");
-  }
+  // Ensure the database is created in a predictable location for Docker.
+  mkdirSync("data", { recursive: true });
+  process.chdir("data");
 
   if (options.enableLogging) {
     logger.enabled = true;
@@ -18,7 +16,6 @@ export async function startNodeJsRelay(options: CliParams): Promise<void> {
   const relay = await createNodeJsRelay({ console: logger })({
     port: options.port,
     enableLogging: options.enableLogging,
-    memory: options.inMemory,
     name: options.name,
   });
 
