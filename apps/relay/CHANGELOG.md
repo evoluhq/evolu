@@ -1,5 +1,11 @@
 # server
 
+## 1.1.2-preview.2
+
+### Patch Changes
+
+- cc08e11: add shebang to CLI script
+
 ## 1.1.2-preview.1
 
 ### Patch Changes
