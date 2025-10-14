@@ -1,5 +1,11 @@
 # server
 
+## 1.1.2-preview.1
+
+### Patch Changes
+
+- b29d375: Remove in-memory mode option from relay CLI configuration
+
 ## 1.1.2-preview.0
 
 ### Patch Changes
