@@ -1,5 +1,11 @@
 # server
 
+## 1.1.2-preview.5
+
+### Patch Changes
+
+- 82facf4: release test 2
+
 ## 1.1.2-preview.4
 
 ### Patch Changes
