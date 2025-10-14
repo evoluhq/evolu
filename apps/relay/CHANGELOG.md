@@ -1,5 +1,11 @@
 # server
 
+## 1.1.2-preview.3
+
+### Patch Changes
+
+- a3b622e: release test
+
 ## 1.1.2-preview.2
 
 ### Patch Changes
