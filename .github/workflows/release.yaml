@@ -4,11 +4,7 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch: # for manual triggering
-
-env:
-  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-  TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
+  workflow_dispatch: # for manual triggering
 
 jobs:
   release:

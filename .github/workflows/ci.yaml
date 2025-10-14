@@ -15,11 +15,9 @@ concurrency:
 # @link https://turborepo.org/docs/core-concepts/remote-caching#remote-caching-on-vercel-builds
 env:
   FORCE_COLOR: 3
-  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-  TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
 
 jobs:
-  build:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,33 +28,6 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-artifacts
-          path: |
-            packages/*/dist/**
-            apps/*/dist/**
-            apps/*/.next/**
-            !apps/*/.next/cache/**
-            node_modules/.turbo/**
-          retention-days: 1
-          if-no-files-found: warn
-
-  lint:
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup
-        uses: ./.github/actions/setup-node-pnpm-install
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-artifacts
-
       - name: Lint
         run: pnpm lint
 
@@ -65,17 +36,14 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    needs: build
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup
         uses: ./.github/actions/setup-node-pnpm-install
 
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-artifacts
+      - name: Build
+        run: pnpm build
 
       - name: Test
         run: pnpm test
