@@ -1,7 +1,10 @@
 name: DockerHub
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Release"]
+    types:
+      - completed
     branches:
       - main
   workflow_dispatch: # Allow manual triggering
@@ -11,7 +14,20 @@ env:
   IMAGE_NAME: evoluhq/relay
 
 jobs:
+  check_release:
+    runs-on: ubuntu-latest
+    if: |
+      github.event.workflow_run.conclusion == 'success' &&
+      !contains(github.event.workflow_run.head_commit.message, 'Version Packages')
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - id: check
+        run: echo "should_run=true" >> $GITHUB_OUTPUT
+
   push_to_registry:
+    needs: check_release
+    if: needs.check_release.outputs.should_run == 'true'
     name: Push Docker image to Docker Hub
     runs-on: ubuntu-latest
     permissions:
