@@ -12,15 +12,10 @@
     "clean": "shx rm -rf .turbo node_modules dist db.sqlite",
     "docker:build": "docker-compose build --no-cache",
     "docker:up": "docker-compose up --build",
-    "docker:up:detached": "docker-compose up -d --build",
     "docker:down": "docker-compose down -v",
-    "docker:restart": "docker-compose down && docker-compose up --build",
-    "docker:logs": "docker-compose logs -f evolu-relay",
-    "docker:shell": "docker exec -it evolu-relay-server sh",
-    "docker:inspect": "docker inspect evolu-relay-server",
-    "docker:stats": "docker stats evolu-relay-server",
-    "docker:clean": "docker-compose down -v && docker system prune -f",
-    "docker:clean:all": "docker-compose down -v && docker system prune -af && docker volume prune -f"
+    "docker:dev:build": "docker-compose -f docker-compose.dev.yaml build --no-cache",
+    "docker:dev:up": "docker-compose -f docker-compose.dev.yaml up --build",
+    "docker:dev:down": "docker-compose -f docker-compose.dev.yaml down -v"
   },
   "dependencies": {
     "@evolu/common": "workspace:*",

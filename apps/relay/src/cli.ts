@@ -38,7 +38,7 @@ function main() {
     .action(async (options: unknown) => {
       logger.enabled = true;
       const params = cliParams.fromUnknown(options);
-      logger.log("Evolu Relay", packageJson.version);
+      logger.log("Evolu Relay version:", packageJson.version);
 
       if (!params.ok) {
         logger.error(params.error.reason);
