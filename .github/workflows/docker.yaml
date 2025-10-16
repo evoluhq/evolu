@@ -17,13 +17,14 @@ jobs:
   check_release:
     runs-on: ubuntu-latest
     if: |
+      github.event_name == 'workflow_dispatch' || 
       github.event.workflow_run.conclusion == 'success'
     outputs:
       should_run: ${{ steps.commit.outputs.should_run }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_branch }}
+          ref: ${{ github.event.workflow_run.head_branch || github.ref }}
       - name: Check for release
         id: commit
         run: |
@@ -31,8 +32,10 @@ jobs:
           echo "message=$COMMIT_MSG" >> $GITHUB_OUTPUT
           echo "Commit message: $COMMIT_MSG"
 
-          # Check if this is a merge from changeset-release branch
-          if [[ "$COMMIT_MSG" == *"changeset-release"* ]]; then
+          # For manual dispatch, always run. For workflow_run, check for changeset-release
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          elif [[ "$COMMIT_MSG" == *"changeset-release"* ]]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
           else
             echo "should_run=false" >> $GITHUB_OUTPUT
@@ -93,10 +96,13 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            RELAY_VERSION=${{ steps.package_version.outputs.version }}
           cache-from: |
+            type=gha,scope=relay/${{ github.ref_name }}-${{ steps.package_version.outputs.version }}
             type=gha,scope=relay/${{ github.ref_name }}
           cache-to: |
-            type=gha,scope=relay/${{ github.ref_name }},mode=min
+            type=gha,scope=relay/${{ github.ref_name }}-${{ steps.package_version.outputs.version }},mode=max
           provenance: true
           sbom: true
 
