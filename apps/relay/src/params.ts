@@ -4,7 +4,6 @@ export const cliParams = object({
   name: SimpleName,
   enableLogging: Boolean,
   port: Number,
-  inMemory: Boolean,
 });
 
 export type CliParams = typeof cliParams.Type;

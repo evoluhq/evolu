@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { Command, Option } from "commander";
 import packageJson from "../package.json" with { type: "json" };
 import { logger } from "./logger.js";
@@ -28,9 +30,6 @@ function main() {
         .default(4000)
         .argParser(Number),
     )
-    .addOption(
-      new Option("-m, --in-memory", "enable in-memory mode").default(false),
-    )
     // .addOption(
     //   new Option("--platform <platform>", "platform")
     //     .choices(["nodejs", "bun"])
@@ -39,6 +38,7 @@ function main() {
     .action(async (options: unknown) => {
       logger.enabled = true;
       const params = cliParams.fromUnknown(options);
+      logger.log("Evolu Relay version:", packageJson.version);
 
       if (!params.ok) {
         logger.error(params.error.reason);
