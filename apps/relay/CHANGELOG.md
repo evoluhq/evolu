@@ -1,5 +1,11 @@
 # server
 
+## 1.1.2-preview.6
+
+### Patch Changes
+
+- 559c858: add log for relay version
+
 ## 1.1.2-preview.5
 
 ### Patch Changes
