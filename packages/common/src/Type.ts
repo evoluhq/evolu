@@ -837,7 +837,7 @@ export const formatIsTypeError = createTypeErrorFormatter<EvoluTypeError>(
  *   confirmPassword: SimplePassword,
  * });
  *
- * const ValidForm = brand("Valid", Form, (value) => {
+ * const ValidForm = brand("ValidForm", Form, (value) => {
  *   if (value.password !== value.confirmPassword)
  *     return err<ValidFormError>({
  *       type: "ValidForm",
