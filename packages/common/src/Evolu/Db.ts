@@ -7,7 +7,6 @@ import {
 import { ConsoleConfig, ConsoleDep } from "../Console.js";
 import {
   createSymmetricCrypto,
-  EncryptionKey,
   RandomBytesDep,
   SymmetricCryptoDecryptError,
 } from "../Crypto.js";
@@ -36,6 +35,7 @@ import {
   createAppOwner,
   createOwnerSecret,
   mnemonicToOwnerSecret,
+  OwnerEncryptionKey,
   OwnerId,
   OwnerWriteKey,
   TransportConfig,
@@ -377,7 +377,7 @@ const createDbWorkerDeps =
         const configResult = sqlite.exec<{
           clock: TimestampString;
           appOwnerId: OwnerId;
-          appOwnerEncryptionKey: EncryptionKey;
+          appOwnerEncryptionKey: OwnerEncryptionKey;
           appOwnerWriteKey: OwnerWriteKey;
           appOwnerMnemonic: Mnemonic | null;
         }>(sql`

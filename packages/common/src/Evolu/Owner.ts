@@ -1,7 +1,6 @@
 import * as bip39 from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { NonEmptyReadonlyArray } from "../Array.js";
-import { Brand } from "../Brand.js";
 import {
   createSlip21,
   EncryptionKey,
@@ -72,7 +71,7 @@ export const mnemonicToOwnerSecret = (mnemonic: Mnemonic): OwnerSecret =>
  */
 export interface Owner {
   readonly id: OwnerId;
-  readonly encryptionKey: EncryptionKey;
+  readonly encryptionKey: OwnerEncryptionKey;
   readonly writeKey: OwnerWriteKey;
 }
 
@@ -84,7 +83,8 @@ export const OwnerId = brand("OwnerId", Id);
 export type OwnerId = typeof OwnerId.Type;
 
 /** Bytes representation of {@link OwnerId}. */
-export type OwnerIdBytes = IdBytes & Brand<"OwnerIdBytes">;
+export const OwnerIdBytes = brand("OwnerIdBytes", IdBytes);
+export type OwnerIdBytes = typeof OwnerIdBytes.Type;
 
 export const ownerIdToOwnerIdBytes = (ownerId: OwnerId): OwnerIdBytes =>
   idToIdBytes(ownerId) as OwnerIdBytes;
@@ -93,6 +93,9 @@ export const ownerIdBytesToOwnerId = (ownerIdBytes: OwnerIdBytes): OwnerId =>
   idBytesToId(ownerIdBytes as IdBytes) as OwnerId;
 
 export const ownerWriteKeyLength = 16 as NonNegativeInt;
+
+export const OwnerEncryptionKey = brand("OwnerEncryptionKey", EncryptionKey);
+export type OwnerEncryptionKey = typeof OwnerEncryptionKey.Type;
 
 /**
  * A secure token for write operations. It's derived from {@link OwnerSecret} by
@@ -116,21 +119,21 @@ export const createOwnerWriteKey = (deps: RandomBytesDep): OwnerWriteKey =>
  * - {@link createSharedOwner}
  * - {@link createSharedReadonlyOwner}
  */
-export const createOwner = (secret: OwnerSecret): Owner => {
-  const id = ownerIdBytesToOwnerId(
-    createSlip21(secret, ["Evolu", "Owner Id"]).slice(0, 16) as OwnerIdBytes,
-  );
+export const createOwner = (secret: OwnerSecret): Owner => ({
+  id: ownerIdBytesToOwnerId(
+    OwnerIdBytes.orThrow(
+      createSlip21(secret, ["Evolu", "OwnerIdBytes"]).slice(0, 16),
+    ),
+  ),
 
-  const encryptionKey = EncryptionKey.orThrow(
-    createSlip21(secret, ["Evolu", "Encryption Key"]),
-  );
+  encryptionKey: OwnerEncryptionKey.orThrow(
+    createSlip21(secret, ["Evolu", "OwnerEncryptionKey"]),
+  ),
 
-  const writeKey = OwnerWriteKey.orThrow(
-    createSlip21(secret, ["Evolu", "Write Key"]).slice(0, 16),
-  );
-
-  return { id, encryptionKey, writeKey };
-};
+  writeKey: OwnerWriteKey.orThrow(
+    createSlip21(secret, ["Evolu", "OwnerWriteKey"]).slice(0, 16),
+  ),
+});
 
 /**
  * The AppOwner represents the application owner. It's created using a

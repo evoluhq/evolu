@@ -16,6 +16,9 @@ import {
   NonEmptyTrimmedString100,
   nullOr,
   object,
+  OwnerEncryptionKey,
+  OwnerId,
+  OwnerWriteKey,
   SimpleName,
   SqliteBoolean,
   sqliteFalse,
@@ -75,6 +78,9 @@ const Schema = {
     id: ProjectId,
     name: NonEmptyTrimmedString100,
     fooJson: FooJson,
+    ownerId: nullOr(OwnerId),
+    ownerEncryptionKey: nullOr(OwnerEncryptionKey),
+    ownerWriteKey: nullOr(OwnerWriteKey),
   },
   todo: {
     id: TodoId,
@@ -891,13 +897,23 @@ const Button: FC<{
   );
 };
 
-const formatTypeError = createFormatTypeError<MinLengthError | MaxLengthError>(
-  (error): string => {
-    switch (error.type) {
-      case "MinLength":
-        return `Text must be at least ${error.min} character${error.min === 1 ? "" : "s"} long`;
-      case "MaxLength":
-        return `Text is too long (maximum ${error.max} characters)`;
-    }
-  },
-);
+const formatTypeError = createFormatTypeError<
+  | MinLengthError
+  | MaxLengthError
+  | typeof OwnerId.Error
+  | typeof OwnerEncryptionKey.Error
+  | typeof OwnerWriteKey.Error
+>((error): string => {
+  switch (error.type) {
+    case "MinLength":
+      return `Text must be at least ${error.min} character${error.min === 1 ? "" : "s"} long`;
+    case "MaxLength":
+      return `Text is too long (maximum ${error.max} characters)`;
+    case "OwnerId":
+      return `Invalid owner ID: ${error.value}`;
+    case "OwnerEncryptionKey":
+      return `Invalid encryption key: ${error.value}`;
+    case "OwnerWriteKey":
+      return `Invalid owner write key: ${error.value}`;
+  }
+});

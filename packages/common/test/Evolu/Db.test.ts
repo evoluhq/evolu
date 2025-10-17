@@ -263,10 +263,10 @@ test("initializes DbWorker with external AppOwner", async () => {
           "name": "evolu_config",
           "rows": [
             {
-              "appOwnerEncryptionKey": uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18],
-              "appOwnerId": "Gm2rxDYibpjp9MLQYgnXOw",
+              "appOwnerEncryptionKey": uint8:[91,241,76,125,158,117,227,125,230,50,87,204,167,80,56,233,236,32,119,114,3,133,11,114,245,76,230,8,123,187,158,115],
+              "appOwnerId": "StbvdTPxk80z0cNVwDJg6g",
               "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
-              "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
+              "appOwnerWriteKey": uint8:[109,96,75,228,41,186,7,162,141,92,37,209,56,226,201,91],
               "clock": "1970-01-01T00:00:00.000Z-0000-fbb04e7d3c422504",
             },
           ],
@@ -337,10 +337,10 @@ test("local mutations", async () => {
         "name": "evolu_config",
         "rows": [
           {
-            "appOwnerEncryptionKey": uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18],
-            "appOwnerId": "Gm2rxDYibpjp9MLQYgnXOw",
+            "appOwnerEncryptionKey": uint8:[91,241,76,125,158,117,227,125,230,50,87,204,167,80,56,233,236,32,119,114,3,133,11,114,245,76,230,8,123,187,158,115],
+            "appOwnerId": "StbvdTPxk80z0cNVwDJg6g",
             "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
-            "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
+            "appOwnerWriteKey": uint8:[109,96,75,228,41,186,7,162,141,92,37,209,56,226,201,91],
             "clock": "1970-01-01T00:00:00.000Z-0000-227c8d41bff384ad",
           },
         ],
@@ -461,10 +461,10 @@ test("local mutations", async () => {
         "name": "evolu_config",
         "rows": [
           {
-            "appOwnerEncryptionKey": uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18],
-            "appOwnerId": "Gm2rxDYibpjp9MLQYgnXOw",
+            "appOwnerEncryptionKey": uint8:[91,241,76,125,158,117,227,125,230,50,87,204,167,80,56,233,236,32,119,114,3,133,11,114,245,76,230,8,123,187,158,115],
+            "appOwnerId": "StbvdTPxk80z0cNVwDJg6g",
             "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
-            "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
+            "appOwnerWriteKey": uint8:[109,96,75,228,41,186,7,162,141,92,37,209,56,226,201,91],
             "clock": "1970-01-01T00:00:00.000Z-0000-227c8d41bff384ad",
           },
         ],
@@ -580,10 +580,10 @@ test("sync mutations", async () => {
         "name": "evolu_config",
         "rows": [
           {
-            "appOwnerEncryptionKey": uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18],
-            "appOwnerId": "Gm2rxDYibpjp9MLQYgnXOw",
+            "appOwnerEncryptionKey": uint8:[91,241,76,125,158,117,227,125,230,50,87,204,167,80,56,233,236,32,119,114,3,133,11,114,245,76,230,8,123,187,158,115],
+            "appOwnerId": "StbvdTPxk80z0cNVwDJg6g",
             "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
-            "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
+            "appOwnerWriteKey": uint8:[109,96,75,228,41,186,7,162,141,92,37,209,56,226,201,91],
             "clock": "1970-01-01T00:00:00.001Z-0000-80ebbce6ff52c923",
           },
         ],
@@ -594,7 +594,7 @@ test("sync mutations", async () => {
           {
             "column": "createdAt",
             "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
+            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
             "table": "testTable",
             "timestamp": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
             "value": "1970-01-01T00:00:00.001Z",
@@ -602,7 +602,7 @@ test("sync mutations", async () => {
           {
             "column": "name",
             "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
+            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
             "table": "testTable",
             "timestamp": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
             "value": "sync data",
@@ -633,7 +633,7 @@ test("sync mutations", async () => {
             "h1": 129512733105875,
             "h2": 267434249476759,
             "l": 2,
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
+            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
             "t": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
           },
         ],
@@ -705,10 +705,10 @@ test("sync mutations", async () => {
         "name": "evolu_config",
         "rows": [
           {
-            "appOwnerEncryptionKey": uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18],
-            "appOwnerId": "Gm2rxDYibpjp9MLQYgnXOw",
+            "appOwnerEncryptionKey": uint8:[91,241,76,125,158,117,227,125,230,50,87,204,167,80,56,233,236,32,119,114,3,133,11,114,245,76,230,8,123,187,158,115],
+            "appOwnerId": "StbvdTPxk80z0cNVwDJg6g",
             "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
-            "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
+            "appOwnerWriteKey": uint8:[109,96,75,228,41,186,7,162,141,92,37,209,56,226,201,91],
             "clock": "1970-01-01T00:00:00.001Z-0001-80ebbce6ff52c923",
           },
         ],
@@ -719,7 +719,7 @@ test("sync mutations", async () => {
           {
             "column": "createdAt",
             "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
+            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
             "table": "testTable",
             "timestamp": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
             "value": "1970-01-01T00:00:00.001Z",
@@ -727,7 +727,7 @@ test("sync mutations", async () => {
           {
             "column": "name",
             "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
+            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
             "table": "testTable",
             "timestamp": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
             "value": "sync data",
@@ -735,7 +735,7 @@ test("sync mutations", async () => {
           {
             "column": "name",
             "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
+            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
             "table": "testTable",
             "timestamp": uint8:[0,0,0,0,0,1,0,1,128,235,188,230,255,82,201,35],
             "value": "updated data",
@@ -766,7 +766,7 @@ test("sync mutations", async () => {
             "h1": 129512733105875,
             "h2": 267434249476759,
             "l": 2,
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
+            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
             "t": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
           },
           {
@@ -774,7 +774,7 @@ test("sync mutations", async () => {
             "h1": 112724284071995,
             "h2": 221257483641481,
             "l": 1,
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
+            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
             "t": uint8:[0,0,0,0,0,1,0,1,128,235,188,230,255,82,201,35],
           },
         ],
@@ -845,10 +845,10 @@ test("sync mutations", async () => {
         "name": "evolu_config",
         "rows": [
           {
-            "appOwnerEncryptionKey": uint8:[176,184,97,218,198,34,195,43,62,39,189,137,148,170,87,108,226,12,196,233,204,222,233,31,126,1,165,170,15,208,115,18],
-            "appOwnerId": "Gm2rxDYibpjp9MLQYgnXOw",
+            "appOwnerEncryptionKey": uint8:[91,241,76,125,158,117,227,125,230,50,87,204,167,80,56,233,236,32,119,114,3,133,11,114,245,76,230,8,123,187,158,115],
+            "appOwnerId": "StbvdTPxk80z0cNVwDJg6g",
             "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
-            "appOwnerWriteKey": uint8:[223,255,201,168,127,27,26,188,250,180,237,65,254,6,128,233],
+            "appOwnerWriteKey": uint8:[109,96,75,228,41,186,7,162,141,92,37,209,56,226,201,91],
             "clock": "1970-01-01T00:00:00.001Z-0002-80ebbce6ff52c923",
           },
         ],
@@ -859,7 +859,7 @@ test("sync mutations", async () => {
           {
             "column": "createdAt",
             "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
+            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
             "table": "testTable",
             "timestamp": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
             "value": "1970-01-01T00:00:00.001Z",
@@ -867,7 +867,7 @@ test("sync mutations", async () => {
           {
             "column": "name",
             "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
+            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
             "table": "testTable",
             "timestamp": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
             "value": "sync data",
@@ -875,7 +875,7 @@ test("sync mutations", async () => {
           {
             "column": "name",
             "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
+            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
             "table": "testTable",
             "timestamp": uint8:[0,0,0,0,0,1,0,1,128,235,188,230,255,82,201,35],
             "value": "updated data",
@@ -883,7 +883,7 @@ test("sync mutations", async () => {
           {
             "column": "isDeleted",
             "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
+            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
             "table": "testTable",
             "timestamp": uint8:[0,0,0,0,0,1,0,2,128,235,188,230,255,82,201,35],
             "value": 1,
@@ -914,7 +914,7 @@ test("sync mutations", async () => {
             "h1": 129512733105875,
             "h2": 267434249476759,
             "l": 2,
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
+            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
             "t": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
           },
           {
@@ -922,7 +922,7 @@ test("sync mutations", async () => {
             "h1": 112724284071995,
             "h2": 221257483641481,
             "l": 1,
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
+            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
             "t": uint8:[0,0,0,0,0,1,0,1,128,235,188,230,255,82,201,35],
           },
           {
@@ -930,7 +930,7 @@ test("sync mutations", async () => {
             "h1": 16701667325350,
             "h2": 194980779631109,
             "l": 1,
-            "ownerId": uint8:[26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59],
+            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
             "t": uint8:[0,0,0,0,0,1,0,2,128,235,188,230,255,82,201,35],
           },
         ],
@@ -1021,7 +1021,7 @@ describe("WebSocket", () => {
     expect(webSocket.sentMessages).toMatchInlineSnapshot(
       `
       [
-        uint8:[0,26,109,171,196,54,34,110,152,233,244,194,208,98,9,215,59,0,0,1,0,1,2,1,5,0,1,2,0,125,85,114,123,39,28,1],
+        uint8:[0,74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234,0,0,1,0,1,2,1,5,0,1,2,0,125,85,114,123,39,28,1],
       ]
     `,
     );
