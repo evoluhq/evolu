@@ -1,6 +1,6 @@
 <script lang="ts">
   import * as Evolu from "@evolu/common";
-  import { evoluSvelteDeps, queryState } from "@evolu/svelte";
+  import { appOwnerState, evoluSvelteDeps, queryState } from "@evolu/svelte";
 
   // Primary keys are branded types, preventing accidental use of IDs across
   // different tables (e.g., a TodoId can't be used where a UserId is expected).
@@ -62,19 +62,7 @@
 
   const allTodos = queryState(evolu, () => todosQuery);
 
-  // Make appOwner reactive by subscribing to changes
-  let appOwner = $state<ReturnType<typeof evolu.getAppOwner>>(
-    evolu.getAppOwner(),
-  );
-
-  $effect(() => {
-    // Subscribe to app owner changes
-    const unsubscribe = evolu.subscribeAppOwner(() => {
-      appOwner = evolu.getAppOwner();
-    });
-
-    return unsubscribe;
-  });
+  const appOwner = appOwnerState(evolu);
 
   const { insert, update } = evolu;
 
@@ -248,14 +236,14 @@
           {showMnemonic ? "Hide" : "Show"} Mnemonic
         </button>
 
-        {#if showMnemonic && appOwner?.mnemonic}
+        {#if showMnemonic && appOwner.current?.mnemonic}
           <div class="mnemonic-display">
             <label class="mnemonic-label" for="mnemonic-textarea">
               Your Mnemonic (keep this safe!)
             </label>
             <textarea
               id="mnemonic-textarea"
-              value={appOwner.mnemonic}
+              value={appOwner.current.mnemonic}
               readonly
               rows="3"
               class="mnemonic-textarea"
