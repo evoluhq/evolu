@@ -37,8 +37,8 @@ import {
   createOwnerSecret,
   mnemonicToOwnerSecret,
   OwnerId,
+  OwnerWriteKey,
   TransportConfig,
-  WriteKey,
 } from "./Owner.js";
 import { ProtocolError, protocolVersion } from "./Protocol.js";
 import {
@@ -378,7 +378,7 @@ const createDbWorkerDeps =
           clock: TimestampString;
           appOwnerId: OwnerId;
           appOwnerEncryptionKey: EncryptionKey;
-          appOwnerWriteKey: WriteKey;
+          appOwnerWriteKey: OwnerWriteKey;
           appOwnerMnemonic: Mnemonic | null;
         }>(sql`
           select

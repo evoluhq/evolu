@@ -4,7 +4,7 @@ import { TimingSafeEqualDep } from "../Crypto.js";
 import { err, ok, Result } from "../Result.js";
 import { sql, SqliteError } from "../Sqlite.js";
 import { SimpleName } from "../Type.js";
-import { OwnerId, WriteKey } from "./Owner.js";
+import { OwnerId, OwnerWriteKey } from "./Owner.js";
 import {
   createSqliteStorageBase,
   CreateSqliteStorageBaseOptions,
@@ -56,7 +56,7 @@ export const createRelayStorage =
       ...sqliteStorageBase.value,
 
       /**
-       * Lazily authorizes the initiator's {@link WriteKey} for the given
+       * Lazily authorizes the initiator's {@link OwnerWriteKey} for the given
        * {@link OwnerId}.
        *
        * - If the {@link OwnerId} does not exist, it is created and associated with
@@ -65,11 +65,13 @@ export const createRelayStorage =
        *   stored key.
        */
       validateWriteKey: (ownerId, writeKey) => {
-        const selectWriteKey = deps.sqlite.exec<{ writeKey: WriteKey }>(sql`
-          select writeKey
-          from evolu_writeKey
-          where ownerId = ${ownerId};
-        `);
+        const selectWriteKey = deps.sqlite.exec<{ writeKey: OwnerWriteKey }>(
+          sql`
+            select writeKey
+            from evolu_writeKey
+            where ownerId = ${ownerId};
+          `,
+        );
         if (!selectWriteKey.ok) {
           options.onStorageError(selectWriteKey.error);
           return false;

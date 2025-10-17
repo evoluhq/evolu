@@ -24,7 +24,7 @@
  * | - messageType                  | {@link MessageType}       |
  * | **Request (messageType=0)**    |                           |
  * | - hasWriteKey                  | 0 = no, 1 = yes           |
- * | - {@link WriteKey}             | If hasWriteKey = 1        |
+ * | - {@link OwnerWriteKey}        | If hasWriteKey = 1        |
  * | - subscriptionFlag             | {@link SubscriptionFlags} |
  * | **Response (messageType=1)**   |                           |
  * | - {@link ProtocolErrorCode}    |                           |
@@ -65,13 +65,13 @@
  * Both **Messages** and **Ranges** are optional, allowing each side to send,
  * sync, or only subscribe data as needed.
  *
- * When the initiator sends data, the {@link WriteKey} is required as a secure
- * token proving the initiator can write changes. The non-initiator responds
- * without a {@link WriteKey}, since the initiator’s request already signals it
- * wants data. If the non-initiator detects an issue, it sends an error code via
- * the `Error` field in the header back to the initiator. In relay-to-relay or
- * P2P sync, both sides may require the {@link WriteKey} depending on who is the
- * initiator.
+ * When the initiator sends data, the {@link OwnerWriteKey} is required as a
+ * secure token proving the initiator can write changes. The non-initiator
+ * responds without a {@link OwnerWriteKey}, since the initiator’s request
+ * already signals it wants data. If the non-initiator detects an issue, it
+ * sends an error code via the `Error` field in the header back to the
+ * initiator. In relay-to-relay or P2P sync, both sides may require the
+ * {@link OwnerWriteKey} depending on who is the initiator.
  *
  * ### Protocol Errors
  *
@@ -185,8 +185,8 @@ import {
   OwnerId,
   OwnerIdBytes,
   ownerIdToOwnerIdBytes,
-  WriteKey,
-  writeKeyLength,
+  OwnerWriteKey,
+  ownerWriteKeyLength,
 } from "./Owner.js";
 import {
   BaseRange,
@@ -304,7 +304,7 @@ export interface ProtocolInvalidDataError {
   readonly error: unknown;
 }
 
-/** Error when a {@link WriteKey} is invalid, missing, or fails validation. */
+/** Error when a {@link OwnerWriteKey} is invalid, missing, or fails validation. */
 export interface ProtocolWriteKeyError extends ProtocolErrorBase {
   readonly type: "ProtocolWriteKeyError";
 }
@@ -472,7 +472,7 @@ export const createProtocolMessageBuffer = (
   } & (
     | {
         readonly messageType: typeof MessageType.Request;
-        readonly writeKey?: WriteKey;
+        readonly writeKey?: OwnerWriteKey;
         readonly subscriptionFlag?: SubscriptionFlag;
       }
     | {
@@ -770,7 +770,7 @@ const createRunLengthEncoder = <T>(
 };
 
 export interface ApplyProtocolMessageAsClientOptions {
-  getWriteKey?: (ownerId: OwnerId) => WriteKey | null;
+  getWriteKey?: (ownerId: OwnerId) => OwnerWriteKey | null;
 
   /** For testing purposes only; should not be used in production. */
   version?: NonNegativeInt;
@@ -966,10 +966,10 @@ export const applyProtocolMessageAsRelay =
       assert(messageType === MessageType.Request, "Invalid MessageType");
 
       const hasWriteKey = input.shift();
-      let writeKey: WriteKey | undefined;
+      let writeKey: OwnerWriteKey | undefined;
 
       if (hasWriteKey === 1) {
-        writeKey = input.shiftN(writeKeyLength) as WriteKey;
+        writeKey = input.shiftN(ownerWriteKeyLength) as OwnerWriteKey;
       }
 
       const subscriptionFlag = input.shift() as SubscriptionFlag;

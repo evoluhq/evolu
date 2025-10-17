@@ -66,17 +66,20 @@ export const mnemonicToOwnerSecret = (mnemonic: Mnemonic): OwnerSecret =>
  *
  * - {@link OwnerId}: Globally unique public identifier
  * - {@link EncryptionKey}: Symmetric encryption key for data protection
- * - {@link WriteKey}: Authentication token for write operations (rotatable)
+ * - {@link OwnerWriteKey}: Authentication token for write operations (rotatable)
  *
  * @see {@link createOwner}
  */
 export interface Owner {
   readonly id: OwnerId;
   readonly encryptionKey: EncryptionKey;
-  readonly writeKey: WriteKey;
+  readonly writeKey: OwnerWriteKey;
 }
 
-/** The unique identifier of an {@link Owner}. */
+/**
+ * OwnerId is a branded {@link Id} that uniquely identifies an {@link Owner}.
+ * Branded from {@link Id} to leverage existing helpers like {@link idToIdBytes}.
+ */
 export const OwnerId = brand("OwnerId", Id);
 export type OwnerId = typeof OwnerId.Type;
 
@@ -89,18 +92,18 @@ export const ownerIdToOwnerIdBytes = (ownerId: OwnerId): OwnerIdBytes =>
 export const ownerIdBytesToOwnerId = (ownerIdBytes: OwnerIdBytes): OwnerId =>
   idBytesToId(ownerIdBytes as IdBytes) as OwnerId;
 
-export const writeKeyLength = 16 as NonNegativeInt;
+export const ownerWriteKeyLength = 16 as NonNegativeInt;
 
 /**
  * A secure token for write operations. It's derived from {@link OwnerSecret} by
- * default and can be rotated via {@link createWriteKey}.
+ * default and can be rotated via {@link createOwnerWriteKey}.
  */
-export const WriteKey = brand("WriteKey", Entropy16);
-export type WriteKey = typeof WriteKey.Type;
+export const OwnerWriteKey = brand("OwnerWriteKey", Entropy16);
+export type OwnerWriteKey = typeof OwnerWriteKey.Type;
 
-/** Creates a randomly generated {@link WriteKey}. */
-export const createWriteKey = (deps: RandomBytesDep): WriteKey =>
-  deps.randomBytes.create(16) as WriteKey;
+/** Creates a randomly generated {@link OwnerWriteKey}. */
+export const createOwnerWriteKey = (deps: RandomBytesDep): OwnerWriteKey =>
+  deps.randomBytes.create(16) as OwnerWriteKey;
 
 /**
  * Creates an {@link Owner} from a {@link OwnerSecret} using SLIP-21 key
@@ -122,7 +125,7 @@ export const createOwner = (secret: OwnerSecret): Owner => {
     createSlip21(secret, ["Evolu", "Encryption Key"]),
   );
 
-  const writeKey = WriteKey.orThrow(
+  const writeKey = OwnerWriteKey.orThrow(
     createSlip21(secret, ["Evolu", "Write Key"]).slice(0, 16),
   );
 

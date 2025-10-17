@@ -28,15 +28,15 @@ import { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
 import type { PostMessageDep, WriteMessagesCallbackRegistryDep } from "./Db.js";
 import {
   AppOwner,
+  OwnerId,
   OwnerIdBytes,
   ownerIdBytesToOwnerId,
-  OwnerId,
   ownerIdToOwnerIdBytes,
+  OwnerWriteKey,
   ShardOwner,
   SharedOwner,
   SharedReadonlyOwner,
   TransportConfig,
-  WriteKey,
 } from "./Owner.js";
 import {
   applyProtocolMessageAsClient,
@@ -111,7 +111,7 @@ export interface SyncOwner {
   readonly id: OwnerId;
   readonly encryptionKey: EncryptionKey;
   /** Optional for read-only owners like {@link SharedReadonlyOwner}. */
-  readonly writeKey?: WriteKey;
+  readonly writeKey?: OwnerWriteKey;
   readonly transports?: ReadonlyArray<TransportConfig>;
 }
 
