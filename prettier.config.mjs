@@ -4,6 +4,7 @@ const prettierConfig = {
     "prettier-plugin-embed",
     "prettier-plugin-sql-cst",
     "prettier-plugin-jsdoc",
+    "prettier-plugin-tailwindcss",
   ],
 };
 
