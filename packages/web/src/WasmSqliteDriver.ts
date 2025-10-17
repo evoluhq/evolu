@@ -26,8 +26,14 @@ export const createWasmSqliteDriver: CreateSqliteDriver = async (
   const db = options?.memory
     ? new sqlite3.oo1.DB(":memory:")
     : new (await sqlite3.installOpfsSAHPoolVfs({ name })).OpfsSAHPoolDb(
-        "/evolu1.db",
+        'file://evolu1.db?vfs=multipleciphers-opfs&cipher=sqlcipher&key=evolu1'
       );
+
+  db.exec(`
+    PRAGMA cipher = 'sqlcipher';
+    PRAGMA key = 'evolu1';
+  `);
+
   let isDisposed = false;
 
   const cache = createPreparedStatementsCache<PreparedStatement>(
