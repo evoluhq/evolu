@@ -5,7 +5,7 @@ import {
   SqliteDriver,
   SqliteRow,
 } from "@evolu/common";
-import sqlite3InitModule, { PreparedStatement } from "@sqlite.org/sqlite-wasm";
+import sqlite3InitModule, { PreparedStatement } from "sqlite-wasm-cipher";
 
 // TODO: Do we still need that?
 // https://github.com/sqlite/sqlite-wasm/issues/62
