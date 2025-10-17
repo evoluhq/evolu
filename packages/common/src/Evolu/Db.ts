@@ -7,7 +7,6 @@ import {
 import { ConsoleConfig, ConsoleDep } from "../Console.js";
 import {
   createSymmetricCrypto,
-  EncryptionKey,
   RandomBytesDep,
   SymmetricCryptoDecryptError,
 } from "../Crypto.js";
@@ -36,9 +35,10 @@ import {
   createAppOwner,
   createOwnerSecret,
   mnemonicToOwnerSecret,
+  OwnerEncryptionKey,
   OwnerId,
+  OwnerWriteKey,
   TransportConfig,
-  WriteKey,
 } from "./Owner.js";
 import { ProtocolError, protocolVersion } from "./Protocol.js";
 import {
@@ -98,6 +98,10 @@ export interface DbConfig extends ConsoleConfig, TimestampConfig {
    * Currently supports:
    *
    * - WebSocket: Real-time bidirectional communication with relay servers
+   *
+   * Empty transports create local-only instances. Transports can be dynamically
+   * added and removed for any owner (including {@link AppOwner}) via
+   * {@link Evolu#useOwner}.
    *
    * The default value is:
    *
@@ -373,8 +377,8 @@ const createDbWorkerDeps =
         const configResult = sqlite.exec<{
           clock: TimestampString;
           appOwnerId: OwnerId;
-          appOwnerEncryptionKey: EncryptionKey;
-          appOwnerWriteKey: WriteKey;
+          appOwnerEncryptionKey: OwnerEncryptionKey;
+          appOwnerWriteKey: OwnerWriteKey;
           appOwnerMnemonic: Mnemonic | null;
         }>(sql`
           select

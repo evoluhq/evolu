@@ -16,11 +16,11 @@ import {
   String,
 } from "../Type.js";
 import {
-  OwnerIdBytes,
-  ownerIdBytesToOwnerId,
   Owner,
   OwnerId,
-  WriteKey,
+  OwnerIdBytes,
+  ownerIdBytesToOwnerId,
+  OwnerWriteKey,
 } from "./Owner.js";
 import { orderTimestampBytes, Timestamp, TimestampBytes } from "./Timestamp.js";
 
@@ -74,14 +74,17 @@ export interface Storage {
     callback: (timestamp: TimestampBytes, index: NonNegativeInt) => boolean,
   ) => void;
 
-  /** Validates the {@link WriteKey} for the given {@link Owner}. */
+  /** Validates the {@link OwnerWriteKey} for the given {@link Owner}. */
   readonly validateWriteKey: (
     ownerId: OwnerIdBytes,
-    writeKey: WriteKey,
+    writeKey: OwnerWriteKey,
   ) => boolean;
 
-  /** Sets the {@link WriteKey} for the given {@link Owner}. */
-  readonly setWriteKey: (ownerId: OwnerIdBytes, writeKey: WriteKey) => boolean;
+  /** Sets the {@link OwnerWriteKey} for the given {@link Owner}. */
+  readonly setWriteKey: (
+    ownerId: OwnerIdBytes,
+    writeKey: OwnerWriteKey,
+  ) => boolean;
 
   /**
    * Write encrypted {@link CrdtMessage}s to storage.

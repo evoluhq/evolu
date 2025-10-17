@@ -1,7 +1,6 @@
 import * as bip39 from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { NonEmptyReadonlyArray } from "../Array.js";
-import { Brand } from "../Brand.js";
 import {
   createSlip21,
   EncryptionKey,
@@ -66,22 +65,26 @@ export const mnemonicToOwnerSecret = (mnemonic: Mnemonic): OwnerSecret =>
  *
  * - {@link OwnerId}: Globally unique public identifier
  * - {@link EncryptionKey}: Symmetric encryption key for data protection
- * - {@link WriteKey}: Authentication token for write operations (rotatable)
+ * - {@link OwnerWriteKey}: Authentication token for write operations (rotatable)
  *
  * @see {@link createOwner}
  */
 export interface Owner {
   readonly id: OwnerId;
-  readonly encryptionKey: EncryptionKey;
-  readonly writeKey: WriteKey;
+  readonly encryptionKey: OwnerEncryptionKey;
+  readonly writeKey: OwnerWriteKey;
 }
 
-/** The unique identifier of an {@link Owner}. */
+/**
+ * OwnerId is a branded {@link Id} that uniquely identifies an {@link Owner}.
+ * Branded from {@link Id} to leverage existing helpers like {@link idToIdBytes}.
+ */
 export const OwnerId = brand("OwnerId", Id);
 export type OwnerId = typeof OwnerId.Type;
 
 /** Bytes representation of {@link OwnerId}. */
-export type OwnerIdBytes = IdBytes & Brand<"OwnerIdBytes">;
+export const OwnerIdBytes = brand("OwnerIdBytes", IdBytes);
+export type OwnerIdBytes = typeof OwnerIdBytes.Type;
 
 export const ownerIdToOwnerIdBytes = (ownerId: OwnerId): OwnerIdBytes =>
   idToIdBytes(ownerId) as OwnerIdBytes;
@@ -89,18 +92,21 @@ export const ownerIdToOwnerIdBytes = (ownerId: OwnerId): OwnerIdBytes =>
 export const ownerIdBytesToOwnerId = (ownerIdBytes: OwnerIdBytes): OwnerId =>
   idBytesToId(ownerIdBytes as IdBytes) as OwnerId;
 
-export const writeKeyLength = 16 as NonNegativeInt;
+export const ownerWriteKeyLength = 16 as NonNegativeInt;
+
+export const OwnerEncryptionKey = brand("OwnerEncryptionKey", EncryptionKey);
+export type OwnerEncryptionKey = typeof OwnerEncryptionKey.Type;
 
 /**
  * A secure token for write operations. It's derived from {@link OwnerSecret} by
- * default and can be rotated via {@link createWriteKey}.
+ * default and can be rotated via {@link createOwnerWriteKey}.
  */
-export const WriteKey = brand("WriteKey", Entropy16);
-export type WriteKey = typeof WriteKey.Type;
+export const OwnerWriteKey = brand("OwnerWriteKey", Entropy16);
+export type OwnerWriteKey = typeof OwnerWriteKey.Type;
 
-/** Creates a randomly generated {@link WriteKey}. */
-export const createWriteKey = (deps: RandomBytesDep): WriteKey =>
-  deps.randomBytes.create(16) as WriteKey;
+/** Creates a randomly generated {@link OwnerWriteKey}. */
+export const createOwnerWriteKey = (deps: RandomBytesDep): OwnerWriteKey =>
+  deps.randomBytes.create(16) as OwnerWriteKey;
 
 /**
  * Creates an {@link Owner} from a {@link OwnerSecret} using SLIP-21 key
@@ -113,21 +119,21 @@ export const createWriteKey = (deps: RandomBytesDep): WriteKey =>
  * - {@link createSharedOwner}
  * - {@link createSharedReadonlyOwner}
  */
-export const createOwner = (secret: OwnerSecret): Owner => {
-  const id = ownerIdBytesToOwnerId(
-    createSlip21(secret, ["Evolu", "Owner Id"]).slice(0, 16) as OwnerIdBytes,
-  );
+export const createOwner = (secret: OwnerSecret): Owner => ({
+  id: ownerIdBytesToOwnerId(
+    OwnerIdBytes.orThrow(
+      createSlip21(secret, ["Evolu", "OwnerIdBytes"]).slice(0, 16),
+    ),
+  ),
 
-  const encryptionKey = EncryptionKey.orThrow(
-    createSlip21(secret, ["Evolu", "Encryption Key"]),
-  );
+  encryptionKey: OwnerEncryptionKey.orThrow(
+    createSlip21(secret, ["Evolu", "OwnerEncryptionKey"]),
+  ),
 
-  const writeKey = WriteKey.orThrow(
-    createSlip21(secret, ["Evolu", "Write Key"]).slice(0, 16),
-  );
-
-  return { id, encryptionKey, writeKey };
-};
+  writeKey: OwnerWriteKey.orThrow(
+    createSlip21(secret, ["Evolu", "OwnerWriteKey"]).slice(0, 16),
+  ),
+});
 
 /**
  * The AppOwner represents the application owner. It's created using a

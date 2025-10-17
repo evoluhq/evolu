@@ -377,13 +377,14 @@ export const explainSqliteQueryPlan =
     if (!result.ok) return result;
 
     // eslint-disable-next-line no-console
-    console.log("ExplainQueryPlan", query);
+    console.log("[explainSqliteQueryPlan]", query);
     // eslint-disable-next-line no-console
     console.log(
       drawSqliteQueryPlan(
         result.value.rows as unknown as Array<SqliteQueryPlanRow>,
       ),
     );
+
     return ok();
   };
 

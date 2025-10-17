@@ -85,16 +85,17 @@ export const EvoluDemo: FC = () => {
 // Evolu uses Kysely for type-safe SQL (https://kysely.dev/).
 const todosQuery = evolu.createQuery((db) =>
   db
-    // Type-safe SQL: enjoy autocomplete for table and column names here.
+    // Type-safe SQL: try autocomplete for table and column names.
     .selectFrom("todo")
     .select(["id", "title", "isCompleted"])
-    // Soft delete: filter out deleted rows (isDeleted is auto-added to all tables).
+    // Soft delete: filter out deleted rows.
     .where("isDeleted", "is not", Evolu.sqliteTrue)
-    // Like GraphQL, Evolu schema makes everything nullable except id. This
-    // enables schema evolution (no migrations/versioning) and handles eventual
-    // consistency. Filter nulls in queries to ensure required shape.
+    // Like GraphQL, all columns except id are nullable in queries (even if
+    // defined as non-nullable in schema). This enables schema evolution (no
+    // migrations/versioning). Filter nulls with where + $narrowType.
     .where("title", "is not", null)
     .$narrowType<{ title: Evolu.kysely.NotNull }>()
+    // Columns createdAt, updatedAt, isDeleted are auto-added to all tables.
     .orderBy("createdAt"),
 );
 
@@ -107,7 +108,7 @@ const Todos: FC = () => {
   const { insert } = useEvolu();
   const [newTodoTitle, setNewTodoTitle] = useState("");
 
-  const handleAddTodo = () => {
+  const addTodo = () => {
     const result = insert(
       "todo",
       { title: newTodoTitle.trim() },
@@ -125,11 +126,11 @@ const Todos: FC = () => {
 
   return (
     <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
-      <ul className="mb-6 space-y-2">
+      <ol className="mb-6 space-y-2">
         {todos.map((todo) => (
           <TodoItem key={todo.id} row={todo} />
         ))}
-      </ul>
+      </ol>
 
       <div className="flex gap-2">
         <input
@@ -139,14 +140,12 @@ const Todos: FC = () => {
             setNewTodoTitle(e.target.value);
           }}
           onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              handleAddTodo();
-            }
+            if (e.key === "Enter") addTodo();
           }}
           placeholder="Add a new todo..."
           className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
         />
-        <Button title="Add" onClick={handleAddTodo} variant="primary" />
+        <Button title="Add" onClick={addTodo} variant="primary" />
       </div>
     </div>
   );
@@ -190,7 +189,7 @@ const TodoItem: FC<{
           type="checkbox"
           checked={!!isCompleted}
           onChange={handleToggleCompletedClick}
-          className="col-start-1 row-start-1 appearance-none rounded-sm border border-gray-300 bg-white checked:border-indigo-600 checked:bg-indigo-600 indeterminate:border-indigo-600 indeterminate:bg-indigo-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:border-gray-300 disabled:bg-gray-100 disabled:checked:bg-gray-100 forced-colors:appearance-auto"
+          className="col-start-1 row-start-1 appearance-none rounded-sm border border-gray-300 bg-white checked:border-blue-600 checked:bg-blue-600 indeterminate:border-blue-600 indeterminate:bg-blue-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:border-gray-300 disabled:bg-gray-100 disabled:checked:bg-gray-100 forced-colors:appearance-auto"
         />
         <span
           className={clsx(
@@ -223,7 +222,6 @@ const TodoItem: FC<{
 
 const OwnerActions: FC = () => {
   const appOwner = useAppOwner();
-
   const [showMnemonic, setShowMnemonic] = useState(false);
 
   // Restore owner from mnemonic to sync data across devices.
@@ -316,15 +314,16 @@ const Button: FC<{
   onClick: () => void;
   variant?: "primary" | "secondary";
 }> = ({ title, className, onClick, variant = "secondary" }) => {
+  const baseClasses =
+    "px-3 py-2 text-sm font-medium rounded-lg transition-colors";
+  const variantClasses =
+    variant === "primary"
+      ? "bg-blue-600 text-white hover:bg-blue-700"
+      : "bg-gray-100 text-gray-700 hover:bg-gray-200";
+
   return (
     <button
-      className={clsx(
-        "px-3 py-2 text-sm font-medium rounded-lg transition-colors",
-        variant === "primary"
-          ? "bg-blue-600 text-white hover:bg-blue-700"
-          : "bg-gray-100 text-gray-700 hover:bg-gray-200",
-        className,
-      )}
+      className={clsx(baseClasses, variantClasses, className)}
       onClick={onClick}
     >
       {title}

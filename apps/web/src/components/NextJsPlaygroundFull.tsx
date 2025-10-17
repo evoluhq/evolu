@@ -3,34 +3,46 @@
 import {
   createEvolu,
   createFormatTypeError,
+  FiniteNumber,
   id,
+  idToIdBytes,
+  json,
   kysely,
+  maxLength,
+  MaxLengthError,
   MinLengthError,
   Mnemonic,
-  NonEmptyString1000,
+  NonEmptyString,
+  NonEmptyTrimmedString100,
   nullOr,
+  object,
+  OwnerEncryptionKey,
+  OwnerId,
+  OwnerWriteKey,
   SimpleName,
   SqliteBoolean,
   sqliteFalse,
   sqliteTrue,
-  ValidMutationSizeError,
+  timestampBytesToTimestamp,
 } from "@evolu/common";
 import {
   createUseEvolu,
   EvoluProvider,
   useAppOwner,
+  useQueries,
   useQuery,
 } from "@evolu/react";
 import { evoluReactWebDeps } from "@evolu/react-web";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import {
+  IconChecklist,
   IconEdit,
+  IconHistory,
   IconRestore,
-  IconStackFront,
   IconTrash,
 } from "@tabler/icons-react";
 import clsx from "clsx";
-import { FC, startTransition, Suspense, useState } from "react";
+import { FC, KeyboardEvent, startTransition, Suspense, useState } from "react";
 
 const ProjectId = id("Project");
 type ProjectId = typeof ProjectId.Type;
@@ -38,29 +50,58 @@ type ProjectId = typeof ProjectId.Type;
 const TodoId = id("Todo");
 type TodoId = typeof TodoId.Type;
 
+// A custom branded Type.
+const NonEmptyString50 = maxLength(50)(NonEmptyString);
+// string & Brand<"MinLength1"> & Brand<"MaxLength50">
+type NonEmptyString50 = typeof NonEmptyString50.Type;
+
+// SQLite supports JSON values.
+// Use JSON for semi-structured data like API responses, external integrations,
+// or when the schema varies by use case.
+// Let's create an object to demonstrate it.
+const Foo = object({
+  foo: NonEmptyString50,
+  // Did you know that JSON.stringify converts NaN (a number) into null?
+  // To prevent this, use FiniteNumber.
+  bar: FiniteNumber,
+});
+type Foo = typeof Foo.Type;
+
+// SQLite stores JSON values as strings. Evolu provides a convenient `json`
+// Type Factory for type-safe JSON serialization and parsing.
+const [FooJson, fooToFooJson, fooJsonToFoo] = json(Foo, "FooJson");
+// string & Brand<"FooJson">
+type FooJson = typeof FooJson.Type;
+
 const Schema = {
   project: {
     id: ProjectId,
-    name: NonEmptyString1000,
+    name: NonEmptyTrimmedString100,
+    fooJson: FooJson,
+    ownerId: nullOr(OwnerId),
+    ownerEncryptionKey: nullOr(OwnerEncryptionKey),
+    ownerWriteKey: nullOr(OwnerWriteKey),
   },
   todo: {
     id: TodoId,
-    title: NonEmptyString1000,
+    title: NonEmptyTrimmedString100,
     isCompleted: nullOr(SqliteBoolean),
     projectId: nullOr(ProjectId),
   },
 };
 
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
+  name: SimpleName.orThrow("evolu-playground-full"),
+
   reloadUrl: "/playgrounds/full",
-  name: SimpleName.orThrow("evolu-playground-full-v2"),
 
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
+
+    // Empty transports for local-only instance.
     // transports: [],
   }),
 
-  // Indexes are not required for development but are recommended for production.
   // https://www.evolu.dev/docs/indexes
   indexes: (create) => [
     create("todoCreatedAt").on("todo").column("createdAt"),
@@ -68,86 +109,15 @@ const evolu = createEvolu(evoluReactWebDeps)(Schema, {
     create("todoProjectId").on("todo").column("projectId"),
   ],
 
-  // enableLogging: true,
+  enableLogging: false,
 });
 
 const useEvolu = createUseEvolu(evolu);
 
-const projectsQuery = evolu.createQuery(
-  (db) =>
-    db
-      .selectFrom("project")
-      .select(["id", "name"])
-      .where("isDeleted", "is not", 1)
-      .where("name", "is not", null)
-      .$narrowType<{ name: kysely.NotNull }>()
-      .orderBy("createdAt"),
-  {
-    // logQueryExecutionTime: true,
-    // logExplainQueryPlan: true,
-  },
-);
-
-const projectWithTodos = evolu.createQuery((db) =>
-  db
-    .selectFrom("project")
-    .select(["id", "name"])
-    .select((eb) => [
-      kysely
-        .jsonArrayFrom(
-          eb
-            .selectFrom("todo")
-            .select([
-              "todo.id",
-              "todo.title",
-              "todo.isCompleted",
-              "todo.projectId",
-            ])
-            .where("todo.isDeleted", "is not", 1)
-            .whereRef("todo.projectId", "=", "project.id")
-            .orderBy("createdAt"),
-        )
-        .as("todos"),
-    ])
-    .where("project.isDeleted", "is not", 1)
-    .orderBy("createdAt"),
-);
-
-const deletedProjectsQuery = evolu.createQuery(
-  (db) =>
-    db
-      .selectFrom("project")
-      .select(["id", "name", "updatedAt"])
-      .where("isDeleted", "is", 1)
-      .where("name", "is not", null)
-      .$narrowType<{ name: kysely.NotNull }>()
-      .orderBy("updatedAt", "desc"),
-  {
-    // logQueryExecutionTime: true,
-    // logExplainQueryPlan: true,
-  },
-);
-
-const deletedTodosQuery = evolu.createQuery(
-  (db) =>
-    db
-      .selectFrom("todo")
-      .select(["id", "title", "isCompleted", "projectId", "updatedAt"])
-      .where("isDeleted", "is", 1)
-      .where("title", "is not", null)
-      .$narrowType<{ title: kysely.NotNull }>()
-      .orderBy("updatedAt", "desc"),
-  {},
-);
-
-type ProjectsRow = typeof projectsQuery.Row;
-type ProjectWithTodosRow = typeof projectWithTodos.Row;
-type DeletedProjectsRow = typeof deletedProjectsQuery.Row;
-type DeletedTodosRow = typeof deletedTodosQuery.Row;
-
 evolu.subscribeError(() => {
   const error = evolu.getError();
   if (!error) return;
+
   alert("🚨 Evolu error occurred! Check the console.");
   // eslint-disable-next-line no-console
   console.error(error);
@@ -158,62 +128,139 @@ export const NextJsPlaygroundFull: FC = () => {
     <div className="min-h-screen px-8 py-8">
       <div className="mx-auto max-w-md min-w-sm md:min-w-md">
         <EvoluProvider value={evolu}>
-          <AppShell />
+          <Suspense>
+            <App />
+          </Suspense>
         </EvoluProvider>
       </div>
     </div>
   );
 };
 
-const Button: FC<{
-  title: string;
-  className?: string;
-  onClick: () => void;
-  variant?: "primary" | "secondary";
-}> = ({ title, className, onClick, variant = "secondary" }) => {
-  const baseClasses =
-    "px-3 py-2 text-sm font-medium rounded-lg transition-colors";
-  const variantClasses =
-    variant === "primary"
-      ? "bg-blue-600 text-white hover:bg-blue-700"
-      : "bg-gray-100 text-gray-700 hover:bg-gray-200";
+const App: FC = () => {
+  const [activeTab, setActiveTab] = useState<
+    "home" | "projects" | "account" | "trash"
+  >("home");
+
+  const createHandleTabClick = (tab: typeof activeTab) => () => {
+    // startTransition prevents UI flickers when switching tabs by keeping
+    // the current view visible while Suspense prepares the next one
+    // Test: Remove startTransition, add a todo, delete it, click to Trash.
+    // You will see a visible blink without startTransition.
+    startTransition(() => {
+      setActiveTab(tab);
+    });
+  };
 
   return (
-    <button
-      className={clsx(baseClasses, variantClasses, className)}
-      onClick={onClick}
-    >
-      {title}
-    </button>
+    <div>
+      <div className="mb-6 flex items-center justify-between pb-4">
+        <div className="flex w-full items-center justify-center gap-5 text-lg font-semibold">
+          <button
+            className={clsx(
+              "cursor-pointer border-b-2 border-b-transparent whitespace-nowrap text-gray-500",
+              activeTab === "home" && "!border-blue-600 !text-blue-600",
+            )}
+            onClick={createHandleTabClick("home")}
+          >
+            Home
+          </button>
+          <button
+            className={clsx(
+              "cursor-pointer border-b-2 border-b-transparent whitespace-nowrap text-gray-500",
+              activeTab === "projects" && "!border-blue-600 !text-blue-600",
+            )}
+            onClick={createHandleTabClick("projects")}
+          >
+            Projects
+          </button>
+          <button
+            className={clsx(
+              "cursor-pointer border-b-2 border-b-transparent whitespace-nowrap text-gray-500",
+              activeTab === "account" && "!border-blue-600 !text-blue-600",
+            )}
+            onClick={createHandleTabClick("account")}
+          >
+            Account
+          </button>
+          <button
+            className={clsx(
+              "cursor-pointer border-b-2 border-b-transparent whitespace-nowrap text-gray-500",
+              activeTab === "trash" && "!border-blue-600 !text-blue-600",
+            )}
+            onClick={createHandleTabClick("trash")}
+          >
+            Trash
+          </button>
+        </div>
+      </div>
+
+      {activeTab === "home" && <HomeTab />}
+      {activeTab === "projects" && <ProjectsTab />}
+      {activeTab === "account" && <AccountTab />}
+      {activeTab === "trash" && <TrashTab />}
+    </div>
   );
 };
 
-const AppShell: FC = () => {
-  const projects = useQuery(projectsQuery);
-  const { insert } = useEvolu();
+const projectsWithTodosQuery = evolu.createQuery(
+  (db) =>
+    db
+      .selectFrom("project")
+      .select(["id", "name"])
+      // https://kysely.dev/docs/recipes/relations
+      .select((eb) => [
+        kysely
+          .jsonArrayFrom(
+            eb
+              .selectFrom("todo")
+              .select([
+                "todo.id",
+                "todo.title",
+                "todo.isCompleted",
+                "todo.projectId",
+              ])
+              .whereRef("todo.projectId", "=", "project.id")
+              .where("todo.isDeleted", "is not", sqliteTrue)
+              .where("todo.title", "is not", null)
+              .$narrowType<{ title: kysely.NotNull }>()
+              .orderBy("createdAt"),
+          )
+          .as("todos"),
+      ])
+      .where("project.isDeleted", "is not", sqliteTrue)
+      .where("name", "is not", null)
+      .$narrowType<{ name: kysely.NotNull }>()
+      .orderBy("createdAt"),
+  {
+    // Log how long each query execution takes
+    logQueryExecutionTime: false,
 
-  const [activeTab, setActiveTab] = useState<
-    "home" | "projects" | "dataManagement" | "trash"
-  >("home");
+    // Log the SQLite query execution plan for optimization analysis
+    logExplainQueryPlan: false,
+  },
+);
 
-  const handleAddProjectClick = () => {
-    const name = window.prompt("What's the project name?");
-    if (name == null) return; // escape or cancel
+type ProjectsWithTodosRow = typeof projectsWithTodosQuery.Row;
 
-    const result = insert("project", {
-      name,
-    });
+const HomeTab: FC = () => {
+  const [projectsWithTodos, projects] = useQueries([
+    projectsWithTodosQuery,
+    /**
+     * Load projects separately for better cache efficiency. Projects change
+     * less frequently than todos, preventing unnecessary re-renders. Multiple
+     * queries are fine in local-first - no network overhead.
+     */
+    projectsQuery,
+  ]);
 
-    if (!result.ok) {
-      alert(formatTypeError(result.error));
-    }
-  };
+  const handleAddProjectClick = useAddProject();
 
-  if (projects.length === 0) {
+  if (projectsWithTodos.length === 0) {
     return (
       <div className="py-12 text-center">
         <div className="mb-4 text-gray-700">
-          <IconStackFront className="mx-auto h-12 w-12" />
+          <IconChecklist className="mx-auto h-12 w-12" />
         </div>
         <h3 className="mb-2 text-lg font-medium text-gray-900">
           No projects yet
@@ -232,269 +279,13 @@ const AppShell: FC = () => {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between pb-4">
-        <div className="flex w-full items-center justify-center gap-5 text-lg font-semibold">
-          <button
-            className={clsx(
-              "cursor-pointer border-b-2 border-b-transparent whitespace-nowrap text-gray-500",
-              activeTab === "home" && "!border-blue-600 !text-blue-600",
-            )}
-            onClick={() => {
-              startTransition(() => {
-                setActiveTab("home");
-              });
-            }}
-          >
-            Home
-          </button>
-          <button
-            className={clsx(
-              "cursor-pointer border-b-2 border-b-transparent whitespace-nowrap text-gray-500",
-              activeTab === "projects" && "!border-blue-600 !text-blue-600",
-            )}
-            onClick={() => {
-              startTransition(() => {
-                setActiveTab("projects");
-              });
-            }}
-          >
-            Projects
-          </button>
-          <button
-            className={clsx(
-              "cursor-pointer border-b-2 border-b-transparent whitespace-nowrap text-gray-500",
-              activeTab === "dataManagement" &&
-                "!border-blue-600 !text-blue-600",
-            )}
-            onClick={() => {
-              startTransition(() => {
-                setActiveTab("dataManagement");
-              });
-            }}
-          >
-            Account
-          </button>
-          <button
-            className={clsx(
-              "cursor-pointer border-b-2 border-b-transparent whitespace-nowrap text-gray-500",
-              activeTab === "trash" && "!border-blue-600 !text-blue-600",
-            )}
-            onClick={() => {
-              // TODO: Explain
-              startTransition(() => {
-                setActiveTab("trash");
-              });
-            }}
-          >
-            Trash
-          </button>
-        </div>
-      </div>
-
-      <Suspense>
-        {activeTab === "home" && <ProjectsPage />}
-        {activeTab === "projects" && <ProjectsTab />}
-        {activeTab === "dataManagement" && <DataManagementTab />}
-        {activeTab === "trash" && <TrashTab />}
-      </Suspense>
-    </div>
-  );
-};
-
-const ProjectsTab: FC = () => {
-  const projects = useQuery(projectsQuery);
-  const { insert } = useEvolu();
-
-  const handleAddProjectClick = () => {
-    const name = window.prompt("What's the project name?");
-    if (name == null) return; // escape or cancel
-
-    const result = insert("project", {
-      name,
-    });
-
-    if (!result.ok) {
-      alert(formatTypeError(result.error));
-    }
-  };
-
-  return (
-    <div>
-      <div className="space-y-3">
-        {projects.map((project) => (
-          <ProjectItem key={project.id} project={project} />
-        ))}
-        <div className="flex justify-center pt-4">
-          <Button
-            title="Add new project"
-            onClick={handleAddProjectClick}
-            variant="primary"
-            className="w-full py-3 !text-base font-semibold"
-          />
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const DataManagementTab: FC = () => {
-  return (
-    <div>
-      <OwnerActions />
-    </div>
-  );
-};
-
-const TrashTab: FC = () => {
-  const deletedProjects = useQuery(deletedProjectsQuery);
-  const deletedTodos = useQuery(deletedTodosQuery);
-  const projects = useQuery(projectsQuery); // For getting project names
-
-  if (deletedProjects.length === 0 && deletedTodos.length === 0) {
-    return (
-      <div className="py-12 text-center">
-        <div className="mb-4 text-gray-700">
-          <IconTrash className="mx-auto h-12 w-12" />
-        </div>
-        <h3 className="mb-2 text-lg font-medium text-gray-900">
-          Trash is empty
-        </h3>
-        <p className="text-gray-500">
-          Deleted projects and todos will appear here
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      {deletedProjects.length > 0 && (
-        <div>
-          <h3 className="mb-3 text-lg font-semibold text-gray-900">
-            Deleted Projects
-          </h3>
-          <div className="space-y-2">
-            {deletedProjects.map((project) => (
-              <DeletedProjectItem key={project.id} project={project} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {deletedTodos.length > 0 && (
-        <div>
-          <h3 className="mb-3 text-lg font-semibold text-gray-900">
-            Deleted Todos
-          </h3>
-          <div className="space-y-2">
-            {deletedTodos.map((todo) => (
-              <DeletedTodoItem
-                key={todo.id}
-                todo={todo}
-                projects={[...projects]}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-const DeletedProjectItem: FC<{
-  project: DeletedProjectsRow;
-}> = ({ project }) => {
-  const { update } = useEvolu();
-
-  const handleRestoreClick = () => {
-    if (
-      confirm(`Are you sure you want to restore project "${project.name}"?`)
-    ) {
-      update("project", { id: project.id, isDeleted: sqliteTrue });
-    }
-  };
-
-  return (
-    <div className="flex items-center gap-3 rounded-lg bg-white p-4 shadow-sm">
-      <div className="flex flex-1 items-start gap-3">
-        <IconStackFront className="size-6 text-gray-400" />
-        <div className="flex-1">
-          <h3 className="font-medium text-gray-900">{project.name}</h3>
-          <p className="text-sm text-gray-500">
-            Deleted{" "}
-            {project.updatedAt
-              ? new Date(project.updatedAt).toLocaleString()
-              : "recently"}
-          </p>
-        </div>
-      </div>
-      <div className="flex items-center gap-1">
-        <button
-          onClick={handleRestoreClick}
-          className="p-2 text-gray-400 transition-colors hover:text-green-600"
-          title="Restore Project"
-        >
-          <IconRestore className="size-4" />
-        </button>
-      </div>
-    </div>
-  );
-};
-
-const DeletedTodoItem: FC<{
-  todo: DeletedTodosRow;
-  projects: Array<ProjectsRow>;
-}> = ({ todo, projects }) => {
-  const { update } = useEvolu();
-
-  const handleRestoreClick = () => {
-    if (confirm(`Are you sure you want to restore todo "${todo.title}"?`)) {
-      update("todo", { id: todo.id, isDeleted: sqliteFalse });
-    }
-  };
-
-  const getProjectName = (projectId: ProjectId | null) => {
-    const project = projects.find((p) => p.id === projectId);
-    return project ? project.name : "Unknown Project (Orphan)";
-  };
-
-  return (
-    <div className="flex items-center gap-3 rounded-lg bg-white p-4 shadow-sm">
-      <div className="flex flex-1 items-center gap-3">
-        <div className="flex-1">
-          <h3 className="font-medium text-gray-900">{todo.title}</h3>
-          <p className="text-sm text-gray-500">
-            {getProjectName(todo.projectId)} • Deleted{" "}
-            {todo.updatedAt
-              ? new Date(todo.updatedAt).toLocaleString()
-              : "recently"}
-          </p>
-        </div>
-      </div>
-      <div className="flex items-center gap-1">
-        <button
-          onClick={handleRestoreClick}
-          className="p-2 text-gray-400 transition-colors hover:text-green-600"
-          title="Restore Todo"
-        >
-          <IconRestore className="size-4" />
-        </button>
-      </div>
-    </div>
-  );
-};
-
-const ProjectsPage: FC = () => {
-  const projects = useQuery(projectWithTodos);
-
-  return (
-    <div>
       <div className="flex flex-col gap-8">
-        {projects.map((project) => (
-          <ProjectSection
+        {projectsWithTodos.map((project) => (
+          <HomeTabProject
             key={project.id}
             project={project}
             todos={project.todos}
+            projects={projects}
           />
         ))}
       </div>
@@ -502,16 +293,15 @@ const ProjectsPage: FC = () => {
   );
 };
 
-const ProjectSection: FC<{
-  project: ProjectWithTodosRow;
-  todos: ProjectWithTodosRow["todos"];
-}> = ({ project, todos }) => {
+const HomeTabProject: FC<{
+  project: ProjectsWithTodosRow;
+  todos: ProjectsWithTodosRow["todos"];
+  projects: ReadonlyArray<ProjectsRow>;
+}> = ({ project, todos, projects }) => {
   const { insert } = useEvolu();
   const [newTodoTitle, setNewTodoTitle] = useState("");
 
-  const handleAddTodo = () => {
-    if (!newTodoTitle.trim()) return;
-
+  const addTodo = () => {
     const result = insert(
       "todo",
       {
@@ -530,9 +320,9 @@ const ProjectSection: FC<{
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = (e: KeyboardEvent) => {
     if (e.key === "Enter") {
-      handleAddTodo();
+      addTodo();
     }
   };
 
@@ -540,17 +330,21 @@ const ProjectSection: FC<{
     <div className="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200">
       <div className="mb-3 flex items-center justify-between border-b border-gray-100 pb-2">
         <h3 className="flex items-center gap-2 font-medium text-gray-900">
-          <IconStackFront className="size-5 text-gray-500" />
+          <IconChecklist className="size-5 text-gray-500" />
           {project.name}
         </h3>
       </div>
 
       {todos.length > 0 && (
-        <div className="mb-4 space-y-2">
+        <ol className="mb-4 space-y-2">
           {todos.map((todo) => (
-            <TodoItem key={todo.id} row={todo} />
+            <HomeTabProjectSectionTodoItem
+              key={todo.id}
+              row={todo}
+              projects={projects}
+            />
           ))}
-        </div>
+        </ol>
       )}
 
       <div className="flex gap-2">
@@ -565,74 +359,37 @@ const ProjectSection: FC<{
           placeholder="Add a new todo..."
           className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
         />
-        <Button title="Add" onClick={handleAddTodo} variant="primary" />
+        <Button title="Add" onClick={addTodo} variant="primary" />
       </div>
     </div>
   );
 };
 
-const ProjectItem: FC<{
-  project: ProjectsRow;
-}> = ({ project }) => {
+const HomeTabProjectSectionTodoItem: FC<{
+  // [number] extracts the element type from the todos array
+  row: ProjectsWithTodosRow["todos"][number];
+  projects: ReadonlyArray<ProjectsRow>;
+}> = ({ row: { id, title, isCompleted, projectId }, projects }) => {
   const { update } = useEvolu();
-
-  const handleRenameClick = () => {
-    const newName = window.prompt("Edit project name", project.name);
-    if (newName == null) return; // escape or cancel
-    const result = update("project", { id: project.id, name: newName });
-    if (!result.ok) {
-      alert(formatTypeError(result.error));
-    }
-  };
-
-  const handleDeleteClick = () => {
-    if (confirm(`Are you sure you want to delete project "${project.name}"?`)) {
-      update("project", { id: project.id, isDeleted: sqliteTrue });
-    }
-  };
-
-  return (
-    <div className="flex items-center gap-3 rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200">
-      <div className="flex flex-1 items-center gap-3">
-        <IconStackFront className="size-6 text-gray-500" />
-        <div className="flex-1">
-          <h3 className="font-medium text-gray-900">{project.name}</h3>
-        </div>
-      </div>
-      <div className="flex items-center gap-1">
-        <button
-          onClick={handleRenameClick}
-          className="p-2 text-gray-400 transition-colors hover:text-blue-600"
-          title="Rename Project"
-        >
-          <IconEdit className="size-4" />
-        </button>
-        <button
-          onClick={handleDeleteClick}
-          className="p-2 text-gray-400 transition-colors hover:text-red-600"
-          title="Delete Project"
-        >
-          <IconTrash className="size-4" />
-        </button>
-      </div>
-    </div>
-  );
-};
-
-const TodoItem: FC<{
-  row: ProjectWithTodosRow["todos"][number];
-}> = ({ row: { id, title, isCompleted, projectId } }) => {
-  const { update } = useEvolu();
-  const projects = useQuery(projectsQuery);
 
   const handleToggleCompletedClick = () => {
-    update("todo", { id, isCompleted: Number(!isCompleted) });
+    // No need to check result if a mutation can't fail.
+    update("todo", {
+      id,
+      // Number converts boolean to number.
+      isCompleted: Number(!isCompleted),
+    });
+  };
+
+  const handleProjectChange = (newProjectId: ProjectId) => {
+    update("todo", { id, projectId: newProjectId });
   };
 
   const handleRenameClick = () => {
-    const newTitle = window.prompt("Edit todo", title ?? undefined);
-    if (newTitle == null) return; // escape or cancel
-    const result = update("todo", { id, title: newTitle });
+    const newTitle = window.prompt("Edit todo", title);
+    if (newTitle == null) return;
+
+    const result = update("todo", { id, title: newTitle.trim() });
     if (!result.ok) {
       alert(formatTypeError(result.error));
     }
@@ -642,8 +399,28 @@ const TodoItem: FC<{
     update("todo", { id, isDeleted: sqliteTrue });
   };
 
-  const handleProjectChange = (newProjectId: ProjectId | null) => {
-    update("todo", { id, projectId: newProjectId });
+  // Demonstrate history tracking. Evolu automatically tracks all changes
+  // in the evolu_history table, making it easy to build audit logs or undo features.
+  const titleHistoryQuery = evolu.createQuery((db) =>
+    db
+      .selectFrom("evolu_history")
+      .select(["value", "timestamp"])
+      .where("table", "==", "todo")
+      .where("id", "==", idToIdBytes(id))
+      .where("column", "==", "title")
+      // value isn't typed; this is how we narrow its type
+      .$narrowType<{ value: (typeof Schema)["todo"]["title"]["Type"] }>()
+      .orderBy("timestamp", "desc"),
+  );
+
+  const handleHistoryClick = () => {
+    void evolu.loadQuery(titleHistoryQuery).then((rows) => {
+      const rowsWithTimestamp = rows.map((row) => ({
+        value: row.value,
+        timestamp: timestampBytesToTimestamp(row.timestamp),
+      }));
+      alert(JSON.stringify(rowsWithTimestamp, null, 2));
+    });
   };
 
   return (
@@ -664,23 +441,13 @@ const TodoItem: FC<{
               className="p-1 text-gray-400 transition-colors hover:text-blue-600"
               title="Change Project"
             >
-              <IconStackFront className="size-4" />
+              <IconChecklist className="size-4" />
             </MenuButton>
             <MenuItems
               transition
               className="absolute right-0 z-10 mt-2 w-56 origin-top-right rounded-md bg-white shadow-lg outline-1 outline-black/5 transition data-closed:scale-95 data-closed:transform data-closed:opacity-0 data-enter:duration-100 data-enter:ease-out data-leave:duration-75 data-leave:ease-in"
             >
               <div className="py-1">
-                <MenuItem>
-                  <button
-                    onClick={() => {
-                      handleProjectChange(null);
-                    }}
-                    className="block w-full px-4 py-2 text-left text-sm text-gray-700 data-focus:bg-gray-100 data-focus:text-gray-900 data-focus:outline-hidden"
-                  >
-                    No Project
-                  </button>
-                </MenuItem>
                 {projects.map((project) => (
                   <MenuItem key={project.id}>
                     <button
@@ -709,6 +476,13 @@ const TodoItem: FC<{
             <IconEdit className="size-4" />
           </button>
           <button
+            onClick={handleHistoryClick}
+            className="p-1 text-gray-400 transition-colors hover:text-purple-600"
+            title="View History"
+          >
+            <IconHistory className="size-4" />
+          </button>
+          <button
             onClick={handleDeleteClick}
             className="p-1 text-gray-400 transition-colors hover:text-red-600"
             title="Delete"
@@ -721,18 +495,149 @@ const TodoItem: FC<{
   );
 };
 
-const OwnerActions: FC = () => {
+const projectsQuery = evolu.createQuery((db) =>
+  db
+    .selectFrom("project")
+    .select(["id", "name", "fooJson"])
+    .where("isDeleted", "is not", sqliteTrue)
+    .where("name", "is not", null)
+    .$narrowType<{ name: kysely.NotNull }>()
+    .where("fooJson", "is not", null)
+    .$narrowType<{ fooJson: kysely.NotNull }>()
+    .orderBy("createdAt"),
+);
+
+type ProjectsRow = typeof projectsQuery.Row;
+
+const useAddProject = () => {
+  const { insert } = useEvolu();
+
+  return () => {
+    const name = window.prompt("What's the project name?");
+    if (name == null) return;
+
+    // Demonstrate JSON usage.
+    const foo = Foo.from({ foo: "baz", bar: 42 });
+    if (!foo.ok) return;
+
+    const result = insert("project", {
+      name: name.trim(),
+      fooJson: fooToFooJson(foo.value),
+    });
+    if (!result.ok) {
+      alert(formatTypeError(result.error));
+    }
+  };
+};
+
+const ProjectsTab: FC = () => {
+  const projects = useQuery(projectsQuery);
+  const handleAddProjectClick = useAddProject();
+
+  return (
+    <div>
+      <div className="space-y-3">
+        {projects.map((project) => (
+          <ProjectsTabProjectItem key={project.id} project={project} />
+        ))}
+        <div className="flex justify-center pt-4">
+          <Button
+            title="Add new project"
+            onClick={handleAddProjectClick}
+            variant="primary"
+            className="w-full py-3 !text-base font-semibold"
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ProjectsTabProjectItem: FC<{
+  project: ProjectsRow;
+}> = ({ project }) => {
+  const { update } = useEvolu();
+
+  const handleRenameClick = () => {
+    const newName = window.prompt("Edit project name", project.name);
+    if (newName == null) return;
+
+    const result = update("project", { id: project.id, name: newName.trim() });
+    if (!result.ok) {
+      alert(formatTypeError(result.error));
+    }
+  };
+
+  const handleDeleteClick = () => {
+    if (confirm(`Are you sure you want to delete project "${project.name}"?`)) {
+      /**
+       * In a classic centralized client-server app, we would fetch all todos
+       * for this project and delete them too. But that approach is wrong for
+       * distributed eventually consistent systems for two reasons:
+       *
+       * 1. Sync overhead scales with todo count (a project with 10k todos would
+       *    generate 10k sync messages instead of just 1 for the project)
+       * 2. It wouldn't delete todos from other devices before they sync
+       *
+       * The correct approach for local-first systems: handle cascading logic in
+       * the UI layer. Queries filter out deleted projects, so their todos
+       * naturally become hidden. If a todo detail view is needed, it should
+       * check whether its parent project was deleted.
+       */
+      update("project", {
+        id: project.id,
+        isDeleted: sqliteTrue,
+      });
+    }
+  };
+
+  // Demonstrate JSON deserialization. Because FooJson is a branded type,
+  // we can safely deserialize without validation - TypeScript guarantees
+  // only validated JSON strings can have the FooJson brand.
+  const _foo = fooJsonToFoo(project.fooJson);
+
+  return (
+    <div className="flex items-center gap-3 rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200">
+      <div className="flex flex-1 items-center gap-3">
+        <IconChecklist className="size-6 text-gray-500" />
+        <div className="flex-1">
+          <h3 className="font-medium text-gray-900">{project.name}</h3>
+        </div>
+      </div>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={handleRenameClick}
+          className="p-2 text-gray-400 transition-colors hover:text-blue-600"
+          title="Rename Project"
+        >
+          <IconEdit className="size-4" />
+        </button>
+        <button
+          onClick={handleDeleteClick}
+          className="p-2 text-gray-400 transition-colors hover:text-red-600"
+          title="Delete Project"
+        >
+          <IconTrash className="size-4" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const AccountTab: FC = () => {
   const owner = useAppOwner();
   const [showMnemonic, setShowMnemonic] = useState(false);
 
   const handleRestoreAppOwnerClick = () => {
     const mnemonic = window.prompt("Enter your mnemonic to restore your data:");
     if (mnemonic == null) return;
+
     const result = Mnemonic.from(mnemonic.trim());
     if (!result.ok) {
       alert(formatTypeError(result.error));
       return;
     }
+
     void evolu.restoreAppOwner(result.value);
   };
 
@@ -805,82 +710,210 @@ const OwnerActions: FC = () => {
   );
 };
 
-/**
- * The `createFormatTypeError` function creates a unified error formatter that
- * handles both Evolu Type's built-in errors and custom errors. It also lets us
- * override the default formatting for specific errors.
- *
- * If you prefer not to reuse built-in error formatters, you can write your own
- * `formatTypeError` function from scratch. See the commented-out example at
- * the end of this file.
- */
+const deletedProjectsQuery = evolu.createQuery((db) =>
+  db
+    .selectFrom("project")
+    .select(["id", "name", "updatedAt"])
+    .where("isDeleted", "is", sqliteTrue)
+    .where("name", "is not", null)
+    .$narrowType<{ name: kysely.NotNull }>()
+    .orderBy("updatedAt", "desc"),
+);
+
+type DeletedProjectsRow = typeof deletedProjectsQuery.Row;
+
+const deletedTodosQuery = evolu.createQuery((db) =>
+  db
+    .selectFrom("todo")
+    .select(["id", "title", "isCompleted", "projectId", "updatedAt"])
+    .select((eb) => [
+      kysely
+        .jsonObjectFrom(
+          eb
+            .selectFrom("project")
+            .select(["project.id", "project.name"])
+            .where("project.isDeleted", "is not", sqliteTrue)
+            .whereRef("project.id", "=", "todo.projectId")
+            .where("project.name", "is not", null)
+            .$narrowType<{ name: kysely.NotNull }>(),
+        )
+        .as("project"),
+    ])
+    .where("isDeleted", "is", sqliteTrue)
+    .where("title", "is not", null)
+    .$narrowType<{ title: kysely.NotNull }>()
+    .orderBy("updatedAt", "desc"),
+);
+
+type DeletedTodosRow = typeof deletedTodosQuery.Row;
+
+const TrashTab: FC = () => {
+  const deletedProjects = useQuery(deletedProjectsQuery);
+  const deletedTodos = useQuery(deletedTodosQuery);
+
+  if (deletedProjects.length === 0 && deletedTodos.length === 0) {
+    return (
+      <div className="py-12 text-center">
+        <div className="mb-4 text-gray-700">
+          <IconTrash className="mx-auto h-12 w-12" />
+        </div>
+        <h3 className="mb-2 text-lg font-medium text-gray-900">
+          Trash is empty
+        </h3>
+        <p className="text-gray-500">
+          Deleted projects and todos will appear here
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {deletedProjects.length > 0 && (
+        <div>
+          <h3 className="mb-3 text-lg font-semibold text-gray-900">
+            Deleted Projects
+          </h3>
+          <div className="space-y-2">
+            {deletedProjects.map((project) => (
+              <TrashTabDeletedProjectItem key={project.id} project={project} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {deletedTodos.length > 0 && (
+        <div>
+          <h3 className="mb-3 text-lg font-semibold text-gray-900">
+            Deleted Todos
+          </h3>
+          <div className="space-y-2">
+            {deletedTodos.map((todo) => (
+              <TrashTabDeletedTodoItem key={todo.id} todo={todo} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const TrashTabDeletedProjectItem: FC<{
+  project: DeletedProjectsRow;
+}> = ({ project }) => {
+  const { update } = useEvolu();
+
+  const handleRestoreClick = () => {
+    if (
+      confirm(`Are you sure you want to restore project "${project.name}"?`)
+    ) {
+      update("project", { id: project.id, isDeleted: sqliteFalse });
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-3 rounded-lg bg-white p-4 shadow-sm">
+      <div className="flex flex-1 items-start gap-3">
+        <IconChecklist className="size-6 text-gray-400" />
+        <div className="flex-1">
+          <h3 className="font-medium text-gray-900">{project.name}</h3>
+          <p className="text-sm text-gray-500">
+            Deleted{" "}
+            {project.updatedAt
+              ? new Date(project.updatedAt).toLocaleString()
+              : "recently"}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={handleRestoreClick}
+          className="p-2 text-gray-400 transition-colors hover:text-green-600"
+          title="Restore Project"
+        >
+          <IconRestore className="size-4" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const TrashTabDeletedTodoItem: FC<{
+  todo: DeletedTodosRow;
+}> = ({ todo }) => {
+  const { update } = useEvolu();
+
+  const handleRestoreClick = () => {
+    if (confirm(`Are you sure you want to restore todo "${todo.title}"?`)) {
+      update("todo", { id: todo.id, isDeleted: sqliteFalse });
+    }
+  };
+
+  const projectName = todo.project ? todo.project.name : "No Project";
+
+  return (
+    <div className="flex items-center gap-3 rounded-lg bg-white p-4 shadow-sm">
+      <div className="flex flex-1 items-center gap-3">
+        <div className="flex-1">
+          <h3 className="font-medium text-gray-900">{todo.title}</h3>
+          <p className="text-sm text-gray-500">
+            {projectName} • Deleted {new Date(todo.updatedAt).toLocaleString()}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={handleRestoreClick}
+          className="p-2 text-gray-400 transition-colors hover:text-green-600"
+          title="Restore Todo"
+        >
+          <IconRestore className="size-4" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const Button: FC<{
+  title: string;
+  className?: string;
+  onClick: () => void;
+  variant?: "primary" | "secondary";
+}> = ({ title, className, onClick, variant = "secondary" }) => {
+  const baseClasses =
+    "px-3 py-2 text-sm font-medium rounded-lg transition-colors";
+  const variantClasses =
+    variant === "primary"
+      ? "bg-blue-600 text-white hover:bg-blue-700"
+      : "bg-gray-100 text-gray-700 hover:bg-gray-200";
+
+  return (
+    <button
+      className={clsx(baseClasses, variantClasses, className)}
+      onClick={onClick}
+    >
+      {title}
+    </button>
+  );
+};
+
 const formatTypeError = createFormatTypeError<
-  ValidMutationSizeError | MinLengthError
+  | MinLengthError
+  | MaxLengthError
+  | typeof OwnerId.Error
+  | typeof OwnerEncryptionKey.Error
+  | typeof OwnerWriteKey.Error
 >((error): string => {
   switch (error.type) {
-    /**
-     * If schema types are used correctly (e.g., maxLength), this error should
-     * not occur. If it does, it indicates a developer mistake.
-     */
-    case "ValidMutationSize":
-      return "This is a developer error, it should not happen 🤨";
-    // Overrides a built-in error formatter.
     case "MinLength":
-      return `Minimal length is: ${error.min}`;
+      return `Text must be at least ${error.min} character${error.min === 1 ? "" : "s"} long`;
+    case "MaxLength":
+      return `Text is too long (maximum ${error.max} characters)`;
+    case "OwnerId":
+      return `Invalid owner ID: ${error.value}`;
+    case "OwnerEncryptionKey":
+      return `Invalid encryption key: ${error.value}`;
+    case "OwnerWriteKey":
+      return `Invalid owner write key: ${error.value}`;
   }
 });
-
-// // Note: We only need to specify the errors actually used in the app.
-// type AppErrors =
-//   | ValidMutationSizeError
-//   | StringError
-//   | MinLengthError
-//   | MaxLengthError
-//   | NullError
-//   | IdError
-//   | TrimmedError
-//   | MnemonicError
-//   | LiteralError
-//   // Composite errors
-//   | ObjectError<Record<string, AppErrors>>
-//   | UnionError<AppErrors>;
-
-// const formatTypeError: TypeErrorFormatter<AppErrors> = (error) => {
-//   // In the real code, we would use the createTypeErrorFormatter helper
-//   // that safely stringifies error value.
-//   switch (error.type) {
-//     case "Id":
-//       return `Invalid Id on table: ${error.table}.`;
-//     case "MaxLength":
-//       return `Max length is ${error.max}.`;
-//     case "MinLength":
-//       return `Min length is ${error.min}.`;
-//     case "Mnemonic":
-//       return `Invalid mnemonic: ${String(error.value)}`;
-//     case "Null":
-//       return `Not null`;
-//     case "String":
-//       // We can reuse existing formatter.
-//       return formatStringError(error);
-//     case "Trimmed":
-//       return "Value is not trimmed.";
-//     case "ValidMutationSize":
-//       return "A developer made an error, this should not happen.";
-//     case "Literal":
-//       return formatLiteralError(error);
-//     // Composite Types
-//     case "Union":
-//       return `Union errors: ${error.errors.map(formatTypeError).join(", ")}`;
-//     case "Object": {
-//       if (
-//         error.reason.kind === "ExtraKeys" ||
-//         error.reason.kind === "NotObject"
-//       )
-//         return "A developer made an error, this should not happen.";
-//       const firstError = Object.values(error.reason.errors).find(
-//         (e) => e !== undefined,
-//       )!;
-//       return formatTypeError(firstError);
-//     }
-//   }
-// };

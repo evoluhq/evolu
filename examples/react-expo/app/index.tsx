@@ -47,25 +47,6 @@ const evolu = Evolu.createEvolu(evoluReactNativeDeps)(Schema, {
 // Creates a typed React Hook returning an instance of Evolu.
 const useEvolu = createUseEvolu(evolu);
 
-// Evolu uses Kysely for type-safe SQL (https://kysely.dev/).
-const todosQuery = evolu.createQuery((db) =>
-  db
-    // Type-safe SQL: enjoy autocomplete for table and column names here.
-    .selectFrom("todo")
-    .select(["id", "title", "isCompleted"])
-    // Soft delete: filter out deleted rows (isDeleted is auto-added to all tables).
-    .where("isDeleted", "is not", Evolu.sqliteTrue)
-    // Like GraphQL, Evolu schema makes everything nullable except id. This
-    // enables schema evolution (no migrations/versioning) and handles eventual
-    // consistency. Filter nulls in queries to ensure required shape.
-    .where("title", "is not", null)
-    .$narrowType<{ title: Evolu.kysely.NotNull }>()
-    .orderBy("createdAt"),
-);
-
-// Extract the row type from the query for type-safe component props.
-type TodosRow = typeof todosQuery.Row;
-
 /**
  * Subscribe to unexpected Evolu errors (database, network, sync issues). These
  * should not happen in normal operation, so always log them for debugging. Show
@@ -78,27 +59,6 @@ evolu.subscribeError(() => {
   Alert.alert("🚨 Evolu error occurred! Check the console.");
   // eslint-disable-next-line no-console
   console.error(error);
-});
-
-/**
- * Formats Evolu Type errors into user-friendly messages.
- *
- * Evolu Type typed errors ensure every error type used in schema must have a
- * formatter. TypeScript enforces this at compile-time, preventing unhandled
- * validation errors from reaching users.
- *
- * The `createFormatTypeError` function handles both built-in and custom errors,
- * and lets us override default formatting for specific errors.
- */
-const formatTypeError = Evolu.createFormatTypeError<
-  Evolu.MinLengthError | Evolu.MaxLengthError
->((error): string => {
-  switch (error.type) {
-    case "MinLength":
-      return `Text must be at least ${error.min} character${error.min === 1 ? "" : "s"} long`;
-    case "MaxLength":
-      return `Text is too long (maximum ${error.max} characters)`;
-  }
 });
 
 export default function Index(): React.ReactNode {
@@ -130,6 +90,26 @@ export default function Index(): React.ReactNode {
     </SafeAreaView>
   );
 }
+
+// Evolu uses Kysely for type-safe SQL (https://kysely.dev/).
+const todosQuery = evolu.createQuery((db) =>
+  db
+    // Type-safe SQL: try autocomplete for table and column names.
+    .selectFrom("todo")
+    .select(["id", "title", "isCompleted"])
+    // Soft delete: filter out deleted rows.
+    .where("isDeleted", "is not", Evolu.sqliteTrue)
+    // Like GraphQL, all columns except id are nullable in queries (even if
+    // defined as non-nullable in schema). This enables schema evolution (no
+    // migrations/versioning). Filter nulls with where + $narrowType.
+    .where("title", "is not", null)
+    .$narrowType<{ title: Evolu.kysely.NotNull }>()
+    // Columns createdAt, updatedAt, isDeleted are auto-added to all tables.
+    .orderBy("createdAt"),
+);
+
+// Extract the row type from the query for type-safe component props.
+type TodosRow = typeof todosQuery.Row;
 
 const Todos: FC = () => {
   // useQuery returns live data - component re-renders when data changes.
@@ -596,4 +576,25 @@ const styles = StyleSheet.create({
   flexButton: {
     flex: 1,
   },
+});
+
+/**
+ * Formats Evolu Type errors into user-friendly messages.
+ *
+ * Evolu Type typed errors ensure every error type used in schema must have a
+ * formatter. TypeScript enforces this at compile-time, preventing unhandled
+ * validation errors from reaching users.
+ *
+ * The `createFormatTypeError` function handles both built-in and custom errors,
+ * and lets us override default formatting for specific errors.
+ */
+const formatTypeError = Evolu.createFormatTypeError<
+  Evolu.MinLengthError | Evolu.MaxLengthError
+>((error): string => {
+  switch (error.type) {
+    case "MinLength":
+      return `Text must be at least ${error.min} character${error.min === 1 ? "" : "s"} long`;
+    case "MaxLength":
+      return `Text is too long (maximum ${error.max} characters)`;
+  }
 });

@@ -1113,6 +1113,7 @@ const createEvoluInstance =
               const queries = [...new Set(loadQueryMicrotaskQueue)];
               loadQueryMicrotaskQueue.length = 0;
               assertNonEmptyArray(queries);
+              deps.console.log("[evolu]", "loadQuery", { queries });
               dbWorker.postMessage({
                 type: "query",
                 tabId: getTabId(),

@@ -89,14 +89,28 @@
  * ### Deriving JSON String Types
  *
  * ```ts
- * const Todo = object({ id: Id, title: NonEmptyString100 });
- * const [TodoJson, todoToJson, jsonToTodo] = json(Todo, "TodoJson");
- * const t: typeof Todo.Type = {
- *   id: Id.orThrow("AAAAAAAAAAAAAAAAAAAAAA"),
- *   title: "Hi",
- * };
- * const serialized = todoToJson(t); // TodoJson
- * const roundTrip = jsonToTodo(serialized); // Todo
+ * const Person = object({
+ *   name: NonEmptyString50,
+ *   // Did you know that JSON.stringify converts NaN (a number) into null?
+ *   // To prevent this, use FiniteNumber.
+ *   age: FiniteNumber,
+ * });
+ * type Person = typeof Person.Type;
+ *
+ * const [PersonJson, personToPersonJson, personJsonToPerson] = json(
+ *   Person,
+ *   "PersonJson",
+ * );
+ * // string & Brand<"PersonJson">
+ * type PersonJson = typeof PersonJson.Type;
+ *
+ * const person = Person.orThrow({
+ *   name: "Alice",
+ *   age: 30,
+ * });
+ *
+ * const personJson = personToPersonJson(person);
+ * expect(personJsonToPerson(personJson)).toEqual(person);
  * ```
  *
  * ### Error Formatting
@@ -823,7 +837,7 @@ export const formatIsTypeError = createTypeErrorFormatter<EvoluTypeError>(
  *   confirmPassword: SimplePassword,
  * });
  *
- * const ValidForm = brand("Valid", Form, (value) => {
+ * const ValidForm = brand("ValidForm", Form, (value) => {
  *   if (value.password !== value.confirmPassword)
  *     return err<ValidFormError>({
  *       type: "ValidForm",

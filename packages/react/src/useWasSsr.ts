@@ -11,6 +11,7 @@ const emptySubscribe = () => () => {};
  * because of layout shift during rendering.
  *
  * @see https://tkdodo.eu/blog/avoiding-hydration-mismatches-with-use-sync-external-store
+ * @see https://kurtextrem.de/posts/react-uses-hydration
  */
 export const useWasSsr = (): boolean => {
   const ref = useRef(false);
