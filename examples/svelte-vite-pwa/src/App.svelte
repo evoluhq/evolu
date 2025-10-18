@@ -134,19 +134,15 @@
   };
 
   const handleDownloadDatabaseClick = async () => {
-    const array = await evolu.exportDatabase();
-    const blob = new Blob([array.slice()], { type: "application/x-sqlite3" });
-    const a = document.createElement("a");
-    document.body.appendChild(a);
-    a.href = window.URL.createObjectURL(blob);
-    a.download = "todos.sqlite3";
-    a.addEventListener("click", function () {
-      setTimeout(function () {
-        window.URL.revokeObjectURL(a.href);
-        a.remove();
-      }, 1000);
+    void evolu.exportDatabase().then((array) => {
+      const blob = new Blob([array.slice()], { type: "application/x-sqlite3" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "todos.sqlite3";
+      a.click();
+      window.URL.revokeObjectURL(url);
     });
-    a.click();
   };
 
   /**
