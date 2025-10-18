@@ -4,7 +4,7 @@ import { defineConfig } from "vite";
 export default defineConfig({
   optimizeDeps: {
     exclude: [
-      "@sqlite.org/sqlite-wasm",
+      "sqlite-wasm-cipher",
       "kysely",
       "@evolu/common",
       "@evolu/react",

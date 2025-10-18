@@ -6,7 +6,7 @@ import { VitePWA } from "vite-plugin-pwa";
 export default defineConfig({
   cacheDir: ".vite",
   optimizeDeps: {
-    exclude: ["@sqlite.org/sqlite-wasm", "kysely", "@evolu/react-web"],
+    exclude: ["sqlite-wasm-cipher", "kysely", "@evolu/react-web"],
   },
   plugins: [
     react(),
@@ -39,5 +39,15 @@ export default defineConfig({
         type: "module",
       },
     }),
+    {
+      name: "configure-response-headers",
+      configureServer: (server) => {
+        server.middlewares.use((_req, res, next) => {
+          res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+          res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+          next();
+        });
+      },
+    },
   ],
 });

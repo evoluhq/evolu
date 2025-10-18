@@ -5,7 +5,7 @@ import {
   SqliteDriver,
   SqliteRow,
 } from "@evolu/common";
-import sqlite3InitModule, { PreparedStatement } from "@sqlite.org/sqlite-wasm";
+import sqlite3InitModule, { PreparedStatement, Database } from "sqlite-wasm-cipher";
 
 // TODO: Do we still need that?
 // https://github.com/sqlite/sqlite-wasm/issues/62
@@ -22,12 +22,27 @@ export const createWasmSqliteDriver: CreateSqliteDriver = async (
   options,
 ) => {
   const sqlite3 = await sqlite3Promise;
+  // This is used to make OPFS default vfs for multipleciphers
+  // @ts-expect-error Missing types (update sqlite-wasm-cipher types)
+  sqlite3.capi.sqlite3mc_vfs_create('opfs', 1);
 
-  const db = options?.memory
-    ? new sqlite3.oo1.DB(":memory:")
-    : new (await sqlite3.installOpfsSAHPoolVfs({ name })).OpfsSAHPoolDb(
-        "/evolu1.db",
-      );
+  let db: Database;
+  if (options?.memory) {
+    db = new sqlite3.oo1.DB(":memory:");
+  } else if (options?.encryptionKey) {
+    // TODO: figure out why setting pool name breaks V
+    const pool = await sqlite3.installOpfsSAHPoolVfs({});
+    db = new pool.OpfsSAHPoolDb('file:evolu1.db?vfs=multipleciphers-opfs-sahpool');
+    db.exec(`
+      PRAGMA cipher = 'sqlcipher';
+      PRAGMA legacy = 4;
+      PRAGMA key = '${options.encryptionKey}';
+    `);
+  } else {
+    const pool = await sqlite3.installOpfsSAHPoolVfs({name});
+    db = new pool.OpfsSAHPoolDb('file:evolu1.db');
+  }
+
   let isDisposed = false;
 
   const cache = createPreparedStatementsCache<PreparedStatement>(

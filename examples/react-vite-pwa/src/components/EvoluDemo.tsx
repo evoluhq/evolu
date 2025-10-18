@@ -104,7 +104,7 @@ const formatTypeError = createFormatTypeError<
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
   name: getOrThrow(SimpleName.from("evolu-react-vite-pwa-example")),
   reloadUrl: "/",
-
+  //encryptionKey: "hunter2",
   ...(process.env.NODE_ENV === "development" && {
     syncUrl: "http://localhost:4000",
   }),
