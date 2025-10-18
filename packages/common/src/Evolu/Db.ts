@@ -268,7 +268,10 @@ export const createDbWorkerForPlatform = (
 
       const sqliteResult = await createSqlite(platformDeps)(
         initMessage.config.name,
-        { memory: initMessage.config.inMemory ?? false },
+        {
+          memory: initMessage.config.inMemory ?? false,
+          encryptionKey: initMessage.config.encryptionKey ?? undefined,
+        },
       );
       if (!sqliteResult.ok) {
         postMessage({ type: "onError", error: sqliteResult.error });

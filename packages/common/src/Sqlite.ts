@@ -34,6 +34,7 @@ export interface CreateSqliteDriverDep {
 
 export interface SqliteDriverOptions {
   memory?: boolean;
+  encryptionKey?: string | undefined;
 }
 
 /**

@@ -82,6 +82,12 @@ export interface Config extends ConsoleConfig {
    * The default value is: `false`.
    */
   readonly inMemory?: boolean;
+
+  /**
+   * Encryption key for the SQLite database. If provided, SQLCipher will be used
+   * to encrypt the database on disk.
+   */
+  readonly encryptionKey?: string;
 }
 
 export interface ConfigDep {
