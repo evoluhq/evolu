@@ -4,15 +4,15 @@
  */
 
 import {evoluWebDeps} from "@evolu/web";
-import {
-  type AppOwner,
-  type Evolu,
-  type EvoluDeps,
-  type EvoluSchema,
-  type InferRow,
-  type Query,
-  type QueryRows,
-  type Row,
+import type {
+  AppOwner,
+  Evolu,
+  EvoluDeps,
+  EvoluSchema,
+  InferRow,
+  Query,
+  QueryRows,
+  Row,
 } from "@evolu/common/evolu";
 
 // just in case we need to add some svelte specific deps
