@@ -246,7 +246,7 @@ const OwnerActions: FC = () => {
 
   const handleDownloadDatabaseClick = () => {
     void evolu.exportDatabase().then((array) => {
-      const blob = new Blob([array.slice()], { type: "application/x-sqlite3" });
+      const blob = new Blob([array], { type: "application/x-sqlite3" });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
