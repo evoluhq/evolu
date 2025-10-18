@@ -260,20 +260,13 @@ const OwnerActions: FC = () => {
 
   const handleDownloadDatabaseClick = () => {
     void evolu.exportDatabase().then((array) => {
-      const blob = new Blob([array.slice()], {
-        type: "application/x-sqlite3",
-      });
+      const blob = new Blob([array], { type: "application/x-sqlite3" });
+      const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
-      document.body.appendChild(a);
-      a.href = window.URL.createObjectURL(blob);
-      a.download = "db.sqlite3";
-      a.addEventListener("click", function () {
-        setTimeout(function () {
-          window.URL.revokeObjectURL(a.href);
-          a.remove();
-        }, 1000);
-      });
+      a.href = url;
+      a.download = "todos.sqlite3";
       a.click();
+      window.URL.revokeObjectURL(url);
     });
   };
 

@@ -564,7 +564,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
   readonly reloadApp: () => void;
 
   /** Export SQLite database file as Uint8Array. */
-  readonly exportDatabase: () => Promise<Uint8Array>;
+  readonly exportDatabase: () => Promise<Uint8Array<ArrayBuffer>>;
 
   /**
    * Use an owner. Using an owner means syncing it and subscribing to
@@ -738,7 +738,8 @@ const createEvoluInstance =
     const subscribedQueries = createSubscribedQueries(rowsStore);
     const loadingPromises = createLoadingPromises(subscribedQueries);
     const onCompleteRegistry = createCallbackRegistry(deps);
-    const exportRegistry = createCallbackRegistry<Uint8Array>(deps);
+    const exportRegistry =
+      createCallbackRegistry<Uint8Array<ArrayBuffer>>(deps);
 
     const dbWorker = deps.createDbWorker(dbConfig.name);
 
@@ -924,7 +925,10 @@ const createEvoluInstance =
         }
 
         case "onExport": {
-          exportRegistry.execute(message.onCompleteId, message.file);
+          exportRegistry.execute(
+            message.onCompleteId,
+            message.file as Uint8Array<ArrayBuffer>,
+          );
           break;
         }
 
@@ -1193,7 +1197,8 @@ const createEvoluInstance =
       },
 
       exportDatabase: () => {
-        const { promise, resolve } = Promise.withResolvers<Uint8Array>();
+        const { promise, resolve } =
+          Promise.withResolvers<Uint8Array<ArrayBuffer>>();
         const onCompleteId = exportRegistry.register(resolve);
         dbWorker.postMessage({ type: "export", onCompleteId });
         return promise;
