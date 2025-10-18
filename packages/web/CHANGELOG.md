@@ -1,11 +1,5 @@
 # @evolu/web
 
-## 1.0.1-preview.5
-
-### Patch Changes
-
-- 899d647: Update SQLite and export createWasmSqliteDriver
-
 ## 1.0.1-preview.4
 
 ### Patch Changes
