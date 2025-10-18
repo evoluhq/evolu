@@ -324,7 +324,7 @@ const todo = await evolu.loadQuery(allTodos);
 // todo.rows for all entries
 
 // Subscribe to changes, automatically filled when the Data changes
-const todos = queryState(() => allTodos, evolu);
+const todos = queryState(evolu, () => allTodos);
 // todo.rows for all entries
 // Note this only works in .svelte or .svelte.js / .svelte.ts files due to the Svelte compiler
 ```
@@ -373,7 +373,12 @@ if (owner) console.log(owner.mnemonic);
 ```
 
 ```ts {{ title: 'Svelte' }}
-const owner = evolu.getAppOwner();
+import { appOwnerState } from "@evolu/svelte";
+
+const owner = appOwnerState(evolu);
+
+// use owner.current to get the always up-to-date AppOwner,
+// so when you restore it owner.current will be updated immediately
 ```
 
 ```ts {{ title: 'Vanilla JS' }}
