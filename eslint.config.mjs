@@ -1,94 +1,51 @@
+// @ts-check
+
 import eslint from "@eslint/js";
-import tsParser from "@typescript-eslint/parser";
-import importPlugin from "eslint-plugin-import";
 import jsdoc from "eslint-plugin-jsdoc";
 import reactHooksPlugin from "eslint-plugin-react-hooks";
+import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
 
-export default tseslint.config(
+export default defineConfig(
   {
     ignores: [
-      "**/*.js",
-      "**/*.mjs",
       "**/.next/",
+      "**/.svelte-kit/",
       "**/.turbo/",
       "**/dist/",
-      "**/.svelte-kit/",
+      "**/*.d.ts",
+      // TODO: Consider enabling linting for scripts and examples later.
+      "scripts/**",
+      // To validate examples, uncomment apps/** and packages/** otherwise
+      // FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
+      "examples/**",
+      // "apps/**",
+      // "packages/**",
     ],
   },
+  eslint.configs.recommended,
   {
-    files: ["packages/**/vitest.config.ts"],
-    extends: [eslint.configs.recommended, ...tseslint.configs.recommended],
-    languageOptions: {
-      parser: tsParser,
-      parserOptions: {
-        project: null, // Don't use project service for vitest configs
-      },
-    },
-  },
-  {
-    files: [
-      "apps/**/*.{ts,tsx}",
-      "packages/**/*.{ts,tsx}",
-      // "examples/**/*.{ts,tsx}", // Uncomment to lint examples.
-    ],
+    files: ["**/*.ts", "**/*.tsx"],
     extends: [
-      eslint.configs.recommended,
-      ...tseslint.configs.strictTypeChecked,
-      ...tseslint.configs.stylisticTypeChecked,
+      tseslint.configs.strictTypeChecked,
+      tseslint.configs.stylisticTypeChecked,
       jsdoc.configs["flat/recommended"],
-      importPlugin.flatConfigs.warnings,
-      // importPlugin.flatConfigs.typescript,
-      // We had to disable node_modules and .js extensions otherwise Eslint reads
-      // from node_modules and crashes.
-      // https://github.com/import-js/eslint-plugin-import/blob/main/config/typescript.js
-      {
-        settings: {
-          "import/extensions": [".ts", ".tsx"],
-          // "import/external-module-folders": [
-          //   "node_modules",
-          //   "node_modules/@types",
-          // ],
-          "import/parsers": {
-            "@typescript-eslint/parser": [".ts", ".tsx"],
-          },
-          "import/resolver": {
-            node: {
-              extensions: [".ts", ".tsx"],
-            },
-          },
-        },
-        rules: {
-          "import/named": "off",
-        },
-      },
+      reactHooksPlugin.configs.flat.recommended,
     ],
-    plugins: {
-      "react-hooks": reactHooksPlugin,
-      jsdoc,
-    },
     languageOptions: {
-      parser: tsParser,
       parserOptions: {
         projectService: true,
         tsconfigRootDir: import.meta.dirname,
-        ecmaFeatures: {
-          jsx: true,
-        },
-      },
-    },
-    settings: {
-      "import/resolver": {
-        typescript: true,
-        node: true,
       },
     },
     rules: {
+      "no-console": "error",
       "@typescript-eslint/array-type": ["error", { default: "generic" }],
-      "@typescript-eslint/explicit-module-boundary-types": "error",
-      "@typescript-eslint/no-unsafe-function-type": "off",
+      "@typescript-eslint/no-non-null-assertion": "off",
       "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/explicit-module-boundary-types": "error",
       "@typescript-eslint/no-empty-object-type": "off",
+      "@typescript-eslint/restrict-template-expressions": "off",
       "@typescript-eslint/no-unused-vars": [
         "error",
         {
@@ -101,12 +58,6 @@ export default tseslint.config(
           ignoreRestSiblings: true,
         },
       ],
-      "@typescript-eslint/no-non-null-assertion": "off",
-      "no-console": "error",
-      "@typescript-eslint/restrict-template-expressions": "off",
-      "@typescript-eslint/triple-slash-reference": "off",
-      "react-hooks/rules-of-hooks": "error",
-      "react-hooks/exhaustive-deps": "error",
       "jsdoc/require-jsdoc": "off",
       "jsdoc/require-param": "off",
       "jsdoc/require-returns": "off",
@@ -119,7 +70,21 @@ export default tseslint.config(
         },
       ],
       "jsdoc/check-tag-names": ["error", { definedTags: ["category"] }],
-      "import/no-cycle": "error",
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "error",
+    },
+  },
+  // TODO: @Nedim - Remove this block and fix React
+  {
+    files: [
+      "apps/web/src/components/ThemeToggle.tsx",
+      "apps/web/src/components/Search.tsx",
+      "apps/web/src/components/Navigation.tsx",
+      "apps/web/src/components/Header.tsx",
+    ],
+    rules: {
+      "react-hooks/refs": "off",
+      "react-hooks/set-state-in-effect": "off",
     },
   },
 );

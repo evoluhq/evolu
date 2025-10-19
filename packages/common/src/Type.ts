@@ -177,7 +177,7 @@ import * as bip39 from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { pack } from "msgpackr";
 import type { Brand } from "./Brand.js";
-import type { RandomBytesDep } from "./Crypto.js";
+import { type RandomBytesDep } from "./Crypto.js";
 import { isPlainObject } from "./Object.js";
 import { err, getOrThrow, ok, Result, trySync } from "./Result.js";
 import { safelyStringifyUnknownValue } from "./String.js";
