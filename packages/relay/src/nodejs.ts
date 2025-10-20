@@ -4,6 +4,13 @@ import { once } from "node:events";
 import { logger } from "./logger.js";
 import { CliParams } from "./params.js";
 
+/**
+ * Starts the Evolu Relay server using Node.js runtime.
+ *
+ * This function initializes and starts the relay server with the provided
+ * configuration. It handles graceful shutdown on SIGINT (Ctrl-C) and SIGTERM
+ * signals, ensuring proper cleanup of resources.
+ */
 export async function startNodeJsRelay(options: CliParams): Promise<void> {
   // Ensure the database is created in a predictable location for Docker.
   mkdirSync("data", { recursive: true });

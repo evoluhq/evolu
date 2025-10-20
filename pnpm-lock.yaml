@@ -87,28 +87,6 @@ importers:
         specifier: ^8.44.1
         version: 8.46.1(eslint@9.38.0(jiti@2.6.1))(typescript@5.9.3)
 
-  apps/relay:
-    dependencies:
-      '@evolu/common':
-        specifier: workspace:*
-        version: link:../../packages/common
-      '@evolu/nodejs':
-        specifier: workspace:*
-        version: link:../../packages/nodejs
-      commander:
-        specifier: ^14.0.1
-        version: 14.0.1
-    devDependencies:
-      '@evolu/tsconfig':
-        specifier: workspace:*
-        version: link:../../packages/tsconfig
-      '@types/node':
-        specifier: ^22.17.1
-        version: 22.18.11
-      typescript:
-        specifier: ^5.9.2
-        version: 5.9.3
-
   apps/web:
     dependencies:
       '@algolia/autocomplete-core':
@@ -748,6 +726,28 @@ importers:
       vitest:
         specifier: ^3.2.3
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.18.11)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.0)(tsx@4.20.6)(yaml@2.8.1)
+
+  packages/relay:
+    dependencies:
+      '@evolu/common':
+        specifier: workspace:*
+        version: link:../common
+      '@evolu/nodejs':
+        specifier: workspace:*
+        version: link:../nodejs
+      commander:
+        specifier: ^14.0.1
+        version: 14.0.1
+    devDependencies:
+      '@evolu/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@types/node':
+        specifier: ^22.17.1
+        version: 22.18.11
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
 
   packages/svelte:
     devDependencies:
@@ -13477,7 +13477,7 @@ snapshots:
 
   dotenv-expand@11.0.7:
     dependencies:
-      dotenv: 16.4.7
+      dotenv: 16.6.1
 
   dotenv@16.4.7: {}
 

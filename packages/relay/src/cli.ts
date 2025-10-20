@@ -6,6 +6,24 @@ import { logger } from "./logger.js";
 import { startNodeJsRelay } from "./nodejs.js";
 import { cliParams } from "./params.js";
 
+/**
+ * Main entry point for the Evolu Relay CLI application.
+ *
+ * Sets up the command-line interface using Commander.js and handles the "start"
+ * command to launch the Evolu Relay server with configurable options.
+ *
+ * @example
+ *   ```bash
+ *   # Start relay with default settings
+ *   @evolu/relay start
+ *
+ *   # Start relay on custom port with logging enabled
+ *   @evolu/relay start --port 3000 --enable-logging
+ *
+ *   # Start relay with custom database name
+ *   @evolu/relay start --name my-relay-db
+ *   ```;
+ */
 function main() {
   const program = new Command()
     .name("@evolu/relay")
