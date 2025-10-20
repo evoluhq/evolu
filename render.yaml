@@ -5,7 +5,7 @@ services:
     plan: free
     name: evolu-relay
     # Note: choose a region closest to clients
-    region: virginia
+    region: frankfurt
     runtime: image
     # Note: lock to a specific hash or use "latest"
     image:
@@ -13,7 +13,7 @@ services:
     # Note: set to "commit" for no checks, "off" for manual deploys
     autoDeployTrigger: checksPass
     envVars:
-      - key: PORT
+      - key: RELAY_PORT
         value: 4000
       - key: NODE_ENV
         value: production
@@ -36,7 +36,6 @@ services:
     # Note: for custom domains, change to your own
     # domains:
     #  - free.evoluhq.com
-  
 # Note: enable for preview deploys
 # previews:
 #   generation: automatic

@@ -1,5 +1,47 @@
 # server
 
+## 1.1.2-preview.6
+
+### Patch Changes
+
+- 559c858: add log for relay version
+
+## 1.1.2-preview.5
+
+### Patch Changes
+
+- 82facf4: release test 2
+
+## 1.1.2-preview.4
+
+### Patch Changes
+
+- 80c47cf: log relay version
+
+## 1.1.2-preview.3
+
+### Patch Changes
+
+- a3b622e: release test
+
+## 1.1.2-preview.2
+
+### Patch Changes
+
+- cc08e11: add shebang to CLI script
+
+## 1.1.2-preview.1
+
+### Patch Changes
+
+- b29d375: Remove in-memory mode option from relay CLI configuration
+
+## 1.1.2-preview.0
+
+### Patch Changes
+
+- 3f09596: relay cli
+
 ## 1.1.1
 
 ### Patch Changes

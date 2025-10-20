@@ -1,21 +1,21 @@
 services:
   evolu-relay:
-    container_name: evolu-relay-server
+    container_name: evolu-relay-dev-server
     image: evolu/relay:latest
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ../../
+      dockerfile: apps/relay/Dockerfile.dev
       tags:
-        - evolu/relay:latest
+        - evolu/relay:dev
     ports:
-      - "${RELAY_PORT:-4000}:${RELAY_PORT:-4000}"
+      - "4000:4000"
     volumes:
       # Use named volume by default, can be overridden with bind mount if needed
-      - evolu-relay-data:/app/data
+      - evolu-relay-dev-data:/app/apps/relay/data
     environment:
       - NODE_ENV=${NODE_ENV:-production}
-      - LOG_LEVEL=${LOG_LEVEL:-error}
-      - RELAY_NAME=${RELAY_NAME:-evolu-relay}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - RELAY_NAME=${RELAY_NAME:-evolu-relay-dev}
       - RELAY_PORT=${RELAY_PORT:-4000}
       - RELAY_ENABLE_LOGGING=${RELAY_ENABLE_LOGGING:-false}
     restart: unless-stopped
@@ -31,11 +31,9 @@ services:
       test:
         [
           "CMD",
-          "wget",
-          "--no-verbose",
-          "--tries=1",
-          "--spider",
-          "http://localhost:4000",
+          "sh",
+          "-c",
+          "wget --no-verbose --tries=1 --spider http://localhost:4000 2>&1 | grep -q '426 Upgrade Required' || exit 1",
         ]
       interval: 30s
       timeout: 5s
@@ -47,14 +45,14 @@ services:
         max-size: ${LOG_MAX_SIZE:-50m}
         max-file: ${LOG_MAX_FILES:-5}
     networks:
-      - evolu-network
+      - evolu-dev-network
 
 volumes:
-  evolu-relay-data:
+  evolu-relay-dev-data:
     driver: local
-    name: evolu-relay-data
+    name: evolu-relay-dev-data
 
 networks:
-  evolu-network:
-    name: evolu-relay-network
+  evolu-dev-network:
+    name: evolu-relay-dev-network
     driver: bridge
