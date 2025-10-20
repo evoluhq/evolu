@@ -5,15 +5,17 @@ export const metadata = {
   description: "This guide will get you all set up and ready to use Evolu.",
 };
 
+# Quickstart
+
+This guide will get you all set up and ready to use Evolu.
+
 <Announcement>
   The new version of Evolu is now available on
   <span className="font-black">npm</span> under the
   <span className="font-black">preview</span> tag. 🎉
 </Announcement>
 
-# Quickstart
-
-This guide will get you all set up and ready to use Evolu.
+<PlatformSelector />
 
 <Note>
   Requirements: `TypeScript 5.7` or later with the `strict` and
@@ -24,18 +26,20 @@ This guide will get you all set up and ready to use Evolu.
 
 Evolu offers SDKs for a variety of frameworks, including React, Svelte, React Native, Expo, and others. Below, you can see how to install the SDKs for each framework.
 
-<CodeGroup>
+<SinglePlatformCodeGroup>
 
 ```bash {{ title: 'React' }}
 npm install @evolu/common@preview @evolu/react@preview @evolu/react-web@preview
 ```
 
 ```bash {{ title: 'React Native' }}
-npm install @evolu/common@preview @evolu/react@preview @evolu/react-native@preview @op-engineering/op-sqlite react-native-quick-crypto
+npm install @evolu/common@preview @evolu/react@preview @evolu/react-native@preview \
+  @op-engineering/op-sqlite react-native-quick-crypto react-native-quick-base64
 ```
 
 ```bash {{ title: 'Expo' }}
-npm install @evolu/common@preview @evolu/react@preview @evolu/react-native@preview expo-sqlite react-native-quick-crypto
+npm install @evolu/common@preview @evolu/react@preview @evolu/react-native@preview \
+  expo-sqlite react-native-quick-crypto react-native-quick-base64
 ```
 
 ```bash {{ title: 'Svelte' }}
@@ -46,7 +50,7 @@ npm install @evolu/common@preview @evolu/web@preview @evolu/svelte@preview
 npm install @evolu/common@preview @evolu/web@preview
 ```
 
-</CodeGroup>
+</SinglePlatformCodeGroup>
 
 <ConditionalPlatformAlert platform={["Expo"]} type="warning">
   **Expo Go is not supported.** You must use a [development
@@ -58,6 +62,8 @@ npm install @evolu/common@preview @evolu/web@preview
 <ConditionalPlatformAlert platform={["Expo", "React Native"]} type="info">
   Make sure to follow the [react-native-quick-crypto setup
   instructions](https://github.com/margelo/react-native-quick-crypto#installation)
+  and [react-native-quick-base64 setup
+  instructions](https://github.com/craftzdog/react-native-quick-base64#installation)
   for proper native dependency configuration.
 </ConditionalPlatformAlert>
 
@@ -129,7 +135,7 @@ Branded types allow TypeScript to enforce constraints like max length or non-emp
 
 After defining the schema, create an Evolu instance for your environment.
 
-<CodeGroup>
+<SinglePlatformCodeGroup>
 
 ```ts {{ title: 'React', language: 'tsx' }}
 import { createEvolu, getOrThrow, SimpleName } from "@evolu/common";
@@ -137,13 +143,13 @@ import { createUseEvolu, EvoluProvider } from "@evolu/react";
 import { evoluReactWebDeps } from "@evolu/react-web";
 
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
-  name: getOrThrow(SimpleName.from("your-app-name")),
-  syncUrl: "wss://your-sync-url", // optional, defaults to wss://free.evoluhq.com
+  name: SimpleName.orThrow("your-app-name"),
+  transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
 
 // Wrap your app with <EvoluProvider>
 <EvoluProvider value={evolu}>
-	{/* ... */}
+ {/* ... */}
 </EvoluProvider>
 
 // Create a typed React Hook returning an instance of Evolu
@@ -159,13 +165,13 @@ import { createUseEvolu, EvoluProvider } from "@evolu/react";
 import { evoluReactNativeDeps } from "@evolu/react-native/op-sqlite";
 
 const evolu = createEvolu(evoluReactNativeDeps)(Schema, {
-	name: getOrThrow(SimpleName.from("your-app-name")),
-	syncUrl: "wss://your-sync-url", // optional, defaults to wss://free.evoluhq.com
+ name: SimpleName.orThrow("your-app-name"),
+ transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
 
 // Wrap your app with <EvoluProvider>
 <EvoluProvider value={evolu}>
-	{/* ... */}
+ {/* ... */}
 </EvoluProvider>
 
 // Create a typed React Hook returning an instance of Evolu
@@ -181,13 +187,13 @@ import { createUseEvolu, EvoluProvider } from "@evolu/react";
 import { evoluReactNativeDeps } from "@evolu/react-native/expo-sqlite";
 
 const evolu = createEvolu(evoluReactNativeDeps)(Schema, {
-	name: getOrThrow(SimpleName.from("your-app-name")),
-	syncUrl: "wss://your-sync-url", // optional, defaults to wss://free.evoluhq.com
+ name: SimpleName.orThrow("your-app-name"),
+ transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
 
 // Wrap your app with <EvoluProvider>
 <EvoluProvider value={evolu}>
-	{/* ... */}
+ {/* ... */}
 </EvoluProvider>
 
 // Create a typed React Hook returning an instance of Evolu
@@ -202,8 +208,8 @@ import { createEvolu, getOrThrow, SimpleName } from "@evolu/common";
 import { evoluSvelteDeps } from "@evolu/svelte";
 
 const evolu = createEvolu(evoluSvelteDeps)(Schema, {
-  name: getOrThrow(SimpleName.from("your-app-name")),
-  syncUrl: "wss://your-sync-url", // optional, defaults to wss://free.evoluhq.com
+  name: SimpleName.orThrow("your-app-name"),
+  transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
 ```
 
@@ -212,16 +218,16 @@ import { createEvolu, getOrThrow, SimpleName } from "@evolu/common";
 import { evoluWebDeps } from "@evolu/web";
 
 const evolu = createEvolu(evoluWebDeps)(Schema, {
-  name: getOrThrow(SimpleName.from("your-app-name")),
-  syncUrl: "wss://your-sync-url", // optional, defaults to wss://free.evoluhq.com
+  name: SimpleName.orThrow("your-app-name"),
+  transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
 ```
 
-</CodeGroup>
+</SinglePlatformCodeGroup>
 
 ## Mutate data
 
-<CodeGroup>
+<SinglePlatformCodeGroup>
 
 ```ts {{ title: 'React', language: 'tsx' }}
 const { insert, update } = useEvolu();
@@ -269,7 +275,7 @@ if (result.ok) {
 }
 ```
 
-</CodeGroup>
+</SinglePlatformCodeGroup>
 
 To delete a row, set `isDeleted` to true and filter it out in your queries.
 
@@ -290,7 +296,7 @@ const allTodos = evolu.createQuery((db) => db.selectFrom("todo").selectAll());
 
 Once we have a query, we can load or subscribe to it.
 
-<CodeGroup>
+<SinglePlatformCodeGroup>
 
 ```ts {{ title: 'React' }}
 import { useQuery } from "@evolu/react";
@@ -334,13 +340,13 @@ const unsubscribe = evolu.subscribeQuery(allTodos)(() => {
 });
 ```
 
-</CodeGroup>
+</SinglePlatformCodeGroup>
 
 ## Protect data
 
 **Privacy is essential for Evolu**, so all data are **encrypted** with an encryption key derived from a safely generated cryptographically strong password called [mnemonic](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki).
 
-<CodeGroup>
+<SinglePlatformCodeGroup>
 
 ```ts {{ title: 'React' }}
 import { useAppOwner } from "@evolu/react";
@@ -374,7 +380,7 @@ const owner = evolu.getAppOwner();
 const owner = evolu.getAppOwner();
 ```
 
-</CodeGroup>
+</SinglePlatformCodeGroup>
 
 ## Delete data
 

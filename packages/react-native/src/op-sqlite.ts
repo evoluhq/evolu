@@ -1,18 +1,16 @@
 import {
   createConsole,
-  createEnglishMnemonic,
-  createNanoIdLib,
   createRandom,
   createRandomBytes,
   createTime,
+  createWebSocket,
 } from "@evolu/common";
 
 import {
-  CreateAppState,
   CreateDbWorker,
   createDbWorkerForPlatform,
-  createWebSocketSync,
   EvoluDeps,
+  ReloadApp,
 } from "@evolu/common/evolu";
 
 import { DevSettings } from "react-native";
@@ -21,36 +19,32 @@ import { polyfillHermes } from "./utils/Hermes.js";
 
 polyfillHermes();
 
-export const createAppState: CreateAppState = () => ({
-  reset: () => {
-    if (process.env.NODE_ENV === "development") {
-      DevSettings.reload();
-    } else {
-      // TODO: reload not implemented for bare rn
-    }
-  },
-});
-
-const nanoIdLib = createNanoIdLib();
 const console = createConsole();
 const time = createTime();
+const randomBytes = createRandomBytes();
 
 const createDbWorker: CreateDbWorker = () =>
   createDbWorkerForPlatform({
-    createSqliteDriver: createOpSqliteDriver,
-    createSync: createWebSocketSync,
     console,
-    time,
+    createSqliteDriver: createOpSqliteDriver,
+    createWebSocket,
     random: createRandom(),
-    nanoIdLib,
-    createMnemonic: createEnglishMnemonic,
-    createRandomBytes,
+    randomBytes,
+    time,
   });
 
+const reloadApp: ReloadApp = () => {
+  if (process.env.NODE_ENV === "development") {
+    DevSettings.reload();
+  } else {
+    // TODO: reload not implemented for bare rn
+  }
+};
+
 export const evoluReactNativeDeps: EvoluDeps = {
-  time,
-  nanoIdLib,
   console,
-  createAppState,
   createDbWorker,
+  randomBytes,
+  reloadApp,
+  time,
 };

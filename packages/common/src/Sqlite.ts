@@ -1,18 +1,9 @@
+import { Brand } from "./Brand.js";
 import { ConsoleDep } from "./Console.js";
 import { createTransferableError, TransferableError } from "./Error.js";
 import { err, ok, Result, tryAsync, trySync } from "./Result.js";
-import {
-  Boolean,
-  Null,
-  Number,
-  SimpleName,
-  String,
-  transform,
-  Uint8Array,
-  union,
-} from "./Type.js";
-import { Predicate, IntentionalNever } from "./Types.js";
-import { Brand } from "./Brand.js";
+import { Null, Number, SimpleName, String, Uint8Array, union } from "./Type.js";
+import { IntentionalNever, Predicate } from "./Types.js";
 
 /**
  * SQLite driver interface. This is the minimal interface that platform-specific
@@ -149,13 +140,13 @@ export const createSqlite =
         exec: (query) =>
           trySync(
             () => {
-              deps.console?.log("[sql]", query);
+              deps.console?.log("[sql]", { query });
 
               const result = maybeLogSqliteQueryExecutionTime(query, () =>
                 driver.exec(query, isSqlMutation(query.sql)),
               );
 
-              deps.console?.log("[sql]", result);
+              deps.console?.log("[sql]", { result });
 
               return result as IntentionalNever;
             },
@@ -386,13 +377,14 @@ export const explainSqliteQueryPlan =
     if (!result.ok) return result;
 
     // eslint-disable-next-line no-console
-    console.log("ExplainQueryPlan", query);
+    console.log("[explainSqliteQueryPlan]", query);
     // eslint-disable-next-line no-console
     console.log(
       drawSqliteQueryPlan(
         result.value.rows as unknown as Array<SqliteQueryPlanRow>,
       ),
     );
+
     return ok();
   };
 
@@ -416,15 +408,26 @@ const drawSqliteQueryPlan = (rows: Array<SqliteQueryPlanRow>): string =>
 
 /**
  * SQLite represents boolean values using `0` (false) and `1` (true) instead of
- * a dedicated boolean type. This transform Type ensures that values conform to
- * SQLite's boolean representation.
+ * a dedicated boolean type.
+ *
+ * Use {@link sqliteTrue} and {@link sqliteFalse} constants for better
+ * readability.
  *
  * See: https://www.sqlite.org/quirks.html#no_separate_boolean_datatype
  */
-export const SqliteBoolean = transform(
-  Boolean,
-  union(0, 1),
-  (value) => ok(value ? (1 as const) : (0 as const)),
-  (value) => value === 1,
-);
+export const SqliteBoolean = union(0, 1);
 export type SqliteBoolean = typeof SqliteBoolean.Type;
+
+/**
+ * Represents the {@link SqliteBoolean} value for `true`.
+ *
+ * See {@link SqliteBoolean}.
+ */
+export const sqliteTrue = 1;
+
+/**
+ * Represents the {@link SqliteBoolean} value for `false`.
+ *
+ * See {@link SqliteBoolean}.
+ */
+export const sqliteFalse = 0;

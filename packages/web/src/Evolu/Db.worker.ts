@@ -1,27 +1,21 @@
 import {
   createConsole,
-  createEnglishMnemonic,
-  createNanoIdLib,
   createRandom,
   createRandomBytes,
   createTime,
+  createWebSocket,
 } from "@evolu/common";
-import {
-  createDbWorkerForPlatform,
-  createWebSocketSync,
-} from "@evolu/common/evolu";
+import { createDbWorkerForPlatform } from "@evolu/common/evolu";
 import { createWasmSqliteDriver } from "../WasmSqliteDriver.js";
 import { wrapWebWorkerSelf } from "../WebWorker.js";
 
 const dbWorker = createDbWorkerForPlatform({
-  createSqliteDriver: createWasmSqliteDriver,
-  createSync: createWebSocketSync,
   console: createConsole(),
-  time: createTime(),
+  createSqliteDriver: createWasmSqliteDriver,
+  createWebSocket,
   random: createRandom(),
-  nanoIdLib: createNanoIdLib(),
-  createMnemonic: createEnglishMnemonic,
-  createRandomBytes,
+  randomBytes: createRandomBytes(),
+  time: createTime(),
 });
 
 wrapWebWorkerSelf(dbWorker);

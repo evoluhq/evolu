@@ -4,7 +4,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { expect, test, vi, beforeEach, afterEach } from "vitest";
 import { createSharedWebWorker } from "../src/SharedWebWorker.js";
-import { getOrThrow, SimpleName, wait } from "@evolu/common";
+import { SimpleName, wait } from "@evolu/common";
 
 // Mock BroadcastChannel
 class MockBroadcastChannel {
@@ -53,7 +53,7 @@ test("createSharedWebWorker creates BroadcastChannel and requests lock", () => {
   const mockCreateWorker = vi.fn(() => new MockWorker() as any);
 
   const sharedWorker = createSharedWebWorker(
-    getOrThrow(SimpleName.from("test-worker")),
+    SimpleName.orThrow("test-worker"),
     mockCreateWorker,
   );
 
@@ -88,7 +88,7 @@ test("createSharedWebWorker returns no-op on server", () => {
 
   const mockCreateWorker = vi.fn();
   const sharedWorker = createSharedWebWorker(
-    getOrThrow(SimpleName.from("test-worker")),
+    SimpleName.orThrow("test-worker"),
     mockCreateWorker,
   );
 
@@ -108,7 +108,7 @@ test("createSharedWebWorker queues messages when owner not ready", () => {
   const mockCreateWorker = vi.fn(() => new MockWorker() as any);
 
   const sharedWorker = createSharedWebWorker(
-    getOrThrow(SimpleName.from("test-worker")),
+    SimpleName.orThrow("test-worker"),
     mockCreateWorker,
   );
 
@@ -138,7 +138,7 @@ test("createSharedWebWorker forwards messages when owner ready", () => {
   const mockCreateWorker = vi.fn(() => new MockWorker() as any);
 
   const sharedWorker = createSharedWebWorker(
-    getOrThrow(SimpleName.from("test-worker")),
+    SimpleName.orThrow("test-worker"),
     mockCreateWorker,
   );
 
@@ -166,7 +166,7 @@ test("createSharedWebWorker handles onMessage callback", () => {
   const onMessageCallback = vi.fn();
 
   const sharedWorker = createSharedWebWorker(
-    getOrThrow(SimpleName.from("test-worker")),
+    SimpleName.orThrow("test-worker"),
     mockCreateWorker,
   );
 
@@ -205,16 +205,10 @@ test("createSharedWebWorker handles multiple tabs - first tab becomes owner", as
   const mockCreateWorker = vi.fn(() => new MockWorker() as any);
 
   // Create first tab (will become owner)
-  createSharedWebWorker(
-    getOrThrow(SimpleName.from("test-worker")),
-    mockCreateWorker,
-  );
+  createSharedWebWorker(SimpleName.orThrow("test-worker"), mockCreateWorker);
 
   // Create second tab
-  createSharedWebWorker(
-    getOrThrow(SimpleName.from("test-worker")),
-    mockCreateWorker,
-  );
+  createSharedWebWorker(SimpleName.orThrow("test-worker"), mockCreateWorker);
 
   // Both tabs should create BroadcastChannels
   expect(global.BroadcastChannel).toHaveBeenCalledTimes(2);
@@ -231,7 +225,7 @@ test("createSharedWebWorker handles multiple tabs - first tab becomes owner", as
   });
 
   // Wait for lock acquisition
-  await wait(10);
+  await wait("10ms")();
 
   // Only first tab should create worker (it became owner)
   expect(mockCreateWorker).toHaveBeenCalledTimes(1);
@@ -245,12 +239,12 @@ test("createSharedWebWorker handles cross-tab message forwarding", () => {
 
   // Create two tabs
   const tab1 = createSharedWebWorker(
-    getOrThrow(SimpleName.from("test-worker")),
+    SimpleName.orThrow("test-worker"),
     mockCreateWorker,
   );
 
   const tab2 = createSharedWebWorker(
-    getOrThrow(SimpleName.from("test-worker")),
+    SimpleName.orThrow("test-worker"),
     mockCreateWorker,
   );
 
@@ -288,12 +282,12 @@ test("createSharedWebWorker handles worker responses across tabs", () => {
 
   // Create two tabs
   const tab1 = createSharedWebWorker(
-    getOrThrow(SimpleName.from("test-worker")),
+    SimpleName.orThrow("test-worker"),
     mockCreateWorker,
   );
 
   const tab2 = createSharedWebWorker(
-    getOrThrow(SimpleName.from("test-worker")),
+    SimpleName.orThrow("test-worker"),
     mockCreateWorker,
   );
 
@@ -350,14 +344,8 @@ test("createSharedWebWorker multi-tab scenario", () => {
   );
 
   // Create two tabs
-  createSharedWebWorker(
-    getOrThrow(SimpleName.from("test-worker")),
-    mockCreateWorker,
-  );
-  createSharedWebWorker(
-    getOrThrow(SimpleName.from("test-worker")),
-    mockCreateWorker,
-  );
+  createSharedWebWorker(SimpleName.orThrow("test-worker"), mockCreateWorker);
+  createSharedWebWorker(SimpleName.orThrow("test-worker"), mockCreateWorker);
 
   // Only first tab should create worker (owner)
   expect(mockCreateWorker).toHaveBeenCalledTimes(1);

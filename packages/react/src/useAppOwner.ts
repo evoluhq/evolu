@@ -2,7 +2,7 @@ import { AppOwner, constNull } from "@evolu/common";
 import { useSyncExternalStore } from "react";
 import { useEvolu } from "./useEvolu.js";
 
-/** Subscribe to {@link AppOwner} changes. */
+/** Get {@link AppOwner}. */
 export const useAppOwner = (): AppOwner | null => {
   const evolu = useEvolu();
   return useSyncExternalStore(

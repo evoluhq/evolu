@@ -1,6 +1,14 @@
-@import 'tailwindcss';
+@import "tailwindcss";
+@plugin "@tailwindcss/forms";
 
 @custom-variant dark (&:is(.dark *));
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #f4f4f5;
+}
 
 /*
   The default border color has changed to `currentColor` in Tailwind CSS v4,

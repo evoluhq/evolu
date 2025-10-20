@@ -1,20 +1,25 @@
-import { Kysely, SelectQueryBuilder } from "kysely";
-import { pack } from "msgpackr";
-import { assert } from "../Assert.js";
+import * as Kysely from "kysely";
 import { mapObject, objectToEntries, ReadonlyRecord } from "../Object.js";
-import { err, ok, Result } from "../Result.js";
-import { SqliteBoolean, SqliteQueryOptions, SqliteValue } from "../Sqlite.js";
+import { ok, Result } from "../Result.js";
+import {
+  SafeSql,
+  sql,
+  SqliteBoolean,
+  SqliteDep,
+  SqliteError,
+  SqliteQuery,
+  SqliteQueryOptions,
+  SqliteValue,
+} from "../Sqlite.js";
 import {
   AnyType,
-  brand,
-  BrandType,
-  createTypeErrorFormatter,
+  array,
   DateIso,
-  DateIsoString,
-  IdType,
+  IdBytes,
   InferErrors,
   InferInput,
   InferType,
+  maxMutationSize,
   MergeObjectTypeErrors,
   nullableToOptional,
   NullableToOptionalProps,
@@ -24,19 +29,18 @@ import {
   omit,
   optional,
   OptionalType,
+  String,
+  TableId,
   Type,
-  TypeError,
+  ValidMutationSize,
+  validMutationSize,
+  ValidMutationSizeError,
 } from "../Type.js";
 import { Simplify } from "../Types.js";
-import { DbSchema } from "./Db.js";
-import { createIndexes, DbIndexesBuilder } from "./Kysely.js";
-import {
-  BinaryId,
-  CrdtMessage,
-  maxProtocolMessageRangesSize,
-} from "./Protocol.js";
+import { AppOwner, OwnerId } from "./Owner.js";
 import { Query, Row } from "./Query.js";
-import { BinaryTimestamp } from "./Timestamp.js";
+import { CrdtMessage, DbChange } from "./Storage.js";
+import { TimestampBytes } from "./Timestamp.js";
 
 /**
  * Defines the schema of an Evolu database.
@@ -115,7 +119,7 @@ export type ValidateIdColumnType<S extends EvoluSchema> =
   keyof S extends infer TableName
     ? TableName extends keyof S
       ? "id" extends keyof S[TableName]
-        ? S[TableName]["id"] extends IdType<any>
+        ? S[TableName]["id"] extends TableId<any>
           ? never
           : SchemaValidationError<`Table "${TableName & string}" id column must be a branded ID type (created with id("${TableName & string}")).`>
         : never
@@ -152,9 +156,13 @@ export type ValidateColumnTypes<S extends EvoluSchema> =
 export type SchemaValidationError<Message extends string> =
   `❌ Schema Error: ${Message}`;
 
+export type IndexesConfig = (
+  create: (indexName: string) => Kysely.CreateIndexBuilder,
+) => ReadonlyArray<Kysely.CreateIndexBuilder<any>>;
+
 export const evoluSchemaToDbSchema = (
   schema: EvoluSchema,
-  indexes?: DbIndexesBuilder,
+  indexesConfig?: IndexesConfig,
 ): DbSchema => {
   const tables = objectToEntries(schema).map(([tableName, table]) => ({
     name: tableName,
@@ -163,20 +171,22 @@ export const evoluSchemaToDbSchema = (
       .map(([k]) => k),
   }));
 
-  const dbSchema = { tables, indexes: createIndexes(indexes) };
+  const indexes = indexesConfig
+    ? indexesConfig(createIndex).map(
+        (index): DbIndex => ({
+          name: index.toOperationNode().name.name,
+          sql: index.compile().sql,
+        }),
+      )
+    : [];
 
-  assert(
-    DbSchema.is(dbSchema),
-    "Invalid EvoluSchema: Table and column names must use only characters A-Za-z0-9_- and be at most 256 characters long.",
-  );
-
-  return dbSchema;
+  return { tables, indexes };
 };
 
 export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
   queryCallback: (
     db: Pick<
-      Kysely<
+      Kysely.Kysely<
         {
           [Table in keyof S]: {
             readonly [Column in keyof S[Table]]: Column extends
@@ -188,9 +198,9 @@ export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
           } & DefaultColumns;
         } & {
           readonly evolu_history: {
-            readonly timestamp: BinaryTimestamp;
+            readonly timestamp: TimestampBytes;
             readonly table: keyof S;
-            readonly id: BinaryId;
+            readonly id: IdBytes;
             readonly column: string;
             readonly value: SqliteValue;
           };
@@ -198,7 +208,7 @@ export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
       >,
       "selectFrom" | "fn" | "with" | "withRecursive"
     >,
-  ) => SelectQueryBuilder<any, any, R>,
+  ) => Kysely.SelectQueryBuilder<any, any, R>,
   options?: SqliteQueryOptions,
 ) => Query<Simplify<R>>;
 
@@ -213,8 +223,8 @@ export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
  * - `isDeleted`: Soft delete flag.
  */
 export const DefaultColumns = object({
-  createdAt: DateIsoString,
-  updatedAt: DateIsoString,
+  createdAt: DateIso,
+  updatedAt: DateIso,
   isDeleted: nullOr(SqliteBoolean),
 });
 export type DefaultColumns = typeof DefaultColumns.Type;
@@ -243,7 +253,46 @@ export type MutationMapping<
     : UpsertableProps<P>;
 
 export interface MutationOptions {
+  /**
+   * Called after the mutation is completed and the local state is updated.
+   * Useful for triggering side effects (e.g., notifications, UI updates) after
+   * insert, update, or upsert.
+   */
   readonly onComplete?: () => void;
+
+  /**
+   * Specifies the owner ID for this mutation. If omitted, the default
+   * {@link AppOwner} is used.
+   *
+   * The owner must be used with `evolu.useOwner()` to enable sync. Mutations
+   * with unused owners are stored locally but not synced until the owner is
+   * used.
+   *
+   * ### Example
+   *
+   * ```ts
+   * // Partition your own data by project (derived from your AppOwner)
+   * const projectOwner = deriveShardOwner(appOwner, [
+   *   "project",
+   *   projectId,
+   * ]);
+   * evolu.insert(
+   *   "task",
+   *   { title: "Task 1" },
+   *   { ownerId: projectOwner.id },
+   * );
+   *
+   * // Collaborative data (independent owner shared with others)
+   * const sharedOwner = createSharedOwner(sharedSecret);
+   * evolu.insert(
+   *   "comment",
+   *   { text: "Hello" },
+   *   { ownerId: sharedOwner.id },
+   * );
+   * ```
+   */
+  readonly ownerId?: OwnerId;
+
   /**
    * Only validate, don't mutate.
    *
@@ -253,37 +302,10 @@ export interface MutationOptions {
   readonly onlyValidate?: boolean;
 }
 
-/**
- * Evolu has to limit the maximum mutation size. Otherwise, sync couldn't use
- * the {@link maxProtocolMessageRangesSize}. The max size is 640KB in bytes,
- * measured via MessagePack. Evolu Protocol DbChange will be smaller thanks to
- * various optimizations.
- */
-export const maxMutationSize = 655360;
-
-const validMutationSize = <T extends AnyType>(type: T) =>
-  brand("ValidMutationSize", type, (value) =>
-    pack(value).byteLength <= maxMutationSize
-      ? ok(value)
-      : err<ValidMutationSizeError>({ type: "ValidMutationSize", value }),
-  );
-
-export interface ValidMutationSizeError
-  extends TypeError<"ValidMutationSize"> {}
-
-export const formatValidMutationSizeError =
-  createTypeErrorFormatter<ValidMutationSizeError>(
-    (error) =>
-      `The mutation size exceeds the maximum limit of ${maxMutationSize} bytes. The provided mutation has a size of ${pack(error.value).byteLength} bytes.`,
-  );
-
-export type ValidMutationSize<Props extends Record<string, AnyType>> =
-  BrandType<
-    ObjectType<Props>,
-    "ValidMutationSize",
-    ValidMutationSizeError,
-    InferErrors<ObjectType<Props>>
-  >;
+export interface MutationChange extends DbChange {
+  /** Owner of the change. If undefined, the change belongs to the AppOwner. */
+  readonly ownerId?: OwnerId | undefined;
+}
 
 /**
  * Type Factory to create insertable {@link Type}. It makes nullable Types
@@ -410,3 +432,184 @@ export type InferColumnErrors<
     MutationMapping<T, M>[Column]
   >;
 }[keyof MutationMapping<T, M>];
+
+export const DbTable = object({
+  name: String,
+  columns: array(String),
+});
+export type DbTable = typeof DbTable.Type;
+
+export const DbIndex = object({ name: String, sql: String });
+export type DbIndex = typeof DbIndex.Type;
+
+export const DbSchema = object({
+  tables: array(DbTable),
+  indexes: array(DbIndex),
+});
+export type DbSchema = typeof DbSchema.Type;
+
+/** Get the current database schema by reading SQLite metadata. */
+export const getDbSchema =
+  (deps: SqliteDep) =>
+  ({ allIndexes = false }: { allIndexes?: boolean } = {}): Result<
+    DbSchema,
+    SqliteError
+  > => {
+    const map = new Map<string, Array<string>>();
+
+    const tableAndColumnInfoRows = deps.sqlite.exec(sql`
+      select
+        sqlite_master.name as tableName,
+        table_info.name as columnName
+      from
+        sqlite_master
+        join pragma_table_info(sqlite_master.name) as table_info;
+    `);
+
+    if (!tableAndColumnInfoRows.ok) return tableAndColumnInfoRows;
+
+    tableAndColumnInfoRows.value.rows.forEach((row) => {
+      const { tableName, columnName } = row as unknown as {
+        tableName: string;
+        columnName: string;
+      };
+      if (!map.has(tableName)) map.set(tableName, []);
+      map.get(tableName)?.push(columnName);
+    });
+
+    const tables = Array.from(map, ([name, columns]) => ({ name, columns }));
+
+    const indexesRows = deps.sqlite.exec(
+      allIndexes
+        ? sql`
+            select name, sql
+            from sqlite_master
+            where type = 'index' and name not like 'sqlite_%';
+          `
+        : sql`
+            select name, sql
+            from sqlite_master
+            where
+              type = 'index'
+              and name not like 'sqlite_%'
+              and name not like 'evolu_%';
+          `,
+    );
+
+    if (!indexesRows.ok) return indexesRows;
+
+    const indexes = indexesRows.value.rows.map(
+      (row): DbIndex => ({
+        name: row.name as string,
+        /**
+         * SQLite returns "CREATE INDEX" for "create index" for some reason.
+         * Other keywords remain unchanged. We have to normalize the casing for
+         * {@link indexesAreEqual} manually.
+         */
+        sql: (row.sql as string)
+          .replace("CREATE INDEX", "create index")
+          .replace("CREATE UNIQUE INDEX", "create unique index"),
+      }),
+    );
+
+    return ok({ tables, indexes });
+  };
+
+const indexesAreEqual = (self: DbIndex, that: DbIndex): boolean =>
+  self.name === that.name && self.sql === that.sql;
+
+export const ensureDbSchema =
+  (deps: SqliteDep) =>
+  (
+    newSchema: DbSchema,
+    currentSchema: DbSchema,
+    options?: { ignoreIndexes: boolean },
+  ): Result<void, SqliteError> => {
+    const queries: Array<SqliteQuery> = [];
+
+    newSchema.tables.forEach((newTable) => {
+      const currentTable = currentSchema.tables.find(
+        (t) => t.name === newTable.name,
+      );
+      if (!currentTable) {
+        queries.push({
+          sql: createTableWithDefaultColumns(newTable.name, newTable.columns),
+          parameters: [],
+        });
+      } else {
+        newTable.columns
+          .filter((newColumn) => !currentTable.columns.includes(newColumn))
+          .forEach((newColumn) => {
+            queries.push(sql`
+              alter table ${sql.identifier(newTable.name)}
+              add column ${sql.identifier(newColumn)} blob;
+            `);
+          });
+      }
+    });
+
+    if (options?.ignoreIndexes !== true) {
+      // Remove current indexes that are not in the newSchema.
+      currentSchema.indexes
+        .filter(
+          (currentIndex) =>
+            !newSchema.indexes.some((newIndex) =>
+              indexesAreEqual(newIndex, currentIndex),
+            ),
+        )
+        .forEach((index) => {
+          queries.push(sql`drop index ${sql.identifier(index.name)};`);
+        });
+
+      // Add new indexes that are not in the currentSchema.
+      newSchema.indexes
+        .filter(
+          (newIndex) =>
+            !currentSchema.indexes.some((currentIndex) =>
+              indexesAreEqual(newIndex, currentIndex),
+            ),
+        )
+        .forEach((newIndex) => {
+          queries.push({ sql: `${newIndex.sql};` as SafeSql, parameters: [] });
+        });
+    }
+
+    for (const query of queries) {
+      const result = deps.sqlite.exec(query);
+      if (!result.ok) return result;
+    }
+    return ok();
+  };
+
+const createTableWithDefaultColumns = (
+  tableName: string,
+  columns: ReadonlyArray<string>,
+): SafeSql =>
+  `
+    create table ${sql.identifier(tableName).sql} (
+      "id" text primary key,
+      ${columns
+        // Add default columns.
+        .concat(["createdAt", "updatedAt", "isDeleted"])
+        .filter((c) => c !== "id")
+        // "A column with affinity BLOB does not prefer one storage class over another
+        // and no attempt is made to coerce data from one storage class into another."
+        // https://www.sqlite.org/datatype3.html
+        .map((name) => `${sql.identifier(name).sql} blob`)
+        .join(", ")}
+    );
+  ` as SafeSql;
+
+// https://kysely.dev/docs/recipes/splitting-query-building-and-execution
+export const kysely = new Kysely.Kysely({
+  dialect: {
+    createAdapter: () => new Kysely.SqliteAdapter(),
+    createDriver: () => new Kysely.DummyDriver(),
+    createIntrospector() {
+      throw new Error("Not implemeneted");
+    },
+    createQueryCompiler: () => new Kysely.SqliteQueryCompiler(),
+  },
+});
+
+const createIndex = kysely.schema.createIndex.bind(kysely.schema);

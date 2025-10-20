@@ -1,31 +1,14 @@
 import { compress, init } from "@bokuweb/zstd-wasm";
-import {
-  assert,
-  beforeAll,
-  describe,
-  expect,
-  expectTypeOf,
-  it,
-  test,
-} from "vitest";
+import * as fc from "fast-check";
+import { assert, beforeAll, describe, expect, it, test } from "vitest";
 import { createBuffer } from "../../src/Buffer.js";
 import {
   applyProtocolMessageAsClient,
   applyProtocolMessageAsRelay,
-  Base64Url256,
-  base64Url256ToBytes,
-  binaryIdToId,
-  binaryOwnerIdToOwnerId,
-  binaryTimestampToFingerprint,
-  CrdtMessage,
   createProtocolMessageBuffer,
   createProtocolMessageForSync,
-  createProtocolMessageForWriteKeyRotation,
   createProtocolMessageFromCrdtMessages,
   createTimestampsBuffer,
-  DbChange,
-  decodeBase64Url256,
-  decodeBase64Url256WithLength,
   decodeLength,
   decodeNodeId,
   decodeNonNegativeInt,
@@ -34,55 +17,53 @@ import {
   decodeString,
   decryptAndDecodeDbChange,
   encodeAndEncryptDbChange,
-  encodeBase64Url256,
   encodeLength,
   encodeNodeId,
   encodeNonNegativeInt,
   encodeNumber,
   encodeSqliteValue,
   encodeString,
-  EncryptedCrdtMessage,
-  EncryptedDbChange,
-  idToBinaryId,
-  InfiniteUpperBound,
   maxProtocolMessageRangesSize,
-  ownerIdToBinaryOwnerId,
+  MessageType,
   ProtocolValueType,
   protocolVersion,
-  RangeType,
-  Storage,
-  StorageDep,
+  SubscriptionFlags,
   TimestampsRangeWithTimestampsBuffer,
 } from "../../src/Evolu/Protocol.js";
 import { createRelayStorage } from "../../src/Evolu/Relay.js";
 import {
-  binaryTimestampToTimestamp,
+  timestampBytesToFingerprint,
+  CrdtMessage,
+  DbChange,
+  EncryptedCrdtMessage,
+  EncryptedDbChange,
+  InfiniteUpperBound,
+  RangeType,
+  Storage,
+  StorageDep,
+} from "../../src/Evolu/Storage.js";
+import {
+  timestampBytesToTimestamp,
   createInitialTimestamp,
-  timestampToBinaryTimestamp,
+  timestampToTimestampBytes,
 } from "../../src/Evolu/Timestamp.js";
 import { constFalse, constTrue } from "../../src/Function.js";
 import {
   assertNonEmptyArray,
-  createOwner,
   createRandom,
-  createWriteKey,
   EncryptionKey,
   NonEmptyReadonlyArray,
 } from "../../src/index.js";
 import { err, getOrThrow } from "../../src/Result.js";
 import { SqliteValue } from "../../src/Sqlite.js";
-import { DateIso, NonNegativeInt, PositiveInt } from "../../src/Type.js";
-import { Brand } from "../../src/Brand.js";
+import { dateToDateIso, NonNegativeInt, PositiveInt } from "../../src/Type.js";
 import {
   testCreateId,
   testCreateSqlite,
   testCreateTimingSafeEqual,
   testDeps,
-  testMnemonic,
-  testNanoIdLib,
-  testNanoIdLibDep,
   testOwner,
-  testOwnerBinaryId,
+  testOwnerIdBytes,
   testRandomLib,
   testSymmetricCrypto,
 } from "../_deps.js";
@@ -91,11 +72,6 @@ import {
   testTimestampsAsc,
   testTimestampsRandom,
 } from "./_fixtures.js";
-
-// Note we use `.join()` on Uint8Array/Buffer for two reasons:
-//  - We want toMatchInlineSnapshot to be a single line (a string is).
-//  - better-sqlite3 returns Buffer (a subclass of Uint8Array) and toEqual expects
-//    the same prototype.
 
 beforeAll(async () => {
   await init();
@@ -122,101 +98,6 @@ const createStorageDep = async (): Promise<StorageDep> => {
   return { storage };
 };
 
-test("Base64Url256", () => {
-  expectTypeOf<Base64Url256>().toEqualTypeOf<
-    string & Brand<"Base64Url"> & Brand<"MaxLength256">
-  >();
-
-  const s = "a".repeat(256);
-  expect(Base64Url256.from(s).ok).toBe(true);
-  expect(Base64Url256.from(s + "a").ok).toBe(false);
-
-  expect(Base64Url256.from("")).toEqual(
-    err({
-      type: "Regex",
-      name: "Base64Url",
-      pattern: /^[A-Za-z0-9_-]+$/,
-      value: "",
-    }),
-  );
-});
-
-test("idToBinaryId/binaryIdToId", () => {
-  const testCases = Array.from({ length: 100 }).map(() => testCreateId());
-
-  testCases.forEach((id) => {
-    expect(binaryIdToId(idToBinaryId(id))).toBe(id);
-    expect(idToBinaryId(id).length).toBe(16);
-  });
-});
-
-test("ownerIdToBinaryOwnerId/binaryOwnerIdToOwnerId", () => {
-  const id = testOwner.id;
-  expect(binaryOwnerIdToOwnerId(ownerIdToBinaryOwnerId(id))).toStrictEqual(id);
-});
-
-test("base64Url256ToBytes/decodeBase64Url256", () => {
-  const buffer = createBuffer();
-
-  const testCasesSuccess = [
-    "A",
-    "ABC",
-    "abcdefghijklmnopqrstuvwxyz0123456789_-",
-    "HelloWorld123_-",
-    testNanoIdLib.nanoid(),
-  ];
-
-  testCasesSuccess.forEach((string) => {
-    const encoded = base64Url256ToBytes(getOrThrow(Base64Url256.from(string)));
-    buffer.extend(encoded);
-    expect(decodeBase64Url256(createBuffer(encoded), string.length)).toBe(
-      string,
-    );
-  });
-
-  expect(buffer.unwrap().join()).toMatchInlineSnapshot(
-    `"100,102,70,128,15,15,133,11,28,179,247,77,118,28,65,150,223,192,127,3,142,87,235,180,76,36,244,21,41,67,141,176,128,156,45,182,26,129,188,216,83,9,62,194,0,221,75,72,212,105,149,14,146,205,21,236,151,84,11,54,144"`,
-  );
-
-  Array.from({ length: 256 }).forEach((_, i) => {
-    // Empty string isn't Base64Url256.
-    if (i === 0) return;
-    const s = "a".repeat(i);
-    expect(
-      decodeBase64Url256(
-        createBuffer(base64Url256ToBytes(s as Base64Url256)),
-        s.length,
-      ),
-    ).toBe(s);
-  });
-
-  const tooLong = "a".repeat(257) as Base64Url256;
-
-  expect(() =>
-    decodeBase64Url256(
-      createBuffer(base64Url256ToBytes(tooLong)),
-      tooLong.length,
-    ),
-  ).toThrow("MaxLength");
-
-  // From 21 to 16
-  expect(
-    base64Url256ToBytes(getOrThrow(Base64Url256.from(testNanoIdLib.nanoid())))
-      .length,
-  ).toBe(16);
-
-  expect(
-    JSON.stringify(
-      Array.from({ length: 30 }).map((_, i) => [
-        i + 1,
-        base64Url256ToBytes("a".repeat(i + 1) as Base64Url256).length,
-      ]),
-    ),
-  ).toMatchInlineSnapshot(
-    `"[[1,1],[2,2],[3,3],[4,3],[5,4],[6,5],[7,6],[8,6],[9,7],[10,8],[11,9],[12,9],[13,10],[14,11],[15,12],[16,12],[17,13],[18,14],[19,15],[20,15],[21,16],[22,17],[23,18],[24,18],[25,19],[26,20],[27,21],[28,21],[29,22],[30,23]]"`,
-  );
-});
-
 test("encodeNumber/decodeNumber", () => {
   const testCases = [
     0,
@@ -240,8 +121,8 @@ test("encodeNumber/decodeNumber", () => {
     expect(encoded.getLength()).toBe(0);
   });
 
-  expect(buffer.unwrap().join()).toMatchInlineSnapshot(
-    `"0,42,208,133,203,64,9,33,249,240,27,134,110,203,67,63,255,255,255,255,255,255,203,195,63,255,255,255,255,255,255,203,127,240,0,0,0,0,0,0,203,255,240,0,0,0,0,0,0,203,127,248,0,0,0,0,0,0"`,
+  expect(buffer.unwrap()).toMatchInlineSnapshot(
+    `uint8:[0,42,208,133,203,64,9,33,249,240,27,134,110,203,67,63,255,255,255,255,255,255,203,195,63,255,255,255,255,255,255,203,127,240,0,0,0,0,0,0,203,255,240,0,0,0,0,0,0,203,127,248,0,0,0,0,0,0]`,
   );
 });
 
@@ -318,15 +199,15 @@ test("encodeString/decodeString", () => {
   const string = "Hello, world!";
   const buffer = createBuffer();
   encodeString(buffer, string);
-  expect(buffer.unwrap().join()).toMatchInlineSnapshot(
-    `"13,72,101,108,108,111,44,32,119,111,114,108,100,33"`,
+  expect(buffer.unwrap()).toMatchInlineSnapshot(
+    `uint8:[13,72,101,108,108,111,44,32,119,111,114,108,100,33]`,
   );
   expect(decodeString(buffer)).toBe(string);
 });
 
 test("encodeNodeId/decodeNodeId", () => {
   const testCases = Array.from({ length: 100 }).map(
-    () => createInitialTimestamp(testNanoIdLibDep).nodeId,
+    () => createInitialTimestamp(testDeps).nodeId,
   );
 
   testCases.forEach((id) => {
@@ -336,60 +217,46 @@ test("encodeNodeId/decodeNodeId", () => {
   });
 });
 
-test("encodeBase64Url256WithLength/decodeBase64Url256WithLength", () => {
-  const testCasesSuccess = [
-    "A",
-    "ABC",
-    "abcdefghijklmnopqrstuvwxyz0123456789_-",
-    "HelloWorld123_-",
-    testNanoIdLib.nanoid(),
-  ];
-
-  testCasesSuccess.forEach((string) => {
-    const buffer = createBuffer();
-    encodeBase64Url256(buffer, getOrThrow(Base64Url256.from(string)));
-    expect(decodeBase64Url256WithLength(buffer)).toBe(string);
-  });
-});
-
 test("ProtocolValueType", () => {
-  expect(ProtocolValueType).toStrictEqual({
-    String: 20,
-    Number: 21,
-    Null: 22,
-    Binary: 23,
-    Id: 30,
-    Base64Url256: 31,
-    NonNegativeInt: 32,
-    Json: 33,
-    DateIsoWithNonNegativeTime: 34,
-    DateIsoWithNegativeTime: 35,
-  });
+  expect(ProtocolValueType).toMatchInlineSnapshot(`
+    {
+      "Base64Url": 32,
+      "Bytes": 23,
+      "DateIsoWithNegativeTime": 36,
+      "DateIsoWithNonNegativeTime": 35,
+      "EmptyString": 31,
+      "Id": 33,
+      "Json": 34,
+      "NonNegativeInt": 30,
+      "Null": 22,
+      "Number": 21,
+      "String": 20,
+    }
+  `);
 });
 
 test("encodeSqliteValue/decodeSqliteValue", () => {
   const testCasesSuccess: Array<[SqliteValue, number]> = [
-    ["aaaaaaaaaaa!", 14], // type + length + value
+    ["", 1], // empty string optimization - 1 byte vs 2 bytes (50% reduction)
     [123.5, 10], // encodeNumber
     [-123, 3], // encodeNumber
     [null, 1],
     [new Uint8Array([1, 2, 3]), 5],
     [testCreateId(), 17],
-    ["aaaaaaaaaaaa", 11], // Base64Url256
     [0, 1], // small ints 0-19
     [19, 1], // small ints 0-19
     [123, 2], // NonNegativeInt
     [16383, 3], // NonNegativeInt
-    ['{"compact":true,"schema":0}', 22],
+    ['{"compact":true,"schema":0}', 20], // 18 bytes msgpackr + 2 bytes protocol overhead
     // Protocol encoding ensures 6 bytes till the year 2108.
-    [getOrThrow(DateIso.fromParent(new Date("0000-01-01T00:00:00.000Z"))), 10],
-    [getOrThrow(DateIso.fromParent(new Date("2024-10-31T00:00:00.000Z"))), 7],
-    [getOrThrow(DateIso.fromParent(new Date("2108-10-31T00:00:00.000Z"))), 7],
-    [getOrThrow(DateIso.fromParent(new Date("2109-10-31T00:00:00.000Z"))), 8],
-    [getOrThrow(DateIso.fromParent(new Date("9999-12-31T23:59:59.999Z"))), 8],
+    [getOrThrow(dateToDateIso(new Date("0000-01-01T00:00:00.000Z"))), 10],
+    [getOrThrow(dateToDateIso(new Date("2024-10-31T00:00:00.000Z"))), 7],
+    [getOrThrow(dateToDateIso(new Date("2108-10-31T00:00:00.000Z"))), 7],
+    [getOrThrow(dateToDateIso(new Date("2109-10-31T00:00:00.000Z"))), 8],
+    [getOrThrow(dateToDateIso(new Date("9999-12-31T23:59:59.999Z"))), 8],
   ];
 
-  let buffer = createBuffer();
+  const buffer = createBuffer();
   testCasesSuccess.forEach(([value, bytesLength]) => {
     const encoded = createBuffer();
     encodeSqliteValue(encoded, value);
@@ -398,38 +265,145 @@ test("encodeSqliteValue/decodeSqliteValue", () => {
     expect(encoded.getLength()).toBe(bytesLength);
     expect(decodeSqliteValue(encoded)).toStrictEqual(value);
   });
-  expect(buffer.unwrap().join()).toMatchInlineSnapshot(
-    `"20,12,97,97,97,97,97,97,97,97,97,97,97,33,21,203,64,94,224,0,0,0,0,0,21,208,133,22,23,3,1,2,3,30,77,89,167,46,24,175,13,65,117,86,75,251,234,73,123,168,31,12,12,48,195,12,48,195,12,48,195,0,19,32,123,32,255,127,33,20,222,0,2,167,99,111,109,112,97,99,116,195,166,115,99,104,101,109,97,0,35,203,194,204,69,55,130,48,0,0,34,128,232,252,254,173,50,34,128,168,131,232,192,127,34,128,128,200,165,182,128,1,34,255,183,255,144,253,206,57"`,
+  expect(buffer.unwrap()).toMatchInlineSnapshot(
+    `uint8:[31,21,203,64,94,224,0,0,0,0,0,21,208,133,22,23,3,1,2,3,33,81,47,191,109,7,65,230,11,56,58,108,178,252,250,247,202,0,19,30,123,30,255,127,34,18,130,167,99,111,109,112,97,99,116,195,166,115,99,104,101,109,97,0,36,203,194,204,69,55,130,48,0,0,35,128,232,252,254,173,50,35,128,168,131,232,192,127,35,128,128,200,165,182,128,1,35,255,183,255,144,253,206,57]`,
   );
+});
 
-  // string
-  buffer = createBuffer();
-  encodeSqliteValue(buffer, "." + "a".repeat(255));
-  expect(buffer.getLength()).toBe(
-    // 256 + string length (2 bytes) + type (1 byte)
-    259,
+test("encodeSqliteValue/decodeSqliteValue property tests", () => {
+  // Property test: round-trip encoding/decoding should preserve the value
+  fc.assert(
+    fc.property(
+      fc.oneof(
+        // Test all SqliteValue types
+        fc.constant(null),
+        fc.string(), // Regular strings
+        fc.double().filter((n) => !Number.isNaN(n)), // Numbers (exclude NaN)
+        fc.uint8Array(), // Binary data
+
+        // Special number cases
+        fc.constantFrom(Infinity, -Infinity, NaN),
+        fc.integer({ min: 0, max: 19 }), // Small ints (0-19) - special encoding
+        fc.integer({ min: 20, max: Number.MAX_SAFE_INTEGER }), // Non-negative ints
+        fc.integer({ min: Number.MIN_SAFE_INTEGER, max: -1 }), // Negative numbers
+        fc.float({ min: -1000, max: 1000 }), // Regular floats
+
+        // Id optimization cases
+        fc.constantFrom(testCreateId()), // Valid Id
+        fc
+          .string({ minLength: 21, maxLength: 21 })
+          .map((s) => s.replace(/[^A-Za-z0-9_-]/g, "a")), // Id-like strings
+
+        // URL-safe strings with length % 4 === 0 (Base64Url optimization)
+        fc
+          .stringMatching(/^[A-Za-z0-9_-]*$/)
+          .filter((s) => s.length % 4 === 0 && s.length > 0),
+        // URL-safe strings with length % 4 !== 0 (should use regular string encoding)
+        fc
+          .stringMatching(/^[A-Za-z0-9_-]*$/)
+          .filter((s) => s.length % 4 !== 0 && s.length > 0),
+
+        // Base64Url edge cases
+        fc.constant(""), // Empty string (optimization)
+        fc
+          .stringMatching(/^[A-Za-z0-9_-]{4,}$/)
+          .filter((s) => s.length % 4 === 0), // Valid Base64Url
+        fc.string().filter((s) => /[^A-Za-z0-9_-]/.test(s)), // Invalid Base64Url chars
+
+        // JSON optimization cases
+        fc
+          .record({
+            name: fc.string(),
+            value: fc.oneof(fc.string(), fc.integer(), fc.boolean()),
+          })
+          .map((obj) => JSON.stringify(obj)),
+        fc
+          .array(fc.oneof(fc.string(), fc.integer(), fc.boolean()))
+          .map((arr) => JSON.stringify(arr)),
+        fc.constantFrom('{"a":1}', "[]", "null", "true", "false", '"string"'), // Simple JSON
+        fc.string().filter((s) => {
+          try {
+            JSON.parse(s);
+            return false;
+          } catch {
+            return true;
+          }
+        }), // Non-JSON strings
+
+        // Date ISO strings - both valid and invalid
+        fc
+          .date({ min: new Date("1970-01-01"), max: new Date("2100-01-01") })
+          .filter((d) => !isNaN(d.getTime()))
+          .map((d) => d.toISOString()),
+        fc
+          .date({ min: new Date("0000-01-01"), max: new Date("9999-12-31") })
+          .filter((d) => !isNaN(d.getTime()))
+          .map((d) => d.toISOString()),
+        fc.constantFrom(
+          "0000-01-01T00:00:00.000Z",
+          "9999-12-31T23:59:59.999Z",
+          "not-a-date-2024-01-01T00:00:00.000Z", // Invalid date format
+          "2024-13-01T00:00:00.000Z", // Invalid month
+        ),
+
+        // Binary data edge cases
+        fc.constant(new Uint8Array(0)), // Empty binary
+        fc.uint8Array({ minLength: 1, maxLength: 1000 }), // Variable size binary
+        fc.constant(new Uint8Array(1000).fill(255)), // Large binary with pattern
+        fc.constant(new Uint8Array([0, 1, 2, 3, 4, 5])), // Small binary pattern
+      ),
+      (value) => {
+        const buffer = createBuffer();
+        encodeSqliteValue(buffer, value);
+        const decoded = decodeSqliteValue(buffer);
+
+        // Handle special cases for comparison
+        if (value instanceof Uint8Array && decoded instanceof Uint8Array) {
+          return (
+            value.length === decoded.length &&
+            value.every((byte, i) => byte === decoded[i])
+          );
+        }
+
+        // Handle NaN specially since NaN !== NaN
+        if (typeof value === "number" && typeof decoded === "number") {
+          if (Number.isNaN(value)) {
+            return Number.isNaN(decoded);
+          }
+        }
+
+        return decoded === value;
+      },
+    ),
+    { numRuns: 10000 },
   );
+});
 
-  // Base64Url256
-  buffer = createBuffer();
-  encodeSqliteValue(buffer, "a" + "a".repeat(255));
-  expect(buffer.getLength()).toBe(195);
+test("encodeSqliteValue/decodeSqliteValue specific failing case from property tests", () => {
+  // This was the specific failing case from property tests before the DateIsoString fix
+  const failingInput = `["0 (      ",-100000000]`;
+
+  const buffer = createBuffer();
+  encodeSqliteValue(buffer, failingInput);
+  const decoded = decodeSqliteValue(buffer);
+
+  // After the DateIsoString round-trip fix, this should now work correctly
+  // The input should be treated as a regular string (not DateIso) and round-trip properly
+  expect(decoded).toBe(failingInput);
 });
 
 const createDbChange = (): DbChange => ({
-  table: "employee" as Base64Url256,
+  table: "employee",
   id: testCreateId(),
   values: {
-    ["name" as Base64Url256]: "Victoria",
-    ["hiredAt" as Base64Url256]: getOrThrow(
-      DateIso.from(new Date("2024-10-31")),
-    ),
-    ["officeId" as Base64Url256]: testCreateId(),
+    name: "Victoria",
+    hiredAt: getOrThrow(dateToDateIso(new Date("2024-10-31"))),
+    officeId: testCreateId(),
   },
 });
 
 const createTestCrdtMessage = (): CrdtMessage => ({
-  timestamp: createInitialTimestamp(testNanoIdLibDep),
+  timestamp: createInitialTimestamp(testDeps),
   change: createDbChange(),
 });
 
@@ -449,8 +423,8 @@ const createEncryptedCrdtMessage = (
 test("encodeAndEncryptDbChange/decryptAndDecodeDbChange", () => {
   const crdtMessage = createTestCrdtMessage();
   const encryptedMessage = createEncryptedCrdtMessage(crdtMessage);
-  expect(encryptedMessage.change.join()).toMatchInlineSnapshot(
-    `"103,108,178,10,72,21,76,43,11,70,242,54,224,133,64,197,50,12,233,89,143,169,92,123,112,61,249,52,152,86,96,80,78,91,216,236,129,16,145,56,137,10,243,101,111,153,78,16,232,178,201,110,255,238,187,251,119,255,147,186,211,12,97,129,44,125,190,52,72,148,161,165,252,77,198,94,212,57,207,6,109,40,119,250,250,219,32,72,115,207,239,232,125,85,161,181,154,44,183,147,187,138,66,198,241,201,228,114,39,14,227,12,211,86,169,49,70,249,251,61,141,232,183,147,132,95,180,27,174,27,203,253,34,251,175,29,249"`,
+  expect(encryptedMessage.change).toMatchInlineSnapshot(
+    `uint8:[16,69,47,67,224,147,108,220,182,159,114,71,126,12,238,156,41,185,89,190,160,122,175,72,120,77,181,224,107,85,168,103,15,6,146,125,39,9,172,69,216,141,144,98,146,9,143,251,191,129,20,26,161,94,109,25,152,171,118,92,23,221,142,18,53,56,224,171,40,56,93,150,31,126,108,197,113,233,8,199,129,61,104,136,93,236,2,75,90,156,97,128,144,87,62,165,38,50,239,20,38,21,174,254,31,199,65,249,51,235,44,196,37,104,46,253,123,243,183,45,208,53,255,8,50,250,168,191,14,29,220,254,4,168,12,227,180,183,161,84,122,0,195,200,123]`,
   );
   const decrypted = decryptAndDecodeDbChange({
     symmetricCrypto: testSymmetricCrypto,
@@ -487,7 +461,7 @@ test("decryptAndDecodeDbChange timestamp tamper-proofing", () => {
   const encryptedMessage = createEncryptedCrdtMessage(crdtMessage);
 
   // Create a different timestamp
-  const wrongTimestamp = createInitialTimestamp(testNanoIdLibDep);
+  const wrongTimestamp = createInitialTimestamp(testDeps);
 
   // Create a message with the wrong timestamp but same encrypted change
   const tamperedMessage: EncryptedCrdtMessage = {
@@ -530,21 +504,23 @@ const shouldNotBeCalledStorageDep: StorageDep = {
 
 test("createTimestampsBuffer maxTimestamp", () => {
   const buffer = createTimestampsBuffer();
-  buffer.add(binaryTimestampToTimestamp(maxTimestamp));
+  buffer.add(timestampBytesToTimestamp(maxTimestamp));
   expect(buffer.getLength()).toBe(21);
 });
 
 describe("createProtocolMessageBuffer", () => {
   it("should allow no ranges", () => {
     const buffer = createProtocolMessageBuffer(testOwner.id, {
-      type: "initiator",
+      messageType: MessageType.Request,
     });
-    expect(() => buffer.unwrap()).not.toThrow();
+    expect(buffer.unwrap()).toMatchInlineSnapshot(
+      `uint8:[0,74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234,0,0,0,0]`,
+    );
   });
 
   it("should allow single range with InfiniteUpperBound", () => {
     const buffer = createProtocolMessageBuffer(testOwner.id, {
-      type: "initiator",
+      messageType: MessageType.Request,
     });
     buffer.addRange({
       type: RangeType.Skip,
@@ -555,7 +531,7 @@ describe("createProtocolMessageBuffer", () => {
 
   it("should reject single range without InfiniteUpperBound", () => {
     const buffer = createProtocolMessageBuffer(testOwner.id, {
-      type: "initiator",
+      messageType: MessageType.Request,
     });
     buffer.addRange({
       type: RangeType.Skip,
@@ -568,7 +544,7 @@ describe("createProtocolMessageBuffer", () => {
 
   it("should allow multiple ranges with only last InfiniteUpperBound", () => {
     const buffer = createProtocolMessageBuffer(testOwner.id, {
-      type: "initiator",
+      messageType: MessageType.Request,
     });
     buffer.addRange({
       type: RangeType.Skip,
@@ -587,7 +563,7 @@ describe("createProtocolMessageBuffer", () => {
 
   it("should reject range added after InfiniteUpperBound", () => {
     const buffer = createProtocolMessageBuffer(testOwner.id, {
-      type: "initiator",
+      messageType: MessageType.Request,
     });
     buffer.addRange({
       type: RangeType.Skip,
@@ -603,7 +579,7 @@ describe("createProtocolMessageBuffer", () => {
 
   it("should reject multiple InfiniteUpperBounds", () => {
     const buffer = createProtocolMessageBuffer(testOwner.id, {
-      type: "initiator",
+      messageType: MessageType.Request,
     });
     buffer.addRange({
       type: RangeType.Skip,
@@ -627,127 +603,84 @@ test("createProtocolMessageForSync", async () => {
 
   // Empty DB: version, ownerId, 0 messages, one empty TimestampsRange.
   expect(
-    createProtocolMessageForSync(storageDep)(testOwner.id)?.join(),
+    createProtocolMessageForSync(storageDep)(testOwner.id),
   ).toMatchInlineSnapshot(
-    `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0,0,1,2,0"`,
+    `uint8:[0,74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234,0,0,0,0,1,2,0]`,
   );
 
   const messages31 = testTimestampsAsc.slice(0, 31).map(
     (t): EncryptedCrdtMessage => ({
-      timestamp: binaryTimestampToTimestamp(t),
+      timestamp: timestampBytesToTimestamp(t),
       change: createEncryptedDbChange({
-        timestamp: binaryTimestampToTimestamp(t),
+        timestamp: timestampBytesToTimestamp(t),
         change: createDbChange(),
       }),
     }),
   );
   assertNonEmptyArray(messages31);
-  storageDep.storage.writeMessages(testOwnerBinaryId, messages31);
+  await storageDep.storage.writeMessages(testOwnerIdBytes, messages31);
 
   // DB with 31 timestamps: version, ownerId, 0 messages, one full (31) TimestampsRange.
   expect(
-    createProtocolMessageForSync(storageDep)(testOwner.id)?.join(),
+    createProtocolMessageForSync(storageDep)(testOwner.id),
   ).toMatchInlineSnapshot(
-    `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0,0,1,2,31,0,163,205,139,2,152,222,222,3,141,195,32,138,221,210,1,216,167,200,1,243,155,45,128,152,244,5,167,136,182,1,199,139,225,5,131,234,154,8,0,150,132,58,233,134,161,1,222,244,220,1,250,141,170,3,248,167,204,1,0,161,234,59,0,192,227,115,181,188,169,1,224,169,247,4,205,177,37,143,161,242,1,137,231,180,2,161,244,87,235,207,53,133,244,180,1,142,243,223,10,158,141,113,0,11,1,1,0,5,1,1,0,1,1,1,0,11,0,0,0,0,0,0,0,0,1,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,11,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,6,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,6,153,201,144,40,214,99,106,145,1"`,
+    `uint8:[0,74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234,0,0,0,0,1,2,31,0,163,205,139,2,152,222,222,3,141,195,32,138,221,210,1,216,167,200,1,243,155,45,128,152,244,5,167,136,182,1,199,139,225,5,131,234,154,8,0,150,132,58,233,134,161,1,222,244,220,1,250,141,170,3,248,167,204,1,0,161,234,59,0,192,227,115,181,188,169,1,224,169,247,4,205,177,37,143,161,242,1,137,231,180,2,161,244,87,235,207,53,133,244,180,1,142,243,223,10,158,141,113,0,11,1,1,0,5,1,1,0,1,1,1,0,11,0,0,0,0,0,0,0,0,1,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,11,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,6,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,6,153,201,144,40,214,99,106,145,1]`,
   );
 
   const message32 = testTimestampsAsc.slice(32, 33).map(
     (t): EncryptedCrdtMessage => ({
-      timestamp: binaryTimestampToTimestamp(t),
+      timestamp: timestampBytesToTimestamp(t),
       change: createEncryptedDbChange({
-        timestamp: binaryTimestampToTimestamp(t),
+        timestamp: timestampBytesToTimestamp(t),
         change: createDbChange(),
       }),
     }),
   );
   assertNonEmptyArray(message32);
-  storageDep.storage.writeMessages(testOwnerBinaryId, message32);
+  await storageDep.storage.writeMessages(testOwnerIdBytes, message32);
 
   // DB with 32 timestamps: version, ownerId, 0 messages, 16x FingerprintRange.
   expect(
-    createProtocolMessageForSync(storageDep)(testOwner.id)?.join(),
+    createProtocolMessageForSync(storageDep)(testOwner.id),
   ).toMatchInlineSnapshot(
-    `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0,0,16,187,171,234,5,151,160,243,1,203,195,245,1,167,160,170,7,202,245,251,13,150,132,58,199,251,253,2,242,181,246,4,161,234,59,192,227,115,149,230,160,6,220,210,151,2,170,219,140,3,240,195,234,1,172,128,209,11,0,15,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,5,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,7,153,201,144,40,214,99,106,145,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,79,199,221,49,166,129,34,35,99,27,109,221,72,203,113,173,13,174,108,244,220,53,10,79,91,208,39,170,201,18,73,253,152,51,99,124,0,152,50,246,239,212,6,13,80,19,126,71,76,18,73,200,62,200,42,99,188,63,73,207,154,238,98,14,224,33,103,255,188,202,60,84,33,248,184,78,240,231,221,198,98,244,79,237,208,100,110,251,209,4,221,129,70,179,162,173,26,9,38,199,115,85,231,208,141,13,135,35,144,151,124,233,151,6,119,79,51,128,236,157,32,91,160,104,143,239,236,16,148,246,215,168,225,200,73,253,182,117,53,113,24,52,165,196,73,55,66,212,228,27,187,1,71,143,234,75,93,129,254,145,224,183,203,200,8,205,21,142,6,139,145,237,12,30,146,233,222,152,203,251,132,199,125,55,190,43,113,63,180,29,179,161"`,
+    `uint8:[0,74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234,0,0,0,0,16,187,171,234,5,151,160,243,1,203,195,245,1,167,160,170,7,202,245,251,13,150,132,58,199,251,253,2,242,181,246,4,161,234,59,192,227,115,149,230,160,6,220,210,151,2,170,219,140,3,240,195,234,1,172,128,209,11,0,15,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,5,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,7,153,201,144,40,214,99,106,145,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,79,199,221,49,166,129,34,35,99,27,109,221,72,203,113,173,13,174,108,244,220,53,10,79,91,208,39,170,201,18,73,253,152,51,99,124,0,152,50,246,239,212,6,13,80,19,126,71,76,18,73,200,62,200,42,99,188,63,73,207,154,238,98,14,224,33,103,255,188,202,60,84,33,248,184,78,240,231,221,198,98,244,79,237,208,100,110,251,209,4,221,129,70,179,162,173,26,9,38,199,115,85,231,208,141,13,135,35,144,151,124,233,151,6,119,79,51,128,236,157,32,91,160,104,143,239,236,16,148,246,215,168,225,200,73,253,182,117,53,113,24,52,165,196,73,55,66,212,228,27,187,1,71,143,234,75,93,129,254,145,224,183,203,200,8,205,21,142,6,139,145,237,12,30,146,233,222,152,203,251,132,199,125,55,190,43,113,63,180,29,179,161]`,
   );
-});
-
-test("E2E key rotation", async () => {
-  const storageDep = await createStorageDep();
-
-  const owner = createOwner(testMnemonic);
-  const binaryOwnerId = ownerIdToBinaryOwnerId(owner.id);
-  const currentWriteKey = owner.writeKey;
-  const newWriteKey = createWriteKey(testDeps);
-
-  storageDep.storage.setWriteKey(binaryOwnerId, currentWriteKey);
-
-  const rotationMessage = createProtocolMessageForWriteKeyRotation(
-    owner.id,
-    currentWriteKey,
-    newWriteKey,
-  );
-  expect(rotationMessage.join()).toMatchInlineSnapshot(
-    `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,2,111,64,118,108,245,65,176,98,173,247,85,78,30,167,192,203,132,234,162,110,236,22,252,228,235,79,47,164,24,131,5,12,0"`,
-  );
-
-  const result = applyProtocolMessageAsRelay(storageDep)(rotationMessage);
-  expect(result.ok).toBe(true);
-  if (result.ok) {
-    expect(result.value).not.toBe(null); // Non-initiator always responds
-    expect(result.value!.length).toBe(19); // Empty message (header only)
-  }
-
-  const oldKeyValidation = storageDep.storage.validateWriteKey(
-    binaryOwnerId,
-    currentWriteKey,
-  );
-  expect(oldKeyValidation).toBe(false);
-
-  const newKeyValidation = storageDep.storage.validateWriteKey(
-    binaryOwnerId,
-    newWriteKey,
-  );
-  expect(newKeyValidation).toBe(true);
 });
 
 describe("E2E versioning", () => {
-  test("same versions", () => {
+  test("same versions", async () => {
     const v0 = 0 as NonNegativeInt;
 
     const clientMessage = createProtocolMessageBuffer(testOwner.id, {
       version: v0,
-      type: "initiator",
+      messageType: MessageType.Request,
     }).unwrap();
 
-    const relayResponse = applyProtocolMessageAsRelay(
+    const relayResponse = await applyProtocolMessageAsRelay(
       shouldNotBeCalledStorageDep,
     )(clientMessage, {}, v0);
 
-    expect(relayResponse.ok).toBe(true);
-    if (relayResponse.ok) {
-      expect(relayResponse.value).not.toBe(null); // Non-initiator always responds
-      expect(relayResponse.value!.length).toBe(19); // Empty message (header only)
-    }
+    assert(relayResponse.ok);
+    expect(relayResponse.value.message.length).toMatchInlineSnapshot(`20`);
   });
 
-  test("non-initiator version is higher", () => {
+  test("non-initiator version is higher", async () => {
     const v0 = 0 as NonNegativeInt;
     const v1 = 1 as NonNegativeInt;
 
     const clientMessage = createProtocolMessageBuffer(testOwner.id, {
       version: v0,
-      type: "initiator",
+      messageType: MessageType.Request,
     }).unwrap();
 
-    const relayResponse = applyProtocolMessageAsRelay(
+    const relayResponse = await applyProtocolMessageAsRelay(
       shouldNotBeCalledStorageDep,
     )(clientMessage, {}, v1);
     assert(relayResponse.ok);
-    assert(relayResponse.value);
 
-    const clientResult = applyProtocolMessageAsClient(
+    const clientResult = await applyProtocolMessageAsClient(
       shouldNotBeCalledStorageDep,
-    )(relayResponse.value, { version: v0 });
+    )(relayResponse.value.message, { version: v0 });
     expect(clientResult).toEqual(
       err({
         type: "ProtocolUnsupportedVersionError",
@@ -758,24 +691,23 @@ describe("E2E versioning", () => {
     );
   });
 
-  test("initiator version is higher", () => {
+  test("initiator version is higher", async () => {
     const v0 = 0 as NonNegativeInt;
     const v1 = 1 as NonNegativeInt;
 
     const clientMessage = createProtocolMessageBuffer(testOwner.id, {
       version: v1,
-      type: "initiator",
+      messageType: MessageType.Request,
     }).unwrap();
 
-    const relayResponse = applyProtocolMessageAsRelay(
+    const relayResponse = await applyProtocolMessageAsRelay(
       shouldNotBeCalledStorageDep,
     )(clientMessage, {}, v0);
     assert(relayResponse.ok);
-    assert(relayResponse.value);
 
-    const clientResult = applyProtocolMessageAsClient(
+    const clientResult = await applyProtocolMessageAsClient(
       shouldNotBeCalledStorageDep,
-    )(relayResponse.value, { version: v1 });
+    )(relayResponse.value.message, { version: v1 });
     expect(clientResult).toEqual(
       err({
         type: "ProtocolUnsupportedVersionError",
@@ -788,11 +720,11 @@ describe("E2E versioning", () => {
 });
 
 describe("E2E errors", () => {
-  test("ProtocolInvalidDataError", () => {
+  test("ProtocolInvalidDataError", async () => {
     const malformedMessage = createBuffer();
     encodeNonNegativeInt(malformedMessage, 1 as NonNegativeInt); // Only version, no ownerId
 
-    const clientResult = applyProtocolMessageAsClient(
+    const clientResult = await applyProtocolMessageAsClient(
       shouldNotBeCalledStorageDep,
     )(malformedMessage.unwrap(), { version: 0 as NonNegativeInt });
 
@@ -800,8 +732,8 @@ describe("E2E errors", () => {
     expect(clientResult.error.type).toBe("ProtocolInvalidDataError");
   });
 
-  test("ProtocolWriteKeyError", () => {
-    const timestamp = binaryTimestampToTimestamp(testTimestampsAsc[0]);
+  test("ProtocolWriteKeyError", async () => {
+    const timestamp = timestampBytesToTimestamp(testTimestampsAsc[0]);
     const dbChange = createDbChange();
 
     const messages: NonEmptyReadonlyArray<CrdtMessage> = [
@@ -813,7 +745,7 @@ describe("E2E errors", () => {
       messages,
     );
 
-    const responseWithWriteKeyError = applyProtocolMessageAsRelay({
+    const responseWithWriteKeyError = await applyProtocolMessageAsRelay({
       storage: {
         ...shouldNotBeCalledStorageDep.storage,
         validateWriteKey: constFalse,
@@ -821,40 +753,95 @@ describe("E2E errors", () => {
     })(initiatorMessage);
 
     assert(responseWithWriteKeyError.ok);
-    assert(responseWithWriteKeyError.value);
-    expect(responseWithWriteKeyError.value.join()).toMatchInlineSnapshot(
-      `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,1,0"`,
+    expect(responseWithWriteKeyError.value.message).toMatchInlineSnapshot(
+      `uint8:[0,74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234,1,1,0]`,
     );
 
     expect(
-      applyProtocolMessageAsClient(shouldNotBeCalledStorageDep)(
-        responseWithWriteKeyError.value,
+      await applyProtocolMessageAsClient(shouldNotBeCalledStorageDep)(
+        responseWithWriteKeyError.value.message,
       ),
-    ).toEqual(
-      err({ type: "ProtocolWriteKeyError", ownerId: "MdVYFAxShUluuZKVWQfYL" }),
-    );
+    ).toEqual(err({ type: "ProtocolWriteKeyError", ownerId: testOwner.id }));
   });
 });
 
 describe("E2E relay options", () => {
-  test("subscribe", () => {
+  test("subscribe", async () => {
     const message = createProtocolMessageBuffer(testOwner.id, {
-      type: "initiator",
+      messageType: MessageType.Request,
+      subscriptionFlag: SubscriptionFlags.Subscribe,
     }).unwrap();
-    let onOwnerIdCalled = false;
+    let subscribeCalledWithOwnerId: string | null = null;
 
-    applyProtocolMessageAsRelay(shouldNotBeCalledStorageDep)(message, {
+    await applyProtocolMessageAsRelay(shouldNotBeCalledStorageDep)(message, {
       subscribe: (ownerId) => {
-        expect(ownerId).toBe(testOwner.id);
-        onOwnerIdCalled = true;
+        subscribeCalledWithOwnerId = ownerId;
       },
     });
 
-    expect(onOwnerIdCalled).toBe(true);
+    expect(subscribeCalledWithOwnerId).toBe(testOwner.id);
   });
 
-  test("broadcast message", () => {
-    const timestamp = binaryTimestampToTimestamp(testTimestampsAsc[0]);
+  test("unsubscribe", async () => {
+    const message = createProtocolMessageBuffer(testOwner.id, {
+      messageType: MessageType.Request,
+      subscriptionFlag: SubscriptionFlags.Unsubscribe,
+    }).unwrap();
+    let unsubscribeCalledWithOwnerId: string | null = null;
+
+    await applyProtocolMessageAsRelay(shouldNotBeCalledStorageDep)(message, {
+      unsubscribe: (ownerId) => {
+        unsubscribeCalledWithOwnerId = ownerId;
+      },
+    });
+
+    expect(unsubscribeCalledWithOwnerId).toBe(testOwner.id);
+  });
+
+  test("no subscription flag (None)", async () => {
+    const message = createProtocolMessageBuffer(testOwner.id, {
+      messageType: MessageType.Request,
+      subscriptionFlag: SubscriptionFlags.None,
+    }).unwrap();
+    let subscribeWasCalled = false;
+    let unsubscribeWasCalled = false;
+
+    await applyProtocolMessageAsRelay(shouldNotBeCalledStorageDep)(message, {
+      subscribe: () => {
+        subscribeWasCalled = true;
+      },
+      unsubscribe: () => {
+        unsubscribeWasCalled = true;
+      },
+    });
+
+    expect(subscribeWasCalled).toBe(false);
+    expect(unsubscribeWasCalled).toBe(false);
+  });
+
+  test("default subscription flag (undefined)", async () => {
+    const message = createProtocolMessageBuffer(testOwner.id, {
+      messageType: MessageType.Request,
+      // No subscriptionFlag provided, should default to None
+    }).unwrap();
+    let subscribeWasCalled = false;
+    let unsubscribeWasCalled = false;
+
+    await applyProtocolMessageAsRelay(shouldNotBeCalledStorageDep)(message, {
+      subscribe: () => {
+        subscribeWasCalled = true;
+      },
+      unsubscribe: () => {
+        unsubscribeWasCalled = true;
+      },
+    });
+
+    expect(subscribeWasCalled).toBe(false);
+    expect(unsubscribeWasCalled).toBe(false);
+  });
+
+  test("broadcast message", async () => {
+    const timestamp = timestampBytesToTimestamp(testTimestampsAsc[0]);
     const dbChange = createDbChange();
     const messages: NonEmptyReadonlyArray<CrdtMessage> = [
       { timestamp, change: dbChange },
@@ -865,17 +852,17 @@ describe("E2E relay options", () => {
       messages,
     );
 
-    expect(initiatorMessage.join()).toMatchInlineSnapshot(
-      `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,1,111,64,118,108,245,65,176,98,173,247,85,78,30,167,192,203,1,0,0,1,0,0,0,0,0,0,0,0,1,137,1,9,30,49,110,227,116,115,136,131,254,17,150,132,69,106,188,87,40,206,247,79,137,58,9,112,167,94,1,74,151,30,117,194,54,146,39,33,14,5,71,197,82,66,215,41,202,141,88,240,251,193,12,122,195,55,108,178,90,149,54,145,6,46,49,74,29,36,140,117,93,0,96,142,113,156,154,115,63,68,144,33,95,148,19,74,140,216,241,242,92,213,232,114,247,228,31,7,34,218,203,45,176,203,69,102,106,252,199,27,220,65,65,41,168,122,51,125,93,39,84,76,122,184,49,218,85,25,180,0,150,98,1,108,23,244,232,161"`,
+    expect(initiatorMessage).toMatchInlineSnapshot(
+      `uint8:[0,74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234,0,1,109,96,75,228,41,186,7,162,141,92,37,209,56,226,201,91,0,1,0,0,1,0,0,0,0,0,0,0,0,1,145,1,179,222,169,180,99,198,170,142,57,122,20,85,129,171,98,248,206,76,196,167,62,115,20,24,120,237,199,240,120,27,82,86,179,10,25,211,150,147,95,57,1,227,38,8,131,130,66,214,91,12,31,112,99,139,94,217,94,9,54,115,4,43,72,47,214,212,113,242,223,142,112,211,74,214,130,20,188,213,130,8,170,51,116,110,211,129,196,104,253,55,190,36,16,140,32,65,78,91,124,170,83,46,56,167,136,44,167,127,205,106,234,142,58,227,23,18,37,103,25,14,151,93,237,207,95,229,217,110,48,19,197,128,126,53,154,227,175,120,33,156,34,170,230,43,251]`,
     );
 
     let broadcastedMessage = null as Uint8Array | null;
 
-    applyProtocolMessageAsRelay({
+    await applyProtocolMessageAsRelay({
       storage: {
         ...shouldNotBeCalledStorageDep.storage,
         validateWriteKey: constTrue,
-        writeMessages: constTrue,
+        writeMessages: () => Promise.resolve(true),
       },
     })(initiatorMessage, {
       broadcast: (ownerId, message) => {
@@ -885,18 +872,19 @@ describe("E2E relay options", () => {
     });
 
     assert(broadcastedMessage);
-    // Added error and removed writeKey
-    expect(broadcastedMessage.join()).toMatchInlineSnapshot(
-      `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0,1,0,0,1,0,0,0,0,0,0,0,0,1,137,1,9,30,49,110,227,116,115,136,131,254,17,150,132,69,106,188,87,40,206,247,79,137,58,9,112,167,94,1,74,151,30,117,194,54,146,39,33,14,5,71,197,82,66,215,41,202,141,88,240,251,193,12,122,195,55,108,178,90,149,54,145,6,46,49,74,29,36,140,117,93,0,96,142,113,156,154,115,63,68,144,33,95,148,19,74,140,216,241,242,92,213,232,114,247,228,31,7,34,218,203,45,176,203,69,102,106,252,199,27,220,65,65,41,168,122,51,125,93,39,84,76,122,184,49,218,85,25,180,0,150,98,1,108,23,244,232,161"`,
+    // Added error and removed writeKey, added subscription flag
+    expect(broadcastedMessage).toMatchInlineSnapshot(
+      `uint8:[0,74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234,2,1,0,0,1,0,0,0,0,0,0,0,0,1,145,1,179,222,169,180,99,198,170,142,57,122,20,85,129,171,98,248,206,76,196,167,62,115,20,24,120,237,199,240,120,27,82,86,179,10,25,211,150,147,95,57,1,227,38,8,131,130,66,214,91,12,31,112,99,139,94,217,94,9,54,115,4,43,72,47,214,212,113,242,223,142,112,211,74,214,130,20,188,213,130,8,170,51,116,110,211,129,196,104,253,55,190,36,16,140,32,65,78,91,124,170,83,46,56,167,136,44,167,127,205,106,234,142,58,227,23,18,37,103,25,14,151,93,237,207,95,229,217,110,48,19,197,128,126,53,154,227,175,120,33,156,34,170,230,43,251]`,
     );
 
     let writeMessagesCalled = false;
-    const result = applyProtocolMessageAsClient({
+    const result = await applyProtocolMessageAsClient({
       storage: {
         ...shouldNotBeCalledStorageDep.storage,
-        writeMessages: (ownerId, encryptedMessages) => {
+        // eslint-disable-next-line @typescript-eslint/require-await
+        writeMessages: async (ownerId, encryptedMessages) => {
           writeMessagesCalled = true;
-          expect(ownerId).toEqual(testOwnerBinaryId);
+          expect(ownerId).toEqual(testOwnerIdBytes);
           expect(encryptedMessages.length).toBe(messages.length);
           return true;
         },
@@ -911,14 +899,14 @@ describe("E2E relay options", () => {
 describe("E2E sync", () => {
   const messages = testTimestampsAsc.map(
     (t): EncryptedCrdtMessage => ({
-      timestamp: binaryTimestampToTimestamp(t),
+      timestamp: timestampBytesToTimestamp(t),
       change: createEncryptedDbChange({
-        timestamp: binaryTimestampToTimestamp(t),
+        timestamp: timestampBytesToTimestamp(t),
         change: {
-          table: "foo" as Base64Url256,
+          table: "foo",
           id: testCreateId(),
           values: {
-            ["bar" as Base64Url256]: "x".repeat(testRandomLib.int(1, 500)),
+            bar: "x".repeat(testRandomLib.int(1, 500)),
           },
         },
       }),
@@ -932,7 +920,7 @@ describe("E2E sync", () => {
     return [clientStorageDep.storage, relayStorageDep.storage];
   };
 
-  const reconcile = (
+  const reconcile = async (
     clientStorage: Storage,
     relayStorage: Storage,
     rangesMaxSize = maxProtocolMessageRangesSize,
@@ -958,27 +946,28 @@ describe("E2E sync", () => {
 
       result =
         turn === "relay"
-          ? applyProtocolMessageAsRelay(relayStorageDep)(message, {
+          ? await applyProtocolMessageAsRelay(relayStorageDep)(message, {
               rangesMaxSize,
             })
-          : applyProtocolMessageAsClient(clientStorageDep)(message, {
+          : await applyProtocolMessageAsClient(clientStorageDep)(message, {
               getWriteKey: () => testOwner.writeKey,
               rangesMaxSize,
             });
 
-      if (!result.ok || result.value === null) break;
-      message = result.value;
+      if (!result.ok || result.value.type === "no-response") break;
+      assert(result.value.type !== "broadcast");
+      message = result.value.message;
 
       turn = turn === "relay" ? "client" : "relay";
-      syncSizes.push(result.value.length);
+      syncSizes.push(result.value.message.length);
     }
 
     for (const message of messages) {
       expect(
         clientStorage
           .readDbChange(
-            testOwnerBinaryId,
-            timestampToBinaryTimestamp(message.timestamp),
+            testOwnerIdBytes,
+            timestampToTimestampBytes(message.timestamp),
           )
           ?.join(),
       ).toBe(message.change.join());
@@ -986,27 +975,30 @@ describe("E2E sync", () => {
       expect(
         relayStorage
           .readDbChange(
-            testOwnerBinaryId,
-            timestampToBinaryTimestamp(message.timestamp),
+            testOwnerIdBytes,
+            timestampToTimestampBytes(message.timestamp),
           )
           ?.join(),
       ).toBe(message.change.join());
     }
+
+    // Ensure number of sync steps is even (relay/client turns alternate)
+    expect(syncSteps % 2).toBe(0);
 
     return { syncSteps, syncSizes };
   };
 
   it("client and relay have all data", async () => {
     const [clientStorage, relayStorage] = await createStorages();
-    clientStorage.writeMessages(testOwnerBinaryId, messages);
-    relayStorage.writeMessages(testOwnerBinaryId, messages);
+    await clientStorage.writeMessages(testOwnerIdBytes, messages);
+    await relayStorage.writeMessages(testOwnerIdBytes, messages);
 
-    const syncSteps = reconcile(clientStorage, relayStorage);
+    const syncSteps = await reconcile(clientStorage, relayStorage);
     expect(syncSteps).toMatchInlineSnapshot(`
       {
         "syncSizes": [
-          354,
-          19,
+          370,
+          20,
         ],
         "syncSteps": 2,
       }
@@ -1015,18 +1007,18 @@ describe("E2E sync", () => {
 
   it("client has all data", async () => {
     const [clientStorage, relayStorage] = await createStorages();
-    clientStorage.writeMessages(testOwnerBinaryId, messages);
+    await clientStorage.writeMessages(testOwnerIdBytes, messages);
 
-    const syncSteps = reconcile(clientStorage, relayStorage);
+    const syncSteps = await reconcile(clientStorage, relayStorage);
     expect(syncSteps).toMatchInlineSnapshot(`
       {
         "syncSizes": [
-          354,
-          178,
-          999691,
-          39,
-          660064,
-          19,
+          370,
+          193,
+          999703,
+          40,
+          666134,
+          20,
         ],
         "syncSteps": 6,
       }
@@ -1035,9 +1027,9 @@ describe("E2E sync", () => {
 
   it("client has all data - many steps", async () => {
     const [clientStorage, relayStorage] = await createStorages();
-    clientStorage.writeMessages(testOwnerBinaryId, messages);
+    await clientStorage.writeMessages(testOwnerIdBytes, messages);
 
-    const syncSteps = reconcile(
+    const syncSteps = await reconcile(
       clientStorage,
       relayStorage,
       3000 as PositiveInt,
@@ -1045,20 +1037,20 @@ describe("E2E sync", () => {
     expect(syncSteps).toMatchInlineSnapshot(`
       {
         "syncSizes": [
-          354,
-          178,
-          999691,
-          39,
-          148140,
-          39,
-          147723,
-          39,
-          153800,
-          39,
-          166830,
-          39,
-          55725,
-          19,
+          370,
+          193,
+          999703,
+          40,
+          153052,
+          40,
+          145063,
+          40,
+          148851,
+          40,
+          174701,
+          40,
+          56622,
+          20,
         ],
         "syncSteps": 14,
       }
@@ -1067,16 +1059,16 @@ describe("E2E sync", () => {
 
   it("relay has all data", async () => {
     const [clientStorage, relayStorage] = await createStorages();
-    relayStorage.writeMessages(testOwnerBinaryId, messages);
+    await relayStorage.writeMessages(testOwnerIdBytes, messages);
 
-    const syncSteps = reconcile(clientStorage, relayStorage);
+    const syncSteps = await reconcile(clientStorage, relayStorage);
     expect(syncSteps).toMatchInlineSnapshot(`
       {
         "syncSizes": [
-          22,
-          999858,
-          55,
-          676948,
+          24,
+          999652,
+          57,
+          683230,
         ],
         "syncSteps": 4,
       }
@@ -1085,9 +1077,9 @@ describe("E2E sync", () => {
 
   it("relay has all data - many steps", async () => {
     const [clientStorage, relayStorage] = await createStorages();
-    relayStorage.writeMessages(testOwnerBinaryId, messages);
+    await relayStorage.writeMessages(testOwnerIdBytes, messages);
 
-    const syncSteps = reconcile(
+    const syncSteps = await reconcile(
       clientStorage,
       relayStorage,
       3000 as PositiveInt,
@@ -1095,28 +1087,28 @@ describe("E2E sync", () => {
     expect(syncSteps).toMatchInlineSnapshot(`
       {
         "syncSizes": [
-          22,
-          158300,
-          55,
-          169852,
-          55,
-          160920,
-          55,
-          154178,
-          55,
-          159489,
-          55,
-          159578,
-          55,
-          151044,
-          55,
-          143105,
-          55,
-          152270,
-          55,
-          165405,
-          55,
-          114404,
+          24,
+          159764,
+          57,
+          163653,
+          57,
+          155814,
+          57,
+          162172,
+          57,
+          163446,
+          57,
+          155199,
+          57,
+          158714,
+          57,
+          142637,
+          57,
+          149686,
+          57,
+          168863,
+          57,
+          114763,
         ],
         "syncSteps": 22,
       }
@@ -1134,19 +1126,19 @@ describe("E2E sync", () => {
     assertNonEmptyArray(firstHalf);
     assertNonEmptyArray(secondHalf);
 
-    clientStorage.writeMessages(testOwnerBinaryId, firstHalf);
-    relayStorage.writeMessages(testOwnerBinaryId, secondHalf);
+    await clientStorage.writeMessages(testOwnerIdBytes, firstHalf);
+    await relayStorage.writeMessages(testOwnerIdBytes, secondHalf);
 
-    const syncSteps = reconcile(clientStorage, relayStorage);
+    const syncSteps = await reconcile(clientStorage, relayStorage);
     expect(syncSteps).toMatchInlineSnapshot(`
       {
         "syncSizes": [
-          336,
-          5122,
-          21834,
-          853135,
-          828144,
-          19,
+          362,
+          5051,
+          18202,
+          851946,
+          835602,
+          20,
         ],
         "syncSteps": 6,
       }
@@ -1164,10 +1156,10 @@ describe("E2E sync", () => {
     assertNonEmptyArray(firstHalf);
     assertNonEmptyArray(secondHalf);
 
-    clientStorage.writeMessages(testOwnerBinaryId, firstHalf);
-    relayStorage.writeMessages(testOwnerBinaryId, secondHalf);
+    await clientStorage.writeMessages(testOwnerIdBytes, firstHalf);
+    await relayStorage.writeMessages(testOwnerIdBytes, secondHalf);
 
-    const syncSteps = reconcile(
+    const syncSteps = await reconcile(
       clientStorage,
       relayStorage,
       3000 as PositiveInt,
@@ -1175,46 +1167,48 @@ describe("E2E sync", () => {
     expect(syncSteps).toMatchInlineSnapshot(`
       {
         "syncSizes": [
-          363,
-          2229,
-          2277,
-          118781,
-          110625,
-          2306,
-          2262,
-          91972,
-          83979,
-          2282,
-          2260,
-          71938,
-          78758,
-          2260,
-          73648,
-          73395,
-          2242,
-          76329,
-          66642,
-          2330,
+          374,
+          2245,
+          2259,
+          101632,
+          92019,
+          2305,
+          2290,
+          82830,
+          84163,
+          2550,
+          2269,
+          87890,
+          80007,
           2231,
-          71904,
-          62035,
-          2282,
-          63880,
-          60083,
-          2229,
-          57980,
-          57180,
-          2227,
-          61600,
-          53361,
-          94487,
-          91642,
-          24243,
-          86150,
-          73652,
-          19,
+          2303,
+          81395,
+          81612,
+          2258,
+          70871,
+          71424,
+          2291,
+          70344,
+          67392,
+          2262,
+          59468,
+          64447,
+          2256,
+          52092,
+          58457,
+          16780,
+          60019,
+          44602,
+          36620,
+          57503,
+          27919,
+          76195,
+          89821,
+          12717,
+          41313,
+          47313,
         ],
-        "syncSteps": 38,
+        "syncSteps": 40,
       }
     `);
   });
@@ -1223,11 +1217,11 @@ describe("E2E sync", () => {
     const owner = testOwner;
     const crdtMessages = testTimestampsAsc.map(
       (t): CrdtMessage => ({
-        timestamp: binaryTimestampToTimestamp(t),
+        timestamp: timestampBytesToTimestamp(t),
         change: {
-          table: "foo" as Base64Url256,
+          table: "foo",
           id: testCreateId(),
-          values: { ["bar" as Base64Url256]: "baz" },
+          values: { bar: "baz" },
         },
       }),
     );
@@ -1243,11 +1237,11 @@ describe("E2E sync", () => {
     const relayStorageDep = await createStorageDep();
 
     const relayResult =
-      applyProtocolMessageAsRelay(relayStorageDep)(protocolMessage);
+      await applyProtocolMessageAsRelay(relayStorageDep)(protocolMessage);
 
     assert(relayResult.ok);
-    expect(relayResult.value?.join()).toMatchInlineSnapshot(
-      `"0,128,87,31,173,149,230,206,93,128,2,246,220,162,236,95,168,0,0,1,2,9,0,163,205,139,2,152,222,222,3,141,195,32,138,221,210,1,216,167,200,1,243,155,45,128,152,244,5,167,136,182,1,0,9,0,0,0,0,0,0,0,0,1,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,6"`,
+    expect(relayResult.value.message).toMatchInlineSnapshot(
+      `uint8:[0,74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234,1,0,0,1,2,9,0,163,205,139,2,152,222,222,3,141,195,32,138,221,210,1,216,167,200,1,243,155,45,128,152,244,5,167,136,182,1,0,9,0,0,0,0,0,0,0,0,1,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,6]`,
     );
     // Sync continue
     expect(relayResult.value).not.toBe(null);
@@ -1257,7 +1251,7 @@ describe("E2E sync", () => {
 describe("ranges sizes", () => {
   it("31 timestamps", () => {
     const buffer = createProtocolMessageBuffer(testOwner.id, {
-      type: "initiator",
+      messageType: MessageType.Request,
     });
     const range: TimestampsRangeWithTimestampsBuffer = {
       type: RangeType.Timestamps,
@@ -1265,19 +1259,19 @@ describe("ranges sizes", () => {
       timestamps: createTimestampsBuffer(),
     };
     testTimestampsAsc.slice(0, 31).forEach((t) => {
-      range.timestamps.add(binaryTimestampToTimestamp(t));
+      range.timestamps.add(timestampBytesToTimestamp(t));
     });
 
     buffer.addRange(range);
 
     expect(
       getUncompressedAndCompressedSizes(buffer.unwrap()),
-    ).toMatchInlineSnapshot(`"238 189"`);
+    ).toMatchInlineSnapshot(`"240 191"`);
   });
 
   it("testTimestampsAsc", () => {
     const buffer = createProtocolMessageBuffer(testOwner.id, {
-      type: "initiator",
+      messageType: MessageType.Request,
     });
 
     const range: TimestampsRangeWithTimestampsBuffer = {
@@ -1286,34 +1280,31 @@ describe("ranges sizes", () => {
       timestamps: createTimestampsBuffer(),
     };
     testTimestampsAsc.forEach((t) => {
-      range.timestamps.add(binaryTimestampToTimestamp(t));
+      range.timestamps.add(timestampBytesToTimestamp(t));
     });
 
     buffer.addRange(range);
 
     expect(
       getUncompressedAndCompressedSizes(buffer.unwrap()),
-    ).toMatchInlineSnapshot(`"31634 17690"`);
+    ).toMatchInlineSnapshot(`"31562 17574"`);
   });
 
   it("fingerprints", () => {
     const buffer = createProtocolMessageBuffer(testOwner.id, {
-      type: "initiator",
+      messageType: MessageType.Request,
     });
 
     testTimestampsAsc.slice(0, 16).forEach((timestamp, i) => {
       buffer.addRange({
         type: RangeType.Fingerprint,
         upperBound: i === 15 ? InfiniteUpperBound : timestamp,
-        fingerprint: binaryTimestampToFingerprint(testTimestampsRandom[i]),
+        fingerprint: timestampBytesToFingerprint(testTimestampsRandom[i]),
       });
     });
 
     expect(
       getUncompressedAndCompressedSizes(buffer.unwrap()),
-    ).toMatchInlineSnapshot(`"330 313"`);
+    ).toMatchInlineSnapshot(`"332 315"`);
   });
 });
-
-// TODO:
-// - protocol message with ranges isn't broadcasted

@@ -279,7 +279,11 @@ That’s it. These four basic primitives are enough to implement authentication,
 
 The `Owner` is an entity in Evolu that owns data, meaning it is locally stored on
 a device under the user’s control. Data can be personal private, peer-to-peer
-shared, or aggregated from multiple owners. An owner has a Mnemonic[^2] from which `OwnerId` and `EncryptionKey` are deterministically derived using SLIP-21, and an optional `WriteKey` that, when present, enables writing to the Evolu Relay or peers. The `WriteKey` can be rotated.
+shared, or aggregated from multiple owners. Owners are cryptographically derived from 16 bytes of random entropy using SLIP-21 key derivation, ensuring secure and deterministic key generation:
+
+- **OwnerId**: Globally unique public identifier
+- **EncryptionKey**: Symmetric encryption key for data protection
+- **WriteKey**: Authentication token for write operations (rotatable)
 
 There are four basic variants of Owner with specific roles:
 
@@ -345,7 +349,7 @@ Let’s summarize why I believe Evolu can scale:
 
 - **Built on SQLite**: Evolu isn't a custom binary format or even a JSON. It builds on battle-tested SQL. That means no need to load all data into memory, no complex decoding logic—just fast, indexed queries with minimal overhead.
 
-- **Minimal and understandable**: The code is (hopefully) simple enough for anyone to read, with many tests. Evolu keeps dependencies to a minimum—just [SQLite](https://sqlite.org/), [Kysely](https://github.com/kysely-org/kysely), [Msgpackr](https://github.com/kriszyp/msgpackr), [Nanoid](https://github.com/ai/nanoid), and cryptographic utilities from [Paulmillr](https://paulmillr.com/). All libraries used are zero-dependency.
+- **Minimal and understandable**: The code is (hopefully) simple enough for anyone to read, with many tests. Evolu keeps dependencies to a minimum—just [SQLite](https://sqlite.org/), [Kysely](https://github.com/kysely-org/kysely), [Msgpackr](https://github.com/kriszyp/msgpackr), and cryptographic utilities from [Paulmillr](https://paulmillr.com/). All libraries used are zero-dependency.
 
 - **Range-Based Set Reconciliation**: Evolu uses RBSR, which scales logarithmically with data size. From Doug’s [article](https://logperiodic.com/rbsr.html) on Negentropy:
 
@@ -392,5 +396,3 @@ If you’d like to support me, you can do so via [GitHub Sponsors](https://githu
 [^1]:
     I mean the old LEGO—where we had a few basic pieces and could build anything.
     Not the new LEGO with thousands of specialized, theme-based pieces meant to build exactly one thing on the box. The new LEGO is exactly how software should not be made.
-
-[^2]: A mnemonic is a human-readable phrase (usually 12, 18, or 24 words) that represents a cryptographic seed. It’s part of a standard called BIP-39 (Bitcoin Improvement Proposal 39).

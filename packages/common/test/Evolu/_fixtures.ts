@@ -6,8 +6,8 @@ import {
   maxNodeId,
   Millis,
   NodeId,
-  orderBinaryTimestamp,
-  timestampToBinaryTimestamp,
+  orderTimestampBytes,
+  timestampToTimestampBytes,
 } from "../../src/Evolu/Timestamp.js";
 import { testRandomLib } from "../_deps.js";
 
@@ -38,13 +38,13 @@ for (let i = 0; i < numberOfTimestamps; i++) {
 
 export const testTimestampsAsc = timestamps
   .map(([millis, counter, nodeId]) =>
-    timestampToBinaryTimestamp(createTimestamp({ millis, counter, nodeId })),
+    timestampToTimestampBytes(createTimestamp({ millis, counter, nodeId })),
   )
-  .toSorted(orderBinaryTimestamp)
+  .toSorted(orderTimestampBytes)
   .slice(0, 5000 - 2); //  for two edges
 
-const minTimestamp = timestampToBinaryTimestamp(createTimestamp());
-export const maxTimestamp = timestampToBinaryTimestamp(
+const minTimestamp = timestampToTimestampBytes(createTimestamp());
+export const maxTimestamp = timestampToTimestampBytes(
   createTimestamp({
     millis: maxMillis,
     counter: maxCounter,
@@ -60,7 +60,7 @@ export const testTimestampsRandom = testRandomLib.shuffle(testTimestampsAsc);
 
 export const testAnotherTimestampsAsc = timestamps
   .map(([millis, counter, nodeId]) =>
-    timestampToBinaryTimestamp(
+    timestampToTimestampBytes(
       createTimestamp({
         millis: (millis + 1) as Millis,
         counter,
@@ -68,5 +68,5 @@ export const testAnotherTimestampsAsc = timestamps
       }),
     ),
   )
-  .toSorted(orderBinaryTimestamp)
+  .toSorted(orderTimestampBytes)
   .slice(0, 1000);

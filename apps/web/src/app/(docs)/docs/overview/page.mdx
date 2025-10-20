@@ -1,0 +1,93 @@
+export const metadata = {
+  title: "Collaboration",
+  description: "TODO",
+};
+
+<Warn>
+  Documentation is currently work in progress. Some sections may be incomplete
+  or subject to change as we continue to refine the content.
+</Warn>
+
+# Overview
+
+Evolu is a local-first platform for building applications where data ownership, offline-first design, and sync are built in. Evolu stores data locally in SQLite, so apps work offline by default. DB changes are append-only and immutable, which enables time travel and conflict-free synchronization. Every database change is assigned to an Owner.
+
+## Owner
+
+The Owner represents ownership of data in Evolu. By default, all changes are assigned to the `AppOwner`, but additional owners can be used for:
+
+- **Partial sync**: `ShardOwner` for isolating optional or heavy data
+- **Collaboration**: `SharedOwner` for collaborative write access
+- **Data sharing**: `SharedReadonlyOwner` for read-only access to shared data
+
+Owners are cryptographically derived from 16 bytes of random entropy using SLIP-21 key derivation, ensuring secure and deterministic key generation:
+
+- **OwnerId**: Globally unique public identifier
+- **EncryptionKey**: Symmetric encryption key for data protection
+- **WriteKey**: Authentication token for write operations (rotatable)
+
+All owners have the same keys. Evolu distinguishes owner types so developers don't accidentally share private data. Evolu syncs data separately for each owner, enabling fine-grained control over what data gets synchronized and when.
+
+## Sync
+
+Evolu syncs data using encrypted [CRDT](https://crdt.tech/) messages with last-write-wins conflict resolution.
+
+```ts
+interface CrdtMessage {
+  readonly timestamp: Timestamp;
+  readonly change: DbChange;
+}
+
+interface DbChange {
+  // A string with only A–Z, a–z, 0–9, '-' and '_', max 256 chars.
+  table: Base64Url256;
+  id: Id;
+  values: Record<Base64Url256, SqliteValue>;
+}
+```
+
+If last-write-wins isn't the desired strategy, apps can use time travel to implement custom merging logic.
+
+Evolu always uses [symmetric encryption](https://en.wikipedia.org/wiki/Symmetric-key_algorithm) because symmetric encryption is [post-quantum](https://en.wikipedia.org/wiki/Post-quantum_cryptography) safe, which is especially important for local-first software where data persists for years—protecting against ["harvest now, decrypt later"](https://en.wikipedia.org/wiki/Harvest_now,_decrypt_later) attacks.
+
+Syncing is efficient because Evolu uses [Range-Based Set Reconciliation](https://logperiodic.com/rbsr.html). RBSR is a divide-and-conquer algorithm that quickly finds differences between large datasets by comparing compact fingerprints of sorted data ranges. Fingerprints are created by hashing and XORing timestamps, allowing efficient incremental computation. This minimizes data transfer and round-trips, making sync fast and scalable even for millions of records.
+
+Evolu is designed for P2P (peer-to-peer) with no central authoritative server and no vendor lock-in. However, pure P2P requires all peers to be online simultaneously for sync to work. For practical reasons—faster synchronization, offline availability, and backup—Evolu uses relays.
+
+## Relay
+
+A relay in Evolu acts as a generic, stateless sync (and optionally backup) server—not a traditional app-specific server. It's designed to be replaceable. Relays are completely blind—they see only owner IDs, timestamps, and encrypted blobs. They have no knowledge of the actual data content or structure. Key properties:
+
+- **Completely interchangeable**: There is no vendor lock-in on a specific relay.
+- **Stateless and blind**: Relays don't interpret or manage data—they simply store and forward encrypted blobs.
+- **Scalable by default**: Because relays don't hold state, we can scale horizontally by adding more relays.
+
+Relays are particularly valuable for collaboration, as they provide a reliable meeting point for users to sync shared data without requiring all participants to be online simultaneously.
+
+## Collaboration
+
+Collaboration is sharing part of the database with one or more users. Before exploring collaboration patterns, it's important to understand network topology—how data flows and where it's stored. Without collaboration, network topology is simple: A user has data on their devices, and it syncs through a relay. The relay can be a free service that might eventually delete old data—but that's OK, as long as the user's devices act as reliable backups. If a relay goes down, the user can switch to another one—no problem. If the user wants more reliability, they can use a paid relay that stores their data as a long-term backup. The user could also use a home server, but it could be stolen or damaged—so relying on a single location isn't ideal. Using a relay as a redundant backup is better.
+
+The situation changes when people collaborate on some shared data. For ephemeral or not essential data, a free relay is still good enough and participants can use a `SharedOwner`. We
+don't even need public-key (asymmetric) cryptography or identities. For example,
+[collaboration in Excalidraw](https://plus.excalidraw.com/blog/end-to-end-encryption) works just with a link containing a data identifier and password (our `OwnerId` and `EncryptionKey`).
+We can do the same with Evolu, but that does not scale if we require durable persistence, more data or participants, or just an ability to remove someone from a collaboration. We will talk about that later; let's explore a simple pairwise collaboration first.
+
+### Pairwise collaboration
+
+Alice creates a `SharedOwner` and shares a link with Bob. But the moment something is shared, it introduces complications. First, where is the data stored and who will pay for it? Alice can use a free relay, but for Bob to write data, he also needs a `WriteKey`. If he has it, he can change it, and Alice will lose write access. But maybe that's acceptable—it takes two to tango. Alice can always move to another relay or delete the shared owner and move data to a new one so Bob can't decrypt it. Bob can also abuse trust and spam her, but Alice can protect herself easily—Evolu chunks sync data (max 1 MB) and allows any custom validation.
+
+What if Alice and Bob take communication seriously? That means they'll want to use a paid or self-hosted relay for their data—one that won't just disappear. If both are serious about it, they'll likely each have their own relay. **In that case, they can't both use the same relay.** So their communication looks like this: Alice creates a shared readonly owner on her relay for Bob, and Bob does the same. Why don't they both just create an inbox? You write to me here, I'll write to you there? Because of spam, OK, but how do they protect themselves from someone they're following sending them tons of stuff? With Evolu, they can validate what they've synced locally, and if it's too much, then sorry, unsubscribe. Fine, but what if they need to expose write access, say because they want strangers to be able to write to them?
+In that case, they have options: captcha, payment for write access, or third-party validation.
+
+### Groups
+
+We're still discussing communication between two people. What about groups?
+
+Groups can be implemented the same way, but it's important to consider how data flows and where it's stored. We can have a group where everyone follows their public shared readonly owners. Technically, this means Evolu must make n requests for sync. Remember, each owner can have its own relay. For a group of a thousand people, this is still feasible, but for a group of hundreds of thousands, it's not. Therefore, the only option is to group members together by assigning everyone a `SharedOwner`. Both approaches can be combined—having owners representing contacts with individuals and owners representing larger groups.
+
+Once a group of people communicates, sooner or later someone needs to be removed from the group. In the case of pairwise collaboration, this is simple—just end the communication/collaboration. For group collaboration, it's different. Removing someone from the group essentially means creating a new group (new owner) without the removed member. Then you need to send the new `SharedOwner` to all existing members. Naively, this means sending n - 1 messages, which doesn't scale and also unnecessarily takes up disk space. We need a mechanism to efficiently write something to only selected members.
+
+This is where public-key (asymmetric) cryptography comes in for secure group communication/collaboration. The state of the art is [MLS](https://messaginglayersecurity.rocks/). Combined with Evolu's range-based set reconciliation, collaboration can truly scale to many thousands of users. However, it's important to remember that if everyone uses a `SharedOwner`, external authentication is needed to prevent the [tragedy of the commons](https://en.wikipedia.org/wiki/Tragedy_of_the_commons).
+
+Evolu is designed to support various network topologies and different collaboration methods depending on the use case, and provides an API for this.

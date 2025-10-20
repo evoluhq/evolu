@@ -4,7 +4,7 @@ import clsx from "clsx";
 import { AnimatePresence, motion, useIsPresent } from "motion/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useRef } from "react";
+import { useState } from "react";
 
 import { useSectionStore } from "@/components/SectionProvider";
 import { Tag } from "@/components/Tag";
@@ -14,7 +14,7 @@ import { remToPx } from "@/lib/remToPx";
 import { IconArrowUpRight } from "@tabler/icons-react";
 
 function useInitialValue<T>(value: T, condition = true) {
-  const initialValue = useRef(value).current;
+  const [initialValue] = useState(value);
   return condition ? initialValue : value;
 }
 

@@ -252,11 +252,12 @@ app(appDeps);
 - To avoid clashes, wrap dependencies (`TimeDep`, `LoggerDep`).
 - Write factory function (`createTime`, `createTestTime`)
 - Both regular functions and factory functions accept a single argument named `deps`, combining one or more dependencies (e.g., `A & B & C`).
+- Sort dependencies alphabetically in ascending order when combining them.
 
 <Note>
-  Never create a global static mutable instance (e.g., `export const logger =
-  createLogger()`). Developers might use it instead of proper DI, turning it
-  into a service locator—a code smell that’s hard to test and refactor.
+  Never create a global instance (e.g., `export const logger = ...`). Developers
+  might use it instead of proper DI, turning it into a service locator—a code
+  smell that’s hard to test and refactor.
 </Note>
 
 Btw, Evolu provides

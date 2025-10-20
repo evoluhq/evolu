@@ -94,11 +94,14 @@ function MobileNavigationDialog({
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const initialPathname = useRef(pathname).current;
-  const initialSearchParams = useRef(searchParams).current;
+  const initialPathname = useRef(pathname);
+  const initialSearchParams = useRef(searchParams);
 
   useEffect(() => {
-    if (pathname !== initialPathname || searchParams !== initialSearchParams) {
+    if (
+      pathname !== initialPathname.current ||
+      searchParams !== initialSearchParams.current
+    ) {
       close();
     }
   }, [pathname, searchParams, close, initialPathname, initialSearchParams]);
