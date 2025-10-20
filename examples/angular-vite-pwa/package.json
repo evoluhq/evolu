@@ -1,0 +1,28 @@
+{
+  "name": "@example/angular-vite-pwa",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc && vite build",
+    "dev": "vite",
+    "generate-pwa-assets": "pwa-assets-generator"
+  },
+  "dependencies": {
+    "@angular/core": "^20",
+    "@angular/platform-browser": "^20",
+    "@evolu/common": "workspace:*",
+    "@evolu/web": "workspace:*"
+  },
+  "devDependencies": {
+    "@analogjs/vite-plugin-angular": "^1.20.1",
+    "@angular/build": "^20.3.6",
+    "@angular/compiler-cli": "^20.3.6",
+    "@tailwindcss/vite": "^4.1.12",
+    "@vite-pwa/assets-generator": "^1.0.0",
+    "tailwindcss": "^4.1.12",
+    "typescript": "~5.9.2",
+    "vite": "^7.1.1",
+    "vite-plugin-pwa": "^1.0.2"
+  }
+}
