@@ -3,8 +3,9 @@
  * compiler in the app itself.
  */
 
-import { evoluWebDeps } from "@evolu/web";
+import {evoluWebDeps} from "@evolu/web";
 import type {
+  AppOwner,
   Evolu,
   EvoluDeps,
   EvoluSchema,
@@ -99,20 +100,61 @@ export function queryState<
       // => this is also for HMR
       void evolu.loadQuery(query).then(updateState);
 
-      const unsubEvoluSub = evolu.subscribeQuery(query)(() => {
+      return evolu.subscribeQuery(query)(() => {
         const rows = evolu.getQueryRows(query);
 
         updateState(rows);
       });
-
-      return () => {
-        unsubEvoluSub();
-      };
     });
 
     return {
       // Svelte reactivity: it needs to be a getter
       get rows() {
+        return writableState;
+      },
+    };
+  }
+}
+
+/**
+ * Load and subscribe to the current AppOwner, and return an object with `current` property
+ * that are automatically updated when the appOwner changes.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { appOwnerState } from "@evolu/svelte";
+ *
+ * const owner = appOwnerState(evolu);
+ *
+ * // use owner.current to get the always up-to-date AppOwner,
+ * // so when you restore it owner.current will be updated immediately
+ * ```
+
+ */
+export function appOwnerState(
+  evolu: Evolu,
+): { readonly current: AppOwner | null } {
+  {
+    // writing to this variable - svelte's compiler will track it
+    let writableState: AppOwner | null = $state(null);
+
+    function updateState(appOwner: AppOwner | null): void {
+      writableState = appOwner;
+    }
+
+    const initialAppOwner = evolu.getAppOwner();
+    updateState(initialAppOwner);
+
+    $effect(() => {
+      return evolu.subscribeAppOwner(() => {
+        updateState(evolu.getAppOwner());
+      });
+    });
+
+    return {
+      // Svelte reactivity: it needs to be a getter
+      get current() {
         return writableState;
       },
     };
