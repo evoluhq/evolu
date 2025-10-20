@@ -74,17 +74,4 @@ export default defineConfig(
       "react-hooks/exhaustive-deps": "error",
     },
   },
-  // TODO: @Nedim - Remove this block and fix React
-  {
-    files: [
-      "apps/web/src/components/ThemeToggle.tsx",
-      "apps/web/src/components/Search.tsx",
-      "apps/web/src/components/Navigation.tsx",
-      "apps/web/src/components/Header.tsx",
-    ],
-    rules: {
-      "react-hooks/refs": "off",
-      "react-hooks/set-state-in-effect": "off",
-    },
-  },
 );

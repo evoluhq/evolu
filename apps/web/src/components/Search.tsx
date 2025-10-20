@@ -395,7 +395,7 @@ function SearchDialog({
             <form
               ref={formRef}
               {...autocomplete.getFormProps({
-                inputElement: inputRef.current,
+                inputElement: null,
               })}
             >
               <SearchInput
@@ -455,15 +455,11 @@ function useSearchProps() {
 }
 
 export function Search(): React.ReactElement {
-  const [modifierKey, setModifierKey] = useState<string>();
+  const [modifierKey] = useState<string>(() =>
+    // eslint-disable-next-line @typescript-eslint/no-deprecated
+    /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform) ? "⌘" : "Ctrl ",
+  );
   const { buttonProps, dialogProps } = useSearchProps();
-
-  useEffect(() => {
-    setModifierKey(
-      // eslint-disable-next-line @typescript-eslint/no-deprecated
-      /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform) ? "⌘" : "Ctrl ",
-    );
-  }, []);
 
   return (
     <div className="hidden lg:block lg:max-w-xs lg:flex-auto">
