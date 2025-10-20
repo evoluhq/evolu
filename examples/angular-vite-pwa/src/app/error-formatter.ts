@@ -1,7 +1,7 @@
 import {
   createFormatTypeError,
+  MaxLengthError,
   MinLengthError,
-  ValidMutationSizeError,
 } from "@evolu/common";
 
 /**
@@ -14,18 +14,13 @@ import {
  * end of this file.
  */
 export const formatTypeError = createFormatTypeError<
-  ValidMutationSizeError | MinLengthError
+  MinLengthError | MaxLengthError
 >((error): string => {
   switch (error.type) {
-    /**
-     * If schema types are used correctly (e.g., maxLength), this error should
-     * not occur. If it does, it indicates a developer mistake.
-     */
-    case "ValidMutationSize":
-      return "This is a developer error, it should not happen 🤨";
-    // Overrides a built-in error formatter.
     case "MinLength":
-      return `Minimal length is: ${error.min}`;
+      return `Text must be at least ${error.min} character${error.min === 1 ? "" : "s"} long`;
+    case "MaxLength":
+      return `Text is too long (maximum ${error.max} characters)`;
   }
 });
 

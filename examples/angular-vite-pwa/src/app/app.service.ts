@@ -1,55 +1,24 @@
 import { Injectable, OnDestroy, inject, signal } from "@angular/core";
-import {
-  InferRow,
-  Mnemonic,
-  Query,
-  Row,
-  binaryTimestampToTimestamp,
-  idToBinaryId,
-  kysely,
-} from "@evolu/common";
+import { InferRow, Mnemonic, Query, Row } from "@evolu/common";
 import { EVOLU } from "./app.config";
 import { formatTypeError } from "./error-formatter";
-import { Person, TodoCategoryId, TodoId } from "./schema";
+import { TodoId } from "./schema";
 
 @Injectable({ providedIn: "root" })
 export class AppService implements OnDestroy {
   private readonly evolu = inject(EVOLU);
   private readonly unsubscribes: Array<() => void> = [];
 
-  private readonly categoriesQuery = this.evolu.createQuery((db) =>
+  private readonly todosQuery = this.evolu.createQuery((db) =>
     db
-      .selectFrom("todoCategory")
-      .select(["id", "name"])
+      .selectFrom("todo")
+      .select(["id", "title", "isCompleted"])
       .where("isDeleted", "is not", 1)
-      .where("name", "is not", null)
-      .$narrowType<{ name: kysely.NotNull }>()
+      .where("title", "is not", null)
       .orderBy("createdAt"),
   );
 
-  private readonly todosWithCategoriesQuery = this.evolu.createQuery((db) =>
-    db
-      .selectFrom("todo")
-      .select(["id", "title", "isCompleted", "categoryId", "personJson"])
-      .where("isDeleted", "is not", 1)
-      .where("title", "is not", null)
-      .$narrowType<{ title: kysely.NotNull }>()
-      .orderBy("createdAt")
-      .select((eb) => [
-        kysely
-          .jsonArrayFrom(
-            eb
-              .selectFrom("todoCategory")
-              .select(["todoCategory.id", "todoCategory.name"])
-              .where("isDeleted", "is not", 1)
-              .orderBy("createdAt"),
-          )
-          .as("categories"),
-      ]),
-  );
-
-  readonly todos = signal<InferRow<typeof this.todosWithCategoriesQuery>[]>([]);
-  readonly categories = signal<InferRow<typeof this.categoriesQuery>[]>([]);
+  readonly todos = signal<InferRow<typeof this.todosQuery>[]>([]);
 
   readonly mnemonic = signal<string | null>(null);
 
@@ -75,10 +44,8 @@ export class AppService implements OnDestroy {
 
     const result = this.evolu.insert("todo", {
       title: trimmedTitle,
-      personJson: { name: "Joe", age: 32 } as Person,
     });
 
-    // Example error-handling, ommitted from here on for brevity.
     if (!result.ok) {
       alert(formatTypeError(result.error));
     }
@@ -103,85 +70,14 @@ export class AppService implements OnDestroy {
   toggleTodo(id: string, isCompleted: boolean) {
     this.evolu.update("todo", {
       id: id as TodoId,
-      isCompleted,
-    });
-  }
-
-  assignCategoryToTodo(todoId: string, categoryId: TodoCategoryId | null) {
-    this.evolu.update("todo", {
-      id: todoId as TodoId,
-      categoryId,
+      isCompleted: Number(isCompleted),
     });
   }
 
   deleteTodo(id: string) {
     this.evolu.update("todo", {
       id: id as TodoId,
-      isDeleted: true,
-    });
-  }
-
-  async getTodoHistory(todoId: string) {
-    const titleHistoryQuery = this.evolu.createQuery((db) =>
-      db
-        .selectFrom("evolu_history")
-        .select(["value", "timestamp"])
-        .where("table", "==", "todo")
-        .where("id", "==", idToBinaryId(todoId as TodoId))
-        .where("column", "==", "title")
-        .$narrowType<{ value: string }>()
-        .orderBy("timestamp", "desc"),
-    );
-
-    try {
-      const rows = await this.evolu.loadQuery(titleHistoryQuery);
-      return rows.map((row) => ({
-        ...row,
-        timestamp: binaryTimestampToTimestamp(row.timestamp),
-      }));
-    } catch (error) {
-      console.error("Failed to load todo history:", error);
-      return [];
-    }
-  }
-
-  /** Categories */
-
-  addCategory(name: string) {
-    const trimmedName = name.trim();
-    if (!trimmedName) {
-      return;
-    }
-
-    const result = this.evolu.insert("todoCategory", {
-      name: trimmedName,
-    });
-
-    if (!result.ok) {
-      alert(formatTypeError(result.error));
-    }
-  }
-
-  renameCategory(id: string, name: string) {
-    const trimmedName = name.trim();
-    if (!trimmedName) {
-      return;
-    }
-
-    const result = this.evolu.update("todoCategory", {
-      id: id as TodoCategoryId,
-      name: trimmedName,
-    });
-
-    if (!result.ok) {
-      alert(formatTypeError(result.error));
-    }
-  }
-
-  deleteCategory(id: string) {
-    this.evolu.update("todoCategory", {
-      id: id as TodoCategoryId,
-      isDeleted: true,
+      isDeleted: Number(true),
     });
   }
 
@@ -233,16 +129,9 @@ export class AppService implements OnDestroy {
   /** App lifecycle */
 
   private initializeData(): void {
-    const todosPromise = this.loadAndSubscribeEvoluQuery(
-      this.todosWithCategoriesQuery,
-      (rows) => this.todos.set(rows),
-    );
-    const categoriesPromise = this.loadAndSubscribeEvoluQuery(
-      this.categoriesQuery,
-      (rows) => this.categories.set(rows),
-    );
-
-    Promise.all([todosPromise, categoriesPromise])
+    this.loadAndSubscribeEvoluQuery(this.todosQuery, (rows) =>
+      this.todos.set(rows),
+    )
       .catch((error) => {
         console.error("Failed to load data:", error);
       })
