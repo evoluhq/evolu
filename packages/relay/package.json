@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "tsx --watch src/cli.ts -- start",
     "build": "shx rm -rf dist && tsc",
-    "start": "node dist/src/cli.js",
+    "start": "node dist/src/cli.js start",
     "clean": "shx rm -rf .turbo node_modules dist data/*.db data/*.db-*",
     "docker:build": "docker-compose build --no-cache",
     "docker:up": "docker-compose up --build",
