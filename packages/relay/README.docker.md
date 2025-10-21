@@ -34,6 +34,6 @@ pnpm docker:dev:down
 
 ## Configuration
 
-- **Port**: 4000 (modify in `docker-compose.yml`)
+- **Port**: 4000 (modify in `docker-compose.yaml`)
 - **Database**: SQLite database persists via Docker volumes
 - **Health Check**: Built-in monitoring via Docker Compose

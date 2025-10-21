@@ -4,14 +4,14 @@ services:
     image: evolu/relay:latest
     build:
       context: ../../
-      dockerfile: apps/relay/Dockerfile.dev
+      dockerfile: packages/relay/Dockerfile.dev
       tags:
         - evolu/relay:dev
     ports:
       - "4000:4000"
     volumes:
       # Use named volume by default, can be overridden with bind mount if needed
-      - evolu-relay-dev-data:/app/apps/relay/data
+      - evolu-relay-dev-data:/app/packages/relay/data
     environment:
       - NODE_ENV=${NODE_ENV:-production}
       - LOG_LEVEL=${LOG_LEVEL:-info}

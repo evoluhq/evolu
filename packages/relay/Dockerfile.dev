@@ -44,7 +44,7 @@ RUN chown evolu:nodejs /app
 USER evolu
 
 # Copy built application
-COPY --from=installer --chown=evolu:nodejs /app/apps/relay/dist ./dist
+COPY --from=installer --chown=evolu:nodejs /app/packages/relay/dist ./dist
 
 # Copy the complete node_modules with all dependencies
 COPY --from=installer --chown=evolu:nodejs /app/node_modules ./node_modules
