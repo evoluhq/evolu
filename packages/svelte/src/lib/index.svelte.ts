@@ -3,7 +3,6 @@
  * compiler in the app itself.
  */
 
-import {evoluWebDeps} from "@evolu/web";
 import type {
   AppOwner,
   Evolu,
@@ -14,6 +13,7 @@ import type {
   QueryRows,
   Row,
 } from "@evolu/common/evolu";
+import { evoluWebDeps } from "@evolu/web";
 
 // just in case we need to add some svelte specific deps
 export const evoluSvelteDeps: EvoluDeps = {
@@ -117,8 +117,8 @@ export function queryState<
 }
 
 /**
- * Load and subscribe to the current AppOwner, and return an object with `current` property
- * that are automatically updated when the appOwner changes.
+ * Load and subscribe to the current AppOwner, and return an object with
+ * `current` property that are automatically updated when the appOwner changes.
  *
  * ### Example
  *
@@ -130,11 +130,10 @@ export function queryState<
  * // use owner.current to get the always up-to-date AppOwner,
  * // so when you restore it owner.current will be updated immediately
  * ```
-
  */
-export function appOwnerState(
-  evolu: Evolu,
-): { readonly current: AppOwner | null } {
+export function appOwnerState(evolu: Evolu): {
+  readonly current: AppOwner | null;
+} {
   {
     // writing to this variable - svelte's compiler will track it
     let writableState: AppOwner | null = $state(null);
