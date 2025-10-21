@@ -21,6 +21,7 @@
     "android": "cd examples/react-expo && pnpm android",
     "typedoc": "typedoc && pnpm --filter=web run fix:docs",
     "bench": "turbo bench",
+    "examples:toggle-deps": "tsx ./scripts/toggle-examples-deps.ts",
     "examples:build": "turbo --filter @example/* build",
     "examples:react-nextjs:dev": "turbo --filter @example/react-nextjs dev",
     "examples:react-vite-pwa:dev": "turbo --filter @example/react-vite-pwa dev",
