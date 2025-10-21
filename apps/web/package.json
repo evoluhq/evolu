@@ -44,7 +44,7 @@
     "rss": "^1.2.2",
     "shiki": "^3.9.2",
     "simple-functional-loader": "^1.2.1",
-    "tailwindcss": "^4.1.11",
+    "tailwindcss": "^4.1.12",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2",
     "unist-util-filter": "^5.0.1",
