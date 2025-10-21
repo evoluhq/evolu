@@ -1,4 +1,4 @@
-# server
+# @evolu/relay
 
 ## 1.1.2-preview.6
 
