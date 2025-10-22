@@ -1,3 +1,4 @@
+export * from "./Auth.js";
 export * from "./Array.js";
 export * from "./Assert.js";
 export * from "./BigInt.js";
