@@ -22,7 +22,7 @@ export default function RootLayout({
   return (
     <Providers>
       <LetterGlitch
-        className="pointer-events-none !fixed inset-0 z-[-1] hidden transform-gpu opacity-[0.13] transition-opacity duration-300 sm:block dark:opacity-[0.05]"
+        className="pointer-events-none fixed! inset-0 z-[-1] hidden transform-gpu opacity-[0.13] transition-opacity duration-300 sm:block dark:opacity-[0.05]"
         glitchSpeed={50}
         centerVignette={false}
         outerVignette={true}

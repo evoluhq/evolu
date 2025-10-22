@@ -248,7 +248,7 @@ function CodeGroupHeader({
           {Children.map(children, (child, childIndex) => (
             <Tab
               className={clsx(
-                "flex-shrink-0 border-b py-3 whitespace-nowrap outline-hidden transition",
+                "shrink-0 border-b py-3 whitespace-nowrap outline-hidden transition",
                 childIndex === selectedIndex
                   ? "border-blue-500 text-blue-400"
                   : "border-transparent text-zinc-400 hover:text-zinc-300",
