@@ -1,5 +1,17 @@
 import {generateChallenge, fromBase64} from './crypto.js';
 
+export async function supportsWebAuthn(): Promise<boolean> {
+  return (
+    typeof navigator !== 'undefined' &&
+    typeof navigator.credentials !== 'undefined' &&
+    typeof navigator.credentials.create !== 'undefined' &&
+    typeof navigator.credentials.get !== 'undefined' &&
+    typeof PublicKeyCredential !== 'undefined' &&
+    typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable !== 'undefined' &&
+    (await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable())
+  );
+}
+
 export async function createCredential(
   username: string,
   seed: Uint8Array,
@@ -31,7 +43,17 @@ export async function getCredential(
   return credential;
 }
 
-export function createCredentialCreationOptions(
+export function extractSeedFromCredential(
+  credential: PublicKeyCredential,
+): Uint8Array {
+  const response = credential.response as AuthenticatorAssertionResponse;
+  if (!response.userHandle) {
+    throw new Error('No userHandle in credential response');
+  }
+  return new Uint8Array(response.userHandle);
+}
+
+function createCredentialCreationOptions(
   username: string,
   seed: Uint8Array,
   relyingPartyID?: string,
@@ -65,7 +87,7 @@ export function createCredentialCreationOptions(
   };
 }
 
-export function createCredentialRequestOptions(
+function createCredentialRequestOptions(
   credentialId: string,
   relyingPartyID?: string
 ): CredentialRequestOptions {
@@ -82,12 +104,4 @@ export function createCredentialRequestOptions(
       userVerification: 'required',
     },
   };
-}
-
-export function extractSeedFromCredential(credential: PublicKeyCredential): Uint8Array {
-  const response = credential.response as AuthenticatorAssertionResponse;
-  if (!response.userHandle) {
-    throw new Error('No userHandle in credential response');
-  }
-  return new Uint8Array(response.userHandle);
 }

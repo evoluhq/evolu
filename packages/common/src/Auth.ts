@@ -23,20 +23,24 @@ export interface AuthResult {
 
 export interface AuthProviderOptions {
   /** Native: Namespaces the stored entry. Defaults to the bundle identifier (when available) or `default`. */
-  readonly service?: string
+  readonly service?: string;
   /** iOS: Enable keychain item synchronization via iCloud. */
-  readonly iosSynchronizable?: boolean
+  readonly iosSynchronizable?: boolean;
   /** iOS: Custom keychain access group. */
-  readonly keychainGroup?: string
+  readonly keychainGroup?: string;
   /**
    * Native: Desired access-control policy. The native implementation will automatically fall back to the
    * strongest supported policy for the current device (Secure Enclave ➝ Biometry ➝ Device Credential ➝ None).
    */
-  readonly accessControl?: AccessControl
+  readonly accessControl?: AccessControl;
   /** Android: Fine tune whether the hardware-authenticated key should require biometrics only. */
-  readonly androidBiometricsStrongOnly?: boolean
+  readonly androidBiometricsStrongOnly?: boolean;
   /** Native: Optional prompt configuration that will be shown when protected keys require user presence. */
-  readonly authenticationPrompt?: AuthenticationPrompt
+  readonly authenticationPrompt?: AuthenticationPrompt;
+  /** Web: The relying party ID for WebAuthn. Defaults to the current hostname. */
+  readonly relyingPartyID?: string;
+  /** Web: The relying party name for WebAuthn. Defaults to 'Evolu'. */
+  readonly relyingPartyName?: string;
 }
 
 /**

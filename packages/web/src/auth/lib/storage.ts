@@ -1,8 +1,12 @@
 import {set, get, del, keys} from 'idb-keyval';
 import {deriveEncryptionKey, encryptAuthResult, decryptAuthResult, toBase64} from './crypto.js';
-
 import type {OwnerId, AuthResult} from '@evolu/common';
-import type {EncryptedStorage} from './types.js';
+
+export interface EncryptedStorage {
+  readonly nonce: string;
+  readonly ciphertext: string;
+  readonly credentialId: string;
+}
 
 const STORAGE_PREFIX = 'evolu_auth_';
 
