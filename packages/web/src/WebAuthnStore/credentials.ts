@@ -3,7 +3,7 @@ import {generateSeed, fromBase64} from './crypto.js';
 export async function supportsWebAuthn(): Promise<boolean> {
   return (
     typeof navigator !== 'undefined' &&
-    typeof navigator.credentials !== 'undefined' &&
+    'credentials' in navigator &&
     typeof navigator.credentials.create !== 'undefined' &&
     typeof navigator.credentials.get !== 'undefined' &&
     typeof PublicKeyCredential !== 'undefined' &&
@@ -63,8 +63,8 @@ function createCredentialCreationOptions(
     publicKey: {
       challenge: generateSeed() as BufferSource,
       rp: {
-        id: relyingPartyID || document.location.hostname,
-        name: relyingPartyName || 'Evolu',
+        id: relyingPartyID ?? document.location.hostname,
+        name: relyingPartyName ?? 'Evolu',
       },
       user: {
         id: seed as BufferSource,
@@ -94,7 +94,7 @@ function createCredentialRequestOptions(
   return {
     publicKey: {
       challenge: generateSeed() as BufferSource,
-      rpId: relyingPartyID || document.location.hostname,
+      rpId: relyingPartyID ?? document.location.hostname,
       allowCredentials: [
         {
           type: 'public-key',

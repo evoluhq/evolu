@@ -14,7 +14,7 @@ export async function setItem(
   const seed = generateSeed();
   const authResult = JSON.parse(value) as AuthResult;
   const credential = await createCredential(
-    authResult.username || 'Evolu User',
+    authResult.username,
     seed,
     options?.relyingPartyID,
     options?.relyingPartyName
@@ -55,12 +55,11 @@ export async function getItem(
     }
     return {
       key,
-      service: options?.service || 'default',
+      service: options?.service ?? 'default',
       value: JSON.stringify(authResult),
       metadata: createMetadata(),
     };
-  } catch (error) {
-    console.error('Failed to retrieve item:', error);
+  } catch (_error) {
     return null;
   }
 }
@@ -75,14 +74,14 @@ export async function deleteItem(
 
 export async function getAllItems(
   options?: AuthProviderOptionsValues
-): Promise<SensitiveInfoItem[]> {
-  const items = await keys();
-  const prefix = options?.service || 'default';
+): Promise<Array<SensitiveInfoItem>> {
+  const items = await keys<string>();
+  const prefix = options?.service ?? 'default';
   const metadata = createMetadata();
   return items
-    .filter(key => String(key).startsWith(prefix))
+    .filter(key => key.startsWith(prefix))
     .map(key => ({
-      key: String(key).split(':')[1],
+      key: key.split(':')[1],
       service: prefix,
       metadata,
     }));
@@ -103,6 +102,6 @@ function createMetadata(): SensitiveInfoItem['metadata'] {
 /**
  * Get storage key for owner ID. (supports namespaces via prefix)
  */
-function getStorageKey(key: string, prefix: string = 'default'): string {
+function getStorageKey(key: string, prefix = 'default'): string {
   return `${prefix}:${key}`;
 }

@@ -10,9 +10,6 @@ export const AUTH_DEFAULT_OPTIONS = {
   iosSynchronizable: true,
   authenticationPrompt: {
     title: 'Authenticate to unlock your session',
-    subtitle: 'Lorem ipsum, where does this show??',
-    description: 'Lorem ipsum, where does this show??',
-    cancel: 'Cancel',
   },
 } satisfies AuthProviderOptions;
 
@@ -35,7 +32,7 @@ export const createAuthProvider = (
     }
     try {
       return JSON.parse(account.value) as AuthResult;
-    } catch (error) {
+    } catch (_error) {
       return null;
     }
   },
@@ -88,7 +85,7 @@ export interface SecureStorage {
   setItem: (key: string, value: string, options?: AuthProviderOptions) => Promise<MutationResult>;
   getItem: (key: string, options?: AuthProviderOptionsValues) => Promise<SensitiveInfoItem | null>;
   deleteItem: (key: string, options?: AuthProviderOptions) => Promise<boolean>;
-  getAllItems: (options?: AuthProviderOptionsValues) => Promise<SensitiveInfoItem[]>;
+  getAllItems: (options?: AuthProviderOptionsValues) => Promise<Array<SensitiveInfoItem>>;
 }
 
 export interface AuthResult {
@@ -115,7 +112,7 @@ export type CreateAuthUnregister = ({ownerId, options}: {
 
 export type CreateAuthGetOwnerIds = ({options}: {
   options?: AuthProviderOptionsValues;
-}) => Promise<OwnerId[]>;
+}) => Promise<Array<OwnerId>>;
 
 /* Types below based off of react-native-sensitive-info */
 
