@@ -25,20 +25,20 @@ export const createAuthProvider = (
   secureStorage: SecureStorage,
   randomBytes: RandomBytes
 ): AuthProvider => ({
-    login: async ({ownerId, options}) => {
-      const account = await secureStorage.getItem(ownerId, {
-        ...AUTH_DEFAULT_OPTIONS,
-        ...options,
-      });
-      if (!account?.value) {
-        return null;
-      }
-      try {
-        return JSON.parse(account.value) as AuthResult;
-      } catch (error) {
-        return null;
-      }
-    },
+  login: async ({ownerId, options}) => {
+    const account = await secureStorage.getItem(ownerId, {
+      ...AUTH_DEFAULT_OPTIONS,
+      ...options,
+    });
+    if (!account?.value) {
+      return null;
+    }
+    try {
+      return JSON.parse(account.value) as AuthResult;
+    } catch (error) {
+      return null;
+    }
+  },
   register: async ({username, options}) => {
     const secret = createOwnerSecret({randomBytes});
     const owner = createOwner(secret);
@@ -48,12 +48,12 @@ export const createAuthProvider = (
     });
     return {owner, username};
   },
-    unregister: async ({ownerId, options}) => {
-      await secureStorage.deleteItem(ownerId, {
-        ...AUTH_DEFAULT_OPTIONS,
-        ...options,
-      });
-    },
+  unregister: async ({ownerId, options}) => {
+    await secureStorage.deleteItem(ownerId, {
+      ...AUTH_DEFAULT_OPTIONS,
+      ...options,
+    });
+  },
   getOwnerIds: async ({options}) => {
     const accounts = await secureStorage.getAllItems({
       ...AUTH_DEFAULT_OPTIONS,
