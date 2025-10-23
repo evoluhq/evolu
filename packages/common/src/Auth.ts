@@ -66,6 +66,10 @@ export const createAuthProvider = (
   },
 });
 
+export interface AuthProviderDep {
+  readonly authProvider: AuthProvider;
+}
+
 export interface AuthProvider {
   /** Logs in with the given owner ID. */
   login: CreateAuthLogin;

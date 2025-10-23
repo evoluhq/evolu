@@ -3,6 +3,7 @@ import { isNonEmptyArray, isNonEmptyReadonlyArray } from "../Array.js";
 import { assert, assertNonEmptyArray } from "../Assert.js";
 import { createCallbackRegistry } from "../CallbackRegistry.js";
 import { ConsoleDep } from "../Console.js";
+import { AuthProviderDep } from "../Auth.js";
 import { RandomBytesDep, SymmetricCryptoDecryptError } from "../Crypto.js";
 import { eqArrayNumber } from "../Eq.js";
 import { TransferableError } from "../Error.js";
@@ -629,6 +630,7 @@ interface InternalEvoluInstance<S extends EvoluSchema = EvoluSchema>
 
 export type EvoluDeps = ConsoleDep &
   CreateDbWorkerDep &
+  AuthProviderDep &
   Partial<FlushSyncDep> &
   RandomBytesDep &
   ReloadAppDep &

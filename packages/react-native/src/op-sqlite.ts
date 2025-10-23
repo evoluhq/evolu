@@ -2,6 +2,7 @@ import {
   createConsole,
   createRandom,
   createRandomBytes,
+  createAuthProvider,
   createTime,
   createWebSocket,
 } from "@evolu/common";
@@ -14,6 +15,7 @@ import {
 } from "@evolu/common/evolu";
 
 import { DevSettings } from "react-native";
+import { SensitiveInfo } from "react-native-sensitive-info";
 import { createOpSqliteDriver } from "./providers/OpSqliteDriver.js";
 import { polyfillHermes } from "./utils/Hermes.js";
 
@@ -22,6 +24,7 @@ polyfillHermes();
 const console = createConsole();
 const time = createTime();
 const randomBytes = createRandomBytes();
+const authProvider = createAuthProvider(SensitiveInfo, randomBytes);
 
 const createDbWorker: CreateDbWorker = () =>
   createDbWorkerForPlatform({
@@ -45,6 +48,7 @@ export const evoluReactNativeDeps: EvoluDeps = {
   console,
   createDbWorker,
   randomBytes,
+  authProvider,
   reloadApp,
   time,
 };
