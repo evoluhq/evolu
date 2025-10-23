@@ -133,7 +133,7 @@ function PlatformSelectorUI({
             <label
               key={platform.id}
               aria-label={platform.title}
-              className="group relative flex rounded-lg border border-zinc-300 bg-white px-3 py-2 hover:border-zinc-400 hover:bg-zinc-50 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-100 has-[:checked]:outline-2 has-[:checked]:-outline-offset-2 has-[:checked]:outline-blue-500 has-[:focus-visible]:outline-2 has-[:focus-visible]:-outline-offset-1 has-[:focus-visible]:outline-zinc-500 dark:border-zinc-600 dark:bg-zinc-800 dark:hover:border-zinc-500 dark:hover:bg-zinc-700 dark:has-[:checked]:border-blue-400 dark:has-[:checked]:bg-blue-900/50"
+              className="group relative flex rounded-lg border border-zinc-300 bg-white px-3 py-2 hover:border-zinc-400 hover:bg-zinc-50 has-checked:border-blue-500 has-checked:bg-blue-100 has-checked:outline-2 has-checked:-outline-offset-2 has-checked:outline-blue-500 has-focus-visible:outline-2 has-focus-visible:-outline-offset-1 has-focus-visible:outline-zinc-500 dark:border-zinc-600 dark:bg-zinc-800 dark:hover:border-zinc-500 dark:hover:bg-zinc-700 dark:has-checked:border-blue-400 dark:has-checked:bg-blue-900/50"
             >
               <input
                 value={platform.id}
@@ -146,8 +146,8 @@ function PlatformSelectorUI({
                 className="hidden"
               />
               <div className="flex items-center gap-1.5">
-                <IconComponent className="size-4 text-zinc-600 group-has-[:checked]:text-blue-700 dark:text-zinc-400 dark:group-has-[:checked]:text-blue-200" />
-                <span className="text-sm font-medium text-zinc-900 group-has-[:checked]:text-blue-800 dark:text-zinc-100 dark:group-has-[:checked]:text-blue-100">
+                <IconComponent className="size-4 text-zinc-600 group-has-checked:text-blue-700 dark:text-zinc-400 dark:group-has-checked:text-blue-200" />
+                <span className="text-sm font-medium text-zinc-900 group-has-checked:text-blue-800 dark:text-zinc-100 dark:group-has-checked:text-blue-100">
                   {platform.title}
                 </span>
               </div>

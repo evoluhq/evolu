@@ -159,7 +159,7 @@ const App: FC = () => {
           <button
             className={clsx(
               "cursor-pointer border-b-2 border-b-transparent whitespace-nowrap text-gray-500",
-              activeTab === "home" && "!border-blue-600 !text-blue-600",
+              activeTab === "home" && "border-blue-600! text-blue-600!",
             )}
             onClick={createHandleTabClick("home")}
           >
@@ -168,7 +168,7 @@ const App: FC = () => {
           <button
             className={clsx(
               "cursor-pointer border-b-2 border-b-transparent whitespace-nowrap text-gray-500",
-              activeTab === "projects" && "!border-blue-600 !text-blue-600",
+              activeTab === "projects" && "border-blue-600! text-blue-600!",
             )}
             onClick={createHandleTabClick("projects")}
           >
@@ -177,7 +177,7 @@ const App: FC = () => {
           <button
             className={clsx(
               "cursor-pointer border-b-2 border-b-transparent whitespace-nowrap text-gray-500",
-              activeTab === "account" && "!border-blue-600 !text-blue-600",
+              activeTab === "account" && "border-blue-600! text-blue-600!",
             )}
             onClick={createHandleTabClick("account")}
           >
@@ -186,7 +186,7 @@ const App: FC = () => {
           <button
             className={clsx(
               "cursor-pointer border-b-2 border-b-transparent whitespace-nowrap text-gray-500",
-              activeTab === "trash" && "!border-blue-600 !text-blue-600",
+              activeTab === "trash" && "border-blue-600! text-blue-600!",
             )}
             onClick={createHandleTabClick("trash")}
           >
@@ -545,7 +545,7 @@ const ProjectsTab: FC = () => {
             title="Add new project"
             onClick={handleAddProjectClick}
             variant="primary"
-            className="w-full py-3 !text-base font-semibold"
+            className="w-full py-3 text-base! font-semibold"
           />
         </div>
       </div>
