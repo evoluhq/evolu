@@ -1,5 +1,5 @@
-import {createOwner, createOwnerSecret, createRandomBytes, AUTH_DEFAULT_OPTIONS} from '@evolu/common';
 import {setItem, getItem, deleteItem, getAllItems} from 'react-native-sensitive-info';
+import {createOwner, createOwnerSecret, createRandomBytes, AUTH_DEFAULT_OPTIONS} from '@evolu/common';
 import type {AuthProvider, AuthResult, OwnerId} from '@evolu/common';
 
 const randomBytes = createRandomBytes();

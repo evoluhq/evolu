@@ -1,56 +1,43 @@
+import {setItem, getItem, deleteItem, getAllItems} from './lib/storage.js';
 import {createOwner, createOwnerSecret, createRandomBytes, AUTH_DEFAULT_OPTIONS} from '@evolu/common';
-import {setItem, getItem, deleteItem, getAllItems, getCredentialId} from './lib/storage.js';
-import {createCredential, getCredential, extractSeedFromCredential, supportsWebAuthn} from './lib/credentials.js';
-import {generateSeed} from './lib/crypto.js';
-import type {AuthProvider, OwnerId} from '@evolu/common';
+import type {AuthProvider, AuthResult, OwnerId} from '@evolu/common';
 
 const randomBytes = createRandomBytes();
 
 export const authProvider: AuthProvider = {
   login: async ({ownerId, options}) => {
-    if (!(await supportsWebAuthn())) {
-      throw new Error('WebAuthn not supported');
-    }
-    const credentialId = await getCredentialId(ownerId);
-    if (!credentialId) {
+    const account = await getItem(ownerId, {
+      ...AUTH_DEFAULT_OPTIONS,
+      ...options,
+    });
+    if (!account?.value) {
       return null;
     }
     try {
-      const credential = await getCredential(credentialId, options?.relyingPartyID);
-      const seed = extractSeedFromCredential(credential);
-      return await getItem(ownerId, seed);
+      return JSON.parse(account.value) as AuthResult;
     } catch (error) {
-      console.error('WebAuthn login failed:', error);
       return null;
     }
   },
   register: async ({username, options}) => {
-    if (!(await supportsWebAuthn())) {
-      throw new Error('WebAuthn not supported');
-    }
     const secret = createOwnerSecret({randomBytes});
     const owner = createOwner(secret);
-    const seed = generateSeed();
-    try {
-      const credential = await createCredential(
-        username,
-        seed,
-        options?.relyingPartyID,
-        options?.relyingPartyName,
-      );
-      const authResult = {username, owner};
-      await setItem(owner.id, authResult, seed, credential.rawId);
-      return authResult;
-    } catch (error) {
-      throw new Error('WebAuthn registration failed: ' + (error as Error).message);
-    }
+    await setItem(owner.id, JSON.stringify({username, owner}), {
+      ...AUTH_DEFAULT_OPTIONS,
+      ...options,
+    });
+    return {owner, username};
   },
   unregister: async ({ownerId, options}) => {
-    await deleteItem(ownerId);
+    await deleteItem(ownerId, {
+      ...AUTH_DEFAULT_OPTIONS,
+      ...options,
+    });
   },
   getOwnerIds:  async ({options}) => {
     const accounts = await getAllItems({
       ...AUTH_DEFAULT_OPTIONS,
+      includeValues: false,
       ...options,
     });
     return accounts

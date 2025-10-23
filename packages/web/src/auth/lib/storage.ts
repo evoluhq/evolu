@@ -1,62 +1,104 @@
 import {set, get, del, keys} from 'idb-keyval';
-import {deriveEncryptionKey, encryptAuthResult, decryptAuthResult, toBase64} from './crypto.js';
+import {deriveEncryptionKey, encryptAuthResult, decryptAuthResult, toBase64, generateSeed} from './crypto.js';
+import {getCredential, extractSeedFromCredential, createCredential, supportsWebAuthn} from './credentials.js';
+import type {AuthResult, AuthProviderOptions, AuthProviderOptionsValues, SensitiveInfoItem} from '@evolu/common';
 
-import type {OwnerId, AuthResult} from '@evolu/common';
-import type {SensitiveInfoEnumerateRequest} from 'react-native-sensitive-info';
+export async function setItem(
+  key: string,
+  value: string,
+  options?: AuthProviderOptions
+): Promise<void> {
+  if (!(await supportsWebAuthn())) {
+    throw new Error('WebAuthn not supported');
+  }
+  const seed = generateSeed();
+  const authResult = JSON.parse(value) as AuthResult;
+  const credential = await createCredential(
+    authResult.username || 'Evolu User',
+    seed,
+    options?.relyingPartyID,
+    options?.relyingPartyName
+  );
+  const encryptionKey = deriveEncryptionKey(seed);
+  const encryptedData = encryptAuthResult(authResult, encryptionKey);
+  await set(getStorageKey(key, options?.service), {
+    ...encryptedData,
+    credentialId: toBase64(new Uint8Array(credential.rawId)),
+  });
+}
 
-export interface EncryptedStorage {
-  readonly nonce: string;
-  readonly ciphertext: string;
-  readonly credentialId: string;
+export async function getItem(
+  key: string,
+  options?: AuthProviderOptions
+): Promise<SensitiveInfoItem | null> {
+  if (!(await supportsWebAuthn())) {
+    throw new Error('WebAuthn not supported');
+  }
+  const data = await get<{
+    readonly nonce: string;
+    readonly ciphertext: string;
+    readonly credentialId: string;
+  }>(getStorageKey(key, options?.service));
+  if (!data) {
+    return null;
+  }
+  try {
+    const credential = await getCredential(data.credentialId, options?.relyingPartyID);
+    const credentialSeed = extractSeedFromCredential(credential);
+    const encryptionKey = deriveEncryptionKey(credentialSeed);
+    const authResult = decryptAuthResult(data, encryptionKey);
+    if (!authResult) {
+      return null;
+    }
+    return {
+      key,
+      service: options?.service || 'default',
+      value: JSON.stringify(authResult),
+      metadata: createMetadata(),
+    };
+  } catch (error) {
+    console.error('Failed to retrieve item:', error);
+    return null;
+  }
+}
+
+export async function deleteItem(
+  key: string,
+  options?: AuthProviderOptions
+): Promise<void> {
+  await del(getStorageKey(key, options?.service));
+}
+
+export async function getAllItems(
+  options?: AuthProviderOptionsValues
+): Promise<SensitiveInfoItem[]> {
+  const items = await keys();
+  const prefix = options?.service || 'default';
+  const metadata = createMetadata();
+  return items
+    .filter(key => String(key).startsWith(prefix))
+    .map(key => ({
+      key: String(key).split(':')[1],
+      service: prefix,
+      metadata,
+    }));
+}
+
+/**
+ * Create metadata for web storage (WebAuthn + IndexedDB).
+ */
+function createMetadata(): SensitiveInfoItem['metadata'] {
+  return {
+    securityLevel: 'biometry',
+    backend: 'encryptedSharedPreferences',
+    accessControl: 'biometryCurrentSet',
+    timestamp: Date.now(),
+  };
 }
 
 /**
  * Get storage key for owner ID. (supports namespaces via prefix)
  */
-function getStorageKey(ownerId: OwnerId, prefix: string = 'default'): string {
-  return `${prefix}:${ownerId}`;
-}
-
-export async function getCredentialId(ownerId: OwnerId): Promise<string | null> {
-  const data = await get<EncryptedStorage>(getStorageKey(ownerId));
-  return data?.credentialId || null;
-}
-
-export async function setItem(
-  ownerId: OwnerId,
-  authResult: AuthResult,
-  seed: Uint8Array,
-  credentialRawId: ArrayBuffer
-): Promise<void> {
-  const encryptionKey = deriveEncryptionKey(seed);
-  const encryptedData = encryptAuthResult(authResult, encryptionKey);
-  await set(getStorageKey(ownerId), {
-    ...encryptedData,
-    credentialId: toBase64(new Uint8Array(credentialRawId)),
-  });
-}
-
-export async function getItem(
-  ownerId: OwnerId,
-  seed: Uint8Array
-): Promise<AuthResult | null> {
-  const data = await get<EncryptedStorage>(getStorageKey(ownerId));
-  if (!data) {
-    return null;
-  }
-  const encryptionKey = deriveEncryptionKey(seed);
-  return decryptAuthResult(data, encryptionKey);
-}
-
-export async function deleteItem(ownerId: OwnerId): Promise<void> {
-  await del(getStorageKey(ownerId));
-}
-
-export async function getAllItems(
-  options?: SensitiveInfoEnumerateRequest,
-): Promise<Array<{key: string}>> {
-  const items = await keys();
-  return items
-    .filter(key => String(key).startsWith(options?.service || 'default'))
-    .map(key => ({key: String(key).split(':')[1]}));
+function getStorageKey(key: string, prefix: string = 'default'): string {
+  return `${prefix}:${key}`;
 }

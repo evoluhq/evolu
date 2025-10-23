@@ -14,12 +14,44 @@ export const AUTH_DEFAULT_OPTIONS = {
   },
 } satisfies AuthProviderOptions;
 
+export interface AuthProvider {
+  /** Logs in with the given owner ID. */
+  login: CreateAuthLogin;
+  /** Registers a new owner with the given username. */
+  register: CreateAuthRegister;
+  /** Unregisters an owner with the given owner ID. */
+  unregister: CreateAuthUnregister;
+  /** Gets the IDs of all registered owners. */
+  getOwnerIds: CreateAuthGetOwnerIds;
+}
+
 export interface AuthResult {
   /** The owner created during registration. */
   readonly owner: Owner;
   /** The name provided by the user during registration. */
   readonly username: string;
 }
+
+export type CreateAuthLogin = ({ownerId, options}: {
+  ownerId: OwnerId;
+  options?: AuthProviderOptions;
+}) => Promise<AuthResult | null>;
+
+export type CreateAuthRegister = ({username, options}: {
+  username: string;
+  options?: AuthProviderOptions;
+}) => Promise<AuthResult | null>;
+
+export type CreateAuthUnregister = ({ownerId, options}: {
+  ownerId: OwnerId;
+  options?: AuthProviderOptions;
+}) => Promise<void>;
+
+export type CreateAuthGetOwnerIds = ({options}: {
+  options?: AuthProviderOptionsValues;
+}) => Promise<OwnerId[]>;
+
+/* Types below based off of react-native-sensitive-info */
 
 export interface AuthProviderOptions {
   /** Native: Namespaces the stored entry. Defaults to the bundle identifier (when available) or `default`. */
@@ -43,15 +75,10 @@ export interface AuthProviderOptions {
   readonly relyingPartyName?: string;
 }
 
-/**
- * Enumerates the access-control policy enforced by the underlying secure storage.
- */
-export type AccessControl =
-  | 'secureEnclaveBiometry'
-  | 'biometryCurrentSet'
-  | 'biometryAny'
-  | 'devicePasscode'
-  | 'none'
+export interface AuthProviderOptionsValues extends AuthProviderOptions {
+  /** When true, the stored value is returned for each item. Defaults to false. */
+  readonly includeValues?: boolean
+}
 
 /**
  * Configuration for the biometric/device credential prompt shown when a protected item is accessed.
@@ -63,32 +90,50 @@ export interface AuthenticationPrompt {
   readonly cancel?: string
 }
 
-export interface AuthProvider {
-  /** Logs in with the given owner ID. */
-  login: CreateAuthLogin;
-  /** Registers a new owner with the given username. */
-  register: CreateAuthRegister;
-  /** Unregisters an owner with the given owner ID. */
-  unregister: CreateAuthUnregister;
-  /** Gets the IDs of all registered owners. */
-  getOwnerIds: CreateAuthGetOwnerIds;
+export interface SensitiveInfoGetRequest extends AuthProviderOptions {
+  readonly key: string
+  /** Include the encrypted value when available. Defaults to true. */
+  readonly includeValue?: boolean
 }
 
-export type CreateAuthLogin = ({ownerId, options}: {
-  ownerId: OwnerId;
-  options?: AuthProviderOptions;
-}) => Promise<AuthResult | null>;
+export interface StorageMetadata {
+  readonly securityLevel: SecurityLevel
+  readonly backend: StorageBackend
+  readonly accessControl: AccessControl
+  readonly timestamp: number
+}
 
-export type CreateAuthRegister = ({username, options}: {
-  username: string;
-  options?: AuthProviderOptions;
-}) => Promise<AuthResult | null>;
+export interface SensitiveInfoItem {
+  readonly key: string
+  readonly service: string
+  readonly value?: string
+  readonly metadata: StorageMetadata
+}
 
-export type CreateAuthUnregister = ({ownerId, options}: {
-  ownerId: OwnerId;
-  options?: AuthProviderOptions;
-}) => Promise<void>;
+/**
+ * Enumerates the highest security tier that was effectively applied while storing a value.
+ */
+export type SecurityLevel =
+  | 'secureEnclave'
+  | 'strongBox'
+  | 'biometry'
+  | 'deviceCredential'
+  | 'software'
 
-export type CreateAuthGetOwnerIds = ({options}: {
-  options?: AuthProviderOptions;
-}) => Promise<OwnerId[]>;
+/**
+ * Enumerates the native storage backend used to persist sensitive data.
+ */
+export type StorageBackend =
+  | 'keychain'
+  | 'androidKeystore'
+  | 'encryptedSharedPreferences'
+
+/**
+ * Enumerates the access-control policy enforced by the underlying secure storage.
+ */
+export type AccessControl =
+  | 'secureEnclaveBiometry'
+  | 'biometryCurrentSet'
+  | 'biometryAny'
+  | 'devicePasscode'
+  | 'none'
