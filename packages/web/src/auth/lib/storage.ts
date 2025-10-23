@@ -1,6 +1,8 @@
 import {set, get, del, keys} from 'idb-keyval';
 import {deriveEncryptionKey, encryptAuthResult, decryptAuthResult, toBase64} from './crypto.js';
+
 import type {OwnerId, AuthResult} from '@evolu/common';
+import type {SensitiveInfoEnumerateRequest} from 'react-native-sensitive-info';
 
 export interface EncryptedStorage {
   readonly nonce: string;
@@ -8,16 +10,19 @@ export interface EncryptedStorage {
   readonly credentialId: string;
 }
 
-const STORAGE_PREFIX = 'evolu_auth_';
-
 /**
- * Get storage key for owner ID.
+ * Get storage key for owner ID. (supports namespaces via prefix)
  */
-function getStorageKey(ownerId: OwnerId): string {
-  return STORAGE_PREFIX + ownerId;
+function getStorageKey(ownerId: OwnerId, prefix: string = 'default'): string {
+  return `${prefix}:${ownerId}`;
 }
 
-export async function storeAuthResult(
+export async function getCredentialId(ownerId: OwnerId): Promise<string | null> {
+  const data = await get<EncryptedStorage>(getStorageKey(ownerId));
+  return data?.credentialId || null;
+}
+
+export async function setItem(
   ownerId: OwnerId,
   authResult: AuthResult,
   seed: Uint8Array,
@@ -31,7 +36,7 @@ export async function storeAuthResult(
   });
 }
 
-export async function retrieveAuthResult(
+export async function getItem(
   ownerId: OwnerId,
   seed: Uint8Array
 ): Promise<AuthResult | null> {
@@ -43,19 +48,15 @@ export async function retrieveAuthResult(
   return decryptAuthResult(data, encryptionKey);
 }
 
-export async function getCredentialId(ownerId: OwnerId): Promise<string | null> {
-  const data = await get<EncryptedStorage>(getStorageKey(ownerId));
-  return data?.credentialId || null;
-}
-
-export async function deleteAuthData(ownerId: OwnerId): Promise<void> {
+export async function deleteItem(ownerId: OwnerId): Promise<void> {
   await del(getStorageKey(ownerId));
 }
 
-export async function getAllOwnerIds(): Promise<OwnerId[]> {
-  const allKeys = await keys();
-  return allKeys
-    .filter(key => String(key).startsWith(STORAGE_PREFIX))
-    .map(key => String(key).slice(STORAGE_PREFIX.length) as OwnerId)
-    .filter(Boolean);
+export async function getAllItems(
+  options?: SensitiveInfoEnumerateRequest,
+): Promise<Array<{key: string}>> {
+  const items = await keys();
+  return items
+    .filter(key => String(key).startsWith(options?.service || 'default'))
+    .map(key => ({key: String(key).split(':')[1]}));
 }

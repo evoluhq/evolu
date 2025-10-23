@@ -1,5 +1,5 @@
-import {setItem, getItem, deleteItem, getAllItems} from 'react-native-sensitive-info';
 import {createOwner, createOwnerSecret, createRandomBytes, AUTH_DEFAULT_OPTIONS} from '@evolu/common';
+import {setItem, getItem, deleteItem, getAllItems} from 'react-native-sensitive-info';
 import type {AuthProvider, AuthResult, OwnerId} from '@evolu/common';
 
 const randomBytes = createRandomBytes();
@@ -41,7 +41,7 @@ export const authProvider: AuthProvider = {
       ...options,
     });
     return accounts
-      .map(owner => owner.key as OwnerId)
+      .map(account => account.key as OwnerId)
       .filter(Boolean);
   },
 };
