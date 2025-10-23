@@ -1,4 +1,4 @@
-import {generateChallenge, fromBase64} from './crypto.js';
+import {generateSeed, fromBase64} from './crypto.js';
 
 export async function supportsWebAuthn(): Promise<boolean> {
   return (
@@ -61,7 +61,7 @@ function createCredentialCreationOptions(
 ): CredentialCreationOptions {
   return {
     publicKey: {
-      challenge: generateChallenge() as BufferSource,
+      challenge: generateSeed() as BufferSource,
       rp: {
         id: relyingPartyID || document.location.hostname,
         name: relyingPartyName || 'Evolu',
@@ -93,7 +93,7 @@ function createCredentialRequestOptions(
 ): CredentialRequestOptions {
   return {
     publicKey: {
-      challenge: generateChallenge() as BufferSource,
+      challenge: generateSeed() as BufferSource,
       rpId: relyingPartyID || document.location.hostname,
       allowCredentials: [
         {

@@ -43,10 +43,6 @@ export function generateSeed(): Uint8Array {
   return randomBytes.create(32);
 }
 
-export function generateChallenge(): Uint8Array {
-  return randomBytes.create(32);
-}
-
 export function toBase64(buffer: Uint8Array): string {
   return btoa(String.fromCharCode(...buffer));
 }
