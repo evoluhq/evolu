@@ -1,5 +1,5 @@
-import type {Owner, OwnerId} from './Evolu/Owner.js';
 import {createOwner, createOwnerSecret} from './Evolu/Owner.js';
+import type {Owner, OwnerId} from './Evolu/Owner.js';
 import type {RandomBytes} from './Crypto.js';
 
 export const AUTH_NAMESPACE = 'evolu';
