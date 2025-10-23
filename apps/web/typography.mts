@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import type { Config } from "tailwindcss";
 
@@ -142,11 +141,11 @@ const typographyStyles: Config = {
             maxWidth: "none",
             marginLeft: `calc(-1 * ${theme("spacing.4")})`,
             marginRight: `calc(-1 * ${theme("spacing.4")})`,
-            "@screen sm": {
+            "@media (min-width: 640px)": {
               marginLeft: `calc(-1 * ${theme("spacing.6")})`,
               marginRight: `calc(-1 * ${theme("spacing.6")})`,
             },
-            "@screen lg": {
+            "@media (min-width: 1024px)": {
               marginLeft: `calc(-1 * ${theme("spacing.8")})`,
               marginRight: `calc(-1 * ${theme("spacing.8")})`,
             },
