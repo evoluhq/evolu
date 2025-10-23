@@ -1,24 +1,10 @@
 import {createOwner, createOwnerSecret, createRandomBytes} from '@evolu/common';
-import type {AuthProvider} from '@evolu/common';
+import {createCredential, getCredential, extractSeedFromCredential} from './lib/credentials.js';
+import {storeAuthResult, retrieveAuthResult, getCredentialId, deleteAuthData, getAllOwnerIds} from './lib/storage.js';
 import {supportsWebAuthn} from './lib/support.js';
-import {
-  generateSeed,
-  deriveEncryptionKey,
-  encryptAuthResult,
-  decryptAuthResult,
-} from './lib/crypto.js';
-import {
-  createCredential,
-  getCredential,
-  extractSeedFromCredential,
-} from './lib/credentials.js';
-import {
-  storeEncryptedData,
-  retrieveEncryptedData,
-  deleteEncryptedData,
-  getAllOwnerIds,
-} from './lib/storage.js';
-import {toBase64} from './lib/encoding.js';
+import {generateSeed} from './lib/crypto.js';
+
+import type {AuthProvider} from '@evolu/common';
 import type {WebAuthnOptions} from './lib/types.js';
 
 const randomBytes = createRandomBytes();
@@ -28,24 +14,15 @@ export const authProvider: AuthProvider = {
     if (!(await supportsWebAuthn())) {
       throw new Error('WebAuthn not supported');
     }
-
     const webAuthnOptions = options as WebAuthnOptions | undefined;
-    const encryptedData = await retrieveEncryptedData(ownerId);
-
-    if (!encryptedData) {
+    const credentialId = await getCredentialId(ownerId);
+    if (!credentialId) {
       return null;
     }
-
     try {
-      const credential = await getCredential(
-        encryptedData.credentialId,
-        webAuthnOptions?.relyingPartyID
-      );
+      const credential = await getCredential(credentialId, webAuthnOptions?.relyingPartyID);
       const seed = extractSeedFromCredential(credential);
-      const encryptionKey = deriveEncryptionKey(seed);
-      const authResult = decryptAuthResult(encryptedData, encryptionKey);
-
-      return authResult;
+      return await retrieveAuthResult(ownerId, seed);
     } catch (error) {
       console.error('WebAuthn login failed:', error);
       return null;
@@ -56,12 +33,10 @@ export const authProvider: AuthProvider = {
     if (!(await supportsWebAuthn())) {
       throw new Error('WebAuthn not supported');
     }
-
     const webAuthnOptions = options as WebAuthnOptions | undefined;
     const secret = createOwnerSecret({randomBytes});
     const owner = createOwner(secret);
     const seed = generateSeed();
-
     try {
       const credential = await createCredential(
         username,
@@ -69,16 +44,8 @@ export const authProvider: AuthProvider = {
         webAuthnOptions?.relyingPartyID,
         webAuthnOptions?.relyingPartyName
       );
-
-      const encryptionKey = deriveEncryptionKey(seed);
       const authResult = {username, owner};
-      const encryptedData = encryptAuthResult(authResult, encryptionKey);
-
-      await storeEncryptedData(owner.id, {
-        ...encryptedData,
-        credentialId: toBase64(new Uint8Array(credential.rawId)),
-      });
-
+      await storeAuthResult(owner.id, authResult, seed, credential.rawId);
       return authResult;
     } catch (error) {
       throw new Error('WebAuthn registration failed: ' + (error as Error).message);
@@ -86,7 +53,7 @@ export const authProvider: AuthProvider = {
   },
 
   unregister: async ({ownerId, options}) => {
-    await deleteEncryptedData(ownerId);
+    await deleteAuthData(ownerId);
   },
 
   getOwnerIds: async ({options}) => {

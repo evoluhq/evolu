@@ -1,5 +1,7 @@
 import {set, get, del, keys} from 'idb-keyval';
-import type {OwnerId} from '@evolu/common';
+import {deriveEncryptionKey, encryptAuthResult, decryptAuthResult, toBase64} from './crypto.js';
+
+import type {OwnerId, AuthResult} from '@evolu/common';
 import type {EncryptedStorage} from './types.js';
 
 const STORAGE_PREFIX = 'evolu_auth_';
@@ -11,36 +13,41 @@ function getStorageKey(ownerId: OwnerId): string {
   return STORAGE_PREFIX + ownerId;
 }
 
-/**
- * Store encrypted auth data.
- */
-export async function storeEncryptedData(
+export async function storeAuthResult(
   ownerId: OwnerId,
-  data: EncryptedStorage
+  authResult: AuthResult,
+  seed: Uint8Array,
+  credentialRawId: ArrayBuffer
 ): Promise<void> {
-  await set(getStorageKey(ownerId), data);
+  const encryptionKey = deriveEncryptionKey(seed);
+  const encryptedData = encryptAuthResult(authResult, encryptionKey);
+  await set(getStorageKey(ownerId), {
+    ...encryptedData,
+    credentialId: toBase64(new Uint8Array(credentialRawId)),
+  });
 }
 
-/**
- * Retrieve encrypted auth data.
- */
-export async function retrieveEncryptedData(
-  ownerId: OwnerId
-): Promise<EncryptedStorage | null> {
+export async function retrieveAuthResult(
+  ownerId: OwnerId,
+  seed: Uint8Array
+): Promise<AuthResult | null> {
   const data = await get<EncryptedStorage>(getStorageKey(ownerId));
-  return data || null;
+  if (!data) {
+    return null;
+  }
+  const encryptionKey = deriveEncryptionKey(seed);
+  return decryptAuthResult(data, encryptionKey);
 }
 
-/**
- * Delete encrypted auth data.
- */
-export async function deleteEncryptedData(ownerId: OwnerId): Promise<void> {
+export async function getCredentialId(ownerId: OwnerId): Promise<string | null> {
+  const data = await get<EncryptedStorage>(getStorageKey(ownerId));
+  return data?.credentialId || null;
+}
+
+export async function deleteAuthData(ownerId: OwnerId): Promise<void> {
   await del(getStorageKey(ownerId));
 }
 
-/**
- * Get all stored owner IDs.
- */
 export async function getAllOwnerIds(): Promise<OwnerId[]> {
   const allKeys = await keys();
   return allKeys
@@ -48,4 +55,3 @@ export async function getAllOwnerIds(): Promise<OwnerId[]> {
     .map(key => String(key).slice(STORAGE_PREFIX.length) as OwnerId)
     .filter(Boolean);
 }
-

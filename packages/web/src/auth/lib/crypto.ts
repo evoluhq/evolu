@@ -1,26 +1,14 @@
-import {
-  createRandomBytes,
-  createSymmetricCrypto,
-  createSlip21,
-  EncryptionKey,
-} from '@evolu/common';
+import {createRandomBytes, createSymmetricCrypto, createSlip21, EncryptionKey} from '@evolu/common';
 import type {AuthResult, Entropy32} from '@evolu/common';
-import {toBase64, fromBase64} from './encoding.js';
 
 const randomBytes = createRandomBytes();
 const symmetricCrypto = createSymmetricCrypto({randomBytes});
 
-/**
- * Derive encryption key from seed using SLIP21.
- */
 export function deriveEncryptionKey(seed: Uint8Array): EncryptionKey {
   const seed32 = seed.length === 32 ? seed : seed.slice(0, 32);
   return EncryptionKey.orThrow(createSlip21(seed32 as Entropy32, ['evolu', 'auth']));
 }
 
-/**
- * Encrypt auth result.
- */
 export function encryptAuthResult(authResult: AuthResult, encryptionKey: EncryptionKey): {
   nonce: string;
   ciphertext: string;
@@ -33,22 +21,16 @@ export function encryptAuthResult(authResult: AuthResult, encryptionKey: Encrypt
   };
 }
 
-/**
- * Decrypt auth result.
- */
 export function decryptAuthResult(
   encryptedData: {nonce: string; ciphertext: string},
   encryptionKey: EncryptionKey
 ): AuthResult | null {
   const nonce = fromBase64(encryptedData.nonce);
   const ciphertext = fromBase64(encryptedData.ciphertext);
-  
   const result = symmetricCrypto.decrypt(ciphertext, encryptionKey, nonce);
-  
   if (!result.ok) {
     return null;
   }
-  
   try {
     const json = new TextDecoder().decode(result.value);
     return JSON.parse(json) as AuthResult;
@@ -57,17 +39,18 @@ export function decryptAuthResult(
   }
 }
 
-/**
- * Generate a random 32-byte seed.
- */
 export function generateSeed(): Uint8Array {
   return randomBytes.create(32);
 }
 
-/**
- * Generate a random 32-byte challenge.
- */
 export function generateChallenge(): Uint8Array {
   return randomBytes.create(32);
 }
 
+export function toBase64(buffer: Uint8Array): string {
+  return btoa(String.fromCharCode(...buffer));
+}
+
+export function fromBase64(base64: string): Uint8Array {
+  return Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+}
