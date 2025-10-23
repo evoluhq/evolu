@@ -1,6 +1,8 @@
 import type {Owner, OwnerId} from './Evolu/Owner.js';
+import {createOwner, createOwnerSecret} from './Evolu/Owner.js';
+import type {RandomBytes} from './Crypto.js';
 
-export const AUTH_NAMESPACE = 'evoluAuth';
+export const AUTH_NAMESPACE = 'evolu';
 export const AUTH_DEFAULT_OPTIONS = {
   service: AUTH_NAMESPACE,
   keychainGroup: AUTH_NAMESPACE,
@@ -14,6 +16,56 @@ export const AUTH_DEFAULT_OPTIONS = {
   },
 } satisfies AuthProviderOptions;
 
+/**
+ * Creates an auth provider using the given secure storage implementation.
+ * This factory function allows each platform to provide its own storage layer
+ * while sharing the common auth logic.
+ */
+export const createAuthProvider = (
+  secureStorage: SecureStorage,
+  randomBytes: RandomBytes
+): AuthProvider => ({
+    login: async ({ownerId, options}) => {
+      const account = await secureStorage.getItem(ownerId, {
+        ...AUTH_DEFAULT_OPTIONS,
+        ...options,
+      });
+      if (!account?.value) {
+        return null;
+      }
+      try {
+        return JSON.parse(account.value) as AuthResult;
+      } catch (error) {
+        return null;
+      }
+    },
+  register: async ({username, options}) => {
+    const secret = createOwnerSecret({randomBytes});
+    const owner = createOwner(secret);
+    await secureStorage.setItem(owner.id, JSON.stringify({username, owner}), {
+      ...AUTH_DEFAULT_OPTIONS,
+      ...options,
+    });
+    return {owner, username};
+  },
+    unregister: async ({ownerId, options}) => {
+      await secureStorage.deleteItem(ownerId, {
+        ...AUTH_DEFAULT_OPTIONS,
+        ...options,
+      });
+    },
+  getOwnerIds: async ({options}) => {
+    const accounts = await secureStorage.getAllItems({
+      ...AUTH_DEFAULT_OPTIONS,
+      includeValues: false,
+      ...options,
+    });
+    return accounts
+      .map(account => account.key as OwnerId)
+      .filter(Boolean);
+  },
+});
+
 export interface AuthProvider {
   /** Logs in with the given owner ID. */
   login: CreateAuthLogin;
@@ -23,6 +75,16 @@ export interface AuthProvider {
   unregister: CreateAuthUnregister;
   /** Gets the IDs of all registered owners. */
   getOwnerIds: CreateAuthGetOwnerIds;
+}
+
+/**
+ * Secure storage interface that must be implemented by each platform.
+ */
+export interface SecureStorage {
+  setItem: (key: string, value: string, options?: AuthProviderOptions) => Promise<MutationResult>;
+  getItem: (key: string, options?: AuthProviderOptionsValues) => Promise<SensitiveInfoItem | null>;
+  deleteItem: (key: string, options?: AuthProviderOptions) => Promise<boolean>;
+  getAllItems: (options?: AuthProviderOptionsValues) => Promise<SensitiveInfoItem[]>;
 }
 
 export interface AuthResult {
@@ -107,6 +169,10 @@ export interface SensitiveInfoItem {
   readonly key: string
   readonly service: string
   readonly value?: string
+  readonly metadata: StorageMetadata
+}
+
+export interface MutationResult {
   readonly metadata: StorageMetadata
 }
 

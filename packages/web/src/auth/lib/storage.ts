@@ -1,13 +1,13 @@
 import {set, get, del, keys} from 'idb-keyval';
 import {deriveEncryptionKey, encryptAuthResult, decryptAuthResult, toBase64, generateSeed} from './crypto.js';
 import {getCredential, extractSeedFromCredential, createCredential, supportsWebAuthn} from './credentials.js';
-import type {AuthResult, AuthProviderOptions, AuthProviderOptionsValues, SensitiveInfoItem} from '@evolu/common';
+import type {AuthResult, AuthProviderOptions, AuthProviderOptionsValues, SensitiveInfoItem, MutationResult} from '@evolu/common';
 
 export async function setItem(
   key: string,
   value: string,
   options?: AuthProviderOptions
-): Promise<void> {
+): Promise<MutationResult> {
   if (!(await supportsWebAuthn())) {
     throw new Error('WebAuthn not supported');
   }
@@ -25,6 +25,9 @@ export async function setItem(
     ...encryptedData,
     credentialId: toBase64(new Uint8Array(credential.rawId)),
   });
+  return {
+    metadata: createMetadata(),
+  };
 }
 
 export async function getItem(
@@ -65,8 +68,9 @@ export async function getItem(
 export async function deleteItem(
   key: string,
   options?: AuthProviderOptions
-): Promise<void> {
+): Promise<boolean> {
   await del(getStorageKey(key, options?.service));
+  return true;
 }
 
 export async function getAllItems(
