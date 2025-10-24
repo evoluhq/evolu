@@ -1,5 +1,5 @@
-import {createOwner, createOwnerSecret} from './Evolu/Owner.js';
-import type {Owner, OwnerId} from './Evolu/Owner.js';
+import {createAppOwner, createOwnerSecret, OwnerEncryptionKey, OwnerWriteKey} from './Evolu/Owner.js';
+import type {AppOwner, OwnerId} from './Evolu/Owner.js';
 import type {RandomBytes} from './Crypto.js';
 
 export const AUTH_NAMESPACE = 'evolu';
@@ -22,7 +22,7 @@ export const createAuthProvider = (
   secureStorage: SecureStorage,
   randomBytes: RandomBytes
 ): AuthProvider => ({
-  login: async ({ownerId, options}) => {
+  login: async (ownerId, options) => {
     const account = await secureStorage.getItem(ownerId, {
       ...AUTH_DEFAULT_OPTIONS,
       ...options,
@@ -30,34 +30,37 @@ export const createAuthProvider = (
     if (!account?.value) {
       return null;
     }
-    try {
-      return JSON.parse(account.value) as AuthResult;
-    } catch (_error) {
-      return null;
-    }
+    const result = JSON.parse(account.value) as AuthResult;
+    // TODO: probably should save these as base64 instead of json serializing?
+    const writeKey = OwnerWriteKey.orThrow(new Uint8Array(Object.values(result.owner.writeKey)));
+    const encryptionKey = OwnerEncryptionKey.orThrow(new Uint8Array(Object.values(result.owner.encryptionKey)));
+    return {
+      username: result.username,
+      owner: {...result.owner, writeKey, encryptionKey},
+    };
   },
-  register: async ({username, options}) => {
-    const secret = createOwnerSecret({randomBytes});
-    const owner = createOwner(secret);
+  register: async (username, options) => {
+    const owner = createAppOwner(createOwnerSecret({randomBytes}));
     await secureStorage.setItem(owner.id, JSON.stringify({username, owner}), {
       ...AUTH_DEFAULT_OPTIONS,
       ...options,
     });
     return {owner, username};
   },
-  unregister: async ({ownerId, options}) => {
+  unregister: async (ownerId, options) => {
     await secureStorage.deleteItem(ownerId, {
       ...AUTH_DEFAULT_OPTIONS,
       ...options,
     });
   },
-  getOwnerIds: async ({options}) => {
+  getOwnerIds: async (options) => {
     const accounts = await secureStorage.getAllItems({
       ...AUTH_DEFAULT_OPTIONS,
       includeValues: false,
       ...options,
     });
     return accounts
+      .sort((a, b) => b.metadata.timestamp - a.metadata.timestamp)
       .map(account => account.key as OwnerId)
       .filter(Boolean);
   },
@@ -90,29 +93,15 @@ export interface SecureStorage {
 
 export interface AuthResult {
   /** The owner created during registration. */
-  readonly owner: Owner;
+  readonly owner: AppOwner;
   /** The name provided by the user during registration. */
   readonly username: string;
 }
 
-export type CreateAuthLogin = ({ownerId, options}: {
-  ownerId: OwnerId;
-  options?: AuthProviderOptions;
-}) => Promise<AuthResult | null>;
-
-export type CreateAuthRegister = ({username, options}: {
-  username: string;
-  options?: AuthProviderOptions;
-}) => Promise<AuthResult | null>;
-
-export type CreateAuthUnregister = ({ownerId, options}: {
-  ownerId: OwnerId;
-  options?: AuthProviderOptions;
-}) => Promise<void>;
-
-export type CreateAuthGetOwnerIds = ({options}: {
-  options?: AuthProviderOptionsValues;
-}) => Promise<Array<OwnerId>>;
+export type CreateAuthLogin = (ownerId: OwnerId, options?: AuthProviderOptions) => Promise<AuthResult | null>;
+export type CreateAuthRegister = (username: string, options?: AuthProviderOptions) => Promise<AuthResult | null>;
+export type CreateAuthUnregister = (ownerId: OwnerId, options?: AuthProviderOptions) => Promise<void>;
+export type CreateAuthGetOwnerIds = (options?: AuthProviderOptionsValues) => Promise<Array<OwnerId>>;
 
 /* Types below based off of react-native-sensitive-info */
 

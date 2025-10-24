@@ -10,7 +10,8 @@ import {
 import { evoluReactWebDeps } from "@evolu/react-web";
 import { IconEdit, IconTrash } from "@tabler/icons-react";
 import clsx from "clsx";
-import { FC, Suspense, useState } from "react";
+import { FC, Suspense, useMemo, useState } from "react";
+import { EvoluProfilePic } from "./EvoluProfilePic";
 
 // Primary keys are branded types, preventing accidental use of IDs across
 // different tables (e.g., a TodoId can't be used where a UserId is expected).
@@ -29,10 +30,18 @@ const Schema = {
   },
 };
 
+// TODO: move this to a wrapper component
+const ownerIds = await evoluReactWebDeps.authProvider.getOwnerIds();
+let authResult: Evolu.AuthResult | null = null;
+// Auto login if we have an owner
+if (ownerIds.length > 0) {
+  authResult = await evoluReactWebDeps.authProvider.login(ownerIds[0]);
+}
+
 // Create Evolu instance for the React web platform.
 const evolu = Evolu.createEvolu(evoluReactWebDeps)(Schema, {
-  name: Evolu.SimpleName.orThrow("evolu-react-vite-pwa-minimal"),
-
+  name: Evolu.SimpleName.orThrow(`pwa-vite-${authResult?.owner?.id ?? 'guest'}`),
+  externalAppOwner: authResult?.owner,
   reloadUrl: "/",
 
   ...(process.env.NODE_ENV === "development" && {
@@ -75,6 +84,7 @@ export const EvoluDemo: FC = () => {
           <Suspense>
             <Todos />
             <OwnerActions />
+            <AuthActions />
           </Suspense>
         </EvoluProvider>
       </div>
@@ -259,6 +269,14 @@ const OwnerActions: FC = () => {
   return (
     <div className="mt-8 rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
       <h2 className="mb-4 text-lg font-medium text-gray-900">Account</h2>
+      {appOwner && (
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <EvoluProfilePic id={appOwner.id} />
+          <span className="flex-1 text-sm italic text-gray-900">
+            {appOwner.id}
+          </span>
+        </div>
+      )}
       <p className="mb-4 text-sm text-gray-600">
         Todos are stored in local SQLite. When you sync across devices, your
         data is end-to-end encrypted using your mnemonic.
@@ -299,6 +317,68 @@ const OwnerActions: FC = () => {
           />
         </div>
       </div>
+    </div>
+  );
+};
+
+const AuthActions: FC = () => {
+  const appOwner = useAppOwner();
+  const otherOwnerIds = useMemo(() =>
+    ownerIds.filter((ownerId) => ownerId !== appOwner?.id)
+  , [appOwner?.id]);
+
+  // Create a new owner and register it to a passkey.
+  const handleRegisterClick = async () => {
+    const username = window.prompt("Enter your username:");
+    if (username == null) return;
+    const result = await evoluReactWebDeps.authProvider.register(username);
+    if (result) {
+      window.location.reload();
+    } else {
+      alert("Failed to register profile");
+    }
+  };
+
+  // Login with a specific owner id using the registered passkey.
+  const handleLoginClick = async (ownerId: Evolu.OwnerId) => {
+    const result = await evoluReactWebDeps.authProvider.login(ownerId);
+    if (result) {
+      window.location.reload();
+    } else {
+      alert("Failed to login");
+    }
+  };
+
+  return (
+    <div className="mt-8 rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
+      <h2 className="mb-4 text-lg font-medium text-gray-900">Passkeys</h2>
+      <p className="mb-4 text-sm text-gray-600">
+        Register a new passkey or choose a previously registered one.
+      </p>
+      <div className="space-y-3">
+        <Button
+          title="Register Passkey"
+          onClick={handleRegisterClick}
+          className="w-full"
+        />
+      </div>
+      {/** List of registered owners (avatar, name, and login button) */}
+      {otherOwnerIds.length > 0 && (
+        <div className="mt-4 flex flex-col gap-2">
+          {otherOwnerIds.map((ownerId) => (
+            <div key={ownerId} className="flex items-center justify-between gap-3">
+              <EvoluProfilePic id={ownerId} />
+              <span className="flex-1 text-sm italic text-gray-900">
+                {ownerId}
+              </span>
+              <Button
+                title="Login"
+                onClick={() => handleLoginClick(ownerId)}
+              />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

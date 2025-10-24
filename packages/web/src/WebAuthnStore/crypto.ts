@@ -24,19 +24,12 @@ export function encryptAuthResult(authResult: AuthResult, encryptionKey: Encrypt
 export function decryptAuthResult(
   encryptedData: {nonce: string; ciphertext: string},
   encryptionKey: EncryptionKey
-): AuthResult | null {
+): string | null {
   const nonce = fromBase64(encryptedData.nonce);
   const ciphertext = fromBase64(encryptedData.ciphertext);
   const result = symmetricCrypto.decrypt(ciphertext, encryptionKey, nonce);
-  if (!result.ok) {
-    return null;
-  }
-  try {
-    const json = new TextDecoder().decode(result.value);
-    return JSON.parse(json) as AuthResult;
-  } catch {
-    return null;
-  }
+  if (!result.ok) return null;
+  return new TextDecoder().decode(result.value);
 }
 
 export function generateSeed(): Uint8Array {

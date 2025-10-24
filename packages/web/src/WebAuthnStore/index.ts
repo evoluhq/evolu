@@ -49,14 +49,14 @@ export async function getItem(
     const credential = await getCredential(data.credentialId, options?.relyingPartyID);
     const credentialSeed = extractSeedFromCredential(credential);
     const encryptionKey = deriveEncryptionKey(credentialSeed);
-    const authResult = decryptAuthResult(data, encryptionKey);
-    if (!authResult) {
+    const authResultVal = decryptAuthResult(data, encryptionKey);
+    if (!authResultVal) {
       return null;
     }
     return {
       key,
       service: options?.service ?? 'default',
-      value: JSON.stringify(authResult),
+      value: authResultVal,
       metadata: createMetadata(),
     };
   } catch (_error) {
