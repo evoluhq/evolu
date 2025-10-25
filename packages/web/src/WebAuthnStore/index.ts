@@ -22,11 +22,11 @@ import type {
 } from "@evolu/common";
 import type { UseStore } from "idb-keyval";
 
-export async function setItem(
+export const setItem = async (
   key: string,
   value: string,
   options?: AuthProviderOptions,
-): Promise<MutationResult> {
+): Promise<MutationResult> => {
   if (options?.accessControl === "none") {
     await set(key, value, getStore(options.service));
     return {
@@ -54,12 +54,12 @@ export async function setItem(
   return {
     metadata: createFakeMetadata(),
   };
-}
+};
 
-export async function getItem(
+export const getItem = async (
   key: string,
   options?: AuthProviderOptions,
-): Promise<SensitiveInfoItem | null> {
+): Promise<SensitiveInfoItem | null> => {
   if (options?.accessControl === "none") {
     const value = await get<string>(key, getStore(options.service));
     return value
@@ -101,52 +101,52 @@ export async function getItem(
   } catch (_error) {
     return null;
   }
-}
+};
 
-export async function deleteItem(
+export const deleteItem = async (
   key: string,
   options?: AuthProviderOptions,
-): Promise<boolean> {
+): Promise<boolean> => {
   await del(key, getStore(options?.service));
   return true;
-}
+};
 
-export async function getAllItems(
+export const getAllItems = async (
   options?: AuthProviderOptionsValues,
-): Promise<Array<SensitiveInfoItem>> {
+): Promise<Array<SensitiveInfoItem>> => {
   const metadata = createFakeMetadata();
   const service = options?.service ?? "default";
   const items = await keys<string>(getStore(service));
   return items.map((key) => ({ key, service, metadata }));
-}
+};
 
-export async function clearService(
+export const clearService = async (
   options?: AuthProviderOptions,
-): Promise<void> {
+): Promise<void> => {
   await clear(getStore(options?.service));
-}
+};
 
 /**
  * Create metadata for web storage (WebAuthn + IndexedDB). TODO: implement like
  * react-native-sensitive-info
  */
-function createFakeMetadata(): SensitiveInfoItem["metadata"] {
+const createFakeMetadata = (): SensitiveInfoItem["metadata"] => {
   return {
     securityLevel: "biometry",
     backend: "encryptedSharedPreferences",
     accessControl: "biometryCurrentSet",
     timestamp: Date.now(),
   };
-}
+};
 
 /** Get storage key for owner ID. (supports namespaces via prefix) */
-function getStore(prefix = "default"): UseStore {
+const getStore = (prefix = "default"): UseStore => {
   return createStore(prefix, "evolu-auth");
-}
+};
 
 /** Throws an error if WebAuthn is not supported. */
-async function checkSupport(): Promise<void> {
+const checkSupport = async (): Promise<void> => {
   if (!(await supportsWebAuthn())) {
     throw new Error("WebAuthn not supported");
   }
-}
+};

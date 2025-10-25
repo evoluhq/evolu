@@ -1,6 +1,6 @@
 import { generateSeed, fromBase64 } from "./crypto.js";
 
-export async function supportsWebAuthn(): Promise<boolean> {
+export const supportsWebAuthn = async (): Promise<boolean> => {
   return (
     typeof navigator !== "undefined" &&
     "credentials" in navigator &&
@@ -11,14 +11,14 @@ export async function supportsWebAuthn(): Promise<boolean> {
       "undefined" &&
     (await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable())
   );
-}
+};
 
-export async function createCredential(
+export const createCredential = async (
   username: string,
   seed: Uint8Array,
   relyingPartyID?: string,
   relyingPartyName?: string,
-): Promise<PublicKeyCredential> {
+): Promise<PublicKeyCredential> => {
   const options = createCredentialCreationOptions(
     username,
     seed,
@@ -32,12 +32,12 @@ export async function createCredential(
     throw new Error("Failed to create WebAuthn credential");
   }
   return credential;
-}
+};
 
-export async function getCredential(
+export const getCredential = async (
   credentialId: string,
   relyingPartyID?: string,
-): Promise<PublicKeyCredential> {
+): Promise<PublicKeyCredential> => {
   const options = createCredentialRequestOptions(credentialId, relyingPartyID);
   const credential = (await navigator.credentials.get(
     options,
@@ -46,25 +46,25 @@ export async function getCredential(
     throw new Error("Failed to get WebAuthn credential");
   }
   return credential;
-}
+};
 
-export function extractSeedFromCredential(
+export const extractSeedFromCredential = (
   credential: PublicKeyCredential,
-): Uint8Array {
+): Uint8Array => {
   const response = credential.response as AuthenticatorAssertionResponse;
   if (!response.userHandle) {
     throw new Error("No userHandle in credential response");
   }
   return new Uint8Array(response.userHandle);
-}
+};
 
-function createCredentialCreationOptions(
+const createCredentialCreationOptions = (
   username: string,
   seed: Uint8Array,
   relyingPartyID?: string,
   relyingPartyName?: string,
   authenticatorAttachment?: AuthenticatorAttachment,
-): CredentialCreationOptions {
+): CredentialCreationOptions => {
   return {
     publicKey: {
       challenge: generateSeed() as BufferSource,
@@ -102,13 +102,13 @@ function createCredentialCreationOptions(
       },
     },
   };
-}
+};
 
-function createCredentialRequestOptions(
+const createCredentialRequestOptions = (
   credentialId: string,
   relyingPartyID?: string,
   userVerification?: "preferred" | "discouraged" | "required",
-): CredentialRequestOptions {
+): CredentialRequestOptions => {
   return {
     publicKey: {
       challenge: generateSeed() as BufferSource,
@@ -122,4 +122,4 @@ function createCredentialRequestOptions(
       ],
     },
   };
-}
+};
