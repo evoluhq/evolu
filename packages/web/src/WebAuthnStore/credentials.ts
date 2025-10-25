@@ -18,12 +18,16 @@ export const createCredential = async (
   seed: Uint8Array,
   relyingPartyID?: string,
   relyingPartyName?: string,
+  userVerification?: UserVerificationRequirement,
+  authenticatorAttachment?: AuthenticatorAttachment,
 ): Promise<PublicKeyCredential> => {
   const options = createCredentialCreationOptions(
     username,
     seed,
     relyingPartyID,
     relyingPartyName,
+    userVerification,
+    authenticatorAttachment,
   );
   const credential = (await navigator.credentials.create(
     options,
@@ -37,8 +41,9 @@ export const createCredential = async (
 export const getCredential = async (
   credentialId: string,
   relyingPartyID?: string,
+  userVerification?: UserVerificationRequirement,
 ): Promise<PublicKeyCredential> => {
-  const options = createCredentialRequestOptions(credentialId, relyingPartyID);
+  const options = createCredentialRequestOptions(credentialId, relyingPartyID, userVerification);
   const credential = (await navigator.credentials.get(
     options,
   )) as PublicKeyCredential | null;
@@ -63,6 +68,7 @@ const createCredentialCreationOptions = (
   seed: Uint8Array,
   relyingPartyID?: string,
   relyingPartyName?: string,
+  userVerification?: UserVerificationRequirement,
   authenticatorAttachment?: AuthenticatorAttachment,
 ): CredentialCreationOptions => {
   return {
@@ -84,20 +90,18 @@ const createCredentialCreationOptions = (
       ],
       attestation: "none",
       authenticatorSelection: {
+        // - "platform": Uses the platform's built-in authenticator.
+        // - "cross-platform": Uses a device specific authenticator (yubikey, fido2, etc.)
+        authenticatorAttachment: authenticatorAttachment ?? "platform",
         // - "discouraged": Only User Presence is needed.
         // - "preferred": User Verification is preferred but not required. Falls back to User Presence.
         // - "required": User Verification MUST occur (biometrics/PIN). Clients may silently downgrade to User Presence only.
-        userVerification: "required",
-        //authenticatorAttachment: undefined,
+        userVerification: userVerification ?? "required",
         // - "discouraged": Server-side credential is preferable, but will accept client-side discoverable credential.
         // - "preferred": Relying Party strongly prefers client-side discoverable credential but will accept server-side credential.
         // - "required": Client-side discoverable credential MUST be created, error if it can't be created.
         residentKey: "required",
-        // - "platform": Uses the platform's built-in authenticator.
-        // - "cross-platform": Uses a device specific authenticator (yubikey, fido2, etc.)
-        authenticatorAttachment: authenticatorAttachment ?? "platform",
-        // This property is deprecated in favor of residentKey (true = "required")
-        // Included for backwards compatibility.
+        // Included for backwards compatibility. Deprecated in favor of residentKey (true = "required")
         requireResidentKey: true,
       },
     },
@@ -107,7 +111,7 @@ const createCredentialCreationOptions = (
 const createCredentialRequestOptions = (
   credentialId: string,
   relyingPartyID?: string,
-  userVerification?: "preferred" | "discouraged" | "required",
+  userVerification?: UserVerificationRequirement,
 ): CredentialRequestOptions => {
   return {
     publicKey: {

@@ -13,7 +13,7 @@ import clsx from "clsx";
 import { FC, Suspense, useMemo, useState } from "react";
 import { EvoluProfilePic } from "./EvoluProfilePic";
 
-const APP_SERVICE = "pwa-vite";
+const APP_SERVICE = "pwa-react";
 
 // Primary keys are branded types, preventing accidental use of IDs across
 // different tables (e.g., a TodoId can't be used where a UserId is expected).

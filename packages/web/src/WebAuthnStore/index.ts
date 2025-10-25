@@ -46,6 +46,8 @@ export const setItem = async (
     seed,
     options?.relyingPartyID,
     options?.relyingPartyName,
+    options?.webAuthnUserVerification,
+    options?.webAuthnAuthenticatorAttachment,
   );
   const encryptionKey = deriveEncryptionKey(seed);
   const encryptedData = encryptAuthResult(authResult, encryptionKey);
@@ -93,6 +95,7 @@ export const getItem = async (
     const credential = await getCredential(
       data.credentialId,
       options?.relyingPartyID,
+      options?.webAuthnUserVerification,
     );
     const credentialSeed = extractSeedFromCredential(credential);
     const encryptionKey = deriveEncryptionKey(credentialSeed);
