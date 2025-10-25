@@ -30,7 +30,8 @@ const Schema = {
   },
 };
 
-// TODO: move this to a wrapper component (top-level await just for testing)
+// Note: this is a top-level await and used for brevity in the demo
+// In a real application, you would use a wrapper component.
 const ownerIds = await evoluReactWebDeps.authProvider.getProfiles();
 const authResult = await evoluReactWebDeps.authProvider.login();
 
@@ -332,9 +333,11 @@ const AuthActions: FC = () => {
   const handleRegisterClick = async () => {
     const username = window.prompt("Enter your username:");
     if (username == null) return;
-    const result = await evoluReactWebDeps.authProvider.register(username);
+    const result = await evoluReactWebDeps.authProvider.register(username, {
+      mnemonic: appOwner?.mnemonic ?? undefined,
+    });
     if (result) {
-      window.location.reload();
+      void evolu.resetAppOwner({ reload: true });
     } else {
       alert("Failed to register profile");
     }
