@@ -31,7 +31,7 @@ const Schema = {
 };
 
 // TODO: move this to a wrapper component (top-level await just for testing)
-const ownerIds = await evoluReactWebDeps.authProvider.getOwnerIds();
+const ownerIds = await evoluReactWebDeps.authProvider.getProfiles();
 const authResult = await evoluReactWebDeps.authProvider.login();
 
 // Create Evolu instance for the React web platform.
@@ -323,7 +323,7 @@ const OwnerActions: FC = () => {
 const AuthActions: FC = () => {
   const appOwner = useAppOwner();
   const otherOwnerIds = useMemo(() =>
-    ownerIds.filter((ownerId) => ownerId !== appOwner?.id)
+    ownerIds.filter(({ownerId}) => ownerId !== appOwner?.id)
   , [appOwner?.id]);
 
   // Create a new owner and register it to a passkey.
@@ -376,22 +376,39 @@ const AuthActions: FC = () => {
           onClick={handleClearAllClick}
         />
       </div>
-      {/** List of registered owners (avatar, name, and login button) */}
       {otherOwnerIds.length > 0 && (
         <div className="mt-4 flex flex-col gap-2">
-          {otherOwnerIds.map((ownerId) => (
-            <div key={ownerId} className="flex items-center justify-between gap-3">
-              <EvoluProfilePic id={ownerId} />
-              <span className="flex-1 text-sm italic text-gray-900">
-                {ownerId}
-              </span>
-              <Button
-                title="Login"
-                onClick={() => handleLoginClick(ownerId)}
-              />
-            </div>
+          {otherOwnerIds.map(({ownerId, username}) => (
+            <OwnerProfile
+              key={ownerId}
+              {...{ownerId, username, handleLoginClick}}
+            />
           ))}
         </div>
+      )}
+    </div>
+  );
+};
+
+const OwnerProfile: FC<{
+  ownerId: Evolu.OwnerId;
+  username: string;
+  handleLoginClick?: (ownerId: Evolu.OwnerId) => void;
+}> = ({ ownerId, username, handleLoginClick }) => {
+  return (
+    <div className="flex justify-between gap-3">
+      <div className="flex items-center gap-3">
+        <EvoluProfilePic id={ownerId} />
+        <span className="text-sm font-medium text-gray-900">
+          {username}
+        </span>
+        <span className="text-xs italic text-gray-500">{ownerId}</span>
+      </div>
+      {handleLoginClick && (
+        <Button
+          title="Login"
+          onClick={() => handleLoginClick(ownerId)}
+        />
       )}
     </div>
   );

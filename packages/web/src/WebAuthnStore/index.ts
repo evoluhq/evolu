@@ -8,13 +8,12 @@ import type {UseStore} from 'idb-keyval';
 export async function setItem(
   key: string,
   value: string,
-  options?: AuthProviderOptions
+  options?: AuthProviderOptions,
 ): Promise<MutationResult> {
   if (options?.accessControl === 'none') {
     await set(key, value, getStore(options?.service));
     return {
-      // TODO: metadata is fake, implement like react-native-sensitive-info
-      metadata: createMetadata(),
+      metadata: createFakeMetadata(),
     };
   }
   
@@ -22,7 +21,7 @@ export async function setItem(
   const seed = generateSeed();
   const authResult = JSON.parse(value) as AuthResult;
   const credential = await createCredential(
-    authResult.username,
+    options?.webAuthnUsername ?? 'Evolu User',
     seed,
     options?.relyingPartyID,
     options?.relyingPartyName
@@ -36,8 +35,7 @@ export async function setItem(
     getStore(options?.service)
   );
   return {
-    // TODO: metadata is fake, implement like react-native-sensitive-info
-    metadata: createMetadata(),
+    metadata: createFakeMetadata(),
   };
 }
 
@@ -51,8 +49,7 @@ export async function getItem(
       key,
       value,
       service: options?.service ?? 'default',
-      // TODO: metadata is fake, implement like react-native-sensitive-info
-      metadata: createMetadata(),
+      metadata: createFakeMetadata(),
     } : null;
   }
 
@@ -77,8 +74,7 @@ export async function getItem(
       key,
       service: options?.service ?? 'default',
       value: authResultVal,
-      // TODO: metadata is fake, implement like react-native-sensitive-info
-      metadata: createMetadata(),
+      metadata: createFakeMetadata(),
     };
   } catch (_error) {
     return null;
@@ -96,8 +92,7 @@ export async function deleteItem(
 export async function getAllItems(
   options?: AuthProviderOptionsValues
 ): Promise<Array<SensitiveInfoItem>> {
-  // TODO: metadata is fake, implement like react-native-sensitive-info
-  const metadata = createMetadata();
+  const metadata = createFakeMetadata();
   const service = options?.service ?? 'default';
   const items = await keys<string>(getStore(service));
   return items.map(key => ({key, service, metadata}));
@@ -111,8 +106,9 @@ export async function clearService(
 
 /**
  * Create metadata for web storage (WebAuthn + IndexedDB).
+ * TODO: implement like react-native-sensitive-info
  */
-function createMetadata(): SensitiveInfoItem['metadata'] {
+function createFakeMetadata(): SensitiveInfoItem['metadata'] {
   return {
     securityLevel: 'biometry',
     backend: 'encryptedSharedPreferences',

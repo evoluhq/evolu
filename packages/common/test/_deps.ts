@@ -54,6 +54,7 @@ export const testAuthProvider = createAuthProvider({
   getItem: vi.fn(),
   deleteItem: vi.fn(),
   getAllItems: vi.fn(),
+  clearService: vi.fn(),
 }, testRandomBytes);
 
 export const testCreateId = (): Id => createId(randomBytesDep);

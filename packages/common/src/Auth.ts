@@ -1,14 +1,17 @@
-import {createAppOwner, createOwnerSecret, OwnerEncryptionKey, OwnerWriteKey} from './Evolu/Owner.js';
+import {createAppOwner, createOwnerSecret, mnemonicToOwnerSecret, OwnerEncryptionKey, OwnerWriteKey} from './Evolu/Owner.js';
 import type {AppOwner, OwnerId} from './Evolu/Owner.js';
 import type {RandomBytes} from './Crypto.js';
+import type {Mnemonic} from './Type.js';
 
 export const AUTH_NAMESPACE = 'evolu';
-export const AUTH_LAST_OWNER_KEY = '_last_owner';
+export const AUTH_METAKEY_LAST_OWNER = '_last_owner';
+export const AUTH_METAKEY_OWNER_NAMES = '_owner_names';
 export const AUTH_DEFAULT_OPTIONS = {
   service: AUTH_NAMESPACE,
   keychainGroup: AUTH_NAMESPACE,
   androidBiometricsStrongOnly: true,
   iosSynchronizable: true,
+  webAuthnUsername: 'Evolu User',
   authenticationPrompt: {
     title: 'Authenticate to unlock your session',
   },
@@ -23,81 +26,182 @@ export const createAuthProvider = (
   secureStorage: SecureStorage,
   randomBytes: RandomBytes
 ): AuthProvider => {
-  const setOwnerItem = async (ownerId: OwnerId, owner: AppOwner, username: string, options?: AuthProviderOptions) => {
-    await secureStorage.setItem(ownerId, JSON.stringify({username, owner}), {
+  const auth = new EvoluAuth(secureStorage);
+  return {
+    login: async (ownerId, options) => {
+      // Use either specified owner or the last owner used during registration/login.
+      let targetOwnerId = ownerId ?? await auth.getLastOwnerId(options);
+      if (!targetOwnerId) return null;
+
+      // Retrieve and decrypt the owner (this will trigger device authentication)
+      const account = await auth.getOwnerItem(targetOwnerId, options);
+      if (!account?.value) return null;
+
+      // Unserialize the values (TODO: save these as base64 instead of json serializing)
+      const result = JSON.parse(account.value) as {owner: AppOwner};
+      const writeKey = OwnerWriteKey.orThrow(new Uint8Array(Object.values(result.owner.writeKey)));
+      const encryptionKey = OwnerEncryptionKey.orThrow(new Uint8Array(Object.values(result.owner.encryptionKey)));
+      const owner: AppOwner = {...result.owner, writeKey, encryptionKey};
+
+      // Lookup the associated username
+      const names = await auth.getOwnerNames(options);
+      const username = names[targetOwnerId] ?? '';
+
+      // Update the last owner for future login attempts
+      await auth.setLastOwnerId(targetOwnerId, options);
+
+      // Return the owner and associated username
+      return {owner, username};
+    },
+
+    register: async (username, options, mnemonic) => {
+      // Create an owner with a new secret or use specified mnemonic
+      const owner = createAppOwner(mnemonic
+        ? mnemonicToOwnerSecret(mnemonic)
+        : createOwnerSecret({randomBytes})
+      );
+
+      console.log('register', owner.id, username, mnemonic);
+      
+      // Store owner, associated username, and update last owner
+      await Promise.all([
+        auth.setOwnerItem(owner.id, owner, username, options),
+        auth.setOwnerName(owner.id, username, options),
+        auth.setLastOwnerId(owner.id, options),
+      ]);
+
+      // Return the owner and associated username
+      return {owner, username};
+    },
+
+    unregister: async (ownerId, options) => {
+      // Delete the owner and associated username
+      await Promise.all([
+        auth.deleteOwnerItem(ownerId, options),
+        auth.deleteOwnerName(ownerId, options),
+      ]);
+      
+      // If the owner was the last owner then set to
+      // the next owner based on metadata timestamp
+      const lastOwnerId = await auth.getLastOwnerId(options);
+      if (lastOwnerId === ownerId) {
+        const ids = await auth.getOwnerIds(options);
+        if (ids.length > 0) {
+          await auth.setLastOwnerId(ids[0], options);
+        }
+      }
+    },
+
+    getProfiles: async (options) => {
+      // Get all owner ids and associated usernames
+      const [ids, names] = await Promise.all([
+        auth.getOwnerIds(options),
+        auth.getOwnerNames(options),
+      ]);
+
+      // Return the list of profiles (usually used for login UX)
+      return ids.map(ownerId => ({
+        ownerId,
+        username: names[ownerId] ?? '',
+      }));
+    },
+
+    clearAll: async (options) => {
+      // Delete all owners and associated metadata (scoped to the service)
+      await auth.clearAuthStore(options);
+    },
+  };
+}
+
+export class EvoluAuth {
+  constructor(private readonly secureStorage: SecureStorage) {}
+
+  async setOwnerItem(id: OwnerId, owner: AppOwner, username: string, options?: AuthProviderOptions) {
+    await this.secureStorage.setItem(id, JSON.stringify({owner}), {
+      ...AUTH_DEFAULT_OPTIONS,
+      webAuthnUsername: username,
+      ...options,
+    });
+  }
+
+  async getOwnerItem(id: OwnerId, options?: AuthProviderOptions) {
+    return await this.secureStorage.getItem(id, {
       ...AUTH_DEFAULT_OPTIONS,
       ...options,
     });
-  };
-  const getOwnerItem = async (ownerId: OwnerId, options?: AuthProviderOptions) => {
-    return await secureStorage.getItem(ownerId, {
+  }
+
+  async deleteOwnerItem(id: OwnerId, options?: AuthProviderOptions) {
+    await this.secureStorage.deleteItem(id, {
       ...AUTH_DEFAULT_OPTIONS,
       ...options,
     });
-  };
-  const setLastOwnerId = async (ownerId: OwnerId, options?: AuthProviderOptions) => {
-    await secureStorage.setItem(AUTH_LAST_OWNER_KEY, ownerId, {
+  }
+
+  async setLastOwnerId(id: OwnerId, options?: AuthProviderOptions) {
+    await this.secureStorage.setItem(AUTH_METAKEY_LAST_OWNER, id, {
       ...AUTH_DEFAULT_OPTIONS,
       ...options,
       accessControl: 'none',
     });
-  };
-  const getLastOwnerId = async (options?: AuthProviderOptions) => {
-    const item = await secureStorage.getItem(AUTH_LAST_OWNER_KEY, {
+  }
+
+  async getLastOwnerId(options?: AuthProviderOptions) {
+    const item = await this.secureStorage.getItem(AUTH_METAKEY_LAST_OWNER, {
       ...AUTH_DEFAULT_OPTIONS,
       ...options,
       accessControl: 'none',
     });
     return item?.value as OwnerId;
-  };
-  return {
-    login: async (ownerId, options) => {
-      let targetOwnerId = ownerId ?? await getLastOwnerId(options);
-      const account = await getOwnerItem(targetOwnerId, options);
-      if (!account?.value) {
-        return null;
-      }
-      const result = JSON.parse(account.value) as AuthResult;
-      // TODO: probably should save these as base64 instead of json serializing?
-      const writeKey = OwnerWriteKey.orThrow(new Uint8Array(Object.values(result.owner.writeKey)));
-      const encryptionKey = OwnerEncryptionKey.orThrow(new Uint8Array(Object.values(result.owner.encryptionKey)));
-      await setLastOwnerId(targetOwnerId, options);
-      return {
-        username: result.username,
-        owner: {...result.owner, writeKey, encryptionKey},
-      };
-    },
-    register: async (username, options) => {
-      const owner = createAppOwner(createOwnerSecret({randomBytes}));
-      await setOwnerItem(owner.id, owner, username, options);
-      await setLastOwnerId(owner.id, options);
-      return {owner, username};
-    },
-    unregister: async (ownerId, options) => {
-      await secureStorage.deleteItem(ownerId, {
-        ...AUTH_DEFAULT_OPTIONS,
-        ...options,
-      });
-    },
-    getOwnerIds: async (options) => {
-      const accounts = await secureStorage.getAllItems({
-        ...AUTH_DEFAULT_OPTIONS,
-        includeValues: false,
-        ...options,
-      });
-      return accounts
-        .filter(i => i.key !== AUTH_LAST_OWNER_KEY)
-        .sort((a, b) => b.metadata.timestamp - a.metadata.timestamp)
-        .map(account => account.key as OwnerId)
-        .filter(Boolean);
-    },
-    clearAll: async (options) => {
-      await secureStorage.clearService({
-        ...AUTH_DEFAULT_OPTIONS,
-        ...options,
-      });
-    },
-  };
+  }
+
+  async getOwnerNames(options?: AuthProviderOptions): Promise<Record<OwnerId, string>> {
+    const item = await this.secureStorage.getItem(AUTH_METAKEY_OWNER_NAMES, {
+      ...AUTH_DEFAULT_OPTIONS,
+      ...options,
+      accessControl: 'none',
+    });
+    return item?.value ? JSON.parse(item.value) : {};
+  }
+
+  async setOwnerName(id: OwnerId, username: string, options?: AuthProviderOptions) {
+    const names = await this.getOwnerNames(options);
+    names[id] = username;
+    await this.secureStorage.setItem(AUTH_METAKEY_OWNER_NAMES, JSON.stringify(names), {
+      ...AUTH_DEFAULT_OPTIONS,
+      ...options,
+      accessControl: 'none',
+    });
+  }
+
+  async deleteOwnerName(id: OwnerId, options?: AuthProviderOptions) {
+    const names = await this.getOwnerNames(options);
+    delete names[id];
+    await this.secureStorage.setItem(AUTH_METAKEY_OWNER_NAMES, JSON.stringify(names), {
+      ...AUTH_DEFAULT_OPTIONS,
+      ...options,
+      accessControl: 'none',
+    });
+  }
+
+  async getOwnerIds(options?: AuthProviderOptions): Promise<Array<OwnerId>> {
+    const items = await this.secureStorage.getAllItems({
+      ...AUTH_DEFAULT_OPTIONS,
+      ...options,
+      includeValues: false,
+    });
+    return items
+      .filter(Boolean)
+      .filter(i => i.key !== AUTH_METAKEY_LAST_OWNER && i.key !== AUTH_METAKEY_OWNER_NAMES)
+      .map(i => i.key as OwnerId);
+  }
+
+  async clearAuthStore(options?: AuthProviderOptions) {
+    await this.secureStorage.clearService({
+      ...AUTH_DEFAULT_OPTIONS,
+      ...options,
+    });
+  }
 }
 
 export interface AuthProviderDep {
@@ -111,8 +215,8 @@ export interface AuthProvider {
   register: CreateAuthRegister;
   /** Unregisters an owner with the given owner ID. */
   unregister: CreateAuthUnregister;
-  /** Gets the IDs of all registered owners. */
-  getOwnerIds: CreateAuthGetOwnerIds;
+  /** Lists all registered owner ids with associated usernames. */
+  getProfiles: CreateAuthGetProfiles;
   /** Clears all owners and metadata from the auth provider. */
   clearAll: CreateAuthClearAll;
 }
@@ -136,9 +240,9 @@ export interface AuthResult {
 }
 
 export type CreateAuthLogin = (ownerId?: OwnerId, options?: AuthProviderOptions) => Promise<AuthResult | null>;
-export type CreateAuthRegister = (username: string, options?: AuthProviderOptions) => Promise<AuthResult | null>;
+export type CreateAuthRegister = (username: string, options?: AuthProviderOptions, mnemonic?: Mnemonic) => Promise<AuthResult | null>;
 export type CreateAuthUnregister = (ownerId: OwnerId, options?: AuthProviderOptions) => Promise<void>;
-export type CreateAuthGetOwnerIds = (options?: AuthProviderOptionsValues) => Promise<Array<OwnerId>>;
+export type CreateAuthGetProfiles = (options?: AuthProviderOptionsValues) => Promise<Array<{ownerId: OwnerId, username: string}>>;
 export type CreateAuthClearAll = (options?: AuthProviderOptions) => Promise<void>;
 
 /* Types below based off of react-native-sensitive-info */
@@ -163,6 +267,8 @@ export interface AuthProviderOptions {
   readonly relyingPartyID?: string;
   /** Web: The relying party name for WebAuthn. Defaults to 'Evolu'. */
   readonly relyingPartyName?: string;
+  /** Web: The username for WebAuthn. Defaults to 'Evolu User'. */
+  readonly webAuthnUsername?: string;
 }
 
 export interface AuthProviderOptionsValues extends AuthProviderOptions {
@@ -231,3 +337,4 @@ export type AccessControl =
   | 'biometryAny'
   | 'devicePasscode'
   | 'none'
+
