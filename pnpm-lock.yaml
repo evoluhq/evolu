@@ -731,8 +731,8 @@ importers:
         specifier: ^0.31.2
         version: 0.31.2(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       react-native-sensitive-info:
-        specifier: 6.0.0-rc.3
-        version: 6.0.0-rc.3(react-native-nitro-modules@0.31.2(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+        specifier: ^6.0.0-rc.4
+        version: 6.0.0-rc.4(react-native-nitro-modules@0.31.2(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       shx:
         specifier: ^0.4.0
         version: 0.4.0
@@ -8178,8 +8178,8 @@ packages:
       react: '*'
       react-native: '*'
 
-  react-native-sensitive-info@6.0.0-rc.3:
-    resolution: {integrity: sha512-/rQtLRWP0r1i/BfdIQyy/xVZmRJeJENnhQgja9XT1aZBMYmWC01ndwJ6+Y6d4NMkW+vREYJSV+it8WfkUdY2Nw==}
+  react-native-sensitive-info@6.0.0-rc.4:
+    resolution: {integrity: sha512-E1p86SOkTVnbBf0Hsx4SQ2JHlIe548aurYQS95UcMn3cEhhp1d2YTvjma2i4PCZFFqVUHjMKMLup6CXB+OjAbg==}
     peerDependencies:
       react: '*'
       react-native: '*'
@@ -18448,7 +18448,7 @@ snapshots:
       react-native: 0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0)
       warn-once: 0.1.1
 
-  react-native-sensitive-info@6.0.0-rc.3(react-native-nitro-modules@0.31.2(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
+  react-native-sensitive-info@6.0.0-rc.4(react-native-nitro-modules@0.31.2(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
     dependencies:
       react: 19.1.0
       react-native: 0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0)
