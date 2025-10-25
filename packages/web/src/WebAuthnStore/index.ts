@@ -11,7 +11,7 @@ export async function setItem(
   options?: AuthProviderOptions,
 ): Promise<MutationResult> {
   if (options?.accessControl === 'none') {
-    await set(key, value, getStore(options?.service));
+    await set(key, value, getStore(options.service));
     return {
       metadata: createFakeMetadata(),
     };
@@ -44,11 +44,11 @@ export async function getItem(
   options?: AuthProviderOptions
 ): Promise<SensitiveInfoItem | null> {
   if (options?.accessControl === 'none') {
-    const value = await get<string>(key, getStore(options?.service));
+    const value = await get<string>(key, getStore(options.service));
     return value ? {
       key,
       value,
-      service: options?.service ?? 'default',
+      service: options.service ?? 'default',
       metadata: createFakeMetadata(),
     } : null;
   }
