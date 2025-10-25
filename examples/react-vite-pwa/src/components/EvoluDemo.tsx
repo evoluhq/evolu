@@ -36,7 +36,9 @@ const authResult = await evoluReactWebDeps.authProvider.login();
 
 // Create Evolu instance for the React web platform.
 const evolu = Evolu.createEvolu(evoluReactWebDeps)(Schema, {
-  name: Evolu.SimpleName.orThrow(`pwa-vite-${authResult?.owner?.id ?? 'guest'}`),
+  name: Evolu.SimpleName.orThrow(
+    `pwa-vite-${authResult?.owner?.id ?? "guest"}`,
+  ),
   externalAppOwner: authResult?.owner,
   reloadUrl: "/",
 
@@ -267,10 +269,12 @@ const OwnerActions: FC = () => {
       <h2 className="mb-4 text-lg font-medium text-gray-900">Account</h2>
       {appOwner && (
         <div className="mb-4 flex items-center justify-between gap-3">
-          <OwnerProfile {...{
-            ownerId: appOwner.id,
-            username: authResult?.username ?? 'Guest',
-          }}/>
+          <OwnerProfile
+            {...{
+              ownerId: appOwner.id,
+              username: authResult?.username ?? "Guest",
+            }}
+          />
         </div>
       )}
       <p className="mb-4 text-sm text-gray-600">
@@ -310,10 +314,7 @@ const OwnerActions: FC = () => {
             title="Download Backup"
             onClick={handleDownloadDatabaseClick}
           />
-          <Button
-            title="Reset All Data"
-            onClick={handleResetAppOwnerClick}
-          />
+          <Button title="Reset All Data" onClick={handleResetAppOwnerClick} />
         </div>
       </div>
     </div>
@@ -322,9 +323,10 @@ const OwnerActions: FC = () => {
 
 const AuthActions: FC = () => {
   const appOwner = useAppOwner();
-  const otherOwnerIds = useMemo(() =>
-    ownerIds.filter(({ownerId}) => ownerId !== appOwner?.id)
-  , [appOwner?.id]);
+  const otherOwnerIds = useMemo(
+    () => ownerIds.filter(({ ownerId }) => ownerId !== appOwner?.id),
+    [appOwner?.id],
+  );
 
   // Create a new owner and register it to a passkey.
   const handleRegisterClick = async () => {
@@ -351,7 +353,7 @@ const AuthActions: FC = () => {
   // Clear all data including passkeys and metadata.
   const handleClearAllClick = async () => {
     const confirmed = window.confirm(
-      "Are you sure you want to clear all data? This will remove all passkeys and cannot be undone."
+      "Are you sure you want to clear all data? This will remove all passkeys and cannot be undone.",
     );
     if (!confirmed) return;
     await evoluReactWebDeps.authProvider.clearAll();
@@ -378,10 +380,10 @@ const AuthActions: FC = () => {
       </div>
       {otherOwnerIds.length > 0 && (
         <div className="mt-4 flex flex-col gap-2">
-          {otherOwnerIds.map(({ownerId, username}) => (
+          {otherOwnerIds.map(({ ownerId, username }) => (
             <OwnerProfile
               key={ownerId}
-              {...{ownerId, username, handleLoginClick}}
+              {...{ ownerId, username, handleLoginClick }}
             />
           ))}
         </div>
@@ -399,16 +401,11 @@ const OwnerProfile: FC<{
     <div className="flex justify-between gap-3">
       <div className="flex items-center gap-3">
         <EvoluProfilePic id={ownerId} />
-        <span className="text-sm font-medium text-gray-900">
-          {username}
-        </span>
-        <span className="text-xs italic text-gray-500">{ownerId}</span>
+        <span className="text-sm font-medium text-gray-900">{username}</span>
+        <span className="text-xs text-gray-500 italic">{ownerId}</span>
       </div>
       {handleLoginClick && (
-        <Button
-          title="Login"
-          onClick={() => handleLoginClick(ownerId)}
-        />
+        <Button title="Login" onClick={() => handleLoginClick(ownerId)} />
       )}
     </div>
   );

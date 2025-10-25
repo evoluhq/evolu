@@ -1,4 +1,9 @@
-import { createAuthProvider, CreateWebSocket, TimingSafeEqual, WebSocket } from "@evolu/common";
+import {
+  createAuthProvider,
+  CreateWebSocket,
+  TimingSafeEqual,
+  WebSocket,
+} from "@evolu/common";
 import BetterSQLite, { Statement } from "better-sqlite3";
 import { timingSafeEqual } from "crypto";
 import { Console } from "../src/Console.js";
@@ -49,13 +54,16 @@ export const testRandomBytes: RandomBytes = {
 
 const randomBytesDep = { randomBytes: testRandomBytes };
 
-export const testAuthProvider = createAuthProvider({
-  setItem: vi.fn(),
-  getItem: vi.fn(),
-  deleteItem: vi.fn(),
-  getAllItems: vi.fn(),
-  clearService: vi.fn(),
-}, testRandomBytes);
+export const testAuthProvider = createAuthProvider(
+  {
+    setItem: vi.fn(),
+    getItem: vi.fn(),
+    deleteItem: vi.fn(),
+    getAllItems: vi.fn(),
+    clearService: vi.fn(),
+  },
+  testRandomBytes,
+);
 
 export const testCreateId = (): Id => createId(randomBytesDep);
 

@@ -17,7 +17,7 @@ function rehypeParseCodeBlocks() {
   };
 }
 
-/** @type {import('shiki').Highlighter} */
+/** @type {import("shiki").Highlighter} */
 let highlighter;
 
 function rehypeShiki() {

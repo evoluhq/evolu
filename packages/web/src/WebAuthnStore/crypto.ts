@@ -1,20 +1,33 @@
-import {createRandomBytes, createSymmetricCrypto, createSlip21, EncryptionKey} from '@evolu/common';
-import type {AuthResult, Entropy32} from '@evolu/common';
+import {
+  createRandomBytes,
+  createSymmetricCrypto,
+  createSlip21,
+  EncryptionKey,
+} from "@evolu/common";
+import type { AuthResult, Entropy32 } from "@evolu/common";
 
 const randomBytes = createRandomBytes();
-const symmetricCrypto = createSymmetricCrypto({randomBytes});
+const symmetricCrypto = createSymmetricCrypto({ randomBytes });
 
 export function deriveEncryptionKey(seed: Uint8Array): EncryptionKey {
   const seed32 = seed.length === 32 ? seed : seed.slice(0, 32);
-  return EncryptionKey.orThrow(createSlip21(seed32 as Entropy32, ['evolu', 'auth']));
+  return EncryptionKey.orThrow(
+    createSlip21(seed32 as Entropy32, ["evolu", "auth"]),
+  );
 }
 
-export function encryptAuthResult(authResult: AuthResult, encryptionKey: EncryptionKey): {
+export function encryptAuthResult(
+  authResult: AuthResult,
+  encryptionKey: EncryptionKey,
+): {
   nonce: string;
   ciphertext: string;
 } {
   const plaintext = new TextEncoder().encode(JSON.stringify(authResult));
-  const {nonce, ciphertext} = symmetricCrypto.encrypt(plaintext, encryptionKey);
+  const { nonce, ciphertext } = symmetricCrypto.encrypt(
+    plaintext,
+    encryptionKey,
+  );
   return {
     nonce: toBase64(nonce),
     ciphertext: toBase64(ciphertext),
@@ -22,8 +35,8 @@ export function encryptAuthResult(authResult: AuthResult, encryptionKey: Encrypt
 }
 
 export function decryptAuthResult(
-  encryptedData: {nonce: string; ciphertext: string},
-  encryptionKey: EncryptionKey
+  encryptedData: { nonce: string; ciphertext: string },
+  encryptionKey: EncryptionKey,
 ): string | null {
   const nonce = fromBase64(encryptedData.nonce);
   const ciphertext = fromBase64(encryptedData.ciphertext);
@@ -41,5 +54,5 @@ export function toBase64(buffer: Uint8Array): string {
 }
 
 export function fromBase64(base64: string): Uint8Array {
-  return Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+  return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
 }

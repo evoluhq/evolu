@@ -1,36 +1,42 @@
-import {createAppOwner, createOwnerSecret, mnemonicToOwnerSecret, OwnerEncryptionKey, OwnerWriteKey} from './Evolu/Owner.js';
-import type {AppOwner, OwnerId} from './Evolu/Owner.js';
-import type {RandomBytes} from './Crypto.js';
-import type {Mnemonic} from './Type.js';
+import {
+  createAppOwner,
+  createOwnerSecret,
+  mnemonicToOwnerSecret,
+  OwnerEncryptionKey,
+  OwnerWriteKey,
+} from "./Evolu/Owner.js";
+import type { AppOwner, OwnerId } from "./Evolu/Owner.js";
+import type { RandomBytes } from "./Crypto.js";
+import type { Mnemonic } from "./Type.js";
 
-export const AUTH_NAMESPACE = 'evolu';
-export const AUTH_METAKEY_LAST_OWNER = '_last_owner';
-export const AUTH_METAKEY_OWNER_NAMES = '_owner_names';
+export const AUTH_NAMESPACE = "evolu";
+export const AUTH_METAKEY_LAST_OWNER = "_last_owner";
+export const AUTH_METAKEY_OWNER_NAMES = "_owner_names";
 export const AUTH_DEFAULT_OPTIONS = {
   service: AUTH_NAMESPACE,
   keychainGroup: AUTH_NAMESPACE,
   androidBiometricsStrongOnly: true,
   iosSynchronizable: true,
-  webAuthnUsername: 'Evolu User',
+  webAuthnUsername: "Evolu User",
   authenticationPrompt: {
-    title: 'Authenticate to unlock your session',
+    title: "Authenticate to unlock your session",
   },
 } satisfies AuthProviderOptions;
 
 /**
- * Creates an auth provider using the given secure storage implementation.
- * This factory function allows each platform to provide its own storage layer
- * while sharing the common auth logic.
+ * Creates an auth provider using the given secure storage implementation. This
+ * factory function allows each platform to provide its own storage layer while
+ * sharing the common auth logic.
  */
 export const createAuthProvider = (
   secureStorage: SecureStorage,
-  randomBytes: RandomBytes
+  randomBytes: RandomBytes,
 ): AuthProvider => {
   const auth = createEvoluAuth(secureStorage);
   return {
     login: async (ownerId, options) => {
       // Use either specified owner or the last owner used during registration/login.
-      const targetOwnerId = ownerId ?? await auth.getLastOwnerId(options);
+      const targetOwnerId = ownerId ?? (await auth.getLastOwnerId(options));
       if (!targetOwnerId) return null;
 
       // Retrieve and decrypt the owner (this will trigger device authentication)
@@ -38,29 +44,34 @@ export const createAuthProvider = (
       if (!account?.value) return null;
 
       // Unserialize the values (TODO: save these as base64 instead of json serializing)
-      const result = JSON.parse(account.value) as {owner: AppOwner};
-      const writeKey = OwnerWriteKey.orThrow(new Uint8Array(Object.values(result.owner.writeKey)));
-      const encryptionKey = OwnerEncryptionKey.orThrow(new Uint8Array(Object.values(result.owner.encryptionKey)));
-      const owner: AppOwner = {...result.owner, writeKey, encryptionKey};
+      const result = JSON.parse(account.value) as { owner: AppOwner };
+      const writeKey = OwnerWriteKey.orThrow(
+        new Uint8Array(Object.values(result.owner.writeKey)),
+      );
+      const encryptionKey = OwnerEncryptionKey.orThrow(
+        new Uint8Array(Object.values(result.owner.encryptionKey)),
+      );
+      const owner: AppOwner = { ...result.owner, writeKey, encryptionKey };
 
       // Lookup the associated username
       const names = await auth.getOwnerNames(options);
-      const username = names[targetOwnerId] ?? '';
+      const username = names[targetOwnerId] ?? "";
 
       // Update the last owner for future login attempts
       await auth.setLastOwnerId(targetOwnerId, options);
 
       // Return the owner and associated username
-      return {owner, username};
+      return { owner, username };
     },
 
     register: async (username, options, mnemonic) => {
       // Create an owner with a new secret or use specified mnemonic
-      const owner = createAppOwner(mnemonic
-        ? mnemonicToOwnerSecret(mnemonic)
-        : createOwnerSecret({randomBytes})
+      const owner = createAppOwner(
+        mnemonic
+          ? mnemonicToOwnerSecret(mnemonic)
+          : createOwnerSecret({ randomBytes }),
       );
-      
+
       // Store owner, associated username, and update last owner
       await Promise.all([
         auth.setOwnerItem(owner.id, owner, username, options),
@@ -69,7 +80,7 @@ export const createAuthProvider = (
       ]);
 
       // Return the owner and associated username
-      return {owner, username};
+      return { owner, username };
     },
 
     unregister: async (ownerId, options) => {
@@ -78,7 +89,7 @@ export const createAuthProvider = (
         auth.deleteOwnerItem(ownerId, options),
         auth.deleteOwnerName(ownerId, options),
       ]);
-      
+
       // If the owner was the last owner then set to
       // the next owner based on metadata timestamp
       const lastOwnerId = await auth.getLastOwnerId(options);
@@ -98,9 +109,9 @@ export const createAuthProvider = (
       ]);
 
       // Return the list of profiles (usually used for login UX)
-      return ids.map(ownerId => ({
+      return ids.map((ownerId) => ({
         ownerId,
-        username: names[ownerId] ?? '',
+        username: names[ownerId] ?? "",
       }));
     },
 
@@ -109,11 +120,9 @@ export const createAuthProvider = (
       await auth.clearAuthStore(options);
     },
   };
-}
+};
 
-/**
- * Creates an auth helper using SecureStorage.
- */
+/** Creates an auth helper using SecureStorage. */
 const createEvoluAuth = (secureStorage: SecureStorage) => ({
   async setOwnerItem(
     id: OwnerId,
@@ -121,7 +130,7 @@ const createEvoluAuth = (secureStorage: SecureStorage) => ({
     username: string,
     options?: AuthProviderOptions,
   ): Promise<void> {
-    await secureStorage.setItem(id, JSON.stringify({owner}), {
+    await secureStorage.setItem(id, JSON.stringify({ owner }), {
       ...AUTH_DEFAULT_OPTIONS,
       webAuthnUsername: username,
       ...options,
@@ -155,7 +164,7 @@ const createEvoluAuth = (secureStorage: SecureStorage) => ({
     await secureStorage.setItem(AUTH_METAKEY_LAST_OWNER, id, {
       ...AUTH_DEFAULT_OPTIONS,
       ...options,
-      accessControl: 'none',
+      accessControl: "none",
     });
   },
 
@@ -165,7 +174,7 @@ const createEvoluAuth = (secureStorage: SecureStorage) => ({
     const item = await secureStorage.getItem(AUTH_METAKEY_LAST_OWNER, {
       ...AUTH_DEFAULT_OPTIONS,
       ...options,
-      accessControl: 'none',
+      accessControl: "none",
     });
     return item?.value as OwnerId;
   },
@@ -176,7 +185,7 @@ const createEvoluAuth = (secureStorage: SecureStorage) => ({
     const item = await secureStorage.getItem(AUTH_METAKEY_OWNER_NAMES, {
       ...AUTH_DEFAULT_OPTIONS,
       ...options,
-      accessControl: 'none',
+      accessControl: "none",
     });
     let names: Record<OwnerId, string> = {};
     if (item?.value) {
@@ -192,11 +201,15 @@ const createEvoluAuth = (secureStorage: SecureStorage) => ({
   ): Promise<void> {
     const names = await this.getOwnerNames(options);
     names[id] = username;
-    await secureStorage.setItem(AUTH_METAKEY_OWNER_NAMES, JSON.stringify(names), {
-      ...AUTH_DEFAULT_OPTIONS,
-      ...options,
-      accessControl: 'none',
-    });
+    await secureStorage.setItem(
+      AUTH_METAKEY_OWNER_NAMES,
+      JSON.stringify(names),
+      {
+        ...AUTH_DEFAULT_OPTIONS,
+        ...options,
+        accessControl: "none",
+      },
+    );
   },
 
   async deleteOwnerName(
@@ -204,16 +217,18 @@ const createEvoluAuth = (secureStorage: SecureStorage) => ({
     options?: AuthProviderOptions,
   ): Promise<void> {
     const { [id]: _, ...names } = await this.getOwnerNames(options);
-    await secureStorage.setItem(AUTH_METAKEY_OWNER_NAMES, JSON.stringify(names), {
-      ...AUTH_DEFAULT_OPTIONS,
-      ...options,
-      accessControl: 'none',
-    });
+    await secureStorage.setItem(
+      AUTH_METAKEY_OWNER_NAMES,
+      JSON.stringify(names),
+      {
+        ...AUTH_DEFAULT_OPTIONS,
+        ...options,
+        accessControl: "none",
+      },
+    );
   },
 
-  async getOwnerIds(
-    options?: AuthProviderOptions,
-  ): Promise<Array<OwnerId>> {
+  async getOwnerIds(options?: AuthProviderOptions): Promise<Array<OwnerId>> {
     const items = await secureStorage.getAllItems({
       ...AUTH_DEFAULT_OPTIONS,
       ...options,
@@ -221,8 +236,12 @@ const createEvoluAuth = (secureStorage: SecureStorage) => ({
     });
     return items
       .filter(Boolean)
-      .filter(i => i.key !== AUTH_METAKEY_LAST_OWNER && i.key !== AUTH_METAKEY_OWNER_NAMES)
-      .map(i => i.key as OwnerId);
+      .filter(
+        (i) =>
+          i.key !== AUTH_METAKEY_LAST_OWNER &&
+          i.key !== AUTH_METAKEY_OWNER_NAMES,
+      )
+      .map((i) => i.key as OwnerId);
   },
 
   async clearAuthStore(options?: AuthProviderOptions): Promise<void> {
@@ -250,14 +269,21 @@ export interface AuthProvider {
   clearAll: CreateAuthClearAll;
 }
 
-/**
- * Secure storage interface that must be implemented by each platform.
- */
+/** Secure storage interface that must be implemented by each platform. */
 export interface SecureStorage {
-  setItem: (key: string, value: string, options?: AuthProviderOptions) => Promise<MutationResult>;
-  getItem: (key: string, options?: AuthProviderOptionsValues) => Promise<SensitiveInfoItem | null>;
+  setItem: (
+    key: string,
+    value: string,
+    options?: AuthProviderOptions,
+  ) => Promise<MutationResult>;
+  getItem: (
+    key: string,
+    options?: AuthProviderOptionsValues,
+  ) => Promise<SensitiveInfoItem | null>;
   deleteItem: (key: string, options?: AuthProviderOptions) => Promise<boolean>;
-  getAllItems: (options?: AuthProviderOptionsValues) => Promise<Array<SensitiveInfoItem>>;
+  getAllItems: (
+    options?: AuthProviderOptionsValues,
+  ) => Promise<Array<SensitiveInfoItem>>;
   clearService: (options?: AuthProviderOptions) => Promise<void>;
 }
 
@@ -268,29 +294,53 @@ export interface AuthResult {
   readonly username: string;
 }
 
-export type CreateAuthLogin = (ownerId?: OwnerId, options?: AuthProviderOptions) => Promise<AuthResult | null>;
-export type CreateAuthRegister = (username: string, options?: AuthProviderOptions, mnemonic?: Mnemonic) => Promise<AuthResult | null>;
-export type CreateAuthUnregister = (ownerId: OwnerId, options?: AuthProviderOptions) => Promise<void>;
-export type CreateAuthGetProfiles = (options?: AuthProviderOptionsValues) => Promise<Array<{ownerId: OwnerId, username: string}>>;
-export type CreateAuthClearAll = (options?: AuthProviderOptions) => Promise<void>;
+export type CreateAuthLogin = (
+  ownerId?: OwnerId,
+  options?: AuthProviderOptions,
+) => Promise<AuthResult | null>;
+export type CreateAuthRegister = (
+  username: string,
+  options?: AuthProviderOptions,
+  mnemonic?: Mnemonic,
+) => Promise<AuthResult | null>;
+export type CreateAuthUnregister = (
+  ownerId: OwnerId,
+  options?: AuthProviderOptions,
+) => Promise<void>;
+export type CreateAuthGetProfiles = (
+  options?: AuthProviderOptionsValues,
+) => Promise<Array<{ ownerId: OwnerId; username: string }>>;
+export type CreateAuthClearAll = (
+  options?: AuthProviderOptions,
+) => Promise<void>;
 
 /* Types below based off of react-native-sensitive-info */
 
 export interface AuthProviderOptions {
-  /** Native: Namespaces the stored entry. Defaults to the bundle identifier (when available) or `default`. */
+  /**
+   * Native: Namespaces the stored entry. Defaults to the bundle identifier
+   * (when available) or `default`.
+   */
   readonly service?: string;
-  /** iOS: Enable keychain item synchronization via iCloud. */
+  /** IOS: Enable keychain item synchronization via iCloud. */
   readonly iosSynchronizable?: boolean;
-  /** iOS: Custom keychain access group. */
+  /** IOS: Custom keychain access group. */
   readonly keychainGroup?: string;
   /**
-   * Native: Desired access-control policy. The native implementation will automatically fall back to the
-   * strongest supported policy for the current device (Secure Enclave ➝ Biometry ➝ Device Credential ➝ None).
+   * Native: Desired access-control policy. The native implementation will
+   * automatically fall back to the strongest supported policy for the current
+   * device (Secure Enclave ➝ Biometry ➝ Device Credential ➝ None).
    */
   readonly accessControl?: AccessControl;
-  /** Android: Fine tune whether the hardware-authenticated key should require biometrics only. */
+  /**
+   * Android: Fine tune whether the hardware-authenticated key should require
+   * biometrics only.
+   */
   readonly androidBiometricsStrongOnly?: boolean;
-  /** Native: Optional prompt configuration that will be shown when protected keys require user presence. */
+  /**
+   * Native: Optional prompt configuration that will be shown when protected
+   * keys require user presence.
+   */
   readonly authenticationPrompt?: AuthenticationPrompt;
   /** Web: The relying party ID for WebAuthn. Defaults to the current hostname. */
   readonly relyingPartyID?: string;
@@ -302,68 +352,68 @@ export interface AuthProviderOptions {
 
 export interface AuthProviderOptionsValues extends AuthProviderOptions {
   /** When true, the stored value is returned for each item. Defaults to false. */
-  readonly includeValues?: boolean
+  readonly includeValues?: boolean;
 }
 
 /**
- * Configuration for the biometric/device credential prompt shown when a protected item is accessed.
+ * Configuration for the biometric/device credential prompt shown when a
+ * protected item is accessed.
  */
 export interface AuthenticationPrompt {
-  readonly title: string
-  readonly subtitle?: string
-  readonly description?: string
-  readonly cancel?: string
+  readonly title: string;
+  readonly subtitle?: string;
+  readonly description?: string;
+  readonly cancel?: string;
 }
 
 export interface SensitiveInfoGetRequest extends AuthProviderOptions {
-  readonly key: string
+  readonly key: string;
   /** Include the encrypted value when available. Defaults to true. */
-  readonly includeValue?: boolean
+  readonly includeValue?: boolean;
 }
 
 export interface StorageMetadata {
-  readonly securityLevel: SecurityLevel
-  readonly backend: StorageBackend
-  readonly accessControl: AccessControl
-  readonly timestamp: number
+  readonly securityLevel: SecurityLevel;
+  readonly backend: StorageBackend;
+  readonly accessControl: AccessControl;
+  readonly timestamp: number;
 }
 
 export interface SensitiveInfoItem {
-  readonly key: string
-  readonly service: string
-  readonly value?: string
-  readonly metadata: StorageMetadata
+  readonly key: string;
+  readonly service: string;
+  readonly value?: string;
+  readonly metadata: StorageMetadata;
 }
 
 export interface MutationResult {
-  readonly metadata: StorageMetadata
+  readonly metadata: StorageMetadata;
 }
 
 /**
- * Enumerates the highest security tier that was effectively applied while storing a value.
+ * Enumerates the highest security tier that was effectively applied while
+ * storing a value.
  */
 export type SecurityLevel =
-  | 'secureEnclave'
-  | 'strongBox'
-  | 'biometry'
-  | 'deviceCredential'
-  | 'software'
+  | "secureEnclave"
+  | "strongBox"
+  | "biometry"
+  | "deviceCredential"
+  | "software";
 
-/**
- * Enumerates the native storage backend used to persist sensitive data.
- */
+/** Enumerates the native storage backend used to persist sensitive data. */
 export type StorageBackend =
-  | 'keychain'
-  | 'androidKeystore'
-  | 'encryptedSharedPreferences'
+  | "keychain"
+  | "androidKeystore"
+  | "encryptedSharedPreferences";
 
 /**
- * Enumerates the access-control policy enforced by the underlying secure storage.
+ * Enumerates the access-control policy enforced by the underlying secure
+ * storage.
  */
 export type AccessControl =
-  | 'secureEnclaveBiometry'
-  | 'biometryCurrentSet'
-  | 'biometryAny'
-  | 'devicePasscode'
-  | 'none'
-
+  | "secureEnclaveBiometry"
+  | "biometryCurrentSet"
+  | "biometryAny"
+  | "devicePasscode"
+  | "none";

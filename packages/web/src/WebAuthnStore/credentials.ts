@@ -7,7 +7,8 @@ export async function supportsWebAuthn(): Promise<boolean> {
     typeof navigator.credentials.create !== "undefined" &&
     typeof navigator.credentials.get !== "undefined" &&
     typeof PublicKeyCredential !== "undefined" &&
-    typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable !== "undefined" &&
+    typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable !==
+      "undefined" &&
     (await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable())
   );
 }
@@ -24,7 +25,9 @@ export async function createCredential(
     relyingPartyID,
     relyingPartyName,
   );
-  const credential = await navigator.credentials.create(options) as PublicKeyCredential | null;
+  const credential = (await navigator.credentials.create(
+    options,
+  )) as PublicKeyCredential | null;
   if (!credential) {
     throw new Error("Failed to create WebAuthn credential");
   }
@@ -36,7 +39,9 @@ export async function getCredential(
   relyingPartyID?: string,
 ): Promise<PublicKeyCredential> {
   const options = createCredentialRequestOptions(credentialId, relyingPartyID);
-  const credential = await navigator.credentials.get(options) as PublicKeyCredential | null;
+  const credential = (await navigator.credentials.get(
+    options,
+  )) as PublicKeyCredential | null;
   if (!credential?.response) {
     throw new Error("Failed to get WebAuthn credential");
   }
@@ -73,9 +78,9 @@ function createCredentialCreationOptions(
         displayName: username,
       },
       pubKeyCredParams: [
-        {type: "public-key", alg: -8},   // Ed25519
-        {type: "public-key", alg: -7},   // ES256
-        {type: "public-key", alg: -257}, // RS256
+        { type: "public-key", alg: -8 }, // Ed25519
+        { type: "public-key", alg: -7 }, // ES256
+        { type: "public-key", alg: -257 }, // RS256
       ],
       attestation: "none",
       authenticatorSelection: {
