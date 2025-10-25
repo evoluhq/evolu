@@ -267,10 +267,10 @@ const OwnerActions: FC = () => {
       <h2 className="mb-4 text-lg font-medium text-gray-900">Account</h2>
       {appOwner && (
         <div className="mb-4 flex items-center justify-between gap-3">
-          <EvoluProfilePic id={appOwner.id} />
-          <span className="flex-1 text-sm italic text-gray-900">
-            {appOwner.id}
-          </span>
+          <OwnerProfile {...{
+            ownerId: appOwner.id,
+            username: authResult?.username ?? 'Guest',
+          }}/>
         </div>
       )}
       <p className="mb-4 text-sm text-gray-600">
