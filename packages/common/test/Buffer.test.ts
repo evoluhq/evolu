@@ -38,7 +38,9 @@ test("Buffer", () => {
   expect(buffer2.unwrap()).toMatchInlineSnapshot(`uint8:[]`);
 
   buffer2.extend([1, 2, 3]);
-  expect(buffer2.shiftN(2 as NonNegativeInt)).toMatchInlineSnapshot(`uint8:[1,2]`);
+  expect(buffer2.shiftN(2 as NonNegativeInt)).toMatchInlineSnapshot(
+    `uint8:[1,2]`,
+  );
 
   expect(buffer2.unwrap()).toMatchInlineSnapshot(`uint8:[3]`);
 
