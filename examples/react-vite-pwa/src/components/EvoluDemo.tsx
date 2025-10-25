@@ -340,12 +340,24 @@ const AuthActions: FC = () => {
   const handleRegisterClick = async () => {
     const username = window.prompt("Enter your username:");
     if (username == null) return;
+
+    // Determine if this is a guest login or a new owner.
+    const isGuest = !Boolean(authResult?.owner);
+
+    // Register the guest owner or create a new one if this is already registered.
     const result = await evoluReactWebDeps.authProvider.register(username, {
       service: APP_SERVICE,
-      mnemonic: appOwner?.mnemonic ?? undefined,
+      mnemonic: isGuest ? appOwner?.mnemonic : undefined,
     });
     if (result) {
-      void evolu.resetAppOwner({ reload: true });
+      // If this is a guest owner, we should clear the database and reload.
+      // The owner is transferred to a new database on next login.
+      if (isGuest) {
+        void evolu.resetAppOwner({ reload: true });
+      // Otherwise, just reload the page
+      } else {
+        window.location.reload();
+      }
     } else {
       alert("Failed to register profile");
     }

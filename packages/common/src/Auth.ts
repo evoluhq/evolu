@@ -313,7 +313,7 @@ export type CreateAuthLogin = (
 ) => Promise<AuthResult | null>;
 export type CreateAuthRegister = (
   username: string,
-  options?: AuthProviderOptions & { mnemonic?: Mnemonic },
+  options?: AuthProviderOptions & { mnemonic?: Mnemonic | null },
 ) => Promise<AuthResult | null>;
 export type CreateAuthUnregister = (
   ownerId: OwnerId,
