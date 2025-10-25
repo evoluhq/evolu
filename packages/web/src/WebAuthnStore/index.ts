@@ -28,13 +28,17 @@ export const setItem = async (
   options?: AuthProviderOptions,
 ): Promise<MutationResult> => {
   if (options?.accessControl === "none") {
-    await set(key, value, getStore(options.service));
-    return {
-      metadata: createFakeMetadata(),
-    };
+    const metadata = createMetadata(false);
+    await set(
+      key,
+      { value, metadata },
+      getStore(options.service),
+    );
+    return { metadata };
   }
 
-  await checkSupport();
+  await checkWebAuthnSupport();
+
   const seed = generateSeed();
   const authResult = JSON.parse(value) as AuthResult;
   const credential = await createCredential(
@@ -46,14 +50,13 @@ export const setItem = async (
   const encryptionKey = deriveEncryptionKey(seed);
   const encryptedData = encryptAuthResult(authResult, encryptionKey);
   const credentialId = toBase64(new Uint8Array(credential.rawId));
+  const metadata = createMetadata();
   await set(
     key,
-    { credentialId, ...encryptedData },
+    { credentialId, ...encryptedData, metadata },
     getStore(options?.service),
   );
-  return {
-    metadata: createFakeMetadata(),
-  };
+  return { metadata };
 };
 
 export const getItem = async (
@@ -61,22 +64,27 @@ export const getItem = async (
   options?: AuthProviderOptions,
 ): Promise<SensitiveInfoItem | null> => {
   if (options?.accessControl === "none") {
-    const value = await get<string>(key, getStore(options.service));
-    return value
+    const data = await get<{
+      readonly value: string;
+      readonly metadata: SensitiveInfoItem["metadata"];
+    }>(key, getStore(options.service));
+    return data
       ? {
           key,
-          value,
+          value: data.value,
           service: options.service ?? "default",
-          metadata: createFakeMetadata(),
+          metadata: data.metadata,
         }
       : null;
   }
 
-  await checkSupport();
+  await checkWebAuthnSupport();
+
   const data = await get<{
     readonly nonce: string;
     readonly ciphertext: string;
     readonly credentialId: string;
+    readonly metadata: SensitiveInfoItem["metadata"];
   }>(key, getStore(options?.service));
   if (!data) {
     return null;
@@ -96,7 +104,7 @@ export const getItem = async (
       key,
       service: options?.service ?? "default",
       value: authResultVal,
-      metadata: createFakeMetadata(),
+      metadata: data.metadata,
     };
   } catch (_error) {
     return null;
@@ -114,10 +122,23 @@ export const deleteItem = async (
 export const getAllItems = async (
   options?: AuthProviderOptionsValues,
 ): Promise<Array<SensitiveInfoItem>> => {
-  const metadata = createFakeMetadata();
   const service = options?.service ?? "default";
-  const items = await keys<string>(getStore(service));
-  return items.map((key) => ({ key, service, metadata }));
+  const itemKeys = await keys<string>(getStore(service));
+  const items = await Promise.all(
+    itemKeys.map(async (key) => {
+      const data = await get<{
+        readonly metadata?: SensitiveInfoItem["metadata"];
+        readonly value?: string;
+      }>(key, getStore(service));
+      return {
+        key,
+        service,
+        metadata: data?.metadata ?? createMetadata(),
+        ...(options?.includeValues && data?.value ? { value: data.value } : {}),
+      };
+    }),
+  );
+  return items;
 };
 
 export const clearService = async (
@@ -127,14 +148,14 @@ export const clearService = async (
 };
 
 /**
- * Create metadata for web storage (WebAuthn + IndexedDB). TODO: implement like
- * react-native-sensitive-info
+ * Create default metadata for backwards compatibility with items that don't have
+ * stored metadata.
  */
-const createFakeMetadata = (): SensitiveInfoItem["metadata"] => {
+const createMetadata = (isSecure: boolean = true): SensitiveInfoItem["metadata"] => {
   return {
-    securityLevel: "biometry",
-    backend: "encryptedSharedPreferences",
-    accessControl: "biometryCurrentSet",
+    backend: "keychain",
+    accessControl: isSecure ? "biometryCurrentSet" : "none",
+    securityLevel: isSecure ? "biometry" : "software",
     timestamp: Date.now(),
   };
 };
@@ -145,7 +166,7 @@ const getStore = (prefix = "default"): UseStore => {
 };
 
 /** Throws an error if WebAuthn is not supported. */
-const checkSupport = async (): Promise<void> => {
+const checkWebAuthnSupport = async (): Promise<void> => {
   if (!(await supportsWebAuthn())) {
     throw new Error("WebAuthn not supported");
   }
