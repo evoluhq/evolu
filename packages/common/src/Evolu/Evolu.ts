@@ -74,35 +74,32 @@ export interface EvoluConfig<S extends EvoluSchema = EvoluSchema>
    * derived state computation.
    *
    * The `onMessage` callback is called for every CRDT message, whether locally
-   * created or received from sync. It's called only once per message and only
-   * if its {@link DbChange} was successfully validated against application
-   * schema. The callback can perform additional validation and return `true` to
-   * approve and persist the change, or `false` to reject it. Invalid and
-   * rejected messages are reported with {@link OnMessageError}.
+   * created or received from sync. It's called only once per message and device
+   * and only if its {@link DbChange} was successfully validated against the
+   * application schema. The callback can run additional validation and return
+   * `true` to approve and persist the change, or `false` to reject it. Invalid
+   * and rejected messages are reported with {@link OnMessageError} and their
+   * changes are not persisted. The callback can also query the database and
+   * perform local-only mutations.
    *
-   * The callback can query the database and perform local-only mutations. Do
-   * not mutate synced tables within this callback because it could create
-   * infinite sync loops.
+   * Approved messages are persisted atomically with local-only mutations in a
+   * transaction which ensures exactly-once delivery (a durable queue)
+   * semantics.
    *
-   * Approved messages are persisted atomically with any local-only mutations in
-   * a transaction which ensures exactly-once delivery (a durable queue)
-   * semantics. This means the message and all derived state updates either both
-   * succeed or both fail together and will retry syncing later.
-   *
-   * This callback is for collaboration scenarios where data from other users
-   * cannot be trusted or when derived state is needed (for example CRDT
-   * counters/aggregations, Messaging Layer Security (MLS), etc.)
+   * This callback is for scenarios where data cannot be trusted or when derived
+   * state is needed (for example, CRDT counters/aggregations, Messaging Layer
+   * Security, etc.)
    *
    * Because Evolu is a distributed system with CRDT semantics (eventually
    * consistent), messages can arrive in any order. Do not use `onMessage` to
-   * validate rules depending on message ordering. Such validations belong in
-   * the application UI. Instead, use `onMessage` for order-independent
-   * validations like rate-limiting, ensuring owners only write to allowed
-   * tables, or filtering inappropriate content.
+   * validate rules depending on message order. Such validations belong in the
+   * application UI. Instead, use `onMessage` for order-independent validations
+   * like rate-limiting, ensuring owners only write to allowed tables, or
+   * filtering inappropriate content.
    *
    * Ensuring owners only write to allowed tables is safe in `onMessage` because
-   * synced messages are processed after the database already contains owner
-   * records, making validation order-independent.
+   * synced messages are processed after the database already contains owner,
+   * making validation order-independent.
    *
    * ### Example
    *
