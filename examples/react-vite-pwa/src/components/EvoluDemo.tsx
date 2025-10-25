@@ -30,13 +30,9 @@ const Schema = {
   },
 };
 
-// TODO: move this to a wrapper component
+// TODO: move this to a wrapper component (top-level await just for testing)
 const ownerIds = await evoluReactWebDeps.authProvider.getOwnerIds();
-let authResult: Evolu.AuthResult | null = null;
-// Auto login if we have an owner
-if (ownerIds.length > 0) {
-  authResult = await evoluReactWebDeps.authProvider.login(ownerIds[0]);
-}
+const authResult = await evoluReactWebDeps.authProvider.login();
 
 // Create Evolu instance for the React web platform.
 const evolu = Evolu.createEvolu(evoluReactWebDeps)(Schema, {

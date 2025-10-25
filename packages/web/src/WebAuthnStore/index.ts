@@ -10,6 +10,14 @@ export async function setItem(
   value: string,
   options?: AuthProviderOptions
 ): Promise<MutationResult> {
+  if (options?.accessControl === 'none') {
+    await set(key, value, getStore(options?.service));
+    return {
+      // TODO: metadata is fake, implement like react-native-sensitive-info
+      metadata: createMetadata(),
+    };
+  }
+  
   await checkSupport();
   const seed = generateSeed();
   const authResult = JSON.parse(value) as AuthResult;
@@ -37,6 +45,17 @@ export async function getItem(
   key: string,
   options?: AuthProviderOptions
 ): Promise<SensitiveInfoItem | null> {
+  if (options?.accessControl === 'none') {
+    const value = await get<string>(key, getStore(options?.service));
+    return value ? {
+      key,
+      value,
+      service: options?.service ?? 'default',
+      // TODO: metadata is fake, implement like react-native-sensitive-info
+      metadata: createMetadata(),
+    } : null;
+  }
+
   await checkSupport();
   const data = await get<{
     readonly nonce: string;

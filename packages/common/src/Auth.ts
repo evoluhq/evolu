@@ -3,6 +3,7 @@ import type {AppOwner, OwnerId} from './Evolu/Owner.js';
 import type {RandomBytes} from './Crypto.js';
 
 export const AUTH_NAMESPACE = 'evolu';
+export const AUTH_LAST_OWNER_KEY = '_last_owner';
 export const AUTH_DEFAULT_OPTIONS = {
   service: AUTH_NAMESPACE,
   keychainGroup: AUTH_NAMESPACE,
@@ -21,63 +22,90 @@ export const AUTH_DEFAULT_OPTIONS = {
 export const createAuthProvider = (
   secureStorage: SecureStorage,
   randomBytes: RandomBytes
-): AuthProvider => ({
-  login: async (ownerId, options) => {
-    const account = await secureStorage.getItem(ownerId, {
+): AuthProvider => {
+  const setOwnerItem = async (ownerId: OwnerId, owner: AppOwner, username: string, options?: AuthProviderOptions) => {
+    await secureStorage.setItem(ownerId, JSON.stringify({username, owner}), {
       ...AUTH_DEFAULT_OPTIONS,
       ...options,
     });
-    if (!account?.value) {
-      return null;
-    }
-    const result = JSON.parse(account.value) as AuthResult;
-    // TODO: probably should save these as base64 instead of json serializing?
-    const writeKey = OwnerWriteKey.orThrow(new Uint8Array(Object.values(result.owner.writeKey)));
-    const encryptionKey = OwnerEncryptionKey.orThrow(new Uint8Array(Object.values(result.owner.encryptionKey)));
-    return {
-      username: result.username,
-      owner: {...result.owner, writeKey, encryptionKey},
-    };
-  },
-  register: async (username, options) => {
-    const owner = createAppOwner(createOwnerSecret({randomBytes}));
-    await secureStorage.setItem(owner.id, JSON.stringify({username, owner}), {
+  };
+  const getOwnerItem = async (ownerId: OwnerId, options?: AuthProviderOptions) => {
+    return await secureStorage.getItem(ownerId, {
       ...AUTH_DEFAULT_OPTIONS,
       ...options,
     });
-    return {owner, username};
-  },
-  unregister: async (ownerId, options) => {
-    await secureStorage.deleteItem(ownerId, {
+  };
+  const setLastOwnerId = async (ownerId: OwnerId, options?: AuthProviderOptions) => {
+    await secureStorage.setItem(AUTH_LAST_OWNER_KEY, ownerId, {
       ...AUTH_DEFAULT_OPTIONS,
       ...options,
+      accessControl: 'none',
     });
-  },
-  getOwnerIds: async (options) => {
-    const accounts = await secureStorage.getAllItems({
-      ...AUTH_DEFAULT_OPTIONS,
-      includeValues: false,
-      ...options,
-    });
-    return accounts
-      .sort((a, b) => b.metadata.timestamp - a.metadata.timestamp)
-      .map(account => account.key as OwnerId)
-      .filter(Boolean);
-  },
-  clearAll: async (options) => {
-    await secureStorage.clearService({
+  };
+  const getLastOwnerId = async (options?: AuthProviderOptions) => {
+    const item = await secureStorage.getItem(AUTH_LAST_OWNER_KEY, {
       ...AUTH_DEFAULT_OPTIONS,
       ...options,
+      accessControl: 'none',
     });
-  },
-});
+    return item?.value as OwnerId;
+  };
+  return {
+    login: async (ownerId, options) => {
+      let targetOwnerId = ownerId ?? await getLastOwnerId(options);
+      const account = await getOwnerItem(targetOwnerId, options);
+      if (!account?.value) {
+        return null;
+      }
+      const result = JSON.parse(account.value) as AuthResult;
+      // TODO: probably should save these as base64 instead of json serializing?
+      const writeKey = OwnerWriteKey.orThrow(new Uint8Array(Object.values(result.owner.writeKey)));
+      const encryptionKey = OwnerEncryptionKey.orThrow(new Uint8Array(Object.values(result.owner.encryptionKey)));
+      await setLastOwnerId(targetOwnerId, options);
+      return {
+        username: result.username,
+        owner: {...result.owner, writeKey, encryptionKey},
+      };
+    },
+    register: async (username, options) => {
+      const owner = createAppOwner(createOwnerSecret({randomBytes}));
+      await setOwnerItem(owner.id, owner, username, options);
+      await setLastOwnerId(owner.id, options);
+      return {owner, username};
+    },
+    unregister: async (ownerId, options) => {
+      await secureStorage.deleteItem(ownerId, {
+        ...AUTH_DEFAULT_OPTIONS,
+        ...options,
+      });
+    },
+    getOwnerIds: async (options) => {
+      const accounts = await secureStorage.getAllItems({
+        ...AUTH_DEFAULT_OPTIONS,
+        includeValues: false,
+        ...options,
+      });
+      return accounts
+        .filter(i => i.key !== AUTH_LAST_OWNER_KEY)
+        .sort((a, b) => b.metadata.timestamp - a.metadata.timestamp)
+        .map(account => account.key as OwnerId)
+        .filter(Boolean);
+    },
+    clearAll: async (options) => {
+      await secureStorage.clearService({
+        ...AUTH_DEFAULT_OPTIONS,
+        ...options,
+      });
+    },
+  };
+}
 
 export interface AuthProviderDep {
   readonly authProvider: AuthProvider;
 }
 
 export interface AuthProvider {
-  /** Logs in with the given owner ID. */
+  /** Logs in with the given owner ID, or loads the target owner if not provided. */
   login: CreateAuthLogin;
   /** Registers a new owner with the given username. */
   register: CreateAuthRegister;
@@ -107,7 +135,7 @@ export interface AuthResult {
   readonly username: string;
 }
 
-export type CreateAuthLogin = (ownerId: OwnerId, options?: AuthProviderOptions) => Promise<AuthResult | null>;
+export type CreateAuthLogin = (ownerId?: OwnerId, options?: AuthProviderOptions) => Promise<AuthResult | null>;
 export type CreateAuthRegister = (username: string, options?: AuthProviderOptions) => Promise<AuthResult | null>;
 export type CreateAuthUnregister = (ownerId: OwnerId, options?: AuthProviderOptions) => Promise<void>;
 export type CreateAuthGetOwnerIds = (options?: AuthProviderOptionsValues) => Promise<Array<OwnerId>>;
