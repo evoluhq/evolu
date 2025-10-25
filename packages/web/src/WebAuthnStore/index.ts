@@ -151,7 +151,7 @@ export const clearService = async (
  * Create default metadata for backwards compatibility with items that don't have
  * stored metadata.
  */
-const createMetadata = (isSecure: boolean = true): SensitiveInfoItem["metadata"] => {
+const createMetadata = (isSecure = true): SensitiveInfoItem["metadata"] => {
   return {
     backend: "keychain",
     accessControl: isSecure ? "biometryCurrentSet" : "none",
