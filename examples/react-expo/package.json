@@ -35,9 +35,9 @@
     "react-native-nitro-modules": "^0.31.2",
     "react-native-quick-base64": "^2.2.1",
     "react-native-quick-crypto": "^0.7.17",
-    "react-native-sensitive-info": "^6.0.0-rc.4",
     "react-native-safe-area-context": "^5.6.0",
-    "react-native-screens": "^4.15.3"
+    "react-native-screens": "^4.15.3",
+    "react-native-sensitive-info": "^6.0.0-rc.4"
   },
   "devDependencies": {
     "@babel/core": "^7.28.0",
