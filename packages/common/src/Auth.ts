@@ -64,6 +64,12 @@ export const createAuthProvider = (
       .map(account => account.key as OwnerId)
       .filter(Boolean);
   },
+  clearAll: async (options) => {
+    await secureStorage.clearService({
+      ...AUTH_DEFAULT_OPTIONS,
+      ...options,
+    });
+  },
 });
 
 export interface AuthProviderDep {
@@ -79,6 +85,8 @@ export interface AuthProvider {
   unregister: CreateAuthUnregister;
   /** Gets the IDs of all registered owners. */
   getOwnerIds: CreateAuthGetOwnerIds;
+  /** Clears all owners and metadata from the auth provider. */
+  clearAll: CreateAuthClearAll;
 }
 
 /**
@@ -89,6 +97,7 @@ export interface SecureStorage {
   getItem: (key: string, options?: AuthProviderOptionsValues) => Promise<SensitiveInfoItem | null>;
   deleteItem: (key: string, options?: AuthProviderOptions) => Promise<boolean>;
   getAllItems: (options?: AuthProviderOptionsValues) => Promise<Array<SensitiveInfoItem>>;
+  clearService: (options?: AuthProviderOptions) => Promise<void>;
 }
 
 export interface AuthResult {
@@ -102,6 +111,7 @@ export type CreateAuthLogin = (ownerId: OwnerId, options?: AuthProviderOptions) 
 export type CreateAuthRegister = (username: string, options?: AuthProviderOptions) => Promise<AuthResult | null>;
 export type CreateAuthUnregister = (ownerId: OwnerId, options?: AuthProviderOptions) => Promise<void>;
 export type CreateAuthGetOwnerIds = (options?: AuthProviderOptionsValues) => Promise<Array<OwnerId>>;
+export type CreateAuthClearAll = (options?: AuthProviderOptions) => Promise<void>;
 
 /* Types below based off of react-native-sensitive-info */
 

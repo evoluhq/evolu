@@ -1,16 +1,16 @@
-import {set, get, del, keys} from 'idb-keyval';
+import {set, get, del, keys, clear, createStore} from 'idb-keyval';
 import {deriveEncryptionKey, encryptAuthResult, decryptAuthResult, toBase64, generateSeed} from './crypto.js';
 import {getCredential, extractSeedFromCredential, createCredential, supportsWebAuthn} from './credentials.js';
+
 import type {AuthResult, AuthProviderOptions, AuthProviderOptionsValues, SensitiveInfoItem, MutationResult} from '@evolu/common';
+import type {UseStore} from 'idb-keyval';
 
 export async function setItem(
   key: string,
   value: string,
   options?: AuthProviderOptions
 ): Promise<MutationResult> {
-  if (!(await supportsWebAuthn())) {
-    throw new Error('WebAuthn not supported');
-  }
+  await checkSupport();
   const seed = generateSeed();
   const authResult = JSON.parse(value) as AuthResult;
   const credential = await createCredential(
@@ -21,11 +21,14 @@ export async function setItem(
   );
   const encryptionKey = deriveEncryptionKey(seed);
   const encryptedData = encryptAuthResult(authResult, encryptionKey);
-  await set(getStorageKey(key, options?.service), {
-    ...encryptedData,
-    credentialId: toBase64(new Uint8Array(credential.rawId)),
-  });
+  const credentialId = toBase64(new Uint8Array(credential.rawId));
+  await set(
+    key,
+    {credentialId, ...encryptedData},
+    getStore(options?.service)
+  );
   return {
+    // TODO: metadata is fake, implement like react-native-sensitive-info
     metadata: createMetadata(),
   };
 }
@@ -34,14 +37,12 @@ export async function getItem(
   key: string,
   options?: AuthProviderOptions
 ): Promise<SensitiveInfoItem | null> {
-  if (!(await supportsWebAuthn())) {
-    throw new Error('WebAuthn not supported');
-  }
+  await checkSupport();
   const data = await get<{
     readonly nonce: string;
     readonly ciphertext: string;
     readonly credentialId: string;
-  }>(getStorageKey(key, options?.service));
+  }>(key, getStore(options?.service));
   if (!data) {
     return null;
   }
@@ -57,6 +58,7 @@ export async function getItem(
       key,
       service: options?.service ?? 'default',
       value: authResultVal,
+      // TODO: metadata is fake, implement like react-native-sensitive-info
       metadata: createMetadata(),
     };
   } catch (_error) {
@@ -68,23 +70,24 @@ export async function deleteItem(
   key: string,
   options?: AuthProviderOptions
 ): Promise<boolean> {
-  await del(getStorageKey(key, options?.service));
+  await del(key, getStore(options?.service));
   return true;
 }
 
 export async function getAllItems(
   options?: AuthProviderOptionsValues
 ): Promise<Array<SensitiveInfoItem>> {
-  const items = await keys<string>();
-  const prefix = options?.service ?? 'default';
+  // TODO: metadata is fake, implement like react-native-sensitive-info
   const metadata = createMetadata();
-  return items
-    .filter(key => key.startsWith(prefix))
-    .map(key => ({
-      key: key.split(':')[1],
-      service: prefix,
-      metadata,
-    }));
+  const service = options?.service ?? 'default';
+  const items = await keys<string>(getStore(service));
+  return items.map(key => ({key, service, metadata}));
+}
+
+export async function clearService(
+  options?: AuthProviderOptions
+): Promise<void> {
+  await clear(getStore(options?.service));
 }
 
 /**
@@ -102,6 +105,15 @@ function createMetadata(): SensitiveInfoItem['metadata'] {
 /**
  * Get storage key for owner ID. (supports namespaces via prefix)
  */
-function getStorageKey(key: string, prefix = 'default'): string {
-  return `${prefix}:${key}`;
+function getStore(prefix = 'default'): UseStore {
+  return createStore(prefix, 'evolu-auth');
+}
+
+/**
+ * Throws an error if WebAuthn is not supported.
+ */
+async function checkSupport(): Promise<void> {
+  if (!(await supportsWebAuthn())) {
+    throw new Error('WebAuthn not supported');
+  }
 }

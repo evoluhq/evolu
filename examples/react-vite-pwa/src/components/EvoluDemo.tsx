@@ -310,10 +310,13 @@ const OwnerActions: FC = () => {
             title="Restore from Mnemonic"
             onClick={handleRestoreAppOwnerClick}
           />
-          <Button title="Reset All Data" onClick={handleResetAppOwnerClick} />
           <Button
             title="Download Backup"
             onClick={handleDownloadDatabaseClick}
+          />
+          <Button
+            title="Reset All Data"
+            onClick={handleResetAppOwnerClick}
           />
         </div>
       </div>
@@ -349,17 +352,32 @@ const AuthActions: FC = () => {
     }
   };
 
+  // Clear all data including passkeys and metadata.
+  const handleClearAllClick = async () => {
+    const confirmed = window.confirm(
+      "Are you sure you want to clear all data? This will remove all passkeys and cannot be undone."
+    );
+    if (!confirmed) return;
+    await evoluReactWebDeps.authProvider.clearAll();
+    window.location.reload();
+  };
+
   return (
     <div className="mt-8 rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
       <h2 className="mb-4 text-lg font-medium text-gray-900">Passkeys</h2>
       <p className="mb-4 text-sm text-gray-600">
         Register a new passkey or choose a previously registered one.
       </p>
-      <div className="space-y-3">
+      <div className="flex gap-3">
         <Button
           title="Register Passkey"
+          className="flex-1"
           onClick={handleRegisterClick}
-          className="w-full"
+        />
+        <Button
+          title="Clear All"
+          className="flex-1"
+          onClick={handleClearAllClick}
         />
       </div>
       {/** List of registered owners (avatar, name, and login button) */}
