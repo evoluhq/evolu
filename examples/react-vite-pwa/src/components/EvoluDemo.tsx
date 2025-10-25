@@ -342,7 +342,7 @@ const AuthActions: FC = () => {
 
   // Login with a specific owner id using the registered passkey.
   const handleLoginClick = async (ownerId: Evolu.OwnerId) => {
-    const result = await evoluReactWebDeps.authProvider.login(ownerId);
+    const result = await evoluReactWebDeps.authProvider.login(ownerId, { reloadNeeded: true });
     if (result) {
       window.location.reload();
     } else {

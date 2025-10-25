@@ -40,6 +40,18 @@ export const createAuthProvider = (
       const targetOwnerId = ownerId ?? (await auth.getLastOwnerId(options));
       if (!targetOwnerId) return null;
 
+      // Lookup the associated username
+      const names = await auth.getOwnerNames(options);
+      const username = names[targetOwnerId] ?? "";
+
+      // If a reload is needed, avoid authentication, it needs to be handled on next page load.
+      // We set the last owner so we know what the target is.
+      // It is the applications's responsibility to reload and trigger login.
+      if (options?.reloadNeeded) {
+        await auth.setLastOwnerId(targetOwnerId, options);
+        return { owner: undefined, username };
+      }
+
       // Retrieve and decrypt the owner (this will trigger device authentication)
       const account = await auth.getOwnerItem(targetOwnerId, options);
       if (!account?.value) return null;
@@ -54,10 +66,6 @@ export const createAuthProvider = (
       );
       const owner: AppOwner = { ...result.owner, writeKey, encryptionKey };
 
-      // Lookup the associated username
-      const names = await auth.getOwnerNames(options);
-      const username = names[targetOwnerId] ?? "";
-
       // Update the last owner for future login attempts
       await auth.setLastOwnerId(targetOwnerId, options);
 
@@ -65,11 +73,11 @@ export const createAuthProvider = (
       return { owner, username };
     },
 
-    register: async (username, options, mnemonic) => {
+    register: async (username, options) => {
       // Create an owner with a new secret or use specified mnemonic
       const owner = createAppOwner(
-        mnemonic
-          ? mnemonicToOwnerSecret(mnemonic)
+        options?.mnemonic
+          ? mnemonicToOwnerSecret(options.mnemonic)
           : createOwnerSecret({ randomBytes }),
       );
 
@@ -294,19 +302,18 @@ export interface SecureStorage {
 
 export interface AuthResult {
   /** The owner created during registration. */
-  readonly owner: AppOwner;
+  readonly owner: AppOwner | undefined;
   /** The name provided by the user during registration. */
   readonly username: string;
 }
 
 export type CreateAuthLogin = (
   ownerId?: OwnerId,
-  options?: AuthProviderOptions,
+  options?: AuthProviderOptions & { reloadNeeded?: boolean },
 ) => Promise<AuthResult | null>;
 export type CreateAuthRegister = (
   username: string,
-  options?: AuthProviderOptions,
-  mnemonic?: Mnemonic,
+  options?: AuthProviderOptions & { mnemonic?: Mnemonic },
 ) => Promise<AuthResult | null>;
 export type CreateAuthUnregister = (
   ownerId: OwnerId,
