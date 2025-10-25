@@ -26,7 +26,7 @@ export const createAuthProvider = (
   secureStorage: SecureStorage,
   randomBytes: RandomBytes
 ): AuthProvider => {
-  const auth = new EvoluAuth(secureStorage);
+  const auth = createEvoluAuth(secureStorage);
   return {
     login: async (ownerId, options) => {
       // Use either specified owner or the last owner used during registration/login.
@@ -112,70 +112,68 @@ export const createAuthProvider = (
 }
 
 /**
- * Default implementation of AuthStore using SecureStorage.
+ * Creates an auth helper using SecureStorage.
  */
-export class EvoluAuth {
-  constructor(private readonly secureStorage: SecureStorage) {}
-
+const createEvoluAuth = (secureStorage: SecureStorage) => ({
   async setOwnerItem(
     id: OwnerId,
     owner: AppOwner,
     username: string,
     options?: AuthProviderOptions,
   ): Promise<void> {
-    await this.secureStorage.setItem(id, JSON.stringify({owner}), {
+    await secureStorage.setItem(id, JSON.stringify({owner}), {
       ...AUTH_DEFAULT_OPTIONS,
       webAuthnUsername: username,
       ...options,
     });
-  }
+  },
 
   async getOwnerItem(
     id: OwnerId,
     options?: AuthProviderOptions,
   ): Promise<SensitiveInfoItem | null> {
-    return await this.secureStorage.getItem(id, {
+    return await secureStorage.getItem(id, {
       ...AUTH_DEFAULT_OPTIONS,
       ...options,
     });
-  }
+  },
 
   async deleteOwnerItem(
     id: OwnerId,
     options?: AuthProviderOptions,
   ): Promise<void> {
-    await this.secureStorage.deleteItem(id, {
+    await secureStorage.deleteItem(id, {
       ...AUTH_DEFAULT_OPTIONS,
       ...options,
     });
-  }
+  },
 
   async setLastOwnerId(
     id: OwnerId,
     options?: AuthProviderOptions,
   ): Promise<void> {
-    await this.secureStorage.setItem(AUTH_METAKEY_LAST_OWNER, id, {
+    await secureStorage.setItem(AUTH_METAKEY_LAST_OWNER, id, {
       ...AUTH_DEFAULT_OPTIONS,
       ...options,
       accessControl: 'none',
     });
-  }
+  },
 
   async getLastOwnerId(
     options?: AuthProviderOptions,
   ): Promise<OwnerId | undefined> {
-    const item = await this.secureStorage.getItem(AUTH_METAKEY_LAST_OWNER, {
+    const item = await secureStorage.getItem(AUTH_METAKEY_LAST_OWNER, {
       ...AUTH_DEFAULT_OPTIONS,
       ...options,
       accessControl: 'none',
     });
     return item?.value as OwnerId;
-  }
+  },
 
   async getOwnerNames(
     options?: AuthProviderOptions,
   ): Promise<Record<OwnerId, string>> {
-    const item = await this.secureStorage.getItem(AUTH_METAKEY_OWNER_NAMES, {
+    const item = await secureStorage.getItem(AUTH_METAKEY_OWNER_NAMES, {
       ...AUTH_DEFAULT_OPTIONS,
       ...options,
       accessControl: 'none',
@@ -185,7 +183,7 @@ export class EvoluAuth {
       names = JSON.parse(item.value) as Record<OwnerId, string>;
     }
     return names;
-  }
+  },
 
   async setOwnerName(
     id: OwnerId,
@@ -194,29 +192,29 @@ export class EvoluAuth {
   ): Promise<void> {
     const names = await this.getOwnerNames(options);
     names[id] = username;
-    await this.secureStorage.setItem(AUTH_METAKEY_OWNER_NAMES, JSON.stringify(names), {
+    await secureStorage.setItem(AUTH_METAKEY_OWNER_NAMES, JSON.stringify(names), {
       ...AUTH_DEFAULT_OPTIONS,
       ...options,
       accessControl: 'none',
     });
-  }
+  },
 
   async deleteOwnerName(
     id: OwnerId,
     options?: AuthProviderOptions,
   ): Promise<void> {
     const { [id]: _, ...names } = await this.getOwnerNames(options);
-    await this.secureStorage.setItem(AUTH_METAKEY_OWNER_NAMES, JSON.stringify(names), {
+    await secureStorage.setItem(AUTH_METAKEY_OWNER_NAMES, JSON.stringify(names), {
       ...AUTH_DEFAULT_OPTIONS,
       ...options,
       accessControl: 'none',
     });
-  }
+  },
 
   async getOwnerIds(
     options?: AuthProviderOptions,
   ): Promise<Array<OwnerId>> {
-    const items = await this.secureStorage.getAllItems({
+    const items = await secureStorage.getAllItems({
       ...AUTH_DEFAULT_OPTIONS,
       ...options,
       includeValues: false,
@@ -225,15 +223,15 @@ export class EvoluAuth {
       .filter(Boolean)
       .filter(i => i.key !== AUTH_METAKEY_LAST_OWNER && i.key !== AUTH_METAKEY_OWNER_NAMES)
       .map(i => i.key as OwnerId);
-  }
+  },
 
   async clearAuthStore(options?: AuthProviderOptions): Promise<void> {
-    await this.secureStorage.clearService({
+    await secureStorage.clearService({
       ...AUTH_DEFAULT_OPTIONS,
       ...options,
     });
-  }
-}
+  },
+});
 
 export interface AuthProviderDep {
   readonly authProvider: AuthProvider;
