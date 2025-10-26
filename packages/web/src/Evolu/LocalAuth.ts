@@ -299,7 +299,6 @@ const decryptAuthResult = (deps: SymmetricCryptoDep) => (
   return bytesToUtf8(result.value);
 };
 
-// TODO: This lost type  Uint8Array<ArrayBufferLike> & Brand<"Entropy"> & Brand<"Length32">
-const generateSeed = (deps: RandomBytesDep) => (): Uint8Array => {
+const generateSeed = (deps: RandomBytesDep) => () => {
   return deps.randomBytes.create(32);
 };
