@@ -11,7 +11,7 @@ import {
   EvoluDeps,
 } from "@evolu/common/evolu";
 import { createSharedWebWorker } from "../SharedWebWorker.js";
-import * as webAuthnStore from "../WebAuthnStore/index.js";
+import { createWebAuthnStore } from "./LocalAuth.js";
 import { reloadApp } from "./Platform.js";
 
 const randomBytes = createRandomBytes();
@@ -31,7 +31,7 @@ export const evoluWebDeps: EvoluDeps = {
   randomBytes: createRandomBytes(),
   localAuth: createLocalAuth({
     randomBytes,
-    secureStorage: webAuthnStore,
+    secureStorage: createWebAuthnStore(),
   }),
   reloadApp,
   time: createTime(),
