@@ -10,8 +10,8 @@ import {
   DbWorkerOutput,
   EvoluDeps,
 } from "@evolu/common/evolu";
-import * as webAuthnStore from "../WebAuthnStore/index.js";
 import { createSharedWebWorker } from "../SharedWebWorker.js";
+import * as webAuthnStore from "../WebAuthnStore/index.js";
 import { reloadApp } from "./Platform.js";
 
 const randomBytes = createRandomBytes();

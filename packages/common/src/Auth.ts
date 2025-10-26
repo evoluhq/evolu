@@ -1,3 +1,5 @@
+import type { RandomBytes } from "./Crypto.js";
+import type { AppOwner, OwnerId } from "./Evolu/Owner.js";
 import {
   createAppOwner,
   createOwnerSecret,
@@ -5,8 +7,6 @@ import {
   OwnerEncryptionKey,
   OwnerWriteKey,
 } from "./Evolu/Owner.js";
-import type { AppOwner, OwnerId } from "./Evolu/Owner.js";
-import type { RandomBytes } from "./Crypto.js";
 import type { Mnemonic } from "./Type.js";
 
 export const AUTH_NAMESPACE = "evolu";
