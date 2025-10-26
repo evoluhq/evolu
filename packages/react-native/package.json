@@ -61,6 +61,8 @@
     "expo": "^54.0.10",
     "expo-sqlite": "~16.0.8",
     "react-native": "^0.81.4",
+    "react-native-nitro-modules": "^0.31.2",
+    "react-native-sensitive-info": "^6.0.0-rc.4",
     "shx": "^0.4.0",
     "typescript": "^5.9.2",
     "vitest": "^3.2.3"
@@ -71,7 +73,9 @@
     "@op-engineering/op-sqlite": ">=12",
     "expo": ">=54",
     "expo-sqlite": ">=15",
-    "react-native": ">=0.81"
+    "react-native": ">=0.81",
+    "react-native-nitro-modules": ">=0.31",
+    "react-native-sensitive-info": ">=6"
   },
   "peerDependenciesMeta": {
     "@op-engineering/op-sqlite": {
@@ -81,6 +85,12 @@
       "optional": true
     },
     "expo-sqlite": {
+      "optional": true
+    },
+    "react-native-nitro-modules": {
+      "optional": true
+    },
+    "react-native-sensitive-info": {
       "optional": true
     }
   },
