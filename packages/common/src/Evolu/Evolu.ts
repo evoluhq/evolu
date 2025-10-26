@@ -1,9 +1,9 @@
 import { pack } from "msgpackr";
 import { isNonEmptyArray, isNonEmptyReadonlyArray } from "../Array.js";
 import { assert, assertNonEmptyArray } from "../Assert.js";
+import { AuthProviderDep } from "../Auth.js";
 import { createCallbackRegistry } from "../CallbackRegistry.js";
 import { ConsoleDep } from "../Console.js";
-import { AuthProviderDep } from "../Auth.js";
 import { RandomBytesDep, SymmetricCryptoDecryptError } from "../Crypto.js";
 import { eqArrayNumber } from "../Eq.js";
 import { TransferableError } from "../Error.js";
@@ -352,31 +352,32 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
    */
   readonly getAppOwner: () => AppOwner | null;
 
-  /**
-   * Subscribe to {@link SyncState} changes.
-   *
-   * ### Example
-   *
-   * ```ts
-   * const unsubscribe = evolu.subscribeSyncState(() => {
-   *   const syncState = evolu.getSyncState();
-   * });
-   * ```
-   */
-  readonly subscribeSyncState: StoreSubscribe;
+  // TODO: Update it for the owner-api
+  // /**
+  //  * Subscribe to {@link SyncState} changes.
+  //  *
+  //  * ### Example
+  //  *
+  //  * ```ts
+  //  * const unsubscribe = evolu.subscribeSyncState(() => {
+  //  *   const syncState = evolu.getSyncState();
+  //  * });
+  //  * ```
+  //  */
+  // readonly subscribeSyncState: StoreSubscribe;
 
-  /**
-   * Get {@link SyncState}.
-   *
-   * ### Example
-   *
-   * ```ts
-   * const unsubscribe = evolu.subscribeSyncState(() => {
-   *   const syncState = evolu.getSyncState();
-   * });
-   * ```
-   */
-  readonly getSyncState: () => SyncState;
+  // /**
+  //  * Get {@link SyncState}.
+  //  *
+  //  * ### Example
+  //  *
+  //  * ```ts
+  //  * const unsubscribe = evolu.subscribeSyncState(() => {
+  //  *   const syncState = evolu.getSyncState();
+  //  * });
+  //  * ```
+  //  */
+  // readonly getSyncState: () => SyncState;
 
   /**
    * Inserts a row into the database and returns a {@link Result} with the new
@@ -732,7 +733,8 @@ const createEvoluInstance =
     const appOwnerStore = createStore<AppOwner | null>(
       config?.externalAppOwner ?? null,
     );
-    const syncStore = createStore<SyncState>(initialSyncState);
+    // TODO: Update it for the owner-api
+    const _syncStore = createStore<SyncState>(initialSyncState);
 
     const subscribedQueries = createSubscribedQueries(rowsStore);
     const loadingPromises = createLoadingPromises(subscribedQueries);
@@ -1155,8 +1157,9 @@ const createEvoluInstance =
       subscribeAppOwner: appOwnerStore.subscribe,
       getAppOwner: appOwnerStore.get,
 
-      subscribeSyncState: syncStore.subscribe,
-      getSyncState: syncStore.get,
+      // TODO: Update it for the owner-api
+      // subscribeSyncState: syncStore.subscribe,
+      // getSyncState: syncStore.get,
 
       insert: createMutation("insert"),
       update: createMutation("update"),

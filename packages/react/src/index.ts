@@ -8,5 +8,5 @@ export * from "./useOwner.js";
 export * from "./useQueries.js";
 export * from "./useQuery.js";
 export * from "./useQuerySubscription.js";
-export * from "./useSyncState.js";
+// export * from "./useSyncState.js"; TODO: Update it for the owner-api
 export * from "./useWasSsr.js";
