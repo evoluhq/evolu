@@ -12,138 +12,121 @@ import {
   createCredential,
   supportsWebAuthn,
 } from "./credentials.js";
-
 import type {
   AuthResult,
-  LocalAuthOptions,
-  LocalAuthOptionsValues,
   SensitiveInfoItem,
-  MutationResult,
+  SecureStorage,
 } from "@evolu/common";
 import type { UseStore } from "idb-keyval";
 
-export const setItem = async (
-  key: string,
-  value: string,
-  options?: LocalAuthOptions,
-): Promise<MutationResult> => {
-  if (options?.accessControl === "none") {
-    const metadata = createMetadata(false);
-    await set(key, { value, metadata }, getStore(options.service));
-    return { metadata };
-  }
-
-  await checkWebAuthnSupport();
-
-  const seed = generateSeed();
-  const authResult = JSON.parse(value) as AuthResult;
-  const credential = await createCredential(
-    options?.webAuthnUsername ?? "Evolu User",
-    seed,
-    options?.relyingPartyID,
-    options?.relyingPartyName,
-    options?.webAuthnUserVerification,
-    options?.webAuthnAuthenticatorAttachment,
-  );
-  const encryptionKey = deriveEncryptionKey(seed);
-  const encryptedData = encryptAuthResult(authResult, encryptionKey);
-  const credentialId = toBase64(new Uint8Array(credential.rawId));
-  const metadata = createMetadata();
-  await set(
-    key,
-    { credentialId, ...encryptedData, metadata },
-    getStore(options?.service),
-  );
-  return { metadata };
-};
-
-export const getItem = async (
-  key: string,
-  options?: LocalAuthOptions,
-): Promise<SensitiveInfoItem | null> => {
-  if (options?.accessControl === "none") {
-    const data = await get<{
-      readonly value: string;
-      readonly metadata: SensitiveInfoItem["metadata"];
-    }>(key, getStore(options.service));
-    return data
-      ? {
-          key,
-          value: data.value,
-          service: options.service ?? "default",
-          metadata: data.metadata,
-        }
-      : null;
-  }
-
-  await checkWebAuthnSupport();
-
-  const data = await get<{
-    readonly nonce: string;
-    readonly ciphertext: string;
-    readonly credentialId: string;
-    readonly metadata: SensitiveInfoItem["metadata"];
-  }>(key, getStore(options?.service));
-  if (!data) {
-    return null;
-  }
-  try {
-    const credential = await getCredential(
-      data.credentialId,
-      options?.relyingPartyID,
-      options?.webAuthnUserVerification,
-    );
-    const credentialSeed = extractSeedFromCredential(credential);
-    const encryptionKey = deriveEncryptionKey(credentialSeed);
-    const authResultVal = decryptAuthResult(data, encryptionKey);
-    if (!authResultVal) {
-      return null;
-    }
-    return {
-      key,
-      service: options?.service ?? "default",
-      value: authResultVal,
-      metadata: data.metadata,
-    };
-  } catch (_error) {
-    return null;
-  }
-};
-
-export const deleteItem = async (
-  key: string,
-  options?: LocalAuthOptions,
-): Promise<boolean> => {
-  await del(key, getStore(options?.service));
-  return true;
-};
-
-export const getAllItems = async (
-  options?: LocalAuthOptionsValues,
-): Promise<Array<SensitiveInfoItem>> => {
-  const service = options?.service ?? "default";
-  const itemKeys = await keys<string>(getStore(service));
-  const items = await Promise.all(
-    itemKeys.map(async (key) => {
-      const data = await get<{
-        readonly metadata?: SensitiveInfoItem["metadata"];
-        readonly value?: string;
-      }>(key, getStore(service));
-      return {
+export const createWebAuthnStore = (): SecureStorage => {
+  return {
+    setItem: async (key, value, options) => {
+      if (options?.accessControl === "none") {
+        const metadata = createMetadata(false);
+        await set(key, { value, metadata }, getStore(options.service));
+        return { metadata };
+      }
+      await checkWebAuthnSupport();
+      const seed = generateSeed();
+      const authResult = JSON.parse(value) as AuthResult;
+      const credential = await createCredential(
+        options?.webAuthnUsername ?? "Evolu User",
+        seed,
+        options?.relyingPartyID,
+        options?.relyingPartyName,
+        options?.webAuthnUserVerification,
+        options?.webAuthnAuthenticatorAttachment,
+      );
+      const encryptionKey = deriveEncryptionKey(seed);
+      const encryptedData = encryptAuthResult(authResult, encryptionKey);
+      const credentialId = toBase64(new Uint8Array(credential.rawId));
+      const metadata = createMetadata();
+      await set(
         key,
-        service,
-        metadata: data?.metadata ?? createMetadata(),
-        ...(options?.includeValues && data?.value ? { value: data.value } : {}),
-      };
-    }),
-  );
-  return items;
-};
+        { credentialId, ...encryptedData, metadata },
+        getStore(options?.service),
+      );
+      return { metadata };
+    },
 
-export const clearService = async (
-  options?: LocalAuthOptions,
-): Promise<void> => {
-  await clear(getStore(options?.service));
+    getItem: async (key, options) => {
+      if (options?.accessControl === "none") {
+        const data = await get<{
+          readonly value: string;
+          readonly metadata: SensitiveInfoItem["metadata"];
+        }>(key, getStore(options.service));
+        return data
+          ? {
+              key,
+              value: data.value,
+              service: options.service ?? "default",
+              metadata: data.metadata,
+            }
+          : null;
+      }
+      await checkWebAuthnSupport();
+      const data = await get<{
+        readonly nonce: string;
+        readonly ciphertext: string;
+        readonly credentialId: string;
+        readonly metadata: SensitiveInfoItem["metadata"];
+      }>(key, getStore(options?.service));
+      if (!data) {
+        return null;
+      }
+      try {
+        const credential = await getCredential(
+          data.credentialId,
+          options?.relyingPartyID,
+          options?.webAuthnUserVerification,
+        );
+        const credentialSeed = extractSeedFromCredential(credential);
+        const encryptionKey = deriveEncryptionKey(credentialSeed);
+        const authResultVal = decryptAuthResult(data, encryptionKey);
+        if (!authResultVal) {
+          return null;
+        }
+        return {
+          key,
+          service: options?.service ?? "default",
+          value: authResultVal,
+          metadata: data.metadata,
+        };
+      } catch (_error) {
+        return null;
+      }
+    },
+
+    deleteItem: async (key, options) => {
+      await del(key, getStore(options?.service));
+      return true;
+    },
+
+    getAllItems: async (options) => {
+      const service = options?.service ?? "default";
+      const itemKeys = await keys<string>(getStore(service));
+      const items = await Promise.all(
+        itemKeys.map(async (key) => {
+          const data = await get<{
+            readonly metadata?: SensitiveInfoItem["metadata"];
+            readonly value?: string;
+          }>(key, getStore(service));
+          return {
+            key,
+            service,
+            metadata: data?.metadata ?? createMetadata(),
+            ...(options?.includeValues && data?.value ? { value: data.value } : {}),
+          };
+        }),
+      );
+      return items;
+    },
+
+    clearService: async (options) => {
+      await clear(getStore(options?.service));
+    },
+  };
 };
 
 /**
