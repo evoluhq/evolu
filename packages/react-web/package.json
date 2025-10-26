@@ -35,6 +35,9 @@
     "dev": "tsc --watch",
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
+  "dependencies": {
+    "blo": "^2.0.0"
+  },
   "devDependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/tsconfig": "workspace:*",

@@ -7,11 +7,10 @@ import {
   useAppOwner,
   useQuery,
 } from "@evolu/react";
-import { evoluReactWebDeps } from "@evolu/react-web";
+import { EvoluProfilePic, evoluReactWebDeps } from "@evolu/react-web";
 import { IconEdit, IconTrash } from "@tabler/icons-react";
 import clsx from "clsx";
 import { FC, Suspense, useMemo, useState } from "react";
-import { EvoluProfilePic } from "./EvoluProfilePic";
 
 const APP_SERVICE = "pwa-react";
 
