@@ -11,6 +11,7 @@
     "*"
   ],
   "entryPoints": [
+    "src/Auth.ts",
     "src/Array.ts",
     "src/Assert.ts",
     "src/BigInt.ts",
