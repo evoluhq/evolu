@@ -1,8 +1,8 @@
 import {
   createConsole,
+  createLocalAuth,
   createRandom,
   createRandomBytes,
-  createAuthProvider,
   createTime,
   createWebSocket,
 } from "@evolu/common";
@@ -24,7 +24,10 @@ polyfillHermes();
 const console = createConsole();
 const time = createTime();
 const randomBytes = createRandomBytes();
-const authProvider = createAuthProvider(SensitiveInfo, randomBytes);
+const localAuth = createLocalAuth({
+  randomBytes: randomBytes,
+  secureStorage: SensitiveInfo,
+});
 
 const createDbWorker: CreateDbWorker = () =>
   createDbWorkerForPlatform({
@@ -44,7 +47,7 @@ export const evoluReactNativeDeps: EvoluDeps = {
   console,
   createDbWorker,
   randomBytes,
-  authProvider,
+  localAuth,
   reloadApp,
   time,
 };

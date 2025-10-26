@@ -15,8 +15,8 @@ import {
 
 import type {
   AuthResult,
-  AuthProviderOptions,
-  AuthProviderOptionsValues,
+  LocalAuthOptions,
+  LocalAuthOptionsValues,
   SensitiveInfoItem,
   MutationResult,
 } from "@evolu/common";
@@ -25,7 +25,7 @@ import type { UseStore } from "idb-keyval";
 export const setItem = async (
   key: string,
   value: string,
-  options?: AuthProviderOptions,
+  options?: LocalAuthOptions,
 ): Promise<MutationResult> => {
   if (options?.accessControl === "none") {
     const metadata = createMetadata(false);
@@ -59,7 +59,7 @@ export const setItem = async (
 
 export const getItem = async (
   key: string,
-  options?: AuthProviderOptions,
+  options?: LocalAuthOptions,
 ): Promise<SensitiveInfoItem | null> => {
   if (options?.accessControl === "none") {
     const data = await get<{
@@ -112,14 +112,14 @@ export const getItem = async (
 
 export const deleteItem = async (
   key: string,
-  options?: AuthProviderOptions,
+  options?: LocalAuthOptions,
 ): Promise<boolean> => {
   await del(key, getStore(options?.service));
   return true;
 };
 
 export const getAllItems = async (
-  options?: AuthProviderOptionsValues,
+  options?: LocalAuthOptionsValues,
 ): Promise<Array<SensitiveInfoItem>> => {
   const service = options?.service ?? "default";
   const itemKeys = await keys<string>(getStore(service));
@@ -141,7 +141,7 @@ export const getAllItems = async (
 };
 
 export const clearService = async (
-  options?: AuthProviderOptions,
+  options?: LocalAuthOptions,
 ): Promise<void> => {
   await clear(getStore(options?.service));
 };

@@ -45,14 +45,17 @@ export const decryptAuthResult = (
   return new TextDecoder().decode(result.value);
 };
 
+// TODO: This lost type  Uint8Array<ArrayBufferLike> & Brand<"Entropy"> & Brand<"Length32">
 export const generateSeed = (): Uint8Array => {
   return randomBytes.create(32);
 };
 
+// TODO: We have uint8ArrayToBase64Url etc
 export const toBase64 = (buffer: Uint8Array): string => {
   return btoa(String.fromCharCode(...buffer));
 };
 
+// TODO: We have uint8ArrayToBase64Url etc
 export const fromBase64 = (base64: string): Uint8Array => {
   return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
 };

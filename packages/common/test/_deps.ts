@@ -1,11 +1,12 @@
 import {
-  createAuthProvider,
+  createLocalAuth,
   CreateWebSocket,
   TimingSafeEqual,
   WebSocket,
 } from "@evolu/common";
 import BetterSQLite, { Statement } from "better-sqlite3";
 import { timingSafeEqual } from "crypto";
+import { vi } from "vitest";
 import { Console } from "../src/Console.js";
 import {
   createSymmetricCrypto,
@@ -34,7 +35,6 @@ import {
 } from "../src/Sqlite.js";
 import { createTestTime, TimeDep } from "../src/Time.js";
 import { createId, Id, SimpleName } from "../src/Type.js";
-import { vi } from "vitest";
 // import { existsSync, unlinkSync } from "fs";
 
 export const testRandom = createRandomWithSeed("evolu");
@@ -54,16 +54,16 @@ export const testRandomBytes: RandomBytes = {
 
 const randomBytesDep = { randomBytes: testRandomBytes };
 
-export const testAuthProvider = createAuthProvider(
-  {
+export const testLocalAuth = createLocalAuth({
+  secureStorage: {
     setItem: vi.fn(),
     getItem: vi.fn(),
     deleteItem: vi.fn(),
     getAllItems: vi.fn(),
     clearService: vi.fn(),
   },
-  testRandomBytes,
-);
+  randomBytes: testRandomBytes,
+});
 
 export const testCreateId = (): Id => createId(randomBytesDep);
 
