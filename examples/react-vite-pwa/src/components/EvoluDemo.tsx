@@ -48,9 +48,9 @@ const evolu = Evolu.createEvolu(evoluReactWebDeps)(Schema, {
   name: Evolu.SimpleName.orThrow(
     `${service}-${authResult?.owner?.id ?? "guest"}`,
   ),
-  externalAppOwner: authResult?.owner,
   reloadUrl: "/",
   encryptionKey: authResult?.owner?.encryptionKey,
+  externalAppOwner: authResult?.owner,
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
   }),
