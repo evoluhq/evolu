@@ -2,10 +2,12 @@ import { set, get, del, keys, clear, createStore } from "idb-keyval";
 
 import {
   createSlip21,
-  Base64Url,
-  uint8ArrayToBase64Url,
+  utf8ToBytes,
+  bytesToUtf8,
   base64UrlToUint8Array,
+  uint8ArrayToBase64Url,
   EncryptionKey,
+  Base64Url,
 } from "@evolu/common";
 
 import type {
@@ -275,7 +277,7 @@ const encryptAuthResult = (deps: SymmetricCryptoDep) => (
   nonce: Base64Url;
   ciphertext: Base64Url;
 } => {
-  const plaintext = new TextEncoder().encode(JSON.stringify(authResult));
+  const plaintext = utf8ToBytes(JSON.stringify(authResult));
   const { nonce, ciphertext } = deps.symmetricCrypto.encrypt(
     plaintext,
     encryptionKey,
@@ -294,7 +296,7 @@ const decryptAuthResult = (deps: SymmetricCryptoDep) => (
   const ciphertext = base64UrlToUint8Array(encryptedData.ciphertext);
   const result = deps.symmetricCrypto.decrypt(ciphertext, encryptionKey, nonce);
   if (!result.ok) return null;
-  return new TextDecoder().decode(result.value);
+  return bytesToUtf8(result.value);
 };
 
 // TODO: This lost type  Uint8Array<ArrayBufferLike> & Brand<"Entropy"> & Brand<"Length32">
