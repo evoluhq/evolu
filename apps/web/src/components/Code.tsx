@@ -248,7 +248,7 @@ function CodeGroupHeader({
           {Children.map(children, (child, childIndex) => (
             <Tab
               className={clsx(
-                "flex-shrink-0 border-b py-3 whitespace-nowrap outline-hidden transition",
+                "shrink-0 border-b py-3 whitespace-nowrap outline-hidden transition",
                 childIndex === selectedIndex
                   ? "border-blue-500 text-blue-400"
                   : "border-transparent text-zinc-400 hover:text-zinc-300",
@@ -407,6 +407,56 @@ export function CodeGroup({
           </div>
         </div>
       )}
+    </CodeGroupContext.Provider>
+  );
+}
+
+export function SinglePlatformCodeGroup({
+  children,
+  title,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof CodeGroupPanels> & {
+  title?: string;
+}): React.ReactElement {
+  const { preferredLanguages } = usePreferredLanguageStore();
+  const currentPlatform =
+    preferredLanguages[preferredLanguages.length - 1] ?? "React";
+
+  // Find the child that matches the selected platform
+  const matchingChild = Children.toArray(children).find((child) => {
+    if (isValidElement(child)) {
+      // @ts-expect-error TODO: Fix this somehow
+      const childTitle = getPanelTitle(child.props);
+      return childTitle === currentPlatform;
+    }
+    return false;
+  });
+
+  // If no matching child found, show the first one (fallback)
+  const selectedChild = matchingChild ?? Children.toArray(children)[0];
+
+  if (!selectedChild) {
+    return <div>No code available</div>;
+  }
+
+  const containerClassName =
+    "my-6 overflow-hidden rounded-2xl bg-zinc-900 shadow-md dark:ring-1 dark:ring-white/10";
+
+  return (
+    <CodeGroupContext.Provider value={true}>
+      <div className={containerClassName}>
+        <div className="not-prose">
+          {title && (
+            <div className="flex min-h-[calc(--spacing(12)+1px)] items-center border-b border-zinc-700 bg-zinc-800 px-4 dark:border-zinc-800 dark:bg-transparent">
+              <h3 className="text-xs font-semibold text-white">{title}</h3>
+              <div className="ml-auto text-xs font-medium text-blue-400">
+                {currentPlatform}
+              </div>
+            </div>
+          )}
+          <CodePanel {...props}>{selectedChild}</CodePanel>
+        </div>
+      </div>
     </CodeGroupContext.Provider>
   );
 }

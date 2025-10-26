@@ -1,0 +1,37 @@
+{
+  "name": "@evolu/relay",
+  "version": "1.1.2-preview.6",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "@evolu/relay": "dist/src/cli.js"
+  },
+  "scripts": {
+    "dev": "tsx --watch src/cli.ts -- start",
+    "build": "shx rm -rf dist && tsc",
+    "start": "node dist/src/cli.js start",
+    "clean": "shx rm -rf .turbo node_modules dist data/*.db data/*.db-*",
+    "docker:build": "docker-compose build --no-cache",
+    "docker:up": "docker-compose up --build",
+    "docker:down": "docker-compose down -v",
+    "docker:dev:build": "docker-compose -f docker-compose.dev.yaml build --no-cache",
+    "docker:dev:up": "docker-compose -f docker-compose.dev.yaml up --build",
+    "docker:dev:down": "docker-compose -f docker-compose.dev.yaml down -v"
+  },
+  "dependencies": {
+    "@evolu/common": "workspace:*",
+    "@evolu/nodejs": "workspace:*",
+    "commander": "^14.0.1"
+  },
+  "devDependencies": {
+    "@evolu/tsconfig": "workspace:*",
+    "@types/node": "^22.17.1",
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

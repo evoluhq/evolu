@@ -9,7 +9,7 @@ Enhance message integrity by embedding timestamps in encrypted data
 - Update `decryptAndDecodeDbChange` to verify embedded timestamp matches expected timestamp
 - Add `ProtocolTimestampMismatchError` for timestamp verification failures
 - Export `eqTimestamp` equality function for timestamp comparison
-- Add `binaryTimestampLength` constant for consistent binary timestamp size
+- Add `timestampBytesLength` constant for consistent binary timestamp size
 - Fix `Db.ts` to pass complete `CrdtMessage` to encryption functions
 - Add test for timestamp tamper-proofing scenarios
 

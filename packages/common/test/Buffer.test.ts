@@ -32,28 +32,17 @@ test("Buffer", () => {
   expect(buffer.getCapacity()).toBe(2048);
 
   const buffer2 = createBuffer([1]);
-  expect(buffer2.unwrap()).toMatchInlineSnapshot(`
-    Uint8Array [
-      1,
-    ]
-  `);
+  expect(buffer2.unwrap()).toMatchInlineSnapshot(`uint8:[1]`);
 
   expect(buffer2.shift()).toBe(1);
-  expect(buffer2.unwrap()).toMatchInlineSnapshot(`Uint8Array []`);
+  expect(buffer2.unwrap()).toMatchInlineSnapshot(`uint8:[]`);
 
   buffer2.extend([1, 2, 3]);
-  expect(buffer2.shiftN(2 as NonNegativeInt)).toMatchInlineSnapshot(`
-    Uint8Array [
-      1,
-      2,
-    ]
-  `);
+  expect(buffer2.shiftN(2 as NonNegativeInt)).toMatchInlineSnapshot(
+    `uint8:[1,2]`,
+  );
 
-  expect(buffer2.unwrap()).toMatchInlineSnapshot(`
-    Uint8Array [
-      3,
-    ]
-  `);
+  expect(buffer2.unwrap()).toMatchInlineSnapshot(`uint8:[3]`);
 
   expect(() => buffer2.shiftN(2 as NonNegativeInt)).toThrow(BufferError);
   expect(() => buffer2.shiftN(2 as NonNegativeInt)).toThrowError(

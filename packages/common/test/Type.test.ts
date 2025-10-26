@@ -1,11 +1,12 @@
 import { assert, expect, expectTypeOf, test } from "vitest";
-import { constVoid } from "../src/Function.js";
+import { Brand } from "../src/Brand.js";
+import { constVoid, exhaustiveCheck } from "../src/Function.js";
 import { err, ok } from "../src/Result.js";
 import {
   array,
   ArrayError,
   Base64Url,
-  Between1And10,
+  base64UrlToUint8Array,
   BigIntError,
   Boolean,
   BooleanError,
@@ -16,7 +17,6 @@ import {
   createIdFromString,
   Date,
   DateIso,
-  DateIsoString,
   FiniteError,
   FiniteNumber,
   formatRegexError,
@@ -25,7 +25,9 @@ import {
   greaterThanOrEqualTo,
   Id,
   id,
-  IdError,
+  IdBytes,
+  idBytesToId,
+  idToIdBytes,
   InferError,
   InferInput,
   InferParent,
@@ -40,14 +42,12 @@ import {
   IntError,
   isOptionalType,
   isType,
-  json,
   Json,
+  json,
   JsonArray,
   JsonError,
   JsonValue,
   JsonValueError,
-  JsonValueFromString,
-  JsonValueFromStringError,
   JsonValueInput,
   length,
   LengthError,
@@ -65,7 +65,9 @@ import {
   NegativeInt,
   NegativeNumber,
   NonEmptyString,
+  NonEmptyString100,
   NonEmptyTrimmedString,
+  NonEmptyTrimmedString100,
   NonEmptyTrimmedString1000,
   NonNaNError,
   NonNaNNumber,
@@ -81,8 +83,6 @@ import {
   nullOr,
   Number,
   NumberError,
-  NumberFromString,
-  NumberFromStringError,
   object,
   ObjectError,
   ObjectWithRecordError,
@@ -100,8 +100,7 @@ import {
   SimplePassword,
   String,
   StringError,
-  transform,
-  trim,
+  TableIdError,
   trimmed,
   TrimmedError,
   TrimmedString,
@@ -111,21 +110,20 @@ import {
   TypeError,
   TypeErrorFormatter,
   TypeErrors,
+  uint8ArrayToBase64Url,
   UndefinedError,
   undefinedOr,
   union,
   UnionError,
   Unknown,
+  UrlSafeString,
 } from "../src/Type.js";
-import { Brand } from "../src/Brand.js";
-import { testNanoIdLib } from "./_deps.js";
+import { testDeps } from "./_deps.js";
 
 test("Base Types", () => {
   expect(Unknown.from(42)).toEqual({ ok: true, value: 42 });
   expect(Unknown.fromUnknown(42)).toEqual({ ok: true, value: 42 });
-  expect(Unknown.to(42)).toBe(42);
   expect(Unknown.fromParent(42)).toEqual({ ok: true, value: 42 });
-  expect(Unknown.toParent(42)).toBe(42);
   expect(Unknown.is(42)).toBe(true);
   expect(Unknown.name).toBe("Unknown");
   expect(isType(Unknown)).toBe(true);
@@ -147,9 +145,7 @@ test("Base Types", () => {
   expect(String.fromUnknown(42)).toEqual(
     err<StringError>({ type: "String", value: 42 }),
   );
-  expect(String.to("example")).toBe("example");
   expect(String.fromParent("example")).toEqual(ok("example"));
-  expect(String.toParent("example")).toBe("example");
   expect(String.is("valid string")).toBe(true);
   expect(String.is(123)).toBe(false);
   expect(String.name).toBe("String");
@@ -166,6 +162,13 @@ test("Base Types", () => {
   );
 
   // TODO: Test other Base Types.
+});
+
+test("orThrow", () => {
+  expect(PositiveNumber.orThrow(42)).toBe(42);
+  expect(() => PositiveNumber.orThrow(-5)).toThrowErrorMatchingInlineSnapshot(
+    `[Error: getOrThrow]`,
+  );
 });
 
 test("brand", () => {
@@ -191,9 +194,7 @@ test("brand", () => {
   expect(TrimmedString.fromUnknown(" a")).toEqual(
     err({ type: "TrimmedString", value: " a" }),
   );
-  expect(TrimmedString.to("a" as TrimmedString)).toEqual("a");
   expect(TrimmedString.fromParent("a")).toEqual(ok("a"));
-  expect(TrimmedString.toParent("a" as TrimmedString)).toEqual("a");
   expect(TrimmedString.is("a")).toBe(true);
   expect(TrimmedString.is(123)).toBe(false);
   expect(TrimmedString.name).toBe("Brand");
@@ -239,7 +240,6 @@ test("brand", () => {
   expect(NonEmptyTrimmedString.from("")).toEqual(
     err({ type: "NonEmptyTrimmedString", value: "" }),
   );
-  expect(NonEmptyTrimmedString.to("a" as NonEmptyTrimmedString)).toEqual("a");
 
   // fromParent skips TrimmedString
   expect(trimmedStringRefineCount).toBe(9);
@@ -248,7 +248,6 @@ test("brand", () => {
   );
   expect(trimmedStringRefineCount).toBe(9);
 
-  expect(TrimmedString.toParent("a" as TrimmedString)).toEqual("a");
   expect(NonEmptyTrimmedString.is("a")).toBe(true);
   expect(NonEmptyTrimmedString.is("")).toBe(false);
   expect(NonEmptyTrimmedString.name).toBe("Brand");
@@ -334,9 +333,7 @@ test("TrimmedString", () => {
   expect(TrimmedString.fromUnknown(" a")).toEqual(
     err({ type: "Trimmed", value: " a" }),
   );
-  expect(TrimmedString.to("a" as TrimmedString)).toEqual("a");
   expect(TrimmedString.fromParent("a")).toEqual(ok("a"));
-  expect(TrimmedString.toParent("a" as TrimmedString)).toEqual("a");
   expect(TrimmedString.is("a")).toBe(true);
   expect(TrimmedString.is(123)).toBe(false);
   expect(TrimmedString.name).toBe("Brand");
@@ -385,20 +382,20 @@ test("TrimmedString", () => {
   >();
 });
 
-test("trim", () => {
-  // @ts-expect-error Boolean is not allowed
-  trim(Boolean);
+// test("trim", () => {
+//   // @ts-expect-error Boolean is not allowed
+//   trim(Boolean);
 
-  const TrimString = trim(String);
-  expect(TrimString.from("a ")).toEqual(ok("a"));
-  expect(TrimString.fromParent("a ").value).toEqual("a");
+//   const TrimString = trim(String);
+//   expect(TrimString.from("a ")).toEqual(ok("a"));
+//   expect(TrimString.fromParent("a ").value).toEqual("a");
 
-  const TrimNonEmptyString = trim(NonEmptyString);
-  expect(TrimNonEmptyString.from("a " as NonEmptyString)).toEqual(ok("a"));
-  expect(TrimNonEmptyString.fromParent("a " as NonEmptyString).value).toEqual(
-    "a",
-  );
-});
+//   const TrimNonEmptyString = trim(NonEmptyString);
+//   expect(TrimNonEmptyString.from("a " as NonEmptyString)).toEqual(ok("a"));
+//   expect(TrimNonEmptyString.fromParent("a " as NonEmptyString).value).toEqual(
+//     "a",
+//   );
+// });
 
 test("minLength", () => {
   const Min1String = minLength(1)(String);
@@ -412,9 +409,6 @@ test("minLength", () => {
   expect(Min1String.fromUnknown("")).toEqual(
     err<MinLengthError<1>>({ type: "MinLength", value: "", min: 1 }),
   );
-
-  expect(Min1String.to("abc" as typeof Min1String.Type)).toEqual("abc");
-  expect(Min1String.toParent("abc" as typeof Min1String.Type)).toEqual("abc");
 
   expect(Min1String.fromParent("abc")).toEqual(ok("abc"));
   expect(Min1String.fromParent("")).toEqual(
@@ -477,9 +471,6 @@ test("maxLength", () => {
       max: 5,
     }),
   );
-
-  expect(String5.to("short" as typeof String5.Type)).toEqual("short");
-  expect(String5.toParent("short" as typeof String5.Type)).toEqual("short");
 
   expect(String5.fromParent("short")).toEqual(ok("short"));
   expect(String5.fromParent("too long")).toEqual(
@@ -551,9 +542,6 @@ test("length", () => {
     }),
   );
 
-  expect(Length1String.to("x" as typeof Length1String.Type)).toEqual("x");
-  expect(Length1String.toParent("y" as typeof Length1String.Type)).toEqual("y");
-
   expect(Length1String.fromParent("z")).toEqual(ok("z"));
   expect(Length1String.fromParent("toolong")).toEqual(
     err<LengthError<1>>({ type: "Length", value: "toolong", exact: 1 }),
@@ -622,13 +610,6 @@ test("regex", () => {
     }),
   );
 
-  expect(Alphanumeric.to("abc123" as typeof Alphanumeric.Type)).toEqual(
-    "abc123",
-  );
-  expect(Alphanumeric.toParent("abc123" as typeof Alphanumeric.Type)).toEqual(
-    "abc123",
-  );
-
   expect(Alphanumeric.is("abc123")).toBe(true);
   expect(Alphanumeric.is("abc!123")).toBe(false);
 
@@ -694,50 +675,105 @@ test("regex", () => {
   expect(GlobalRegex.from("abc")).toEqual(ok("abc"));
 });
 
-test("Base64Url", () => {
-  expect(Base64Url.from("abc123_-")).toEqual(ok("abc123_-"));
-  expect(Base64Url.from("ABC123_-")).toEqual(ok("ABC123_-"));
+test("UrlSafeString", () => {
+  expect(UrlSafeString.from("abc123_-")).toEqual(ok("abc123_-"));
+  expect(UrlSafeString.from("ABC123_-")).toEqual(ok("ABC123_-"));
 
-  expect(Base64Url.from("abc!123")).toEqual(
-    err<RegexError<"Base64Url">>({
+  expect(UrlSafeString.from("abc!123")).toEqual(
+    err<RegexError<"UrlSafeString">>({
       type: "Regex",
-      name: "Base64Url",
+      name: "UrlSafeString",
       value: "abc!123",
       pattern: /^[A-Za-z0-9_-]+$/,
     }),
   );
-  expect(Base64Url.from("abc/123")).toEqual(
-    err<RegexError<"Base64Url">>({
+  expect(UrlSafeString.from("abc/123")).toEqual(
+    err<RegexError<"UrlSafeString">>({
       type: "Regex",
-      name: "Base64Url",
+      name: "UrlSafeString",
       value: "abc/123",
       pattern: /^[A-Za-z0-9_-]+$/,
     }),
   );
 
-  expect(Base64Url.to("abc123_-" as typeof Base64Url.Type)).toBe("abc123_-");
-  expect(Base64Url.toParent("abc123_-" as typeof Base64Url.Type)).toBe(
-    "abc123_-",
-  );
+  expect(UrlSafeString.is("abc123_-")).toBe(true);
+  expect(UrlSafeString.is("abc/123")).toBe(false);
 
-  expect(Base64Url.is("abc123_-")).toBe(true);
-  expect(Base64Url.is("abc/123")).toBe(false);
+  expect(UrlSafeString.name).toBe("Brand");
+  expect(UrlSafeString.brand).toBe("UrlSafeString");
+
+  expectTypeOf<typeof UrlSafeString.Type>().toEqualTypeOf<
+    string & Brand<"UrlSafeString">
+  >();
+  expectTypeOf<typeof UrlSafeString.Input>().toEqualTypeOf<string>();
+  expectTypeOf<typeof UrlSafeString.Error>().toEqualTypeOf<
+    RegexError<"UrlSafeString">
+  >();
+  expectTypeOf<typeof UrlSafeString.Parent>().toEqualTypeOf<string>();
+});
+
+test("Base64Url", () => {
+  const valid = [
+    "",
+    "ABCD",
+    "SGVsbG8g",
+    "SGVsbG8",
+    uint8ArrayToBase64Url(new Uint8Array([0x00])),
+    uint8ArrayToBase64Url(new Uint8Array([0xff])),
+    uint8ArrayToBase64Url(new Uint8Array([0x00, 0x00])),
+  ];
+  for (const v of valid) {
+    const r = Base64Url.from(v);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      const bytes = base64UrlToUint8Array(r.value);
+      expect(uint8ArrayToBase64Url(bytes)).toBe(v);
+      expect(Base64Url.is(v)).toBe(true);
+    }
+  }
+
+  const invalid = ["A", "AB", "AAz"];
+  for (const v of invalid) {
+    const r = Base64Url.from(v);
+    expect(r.ok).toBe(false);
+    expect(Base64Url.is(v)).toBe(false);
+  }
 
   expect(Base64Url.name).toBe("Brand");
   expect(Base64Url.brand).toBe("Base64Url");
-
-  expectTypeOf<typeof Base64Url.Type>().toEqualTypeOf<
-    string & Brand<"Base64Url">
-  >();
+  expectTypeOf<typeof Base64Url.Type>().toEqualTypeOf<Base64Url>();
   expectTypeOf<typeof Base64Url.Input>().toEqualTypeOf<string>();
-  expectTypeOf<typeof Base64Url.Error>().toEqualTypeOf<
-    RegexError<"Base64Url">
-  >();
   expectTypeOf<typeof Base64Url.Parent>().toEqualTypeOf<string>();
-  expectTypeOf<typeof Base64Url.ParentError>().toEqualTypeOf<StringError>();
 });
 
-test("DateIsoString", () => {
+test("base64UrlToUint8Array/uint8ArrayToBase64Url", () => {
+  // Test round-trip conversion
+  const originalBytes = new Uint8Array([72, 101, 108, 108, 111]); // "Hello"
+  const base64String = uint8ArrayToBase64Url(originalBytes);
+  const decodedBytes = base64UrlToUint8Array(base64String);
+
+  expect(decodedBytes).toEqual(originalBytes);
+  expect(base64String).toBe("SGVsbG8");
+
+  const testData = [
+    new Uint8Array([1, 2, 3, 4]),
+    new Uint8Array([255, 254, 253]),
+    new Uint8Array([]),
+    new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
+  ];
+
+  for (const bytes of testData) {
+    const encoded = uint8ArrayToBase64Url(bytes);
+    expect(Base64Url.is(encoded)).toBe(true);
+    const decoded = base64UrlToUint8Array(encoded);
+    expect(decoded).toEqual(bytes);
+  }
+
+  expectTypeOf(base64String).toEqualTypeOf<Base64Url>();
+  expectTypeOf(decodedBytes).toEqualTypeOf<Uint8Array>();
+});
+
+test("DateIso", () => {
   const validDates = [
     "0000-01-01T00:00:00.000Z", // Minimum
     "9999-12-31T23:59:59.999Z", // Maximum
@@ -746,7 +782,7 @@ test("DateIsoString", () => {
   ];
 
   for (const date of validDates) {
-    const result = DateIsoString.from(date);
+    const result = DateIso.from(date);
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value).toBe(date);
   }
@@ -757,23 +793,15 @@ test("DateIsoString", () => {
     "2022-12-01T25:00:00.000Z", // Invalid hour
     "2022-12-01T00:00:00.000", // Missing 'Z'
     "2022-12-01T00:00:00.000+01:00", // Timezone offset not allowed
+    // This was the failing case from property tests - should be rejected
+    `["0 (      ",-100000000]`, // JSON string that Date.parse accepts but isn't ISO format
   ];
 
   for (const date of invalidDates) {
-    const result = DateIsoString.from(date);
+    const result = DateIso.from(date);
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.type).toBe("DateIsoString");
+    if (!result.ok) expect(result.error.type).toBe("DateIso");
   }
-});
-
-test("DateIso", () => {
-  const originalDate = new globalThis.Date();
-
-  const isoString = DateIso.fromParent(originalDate);
-  assert(isoString.ok);
-  expect(isoString.value).toBe(originalDate.toISOString());
-  const dateFromIsoString = DateIso.to(isoString.value);
-  expect(dateFromIsoString).toEqual(originalDate);
 });
 
 test("SimplePassword", () => {
@@ -796,13 +824,7 @@ test("SimplePassword", () => {
     }),
   );
 
-  // TODO: use createFormatTypeError for formatSimplePasswordError
-
   assert(!shortResult.ok);
-  // formatSimplePasswordError()
-  // expect(formatSimplePasswordError(shortResult.error)).toBe(
-  //   'Invalid password: Value "short" does not meet the minimum length of 8.',
-  // );
 
   const spacesResult = SimplePassword.from("   spaces   ");
   expect(spacesResult).toEqual(
@@ -814,9 +836,6 @@ test("SimplePassword", () => {
   );
 
   assert(!spacesResult.ok);
-  // expect(formatSimplePasswordError(spacesResult.error)).toBe(
-  //   'Invalid password: A value "   spaces   " is not trimmed',
-  // );
 
   expect(
     SimplePassword.from(
@@ -861,11 +880,6 @@ test("SimplePassword", () => {
     }),
   );
 
-  const validPassword: SimplePassword = "validPass123" as SimplePassword;
-  expect(SimplePassword.to(validPassword)).toBe("validPass123");
-
-  expect(SimplePassword.toParent(validPassword)).toBe("validPass123");
-
   expect(SimplePassword.is("validPass123")).toBe(true);
   expect(SimplePassword.is("short")).toBe(false);
   expect(SimplePassword.is(12345)).toBe(false);
@@ -897,11 +911,9 @@ test("id", () => {
   const UserId = id("User");
   type UserId = typeof UserId.Type;
 
-  const validId = "abc123def456ghi789jkl"; // 21-character Base64Url-like string
+  const validId = createId(testDeps);
   expect(UserId.from(validId)).toEqual(ok(validId));
   expect(UserId.fromParent(validId)).toEqual(ok(validId));
-  expect(UserId.to(validId as UserId)).toEqual(validId);
-  expect(UserId.toParent(validId as UserId)).toEqual(validId);
   expect(UserId.is(validId)).toBe(true);
 
   const invalidIdShort = "short";
@@ -909,13 +921,13 @@ test("id", () => {
   const invalidIdCharacters = "invalid!@#$%^&*()";
 
   expect(UserId.from(invalidIdShort)).toEqual(
-    err({ type: "Id", value: invalidIdShort, table: "User" }),
+    err({ type: "TableId", value: invalidIdShort, table: "User" }),
   );
   expect(UserId.from(invalidIdLong)).toEqual(
-    err({ type: "Id", value: invalidIdLong, table: "User" }),
+    err({ type: "TableId", value: invalidIdLong, table: "User" }),
   );
   expect(UserId.from(invalidIdCharacters)).toEqual(
-    err({ type: "Id", value: invalidIdCharacters, table: "User" }),
+    err({ type: "TableId", value: invalidIdCharacters, table: "User" }),
   );
 
   expect(UserId.name).toBe("Id");
@@ -927,7 +939,7 @@ test("id", () => {
     string & Brand<"Id"> & Brand<"User">
   >();
   expectTypeOf<typeof UserId.Input>().toEqualTypeOf<string>();
-  expectTypeOf<typeof UserId.Error>().toEqualTypeOf<IdError<"User">>();
+  expectTypeOf<typeof UserId.Error>().toEqualTypeOf<TableIdError<"User">>();
   expectTypeOf<typeof UserId.Parent>().toEqualTypeOf<string>();
   expectTypeOf<typeof UserId.ParentError>().toEqualTypeOf<StringError>();
 
@@ -937,50 +949,55 @@ test("id", () => {
 });
 
 test("createId", () => {
-  const id = createId({ nanoIdLib: testNanoIdLib });
-  expect(id).toMatchInlineSnapshot(`"3C22DRVU0AHGjXpOEP-WJ"`);
+  const id = createId(testDeps);
+  expect(id).toMatchInlineSnapshot(`"-7BOfTxCJQQifI1Bv_OErQ"`);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const todoId = createId<"Todo">({ nanoIdLib: testNanoIdLib });
+  const _todoId = createId<"Todo">(testDeps);
 
   expectTypeOf<typeof id>().toEqualTypeOf<Id>();
-  expectTypeOf<typeof todoId>().toEqualTypeOf<Id & Brand<"Todo">>();
+  expectTypeOf<typeof _todoId>().toEqualTypeOf<Id & Brand<"Todo">>();
 });
 
 test("createIdFromString", () => {
   const id = createIdFromString("abc");
   expect(Id.is(id)).toBe(true);
-  expect(id).toEqual("QHMpZvrshcOs47aRxCvN-");
+  expect(id).toMatchInlineSnapshot(`"ungWv48Bz-pBQUDeXa4iIw"`);
 
   const id1 = createIdFromString("user-api-123");
   const id2 = createIdFromString("user-api-123");
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const todoId = createIdFromString<"Todo">("external-todo-456");
+  const _todoId = createIdFromString<"Todo">("external-todo-456");
 
   expect(id1).toBe(id2); // Deterministic
   expectTypeOf<typeof id1>().toEqualTypeOf<Id>();
-  expectTypeOf<typeof todoId>().toEqualTypeOf<Id & Brand<"Todo">>();
+  expectTypeOf<typeof _todoId>().toEqualTypeOf<Id & Brand<"Todo">>();
 
   const emptyId = createIdFromString("");
   expect(Id.is(emptyId)).toBe(true);
-  expect(emptyId).toHaveLength(21);
+  expect(emptyId).toHaveLength(22);
 
   const longString = "a".repeat(1000);
   const longId = createIdFromString(longString);
   expect(Id.is(longId)).toBe(true);
-  expect(longId).toHaveLength(21);
+  expect(longId).toHaveLength(22);
 
   const specialId = createIdFromString("test!@#$%^&*()_+-={}[]|\\:;\"'<>?,./");
   expect(Id.is(specialId)).toBe(true);
-  expect(specialId).toHaveLength(21);
+  expect(specialId).toHaveLength(22);
 
   const unicodeId = createIdFromString("测试🚀💡");
   expect(Id.is(unicodeId)).toBe(true);
-  expect(unicodeId).toHaveLength(21);
+  expect(unicodeId).toHaveLength(22);
 
   const id3 = createIdFromString("test1");
   const id4 = createIdFromString("test2");
   expect(id3).not.toBe(id4);
+});
+
+test("IdBytes/idToIdBytes/idBytesToId", () => {
+  const originalId = createId(testDeps);
+  const idBytes = idToIdBytes(originalId);
+  expect(IdBytes.is(idBytes)).toBe(true);
+  expect(idBytesToId(idBytes)).toBe(originalId);
 });
 
 test("PositiveNumber", () => {
@@ -991,9 +1008,6 @@ test("PositiveNumber", () => {
   expect(PositiveNumber.from(-1)).toEqual(
     err<NonNegativeError>({ type: "NonNegative", value: -1 }),
   );
-
-  const positiveValue: PositiveNumber = 42 as PositiveNumber;
-  expect(PositiveNumber.to(positiveValue)).toEqual(42);
 
   expect(PositiveNumber.is(42)).toBe(true);
   expect(PositiveNumber.is(-42)).toBe(false);
@@ -1104,24 +1118,6 @@ test("multipleOf", () => {
   expect(MultipleOf3.brand).toBe("MultipleOf3");
 });
 
-test("Between1And10", () => {
-  const result = Between1And10.from(5);
-  expect(result).toEqual(ok(5));
-
-  const tooLow = Between1And10.from(0);
-  expect(tooLow).toEqual(err({ type: "Between", value: 0, min: 1, max: 10 }));
-
-  const tooHigh = Between1And10.from(11);
-  expect(tooHigh).toEqual(err({ type: "Between", value: 11, min: 1, max: 10 }));
-
-  expect(Between1And10.is(7)).toBe(true);
-  expect(Between1And10.is(0)).toBe(false);
-  expect(Between1And10.is(11)).toBe(false);
-
-  const valid: Between1And10 = 5 as Between1And10;
-  expect(Between1And10.to(valid)).toBe(5);
-});
-
 test("literal", () => {
   const LiteralHello = literal("Hello");
   const Literal42 = literal(42);
@@ -1181,193 +1177,6 @@ test("literal", () => {
   expectTypeOf<typeof _BT.Input>().toEqualTypeOf<string>();
 });
 
-test("transform", () => {
-  const OnOff = union("on", "off");
-  const BooleanFromOnOff = transform(
-    OnOff,
-    Boolean,
-    (value) => ok(value === "on"),
-    (value) => (value ? "on" : "off"),
-  );
-
-  expect(BooleanFromOnOff.from("on")).toEqual(ok(true));
-  expect(BooleanFromOnOff.from("off")).toEqual(ok(false));
-
-  expect(BooleanFromOnOff.from("ON")).toEqual(
-    err({
-      type: "Union",
-      value: "ON",
-      errors: [
-        { type: "Literal", value: "ON", expected: "on" },
-        { type: "Literal", value: "ON", expected: "off" },
-      ],
-    }),
-  );
-
-  expect(BooleanFromOnOff.fromUnknown("on")).toEqual(ok(true));
-  expect(BooleanFromOnOff.fromUnknown("off")).toEqual(ok(false));
-  expect(BooleanFromOnOff.fromUnknown(42)).toEqual(
-    err({
-      type: "Union",
-      value: 42,
-      errors: [
-        { type: "Literal", value: 42, expected: "on" },
-        { type: "Literal", value: 42, expected: "off" },
-      ],
-    }),
-  );
-
-  // Note when a transformation cannot fail, `fromParent` directly returns
-  // `Ok<T>` instead of `Result<T, never>`
-  expect(BooleanFromOnOff.fromParent("on").value).toBe(true);
-
-  expect(BooleanFromOnOff.to(true)).toBe("on");
-  expect(BooleanFromOnOff.to(false)).toBe("off");
-
-  expect(BooleanFromOnOff.is(true)).toBe(true);
-  expect(BooleanFromOnOff.is(false)).toBe(true);
-  expect(BooleanFromOnOff.is("on")).toBe(false);
-
-  expect(BooleanFromOnOff.name).toBe("Transform");
-  expect(BooleanFromOnOff.fromType).toBe(OnOff);
-  expect(BooleanFromOnOff.toType).toBe(Boolean);
-
-  expectTypeOf<typeof BooleanFromOnOff.Type>().toEqualTypeOf<boolean>();
-  expectTypeOf<typeof BooleanFromOnOff.Input>().toEqualTypeOf<string>();
-  expectTypeOf<typeof BooleanFromOnOff.Error>().toEqualTypeOf<never>();
-  expectTypeOf<typeof BooleanFromOnOff.Parent>().toEqualTypeOf<"on" | "off">();
-  expectTypeOf<typeof BooleanFromOnOff.ParentError>().toEqualTypeOf<
-    UnionError<LiteralError<"on"> | LiteralError<"off">>
-  >();
-
-  const SqliteBoolean = union(0, 1);
-  type SqliteBoolean = typeof SqliteBoolean.Type;
-
-  const SqliteBooleanFromBoolean = transform(
-    Boolean,
-    SqliteBoolean,
-    (value) => ok<SqliteBoolean>(value ? 1 : 0),
-    (value) => value === 1,
-  );
-
-  const SqliteBooleanFromBooleanFromBooleanFromOnOff = transform(
-    BooleanFromOnOff,
-    SqliteBooleanFromBoolean,
-    SqliteBooleanFromBoolean.fromParent,
-    SqliteBooleanFromBoolean.toParent,
-  );
-
-  expect(SqliteBooleanFromBooleanFromBooleanFromOnOff.from("off")).toEqual(
-    ok(0),
-  );
-  expect(SqliteBooleanFromBooleanFromBooleanFromOnOff.to(1)).toEqual("on");
-
-  expectTypeOf<
-    typeof SqliteBooleanFromBooleanFromBooleanFromOnOff.Type
-  >().toEqualTypeOf<0 | 1>();
-  expectTypeOf<
-    typeof SqliteBooleanFromBooleanFromBooleanFromOnOff.Input
-  >().toEqualTypeOf<string>();
-  expectTypeOf<
-    typeof SqliteBooleanFromBooleanFromBooleanFromOnOff.Error
-  >().toEqualTypeOf<never>();
-  expectTypeOf<
-    typeof SqliteBooleanFromBooleanFromBooleanFromOnOff.Parent
-  >().toEqualTypeOf<boolean>();
-  expectTypeOf<
-    typeof SqliteBooleanFromBooleanFromBooleanFromOnOff.ParentError
-  >().toEqualTypeOf<UnionError<LiteralError<"on"> | LiteralError<"off">>>();
-
-  expect(NumberFromString.from("42")).toEqual(ok(42));
-  expect(NumberFromString.from("3.14")).toEqual(ok(3.14));
-  expect(NumberFromString.from("0")).toEqual(ok(0));
-  expect(NumberFromString.from("-42")).toEqual(ok(-42));
-
-  ["abc", "3.14abc", "Infinity", "NaN"].forEach((input) => {
-    expect(NumberFromString.from(input)).toEqual(
-      err({ type: "NumberFromString", value: input }),
-    );
-  });
-
-  expect(NumberFromString.from(" ")).toEqual(
-    err({ type: "Trimmed", value: " " }),
-  );
-
-  expect(NumberFromString.from("")).toEqual(
-    err({ type: "MinLength", value: "", min: 1 }),
-  );
-
-  expect(NumberFromString.to(42 as FiniteNumber)).toBe("42");
-  expect(NumberFromString.to(3.14 as FiniteNumber)).toBe("3.14");
-  expect(NumberFromString.to(0 as FiniteNumber)).toBe("0");
-  expect(NumberFromString.to(-42 as FiniteNumber)).toBe("-42");
-
-  expect(NumberFromString.fromParent("42" as NonEmptyTrimmedString)).toEqual(
-    ok(42),
-  );
-  expect(NumberFromString.toParent(42 as FiniteNumber)).toEqual("42");
-
-  expect(NumberFromString.is(42)).toBe(true);
-  expect(NumberFromString.is("42")).toBe(false);
-  expect(NumberFromString.is(NaN)).toBe(false);
-
-  expect(NumberFromString.name).toBe("Transform");
-
-  expectTypeOf<typeof NumberFromString.Type>().toEqualTypeOf<FiniteNumber>();
-  expectTypeOf<typeof NumberFromString.Input>().toEqualTypeOf<string>();
-  expectTypeOf<
-    typeof NumberFromString.Error
-  >().toEqualTypeOf<NumberFromStringError>();
-  expectTypeOf<
-    typeof NumberFromString.Parent
-  >().toEqualTypeOf<NonEmptyTrimmedString>();
-  expectTypeOf<typeof NumberFromString.ParentError>().toEqualTypeOf<
-    MinLengthError<1> | TrimmedError | StringError
-  >();
-
-  const FiniteNumberTuple = tuple(FiniteNumber);
-
-  const SingleTupleFromNumberFromString = transform(
-    NumberFromString,
-    FiniteNumberTuple,
-    (value) => ok([value] as const),
-    (value) => value[0],
-  );
-
-  expect(SingleTupleFromNumberFromString.fromUnknown("42")).toEqual(ok([42]));
-  expect(SingleTupleFromNumberFromString.fromUnknown("not-a-number")).toEqual(
-    err({ type: "NumberFromString", value: "not-a-number" }),
-  );
-
-  expect(SingleTupleFromNumberFromString.from("42")).toEqual(ok([42]));
-  expect(SingleTupleFromNumberFromString.to([42 as FiniteNumber])).toBe("42");
-
-  expect(
-    SingleTupleFromNumberFromString.fromParent(42 as FiniteNumber).value,
-  ).toEqual([42]);
-  expect(SingleTupleFromNumberFromString.toParent([42 as FiniteNumber])).toBe(
-    42,
-  );
-
-  expectTypeOf<typeof SingleTupleFromNumberFromString.Type>().toEqualTypeOf<
-    readonly [FiniteNumber]
-  >();
-  expectTypeOf<
-    typeof SingleTupleFromNumberFromString.Input
-  >().toEqualTypeOf<string>();
-  expectTypeOf<
-    typeof SingleTupleFromNumberFromString.Error
-  >().toEqualTypeOf<never>();
-  expectTypeOf<
-    typeof SingleTupleFromNumberFromString.Parent
-  >().toEqualTypeOf<FiniteNumber>();
-  expectTypeOf<
-    typeof SingleTupleFromNumberFromString.ParentError
-  >().toEqualTypeOf<
-    MinLengthError<1> | TrimmedError | StringError | NumberFromStringError
-  >();
-});
-
 test("array", () => {
   const NumberArray = array(Number);
 
@@ -1398,9 +1207,6 @@ test("array", () => {
   expect(NumberArray.from([])).toEqual(ok([]));
 
   expect(NumberArray.fromParent([4, 5, 6])).toEqual(ok([4, 5, 6]));
-
-  expect(NumberArray.to([7, 8, 9])).toEqual([7, 8, 9]);
-  expect(NumberArray.toParent([7, 8, 9])).toEqual([7, 8, 9]);
 
   expectTypeOf<typeof NumberArray.Type>().toEqualTypeOf<
     ReadonlyArray<number>
@@ -1506,96 +1312,6 @@ test("array", () => {
   expectTypeOf<typeof TrimmedStringArray.ParentError>().toEqualTypeOf<
     ArrayError<StringError>
   >();
-
-  const NumberFromStringArray = array(NumberFromString);
-
-  expect(NumberFromStringArray.from(["42", "3.14", "-42"])).toEqual(
-    ok([42, 3.14, -42]),
-  );
-
-  expect(NumberFromStringArray.from(["42", "NaN", "invalid"])).toEqual(
-    err<ArrayError<NumberFromStringError>>({
-      type: "Array",
-      value: ["42", "NaN", "invalid"],
-      reason: {
-        kind: "Element",
-        index: 1,
-        error: { type: "NumberFromString", value: "NaN" },
-      },
-    }),
-  );
-
-  expect(NumberFromStringArray.from(["42", "3.14", " "])).toEqual(
-    err<ArrayError<TrimmedError>>({
-      type: "Array",
-      value: ["42", "3.14", " "],
-      reason: {
-        kind: "Element",
-        index: 2,
-        error: { type: "Trimmed", value: " " },
-      },
-    }),
-  );
-
-  expect(
-    NumberFromStringArray.from(["42", "3.14", "abc", "-42", "NaN"]),
-  ).toEqual(
-    err<ArrayError<NumberFromStringError>>({
-      type: "Array",
-      value: ["42", "3.14", "abc", "-42", "NaN"],
-      reason: {
-        kind: "Element",
-        index: 2,
-        error: { type: "NumberFromString", value: "abc" },
-      },
-    }),
-  );
-
-  expect(NumberFromStringArray.from([])).toEqual(ok([]));
-
-  expect(
-    NumberFromStringArray.fromParent([
-      "42" as NonEmptyTrimmedString,
-      "3.14" as NonEmptyTrimmedString,
-    ]),
-  ).toEqual(ok([42, 3.14]));
-
-  expect(
-    NumberFromStringArray.to([
-      42 as FiniteNumber,
-      3.14 as FiniteNumber,
-      -42 as FiniteNumber,
-    ]),
-  ).toEqual(["42", "3.14", "-42"]);
-
-  expect(
-    NumberFromStringArray.toParent([
-      42 as FiniteNumber,
-      3.14 as FiniteNumber,
-      -42 as FiniteNumber,
-    ]),
-  ).toEqual(["42", "3.14", "-42"]);
-
-  expect(NumberFromStringArray.is([42, 3.14, -42])).toBe(false);
-  expect(NumberFromStringArray.is(["42", "3.14", "-42"])).toBe(true);
-
-  expect(NumberFromStringArray.name).toBe("Array");
-
-  expectTypeOf<typeof NumberFromStringArray.Type>().toEqualTypeOf<
-    ReadonlyArray<FiniteNumber>
-  >();
-  expectTypeOf<typeof NumberFromStringArray.Input>().toEqualTypeOf<
-    ReadonlyArray<string>
-  >();
-  expectTypeOf<typeof NumberFromStringArray.Error>().toEqualTypeOf<
-    ArrayError<NumberFromStringError>
-  >();
-  expectTypeOf<typeof NumberFromStringArray.Parent>().toEqualTypeOf<
-    ReadonlyArray<string & Brand<"Trimmed"> & Brand<"MinLength1">>
-  >();
-  expectTypeOf<typeof NumberFromStringArray.ParentError>().toEqualTypeOf<
-    ArrayError<MinLengthError<1> | TrimmedError | StringError>
-  >();
 });
 
 test("record", () => {
@@ -1620,9 +1336,7 @@ test("record", () => {
       reason: { kind: "NotRecord" },
     }),
   );
-  expect(StringToNumber.to({ a: 1, b: 2 })).toEqual({ a: 1, b: 2 });
   expect(StringToNumber.fromParent({ a: 1, b: 2 })).toEqual(ok({ a: 1, b: 2 }));
-  expect(StringToNumber.toParent({ a: 1, b: 2 })).toEqual({ a: 1, b: 2 });
   expect(StringToNumber.is({ a: 1, b: 2 })).toBe(true);
   expect(StringToNumber.is({ a: "1", b: 2 })).toBe(false);
   expect(StringToNumber.is(42)).toBe(false);
@@ -1670,15 +1384,9 @@ test("record", () => {
       },
     }),
   );
-  expect(NonEmptyStringToNumber.to({ ["key" as NonEmptyString]: 42 })).toEqual({
-    key: 42,
-  });
   expect(NonEmptyStringToNumber.fromParent({ key: 42 })).toEqual(
     ok({ key: 42 }),
   );
-  expect(
-    NonEmptyStringToNumber.toParent({ ["key" as NonEmptyString]: 42 }),
-  ).toEqual({ key: 42 });
   expect(NonEmptyStringToNumber.is({ key: 42 })).toBe(true);
   expect(NonEmptyStringToNumber.is({ "": 42 })).toBe(false);
   expect(NonEmptyStringToNumber.is({ key: "not a number" })).toBe(false);
@@ -1697,83 +1405,6 @@ test("record", () => {
   >();
   expectTypeOf<typeof NonEmptyStringToNumber.ParentError>().toEqualTypeOf<
     RecordError<StringError, NumberError>
-  >();
-
-  const StringToNumberFromString = record(String, NumberFromString);
-
-  expect(
-    StringToNumberFromString.from({ key: "42", anotherKey: "123" }),
-  ).toEqual(ok({ key: 42, anotherKey: 123 }));
-
-  expect(
-    StringToNumberFromString.fromUnknown({
-      key: "not a number",
-      anotherKey: "123",
-    }),
-  ).toEqual(
-    err({
-      type: "Record",
-      value: { key: "not a number", anotherKey: "123" },
-      reason: {
-        kind: "Value",
-        key: "key",
-        error: { type: "NumberFromString", value: "not a number" },
-      },
-    }),
-  );
-
-  expect(
-    StringToNumberFromString.to({
-      key: 42 as FiniteNumber,
-      anotherKey: 123 as FiniteNumber,
-    }),
-  ).toEqual({
-    key: "42",
-    anotherKey: "123",
-  });
-
-  expect(
-    StringToNumberFromString.fromParent({
-      key: "42" as NonEmptyTrimmedString,
-      anotherKey: "123" as NonEmptyTrimmedString,
-    }),
-  ).toEqual(ok({ key: 42, anotherKey: 123 }));
-
-  expect(
-    StringToNumberFromString.toParent({
-      key: 42 as FiniteNumber,
-      anotherKey: 123 as FiniteNumber,
-    }),
-  ).toEqual({
-    key: "42",
-    anotherKey: "123",
-  });
-
-  expect(StringToNumberFromString.is({ key: "42", anotherKey: "123" })).toBe(
-    true,
-  );
-  expect(StringToNumberFromString.is({ key: 42, anotherKey: 123 })).toBe(false);
-  expect(StringToNumberFromString.is({ key: "42", anotherKey: 123 })).toBe(
-    false,
-  );
-  expect(StringToNumberFromString.is(42)).toBe(false);
-
-  expect(StringToNumberFromString.name).toBe("Record");
-
-  expectTypeOf<typeof StringToNumberFromString.Type>().toEqualTypeOf<
-    Readonly<Record<string, FiniteNumber>>
-  >();
-  expectTypeOf<typeof StringToNumberFromString.Input>().toEqualTypeOf<
-    Readonly<Record<string, string>>
-  >();
-  expectTypeOf<typeof StringToNumberFromString.Error>().toEqualTypeOf<
-    RecordError<StringError, NumberFromStringError>
-  >();
-  expectTypeOf<typeof StringToNumberFromString.Parent>().toEqualTypeOf<
-    Readonly<Record<string, string & Brand<"Trimmed"> & Brand<"MinLength1">>>
-  >();
-  expectTypeOf<typeof StringToNumberFromString.ParentError>().toEqualTypeOf<
-    RecordError<StringError, StringError | MinLengthError<1> | TrimmedError>
   >();
 });
 
@@ -1818,12 +1449,6 @@ test("object", () => {
     }),
   );
 
-  expect(
-    User.to({ name: "Alice" as NonEmptyString, age: 30 as PositiveNumber }),
-  ).toEqual({
-    name: "Alice",
-    age: 30,
-  });
   expect(User.name).toBe("Object");
   expect(User.is({ name: "Alice", age: 30 })).toBe(true);
   expect(User.is({ name: "Alice" })).toBe(false);
@@ -1939,14 +1564,6 @@ test("object", () => {
       reason: { kind: "NotObject" },
     }),
   );
-
-  expect(
-    NumberDictionary.to({
-      length: 3,
-      key1: 1,
-      key2: 2,
-    }),
-  ).toEqual({ length: 3, key1: 1, key2: 2 });
 
   expect(NumberDictionary.is({ length: 3, key1: 1, key2: 2 })).toBe(true);
   expect(NumberDictionary.is({ length: "not a number", key1: 1 })).toBe(false);
@@ -2093,55 +1710,6 @@ test("union", () => {
 
   // @ts-expect-error Expected at least 2 arguments, but got 1.
   union(String);
-
-  const BooleanFromNumber = transform(
-    Number,
-    Boolean,
-    (value) => {
-      if (value === 1) return ok(true);
-      if (value === 0) return ok(false);
-      return err<BooleanFromNumberError>({ type: "BooleanFromNumber", value });
-    },
-    (value) => (value ? 1 : 0),
-  );
-
-  interface BooleanFromNumberError extends TypeError<"BooleanFromNumber"> {}
-
-  const UnionTransform = union(NumberFromString, BooleanFromNumber);
-
-  expect(UnionTransform.fromParent("42")).toEqual(ok(42));
-  expect(UnionTransform.fromParent("-3.14")).toEqual(ok(-3.14));
-
-  expect(UnionTransform.fromParent(1)).toEqual(ok(true));
-  expect(UnionTransform.fromParent(0)).toEqual(ok(false));
-
-  expect(UnionTransform.fromParent("not-a-valid-value")).toEqual(
-    err({
-      type: "Union",
-      value: "not-a-valid-value",
-      errors: [
-        { type: "NumberFromString", value: "not-a-valid-value" },
-        { type: "Number", value: "not-a-valid-value" },
-      ],
-    }),
-  );
-
-  expectTypeOf<typeof UnionTransform.Type>().toEqualTypeOf<
-    FiniteNumber | boolean
-  >();
-  expectTypeOf<typeof UnionTransform.Error>().toEqualTypeOf<
-    UnionError<
-      | StringError
-      | NumberError
-      | TrimmedError
-      | MinLengthError<1>
-      | NumberFromStringError
-      | BooleanFromNumberError
-    >
-  >();
-  expectTypeOf<typeof UnionTransform.Input>().toEqualTypeOf<string | number>();
-  expectTypeOf<typeof UnionTransform.Parent>().toEqualTypeOf<string | number>();
-  expectTypeOf<typeof UnionTransform.ParentError>().toEqualTypeOf<never>();
 });
 
 test("recursive", () => {
@@ -2231,9 +1799,6 @@ test("nullOr", () => {
     }),
   );
 
-  expect(NullOrString.to("hello")).toEqual("hello");
-  expect(NullOrString.to(null)).toEqual(null);
-
   expect(NullOrString.is("hello")).toBe(true);
   expect(NullOrString.is(null)).toBe(true);
   expect(NullOrString.is(42)).toBe(false);
@@ -2264,9 +1829,6 @@ test("undefinedOr", () => {
       ],
     }),
   );
-
-  expect(UndefinedOrString.to("world")).toEqual("world");
-  expect(UndefinedOrString.to(undefined)).toEqual(undefined);
 
   expect(UndefinedOrString.is("world")).toBe(true);
   expect(UndefinedOrString.is(undefined)).toBe(true);
@@ -2306,10 +1868,6 @@ test("nullishOr", () => {
       ],
     }),
   );
-
-  expect(NullishString.to("test")).toEqual("test");
-  expect(NullishString.to(null)).toEqual(null);
-  expect(NullishString.to(undefined)).toEqual(undefined);
 
   expect(NullishString.is("test")).toBe(true);
   expect(NullishString.is(null)).toBe(true);
@@ -2381,9 +1939,6 @@ test("tuple", () => {
       },
     }),
   );
-
-  const validTuple = ["goodbye", 99] as typeof TupleOfStringAndNumber.Type;
-  expect(TupleOfStringAndNumber.to(validTuple)).toEqual(["goodbye", 99]);
 
   expect(TupleOfStringAndNumber.is(["hello", 42])).toBe(true);
   expect(TupleOfStringAndNumber.is(["hello", "world"])).toBe(false);
@@ -2617,63 +2172,6 @@ test("JsonObject", () => {
   >();
 });
 
-test("JsonValueFromString", () => {
-  const validJsonStrings = [
-    `null`,
-    `true`,
-    `false`,
-    `42`,
-    `-1`,
-    `""`,
-    `"hello"`,
-    `[]`,
-    `[1, "string", false, null]`,
-    `{}`,
-    `{"key": "value", "nested": {"number": 42, "array": [1, 2, 3]}}`,
-  ];
-
-  for (const jsonString of validJsonStrings) {
-    expect(JsonValueFromString.from(jsonString)).toEqual(
-      ok(JSON.parse(jsonString)),
-    );
-    expect(JsonValueFromString.is(jsonString)).toBe(true);
-  }
-
-  const invalidJsonStrings = [
-    `undefined`,
-    `{"key": undefined}`,
-    `not-a-json`,
-    `{ key: value }`,
-    `{"circular": undefined}`,
-  ];
-
-  for (const invalidString of invalidJsonStrings) {
-    const result = JsonValueFromString.from(invalidString);
-    expect(result.ok).toBe(false);
-    assert(!result.ok);
-    expect(result.error.type).toBe("JsonValueFromString");
-  }
-
-  expect(JsonValueFromString.to({ key: "value" })).toBe(
-    JSON.stringify({ key: "value" }),
-  );
-
-  expect(JsonValueFromString.is(`{}`)).toBe(true);
-  expect(JsonValueFromString.is(`string`)).toBe(true);
-
-  expect(JsonValueFromString.name).toBe("Transform");
-
-  expectTypeOf<typeof JsonValueFromString.Type>().toEqualTypeOf<JsonValue>();
-  expectTypeOf<typeof JsonValueFromString.Input>().toEqualTypeOf<string>();
-  expectTypeOf<
-    typeof JsonValueFromString.Error
-  >().toEqualTypeOf<JsonValueFromStringError>();
-  expectTypeOf<typeof JsonValueFromString.Parent>().toEqualTypeOf<string>();
-  expectTypeOf<
-    typeof JsonValueFromString.ParentError
-  >().toEqualTypeOf<StringError>();
-});
-
 test("Json", () => {
   expect(Json.from("{}")).toEqual(ok("{}"));
   expect(Json.from(`{"key":"value"}`)).toEqual(ok(`{"key":"value"}`));
@@ -2704,6 +2202,31 @@ test("Json", () => {
   expectTypeOf<typeof Json.Type>().toEqualTypeOf<string & Brand<"Json">>();
   expectTypeOf<typeof Json.Input>().toEqualTypeOf<string>();
   expectTypeOf<typeof Json.Error>().toEqualTypeOf<JsonError>();
+});
+
+test("Json normalization edge cases", () => {
+  // These JSON strings are valid but get normalized during parse/stringify
+  const normalizedCases = [
+    { input: "-0E0", expected: "0" },
+    { input: "-0e0", expected: "0" },
+    { input: "1E1", expected: "10" },
+    { input: "1e+1", expected: "10" },
+    { input: "1.0000", expected: "1" },
+    { input: "0.10000", expected: "0.1" },
+  ];
+
+  for (const { input, expected } of normalizedCases) {
+    // Verify the input is valid JSON
+    expect(Json.from(input)).toEqual(ok(input));
+
+    // Demonstrate the normalization behavior
+    const parsed = JSON.parse(input) as unknown;
+    const roundTripped = JSON.stringify(parsed);
+    expect(roundTripped).toBe(expected);
+    expect(roundTripped).not.toBe(input);
+
+    // This shows why round-trip checks are important in protocol encoding
+  }
 });
 
 test("Int64", () => {
@@ -2742,6 +2265,7 @@ test("Int64String", () => {
   expect(Int64String.from(validInt64String)).toStrictEqual(
     ok(validInt64String),
   );
+
   expect(Int64String.from(invalidInt64String)).toStrictEqual(
     err({ type: "Int64String", value: invalidInt64String }),
   );
@@ -2779,14 +2303,6 @@ test("optional", () => {
   );
 
   expect(
-    User.to({ name: "Alice" as NonEmptyString, age: 30 as PositiveNumber }),
-  ).toEqual({
-    name: "Alice",
-    age: 30,
-  });
-  expect(User.to({ age: 30 as PositiveNumber })).toEqual({ age: 30 });
-
-  expect(
     User.fromParent({
       name: "Alice" as NonEmptyString,
       age: 30 as PositiveNumber,
@@ -2795,16 +2311,6 @@ test("optional", () => {
   expect(User.fromParent({ age: 30 as PositiveNumber })).toEqual(
     ok({ age: 30 }),
   );
-  expect(
-    User.toParent({
-      name: "Alice" as NonEmptyString,
-      age: 30 as PositiveNumber,
-    }),
-  ).toEqual({
-    name: "Alice",
-    age: 30,
-  });
-  expect(User.toParent({ age: 30 as PositiveNumber })).toEqual({ age: 30 });
 
   expect(User.is({ name: "Alice", age: 30 })).toBe(true);
   expect(User.is({ age: 30 })).toBe(true);
@@ -2963,9 +2469,7 @@ test("instanceOf", () => {
     }),
   );
 
-  expect(UserType.to(new User("Alice"))).toBeInstanceOf(User);
   expect(UserType.fromParent(new User("Alice"))).toEqual(ok(new User("Alice")));
-  expect(UserType.toParent(new User("Alice"))).toBeInstanceOf(User);
   expect(UserType.is(new User("Alice"))).toBe(true);
   expect(UserType.is({})).toBe(false);
   expect(UserType.name).toBe("InstanceOf");
@@ -3023,26 +2527,148 @@ test("createFormatTypeError", () => {
   expect(formatTypeErrorWithCustomError(nameResult.error)).toBe("name");
 });
 
-test("json Type Factory", () => {
+test("custom formatTypeError written from scratch", () => {
+  // Demonstrates writing a custom error formatter from scratch,
+  // without using createFormatTypeError.
+
   const Person = object({
-    name: String,
-    age: Number,
+    name: NonEmptyTrimmedString100,
+    age: optional(PositiveInt),
   });
 
-  const PersonJson = json(Person, "PersonJson");
+  // Define only the errors actually used by Person Type
+  type PersonErrors =
+    | StringError
+    | MaxLengthError
+    | MinLengthError
+    | TrimmedError
+    | PositiveError
+    | NonNegativeError
+    | IntError
+    | NumberError
+    | ObjectError<Record<string, PersonErrors>>;
 
-  const person = { name: "Alice", age: 30 };
-  const personJson = PersonJson.from(person);
-  expect(personJson).toEqual(ok('{"name":"Alice","age":30}'));
+  const formatTypeError: TypeErrorFormatter<PersonErrors> = (error) => {
+    switch (error.type) {
+      case "String":
+        return formatStringError(error);
+      case "Number":
+        return "Must be a number";
+      case "MinLength":
+        return `Must be at least ${error.min} characters`;
+      case "MaxLength":
+        return `Cannot exceed ${error.max} characters`;
+      case "Trimmed":
+        return "Cannot have leading or trailing spaces";
+      case "Positive":
+        return "Must be a positive number";
+      case "NonNegative":
+        return "Must be zero or positive";
+      case "Int":
+        return "Must be an integer";
+      case "Object": {
+        if (error.reason.kind === "NotObject") return "Must be an object";
+        if (error.reason.kind === "ExtraKeys")
+          return "Contains unexpected fields";
+        const firstError = Object.values(error.reason.errors).find(
+          (e) => e !== undefined,
+        )!;
+        return formatTypeError(firstError);
+      }
+    }
+  };
 
-  assert(personJson.ok);
-  expectTypeOf<typeof personJson.value>().toEqualTypeOf<
-    string & Brand<"PersonJson">
-  >();
+  // Test various error scenarios
+  const result1 = Person.fromUnknown({ name: 123, age: 30 });
+  assert(!result1.ok);
+  expect(formatTypeError(result1.error)).toBe("A value 123 is not a string.");
 
-  expectTypeOf<InferType<typeof Unknown>>().toEqualTypeOf<unknown>();
+  const result2 = Person.from({ name: "", age: 30 });
+  assert(!result2.ok);
+  expect(formatTypeError(result2.error)).toBe("Must be at least 1 characters");
 
-  expect(PersonJson.to(personJson.value)).toEqual(person);
+  const result3 = Person.from({ name: "John", age: -5 });
+  assert(!result3.ok);
+  expect(formatTypeError(result3.error)).toBe("Must be zero or positive");
+
+  const result4 = Person.from({ name: "John", age: 25.5 });
+  assert(!result4.ok);
+  expect(formatTypeError(result4.error)).toBe("Must be an integer");
+
+  const result5 = Person.from({ name: " John ", age: 30 });
+  assert(!result5.ok);
+  expect(formatTypeError(result5.error)).toBe(
+    "Cannot have leading or trailing spaces",
+  );
+});
+
+test("json Type Factory", () => {
+  const Person = object({
+    name: NonEmptyString100,
+    age: PositiveInt,
+  });
+
+  const [PersonJson, personToPersonJson, personJsonToPerson] = json(
+    Person,
+    "PersonJson",
+  );
+  type PersonJson = typeof PersonJson.Type;
+  expectTypeOf<PersonJson>().toEqualTypeOf<string & Brand<"PersonJson">>();
+
+  const person = Person.orThrow({
+    name: "Alice",
+    age: 30,
+  });
+  const personJson = personToPersonJson(person);
+  expect(personJson).toBe('{"name":"Alice","age":30}');
+
+  expectTypeOf(personJson).toEqualTypeOf<string & Brand<"PersonJson">>();
+
+  expect(personJsonToPerson(personJson)).toEqual(person);
+
+  // Test StringError: input is not a string
+  expect(PersonJson.fromUnknown(42)).toEqual(
+    err({ type: "String", value: 42 }),
+  );
+
+  // Test JsonError: invalid JSON string
+  expect(PersonJson.fromUnknown('{"invalid": json}')).toEqual(
+    err({
+      type: "Json",
+      value: '{"invalid": json}',
+      message: `SyntaxError: Unexpected token 'j', "{"invalid": json}" is not valid JSON`,
+    }),
+  );
+
+  // Test Object validation error: valid JSON but invalid Person
+  expect(PersonJson.fromUnknown('{"name": "", "age": -1}')).toEqual(
+    err({
+      type: "Object",
+      value: { name: "", age: -1 },
+      reason: {
+        kind: "Props",
+        errors: {
+          name: { type: "MinLength", value: "", min: 1 },
+          age: { type: "NonNegative", value: -1 },
+        },
+      },
+    }),
+  );
+
+  // Test all error types are caught by exhaustive switch
+  const testErrorResult = PersonJson.fromUnknown(null);
+  if (!testErrorResult.ok) {
+    switch (testErrorResult.error.type) {
+      case "String":
+        break;
+      case "Json":
+        break;
+      case "Object":
+        break;
+      default:
+        exhaustiveCheck(testErrorResult.error);
+    }
+  }
 });
 
 test("Branded numbers relationships", () => {

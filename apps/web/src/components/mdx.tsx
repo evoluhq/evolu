@@ -8,8 +8,14 @@ import { Prose } from "@/components/Prose";
 export const a = Link;
 export { Announcement, InlineNote, Note, Warn } from "@/components/Alerts";
 export { Button } from "@/components/Button";
-export { Code as code, CodeGroup, Pre as pre } from "@/components/Code";
+export {
+  Code as code,
+  CodeGroup,
+  SinglePlatformCodeGroup,
+  Pre as pre,
+} from "@/components/Code";
 export { ConditionalPlatformAlert } from "@/components/ConditionalPlatformAlert";
+export { PlatformSelector } from "@/components/PlatformSelector";
 
 export function wrapper({
   children,

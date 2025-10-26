@@ -1,4 +1,10 @@
-import { createConsole, createNanoIdLib, createTime } from "@evolu/common";
+import {
+  createConsole,
+  createLocalAuth,
+  createRandomBytes,
+  createSymmetricCrypto,
+  createTime,
+} from "@evolu/common";
 import {
   CreateDbWorker,
   DbWorkerInput,
@@ -6,7 +12,11 @@ import {
   EvoluDeps,
 } from "@evolu/common/evolu";
 import { createSharedWebWorker } from "../SharedWebWorker.js";
-import { createAppState } from "./AppState.js";
+import { createWebAuthnStore } from "./LocalAuth.js";
+import { reloadApp } from "./Platform.js";
+
+const randomBytes = createRandomBytes();
+const symmetricCrypto = createSymmetricCrypto({ randomBytes });
 
 const createDbWorker: CreateDbWorker = (name) =>
   createSharedWebWorker<DbWorkerInput, DbWorkerOutput>(
@@ -18,9 +28,13 @@ const createDbWorker: CreateDbWorker = (name) =>
   );
 
 export const evoluWebDeps: EvoluDeps = {
-  time: createTime(),
   console: createConsole(),
-  nanoIdLib: createNanoIdLib(),
-  createAppState,
   createDbWorker,
+  randomBytes: createRandomBytes(),
+  localAuth: createLocalAuth({
+    randomBytes,
+    secureStorage: createWebAuthnStore({ randomBytes, symmetricCrypto }),
+  }),
+  reloadApp,
+  time: createTime(),
 };

@@ -1,36 +1,36 @@
+import { pack } from "msgpackr";
 import { isNonEmptyArray, isNonEmptyReadonlyArray } from "../Array.js";
 import { assert, assertNonEmptyArray } from "../Assert.js";
-import { createCallbacks } from "../Callbacks.js";
+import { LocalAuthDep } from "./LocalAuth.js";
+import { createCallbackRegistry } from "../CallbackRegistry.js";
 import { ConsoleDep } from "../Console.js";
-import { SymmetricCryptoDecryptError } from "../Crypto.js";
+import { RandomBytesDep, SymmetricCryptoDecryptError } from "../Crypto.js";
+import { eqArrayNumber } from "../Eq.js";
 import { TransferableError } from "../Error.js";
 import { exhaustiveCheck } from "../Function.js";
-import { NanoIdLibDep } from "../NanoId.js";
 import { err, ok, Result } from "../Result.js";
 import { isSqlMutation, SafeSql, SqliteError, SqliteQuery } from "../Sqlite.js";
 import { createStore, StoreSubscribe } from "../Store.js";
+import { requestIdleTask, toTask } from "../Task.js";
 import { TimeDep } from "../Time.js";
 import {
   createId,
+  DateIso,
   Id,
   InferErrors,
   InferInput,
   InferType,
   Mnemonic,
   ObjectType,
+  ValidMutationSize,
+  ValidMutationSizeError,
 } from "../Type.js";
 import { IntentionalNever } from "../Types.js";
-import { Config, defaultConfig } from "./Config.js";
-import { CreateDbWorkerDep } from "./Db.js";
+import { CreateDbWorkerDep, DbConfig, defaultDbConfig } from "./Db.js";
 import { applyPatches } from "./Diff.js";
-import { kysely } from "./Kysely.js";
-import { AppOwner } from "./Owner.js";
-import { CreateAppStateDep, FlushSyncDep } from "./Platform.js";
-import {
-  DbChange,
-  ProtocolError,
-  ProtocolUnsupportedVersionError,
-} from "./Protocol.js";
+import { AppOwner, OwnerId } from "./Owner.js";
+import { FlushSyncDep, ReloadAppDep } from "./Platform.js";
+import { ProtocolError, ProtocolUnsupportedVersionError } from "./Protocol.js";
 import {
   createSubscribedQueries,
   emptyRows,
@@ -48,19 +48,166 @@ import {
   DefaultColumns,
   EvoluSchema,
   evoluSchemaToDbSchema,
+  IndexesConfig,
   insertable,
+  InsertableProps,
+  kysely,
   Mutation,
+  MutationChange,
   MutationKind,
   MutationMapping,
   MutationOptions,
+  Updateable,
   updateable,
+  UpdateableProps,
   upsertable,
+  UpsertableProps,
   ValidateSchema,
-  ValidMutationSize,
-  ValidMutationSizeError,
 } from "./Schema.js";
-import { initialSyncState, SyncState } from "./Sync.js";
-import { TimestampError } from "./Timestamp.js";
+import { CrdtMessage, DbChange } from "./Storage.js";
+import { initialSyncState, SyncOwner, SyncState } from "./Sync.js";
+import { Timestamp, TimestampError } from "./Timestamp.js";
+
+export interface EvoluConfig<S extends EvoluSchema = EvoluSchema>
+  extends Partial<DbConfig> {
+  /**
+   * Processing pipeline for CRDT messages allowing additional validations and
+   * derived state computation.
+   *
+   * The `onMessage` callback is called for every CRDT message, whether locally
+   * created or received from sync. It's called only once per message and device
+   * and only if its {@link DbChange} was successfully validated against the
+   * application schema. The callback can run additional validation and return
+   * `true` to approve and persist the change, or `false` to reject it. Invalid
+   * and rejected messages are reported with {@link OnMessageError} and their
+   * changes are not persisted. The callback can also query the database and
+   * perform local-only mutations.
+   *
+   * Approved messages are persisted atomically with local-only mutations in a
+   * transaction which ensures exactly-once delivery (a durable queue)
+   * semantics.
+   *
+   * This callback is for scenarios where data cannot be trusted or when derived
+   * state is needed (for example, CRDT counters/aggregations, Messaging Layer
+   * Security, etc.)
+   *
+   * Because Evolu is a distributed system with CRDT semantics (eventually
+   * consistent), messages can arrive in any order. Do not use `onMessage` to
+   * validate rules depending on message order. Such validations belong in the
+   * application UI. Instead, use `onMessage` for order-independent validations
+   * like rate-limiting, ensuring owners only write to allowed tables, or
+   * filtering inappropriate content.
+   *
+   * Ensuring owners only write to allowed tables is safe in `onMessage` because
+   * synced messages are processed after the database already contains owner,
+   * making validation order-independent.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const evolu = createEvolu(deps)(Schema, {
+   *   onMessage: (change, { ownerId, localOnly }) => {
+   *     // Reject messages with inappropriate content
+   *     if (change.table === "todo" && change.values.title === "spam") {
+   *       return false;
+   *     }
+   *
+   *     // Query the database
+   *     // const result = await evolu.loadQuery(
+   *     //   evolu.createQuery((db) =>
+   *
+   *     // Maintain derived state in local-only tables
+   *     if (change.table === "todo") {
+   *       localOnly.upsert("_todoStats", {
+   *         id: statsId,
+   *         count: result.length,
+   *       });
+   *     }
+   *
+   *     return true;
+   *   },
+   * });
+   * ```
+   */
+  readonly onMessage?: (
+    change: ValidatedDbChange<S>,
+    args: {
+      readonly ownerId: OwnerId | undefined;
+      readonly localOnly: LocalOnly<S>;
+    },
+  ) => boolean | Promise<boolean>;
+
+  /**
+   * Use the `indexes` option to define SQLite indexes.
+   *
+   * Table and column names are not typed because Kysely doesn't support it.
+   *
+   * https://medium.com/@JasonWyatt/squeezing-performance-from-sqlite-indexes-indexes-c4e175f3c346
+   *
+   * ### Example
+   *
+   * ```ts
+   * const evolu = createEvolu(evoluReactDeps)(Schema, {
+   *   indexes: (create) => [
+   *     create("todoCreatedAt").on("todo").column("createdAt"),
+   *     create("todoCategoryCreatedAt")
+   *       .on("todoCategory")
+   *       .column("createdAt"),
+   *   ],
+   * });
+   * ```
+   */
+  readonly indexes?: IndexesConfig;
+
+  /**
+   * URL to reload browser tabs after reset or restore.
+   *
+   * The default value is `/`.
+   */
+  readonly reloadUrl?: string;
+}
+
+/**
+ * Validated database change with schema-typed values.
+ *
+ * This is a tagged union where the tag is the table name and the values are
+ * updateable (validated against the schema). This represents the content of a
+ * {@link CrdtMessage} without the timestamp, which is sufficient for business
+ * logic validation in {@link EvoluConfig.onMessage}.
+ */
+export type ValidatedDbChange<S extends EvoluSchema> = {
+  [Table in keyof S]: {
+    readonly table: Table;
+    readonly id: Id;
+    readonly values: Updateable<S[Table]> & { readonly createdAt?: DateIso };
+  };
+}[keyof S];
+
+/**
+ * Local-only mutation interface for use within {@link EvoluConfig.onMessage}
+ * callback.
+ *
+ * Provides type-safe mutation methods that only accept tables with names
+ * starting with underscore (local-only tables). All methods require fully
+ * validated branded values. No validation is performed as TypeScript ensures
+ * type correctness.
+ */
+export interface LocalOnly<S extends EvoluSchema> {
+  readonly insert: <T extends keyof S & `_${string}`>(
+    table: T,
+    values: InferType<ObjectType<InsertableProps<S[T]>>>,
+  ) => InferType<S[T]["id"]>;
+
+  readonly update: <T extends keyof S & `_${string}`>(
+    table: T,
+    values: InferType<ObjectType<UpdateableProps<S[T]>>>,
+  ) => void;
+
+  readonly upsert: <T extends keyof S & `_${string}`>(
+    table: T,
+    values: InferType<ObjectType<UpsertableProps<S[T]>>>,
+  ) => void;
+}
 
 export interface Evolu<S extends EvoluSchema = EvoluSchema> {
   /**
@@ -89,7 +236,8 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
    * All this function does is compile the Kysely query and serialize it into a
    * unique string. Both operations are fast and cheap.
    *
-   * For mutations, use {@link Evolu#insert} and {@link Evolu#update}.
+   * For mutations, use {@link Evolu#insert}, {@link Evolu#update}, or
+   * {@link Evolu#upsert}.
    *
    * ### Example
    *
@@ -109,43 +257,20 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
   /**
    * Load {@link Query} and return a promise with {@link QueryRows}.
    *
-   * A returned promise always resolves successfully because there is no reason
-   * why loading should fail. All data are local, and the query is typed. A
-   * serious unexpected Evolu error shall be handled with
-   * {@link Evolu#subscribeError}.
+   * The returned promise always resolves successfully because there is no
+   * reason why loading should fail. All data are local, and the query is typed.
+   * Unexpected errors are handled with {@link Evolu#subscribeError}.
    *
    * Loading is batched, and returned promises are cached, so there is no need
-   * for an additional cache. Evolu's internal cache is invalidated on
-   * mutation.
+   * for an additional cache. Evolu's internal cache is invalidated on mutation.
+   * Unsubscribed queries are removed from the cache, so loading them again will
+   * return a new pending promise. Subscribed queries remain in the cache to
+   * prevent unnecessary Suspense boundaries from activating. Their promises are
+   * replaced with `Promise.resolve(rows)`, allowing React to synchronously
+   * unwrap the updated data without suspending.
    *
-   * The returned promise is enriched with special status and value properties
-   * for the upcoming React `use` Hook, but other UI libraries can also leverage
-   * them. Speaking of React, there are two essential React Suspense-related
-   * patterns that every developer should be aware of—passing promises to
-   * children and caching over mutations.
-   *
-   * With promises passed to children, we can load a query as soon as possible,
-   * but we don't have to use the returned promise immediately. That's useful
-   * for prefetching, which is generally not necessary for local-first apps but
-   * can be if a query takes a long time to load.
-   *
-   * Caching over mutation is a pattern that every developer should know. As we
-   * said, Evolu caches promise until a mutation happens. A query loaded after
-   * that will return a new pending promise. That's okay for general usage but
-   * not for UI with React Suspense because a mutation would suspend rerendered
-   * queries on a page, and that's not a good UX.
-   *
-   * We call this pattern "caching over mutation" because it has no globally
-   * accepted name yet. React RFC for React Cache does not exist yet.
-   *
-   * For better UX, a query must be subscribed for updates. This way, instead of
-   * Suspense flashes, the user sees new data immediately because Evolu replaces
-   * cached promises with fresh, already resolved new ones.
-   *
-   * If you are curious why Evolu does not do that for all queries by default,
-   * the answer is simple: performance. Tracking changes is costly and
-   * meaningful only for visible (hence subscribed) queries anyway. To subscribe
-   * to a query, use {@link Evolu#subscribeQuery}.
+   * To subscribe a query for automatic updates, use
+   * {@link Evolu#subscribeQuery}.
    *
    * ### Example
    *
@@ -153,7 +278,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
    * const allTodos = evolu.createQuery((db) =>
    *   db.selectFrom("todo").selectAll(),
    * );
-   * evolu.loadQuery(allTodos).then(({ rows }) => {
+   * evolu.loadQuery(allTodos).then((rows) => {
    *   console.log(rows);
    * });
    * ```
@@ -202,7 +327,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
   readonly getQueryRows: <R extends Row>(query: Query<R>) => QueryRows<R>;
 
   /**
-   * Subscribe to {@link AppOwner} changes.
+   * Subscribe to {@link AppOwner}.
    *
    * ### Example
    *
@@ -227,31 +352,32 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
    */
   readonly getAppOwner: () => AppOwner | null;
 
-  /**
-   * Subscribe to {@link SyncState} changes.
-   *
-   * ### Example
-   *
-   * ```ts
-   * const unsubscribe = evolu.subscribeSyncState(() => {
-   *   const syncState = evolu.getSyncState();
-   * });
-   * ```
-   */
-  readonly subscribeSyncState: StoreSubscribe;
+  // TODO: Update it for the owner-api
+  // /**
+  //  * Subscribe to {@link SyncState} changes.
+  //  *
+  //  * ### Example
+  //  *
+  //  * ```ts
+  //  * const unsubscribe = evolu.subscribeSyncState(() => {
+  //  *   const syncState = evolu.getSyncState();
+  //  * });
+  //  * ```
+  //  */
+  // readonly subscribeSyncState: StoreSubscribe;
 
-  /**
-   * Get {@link SyncState}.
-   *
-   * ### Example
-   *
-   * ```ts
-   * const unsubscribe = evolu.subscribeSyncState(() => {
-   *   const syncState = evolu.getSyncState();
-   * });
-   * ```
-   */
-  readonly getSyncState: () => SyncState;
+  // /**
+  //  * Get {@link SyncState}.
+  //  *
+  //  * ### Example
+  //  *
+  //  * ```ts
+  //  * const unsubscribe = evolu.subscribeSyncState(() => {
+  //  *   const syncState = evolu.getSyncState();
+  //  * });
+  //  * ```
+  //  */
+  // readonly getSyncState: () => SyncState;
 
   /**
    * Inserts a row into the database and returns a {@link Result} with the new
@@ -437,17 +563,59 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
   readonly reloadApp: () => void;
 
   /** Export SQLite database file as Uint8Array. */
-  readonly exportDatabase: () => Promise<Uint8Array>;
+  readonly exportDatabase: () => Promise<Uint8Array<ArrayBuffer>>;
+
+  /**
+   * Use an owner. Using an owner means syncing it and subscribing to
+   * broadcasted changes. Returns a function to stop using the owner.
+   *
+   * Transport connections are automatically deduplicated and reference-counted,
+   * so multiple owners using the same transport will share a single
+   * connection.
+   *
+   * ### Example
+   *
+   * ```ts
+   * // Use an owner (starts syncing and subscribing to changes).
+   * const unuse = evolu.useOwner(shardOwner);
+   *
+   * // Later, stop using the owner.
+   * unuse();
+   *
+   * // Bulk operations.
+   * const unuses = owners.map((owner) => evolu.useOwner(owner));
+   * // Later: unuses.forEach(unuse => unuse());
+   * ```
+   */
+  readonly useOwner: (owner: SyncOwner) => () => void;
 }
 
-/** Represent errors that can occur in Evolu. */
+/** Represents errors that can occur in Evolu. */
 export type EvoluError =
-  | TimestampError
   | ProtocolError
-  | TransferableError
-  | SymmetricCryptoDecryptError
   | ProtocolUnsupportedVersionError
-  | SqliteError;
+  | SqliteError
+  | SymmetricCryptoDecryptError
+  | TimestampError
+  | TransferableError
+  | OnMessageError;
+
+/**
+ * Error reported when a message is invalid or rejected during processing.
+ *
+ * This error should never happen because a properly written app should ensure
+ * data correctness, but it can occur for two reasons:
+ *
+ * 1. An attack from someone who modified app code
+ * 2. A bug by the developer
+ *
+ * Both cases are useful to report for debugging and security monitoring.
+ */
+export interface OnMessageError {
+  readonly type: "OnMessageError";
+  readonly invalidChanges: ReadonlyArray<DbChange>;
+  readonly rejectedChanges: ReadonlyArray<DbChange>;
+}
 
 interface InternalEvoluInstance<S extends EvoluSchema = EvoluSchema>
   extends Evolu<S> {
@@ -458,44 +626,13 @@ interface InternalEvoluInstance<S extends EvoluSchema = EvoluSchema>
   readonly ensureSchema: (schema: EvoluSchema) => void;
 }
 
-export type EvoluDeps = CreateDbWorkerDep &
-  TimeDep &
-  NanoIdLibDep &
+export type EvoluDeps = ConsoleDep &
+  CreateDbWorkerDep &
+  LocalAuthDep &
   Partial<FlushSyncDep> &
-  ConsoleDep &
-  CreateAppStateDep;
-
-export interface EvoluConfigWithFunctions extends Config {
-  /**
-   * Callback invoked when the database is initialized. Use `isFirst` to perform
-   * one-time setup like initial data seeding.
-   *
-   * ### Example
-   *
-   * ```ts
-   * const evolu = createEvolu(evoluReactWebDeps)(Schema, {
-   *   onInit: ({ appOwner, isFirst }) => {
-   *     if (isFirst) {
-   *       const todoCategoryId = getOrThrow(
-   *         evolu.insert("todoCategory", {
-   *           name: "Not Urgent",
-   *         }),
-   *       );
-   *
-   *       evolu.insert("todo", {
-   *         title: "Try React Suspense",
-   *         categoryId: todoCategoryId.id,
-   *       });
-   *     }
-   *   },
-   * });
-   * ```
-   */
-  readonly onInit?: (params: {
-    readonly appOwner: AppOwner;
-    readonly isFirst: boolean;
-  }) => void;
-}
+  RandomBytesDep &
+  ReloadAppDep &
+  TimeDep;
 
 // For hot reloading and Evolu multitenancy.
 const evoluInstances = new Map<string, InternalEvoluInstance>();
@@ -519,7 +656,8 @@ let tabId: Id | null = null;
  *   and merging.
  * - Automatic schema evolution that updates the underlying database with new
  *   columns or tables.
- * - Managing owner data with resetAppOwner and restoreAppOwner.
+ * - Managing owner data with {@link Evolu#resetAppOwner} and
+ *   {@link Evolu#restoreAppOwner}.
  *
  * ### Example
  *
@@ -553,78 +691,120 @@ export const createEvolu =
   (deps: EvoluDeps) =>
   <S extends EvoluSchema>(
     schema: ValidateSchema<S> extends never ? S : ValidateSchema<S>,
-    partialConfig: Partial<EvoluConfigWithFunctions> = {},
+    config?: EvoluConfig<S>,
   ): Evolu<S> => {
-    const config = { ...defaultConfig, ...partialConfig };
-
-    let evolu = evoluInstances.get(config.name);
+    const name = config?.name ?? defaultDbConfig.name;
+    let evolu = evoluInstances.get(name);
 
     if (evolu == null) {
       evolu = createEvoluInstance(deps)(
         schema as EvoluSchema,
-        config as IntentionalNever,
+        config as EvoluConfig,
       );
-      evoluInstances.set(config.name, evolu);
+      evoluInstances.set(name, evolu);
     } else {
       // Hot reloading. Note that indexes are intentionally omitted.
       evolu.ensureSchema(schema as EvoluSchema);
     }
 
-    return evolu as IntentionalNever;
+    return evolu as Evolu<S>;
   };
 
 const createEvoluInstance =
   (deps: EvoluDeps) =>
-  (
-    schema: EvoluSchema,
-    evoluConfig: EvoluConfigWithFunctions,
-  ): InternalEvoluInstance => {
-    deps.console.enabled = evoluConfig.enableLogging ?? false;
+  (schema: EvoluSchema, config?: EvoluConfig): InternalEvoluInstance => {
+    deps.console.enabled = config?.enableLogging ?? false;
 
-    deps.console.log("[evolu]", "createEvoluInstance");
+    const {
+      onMessage,
+      indexes,
+      reloadUrl = "/",
+      ...partialDbConfig
+    } = config ?? {};
 
-    const { onInit, indexes, ...config } = evoluConfig;
+    const dbConfig: DbConfig = { ...defaultDbConfig, ...partialDbConfig };
+
+    deps.console.log("[evolu]", "createEvoluInstance", {
+      name: dbConfig.name,
+    });
 
     const errorStore = createStore<EvoluError | null>(null);
     const rowsStore = createStore<QueryRowsMap>(new Map());
-    const appOwnerStore = createStore<AppOwner | null>(null);
-    const syncStore = createStore<SyncState>(initialSyncState);
+    const appOwnerStore = createStore<AppOwner | null>(
+      config?.externalAppOwner ?? null,
+    );
+    // TODO: Update it for the owner-api
+    const _syncStore = createStore<SyncState>(initialSyncState);
 
     const subscribedQueries = createSubscribedQueries(rowsStore);
     const loadingPromises = createLoadingPromises(subscribedQueries);
-    const callbacks = createCallbacks(deps);
+    const onCompleteRegistry = createCallbackRegistry(deps);
+    const exportRegistry =
+      createCallbackRegistry<Uint8Array<ArrayBuffer>>(deps);
 
-    const appState = deps.createAppState(config);
-    const dbWorker = deps.createDbWorker(config.name);
+    const dbWorker = deps.createDbWorker(dbConfig.name);
 
     const getTabId = () => {
       tabId ??= createId(deps);
       return tabId;
     };
 
+    const createLocalOnly = (
+      localMutations: Array<MutationChange>,
+      defaultOwnerId: OwnerId | undefined,
+    ): LocalOnly<EvoluSchema> => ({
+      insert: (table, values) => {
+        const id = createId(deps);
+        localMutations.push({
+          table,
+          id,
+          values,
+          ownerId: defaultOwnerId,
+        });
+        return id;
+      },
+      update: (table, values) => {
+        const { id, ...rest } = values;
+        localMutations.push({
+          table,
+          id: id as Id,
+          values: rest,
+          ownerId: defaultOwnerId,
+        });
+      },
+      upsert: (table, values) => {
+        const { id, ...rest } = values as Record<string, unknown> & { id: Id };
+        localMutations.push({
+          table,
+          id: id,
+          values: rest as MutationChange["values"],
+          ownerId: defaultOwnerId,
+        });
+      },
+    });
+
     dbWorker.onMessage((message) => {
       switch (message.type) {
-        case "onInit": {
-          appOwnerStore.set(message.appOwner);
-          onInit?.({
-            appOwner: message.appOwner,
-            isFirst: message.isFirst,
-          });
-          break;
-        }
-
         case "onError": {
           errorStore.set(message.error);
           break;
         }
 
-        case "onChange": {
+        case "onGetAppOwner": {
+          // AppOwner is immutable so we can ignore onGetAppOwner from other tabs.
+          if (appOwnerStore.get() == null) {
+            appOwnerStore.set(message.appOwner);
+          }
+          break;
+        }
+
+        case "onQueryPatches": {
           if (message.tabId !== getTabId()) return;
 
           const state = rowsStore.get();
           const nextState = new Map([
             ...state,
-            ...message.patches.map(
+            ...message.queryPatches.map(
               ({ query, patches }): [Query, ReadonlyArray<Row>] => [
                 query,
                 applyPatches(patches, state.get(query) ?? emptyRows),
@@ -632,7 +812,7 @@ const createEvoluInstance =
             ),
           ]);
 
-          for (const { query } of message.patches) {
+          for (const { query } of message.queryPatches) {
             loadingPromises.resolve(query, nextState.get(query) ?? emptyRows);
           }
 
@@ -645,33 +825,111 @@ const createEvoluInstance =
           }
 
           for (const id of message.onCompleteIds) {
-            callbacks.execute(id);
+            onCompleteRegistry.execute(id);
           }
           break;
         }
 
-        case "onReceive": {
+        case "refreshQueries": {
           if (message.tabId && message.tabId === getTabId()) return;
 
-          loadingPromises.releaseUnsubscribed();
-          const queries = subscribedQueries.get();
+          const loadingPromisesQueries = loadingPromises.getQueries();
+          loadingPromises.releaseUnsubscribedOnMutation();
+
+          const queries = [
+            // Dedupe
+            ...new Set([...loadingPromisesQueries, ...subscribedQueries.get()]),
+          ];
+
           if (isNonEmptyReadonlyArray(queries)) {
             dbWorker.postMessage({ type: "query", tabId: getTabId(), queries });
           }
+
           break;
         }
 
         case "onReset": {
           if (message.reload) {
-            appState.reset();
+            deps.reloadApp(reloadUrl);
           } else {
-            callbacks.execute(message.onCompleteId);
+            onCompleteRegistry.execute(message.onCompleteId);
           }
           break;
         }
 
+        case "processNewMessages": {
+          void requestIdleTask(
+            toTask(async () => {
+              const approved: Array<Timestamp> = [];
+              const invalidChanges: Array<DbChange> = [];
+              const rejectedChanges: Array<DbChange> = [];
+              const localMutations: Array<MutationChange> = [];
+
+              for (const crdtMessage of message.messages) {
+                let isApproved = true;
+                let isValid = true;
+
+                const table = crdtMessage.change.table;
+                if (table in schema) {
+                  const { createdAt, ...values } = crdtMessage.change.values;
+                  isValid =
+                    (createdAt ? DateIso.is(createdAt) : true) &&
+                    getMutationType(table, "update").is({
+                      id: crdtMessage.change.id,
+                      ...values,
+                    });
+                } else {
+                  isValid = false;
+                }
+
+                if (!isValid) {
+                  isApproved = false;
+                  invalidChanges.push(crdtMessage.change);
+                } else if (onMessage) {
+                  // At this point, we've validated that the message conforms to the
+                  // schema, so the typed callback can safely process it.
+                  isApproved = await onMessage(crdtMessage.change, {
+                    ownerId: message.ownerId,
+                    localOnly: createLocalOnly(localMutations, message.ownerId),
+                  });
+                  if (!isApproved) {
+                    rejectedChanges.push(crdtMessage.change);
+                  }
+                }
+
+                if (isApproved) {
+                  approved.push(crdtMessage.timestamp);
+                }
+              }
+
+              // Report OnMessageError if there were any invalid or rejected changes
+              if (invalidChanges.length > 0 || rejectedChanges.length > 0) {
+                const onMessageError: OnMessageError = {
+                  type: "OnMessageError",
+                  invalidChanges,
+                  rejectedChanges,
+                };
+                errorStore.set(onMessageError);
+              }
+
+              dbWorker.postMessage({
+                type: "onProcessNewMessages",
+                onCompleteId: message.onCompleteId,
+                approved,
+                localMutations,
+              });
+
+              return ok();
+            }),
+          )();
+          break;
+        }
+
         case "onExport": {
-          callbacks.execute(message.onCompleteId, message.file);
+          exportRegistry.execute(
+            message.onCompleteId,
+            message.file as Uint8Array<ArrayBuffer>,
+          );
           break;
         }
 
@@ -704,17 +962,18 @@ const createEvoluInstance =
       return type;
     };
 
-    dbWorker.postMessage({
-      type: "init",
-      config,
-      dbSchema,
-    });
+    dbWorker.postMessage({ type: "init", config: dbConfig, dbSchema });
+
+    // We can't use `init` to get AppOwner because `init` runs only once per n tabs.
+    dbWorker.postMessage({ type: "getAppOwner" });
 
     const loadQueryMicrotaskQueue: Array<Query> = [];
 
     const mutateMicrotaskQueue: Array<
-      [DbChange | undefined, MutationOptions["onComplete"] | undefined]
+      [MutationChange | null, MutationOptions["onComplete"] | undefined]
     > = [];
+
+    const useOwnerMicrotaskQueue: Array<[SyncOwner, boolean, Uint8Array]> = [];
 
     const createMutation =
       <Kind extends MutationKind>(kind: Kind) =>
@@ -731,8 +990,7 @@ const createEvoluInstance =
             ObjectType<MutationMapping<(typeof schema)[TableName], Kind>>
           >
       > => {
-        const Type = getMutationType(table, kind);
-        const result = Type.fromUnknown(props);
+        const result = getMutationType(table, kind).fromUnknown(props);
 
         const id =
           kind === "insert"
@@ -741,13 +999,12 @@ const createEvoluInstance =
 
         if (options?.onlyValidate !== true) {
           if (!result.ok) {
-            // One error must invalidate the whole queue.
-            // We insert `undefined` to detect such a situation.
-            mutateMicrotaskQueue.push([undefined, undefined]);
+            // Mark the transaction as invalid by pushing null
+            mutateMicrotaskQueue.push([null, undefined]);
           } else {
             const values = { ...result.value };
-
             delete values.id;
+
             if (kind === "insert" || kind === "upsert") {
               // Only set createdAt if not provided by user
               if (!("createdAt" in values)) {
@@ -755,50 +1012,19 @@ const createEvoluInstance =
               }
             }
 
-            const dbChange = {
-              table,
-              id,
-              values,
-            };
-            assertValidDbChange(dbChange);
+            const dbChange = { table, id, values };
+            assert(
+              DbChange.is(dbChange),
+              `Failed to create DbChange for table "${dbChange.table}"`,
+            );
 
-            mutateMicrotaskQueue.push([dbChange, options?.onComplete]);
+            const mutationChange = { ...dbChange, ownerId: options?.ownerId };
+            mutateMicrotaskQueue.push([mutationChange, options?.onComplete]);
           }
 
-          if (mutateMicrotaskQueue.length === 1)
-            queueMicrotask(() => {
-              const changes: Array<DbChange> = [];
-              const onCompletes = [];
-
-              for (const [change, onComplete] of mutateMicrotaskQueue) {
-                if (change) changes.push(change);
-                if (onComplete) onCompletes.push(onComplete);
-              }
-
-              const mutateMicrotaskQueueLength = mutateMicrotaskQueue.length;
-              mutateMicrotaskQueue.length = 0;
-
-              // Don't mutate anything if there was a validation error.
-              // All mutations within a queue are considered to be a transaction.
-              if (changes.length !== mutateMicrotaskQueueLength) {
-                return;
-              }
-
-              const onCompleteIds = onCompletes.map((onComplete) =>
-                callbacks.register(onComplete),
-              );
-
-              loadingPromises.releaseUnsubscribed();
-
-              if (isNonEmptyArray(changes))
-                dbWorker.postMessage({
-                  type: "mutate",
-                  tabId: getTabId(),
-                  changes,
-                  onCompleteIds,
-                  subscribedQueries: subscribedQueries.get(),
-                });
-            });
+          if (mutateMicrotaskQueue.length === 1) {
+            queueMicrotask(() => void processMutationQueue());
+          }
         }
 
         if (result.ok) return ok({ id });
@@ -812,28 +1038,74 @@ const createEvoluInstance =
         );
       };
 
+    const processMutationQueue = async () => {
+      const changes: Array<MutationChange> = [];
+      const onCompleteCallbacks = [];
+
+      for (const [change, onComplete] of mutateMicrotaskQueue) {
+        if (change !== null) changes.push(change);
+        if (onComplete) onCompleteCallbacks.push(onComplete);
+      }
+
+      const queueLength = mutateMicrotaskQueue.length;
+      mutateMicrotaskQueue.length = 0;
+
+      // Don't process any mutations if there was a validation error.
+      // All mutations within a queue run as a single transaction.
+      if (changes.length !== queueLength) {
+        return;
+      }
+
+      const onCompleteIds = onCompleteCallbacks.map(
+        onCompleteRegistry.register,
+      );
+
+      loadingPromises.releaseUnsubscribedOnMutation();
+
+      if (!isNonEmptyArray(changes)) return;
+
+      if (onMessage) {
+        const rejectedChanges: Array<DbChange> = [];
+        const localMutations: Array<MutationChange> = [];
+
+        for (const change of changes) {
+          const localOnly = createLocalOnly(localMutations, change.ownerId);
+
+          const isApproved = await onMessage(change, {
+            ownerId: change.ownerId,
+            localOnly,
+          });
+          if (!isApproved) {
+            rejectedChanges.push(change);
+          }
+        }
+
+        if (rejectedChanges.length > 0) {
+          errorStore.set({
+            type: "OnMessageError",
+            invalidChanges: [],
+            rejectedChanges,
+          });
+          return;
+        }
+
+        changes.push(...localMutations);
+      }
+
+      dbWorker.postMessage({
+        type: "mutate",
+        tabId: getTabId(),
+        changes,
+        onCompleteIds,
+        subscribedQueries: subscribedQueries.get(),
+      });
+    };
+
     const evolu: InternalEvoluInstance = {
       subscribeError: errorStore.subscribe,
       getError: errorStore.get,
 
-      createQuery: (queryCallback, options) => {
-        const compiledQuery = queryCallback(
-          kysely as IntentionalNever,
-        ).compile();
-
-        if (isSqlMutation(compiledQuery.sql))
-          throw new Error(
-            "SQL mutation (INSERT, UPDATE, DELETE, etc.) isn't allowed in the Evolu `createQuery` function. Kysely suggests it because there is no read-only Kysely yet, and removing such an API is not possible. For mutations, use Evolu Mutation API.",
-          );
-
-        return serializeQuery({
-          sql: compiledQuery.sql as SafeSql,
-          parameters: compiledQuery.parameters as NonNullable<
-            SqliteQuery["parameters"]
-          >,
-          ...(options && { options }),
-        });
-      },
+      createQuery,
 
       loadQuery: <R extends Row>(query: Query<R>): Promise<QueryRows<R>> => {
         const { promise, isNew } = loadingPromises.get(query);
@@ -846,6 +1118,7 @@ const createEvoluInstance =
               const queries = [...new Set(loadQueryMicrotaskQueue)];
               loadQueryMicrotaskQueue.length = 0;
               assertNonEmptyArray(queries);
+              deps.console.log("[evolu]", "loadQuery", { queries });
               dbWorker.postMessage({
                 type: "query",
                 tabId: getTabId(),
@@ -884,20 +1157,17 @@ const createEvoluInstance =
       subscribeAppOwner: appOwnerStore.subscribe,
       getAppOwner: appOwnerStore.get,
 
-      subscribeSyncState: syncStore.subscribe,
-      getSyncState: syncStore.get,
+      // TODO: Update it for the owner-api
+      // subscribeSyncState: syncStore.subscribe,
+      // getSyncState: syncStore.get,
 
       insert: createMutation("insert"),
       update: createMutation("update"),
       upsert: createMutation("upsert"),
 
       resetAppOwner: (options) => {
-        // Eslint bug, Promise<void> is correct by docs.
-        // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
-        const { promise, resolve } = Promise.withResolvers<void>();
-        const onCompleteId = callbacks.register(() => {
-          resolve();
-        });
+        const { promise, resolve } = Promise.withResolvers<undefined>();
+        const onCompleteId = onCompleteRegistry.register(resolve);
         dbWorker.postMessage({
           type: "reset",
           onCompleteId,
@@ -907,13 +1177,8 @@ const createEvoluInstance =
       },
 
       restoreAppOwner: (mnemonic, options) => {
-        // Eslint bug, Promise<void> is correct by docs.
-        // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
-        const { promise, resolve } = Promise.withResolvers<void>();
-        const onCompleteId = callbacks.register(() => {
-          resolve();
-        });
-
+        const { promise, resolve } = Promise.withResolvers<undefined>();
+        const onCompleteId = onCompleteRegistry.register(resolve);
         dbWorker.postMessage({
           type: "reset",
           onCompleteId,
@@ -924,7 +1189,7 @@ const createEvoluInstance =
       },
 
       reloadApp: () => {
-        appState.reset();
+        deps.reloadApp(reloadUrl);
       },
 
       ensureSchema: (schema) => {
@@ -934,22 +1199,90 @@ const createEvoluInstance =
       },
 
       exportDatabase: () => {
-        const { promise, resolve } = Promise.withResolvers<Uint8Array>();
-        const onCompleteId = callbacks.register((arg) => {
-          if (arg instanceof Uint8Array) resolve(arg);
-        });
+        const { promise, resolve } =
+          Promise.withResolvers<Uint8Array<ArrayBuffer>>();
+        const onCompleteId = exportRegistry.register(resolve);
         dbWorker.postMessage({ type: "export", onCompleteId });
         return promise;
+      },
+
+      useOwner: (owner) => {
+        const scheduleOwnerQueueProcessing = () => {
+          if (useOwnerMicrotaskQueue.length !== 1) return;
+          queueMicrotask(() => {
+            const queue = [...useOwnerMicrotaskQueue];
+            useOwnerMicrotaskQueue.length = 0;
+
+            const result: Array<[SyncOwner, boolean, Uint8Array]> = [];
+            const skipIndices = new Set<number>();
+
+            for (let i = 0; i < queue.length; i++) {
+              if (skipIndices.has(i)) continue;
+
+              const [currentOwner, currentUse, currentOwnerSerialized] =
+                queue[i];
+
+              // Look for opposite action with same owner
+              for (let j = i + 1; j < queue.length; j++) {
+                if (skipIndices.has(j)) continue;
+
+                const [, otherUse, otherOwnerSerialized] = queue[j];
+
+                if (
+                  currentUse !== otherUse &&
+                  eqArrayNumber(currentOwnerSerialized, otherOwnerSerialized)
+                ) {
+                  // Found cancel-out pair, skip both
+                  skipIndices.add(i).add(j);
+                  break;
+                }
+              }
+
+              if (!skipIndices.has(i)) {
+                result.push([currentOwner, currentUse, currentOwnerSerialized]);
+              }
+            }
+
+            for (const [owner, use] of result) {
+              dbWorker.postMessage({ type: "useOwner", owner, use });
+            }
+          });
+        };
+
+        useOwnerMicrotaskQueue.push([owner, true, pack(owner)]);
+        scheduleOwnerQueueProcessing();
+
+        const unuse = () => {
+          useOwnerMicrotaskQueue.push([owner, false, pack(owner)]);
+          scheduleOwnerQueueProcessing();
+        };
+
+        return unuse;
       },
     };
 
     return evolu;
   };
 
-export const createNamespaceName =
-  (config: Config) =>
-  (name: string): string =>
-    `evolu:${config.name}:${name}`;
+export const createQuery = <R extends Row>(
+  queryCallback: Parameters<CreateQuery<EvoluSchema>>[0],
+  options?: Parameters<CreateQuery<EvoluSchema>>[1],
+): Query<R> => {
+  const compiledQuery = queryCallback(kysely as IntentionalNever).compile();
+
+  if (isSqlMutation(compiledQuery.sql))
+    throw new Error(
+      "SQL mutation (INSERT, UPDATE, DELETE, etc.) isn't allowed in the Evolu `createQuery` function. Kysely suggests it because there is no read-only Kysely yet, and removing such an API is not possible. For mutations, use Evolu Mutation API.",
+    );
+
+  return serializeQuery({
+    sql: compiledQuery.sql as SafeSql,
+    parameters: compiledQuery.parameters as NonNullable<
+      SqliteQuery["parameters"]
+    >,
+    ...(options && { options }),
+  });
+};
 
 interface LoadingPromises {
   get: <R extends Row>(
@@ -959,13 +1292,32 @@ interface LoadingPromises {
     readonly isNew: boolean;
   };
 
+  /**
+   * Resolve a cached promise with updated rows.
+   *
+   * If the promise is not yet fulfilled, it will be resolved normally. If
+   * already fulfilled (subscribed query updated after mutation), the promise
+   * property is replaced with a new `Promise.resolve(rows)` while keeping the
+   * same cached object reference. The promise is not removed from the cache
+   * because React Suspense requires repeated calls to return the same promise.
+   */
   resolve: (query: Query, rows: ReadonlyArray<Row>) => void;
 
-  releaseUnsubscribed: () => void;
+  /**
+   * Release unsubscribed queries from the cache.
+   *
+   * Loading promises can't be released in `resolve` because they must be cached
+   * for React Suspense, but they also can't be cached forever because only
+   * subscribed queries are automatically updated (reactivity is expensive
+   * because it's implemented via refetching subscribed queries).
+   */
+  releaseUnsubscribedOnMutation: () => void;
+
+  getQueries: () => ReadonlyArray<Query>;
 }
 
 interface LoadingPromise {
-  /** Promise with props for the upcoming React use hook. */
+  /** Promise with props for the React use hook. */
   promise: Promise<QueryRows> & {
     status?: "pending" | "fulfilled" | "rejected";
     value?: QueryRows;
@@ -980,7 +1332,7 @@ const createLoadingPromises = (
 ): LoadingPromises => {
   const loadingPromiseMap = new Map<Query, LoadingPromise>();
 
-  const loadingPromises: LoadingPromises = {
+  return {
     get: <R extends Row>(
       query: Query<R>,
     ): {
@@ -1007,16 +1359,11 @@ const createLoadingPromises = (
       if (loadingPromise.promise.status !== "fulfilled") {
         loadingPromise.resolve(rows);
       } else {
-        // A promise can't be fulfilled 2x, so we need a new one.
         loadingPromise.promise = Promise.resolve(rows);
       }
 
-      /**
-       * "For example, a data framework can set the status and value fields on a
-       * promise preemptively, before passing to React, so that React can unwrap
-       * it without waiting a microtask."
-       * https://github.com/acdlite/rfcs/blob/first-class-promises/text/0000-first-class-support-for-promises.md
-       */
+      // Set status and value fields for React's `use` Hook to unwrap synchronously.
+      // https://github.com/acdlite/rfcs/blob/first-class-promises/text/0000-first-class-support-for-promises.md
       void Object.assign(loadingPromise.promise, {
         status: "fulfilled",
         value: rows,
@@ -1027,14 +1374,7 @@ const createLoadingPromises = (
       }
     },
 
-    /**
-     * We can't delete loading promises in `resolveLoadingPromises` because they
-     * must be cached, so repeated calls to `loadQuery` will always return the
-     * same promise until the data changes, and we also can't cache them forever
-     * because only subscribed queries are automatically updated (reactivity is
-     * expensive) hence this function must be called manually on any mutation.
-     */
-    releaseUnsubscribed: () => {
+    releaseUnsubscribedOnMutation: () => {
       [...loadingPromiseMap.entries()]
         .filter(([query]) => !subscribedQueries.has(query))
         .forEach(([query, loadingPromise]) => {
@@ -1045,18 +1385,7 @@ const createLoadingPromises = (
           }
         });
     },
+
+    getQueries: () => Array.from(loadingPromiseMap.keys()),
   };
-
-  return loadingPromises;
-};
-
-const assertValidDbChange: (dbChange: {
-  table: string;
-  id: Id;
-  values: unknown;
-}) => asserts dbChange is DbChange = (dbChange) => {
-  assert(
-    DbChange.is(dbChange),
-    `Failed to create DbChange for table "${dbChange.table}". If you see this message, you either disabled EvoluSchema validation or Evolu has a bug - please report it.`,
-  );
 };

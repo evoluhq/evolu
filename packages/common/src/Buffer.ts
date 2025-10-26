@@ -6,7 +6,7 @@ export {
   concatBytes,
   hexToBytes,
   utf8ToBytes,
-} from "@noble/ciphers/utils";
+} from "@noble/ciphers/utils.js";
 
 /**
  * Custom error for {@link Buffer}-related failures like premature end of data.

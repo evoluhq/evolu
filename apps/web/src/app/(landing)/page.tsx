@@ -25,7 +25,7 @@ export default function Page(): React.ReactElement {
         </div>
 
         <Features />
-        <Guides className="!mt-10" />
+        <Guides className="mt-10!" />
       </div>
     </>
   );

@@ -1,19 +1,19 @@
-import { bytesToHex } from "@noble/ciphers/utils";
+import { bytesToHex, utf8ToBytes } from "@noble/ciphers/utils.js";
 import { assert, expect, test } from "vitest";
 import {
   createSlip21,
   createSymmetricCrypto,
-  mnemonicToMnemonicSeed,
   padmePaddedLength,
 } from "../src/Crypto.js";
-import { getOrThrow, ok } from "../src/Result.js";
+import { mnemonicToOwnerSecret } from "../src/index.js";
+import { ok } from "../src/Result.js";
 import { Mnemonic, NonNegativeInt } from "../src/Type.js";
-import { testCreateRandomBytesDep, testOwner } from "./_deps.js";
+import { testDeps, testOwner } from "./_deps.js";
 
 test("SymmetricCrypto", () => {
-  const symmetricCrypto = createSymmetricCrypto(testCreateRandomBytesDep);
+  const symmetricCrypto = createSymmetricCrypto(testDeps);
 
-  const plaintext = new TextEncoder().encode("Hello, world!");
+  const plaintext = utf8ToBytes("Hello, world!");
   const encryptionKey = testOwner.encryptionKey;
 
   const { nonce, ciphertext } = symmetricCrypto.encrypt(
@@ -72,19 +72,18 @@ test("padmePaddedLength", () => {
 });
 
 test("createSlip21", () => {
-  const seed = mnemonicToMnemonicSeed(
-    getOrThrow(
-      Mnemonic.from("all all all all all all all all all all all all"),
-    ),
+  const mnemonic = Mnemonic.orThrow(
+    "all all all all all all all all all all all all",
+  );
+  const ownerSecret = mnemonicToOwnerSecret(mnemonic);
+
+  const ownerId = createSlip21(ownerSecret, ["Evolu", "Owner Id"]);
+  expect(bytesToHex(ownerId)).toMatchInlineSnapshot(
+    `"bce9b26dad1a3364c105eb65e7aef032fdffd53816819ac4664442c4a915327f"`,
   );
 
-  const ownerId = createSlip21(seed, ["Evolu", "Owner Id"]);
-  expect(bytesToHex(ownerId)).toEqual(
-    "0940d9f3e307f3bcedbcc8361ae136b619603a686386ecd329c3ed2337cb831d",
-  );
-
-  const encryptionKey = createSlip21(seed, ["Evolu", "Encryption Key"]);
-  expect(bytesToHex(encryptionKey)).toEqual(
-    "9ad06a43e9d4739502d59c8cafdaa6babb0481cdd0b3acb8455f080b38847642",
+  const encryptionKey = createSlip21(ownerSecret, ["Evolu", "Encryption Key"]);
+  expect(bytesToHex(encryptionKey)).toMatchInlineSnapshot(
+    `"abf2095887bc74adda889a572e29a407a457a39bfdd4202d34ee6eac5c28effc"`,
   );
 });

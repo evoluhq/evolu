@@ -13,14 +13,28 @@
  * ### Example
  *
  * ```ts
- * deps.console.log("[db]", "send data message", protocolMessage);
+ * deps.console.log("[evolu]", "createEvoluInstance", { name });
  * ```
  *
  * **Tip**: In browser dev tools, you can filter logs by tag (e.g., `[db]`) to
- * quickly find relevant messages.
+ * quickly find relevant messages. In Node.js, use `grep` to filter output:
  *
- * **Warning**: If you encounter platform-specific issues or missing methods,
- * please contribute a PR with details about the environment and behavior.
+ * ```bash
+ * node app.js | grep "\[relay\]"         # Show only relay logs
+ * node app.js | grep -E "\[db\]|\[sql\]" # Show db and sql logs
+ * node app.js | grep -v "\[debug\]"      # Hide debug logs
+ * ```
+ *
+ * Or add to package.json scripts:
+ *
+ * ```json
+ * {
+ *   "scripts": {
+ *     "dev:relay": "node app.js | grep \"\\[relay\\]\"",
+ *     "dev:db": "node app.js | grep -E \"\\[db\\]|\\[sql\\]\""
+ *   }
+ * }
+ * ```
  *
  * @module
  */
@@ -51,6 +65,9 @@ export interface Console {
   /** Starts a timer with an optional label */
   time: (label?: string) => void;
 
+  /** Logs the elapsed time for a timer without ending it */
+  timeLog: (label?: string, ...data: Array<any>) => void;
+
   /** Ends a timer and logs the elapsed time */
   timeEnd: (label?: string) => void;
 
@@ -68,9 +85,6 @@ export interface Console {
 
   /** Writes a message if the value is falsy, otherwise does nothing */
   assert: (value: any, message?: string, ...optionalParams: Array<any>) => void;
-
-  /** Logs the elapsed time for a timer without ending it */
-  timeLog: (label?: string, ...data: Array<any>) => void;
 
   /** Prints a stack trace with an optional message */
   trace: (message?: any, ...optionalParams: Array<any>) => void;
@@ -121,6 +135,10 @@ export const createConsole = (config: ConsoleConfig = {}): Console => {
       // eslint-disable-next-line no-console
       if (instance.enabled) console.time(label);
     },
+    timeLog: (label, ...data) => {
+      // eslint-disable-next-line no-console, @typescript-eslint/no-unsafe-argument
+      if (instance.enabled) console.timeLog(label, ...data);
+    },
     timeEnd: (label) => {
       // eslint-disable-next-line no-console
       if (instance.enabled) console.timeEnd(label);
@@ -145,10 +163,6 @@ export const createConsole = (config: ConsoleConfig = {}): Console => {
       // eslint-disable-next-line no-console, @typescript-eslint/no-unsafe-argument
       if (instance.enabled) console.assert(value, message, ...optionalParams);
     },
-    timeLog: (label, ...data) => {
-      // eslint-disable-next-line no-console, @typescript-eslint/no-unsafe-argument
-      if (instance.enabled) console.timeLog(label, ...data);
-    },
     trace: (message, ...optionalParams) => {
       // eslint-disable-next-line no-console, @typescript-eslint/no-unsafe-argument
       if (instance.enabled) console.trace(message, ...optionalParams);
@@ -156,4 +170,70 @@ export const createConsole = (config: ConsoleConfig = {}): Console => {
   };
 
   return instance;
+};
+
+export interface ConsoleWithTimeConfig extends ConsoleConfig {
+  /**
+   * Type of timestamp to prepend to log messages.
+   *
+   * - 'absolute': Shows actual time (e.g., "14:32:15.234")
+   * - 'relative': Shows time since console creation (e.g., "+1.234s")
+   */
+  readonly timestampType: "absolute" | "relative";
+}
+
+/** Creates a console instance with timestamp prefixes. */
+export const createConsoleWithTime = (
+  config: ConsoleWithTimeConfig = { timestampType: "relative" },
+): Console => {
+  const console = createConsole(config);
+  const startTime = performance.now();
+
+  const getTimestamp = (): string => {
+    if (config.timestampType === "relative") {
+      const elapsed = (performance.now() - startTime) / 1000;
+
+      // Format for better readability at different time scales
+      if (elapsed < 60) {
+        // Under 1 minute: show seconds with millisecond precision
+        return `+${elapsed.toFixed(3)}s`;
+      } else if (elapsed < 3600) {
+        // 1 minute to 1 hour: show minutes and seconds with millisecond precision
+        const minutes = Math.floor(elapsed / 60);
+        const seconds = (elapsed % 60).toFixed(3);
+        return `+${minutes}m${seconds}s`;
+      } else {
+        // Over 1 hour: show hours, minutes, and seconds with millisecond precision
+        const hours = Math.floor(elapsed / 3600);
+        const minutes = Math.floor((elapsed % 3600) / 60);
+        const seconds = ((elapsed % 3600) % 60).toFixed(3);
+        return `+${hours}h${minutes}m${seconds}s`;
+      }
+    } else {
+      // Absolute time - format as HH:MM:SS.mmm
+      const now = new Date();
+      const hours = now.getHours().toString().padStart(2, "0");
+      const minutes = now.getMinutes().toString().padStart(2, "0");
+      const seconds = now.getSeconds().toString().padStart(2, "0");
+      const milliseconds = now.getMilliseconds().toString().padStart(3, "0");
+      return `${hours}:${minutes}:${seconds}.${milliseconds}`;
+    }
+  };
+
+  const withTimestamp =
+    (fn: (...args: Array<any>) => void) =>
+    (...args: Array<any>) => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      fn(`[${getTimestamp()}]`, ...args);
+    };
+
+  // Override methods that should have timestamps
+  console.log = withTimestamp(console.log);
+  console.info = withTimestamp(console.info);
+  console.warn = withTimestamp(console.warn);
+  console.error = withTimestamp(console.error);
+  console.debug = withTimestamp(console.debug);
+  console.trace = withTimestamp(console.trace);
+
+  return console;
 };

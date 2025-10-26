@@ -1,8 +1,8 @@
-import { nanoid } from "nanoid";
+import { createRandomBytes } from "../Crypto.js";
 import { isPlainObject, ReadonlyRecord } from "../Object.js";
 import { orderUint8Array } from "../Order.js";
 import { SqliteValue } from "../Sqlite.js";
-import { String } from "../Type.js";
+import { createId, String } from "../Type.js";
 import { Query, Row } from "./Query.js";
 
 export interface QueryPatches {
@@ -91,8 +91,8 @@ const areEqual = (a: SqliteValue, b: SqliteValue): boolean => {
  * A unique identifier prepended to JSON-encoded strings. This allows safe
  * detection and parsing of only those columns that require JSON.parse.
  *
- * The identifier is generated using nanoid to ensure randomness and uniqueness,
- * preventing malicious actors from inserting fake data that could be
+ * The identifier is a cryptographically random Evolu Id, ensuring uniqueness
+ * and preventing malicious actors from inserting fake data that could be
  * misinterpreted as JSON by the application.
  *
  * Note: The same queries created by different browser tabs will have different
@@ -103,7 +103,9 @@ const areEqual = (a: SqliteValue, b: SqliteValue): boolean => {
  *
  * See: https://github.com/kysely-org/kysely/issues/1372#issuecomment-2702773948
  */
-export const kyselyJsonIdentifier = nanoid();
+export const kyselyJsonIdentifier = createId({
+  randomBytes: createRandomBytes(),
+});
 
 export const parseSqliteJsonArray = <T>(
   arr: ReadonlyArray<T>,

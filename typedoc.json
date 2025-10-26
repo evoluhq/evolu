@@ -3,7 +3,7 @@
   "entryPoints": ["packages/*"],
   "name": "API Reference",
   "entryPointStrategy": "packages",
-  "exclude": ["packages/tsconfig"],
+  "exclude": ["packages/tsconfig", "packages/relay"],
   "plugin": ["typedoc-plugin-markdown"],
   "publicPath": "/docs/api-reference",
   "fileExtension": ".mdx",

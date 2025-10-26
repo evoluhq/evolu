@@ -3,7 +3,7 @@ import { use } from "react";
 import { useEvolu } from "./useEvolu.js";
 import type { useQueries } from "./useQueries.js";
 import { useQuerySubscription } from "./useQuerySubscription.js";
-import { useWasSSR } from "./useWasSSR.js";
+import { useWasSsr } from "./useWasSsr.js";
 
 /**
  * Load and subscribe to the Query, and return an object with `rows` and `row`
@@ -12,6 +12,10 @@ import { useWasSSR } from "./useWasSSR.js";
  * Note that {@link useQuery} uses React Suspense. It means every usage of
  * {@link useQuery} blocks rendering until loading is completed. To avoid loading
  * waterfall with more queries, use {@link useQueries}.
+ *
+ * The `promise` option allows preloading queries before rendering, which can be
+ * useful for complex queries that might take noticeable time even with local
+ * data. However, this is rarely needed as local queries are typically fast.
  *
  * ### Example
  *
@@ -25,12 +29,8 @@ import { useWasSSR } from "./useWasSSR.js";
  * // Get all rows, but without subscribing to changes.
  * const rows = useQuery(allTodos, { once: true });
  *
- * // Prefetch rows.
- * const allTodos = evolu.createQuery((db) =>
- *   db.selectFrom("todo").selectAll(),
- * );
+ * // Preload a query (rarely needed).
  * const allTodosPromise = evolu.loadQuery(allTodos);
- * // Use prefetched rows.
  * const rows = useQuery(allTodos, { promise: allTodosPromise });
  * ```
  */
@@ -45,7 +45,8 @@ export const useQuery = <R extends Row>(
   }> = {},
 ): QueryRows<R> => {
   const evolu = useEvolu();
-  const wasSSR = useWasSSR();
+  const wasSSR = useWasSsr();
+
   if (wasSSR) {
     if (!options.promise) void evolu.loadQuery(query);
   } else {

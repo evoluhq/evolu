@@ -1,34 +1,35 @@
 import SQLite from "better-sqlite3";
 import { describe, expect, test } from "vitest";
-import { defaultConfig } from "../../src/Evolu/Config.js";
+import { defaultDbConfig } from "../../src/Evolu/Db.js";
 import {
-  BinaryTimestamp,
   Counter,
   Millis,
   NodeId,
   Timestamp,
+  TimestampBytes,
   TimestampConfigDep,
   TimestampCounterOverflowError,
   TimestampDriftError,
   TimestampTimeOutOfRangeError,
-  binaryTimestampToTimestamp,
   createInitialTimestamp,
   createTimestamp,
   maxCounter,
   maxMillis,
   minCounter,
   minMillis,
-  orderBinaryTimestamp,
+  orderTimestampBytes,
   receiveTimestamp,
   sendTimestamp,
-  timestampToBinaryTimestamp,
+  timestampBytesToTimestamp,
+  timestampToTimestampBytes,
   timestampToTimestampString,
 } from "../../src/Evolu/Timestamp.js";
 import { increment } from "../../src/Number.js";
 import { orderNumber } from "../../src/Order.js";
 import { Result, getOrThrow, ok } from "../../src/Result.js";
 import { TimeDep } from "../../src/Time.js";
-import { testNanoIdLibDep, testRandomLib } from "../_deps.js";
+import { dateToDateIso } from "../../src/Type.js";
+import { testDeps, testRandomLib } from "../_deps.js";
 
 test("Millis", () => {
   expect(Millis.from(-1).ok).toBe(false);
@@ -63,12 +64,12 @@ test("createTimestamp", () => {
 });
 
 test("createInitialTimestamp", () => {
-  const timestamp = createInitialTimestamp(testNanoIdLibDep);
+  const timestamp = createInitialTimestamp(testDeps);
   expect(timestamp).toMatchInlineSnapshot(`
     {
       "counter": 0,
       "millis": 0,
-      "nodeId": "7d4369d2888e0950",
+      "nodeId": "4febdfb5d0782bfa",
     }
   `);
 });
@@ -79,16 +80,22 @@ test("timestampToTimestampString", () => {
   );
 });
 
-const makeMillis = (millis: number): Millis => getOrThrow(Millis.from(millis));
+const makeMillis = (millis: number): Millis => Millis.orThrow(millis);
 
 const deps0: TimeDep & TimestampConfigDep = {
-  time: { now: () => minMillis },
-  timestampConfig: { maxDrift: defaultConfig.maxDrift },
+  time: {
+    now: () => minMillis,
+    nowIso: () => getOrThrow(dateToDateIso(new Date(minMillis))),
+  },
+  timestampConfig: { maxDrift: defaultDbConfig.maxDrift },
 };
 
 const deps1: TimeDep & TimestampConfigDep = {
-  time: { now: () => minMillis + 1 },
-  timestampConfig: { maxDrift: defaultConfig.maxDrift },
+  time: {
+    now: () => minMillis + 1,
+    nowIso: () => getOrThrow(dateToDateIso(new Date(minMillis + 1))),
+  },
+  timestampConfig: { maxDrift: defaultDbConfig.maxDrift },
 };
 
 describe("sendTimestamp", () => {
@@ -164,7 +171,7 @@ describe("sendTimestamp", () => {
     expect(
       sendTimestamp(deps0)(
         createTimestamp({
-          millis: makeMillis(minMillis + defaultConfig.maxDrift + 1),
+          millis: makeMillis(minMillis + defaultDbConfig.maxDrift + 1),
         }),
       ),
     ).toMatchInlineSnapshot(`
@@ -274,25 +281,11 @@ describe("receiveTimestamp", () => {
       `);
     });
 
-    test("TimestampDuplicateNodeError", () => {
-      expect(
-        receiveTimestamp(deps1)(makeNode1Timestamp(), makeNode1Timestamp()),
-      ).toMatchInlineSnapshot(`
-        {
-          "error": {
-            "nodeId": "0000000000000001",
-            "type": "TimestampDuplicateNodeError",
-          },
-          "ok": false,
-        }
-      `);
-    });
-
     test("should fail with clock drift", () => {
       expect(
         receiveTimestamp(deps0)(
           createTimestamp({
-            millis: makeMillis(minMillis + defaultConfig.maxDrift + 1),
+            millis: makeMillis(minMillis + defaultDbConfig.maxDrift + 1),
           }),
           makeNode2Timestamp(),
         ),
@@ -311,7 +304,7 @@ describe("receiveTimestamp", () => {
         receiveTimestamp(deps0)(
           makeNode2Timestamp(),
           createTimestamp({
-            millis: makeMillis(minMillis + defaultConfig.maxDrift + 1),
+            millis: makeMillis(minMillis + defaultDbConfig.maxDrift + 1),
           }),
         ),
       ).toMatchInlineSnapshot(`
@@ -327,51 +320,51 @@ describe("receiveTimestamp", () => {
     });
   });
 
-  test("timestampToBinaryTimestamp/binaryTimestampToTimestamp", () => {
-    const decodeFromEncoded = (t: BinaryTimestamp) =>
-      binaryTimestampToTimestamp(t);
+  test("timestampToTimestampBytes/timestampBytesToTimestamp", () => {
+    const decodeFromEncoded = (t: TimestampBytes) =>
+      timestampBytesToTimestamp(t);
 
     const t = createTimestamp();
-    expect(t).toStrictEqual(decodeFromEncoded(timestampToBinaryTimestamp(t)));
+    expect(t).toStrictEqual(decodeFromEncoded(timestampToTimestampBytes(t)));
 
     const lastSafeTimestampEncodedDecoded = decodeFromEncoded(
-      timestampToBinaryTimestamp(createTimestamp({ millis: maxMillis })),
+      timestampToTimestampBytes(createTimestamp({ millis: maxMillis })),
     );
     expect(lastSafeTimestampEncodedDecoded.millis).toBe(maxMillis);
 
-    const t1 = timestampToBinaryTimestamp(
+    const t1 = timestampToTimestampBytes(
       createTimestamp({ millis: minMillis }),
     );
-    const t2 = timestampToBinaryTimestamp(
+    const t2 = timestampToTimestampBytes(
       createTimestamp({
-        millis: getOrThrow(Millis.from(increment(minMillis))),
+        millis: Millis.orThrow(increment(minMillis)),
       }),
     );
-    expect(orderBinaryTimestamp(t1, t2)).toBe(-1);
-    expect(orderBinaryTimestamp(t2, t1)).toBe(1);
-    expect(orderBinaryTimestamp(t1, t1)).toBe(0);
+    expect(orderTimestampBytes(t1, t2)).toBe(-1);
+    expect(orderTimestampBytes(t2, t1)).toBe(1);
+    expect(orderTimestampBytes(t1, t1)).toBe(0);
 
-    const t3 = timestampToBinaryTimestamp(
+    const t3 = timestampToTimestampBytes(
       createTimestamp({ counter: minCounter }),
     );
-    const t4 = timestampToBinaryTimestamp(
+    const t4 = timestampToTimestampBytes(
       createTimestamp({
-        counter: getOrThrow(Counter.from(increment(minCounter))),
+        counter: Counter.orThrow(increment(minCounter)),
       }),
     );
-    expect(orderBinaryTimestamp(t3, t4)).toBe(-1);
-    expect(orderBinaryTimestamp(t4, t3)).toBe(1);
-    expect(orderBinaryTimestamp(t3, t3)).toBe(0);
+    expect(orderTimestampBytes(t3, t4)).toBe(-1);
+    expect(orderTimestampBytes(t4, t3)).toBe(1);
+    expect(orderTimestampBytes(t3, t3)).toBe(0);
 
-    const t5 = timestampToBinaryTimestamp(
+    const t5 = timestampToTimestampBytes(
       createTimestamp({ nodeId: "0000000000000000" as NodeId }),
     );
-    const t6 = timestampToBinaryTimestamp(
+    const t6 = timestampToTimestampBytes(
       createTimestamp({ nodeId: "0000000000000001" as NodeId }),
     );
-    expect(orderBinaryTimestamp(t5, t6)).toBe(-1);
-    expect(orderBinaryTimestamp(t6, t5)).toBe(1);
-    expect(orderBinaryTimestamp(t5, t5)).toBe(0);
+    expect(orderTimestampBytes(t5, t6)).toBe(-1);
+    expect(orderTimestampBytes(t6, t5)).toBe(1);
+    expect(orderTimestampBytes(t5, t5)).toBe(0);
 
     const randomMillis = new Set<Millis>();
     Array.from({ length: 1000 }).forEach(() => {
@@ -380,13 +373,13 @@ describe("receiveTimestamp", () => {
 
     const sortedMillis = [...randomMillis].toSorted(orderNumber);
 
-    const randomBinaryTimestamps = [...randomMillis]
+    const randomTimestampsBytes = [...randomMillis]
       .map((millis) => createTimestamp({ millis }))
-      .map(timestampToBinaryTimestamp);
+      .map(timestampToTimestampBytes);
 
     expect(
-      randomBinaryTimestamps
-        .toSorted(orderBinaryTimestamp)
+      randomTimestampsBytes
+        .toSorted(orderTimestampBytes)
         .map(decodeFromEncoded)
         .map((a) => a.millis),
     ).toEqual(sortedMillis);
@@ -402,11 +395,11 @@ describe("receiveTimestamp", () => {
     ).run();
 
     const insertTimestamp = db.prepare(`insert into Message (t) values (@t)`);
-    randomBinaryTimestamps.forEach((t) => {
+    randomTimestampsBytes.forEach((t) => {
       insertTimestamp.run({ t });
     });
     const sqliteMillis = db
-      .prepare<[], { t: BinaryTimestamp }>(`select t from Message order by t`)
+      .prepare<[], { t: TimestampBytes }>(`select t from Message order by t`)
       .all()
       .map((a) => decodeFromEncoded(a.t).millis);
     expect(sqliteMillis).toEqual(sortedMillis);

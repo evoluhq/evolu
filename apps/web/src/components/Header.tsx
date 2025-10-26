@@ -94,11 +94,14 @@ function MobileNavigationDialog({
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const initialPathname = useRef(pathname).current;
-  const initialSearchParams = useRef(searchParams).current;
+  const initialPathname = useRef(pathname);
+  const initialSearchParams = useRef(searchParams);
 
   useEffect(() => {
-    if (pathname !== initialPathname || searchParams !== initialSearchParams) {
+    if (
+      pathname !== initialPathname.current ||
+      searchParams !== initialSearchParams.current
+    ) {
       close();
     }
   }, [pathname, searchParams, close, initialPathname, initialSearchParams]);
@@ -198,11 +201,11 @@ export const Header = forwardRef<
           "backdrop-blur-xs lg:left-72 xl:left-80 dark:backdrop-blur-sm",
         isInsideMobileNavigation
           ? "bg-white dark:bg-zinc-900"
-          : "bg-white/[var(--bg-opacity-light)] dark:bg-zinc-900/[var(--bg-opacity-dark)]",
+          : "bg-white/(--bg-opacity-light) dark:bg-zinc-900/(--bg-opacity-dark)",
 
         variant === "landing" &&
-          "mx-auto md:!px-3 lg:!left-0 lg:!px-8 xl:!left-0 xl:max-w-5xl",
-        variant === "docs" && "!bg-white dark:!bg-zinc-900",
+          "mx-auto md:px-3! lg:left-0! lg:px-8! xl:left-0! xl:max-w-5xl",
+        variant === "docs" && "bg-white! dark:bg-zinc-900!",
       )}
       style={
         {
@@ -216,7 +219,7 @@ export const Header = forwardRef<
           "absolute inset-x-0 top-full h-px transition",
           (isInsideMobileNavigation || !mobileNavIsOpen) &&
             "bg-zinc-900/7.5 dark:bg-white/7.5",
-          variant === "landing" && "!hidden",
+          variant === "landing" && "hidden!",
         )}
       />
       <Search />

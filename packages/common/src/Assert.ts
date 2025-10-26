@@ -110,10 +110,8 @@ export const assertNonEmptyReadonlyArray: <T>(
  * ```
  */
 export function assertNoErrorInCatch(context: string, error: unknown): never {
-  throw Object.assign(
-    new Error(
-      `Error in ${context}: an unexpected error reached a catch block and requires a fix`,
-    ),
+  throw new Error(
+    `Error in ${context}: an unexpected error reached a catch block and requires a fix`,
     { cause: error },
   );
 }
