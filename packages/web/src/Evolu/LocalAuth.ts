@@ -1,8 +1,6 @@
 import { set, get, del, keys, clear, createStore } from "idb-keyval";
 
 import {
-  createRandomBytes,
-  createSymmetricCrypto,
   createSlip21,
   Base64Url,
   uint8ArrayToBase64Url,
@@ -15,19 +13,21 @@ import type {
   Entropy32,
   SensitiveInfoItem,
   SecureStorage,
+  RandomBytesDep,
+  SymmetricCryptoDep,
 } from "@evolu/common";
 import type { UseStore } from "idb-keyval";
 
-export const createWebAuthnStore = (): SecureStorage => ({
+export const createWebAuthnStore = (deps: RandomBytesDep & SymmetricCryptoDep): SecureStorage => ({
   setItem: async (key, value, options) => {
     if (options?.accessControl === "none") {
       const metadata = createMetadata(false);
       await set(key, { value, metadata }, getStore(options.service));
       return { metadata };
     }
-    const seed = generateSeed();
+    const seed = generateSeed(deps)();
     const authResult = JSON.parse(value) as AuthResult;
-    const credential = await createCredential(
+    const credential = await createCredential(deps)(
       options?.webAuthnUsername ?? "Evolu User",
       seed,
       options?.relyingPartyID,
@@ -36,7 +36,7 @@ export const createWebAuthnStore = (): SecureStorage => ({
       options?.webAuthnAuthenticatorAttachment,
     );
     const encryptionKey = deriveEncryptionKey(seed);
-    const encryptedData = encryptAuthResult(authResult, encryptionKey);
+    const encryptedData = encryptAuthResult(deps)(authResult, encryptionKey);
     const credentialId = uint8ArrayToBase64Url(new Uint8Array(credential.rawId));
     const metadata = createMetadata();
     await set(
@@ -72,14 +72,14 @@ export const createWebAuthnStore = (): SecureStorage => ({
       return null;
     }
     try {
-      const credential = await getCredential(
+      const credential = await getCredential(deps)(
         data.credentialId,
         options?.relyingPartyID,
         options?.webAuthnUserVerification,
       );
       const credentialSeed = extractSeedFromCredential(credential);
       const encryptionKey = deriveEncryptionKey(credentialSeed);
-      const authResultVal = decryptAuthResult(data, encryptionKey);
+      const authResultVal = decryptAuthResult(deps)(data, encryptionKey);
       if (!authResultVal) {
         return null;
       }
@@ -142,10 +142,7 @@ const getStore = (prefix = "default"): UseStore => {
   return createStore(prefix, "evolu-auth");
 };
 
-const randomBytes = createRandomBytes();
-const symmetricCrypto = createSymmetricCrypto({ randomBytes });
-
-const createCredential = async (
+const createCredential = (deps: RandomBytesDep) => async (
   username: string,
   seed: Uint8Array,
   relyingPartyID?: string,
@@ -153,7 +150,7 @@ const createCredential = async (
   userVerification?: UserVerificationRequirement,
   authenticatorAttachment?: AuthenticatorAttachment,
 ): Promise<PublicKeyCredential> => {
-  const options = createCredentialCreationOptions(
+  const options = createCredentialCreationOptions(deps)(
     username,
     seed,
     relyingPartyID,
@@ -170,12 +167,12 @@ const createCredential = async (
   return credential;
 };
 
-const getCredential = async (
+const getCredential = (deps: RandomBytesDep) => async (
   credentialId: string,
   relyingPartyID?: string,
   userVerification?: UserVerificationRequirement,
 ): Promise<PublicKeyCredential> => {
-  const options = createCredentialRequestOptions(
+  const options = createCredentialRequestOptions(deps)(
     credentialId,
     relyingPartyID,
     userVerification,
@@ -199,7 +196,7 @@ const extractSeedFromCredential = (
   return new Uint8Array(response.userHandle);
 };
 
-const createCredentialCreationOptions = (
+const createCredentialCreationOptions = (deps: RandomBytesDep) => (
   username: string,
   seed: Uint8Array,
   relyingPartyID?: string,
@@ -209,7 +206,7 @@ const createCredentialCreationOptions = (
 ): CredentialCreationOptions => {
   return {
     publicKey: {
-      challenge: generateSeed() as BufferSource,
+      challenge: generateSeed(deps)() as BufferSource,
       rp: {
         id: relyingPartyID ?? document.location.hostname,
         name: relyingPartyName ?? "Evolu",
@@ -244,14 +241,14 @@ const createCredentialCreationOptions = (
   };
 };
 
-const createCredentialRequestOptions = (
+const createCredentialRequestOptions = (deps: RandomBytesDep) => (
   credentialId: string,
   relyingPartyID?: string,
   userVerification?: UserVerificationRequirement,
 ): CredentialRequestOptions => {
   return {
     publicKey: {
-      challenge: generateSeed() as BufferSource,
+      challenge: generateSeed(deps)() as BufferSource,
       rpId: relyingPartyID ?? document.location.hostname,
       userVerification: userVerification ?? "preferred",
       allowCredentials: [
@@ -271,7 +268,7 @@ const deriveEncryptionKey = (seed: Uint8Array): EncryptionKey => {
   );
 };
 
-const encryptAuthResult = (
+const encryptAuthResult = (deps: SymmetricCryptoDep) => (
   authResult: AuthResult,
   encryptionKey: EncryptionKey,
 ): {
@@ -279,7 +276,7 @@ const encryptAuthResult = (
   ciphertext: Base64Url;
 } => {
   const plaintext = new TextEncoder().encode(JSON.stringify(authResult));
-  const { nonce, ciphertext } = symmetricCrypto.encrypt(
+  const { nonce, ciphertext } = deps.symmetricCrypto.encrypt(
     plaintext,
     encryptionKey,
   );
@@ -289,18 +286,18 @@ const encryptAuthResult = (
   };
 };
 
-const decryptAuthResult = (
+const decryptAuthResult = (deps: SymmetricCryptoDep) => (
   encryptedData: { nonce: Base64Url; ciphertext: Base64Url },
   encryptionKey: EncryptionKey,
 ): string | null => {
   const nonce = base64UrlToUint8Array(encryptedData.nonce);
   const ciphertext = base64UrlToUint8Array(encryptedData.ciphertext);
-  const result = symmetricCrypto.decrypt(ciphertext, encryptionKey, nonce);
+  const result = deps.symmetricCrypto.decrypt(ciphertext, encryptionKey, nonce);
   if (!result.ok) return null;
   return new TextDecoder().decode(result.value);
 };
 
 // TODO: This lost type  Uint8Array<ArrayBufferLike> & Brand<"Entropy"> & Brand<"Length32">
-const generateSeed = (): Uint8Array => {
-  return randomBytes.create(32);
+const generateSeed = (deps: RandomBytesDep) => (): Uint8Array => {
+  return deps.randomBytes.create(32);
 };
