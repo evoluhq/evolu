@@ -1,5 +1,6 @@
 import { Brand } from "./Brand.js";
 import { ConsoleDep } from "./Console.js";
+import { EncryptionKey } from "./Crypto.js";
 import { createTransferableError, TransferableError } from "./Error.js";
 import { err, ok, Result, tryAsync, trySync } from "./Result.js";
 import { Null, Number, SimpleName, String, Uint8Array, union } from "./Type.js";
@@ -25,7 +26,7 @@ export interface CreateSqliteDriverDep {
 
 export interface SqliteDriverOptions {
   memory?: boolean;
-  encryptionKey?: string | undefined;
+  encryptionKey?: EncryptionKey | undefined;
 }
 
 /**

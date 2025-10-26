@@ -36,7 +36,7 @@
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "dependencies": {
-    "@sqlite.org/sqlite-wasm": "3.50.4-build1",
+    "sqlite-wasm-cipher": "2.2.4",
     "idb-keyval": "^6.2.2"
   },
   "devDependencies": {

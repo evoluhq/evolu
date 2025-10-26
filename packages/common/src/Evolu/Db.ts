@@ -7,6 +7,7 @@ import {
 import { ConsoleConfig, ConsoleDep } from "../Console.js";
 import {
   createSymmetricCrypto,
+  EncryptionKey,
   RandomBytesDep,
   SymmetricCryptoDecryptError,
 } from "../Crypto.js";
@@ -174,6 +175,7 @@ export interface DbConfig extends ConsoleConfig, TimestampConfig {
    * The default value is: `false`.
    */
   readonly inMemory?: boolean;
+  readonly encryptionKey?: EncryptionKey;
 }
 
 export const defaultDbConfig: DbConfig = {
@@ -339,6 +341,7 @@ const createDbWorkerDeps =
       initMessage.config.name,
       {
         memory: initMessage.config.inMemory ?? false,
+        encryptionKey: initMessage.config.encryptionKey ?? undefined,
       },
     );
     if (!sqliteResult.ok) {
