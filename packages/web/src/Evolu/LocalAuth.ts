@@ -63,8 +63,8 @@ export const createWebAuthnStore = (): SecureStorage => ({
         : null;
     }
     const data = await get<{
-      readonly nonce: string;
-      readonly ciphertext: string;
+      readonly nonce: Base64Url;
+      readonly ciphertext: Base64Url;
       readonly credentialId: string;
       readonly metadata: SensitiveInfoItem["metadata"];
     }>(key, getStore(options?.service));
@@ -275,8 +275,8 @@ const encryptAuthResult = (
   authResult: AuthResult,
   encryptionKey: EncryptionKey,
 ): {
-  nonce: string;
-  ciphertext: string;
+  nonce: Base64Url;
+  ciphertext: Base64Url;
 } => {
   const plaintext = new TextEncoder().encode(JSON.stringify(authResult));
   const { nonce, ciphertext } = symmetricCrypto.encrypt(
@@ -290,11 +290,11 @@ const encryptAuthResult = (
 };
 
 const decryptAuthResult = (
-  encryptedData: { nonce: string; ciphertext: string },
+  encryptedData: { nonce: Base64Url; ciphertext: Base64Url },
   encryptionKey: EncryptionKey,
 ): string | null => {
-  const nonce = base64UrlToUint8Array(Base64Url.orThrow(encryptedData.nonce));
-  const ciphertext = base64UrlToUint8Array(Base64Url.orThrow(encryptedData.ciphertext));
+  const nonce = base64UrlToUint8Array(encryptedData.nonce);
+  const ciphertext = base64UrlToUint8Array(encryptedData.ciphertext);
   const result = symmetricCrypto.decrypt(ciphertext, encryptionKey, nonce);
   if (!result.ok) return null;
   return new TextDecoder().decode(result.value);
