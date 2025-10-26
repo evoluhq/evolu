@@ -360,7 +360,10 @@ export interface AuthProviderOptions {
   readonly relyingPartyName?: string;
   /** Web: The username for WebAuthn. Defaults to 'Evolu User'. */
   readonly webAuthnUsername?: string;
-  /** Web: The user verification requirement for WebAuthn. Defaults to 'required'. */
+  /**
+   * Web: The user verification requirement for WebAuthn. Defaults to
+   * 'required'.
+   */
   readonly webAuthnUserVerification?: UserVerificationRequirement;
   /** Web: The authenticator attachment for WebAuthn. Defaults to 'platform'. */
   readonly webAuthnAuthenticatorAttachment?: AuthenticatorAttachment;

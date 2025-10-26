@@ -29,11 +29,7 @@ export const setItem = async (
 ): Promise<MutationResult> => {
   if (options?.accessControl === "none") {
     const metadata = createMetadata(false);
-    await set(
-      key,
-      { value, metadata },
-      getStore(options.service),
-    );
+    await set(key, { value, metadata }, getStore(options.service));
     return { metadata };
   }
 
@@ -151,8 +147,8 @@ export const clearService = async (
 };
 
 /**
- * Create default metadata for backwards compatibility with items that don't have
- * stored metadata.
+ * Create default metadata for backwards compatibility with items that don't
+ * have stored metadata.
  */
 const createMetadata = (isSecure = true): SensitiveInfoItem["metadata"] => {
   return {

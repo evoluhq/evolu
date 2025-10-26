@@ -43,7 +43,11 @@ export const getCredential = async (
   relyingPartyID?: string,
   userVerification?: UserVerificationRequirement,
 ): Promise<PublicKeyCredential> => {
-  const options = createCredentialRequestOptions(credentialId, relyingPartyID, userVerification);
+  const options = createCredentialRequestOptions(
+    credentialId,
+    relyingPartyID,
+    userVerification,
+  );
   const credential = (await navigator.credentials.get(
     options,
   )) as PublicKeyCredential | null;

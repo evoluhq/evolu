@@ -354,7 +354,7 @@ const AuthActions: FC = () => {
       // The owner is transferred to a new database on next login.
       if (isGuest) {
         void evolu.resetAppOwner({ reload: true });
-      // Otherwise, just reload the page
+        // Otherwise, just reload the page
       } else {
         window.location.reload();
       }
