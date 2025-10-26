@@ -4,6 +4,9 @@ import {
   createRandomBytes,
   createSymmetricCrypto,
   createSlip21,
+  Base64Url,
+  uint8ArrayToBase64Url,
+  base64UrlToUint8Array,
   EncryptionKey,
 } from "@evolu/common";
 
@@ -34,7 +37,7 @@ export const createWebAuthnStore = (): SecureStorage => ({
     );
     const encryptionKey = deriveEncryptionKey(seed);
     const encryptedData = encryptAuthResult(authResult, encryptionKey);
-    const credentialId = toBase64(new Uint8Array(credential.rawId));
+    const credentialId = uint8ArrayToBase64Url(new Uint8Array(credential.rawId));
     const metadata = createMetadata();
     await set(
       key,
@@ -141,7 +144,6 @@ const getStore = (prefix = "default"): UseStore => {
 
 const randomBytes = createRandomBytes();
 const symmetricCrypto = createSymmetricCrypto({ randomBytes });
-
 
 const createCredential = async (
   username: string,
@@ -255,7 +257,7 @@ const createCredentialRequestOptions = (
       allowCredentials: [
         {
           type: "public-key",
-          id: fromBase64(credentialId) as BufferSource,
+          id: base64UrlToUint8Array(Base64Url.orThrow(credentialId)) as BufferSource,
         },
       ],
     },
@@ -282,8 +284,8 @@ const encryptAuthResult = (
     encryptionKey,
   );
   return {
-    nonce: toBase64(nonce),
-    ciphertext: toBase64(ciphertext),
+    nonce: uint8ArrayToBase64Url(nonce),
+    ciphertext: uint8ArrayToBase64Url(ciphertext),
   };
 };
 
@@ -291,8 +293,8 @@ const decryptAuthResult = (
   encryptedData: { nonce: string; ciphertext: string },
   encryptionKey: EncryptionKey,
 ): string | null => {
-  const nonce = fromBase64(encryptedData.nonce);
-  const ciphertext = fromBase64(encryptedData.ciphertext);
+  const nonce = base64UrlToUint8Array(Base64Url.orThrow(encryptedData.nonce));
+  const ciphertext = base64UrlToUint8Array(Base64Url.orThrow(encryptedData.ciphertext));
   const result = symmetricCrypto.decrypt(ciphertext, encryptionKey, nonce);
   if (!result.ok) return null;
   return new TextDecoder().decode(result.value);
@@ -301,14 +303,4 @@ const decryptAuthResult = (
 // TODO: This lost type  Uint8Array<ArrayBufferLike> & Brand<"Entropy"> & Brand<"Length32">
 const generateSeed = (): Uint8Array => {
   return randomBytes.create(32);
-};
-
-// TODO: We have uint8ArrayToBase64Url etc
-const toBase64 = (buffer: Uint8Array): string => {
-  return btoa(String.fromCharCode(...buffer));
-};
-
-// TODO: We have uint8ArrayToBase64Url etc
-const fromBase64 = (base64: string): Uint8Array => {
-  return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
 };
