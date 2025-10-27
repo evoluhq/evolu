@@ -3,7 +3,7 @@ import {
   CreateSqliteDriver,
   SqliteDriver,
   SqliteRow,
-  uint8ArrayToBase64Url,
+  bytesToHex,
 } from "@evolu/common";
 
 import { openDatabaseSync, SQLiteStatement } from "expo-sqlite";
@@ -16,7 +16,7 @@ export const createExpoSqliteDriver: CreateSqliteDriver = (name, options) => {
     db.execSync(`
       PRAGMA cipher = 'sqlcipher';
       PRAGMA legacy = 4;
-      PRAGMA key = '${uint8ArrayToBase64Url(options?.encryptionKey)}';
+      PRAGMA key = "x'${bytesToHex(options?.encryptionKey)}'";
     `);
   }
   let isDisposed = false;

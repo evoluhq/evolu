@@ -3,9 +3,9 @@ import {
   createPreparedStatementsCache,
   isSqlMutation,
   CreateSqliteDriver,
-  uint8ArrayToBase64Url,
   SqliteDriver,
   SqliteRow,
+  bytesToHex,
 } from "@evolu/common";
 
 import { open, PreparedStatement } from "@op-engineering/op-sqlite";
@@ -18,7 +18,7 @@ export const createOpSqliteDriver: CreateSqliteDriver = (name, options) => {
       : {
           name: `evolu1-${name}.db`,
           ...(options?.encryptionKey && {
-            encryptionKey: uint8ArrayToBase64Url(options.encryptionKey),
+            encryptionKey: `x'${bytesToHex(options.encryptionKey)}'`,
           }),
         }
   );
