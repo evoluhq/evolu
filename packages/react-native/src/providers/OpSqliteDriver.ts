@@ -3,6 +3,7 @@ import {
   createPreparedStatementsCache,
   isSqlMutation,
   CreateSqliteDriver,
+  uint8ArrayToBase64Url,
   SqliteDriver,
   SqliteRow,
 } from "@evolu/common";
@@ -14,7 +15,12 @@ export const createOpSqliteDriver: CreateSqliteDriver = (name, options) => {
   const db = open(
     options?.memory
       ? { name: `inMemoryDb`, location: ":memory:" }
-      : { name: `evolu1-${name}.db` },
+      : {
+          name: `evolu1-${name}.db`,
+          ...(options?.encryptionKey && {
+            encryptionKey: uint8ArrayToBase64Url(options.encryptionKey),
+          }),
+        }
   );
   let isDisposed = false;
 
