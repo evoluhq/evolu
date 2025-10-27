@@ -33,8 +33,7 @@ export const createWasmSqliteDriver: CreateSqliteDriver = async (
   if (options?.memory) {
     db = new sqlite3.oo1.DB(":memory:");
   } else if (options?.encryptionKey) {
-    // TODO: figure out why setting pool name breaks V
-    const pool = await sqlite3.installOpfsSAHPoolVfs({});
+    const pool = await sqlite3.installOpfsSAHPoolVfs({ directory: `.${name}` });
     db = new pool.OpfsSAHPoolDb(
       "file:evolu1.db?vfs=multipleciphers-opfs-sahpool",
     );
