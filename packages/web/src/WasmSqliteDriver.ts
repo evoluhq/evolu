@@ -4,6 +4,7 @@ import {
   CreateSqliteDriver,
   SqliteDriver,
   SqliteRow,
+  bytesToHex,
 } from "@evolu/common";
 import sqlite3InitModule, {
   PreparedStatement,
@@ -41,7 +42,7 @@ export const createWasmSqliteDriver: CreateSqliteDriver = async (
     db.exec(`
       PRAGMA cipher = 'sqlcipher';
       PRAGMA legacy = 4;
-      PRAGMA key = '${options.encryptionKey}';
+      PRAGMA key = "x'${bytesToHex(options.encryptionKey)}'";
     `);
   } else {
     const pool = await sqlite3.installOpfsSAHPoolVfs({ name });
