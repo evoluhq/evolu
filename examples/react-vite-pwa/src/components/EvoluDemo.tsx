@@ -37,8 +37,6 @@ const ownerIds = await evoluReactWebDeps.localAuth.getProfiles({
   service,
 });
 
-// evoluReactWebDeps.localAuth.
-
 const authResult = await evoluReactWebDeps.localAuth.login(undefined, {
   service,
 });
