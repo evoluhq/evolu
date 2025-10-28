@@ -842,12 +842,12 @@ importers:
 
   packages/web:
     dependencies:
+      '@evolu/sqlite-wasm':
+        specifier: 2.2.4
+        version: 2.2.4
       idb-keyval:
         specifier: ^6.2.2
         version: 6.2.2
-      sqlite-wasm-cipher:
-        specifier: 2.2.4
-        version: 2.2.4
     devDependencies:
       '@evolu/common':
         specifier: workspace:*
@@ -2264,6 +2264,10 @@ packages:
   '@eslint/plugin-kit@0.4.0':
     resolution: {integrity: sha512-sB5uyeq+dwCWyPi31B2gQlVlo+j5brPlWx4yZBrEaRo/nhdDE8Xke1gsGgtiBdaBTxuTkceLVuVt/pclrasb0A==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+
+  '@evolu/sqlite-wasm@2.2.4':
+    resolution: {integrity: sha512-/JOYGFN93QspD2C8HVxVgBUlFWqJ1IpaVuIhEB53u4+ZvE+D3LjpNHDYiwZgf0n7VaH2U85OY5eV3wUrWc3scg==}
+    hasBin: true
 
   '@expo/cli@54.0.13':
     resolution: {integrity: sha512-wUJVTByZzDN0q8UjXDlu6WD2BWoTJCKVVBGUBNmvViDX4FhnESwefmtXPoO54QUUKs6vY89WZryHllGArGfLLw==}
@@ -8753,10 +8757,6 @@ packages:
   sql-parser-cst@0.34.1:
     resolution: {integrity: sha512-k9F2N6PXLBh++sc+popkmBWZYSIWJ6Iz56MeBtWKHVZOtK1g8MInumLKgE2s+I64W9ojKkS4hp4UpTsq2G0E3w==}
 
-  sqlite-wasm-cipher@2.2.4:
-    resolution: {integrity: sha512-BaHnT+la3r5svomM5sb/TzXqoDP+OVkJyetErt2JG9lkUFQiFPo68JqbnGA2PKoUcOmgh7vTYyoke8VCMZvRcA==}
-    hasBin: true
-
   ssri@9.0.1:
     resolution: {integrity: sha512-o57Wcn66jMQvfHG1FlYbWeZWW/dHZhJXjpIcTfXldXEk5nz5lStPo3mK0OJQfGR3RbZUlbISexbljkJzuEj/8Q==}
     engines: {node: ^12.13.0 || ^14.15.0 || >=16.0.0}
@@ -11463,6 +11463,8 @@ snapshots:
     dependencies:
       '@eslint/core': 0.16.0
       levn: 0.4.1
+
+  '@evolu/sqlite-wasm@2.2.4': {}
 
   '@expo/cli@54.0.13(expo-router@6.0.13)(expo@54.0.20)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))':
     dependencies:
@@ -19228,8 +19230,6 @@ snapshots:
     optional: true
 
   sql-parser-cst@0.34.1: {}
-
-  sqlite-wasm-cipher@2.2.4: {}
 
   ssri@9.0.1:
     dependencies:
