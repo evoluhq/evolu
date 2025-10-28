@@ -327,30 +327,15 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
   readonly getQueryRows: <R extends Row>(query: Query<R>) => QueryRows<R>;
 
   /**
-   * Subscribe to {@link AppOwner}.
+   * Promise that resolves to {@link AppOwner} when available.
    *
    * ### Example
    *
    * ```ts
-   * const unsubscribe = evolu.subscribeAppOwner(() => {
-   *   const owner = evolu.getAppOwner();
-   * });
+   * const owner = await evolu.appOwner;
    * ```
    */
-  readonly subscribeAppOwner: StoreSubscribe;
-
-  /**
-   * Get {@link AppOwner}.
-   *
-   * ### Example
-   *
-   * ```ts
-   * const unsubscribe = evolu.subscribeAppOwner(() => {
-   *   const owner = evolu.getAppOwner();
-   * });
-   * ```
-   */
-  readonly getAppOwner: () => AppOwner | null;
+  readonly appOwner: Promise<AppOwner>;
 
   // TODO: Update it for the owner-api
   // /**
@@ -730,9 +715,14 @@ const createEvoluInstance =
 
     const errorStore = createStore<EvoluError | null>(null);
     const rowsStore = createStore<QueryRowsMap>(new Map());
-    const appOwnerStore = createStore<AppOwner | null>(
-      config?.externalAppOwner ?? null,
-    );
+
+    const { promise: appOwner, resolve: resolveAppOwner } =
+      Promise.withResolvers<AppOwner>();
+
+    if (config?.externalAppOwner) {
+      resolveAppOwner(config.externalAppOwner);
+    }
+
     // TODO: Update it for the owner-api
     const _syncStore = createStore<SyncState>(initialSyncState);
 
@@ -783,6 +773,8 @@ const createEvoluInstance =
       },
     });
 
+    // Worker responses are delivered to all tabs. Each case must handle this
+    // properly (e.g., AppOwner promise resolves only once, tabId filtering).
     dbWorker.onMessage((message) => {
       switch (message.type) {
         case "onError": {
@@ -791,10 +783,7 @@ const createEvoluInstance =
         }
 
         case "onGetAppOwner": {
-          // AppOwner is immutable so we can ignore onGetAppOwner from other tabs.
-          if (appOwnerStore.get() == null) {
-            appOwnerStore.set(message.appOwner);
-          }
+          resolveAppOwner(message.appOwner);
           break;
         }
 
@@ -1154,8 +1143,7 @@ const createEvoluInstance =
       getQueryRows: <R extends Row>(query: Query<R>): QueryRows<R> =>
         (rowsStore.get().get(query) ?? emptyRows) as QueryRows<R>,
 
-      subscribeAppOwner: appOwnerStore.subscribe,
-      getAppOwner: appOwnerStore.get,
+      appOwner,
 
       // TODO: Update it for the owner-api
       // subscribeSyncState: syncStore.subscribe,
@@ -1363,6 +1351,8 @@ const createLoadingPromises = (
       }
 
       // Set status and value fields for React's `use` Hook to unwrap synchronously.
+      // While undocumented in React docs, React still uses these properties internally,
+      // and Evolu's own promise caching logic depends on checking `promise.status`.
       // https://github.com/acdlite/rfcs/blob/first-class-promises/text/0000-first-class-support-for-promises.md
       void Object.assign(loadingPromise.promise, {
         status: "fulfilled",

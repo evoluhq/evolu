@@ -5,6 +5,7 @@ import {
   CreateSqliteDriver,
   SqliteDriver,
   SqliteRow,
+  bytesToHex,
 } from "@evolu/common";
 
 import { open, PreparedStatement } from "@op-engineering/op-sqlite";
@@ -14,7 +15,12 @@ export const createOpSqliteDriver: CreateSqliteDriver = (name, options) => {
   const db = open(
     options?.memory
       ? { name: `inMemoryDb`, location: ":memory:" }
-      : { name: `evolu1-${name}.db` },
+      : {
+          name: `evolu1-${name}.db`,
+          ...(options?.encryptionKey && {
+            encryptionKey: `x'${bytesToHex(options.encryptionKey)}'`,
+          }),
+        }
   );
   let isDisposed = false;
 

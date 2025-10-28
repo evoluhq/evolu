@@ -139,13 +139,9 @@ export class AppService implements OnDestroy {
   }
 
   private initializeAppOwner(): void {
-    const updateMnemonic = () => {
-      const owner = this.evolu.getAppOwner();
-      this.mnemonic.set(owner?.mnemonic || null);
-    };
-
-    updateMnemonic();
-    this.unsubscribes.push(this.evolu.subscribeAppOwner(updateMnemonic));
+    void this.evolu.appOwner.then((owner) => {
+      this.mnemonic.set(owner.mnemonic ?? null);
+    });
   }
 
   private initializeGlobalErrorHandling(): void {

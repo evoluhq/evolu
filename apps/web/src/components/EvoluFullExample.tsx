@@ -16,9 +16,6 @@ import {
   NonEmptyTrimmedString100,
   nullOr,
   object,
-  OwnerEncryptionKey,
-  OwnerId,
-  OwnerWriteKey,
   SimpleName,
   SqliteBoolean,
   sqliteFalse,
@@ -28,7 +25,6 @@ import {
 import {
   createUseEvolu,
   EvoluProvider,
-  useAppOwner,
   useQueries,
   useQuery,
 } from "@evolu/react";
@@ -42,7 +38,14 @@ import {
   IconTrash,
 } from "@tabler/icons-react";
 import clsx from "clsx";
-import { FC, KeyboardEvent, startTransition, Suspense, useState } from "react";
+import {
+  FC,
+  KeyboardEvent,
+  startTransition,
+  Suspense,
+  use,
+  useState,
+} from "react";
 
 const ProjectId = id("Project");
 type ProjectId = typeof ProjectId.Type;
@@ -78,9 +81,10 @@ const Schema = {
     id: ProjectId,
     name: NonEmptyTrimmedString100,
     fooJson: FooJson,
-    ownerId: nullOr(OwnerId),
-    ownerEncryptionKey: nullOr(OwnerEncryptionKey),
-    ownerWriteKey: nullOr(OwnerWriteKey),
+    // TODO:
+    // ownerId: nullOr(OwnerId),
+    // ownerEncryptionKey: nullOr(OwnerEncryptionKey),
+    // ownerWriteKey: nullOr(OwnerWriteKey),
   },
   todo: {
     id: TodoId,
@@ -91,7 +95,7 @@ const Schema = {
 };
 
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
-  name: SimpleName.orThrow("evolu-playground-full"),
+  name: SimpleName.orThrow("evolu-full-example-281025"),
 
   reloadUrl: "/playgrounds/full",
 
@@ -123,7 +127,7 @@ evolu.subscribeError(() => {
   console.error(error);
 });
 
-export const NextJsPlaygroundFull: FC = () => {
+export const EvoluFullExample: FC = () => {
   return (
     <div className="min-h-screen px-8 py-8">
       <div className="mx-auto max-w-md min-w-sm md:min-w-md">
@@ -408,6 +412,9 @@ const HomeTabProjectSectionTodoItem: FC<{
       .where("table", "==", "todo")
       .where("id", "==", idToIdBytes(id))
       .where("column", "==", "title")
+      // TODO: tohle je spatne, data z novejch muzou bejt cokoliv
+      // TODO: nebo jinak, pokud do historie pustim jen co znam, tak to muze bejt
+      // imho typove
       // value isn't typed; this is how we narrow its type
       .$narrowType<{ value: (typeof Schema)["todo"]["title"]["Type"] }>()
       .orderBy("timestamp", "desc"),
@@ -625,7 +632,9 @@ const ProjectsTabProjectItem: FC<{
 };
 
 const AccountTab: FC = () => {
-  const owner = useAppOwner();
+  const evolu = useEvolu();
+  const appOwner = use(evolu.appOwner);
+
   const [showMnemonic, setShowMnemonic] = useState(false);
 
   const handleRestoreAppOwnerClick = () => {
@@ -677,13 +686,13 @@ const AccountTab: FC = () => {
           className="w-full"
         />
 
-        {showMnemonic && owner?.mnemonic && (
+        {showMnemonic && appOwner.mnemonic && (
           <div className="bg-gray-50 p-3">
             <label className="mb-2 block text-xs font-medium text-gray-700">
               Your Mnemonic (keep this safe!)
             </label>
             <textarea
-              value={owner.mnemonic}
+              value={appOwner.mnemonic}
               readOnly
               rows={3}
               className="w-full border-b border-gray-300 bg-white px-2 py-1 font-mono text-xs focus:border-blue-500 focus:outline-none"
@@ -895,22 +904,23 @@ const Button: FC<{
 };
 
 const formatTypeError = createFormatTypeError<
-  | MinLengthError
-  | MaxLengthError
-  | typeof OwnerId.Error
-  | typeof OwnerEncryptionKey.Error
-  | typeof OwnerWriteKey.Error
+  MinLengthError | MaxLengthError
+  // TODO:
+  // | typeof OwnerId.Error
+  // | typeof OwnerEncryptionKey.Error
+  // | typeof OwnerWriteKey.Error
 >((error): string => {
   switch (error.type) {
     case "MinLength":
       return `Text must be at least ${error.min} character${error.min === 1 ? "" : "s"} long`;
     case "MaxLength":
       return `Text is too long (maximum ${error.max} characters)`;
-    case "OwnerId":
-      return `Invalid owner ID: ${error.value}`;
-    case "OwnerEncryptionKey":
-      return `Invalid encryption key: ${error.value}`;
-    case "OwnerWriteKey":
-      return `Invalid owner write key: ${error.value}`;
+    // TODO:
+    // case "OwnerId":
+    //   return `Invalid owner ID: ${error.value}`;
+    // case "OwnerEncryptionKey":
+    //   return `Invalid encryption key: ${error.value}`;
+    // case "OwnerWriteKey":
+    //   return `Invalid owner write key: ${error.value}`;
   }
 });

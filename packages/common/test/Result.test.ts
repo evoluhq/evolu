@@ -2,6 +2,8 @@ import { expect, expectTypeOf, test } from "vitest";
 import {
   err,
   getOrThrow,
+  InferErr,
+  InferOk,
   ok,
   Result,
   tryAsync,
@@ -148,6 +150,31 @@ test("example", () => {
 
   // Now, we have access to the json.value.
   expectTypeOf(json.value).toBeUnknown();
+});
+
+test("InferOk and InferErr", () => {
+  interface MyError {
+    readonly type: "MyError";
+    readonly code: number;
+  }
+
+  type MyResult = Result<string, MyError>;
+
+  expectTypeOf<InferOk<MyResult>>().toEqualTypeOf<string>();
+  expectTypeOf<InferErr<MyResult>>().toEqualTypeOf<MyError>();
+
+  type VoidResult = Result<void, Error>;
+
+  // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
+  expectTypeOf<InferOk<VoidResult>>().toEqualTypeOf<void>();
+  expectTypeOf<InferErr<VoidResult>>().toEqualTypeOf<Error>();
+
+  // Verify the types work at runtime
+  const okValue: InferOk<MyResult> = "hello";
+  const errValue: InferErr<MyResult> = { type: "MyError", code: 404 };
+
+  expect(okValue).toBe("hello");
+  expect(errValue).toEqual({ type: "MyError", code: 404 });
 });
 
 test.skip("Result wrapping vs unwrapped performance", () => {

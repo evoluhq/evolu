@@ -1,12 +1,7 @@
 import * as Evolu from "@evolu/common";
-import {
-  createUseEvolu,
-  EvoluProvider,
-  useAppOwner,
-  useQuery,
-} from "@evolu/react";
+import { createUseEvolu, EvoluProvider, useQuery } from "@evolu/react";
 import { evoluReactNativeDeps, EvoluAvatar } from "@evolu/react-native/expo-sqlite";
-import { FC, Suspense, useEffect, useMemo, useState } from "react";
+import { FC, Suspense, use, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -327,7 +322,7 @@ const OwnerActions: FC<{
   authResult: AuthData["authResult"];
   useEvolu: AuthData["useEvolu"];
 }> = ({ evolu, authResult }) => {
-  const appOwner = useAppOwner();
+  const appOwner = use(evolu.appOwner);
   const [showMnemonic, setShowMnemonic] = useState(false);
 
   // Restore owner from mnemonic to sync data across devices.
@@ -435,7 +430,7 @@ const AuthActions: FC<{
   evolu: AuthData["evolu"];
   useEvolu: AuthData["useEvolu"];
 }> = ({ ownerIds, authResult, evolu }) => {
-  const appOwner = useAppOwner();
+  const appOwner = use(evolu.appOwner);
   const otherOwnerIds = useMemo(
     () => ownerIds.filter(({ ownerId }) => ownerId !== appOwner?.id),
     [appOwner?.id, ownerIds],

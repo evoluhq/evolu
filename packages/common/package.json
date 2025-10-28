@@ -67,7 +67,7 @@
     "fast-check": "^4.2.0",
     "shx": "^0.4.0",
     "typescript": "^5.9.2",
-    "vitest": "^3.2.3",
+    "vitest": "^4.0.4",
     "ws": "^8.18.2"
   },
   "publishConfig": {

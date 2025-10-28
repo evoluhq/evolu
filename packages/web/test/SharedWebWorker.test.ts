@@ -30,13 +30,16 @@ class MockWorker {
 
 beforeEach(() => {
   // Create a spy for BroadcastChannel constructor
-  global.BroadcastChannel = vi
-    .fn()
-    .mockImplementation((name: string) => new MockBroadcastChannel(name));
-  global.document = {} as any; // Simulate browser environment
+  globalThis.BroadcastChannel = vi.fn().mockImplementation(function (
+    this: any,
+    name: string,
+  ) {
+    return new MockBroadcastChannel(name);
+  });
+  globalThis.document = {} as any; // Simulate browser environment
 
-  // Mock navigator.locks properly - remove the global.navigator assignment
-  Object.defineProperty(global.navigator, "locks", {
+  // Mock navigator.locks properly - remove the globalThis.navigator assignment
+  Object.defineProperty(globalThis.navigator, "locks", {
     value: mockLocks,
     writable: true,
     configurable: true,
@@ -58,12 +61,12 @@ test("createSharedWebWorker creates BroadcastChannel and requests lock", () => {
   );
 
   // Should create BroadcastChannel with namespaced name
-  expect(global.BroadcastChannel).toHaveBeenCalledWith(
+  expect(globalThis.BroadcastChannel).toHaveBeenCalledWith(
     "evolu-sharedwebworker-test-worker",
   );
 
   // Should request owner-ready immediately
-  const channelInstance = vi.mocked(global.BroadcastChannel).mock.results[0]
+  const channelInstance = vi.mocked(globalThis.BroadcastChannel).mock.results[0]
     .value;
   expect(channelInstance.postMessage).toHaveBeenCalledWith({
     type: "request-owner-ready",
@@ -84,7 +87,7 @@ test("createSharedWebWorker creates BroadcastChannel and requests lock", () => {
 
 test("createSharedWebWorker returns no-op on server", () => {
   // Simulate server environment
-  delete (global as any).document;
+  delete (globalThis as any).document;
 
   const mockCreateWorker = vi.fn();
   const sharedWorker = createSharedWebWorker(
@@ -93,7 +96,7 @@ test("createSharedWebWorker returns no-op on server", () => {
   );
 
   // Should not create BroadcastChannel or request locks
-  expect(global.BroadcastChannel).not.toHaveBeenCalled();
+  expect(globalThis.BroadcastChannel).not.toHaveBeenCalled();
   expect(mockLocks.request).not.toHaveBeenCalled();
 
   // Should return no-op worker
@@ -101,7 +104,7 @@ test("createSharedWebWorker returns no-op on server", () => {
   expect(sharedWorker.onMessage).toBeDefined();
 
   // Restore document for other tests
-  global.document = {} as any;
+  globalThis.document = {} as any;
 });
 
 test("createSharedWebWorker queues messages when owner not ready", () => {
@@ -112,7 +115,7 @@ test("createSharedWebWorker queues messages when owner not ready", () => {
     mockCreateWorker,
   );
 
-  const channelInstance = vi.mocked(global.BroadcastChannel).mock.results[0]
+  const channelInstance = vi.mocked(globalThis.BroadcastChannel).mock.results[0]
     .value;
 
   // Send message before owner is ready
@@ -142,7 +145,7 @@ test("createSharedWebWorker forwards messages when owner ready", () => {
     mockCreateWorker,
   );
 
-  const channelInstance = vi.mocked(global.BroadcastChannel).mock.results[0]
+  const channelInstance = vi.mocked(globalThis.BroadcastChannel).mock.results[0]
     .value;
 
   // Simulate owner-ready message
@@ -172,7 +175,7 @@ test("createSharedWebWorker handles onMessage callback", () => {
 
   sharedWorker.onMessage(onMessageCallback);
 
-  const channelInstance = vi.mocked(global.BroadcastChannel).mock.results[0]
+  const channelInstance = vi.mocked(globalThis.BroadcastChannel).mock.results[0]
     .value;
 
   // Simulate message from worker
@@ -211,10 +214,12 @@ test("createSharedWebWorker handles multiple tabs - first tab becomes owner", as
   createSharedWebWorker(SimpleName.orThrow("test-worker"), mockCreateWorker);
 
   // Both tabs should create BroadcastChannels
-  expect(global.BroadcastChannel).toHaveBeenCalledTimes(2);
+  expect(globalThis.BroadcastChannel).toHaveBeenCalledTimes(2);
 
-  const tab1Channel = vi.mocked(global.BroadcastChannel).mock.results[0].value;
-  const tab2Channel = vi.mocked(global.BroadcastChannel).mock.results[1].value;
+  const tab1Channel = vi.mocked(globalThis.BroadcastChannel).mock.results[0]
+    .value;
+  const tab2Channel = vi.mocked(globalThis.BroadcastChannel).mock.results[1]
+    .value;
 
   // Both tabs should request owner-ready
   expect(tab1Channel.postMessage).toHaveBeenCalledWith({
@@ -248,8 +253,10 @@ test("createSharedWebWorker handles cross-tab message forwarding", () => {
     mockCreateWorker,
   );
 
-  const tab1Channel = vi.mocked(global.BroadcastChannel).mock.results[0].value;
-  const tab2Channel = vi.mocked(global.BroadcastChannel).mock.results[1].value;
+  const tab1Channel = vi.mocked(globalThis.BroadcastChannel).mock.results[0]
+    .value;
+  const tab2Channel = vi.mocked(globalThis.BroadcastChannel).mock.results[1]
+    .value;
 
   // Simulate tab1 receiving owner-ready (tab1 becomes aware of owner)
   const ownerReadyEvent = new MessageEvent("message", {
@@ -295,8 +302,10 @@ test("createSharedWebWorker handles worker responses across tabs", () => {
   tab1.onMessage(tab1Callback);
   tab2.onMessage(tab2Callback);
 
-  const tab1Channel = vi.mocked(global.BroadcastChannel).mock.results[0].value;
-  const tab2Channel = vi.mocked(global.BroadcastChannel).mock.results[1].value;
+  const tab1Channel = vi.mocked(globalThis.BroadcastChannel).mock.results[0]
+    .value;
+  const tab2Channel = vi.mocked(globalThis.BroadcastChannel).mock.results[1]
+    .value;
 
   // Simulate worker response broadcast
   const workerResponse = new MessageEvent("message", {
@@ -317,7 +326,10 @@ test("createSharedWebWorker multi-tab scenario", () => {
   const channelInstances: Array<MockBroadcastChannel> = [];
 
   // Track all BroadcastChannel instances
-  global.BroadcastChannel = vi.fn().mockImplementation((name: string) => {
+  globalThis.BroadcastChannel = vi.fn().mockImplementation(function (
+    this: any,
+    name: string,
+  ) {
     const instance = new MockBroadcastChannel(name);
     channelInstances.push(instance);
 

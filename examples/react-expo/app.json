@@ -42,7 +42,11 @@
           "faceIDPermission": "Allow $(PRODUCT_NAME) to access your Face ID biometric data."
         }
       ],
-      "expo-sqlite"
+      ["expo-sqlite",
+        {
+          "useSqlCipher": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
