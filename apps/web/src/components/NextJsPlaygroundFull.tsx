@@ -16,9 +16,6 @@ import {
   NonEmptyTrimmedString100,
   nullOr,
   object,
-  OwnerEncryptionKey,
-  OwnerId,
-  OwnerWriteKey,
   SimpleName,
   SqliteBoolean,
   sqliteFalse,
@@ -78,9 +75,10 @@ const Schema = {
     id: ProjectId,
     name: NonEmptyTrimmedString100,
     fooJson: FooJson,
-    ownerId: nullOr(OwnerId),
-    ownerEncryptionKey: nullOr(OwnerEncryptionKey),
-    ownerWriteKey: nullOr(OwnerWriteKey),
+    // TODO:
+    // ownerId: nullOr(OwnerId),
+    // ownerEncryptionKey: nullOr(OwnerEncryptionKey),
+    // ownerWriteKey: nullOr(OwnerWriteKey),
   },
   todo: {
     id: TodoId,
@@ -408,6 +406,9 @@ const HomeTabProjectSectionTodoItem: FC<{
       .where("table", "==", "todo")
       .where("id", "==", idToIdBytes(id))
       .where("column", "==", "title")
+      // TODO: tohle je spatne, data z novejch muzou bejt cokoliv
+      // TODO: nebo jinak, pokud do historie pustim jen co znam, tak to muze bejt
+      // imho typove
       // value isn't typed; this is how we narrow its type
       .$narrowType<{ value: (typeof Schema)["todo"]["title"]["Type"] }>()
       .orderBy("timestamp", "desc"),
@@ -895,22 +896,23 @@ const Button: FC<{
 };
 
 const formatTypeError = createFormatTypeError<
-  | MinLengthError
-  | MaxLengthError
-  | typeof OwnerId.Error
-  | typeof OwnerEncryptionKey.Error
-  | typeof OwnerWriteKey.Error
+  MinLengthError | MaxLengthError
+  // TODO:
+  // | typeof OwnerId.Error
+  // | typeof OwnerEncryptionKey.Error
+  // | typeof OwnerWriteKey.Error
 >((error): string => {
   switch (error.type) {
     case "MinLength":
       return `Text must be at least ${error.min} character${error.min === 1 ? "" : "s"} long`;
     case "MaxLength":
       return `Text is too long (maximum ${error.max} characters)`;
-    case "OwnerId":
-      return `Invalid owner ID: ${error.value}`;
-    case "OwnerEncryptionKey":
-      return `Invalid encryption key: ${error.value}`;
-    case "OwnerWriteKey":
-      return `Invalid owner write key: ${error.value}`;
+    // TODO:
+    // case "OwnerId":
+    //   return `Invalid owner ID: ${error.value}`;
+    // case "OwnerEncryptionKey":
+    //   return `Invalid encryption key: ${error.value}`;
+    // case "OwnerWriteKey":
+    //   return `Invalid owner write key: ${error.value}`;
   }
 });
