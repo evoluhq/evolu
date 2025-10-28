@@ -1,9 +1,9 @@
 import * as Evolu from "@evolu/common";
 import { createUseEvolu, EvoluProvider, useQuery } from "@evolu/react";
-import { evoluReactWebDeps } from "@evolu/react-web";
+import { EvoluOwnerIdIdenticon, evoluReactWebDeps } from "@evolu/react-web";
 import { IconEdit, IconTrash } from "@tabler/icons-react";
 import clsx from "clsx";
-import { FC, Suspense, use, useState } from "react";
+import { FC, Suspense, use, useMemo, useState } from "react";
 
 // Primary keys are branded types, preventing accidental use of IDs across
 // different tables (e.g., a TodoId can't be used where a UserId is expected).
@@ -22,11 +22,25 @@ const Schema = {
   },
 };
 
+const service = "pwa-react";
+
+// Note: this is a top-level await and used for brevity in the demo
+// In a real application, you would use a wrapper component.
+const ownerIds = await evoluReactWebDeps.localAuth.getProfiles({
+  service,
+});
+
+const authResult = await evoluReactWebDeps.localAuth.login(undefined, {
+  service,
+});
+
 // Create Evolu instance for the React web platform.
 const evolu = Evolu.createEvolu(evoluReactWebDeps)(Schema, {
-  name: Evolu.SimpleName.orThrow("evolu-minimal-example-281025"),
-
-  reloadUrl: "/playgrounds/minimal",
+  name: Evolu.SimpleName.orThrow(
+    `${service}-${authResult?.owner?.id ?? "guest"}`,
+  ),
+  externalAppOwner: authResult?.owner,
+  reloadUrl: "/",
 
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
@@ -56,7 +70,7 @@ export const EvoluMinimalExample: FC = () => {
       <div className="mx-auto max-w-md">
         <div className="mb-2 flex items-center justify-between pb-4">
           <h1 className="w-full text-center text-xl font-semibold text-gray-900">
-            Minimal Todo App
+            Minimal Todo App (Evolu + React + Vite + PWA)
           </h1>
         </div>
 
@@ -68,6 +82,7 @@ export const EvoluMinimalExample: FC = () => {
           <Suspense>
             <Todos />
             <OwnerActions />
+            <AuthActions />
           </Suspense>
         </EvoluProvider>
       </div>
@@ -241,9 +256,7 @@ const OwnerActions: FC = () => {
 
   const handleDownloadDatabaseClick = () => {
     void evolu.exportDatabase().then((array) => {
-      const blob = new Blob([array], {
-        type: "application/x-sqlite3",
-      });
+      const blob = new Blob([array], { type: "application/x-sqlite3" });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -256,6 +269,16 @@ const OwnerActions: FC = () => {
   return (
     <div className="mt-8 rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
       <h2 className="mb-4 text-lg font-medium text-gray-900">Account</h2>
+      {appOwner && (
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <OwnerProfile
+            {...{
+              ownerId: appOwner.id,
+              username: authResult?.username ?? "Guest",
+            }}
+          />
+        </div>
+      )}
       <p className="mb-4 text-sm text-gray-600">
         Todos are stored in local SQLite. When you sync across devices, your
         data is end-to-end encrypted using your mnemonic.
@@ -289,13 +312,125 @@ const OwnerActions: FC = () => {
             title="Restore from Mnemonic"
             onClick={handleRestoreAppOwnerClick}
           />
-          <Button title="Reset All Data" onClick={handleResetAppOwnerClick} />
           <Button
             title="Download Backup"
             onClick={handleDownloadDatabaseClick}
           />
+          <Button title="Reset All Data" onClick={handleResetAppOwnerClick} />
         </div>
       </div>
+    </div>
+  );
+};
+
+const AuthActions: FC = () => {
+  const evolu = useEvolu();
+  const appOwner = use(evolu.appOwner);
+  const otherOwnerIds = useMemo(
+    () => ownerIds.filter(({ ownerId }) => ownerId !== appOwner?.id),
+    [appOwner?.id],
+  );
+
+  // Create a new owner and register it to a passkey.
+  const handleRegisterClick = async () => {
+    const username = window.prompt("Enter your username:");
+    if (username == null) return;
+
+    // Determine if this is a guest login or a new owner.
+    const isGuest = !Boolean(authResult?.owner);
+
+    // Register the guest owner or create a new one if this is already registered.
+    const result = await evoluReactWebDeps.localAuth.register(username, {
+      service: service,
+      mnemonic: isGuest ? appOwner?.mnemonic : undefined,
+    });
+    if (result) {
+      // If this is a guest owner, we should clear the database and reload.
+      // The owner is transferred to a new database on next login.
+      if (isGuest) {
+        void evolu.resetAppOwner({ reload: true });
+        // Otherwise, just reload the page
+      } else {
+        window.location.reload();
+      }
+    } else {
+      alert("Failed to register profile");
+    }
+  };
+
+  // Login with a specific owner id using the registered passkey.
+  // Note: we already have a database created, so we need to reload.
+  const handleLoginClick = async (ownerId: Evolu.OwnerId) => {
+    const result = await evoluReactWebDeps.localAuth.login(ownerId, {
+      service: service,
+      reloadNeeded: true,
+    });
+    if (result) {
+      window.location.reload();
+    } else {
+      alert("Failed to login");
+    }
+  };
+
+  // Clear all data including passkeys and metadata.
+  const handleClearAllClick = async () => {
+    const confirmed = window.confirm(
+      "Are you sure you want to clear all data? This will remove all passkeys and cannot be undone.",
+    );
+    if (!confirmed) return;
+    await evoluReactWebDeps.localAuth.clearAll({
+      service: service,
+    });
+    void evolu.resetAppOwner({ reload: true });
+  };
+
+  return (
+    <div className="mt-8 rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
+      <h2 className="mb-4 text-lg font-medium text-gray-900">Passkeys</h2>
+      <p className="mb-4 text-sm text-gray-600">
+        Register a new passkey or choose a previously registered one.
+      </p>
+      <div className="flex gap-3">
+        <Button
+          title="Register Passkey"
+          className="flex-1"
+          onClick={handleRegisterClick}
+        />
+        <Button
+          title="Clear All"
+          className="flex-1"
+          onClick={handleClearAllClick}
+        />
+      </div>
+      {otherOwnerIds.length > 0 && (
+        <div className="mt-4 flex flex-col gap-2">
+          {otherOwnerIds.map(({ ownerId, username }) => (
+            <OwnerProfile
+              key={ownerId}
+              {...{ ownerId, username, handleLoginClick }}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const OwnerProfile: FC<{
+  ownerId: Evolu.OwnerId;
+  username: string;
+  handleLoginClick?: (ownerId: Evolu.OwnerId) => void;
+}> = ({ ownerId, username, handleLoginClick }) => {
+  return (
+    <div className="flex justify-between gap-3">
+      <div className="flex items-center gap-3">
+        <EvoluOwnerIdIdenticon id={ownerId} />
+        <span className="text-sm font-medium text-gray-900">{username}</span>
+        <span className="text-xs text-gray-500 italic">{ownerId}</span>
+      </div>
+      {handleLoginClick && (
+        <Button title="Login" onClick={() => handleLoginClick(ownerId)} />
+      )}
     </div>
   );
 };

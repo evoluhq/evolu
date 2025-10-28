@@ -1,6 +1,7 @@
 import { pack } from "msgpackr";
 import { isNonEmptyArray, isNonEmptyReadonlyArray } from "../Array.js";
 import { assert, assertNonEmptyArray } from "../Assert.js";
+import { LocalAuthDep } from "./LocalAuth.js";
 import { createCallbackRegistry } from "../CallbackRegistry.js";
 import { ConsoleDep } from "../Console.js";
 import { RandomBytesDep, SymmetricCryptoDecryptError } from "../Crypto.js";
@@ -612,6 +613,7 @@ interface InternalEvoluInstance<S extends EvoluSchema = EvoluSchema>
 
 export type EvoluDeps = ConsoleDep &
   CreateDbWorkerDep &
+  LocalAuthDep &
   Partial<FlushSyncDep> &
   RandomBytesDep &
   ReloadAppDep &
