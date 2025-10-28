@@ -16,7 +16,7 @@ export const createExpoSqliteDriver: CreateSqliteDriver = (name, options) => {
     db.execSync(`
       PRAGMA cipher = 'sqlcipher';
       PRAGMA legacy = 4;
-      PRAGMA key = "x'${bytesToHex(options?.encryptionKey)}'";
+      PRAGMA key = "x'${bytesToHex(options.encryptionKey)}'";
     `);
   }
   let isDisposed = false;
