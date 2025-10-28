@@ -25,7 +25,6 @@ import {
 import {
   createUseEvolu,
   EvoluProvider,
-  useAppOwner,
   useQueries,
   useQuery,
 } from "@evolu/react";
@@ -39,7 +38,14 @@ import {
   IconTrash,
 } from "@tabler/icons-react";
 import clsx from "clsx";
-import { FC, KeyboardEvent, startTransition, Suspense, useState } from "react";
+import {
+  FC,
+  KeyboardEvent,
+  startTransition,
+  Suspense,
+  use,
+  useState,
+} from "react";
 
 const ProjectId = id("Project");
 type ProjectId = typeof ProjectId.Type;
@@ -89,7 +95,7 @@ const Schema = {
 };
 
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
-  name: SimpleName.orThrow("evolu-playground-full"),
+  name: SimpleName.orThrow("evolu-full-example-281025"),
 
   reloadUrl: "/playgrounds/full",
 
@@ -121,7 +127,7 @@ evolu.subscribeError(() => {
   console.error(error);
 });
 
-export const NextJsPlaygroundFull: FC = () => {
+export const EvoluFullExample: FC = () => {
   return (
     <div className="min-h-screen px-8 py-8">
       <div className="mx-auto max-w-md min-w-sm md:min-w-md">
@@ -626,7 +632,9 @@ const ProjectsTabProjectItem: FC<{
 };
 
 const AccountTab: FC = () => {
-  const owner = useAppOwner();
+  const evolu = useEvolu();
+  const appOwner = use(evolu.appOwner);
+
   const [showMnemonic, setShowMnemonic] = useState(false);
 
   const handleRestoreAppOwnerClick = () => {
@@ -678,13 +686,13 @@ const AccountTab: FC = () => {
           className="w-full"
         />
 
-        {showMnemonic && owner?.mnemonic && (
+        {showMnemonic && appOwner.mnemonic && (
           <div className="bg-gray-50 p-3">
             <label className="mb-2 block text-xs font-medium text-gray-700">
               Your Mnemonic (keep this safe!)
             </label>
             <textarea
-              value={owner.mnemonic}
+              value={appOwner.mnemonic}
               readOnly
               rows={3}
               className="w-full border-b border-gray-300 bg-white px-2 py-1 font-mono text-xs focus:border-blue-500 focus:outline-none"

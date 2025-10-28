@@ -1,12 +1,7 @@
 import * as Evolu from "@evolu/common";
-import {
-  createUseEvolu,
-  EvoluProvider,
-  useAppOwner,
-  useQuery,
-} from "@evolu/react";
+import { createUseEvolu, EvoluProvider, useQuery } from "@evolu/react";
 import { evoluReactNativeDeps } from "@evolu/react-native/expo-sqlite";
-import { FC, Suspense, useState } from "react";
+import { FC, Suspense, use, useState } from "react";
 import {
   Alert,
   ScrollView,
@@ -37,7 +32,7 @@ const Schema = {
 
 // Create Evolu instance for the React Native platform.
 const evolu = Evolu.createEvolu(evoluReactNativeDeps)(Schema, {
-  name: Evolu.SimpleName.orThrow("evolu-expo-minimal"),
+  name: Evolu.SimpleName.orThrow("evolu-minimal-example-281025"),
 
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
@@ -257,7 +252,8 @@ const TodoItem: FC<{
 };
 
 const OwnerActions: FC = () => {
-  const appOwner = useAppOwner();
+  const evolu = useEvolu();
+  const appOwner = use(evolu.appOwner);
   const [showMnemonic, setShowMnemonic] = useState(false);
 
   // Restore owner from mnemonic to sync data across devices.

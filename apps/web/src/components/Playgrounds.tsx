@@ -8,7 +8,7 @@ const playgrounds = [
   },
   {
     name: "Full-Featured",
-    description: "A comprehensive playground with advanced features.",
+    description: "A comprehensive playground with all features.",
     href: "/playgrounds/full",
   },
 ];

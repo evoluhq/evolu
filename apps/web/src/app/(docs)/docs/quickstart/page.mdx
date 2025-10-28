@@ -344,31 +344,34 @@ const unsubscribe = evolu.subscribeQuery(allTodos)(() => {
 
 ## Protect data
 
-**Privacy is essential for Evolu**, so all data are **encrypted** with an encryption key derived from a safely generated cryptographically strong password called [mnemonic](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki).
+**Privacy is essential for Evolu**, so all data are **encrypted** with an encryption key derived from a cryptographically strong secret (which can be represented as a [mnemonic](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki)) or provided by an external hardware device.
 
 <SinglePlatformCodeGroup>
 
-```ts {{ title: 'React' }}
-import { useAppOwner } from "@evolu/react";
+```ts {{ title: 'React', language: 'tsx' }}
+import { use } from "react";
 // ...
-const owner = useAppOwner();
-if (owner) console.log(owner.mnemonic);
+const evolu = useEvolu();
+const owner = use(evolu.appOwner);
+console.log(owner.mnemonic);
 // this will print the mnemonic in the console
 ```
 
-```ts {{ title: 'React Native' }}
-import { useAppOwner } from "@evolu/react";
+```ts {{ title: 'React Native', language: 'tsx' }}
+import { use } from "react";
 // ...
-const owner = useAppOwner();
-if (owner) console.log(owner.mnemonic);
+const evolu = useEvolu();
+const owner = use(evolu.appOwner);
+console.log(owner.mnemonic);
 // this will print the mnemonic in the console
 ```
 
-```ts {{ title: 'Expo' }}
-import { useAppOwner } from "@evolu/react";
+```ts {{ title: 'Expo', language: 'tsx' }}
+import { use } from "react";
 // ...
-const owner = useAppOwner();
-if (owner) console.log(owner.mnemonic);
+const evolu = useEvolu();
+const owner = use(evolu.appOwner);
+console.log(owner.mnemonic);
 // this will print the mnemonic in the console
 ```
 
@@ -376,13 +379,12 @@ if (owner) console.log(owner.mnemonic);
 import { appOwnerState } from "@evolu/svelte";
 
 const owner = appOwnerState(evolu);
-
-// use owner.current to get the always up-to-date AppOwner,
-// so when you restore it owner.current will be updated immediately
+// use owner.current in your templates
 ```
 
 ```ts {{ title: 'Vanilla JS' }}
-const owner = evolu.getAppOwner();
+const owner = await evolu.appOwner;
+console.log(owner.mnemonic);
 ```
 
 </SinglePlatformCodeGroup>

@@ -1,8 +1,8 @@
 import "./App.css";
-import { EvoluExample } from "../components/EvoluDemo";
+import { EvoluMinimalExample } from "../components/EvoluMinimalExample";
 
 function App() {
-  return <EvoluExample />;
+  return <EvoluMinimalExample />;
 }
 
 export default App;
