@@ -16,6 +16,7 @@ const prettierPluginEmbedConfig = {
   sqlKeywordCase: "lower",
   sqlParamTypes: ["$name"],
   sqlCanonicalSyntax: false,
+  sqlLiteralCase: "lower",
 };
 
 const config = {
