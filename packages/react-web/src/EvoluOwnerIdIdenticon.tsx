@@ -2,7 +2,7 @@ import type { OwnerId } from "@evolu/common";
 import { blo } from "blo";
 import { FC } from "react";
 
-export const EvoluProfilePic: FC<{
+export const EvoluOwnerIdIdenticon: FC<{
   id: OwnerId;
   size?: number;
   borderRadius?: number;

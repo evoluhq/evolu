@@ -28,7 +28,13 @@ vi.stubGlobal("performance", { now: mockPerformanceNow });
 
 // Mock Date for deterministic absolute timestamps
 const mockDate = vi.fn();
-vi.stubGlobal("Date", mockDate);
+vi.stubGlobal(
+  "Date",
+  vi.fn().mockImplementation(function (this: any) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+    return mockDate();
+  }),
+);
 
 test("createConsole with enableLogging: false (default)", () => {
   const console = createConsole();

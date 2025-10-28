@@ -2,13 +2,12 @@
 
 import dynamic from "next/dynamic";
 
-// Evolu can be server-side rendered but it's better to use client-only rendering
-// to avoid layout shift. Evolu supports SSR because some apps may require it
-// but it will not render any data because Evolu data are client only.
-const NextJsPlaygroundMinimal = dynamic(
+// Evolu is currently client-only. Server-side rendering support is planned for
+// the future.
+const EvoluMinimalExample = dynamic(
   () =>
-    import("@/components/NextJsPlaygroundMinimal").then(
-      (mod) => mod.NextJsPlaygroundMinimal,
+    import("@/components/EvoluMinimalExample").then(
+      (mod) => mod.EvoluMinimalExample,
     ),
   { ssr: false },
 );
@@ -16,7 +15,7 @@ const NextJsPlaygroundMinimal = dynamic(
 export default function Page(): React.ReactElement {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 bg-zinc-100">
-      <NextJsPlaygroundMinimal />
+      <EvoluMinimalExample />
     </div>
   );
 }

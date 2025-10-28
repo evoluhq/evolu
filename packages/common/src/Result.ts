@@ -380,6 +380,22 @@ export interface Err<E> {
 }
 
 /**
+ * Extracts the value type from a {@link Result}.
+ *
+ * @category Utilities
+ */
+export type InferOk<R extends Result<any, any>> =
+  R extends Ok<infer T> ? T : never;
+
+/**
+ * Extracts the error type from a {@link Result}.
+ *
+ * @category Utilities
+ */
+export type InferErr<R extends Result<any, any>> =
+  R extends Err<infer E> ? E : never;
+
+/**
  * Creates an {@link Ok} result.
  *
  * - `ok()` creates an `Ok<void>` for operations that succeed without producing a

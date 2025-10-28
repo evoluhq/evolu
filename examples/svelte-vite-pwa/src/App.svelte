@@ -21,8 +21,9 @@
 
   // Create Evolu instance for the Svelte platform.
   const evolu = Evolu.createEvolu(evoluSvelteDeps)(Schema, {
+    name: Evolu.SimpleName.orThrow("evolu-minimal-example-281025"),
+
     reloadUrl: "/",
-    name: Evolu.SimpleName.orThrow("evolu-svelte-minimal"),
 
     ...(process.env.NODE_ENV === "development" && {
       transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],

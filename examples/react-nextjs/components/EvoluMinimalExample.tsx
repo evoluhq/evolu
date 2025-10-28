@@ -1,16 +1,11 @@
 "use client";
 
 import * as Evolu from "@evolu/common";
-import {
-  createUseEvolu,
-  EvoluProvider,
-  useAppOwner,
-  useQuery,
-} from "@evolu/react";
+import { createUseEvolu, EvoluProvider, useQuery } from "@evolu/react";
 import { evoluReactWebDeps } from "@evolu/react-web";
 import { IconEdit, IconTrash } from "@tabler/icons-react";
 import clsx from "clsx";
-import { FC, Suspense, useState } from "react";
+import { FC, Suspense, use, useState } from "react";
 
 // Primary keys are branded types, preventing accidental use of IDs across
 // different tables (e.g., a TodoId can't be used where a UserId is expected).
@@ -31,9 +26,9 @@ const Schema = {
 
 // Create Evolu instance for the React web platform.
 const evolu = Evolu.createEvolu(evoluReactWebDeps)(Schema, {
-  name: Evolu.SimpleName.orThrow("evolu-react-nextjs-minimal"),
+  name: Evolu.SimpleName.orThrow("evolu-minimal-example-281025"),
 
-  reloadUrl: "/",
+  reloadUrl: "/playgrounds/minimal",
 
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
@@ -57,13 +52,13 @@ evolu.subscribeError(() => {
   console.error(error);
 });
 
-export const EvoluDemo: FC = () => {
+export const EvoluMinimalExample: FC = () => {
   return (
     <div className="min-h-screen px-8 py-8">
       <div className="mx-auto max-w-md">
         <div className="mb-2 flex items-center justify-between pb-4">
           <h1 className="w-full text-center text-xl font-semibold text-gray-900">
-            Minimal Todo App (Evolu + Next.js)
+            Minimal Todo App
           </h1>
         </div>
 
@@ -221,7 +216,9 @@ const TodoItem: FC<{
 };
 
 const OwnerActions: FC = () => {
-  const appOwner = useAppOwner();
+  const evolu = useEvolu();
+  const appOwner = use(evolu.appOwner);
+
   const [showMnemonic, setShowMnemonic] = useState(false);
 
   // Restore owner from mnemonic to sync data across devices.
@@ -246,7 +243,9 @@ const OwnerActions: FC = () => {
 
   const handleDownloadDatabaseClick = () => {
     void evolu.exportDatabase().then((array) => {
-      const blob = new Blob([array], { type: "application/x-sqlite3" });
+      const blob = new Blob([array], {
+        type: "application/x-sqlite3",
+      });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -273,7 +272,7 @@ const OwnerActions: FC = () => {
           className="w-full"
         />
 
-        {showMnemonic && appOwner?.mnemonic && (
+        {showMnemonic && appOwner.mnemonic && (
           <div className="bg-gray-50 p-3">
             <label className="mb-2 block text-xs font-medium text-gray-700">
               Your Mnemonic (keep this safe!)

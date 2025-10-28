@@ -117,8 +117,7 @@ export function queryState<
 }
 
 /**
- * Load and subscribe to the current AppOwner, and return an object with
- * `current` property that are automatically updated when the appOwner changes.
+ * Get the {@link AppOwner} promise that resolves when available.
  *
  * ### Example
  *
@@ -127,27 +126,22 @@ export function queryState<
  *
  * const owner = appOwnerState(evolu);
  *
- * // use owner.current to get the always up-to-date AppOwner,
- * // so when you restore it owner.current will be updated immediately
+ * // use owner.current in your Svelte templates
+ * // it will be undefined initially and set once the promise resolves
  * ```
  */
-export function appOwnerState(evolu: Evolu): {
-  readonly current: AppOwner | null;
+export function appOwnerState<Schema extends EvoluSchema>(
+  evolu: Evolu<Schema>,
+): {
+  readonly current: AppOwner | undefined;
 } {
   {
     // writing to this variable - svelte's compiler will track it
-    let writableState: AppOwner | null = $state(null);
-
-    function updateState(appOwner: AppOwner | null): void {
-      writableState = appOwner;
-    }
-
-    const initialAppOwner = evolu.getAppOwner();
-    updateState(initialAppOwner);
+    let writableState = $state<AppOwner | undefined>(undefined);
 
     $effect(() => {
-      return evolu.subscribeAppOwner(() => {
-        updateState(evolu.getAppOwner());
+      void evolu.appOwner.then((appOwner) => {
+        writableState = appOwner;
       });
     });
 

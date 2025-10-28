@@ -1,16 +1,9 @@
-"use client";
-
 import * as Evolu from "@evolu/common";
-import {
-  createUseEvolu,
-  EvoluProvider,
-  useAppOwner,
-  useQuery,
-} from "@evolu/react";
-import { EvoluProfilePic, evoluReactWebDeps } from "@evolu/react-web";
+import { createUseEvolu, EvoluProvider, useQuery } from "@evolu/react";
+import { EvoluOwnerIdIdenticon, evoluReactWebDeps } from "@evolu/react-web";
 import { IconEdit, IconTrash } from "@tabler/icons-react";
 import clsx from "clsx";
-import { FC, Suspense, useMemo, useState } from "react";
+import { FC, Suspense, use, useMemo, useState } from "react";
 
 // Primary keys are branded types, preventing accidental use of IDs across
 // different tables (e.g., a TodoId can't be used where a UserId is expected).
@@ -36,8 +29,6 @@ const service = "pwa-react";
 const ownerIds = await evoluReactWebDeps.localAuth.getProfiles({
   service,
 });
-
-// evoluReactWebDeps.localAuth.
 
 const authResult = await evoluReactWebDeps.localAuth.login(undefined, {
   service,
@@ -73,7 +64,7 @@ evolu.subscribeError(() => {
   console.error(error);
 });
 
-export const EvoluDemo: FC = () => {
+export const EvoluMinimalExample: FC = () => {
   return (
     <div className="min-h-screen px-8 py-8">
       <div className="mx-auto max-w-md">
@@ -238,7 +229,9 @@ const TodoItem: FC<{
 };
 
 const OwnerActions: FC = () => {
-  const appOwner = useAppOwner();
+  const evolu = useEvolu();
+  const appOwner = use(evolu.appOwner);
+
   const [showMnemonic, setShowMnemonic] = useState(false);
 
   // Restore owner from mnemonic to sync data across devices.
@@ -300,7 +293,7 @@ const OwnerActions: FC = () => {
           className="w-full"
         />
 
-        {showMnemonic && appOwner?.mnemonic && (
+        {showMnemonic && appOwner.mnemonic && (
           <div className="bg-gray-50 p-3">
             <label className="mb-2 block text-xs font-medium text-gray-700">
               Your Mnemonic (keep this safe!)
@@ -331,7 +324,8 @@ const OwnerActions: FC = () => {
 };
 
 const AuthActions: FC = () => {
-  const appOwner = useAppOwner();
+  const evolu = useEvolu();
+  const appOwner = use(evolu.appOwner);
   const otherOwnerIds = useMemo(
     () => ownerIds.filter(({ ownerId }) => ownerId !== appOwner?.id),
     [appOwner?.id],
@@ -430,7 +424,7 @@ const OwnerProfile: FC<{
   return (
     <div className="flex justify-between gap-3">
       <div className="flex items-center gap-3">
-        <EvoluProfilePic id={ownerId} />
+        <EvoluOwnerIdIdenticon id={ownerId} />
         <span className="text-sm font-medium text-gray-900">{username}</span>
         <span className="text-xs text-gray-500 italic">{ownerId}</span>
       </div>
