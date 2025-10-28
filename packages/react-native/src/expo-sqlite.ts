@@ -15,8 +15,9 @@ import {
 } from "@evolu/common/evolu";
 
 import * as Expo from "expo";
-import { SensitiveInfo } from "react-native-sensitive-info";
 import { createExpoSqliteDriver } from "./providers/ExpoSqliteDriver.js";
+import { createSecureStore } from "./utils/LocalAuth.js";
+//import { SensitiveInfo } from "react-native-sensitive-info";
 import { polyfillHermes } from "./utils/Hermes.js";
 
 polyfillHermes();
@@ -26,7 +27,8 @@ const time = createTime();
 const randomBytes = createRandomBytes();
 const localAuth = createLocalAuth({
   randomBytes: randomBytes,
-  secureStorage: SensitiveInfo,
+  //secureStorage: SensitiveInfo,
+  secureStorage: createSecureStore(),
 });
 
 const createDbWorker: CreateDbWorker = () =>

@@ -354,10 +354,10 @@ const AuthActions: FC = () => {
       // If this is a guest owner, we should clear the database and reload.
       // The owner is transferred to a new database on next login.
       if (isGuest) {
-        void evolu.resetAppOwner({ reload: true });
+        evolu.resetAppOwner({ reload: true });
         // Otherwise, just reload the page
       } else {
-        window.location.reload();
+        evolu.reloadApp();
       }
     } else {
       alert("Failed to register profile");
@@ -372,7 +372,7 @@ const AuthActions: FC = () => {
       reloadNeeded: true,
     });
     if (result) {
-      window.location.reload();
+      evolu.reloadApp();
     } else {
       alert("Failed to login");
     }
@@ -387,7 +387,7 @@ const AuthActions: FC = () => {
     await evoluReactWebDeps.localAuth.clearAll({
       service: service,
     });
-    void evolu.resetAppOwner({ reload: true });
+    evolu.resetAppOwner({ reload: true });
   };
 
   return (

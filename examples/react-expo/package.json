@@ -17,6 +17,7 @@
     "preset": "jest-expo"
   },
   "dependencies": {
+    "@blazejkustra/react-native-alert": "^1.0.0",
     "@evolu/common": "workspace:*",
     "@evolu/react": "workspace:*",
     "@evolu/react-native": "workspace:*",
@@ -28,6 +29,7 @@
     "expo-font": "^14.0.8",
     "expo-linking": "^8.0.8",
     "expo-router": "^6.0.8",
+    "expo-secure-store": "~15.0.7",
     "expo-splash-screen": "~31.0.10",
     "expo-sqlite": "~16.0.8",
     "react": "catalog:react19",
@@ -37,7 +39,7 @@
     "react-native-quick-crypto": "^0.7.17",
     "react-native-safe-area-context": "^5.6.0",
     "react-native-screens": "^4.15.3",
-    "react-native-sensitive-info": "^6.0.0-rc.4"
+    "react-native-sensitive-info": "^6.0.0-rc.8"
   },
   "devDependencies": {
     "@babel/core": "^7.28.0",
