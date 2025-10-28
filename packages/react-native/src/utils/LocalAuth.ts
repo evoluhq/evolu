@@ -22,7 +22,7 @@ export const createSecureStore = (): SecureStorage => {
       try {
         const result = await SecureStore.getItemAsync(key, rnsiOpts);
         if (!result) return null;
-        data = JSON.parse(result);
+        data = JSON.parse(result) as {value: string; metadata: StorageMetadata};
       } catch (_error) {
         return null;
       }
@@ -100,6 +100,7 @@ function convertOptions(options?: LocalAuthOptions): SecureStore.SecureStoreOpti
 function convertKeychainAccessible(accessControl: AccessControl): SecureStore.KeychainAccessibilityConstant {
   switch (accessControl) {
     case "none":
+      // eslint-disable-next-line @typescript-eslint/no-deprecated
       return SecureStore.ALWAYS;
     case "biometryCurrentSet":
       return SecureStore.AFTER_FIRST_UNLOCK;
