@@ -9,7 +9,7 @@ import {
 import sqlite3InitModule, {
   PreparedStatement,
   Database,
-} from "sqlite-wasm-cipher";
+} from "@evolu/sqlite-wasm";
 
 // TODO: Do we still need that?
 // https://github.com/sqlite/sqlite-wasm/issues/62
@@ -27,7 +27,7 @@ export const createWasmSqliteDriver: CreateSqliteDriver = async (
 ) => {
   const sqlite3 = await sqlite3Promise;
   // This is used to make OPFS default vfs for multipleciphers
-  // @ts-expect-error Missing types (update sqlite-wasm-cipher types)
+  // @ts-expect-error Missing types (update @evolu/sqlite-wasm types)
   // eslint-disable-next-line @typescript-eslint/no-unsafe-call
   sqlite3.capi.sqlite3mc_vfs_create("opfs", 1);
 

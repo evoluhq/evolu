@@ -37,7 +37,7 @@
   },
   "dependencies": {
     "idb-keyval": "^6.2.2",
-    "sqlite-wasm-cipher": "2.2.4"
+    "@evolu/sqlite-wasm": "2.2.4"
   },
   "devDependencies": {
     "@evolu/common": "workspace:*",

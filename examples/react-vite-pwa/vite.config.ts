@@ -7,7 +7,7 @@ import { VitePWA } from "vite-plugin-pwa";
 export default defineConfig({
   cacheDir: ".vite",
   optimizeDeps: {
-    exclude: ["sqlite-wasm-cipher", "kysely", "@evolu/react-web"],
+    exclude: ["@evolu/sqlite-wasm", "kysely", "@evolu/react-web"],
   },
   plugins: [
     tailwindcss(),

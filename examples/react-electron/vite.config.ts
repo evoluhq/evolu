@@ -24,13 +24,13 @@ export default defineConfig({
         path.resolve(__dirname, "../../packages/web/dist"),
         path.resolve(
           __dirname,
-          "../../node_modules/sqlite-wasm-cipher/sqlite-wasm/jswasm",
+          "../../node_modules/@evolu/sqlite-wasm/sqlite-wasm/jswasm",
         ),
       ],
     },
   },
   optimizeDeps: {
-    exclude: ["sqlite-wasm-cipher", "kysely", "@evolu/react-web"],
+    exclude: ["@evolu/sqlite-wasm", "kysely", "@evolu/react-web"],
   },
   assetsInclude: ["**/*.wasm"],
 });
