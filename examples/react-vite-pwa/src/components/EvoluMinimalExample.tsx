@@ -2,8 +2,8 @@ import * as Evolu from "@evolu/common";
 import { createUseEvolu, EvoluProvider, useQuery } from "@evolu/react";
 import { evoluReactWebDeps, EvoluAvatar } from "@evolu/react-web";
 import { IconEdit, IconTrash } from "@tabler/icons-react";
-import { FC, Suspense, use, useMemo, useState } from "react";
 import clsx from "clsx";
+import { FC, Suspense, use, useMemo, useState } from "react";
 
 // Primary keys are branded types, preventing accidental use of IDs across
 // different tables (e.g., a TodoId can't be used where a UserId is expected).
