@@ -7,7 +7,7 @@ import {
   useAppOwner,
   useQuery,
 } from "@evolu/react";
-import { EvoluProfilePic, evoluReactWebDeps } from "@evolu/react-web";
+import { evoluReactWebDeps, EvoluAvatar } from "@evolu/react-web";
 import { IconEdit, IconTrash } from "@tabler/icons-react";
 import clsx from "clsx";
 import { FC, Suspense, useMemo, useState } from "react";
@@ -430,7 +430,7 @@ const OwnerProfile: FC<{
   return (
     <div className="flex justify-between gap-3">
       <div className="flex items-center gap-3">
-        <EvoluProfilePic id={ownerId} />
+        <EvoluAvatar id={ownerId} />
         <span className="text-sm font-medium text-gray-900">{username}</span>
         <span className="text-xs text-gray-500 italic">{ownerId}</span>
       </div>

@@ -47,6 +47,8 @@ const reloadApp: ReloadApp = () => {
   }
 };
 
+export * from "./components/EvoluAvatar.js";
+
 export const evoluReactNativeDeps: EvoluDeps = {
   console,
   createDbWorker,
