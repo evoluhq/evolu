@@ -842,9 +842,9 @@ importers:
 
   packages/web:
     dependencies:
-      '@sqlite.org/sqlite-wasm':
-        specifier: 3.50.4-build1
-        version: 3.50.4-build1
+      '@evolu/sqlite-wasm':
+        specifier: 2.2.4
+        version: 2.2.4
       idb-keyval:
         specifier: ^6.2.2
         version: 6.2.2
@@ -2265,8 +2265,12 @@ packages:
     resolution: {integrity: sha512-sB5uyeq+dwCWyPi31B2gQlVlo+j5brPlWx4yZBrEaRo/nhdDE8Xke1gsGgtiBdaBTxuTkceLVuVt/pclrasb0A==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
-  '@expo/cli@54.0.14':
-    resolution: {integrity: sha512-M7QW/GHx1FJg+CGgChGKerYXmCGWDskJ8S6w+8m49IBZ41CMDeWRH5snQkFoGCttF8WnzhGiX+nu69AFnEuDHQ==}
+  '@evolu/sqlite-wasm@2.2.4':
+    resolution: {integrity: sha512-/JOYGFN93QspD2C8HVxVgBUlFWqJ1IpaVuIhEB53u4+ZvE+D3LjpNHDYiwZgf0n7VaH2U85OY5eV3wUrWc3scg==}
+    hasBin: true
+
+  '@expo/cli@54.0.13':
+    resolution: {integrity: sha512-wUJVTByZzDN0q8UjXDlu6WD2BWoTJCKVVBGUBNmvViDX4FhnESwefmtXPoO54QUUKs6vY89WZryHllGArGfLLw==}
     hasBin: true
     peerDependencies:
       expo: '*'
@@ -3985,10 +3989,6 @@ packages:
 
   '@sinonjs/fake-timers@10.3.0':
     resolution: {integrity: sha512-V4BG07kuYSUkTCSBHG8G8TNhM+F19jXFWnQtzj+we8DrkpSBCee9Z3Ms8yiGer/dlmhe35/Xdgyo3/0rQKg7YA==}
-
-  '@sqlite.org/sqlite-wasm@3.50.4-build1':
-    resolution: {integrity: sha512-Qig2Wso7gPkU1PtXwFzndh+CTRzrIFxVGqv6eCetjU7YqxlHItj+GvQYwYTppCRgAPawtRN/4AJcEgB9xDHGug==}
-    hasBin: true
 
   '@standard-schema/spec@1.0.0':
     resolution: {integrity: sha512-m2bOd0f2RT9k8QJx1JN85cZYyH1RqFBdlwtkSlf4tBDYLCiiZnv1fIIwacK6cqwXavOydf0NPToMQgpKq+dVlA==}
@@ -11464,7 +11464,9 @@ snapshots:
       '@eslint/core': 0.16.0
       levn: 0.4.1
 
-  '@expo/cli@54.0.14(expo-router@6.0.14)(expo@54.0.21)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))':
+  '@evolu/sqlite-wasm@2.2.4': {}
+
+  '@expo/cli@54.0.13(expo-router@6.0.13)(expo@54.0.20)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))':
     dependencies:
       '@0no-co/graphql.web': 1.2.0
       '@expo/code-signing-certificates': 0.0.5
@@ -13244,8 +13246,6 @@ snapshots:
   '@sinonjs/fake-timers@10.3.0':
     dependencies:
       '@sinonjs/commons': 3.0.1
-
-  '@sqlite.org/sqlite-wasm@3.50.4-build1': {}
 
   '@standard-schema/spec@1.0.0': {}
 
