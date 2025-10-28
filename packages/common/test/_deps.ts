@@ -1,12 +1,6 @@
-import {
-  createLocalAuth,
-  CreateWebSocket,
-  TimingSafeEqual,
-  WebSocket,
-} from "@evolu/common";
+import { CreateWebSocket, TimingSafeEqual, WebSocket } from "@evolu/common";
 import BetterSQLite, { Statement } from "better-sqlite3";
 import { timingSafeEqual } from "crypto";
-import { vi } from "vitest";
 import { Console } from "../src/Console.js";
 import {
   createSymmetricCrypto,
@@ -53,17 +47,6 @@ export const testRandomBytes: RandomBytes = {
 } as RandomBytes;
 
 const randomBytesDep = { randomBytes: testRandomBytes };
-
-export const testLocalAuth = createLocalAuth({
-  secureStorage: {
-    setItem: vi.fn(),
-    getItem: vi.fn(),
-    deleteItem: vi.fn(),
-    getAllItems: vi.fn(),
-    clearService: vi.fn(),
-  },
-  randomBytes: testRandomBytes,
-});
 
 export const testCreateId = (): Id => createId(randomBytesDep);
 

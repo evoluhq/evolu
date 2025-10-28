@@ -7,7 +7,6 @@
 export { createEvolu } from "./Evolu.js";
 export type { Evolu, EvoluConfig, EvoluDeps, EvoluError } from "./Evolu.js";
 export * from "./Owner.js";
-export * from "./LocalAuth.js";
 export * as kysely from "./PublicKysely.js";
 export type { InferRow, Query, QueryRows, Row } from "./Query.js";
 export type { EvoluSchema } from "./Schema.js";

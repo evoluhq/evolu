@@ -31,7 +31,6 @@ import {
   testOwnerSecret,
   testRandom,
   testRandomBytes,
-  testLocalAuth,
   testSimpleName,
   testTime,
 } from "../_deps.js";
@@ -69,7 +68,6 @@ const mockDeps = () => {
     console: createConsole(),
     createDbWorker: () => dbWorker,
     randomBytes: testRandomBytes,
-    localAuth: testLocalAuth,
     reloadApp: vi.fn(),
     time: testTime,
   };
@@ -103,7 +101,6 @@ const createEvoluDepsWithSqlite = async () => {
     console: createConsole(),
     createDbWorker: () => dbWorker,
     randomBytes: testRandomBytes,
-    localAuth: testLocalAuth,
     reloadApp: vi.fn(),
     time: testTime,
   };
