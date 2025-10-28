@@ -842,12 +842,12 @@ importers:
 
   packages/web:
     dependencies:
-      '@sqlite.org/sqlite-wasm':
-        specifier: 3.50.4-build1
-        version: 3.50.4-build1
       idb-keyval:
         specifier: ^6.2.2
         version: 6.2.2
+      sqlite-wasm-cipher:
+        specifier: 2.2.4
+        version: 2.2.4
     devDependencies:
       '@evolu/common':
         specifier: workspace:*
@@ -3985,10 +3985,6 @@ packages:
 
   '@sinonjs/fake-timers@10.3.0':
     resolution: {integrity: sha512-V4BG07kuYSUkTCSBHG8G8TNhM+F19jXFWnQtzj+we8DrkpSBCee9Z3Ms8yiGer/dlmhe35/Xdgyo3/0rQKg7YA==}
-
-  '@sqlite.org/sqlite-wasm@3.50.4-build1':
-    resolution: {integrity: sha512-Qig2Wso7gPkU1PtXwFzndh+CTRzrIFxVGqv6eCetjU7YqxlHItj+GvQYwYTppCRgAPawtRN/4AJcEgB9xDHGug==}
-    hasBin: true
 
   '@standard-schema/spec@1.0.0':
     resolution: {integrity: sha512-m2bOd0f2RT9k8QJx1JN85cZYyH1RqFBdlwtkSlf4tBDYLCiiZnv1fIIwacK6cqwXavOydf0NPToMQgpKq+dVlA==}
@@ -8757,6 +8753,10 @@ packages:
   sql-parser-cst@0.34.1:
     resolution: {integrity: sha512-k9F2N6PXLBh++sc+popkmBWZYSIWJ6Iz56MeBtWKHVZOtK1g8MInumLKgE2s+I64W9ojKkS4hp4UpTsq2G0E3w==}
 
+  sqlite-wasm-cipher@2.2.4:
+    resolution: {integrity: sha512-BaHnT+la3r5svomM5sb/TzXqoDP+OVkJyetErt2JG9lkUFQiFPo68JqbnGA2PKoUcOmgh7vTYyoke8VCMZvRcA==}
+    hasBin: true
+
   ssri@9.0.1:
     resolution: {integrity: sha512-o57Wcn66jMQvfHG1FlYbWeZWW/dHZhJXjpIcTfXldXEk5nz5lStPo3mK0OJQfGR3RbZUlbISexbljkJzuEj/8Q==}
     engines: {node: ^12.13.0 || ^14.15.0 || >=16.0.0}
@@ -13244,8 +13244,6 @@ snapshots:
   '@sinonjs/fake-timers@10.3.0':
     dependencies:
       '@sinonjs/commons': 3.0.1
-
-  '@sqlite.org/sqlite-wasm@3.50.4-build1': {}
 
   '@standard-schema/spec@1.0.0': {}
 
@@ -19230,6 +19228,8 @@ snapshots:
     optional: true
 
   sql-parser-cst@0.34.1: {}
+
+  sqlite-wasm-cipher@2.2.4: {}
 
   ssri@9.0.1:
     dependencies:
