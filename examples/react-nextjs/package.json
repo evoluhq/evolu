@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "_start": "next start",
-    "build": "next build",
+    "build": "next build --webpack",
     "clean": "shx rm -rf .turbo .next node_modules",
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "lint": "next lint"
   },
   "dependencies": {
