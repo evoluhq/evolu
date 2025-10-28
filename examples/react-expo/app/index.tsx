@@ -1,9 +1,9 @@
 import * as Evolu from "@evolu/common";
 import { createUseEvolu, EvoluProvider, useQuery } from "@evolu/react";
-import { evoluReactNativeDeps, EvoluAvatar } from "@evolu/react-native/expo-sqlite";
-import { FC, Suspense, use, useEffect, useMemo, useState } from "react";
+import { evoluReactNativeDeps } from "@evolu/react-native/expo-sqlite";
+import { FC, Suspense, use, useState } from "react";
 import {
-  ActivityIndicator,
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,7 +12,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Alert from "@blazejkustra/react-native-alert";
 
 // Primary keys are branded types, preventing accidental use of IDs across
 // different tables (e.g., a TodoId can't be used where a UserId is expected).
@@ -31,104 +30,33 @@ const Schema = {
   },
 };
 
-const service = "rn-expo";
+// Create Evolu instance for the React Native platform.
+const evolu = Evolu.createEvolu(evoluReactNativeDeps)(Schema, {
+  name: Evolu.SimpleName.orThrow("evolu-minimal-example-281025"),
 
-type AuthData = {
-  ownerIds: Array<{ ownerId: Evolu.OwnerId; username: string }>;
-  authResult: Evolu.AuthResult | null;
-  evolu: any;
-  useEvolu: any;
-};
+  ...(process.env.NODE_ENV === "development" && {
+    transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
+  }),
+});
+
+// Creates a typed React Hook returning an instance of Evolu.
+const useEvolu = createUseEvolu(evolu);
+
+/**
+ * Subscribe to unexpected Evolu errors (database, network, sync issues). These
+ * should not happen in normal operation, so always log them for debugging. Show
+ * users a friendly error message instead of technical details.
+ */
+evolu.subscribeError(() => {
+  const error = evolu.getError();
+  if (!error) return;
+
+  Alert.alert("🚨 Evolu error occurred! Check the console.");
+  // eslint-disable-next-line no-console
+  console.error(error);
+});
 
 export default function Index(): React.ReactNode {
-  const [authData, setAuthData] = useState<AuthData | null>(null);
-
-  useEffect(() => {
-    let unsubscribe: (() => void) | undefined;
-
-    const initializeEvolu = async () => {
-      const ownerIds = await evoluReactNativeDeps.localAuth.getProfiles({
-        service,
-      });
-
-      const authResult = await evoluReactNativeDeps.localAuth.login(undefined, {
-        service,
-      });
-
-      console.log(">> ownerIds", ownerIds);
-      console.log(">> authResult", authResult);
-
-      // Create Evolu instance for the React Native platform.
-      const evolu = Evolu.createEvolu(evoluReactNativeDeps)(Schema, {
-        name: Evolu.SimpleName.orThrow(
-          `${service}-${authResult?.owner?.id ?? "guest"}`,
-        ),
-        reloadUrl: "/",
-        externalAppOwner: authResult?.owner,
-        ...(process.env.NODE_ENV === "development" && {
-          transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
-        }),
-      });
-
-      // Creates a typed React Hook returning an instance of Evolu.
-      const useEvolu = createUseEvolu(evolu);
-
-      /**
-       * Subscribe to unexpected Evolu errors (database, network, sync issues). These
-       * should not happen in normal operation, so always log them for debugging. Show
-       * users a friendly error message instead of technical details.
-       */
-      unsubscribe = evolu.subscribeError(() => {
-        const error = evolu.getError();
-        if (!error) return;
-
-        Alert.alert("🚨 Evolu error occurred! Check the console.");
-        // eslint-disable-next-line no-console
-        console.error(error);
-      });
-
-      setAuthData({ ownerIds, authResult, evolu, useEvolu });
-    };
-
-    void initializeEvolu();
-
-    return () => {
-      unsubscribe?.();
-    };
-  }, []);
-
-  if (!authData) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#3b82f6" />
-          <Text style={styles.loadingText}>Initializing...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  return <App {...authData} />;
-}
-
-const App: FC<AuthData> = ({ ownerIds, authResult, evolu, useEvolu }) => {
-  // Evolu uses Kysely for type-safe SQL (https://kysely.dev/).
-  const todosQuery = evolu.createQuery((db: any) => {
-    // Type-safe SQL: try autocomplete for table and column names.
-    const query = db
-      .selectFrom("todo")
-      .select(["id", "title", "isCompleted"])
-      // Soft delete: filter out deleted rows.
-      .where("isDeleted", "is not", Evolu.sqliteTrue)
-      // Like GraphQL, all columns except id are nullable in queries (even if
-      // defined as non-nullable in schema). This enables schema evolution (no
-      // migrations/versioning). Filter nulls with where + $narrowType.
-      .where("title", "is not", null)
-      // Columns createdAt, updatedAt, isDeleted are auto-added to all tables.
-      .orderBy("createdAt");
-    return query;
-  });
-
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
@@ -148,30 +76,37 @@ const App: FC<AuthData> = ({ ownerIds, authResult, evolu, useEvolu }) => {
               states to manage). Highly recommended with Evolu.
             */}
             <Suspense>
-              <Todos todosQuery={todosQuery} useEvolu={useEvolu} />
-              <OwnerActions
-                evolu={evolu}
-                authResult={authResult}
-                useEvolu={useEvolu}
-              />
-              <AuthActions
-                ownerIds={ownerIds}
-                authResult={authResult}
-                evolu={evolu}
-                useEvolu={useEvolu}
-              />
+              <Todos />
+              <OwnerActions />
             </Suspense>
           </EvoluProvider>
         </View>
       </ScrollView>
     </SafeAreaView>
   );
-};
+}
 
-const Todos: FC<{ todosQuery: any; useEvolu: any }> = ({
-  todosQuery,
-  useEvolu,
-}) => {
+// Evolu uses Kysely for type-safe SQL (https://kysely.dev/).
+const todosQuery = evolu.createQuery((db) =>
+  db
+    // Type-safe SQL: try autocomplete for table and column names.
+    .selectFrom("todo")
+    .select(["id", "title", "isCompleted"])
+    // Soft delete: filter out deleted rows.
+    .where("isDeleted", "is not", Evolu.sqliteTrue)
+    // Like GraphQL, all columns except id are nullable in queries (even if
+    // defined as non-nullable in schema). This enables schema evolution (no
+    // migrations/versioning). Filter nulls with where + $narrowType.
+    .where("title", "is not", null)
+    .$narrowType<{ title: Evolu.kysely.NotNull }>()
+    // Columns createdAt, updatedAt, isDeleted are auto-added to all tables.
+    .orderBy("createdAt"),
+);
+
+// Extract the row type from the query for type-safe component props.
+type TodosRow = typeof todosQuery.Row;
+
+const Todos: FC = () => {
   // useQuery returns live data - component re-renders when data changes.
   const todos = useQuery(todosQuery);
   const { insert } = useEvolu();
@@ -203,8 +138,8 @@ const Todos: FC<{ todosQuery: any; useEvolu: any }> = ({
           { display: todos.length > 0 ? "flex" : "none" },
         ]}
       >
-        {todos.map((todo: any) => (
-          <TodoItem key={todo.id as string} row={todo} useEvolu={useEvolu} />
+        {todos.map((todo) => (
+          <TodoItem key={todo.id} row={todo} />
         ))}
       </View>
 
@@ -227,9 +162,8 @@ const Todos: FC<{ todosQuery: any; useEvolu: any }> = ({
 };
 
 const TodoItem: FC<{
-  row: any;
-  useEvolu: any;
-}> = ({ row: { id, title, isCompleted }, useEvolu }) => {
+  row: TodosRow;
+}> = ({ row: { id, title, isCompleted } }) => {
   const { update } = useEvolu();
 
   const handleToggleCompletedPress = () => {
@@ -259,7 +193,7 @@ const TodoItem: FC<{
         },
       ],
       "plain-text",
-      title || "",
+      title,
     );
   };
 
@@ -317,11 +251,8 @@ const TodoItem: FC<{
   );
 };
 
-const OwnerActions: FC<{
-  evolu: AuthData["evolu"];
-  authResult: AuthData["authResult"];
-  useEvolu: AuthData["useEvolu"];
-}> = ({ evolu, authResult }) => {
+const OwnerActions: FC = () => {
+  const evolu = useEvolu();
   const appOwner = use(evolu.appOwner);
   const [showMnemonic, setShowMnemonic] = useState(false);
 
@@ -371,14 +302,6 @@ const OwnerActions: FC<{
   return (
     <View style={styles.ownerActionsContainer}>
       <Text style={styles.sectionTitle}>Account</Text>
-      {appOwner && (
-        <View style={styles.ownerProfileContainer}>
-          <OwnerProfile
-            ownerId={appOwner.id}
-            username={authResult?.username ?? "Guest"}
-          />
-        </View>
-      )}
       <Text style={styles.sectionDescription}>
         Todos are stored in local SQLite. When you sync across devices, your
         data is end-to-end encrypted using your mnemonic.
@@ -424,155 +347,6 @@ const OwnerActions: FC<{
   );
 };
 
-const AuthActions: FC<{
-  ownerIds: AuthData["ownerIds"];
-  authResult: AuthData["authResult"];
-  evolu: AuthData["evolu"];
-  useEvolu: AuthData["useEvolu"];
-}> = ({ ownerIds, authResult, evolu }) => {
-  const appOwner = use(evolu.appOwner);
-  const otherOwnerIds = useMemo(
-    () => ownerIds.filter(({ ownerId }) => ownerId !== appOwner?.id),
-    [appOwner?.id, ownerIds],
-  );
-
-  // Create a new owner and register it to a passkey.
-  const handleRegisterPress = async () => {
-    Alert.prompt(
-      "Register Passkey",
-      "Enter your username:",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Register",
-          onPress: async (username?: string) => {
-            if (username == null) return;
-
-            // Determine if this is a guest login or a new owner.
-            const isGuest = !Boolean(authResult?.owner);
-
-            // Register the guest owner or create a new one if this is already registered.
-            const result = await evoluReactNativeDeps.localAuth.register(
-              username,
-              {
-                service: service,
-                mnemonic: isGuest ? appOwner?.mnemonic : undefined,
-              },
-            );
-            if (result) {
-              // If this is a guest owner, we should clear the database and reload.
-              // The owner is transferred to a new database on next login.
-              if (isGuest) {
-                evolu.resetAppOwner({ reload: true });
-                // Otherwise, just reload the app (in RN, we can't reload like web)
-              } else {
-                evolu.reloadApp();
-              }
-            } else {
-              Alert.alert("Error", "Failed to register profile");
-            }
-          },
-        },
-      ],
-      "plain-text",
-    );
-  };
-
-  // Login with a specific owner id using the registered passkey.
-  const handleLoginPress = async (ownerId: Evolu.OwnerId) => {
-    const result = await evoluReactNativeDeps.localAuth.login(ownerId, {
-      service: service,
-      reloadNeeded: true,
-    });
-    if (result) {
-      evolu.reloadApp();
-    } else {
-      Alert.alert("Error", "Failed to login");
-    }
-  };
-
-  // Clear all data including passkeys and metadata.
-  const handleClearAllPress = async () => {
-    Alert.alert(
-      "Clear All Data",
-      "Are you sure you want to clear all data? This will remove all passkeys and cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Clear",
-          style: "destructive",
-          onPress: async () => {
-            await evoluReactNativeDeps.localAuth.clearAll({
-              service: service,
-            });
-            void evolu.resetAppOwner({ reload: true });
-          },
-        },
-      ],
-    );
-  };
-
-  return (
-    <View style={styles.authActionsContainer}>
-      <Text style={styles.sectionTitle}>Passkeys</Text>
-      <Text style={styles.sectionDescription}>
-        Register a new passkey or choose a previously registered one.
-      </Text>
-      <View style={styles.actionButtonsRow}>
-        <CustomButton
-          title="Register Passkey"
-          onPress={handleRegisterPress}
-          style={styles.flexButton}
-        />
-        <CustomButton
-          title="Clear All"
-          onPress={handleClearAllPress}
-          style={styles.flexButton}
-        />
-      </View>
-      {otherOwnerIds.length > 0 && (
-        <View style={styles.otherOwnersContainer}>
-          {otherOwnerIds.map(({ ownerId, username }) => (
-            <OwnerProfile
-              key={ownerId}
-              ownerId={ownerId}
-              username={username}
-              handleLoginPress={handleLoginPress}
-            />
-          ))}
-        </View>
-      )}
-    </View>
-  );
-};
-
-const OwnerProfile: FC<{
-  ownerId: Evolu.OwnerId;
-  username: string;
-  handleLoginPress?: (ownerId: Evolu.OwnerId) => void;
-}> = ({ ownerId, username, handleLoginPress }) => {
-  return (
-    <View style={styles.ownerProfileRow}>
-      <View style={styles.ownerInfo}>
-        <EvoluAvatar id={ownerId} />
-        <View style={styles.ownerDetails}>
-          <Text style={styles.ownerUsername}>{username}</Text>
-          <Text style={styles.ownerIdText} numberOfLines={1} ellipsizeMode="middle">
-            {ownerId as string}
-          </Text>
-        </View>
-      </View>
-      {handleLoginPress && (
-        <CustomButton
-          title="Login"
-          onPress={() => handleLoginPress(ownerId)}
-          style={styles.loginButton}
-        />
-      )}
-    </View>
-  );
-};
-
 const CustomButton: FC<{
   title: string;
   style?: any;
@@ -603,17 +377,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#f9fafb",
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 12,
-  },
-  loadingText: {
-    fontSize: 16,
-    color: "#6b7280",
-    marginTop: 8,
   },
   scrollView: {
     flex: 1,
@@ -808,60 +571,6 @@ const styles = StyleSheet.create({
   },
   flexButton: {
     flex: 1,
-  },
-  authActionsContainer: {
-    marginTop: 32,
-    backgroundColor: "#ffffff",
-    borderRadius: 8,
-    padding: 24,
-    paddingTop: 18,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 1,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-  },
-  ownerProfileContainer: {
-    marginBottom: 16,
-  },
-  ownerProfileRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    backgroundColor: "#f9fafb",
-    borderRadius: 6,
-    marginBottom: 8,
-  },
-  ownerInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-    gap: 8,
-    marginRight: 12,
-  },
-  ownerDetails: {
-    flex: 1,
-  },
-  ownerUsername: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#111827",
-    marginBottom: 2,
-  },
-  ownerIdText: {
-    fontSize: 10,
-    color: "#6b7280",
-    fontStyle: "italic",
-  },
-  loginButton: {
-    paddingHorizontal: 16,
-  },
-  otherOwnersContainer: {
-    marginTop: 16,
   },
 });
 
