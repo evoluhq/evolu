@@ -213,7 +213,18 @@ export type DbChange = typeof DbChange.Type;
  * Evolu uses a Skiplist, which leverages SQLite indexes. The core logic is
  * implemented in SQL, so it doesn't have to make roundtrips to the DB.
  *
- * The ideal storage for a Relay should use a similar architecture to
+ * While the SQL implementation may look sophisticated, it's conceptually simple
+ * and LLMs can explain how it works. The Skiplist data structure is well
+ * explained in [this Stack Overflow
+ * answer](https://stackoverflow.com/questions/61944198/what-is-a-zip-tree-and-how-does-it-work).
+ * The logic resembles [Negentropy's C++
+ * storage](https://github.com/hoytech/negentropy), except we use a Skiplist to
+ * leverage SQLite indexes, which makes the code simpler.
+ *
+ * Note: A paid review by the SQLite team is planned, as they use the same
+ * algorithm for their rsync tool.
+ *
+ * The ideal storage for a Relay should use an architecture like
  * [strfry](https://github.com/hoytech/strfry) (a KV storage), but with Skiplist
  * to ensure that insertion order doesn't matter (local-first apps can often
  * write in the past.)
