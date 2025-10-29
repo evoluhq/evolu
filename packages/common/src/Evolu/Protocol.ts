@@ -104,9 +104,9 @@
  * fit within the limit, the protocol automatically continues synchronization in
  * subsequent rounds using range-based reconciliation.
  *
- * Individual database mutations are limited to {@link maxMutationSize} (640KB),
- * which is smaller than the protocol message limit to ensure efficient sync
- * with {@link maxProtocolMessageRangesSize}.
+ * Individual database mutations are limited to `maxMutationSize` (640KB), which
+ * is smaller than the protocol message limit to ensure efficient sync with
+ * {@link maxProtocolMessageRangesSize}.
  *
  * ### Why Binary?
  *
