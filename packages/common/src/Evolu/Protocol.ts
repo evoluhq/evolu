@@ -4,15 +4,22 @@
  *
  * Evolu Protocol is a local-first, end-to-end encrypted binary synchronization
  * protocol optimized for minimal size and maximum speed. It enables data sync
- * between a client and a relay, clients in a peer-to-peer (P2P) setup, or
- * relays with each other.
+ * between a client and a relay. In the future, direct peer-to-peer (P2P) sync
+ * between clients will be possible without a relay.
+ *
+ * Relays don't need to sync with each other—clients using those relays will
+ * sync them eventually. If a relay is offline (e.g., for maintenance), it will
+ * sync automatically later via client sync logic. For relay backup using
+ * SQLite, see https://sqlite.org/rsync.html (uses a similar algorithm to Evolu
+ * RBSR).
  *
  * Evolu Protocol is designed for SQLite but can be extended to any database. It
  * implements [Range-Based Set
  * Reconciliation](https://arxiv.org/abs/2212.13567). To learn how RBSR works,
  * check [Negentropy](https://logperiodic.com/rbsr.html). Evolu Protocol is
  * similar to Negentropy but uses different encoding and also provides data
- * transfer and ownership.
+ * transfer, ownership, real-time broadcasting, request-response semantics, and
+ * error handling.
  *
  * ### Message Structure
  *
@@ -41,8 +48,8 @@
  *
  * The initiator sends a hasWriteKey flag and optionally a WriteKey. The
  * WriteKey is required when sending messages as a secure token proving the
- * initiator can write changes. It's ok to not send any key if the initiator is
- * only syncing (read-only) and not sending messages. The non-initiator
+ * initiator can write changes. It's ok to not send a WriteKey if the initiator
+ * is only syncing (read-only) and not sending messages. The non-initiator
  * validates the WriteKey immediately after parsing the initiator header, before
  * processing any messages or ranges.
  *
@@ -60,7 +67,7 @@
  *
  * The **non-initiator always responds** to provide sync completion feedback,
  * even with empty messages containing only the header and no error. This allows
- * the initiator to reliably detect when synchronization is complete.
+ * the initiator to detect when synchronization is complete.
  *
  * Both **Messages** and **Ranges** are optional, allowing each side to send,
  * sync, or only subscribe data as needed.
@@ -85,15 +92,21 @@
  * - {@link ProtocolUnsupportedVersionError}: Protocol version mismatch.
  * - {@link ProtocolInvalidDataError}: The message is malformed or corrupted.
  *
- * All protocol errors except `ProtocolInvalidDataError` include the `ownerId`
+ * All protocol errors except `ProtocolInvalidDataError` include the `OwnerId`
  * to allow clients to associate errors with the correct owner.
  *
  * ### Message Size Limit
  *
  * The protocol enforces a strict maximum size for all messages, defined by
  * {@link maxProtocolMessageSize}. This ensures every {@link ProtocolMessage} is
- * less than or equal to this limit, eliminating the need for applications to
- * fragment and reconstruct messages during transmission.
+ * less than or equal to this limit, enabling stateless transports, simplified
+ * relay implementation, and predictable memory usage. When all messages don't
+ * fit within the limit, the protocol automatically continues synchronization in
+ * subsequent rounds using range-based reconciliation.
+ *
+ * Individual database mutations are limited to {@link maxMutationSize} (640KB),
+ * which is smaller than the protocol message limit to ensure efficient sync
+ * with {@link maxProtocolMessageRangesSize}.
  *
  * ### Why Binary?
  *
@@ -101,7 +114,7 @@
  *
  * - Encrypted data doesn’t compress well, unlike plain JSON.
  * - Message size must be controlled during creation.
- * - Sequential byte reading is faster than parsing and can avoid conversions.
+ * - Sequential byte reading is faster than parsing and avoids conversions.
  *
  * It uses structure-aware encoding, significantly outperforming generic binary
  * serialization formats with the following optimizations:
@@ -866,8 +879,7 @@ export const applyProtocolMessageAsClient =
       // TODO: Allow to sync SharedReadonlyOwner
       // Without local changes, writeKey will not be required.
       // With local changes, writeKey will be required and if not provided,
-      // the sync should stop.
-      // getWriteKey should be moved to sync fn.
+      // the sync will stop.
       const writeKey = options.getWriteKey?.(ownerId);
       if (writeKey == null) {
         return ok({ type: "no-response" });

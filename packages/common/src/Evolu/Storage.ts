@@ -32,11 +32,14 @@ import { orderTimestampBytes, Timestamp, TimestampBytes } from "./Timestamp.js";
  * Implementations must handle their own errors; return values only indicate
  * overall success or failure.
  *
- * The Storage API is designed to be synchronous because SQLite's synchronous
- * API is the recommended and most performant way to use SQLite. Asynchronous
- * SQLite wrappers add unnecessary overhead and complexity. Only
- * {@link Storage#writeMessages} is async because of SQLite WASM requirements
- * (see its documentation for details).
+ * The Storage API is synchronous because SQLite's synchronous API is the
+ * fastest way to use SQLite. Synchronous bindings (like better-sqlite3) call
+ * SQLite's C API directly with no context switching between the event loop and
+ * native code, and no promise microtasks or await overhead.
+ *
+ * The only exception is {@link Storage#writeMessages}, which is async to allow
+ * for async validation logic before writing to storage. The write operation
+ * itself remains synchronous.
  */
 export interface Storage {
   readonly getSize: (ownerId: OwnerIdBytes) => NonNegativeInt | null;
@@ -74,7 +77,11 @@ export interface Storage {
     callback: (timestamp: TimestampBytes, index: NonNegativeInt) => boolean,
   ) => void;
 
-  /** Validates the {@link OwnerWriteKey} for the given {@link Owner}. */
+  /**
+   * Validates the {@link OwnerWriteKey} for the given {@link Owner}.
+   *
+   * Returns `true` if the write key is valid, `false` otherwise.
+   */
   readonly validateWriteKey: (
     ownerId: OwnerIdBytes,
     writeKey: OwnerWriteKey,
@@ -89,15 +96,10 @@ export interface Storage {
   /**
    * Write encrypted {@link CrdtMessage}s to storage.
    *
-   * Returns `Promise<boolean>` because SQLite WASM must run in a web worker
-   * while message validation must occur on the main thread. This requires async
-   * communication between worker and main thread.
+   * Must use a mutex (per ownerId on Relay) to ensure sequential processing and
+   * proper protocol logic handling during sync operations.
    *
-   * The async nature means other operations can interleave between
-   * `writeMessages` and subsequent sync operations during protocol message
-   * application. This is safe because storage is append-only and the only
-   * possible deletion is whole owner deletion. In that case, the sync operation
-   * must fail anyway (to prevent current and future sync operations).
+   * Returns `true` on success, `false` on failure.
    */
   readonly writeMessages: (
     ownerId: OwnerIdBytes,
@@ -110,7 +112,11 @@ export interface Storage {
     timestamp: TimestampBytes,
   ) => EncryptedDbChange | null;
 
-  /** Delete all data for the given {@link Owner}. */
+  /**
+   * Delete all data for the given {@link Owner}.
+   *
+   * Returns `true` on success, `false` on failure.
+   */
   readonly deleteOwner: (ownerId: OwnerIdBytes) => boolean;
 }
 
@@ -224,6 +230,13 @@ export type DbChange = typeof DbChange.Type;
  * synchronized later.
  */
 export interface SqliteStorageBase {
+  /**
+   * Inserts a timestamp for an owner into the skiplist-based storage.
+   *
+   * Must be idempotent - inserting the same timestamp multiple times has no
+   * effect after the first insertion. This is crucial for sync reliability as
+   * messages may be received and processed multiple times.
+   */
   readonly insertTimestamp: (
     ownerId: OwnerIdBytes,
     timestamp: TimestampBytes,
