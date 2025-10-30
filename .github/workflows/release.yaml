@@ -8,7 +8,8 @@ on:
 
 permissions:
   id-token: write # Required for OIDC trusted publishing
-  contents: write # Required for creating releases and PRs
+  contents: write # Required for creating releases
+  pull-requests: write # Required for changesets to update PRs
 
 jobs:
   release:
