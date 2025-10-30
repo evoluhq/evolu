@@ -12,7 +12,7 @@
     "lint": "eslint",
     "lint-monorepo": "pnpm dlx sherif@latest",
     "circular": "pnpm --filter '@evolu/*' --filter '!@evolu/tsconfig' exec dpdm --no-warning --no-tree -T --exit-code circular:1 'src/**/*.ts'",
-    "verify": "pnpm format && pnpm build && pnpm examples:build && pnpm lint && pnpm lint-monorepo && pnpm circular && pnpm typedoc && pnpm test",
+    "verify": "pnpm build && pnpm examples:build && pnpm lint && pnpm lint-monorepo && pnpm circular && pnpm typedoc && pnpm test",
     "clean": "turbo clean && shx rm -rf node_modules pnpm-lock.yaml .turbo .eslintcache out",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,md,mdx}\"",
     "version": "changeset version",
