@@ -150,13 +150,14 @@ export const durationToNonNegativeInt = (
   } as const;
 
   let total = 0;
-  const matches = duration.match(/(\d+?)(ms|s|m|h|d)/g);
+  // Match ms first to avoid ambiguity, then single-char units
+  const matches = duration.match(/(\d+)(ms|[smhd])/g);
 
   if (!matches) {
     return 0 as NonNegativeInt;
   }
 
-  const unitRegex = /(\d+?)(ms|s|m|h|d)/;
+  const unitRegex = /(\d+)(ms|[smhd])/;
   for (const match of matches) {
     const result = unitRegex.exec(match);
     if (result) {

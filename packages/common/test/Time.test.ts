@@ -106,45 +106,127 @@ describe("Time", () => {
   });
 
   describe("durationToNonNegativeInt", () => {
-    test("converts duration strings correctly", () => {
-      // Milliseconds
+    test("converts all millisecond formats correctly", () => {
       expect(durationToNonNegativeInt("0ms")).toBe(0);
+      expect(durationToNonNegativeInt("1ms")).toBe(1);
+      expect(durationToNonNegativeInt("9ms")).toBe(9);
+      expect(durationToNonNegativeInt("10ms")).toBe(10);
+      expect(durationToNonNegativeInt("99ms")).toBe(99);
+      expect(durationToNonNegativeInt("100ms")).toBe(100);
       expect(durationToNonNegativeInt("500ms")).toBe(500);
+      expect(durationToNonNegativeInt("999ms")).toBe(999);
+    });
 
-      // Single digit seconds
-      expect(durationToNonNegativeInt("9s")).toBe(9 * 1000); // 9 seconds
+    test("converts all second formats correctly", () => {
+      // Single digit seconds (1-9)
+      expect(durationToNonNegativeInt("1s")).toBe(1000);
+      expect(durationToNonNegativeInt("5s")).toBe(5000);
+      expect(durationToNonNegativeInt("9s")).toBe(9000);
 
-      // Two digit seconds
-      expect(durationToNonNegativeInt("45s")).toBe(45 * 1000); // 45 seconds
+      // Two digit seconds (10-59)
+      expect(durationToNonNegativeInt("10s")).toBe(10000);
+      expect(durationToNonNegativeInt("30s")).toBe(30000);
+      expect(durationToNonNegativeInt("45s")).toBe(45000);
+      expect(durationToNonNegativeInt("59s")).toBe(59000);
+    });
 
-      // Single digit minutes
-      expect(durationToNonNegativeInt("5m")).toBe(5 * 60 * 1000); // 5 minutes
+    test("converts all minute formats correctly", () => {
+      // Single digit minutes (1-9)
+      expect(durationToNonNegativeInt("1m")).toBe(60000);
+      expect(durationToNonNegativeInt("5m")).toBe(5 * 60000);
+      expect(durationToNonNegativeInt("9m")).toBe(9 * 60000);
 
-      // Two digit minutes
-      expect(durationToNonNegativeInt("30m")).toBe(30 * 60 * 1000); // 30 minutes
+      // Two digit minutes (10-59)
+      expect(durationToNonNegativeInt("10m")).toBe(10 * 60000);
+      expect(durationToNonNegativeInt("30m")).toBe(30 * 60000);
+      expect(durationToNonNegativeInt("59m")).toBe(59 * 60000);
+    });
 
-      // Hours
-      expect(durationToNonNegativeInt("2h")).toBe(2 * 60 * 60 * 1000); // 2 hours
-      expect(durationToNonNegativeInt("23h")).toBe(23 * 60 * 60 * 1000); // 23 hours
+    test("converts all hour formats correctly", () => {
+      expect(durationToNonNegativeInt("1h")).toBe(3600000);
+      expect(durationToNonNegativeInt("9h")).toBe(9 * 3600000);
+      expect(durationToNonNegativeInt("10h")).toBe(10 * 3600000);
+      expect(durationToNonNegativeInt("12h")).toBe(12 * 3600000);
+      expect(durationToNonNegativeInt("23h")).toBe(23 * 3600000);
+    });
 
-      // Days
-      expect(durationToNonNegativeInt("1d")).toBe(1 * 24 * 60 * 60 * 1000); // 1 day
-      expect(durationToNonNegativeInt("7d")).toBe(7 * 24 * 60 * 60 * 1000); // 7 days
+    test("converts all day formats correctly", () => {
+      expect(durationToNonNegativeInt("1d")).toBe(86400000);
+      expect(durationToNonNegativeInt("7d")).toBe(7 * 86400000);
+      expect(durationToNonNegativeInt("10d")).toBe(10 * 86400000);
+      expect(durationToNonNegativeInt("30d")).toBe(30 * 86400000);
+      expect(durationToNonNegativeInt("99d")).toBe(99 * 86400000);
+    });
 
-      // Combinations (sorted by time unit)
-      expect(durationToNonNegativeInt("1s 250ms")).toBe(1 * 1000 + 250); // 1 second 250 milliseconds
-      expect(durationToNonNegativeInt("30m 15s")).toBe(
-        30 * 60 * 1000 + 15 * 1000,
-      ); // 30 minutes 15 seconds
-      expect(durationToNonNegativeInt("2h 45m")).toBe(
-        2 * 60 * 60 * 1000 + 45 * 60 * 1000,
-      ); // 2 hours 45 minutes
+    test("converts all combination formats correctly", () => {
+      // seconds + milliseconds
+      expect(durationToNonNegativeInt("1s 1ms")).toBe(1001);
+      expect(durationToNonNegativeInt("1s 99ms")).toBe(1099);
+      expect(durationToNonNegativeInt("1s 250ms")).toBe(1250);
+      expect(durationToNonNegativeInt("59s 999ms")).toBe(59999);
+
+      // minutes + seconds
+      expect(durationToNonNegativeInt("1m 1s")).toBe(61000);
+      expect(durationToNonNegativeInt("30m 15s")).toBe(30 * 60000 + 15000);
+      expect(durationToNonNegativeInt("59m 59s")).toBe(59 * 60000 + 59000);
+
+      // hours + minutes
+      expect(durationToNonNegativeInt("1h 1m")).toBe(3600000 + 60000);
+      expect(durationToNonNegativeInt("2h 45m")).toBe(2 * 3600000 + 45 * 60000);
+      expect(durationToNonNegativeInt("23h 59m")).toBe(
+        23 * 3600000 + 59 * 60000,
+      );
+
+      // days + hours
+      expect(durationToNonNegativeInt("1d 1h")).toBe(86400000 + 3600000);
       expect(durationToNonNegativeInt("7d 12h")).toBe(
-        7 * 24 * 60 * 60 * 1000 + 12 * 60 * 60 * 1000,
-      ); // 7 days 12 hours
+        7 * 86400000 + 12 * 3600000,
+      );
+      expect(durationToNonNegativeInt("99d 23h")).toBe(
+        99 * 86400000 + 23 * 3600000,
+      );
+    });
 
+    test("handles edge cases", () => {
       // Already milliseconds (NonNegativeInt)
+      expect(durationToNonNegativeInt(0 as NonNegativeInt)).toBe(0);
       expect(durationToNonNegativeInt(5000 as NonNegativeInt)).toBe(5000);
+
+      // Maximum values for each unit
+      expect(durationToNonNegativeInt("999ms")).toBe(999);
+      expect(durationToNonNegativeInt("59s")).toBe(59000);
+      expect(durationToNonNegativeInt("59m")).toBe(59 * 60000);
+      expect(durationToNonNegativeInt("23h")).toBe(23 * 3600000);
+      expect(durationToNonNegativeInt("99d")).toBe(99 * 86400000);
+
+      // Maximum combination values
+      expect(durationToNonNegativeInt("59s 999ms")).toBe(59999);
+      expect(durationToNonNegativeInt("59m 59s")).toBe(59 * 60000 + 59000);
+      expect(durationToNonNegativeInt("23h 59m")).toBe(
+        23 * 3600000 + 59 * 60000,
+      );
+      expect(durationToNonNegativeInt("99d 23h")).toBe(
+        99 * 86400000 + 23 * 3600000,
+      );
+    });
+
+    test("handles malformed strings without performance issues", () => {
+      // Test with many digits that don't form valid duration
+      // This tests the regex ReDoS vulnerability fix
+      const manyNines = "9".repeat(1000);
+      expect(durationToNonNegativeInt(manyNines as DurationString)).toBe(0);
+
+      const manyNinesWithInvalidUnit = "9".repeat(1000) + "x";
+      expect(
+        durationToNonNegativeInt(manyNinesWithInvalidUnit as DurationString),
+      ).toBe(0);
+
+      // Valid duration at the end should still work
+      const manyNinesWithValidUnit = "9".repeat(100) + "ms";
+      const result = durationToNonNegativeInt(
+        manyNinesWithValidUnit as DurationString,
+      );
+      expect(result).toBeGreaterThan(0);
     });
   });
 });
