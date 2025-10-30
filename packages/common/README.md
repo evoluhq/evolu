@@ -20,7 +20,7 @@ To chat with other community members, you can join the [Evolu Discord](https://d
 
 We provide a free relay `free.evoluhq.com` for testing and personal usage.
 
-The Evolu Relay source along with the Docker files can be found in the [/packages/relay](/packages/relay) directory.
+The Evolu Relay source along with the Docker files can be in the [/apps/relay](/apps/relay) directory.
 
 Alternatively, a pre-built image `evoluhq/relay:latest` is hosted on [Docker Hub](https://hub.docker.com/r/evoluhq/relay).
 
