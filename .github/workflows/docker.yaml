@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - '@evolu/relay@*'
   workflow_dispatch: # Allow manual triggering
 
 env:
@@ -48,6 +50,7 @@ jobs:
             type=ref,event=pr
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
+            type=match,pattern=@evolu/relay@(.*),group=1
 
       - name: Build and push Docker image
         id: push
