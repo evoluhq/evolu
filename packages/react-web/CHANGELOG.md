@@ -1,5 +1,19 @@
 # @evolu/react-web
 
+## 1.0.1-preview.4
+
+### Patch Changes
+
+- 5c05d2e: Internal improvements and dependency updates
+- Updated dependencies [eec5d8e]
+- Updated dependencies [eec5d8e]
+- Updated dependencies [eec5d8e]
+- Updated dependencies [eec5d8e]
+- Updated dependencies [5c05d2e]
+- Updated dependencies [eec5d8e]
+  - @evolu/common@6.0.1-preview.20
+  - @evolu/web@1.0.1-preview.6
+
 ## 1.0.1-preview.3
 
 ### Patch Changes
