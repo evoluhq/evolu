@@ -11,7 +11,3 @@ Why:
 
 - Preserve structured business errors for machine parsing via `error.cause`.
 - Avoid brittle stringified error messages and preserve a proper stack trace.
-
-Migration:
-
-- If you matched error messages, switch to inspecting `error.cause`.
