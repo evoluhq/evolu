@@ -20,6 +20,7 @@ import type {
 } from "@evolu/common";
 import type { UseStore } from "idb-keyval";
 
+/** @experimental */
 export const createWebAuthnStore = (
   deps: RandomBytesDep & SymmetricCryptoDep,
 ): SecureStorage => ({

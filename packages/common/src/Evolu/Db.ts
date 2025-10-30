@@ -172,9 +172,9 @@ export interface DbConfig extends ConsoleConfig, TimestampConfig {
   readonly inMemory?: boolean;
 
   /**
-   * **⚠️ This API is not finished yet and is subject to change.**
-   *
    * Encryption key for the SQLite database.
+   *
+   * @experimental
    */
   readonly encryptionKey?: EncryptionKey;
 }

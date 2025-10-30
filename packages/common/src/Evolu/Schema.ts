@@ -261,8 +261,6 @@ export interface MutationOptions {
   readonly onComplete?: () => void;
 
   /**
-   * **⚠️ This API is not finished yet and is subject to change.**
-   *
    * Specifies the owner ID for this mutation. If omitted, the default
    * {@link AppOwner} is used.
    *
@@ -292,6 +290,8 @@ export interface MutationOptions {
    *   { ownerId: sharedOwner.id },
    * );
    * ```
+   *
+   * @experimental
    */
   readonly ownerId?: OwnerId;
 

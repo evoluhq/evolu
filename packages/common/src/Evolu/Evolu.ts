@@ -477,8 +477,6 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
   readonly exportDatabase: () => Promise<Uint8Array<ArrayBuffer>>;
 
   /**
-   * **⚠️ This API is not finished yet and is subject to change.**
-   *
    * Use an owner. Using an owner means syncing it and subscribing to
    * broadcasted changes. Returns a function to stop using the owner.
    *
@@ -499,6 +497,8 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
    * const unuses = owners.map((owner) => evolu.useOwner(owner));
    * // Later: unuses.forEach(unuse => unuse());
    * ```
+   *
+   * @experimental
    */
   readonly useOwner: (owner: SyncOwner) => () => void;
 }

@@ -10,6 +10,7 @@ import {
   OwnerWriteKey,
 } from "./Owner.js";
 
+/** @experimental */
 export interface LocalAuth {
   /** Logs in with the given owner ID, or loads the target owner if not provided. */
   login: (
@@ -39,7 +40,11 @@ export interface LocalAuthDep {
   readonly localAuth: LocalAuth;
 }
 
-/** Secure storage interface that must be implemented by each platform. */
+/**
+ * - **⚠️
+ *
+ * Secure storage interface that must be implemented by each platform.
+ */
 export interface SecureStorage {
   setItem: (
     key: string,
