@@ -46,7 +46,7 @@ export function ReactExamples(): React.ReactElement {
                 {example.description}
               </p>
               <p className="mt-4 flex items-center gap-3">
-                {example.demo && (
+                {/* {example.demo && (
                   <Button
                     href={example.demo}
                     target="_self"
@@ -54,7 +54,7 @@ export function ReactExamples(): React.ReactElement {
                   >
                     Demo
                   </Button>
-                )}
+                )} */}
                 {example.repo && (
                   <Button href={example.repo} target="_blank" variant="text">
                     Go to repository

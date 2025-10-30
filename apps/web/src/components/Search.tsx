@@ -255,7 +255,7 @@ function SearchResults({
         <NoResultsIcon className="mx-auto h-5 w-5 stroke-zinc-900 dark:stroke-zinc-600" />
         <p className="mt-2 text-xs text-zinc-700 dark:text-zinc-400">
           Nothing found for{" "}
-          <strong className="font-semibold break-words text-zinc-900 dark:text-white">
+          <strong className="font-semibold wrap-break-word text-zinc-900 dark:text-white">
             &lsquo;{query}&rsquo;
           </strong>
           . Please try again.
@@ -395,7 +395,7 @@ function SearchDialog({
             <form
               ref={formRef}
               {...autocomplete.getFormProps({
-                inputElement: inputRef.current,
+                inputElement: null,
               })}
             >
               <SearchInput
@@ -455,15 +455,11 @@ function useSearchProps() {
 }
 
 export function Search(): React.ReactElement {
-  const [modifierKey, setModifierKey] = useState<string>();
+  const [modifierKey] = useState<string>(() =>
+    // eslint-disable-next-line @typescript-eslint/no-deprecated
+    /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform) ? "⌘" : "Ctrl ",
+  );
   const { buttonProps, dialogProps } = useSearchProps();
-
-  useEffect(() => {
-    setModifierKey(
-      // eslint-disable-next-line @typescript-eslint/no-deprecated
-      /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform) ? "⌘" : "Ctrl ",
-    );
-  }, []);
 
   return (
     <div className="hidden lg:block lg:max-w-xs lg:flex-auto">

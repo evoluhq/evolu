@@ -1,53 +1,53 @@
 import {
   createConsole,
-  createEnglishMnemonic,
-  createNanoIdLib,
+  createLocalAuth,
   createRandom,
   createRandomBytes,
   createTime,
+  createWebSocket,
 } from "@evolu/common";
 
 import {
-  CreateAppState,
   CreateDbWorker,
   createDbWorkerForPlatform,
-  createWebSocketSync,
   EvoluDeps,
+  ReloadApp,
 } from "@evolu/common/evolu";
 
 import * as Expo from "expo";
-
+import { SensitiveInfo } from "react-native-sensitive-info";
 import { createExpoSqliteDriver } from "./providers/ExpoSqliteDriver.js";
 import { polyfillHermes } from "./utils/Hermes.js";
 
 polyfillHermes();
 
-export const createAppState: CreateAppState = () => ({
-  reset: () => {
-    void Expo.reloadAppAsync();
-  },
-});
-
-const nanoIdLib = createNanoIdLib();
 const console = createConsole();
 const time = createTime();
+const randomBytes = createRandomBytes();
+const localAuth = createLocalAuth({
+  randomBytes: randomBytes,
+  secureStorage: SensitiveInfo,
+});
 
 const createDbWorker: CreateDbWorker = () =>
   createDbWorkerForPlatform({
-    createSqliteDriver: createExpoSqliteDriver,
-    createSync: createWebSocketSync,
     console,
-    time,
+    createSqliteDriver: createExpoSqliteDriver,
+    createWebSocket,
     random: createRandom(),
-    nanoIdLib,
-    createMnemonic: createEnglishMnemonic,
-    createRandomBytes,
+    randomBytes,
+    time,
   });
 
+const reloadApp: ReloadApp = () => {
+  void Expo.reloadAppAsync();
+};
+
 export const evoluReactNativeDeps: EvoluDeps = {
-  time,
-  nanoIdLib,
   console,
-  createAppState,
   createDbWorker,
+  randomBytes,
+  localAuth,
+  reloadApp,
+  time,
 };

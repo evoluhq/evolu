@@ -65,7 +65,7 @@ export type { NotNull } from "kysely";
  * from "person"
  * ```
  */
-// SQL formatting breaks generated SQL for some reason.
+// Kysely expects strict AST.
 // prettier-ignore
 export function jsonArrayFrom<O>(
     expr: SelectQueryBuilderExpression<O>,
@@ -122,7 +122,7 @@ export function jsonArrayFrom<O>(
  * from "person";
  * ```
  */
-// SQL formatting breaks generated SQL for some reason.
+// Kysely expects strict AST.
 // prettier-ignore
 export function jsonObjectFrom<O>(
     expr: SelectQueryBuilderExpression<O>,
@@ -172,7 +172,7 @@ export function jsonObjectFrom<O>(
  * from "person"
  * ```
  */
-// SQL formatting breaks generated SQL for some reason.
+// Kysely expects strict AST.
 // prettier-ignore
 export function jsonBuildObject<O extends Record<string, Expression<unknown>>>(
     obj: O,

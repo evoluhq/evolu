@@ -1,19 +1,22 @@
 import { assert } from "../Assert.js";
+import { Brand } from "../Brand.js";
+import { bytesToHex } from "../Buffer.js";
+import { RandomBytesDep } from "../Crypto.js";
 import { createEqObject, eqNumber, eqString } from "../Eq.js";
-import { NanoIdLibDep } from "../NanoId.js";
 import { increment } from "../Number.js";
 import { Order, orderUint8Array } from "../Order.js";
-import { err, getOrThrow, ok, Result } from "../Result.js";
+import { err, ok, Result } from "../Result.js";
 import { TimeDep } from "../Time.js";
 import {
   brand,
+  InferType,
   lessThanOrEqualTo,
   NonNegativeInt,
   object,
   regex,
   String,
+  Uint8Array,
 } from "../Type.js";
-import { Brand } from "../Brand.js";
 
 export interface TimestampConfig {
   /**
@@ -31,7 +34,6 @@ export interface TimestampConfigDep {
 export type TimestampError =
   | TimestampDriftError
   | TimestampCounterOverflowError
-  | TimestampDuplicateNodeError
   | TimestampTimeOutOfRangeError;
 
 export interface TimestampDriftError {
@@ -42,11 +44,6 @@ export interface TimestampDriftError {
 
 export interface TimestampCounterOverflowError {
   readonly type: "TimestampCounterOverflowError";
-}
-
-export interface TimestampDuplicateNodeError {
-  readonly type: "TimestampDuplicateNodeError";
-  readonly nodeId: NodeId;
 }
 
 export interface TimestampTimeOutOfRangeError {
@@ -96,14 +93,17 @@ export const maxCounter = 65535 as Counter;
  *
  * https://lemire.me/blog/2019/12/12/are-64-bit-random-identifiers-free-from-collision
  *
- * What will happen if a different device generates the same NodeId?
+ * What happens if different devices generate the same NodeId?
  *
- * If the device belongs to a different owner, nothing will happen because
- * different owner have different owner IDs. Timestamps are partitioned by
- * OwnerId.
+ * If devices with the same NodeId use different owners, no issues occur.
  *
- * If the device belongs to the same owner, the other device will return
- * {@link TimestampDuplicateNodeError}.
+ * If devices with the same NodeId use the same owner, problems only arise when
+ * they generate CRDT messages with identical timestamps (same millis, counter,
+ * and NodeId). In this case, the protocol sync algorithm treats them as the
+ * same message: the first will be synced with the relay, while the affected
+ * message will not be delivered. The affected devices will see different data
+ * yet they will think they are synced. This is extremely rare and can be
+ * resolved by resetting one device to generate a new NodeId.
  */
 export const NodeId = regex("NodeId", /^[a-f0-9]{16}$/)(String);
 export type NodeId = typeof NodeId.Type;
@@ -123,7 +123,7 @@ export const Timestamp = object({
   counter: Counter,
   nodeId: NodeId,
 });
-export type Timestamp = typeof Timestamp.Type;
+export interface Timestamp extends InferType<typeof Timestamp> {}
 
 /** Equality function for comparing {@link Timestamp}. */
 export const eqTimestamp = createEqObject<Timestamp>({
@@ -138,14 +138,12 @@ export const createTimestamp = ({
   nodeId = minNodeId,
 }: Partial<Timestamp> = {}): Timestamp => ({ millis, counter, nodeId });
 
-const hexAlphabet = "0123456789abcdef";
-
-export const createInitialTimestamp = (deps: NanoIdLibDep): Timestamp => {
-  const nodeId = deps.nanoIdLib.customAlphabet(hexAlphabet, 16)() as NodeId;
+export const createInitialTimestamp = (deps: RandomBytesDep): Timestamp => {
+  const nodeId = bytesToHex(deps.randomBytes.create(8)) as NodeId;
   return createTimestamp({ nodeId });
 };
 
-/** TimestampString is a sortable string version of {@link Timestamp}. */
+/** Sortable string representation of {@link Timestamp}. */
 export type TimestampString = string & Brand<"TimestampString">;
 
 export const timestampToTimestampString = (t: Timestamp): TimestampString =>
@@ -230,12 +228,8 @@ export const receiveTimestamp =
     Timestamp,
     | TimestampDriftError
     | TimestampCounterOverflowError
-    | TimestampDuplicateNodeError
     | TimestampTimeOutOfRangeError
   > => {
-    if (local.nodeId === remote.nodeId) {
-      return err({ type: "TimestampDuplicateNodeError", nodeId: local.nodeId });
-    }
     const millis = getNextMillis(deps)([local.millis, remote.millis]);
     if (!millis.ok) return millis;
 
@@ -257,18 +251,19 @@ export const receiveTimestamp =
     });
   };
 
-/** BinaryTimestamp is a binary and sortable version of {@link Timestamp} for DB. */
-export type BinaryTimestamp = Uint8Array & Brand<"BinaryTimestamp">;
+/** Sortable bytes representation of {@link Timestamp}. */
+export const TimestampBytes = brand("TimestampBytes", Uint8Array);
+export type TimestampBytes = typeof TimestampBytes.Type;
 
-export const binaryTimestampLength = getOrThrow(NonNegativeInt.from(16));
+export const timestampBytesLength = NonNegativeInt.orThrow(16);
 
-export const timestampToBinaryTimestamp = (
+export const timestampToTimestampBytes = (
   timestamp: Timestamp,
-): BinaryTimestamp => {
+): TimestampBytes => {
   const { millis, counter, nodeId } = timestamp;
 
   // 6 bytes for millis, 2 bytes for counter, 8 bytes for nodeId.
-  const value = new Uint8Array(16);
+  const value = new globalThis.Uint8Array(16);
 
   // Encode `millis` into the first 6 bytes.
   const millisBigInt = BigInt(millis);
@@ -289,11 +284,11 @@ export const timestampToBinaryTimestamp = (
     value[8 + i] = byte;
   }
 
-  return value as BinaryTimestamp;
+  return value as TimestampBytes;
 };
 
-export const binaryTimestampToTimestamp = (
-  timestamp: BinaryTimestamp,
+export const timestampBytesToTimestamp = (
+  timestamp: TimestampBytes,
 ): Timestamp => {
   // Decode `millis` from the first 6 bytes.
   const millis =
@@ -316,4 +311,4 @@ export const binaryTimestampToTimestamp = (
   return { millis: Number(millis), counter, nodeId } as Timestamp;
 };
 
-export const orderBinaryTimestamp: Order<BinaryTimestamp> = orderUint8Array;
+export const orderTimestampBytes: Order<TimestampBytes> = orderUint8Array;

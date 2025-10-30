@@ -3,8 +3,8 @@
  * compiler in the app itself.
  */
 
-import { evoluWebDeps } from "@evolu/web";
 import type {
+  AppOwner,
   Evolu,
   EvoluDeps,
   EvoluSchema,
@@ -13,6 +13,7 @@ import type {
   QueryRows,
   Row,
 } from "@evolu/common/evolu";
+import { evoluWebDeps } from "@evolu/web";
 
 // just in case we need to add some svelte specific deps
 export const evoluSvelteDeps: EvoluDeps = {
@@ -99,20 +100,54 @@ export function queryState<
       // => this is also for HMR
       void evolu.loadQuery(query).then(updateState);
 
-      const unsubEvoluSub = evolu.subscribeQuery(query)(() => {
+      return evolu.subscribeQuery(query)(() => {
         const rows = evolu.getQueryRows(query);
 
         updateState(rows);
       });
-
-      return () => {
-        unsubEvoluSub();
-      };
     });
 
     return {
       // Svelte reactivity: it needs to be a getter
       get rows() {
+        return writableState;
+      },
+    };
+  }
+}
+
+/**
+ * Get the {@link AppOwner} promise that resolves when available.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { appOwnerState } from "@evolu/svelte";
+ *
+ * const owner = appOwnerState(evolu);
+ *
+ * // use owner.current in your Svelte templates
+ * // it will be undefined initially and set once the promise resolves
+ * ```
+ */
+export function appOwnerState<Schema extends EvoluSchema>(
+  evolu: Evolu<Schema>,
+): {
+  readonly current: AppOwner | undefined;
+} {
+  {
+    // writing to this variable - svelte's compiler will track it
+    let writableState = $state<AppOwner | undefined>(undefined);
+
+    $effect(() => {
+      void evolu.appOwner.then((appOwner) => {
+        writableState = appOwner;
+      });
+    });
+
+    return {
+      // Svelte reactivity: it needs to be a getter
+      get current() {
         return writableState;
       },
     };

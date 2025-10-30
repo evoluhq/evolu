@@ -30,7 +30,7 @@ export const createNodeJsRelay =
   async (config: NodeJsRelayConfig): Promise<Relay> => {
     const {
       port = 443,
-      name = getOrThrow(SimpleName.from("evolu-relay")),
+      name = SimpleName.orThrow("evolu-relay"),
       enableLogging = false,
     } = config;
 
@@ -54,7 +54,7 @@ export const createNodeJsRelay =
     const storage = getOrThrow(
       createRelayStorage(relaySqliteStorageDeps)({
         onStorageError: (error) => {
-          deps.console.error("[relay]", "[storage]", error);
+          deps.console.error("[relay]", "storage", error);
         },
       }),
     );
@@ -67,42 +67,82 @@ export const createNodeJsRelay =
     const ownerSocketsMap = createManyToManyMap<OwnerId, WebSocket>();
 
     wss.on("connection", (ws) => {
-      ws.on("error", deps.console.error);
+      deps.console.log("[relay]", "connection", {
+        clientCount: wss.clients.size,
+      });
+
+      ws.on("error", (error) => {
+        deps.console.warn("[relay]", "error", { error });
+        deps.console.error(error);
+      });
 
       const options: ApplyProtocolMessageAsRelayOptions = {
         subscribe: (ownerId) => {
           ownerSocketsMap.add(ownerId, ws);
+          deps.console.log("[relay]", "subscribe", {
+            ownerId,
+            subscriberCount: ownerSocketsMap.getValues(ownerId)?.size ?? 0,
+          });
         },
+
+        unsubscribe: (ownerId) => {
+          ownerSocketsMap.remove(ownerId, ws);
+          deps.console.log("[relay]", "unsubscribe", {
+            ownerId,
+            subscriberCount: ownerSocketsMap.getValues(ownerId)?.size ?? 0,
+          });
+        },
+
         broadcast: (ownerId, message) => {
-          const sockets = ownerSocketsMap.getValues(ownerId)!;
+          const sockets = ownerSocketsMap.getValues(ownerId);
+          if (!sockets) return;
+
+          let broadcastCount = 0;
           for (const socket of sockets) {
             if (socket !== ws && socket.readyState === WebSocket.OPEN) {
               socket.send(message, { binary: true });
+              broadcastCount++;
             }
           }
+
+          deps.console.log("[relay]", "broadcast", {
+            ownerId,
+            broadcastCount,
+            totalSubscribers: sockets.size,
+          });
         },
       };
 
       ws.on("message", (message) => {
         if (!Uint8Array.is(message)) return;
 
-        const response = applyProtocolMessageAsRelay({ storage })(
-          message,
-          options,
-        );
+        deps.console.log("[relay]", "on message", {
+          messageSize: message.length,
+        });
 
-        if (!response.ok) {
-          deps.console.warn(response.error.type);
-          return;
-        }
+        applyProtocolMessageAsRelay({ storage })(message, options)
+          .then((response) => {
+            if (!response.ok) {
+              deps.console.error("[relay]", "protocol", response.error);
+              deps.console.error(response.error);
+              return;
+            }
 
-        if (response.value) {
-          ws.send(response.value, { binary: true });
-        }
+            ws.send(response.value.message, { binary: true });
+            deps.console.log("[relay]", "response", {
+              responseSize: response.value.message.length,
+            });
+          })
+          .catch((error: unknown) => {
+            deps.console.error("[relay]", "applyProtocolMessageAsRelay", error);
+          });
       });
 
       ws.on("close", () => {
         ownerSocketsMap.deleteValue(ws);
+        deps.console.log("[relay]", "close", {
+          clientCount: wss.clients.size,
+        });
       });
     });
 

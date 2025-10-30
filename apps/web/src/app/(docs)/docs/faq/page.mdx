@@ -14,6 +14,9 @@ Frequently asked questions about Evolu.
 - [What is the SQLite database size limit?](#what-is-the-sqlite-database-size-limit)
 - [How can I check the current database filesize?](#how-can-i-check-the-current-database-filesize)
 - [How to delete OPFS Sqlite in browser?](#how-to-delete-opfs-sqlite-in-browser)
+- [How do I create ORM-like relations (nest related rows in queries)?](#how-do-i-create-orm-like-relations-nest-related-rows-in-queries)
+- [How do I store device-specific data that shouldn't sync?](#how-do-i-store-device-specific-settings-that-shouldnt-sync)
+- [How do I store owner-specific data that shouldn't sync?](#how-do-i-store-owner-specific-data-that-shouldnt-sync)
 - [How do I integrate with external systems that have their own IDs?](#how-do-i-integrate-with-external-systems-that-have-their-own-ids)
 
 ## What is the SQLite database size limit?
@@ -41,6 +44,79 @@ To clear the OPFS (Origin Private File System) SQLite database:
 5. Remove the SQLite database file
 6. Re-enable JavaScript
 7. Reload the page
+
+## How do I create ORM-like relations (nest related rows in queries)?
+
+Evolu uses [Kysely](https://kysely.dev/), the type-safe SQL query builder for TypeScript.
+
+Kysely **is not** an ORM. It **does not** have the concept of relations. Kysely **is** a query builder—it builds the SQL you tell it to, nothing more, nothing less. However, there is a way to nest related rows in queries. It's described [here](https://kysely.dev/docs/recipes/relations), and Evolu supports it.
+
+**TL;DR**: JSON type with subselects. With this combination, we can write efficient queries with nested relations. Evolu automatically parses stringified JSONs to typed objects and ensures that no regular strings are mistakenly parsed as JSON.
+
+## How do I store device-specific settings that shouldn't sync?
+
+Use a separate local-only Evolu instance with `transports: []` for device-specific settings like UI preferences, onboarding state, or account management flow:
+
+```ts
+const PreferencesId = id("Preferences");
+type PreferencesId = typeof PreferencesId.Type;
+
+const DeviceSchema = {
+  preferences: {
+    id: PreferencesId,
+    // whatever
+  },
+};
+
+// Local-only instance for device settings (no sync)
+const deviceEvolu = createEvolu(evoluReactWebDeps)(DeviceSchema, {
+  name: SimpleName.orThrow("MyApp-Device"),
+  transports: [], // No sync - stays local to device
+});
+```
+
+This approach gives us:
+
+- **Type safety** with the same Evolu APIs
+- **Schema evolution** for local settings
+- **Reactive queries** for local state
+- **Complete separation** from synced user data
+
+## How do I store owner-specific data that shouldn't sync?
+
+Tables prefixed with underscores (`_`) are local-only within an existing Evolu instance—they're never synced.
+
+Imagine editing a JSON-rich text document. Syncing the entire document on every keystroke would be inefficient. Instead, save drafts to a local-only table first:
+
+```ts
+const Schema = {
+  // Regular synced table
+  document: {
+    id: DocumentId,
+    title: NonEmptyString1000,
+    content: NonEmptyString,
+  },
+  // Local-only table (underscore prefix)
+  _documentDraft: {
+    id: DocumentId,
+    title: NonEmptyString1000,
+    content: NonEmptyString,
+  },
+};
+
+// Save draft locally on every keystroke (no sync)
+evolu.upsert("_documentDraft", {
+  id: documentId,
+  title,
+  content,
+});
+
+// When ready to sync (e.g., on blur, route change)
+evolu.update("_documentDraft", { id: documentId, isDeleted: true });
+evolu.upsert("document", { id: documentId, title, content });
+```
+
+Evolu batches mutations in a microtask and runs them in a transaction, ensuring atomicity and no data loss. Saving to local-only tables won't block the main thread since Evolu uses Web Workers. In React Native, `InteractionManager.runAfterInteractions` will be used (coming soon).
 
 ## How do I integrate with external systems that have their own IDs?
 

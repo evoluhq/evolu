@@ -34,6 +34,9 @@ jobs:
       - name: Lint Monorepo
         run: pnpm lint-monorepo
 
+      - name: Check Circular Dependencies
+        run: pnpm circular
+
   test:
     runs-on: ubuntu-latest
     steps:

@@ -100,7 +100,7 @@ This pattern keeps your code testable, composable, and easy to understand—with
 
 ## Runtime types
 
-Evolu has [Type](/docs/api-reference/common/Type)—a validation, parsing, and transformation library similar to Zod, but designed around `Result` instead of throwing exceptions. It provides branded types for constraints, typed errors with decoupled formatters, and bidirectional transformations.
+Evolu has [Type](/docs/api-reference/common/Type)—a validation library similar to Zod, but designed around `Result` instead of throwing exceptions. It provides branded types for constraints and typed errors with decoupled formatters.
 
 ```ts
 // Branded constraints
@@ -120,21 +120,6 @@ export const SimpleName = regex(
 
 // string & Brand<"MinLength1"> & Brand<"SimpleName">
 export type SimpleName = typeof SimpleName.Type;
-
-// Composable transformations with bidirectional transformations
-const DateIso = transform(
-  Date,
-  DateIsoString,
-  (date) => DateIsoString.fromParent(date.toISOString()),
-  (iso) => new Date(iso),
-);
-
-const now = new Date();
-const isoResult = DateIso.from(now); // Ok<DateIso>
-if (isoResult.ok) {
-  const backToDate = DateIso.to(isoResult.value); // Date
-  console.log(backToDate.getTime() === now.getTime()); // true
-}
 
 // Complex objects
 const User = object({

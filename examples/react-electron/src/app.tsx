@@ -1,5 +1,8 @@
-import { createRoot } from "react-dom/client";
-import { EvoluExample } from "./EvoluDemo";
+import "./App.css";
+import { EvoluMinimalExample } from "../components/EvoluMinimalExample";
 
-const root = createRoot(document.body);
-root.render(<EvoluExample />);
+function App() {
+  return <EvoluMinimalExample />;
+}
+
+export default App;

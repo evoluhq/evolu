@@ -2,7 +2,6 @@
   "mode": "pre",
   "tag": "preview",
   "initialVersions": {
-    "@evolu/relay": "1.1.1",
     "web": "2.0.0",
     "@example/react-electron": "1.0.0",
     "@example/react-expo": "1.0.0",

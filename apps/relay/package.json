@@ -1,26 +1,28 @@
 {
   "name": "@evolu/relay",
-  "version": "1.1.2-preview.6",
+  "version": "1.1.1",
+  "private": true,
   "type": "module",
-  "bin": {
-    "@evolu/relay": "dist/src/cli.js"
-  },
   "scripts": {
-    "dev": "tsx --watch src/cli.ts -- start",
+    "dev": "node --experimental-strip-types --watch src/index.ts",
     "build": "shx rm -rf dist && tsc",
-    "start": "node dist/src/cli.js",
+    "start": "node dist/index.js",
     "clean": "shx rm -rf .turbo node_modules dist db.sqlite",
     "docker:build": "docker-compose build --no-cache",
     "docker:up": "docker-compose up --build",
-    "docker:down": "docker-compose down -v",
-    "docker:dev:build": "docker-compose -f docker-compose.dev.yaml build --no-cache",
-    "docker:dev:up": "docker-compose -f docker-compose.dev.yaml up --build",
-    "docker:dev:down": "docker-compose -f docker-compose.dev.yaml down -v"
+    "docker:up:detached": "docker-compose up -d --build",
+    "docker:down": "docker-compose down",
+    "docker:restart": "docker-compose down && docker-compose up --build",
+    "docker:logs": "docker-compose logs -f evolu-relay",
+    "docker:shell": "docker exec -it evolu-relay-server sh",
+    "docker:inspect": "docker inspect evolu-relay-server",
+    "docker:stats": "docker stats evolu-relay-server",
+    "docker:clean": "docker-compose down -v && docker system prune -f",
+    "docker:clean:all": "docker-compose down -v && docker system prune -af && docker volume prune -f"
   },
   "dependencies": {
     "@evolu/common": "workspace:*",
-    "@evolu/nodejs": "workspace:*",
-    "commander": "^14.0.1"
+    "@evolu/nodejs": "workspace:*"
   },
   "devDependencies": {
     "@evolu/tsconfig": "workspace:*",
@@ -29,8 +31,5 @@
   },
   "engines": {
     "node": ">=22.0.0"
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }

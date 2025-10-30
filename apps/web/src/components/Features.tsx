@@ -158,11 +158,11 @@ function FeaturePattern({
 
   return (
     <div className="pointer-events-none">
-      <div className="absolute inset-0 rounded-2xl [mask-image:linear-gradient(white,transparent)] transition duration-300 group-hover:opacity-50">
+      <div className="absolute inset-0 rounded-2xl mask-[linear-gradient(white,transparent)] transition duration-300 group-hover:opacity-50">
         <GridPattern
           width={72}
           height={56}
-          className="absolute inset-x-0 inset-y-[-30%] h-[160%] w-full skew-y-[18deg] fill-black/[0.02] stroke-black/5 dark:fill-white/1 dark:stroke-white/2.5"
+          className="absolute inset-x-0 inset-y-[-30%] h-[160%] w-full skew-y-18 fill-black/2 stroke-black/5 dark:fill-white/1 dark:stroke-white/2.5"
           {...gridProps}
         />
       </div>
@@ -177,7 +177,7 @@ function FeaturePattern({
         <GridPattern
           width={72}
           height={56}
-          className="absolute inset-x-0 inset-y-[-30%] h-[160%] w-full skew-y-[18deg] fill-black/50 stroke-black/70 dark:fill-white/2.5 dark:stroke-white/10"
+          className="absolute inset-x-0 inset-y-[-30%] h-[160%] w-full skew-y-18 fill-black/50 stroke-black/70 dark:fill-white/2.5 dark:stroke-white/10"
           {...gridProps}
         />
       </motion.div>

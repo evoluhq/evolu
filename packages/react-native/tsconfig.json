@@ -2,7 +2,9 @@
   "extends": "@evolu/tsconfig/universal-esm.json",
   "compilerOptions": {
     "outDir": "dist",
-    "allowJs": true
+    "allowJs": true,
+    "module": "esnext",
+    "moduleResolution": "bundler"
   },
   "include": ["src", "test"],
   "exclude": ["dist", "node_modules"]

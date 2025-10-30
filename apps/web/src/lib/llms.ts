@@ -1,7 +1,8 @@
 import fs from "fs";
 
 /**
- * Cleans MDX content by removing imports, exports, JSX components, and converting relative links.
+ * Cleans MDX content by removing imports, exports, JSX components, and
+ * converting relative links.
  */
 export function cleanMdxContent(content: string): string {
   // Remove import statements - ensuring we catch all top-level imports
@@ -72,9 +73,7 @@ export const excludePaths = [
   // Add other paths to exclude as needed
 ];
 
-/**
- * Loads and processes MDX content from a file path
- */
+/** Loads and processes MDX content from a file path */
 export async function loadMdxContent(
   fullPath: string,
   relativePath: string,
@@ -122,9 +121,7 @@ export async function loadMdxContent(
   }
 }
 
-/**
- * Fetches and processes all MDX files for LLM documentation
- */
+/** Fetches and processes all MDX files for LLM documentation */
 export async function fetchProcessedMdxPages(
   includeApiReference = false,
 ): Promise<

@@ -4,6 +4,7 @@ const prettierConfig = {
     "prettier-plugin-embed",
     "prettier-plugin-sql-cst",
     "prettier-plugin-jsdoc",
+    "prettier-plugin-tailwindcss",
   ],
 };
 
@@ -15,6 +16,7 @@ const prettierPluginEmbedConfig = {
   sqlKeywordCase: "lower",
   sqlParamTypes: ["$name"],
   sqlCanonicalSyntax: false,
+  sqlLiteralCase: "lower",
 };
 
 const config = {

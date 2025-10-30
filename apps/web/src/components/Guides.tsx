@@ -9,15 +9,15 @@ const guides = [
     description: "Privacy is fundamental, and Evolu takes it seriously.",
   },
   {
+    href: "/docs/examples",
+    name: "Examples",
+    description: "React, React Native, Vite, Next.js, Svelte...",
+  },
+  {
     href: "/docs/evolu-relay",
     name: "Evolu Relay",
     description:
       "Evolu provides sync and backup for Evolu clients. Self-hostable.",
-  },
-  {
-    href: "/docs/patterns",
-    name: "Patterns",
-    description: "Relations, Deferred Sync, JSON support, and more.",
   },
   {
     href: "/docs/migrations",

@@ -6,29 +6,13 @@
     "evolu",
     "svelte"
   ],
-  "license": "MIT",
-  "repository": "evoluhq/evolu",
+  "homepage": "https://evolu.dev",
   "bugs": {
     "url": "https://github.com/evoluhq/evolu/issues"
   },
-  "homepage": "https://evolu.dev",
-  "scripts": {
-    "dev": "tsc --watch",
-    "build": "shx rm -rf dist && tsc && pnpm run package",
-    "preview": "vite preview",
-    "package": "svelte-package",
-    "prepublishOnly": "pnpm run package",
-    "check": "svelte-check --tsconfig ./tsconfig.json",
-    "clean": "shx rm -rf .turbo .svelte-kit node_modules dist"
-  },
-  "files": [
-    "dist",
-    "!dist/**/*.test.*",
-    "!dist/**/*.spec.*"
-  ],
+  "repository": "evoluhq/evolu",
+  "license": "MIT",
   "sideEffects": [],
-  "svelte": "./dist/index.svelte.js",
-  "types": "./dist/index.svelte.d.ts",
   "type": "module",
   "exports": {
     ".": {
@@ -36,20 +20,37 @@
       "svelte": "./dist/index.svelte.js"
     }
   },
+  "svelte": "./dist/index.svelte.js",
+  "types": "./dist/index.svelte.d.ts",
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.spec.*"
+  ],
+  "scripts": {
+    "build": "shx rm -rf dist && tsc && pnpm run package",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "clean": "shx rm -rf .turbo .svelte-kit node_modules dist",
+    "dev": "tsc --watch",
+    "package": "svelte-package",
+    "prepublishOnly": "pnpm run package",
+    "preview": "vite preview"
+  },
   "devDependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
     "@evolu/web": "workspace:*",
-    "@sveltejs/package": "^2.4.1",
-    "@tsconfig/svelte": "^5.0.4",
-    "svelte": "^5.38.0",
+    "@sveltejs/package": "^2.5.0",
+    "@tsconfig/svelte": "^5.0.5",
+    "shx": "^0.4.0",
+    "svelte": "^5.38.2",
     "svelte-check": "^4.3.1",
     "typescript": "^5.9.2"
   },
   "peerDependencies": {
     "@evolu/common": "^6.0.1-preview.19",
     "@evolu/web": "^1.0.1-preview.5",
-    "svelte": "^5.0.0"
+    "svelte": ">=5"
   },
   "publishConfig": {
     "access": "public"

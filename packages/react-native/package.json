@@ -57,20 +57,25 @@
     "@evolu/common": "workspace:*",
     "@evolu/react": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
-    "@op-engineering/op-sqlite": "^14.1.4",
-    "expo": "^53.0.20",
-    "expo-sqlite": "~15.2.14",
-    "react-native": "^0.79.3",
+    "@op-engineering/op-sqlite": "^15.0.3",
+    "expo": "^54.0.10",
+    "expo-sqlite": "~16.0.8",
+    "react-native": "^0.81.4",
+    "react-native-nitro-modules": "^0.31.2",
+    "react-native-sensitive-info": "^6.0.0-rc.4",
+    "shx": "^0.4.0",
     "typescript": "^5.9.2",
-    "vitest": "^3.2.3"
+    "vitest": "^4.0.4"
   },
   "peerDependencies": {
     "@evolu/common": "^6.0.1-preview.19",
     "@evolu/react": "^9.0.1-preview.4",
     "@op-engineering/op-sqlite": ">=12",
-    "expo": ">=52",
+    "expo": ">=54",
     "expo-sqlite": ">=15",
-    "react-native": ">=0.76"
+    "react-native": ">=0.81",
+    "react-native-nitro-modules": ">=0.31",
+    "react-native-sensitive-info": ">=6"
   },
   "peerDependenciesMeta": {
     "@op-engineering/op-sqlite": {
@@ -80,6 +85,12 @@
       "optional": true
     },
     "expo-sqlite": {
+      "optional": true
+    },
+    "react-native-nitro-modules": {
+      "optional": true
+    },
+    "react-native-sensitive-info": {
       "optional": true
     }
   },
