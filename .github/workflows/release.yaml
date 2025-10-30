@@ -4,7 +4,11 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch: # for manual triggering
+  workflow_dispatch: # for manual triggering
+
+permissions:
+  id-token: write # Required for OIDC trusted publishing
+  contents: write # Required for creating releases and PRs
 
 jobs:
   release:
@@ -19,6 +23,11 @@ jobs:
         with:
           node-version-file: ".nvmrc"
           cache: "pnpm"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Ensure npm 11.5.1+ for trusted publishing
+        run: npm install -g npm@latest
+
       - run: pnpm install --frozen-lockfile
 
       - name: Build
@@ -38,4 +47,3 @@ jobs:
           createGithubReleases: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
