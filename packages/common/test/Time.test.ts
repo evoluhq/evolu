@@ -210,23 +210,45 @@ describe("Time", () => {
       );
     });
 
-    test("handles malformed strings without performance issues", () => {
+    test("throws on strings exceeding length limit to prevent ReDoS", () => {
       // Test with many digits that don't form valid duration
-      // This tests the regex ReDoS vulnerability fix
+      // This tests the regex ReDoS vulnerability fix via length limit assertion
       const manyNines = "9".repeat(1000);
-      expect(durationToNonNegativeInt(manyNines as DurationString)).toBe(0);
+      expect(() =>
+        durationToNonNegativeInt(manyNines as DurationString),
+      ).toThrow(/Duration string too long/);
 
       const manyNinesWithInvalidUnit = "9".repeat(1000) + "x";
-      expect(
+      expect(() =>
         durationToNonNegativeInt(manyNinesWithInvalidUnit as DurationString),
-      ).toBe(0);
+      ).toThrow(/Duration string too long/);
 
-      // Valid duration at the end should still work
-      const manyNinesWithValidUnit = "9".repeat(100) + "ms";
-      const result = durationToNonNegativeInt(
-        manyNinesWithValidUnit as DurationString,
+      const exactly101Chars = "9".repeat(101);
+      expect(() =>
+        durationToNonNegativeInt(exactly101Chars as DurationString),
+      ).toThrow(/Duration string too long/);
+    });
+
+    test("handles strings within length limit", () => {
+      // String within length limit but invalid should return 0
+      const shortInvalid = "9".repeat(50);
+      expect(durationToNonNegativeInt(shortInvalid as DurationString)).toBe(0);
+
+      // Valid duration within limit should work
+      const validShort = "99ms";
+      expect(durationToNonNegativeInt(validShort as DurationString)).toBe(99);
+
+      // Valid duration at edge of reasonable length should work
+      const validLongest = "59s 999ms"; // 9 chars - well within limit
+      expect(durationToNonNegativeInt(validLongest as DurationString)).toBe(
+        59999,
       );
-      expect(result).toBeGreaterThan(0);
+
+      // String at exactly 100 chars should work (edge case)
+      const exactly100Chars = "9".repeat(100);
+      expect(durationToNonNegativeInt(exactly100Chars as DurationString)).toBe(
+        0,
+      );
     });
   });
 });

@@ -4,6 +4,7 @@
  * @module
  */
 
+import { assert } from "./Assert.js";
 import { DateIso, NonNegativeInt } from "./Type.js";
 
 /** Retrieves the current time in milliseconds, similar to `Date.now()`. */
@@ -139,6 +140,14 @@ export const durationToNonNegativeInt = (
   if (typeof duration === "number") {
     return duration;
   }
+
+  // Limit input length to prevent ReDoS attacks
+  // Valid DurationString max: "99d 23h" = 7 chars, "59s 999ms" = 9 chars
+  // Allow generous limit of 100 characters
+  assert(
+    duration.length <= 100,
+    `Duration string too long (${duration.length} chars). This should never happen with DurationString type.`,
+  );
 
   // Parse duration string
   const units = {
