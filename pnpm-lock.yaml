@@ -87,6 +87,25 @@ importers:
         specifier: ^8.44.1
         version: 8.46.2(eslint@9.38.0(jiti@2.6.1))(typescript@5.9.3)
 
+  apps/relay:
+    dependencies:
+      '@evolu/common':
+        specifier: workspace:*
+        version: link:../../packages/common
+      '@evolu/nodejs':
+        specifier: workspace:*
+        version: link:../../packages/nodejs
+    devDependencies:
+      '@evolu/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^22.17.1
+        version: 22.18.13
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+
   apps/web:
     dependencies:
       '@algolia/autocomplete-core':
@@ -785,28 +804,6 @@ importers:
       vitest:
         specifier: ^4.0.4
         version: 4.0.5(@types/debug@4.1.12)(@types/node@22.18.13)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(terser@5.44.0)(tsx@4.20.6)(yaml@2.8.1)
-
-  packages/relay:
-    dependencies:
-      '@evolu/common':
-        specifier: workspace:*
-        version: link:../common
-      '@evolu/nodejs':
-        specifier: workspace:*
-        version: link:../nodejs
-      commander:
-        specifier: ^14.0.1
-        version: 14.0.2
-    devDependencies:
-      '@evolu/tsconfig':
-        specifier: workspace:*
-        version: link:../tsconfig
-      '@types/node':
-        specifier: ^22.17.1
-        version: 22.18.13
-      typescript:
-        specifier: ^5.9.2
-        version: 5.9.3
 
   packages/svelte:
     devDependencies:
@@ -5004,8 +5001,8 @@ packages:
   character-reference-invalid@2.0.1:
     resolution: {integrity: sha512-iBZ4F4wRbyORVsu0jPV7gXkOsGYjGHPmAyv+HiHG8gi5PtC9KI2j1+v8/tlibRvjoWX027ypmG/n0HtO5t7unw==}
 
-  chardet@2.1.0:
-    resolution: {integrity: sha512-bNFETTG/pM5ryzQ9Ad0lJOTa6HWD/YsScAR3EnCPZRPlQh77JocYktSHOUHelyhm8IARL+o4c4F1bP5KVOjiRA==}
+  chardet@2.1.1:
+    resolution: {integrity: sha512-PsezH1rqdV9VvyNhxxOW32/d75r01NY7TQCmOqomRo15ZSOKbpTFVsfjghxo6JloQUCGnH4k1LGu0R4yCLlWQQ==}
 
   chokidar@4.0.3:
     resolution: {integrity: sha512-Qgzu8kfBvo+cA4962jnP1KkS6Dop5NS6g7R5LFYJr4b8Ub94PPQXUksCw9PvXoeXPRRddRNC5C1JQUR2SMGtnA==}
@@ -5133,10 +5130,6 @@ packages:
   commander@12.1.0:
     resolution: {integrity: sha512-Vw8qHK3bZM9y/P10u3Vib8o/DdkvA2OtPtZvD871QKjy74Wj1WSKFILMPRPSdUSx5RFK1arlJzEtA4PkFgnbuA==}
     engines: {node: '>=18'}
-
-  commander@14.0.2:
-    resolution: {integrity: sha512-TywoWNNRbhoD0BXs1P3ZEScW8W5iKrnbithIl0YH+uCmBd0QpPOA8yc82DS3BIE5Ma6FnBVUsJ7wVUDz4dvOWQ==}
-    engines: {node: '>=20'}
 
   commander@2.20.3:
     resolution: {integrity: sha512-GpVkmM8vF2vQUkj2LvZmD35JxeJOLCwJ9cUkugyk2nuhbv3+mJvpLYYt+0+USMxE+oj+ey/lJEnhZw75x/OMcQ==}
@@ -12065,7 +12058,7 @@ snapshots:
 
   '@inquirer/external-editor@1.0.2(@types/node@22.18.13)':
     dependencies:
-      chardet: 2.1.0
+      chardet: 2.1.1
       iconv-lite: 0.7.0
     optionalDependencies:
       '@types/node': 22.18.13
@@ -14452,7 +14445,7 @@ snapshots:
 
   character-reference-invalid@2.0.1: {}
 
-  chardet@2.1.0: {}
+  chardet@2.1.1: {}
 
   chokidar@4.0.3:
     dependencies:
@@ -14576,8 +14569,6 @@ snapshots:
   comma-separated-tokens@2.0.3: {}
 
   commander@12.1.0: {}
-
-  commander@14.0.2: {}
 
   commander@2.20.3: {}
 
