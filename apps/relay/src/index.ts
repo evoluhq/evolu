@@ -15,5 +15,5 @@ const relay = await createNodeJsRelay(deps)({
   enableLogging: false,
 });
 
-process.on("SIGINT", relay[Symbol.dispose]);
-process.on("SIGTERM", relay[Symbol.dispose]);
+process.once("SIGINT", relay[Symbol.dispose]);
+process.once("SIGTERM", relay[Symbol.dispose]);
