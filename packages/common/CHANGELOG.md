@@ -1,5 +1,203 @@
 # @evolu/common
 
+## 6.0.1-preview.20
+
+### Patch Changes
+
+- eec5d8e: Add Task, async helpers, and concurrency primitives
+  - `Task<T, E>` - Lazy, cancellable Promise that returns typed Result instead of throwing
+  - `toTask()` - Convert async functions to Tasks with AbortSignal support
+  - `wait()` - Delay execution with Duration strings (e.g., "5m", "2h 30m")
+  - `timeout()` - Add timeout behavior to any Task
+  - `retry()` - Retry failed operations with exponential backoff and jitter
+  - `createSemaphore()` - Limit concurrent operations to a specified count
+  - `createMutex()` - Ensure mutual exclusion (one operation at a time)
+
+  **Duration Support:**
+  - Type-safe duration strings with compile-time validation
+  - Support for milliseconds, seconds, minutes, hours, and days
+  - Logical combinations like "1h 30m" or "2s 500ms"
+
+  Tasks provide precise type safety for cancellation - AbortError is only included in the error union when an AbortSignal is actually provided. All operations are designed to work together seamlessly for complex async workflows.
+
+  ## Examples
+
+  ### toTask
+
+  ```ts
+  // Convert an async function to a Task<Result<T, E>> with AbortSignal support
+  const fetchTask = (url: string) =>
+    toTask((context) =>
+      tryAsync(
+        () => fetch(url, { signal: context?.signal ?? null })
+        (error) => ({ type: "FetchError", error }),
+      ),
+    );
+
+  const result = await fetchTask("/api")(/* optional: { signal } */);
+  ```
+
+  ### wait
+
+  ```ts
+  // Delay for a duration string or NonNegativeInt milliseconds
+  await wait("50ms")();
+  ```
+
+  ### timeout
+
+  ```ts
+  const slow = toTask(async () => ok("done"));
+  const withTimeout = timeout("200ms", slow);
+  const r = await withTimeout(); // Result<string, TimeoutError>
+  ```
+
+  ### retry
+
+  ```ts
+  interface FetchError {
+    readonly type: "FetchError";
+    readonly error: unknown;
+  }
+  const task = fetchTask("/api");
+  const withRetry = retry({ retries: PositiveInt.orThrow(3) }, task);
+  const r = await withRetry(); // Result<Response, FetchError | RetryError<FetchError>>
+  ```
+
+  ### createSemaphore
+
+  ```ts
+  const semaphore = createSemaphore(3);
+  const run = (i: number) =>
+    semaphore.withPermit(() => wait("50ms")().then(() => i));
+  const results = await Promise.all([1, 2, 3, 4, 5].map(run)); // [1,2,3,4,5]
+  ```
+
+  ### createMutex
+
+  ```ts
+  const mutex = createMutex();
+  const seq = (i: number) =>
+    mutex.withLock(async () => {
+      await wait("10ms")();
+      return i;
+    });
+  const results = await Promise.all([1, 2, 3].map(seq)); // executes one at a time
+  ```
+
+- eec5d8e: Replace Mnemonic with OwnerSecret
+
+  OwnerSecret is the fundamental cryptographic primitive from which all owner keys are derived via SLIP-21. Mnemonic is just a representation of this underlying entropy. This change makes the type system more accurate and the cryptographic relationships clearer.
+
+- eec5d8e: Replace NanoID with Evolu Id
+
+  Evolu now uses its own ID format instead of NanoID:
+  - **Evolu Id**: 16 random bytes from a cryptographically secure random generator, encoded as 22-character Base64Url string (128 bits of entropy)
+  - **Breaking change**: ID format changes from 21 to 22 characters
+  - **Why**: Provides standard binary serialization (16 bytes), more entropy than NanoID (128 bits vs ~126 bits), and native Base64Url encoding support across platforms
+
+  See the `Id` type documentation for detailed design rationale comparing to NanoID, UUID v4, and UUID v7.
+
+- eec5d8e: Replace `subscribeAppOwner` and `getAppOwner` with `appOwner` promise
+
+  The app owner is now accessed via a promise (`evolu.appOwner`) instead of subscription-based methods. This simplifies the API and aligns with modern async patterns.
+
+  **Breaking changes:**
+  - Removed `evolu.subscribeAppOwner()` and `evolu.getAppOwner()`
+  - Removed `useAppOwner()` hook from `@evolu/react`
+  - Added `evolu.appOwner` promise that resolves to `AppOwner`
+  - Updated `appOwnerState()` in `@evolu/svelte` to return promise-based state
+
+  **Migration:**
+
+  ```ts
+  // Before
+  const unsubscribe = evolu.subscribeAppOwner(() => {
+    const owner = evolu.getAppOwner();
+  });
+
+  // After
+  const owner = await evolu.appOwner;
+  ```
+
+  For React, use the `use` hook:
+
+  ```ts
+  // Before
+  import { useAppOwner } from "@evolu/react";
+  const appOwner = useAppOwner();
+
+  // After
+  import { use } from "react";
+  const evolu = useEvolu();
+  const appOwner = use(evolu.appOwner);
+  ```
+
+- eec5d8e: # Transport-Based Configuration System
+
+  # Transport-Based Configuration System
+
+  **BREAKING CHANGE**: Replaced `syncUrl` with flexible `transport` property supporting single transport or array of transports for multiple sync endpoints.
+
+  ## What Changed
+  - **Removed** `syncUrl` property from Evolu config
+  - **Added** `transport` property accepting a single `Transport` object or array of `Transport` objects
+  - **Added** `Transport` type union with initial WebSocket support
+  - **Updated** sync system to support Nostr-style relay pools with simultaneous connections
+  - **Updated** all examples and documentation to use new transport configuration
+
+  ## Migration Guide
+
+  **Before:**
+
+  ```ts
+  const evolu = createEvolu(deps)(Schema, {
+    syncUrl: "wss://relay.example.com",
+  });
+  ```
+
+  **After (single transport):**
+
+  ```ts
+  const evolu = createEvolu(deps)(Schema, {
+    transport: { type: "WebSocket", url: "wss://relay.example.com" },
+  });
+  ```
+
+  **After (multiple transports):**
+
+  ```ts
+  const evolu = createEvolu(deps)(Schema, {
+    transport: [
+      { type: "WebSocket", url: "wss://relay1.example.com" },
+      { type: "WebSocket", url: "wss://relay2.example.com" },
+    ],
+  });
+  ```
+
+  ## Benefits
+  - **Single or multiple relay support**: Use one transport for simplicity or multiple for redundancy
+  - **Intuitive API**: Singular property name that accepts both single item and array
+  - **Future extensibility**: Ready for upcoming transport types (FetchRelay, Bluetooth, LocalNetwork)
+  - **Nostr-style resilience**: Messages broadcast to all connected relays simultaneously when using arrays
+  - **Type safety**: Full TypeScript support for transport configurations
+
+  ## Future Transport Types
+
+  The new system is designed to support upcoming transport types:
+  - `FetchRelay`: HTTP-based polling for environments without WebSocket support
+  - `Bluetooth`: P2P sync for offline collaboration
+  - `LocalNetwork`: LAN/mesh sync for local networks
+
+  ## Technical Details
+  - Single transports are automatically normalized to arrays internally
+  - CRDT messages are sent to all connected transports simultaneously
+  - Duplicate message handling relies on CRDT idempotency (no deduplication needed)
+  - WebSocket connections auto-reconnect independently
+  - Backwards compatibility removed (preview version breaking change)
+
+  This change provides an intuitive API that scales from simple single-transport setups to complex multi-transport configurations, positioning Evolu for a more resilient, multi-transport future.
+
 ## 6.0.1-preview.19
 
 ### Patch Changes

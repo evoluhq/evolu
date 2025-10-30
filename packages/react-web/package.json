@@ -1,6 +1,6 @@
 {
   "name": "@evolu/react-web",
-  "version": "1.0.1-preview.3",
+  "version": "1.0.1-preview.4",
   "description": "Evolu for React (web platform)",
   "keywords": [
     "evolu",
@@ -52,8 +52,8 @@
     "vitest": "^4.0.4"
   },
   "peerDependencies": {
-    "@evolu/common": "^6.0.1-preview.19",
-    "@evolu/web": "^1.0.1-preview.4",
+    "@evolu/common": "^6.0.1-preview.20",
+    "@evolu/web": "^1.0.1-preview.6",
     "react": ">=19",
     "react-dom": ">=19"
   },
