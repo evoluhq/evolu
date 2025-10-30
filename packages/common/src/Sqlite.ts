@@ -361,7 +361,7 @@ const isSqlMutationRegEx = new RegExp(
 );
 
 export const isSqlMutation: Predicate<string> = (sql) =>
-  isSqlMutationRegEx.test(sql.replace(/--.*$/gm, ""));
+  isSqlMutationRegEx.test(sql.replace(/--[^\n]*$/gm, ""));
 
 export interface SqliteQueryPlanRow {
   id: number;
