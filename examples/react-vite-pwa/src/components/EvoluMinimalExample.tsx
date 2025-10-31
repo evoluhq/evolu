@@ -1,6 +1,6 @@
 import * as Evolu from "@evolu/common";
 import { createUseEvolu, EvoluProvider, useQuery } from "@evolu/react";
-import { evoluReactWebDeps, EvoluAvatar } from "@evolu/react-web";
+import { evoluReactWebDeps, EvoluAvatar, localAuth } from "@evolu/react-web";
 import { IconEdit, IconTrash } from "@tabler/icons-react";
 import clsx from "clsx";
 import { FC, Suspense, use, useMemo, useState } from "react";
@@ -26,11 +26,11 @@ const service = "pwa-react";
 
 // Note: this is a top-level await and used for brevity in the demo
 // In a real application, you would use a wrapper component.
-const ownerIds = await evoluReactWebDeps.localAuth.getProfiles({
+const ownerIds = await localAuth.getProfiles({
   service,
 });
 
-const authResult = await evoluReactWebDeps.localAuth.login(undefined, {
+const authResult = await localAuth.login(undefined, {
   service,
 });
 
@@ -340,7 +340,7 @@ const AuthActions: FC = () => {
     const isGuest = !Boolean(authResult?.owner);
 
     // Register the guest owner or create a new one if this is already registered.
-    const result = await evoluReactWebDeps.localAuth.register(username, {
+    const result = await localAuth.register(username, {
       service: service,
       mnemonic: isGuest ? appOwner?.mnemonic : undefined,
     });
@@ -361,7 +361,7 @@ const AuthActions: FC = () => {
   // Login with a specific owner id using the registered passkey.
   // Note: we already have a database created, so we need to reload.
   const handleLoginClick = async (ownerId: Evolu.OwnerId) => {
-    const result = await evoluReactWebDeps.localAuth.login(ownerId, {
+    const result = await localAuth.login(ownerId, {
       service: service,
       reloadNeeded: true,
     });
@@ -378,7 +378,7 @@ const AuthActions: FC = () => {
       "Are you sure you want to clear all data? This will remove all passkeys and cannot be undone.",
     );
     if (!confirmed) return;
-    await evoluReactWebDeps.localAuth.clearAll({
+    await localAuth.clearAll({
       service: service,
     });
     evolu.resetAppOwner({ reload: true });

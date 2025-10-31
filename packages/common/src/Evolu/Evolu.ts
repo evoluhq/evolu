@@ -540,7 +540,6 @@ interface InternalEvoluInstance<S extends EvoluSchema = EvoluSchema>
 
 export type EvoluDeps = ConsoleDep &
   CreateDbWorkerDep &
-  LocalAuthDep &
   Partial<FlushSyncDep> &
   RandomBytesDep &
   ReloadAppDep &

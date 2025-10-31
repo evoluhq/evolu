@@ -1,6 +1,6 @@
 import * as Evolu from "@evolu/common";
 import { createUseEvolu, EvoluProvider, useQuery } from "@evolu/react";
-import { evoluReactNativeDeps, EvoluAvatar } from "@evolu/react-native/expo-sqlite";
+import { evoluReactNativeDeps, localAuth, EvoluAvatar } from "@evolu/react-native/expo-sqlite";
 import { FC, Suspense, use, useEffect, useMemo, useState } from "react";
 import type { Evolu as EvoluType } from "@evolu/common";
 
@@ -43,11 +43,11 @@ export default function Index(): React.ReactNode {
 
   useEffect(() => {
     (async () => {
-      const ownerIds = await evoluReactNativeDeps.localAuth.getProfiles({
+      const ownerIds = await localAuth.getProfiles({
         service,
       });
 
-      const authResult = await evoluReactNativeDeps.localAuth.login(undefined, {
+      const authResult = await localAuth.login(undefined, {
         service,
       });
 
@@ -94,7 +94,11 @@ export default function Index(): React.ReactNode {
 
   return (
     <EvoluProvider value={evolu}>
-      <EvoluDemo evolu={evolu} ownerIds={ownerIds} authResult={authResult} />
+      <EvoluDemo
+        evolu={evolu}
+        ownerIds={ownerIds}
+        authResult={authResult}
+      />
     </EvoluProvider>
   );
 }
@@ -402,7 +406,7 @@ function EvoluDemo({
               const isGuest = !Boolean(authResult?.owner);
   
               // Register the guest owner or create a new one if this is already registered.
-              const result = await evoluReactNativeDeps.localAuth.register(
+              const result = await localAuth.register(
                 username,
                 {
                   service: service,
@@ -430,7 +434,7 @@ function EvoluDemo({
   
     // Login with a specific owner id using the registered passkey.
     const handleLoginPress = async (ownerId: Evolu.OwnerId) => {
-      const result = await evoluReactNativeDeps.localAuth.login(ownerId, {
+      const result = await localAuth.login(ownerId, {
         service: service,
         reloadNeeded: true,
       });
@@ -452,7 +456,7 @@ function EvoluDemo({
             text: "Clear",
             style: "destructive",
             onPress: async () => {
-              await evoluReactNativeDeps.localAuth.clearAll({
+              await localAuth.clearAll({
                 service: service,
               });
               void evolu.resetAppOwner({ reload: true });
