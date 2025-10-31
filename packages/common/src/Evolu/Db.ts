@@ -1,9 +1,5 @@
 import { isNonEmptyArray, NonEmptyReadonlyArray } from "../Array.js";
-import {
-  CallbackId,
-  CallbackRegistry,
-  createCallbackRegistry,
-} from "../CallbackRegistry.js";
+import { CallbackId } from "../CallbackRegistry.js";
 import { ConsoleConfig, ConsoleDep } from "../Console.js";
 import {
   createSymmetricCrypto,
@@ -55,7 +51,6 @@ import {
   getDbSchema,
   MutationChange,
 } from "./Schema.js";
-import { CrdtMessage } from "./Storage.js";
 import {
   applyLocalOnlyChange,
   Clock,
@@ -175,6 +170,12 @@ export interface DbConfig extends ConsoleConfig, TimestampConfig {
    * The default value is: `false`.
    */
   readonly inMemory?: boolean;
+
+  /**
+   * Encryption key for the SQLite database.
+   *
+   * @experimental
+   */
   readonly encryptionKey?: EncryptionKey;
 }
 
@@ -235,12 +236,6 @@ export type DbWorkerInput =
       readonly type: "useOwner";
       readonly use: boolean;
       readonly owner: SyncOwner;
-    }
-  | {
-      readonly type: "onProcessNewMessages";
-      readonly onCompleteId: CallbackId;
-      readonly approved: ReadonlyArray<Timestamp>;
-      readonly localMutations: ReadonlyArray<MutationChange>;
     };
 
 export type DbWorkerOutput =
@@ -276,12 +271,6 @@ export type DbWorkerOutput =
       readonly type: "onExport";
       readonly onCompleteId: CallbackId;
       readonly file: Uint8Array;
-    }
-  | {
-      readonly type: "processNewMessages";
-      readonly ownerId: OwnerId;
-      readonly messages: ReadonlyArray<CrdtMessage>;
-      readonly onCompleteId: CallbackId;
     };
 
 export type DbWorkerPlatformDeps = ConsoleDep &
@@ -299,7 +288,6 @@ type DbWorkerDeps = Omit<
   PostMessageDep &
   SqliteDep &
   SyncDep &
-  WriteMessagesCallbackRegistryDep &
   AppOwnerDep;
 
 interface GetQueryRowsCacheDep {
@@ -308,12 +296,6 @@ interface GetQueryRowsCacheDep {
 
 export interface PostMessageDep {
   readonly postMessage: (message: DbWorkerOutput) => void;
-}
-
-export interface WriteMessagesCallbackRegistryDep {
-  readonly writeMessagesCallbackRegistry: CallbackRegistry<
-    readonly [ReadonlyArray<Timestamp>, ReadonlyArray<MutationChange>]
-  >;
 }
 
 export interface AppOwnerDep {
@@ -425,11 +407,6 @@ const createDbWorkerDeps =
       );
       if (!result.ok) return result;
 
-      const writeMessagesCallbackRegistry =
-        createCallbackRegistry<
-          readonly [ReadonlyArray<Timestamp>, ReadonlyArray<MutationChange>]
-        >(platformDeps);
-
       const sync = createSync({
         ...platformDeps,
         clock,
@@ -437,7 +414,6 @@ const createDbWorkerDeps =
         symmetricCrypto: createSymmetricCrypto(platformDeps),
         timestampConfig: initMessage.config,
         postMessage,
-        writeMessagesCallbackRegistry,
       })({
         appOwner,
         transports: initMessage.config.transports,
@@ -468,7 +444,6 @@ const createDbWorkerDeps =
         postMessage,
         sqlite,
         sync: sync.value,
-        writeMessagesCallbackRegistry,
         appOwner,
       };
 
@@ -736,13 +711,6 @@ const handlers: Omit<MessageHandlers<DbWorkerInput, DbWorkerDeps>, "init"> = {
 
   useOwner: (deps) => (message) => {
     deps.sync.useOwner(message.use, message.owner);
-  },
-
-  onProcessNewMessages: (deps) => (message) => {
-    deps.writeMessagesCallbackRegistry.execute(message.onCompleteId, [
-      message.approved,
-      message.localMutations,
-    ]);
   },
 };
 

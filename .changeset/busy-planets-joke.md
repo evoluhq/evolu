@@ -1,10 +1,5 @@
 ---
-"@evolu/react-native": patch
 "@evolu/common": patch
-"@evolu/nodejs": patch
-"@evolu/svelte": patch
-"@evolu/react": patch
-"@evolu/web": patch
 ---
 
 Add Task, async helpers, and concurrency primitives

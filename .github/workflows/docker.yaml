@@ -1,10 +1,7 @@
 name: DockerHub
 
 on:
-  workflow_run:
-    workflows: ["Release"]
-    types:
-      - completed
+  push:
     branches:
       - main
   workflow_dispatch: # Allow manual triggering
@@ -14,36 +11,7 @@ env:
   IMAGE_NAME: evoluhq/relay
 
 jobs:
-  check_release:
-    runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' || 
-      github.event.workflow_run.conclusion == 'success'
-    outputs:
-      should_run: ${{ steps.commit.outputs.should_run }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_branch || github.ref }}
-      - name: Check for release
-        id: commit
-        run: |
-          COMMIT_MSG=$(git log -1 --pretty=format:%s)
-          echo "message=$COMMIT_MSG" >> $GITHUB_OUTPUT
-          echo "Commit message: $COMMIT_MSG"
-
-          # For manual dispatch, always run. For workflow_run, check for changeset-release
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "should_run=true" >> $GITHUB_OUTPUT
-          elif [[ "$COMMIT_MSG" == *"changeset-release"* ]]; then
-            echo "should_run=true" >> $GITHUB_OUTPUT
-          else
-            echo "should_run=false" >> $GITHUB_OUTPUT
-          fi
-
   push_to_registry:
-    needs: check_release
-    if: needs.check_release.outputs.should_run == 'true'
     name: Push Docker image to Docker Hub
     runs-on: ubuntu-latest
     permissions:
@@ -70,10 +38,6 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Get Evolu Relay package version
-        id: package_version
-        run: echo "version=$(node -p "require('./packages/relay/package.json').version")" >> $GITHUB_OUTPUT
-
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
@@ -84,7 +48,6 @@ jobs:
             type=ref,event=pr
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=${{ steps.package_version.outputs.version }},enable={{is_default_branch}}
 
       - name: Build and push Docker image
         id: push
@@ -92,17 +55,14 @@ jobs:
         with:
           platforms: linux/amd64,linux/arm64
           context: .
-          file: ./packages/relay/Dockerfile
+          file: ./apps/relay/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            RELAY_VERSION=${{ steps.package_version.outputs.version }}
           cache-from: |
-            type=gha,scope=relay/${{ github.ref_name }}-${{ steps.package_version.outputs.version }}
             type=gha,scope=relay/${{ github.ref_name }}
           cache-to: |
-            type=gha,scope=relay/${{ github.ref_name }}-${{ steps.package_version.outputs.version }},mode=max
+            type=gha,scope=relay/${{ github.ref_name }},mode=min
           provenance: true
           sbom: true
 

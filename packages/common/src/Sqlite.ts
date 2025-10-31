@@ -360,8 +360,38 @@ const isSqlMutationRegEx = new RegExp(
   "i",
 );
 
+/**
+ * Removes SQL line comments (--) from a SQL string without using regex to avoid
+ * ReDoS vulnerabilities.
+ */
+const removeSqlComments = (sql: string): string => {
+  let result = "";
+  let i = 0;
+
+  while (i < sql.length) {
+    // Check for comment start
+    if (i < sql.length - 1 && sql[i] === "-" && sql[i + 1] === "-") {
+      // Skip until end of line or end of string
+      i += 2;
+      while (i < sql.length && sql[i] !== "\n") {
+        i++;
+      }
+      // Keep the newline if present
+      if (i < sql.length && sql[i] === "\n") {
+        result += "\n";
+        i++;
+      }
+    } else {
+      result += sql[i];
+      i++;
+    }
+  }
+
+  return result;
+};
+
 export const isSqlMutation: Predicate<string> = (sql) =>
-  isSqlMutationRegEx.test(sql.replace(/--.*$/gm, ""));
+  isSqlMutationRegEx.test(removeSqlComments(sql));
 
 export interface SqliteQueryPlanRow {
   id: number;

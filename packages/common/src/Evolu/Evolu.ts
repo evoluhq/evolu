@@ -1,7 +1,6 @@
 import { pack } from "msgpackr";
 import { isNonEmptyArray, isNonEmptyReadonlyArray } from "../Array.js";
 import { assert, assertNonEmptyArray } from "../Assert.js";
-import { LocalAuthDep } from "./LocalAuth.js";
 import { createCallbackRegistry } from "../CallbackRegistry.js";
 import { ConsoleDep } from "../Console.js";
 import { RandomBytesDep, SymmetricCryptoDecryptError } from "../Crypto.js";
@@ -11,11 +10,9 @@ import { exhaustiveCheck } from "../Function.js";
 import { err, ok, Result } from "../Result.js";
 import { isSqlMutation, SafeSql, SqliteError, SqliteQuery } from "../Sqlite.js";
 import { createStore, StoreSubscribe } from "../Store.js";
-import { requestIdleTask, toTask } from "../Task.js";
 import { TimeDep } from "../Time.js";
 import {
   createId,
-  DateIso,
   Id,
   InferErrors,
   InferInput,
@@ -28,7 +25,8 @@ import {
 import { IntentionalNever } from "../Types.js";
 import { CreateDbWorkerDep, DbConfig, defaultDbConfig } from "./Db.js";
 import { applyPatches } from "./Diff.js";
-import { AppOwner, OwnerId } from "./Owner.js";
+import { LocalAuthDep } from "./LocalAuth.js";
+import { AppOwner } from "./Owner.js";
 import { FlushSyncDep, ReloadAppDep } from "./Platform.js";
 import { ProtocolError, ProtocolUnsupportedVersionError } from "./Protocol.js";
 import {
@@ -50,93 +48,21 @@ import {
   evoluSchemaToDbSchema,
   IndexesConfig,
   insertable,
-  InsertableProps,
   kysely,
   Mutation,
   MutationChange,
   MutationKind,
   MutationMapping,
   MutationOptions,
-  Updateable,
   updateable,
-  UpdateableProps,
   upsertable,
-  UpsertableProps,
   ValidateSchema,
 } from "./Schema.js";
-import { CrdtMessage, DbChange } from "./Storage.js";
+import { DbChange } from "./Storage.js";
 import { initialSyncState, SyncOwner, SyncState } from "./Sync.js";
-import { Timestamp, TimestampError } from "./Timestamp.js";
+import { TimestampError } from "./Timestamp.js";
 
-export interface EvoluConfig<S extends EvoluSchema = EvoluSchema>
-  extends Partial<DbConfig> {
-  /**
-   * Processing pipeline for CRDT messages allowing additional validations and
-   * derived state computation.
-   *
-   * The `onMessage` callback is called for every CRDT message, whether locally
-   * created or received from sync. It's called only once per message and device
-   * and only if its {@link DbChange} was successfully validated against the
-   * application schema. The callback can run additional validation and return
-   * `true` to approve and persist the change, or `false` to reject it. Invalid
-   * and rejected messages are reported with {@link OnMessageError} and their
-   * changes are not persisted. The callback can also query the database and
-   * perform local-only mutations.
-   *
-   * Approved messages are persisted atomically with local-only mutations in a
-   * transaction which ensures exactly-once delivery (a durable queue)
-   * semantics.
-   *
-   * This callback is for scenarios where data cannot be trusted or when derived
-   * state is needed (for example, CRDT counters/aggregations, Messaging Layer
-   * Security, etc.)
-   *
-   * Because Evolu is a distributed system with CRDT semantics (eventually
-   * consistent), messages can arrive in any order. Do not use `onMessage` to
-   * validate rules depending on message order. Such validations belong in the
-   * application UI. Instead, use `onMessage` for order-independent validations
-   * like rate-limiting, ensuring owners only write to allowed tables, or
-   * filtering inappropriate content.
-   *
-   * Ensuring owners only write to allowed tables is safe in `onMessage` because
-   * synced messages are processed after the database already contains owner,
-   * making validation order-independent.
-   *
-   * ### Example
-   *
-   * ```ts
-   * const evolu = createEvolu(deps)(Schema, {
-   *   onMessage: (change, { ownerId, localOnly }) => {
-   *     // Reject messages with inappropriate content
-   *     if (change.table === "todo" && change.values.title === "spam") {
-   *       return false;
-   *     }
-   *
-   *     // Query the database
-   *     // const result = await evolu.loadQuery(
-   *     //   evolu.createQuery((db) =>
-   *
-   *     // Maintain derived state in local-only tables
-   *     if (change.table === "todo") {
-   *       localOnly.upsert("_todoStats", {
-   *         id: statsId,
-   *         count: result.length,
-   *       });
-   *     }
-   *
-   *     return true;
-   *   },
-   * });
-   * ```
-   */
-  readonly onMessage?: (
-    change: ValidatedDbChange<S>,
-    args: {
-      readonly ownerId: OwnerId | undefined;
-      readonly localOnly: LocalOnly<S>;
-    },
-  ) => boolean | Promise<boolean>;
-
+export interface EvoluConfig extends Partial<DbConfig> {
   /**
    * Use the `indexes` option to define SQLite indexes.
    *
@@ -167,47 +93,47 @@ export interface EvoluConfig<S extends EvoluSchema = EvoluSchema>
   readonly reloadUrl?: string;
 }
 
-/**
- * Validated database change with schema-typed values.
- *
- * This is a tagged union where the tag is the table name and the values are
- * updateable (validated against the schema). This represents the content of a
- * {@link CrdtMessage} without the timestamp, which is sufficient for business
- * logic validation in {@link EvoluConfig.onMessage}.
- */
-export type ValidatedDbChange<S extends EvoluSchema> = {
-  [Table in keyof S]: {
-    readonly table: Table;
-    readonly id: Id;
-    readonly values: Updateable<S[Table]> & { readonly createdAt?: DateIso };
-  };
-}[keyof S];
+// /**
+//  * Validated database change with schema-typed values.
+//  *
+//  * This is a tagged union where the tag is the table name and the values are
+//  * updateable (validated against the schema). This represents the content of a
+//  * {@link CrdtMessage} without the timestamp, which is sufficient for business
+//  * logic validation in {@link EvoluConfig.onMessage}.
+//  */
+// export type ValidatedDbChange<S extends EvoluSchema> = {
+//   [Table in keyof S]: {
+//     readonly table: Table;
+//     readonly id: Id;
+//     readonly values: Updateable<S[Table]> & { readonly createdAt?: DateIso };
+//   };
+// }[keyof S];
 
-/**
- * Local-only mutation interface for use within {@link EvoluConfig.onMessage}
- * callback.
- *
- * Provides type-safe mutation methods that only accept tables with names
- * starting with underscore (local-only tables). All methods require fully
- * validated branded values. No validation is performed as TypeScript ensures
- * type correctness.
- */
-export interface LocalOnly<S extends EvoluSchema> {
-  readonly insert: <T extends keyof S & `_${string}`>(
-    table: T,
-    values: InferType<ObjectType<InsertableProps<S[T]>>>,
-  ) => InferType<S[T]["id"]>;
+// /**
+//  * Local-only mutation interface for use within {@link EvoluConfig.onMessage}
+//  * callback.
+//  *
+//  * Provides type-safe mutation methods that only accept tables with names
+//  * starting with underscore (local-only tables). All methods require fully
+//  * validated branded values. No validation is performed as TypeScript ensures
+//  * type correctness.
+//  */
+// export interface LocalOnly<S extends EvoluSchema> {
+//   readonly insert: <T extends keyof S & `_${string}`>(
+//     table: T,
+//     values: InferType<ObjectType<InsertableProps<S[T]>>>,
+//   ) => InferType<S[T]["id"]>;
 
-  readonly update: <T extends keyof S & `_${string}`>(
-    table: T,
-    values: InferType<ObjectType<UpdateableProps<S[T]>>>,
-  ) => void;
+//   readonly update: <T extends keyof S & `_${string}`>(
+//     table: T,
+//     values: InferType<ObjectType<UpdateableProps<S[T]>>>,
+//   ) => void;
 
-  readonly upsert: <T extends keyof S & `_${string}`>(
-    table: T,
-    values: InferType<ObjectType<UpsertableProps<S[T]>>>,
-  ) => void;
-}
+//   readonly upsert: <T extends keyof S & `_${string}`>(
+//     table: T,
+//     values: InferType<ObjectType<UpsertableProps<S[T]>>>,
+//   ) => void;
+// }
 
 export interface Evolu<S extends EvoluSchema = EvoluSchema> {
   /**
@@ -337,7 +263,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
    */
   readonly appOwner: Promise<AppOwner>;
 
-  // TODO: Update it for the owner-api
+  // TODO: Update it for the owners
   // /**
   //  * Subscribe to {@link SyncState} changes.
   //  *
@@ -571,6 +497,8 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
    * const unuses = owners.map((owner) => evolu.useOwner(owner));
    * // Later: unuses.forEach(unuse => unuse());
    * ```
+   *
+   * @experimental
    */
   readonly useOwner: (owner: SyncOwner) => () => void;
 }
@@ -582,25 +510,24 @@ export type EvoluError =
   | SqliteError
   | SymmetricCryptoDecryptError
   | TimestampError
-  | TransferableError
-  | OnMessageError;
+  | TransferableError;
 
-/**
- * Error reported when a message is invalid or rejected during processing.
- *
- * This error should never happen because a properly written app should ensure
- * data correctness, but it can occur for two reasons:
- *
- * 1. An attack from someone who modified app code
- * 2. A bug by the developer
- *
- * Both cases are useful to report for debugging and security monitoring.
- */
-export interface OnMessageError {
-  readonly type: "OnMessageError";
-  readonly invalidChanges: ReadonlyArray<DbChange>;
-  readonly rejectedChanges: ReadonlyArray<DbChange>;
-}
+// /**
+//  * Error reported when a message is invalid or rejected during processing.
+//  *
+//  * This error should never happen because a properly written app should ensure
+//  * data correctness, but it can occur for two reasons:
+//  *
+//  * 1. An attack from someone who modified app code
+//  * 2. A bug by the developer
+//  *
+//  * Both cases are useful to report for debugging and security monitoring.
+//  */
+// export interface OnMessageError {
+//   readonly type: "OnMessageError";
+//   readonly invalidChanges: ReadonlyArray<DbChange>;
+//   readonly rejectedChanges: ReadonlyArray<DbChange>;
+// }
 
 interface InternalEvoluInstance<S extends EvoluSchema = EvoluSchema>
   extends Evolu<S> {
@@ -676,16 +603,13 @@ export const createEvolu =
   (deps: EvoluDeps) =>
   <S extends EvoluSchema>(
     schema: ValidateSchema<S> extends never ? S : ValidateSchema<S>,
-    config?: EvoluConfig<S>,
+    config?: EvoluConfig,
   ): Evolu<S> => {
     const name = config?.name ?? defaultDbConfig.name;
     let evolu = evoluInstances.get(name);
 
     if (evolu == null) {
-      evolu = createEvoluInstance(deps)(
-        schema as EvoluSchema,
-        config as EvoluConfig,
-      );
+      evolu = createEvoluInstance(deps)(schema as EvoluSchema, config);
       evoluInstances.set(name, evolu);
     } else {
       // Hot reloading. Note that indexes are intentionally omitted.
@@ -700,12 +624,7 @@ const createEvoluInstance =
   (schema: EvoluSchema, config?: EvoluConfig): InternalEvoluInstance => {
     deps.console.enabled = config?.enableLogging ?? false;
 
-    const {
-      onMessage,
-      indexes,
-      reloadUrl = "/",
-      ...partialDbConfig
-    } = config ?? {};
+    const { indexes, reloadUrl = "/", ...partialDbConfig } = config ?? {};
 
     const dbConfig: DbConfig = { ...defaultDbConfig, ...partialDbConfig };
 
@@ -739,39 +658,39 @@ const createEvoluInstance =
       return tabId;
     };
 
-    const createLocalOnly = (
-      localMutations: Array<MutationChange>,
-      defaultOwnerId: OwnerId | undefined,
-    ): LocalOnly<EvoluSchema> => ({
-      insert: (table, values) => {
-        const id = createId(deps);
-        localMutations.push({
-          table,
-          id,
-          values,
-          ownerId: defaultOwnerId,
-        });
-        return id;
-      },
-      update: (table, values) => {
-        const { id, ...rest } = values;
-        localMutations.push({
-          table,
-          id: id as Id,
-          values: rest,
-          ownerId: defaultOwnerId,
-        });
-      },
-      upsert: (table, values) => {
-        const { id, ...rest } = values as Record<string, unknown> & { id: Id };
-        localMutations.push({
-          table,
-          id: id,
-          values: rest as MutationChange["values"],
-          ownerId: defaultOwnerId,
-        });
-      },
-    });
+    // const createLocalOnly = (
+    //   localMutations: Array<MutationChange>,
+    //   defaultOwnerId: OwnerId | undefined,
+    // ): LocalOnly<EvoluSchema> => ({
+    //   insert: (table, values) => {
+    //     const id = createId(deps);
+    //     localMutations.push({
+    //       table,
+    //       id,
+    //       values,
+    //       ownerId: defaultOwnerId,
+    //     });
+    //     return id;
+    //   },
+    //   update: (table, values) => {
+    //     const { id, ...rest } = values;
+    //     localMutations.push({
+    //       table,
+    //       id: id as Id,
+    //       values: rest,
+    //       ownerId: defaultOwnerId,
+    //     });
+    //   },
+    //   upsert: (table, values) => {
+    //     const { id, ...rest } = values as Record<string, unknown> & { id: Id };
+    //     localMutations.push({
+    //       table,
+    //       id: id,
+    //       values: rest as MutationChange["values"],
+    //       ownerId: defaultOwnerId,
+    //     });
+    //   },
+    // });
 
     // Worker responses are delivered to all tabs. Each case must handle this
     // properly (e.g., AppOwner promise resolves only once, tabId filtering).
@@ -846,73 +765,73 @@ const createEvoluInstance =
           break;
         }
 
-        case "processNewMessages": {
-          void requestIdleTask(
-            toTask(async () => {
-              const approved: Array<Timestamp> = [];
-              const invalidChanges: Array<DbChange> = [];
-              const rejectedChanges: Array<DbChange> = [];
-              const localMutations: Array<MutationChange> = [];
+        // case "processNewMessages": {
+        //   void requestIdleTask(
+        //     toTask(async () => {
+        //       const approved: Array<Timestamp> = [];
+        //       const invalidChanges: Array<DbChange> = [];
+        //       const rejectedChanges: Array<DbChange> = [];
+        //       const localMutations: Array<MutationChange> = [];
 
-              for (const crdtMessage of message.messages) {
-                let isApproved = true;
-                let isValid = true;
+        //       for (const crdtMessage of message.messages) {
+        //         let isApproved = true;
+        //         let isValid = true;
 
-                const table = crdtMessage.change.table;
-                if (table in schema) {
-                  const { createdAt, ...values } = crdtMessage.change.values;
-                  isValid =
-                    (createdAt ? DateIso.is(createdAt) : true) &&
-                    getMutationType(table, "update").is({
-                      id: crdtMessage.change.id,
-                      ...values,
-                    });
-                } else {
-                  isValid = false;
-                }
+        //         const table = crdtMessage.change.table;
+        //         if (table in schema) {
+        //           const { createdAt, ...values } = crdtMessage.change.values;
+        //           isValid =
+        //             (createdAt ? DateIso.is(createdAt) : true) &&
+        //             getMutationType(table, "update").is({
+        //               id: crdtMessage.change.id,
+        //               ...values,
+        //             });
+        //         } else {
+        //           isValid = false;
+        //         }
 
-                if (!isValid) {
-                  isApproved = false;
-                  invalidChanges.push(crdtMessage.change);
-                } else if (onMessage) {
-                  // At this point, we've validated that the message conforms to the
-                  // schema, so the typed callback can safely process it.
-                  isApproved = await onMessage(crdtMessage.change, {
-                    ownerId: message.ownerId,
-                    localOnly: createLocalOnly(localMutations, message.ownerId),
-                  });
-                  if (!isApproved) {
-                    rejectedChanges.push(crdtMessage.change);
-                  }
-                }
+        //         if (!isValid) {
+        //           isApproved = false;
+        //           invalidChanges.push(crdtMessage.change);
+        //         } else if (onMessage) {
+        //           // At this point, we've validated that the message conforms to the
+        //           // schema, so the typed callback can safely process it.
+        //           isApproved = await onMessage(crdtMessage.change, {
+        //             ownerId: message.ownerId,
+        //             localOnly: createLocalOnly(localMutations, message.ownerId),
+        //           });
+        //           if (!isApproved) {
+        //             rejectedChanges.push(crdtMessage.change);
+        //           }
+        //         }
 
-                if (isApproved) {
-                  approved.push(crdtMessage.timestamp);
-                }
-              }
+        //         if (isApproved) {
+        //           approved.push(crdtMessage.timestamp);
+        //         }
+        //       }
 
-              // Report OnMessageError if there were any invalid or rejected changes
-              if (invalidChanges.length > 0 || rejectedChanges.length > 0) {
-                const onMessageError: OnMessageError = {
-                  type: "OnMessageError",
-                  invalidChanges,
-                  rejectedChanges,
-                };
-                errorStore.set(onMessageError);
-              }
+        //       // Report OnMessageError if there were any invalid or rejected changes
+        //       if (invalidChanges.length > 0 || rejectedChanges.length > 0) {
+        //         const onMessageError: OnMessageError = {
+        //           type: "OnMessageError",
+        //           invalidChanges,
+        //           rejectedChanges,
+        //         };
+        //         errorStore.set(onMessageError);
+        //       }
 
-              dbWorker.postMessage({
-                type: "onProcessNewMessages",
-                onCompleteId: message.onCompleteId,
-                approved,
-                localMutations,
-              });
+        //       dbWorker.postMessage({
+        //         type: "onProcessNewMessages",
+        //         onCompleteId: message.onCompleteId,
+        //         approved,
+        //         localMutations,
+        //       });
 
-              return ok();
-            }),
-          )();
-          break;
-        }
+        //       return ok();
+        //     }),
+        //   )();
+        //   break;
+        // }
 
         case "onExport": {
           exportRegistry.execute(
@@ -1012,7 +931,7 @@ const createEvoluInstance =
           }
 
           if (mutateMicrotaskQueue.length === 1) {
-            queueMicrotask(() => void processMutationQueue());
+            queueMicrotask(processMutationQueue);
           }
         }
 
@@ -1027,7 +946,7 @@ const createEvoluInstance =
         );
       };
 
-    const processMutationQueue = async () => {
+    const processMutationQueue = () => {
       const changes: Array<MutationChange> = [];
       const onCompleteCallbacks = [];
 
@@ -1053,33 +972,33 @@ const createEvoluInstance =
 
       if (!isNonEmptyArray(changes)) return;
 
-      if (onMessage) {
-        const rejectedChanges: Array<DbChange> = [];
-        const localMutations: Array<MutationChange> = [];
+      // if (onMessage) {
+      //   const rejectedChanges: Array<DbChange> = [];
+      //   const localMutations: Array<MutationChange> = [];
 
-        for (const change of changes) {
-          const localOnly = createLocalOnly(localMutations, change.ownerId);
+      //   for (const change of changes) {
+      //     const localOnly = createLocalOnly(localMutations, change.ownerId);
 
-          const isApproved = await onMessage(change, {
-            ownerId: change.ownerId,
-            localOnly,
-          });
-          if (!isApproved) {
-            rejectedChanges.push(change);
-          }
-        }
+      //     const isApproved = await onMessage(change, {
+      //       ownerId: change.ownerId,
+      //       localOnly,
+      //     });
+      //     if (!isApproved) {
+      //       rejectedChanges.push(change);
+      //     }
+      //   }
 
-        if (rejectedChanges.length > 0) {
-          errorStore.set({
-            type: "OnMessageError",
-            invalidChanges: [],
-            rejectedChanges,
-          });
-          return;
-        }
+      //   if (rejectedChanges.length > 0) {
+      //     errorStore.set({
+      //       type: "OnMessageError",
+      //       invalidChanges: [],
+      //       rejectedChanges,
+      //     });
+      //     return;
+      //   }
 
-        changes.push(...localMutations);
-      }
+      //   changes.push(...localMutations);
+      // }
 
       dbWorker.postMessage({
         type: "mutate",

@@ -84,6 +84,7 @@ export const createNodeJsRelay =
             subscriberCount: ownerSocketsMap.getValues(ownerId)?.size ?? 0,
           });
         },
+
         unsubscribe: (ownerId) => {
           ownerSocketsMap.remove(ownerId, ws);
           deps.console.log("[relay]", "unsubscribe", {
@@ -91,6 +92,7 @@ export const createNodeJsRelay =
             subscriberCount: ownerSocketsMap.getValues(ownerId)?.size ?? 0,
           });
         },
+
         broadcast: (ownerId, message) => {
           const sockets = ownerSocketsMap.getValues(ownerId);
           if (!sockets) return;

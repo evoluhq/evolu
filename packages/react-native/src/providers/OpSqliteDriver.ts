@@ -20,7 +20,7 @@ export const createOpSqliteDriver: CreateSqliteDriver = (name, options) => {
           ...(options?.encryptionKey && {
             encryptionKey: `x'${bytesToHex(options.encryptionKey)}'`,
           }),
-        }
+        },
   );
   let isDisposed = false;
 

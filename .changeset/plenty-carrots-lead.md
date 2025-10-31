@@ -1,7 +1,5 @@
 ---
-"@evolu/react-native": patch
 "@evolu/common": patch
-"@evolu/web": patch
 ---
 
 Add in-memory database support for testing and temporary data

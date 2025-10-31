@@ -1,23 +1,21 @@
 services:
   evolu-relay:
-    container_name: evolu-relay-dev-server
+    container_name: evolu-relay-server
     image: evolu/relay:latest
     build:
       context: ../../
-      dockerfile: packages/relay/Dockerfile.dev
+      dockerfile: apps/relay/Dockerfile
       tags:
+        - evolu/relay:latest
         - evolu/relay:dev
     ports:
       - "4000:4000"
     volumes:
       # Use named volume by default, can be overridden with bind mount if needed
-      - evolu-relay-dev-data:/app/packages/relay/data
+      - evolu-relay-data:/app/apps/relay/data
     environment:
       - NODE_ENV=${NODE_ENV:-production}
       - LOG_LEVEL=${LOG_LEVEL:-info}
-      - RELAY_NAME=${RELAY_NAME:-evolu-relay-dev}
-      - RELAY_PORT=${RELAY_PORT:-4000}
-      - RELAY_ENABLE_LOGGING=${RELAY_ENABLE_LOGGING:-false}
     restart: unless-stopped
     deploy:
       resources:
@@ -45,14 +43,14 @@ services:
         max-size: ${LOG_MAX_SIZE:-50m}
         max-file: ${LOG_MAX_FILES:-5}
     networks:
-      - evolu-dev-network
+      - evolu-network
 
 volumes:
-  evolu-relay-dev-data:
+  evolu-relay-data:
     driver: local
-    name: evolu-relay-dev-data
+    name: evolu-relay-data
 
 networks:
-  evolu-dev-network:
-    name: evolu-relay-dev-network
+  evolu-network:
+    name: evolu-relay-network
     driver: bridge

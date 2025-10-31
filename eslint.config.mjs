@@ -69,7 +69,10 @@ export default defineConfig(
           tags: { param: { lines: "never" } },
         },
       ],
-      "jsdoc/check-tag-names": ["error", { definedTags: ["category"] }],
+      "jsdoc/check-tag-names": [
+        "error",
+        { definedTags: ["category", "experimental"] },
+      ],
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "error",
     },

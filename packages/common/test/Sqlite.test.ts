@@ -1,9 +1,14 @@
 import BetterSQLite from "better-sqlite3";
 import { existsSync, unlinkSync } from "fs";
-import { assert, expect, test } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 import { constVoid } from "../src/Function.js";
 import { err, getOrThrow } from "../src/Result.js";
-import { createSqlite, sql, SqliteDriver } from "../src/Sqlite.js";
+import {
+  createSqlite,
+  isSqlMutation,
+  sql,
+  SqliteDriver,
+} from "../src/Sqlite.js";
 import { testCreateSqliteDriver, testSimpleName } from "./_deps.js";
 
 const createTestSqlite = async (consoleArgs?: Array<any>) => {
@@ -364,4 +369,81 @@ test.skip("SQLite performance: individual queries vs CTE with concatenated blobs
 
   db.close();
   unlinkSync(dbFile);
+});
+
+describe("isSqlMutation", () => {
+  test("detects mutation statements", () => {
+    expect(isSqlMutation("INSERT INTO users VALUES (1)")).toBe(true);
+    expect(isSqlMutation("UPDATE users SET name = 'test'")).toBe(true);
+    expect(isSqlMutation("DELETE FROM users")).toBe(true);
+    expect(isSqlMutation("CREATE TABLE users (id INT)")).toBe(true);
+    expect(isSqlMutation("DROP TABLE users")).toBe(true);
+    expect(isSqlMutation("ALTER TABLE users ADD COLUMN name TEXT")).toBe(true);
+    expect(isSqlMutation("REPLACE INTO users VALUES (1)")).toBe(true);
+    expect(isSqlMutation("BEGIN TRANSACTION")).toBe(true);
+    expect(isSqlMutation("COMMIT")).toBe(true);
+    expect(isSqlMutation("ROLLBACK")).toBe(true);
+    expect(isSqlMutation("PRAGMA journal_mode=WAL")).toBe(true);
+    expect(isSqlMutation("VACUUM")).toBe(true);
+  });
+
+  test("detects mutations case-insensitively", () => {
+    expect(isSqlMutation("insert into users values (1)")).toBe(true);
+    expect(isSqlMutation("Insert Into users values (1)")).toBe(true);
+    expect(isSqlMutation("INSERT into users values (1)")).toBe(true);
+  });
+
+  test("returns false for SELECT queries", () => {
+    expect(isSqlMutation("SELECT * FROM users")).toBe(false);
+    expect(isSqlMutation("SELECT id, name FROM users WHERE id = 1")).toBe(
+      false,
+    );
+    expect(isSqlMutation("select * from users")).toBe(false);
+  });
+
+  test("ignores SQL comments when detecting mutations", () => {
+    expect(isSqlMutation("-- INSERT INTO users\nSELECT * FROM users")).toBe(
+      false,
+    );
+    expect(isSqlMutation("SELECT * FROM users -- UPDATE users")).toBe(false);
+    expect(isSqlMutation("-- DELETE FROM users")).toBe(false);
+    expect(
+      isSqlMutation("-- This is a comment\nINSERT INTO users VALUES (1)"),
+    ).toBe(true);
+  });
+
+  test("ignores comments in multiline SQL", () => {
+    const multilineSelect = `
+      -- This is a comment
+      SELECT *
+      FROM users -- inline comment
+      WHERE id = 1
+      -- another comment
+    `;
+    expect(isSqlMutation(multilineSelect)).toBe(false);
+
+    const multilineInsert = `
+      -- This is a comment
+      INSERT INTO users
+      VALUES (1, 'test') -- inline comment
+      -- another comment
+    `;
+    expect(isSqlMutation(multilineInsert)).toBe(true);
+
+    const commentedOutMutation = `
+      -- INSERT INTO users VALUES (1)
+      -- UPDATE users SET name = 'test'
+      SELECT * FROM users
+    `;
+    expect(isSqlMutation(commentedOutMutation)).toBe(false);
+  });
+
+  test("handles strings with many comment markers without performance issues", () => {
+    const manyComments = "-- ".repeat(1000) + "SELECT * FROM users";
+    expect(isSqlMutation(manyComments)).toBe(false);
+
+    const manyCommentsWithMutation =
+      "-- ".repeat(1000) + "\nINSERT INTO users VALUES (1)";
+    expect(isSqlMutation(manyCommentsWithMutation)).toBe(true);
+  });
 });

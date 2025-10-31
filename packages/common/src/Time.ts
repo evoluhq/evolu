@@ -140,7 +140,7 @@ export const durationToNonNegativeInt = (
     return duration;
   }
 
-  // Parse duration string
+  // Parse duration string without regex to avoid ReDoS vulnerabilities
   const units = {
     ms: 1,
     s: 1000,
@@ -150,19 +150,50 @@ export const durationToNonNegativeInt = (
   } as const;
 
   let total = 0;
-  const matches = duration.match(/(\d+)(ms|s|m|h|d)/g);
+  let i = 0;
 
-  if (!matches) {
-    return 0 as NonNegativeInt;
-  }
-
-  const unitRegex = /(\d+)(ms|s|m|h|d)/;
-  for (const match of matches) {
-    const result = unitRegex.exec(match);
-    if (result) {
-      const [, value, unit] = result;
-      total += parseInt(value) * units[unit as keyof typeof units];
+  while (i < duration.length) {
+    // Skip whitespace
+    while (i < duration.length && duration[i] === " ") {
+      i++;
     }
+
+    if (i >= duration.length) break;
+
+    // Parse number
+    let numStr = "";
+    while (i < duration.length && duration[i] >= "0" && duration[i] <= "9") {
+      numStr += duration[i];
+      i++;
+    }
+
+    if (numStr === "") break;
+
+    // Parse unit (ms or single char s/m/h/d)
+    let unit = "";
+    if (i < duration.length) {
+      if (
+        duration[i] === "m" &&
+        i + 1 < duration.length &&
+        duration[i + 1] === "s"
+      ) {
+        unit = "ms";
+        i += 2;
+      } else if (
+        duration[i] === "s" ||
+        duration[i] === "m" ||
+        duration[i] === "h" ||
+        duration[i] === "d"
+      ) {
+        unit = duration[i];
+        i++;
+      }
+    }
+
+    if (unit === "") break;
+
+    const value = parseInt(numStr, 10);
+    total += value * units[unit as keyof typeof units];
   }
 
   return total as NonNegativeInt;

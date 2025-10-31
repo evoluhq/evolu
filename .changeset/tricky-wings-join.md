@@ -1,7 +1,5 @@
 ---
-"@evolu/react-native": patch
 "@evolu/common": patch
-"@evolu/web": patch
 ---
 
 # Transport-Based Configuration System

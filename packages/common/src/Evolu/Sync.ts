@@ -1,8 +1,4 @@
-import {
-  mapNonEmptyArray,
-  NonEmptyArray,
-  NonEmptyReadonlyArray,
-} from "../Array.js";
+import { NonEmptyArray, NonEmptyReadonlyArray } from "../Array.js";
 import { assert } from "../Assert.js";
 import { Brand } from "../Brand.js";
 import { concatBytes } from "../Buffer.js";
@@ -24,7 +20,7 @@ import { AbortError, createMutex } from "../Task.js";
 import { TimeDep } from "../Time.js";
 import { IdBytes, idBytesToId, idToIdBytes } from "../Type.js";
 import { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
-import type { PostMessageDep, WriteMessagesCallbackRegistryDep } from "./Db.js";
+import type { PostMessageDep } from "./Db.js";
 import {
   AppOwner,
   OwnerEncryptionKey,
@@ -153,8 +149,7 @@ export const createSync =
       SqliteDep &
       SymmetricCryptoDep &
       TimeDep &
-      TimestampConfigDep &
-      WriteMessagesCallbackRegistryDep,
+      TimestampConfigDep,
   ) =>
   (config: SyncConfig): Result<Sync, SqliteError> => {
     let isDisposed = false;
@@ -440,8 +435,7 @@ const createClientStorage =
       SymmetricCryptoDep &
       TimeDep &
       TimestampConfigDep &
-      PostMessageDep &
-      WriteMessagesCallbackRegistryDep,
+      PostMessageDep,
   ) =>
   (config: {
     onError: (
@@ -480,88 +474,32 @@ const createClientStorage =
           | TimestampCounterOverflowError
           | TimestampDriftError
           | TimestampTimeOutOfRangeError
+          // eslint-disable-next-line @typescript-eslint/require-await
         >(async () => {
           const ownerId = ownerIdBytesToOwnerId(ownerIdBytes);
           const owner = deps.getSyncOwner(ownerId);
           // Owner can be removed during syncing.
           if (!owner) return ok(false);
 
-          const existingTimestamps = getExistingTimestamps(deps)(
-            ownerIdBytes,
-            mapNonEmptyArray(encryptedMessages, (m) =>
-              timestampToTimestampBytes(m.timestamp),
-            ),
-          );
-
-          if (!existingTimestamps.ok) return existingTimestamps;
-
-          const existingTimestampsSet = new Set(
-            existingTimestamps.value
-              .map(timestampBytesToTimestamp)
-              .map(timestampToTimestampString),
-          );
-
-          const newMessages: Array<CrdtMessage> = [];
+          const messages: Array<CrdtMessage> = [];
 
           for (const message of encryptedMessages) {
-            const timestampAlreadyExists = existingTimestampsSet.has(
-              timestampToTimestampString(message.timestamp),
-            );
-            if (timestampAlreadyExists) continue;
-
             const change = decryptAndDecodeDbChange(deps)(
               message,
               owner.encryptionKey,
             );
-
             if (!change.ok) return change;
 
-            newMessages.push({
+            messages.push({
               timestamp: message.timestamp,
               change: change.value,
             });
           }
 
-          const { promise, resolve } =
-            Promise.withResolvers<
-              readonly [ReadonlyArray<Timestamp>, ReadonlyArray<MutationChange>]
-            >();
-
-          const onCompleteId =
-            deps.writeMessagesCallbackRegistry.register(resolve);
-
-          deps.postMessage({
-            type: "processNewMessages",
-            ownerId,
-            messages: newMessages,
-            onCompleteId,
-          });
-
-          const [approvedTimestamps, localMutations] = await promise;
-
-          const approvedTimestampsSet = new Set(
-            approvedTimestamps.map(timestampToTimestampString),
-          );
-
-          const acceptedMessages = newMessages.map((message) => {
-            const isApproved = approvedTimestampsSet.has(
-              timestampToTimestampString(message.timestamp),
-            );
-            if (isApproved) return message;
-            /**
-             * For non-approved messages, preserve timestamps to prevent re-sync
-             * attempts, but clear values to skip applying their changes.
-             */
-            return {
-              ...message,
-              change: { ...message.change, values: {} },
-            };
-          });
-
           const transaction = deps.sqlite.transaction(() => {
             let clockTimestamp = deps.clock.get();
 
-            for (const message of acceptedMessages) {
+            for (const message of messages) {
               const nextTimestamp = receiveTimestamp(deps)(
                 clockTimestamp,
                 message.timestamp,
@@ -573,15 +511,15 @@ const createClientStorage =
 
             const applyMessagesResult = applyMessages({ ...deps, storage })(
               owner.id,
-              acceptedMessages,
+              messages,
             );
             if (!applyMessagesResult.ok) return applyMessagesResult;
 
-            // Apply local mutations atomically with approved messages
-            for (const change of localMutations) {
-              const result = applyLocalOnlyChange(deps)(change);
-              if (!result.ok) return result;
-            }
+            // // Apply local mutations atomically with approved messages
+            // for (const change of localMutations) {
+            //   const result = applyLocalOnlyChange(deps)(change);
+            //   if (!result.ok) return result;
+            // }
 
             return deps.clock.save(clockTimestamp);
           });
