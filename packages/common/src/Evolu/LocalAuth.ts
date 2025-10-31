@@ -13,6 +13,7 @@ import {
 /** 
  * Local authentication and authorization system for Evolu.
  * This is API is subject to change and not recommended for production use.
+ *
  * @experimental
  */
 export interface LocalAuth {

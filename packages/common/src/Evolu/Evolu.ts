@@ -25,7 +25,6 @@ import {
 import { IntentionalNever } from "../Types.js";
 import { CreateDbWorkerDep, DbConfig, defaultDbConfig } from "./Db.js";
 import { applyPatches } from "./Diff.js";
-import { LocalAuthDep } from "./LocalAuth.js";
 import { AppOwner } from "./Owner.js";
 import { FlushSyncDep, ReloadAppDep } from "./Platform.js";
 import { ProtocolError, ProtocolUnsupportedVersionError } from "./Protocol.js";
