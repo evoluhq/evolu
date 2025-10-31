@@ -47,7 +47,7 @@ export default function Index(): React.ReactNode {
         service,
       });
 
-      const authResult = await localAuth.login(undefined, {
+      const authResult = await localAuth.getOwner({
         service,
       });
 
@@ -436,7 +436,6 @@ function EvoluDemo({
     const handleLoginPress = async (ownerId: Evolu.OwnerId) => {
       const result = await localAuth.login(ownerId, {
         service: service,
-        reloadNeeded: true,
       });
       if (result) {
         evolu.reloadApp();

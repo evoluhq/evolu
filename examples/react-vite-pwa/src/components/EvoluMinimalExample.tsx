@@ -5,6 +5,9 @@ import { IconEdit, IconTrash } from "@tabler/icons-react";
 import clsx from "clsx";
 import { FC, Suspense, use, useMemo, useState } from "react";
 
+// Namespace for the current app (scopes databases, passkeys, etc.)
+const service = "pwa-react";
+
 // Primary keys are branded types, preventing accidental use of IDs across
 // different tables (e.g., a TodoId can't be used where a UserId is expected).
 const TodoId = Evolu.id("Todo");
@@ -22,15 +25,13 @@ const Schema = {
   },
 };
 
-const service = "pwa-react";
-
 // Note: this is a top-level await and used for brevity in the demo
 // In a real application, you would use a wrapper component.
 const ownerIds = await localAuth.getProfiles({
   service,
 });
 
-const authResult = await localAuth.login(undefined, {
+const authResult = await localAuth.getOwner({
   service,
 });
 
@@ -363,7 +364,6 @@ const AuthActions: FC = () => {
   const handleLoginClick = async (ownerId: Evolu.OwnerId) => {
     const result = await localAuth.login(ownerId, {
       service: service,
-      reloadNeeded: true,
     });
     if (result) {
       evolu.reloadApp();

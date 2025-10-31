@@ -10,12 +10,16 @@ import {
   OwnerWriteKey,
 } from "./Owner.js";
 
-/** @experimental */
+/** 
+ * Local authentication and authorization system for Evolu.
+ * This is API is subject to change and not recommended for production use.
+ * @experimental
+ */
 export interface LocalAuth {
   /** Logs in with the given owner ID, or loads the target owner if not provided. */
   login: (
-    ownerId?: OwnerId,
-    options?: LocalAuthOptions & { reloadNeeded?: boolean },
+    ownerId: OwnerId,
+    options?: LocalAuthOptions,
   ) => Promise<AuthResult | null>;
 
   /** Registers a new owner with the given username. */
@@ -26,6 +30,9 @@ export interface LocalAuth {
 
   /** Unregisters an owner with the given owner ID. */
   unregister: (ownerId: OwnerId, options?: LocalAuthOptions) => Promise<void>;
+
+  /** Gets the current owner (last logged in or last registered owner) */
+  getOwner: (options?: LocalAuthOptions) => Promise<AuthResult | null>;
 
   /** Lists all registered owner ids with associated usernames. */
   getProfiles: (
@@ -171,44 +178,15 @@ export const createLocalAuth = (
 
   return {
     login: async (ownerId, options) => {
-      // Use either specified owner or the last owner used during registration/login.
-      const targetOwnerId = ownerId ?? (await getLastOwnerId(options));
-      if (!targetOwnerId) return null;
-
       // Lookup the associated username
       const names = await getOwnerNames(options);
-      const username = names[targetOwnerId] ?? "";
-
-      // If a reload is needed, avoid authentication, it needs to be handled on next page load.
+      const username = names[ownerId] ?? "";
+      // Currently a reload is needed. This avoids authentication
+      // it needs to be handled on next page load.
       // We set the last owner so we know what the target is.
       // It is the applications's responsibility to reload and trigger login.
-      if (options?.reloadNeeded) {
-        await setLastOwnerId(targetOwnerId, options);
-        return { owner: undefined, username };
-      }
-
-      // Retrieve and decrypt the owner (this will trigger device authentication)
-      const account = await deps.secureStorage.getItem(targetOwnerId, {
-        ...AUTH_DEFAULT_OPTIONS,
-        ...options,
-      });
-      if (!account?.value) return null;
-
-      // Unserialize the values (TODO: save these as base64 instead of json serializing)
-      const result = JSON.parse(account.value) as { owner: AppOwner };
-      const writeKey = OwnerWriteKey.orThrow(
-        new Uint8Array(Object.values(result.owner.writeKey)),
-      );
-      const encryptionKey = OwnerEncryptionKey.orThrow(
-        new Uint8Array(Object.values(result.owner.encryptionKey)),
-      );
-      const owner: AppOwner = { ...result.owner, writeKey, encryptionKey };
-
-      // Update the last owner for future login attempts
-      await setLastOwnerId(targetOwnerId, options);
-
-      // Return the owner and associated username
-      return { owner, username };
+      await setLastOwnerId(ownerId, options);
+      return { owner: undefined, username };
     },
 
     register: async (username, options) => {
@@ -255,6 +233,37 @@ export const createLocalAuth = (
           await setLastOwnerId(ids[0], options);
         }
       }
+    },
+
+    getOwner: async (options) => {
+      const ownerId = await getLastOwnerId(options);
+      if (!ownerId) return null;
+
+      // Retrieve and decrypt the owner (this will trigger device authentication)
+      const account = await deps.secureStorage.getItem(ownerId, {
+        ...AUTH_DEFAULT_OPTIONS,
+        ...options,
+      });
+      if (!account?.value) return null;
+
+      // Unserialize the values (TODO: save these as base64 instead of json serializing)
+      const result = JSON.parse(account.value) as { owner: AppOwner };
+      const writeKey = OwnerWriteKey.orThrow(
+        new Uint8Array(Object.values(result.owner.writeKey)),
+      );
+      const encryptionKey = OwnerEncryptionKey.orThrow(
+        new Uint8Array(Object.values(result.owner.encryptionKey)),
+      );
+      const owner: AppOwner = { ...result.owner, writeKey, encryptionKey };
+
+      // Update the last owner for future login attempts
+      await setLastOwnerId(ownerId, options);
+
+      const names = await getOwnerNames(options);
+      const username = names[ownerId] ?? "";
+
+      // Return the owner and associated username
+      return { owner, username };
     },
 
     getProfiles: async (options) => {
