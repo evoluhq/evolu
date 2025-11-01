@@ -47,6 +47,8 @@ import {
   useState,
 } from "react";
 
+// TODO: Epochs and sharing.
+
 const ProjectId = id("Project");
 type ProjectId = typeof ProjectId.Type;
 
