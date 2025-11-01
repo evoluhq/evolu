@@ -1,4 +1,3 @@
-/* eslint-disable jsdoc/no-undefined-types */
 /**
  * Evolu Protocol
  *
@@ -21,7 +20,7 @@
  * transfer, ownership, real-time broadcasting, request-response semantics, and
  * error handling.
  *
- * ### Message Structure
+ * ### Message structure
  *
  * | Field                          | Notes                     |
  * | :----------------------------- | :------------------------ |
@@ -44,7 +43,7 @@
  * | - {@link NonNegativeInt}       | Number of ranges.         |
  * | - {@link Range}                |                           |
  *
- * ### WriteKey Validation
+ * ### WriteKey validation
  *
  * The initiator sends a hasWriteKey flag and optionally a WriteKey. The
  * WriteKey is required when sending messages as a secure token proving the
@@ -80,14 +79,13 @@
  * initiator. In relay-to-relay or P2P sync, both sides may require the
  * {@link OwnerWriteKey} depending on who is the initiator.
  *
- * ### Protocol Errors
+ * ### Protocol errors
  *
  * The protocol uses error codes in the header to signal issues:
  *
  * - {@link ProtocolWriteKeyError}: The provided WriteKey is invalid or missing.
- * - {@link ProtocolWriteError}: A write operation failed (e.g., due to storage
- *   limits or billing).
- * - {@link ProtocolSyncError}: A generic or unexpected synchronization failure
+ * - {@link ProtocolWriteError}: A serious relay-side write failure occurred.
+ * - {@link ProtocolSyncError}: A serious relay-side synchronization failure
  *   occurred.
  * - {@link ProtocolUnsupportedVersionError}: Protocol version mismatch.
  * - {@link ProtocolInvalidDataError}: The message is malformed or corrupted.
@@ -95,18 +93,18 @@
  * All protocol errors except `ProtocolInvalidDataError` include the `OwnerId`
  * to allow clients to associate errors with the correct owner.
  *
- * ### Message Size Limit
+ * ### Message size limit
  *
  * The protocol enforces a strict maximum size for all messages, defined by
- * {@link maxProtocolMessageSize}. This ensures every {@link ProtocolMessage} is
+ * {@link ProtocolMessageMaxSize}. This ensures every {@link ProtocolMessage} is
  * less than or equal to this limit, enabling stateless transports, simplified
  * relay implementation, and predictable memory usage. When all messages don't
  * fit within the limit, the protocol automatically continues synchronization in
  * subsequent rounds using range-based reconciliation.
  *
- * Individual database mutations are limited to `maxMutationSize` (640KB), which
- * is smaller than the protocol message limit to ensure efficient sync with
- * {@link maxProtocolMessageRangesSize}.
+ * Database mutations are limited to 640KB, which is smaller than the protocol
+ * message limit to ensure efficient sync with
+ * {@link defaultProtocolMessageRangesMaxSize}.
  *
  * ### Why Binary?
  *
@@ -149,6 +147,15 @@
  * Version negotiation is per-owner, allowing Evolu Protocol to evolve safely
  * over time and provide clear feedback about version mismatches.
  *
+ * ### Credible exit
+ *
+ * The protocol specification is intentionally non-configurable to ensure
+ * universal compatibility. This design allows applications (users) to switch
+ * between any compliant relay without negotiation or compatibility checks
+ * beyond version matching. Relays are generic infrastructure that any
+ * application can use interchangeably making exit from any single provider
+ * technically feasible and economically viable.
+ *
  * @module
  */
 
@@ -179,12 +186,14 @@ import { SqliteValue } from "../Sqlite.js";
 import {
   Base64Url,
   base64UrlToUint8Array,
+  between,
   DateIso,
   Id,
   IdBytes,
   idBytesToId,
   idBytesTypeValueLength,
   idToIdBytes,
+  Int,
   Json,
   jsonToJsonValue,
   NonNegativeInt,
@@ -231,18 +240,71 @@ import {
 } from "./Timestamp.js";
 
 /**
- * MessagePack serializer for standard compatibility and compact encoding.
+ * Evolu uses MessagePack for numbers and JSONs.
  *
  * - `variableMapSize: true` - More compact maps, ~5-10% slower encoding
  * - `useRecords: false` - Standard MessagePack without extensions
  */
 const packr = new Packr({ variableMapSize: true, useRecords: false });
 
-/** Maximum size of the entire protocol message in bytes. */
-export const maxProtocolMessageSize = 1_000_000 as PositiveInt;
+const minProtocolMessageMaxSize = 1_000_000;
+const maxProtocolMessageMaxSize = 100_000_000;
 
-/** Maximum size of the ranges in bytes. */
-export const maxProtocolMessageRangesSize = 30_000 as PositiveInt;
+/**
+ * Protocol message maximum size.
+ *
+ * Defines the upper limit for how large a single protocol message can be.
+ * Implementations must enforce a maximum size between 1MB and 100MB to ensure
+ * compatibility across all Evolu implementations (the maximum size of mutation
+ * change is hardcoded and enforced hence the maximum size can't be smaller).
+ *
+ * Larger maximum sizes can be configured by relays to reduce roundtrips. For
+ * example, a dedicated relay with ample resources could configure a 100MB
+ * maximum to minimize roundtrips for large syncs.
+ *
+ * Only relays can safely configure larger sizes, as clients will handle them.
+ * Increasing this value on the client side would break compatibility with
+ * relays that enforce smaller limits.
+ */
+export const ProtocolMessageMaxSize = between(
+  minProtocolMessageMaxSize,
+  maxProtocolMessageMaxSize,
+)(Int);
+
+export type ProtocolMessageMaxSize = typeof ProtocolMessageMaxSize.Type;
+
+/**
+ * Default {@link ProtocolMessageMaxSize} (1MB).
+ *
+ * The standard size used across Evolu implementations. Relays with more
+ * resources can configure larger sizes to reduce roundtrips.
+ */
+export const defaultProtocolMessageMaxSize =
+  minProtocolMessageMaxSize as ProtocolMessageMaxSize;
+
+/**
+ * Protocol message ranges maximum size.
+ *
+ * Defines the upper limit for how large the ranges section of a protocol
+ * message can be. Implementations must enforce a maximum size between 3KB and
+ * 100KB to ensure compatibility.
+ *
+ * The upper bound is set to ensure ranges fit within the default 1MB
+ * {@link defaultProtocolMessageMaxSize}, maintaining compatibility between all
+ * clients and relays.
+ */
+export const ProtocolMessageRangesMaxSize = between(3_000, 100_000)(Int);
+export type ProtocolMessageRangesMaxSize =
+  typeof ProtocolMessageRangesMaxSize.Type;
+
+/**
+ * Default {@link ProtocolMessageRangesMaxSize} (30KB).
+ *
+ * The standard size used across Evolu implementations. Relays with more
+ * resources can configure larger sizes to reduce roundtrips.
+ */
+export const defaultProtocolMessageRangesMaxSize =
+  30_000 as ProtocolMessageRangesMaxSize;
 
 /** Evolu Protocol Message. */
 export type ProtocolMessage = Uint8Array & Brand<"ProtocolMessage">;
@@ -323,16 +385,16 @@ export interface ProtocolWriteKeyError extends ProtocolErrorBase {
 }
 
 /**
- * Error when a write fails due to storage limits or billing requirements.
- * Indicates the need to expand capacity or resolve payment issues.
+ * Error indicating a serious relay-side write failure. Clients should log this
+ * error and show a generic sync error to the user.
  */
 export interface ProtocolWriteError extends ProtocolErrorBase {
   readonly type: "ProtocolWriteError";
 }
 
 /**
- * Error indicating a synchronization failure during the protocol exchange. Used
- * for unexpected or generic sync errors not covered by other error types.
+ * Error indicating a serious relay-side synchronization failure. Clients should
+ * log this error and show a generic sync error to the user.
  */
 export interface ProtocolSyncError extends ProtocolErrorBase {
   readonly type: "ProtocolSyncError";
@@ -352,8 +414,8 @@ export interface ProtocolTimestampMismatchError {
 /**
  * Creates a {@link ProtocolMessage} from CRDT messages.
  *
- * If the message size would exceed {@link maxProtocolMessageSize}, the protocol
- * ensures all messages will be sent in the next round(s) even over
+ * If the message size would exceed {@link defaultProtocolMessageMaxSize}, the
+ * protocol ensures all messages will be sent in the next round(s) even over
  * unidirectional and stateless transports.
  */
 export const createProtocolMessageFromCrdtMessages =
@@ -361,11 +423,11 @@ export const createProtocolMessageFromCrdtMessages =
   (
     owner: Owner,
     messages: NonEmptyReadonlyArray<CrdtMessage>,
-    maxSize?: PositiveInt,
+    maxSize?: ProtocolMessageMaxSize,
   ): ProtocolMessage => {
     const buffer = createProtocolMessageBuffer(owner.id, {
       messageType: MessageType.Request,
-      totalMaxSize: maxSize ?? maxProtocolMessageSize,
+      totalMaxSize: maxSize ?? defaultProtocolMessageMaxSize,
       writeKey: owner.writeKey,
     });
 
@@ -394,8 +456,8 @@ export const createProtocolMessageFromCrdtMessages =
        *
        * The ideal approach would be to send three ranges (skip, fingerprint,
        * skip) where the fingerprint of unsent messages would act as narrow sync
-       * probe. I think we can send {@link zeroFingerprint} which can be
-       * interpreted as an indication that the other side should reply with
+       * probe. I think we can send `zeroFingerprint` which can be interpreted
+       * as an indication that the other side should reply with
        * {@link TimestampsRange}, so no need to restart syncing.
        *
        * For now, using a random fingerprint avoids extra complexity and is good
@@ -479,8 +541,8 @@ export interface ProtocolMessageBuffer {
 export const createProtocolMessageBuffer = (
   ownerId: OwnerId,
   options: {
-    readonly totalMaxSize?: PositiveInt | undefined;
-    readonly rangesMaxSize?: PositiveInt | undefined;
+    readonly totalMaxSize?: ProtocolMessageMaxSize | undefined;
+    readonly rangesMaxSize?: ProtocolMessageRangesMaxSize | undefined;
     readonly version?: NonNegativeInt;
   } & (
     | {
@@ -498,8 +560,8 @@ export const createProtocolMessageBuffer = (
   ),
 ): ProtocolMessageBuffer => {
   const {
-    totalMaxSize = maxProtocolMessageSize,
-    rangesMaxSize = maxProtocolMessageRangesSize,
+    totalMaxSize = defaultProtocolMessageMaxSize,
+    rangesMaxSize = defaultProtocolMessageRangesMaxSize,
     version = protocolVersion,
   } = options;
 
@@ -788,8 +850,7 @@ export interface ApplyProtocolMessageAsClientOptions {
   /** For testing purposes only; should not be used in production. */
   version?: NonNegativeInt;
 
-  totalMaxSize?: PositiveInt;
-  rangesMaxSize?: PositiveInt;
+  rangesMaxSize?: ProtocolMessageRangesMaxSize;
 }
 
 /**
@@ -898,7 +959,6 @@ export const applyProtocolMessageAsClient =
       const output = createProtocolMessageBuffer(ownerId, {
         messageType: MessageType.Request,
         writeKey,
-        totalMaxSize: options.totalMaxSize,
         rangesMaxSize: options.rangesMaxSize,
       });
 
@@ -929,8 +989,8 @@ export interface ApplyProtocolMessageAsRelayOptions {
   /** To broadcast a protocol message to all subscribers. */
   broadcast?: (ownerId: OwnerId, message: ProtocolMessage) => void;
 
-  totalMaxSize?: PositiveInt;
-  rangesMaxSize?: PositiveInt;
+  totalMaxSize?: ProtocolMessageMaxSize;
+  rangesMaxSize?: ProtocolMessageRangesMaxSize;
 }
 
 /**
