@@ -69,7 +69,6 @@ const mockDeps = () => {
     console: createConsole(),
     createDbWorker: () => dbWorker,
     randomBytes: testRandomBytes,
-    localAuth: testLocalAuth,
     reloadApp: vi.fn(),
     time: testTime,
   };

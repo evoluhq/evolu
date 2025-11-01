@@ -1,9 +1,12 @@
 import * as Evolu from "@evolu/common";
 import { createUseEvolu, EvoluProvider, useQuery } from "@evolu/react";
-import { EvoluOwnerIdIdenticon, evoluReactWebDeps } from "@evolu/react-web";
+import { evoluReactWebDeps, EvoluAvatar, localAuth } from "@evolu/react-web";
 import { IconEdit, IconTrash } from "@tabler/icons-react";
 import clsx from "clsx";
 import { FC, Suspense, use, useMemo, useState } from "react";
+
+// Namespace for the current app (scopes databases, passkeys, etc.)
+const service = "pwa-react";
 
 // Primary keys are branded types, preventing accidental use of IDs across
 // different tables (e.g., a TodoId can't be used where a UserId is expected).
@@ -22,17 +25,10 @@ const Schema = {
   },
 };
 
-const service = "pwa-react";
-
 // Note: this is a top-level await and used for brevity in the demo
 // In a real application, you would use a wrapper component.
-const ownerIds = await evoluReactWebDeps.localAuth.getProfiles({
-  service,
-});
-
-const authResult = await evoluReactWebDeps.localAuth.login(undefined, {
-  service,
-});
+const ownerIds = await localAuth.getProfiles({ service });
+const authResult = await localAuth.getOwner({ service });
 
 // Create Evolu instance for the React web platform.
 const evolu = Evolu.createEvolu(evoluReactWebDeps)(Schema, {
@@ -340,7 +336,7 @@ const AuthActions: FC = () => {
     const isGuest = !Boolean(authResult?.owner);
 
     // Register the guest owner or create a new one if this is already registered.
-    const result = await evoluReactWebDeps.localAuth.register(username, {
+    const result = await localAuth.register(username, {
       service: service,
       mnemonic: isGuest ? appOwner?.mnemonic : undefined,
     });
@@ -351,7 +347,7 @@ const AuthActions: FC = () => {
         void evolu.resetAppOwner({ reload: true });
         // Otherwise, just reload the page
       } else {
-        window.location.reload();
+        evolu.reloadApp();
       }
     } else {
       alert("Failed to register profile");
@@ -361,12 +357,9 @@ const AuthActions: FC = () => {
   // Login with a specific owner id using the registered passkey.
   // Note: we already have a database created, so we need to reload.
   const handleLoginClick = async (ownerId: Evolu.OwnerId) => {
-    const result = await evoluReactWebDeps.localAuth.login(ownerId, {
-      service: service,
-      reloadNeeded: true,
-    });
+    const result = await localAuth.login(ownerId, { service });
     if (result) {
-      window.location.reload();
+      evolu.reloadApp();
     } else {
       alert("Failed to login");
     }
@@ -378,10 +371,8 @@ const AuthActions: FC = () => {
       "Are you sure you want to clear all data? This will remove all passkeys and cannot be undone.",
     );
     if (!confirmed) return;
-    await evoluReactWebDeps.localAuth.clearAll({
-      service: service,
-    });
-    void evolu.resetAppOwner({ reload: true });
+    await localAuth.clearAll({ service });
+    evolu.resetAppOwner({ reload: true });
   };
 
   return (
@@ -424,7 +415,7 @@ const OwnerProfile: FC<{
   return (
     <div className="flex justify-between gap-3">
       <div className="flex items-center gap-3">
-        <EvoluOwnerIdIdenticon id={ownerId} />
+        <EvoluAvatar id={ownerId} />
         <span className="text-sm font-medium text-gray-900">{username}</span>
         <span className="text-xs text-gray-500 italic">{ownerId}</span>
       </div>

@@ -27,14 +27,15 @@ const createDbWorker: CreateDbWorker = (name) =>
       }),
   );
 
+export const localAuth = createLocalAuth({
+  randomBytes,
+  secureStorage: createWebAuthnStore({ randomBytes, symmetricCrypto }),
+});
+
 export const evoluWebDeps: EvoluDeps = {
   console: createConsole(),
   createDbWorker,
   randomBytes: createRandomBytes(),
-  localAuth: createLocalAuth({
-    randomBytes,
-    secureStorage: createWebAuthnStore({ randomBytes, symmetricCrypto }),
-  }),
   reloadApp,
   time: createTime(),
 };
