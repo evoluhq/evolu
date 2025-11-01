@@ -87,8 +87,7 @@ export const createLocalAuth = (
     options?: LocalAuthOptions,
   ): Promise<void> => {
     await deps.secureStorage.setItem(AUTH_METAKEY_LAST_OWNER, id, {
-      ...AUTH_DEFAULT_OPTIONS,
-      ...options,
+      ...buildAuthOptions(options),
       accessControl: "none",
     });
   };
@@ -97,8 +96,7 @@ export const createLocalAuth = (
     options?: LocalAuthOptions,
   ): Promise<OwnerId | undefined> => {
     const item = await deps.secureStorage.getItem(AUTH_METAKEY_LAST_OWNER, {
-      ...AUTH_DEFAULT_OPTIONS,
-      ...options,
+      ...buildAuthOptions(options),
       accessControl: "none",
     });
     return item?.value as OwnerId;
@@ -108,8 +106,7 @@ export const createLocalAuth = (
     options?: LocalAuthOptions,
   ): Promise<Record<OwnerId, string>> => {
     const item = await deps.secureStorage.getItem(AUTH_METAKEY_OWNER_NAMES, {
-      ...AUTH_DEFAULT_OPTIONS,
-      ...options,
+      ...buildAuthOptions(options),
       accessControl: "none",
     });
     let names: Record<OwnerId, string> = {};
@@ -130,8 +127,7 @@ export const createLocalAuth = (
       AUTH_METAKEY_OWNER_NAMES,
       JSON.stringify(names),
       {
-        ...AUTH_DEFAULT_OPTIONS,
-        ...options,
+        ...buildAuthOptions(options),
         accessControl: "none",
       },
     );
@@ -146,8 +142,7 @@ export const createLocalAuth = (
       AUTH_METAKEY_OWNER_NAMES,
       JSON.stringify(names),
       {
-        ...AUTH_DEFAULT_OPTIONS,
-        ...options,
+        ...buildAuthOptions(options),
         accessControl: "none",
       },
     );
@@ -157,8 +152,7 @@ export const createLocalAuth = (
     options?: LocalAuthOptions,
   ): Promise<Array<OwnerId>> => {
     const items = await deps.secureStorage.getAllItems({
-      ...AUTH_DEFAULT_OPTIONS,
-      ...options,
+      ...buildAuthOptions(options),
       includeValues: false,
     });
     return items
@@ -172,10 +166,32 @@ export const createLocalAuth = (
   };
 
   const clearAuthStore = (options?: LocalAuthOptions): Promise<void> =>
-    deps.secureStorage.clearService({
+    deps.secureStorage.clearService(buildAuthOptions(options));
+
+  const buildAuthOptions = (
+    options?: LocalAuthOptions,
+    username?: string,
+  ): LocalAuthOptions => {
+    const newOptions: LocalAuthOptions = {
       ...AUTH_DEFAULT_OPTIONS,
+      ...(username && { webAuthnUsername: username }),
       ...options,
-    });
+    };
+    return {
+      ...newOptions,
+      authenticationPrompt: {
+        title: replaceMessageTokens(newOptions.authenticationPrompt?.title ?? "", username),
+        cancel: replaceMessageTokens(newOptions.authenticationPrompt?.cancel ?? "", username),
+        subtitle: replaceMessageTokens(newOptions.authenticationPrompt?.subtitle ?? "", username),
+        description: replaceMessageTokens(newOptions.authenticationPrompt?.description ?? "", username),
+      },
+    };
+  };
+
+  const replaceMessageTokens = (text: string, username?: string): string => {
+    if (!username) return text;
+    return text.replace("|USERNAME|", username);
+  };
 
   return {
     login: async (ownerId, options) => {
@@ -201,11 +217,11 @@ export const createLocalAuth = (
       // Store owner, associated username, and update last owner
       await Promise.all([
         // setOwnerItem
-        deps.secureStorage.setItem(owner.id, JSON.stringify({ owner }), {
-          ...AUTH_DEFAULT_OPTIONS,
-          webAuthnUsername: username,
-          ...options,
-        }),
+        deps.secureStorage.setItem(
+          owner.id,
+          JSON.stringify({ owner }),
+          buildAuthOptions(options, username),
+        ),
         setOwnerName(owner.id, username, options),
         setLastOwnerId(owner.id, options),
       ]);
@@ -218,10 +234,7 @@ export const createLocalAuth = (
       // Delete the owner and associated username
       await Promise.all([
         // deleteOwnerItem
-        deps.secureStorage.deleteItem(ownerId, {
-          ...AUTH_DEFAULT_OPTIONS,
-          ...options,
-        }),
+        deps.secureStorage.deleteItem(ownerId, buildAuthOptions(options)),
         deleteOwnerName(ownerId, options),
       ]);
 
@@ -240,11 +253,14 @@ export const createLocalAuth = (
       const ownerId = await getLastOwnerId(options);
       if (!ownerId) return null;
 
+      const names = await getOwnerNames(options);
+      const username = names[ownerId] ?? "";
+
       // Retrieve and decrypt the owner (this will trigger device authentication)
-      const account = await deps.secureStorage.getItem(ownerId, {
-        ...AUTH_DEFAULT_OPTIONS,
-        ...options,
-      });
+      const account = await deps.secureStorage.getItem(
+        ownerId,
+        buildAuthOptions(options, username),
+      );
       if (!account?.value) return null;
 
       // Unserialize the values (TODO: save these as base64 instead of json serializing)
@@ -259,9 +275,6 @@ export const createLocalAuth = (
 
       // Update the last owner for future login attempts
       await setLastOwnerId(ownerId, options);
-
-      const names = await getOwnerNames(options);
-      const username = names[ownerId] ?? "";
 
       // Return the owner and associated username
       return { owner, username };
@@ -297,9 +310,8 @@ export const AUTH_DEFAULT_OPTIONS: LocalAuthOptions = {
   keychainGroup: AUTH_NAMESPACE,
   androidBiometricsStrongOnly: true,
   iosSynchronizable: true,
-  webAuthnUsername: "Evolu User",
   authenticationPrompt: {
-    title: "Authenticate to unlock your session",
+    title: "Authenticate as |USERNAME|",
   },
 };
 
