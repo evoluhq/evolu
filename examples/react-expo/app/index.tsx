@@ -37,20 +37,14 @@ const Schema = {
 };
 
 export default function Index(): React.ReactNode {
-  const [evolu, setEvolu] = useState<EvoluType<typeof Schema> | null>(null);
-  const [ownerIds, setOwnerIds] = useState<Array<{ownerId: Evolu.OwnerId; username: string }> | null>(null);
   const [authResult, setAuthResult] = useState<Evolu.AuthResult | null>(null);
+  const [ownerIds, setOwnerIds] = useState<Array<Evolu.AuthList> | null>(null);
+  const [evolu, setEvolu] = useState<EvoluType<typeof Schema> | null>(null);
 
   useEffect(() => {
     (async () => {
-      const ownerIds = await localAuth.getProfiles({
-        service,
-      });
-
-      const authResult = await localAuth.getOwner({
-        service,
-      });
-
+      const authResult = await localAuth.getOwner({ service });
+      const ownerIds = await localAuth.getProfiles({ service });
       const evolu = Evolu.createEvolu(evoluReactNativeDeps)(Schema, {
         name: Evolu.SimpleName.orThrow(
           `${service}-${authResult?.owner?.id ?? "guest"}`,
@@ -74,7 +68,6 @@ export default function Index(): React.ReactNode {
       return evolu.subscribeError(() => {
         const error = evolu.getError();
         if (!error) return;
-
         Alert.alert("🚨 Evolu error occurred! Check the console.");
         // eslint-disable-next-line no-console
         console.error(error);
@@ -109,7 +102,7 @@ function EvoluDemo({
   authResult,
 }: {
   evolu: EvoluType<typeof Schema>;
-  ownerIds: Array<{ownerId: Evolu.OwnerId; username: string }> | null;
+  ownerIds: Array<Evolu.AuthList> | null;
   authResult: Evolu.AuthResult | null;
 }): React.ReactNode {
   const useEvolu = createUseEvolu(evolu);
@@ -406,12 +399,10 @@ function EvoluDemo({
               const isGuest = !Boolean(authResult?.owner);
   
               // Register the guest owner or create a new one if this is already registered.
+              const mnemonic = isGuest ? appOwner?.mnemonic : undefined;
               const result = await localAuth.register(
                 username,
-                {
-                  service: service,
-                  mnemonic: isGuest ? appOwner?.mnemonic : undefined,
-                },
+                { service, mnemonic },
               );
               if (result) {
                 // If this is a guest owner, we should clear the database and reload.
@@ -434,9 +425,7 @@ function EvoluDemo({
   
     // Login with a specific owner id using the registered passkey.
     const handleLoginPress = async (ownerId: Evolu.OwnerId) => {
-      const result = await localAuth.login(ownerId, {
-        service: service,
-      });
+      const result = await localAuth.login(ownerId, { service });
       if (result) {
         evolu.reloadApp();
       } else {
@@ -455,9 +444,7 @@ function EvoluDemo({
             text: "Clear",
             style: "destructive",
             onPress: async () => {
-              await localAuth.clearAll({
-                service: service,
-              });
+              await localAuth.clearAll({ service });
               void evolu.resetAppOwner({ reload: true });
             },
           },

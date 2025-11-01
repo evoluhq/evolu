@@ -36,9 +36,7 @@ export interface LocalAuth {
   getOwner: (options?: LocalAuthOptions) => Promise<AuthResult | null>;
 
   /** Lists all registered owner ids with associated usernames. */
-  getProfiles: (
-    options?: LocalAuthOptionsValues,
-  ) => Promise<Array<{ ownerId: OwnerId; username: string }>>;
+  getProfiles: (options?: LocalAuthOptionsValues) => Promise<Array<AuthList>>;
 
   /** Clears all owners and metadata from the local auth. */
   clearAll: (options?: LocalAuthOptions) => Promise<void>;
@@ -316,8 +314,15 @@ export const AUTH_DEFAULT_OPTIONS: LocalAuthOptions = {
 };
 
 export interface AuthResult {
-  /** The owner created during registration. */
+  /** The app owner created during registration. */
   readonly owner: AppOwner | undefined;
+  /** The name provided by the user during registration. */
+  readonly username: string;
+}
+
+export interface AuthList {
+  /** The app owner ID. */
+  readonly ownerId: OwnerId;
   /** The name provided by the user during registration. */
   readonly username: string;
 }
