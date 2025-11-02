@@ -1,7 +1,6 @@
 import { NonEmptyArray, NonEmptyReadonlyArray } from "../Array.js";
 import { assert } from "../Assert.js";
 import { Brand } from "../Brand.js";
-import { concatBytes } from "../Buffer.js";
 import { ConsoleDep } from "../Console.js";
 import {
   RandomBytesDep,
@@ -60,7 +59,6 @@ import {
   receiveTimestamp,
   sendTimestamp,
   Timestamp,
-  TimestampBytes,
   timestampBytesToTimestamp,
   TimestampConfigDep,
   TimestampCounterOverflowError,
@@ -634,7 +632,7 @@ export const applyLocalOnlyChange =
     return ok();
   };
 
-const applyMessages =
+export const applyMessages =
   (deps: ClientStorageDep & ClockDep & RandomDep & SqliteDep) =>
   (
     ownerId: OwnerId,
@@ -665,30 +663,26 @@ const applyMessageToAppTable =
     for (const [column, value] of objectToEntries(message.change.values)) {
       const result = deps.sqlite.exec(sql.prepared`
         with
-          lastTimestamp as (
-            select "timestamp"
+          existingTimestamp as (
+            select 1
             from evolu_history
             where
               "ownerId" = ${ownerId}
               and "table" = ${message.change.table}
-              and "id" = ${message.change.id}
+              and "id" = ${idToIdBytes(message.change.id)}
               and "column" = ${column}
-            order by "timestamp" desc
+              and "timestamp" >= ${timestamp}
             limit 1
           )
         insert into ${sql.identifier(message.change.table)}
           ("id", ${sql.identifier(column)}, updatedAt)
         select ${message.change.id}, ${value}, ${updatedAt}
-        where
-          (select "timestamp" from lastTimestamp) is null
-          or (select "timestamp" from lastTimestamp) < ${timestamp}
+        where not exists (select 1 from existingTimestamp)
         on conflict ("id") do update
           set
             ${sql.identifier(column)} = ${value},
             updatedAt = ${updatedAt}
-          where
-            (select "timestamp" from lastTimestamp) is null
-            or (select "timestamp" from lastTimestamp) < ${timestamp};
+          where not exists (select 1 from existingTimestamp);
       `);
 
       if (!result.ok) return result;
@@ -780,47 +774,3 @@ export interface PaymentRequiredError {
 }
 
 export const initialSyncState: SyncStateInitial = { type: "SyncStateInitial" };
-
-/**
- * Efficiently checks which binary timestamps already exist in the database
- * using a single CTE query instead of N individual queries. Crucial for WASM
- * SQLite performance where JS↔WASM boundary crossings are expensive.
- *
- * Used for fast idempotency detection in writeMessages before onMessage
- * validation. While applyMessages ensures internal idempotency, this pre-check
- * is faster and required for main thread message validation.
- */
-export const getExistingTimestamps =
-  (deps: SqliteDep) =>
-  (
-    ownerIdBytes: OwnerIdBytes,
-    timestampsBytes: NonEmptyReadonlyArray<TimestampBytes>,
-  ): Result<ReadonlyArray<TimestampBytes>, SqliteError> => {
-    const concatenatedTimestamps = concatBytes(...timestampsBytes);
-
-    const result = deps.sqlite.exec<{
-      timestampBytes: TimestampBytes;
-    }>(sql`
-      with recursive
-        split_timestamps(timestampBytes, pos) as (
-          select
-            substr(${concatenatedTimestamps}, 1, 16),
-            17 as pos
-          union all
-          select
-            substr(${concatenatedTimestamps}, pos, 16),
-            pos + 16
-          from split_timestamps
-          where pos <= length(${concatenatedTimestamps})
-        )
-      select s.timestampBytes
-      from
-        split_timestamps s
-        join evolu_timestamp t
-          on t.ownerId = ${ownerIdBytes} and s.timestampBytes = t.t;
-    `);
-
-    if (!result.ok) return result;
-
-    return ok(result.value.rows.map((row) => row.timestampBytes));
-  };
