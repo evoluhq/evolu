@@ -484,10 +484,10 @@ export interface RetryError<E> {
 export const retry = <T, E>(
   {
     retries,
-    initialDelay = "100ms",
-    maxDelay = "10s",
+    initialDelay = "1s",
+    maxDelay = "30s",
     factor = 2,
-    jitter = 0.1,
+    jitter = 0.5,
     retryable = (error: E | AbortError) => !isAbortError(error),
     onRetry,
   }: RetryOptions<E>,

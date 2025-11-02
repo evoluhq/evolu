@@ -378,6 +378,9 @@ test("respects maxRetries limit", async () => {
   const socket = createWebSocket(INVALID_URL, {
     retryOptions: {
       retries: PositiveInt.orThrow(MAX_RETRIES),
+      initialDelay: "100ms",
+      maxDelay: "10s",
+      jitter: 0.1,
       onRetry,
     },
     onError: (error) => {
@@ -499,6 +502,8 @@ test("retries with increasing delays", async () => {
   const socket = createWebSocket(INVALID_URL, {
     retryOptions: {
       // Use specific backoff parameters for predictable testing
+      maxDelay: "10s",
+      jitter: 0.1,
       initialDelay: "10ms",
       factor: 2,
       retries: PositiveInt.orThrow(3),
