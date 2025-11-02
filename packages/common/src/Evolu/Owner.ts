@@ -17,6 +17,7 @@ import {
   Mnemonic,
   NonNegativeInt,
 } from "../Type.js";
+import { getOrNull } from "../Result.js";
 
 /**
  * 32 bytes of cryptographic entropy used to derive {@link Owner} keys.
@@ -173,13 +174,81 @@ export const createAppOwner = (secret: OwnerSecret): AppOwner => ({
   ...createOwner(secret),
 });
 
-// DEV: Future transports: Bluetooth, LocalNetwork, etc.
+/**
+ * Transport configuration for connecting to relays.
+ *
+ * Each {@link Owner} can specify one or more transports to connect to different
+ * relays for data synchronization. Currently supports WebSocket transport, with
+ * future support planned for Bluetooth, LocalNetwork, and other protocols.
+ */
 export type TransportConfig = WebSocketTransportConfig;
 
+/**
+ * WebSocket transport configuration for relay connections.
+ *
+ * Use {@link createWebSocketTransportConfig} to create a properly formatted URL
+ * with {@link OwnerId}. The relay uses {@link parseOwnerIdFromUrl} to extract the
+ * OwnerId from the query string.
+ *
+ * ### Authentication and Error Handling
+ *
+ * When a relay rejects a connection (invalid OwnerId, unauthorized owner, or
+ * server error), the browser WebSocket API does not expose the specific HTTP
+ * status code or reason - it only reports a generic connection failure. The
+ * client automatically retries with exponential backoff and jitter, eventually
+ * succeeding once the configuration or server issue is resolved.
+ *
+ * Legitimate clients will be properly configured with valid credentials, so
+ * automatic retry is appropriate.
+ *
+ * @see {@link createWebSocketTransportConfig}
+ * @see {@link parseOwnerIdFromUrl}
+ */
 export interface WebSocketTransportConfig {
   readonly type: "WebSocket";
   readonly url: string;
 }
+
+/**
+ * Creates a {@link WebSocketTransportConfig} for the given relay URL and
+ * {@link OwnerId}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const transport = createWebSocketTransportConfig({
+ *   relayUrl: "wss://relay.evolu.dev",
+ *   ownerId: owner.id,
+ * });
+ * // Result: { type: "WebSocket", url: "wss://relay.evolu.dev?ownerId=..." }
+ * ```
+ */
+export const createWebSocketTransportConfig = ({
+  relayUrl,
+  ownerId,
+}: {
+  readonly relayUrl: string;
+  readonly ownerId: OwnerId;
+}): WebSocketTransportConfig => ({
+  type: "WebSocket",
+  url: `${relayUrl}?ownerId=${ownerId}`,
+});
+
+/**
+ * Extracts {@link OwnerId} from a URL query string.
+ *
+ * Parses the query string `?ownerId=...` and validates that the extracted value
+ * is a valid {@link OwnerId}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * parseOwnerIdFromUrl("/sync?ownerId=_12345678abcdefgh");
+ * // Returns: OwnerId or null
+ * ```
+ */
+export const parseOwnerIdFromUrl = (url: string | undefined): OwnerId | null =>
+  getOrNull(OwnerId.fromUnknown(url?.split("=")[1]));
 
 /**
  * An {@link Owner} for sharding data.

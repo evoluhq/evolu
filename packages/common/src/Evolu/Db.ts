@@ -31,6 +31,7 @@ import {
   AppOwner,
   createAppOwner,
   createOwnerSecret,
+  createWebSocketTransportConfig,
   mnemonicToOwnerSecret,
   OwnerEncryptionKey,
   OwnerId,
@@ -91,6 +92,13 @@ export interface DbConfig extends ConsoleConfig, TimestampConfig {
    * Transport configuration for data sync and backup. Supports single transport
    * or multiple transports simultaneously for redundancy.
    *
+   * **Redundancy:** The ideal setup uses at least two completely independent
+   * relays - for example, a home relay and a geographically separate relay.
+   * Data is sent to both relays simultaneously, providing true redundancy
+   * similar to using two independent clouds. This eliminates vendor lock-in and
+   * ensures your app continues working regardless of circumstances - whether
+   * home relay hardware is stolen or a remote relay provider shuts down.
+   *
    * Currently supports:
    *
    * - WebSocket: Real-time bidirectional communication with relay servers
@@ -98,6 +106,11 @@ export interface DbConfig extends ConsoleConfig, TimestampConfig {
    * Empty transports create local-only instances. Transports can be dynamically
    * added and removed for any owner (including {@link AppOwner}) via
    * {@link Evolu#useOwner}.
+   *
+   * Use {@link createWebSocketTransportConfig} to create WebSocket transport
+   * configurations with proper URL formatting and {@link OwnerId} inclusion. The
+   * {@link OwnerId} in the URL enables relay authentication, allowing relay
+   * servers to control access (e.g., for paid tiers or private instances).
    *
    * The default value is:
    *
@@ -116,8 +129,18 @@ export interface DbConfig extends ConsoleConfig, TimestampConfig {
    *   { type: "WebSocket", url: "wss://relay3.example.com" },
    * ];
    *
-   * // Local-only instance (no sync) - useful for device settings
+   * // Local-only instance (no sync) - useful for device settings or when relay
+   * // URL will be provided later (e.g., after authentication), allowing users
+   * // to work offline before the app connects
    * transports: [];
+   *
+   * // Using createWebSocketTransportConfig helper for relay authentication
+   * transports: [
+   *   createWebSocketTransportConfig({
+   *     relayUrl: "ws://localhost:4000",
+   *     ownerId,
+   *   }),
+   * ];
    * ```
    */
   readonly transports: ReadonlyArray<TransportConfig>;

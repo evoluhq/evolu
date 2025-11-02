@@ -87,6 +87,7 @@
  * - {@link ProtocolWriteError}: A serious relay-side write failure occurred.
  * - {@link ProtocolSyncError}: A serious relay-side synchronization failure
  *   occurred.
+ * - {@link ProtocolQuotaExceededError}: Storage or billing quota exceeded.
  * - {@link ProtocolUnsupportedVersionError}: Protocol version mismatch.
  * - {@link ProtocolInvalidDataError}: The message is malformed or corrupted.
  *
@@ -343,6 +344,8 @@ export const ProtocolErrorCode = {
   WriteError: 2,
   /** A code for {@link ProtocolSyncError}. */
   SyncError: 3,
+  /** A code for {@link ProtocolQuotaExceededError}. */
+  QuotaExceededError: 4,
 } as const;
 
 type ProtocolErrorCode =
@@ -354,6 +357,7 @@ export type ProtocolError =
   | ProtocolWriteKeyError
   | ProtocolWriteError
   | ProtocolSyncError
+  | ProtocolQuotaExceededError
   | ProtocolTimestampMismatchError;
 
 /** Base interface for all protocol errors. */
@@ -398,6 +402,17 @@ export interface ProtocolWriteError extends ProtocolErrorBase {
  */
 export interface ProtocolSyncError extends ProtocolErrorBase {
   readonly type: "ProtocolSyncError";
+}
+
+/**
+ * Error when storage or billing quota is exceeded. Clients should prompt the
+ * user to upgrade their plan or expand capacity.
+ *
+ * TODO: Add callback to relay config to check quota and return this error when
+ * limits are reached.
+ */
+export interface ProtocolQuotaExceededError extends ProtocolErrorBase {
+  readonly type: "ProtocolQuotaExceededError";
 }
 
 /**
@@ -875,6 +890,7 @@ export const applyProtocolMessageAsClient =
       | ProtocolUnsupportedVersionError
       | ProtocolWriteError
       | ProtocolWriteKeyError
+      | ProtocolQuotaExceededError
     >
   > => {
     // try-catch instead of Result for performance and stacktraces
@@ -916,6 +932,11 @@ export const applyProtocolMessageAsClient =
             case ProtocolErrorCode.SyncError:
               return err<ProtocolSyncError>({
                 type: "ProtocolSyncError",
+                ownerId,
+              });
+            case ProtocolErrorCode.QuotaExceededError:
+              return err<ProtocolQuotaExceededError>({
+                type: "ProtocolQuotaExceededError",
                 ownerId,
               });
             default:
