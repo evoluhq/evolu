@@ -2442,7 +2442,10 @@ test("omit - single key", () => {
 
 test("instanceOf", () => {
   class User {
-    constructor(public name: string) {}
+    name: string;
+    constructor(name: string) {
+      this.name = name;
+    }
   }
 
   class Admin extends User {}

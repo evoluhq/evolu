@@ -9,8 +9,11 @@ import { SimpleName, wait } from "@evolu/common";
 // Mock BroadcastChannel
 class MockBroadcastChannel {
   onmessage: ((event: MessageEvent) => void) | null = null;
+  name: string;
 
-  constructor(public name: string) {}
+  constructor(name: string) {
+    this.name = name;
+  }
 
   postMessage = vi.fn();
   close = vi.fn();

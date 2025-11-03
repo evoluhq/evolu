@@ -16,7 +16,8 @@
     "skipLibCheck": true,
     "strict": true,
     "exactOptionalPropertyTypes": true,
-    "noErrorTruncation": false
+    "noErrorTruncation": false,
+    "erasableSyntaxOnly": true
   },
   "exclude": ["node_modules"]
 }
