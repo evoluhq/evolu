@@ -1,6 +1,6 @@
 {
   "name": "@evolu/react",
-  "version": "9.0.1-preview.5",
+  "version": "9.0.1-preview.6",
   "description": "Evolu for React",
   "keywords": [
     "evolu",
@@ -46,7 +46,7 @@
     "vitest": "^4.0.4"
   },
   "peerDependencies": {
-    "@evolu/common": "^6.0.1-preview.21",
+    "@evolu/common": "^6.0.1-preview.22",
     "react": ">=19"
   },
   "publishConfig": {
