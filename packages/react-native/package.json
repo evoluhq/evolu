@@ -59,10 +59,12 @@
     "@evolu/tsconfig": "workspace:*",
     "@op-engineering/op-sqlite": "^15.0.3",
     "expo": "^54.0.10",
+    "expo-secure-store": "~15.0.7",
     "expo-sqlite": "~16.0.8",
     "react-native": "^0.81.4",
     "react-native-nitro-modules": "^0.31.2",
-    "react-native-sensitive-info": "^6.0.0-rc.4",
+    "react-native-sensitive-info": "^6.0.0-rc.8",
+    "react-native-svg": "^15.14.0",
     "shx": "^0.4.0",
     "typescript": "^5.9.2",
     "vitest": "^4.0.4"
@@ -72,10 +74,12 @@
     "@evolu/react": "^9.0.1-preview.6",
     "@op-engineering/op-sqlite": ">=12",
     "expo": ">=54",
-    "expo-sqlite": ">=15",
+    "expo-secure-store": ">=15",
+    "expo-sqlite": ">=16",
     "react-native": ">=0.81",
     "react-native-nitro-modules": ">=0.31",
-    "react-native-sensitive-info": ">=6"
+    "react-native-sensitive-info": ">=6",
+    "react-native-svg": ">=15"
   },
   "peerDependenciesMeta": {
     "@op-engineering/op-sqlite": {
@@ -87,10 +91,16 @@
     "expo-sqlite": {
       "optional": true
     },
+    "expo-secure-store": {
+      "optional": true
+    },
     "react-native-nitro-modules": {
       "optional": true
     },
     "react-native-sensitive-info": {
+      "optional": true
+    },
+    "react-native-svg": {
       "optional": true
     }
   },

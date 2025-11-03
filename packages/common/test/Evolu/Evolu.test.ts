@@ -32,7 +32,6 @@ import {
   testCreateDummyWebSocket,
   testCreateId,
   testCreateSqliteDriver,
-  testLocalAuth,
   testOwner,
   testOwner2,
   testOwnerSecret,
@@ -123,7 +122,6 @@ const testCreateEvoluDeps = async () => {
       },
     }),
     randomBytes: testRandomBytes,
-    localAuth: testLocalAuth,
     reloadApp: constVoid,
     time: testTime,
   };

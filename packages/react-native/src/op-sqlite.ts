@@ -24,10 +24,6 @@ polyfillHermes();
 const console = createConsole();
 const time = createTime();
 const randomBytes = createRandomBytes();
-const localAuth = createLocalAuth({
-  randomBytes: randomBytes,
-  secureStorage: SensitiveInfo,
-});
 
 const createDbWorker: CreateDbWorker = () =>
   createDbWorkerForPlatform({
@@ -47,11 +43,17 @@ const reloadApp: ReloadApp = () => {
   }
 };
 
+export * from "./components/EvoluAvatar.js";
+
+export const localAuth = createLocalAuth({
+  randomBytes: randomBytes,
+  secureStorage: SensitiveInfo,
+});
+
 export const evoluReactNativeDeps: EvoluDeps = {
   console,
   createDbWorker,
   randomBytes,
-  localAuth,
   reloadApp,
   time,
 };
