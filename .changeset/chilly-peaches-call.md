@@ -3,8 +3,6 @@
 "@evolu/react-native": patch
 "@evolu/react-web": patch
 "@evolu/web": patch
-"@example/react-expo": patch
-"@example/react-vite-pwa": patch
 ---
 
 - Added expo-secure-store backend for LocalAuth
