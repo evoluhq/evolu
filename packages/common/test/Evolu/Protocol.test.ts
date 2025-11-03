@@ -16,6 +16,7 @@ import {
   decodeSqliteValue,
   decodeString,
   decryptAndDecodeDbChange,
+  defaultProtocolMessageRangesMaxSize,
   encodeAndEncryptDbChange,
   encodeLength,
   encodeNodeId,
@@ -23,16 +24,15 @@ import {
   encodeNumber,
   encodeSqliteValue,
   encodeString,
-  maxProtocolMessageRangesSize,
   MessageType,
+  ProtocolMessageMaxSize,
+  ProtocolMessageRangesMaxSize,
   ProtocolValueType,
   protocolVersion,
   SubscriptionFlags,
   TimestampsRangeWithTimestampsBuffer,
 } from "../../src/Evolu/Protocol.js";
-import { createRelayStorage } from "../../src/Evolu/Relay.js";
 import {
-  timestampBytesToFingerprint,
   CrdtMessage,
   DbChange,
   EncryptedCrdtMessage,
@@ -41,26 +41,25 @@ import {
   RangeType,
   Storage,
   StorageDep,
+  timestampBytesToFingerprint,
 } from "../../src/Evolu/Storage.js";
 import {
-  timestampBytesToTimestamp,
   createInitialTimestamp,
+  timestampBytesToTimestamp,
   timestampToTimestampBytes,
 } from "../../src/Evolu/Timestamp.js";
 import { constFalse, constTrue } from "../../src/Function.js";
 import {
   assertNonEmptyArray,
-  createRandom,
   EncryptionKey,
   NonEmptyReadonlyArray,
 } from "../../src/index.js";
 import { err, getOrThrow } from "../../src/Result.js";
 import { SqliteValue } from "../../src/Sqlite.js";
-import { dateToDateIso, NonNegativeInt, PositiveInt } from "../../src/Type.js";
+import { dateToDateIso, NonNegativeInt } from "../../src/Type.js";
 import {
+  createTestRelayStorageDep,
   testCreateId,
-  testCreateSqlite,
-  testCreateTimingSafeEqual,
   testDeps,
   testOwner,
   testOwnerIdBytes,
@@ -80,22 +79,6 @@ beforeAll(async () => {
 /** Returns uncompressed and compressed sizes. */
 const getUncompressedAndCompressedSizes = (array: Uint8Array) => {
   return `${array.byteLength} ${compress(array as never).length}`;
-};
-
-const createStorageDep = async (): Promise<StorageDep> => {
-  const sqlite = await testCreateSqlite();
-  const storage = getOrThrow(
-    createRelayStorage({
-      sqlite,
-      random: createRandom(),
-      timingSafeEqual: testCreateTimingSafeEqual(),
-    })({
-      onStorageError: (error) => {
-        throw new Error(error.type);
-      },
-    }),
-  );
-  return { storage };
 };
 
 test("encodeNumber/decodeNumber", () => {
@@ -432,7 +415,7 @@ test("encodeAndEncryptDbChange/decryptAndDecodeDbChange", () => {
   assert(decrypted.ok);
   expect(decrypted.value).toEqual(crdtMessage.change);
 
-  const wrongKey = new Uint8Array(32).fill(42) as EncryptionKey;
+  const wrongKey = EncryptionKey.orThrow(new Uint8Array(32).fill(42));
   const decryptedWithWrongKey = decryptAndDecodeDbChange({
     symmetricCrypto: testSymmetricCrypto,
   })(encryptedMessage, wrongKey);
@@ -599,7 +582,7 @@ describe("createProtocolMessageBuffer", () => {
 });
 
 test("createProtocolMessageForSync", async () => {
-  const storageDep = await createStorageDep();
+  const storageDep = await createTestRelayStorageDep();
 
   // Empty DB: version, ownerId, 0 messages, one empty TimestampsRange.
   expect(
@@ -776,6 +759,7 @@ describe("E2E relay options", () => {
     await applyProtocolMessageAsRelay(shouldNotBeCalledStorageDep)(message, {
       subscribe: (ownerId) => {
         subscribeCalledWithOwnerId = ownerId;
+        return true;
       },
     });
 
@@ -809,6 +793,7 @@ describe("E2E relay options", () => {
     await applyProtocolMessageAsRelay(shouldNotBeCalledStorageDep)(message, {
       subscribe: () => {
         subscribeWasCalled = true;
+        return true;
       },
       unsubscribe: () => {
         unsubscribeWasCalled = true;
@@ -830,6 +815,7 @@ describe("E2E relay options", () => {
     await applyProtocolMessageAsRelay(shouldNotBeCalledStorageDep)(message, {
       subscribe: () => {
         subscribeWasCalled = true;
+        return true;
       },
       unsubscribe: () => {
         unsubscribeWasCalled = true;
@@ -915,15 +901,15 @@ describe("E2E sync", () => {
   assertNonEmptyArray(messages);
 
   const createStorages = async () => {
-    const clientStorageDep = await createStorageDep();
-    const relayStorageDep = await createStorageDep();
+    const clientStorageDep = await createTestRelayStorageDep();
+    const relayStorageDep = await createTestRelayStorageDep();
     return [clientStorageDep.storage, relayStorageDep.storage];
   };
 
   const reconcile = async (
     clientStorage: Storage,
     relayStorage: Storage,
-    rangesMaxSize = maxProtocolMessageRangesSize,
+    rangesMaxSize = defaultProtocolMessageRangesMaxSize,
   ) => {
     const clientStorageDep = { storage: clientStorage };
     const relayStorageDep = { storage: relayStorage };
@@ -1032,7 +1018,7 @@ describe("E2E sync", () => {
     const syncSteps = await reconcile(
       clientStorage,
       relayStorage,
-      3000 as PositiveInt,
+      ProtocolMessageRangesMaxSize.orThrow(3000),
     );
     expect(syncSteps).toMatchInlineSnapshot(`
       {
@@ -1082,7 +1068,7 @@ describe("E2E sync", () => {
     const syncSteps = await reconcile(
       clientStorage,
       relayStorage,
-      3000 as PositiveInt,
+      ProtocolMessageRangesMaxSize.orThrow(3000),
     );
     expect(syncSteps).toMatchInlineSnapshot(`
       {
@@ -1162,7 +1148,7 @@ describe("E2E sync", () => {
     const syncSteps = await reconcile(
       clientStorage,
       relayStorage,
-      3000 as PositiveInt,
+      ProtocolMessageRangesMaxSize.orThrow(3000),
     );
     expect(syncSteps).toMatchInlineSnapshot(`
       {
@@ -1230,11 +1216,11 @@ describe("E2E sync", () => {
     const protocolMessage = createProtocolMessageFromCrdtMessages(testDeps)(
       owner,
       crdtMessages,
-      // Enforce a sync
-      1000 as PositiveInt,
+      // This is technically invalid, we use it to enforce a sync.
+      1000 as ProtocolMessageMaxSize,
     );
 
-    const relayStorageDep = await createStorageDep();
+    const relayStorageDep = await createTestRelayStorageDep();
 
     const relayResult =
       await applyProtocolMessageAsRelay(relayStorageDep)(protocolMessage);

@@ -1503,6 +1503,18 @@ export const formatSimplePasswordError = (
  * characters), standard and native string serialization (Base64Url), and no
  * privacy leaks.
  *
+ * ### Future Consideration
+ *
+ * For database-heavy workloads where insert performance is critical, a hybrid
+ * approach could be considered: `timestamp ^ H(cluster_id, timestamp >> N)`
+ * where H is a keyed hash function and N is a configurable parameter. This
+ * would maintain spatial locality for database caches (improving insert
+ * performance by an order of magnitude) while adding entropy to prevent
+ * timestamp leakage and correlation across systems. The parameter N would allow
+ * trading off cache locality (larger N = better locality) versus entropy
+ * distribution. See https://brooker.co.za/blog/2025/10/22/uuidv7.html for
+ * details on this approach.
+ *
  * @category String
  */
 export const Id = brand("Id", String, (value) =>

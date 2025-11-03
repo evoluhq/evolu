@@ -1,6 +1,9 @@
 import { assert } from "../../src/Assert.js";
 import { DbSchema, getDbSchema } from "../../src/Evolu/Schema.js";
+import { CrdtMessage, DbChange } from "../../src/Evolu/Storage.js";
+import { createTimestamp, Millis } from "../../src/Evolu/Timestamp.js";
 import { sql, SqliteDep } from "../../src/Sqlite.js";
+import { Id } from "../../src/Type.js";
 
 export interface DbSnapshot {
   readonly schema: DbSchema;
@@ -30,3 +33,15 @@ export const getDbSnapshot = (deps: SqliteDep): DbSnapshot => {
 
   return { schema: schema.value, tables };
 };
+
+export const createTestCrdtMessage = (
+  id: Id,
+  millis: number,
+  name: string,
+): CrdtMessage => ({
+  timestamp: createTimestamp({
+    millis: Millis.orThrow(millis),
+    counter: 0 as never,
+  }),
+  change: DbChange.orThrow({ table: "testTable", id, values: { name } }),
+});

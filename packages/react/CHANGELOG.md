@@ -1,5 +1,13 @@
 # @evolu/react
 
+## 9.0.1-preview.6
+
+### Patch Changes
+
+- 6b4a490: Rename `wasSrr` React Hook to `isSrr`.
+- Updated dependencies [446eac5]
+  - @evolu/common@6.0.1-preview.22
+
 ## 9.0.1-preview.5
 
 ### Patch Changes

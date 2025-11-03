@@ -8,12 +8,18 @@ import {
 } from "../../src/Evolu/Db.js";
 import { createQuery } from "../../src/Evolu/Evolu.js";
 import { createAppOwner } from "../../src/Evolu/Owner.js";
+import {
+  applyProtocolMessageAsRelay,
+  createProtocolMessageFromCrdtMessages,
+  ProtocolMessage,
+} from "../../src/Evolu/Protocol.js";
 import { getOrThrow } from "../../src/Result.js";
 import { createSqlite, Sqlite } from "../../src/Sqlite.js";
 import { wait } from "../../src/Task.js";
 import { createId } from "../../src/Type.js";
 import {
   createTestConsole,
+  createTestRelayStorageDep,
   createTestWebSocket,
   TestConsole,
   testCreateId,
@@ -26,7 +32,7 @@ import {
   testTime,
   TestWebSocket,
 } from "../_deps.js";
-import { getDbSnapshot } from "./_utils.js";
+import { createTestCrdtMessage, getDbSnapshot } from "./_utils.js";
 
 const createInitializedDbWorker = async (): Promise<{
   readonly worker: DbWorker;
@@ -987,47 +993,158 @@ test("sync mutations", async () => {
   checkSqlOperations(testConsole);
 });
 
-describe("WebSocket", () => {
-  test("sends messages when socket is opened", async () => {
-    const { worker, transports, testConsole } =
-      await createInitializedDbWorker();
+test("sends messages when socket is opened", async () => {
+  const { worker, transports, testConsole } = await createInitializedDbWorker();
 
-    const recordId = testCreateId();
+  const recordId = testCreateId();
 
-    // Create a sync mutation first to have data to send
-    worker.postMessage({
-      type: "mutate",
-      tabId,
-      changes: [
-        {
-          id: recordId,
-          table: "testTable",
-          values: { name: "sync data" },
-        },
-      ],
-      onCompleteIds: [],
-      subscribedQueries: [],
-    });
-
-    const webSocket = transports[0];
-
-    // Before opening WebSocket, no messages should be sent
-    expect(webSocket.sentMessages).toEqual([]);
-
-    // Simulate WebSocket opening
-    webSocket.simulateOpen();
-
-    // After opening, WebSocket should send sync messages
-    expect(webSocket.sentMessages).toMatchInlineSnapshot(
-      `
-      [
-        uint8:[0,74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234,0,0,1,0,1,2,1,5,0,1,2,0,125,85,114,123,39,28,1],
-      ]
-    `,
-    );
-
-    checkSqlOperations(testConsole);
+  // Create a sync mutation first to have data to send
+  worker.postMessage({
+    type: "mutate",
+    tabId,
+    changes: [
+      {
+        id: recordId,
+        table: "testTable",
+        values: { name: "sync data" },
+      },
+    ],
+    onCompleteIds: [],
+    subscribedQueries: [],
   });
 
-  // TODO: test on message (a received message)
+  const webSocket = transports[0];
+
+  // Before opening WebSocket, no messages should be sent
+  expect(webSocket.sentMessages).toEqual([]);
+
+  // Simulate WebSocket opening
+  webSocket.simulateOpen();
+
+  // After opening, WebSocket should send sync messages
+  expect(webSocket.sentMessages).toMatchInlineSnapshot(
+    `
+    [
+      uint8:[0,74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234,0,0,1,0,1,2,1,5,0,1,2,0,125,85,114,123,39,28,1],
+    ]
+  `,
+  );
+
+  checkSqlOperations(testConsole);
+});
+
+describe("last-write-wins for received messages", () => {
+  const applyMessagesAndReceiveBroadcasts = async (
+    messages: ReadonlyArray<ProtocolMessage>,
+  ): Promise<{ transports: ReadonlyArray<TestWebSocket>; sqlite: Sqlite }> => {
+    const storageDep = await createTestRelayStorageDep();
+    const broadcasts: Array<ProtocolMessage> = [];
+
+    for (const message of messages) {
+      await applyProtocolMessageAsRelay(storageDep)(message, {
+        broadcast: (_ownerId, message) => {
+          broadcasts.push(message);
+        },
+      });
+    }
+
+    // Create fresh DbWorker to receive broadcast messages
+    const { transports, sqlite } = await createInitializedDbWorker();
+    const webSocket = transports[0];
+    webSocket.simulateOpen();
+
+    // Simulate receiving broadcast messages
+    for (const broadcast of broadcasts) {
+      webSocket.simulateMessage(broadcast);
+      await wait("1ms")();
+    }
+
+    return { transports, sqlite };
+  };
+
+  const getTestTableName = (sqlite: Sqlite): string => {
+    const rows = getDbSnapshot({ sqlite }).tables.find(
+      (t) => t.name === "testTable",
+    )?.rows;
+    expect(rows).toHaveLength(1);
+    return rows?.[0]?.name as unknown as string;
+  };
+
+  test("creates new record from received message", async () => {
+    const id = testCreateId();
+    const message = createTestCrdtMessage(id, 1, "created");
+    const pm = createProtocolMessageFromCrdtMessages(testDeps)(appOwner, [
+      message,
+    ]);
+
+    const { sqlite } = await applyMessagesAndReceiveBroadcasts([pm]);
+
+    expect(getTestTableName(sqlite)).toBe("created");
+  });
+
+  test("newer message updates existing record", async () => {
+    const id = testCreateId();
+
+    const older = createTestCrdtMessage(id, 1, "older");
+    const newer = createTestCrdtMessage(id, 2, "newer");
+
+    const pmOlder = createProtocolMessageFromCrdtMessages(testDeps)(appOwner, [
+      older,
+    ]);
+    const pmNewer = createProtocolMessageFromCrdtMessages(testDeps)(appOwner, [
+      newer,
+    ]);
+
+    // Apply older message first, then newer message
+    const { sqlite } = await applyMessagesAndReceiveBroadcasts([
+      pmOlder,
+      pmNewer,
+    ]);
+
+    // Should have "newer" because newer timestamp overwrites older
+    expect(getTestTableName(sqlite)).toBe("newer");
+  });
+
+  test("older messages do not overwrite newer ones", async () => {
+    const id = testCreateId();
+
+    const older = createTestCrdtMessage(id, 1, "older");
+    const newer = createTestCrdtMessage(id, 2, "newer");
+
+    const pmOlder = createProtocolMessageFromCrdtMessages(testDeps)(appOwner, [
+      older,
+    ]);
+    const pmNewer = createProtocolMessageFromCrdtMessages(testDeps)(appOwner, [
+      newer,
+    ]);
+
+    // Apply newer message first, then older message
+    const { sqlite } = await applyMessagesAndReceiveBroadcasts([
+      pmNewer,
+      pmOlder,
+    ]);
+
+    // Should still have "newer" because older message should not overwrite
+    expect(getTestTableName(sqlite)).toBe("newer");
+  });
+
+  test("duplicate messages are idempotent", async () => {
+    const id = testCreateId();
+
+    // Create two different messages with the same timestamp.
+    // This situation cannot happen in production (HLC ensures unique timestamps),
+    // but we use it to test that the database operation is skipped for performance.
+    const m1 = createTestCrdtMessage(id, 1, "first");
+    const m2 = createTestCrdtMessage(id, 1, "second");
+
+    const pm1 = createProtocolMessageFromCrdtMessages(testDeps)(appOwner, [m1]);
+    const pm2 = createProtocolMessageFromCrdtMessages(testDeps)(appOwner, [m2]);
+
+    // Apply both messages with the same timestamp
+    const { sqlite } = await applyMessagesAndReceiveBroadcasts([pm1, pm2]);
+
+    // Should have exactly one row, and the first message should win
+    // since the second one is skipped due to same timestamp
+    expect(getTestTableName(sqlite)).toBe("first");
+  });
 });

@@ -37,6 +37,12 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Lint Monorepo
+        run: pnpm lint-monorepo
+
+      - name: Check Circular Dependencies
+        run: pnpm circular
+
       - name: Test
         run: pnpm test
 

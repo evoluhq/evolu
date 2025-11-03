@@ -1,5 +1,31 @@
 # @evolu/common
 
+## 6.0.1-preview.22
+
+### Patch Changes
+
+- 446eac5: Remove dead code comments and improve tests
+  - Simplify JSDoc for `loadQuery` to focus on current behavior (caching for Suspense)
+  - Add note about SSR behavior to `appOwner`
+  - Improve `createEvolu` JSDoc with clearer description and instance caching behavior
+  - Improve tests to use proper async/await patterns and avoid mock libraries
+  - Add comprehensive test coverage for query loading, subscriptions, and cache behavior
+
+## 6.0.1-preview.21
+
+### Patch Changes
+
+- d913cf9: Add relay authentication support with `authenticateOwner` callback
+  - Add `createWebSocketTransportConfig` helper to create WebSocket transports with OwnerId for relay authentication
+  - Add `parseOwnerIdFromUrl` to extract OwnerId from URL query strings on relay side
+  - Add `authenticateOwner` callback to `RelayConfig` for controlling relay access by OwnerId
+  - Add comprehensive relay logging with `createRelayLogger`
+  - Refactor `createNodeJsRelay` to return `Result<Relay, SqliteError>` for proper error handling
+  - Add HTTP upgrade authentication flow with appropriate status codes (400, 401, 500)
+  - Rename `createRelayStorage` to `createRelaySqliteStorage` for clarity
+  - Add `ProtocolQuotaExceededError` for storage/billing quota management (placeholder for future implementation)
+  - Improve transport configuration documentation with redundancy best practices
+
 ## 6.0.1-preview.20
 
 ### Patch Changes

@@ -26,7 +26,7 @@
     "@types/node": "^22.17.1",
     "@types/react": "catalog:react19",
     "@types/react-dom": "catalog:react19",
-    "eslint": "^9.36.0",
+    "eslint": "9.38.0",
     "eslint-config-next": "^16.0.0",
     "postcss": "^8.5.6",
     "shx": "^0.4.0",

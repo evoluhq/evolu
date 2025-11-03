@@ -228,23 +228,26 @@
  *
  * ### FAQ
  *
- * #### What if my function doesn't return a value on success?
+ * #### When should a function return a plain value instead of `Result<T, E>`?
  *
- * If your function performs an operation but doesn't need to return a value on
- * success, you can use `Result<void, E>`. Using `Result<void, E>` is clearer
- * than using `Result<true, E>` or `Result<null, E>` because it communicates
- * that the function doesn't produce a value but can produce errors.
+ * Use `Result<T, E>` only when a function can fail with **known, expected
+ * errors** that callers need to handle. If a function cannot fail with a known
+ * error, return the value directly.
  *
- * #### When can a function return `void` instead of `Result<void, E>`?
+ * - ✅ Return `Result<User, UserNotFoundError>` - can fail with a known error
+ * - ✅ Return `User` - cannot fail with a known error
+ * - ❌ Don't return `Result<User, never>` - unnecessary wrapper
  *
- * A function can safely return `void` (instead of `Result<void, E>`) when all
- * unsafe code within it is properly wrapped with `trySync` or `tryAsync`. If
- * developers consistently wrap all potentially throwing operations, then any
- * function returning `void` is guaranteed not to throw and can be called
- * without error handling.
+ * This keeps the codebase clean and makes error handling intentional. The type
+ * system communicates which operations can fail and which cannot.
+ *
+ * Unsafe code from external libraries (not under our control) should be wrapped
+ * with `trySync` or `tryAsync` at the boundaries. Once wrapped, if the error is
+ * not important to callers, functions can safely return plain values. If the
+ * error matters, use `Result` with a typed error.
  *
  * ```ts
- * // ✅ Safe to return void - all unsafe code is wrapped
+ * // ✅ Safe to return void - unsafe code is wrapped and error is handled
  * const processData = (data: string): void => {
  *   const parseResult = trySync(
  *     () => JSON.parse(data),
@@ -252,7 +255,7 @@
  *   );
  *
  *   if (!parseResult.ok) {
- *     logError(parseResult.error); // Handle error appropriately
+ *     logError(parseResult.error);
  *     return;
  *   }
  *
@@ -263,9 +266,12 @@
  * processData(jsonString);
  * ```
  *
- * This approach creates a clear contract: functions returning `void` are safe
- * to call, while functions returning `Result<T, E>` require explicit error
- * handling.
+ * #### What if my function doesn't return a value on success?
+ *
+ * If your function performs an operation but doesn't need to return a value on
+ * success, you can use `Result<void, E>`. Using `Result<void, E>` is clearer
+ * than using `Result<true, E>` or `Result<null, E>` because it communicates
+ * that the function doesn't produce a value but can produce errors.
  *
  * #### How do I short-circuit processing of an array on the first error?
  *
@@ -459,6 +465,31 @@ export const getOrThrow = <T, E>(result: Result<T, E>): T => {
     throw new Error("getOrThrow", { cause: result.error });
   }
 };
+
+/**
+ * Extracts the value from a {@link Result} if it is an `Ok`, or returns `null`
+ * if it is an `Err`.
+ *
+ * **Intended usage:**
+ *
+ * - When you need to convert a `Result` to a nullable value for APIs that expect
+ *   `T | null`.
+ * - When the error is not important and you just want the value or nothing.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const parseResult = parseJson('{"key": "value"}');
+ * const value = getOrNull(parseResult);
+ * // value is unknown | null
+ *
+ * if (value != null) {
+ *   console.log("Parsed value:", value);
+ * }
+ * ```
+ */
+export const getOrNull = <T, E>(result: Result<T, E>): T | null =>
+  result.ok ? result.value : null;
 
 /**
  * Wraps synchronous functions that may throw exceptions, returning a

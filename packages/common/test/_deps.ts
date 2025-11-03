@@ -19,8 +19,11 @@ import {
   createOwnerSecret,
   ownerIdToOwnerIdBytes,
 } from "../src/Evolu/Owner.js";
+import { createRelaySqliteStorage } from "../src/Evolu/Relay.js";
+import { StorageDep } from "../src/Evolu/Storage.js";
 import { constFalse, constVoid } from "../src/Function.js";
 import {
+  createRandom,
   createRandomLibWithSeed,
   createRandomWithSeed,
 } from "../src/Random.js";
@@ -302,4 +305,25 @@ export const createTestConsole = (): TestConsole => {
       logs.length = 0;
     },
   };
+};
+
+export const createTestRelayStorageDep = async (): Promise<StorageDep> => {
+  const sqlite = await testCreateSqlite();
+  const storage = getOrThrow(
+    createRelaySqliteStorage({
+      sqlite,
+      /**
+       * We intentionally use non-deterministic `createRandom` because
+       * deterministic test Random affects perf results (has decreasing
+       * distribution).
+       */
+      random: createRandom(),
+      timingSafeEqual: testCreateTimingSafeEqual(),
+    })({
+      onStorageError: (error) => {
+        throw new Error(error.type);
+      },
+    }),
+  );
+  return { storage };
 };

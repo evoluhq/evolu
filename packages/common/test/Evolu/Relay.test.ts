@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { createRelayStorage } from "../../src/Evolu/Relay.js";
+import { createRelaySqliteStorage } from "../../src/Evolu/Relay.js";
 import {
   EncryptedCrdtMessage,
   EncryptedDbChange,
@@ -20,7 +20,7 @@ import { testTimestampsAsc } from "./_fixtures.js";
 const createTestRelayStorage = async () => {
   const sqlite = await testCreateSqlite();
   const storage = getOrThrow(
-    createRelayStorage({
+    createRelaySqliteStorage({
       sqlite,
       random: testRandom,
       timingSafeEqual: testCreateTimingSafeEqual(),
