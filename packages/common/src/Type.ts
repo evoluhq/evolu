@@ -179,7 +179,7 @@ import { pack } from "msgpackr";
 import type { Brand } from "./Brand.js";
 import { type RandomBytesDep } from "./Crypto.js";
 import { isPlainObject } from "./Object.js";
-import { err, getOrThrow, ok, Result, trySync } from "./Result.js";
+import { err, getOrNull, getOrThrow, ok, Result, trySync } from "./Result.js";
 import { safelyStringifyUnknownValue } from "./String.js";
 import type { Literal, Simplify, WidenLiteral } from "./Types.js";
 import { IntentionalNever } from "./Types.js";
@@ -219,14 +219,6 @@ export interface Type<
    *   constants)
    * - Application startup where failure should crash the program
    * - Test code with known valid inputs
-   * - Converting from trusted sources where validation failure indicates a
-   *   programming error
-   *
-   * **When NOT to use:**
-   *
-   * - User input validation - use `from` and handle errors gracefully
-   * - Data from external APIs or files - use `from` for proper error handling
-   * - Library code that should return Results rather than throw
    *
    * ### Example
    *
@@ -248,6 +240,38 @@ export interface Type<
    * ```
    */
   readonly orThrow: (value: Input) => T;
+
+  /**
+   * Creates `T` from an `Input` value, returning `null` if validation fails.
+   *
+   * This is a convenience method that combines `from` with `getOrNull`.
+   *
+   * **When to use:**
+   *
+   * - When you need to convert a validation result to a nullable value
+   * - When the error is not important and you just want the value or nothing
+   * - APIs that expect `T | null`
+   *
+   * ### Example
+   *
+   * ```ts
+   * // ✅ Good: Optional user input
+   * const age = PositiveInt.orNull(userInput);
+   * if (age != null) {
+   *   console.log("Valid age:", age);
+   * }
+   *
+   * // ✅ Good: Default fallback
+   * const maxRetries = PositiveInt.orNull(config.retries) ?? 3;
+   *
+   * // ❌ Avoid: When you need to know why validation failed (use `from` instead)
+   * const result = PositiveInt.from(userInput);
+   * if (!result.ok) {
+   *   console.error(formatPositiveError(result.error));
+   * }
+   * ```
+   */
+  readonly orNull: (value: Input) => T | null;
 
   /**
    * Creates `T` from an unknown value.
@@ -468,6 +492,7 @@ const createType = <
     | "is"
     | "from"
     | "orThrow"
+    | "orNull"
     | typeof EvoluTypeSymbol
     | "Type"
     | "Input"
@@ -481,7 +506,8 @@ const createType = <
   name,
   is: (value: unknown): value is T => definition.fromUnknown(value).ok,
   from: definition.fromUnknown,
-  orThrow: (value: Input): T => getOrThrow(definition.fromUnknown(value)),
+  orThrow: (value) => getOrThrow(definition.fromUnknown(value)),
+  orNull: (value) => getOrNull(definition.fromUnknown(value)),
   [EvoluTypeSymbol]: true,
   Type: undefined as unknown as T,
   Input: undefined as unknown as Input,

@@ -171,6 +171,15 @@ test("orThrow", () => {
   );
 });
 
+test("orNull", () => {
+  expect(PositiveNumber.orNull(42)).toBe(42);
+  expect(PositiveNumber.orNull(-5)).toBe(null);
+  expect(PositiveNumber.orNull(0)).toBe(null);
+  expect(String.orNull("hello")).toBe("hello");
+  expect(NonEmptyString.orNull("")).toBe(null);
+  expect(NonEmptyString.orNull("valid")).toBe("valid");
+});
+
 test("brand", () => {
   // It's for fromParent test.
   let trimmedStringRefineCount = 0;
