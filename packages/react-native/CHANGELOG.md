@@ -1,5 +1,18 @@
 # @evolu/react-native
 
+## 12.0.1-preview.6
+
+### Patch Changes
+
+- dd3c865: - Added expo-secure-store backend for LocalAuth
+  - Added LocalAuth to Expo example app
+  - Added native EvoluAvatar to react-native package
+  - Added experimental jsdoc note to LocalAuth
+  - Moved LocalAuth out of expo deps to it's own export
+- Updated dependencies [dd3c865]
+  - @evolu/common@6.0.1-preview.23
+  - @evolu/react@9.0.1-preview.6
+
 ## 12.0.1-preview.5
 
 ### Patch Changes
