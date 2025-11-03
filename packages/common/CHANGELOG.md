@@ -1,5 +1,17 @@
 # @evolu/common
 
+## 6.0.1-preview.24
+
+### Patch Changes
+
+- 1d8c439: Add `orNull` method to Evolu Type
+
+  Returns the validated value or `null` on failure. Useful when the error is not important and you just want the value or nothing.
+
+  ```ts
+  const age = PositiveInt.orNull(userInput) ?? 0;
+  ```
+
 ## 6.0.1-preview.23
 
 ### Patch Changes
