@@ -93,48 +93,6 @@ export interface EvoluConfig extends Partial<DbConfig> {
   readonly reloadUrl?: string;
 }
 
-// /**
-//  * Validated database change with schema-typed values.
-//  *
-//  * This is a tagged union where the tag is the table name and the values are
-//  * updateable (validated against the schema). This represents the content of a
-//  * {@link CrdtMessage} without the timestamp, which is sufficient for business
-//  * logic validation in {@link EvoluConfig.onMessage}.
-//  */
-// export type ValidatedDbChange<S extends EvoluSchema> = {
-//   [Table in keyof S]: {
-//     readonly table: Table;
-//     readonly id: Id;
-//     readonly values: Updateable<S[Table]> & { readonly createdAt?: DateIso };
-//   };
-// }[keyof S];
-
-// /**
-//  * Local-only mutation interface for use within {@link EvoluConfig.onMessage}
-//  * callback.
-//  *
-//  * Provides type-safe mutation methods that only accept tables with names
-//  * starting with underscore (local-only tables). All methods require fully
-//  * validated branded values. No validation is performed as TypeScript ensures
-//  * type correctness.
-//  */
-// export interface LocalOnly<S extends EvoluSchema> {
-//   readonly insert: <T extends keyof S & `_${string}`>(
-//     table: T,
-//     values: InferType<ObjectType<InsertableProps<S[T]>>>,
-//   ) => InferType<S[T]["id"]>;
-
-//   readonly update: <T extends keyof S & `_${string}`>(
-//     table: T,
-//     values: InferType<ObjectType<UpdateableProps<S[T]>>>,
-//   ) => void;
-
-//   readonly upsert: <T extends keyof S & `_${string}`>(
-//     table: T,
-//     values: InferType<ObjectType<UpsertableProps<S[T]>>>,
-//   ) => void;
-// }
-
 export interface Evolu<S extends EvoluSchema = EvoluSchema> {
   /**
    * Subscribe to {@link EvoluError} changes.
@@ -187,13 +145,9 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
    * reason why loading should fail. All data are local, and the query is typed.
    * Unexpected errors are handled with {@link Evolu#subscribeError}.
    *
-   * Loading is batched, and returned promises are cached, so there is no need
-   * for an additional cache. Evolu's internal cache is invalidated on mutation.
-   * Unsubscribed queries are removed from the cache, so loading them again will
-   * return a new pending promise. Subscribed queries remain in the cache to
-   * prevent unnecessary Suspense boundaries from activating. Their promises are
-   * replaced with `Promise.resolve(rows)`, allowing React to synchronously
-   * unwrap the updated data without suspending.
+   * Loading is batched, and returned promises are cached until resolved to
+   * prevent redundant database queries and to support React Suspense (which
+   * requires stable promise references while pending).
    *
    * To subscribe a query for automatic updates, use
    * {@link Evolu#subscribeQuery}.
@@ -255,6 +209,9 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
   /**
    * Promise that resolves to {@link AppOwner} when available.
    *
+   * Note: With web-only deps, this promise will not resolve during SSR because
+   * there is no AppOwner on the server.
+   *
    * ### Example
    *
    * ```ts
@@ -262,33 +219,6 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> {
    * ```
    */
   readonly appOwner: Promise<AppOwner>;
-
-  // TODO: Update it for the owners
-  // /**
-  //  * Subscribe to {@link SyncState} changes.
-  //  *
-  //  * ### Example
-  //  *
-  //  * ```ts
-  //  * const unsubscribe = evolu.subscribeSyncState(() => {
-  //  *   const syncState = evolu.getSyncState();
-  //  * });
-  //  * ```
-  //  */
-  // readonly subscribeSyncState: StoreSubscribe;
-
-  // /**
-  //  * Get {@link SyncState}.
-  //  *
-  //  * ### Example
-  //  *
-  //  * ```ts
-  //  * const unsubscribe = evolu.subscribeSyncState(() => {
-  //  *   const syncState = evolu.getSyncState();
-  //  * });
-  //  * ```
-  //  */
-  // readonly getSyncState: () => SyncState;
 
   /**
    * Inserts a row into the database and returns a {@link Result} with the new
@@ -512,23 +442,6 @@ export type EvoluError =
   | TimestampError
   | TransferableError;
 
-// /**
-//  * Error reported when a message is invalid or rejected during processing.
-//  *
-//  * This error should never happen because a properly written app should ensure
-//  * data correctness, but it can occur for two reasons:
-//  *
-//  * 1. An attack from someone who modified app code
-//  * 2. A bug by the developer
-//  *
-//  * Both cases are useful to report for debugging and security monitoring.
-//  */
-// export interface OnMessageError {
-//   readonly type: "OnMessageError";
-//   readonly invalidChanges: ReadonlyArray<DbChange>;
-//   readonly rejectedChanges: ReadonlyArray<DbChange>;
-// }
-
 interface InternalEvoluInstance<S extends EvoluSchema = EvoluSchema>
   extends Evolu<S> {
   /**
@@ -546,30 +459,14 @@ export type EvoluDeps = ConsoleDep &
   ReloadAppDep &
   TimeDep;
 
-// For hot reloading and Evolu multitenancy.
 const evoluInstances = new Map<string, InternalEvoluInstance>();
 
 let tabId: Id | null = null;
 
 /**
- * Creates an {@link Evolu} instance configured with the specified
- * {@link EvoluSchema} and optional configuration.
- *
- * This function returns a configured Evolu instance, providing a typed
- * interface for querying, mutating, and syncing your application's data. The
- * returned instance includes:
- *
- * - Subscription methods for receiving updates on queries, the owner, errors, and
- *   sync state.
- * - Methods for creating, updating, or deleting rows in a type-safe manner.
- * - Methods for querying data using Evolu's typed SQL queries, leveraging Kysely
- *   under the hood.
- * - Built-in support for local-first and offline-first data with automatic sync
- *   and merging.
- * - Automatic schema evolution that updates the underlying database with new
- *   columns or tables.
- * - Managing owner data with {@link Evolu#resetAppOwner} and
- *   {@link Evolu#restoreAppOwner}.
+ * Creates an {@link Evolu} instance for a platform configured with the specified
+ * {@link EvoluSchema} and optional {@link EvoluConfig} providing a typed
+ * interface for querying, mutating, and syncing your application's data.
  *
  * ### Example
  *
@@ -598,6 +495,18 @@ let tabId: Id | null = null;
  *
  * const evolu = createEvolu(evoluReactDeps)(Schema);
  * ```
+ *
+ * ### Instance Caching
+ *
+ * Evolu caches instances by {@link EvoluConfig} name to enable hot reloading and
+ * multitenancy. Multiple calls to `createEvolu` with the same name return the
+ * same instance, preserving database connections and state across module
+ * reloads during development. This ensures a seamless developer experience
+ * where edits don't interrupt ongoing sync or lose in-memory state.
+ *
+ * For testing, either dispose of instances after each test (TODO: implement
+ * dispose method) or use unique instance names to ensure proper isolation
+ * between test cases.
  */
 export const createEvolu =
   (deps: EvoluDeps) =>
@@ -657,40 +566,6 @@ const createEvoluInstance =
       tabId ??= createId(deps);
       return tabId;
     };
-
-    // const createLocalOnly = (
-    //   localMutations: Array<MutationChange>,
-    //   defaultOwnerId: OwnerId | undefined,
-    // ): LocalOnly<EvoluSchema> => ({
-    //   insert: (table, values) => {
-    //     const id = createId(deps);
-    //     localMutations.push({
-    //       table,
-    //       id,
-    //       values,
-    //       ownerId: defaultOwnerId,
-    //     });
-    //     return id;
-    //   },
-    //   update: (table, values) => {
-    //     const { id, ...rest } = values;
-    //     localMutations.push({
-    //       table,
-    //       id: id as Id,
-    //       values: rest,
-    //       ownerId: defaultOwnerId,
-    //     });
-    //   },
-    //   upsert: (table, values) => {
-    //     const { id, ...rest } = values as Record<string, unknown> & { id: Id };
-    //     localMutations.push({
-    //       table,
-    //       id: id,
-    //       values: rest as MutationChange["values"],
-    //       ownerId: defaultOwnerId,
-    //     });
-    //   },
-    // });
 
     // Worker responses are delivered to all tabs. Each case must handle this
     // properly (e.g., AppOwner promise resolves only once, tabId filtering).
@@ -764,74 +639,6 @@ const createEvoluInstance =
           }
           break;
         }
-
-        // case "processNewMessages": {
-        //   void requestIdleTask(
-        //     toTask(async () => {
-        //       const approved: Array<Timestamp> = [];
-        //       const invalidChanges: Array<DbChange> = [];
-        //       const rejectedChanges: Array<DbChange> = [];
-        //       const localMutations: Array<MutationChange> = [];
-
-        //       for (const crdtMessage of message.messages) {
-        //         let isApproved = true;
-        //         let isValid = true;
-
-        //         const table = crdtMessage.change.table;
-        //         if (table in schema) {
-        //           const { createdAt, ...values } = crdtMessage.change.values;
-        //           isValid =
-        //             (createdAt ? DateIso.is(createdAt) : true) &&
-        //             getMutationType(table, "update").is({
-        //               id: crdtMessage.change.id,
-        //               ...values,
-        //             });
-        //         } else {
-        //           isValid = false;
-        //         }
-
-        //         if (!isValid) {
-        //           isApproved = false;
-        //           invalidChanges.push(crdtMessage.change);
-        //         } else if (onMessage) {
-        //           // At this point, we've validated that the message conforms to the
-        //           // schema, so the typed callback can safely process it.
-        //           isApproved = await onMessage(crdtMessage.change, {
-        //             ownerId: message.ownerId,
-        //             localOnly: createLocalOnly(localMutations, message.ownerId),
-        //           });
-        //           if (!isApproved) {
-        //             rejectedChanges.push(crdtMessage.change);
-        //           }
-        //         }
-
-        //         if (isApproved) {
-        //           approved.push(crdtMessage.timestamp);
-        //         }
-        //       }
-
-        //       // Report OnMessageError if there were any invalid or rejected changes
-        //       if (invalidChanges.length > 0 || rejectedChanges.length > 0) {
-        //         const onMessageError: OnMessageError = {
-        //           type: "OnMessageError",
-        //           invalidChanges,
-        //           rejectedChanges,
-        //         };
-        //         errorStore.set(onMessageError);
-        //       }
-
-        //       dbWorker.postMessage({
-        //         type: "onProcessNewMessages",
-        //         onCompleteId: message.onCompleteId,
-        //         approved,
-        //         localMutations,
-        //       });
-
-        //       return ok();
-        //     }),
-        //   )();
-        //   break;
-        // }
 
         case "onExport": {
           exportRegistry.execute(
@@ -971,34 +778,6 @@ const createEvoluInstance =
       loadingPromises.releaseUnsubscribedOnMutation();
 
       if (!isNonEmptyArray(changes)) return;
-
-      // if (onMessage) {
-      //   const rejectedChanges: Array<DbChange> = [];
-      //   const localMutations: Array<MutationChange> = [];
-
-      //   for (const change of changes) {
-      //     const localOnly = createLocalOnly(localMutations, change.ownerId);
-
-      //     const isApproved = await onMessage(change, {
-      //       ownerId: change.ownerId,
-      //       localOnly,
-      //     });
-      //     if (!isApproved) {
-      //       rejectedChanges.push(change);
-      //     }
-      //   }
-
-      //   if (rejectedChanges.length > 0) {
-      //     errorStore.set({
-      //       type: "OnMessageError",
-      //       invalidChanges: [],
-      //       rejectedChanges,
-      //     });
-      //     return;
-      //   }
-
-      //   changes.push(...localMutations);
-      // }
 
       dbWorker.postMessage({
         type: "mutate",
@@ -1199,25 +978,8 @@ interface LoadingPromises {
     readonly isNew: boolean;
   };
 
-  /**
-   * Resolve a cached promise with updated rows.
-   *
-   * If the promise is not yet fulfilled, it will be resolved normally. If
-   * already fulfilled (subscribed query updated after mutation), the promise
-   * property is replaced with a new `Promise.resolve(rows)` while keeping the
-   * same cached object reference. The promise is not removed from the cache
-   * because React Suspense requires repeated calls to return the same promise.
-   */
   resolve: (query: Query, rows: ReadonlyArray<Row>) => void;
 
-  /**
-   * Release unsubscribed queries from the cache.
-   *
-   * Loading promises can't be released in `resolve` because they must be cached
-   * for React Suspense, but they also can't be cached forever because only
-   * subscribed queries are automatically updated (reactivity is expensive
-   * because it's implemented via refetching subscribed queries).
-   */
   releaseUnsubscribedOnMutation: () => void;
 
   getQueries: () => ReadonlyArray<Query>;

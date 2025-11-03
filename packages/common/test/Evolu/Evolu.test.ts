@@ -1,6 +1,11 @@
-import { describe, expect, expectTypeOf, test, vi } from "vitest";
+import { describe, expect, expectTypeOf, test } from "vitest";
+import { assert } from "../../src/Assert.js";
 import { createConsole } from "../../src/Console.js";
-import { createDbWorkerForPlatform } from "../../src/Evolu/Db.js";
+import {
+  createDbWorkerForPlatform,
+  DbWorkerInput,
+  DbWorkerOutput,
+} from "../../src/Evolu/Db.js";
 import { createEvolu } from "../../src/Evolu/Evolu.js";
 import { createAppOwner } from "../../src/Evolu/Owner.js";
 import {
@@ -10,6 +15,7 @@ import {
   ValidateSchemaHasId,
 } from "../../src/Evolu/Schema.js";
 import { SyncOwner } from "../../src/Evolu/Sync.js";
+import { constVoid } from "../../src/Function.js";
 import { getOrThrow } from "../../src/Result.js";
 import { createSqlite, SqliteBoolean } from "../../src/Sqlite.js";
 import { wait } from "../../src/Task.js";
@@ -26,12 +32,12 @@ import {
   testCreateDummyWebSocket,
   testCreateId,
   testCreateSqliteDriver,
+  testLocalAuth,
   testOwner,
   testOwner2,
   testOwnerSecret,
   testRandom,
   testRandomBytes,
-  testLocalAuth,
   testSimpleName,
   testTime,
 } from "../_deps.js";
@@ -59,40 +65,43 @@ const Schema = {
   },
 };
 
-const mockDeps = () => {
-  const dbWorker = {
-    onMessage: vi.fn(),
-    postMessage: vi.fn(),
-  };
+const testCreateEvolu = async (options?: {
+  onInit?: (postMessageCalls: ReadonlyArray<DbWorkerInput>) => void;
+}) => {
+  const { deps, postMessageCalls, instanceName, getOnMessageCallback } =
+    await testCreateEvoluDeps();
+
+  const evolu = createEvolu(deps)(Schema, {
+    name: instanceName,
+  });
+
+  if (options?.onInit) options.onInit(postMessageCalls);
+  postMessageCalls.length = 0;
+
+  const allTodosQuery = evolu.createQuery((db) =>
+    db.selectFrom("todo").selectAll(),
+  );
 
   return {
-    console: createConsole(),
-    createDbWorker: () => dbWorker,
-    randomBytes: testRandomBytes,
-    localAuth: testLocalAuth,
-    reloadApp: vi.fn(),
-    time: testTime,
+    evolu,
+    postMessageCalls,
+    allTodosQuery,
+    getOnMessageCallback,
   };
 };
 
-let instancesCount = 0;
+let testInstanceCounter = 0;
 
-const setupEvoluTest = () => {
-  const deps = mockDeps();
-  const evolu = createEvolu(deps)(Schema, {
-    name: SimpleName.orThrow(`instance${instancesCount++}`),
-  });
-  const dbWorker = deps.createDbWorker();
+const testCreateEvoluDeps = async () => {
+  const instanceName = SimpleName.orThrow(`Test${testInstanceCounter++}`);
+  const sqliteDriver = await testCreateSqliteDriver(instanceName);
 
-  return { deps, evolu, dbWorker };
-};
+  const postMessageCalls: Array<DbWorkerInput> = [];
+  let onMessageCallback: ((message: DbWorkerOutput) => void) | undefined;
 
-const createEvoluDepsWithSqlite = async () => {
-  const sqliteDriver = testCreateSqliteDriver(testSimpleName);
-
-  const dbWorker = createDbWorkerForPlatform({
+  const innerDbWorker = createDbWorkerForPlatform({
     console: createConsole(),
-    createSqliteDriver: () => sqliteDriver,
+    createSqliteDriver: () => Promise.resolve(sqliteDriver),
     createWebSocket: testCreateDummyWebSocket,
     random: testRandom,
     randomBytes: testRandomBytes,
@@ -101,375 +110,43 @@ const createEvoluDepsWithSqlite = async () => {
 
   const deps = {
     console: createConsole(),
-    createDbWorker: () => dbWorker,
+    createDbWorker: () => ({
+      onMessage: (callback: (message: DbWorkerOutput) => void) => {
+        onMessageCallback = callback;
+        innerDbWorker.onMessage(callback);
+      },
+      postMessage: (
+        message: Parameters<typeof innerDbWorker.postMessage>[0],
+      ) => {
+        postMessageCalls.push(message);
+        innerDbWorker.postMessage(message);
+      },
+    }),
     randomBytes: testRandomBytes,
     localAuth: testLocalAuth,
-    reloadApp: vi.fn(),
+    reloadApp: constVoid,
     time: testTime,
   };
 
   const sqlite = getOrThrow(
     await createSqlite({
-      createSqliteDriver: () => sqliteDriver,
-    })(testSimpleName),
+      createSqliteDriver: () => Promise.resolve(sqliteDriver),
+    })(instanceName),
   );
 
-  return { deps, sqliteDriver, sqlite };
+  return {
+    instanceName,
+    deps,
+    postMessageCalls,
+    sqlite,
+    innerDbWorker,
+    getOnMessageCallback: () => onMessageCallback,
+  };
 };
 
-test("init postMessage call", () => {
-  const { dbWorker } = setupEvoluTest();
-
-  expect(dbWorker.postMessage.mock.calls).toMatchInlineSnapshot(`
-    [
-      [
-        {
-          "config": {
-            "enableLogging": false,
-            "maxDrift": 300000,
-            "name": "instance0",
-            "transports": [
-              {
-                "type": "WebSocket",
-                "url": "wss://free.evoluhq.com",
-              },
-            ],
-          },
-          "dbSchema": {
-            "indexes": [],
-            "tables": [
-              {
-                "columns": [
-                  "title",
-                  "isCompleted",
-                  "categoryId",
-                ],
-                "name": "todo",
-              },
-              {
-                "columns": [
-                  "name",
-                ],
-                "name": "todoCategory",
-              },
-            ],
-          },
-          "type": "init",
-        },
-      ],
-      [
-        {
-          "type": "getAppOwner",
-        },
-      ],
-    ]
-  `);
-});
-
-test("insert should validate input and call postMessage", async () => {
-  const { evolu, dbWorker } = setupEvoluTest();
-
-  const validTodo = {
-    title: "Test Todo",
-  };
-
-  const result = evolu.insert("todo", validTodo);
-
-  expect(result.ok).toBe(true);
-  expect(result.ok && result.value.id).toMatchInlineSnapshot(
-    `"T-vftdB4K_reh6yT2RUm8w"`,
-  );
-
-  await wait("0ms")();
-
-  expect(dbWorker.postMessage.mock.calls[2]).toMatchInlineSnapshot(`
-    [
-      {
-        "changes": [
-          {
-            "id": "T-vftdB4K_reh6yT2RUm8w",
-            "ownerId": undefined,
-            "table": "todo",
-            "values": {
-              "createdAt": "1970-01-01T00:00:00.000Z",
-              "title": "Test Todo",
-            },
-          },
-        ],
-        "onCompleteIds": [],
-        "subscribedQueries": [],
-        "tabId": "-7BOfTxCJQQifI1Bv_OErQ",
-        "type": "mutate",
-      },
-    ]
-  `);
-});
-
-test("insert should reject invalid input", () => {
-  const { evolu } = setupEvoluTest();
-
-  // Empty title (violates NonEmptyString constraint)
-  const invalidTodo = {
-    title: "",
-  };
-
-  const result = evolu.insert("todo", invalidTodo);
-
-  expect(result).toMatchInlineSnapshot(`
-    {
-      "error": {
-        "reason": {
-          "errors": {
-            "title": {
-              "min": 1,
-              "type": "MinLength",
-              "value": "",
-            },
-          },
-          "kind": "Props",
-        },
-        "type": "Object",
-        "value": {
-          "title": "",
-        },
-      },
-      "ok": false,
-    }
-  `);
-});
-
-test("update should validate input and call postMessage", async () => {
-  const { evolu, dbWorker } = setupEvoluTest();
-
-  const testId = testCreateId();
-
-  // Valid update
-  const validUpdate = {
-    id: testId,
-    title: "Updated Todo",
-  };
-
-  const result = evolu.update("todo", validUpdate);
-
-  expect(result.ok).toBe(true);
-  expect(result.ok && result.value.id).toBe(testId);
-
-  await wait("0ms")();
-
-  expect(dbWorker.postMessage.mock.calls[2]).toMatchInlineSnapshot(`
-    [
-      {
-        "changes": [
-          {
-            "id": "s8GaTyQYpixM_eXR3FgmiA",
-            "ownerId": undefined,
-            "table": "todo",
-            "values": {
-              "title": "Updated Todo",
-            },
-          },
-        ],
-        "onCompleteIds": [],
-        "subscribedQueries": [],
-        "tabId": "-7BOfTxCJQQifI1Bv_OErQ",
-        "type": "mutate",
-      },
-    ]
-  `);
-});
-
-test("update should reject invalid input", () => {
-  const { evolu } = setupEvoluTest();
-
-  // Missing id
-  const invalidUpdate = {
-    title: "Updated Todo",
-  };
-
-  // @ts-expect-error - Testing runtime validation
-  const result = evolu.update("todo", invalidUpdate);
-
-  // Should return error
-  expect(result).toMatchInlineSnapshot(`
-    {
-      "error": {
-        "reason": {
-          "errors": {
-            "id": {
-              "type": "String",
-              "value": undefined,
-            },
-          },
-          "kind": "Props",
-        },
-        "type": "Object",
-        "value": {
-          "title": "Updated Todo",
-        },
-      },
-      "ok": false,
-    }
-  `);
-});
-
-test("upsert should validate input and call postMessage", async () => {
-  const { evolu, dbWorker } = setupEvoluTest();
-
-  const testId = testCreateId();
-
-  // Valid upsert
-  const validUpsert = {
-    id: testId,
-    title: "Upserted Todo",
-  };
-
-  const result = evolu.upsert("todo", validUpsert);
-
-  expect(result.ok).toBe(true);
-  expect(result.ok && result.value.id).toBe(testId);
-
-  await wait("0ms")();
-
-  expect(dbWorker.postMessage.mock.calls[2]).toMatchInlineSnapshot(`
-    [
-      {
-        "changes": [
-          {
-            "id": "gOu85v9SySO-uwVQQg0fDA",
-            "ownerId": undefined,
-            "table": "todo",
-            "values": {
-              "createdAt": "1970-01-01T00:00:00.001Z",
-              "title": "Upserted Todo",
-            },
-          },
-        ],
-        "onCompleteIds": [],
-        "subscribedQueries": [],
-        "tabId": "-7BOfTxCJQQifI1Bv_OErQ",
-        "type": "mutate",
-      },
-    ]
-  `);
-});
-
-test("upsert should reject invalid input", () => {
-  const { evolu } = setupEvoluTest();
-
-  const testId = testCreateId();
-
-  const invalidUpsert = {
-    id: testId,
-    title: "",
-  };
-
-  const result = evolu.upsert("todo", invalidUpsert);
-
-  expect(result).toMatchInlineSnapshot(`
-    {
-      "error": {
-        "reason": {
-          "errors": {
-            "title": {
-              "min": 1,
-              "type": "MinLength",
-              "value": "",
-            },
-          },
-          "kind": "Props",
-        },
-        "type": "Object",
-        "value": {
-          "id": "1yEjXvx9eXaQ900EPJTPgg",
-          "title": "",
-        },
-      },
-      "ok": false,
-    }
-  `);
-});
-
-test("mutations should be processed in microtask queue", async () => {
-  const { evolu, dbWorker } = setupEvoluTest();
-
-  // Queue multiple mutations
-  evolu.insert("todo", { title: "Todo 1" });
-  evolu.insert("todo", { title: "Todo 2" });
-  evolu.insert("todo", { title: "Todo 3" });
-
-  await wait("0ms")();
-
-  // Only one postMessage call should happen with all changes
-  expect(dbWorker.postMessage).toHaveBeenCalledTimes(3); // init, getAppOwner, 1 mutation
-  expect(dbWorker.postMessage.mock.calls[2]).toMatchInlineSnapshot(`
-    [
-      {
-        "changes": [
-          {
-            "id": "8ucFBn_20jzVeKt2pI3LKg",
-            "ownerId": undefined,
-            "table": "todo",
-            "values": {
-              "createdAt": "1970-01-01T00:00:00.002Z",
-              "title": "Todo 1",
-            },
-          },
-          {
-            "id": "CX2NabHNVtGXs2-gkMvIIg",
-            "ownerId": undefined,
-            "table": "todo",
-            "values": {
-              "createdAt": "1970-01-01T00:00:00.002Z",
-              "title": "Todo 2",
-            },
-          },
-          {
-            "id": "JS_ANW-JW5bnOddKe_haxw",
-            "ownerId": undefined,
-            "table": "todo",
-            "values": {
-              "createdAt": "1970-01-01T00:00:00.002Z",
-              "title": "Todo 3",
-            },
-          },
-        ],
-        "onCompleteIds": [],
-        "subscribedQueries": [],
-        "tabId": "-7BOfTxCJQQifI1Bv_OErQ",
-        "type": "mutate",
-      },
-    ]
-  `);
-});
-
-test("mutation with onlyValidate should not call postMessage", async () => {
-  const { evolu, dbWorker } = setupEvoluTest();
-
-  evolu.insert("todo", { title: "Validation only" }, { onlyValidate: true });
-
-  await wait("0ms")();
-
-  // Only init and getAppOwner should be called, not the mutation
-  expect(dbWorker.postMessage).toHaveBeenCalledTimes(2);
-});
-
-test("mutations should fail as a transaction when any mutation fails", async () => {
-  const { evolu, dbWorker } = setupEvoluTest();
-
-  // Queue valid and invalid mutations
-  evolu.insert("todo", { title: "Valid Todo" });
-  evolu.insert("todo", { title: "" }); // Invalid - empty title
-  evolu.insert("todo", { title: "Another Valid Todo" });
-
-  await wait("0ms")();
-
-  // Only init and getAppOwner should be called, not the mutations since one failed
-  expect(dbWorker.postMessage).toHaveBeenCalledTimes(2);
-});
-
-describe("EvoluSchema validation", () => {
-  test("schema without id column", () => {
-    const deps = mockDeps();
+describe("createEvolu schema validation", () => {
+  test("schema without id column", async () => {
+    const { deps } = await testCreateEvoluDeps();
 
     const SchemaWithoutId = {
       todo: {
@@ -488,8 +165,8 @@ describe("EvoluSchema validation", () => {
     });
   });
 
-  test("schema with default column createdAt", () => {
-    const deps = mockDeps();
+  test("schema with default column createdAt", async () => {
+    const { deps } = await testCreateEvoluDeps();
 
     const SchemaWithDefaultColumn = {
       todo: {
@@ -510,8 +187,8 @@ describe("EvoluSchema validation", () => {
     });
   });
 
-  test("schema with default column updatedAt", () => {
-    const deps = mockDeps();
+  test("schema with default column updatedAt", async () => {
+    const { deps } = await testCreateEvoluDeps();
 
     const SchemaWithDefaultColumn = {
       todo: {
@@ -532,8 +209,8 @@ describe("EvoluSchema validation", () => {
     });
   });
 
-  test("schema with default column isDeleted", () => {
-    const deps = mockDeps();
+  test("schema with default column isDeleted", async () => {
+    const { deps } = await testCreateEvoluDeps();
 
     const SchemaWithDefaultColumn = {
       todo: {
@@ -554,8 +231,8 @@ describe("EvoluSchema validation", () => {
     });
   });
 
-  test("schema with non-branded id column", () => {
-    const deps = mockDeps();
+  test("schema with non-branded id column", async () => {
+    const { deps } = await testCreateEvoluDeps();
 
     const SchemaWithInvalidId = {
       todo: {
@@ -574,8 +251,8 @@ describe("EvoluSchema validation", () => {
     });
   });
 
-  test("schema with incompatible column type", () => {
-    const deps = mockDeps();
+  test("schema with incompatible column type", async () => {
+    const { deps } = await testCreateEvoluDeps();
 
     const SchemaWithInvalidType = {
       todo: {
@@ -596,98 +273,65 @@ describe("EvoluSchema validation", () => {
   });
 });
 
-describe("createdAt behavior", () => {
-  test("insert should set createdAt to current time", async () => {
-    const { evolu, dbWorker } = setupEvoluTest();
+test("init", async () => {
+  let postMessageCallsCalled = false;
 
-    const result = evolu.insert("todo", { title: "Test Todo" });
-    expect(result.ok).toBe(true);
-
-    await wait("0ms")();
-
-    // Verify the postMessage was called with createdAt in the change values
-    expect(dbWorker.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "mutate",
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        changes: expect.arrayContaining([
-          expect.objectContaining({
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            values: expect.objectContaining({
-              title: "Test Todo",
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-              createdAt: expect.stringMatching(
-                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
-              ),
-            }),
-          }),
-        ]),
-      }),
-    );
+  await testCreateEvolu({
+    onInit: (postMessageCalls) => {
+      postMessageCallsCalled = true;
+      expect(postMessageCalls).toMatchInlineSnapshot(`
+        [
+          {
+            "config": {
+              "enableLogging": false,
+              "maxDrift": 300000,
+              "name": "Test6",
+              "transports": [
+                {
+                  "type": "WebSocket",
+                  "url": "wss://free.evoluhq.com",
+                },
+              ],
+            },
+            "dbSchema": {
+              "indexes": [],
+              "tables": [
+                {
+                  "columns": [
+                    "title",
+                    "isCompleted",
+                    "categoryId",
+                  ],
+                  "name": "todo",
+                },
+                {
+                  "columns": [
+                    "name",
+                  ],
+                  "name": "todoCategory",
+                },
+              ],
+            },
+            "type": "init",
+          },
+          {
+            "type": "getAppOwner",
+          },
+        ]
+      `);
+    },
   });
 
-  test("upsert should set createdAt to current time", async () => {
-    const { evolu, dbWorker } = setupEvoluTest();
-
-    const testId = testCreateId();
-    const result = evolu.upsert("todo", { id: testId, title: "Upserted Todo" });
-    expect(result.ok).toBe(true);
-
-    await wait("0ms")();
-
-    expect(dbWorker.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "mutate",
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        changes: expect.arrayContaining([
-          expect.objectContaining({
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            values: expect.objectContaining({
-              title: "Upserted Todo",
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-              createdAt: expect.stringMatching(
-                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
-              ),
-            }),
-          }),
-        ]),
-      }),
-    );
-  });
-
-  test("update should NOT set createdAt", async () => {
-    const { evolu, dbWorker } = setupEvoluTest();
-
-    const testId = testCreateId();
-    const result = evolu.update("todo", { id: testId, title: "Updated Todo" });
-    expect(result.ok).toBe(true);
-
-    await wait("0ms")();
-
-    // Get the actual call to inspect the values
-    const calls = dbWorker.postMessage.mock.calls;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const mutateCall = calls.find((call) => call[0]?.type === "mutate");
-    expect(mutateCall).toBeDefined();
-
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-    const change = mutateCall?.[0]?.changes?.[0];
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    expect(change?.values).toEqual({
-      title: "Updated Todo",
-    });
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    expect(change?.values).not.toHaveProperty("createdAt");
-  });
+  expect(postMessageCallsCalled).toBe(true);
 });
 
 test("externalAppOwner should use provided owner", async () => {
-  const { deps, sqlite } = await createEvoluDepsWithSqlite();
+  const { instanceName, deps, sqlite } = await testCreateEvoluDeps();
 
   const externalAppOwner = createAppOwner(testOwnerSecret);
 
   createEvolu(deps)(Schema, {
-    name: SimpleName.orThrow(`instance${instancesCount++}`),
+    name: instanceName,
     externalAppOwner,
   });
 
@@ -702,6 +346,728 @@ test("externalAppOwner should use provided owner", async () => {
   expect(configTable?.rows[0].appOwnerId).toBe(externalAppOwner.id);
 });
 
+describe("mutations", () => {
+  test("insert should validate and call postMessage", async () => {
+    const { evolu, postMessageCalls } = await testCreateEvolu();
+
+    const invalidTodo = {
+      title: "",
+    };
+
+    const invalidResult = evolu.insert("todo", invalidTodo);
+    expect(invalidResult).toMatchInlineSnapshot(`
+      {
+        "error": {
+          "reason": {
+            "errors": {
+              "title": {
+                "min": 1,
+                "type": "MinLength",
+                "value": "",
+              },
+            },
+            "kind": "Props",
+          },
+          "type": "Object",
+          "value": {
+            "title": "",
+          },
+        },
+        "ok": false,
+      }
+    `);
+
+    // Wait for microtask queue to process (invalid mutation won't be sent)
+    await Promise.resolve();
+
+    expect(postMessageCalls).toHaveLength(0);
+
+    const validTodo = {
+      title: "Test Todo",
+    };
+
+    const validResult = evolu.insert("todo", validTodo);
+
+    expect(validResult).toMatchInlineSnapshot(`
+      {
+        "ok": true,
+        "value": {
+          "id": "1XirdqSNyyoJfY1psc1W0Q",
+        },
+      }
+    `);
+
+    // Wait for microtask queue to process
+    await Promise.resolve();
+
+    expect(postMessageCalls).toMatchInlineSnapshot(`
+      [
+        {
+          "changes": [
+            {
+              "id": "1XirdqSNyyoJfY1psc1W0Q",
+              "ownerId": undefined,
+              "table": "todo",
+              "values": {
+                "createdAt": "1970-01-01T00:00:00.000Z",
+                "title": "Test Todo",
+              },
+            },
+          ],
+          "onCompleteIds": [],
+          "subscribedQueries": [],
+          "tabId": "l7NvoJDLyCIlL8A1b4lblg",
+          "type": "mutate",
+        },
+      ]
+    `);
+  });
+
+  test("update should validate and call postMessage", async () => {
+    const { evolu, postMessageCalls } = await testCreateEvolu();
+
+    const testId = testCreateId();
+
+    const invalidUpdate = {
+      title: "Updated Todo",
+    };
+
+    // @ts-expect-error - Testing runtime validation
+    const invalidResult = evolu.update("todo", invalidUpdate);
+    expect(invalidResult.ok).toBe(false);
+
+    // Wait for microtask queue to process
+    await Promise.resolve();
+
+    expect(postMessageCalls).toHaveLength(0);
+
+    const validUpdate = {
+      id: testId,
+      title: "Updated Todo",
+    };
+
+    const validResult = evolu.update("todo", validUpdate);
+
+    expect(validResult).toMatchInlineSnapshot(`
+      {
+        "ok": true,
+        "value": {
+          "id": "clE52X3Xyxo0jShkCjrbjg",
+        },
+      }
+    `);
+
+    // Wait for microtask queue to process
+    await Promise.resolve();
+
+    expect(postMessageCalls).toMatchInlineSnapshot(`
+      [
+        {
+          "changes": [
+            {
+              "id": "clE52X3Xyxo0jShkCjrbjg",
+              "ownerId": undefined,
+              "table": "todo",
+              "values": {
+                "title": "Updated Todo",
+              },
+            },
+          ],
+          "onCompleteIds": [],
+          "subscribedQueries": [],
+          "tabId": "l7NvoJDLyCIlL8A1b4lblg",
+          "type": "mutate",
+        },
+      ]
+    `);
+  });
+
+  test("upsert should validate and call postMessage", async () => {
+    const { evolu, postMessageCalls } = await testCreateEvolu();
+
+    const testId = testCreateId();
+
+    const invalidUpsert = {
+      id: testId,
+      title: "",
+    };
+
+    const invalidResult = evolu.upsert("todo", invalidUpsert);
+    expect(invalidResult.ok).toBe(false);
+
+    // Wait for microtask queue to process
+    await Promise.resolve();
+
+    expect(postMessageCalls).toHaveLength(0);
+
+    const validUpsert = {
+      id: testId,
+      title: "Upserted Todo",
+    };
+
+    const validResult = evolu.upsert("todo", validUpsert);
+
+    expect(validResult).toMatchInlineSnapshot(`
+      {
+        "ok": true,
+        "value": {
+          "id": "_6EDjBwdU3ZCo-iXpJ29DQ",
+        },
+      }
+    `);
+
+    // Wait for microtask queue to process
+    await Promise.resolve();
+
+    expect(postMessageCalls).toMatchInlineSnapshot(`
+      [
+        {
+          "changes": [
+            {
+              "id": "_6EDjBwdU3ZCo-iXpJ29DQ",
+              "ownerId": undefined,
+              "table": "todo",
+              "values": {
+                "createdAt": "1970-01-01T00:00:00.003Z",
+                "title": "Upserted Todo",
+              },
+            },
+          ],
+          "onCompleteIds": [],
+          "subscribedQueries": [],
+          "tabId": "l7NvoJDLyCIlL8A1b4lblg",
+          "type": "mutate",
+        },
+      ]
+    `);
+  });
+
+  test("mutations should be processed in microtask queue", async () => {
+    const { evolu, postMessageCalls } = await testCreateEvolu();
+
+    // Queue multiple mutations
+    evolu.insert("todo", { title: "Todo 1" });
+    evolu.insert("todo", { title: "Todo 2" });
+    evolu.insert("todo", { title: "Todo 3" });
+
+    // Wait for microtask queue to process
+    await Promise.resolve();
+
+    // Only one postMessage call should happen with all changes
+    expect(postMessageCalls).toHaveLength(1);
+  });
+
+  test("mutation with onlyValidate should not call postMessage", async () => {
+    const { evolu, postMessageCalls } = await testCreateEvolu();
+
+    evolu.insert("todo", { title: "Validation only" }, { onlyValidate: true });
+
+    // Wait for microtask queue to process
+    await Promise.resolve();
+
+    expect(postMessageCalls).toHaveLength(0);
+  });
+
+  test("mutations should fail as a transaction when any mutation fails", async () => {
+    const { evolu, postMessageCalls } = await testCreateEvolu();
+
+    // Queue valid and invalid mutations
+    evolu.insert("todo", { title: "Valid Todo" });
+    evolu.insert("todo", { title: "" }); // Invalid - empty title
+    evolu.insert("todo", { title: "Another Valid Todo" });
+
+    // Wait for microtask queue to process
+    await Promise.resolve();
+
+    expect(postMessageCalls).toHaveLength(0);
+  });
+});
+
+describe("queries", () => {
+  test("loadQuery should return initial empty result", async () => {
+    const { evolu, allTodosQuery } = await testCreateEvolu();
+
+    const result = await evolu.loadQuery(allTodosQuery);
+
+    expect(result).toMatchInlineSnapshot(`[]`);
+  });
+
+  test("loadQuery should cache promises for the same query", async () => {
+    const { evolu, allTodosQuery } = await testCreateEvolu();
+
+    const promise1 = evolu.loadQuery(allTodosQuery);
+    const promise2 = evolu.loadQuery(allTodosQuery);
+
+    // Same query should return the same promise instance
+    expect(promise1).toBe(promise2);
+
+    // Both should resolve to the same result
+    const [result1, result2] = await Promise.all([promise1, promise2]);
+    expect(result1).toBe(result2);
+  });
+
+  test("loadQuery should return inserted data", async () => {
+    const { evolu, allTodosQuery } = await testCreateEvolu();
+
+    const result = evolu.insert("todo", { title: "Test Todo" });
+    expect(result.ok).toBe(true);
+
+    const rows = await evolu.loadQuery(allTodosQuery);
+    expect(rows.length).toBe(1);
+    expect(rows[0]?.title).toBe("Test Todo");
+  });
+
+  test("loadQuery unsubscribed query should be released on mutation", async () => {
+    const { evolu, postMessageCalls, allTodosQuery } = await testCreateEvolu();
+
+    // Load query (creates promise in cache)
+    const promise1 = evolu.loadQuery(allTodosQuery);
+    await promise1;
+
+    // Clear to track only what happens after initial load
+    postMessageCalls.length = 0;
+
+    // Mutate (should release unsubscribed queries from cache)
+    evolu.insert("todo", { title: "Test Todo" });
+
+    // Wait for microtask queue to process
+    await Promise.resolve();
+
+    // Should have 1 mutate call
+    expect(postMessageCalls).toHaveLength(1);
+    expect(postMessageCalls[0]?.type).toBe("mutate");
+
+    // Load again - cache was released, so this sends a NEW query to worker
+    const promise2 = evolu.loadQuery(allTodosQuery);
+
+    // Wait for microtask queue to process
+    await Promise.resolve();
+
+    // Now should have 2 calls: mutate + new query
+    expect(postMessageCalls).toHaveLength(2);
+    expect(postMessageCalls[1]?.type).toBe("query");
+
+    // Promise is different because cache was released
+    expect(promise1).not.toBe(promise2);
+  });
+
+  test("loadQuery subscribed query should not be released on mutation", async () => {
+    const { evolu, postMessageCalls, allTodosQuery } = await testCreateEvolu();
+
+    const promise1 = evolu.loadQuery(allTodosQuery);
+    await promise1;
+
+    evolu.subscribeQuery(allTodosQuery)(constVoid);
+
+    // Clear previous calls to track only what happens after subscription
+    postMessageCalls.length = 0;
+
+    // Mutate (should NOT release subscribed queries from cache)
+    evolu.insert("todo", { title: "Test Todo" });
+
+    // Wait for microtask queue to process
+    await Promise.resolve();
+
+    // Should have 1 mutate call
+    expect(postMessageCalls).toHaveLength(1);
+    expect(postMessageCalls[0]?.type).toBe("mutate");
+
+    // Load again - cache entry stays, so NO new query postMessage
+    const promise2 = evolu.loadQuery(allTodosQuery);
+
+    // Wait for microtask queue to process
+    await Promise.resolve();
+
+    // Still only 1 call (the mutation) - no new query was sent to worker
+    expect(postMessageCalls).toHaveLength(1);
+
+    // Check the value property that React's use() reads (not await result)
+    expect(promise1).toMatchInlineSnapshot(`
+      Promise {
+        "status": "fulfilled",
+        "value": [],
+      }
+    `);
+    expect(promise2).toMatchInlineSnapshot(`
+      Promise {
+        "status": "fulfilled",
+        "value": [
+          {
+            "categoryId": null,
+            "createdAt": "1970-01-01T00:00:00.017Z",
+            "id": "EXqDJoTfofrVXy_-hTIKow",
+            "isCompleted": null,
+            "isDeleted": null,
+            "title": "Test Todo",
+            "updatedAt": "1970-01-01T00:00:00.018Z",
+          },
+        ],
+      }
+    `);
+  });
+
+  test("loadQuery pending unsubscribed query should be released after resolve", async () => {
+    const { evolu, postMessageCalls, allTodosQuery } = await testCreateEvolu();
+
+    // Load query - creates pending promise in cache
+    const promise1 = evolu.loadQuery(allTodosQuery);
+
+    // Mutate BEFORE promise1 resolves. releaseUnsubscribedOnMutation() runs
+    // but can't delete the pending promise (would break promise resolution).
+    evolu.insert("todo", { title: "Test Todo" });
+
+    // Wait for query to resolve - when resolve() runs, it checks releaseOnResolve
+    // flag and deletes the cache entry after fulfilling the promise
+    await promise1;
+
+    postMessageCalls.length = 0;
+
+    // Load again - cache entry was deleted, so this sends a NEW query
+    const promise2 = evolu.loadQuery(allTodosQuery);
+
+    // Wait for microtask queue to process
+    await Promise.resolve();
+
+    // Verify new query was sent to worker (cache was released)
+    expect(postMessageCalls).toHaveLength(1);
+    expect(postMessageCalls[0]?.type).toBe("query");
+
+    expect(promise1).not.toBe(promise2);
+
+    // Check the value property that React's use() reads (not await result)
+    expect(promise1).toMatchInlineSnapshot(`
+      Promise {
+        "status": "fulfilled",
+        "value": [],
+      }
+    `);
+    expect(promise2).toMatchInlineSnapshot(`
+      Promise {
+        "status": "fulfilled",
+        "value": [
+          {
+            "categoryId": null,
+            "createdAt": "1970-01-01T00:00:00.019Z",
+            "id": "V9jl1rlzsDtroJAB4SK5Bg",
+            "isCompleted": null,
+            "isDeleted": null,
+            "title": "Test Todo",
+            "updatedAt": "1970-01-01T00:00:00.020Z",
+          },
+        ],
+      }
+    `);
+  });
+});
+
+describe("subscribeQuery and getQueryRows", () => {
+  test("getQueryRows should return empty rows initially", async () => {
+    const { evolu, allTodosQuery } = await testCreateEvolu();
+
+    const rows = evolu.getQueryRows(allTodosQuery);
+
+    expect(rows).toMatchInlineSnapshot(`[]`);
+  });
+
+  test("getQueryRows should return data after loadQuery", async () => {
+    const { evolu, allTodosQuery } = await testCreateEvolu();
+
+    evolu.insert("todo", { title: "Test Todo" });
+    await evolu.loadQuery(allTodosQuery);
+
+    const rows = evolu.getQueryRows(allTodosQuery);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.title).toBe("Test Todo");
+  });
+
+  test("subscribeQuery should call listener when data changes", async () => {
+    const { evolu, allTodosQuery } = await testCreateEvolu();
+
+    let callCount = 0;
+    const unsubscribe = evolu.subscribeQuery(allTodosQuery)(() => {
+      callCount++;
+    });
+
+    // Initial subscription should not call listener
+    expect(callCount).toBe(0);
+
+    // Insert and load - should trigger listener
+    evolu.insert("todo", { title: "Test Todo" });
+    await evolu.loadQuery(allTodosQuery);
+
+    expect(callCount).toBe(1);
+
+    unsubscribe();
+  });
+
+  test("subscribeQuery should not call listener if result unchanged", async () => {
+    const { evolu, allTodosQuery } = await testCreateEvolu();
+
+    let callCount = 0;
+    const unsubscribe = evolu.subscribeQuery(allTodosQuery)(() => {
+      callCount++;
+    });
+
+    // Load initial data
+    await evolu.loadQuery(allTodosQuery);
+
+    expect(callCount).toBe(1);
+
+    // Load again - same result, should not call listener
+    await evolu.loadQuery(allTodosQuery);
+
+    expect(callCount).toBe(1);
+
+    unsubscribe();
+  });
+
+  test("subscribeQuery listener should see updated data via getQueryRows", async () => {
+    const { evolu, allTodosQuery } = await testCreateEvolu();
+
+    const results: Array<number> = [];
+    const unsubscribe = evolu.subscribeQuery(allTodosQuery)(() => {
+      const rows = evolu.getQueryRows(allTodosQuery);
+      results.push(rows.length);
+    });
+
+    // Insert first todo
+    evolu.insert("todo", { title: "First Todo" });
+    await evolu.loadQuery(allTodosQuery);
+
+    // Insert second todo
+    evolu.insert("todo", { title: "Second Todo" });
+    await evolu.loadQuery(allTodosQuery);
+
+    expect(results).toEqual([1, 2]);
+
+    unsubscribe();
+  });
+
+  test("unsubscribe should stop calling listener", async () => {
+    const { evolu, allTodosQuery } = await testCreateEvolu();
+
+    let callCount = 0;
+    const unsubscribe = evolu.subscribeQuery(allTodosQuery)(() => {
+      callCount++;
+    });
+
+    // First mutation - listener should be called
+    evolu.insert("todo", { title: "First Todo" });
+    await evolu.loadQuery(allTodosQuery);
+
+    expect(callCount).toBe(1);
+
+    unsubscribe();
+
+    // Second mutation - listener should NOT be called
+    evolu.insert("todo", { title: "Second Todo" });
+    await evolu.loadQuery(allTodosQuery);
+
+    expect(callCount).toBe(1);
+  });
+});
+
+describe("refreshQueries", () => {
+  /**
+   * This is not an ideal test; we should run Evolu in a browser with React
+   * useQuery to detect a condition when a component is suspended via loadQuery,
+   * so useQuerySubscription is not yet called, but refreshQueries is, so
+   * subscribedQueries is empty, but loadingPromisesQueries is not. The problem
+   * is that the React component is rendered with stale data which are not
+   * updated. Using loadingPromisesQueries in refreshQueries fixes that.
+   *
+   * Manual test: Open EvoluMinimalExample, close browser dev tools (yes), and
+   * restore account. Without using loadingPromisesQueries in refreshQueries,
+   * React will render stale data, but when we click into the input and write
+   * something, the UI is immediately updated with actual data. It's happening
+   * in all browsers, and NOT happening when dev tools are open. This race
+   * condition is hard to simulate in Node.js, probably because we don't have an
+   * async DB worker.
+   */
+  test("refreshQueries includes pending loadQuery queries", async () => {
+    const { evolu, postMessageCalls, allTodosQuery, getOnMessageCallback } =
+      await testCreateEvolu();
+
+    // Start a loadQuery - this creates a pending promise but DON'T await it yet
+    void evolu.loadQuery(allTodosQuery);
+
+    // Wait for the microtask to execute so the query is sent
+    await Promise.resolve();
+
+    // Verify initial query was sent
+    expect(postMessageCalls).toHaveLength(1);
+    expect(postMessageCalls[0]).toMatchObject({
+      type: "query",
+      queries: [allTodosQuery],
+    });
+
+    postMessageCalls.length = 0;
+
+    const handler = getOnMessageCallback();
+    assert(handler, "getOnMessageCallback");
+
+    // Directly call Evolu's message handler with refreshQueries.
+    // This simulates what happens when sync data arrives.
+    handler({ type: "refreshQueries" });
+
+    await Promise.resolve();
+
+    const queryMessages = postMessageCalls.filter(
+      (call) => call.type === "query",
+    );
+
+    expect(queryMessages.length).toBe(1);
+    expect(queryMessages[0]?.queries).toContain(allTodosQuery);
+  });
+
+  test("refreshQueries includes subscribed queries", async () => {
+    const { evolu, postMessageCalls, allTodosQuery, getOnMessageCallback } =
+      await testCreateEvolu();
+
+    const unsubscribe = evolu.subscribeQuery(allTodosQuery)(constVoid);
+
+    await Promise.resolve();
+
+    postMessageCalls.length = 0;
+
+    const handler = getOnMessageCallback();
+    assert(handler, "getOnMessageCallback");
+
+    // Directly call Evolu's message handler with refreshQueries.
+    // This simulates what happens when sync data arrives.
+    handler({ type: "refreshQueries" });
+
+    await Promise.resolve();
+
+    const queryMessages = postMessageCalls.filter(
+      (call) => call.type === "query",
+    );
+
+    expect(queryMessages.length).toBe(1);
+    expect(queryMessages[0]?.queries).toContain(allTodosQuery);
+
+    unsubscribe();
+  });
+});
+
+describe("createdAt behavior", () => {
+  test("insert should set createdAt to current time", async () => {
+    const { evolu, postMessageCalls } = await testCreateEvolu();
+
+    const result = evolu.insert("todo", { title: "Test Todo" });
+    expect(result).toMatchInlineSnapshot(`
+      {
+        "ok": true,
+        "value": {
+          "id": "p-twDTGK4YVi7ZZmiCi9TA",
+        },
+      }
+    `);
+
+    await Promise.resolve();
+
+    expect(postMessageCalls).toMatchInlineSnapshot(`
+      [
+        {
+          "changes": [
+            {
+              "id": "p-twDTGK4YVi7ZZmiCi9TA",
+              "ownerId": undefined,
+              "table": "todo",
+              "values": {
+                "createdAt": "1970-01-01T00:00:00.033Z",
+                "title": "Test Todo",
+              },
+            },
+          ],
+          "onCompleteIds": [],
+          "subscribedQueries": [],
+          "tabId": "l7NvoJDLyCIlL8A1b4lblg",
+          "type": "mutate",
+        },
+      ]
+    `);
+  });
+
+  test("upsert should set createdAt to current time", async () => {
+    const { evolu, postMessageCalls } = await testCreateEvolu();
+
+    const testId = testCreateId();
+    const result = evolu.upsert("todo", { id: testId, title: "Upserted Todo" });
+    expect(result).toMatchInlineSnapshot(`
+      {
+        "ok": true,
+        "value": {
+          "id": "aVm9lRgGoF6038X2MlJ2Cw",
+        },
+      }
+    `);
+
+    await Promise.resolve();
+
+    expect(postMessageCalls).toMatchInlineSnapshot(`
+      [
+        {
+          "changes": [
+            {
+              "id": "aVm9lRgGoF6038X2MlJ2Cw",
+              "ownerId": undefined,
+              "table": "todo",
+              "values": {
+                "createdAt": "1970-01-01T00:00:00.035Z",
+                "title": "Upserted Todo",
+              },
+            },
+          ],
+          "onCompleteIds": [],
+          "subscribedQueries": [],
+          "tabId": "l7NvoJDLyCIlL8A1b4lblg",
+          "type": "mutate",
+        },
+      ]
+    `);
+  });
+
+  test("update should NOT set createdAt", async () => {
+    const { evolu, postMessageCalls } = await testCreateEvolu();
+
+    const testId = testCreateId();
+    const result = evolu.update("todo", { id: testId, title: "Updated Todo" });
+    expect(result).toMatchInlineSnapshot(`
+      {
+        "ok": true,
+        "value": {
+          "id": "R8qs_iP8FEwYBfwzQ7o_Og",
+        },
+      }
+    `);
+
+    await Promise.resolve();
+
+    expect(postMessageCalls).toMatchInlineSnapshot(`
+      [
+        {
+          "changes": [
+            {
+              "id": "R8qs_iP8FEwYBfwzQ7o_Og",
+              "ownerId": undefined,
+              "table": "todo",
+              "values": {
+                "title": "Updated Todo",
+              },
+            },
+          ],
+          "onCompleteIds": [],
+          "subscribedQueries": [],
+          "tabId": "l7NvoJDLyCIlL8A1b4lblg",
+          "type": "mutate",
+        },
+      ]
+    `);
+  });
+});
+
 describe("useOwner", () => {
   const ownerMessage = (owner: SyncOwner, use: boolean) => ({
     type: "useOwner",
@@ -710,57 +1076,48 @@ describe("useOwner", () => {
   });
 
   test("single useOwner call", async () => {
-    const { evolu, dbWorker } = setupEvoluTest();
-    vi.clearAllMocks();
+    const { evolu, postMessageCalls } = await testCreateEvolu();
 
     evolu.useOwner(testOwner);
 
-    await wait("1ms")();
+    await Promise.resolve();
 
-    expect(dbWorker.postMessage).toHaveBeenCalledTimes(1);
-    expect(dbWorker.postMessage).toHaveBeenCalledWith(
-      ownerMessage(testOwner, true),
-    );
+    expect(postMessageCalls).toHaveLength(1);
+    expect(postMessageCalls[0]).toEqual(ownerMessage(testOwner, true));
   });
 
   test("multiple useOwner calls for same owner preserves count", async () => {
-    const { evolu, dbWorker } = setupEvoluTest();
-    vi.clearAllMocks();
+    const { evolu, postMessageCalls } = await testCreateEvolu();
 
     // Each call should result in a separate postMessage for reference counting
     evolu.useOwner(testOwner);
     evolu.useOwner(testOwner);
     evolu.useOwner(testOwner);
 
-    await wait("1ms")();
+    await Promise.resolve();
 
-    expect(dbWorker.postMessage).toHaveBeenCalledTimes(3);
-    for (let i = 1; i <= 3; i++) {
-      expect(dbWorker.postMessage).toHaveBeenNthCalledWith(
-        i,
-        ownerMessage(testOwner, true),
-      );
+    expect(postMessageCalls).toHaveLength(3);
+    for (let i = 0; i < 3; i++) {
+      expect(postMessageCalls[i]).toEqual(ownerMessage(testOwner, true));
     }
   });
 
   test("exact use/unuse pair cancels out", async () => {
-    const { evolu, dbWorker } = setupEvoluTest();
-    vi.clearAllMocks();
+    const { evolu, postMessageCalls } = await testCreateEvolu();
 
     // Add testOwner, then remove it - should cancel out
     const unuse1 = evolu.useOwner(testOwner);
     unuse1();
 
     queueMicrotask(() => {
-      expect(dbWorker.postMessage).not.toHaveBeenCalled();
+      expect(postMessageCalls).toHaveLength(0);
     });
 
-    await wait("1ms")();
+    await Promise.resolve();
   });
 
   test("multiple exact pairs cancel out", async () => {
-    const { evolu, dbWorker } = setupEvoluTest();
-    vi.clearAllMocks();
+    const { evolu, postMessageCalls } = await testCreateEvolu();
 
     // Two separate use/unuse pairs - both should cancel out
     const unuse1 = evolu.useOwner(testOwner);
@@ -769,15 +1126,14 @@ describe("useOwner", () => {
     unuse2();
 
     queueMicrotask(() => {
-      expect(dbWorker.postMessage).not.toHaveBeenCalled();
+      expect(postMessageCalls).toHaveLength(0);
     });
 
-    await wait("1ms")();
+    await Promise.resolve();
   });
 
   test("partial pairs leave remainder", async () => {
-    const { evolu, dbWorker } = setupEvoluTest();
-    vi.clearAllMocks();
+    const { evolu, postMessageCalls } = await testCreateEvolu();
 
     // Three uses, one unuse - should result in two remaining uses
     evolu.useOwner(testOwner);
@@ -785,37 +1141,30 @@ describe("useOwner", () => {
     const unuse3 = evolu.useOwner(testOwner);
     unuse3();
 
-    await wait("1ms")();
+    await Promise.resolve();
 
-    expect(dbWorker.postMessage).toHaveBeenCalledTimes(2);
-    for (let i = 1; i <= 2; i++) {
-      expect(dbWorker.postMessage).toHaveBeenNthCalledWith(
-        i,
-        ownerMessage(testOwner, true),
-      );
+    expect(postMessageCalls).toHaveLength(2);
+    for (let i = 0; i < 2; i++) {
+      expect(postMessageCalls[i]).toEqual(ownerMessage(testOwner, true));
     }
   });
 
   test("different owners don't interfere", async () => {
-    const { evolu, dbWorker } = setupEvoluTest();
-    vi.clearAllMocks();
+    const { evolu, postMessageCalls } = await testCreateEvolu();
 
     // Different owners should not cancel each other
     evolu.useOwner(testOwner);
     const unuse2 = evolu.useOwner(testOwner2);
     unuse2();
 
-    await wait("1ms")();
+    await Promise.resolve();
 
-    expect(dbWorker.postMessage).toHaveBeenCalledTimes(1);
-    expect(dbWorker.postMessage).toHaveBeenCalledWith(
-      ownerMessage(testOwner, true),
-    );
+    expect(postMessageCalls).toHaveLength(1);
+    expect(postMessageCalls[0]).toEqual(ownerMessage(testOwner, true));
   });
 
   test("order preservation with mixed operations", async () => {
-    const { evolu, dbWorker } = setupEvoluTest();
-    vi.clearAllMocks();
+    const { evolu, postMessageCalls } = await testCreateEvolu();
 
     // Mixed operations: use, use, unuse, use
     // Should cancel one pair and leave: use, use
@@ -824,57 +1173,48 @@ describe("useOwner", () => {
     unuse2(); // unuse (cancels with use #2)
     evolu.useOwner(testOwner); // use #3
 
-    await wait("1ms")();
+    await Promise.resolve();
 
-    expect(dbWorker.postMessage).toHaveBeenCalledTimes(2);
-    for (let i = 1; i <= 2; i++) {
-      expect(dbWorker.postMessage).toHaveBeenNthCalledWith(
-        i,
-        ownerMessage(testOwner, true),
-      );
+    expect(postMessageCalls).toHaveLength(2);
+    for (let i = 0; i < 2; i++) {
+      expect(postMessageCalls[i]).toEqual(ownerMessage(testOwner, true));
     }
   });
 
   test("remove before add - processed owner requires explicit remove", async () => {
-    const { evolu, dbWorker } = setupEvoluTest();
-    vi.clearAllMocks();
+    const { evolu, postMessageCalls } = await testCreateEvolu();
 
     // Add owner and wait for it to be processed
     const unuse1 = evolu.useOwner(testOwner);
 
-    await wait("1ms")();
+    await Promise.resolve();
 
     // Verify it was added
-    expect(dbWorker.postMessage).toHaveBeenCalledTimes(1);
-    expect(dbWorker.postMessage).toHaveBeenCalledWith(
-      ownerMessage(testOwner, true),
-    );
+    expect(postMessageCalls).toHaveLength(1);
+    expect(postMessageCalls[0]).toEqual(ownerMessage(testOwner, true));
 
-    vi.clearAllMocks();
+    postMessageCalls.length = 0; // Clear previous calls
 
     // Now remove and immediately add again
     unuse1(); // Remove
     evolu.useOwner(testOwner); // Add again
 
-    await wait("1ms")();
+    await Promise.resolve();
 
     // Should result in no calls since remove/add cancel out
-    expect(dbWorker.postMessage).not.toHaveBeenCalled();
+    expect(postMessageCalls).toHaveLength(0);
   });
 
   test("delayed unuse call is processed", async () => {
-    const { evolu, dbWorker } = setupEvoluTest();
-    vi.clearAllMocks();
+    const { evolu, postMessageCalls } = await testCreateEvolu();
 
     const unuse = evolu.useOwner(testOwner);
 
-    await wait("1ms")();
-    expect(dbWorker.postMessage).toHaveBeenCalledTimes(1);
-    expect(dbWorker.postMessage).toHaveBeenCalledWith(
-      ownerMessage(testOwner, true),
-    );
+    await Promise.resolve();
+    expect(postMessageCalls).toHaveLength(1);
+    expect(postMessageCalls[0]).toEqual(ownerMessage(testOwner, true));
 
-    vi.clearAllMocks();
+    postMessageCalls.length = 0; // Clear previous calls
 
     // Delayed unuse without any subsequent useOwner calls
     setTimeout(() => {
@@ -883,9 +1223,7 @@ describe("useOwner", () => {
 
     await wait("20ms")();
 
-    expect(dbWorker.postMessage).toHaveBeenCalledTimes(1);
-    expect(dbWorker.postMessage).toHaveBeenCalledWith(
-      ownerMessage(testOwner, false),
-    );
+    expect(postMessageCalls).toHaveLength(1);
+    expect(postMessageCalls[0]).toEqual(ownerMessage(testOwner, false));
   });
 });
