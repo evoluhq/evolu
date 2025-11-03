@@ -32,7 +32,6 @@ import {
   testCreateDummyWebSocket,
   testCreateId,
   testCreateSqliteDriver,
-  testLocalAuth,
   testOwner,
   testOwner2,
   testOwnerSecret,
