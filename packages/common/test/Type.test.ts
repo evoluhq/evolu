@@ -1,4 +1,4 @@
-import { assert, expect, expectTypeOf, test } from "vitest";
+import { assert, describe, expect, expectTypeOf, test } from "vitest";
 import { Brand } from "../src/Brand.js";
 import { constVoid, exhaustiveCheck } from "../src/Function.js";
 import { err, ok } from "../src/Result.js";
@@ -98,6 +98,7 @@ import {
   regex,
   RegexError,
   SimplePassword,
+  StandardSchemaV1,
   String,
   StringError,
   TableIdError,
@@ -675,7 +676,7 @@ test("regex", () => {
   };
 
   expect(formatRegexError(error)).toBe(
-    'Value "invalid!" does not match the pattern for Alphanumeric: /^[a-z0-9]+$/i',
+    'The value "invalid!" does not match the pattern for Alphanumeric: /^[a-z0-9]+$/i.',
   );
 
   // regex with global flag (g, y) is stateful
@@ -2706,4 +2707,360 @@ test("Branded numbers relationships", () => {
   expect(NonPositiveInt.from(1)).toEqual(
     err({ type: "NonPositive", value: 1 }),
   );
+});
+
+describe("Standard Schema V1", () => {
+  test("vendor and version", () => {
+    const schema = String;
+
+    expect(schema["~standard"].vendor).toBe("evolu");
+    expect(schema["~standard"].version).toBe(1);
+    expect(schema["~standard"].types).toBeDefined();
+  });
+
+  test("basic string validation", () => {
+    const schema = String;
+
+    const successResult = schema["~standard"].validate("hello");
+    expect(successResult).toEqual({ value: "hello" });
+
+    const failureResult = schema["~standard"].validate(123);
+    expect(failureResult).toMatchInlineSnapshot(`
+      {
+        "issues": [
+          {
+            "message": "A value 123 is not a string.",
+            "path": [],
+          },
+        ],
+      }
+    `);
+  });
+
+  test("branded type validation", () => {
+    const successResult = NonEmptyString["~standard"].validate("hello");
+    expect(successResult).toEqual({ value: "hello" });
+
+    const failureResult = NonEmptyString["~standard"].validate("");
+    expect(failureResult).toMatchInlineSnapshot(`
+      {
+        "issues": [
+          {
+            "message": "The value "" does not meet the minimum length of 1.",
+            "path": [],
+          },
+        ],
+      }
+    `);
+  });
+
+  test("object validation with nested errors", () => {
+    const User = object({
+      name: NonEmptyTrimmedString100,
+      age: Number,
+    });
+
+    const validResult = User["~standard"].validate({ name: "Alice", age: 30 });
+    expect(validResult).toEqual({ value: { name: "Alice", age: 30 } });
+
+    const invalidResult1 = User["~standard"].validate({ name: "Alice" });
+    expect(invalidResult1).toMatchInlineSnapshot(`
+      {
+        "issues": [
+          {
+            "message": "A value undefined is not a number.",
+            "path": [
+              "age",
+            ],
+          },
+        ],
+      }
+    `);
+
+    const invalidResult2 = User["~standard"].validate({
+      name: "Alice",
+      age: "not a number",
+    });
+    expect(invalidResult2).toMatchInlineSnapshot(`
+      {
+        "issues": [
+          {
+            "message": "A value "not a number" is not a number.",
+            "path": [
+              "age",
+            ],
+          },
+        ],
+      }
+    `);
+
+    const invalidResult3 = User["~standard"].validate({ name: "", age: 30 });
+    expect(invalidResult3).toMatchInlineSnapshot(`
+      {
+        "issues": [
+          {
+            "message": "The value "" does not meet the minimum length of 1.",
+            "path": [
+              "name",
+            ],
+          },
+        ],
+      }
+    `);
+  });
+
+  test("array validation with path tracking", () => {
+    const NumberArray = array(Number);
+
+    const validResult = NumberArray["~standard"].validate([1, 2, 3]);
+    expect(validResult).toEqual({ value: [1, 2, 3] });
+
+    const invalidResult = NumberArray["~standard"].validate([1, "two", 3]);
+    expect(invalidResult).toMatchInlineSnapshot(`
+      {
+        "issues": [
+          {
+            "message": "A value "two" is not a number.",
+            "path": [
+              1,
+            ],
+          },
+        ],
+      }
+    `);
+  });
+
+  test("union validation", () => {
+    const StringOrNumber = union(String, Number);
+
+    const validResult1 = StringOrNumber["~standard"].validate("hello");
+    expect(validResult1).toEqual({ value: "hello" });
+
+    const validResult2 = StringOrNumber["~standard"].validate(42);
+    expect(validResult2).toEqual({ value: 42 });
+
+    const invalidResult = StringOrNumber["~standard"].validate(true);
+    expect(invalidResult).toMatchInlineSnapshot(`
+      {
+        "issues": [
+          {
+            "message": "A value true is not a string.",
+            "path": [],
+          },
+          {
+            "message": "A value true is not a number.",
+            "path": [],
+          },
+        ],
+      }
+    `);
+  });
+
+  test("record validation with path tracking", () => {
+    const StringRecord = record(String, String);
+
+    const validResult = StringRecord["~standard"].validate({
+      foo: "bar",
+      baz: "qux",
+    });
+    expect(validResult).toEqual({ value: { foo: "bar", baz: "qux" } });
+
+    const invalidResult = StringRecord["~standard"].validate({
+      foo: "bar",
+      baz: 123,
+    });
+    expect(invalidResult).toMatchInlineSnapshot(`
+      {
+        "issues": [
+          {
+            "message": "A value 123 is not a string.",
+            "path": [
+              "baz",
+            ],
+          },
+        ],
+      }
+    `);
+  });
+
+  test("tuple validation with path tracking", () => {
+    const UserTuple = tuple(String, Number, Boolean);
+
+    const validResult = UserTuple["~standard"].validate(["Alice", 30, true]);
+    expect(validResult).toEqual({ value: ["Alice", 30, true] });
+
+    const invalidResult1 = UserTuple["~standard"].validate([
+      "Alice",
+      "30",
+      true,
+    ]);
+    expect(invalidResult1).toMatchInlineSnapshot(`
+      {
+        "issues": [
+          {
+            "message": "A value "30" is not a number.",
+            "path": [
+              1,
+            ],
+          },
+        ],
+      }
+    `);
+
+    const invalidResult2 = UserTuple["~standard"].validate(["Alice", 30]);
+    expect(invalidResult2).toMatchInlineSnapshot(`
+      {
+        "issues": [
+          {
+            "message": "Expected a tuple of length 3, but received ["Alice",30].",
+            "path": [],
+          },
+        ],
+      }
+    `);
+  });
+
+  test("undefinedOr type validation", () => {
+    const UndefinedOrString = undefinedOr(String);
+
+    const validResult1 = UndefinedOrString["~standard"].validate("hello");
+    expect(validResult1).toEqual({ value: "hello" });
+
+    const validResult2 = UndefinedOrString["~standard"].validate(undefined);
+    expect(validResult2).toEqual({ value: undefined });
+
+    const invalidResult = UndefinedOrString["~standard"].validate(123);
+    expect(invalidResult).toMatchInlineSnapshot(`
+      {
+        "issues": [
+          {
+            "message": "A value 123 is not a undefined.",
+            "path": [],
+          },
+          {
+            "message": "A value 123 is not a string.",
+            "path": [],
+          },
+        ],
+      }
+    `);
+  });
+
+  test("literal validation", () => {
+    const StatusLiteral = literal("active");
+
+    const validResult = StatusLiteral["~standard"].validate("active");
+    expect(validResult).toEqual({ value: "active" });
+
+    const invalidResult = StatusLiteral["~standard"].validate("inactive");
+    expect(invalidResult).toMatchInlineSnapshot(`
+      {
+        "issues": [
+          {
+            "message": "The value "inactive" is not strictly equal to the expected literal: active.",
+            "path": [],
+          },
+        ],
+      }
+    `);
+  });
+
+  test("unknown error type falls back to generic message", () => {
+    // Create a custom type with an error that has no registered formatter
+    interface CustomError extends TypeError<"CustomType"> {
+      readonly customProperty: string;
+    }
+
+    const CustomType = brand("CustomType", String, (value) =>
+      value === "valid"
+        ? ok(value)
+        : err<CustomError>({
+            type: "CustomType",
+            value,
+            customProperty: "extra data",
+          }),
+    );
+
+    const validResult = CustomType["~standard"].validate("valid");
+    expect(validResult).toEqual({ value: "valid" });
+
+    const invalidResult = CustomType["~standard"].validate("invalid");
+    expect(invalidResult).toMatchInlineSnapshot(`
+      {
+        "issues": [
+          {
+            "message": "A value "invalid" is not valid for type CustomType.",
+            "path": [],
+          },
+        ],
+      }
+    `);
+  });
+
+  test("InferInput and InferOutput types", () => {
+    // Base Type - Input and Output are the same
+    type StringInput = StandardSchemaV1.InferInput<typeof String>;
+    type StringOutput = StandardSchemaV1.InferOutput<typeof String>;
+
+    expectTypeOf<StringInput>().toEqualTypeOf<string>();
+    expectTypeOf<StringOutput>().toEqualTypeOf<string>();
+
+    // Branded type - Input is string, Output is branded
+    const _NonEmptyString = minLength(1)(String);
+    type NonEmptyStringInput = StandardSchemaV1.InferInput<
+      typeof _NonEmptyString
+    >;
+    type NonEmptyStringOutput = StandardSchemaV1.InferOutput<
+      typeof _NonEmptyString
+    >;
+
+    expectTypeOf<NonEmptyStringInput>().toEqualTypeOf<string>();
+    expectTypeOf<NonEmptyStringOutput>().toEqualTypeOf<
+      string & Brand<"MinLength1">
+    >();
+
+    // Object type
+    const _User = object({
+      name: String,
+      age: PositiveInt,
+    });
+    type UserInput = StandardSchemaV1.InferInput<typeof _User>;
+    type UserOutput = StandardSchemaV1.InferOutput<typeof _User>;
+
+    expectTypeOf<UserInput>().toEqualTypeOf<{
+      readonly name: string;
+      readonly age: number;
+    }>();
+    expectTypeOf<UserOutput>().toEqualTypeOf<{
+      readonly name: string;
+      readonly age: PositiveInt;
+    }>();
+
+    // Array type
+    const _NumberArray = array(Number);
+    type NumberArrayInput = StandardSchemaV1.InferInput<typeof _NumberArray>;
+    type NumberArrayOutput = StandardSchemaV1.InferOutput<typeof _NumberArray>;
+
+    expectTypeOf<NumberArrayInput>().toEqualTypeOf<ReadonlyArray<number>>();
+    expectTypeOf<NumberArrayOutput>().toEqualTypeOf<ReadonlyArray<number>>();
+
+    // Complex branded type
+    const _UserId = id("User");
+    type UserIdInput = StandardSchemaV1.InferInput<typeof _UserId>;
+    type UserIdOutput = StandardSchemaV1.InferOutput<typeof _UserId>;
+
+    expectTypeOf<UserIdInput>().toEqualTypeOf<string>();
+    expectTypeOf<UserIdOutput>().toEqualTypeOf<
+      string & Brand<"Id"> & Brand<"User">
+    >();
+
+    // Existing PositiveInt type
+    type PositiveIntInput = StandardSchemaV1.InferInput<typeof PositiveInt>;
+    type PositiveIntOutput = StandardSchemaV1.InferOutput<typeof PositiveInt>;
+
+    expectTypeOf<PositiveIntInput>().toEqualTypeOf<number>();
+    expectTypeOf<PositiveIntOutput>().toEqualTypeOf<
+      number & Brand<"Int"> & Brand<"NonNegative"> & Brand<"Positive">
+    >();
+  });
 });

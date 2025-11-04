@@ -5,6 +5,9 @@
  * {@link Result}) instead of throwing. We either get a safely typed value or a
  * precise, composable error value telling us exactly why validation failed.
  *
+ * Evolu Type supports [Standard Schema](https://standardschema.dev/) for
+ * interoperability with 40+ validation-compatible tools and frameworks.
+ *
  * Why another validation library?
  *
  * - **Result-based error handling** – no exceptions for normal control flow.
@@ -196,7 +199,7 @@ export interface Type<
   Parent = T,
   /** The parent's error. */
   ParentError extends TypeError = Error,
-> {
+> extends StandardSchemaV1<Input, T> {
   readonly name: Name;
 
   /**
@@ -500,6 +503,7 @@ const createType = <
     | "Parent"
     | "ParentError"
     | "Errors"
+    | "~standard"
   >,
 ): Type<Name, T, Input, Error, Parent, ParentError> => ({
   ...definition,
@@ -515,6 +519,27 @@ const createType = <
   Parent: undefined as unknown as Parent,
   ParentError: undefined as unknown as ParentError,
   Errors: undefined as unknown as Error | ParentError,
+  "~standard": {
+    version: 1,
+    vendor: "evolu",
+    validate: (value: unknown): StandardSchemaV1.Result<T> => {
+      const result = definition.fromUnknown(value);
+      if (result.ok) {
+        return { value: result.value };
+      }
+      cachedStandardSchemaFormatTypeError ??= createFormatTypeError();
+      return {
+        issues: typeErrorToStandardSchemaIssues(
+          result.error as TypeErrors<Error>,
+          cachedStandardSchemaFormatTypeError,
+        ),
+      };
+    },
+    types: {
+      input: undefined as unknown as Input,
+      output: undefined as unknown as T,
+    },
+  },
 });
 
 /**
@@ -741,7 +766,7 @@ export interface InstanceOfType<T extends abstract new (...args: any) => any>
 }
 
 export const formatInstanceOfError = createTypeErrorFormatter<InstanceOfError>(
-  (error) => `Value ${error.value} is not an instance of ${error.ctor}`,
+  (error) => `The value ${error.value} is not an instance of ${error.ctor}.`,
 );
 
 /**
@@ -1005,7 +1030,7 @@ export interface CurrencyCodeError extends TypeError<"CurrencyCode"> {}
 
 export const formatCurrencyCodeError =
   createTypeErrorFormatter<CurrencyCodeError>(
-    (error) => `Invalid currency code: ${error.value}`,
+    (error) => `Invalid currency code: ${error.value}.`,
   );
 
 /**
@@ -1125,7 +1150,7 @@ export const trimmed: BrandFactory<"Trimmed", string, TrimmedError> = (
 export interface TrimmedError extends TypeError<"Trimmed"> {}
 
 export const formatTrimmedError = createTypeErrorFormatter<TrimmedError>(
-  (error) => `A value ${error.value} is not trimmed`,
+  (error) => `The value ${error.value} is not trimmed.`,
 );
 
 /**
@@ -1170,7 +1195,7 @@ export interface MinLengthError<Min extends number = number>
 
 export const formatMinLengthError = createTypeErrorFormatter<MinLengthError>(
   (error) =>
-    `Value ${error.value} does not meet the minimum length of ${error.min}.`,
+    `The value ${error.value} does not meet the minimum length of ${error.min}.`,
 );
 
 /**
@@ -1200,7 +1225,8 @@ export interface MaxLengthError<Max extends number = number>
 }
 
 export const formatMaxLengthError = createTypeErrorFormatter<MaxLengthError>(
-  (error) => `Value ${error.value} exceeds the maximum length of ${error.max}.`,
+  (error) =>
+    `The value ${error.value} exceeds the maximum length of ${error.max}.`,
 );
 
 /**
@@ -1233,7 +1259,7 @@ export interface LengthError<Exact extends number = number>
 
 export const formatLengthError = createTypeErrorFormatter<LengthError>(
   (error) =>
-    `Value ${error.value} does not have the required length of ${error.exact}.`,
+    `The value ${error.value} does not have the required length of ${error.exact}.`,
 );
 
 /** @category String */
@@ -1295,7 +1321,7 @@ export type Mnemonic = typeof Mnemonic.Type;
 export interface MnemonicError extends TypeError<"Mnemonic"> {}
 
 export const formatMnemonicError = createTypeErrorFormatter<MnemonicError>(
-  (error) => `Invalid BIP39 mnemonic: ${error.value}`,
+  (error) => `Invalid BIP39 mnemonic: ${error.value}.`,
 );
 
 /**
@@ -1334,7 +1360,7 @@ export interface RegexError<Name extends TypeName = TypeName>
 
 export const formatRegexError = createTypeErrorFormatter<RegexError>(
   (error) =>
-    `Value ${error.value} does not match the pattern for ${error.name}: ${error.pattern}`,
+    `The value ${error.value} does not match the pattern for ${error.name}: ${error.pattern}.`,
 );
 
 /**
@@ -1400,7 +1426,7 @@ export type Base64Url = typeof Base64Url.Type;
 export interface Base64UrlError extends TypeError<"Base64Url"> {}
 
 export const formatBase64UrlError = createTypeErrorFormatter<Base64UrlError>(
-  (error) => `Value ${error.value} is not a valid Base64Url string.`,
+  (error) => `The value ${error.value} is not a valid Base64Url string.`,
 );
 
 const hasNodeBuffer = typeof globalThis.Buffer !== "undefined";
@@ -1553,7 +1579,7 @@ export type Id = typeof Id.Type;
 export interface IdError extends TypeError<"Id"> {}
 
 export const formatIdError = createTypeErrorFormatter<IdError>(
-  (error) => `Value ${error.value} is not a valid Id.`,
+  (error) => `The value ${error.value} is not a valid Id.`,
 );
 
 /**
@@ -1673,7 +1699,7 @@ export interface TableIdError<Table extends TypeName = TypeName>
 }
 
 export const formatTableIdError = createTypeErrorFormatter<TableIdError>(
-  (error) => `Invalid ${error.type} table Id: ${error.value}`,
+  (error) => `Invalid Id for table ${error.table}: ${error.value}.`,
 );
 
 /** Binary representation of an {@link Id}. */
@@ -1767,7 +1793,7 @@ export interface NonPositiveError extends TypeError<"NonPositive"> {}
 
 export const formatNonPositiveError =
   createTypeErrorFormatter<NonPositiveError>(
-    (error) => `The value ${error.value} is not non-positive.`,
+    (error) => `The value ${error.value} must be non-positive (≤ 0).`,
   );
 
 /**
@@ -1796,7 +1822,7 @@ export interface NonNegativeError extends TypeError<"NonNegative"> {}
 
 export const formatNonNegativeError =
   createTypeErrorFormatter<NonNegativeError>(
-    (error) => `The value ${error.value} is not non-negative.`,
+    (error) => `The value ${error.value} must be non-negative (≥ 0).`,
   );
 
 /** @category Number */
@@ -4045,8 +4071,220 @@ export const createFormatTypeError = <ExtraErrors extends TypeError = never>(
         return formatUnionError(formatTypeError)(error);
       case "Tuple":
         return formatTupleError(formatTypeError)(error);
+      default: {
+        // Fallback for unknown error types
+        const unknownError = error as TypeError;
+        return `A value ${safelyStringifyUnknownValue(unknownError.value)} is not valid for type ${unknownError.type}.`;
+      }
     }
   };
 
   return formatTypeError;
 };
+
+/**
+ * Converts an Evolu {@link TypeError} to Standard Schema V1 issues format.
+ *
+ * This function recursively converts Evolu's typed errors into the Standard
+ * Schema issue format with proper path tracking for nested structures.
+ *
+ * @category Utilities
+ */
+export const typeErrorToStandardSchemaIssues = <
+  ExtraErrors extends TypeError = never,
+>(
+  error: TypeErrors<ExtraErrors>,
+  formatTypeError: TypeErrorFormatter<TypeErrors<ExtraErrors>>,
+  path: ReadonlyArray<PropertyKey> = [],
+): ReadonlyArray<StandardSchemaV1.Issue> => {
+  if (error.type === "Array") {
+    const arrayError = error as ArrayError;
+    if (arrayError.reason.kind === "NotArray") {
+      return [{ message: formatTypeError(error), path }];
+    }
+    return typeErrorToStandardSchemaIssues(
+      arrayError.reason.error as TypeErrors<ExtraErrors>,
+      formatTypeError,
+      [...path, arrayError.reason.index],
+    );
+  }
+
+  if (error.type === "Object") {
+    const objectError = error as ObjectError;
+    if (
+      objectError.reason.kind === "NotObject" ||
+      objectError.reason.kind === "ExtraKeys"
+    ) {
+      return [{ message: formatTypeError(error), path }];
+    }
+    const issues: Array<StandardSchemaV1.Issue> = [];
+    for (const [key, propError] of Object.entries(objectError.reason.errors)) {
+      issues.push(
+        ...typeErrorToStandardSchemaIssues(
+          propError as TypeErrors<ExtraErrors>,
+          formatTypeError,
+          [...path, key],
+        ),
+      );
+    }
+    return issues;
+  }
+
+  if (error.type === "ObjectWithRecord") {
+    const objectWithRecordError = error as ObjectWithRecordError;
+    if (objectWithRecordError.reason.kind === "NotObject") {
+      return [{ message: formatTypeError(error), path }];
+    }
+    if (
+      objectWithRecordError.reason.kind === "IndexKey" ||
+      objectWithRecordError.reason.kind === "IndexValue"
+    ) {
+      return typeErrorToStandardSchemaIssues(
+        objectWithRecordError.reason.error as TypeErrors<ExtraErrors>,
+        formatTypeError,
+        [...path, objectWithRecordError.reason.key as PropertyKey],
+      );
+    }
+    const issues: Array<StandardSchemaV1.Issue> = [];
+    for (const [key, propError] of Object.entries(
+      objectWithRecordError.reason.errors,
+    )) {
+      issues.push(
+        ...typeErrorToStandardSchemaIssues(
+          propError as TypeErrors<ExtraErrors>,
+          formatTypeError,
+          [...path, key],
+        ),
+      );
+    }
+    return issues;
+  }
+
+  if (error.type === "Record") {
+    const recordError = error as RecordError;
+    if (recordError.reason.kind === "NotRecord") {
+      return [{ message: formatTypeError(error), path }];
+    }
+    return typeErrorToStandardSchemaIssues(
+      recordError.reason.error as TypeErrors<ExtraErrors>,
+      formatTypeError,
+      [...path, recordError.reason.key as PropertyKey],
+    );
+  }
+
+  if (error.type === "Tuple") {
+    const tupleError = error as TupleError;
+    if (tupleError.reason.kind === "InvalidLength") {
+      return [{ message: formatTypeError(error), path }];
+    }
+    return typeErrorToStandardSchemaIssues(
+      tupleError.reason.error as TypeErrors<ExtraErrors>,
+      formatTypeError,
+      [...path, tupleError.reason.index],
+    );
+  }
+
+  if (error.type === "Union") {
+    const unionError = error as UnionError;
+    return unionError.errors.flatMap((err) =>
+      typeErrorToStandardSchemaIssues(
+        err as TypeErrors<ExtraErrors>,
+        formatTypeError,
+        path,
+      ),
+    );
+  }
+
+  if (error.type === "Brand") {
+    const brandError = error as BrandWithoutRefineError<TypeName, TypeError>;
+    if ("parentError" in brandError) {
+      return typeErrorToStandardSchemaIssues(
+        brandError.parentError as TypeErrors<ExtraErrors>,
+        formatTypeError,
+        path,
+      );
+    }
+    return [{ message: formatTypeError(error), path }];
+  }
+
+  return [{ message: formatTypeError(error), path }];
+};
+
+/** The Standard Schema interface. */
+export interface StandardSchemaV1<Input = unknown, Output = Input> {
+  /** The Standard Schema properties. */
+  readonly "~standard": StandardSchemaV1.Props<Input, Output>;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-namespace
+export declare namespace StandardSchemaV1 {
+  /** The Standard Schema properties interface. */
+  export interface Props<Input = unknown, Output = Input> {
+    /** The version number of the standard. */
+    readonly version: 1;
+    /** The vendor name of the schema library. */
+    readonly vendor: string;
+    /** Validates unknown input values. */
+    readonly validate: (
+      value: unknown,
+    ) => Result<Output> | Promise<Result<Output>>;
+    /** Inferred types associated with the schema. */
+    readonly types?: Types<Input, Output> | undefined;
+  }
+
+  /** The result interface of the validate function. */
+  export type Result<Output> = SuccessResult<Output> | FailureResult;
+
+  /** The result interface if validation succeeds. */
+  export interface SuccessResult<Output> {
+    /** The typed output value. */
+    readonly value: Output;
+    /** The non-existent issues. */
+    readonly issues?: undefined;
+  }
+
+  /** The result interface if validation fails. */
+  export interface FailureResult {
+    /** The issues of failed validation. */
+    readonly issues: ReadonlyArray<Issue>;
+  }
+
+  /** The issue interface of the failure output. */
+  export interface Issue {
+    /** The error message of the issue. */
+    readonly message: string;
+    /** The path of the issue, if any. */
+    readonly path?: ReadonlyArray<PropertyKey | PathSegment> | undefined;
+  }
+
+  /** The path segment interface of the issue. */
+  export interface PathSegment {
+    /** The key representing a path segment. */
+    readonly key: PropertyKey;
+  }
+
+  /** The Standard Schema types interface. */
+  export interface Types<Input = unknown, Output = Input> {
+    /** The input type of the schema. */
+    readonly input: Input;
+    /** The output type of the schema. */
+    readonly output: Output;
+  }
+
+  /** Infers the input type of a Standard Schema. */
+  export type InferInput<Schema extends StandardSchemaV1> = NonNullable<
+    Schema["~standard"]["types"]
+  >["input"];
+
+  /** Infers the output type of a Standard Schema. */
+  export type InferOutput<Schema extends StandardSchemaV1> = NonNullable<
+    Schema["~standard"]["types"]
+  >["output"];
+}
+
+/**
+ * Shared formatter cache for Standard Schema integration - avoids circular
+ * dependency by lazily creating the formatter on first use rather than during
+ * module initialization.
+ */
+let cachedStandardSchemaFormatTypeError: TypeErrorFormatter<any> | undefined;
