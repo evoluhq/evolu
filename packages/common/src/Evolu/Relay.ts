@@ -5,7 +5,7 @@ import { LazyValue } from "../Function.js";
 import { err, ok, Result } from "../Result.js";
 import { sql, SqliteError } from "../Sqlite.js";
 import { SimpleName } from "../Type.js";
-import { OwnerId, OwnerWriteKey, TransportConfig } from "./Owner.js";
+import { OwnerId, OwnerWriteKey } from "./Owner.js";
 import { ProtocolInvalidDataError } from "./Protocol.js";
 import {
   createSqliteStorageBase,
@@ -44,7 +44,7 @@ export interface RelayConfig extends ConsoleConfig {
    * this only controls relay access, not write permissions. Since all data is
    * encrypted on the relay, OwnerId exposure is safe.
    *
-   * Owners specify which relays to connect to via {@link TransportConfig}. In
+   * Owners specify which relays to connect to via `TransportConfig`. In
    * WebSocket-based implementations, this check occurs before accepting the
    * connection, with the OwnerId typically extracted from the URL path (e.g.,
    * `ws://localhost:4000/<ownerId>`).

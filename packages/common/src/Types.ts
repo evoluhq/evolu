@@ -79,7 +79,7 @@ export type NullablePartial<
 export type IntentionalNever = never;
 
 /**
- * String | number | bigint | boolean | undefined | null
+ * String, number, bigint, boolean, undefined, null
  *
  * https://www.typescriptlang.org/docs/handbook/2/everyday-types.html#literal-types
  */
