@@ -3073,7 +3073,9 @@ describe("Standard Schema V1", () => {
     };
 
     expect(user).toEqual({
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       name: expect.schemaMatching(NonEmptyTrimmedString100),
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       age: expect.schemaMatching(PositiveInt),
     });
   });
