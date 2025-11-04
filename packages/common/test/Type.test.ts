@@ -3065,14 +3065,28 @@ describe("Standard Schema V1", () => {
   });
 
   test("Vitest schemaMatching interoperability", () => {
-    expect(1).toEqual(expect.schemaMatching(PositiveInt));
+    const value: unknown = 42;
+    expect(value).toEqual(expect.schemaMatching(PositiveInt));
 
-    const user = {
-      name: "Alice",
-      age: 30,
-    };
+    // Note: schemaMatching validates but doesn't narrow types;
+    // use assert with .is() for narrowing
+    assert(PositiveInt.is(value));
+    // The type is narrowed.
+    expectTypeOf(value).toEqualTypeOf<PositiveInt>();
 
-    expect(user).toEqual({
+    const User = object({
+      name: NonEmptyTrimmedString100,
+      age: PositiveInt,
+    });
+    type User = typeof User.Type;
+
+    const data: unknown = { name: "Alice", age: 30 };
+    expect(data).toEqual(expect.schemaMatching(User));
+    assert(User.is(data));
+
+    // https://vitest.dev/blog/vitest-4.html#expect-schemamatching
+    // Why their example tests props separately?
+    expect(data).toEqual({
       name: expect.schemaMatching(NonEmptyTrimmedString100),
       age: expect.schemaMatching(PositiveInt),
     });
