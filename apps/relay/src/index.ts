@@ -16,8 +16,8 @@ const relay = await createNodeJsRelay({
    * ### Example
    *
    * ```ts
-   * Evolu.createWebSocketTransportConfig({
-   *   relayUrl: "ws://localhost:4000",
+   * Evolu.createOwnerWebSocketTransport({
+   *   url: "ws://localhost:4000",
    *   ownerId: "6jy_2F4RT5qqeLgJ14_dnQ" as Evolu.OwnerId,
    * });
    * ```

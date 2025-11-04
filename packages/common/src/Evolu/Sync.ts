@@ -27,11 +27,11 @@ import {
   OwnerIdBytes,
   ownerIdBytesToOwnerId,
   ownerIdToOwnerIdBytes,
+  OwnerTransport,
   OwnerWriteKey,
   ShardOwner,
   SharedOwner,
   SharedReadonlyOwner,
-  TransportConfig,
 } from "./Owner.js";
 import {
   applyProtocolMessageAsClient,
@@ -106,13 +106,13 @@ export interface SyncOwner {
   readonly encryptionKey: OwnerEncryptionKey;
   /** Optional for read-only owners like {@link SharedReadonlyOwner}. */
   readonly writeKey?: OwnerWriteKey;
-  readonly transports?: ReadonlyArray<TransportConfig>;
+  readonly transports?: ReadonlyArray<OwnerTransport>;
 }
 
 export interface SyncConfig {
   readonly appOwner: AppOwner;
 
-  readonly transports: ReadonlyArray<TransportConfig>;
+  readonly transports: ReadonlyArray<OwnerTransport>;
 
   /**
    * Delay in milliseconds before disposing unused WebSocket connections.
@@ -166,7 +166,7 @@ export const createSync =
     if (!storageResult.ok) return storageResult;
     const storage = storageResult.value;
 
-    const createResource = (transportConfig: TransportConfig): WebSocket => {
+    const createResource = (transportConfig: OwnerTransport): WebSocket => {
       const transportKey = createTransportKey(transportConfig);
 
       deps.console.log("[sync]", "createWebSocket", {
@@ -255,7 +255,7 @@ export const createSync =
     const transports = createRefCountedResourceManager<
       WebSocket,
       TransportKey,
-      TransportConfig,
+      OwnerTransport,
       SyncOwner,
       OwnerId
     >({
@@ -590,7 +590,7 @@ const createClientStorage =
 type TransportKey = string & Brand<"TransportKey">;
 
 /** Creates a unique identifier for a transport configuration. */
-const createTransportKey = (transportConfig: TransportConfig): TransportKey => {
+const createTransportKey = (transportConfig: OwnerTransport): TransportKey => {
   return `${transportConfig.type}:${transportConfig.url}` as TransportKey;
 };
 

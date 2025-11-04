@@ -19,7 +19,7 @@ import {
   createRelayLogger,
   createRelaySqliteStorage,
   defaultProtocolMessageMaxSize,
-  parseOwnerIdFromUrl,
+  parseOwnerIdFromOwnerWebSocketTransportUrl,
   Relay,
   RelayConfig,
 } from "@evolu/common/evolu";
@@ -108,7 +108,9 @@ const createNodeJsRelayWithDeps =
         return;
       }
 
-      const ownerId = parseOwnerIdFromUrl(request.url);
+      const ownerId = parseOwnerIdFromOwnerWebSocketTransportUrl(
+        request.url ?? "",
+      );
       if (!ownerId) {
         log.invalidOrMissingOwnerIdInUrl(request.url);
         socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");

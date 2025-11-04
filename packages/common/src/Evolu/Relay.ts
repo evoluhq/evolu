@@ -5,7 +5,7 @@ import { LazyValue } from "../Function.js";
 import { err, ok, Result } from "../Result.js";
 import { sql, SqliteError } from "../Sqlite.js";
 import { SimpleName } from "../Type.js";
-import { OwnerId, OwnerWriteKey, TransportConfig } from "./Owner.js";
+import { OwnerId, OwnerTransport, OwnerWriteKey } from "./Owner.js";
 import { ProtocolInvalidDataError } from "./Protocol.js";
 import {
   createSqliteStorageBase,
@@ -44,7 +44,7 @@ export interface RelayConfig extends ConsoleConfig {
    * this only controls relay access, not write permissions. Since all data is
    * encrypted on the relay, OwnerId exposure is safe.
    *
-   * Owners specify which relays to connect to via {@link TransportConfig}. In
+   * Owners specify which relays to connect to via {@link OwnerTransport}. In
    * WebSocket-based implementations, this check occurs before accepting the
    * connection, with the OwnerId typically extracted from the URL path (e.g.,
    * `ws://localhost:4000/<ownerId>`).
@@ -64,6 +64,24 @@ export interface RelayConfig extends ConsoleConfig {
    * ```
    */
   readonly authenticateOwner?: (ownerId: OwnerId) => Promise<boolean>;
+}
+
+/**
+ * Usage statistics for an {@link OwnerId}.
+ *
+ * Tracks data consumption on the relay to monitor usage patterns and enforce
+ * quotas if needed.
+ */
+export interface OwnerUsage {
+  readonly ownerId: OwnerId;
+  /** Total number of messages written. */
+  readonly messageCount: number;
+  /** Total bytes stored in all messages (encrypted data only). */
+  readonly dataBytes: number;
+  /** Timestamp of the first message (milliseconds since epoch). */
+  readonly firstMessageAt: number | null;
+  /** Timestamp of the last message (milliseconds since epoch). */
+  readonly lastMessageAt: number | null;
 }
 
 export const createRelaySqliteStorage =

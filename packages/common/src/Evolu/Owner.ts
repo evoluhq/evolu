@@ -20,27 +20,6 @@ import {
 import { getOrNull } from "../Result.js";
 
 /**
- * 32 bytes of cryptographic entropy used to derive {@link Owner} keys.
- *
- * Can be created using {@link createOwnerSecret} or converted from a
- * {@link Mnemonic} using {@link mnemonicToOwnerSecret}.
- */
-export const OwnerSecret = brand("OwnerSecret", Entropy32);
-export type OwnerSecret = typeof OwnerSecret.Type;
-
-/** Creates a {@link OwnerSecret}. */
-export const createOwnerSecret = (deps: RandomBytesDep): OwnerSecret =>
-  deps.randomBytes.create(32) as OwnerSecret;
-
-/** Converts an {@link OwnerSecret} to a {@link Mnemonic}. */
-export const ownerSecretToMnemonic = (secret: OwnerSecret): Mnemonic =>
-  bip39.entropyToMnemonic(secret, wordlist) as Mnemonic;
-
-/** Converts a {@link Mnemonic} to an {@link OwnerSecret}. */
-export const mnemonicToOwnerSecret = (mnemonic: Mnemonic): OwnerSecret =>
-  bip39.mnemonicToEntropy(mnemonic, wordlist) as OwnerSecret;
-
-/**
  * The Owner represents ownership of data in Evolu. Every database change is
  * assigned to an owner, enabling sync functionality and access control.
  *
@@ -104,6 +83,27 @@ export type OwnerEncryptionKey = typeof OwnerEncryptionKey.Type;
  */
 export const OwnerWriteKey = brand("OwnerWriteKey", Entropy16);
 export type OwnerWriteKey = typeof OwnerWriteKey.Type;
+
+/**
+ * 32 bytes of cryptographic entropy used to derive {@link Owner} keys.
+ *
+ * Can be created using {@link createOwnerSecret} or converted from a
+ * {@link Mnemonic} using {@link mnemonicToOwnerSecret}.
+ */
+export const OwnerSecret = brand("OwnerSecret", Entropy32);
+export type OwnerSecret = typeof OwnerSecret.Type;
+
+/** Creates a {@link OwnerSecret}. */
+export const createOwnerSecret = (deps: RandomBytesDep): OwnerSecret =>
+  deps.randomBytes.create(32) as OwnerSecret;
+
+/** Converts an {@link OwnerSecret} to a {@link Mnemonic}. */
+export const ownerSecretToMnemonic = (secret: OwnerSecret): Mnemonic =>
+  bip39.entropyToMnemonic(secret, wordlist) as Mnemonic;
+
+/** Converts a {@link Mnemonic} to an {@link OwnerSecret}. */
+export const mnemonicToOwnerSecret = (mnemonic: Mnemonic): OwnerSecret =>
+  bip39.mnemonicToEntropy(mnemonic, wordlist) as OwnerSecret;
 
 /** Creates a randomly generated {@link OwnerWriteKey}. */
 export const createOwnerWriteKey = (deps: RandomBytesDep): OwnerWriteKey =>
@@ -177,18 +177,12 @@ export const createAppOwner = (secret: OwnerSecret): AppOwner => ({
 /**
  * Transport configuration for connecting to relays.
  *
- * Each {@link Owner} can specify one or more transports to connect to different
- * relays for data synchronization. Currently supports WebSocket transport, with
- * future support planned for Bluetooth, LocalNetwork, and other protocols.
+ * Currently only WebSocket, in the future Bluetooth, LocalNetwork, etc.
  */
-export type TransportConfig = WebSocketTransportConfig;
+export type OwnerTransport = OwnerWebSocketTransport;
 
 /**
- * WebSocket transport configuration for relay connections.
- *
- * Use {@link createWebSocketTransportConfig} to create a properly formatted URL
- * with {@link OwnerId}. The relay uses {@link parseOwnerIdFromUrl} to extract the
- * OwnerId from the query string.
+ * WebSocket transport configuration.
  *
  * ### Authentication and Error Handling
  *
@@ -199,43 +193,41 @@ export type TransportConfig = WebSocketTransportConfig;
  * succeeding once the configuration or server issue is resolved.
  *
  * Legitimate clients will be properly configured with valid credentials, so
- * automatic retry is appropriate.
+ * automatic retry is OK.
  *
- * @see {@link createWebSocketTransportConfig}
- * @see {@link parseOwnerIdFromUrl}
+ * @see {@link createOwnerWebSocketTransport}
+ * @see {@link parseOwnerIdFromOwnerWebSocketTransportUrl}
  */
-export interface WebSocketTransportConfig {
+export interface OwnerWebSocketTransport {
   readonly type: "WebSocket";
   readonly url: string;
 }
 
 /**
- * Creates a {@link WebSocketTransportConfig} for the given relay URL and
+ * Creates an {@link OwnerWebSocketTransport} for the given relay URL and
  * {@link OwnerId}.
  *
  * ### Example
  *
  * ```ts
- * const transport = createWebSocketTransportConfig({
- *   relayUrl: "wss://relay.evolu.dev",
+ * const transport = createOwnerWebSocketTransport({
+ *   url: "wss://relay.evolu.dev",
  *   ownerId: owner.id,
  * });
  * // Result: { type: "WebSocket", url: "wss://relay.evolu.dev?ownerId=..." }
  * ```
  */
-export const createWebSocketTransportConfig = ({
-  relayUrl,
-  ownerId,
-}: {
-  readonly relayUrl: string;
+export const createOwnerWebSocketTransport = (config: {
+  readonly url: string;
   readonly ownerId: OwnerId;
-}): WebSocketTransportConfig => ({
+}): OwnerWebSocketTransport => ({
   type: "WebSocket",
-  url: `${relayUrl}?ownerId=${ownerId}`,
+  url: `${config.url}?ownerId=${config.ownerId}`,
 });
 
 /**
- * Extracts {@link OwnerId} from a URL query string.
+ * Extracts {@link OwnerId} from an {@link OwnerWebSocketTransport} URL query
+ * string.
  *
  * Parses the query string `?ownerId=...` and validates that the extracted value
  * is a valid {@link OwnerId}.
@@ -243,12 +235,15 @@ export const createWebSocketTransportConfig = ({
  * ### Example
  *
  * ```ts
- * parseOwnerIdFromUrl("/sync?ownerId=_12345678abcdefgh");
+ * parseOwnerIdFromOwnerWebSocketTransportUrl(
+ *   "/sync?ownerId=_12345678abcdefgh",
+ * );
  * // Returns: OwnerId or null
  * ```
  */
-export const parseOwnerIdFromUrl = (url: string | undefined): OwnerId | null =>
-  getOrNull(OwnerId.fromUnknown(url?.split("=")[1]));
+export const parseOwnerIdFromOwnerWebSocketTransportUrl = (
+  url: string,
+): OwnerId | null => getOrNull(OwnerId.fromUnknown(url.split("=")[1]));
 
 /**
  * An {@link Owner} for sharding data.
@@ -263,13 +258,13 @@ export const parseOwnerIdFromUrl = (url: string | undefined): OwnerId | null =>
  */
 export interface ShardOwner extends Owner {
   readonly type: "ShardOwner";
-  readonly transports?: ReadonlyArray<TransportConfig>;
+  readonly transports?: ReadonlyArray<OwnerTransport>;
 }
 
 /** Creates a {@link ShardOwner} from an {@link OwnerSecret}. */
 export const createShardOwner = (
   secret: OwnerSecret,
-  transports?: ReadonlyArray<TransportConfig>,
+  transports?: ReadonlyArray<OwnerTransport>,
 ): ShardOwner => {
   return {
     type: "ShardOwner",
@@ -299,7 +294,7 @@ export const createShardOwner = (
 export const deriveShardOwner = (
   owner: AppOwner,
   path: NonEmptyReadonlyArray<string | number>,
-  transports?: ReadonlyArray<TransportConfig>,
+  transports?: ReadonlyArray<OwnerTransport>,
 ): ShardOwner => {
   const secret = createSlip21(owner.encryptionKey, path) as OwnerSecret;
 
@@ -313,7 +308,7 @@ export const deriveShardOwner = (
 /** An {@link Owner} for collaborative data with write access. */
 export interface SharedOwner extends Owner {
   readonly type: "SharedOwner";
-  readonly transports?: ReadonlyArray<TransportConfig>;
+  readonly transports?: ReadonlyArray<OwnerTransport>;
 }
 
 /**
@@ -325,7 +320,7 @@ export interface SharedOwner extends Owner {
  */
 export const createSharedOwner = (
   secret: OwnerSecret,
-  transports?: ReadonlyArray<TransportConfig>,
+  transports?: ReadonlyArray<OwnerTransport>,
 ): SharedOwner => {
   return {
     type: "SharedOwner",
@@ -343,7 +338,7 @@ export interface SharedReadonlyOwner {
   readonly type: "SharedReadonlyOwner";
   readonly id: OwnerId;
   readonly encryptionKey: EncryptionKey;
-  readonly transports?: ReadonlyArray<TransportConfig>;
+  readonly transports?: ReadonlyArray<OwnerTransport>;
 }
 
 /** Creates a {@link SharedReadonlyOwner} from a {@link SharedOwner}. */
