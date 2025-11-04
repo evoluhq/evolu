@@ -114,9 +114,33 @@ export const maxNodeId = "ffffffffffffffff" as NodeId;
 /**
  * Hybrid Logical Clock timestamp.
  *
+ * Timestamps serve as globally unique, causally ordered identifiers for CRDT
+ * messages in Evolu's sync protocol.
+ *
+ * ### References
+ *
  * - https://muratbuffalo.blogspot.com/2014/07/hybrid-logical-clocks.html
  * - https://sergeiturukin.com/2017/06/26/hybrid-logical-clocks.html
  * - https://jaredforsyth.com/posts/hybrid-logical-clocks/
+ *
+ * ### Privacy Considerations
+ *
+ * Timestamps are metadata visible to relays and collaborators. While it can be
+ * considered a privacy leak, let us explain why it's necessary, and how to
+ * avoid it if maximum privacy is required.
+ *
+ * With real-time communication, participants always see activity (receiving
+ * bytes). We cannot trust anyone not to store that information, so there is no
+ * harm in exposing it.
+ *
+ * If we really want not to leak user activity, we can implement a local write
+ * queue:
+ *
+ * 1. Write changes immediately to a local-only table
+ * 2. Periodically/randomly flush messages to sync tables
+ * 3. This decouples user activity from sync timing
+ *
+ * Tradeoff: It breaks real-time collaboration.
  */
 export const Timestamp = object({
   millis: Millis,
