@@ -155,16 +155,19 @@ function CodePanel({
   const childrenArray = Children.toArray(children);
   const child = childrenArray.length === 1 ? childrenArray[0] : null;
 
-  if (isValidElement(child)) {
-    // @ts-expect-error TODO: Fix this somehow
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    tag = child.props.tag ?? tag;
-    // @ts-expect-error TODO: Fix this somehow
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    label = child.props.label ?? label;
-    // @ts-expect-error TODO: Fix this somehow
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    code = child.props.code ?? code;
+  if (
+    isValidElement(child) &&
+    typeof child.props === "object" &&
+    child.props !== null
+  ) {
+    const props = child.props as {
+      tag?: string;
+      label?: string;
+      code?: string;
+    };
+    tag = props.tag ?? tag;
+    label = props.label ?? label;
+    code = props.code ?? code;
   }
 
   // If no code prop is provided, try to extract it from children

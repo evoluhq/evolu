@@ -73,15 +73,13 @@ test("trySync", () => {
     ok: false,
     error: {
       type: "ParseError",
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       message: expect.stringContaining("SyntaxError"),
     },
   });
 });
 
 test("tryAsync", async () => {
-  // eslint-disable-next-line @typescript-eslint/require-await
-  const successfulPromise = async () => "success";
+  const successfulPromise = () => Promise.resolve("success");
 
   const successResult = await tryAsync(successfulPromise, (error) => ({
     type: "TestError",

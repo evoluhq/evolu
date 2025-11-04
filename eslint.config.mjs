@@ -77,4 +77,15 @@ export default defineConfig(
       "react-hooks/exhaustive-deps": "error",
     },
   },
+  {
+    // https://github.com/vitest-dev/vitest/issues/4543#issuecomment-1824881253
+    files: ["**/*.test.ts", "**/*.test.tsx"],
+    rules: {
+      "@typescript-eslint/no-unsafe-assignment": "off",
+      "@typescript-eslint/no-unsafe-member-access": "off",
+      "@typescript-eslint/no-unsafe-argument": "off",
+      "@typescript-eslint/no-unsafe-call": "off",
+      "@typescript-eslint/no-unsafe-return": "off",
+    },
+  },
 );

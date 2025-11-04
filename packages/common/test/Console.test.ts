@@ -31,7 +31,6 @@ const mockDate = vi.fn();
 vi.stubGlobal(
   "Date",
   vi.fn().mockImplementation(function (this: any) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     return mockDate();
   }),
 );

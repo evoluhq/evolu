@@ -9,7 +9,6 @@ describe("createTransferableError", () => {
     expect(result.type).toBe("TransferableError");
     expect(result.error).toMatchObject({
       message: "Test error",
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       stack: expect.any(String),
     });
   });
@@ -22,11 +21,9 @@ describe("createTransferableError", () => {
     expect(result.type).toBe("TransferableError");
     expect(result.error).toMatchObject({
       message: "Outer error",
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       stack: expect.any(String),
       cause: {
         message: "Inner error",
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         stack: expect.any(String),
       },
     });
@@ -34,8 +31,9 @@ describe("createTransferableError", () => {
 
   test("excludes non-transferable error properties", () => {
     const error = new Error("Test error");
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-empty-function
-    (error as any).nonTransferable = () => {};
+    (error as any).nonTransferable = () => {
+      //
+    };
     const result = createTransferableError(error);
 
     expect(result.type).toBe("TransferableError");
@@ -79,7 +77,6 @@ describe("createTransferableError", () => {
 
   test("handles circular references", () => {
     const error: any = {};
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
     error.self = error; // Create a circular reference
     const result = createTransferableError(error);
 
