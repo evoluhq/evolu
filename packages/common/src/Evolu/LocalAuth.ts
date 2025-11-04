@@ -10,9 +10,9 @@ import {
   OwnerWriteKey,
 } from "./Owner.js";
 
-/** 
- * Local authentication and authorization system for Evolu.
- * This is API is subject to change and not recommended for production use.
+/**
+ * Local authentication and authorization system for Evolu. This is API is
+ * subject to change and not recommended for production use.
  *
  * @experimental
  */
@@ -178,10 +178,22 @@ export const createLocalAuth = (
     return {
       ...newOptions,
       authenticationPrompt: {
-        title: replaceMessageTokens(newOptions.authenticationPrompt?.title ?? "", username),
-        cancel: replaceMessageTokens(newOptions.authenticationPrompt?.cancel ?? "", username),
-        subtitle: replaceMessageTokens(newOptions.authenticationPrompt?.subtitle ?? "", username),
-        description: replaceMessageTokens(newOptions.authenticationPrompt?.description ?? "", username),
+        title: replaceMessageTokens(
+          newOptions.authenticationPrompt?.title ?? "",
+          username,
+        ),
+        cancel: replaceMessageTokens(
+          newOptions.authenticationPrompt?.cancel ?? "",
+          username,
+        ),
+        subtitle: replaceMessageTokens(
+          newOptions.authenticationPrompt?.subtitle ?? "",
+          username,
+        ),
+        description: replaceMessageTokens(
+          newOptions.authenticationPrompt?.description ?? "",
+          username,
+        ),
       },
     };
   };
