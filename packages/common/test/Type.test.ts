@@ -3063,4 +3063,18 @@ describe("Standard Schema V1", () => {
       number & Brand<"Int"> & Brand<"NonNegative"> & Brand<"Positive">
     >();
   });
+
+  test("Vitest schemaMatching interoperability", () => {
+    expect(1).toEqual(expect.schemaMatching(PositiveInt));
+
+    const user = {
+      name: "Alice",
+      age: 30,
+    };
+
+    expect(user).toEqual({
+      name: expect.schemaMatching(NonEmptyTrimmedString100),
+      age: expect.schemaMatching(PositiveInt),
+    });
+  });
 });
