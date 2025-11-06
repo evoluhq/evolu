@@ -7,7 +7,7 @@
     "dev": "node --experimental-strip-types --watch src/index.ts",
     "build": "shx rm -rf dist && tsc",
     "start": "node dist/index.js",
-    "clean": "shx rm -rf .turbo node_modules dist db.sqlite",
+    "clean": "shx rm -rf .turbo node_modules dist data/evolu-relay.db",
     "docker:build": "docker-compose build --no-cache",
     "docker:up": "docker-compose up --build",
     "docker:up:detached": "docker-compose up -d --build",
