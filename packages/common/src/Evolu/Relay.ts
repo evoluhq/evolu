@@ -3,13 +3,13 @@ import { ConsoleConfig, ConsoleDep } from "../Console.js";
 import { TimingSafeEqualDep } from "../Crypto.js";
 import { LazyValue } from "../Function.js";
 import { err, ok, Result } from "../Result.js";
-import { sql, SqliteError } from "../Sqlite.js";
+import { sql, SqliteDep, SqliteError } from "../Sqlite.js";
 import { SimpleName } from "../Type.js";
 import { OwnerId, OwnerTransport, OwnerWriteKey } from "./Owner.js";
 import { ProtocolInvalidDataError } from "./Protocol.js";
 import {
-  createSqliteStorageBase,
-  CreateSqliteStorageBaseOptions,
+  createBaseSqliteStorage,
+  CreateBaseSqliteStorageOptions,
   EncryptedDbChange,
   SqliteStorageDeps,
   Storage,
@@ -66,56 +66,13 @@ export interface RelayConfig extends ConsoleConfig {
   readonly authenticateOwner?: (ownerId: OwnerId) => Promise<boolean>;
 }
 
-/**
- * Usage statistics for an {@link OwnerId}.
- *
- * Tracks data consumption on the relay to monitor usage patterns and enforce
- * quotas if needed.
- */
-export interface OwnerUsage {
-  readonly ownerId: OwnerId;
-  /** Total number of messages written. */
-  readonly messageCount: number;
-  /** Total bytes stored in all messages (encrypted data only). */
-  readonly dataBytes: number;
-  /** Timestamp of the first message (milliseconds since epoch). */
-  readonly firstMessageAt: number | null;
-  /** Timestamp of the last message (milliseconds since epoch). */
-  readonly lastMessageAt: number | null;
-}
-
 export const createRelaySqliteStorage =
   (deps: SqliteStorageDeps & TimingSafeEqualDep) =>
-  (options: CreateSqliteStorageBaseOptions): Result<Storage, SqliteError> => {
-    const sqliteStorageBase = createSqliteStorageBase(deps)(options);
-    if (!sqliteStorageBase.ok) return sqliteStorageBase;
+  (options: CreateBaseSqliteStorageOptions): Storage => {
+    const sqliteStorageBase = createBaseSqliteStorage(deps)(options);
 
-    for (const query of [
-      sql`
-        create table if not exists evolu_writeKey (
-          "ownerId" blob not null,
-          "writeKey" blob not null,
-          primary key ("ownerId")
-        )
-        strict;
-      `,
-
-      sql`
-        create table if not exists evolu_message (
-          "ownerId" blob not null,
-          "timestamp" blob not null,
-          "change" blob not null,
-          primary key ("ownerId", "timestamp")
-        )
-        strict;
-      `,
-    ]) {
-      const result = deps.sqlite.exec(query);
-      if (!result.ok) return result;
-    }
-
-    return ok({
-      ...sqliteStorageBase.value,
+    return {
+      ...sqliteStorageBase,
 
       /**
        * Lazily authorizes the initiator's {@link OwnerWriteKey} for the given
@@ -177,11 +134,10 @@ export const createRelaySqliteStorage =
       writeMessages: async (ownerId, messages) => {
         const result = deps.sqlite.transaction(() => {
           for (const message of messages) {
-            const insertTimestampResult =
-              sqliteStorageBase.value.insertTimestamp(
-                ownerId,
-                timestampToTimestampBytes(message.timestamp),
-              );
+            const insertTimestampResult = sqliteStorageBase.insertTimestamp(
+              ownerId,
+              timestampToTimestampBytes(message.timestamp),
+            );
             if (!insertTimestampResult.ok) return insertTimestampResult;
 
             const insertMessage = deps.sqlite.exec(sql`
@@ -225,18 +181,18 @@ export const createRelaySqliteStorage =
 
       deleteOwner: (ownerId) => {
         const result = deps.sqlite.transaction(() => {
-          const del1 = deps.sqlite.exec(sql`
+          const deleteWriteKey = deps.sqlite.exec(sql`
             delete from evolu_writeKey where ownerId = ${ownerId};
           `);
-          if (!del1.ok) return del1;
+          if (!deleteWriteKey.ok) return deleteWriteKey;
 
-          const del2 = deps.sqlite.exec(sql`
+          const deleteMessages = deps.sqlite.exec(sql`
             delete from evolu_message where ownerId = ${ownerId};
           `);
-          if (!del2.ok) return del2;
+          if (!deleteMessages.ok) return deleteMessages;
 
-          const del3 = sqliteStorageBase.value.deleteOwner(ownerId);
-          if (!del3) return err(null);
+          const deleteBaseOwner = sqliteStorageBase.deleteOwner(ownerId);
+          if (!deleteBaseOwner) return err(null);
 
           return ok();
         });
@@ -246,8 +202,38 @@ export const createRelaySqliteStorage =
         }
         return true;
       },
-    });
+    };
   };
+
+export const createRelayStorageTables = (
+  deps: SqliteDep,
+): Result<void, SqliteError> => {
+  for (const query of [
+    sql`
+      create table evolu_writeKey (
+        "ownerId" blob not null,
+        "writeKey" blob not null,
+        primary key ("ownerId")
+      )
+      strict;
+    `,
+
+    sql`
+      create table evolu_message (
+        "ownerId" blob not null,
+        "timestamp" blob not null,
+        "change" blob not null,
+        primary key ("ownerId", "timestamp")
+      )
+      strict;
+    `,
+  ]) {
+    const result = deps.sqlite.exec(query);
+    if (!result.ok) return result;
+  }
+
+  return ok();
+};
 
 export interface RelayLogger {
   readonly started: (enableLogging: boolean, port: number) => void;

@@ -240,7 +240,16 @@ export type DbChange = typeof DbChange.Type;
  * users, and when it goes down, nothing happens, because it will be
  * synchronized later.
  */
-export interface SqliteStorageBase {
+export interface BaseSqliteStorage
+  extends Pick<
+    Storage,
+    | "getSize"
+    | "fingerprint"
+    | "fingerprintRanges"
+    | "findLowerBound"
+    | "iterate"
+    | "deleteOwner"
+  > {
   /**
    * Inserts a timestamp for an owner into the skiplist-based storage.
    *
@@ -252,33 +261,22 @@ export interface SqliteStorageBase {
     ownerId: OwnerIdBytes,
     timestamp: TimestampBytes,
   ) => Result<void, SqliteError>;
-
-  readonly getSize: Storage["getSize"];
-  readonly fingerprint: Storage["fingerprint"];
-  readonly fingerprintRanges: Storage["fingerprintRanges"];
-  readonly findLowerBound: Storage["findLowerBound"];
-  readonly iterate: Storage["iterate"];
-  readonly deleteOwner: Storage["deleteOwner"];
 }
 
-export interface SqliteStorageBaseDep {
-  readonly storage: SqliteStorageBase;
+export interface BaseSqliteStorageDep {
+  readonly storage: BaseSqliteStorage;
 }
 
 export type SqliteStorageDeps = RandomDep & SqliteDep;
 
-export interface CreateSqliteStorageBaseOptions {
+export interface CreateBaseSqliteStorageOptions {
   onStorageError: (error: SqliteError) => void;
 }
 
-export const createSqliteStorageBase =
+export const createBaseSqliteStorage =
   (deps: SqliteStorageDeps) =>
-  (
-    options: CreateSqliteStorageBaseOptions,
-  ): Result<SqliteStorageBase, SqliteError> => {
-    const createTablesResult = createTables(deps);
-    if (!createTablesResult.ok) return createTablesResult;
-
+  (options: CreateBaseSqliteStorageOptions): BaseSqliteStorage => {
+    // TODO: Use OwnerUsage table.
     const ownerStats = new Map<
       OwnerId,
       {
@@ -287,7 +285,7 @@ export const createSqliteStorageBase =
       }
     >();
 
-    return ok({
+    return {
       insertTimestamp: (ownerId: OwnerIdBytes, timestamp: TimestampBytes) => {
         const ownerIdString = ownerIdBytesToOwnerId(ownerId);
         const level = randomSkiplistLevel(deps);
@@ -422,14 +420,16 @@ export const createSqliteStorageBase =
         }
         return true;
       },
-    });
+    };
   };
 
 const assertBeginEnd = (begin: NonNegativeInt, end: NonNegativeInt) => {
   assert(begin <= end, "invalid begin or end");
 };
 
-const createTables = (deps: SqliteDep): Result<void, SqliteError> => {
+export const createBaseSqliteStorageTables = (
+  deps: SqliteDep,
+): Result<void, SqliteError> => {
   for (const query of [
     /**
      * Creates the `evolu_timestamp` table for storing timestamps of multiple
@@ -454,7 +454,7 @@ const createTables = (deps: SqliteDep): Result<void, SqliteError> => {
      * enough even without it.
      */
     sql`
-      create table if not exists evolu_timestamp (
+      create table evolu_timestamp (
         "ownerId" blob not null,
         "t" blob not null,
         "h1" integer,
@@ -467,7 +467,7 @@ const createTables = (deps: SqliteDep): Result<void, SqliteError> => {
     `,
 
     sql`
-      create index if not exists evolu_timestamp_index on evolu_timestamp (
+      create index evolu_timestamp_index on evolu_timestamp (
         "ownerId",
         "l",
         "t",
@@ -475,6 +475,30 @@ const createTables = (deps: SqliteDep): Result<void, SqliteError> => {
         "h2",
         "c"
       );
+    `,
+
+    /**
+     * Creates the `evolu_usage` table for tracking data consumption per owner.
+     *
+     * Columns:
+     *
+     * - `ownerId` – OwnerIdBytes (primary key)
+     * - `storedBytes` – total bytes stored in database
+     * - `receivedBytes` – total bytes received from clients
+     * - `sentBytes` – total bytes sent to clients
+     * - `firstTimestamp` – minimum timestamp (nullable)
+     * - `lastTimestamp` – maximum timestamp (nullable)
+     */
+    sql`
+      create table evolu_usage (
+        "ownerId" blob primary key,
+        "storedBytes" integer not null,
+        "receivedBytes" integer not null,
+        "sentBytes" integer not null,
+        "firstTimestamp" blob,
+        "lastTimestamp" blob
+      )
+      strict;
     `,
   ]) {
     const result = deps.sqlite.exec(query);

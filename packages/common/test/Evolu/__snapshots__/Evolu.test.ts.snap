@@ -63,6 +63,28 @@ exports[`externalAppOwner should use provided owner 1`] = `
       },
       {
         "columns": [
+          "ownerId",
+          "t",
+          "h1",
+          "h2",
+          "c",
+          "l",
+        ],
+        "name": "evolu_timestamp",
+      },
+      {
+        "columns": [
+          "ownerId",
+          "storedBytes",
+          "receivedBytes",
+          "sentBytes",
+          "firstTimestamp",
+          "lastTimestamp",
+        ],
+        "name": "evolu_usage",
+      },
+      {
+        "columns": [
           "id",
           "title",
           "isCompleted",
@@ -82,17 +104,6 @@ exports[`externalAppOwner should use provided owner 1`] = `
           "isDeleted",
         ],
         "name": "todoCategory",
-      },
-      {
-        "columns": [
-          "ownerId",
-          "t",
-          "h1",
-          "h2",
-          "c",
-          "l",
-        ],
-        "name": "evolu_timestamp",
       },
     ],
   },
@@ -122,15 +133,19 @@ exports[`externalAppOwner should use provided owner 1`] = `
       "rows": [],
     },
     {
+      "name": "evolu_timestamp",
+      "rows": [],
+    },
+    {
+      "name": "evolu_usage",
+      "rows": [],
+    },
+    {
       "name": "todo",
       "rows": [],
     },
     {
       "name": "todoCategory",
-      "rows": [],
-    },
-    {
-      "name": "evolu_timestamp",
       "rows": [],
     },
   ],

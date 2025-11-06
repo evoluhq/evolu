@@ -52,6 +52,7 @@ import {
   getDbSchema,
   MutationChange,
 } from "./Schema.js";
+import { createBaseSqliteStorageTables } from "./Storage.js";
 import {
   applyLocalOnlyChange,
   Clock,
@@ -572,6 +573,9 @@ const initializeDb =
       const result = deps.sqlite.exec(query);
       if (!result.ok) return result;
     }
+
+    const result = createBaseSqliteStorageTables(deps);
+    if (!result.ok) return result;
 
     return ok();
   };

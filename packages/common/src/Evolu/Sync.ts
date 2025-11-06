@@ -47,10 +47,10 @@ import {
 } from "./Protocol.js";
 import { MutationChange } from "./Schema.js";
 import {
+  BaseSqliteStorage,
+  createBaseSqliteStorage,
   CrdtMessage,
-  createSqliteStorageBase,
   DbChange,
-  SqliteStorageBase,
   Storage,
 } from "./Storage.js";
 import {
@@ -418,7 +418,7 @@ interface GetSyncOwnerDep {
   readonly getSyncOwner: (ownerId: OwnerId) => SyncOwner | null;
 }
 
-export interface ClientStorage extends SqliteStorageBase, Storage {}
+export interface ClientStorage extends Storage, BaseSqliteStorage {}
 
 export interface ClientStorageDep {
   readonly storage: ClientStorage;
@@ -448,15 +448,14 @@ const createClientStorage =
     ) => void;
     onReceive: () => void;
   }): Result<ClientStorage, SqliteError> => {
-    const sqliteStorageBase = createSqliteStorageBase(deps)({
+    const sqliteStorageBase = createBaseSqliteStorage(deps)({
       onStorageError: config.onError,
     });
-    if (!sqliteStorageBase.ok) return sqliteStorageBase;
 
     const mutex = createMutex();
 
     const storage: ClientStorage = {
-      ...sqliteStorageBase.value,
+      ...sqliteStorageBase,
 
       validateWriteKey: constFalse,
       setWriteKey: constFalse,

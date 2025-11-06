@@ -16,8 +16,12 @@ import {
   idToIdBytes,
   Mnemonic,
   NonNegativeInt,
+  PositiveInt,
 } from "../Type.js";
 import { getOrNull } from "../Result.js";
+import type { Timestamp } from "./Timestamp.js";
+import { TimestampBytes } from "./Timestamp.js";
+import type { Storage } from "./Storage.js";
 
 /**
  * The Owner represents ownership of data in Evolu. Every database change is
@@ -175,77 +179,6 @@ export const createAppOwner = (secret: OwnerSecret): AppOwner => ({
 });
 
 /**
- * Transport configuration for connecting to relays.
- *
- * Currently only WebSocket, in the future Bluetooth, LocalNetwork, etc.
- */
-export type OwnerTransport = OwnerWebSocketTransport;
-
-/**
- * WebSocket transport configuration.
- *
- * ### Authentication and Error Handling
- *
- * When a relay rejects a connection (invalid OwnerId, unauthorized owner, or
- * server error), the browser WebSocket API does not expose the specific HTTP
- * status code or reason - it only reports a generic connection failure. The
- * client automatically retries with exponential backoff and jitter, eventually
- * succeeding once the configuration or server issue is resolved.
- *
- * Legitimate clients will be properly configured with valid credentials, so
- * automatic retry is OK.
- *
- * @see {@link createOwnerWebSocketTransport}
- * @see {@link parseOwnerIdFromOwnerWebSocketTransportUrl}
- */
-export interface OwnerWebSocketTransport {
-  readonly type: "WebSocket";
-  readonly url: string;
-}
-
-/**
- * Creates an {@link OwnerWebSocketTransport} for the given relay URL and
- * {@link OwnerId}.
- *
- * ### Example
- *
- * ```ts
- * const transport = createOwnerWebSocketTransport({
- *   url: "wss://relay.evolu.dev",
- *   ownerId: owner.id,
- * });
- * // Result: { type: "WebSocket", url: "wss://relay.evolu.dev?ownerId=..." }
- * ```
- */
-export const createOwnerWebSocketTransport = (config: {
-  readonly url: string;
-  readonly ownerId: OwnerId;
-}): OwnerWebSocketTransport => ({
-  type: "WebSocket",
-  url: `${config.url}?ownerId=${config.ownerId}`,
-});
-
-/**
- * Extracts {@link OwnerId} from an {@link OwnerWebSocketTransport} URL query
- * string.
- *
- * Parses the query string `?ownerId=...` and validates that the extracted value
- * is a valid {@link OwnerId}.
- *
- * ### Example
- *
- * ```ts
- * parseOwnerIdFromOwnerWebSocketTransportUrl(
- *   "/sync?ownerId=_12345678abcdefgh",
- * );
- * // Returns: OwnerId or null
- * ```
- */
-export const parseOwnerIdFromOwnerWebSocketTransportUrl = (
-  url: string,
-): OwnerId | null => getOrNull(OwnerId.fromUnknown(url.split("=")[1]));
-
-/**
  * An {@link Owner} for sharding data.
  *
  * ShardOwners are the recommended storage location for most application data
@@ -350,3 +283,112 @@ export const createSharedReadonlyOwner = (
   encryptionKey: sharedOwner.encryptionKey,
   ...(sharedOwner.transports && { transports: sharedOwner.transports }),
 });
+
+/**
+ * Transport configuration for connecting to relays.
+ *
+ * Currently only WebSocket, in the future Bluetooth, LocalNetwork, etc.
+ */
+export type OwnerTransport = OwnerWebSocketTransport;
+
+/**
+ * WebSocket transport configuration.
+ *
+ * ### Authentication and Error Handling
+ *
+ * When a relay rejects a connection (invalid OwnerId, unauthorized owner, or
+ * server error), the browser WebSocket API does not expose the specific HTTP
+ * status code or reason - it only reports a generic connection failure. The
+ * client automatically retries with exponential backoff and jitter, eventually
+ * succeeding once the configuration or server issue is resolved.
+ *
+ * Legitimate clients will be properly configured with valid credentials, so
+ * automatic retry is OK.
+ *
+ * @see {@link createOwnerWebSocketTransport}
+ * @see {@link parseOwnerIdFromOwnerWebSocketTransportUrl}
+ */
+export interface OwnerWebSocketTransport {
+  readonly type: "WebSocket";
+  readonly url: string;
+}
+
+/**
+ * Creates an {@link OwnerWebSocketTransport} for the given relay URL and
+ * {@link OwnerId}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const transport = createOwnerWebSocketTransport({
+ *   url: "wss://relay.evolu.dev",
+ *   ownerId: owner.id,
+ * });
+ * // Result: { type: "WebSocket", url: "wss://relay.evolu.dev?ownerId=..." }
+ * ```
+ */
+export const createOwnerWebSocketTransport = (config: {
+  readonly url: string;
+  readonly ownerId: OwnerId;
+}): OwnerWebSocketTransport => ({
+  type: "WebSocket",
+  url: `${config.url}?ownerId=${config.ownerId}`,
+});
+
+/**
+ * Extracts {@link OwnerId} from an {@link OwnerWebSocketTransport} URL query
+ * string.
+ *
+ * Parses the query string `?ownerId=...` and validates that the extracted value
+ * is a valid {@link OwnerId}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * parseOwnerIdFromOwnerWebSocketTransportUrl(
+ *   "/sync?ownerId=_12345678abcdefgh",
+ * );
+ * // Returns: OwnerId or null
+ * ```
+ */
+export const parseOwnerIdFromOwnerWebSocketTransportUrl = (
+  url: string,
+): OwnerId | null => getOrNull(OwnerId.fromUnknown(url.split("=")[1]));
+
+/**
+ * Usage data for an {@link OwnerId}.
+ *
+ * Tracks data consumption to monitor usage patterns and enforce quotas if
+ * needed. Used by both relays and clients.
+ *
+ * Relays and clients must handle rate limiting, connection limits, and request
+ * throttling separately with in-memory state.
+ */
+export interface OwnerUsage {
+  /** The {@link Owner} this usage data belongs to. */
+  readonly ownerId: OwnerIdBytes;
+
+  /** Total bytes stored in the database. */
+  readonly storedBytes: PositiveInt;
+
+  /** Total bytes received. */
+  readonly receivedBytes: number;
+
+  /** Total bytes sent. */
+  readonly sentBytes: number;
+
+  /**
+   * The minimum {@link Timestamp}.
+   *
+   * Helps {@link Storage} choose faster algorithms.
+   */
+  readonly firstTimestamp: TimestampBytes | null;
+
+  /**
+   * The maximum {@link Timestamp}.
+   *
+   * Helps {@link Storage} choose faster algorithms. Free relays can use it to
+   * identify inactive accounts for cleanup or archival.
+   */
+  readonly lastTimestamp: TimestampBytes | null;
+}

@@ -1,11 +1,12 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { assert, expect, test } from "vitest";
 import {
-  createSqliteStorageBase,
+  BaseSqliteStorageDep,
+  createBaseSqliteStorage,
+  createBaseSqliteStorageTables,
   Fingerprint,
   getTimestampByIndex,
   InfiniteUpperBound,
-  SqliteStorageBaseDep,
   timestampBytesToFingerprint,
 } from "../../src/Evolu/Storage.js";
 import {
@@ -35,18 +36,20 @@ import {
   testTimestampsRandom,
 } from "./_fixtures.js";
 
-const createDeps = async (): Promise<SqliteDep & SqliteStorageBaseDep> => {
+const createDeps = async (): Promise<SqliteDep & BaseSqliteStorageDep> => {
   const sqlite = await testCreateSqlite();
   // For reliable performance, we have to use Math.random!
   // Pseudo-random does not scale (randomness is limited).
   const random = createRandom();
-  const storage = getOrThrow(
-    createSqliteStorageBase({ sqlite, random })({
-      onStorageError: (error) => {
-        throw new Error(error.type);
-      },
-    }),
-  );
+
+  const result = createBaseSqliteStorageTables({ sqlite });
+  assert(result.ok);
+
+  const storage = createBaseSqliteStorage({ sqlite, random })({
+    onStorageError: (error) => {
+      throw new Error(error.type);
+    },
+  });
   return { sqlite, storage };
 };
 
