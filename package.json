@@ -57,12 +57,15 @@
   "packageManager": "pnpm@10.20.0",
   "pnpm": {
     "onlyBuiltDependencies": [
+      "@parcel/watcher",
       "@tailwindcss/oxide",
       "better-sqlite3",
       "electron",
       "electron-winstaller",
       "esbuild",
+      "lmdb",
       "msgpackr-extract",
+      "react-native-nitro-modules",
       "sharp",
       "unrs-resolver"
     ],
