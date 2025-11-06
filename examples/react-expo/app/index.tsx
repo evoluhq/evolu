@@ -1,6 +1,10 @@
 import * as Evolu from "@evolu/common";
 import { createUseEvolu, EvoluProvider, useQuery } from "@evolu/react";
-import { evoluReactNativeDeps, localAuth, EvoluAvatar } from "@evolu/react-native/expo-sqlite";
+import {
+  evoluReactNativeDeps,
+  localAuth,
+  EvoluAvatar,
+} from "@evolu/react-native/expo-sqlite";
 import { FC, Suspense, use, useEffect, useMemo, useState } from "react";
 import type { Evolu as EvoluType } from "@evolu/common";
 
@@ -61,9 +65,10 @@ export default function Index(): React.ReactNode {
       setAuthResult(authResult);
 
       /**
-       * Subscribe to unexpected Evolu errors (database, network, sync issues). These
-       * should not happen in normal operation, so always log them for debugging. Show
-       * users a friendly error message instead of technical details.
+       * Subscribe to unexpected Evolu errors (database, network, sync issues).
+       * These should not happen in normal operation, so always log them for
+       * debugging. Show users a friendly error message instead of technical
+       * details.
        */
       return evolu.subscribeError(() => {
         const error = evolu.getError();
@@ -87,11 +92,7 @@ export default function Index(): React.ReactNode {
 
   return (
     <EvoluProvider value={evolu}>
-      <EvoluDemo
-        evolu={evolu}
-        ownerIds={ownerIds}
-        authResult={authResult}
-      />
+      <EvoluDemo evolu={evolu} ownerIds={ownerIds} authResult={authResult} />
     </EvoluProvider>
   );
 }
@@ -151,7 +152,10 @@ function EvoluDemo({
 
     return (
       <View
-        style={[styles.todosContainer, { paddingTop: todos.length > 0 ? 6 : 24 }]}
+        style={[
+          styles.todosContainer,
+          { paddingTop: todos.length > 0 ? 6 : 24 },
+        ]}
       >
         <View
           style={[
@@ -233,7 +237,10 @@ function EvoluDemo({
           onPress={handleToggleCompletedPress}
         >
           <View
-            style={[styles.checkbox, isCompleted ? styles.checkboxChecked : null]}
+            style={[
+              styles.checkbox,
+              isCompleted ? styles.checkboxChecked : null,
+            ]}
           >
             <Text
               style={[
@@ -382,7 +389,7 @@ function EvoluDemo({
       () => ownerIds?.filter(({ ownerId }) => ownerId !== appOwner?.id) ?? [],
       [appOwner?.id, ownerIds],
     );
-  
+
     // Create a new owner and register it to a passkey.
     const handleRegisterPress = async () => {
       Alert.prompt(
@@ -394,16 +401,16 @@ function EvoluDemo({
             text: "Register",
             onPress: async (username?: string) => {
               if (username == null) return;
-  
+
               // Determine if this is a guest login or a new owner.
               const isGuest = !Boolean(authResult?.owner);
-  
+
               // Register the guest owner or create a new one if this is already registered.
               const mnemonic = isGuest ? appOwner?.mnemonic : undefined;
-              const result = await localAuth.register(
-                username,
-                { service, mnemonic },
-              );
+              const result = await localAuth.register(username, {
+                service,
+                mnemonic,
+              });
               if (result) {
                 // If this is a guest owner, we should clear the database and reload.
                 // The owner is transferred to a new database on next login.
@@ -422,7 +429,7 @@ function EvoluDemo({
         "plain-text",
       );
     };
-  
+
     // Login with a specific owner id using the registered passkey.
     const handleLoginPress = async (ownerId: Evolu.OwnerId) => {
       const result = await localAuth.login(ownerId, { service });
@@ -432,7 +439,7 @@ function EvoluDemo({
         Alert.alert("Error", "Failed to login");
       }
     };
-  
+
     // Clear all data including passkeys and metadata.
     const handleClearAllPress = async () => {
       Alert.alert(
@@ -451,7 +458,7 @@ function EvoluDemo({
         ],
       );
     };
-  
+
     return (
       <View style={styles.authActionsContainer}>
         <Text style={styles.sectionTitle}>Passkeys</Text>
@@ -497,7 +504,11 @@ function EvoluDemo({
           <EvoluAvatar id={ownerId} />
           <View style={styles.ownerDetails}>
             <Text style={styles.ownerUsername}>{username}</Text>
-            <Text style={styles.ownerIdText} numberOfLines={1} ellipsizeMode="middle">
+            <Text
+              style={styles.ownerIdText}
+              numberOfLines={1}
+              ellipsizeMode="middle"
+            >
               {ownerId as string}
             </Text>
           </View>
@@ -538,7 +549,7 @@ function EvoluDemo({
       </TouchableOpacity>
     );
   };
-  
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
