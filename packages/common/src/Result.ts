@@ -87,8 +87,8 @@
  * ### Naming Convention
  *
  * - For values: `const user = getUser()`
- * - For void operations: `const result = foo()` (unless it would clash)
- * - For clashes, suffix the name: `const saveResult = save()`
+ * - For a single void operation: `const result = foo()`
+ * - For multiple void operations: use descriptive names for all
  *
  * ```ts
  * const processUser = () => {
@@ -96,13 +96,20 @@
  *   const user = getUser();
  *   if (!user.ok) return user;
  *
- *   // void operation
+ *   // single void operation
  *   const result = saveToDatabase(user.value);
  *   if (!result.ok) return result;
  *
- *   // avoiding clash
- *   const deleteFromCacheResult = deleteFromCache();
- *   if (!deleteFromCacheResult.ok) return deleteFromCacheResult;
+ *   return ok();
+ * };
+ *
+ * const setupDatabase = () => {
+ *   // multiple void operations - use descriptive names
+ *   const baseTables = createBaseTables();
+ *   if (!baseTables.ok) return baseTables;
+ *
+ *   const relayTables = createRelayTables();
+ *   if (!relayTables.ok) return relayTables;
  *
  *   return ok();
  * };
