@@ -130,8 +130,8 @@ export const maxNodeId = "ffffffffffffffff" as NodeId;
  * avoid it if maximum privacy is required.
  *
  * With real-time communication, participants always see activity (receiving
- * bytes). We cannot trust anyone not to store that information, so there is no
- * harm in exposing it.
+ * bytes). We cannot trust anyone not to store that information, so explicitly
+ * exposing timestamps doesn't add additional risk.
  *
  * If we really want not to leak user activity, we can implement a local write
  * queue:
