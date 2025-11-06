@@ -1,5 +1,11 @@
 # @evolu/react-native
 
+## 12.0.1-preview.7
+
+### Patch Changes
+
+- ae43cf9: Add 'blo' dependency to react-native package
+
 ## 12.0.1-preview.6
 
 ### Patch Changes
