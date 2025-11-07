@@ -191,7 +191,7 @@ export const createWebSocket: CreateWebSocket = (
    * - Is rejected when a connection is closed.
    * - Is resolved when WebSocket is disposed().
    */
-  retry(
+  void retry(
     {
       ...defaultRetryOptions,
       ...retryOptions,
@@ -237,14 +237,10 @@ export const createWebSocket: CreateWebSocket = (
           onMessage?.(event.data as string | ArrayBuffer | Blob);
         };
       }),
-  )(reconnectController)
-    .then((result) => {
-      if (result.ok || result.error.type === "AbortError") return;
-      onError?.(result.error as WebSocketError);
-    })
-    .catch((error: unknown) => {
-      throw error;
-    });
+  )(reconnectController).then((result) => {
+    if (result.ok || result.error.type === "AbortError") return;
+    onError?.(result.error as WebSocketError);
+  });
 
   return {
     send: (data) => {
