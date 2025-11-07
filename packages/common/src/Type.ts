@@ -253,7 +253,6 @@ export interface Type<
    *
    * - When you need to convert a validation result to a nullable value
    * - When the error is not important and you just want the value or nothing
-   * - APIs that expect `T` or `null`
    *
    * ### Example
    *
@@ -370,8 +369,6 @@ export interface Type<
   readonly ParentError: ParentError;
 
   /**
-   * Error / ParentError
-   *
    * ### Example
    *
    * ```ts
@@ -461,7 +458,7 @@ export type InferParentError<A extends AnyType> =
     : never;
 
 /**
- * Extracts all error types (Error / ParentError) from a {@link Type}.
+ * Extracts all error types from a {@link Type}.
  *
  * @category Utilities
  */
@@ -1150,7 +1147,7 @@ export const trimmed: BrandFactory<"Trimmed", string, TrimmedError> = (
 export interface TrimmedError extends TypeError<"Trimmed"> {}
 
 export const formatTrimmedError = createTypeErrorFormatter<TrimmedError>(
-  (error) => `The value ${error.value} is not trimmed.`,
+  (error) => `The value ${error.value} must be trimmed.`,
 );
 
 /**
@@ -1717,7 +1714,7 @@ export const idBytesToId = (idBytes: IdBytes): Id =>
   uint8ArrayToBase64Url(idBytes) as unknown as Id;
 
 /**
- * Positive number.
+ * Positive number (> 0).
  *
  * ### Example
  *
@@ -1740,11 +1737,11 @@ export const positive: BrandFactory<"Positive", number, PositiveError> = (
 export interface PositiveError extends TypeError<"Positive"> {}
 
 export const formatPositiveError = createTypeErrorFormatter<PositiveError>(
-  (error) => `The value ${error.value} is not positive.`,
+  (error) => `The value ${error.value} must be positive (> 0).`,
 );
 
 /**
- * Negative number.
+ * Negative number (< 0).
  *
  * ### Example
  *
@@ -1764,11 +1761,11 @@ export const negative: BrandFactory<"Negative", number, NegativeError> = (
 export interface NegativeError extends TypeError<"Negative"> {}
 
 export const formatNegativeError = createTypeErrorFormatter<NegativeError>(
-  (error) => `The value ${error.value} is not negative.`,
+  (error) => `The value ${error.value} must be negative (< 0).`,
 );
 
 /**
- * Non-positive number.
+ * Non-positive number (≤ 0).
  *
  * ### Example
  *
@@ -1797,7 +1794,7 @@ export const formatNonPositiveError =
   );
 
 /**
- * Non-negative number.
+ * Non-negative number (≥ 0).
  *
  * ### Example
  *
@@ -1862,7 +1859,7 @@ export const int: BrandFactory<"Int", number, IntError> = (parent) =>
 export interface IntError extends TypeError<"Int"> {}
 
 export const formatIntError = createTypeErrorFormatter<IntError>(
-  (error) => `The value ${error.value} is not an integer.`,
+  (error) => `The value ${error.value} must be an integer.`,
 );
 
 /**
@@ -2008,7 +2005,7 @@ export const nonNaN: BrandFactory<"NonNaN", number, NonNaNError> = (parent) =>
 export interface NonNaNError extends TypeError<"NonNaN"> {}
 
 export const formatNonNaNError = createTypeErrorFormatter<NonNaNError>(
-  (error) => `The value ${error.value} is NaN (not a number).`,
+  () => `The value must not be NaN.`,
 );
 
 /** @category Number */
@@ -2030,7 +2027,7 @@ export const finite: BrandFactory<"Finite", number, FiniteError> = (parent) =>
 export interface FiniteError extends TypeError<"Finite"> {}
 
 export const formatFiniteError = createTypeErrorFormatter<FiniteError>(
-  (error) => `The value ${error.value} is not finite.`,
+  (error) => `The value ${error.value} must be finite.`,
 );
 
 /**

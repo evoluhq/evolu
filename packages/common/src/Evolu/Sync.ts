@@ -27,11 +27,11 @@ import {
   OwnerIdBytes,
   ownerIdBytesToOwnerId,
   ownerIdToOwnerIdBytes,
+  OwnerTransport,
   OwnerWriteKey,
   ShardOwner,
   SharedOwner,
   SharedReadonlyOwner,
-  TransportConfig,
 } from "./Owner.js";
 import {
   applyProtocolMessageAsClient,
@@ -47,10 +47,10 @@ import {
 } from "./Protocol.js";
 import { MutationChange } from "./Schema.js";
 import {
+  BaseSqliteStorage,
+  createBaseSqliteStorage,
   CrdtMessage,
-  createSqliteStorageBase,
   DbChange,
-  SqliteStorageBase,
   Storage,
 } from "./Storage.js";
 import {
@@ -106,13 +106,13 @@ export interface SyncOwner {
   readonly encryptionKey: OwnerEncryptionKey;
   /** Optional for read-only owners like {@link SharedReadonlyOwner}. */
   readonly writeKey?: OwnerWriteKey;
-  readonly transports?: ReadonlyArray<TransportConfig>;
+  readonly transports?: ReadonlyArray<OwnerTransport>;
 }
 
 export interface SyncConfig {
   readonly appOwner: AppOwner;
 
-  readonly transports: ReadonlyArray<TransportConfig>;
+  readonly transports: ReadonlyArray<OwnerTransport>;
 
   /**
    * Delay in milliseconds before disposing unused WebSocket connections.
@@ -166,7 +166,7 @@ export const createSync =
     if (!storageResult.ok) return storageResult;
     const storage = storageResult.value;
 
-    const createResource = (transportConfig: TransportConfig): WebSocket => {
+    const createResource = (transportConfig: OwnerTransport): WebSocket => {
       const transportKey = createTransportKey(transportConfig);
 
       deps.console.log("[sync]", "createWebSocket", {
@@ -255,7 +255,7 @@ export const createSync =
     const transports = createRefCountedResourceManager<
       WebSocket,
       TransportKey,
-      TransportConfig,
+      OwnerTransport,
       SyncOwner,
       OwnerId
     >({
@@ -418,7 +418,7 @@ interface GetSyncOwnerDep {
   readonly getSyncOwner: (ownerId: OwnerId) => SyncOwner | null;
 }
 
-export interface ClientStorage extends SqliteStorageBase, Storage {}
+export interface ClientStorage extends Storage, BaseSqliteStorage {}
 
 export interface ClientStorageDep {
   readonly storage: ClientStorage;
@@ -448,15 +448,14 @@ const createClientStorage =
     ) => void;
     onReceive: () => void;
   }): Result<ClientStorage, SqliteError> => {
-    const sqliteStorageBase = createSqliteStorageBase(deps)({
+    const sqliteStorageBase = createBaseSqliteStorage(deps)({
       onStorageError: config.onError,
     });
-    if (!sqliteStorageBase.ok) return sqliteStorageBase;
 
     const mutex = createMutex();
 
     const storage: ClientStorage = {
-      ...sqliteStorageBase.value,
+      ...sqliteStorageBase,
 
       validateWriteKey: constFalse,
       setWriteKey: constFalse,
@@ -590,7 +589,7 @@ const createClientStorage =
 type TransportKey = string & Brand<"TransportKey">;
 
 /** Creates a unique identifier for a transport configuration. */
-const createTransportKey = (transportConfig: TransportConfig): TransportKey => {
+const createTransportKey = (transportConfig: OwnerTransport): TransportKey => {
   return `${transportConfig.type}:${transportConfig.url}` as TransportKey;
 };
 

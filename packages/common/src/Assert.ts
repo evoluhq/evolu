@@ -96,22 +96,3 @@ export const assertNonEmptyReadonlyArray: <T>(
 ) => {
   assert(arr.length > 0, message);
 };
-
-/**
- * Asserts no error reaches a `.catch` block, throwing a developer error if it
- * does. Used in Promise chains where errors indicate bugs to be fixed.
- *
- * ### Example
- *
- * ```ts
- * Promise.reject("test").catch((e) =>
- *   assertNoErrorInCatch("WebSocket retry", e),
- * );
- * ```
- */
-export function assertNoErrorInCatch(context: string, error: unknown): never {
-  throw new Error(
-    `Error in ${context}: an unexpected error reached a catch block and requires a fix`,
-    { cause: error },
-  );
-}

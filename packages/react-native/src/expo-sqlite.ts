@@ -39,8 +39,6 @@ const reloadApp: ReloadApp = () => {
   void Expo.reloadAppAsync();
 };
 
-export * from "./components/EvoluAvatar.js";
-
 export const localAuth = createLocalAuth({
   randomBytes: randomBytes,
   secureStorage: createSecureStore(),

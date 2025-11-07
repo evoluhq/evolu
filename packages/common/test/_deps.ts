@@ -1,12 +1,6 @@
-import {
-  createLocalAuth,
-  CreateWebSocket,
-  TimingSafeEqual,
-  WebSocket,
-} from "@evolu/common";
+import { CreateWebSocket, TimingSafeEqual, WebSocket } from "@evolu/common";
 import BetterSQLite, { Statement } from "better-sqlite3";
 import { timingSafeEqual } from "crypto";
-import { vi } from "vitest";
 import { Console } from "../src/Console.js";
 import {
   createSymmetricCrypto,
@@ -19,8 +13,14 @@ import {
   createOwnerSecret,
   ownerIdToOwnerIdBytes,
 } from "../src/Evolu/Owner.js";
-import { createRelaySqliteStorage } from "../src/Evolu/Relay.js";
-import { StorageDep } from "../src/Evolu/Storage.js";
+import {
+  createRelaySqliteStorage,
+  createRelayStorageTables,
+} from "../src/Evolu/Relay.js";
+import {
+  createBaseSqliteStorageTables,
+  StorageDep,
+} from "../src/Evolu/Storage.js";
 import { constFalse, constVoid } from "../src/Function.js";
 import {
   createRandom,
@@ -33,6 +33,7 @@ import {
   createSqlite,
   CreateSqliteDriver,
   Sqlite,
+  SqliteDep,
   SqliteDriver,
   SqliteRow,
 } from "../src/Sqlite.js";
@@ -56,17 +57,6 @@ export const testRandomBytes: RandomBytes = {
 } as RandomBytes;
 
 const randomBytesDep = { randomBytes: testRandomBytes };
-
-export const testLocalAuth = createLocalAuth({
-  secureStorage: {
-    setItem: vi.fn(),
-    getItem: vi.fn(),
-    deleteItem: vi.fn(),
-    getAllItems: vi.fn(),
-    clearService: vi.fn(),
-  },
-  randomBytes: testRandomBytes,
-});
 
 export const testCreateId = (): Id => createId(randomBytesDep);
 
@@ -158,7 +148,7 @@ export interface TestWebSocket extends WebSocket {
   readonly simulateClose: () => void;
 }
 
-export const createTestWebSocket = (
+export const testCreateWebSocket = (
   _url?: string,
   options?: {
     onOpen?: () => void;
@@ -243,7 +233,7 @@ export interface TestConsole extends Console {
  * });
  * ```
  */
-export const createTestConsole = (): TestConsole => {
+export const testCreateConsole = (): TestConsole => {
   const logs: Array<Array<unknown>> = [];
 
   return {
@@ -307,23 +297,28 @@ export const createTestConsole = (): TestConsole => {
   };
 };
 
-export const createTestRelayStorageDep = async (): Promise<StorageDep> => {
+export const testCreateRelayStorageAndSqliteDeps = async (): Promise<
+  StorageDep & SqliteDep
+> => {
   const sqlite = await testCreateSqlite();
-  const storage = getOrThrow(
-    createRelaySqliteStorage({
-      sqlite,
-      /**
-       * We intentionally use non-deterministic `createRandom` because
-       * deterministic test Random affects perf results (has decreasing
-       * distribution).
-       */
-      random: createRandom(),
-      timingSafeEqual: testCreateTimingSafeEqual(),
-    })({
-      onStorageError: (error) => {
-        throw new Error(error.type);
-      },
-    }),
-  );
-  return { storage };
+
+  getOrThrow(createBaseSqliteStorageTables({ sqlite }));
+  getOrThrow(createRelayStorageTables({ sqlite }));
+
+  const storage = createRelaySqliteStorage({
+    sqlite,
+    /**
+     * We intentionally use non-deterministic `createRandom` by default because
+     * deterministic testRandom affects perf results (has decreasing
+     * distribution).
+     */
+    random: createRandom(),
+    timingSafeEqual: testCreateTimingSafeEqual(),
+  })({
+    onStorageError: (error) => {
+      throw new Error(error.type);
+    },
+  });
+
+  return { sqlite, storage };
 };

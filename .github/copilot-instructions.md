@@ -179,7 +179,7 @@ const formatCurrencyCodeError = createTypeErrorFormatter<CurrencyCodeError>(
 - Use for catching developer mistakes eagerly (e.g., invalid configuration)
 
 ```ts
-import { assert, assertNonEmptyArray, assertNoErrorInCatch } from "./Assert.js";
+import { assert, assertNonEmptyArray } from "./Assert.js";
 
 // ✅ Good example
 const length = buffer.getLength();

@@ -18,12 +18,12 @@ import { createSqlite, Sqlite } from "../../src/Sqlite.js";
 import { wait } from "../../src/Task.js";
 import { createId } from "../../src/Type.js";
 import {
-  createTestConsole,
-  createTestRelayStorageDep,
-  createTestWebSocket,
   TestConsole,
+  testCreateConsole,
   testCreateId,
+  testCreateRelayStorageAndSqliteDeps,
   testCreateSqliteDriver,
+  testCreateWebSocket,
   testDeps,
   testOwnerSecret,
   testRandom,
@@ -39,7 +39,7 @@ const createInitializedDbWorker = async (): Promise<{
   readonly sqlite: Sqlite;
   readonly transports: ReadonlyArray<TestWebSocket>;
   readonly workerOutput: Array<unknown>;
-  readonly testConsole: ReturnType<typeof createTestConsole>;
+  readonly testConsole: TestConsole;
 }> => {
   const { worker, sqlite, transports, testConsole } =
     await createDbWorkerWithDeps();
@@ -85,10 +85,10 @@ const createDbWorkerWithDeps = async (): Promise<{
   readonly worker: DbWorker;
   readonly sqlite: Sqlite;
   readonly transports: ReadonlyArray<TestWebSocket>;
-  readonly testConsole: ReturnType<typeof createTestConsole>;
+  readonly testConsole: TestConsole;
 }> => {
   const sqliteDriver = await testCreateSqliteDriver(testSimpleName);
-  const testConsole = createTestConsole();
+  const testConsole = testCreateConsole();
   const sqliteResult = await createSqlite({
     createSqliteDriver: () => Promise.resolve(sqliteDriver),
     console: testConsole,
@@ -102,7 +102,7 @@ const createDbWorkerWithDeps = async (): Promise<{
     console: testConsole,
     createSqliteDriver: () => Promise.resolve(sqliteDriver),
     createWebSocket: (url, options) => {
-      const testWebSocket = createTestWebSocket(url, options);
+      const testWebSocket = testCreateWebSocket(url, options);
       transports.push(testWebSocket);
       return testWebSocket;
     },
@@ -225,6 +225,28 @@ test("initializes DbWorker with external AppOwner", async () => {
           },
           {
             "columns": [
+              "ownerId",
+              "t",
+              "h1",
+              "h2",
+              "c",
+              "l",
+            ],
+            "name": "evolu_timestamp",
+          },
+          {
+            "columns": [
+              "ownerId",
+              "storedBytes",
+              "receivedBytes",
+              "sentBytes",
+              "firstTimestamp",
+              "lastTimestamp",
+            ],
+            "name": "evolu_usage",
+          },
+          {
+            "columns": [
               "id",
               "name",
               "createdAt",
@@ -242,17 +264,6 @@ test("initializes DbWorker with external AppOwner", async () => {
               "isDeleted",
             ],
             "name": "_localTable",
-          },
-          {
-            "columns": [
-              "ownerId",
-              "t",
-              "h1",
-              "h2",
-              "c",
-              "l",
-            ],
-            "name": "evolu_timestamp",
           },
         ],
       },
@@ -282,15 +293,19 @@ test("initializes DbWorker with external AppOwner", async () => {
           "rows": [],
         },
         {
+          "name": "evolu_timestamp",
+          "rows": [],
+        },
+        {
+          "name": "evolu_usage",
+          "rows": [],
+        },
+        {
           "name": "testTable",
           "rows": [],
         },
         {
           "name": "_localTable",
-          "rows": [],
-        },
-        {
-          "name": "evolu_timestamp",
           "rows": [],
         },
       ],
@@ -330,53 +345,57 @@ test("local mutations", async () => {
 
   // Should show the local table with created data
   expect(getDbSnapshot({ sqlite }).tables).toMatchInlineSnapshot(`
-    [
-      {
-        "name": "evolu_version",
-        "rows": [
-          {
-            "protocolVersion": 0,
-          },
-        ],
-      },
-      {
-        "name": "evolu_config",
-        "rows": [
-          {
-            "appOwnerEncryptionKey": uint8:[91,241,76,125,158,117,227,125,230,50,87,204,167,80,56,233,236,32,119,114,3,133,11,114,245,76,230,8,123,187,158,115],
-            "appOwnerId": "StbvdTPxk80z0cNVwDJg6g",
-            "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
-            "appOwnerWriteKey": uint8:[109,96,75,228,41,186,7,162,141,92,37,209,56,226,201,91],
-            "clock": "1970-01-01T00:00:00.000Z-0000-227c8d41bff384ad",
-          },
-        ],
-      },
-      {
-        "name": "evolu_history",
-        "rows": [],
-      },
-      {
-        "name": "testTable",
-        "rows": [],
-      },
-      {
-        "name": "_localTable",
-        "rows": [
-          {
-            "createdAt": "1970-01-01T00:00:00.000Z",
-            "id": "8-qbgiYx9BRvmlUTvE9wKQ",
-            "isDeleted": null,
-            "updatedAt": "1970-01-01T00:00:00.000Z",
-            "value": "local data",
-          },
-        ],
-      },
-      {
-        "name": "evolu_timestamp",
-        "rows": [],
-      },
-    ]
-  `);
+      [
+        {
+          "name": "evolu_version",
+          "rows": [
+            {
+              "protocolVersion": 0,
+            },
+          ],
+        },
+        {
+          "name": "evolu_config",
+          "rows": [
+            {
+              "appOwnerEncryptionKey": uint8:[91,241,76,125,158,117,227,125,230,50,87,204,167,80,56,233,236,32,119,114,3,133,11,114,245,76,230,8,123,187,158,115],
+              "appOwnerId": "StbvdTPxk80z0cNVwDJg6g",
+              "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
+              "appOwnerWriteKey": uint8:[109,96,75,228,41,186,7,162,141,92,37,209,56,226,201,91],
+              "clock": "1970-01-01T00:00:00.000Z-0000-227c8d41bff384ad",
+            },
+          ],
+        },
+        {
+          "name": "evolu_history",
+          "rows": [],
+        },
+        {
+          "name": "evolu_timestamp",
+          "rows": [],
+        },
+        {
+          "name": "evolu_usage",
+          "rows": [],
+        },
+        {
+          "name": "testTable",
+          "rows": [],
+        },
+        {
+          "name": "_localTable",
+          "rows": [
+            {
+              "createdAt": "1970-01-01T00:00:00.000Z",
+              "id": "8-qbgiYx9BRvmlUTvE9wKQ",
+              "isDeleted": null,
+              "updatedAt": "1970-01-01T00:00:00.000Z",
+              "value": "local data",
+            },
+          ],
+        },
+      ]
+    `);
 
   // Should show replaceAll patch with the new record since query is subscribed
   expect(workerOutput.splice(0)).toMatchInlineSnapshot(`
@@ -480,15 +499,19 @@ test("local mutations", async () => {
         "rows": [],
       },
       {
+        "name": "evolu_timestamp",
+        "rows": [],
+      },
+      {
+        "name": "evolu_usage",
+        "rows": [],
+      },
+      {
         "name": "testTable",
         "rows": [],
       },
       {
         "name": "_localTable",
-        "rows": [],
-      },
-      {
-        "name": "evolu_timestamp",
         "rows": [],
       },
     ]
@@ -616,6 +639,23 @@ test("sync mutations", async () => {
         ],
       },
       {
+        "name": "evolu_timestamp",
+        "rows": [
+          {
+            "c": 1,
+            "h1": 129512733105875,
+            "h2": 267434249476759,
+            "l": 2,
+            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
+            "t": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
+          },
+        ],
+      },
+      {
+        "name": "evolu_usage",
+        "rows": [],
+      },
+      {
         "name": "testTable",
         "rows": [
           {
@@ -630,19 +670,6 @@ test("sync mutations", async () => {
       {
         "name": "_localTable",
         "rows": [],
-      },
-      {
-        "name": "evolu_timestamp",
-        "rows": [
-          {
-            "c": 1,
-            "h1": 129512733105875,
-            "h2": 267434249476759,
-            "l": 2,
-            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
-            "t": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
-          },
-        ],
       },
     ]
   `);
@@ -698,95 +725,99 @@ test("sync mutations", async () => {
 
   // Verify that last write wins - should show "updated data" and other stuff
   expect(getDbSnapshot({ sqlite }).tables).toMatchInlineSnapshot(`
-    [
-      {
-        "name": "evolu_version",
-        "rows": [
-          {
-            "protocolVersion": 0,
-          },
-        ],
-      },
-      {
-        "name": "evolu_config",
-        "rows": [
-          {
-            "appOwnerEncryptionKey": uint8:[91,241,76,125,158,117,227,125,230,50,87,204,167,80,56,233,236,32,119,114,3,133,11,114,245,76,230,8,123,187,158,115],
-            "appOwnerId": "StbvdTPxk80z0cNVwDJg6g",
-            "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
-            "appOwnerWriteKey": uint8:[109,96,75,228,41,186,7,162,141,92,37,209,56,226,201,91],
-            "clock": "1970-01-01T00:00:00.001Z-0001-80ebbce6ff52c923",
-          },
-        ],
-      },
-      {
-        "name": "evolu_history",
-        "rows": [
-          {
-            "column": "createdAt",
-            "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
-            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
-            "table": "testTable",
-            "timestamp": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
-            "value": "1970-01-01T00:00:00.001Z",
-          },
-          {
-            "column": "name",
-            "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
-            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
-            "table": "testTable",
-            "timestamp": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
-            "value": "sync data",
-          },
-          {
-            "column": "name",
-            "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
-            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
-            "table": "testTable",
-            "timestamp": uint8:[0,0,0,0,0,1,0,1,128,235,188,230,255,82,201,35],
-            "value": "updated data",
-          },
-        ],
-      },
-      {
-        "name": "testTable",
-        "rows": [
-          {
-            "createdAt": "1970-01-01T00:00:00.001Z",
-            "id": "vrsFUEINHwzXISNe_H15dg",
-            "isDeleted": null,
-            "name": "updated data",
-            "updatedAt": "1970-01-01T00:00:00.001Z",
-          },
-        ],
-      },
-      {
-        "name": "_localTable",
-        "rows": [],
-      },
-      {
-        "name": "evolu_timestamp",
-        "rows": [
-          {
-            "c": 1,
-            "h1": 129512733105875,
-            "h2": 267434249476759,
-            "l": 2,
-            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
-            "t": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
-          },
-          {
-            "c": 1,
-            "h1": 112724284071995,
-            "h2": 221257483641481,
-            "l": 1,
-            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
-            "t": uint8:[0,0,0,0,0,1,0,1,128,235,188,230,255,82,201,35],
-          },
-        ],
-      },
-    ]
-  `);
+          [
+            {
+              "name": "evolu_version",
+              "rows": [
+                {
+                  "protocolVersion": 0,
+                },
+              ],
+            },
+            {
+              "name": "evolu_config",
+              "rows": [
+                {
+                  "appOwnerEncryptionKey": uint8:[91,241,76,125,158,117,227,125,230,50,87,204,167,80,56,233,236,32,119,114,3,133,11,114,245,76,230,8,123,187,158,115],
+                  "appOwnerId": "StbvdTPxk80z0cNVwDJg6g",
+                  "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
+                  "appOwnerWriteKey": uint8:[109,96,75,228,41,186,7,162,141,92,37,209,56,226,201,91],
+                  "clock": "1970-01-01T00:00:00.001Z-0001-80ebbce6ff52c923",
+                },
+              ],
+            },
+            {
+              "name": "evolu_history",
+              "rows": [
+                {
+                  "column": "createdAt",
+                  "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
+                  "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
+                  "table": "testTable",
+                  "timestamp": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
+                  "value": "1970-01-01T00:00:00.001Z",
+                },
+                {
+                  "column": "name",
+                  "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
+                  "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
+                  "table": "testTable",
+                  "timestamp": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
+                  "value": "sync data",
+                },
+                {
+                  "column": "name",
+                  "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
+                  "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
+                  "table": "testTable",
+                  "timestamp": uint8:[0,0,0,0,0,1,0,1,128,235,188,230,255,82,201,35],
+                  "value": "updated data",
+                },
+              ],
+            },
+            {
+              "name": "evolu_timestamp",
+              "rows": [
+                {
+                  "c": 1,
+                  "h1": 129512733105875,
+                  "h2": 267434249476759,
+                  "l": 2,
+                  "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
+                  "t": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
+                },
+                {
+                  "c": 1,
+                  "h1": 112724284071995,
+                  "h2": 221257483641481,
+                  "l": 1,
+                  "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
+                  "t": uint8:[0,0,0,0,0,1,0,1,128,235,188,230,255,82,201,35],
+                },
+              ],
+            },
+            {
+              "name": "evolu_usage",
+              "rows": [],
+            },
+            {
+              "name": "testTable",
+              "rows": [
+                {
+                  "createdAt": "1970-01-01T00:00:00.001Z",
+                  "id": "vrsFUEINHwzXISNe_H15dg",
+                  "isDeleted": null,
+                  "name": "updated data",
+                  "updatedAt": "1970-01-01T00:00:00.001Z",
+                },
+              ],
+            },
+            {
+              "name": "_localTable",
+              "rows": [],
+            },
+          ]
+        `);
 
   expect(workerOutput.splice(0)).toMatchInlineSnapshot(`
     [
@@ -838,111 +869,115 @@ test("sync mutations", async () => {
 
   // Check that record is now marked as deleted in sync tables
   expect(getDbSnapshot({ sqlite }).tables).toMatchInlineSnapshot(`
-    [
-      {
-        "name": "evolu_version",
-        "rows": [
-          {
-            "protocolVersion": 0,
-          },
-        ],
-      },
-      {
-        "name": "evolu_config",
-        "rows": [
-          {
-            "appOwnerEncryptionKey": uint8:[91,241,76,125,158,117,227,125,230,50,87,204,167,80,56,233,236,32,119,114,3,133,11,114,245,76,230,8,123,187,158,115],
-            "appOwnerId": "StbvdTPxk80z0cNVwDJg6g",
-            "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
-            "appOwnerWriteKey": uint8:[109,96,75,228,41,186,7,162,141,92,37,209,56,226,201,91],
-            "clock": "1970-01-01T00:00:00.001Z-0002-80ebbce6ff52c923",
-          },
-        ],
-      },
-      {
-        "name": "evolu_history",
-        "rows": [
-          {
-            "column": "createdAt",
-            "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
-            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
-            "table": "testTable",
-            "timestamp": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
-            "value": "1970-01-01T00:00:00.001Z",
-          },
-          {
-            "column": "name",
-            "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
-            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
-            "table": "testTable",
-            "timestamp": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
-            "value": "sync data",
-          },
-          {
-            "column": "name",
-            "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
-            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
-            "table": "testTable",
-            "timestamp": uint8:[0,0,0,0,0,1,0,1,128,235,188,230,255,82,201,35],
-            "value": "updated data",
-          },
-          {
-            "column": "isDeleted",
-            "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
-            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
-            "table": "testTable",
-            "timestamp": uint8:[0,0,0,0,0,1,0,2,128,235,188,230,255,82,201,35],
-            "value": 1,
-          },
-        ],
-      },
-      {
-        "name": "testTable",
-        "rows": [
-          {
-            "createdAt": "1970-01-01T00:00:00.001Z",
-            "id": "vrsFUEINHwzXISNe_H15dg",
-            "isDeleted": 1,
-            "name": "updated data",
-            "updatedAt": "1970-01-01T00:00:00.001Z",
-          },
-        ],
-      },
-      {
-        "name": "_localTable",
-        "rows": [],
-      },
-      {
-        "name": "evolu_timestamp",
-        "rows": [
-          {
-            "c": 1,
-            "h1": 129512733105875,
-            "h2": 267434249476759,
-            "l": 2,
-            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
-            "t": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
-          },
-          {
-            "c": 1,
-            "h1": 112724284071995,
-            "h2": 221257483641481,
-            "l": 1,
-            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
-            "t": uint8:[0,0,0,0,0,1,0,1,128,235,188,230,255,82,201,35],
-          },
-          {
-            "c": 1,
-            "h1": 16701667325350,
-            "h2": 194980779631109,
-            "l": 1,
-            "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
-            "t": uint8:[0,0,0,0,0,1,0,2,128,235,188,230,255,82,201,35],
-          },
-        ],
-      },
-    ]
-  `);
+              [
+                {
+                  "name": "evolu_version",
+                  "rows": [
+                    {
+                      "protocolVersion": 0,
+                    },
+                  ],
+                },
+                {
+                  "name": "evolu_config",
+                  "rows": [
+                    {
+                      "appOwnerEncryptionKey": uint8:[91,241,76,125,158,117,227,125,230,50,87,204,167,80,56,233,236,32,119,114,3,133,11,114,245,76,230,8,123,187,158,115],
+                      "appOwnerId": "StbvdTPxk80z0cNVwDJg6g",
+                      "appOwnerMnemonic": "call brass keen rough true spy dream robot useless ignore anxiety balance chair start flame isolate coin disagree inmate enroll sea impose change decorate",
+                      "appOwnerWriteKey": uint8:[109,96,75,228,41,186,7,162,141,92,37,209,56,226,201,91],
+                      "clock": "1970-01-01T00:00:00.001Z-0002-80ebbce6ff52c923",
+                    },
+                  ],
+                },
+                {
+                  "name": "evolu_history",
+                  "rows": [
+                    {
+                      "column": "createdAt",
+                      "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
+                      "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
+                      "table": "testTable",
+                      "timestamp": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
+                      "value": "1970-01-01T00:00:00.001Z",
+                    },
+                    {
+                      "column": "name",
+                      "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
+                      "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
+                      "table": "testTable",
+                      "timestamp": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
+                      "value": "sync data",
+                    },
+                    {
+                      "column": "name",
+                      "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
+                      "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
+                      "table": "testTable",
+                      "timestamp": uint8:[0,0,0,0,0,1,0,1,128,235,188,230,255,82,201,35],
+                      "value": "updated data",
+                    },
+                    {
+                      "column": "isDeleted",
+                      "id": uint8:[190,187,5,80,66,13,31,12,215,33,35,94,252,125,121,118],
+                      "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
+                      "table": "testTable",
+                      "timestamp": uint8:[0,0,0,0,0,1,0,2,128,235,188,230,255,82,201,35],
+                      "value": 1,
+                    },
+                  ],
+                },
+                {
+                  "name": "evolu_timestamp",
+                  "rows": [
+                    {
+                      "c": 1,
+                      "h1": 129512733105875,
+                      "h2": 267434249476759,
+                      "l": 2,
+                      "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
+                      "t": uint8:[0,0,0,0,0,1,0,0,128,235,188,230,255,82,201,35],
+                    },
+                    {
+                      "c": 1,
+                      "h1": 112724284071995,
+                      "h2": 221257483641481,
+                      "l": 1,
+                      "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
+                      "t": uint8:[0,0,0,0,0,1,0,1,128,235,188,230,255,82,201,35],
+                    },
+                    {
+                      "c": 1,
+                      "h1": 16701667325350,
+                      "h2": 194980779631109,
+                      "l": 1,
+                      "ownerId": uint8:[74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234],
+                      "t": uint8:[0,0,0,0,0,1,0,2,128,235,188,230,255,82,201,35],
+                    },
+                  ],
+                },
+                {
+                  "name": "evolu_usage",
+                  "rows": [],
+                },
+                {
+                  "name": "testTable",
+                  "rows": [
+                    {
+                      "createdAt": "1970-01-01T00:00:00.001Z",
+                      "id": "vrsFUEINHwzXISNe_H15dg",
+                      "isDeleted": 1,
+                      "name": "updated data",
+                      "updatedAt": "1970-01-01T00:00:00.001Z",
+                    },
+                  ],
+                },
+                {
+                  "name": "_localTable",
+                  "rows": [],
+                },
+              ]
+            `);
 
   expect(workerOutput.splice(0)).toMatchInlineSnapshot(`
     [
@@ -1037,11 +1072,11 @@ describe("last-write-wins for received messages", () => {
   const applyMessagesAndReceiveBroadcasts = async (
     messages: ReadonlyArray<ProtocolMessage>,
   ): Promise<{ transports: ReadonlyArray<TestWebSocket>; sqlite: Sqlite }> => {
-    const storageDep = await createTestRelayStorageDep();
+    const deps = await testCreateRelayStorageAndSqliteDeps();
     const broadcasts: Array<ProtocolMessage> = [];
 
     for (const message of messages) {
-      await applyProtocolMessageAsRelay(storageDep)(message, {
+      await applyProtocolMessageAsRelay(deps)(message, {
         broadcast: (_ownerId, message) => {
           broadcasts.push(message);
         },

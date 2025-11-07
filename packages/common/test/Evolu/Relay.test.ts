@@ -1,38 +1,19 @@
 import { expect, test } from "vitest";
-import { createRelaySqliteStorage } from "../../src/Evolu/Relay.js";
 import {
   EncryptedCrdtMessage,
   EncryptedDbChange,
 } from "../../src/Evolu/Storage.js";
-import { constVoid } from "../../src/Function.js";
 import { sql, timestampBytesToTimestamp } from "../../src/index.js";
-import { getOrThrow } from "../../src/Result.js";
 import {
-  testCreateSqlite,
-  testCreateTimingSafeEqual,
+  testCreateRelayStorageAndSqliteDeps,
   testOwner,
   testOwner2,
   testOwnerIdBytes,
-  testRandom,
 } from "../_deps.js";
 import { testTimestampsAsc } from "./_fixtures.js";
 
-const createTestRelayStorage = async () => {
-  const sqlite = await testCreateSqlite();
-  const storage = getOrThrow(
-    createRelaySqliteStorage({
-      sqlite,
-      random: testRandom,
-      timingSafeEqual: testCreateTimingSafeEqual(),
-    })({
-      onStorageError: constVoid,
-    }),
-  );
-  return [storage, sqlite] as const;
-};
-
 test("validateWriteKey", async () => {
-  const [storage] = await createTestRelayStorage();
+  const { storage } = await testCreateRelayStorageAndSqliteDeps();
 
   const writeKey = testOwner.writeKey;
   const differentWriteKey = testOwner2.writeKey;
@@ -51,7 +32,7 @@ test("validateWriteKey", async () => {
 });
 
 test("deleteOwner", async () => {
-  const [storage, sqlite] = await createTestRelayStorage();
+  const { storage, sqlite } = await testCreateRelayStorageAndSqliteDeps();
 
   storage.setWriteKey(testOwnerIdBytes, testOwner.writeKey);
 

@@ -22,9 +22,6 @@ import { assert } from "./Assert.js";
  * - `deleteKey` and `deleteValue` are O(d) where d is the number of associated
  *   values / keys (the degree). This is optimal because every associated pair
  *   must be touched once.
- * - In the Relay use case a socket (value) typically has only dozens of owners
- *   (degree small), and connection closes (triggering deleteValue) are
- *   relatively infrequent, so O(d) is acceptable.
  *
  * Object identity:
  *

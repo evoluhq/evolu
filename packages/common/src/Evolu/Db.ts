@@ -31,12 +31,12 @@ import {
   AppOwner,
   createAppOwner,
   createOwnerSecret,
-  createWebSocketTransportConfig,
+  createOwnerWebSocketTransport,
   mnemonicToOwnerSecret,
   OwnerEncryptionKey,
   OwnerId,
+  OwnerTransport,
   OwnerWriteKey,
-  TransportConfig,
 } from "./Owner.js";
 import { ProtocolError, protocolVersion } from "./Protocol.js";
 import {
@@ -52,6 +52,7 @@ import {
   getDbSchema,
   MutationChange,
 } from "./Schema.js";
+import { createBaseSqliteStorageTables } from "./Storage.js";
 import {
   applyLocalOnlyChange,
   Clock,
@@ -107,7 +108,7 @@ export interface DbConfig extends ConsoleConfig, TimestampConfig {
    * added and removed for any owner (including {@link AppOwner}) via
    * {@link Evolu#useOwner}.
    *
-   * Use {@link createWebSocketTransportConfig} to create WebSocket transport
+   * Use {@link createOwnerWebSocketTransport} to create WebSocket transport
    * configurations with proper URL formatting and {@link OwnerId} inclusion. The
    * {@link OwnerId} in the URL enables relay authentication, allowing relay
    * servers to control access (e.g., for paid tiers or private instances).
@@ -134,16 +135,16 @@ export interface DbConfig extends ConsoleConfig, TimestampConfig {
    * // to work offline before the app connects
    * transports: [];
    *
-   * // Using createWebSocketTransportConfig helper for relay authentication
+   * // Using createOwnerWebSocketTransport helper for relay authentication
    * transports: [
-   *   createWebSocketTransportConfig({
-   *     relayUrl: "ws://localhost:4000",
+   *   createOwnerWebSocketTransport({
+   *     url: "ws://localhost:4000",
    *     ownerId,
    *   }),
    * ];
    * ```
    */
-  readonly transports: ReadonlyArray<TransportConfig>;
+  readonly transports: ReadonlyArray<OwnerTransport>;
 
   /**
    * External AppOwner to use when creating Evolu instance. Use this when you
@@ -572,6 +573,9 @@ const initializeDb =
       const result = deps.sqlite.exec(query);
       if (!result.ok) return result;
     }
+
+    const result = createBaseSqliteStorageTables(deps);
+    if (!result.ok) return result;
 
     return ok();
   };

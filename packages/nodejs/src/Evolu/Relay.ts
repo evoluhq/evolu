@@ -16,13 +16,16 @@ import {
 import {
   applyProtocolMessageAsRelay,
   ApplyProtocolMessageAsRelayOptions,
+  createBaseSqliteStorageTables,
   createRelayLogger,
   createRelaySqliteStorage,
+  createRelayStorageTables,
   defaultProtocolMessageMaxSize,
-  parseOwnerIdFromUrl,
+  parseOwnerIdFromOwnerWebSocketTransportUrl,
   Relay,
   RelayConfig,
 } from "@evolu/common/evolu";
+import { existsSync } from "fs";
 import { createServer } from "http";
 import { WebSocket, WebSocketServer } from "ws";
 import { createBetterSqliteDriver } from "../BetterSqliteDriver.js";
@@ -74,16 +77,24 @@ const createNodeJsRelayWithDeps =
     const log = createRelayLogger(deps);
     log.started(enableLogging, port);
 
-    const sqliteResult = await createSqlite(deps)(name);
-    if (!sqliteResult.ok) return sqliteResult;
-    const sqlite = sqliteResult.value;
+    const dbFileExists = existsSync(`${name}.db`);
 
-    const storageResult = createRelaySqliteStorage({ ...deps, sqlite })({
+    const sqlite = await createSqlite(deps)(name);
+    if (!sqlite.ok) return sqlite;
+
+    const depsWithSqlite = { ...deps, sqlite: sqlite.value };
+
+    if (!dbFileExists) {
+      const baseTables = createBaseSqliteStorageTables(depsWithSqlite);
+      if (!baseTables.ok) return baseTables;
+
+      const relayTables = createRelayStorageTables(depsWithSqlite);
+      if (!relayTables.ok) return relayTables;
+    }
+
+    const storage = createRelaySqliteStorage(depsWithSqlite)({
       onStorageError: log.storageError,
     });
-
-    if (!storageResult.ok) return storageResult;
-    const storage = storageResult.value;
 
     const server = createServer();
     const wss = new WebSocketServer({
@@ -108,7 +119,9 @@ const createNodeJsRelayWithDeps =
         return;
       }
 
-      const ownerId = parseOwnerIdFromUrl(request.url);
+      const ownerId = parseOwnerIdFromOwnerWebSocketTransportUrl(
+        request.url ?? "",
+      );
       if (!ownerId) {
         log.invalidOrMissingOwnerIdInUrl(request.url);
         socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
@@ -221,7 +234,7 @@ const createNodeJsRelayWithDeps =
       [Symbol.dispose]: () => {
         if (isDisposed) return;
         isDisposed = true;
-        sqlite[Symbol.dispose]();
+        sqlite.value[Symbol.dispose]();
         dispose();
       },
     };

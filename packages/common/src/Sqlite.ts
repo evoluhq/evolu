@@ -1,9 +1,18 @@
 import { Brand } from "./Brand.js";
+import { createLruCache } from "./Cache.js";
 import { ConsoleDep } from "./Console.js";
 import { EncryptionKey } from "./Crypto.js";
 import { createTransferableError, TransferableError } from "./Error.js";
 import { err, ok, Result, tryAsync, trySync } from "./Result.js";
-import { Null, Number, SimpleName, String, Uint8Array, union } from "./Type.js";
+import {
+  Null,
+  Number,
+  PositiveInt,
+  SimpleName,
+  String,
+  Uint8Array,
+  union,
+} from "./Type.js";
 import { IntentionalNever, Predicate } from "./Types.js";
 
 /**
@@ -294,7 +303,38 @@ export interface RawSql {
 
 export type SqlTemplateParam = SqliteValue | SqlIdentifier | RawSql;
 
-/** TODO: Docs. */
+/**
+ * Creates a safe SQL query using a tagged template literal.
+ *
+ * Parameters are automatically escaped and bound as SQLite values. Use
+ * `sql.identifier` for column/table names and `sql.raw` for unescaped SQL.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const id = 42;
+ * const name = "Alice";
+ *
+ * const result = sqlite.exec(sql`
+ *   select *
+ *   from users
+ *   where id = ${id} and name = ${name};
+ * `);
+ *
+ * // For identifiers
+ * const tableName = "users";
+ * sqlite.exec(sql`
+ *   create table ${sql.identifier(tableName)} (
+ *     "id" text primary key,
+ *     "name" text not null
+ *   );
+ * `);
+ *
+ * // For raw SQL (use with caution)
+ * const orderBy = "created_at desc";
+ * sqlite.exec(sql`select * from users order by ${sql.raw(orderBy)};`);
+ * ```
+ */
 export const sql = (
   strings: TemplateStringsArray,
   ...parameters: Array<SqlTemplateParam>
@@ -342,6 +382,29 @@ sql.prepared = (
   return { ...query, options: { prepare: true } };
 };
 
+/**
+ * Checks if a SQL string contains mutation keywords (insert, update, delete,
+ * etc.). Results are cached for performance.
+ */
+export const isSqlMutation: Predicate<string> = (sql) => {
+  /**
+   * Without cache, "insert 1_000_000" Storage test dropped from 57742
+   * inserts/sec to 34k. Regex we used was fast, but CodeQL flagged it as a
+   * potential ReDoS vulnerability, so manual comment removal was the only
+   * option. LRU cache restores performance.
+   */
+  const cached = isSqlMutationCache.get(sql);
+  if (cached !== undefined) return cached;
+
+  const result = isSqlMutationRegEx.test(removeSqlComments(sql));
+  isSqlMutationCache.set(sql, result);
+  return result;
+};
+
+const isSqlMutationCache = createLruCache<string, boolean>(
+  PositiveInt.orThrow(10_000),
+);
+
 const isSqlMutationRegEx = new RegExp(
   `\\b(${[
     "alter",
@@ -365,6 +428,9 @@ const isSqlMutationRegEx = new RegExp(
  * ReDoS vulnerabilities.
  */
 const removeSqlComments = (sql: string): string => {
+  // Fast path: if there are no comments, return the original string
+  if (!sql.includes("--")) return sql;
+
   let result = "";
   let i = 0;
 
@@ -389,9 +455,6 @@ const removeSqlComments = (sql: string): string => {
 
   return result;
 };
-
-export const isSqlMutation: Predicate<string> = (sql) =>
-  isSqlMutationRegEx.test(removeSqlComments(sql));
 
 export interface SqliteQueryPlanRow {
   id: number;

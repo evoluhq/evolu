@@ -4,7 +4,6 @@
  * @module
  */
 
-import { assertNoErrorInCatch } from "./Assert.js";
 import { constVoid } from "./Function.js";
 import { err, ok, Result } from "./Result.js";
 import { retry, RetryError, RetryOptions } from "./Task.js";
@@ -192,7 +191,7 @@ export const createWebSocket: CreateWebSocket = (
    * - Is rejected when a connection is closed.
    * - Is resolved when WebSocket is disposed().
    */
-  retry(
+  void retry(
     {
       ...defaultRetryOptions,
       ...retryOptions,
@@ -222,6 +221,7 @@ export const createWebSocket: CreateWebSocket = (
             ? { type: "WebSocketConnectionError", event }
             : { type: "WebSocketConnectError", event };
           onError?.(error);
+
           // Trigger reconnect only on WebSocketConnectError.
           if (error.type === "WebSocketConnectError") {
             resolve(err(error));
@@ -237,14 +237,10 @@ export const createWebSocket: CreateWebSocket = (
           onMessage?.(event.data as string | ArrayBuffer | Blob);
         };
       }),
-  )(reconnectController)
-    .then((result) => {
-      if (result.ok || result.error.type === "AbortError") return;
-      onError?.(result.error as WebSocketError);
-    })
-    .catch((error: unknown) => {
-      assertNoErrorInCatch("WebSocket retry", error);
-    });
+  )(reconnectController).then((result) => {
+    if (result.ok || result.error.type === "AbortError") return;
+    onError?.(result.error as WebSocketError);
+  });
 
   return {
     send: (data) => {

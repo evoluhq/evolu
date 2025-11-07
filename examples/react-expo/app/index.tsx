@@ -1,13 +1,13 @@
+import Alert from "@blazejkustra/react-native-alert";
+import type { Evolu as EvoluType } from "@evolu/common";
 import * as Evolu from "@evolu/common";
 import { createUseEvolu, EvoluProvider, useQuery } from "@evolu/react";
+import { EvoluIdenticon } from "@evolu/react-native";
 import {
   evoluReactNativeDeps,
   localAuth,
-  EvoluAvatar,
 } from "@evolu/react-native/expo-sqlite";
 import { FC, Suspense, use, useEffect, useMemo, useState } from "react";
-import type { Evolu as EvoluType } from "@evolu/common";
-
 import {
   ActivityIndicator,
   ScrollView,
@@ -18,7 +18,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Alert from "@blazejkustra/react-native-alert";
 
 // Namespace for the current app (scopes databases, passkeys, etc.)
 const service = "rn-expo";
@@ -97,7 +96,7 @@ export default function Index(): React.ReactNode {
   );
 }
 
-function EvoluDemo({
+const EvoluDemo = ({
   evolu,
   ownerIds,
   authResult,
@@ -105,7 +104,7 @@ function EvoluDemo({
   evolu: EvoluType<typeof Schema>;
   ownerIds: Array<Evolu.AuthList> | null;
   authResult: Evolu.AuthResult | null;
-}): React.ReactNode {
+}): React.ReactNode => {
   const useEvolu = createUseEvolu(evolu);
 
   // Evolu uses Kysely for type-safe SQL (https://kysely.dev/).
@@ -501,7 +500,7 @@ function EvoluDemo({
     return (
       <View style={styles.ownerProfileRow}>
         <View style={styles.ownerInfo}>
-          <EvoluAvatar id={ownerId} />
+          <EvoluIdenticon id={ownerId} />
           <View style={styles.ownerDetails}>
             <Text style={styles.ownerUsername}>{username}</Text>
             <Text
@@ -577,7 +576,7 @@ function EvoluDemo({
       </ScrollView>
     </SafeAreaView>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {

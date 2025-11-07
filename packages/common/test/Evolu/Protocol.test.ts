@@ -58,8 +58,8 @@ import { err, getOrThrow } from "../../src/Result.js";
 import { SqliteValue } from "../../src/Sqlite.js";
 import { dateToDateIso, NonNegativeInt } from "../../src/Type.js";
 import {
-  createTestRelayStorageDep,
   testCreateId,
+  testCreateRelayStorageAndSqliteDeps,
   testDeps,
   testOwner,
   testOwnerIdBytes,
@@ -582,11 +582,11 @@ describe("createProtocolMessageBuffer", () => {
 });
 
 test("createProtocolMessageForSync", async () => {
-  const storageDep = await createTestRelayStorageDep();
+  const deps = await testCreateRelayStorageAndSqliteDeps();
 
   // Empty DB: version, ownerId, 0 messages, one empty TimestampsRange.
   expect(
-    createProtocolMessageForSync(storageDep)(testOwner.id),
+    createProtocolMessageForSync(deps)(testOwner.id),
   ).toMatchInlineSnapshot(
     `uint8:[0,74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234,0,0,0,0,1,2,0]`,
   );
@@ -601,11 +601,11 @@ test("createProtocolMessageForSync", async () => {
     }),
   );
   assertNonEmptyArray(messages31);
-  await storageDep.storage.writeMessages(testOwnerIdBytes, messages31);
+  await deps.storage.writeMessages(testOwnerIdBytes, messages31);
 
   // DB with 31 timestamps: version, ownerId, 0 messages, one full (31) TimestampsRange.
   expect(
-    createProtocolMessageForSync(storageDep)(testOwner.id),
+    createProtocolMessageForSync(deps)(testOwner.id),
   ).toMatchInlineSnapshot(
     `uint8:[0,74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234,0,0,0,0,1,2,31,0,163,205,139,2,152,222,222,3,141,195,32,138,221,210,1,216,167,200,1,243,155,45,128,152,244,5,167,136,182,1,199,139,225,5,131,234,154,8,0,150,132,58,233,134,161,1,222,244,220,1,250,141,170,3,248,167,204,1,0,161,234,59,0,192,227,115,181,188,169,1,224,169,247,4,205,177,37,143,161,242,1,137,231,180,2,161,244,87,235,207,53,133,244,180,1,142,243,223,10,158,141,113,0,11,1,1,0,5,1,1,0,1,1,1,0,11,0,0,0,0,0,0,0,0,1,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,11,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,6,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,6,153,201,144,40,214,99,106,145,1]`,
   );
@@ -620,11 +620,11 @@ test("createProtocolMessageForSync", async () => {
     }),
   );
   assertNonEmptyArray(message32);
-  await storageDep.storage.writeMessages(testOwnerIdBytes, message32);
+  await deps.storage.writeMessages(testOwnerIdBytes, message32);
 
   // DB with 32 timestamps: version, ownerId, 0 messages, 16x FingerprintRange.
   expect(
-    createProtocolMessageForSync(storageDep)(testOwner.id),
+    createProtocolMessageForSync(deps)(testOwner.id),
   ).toMatchInlineSnapshot(
     `uint8:[0,74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234,0,0,0,0,16,187,171,234,5,151,160,243,1,203,195,245,1,167,160,170,7,202,245,251,13,150,132,58,199,251,253,2,242,181,246,4,161,234,59,192,227,115,149,230,160,6,220,210,151,2,170,219,140,3,240,195,234,1,172,128,209,11,0,15,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,5,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,7,153,201,144,40,214,99,106,145,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,79,199,221,49,166,129,34,35,99,27,109,221,72,203,113,173,13,174,108,244,220,53,10,79,91,208,39,170,201,18,73,253,152,51,99,124,0,152,50,246,239,212,6,13,80,19,126,71,76,18,73,200,62,200,42,99,188,63,73,207,154,238,98,14,224,33,103,255,188,202,60,84,33,248,184,78,240,231,221,198,98,244,79,237,208,100,110,251,209,4,221,129,70,179,162,173,26,9,38,199,115,85,231,208,141,13,135,35,144,151,124,233,151,6,119,79,51,128,236,157,32,91,160,104,143,239,236,16,148,246,215,168,225,200,73,253,182,117,53,113,24,52,165,196,73,55,66,212,228,27,187,1,71,143,234,75,93,129,254,145,224,183,203,200,8,205,21,142,6,139,145,237,12,30,146,233,222,152,203,251,132,199,125,55,190,43,113,63,180,29,179,161]`,
   );
@@ -901,8 +901,8 @@ describe("E2E sync", () => {
   assertNonEmptyArray(messages);
 
   const createStorages = async () => {
-    const clientStorageDep = await createTestRelayStorageDep();
-    const relayStorageDep = await createTestRelayStorageDep();
+    const clientStorageDep = await testCreateRelayStorageAndSqliteDeps();
+    const relayStorageDep = await testCreateRelayStorageAndSqliteDeps();
     return [clientStorageDep.storage, relayStorageDep.storage];
   };
 
@@ -1220,7 +1220,7 @@ describe("E2E sync", () => {
       1000 as ProtocolMessageMaxSize,
     );
 
-    const relayStorageDep = await createTestRelayStorageDep();
+    const relayStorageDep = await testCreateRelayStorageAndSqliteDeps();
 
     const relayResult =
       await applyProtocolMessageAsRelay(relayStorageDep)(protocolMessage);
