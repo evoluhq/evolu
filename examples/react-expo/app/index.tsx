@@ -1,3 +1,4 @@
+import Alert from "@blazejkustra/react-native-alert";
 import type { Evolu as EvoluType } from "@evolu/common";
 import * as Evolu from "@evolu/common";
 import { createUseEvolu, EvoluProvider, useQuery } from "@evolu/react";
@@ -7,8 +8,6 @@ import {
   localAuth,
 } from "@evolu/react-native/expo-sqlite";
 import { FC, Suspense, use, useEffect, useMemo, useState } from "react";
-
-import Alert from "@blazejkustra/react-native-alert";
 import {
   ActivityIndicator,
   ScrollView,
@@ -97,7 +96,7 @@ export default function Index(): React.ReactNode {
   );
 }
 
-function EvoluDemo({
+const EvoluDemo = ({
   evolu,
   ownerIds,
   authResult,
@@ -105,7 +104,7 @@ function EvoluDemo({
   evolu: EvoluType<typeof Schema>;
   ownerIds: Array<Evolu.AuthList> | null;
   authResult: Evolu.AuthResult | null;
-}): React.ReactNode {
+}): React.ReactNode => {
   const useEvolu = createUseEvolu(evolu);
 
   // Evolu uses Kysely for type-safe SQL (https://kysely.dev/).
@@ -577,7 +576,7 @@ function EvoluDemo({
       </ScrollView>
     </SafeAreaView>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
