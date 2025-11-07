@@ -1,5 +1,68 @@
 # @evolu/common
 
+## 6.0.1-preview.26
+
+### Patch Changes
+
+- f4a8866: Add owner usage tracking and storage improvements
+
+  ### Breaking Changes
+  - Renamed `TransportConfig` to `OwnerTransport` and `WebSocketTransportConfig` to `OwnerWebSocketTransport` for clearer naming
+  - Renamed `SqliteStorageBase` to `BaseSqliteStorage` and `createSqliteStorageBase` to `createBaseSqliteStorage`
+  - Extracted storage table creation into separate functions: `createBaseSqliteStorageTables` and `createRelayStorageTables` to support serverless deployments where table setup must be separate from storage operations
+  - Removed `assertNoErrorInCatch` - it was unnecessary
+
+  ### Features
+  - **Owner usage tracking** (in progress): Added `evolu_usage` table and `OwnerUsage` interface to track data consumption metrics per owner (stored bytes, received bytes, sent bytes, first/last timestamps). Table structure is in place but not yet fully implemented
+  - **Timestamp privacy documentation**: Added privacy considerations explaining that timestamps are metadata visible to relays, with guidance on implementing local write queues for maximum privacy
+  - **React Native polyfills**: Added polyfills for `AbortSignal.any()` and `AbortSignal.timeout()` to support Task cancellation on React Native platforms that don't yet implement these APIs
+
+  ### Performance
+  - **isSqlMutation optimization**: Added LRU cache (10,000 entries) to `isSqlMutation` function, restoring Timestamp insert benchmark from 34k back to 57k inserts/sec.
+
+- 02e8aa0: Evolu identicons
+
+  Added `createIdenticon` function for generating visually distinct SVG identicons from Evolu `Id` (including branded IDs like `OwnerId`, etc.). For user avatars, visual identity markers, and differentiating entities in UI without storing images.
+
+  ### Features
+  - **Multiple styles**: Choose from 4 styles:
+    - `"github"` (default): 5×5 grid with horizontal mirroring, inspired by GitHub avatars
+    - `"quadrant"`: 2×2 color block grid with direct RGB mapping
+    - `"gradient"`: Diagonal stripe pattern with smooth color gradients
+    - `"sutnar"`: Ladislav Sutnar-inspired compositional design with adaptive colors
+  - **SVG output**: Returns SVG string that can be used directly
+
+  ### Example
+
+  ```ts
+  import { createIdenticon } from "@evolu/common";
+
+  // Basic usage with default GitHub style
+  const svg = createIdenticon(userId);
+
+  const quadrant = createIdenticon(ownerId, "quadrant");
+  const gradient = createIdenticon(postId, "gradient");
+  const sutnar = createIdenticon(teamId, "sutnar");
+  ```
+
+- 31d0d21: Add Cache module with generic cache interface and LRU cache implementation
+  - New `Cache<K, V>` interface with `has`, `get`, `set`, `delete` methods
+  - New `createLruCache` factory function for creating LRU caches with configurable capacity
+  - Keys are compared by reference (standard Map semantics)
+  - LRU cache automatically evicts least recently used entries when capacity is reached
+  - Both `get` and `set` operations update access order
+  - Exposes readonly `map` property for iteration and inspection
+
+  Example:
+
+  ```ts
+  const cache = createLruCache<string, number>(2);
+  cache.set("a", 1);
+  cache.set("b", 2);
+  cache.set("c", 3); // Evicts "a"
+  cache.has("a"); // false
+  ```
+
 ## 6.0.1-preview.25
 
 ### Patch Changes
