@@ -1765,7 +1765,7 @@ export const formatNegativeError = createTypeErrorFormatter<NegativeError>(
 );
 
 /**
- * Non-positive number (<= 0).
+ * Non-positive number (≤ 0).
  *
  * ### Example
  *
@@ -1794,7 +1794,7 @@ export const formatNonPositiveError =
   );
 
 /**
- * Non-negative number (>= 0).
+ * Non-negative number (≥ 0).
  *
  * ### Example
  *
