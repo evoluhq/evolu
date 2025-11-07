@@ -19,6 +19,11 @@
   "homepage": "https://evolu.dev",
   "type": "module",
   "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js",
+      "react-native": "./dist/index.js"
+    },
     "./expo-sqlite": {
       "types": "./dist/expo-sqlite.d.ts",
       "default": "./dist/expo-sqlite.js",
@@ -34,6 +39,9 @@
   },
   "typesVersions": {
     "*": {
+      ".": [
+        "./dist/index.d.ts"
+      ],
       "expo-sqlite": [
         "./dist/expo-sqlite.d.ts"
       ],

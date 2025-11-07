@@ -28,6 +28,7 @@
     "src/Evolu/Public.ts",
     "src/Evolu/Storage.ts",
     "src/Function.ts",
+    "src/Identicon.ts",
     "src/ManyToManyMap.ts",
     "src/Number.ts",
     "src/Object.ts",

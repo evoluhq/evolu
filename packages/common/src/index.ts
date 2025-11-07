@@ -11,6 +11,7 @@ export * from "./Eq.js";
 export * from "./Error.js";
 export * from "./Evolu/Public.js";
 export * from "./Function.js";
+export * from "./Identicon.js";
 export * from "./ManyToManyMap.js";
 export * from "./Number.js";
 export * from "./Object.js";

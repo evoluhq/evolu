@@ -1,6 +1,6 @@
 import * as Evolu from "@evolu/common";
 import { createUseEvolu, EvoluProvider, useQuery } from "@evolu/react";
-import { evoluReactWebDeps, EvoluAvatar, localAuth } from "@evolu/react-web";
+import { evoluReactWebDeps, EvoluIdenticon, localAuth } from "@evolu/react-web";
 import { IconEdit, IconTrash } from "@tabler/icons-react";
 import clsx from "clsx";
 import { FC, Suspense, use, useMemo, useState } from "react";
@@ -415,7 +415,7 @@ const OwnerProfile: FC<{
   return (
     <div className="flex justify-between gap-3">
       <div className="flex items-center gap-3">
-        <EvoluAvatar id={ownerId} />
+        <EvoluIdenticon id={ownerId} />
         <span className="text-sm font-medium text-gray-900">{username}</span>
         <span className="text-xs text-gray-500 italic">{ownerId}</span>
       </div>
