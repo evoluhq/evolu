@@ -1,6 +1,6 @@
 {
   "name": "@evolu/react-native",
-  "version": "12.0.1-preview.6",
+  "version": "12.0.1-preview.7",
   "description": "Evolu for React Native and Expo",
   "keywords": [
     "evolu",
@@ -60,6 +60,9 @@
     "build": "shx rm -rf dist && tsc",
     "clean": "shx rm -rf .turbo node_modules dist",
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
+  },
+  "dependencies": {
+    "blo": "^2.0.0"
   },
   "devDependencies": {
     "@evolu/common": "workspace:*",

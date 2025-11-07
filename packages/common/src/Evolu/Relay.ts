@@ -44,10 +44,14 @@ export interface RelayConfig extends ConsoleConfig {
    * this only controls relay access, not write permissions. Since all data is
    * encrypted on the relay, OwnerId exposure is safe.
    *
+   * # <<<<<<< HEAD
    * Owners specify which relays to connect to via {@link OwnerTransport}. In
-   * WebSocket-based implementations, this check occurs before accepting the
-   * connection, with the OwnerId typically extracted from the URL path (e.g.,
-   * `ws://localhost:4000/<ownerId>`).
+   *
+   * Owners specify which relays to connect to via `TransportConfig`. In
+   *
+   * > > > > > > > Origin/main WebSocket-based implementations, this check occurs before
+   * > > > > > > > accepting the connection, with the OwnerId typically extracted from the URL
+   * > > > > > > > path (e.g., `ws://localhost:4000/<ownerId>`).
    *
    * ### Example
    *

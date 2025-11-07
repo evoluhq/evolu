@@ -253,7 +253,7 @@ export interface Type<
    *
    * - When you need to convert a validation result to a nullable value
    * - When the error is not important and you just want the value or nothing
-   * - APIs that expect `T | null`
+   * - APIs that expect `T` or `null`
    *
    * ### Example
    *
@@ -370,7 +370,7 @@ export interface Type<
   readonly ParentError: ParentError;
 
   /**
-   * Error | ParentError
+   * Error / ParentError
    *
    * ### Example
    *
@@ -461,7 +461,7 @@ export type InferParentError<A extends AnyType> =
     : never;
 
 /**
- * Extracts all error types (Error | ParentError) from a {@link Type}.
+ * Extracts all error types (Error / ParentError) from a {@link Type}.
  *
  * @category Utilities
  */
