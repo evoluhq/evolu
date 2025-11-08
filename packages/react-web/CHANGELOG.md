@@ -1,5 +1,14 @@
 # @evolu/react-web
 
+## 1.0.1-preview.7
+
+### Patch Changes
+
+- 184b555: Move EvoluIdenticon to components
+- Updated dependencies [a957aa0]
+  - @evolu/common@6.0.1-preview.27
+  - @evolu/web@1.0.1-preview.7
+
 ## 1.0.1-preview.6
 
 ### Patch Changes
