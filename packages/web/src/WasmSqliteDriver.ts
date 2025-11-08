@@ -1,21 +1,28 @@
 import {
-  constVoid,
+  bytesToHex,
   createPreparedStatementsCache,
   CreateSqliteDriver,
   SqliteDriver,
   SqliteRow,
-  bytesToHex,
 } from "@evolu/common";
 import sqlite3InitModule, {
-  PreparedStatement,
   Database,
+  PreparedStatement,
 } from "@evolu/sqlite-wasm";
 
-// TODO: Do we still need that?
-// https://github.com/sqlite/sqlite-wasm/issues/62
 // @ts-expect-error Missing types.
 globalThis.sqlite3ApiConfig = {
-  warn: constVoid,
+  warn: (arg: unknown) => {
+    // Ignore irrelevant warning.
+    // https://github.com/sqlite/sqlite-wasm/issues/62
+    if (
+      typeof arg === "string" &&
+      arg.startsWith("Ignoring inability to install OPFS sqlite3_vfs")
+    )
+      return;
+    // eslint-disable-next-line no-console
+    console.warn(arg);
+  },
 };
 
 // Init ASAP.
