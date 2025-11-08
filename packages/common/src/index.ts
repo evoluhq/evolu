@@ -16,6 +16,7 @@ export * from "./ManyToManyMap.js";
 export * from "./Number.js";
 export * from "./Object.js";
 export * from "./Order.js";
+export * from "./Platform.js";
 export * from "./Random.js";
 export * from "./Ref.js";
 export * from "./Result.js";

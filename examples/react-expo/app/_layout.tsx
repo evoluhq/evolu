@@ -1,5 +1,5 @@
-// import "react-native-quick-base64";
 import { install } from "react-native-quick-crypto";
+
 install();
 
 import { Stack } from "expo-router";

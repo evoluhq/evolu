@@ -1,11 +1,10 @@
 import {
+  bytesToHex,
   createPreparedStatementsCache,
   CreateSqliteDriver,
   SqliteDriver,
   SqliteRow,
-  bytesToHex,
 } from "@evolu/common";
-
 import { openDatabaseSync, SQLiteStatement } from "expo-sqlite";
 
 export const createExpoSqliteDriver: CreateSqliteDriver = (name, options) => {

@@ -1,16 +1,23 @@
-import KVStore from "expo-sqlite/kv-store";
-import * as SecureStore from "expo-secure-store";
-import { AUTH_DEFAULT_OPTIONS } from "@evolu/common";
-
+import { CreateSqliteDriverDep, LocalAuth } from "@evolu/common";
+import { EvoluDeps, ReloadApp } from "@evolu/common/evolu";
+import * as Expo from "expo";
+import { createSharedEvoluDeps, createSharedLocalAuth } from "./shared.js";
 import type {
+  AccessControl,
   LocalAuthOptions,
   SecureStorage,
   SensitiveInfoItem,
   StorageMetadata,
-  AccessControl,
 } from "@evolu/common";
+import { localAuthDefaultOptions } from "@evolu/common";
+import * as SecureStore from "expo-secure-store";
+import KVStore from "expo-sqlite/kv-store";
 
-export const createSecureStore = (): SecureStorage => {
+const reloadApp: ReloadApp = () => {
+  void Expo.reloadAppAsync();
+};
+
+const createSecureStore = (): SecureStorage => {
   const store: SecureStorage = {
     setItem: async (key, value, options) => {
       const rnsiOpts = convertOptions(options);
@@ -98,17 +105,17 @@ function convertOptions(
   options?: LocalAuthOptions,
 ): SecureStore.SecureStoreOptions {
   const accessGroup =
-    options?.keychainGroup ?? AUTH_DEFAULT_OPTIONS.keychainGroup ?? "";
+    options?.keychainGroup ?? localAuthDefaultOptions.keychainGroup ?? "";
   const keychainService =
-    options?.service ?? AUTH_DEFAULT_OPTIONS.service ?? "";
+    options?.service ?? localAuthDefaultOptions.service ?? "";
   const keychainAccessible = convertKeychainAccessible(
     options?.accessControl ??
-      AUTH_DEFAULT_OPTIONS.accessControl ??
+      localAuthDefaultOptions.accessControl ??
       "biometryCurrentSet",
   );
   const authenticationPrompt =
     options?.authenticationPrompt?.title ??
-    AUTH_DEFAULT_OPTIONS.authenticationPrompt?.title ??
+    localAuthDefaultOptions.authenticationPrompt?.title ??
     "";
   return {
     accessGroup,
@@ -141,3 +148,15 @@ function convertKeychainAccessible(
       return SecureStore.AFTER_FIRST_UNLOCK;
   }
 }
+
+const localAuth = createSharedLocalAuth(createSecureStore());
+
+export const createExpoDeps = (
+  deps: CreateSqliteDriverDep,
+): { evoluReactNativeDeps: EvoluDeps; localAuth: LocalAuth } => ({
+  evoluReactNativeDeps: createSharedEvoluDeps({
+    ...deps,
+    reloadApp,
+  }),
+  localAuth,
+});

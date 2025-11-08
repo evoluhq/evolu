@@ -84,7 +84,7 @@ export const createLocalAuth = (
     id: OwnerId,
     options?: LocalAuthOptions,
   ): Promise<void> => {
-    await deps.secureStorage.setItem(AUTH_METAKEY_LAST_OWNER, id, {
+    await deps.secureStorage.setItem(localAuthMetakeyLastOwner, id, {
       ...buildAuthOptions(options),
       accessControl: "none",
     });
@@ -93,7 +93,7 @@ export const createLocalAuth = (
   const getLastOwnerId = async (
     options?: LocalAuthOptions,
   ): Promise<OwnerId | undefined> => {
-    const item = await deps.secureStorage.getItem(AUTH_METAKEY_LAST_OWNER, {
+    const item = await deps.secureStorage.getItem(localAuthMetakeyLastOwner, {
       ...buildAuthOptions(options),
       accessControl: "none",
     });
@@ -103,7 +103,7 @@ export const createLocalAuth = (
   const getOwnerNames = async (
     options?: LocalAuthOptions,
   ): Promise<Record<OwnerId, string>> => {
-    const item = await deps.secureStorage.getItem(AUTH_METAKEY_OWNER_NAMES, {
+    const item = await deps.secureStorage.getItem(localAuthMetakeyOwnerNames, {
       ...buildAuthOptions(options),
       accessControl: "none",
     });
@@ -122,7 +122,7 @@ export const createLocalAuth = (
     const names = await getOwnerNames(options);
     names[id] = username;
     await deps.secureStorage.setItem(
-      AUTH_METAKEY_OWNER_NAMES,
+      localAuthMetakeyOwnerNames,
       JSON.stringify(names),
       {
         ...buildAuthOptions(options),
@@ -137,7 +137,7 @@ export const createLocalAuth = (
   ): Promise<void> => {
     const { [id]: _, ...names } = await getOwnerNames(options);
     await deps.secureStorage.setItem(
-      AUTH_METAKEY_OWNER_NAMES,
+      localAuthMetakeyOwnerNames,
       JSON.stringify(names),
       {
         ...buildAuthOptions(options),
@@ -157,8 +157,8 @@ export const createLocalAuth = (
       .filter(Boolean)
       .filter(
         (i) =>
-          i.key !== AUTH_METAKEY_LAST_OWNER &&
-          i.key !== AUTH_METAKEY_OWNER_NAMES,
+          i.key !== localAuthMetakeyLastOwner &&
+          i.key !== localAuthMetakeyOwnerNames,
       )
       .map((i) => i.key as OwnerId);
   };
@@ -171,7 +171,7 @@ export const createLocalAuth = (
     username?: string,
   ): LocalAuthOptions => {
     const newOptions: LocalAuthOptions = {
-      ...AUTH_DEFAULT_OPTIONS,
+      ...localAuthDefaultOptions,
       ...(username && { webAuthnUsername: username }),
       ...options,
     };
@@ -311,13 +311,11 @@ export const createLocalAuth = (
   };
 };
 
-// TOHO: With `const`, we don't need UPPER_CASE
-export const AUTH_NAMESPACE = "evolu";
-export const AUTH_METAKEY_LAST_OWNER = "_last_owner";
-export const AUTH_METAKEY_OWNER_NAMES = "_owner_names";
-export const AUTH_DEFAULT_OPTIONS: LocalAuthOptions = {
-  service: AUTH_NAMESPACE,
-  keychainGroup: AUTH_NAMESPACE,
+export const localAuth_Namespace = "evolu";
+
+export const localAuthDefaultOptions: LocalAuthOptions = {
+  service: localAuth_Namespace,
+  keychainGroup: localAuth_Namespace,
   androidBiometricsStrongOnly: true,
   iosSynchronizable: true,
   webAuthnUsername: "Evolu User",
@@ -325,6 +323,9 @@ export const AUTH_DEFAULT_OPTIONS: LocalAuthOptions = {
     title: "Authenticate as |USERNAME|",
   },
 };
+
+const localAuthMetakeyLastOwner = "_last_owner";
+const localAuthMetakeyOwnerNames = "_owner_names";
 
 export interface AuthResult {
   /** The app owner created during registration. */

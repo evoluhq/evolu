@@ -25,15 +25,21 @@
       "react-native": "./dist/index.js"
     },
     "./expo-sqlite": {
-      "types": "./dist/expo-sqlite.d.ts",
-      "default": "./dist/expo-sqlite.js",
-      "react-native": "./dist/expo-sqlite.js",
+      "types": "./dist/exports/expo-sqlite.d.ts",
+      "default": "./dist/exports/expo-sqlite.js",
+      "react-native": "./dist/exports/expo-sqlite.js",
       "browser": "./dist/web.js"
     },
-    "./op-sqlite": {
-      "types": "./dist/op-sqlite.d.ts",
-      "default": "./dist/op-sqlite.js",
-      "react-native": "./dist/op-sqlite.js",
+    "./expo-op-sqlite": {
+      "types": "./dist/exports/expo-op-sqlite.d.ts",
+      "default": "./dist/exports/expo-op-sqlite.js",
+      "react-native": "./dist/exports/expo-op-sqlite.js",
+      "browser": "./dist/web.js"
+    },
+    "./bare-op-sqlite": {
+      "types": "./dist/exports/bare-op-sqlite.d.ts",
+      "default": "./dist/exports/bare-op-sqlite.js",
+      "react-native": "./dist/exports/bare-op-sqlite.js",
       "browser": "./dist/web.js"
     }
   },
@@ -43,10 +49,13 @@
         "./dist/index.d.ts"
       ],
       "expo-sqlite": [
-        "./dist/expo-sqlite.d.ts"
+        "./dist/exports/expo-sqlite.d.ts"
       ],
-      "op-sqlite": [
-        "./dist/op-sqlite.d.ts"
+      "expo-op-sqlite": [
+        "./dist/exports/expo-op-sqlite.d.ts"
+      ],
+      "bare-op-sqlite": [
+        "./dist/exports/bare-op-sqlite.d.ts"
       ]
     }
   },
@@ -60,9 +69,6 @@
     "build": "shx rm -rf dist && tsc",
     "clean": "shx rm -rf .turbo node_modules dist",
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
-  },
-  "dependencies": {
-    "blo": "^2.0.0"
   },
   "devDependencies": {
     "@evolu/common": "workspace:*",

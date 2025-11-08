@@ -182,6 +182,7 @@ import { pack } from "msgpackr";
 import type { Brand } from "./Brand.js";
 import { type RandomBytesDep } from "./Crypto.js";
 import { isPlainObject } from "./Object.js";
+import { hasNodeBuffer } from "./Platform.js";
 import { err, getOrNull, getOrThrow, ok, Result, trySync } from "./Result.js";
 import { safelyStringifyUnknownValue } from "./String.js";
 import type { Literal, Simplify, WidenLiteral } from "./Types.js";
@@ -1426,7 +1427,6 @@ export const formatBase64UrlError = createTypeErrorFormatter<Base64UrlError>(
   (error) => `The value ${error.value} is not a valid Base64Url string.`,
 );
 
-const hasNodeBuffer = typeof globalThis.Buffer !== "undefined";
 const base64UrlOptions = { alphabet: "base64url", omitPadding: true };
 
 /** Encodes a Uint8Array to a {@link Base64Url} string. */

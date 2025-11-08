@@ -1,7 +1,7 @@
+import { createIdenticon, IdenticonStyle, OwnerId } from "@evolu/common";
+import { FC, useMemo } from "react";
 import { View } from "react-native";
 import { SvgXml } from "react-native-svg";
-import { FC, useMemo } from "react";
-import { createIdenticon, IdenticonStyle, OwnerId } from "@evolu/common";
 
 export const EvoluIdenticon: FC<{
   id: OwnerId;

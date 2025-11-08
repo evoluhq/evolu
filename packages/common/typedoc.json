@@ -33,6 +33,7 @@
     "src/Number.ts",
     "src/Object.ts",
     "src/Order.ts",
+    "src/Platform.ts",
     "src/Random.ts",
     "src/Ref.ts",
     "src/Result.ts",

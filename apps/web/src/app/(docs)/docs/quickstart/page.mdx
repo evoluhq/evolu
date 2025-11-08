@@ -34,12 +34,12 @@ npm install @evolu/common@preview @evolu/react@preview @evolu/react-web@preview
 
 ```bash {{ title: 'React Native' }}
 npm install @evolu/common@preview @evolu/react@preview @evolu/react-native@preview \
-  @op-engineering/op-sqlite react-native-quick-crypto react-native-quick-base64
+  @op-engineering/op-sqlite react-native-quick-crypto
 ```
 
 ```bash {{ title: 'Expo' }}
 npm install @evolu/common@preview @evolu/react@preview @evolu/react-native@preview \
-  expo-sqlite react-native-quick-crypto react-native-quick-base64
+  expo-sqlite react-native-quick-crypto
 ```
 
 ```bash {{ title: 'Svelte' }}
@@ -53,17 +53,14 @@ npm install @evolu/common@preview @evolu/web@preview
 </SinglePlatformCodeGroup>
 
 <ConditionalPlatformAlert platform={["Expo"]} type="warning">
-  **Expo Go is not supported.** You must use a [development
-  build](https://docs.expo.dev/develop/development-builds/introduction/) or
-  create a production build to use Evolu with Expo, as it requires native
-  dependencies.
+  **Expo Go is not supported.** as it requires native dependencies
+  (`react-native-quick-crypto`). Use `expo-sqlite` for standard performance or
+  `expo-op-sqlite` for better performance.
 </ConditionalPlatformAlert>
 
 <ConditionalPlatformAlert platform={["Expo", "React Native"]} type="info">
   Make sure to follow the [react-native-quick-crypto setup
   instructions](https://github.com/margelo/react-native-quick-crypto#installation)
-  and [react-native-quick-base64 setup
-  instructions](https://github.com/craftzdog/react-native-quick-base64#installation)
   for proper native dependency configuration.
 </ConditionalPlatformAlert>
 
@@ -162,7 +159,7 @@ const { insert, update } = useEvolu();
 ```ts {{ title: 'React Native', language: 'tsx' }}
 import { createEvolu, getOrThrow, SimpleName } from "@evolu/common";
 import { createUseEvolu, EvoluProvider } from "@evolu/react";
-import { evoluReactNativeDeps } from "@evolu/react-native/op-sqlite";
+import { evoluReactNativeDeps } from "@evolu/react-native/bare-op-sqlite";
 
 const evolu = createEvolu(evoluReactNativeDeps)(Schema, {
  name: SimpleName.orThrow("your-app-name"),
