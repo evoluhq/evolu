@@ -13,6 +13,7 @@ export * from "./Evolu/Public.js";
 export * from "./Function.js";
 export * from "./Identicon.js";
 export * from "./ManyToManyMap.js";
+export * from "./Multiton.js";
 export * from "./Number.js";
 export * from "./Object.js";
 export * from "./Order.js";

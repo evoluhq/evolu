@@ -30,6 +30,7 @@
     "src/Function.ts",
     "src/Identicon.ts",
     "src/ManyToManyMap.ts",
+    "src/Multiton.ts",
     "src/Number.ts",
     "src/Object.ts",
     "src/Order.ts",

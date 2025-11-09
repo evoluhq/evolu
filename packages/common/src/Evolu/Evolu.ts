@@ -7,6 +7,7 @@ import { RandomBytesDep, SymmetricCryptoDecryptError } from "../Crypto.js";
 import { eqArrayNumber } from "../Eq.js";
 import { TransferableError } from "../Error.js";
 import { exhaustiveCheck } from "../Function.js";
+import { createMultiton, Multiton } from "../Multiton.js";
 import { err, ok, Result } from "../Result.js";
 import { isSqlMutation, SafeSql, SqliteError, SqliteQuery } from "../Sqlite.js";
 import { createStore, StoreSubscribe } from "../Store.js";
@@ -19,6 +20,7 @@ import {
   InferType,
   Mnemonic,
   ObjectType,
+  SimpleName,
   ValidMutationSize,
   ValidMutationSizeError,
 } from "../Type.js";
@@ -92,7 +94,7 @@ export interface EvoluConfig extends Partial<DbConfig> {
   readonly reloadUrl?: string;
 }
 
-export interface Evolu<S extends EvoluSchema = EvoluSchema> {
+export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
   /**
    * Subscribe to {@link EvoluError} changes.
    *
@@ -457,8 +459,12 @@ export type EvoluDeps = ConsoleDep &
   ReloadAppDep &
   TimeDep;
 
-const evoluInstances = new Map<string, InternalEvoluInstance>();
+const evoluInstances = createMultiton<SimpleName, InternalEvoluInstance>();
 
+/**
+ * Unique identifier for the current browser tab or app instance, lazily
+ * initialized on first use to distinguish between multiple tabs.
+ */
 let tabId: Id | null = null;
 
 /**
@@ -496,35 +502,25 @@ let tabId: Id | null = null;
  *
  * ### Instance Caching
  *
- * Evolu caches instances by {@link EvoluConfig} name to enable hot reloading and
- * multitenancy. Multiple calls to `createEvolu` with the same name return the
- * same instance, preserving database connections and state across module
- * reloads during development. This ensures a seamless developer experience
- * where edits don't interrupt ongoing sync or lose in-memory state.
- *
- * For testing, either dispose of instances after each test (TODO: implement
- * dispose method) or use unique instance names to ensure proper isolation
- * between test cases.
+ * `createEvolu` caches instances using {@link Multiton} by {@link EvoluConfig}
+ * name to enable hot reloading and prevent database corruption from multiple
+ * connections. For testing, use unique instance names to ensure proper
+ * isolation.
  */
 export const createEvolu =
   (deps: EvoluDeps) =>
   <S extends EvoluSchema>(
     schema: ValidateSchema<S> extends never ? S : ValidateSchema<S>,
     config?: EvoluConfig,
-  ): Evolu<S> => {
-    const name = config?.name ?? defaultDbConfig.name;
-    let evolu = evoluInstances.get(name);
-
-    if (evolu == null) {
-      evolu = createEvoluInstance(deps)(schema as EvoluSchema, config);
-      evoluInstances.set(name, evolu);
-    } else {
-      // Hot reloading. Note that indexes are intentionally omitted.
-      evolu.ensureSchema(schema as EvoluSchema);
-    }
-
-    return evolu as Evolu<S>;
-  };
+  ): Evolu<S> =>
+    evoluInstances.ensure(
+      config?.name ?? defaultDbConfig.name,
+      () => createEvoluInstance(deps)(schema as EvoluSchema, config),
+      (evolu) => {
+        // Hot reloading. Note that indexes are intentionally omitted.
+        evolu.ensureSchema(schema as EvoluSchema);
+      },
+    ) as Evolu<S>;
 
 const createEvoluInstance =
   (deps: EvoluDeps) =>
@@ -942,6 +938,11 @@ const createEvoluInstance =
         };
 
         return unuse;
+      },
+
+      /** Disposal is not implemented yet. */
+      [Symbol.dispose]: () => {
+        throw new Error("Evolu instance disposal is not yet implemented");
       },
     };
 
