@@ -1822,19 +1822,35 @@ export const formatNonNegativeError =
     (error) => `The value ${error.value} must be non-negative (≥ 0).`,
   );
 
-/** @category Number */
+/**
+ * Non-negative number (≥ 0).
+ *
+ * @category Number
+ */
 export const NonNegativeNumber = nonNegative(Number);
 export type NonNegativeNumber = typeof NonNegativeNumber.Type;
 
-/** @category Number */
+/**
+ * Positive number (> 0).
+ *
+ * @category Number
+ */
 export const PositiveNumber = positive(NonNegativeNumber);
 export type PositiveNumber = typeof PositiveNumber.Type;
 
-/** @category Number */
+/**
+ * Non-positive number (≤ 0).
+ *
+ * @category Number
+ */
 export const NonPositiveNumber = nonPositive(Number);
 export type NonPositiveNumber = typeof NonPositiveNumber.Type;
 
-/** @category Number */
+/**
+ * Negative number (< 0).
+ *
+ * @category Number
+ */
 export const NegativeNumber = negative(NonPositiveNumber);
 export type NegativeNumber = typeof NegativeNumber.Type;
 
@@ -1870,11 +1886,19 @@ export const formatIntError = createTypeErrorFormatter<IntError>(
 export const Int = int(Number);
 export type Int = typeof Int.Type;
 
-/** @category Number */
+/**
+ * Non-negative integer (≥ 0).
+ *
+ * @category Number
+ */
 export const NonNegativeInt = nonNegative(Int);
 export type NonNegativeInt = typeof NonNegativeInt.Type;
 
-/** @category Number */
+/**
+ * Positive integer (> 0).
+ *
+ * @category Number
+ */
 export const PositiveInt = positive(NonNegativeInt);
 export type PositiveInt = typeof PositiveInt.Type;
 
@@ -1883,11 +1907,19 @@ export const maxPositiveInt = PositiveInt.orThrow(
   globalThis.Number.MAX_SAFE_INTEGER,
 );
 
-/** @category Number */
+/**
+ * Non-positive integer (≤ 0).
+ *
+ * @category Number
+ */
 export const NonPositiveInt = nonPositive(Int);
 export type NonPositiveInt = typeof NonPositiveInt.Type;
 
-/** @category Number */
+/**
+ * Negative integer (< 0).
+ *
+ * @category Number
+ */
 export const NegativeInt = negative(NonPositiveInt);
 export type NegativeInt = typeof NegativeInt.Type;
 
