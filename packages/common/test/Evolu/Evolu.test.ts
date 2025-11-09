@@ -93,14 +93,16 @@ let testInstanceCounter = 0;
 
 const testCreateEvoluDeps = async () => {
   const instanceName = SimpleName.orThrow(`Test${testInstanceCounter++}`);
+  // We eagerly create a SqliteDriver instance so we can use it for SQL tests.
   const sqliteDriver = await testCreateSqliteDriver(instanceName);
+  const createSqliteDriver = () => Promise.resolve(sqliteDriver);
 
   const postMessageCalls: Array<DbWorkerInput> = [];
   let onMessageCallback: ((message: DbWorkerOutput) => void) | undefined;
 
   const innerDbWorker = createDbWorkerForPlatform({
     console: createConsole(),
-    createSqliteDriver: () => Promise.resolve(sqliteDriver),
+    createSqliteDriver,
     createWebSocket: testCreateDummyWebSocket,
     random: testRandom,
     randomBytes: testRandomBytes,
@@ -127,9 +129,7 @@ const testCreateEvoluDeps = async () => {
   };
 
   const sqlite = getOrThrow(
-    await createSqlite({
-      createSqliteDriver: () => Promise.resolve(sqliteDriver),
-    })(instanceName),
+    await createSqlite({ createSqliteDriver })(instanceName),
   );
 
   return {
