@@ -1,6 +1,6 @@
-name: Evolu Evolution Proposal (EEP)
+name: Evolu Enhancement Proposal (EEP)
 description: A formal design for a proposed Evolu feature or change.
-title: "EEP-XXX: Feature or change title"
+title: "EEP: Feature or change title"
 
 labels: [eep]
 
