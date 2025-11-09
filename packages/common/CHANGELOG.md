@@ -1,5 +1,15 @@
 # @evolu/common
 
+## 6.0.1-preview.28
+
+### Patch Changes
+
+- 7216d47: Add Multiton
+
+  Multiton manages multiple named instances using a key-based registry with structured disposal. It's used internally for Evolu instance caching to support hot reloading and prevent database corruption from multiple connections.
+
+  See the Multiton documentation for usage patterns and caveats.
+
 ## 6.0.1-preview.27
 
 ### Patch Changes
