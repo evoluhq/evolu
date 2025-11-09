@@ -117,6 +117,31 @@ export const maxNodeId = "ffffffffffffffff" as NodeId;
  * Timestamps serve as globally unique, causally ordered identifiers for CRDT
  * messages in Evolu's sync protocol.
  *
+ * ### Why Hybrid Logical Clocks
+ *
+ * Evolu uses Hybrid Logical Clocks (HLC), which combine physical time (millis)
+ * with a logical counter. This hybrid approach preserves causality like logical
+ * clocks while staying close to physical time for better human
+ * interpretability.
+ *
+ * The counter component ensures causality is maintained even when physical
+ * clocks are imperfect. When clocks drift or operations occur concurrently, the
+ * counter increments to establish a total order. This means Evolu achieves
+ * well-defined, eventually-consistent behavior regardless of physical clock
+ * accuracy.
+ *
+ * Vector clocks can accurately track causality and detect concurrent
+ * operations, but they require unbounded space in peer-to-peer systems and
+ * crucially, still don't solve our fundamental problem: when they detect
+ * operations as concurrent, we still need a deterministic way to choose a
+ * winner. Additionally, any deterministic conflict resolution can be gamed by
+ * malicious actors.
+ *
+ * HLC timestamps work well in practice because modern device clocks accurately
+ * reflect the order of sequential edits in the common case. Evolu's `maxDrift`
+ * configuration protects against buggy clocks and prevents problematic
+ * future-dated entries from propagating through the network.
+ *
  * ### References
  *
  * - https://muratbuffalo.blogspot.com/2014/07/hybrid-logical-clocks.html
