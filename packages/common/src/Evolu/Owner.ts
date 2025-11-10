@@ -8,6 +8,7 @@ import {
   Entropy32,
   RandomBytesDep,
 } from "../Crypto.js";
+import { getOrNull } from "../Result.js";
 import {
   brand,
   Id,
@@ -16,12 +17,9 @@ import {
   idToIdBytes,
   Mnemonic,
   NonNegativeInt,
-  PositiveInt,
 } from "../Type.js";
-import { getOrNull } from "../Result.js";
-import type { Timestamp } from "./Timestamp.js";
-import { TimestampBytes } from "./Timestamp.js";
 import type { Storage } from "./Storage.js";
+import type { Timestamp, TimestampBytes } from "./Timestamp.js";
 
 /**
  * The Owner represents ownership of data in Evolu. Every database change is
@@ -159,6 +157,17 @@ export const createOwner = (secret: OwnerSecret): Owner => ({
  * preserved because it coordinates deletion information across devices. Other
  * devices need to sync the information that an owner was deleted so they can
  * delete their local data as well.
+ *
+ * ### Privacy Considerations
+ *
+ * AppOwner must never be shared with anyone, except for its {@link OwnerId},
+ * which can be used for authorization with
+ * {@link createOwnerWebSocketTransport}. It's safe because OwnerId is
+ * pseudonymous (it can't be assigned to a specific person).
+ *
+ * For data sharing scenarios, use {@link SharedOwner} and
+ * {@link SharedReadonlyOwner} instead, which are designed specifically for
+ * collaborative access.
  */
 export interface AppOwner extends Owner {
   readonly type: "AppOwner";
@@ -294,7 +303,17 @@ export type OwnerTransport = OwnerWebSocketTransport;
 /**
  * WebSocket transport configuration.
  *
- * ### Authentication and Error Handling
+ * ### Authentication via URL
+ *
+ * The {@link OwnerId} is passed as a URL query parameter. While this approach is
+ * generally discouraged for authentication tokens (they get logged), it's safe
+ * here because OwnerId is pseudonymous and used only for access verification -
+ * it provides no ability to read encrypted data or write changes.
+ *
+ * See: [HTTP headers in Websockets client
+ * API](https://stackoverflow.com/questions/4361173/http-headers-in-websockets-client-api/74564827#74564827)
+ *
+ * ### Error Handling
  *
  * When a relay rejects a connection (invalid OwnerId, unauthorized owner, or
  * server error), the browser WebSocket API does not expose the specific HTTP
@@ -316,6 +335,10 @@ export interface OwnerWebSocketTransport {
 /**
  * Creates an {@link OwnerWebSocketTransport} for the given relay URL and
  * {@link OwnerId}.
+ *
+ * The URL must be a WebSocket base URL without query parameters or fragments
+ * (e.g., `wss://relay.evolu.dev`, not `wss://relay.evolu.dev?foo=bar`). The
+ * function appends the `ownerId` as a query parameter.
  *
  * ### Example
  *
@@ -369,13 +392,13 @@ export interface OwnerUsage {
   readonly ownerId: OwnerIdBytes;
 
   /** Total bytes stored in the database. */
-  readonly storedBytes: PositiveInt;
+  readonly storedBytes: NonNegativeInt;
 
   /** Total bytes received. */
-  readonly receivedBytes: number;
+  readonly receivedBytes: NonNegativeInt;
 
   /** Total bytes sent. */
-  readonly sentBytes: number;
+  readonly sentBytes: NonNegativeInt;
 
   /**
    * The minimum {@link Timestamp}.
