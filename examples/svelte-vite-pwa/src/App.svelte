@@ -52,9 +52,9 @@
       .select(["id", "title", "isCompleted"])
       // Soft delete: filter out deleted rows.
       .where("isDeleted", "is not", Evolu.sqliteTrue)
-      // Like GraphQL, all columns except id are nullable in queries (even if
-      // defined as non-nullable in schema). This enables schema evolution (no
-      // migrations/versioning). Filter nulls with where + $narrowType.
+      // Like with GraphQL, all columns except id are nullable in queries
+      // (even if defined without nullOr in the schema) to allow schema
+      // evolution without migrations. Filter nulls with where + $narrowType.
       .where("title", "is not", null)
       .$narrowType<{ title: Evolu.kysely.NotNull }>()
       // Columns createdAt, updatedAt, isDeleted are auto-added to all tables.
