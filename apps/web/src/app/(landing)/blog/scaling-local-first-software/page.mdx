@@ -21,7 +21,7 @@ Building local-first apps is already a challenge, and making them scalable is an
 
 ---
 
-# Where it all began: a mission to restore ownership
+## Where it all began: a mission to restore ownership
 
 When I discovered the concept of local-first software, I immediately knew I didn't want to build apps any other way. Ownership is the foundation of a free society—without it, there is no freedom. Outside programming, I often speak about the state, anarchism, Bitcoin, and economics. I'm currently writing a book called [Deconstruction of the State](https://www.startovac.cz/projekty/kniha-dekonstrukce-statu), which aims to return the state to the people.
 
@@ -37,7 +37,7 @@ To reason about when events happened and how they relate, distributed systems us
 
 But here’s the catch: knowing when something happened isn’t enough. To sync two peers, we don’t just need causality—we need to know which exact events the other peer has already seen. Clocks describe order and causality, but not which specific events a peer has seen. This becomes a serious limitation in peer-to-peer systems, where events (messages) might take different paths to different nodes. Without a way to compare sets of events directly, we risk syncing inefficiencies: unnecessary retransmissions, duplicated events, or bloated metadata. These issues limit scalability.
 
-# Set reconciliation
+## Set reconciliation
 
 > Imagine two computers connected over a network, and each computer holds a set of values. Set reconciliation is the problem of efficiently exchanging messages between them such that in the end both hold the union of the two sets. If there is a total order on the items, and if items can be hashed to smaller fingerprints with negligible collision probability, this can be done in logarithmic time in a fairly simple manner.
 
@@ -55,7 +55,7 @@ By pure luck, one of them turned out to be Aljoscha Meyer. I didn’t fully gras
 
 Back in Prague, I began diving deep into tree structures. As Doug [explains](https://logperiodic.com/rbsr.html#tree-friendly-functions), a tree structure is essential for incremental fingerprint computation. Compared to B+ trees, skiplists have a key advantage: because they’re probabilistic, they avoid the complexity of node splitting, merging, and balancing. But the big question remained—how do you make that work efficiently in SQLite? Traversing a tree can require up to 20 queries. Surely that must be painfully slow, especially if done in JavaScript.
 
-## RBSR with(in) SQLite
+### RBSR with(in) SQLite
 
 Long story short, I bet on something pretty unconventional: I decided to write the entire logic in SQL. No C extensions—because I wanted it to be portable across SQL databases. With skiplists, all we really need is data traversal and minimal manipulation—no need for node splitting, merging, or balancing.
 
@@ -69,7 +69,7 @@ It may not be ideal—ideally, we’d have a key-value WASM storage—but it’s
 
 Does this fully solve the challenge of handling large amounts of data? No—and I’ll write more about that later. But for now, let’s shift focus to something else: the Evolu code itself.
 
-# Rewriting Evolu: fp-ts → Effect → Evolu Library
+## Rewriting Evolu: fp-ts → Effect → Evolu Library
 
 I've always been a fan of functional programming—but it took me a while to figure out exactly why. It definitely wasn’t because of the cryptic code or the heavy terminology. What I like the most are typed errors (like the Result type), dependency injection, and immutability. These patterns make code more composable, testable, and easier to reason about. i.e., scalable.
 
@@ -164,7 +164,7 @@ It turns out we don’t need pipe or chaining at all—just `Result` and plain f
 
 Now let’s return to the new Evolu—its local-first architecture and the ongoing challenge of scaling. That brings us to the Evolu Protocol.
 
-# Evolu Protocol
+## Evolu Protocol
 
 Evolu Protocol is a local-first, end-to-end encrypted binary synchronization
 protocol optimized for minimal size and maximum speed. It enables data sync
@@ -173,7 +173,7 @@ relays with each other. Evolu Protocol is designed for SQLite but can be extende
 implements [Range-Based Set Reconciliation](https://arxiv.org/abs/2212.13567)
 by Aljoscha Meyer.
 
-## Why binary?
+### Why binary?
 
 The protocol avoids JSON because:
 
@@ -239,7 +239,7 @@ That's **272 bytes** for **16 fingerprints**, representing the entire database (
 
 Again, to understand how **Range-Based Set Reconciliation works**, I highly recommend [this great article](https://logperiodic.com/rbsr.html) by Doug. Now let’s take a closer look at the protocol message structure:
 
-## Protocol message structure
+### Protocol message structure
 
 | Field                    | Notes                                    |
 | :----------------------- | :--------------------------------------- |
@@ -257,7 +257,7 @@ Again, to understand how **Range-Based Set Reconciliation works**, I highly reco
 
 It’s simple—but is it too simple? No. Let’s look at how it can support **authentication**, **collaboration**, and **partial sync**.
 
-# Auth, collaboration, and partial sync
+## Auth, collaboration, and partial sync
 
 When I started thinking about local-first auth and collaboration for Evolu, I struggled to find a model that could **scale to all use cases**. That’s why the first version of Evolu didn’t support collaboration. Rather than implement something half-baked, I decided to postpone it.
 
@@ -297,7 +297,7 @@ It’s important to understand that while these owners are _default_ in Evolu, f
 The goal was to make Evolu Protocol and Relay as **generic and application-agnostic** as possible. They should **know nothing** about what applications are using them.
 This is the only way to guarantee **maximum privacy** and **true scalability**—as we’ll explore next.
 
-## Partial sync
+### Partial sync
 
 It’s clear that no single device can hold all the data. You can’t download the whole of Facebook to your phone. Traditional client-server applications handle this by selectively downloading parts of the data using some form of
 fine-grained "select"—via REST, RPC, GraphQL, and so on.
@@ -313,7 +313,7 @@ So how does Evolu scale in practice? In two complementary ways:
 
 It's up to the Evolu app to know which owner should be synced for which data and when. Relays must know nothing.
 
-# From local-first apps to local-first clouds
+## From local-first apps to local-first clouds
 
 Evolu’s strict design has a surprising consequence: the **limitations** of local-first apps are exactly what allow them to **scale better** than traditional client-server applications.
 
@@ -365,7 +365,7 @@ Let’s summarize why I believe Evolu can scale:
 
 - **Peer scalability through stateless sync**: Evolu scales to virtually unlimited peers by using content-based synchronization instead of shared state. With range-based set reconciliation, peers compare data fingerprints, not sync histories. Relays remain stateless, remembering nothing about past syncs. This enables massive horizontal scaling with no centralized bottlenecks.
 
-# Conclusion
+## Conclusion
 
 Today, I’m open-sourcing what I have. The tests and benchmarks say that Evolu is ready. It’s not a production release yet—just a few details remain, like managing owners and a few other tasks tracked in [GitHub Issues](https://github.com/evoluhq/evolu/issues). I also still need to write the free, open-source Evolu Relay.
 

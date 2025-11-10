@@ -22,7 +22,7 @@ In this post, we'll explore why local-first apps are essential, the challenges o
 
 ---
 
-### Why local-first apps matter
+## Why local-first apps matter
 
 **Local-first apps** shift the power dynamic by ensuring that data is stored and processed primarily on the user's devices. This isn't just a technical distinction; it fundamentally changes the relationship between users and software. Here's why this matters:
 
@@ -40,7 +40,7 @@ In this post, we'll explore why local-first apps are essential, the challenges o
 
 ---
 
-### The trade-offs of client-server architecture
+## The trade-offs of client-server architecture
 
 The client-server model has dominated app development for decades, primarily because it simplifies synchronization and backups. However, this convenience comes with significant trade-offs:
 
@@ -56,29 +56,29 @@ These challenges highlight the need for an alternative approach—one that prior
 
 ---
 
-### How Evolu redefines local-first apps
+## How Evolu redefines local-first apps
 
 **Evolu** is a library built with the local-first philosophy at its core. It solves the challenges of building local-first apps while retaining the benefits of synchronization and backup through a minimal, optional server.
 
-#### 1. **Full Data Ownership**
+### 1. **Full Data Ownership**
 
 Evolu stores all app data in a local SQLite database. Unlike caching or partial storage solutions, this ensures that users have complete control over their data at all times.
 
-#### 2. **Built-in Privacy with Encryption**
+### 2. **Built-in Privacy with Encryption**
 
 Data privacy is non-negotiable in Evolu. All local data is encrypted by default, ensuring robust security without requiring developers to configure it manually.
 
-#### 3. **Lightweight, Open-Source Server**
+### 3. **Lightweight, Open-Source Server**
 
 Evolu offers a simple, open-sourced **Evolu Server** for synchronization. This server is purely a message buffer with no app-specific logic, ensuring that developers aren’t tied to a single provider or platform.
 
-#### 4. **No Vendor Lock-In**
+### 4. **No Vendor Lock-In**
 
 Evolu's design allows developers to leverage cloud services without becoming dependent on them. This approach balances flexibility with independence, giving users and developers peace of mind.
 
 ---
 
-### What local-first means to Evolu
+## What local-first means to Evolu
 
 The term "local-first" has become an umbrella for various strategies. At Evolu, it specifically means:
 
@@ -90,12 +90,8 @@ By focusing on these principles, Evolu empowers developers to create apps that p
 
 ---
 
-### Why the future is local-first
+## Why the future is local-first
 
 The internet is not infallible. Servers go down, companies fail, and errors occur. These realities underline the need for software that doesn't rely solely on centralized systems. **Local-first apps** offer a compelling alternative, combining the best of both worlds: the autonomy of local data with the convenience of optional cloud features.
 
 Evolu makes it easier than ever to build local-first apps, providing developers with the tools they need to create resilient, user-centric software. With Evolu, the future of app development looks brighter, more private, and entirely in the hands of users.
-
----
-
-Ready to take control of your app's data? Explore Evolu and start building the future of local-first apps today.
