@@ -1,0 +1,237 @@
+import { ArticleLayout } from "@/components/ArticleLayout";
+
+export const article = {
+  author: "Daniel Steigerwald",
+  date: "2025-11-10",
+  title: "Building identicons with AI",
+  description:
+    "Creating deterministic identicons for Evolu's collaboration turned into an interesting exploration of working with LLMs on creative coding tasks.",
+};
+
+export const metadata = {
+  title: article.title,
+  description: article.description,
+};
+
+export default (props) => <ArticleLayout article={article} {...props} />;
+
+For Evolu's upcoming collaboration, the local auth demo needed an identicon for `OwnerId`. While many identicon libraries exist, it's always better to avoid a dependency. Evolu has a strict rule for dependencies: **avoid them as much as possible**. Evolu uses only what's absolutely necessary: SQLite, crypto, MessagePack, and random.
+
+So I decided to create Evolu's own identicons, which became a fun task to evaluate LLMs on something artistic 🎨.
+
+<div
+  style={{
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+    gap: "16px",
+    margin: "32px 0",
+  }}
+>
+  <div style={{ textAlign: "center" }}>
+    <div
+      style={{
+        display: "flex",
+        gap: "8px",
+        justifyContent: "center",
+      }}
+    >
+      <img
+        src="/blog/building-identicons-with-ai-lessons-learned/github-00.svg"
+        alt="GitHub identicon example 1"
+        style={{ width: "64px", height: "64px" }}
+      />
+      <img
+        src="/blog/building-identicons-with-ai-lessons-learned/github-01.svg"
+        alt="GitHub identicon example 2"
+        style={{ width: "64px", height: "64px" }}
+      />
+    </div>
+    <div style={{ fontSize: "14px", color: "#666" }}>GitHub</div>
+  </div>
+  <div style={{ textAlign: "center" }}>
+    <div
+      style={{
+        display: "flex",
+        gap: "8px",
+        justifyContent: "center",
+      }}
+    >
+      <img
+        src="/blog/building-identicons-with-ai-lessons-learned/quadrant-00.svg"
+        alt="Quadrant identicon example 1"
+        style={{ width: "64px", height: "64px" }}
+      />
+      <img
+        src="/blog/building-identicons-with-ai-lessons-learned/quadrant-01.svg"
+        alt="Quadrant identicon example 2"
+        style={{ width: "64px", height: "64px" }}
+      />
+    </div>
+    <div style={{ fontSize: "14px", color: "#666" }}>Quadrant</div>
+  </div>
+  <div style={{ textAlign: "center" }}>
+    <div
+      style={{
+        display: "flex",
+        gap: "8px",
+        justifyContent: "center",
+      }}
+    >
+      <img
+        src="/blog/building-identicons-with-ai-lessons-learned/gradient-00.svg"
+        alt="Gradient identicon example 1"
+        style={{ width: "64px", height: "64px" }}
+      />
+      <img
+        src="/blog/building-identicons-with-ai-lessons-learned/gradient-01.svg"
+        alt="Gradient identicon example 2"
+        style={{ width: "64px", height: "64px" }}
+      />
+    </div>
+    <div style={{ fontSize: "14px", color: "#666" }}>Gradient</div>
+  </div>
+  <div style={{ textAlign: "center" }}>
+    <div
+      style={{
+        display: "flex",
+        gap: "8px",
+        justifyContent: "center",
+      }}
+    >
+      <img
+        src="/blog/building-identicons-with-ai-lessons-learned/sutnar-00.svg"
+        alt="Sutnar identicon example 1"
+        style={{ width: "64px", height: "64px" }}
+      />
+      <img
+        src="/blog/building-identicons-with-ai-lessons-learned/sutnar-01.svg"
+        alt="Sutnar identicon example 2"
+        style={{ width: "64px", height: "64px" }}
+      />
+    </div>
+    <div style={{ fontSize: "14px", color: "#666" }}>Sutnar</div>
+  </div>
+</div>
+
+---
+
+## The GitHub identicon challenge
+
+Of course, Evolu could not omit the most famous identicon: the GitHub one. LLM created many seemingly functional GitHub identicons, but the code was an **unreadable mess full of terrible bugs**, so I started looking for an algorithm description, but there isn't one publicly available. Only a Rust library claiming it's based on the original code existed as reference, but it wasn't using SVG (which is a must for vectors because of performance). I really didn't want to spend much time on that. I was working on it before breakfast, as it was supposed to be a super quick task, but it could easily explode into days. So we (me and LLM) ported the basic algorithm which I was able to quickly review/refactor/fix.
+
+## The reality of AI-assisted coding
+
+Programmers are actually not paid for the code they write, but for the code they read (and hopefully understand). While I use LLMs a lot, **every line must be triple-checked**. The more code we have, the more work we have. The less code the better.
+
+While LLM and I made wonderful creations during our experimentation, I decided to commit only the most simple and readable identicon implementations. I didn't have time to refactor all the slop it generated.
+
+- `"github"` (default): 5x5 grid with horizontal mirroring (GitHub-style)
+- `"quadrant"`: 2x2 grid with direct RGB color mapping from bytes
+- `"gradient"`: Diagonal stripes with smooth color gradients
+- `"sutnar"`: Three compositional variants with adaptive colors
+
+As for `sutnar`, it's named after [**Ladislav Sutnar**](https://en.wikipedia.org/wiki/Ladislav_Sutnar), the Czech graphic designer I love, who was a pioneer of information design and information architecture. Sutnar's work:
+
+- [Art Institute of Chicago](https://www.artic.edu/artists/25278/ladislav-sutnar)
+- [MoMA](https://www.moma.org/artists/5740-ladislav-sutnar)
+- [Visual Design in Action (Facsimile)](https://www.kickstarter.com/projects/1204158310/ladislav-sutnar-visual-design-in-action-facsimile)
+
+## Gallery
+
+Here are all four identicon styles, each generated from 10 different owner IDs:
+
+### GitHub
+
+<div
+  style={{
+    display: "grid",
+    gridTemplateColumns: "repeat(10, 1fr)",
+    gap: "12px",
+  }}
+>
+  {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => (
+    <img
+      key={i}
+      src={`/blog/building-identicons-with-ai-lessons-learned/github-${i.toString().padStart(2, "0")}.svg`}
+      alt={`GitHub identicon ${i}`}
+      style={{ width: "100%", height: "auto" }}
+    />
+  ))}
+</div>
+
+### Quadrant
+
+<div
+  style={{
+    display: "grid",
+    gridTemplateColumns: "repeat(10, 1fr)",
+    gap: "12px",
+  }}
+>
+  {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => (
+    <img
+      key={i}
+      src={`/blog/building-identicons-with-ai-lessons-learned/quadrant-${i.toString().padStart(2, "0")}.svg`}
+      alt={`Quadrant identicon ${i}`}
+      style={{ width: "100%", height: "auto" }}
+    />
+  ))}
+</div>
+
+### Gradient
+
+<div
+  style={{
+    display: "grid",
+    gridTemplateColumns: "repeat(10, 1fr)",
+    gap: "12px",
+  }}
+>
+  {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => (
+    <img
+      key={i}
+      src={`/blog/building-identicons-with-ai-lessons-learned/gradient-${i.toString().padStart(2, "0")}.svg`}
+      alt={`Gradient identicon ${i}`}
+      style={{ width: "100%", height: "auto" }}
+    />
+  ))}
+</div>
+
+### Sutnar
+
+<div
+  style={{
+    display: "grid",
+    gridTemplateColumns: "repeat(10, 1fr)",
+    gap: "12px",
+  }}
+>
+  {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => (
+    <img
+      key={i}
+      src={`/blog/building-identicons-with-ai-lessons-learned/sutnar-${i.toString().padStart(2, "0")}.svg`}
+      alt={`Sutnar identicon ${i}`}
+      style={{ width: "100%", height: "auto" }}
+    />
+  ))}
+</div>
+
+## The implementation
+
+Each identicon is deterministic: the same ID always generates the same visual representation.
+
+```ts
+const svg = createIdenticon(ownerId, "sutnar");
+```
+
+The function extracts bytes from the ID and uses them to deterministically generate colors, shapes, and compositions. No randomness, no external dependencies—just pure, predictable visual identity generation.
+
+All identicons use **SVG** rather than Canvas. While Canvas can create truly artistic effects, we prefer simplicity and performance. SVG is lightweight and declarative, easily scalable without quality loss, and simpler to generate and cache.
+
+## Lessons learned
+
+1. **AI is a tool, not a replacement**: LLMs can accelerate exploration and generate ideas, but human judgment is essential for code quality.
+
+2. **Simplicity wins**: The most elegant solution often comes from understanding the problem deeply and implementing it simply, rather than accepting the first working solution.
+
+3. **Art meets code**: Bringing design principles (like Sutnar's constructivism) into algorithmic generation creates more meaningful visual results.
