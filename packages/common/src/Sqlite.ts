@@ -334,6 +334,12 @@ export type SqlTemplateParam = SqliteValue | SqlIdentifier | RawSql;
  * const orderBy = "created_at desc";
  * sqlite.exec(sql`select * from users order by ${sql.raw(orderBy)};`);
  * ```
+ *
+ * ### TIP
+ *
+ * Use `prettier-plugin-sql-cst` for SQL formatting. Like Prettier for
+ * JavaScript, this plugin formats SQL expressions differently depending on
+ * their length.
  */
 export const sql = (
   strings: TemplateStringsArray,
