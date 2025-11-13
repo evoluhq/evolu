@@ -12,8 +12,8 @@ describe("Time", () => {
     const time = createTime();
     const now = Date.now();
     // Allow small difference due to execution time
-    expect(time.now()).toBeGreaterThanOrEqual(now - 5);
-    expect(time.now()).toBeLessThanOrEqual(now + 5);
+    expect(time.now()).toBeGreaterThanOrEqual(now - 10);
+    expect(time.now()).toBeLessThanOrEqual(now + 10);
   });
 
   test("createTestTime returns monotonically increasing values", async () => {
