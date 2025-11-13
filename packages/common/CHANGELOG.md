@@ -1,5 +1,43 @@
 # @evolu/common
 
+## 6.0.1-preview.29
+
+### Patch Changes
+
+- 36af10c: Improved Array helpers
+
+  Evolu Array helpers for type-safe immutable operations have been improved. See [Array](https://www.evolu.dev/docs/api-reference/common/Array) docs.
+
+- 91c132c: Multiton → Instances
+
+  Multiton has been renamed to Instances with improved API and documentation.
+  - `createMultiton` → `createInstances`
+  - `disposeInstance` → `delete`
+  - Enhanced error handling with AggregateError for multiple disposal failures
+  - Clearer documentation focusing on practical use cases (mutexes, hot reloading)
+
+- 6195115: Relay access control and quota management
+
+  **Access Control**
+  - Added `isOwnerAllowed` callback to control which owners can connect to the relay
+  - Allows synchronous or asynchronous authorization checks before accepting WebSocket connections
+  - Replaces the previous `authenticateOwner` configuration option
+
+  **Quota Management**
+  - Added `isOwnerWithinQuota` callback for checking storage limits before accepting writes
+  - Relays can now enforce per-owner storage quotas
+  - New `ProtocolQuotaError` for quota violations
+  - When quota is exceeded, only the affected device stops syncing - other devices continue normally
+  - Usage is measured per owner as logical data size, excluding storage implementation overhead
+
+  Check the Relay example in `/apps/relay`.
+
+- 13b688f: Add MaybeAsync type and isAsync type guard
+
+  `MaybeAsync<T>` represents values that can be either synchronous or asynchronous (`T | PromiseLike<T>`). This pattern provides performance benefits by avoiding microtask overhead for synchronous operations while maintaining composability.
+
+  `isAsync()` is a type guard to check if a MaybeAsync value is async, allowing conditional await only when necessary.
+
 ## 6.0.1-preview.28
 
 ### Patch Changes

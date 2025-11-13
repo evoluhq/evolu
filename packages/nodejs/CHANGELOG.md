@@ -1,5 +1,31 @@
 # @evolu/nodejs
 
+## 1.0.1-preview.11
+
+### Patch Changes
+
+- 6195115: Relay access control and quota management
+
+  **Access Control**
+  - Added `isOwnerAllowed` callback to control which owners can connect to the relay
+  - Allows synchronous or asynchronous authorization checks before accepting WebSocket connections
+  - Replaces the previous `authenticateOwner` configuration option
+
+  **Quota Management**
+  - Added `isOwnerWithinQuota` callback for checking storage limits before accepting writes
+  - Relays can now enforce per-owner storage quotas
+  - New `ProtocolQuotaError` for quota violations
+  - When quota is exceeded, only the affected device stops syncing - other devices continue normally
+  - Usage is measured per owner as logical data size, excluding storage implementation overhead
+
+  Check the Relay example in `/apps/relay`.
+
+- Updated dependencies [36af10c]
+- Updated dependencies [91c132c]
+- Updated dependencies [6195115]
+- Updated dependencies [13b688f]
+  - @evolu/common@6.0.1-preview.29
+
 ## 1.0.1-preview.10
 
 ### Patch Changes
