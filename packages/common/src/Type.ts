@@ -215,6 +215,9 @@ export interface Type<
   /**
    * Creates `T` from an `Input` value, throwing an error if validation fails.
    *
+   * Throws an Error with the Type validation error in its `cause` property,
+   * making it debuggable while avoiding the need for custom error messages.
+   *
    * This is a convenience method that combines `from` with `getOrThrow`.
    *
    * **When to use:**
@@ -222,7 +225,11 @@ export interface Type<
    * - Configuration values that are guaranteed to be valid (e.g., hardcoded
    *   constants)
    * - Application startup where failure should crash the program
-   * - Test code with known valid inputs
+   * - As an alternative to assertions when the Type error in the thrown Error's
+   *   `cause` provides sufficient debugging information
+   * - Test code with known valid inputs (when error message clarity is not
+   *   critical; for better test error messages, use Vitest `schemaMatching` +
+   *   `assert` with `.is()`)
    *
    * ### Example
    *
@@ -232,6 +239,14 @@ export interface Type<
    *
    * // ✅ Good: App configuration that should crash on invalid values
    * const appName = SimpleName.orThrow("MyApp");
+   *
+   * // ✅ Good: Instead of assert when Type error is clear enough
+   * // Context makes it obvious: count increments from non-negative value
+   * const currentCount = counts.get(id) ?? 0;
+   * const newCount = PositiveInt.orThrow(currentCount + 1);
+   *
+   * // ✅ Good: Test setup with known valid values
+   * const testUser = User.orThrow({ name: "Alice", age: 30 });
    *
    * // ❌ Avoid: User input (use `from` instead)
    * const userAge = PositiveInt.orThrow(userInput); // Could crash!
