@@ -12,18 +12,14 @@ const relay = await createNodeJsRelay({
   port: 4000,
   enableLogging: false,
 
-  /**
-   * ### Example
-   *
-   * ```ts
-   * Evolu.createOwnerWebSocketTransport({
-   *   url: "ws://localhost:4000",
-   *   ownerId: "6jy_2F4RT5qqeLgJ14_dnQ" as Evolu.OwnerId,
-   * });
-   * ```
-   */
-  // authenticateOwner: (ownerId) => {
-  //   return Promise.resolve(ownerId === "6jy_2F4RT5qqeLgJ14_dnQ");
+  // Click to `isOwnerAllowed` to read the docs.
+  // isOwnerAllowed: (_ownerId) => true,
+
+  // Click to `isOwnerWithinQuota` to read the docs.
+  // isOwnerWithinQuota: (ownerId, requiredBytes) => {
+  //   console.log(ownerId, requiredBytes);
+  //   // Check error via evolu.subscribeError
+  //   return true;
   // },
 });
 

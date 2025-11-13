@@ -1,24 +1,31 @@
-import { isNonEmptyReadonlyArray } from "../Array.js";
+import { filterArray, isNonEmptyReadonlyArray, mapArray } from "../Array.js";
 import { ConsoleConfig, ConsoleDep } from "../Console.js";
 import { TimingSafeEqualDep } from "../Crypto.js";
 import { LazyValue } from "../Function.js";
+import { createInstances } from "../Instances.js";
 import { err, ok, Result } from "../Result.js";
 import { sql, SqliteDep, SqliteError } from "../Sqlite.js";
-import { SimpleName } from "../Type.js";
-import { OwnerId, OwnerTransport, OwnerWriteKey } from "./Owner.js";
+import { createMutex, isAsync, MaybeAsync, Mutex } from "../Task.js";
+import { NonNegativeInt, PositiveInt, SimpleName } from "../Type.js";
+import {
+  OwnerId,
+  ownerIdBytesToOwnerId,
+  OwnerTransport,
+  OwnerWriteKey,
+} from "./Owner.js";
 import { ProtocolInvalidDataError } from "./Protocol.js";
 import {
   createBaseSqliteStorage,
-  CreateBaseSqliteStorageOptions,
+  CreateBaseSqliteStorageConfig,
   EncryptedDbChange,
   SqliteStorageDeps,
   Storage,
+  StorageConfig,
+  StorageQuotaError,
 } from "./Storage.js";
 import { timestampToTimestampBytes } from "./Timestamp.js";
 
-export interface Relay extends Disposable {}
-
-export interface RelayConfig extends ConsoleConfig {
+export interface RelayConfig extends ConsoleConfig, StorageConfig {
   /**
    * The relay name.
    *
@@ -28,21 +35,22 @@ export interface RelayConfig extends ConsoleConfig {
   readonly name?: SimpleName;
 
   /**
-   * Optional callback to authenticate an {@link OwnerId} with the relay.
+   * Optional callback to check if an {@link OwnerId} is allowed to access the
+   * relay. If this callback is not provided, all owners are allowed.
    *
-   * If this callback is not provided, all owners are allowed.
+   * If provided, the callback receives the OwnerId and should return a
+   * {@link MaybeAsync} boolean: `true` to allow access, or `false` to deny.
    *
-   * If provided, the callback receives the OwnerId and should return a promise
-   * that resolves to `true` to allow access, or `false` to deny.
+   * The callback can be synchronous (for SQLite or in-memory checks) or
+   * asynchronous (for calling remote APIs).
    *
    * The callback returns a boolean rather than an error type because error
-   * handling and logging are the responsibility of the callback implementation,
-   * not the relay. This prevents leaking authentication implementation details
-   * into the generic relay interface.
+   * handling and logging are the responsibility of the callback
+   * implementation.
    *
-   * OwnerId is used for authentication rather than short-lived tokens because
-   * this only controls relay access, not write permissions. Since all data is
-   * encrypted on the relay, OwnerId exposure is safe.
+   * OwnerId is used rather than short-lived tokens because this only controls
+   * relay access, not write permissions. Since all data is encrypted on the
+   * relay, OwnerId exposure is safe.
    *
    * Owners specify which relays to connect to via {@link OwnerTransport}. In
    * WebSocket-based implementations, this check occurs before accepting the
@@ -52,24 +60,49 @@ export interface RelayConfig extends ConsoleConfig {
    * ### Example
    *
    * ```ts
-   * const relay = await createNodeJsRelay(deps)({
-   *   authenticateOwner: async (ownerId) => {
-   *     const isRegistered = await db.checkOwner(ownerId);
-   *     if (!isRegistered) {
-   *       logger.warn("Unauthorized access attempt", { ownerId });
-   *     }
-   *     return isRegistered;
-   *   },
+   * // Client
+   * const transport = createOwnerWebSocketTransport({
+   *   url: "wss://relay.evolu.dev",
+   *   ownerId: owner.id,
    * });
+   *
+   * const evolu = createEvolu(deps)(Schema, {
+   *   transports: [transport],
+   * });
+   *
+   *
+   * // Relay
+   * isOwnerAllowed: (ownerId) =>
+   *   Promise.resolve(ownerId === "6jy_2F4RT5qqeLgJ14_dnQ"),
    * ```
    */
-  readonly authenticateOwner?: (ownerId: OwnerId) => Promise<boolean>;
+  readonly isOwnerAllowed?: (ownerId: OwnerId) => MaybeAsync<boolean>;
 }
+
+/**
+ * A completely interchangeable server for syncing and backing up encrypted data
+ * between Evolu clients.
+ *
+ * Unlike traditional servers, relays are blind by design—they transmit
+ * encrypted data without understanding its shape or meaning. This enables true
+ * decentralization and infinite horizontal scalability with minimal
+ * infrastructure.
+ */
+export interface Relay extends Disposable {}
 
 export const createRelaySqliteStorage =
   (deps: SqliteStorageDeps & TimingSafeEqualDep) =>
-  (options: CreateBaseSqliteStorageOptions): Storage => {
-    const sqliteStorageBase = createBaseSqliteStorage(deps)(options);
+  (config: CreateBaseSqliteStorageConfig): Storage => {
+    const sqliteStorageBase = createBaseSqliteStorage(deps)(config);
+
+    /**
+     * Mutex instances are cached per OwnerId to prevent concurrent writes for
+     * the same owner. Instances are never evicted, causing a memory leak
+     * proportional to unique owner count. However, per-instance overhead should
+     * be small. Monitor production memory usage to determine if
+     * eviction/cleanup is needed.
+     */
+    const ownerMutexes = createInstances<OwnerId, Mutex>();
 
     return {
       ...sqliteStorageBase,
@@ -92,26 +125,26 @@ export const createRelaySqliteStorage =
           `,
         );
         if (!selectWriteKey.ok) {
-          options.onStorageError(selectWriteKey.error);
+          config.onStorageError(selectWriteKey.error);
           return false;
         }
 
         const { rows } = selectWriteKey.value;
 
-        if (!isNonEmptyReadonlyArray(rows)) {
-          const insertWriteKey = deps.sqlite.exec(sql`
-            insert into evolu_writeKey (ownerId, writeKey)
-            values (${ownerId}, ${writeKey});
-          `);
-          if (!insertWriteKey.ok) {
-            options.onStorageError(insertWriteKey.error);
-            return false;
-          }
-
-          return true;
+        if (isNonEmptyReadonlyArray(rows)) {
+          return deps.timingSafeEqual(rows[0].writeKey, writeKey);
         }
 
-        return deps.timingSafeEqual(rows[0].writeKey, writeKey);
+        const insertWriteKey = deps.sqlite.exec(sql`
+          insert into evolu_writeKey (ownerId, writeKey)
+          values (${ownerId}, ${writeKey});
+        `);
+        if (!insertWriteKey.ok) {
+          config.onStorageError(insertWriteKey.error);
+          return false;
+        }
+
+        return true;
       },
 
       setWriteKey: (ownerId, writeKey) => {
@@ -122,45 +155,114 @@ export const createRelaySqliteStorage =
             set writeKey = excluded.writeKey;
         `);
         if (!upsertWriteKey.ok) {
-          options.onStorageError(upsertWriteKey.error);
+          config.onStorageError(upsertWriteKey.error);
           return false;
         }
 
         return true;
       },
 
-      // https://eslint.org/docs/latest/rules/require-await#when-not-to-use-it
-      // eslint-disable-next-line @typescript-eslint/require-await
-      writeMessages: async (ownerId, messages) => {
-        const result = deps.sqlite.transaction(() => {
-          for (const message of messages) {
-            const insertTimestampResult = sqliteStorageBase.insertTimestamp(
-              ownerId,
-              timestampToTimestampBytes(message.timestamp),
+      writeMessages: async (ownerIdBytes, messages) => {
+        const ownerId = ownerIdBytesToOwnerId(ownerIdBytes);
+        const messagesWithTimestampBytes = mapArray(messages, (m) => ({
+          timestamp: timestampToTimestampBytes(m.timestamp),
+          change: m.change,
+        }));
+
+        const result = await ownerMutexes
+          .ensure(ownerId, createMutex)
+          .withLock<void, SqliteError | StorageQuotaError>(async () => {
+            const existingTimestampsResult =
+              sqliteStorageBase.getExistingTimestamps(
+                ownerIdBytes,
+                mapArray(messagesWithTimestampBytes, (m) => m.timestamp),
+              );
+            if (!existingTimestampsResult.ok) return existingTimestampsResult;
+
+            const existingTimestampsSet = new Set(
+              existingTimestampsResult.value.map((t) => t.toString()),
             );
-            if (!insertTimestampResult.ok) return insertTimestampResult;
+            const newMessages = filterArray(
+              messagesWithTimestampBytes,
+              (m) => !existingTimestampsSet.has(m.timestamp.toString()),
+            );
 
-            const insertMessage = deps.sqlite.exec(sql`
-              insert into evolu_message ("ownerId", "timestamp", "change")
-              values
-                (
-                  ${ownerId},
-                  ${timestampToTimestampBytes(message.timestamp)},
-                  ${message.change}
-                )
-              on conflict do nothing;
+            // Nothing to write
+            if (!isNonEmptyReadonlyArray(newMessages)) {
+              return ok();
+            }
+
+            const storedBytesResult = deps.sqlite.exec<{
+              storedBytes: NonNegativeInt;
+            }>(sql`
+              select storedBytes
+              from evolu_usage
+              where ownerId = ${ownerIdBytes};
             `);
-            if (!insertMessage.ok) return insertMessage;
-          }
-          return ok();
-        });
+            if (!storedBytesResult.ok) return storedBytesResult;
 
-        if (!result.ok) {
-          options.onStorageError(result.error);
-          return false;
+            const storedBytes =
+              storedBytesResult.value.rows[0]?.storedBytes ?? 0;
+            const incomingBytes = newMessages.reduce(
+              (sum, m) => sum + m.change.length,
+              0,
+            );
+            const newStoredBytes = PositiveInt.orThrow(
+              storedBytes + incomingBytes,
+            );
+
+            if (config.isOwnerWithinQuota) {
+              const withinQuotaResult = config.isOwnerWithinQuota(
+                ownerId,
+                newStoredBytes,
+              );
+              const isWithinQuota = isAsync(withinQuotaResult)
+                ? await withinQuotaResult
+                : withinQuotaResult;
+              if (!isWithinQuota) {
+                return err({ type: "StorageQuotaError", ownerId });
+              }
+            }
+
+            return deps.sqlite.transaction(() => {
+              for (const { timestamp, change } of newMessages) {
+                const insertTimestampResult = sqliteStorageBase.insertTimestamp(
+                  ownerIdBytes,
+                  timestamp,
+                );
+                if (!insertTimestampResult.ok) return insertTimestampResult;
+
+                const insertMessage = deps.sqlite.exec(sql`
+                  insert into evolu_message ("ownerId", "timestamp", "change")
+                  values (${ownerIdBytes}, ${timestamp}, ${change})
+                  on conflict do nothing;
+                `);
+                if (!insertMessage.ok) return insertMessage;
+              }
+
+              const updateUsage = deps.sqlite.exec(sql`
+                insert into evolu_usage ("ownerId", "storedBytes")
+                values (${ownerIdBytes}, ${newStoredBytes})
+                on conflict (ownerId) do update
+                  set storedBytes = ${newStoredBytes};
+              `);
+              if (!updateUsage.ok) return updateUsage;
+
+              return ok();
+            });
+          })();
+
+        if (!result.ok && result.error.type !== "AbortError") {
+          switch (result.error.type) {
+            case "SqliteError":
+              config.onStorageError(result.error);
+              return err({ type: "StorageWriteError", ownerId });
+            case "StorageQuotaError":
+              return err({ type: "StorageQuotaError", ownerId });
+          }
         }
 
-        return true;
+        return ok();
       },
 
       readDbChange: (ownerId, timestamp) => {
@@ -172,7 +274,7 @@ export const createRelaySqliteStorage =
           where "ownerId" = ${ownerId} and "timestamp" = ${timestamp};
         `);
         if (!result.ok) {
-          options.onStorageError(result.error);
+          config.onStorageError(result.error);
           return null;
         }
 
@@ -180,7 +282,7 @@ export const createRelaySqliteStorage =
       },
 
       deleteOwner: (ownerId) => {
-        const result = deps.sqlite.transaction(() => {
+        const transactionResult = deps.sqlite.transaction(() => {
           const deleteWriteKey = deps.sqlite.exec(sql`
             delete from evolu_writeKey where ownerId = ${ownerId};
           `);
@@ -191,15 +293,23 @@ export const createRelaySqliteStorage =
           `);
           if (!deleteMessages.ok) return deleteMessages;
 
+          const deleteUsage = deps.sqlite.exec(sql`
+            delete from evolu_usage where ownerId = ${ownerId};
+          `);
+          if (!deleteUsage.ok) return deleteUsage;
+
           const deleteBaseOwner = sqliteStorageBase.deleteOwner(ownerId);
           if (!deleteBaseOwner) return err(null);
 
           return ok();
         });
-        if (!result.ok) {
-          if (result.error) options.onStorageError(result.error);
+
+        if (!transactionResult.ok) {
+          if (transactionResult.error)
+            config.onStorageError(transactionResult.error);
           return false;
         }
+
         return true;
       },
     };
@@ -241,7 +351,6 @@ export interface RelayLogger {
   readonly upgradeSocketError: (error: Error) => void;
   readonly invalidOrMissingOwnerIdInUrl: (url: string | undefined) => void;
   readonly unauthorizedOwner: (ownerId: OwnerId) => void;
-  readonly authenticateOwnerError: (error: unknown) => void;
   readonly connectionEstablished: (totalConnectionCount: number) => void;
   readonly connectionWebSocketError: (error: Error) => void;
   readonly relayOptionSubscribe: (
@@ -290,10 +399,6 @@ export const createRelayLogger = (deps: ConsoleDep): RelayLogger => ({
 
   unauthorizedOwner: (ownerId) => {
     deps.console.warn("[relay]", "unauthorized owner", { ownerId });
-  },
-
-  authenticateOwnerError: (error) => {
-    deps.console.error("[relay]", "authenticateOwner error", error);
   },
 
   connectionEstablished: (totalConnectionCount) => {

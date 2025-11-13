@@ -4,6 +4,7 @@ import {
   createRandom,
   createSqlite,
   CreateSqliteDriverDep,
+  isAsync,
   ok,
   OwnerId,
   RandomDep,
@@ -72,7 +73,8 @@ const createNodeJsRelayWithDeps =
     port = 443,
     name = SimpleName.orThrow("evolu-relay"),
     enableLogging = false,
-    authenticateOwner,
+    isOwnerAllowed,
+    isOwnerWithinQuota,
   }: NodeJsRelayConfig): Promise<Result<Relay, SqliteError>> => {
     const log = createRelayLogger(deps);
     log.started(enableLogging, port);
@@ -94,6 +96,7 @@ const createNodeJsRelayWithDeps =
 
     const storage = createRelaySqliteStorage(depsWithSqlite)({
       onStorageError: log.storageError,
+      ...(isOwnerWithinQuota && { isOwnerWithinQuota }),
     });
 
     const server = createServer();
@@ -114,7 +117,7 @@ const createNodeJsRelayWithDeps =
         });
       };
 
-      if (!authenticateOwner) {
+      if (!isOwnerAllowed) {
         completeUpgrade();
         return;
       }
@@ -122,6 +125,7 @@ const createNodeJsRelayWithDeps =
       const ownerId = parseOwnerIdFromOwnerWebSocketTransportUrl(
         request.url ?? "",
       );
+
       if (!ownerId) {
         log.invalidOrMissingOwnerIdInUrl(request.url);
         socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
@@ -129,21 +133,17 @@ const createNodeJsRelayWithDeps =
         return;
       }
 
-      authenticateOwner(ownerId)
-        .then((isAuthenticated) => {
-          if (!isAuthenticated) {
-            log.unauthorizedOwner(ownerId);
-            socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-            socket.destroy();
-            return;
-          }
-          completeUpgrade();
-        })
-        .catch((error: unknown) => {
-          log.authenticateOwnerError(error);
-          socket.write("HTTP/1.1 500 Internal Server Error\r\n\r\n");
+      void (async () => {
+        const result = isOwnerAllowed(ownerId);
+        const isAllowed = isAsync(result) ? await result : result;
+        if (!isAllowed) {
+          log.unauthorizedOwner(ownerId);
+          socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
           socket.destroy();
-        });
+          return;
+        }
+        completeUpgrade();
+      })();
     });
 
     wss.on("connection", (ws) => {

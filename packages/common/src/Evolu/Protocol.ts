@@ -85,10 +85,10 @@
  *
  * - {@link ProtocolWriteKeyError}: The provided WriteKey is invalid or missing.
  * - {@link ProtocolWriteError}: A serious relay-side write failure occurred.
+ * - {@link ProtocolQuotaError}: Storage or billing quota exceeded.
  * - {@link ProtocolSyncError}: A serious relay-side synchronization failure
  *   occurred.
- * - {@link ProtocolQuotaExceededError}: Storage or billing quota exceeded.
- * - {@link ProtocolUnsupportedVersionError}: Protocol version mismatch.
+ * - {@link ProtocolVersionError}: Protocol version mismatch.
  * - {@link ProtocolInvalidDataError}: The message is malformed or corrupted.
  *
  * All protocol errors except `ProtocolInvalidDataError` include the `OwnerId`
@@ -160,6 +160,19 @@
  * @module
  */
 
+/**
+ * TODO:
+ *
+ * - The client-relay naming convention in functions like
+ *   `applyProtocolMessageAsClient` and `applyProtocolMessageAsRelay` is not
+ *   ideal. In the future, clients will be able to sync directly with each other
+ *   (P2P), making the current naming misleading. Consider using
+ *   initiator/non-initiator terminology instead, and consolidate into a single
+ *   `applyProtocolMessage` function with conditional arguments to reduce code
+ *   duplication.
+ * - ProtocolQuotaError should return storedBytes and actual quota.
+ */
+
 import { Packr } from "msgpackr";
 import { isNonEmptyReadonlyArray, NonEmptyReadonlyArray } from "../Array.js";
 import { assert } from "../Assert.js";
@@ -204,6 +217,7 @@ import {
 } from "../Type.js";
 import { Predicate } from "../Types.js";
 import {
+  BaseOwnerError,
   Owner,
   OwnerId,
   OwnerIdBytes,
@@ -342,36 +356,31 @@ export const ProtocolErrorCode = {
   WriteKeyError: 1,
   /** A code for {@link ProtocolWriteError}. */
   WriteError: 2,
+  /** A code for {@link ProtocolQuotaError}. */
+  QuotaError: 3,
   /** A code for {@link ProtocolSyncError}. */
-  SyncError: 3,
-  /** A code for {@link ProtocolQuotaExceededError}. */
-  QuotaExceededError: 4,
+  SyncError: 4,
 } as const;
 
 type ProtocolErrorCode =
   (typeof ProtocolErrorCode)[keyof typeof ProtocolErrorCode];
 
 export type ProtocolError =
-  | ProtocolUnsupportedVersionError
+  | ProtocolVersionError
   | ProtocolInvalidDataError
   | ProtocolWriteKeyError
   | ProtocolWriteError
   | ProtocolSyncError
-  | ProtocolQuotaExceededError
+  | ProtocolQuotaError
   | ProtocolTimestampMismatchError;
-
-/** Base interface for all protocol errors. */
-export interface ProtocolErrorBase {
-  readonly ownerId: OwnerId;
-}
 
 /**
  * Represents a version mismatch in the Evolu Protocol. Occurs when the
  * initiator and non-initiator are using incompatible protocol versions.
  */
-export interface ProtocolUnsupportedVersionError extends ProtocolErrorBase {
-  readonly type: "ProtocolUnsupportedVersionError";
-  readonly unsupportedVersion: NonNegativeInt;
+export interface ProtocolVersionError extends BaseOwnerError {
+  readonly type: "ProtocolVersionError";
+  readonly version: NonNegativeInt;
   /** Indicates which side is obsolete and should update. */
   readonly isInitiator: boolean;
 }
@@ -384,7 +393,7 @@ export interface ProtocolInvalidDataError {
 }
 
 /** Error when a {@link OwnerWriteKey} is invalid, missing, or fails validation. */
-export interface ProtocolWriteKeyError extends ProtocolErrorBase {
+export interface ProtocolWriteKeyError extends BaseOwnerError {
   readonly type: "ProtocolWriteKeyError";
 }
 
@@ -392,27 +401,31 @@ export interface ProtocolWriteKeyError extends ProtocolErrorBase {
  * Error indicating a serious relay-side write failure. Clients should log this
  * error and show a generic sync error to the user.
  */
-export interface ProtocolWriteError extends ProtocolErrorBase {
+export interface ProtocolWriteError extends BaseOwnerError {
   readonly type: "ProtocolWriteError";
+}
+
+/**
+ * Error when storage or billing quota is exceeded.
+ *
+ * When relay rejects writes due to quota, the affected device stops syncing
+ * because RBSR requires both sides to converge—if the relay won't accept the
+ * client's data, they can never reach the same state. Only the device with
+ * excess local data is affected. Other devices that haven't exceeded quota can
+ * still sync normally.
+ *
+ * Clients should prompt the user to upgrade their plan.
+ */
+export interface ProtocolQuotaError extends BaseOwnerError {
+  readonly type: "ProtocolQuotaError";
 }
 
 /**
  * Error indicating a serious relay-side synchronization failure. Clients should
  * log this error and show a generic sync error to the user.
  */
-export interface ProtocolSyncError extends ProtocolErrorBase {
+export interface ProtocolSyncError extends BaseOwnerError {
   readonly type: "ProtocolSyncError";
-}
-
-/**
- * Error when storage or billing quota is exceeded. Clients should prompt the
- * user to upgrade their plan or expand capacity.
- *
- * TODO: Add callback to relay config to check quota and return this error when
- * limits are reached.
- */
-export interface ProtocolQuotaExceededError extends ProtocolErrorBase {
-  readonly type: "ProtocolQuotaExceededError";
 }
 
 /**
@@ -862,10 +875,10 @@ const createRunLengthEncoder = <T>(
 export interface ApplyProtocolMessageAsClientOptions {
   getWriteKey?: (ownerId: OwnerId) => OwnerWriteKey | null;
 
-  /** For testing purposes only; should not be used in production. */
-  version?: NonNegativeInt;
-
   rangesMaxSize?: ProtocolMessageRangesMaxSize;
+
+  /** For tests only. */
+  version?: NonNegativeInt;
 }
 
 /**
@@ -887,22 +900,23 @@ export const applyProtocolMessageAsClient =
       ApplyProtocolMessageAsClientResult,
       | ProtocolInvalidDataError
       | ProtocolSyncError
-      | ProtocolUnsupportedVersionError
+      | ProtocolVersionError
       | ProtocolWriteError
       | ProtocolWriteKeyError
-      | ProtocolQuotaExceededError
+      | ProtocolQuotaError
     >
   > => {
     // try-catch instead of Result for performance and stacktraces
+    // DEV: Measure it again, I think we should use Result with new Error.
     try {
       const input = createBuffer(inputMessage);
       const [requestedVersion, ownerId] = decodeVersionAndOwner(input);
       const version = options.version ?? protocolVersion;
 
       if (requestedVersion !== version) {
-        return err<ProtocolUnsupportedVersionError>({
-          type: "ProtocolUnsupportedVersionError",
-          unsupportedVersion: requestedVersion,
+        return err<ProtocolVersionError>({
+          type: "ProtocolVersionError",
+          version: requestedVersion,
           isInitiator: version < requestedVersion,
           ownerId,
         });
@@ -929,14 +943,14 @@ export const applyProtocolMessageAsClient =
                 type: "ProtocolWriteError",
                 ownerId,
               });
+            case ProtocolErrorCode.QuotaError:
+              return err<ProtocolQuotaError>({
+                type: "ProtocolQuotaError",
+                ownerId,
+              });
             case ProtocolErrorCode.SyncError:
               return err<ProtocolSyncError>({
                 type: "ProtocolSyncError",
-                ownerId,
-              });
-            case ProtocolErrorCode.QuotaExceededError:
-              return err<ProtocolQuotaExceededError>({
-                type: "ProtocolQuotaExceededError",
                 ownerId,
               });
             default:
@@ -950,11 +964,13 @@ export const applyProtocolMessageAsClient =
       const messages = decodeMessages(input);
       const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
 
-      if (
-        isNonEmptyReadonlyArray(messages) &&
-        !(await deps.storage.writeMessages(ownerIdBytes, messages))
-      ) {
-        return ok({ type: "no-response" });
+      if (isNonEmptyReadonlyArray(messages)) {
+        const writeResult = await deps.storage.writeMessages(
+          ownerIdBytes,
+          messages,
+        );
+        // Errors are handled by the Storage. Here we just stop syncing.
+        if (!writeResult.ok) return ok({ type: "no-response" });
       }
 
       // Now: No writeKey, no sync.
@@ -1033,12 +1049,13 @@ export const applyProtocolMessageAsRelay =
   async (
     inputMessage: Uint8Array,
     options: ApplyProtocolMessageAsRelayOptions = {},
-    /** For testing purposes only; should not be used in production. */
+    /** For tests only. */
     version = protocolVersion,
   ): Promise<
     Result<ApplyProtocolMessageAsRelayResult, ProtocolInvalidDataError>
   > => {
     // try-catch instead of Result for performance and stacktraces
+    // DEV: Measure it again, I think we should use Result with new Error.
     try {
       const input = createBuffer(inputMessage);
       const [requestedVersion, ownerId] = decodeVersionAndOwner(input);
@@ -1104,17 +1121,39 @@ export const applyProtocolMessageAsRelay =
           });
         }
 
+        const writeResult = await deps.storage.writeMessages(
+          ownerIdBytes,
+          messages,
+        );
+
+        if (!writeResult.ok) {
+          const errorCode =
+            writeResult.error.type === "StorageWriteError"
+              ? ProtocolErrorCode.WriteError
+              : ProtocolErrorCode.QuotaError;
+          const message = createProtocolMessageBuffer(ownerId, {
+            messageType: MessageType.Response,
+            errorCode,
+          }).unwrap();
+          return ok({ type: "response", message });
+        }
+
         /**
-         * Broadcast messages to all subscribed devices. This ensures real-time
+         * Broadcast messages to all subscribed owners for real-time
          * synchronization between clients.
+         *
+         * Messages are only broadcasted after successful write to ensure
+         * devices that can still sync aren't affected by quota errors, and to
+         * prevent using a half-working relay service (broadcasting without
+         * persistence).
          *
          * When a relay's database is deleted or clients migrate to a new relay
          * (without data migration), clients will sync their data to the relay,
          * and the relay will broadcast those messages to other connected
          * clients. Those clients may receive messages they already have, but
-         * this is safe because `applyMessages` is idempotent. As the relay
-         * becomes more synchronized with clients over time, fewer duplicate
-         * messages will be broadcasted.
+         * this is safe because Evolu sync is idempotent. As the relay becomes
+         * more synchronized with clients over time, fewer duplicate messages
+         * will be broadcasted.
          */
         if (options.broadcast) {
           const broadcastBuffer = createProtocolMessageBuffer(ownerId, {
@@ -1127,16 +1166,6 @@ export const applyProtocolMessageAsRelay =
             broadcastBuffer.addMessage(message);
           }
           options.broadcast(ownerId, broadcastBuffer.unwrap());
-        }
-
-        if (!(await deps.storage.writeMessages(ownerIdBytes, messages))) {
-          return ok({
-            type: "response",
-            message: createProtocolMessageBuffer(ownerId, {
-              messageType: MessageType.Response,
-              errorCode: ProtocolErrorCode.WriteError,
-            }).unwrap(),
-          });
         }
       }
 

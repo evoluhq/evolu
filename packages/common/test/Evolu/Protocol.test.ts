@@ -54,7 +54,7 @@ import {
   EncryptionKey,
   NonEmptyReadonlyArray,
 } from "../../src/index.js";
-import { err, getOrThrow } from "../../src/Result.js";
+import { err, getOrThrow, ok } from "../../src/Result.js";
 import { SqliteValue } from "../../src/Sqlite.js";
 import { dateToDateIso, NonNegativeInt } from "../../src/Type.js";
 import {
@@ -666,8 +666,8 @@ describe("E2E versioning", () => {
     )(relayResponse.value.message, { version: v0 });
     expect(clientResult).toEqual(
       err({
-        type: "ProtocolUnsupportedVersionError",
-        unsupportedVersion: 1,
+        type: "ProtocolVersionError",
+        version: 1,
         isInitiator: true,
         ownerId: testOwner.id,
       }),
@@ -693,8 +693,8 @@ describe("E2E versioning", () => {
     )(relayResponse.value.message, { version: v1 });
     expect(clientResult).toEqual(
       err({
-        type: "ProtocolUnsupportedVersionError",
-        unsupportedVersion: 0,
+        type: "ProtocolVersionError",
+        version: 0,
         isInitiator: false,
         ownerId: testOwner.id,
       }),
@@ -848,7 +848,7 @@ describe("E2E relay options", () => {
       storage: {
         ...shouldNotBeCalledStorageDep.storage,
         validateWriteKey: constTrue,
-        writeMessages: () => Promise.resolve(true),
+        writeMessages: () => Promise.resolve(ok()),
       },
     })(initiatorMessage, {
       broadcast: (ownerId, message) => {
@@ -872,7 +872,7 @@ describe("E2E relay options", () => {
           writeMessagesCalled = true;
           expect(ownerId).toEqual(testOwnerIdBytes);
           expect(encryptedMessages.length).toBe(messages.length);
-          return true;
+          return ok();
         },
       },
     })(broadcastedMessage);

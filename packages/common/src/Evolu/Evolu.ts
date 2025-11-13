@@ -7,7 +7,7 @@ import { RandomBytesDep, SymmetricCryptoDecryptError } from "../Crypto.js";
 import { eqArrayNumber } from "../Eq.js";
 import { TransferableError } from "../Error.js";
 import { exhaustiveCheck } from "../Function.js";
-import { createMultiton, Multiton } from "../Multiton.js";
+import { createInstances, Instances } from "../Instances.js";
 import { err, ok, Result } from "../Result.js";
 import { isSqlMutation, SafeSql, SqliteError, SqliteQuery } from "../Sqlite.js";
 import { createStore, StoreSubscribe } from "../Store.js";
@@ -29,7 +29,7 @@ import { CreateDbWorkerDep, DbConfig, defaultDbConfig } from "./Db.js";
 import { applyPatches } from "./Diff.js";
 import { AppOwner } from "./Owner.js";
 import { FlushSyncDep, ReloadAppDep } from "./Platform.js";
-import { ProtocolError, ProtocolUnsupportedVersionError } from "./Protocol.js";
+import { ProtocolError } from "./Protocol.js";
 import {
   createSubscribedQueries,
   emptyRows,
@@ -437,7 +437,6 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
 /** Represents errors that can occur in Evolu. */
 export type EvoluError =
   | ProtocolError
-  | ProtocolUnsupportedVersionError
   | SqliteError
   | SymmetricCryptoDecryptError
   | TimestampError
@@ -459,7 +458,7 @@ export type EvoluDeps = ConsoleDep &
   ReloadAppDep &
   TimeDep;
 
-const evoluInstances = createMultiton<SimpleName, InternalEvoluInstance>();
+const evoluInstances = createInstances<SimpleName, InternalEvoluInstance>();
 
 /**
  * Unique identifier for the current browser tab or app instance, lazily
@@ -502,7 +501,7 @@ let tabId: Id | null = null;
  *
  * ### Instance Caching
  *
- * `createEvolu` caches instances using {@link Multiton} by {@link EvoluConfig}
+ * `createEvolu` caches instances using {@link Instances} by {@link EvoluConfig}
  * name to enable hot reloading and prevent database corruption from multiple
  * connections. For testing, use unique instance names to ensure proper
  * isolation.

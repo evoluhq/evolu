@@ -18,8 +18,7 @@ import {
   Mnemonic,
   NonNegativeInt,
 } from "../Type.js";
-import type { Storage } from "./Storage.js";
-import type { Timestamp, TimestampBytes } from "./Timestamp.js";
+import type { Storage, EncryptedDbChange } from "./Storage.js";
 
 /**
  * The Owner represents ownership of data in Evolu. Every database change is
@@ -343,11 +342,16 @@ export interface OwnerWebSocketTransport {
  * ### Example
  *
  * ```ts
+ * // Create transport "wss://relay.evolu.dev?ownerId=..."
  * const transport = createOwnerWebSocketTransport({
  *   url: "wss://relay.evolu.dev",
  *   ownerId: owner.id,
  * });
- * // Result: { type: "WebSocket", url: "wss://relay.evolu.dev?ownerId=..." }
+ *
+ * // Use with createEvolu
+ * const evolu = createEvolu(deps)(Schema, {
+ *   transports: [transport],
+ * });
  * ```
  */
 export const createOwnerWebSocketTransport = (config: {
@@ -378,6 +382,11 @@ export const parseOwnerIdFromOwnerWebSocketTransportUrl = (
   url: string,
 ): OwnerId | null => getOrNull(OwnerId.fromUnknown(url.split("=")[1]));
 
+/** Base interface for all owner errors. */
+export interface BaseOwnerError {
+  readonly ownerId: OwnerId;
+}
+
 /**
  * Usage data for an {@link OwnerId}.
  *
@@ -391,27 +400,44 @@ export interface OwnerUsage {
   /** The {@link Owner} this usage data belongs to. */
   readonly ownerId: OwnerIdBytes;
 
-  /** Total bytes stored in the database. */
+  /**
+   * Total logical data bytes stored.
+   *
+   * Measures the size of {@link EncryptedDbChange}s only, excluding
+   * {@link Storage} implementation overhead (with SqliteStorage: indexes,
+   * skiplist columns, etc.). This provides:
+   *
+   * - **Predictable measurement** - same data = same byte count across all
+   *   instances
+   * - **Quota enforcement** - consistent billing/limits independent of storage
+   *   implementation
+   * - **Overhead tracking** - actual Storage size can be compared against this to
+   *   monitor efficiency
+   */
   readonly storedBytes: NonNegativeInt;
 
-  /** Total bytes received. */
-  readonly receivedBytes: NonNegativeInt;
+  // TODO: Decide how to use receivedBytes and sentBytes.
+  // /** Total bytes received. */
+  // readonly receivedBytes: NonNegativeInt;
 
-  /** Total bytes sent. */
-  readonly sentBytes: NonNegativeInt;
+  // TODO: Decide how to use sentBytes.
+  // /** Total bytes sent. */
+  // readonly sentBytes: NonNegativeInt;
 
-  /**
-   * The minimum {@link Timestamp}.
-   *
-   * Helps {@link Storage} choose faster algorithms.
-   */
-  readonly firstTimestamp: TimestampBytes | null;
+  // TODO: Decide how to use firstTimestamp.
+  // /**
+  //  * The minimum {@link Timestamp}.
+  //  *
+  //  * Helps {@link Storage} choose faster algorithms.
+  //  */
+  // readonly firstTimestamp: TimestampBytes | null;
 
-  /**
-   * The maximum {@link Timestamp}.
-   *
-   * Helps {@link Storage} choose faster algorithms. Free relays can use it to
-   * identify inactive accounts for cleanup or archival.
-   */
-  readonly lastTimestamp: TimestampBytes | null;
+  // TODO: Decide how to use lastTimestamp.
+  // /**
+  //  * The maximum {@link Timestamp}.
+  //  *
+  //  * Helps {@link Storage} choose faster algorithms. Free relays can use it to
+  //  * identify inactive accounts for cleanup or archival.
+  //  */
+  // readonly lastTimestamp: TimestampBytes | null;
 }

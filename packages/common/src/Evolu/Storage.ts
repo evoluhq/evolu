@@ -2,10 +2,12 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { NonEmptyReadonlyArray } from "../Array.js";
 import { assert } from "../Assert.js";
 import { Brand } from "../Brand.js";
+import { concatBytes } from "../Buffer.js";
 import { decrement } from "../Number.js";
 import { RandomDep } from "../Random.js";
 import { ok, Result } from "../Result.js";
 import { sql, SqliteDep, SqliteError, SqliteValue } from "../Sqlite.js";
+import { MaybeAsync } from "../Task.js";
 import {
   Id,
   Int64String,
@@ -16,6 +18,7 @@ import {
   String,
 } from "../Type.js";
 import {
+  BaseOwnerError,
   Owner,
   OwnerId,
   OwnerIdBytes,
@@ -24,13 +27,50 @@ import {
 } from "./Owner.js";
 import { orderTimestampBytes, Timestamp, TimestampBytes } from "./Timestamp.js";
 
+export interface StorageConfig {
+  /**
+   * Optional callback to check if an {@link OwnerId} is within their quota for
+   * the requested write. If this callback is not provided, all writes are
+   * allowed regardless of size.
+   *
+   * If provided, the callback receives the OwnerId and the number of bytes
+   * required for the write, and should return a {@link MaybeAsync} boolean:
+   * `true` to allow the write, or `false` to deny it due to quota limits.
+   *
+   * The callback can be synchronous (for SQLite or in-memory checks) or
+   * asynchronous (for calling remote APIs).
+   *
+   * The callback returns a boolean rather than an error type because error
+   * handling and logging are the responsibility of the callback
+   * implementation.
+   *
+   * ### Example
+   *
+   * ```ts
+   * // Client
+   * // evolu.subscribeError
+   *
+   * // Relay
+   * isOwnerWithinQuota: (ownerId, requiredBytes) => {
+   *   console.log(ownerId, requiredBytes);
+   *   // Check error via evolu.subscribeError
+   *   return true;
+   * };
+   * ```
+   */
+  readonly isOwnerWithinQuota?: (
+    ownerId: OwnerId,
+    requiredBytes: PositiveInt,
+  ) => MaybeAsync<boolean>;
+}
+
 /**
  * Evolu Storage
  *
- * The protocol using Storage is agnostic to storage implementation details—any
- * storage can be plugged in, as long as it implements this interface.
- * Implementations must handle their own errors; return values only indicate
- * overall success or failure.
+ * Evolu protocol using Storage is agnostic to storage implementation
+ * details—any storage can be plugged in, as long as it implements this
+ * interface. Implementations must handle their own errors; return values only
+ * indicate overall success or failure.
  *
  * The Storage API is synchronous because SQLite's synchronous API is the
  * fastest way to use SQLite. Synchronous bindings (like better-sqlite3) call
@@ -96,15 +136,15 @@ export interface Storage {
   /**
    * Write encrypted {@link CrdtMessage}s to storage.
    *
-   * Must use a mutex (per ownerId on Relay) to ensure sequential processing and
-   * proper protocol logic handling during sync operations.
+   * Must use a mutex per ownerId to ensure sequential processing and proper
+   * protocol logic handling during sync operations.
    *
-   * Returns `true` on success, `false` on failure.
+   * TODO: Use MaybeAsync
    */
   readonly writeMessages: (
-    ownerId: OwnerIdBytes,
+    ownerIdBytes: OwnerIdBytes,
     messages: NonEmptyReadonlyArray<EncryptedCrdtMessage>,
-  ) => Promise<boolean>;
+  ) => MaybeAsync<Result<void, StorageWriteError | StorageQuotaError>>;
 
   /** Read encrypted {@link DbChange}s from storage. */
   readonly readDbChange: (
@@ -122,6 +162,16 @@ export interface Storage {
 
 export interface StorageDep {
   readonly storage: Storage;
+}
+
+/** Error indicating a serious write failure. */
+export interface StorageWriteError extends BaseOwnerError {
+  readonly type: "StorageWriteError";
+}
+
+/** Error when storage or billing quota is exceeded. */
+export interface StorageQuotaError extends BaseOwnerError {
+  readonly type: "StorageQuotaError";
 }
 
 /**
@@ -261,6 +311,15 @@ export interface BaseSqliteStorage
     ownerId: OwnerIdBytes,
     timestamp: TimestampBytes,
   ) => Result<void, SqliteError>;
+
+  /**
+   * Efficiently checks which timestamps already exist in the database using a
+   * single CTE query instead of N individual queries.
+   */
+  readonly getExistingTimestamps: (
+    ownerIdBytes: OwnerIdBytes,
+    timestampsBytes: NonEmptyReadonlyArray<TimestampBytes>,
+  ) => Result<ReadonlyArray<TimestampBytes>, SqliteError>;
 }
 
 export interface BaseSqliteStorageDep {
@@ -269,14 +328,14 @@ export interface BaseSqliteStorageDep {
 
 export type SqliteStorageDeps = RandomDep & SqliteDep;
 
-export interface CreateBaseSqliteStorageOptions {
+export interface CreateBaseSqliteStorageConfig extends StorageConfig {
   onStorageError: (error: SqliteError) => void;
 }
 
 export const createBaseSqliteStorage =
   (deps: SqliteStorageDeps) =>
-  (options: CreateBaseSqliteStorageOptions): BaseSqliteStorage => {
-    // TODO: Use OwnerUsage table.
+  (config: CreateBaseSqliteStorageConfig): BaseSqliteStorage => {
+    // TODO: Use evolu_usage table.
     const ownerStats = new Map<
       OwnerId,
       {
@@ -286,6 +345,102 @@ export const createBaseSqliteStorage =
     >();
 
     return {
+      getSize: (ownerId) => {
+        const size = getSize(deps)(ownerId);
+        if (!size.ok) {
+          config.onStorageError(size.error);
+          return null;
+        }
+        return size.value;
+      },
+
+      fingerprint: (ownerId, begin, end) => {
+        assertBeginEnd(begin, end);
+        const result = fingerprint(deps)(ownerId, begin, end);
+        if (!result.ok) {
+          config.onStorageError(result.error);
+          return null;
+        }
+        return result.value;
+      },
+
+      fingerprintRanges: (ownerId, buckets, upperBound) => {
+        const ranges = fingerprintRanges(deps)(ownerId, buckets, upperBound);
+        if (!ranges.ok) {
+          config.onStorageError(ranges.error);
+          return null;
+        }
+        return ranges.value;
+      },
+
+      findLowerBound: (ownerId, begin, end, upperBound) => {
+        const lowerBound = findLowerBound(deps)(
+          ownerId,
+          begin,
+          end,
+          upperBound,
+        );
+        if (!lowerBound.ok) {
+          config.onStorageError(lowerBound.error);
+          return null;
+        }
+        return lowerBound.value;
+      },
+
+      iterate: (ownerId, begin, end, callback) => {
+        assertBeginEnd(begin, end);
+        const length = end - begin;
+        if (length === 0) return;
+
+        // This is much faster than SQL limit with offset.
+        const first = getTimestampByIndex(deps)(ownerId, begin);
+        if (!first.ok) {
+          config.onStorageError(first.error);
+          return;
+        }
+
+        if (!callback(first.value, begin)) return;
+        if (length === 1) return;
+
+        /**
+         * TODO: In rare cases, we might overfetch a lot of rows here, but we
+         * don't have real usage numbers yet. Fetching one row at a time would
+         * probably be slower in almost all cases. In the future, we should
+         * fetch in chunks (e.g., 1,000 rows at a time). For now, consider
+         * logging unused rows to gather data and calculate an average, then use
+         * that information to determine an optimal chunk size. Before
+         * implementing chunking, be sure to run performance tests (including
+         * fetching one by one).
+         */
+        const result = deps.sqlite.exec<{ t: TimestampBytes }>(sql`
+          select t
+          from evolu_timestamp
+          where ownerId = ${ownerId} and t > ${first.value}
+          order by t
+          limit ${length - 1};
+        `);
+        if (!result.ok) {
+          config.onStorageError(result.error);
+          return;
+        }
+
+        for (let i = 0; i < result.value.rows.length; i++) {
+          const index = (begin + 1 + i) as NonNegativeInt;
+          if (!callback(result.value.rows[i].t, index)) return;
+        }
+      },
+
+      deleteOwner: (ownerId) => {
+        const result = deps.sqlite.exec(sql`
+          delete from evolu_timestamp where ownerId = ${ownerId};
+        `);
+        if (!result.ok) {
+          config.onStorageError(result.error);
+          return false;
+        }
+        return true;
+      },
+
       insertTimestamp: (ownerId: OwnerIdBytes, timestamp: TimestampBytes) => {
         const ownerIdString = ownerIdBytesToOwnerId(ownerId);
         const level = randomSkiplistLevel(deps);
@@ -325,100 +480,34 @@ export const createBaseSqliteStorage =
         return insertTimestamp(deps)(ownerId, timestamp, level, strategy);
       },
 
-      getSize: (ownerId) => {
-        const size = getSize(deps)(ownerId);
-        if (!size.ok) {
-          options.onStorageError(size.error);
-          return null;
-        }
-        return size.value;
-      },
+      getExistingTimestamps: (ownerIdBytes, timestampsBytes) => {
+        const concatenatedTimestamps = concatBytes(...timestampsBytes);
 
-      fingerprint: (ownerId, begin, end) => {
-        assertBeginEnd(begin, end);
-        const result = fingerprint(deps)(ownerId, begin, end);
-        if (!result.ok) {
-          options.onStorageError(result.error);
-          return null;
-        }
-        return result.value;
-      },
-
-      fingerprintRanges: (ownerId, buckets, upperBound) => {
-        const ranges = fingerprintRanges(deps)(ownerId, buckets, upperBound);
-        if (!ranges.ok) {
-          options.onStorageError(ranges.error);
-          return null;
-        }
-        return ranges.value;
-      },
-
-      findLowerBound: (ownerId, begin, end, upperBound) => {
-        const lowerBound = findLowerBound(deps)(
-          ownerId,
-          begin,
-          end,
-          upperBound,
-        );
-        if (!lowerBound.ok) {
-          options.onStorageError(lowerBound.error);
-          return null;
-        }
-        return lowerBound.value;
-      },
-
-      iterate: (ownerId, begin, end, callback) => {
-        assertBeginEnd(begin, end);
-        const length = end - begin;
-        if (length === 0) return;
-
-        // This is much faster than SQL limit with offset.
-        const first = getTimestampByIndex(deps)(ownerId, begin);
-        if (!first.ok) {
-          options.onStorageError(first.error);
-          return;
-        }
-
-        if (!callback(first.value, begin)) return;
-        if (length === 1) return;
-
-        /**
-         * TODO: In rare cases, we might overfetch a lot of rows here, but we
-         * don't have real usage numbers yet. Fetching one row at a time would
-         * probably be slower in almost all cases. In the future, we should
-         * fetch in chunks (e.g., 1,000 rows at a time). For now, consider
-         * logging unused rows to gather data and calculate an average, then use
-         * that information to determine an optimal chunk size. Before
-         * implementing chunking, be sure to run performance tests (including
-         * fetching one by one).
-         */
-        const result = deps.sqlite.exec<{ t: TimestampBytes }>(sql`
-          select t
-          from evolu_timestamp
-          where ownerId = ${ownerId} and t > ${first.value}
-          order by t
-          limit ${length - 1};
+        const result = deps.sqlite.exec<{
+          timestampBytes: TimestampBytes;
+        }>(sql`
+          with recursive
+            split_timestamps(timestampBytes, pos) as (
+              select
+                substr(${concatenatedTimestamps}, 1, 16),
+                17 as pos
+              union all
+              select
+                substr(${concatenatedTimestamps}, pos, 16),
+                pos + 16
+              from split_timestamps
+              where pos <= length(${concatenatedTimestamps})
+            )
+          select s.timestampBytes
+          from
+            split_timestamps s
+            join evolu_timestamp t
+              on t.ownerId = ${ownerIdBytes} and s.timestampBytes = t.t;
         `);
-        if (!result.ok) {
-          options.onStorageError(result.error);
-          return;
-        }
 
-        for (let i = 0; i < result.value.rows.length; i++) {
-          const index = (begin + 1 + i) as NonNegativeInt;
-          if (!callback(result.value.rows[i].t, index)) return;
-        }
-      },
+        if (!result.ok) return result;
 
-      deleteOwner: (ownerId) => {
-        const result = deps.sqlite.exec(sql`
-          delete from evolu_timestamp where ownerId = ${ownerId};
-        `);
-        if (!result.ok) {
-          options.onStorageError(result.error);
-          return false;
-        }
-        return true;
+        return ok(result.value.rows.map((row) => row.timestampBytes));
       },
     };
   };
@@ -484,19 +573,20 @@ export const createBaseSqliteStorageTables = (
      *
      * - `ownerId` – OwnerIdBytes (primary key)
      * - `storedBytes` – total bytes stored in database
-     * - `receivedBytes` – total bytes received from clients
-     * - `sentBytes` – total bytes sent to clients
-     * - `firstTimestamp` – minimum timestamp (nullable)
-     * - `lastTimestamp` – maximum timestamp (nullable)
+     * - `receivedBytes` – TODO: Decide how to use
+     * - `sentBytes` – TODO: Decide how to use
+     * - `firstTimestamp` – TODO: Decide how to use (nullable)
+     * - `lastTimestamp` – TODO: Decide how to use (nullable)
      */
     sql`
       create table evolu_usage (
         "ownerId" blob primary key,
-        "storedBytes" integer not null,
-        "receivedBytes" integer not null,
-        "sentBytes" integer not null,
-        "firstTimestamp" blob,
-        "lastTimestamp" blob
+        "storedBytes" integer not null
+        -- TODO: Decide how to use receivedBytes, sentBytes, firstTimestamp, lastTimestamp
+        -- "receivedBytes" integer not null,
+        -- "sentBytes" integer not null,
+        -- "firstTimestamp" blob,
+        -- "lastTimestamp" blob
       )
       strict;
     `,

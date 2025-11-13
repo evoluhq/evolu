@@ -238,10 +238,6 @@ test("initializes DbWorker with external AppOwner", async () => {
             "columns": [
               "ownerId",
               "storedBytes",
-              "receivedBytes",
-              "sentBytes",
-              "firstTimestamp",
-              "lastTimestamp",
             ],
             "name": "evolu_usage",
           },

@@ -13,7 +13,7 @@ import { constFalse } from "../Function.js";
 import { objectToEntries } from "../Object.js";
 import { RandomDep } from "../Random.js";
 import { createRefCountedResourceManager } from "../RefCountedResourceManager.js";
-import { ok, Result } from "../Result.js";
+import { err, ok, Result } from "../Result.js";
 import { sql, SqliteDep, SqliteError, SqliteValue } from "../Sqlite.js";
 import { AbortError, createMutex } from "../Task.js";
 import { TimeDep } from "../Time.js";
@@ -48,10 +48,11 @@ import {
 import { MutationChange } from "./Schema.js";
 import {
   BaseSqliteStorage,
-  createBaseSqliteStorage,
   CrdtMessage,
+  createBaseSqliteStorage,
   DbChange,
   Storage,
+  StorageWriteError,
 } from "./Storage.js";
 import {
   createInitialTimestamp,
@@ -452,15 +453,20 @@ const createClientStorage =
       onStorageError: config.onError,
     });
 
+    // TODO: Mutex per OwnerId
     const mutex = createMutex();
 
     const storage: ClientStorage = {
       ...sqliteStorageBase,
 
+      // Not implemented yet.
       validateWriteKey: constFalse,
       setWriteKey: constFalse,
 
       writeMessages: async (ownerIdBytes, encryptedMessages) => {
+        const ownerId = ownerIdBytesToOwnerId(ownerIdBytes);
+
+        // Everything is sync now, but we will need async crypto in the future.
         const writeResult = await mutex.withLock<
           boolean,
           | AbortError
@@ -473,10 +479,16 @@ const createClientStorage =
           | TimestampTimeOutOfRangeError
           // eslint-disable-next-line @typescript-eslint/require-await
         >(async () => {
-          const ownerId = ownerIdBytesToOwnerId(ownerIdBytes);
           const owner = deps.getSyncOwner(ownerId);
           // Owner can be removed during syncing.
-          if (!owner) return ok(false);
+          // `ok(true)` means success, we just skipped the write.
+          if (!owner) return ok(true);
+
+          // TODO: Add quota checking for collaborative scenarios.
+          // When receiving messages from other owners via relay broadcast,
+          // check if this owner is within quota before accepting the data.
+          // This prevents an owner from exceeding storage limits when receiving
+          // data shared by other collaborators.
 
           const messages: Array<CrdtMessage> = [];
 
@@ -530,12 +542,12 @@ const createClientStorage =
           if (writeResult.error.type !== "AbortError") {
             config.onError(writeResult.error);
           }
-          return false;
+          return err<StorageWriteError>({ type: "StorageWriteError", ownerId });
         }
 
         config.onReceive();
 
-        return true;
+        return ok();
       },
 
       readDbChange: (ownerId, timestamp) => {
