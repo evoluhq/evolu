@@ -778,13 +778,6 @@ export const createMutex = (): Mutex => {
   };
 };
 
-// TODO: Add tracing support
-// - Extend TaskContext with optional tracing field
-// - Add traced(name, task) helper that wraps Task execution
-// - Collect span data (name, timing, parent-child relationships, status)
-// - Support OpenTelemetry export format with proper traceId/spanId generation
-// - Automatic parent-child span relationships through context propagation
-
 /**
  * Schedule a task to run after all interactions (animations, gestures,
  * navigation) have completed.
@@ -818,3 +811,91 @@ const idleCallback: (callback: () => void) => void =
   typeof globalThis.requestIdleCallback === "function"
     ? globalThis.requestIdleCallback
     : (callback) => setTimeout(callback, 0);
+
+/**
+ * Represents a value that can be either synchronous or asynchronous.
+ *
+ * This type is useful for functions that may complete synchronously or
+ * asynchronously depending on runtime conditions (e.g., cache hit vs network
+ * fetch).
+ *
+ * ### Why MaybeAsync?
+ *
+ * When a function can be sync or async, the typical approaches are:
+ *
+ * 1. **Always return Promise** - Simple but forces microtask overhead even for
+ *    sync values (see "await always adds microtask" test in Task.test.ts)
+ * 2. **Use callbacks** - Can avoid microtask, but calling code must still `await`
+ *    for sane composition, which adds microtask anyway
+ * 3. **Return `T | PromiseLike<T>`** - Calling code can check the value and only
+ *    `await` when needed, avoiding microtask overhead for sync cases
+ *
+ * The third approach (MaybeAsync) provides:
+ *
+ * - **Performance**: No microtask overhead for synchronous operations
+ * - **Reliability**: No interleaving via microtask queue when operations are
+ *   _synchronous_, reducing need for mutexes to protect shared state
+ *
+ * ### Example
+ *
+ * ```ts
+ * // Function that may be sync or async
+ * const getData = (id: string): MaybeAsync<Data> => {
+ *   const cached = cache.get(id);
+ *   if (cached) return cached; // Sync path
+ *   return fetchData(id); // Async path
+ * };
+ *
+ * // Caller can optimize based on actual behavior
+ * const result = getData(id);
+ * const data = isAsync(result) ? await result : result;
+ * ```
+ *
+ * ### Alternative Approaches
+ *
+ * It's possible to eliminate the sync/async distinction using complex
+ * frameworks with custom schedulers. However, such frameworks require depending
+ * on other people's code that controls how your code executes, resulting in
+ * more complex stack traces and debugging experiences. With MaybeAsync, we
+ * don't need that machinery - it works directly with JavaScript's native
+ * primitives and TypeScript's type system.
+ *
+ * ### TODO: Consider
+ *
+ * Use MaybeAsync in Task and Task helpers to preserve synchronous execution
+ * when possible (e.g., mutex with available permit, retry on first success).
+ */
+export type MaybeAsync<T> = T | PromiseLike<T>;
+
+/**
+ * Type guard to check if a {@link MaybeAsync} value is async (a promise).
+ *
+ * This function narrows the type of a {@link MaybeAsync} value, allowing you to
+ * conditionally `await` only when necessary.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const getData = (id: string): MaybeAsync<Data> => {
+ *   const cached = cache.get(id);
+ *   if (cached) return cached; // Sync path
+ *   return fetchData(id); // Async path
+ * };
+ *
+ * const result = getData(id);
+ * const data = isAsync(result) ? await result : result;
+ * // No microtask overhead when cached!
+ * ```
+ */
+export const isAsync = <T>(
+  value: MaybeAsync<T>,
+): value is T extends PromiseLike<unknown> ? never : PromiseLike<T> =>
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+  typeof (value as any)?.then === "function";
+
+// TODO: Add tracing support
+// - Extend TaskContext with optional tracing field
+// - Add traced(name, task) helper that wraps Task execution
+// - Collect span data (name, timing, parent-child relationships, status)
+// - Support OpenTelemetry export format with proper traceId/spanId generation
+// - Automatic parent-child span relationships through context propagation

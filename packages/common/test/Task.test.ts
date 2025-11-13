@@ -4,6 +4,8 @@ import {
   AbortError,
   createMutex,
   createSemaphore,
+  isAsync,
+  MaybeAsync,
   requestIdleTask,
   retry,
   RetryError,
@@ -1374,4 +1376,74 @@ describe("requestIdleTask", () => {
 
     expect(result).toEqual(err("Task failed"));
   });
+});
+
+/**
+ * This test demonstrates that `await` always adds a microtask, even for
+ * non-Promise values. This is important for understanding concurrency control:
+ * when you `await` a synchronous callback result, the microtask allows other
+ * code on the microtask queue to run before continuing. This is why we need a
+ * mutex to protect shared state - even with synchronous operations, using
+ * `await` yields control, allowing concurrent operations to interleave without
+ * proper locking.
+ */
+test("await always adds microtask", async () => {
+  const events: Array<string> = [];
+
+  events.push("1. before await");
+
+  // Queue a microtask BEFORE awaiting the sync value
+  queueMicrotask(() => {
+    events.push("2. queued microtask BEFORE await");
+  });
+
+  const syncValue = "sync";
+  // eslint-disable-next-line @typescript-eslint/await-thenable
+  const _result = await syncValue;
+
+  events.push("3. after await");
+
+  expect(events).toEqual([
+    "1. before await",
+    "2. queued microtask BEFORE await",
+    "3. after await",
+  ]);
+});
+
+test("isAsync with MaybeAsync pattern", async () => {
+  const syncValue = 42 as MaybeAsync<number>;
+  const asyncValue = Promise.resolve(42) as MaybeAsync<number>;
+
+  if (isAsync(syncValue)) {
+    expectTypeOf(syncValue).toEqualTypeOf<PromiseLike<number>>();
+    expect.fail("Should not be async");
+  } else {
+    expectTypeOf(syncValue).toEqualTypeOf<number>();
+    expect(syncValue).toBe(42);
+  }
+
+  if (isAsync(asyncValue)) {
+    expectTypeOf(asyncValue).toEqualTypeOf<PromiseLike<number>>();
+    expect(await asyncValue).toBe(42);
+  } else {
+    expectTypeOf(syncValue).toEqualTypeOf<number>();
+    expect.fail("Should be async");
+  }
+
+  // Edge cases - should all return false
+  expect(isAsync(null as any)).toBe(false);
+  expect(isAsync(undefined as any)).toBe(false);
+  expect(isAsync(0 as any)).toBe(false);
+  expect(isAsync("" as any)).toBe(false);
+  expect(isAsync(false as any)).toBe(false);
+  expect(isAsync({} as any)).toBe(false);
+  expect(isAsync({ then: "not a function" } as any)).toBe(false);
+
+  // Thenable object - should return true
+  const thenable = {
+    then: (resolve: (value: number) => void) => {
+      resolve(42);
+    },
+  };
+  expect(isAsync(thenable as any)).toBe(true);
 });
