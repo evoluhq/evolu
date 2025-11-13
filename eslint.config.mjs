@@ -44,6 +44,8 @@ export default defineConfig(
       "@typescript-eslint/no-non-null-assertion": "off",
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/explicit-module-boundary-types": "error",
+      // https://github.com/typescript-eslint/typescript-eslint/issues/8113#issuecomment-2334943836
+      "@typescript-eslint/no-invalid-void-type": "off",
       "@typescript-eslint/no-empty-object-type": "off",
       "@typescript-eslint/restrict-template-expressions": "off",
       "@typescript-eslint/no-unused-vars": [

@@ -163,7 +163,6 @@ test("InferOk and InferErr", () => {
 
   type VoidResult = Result<void, Error>;
 
-  // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
   expectTypeOf<InferOk<VoidResult>>().toEqualTypeOf<void>();
   expectTypeOf<InferErr<VoidResult>>().toEqualTypeOf<Error>();
 
