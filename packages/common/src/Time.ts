@@ -4,6 +4,7 @@
  * @module
  */
 
+import { assert } from "./Assert.js";
 import { DateIso, NonNegativeInt } from "./Type.js";
 
 /** Retrieves the current time in milliseconds, similar to `Date.now()`. */
@@ -16,14 +17,24 @@ export interface TimeDep {
   readonly time: Time;
 }
 
-/** Creates a {@link Time} using Date.now(). */
+/**
+ * Creates a {@link Time} using Date.now().
+ *
+ * If the system clock is misconfigured (out of allowed range), the application
+ * will fail with an assertion error. This is intentional - there's no
+ * reasonable fallback when the system clock is fundamentally wrong.
+ */
 export const createTime = (): Time => {
   const time: Time = {
     now: () => {
       const iso = time.nowIso();
       return new globalThis.Date(iso).getTime();
     },
-    nowIso: () => DateIso.orThrow(new globalThis.Date().toISOString()),
+    nowIso: () => {
+      const iso = new globalThis.Date().toISOString();
+      assert(DateIso.is(iso), "System clock returned invalid ISO date");
+      return iso;
+    },
   };
   return time;
 };
