@@ -1,5 +1,14 @@
 # @evolu/nodejs
 
+## 1.0.1-preview.12
+
+### Patch Changes
+
+- e2547d2: isOwnerWithinQuota is required, improve docs
+- Updated dependencies [e2547d2]
+- Updated dependencies [05fe5d5]
+  - @evolu/common@6.0.1-preview.30
+
 ## 1.0.1-preview.11
 
 ### Patch Changes
