@@ -1,5 +1,6 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { assert, expect, test } from "vitest";
+import { ownerIdToOwnerIdBytes } from "../../src/Evolu/Owner.js";
 import {
   BaseSqliteStorageDep,
   createBaseSqliteStorage,
@@ -14,20 +15,15 @@ import {
   createTimestamp,
   Millis,
   orderTimestampBytes,
+  TimestampBytes,
   timestampToTimestampBytes,
 } from "../../src/Evolu/Timestamp.js";
-import {
-  computeBalancedBuckets,
-  createRandom,
-  getOrThrow,
-  NonNegativeInt,
-  ok,
-  ownerIdToOwnerIdBytes,
-  PositiveInt,
-  sql,
-  SqliteDep,
-  TimestampBytes,
-} from "../../src/index.js";
+import { constTrue } from "../../src/Function.js";
+import { computeBalancedBuckets } from "../../src/Number.js";
+import { createRandom } from "../../src/Random.js";
+import { getOrThrow, ok } from "../../src/Result.js";
+import { sql, SqliteDep } from "../../src/Sqlite.js";
+import { NonNegativeInt, PositiveInt } from "../../src/Type.js";
 import { testCreateSqlite, testOwner2, testOwnerIdBytes } from "../_deps.js";
 import {
   testAnotherTimestampsAsc,
@@ -49,6 +45,7 @@ const createDeps = async (): Promise<SqliteDep & BaseSqliteStorageDep> => {
     onStorageError: (error) => {
       throw new Error(error.type);
     },
+    isOwnerWithinQuota: constTrue, // Allow all writes in tests
   });
   return { sqlite, storage };
 };

@@ -9,7 +9,7 @@ import {
 } from "../Crypto.js";
 import { eqArrayNumber } from "../Eq.js";
 import { createTransferableError, TransferableError } from "../Error.js";
-import { constFalse } from "../Function.js";
+import { constFalse, constTrue } from "../Function.js";
 import { objectToEntries } from "../Object.js";
 import { RandomDep } from "../Random.js";
 import { createResources } from "../Resources.js";
@@ -451,6 +451,7 @@ const createClientStorage =
   }): Result<ClientStorage, SqliteError> => {
     const sqliteStorageBase = createBaseSqliteStorage(deps)({
       onStorageError: config.onError,
+      isOwnerWithinQuota: constTrue, // Clients don't have quota limits
     });
 
     // TODO: Mutex per OwnerId

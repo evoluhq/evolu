@@ -35,11 +35,10 @@ export interface RelayConfig extends ConsoleConfig, StorageConfig {
   readonly name?: SimpleName;
 
   /**
-   * Optional callback to check if an {@link OwnerId} is allowed to access the
-   * relay. If this callback is not provided, all owners are allowed.
+   * Callback to check if an {@link OwnerId} is allowed to access the relay.
    *
-   * If provided, the callback receives the OwnerId and should return a
-   * {@link MaybeAsync} boolean: `true` to allow access, or `false` to deny.
+   * The callback receives the OwnerId and returns a {@link MaybeAsync} boolean:
+   * `true` to allow access, or `false` to deny.
    *
    * The callback can be synchronous (for SQLite or in-memory checks) or
    * asynchronous (for calling remote APIs).
@@ -76,7 +75,7 @@ export interface RelayConfig extends ConsoleConfig, StorageConfig {
    *   Promise.resolve(ownerId === "6jy_2F4RT5qqeLgJ14_dnQ"),
    * ```
    */
-  readonly isOwnerAllowed?: (ownerId: OwnerId) => MaybeAsync<boolean>;
+  readonly isOwnerAllowed: (ownerId: OwnerId) => MaybeAsync<boolean>;
 }
 
 /**
@@ -211,17 +210,15 @@ export const createRelaySqliteStorage =
               storedBytes + incomingBytes,
             );
 
-            if (config.isOwnerWithinQuota) {
-              const withinQuotaResult = config.isOwnerWithinQuota(
-                ownerId,
-                newStoredBytes,
-              );
-              const isWithinQuota = isAsync(withinQuotaResult)
-                ? await withinQuotaResult
-                : withinQuotaResult;
-              if (!isWithinQuota) {
-                return err({ type: "StorageQuotaError", ownerId });
-              }
+            const withinQuotaResult = config.isOwnerWithinQuota(
+              ownerId,
+              newStoredBytes,
+            );
+            const isWithinQuota = isAsync(withinQuotaResult)
+              ? await withinQuotaResult
+              : withinQuotaResult;
+            if (!isWithinQuota) {
+              return err({ type: "StorageQuotaError", ownerId });
             }
 
             return deps.sqlite.transaction(() => {

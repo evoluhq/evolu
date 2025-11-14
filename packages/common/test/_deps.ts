@@ -22,7 +22,7 @@ import {
   StorageConfig,
   StorageDep,
 } from "../src/Evolu/Storage.js";
-import { constFalse, constVoid } from "../src/Function.js";
+import { constFalse, constTrue, constVoid } from "../src/Function.js";
 import {
   createRandom,
   createRandomLibWithSeed,
@@ -319,6 +319,7 @@ export const testCreateRelayStorageAndSqliteDeps = async (
     onStorageError: (error) => {
       throw new Error(error.type);
     },
+    isOwnerWithinQuota: constTrue, // Allow all writes in tests by default
     ...config,
   });
 

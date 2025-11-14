@@ -29,13 +29,12 @@ import { orderTimestampBytes, Timestamp, TimestampBytes } from "./Timestamp.js";
 
 export interface StorageConfig {
   /**
-   * Optional callback to check if an {@link OwnerId} is within their quota for
-   * the requested write. If this callback is not provided, all writes are
-   * allowed regardless of size.
+   * Callback called before an attempt to write, to check if an {@link OwnerId}
+   * has sufficient quota for the write.
    *
-   * If provided, the callback receives the OwnerId and the number of bytes
-   * required for the write, and should return a {@link MaybeAsync} boolean:
-   * `true` to allow the write, or `false` to deny it due to quota limits.
+   * The callback receives the {@link OwnerId} and the number of bytes required
+   * for the write, and returns a {@link MaybeAsync} boolean: `true` to allow the
+   * write, or `false` to deny it due to quota limits.
    *
    * The callback can be synchronous (for SQLite or in-memory checks) or
    * asynchronous (for calling remote APIs).
@@ -58,7 +57,7 @@ export interface StorageConfig {
    * };
    * ```
    */
-  readonly isOwnerWithinQuota?: (
+  readonly isOwnerWithinQuota: (
     ownerId: OwnerId,
     requiredBytes: PositiveInt,
   ) => MaybeAsync<boolean>;
