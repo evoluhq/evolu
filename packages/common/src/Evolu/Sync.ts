@@ -12,7 +12,7 @@ import { createTransferableError, TransferableError } from "../Error.js";
 import { constFalse } from "../Function.js";
 import { objectToEntries } from "../Object.js";
 import { RandomDep } from "../Random.js";
-import { createRefCountedResourceManager } from "../RefCountedResourceManager.js";
+import { createResources } from "../Resources.js";
 import { err, ok, Result } from "../Result.js";
 import { sql, SqliteDep, SqliteError, SqliteValue } from "../Sqlite.js";
 import { AbortError, createMutex } from "../Task.js";
@@ -253,7 +253,7 @@ export const createSync =
       });
     };
 
-    const transports = createRefCountedResourceManager<
+    const transports = createResources<
       WebSocket,
       TransportKey,
       OwnerTransport,

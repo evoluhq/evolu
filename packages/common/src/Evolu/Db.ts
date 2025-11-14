@@ -1,5 +1,5 @@
 import { isNonEmptyArray, NonEmptyReadonlyArray } from "../Array.js";
-import { CallbackId } from "../CallbackRegistry.js";
+import { CallbackId } from "../Callbacks.js";
 import { ConsoleConfig, ConsoleDep } from "../Console.js";
 import {
   createSymmetricCrypto,

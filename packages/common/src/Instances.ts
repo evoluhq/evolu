@@ -38,7 +38,7 @@ export interface Instances<K extends string, T extends Disposable>
   readonly delete: (key: K) => boolean;
 }
 
-/** Creates an {@link Instances} manager. */
+/** Creates an {@link Instances}. */
 export const createInstances = <
   K extends string,
   T extends Disposable,
