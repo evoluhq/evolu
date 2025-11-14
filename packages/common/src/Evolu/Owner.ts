@@ -73,7 +73,7 @@ export const ownerIdToOwnerIdBytes = (ownerId: OwnerId): OwnerIdBytes =>
 export const ownerIdBytesToOwnerId = (ownerIdBytes: OwnerIdBytes): OwnerId =>
   idBytesToId(ownerIdBytes as IdBytes) as OwnerId;
 
-export const ownerWriteKeyLength = 16 as NonNegativeInt;
+export const ownerWriteKeyLength = NonNegativeInt.orThrow(16);
 
 export const OwnerEncryptionKey = brand("OwnerEncryptionKey", EncryptionKey);
 export type OwnerEncryptionKey = typeof OwnerEncryptionKey.Type;

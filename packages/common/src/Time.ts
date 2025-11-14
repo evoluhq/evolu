@@ -207,5 +207,5 @@ export const durationToNonNegativeInt = (
     total += value * units[unit as keyof typeof units];
   }
 
-  return total as NonNegativeInt;
+  return NonNegativeInt.orThrow(total);
 };

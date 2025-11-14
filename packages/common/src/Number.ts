@@ -59,15 +59,15 @@ export const computeBalancedBuckets = (
   numberOfItems: NonNegativeInt,
 
   /** Default: 16 */
-  numberOfBuckets = 16 as PositiveInt,
+  numberOfBuckets = PositiveInt.orThrow(16),
 
   /** Default: 2 */
-  minNumberOfItemsPerBucket = 2 as PositiveInt,
+  minNumberOfItemsPerBucket = PositiveInt.orThrow(2),
 ): Result<NonEmptyReadonlyArray<PositiveInt>, PositiveInt> => {
   const minRequiredItems = numberOfBuckets * minNumberOfItemsPerBucket;
 
   if (numberOfItems < minRequiredItems)
-    return err(minRequiredItems as PositiveInt);
+    return err(PositiveInt.orThrow(minRequiredItems));
 
   const indexes: Array<PositiveInt> = [];
   const itemsPerBucket = Math.floor(numberOfItems / numberOfBuckets);
@@ -78,7 +78,7 @@ export const computeBalancedBuckets = (
     const hasExtraItem = i < extraItems;
     const itemsInThisBucket = itemsPerBucket + (hasExtraItem ? 1 : 0);
     bucketBoundary += itemsInThisBucket;
-    indexes.push(bucketBoundary as PositiveInt);
+    indexes.push(PositiveInt.orThrow(bucketBoundary));
   }
 
   assertNonEmptyReadonlyArray(indexes);

@@ -577,7 +577,7 @@ export const retry = <T, E>(
       }
 
       // Wait before retry
-      const delayResult = await wait(delay as NonNegativeInt)(context);
+      const delayResult = await wait(NonNegativeInt.orThrow(delay))(context);
       if (!delayResult.ok) {
         // If delay was aborted, return AbortError (will be handled by toTask)
         return delayResult;
@@ -770,7 +770,7 @@ export interface Mutex extends Disposable {
  * ```
  */
 export const createMutex = (): Mutex => {
-  const mutex = createSemaphore(1 as PositiveInt);
+  const mutex = createSemaphore(PositiveInt.orThrow(1));
 
   return {
     withLock: mutex.withPermit,

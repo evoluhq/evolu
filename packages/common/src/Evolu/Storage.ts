@@ -183,7 +183,7 @@ export interface StorageQuotaError extends BaseOwnerError {
  */
 export type Fingerprint = Uint8Array & Brand<"Fingerprint">;
 
-export const fingerprintSize = 12 as NonNegativeInt;
+export const fingerprintSize = NonNegativeInt.orThrow(12);
 
 /** A fingerprint of an empty range. */
 export const zeroFingerprint = new Uint8Array(fingerprintSize) as Fingerprint;
@@ -425,7 +425,7 @@ export const createBaseSqliteStorage =
         }
 
         for (let i = 0; i < result.value.rows.length; i++) {
-          const index = (begin + 1 + i) as NonNegativeInt;
+          const index = NonNegativeInt.orThrow(begin + 1 + i);
           if (!callback(result.value.rows[i].t, index)) return;
         }
       },
@@ -1153,7 +1153,7 @@ const randomSkiplistLevel = (deps: RandomDep): PositiveInt => {
   ) {
     level += 1;
   }
-  return level as PositiveInt;
+  return PositiveInt.orThrow(level);
 };
 
 /**
@@ -1294,7 +1294,7 @@ const findLowerBound =
     if (!count.ok) return count;
 
     // `decrement` converts a count to an index.
-    return ok(decrement(count.value) as NonNegativeInt);
+    return ok(NonNegativeInt.orThrow(decrement(count.value)));
   };
 
 const getTimestampCount =
