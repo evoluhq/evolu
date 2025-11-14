@@ -35,10 +35,11 @@ export interface RelayConfig extends ConsoleConfig, StorageConfig {
   readonly name?: SimpleName;
 
   /**
-   * Callback to check if an {@link OwnerId} is allowed to access the relay.
+   * Optional callback to check if an {@link OwnerId} is allowed to access the
+   * relay. If this callback is not provided, all owners are allowed.
    *
-   * The callback receives the OwnerId and returns a {@link MaybeAsync} boolean:
-   * `true` to allow access, or `false` to deny.
+   * The callback receives the {@link OwnerId} and returns a {@link MaybeAsync}
+   * boolean: `true` to allow access, or `false` to deny.
    *
    * The callback can be synchronous (for SQLite or in-memory checks) or
    * asynchronous (for calling remote APIs).
@@ -54,7 +55,8 @@ export interface RelayConfig extends ConsoleConfig, StorageConfig {
    * Owners specify which relays to connect to via {@link OwnerTransport}. In
    * WebSocket-based implementations, this check occurs before accepting the
    * connection, with the OwnerId typically extracted from the URL Path (e.g.,
-   * `ws://localhost:4000/<ownerId>`).
+   * `ws://localhost:4000/<ownerId>`). The relay requires the URL to be in the
+   * correct format for OwnerId extraction.
    *
    * ### Example
    *
@@ -75,7 +77,7 @@ export interface RelayConfig extends ConsoleConfig, StorageConfig {
    *   Promise.resolve(ownerId === "6jy_2F4RT5qqeLgJ14_dnQ"),
    * ```
    */
-  readonly isOwnerAllowed: (ownerId: OwnerId) => MaybeAsync<boolean>;
+  readonly isOwnerAllowed?: (ownerId: OwnerId) => MaybeAsync<boolean>;
 }
 
 /**

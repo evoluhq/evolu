@@ -110,6 +110,18 @@ const createNodeJsRelayWithDeps =
     server.on("upgrade", (request, socket, head) => {
       socket.on("error", log.upgradeSocketError);
 
+      const completeUpgrade = () => {
+        socket.removeListener("error", log.upgradeSocketError);
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          wss.emit("connection", ws, request);
+        });
+      };
+
+      if (!isOwnerAllowed) {
+        completeUpgrade();
+        return;
+      }
+
       const ownerId = parseOwnerIdFromOwnerWebSocketTransportUrl(
         request.url ?? "",
       );
@@ -130,10 +142,7 @@ const createNodeJsRelayWithDeps =
           socket.destroy();
           return;
         }
-        socket.removeListener("error", log.upgradeSocketError);
-        wss.handleUpgrade(request, socket, head, (ws) => {
-          wss.emit("connection", ws, request);
-        });
+        completeUpgrade();
       })();
     });
 

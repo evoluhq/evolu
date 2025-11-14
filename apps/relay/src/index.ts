@@ -12,7 +12,8 @@ const relay = await createNodeJsRelay({
   port: 4000,
   enableLogging: false,
 
-  isOwnerAllowed: (_ownerId) => true,
+  // Note: Relay requires URL in format ws://host:port/<ownerId>
+  // isOwnerAllowed: (_ownerId) => true,
 
   isOwnerWithinQuota: (_ownerId, requiredBytes) => {
     const maxBytes = 1024 * 1024; // 1MB

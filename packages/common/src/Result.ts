@@ -287,7 +287,7 @@
  *
  * ```ts
  * for (const query of [
- *   sql`drop table evolu_owner;`,
+ *   sql`drop table evolu_config;`,
  *   sql`drop table evolu_message;`,
  * ]) {
  *   const result = deps.sqlite.exec(query);
