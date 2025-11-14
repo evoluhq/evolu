@@ -1,5 +1,17 @@
 # @evolu/common
 
+## 6.0.1-preview.30
+
+### Patch Changes
+
+- e2547d2: isOwnerWithinQuota is required, improve docs
+- 05fe5d5: Renaming
+  - `CallbackRegistry` → `Callbacks`
+  - `createCallbackRegistry` → `createCallbacks`
+  - `RefCountedResourceManager` → `Resources`
+  - `createRefCountedResourceManager` → `createResources`
+  - `ResourceManagerConfig` → `ResourcesConfig`
+
 ## 6.0.1-preview.29
 
 ### Patch Changes
