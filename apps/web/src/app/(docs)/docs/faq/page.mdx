@@ -140,7 +140,7 @@ const todoId = createIdFromString<"Todo">("external-todo-456");
 
 This ensures that multiple clients creating records with the same external identifier will generate the same Evolu ID.
 
-**Important**: This transformation is one-way. If you need to preserve the original external ID, store it in a separate column.
+**Important**: This transformation uses the first 16 bytes of SHA-256 hash of the string bytes, therefore it's not possible to recover the original external string. If you need to preserve the original external ID, store it in a separate column.
 
 ## How do I seed initial data like country lists or default categories?
 
