@@ -198,6 +198,9 @@ export interface DbConfig extends ConsoleConfig, TimestampConfig {
   /**
    * Encryption key for the SQLite database.
    *
+   * Note: If an unencrypted SQLite database already exists and you provide an
+   * encryptionKey, SQLite will throw an error.
+   *
    * @experimental
    */
   readonly encryptionKey?: EncryptionKey;
