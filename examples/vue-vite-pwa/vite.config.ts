@@ -33,6 +33,6 @@ export default defineConfig({
   ],
   optimizeDeps: {
     // A workaround for Vite bug: https://github.com/vitejs/vite/issues/13314#issuecomment-1560745780
-    exclude: ["@sqlite.org/sqlite-wasm"],
+    exclude: ["@sqlite.org/sqlite-wasm", "@evolu/sqlite-wasm"],
   },
 });
