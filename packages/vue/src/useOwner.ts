@@ -6,5 +6,6 @@ export const useOwner = (owner: SyncOwner | null): void => {
   if (owner == null) return;
 
   const evolu = useEvolu();
+
   evolu.useOwner(owner);
 };
