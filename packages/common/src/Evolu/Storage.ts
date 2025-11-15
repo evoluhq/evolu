@@ -1,5 +1,9 @@
 import { sha256 } from "@noble/hashes/sha2.js";
-import { NonEmptyReadonlyArray } from "../Array.js";
+import {
+  firstInArray,
+  isNonEmptyReadonlyArray,
+  NonEmptyReadonlyArray,
+} from "../Array.js";
 import { assert } from "../Assert.js";
 import { Brand } from "../Brand.js";
 import { concatBytes } from "../Buffer.js";
@@ -22,7 +26,6 @@ import {
   Owner,
   OwnerId,
   OwnerIdBytes,
-  ownerIdBytesToOwnerId,
   OwnerWriteKey,
 } from "./Owner.js";
 import { orderTimestampBytes, Timestamp, TimestampBytes } from "./Timestamp.js";
@@ -32,16 +35,16 @@ export interface StorageConfig {
    * Callback called before an attempt to write, to check if an {@link OwnerId}
    * has sufficient quota for the write.
    *
-   * The callback receives the {@link OwnerId} and the number of bytes required
-   * for the write, and returns a {@link MaybeAsync} boolean: `true` to allow the
-   * write, or `false` to deny it due to quota limits.
+   * The callback receives the {@link OwnerId} and the total bytes that would be
+   * stored after the write (current stored bytes plus incoming bytes), and
+   * returns a {@link MaybeAsync} boolean: `true` to allow the write, or `false`
+   * to deny it due to quota limits.
    *
    * The callback can be synchronous (for SQLite or in-memory checks) or
    * asynchronous (for calling remote APIs).
    *
-   * The callback returns a boolean rather than an error type because error
-   * handling and logging are the responsibility of the callback
-   * implementation.
+   * The callback returns a boolean rather than an error because error handling
+   * and logging are the responsibility of the callback implementation.
    *
    * ### Example
    *
@@ -299,16 +302,11 @@ export interface BaseSqliteStorage
     | "iterate"
     | "deleteOwner"
   > {
-  /**
-   * Inserts a timestamp for an owner into the skiplist-based storage.
-   *
-   * Must be idempotent - inserting the same timestamp multiple times has no
-   * effect after the first insertion. This is crucial for sync reliability as
-   * messages may be received and processed multiple times.
-   */
+  /** Inserts a timestamp for an owner into the skiplist-based storage. */
   readonly insertTimestamp: (
     ownerId: OwnerIdBytes,
     timestamp: TimestampBytes,
+    strategy: StorageInsertTimestampStrategy,
   ) => Result<void, SqliteError>;
 
   /**
@@ -331,19 +329,62 @@ export interface CreateBaseSqliteStorageConfig extends StorageConfig {
   onStorageError: (error: SqliteError) => void;
 }
 
+/**
+ * Creates a {@link BaseSqliteStorage} implementation.
+ *
+ * # Stateless Design
+ *
+ * This implementation is fully stateless - it requires no in-memory state
+ * between invocations. All necessary metadata (timestamp bounds for insertion
+ * strategy optimization) is persisted in the evolu_usage table. This makes
+ * Evolu Relay suitable for stateless serverless environments like AWS Lambda,
+ * Cloudflare Workers with Durable Objects, and other platforms where memory
+ * doesn't persist between requests. While not extensively tested in all these
+ * environments yet, the stateless design should work well across them.
+ */
 export const createBaseSqliteStorage =
   (deps: SqliteStorageDeps) =>
   (config: CreateBaseSqliteStorageConfig): BaseSqliteStorage => {
-    // TODO: Use evolu_usage table.
-    const ownerStats = new Map<
-      OwnerId,
-      {
-        minT: TimestampBytes;
-        maxT: TimestampBytes;
-      }
-    >();
-
     return {
+      insertTimestamp: (
+        ownerId: OwnerIdBytes,
+        timestamp: TimestampBytes,
+        strategy: StorageInsertTimestampStrategy,
+      ) => {
+        const level = randomSkiplistLevel(deps);
+        return insertTimestamp(deps)(ownerId, timestamp, level, strategy);
+      },
+
+      getExistingTimestamps: (ownerIdBytes, timestampsBytes) => {
+        const concatenatedTimestamps = concatBytes(...timestampsBytes);
+
+        const result = deps.sqlite.exec<{
+          timestampBytes: TimestampBytes;
+        }>(sql`
+          with recursive
+            split_timestamps(timestampBytes, pos) as (
+              select
+                substr(${concatenatedTimestamps}, 1, 16),
+                17 as pos
+              union all
+              select
+                substr(${concatenatedTimestamps}, pos, 16),
+                pos + 16
+              from split_timestamps
+              where pos <= length(${concatenatedTimestamps})
+            )
+          select s.timestampBytes
+          from
+            split_timestamps s
+            join evolu_timestamp t
+              on t.ownerId = ${ownerIdBytes} and s.timestampBytes = t.t;
+        `);
+
+        if (!result.ok) return result;
+
+        return ok(result.value.rows.map((row) => row.timestampBytes));
+      },
+
       getSize: (ownerId) => {
         const size = getSize(deps)(ownerId);
         if (!size.ok) {
@@ -439,75 +480,6 @@ export const createBaseSqliteStorage =
         }
         return true;
       },
-
-      insertTimestamp: (ownerId: OwnerIdBytes, timestamp: TimestampBytes) => {
-        const ownerIdString = ownerIdBytesToOwnerId(ownerId);
-        const level = randomSkiplistLevel(deps);
-
-        let stats = ownerStats.get(ownerIdString);
-
-        if (!stats) {
-          const result = deps.sqlite.exec<{
-            maxT: TimestampBytes | null;
-            minT: TimestampBytes | null;
-          }>(sql.prepared`
-            select min(t) as minT, max(t) as maxT
-            from evolu_timestamp
-            where ownerId = ${ownerId};
-          `);
-          if (!result.ok) return result;
-
-          stats = {
-            minT: result.value.rows[0].minT ?? timestamp,
-            maxT: result.value.rows[0].maxT ?? timestamp,
-          };
-          ownerStats.set(ownerIdString, stats);
-        }
-
-        let strategy: InsertTimestampStrategy;
-
-        if (orderTimestampBytes(timestamp, stats.maxT) === 1) {
-          strategy = "append";
-          stats.maxT = timestamp;
-        } else if (orderTimestampBytes(timestamp, stats.minT) === -1) {
-          strategy = "prepend";
-          stats.minT = timestamp;
-        } else {
-          strategy = "insert";
-        }
-
-        return insertTimestamp(deps)(ownerId, timestamp, level, strategy);
-      },
-
-      getExistingTimestamps: (ownerIdBytes, timestampsBytes) => {
-        const concatenatedTimestamps = concatBytes(...timestampsBytes);
-
-        const result = deps.sqlite.exec<{
-          timestampBytes: TimestampBytes;
-        }>(sql`
-          with recursive
-            split_timestamps(timestampBytes, pos) as (
-              select
-                substr(${concatenatedTimestamps}, 1, 16),
-                17 as pos
-              union all
-              select
-                substr(${concatenatedTimestamps}, pos, 16),
-                pos + 16
-              from split_timestamps
-              where pos <= length(${concatenatedTimestamps})
-            )
-          select s.timestampBytes
-          from
-            split_timestamps s
-            join evolu_timestamp t
-              on t.ownerId = ${ownerIdBytes} and s.timestampBytes = t.t;
-        `);
-
-        if (!result.ok) return result;
-
-        return ok(result.value.rows.map((row) => row.timestampBytes));
-      },
     };
   };
 
@@ -533,13 +505,7 @@ export const createBaseSqliteStorageTables = (
      * - `t` – TimestampBytes
      * - `h1`/`h2` – 12-byte fingerprint split into two integers for fast XOR
      * - `c` – incremental count
-     * - `l` – Skiplist level (1 to 32)
-     *
-     * For scaling or isolation, sharding is possible—each owner can have a
-     * separate SQLite database.
-     *
-     * Maybe we could use an integer surrogate key for ownerId, but it's fast
-     * enough even without it.
+     * - `l` – Skiplist level (1 to 10)
      */
     sql`
       create table evolu_timestamp (
@@ -572,20 +538,15 @@ export const createBaseSqliteStorageTables = (
      *
      * - `ownerId` – OwnerIdBytes (primary key)
      * - `storedBytes` – total bytes stored in database
-     * - `receivedBytes` – TODO: Decide how to use
-     * - `sentBytes` – TODO: Decide how to use
-     * - `firstTimestamp` – TODO: Decide how to use (nullable)
-     * - `lastTimestamp` – TODO: Decide how to use (nullable)
+     * - `firstTimestamp` – for timestamp insertion strategies
+     * - `lastTimestamp` – for timestamp insertion strategies
      */
     sql`
       create table evolu_usage (
         "ownerId" blob primary key,
-        "storedBytes" integer not null
-        -- TODO: Decide how to use receivedBytes, sentBytes, firstTimestamp, lastTimestamp
-        -- "receivedBytes" integer not null,
-        -- "sentBytes" integer not null,
-        -- "firstTimestamp" blob,
-        -- "lastTimestamp" blob
+        "storedBytes" integer not null,
+        "firstTimestamp" blob,
+        "lastTimestamp" blob
       )
       strict;
     `,
@@ -596,23 +557,53 @@ export const createBaseSqliteStorageTables = (
   return ok();
 };
 
-type InsertTimestampStrategy = "append" | "prepend" | "insert";
+export type StorageInsertTimestampStrategy = "append" | "prepend" | "insert";
 
-// AFAIK, we can't do both insert and update in one query, and that's probably
-// why append is 2x faster than insert. Prepend also has to update parents, but
-// it's constantly fast. Insert degrades for reversed (yet LIMIT X magically
-// makes it much faster) but it's OK for append. It's probably because it's the
-// most complicated SQL, but I believe it can be simplified. If not, we can
-// optimize prepending by reversing the incoming timestamps if we detect that
-// they will prepend. They are always sorted in ascending order by the
-// Protocol.
+/**
+ * Determines the insertion strategy for a timestamp based on its position
+ * relative to the current first and last timestamps.
+ *
+ * Returns a tuple with the strategy and updated timestamp bounds.
+ */
+export const getTimestampInsertStrategy = (
+  timestamp: TimestampBytes,
+  firstTimestamp: TimestampBytes,
+  lastTimestamp: TimestampBytes,
+): [
+  strategy: StorageInsertTimestampStrategy,
+  firstTimestamp: TimestampBytes,
+  lastTimestamp: TimestampBytes,
+] => {
+  if (orderTimestampBytes(timestamp, lastTimestamp) === 1) {
+    return ["append", firstTimestamp, timestamp];
+  }
+  if (orderTimestampBytes(timestamp, firstTimestamp) === -1) {
+    return ["prepend", timestamp, lastTimestamp];
+  }
+  return ["insert", firstTimestamp, lastTimestamp];
+};
+
+/**
+ * AFAIK, we can't do both insert and update in one query, and that's probably
+ * why append is 2x faster than insert. Prepend also has to update parents, but
+ * it's constantly fast. Insert degrades for reversed (yet LIMIT X magically
+ * fixes that) but it's OK for append.
+ *
+ * Note: SQL operations are idempotent (using `on conflict do nothing` and
+ * `changes() > 0`), but this is no longer required here since we use
+ * {@link BaseSqliteStorage.getExistingTimestamps} to filter out duplicates
+ * before insertion, which we need for quota checks anyway.
+ *
+ * TODO: Remove idempotency (`on conflict do nothing` and `changes() > 0`) since
+ * duplicates are now filtered before insertion.
+ */
 const insertTimestamp =
   (deps: SqliteDep) =>
   (
     ownerId: OwnerIdBytes,
     timestamp: TimestampBytes,
     level: PositiveInt,
-    strategy: InsertTimestampStrategy,
+    strategy: StorageInsertTimestampStrategy,
   ): Result<void, SqliteError> => {
     const [h1, h2] = fingerprintToSqliteFingerprint(
       timestampBytesToFingerprint(timestamp),
@@ -1611,4 +1602,77 @@ export const getTimestampByIndex =
 
     if (!result.ok) return result;
     return ok(result.value.rows[0].pt);
+  };
+
+/** Retrieves usage information for an owner from the evolu_usage table. */
+export const getOwnerUsage =
+  (deps: SqliteDep) =>
+  (
+    ownerIdBytes: OwnerIdBytes,
+    initialTimestamp: TimestampBytes,
+  ): Result<
+    {
+      storedBytes: NonNegativeInt | null;
+      firstTimestamp: TimestampBytes;
+      lastTimestamp: TimestampBytes;
+    },
+    SqliteError
+  > => {
+    const result = deps.sqlite.exec<{
+      storedBytes: NonNegativeInt;
+      firstTimestamp: TimestampBytes | null;
+      lastTimestamp: TimestampBytes | null;
+    }>(sql`
+      select storedBytes, firstTimestamp, lastTimestamp
+      from evolu_usage
+      where ownerId = ${ownerIdBytes};
+    `);
+    if (!result.ok) return result;
+
+    if (!isNonEmptyReadonlyArray(result.value.rows)) {
+      return ok({
+        storedBytes: null,
+        firstTimestamp: initialTimestamp,
+        lastTimestamp: initialTimestamp,
+      });
+    }
+
+    const row = firstInArray(result.value.rows);
+    assert(row.firstTimestamp, "not null");
+    assert(row.lastTimestamp, "not null");
+
+    return ok({
+      storedBytes: row.storedBytes,
+      firstTimestamp: row.firstTimestamp,
+      lastTimestamp: row.lastTimestamp,
+    });
+  };
+
+/**
+ * Updates timestamp bounds in evolu_usage table.
+ *
+ * Used by both relay and client to maintain firstTimestamp/lastTimestamp after
+ * processing messages.
+ */
+export const updateOwnerUsage =
+  (deps: SqliteDep) =>
+  (
+    ownerIdBytes: OwnerIdBytes,
+    storedBytes: PositiveInt,
+    firstTimestamp: TimestampBytes,
+    lastTimestamp: TimestampBytes,
+  ): Result<void, SqliteError> => {
+    const result = deps.sqlite.exec(sql`
+      insert into evolu_usage
+        ("ownerId", "storedBytes", "firstTimestamp", "lastTimestamp")
+      values
+        (${ownerIdBytes}, ${storedBytes}, ${firstTimestamp}, ${lastTimestamp})
+      on conflict (ownerId) do update
+        set
+          storedBytes = ${storedBytes},
+          firstTimestamp = ${firstTimestamp},
+          lastTimestamp = ${lastTimestamp};
+    `);
+    if (!result.ok) return result;
+    return ok();
   };

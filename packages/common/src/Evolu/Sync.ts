@@ -1,4 +1,9 @@
-import { NonEmptyArray, NonEmptyReadonlyArray } from "../Array.js";
+import {
+  firstInArray,
+  isNonEmptyReadonlyArray,
+  NonEmptyArray,
+  NonEmptyReadonlyArray,
+} from "../Array.js";
 import { assert } from "../Assert.js";
 import { Brand } from "../Brand.js";
 import { ConsoleDep } from "../Console.js";
@@ -17,7 +22,7 @@ import { err, ok, Result } from "../Result.js";
 import { sql, SqliteDep, SqliteError, SqliteValue } from "../Sqlite.js";
 import { AbortError, createMutex } from "../Task.js";
 import { TimeDep } from "../Time.js";
-import { IdBytes, idBytesToId, idToIdBytes } from "../Type.js";
+import { IdBytes, idBytesToId, idToIdBytes, PositiveInt } from "../Type.js";
 import { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
 import type { PostMessageDep } from "./Db.js";
 import {
@@ -51,8 +56,12 @@ import {
   CrdtMessage,
   createBaseSqliteStorage,
   DbChange,
+  getOwnerUsage,
+  getTimestampInsertStrategy,
   Storage,
+  StorageInsertTimestampStrategy,
   StorageWriteError,
+  updateOwnerUsage,
 } from "./Storage.js";
 import {
   createInitialTimestamp,
@@ -519,11 +528,13 @@ const createClientStorage =
               clockTimestamp = nextTimestamp.value;
             }
 
-            const applyMessagesResult = applyMessages({ ...deps, storage })(
-              owner.id,
-              messages,
-            );
-            if (!applyMessagesResult.ok) return applyMessagesResult;
+            if (isNonEmptyReadonlyArray(messages)) {
+              const applyMessagesResult = applyMessages({ ...deps, storage })(
+                owner.id,
+                messages,
+              );
+              if (!applyMessagesResult.ok) return applyMessagesResult;
+            }
 
             // // Apply local mutations atomically with approved messages
             // for (const change of localMutations) {
@@ -644,24 +655,55 @@ export const applyLocalOnlyChange =
     return ok();
   };
 
-export const applyMessages =
+const applyMessages =
   (deps: ClientStorageDep & ClockDep & RandomDep & SqliteDep) =>
   (
     ownerId: OwnerId,
-    messages: ReadonlyArray<CrdtMessage>,
+    messages: NonEmptyReadonlyArray<CrdtMessage>,
   ): Result<void, SqliteError> => {
     const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
+
+    const usageResult = getOwnerUsage(deps)(
+      ownerIdBytes,
+      timestampToTimestampBytes(firstInArray(messages).timestamp),
+    );
+    if (!usageResult.ok) return usageResult;
+
+    let { firstTimestamp, lastTimestamp } = usageResult.value;
 
     for (const message of messages) {
       const result1 = applyMessageToAppTable(deps)(ownerIdBytes, message);
       if (!result1.ok) return result1;
 
+      const timestamp = timestampToTimestampBytes(message.timestamp);
+
+      let strategy;
+      [strategy, firstTimestamp, lastTimestamp] = getTimestampInsertStrategy(
+        timestamp,
+        firstTimestamp,
+        lastTimestamp,
+      );
+
       const result2 = applyMessageToTimestampAndHistoryTables(deps)(
         ownerIdBytes,
         message,
+        strategy,
       );
       if (!result2.ok) return result2;
     }
+
+    /**
+     * TODO: Implement proper storedBytes tracking for client using encrypted
+     * message sizes (need to figure out how to reuse received or postpone
+     * client...).
+     */
+    const updateUsage = updateOwnerUsage(deps)(
+      ownerIdBytes,
+      1 as PositiveInt, // Placeholder until proper tracking implemented
+      firstTimestamp,
+      lastTimestamp,
+    );
+    if (!updateUsage.ok) return updateUsage;
 
     return ok();
   };
@@ -705,11 +747,15 @@ const applyMessageToAppTable =
 
 export const applyMessageToTimestampAndHistoryTables =
   (deps: ClientStorageDep & SqliteDep) =>
-  (ownerId: OwnerIdBytes, message: CrdtMessage): Result<void, SqliteError> => {
+  (
+    ownerId: OwnerIdBytes,
+    message: CrdtMessage,
+    strategy: StorageInsertTimestampStrategy,
+  ): Result<void, SqliteError> => {
     const timestamp = timestampToTimestampBytes(message.timestamp);
     const id = idToIdBytes(message.change.id);
 
-    const result = deps.storage.insertTimestamp(ownerId, timestamp);
+    const result = deps.storage.insertTimestamp(ownerId, timestamp, strategy);
     if (!result.ok) return result;
 
     for (const [column, value] of Object.entries(message.change.values)) {

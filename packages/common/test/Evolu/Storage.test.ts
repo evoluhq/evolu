@@ -7,7 +7,9 @@ import {
   createBaseSqliteStorageTables,
   Fingerprint,
   getTimestampByIndex,
+  getTimestampInsertStrategy,
   InfiniteUpperBound,
+  StorageInsertTimestampStrategy,
   timestampBytesToFingerprint,
 } from "../../src/Evolu/Storage.js";
 import {
@@ -61,7 +63,10 @@ const xorFingerprints = (arr1: Fingerprint, arr2: Fingerprint): Fingerprint => {
   return result as Fingerprint;
 };
 
-const testTimestamps = async (timestamps: ReadonlyArray<TimestampBytes>) => {
+const testTimestamps = async (
+  timestamps: ReadonlyArray<TimestampBytes>,
+  strategy: StorageInsertTimestampStrategy,
+) => {
   const deps = await createDeps();
 
   const bruteForceAllTimestampsFingerprint = timestamps
@@ -70,12 +75,12 @@ const testTimestamps = async (timestamps: ReadonlyArray<TimestampBytes>) => {
 
   const txResult = deps.sqlite.transaction(() => {
     for (const timestamp of timestamps) {
-      deps.storage.insertTimestamp(testOwnerIdBytes, timestamp);
+      deps.storage.insertTimestamp(testOwnerIdBytes, timestamp, strategy);
     }
 
     // Add the same timestamps again to test idempotency.
     for (const timestamp of timestamps) {
-      deps.storage.insertTimestamp(testOwnerIdBytes, timestamp);
+      deps.storage.insertTimestamp(testOwnerIdBytes, timestamp, strategy);
     }
 
     // Add similar timestamps of another owner.
@@ -83,6 +88,7 @@ const testTimestamps = async (timestamps: ReadonlyArray<TimestampBytes>) => {
       deps.storage.insertTimestamp(
         ownerIdToOwnerIdBytes(testOwner2.id),
         timestamp,
+        "append",
       );
     }
     return ok();
@@ -183,12 +189,12 @@ test(
       () => Math.random() - 0.5,
     );
 
-    await testTimestamps(testTimestampsAsc);
-    await testTimestamps(sequentialTimestampsAsc);
-    await testTimestamps(testTimestampsDesc);
-    await testTimestamps(sequentialTimestampsDesc);
-    await testTimestamps(testTimestampsRandom);
-    await testTimestamps(sequentialTimestampsRandom);
+    await testTimestamps(testTimestampsAsc, "append");
+    await testTimestamps(sequentialTimestampsAsc, "append");
+    await testTimestamps(testTimestampsDesc, "prepend");
+    await testTimestamps(sequentialTimestampsDesc, "prepend");
+    await testTimestamps(testTimestampsRandom, "insert");
+    await testTimestamps(sequentialTimestampsRandom, "insert");
   },
 );
 
@@ -218,7 +224,7 @@ const batchSize = 10_000;
 
 const benchmarkTimestamps = async (
   timestamps: ReadonlyArray<TimestampBytes>,
-  label: string,
+  strategy: StorageInsertTimestampStrategy,
 ) => {
   const deps = await createDeps();
   const insertBeginTime = performance.now();
@@ -233,7 +239,7 @@ const benchmarkTimestamps = async (
     const batchBeginTime = performance.now();
     deps.sqlite.transaction(() => {
       for (let i = batchStart; i < batchEnd; i++) {
-        deps.storage.insertTimestamp(testOwnerIdBytes, timestamps[i]);
+        deps.storage.insertTimestamp(testOwnerIdBytes, timestamps[i], strategy);
       }
       return ok();
     });
@@ -257,7 +263,7 @@ const benchmarkTimestamps = async (
     // eslint-disable-next-line no-console
     console.log(
       `${Math.min(batchStart + batchSize, timestamps.length)} timestamps ${
-        label
+        strategy
       } in ${
         timestampsTime
       } ms, ${insertsPerSec} inserts/sec in batch, getSize + 16 fingerprints in ${
@@ -274,7 +280,7 @@ test("findLowerBound", async () => {
     timestampToTimestampBytes(createTimestamp({ millis: (i + 1) as Millis })),
   );
   for (const t of timestamps) {
-    storage.insertTimestamp(testOwnerIdBytes, t);
+    storage.insertTimestamp(testOwnerIdBytes, t, "append");
   }
 
   const ownerId = testOwnerIdBytes;
@@ -314,7 +320,7 @@ test("iterate", async () => {
   const deps = await createDeps();
 
   for (const timestamp of testTimestampsAsc) {
-    deps.storage.insertTimestamp(testOwnerIdBytes, timestamp);
+    deps.storage.insertTimestamp(testOwnerIdBytes, timestamp, "append");
   }
 
   const collected: Array<TimestampBytes> = [];
@@ -357,7 +363,7 @@ test("getTimestampByIndex", async () => {
   const deps = await createDeps();
 
   for (const timestamp of testTimestampsAsc) {
-    deps.storage.insertTimestamp(testOwnerIdBytes, timestamp);
+    deps.storage.insertTimestamp(testOwnerIdBytes, timestamp, "append");
   }
 
   for (let i = 0; i < testTimestampsAsc.length; i++) {
@@ -370,6 +376,45 @@ test("getTimestampByIndex", async () => {
   }
 });
 
+test("getTimestampInsertStrategy", () => {
+  const t100 = timestampToTimestampBytes(
+    createTimestamp({ millis: 100 as Millis }),
+  );
+  const t200 = timestampToTimestampBytes(
+    createTimestamp({ millis: 200 as Millis }),
+  );
+
+  // Append: after last
+  expect(
+    getTimestampInsertStrategy(
+      timestampToTimestampBytes(createTimestamp({ millis: 300 as Millis })),
+      t100,
+      t200,
+    )[0],
+  ).toBe("append");
+
+  // Prepend: before first
+  expect(
+    getTimestampInsertStrategy(
+      timestampToTimestampBytes(createTimestamp({ millis: 50 as Millis })),
+      t100,
+      t200,
+    )[0],
+  ).toBe("prepend");
+
+  // Insert: between first and last, or equal
+  expect(
+    getTimestampInsertStrategy(
+      timestampToTimestampBytes(createTimestamp({ millis: 150 as Millis })),
+      t100,
+      t200,
+    )[0],
+  ).toBe("insert");
+
+  expect(getTimestampInsertStrategy(t100, t100, t200)[0]).toBe("insert");
+  expect(getTimestampInsertStrategy(t200, t100, t200)[0]).toBe("insert");
+});
+
 test.skip("insert 1_000_000", longTimeout, async () => {
   const timestampsAsc = Array.from({ length: count }, (_, i) =>
     timestampToTimestampBytes(createTimestamp({ millis: i as Millis })),
@@ -380,14 +425,15 @@ test.skip("insert 1_000_000", longTimeout, async () => {
   // Tested on M1, file (not memory).
 
   // 1m timestamps asc in 22s, the first 10k: 57742 inserts/sec, it's stable.
-  await benchmarkTimestamps(timestampsAsc, "asc");
+  await benchmarkTimestamps(timestampsAsc, "append");
 
   // 1m timestamps desc in 87s, the first 10k: 26882 inserts/sec, it's stable.
-  await benchmarkTimestamps(timestampsDesc, "desc");
+  await benchmarkTimestamps(timestampsDesc, "prepend");
 
   // The first 10k: 11912 inserts/sec, then it degrades,
   // but it's fixable and still usable (1-2k inserts/sec).
-  await benchmarkTimestamps(timestampsRandom, "random");
+  // TODO: Ask SQLite team for paid review
+  await benchmarkTimestamps(timestampsRandom, "insert");
 });
 
 /**

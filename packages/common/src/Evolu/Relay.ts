@@ -1,4 +1,9 @@
-import { filterArray, isNonEmptyReadonlyArray, mapArray } from "../Array.js";
+import {
+  filterArray,
+  firstInArray,
+  isNonEmptyReadonlyArray,
+  mapArray,
+} from "../Array.js";
 import { ConsoleConfig, ConsoleDep } from "../Console.js";
 import { TimingSafeEqualDep } from "../Crypto.js";
 import { LazyValue } from "../Function.js";
@@ -6,7 +11,7 @@ import { createInstances } from "../Instances.js";
 import { err, ok, Result } from "../Result.js";
 import { sql, SqliteDep, SqliteError } from "../Sqlite.js";
 import { createMutex, isAsync, MaybeAsync, Mutex } from "../Task.js";
-import { NonNegativeInt, PositiveInt, SimpleName } from "../Type.js";
+import { PositiveInt, SimpleName } from "../Type.js";
 import {
   OwnerId,
   ownerIdBytesToOwnerId,
@@ -18,10 +23,13 @@ import {
   createBaseSqliteStorage,
   CreateBaseSqliteStorageConfig,
   EncryptedDbChange,
+  getOwnerUsage,
+  getTimestampInsertStrategy,
   SqliteStorageDeps,
   Storage,
   StorageConfig,
   StorageQuotaError,
+  updateOwnerUsage,
 } from "./Storage.js";
 import { timestampToTimestampBytes } from "./Timestamp.js";
 
@@ -193,23 +201,20 @@ export const createRelaySqliteStorage =
               return ok();
             }
 
-            const storedBytesResult = deps.sqlite.exec<{
-              storedBytes: NonNegativeInt;
-            }>(sql`
-              select storedBytes
-              from evolu_usage
-              where ownerId = ${ownerIdBytes};
-            `);
-            if (!storedBytesResult.ok) return storedBytesResult;
+            const usage = getOwnerUsage(deps)(
+              ownerIdBytes,
+              firstInArray(newMessages).timestamp,
+            );
+            if (!usage.ok) return usage;
 
-            const storedBytes =
-              storedBytesResult.value.rows[0]?.storedBytes ?? 0;
+            const { storedBytes } = usage.value;
+
             const incomingBytes = newMessages.reduce(
               (sum, m) => sum + m.change.length,
               0,
             );
             const newStoredBytes = PositiveInt.orThrow(
-              storedBytes + incomingBytes,
+              (storedBytes ?? 0) + incomingBytes,
             );
 
             const withinQuotaResult = config.isOwnerWithinQuota(
@@ -223,11 +228,22 @@ export const createRelaySqliteStorage =
               return err({ type: "StorageQuotaError", ownerId });
             }
 
+            let { firstTimestamp, lastTimestamp } = usage.value;
+
             return deps.sqlite.transaction(() => {
               for (const { timestamp, change } of newMessages) {
+                let strategy;
+                [strategy, firstTimestamp, lastTimestamp] =
+                  getTimestampInsertStrategy(
+                    timestamp,
+                    firstTimestamp,
+                    lastTimestamp,
+                  );
+
                 const insertTimestampResult = sqliteStorageBase.insertTimestamp(
                   ownerIdBytes,
                   timestamp,
+                  strategy,
                 );
                 if (!insertTimestampResult.ok) return insertTimestampResult;
 
@@ -239,12 +255,12 @@ export const createRelaySqliteStorage =
                 if (!insertMessage.ok) return insertMessage;
               }
 
-              const updateUsage = deps.sqlite.exec(sql`
-                insert into evolu_usage ("ownerId", "storedBytes")
-                values (${ownerIdBytes}, ${newStoredBytes})
-                on conflict (ownerId) do update
-                  set storedBytes = ${newStoredBytes};
-              `);
+              const updateUsage = updateOwnerUsage(deps)(
+                ownerIdBytes,
+                newStoredBytes,
+                firstTimestamp,
+                lastTimestamp,
+              );
               if (!updateUsage.ok) return updateUsage;
 
               return ok();

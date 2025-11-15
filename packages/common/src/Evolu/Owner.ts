@@ -18,7 +18,8 @@ import {
   Mnemonic,
   NonNegativeInt,
 } from "../Type.js";
-import type { Storage, EncryptedDbChange } from "./Storage.js";
+import type { EncryptedDbChange, Storage } from "./Storage.js";
+import { TimestampBytes } from "./Timestamp.js";
 
 /**
  * The Owner represents ownership of data in Evolu. Every database change is
@@ -390,11 +391,11 @@ export interface BaseOwnerError {
 /**
  * Usage data for an {@link OwnerId}.
  *
- * Tracks data consumption to monitor usage patterns and enforce quotas if
- * needed. Used by both relays and clients.
+ * Tracks storage usage to enforce quotas if needed, and some other stuff.
  *
- * Relays and clients must handle rate limiting, connection limits, and request
- * throttling separately with in-memory state.
+ * TODO:
+ *
+ * - Add transferredBytes for billing and monitoring network usage.
  */
 export interface OwnerUsage {
   /** The {@link Owner} this usage data belongs to. */
@@ -416,28 +417,13 @@ export interface OwnerUsage {
    */
   readonly storedBytes: NonNegativeInt;
 
-  // TODO: Decide how to use receivedBytes and sentBytes.
-  // /** Total bytes received. */
-  // readonly receivedBytes: NonNegativeInt;
+  /** Tracks the earliest timestamp for timestamp insertion strategies. */
+  readonly firstTimestamp: TimestampBytes | null;
 
-  // TODO: Decide how to use sentBytes.
-  // /** Total bytes sent. */
-  // readonly sentBytes: NonNegativeInt;
-
-  // TODO: Decide how to use firstTimestamp.
-  // /**
-  //  * The minimum {@link Timestamp}.
-  //  *
-  //  * Helps {@link Storage} choose faster algorithms.
-  //  */
-  // readonly firstTimestamp: TimestampBytes | null;
-
-  // TODO: Decide how to use lastTimestamp.
-  // /**
-  //  * The maximum {@link Timestamp}.
-  //  *
-  //  * Helps {@link Storage} choose faster algorithms. Free relays can use it to
-  //  * identify inactive accounts for cleanup or archival.
-  //  */
-  // readonly lastTimestamp: TimestampBytes | null;
+  /**
+   * Tracks the latest timestamp for timestamp insertion strategies.
+   *
+   * Free relays can use it to identify inactive accounts for cleanup.
+   */
+  readonly lastTimestamp: TimestampBytes | null;
 }
