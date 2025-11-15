@@ -20,9 +20,8 @@
  * const filtered = filterArray(readonly, (x) => x > 1); // ReadonlyArray<number>
  *
  * // ✅ NonEmptyArray enforces non-emptiness
- * const first = (items: NonEmptyReadonlyArray<string>) => items[0];
- * first([]); // ❌ Compiler error
- * first(["a"]); // ✅ Works
+ * const value = firstInArray(["a", "b"]); // "a"
+ * firstInArray([]); // ❌ Compiler error
  * ```
  *
  * @module
@@ -102,3 +101,18 @@ export const filterArray = <T>(
  * **Mutates** the original array. Use only with mutable arrays.
  */
 export const shiftArray = <T>(array: NonEmptyArray<T>): T => array.shift() as T;
+
+/**
+ * Returns the first element of a non-empty readonly array.
+ *
+ * Does not mutate the original array.
+ */
+export const firstInArray = <T>(array: NonEmptyReadonlyArray<T>): T => array[0];
+
+/**
+ * Returns the last element of a non-empty readonly array.
+ *
+ * Does not mutate the original array.
+ */
+export const lastInArray = <T>(array: NonEmptyReadonlyArray<T>): T =>
+  array[array.length - 1];

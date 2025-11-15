@@ -25,7 +25,7 @@ export const createSkiplistLevel =
         while (deps.random.next() <= probability && level < maxLevel) {
           level += 1;
         }
-        return level as PositiveInt;
+        return PositiveInt.orThrow(level);
       },
     };
   };

@@ -96,7 +96,7 @@ const createNodeJsRelayWithDeps =
 
     const storage = createRelaySqliteStorage(depsWithSqlite)({
       onStorageError: log.storageError,
-      ...(isOwnerWithinQuota && { isOwnerWithinQuota }),
+      isOwnerWithinQuota,
     });
 
     const server = createServer();

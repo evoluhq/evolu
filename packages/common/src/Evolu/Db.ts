@@ -1,5 +1,5 @@
 import { isNonEmptyArray, NonEmptyReadonlyArray } from "../Array.js";
-import { CallbackId } from "../CallbackRegistry.js";
+import { CallbackId } from "../Callbacks.js";
 import { ConsoleConfig, ConsoleDep } from "../Console.js";
 import {
   createSymmetricCrypto,
@@ -197,6 +197,9 @@ export interface DbConfig extends ConsoleConfig, TimestampConfig {
 
   /**
    * Encryption key for the SQLite database.
+   *
+   * Note: If an unencrypted SQLite database already exists and you provide an
+   * encryptionKey, SQLite will throw an error.
    *
    * @experimental
    */

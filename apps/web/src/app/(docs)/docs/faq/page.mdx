@@ -18,6 +18,7 @@ Frequently asked questions about Evolu.
 - [How do I store device-specific data that shouldn't sync?](#how-do-i-store-device-specific-settings-that-shouldnt-sync)
 - [How do I store owner-specific data that shouldn't sync?](#how-do-i-store-owner-specific-data-that-shouldnt-sync)
 - [How do I integrate with external systems that have their own IDs?](#how-do-i-integrate-with-external-systems-that-have-their-own-ids)
+- [How do I seed initial data like country lists or default categories?](#how-do-i-seed-initial-data-like-country-lists-or-default-categories)
 
 ## What is the SQLite database size limit?
 
@@ -139,4 +140,42 @@ const todoId = createIdFromString<"Todo">("external-todo-456");
 
 This ensures that multiple clients creating records with the same external identifier will generate the same Evolu ID.
 
-**Important**: This transformation is one-way. If you need to preserve the original external ID, store it in a separate column.
+**Important**: This transformation uses the first 16 bytes of SHA-256 hash of the string bytes, therefore it's not possible to recover the original external string. If you need to preserve the original external ID, store it in a separate column.
+
+## How do I seed initial data like country lists or default categories?
+
+Evolu previously had an automatic seeding feature that ran when an AppOwner was created, but it was removed because Evolu syncs all changes immediately. Every page visit would generate and sync data to the relay, creating unnecessary traffic. Automatic seeding opens a DoS vulnerability where bots or users could repeatedly trigger data creation by simply visiting the page.
+
+**Simple approach**: Create initial data on explicit user action. For example:
+
+```ts
+const seedDefaultData = () => {
+  evolu.upsert("category", { id: createIdFromString("groceries"), name: "Groceries" });
+  evolu.upsert("category", { id: createIdFromString("utilities"), name: "Utilities" });
+  evolu.upsert("category", { id: createIdFromString("entertainment"), name: "Entertainment" });
+};
+
+// In your UI, provide a button or onboarding step
+<button onClick={seedDefaultData}>Set up default categories</button>
+```
+
+**Note**: Using `createIdFromString` ensures deterministic IDs, so if a user clicks the button on multiple devices (e.g., after restoring their account but before sync completes), the same data will be upserted rather than duplicated.
+
+**Alternative approach**: Create Evolu without transports initially, verify the user through a backend service that knows whether it's their first login, then have the client insert data explicitly before enabling sync:
+
+```ts
+// Start without sync
+const evolu = createEvolu(evoluReactWebDeps)(Schema, {
+  name: SimpleName.orThrow("MyApp"),
+  transports: [],
+});
+
+// After backend verification for first-time user
+if (isFirstLogin) {
+  seedDefaultData();
+}
+
+// Then enable sync by recreating with transports
+```
+
+For reference data that rarely changes (like country or currency lists), consider whether it needs to be in the database at all—it might be better as a constant in your code or imported from a package.

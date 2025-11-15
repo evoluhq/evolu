@@ -1641,8 +1641,9 @@ export const createId = <B extends string = never>(
  * });
  * ```
  *
- * **Important**: This transformation is one-way. We cannot recover the original
- * external string from the generated {@link Id}. If we need to preserve the
+ * **Important**: This transformation uses the first 16 bytes of SHA-256 hash of
+ * the string bytes, therefore it's not possible to recover the original
+ * external string from the generated {@link Id}. If you need to preserve the
  * original external ID, store it in a separate column.
  *
  * @category String

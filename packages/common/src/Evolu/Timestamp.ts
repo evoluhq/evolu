@@ -147,6 +147,7 @@ export const maxNodeId = "ffffffffffffffff" as NodeId;
  * - https://muratbuffalo.blogspot.com/2014/07/hybrid-logical-clocks.html
  * - https://sergeiturukin.com/2017/06/26/hybrid-logical-clocks.html
  * - https://jaredforsyth.com/posts/hybrid-logical-clocks/
+ * - https://willowprotocol.org/more/timestamps_really/index.html
  *
  * ### Privacy Considerations
  *

@@ -116,10 +116,10 @@ export const createBuffer = (
   let value = arrayLike
     ? new globalThis.Uint8Array(arrayLike)
     : new globalThis.Uint8Array(512);
-  let length = (arrayLike ? arrayLike.length : 0) as NonNegativeInt;
+  let length = NonNegativeInt.orThrow(arrayLike ? arrayLike.length : 0);
 
   const buffer: Buffer = {
-    getCapacity: () => value.length as NonNegativeInt,
+    getCapacity: () => NonNegativeInt.orThrow(value.length),
 
     getLength: () => length,
 
@@ -132,7 +132,7 @@ export const createBuffer = (
         value.set(oldValue);
       }
       value.set(arg, length);
-      length = (length + arg.length) as NonNegativeInt;
+      length = NonNegativeInt.orThrow(length + arg.length);
     },
 
     shift: () => {
@@ -142,7 +142,7 @@ export const createBuffer = (
       const first = value[0];
       value = value.subarray(1);
       length--;
-      return first as NonNegativeInt;
+      return NonNegativeInt.orThrow(first);
     },
 
     shiftN: (n) => {
@@ -151,7 +151,7 @@ export const createBuffer = (
       }
       const subarray = value.subarray(0, n);
       value = value.subarray(n);
-      length = (length - n) as NonNegativeInt;
+      length = NonNegativeInt.orThrow(length - n);
       return subarray;
     },
 
@@ -165,7 +165,7 @@ export const createBuffer = (
     },
 
     reset: () => {
-      length = 0 as NonNegativeInt;
+      length = NonNegativeInt.orThrow(0);
     },
 
     unwrap: () => value.subarray(0, length),

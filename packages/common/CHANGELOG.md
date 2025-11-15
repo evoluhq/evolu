@@ -1,5 +1,33 @@
 # @evolu/common
 
+## 6.0.1-preview.31
+
+### Patch Changes
+
+- 202eaa3: Evolu Relay storage made stateless
+
+  Timestamp insertion strategy state moved from in-memory Map to evolu_usage table. This makes Evolu Relay fully stateless and suitable for serverless environments like AWS Lambda and Cloudflare Workers with Durable Objects.
+
+  The evolu_usage table must be read and written on every message write anyway (for quota checks), so it's natural to use it also for tracking timestamp bounds.
+
+  Evolu Relay is designed to work everywhere SQLite works, and with little effort, also with any other SQL database. The core logic is implemented in the language which is very fast and where data is, which is why it's not Rust but SQL 🤓
+
+- eed43d5: Add firstInArray and lastInArray helpers
+
+  New helpers for safely accessing the first and last elements of non-empty arrays. Both functions work with `NonEmptyReadonlyArray` to guarantee type-safe access without runtime checks.
+
+## 6.0.1-preview.30
+
+### Patch Changes
+
+- e2547d2: isOwnerWithinQuota is required, improve docs
+- 05fe5d5: Renaming
+  - `CallbackRegistry` → `Callbacks`
+  - `createCallbackRegistry` → `createCallbacks`
+  - `RefCountedResourceManager` → `Resources`
+  - `createRefCountedResourceManager` → `createResources`
+  - `ResourceManagerConfig` → `ResourcesConfig`
+
 ## 6.0.1-preview.29
 
 ### Patch Changes

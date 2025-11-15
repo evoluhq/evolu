@@ -12,15 +12,13 @@ const relay = await createNodeJsRelay({
   port: 4000,
   enableLogging: false,
 
-  // Click to `isOwnerAllowed` to read the docs.
+  // Note: Relay requires URL in format ws://host:port/<ownerId>
   // isOwnerAllowed: (_ownerId) => true,
 
-  // Click to `isOwnerWithinQuota` to read the docs.
-  // isOwnerWithinQuota: (ownerId, requiredBytes) => {
-  //   console.log(ownerId, requiredBytes);
-  //   // Check error via evolu.subscribeError
-  //   return true;
-  // },
+  isOwnerWithinQuota: (_ownerId, requiredBytes) => {
+    const maxBytes = 1024 * 1024; // 1MB
+    return requiredBytes <= maxBytes;
+  },
 });
 
 if (relay.ok) {

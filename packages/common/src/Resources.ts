@@ -4,10 +4,9 @@ import { PositiveInt } from "./Type.js";
 /**
  * A generic resource manager that handles reference counting and delayed
  * disposal of shared resources. Useful for managing expensive resources like
- * WebSocket connections, database connections, or file handles that need to be
- * shared among multiple consumers.
+ * WebSocket connections that need to be shared among multiple consumers.
  */
-export interface RefCountedResourceManager<
+export interface Resources<
   TResource extends Disposable,
   TResourceKey extends string,
   TResourceConfig,
@@ -73,7 +72,7 @@ export interface ConsumerNotFoundError<
   readonly resourceKey: TResourceKey;
 }
 
-export interface ResourceManagerConfig<
+export interface ResourcesConfig<
   TResource extends Disposable,
   TResourceKey extends string,
   TResourceConfig,
@@ -118,16 +117,16 @@ export interface ResourceManagerConfig<
 }
 
 /**
- * Creates a reference-counted resource manager.
+ * Creates {@link Resources}.
  *
- * This manager tracks which consumers are using which resources and maintains
- * reference counts to know when it's safe to dispose resources. Resources are
- * created on-demand and disposed with a configurable delay to avoid churn.
+ * This tracks which consumers are using which resources and maintains reference
+ * counts to know when it's safe to dispose resources. Resources are created
+ * on-demand and disposed with a configurable delay to avoid churn.
  *
  * ### Example Usage
  *
  * ```ts
- * // WebSocket connections manager
+ * // WebSocket connections
  * interface WebSocketConfig {
  *   readonly url: WebSocketUrl;
  * }
@@ -135,7 +134,7 @@ export interface ResourceManagerConfig<
  * type WebSocketUrl = string & Brand<"WebSocketUrl">;
  * type UserId = string & Brand<"UserId">;
  *
- * const wsManager = createRefCountedResourceManager<
+ * const webSockets = createResources<
  *   WebSocket,
  *   WebSocketUrl,
  *   WebSocketConfig,
@@ -149,16 +148,16 @@ export interface ResourceManagerConfig<
  * });
  *
  * // Add users to WebSocket connections
- * wsManager.addConsumer(user1, [
+ * webSockets.addConsumer(user1, [
  *   { url: "ws://server1.com" as WebSocketUrl },
  *   { url: "ws://server2.com" as WebSocketUrl },
  * ]);
- * wsManager.addConsumer(user2, [
+ * webSockets.addConsumer(user2, [
  *   { url: "ws://server1.com" as WebSocketUrl },
  * ]);
  *
  * // Remove users - server1 stays alive (user2 still using it)
- * wsManager.removeConsumer(user1, [
+ * webSockets.removeConsumer(user1, [
  *   { url: "ws://server1.com" as WebSocketUrl },
  *   { url: "ws://server2.com" as WebSocketUrl },
  * ]);
@@ -166,21 +165,21 @@ export interface ResourceManagerConfig<
  * // server2 gets disposed after delay, server1 stays alive
  * ```
  */
-export const createRefCountedResourceManager = <
+export const createResources = <
   TResource extends Disposable,
   TResourceKey extends string,
   TResourceConfig,
   TConsumer,
   TConsumerId extends string,
 >(
-  config: ResourceManagerConfig<
+  config: ResourcesConfig<
     TResource,
     TResourceKey,
     TResourceConfig,
     TConsumer,
     TConsumerId
   >,
-): RefCountedResourceManager<
+): Resources<
   TResource,
   TResourceKey,
   TResourceConfig,
@@ -189,7 +188,7 @@ export const createRefCountedResourceManager = <
 > => {
   let isDisposed = false;
 
-  const resources = new Map<TResourceKey, TResource>();
+  const resourcesMap = new Map<TResourceKey, TResource>();
   const consumerCounts = new Map<TResourceKey, Map<TConsumerId, PositiveInt>>();
   const consumers = new Map<TConsumerId, TConsumer>();
   const disposalTimeouts = new Map<
@@ -207,18 +206,18 @@ export const createRefCountedResourceManager = <
       disposalTimeouts.delete(key);
     }
 
-    if (!resources.has(key)) {
+    if (!resourcesMap.has(key)) {
       const resource = config.createResource(resourceConfig);
-      resources.set(key, resource);
+      resourcesMap.set(key, resource);
     }
   };
 
   const scheduleDisposal = (key: TResourceKey): void => {
     const timeout = setTimeout(() => {
-      const resource = resources.get(key);
+      const resource = resourcesMap.get(key);
       if (resource) {
         resource[Symbol.dispose]();
-        resources.delete(key);
+        resourcesMap.delete(key);
       }
       disposalTimeouts.delete(key);
     }, disposalDelay);
@@ -226,7 +225,7 @@ export const createRefCountedResourceManager = <
     disposalTimeouts.set(key, timeout);
   };
 
-  const manager: RefCountedResourceManager<
+  const resources: Resources<
     TResource,
     TResourceKey,
     TResourceConfig,
@@ -257,7 +256,7 @@ export const createRefCountedResourceManager = <
 
         // Call onConsumerAdded callback only when consumer is added for the first time (0 -> 1)
         if (currentCount === 0 && config.onConsumerAdded) {
-          const resource = resources.get(resourceKey);
+          const resource = resourcesMap.get(resourceKey);
           if (resource) {
             config.onConsumerAdded(consumer, resource, resourceKey);
           }
@@ -291,7 +290,7 @@ export const createRefCountedResourceManager = <
 
           // Call onConsumerRemoved callback only when consumer is completely removed (1 -> 0)
           if (config.onConsumerRemoved) {
-            const resource = resources.get(key);
+            const resource = resourcesMap.get(key);
             if (resource) {
               config.onConsumerRemoved(consumer, resource, key);
             }
@@ -306,7 +305,7 @@ export const createRefCountedResourceManager = <
         }
       }
 
-      if (!manager.hasConsumerAnyResource(consumer)) {
+      if (!resources.hasConsumerAnyResource(consumer)) {
         consumers.delete(consumerId);
       }
 
@@ -315,7 +314,7 @@ export const createRefCountedResourceManager = <
 
     getResource: (key) => {
       if (isDisposed) return null;
-      return resources.get(key) ?? null;
+      return resourcesMap.get(key) ?? null;
     },
 
     getConsumersForResource: (key) => {
@@ -339,7 +338,7 @@ export const createRefCountedResourceManager = <
       if (!consumer) return null;
 
       // Only return consumer if it's currently using any resources
-      if (!manager.hasConsumerAnyResource(consumer)) {
+      if (!resources.hasConsumerAnyResource(consumer)) {
         return null;
       }
 
@@ -355,14 +354,14 @@ export const createRefCountedResourceManager = <
       }
       disposalTimeouts.clear();
 
-      for (const resource of resources.values()) {
+      for (const resource of resourcesMap.values()) {
         resource[Symbol.dispose]();
       }
-      resources.clear();
+      resourcesMap.clear();
       consumerCounts.clear();
       consumers.clear();
     },
   };
 
-  return manager;
+  return resources;
 };

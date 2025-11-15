@@ -6,7 +6,7 @@ import clsx from "clsx";
 import { FC, Suspense, use, useMemo, useState } from "react";
 
 // Namespace for the current app (scopes databases, passkeys, etc.)
-const service = "pwa-react";
+const service = "pwa-react-151125";
 
 // Primary keys are branded types, preventing accidental use of IDs across
 // different tables (e.g., a TodoId can't be used where a UserId is expected).

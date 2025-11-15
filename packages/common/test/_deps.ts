@@ -19,9 +19,10 @@ import {
 } from "../src/Evolu/Relay.js";
 import {
   createBaseSqliteStorageTables,
+  StorageConfig,
   StorageDep,
 } from "../src/Evolu/Storage.js";
-import { constFalse, constVoid } from "../src/Function.js";
+import { constFalse, constTrue, constVoid } from "../src/Function.js";
 import {
   createRandom,
   createRandomLibWithSeed,
@@ -297,9 +298,9 @@ export const testCreateConsole = (): TestConsole => {
   };
 };
 
-export const testCreateRelayStorageAndSqliteDeps = async (): Promise<
-  StorageDep & SqliteDep
-> => {
+export const testCreateRelayStorageAndSqliteDeps = async (
+  config?: Partial<StorageConfig>,
+): Promise<StorageDep & SqliteDep> => {
   const sqlite = await testCreateSqlite();
 
   getOrThrow(createBaseSqliteStorageTables({ sqlite }));
@@ -318,6 +319,8 @@ export const testCreateRelayStorageAndSqliteDeps = async (): Promise<
     onStorageError: (error) => {
       throw new Error(error.type);
     },
+    isOwnerWithinQuota: constTrue, // Allow all writes in tests by default
+    ...config,
   });
 
   return { sqlite, storage };

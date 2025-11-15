@@ -76,6 +76,8 @@ exports[`externalAppOwner should use provided owner 1`] = `
         "columns": [
           "ownerId",
           "storedBytes",
+          "firstTimestamp",
+          "lastTimestamp",
         ],
         "name": "evolu_usage",
       },

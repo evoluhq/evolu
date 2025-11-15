@@ -325,7 +325,7 @@ export const defaultProtocolMessageRangesMaxSize =
 export type ProtocolMessage = Uint8Array & Brand<"ProtocolMessage">;
 
 /** Evolu Protocol version. */
-export const protocolVersion = 0 as NonNegativeInt;
+export const protocolVersion = NonNegativeInt.orThrow(0);
 
 export const MessageType = {
   /** Request message from initiator (client) to non-initiator (relay). */
@@ -525,7 +525,7 @@ export const createProtocolMessageForSync =
 
     splitRange(deps)(
       ownerIdBytes,
-      0 as NonNegativeInt,
+      NonNegativeInt.orThrow(0),
       size,
       InfiniteUpperBound,
       buffer,
@@ -628,7 +628,7 @@ export const createProtocolMessageBuffer = (
   const isWithinSizeLimits = () => getSize() <= totalMaxSize;
 
   const getSize = () =>
-    (getHeaderAndMessagesSize() + getRangesSize()) as PositiveInt;
+    PositiveInt.orThrow(getHeaderAndMessagesSize() + getRangesSize());
 
   const getHeaderAndMessagesSize = () =>
     buffers.header.getLength() +
@@ -726,7 +726,10 @@ export const createProtocolMessageBuffer = (
         buffers.ranges.timestamps.addInfinite();
       }
 
-      encodeNonNegativeInt(buffers.ranges.types, range.type as NonNegativeInt);
+      encodeNonNegativeInt(
+        buffers.ranges.types,
+        NonNegativeInt.orThrow(range.type),
+      );
 
       switch (range.type) {
         case RangeType.Skip:
@@ -781,7 +784,7 @@ export interface TimestampsBuffer {
 }
 
 export const createTimestampsBuffer = (): TimestampsBuffer => {
-  let count = 0 as NonNegativeInt;
+  let count = NonNegativeInt.orThrow(0);
   const countBuffer = createBuffer();
 
   const syncCount = () => {
@@ -848,9 +851,9 @@ const createRunLengthEncoder = <T>(
   encodeValue: (buffer: Buffer, value: T) => void,
 ): RunLengthEncoder<T> => {
   const buffer = createBuffer();
-  let previousLength = 0 as NonNegativeInt;
+  let previousLength = NonNegativeInt.orThrow(0);
   let previousValue = null as T | null;
-  let runLength = 0 as NonNegativeInt;
+  let runLength = NonNegativeInt.orThrow(0);
 
   return {
     add: (value) => {
@@ -859,7 +862,7 @@ const createRunLengthEncoder = <T>(
         buffer.truncate(previousLength);
       } else {
         previousValue = value;
-        runLength = 1 as NonNegativeInt;
+        runLength = NonNegativeInt.orThrow(1);
       }
       previousLength = buffer.getLength();
       encodeValue(buffer, value);
@@ -1255,7 +1258,7 @@ const sync =
     if (storageSize == null) return err(ProtocolErrorCode.SyncError);
 
     let prevUpperBound: RangeUpperBound | null = null;
-    let prevIndex = 0 as NonNegativeInt;
+    let prevIndex = NonNegativeInt.orThrow(0);
 
     let skip = false;
     let nonSkipRangeAdded = false;
@@ -1458,7 +1461,7 @@ const splitRange =
     upperBound: RangeUpperBound,
     buffer: ProtocolMessageBuffer,
   ): void => {
-    const itemCount = (upper - lower) as NonNegativeInt;
+    const itemCount = NonNegativeInt.orThrow(upper - lower);
     const buckets = computeBalancedBuckets(itemCount);
 
     if (!buckets.ok) {
@@ -1470,7 +1473,7 @@ const splitRange =
 
       deps.storage.iterate(
         ownerId,
-        0 as NonNegativeInt,
+        NonNegativeInt.orThrow(0),
         itemCount,
         (timestamp) => {
           range.timestamps.add(timestampBytesToTimestamp(timestamp));
@@ -1486,7 +1489,10 @@ const splitRange =
     const fingerprintRangesBuckets =
       lower === 0
         ? buckets.value
-        : [lower, ...buckets.value.map((b) => (b + lower) as NonNegativeInt)];
+        : [
+            lower,
+            ...buckets.value.map((b) => NonNegativeInt.orThrow(b + lower)),
+          ];
 
     const fingerprintRanges = deps.storage.fingerprintRanges(
       ownerId,
@@ -1510,7 +1516,7 @@ const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
   const rangesCount = decodeNonNegativeInt(buffer);
   if (rangesCount === 0) return [];
 
-  const timestampsCount = (rangesCount - 1) as NonNegativeInt;
+  const timestampsCount = NonNegativeInt.orThrow(rangesCount - 1);
   const timestamps = decodeTimestamps(buffer, timestampsCount);
   const rangeTypes: Array<RangeType> = [];
 
@@ -1845,7 +1851,7 @@ export const decodeNonNegativeInt = (buffer: Buffer): NonNegativeInt => {
 };
 
 export const encodeLength = (buffer: Buffer, value: ArrayLike<any>): void => {
-  encodeNonNegativeInt(buffer, value.length as NonNegativeInt);
+  encodeNonNegativeInt(buffer, NonNegativeInt.orThrow(value.length));
 };
 
 export const decodeLength = decodeNonNegativeInt;
@@ -1867,7 +1873,7 @@ export const encodeNodeId = (buffer: Buffer, nodeId: NodeId): void => {
 };
 
 export const decodeNodeId = (buffer: Buffer): NodeId => {
-  const bytes = buffer.shiftN(8 as NonNegativeInt);
+  const bytes = buffer.shiftN(NonNegativeInt.orThrow(8));
   return bytesToHex(bytes) as NodeId;
 };
 
@@ -1879,26 +1885,26 @@ export const ProtocolValueType = {
   // 0-19 small ints
 
   // SQLite types
-  String: 20 as NonNegativeInt,
-  Number: 21 as NonNegativeInt,
-  Null: 22 as NonNegativeInt,
-  Bytes: 23 as NonNegativeInt,
+  String: NonNegativeInt.orThrow(20),
+  Number: NonNegativeInt.orThrow(21),
+  Null: NonNegativeInt.orThrow(22),
+  Bytes: NonNegativeInt.orThrow(23),
   // We can add more types for other DBs or anything else later.
 
   // Optimized types
-  NonNegativeInt: 30 as NonNegativeInt,
+  NonNegativeInt: NonNegativeInt.orThrow(30),
 
   // String optimizations
-  EmptyString: 31 as NonNegativeInt, // 1 byte vs 2 bytes (50% reduction)
-  Base64Url: 32 as NonNegativeInt,
-  Id: 33 as NonNegativeInt,
-  Json: 34 as NonNegativeInt,
+  EmptyString: NonNegativeInt.orThrow(31), // 1 byte vs 2 bytes (50% reduction)
+  Base64Url: NonNegativeInt.orThrow(32),
+  Id: NonNegativeInt.orThrow(33),
+  Json: NonNegativeInt.orThrow(34),
 
   // new Date().toISOString()   - 24 bytes
   // encoded with fixed length  - 8 bytes
   // encode as NonNegativeInt   - 6 bytes (additional 25% reduction)
-  DateIsoWithNonNegativeTime: 35 as NonNegativeInt,
-  DateIsoWithNegativeTime: 36 as NonNegativeInt, // 9 bytes
+  DateIsoWithNonNegativeTime: NonNegativeInt.orThrow(35),
+  DateIsoWithNegativeTime: NonNegativeInt.orThrow(36), // 9 bytes
 
   // TODO: Operations (from 40)
   // Increment, Decrement, Patch, whatever.

@@ -176,12 +176,12 @@ export const createSymmetricCrypto = (
  * https://bford.info/pub/sec/purb.pdf
  */
 export const padmePaddedLength = (length: NonNegativeInt): NonNegativeInt => {
-  if (length <= 0) return 0 as NonNegativeInt;
+  if (length <= 0) return NonNegativeInt.orThrow(0);
   const e = 31 - Math.clz32(length >>> 0);
   const s = 32 - Math.clz32(e >>> 0);
   const z = Math.max(0, e - s);
   const mask = (1 << z) - 1;
-  return ((length + mask) & ~mask) as NonNegativeInt;
+  return NonNegativeInt.orThrow((length + mask) & ~mask);
 };
 
 /**
@@ -189,7 +189,7 @@ export const padmePaddedLength = (length: NonNegativeInt): NonNegativeInt => {
  * {@link padmePaddedLength}.
  */
 export const padmePaddingLength = (length: NonNegativeInt): NonNegativeInt => {
-  return (padmePaddedLength(length) - length) as NonNegativeInt;
+  return NonNegativeInt.orThrow(padmePaddedLength(length) - length);
 };
 
 /**
