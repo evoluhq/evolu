@@ -3,9 +3,9 @@ import { onScopeDispose, Ref, shallowReadonly, shallowRef } from "vue";
 import { useEvolu } from "./useEvolu.js";
 
 /**
- * Load and subscribe to the query, returning a ref that stays in sync with Evolu changes.
- * 
- * 
+ * Load and subscribe to the query, returning a ref that stays in sync with
+ * Evolu changes.
+ *
  * ### Example
  *
  * ```ts
@@ -23,7 +23,7 @@ import { useEvolu } from "./useEvolu.js";
  *   db.selectFrom("todo").selectAll(),
  * );
  * const allTodosPromise = evolu.loadQuery(allTodos);
- * 
+ *
  * // Use prefetched rows.
  * const rows = useQuery(allTodos, { promise: allTodosPromise });
  * ```
