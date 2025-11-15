@@ -116,3 +116,33 @@ export const firstInArray = <T>(array: NonEmptyReadonlyArray<T>): T => array[0];
  */
 export const lastInArray = <T>(array: NonEmptyReadonlyArray<T>): T =>
   array[array.length - 1];
+
+/**
+ * Returns a new readonly array with duplicate items removed based on a key
+ * extractor function. Preserves the first occurrence of each distinct key.
+ *
+ * Accepts both mutable and readonly arrays. Does not mutate the original array.
+ */
+
+/**
+ * Deduplicates items in an array. If `by` is provided, it will be used to
+ * derive the key for uniqueness; otherwise values are used directly.
+ *
+ * Returns a new readonly array and does not mutate the input.
+ */
+export const dedupeArray = <T>(
+  array: ReadonlyArray<T>,
+  by?: (item: T) => unknown,
+): ReadonlyArray<T> => {
+  if (by == null) {
+    return Array.from(new Set(array)) as ReadonlyArray<T>;
+  }
+
+  const seen = new Set<unknown>();
+  return array.filter((item) => {
+    const key = by(item);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }) as ReadonlyArray<T>;
+};

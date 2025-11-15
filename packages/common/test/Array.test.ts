@@ -6,6 +6,7 @@ import {
   isNonEmptyArray,
   isNonEmptyReadonlyArray,
   lastInArray,
+  dedupeArray,
   mapArray,
   prependToArray,
   shiftArray,
@@ -272,5 +273,32 @@ describe("lastInArray", () => {
     const arr: NonEmptyArray<number> = [10, 20, 30];
     const result = lastInArray(arr);
     expect(result).toBe(30);
+  });
+});
+
+describe("dedupe", () => {
+  test("deduplicates primitives without callback and returns readonly", () => {
+    const arr: ReadonlyArray<number> = [1, 2, 1, 3, 2];
+    const result = dedupeArray(arr);
+    expect(result).toEqual([1, 2, 3]);
+    expectTypeOf(result).toEqualTypeOf<ReadonlyArray<number>>();
+    // original not mutated
+    expect(arr).toEqual([1, 2, 1, 3, 2]);
+  });
+
+  test("deduplicates objects by callback and preserves first occurrence", () => {
+    const arr = [
+      { id: 1, value: "a" },
+      { id: 2, value: "b" },
+      { id: 1, value: "c" },
+    ];
+    const result = dedupeArray(arr, (x) => x.id);
+    expect(result).toEqual([
+      { id: 1, value: "a" },
+      { id: 2, value: "b" },
+    ]);
+    expectTypeOf(result).toEqualTypeOf<
+      ReadonlyArray<{ id: number; value: string }>
+    >();
   });
 });

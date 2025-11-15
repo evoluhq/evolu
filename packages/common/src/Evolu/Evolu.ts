@@ -1,6 +1,10 @@
 import { pack } from "msgpackr";
-import { isNonEmptyArray, isNonEmptyReadonlyArray } from "../Array.js";
-import { assert, assertNonEmptyArray } from "../Assert.js";
+import {
+  dedupeArray,
+  isNonEmptyArray,
+  isNonEmptyReadonlyArray,
+} from "../Array.js";
+import { assert, assertNonEmptyReadonlyArray } from "../Assert.js";
 import { createCallbacks } from "../Callbacks.js";
 import { ConsoleDep } from "../Console.js";
 import { RandomBytesDep, SymmetricCryptoDecryptError } from "../Crypto.js";
@@ -611,10 +615,10 @@ const createEvoluInstance =
           const loadingPromisesQueries = loadingPromises.getQueries();
           loadingPromises.releaseUnsubscribedOnMutation();
 
-          const queries = [
-            // Dedupe
-            ...new Set([...loadingPromisesQueries, ...subscribedQueries.get()]),
-          ];
+          const queries = dedupeArray([
+            ...loadingPromisesQueries,
+            ...subscribedQueries.get(),
+          ]);
 
           if (isNonEmptyReadonlyArray(queries)) {
             dbWorker.postMessage({ type: "query", tabId: getTabId(), queries });
@@ -790,10 +794,9 @@ const createEvoluInstance =
           loadQueryMicrotaskQueue.push(query);
           if (loadQueryMicrotaskQueue.length === 1) {
             queueMicrotask(() => {
-              // Dedupe
-              const queries = [...new Set(loadQueryMicrotaskQueue)];
+              const queries = dedupeArray(loadQueryMicrotaskQueue);
               loadQueryMicrotaskQueue.length = 0;
-              assertNonEmptyArray(queries);
+              assertNonEmptyReadonlyArray(queries);
               deps.console.log("[evolu]", "loadQuery", { queries });
               dbWorker.postMessage({
                 type: "query",
