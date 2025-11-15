@@ -2,10 +2,8 @@ name: DockerHub
 
 on:
   push:
-    branches:
-      - main
     tags:
-      - '@evolu/relay@*'
+      - "@evolu/relay@*"
   workflow_dispatch: # Allow manual triggering
 
 env:
@@ -15,6 +13,8 @@ env:
 jobs:
   push_to_registry:
     name: Push Docker image to Docker Hub
+    # Run only when invoked by relay release tags
+    if: startsWith(github.ref, 'refs/tags/@evolu/relay@')
     runs-on: ubuntu-latest
     permissions:
       packages: write
@@ -45,12 +45,14 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: |
+            # TODO: After first stable relay release, consider switching
+            # back to `latest=auto` so `latest` only tracks stable versions.
+            latest=true
           tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=match,pattern=@evolu/relay@(.*),group=1
+            # Parse version from tag like "@evolu/relay@1.2.3[-prerelease]"
+            type=semver,pattern={{version}},value={{tag}},match=@evolu/relay@(.*)
+            type=semver,pattern={{major}}.{{minor}},value={{tag}},match=@evolu/relay@(.*)
 
       - name: Build and push Docker image
         id: push
