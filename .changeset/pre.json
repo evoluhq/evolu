@@ -11,7 +11,15 @@
     "@evolu/tsconfig": "0.0.2",
     "@evolu/web": "1.0.0",
     "@evolu/relay": "1.1.1",
-    "@evolu/vue": "1.0.0-preview.2"
+    "@evolu/vue": "1.0.0-preview.2",
+    "web": "2.0.0",
+    "@example/angular-vite-pwa": "0.0.0",
+    "@example/react-electron": "0.0.0",
+    "@example/react-expo": "1.0.0",
+    "@example/react-nextjs": "0.1.0",
+    "@example/react-vite-pwa": "0.0.0",
+    "@example/svelte-vite-pwa": "0.0.0",
+    "@example/vue-vite-pwa": "0.0.0"
   },
   "changesets": [
     "all-bars-speak",
@@ -22,6 +30,7 @@
     "common-ads-serve",
     "cool-hoops-give",
     "eager-icons-say",
+    "five-areas-appear",
     "heavy-mugs-tickle",
     "khaki-dots-retire",
     "kind-jars-lay",
