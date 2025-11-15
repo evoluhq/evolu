@@ -2,12 +2,6 @@
   "mode": "pre",
   "tag": "preview",
   "initialVersions": {
-    "web": "2.0.0",
-    "@example/react-electron": "1.0.0",
-    "@example/react-expo": "1.0.0",
-    "@example/react-nextjs": "0.1.0",
-    "@example/react-vite-pwa": "0.0.0",
-    "@example/svelte-vite-pwa": "0.0.0",
     "@evolu/common": "6.0.0",
     "@evolu/nodejs": "1.0.0",
     "@evolu/react": "9.0.0",
