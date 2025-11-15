@@ -1,5 +1,11 @@
 # @evolu/vue
 
+## 1.0.0-preview.3
+
+### Patch Changes
+
+- 816f497: Fix package.json repository field format to use full object notation required for npm publishing
+
 ## 1.0.0-preview.2
 
 ### Minor Changes
