@@ -2,8 +2,10 @@ import { describe, expect, expectTypeOf, test } from "vitest";
 import {
   appendToArray,
   filterArray,
+  firstInArray,
   isNonEmptyArray,
   isNonEmptyReadonlyArray,
+  lastInArray,
   mapArray,
   prependToArray,
   shiftArray,
@@ -216,5 +218,59 @@ describe("Type narrowing", () => {
 
     expect(processArray([1, 2, 3])).toBe(1);
     expect(processArray([])).toBe("empty");
+  });
+});
+
+describe("firstInArray", () => {
+  test("returns first element from non-empty array", () => {
+    const arr: NonEmptyReadonlyArray<number> = [1, 2, 3];
+    const result = firstInArray(arr);
+    expect(result).toBe(1);
+    expectTypeOf(result).toEqualTypeOf<number>();
+  });
+
+  test("returns first element from single element array", () => {
+    const arr: NonEmptyReadonlyArray<string> = ["only"];
+    const result = firstInArray(arr);
+    expect(result).toBe("only");
+  });
+
+  test("does not mutate original array", () => {
+    const arr: NonEmptyReadonlyArray<number> = [1, 2, 3];
+    firstInArray(arr);
+    expect(arr).toEqual([1, 2, 3]);
+  });
+
+  test("works with mutable non-empty arrays", () => {
+    const arr: NonEmptyArray<number> = [10, 20, 30];
+    const result = firstInArray(arr);
+    expect(result).toBe(10);
+  });
+});
+
+describe("lastInArray", () => {
+  test("returns last element from non-empty array", () => {
+    const arr: NonEmptyReadonlyArray<number> = [1, 2, 3];
+    const result = lastInArray(arr);
+    expect(result).toBe(3);
+    expectTypeOf(result).toEqualTypeOf<number>();
+  });
+
+  test("returns last element from single element array", () => {
+    const arr: NonEmptyReadonlyArray<string> = ["only"];
+    const result = lastInArray(arr);
+    expect(result).toBe("only");
+  });
+
+  test("does not mutate original array", () => {
+    const arr: NonEmptyReadonlyArray<number> = [1, 2, 3];
+    lastInArray(arr);
+    expect(arr).toEqual([1, 2, 3]);
+  });
+
+  test("works with mutable non-empty arrays", () => {
+    const arr: NonEmptyArray<number> = [10, 20, 30];
+    const result = lastInArray(arr);
+    expect(result).toBe(30);
   });
 });
