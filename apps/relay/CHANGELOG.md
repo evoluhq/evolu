@@ -1,5 +1,15 @@
 # @evolu/relay
 
+## 1.1.2-preview.10
+
+### Patch Changes
+
+- e2547d2: isOwnerWithinQuota is required, improve docs
+- Updated dependencies [e2547d2]
+- Updated dependencies [05fe5d5]
+  - @evolu/common@6.0.1-preview.30
+  - @evolu/nodejs@1.0.1-preview.12
+
 ## 1.1.2-preview.9
 
 ### Patch Changes
