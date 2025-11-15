@@ -10,7 +10,10 @@
   "bugs": {
     "url": "https://github.com/evoluhq/evolu/issues"
   },
-  "repository": "evoluhq/evolu",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/evoluhq/evolu.git"
+  },
   "license": "MIT",
   "type": "module",
   "exports": {
