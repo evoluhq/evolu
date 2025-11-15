@@ -46,6 +46,10 @@ npm install @evolu/common@preview @evolu/react@preview @evolu/react-native@previ
 npm install @evolu/common@preview @evolu/web@preview @evolu/svelte@preview
 ```
 
+```bash {{ title: 'Vue' }}
+npm install @evolu/common@preview @evolu/web@preview @evolu/vue@preview
+```
+
 ```bash {{ title: 'Vanilla JS' }}
 npm install @evolu/common@preview @evolu/web@preview
 ```
@@ -210,6 +214,28 @@ const evolu = createEvolu(evoluSvelteDeps)(Schema, {
 });
 ```
 
+```ts {{ title: 'Vue', language: 'ts' }}
+import { defineComponent } from "vue";
+import { createEvolu, getOrThrow, SimpleName } from "@evolu/common";
+import { evoluWebDeps } from "@evolu/web";
+import { createUseEvolu, provideEvolu } from "@evolu/vue";
+
+const evolu = createEvolu(evoluWebDeps)(Schema, {
+  name: SimpleName.orThrow("your-app-name"),
+  transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
+});
+
+const useEvolu = createUseEvolu(evolu);
+
+export default defineComponent({
+  setup() {
+    provideEvolu(evolu);
+    const { insert, update } = useEvolu();
+    return { insert, update };
+  },
+});
+```
+
 ```ts {{ title: 'Vanilla JS' }}
 import { createEvolu, getOrThrow, SimpleName } from "@evolu/common";
 import { evoluWebDeps } from "@evolu/web";
@@ -261,6 +287,18 @@ const result = evolu.insert("todo", { title: "New Todo", isCompleted: false });
 
 if (result.ok) {
   evolu.update("todo", { id: result.value.id, isCompleted: true });
+}
+```
+
+```ts {{ title: 'Vue', language: 'ts' }}
+import { useEvolu } from "@evolu/vue";
+
+const { insert, update } = useEvolu();
+
+const result = insert("todo", { title: "New Todo", isCompleted: false });
+
+if (result.ok) {
+  update("todo", { id: result.value.id, isCompleted: true });
 }
 ```
 
@@ -326,6 +364,12 @@ const todos = queryState(evolu, () => allTodos);
 // Note this only works in .svelte or .svelte.js / .svelte.ts files due to the Svelte compiler
 ```
 
+```ts {{ title: 'Vue' }}
+import { useQuery } from "@evolu/vue";
+
+const todos = useQuery(allTodos);
+```
+
 ```ts {{ title: 'Vanilla JS' }}
 // Query once
 const todos = await evolu.loadQuery(allTodos);
@@ -377,6 +421,14 @@ import { appOwnerState } from "@evolu/svelte";
 
 const owner = appOwnerState(evolu);
 // use owner.current in your templates
+```
+
+```ts {{ title: 'Vue', language: 'ts' }}
+import { useEvolu } from "@evolu/vue";
+
+const evolu = useEvolu();
+const owner = await evolu.appOwner;
+console.log(owner.mnemonic);
 ```
 
 ```ts {{ title: 'Vanilla JS' }}

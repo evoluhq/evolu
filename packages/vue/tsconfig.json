@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "@evolu/tsconfig/universal-esm.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "allowJs": true
+  },
+  "include": ["src", "test"],
+  "exclude": ["dist", "node_modules"]
+}
