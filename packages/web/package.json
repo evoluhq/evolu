@@ -49,7 +49,7 @@
     "vitest": "^4.0.4"
   },
   "peerDependencies": {
-    "@evolu/common": "^6.0.1-preview.31"
+    "@evolu/common": "^6.0.1-preview.32"
   },
   "publishConfig": {
     "access": "public"
