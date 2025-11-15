@@ -10,7 +10,16 @@
     "@evolu/svelte": "1.0.0",
     "@evolu/tsconfig": "0.0.2",
     "@evolu/web": "1.0.0",
-    "@evolu/relay": "1.1.1"
+    "@evolu/relay": "1.1.1",
+    "web": "2.0.0",
+    "@example/angular-vite-pwa": "0.0.0",
+    "@example/react-electron": "0.0.0",
+    "@example/react-expo": "1.0.0",
+    "@example/react-nextjs": "0.1.0",
+    "@example/react-vite-pwa": "0.0.0",
+    "@example/svelte-vite-pwa": "0.0.0",
+    "@example/vue-vite-pwa": "0.0.0",
+    "@evolu/vue": "1.0.0-preview.1"
   },
   "changesets": [
     "all-bars-speak",
@@ -26,6 +35,7 @@
     "kind-jars-lay",
     "lazy-clouds-exist",
     "lazy-rivers-cry",
+    "legal-moments-laugh",
     "lucky-rice-shop",
     "olive-bars-count",
     "plenty-carrots-lead",
