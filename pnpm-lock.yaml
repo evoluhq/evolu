@@ -60,8 +60,8 @@ importers:
         specifier: ^1.3.3
         version: 1.5.0(prettier@3.6.2)
       prettier-plugin-sql-cst:
-        specifier: ^0.14.0
-        version: 0.14.2
+        specifier: ^0.15.0
+        version: 0.15.0
       prettier-plugin-tailwindcss:
         specifier: ^0.7.1
         version: 0.7.1(prettier-plugin-jsdoc@1.5.0(prettier@3.6.2))(prettier@3.6.2)
@@ -110,7 +110,7 @@ importers:
     dependencies:
       '@algolia/autocomplete-core':
         specifier: ^1.19.2
-        version: 1.19.4(@algolia/client-search@5.43.0)(algoliasearch@5.43.0)(search-insights@2.17.3)
+        version: 1.19.4(@algolia/client-search@5.44.0)(algoliasearch@5.44.0)(search-insights@2.17.3)
       '@evolu/common':
         specifier: workspace:*
         version: link:../../packages/common
@@ -255,10 +255,10 @@ importers:
     dependencies:
       '@angular/core':
         specifier: ^20
-        version: 20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2)
+        version: 20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2)
       '@angular/platform-browser':
         specifier: ^20
-        version: 20.3.11(@angular/common@20.3.11(@angular/core@20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2))
+        version: 20.3.12(@angular/common@20.3.12(@angular/core@20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2))
       '@evolu/common':
         specifier: workspace:*
         version: link:../../packages/common
@@ -268,13 +268,13 @@ importers:
     devDependencies:
       '@analogjs/vite-plugin-angular':
         specifier: ^1.20.1
-        version: 1.22.5(@angular/build@20.3.10(@angular/compiler-cli@20.3.11(@angular/compiler@20.3.11)(typescript@5.9.3))(@angular/compiler@20.3.11)(@angular/core@20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2))(@angular/platform-browser@20.3.11(@angular/common@20.3.11(@angular/core@20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2)))(@types/node@22.19.1)(chokidar@4.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(postcss@8.5.6)(tailwindcss@4.1.17)(terser@5.44.1)(tslib@2.8.1)(tsx@4.20.6)(typescript@5.9.3)(yaml@2.8.1))
+        version: 1.22.5(@angular/build@20.3.10(@angular/compiler-cli@20.3.12(@angular/compiler@20.3.12)(typescript@5.9.3))(@angular/compiler@20.3.12)(@angular/core@20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2))(@angular/platform-browser@20.3.12(@angular/common@20.3.12(@angular/core@20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2)))(@types/node@22.19.1)(chokidar@4.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(postcss@8.5.6)(tailwindcss@4.1.17)(terser@5.44.1)(tslib@2.8.1)(tsx@4.20.6)(typescript@5.9.3)(yaml@2.8.1))
       '@angular/build':
         specifier: ^20.3.6
-        version: 20.3.10(@angular/compiler-cli@20.3.11(@angular/compiler@20.3.11)(typescript@5.9.3))(@angular/compiler@20.3.11)(@angular/core@20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2))(@angular/platform-browser@20.3.11(@angular/common@20.3.11(@angular/core@20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2)))(@types/node@22.19.1)(chokidar@4.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(postcss@8.5.6)(tailwindcss@4.1.17)(terser@5.44.1)(tslib@2.8.1)(tsx@4.20.6)(typescript@5.9.3)(yaml@2.8.1)
+        version: 20.3.10(@angular/compiler-cli@20.3.12(@angular/compiler@20.3.12)(typescript@5.9.3))(@angular/compiler@20.3.12)(@angular/core@20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2))(@angular/platform-browser@20.3.12(@angular/common@20.3.12(@angular/core@20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2)))(@types/node@22.19.1)(chokidar@4.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(postcss@8.5.6)(tailwindcss@4.1.17)(terser@5.44.1)(tslib@2.8.1)(tsx@4.20.6)(typescript@5.9.3)(yaml@2.8.1)
       '@angular/compiler-cli':
         specifier: ^20.3.6
-        version: 20.3.11(@angular/compiler@20.3.11)(typescript@5.9.3)
+        version: 20.3.12(@angular/compiler@20.3.12)(typescript@5.9.3)
       '@tailwindcss/vite':
         specifier: ^4.1.14
         version: 4.1.17(vite@7.2.2(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1))
@@ -898,7 +898,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.0.4
-        version: 4.0.8(@types/debug@4.1.12)(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1)
+        version: 4.0.9(@types/debug@4.1.12)(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1)
       vue:
         specifier: ^3.5.13
         version: 3.5.24(typescript@5.9.3)
@@ -947,8 +947,8 @@ packages:
       graphql:
         optional: true
 
-  '@algolia/abtesting@1.9.0':
-    resolution: {integrity: sha512-4q9QCxFPiDIx1n5w41A1JMkrXI8p0ugCQnCGFtCKZPmWtwgWCqwVRncIbp++81xSELFZVQUfiB7Kbsla1tIBSw==}
+  '@algolia/abtesting@1.10.0':
+    resolution: {integrity: sha512-mQT3jwuTgX8QMoqbIR7mPlWkqQqBPQaPabQzm37xg2txMlaMogK/4hCiiESGdg39MlHZOVHeV+0VJuE7f5UK8A==}
     engines: {node: '>= 14.0.0'}
 
   '@algolia/autocomplete-core@1.19.4':
@@ -965,56 +965,56 @@ packages:
       '@algolia/client-search': '>= 4.9.1 < 6'
       algoliasearch: '>= 4.9.1 < 6'
 
-  '@algolia/client-abtesting@5.43.0':
-    resolution: {integrity: sha512-YsKYkohIMxiYEAu8nppZi5EioYDUIo9Heoor8K8vMUnkUtGCOEU/Q4p5OWaYSSBx3evo09Ga9rG4jsKViIcDzQ==}
+  '@algolia/client-abtesting@5.44.0':
+    resolution: {integrity: sha512-KY5CcrWhRTUo/lV7KcyjrZkPOOF9bjgWpMj9z98VA+sXzVpZtkuskBLCKsWYFp2sbwchZFTd3wJM48H0IGgF7g==}
     engines: {node: '>= 14.0.0'}
 
-  '@algolia/client-analytics@5.43.0':
-    resolution: {integrity: sha512-kDGJWt3nzf0nu5RPFXQhNGl6Q0cn35fazxVWXhd0Fw3Vo6gcVfrcezcBenHb66laxnVJ7uwr1uKhmsu3Wy25sQ==}
+  '@algolia/client-analytics@5.44.0':
+    resolution: {integrity: sha512-LKOCE8S4ewI9bN3ot9RZoYASPi8b78E918/DVPW3HHjCMUe6i+NjbNG6KotU4RpP6AhRWZjjswbOkWelUO+OoA==}
     engines: {node: '>= 14.0.0'}
 
-  '@algolia/client-common@5.43.0':
-    resolution: {integrity: sha512-RAFipkAnI8xhL/Sgi/gpXgNWN5HDM6F7z4NNNOcI8ZMYysZEBsqVXojg/WdKEKkQCOHVTZ3mooIjc5BaQdyVtA==}
+  '@algolia/client-common@5.44.0':
+    resolution: {integrity: sha512-1yyJm4OYC2cztbS28XYVWwLXdwpLsMG4LoZLOltVglQ2+hc/i9q9fUDZyjRa2Bqt4DmkIfezagfMrokhyH4uxQ==}
     engines: {node: '>= 14.0.0'}
 
-  '@algolia/client-insights@5.43.0':
-    resolution: {integrity: sha512-PmVs83THco8Qig3cAjU9a5eAGaSxsfgh7PdmWMQFE/MCmIcLPv0MVpgfcGGyPjZGYvPC4cg+3q7JJxcNSsEaTg==}
+  '@algolia/client-insights@5.44.0':
+    resolution: {integrity: sha512-wVQWK6jYYsbEOjIMI+e5voLGPUIbXrvDj392IckXaCPvQ6vCMTXakQqOYCd+znQdL76S+3wHDo77HZWiAYKrtA==}
     engines: {node: '>= 14.0.0'}
 
-  '@algolia/client-personalization@5.43.0':
-    resolution: {integrity: sha512-Bs4zMLXvkAr19FSOZWNizlNUpRFxZVxtvyEJ+q3n3+hPZUcKjo0LIh15qghhRcQPEihjBN6Gr/U+AqRfOCsvnA==}
+  '@algolia/client-personalization@5.44.0':
+    resolution: {integrity: sha512-lkgRjOjOkqmIkebHjHpU9rLJcJNUDMm+eVSW/KJQYLjGqykEZxal+nYJJTBbLceEU2roByP/+27ZmgIwCdf0iA==}
     engines: {node: '>= 14.0.0'}
 
-  '@algolia/client-query-suggestions@5.43.0':
-    resolution: {integrity: sha512-pwHv+z8TZAKbwAWt9+v2gIqlqcCFiMdteTdgdPn2yOBRx4WUQdsIWAaG9GiV3by8jO51FuFQnTohhauuI63y3A==}
+  '@algolia/client-query-suggestions@5.44.0':
+    resolution: {integrity: sha512-sYfhgwKu6NDVmZHL1WEKVLsOx/jUXCY4BHKLUOcYa8k4COCs6USGgz6IjFkUf+niwq8NCECMmTC4o/fVQOalsA==}
     engines: {node: '>= 14.0.0'}
 
-  '@algolia/client-search@5.43.0':
-    resolution: {integrity: sha512-wKy6x6fKcnB1CsfeNNdGp4dzLzz04k8II3JLt6Sp81F8s57Ks3/K9qsysmL9SJa8P486s719bBttVLE8JJYurQ==}
+  '@algolia/client-search@5.44.0':
+    resolution: {integrity: sha512-/FRKUM1G4xn3vV8+9xH1WJ9XknU8rkBGlefruq9jDhYUAvYozKimhrmC2pRqw/RyHhPivmgZCRuC8jHP8piz4Q==}
     engines: {node: '>= 14.0.0'}
 
-  '@algolia/ingestion@1.43.0':
-    resolution: {integrity: sha512-TA21h2KwqCUyPXhSAWF3R2UES/FAnzjaVPDI6cRPXeadX+pdrGN0GWat5gSUATJVcMHECn+lGvuMMRxO86o2Pg==}
+  '@algolia/ingestion@1.44.0':
+    resolution: {integrity: sha512-5+S5ynwMmpTpCLXGjTDpeIa81J+R4BLH0lAojOhmeGSeGEHQTqacl/4sbPyDTcidvnWhaqtyf8m42ue6lvISAw==}
     engines: {node: '>= 14.0.0'}
 
-  '@algolia/monitoring@1.43.0':
-    resolution: {integrity: sha512-rvWVEiA1iLcFmHS3oIXGIBreHIxNZqEFDjiNyRtLEffgd62kul2DjXM7H5bOouDMTo1ywMWT9OeQnzrhlTGAwA==}
+  '@algolia/monitoring@1.44.0':
+    resolution: {integrity: sha512-xhaTN8pXJjR6zkrecg4Cc9YZaQK2LKm2R+LkbAq+AYGBCWJxtSGlNwftozZzkUyq4AXWoyoc0x2SyBtq5LRtqQ==}
     engines: {node: '>= 14.0.0'}
 
-  '@algolia/recommend@5.43.0':
-    resolution: {integrity: sha512-scCijGd38npvH2uHbYhO4f1SR8It5R2FZqOjNcMfw/7Ph7Hxvl+cd7Mo6RzIxsNRcLW5RrwjtpTK3gpDe8r/WQ==}
+  '@algolia/recommend@5.44.0':
+    resolution: {integrity: sha512-GNcite/uOIS7wgRU1MT7SdNIupGSW+vbK9igIzMePvD2Dl8dy0O3urKPKIbTuZQqiVH1Cb84y5cgLvwNrdCj/Q==}
     engines: {node: '>= 14.0.0'}
 
-  '@algolia/requester-browser-xhr@5.43.0':
-    resolution: {integrity: sha512-jMkRLWJYr4Hcmpl89e4vIWs69Mkf8Uwx7MG5ZKk2UxW3G3TmouGjI0Ph5mVPmg3Jf1UG3AdmVDc4XupzycT1Jw==}
+  '@algolia/requester-browser-xhr@5.44.0':
+    resolution: {integrity: sha512-YZHBk72Cd7pcuNHzbhNzF/FbbYszlc7JhZlDyQAchnX5S7tcemSS96F39Sy8t4O4WQLpFvUf1MTNedlitWdOsQ==}
     engines: {node: '>= 14.0.0'}
 
-  '@algolia/requester-fetch@5.43.0':
-    resolution: {integrity: sha512-KyQiVz+HdYtissC0J9KIGhHhKytQyJX+82GVsbv5rSCXbETnAoojvUyCn+3KRtWUvMDYCsZ+Y7hM71STTUJUJg==}
+  '@algolia/requester-fetch@5.44.0':
+    resolution: {integrity: sha512-B9WHl+wQ7uf46t9cq+vVM/ypVbOeuldVDq9OtKsX2ApL2g/htx6ImB9ugDOOJmB5+fE31/XPTuCcYz/j03+idA==}
     engines: {node: '>= 14.0.0'}
 
-  '@algolia/requester-node-http@5.43.0':
-    resolution: {integrity: sha512-UnUBNY0U+oT0bkYDsEqVsCkErC2w7idk4CRiLSzicqY8tGylD9oP0j13X/fse1CuiAFCCr3jfl+cBlN6dC0OFw==}
+  '@algolia/requester-node-http@5.44.0':
+    resolution: {integrity: sha512-MULm0qeAIk4cdzZ/ehJnl1o7uB5NMokg83/3MKhPq0Pk7+I0uELGNbzIfAkvkKKEYcHALemKdArtySF9eKzh/A==}
     engines: {node: '>= 14.0.0'}
 
   '@alloc/quick-lru@5.2.0':
@@ -1095,33 +1095,33 @@ packages:
       vitest:
         optional: true
 
-  '@angular/common@20.3.11':
-    resolution: {integrity: sha512-zQ8xlyUBS+UDAUKk7z/hhWdTtQU2oc/Dwo7jXpyrYlz9y2X1A6sAZpUigdYpbrBkIaNs3MplJevgMiCm3kmN8g==}
+  '@angular/common@20.3.12':
+    resolution: {integrity: sha512-rFcDfe67ffrb435C6t2lc27WGbizeOcgce30tUhH0iezwEvU+kHHWezXXX6Ylx3TFgqGkhcxL0fliuFYrpM1Vw==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
     peerDependencies:
-      '@angular/core': 20.3.11
+      '@angular/core': 20.3.12
       rxjs: ^6.5.3 || ^7.4.0
 
-  '@angular/compiler-cli@20.3.11':
-    resolution: {integrity: sha512-u6T8kxj7LzK3btEln6Vd8y7p+O1eNXrLiGwqPuRF/QoyjBrRkTYufZ1I4TvzUxdd0ot6mPDRfdmiD15q//Y+oQ==}
+  '@angular/compiler-cli@20.3.12':
+    resolution: {integrity: sha512-3SJkexqsydYjIs0iLiJr5AdwkvumpzvjJM6s76iaxXHkRll5k/vM0wqkXLlSIwieBrecO9D4J73lDLWDevXl5A==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
     hasBin: true
     peerDependencies:
-      '@angular/compiler': 20.3.11
+      '@angular/compiler': 20.3.12
       typescript: '>=5.8 <6.0'
     peerDependenciesMeta:
       typescript:
         optional: true
 
-  '@angular/compiler@20.3.11':
-    resolution: {integrity: sha512-3O0iMPttD8a4QQQrjVfIjboiZZ17ErkZuqK8BXJBTn2rplpkq1m3kVhgsmzN2OANRR05GF9Ed1dTf8ycTrO1yg==}
+  '@angular/compiler@20.3.12':
+    resolution: {integrity: sha512-bGESKz97nWiEQ/sydTq/Lzv3zlLvDb8t0msLG5Xti7Ch1EdLddXS8d2D/zFsjiGbAUKVsT6RgPCLHYoi4ocbhA==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
 
-  '@angular/core@20.3.11':
-    resolution: {integrity: sha512-tOXlxG0SI9Yy1b/ntGyBahfffDpFg7vAbAt+9riOb5ZZ8GYyyOzg78Lqa/lrdBVEG0PXdDjEa0MV93qCyqwYlg==}
+  '@angular/core@20.3.12':
+    resolution: {integrity: sha512-K7vibMr55a7+EsuDhkg4Pk+ELuMm12olllwqL/CiQUcHXZ9Zgc4KYGTUuxWB69qJCG90gdSZS7tm5Dx0wDcyjg==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
     peerDependencies:
-      '@angular/compiler': 20.3.11
+      '@angular/compiler': 20.3.12
       rxjs: ^6.5.3 || ^7.4.0
       zone.js: ~0.15.0
     peerDependenciesMeta:
@@ -1130,13 +1130,13 @@ packages:
       zone.js:
         optional: true
 
-  '@angular/platform-browser@20.3.11':
-    resolution: {integrity: sha512-hh+8O8m4QzYYlQr9WGew472P37GF1u64NF3HfHmUKJ0xSqqTOHfpni3utev8upJAFJXBKOUZETgeHu2JRcGavg==}
+  '@angular/platform-browser@20.3.12':
+    resolution: {integrity: sha512-14KQsXZyaQhbRwFz1W58CtbXQc9L+mfuHBgwQjQo99422Yk0ye5WVMb6DHH7dH671qFVqL0XL7zdOPBebaAnJQ==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
     peerDependencies:
-      '@angular/animations': 20.3.11
-      '@angular/common': 20.3.11
-      '@angular/core': 20.3.11
+      '@angular/animations': 20.3.12
+      '@angular/common': 20.3.12
+      '@angular/core': 20.3.12
     peerDependenciesMeta:
       '@angular/animations':
         optional: true
@@ -3686,25 +3686,25 @@ packages:
       '@types/react':
         optional: true
 
-  '@react-navigation/bottom-tabs@7.8.4':
-    resolution: {integrity: sha512-Ie+7EgUxfZmVXm4RCiJ96oaiwJVFgVE8NJoeUKLLcYEB/99wKbhuKPJNtbkpR99PHfhq64SE7476BpcP4xOFhw==}
+  '@react-navigation/bottom-tabs@7.8.5':
+    resolution: {integrity: sha512-Zm9UOTfEtBLL7Wm+JBc0v/lh72cen9a8WVN5KSCEN7EtiQIPXbQUZg1ktEzme600HhxvaNZzzSz0X+w2E5nG5w==}
     peerDependencies:
-      '@react-navigation/native': ^7.1.19
+      '@react-navigation/native': ^7.1.20
       react: '>= 18.2.0'
       react-native: '*'
       react-native-safe-area-context: '>= 4.0.0'
       react-native-screens: '>= 4.0.0'
 
-  '@react-navigation/core@7.13.0':
-    resolution: {integrity: sha512-Fc/SO23HnlGnkou/z8JQUzwEMvhxuUhr4rdPTIZp/c8q1atq3k632Nfh8fEiGtk+MP1wtIvXdN2a5hBIWpLq3g==}
+  '@react-navigation/core@7.13.1':
+    resolution: {integrity: sha512-aPf1vjQhMytPC9CmJu28hT5eTaBJuqIf9T6IRICtap5HHgFLrsYizLZrg3D0H2AoPyOoijMPWzwf7VCBzfGvrg==}
     peerDependencies:
       react: '>= 18.2.0'
 
-  '@react-navigation/elements@2.8.1':
-    resolution: {integrity: sha512-MLmuS5kPAeAFFOylw89WGjgEFBqGj/KBK6ZrFrAOqLnTqEzk52/SO1olb5GB00k6ZUCDZKJOp1BrLXslxE6TgQ==}
+  '@react-navigation/elements@2.8.2':
+    resolution: {integrity: sha512-K5NWIMar81oAoRAgLwrWcLpXzY2K5yG3gNU/56uyC12u+i5SyIVAv+ygP36UXvrNLzDigg8OdRSdEBb8ePqQtA==}
     peerDependencies:
       '@react-native-masked-view/masked-view': '>= 0.2.0'
-      '@react-navigation/native': ^7.1.19
+      '@react-navigation/native': ^7.1.20
       react: '>= 18.2.0'
       react-native: '*'
       react-native-safe-area-context: '>= 4.0.0'
@@ -3712,17 +3712,17 @@ packages:
       '@react-native-masked-view/masked-view':
         optional: true
 
-  '@react-navigation/native-stack@7.6.2':
-    resolution: {integrity: sha512-CB6chGNLwJYiyOeyCNUKx33yT7XJSwRZIeKHf4S1vs+Oqu3u9zMnvGUIsesNgbgX0xy16gBqYsrWgr0ZczBTtA==}
+  '@react-navigation/native-stack@7.6.3':
+    resolution: {integrity: sha512-F0f0+3K1mVWiQEZbyZen0LAl7Gc4qpbWM4Tpva5aCqBAECZyn7/uLbVhSXtC/EwzMqQ+ojPLtceFQhXhJqfqfg==}
     peerDependencies:
-      '@react-navigation/native': ^7.1.19
+      '@react-navigation/native': ^7.1.20
       react: '>= 18.2.0'
       react-native: '*'
       react-native-safe-area-context: '>= 4.0.0'
       react-native-screens: '>= 4.0.0'
 
-  '@react-navigation/native@7.1.19':
-    resolution: {integrity: sha512-fM7q8di4Q8sp2WUhiUWOe7bEDRyRhbzsKQOd5N2k+lHeCx3UncsRYuw4Q/KN0EovM3wWKqMMmhy/YWuEO04kgw==}
+  '@react-navigation/native@7.1.20':
+    resolution: {integrity: sha512-15luFq+35M2IOMHgbTJ0XDkPY7gm3YlR3yQKTuOTOHs+EeAUX71DlUuqcWMRqB0tt+OT6HimDQR7OboTB0N30g==}
     peerDependencies:
       react: '>= 18.2.0'
       react-native: '*'
@@ -4380,8 +4380,8 @@ packages:
   '@types/yargs-parser@21.0.3':
     resolution: {integrity: sha512-I4q9QU9MQv4oEOz4tAHJtNz1cwuLxn2F3xcc2iV5WdqLPpUnj30aUuxt1mAxYTG+oe8CZMV/+6rU4S4gRDzqtQ==}
 
-  '@types/yargs@17.0.34':
-    resolution: {integrity: sha512-KExbHVa92aJpw9WDQvzBaGVE2/Pz+pLZQloT2hjL8IqsZnV62rlPOYvNnLmf/L2dyllfVUOVBj64M0z/46eR2A==}
+  '@types/yargs@17.0.35':
+    resolution: {integrity: sha512-qUHkeCyQFxMXg79wQfTtfndEC+N9ZZg76HJftDJp+qH2tV7Gj4OJi7l+PiWwJ+pWtW8GwSmqsDj/oymhrTWXjg==}
 
   '@types/yauzl@2.10.3':
     resolution: {integrity: sha512-oJoftv0LSuaDZE3Le4DbKX+KS9G36NzOeSap90UIK0yMA/NhKJhqlSGtNDORNRaIbQfzjXDrQa0ytJ6mNRGz/Q==}
@@ -4575,8 +4575,8 @@ packages:
       vite: ^5.0.0 || ^6.0.0
       vue: ^3.2.25
 
-  '@vitest/expect@4.0.8':
-    resolution: {integrity: sha512-Rv0eabdP/xjAHQGr8cjBm+NnLHNoL268lMDK85w2aAGLFoVKLd8QGnVon5lLtkXQCoYaNL0wg04EGnyKkkKhPA==}
+  '@vitest/expect@4.0.9':
+    resolution: {integrity: sha512-C2vyXf5/Jfj1vl4DQYxjib3jzyuswMi/KHHVN2z+H4v16hdJ7jMZ0OGe3uOVIt6LyJsAofDdaJNIFEpQcrSTFw==}
 
   '@vitest/mocker@4.0.9':
     resolution: {integrity: sha512-PUyaowQFHW+9FKb4dsvvBM4o025rWMlEDXdWRxIOilGaHREYTi5Q2Rt9VCgXgPy/hHZu1LeuXtrA/GdzOatP2g==}
@@ -4724,8 +4724,8 @@ packages:
   ajv@8.17.1:
     resolution: {integrity: sha512-B/gBuNg5SiMTrPkC+A2+cW0RszwxYmn6VYxB/inlBStS5nx6xHIt/ehKRhIMhqusl7a8LjQoZnjCs5vhwxOQ1g==}
 
-  algoliasearch@5.43.0:
-    resolution: {integrity: sha512-hbkK41JsuGYhk+atBDxlcKxskjDCh3OOEDpdKZPtw+3zucBqhlojRG5e5KtCmByGyYvwZswVeaSWglgLn2fibg==}
+  algoliasearch@5.44.0:
+    resolution: {integrity: sha512-f8IpsbdQjzTjr/4mJ/jv5UplrtyMnnciGax6/B0OnLCs2/GJTK13O4Y7Ff1AvJVAaztanH+m5nzPoUq6EAy+aA==}
     engines: {node: '>= 14.0.0'}
 
   alien-signals@1.0.13:
@@ -5388,8 +5388,8 @@ packages:
     engines: {node: '>=4'}
     hasBin: true
 
-  csstype@3.2.0:
-    resolution: {integrity: sha512-si++xzRAY9iPp60roQiFta7OFbhrgvcthrhlNAGeQptSY25uJjkfUV8OArC3KLocB8JT8ohz+qgxWCmz8RhjIg==}
+  csstype@3.2.1:
+    resolution: {integrity: sha512-98XGutrXoh75MlgLihlNxAGbUuFQc7l1cqcnEZlLNKc0UrVdPndgmaDmYTDDh929VS/eqTZV0rozmhu2qqT1/g==}
 
   damerau-levenshtein@1.0.8:
     resolution: {integrity: sha512-sdQSFB7+llfUcQHUQO3+B8ERRj0Oa4w9POWMI/puGtuf7gFywGmkaLCElnudfTiKZV+NvHqL0ifzdrI8Ro7ESA==}
@@ -5610,8 +5610,8 @@ packages:
   electron-publish@26.0.11:
     resolution: {integrity: sha512-a8QRH0rAPIWH9WyyS5LbNvW9Ark6qe63/LqDB7vu2JXYpi0Gma5Q60Dh4tmTqhOBQt0xsrzD8qE7C+D7j+B24A==}
 
-  electron-to-chromium@1.5.252:
-    resolution: {integrity: sha512-53uTpjtRgS7gjIxZ4qCgFdNO2q+wJt/Z8+xAvxbCqXPJrY6h7ighUkadQmNMXH96crtpa6gPFNP7BF4UBGDuaA==}
+  electron-to-chromium@1.5.253:
+    resolution: {integrity: sha512-O0tpQ/35rrgdiGQ0/OFWhy1itmd9A6TY9uQzlqj3hKSu/aYpe7UIn5d7CU2N9myH6biZiWF3VMZVuup8pw5U9w==}
 
   electron-winstaller@5.4.0:
     resolution: {integrity: sha512-bO3y10YikuUwUuDUQRM4KfwNkKhnpVO7IPdbsrejwN9/AABJzzTQ4GeHwyzNSrVO+tEH3/Np255a3sVZpZDjvg==}
@@ -6889,8 +6889,8 @@ packages:
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
 
-  js-yaml@3.14.1:
-    resolution: {integrity: sha512-okMH7OXXJ7YrN9Ok3/SXrnu4iX9yOk+25nqX4imS2npuvTYDmo/QEZoqwZkYaIDk3jVvBOTOIEgEhaLOynBS9g==}
+  js-yaml@3.14.2:
+    resolution: {integrity: sha512-PMSmkqxr106Xa156c2M265Z+FTrPl+oxd/rgOQy2tijQeK5TxQ43psO1ZCwhVOSdnn+RzkzlRz/eY4BgJBYVpg==}
     hasBin: true
 
   js-yaml@4.1.1:
@@ -8111,8 +8111,8 @@ packages:
     peerDependencies:
       prettier: ^3.0.0
 
-  prettier-plugin-sql-cst@0.14.2:
-    resolution: {integrity: sha512-fjfazese6Z8sSYfAh94KauxNvLW1N1aI6+EAhtxi2h1B9WZYBGShObTkXEZADaWhGWITpLTU+SnzSDglaQvNHw==}
+  prettier-plugin-sql-cst@0.15.0:
+    resolution: {integrity: sha512-arutJW0RpzHnBd7rmuR1r5pu9lJZpUBUjSIKEmzUxtQAiGvd9vwIlqSzFiwsMlyrzt2hAkOmAn3P9YXCefcZXg==}
 
   prettier-plugin-tailwindcss@0.7.1:
     resolution: {integrity: sha512-Bzv1LZcuiR1Sk02iJTS1QzlFNp/o5l2p3xkopwOrbPmtMeh3fK9rVW5M3neBQzHq+kGKj/4LGQMTNcTH4NGPtQ==}
@@ -8936,8 +8936,8 @@ packages:
   sprintf-js@1.1.3:
     resolution: {integrity: sha512-Oo+0REFV59/rz3gfJNKQiBlwfHaSESl1pcGyABQsnnIfWOFt6JNj5gCog2U6MLZ//IGYD+nA8nI+mTShREReaA==}
 
-  sql-parser-cst@0.35.1:
-    resolution: {integrity: sha512-Ckhh0N8nAdupPe+CVzT7LxLLVn+RyB7PspBt7TbeHI91nK+B/IKSmC8bkXSg0MENhOSfcY3d9tK4aEV5pZaNBA==}
+  sql-parser-cst@0.36.0:
+    resolution: {integrity: sha512-YmwA8000nDbWojvRTnMSGQyW8kJPG5EW5n84RSRSy6zAuDhVAay5OJ2AJl/gIIVa+BoSNRU6gFvBjmkURROq2w==}
 
   ssri@9.0.1:
     resolution: {integrity: sha512-o57Wcn66jMQvfHG1FlYbWeZWW/dHZhJXjpIcTfXldXEk5nz5lStPo3mK0OJQfGR3RbZUlbISexbljkJzuEj/8Q==}
@@ -10027,111 +10027,111 @@ snapshots:
 
   '@0no-co/graphql.web@1.2.0': {}
 
-  '@algolia/abtesting@1.9.0':
+  '@algolia/abtesting@1.10.0':
     dependencies:
-      '@algolia/client-common': 5.43.0
-      '@algolia/requester-browser-xhr': 5.43.0
-      '@algolia/requester-fetch': 5.43.0
-      '@algolia/requester-node-http': 5.43.0
+      '@algolia/client-common': 5.44.0
+      '@algolia/requester-browser-xhr': 5.44.0
+      '@algolia/requester-fetch': 5.44.0
+      '@algolia/requester-node-http': 5.44.0
 
-  '@algolia/autocomplete-core@1.19.4(@algolia/client-search@5.43.0)(algoliasearch@5.43.0)(search-insights@2.17.3)':
+  '@algolia/autocomplete-core@1.19.4(@algolia/client-search@5.44.0)(algoliasearch@5.44.0)(search-insights@2.17.3)':
     dependencies:
-      '@algolia/autocomplete-plugin-algolia-insights': 1.19.4(@algolia/client-search@5.43.0)(algoliasearch@5.43.0)(search-insights@2.17.3)
-      '@algolia/autocomplete-shared': 1.19.4(@algolia/client-search@5.43.0)(algoliasearch@5.43.0)
+      '@algolia/autocomplete-plugin-algolia-insights': 1.19.4(@algolia/client-search@5.44.0)(algoliasearch@5.44.0)(search-insights@2.17.3)
+      '@algolia/autocomplete-shared': 1.19.4(@algolia/client-search@5.44.0)(algoliasearch@5.44.0)
     transitivePeerDependencies:
       - '@algolia/client-search'
       - algoliasearch
       - search-insights
 
-  '@algolia/autocomplete-plugin-algolia-insights@1.19.4(@algolia/client-search@5.43.0)(algoliasearch@5.43.0)(search-insights@2.17.3)':
+  '@algolia/autocomplete-plugin-algolia-insights@1.19.4(@algolia/client-search@5.44.0)(algoliasearch@5.44.0)(search-insights@2.17.3)':
     dependencies:
-      '@algolia/autocomplete-shared': 1.19.4(@algolia/client-search@5.43.0)(algoliasearch@5.43.0)
+      '@algolia/autocomplete-shared': 1.19.4(@algolia/client-search@5.44.0)(algoliasearch@5.44.0)
       search-insights: 2.17.3
     transitivePeerDependencies:
       - '@algolia/client-search'
       - algoliasearch
 
-  '@algolia/autocomplete-shared@1.19.4(@algolia/client-search@5.43.0)(algoliasearch@5.43.0)':
+  '@algolia/autocomplete-shared@1.19.4(@algolia/client-search@5.44.0)(algoliasearch@5.44.0)':
     dependencies:
-      '@algolia/client-search': 5.43.0
-      algoliasearch: 5.43.0
+      '@algolia/client-search': 5.44.0
+      algoliasearch: 5.44.0
 
-  '@algolia/client-abtesting@5.43.0':
+  '@algolia/client-abtesting@5.44.0':
     dependencies:
-      '@algolia/client-common': 5.43.0
-      '@algolia/requester-browser-xhr': 5.43.0
-      '@algolia/requester-fetch': 5.43.0
-      '@algolia/requester-node-http': 5.43.0
+      '@algolia/client-common': 5.44.0
+      '@algolia/requester-browser-xhr': 5.44.0
+      '@algolia/requester-fetch': 5.44.0
+      '@algolia/requester-node-http': 5.44.0
 
-  '@algolia/client-analytics@5.43.0':
+  '@algolia/client-analytics@5.44.0':
     dependencies:
-      '@algolia/client-common': 5.43.0
-      '@algolia/requester-browser-xhr': 5.43.0
-      '@algolia/requester-fetch': 5.43.0
-      '@algolia/requester-node-http': 5.43.0
+      '@algolia/client-common': 5.44.0
+      '@algolia/requester-browser-xhr': 5.44.0
+      '@algolia/requester-fetch': 5.44.0
+      '@algolia/requester-node-http': 5.44.0
 
-  '@algolia/client-common@5.43.0': {}
+  '@algolia/client-common@5.44.0': {}
 
-  '@algolia/client-insights@5.43.0':
+  '@algolia/client-insights@5.44.0':
     dependencies:
-      '@algolia/client-common': 5.43.0
-      '@algolia/requester-browser-xhr': 5.43.0
-      '@algolia/requester-fetch': 5.43.0
-      '@algolia/requester-node-http': 5.43.0
+      '@algolia/client-common': 5.44.0
+      '@algolia/requester-browser-xhr': 5.44.0
+      '@algolia/requester-fetch': 5.44.0
+      '@algolia/requester-node-http': 5.44.0
 
-  '@algolia/client-personalization@5.43.0':
+  '@algolia/client-personalization@5.44.0':
     dependencies:
-      '@algolia/client-common': 5.43.0
-      '@algolia/requester-browser-xhr': 5.43.0
-      '@algolia/requester-fetch': 5.43.0
-      '@algolia/requester-node-http': 5.43.0
+      '@algolia/client-common': 5.44.0
+      '@algolia/requester-browser-xhr': 5.44.0
+      '@algolia/requester-fetch': 5.44.0
+      '@algolia/requester-node-http': 5.44.0
 
-  '@algolia/client-query-suggestions@5.43.0':
+  '@algolia/client-query-suggestions@5.44.0':
     dependencies:
-      '@algolia/client-common': 5.43.0
-      '@algolia/requester-browser-xhr': 5.43.0
-      '@algolia/requester-fetch': 5.43.0
-      '@algolia/requester-node-http': 5.43.0
+      '@algolia/client-common': 5.44.0
+      '@algolia/requester-browser-xhr': 5.44.0
+      '@algolia/requester-fetch': 5.44.0
+      '@algolia/requester-node-http': 5.44.0
 
-  '@algolia/client-search@5.43.0':
+  '@algolia/client-search@5.44.0':
     dependencies:
-      '@algolia/client-common': 5.43.0
-      '@algolia/requester-browser-xhr': 5.43.0
-      '@algolia/requester-fetch': 5.43.0
-      '@algolia/requester-node-http': 5.43.0
+      '@algolia/client-common': 5.44.0
+      '@algolia/requester-browser-xhr': 5.44.0
+      '@algolia/requester-fetch': 5.44.0
+      '@algolia/requester-node-http': 5.44.0
 
-  '@algolia/ingestion@1.43.0':
+  '@algolia/ingestion@1.44.0':
     dependencies:
-      '@algolia/client-common': 5.43.0
-      '@algolia/requester-browser-xhr': 5.43.0
-      '@algolia/requester-fetch': 5.43.0
-      '@algolia/requester-node-http': 5.43.0
+      '@algolia/client-common': 5.44.0
+      '@algolia/requester-browser-xhr': 5.44.0
+      '@algolia/requester-fetch': 5.44.0
+      '@algolia/requester-node-http': 5.44.0
 
-  '@algolia/monitoring@1.43.0':
+  '@algolia/monitoring@1.44.0':
     dependencies:
-      '@algolia/client-common': 5.43.0
-      '@algolia/requester-browser-xhr': 5.43.0
-      '@algolia/requester-fetch': 5.43.0
-      '@algolia/requester-node-http': 5.43.0
+      '@algolia/client-common': 5.44.0
+      '@algolia/requester-browser-xhr': 5.44.0
+      '@algolia/requester-fetch': 5.44.0
+      '@algolia/requester-node-http': 5.44.0
 
-  '@algolia/recommend@5.43.0':
+  '@algolia/recommend@5.44.0':
     dependencies:
-      '@algolia/client-common': 5.43.0
-      '@algolia/requester-browser-xhr': 5.43.0
-      '@algolia/requester-fetch': 5.43.0
-      '@algolia/requester-node-http': 5.43.0
+      '@algolia/client-common': 5.44.0
+      '@algolia/requester-browser-xhr': 5.44.0
+      '@algolia/requester-fetch': 5.44.0
+      '@algolia/requester-node-http': 5.44.0
 
-  '@algolia/requester-browser-xhr@5.43.0':
+  '@algolia/requester-browser-xhr@5.44.0':
     dependencies:
-      '@algolia/client-common': 5.43.0
+      '@algolia/client-common': 5.44.0
 
-  '@algolia/requester-fetch@5.43.0':
+  '@algolia/requester-fetch@5.44.0':
     dependencies:
-      '@algolia/client-common': 5.43.0
+      '@algolia/client-common': 5.44.0
 
-  '@algolia/requester-node-http@5.43.0':
+  '@algolia/requester-node-http@5.44.0':
     dependencies:
-      '@algolia/client-common': 5.43.0
+      '@algolia/client-common': 5.44.0
 
   '@alloc/quick-lru@5.2.0': {}
 
@@ -10140,12 +10140,12 @@ snapshots:
       '@jridgewell/gen-mapping': 0.3.13
       '@jridgewell/trace-mapping': 0.3.31
 
-  '@analogjs/vite-plugin-angular@1.22.5(@angular/build@20.3.10(@angular/compiler-cli@20.3.11(@angular/compiler@20.3.11)(typescript@5.9.3))(@angular/compiler@20.3.11)(@angular/core@20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2))(@angular/platform-browser@20.3.11(@angular/common@20.3.11(@angular/core@20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2)))(@types/node@22.19.1)(chokidar@4.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(postcss@8.5.6)(tailwindcss@4.1.17)(terser@5.44.1)(tslib@2.8.1)(tsx@4.20.6)(typescript@5.9.3)(yaml@2.8.1))':
+  '@analogjs/vite-plugin-angular@1.22.5(@angular/build@20.3.10(@angular/compiler-cli@20.3.12(@angular/compiler@20.3.12)(typescript@5.9.3))(@angular/compiler@20.3.12)(@angular/core@20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2))(@angular/platform-browser@20.3.12(@angular/common@20.3.12(@angular/core@20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2)))(@types/node@22.19.1)(chokidar@4.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(postcss@8.5.6)(tailwindcss@4.1.17)(terser@5.44.1)(tslib@2.8.1)(tsx@4.20.6)(typescript@5.9.3)(yaml@2.8.1))':
     dependencies:
       ts-morph: 21.0.1
       vfile: 6.0.3
     optionalDependencies:
-      '@angular/build': 20.3.10(@angular/compiler-cli@20.3.11(@angular/compiler@20.3.11)(typescript@5.9.3))(@angular/compiler@20.3.11)(@angular/core@20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2))(@angular/platform-browser@20.3.11(@angular/common@20.3.11(@angular/core@20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2)))(@types/node@22.19.1)(chokidar@4.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(postcss@8.5.6)(tailwindcss@4.1.17)(terser@5.44.1)(tslib@2.8.1)(tsx@4.20.6)(typescript@5.9.3)(yaml@2.8.1)
+      '@angular/build': 20.3.10(@angular/compiler-cli@20.3.12(@angular/compiler@20.3.12)(typescript@5.9.3))(@angular/compiler@20.3.12)(@angular/core@20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2))(@angular/platform-browser@20.3.12(@angular/common@20.3.12(@angular/core@20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2)))(@types/node@22.19.1)(chokidar@4.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(postcss@8.5.6)(tailwindcss@4.1.17)(terser@5.44.1)(tslib@2.8.1)(tsx@4.20.6)(typescript@5.9.3)(yaml@2.8.1)
 
   '@angular-devkit/architect@0.2003.10(chokidar@4.0.3)':
     dependencies:
@@ -10165,12 +10165,12 @@ snapshots:
     optionalDependencies:
       chokidar: 4.0.3
 
-  '@angular/build@20.3.10(@angular/compiler-cli@20.3.11(@angular/compiler@20.3.11)(typescript@5.9.3))(@angular/compiler@20.3.11)(@angular/core@20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2))(@angular/platform-browser@20.3.11(@angular/common@20.3.11(@angular/core@20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2)))(@types/node@22.19.1)(chokidar@4.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(postcss@8.5.6)(tailwindcss@4.1.17)(terser@5.44.1)(tslib@2.8.1)(tsx@4.20.6)(typescript@5.9.3)(yaml@2.8.1)':
+  '@angular/build@20.3.10(@angular/compiler-cli@20.3.12(@angular/compiler@20.3.12)(typescript@5.9.3))(@angular/compiler@20.3.12)(@angular/core@20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2))(@angular/platform-browser@20.3.12(@angular/common@20.3.12(@angular/core@20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2)))(@types/node@22.19.1)(chokidar@4.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(postcss@8.5.6)(tailwindcss@4.1.17)(terser@5.44.1)(tslib@2.8.1)(tsx@4.20.6)(typescript@5.9.3)(yaml@2.8.1)':
     dependencies:
       '@ampproject/remapping': 2.3.0
       '@angular-devkit/architect': 0.2003.10(chokidar@4.0.3)
-      '@angular/compiler': 20.3.11
-      '@angular/compiler-cli': 20.3.11(@angular/compiler@20.3.11)(typescript@5.9.3)
+      '@angular/compiler': 20.3.12
+      '@angular/compiler-cli': 20.3.12(@angular/compiler@20.3.12)(typescript@5.9.3)
       '@babel/core': 7.28.3
       '@babel/helper-annotate-as-pure': 7.27.3
       '@babel/helper-split-export-declaration': 7.24.7
@@ -10198,8 +10198,8 @@ snapshots:
       vite: 7.1.11(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1)
       watchpack: 2.4.4
     optionalDependencies:
-      '@angular/core': 20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2)
-      '@angular/platform-browser': 20.3.11(@angular/common@20.3.11(@angular/core@20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2))
+      '@angular/core': 20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2)
+      '@angular/platform-browser': 20.3.12(@angular/common@20.3.12(@angular/core@20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2))
       lmdb: 3.4.2
       postcss: 8.5.6
       tailwindcss: 4.1.17
@@ -10216,15 +10216,15 @@ snapshots:
       - tsx
       - yaml
 
-  '@angular/common@20.3.11(@angular/core@20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2))(rxjs@7.8.2)':
+  '@angular/common@20.3.12(@angular/core@20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2))(rxjs@7.8.2)':
     dependencies:
-      '@angular/core': 20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2)
+      '@angular/core': 20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2)
       rxjs: 7.8.2
       tslib: 2.8.1
 
-  '@angular/compiler-cli@20.3.11(@angular/compiler@20.3.11)(typescript@5.9.3)':
+  '@angular/compiler-cli@20.3.12(@angular/compiler@20.3.12)(typescript@5.9.3)':
     dependencies:
-      '@angular/compiler': 20.3.11
+      '@angular/compiler': 20.3.12
       '@babel/core': 7.28.3
       '@jridgewell/sourcemap-codec': 1.5.5
       chokidar: 4.0.3
@@ -10238,21 +10238,21 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@angular/compiler@20.3.11':
+  '@angular/compiler@20.3.12':
     dependencies:
       tslib: 2.8.1
 
-  '@angular/core@20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2)':
+  '@angular/core@20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2)':
     dependencies:
       rxjs: 7.8.2
       tslib: 2.8.1
     optionalDependencies:
-      '@angular/compiler': 20.3.11
+      '@angular/compiler': 20.3.12
 
-  '@angular/platform-browser@20.3.11(@angular/common@20.3.11(@angular/core@20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2))':
+  '@angular/platform-browser@20.3.12(@angular/common@20.3.12(@angular/core@20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2))':
     dependencies:
-      '@angular/common': 20.3.11(@angular/core@20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2))(rxjs@7.8.2)
-      '@angular/core': 20.3.11(@angular/compiler@20.3.11)(rxjs@7.8.2)
+      '@angular/common': 20.3.12(@angular/core@20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2))(rxjs@7.8.2)
+      '@angular/core': 20.3.12(@angular/compiler@20.3.12)(rxjs@7.8.2)
       tslib: 2.8.1
 
   '@apideck/better-ajv-errors@0.3.6(ajv@8.17.1)':
@@ -11283,7 +11283,7 @@ snapshots:
   '@changesets/parse@0.4.1':
     dependencies:
       '@changesets/types': 6.1.0
-      js-yaml: 3.14.1
+      js-yaml: 3.14.2
 
   '@changesets/pre@2.0.2':
     dependencies:
@@ -12373,7 +12373,7 @@ snapshots:
       camelcase: 5.3.1
       find-up: 4.1.0
       get-package-type: 0.1.0
-      js-yaml: 3.14.1
+      js-yaml: 3.14.2
       resolve-from: 5.0.0
 
   '@istanbuljs/schema@0.1.3': {}
@@ -12428,7 +12428,7 @@ snapshots:
       '@types/istanbul-lib-coverage': 2.0.6
       '@types/istanbul-reports': 3.0.4
       '@types/node': 22.19.1
-      '@types/yargs': 17.0.34
+      '@types/yargs': 17.0.35
       chalk: 4.1.2
 
   '@jridgewell/gen-mapping@0.3.13':
@@ -13139,10 +13139,10 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.1.17
 
-  '@react-navigation/bottom-tabs@7.8.4(@react-navigation/native@7.1.19(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-screens@4.18.0(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)':
+  '@react-navigation/bottom-tabs@7.8.5(@react-navigation/native@7.1.20(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-screens@4.18.0(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@react-navigation/elements': 2.8.1(@react-navigation/native@7.1.19(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
-      '@react-navigation/native': 7.1.19(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+      '@react-navigation/elements': 2.8.2(@react-navigation/native@7.1.20(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+      '@react-navigation/native': 7.1.20(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       color: 4.2.3
       react: 19.1.0
       react-native: 0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0)
@@ -13152,7 +13152,7 @@ snapshots:
     transitivePeerDependencies:
       - '@react-native-masked-view/masked-view'
 
-  '@react-navigation/core@7.13.0(react@19.1.0)':
+  '@react-navigation/core@7.13.1(react@19.1.0)':
     dependencies:
       '@react-navigation/routers': 7.5.1
       escape-string-regexp: 4.0.0
@@ -13164,9 +13164,9 @@ snapshots:
       use-latest-callback: 0.2.6(react@19.1.0)
       use-sync-external-store: 1.6.0(react@19.1.0)
 
-  '@react-navigation/elements@2.8.1(@react-navigation/native@7.1.19(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)':
+  '@react-navigation/elements@2.8.2(@react-navigation/native@7.1.20(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@react-navigation/native': 7.1.19(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+      '@react-navigation/native': 7.1.20(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       color: 4.2.3
       react: 19.1.0
       react-native: 0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0)
@@ -13174,10 +13174,10 @@ snapshots:
       use-latest-callback: 0.2.6(react@19.1.0)
       use-sync-external-store: 1.6.0(react@19.1.0)
 
-  '@react-navigation/native-stack@7.6.2(@react-navigation/native@7.1.19(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-screens@4.18.0(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)':
+  '@react-navigation/native-stack@7.6.3(@react-navigation/native@7.1.20(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-screens@4.18.0(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@react-navigation/elements': 2.8.1(@react-navigation/native@7.1.19(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
-      '@react-navigation/native': 7.1.19(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+      '@react-navigation/elements': 2.8.2(@react-navigation/native@7.1.20(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+      '@react-navigation/native': 7.1.20(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       color: 4.2.3
       react: 19.1.0
       react-native: 0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0)
@@ -13188,9 +13188,9 @@ snapshots:
     transitivePeerDependencies:
       - '@react-native-masked-view/masked-view'
 
-  '@react-navigation/native@7.1.19(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)':
+  '@react-navigation/native@7.1.20(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@react-navigation/core': 7.13.0(react@19.1.0)
+      '@react-navigation/core': 7.13.1(react@19.1.0)
       escape-string-regexp: 4.0.0
       fast-deep-equal: 3.1.3
       nanoid: 3.3.11
@@ -13754,7 +13754,7 @@ snapshots:
 
   '@types/react@19.1.17':
     dependencies:
-      csstype: 3.2.0
+      csstype: 3.2.1
 
   '@types/resolve@1.20.2': {}
 
@@ -13787,7 +13787,7 @@ snapshots:
 
   '@types/yargs-parser@21.0.3': {}
 
-  '@types/yargs@17.0.34':
+  '@types/yargs@17.0.35':
     dependencies:
       '@types/yargs-parser': 21.0.3
 
@@ -13992,7 +13992,7 @@ snapshots:
       vite: 7.2.2(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1)
       vue: 3.5.24(typescript@5.9.3)
 
-  '@vitest/expect@4.0.8':
+  '@vitest/expect@4.0.9':
     dependencies:
       '@standard-schema/spec': 1.0.0
       '@types/chai': 5.2.3
@@ -14105,7 +14105,7 @@ snapshots:
       '@vue/reactivity': 3.5.24
       '@vue/runtime-core': 3.5.24
       '@vue/shared': 3.5.24
-      csstype: 3.1.3
+      csstype: 3.2.1
 
   '@vue/server-renderer@3.5.24(vue@3.5.24(typescript@5.9.3))':
     dependencies:
@@ -14178,22 +14178,22 @@ snapshots:
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
-  algoliasearch@5.43.0:
+  algoliasearch@5.44.0:
     dependencies:
-      '@algolia/abtesting': 1.9.0
-      '@algolia/client-abtesting': 5.43.0
-      '@algolia/client-analytics': 5.43.0
-      '@algolia/client-common': 5.43.0
-      '@algolia/client-insights': 5.43.0
-      '@algolia/client-personalization': 5.43.0
-      '@algolia/client-query-suggestions': 5.43.0
-      '@algolia/client-search': 5.43.0
-      '@algolia/ingestion': 1.43.0
-      '@algolia/monitoring': 1.43.0
-      '@algolia/recommend': 5.43.0
-      '@algolia/requester-browser-xhr': 5.43.0
-      '@algolia/requester-fetch': 5.43.0
-      '@algolia/requester-node-http': 5.43.0
+      '@algolia/abtesting': 1.10.0
+      '@algolia/client-abtesting': 5.44.0
+      '@algolia/client-analytics': 5.44.0
+      '@algolia/client-common': 5.44.0
+      '@algolia/client-insights': 5.44.0
+      '@algolia/client-personalization': 5.44.0
+      '@algolia/client-query-suggestions': 5.44.0
+      '@algolia/client-search': 5.44.0
+      '@algolia/ingestion': 1.44.0
+      '@algolia/monitoring': 1.44.0
+      '@algolia/recommend': 5.44.0
+      '@algolia/requester-browser-xhr': 5.44.0
+      '@algolia/requester-fetch': 5.44.0
+      '@algolia/requester-node-http': 5.44.0
 
   alien-signals@1.0.13: {}
 
@@ -14615,7 +14615,7 @@ snapshots:
     dependencies:
       baseline-browser-mapping: 2.8.28
       caniuse-lite: 1.0.30001754
-      electron-to-chromium: 1.5.252
+      electron-to-chromium: 1.5.253
       node-releases: 2.0.27
       update-browserslist-db: 1.1.4(browserslist@4.28.0)
 
@@ -14996,7 +14996,7 @@ snapshots:
 
   cssesc@3.0.0: {}
 
-  csstype@3.2.0: {}
+  csstype@3.2.1: {}
 
   damerau-levenshtein@1.0.8: {}
 
@@ -15239,7 +15239,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  electron-to-chromium@1.5.252: {}
+  electron-to-chromium@1.5.253: {}
 
   electron-winstaller@5.4.0:
     dependencies:
@@ -15865,9 +15865,9 @@ snapshots:
       '@expo/schema-utils': 0.1.7
       '@radix-ui/react-slot': 1.2.0(@types/react@19.1.17)(react@19.1.0)
       '@radix-ui/react-tabs': 1.1.13(@types/react-dom@19.1.11(@types/react@19.1.17))(@types/react@19.1.17)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@react-navigation/bottom-tabs': 7.8.4(@react-navigation/native@7.1.19(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-screens@4.18.0(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
-      '@react-navigation/native': 7.1.19(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
-      '@react-navigation/native-stack': 7.6.2(@react-navigation/native@7.1.19(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-screens@4.18.0(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+      '@react-navigation/bottom-tabs': 7.8.5(@react-navigation/native@7.1.20(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-screens@4.18.0(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+      '@react-navigation/native': 7.1.20(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+      '@react-navigation/native-stack': 7.6.3(@react-navigation/native@7.1.20(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-screens@4.18.0(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       client-only: 0.0.1
       debug: 4.4.3
       escape-string-regexp: 4.0.0
@@ -16874,7 +16874,7 @@ snapshots:
 
   js-tokens@4.0.0: {}
 
-  js-yaml@3.14.1:
+  js-yaml@3.14.2:
     dependencies:
       argparse: 1.0.10
       esprima: 4.0.1
@@ -18578,10 +18578,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  prettier-plugin-sql-cst@0.14.2:
+  prettier-plugin-sql-cst@0.15.0:
     dependencies:
       prettier: 3.6.2
-      sql-parser-cst: 0.35.1
+      sql-parser-cst: 0.36.0
 
   prettier-plugin-tailwindcss@0.7.1(prettier-plugin-jsdoc@1.5.0(prettier@3.6.2))(prettier@3.6.2):
     dependencies:
@@ -18852,7 +18852,7 @@ snapshots:
   read-yaml-file@1.1.0:
     dependencies:
       graceful-fs: 4.2.11
-      js-yaml: 3.14.1
+      js-yaml: 3.14.2
       pify: 4.0.1
       strip-bom: 3.0.0
 
@@ -19574,7 +19574,7 @@ snapshots:
   sprintf-js@1.1.3:
     optional: true
 
-  sql-parser-cst@0.35.1: {}
+  sql-parser-cst@0.36.0: {}
 
   ssri@9.0.1:
     dependencies:
