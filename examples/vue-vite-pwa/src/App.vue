@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import {
-  DateIsoString,
   NonEmptyString,
   NonEmptyString1000,
   SimpleName,
@@ -22,13 +21,7 @@ import {
 import { evoluWebDeps } from "@evolu/web";
 import { provideEvolu, useQuery } from "@evolu/vue";
 
-const isDev =
-  typeof import.meta !== "undefined" &&
-  Boolean(
-    (import.meta as ImportMeta & {
-      readonly env?: { readonly DEV?: boolean };
-    }).env?.DEV,
-  );
+const isDev = !!import.meta.env.DEV;
 
 const TodoId = id("Todo");
 type TodoId = typeof TodoId.Type;
@@ -51,7 +44,6 @@ const DatabaseSchema = {
     id: TodoId,
     title: NonEmptyString1000,
     isCompleted: nullOr(SqliteBoolean),
-    completedAt: nullOr(DateIsoString),
     categoryId: nullOr(TodoCategoryId),
     priority: TodoPriority,
   },
@@ -77,8 +69,7 @@ const evolu = createEvolu(evoluWebDeps)(DatabaseSchema, {
 
 provideEvolu(evolu);
 
-const todosWithCategories = evolu.createQuery(
-  (db) =>
+const todosWithCategories = evolu.createQuery((db) =>
     db
       .selectFrom("todo")
       .select(["id", "title", "isCompleted", "categoryId", "priority"])
