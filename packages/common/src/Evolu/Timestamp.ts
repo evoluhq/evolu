@@ -163,10 +163,9 @@ export const maxNodeId = "ffffffffffffffff" as NodeId;
  * queue:
  *
  * 1. Write changes immediately to a local-only table
- * 2. Periodically/randomly flush messages to sync tables
- * 3. This decouples user activity from sync timing
+ * 2. Periodically and randomly flush messages to sync tables
  *
- * Tradeoff: It breaks real-time collaboration.
+ * **Trade-off:** It breaks real-time collaboration.
  */
 export const Timestamp = object({
   millis: Millis,

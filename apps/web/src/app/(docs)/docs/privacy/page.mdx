@@ -7,35 +7,34 @@ export const sections = [];
 
 # Privacy
 
-Privacy is fundamental to local-first software, and Evolu takes it seriously. Unlike traditional client-server applications where data lives on someone else's servers, Evolu ensures that data remains under complete control while providing the synchronization and backup benefits needed.
+Privacy is fundamental to local-first software, and Evolu takes it seriously. Unlike traditional client-server applications where data lives on someone else's servers, Evolu ensures that data remains under the user's complete control while providing the synchronization and backup benefits needed.
 
 ## End-to-end encryption by default
 
-**Everything in Evolu is encrypted end-to-end.** This means:
+Everything in Evolu is encrypted end-to-end. This means:
 
-- Data is encrypted on the device before it ever leaves
-- The Evolu Relay receives only encrypted binary data
+- Data is stored in encrypted SQLite on the device
+- Data is always encrypted when it leaves the device
+- The Evolu Relay receives only encrypted data
 - Only devices with the correct encryption keys can decrypt the data
 - Even if someone intercepts the data in transit or gains access to the relay, they see only meaningless encrypted bytes
 
-The encryption happens automatically—developers don't need to configure it, and users don't need to think about it. It's built into the core of how Evolu works.
+The encryption happens automatically—developers don't need to configure it, and users don't need to think about it.
 
 ## API design prevents data leaks
 
-Evolu's API is designed to make it **impossible for developers to accidentally leak sensitive data**:
+Evolu's API is designed to prevent developers from accidentally leaking sensitive data:
 
 - **No public data options**: There is no API to mark data as "public" or "unencrypted"
 - **No configuration required**: Developers cannot disable encryption or create security vulnerabilities through misconfiguration
 
-This eliminates an entire class of privacy breaches that occur when developers accidentally expose sensitive data through configuration errors or API misuse.
-
 ## Traffic analysis protection
 
-To prevent traffic analysis attacks, Evolu uses **message padding (PADMÉ)**—a [technique](https://lbarman.ch/blog/padme/) that pads binary messages to obscure their actual size. Combined with end-to-end encryption, this ensures that traffic analysis cannot reveal information about data or usage patterns.
+To prevent traffic analysis attacks, Evolu uses message padding (PADMÉ)—a [technique](https://lbarman.ch/blog/padme/) that pads binary messages to obscure their actual size. Combined with end-to-end encryption, this ensures that traffic analysis cannot reveal information about data or usage patterns.
 
 ## Relay blindness by design
 
-The **Evolu Relay is completely blind** to users data. What the relay sees:
+The Evolu Relay is completely blind to user data. What the relay sees:
 
 - **OwnerId**: A unique identifier for the data owner (but not who that owner is)
 - **Timestamps**: When changes occurred (for synchronization ordering)
@@ -44,9 +43,31 @@ The **Evolu Relay is completely blind** to users data. What the relay sees:
 
 The relay functions purely as a message buffer for synchronization and backup—it stores and forwards encrypted messages without any ability to decrypt, analyze, or understand them.
 
-Because the relay is blind:
+## Timestamp metadata & activity privacy
 
-- **Any relay can be replaced with another** without losing functionality
-- **Self-hosting is possible** if desired
-- The relay cannot become a single point of failure for privacy
-- There's no vendor lock-in or dependency on a specific service
+Relays and collaborators can see timestamps (user activity). This does not increase risk compared to any real‑time messaging system where traffic timing is observable.
+
+### Why timestamps are visible
+
+Real‑time communication inherently reveals that “something happened” (bytes were transferred). Even if we hid explicit timestamps, an observer could record packet timing. Relying on participants not to store this information is unsafe, so explicitly exposing timestamp metadata doesn't add additional risk.
+
+### Mitigating activity leakage
+
+If maximum privacy is required (e.g., hiding interaction cadence), an application can implement a local write queue:
+
+1. Write changes immediately to a local‑only table
+2. Periodically and randomly flush messages to sync tables
+
+- **Trade-off:** It breaks real-time collaboration.
+
+## Post-quantum resistance
+
+### Evolu Relay
+
+The Evolu Relay is post-quantum safe, so "harvest now, decrypt later" attacks (where adversaries collect encrypted data today to decrypt with future quantum computers) are not possible. Unlike public-key cryptography systems that use asymmetric encryption (which quantum computers could potentially break), the relay uses only symmetric encryption.
+
+The Evolu Relay never sees or stores public keys—it only handles symmetrically encrypted data. Symmetric encryption algorithms are considered quantum-safe.
+
+### Collaboration
+
+For collaboration, asymmetric cryptography is required, and asymmetric cryptography can be vulnerable to quantum attacks. Detailed documentation will be provided soon.
