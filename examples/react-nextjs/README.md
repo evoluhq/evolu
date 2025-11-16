@@ -1,5 +1,7 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+> **Warning:** For SPA (Single Page Application) mode, the Pages Router is [required](https://github.com/vercel/next.js/discussions/64660#discussioncomment-14981214). The App Router does not support static SPA export.
+
 ## Getting Started
 
 First, run the development server:
