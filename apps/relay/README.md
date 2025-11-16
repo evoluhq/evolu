@@ -1,91 +1,40 @@
 # Evolu Relay
 
-A WebSocket relay server for the Evolu database system that enables real-time synchronization between clients.
+Evolu Relay implementation using Node.js
 
-## 🚀 Quick Start
+## Usage
 
-### Docker Development (Recommended)
+- **Docker image**: fastest path for most use cases
+- **Node.js library** (`@evolu/nodejs`): for custom logging, auth, or tight server integration
+- **Custom implementation**: re-implement for other runtimes (Bun, Deno, serverless)
 
-```bash
-cd apps/relay
-pnpm docker:up
-```
+### Run with Docker
 
-### Production Deployment
-
-```bash
-# Complete server setup + deployment
-pnpm deploy:full
-```
-
-The relay will be available at `http://localhost:4000` (Docker) or your server's IP:4000 (production)
-
-## 📖 Documentation
-
-- **[Docker Setup](./README.docker.md)** - Complete Docker containerization guide
-
-## 🔧 Development
-
-### Local Development (Node.js)
+Get the image from Docker Hub: https://hub.docker.com/r/evoluhq/relay (image: `docker.io/evoluhq/relay`).
 
 ```bash
-pnpm dev    # Start with file watching
-pnpm build  # Build TypeScript
-pnpm start  # Start built application
+docker pull docker.io/evoluhq/relay:latest
+docker run --rm -p 4000:4000 docker.io/evoluhq/relay:latest
 ```
 
-### Docker Development
+- Point your app to `ws://localhost:4000` by setting the WebSocket transport in your Evolu config (see `apps/web/src/components/EvoluMinimalExample.tsx`):
 
-```bash
-pnpm docker:up           # Start with logs
-pnpm docker:up:detached  # Start in background
-pnpm docker:down         # Stop containers
-pnpm docker:logs         # View logs
-pnpm docker:shell        # Access container shell
-pnpm docker:clean        # Clean up everything
+```ts
+const evolu = Evolu.createEvolu(evoluReactWebDeps)(Schema, {
+  ...(process.env.NODE_ENV === "development" && {
+    transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
+  }),
+});
 ```
 
-## 🛠️ Available Commands
+- Pin to a specific version if needed (e.g., `:1.2.3`).
+- `latest` tracks the most recent stable release; prereleases are tagged by full version.
 
-### Development
+## Node.js Library
 
-| Command      | Description                                 |
-| ------------ | ------------------------------------------- |
-| `pnpm dev`   | Start development server with file watching |
-| `pnpm build` | Build TypeScript to JavaScript              |
-| `pnpm start` | Start the built application                 |
-| `pnpm clean` | Clean build artifacts                       |
+If you prefer to run in‑process or need custom configuration (logging, auth, etc.), use the Node.js library and/or build your own container.
 
-### Docker
+- Package: `@evolu/nodejs`
+- API: `createNodeJsRelay`
 
-| Command                   | Description                          |
-| ------------------------- | ------------------------------------ |
-| `pnpm docker:up`          | Build and start containers with logs |
-| `pnpm docker:up:detached` | Start containers in background       |
-| `pnpm docker:down`        | Stop all containers                  |
-| `pnpm docker:restart`     | Restart containers with rebuild      |
-| `pnpm docker:logs`        | View container logs                  |
-| `pnpm docker:shell`       | Access running container shell       |
-| `pnpm docker:stats`       | View container resource usage        |
-| `pnpm docker:clean`       | Remove containers and cleanup        |
-
-## 📋 Requirements
-
-- **Node.js** ≥22.0.0
-- **Docker** (for containerized development/deployment)
-- **pnpm** (workspace package manager)
-
-## 🔗 Integration
-
-After deployment, your Evolu applications can connect to the relay:
-
-**Development**: `ws://localhost:4000`  
-**Production**: `ws://your-server-ip:4000`
-
-The relay handles WebSocket connections and data synchronization across all connected Evolu applications.
-
----
-
-📚 **Quick Links**:
-
-- [Docker Setup Guide](./README.docker.md) - Local development and testing
+We chose Node.js for stability, but we'll add a Bun version soon too.
