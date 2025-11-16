@@ -7,16 +7,21 @@ export const sections = [];
 
 # Evolu Relay
 
-Evolu Relay provides sync and backup for Evolu clients. While it's possible to sync and backup Evolu clients among themselves (P2P), it's not practical because devices are often offline and geographically close. Backups should be stored in locations that are geographically distant from each other to ensure protection against local disasters. Evolu Relay is a simple message buffer and storage generic for all Evolu apps. Only `OwnerId` and `Timestamp` are visible. Everything else is encrypted.
+Evolu Relay provides sync and backup for Evolu apps. Evolu apps can use multiple relays concurrently. For resilience, it's recommended to use two relays: a fast primary "home/company" relay (on‑prem or close to users) and a geographically distant secondary relay if the primary relay fails (hardware failure, network issues, etc.).
 
-Evolu Relay is open-sourced and anyone can easily run their own.
+Evolu apps can combine self‑hosted relays with cloud relays. Evolu Relay is stateless, so it can run in any serverless cloud environment (AWS Lambda, Cloudflare Workers, etc.), allowing Evolu apps to work even when major cloud providers go down.
 
-<Note>
-  We provide a free `free.evoluhq.com` relay for testing. Our super secret
-  master plan on how to make money on that is simple: We will write apps on top
-  of Evolu.
-</Note>
+Direct peer‑to‑peer (P2P) sync between clients is technically possible and on our roadmap; implementation awaits additional local transports like Bluetooth, Wi‑Fi, LAN, etc.
+
+For details on privacy, check the [privacy](/docs/privacy) docs.
 
 ## Hosting Evolu Relay
 
-The Evolu Relay source code along with the Docker files can be found in the `/app/relay` directory.
+The Evolu Relay source code, along with the Docker files, can be found at [github.com/evoluhq/evolu/tree/main/apps/relay](https://github.com/evoluhq/evolu/tree/main/apps/relay).
+
+<Note>
+  We provide a free `free.evoluhq.com` relay for testing, but no hosting because
+  it's not Evolu's mission to compete with established clouds (yet). Our plan
+  for Evolu is different: We will sell Evolu apps, Evolu HW devices, and provide
+  paid support.
+</Note>
