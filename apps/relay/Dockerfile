@@ -3,7 +3,7 @@ ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 
 FROM base AS builder
-RUN apk update && apk add --no-cache libc6-compat
+RUN apk add --no-cache libc6-compat
 WORKDIR /app
 RUN corepack enable pnpm
 RUN pnpm install -g turbo
@@ -15,7 +15,7 @@ RUN turbo prune @evolu/relay --docker
 # ------------------------------------------------------------
 # Installer stage - build the pruned workspace
 FROM base AS installer
-RUN apk update && apk add --no-cache libc6-compat
+RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
 # Install pnpm and turbo
@@ -32,10 +32,17 @@ COPY --from=builder /app/out/full/ .
 COPY --from=builder /app/README.md ./README.md
 RUN turbo run build
 
+# Create a minimal production deploy for the relay package
+# Use legacy mode since inject-workspace-packages is not set
+RUN pnpm --filter @evolu/relay deploy --prod --legacy /app/deploy
+
 # ------------------------------------------------------------
 # Runner stage - minimal runtime image
 FROM base AS runner
 WORKDIR /app
+
+# Ensure production runtime defaults
+ENV NODE_ENV=production
 
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs && \
@@ -43,24 +50,23 @@ RUN addgroup --system --gid 1001 nodejs && \
 RUN chown evolu:nodejs /app
 USER evolu
 
-# Copy built application
-COPY --from=installer --chown=evolu:nodejs /app/apps/relay/dist ./dist
+# Ensure data directory exists for persistent storage
+RUN mkdir -p /app/data
 
-# Copy the complete node_modules with all dependencies
-COPY --from=installer --chown=evolu:nodejs /app/node_modules ./node_modules
+# Copy the minimal deployed app (includes prod node_modules and dist)
+COPY --from=installer --chown=evolu:nodejs /app/deploy/ ./
 
-# Copy the built workspace packages that the relay needs at runtime
-COPY --from=installer --chown=evolu:nodejs /app/packages/common/dist ./node_modules/@evolu/common/dist
-COPY --from=installer --chown=evolu:nodejs /app/packages/common/package.json ./node_modules/@evolu/common/package.json
-COPY --from=installer --chown=evolu:nodejs /app/packages/nodejs/dist ./node_modules/@evolu/nodejs/dist
-COPY --from=installer --chown=evolu:nodejs /app/packages/nodejs/package.json ./node_modules/@evolu/nodejs/package.json
+# Declare data volume for clarity and persistence
+VOLUME ["/app/data"]
+
+
 
 # Expose port
 EXPOSE 4000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:4000 || exit 1
+  CMD node -e "const net=require('net');const s=net.connect(4000,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))"
 
 # Start the application
 CMD ["node", "dist/index.js"] 

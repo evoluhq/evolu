@@ -9,6 +9,10 @@
     "start": "node dist/index.js",
     "clean": "shx rm -rf .turbo node_modules dist data/evolu-relay.db"
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "dependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/nodejs": "workspace:*"
