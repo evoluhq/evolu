@@ -1,6 +1,6 @@
 {
   "name": "@evolu/relay",
-  "version": "1.1.2-preview.12",
+  "version": "1.1.2-preview.13",
   "private": true,
   "type": "module",
   "scripts": {

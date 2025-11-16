@@ -1,5 +1,11 @@
 # @evolu/relay
 
+## 1.1.2-preview.13
+
+### Patch Changes
+
+- e4d1149: Improve Docker docs and remove Docker scripts
+
 ## 1.1.2-preview.12
 
 ### Patch Changes
