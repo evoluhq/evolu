@@ -3,10 +3,7 @@
  *
  * Evolu {@link Type} is like a type guard that returns typed errors (via
  * {@link Result}) instead of throwing. We either get a safely typed value or a
- * precise, composable error value telling us exactly why validation failed.
- *
- * Evolu Type supports [Standard Schema](https://standardschema.dev/) for
- * interoperability with 40+ validation-compatible tools and frameworks.
+ * composable typed error telling us exactly why validation failed.
  *
  * Why another validation library?
  *
@@ -15,16 +12,18 @@
  *   messages.
  * - **Consistent constraints via {@link Brand}** – every constraint becomes part
  *   of the type.
- * - **Selective validation** – parent validations are skipped when already proved
- *   by typing.
+ * - **Skippable validation** – parent validations can be skipped when already
+ *   proved by types.
  * - **Simple, top-down implementation** – readable source code from top to bottom
  *   with no hidden magic; just plain functions and composition.
  *
- * TODO: Refactor Type factories and composition for Hack pipes compatibility.
- * Currently, brand factories like `minLength(min)(Type)` use constraint-first
- * currying. For optimal Hack pipe support, these should be refactored to
- * `minLength(Type, min)` to enable: `Type |> minLength(%, 1) |> maxLength(%,
- * 100)`
+ * A distinctive feature of Evolu Type compared to other validation libraries is
+ * that it returns typed errors rather than string messages. This allows
+ * TypeScript to enforce that all validation errors are handled by type
+ * checking, significantly improving the developer experience.
+ *
+ * Evolu Type supports [Standard Schema](https://standardschema.dev/) for
+ * interoperability with 40+ validation-compatible tools and frameworks.
  *
  * ### Base Types Quick Start
  *
@@ -174,6 +173,12 @@
  * (e.g. SQLite) already require explicit mapping of query results, so implicit
  * reverse transforms would not buy much. We may revisit this if we can design a
  * minimal, 100% safe API that preserves simplicity.
+ *
+ * TODO: Refactor Type factories and composition for Hack pipes compatibility.
+ * Currently, brand factories like `minLength(min)(Type)` use constraint-first
+ * currying. For optimal Hack pipe support, these should be refactored to
+ * `minLength(Type, min)` to enable: `Type |> minLength(%, 1) |> maxLength(%,
+ * 100)`
  *
  * @module
  */
