@@ -232,16 +232,15 @@ export const Header = forwardRef<
       <div className="flex items-center gap-5">
         <nav className="hidden md:block">
           <ul role="list" className="flex items-center gap-8">
-            {pathname === "/" && (
-              <TopLevelNavItem href="/docs/quickstart">Docs</TopLevelNavItem>
-            )}
             {pathname.startsWith("/blog") && (
-              <>
-                <TopLevelNavItem href="/">Evolu</TopLevelNavItem>
-                <TopLevelNavItem href="/docs/quickstart">Docs</TopLevelNavItem>
-              </>
+              <TopLevelNavItem href="/">Home</TopLevelNavItem>
             )}
-            <TopLevelNavItem href="/blog">Blog</TopLevelNavItem>
+            {!pathname.startsWith("/docs") && (
+              <TopLevelNavItem href="/docs">Docs</TopLevelNavItem>
+            )}
+            {!pathname.startsWith("/blog") && (
+              <TopLevelNavItem href="/blog">Blog</TopLevelNavItem>
+            )}
             <TopLevelNavItem
               target="_blank"
               href="https://github.com/evoluhq/evolu/releases"

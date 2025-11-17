@@ -1,11 +1,11 @@
 import { Button } from "@/components/Button";
 import { Features } from "@/components/Features";
-import { Guides } from "@/components/Guides";
-import { HeroText } from "@/components/HeroText";
 import { Logo } from "@/components/Logo";
-export const metadata = {
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
   title: "Evolu",
-  description: "Privacy-focused local-first platform that scales.",
+  description: "TypeScript Library and Local-First Platform",
 };
 
 export default function Page(): React.ReactElement {
@@ -13,19 +13,20 @@ export default function Page(): React.ReactElement {
     <>
       <div className="flex flex-col gap-4 pt-14 xl:mx-auto xl:max-w-5xl">
         <Logo className="mx-auto h-9" />
-        <HeroText className="text-center" />
+        <p className="lead w-full text-center text-balance">
+          TypeScript Library and Local&#8209;First Platform
+        </p>
         <div className="flex justify-center gap-5">
           <Button
-            href="/docs/quickstart"
+            href="/docs"
             arrow="right"
             className="scale-105 hover:scale-110"
           >
-            Quickstart
+            Get started
           </Button>
         </div>
 
         <Features />
-        <Guides className="mt-10!" />
       </div>
     </>
   );

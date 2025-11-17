@@ -33,10 +33,10 @@ interface Feature {
 
 const features: Array<Feature> = [
   {
-    id: "#encrypted",
-    name: "Encrypted",
-    description: "End-to-end encrypted sync and backup.",
-    icon: IconShieldLock,
+    id: "#library",
+    name: "Library",
+    description: "TypeScript library for life, code, and everything.",
+    icon: IconLibrary,
     pattern: {
       y: -17,
       x: -10,
@@ -44,10 +44,10 @@ const features: Array<Feature> = [
     },
   },
   {
-    id: "#library",
-    name: "Library",
-    description: "TypeScript library for life, code, and everything.",
-    icon: IconLibrary,
+    id: "#encrypted",
+    name: "Encrypted",
+    description: "End-to-end encrypted sync and backup.",
+    icon: IconShieldLock,
     pattern: {
       y: -17,
       x: -10,

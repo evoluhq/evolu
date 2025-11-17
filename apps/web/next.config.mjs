@@ -22,25 +22,24 @@ const nextConfig = {
   async redirects() {
     return [
       {
-        source: "/docs",
-        destination: "/docs/quickstart",
+        source: "/docs/quickstart",
+        destination: "/docs/local-first",
         permanent: true,
       },
-    ];
-  },
-  async rewrites() {
-    return [
       {
         source: "/docs/installation",
-        destination: "/docs/quickstart",
+        destination: "/docs/local-first",
+        permanent: true,
       },
       {
         source: "/docs/evolu-server",
         destination: "/docs/evolu-relay",
+        permanent: true,
       },
       {
-        source: "/examples/:path",
+        source: "/examples/:path*",
         destination: "/docs/examples",
+        permanent: true,
       },
     ];
   },

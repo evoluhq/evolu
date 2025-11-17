@@ -10,8 +10,7 @@ import "@/styles/tailwind.css";
 export const metadata: Metadata = {
   title: {
     template: "%s - Evolu",
-    default:
-      "Local-First Platform Designed for Privacy, Ease of Use, and No Vendor Lock-In",
+    default: "TypeScript Library and Local-First Platform",
   },
 };
 

@@ -1,6 +1,6 @@
 # Evolu
 
-Evolu is TypeScript library and local-first framework.
+Evolu is TypeScript library and local-first platform.
 
 ## Documentation
 

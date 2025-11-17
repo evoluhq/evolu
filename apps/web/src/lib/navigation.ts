@@ -9,11 +9,12 @@ export interface NavGroup {
 export const navigation: Array<NavGroup> = [
   {
     title: "Getting started",
-    links: [{ title: "Quickstart", href: "/docs/quickstart" }],
+    links: [{ title: "Overview", href: "/docs" }],
   },
   {
     title: "Library",
     links: [
+      { title: "Getting started", href: "/docs/library" },
       {
         title: "Result",
         href: "/docs/api-reference/common/Result/type-aliases/Result",
@@ -30,6 +31,7 @@ export const navigation: Array<NavGroup> = [
   {
     title: "Local-first",
     links: [
+      { title: "Getting started", href: "/docs/local-first" },
       { title: "Playgrounds", href: "/docs/playgrounds" },
       { title: "Examples", href: "/docs/examples" },
       { title: "Indexes", href: "/docs/indexes" },
