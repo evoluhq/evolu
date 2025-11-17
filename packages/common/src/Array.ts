@@ -6,19 +6,19 @@
  * Prepared for TC39 Hack pipes:
  *
  * ```ts
- * // Problem: nested calls are hard to follow
+ * // Problem: nested functions can be hard to follow
  * const result = firstInArray(
  *   mapArray(dedupeArray(appendToArray(value, 2)), (x) => x * 2),
  * );
  *
- * // Ideal: TC39 Hack pipes (when available)
+ * // Ideal solution: TC39 Hack pipes (when available)
  * // const result = value
  * //   |> appendToArray(%, 2)
  * //   |> dedupeArray(%)
  * //   |> mapArray(%, (x) => x * 2)
  * //   |> firstInArray(%);
  *
- * // Pragmatic: name each step (or use p1, p2 if lazy)
+ * // Current solution: name each step (or use p1, p2 if lazy)
  * const p1 = appendToArray(value, 2);
  * const p2 = dedupeArray(p1);
  * const p3 = mapArray(p2, (x) => x * 2);

@@ -14,8 +14,9 @@
  *   of the type.
  * - **Skippable validation** – parent validations can be skipped when already
  *   proved by types.
- * - **Simple, top-down implementation** – readable source code from top to bottom
- *   with no hidden magic; just plain functions and composition.
+ * - **Simple, top-down implementation** – readable source code from top to
+ *   bottom.
+ * - **No user-land chaining DSL** – prepared for TC39 Hack pipes.
  *
  * A distinctive feature of Evolu Type compared to other validation libraries is
  * that it returns typed errors rather than string messages. This allows
@@ -174,11 +175,28 @@
  * reverse transforms would not buy much. We may revisit this if we can design a
  * minimal, 100% safe API that preserves simplicity.
  *
- * TODO: Refactor Type factories and composition for Hack pipes compatibility.
- * Currently, brand factories like `minLength(min)(Type)` use constraint-first
- * currying. For optimal Hack pipe support, these should be refactored to
- * `minLength(Type, min)` to enable: `Type |> minLength(%, 1) |> maxLength(%,
- * 100)`
+ * ### Prepared for TC39 Hack Pipes
+ *
+ * Take a look how `SimplePassword` is defined:
+ *
+ * ```ts
+ * export const SimplePassword = brand(
+ *   "SimplePassword",
+ *   minLength(8)(maxLength(64)(TrimmedString)),
+ * );
+ * ```
+ *
+ * Nested functions are often OK (if not, make a helper) and read well, but with
+ * TC39 Hack pipes it would be clearer:
+ *
+ * ```ts
+ * // TrimmedString
+ * //   |> minLength(8)(%)
+ * //   |> maxLength(64)(%)
+ * //   |> brand("SimplePassword", %)
+ * ```
+ *
+ * Note `minLength` and `maxLength` are curried because they are factories.
  *
  * @module
  */
@@ -1531,6 +1549,25 @@ export interface SimpleNameError extends TypeError<"SimpleName"> {}
 
 /**
  * Trimmed string between 8 and 64 characters, branded as `SimplePassword`.
+ *
+ * Take a look how `SimplePassword` is defined:
+ *
+ * ```ts
+ * export const SimplePassword = brand(
+ *   "SimplePassword",
+ *   minLength(8)(maxLength(64)(TrimmedString)),
+ * );
+ * ```
+ *
+ * Nested functions are often OK (if not, make a helper), but with TC39 Hack
+ * pipes it would be clearer:
+ *
+ * ```ts
+ * // TrimmedString
+ * //   |> minLength(8)(%)
+ * //   |> maxLength(64)(%)
+ * //   |> brand("SimplePassword", %)
+ * ```
  *
  * @category String
  */
@@ -3436,26 +3473,6 @@ export const formatInt64Error = createTypeErrorFormatter<Int64Error>(
   (error) =>
     `The value ${error.value} is not a valid 64-bit signed integer (Int64).`,
 );
-
-// // co s timhle? je to string, ze ktereho lze udelat bigint
-
-// export const BigIntFromString = transform(
-//   String,
-//   BigInt,
-//   (value) =>
-//     trySync(
-//       () => globalThis.BigInt(value),
-//       (): BigIntFromStringError => ({ type: "BigIntFromString", value }),
-//     ),
-//   (value) => value.toString(),
-// );
-
-// export interface BigIntFromStringError extends TypeError<"BigIntFromString"> {}
-
-// export const formatBigIntFromStringError =
-//   createTypeErrorFormatter<BigIntFromStringError>(
-//     (error) => `The value ${error.value} could not be converted to a BigInt.`,
-//   );
 
 /**
  * Stringified {@link Int64}.
