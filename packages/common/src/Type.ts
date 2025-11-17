@@ -15,12 +15,16 @@
  *   messages.
  * - **Consistent constraints via {@link Brand}** – every constraint becomes part
  *   of the type.
- * - **No user-land chaining DSL** – designed with the upcoming ES pipe operator
- *   in mind.
  * - **Selective validation** – parent validations are skipped when already proved
  *   by typing.
  * - **Simple, top-down implementation** – readable source code from top to bottom
  *   with no hidden magic; just plain functions and composition.
+ *
+ * TODO: Refactor Type factories and composition for Hack pipes compatibility.
+ * Currently, brand factories like `minLength(min)(Type)` use constraint-first
+ * currying. For optimal Hack pipe support, these should be refactored to
+ * `minLength(Type, min)` to enable: `Type |> minLength(%, 1) |> maxLength(%,
+ * 100)`
  *
  * ### Base Types Quick Start
  *
