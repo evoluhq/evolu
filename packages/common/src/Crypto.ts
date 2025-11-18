@@ -172,10 +172,13 @@ export const createSymmetricCrypto = (
  * Returns the PADMÉ padded length for a given input length.
  *
  * PADMÉ limits information leakage about the length of the plain-text for a
- * wide range of encrypted data sizes. See the PURBs paper for details:
- * https://bford.info/pub/sec/purb.pdf
+ * wide range of encrypted data sizes.
+ *
+ * See the PURBs paper for details: https://bford.info/pub/sec/purb.pdf
  */
-export const padmePaddedLength = (length: NonNegativeInt): NonNegativeInt => {
+export const createPadmePaddedLength = (
+  length: NonNegativeInt,
+): NonNegativeInt => {
   if (length <= 0) return NonNegativeInt.orThrow(0);
   const e = 31 - Math.clz32(length >>> 0);
   const s = 32 - Math.clz32(e >>> 0);
@@ -184,12 +187,11 @@ export const padmePaddedLength = (length: NonNegativeInt): NonNegativeInt => {
   return NonNegativeInt.orThrow((length + mask) & ~mask);
 };
 
-/**
- * Returns the PADMÉ padding length for a given input length. Uses
- * {@link padmePaddedLength}.
- */
-export const padmePaddingLength = (length: NonNegativeInt): NonNegativeInt => {
-  return NonNegativeInt.orThrow(padmePaddedLength(length) - length);
+/** Creates a PADMÉ padding array of zeros for the given input length. */
+export const createPadmePadding = (length: NonNegativeInt): Uint8Array => {
+  const paddedLength = createPadmePaddedLength(length);
+  const paddingLength = NonNegativeInt.orThrow(paddedLength - length);
+  return new globalThis.Uint8Array(paddingLength);
 };
 
 /**

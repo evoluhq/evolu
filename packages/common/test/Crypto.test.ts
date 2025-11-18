@@ -3,7 +3,8 @@ import { assert, expect, test } from "vitest";
 import {
   createSlip21,
   createSymmetricCrypto,
-  padmePaddedLength,
+  createPadmePaddedLength,
+  createPadmePadding,
 } from "../src/Crypto.js";
 import { mnemonicToOwnerSecret } from "../src/index.js";
 import { ok } from "../src/Result.js";
@@ -34,7 +35,7 @@ test("SymmetricCrypto", () => {
   expect(result.error.type).toBe("SymmetricCryptoDecryptError");
 });
 
-test("padmePaddedLength", () => {
+test("createPadmePaddedLength", () => {
   [
     [0, 0],
     [1, 1],
@@ -67,7 +68,10 @@ test("padmePaddedLength", () => {
     [100000, 100352],
     [1048576, 1048576],
   ].forEach(([input, expected]) => {
-    expect(padmePaddedLength(input as NonNegativeInt)).toBe(expected);
+    expect(createPadmePaddedLength(input as NonNegativeInt)).toBe(expected);
+    expect(createPadmePadding(input as NonNegativeInt).length).toBe(
+      expected - input,
+    );
   });
 });
 
