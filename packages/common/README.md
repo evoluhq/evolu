@@ -24,7 +24,7 @@ The Evolu Relay source along with the Docker files can be in the [/apps/relay](/
 
 Alternatively, a pre-built image `evoluhq/relay:latest` is hosted on [Docker Hub](https://hub.docker.com/r/evoluhq/relay).
 
-For more information, reference the [Evolu Relay](https://www.evolu.dev/docs/evolu-relay) documentation.
+For more information, reference the [Evolu Relay](https://www.evolu.dev/docs/relay) documentation.
 
 ## Developing
 

@@ -33,7 +33,12 @@ const nextConfig = {
       },
       {
         source: "/docs/evolu-server",
-        destination: "/docs/evolu-relay",
+        destination: "/docs/relay",
+        permanent: true,
+      },
+      {
+        source: "/docs/evolu-relay",
+        destination: "/docs/relay",
         permanent: true,
       },
       {

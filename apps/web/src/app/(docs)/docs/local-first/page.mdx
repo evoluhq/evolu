@@ -1,5 +1,3 @@
-import { IconBrandNpm } from "@tabler/icons-react";
-
 export const metadata = {
   title: "Get started with local-first",
 };
@@ -56,7 +54,7 @@ npm install @evolu/common@preview @evolu/web@preview
 </SinglePlatformCodeGroup>
 
 <ConditionalPlatformAlert platform={["Expo"]} type="warning">
-  **Expo Go is not supported.** as it requires native dependencies
+  **Expo Go is not supported** as it requires native dependencies
   (`react-native-quick-crypto`). Use `expo-sqlite` for standard performance or
   `expo-op-sqlite` for better performance.
 </ConditionalPlatformAlert>
@@ -67,78 +65,47 @@ npm install @evolu/common@preview @evolu/web@preview
   for proper native dependency configuration.
 </ConditionalPlatformAlert>
 
-## Define your Schema
+## Define schema
 
-First, define your database schema—tables, columns, and types.
+First, define your app database schema—tables, columns, and types.
 
 Evolu uses [Type](/docs/api-reference/common/Type) for data modeling. Instead of plain JS types like string or number, we recommend using branded types to enforce domain rules.
 
-```ts {{ title: 'schema.ts' }}
-import {
-  FiniteNumber,
-  id,
-  json,
-  maxLength,
-  NonEmptyString,
-  NonEmptyString1000,
-  nullOr,
-  object,
-  SqliteBoolean,
-} from "@evolu/common";
+```ts
+import * as Evolu from "@evolu/common";
 
-const TodoId = id("Todo");
+// Primary keys are branded types, preventing accidental use of IDs across
+// different tables (e.g., a TodoId can't be used where a UserId is expected).
+const TodoId = Evolu.id("Todo");
 type TodoId = typeof TodoId.Type;
 
-const TodoCategoryId = id("TodoCategory");
-type TodoCategoryId = typeof TodoCategoryId.Type;
-
-// A custom branded Type.
-const NonEmptyString50 = maxLength(50)(NonEmptyString);
-// string & Brand<"MinLength1"> & Brand<"MaxLength50">
-type NonEmptyString50 = typeof NonEmptyString50.Type;
-
-// SQLite supports JSON-compatible values.
-const Person = object({
-  name: NonEmptyString50,
-  // Did you know that JSON.stringify converts NaN (a number) into null?
-  // Now, imagine that `age` accidentally becomes null. To prevent this, use FiniteNumber.
-  age: FiniteNumber,
-});
-type Person = typeof Person.Type;
-
-// SQLite stores JSON-compatible values as strings. Fortunately, Evolu provides
-// a convenient `json` Type Factory for type-safe JSON serialization and parsing.
-const PersonJson = json(Person, "PersonJson");
-// string & Brand<"PersonJson">
-type PersonJson = typeof PersonJson.Type;
-
+// Schema defines database structure with runtime validation.
+// Column types validate data on insert/update/upsert.
 const Schema = {
   todo: {
     id: TodoId,
-    title: NonEmptyString1000,
-    // SQLite doesn't support the boolean type; it uses 0 (false) and 1 (true) instead.
-    // SqliteBoolean provides seamless conversion.
-    isCompleted: nullOr(SqliteBoolean),
-    categoryId: nullOr(TodoCategoryId),
-    personJson: nullOr(PersonJson),
-  },
-  todoCategory: {
-    id: TodoCategoryId,
-    name: NonEmptyString50,
+    // Branded type ensuring titles are non-empty and ≤100 chars.
+    title: Evolu.NonEmptyString100,
+    // SQLite doesn't support the boolean type; it uses 0 and 1 instead.
+    isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
   },
 };
 ```
 
-Branded types allow TypeScript to enforce constraints like max length or non-empty values.
+<Note>
+  Evolu automatically adds [system
+  columns](/docs/api-reference/common/Evolu/Internal/variables/SystemColumns-1):
+  `createdAt`, `updatedAt`, and `isDeleted`.
+</Note>
 
-## Create Evolu Instance
+## Create Evolu
 
 After defining the schema, create an Evolu instance for your environment.
 
 <SinglePlatformCodeGroup>
 
 ```ts {{ title: 'React', language: 'tsx' }}
-import { createEvolu, getOrThrow, SimpleName } from "@evolu/common";
+import { createEvolu, SimpleName } from "@evolu/common";
 import { createUseEvolu, EvoluProvider } from "@evolu/react";
 import { evoluReactWebDeps } from "@evolu/react-web";
 
@@ -160,7 +127,7 @@ const { insert, update } = useEvolu();
 ```
 
 ```ts {{ title: 'React Native', language: 'tsx' }}
-import { createEvolu, getOrThrow, SimpleName } from "@evolu/common";
+import { createEvolu, SimpleName } from "@evolu/common";
 import { createUseEvolu, EvoluProvider } from "@evolu/react";
 import { evoluReactNativeDeps } from "@evolu/react-native/bare-op-sqlite";
 
@@ -182,7 +149,7 @@ const { insert, update } = useEvolu();
 ```
 
 ```ts {{ title: 'Expo', language: 'tsx' }}
-import { createEvolu, getOrThrow, SimpleName } from "@evolu/common";
+import { createEvolu, SimpleName } from "@evolu/common";
 import { createUseEvolu, EvoluProvider } from "@evolu/react";
 import { evoluReactNativeDeps } from "@evolu/react-native/expo-sqlite";
 
@@ -204,39 +171,37 @@ const { insert, update } = useEvolu();
 ```
 
 ```ts {{ title: 'Svelte'}}
-import { createEvolu, getOrThrow, SimpleName } from "@evolu/common";
+import * as Evolu from "@evolu/common";
 import { evoluSvelteDeps } from "@evolu/svelte";
 
-const evolu = createEvolu(evoluSvelteDeps)(Schema, {
-  name: SimpleName.orThrow("your-app-name"),
+const evolu = Evolu.createEvolu(evoluSvelteDeps)(Schema, {
+  name: Evolu.SimpleName.orThrow("your-app-name"),
   transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
 ```
 
 ```ts {{ title: 'Vue', language: 'ts' }}
 import { defineComponent } from "vue";
-import { createEvolu, getOrThrow, SimpleName } from "@evolu/common";
+import { createEvolu, SimpleName } from "@evolu/common";
 import { evoluWebDeps } from "@evolu/web";
-import { createUseEvolu, provideEvolu } from "@evolu/vue";
+import { provideEvolu } from "@evolu/vue";
 
 const evolu = createEvolu(evoluWebDeps)(Schema, {
   name: SimpleName.orThrow("your-app-name"),
   transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
 
-const useEvolu = createUseEvolu(evolu);
-
 export default defineComponent({
   setup() {
     provideEvolu(evolu);
-    const { insert, update } = useEvolu();
+    const { insert, update } = evolu;
     return { insert, update };
   },
 });
 ```
 
 ```ts {{ title: 'Vanilla JS' }}
-import { createEvolu, getOrThrow, SimpleName } from "@evolu/common";
+import { createEvolu, SimpleName } from "@evolu/common";
 import { evoluWebDeps } from "@evolu/web";
 
 const evolu = createEvolu(evoluWebDeps)(Schema, {
@@ -254,69 +219,78 @@ const evolu = createEvolu(evoluWebDeps)(Schema, {
 ```ts {{ title: 'React', language: 'tsx' }}
 const { insert, update } = useEvolu();
 
-const result = insert("todo", { title: "New Todo", isCompleted: false });
+const result = insert("todo", {
+  title: "New Todo",
+  isCompleted: Evolu.sqliteFalse,
+});
 
 if (result.ok) {
-  update("todo", { id: result.value.id, isCompleted: true });
+  update("todo", { id: result.value.id, isCompleted: Evolu.sqliteTrue });
 }
 ```
 
 ```ts {{ title: 'React Native', language: 'tsx' }}
 const { insert, update } = useEvolu();
 
-const result = insert("todo", { title: "New Todo", isCompleted: false });
+const result = insert("todo", {
+  title: "New Todo",
+  isCompleted: Evolu.sqliteFalse,
+});
 
 if (result.ok) {
-  update("todo", { id: result.value.id, isCompleted: true });
+  update("todo", { id: result.value.id, isCompleted: Evolu.sqliteTrue });
 }
 ```
 
 ```ts {{ title: 'Expo', language: 'tsx' }}
 const { insert, update } = useEvolu();
 
-const result = insert("todo", { title: "New Todo", isCompleted: false });
+const result = insert("todo", {
+  title: "New Todo",
+  isCompleted: Evolu.sqliteFalse,
+});
 
 if (result.ok) {
-  update("todo", { id: result.value.id, isCompleted: true });
+  update("todo", { id: result.value.id, isCompleted: Evolu.sqliteTrue });
 }
 ```
 
 ```ts {{ title: 'Svelte', language: 'ts' }}
-const result = evolu.insert("todo", { title: "New Todo", isCompleted: false });
+const result = evolu.insert("todo", {
+  title: "New Todo",
+  isCompleted: Evolu.sqliteFalse,
+});
 
 if (result.ok) {
-  evolu.update("todo", { id: result.value.id, isCompleted: true });
+  evolu.update("todo", { id: result.value.id, isCompleted: Evolu.sqliteTrue });
 }
 ```
 
 ```ts {{ title: 'Vue', language: 'ts' }}
-import { useEvolu } from "@evolu/vue";
+const { insert, update } = evolu;
 
-const { insert, update } = useEvolu();
-
-const result = insert("todo", { title: "New Todo", isCompleted: false });
+const result = insert("todo", {
+  title: "New Todo",
+  isCompleted: Evolu.sqliteFalse,
+});
 
 if (result.ok) {
-  update("todo", { id: result.value.id, isCompleted: true });
+  update("todo", { id: result.value.id, isCompleted: Evolu.sqliteTrue });
 }
 ```
 
 ```ts {{ title: 'Vanilla JS' }}
-const result = evolu.insert("todo", { title: "New Todo", isCompleted: false });
+const result = evolu.insert("todo", {
+  title: "New Todo",
+  isCompleted: Evolu.sqliteFalse,
+});
 
 if (result.ok) {
-  evolu.update("todo", { id: result.value.id, isCompleted: true });
+  evolu.update("todo", { id: result.value.id, isCompleted: Evolu.sqliteTrue });
 }
 ```
 
 </SinglePlatformCodeGroup>
-
-To delete a row, set `isDeleted` to true and filter it out in your queries.
-
-<Warn>
-  Evolu does not delete data—it marks them as deleted to preserve mergeability
-  and support time travel.
-</Warn>
 
 ## Query data
 
@@ -354,12 +328,12 @@ const todos = useQuery(allTodos);
 import { queryState } from "@evolu/svelte";
 
 // Query once
-const todo = await evolu.loadQuery(allTodos);
-// todo.rows for all entries
+const todosOnce = await evolu.loadQuery(allTodos);
+// todosOnce.rows for all entries
 
 // Subscribe to changes, automatically filled when the Data changes
 const todos = queryState(evolu, () => allTodos);
-// todo.rows for all entries
+// todos.rows for all entries
 // Note this only works in .svelte or .svelte.js / .svelte.ts files due to the Svelte compiler
 ```
 
@@ -381,6 +355,72 @@ const unsubscribe = evolu.subscribeQuery(allTodos)(() => {
 ```
 
 </SinglePlatformCodeGroup>
+
+## Delete data
+
+To delete a row, set `isDeleted` to `sqliteTrue` (1). Evolu uses **soft deletes** instead of permanent deletion.
+
+<SinglePlatformCodeGroup>
+
+```ts {{ title: 'React', language: 'tsx' }}
+const { update } = useEvolu();
+
+// Mark a todo as deleted
+update("todo", { id: todoId, isDeleted: Evolu.sqliteTrue });
+```
+
+```ts {{ title: 'React Native', language: 'tsx' }}
+const { update } = useEvolu();
+
+// Mark a todo as deleted
+update("todo", { id: todoId, isDeleted: Evolu.sqliteTrue });
+```
+
+```ts {{ title: 'Expo', language: 'tsx' }}
+const { update } = useEvolu();
+
+// Mark a todo as deleted
+update("todo", { id: todoId, isDeleted: Evolu.sqliteTrue });
+```
+
+```ts {{ title: 'Svelte', language: 'ts' }}
+// Mark a todo as deleted
+evolu.update("todo", { id: todoId, isDeleted: Evolu.sqliteTrue });
+```
+
+```ts {{ title: 'Vue', language: 'ts' }}
+const { update } = evolu;
+
+// Mark a todo as deleted
+update("todo", { id: todoId, isDeleted: Evolu.sqliteTrue });
+```
+
+```ts {{ title: 'Vanilla JS' }}
+// Mark a todo as deleted
+evolu.update("todo", { id: todoId, isDeleted: Evolu.sqliteTrue });
+```
+
+</SinglePlatformCodeGroup>
+
+When querying, filter out deleted rows:
+
+```ts
+const activeTodos = evolu.createQuery((db) =>
+  db
+    .selectFrom("todo")
+    .selectAll()
+    // Filter out deleted rows
+    .where("isDeleted", "is not", Evolu.sqliteTrue)
+    .orderBy("createdAt"),
+);
+```
+
+<Warn>
+  Evolu does not permanently delete data—it marks them as deleted to support
+  merging across devices and time travel. This is essential for local-first
+  systems where devices sync asynchronously. See [Time
+  Travel](/docs/time-travel) to learn how to recover deleted data.
+</Warn>
 
 ## Protect data
 
@@ -437,13 +477,18 @@ console.log(owner.mnemonic);
 
 </SinglePlatformCodeGroup>
 
-## Delete data
+## Reset all data
 
-To clear all local data from the device:
+To clear all local data from the device (this is different from soft deletes):
 
 ```ts
 evolu.resetAppOwner();
 ```
+
+<Note>
+  This removes all data from the local database. This is not a soft delete—it's
+  a complete reset.
+</Note>
 
 ## Restore data
 
@@ -453,4 +498,4 @@ To restore synced data on any device:
 evolu.restoreAppOwner(mnemonic);
 ```
 
-That’s it. Evolu offers a minimal API designed for a great developer experience.
+To learn more about Evolu, explore our [playgrounds](/docs/playgrounds) and [examples](/docs/examples).

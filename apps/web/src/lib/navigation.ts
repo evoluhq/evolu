@@ -35,7 +35,7 @@ export const navigation: Array<NavGroup> = [
       { title: "Playgrounds", href: "/docs/playgrounds" },
       { title: "Examples", href: "/docs/examples" },
       { title: "Indexes", href: "/docs/indexes" },
-      { title: "Relay", href: "/docs/evolu-relay" },
+      { title: "Relay", href: "/docs/relay" },
       { title: "Time travel", href: "/docs/time-travel" },
       { title: "Migrations", href: "/docs/migrations" },
       { title: "Protocol", href: "/docs/api-reference/common/Evolu/Protocol" },
