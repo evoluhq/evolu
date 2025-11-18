@@ -1524,7 +1524,7 @@ export const base64UrlToUint8Array: (str: Base64Url) => Uint8Array =
  * Uses the same safe alphabet as {@link UrlSafeString} (letters, digits, `-`,
  * `_`). See `UrlSafeString` for details.
  *
- * The string must be between 1 and 42 characters.
+ * The string must be between 1 and 64 characters.
  *
  * ### Example
  *
@@ -1540,7 +1540,7 @@ export const base64UrlToUint8Array: (str: Base64Url) => Uint8Array =
  * @category String
  */
 export const SimpleName = brand("SimpleName", UrlSafeString, (value) =>
-  value.length >= 1 && value.length <= 42
+  value.length >= 1 && value.length <= 64
     ? ok(value)
     : err<SimpleNameError>({ type: "SimpleName", value }),
 );
