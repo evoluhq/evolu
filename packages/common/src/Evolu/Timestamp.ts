@@ -1,5 +1,3 @@
-import { assert } from "../Assert.js";
-import { Brand } from "../Brand.js";
 import { bytesToHex } from "../Buffer.js";
 import { RandomBytesDep } from "../Crypto.js";
 import { createEqObject, eqNumber, eqString } from "../Eq.js";
@@ -9,6 +7,7 @@ import { err, ok, Result } from "../Result.js";
 import { TimeDep } from "../Time.js";
 import {
   brand,
+  DateIso,
   InferType,
   lessThanOrEqualTo,
   NonNegativeInt,
@@ -192,29 +191,6 @@ export const createInitialTimestamp = (deps: RandomBytesDep): Timestamp => {
   return createTimestamp({ nodeId });
 };
 
-/** Sortable string representation of {@link Timestamp}. */
-export type TimestampString = string & Brand<"TimestampString">;
-
-export const timestampToTimestampString = (t: Timestamp): TimestampString =>
-  [
-    new Date(t.millis).toISOString(),
-    t.counter.toString(16).toUpperCase().padStart(4, "0"),
-    t.nodeId,
-  ].join("-") as TimestampString;
-
-export const timestampStringToTimestamp = (
-  timestampString: TimestampString,
-): Timestamp => {
-  const array = timestampString.split("-");
-  const timestamp = {
-    millis: Date.parse(array.slice(0, 3).join("-")).valueOf(),
-    counter: parseInt(array[3], 16),
-    nodeId: array[4],
-  };
-  assert(Timestamp.is(timestamp), "timestampString is malformed");
-  return timestamp;
-};
-
 const getNextMillis =
   (deps: TimeDep & TimestampConfigDep) =>
   (
@@ -361,3 +337,7 @@ export const timestampBytesToTimestamp = (
 };
 
 export const orderTimestampBytes: Order<TimestampBytes> = orderUint8Array;
+
+export const timestampToDateIso = (timestamp: Timestamp): DateIso =>
+  // `as DateIso` is safe because the timestamp is always valid
+  new Date(timestamp.millis).toISOString() as DateIso;

@@ -22,7 +22,13 @@ import { err, ok, Result } from "../Result.js";
 import { sql, SqliteDep, SqliteError, SqliteValue } from "../Sqlite.js";
 import { AbortError, createMutex } from "../Task.js";
 import { TimeDep } from "../Time.js";
-import { IdBytes, idBytesToId, idToIdBytes, PositiveInt } from "../Type.js";
+import {
+  DateIso,
+  IdBytes,
+  idBytesToId,
+  idToIdBytes,
+  PositiveInt,
+} from "../Type.js";
 import { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
 import type { PostMessageDep } from "./Db.js";
 import {
@@ -74,8 +80,8 @@ import {
   TimestampCounterOverflowError,
   TimestampDriftError,
   TimestampTimeOutOfRangeError,
+  timestampToDateIso,
   timestampToTimestampBytes,
-  timestampToTimestampString,
 } from "./Timestamp.js";
 
 export interface Sync extends Disposable {
@@ -341,7 +347,10 @@ export const createSync =
           clockTimestamp = nextTimestamp.value;
 
           const { ownerId = config.appOwner.id, ...dbChange } = change;
-          const message = { timestamp: clockTimestamp, change: dbChange };
+          const message: CrdtMessage = {
+            timestamp: clockTimestamp,
+            change: dbChange,
+          };
 
           const messages = ownerMessages.get(ownerId);
           if (messages) messages.push(message);
@@ -397,7 +406,6 @@ export interface ClockDep {
   readonly clock: Clock;
 }
 
-// HLC
 export interface Clock {
   readonly get: () => Timestamp;
   readonly save: (timestamp: Timestamp) => Result<void, SqliteError>;
@@ -413,9 +421,9 @@ export const createClock =
       save: (timestamp) => {
         currentTimestamp = timestamp;
 
-        const timestampString = timestampToTimestampString(timestamp);
         const result = deps.sqlite.exec(sql.prepared`
-          update evolu_config set "clock" = ${timestampString};
+          update evolu_config
+          set "clock" = ${timestampToTimestampBytes(timestamp)};
         `);
         if (!result.ok) return result;
 
@@ -587,20 +595,26 @@ const createClientStorage =
 
         const { table, id } = rows[0];
         const values: Record<string, SqliteValue> = {};
+        let isInsert = false;
 
         for (const r of rows) {
           assert(r.table === table, "All rows must have the same table");
           assert(eqArrayNumber(r.id, id), "All rows must have the same Id");
-          values[r.column] = r.value;
+          if (r.column === "createdAt") {
+            isInsert = true;
+          } else {
+            values[r.column] = r.value;
+          }
         }
 
         const message: CrdtMessage = {
           timestamp: timestampBytesToTimestamp(timestamp),
-          change: {
+          change: DbChange.orThrow({
             table: rows[0].table,
             id: idBytesToId(rows[0].id),
             values,
-          },
+            isInsert,
+          }),
         };
 
         return encodeAndEncryptDbChange(deps)(message, owner.encryptionKey);
@@ -620,33 +634,27 @@ const createTransportKey = (transportConfig: OwnerTransport): TransportKey => {
 export const applyLocalOnlyChange =
   (deps: SqliteDep & TimeDep) =>
   (change: MutationChange): Result<void, SqliteError> => {
-    const dbChange: DbChange = {
-      table: change.table,
-      id: change.id,
-      values: change.values,
-    };
-
     const isDeletion =
-      "isDeleted" in dbChange.values && dbChange.values.isDeleted === 1;
+      "isDeleted" in change.values && change.values.isDeleted === 1;
 
     if (isDeletion) {
       const result = deps.sqlite.exec(sql`
-        delete from ${sql.identifier(dbChange.table)}
-        where id = ${dbChange.id};
+        delete from ${sql.identifier(change.table)}
+        where id = ${change.id};
       `);
       if (!result.ok) return result;
     } else {
-      const date = new Date(deps.time.now()).toISOString();
+      const now = deps.time.nowIso();
 
-      for (const [column, value] of objectToEntries(dbChange.values)) {
+      for (const [column, value] of objectToEntries(change.values)) {
         const result = deps.sqlite.exec(sql.prepared`
-          insert into ${sql.identifier(dbChange.table)}
+          insert into ${sql.identifier(change.table)}
             ("id", ${sql.identifier(column)}, createdAt, updatedAt)
-          values (${dbChange.id}, ${value}, ${date}, ${date})
+          values (${change.id}, ${value}, ${now}, ${now})
           on conflict ("id") do update
             set
               ${sql.identifier(column)} = ${value},
-              updatedAt = ${date};
+              updatedAt = ${now};
         `);
         if (!result.ok) return result;
       }
@@ -672,7 +680,8 @@ const applyMessages =
     let { firstTimestamp, lastTimestamp } = usageResult.value;
 
     for (const message of messages) {
-      const result1 = applyMessageToAppTable(deps)(ownerIdBytes, message);
+      const date = timestampToDateIso(message.timestamp);
+      const result1 = applyMessageToAppTable(deps)(ownerIdBytes, message, date);
       if (!result1.ok) return result1;
 
       const timestamp = timestampToTimestampBytes(message.timestamp);
@@ -688,6 +697,7 @@ const applyMessages =
         ownerIdBytes,
         message,
         strategy,
+        date,
       );
       if (!result2.ok) return result2;
     }
@@ -710,11 +720,17 @@ const applyMessages =
 
 const applyMessageToAppTable =
   (deps: SqliteDep) =>
-  (ownerId: OwnerIdBytes, message: CrdtMessage): Result<void, SqliteError> => {
-    const timestamp = timestampToTimestampBytes(message.timestamp);
-    const updatedAt = new Date(message.timestamp.millis).toISOString();
+  (
+    ownerId: OwnerIdBytes,
+    message: CrdtMessage,
+    date: DateIso,
+  ): Result<void, SqliteError> => {
+    let entries = objectToEntries(message.change.values);
+    if (message.change.isInsert) {
+      entries = [...entries, ["createdAt", date]];
+    }
 
-    for (const [column, value] of objectToEntries(message.change.values)) {
+    for (const [column, value] of entries) {
       const result = deps.sqlite.exec(sql.prepared`
         with
           existingTimestamp as (
@@ -725,17 +741,17 @@ const applyMessageToAppTable =
               and "table" = ${message.change.table}
               and "id" = ${idToIdBytes(message.change.id)}
               and "column" = ${column}
-              and "timestamp" >= ${timestamp}
+              and "timestamp" >= ${timestampToTimestampBytes(message.timestamp)}
             limit 1
           )
         insert into ${sql.identifier(message.change.table)}
           ("id", ${sql.identifier(column)}, updatedAt)
-        select ${message.change.id}, ${value}, ${updatedAt}
+        select ${message.change.id}, ${value}, ${date}
         where not exists (select 1 from existingTimestamp)
         on conflict ("id") do update
           set
             ${sql.identifier(column)} = ${value},
-            updatedAt = ${updatedAt}
+            updatedAt = ${date}
           where not exists (select 1 from existingTimestamp);
       `);
 
@@ -751,6 +767,7 @@ export const applyMessageToTimestampAndHistoryTables =
     ownerId: OwnerIdBytes,
     message: CrdtMessage,
     strategy: StorageInsertTimestampStrategy,
+    date: DateIso,
   ): Result<void, SqliteError> => {
     const timestamp = timestampToTimestampBytes(message.timestamp);
     const id = idToIdBytes(message.change.id);
@@ -758,7 +775,12 @@ export const applyMessageToTimestampAndHistoryTables =
     const result = deps.storage.insertTimestamp(ownerId, timestamp, strategy);
     if (!result.ok) return result;
 
-    for (const [column, value] of Object.entries(message.change.values)) {
+    let entries = objectToEntries(message.change.values);
+    if (message.change.isInsert) {
+      entries = [...entries, ["createdAt", date]];
+    }
+
+    for (const [column, value] of entries) {
       const result = deps.sqlite.exec(sql.prepared`
         insert into evolu_history
           ("ownerId", "table", "id", "column", "value", "timestamp")

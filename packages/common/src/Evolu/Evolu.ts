@@ -4,7 +4,7 @@ import {
   isNonEmptyArray,
   isNonEmptyReadonlyArray,
 } from "../Array.js";
-import { assert, assertNonEmptyReadonlyArray } from "../Assert.js";
+import { assertNonEmptyReadonlyArray } from "../Assert.js";
 import { createCallbacks } from "../Callbacks.js";
 import { ConsoleDep } from "../Console.js";
 import { RandomBytesDep, SymmetricCryptoDecryptError } from "../Crypto.js";
@@ -48,7 +48,6 @@ import {
 } from "./Query.js";
 import {
   CreateQuery,
-  DefaultColumns,
   EvoluSchema,
   evoluSchemaToDbSchema,
   IndexesConfig,
@@ -59,6 +58,7 @@ import {
   MutationKind,
   MutationMapping,
   MutationOptions,
+  SystemColumns,
   updateable,
   upsertable,
   ValidateSchema,
@@ -239,7 +239,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
    *
    * Evolu does not use SQL for mutations to ensure data can be safely and
    * predictably merged without conflicts. Explicit mutations also allow Evolu
-   * to automatically add and update {@link DefaultColumns}.
+   * to automatically add and update {@link SystemColumns}.
    *
    * ### Example
    *
@@ -284,7 +284,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
    *
    * Evolu does not use SQL for mutations to ensure data can be safely and
    * predictably merged without conflicts. Explicit mutations also allow Evolu
-   * to automatically add and update {@link DefaultColumns}.
+   * to automatically add and update {@link SystemColumns}.
    *
    * ### Example
    *
@@ -337,7 +337,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
    *
    * Evolu does not use SQL for mutations to ensure data can be safely and
    * predictably merged without conflicts. Explicit mutations also allow Evolu
-   * to automatically add and update {@link DefaultColumns}.
+   * to automatically add and update {@link SystemColumns}.
    *
    * ### Example
    *
@@ -408,7 +408,12 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
    */
   readonly reloadApp: () => void;
 
-  /** Export SQLite database file as Uint8Array. */
+  /**
+   * Export SQLite database file as Uint8Array.
+   *
+   * In the future, it will be possible to import a database and export/import
+   * history for 1:1 migrations across owners.
+   */
   readonly exportDatabase: () => Promise<Uint8Array<ArrayBuffer>>;
 
   /**
@@ -716,21 +721,17 @@ const createEvoluInstance =
             const values = { ...result.value };
             delete values.id;
 
-            if (kind === "insert" || kind === "upsert") {
-              // Only set createdAt if not provided by user
-              if (!("createdAt" in values)) {
-                values.createdAt = new Date(deps.time.now()).toISOString();
-              }
-            }
+            const dbChange = DbChange.orThrow({
+              table,
+              id,
+              values,
+              isInsert: kind === "insert" || kind === "upsert",
+            });
 
-            const dbChange = { table, id, values };
-            assert(
-              DbChange.is(dbChange),
-              `Failed to create DbChange for table "${dbChange.table}"`,
-            );
-
-            const mutationChange = { ...dbChange, ownerId: options?.ownerId };
-            mutateMicrotaskQueue.push([mutationChange, options?.onComplete]);
+            mutateMicrotaskQueue.push([
+              { ...dbChange, ownerId: options?.ownerId },
+              options?.onComplete,
+            ]);
           }
 
           if (mutateMicrotaskQueue.length === 1) {

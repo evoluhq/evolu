@@ -7,7 +7,6 @@ import {
   sqliteTrue,
   createEvolu,
   createFormatTypeError,
-  getOrThrow,
   id,
   kysely,
   maxLength,

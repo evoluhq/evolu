@@ -9,6 +9,7 @@ import {
   createProtocolMessageForSync,
   createProtocolMessageFromCrdtMessages,
   createTimestampsBuffer,
+  decodeFlags,
   decodeLength,
   decodeNodeId,
   decodeNonNegativeInt,
@@ -18,6 +19,7 @@ import {
   decryptAndDecodeDbChange,
   defaultProtocolMessageRangesMaxSize,
   encodeAndEncryptDbChange,
+  encodeFlags,
   encodeLength,
   encodeNodeId,
   encodeNonNegativeInt,
@@ -56,7 +58,7 @@ import {
 } from "../../src/index.js";
 import { err, getOrThrow, ok } from "../../src/Result.js";
 import { SqliteValue } from "../../src/Sqlite.js";
-import { dateToDateIso, NonNegativeInt } from "../../src/Type.js";
+import { dateToDateIso, NonNegativeInt, PositiveInt } from "../../src/Type.js";
 import {
   testCreateId,
   testCreateRelayStorageAndSqliteDeps,
@@ -107,6 +109,39 @@ test("encodeNumber/decodeNumber", () => {
   expect(buffer.unwrap()).toMatchInlineSnapshot(
     `uint8:[0,42,208,133,203,64,9,33,249,240,27,134,110,203,67,63,255,255,255,255,255,255,203,195,63,255,255,255,255,255,255,203,127,240,0,0,0,0,0,0,203,255,240,0,0,0,0,0,0,203,127,248,0,0,0,0,0,0]`,
   );
+});
+
+test("encodeFlags/decodeFlags", () => {
+  const testCases: Array<{
+    flags: ReadonlyArray<boolean>;
+    expected: number;
+  }> = [
+    { flags: [true], expected: 1 },
+    { flags: [false], expected: 0 },
+    { flags: [true, false], expected: 1 },
+    { flags: [false, true], expected: 2 },
+    { flags: [true, true], expected: 3 },
+    {
+      flags: [true, false, true, false, true],
+      expected: 0b10101,
+    },
+    {
+      flags: [true, true, true, true, true, true, true, true],
+      expected: 0xff,
+    },
+  ];
+
+  testCases.forEach(({ flags, expected }) => {
+    const buffer = createBuffer();
+    encodeFlags(buffer, flags);
+    expect(buffer.unwrap()[0]).toBe(expected);
+
+    const decodedFlags = decodeFlags(
+      createBuffer(buffer.unwrap()),
+      PositiveInt.orThrow(flags.length),
+    );
+    expect(Array.from(decodedFlags)).toEqual(Array.from(flags));
+  });
 });
 
 test("encodeNonNegativeInt/decodeNonNegativeInt", () => {
@@ -375,15 +410,17 @@ test("encodeSqliteValue/decodeSqliteValue specific failing case from property te
   expect(decoded).toBe(failingInput);
 });
 
-const createDbChange = (): DbChange => ({
-  table: "employee",
-  id: testCreateId(),
-  values: {
-    name: "Victoria",
-    hiredAt: getOrThrow(dateToDateIso(new Date("2024-10-31"))),
-    officeId: testCreateId(),
-  },
-});
+const createDbChange = () =>
+  DbChange.orThrow({
+    table: "employee",
+    id: testCreateId(),
+    values: {
+      name: "Victoria",
+      hiredAt: getOrThrow(dateToDateIso(new Date("2024-10-31"))),
+      officeId: testCreateId(),
+    },
+    isInsert: false,
+  });
 
 const createTestCrdtMessage = (): CrdtMessage => ({
   timestamp: createInitialTimestamp(testDeps),
@@ -407,7 +444,7 @@ test("encodeAndEncryptDbChange/decryptAndDecodeDbChange", () => {
   const crdtMessage = createTestCrdtMessage();
   const encryptedMessage = createEncryptedCrdtMessage(crdtMessage);
   expect(encryptedMessage.change).toMatchInlineSnapshot(
-    `uint8:[16,69,47,67,224,147,108,220,182,159,114,71,126,12,238,156,41,185,89,190,160,122,175,72,120,77,181,224,107,85,168,103,15,6,146,125,39,9,172,69,216,141,144,98,146,9,143,251,191,129,20,26,161,94,109,25,152,171,118,92,23,221,142,18,53,56,224,171,40,56,93,150,31,126,108,197,113,233,8,199,129,61,104,136,93,236,2,75,90,156,97,128,144,87,62,165,38,50,239,20,38,21,174,254,31,199,65,249,51,235,44,196,37,104,46,253,123,243,183,45,208,53,255,8,50,250,168,191,14,29,220,254,4,168,12,227,180,183,161,84,122,0,195,200,123]`,
+    `uint8:[16,69,47,67,224,147,108,220,182,159,114,71,126,12,238,156,41,185,89,190,160,122,175,72,120,77,181,224,107,85,168,103,15,6,146,125,39,9,172,69,216,141,152,15,154,20,147,248,169,157,20,234,231,0,208,79,81,194,248,169,52,179,33,204,1,185,51,79,47,82,82,154,23,59,74,149,0,227,135,221,163,160,7,137,70,251,3,110,111,203,194,232,132,85,109,58,28,85,230,20,41,31,168,210,50,130,238,78,142,108,10,132,153,166,4,250,87,106,229,12,107,164,41,8,50,250,168,191,14,232,123,178,242,174,140,69,120,83,171,189,175,16,201,253,154]`,
   );
   const decrypted = decryptAndDecodeDbChange({
     symmetricCrypto: testSymmetricCrypto,
@@ -461,7 +498,7 @@ test("decryptAndDecodeDbChange timestamp tamper-proofing", () => {
     err({
       type: "ProtocolTimestampMismatchError",
       expected: wrongTimestamp,
-      embedded: crdtMessage.timestamp,
+      timestamp: crdtMessage.timestamp,
     }),
   );
 });
@@ -839,7 +876,7 @@ describe("E2E relay options", () => {
     );
 
     expect(initiatorMessage).toMatchInlineSnapshot(
-      `uint8:[0,74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234,0,1,109,96,75,228,41,186,7,162,141,92,37,209,56,226,201,91,0,1,0,0,1,0,0,0,0,0,0,0,0,1,145,1,179,222,169,180,99,198,170,142,57,122,20,85,129,171,98,248,206,76,196,167,62,115,20,24,120,237,199,240,120,27,82,86,179,10,25,211,150,147,95,57,1,227,38,8,131,130,66,214,91,12,31,112,99,139,94,217,94,9,54,115,4,43,72,47,214,212,113,242,223,142,112,211,74,214,130,20,188,213,130,8,170,51,116,110,211,129,196,104,253,55,190,36,16,140,32,65,78,91,124,170,83,46,56,167,136,44,167,127,205,106,234,142,58,227,23,18,37,103,25,14,151,93,237,207,95,229,217,110,48,19,197,128,126,53,154,227,175,120,33,156,34,170,230,43,251]`,
+      `uint8:[0,74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234,0,1,109,96,75,228,41,186,7,162,141,92,37,209,56,226,201,91,0,1,0,0,1,0,0,0,0,0,0,0,0,1,145,1,179,222,169,180,99,198,170,142,57,122,20,85,129,171,98,248,206,76,196,167,62,115,20,24,120,237,199,240,120,27,82,86,179,10,25,211,150,147,95,57,1,227,46,101,139,159,94,213,77,16,31,56,32,58,135,172,20,179,188,117,146,201,252,138,41,33,186,90,216,228,127,223,66,147,164,68,205,223,13,18,136,174,27,111,200,150,197,77,200,96,29,76,4,142,115,222,116,60,117,170,92,36,62,139,165,105,82,8,22,154,46,208,115,54,172,95,242,86,38,158,186,188,16,207,95,229,217,110,48,9,156,173,56,67,197,49,69,188,148,91,155,27,110,144,103]`,
     );
 
     let broadcastedMessage = null as Uint8Array | null;
@@ -860,7 +897,7 @@ describe("E2E relay options", () => {
     assert(broadcastedMessage);
     // Added error and removed writeKey, added subscription flag
     expect(broadcastedMessage).toMatchInlineSnapshot(
-      `uint8:[0,74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234,2,1,0,0,1,0,0,0,0,0,0,0,0,1,145,1,179,222,169,180,99,198,170,142,57,122,20,85,129,171,98,248,206,76,196,167,62,115,20,24,120,237,199,240,120,27,82,86,179,10,25,211,150,147,95,57,1,227,38,8,131,130,66,214,91,12,31,112,99,139,94,217,94,9,54,115,4,43,72,47,214,212,113,242,223,142,112,211,74,214,130,20,188,213,130,8,170,51,116,110,211,129,196,104,253,55,190,36,16,140,32,65,78,91,124,170,83,46,56,167,136,44,167,127,205,106,234,142,58,227,23,18,37,103,25,14,151,93,237,207,95,229,217,110,48,19,197,128,126,53,154,227,175,120,33,156,34,170,230,43,251]`,
+      `uint8:[0,74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234,2,1,0,0,1,0,0,0,0,0,0,0,0,1,145,1,179,222,169,180,99,198,170,142,57,122,20,85,129,171,98,248,206,76,196,167,62,115,20,24,120,237,199,240,120,27,82,86,179,10,25,211,150,147,95,57,1,227,46,101,139,159,94,213,77,16,31,56,32,58,135,172,20,179,188,117,146,201,252,138,41,33,186,90,216,228,127,223,66,147,164,68,205,223,13,18,136,174,27,111,200,150,197,77,200,96,29,76,4,142,115,222,116,60,117,170,92,36,62,139,165,105,82,8,22,154,46,208,115,54,172,95,242,86,38,158,186,188,16,207,95,229,217,110,48,9,156,173,56,67,197,49,69,188,148,91,155,27,110,144,103]`,
     );
 
     let writeMessagesCalled = false;
@@ -888,13 +925,14 @@ describe("E2E sync", () => {
       timestamp: timestampBytesToTimestamp(t),
       change: createEncryptedDbChange({
         timestamp: timestampBytesToTimestamp(t),
-        change: {
+        change: DbChange.orThrow({
           table: "foo",
           id: testCreateId(),
           values: {
             bar: "x".repeat(testRandomLib.int(1, 500)),
           },
-        },
+          isInsert: false,
+        }),
       }),
     }),
   );
@@ -1001,9 +1039,9 @@ describe("E2E sync", () => {
         "syncSizes": [
           370,
           193,
-          999703,
+          999630,
           40,
-          666134,
+          671557,
           20,
         ],
         "syncSteps": 6,
@@ -1025,17 +1063,17 @@ describe("E2E sync", () => {
         "syncSizes": [
           370,
           193,
-          999703,
+          999630,
           40,
-          153052,
+          152715,
           40,
-          145063,
+          143898,
           40,
-          148851,
+          152220,
           40,
-          174701,
+          173999,
           40,
-          56622,
+          60882,
           20,
         ],
         "syncSteps": 14,
@@ -1052,9 +1090,9 @@ describe("E2E sync", () => {
       {
         "syncSizes": [
           24,
-          999652,
+          999841,
           57,
-          683230,
+          688396,
         ],
         "syncSteps": 4,
       }
@@ -1074,27 +1112,27 @@ describe("E2E sync", () => {
       {
         "syncSizes": [
           24,
-          159764,
+          160449,
           57,
-          163653,
+          164131,
           57,
-          155814,
+          156284,
           57,
-          162172,
+          162652,
           57,
-          163446,
+          164056,
           57,
-          155199,
+          155689,
           57,
-          158714,
+          159038,
           57,
-          142637,
+          143005,
           57,
-          149686,
+          150108,
           57,
-          168863,
+          169475,
           57,
-          114763,
+          115227,
         ],
         "syncSteps": 22,
       }
@@ -1122,8 +1160,8 @@ describe("E2E sync", () => {
           362,
           5051,
           18202,
-          851946,
-          835602,
+          854741,
+          838210,
           20,
         ],
         "syncSteps": 6,
@@ -1156,43 +1194,43 @@ describe("E2E sync", () => {
           374,
           2245,
           2259,
-          101632,
-          92019,
+          102025,
+          92407,
           2305,
           2290,
-          82830,
-          84163,
+          83116,
+          84348,
           2550,
           2269,
-          87890,
-          80007,
+          88171,
+          80235,
           2231,
           2303,
-          81395,
-          81612,
+          81587,
+          81916,
           2258,
-          70871,
-          71424,
+          71152,
+          71689,
           2291,
-          70344,
-          67392,
+          70524,
+          67638,
           2262,
-          59468,
-          64447,
+          59612,
+          64563,
           2256,
-          52092,
-          58457,
-          16780,
-          60019,
-          44602,
-          36620,
-          57503,
-          27919,
-          76195,
-          89821,
-          12717,
-          41313,
-          47313,
+          52188,
+          58617,
+          16860,
+          60131,
+          44666,
+          36668,
+          57777,
+          27964,
+          76508,
+          90143,
+          12781,
+          41393,
+          47569,
         ],
         "syncSteps": 40,
       }
@@ -1204,11 +1242,12 @@ describe("E2E sync", () => {
     const crdtMessages = testTimestampsAsc.map(
       (t): CrdtMessage => ({
         timestamp: timestampBytesToTimestamp(t),
-        change: {
+        change: DbChange.orThrow({
           table: "foo",
           id: testCreateId(),
           values: { bar: "baz" },
-        },
+          isInsert: false,
+        }),
       }),
     );
     assertNonEmptyArray(crdtMessages);

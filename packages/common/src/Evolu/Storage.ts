@@ -1,5 +1,6 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import {
+  filterArray,
   firstInArray,
   isNonEmptyReadonlyArray,
   NonEmptyReadonlyArray,
@@ -9,10 +10,12 @@ import { Brand } from "../Brand.js";
 import { concatBytes } from "../Buffer.js";
 import { decrement } from "../Number.js";
 import { RandomDep } from "../Random.js";
-import { ok, Result } from "../Result.js";
+import { err, ok, Result } from "../Result.js";
 import { sql, SqliteDep, SqliteError, SqliteValue } from "../Sqlite.js";
 import { MaybeAsync } from "../Task.js";
 import {
+  Boolean,
+  brand,
   Id,
   Int64String,
   NonNegativeInt,
@@ -20,6 +23,7 @@ import {
   PositiveInt,
   record,
   String,
+  TypeError,
 } from "../Type.js";
 import {
   BaseOwnerError,
@@ -29,6 +33,7 @@ import {
   OwnerWriteKey,
 } from "./Owner.js";
 import { orderTimestampBytes, Timestamp, TimestampBytes } from "./Timestamp.js";
+import { systemColumns } from "./Schema.js";
 
 export interface StorageConfig {
   /**
@@ -248,6 +253,38 @@ export interface CrdtMessage {
   readonly change: DbChange;
 }
 
+export const DbChangeValues = record(String, SqliteValue);
+export type DbChangeValues = typeof DbChangeValues.Type;
+
+const systemColumnsWithIdAndWithoutIsDeleted = filterArray(
+  systemColumns.concat("id"),
+  (column) => column != "isDeleted",
+);
+
+export const ValidDbChangeValues = brand(
+  "ValidDbChangeValues",
+  DbChangeValues,
+  (value) => {
+    const invalidColumns = systemColumnsWithIdAndWithoutIsDeleted.filter(
+      (key) => key in value,
+    );
+    if (invalidColumns.length > 0)
+      return err<ValidDbChangeValuesError>({
+        type: "ValidDbChangeValues",
+        value,
+        invalidColumns,
+      });
+
+    return ok(value);
+  },
+);
+export type ValidDbChangeValues = typeof ValidDbChangeValues.Type;
+
+export interface ValidDbChangeValuesError
+  extends TypeError<"ValidDbChangeValues"> {
+  readonly invalidColumns: ReadonlyArray<string>;
+}
+
 /**
  * A DbChange is a change to a table row. Together with a unique
  * {@link Timestamp}, it forms a {@link CrdtMessage}.
@@ -255,7 +292,8 @@ export interface CrdtMessage {
 export const DbChange = object({
   table: String,
   id: Id,
-  values: record(String, SqliteValue),
+  values: ValidDbChangeValues,
+  isInsert: Boolean,
 });
 export type DbChange = typeof DbChange.Type;
 

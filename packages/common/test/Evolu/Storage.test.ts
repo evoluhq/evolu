@@ -5,12 +5,14 @@ import {
   BaseSqliteStorageDep,
   createBaseSqliteStorage,
   createBaseSqliteStorageTables,
+  DbChange,
   Fingerprint,
   getTimestampByIndex,
   getTimestampInsertStrategy,
   InfiniteUpperBound,
   StorageInsertTimestampStrategy,
   timestampBytesToFingerprint,
+  ValidDbChangeValues,
 } from "../../src/Evolu/Storage.js";
 import {
   Counter,
@@ -26,7 +28,12 @@ import { createRandom } from "../../src/Random.js";
 import { getOrThrow, ok } from "../../src/Result.js";
 import { sql, SqliteDep } from "../../src/Sqlite.js";
 import { NonNegativeInt, PositiveInt } from "../../src/Type.js";
-import { testCreateSqlite, testOwner2, testOwnerIdBytes } from "../_deps.js";
+import {
+  testCreateId,
+  testCreateSqlite,
+  testOwner2,
+  testOwnerIdBytes,
+} from "../_deps.js";
 import {
   testAnotherTimestampsAsc,
   testTimestampsAsc,
@@ -480,3 +487,36 @@ test.skip(
     expect(seenHashes.size).toBe(numRows);
   },
 );
+
+test("DbChange", () => {
+  const id = testCreateId();
+
+  expect(
+    DbChange.is({
+      table: "testTable",
+      id,
+      values: { column1: "value1", column2: 123 },
+      isInsert: true,
+    }),
+  ).toBe(true);
+
+  // ValidDbChangeValues rejects system columns: createdAt, updatedAt, id
+  expect(ValidDbChangeValues.is({ createdAt: "2024-01-01T00:00:00Z" })).toBe(
+    false,
+  );
+  expect(ValidDbChangeValues.is({ updatedAt: "2024-01-01T00:00:00Z" })).toBe(
+    false,
+  );
+  expect(ValidDbChangeValues.is({ id })).toBe(false);
+
+  // ValidDbChangeValues allows isDeleted
+  expect(ValidDbChangeValues.is({ isDeleted: 1 })).toBe(true);
+
+  // ValidDbChangeValues allows valid column values
+  expect(ValidDbChangeValues.is({ column1: "string", column2: 42 })).toBe(true);
+  expect(ValidDbChangeValues.is({ data: new Uint8Array([1, 2, 3]) })).toBe(
+    true,
+  );
+  expect(ValidDbChangeValues.is({ nullable: null })).toBe(true);
+  expect(ValidDbChangeValues.is({})).toBe(true);
+});

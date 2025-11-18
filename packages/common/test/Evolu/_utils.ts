@@ -43,5 +43,10 @@ export const createTestCrdtMessage = (
     millis: Millis.orThrow(millis),
     counter: 0 as never,
   }),
-  change: DbChange.orThrow({ table: "testTable", id, values: { name } }),
+  change: DbChange.orThrow({
+    table: "testTable",
+    id,
+    values: { name },
+    isInsert: true,
+  }),
 });

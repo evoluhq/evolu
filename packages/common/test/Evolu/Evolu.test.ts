@@ -163,7 +163,7 @@ describe("createEvolu schema validation", () => {
     });
   });
 
-  test("schema with default column createdAt", async () => {
+  test("schema with system column createdAt", async () => {
     const { deps } = await testCreateEvoluDeps();
 
     const SchemaWithDefaultColumn = {
@@ -177,15 +177,15 @@ describe("createEvolu schema validation", () => {
     type ValidationResult = ValidateNoDefaultColumns<
       typeof SchemaWithDefaultColumn
     >;
-    expectTypeOf<ValidationResult>().toEqualTypeOf<'❌ Schema Error: Table "todo" uses default column name "createdAt". Default columns (createdAt, updatedAt, isDeleted) are added automatically.'>();
+    expectTypeOf<ValidationResult>().toEqualTypeOf<'❌ Schema Error: Table "todo" uses system column name "createdAt". System columns (createdAt, updatedAt, isDeleted) are added automatically.'>();
 
-    // @ts-expect-error - Schema validation should catch default column name
+    // @ts-expect-error - Schema validation should catch system column name
     createEvolu(deps)(SchemaWithDefaultColumn, {
       name: testSimpleName,
     });
   });
 
-  test("schema with default column updatedAt", async () => {
+  test("schema with system column updatedAt", async () => {
     const { deps } = await testCreateEvoluDeps();
 
     const SchemaWithDefaultColumn = {
@@ -199,15 +199,15 @@ describe("createEvolu schema validation", () => {
     type ValidationResult = ValidateNoDefaultColumns<
       typeof SchemaWithDefaultColumn
     >;
-    expectTypeOf<ValidationResult>().toEqualTypeOf<'❌ Schema Error: Table "todo" uses default column name "updatedAt". Default columns (createdAt, updatedAt, isDeleted) are added automatically.'>();
+    expectTypeOf<ValidationResult>().toEqualTypeOf<'❌ Schema Error: Table "todo" uses system column name "updatedAt". System columns (createdAt, updatedAt, isDeleted) are added automatically.'>();
 
-    // @ts-expect-error - Schema validation should catch default column name
+    // @ts-expect-error - Schema validation should catch system column name
     createEvolu(deps)(SchemaWithDefaultColumn, {
       name: testSimpleName,
     });
   });
 
-  test("schema with default column isDeleted", async () => {
+  test("schema with system column isDeleted", async () => {
     const { deps } = await testCreateEvoluDeps();
 
     const SchemaWithDefaultColumn = {
@@ -221,9 +221,9 @@ describe("createEvolu schema validation", () => {
     type ValidationResult = ValidateNoDefaultColumns<
       typeof SchemaWithDefaultColumn
     >;
-    expectTypeOf<ValidationResult>().toEqualTypeOf<'❌ Schema Error: Table "todo" uses default column name "isDeleted". Default columns (createdAt, updatedAt, isDeleted) are added automatically.'>();
+    expectTypeOf<ValidationResult>().toEqualTypeOf<'❌ Schema Error: Table "todo" uses system column name "isDeleted". System columns (createdAt, updatedAt, isDeleted) are added automatically.'>();
 
-    // @ts-expect-error - Schema validation should catch default column name
+    // @ts-expect-error - Schema validation should catch system column name
     createEvolu(deps)(SchemaWithDefaultColumn, {
       name: testSimpleName,
     });
@@ -404,10 +404,10 @@ describe("mutations", () => {
           "changes": [
             {
               "id": "1XirdqSNyyoJfY1psc1W0Q",
+              "isInsert": true,
               "ownerId": undefined,
               "table": "todo",
               "values": {
-                "createdAt": "1970-01-01T00:00:00.000Z",
                 "title": "Test Todo",
               },
             },
@@ -464,6 +464,7 @@ describe("mutations", () => {
           "changes": [
             {
               "id": "clE52X3Xyxo0jShkCjrbjg",
+              "isInsert": false,
               "ownerId": undefined,
               "table": "todo",
               "values": {
@@ -523,10 +524,10 @@ describe("mutations", () => {
           "changes": [
             {
               "id": "_6EDjBwdU3ZCo-iXpJ29DQ",
+              "isInsert": true,
               "ownerId": undefined,
               "table": "todo",
               "values": {
-                "createdAt": "1970-01-01T00:00:00.003Z",
                 "title": "Upserted Todo",
               },
             },
@@ -692,12 +693,12 @@ describe("queries", () => {
         "value": [
           {
             "categoryId": null,
-            "createdAt": "1970-01-01T00:00:00.017Z",
+            "createdAt": "1970-01-01T00:00:00.008Z",
             "id": "EXqDJoTfofrVXy_-hTIKow",
             "isCompleted": null,
             "isDeleted": null,
             "title": "Test Todo",
-            "updatedAt": "1970-01-01T00:00:00.018Z",
+            "updatedAt": "1970-01-01T00:00:00.008Z",
           },
         ],
       }
@@ -745,12 +746,12 @@ describe("queries", () => {
         "value": [
           {
             "categoryId": null,
-            "createdAt": "1970-01-01T00:00:00.019Z",
+            "createdAt": "1970-01-01T00:00:00.009Z",
             "id": "V9jl1rlzsDtroJAB4SK5Bg",
             "isCompleted": null,
             "isDeleted": null,
             "title": "Test Todo",
-            "updatedAt": "1970-01-01T00:00:00.020Z",
+            "updatedAt": "1970-01-01T00:00:00.009Z",
           },
         ],
       }
@@ -971,10 +972,10 @@ describe("createdAt behavior", () => {
           "changes": [
             {
               "id": "p-twDTGK4YVi7ZZmiCi9TA",
+              "isInsert": true,
               "ownerId": undefined,
               "table": "todo",
               "values": {
-                "createdAt": "1970-01-01T00:00:00.033Z",
                 "title": "Test Todo",
               },
             },
@@ -1010,10 +1011,10 @@ describe("createdAt behavior", () => {
           "changes": [
             {
               "id": "aVm9lRgGoF6038X2MlJ2Cw",
+              "isInsert": true,
               "ownerId": undefined,
               "table": "todo",
               "values": {
-                "createdAt": "1970-01-01T00:00:00.035Z",
                 "title": "Upserted Todo",
               },
             },
@@ -1049,6 +1050,7 @@ describe("createdAt behavior", () => {
           "changes": [
             {
               "id": "R8qs_iP8FEwYBfwzQ7o_Og",
+              "isInsert": false,
               "ownerId": undefined,
               "table": "todo",
               "values": {

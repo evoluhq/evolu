@@ -22,7 +22,6 @@ import {
   sendTimestamp,
   timestampBytesToTimestamp,
   timestampToTimestampBytes,
-  timestampToTimestampString,
 } from "../../src/Evolu/Timestamp.js";
 import { increment } from "../../src/Number.js";
 import { orderNumber } from "../../src/Order.js";
@@ -72,12 +71,6 @@ test("createInitialTimestamp", () => {
       "nodeId": "4febdfb5d0782bfa",
     }
   `);
-});
-
-test("timestampToTimestampString", () => {
-  expect(timestampToTimestampString(createTimestamp())).toMatchInlineSnapshot(
-    `"1970-01-01T00:00:00.000Z-0000-0000000000000000"`,
-  );
 });
 
 const makeMillis = (millis: number): Millis => Millis.orThrow(millis);

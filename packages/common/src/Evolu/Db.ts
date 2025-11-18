@@ -63,11 +63,11 @@ import {
 } from "./Sync.js";
 import {
   Timestamp,
+  TimestampBytes,
+  timestampBytesToTimestamp,
   TimestampConfig,
   TimestampError,
-  TimestampString,
-  timestampStringToTimestamp,
-  timestampToTimestampString,
+  timestampToTimestampBytes,
 } from "./Timestamp.js";
 
 export interface DbConfig extends ConsoleConfig, TimestampConfig {
@@ -387,7 +387,7 @@ const createDbWorkerDeps =
         // }
 
         const configResult = sqlite.exec<{
-          clock: TimestampString;
+          clock: TimestampBytes;
           appOwnerId: OwnerId;
           appOwnerEncryptionKey: OwnerEncryptionKey;
           appOwnerWriteKey: OwnerWriteKey;
@@ -415,7 +415,7 @@ const createDbWorkerDeps =
         };
 
         clock = createClock({ ...platformDeps, sqlite })(
-          timestampStringToTimestamp(config.clock),
+          timestampBytesToTimestamp(config.clock),
         );
       } else {
         appOwner =
@@ -507,7 +507,7 @@ const initializeDb =
 
       sql`
         create table evolu_config (
-          "clock" text not null,
+          "clock" blob not null,
           "appOwnerId" text not null,
           "appOwnerEncryptionKey" blob not null,
           "appOwnerWriteKey" blob not null,
@@ -527,7 +527,7 @@ const initializeDb =
           )
         values
           (
-            ${timestampToTimestampString(initialClock)},
+            ${timestampToTimestampBytes(initialClock)},
             ${initialAppOwner.id},
             ${initialAppOwner.encryptionKey},
             ${initialAppOwner.writeKey},

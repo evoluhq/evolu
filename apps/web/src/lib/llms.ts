@@ -68,7 +68,7 @@ export const excludePaths = [
   "comparison",
   "conventions",
   "dependency-injection",
-  "evolu-relay",
+  "relay",
   "faq",
   // Add other paths to exclude as needed
 ];

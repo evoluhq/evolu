@@ -1,4 +1,6 @@
 import * as Kysely from "kysely";
+import { assert } from "../Assert.js";
+import { createEqArrayLike, eqString } from "../Eq.js";
 import { mapObject, objectToEntries, ReadonlyRecord } from "../Object.js";
 import { ok, Result } from "../Result.js";
 import {
@@ -14,6 +16,7 @@ import {
 import {
   AnyType,
   array,
+  createIdFromString,
   DateIso,
   IdBytes,
   InferErrors,
@@ -40,7 +43,7 @@ import { Simplify } from "../Types.js";
 import { AppOwner, OwnerId } from "./Owner.js";
 import { Query, Row } from "./Query.js";
 import { CrdtMessage, DbChange } from "./Storage.js";
-import { TimestampBytes } from "./Timestamp.js";
+import { Timestamp, TimestampBytes } from "./Timestamp.js";
 
 /**
  * Defines the schema of an Evolu database.
@@ -92,7 +95,7 @@ export type EvoluSchema = ReadonlyRecord<
  *
  * 1. All tables must have an 'id' column
  * 2. The 'id' column must be a branded ID type (created with id() function)
- * 3. Tables cannot use default column names (createdAt, updatedAt, isDeleted)
+ * 3. Tables cannot use system column names (createdAt, updatedAt, isDeleted)
  * 4. All column types must be compatible with SQLite (extend SqliteValue)
  */
 export type ValidateSchema<S extends EvoluSchema> =
@@ -132,7 +135,7 @@ export type ValidateNoDefaultColumns<S extends EvoluSchema> =
       ? keyof S[TableName] extends infer ColumnName
         ? ColumnName extends keyof S[TableName]
           ? ColumnName extends "createdAt" | "updatedAt" | "isDeleted"
-            ? SchemaValidationError<`Table "${TableName & string}" uses default column name "${ColumnName & string}". Default columns (createdAt, updatedAt, isDeleted) are added automatically.`>
+            ? SchemaValidationError<`Table "${TableName & string}" uses system column name "${ColumnName & string}". System columns (createdAt, updatedAt, isDeleted) are added automatically.`>
             : never
           : never
         : never
@@ -195,7 +198,7 @@ export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
               | "updatedAt"
               ? InferType<S[Table][Column]>
               : InferType<S[Table][Column]> | null;
-          } & DefaultColumns;
+          } & SystemColumns;
         } & {
           readonly evolu_history: {
             readonly timestamp: TimestampBytes;
@@ -213,21 +216,30 @@ export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
 ) => Query<Simplify<R>>;
 
 /**
- * Default columns automatically added to all tables.
+ * System columns that are implicitly defined by Evolu.
  *
- * - `createdAt`: Set by Evolu when `insert` is called, or can be custom with
- *   `upsert`.
- * - `updatedAt`: Always set by Evolu, derived from {@link CrdtMessage} timestamp.
- *   If you defer sync to avoid leaking time activity, use a custom column to
- *   preserve real update time.
- * - `isDeleted`: Soft delete flag.
+ * - `createdAt`: Set by Evolu on row creation, derived from {@link Timestamp}.
+ * - `updatedAt`: Set by Evolu on every row change, derived from {@link Timestamp}.
+ * - `isDeleted`: Soft delete flag created by Evolu and used by the developer to
+ *   mark rows as deleted.
  */
-export const DefaultColumns = object({
+export const SystemColumns = object({
   createdAt: DateIso,
   updatedAt: DateIso,
   isDeleted: nullOr(SqliteBoolean),
+  // TODO: ownerId
 });
-export type DefaultColumns = typeof DefaultColumns.Type;
+export type SystemColumns = typeof SystemColumns.Type;
+
+export const systemColumns = ["createdAt", "updatedAt", "isDeleted"];
+
+assert(
+  createEqArrayLike(eqString)(
+    objectToEntries(SystemColumns.props).map(([key]) => key),
+    systemColumns,
+  ),
+  "SystemColumns keys must match systemColumnsKeys",
+);
 
 export type MutationKind = "insert" | "update" | "upsert";
 
@@ -311,7 +323,8 @@ export interface MutationChange extends DbChange {
 
 /**
  * Type Factory to create insertable {@link Type}. It makes nullable Types
- * optional, omits Id, and ensures the {@link maxMutationSize}.
+ * optional (so they are not required), omits Id, and ensures the
+ * {@link maxMutationSize}.
  *
  * ### Example
  *
@@ -341,7 +354,7 @@ export type Insertable<Props extends Record<string, AnyType>> = InferInput<
 
 /**
  * Type Factory to create updateable {@link Type}. It makes everything except for
- * the `id` column partial (i.e. optional) and ensures the
+ * the `id` column optional (so they are not required) and ensures the
  * {@link maxMutationSize}.
  *
  * ### Example
@@ -377,9 +390,15 @@ export type Updateable<Props extends Record<string, AnyType>> = InferInput<
 >;
 
 /**
- * Type Factory to create upsertable Type. It makes nullable Types optional,
- * includes optional default columns (createdAt, isDeleted), and ensures the
- * {@link maxMutationSize}.
+ * Type Factory to create an upsertable Type. It makes nullable Types optional
+ * (so they are not required) and ensures the {@link maxMutationSize}.
+ *
+ * Upsert is like insert, except it requires an ID. It's useful for inserting
+ * rows with external ID via {@link createIdFromString}.
+ *
+ * Note that it's not possible to upsert a row with `createdAt` nor `updatedAt`,
+ * because they are derived from {@link CrdtMessage} timestamp. For external
+ * createdAt, use a different column.
  *
  * ### Example
  *
@@ -389,7 +408,6 @@ export type Updateable<Props extends Record<string, AnyType>> = InferInput<
  * const todo = UpsertableTodo.from({
  *   id,
  *   title,
- *   createdAt: "2023-01-01T00:00:00.000Z",
  * });
  * if (!todo.ok) return; // handle errors
  * ```
@@ -399,7 +417,6 @@ export const upsertable = <Props extends Record<string, AnyType>>(
 ): ValidMutationSize<UpsertableProps<Props>> => {
   const propsWithDefaults = {
     ...props,
-    createdAt: optional(DateIso),
     isDeleted: optional(SqliteBoolean),
   };
   return validMutationSize(nullableToOptional(propsWithDefaults));
@@ -408,7 +425,6 @@ export const upsertable = <Props extends Record<string, AnyType>>(
 export type UpsertableProps<Props extends Record<string, AnyType>> =
   NullableToOptionalProps<
     Props & {
-      createdAt: OptionalType<typeof DateIso>;
       isDeleted: OptionalType<typeof SqliteBoolean>;
     }
   >;
@@ -535,7 +551,7 @@ export const ensureDbSchema =
       );
       if (!currentTable) {
         queries.push({
-          sql: createTableWithDefaultColumns(newTable.name, newTable.columns),
+          sql: createAppTableWithDefaultColumns(newTable),
           parameters: [],
         });
       } else {
@@ -583,16 +599,12 @@ export const ensureDbSchema =
     return ok();
   };
 
-const createTableWithDefaultColumns = (
-  tableName: string,
-  columns: ReadonlyArray<string>,
-): SafeSql =>
-  `
-    create table ${sql.identifier(tableName).sql} (
+const createAppTableWithDefaultColumns = (table: DbTable): SafeSql => {
+  return `
+    create table ${sql.identifier(table.name).sql} (
       "id" text primary key,
-      ${columns
-        // Add default columns.
-        .concat(["createdAt", "updatedAt", "isDeleted"])
+      ${table.columns
+        .concat(systemColumns)
         .filter((c) => c !== "id")
         // "A column with affinity BLOB does not prefer one storage class over another
         // and no attempt is made to coerce data from one storage class into another."
@@ -601,7 +613,7 @@ const createTableWithDefaultColumns = (
         .join(", ")}
     );
   ` as SafeSql;
-
+};
 // https://kysely.dev/docs/recipes/splitting-query-building-and-execution
 export const kysely = new Kysely.Kysely({
   dialect: {

@@ -171,6 +171,8 @@
  *   `applyProtocolMessage` function with conditional arguments to reduce code
  *   duplication.
  * - ProtocolQuotaError should return storedBytes and actual quota.
+ * - Replace try-catch with Result + new Error (to preserve stacktraces). Measure
+ *   Result overhead, it should be super small.
  */
 
 import { Packr } from "msgpackr";
@@ -186,8 +188,8 @@ import {
   utf8ToBytes,
 } from "../Buffer.js";
 import {
+  createPadmePadding,
   EncryptionKey,
-  padmePaddingLength,
   RandomBytesDep,
   SymmetricCryptoDecryptError,
   SymmetricCryptoDep,
@@ -436,7 +438,7 @@ export interface ProtocolSyncError extends BaseOwnerError {
 export interface ProtocolTimestampMismatchError {
   readonly type: "ProtocolTimestampMismatchError";
   readonly expected: Timestamp;
-  readonly embedded: Timestamp;
+  readonly timestamp: Timestamp;
 }
 
 /**
@@ -909,8 +911,6 @@ export const applyProtocolMessageAsClient =
       | ProtocolQuotaError
     >
   > => {
-    // try-catch instead of Result for performance and stacktraces
-    // DEV: Measure it again, I think we should use Result with new Error.
     try {
       const input = createBuffer(inputMessage);
       const [requestedVersion, ownerId] = decodeVersionAndOwner(input);
@@ -1057,8 +1057,6 @@ export const applyProtocolMessageAsRelay =
   ): Promise<
     Result<ApplyProtocolMessageAsRelayResult, ProtocolInvalidDataError>
   > => {
-    // try-catch instead of Result for performance and stacktraces
-    // DEV: Measure it again, I think we should use Result with new Error.
     try {
       const input = createBuffer(inputMessage);
       const [requestedVersion, ownerId] = decodeVersionAndOwner(input);
@@ -1665,6 +1663,52 @@ export const decodeNumber = (buffer: Buffer): number => {
 };
 
 /**
+ * Encodes an array of boolean flags into a single byte.
+ *
+ * Each element in the array corresponds to a bit (0-7). Array can have 0-8
+ * elements.
+ *
+ * ### Example
+ *
+ * ```ts
+ * encodeFlags(buffer, [true, false, true]); // Encodes bits 0, 1, 2
+ * ```
+ */
+export const encodeFlags = (
+  buffer: Buffer,
+  flags: ReadonlyArray<boolean>,
+): void => {
+  let byte = 0;
+  for (let i = 0; i < flags.length && i < 8; i++) {
+    if (flags[i]) {
+      byte |= 1 << i;
+    }
+  }
+  buffer.extend([byte]);
+};
+
+/**
+ * Decodes a byte into an array of boolean flags.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const flags = decodeFlags(buffer, 3); // Decode 3 flags
+ * ```
+ */
+export const decodeFlags = (
+  buffer: Buffer,
+  count: PositiveInt,
+): ReadonlyArray<boolean> => {
+  const byte = buffer.shift();
+  const flags: Array<boolean> = [];
+  for (let i = 0; i < count && i < 8; i++) {
+    flags.push((byte & (1 << i)) !== 0);
+  }
+  return flags;
+};
+
+/**
  * Encodes and encrypts a {@link DbChange} using the provided owner's encryption
  * key. Returns an encrypted binary representation as {@link EncryptedDbChange}.
  *
@@ -1675,36 +1719,29 @@ export const decodeNumber = (buffer: Buffer): number => {
 export const encodeAndEncryptDbChange =
   (deps: SymmetricCryptoDep) =>
   (message: CrdtMessage, key: EncryptionKey): EncryptedDbChange => {
-    const change = message.change;
     const buffer = createBuffer();
 
-    // Encode protocol version first for backward compatibility
     encodeNonNegativeInt(buffer, protocolVersion);
 
-    // Encode the timestamp (after version) for tamper verification
-    const timestampBytes = timestampToTimestampBytes(message.timestamp);
-    buffer.extend(timestampBytes);
+    // Encode the timestamp to prevent tampering (e.g., a malicious relay
+    // assigning this EncryptedDbChange to a different EncryptedCrdtMessage)
+    buffer.extend(timestampToTimestampBytes(message.timestamp));
 
-    encodeString(buffer, change.table);
+    encodeFlags(buffer, [message.change.isInsert]);
 
-    buffer.extend(idToIdBytes(change.id));
+    encodeString(buffer, message.change.table);
+    buffer.extend(idToIdBytes(message.change.id));
 
-    const entries = objectToEntries(change.values).map(
-      ([column, value]): [string, SqliteValue] => {
-        return [column, value];
-      },
-    );
+    const entries = objectToEntries(message.change.values);
 
     encodeLength(buffer, entries);
-
     for (const [column, value] of entries) {
       encodeString(buffer, column);
       encodeSqliteValue(buffer, value);
     }
 
-    const paddingLength = padmePaddingLength(buffer.getLength());
-    // Add zero bytes as PADMÉ padding - these will be ignored during decoding.
-    buffer.extend(new Uint8Array(paddingLength));
+    // Add PADMÉ padding (ignored during decoding)
+    buffer.extend(createPadmePadding(buffer.getLength()));
 
     const { nonce, ciphertext } = deps.symmetricCrypto.encrypt(
       buffer.unwrap(),
@@ -1735,13 +1772,11 @@ export const decryptAndDecodeDbChange =
     | ProtocolInvalidDataError
     | ProtocolTimestampMismatchError
   > => {
-    // try-catch instead of Result for performance and stacktraces
     try {
       const buffer = createBuffer(message.change);
-      const nonce = buffer.shiftN(deps.symmetricCrypto.nonceLength);
 
-      const ciphertextLength = decodeLength(buffer);
-      const ciphertext = buffer.shiftN(ciphertextLength);
+      const nonce = buffer.shiftN(deps.symmetricCrypto.nonceLength);
+      const ciphertext = buffer.shiftN(decodeLength(buffer));
 
       const plaintextBytes = deps.symmetricCrypto.decrypt(
         ciphertext,
@@ -1753,23 +1788,23 @@ export const decryptAndDecodeDbChange =
       buffer.reset();
       buffer.extend(plaintextBytes.value);
 
-      // Decode version (for future compatibility, no validation needed for now)
+      // Decode version (for future compatibility, not need yet)
       decodeNonNegativeInt(buffer);
 
-      // Decode and verify the embedded timestamp
-      const embeddedTimestampBytes = buffer.shiftN(timestampBytesLength);
-      const embeddedTimestamp = timestampBytesToTimestamp(
-        embeddedTimestampBytes as TimestampBytes,
+      const timestamp = timestampBytesToTimestamp(
+        buffer.shiftN(timestampBytesLength) as TimestampBytes,
       );
 
-      // Verify timestamp integrity
-      if (!eqTimestamp(embeddedTimestamp, message.timestamp)) {
+      if (!eqTimestamp(timestamp, message.timestamp)) {
         return err<ProtocolTimestampMismatchError>({
           type: "ProtocolTimestampMismatchError",
           expected: message.timestamp,
-          embedded: embeddedTimestamp,
+          timestamp,
         });
       }
+
+      const flags = decodeFlags(buffer, PositiveInt.orThrow(1));
+      const isInsert = flags[0];
 
       const table = decodeString(buffer);
       const id = decodeId(buffer);
@@ -1783,7 +1818,7 @@ export const decryptAndDecodeDbChange =
         values[column] = value;
       }
 
-      const dbChange = { table, id, values };
+      const dbChange = DbChange.orThrow({ table, id, values, isInsert });
 
       return ok(dbChange);
     } catch (error) {
