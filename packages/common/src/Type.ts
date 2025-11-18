@@ -212,6 +212,7 @@ import { isPlainObject } from "./Object.js";
 import { hasNodeBuffer } from "./Platform.js";
 import { err, getOrNull, getOrThrow, ok, Result, trySync } from "./Result.js";
 import { safelyStringifyUnknownValue } from "./String.js";
+import type { TimeDep } from "./Time.js";
 import type { Literal, Simplify, WidenLiteral } from "./Types.js";
 import { IntentionalNever } from "./Types.js";
 
@@ -1589,41 +1590,27 @@ export const formatSimplePasswordError = (
   );
 
 /**
- * Globally unique identifier.
+ * Evolu Id: 16 bytes encoded as a 22‑character Base64Url string.
  *
- * **Evolu Id** is 16 random bytes from a cryptographically secure random
- * generator, encoded as 22-character Base64Url string. This provides strong
- * collision resistance for distributed ID generation.
+ * There are three ways to create an Evolu Id:
  *
- * ### Design Rationale
+ * - {@link createId} – default cryptographically secure random bytes
+ *   (privacy‑preserving)
+ * - {@link createIdFromString} – deterministic: first 16 bytes of SHA‑256 of a
+ *   string
+ * - {@link createIdAsUuidv7} – optional: embeds timestamp bits (UUID v7 layout)
  *
- * Why Evolu Id over alternatives:
+ * Privacy: the default random Id does not leak creation time and is safe to
+ * share or log. The UUID v7 variant leaks creation time anywhere the Id is
+ * copied (logs, URLs, exports); only use it when you explicitly want insertion
+ * locality for very large write‑heavy tables and accept timestamp exposure.
  *
- * - **NanoID**: No standard binary serialization format, and uses only ~126 bits
- *   of entropy (21 characters from 64-symbol alphabet) compared to Evolu Id's
- *   128 bits.
- * - **UUID (v4)**: String format is 36 characters (with hyphens) compared to
- *   Evolu Id's 22 characters. While UUIDs can be stored as 16 bytes, their
- *   standard string representation is verbose.
- * - **UUID v7**: Includes timestamp in the ID, which leaks information about when
- *   data was created. This is a privacy concern for local-first applications
- *   where creation time must remain private.
+ * ### Future
  *
- * Evolu Id provides 128 bits of entropy, compact string representation (22
- * characters), standard and native string serialization (Base64Url), and no
- * privacy leaks.
+ * A possible hybrid masked‑time approach (`timestamp ^ H(cluster_id, timestamp
  *
- * ### Future Consideration
- *
- * For database-heavy workloads where insert performance is critical, a hybrid
- * approach could be considered: `timestamp ^ H(cluster_id, timestamp >> N)`
- * where H is a keyed hash function and N is a configurable parameter. This
- * would maintain spatial locality for database caches (improving insert
- * performance by an order of magnitude) while adding entropy to prevent
- * timestamp leakage and correlation across systems. The parameter N would allow
- * trading off cache locality (larger N = better locality) versus entropy
- * distribution. See https://brooker.co.za/blog/2025/10/22/uuidv7.html for
- * details on this approach.
+ * > > N)`) could provide locality without exposing raw creation time. See
+ * > > https://brooker.co.za/blog/2025/10/22/uuidv7.html
  *
  * @category String
  */
@@ -1641,26 +1628,25 @@ export const formatIdError = createTypeErrorFormatter<IdError>(
 );
 
 /**
- * Creates an {@link Id}.
+ * Creates a random {@link Id}. This is the recommended default.
+ *
+ * Use {@link createIdFromString} for deterministic mapping of external IDs or
+ * {@link createIdAsUuidv7} when you accept timestamp leakage for index
+ * locality.
  *
  * ### Example
  *
  * ```ts
- * // string & Brand<"Id">
  * const id = createId(deps);
- *
- * // string & Brand<"Id"> & Brand<"Todo">
  * const todoId = createId<"Todo">(deps);
  * ```
  */
 export const createId = <B extends string = never>(
   deps: RandomBytesDep,
-): [B] extends [never] ? Id : Id & Brand<B> =>
-  uint8ArrayToBase64Url(deps.randomBytes.create(16)) as unknown as [B] extends [
-    never,
-  ]
-    ? Id
-    : Id & Brand<B>;
+): [B] extends [never] ? Id : Id & Brand<B> => {
+  const id = uint8ArrayToBase64Url(deps.randomBytes.create(16));
+  return id as unknown as [B] extends [never] ? Id : Id & Brand<B>;
+};
 
 /**
  * Creates an {@link Id} from a string using SHA-256.
@@ -1702,6 +1688,42 @@ export const createIdFromString = <B extends string = never>(
   const id = idBytesToId(hash.slice(0, 16) as IdBytes);
 
   return id as [B] extends [never] ? Id : Id & Brand<B>;
+};
+
+/**
+ * Creates an {@link Id} embedding timestamp bits (UUID v7 layout) before
+ * Base64Url encoding.
+ *
+ * Tradeoff: better insertion locality / index performance for huge datasets vs
+ * leaking creation time everywhere the Id appears. Evolu uses {@link createId}
+ * by default to avoid activity leakage; choose this only if you explicitly
+ * accept timestamp exposure.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const id = createIdAsUuidv7({ randomBytes, time });
+ * const todoId = createIdAsUuidv7<"Todo">({ randomBytes, time });
+ * ```
+ */
+export const createIdAsUuidv7 = <B extends string = never>(
+  deps: RandomBytesDep & TimeDep,
+): [B] extends [never] ? Id : Id & Brand<B> => {
+  const id = deps.randomBytes.create(16);
+
+  const timestamp = globalThis.BigInt(deps.time.now());
+
+  id[0] = globalThis.Number((timestamp >> 40n) & 0xffn);
+  id[1] = globalThis.Number((timestamp >> 32n) & 0xffn);
+  id[2] = globalThis.Number((timestamp >> 24n) & 0xffn);
+  id[3] = globalThis.Number((timestamp >> 16n) & 0xffn);
+  id[4] = globalThis.Number((timestamp >> 8n) & 0xffn);
+  id[5] = globalThis.Number(timestamp & 0xffn);
+
+  id[6] = (id[6] & 0x0f) | 0x70;
+  id[8] = (id[8] & 0x3f) | 0x80;
+
+  return id as unknown as [B] extends [never] ? Id : Id & Brand<B>;
 };
 
 /**
