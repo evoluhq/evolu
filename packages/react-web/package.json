@@ -49,7 +49,7 @@
     "vitest": "^4.0.4"
   },
   "peerDependencies": {
-    "@evolu/common": "^6.0.1-preview.33",
+    "@evolu/common": "^6.0.1-preview.34",
     "@evolu/web": "^1.0.1-preview.7",
     "react": ">=19",
     "react-dom": ">=19"
