@@ -83,10 +83,6 @@ const Schema = {
     id: ProjectId,
     name: NonEmptyTrimmedString100,
     fooJson: FooJson,
-    // TODO:
-    // ownerId: nullOr(OwnerId),
-    // ownerEncryptionKey: nullOr(OwnerEncryptionKey),
-    // ownerWriteKey: nullOr(OwnerWriteKey),
   },
   todo: {
     id: TodoId,
