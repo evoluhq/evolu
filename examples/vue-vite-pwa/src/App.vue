@@ -57,7 +57,7 @@ type DatabaseSchema = typeof DatabaseSchema;
 
 const evolu = createEvolu(evoluWebDeps)(DatabaseSchema, {
   reloadUrl: "/",
-  name: getOrThrow(SimpleName.from("evolu-vue-example")),
+  name: SimpleName.orThrow("evolu-minimal-example-181125"),
   ...(isDev && {
     transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
   }),
@@ -70,13 +70,13 @@ const evolu = createEvolu(evoluWebDeps)(DatabaseSchema, {
 provideEvolu(evolu);
 
 const todosWithCategories = evolu.createQuery((db) =>
-    db
-      .selectFrom("todo")
-      .select(["id", "title", "isCompleted", "categoryId", "priority"])
-      .where("isDeleted", "is not", 1)
-      .where("title", "is not", null)
-      .$narrowType<{ title: kysely.NotNull }>()
-      .orderBy("createdAt"),
+  db
+    .selectFrom("todo")
+    .select(["id", "title", "isCompleted", "categoryId", "priority"])
+    .where("isDeleted", "is not", 1)
+    .where("title", "is not", null)
+    .$narrowType<{ title: kysely.NotNull }>()
+    .orderBy("createdAt"),
 );
 
 const todoCategories = evolu.createQuery((db) =>
@@ -227,7 +227,11 @@ function onPriorityChange(event: Event, id: TodoId) {
               :value="todo.categoryId"
               @change="onCategoryChange($event, todo.id)"
             >
-              <option v-for="category in allCategories" :value="category.id" :key="category.id">
+              <option
+                v-for="category in allCategories"
+                :value="category.id"
+                :key="category.id"
+              >
                 {{ category.name }}
               </option>
             </select>
@@ -237,7 +241,11 @@ function onPriorityChange(event: Event, id: TodoId) {
               :value="todo.priority"
               @change="onPriorityChange($event, todo.id)"
             >
-              <option v-for="priority in PriorityList" :value="priority" :key="priority">
+              <option
+                v-for="priority in PriorityList"
+                :value="priority"
+                :key="priority"
+              >
                 {{ priority }}
               </option>
             </select>
