@@ -25,14 +25,22 @@ export type ReadonlyRecord<K extends keyof any, V> = Readonly<Record<K, V>>;
 type StringKeyOf<T> = Extract<keyof T, string>;
 
 /**
- * Converts a record to entries, preserving branded string key types (e.g.,
- * `type Id = 'id' & string`) via `StringKeyOf<T>`, unlike `Object.entries`
- * which widens keys to `string`.
+ * Like `Object.entries` but preserves branded keys.
+ *
+ * ### Example
+ *
+ * ```ts
+ * type UserId = string & { readonly __brand: "UserId" };
+ * const users: Record<UserId, string> = {};
+ * const entries = objectToEntries(users); // [UserId, string][]
+ * ```
  */
 export const objectToEntries = <T extends Record<string, any>>(
   record: T,
-): Array<[StringKeyOf<T>, T[StringKeyOf<T>]]> =>
-  Object.entries(record) as Array<[StringKeyOf<T>, T[StringKeyOf<T>]]>;
+): ReadonlyArray<[StringKeyOf<T>, T[StringKeyOf<T>]]> =>
+  Object.entries(record) as Array<
+    [StringKeyOf<T>, T[StringKeyOf<T>]]
+  > as ReadonlyArray<[StringKeyOf<T>, T[StringKeyOf<T>]]>;
 
 /**
  * Maps a `ReadonlyRecord<K, V>` to a new `ReadonlyRecord<K, U>`, preserving

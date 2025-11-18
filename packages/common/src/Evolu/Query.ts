@@ -1,3 +1,4 @@
+import { Brand } from "../Brand.js";
 import { bytesToHex, hexToBytes } from "../Buffer.js";
 import { objectToEntries } from "../Object.js";
 import {
@@ -9,7 +10,6 @@ import {
 } from "../Sqlite.js";
 import { Store, StoreSubscribe } from "../Store.js";
 import { Simplify } from "../Types.js";
-import { Brand } from "../Brand.js";
 
 /**
  * A type-safe SQL query.
@@ -52,7 +52,7 @@ export const serializeQuery = <R extends Row>(query: SqliteQuery): Query<R> => {
   );
 
   const options = query.options
-    ? objectToEntries(query.options).sort(([a], [b]) => a.localeCompare(b))
+    ? objectToEntries(query.options).toSorted(([a], [b]) => a.localeCompare(b))
     : [];
 
   return JSON.stringify([query.sql, params, options]) as Query<R>;
