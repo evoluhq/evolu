@@ -414,10 +414,7 @@ const HomeTabProjectSectionTodoItem: FC<{
       .where("table", "==", "todo")
       .where("id", "==", idToIdBytes(id))
       .where("column", "==", "title")
-      // TODO: tohle je spatne, data z novejch muzou bejt cokoliv
-      // TODO: nebo jinak, pokud do historie pustim jen co znam, tak to muze bejt
-      // imho typove
-      // value isn't typed; this is how we narrow its type
+      // The value isn't typed; this is how we can cast it.
       .$narrowType<{ value: (typeof Schema)["todo"]["title"]["Type"] }>()
       .orderBy("timestamp", "desc"),
   );
