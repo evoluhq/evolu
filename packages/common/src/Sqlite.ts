@@ -511,10 +511,14 @@ const drawSqliteQueryPlan = (rows: Array<SqliteQueryPlanRow>): string =>
  * SQLite represents boolean values using `0` (false) and `1` (true) instead of
  * a dedicated boolean type.
  *
- * Use {@link sqliteTrue} and {@link sqliteFalse} constants for better
- * readability.
- *
  * See: https://www.sqlite.org/quirks.html#no_separate_boolean_datatype
+ *
+ * ### Tips
+ *
+ * - Use {@link sqliteTrue} and {@link sqliteFalse} constants for better
+ *   readability.
+ * - Use {@link booleanToSqliteBoolean} and {@link sqliteBooleanToBoolean} for
+ *   converting between JavaScript booleans and SQLite boolean values.
  */
 export const SqliteBoolean = union(0, 1);
 export type SqliteBoolean = typeof SqliteBoolean.Type;
@@ -532,3 +536,29 @@ export const sqliteTrue = 1;
  * See {@link SqliteBoolean}.
  */
 export const sqliteFalse = 0;
+
+/**
+ * Converts a JavaScript boolean to a {@link SqliteBoolean}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const isActive = true;
+ * const sqlValue = booleanToSqliteBoolean(isActive); // Returns 1
+ * ```
+ */
+export const booleanToSqliteBoolean = (value: boolean): SqliteBoolean =>
+  value ? sqliteTrue : sqliteFalse;
+
+/**
+ * Converts a {@link SqliteBoolean} to a JavaScript boolean.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const sqlValue: SqliteBoolean = 1;
+ * const bool = sqliteBooleanToBoolean(sqlValue); // Returns true
+ * ```
+ */
+export const sqliteBooleanToBoolean = (value: SqliteBoolean): boolean =>
+  value === sqliteTrue;
