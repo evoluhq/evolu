@@ -1,5 +1,22 @@
 # @evolu/common
 
+## 6.0.1-preview.35
+
+### Patch Changes
+
+- 47386b8: Add booleanToSqliteBoolean and sqliteBooleanToBoolean helpers
+- 4a960c7: Add optional `createIdAsUuidv7` helper for timestamp‑embedded IDs (UUID v7 layout) while keeping `createId` as the privacy‑preserving default.
+
+  Simplified Id documentation to clearly present the three creation paths:
+  - `createId` (random, recommended)
+  - `createIdFromString` (deterministic mapping via SHA‑256 first 16 bytes)
+  - `createIdAsUuidv7` (timestamp bits for index locality; leaks creation time)
+
+- 0777577: Add ownerId system column and strict app tables
+  - Add `ownerId` as a system column to all application tables and include it in the primary key.
+  - Create app tables as strict, without rowid, and using `any` affinity for user columns to preserve data exactly as stored.
+  - Make soft deletes explicit in the sync protocol so `isDeleted` changes are propagated and replayed consistently across devices.
+
 ## 6.0.1-preview.34
 
 ### Patch Changes
