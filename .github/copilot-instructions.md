@@ -257,6 +257,10 @@ const deps: TimeDep & Partial<LoggerDep> = {
 - Never rely on global state
 - Use assertions in tests for conditions that should never fail
 
+## Monorepo TypeScript Issues
+
+**ESLint "Unsafe..." errors after changes** - In a monorepo, ESLint may show "Unsafe call", "Unsafe member access", or "Unsafe assignment" errors after modifying packages that other packages depend on. These errors should be ignored. Solution: use VS Code's "Developer: Reload Window" command (Cmd+Shift+P)
+
 ```ts
 import { testCreateId, testTime, testOwner } from "../_deps.js";
 
