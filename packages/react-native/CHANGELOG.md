@@ -1,5 +1,99 @@
 # @evolu/react-native
 
+## 13.0.0
+
+### Major Changes
+
+- dd3c865: - Added expo-secure-store backend for LocalAuth
+  - Added LocalAuth to Expo example app
+  - Added native EvoluAvatar to react-native package
+  - Added experimental jsdoc note to LocalAuth
+  - Moved LocalAuth out of expo deps to it's own export
+- a957aa0: Refactor React Native package structure and remove react-native-quick-base64 dependency
+
+  **Breaking Changes:**
+  - Package exports reorganized: use `/expo-sqlite`, `/expo-op-sqlite`, or `/bare-op-sqlite` instead of `/expo-sqlite` and `/op-sqlite`
+  - Updated quickstart documentation to reflect new import paths
+
+  **@evolu/react-native:**
+  - Reorganized package structure with exports in dedicated `/exports` directory
+  - Move SQLite driver implementations into `/sqlite-drivers` directory
+  - Created shared dependency initialization in `shared.ts`
+  - Removed `react-native-quick-base64` dependency (no longer needed)
+  - Added `createExpoDeps.ts` for Expo-specific configuration including SecureStore integration
+  - Updated `package.json` exports to include three entry points:
+    - `/expo-sqlite` - for Expo projects using expo-sqlite
+    - `/expo-op-sqlite` - for Expo projects using @op-engineering/op-sqlite
+    - `/bare-op-sqlite` - for bare React Native projects using @op-engineering/op-sqlite
+  - Reorganized imports following project guidelines (named imports, top-down organization)
+
+  **@evolu/common:**
+  - Added `Platform.ts` module with platform detection utilities
+  - Refactored `LocalAuth.ts` constants to follow naming conventions:
+    - `AUTH_NAMESPACE` → `localAuth_Namespace`
+    - `AUTH_DEFAULT_OPTIONS` → `localAuthDefaultOptions`
+    - `AUTH_METAKEY_LAST_OWNER` → `localAuthMetakeyLastOwner` (private)
+    - `AUTH_METAKEY_OWNER_NAMES` → `localAuthMetakeyOwnerNames` (private)
+
+  **Documentation:**
+  - Updated quickstart guide to remove `react-native-quick-base64` from installation instructions
+  - Simplified Expo setup warnings and instructions
+  - Updated React Native import example to use `/bare-op-sqlite` path
+
+- f4a8866: Add owner usage tracking and storage improvements
+
+  ### Breaking Changes
+  - Renamed `TransportConfig` to `OwnerTransport` and `WebSocketTransportConfig` to `OwnerWebSocketTransport` for clearer naming
+  - Renamed `SqliteStorageBase` to `BaseSqliteStorage` and `createSqliteStorageBase` to `createBaseSqliteStorage`
+  - Extracted storage table creation into separate functions: `createBaseSqliteStorageTables` and `createRelayStorageTables` to support serverless deployments where table setup must be separate from storage operations
+  - Removed `assertNoErrorInCatch` - it was unnecessary
+
+  ### Features
+  - **Owner usage tracking** (in progress): Added `evolu_usage` table and `OwnerUsage` interface to track data consumption metrics per owner (stored bytes, received bytes, sent bytes, first/last timestamps). Table structure is in place but not yet fully implemented
+  - **Timestamp privacy documentation**: Added privacy considerations explaining that timestamps are metadata visible to relays, with guidance on implementing local write queues for maximum privacy
+  - **React Native polyfills**: Added polyfills for `AbortSignal.any()` and `AbortSignal.timeout()` to support Task cancellation on React Native platforms that don't yet implement these APIs
+
+  ### Performance
+  - **isSqlMutation optimization**: Added LRU cache (10,000 entries) to `isSqlMutation` function, restoring Timestamp insert benchmark from 34k back to 57k inserts/sec.
+
+### Patch Changes
+
+- Updated dependencies [36af10c]
+- Updated dependencies [6452d57]
+- Updated dependencies [eec5d8e]
+- Updated dependencies [dd3c865]
+- Updated dependencies [8f0c0d3]
+- Updated dependencies [eec5d8e]
+- Updated dependencies [6759c31]
+- Updated dependencies [2f87ac8]
+- Updated dependencies [6195115]
+- Updated dependencies [eec5d8e]
+- Updated dependencies [47386b8]
+- Updated dependencies [202eaa3]
+- Updated dependencies [f4a8866]
+- Updated dependencies [eec5d8e]
+- Updated dependencies [13b688f]
+- Updated dependencies [a1dfb7a]
+- Updated dependencies [45c8ca9]
+- Updated dependencies [4a960c7]
+- Updated dependencies [6279aea]
+- Updated dependencies [02e8aa0]
+- Updated dependencies [f5e4232]
+- Updated dependencies [0911302]
+- Updated dependencies [31d0d21]
+- Updated dependencies [0777577]
+- Updated dependencies [29886ff]
+- Updated dependencies [eec5d8e]
+- Updated dependencies [de37bd1]
+- Updated dependencies [1d8c439]
+- Updated dependencies [3daa221]
+- Updated dependencies [6b4a490]
+- Updated dependencies [eed43d5]
+- Updated dependencies [05fe5d5]
+- Updated dependencies [4a82c06]
+  - @evolu/common@7.0.0
+  - @evolu/react@10.0.0
+
 ## 12.0.1-preview.9
 
 ### Patch Changes

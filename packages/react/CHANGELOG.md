@@ -1,5 +1,82 @@
 # @evolu/react
 
+## 10.0.0
+
+### Major Changes
+
+- eec5d8e: Replace `subscribeAppOwner` and `getAppOwner` with `appOwner` promise
+
+  The app owner is now accessed via a promise (`evolu.appOwner`) instead of subscription-based methods. This simplifies the API and aligns with modern async patterns.
+
+  **Breaking changes:**
+  - Removed `evolu.subscribeAppOwner()` and `evolu.getAppOwner()`
+  - Removed `useAppOwner()` hook from `@evolu/react`
+  - Added `evolu.appOwner` promise that resolves to `AppOwner`
+  - Updated `appOwnerState()` in `@evolu/svelte` to return promise-based state
+
+  **Migration:**
+
+  ```ts
+  // Before
+  const unsubscribe = evolu.subscribeAppOwner(() => {
+    const owner = evolu.getAppOwner();
+  });
+
+  // After
+  const owner = await evolu.appOwner;
+  ```
+
+  For React, use the `use` hook:
+
+  ```ts
+  // Before
+  import { useAppOwner } from "@evolu/react";
+  const appOwner = useAppOwner();
+
+  // After
+  import { use } from "react";
+  const evolu = useEvolu();
+  const appOwner = use(evolu.appOwner);
+  ```
+
+- 6b4a490: Rename `wasSrr` React Hook to `isSrr`.
+
+### Patch Changes
+
+- Updated dependencies [36af10c]
+- Updated dependencies [6452d57]
+- Updated dependencies [eec5d8e]
+- Updated dependencies [dd3c865]
+- Updated dependencies [8f0c0d3]
+- Updated dependencies [eec5d8e]
+- Updated dependencies [6759c31]
+- Updated dependencies [2f87ac8]
+- Updated dependencies [6195115]
+- Updated dependencies [eec5d8e]
+- Updated dependencies [47386b8]
+- Updated dependencies [202eaa3]
+- Updated dependencies [f4a8866]
+- Updated dependencies [eec5d8e]
+- Updated dependencies [13b688f]
+- Updated dependencies [a1dfb7a]
+- Updated dependencies [45c8ca9]
+- Updated dependencies [4a960c7]
+- Updated dependencies [6279aea]
+- Updated dependencies [02e8aa0]
+- Updated dependencies [f5e4232]
+- Updated dependencies [0911302]
+- Updated dependencies [31d0d21]
+- Updated dependencies [0777577]
+- Updated dependencies [29886ff]
+- Updated dependencies [eec5d8e]
+- Updated dependencies [de37bd1]
+- Updated dependencies [1d8c439]
+- Updated dependencies [3daa221]
+- Updated dependencies [eed43d5]
+- Updated dependencies [05fe5d5]
+- Updated dependencies [4a82c06]
+  - @evolu/common@7.0.0
+
 ## 9.0.1-preview.6
 
 ### Patch Changes

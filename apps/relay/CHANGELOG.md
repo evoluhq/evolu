@@ -1,5 +1,72 @@
 # @evolu/relay
 
+## 2.0.0
+
+### Major Changes
+
+- 897bbc8: Reduce Docker image size and improve runtime defaults.
+  - Use `pnpm deploy --prod --legacy` to ship a minimal runtime; image ~116 MB (≈59 MB compressed).
+  - Set `NODE_ENV=production` and add a robust TCP healthcheck.
+  - Persist data under `/app/data` (declare VOLUME, ensure dir) and fix compose volume mapping.
+  - Streamline README: concise Docker build/run with logs; remove web‑app testing section; place local steps under Docker.
+
+- e4d1149: Improve Docker docs and remove Docker scripts
+
+### Minor Changes
+
+- 6195115: Relay access control and quota management
+
+  **Access Control**
+  - Added `isOwnerAllowed` callback to control which owners can connect to the relay
+  - Allows synchronous or asynchronous authorization checks before accepting WebSocket connections
+  - Replaces the previous `authenticateOwner` configuration option
+
+  **Quota Management**
+  - Added `isOwnerWithinQuota` callback for checking storage limits before accepting writes
+  - Relays can now enforce per-owner storage quotas
+  - New `ProtocolQuotaError` for quota violations
+  - When quota is exceeded, only the affected device stops syncing - other devices continue normally
+  - Usage is measured per owner as logical data size, excluding storage implementation overhead
+
+  Check the Relay example in `/apps/relay`.
+
+### Patch Changes
+
+- Updated dependencies [36af10c]
+- Updated dependencies [6452d57]
+- Updated dependencies [eec5d8e]
+- Updated dependencies [dd3c865]
+- Updated dependencies [8f0c0d3]
+- Updated dependencies [eec5d8e]
+- Updated dependencies [6759c31]
+- Updated dependencies [2f87ac8]
+- Updated dependencies [6195115]
+- Updated dependencies [eec5d8e]
+- Updated dependencies [47386b8]
+- Updated dependencies [202eaa3]
+- Updated dependencies [f4a8866]
+- Updated dependencies [eec5d8e]
+- Updated dependencies [13b688f]
+- Updated dependencies [a1dfb7a]
+- Updated dependencies [45c8ca9]
+- Updated dependencies [4a960c7]
+- Updated dependencies [6279aea]
+- Updated dependencies [02e8aa0]
+- Updated dependencies [f5e4232]
+- Updated dependencies [0911302]
+- Updated dependencies [31d0d21]
+- Updated dependencies [0777577]
+- Updated dependencies [29886ff]
+- Updated dependencies [eec5d8e]
+- Updated dependencies [de37bd1]
+- Updated dependencies [1d8c439]
+- Updated dependencies [3daa221]
+- Updated dependencies [eed43d5]
+- Updated dependencies [05fe5d5]
+- Updated dependencies [4a82c06]
+  - @evolu/common@7.0.0
+  - @evolu/nodejs@2.0.0
+
 ## 1.1.2-preview.17
 
 ### Patch Changes
