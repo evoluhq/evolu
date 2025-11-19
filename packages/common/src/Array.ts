@@ -1,32 +1,47 @@
 /**
- * 🔒 Immutable, type-safe array helpers
+ * 🔒 Type-safe array helpers that do not mutate
  *
- * Array types, guards, operations, transformations, accessors, and mutations.
+ * Array types, guards, operations, transformations, accessors, and (rare)
+ * mutations.
  *
- * Prepared for TC39 Hack pipes:
+ * Functions are intentionally data-first to be prepared for the upcoming
+ * JavaScript pipe operator.
  *
  * ```ts
- * // Problem: nested functions can be hard to follow
+ * // Data-first is natural for single operations.
+ * const timestamps = mapArray(messages, (m) => m.timestamp);
+ *
+ * // But data-first can be hard to read for nested calls.
  * const result = firstInArray(
  *   mapArray(dedupeArray(appendToArray(value, 2)), (x) => x * 2),
  * );
  *
- * // Ideal solution: TC39 Hack pipes (when available)
+ * // With the upcoming pipe operator, it's clear.
  * // const result = value
  * //   |> appendToArray(%, 2)
  * //   |> dedupeArray(%)
  * //   |> mapArray(%, (x) => x * 2)
  * //   |> firstInArray(%);
  *
- * // Current solution: name each step (or use p1, p2 if lazy)
- * const p1 = appendToArray(value, 2);
- * const p2 = dedupeArray(p1);
- * const p3 = mapArray(p2, (x) => x * 2);
- * const p4 = firstInArray(p3);
+ * // Until the pipe operator lands, use nested calls or name each step:
+ * const appended = appendToArray(value, 2);
+ * const deduped = dedupeArray(appended);
+ * const mapped = mapArray(deduped, (x) => x * 2);
+ * const result = firstInArray(mapped);
  * ```
  *
- * Of course it's possible to use array instance methods, but they mutate and do
- * not preserve {@link NonEmptyArray} and {@link NonEmptyReadonlyArray} types.
+ * ### Why data-first?
+ *
+ * Evolu optimizes for consistent code style. We can't have both data-first
+ * single operations and curried data-last helpers without sacrificing
+ * consistency. We chose data-first because:
+ *
+ * - It's natural for single operations (for example `mapArray(messages, (m) =>
+ *   m.timestamp)`).
+ * - It aligns with the upcoming JavaScript pipe operator.
+ *
+ * **Note**: Feel free to use Array instance methods (mutation) if you think
+ * it's better (performance, local scope, etc.).
  *
  * ### Example
  *
