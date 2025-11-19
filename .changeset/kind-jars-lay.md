@@ -1,8 +1,8 @@
 ---
-"@evolu/common": patch
-"@evolu/nodejs": patch
-"@evolu/react-native": patch
-"@evolu/react-web": patch
+"@evolu/common": major
+"@evolu/nodejs": major
+"@evolu/react-native": major
+"@evolu/react-web": major
 ---
 
 Add owner usage tracking and storage improvements

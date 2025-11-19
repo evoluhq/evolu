@@ -1,6 +1,5 @@
 ---
-"@evolu/react-native": patch
-"@evolu/common": patch
+"@evolu/react-native": major
 ---
 
 Refactor React Native package structure and remove react-native-quick-base64 dependency

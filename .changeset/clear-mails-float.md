@@ -1,5 +1,5 @@
 ---
-"@evolu/common": patch
+"@evolu/common": major
 ---
 
 Refined system (formerly "default") createdAt column handling

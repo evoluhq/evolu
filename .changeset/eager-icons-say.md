@@ -1,7 +1,7 @@
 ---
-"@evolu/common": patch
-"@evolu/nodejs": patch
-"@evolu/relay": patch
+"@evolu/common": minor
+"@evolu/nodejs": minor
+"@evolu/relay": minor
 ---
 
 Relay access control and quota management

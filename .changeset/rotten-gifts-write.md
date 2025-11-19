@@ -1,5 +1,5 @@
 ---
-"@evolu/common": patch
+"@evolu/common": minor
 ---
 
 Add external ID support with `createIdFromString` function

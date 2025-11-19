@@ -1,5 +1,5 @@
 ---
-"@evolu/common": patch
+"@evolu/common": major
 ---
 
 Improve getOrThrow: throw a standard Error with `cause` instead of stringifying the error.

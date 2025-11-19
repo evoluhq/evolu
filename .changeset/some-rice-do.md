@@ -1,5 +1,5 @@
 ---
-"@evolu/common": patch
+"@evolu/common": major
 ---
 
 Enhance message integrity by embedding timestamps in encrypted data

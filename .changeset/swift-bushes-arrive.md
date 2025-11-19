@@ -1,5 +1,5 @@
 ---
-"@evolu/relay": patch
+"@evolu/relay": major
 ---
 
 Reduce Docker image size and improve runtime defaults.

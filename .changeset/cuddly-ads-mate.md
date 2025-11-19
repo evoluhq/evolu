@@ -1,6 +1,6 @@
 ---
-"@evolu/common": patch
-"@evolu/nodejs": patch
+"@evolu/common": major
+"@evolu/nodejs": major
 ---
 
 Rename `ManyToManyMap` to `Relation`.

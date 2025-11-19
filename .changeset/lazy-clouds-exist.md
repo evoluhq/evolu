@@ -1,6 +1,6 @@
 ---
-"@evolu/common": patch
-"@evolu/react": patch
+"@evolu/common": major
+"@evolu/react": major
 ---
 
 Replace `subscribeAppOwner` and `getAppOwner` with `appOwner` promise

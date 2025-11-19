@@ -1,8 +1,6 @@
 ---
-"@evolu/common": patch
+"@evolu/common": major
 ---
-
-# Transport-Based Configuration System
 
 # Transport-Based Configuration System
 

@@ -1,5 +1,5 @@
 ---
-"@evolu/common": patch
+"@evolu/common": major
 ---
 
 Non-initiator always responds in sync protocol for completion feedback

@@ -1,5 +1,5 @@
 ---
-"@evolu/common": patch
+"@evolu/common": minor
 ---
 
 Add optional `createIdAsUuidv7` helper for timestamp‑embedded IDs (UUID v7 layout) while keeping `createId` as the privacy‑preserving default.
