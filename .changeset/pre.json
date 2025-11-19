@@ -1,5 +1,5 @@
 {
-  "mode": "pre",
+  "mode": "exit",
   "tag": "preview",
   "initialVersions": {
     "@evolu/common": "6.0.0",
