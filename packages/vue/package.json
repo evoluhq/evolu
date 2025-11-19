@@ -1,6 +1,6 @@
 {
   "name": "@evolu/vue",
-  "version": "1.0.0-preview.3",
+  "version": "1.0.0",
   "description": "Evolu for Vue",
   "keywords": [
     "evolu",
@@ -43,7 +43,7 @@
     "vitest": "^4.0.4"
   },
   "peerDependencies": {
-    "@evolu/common": "^6.0.1-preview.35",
+    "@evolu/common": "^7.0.0",
     "vue": ">=3.5.24"
   },
   "publishConfig": {
