@@ -1,5 +1,15 @@
 # @evolu/relay
 
+## 1.1.2-preview.17
+
+### Patch Changes
+
+- Updated dependencies [47386b8]
+- Updated dependencies [4a960c7]
+- Updated dependencies [0777577]
+  - @evolu/common@6.0.1-preview.35
+  - @evolu/nodejs@1.0.1-preview.12
+
 ## 1.1.2-preview.16
 
 ### Patch Changes
