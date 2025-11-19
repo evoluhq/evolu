@@ -1,6 +1,6 @@
 import {
   ConsoleDep,
-  createManyToManyMap,
+  createRelation,
   createRandom,
   createSqlite,
   CreateSqliteDriverDep,
@@ -105,7 +105,7 @@ const createNodeJsRelayWithDeps =
       noServer: true,
     });
 
-    const ownerSocketsMap = createManyToManyMap<OwnerId, WebSocket>();
+    const ownerSocketRelation = createRelation<OwnerId, WebSocket>();
 
     server.on("upgrade", (request, socket, head) => {
       socket.on("error", log.upgradeSocketError);
@@ -155,23 +155,23 @@ const createNodeJsRelayWithDeps =
 
       const options: ApplyProtocolMessageAsRelayOptions = {
         subscribe: (ownerId) => {
-          ownerSocketsMap.add(ownerId, ws);
+          ownerSocketRelation.add(ownerId, ws);
           log.relayOptionSubscribe(
             ownerId,
-            () => ownerSocketsMap.getValues(ownerId)?.size ?? 0,
+            () => ownerSocketRelation.getB(ownerId)?.size ?? 0,
           );
         },
 
         unsubscribe: (ownerId) => {
-          ownerSocketsMap.remove(ownerId, ws);
+          ownerSocketRelation.remove(ownerId, ws);
           log.relayOptionUnsubscribe(
             ownerId,
-            () => ownerSocketsMap.getValues(ownerId)?.size ?? 0,
+            () => ownerSocketRelation.getB(ownerId)?.size ?? 0,
           );
         },
 
         broadcast: (ownerId, message) => {
-          const sockets = ownerSocketsMap.getValues(ownerId);
+          const sockets = ownerSocketRelation.getB(ownerId);
           if (!sockets) return;
 
           let broadcastCount = 0;
@@ -203,7 +203,7 @@ const createNodeJsRelayWithDeps =
       });
 
       ws.on("close", () => {
-        ownerSocketsMap.deleteValue(ws);
+        ownerSocketRelation.deleteB(ws);
         log.connectionClosed(wss.clients.size);
       });
     });
