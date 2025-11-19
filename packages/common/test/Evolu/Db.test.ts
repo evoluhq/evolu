@@ -273,7 +273,7 @@ test("initializes DbWorker with external AppOwner", async () => {
           "name": "evolu_version",
           "rows": [
             {
-              "protocolVersion": 0,
+              "protocolVersion": 1,
             },
           ],
         },
@@ -353,7 +353,7 @@ test("local mutations", async () => {
         "name": "evolu_version",
         "rows": [
           {
-            "protocolVersion": 0,
+            "protocolVersion": 1,
           },
         ],
       },
@@ -485,7 +485,7 @@ test("local mutations", async () => {
         "name": "evolu_version",
         "rows": [
           {
-            "protocolVersion": 0,
+            "protocolVersion": 1,
           },
         ],
       },
@@ -609,7 +609,7 @@ test("sync mutations", async () => {
         "name": "evolu_version",
         "rows": [
           {
-            "protocolVersion": 0,
+            "protocolVersion": 1,
           },
         ],
       },
@@ -749,7 +749,7 @@ test("sync mutations", async () => {
         "name": "evolu_version",
         "rows": [
           {
-            "protocolVersion": 0,
+            "protocolVersion": 1,
           },
         ],
       },
@@ -904,7 +904,7 @@ test("sync mutations", async () => {
         "name": "evolu_version",
         "rows": [
           {
-            "protocolVersion": 0,
+            "protocolVersion": 1,
           },
         ],
       },
@@ -1100,7 +1100,7 @@ test("sends messages when socket is opened", async () => {
   expect(webSocket.sentMessages).toMatchInlineSnapshot(
     `
     [
-      uint8:[0,74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234,0,0,1,0,1,2,1,4,0,1,2,0,125,85,114,123,39,28,1],
+      uint8:[1,74,214,239,117,51,241,147,205,51,209,195,85,192,50,96,234,0,0,1,0,1,2,1,4,0,1,2,0,125,85,114,123,39,28,1],
     ]
   `,
   );

@@ -112,7 +112,7 @@ exports[`externalAppOwner should use provided owner 1`] = `
       "name": "evolu_version",
       "rows": [
         {
-          "protocolVersion": 0,
+          "protocolVersion": 1,
         },
       ],
     },

@@ -329,7 +329,7 @@ export const defaultProtocolMessageRangesMaxSize =
 export type ProtocolMessage = Uint8Array & Brand<"ProtocolMessage">;
 
 /** Evolu Protocol version. */
-export const protocolVersion = NonNegativeInt.orThrow(0);
+export const protocolVersion = NonNegativeInt.orThrow(1);
 
 export const MessageType = {
   /** Request message from initiator (client) to non-initiator (relay). */
