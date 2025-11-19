@@ -13,7 +13,13 @@ import { TransferableError } from "../Error.js";
 import { exhaustiveCheck } from "../Function.js";
 import { createInstances, Instances } from "../Instances.js";
 import { err, ok, Result } from "../Result.js";
-import { isSqlMutation, SafeSql, SqliteError, SqliteQuery } from "../Sqlite.js";
+import {
+  isSqlMutation,
+  SafeSql,
+  SqliteBoolean,
+  SqliteError,
+  SqliteQuery,
+} from "../Sqlite.js";
 import { createStore, StoreSubscribe } from "../Store.js";
 import { TimeDep } from "../Time.js";
 import {
@@ -239,7 +245,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
    *
    * Evolu does not use SQL for mutations to ensure data can be safely and
    * predictably merged without conflicts. Explicit mutations also allow Evolu
-   * to automatically add and update {@link SystemColumns}.
+   * to automatically update {@link SystemColumns}.
    *
    * ### Example
    *
@@ -284,7 +290,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
    *
    * Evolu does not use SQL for mutations to ensure data can be safely and
    * predictably merged without conflicts. Explicit mutations also allow Evolu
-   * to automatically add and update {@link SystemColumns}.
+   * to automatically update {@link SystemColumns}.
    *
    * ### Example
    *
@@ -337,7 +343,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
    *
    * Evolu does not use SQL for mutations to ensure data can be safely and
    * predictably merged without conflicts. Explicit mutations also allow Evolu
-   * to automatically add and update {@link SystemColumns}.
+   * to automatically update {@link SystemColumns}.
    *
    * ### Example
    *
@@ -718,14 +724,14 @@ const createEvoluInstance =
             // Mark the transaction as invalid by pushing null
             mutateMicrotaskQueue.push([null, undefined]);
           } else {
-            const values = { ...result.value };
-            delete values.id;
+            const { id: _, isDeleted, ...values } = result.value;
 
             const dbChange = DbChange.orThrow({
               table,
               id,
               values,
               isInsert: kind === "insert" || kind === "upsert",
+              isDelete: SqliteBoolean.is(isDeleted) ? Boolean(isDeleted) : null,
             });
 
             mutateMicrotaskQueue.push([

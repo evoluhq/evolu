@@ -84,22 +84,24 @@ exports[`externalAppOwner should use provided owner 1`] = `
       {
         "columns": [
           "id",
-          "title",
-          "isCompleted",
-          "categoryId",
           "createdAt",
           "updatedAt",
           "isDeleted",
+          "ownerId",
+          "title",
+          "isCompleted",
+          "categoryId",
         ],
         "name": "todo",
       },
       {
         "columns": [
           "id",
-          "name",
           "createdAt",
           "updatedAt",
           "isDeleted",
+          "ownerId",
+          "name",
         ],
         "name": "todoCategory",
       },

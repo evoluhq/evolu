@@ -48,5 +48,6 @@ export const createTestCrdtMessage = (
     id,
     values: { name },
     isInsert: true,
+    isDelete: false,
   }),
 });

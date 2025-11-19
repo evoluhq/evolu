@@ -1,6 +1,4 @@
 import * as Kysely from "kysely";
-import { assert } from "../Assert.js";
-import { createEqArrayLike, eqString } from "../Eq.js";
 import { mapObject, objectToEntries, ReadonlyRecord } from "../Object.js";
 import { ok, Result } from "../Result.js";
 import {
@@ -101,11 +99,11 @@ export type EvoluSchema = ReadonlyRecord<
 export type ValidateSchema<S extends EvoluSchema> =
   ValidateSchemaHasId<S> extends never
     ? ValidateIdColumnType<S> extends never
-      ? ValidateNoDefaultColumns<S> extends never
+      ? ValidateNoSystemColumns<S> extends never
         ? ValidateColumnTypes<S> extends never
           ? S
           : ValidateColumnTypes<S>
-        : ValidateNoDefaultColumns<S>
+        : ValidateNoSystemColumns<S>
       : ValidateIdColumnType<S>
     : ValidateSchemaHasId<S>;
 
@@ -129,13 +127,17 @@ export type ValidateIdColumnType<S extends EvoluSchema> =
       : never
     : never;
 
-export type ValidateNoDefaultColumns<S extends EvoluSchema> =
+export type ValidateNoSystemColumns<S extends EvoluSchema> =
   keyof S extends infer TableName
     ? TableName extends keyof S
       ? keyof S[TableName] extends infer ColumnName
         ? ColumnName extends keyof S[TableName]
-          ? ColumnName extends "createdAt" | "updatedAt" | "isDeleted"
-            ? SchemaValidationError<`Table "${TableName & string}" uses system column name "${ColumnName & string}". System columns (createdAt, updatedAt, isDeleted) are added automatically.`>
+          ? ColumnName extends
+              | "createdAt"
+              | "updatedAt"
+              | "isDeleted"
+              | "ownerId"
+            ? SchemaValidationError<`Table "${TableName & string}" uses system column name "${ColumnName & string}". System columns (createdAt, updatedAt, isDeleted, ownerId) are added automatically.`>
             : never
           : never
         : never
@@ -192,10 +194,7 @@ export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
       Kysely.Kysely<
         {
           [Table in keyof S]: {
-            readonly [Column in keyof S[Table]]: Column extends
-              | "id"
-              | "createdAt"
-              | "updatedAt"
+            readonly [Column in keyof S[Table]]: Column extends "id"
               ? InferType<S[Table][Column]>
               : InferType<S[Table][Column]> | null;
           } & SystemColumns;
@@ -222,24 +221,17 @@ export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
  * - `updatedAt`: Set by Evolu on every row change, derived from {@link Timestamp}.
  * - `isDeleted`: Soft delete flag created by Evolu and used by the developer to
  *   mark rows as deleted.
+ * - `ownerId`: Represents ownership and logically partitions the database.
  */
 export const SystemColumns = object({
   createdAt: DateIso,
   updatedAt: DateIso,
   isDeleted: nullOr(SqliteBoolean),
-  // TODO: ownerId
+  ownerId: OwnerId,
 });
 export type SystemColumns = typeof SystemColumns.Type;
 
-export const systemColumns = ["createdAt", "updatedAt", "isDeleted"];
-
-assert(
-  createEqArrayLike(eqString)(
-    objectToEntries(SystemColumns.props).map(([key]) => key),
-    systemColumns,
-  ),
-  "SystemColumns keys must match systemColumnsKeys",
-);
+export const systemColumns = Object.keys(SystemColumns.props);
 
 export type MutationKind = "insert" | "update" | "upsert";
 
@@ -550,10 +542,7 @@ export const ensureDbSchema =
         (t) => t.name === newTable.name,
       );
       if (!currentTable) {
-        queries.push({
-          sql: createAppTableWithDefaultColumns(newTable),
-          parameters: [],
-        });
+        queries.push(createAppTable(newTable));
       } else {
         newTable.columns
           .filter((newColumn) => !currentTable.columns.includes(newColumn))
@@ -599,21 +588,24 @@ export const ensureDbSchema =
     return ok();
   };
 
-const createAppTableWithDefaultColumns = (table: DbTable): SafeSql => {
-  return `
-    create table ${sql.identifier(table.name).sql} (
-      "id" text primary key,
-      ${table.columns
-        .concat(systemColumns)
+const createAppTable = (table: DbTable) => sql`
+  create table ${sql.identifier(table.name)} (
+    "id" text,
+    ${sql.raw(
+      `${systemColumns
+        .concat(table.columns)
         .filter((c) => c !== "id")
-        // "A column with affinity BLOB does not prefer one storage class over another
-        // and no attempt is made to coerce data from one storage class into another."
-        // https://www.sqlite.org/datatype3.html
-        .map((name) => `${sql.identifier(name).sql} blob`)
-        .join(", ")}
-    );
-  ` as SafeSql;
-};
+        // With strict tables and any type, data is preserved exactly as received
+        // without any type affinity coercion. This allows storing any data type
+        // while maintaining strict null enforcement for primary key columns.
+        .map((name) => `${sql.identifier(name).sql} any`)
+        .join(", ")}`,
+    )},
+    primary key ("ownerId", "id")
+  )
+  without rowid, strict;
+`;
+
 // https://kysely.dev/docs/recipes/splitting-query-building-and-execution
 export const kysely = new Kysely.Kysely({
   dialect: {

@@ -19,7 +19,16 @@ import { objectToEntries } from "../Object.js";
 import { RandomDep } from "../Random.js";
 import { createResources } from "../Resources.js";
 import { err, ok, Result } from "../Result.js";
-import { sql, SqliteDep, SqliteError, SqliteValue } from "../Sqlite.js";
+import {
+  booleanToSqliteBoolean,
+  sql,
+  SqliteBoolean,
+  sqliteBooleanToBoolean,
+  SqliteDep,
+  SqliteError,
+  sqliteFalse,
+  SqliteValue,
+} from "../Sqlite.js";
 import { AbortError, createMutex } from "../Task.js";
 import { TimeDep } from "../Time.js";
 import {
@@ -30,7 +39,7 @@ import {
   PositiveInt,
 } from "../Type.js";
 import { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
-import type { PostMessageDep } from "./Db.js";
+import type { AppOwnerDep, PostMessageDep } from "./Db.js";
 import {
   AppOwner,
   OwnerEncryptionKey,
@@ -596,14 +605,24 @@ const createClientStorage =
         const { table, id } = rows[0];
         const values: Record<string, SqliteValue> = {};
         let isInsert = false;
+        let isDelete: boolean | null = null;
 
         for (const r of rows) {
           assert(r.table === table, "All rows must have the same table");
           assert(eqArrayNumber(r.id, id), "All rows must have the same Id");
-          if (r.column === "createdAt") {
-            isInsert = true;
-          } else {
-            values[r.column] = r.value;
+          switch (r.column) {
+            case "createdAt":
+              isInsert = true;
+              break;
+            case "isDeleted":
+              assert(
+                SqliteBoolean.is(r.value),
+                "isDeleted column must contain a valid SqliteBoolean (0 or 1)",
+              );
+              isDelete = sqliteBooleanToBoolean(r.value);
+              break;
+            default:
+              values[r.column] = r.value;
           }
         }
 
@@ -614,6 +633,7 @@ const createClientStorage =
             id: idBytesToId(rows[0].id),
             values,
             isInsert,
+            isDelete,
           }),
         };
 
@@ -632,12 +652,9 @@ const createTransportKey = (transportConfig: OwnerTransport): TransportKey => {
 };
 
 export const applyLocalOnlyChange =
-  (deps: SqliteDep & TimeDep) =>
+  (deps: SqliteDep & TimeDep & AppOwnerDep) =>
   (change: MutationChange): Result<void, SqliteError> => {
-    const isDeletion =
-      "isDeleted" in change.values && change.values.isDeleted === 1;
-
-    if (isDeletion) {
+    if (change.isDelete) {
       const result = deps.sqlite.exec(sql`
         delete from ${sql.identifier(change.table)}
         where id = ${change.id};
@@ -645,13 +662,19 @@ export const applyLocalOnlyChange =
       if (!result.ok) return result;
     } else {
       const now = deps.time.nowIso();
+      const ownerId = deps.appOwner.id;
 
-      for (const [column, value] of objectToEntries(change.values)) {
+      let entries = objectToEntries(change.values);
+      if (change.isDelete !== null) {
+        entries = [...entries, ["isDeleted", sqliteFalse]];
+      }
+
+      for (const [column, value] of entries) {
         const result = deps.sqlite.exec(sql.prepared`
           insert into ${sql.identifier(change.table)}
-            ("id", ${sql.identifier(column)}, createdAt, updatedAt)
-          values (${change.id}, ${value}, ${now}, ${now})
-          on conflict ("id") do update
+            ("ownerId", "id", ${sql.identifier(column)}, createdAt, updatedAt)
+          values (${ownerId}, ${change.id}, ${value}, ${now}, ${now})
+          on conflict ("ownerId", "id") do update
             set
               ${sql.identifier(column)} = ${value},
               updatedAt = ${now};
@@ -721,23 +744,21 @@ const applyMessages =
 const applyMessageToAppTable =
   (deps: SqliteDep) =>
   (
-    ownerId: OwnerIdBytes,
+    ownerIdBytes: OwnerIdBytes,
     message: CrdtMessage,
     date: DateIso,
   ): Result<void, SqliteError> => {
-    let entries = objectToEntries(message.change.values);
-    if (message.change.isInsert) {
-      entries = [...entries, ["createdAt", date]];
-    }
+    const ownerId = ownerIdBytesToOwnerId(ownerIdBytes);
+    const columns = dbChangeToColumns(message.change, date);
 
-    for (const [column, value] of entries) {
+    for (const [column, value] of columns) {
       const result = deps.sqlite.exec(sql.prepared`
         with
           existingTimestamp as (
             select 1
             from evolu_history
             where
-              "ownerId" = ${ownerId}
+              "ownerId" = ${ownerIdBytes}
               and "table" = ${message.change.table}
               and "id" = ${idToIdBytes(message.change.id)}
               and "column" = ${column}
@@ -745,10 +766,10 @@ const applyMessageToAppTable =
             limit 1
           )
         insert into ${sql.identifier(message.change.table)}
-          ("id", ${sql.identifier(column)}, updatedAt)
-        select ${message.change.id}, ${value}, ${date}
+          ("ownerId", "id", ${sql.identifier(column)}, updatedAt)
+        select ${ownerId}, ${message.change.id}, ${value}, ${date}
         where not exists (select 1 from existingTimestamp)
-        on conflict ("id") do update
+        on conflict ("ownerId", "id") do update
           set
             ${sql.identifier(column)} = ${value},
             updatedAt = ${date}
@@ -775,12 +796,9 @@ export const applyMessageToTimestampAndHistoryTables =
     const result = deps.storage.insertTimestamp(ownerId, timestamp, strategy);
     if (!result.ok) return result;
 
-    let entries = objectToEntries(message.change.values);
-    if (message.change.isInsert) {
-      entries = [...entries, ["createdAt", date]];
-    }
+    const columns = dbChangeToColumns(message.change, date);
 
-    for (const [column, value] of entries) {
+    for (const [column, value] of columns) {
       const result = deps.sqlite.exec(sql.prepared`
         insert into evolu_history
           ("ownerId", "table", "id", "column", "value", "timestamp")
@@ -800,6 +818,20 @@ export const applyMessageToTimestampAndHistoryTables =
 
     return ok();
   };
+
+const dbChangeToColumns = (
+  change: DbChange,
+  date: DateIso,
+): Array<[string, SqliteValue | DateIso]> => {
+  const entries = [...objectToEntries(change.values)];
+  if (change.isInsert) {
+    entries.push(["createdAt", date]);
+  }
+  if (change.isDelete !== null) {
+    entries.push(["isDeleted", booleanToSqliteBoolean(change.isDelete)]);
+  }
+  return entries;
+};
 
 /**
  * TODO: Rework for the new owners API.

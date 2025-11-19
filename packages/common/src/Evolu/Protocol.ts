@@ -170,9 +170,11 @@
  *   initiator/non-initiator terminology instead, and consolidate into a single
  *   `applyProtocolMessage` function with conditional arguments to reduce code
  *   duplication.
- * - ProtocolQuotaError should return storedBytes and actual quota.
  * - Replace try-catch with Result + new Error (to preserve stacktraces). Measure
  *   Result overhead, it should be super small.
+ * - Allow clients to broadcast messages that are not persisted by relays. This
+ *   would enable real-time ephemeral data (like cursor positions, typing
+ *   indicators) to be forwarded by relays without storage overhead.
  */
 
 import { Packr } from "msgpackr";
@@ -416,7 +418,9 @@ export interface ProtocolWriteError extends BaseOwnerError {
  * excess local data is affected. Other devices that haven't exceeded quota can
  * still sync normally.
  *
- * Clients should prompt the user to upgrade their plan.
+ * Clients should prompt the user to contact the relay provider or upgrade their
+ * plan. Quota monitoring and management is the relay provider's
+ * responsibility.
  */
 export interface ProtocolQuotaError extends BaseOwnerError {
   readonly type: "ProtocolQuotaError";
@@ -1727,7 +1731,11 @@ export const encodeAndEncryptDbChange =
     // assigning this EncryptedDbChange to a different EncryptedCrdtMessage)
     buffer.extend(timestampToTimestampBytes(message.timestamp));
 
-    encodeFlags(buffer, [message.change.isInsert]);
+    encodeFlags(buffer, [
+      message.change.isInsert,
+      message.change.isDelete != null,
+      message.change.isDelete ?? false,
+    ]);
 
     encodeString(buffer, message.change.table);
     buffer.extend(idToIdBytes(message.change.id));
@@ -1803,9 +1811,7 @@ export const decryptAndDecodeDbChange =
         });
       }
 
-      const flags = decodeFlags(buffer, PositiveInt.orThrow(1));
-      const isInsert = flags[0];
-
+      const flags = decodeFlags(buffer, PositiveInt.orThrow(3));
       const table = decodeString(buffer);
       const id = decodeId(buffer);
 
@@ -1818,7 +1824,13 @@ export const decryptAndDecodeDbChange =
         values[column] = value;
       }
 
-      const dbChange = DbChange.orThrow({ table, id, values, isInsert });
+      const dbChange = DbChange.orThrow({
+        table,
+        id,
+        values,
+        isInsert: flags[0],
+        isDelete: flags[1] ? flags[2] : null,
+      });
 
       return ok(dbChange);
     } catch (error) {

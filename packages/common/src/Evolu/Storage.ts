@@ -1,6 +1,5 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import {
-  filterArray,
   firstInArray,
   isNonEmptyReadonlyArray,
   NonEmptyReadonlyArray,
@@ -19,6 +18,7 @@ import {
   Id,
   Int64String,
   NonNegativeInt,
+  nullOr,
   object,
   PositiveInt,
   record,
@@ -32,8 +32,8 @@ import {
   OwnerIdBytes,
   OwnerWriteKey,
 } from "./Owner.js";
-import { orderTimestampBytes, Timestamp, TimestampBytes } from "./Timestamp.js";
 import { systemColumns } from "./Schema.js";
+import { orderTimestampBytes, Timestamp, TimestampBytes } from "./Timestamp.js";
 
 export interface StorageConfig {
   /**
@@ -256,18 +256,16 @@ export interface CrdtMessage {
 export const DbChangeValues = record(String, SqliteValue);
 export type DbChangeValues = typeof DbChangeValues.Type;
 
-const systemColumnsWithIdAndWithoutIsDeleted = filterArray(
-  systemColumns.concat("id"),
-  (column) => column != "isDeleted",
-);
+// "createdAt" and "updatedAt" are derived from Timestamp.
+// "id" and "isDeleted" are encoded separately to save bytes
+// "ownerId" is part of the protocol message
+const forbiddenSystemColumns = systemColumns.concat("id");
 
 export const ValidDbChangeValues = brand(
   "ValidDbChangeValues",
   DbChangeValues,
   (value) => {
-    const invalidColumns = systemColumnsWithIdAndWithoutIsDeleted.filter(
-      (key) => key in value,
-    );
+    const invalidColumns = forbiddenSystemColumns.filter((key) => key in value);
     if (invalidColumns.length > 0)
       return err<ValidDbChangeValuesError>({
         type: "ValidDbChangeValues",
@@ -294,6 +292,7 @@ export const DbChange = object({
   id: Id,
   values: ValidDbChangeValues,
   isInsert: Boolean,
+  isDelete: nullOr(Boolean),
 });
 export type DbChange = typeof DbChange.Type;
 

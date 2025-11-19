@@ -11,7 +11,7 @@ import { createAppOwner } from "../../src/Evolu/Owner.js";
 import {
   ValidateColumnTypes,
   ValidateIdColumnType,
-  ValidateNoDefaultColumns,
+  ValidateNoSystemColumns,
   ValidateSchemaHasId,
 } from "../../src/Evolu/Schema.js";
 import { SyncOwner } from "../../src/Evolu/Sync.js";
@@ -174,10 +174,10 @@ describe("createEvolu schema validation", () => {
     };
 
     // Type-level assertion for the exact error message
-    type ValidationResult = ValidateNoDefaultColumns<
+    type ValidationResult = ValidateNoSystemColumns<
       typeof SchemaWithDefaultColumn
     >;
-    expectTypeOf<ValidationResult>().toEqualTypeOf<'❌ Schema Error: Table "todo" uses system column name "createdAt". System columns (createdAt, updatedAt, isDeleted) are added automatically.'>();
+    expectTypeOf<ValidationResult>().toEqualTypeOf<'❌ Schema Error: Table "todo" uses system column name "createdAt". System columns (createdAt, updatedAt, isDeleted, ownerId) are added automatically.'>();
 
     // @ts-expect-error - Schema validation should catch system column name
     createEvolu(deps)(SchemaWithDefaultColumn, {
@@ -196,10 +196,10 @@ describe("createEvolu schema validation", () => {
     };
 
     // Type-level assertion for the exact error message
-    type ValidationResult = ValidateNoDefaultColumns<
+    type ValidationResult = ValidateNoSystemColumns<
       typeof SchemaWithDefaultColumn
     >;
-    expectTypeOf<ValidationResult>().toEqualTypeOf<'❌ Schema Error: Table "todo" uses system column name "updatedAt". System columns (createdAt, updatedAt, isDeleted) are added automatically.'>();
+    expectTypeOf<ValidationResult>().toEqualTypeOf<'❌ Schema Error: Table "todo" uses system column name "updatedAt". System columns (createdAt, updatedAt, isDeleted, ownerId) are added automatically.'>();
 
     // @ts-expect-error - Schema validation should catch system column name
     createEvolu(deps)(SchemaWithDefaultColumn, {
@@ -218,10 +218,32 @@ describe("createEvolu schema validation", () => {
     };
 
     // Type-level assertion for the exact error message
-    type ValidationResult = ValidateNoDefaultColumns<
+    type ValidationResult = ValidateNoSystemColumns<
       typeof SchemaWithDefaultColumn
     >;
-    expectTypeOf<ValidationResult>().toEqualTypeOf<'❌ Schema Error: Table "todo" uses system column name "isDeleted". System columns (createdAt, updatedAt, isDeleted) are added automatically.'>();
+    expectTypeOf<ValidationResult>().toEqualTypeOf<'❌ Schema Error: Table "todo" uses system column name "isDeleted". System columns (createdAt, updatedAt, isDeleted, ownerId) are added automatically.'>();
+
+    // @ts-expect-error - Schema validation should catch system column name
+    createEvolu(deps)(SchemaWithDefaultColumn, {
+      name: testSimpleName,
+    });
+  });
+
+  test("schema with system column ownerId", async () => {
+    const { deps } = await testCreateEvoluDeps();
+
+    const SchemaWithDefaultColumn = {
+      todo: {
+        id: TodoId,
+        ownerId: NonEmptyString50,
+      },
+    };
+
+    // Type-level assertion for the exact error message
+    type ValidationResult = ValidateNoSystemColumns<
+      typeof SchemaWithDefaultColumn
+    >;
+    expectTypeOf<ValidationResult>().toEqualTypeOf<'❌ Schema Error: Table "todo" uses system column name "ownerId". System columns (createdAt, updatedAt, isDeleted, ownerId) are added automatically.'>();
 
     // @ts-expect-error - Schema validation should catch system column name
     createEvolu(deps)(SchemaWithDefaultColumn, {
@@ -283,7 +305,7 @@ test("init", async () => {
             "config": {
               "enableLogging": false,
               "maxDrift": 300000,
-              "name": "Test6",
+              "name": "Test7",
               "transports": [
                 {
                   "type": "WebSocket",
@@ -404,6 +426,7 @@ describe("mutations", () => {
           "changes": [
             {
               "id": "1XirdqSNyyoJfY1psc1W0Q",
+              "isDelete": null,
               "isInsert": true,
               "ownerId": undefined,
               "table": "todo",
@@ -464,6 +487,7 @@ describe("mutations", () => {
           "changes": [
             {
               "id": "clE52X3Xyxo0jShkCjrbjg",
+              "isDelete": null,
               "isInsert": false,
               "ownerId": undefined,
               "table": "todo",
@@ -524,6 +548,7 @@ describe("mutations", () => {
           "changes": [
             {
               "id": "_6EDjBwdU3ZCo-iXpJ29DQ",
+              "isDelete": null,
               "isInsert": true,
               "ownerId": undefined,
               "table": "todo",
@@ -697,6 +722,7 @@ describe("queries", () => {
             "id": "EXqDJoTfofrVXy_-hTIKow",
             "isCompleted": null,
             "isDeleted": null,
+            "ownerId": "O-CuBGc9kBPdNNkVCKM1uA",
             "title": "Test Todo",
             "updatedAt": "1970-01-01T00:00:00.008Z",
           },
@@ -750,6 +776,7 @@ describe("queries", () => {
             "id": "V9jl1rlzsDtroJAB4SK5Bg",
             "isCompleted": null,
             "isDeleted": null,
+            "ownerId": "eE5PP1qED8YN2k3_gFg8Zw",
             "title": "Test Todo",
             "updatedAt": "1970-01-01T00:00:00.009Z",
           },
@@ -972,6 +999,7 @@ describe("createdAt behavior", () => {
           "changes": [
             {
               "id": "p-twDTGK4YVi7ZZmiCi9TA",
+              "isDelete": null,
               "isInsert": true,
               "ownerId": undefined,
               "table": "todo",
@@ -1011,6 +1039,7 @@ describe("createdAt behavior", () => {
           "changes": [
             {
               "id": "aVm9lRgGoF6038X2MlJ2Cw",
+              "isDelete": null,
               "isInsert": true,
               "ownerId": undefined,
               "table": "todo",
@@ -1050,6 +1079,7 @@ describe("createdAt behavior", () => {
           "changes": [
             {
               "id": "R8qs_iP8FEwYBfwzQ7o_Og",
+              "isDelete": null,
               "isInsert": false,
               "ownerId": undefined,
               "table": "todo",

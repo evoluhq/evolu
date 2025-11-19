@@ -497,6 +497,7 @@ test("DbChange", () => {
       id,
       values: { column1: "value1", column2: 123 },
       isInsert: true,
+      isDelete: false,
     }),
   ).toBe(true);
 
@@ -509,8 +510,7 @@ test("DbChange", () => {
   );
   expect(ValidDbChangeValues.is({ id })).toBe(false);
 
-  // ValidDbChangeValues allows isDeleted
-  expect(ValidDbChangeValues.is({ isDeleted: 1 })).toBe(true);
+  expect(ValidDbChangeValues.is({ isDeleted: 1 })).toBe(false);
 
   // ValidDbChangeValues allows valid column values
   expect(ValidDbChangeValues.is({ column1: "string", column2: 42 })).toBe(true);
