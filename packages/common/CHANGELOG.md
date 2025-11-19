@@ -1,5 +1,442 @@
 # @evolu/common
 
+## 7.0.0
+
+### Major Changes
+
+- 36af10c: Improved Array helpers
+
+  Evolu Array helpers for type-safe immutable operations have been improved. See [Array](https://www.evolu.dev/docs/api-reference/common/Array) docs.
+
+- 6452d57: Non-initiator always responds in sync protocol for completion feedback
+
+  The non-initiator (relay) now always responds to sync requests, even when there's no data to send, by returning an empty message (19 bytes). This enables sync completion detection for initiators (clients).
+
+- eec5d8e: Add Task, async helpers, and concurrency primitives
+  - `Task<T, E>` - Lazy, cancellable Promise that returns typed Result instead of throwing
+  - `toTask()` - Convert async functions to Tasks with AbortSignal support
+  - `wait()` - Delay execution with Duration strings (e.g., "5m", "2h 30m")
+  - `timeout()` - Add timeout behavior to any Task
+  - `retry()` - Retry failed operations with exponential backoff and jitter
+  - `createSemaphore()` - Limit concurrent operations to a specified count
+  - `createMutex()` - Ensure mutual exclusion (one operation at a time)
+
+  **Duration Support:**
+  - Type-safe duration strings with compile-time validation
+  - Support for milliseconds, seconds, minutes, hours, and days
+  - Logical combinations like "1h 30m" or "2s 500ms"
+
+  Tasks provide precise type safety for cancellation - AbortError is only included in the error union when an AbortSignal is actually provided. All operations are designed to work together seamlessly for complex async workflows.
+
+  ## Examples
+
+  ### toTask
+
+  ```ts
+  // Convert an async function to a Task<Result<T, E>> with AbortSignal support
+  const fetchTask = (url: string) =>
+    toTask((context) =>
+      tryAsync(
+        () => fetch(url, { signal: context?.signal ?? null })
+        (error) => ({ type: "FetchError", error }),
+      ),
+    );
+
+  const result = await fetchTask("/api")(/* optional: { signal } */);
+  ```
+
+  ### wait
+
+  ```ts
+  // Delay for a duration string or NonNegativeInt milliseconds
+  await wait("50ms")();
+  ```
+
+  ### timeout
+
+  ```ts
+  const slow = toTask(async () => ok("done"));
+  const withTimeout = timeout("200ms", slow);
+  const r = await withTimeout(); // Result<string, TimeoutError>
+  ```
+
+  ### retry
+
+  ```ts
+  interface FetchError {
+    readonly type: "FetchError";
+    readonly error: unknown;
+  }
+  const task = fetchTask("/api");
+  const withRetry = retry({ retries: PositiveInt.orThrow(3) }, task);
+  const r = await withRetry(); // Result<Response, FetchError | RetryError<FetchError>>
+  ```
+
+  ### createSemaphore
+
+  ```ts
+  const semaphore = createSemaphore(3);
+  const run = (i: number) =>
+    semaphore.withPermit(() => wait("50ms")().then(() => i));
+  const results = await Promise.all([1, 2, 3, 4, 5].map(run)); // [1,2,3,4,5]
+  ```
+
+  ### createMutex
+
+  ```ts
+  const mutex = createMutex();
+  const seq = (i: number) =>
+    mutex.withLock(async () => {
+      await wait("10ms")();
+      return i;
+    });
+  const results = await Promise.all([1, 2, 3].map(seq)); // executes one at a time
+  ```
+
+- dd3c865: - Added expo-secure-store backend for LocalAuth
+  - Added LocalAuth to Expo example app
+  - Added native EvoluAvatar to react-native package
+  - Added experimental jsdoc note to LocalAuth
+  - Moved LocalAuth out of expo deps to it's own export
+- 8f0c0d3: Refined system (formerly "default") createdAt column handling
+
+  ### Summary
+  - `createdAt` is now derived exclusively from the CRDT `Timestamp`. It is injected automatically only on first insert. You can no longer provide `createdAt` in `upsert` mutation – doing so was an anti‑pattern and is now validated against.
+  - Introduced `isInsert` flag to `DbChange` to distinguish initial row creation from subsequent updates; this drives automatic `createdAt` population.
+  - Added `ValidDbChangeValues` type to reject system columns (`createdAt`, `updatedAt`, `id`) while allowing `isDeleted`.
+  - Clock storage changed from sortable string (`TimestampString`) to compact binary (`blob`) representation for space efficiency and fewer conversions.
+  - Removed `timestampToTimestampString` / `timestampStringToTimestamp`; added `timestampToDateIso` for converting CRDT timestamps to ISO dates.
+  - Schema validation wording updated: "default column" -> "system column" for clarity.
+  - Internal protocol encoding updated (tests reflect new binary clock and flag ordering); snapshots adjusted accordingly.
+
+  ### Notes
+  - This change reduces payload size (e.g. from 113 to 97).
+
+- eec5d8e: Replace Mnemonic with OwnerSecret
+
+  OwnerSecret is the fundamental cryptographic primitive from which all owner keys are derived via SLIP-21. Mnemonic is just a representation of this underlying entropy. This change makes the type system more accurate and the cryptographic relationships clearer.
+
+- 6759c31: Rename `ManyToManyMap` to `Relation`.
+  - `ManyToManyMap<K, V>` → `Relation<A, B>`
+  - `createManyToManyMap` → `createRelation`
+  - `getValues` / `getKeys` → `getB` / `getA`
+  - `hasPair` / `hasKey` / `hasValue` → `has` / `hasA` / `hasB`
+  - `deleteKey` / `deleteValue` → `deleteA` / `deleteB`
+  - `keyCount` / `valueCount` / `pairCount` → `aCount` / `bCount` / `size`
+
+- eec5d8e: Replace NanoID with Evolu Id
+
+  Evolu now uses its own ID format instead of NanoID:
+  - **Evolu Id**: 16 random bytes from a cryptographically secure random generator, encoded as 22-character Base64Url string (128 bits of entropy)
+  - **Breaking change**: ID format changes from 21 to 22 characters
+  - **Why**: Provides standard binary serialization (16 bytes), more entropy than NanoID, and native Base64Url encoding support across platforms
+
+- f4a8866: Add owner usage tracking and storage improvements
+
+  ### Breaking Changes
+  - Renamed `TransportConfig` to `OwnerTransport` and `WebSocketTransportConfig` to `OwnerWebSocketTransport` for clearer naming
+  - Renamed `SqliteStorageBase` to `BaseSqliteStorage` and `createSqliteStorageBase` to `createBaseSqliteStorage`
+  - Extracted storage table creation into separate functions: `createBaseSqliteStorageTables` and `createRelayStorageTables` to support serverless deployments where table setup must be separate from storage operations
+  - Removed `assertNoErrorInCatch` - it was unnecessary
+
+  ### Features
+  - **Owner usage tracking** (in progress): Added `evolu_usage` table and `OwnerUsage` interface to track data consumption metrics per owner (stored bytes, received bytes, sent bytes, first/last timestamps). Table structure is in place but not yet fully implemented
+  - **Timestamp privacy documentation**: Added privacy considerations explaining that timestamps are metadata visible to relays, with guidance on implementing local write queues for maximum privacy
+  - **React Native polyfills**: Added polyfills for `AbortSignal.any()` and `AbortSignal.timeout()` to support Task cancellation on React Native platforms that don't yet implement these APIs
+
+  ### Performance
+  - **isSqlMutation optimization**: Added LRU cache (10,000 entries) to `isSqlMutation` function, restoring Timestamp insert benchmark from 34k back to 57k inserts/sec.
+
+- eec5d8e: Replace `subscribeAppOwner` and `getAppOwner` with `appOwner` promise
+
+  The app owner is now accessed via a promise (`evolu.appOwner`) instead of subscription-based methods. This simplifies the API and aligns with modern async patterns.
+
+  **Breaking changes:**
+  - Removed `evolu.subscribeAppOwner()` and `evolu.getAppOwner()`
+  - Removed `useAppOwner()` hook from `@evolu/react`
+  - Added `evolu.appOwner` promise that resolves to `AppOwner`
+  - Updated `appOwnerState()` in `@evolu/svelte` to return promise-based state
+
+  **Migration:**
+
+  ```ts
+  // Before
+  const unsubscribe = evolu.subscribeAppOwner(() => {
+    const owner = evolu.getAppOwner();
+  });
+
+  // After
+  const owner = await evolu.appOwner;
+  ```
+
+  For React, use the `use` hook:
+
+  ```ts
+  // Before
+  import { useAppOwner } from "@evolu/react";
+  const appOwner = useAppOwner();
+
+  // After
+  import { use } from "react";
+  const evolu = useEvolu();
+  const appOwner = use(evolu.appOwner);
+  ```
+
+- 0911302: Enhance message integrity by embedding timestamps in encrypted data
+
+  This security enhancement prevents tampering with message timestamps by cryptographically binding them to the encrypted change data, ensuring message integrity and preventing replay attacks with modified timestamps.
+
+- 0777577: Add `ownerId` system column and strict app tables without rowid
+  - Add `ownerId` as a system column to all application tables and include it in the primary key.
+  - Create app tables as strict, without rowid, and using `any` affinity for user columns to preserve data exactly as stored.
+  - Make soft deletes explicit in the sync protocol so `isDeleted` changes are propagated and replayed consistently across devices.
+
+- eec5d8e: # Transport-Based Configuration System
+
+  **BREAKING CHANGE**: Replaced `syncUrl` with flexible `transport` property supporting single transport or array of transports for multiple sync endpoints.
+
+  ## What Changed
+  - **Removed** `syncUrl` property from Evolu config
+  - **Added** `transport` property accepting a single `Transport` object or array of `Transport` objects
+  - **Added** `Transport` type union with initial WebSocket support
+  - **Updated** sync system to support Nostr-style relay pools with simultaneous connections
+  - **Updated** all examples and documentation to use new transport configuration
+
+  ## Migration Guide
+
+  **Before:**
+
+  ```ts
+  const evolu = createEvolu(deps)(Schema, {
+    syncUrl: "wss://relay.example.com",
+  });
+  ```
+
+  **After (single transport):**
+
+  ```ts
+  const evolu = createEvolu(deps)(Schema, {
+    transport: { type: "WebSocket", url: "wss://relay.example.com" },
+  });
+  ```
+
+  **After (multiple transports):**
+
+  ```ts
+  const evolu = createEvolu(deps)(Schema, {
+    transport: [
+      { type: "WebSocket", url: "wss://relay1.example.com" },
+      { type: "WebSocket", url: "wss://relay2.example.com" },
+    ],
+  });
+  ```
+
+  ## Benefits
+  - **Single or multiple relay support**: Use one transport for simplicity or multiple for redundancy
+  - **Intuitive API**: Singular property name that accepts both single item and array
+  - **Future extensibility**: Ready for upcoming transport types (FetchRelay, Bluetooth, LocalNetwork)
+  - **Nostr-style resilience**: Messages broadcast to all connected relays simultaneously when using arrays
+  - **Type safety**: Full TypeScript support for transport configurations
+
+  ## Future Transport Types
+
+  The new system is designed to support upcoming transport types:
+  - `FetchRelay`: HTTP-based polling for environments without WebSocket support
+  - `Bluetooth`: P2P sync for offline collaboration
+  - `LocalNetwork`: LAN/mesh sync for local networks
+
+  ## Technical Details
+  - Single transports are automatically normalized to arrays internally
+  - CRDT messages are sent to all connected transports simultaneously
+  - Duplicate message handling relies on CRDT idempotency (no deduplication needed)
+  - WebSocket connections auto-reconnect independently
+  - Backwards compatibility removed (preview version breaking change)
+
+  This change provides an intuitive API that scales from simple single-transport setups to complex multi-transport configurations, positioning Evolu for a more resilient, multi-transport future.
+
+- de37bd1: Add `ownerId` to all protocol errors (except ProtocolInvalidDataError) and update version negotiation to always include ownerId.
+  - Improved protocol documentation for versioning and error handling.
+  - Improved E2E tests for protocol version negotiation.
+  - Ensured all protocol errors (except for malformed data) are associated with the correct owner.
+
+- 3daa221: Add protocol versioning to EncryptedDbChange
+
+  Protocol version is now encoded as the first field in EncryptedDbChange binary format.
+
+- 05fe5d5: Renaming
+  - `CallbackRegistry` → `Callbacks`
+  - `createCallbackRegistry` → `createCallbacks`
+  - `RefCountedResourceManager` → `Resources`
+  - `createRefCountedResourceManager` → `createResources`
+  - `ResourceManagerConfig` → `ResourcesConfig`
+
+- 4a82c06: Improve getOrThrow: throw a standard Error with `cause` instead of stringifying the error.
+  - Before: `new Error(`Result error: ${JSON.stringify(err)}`)`
+  - After: `new Error("getOrThrow failed", { cause: err })`
+
+  Why:
+  - Preserve structured business errors for machine parsing via `error.cause`.
+  - Avoid brittle stringified error messages and preserve a proper stack trace.
+
+### Minor Changes
+
+- 2f87ac8: Improve Array module docs and refactor helpers.
+
+  **Improvements:**
+  - Reorganize Array module documentation with clearer structure, code examples, and categories (Types, Guards, Operations, Transformations, Accessors, Mutations)
+  - Swap parameter order in `appendToArray` and `prependToArray` to follow data-first pattern (array parameter first)
+  - Add `@category` JSDoc tags to all exported items for better TypeDoc organization
+  - Add `### Example` sections to all functions with practical usage demonstrations
+  - Update `dedupeArray` to use function overloads (similar to `mapArray`) for better type preservation with non-empty arrays
+
+- 6195115: Relay access control and quota management
+
+  **Access Control**
+  - Added `isOwnerAllowed` callback to control which owners can connect to the relay
+  - Allows synchronous or asynchronous authorization checks before accepting WebSocket connections
+  - Replaces the previous `authenticateOwner` configuration option
+
+  **Quota Management**
+  - Added `isOwnerWithinQuota` callback for checking storage limits before accepting writes
+  - Relays can now enforce per-owner storage quotas
+  - New `ProtocolQuotaError` for quota violations
+  - When quota is exceeded, only the affected device stops syncing - other devices continue normally
+  - Usage is measured per owner as logical data size, excluding storage implementation overhead
+
+  Check the Relay example in `/apps/relay`.
+
+- 47386b8: Add booleanToSqliteBoolean and sqliteBooleanToBoolean helpers
+- 202eaa3: Evolu Relay storage made stateless
+
+  Timestamp insertion strategy state moved from in-memory Map to evolu_usage table. This makes Evolu Relay fully stateless and suitable for serverless environments like AWS Lambda and Cloudflare Workers with Durable Objects.
+
+  The evolu_usage table must be read and written on every message write anyway (for quota checks), so it's natural to use it also for tracking timestamp bounds.
+
+  Evolu Relay is designed to work everywhere SQLite works, and with little effort, also with any other SQL database.
+
+- 13b688f: Add MaybeAsync type and isAsync type guard
+
+  `MaybeAsync<T>` represents values that can be either synchronous or asynchronous (`T | PromiseLike<T>`). This pattern provides performance benefits by avoiding microtask overhead for synchronous operations while maintaining composability.
+
+  `isAsync()` is a type guard to check if a MaybeAsync value is async, allowing conditional await only when necessary.
+
+- a1dfb7a: Add `dedupeArray` helper for immutable array deduplication. The function removes duplicate items from an array, optionally using a key extractor function. Returns a readonly array and does not mutate the input.
+
+  ```ts
+  dedupeArray([1, 2, 1, 3, 2]); // [1, 2, 3]
+
+  dedupeArray([{ id: 1 }, { id: 2 }, { id: 1 }], (x) => x.id); // [{ id: 1 }, { id: 2 }]
+  ```
+
+- 45c8ca9: Add in-memory database support for testing and temporary data
+
+  This change introduces a new `inMemory` configuration option that allows creating SQLite databases in memory instead of persistent storage. In-memory databases exist only in RAM and are completely destroyed when the process ends, making them ideal for:
+  - Testing scenarios where data persistence isn't needed
+  - Temporary data processing
+  - Forensically safe handling of sensitive data
+
+  **Usage:**
+
+  ```ts
+  const evolu = createEvolu(deps)(Schema, {
+    inMemory: true, // Creates database in memory instead of file
+  });
+  ```
+
+- 4a960c7: Add optional `createIdAsUuidv7` helper for timestamp‑embedded IDs (UUID v7 layout) while keeping `createId` as the privacy‑preserving default.
+
+  Simplified Id documentation to clearly present the three creation paths:
+  - `createId` (random, recommended)
+  - `createIdFromString` (deterministic mapping via SHA‑256 first 16 bytes)
+  - `createIdAsUuidv7` (timestamp bits for index locality; leaks creation time)
+
+- 6279aea: Add external ID support with `createIdFromString` function
+  - Add `createIdFromString` function that converts external string identifiers to valid Evolu IDs using SHA-256
+  - Add optional branding support to both `createId` and `createIdFromString` functions
+  - Update FAQ documentation with external ID integration examples
+
+- 02e8aa0: Evolu identicons
+
+  Added `createIdenticon` function for generating visually distinct SVG identicons from Evolu `Id` (including branded IDs like `OwnerId`, etc.). For user avatars, visual identity markers, and differentiating entities in UI without storing images.
+
+  ### Features
+  - **Multiple styles**: Choose from 4 styles:
+    - `"github"` (default): 5×5 grid with horizontal mirroring, inspired by GitHub avatars
+    - `"quadrant"`: 2×2 color block grid with direct RGB mapping
+    - `"gradient"`: Diagonal stripe pattern with smooth color gradients
+    - `"sutnar"`: Ladislav Sutnar-inspired compositional design with adaptive colors
+  - **SVG output**: Returns SVG string that can be used directly
+
+  ### Example
+
+  ```ts
+  import { createIdenticon } from "@evolu/common";
+
+  // Basic usage with default GitHub style
+  const svg = createIdenticon(userId);
+
+  const quadrant = createIdenticon(ownerId, "quadrant");
+  const gradient = createIdenticon(postId, "gradient");
+  const sutnar = createIdenticon(teamId, "sutnar");
+  ```
+
+- f5e4232: Added deleteOwner(ownerId) method to the Storage interface and implementations, enabling complete removal of all data for a given owner, including timestamps, messages, and write keys.
+- 31d0d21: Add Cache module with generic cache interface and LRU cache implementation
+  - New `Cache<K, V>` interface with `has`, `get`, `set`, `delete` methods
+  - New `createLruCache` factory function for creating LRU caches with configurable capacity
+  - Keys are compared by reference (standard Map semantics)
+  - LRU cache automatically evicts least recently used entries when capacity is reached
+  - Both `get` and `set` operations update access order
+  - Exposes readonly `map` property for iteration and inspection
+
+  Example:
+
+  ```ts
+  const cache = createLruCache<string, number>(2);
+  cache.set("a", 1);
+  cache.set("b", 2);
+  cache.set("c", 3); // Evicts "a"
+  cache.has("a"); // false
+  ```
+
+- 29886ff: Add Standard Schema V1 support
+
+  [Evolu Type](http://localhost:3000/docs/api-reference/common/Type) now supports [Standard Schema](https://standardschema.dev/) V1, enabling interoperability with 40+ validation-compatible tools and frameworks.
+
+  ```ts
+  const User = object({
+    name: NonEmptyTrimmedString100,
+    age: Number,
+  });
+
+  const result = User["~standard"].validate({
+    name: "Alice",
+    age: "not a number",
+  });
+  // {
+  //   issues: [
+  //     {
+  //       message: 'A value "not a number" is not a number.',
+  //       path: ["age"],
+  //     },
+  //   ],
+  // }
+  ```
+
+  All error messages have been standardized for consistency.
+
+- 1d8c439: Add `orNull` method to Evolu Type
+
+  Returns the validated value or `null` on failure. Useful when the error is not important and you just want the value or nothing.
+
+  ```ts
+  const age = PositiveInt.orNull(userInput) ?? 0;
+  ```
+
+- eed43d5: Add `firstInArray` and `lastInArray` helpers
+
+  New helpers for safely accessing the first and last elements of non-empty arrays. Both functions work with `NonEmptyReadonlyArray` to guarantee type-safe access without runtime checks.
+
 ## 6.0.1-preview.35
 
 ### Patch Changes
