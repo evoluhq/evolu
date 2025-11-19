@@ -24,7 +24,7 @@ const Schema = {
 
 // Create Evolu instance for the React web platform.
 const evolu = Evolu.createEvolu(evoluReactWebDeps)(Schema, {
-  name: Evolu.SimpleName.orThrow("evolu-minimal-example-181125"),
+  name: Evolu.SimpleName.orThrow("minimal-example"),
 
   reloadUrl: "/playgrounds/minimal",
 

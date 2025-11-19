@@ -93,7 +93,7 @@ const Schema = {
 };
 
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
-  name: SimpleName.orThrow("evolu-full-example-181125"),
+  name: SimpleName.orThrow("full-example"),
 
   reloadUrl: "/playgrounds/full",
 

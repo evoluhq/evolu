@@ -56,7 +56,7 @@ type DatabaseSchema = typeof DatabaseSchema;
 
 const evolu = createEvolu(evoluWebDeps)(DatabaseSchema, {
   reloadUrl: "/",
-  name: SimpleName.orThrow("evolu-minimal-example-181125"),
+  name: SimpleName.orThrow("minimal-example"),
   ...(isDev && {
     transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
   }),
