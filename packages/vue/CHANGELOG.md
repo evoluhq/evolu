@@ -1,5 +1,12 @@
 # @evolu/vue
 
+## 1.2.0
+
+### Patch Changes
+
+- Updated dependencies [0830d8b]
+  - @evolu/common@7.2.0
+
 ## 1.1.0
 
 ### Patch Changes
