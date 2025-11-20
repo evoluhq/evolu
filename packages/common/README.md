@@ -1,6 +1,6 @@
 # Evolu
 
-Evolu is TypeScript library and local-first platform.
+Evolu is a TypeScript library and local-first platform.
 
 ## Documentation
 
@@ -20,7 +20,7 @@ To chat with other community members, you can join the [Evolu Discord](https://d
 
 We provide a free relay `free.evoluhq.com` for testing and personal usage.
 
-The Evolu Relay source along with the Docker files can be in the [/apps/relay](/apps/relay) directory.
+The Evolu Relay source and Docker files are in the [/apps/relay](/apps/relay) directory.
 
 Alternatively, a pre-built image `evoluhq/relay:latest` is hosted on [Docker Hub](https://hub.docker.com/r/evoluhq/relay).
 
@@ -36,39 +36,37 @@ Install dependencies:
 pnpm install
 ```
 
-Build monorepo:
+Build scripts
 
-```
-pnpm build
-pnpm build:web
-```
+- `pnpm build` - Build packages
+- `pnpm build:web` - Build web
+- `pnpm examples:build` - Build all examples
 
-Start dev:
+Start dev
 
-```
-# web
-pnpm dev
+> **Warning**: Run `pnpm build` before running dev. Packages must be built first.
 
-# expo (pnpm dev must be running too)
-pnpm ios
-pnpm android
-```
+- `pnpm dev` - Dev server for web
+- `pnpm ios` - Run iOS example (requires `pnpm dev` running)
+- `pnpm android` - Run Android example (requires `pnpm dev` running)
+- `pnpm examples:react-nextjs:dev` - Dev server for React Next.js example
+- `pnpm examples:react-vite-pwa:dev` - Dev server for React Vite PWA example
+- `pnpm examples:svelte-vite-pwa:dev` - Dev server for Svelte Vite PWA example
+- `pnpm examples:vue-vite-pwa:dev` - Dev server for Vue Vite PWA example
 
-Linting:
+Linting
 
-```
-pnpm lint
-pnpm lint-monorepo
-```
+- `pnpm lint` - Lint code
+- `pnpm lint-monorepo` - Lint monorepo structure
 
-Tests
+Testing
 
-```
-pnpm test
-```
+- `pnpm test` - Run tests
 
-Describe changes for release log:
+Release
 
-```
-pnpm changeset
-```
+- `pnpm changeset` - Describe changes for release log
+
+Verify
+
+- `pnpm verify` - Run all checks (build, lint, test) before commit
