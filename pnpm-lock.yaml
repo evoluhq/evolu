@@ -48,7 +48,7 @@ importers:
         version: 9.39.1(jiti@2.6.1)
       eslint-plugin-jsdoc:
         specifier: ^61.0.0
-        version: 61.3.0(eslint@9.39.1(jiti@2.6.1))
+        version: 61.4.0(eslint@9.39.1(jiti@2.6.1))
       eslint-plugin-react-hooks:
         specifier: ^7.0.0
         version: 7.0.1(eslint@9.39.1(jiti@2.6.1))
@@ -265,11 +265,11 @@ importers:
         specifier: ^20
         version: 20.3.13(@angular/common@20.3.13(@angular/core@20.3.13(@angular/compiler@20.3.13)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@20.3.13(@angular/compiler@20.3.13)(rxjs@7.8.2))
       '@evolu/common':
-        specifier: workspace:*
-        version: link:../../packages/common
+        specifier: latest
+        version: 7.2.0
       '@evolu/web':
-        specifier: workspace:*
-        version: link:../../packages/web
+        specifier: latest
+        version: 2.2.0(@evolu/common@7.2.0)
     devDependencies:
       '@analogjs/vite-plugin-angular':
         specifier: ^1.20.1
@@ -302,26 +302,26 @@ importers:
   examples/react-electron:
     dependencies:
       '@evolu/common':
-        specifier: workspace:*
-        version: link:../../packages/common
+        specifier: latest
+        version: 7.2.0
       '@evolu/react':
-        specifier: workspace:*
-        version: link:../../packages/react
+        specifier: latest
+        version: 10.2.0(@evolu/common@7.2.0)(react@19.1.0)
       '@evolu/react-web':
-        specifier: workspace:*
-        version: link:../../packages/react-web
+        specifier: latest
+        version: 2.2.0(@evolu/common@7.2.0)(@evolu/web@2.2.0(@evolu/common@7.2.0))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       react:
-        specifier: catalog:react19
+        specifier: 19.1.0
         version: 19.1.0
       react-dom:
-        specifier: catalog:react19
+        specifier: 19.1.0
         version: 19.1.0(react@19.1.0)
     devDependencies:
       '@types/react':
-        specifier: catalog:react19
+        specifier: ~19.1.13
         version: 19.1.17
       '@types/react-dom':
-        specifier: catalog:react19
+        specifier: ~19.1.9
         version: 19.1.11(@types/react@19.1.17)
       '@vitejs/plugin-react':
         specifier: ^5.0.1
@@ -351,14 +351,14 @@ importers:
         specifier: ^1.0.0
         version: 1.0.0(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       '@evolu/common':
-        specifier: workspace:*
-        version: link:../../packages/common
+        specifier: latest
+        version: 7.2.0
       '@evolu/react':
-        specifier: workspace:*
-        version: link:../../packages/react
+        specifier: latest
+        version: 10.2.0(@evolu/common@7.2.0)(react@19.1.0)
       '@evolu/react-native':
-        specifier: workspace:*
-        version: link:../../packages/react-native
+        specifier: latest
+        version: 14.1.0(@evolu/common@7.2.0)(@evolu/react@10.2.0(@evolu/common@7.2.0)(react@19.1.0))(@op-engineering/op-sqlite@15.0.7(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(expo-secure-store@15.0.7(expo@54.0.25))(expo-sqlite@16.0.9(expo@54.0.25)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(expo@54.0.25)(react-native-nitro-modules@0.31.9(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-svg@15.15.0(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))
       '@expo/metro-runtime':
         specifier: ^6.1.2
         version: 6.1.2(expo@54.0.25)(react-dom@19.1.0(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
@@ -393,7 +393,7 @@ importers:
         specifier: ~16.0.8
         version: 16.0.9(expo@54.0.25)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       react:
-        specifier: catalog:react19
+        specifier: 19.1.0
         version: 19.1.0
       react-native:
         specifier: ^0.81.4
@@ -418,7 +418,7 @@ importers:
         specifier: ^7.27.1
         version: 7.27.1(@babel/core@7.28.5)
       '@types/react':
-        specifier: catalog:react19
+        specifier: ~19.1.13
         version: 19.1.17
       shx:
         specifier: ^0.4.0
@@ -430,14 +430,14 @@ importers:
   examples/react-nextjs:
     dependencies:
       '@evolu/common':
-        specifier: workspace:*
-        version: link:../../packages/common
+        specifier: latest
+        version: 7.2.0
       '@evolu/react':
-        specifier: workspace:*
-        version: link:../../packages/react
+        specifier: latest
+        version: 10.2.0(@evolu/common@7.2.0)(react@19.1.0)
       '@evolu/react-web':
-        specifier: workspace:*
-        version: link:../../packages/react-web
+        specifier: latest
+        version: 2.2.0(@evolu/common@7.2.0)(@evolu/web@2.2.0(@evolu/common@7.2.0))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@tabler/icons-react':
         specifier: ^3.35.0
         version: 3.35.0(react@19.1.0)
@@ -448,10 +448,10 @@ importers:
         specifier: ^16.0.0
         version: 16.0.3(babel-plugin-react-compiler@1.0.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(sass@1.90.0)
       react:
-        specifier: catalog:react19
+        specifier: 19.1.0
         version: 19.1.0
       react-dom:
-        specifier: catalog:react19
+        specifier: 19.1.0
         version: 19.1.0(react@19.1.0)
     devDependencies:
       '@eslint/eslintrc':
@@ -467,10 +467,10 @@ importers:
         specifier: ^22.17.1
         version: 22.19.1
       '@types/react':
-        specifier: catalog:react19
+        specifier: ~19.1.13
         version: 19.1.17
       '@types/react-dom':
-        specifier: catalog:react19
+        specifier: ~19.1.9
         version: 19.1.11(@types/react@19.1.17)
       eslint:
         specifier: 9.39.1
@@ -494,14 +494,14 @@ importers:
   examples/react-vite-pwa:
     dependencies:
       '@evolu/common':
-        specifier: workspace:*
-        version: link:../../packages/common
+        specifier: latest
+        version: 7.2.0
       '@evolu/react':
-        specifier: workspace:*
-        version: link:../../packages/react
+        specifier: latest
+        version: 10.2.0(@evolu/common@7.2.0)(react@19.1.0)
       '@evolu/react-web':
-        specifier: workspace:*
-        version: link:../../packages/react-web
+        specifier: latest
+        version: 2.2.0(@evolu/common@7.2.0)(@evolu/web@2.2.0(@evolu/common@7.2.0))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@tabler/icons-react':
         specifier: ^3.35.0
         version: 3.35.0(react@19.1.0)
@@ -509,10 +509,10 @@ importers:
         specifier: ^2.1.1
         version: 2.1.1
       react:
-        specifier: catalog:react19
+        specifier: 19.1.0
         version: 19.1.0
       react-dom:
-        specifier: catalog:react19
+        specifier: 19.1.0
         version: 19.1.0(react@19.1.0)
       tailwindcss:
         specifier: ^4.1.12
@@ -528,10 +528,10 @@ importers:
         specifier: ^4.1.14
         version: 4.1.17(vite@7.2.4(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1))
       '@types/react':
-        specifier: catalog:react19
+        specifier: ~19.1.13
         version: 19.1.17
       '@types/react-dom':
-        specifier: catalog:react19
+        specifier: ~19.1.9
         version: 19.1.11(@types/react@19.1.17)
       '@typescript-eslint/eslint-plugin':
         specifier: ^8.44.1
@@ -592,7 +592,7 @@ importers:
         version: link:../../packages/web
       '@sveltejs/vite-plugin-svelte':
         specifier: ^6.1.1
-        version: 6.2.1(svelte@5.43.13)(vite@7.2.4(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1))
+        version: 6.2.1(svelte@5.43.14)(vite@7.2.4(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1))
       '@tsconfig/svelte':
         specifier: ^5.0.5
         version: 5.0.6
@@ -601,10 +601,10 @@ importers:
         version: 0.4.0
       svelte:
         specifier: ^5.38.2
-        version: 5.43.13
+        version: 5.43.14
       svelte-check:
         specifier: ^4.3.1
-        version: 4.3.4(picomatch@4.0.3)(svelte@5.43.13)(typescript@5.9.3)
+        version: 4.3.4(picomatch@4.0.3)(svelte@5.43.14)(typescript@5.9.3)
       tslib:
         specifier: ^2.8.1
         version: 2.8.1
@@ -621,14 +621,14 @@ importers:
   examples/vue-vite-pwa:
     dependencies:
       '@evolu/common':
-        specifier: workspace:*
-        version: link:../../packages/common
+        specifier: latest
+        version: 7.2.0
       '@evolu/vue':
-        specifier: workspace:*
-        version: link:../../packages/vue
+        specifier: latest
+        version: 1.2.0(@evolu/common@7.2.0)(vue@3.5.24(typescript@5.9.3))
       '@evolu/web':
-        specifier: workspace:*
-        version: link:../../packages/web
+        specifier: latest
+        version: 2.2.0(@evolu/common@7.2.0)
       vue:
         specifier: ^3.5.24
         version: 3.5.24(typescript@5.9.3)
@@ -868,7 +868,7 @@ importers:
         version: link:../web
       '@sveltejs/package':
         specifier: ^2.5.0
-        version: 2.5.5(svelte@5.43.13)(typescript@5.9.3)
+        version: 2.5.6(svelte@5.43.14)(typescript@5.9.3)
       '@tsconfig/svelte':
         specifier: ^5.0.5
         version: 5.0.6
@@ -877,10 +877,10 @@ importers:
         version: 0.4.0
       svelte:
         specifier: ^5.38.2
-        version: 5.43.13
+        version: 5.43.14
       svelte-check:
         specifier: ^4.3.1
-        version: 4.3.4(picomatch@4.0.3)(svelte@5.43.13)(typescript@5.9.3)
+        version: 4.3.4(picomatch@4.0.3)(svelte@5.43.14)(typescript@5.9.3)
       typescript:
         specifier: ^5.9.2
         version: 5.9.3
@@ -2340,9 +2340,72 @@ packages:
     resolution: {integrity: sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
+  '@evolu/common@7.2.0':
+    resolution: {integrity: sha512-5N0dBl/4ClUIt1X0dz4D5XTOz3stEbu9A8Pl0Mm4rkyURZ/eHJGGy0bu5M541uz7yyhxQ8d1BTTVqbi/D4XNyw==}
+    engines: {node: '>=22.0.0'}
+
+  '@evolu/react-native@14.1.0':
+    resolution: {integrity: sha512-bel1jN8+/Q1WDHi/N+HbaNQIyLEoGho14IApto+lXrWIHvXkon3y9naDpLLokcOF7f8wCl7kUjQCOE1+5Bm3Fg==}
+    engines: {node: '>=22.0.0'}
+    peerDependencies:
+      '@evolu/common': ^7.2.0
+      '@evolu/react': ^10.2.0
+      '@op-engineering/op-sqlite': '>=12'
+      expo: '>=54'
+      expo-secure-store: '>=15'
+      expo-sqlite: '>=16'
+      react-native: '>=0.81'
+      react-native-nitro-modules: '>=0.31'
+      react-native-sensitive-info: '>=6'
+      react-native-svg: '>=15'
+    peerDependenciesMeta:
+      '@op-engineering/op-sqlite':
+        optional: true
+      expo:
+        optional: true
+      expo-secure-store:
+        optional: true
+      expo-sqlite:
+        optional: true
+      react-native-nitro-modules:
+        optional: true
+      react-native-sensitive-info:
+        optional: true
+      react-native-svg:
+        optional: true
+
+  '@evolu/react-web@2.2.0':
+    resolution: {integrity: sha512-PiJpG2a7rAWG+VbPlx9zkEcCjb0kTXUxuBh0csqMXZcTklmt4cYOkRx+y30EMl8dYIohe2DGQdxLrCS5cxms4Q==}
+    engines: {node: '>=22.0.0'}
+    peerDependencies:
+      '@evolu/common': ^7.2.0
+      '@evolu/web': ^2.2.0
+      react: '>=19'
+      react-dom: '>=19'
+
+  '@evolu/react@10.2.0':
+    resolution: {integrity: sha512-C4FsGlbO6lNgZXRwzcidGfG+t2Mrt+u/LLlex8D3JxY+16fq4U/nsHYB+0juxmHf1DEPRjAc39BYm/2+CHV+3A==}
+    engines: {node: '>=22.0.0'}
+    peerDependencies:
+      '@evolu/common': ^7.2.0
+      react: '>=19'
+
   '@evolu/sqlite-wasm@2.2.4':
     resolution: {integrity: sha512-/JOYGFN93QspD2C8HVxVgBUlFWqJ1IpaVuIhEB53u4+ZvE+D3LjpNHDYiwZgf0n7VaH2U85OY5eV3wUrWc3scg==}
     hasBin: true
+
+  '@evolu/vue@1.2.0':
+    resolution: {integrity: sha512-EWT08eScIXGhJ9M6HV3tsJHFOk+RnNbKZPpXs28BW3djmJKlaL7xOrwd/W6QK02Xjso0wWU8bv7yOm+vgVywHw==}
+    engines: {node: '>=22.0.0'}
+    peerDependencies:
+      '@evolu/common': ^7.2.0
+      vue: '>=3.5.24'
+
+  '@evolu/web@2.2.0':
+    resolution: {integrity: sha512-sOUKBI+uEAG9qa5nzWK3blxQLgHV4Zq8KYpAAKM59Aj2QqPGrRdijDFiu3GJrSvaswdCfs/zQIXdredhhRr9EQ==}
+    engines: {node: '>=22.0.0'}
+    peerDependencies:
+      '@evolu/common': ^7.2.0
 
   '@expo/cli@54.0.16':
     resolution: {integrity: sha512-hY/OdRaJMs5WsVPuVSZ+RLH3VObJmL/pv5CGCHEZHN2PxZjSZSdctyKV8UcFBXTF0yIKNAJ9XLs1dlNYXHh4Cw==}
@@ -4090,8 +4153,8 @@ packages:
     peerDependencies:
       acorn: ^8.9.0
 
-  '@sveltejs/package@2.5.5':
-    resolution: {integrity: sha512-c6abuvYGg9rQLJpJjlVNQvA6x/F2gxBuIU1j6D1HdmzRYn9ccirsHh7B3B3DF/EBqoW0ocDVGaEOJl6kSD/LNw==}
+  '@sveltejs/package@2.5.6':
+    resolution: {integrity: sha512-1rNQYW/TwDZU6HTAWHvwDAdyRcccYKG7sShbCokhX1Z0spPFcTVbK771fVBcWnh+XChZGcOfi4KLN9AaIrehQQ==}
     engines: {node: ^16.14 || >=18}
     hasBin: true
     peerDependencies:
@@ -5819,8 +5882,8 @@ packages:
       '@typescript-eslint/parser':
         optional: true
 
-  eslint-plugin-jsdoc@61.3.0:
-    resolution: {integrity: sha512-E4m/5J5lrasd63Z74q4CCZ4PFnywnnrcvA7zZ98802NPhrZKKTp5NH+XAT+afcjXp2ps2/OQF5gPSWCT2XFCJg==}
+  eslint-plugin-jsdoc@61.4.0:
+    resolution: {integrity: sha512-Gbe6Z1QENj6jr5PVnEkWwm0PcVCGFwl9ju+e0BxFuRHHv6c8q2L+PRfCwDBO+veEEEGi5XO52nmoIRvhxb1A3Q==}
     engines: {node: '>=20.11.0'}
     peerDependencies:
       eslint: ^7.0.0 || ^8.0.0 || ^9.0.0
@@ -9145,8 +9208,8 @@ packages:
       svelte: ^3.55 || ^4.0.0-next.0 || ^4.0 || ^5.0.0-next.0
       typescript: ^4.9.4 || ^5.0.0
 
-  svelte@5.43.13:
-    resolution: {integrity: sha512-K1QJbpc71OHs3egN/ZHN+nsH/eE/eJQUbtlTAAXVejOOjsFx9hM96fCX5fwPQIYclJfVS8D96RDFA76nZsrJ3w==}
+  svelte@5.43.14:
+    resolution: {integrity: sha512-pHeUrp1A5S6RGaXhJB7PtYjL1VVjbVrJ2EfuAoPu9/1LeoMaJa/pcdCsCSb0gS4eUHAHnhCbUDxORZyvGK6kOQ==}
     engines: {node: '>=18'}
 
   tabbable@6.3.0:
@@ -11690,7 +11753,52 @@ snapshots:
       '@eslint/core': 0.17.0
       levn: 0.4.1
 
+  '@evolu/common@7.2.0':
+    dependencies:
+      '@noble/ciphers': 2.0.1
+      '@noble/hashes': 2.0.1
+      '@scure/bip39': 2.0.1
+      kysely: 0.28.8
+      msgpackr: 1.11.5
+      random: 5.4.1
+
+  '@evolu/react-native@14.1.0(@evolu/common@7.2.0)(@evolu/react@10.2.0(@evolu/common@7.2.0)(react@19.1.0))(@op-engineering/op-sqlite@15.0.7(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(expo-secure-store@15.0.7(expo@54.0.25))(expo-sqlite@16.0.9(expo@54.0.25)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(expo@54.0.25)(react-native-nitro-modules@0.31.9(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-svg@15.15.0(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))':
+    dependencies:
+      '@evolu/common': 7.2.0
+      '@evolu/react': 10.2.0(@evolu/common@7.2.0)(react@19.1.0)
+      react-native: 0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0)
+    optionalDependencies:
+      '@op-engineering/op-sqlite': 15.0.7(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+      expo: 54.0.25(@babel/core@7.28.5)(@expo/metro-runtime@6.1.2)(expo-router@6.0.15)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+      expo-secure-store: 15.0.7(expo@54.0.25)
+      expo-sqlite: 16.0.9(expo@54.0.25)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+      react-native-nitro-modules: 0.31.9(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+      react-native-svg: 15.15.0(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+
+  '@evolu/react-web@2.2.0(@evolu/common@7.2.0)(@evolu/web@2.2.0(@evolu/common@7.2.0))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+    dependencies:
+      '@evolu/common': 7.2.0
+      '@evolu/web': 2.2.0(@evolu/common@7.2.0)
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
+  '@evolu/react@10.2.0(@evolu/common@7.2.0)(react@19.1.0)':
+    dependencies:
+      '@evolu/common': 7.2.0
+      react: 19.1.0
+
   '@evolu/sqlite-wasm@2.2.4': {}
+
+  '@evolu/vue@1.2.0(@evolu/common@7.2.0)(vue@3.5.24(typescript@5.9.3))':
+    dependencies:
+      '@evolu/common': 7.2.0
+      vue: 3.5.24(typescript@5.9.3)
+
+  '@evolu/web@2.2.0(@evolu/common@7.2.0)':
+    dependencies:
+      '@evolu/common': 7.2.0
+      '@evolu/sqlite-wasm': 2.2.4
+      idb-keyval: 6.2.2
 
   '@expo/cli@54.0.16(expo-router@6.0.15)(expo@54.0.25)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))':
     dependencies:
@@ -13496,33 +13604,33 @@ snapshots:
     dependencies:
       acorn: 8.15.0
 
-  '@sveltejs/package@2.5.5(svelte@5.43.13)(typescript@5.9.3)':
+  '@sveltejs/package@2.5.6(svelte@5.43.14)(typescript@5.9.3)':
     dependencies:
       chokidar: 4.0.3
       kleur: 4.1.5
       sade: 1.8.1
       semver: 7.7.3
-      svelte: 5.43.13
-      svelte2tsx: 0.7.45(svelte@5.43.13)(typescript@5.9.3)
+      svelte: 5.43.14
+      svelte2tsx: 0.7.45(svelte@5.43.14)(typescript@5.9.3)
     transitivePeerDependencies:
       - typescript
 
-  '@sveltejs/vite-plugin-svelte-inspector@5.0.1(@sveltejs/vite-plugin-svelte@6.2.1(svelte@5.43.13)(vite@7.2.4(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1)))(svelte@5.43.13)(vite@7.2.4(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1))':
+  '@sveltejs/vite-plugin-svelte-inspector@5.0.1(@sveltejs/vite-plugin-svelte@6.2.1(svelte@5.43.14)(vite@7.2.4(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1)))(svelte@5.43.14)(vite@7.2.4(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1))':
     dependencies:
-      '@sveltejs/vite-plugin-svelte': 6.2.1(svelte@5.43.13)(vite@7.2.4(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1))
+      '@sveltejs/vite-plugin-svelte': 6.2.1(svelte@5.43.14)(vite@7.2.4(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1))
       debug: 4.4.3
-      svelte: 5.43.13
+      svelte: 5.43.14
       vite: 7.2.4(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@sveltejs/vite-plugin-svelte@6.2.1(svelte@5.43.13)(vite@7.2.4(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1))':
+  '@sveltejs/vite-plugin-svelte@6.2.1(svelte@5.43.14)(vite@7.2.4(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1))':
     dependencies:
-      '@sveltejs/vite-plugin-svelte-inspector': 5.0.1(@sveltejs/vite-plugin-svelte@6.2.1(svelte@5.43.13)(vite@7.2.4(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1)))(svelte@5.43.13)(vite@7.2.4(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1))
+      '@sveltejs/vite-plugin-svelte-inspector': 5.0.1(@sveltejs/vite-plugin-svelte@6.2.1(svelte@5.43.14)(vite@7.2.4(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1)))(svelte@5.43.14)(vite@7.2.4(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1))
       debug: 4.4.3
       deepmerge: 4.3.1
       magic-string: 0.30.21
-      svelte: 5.43.13
+      svelte: 5.43.14
       vite: 7.2.4(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1)
       vitefu: 1.1.1(vite@7.2.4(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(sass@1.90.0)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1))
     transitivePeerDependencies:
@@ -15595,7 +15703,7 @@ snapshots:
       - eslint-import-resolver-webpack
       - supports-color
 
-  eslint-plugin-jsdoc@61.3.0(eslint@9.39.1(jiti@2.6.1)):
+  eslint-plugin-jsdoc@61.4.0(eslint@9.39.1(jiti@2.6.1)):
     dependencies:
       '@es-joy/jsdoccomment': 0.76.0
       '@es-joy/resolve.exports': 1.2.0
@@ -19798,26 +19906,26 @@ snapshots:
 
   supports-preserve-symlinks-flag@1.0.0: {}
 
-  svelte-check@4.3.4(picomatch@4.0.3)(svelte@5.43.13)(typescript@5.9.3):
+  svelte-check@4.3.4(picomatch@4.0.3)(svelte@5.43.14)(typescript@5.9.3):
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
       chokidar: 4.0.3
       fdir: 6.5.0(picomatch@4.0.3)
       picocolors: 1.1.1
       sade: 1.8.1
-      svelte: 5.43.13
+      svelte: 5.43.14
       typescript: 5.9.3
     transitivePeerDependencies:
       - picomatch
 
-  svelte2tsx@0.7.45(svelte@5.43.13)(typescript@5.9.3):
+  svelte2tsx@0.7.45(svelte@5.43.14)(typescript@5.9.3):
     dependencies:
       dedent-js: 1.0.1
       scule: 1.3.0
-      svelte: 5.43.13
+      svelte: 5.43.14
       typescript: 5.9.3
 
-  svelte@5.43.13:
+  svelte@5.43.14:
     dependencies:
       '@jridgewell/remapping': 2.3.5
       '@jridgewell/sourcemap-codec': 1.5.5
