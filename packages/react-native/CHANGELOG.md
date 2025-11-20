@@ -1,5 +1,13 @@
 # @evolu/react-native
 
+## 14.1.0
+
+### Patch Changes
+
+- Updated dependencies [0830d8b]
+  - @evolu/common@7.2.0
+  - @evolu/react@10.2.0
+
 ## 14.0.0
 
 ### Major Changes
