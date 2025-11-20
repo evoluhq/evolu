@@ -36,13 +36,13 @@ Install dependencies:
 pnpm install
 ```
 
-Build scripts:
+Build scripts
 
 - `pnpm build` - Build packages
 - `pnpm build:web` - Build web
 - `pnpm examples:build` - Build all examples
 
-Start dev:
+Start dev
 
 > **Warning**: Run `pnpm build` before running dev. Packages must be built first.
 
@@ -54,19 +54,19 @@ Start dev:
 - `pnpm examples:svelte-vite-pwa:dev` - Dev server for Svelte Vite PWA example
 - `pnpm examples:vue-vite-pwa:dev` - Dev server for Vue Vite PWA example
 
-Linting:
+Linting
 
 - `pnpm lint` - Lint code
 - `pnpm lint-monorepo` - Lint monorepo structure
 
-Testing:
+Testing
 
 - `pnpm test` - Run tests
 
-Release:
+Release
 
 - `pnpm changeset` - Describe changes for release log
 
-Verify:
+Verify
 
 - `pnpm verify` - Run all checks (build, lint, test) before commit
