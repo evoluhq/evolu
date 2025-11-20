@@ -1,5 +1,9 @@
 /**
- * 🔒
+ * Cryptographic utilities
+ *
+ * Type-safe cryptographic operations including random number generation, SLIP21
+ * key derivation, XChaCha20-Poly1305 symmetric encryption, PADMÉ padding, and
+ * timing-safe comparisons.
  *
  * @module
  */

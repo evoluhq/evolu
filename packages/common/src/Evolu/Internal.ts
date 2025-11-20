@@ -1,10 +1,10 @@
 /**
- * 🛠️
+ * Internal Evolu
  *
  * ### Example
  *
  * ```ts
- * import { Evolu } from "@evolu/common/evolu";
+ * import { createTimestamp } from "@evolu/common/evolu";
  * ```
  *
  * @module

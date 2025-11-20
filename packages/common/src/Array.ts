@@ -1,8 +1,44 @@
 /**
- * 🔒 Type-safe array helpers that do not mutate
+ * Array types, type guards, operations, transformations, accessors, and
+ * mutations
  *
- * Array types, guards, operations, transformations, accessors, and (rare)
- * mutations.
+ * ### Example
+ *
+ * ```ts
+ * // Types - compile-time guarantee of at least one element
+ * const _valid: NonEmptyReadonlyArray<number> = [1, 2, 3];
+ * // ts-expect-error - empty array is not a valid NonEmptyReadonlyArray
+ * const _invalid: NonEmptyReadonlyArray<number> = [];
+ *
+ * // Type guards
+ * const arr: ReadonlyArray<number> = [1, 2, 3];
+ * if (isNonEmptyReadonlyArray(arr)) {
+ *   firstInArray(arr);
+ * }
+ *
+ * // Operations
+ * const appended = appendToArray([1, 2, 3], 4); // [1, 2, 3, 4]
+ * const prepended = prependToArray([2, 3], 1); // [1, 2, 3]
+ *
+ * // Transformations
+ * const readonly: ReadonlyArray<number> = [1, 2, 3];
+ * const mapped = mapArray(readonly, (x) => x * 2); // [2, 4, 6]
+ * const filtered = filterArray(readonly, (x) => x > 1); // [2, 3]
+ * const deduped = dedupeArray([1, 2, 1, 3, 2]); // [1, 2, 3]
+ * const [evens, odds] = partitionArray(
+ *   [1, 2, 3, 4, 5],
+ *   (x) => x % 2 === 0,
+ * ); // [[2, 4], [1, 3, 5]]
+ *
+ * // Accessors
+ * const first = firstInArray(["a", "b", "c"]); // "a"
+ * const last = lastInArray(["a", "b", "c"]); // "c"
+ *
+ * // Mutations
+ * const mutable: NonEmptyArray<number> = [1, 2, 3];
+ * shiftArray(mutable); // 1 (guaranteed to exist)
+ * mutable; // [2, 3]
+ * ```
  *
  * Functions are intentionally data-first to be prepared for the upcoming
  * JavaScript pipe operator.
@@ -43,42 +79,10 @@
  * **Note**: Feel free to use Array instance methods (mutation) if you think
  * it's better (performance, local scope, etc.).
  *
- * ### Example
- *
- * ```ts
- * // Types - compile-time guarantee of at least one element
- * const _valid: NonEmptyReadonlyArray<number> = [1, 2, 3];
- * // ts-expect-error - empty array is not a valid NonEmptyReadonlyArray
- * const _invalid: NonEmptyReadonlyArray<number> = [];
- *
- * // Guards
- * const arr: ReadonlyArray<number> = [1, 2, 3];
- * if (isNonEmptyReadonlyArray(arr)) {
- *   firstInArray(arr);
- * }
- *
- * // Operations
- * const appended = appendToArray([1, 2, 3], 4); // [1, 2, 3, 4]
- * const prepended = prependToArray([2, 3], 1); // [1, 2, 3]
- *
- * // Transformations
- * const readonly: ReadonlyArray<number> = [1, 2, 3];
- * const mapped = mapArray(readonly, (x) => x * 2); // [2, 4, 6]
- * const filtered = filterArray(readonly, (x) => x > 1); // [2, 3]
- * const deduped = dedupeArray([1, 2, 1, 3, 2]); // [1, 2, 3]
- *
- * // Accessors
- * const first = firstInArray(["a", "b", "c"]); // "a"
- * const last = lastInArray(["a", "b", "c"]); // "c"
- *
- * // Mutations
- * const mutable: NonEmptyArray<number> = [1, 2, 3];
- * shiftArray(mutable); // 1 (guaranteed to exist)
- * mutable; // [2, 3]
- * ```
- *
  * @module
  */
+
+import { PredicateWithIndex, RefinementWithIndex } from "./Types.js";
 
 /**
  * An array with at least one element.
@@ -175,8 +179,7 @@ export const prependToArray = <T>(
 /**
  * Maps an array using a mapper function.
  *
- * Accepts both mutable and readonly arrays. Does not mutate the original array.
- * Preserves non-empty type.
+ * Accepts both mutable and readonly arrays. Preserves non-empty type.
  *
  * ### Example
  *
@@ -202,22 +205,49 @@ export function mapArray<T, U>(
 }
 
 /**
- * Filters an array using a predicate function, returning a new readonly array.
+ * Filters an array using a predicate or refinement function, returning a new
+ * readonly array.
  *
- * Accepts both mutable and readonly arrays. Does not mutate the original array.
+ * Accepts both mutable and readonly arrays. When used with a refinement
+ * function (with `value is Type` syntax), TypeScript will narrow the result
+ * type to the narrowed type, making it useful for filtering with Evolu Types
+ * like `PositiveInt.is`.
  *
- * ### Example
+ * ### Examples
+ *
+ * #### With predicate
  *
  * ```ts
  * filterArray([1, 2, 3, 4, 5], (x) => x % 2 === 0); // [2, 4]
  * ```
  *
+ * #### With refinement
+ *
+ * ```ts
+ * const mixed: ReadonlyArray<NonEmptyString | PositiveInt> = [
+ *   NonEmptyString.orThrow("hello"),
+ *   PositiveInt.orThrow(42),
+ * ];
+ * const positiveInts = filterArray(mixed, PositiveInt.is);
+ * // positiveInts: ReadonlyArray<PositiveInt> (narrowed type)
+ * ```
+ *
  * @category Transformations
  */
-export const filterArray = <T>(
+export function filterArray<T, S extends T>(
   array: ReadonlyArray<T>,
-  predicate: (item: T, index: number) => boolean,
-): ReadonlyArray<T> => array.filter(predicate) as ReadonlyArray<T>;
+  refinement: RefinementWithIndex<T, S>,
+): ReadonlyArray<S>;
+export function filterArray<T>(
+  array: ReadonlyArray<T>,
+  predicate: PredicateWithIndex<T>,
+): ReadonlyArray<T>;
+export function filterArray<T>(
+  array: ReadonlyArray<T>,
+  predicate: PredicateWithIndex<T>,
+): ReadonlyArray<T> {
+  return array.filter(predicate) as ReadonlyArray<T>;
+}
 
 /**
  * Returns a new readonly array with duplicate items removed. If `by` is
@@ -270,6 +300,71 @@ export function dedupeArray<T>(
     seen.add(key);
     return true;
   }) as ReadonlyArray<T>;
+}
+
+/**
+ * Partitions an array into two arrays based on a predicate or refinement
+ * function.
+ *
+ * Returns a tuple where the first array contains elements that satisfy the
+ * predicate, and the second array contains elements that do not. Accepts both
+ * mutable and readonly arrays.
+ *
+ * When used with a refinement function (with `value is Type` syntax),
+ * TypeScript will narrow the first array to the narrowed type, making it useful
+ * for filtering with Evolu Types like `PositiveInt.is`.
+ *
+ * ### Examples
+ *
+ * #### With predicate
+ *
+ * ```ts
+ * const [evens, odds] = partitionArray(
+ *   [1, 2, 3, 4, 5],
+ *   (x) => x % 2 === 0,
+ * );
+ * evens; // [2, 4]
+ * odds; // [1, 3, 5]
+ * ```
+ *
+ * #### With refinement
+ *
+ * ```ts
+ * const mixed: ReadonlyArray<NonEmptyString | PositiveInt> = [
+ *   NonEmptyString.orThrow("hello"),
+ *   PositiveInt.orThrow(42),
+ * ];
+ * const [positiveInts, strings] = partitionArray(mixed, PositiveInt.is);
+ * // positiveInts: ReadonlyArray<PositiveInt> (narrowed type)
+ * // strings: ReadonlyArray<NonEmptyString> (Exclude<T, PositiveInt>)
+ * ```
+ *
+ * @category Transformations
+ */
+export function partitionArray<T, S extends T>(
+  array: ReadonlyArray<T>,
+  refinement: RefinementWithIndex<T, S>,
+): readonly [ReadonlyArray<S>, ReadonlyArray<Exclude<T, S>>];
+export function partitionArray<T>(
+  array: ReadonlyArray<T>,
+  predicate: PredicateWithIndex<T>,
+): readonly [ReadonlyArray<T>, ReadonlyArray<T>];
+export function partitionArray<T>(
+  array: ReadonlyArray<T>,
+  predicate: PredicateWithIndex<T>,
+): readonly [ReadonlyArray<T>, ReadonlyArray<T>] {
+  const trueArray: Array<T> = [];
+  const falseArray: Array<T> = [];
+
+  for (let i = 0; i < array.length; i++) {
+    if (predicate(array[i], i)) {
+      trueArray.push(array[i]);
+    } else {
+      falseArray.push(array[i]);
+    }
+  }
+
+  return [trueArray as ReadonlyArray<T>, falseArray as ReadonlyArray<T>];
 }
 
 /**

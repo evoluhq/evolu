@@ -1,5 +1,5 @@
 /**
- * 🧩 Type-safe runtime types
+ * Runtime types
  *
  * Evolu {@link Type} is like a type guard that returns typed errors (via
  * {@link Result}) instead of throwing. We either get a safely typed value or a
@@ -213,7 +213,7 @@ import { hasNodeBuffer } from "./Platform.js";
 import { err, getOrNull, getOrThrow, ok, Result, trySync } from "./Result.js";
 import { safelyStringifyUnknownValue } from "./String.js";
 import type { TimeDep } from "./Time.js";
-import type { Literal, Simplify, WidenLiteral } from "./Types.js";
+import type { Literal, Refinement, Simplify, WidenLiteral } from "./Types.js";
 import { IntentionalNever } from "./Types.js";
 
 export interface Type<
@@ -353,7 +353,7 @@ export interface Type<
    * console.log(filteredStrings); // ["hello", "world"]
    * ```
    */
-  readonly is: (value: unknown) => value is T;
+  readonly is: Refinement<unknown, T>;
 
   readonly [EvoluTypeSymbol]: true;
 

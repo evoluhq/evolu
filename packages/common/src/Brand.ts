@@ -67,7 +67,7 @@ declare const __brand: unique symbol;
  *
  * Works with any base type intersected with a `Brand`.
  *
- * ### Examples
+ * ### Example
  *
  * - `IsBranded<string>` -> false
  * - `IsBranded<string & Brand<"X">>` -> true

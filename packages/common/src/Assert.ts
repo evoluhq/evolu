@@ -1,17 +1,3 @@
-/**
- * 🚨
- *
- * This module provides assertion utilities to prevent invalid states from
- * propagating through the system by halting execution when a condition fails,
- * improving reliability and debuggability.
- *
- * **Warning**: Do not use this instead of {@link Type}. Assertions are intended
- * for conditions that are logically guaranteed but not statically known by
- * TypeScript, or for catching and signaling developer mistakes eagerly (e.g.,
- * invalid configuration).
- *
- * @module
- */
 import type { Type } from "./Type.js";
 
 /**

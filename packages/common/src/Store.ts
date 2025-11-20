@@ -1,8 +1,3 @@
-/**
- * A mutable reference for managing state with change notifications
- *
- * @module
- */
 import { Eq, eqStrict } from "./Eq.js";
 import { Ref } from "./Ref.js";
 

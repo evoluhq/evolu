@@ -1,9 +1,3 @@
-/**
- * ⏳
- *
- * @module
- */
-
 import { assert } from "./Assert.js";
 import { DateIso, NonNegativeInt } from "./Type.js";
 

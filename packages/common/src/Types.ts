@@ -23,6 +23,23 @@ import * as Kysely from "kysely";
 export type Predicate<T> = (value: T) => boolean;
 
 /**
+ * Checks a condition on a value at a given index and returns a boolean.
+ *
+ * Useful for callbacks that need both the element and its position.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const isEvenIndex: PredicateWithIndex<string> = (value, index) =>
+ *   index % 2 === 0;
+ *
+ * const items = ["a", "b", "c", "d"];
+ * const evenIndexItems = items.filter(isEvenIndex); // ["a", "c"]
+ * ```
+ */
+export type PredicateWithIndex<T> = (value: T, index: number) => boolean;
+
+/**
  * A type guard function that refines type `A` to a narrower type `B`.
  *
  * ### Example
@@ -41,6 +58,31 @@ export type Predicate<T> = (value: T) => boolean;
  * ```
  */
 export type Refinement<in A, out B extends A> = (a: A) => a is B;
+
+/**
+ * A type guard function that refines type `A` to a narrower type `B` at a given
+ * index.
+ *
+ * Useful for callbacks that need both the element and its position while
+ * maintaining type narrowing.
+ *
+ * ### Example
+ *
+ * ```ts
+ * type Item = { type: "number" | "string"; value: unknown };
+ *
+ * const isNumberItem: RefinementWithIndex<Item, Item & { type: "number" }> =
+ *   (item, index): item is Item & { type: "number" } =>
+ *     index > 0 && item.type === "number";
+ *
+ * const items: ReadonlyArray<Item> = [...];
+ * const [numbers, others] = partitionArray(items, isNumberItem);
+ * ```
+ */
+export type RefinementWithIndex<in A, out B extends A> = (
+  a: A,
+  index: number,
+) => a is B;
 
 /**
  * Makes properties optional if they accept `null` as a value.

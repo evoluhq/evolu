@@ -8,11 +8,13 @@ import {
   isNonEmptyReadonlyArray,
   lastInArray,
   mapArray,
+  partitionArray,
   prependToArray,
   shiftArray,
   type NonEmptyArray,
   type NonEmptyReadonlyArray,
 } from "../src/Array.js";
+import { NonEmptyString, PositiveInt } from "../src/Type.js";
 
 describe("Types", () => {
   test("NonEmptyArray requires at least one element", () => {
@@ -172,6 +174,23 @@ describe("Transformations", () => {
       filterArray(arr, (x) => x % 2 === 0);
       expect(arr).toEqual([1, 2, 3, 4, 5]);
     });
+
+    test("works with refinements", () => {
+      const mixed: ReadonlyArray<NonEmptyString | PositiveInt> = [
+        NonEmptyString.orThrow("hello"),
+        PositiveInt.orThrow(42),
+        NonEmptyString.orThrow("world"),
+        PositiveInt.orThrow(100),
+      ];
+
+      const positiveInts = filterArray(mixed, PositiveInt.is);
+
+      // Type narrowing: positiveInts should be ReadonlyArray<PositiveInt>
+      expectTypeOf(positiveInts).toEqualTypeOf<ReadonlyArray<PositiveInt>>();
+
+      expect(positiveInts.length).toBe(2);
+      expect(positiveInts).toEqual([42, 100]);
+    });
   });
 
   describe("dedupeArray", () => {
@@ -221,6 +240,70 @@ describe("Transformations", () => {
       expectTypeOf(result).toEqualTypeOf<
         NonEmptyReadonlyArray<{ id: number; value: string }>
       >();
+    });
+  });
+
+  describe("partitionArray", () => {
+    test("partitions array by predicate", () => {
+      const arr: ReadonlyArray<number> = [1, 2, 3, 4, 5];
+      const [evens, odds] = partitionArray(arr, (x) => x % 2 === 0);
+      expect(evens).toEqual([2, 4]);
+      expect(odds).toEqual([1, 3, 5]);
+      expectTypeOf(evens).toEqualTypeOf<ReadonlyArray<number>>();
+      expectTypeOf(odds).toEqualTypeOf<ReadonlyArray<number>>();
+    });
+
+    test("accepts mutable array and returns readonly", () => {
+      const mutableArr: Array<number> = [1, 2, 3, 4];
+      const [trueArr, falseArr] = partitionArray(mutableArr, (x) => x > 2);
+      expect(trueArr).toEqual([3, 4]);
+      expect(falseArr).toEqual([1, 2]);
+      expectTypeOf(trueArr).toEqualTypeOf<ReadonlyArray<number>>();
+      expectTypeOf(falseArr).toEqualTypeOf<ReadonlyArray<number>>();
+      // Original mutable array is not mutated
+      expect(mutableArr).toEqual([1, 2, 3, 4]);
+    });
+
+    test("passes index to predicate", () => {
+      const arr: ReadonlyArray<string> = ["a", "b", "c"];
+      const [evenIndices, oddIndices] = partitionArray(
+        arr,
+        (_, i) => i % 2 === 0,
+      );
+      expect(evenIndices).toEqual(["a", "c"]);
+      expect(oddIndices).toEqual(["b"]);
+    });
+
+    test("works with refinements and type narrowing", () => {
+      // Using PositiveInt.is as a type guard with partitionArray
+      // With actual Evolu types: NonEmptyString | PositiveInt
+      const mixed: ReadonlyArray<NonEmptyString | PositiveInt> = [
+        NonEmptyString.orThrow("hello"),
+        PositiveInt.orThrow(42),
+        NonEmptyString.orThrow("world"),
+        PositiveInt.orThrow(100),
+      ];
+
+      // Using partitionArray with PositiveInt.is type guard
+      const [positiveInts, strings] = partitionArray(mixed, PositiveInt.is);
+
+      // Type narrowing with Exclude: positiveInts is PositiveInt, strings is NonEmptyString
+      expectTypeOf(positiveInts).toEqualTypeOf<ReadonlyArray<PositiveInt>>();
+      expectTypeOf(strings).toEqualTypeOf<ReadonlyArray<NonEmptyString>>();
+
+      // PositiveInt values are separated from NonEmptyString values
+      expect(positiveInts.length).toBe(2);
+      expect(strings.length).toBe(2);
+
+      // All values that pass PositiveInt.is are positive integers
+      for (const value of positiveInts) {
+        expect(PositiveInt.is(value)).toBe(true);
+      }
+
+      // All values that don't pass PositiveInt.is are strings (NonEmptyString)
+      for (const value of strings) {
+        expect(NonEmptyString.is(value)).toBe(true);
+      }
     });
   });
 });

@@ -1,21 +1,14 @@
-/**
- * ⚡ Lazy, cancellable Promise that returns Result instead of throwing
- *
- * @module
- */
-
 import { isNonEmptyArray, shiftArray } from "./Array.js";
 import { Result, err, ok } from "./Result.js";
 import { Duration, durationToNonNegativeInt } from "./Time.js";
 import { NonNegativeInt, PositiveInt } from "./Type.js";
 
 /**
- * `Task` is a lazy, cancellable Promise that returns {@link Result} instead of
- * throwing.
+ * `Task` is a function that creates and returns an optionally cancellable
+ * Promise using {@link Result}.
  *
- * In other words, Task is a function that creates a Promise when it's called.
- * This laziness allows safe composition, e.g. retry logic because it prevents
- * eager execution.
+ * The laziness allows safe composition, e.g. retry logic, because it prevents
+ * eager execution until the Task is actually invoked.
  *
  * ### Cancellation
  *

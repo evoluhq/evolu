@@ -1,15 +1,13 @@
 /**
- * 🛡️ Type-safe errors
- *
  * The problem with throwing an exception in JavaScript is that the caught error
  * is always of an unknown type. The unknown type is a problem because we can't
  * be sure all errors have been handled because the TypeScript compiler can't
  * tell us.
  *
- * Languages like Rust 🦀 or Haskell 📚 use a type-safe approach to error
- * handling, where errors are explicitly represented as part of the return type,
- * such as Result or Either, allowing the developer to handle errors safely.
- * TypeScript can have this too via the `Result` type.
+ * Languages like Rust or Haskell use a type-safe approach to error handling,
+ * where errors are explicitly represented as part of the return type, such as
+ * Result or Either, allowing the developer to handle errors safely. TypeScript
+ * can have this too via the `Result` type.
  *
  * The `Result` type can be either {@link Ok} (success) or {@link Err} (error).
  * Use {@link ok} to create a successful result and {@link err} to create an error
@@ -63,7 +61,7 @@
  * - For safe code, use `ok` and `err`.
  * - For unsafe code, use `trySync` or `tryAsync`.
  *
- * Asynchronous safe (because of a Promise using Result) code:
+ * Safe asynchronous code (using Result with a Promise):
  *
  * ```ts
  * const fetchUser = async (
@@ -84,7 +82,7 @@
  * };
  * ```
  *
- * ### Naming Convention
+ * ### Naming convention
  *
  * - For values: `const user = getUser()`
  * - For a single void operation: `const result = foo()`
@@ -117,7 +115,7 @@
  *
  * ### Examples
  *
- * #### Sequential Operations with Short-Circuiting
+ * #### Sequential operations with short-circuiting
  *
  * When performing a sequence of operations where any failure should stop
  * further processing, use the `Result` type with early returns.
@@ -181,7 +179,7 @@
  * };
  * ```
  *
- * ### Handling Unexpected Errors
+ * ### Handling unexpected errors
  *
  * Even with disciplined use of `trySync` and `tryAsync`, unexpected errors can
  * still occur due to programming mistakes, third-party library bugs, or edge
@@ -192,7 +190,7 @@
  * expected errors handled via the `Result` type. Unexpected errors should fail
  * fast - the operation fails immediately and the error bubbles up.
  *
- * #### In Browser Environments
+ * #### In browser environments
  *
  * ```ts
  * // Global error handler for unexpected errors
@@ -209,7 +207,7 @@
  * });
  * ```
  *
- * #### In Node.js Environments
+ * #### In Node.js environments
  *
  * ```ts
  * // Handle uncaught exceptions - log and fail fast
@@ -347,16 +345,16 @@ export interface Ok<T> {
  * An error {@link Result}.
  *
  * The `error` property can be any type that describes the error. For normal
- * business logic, use a plain object. This allows us to structure errors with
+ * domain logic, use a plain object. This allows us to structure errors with
  * custom fields (e.g., `{ type: "MyError", code: 123 }`). Messages for users
  * belong to translations, not to error objects.
  *
- * If you need a stacktrace for debugging, use an `Error` instance or a custom
+ * If you need a stack trace for debugging, use an `Error` instance or a custom
  * error class to include additional metadata.
  *
  * ### Examples
  *
- * #### Business Logic Error (Plain Object, Recommended)
+ * #### Domain logic error (plain object, recommended)
  *
  * ```ts
  * const failure = err({
@@ -366,13 +364,13 @@ export interface Ok<T> {
  * });
  * ```
  *
- * #### Debugging with Stack Trace (Error Instance)
+ * #### Debugging with stack trace (error instance)
  *
  * ```ts
  * const failure = err(new Error("Something went wrong"));
  * ```
  *
- * #### Custom Error Class
+ * #### Custom error class
  *
  * ```ts
  * class MyCustomError extends Error {

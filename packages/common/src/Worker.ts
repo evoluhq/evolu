@@ -1,9 +1,3 @@
-/**
- * Cross-platform worker abstraction
- *
- * @module
- */
-
 import { assert } from "./Assert.js";
 import { createTransferableError, TransferableError } from "./Error.js";
 

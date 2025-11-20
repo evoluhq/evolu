@@ -1,9 +1,3 @@
-/**
- * Websocket with auto-reconnect and offline support
- *
- * @module
- */
-
 import { constVoid } from "./Function.js";
 import { err, ok, Result } from "./Result.js";
 import { retry, RetryError, RetryOptions } from "./Task.js";

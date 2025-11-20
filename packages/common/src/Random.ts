@@ -1,9 +1,3 @@
-/**
- * 🎲
- *
- * @module
- */
-
 import { Random as RandomLib } from "random";
 
 /**

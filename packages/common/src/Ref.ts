@@ -1,8 +1,3 @@
-/**
- * A mutable reference for managing state
- *
- * @module
- */
 import type { Store } from "./Store.js";
 
 /**

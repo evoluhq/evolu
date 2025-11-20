@@ -1,9 +1,3 @@
-/**
- * 🗄️ Generic cache interface and LRU cache implementation.
- *
- * @module
- */
-
 import { PositiveInt } from "./Type.js";
 
 /**
@@ -32,7 +26,7 @@ export interface Cache<K, V> {
 }
 
 /**
- * Creates a Least Recently Used (LRU) cache with a maximum capacity.
+ * Creates an LRU (least recently used) cache with a maximum capacity.
  *
  * When the cache reaches capacity, the least recently used entry is evicted.
  * Both `get` and `set` operations update the access order.
