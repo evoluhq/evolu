@@ -1,5 +1,5 @@
 /**
- * Array types, type guards, operations, transformations, accessors, and
+ * Array types, type guards, operations, transformations, accessors, and (rare)
  * mutations
  *
  * ### Example
@@ -414,3 +414,20 @@ export const lastInArray = <T>(array: NonEmptyReadonlyArray<T>): T =>
  * @category Mutations
  */
 export const shiftArray = <T>(array: NonEmptyArray<T>): T => array.shift() as T;
+
+/**
+ * Pops an item from a non-empty mutable array, guaranteed to return T.
+ *
+ * **Mutates** the original array.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const arr: NonEmptyArray<number> = [1, 2, 3];
+ * popArray(arr); // 3
+ * arr; // [1, 2]
+ * ```
+ *
+ * @category Mutations
+ */
+export const popArray = <T>(array: NonEmptyArray<T>): T => array.pop() as T;

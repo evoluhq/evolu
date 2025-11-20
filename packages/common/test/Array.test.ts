@@ -9,6 +9,7 @@ import {
   lastInArray,
   mapArray,
   partitionArray,
+  popArray,
   prependToArray,
   shiftArray,
   type NonEmptyArray,
@@ -396,6 +397,40 @@ describe("Mutations", () => {
       // Verify readonly arrays are NOT accepted by TypeScript
       // @ts-expect-error - readonly arrays cannot be mutated
       shiftArray([1, 2, 3] as NonEmptyReadonlyArray<number>);
+    });
+  });
+
+  describe("popArray", () => {
+    test("pops last element from array", () => {
+      const arr: NonEmptyArray<number> = [1, 2, 3];
+      const result = popArray(arr);
+      expect(result).toBe(3);
+      expect(arr).toEqual([1, 2]);
+    });
+
+    test("pops from single element array", () => {
+      const arr: NonEmptyArray<number> = [42];
+      const result = popArray(arr);
+      expect(result).toBe(42);
+      expect(arr).toEqual([]);
+    });
+
+    test("mutates the original array", () => {
+      const arr: NonEmptyArray<string> = ["a", "b", "c"];
+      popArray(arr);
+      expect(arr).toEqual(["a", "b"]);
+    });
+
+    test("only accepts mutable arrays", () => {
+      const mutableArr: NonEmptyArray<number> = [1, 2, 3];
+      const result = popArray(mutableArr);
+      expect(result).toBe(3);
+      expect(mutableArr).toEqual([1, 2]);
+      expectTypeOf(result).toEqualTypeOf<number>();
+
+      // Verify readonly arrays are NOT accepted by TypeScript
+      // @ts-expect-error - readonly arrays cannot be mutated
+      popArray([1, 2, 3] as NonEmptyReadonlyArray<number>);
     });
   });
 });
