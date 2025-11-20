@@ -20,8 +20,6 @@ import {
 import { evoluWebDeps } from "@evolu/web";
 import { provideEvolu, useQuery } from "@evolu/vue";
 
-const isDev = !!import.meta.env.DEV;
-
 const TodoId = id("Todo");
 type TodoId = typeof TodoId.Type;
 
@@ -56,7 +54,7 @@ type DatabaseSchema = typeof DatabaseSchema;
 
 const evolu = createEvolu(evoluWebDeps)(DatabaseSchema, {
   name: SimpleName.orThrow("minimal-example"),
-  // ...(isDev && {
+  // ...(!!import.meta.env.DEV && {
   //   transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
   // }),
 });
