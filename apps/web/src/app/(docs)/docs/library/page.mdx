@@ -18,3 +18,31 @@ This guide will get you up and running with Evolu Library.
 ```bash
 npm install @evolu/common
 ```
+
+## Learning path
+
+We recommend learning Evolu Library in this order:
+
+### 1. Result – Error handling
+
+Start with [`Result`](/docs/api-reference/common/Result/type-aliases/Result), which provides a type-safe way to handle errors without exceptions. It's the foundation for composable error handling throughout Evolu.
+
+### 2. Task – Asynchronous operations
+
+Learn [`Task`](/docs/api-reference/common/Task/interfaces/Task), which represents asynchronous computations in a lazy, composable way.
+
+### 3. Type – Runtime validation
+
+Understand the [`Type`](/docs/api-reference/common/Type) system for runtime validation and parsing. This enables you to enforce constraints at compile-time and validate untrusted data at runtime.
+
+### 4. Dependency injection
+
+Explore the [dependency injection pattern](/docs/dependency-injection) used throughout Evolu for decoupled, testable code.
+
+### 5. Conventions
+
+Review the [Evolu conventions](/docs/conventions) to understand the codebase style and patterns.
+
+## Exploring the API
+
+After understanding the core concepts, explore the full API in the [API reference](/docs/api-reference/common). All code is commented and test files are written to be read as examples—they demonstrate practical usage patterns and edge cases.
