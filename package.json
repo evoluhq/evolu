@@ -76,6 +76,9 @@
         "expo-modules-*",
         "typescript"
       ]
+    },
+    "patchedDependencies": {
+      "@changesets/assemble-release-plan": "patches/@changesets__assemble-release-plan.patch"
     }
   }
 }
