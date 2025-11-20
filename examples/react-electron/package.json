@@ -10,15 +10,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@evolu/common": "workspace:*",
-    "@evolu/react": "workspace:*",
-    "@evolu/react-web": "workspace:*",
-    "react": "catalog:react19",
-    "react-dom": "catalog:react19"
+    "@evolu/common": "latest",
+    "@evolu/react": "latest",
+    "@evolu/react-web": "latest",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
   },
   "devDependencies": {
-    "@types/react": "catalog:react19",
-    "@types/react-dom": "catalog:react19",
+    "@types/react": "~19.1.13",
+    "@types/react-dom": "~19.1.9",
     "@vitejs/plugin-react": "^5.0.1",
     "electron": "38.2.0",
     "electron-builder": "^26.0.12",

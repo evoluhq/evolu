@@ -12,21 +12,21 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@evolu/common": "workspace:*",
-    "@evolu/react": "workspace:*",
-    "@evolu/react-web": "workspace:*",
+    "@evolu/common": "latest",
+    "@evolu/react": "latest",
+    "@evolu/react-web": "latest",
     "@tabler/icons-react": "^3.35.0",
     "clsx": "^2.1.1",
-    "react": "catalog:react19",
-    "react-dom": "catalog:react19",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
     "tailwindcss": "^4.1.12"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
     "@tailwindcss/forms": "^0.5.10",
     "@tailwindcss/vite": "^4.1.14",
-    "@types/react": "catalog:react19",
-    "@types/react-dom": "catalog:react19",
+    "@types/react": "~19.1.13",
+    "@types/react-dom": "~19.1.9",
     "@typescript-eslint/eslint-plugin": "^8.44.1",
     "@typescript-eslint/parser": "^8.44.1",
     "@vite-pwa/assets-generator": "^1.0.0",
