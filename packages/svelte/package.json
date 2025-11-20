@@ -1,6 +1,6 @@
 {
   "name": "@evolu/svelte",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Evolu for Svelte",
   "keywords": [
     "evolu",
@@ -48,8 +48,8 @@
     "typescript": "^5.9.2"
   },
   "peerDependencies": {
-    "@evolu/common": "^7.0.0",
-    "@evolu/web": "^2.0.0",
+    "@evolu/common": "^7.1.0",
+    "@evolu/web": "^2.1.0",
     "svelte": ">=5"
   },
   "publishConfig": {
