@@ -11,10 +11,10 @@ import { Schema } from "./schema";
 const evolu = createEvolu(evoluWebDeps)(Schema, {
   name: getOrThrow(SimpleName.from("angular-vite-pwa-minimal")),
 
-  ...(typeof window !== "undefined" &&
-    window.location.hostname === "localhost" && {
-      transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
-    }),
+  // ...(typeof window !== "undefined" &&
+  //   window.location.hostname === "localhost" && {
+  //     transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
+  //   }),
 });
 
 // This injection token allows us to use Angular's dependency injection to get

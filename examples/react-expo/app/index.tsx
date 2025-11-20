@@ -54,9 +54,9 @@ export default function Index(): React.ReactNode {
         ),
         encryptionKey: authResult?.owner?.encryptionKey,
         externalAppOwner: authResult?.owner,
-        ...(process.env.NODE_ENV === "development" && {
-          transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
-        }),
+        // ...(process.env.NODE_ENV === "development" && {
+        //   transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
+        // }),
       });
 
       setEvolu(evolu as EvoluType<typeof Schema>);

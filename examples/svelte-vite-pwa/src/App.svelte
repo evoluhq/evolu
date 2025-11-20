@@ -23,11 +23,9 @@
   const evolu = Evolu.createEvolu(evoluSvelteDeps)(Schema, {
     name: Evolu.SimpleName.orThrow("minimal-example"),
 
-    reloadUrl: "/",
-
-    ...(process.env.NODE_ENV === "development" && {
-      transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
-    }),
+    // ...(process.env.NODE_ENV === "development" && {
+    //   transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
+    // }),
   });
 
   /**

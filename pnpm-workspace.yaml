@@ -3,6 +3,8 @@ packages:
   - packages/*
   - examples/*
 
+# Catalogs enforce consistent versions across the monorepo, especially important
+# for react-expo which requires exact React versions
 catalogs:
   react19:
     "@types/react": ~19.1.13

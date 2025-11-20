@@ -55,15 +55,10 @@ const DatabaseSchema = {
 type DatabaseSchema = typeof DatabaseSchema;
 
 const evolu = createEvolu(evoluWebDeps)(DatabaseSchema, {
-  reloadUrl: "/",
   name: SimpleName.orThrow("minimal-example"),
-  ...(isDev && {
-    transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
-  }),
-  indexes: (create) => [
-    create("todoCreatedAt").on("todo").column("createdAt"),
-    create("todoCategoryCreatedAt").on("todoCategory").column("createdAt"),
-  ],
+  // ...(isDev && {
+  //   transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
+  // }),
 });
 
 provideEvolu(evolu);

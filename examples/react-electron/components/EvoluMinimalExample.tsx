@@ -26,11 +26,9 @@ const Schema = {
 const evolu = Evolu.createEvolu(evoluReactWebDeps)(Schema, {
   name: Evolu.SimpleName.orThrow("minimal-example"),
 
-  reloadUrl: "/playgrounds/minimal",
-
-  ...(process.env.NODE_ENV === "development" && {
-    transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
-  }),
+  // ...(process.env.NODE_ENV === "development" && {
+  //   transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
+  // }),
 });
 
 // Creates a typed React Hook returning an instance of Evolu.
