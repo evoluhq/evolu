@@ -1,5 +1,12 @@
 # @evolu/react
 
+## 10.1.0
+
+### Patch Changes
+
+- Updated dependencies [be0ad00]
+  - @evolu/common@7.1.0
+
 ## 10.0.0
 
 ### Major Changes
