@@ -66,3 +66,7 @@ Testing:
 Release:
 
 - `pnpm changeset` - Describe changes for release log
+
+Verify:
+
+- `pnpm verify` - Run all checks (build, lint, test) before commit
