@@ -1,5 +1,19 @@
 # @evolu/react-native
 
+## 14.1.1
+
+### Patch Changes
+
+- 84f1663: Rename `Evolu` directory to `local-first`
+
+  Reorganize internal directory structure to better reflect the local-first architecture. The `Evolu` directory in `src` is now named `local-first` across all packages.
+
+  It's not breaking change unless `@evolu/common/evolu` was used (now its `@evolu/common/local-first`). The JSDoc called is "internal" so not considered as public API change.
+
+- Updated dependencies [84f1663]
+  - @evolu/common@7.2.1
+  - @evolu/react@10.2.1
+
 ## 14.1.0
 
 ### Patch Changes
