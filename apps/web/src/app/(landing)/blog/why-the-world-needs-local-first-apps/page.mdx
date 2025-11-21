@@ -6,7 +6,7 @@ export const article = {
   date: "2024-11-20",
   title: "Why the world needs local-first apps",
   description:
-    "Discover why local-first apps are the future of software development. This post explores the limitations of traditional client-server architecture, the benefits of local-first principles like data ownership and privacy, and how Evolu empowers developers to build resilient, user-centric apps with ease.",
+    "Most apps store users' data on someone else's server. This creates problems: privacy breaches, vendor lock-in, and apps that stop working when the internet goes down. Local-first apps fix this by storing data on users' devices first.",
 };
 
 export const metadata = {
@@ -16,82 +16,24 @@ export const metadata = {
 
 export default (props) => <ArticleLayout article={article} {...props} />;
 
-The way we interact with apps and manage data has largely been shaped by the client-server architecture. While this approach offers convenience, it also comes with significant trade-offs, such as privacy concerns, dependency on external services, and limited user control over their data. Enter **local-first apps**—a paradigm that prioritizes user autonomy, data ownership, and resilience.
-
-In this post, we'll explore why local-first apps are essential, the challenges of traditional client-server architecture, and how **Evolu**, a local-first app library, is addressing these issues head-on.
+Most apps today use client-server architecture. Users' data lives on someone else's server, and the app is just a fancy interface to that server. This seems convenient until it's not.
 
 ---
 
-## Why local-first apps matter
+## What users lose with client-server apps
 
-**Local-first apps** shift the power dynamic by ensuring that data is stored and processed primarily on the user's devices. This isn't just a technical distinction; it fundamentally changes the relationship between users and software. Here's why this matters:
+- **Users don't own their data:** Someone else controls it. They can delete it, change their terms, or shut down tomorrow.
 
-1. **Data Ownership**  
-   Local-first apps give users full control of their data. Instead of relying on servers to store information, data is saved directly to the user's device. This approach eliminates the risks of data loss due to server failures or corporate shutdowns.
+- **No internet means no app:** While some client-server apps can work offline for a short period of time, local-first apps work offline by default.
 
-2. **Offline Functionality**  
-   In a world where connectivity isn't guaranteed, the ability to work offline is crucial. Local-first apps ensure uninterrupted functionality, whether you're on a flight, in a remote area, or simply experiencing network issues.
+- **The data isn't private:** While some client-server apps offer end-to-end encryption, for genuine local-first apps, it's fundamental.
 
-3. **Privacy and Security**  
-   By storing data locally, apps reduce exposure to privacy breaches. When combined with encryption, as Evolu does, sensitive information remains private and inaccessible to third parties.
+- **The server is a single point of failure:** Client-server apps depend on a server or a cloud. Local-first apps don't.
 
-4. **Resilience**  
-   Unlike centralized systems that can fail due to server outages, cyberattacks, or business closures, local-first apps continue to function independently, making them more resilient.
+## Local-first apps
 
----
+Local-first apps store users' data on users' devices. Not as a cache, but for real. A server is an infrastructure for sync and backup, not the source of truth.
 
-## The trade-offs of client-server architecture
+The idea of local-first software isn't new. [Solid](<https://en.wikipedia.org/wiki/Solid_(web_decentralization_project)>) pioneered decentralized data ownership for the web. Then [Ink & Switch's essay](https://www.inkandswitch.com/essay/local-first/) defined the principles that shape how we think about local-first today.
 
-The client-server model has dominated app development for decades, primarily because it simplifies synchronization and backups. However, this convenience comes with significant trade-offs:
-
-- **Server Dependence:**  
-  Internet outages, server downtime, and company failures can leave users stranded without access to their data or app functionality.
-- **Privacy Risks:**  
-  Centralized servers often store unencrypted data, leaving users vulnerable to breaches and unauthorized access.
-
-- **Vendor Lock-In:**  
-  Users and developers are often tied to a specific service provider, limiting flexibility and long-term control.
-
-These challenges highlight the need for an alternative approach—one that prioritizes user autonomy while maintaining the conveniences we’ve come to expect.
-
----
-
-## How Evolu redefines local-first apps
-
-**Evolu** is a library built with the local-first philosophy at its core. It solves the challenges of building local-first apps while retaining the benefits of synchronization and backup through a minimal, optional server.
-
-### 1. **Full Data Ownership**
-
-Evolu stores all app data in a local SQLite database. Unlike caching or partial storage solutions, this ensures that users have complete control over their data at all times.
-
-### 2. **Built-in Privacy with Encryption**
-
-Data privacy is non-negotiable in Evolu. All local data is encrypted by default, ensuring robust security without requiring developers to configure it manually.
-
-### 3. **Lightweight, Open-Source Server**
-
-Evolu offers a simple, open-sourced **Evolu Server** for synchronization. This server is purely a message buffer with no app-specific logic, ensuring that developers aren’t tied to a single provider or platform.
-
-### 4. **No Vendor Lock-In**
-
-Evolu's design allows developers to leverage cloud services without becoming dependent on them. This approach balances flexibility with independence, giving users and developers peace of mind.
-
----
-
-## What local-first means to Evolu
-
-The term "local-first" has become an umbrella for various strategies. At Evolu, it specifically means:
-
-- **Data Ownership:** All user data resides locally in an encrypted SQLite database.
-- **Privacy:** Built-in encryption ensures data is secure and private by default.
-- **No Vendor Lock-In:** Apps can function with or without the cloud, and the server is designed to be generic and easily replaceable.
-
-By focusing on these principles, Evolu empowers developers to create apps that prioritize the user—offering a seamless blend of autonomy, privacy, and reliability.
-
----
-
-## Why the future is local-first
-
-The internet is not infallible. Servers go down, companies fail, and errors occur. These realities underline the need for software that doesn't rely solely on centralized systems. **Local-first apps** offer a compelling alternative, combining the best of both worlds: the autonomy of local data with the convenience of optional cloud features.
-
-Evolu makes it easier than ever to build local-first apps, providing developers with the tools they need to create resilient, user-centric software. With Evolu, the future of app development looks brighter, more private, and entirely in the hands of users.
+For Evolu, local-first software means ownership. That's essential as it encourages care, responsibility, and skills.
