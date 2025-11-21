@@ -235,11 +235,11 @@ export const Header = forwardRef<
             {pathname.startsWith("/blog") && (
               <TopLevelNavItem href="/">Home</TopLevelNavItem>
             )}
-            {!pathname.startsWith("/docs") && (
-              <TopLevelNavItem href="/docs">Docs</TopLevelNavItem>
-            )}
             {!pathname.startsWith("/blog") && (
               <TopLevelNavItem href="/blog">Blog</TopLevelNavItem>
+            )}
+            {!pathname.startsWith("/docs") && (
+              <TopLevelNavItem href="/docs">Docs</TopLevelNavItem>
             )}
             <TopLevelNavItem
               target="_blank"
