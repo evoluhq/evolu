@@ -25,14 +25,15 @@
       "browser": "./dist/src/index.js",
       "react-native": "./dist/src/index.js"
     },
-    "./evolu": {
-      "import": "./dist/src/Evolu/Internal.js"
+    "./local-first": {
+      "types": "./dist/src/local-first/index.d.ts",
+      "import": "./dist/src/local-first/index.js"
     }
   },
   "typesVersions": {
     "*": {
-      "evolu": [
-        "./dist/src/Evolu/Internal.d.ts"
+      "local-first": [
+        "./dist/src/local-first/index.d.ts"
       ]
     }
   },

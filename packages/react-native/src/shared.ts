@@ -13,7 +13,7 @@ import {
   createDbWorkerForPlatform,
   EvoluDeps,
   ReloadAppDep,
-} from "@evolu/common/evolu";
+} from "@evolu/common/local-first";
 
 /**
  * Polyfills `Promise.withResolvers`.

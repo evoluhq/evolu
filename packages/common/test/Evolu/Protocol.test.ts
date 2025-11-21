@@ -33,7 +33,7 @@ import {
   protocolVersion,
   SubscriptionFlags,
   TimestampsRangeWithTimestampsBuffer,
-} from "../../src/Evolu/Protocol.js";
+} from "../../src/local-first/Protocol.js";
 import {
   CrdtMessage,
   DbChange,
@@ -44,12 +44,12 @@ import {
   Storage,
   StorageDep,
   timestampBytesToFingerprint,
-} from "../../src/Evolu/Storage.js";
+} from "../../src/local-first/Storage.js";
 import {
   createInitialTimestamp,
   timestampBytesToTimestamp,
   timestampToTimestampBytes,
-} from "../../src/Evolu/Timestamp.js";
+} from "../../src/local-first/Timestamp.js";
 import { constFalse, constTrue } from "../../src/Function.js";
 import {
   assertNonEmptyArray,

@@ -8,7 +8,7 @@ import {
   NodeId,
   orderTimestampBytes,
   timestampToTimestampBytes,
-} from "../../src/Evolu/Timestamp.js";
+} from "../../src/local-first/Timestamp.js";
 import { testRandomLib } from "../_deps.js";
 
 // Random numbers are unique only for a few thousand iterations.

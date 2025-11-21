@@ -1,2 +1,2 @@
 export * from "./BetterSqliteDriver.js";
-export * from "./Evolu/Relay.js";
+export * from "./local-first/Relay.js";

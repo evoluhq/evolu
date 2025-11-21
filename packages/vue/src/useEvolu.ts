@@ -1,4 +1,4 @@
-import type { Evolu } from "@evolu/common/evolu";
+import type { Evolu } from "@evolu/common/local-first";
 import { getCurrentInstance, inject } from "vue";
 import { EvoluContext, evoluInstanceMap } from "./provideEvolu.js";
 import type { createUseEvolu } from "./createUseEvolu.js";

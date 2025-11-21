@@ -25,7 +25,7 @@ import {
   parseOwnerIdFromOwnerWebSocketTransportUrl,
   Relay,
   RelayConfig,
-} from "@evolu/common/evolu";
+} from "@evolu/common/local-first";
 import { existsSync } from "fs";
 import { createServer } from "http";
 import { WebSocket, WebSocketServer } from "ws";

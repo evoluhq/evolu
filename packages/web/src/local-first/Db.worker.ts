@@ -5,7 +5,7 @@ import {
   createTime,
   createWebSocket,
 } from "@evolu/common";
-import { createDbWorkerForPlatform } from "@evolu/common/evolu";
+import { createDbWorkerForPlatform } from "@evolu/common/local-first";
 import { createWasmSqliteDriver } from "../WasmSqliteDriver.js";
 import { wrapWebWorkerSelf } from "../WebWorker.js";
 

@@ -1,4 +1,4 @@
-import { Query, QueryRows, Row, emptyRows } from "@evolu/common/evolu";
+import { Query, QueryRows, Row, emptyRows } from "@evolu/common/local-first";
 import { onScopeDispose, Ref, shallowReadonly, shallowRef } from "vue";
 import { useEvolu } from "./useEvolu.js";
 

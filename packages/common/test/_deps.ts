@@ -8,21 +8,21 @@ import {
   RandomBytesDep,
   SymmetricCryptoDep,
 } from "../src/Crypto.js";
+import { constFalse, constTrue, constVoid } from "../src/Function.js";
 import {
   createOwner,
   createOwnerSecret,
   ownerIdToOwnerIdBytes,
-} from "../src/Evolu/Owner.js";
+} from "../src/local-first/Owner.js";
 import {
   createRelaySqliteStorage,
   createRelayStorageTables,
-} from "../src/Evolu/Relay.js";
+} from "../src/local-first/Relay.js";
 import {
   createBaseSqliteStorageTables,
   StorageConfig,
   StorageDep,
-} from "../src/Evolu/Storage.js";
-import { constFalse, constTrue, constVoid } from "../src/Function.js";
+} from "../src/local-first/Storage.js";
 import {
   createRandom,
   createRandomLibWithSeed,

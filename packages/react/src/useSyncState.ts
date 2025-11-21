@@ -1,4 +1,4 @@
-import { SyncState } from "@evolu/common/evolu";
+import { SyncState } from "@evolu/common/local-first";
 import { useEvolu } from "./useEvolu.js";
 
 /** Subscribe to {@link SyncState} changes. */

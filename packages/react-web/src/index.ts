@@ -1,4 +1,4 @@
-import { EvoluDeps } from "@evolu/common/evolu";
+import { EvoluDeps } from "@evolu/common/local-first";
 import { evoluWebDeps, localAuth } from "@evolu/web";
 import { flushSync } from "react-dom";
 

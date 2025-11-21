@@ -1,6 +1,6 @@
 "use client";
 
-import { Evolu } from "@evolu/common/evolu";
+import { Evolu } from "@evolu/common/local-first";
 import { ReactNode } from "react";
 import { EvoluContext } from "./EvoluContext.js";
 

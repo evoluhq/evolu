@@ -3,7 +3,7 @@ import {
   QueriesToQueryRows,
   QueriesToQueryRowsPromises,
   Row,
-} from "@evolu/common/evolu";
+} from "@evolu/common/local-first";
 import { use, useRef } from "react";
 import { useEvolu } from "./useEvolu.js";
 import type { useQuery } from "./useQuery.js";

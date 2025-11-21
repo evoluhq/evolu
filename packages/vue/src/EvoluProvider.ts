@@ -1,4 +1,4 @@
-import type { Evolu } from "@evolu/common/evolu";
+import type { Evolu } from "@evolu/common/local-first";
 import { defineComponent } from "vue";
 import { provideEvolu } from "./provideEvolu.js";
 

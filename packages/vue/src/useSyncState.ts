@@ -1,4 +1,4 @@
-import { SyncState } from "@evolu/common/evolu";
+import { SyncState } from "@evolu/common/local-first";
 import { Ref } from "vue";
 // import { useEvolu } from "./useEvolu.js";
 

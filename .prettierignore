@@ -4,4 +4,4 @@ apps/web/src/app/(docs)/docs/api-reference/**/*.mdx
 # Contains SQL with runtime kyselyJsonIdentifier that breaks CLI SQL parser.
 # File uses // prettier-ignore comments to preserve compact SQL format.
 # To format non-SQL code, temporarily uncomment this line, format, re-comment.
-packages/common/src/Evolu/PublicKysely.ts
+packages/common/src/local-first/PublicKysely.ts

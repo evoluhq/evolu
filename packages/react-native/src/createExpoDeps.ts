@@ -1,5 +1,5 @@
 import { CreateSqliteDriverDep, LocalAuth } from "@evolu/common";
-import { EvoluDeps, ReloadApp } from "@evolu/common/evolu";
+import { EvoluDeps, ReloadApp } from "@evolu/common/local-first";
 import * as Expo from "expo";
 import { createSharedEvoluDeps, createSharedLocalAuth } from "./shared.js";
 import type {

@@ -1,6 +1,6 @@
 import SQLite from "better-sqlite3";
 import { describe, expect, test } from "vitest";
-import { defaultDbConfig } from "../../src/Evolu/Db.js";
+import { defaultDbConfig } from "../../src/local-first/Db.js";
 import {
   Counter,
   Millis,
@@ -22,7 +22,7 @@ import {
   sendTimestamp,
   timestampBytesToTimestamp,
   timestampToTimestampBytes,
-} from "../../src/Evolu/Timestamp.js";
+} from "../../src/local-first/Timestamp.js";
 import { increment } from "../../src/Number.js";
 import { orderNumber } from "../../src/Order.js";
 import { Result, getOrThrow, ok } from "../../src/Result.js";

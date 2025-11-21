@@ -2,8 +2,8 @@ import { assert, describe, expect, test } from "vitest";
 import {
   EncryptedCrdtMessage,
   EncryptedDbChange,
-} from "../../src/Evolu/Storage.js";
-import { createInitialTimestamp } from "../../src/Evolu/Timestamp.js";
+} from "../../src/local-first/Storage.js";
+import { createInitialTimestamp } from "../../src/local-first/Timestamp.js";
 import {
   constFalse,
   err,

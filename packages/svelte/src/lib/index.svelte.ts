@@ -12,7 +12,7 @@ import type {
   Query,
   QueryRows,
   Row,
-} from "@evolu/common/evolu";
+} from "@evolu/common/local-first";
 import { evoluWebDeps } from "@evolu/web";
 
 // just in case we need to add some svelte specific deps

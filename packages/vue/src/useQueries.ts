@@ -4,7 +4,7 @@ import type {
   Query,
   QueryRows,
   Row,
-} from "@evolu/common/evolu";
+} from "@evolu/common/local-first";
 import type { Ref } from "vue";
 import { useQuery } from "./useQuery.js";
 

@@ -1,11 +1,5 @@
 /**
- * Internal Evolu
- *
- * ### Example
- *
- * ```ts
- * import { createTimestamp } from "@evolu/common/evolu";
- * ```
+ * Local-first code to be imported from "@evolu/common/local-first"
  *
  * @module
  */

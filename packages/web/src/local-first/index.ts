@@ -10,7 +10,7 @@ import {
   DbWorkerInput,
   DbWorkerOutput,
   EvoluDeps,
-} from "@evolu/common/evolu";
+} from "@evolu/common/local-first";
 import { createSharedWebWorker } from "../SharedWebWorker.js";
 import { createWebAuthnStore } from "./LocalAuth.js";
 import { reloadApp } from "./Platform.js";

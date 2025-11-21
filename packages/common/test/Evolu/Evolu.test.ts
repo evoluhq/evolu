@@ -5,16 +5,16 @@ import {
   createDbWorkerForPlatform,
   DbWorkerInput,
   DbWorkerOutput,
-} from "../../src/Evolu/Db.js";
-import { createEvolu } from "../../src/Evolu/Evolu.js";
-import { createAppOwner } from "../../src/Evolu/Owner.js";
+} from "../../src/local-first/Db.js";
+import { createEvolu } from "../../src/local-first/Evolu.js";
+import { createAppOwner } from "../../src/local-first/Owner.js";
 import {
   ValidateColumnTypes,
   ValidateIdColumnType,
   ValidateNoSystemColumns,
   ValidateSchemaHasId,
-} from "../../src/Evolu/Schema.js";
-import { SyncOwner } from "../../src/Evolu/Sync.js";
+} from "../../src/local-first/Schema.js";
+import { SyncOwner } from "../../src/local-first/Sync.js";
 import { constVoid } from "../../src/Function.js";
 import { getOrThrow } from "../../src/Result.js";
 import { createSqlite, SqliteBoolean } from "../../src/Sqlite.js";

@@ -1,4 +1,4 @@
-import { Query, QueryRows, Row } from "@evolu/common/evolu";
+import { Query, QueryRows, Row } from "@evolu/common/local-first";
 import { use } from "react";
 import { useEvolu } from "./useEvolu.js";
 import type { useQueries } from "./useQueries.js";

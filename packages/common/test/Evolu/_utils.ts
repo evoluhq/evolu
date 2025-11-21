@@ -1,7 +1,7 @@
 import { assert } from "../../src/Assert.js";
-import { DbSchema, getDbSchema } from "../../src/Evolu/Schema.js";
-import { CrdtMessage, DbChange } from "../../src/Evolu/Storage.js";
-import { createTimestamp, Millis } from "../../src/Evolu/Timestamp.js";
+import { DbSchema, getDbSchema } from "../../src/local-first/Schema.js";
+import { CrdtMessage, DbChange } from "../../src/local-first/Storage.js";
+import { createTimestamp, Millis } from "../../src/local-first/Timestamp.js";
 import { sql, SqliteDep } from "../../src/Sqlite.js";
 import { Id } from "../../src/Type.js";
 

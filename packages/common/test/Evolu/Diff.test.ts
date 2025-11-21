@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
-import { applyPatches, makePatches } from "../../src/Evolu/Diff.js";
-import { Row } from "../../src/Evolu/Query.js";
+import { applyPatches, makePatches } from "../../src/local-first/Diff.js";
+import { Row } from "../../src/local-first/Query.js";
 
 test("makePatches", () => {
   const row: Row = { a: 1 };

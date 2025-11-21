@@ -6,7 +6,7 @@
  * `@op-engineering/op-sqlite`.
  */
 
-import { ReloadApp } from "@evolu/common/evolu";
+import { ReloadApp } from "@evolu/common/local-first";
 import { DevSettings } from "react-native";
 import { SensitiveInfo } from "react-native-sensitive-info";
 import { createSharedEvoluDeps, createSharedLocalAuth } from "../shared.js";

@@ -1,6 +1,6 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { assert, expect, test } from "vitest";
-import { ownerIdToOwnerIdBytes } from "../../src/Evolu/Owner.js";
+import { ownerIdToOwnerIdBytes } from "../../src/local-first/Owner.js";
 import {
   BaseSqliteStorageDep,
   createBaseSqliteStorage,
@@ -13,7 +13,7 @@ import {
   StorageInsertTimestampStrategy,
   timestampBytesToFingerprint,
   ValidDbChangeValues,
-} from "../../src/Evolu/Storage.js";
+} from "../../src/local-first/Storage.js";
 import {
   Counter,
   createTimestamp,
@@ -21,7 +21,7 @@ import {
   orderTimestampBytes,
   TimestampBytes,
   timestampToTimestampBytes,
-} from "../../src/Evolu/Timestamp.js";
+} from "../../src/local-first/Timestamp.js";
 import { constTrue } from "../../src/Function.js";
 import { computeBalancedBuckets } from "../../src/Number.js";
 import { createRandom } from "../../src/Random.js";

@@ -5,15 +5,15 @@ import {
   DbWorker,
   DbWorkerPlatformDeps,
   defaultDbConfig,
-} from "../../src/Evolu/Db.js";
-import { createQuery } from "../../src/Evolu/Evolu.js";
-import { createAppOwner } from "../../src/Evolu/Owner.js";
+} from "../../src/local-first/Db.js";
+import { createQuery } from "../../src/local-first/Evolu.js";
+import { createAppOwner } from "../../src/local-first/Owner.js";
 import {
   applyProtocolMessageAsRelay,
   createProtocolMessageFromCrdtMessages,
   ProtocolMessage,
-} from "../../src/Evolu/Protocol.js";
-import { DbChange } from "../../src/Evolu/Storage.js";
+} from "../../src/local-first/Protocol.js";
+import { DbChange } from "../../src/local-first/Storage.js";
 import { getOrThrow } from "../../src/Result.js";
 import { createSqlite, Sqlite } from "../../src/Sqlite.js";
 import { wait } from "../../src/Task.js";

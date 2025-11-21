@@ -38,7 +38,10 @@ export const navigation: Array<NavGroup> = [
       { title: "Relay", href: "/docs/relay" },
       { title: "Time travel", href: "/docs/time-travel" },
       { title: "Migrations", href: "/docs/migrations" },
-      { title: "Protocol", href: "/docs/api-reference/common/Evolu/Protocol" },
+      {
+        title: "Protocol",
+        href: "/docs/api-reference/common/local-first/Protocol",
+      },
       { title: "Privacy", href: "/docs/privacy" },
       { title: "FAQ", href: "/docs/faq" },
     ],

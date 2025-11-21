@@ -3,7 +3,7 @@ import {
   deserializeQuery,
   Query,
   serializeQuery,
-} from "../../src/Evolu/Query.js";
+} from "../../src/local-first/Query.js";
 import { SafeSql, SqliteQuery } from "../../src/Sqlite.js";
 
 test("Query", () => {
