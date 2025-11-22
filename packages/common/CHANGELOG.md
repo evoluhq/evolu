@@ -1,5 +1,23 @@
 # @evolu/common
 
+## 7.2.2
+
+### Patch Changes
+
+- 37e653c: Improve Owner API documentation and consistency
+  - Add `ReadonlyOwner` interface for owners without write keys
+  - Export `UnuseOwner` type for better API clarity
+  - Improve JSDoc comments across Owner types and related interfaces
+  - Rename `BaseOwnerError` to `OwnerError` for consistency
+  - Remove `createOwner` from public exports (use specific owner creation functions)
+  - Remove transport properties from owner types (now passed via `useOwner`)
+  - Add documentation for `OwnerWriteKey` rotation
+  - Improve `useOwner` documentation in React and Vue hooks
+
+- de00f0c: Prevent redundant WebSocket close calls
+
+  Added a check to ensure socket.close() is only called if the WebSocket is not already closing or closed, preventing unnecessary operations and potential errors.
+
 ## 7.2.1
 
 ### Patch Changes
