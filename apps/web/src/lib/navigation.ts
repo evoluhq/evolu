@@ -34,10 +34,14 @@ export const navigation: Array<NavGroup> = [
       { title: "Getting started", href: "/docs/local-first" },
       { title: "Playgrounds", href: "/docs/playgrounds" },
       { title: "Examples", href: "/docs/examples" },
-      { title: "Indexes", href: "/docs/indexes" },
+      {
+        title: "Owners",
+        href: "/docs/api-reference/common/local-first/interfaces/Owner",
+      },
       { title: "Relay", href: "/docs/relay" },
-      { title: "Time travel", href: "/docs/time-travel" },
       { title: "Migrations", href: "/docs/migrations" },
+      { title: "Time travel", href: "/docs/time-travel" },
+      { title: "Indexes", href: "/docs/indexes" },
       {
         title: "Protocol",
         href: "/docs/api-reference/common/local-first/Protocol",
