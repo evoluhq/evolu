@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  booleanToSqliteBoolean,
   createEvolu,
   createFormatTypeError,
   FiniteNumber,
@@ -378,8 +379,7 @@ const HomeTabProjectSectionTodoItem: FC<{
     // No need to check result if a mutation can't fail.
     update("todo", {
       id,
-      // Number converts boolean to number.
-      isCompleted: Number(!isCompleted),
+      isCompleted: booleanToSqliteBoolean(!isCompleted),
     });
   };
 

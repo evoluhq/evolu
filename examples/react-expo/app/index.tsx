@@ -193,8 +193,7 @@ const EvoluDemo = ({
     const handleToggleCompletedPress = () => {
       update("todo", {
         id,
-        // Number converts boolean to number.
-        isCompleted: Number(!isCompleted),
+        isCompleted: Evolu.booleanToSqliteBoolean(!isCompleted),
       });
     };
 
