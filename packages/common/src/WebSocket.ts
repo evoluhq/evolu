@@ -171,7 +171,12 @@ export const createWebSocket: CreateWebSocket = (
     socket.onmessage = null;
     socket.onerror = null;
 
-    socket.close();
+    if (
+      socket.readyState !== socket.CLOSING &&
+      socket.readyState !== socket.CLOSED
+    ) {
+      socket.close();
+    }
     socket = null;
   };
 
