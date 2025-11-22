@@ -1,15 +1,18 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "vitest";
-import { createIdenticon } from "../src/index.js";
-import { createOwner, createOwnerSecret } from "../src/index.js";
+import {
+  createAppOwner,
+  createIdenticon,
+  createOwnerSecret,
+} from "../src/index.js";
 import { testDeps } from "./_deps.js";
 
 test.skip("generates visually distinct identicons", () => {
   const ids = [];
   for (let i = 0; i < 10; i++) {
     const secret = createOwnerSecret(testDeps);
-    const owner = createOwner(secret);
+    const owner = createAppOwner(secret);
     ids.push(owner.id);
   }
 

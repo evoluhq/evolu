@@ -22,15 +22,23 @@ import type { EncryptedDbChange, Storage } from "./Storage.js";
 import { TimestampBytes } from "./Timestamp.js";
 
 /**
+ * {@link Owner} without a {@link OwnerWriteKey}.
+ *
+ * @see {@link createSharedReadonlyOwner}
+ */
+export interface ReadonlyOwner {
+  readonly id: OwnerId;
+  readonly encryptionKey: OwnerEncryptionKey;
+}
+
+/**
  * The Owner represents ownership of data in Evolu. Every database change is
- * assigned to an owner, enabling sync functionality and access control.
+ * assigned to an owner and encrypted with its {@link OwnerEncryptionKey}. Owners
+ * allow partial sync, only the {@link AppOwner} is synced by default.
  *
- * Owners enable **partial sync** - applications can choose which owners to
- * sync, allowing selective data synchronization based on specific needs.
- *
- * Owners also provide **real data deletion** - while individual changes in
- * local-first/distributed systems can only be marked as deleted, entire owners
- * can be completely deleted from both relays and devices (except for
+ * Owners can also provide real data deletion, while individual changes in
+ * local-first/distributed systems can only be soft deleted, entire owners can
+ * be completely deleted from both relays and devices (except for
  * {@link AppOwner}, which must be preserved for sync coordination).
  *
  * Evolu provides different owner types depending on their use case:
@@ -46,21 +54,19 @@ import { TimestampBytes } from "./Timestamp.js";
  * SLIP-21, ensuring secure and deterministic key generation:
  *
  * - {@link OwnerId}: Globally unique public identifier
- * - {@link EncryptionKey}: Symmetric encryption key for data protection
+ * - {@link OwnerEncryptionKey}: Symmetric encryption key for data protection
  * - {@link OwnerWriteKey}: Authentication token for write operations (rotatable)
  *
- * @see {@link createOwner}
+ * @see {@link createAppOwner}
+ * @see {@link createShardOwner}
+ * @see {@link createSharedOwner}
+ * @see {@link createSharedReadonlyOwner}
  */
-export interface Owner {
-  readonly id: OwnerId;
-  readonly encryptionKey: OwnerEncryptionKey;
+export interface Owner extends ReadonlyOwner {
   readonly writeKey: OwnerWriteKey;
 }
 
-/**
- * OwnerId is a branded {@link Id} that uniquely identifies an {@link Owner}.
- * Branded from {@link Id} to leverage existing helpers like {@link idToIdBytes}.
- */
+/** OwnerId is a branded {@link Id} that uniquely identifies an {@link Owner}. */
 export const OwnerId = brand("OwnerId", Id);
 export type OwnerId = typeof OwnerId.Type;
 
@@ -68,14 +74,17 @@ export type OwnerId = typeof OwnerId.Type;
 export const OwnerIdBytes = brand("OwnerIdBytes", IdBytes);
 export type OwnerIdBytes = typeof OwnerIdBytes.Type;
 
+/** Converts {@link OwnerId} to {@link OwnerIdBytes}. */
 export const ownerIdToOwnerIdBytes = (ownerId: OwnerId): OwnerIdBytes =>
   idToIdBytes(ownerId) as OwnerIdBytes;
 
+/** Converts {@link OwnerIdBytes} to {@link OwnerId}. */
 export const ownerIdBytesToOwnerId = (ownerIdBytes: OwnerIdBytes): OwnerId =>
   idBytesToId(ownerIdBytes as IdBytes) as OwnerId;
 
 export const ownerWriteKeyLength = NonNegativeInt.orThrow(16);
 
+/** Symmetric encryption key for {@link Owner} data protection. */
 export const OwnerEncryptionKey = brand("OwnerEncryptionKey", EncryptionKey);
 export type OwnerEncryptionKey = typeof OwnerEncryptionKey.Type;
 
@@ -85,6 +94,16 @@ export type OwnerEncryptionKey = typeof OwnerEncryptionKey.Type;
  */
 export const OwnerWriteKey = brand("OwnerWriteKey", Entropy16);
 export type OwnerWriteKey = typeof OwnerWriteKey.Type;
+
+/**
+ * Creates a new random {@link OwnerWriteKey} for rotation.
+ *
+ * The initial OwnerWriteKey is deterministically derived from
+ * {@link OwnerSecret}. Use `createOwnerWriteKey` to rotate (replace) the write
+ * key without changing the owner identity.
+ */
+export const createOwnerWriteKey = (deps: RandomBytesDep): OwnerWriteKey =>
+  deps.randomBytes.create(16) as OwnerWriteKey;
 
 /**
  * 32 bytes of cryptographic entropy used to derive {@link Owner} keys.
@@ -107,22 +126,11 @@ export const ownerSecretToMnemonic = (secret: OwnerSecret): Mnemonic =>
 export const mnemonicToOwnerSecret = (mnemonic: Mnemonic): OwnerSecret =>
   bip39.mnemonicToEntropy(mnemonic, wordlist) as OwnerSecret;
 
-/** Creates a randomly generated {@link OwnerWriteKey}. */
-export const createOwnerWriteKey = (deps: RandomBytesDep): OwnerWriteKey =>
-  deps.randomBytes.create(16) as OwnerWriteKey;
-
 /**
  * Creates an {@link Owner} from a {@link OwnerSecret} using SLIP-21 key
  * derivation.
- *
- * This is an internal helper function, use:
- *
- * - {@link createAppOwner}
- * - {@link createShardOwner}
- * - {@link createSharedOwner}
- * - {@link createSharedReadonlyOwner}
  */
-export const createOwner = (secret: OwnerSecret): Owner => ({
+const createOwner = (secret: OwnerSecret): Owner => ({
   id: ownerIdBytesToOwnerId(
     OwnerIdBytes.orThrow(
       createSlip21(secret, ["Evolu", "OwnerIdBytes"]).slice(0, 16),
@@ -182,9 +190,9 @@ export interface AppOwner extends Owner {
 
 /** Creates an {@link AppOwner} from an {@link OwnerSecret}. */
 export const createAppOwner = (secret: OwnerSecret): AppOwner => ({
+  ...createOwner(secret),
   type: "AppOwner",
   mnemonic: ownerSecretToMnemonic(secret),
-  ...createOwner(secret),
 });
 
 /**
@@ -200,18 +208,13 @@ export const createAppOwner = (secret: OwnerSecret): AppOwner => ({
  */
 export interface ShardOwner extends Owner {
   readonly type: "ShardOwner";
-  readonly transports?: ReadonlyArray<OwnerTransport>;
 }
 
 /** Creates a {@link ShardOwner} from an {@link OwnerSecret}. */
-export const createShardOwner = (
-  secret: OwnerSecret,
-  transports?: ReadonlyArray<OwnerTransport>,
-): ShardOwner => {
+export const createShardOwner = (secret: OwnerSecret): ShardOwner => {
   return {
-    type: "ShardOwner",
     ...createOwner(secret),
-    ...(transports && { transports }),
+    type: "ShardOwner",
   };
 };
 
@@ -236,21 +239,18 @@ export const createShardOwner = (
 export const deriveShardOwner = (
   owner: AppOwner,
   path: NonEmptyReadonlyArray<string | number>,
-  transports?: ReadonlyArray<OwnerTransport>,
 ): ShardOwner => {
   const secret = createSlip21(owner.encryptionKey, path) as OwnerSecret;
 
   return {
-    type: "ShardOwner",
     ...createOwner(secret),
-    ...(transports && { transports }),
+    type: "ShardOwner",
   };
 };
 
 /** An {@link Owner} for collaborative data with write access. */
 export interface SharedOwner extends Owner {
   readonly type: "SharedOwner";
-  readonly transports?: ReadonlyArray<OwnerTransport>;
 }
 
 /**
@@ -260,27 +260,18 @@ export interface SharedOwner extends Owner {
  * Use {@link createSharedReadonlyOwner} to create a read-only version for
  * sharing.
  */
-export const createSharedOwner = (
-  secret: OwnerSecret,
-  transports?: ReadonlyArray<OwnerTransport>,
-): SharedOwner => {
-  return {
-    type: "SharedOwner",
-    ...createOwner(secret),
-    ...(transports && { transports }),
-  };
-};
+export const createSharedOwner = (secret: OwnerSecret): SharedOwner => ({
+  ...createOwner(secret),
+  type: "SharedOwner",
+});
 
 /**
  * Read-only version of a {@link SharedOwner} for data sharing. Contains only the
  * {@link OwnerId} and {@link EncryptionKey} needed for others to read the shared
  * data without write access.
  */
-export interface SharedReadonlyOwner {
+export interface SharedReadonlyOwner extends ReadonlyOwner {
   readonly type: "SharedReadonlyOwner";
-  readonly id: OwnerId;
-  readonly encryptionKey: EncryptionKey;
-  readonly transports?: ReadonlyArray<OwnerTransport>;
 }
 
 /** Creates a {@link SharedReadonlyOwner} from a {@link SharedOwner}. */
@@ -290,7 +281,6 @@ export const createSharedReadonlyOwner = (
   type: "SharedReadonlyOwner",
   id: sharedOwner.id,
   encryptionKey: sharedOwner.encryptionKey,
-  ...(sharedOwner.transports && { transports: sharedOwner.transports }),
 });
 
 /**
@@ -383,8 +373,8 @@ export const parseOwnerIdFromOwnerWebSocketTransportUrl = (
   url: string,
 ): OwnerId | null => getOrNull(OwnerId.fromUnknown(url.split("=")[1]));
 
-/** Base interface for all owner errors. */
-export interface BaseOwnerError {
+/** Common interface implemented by all owner domain errors. */
+export interface OwnerError {
   readonly ownerId: OwnerId;
 }
 

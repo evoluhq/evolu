@@ -3,23 +3,10 @@ import { useEffect } from "react";
 import { useEvolu } from "./useEvolu.js";
 
 /**
- * React Hook for managing sync owner subscriptions.
+ * React Hook for Evolu `useOwner` method.
  *
- * When the component mounts, it registers the owner for syncing. When the
- * component unmounts or the owner changes, it automatically unregisters.
- *
- * ### Example
- *
- * ```tsx
- * import { useOwner } from "@evolu/react";
- *
- * function MyComponent({ shardOwner }: { shardOwner: SyncOwner | null }) {
- *   useOwner(shardOwner);
- *
- *   // Component will sync with shardOwner while mounted
- *   return <div>Syncing with shard...</div>;
- * }
- * ```
+ * Using an owner means syncing it with its transports, or the transports
+ * defined in Evolu config if the owner has no transports defined.
  */
 export const useOwner = (owner: SyncOwner | null): void => {
   const evolu = useEvolu();

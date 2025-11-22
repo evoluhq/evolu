@@ -26,7 +26,7 @@ import {
   TypeError,
 } from "../Type.js";
 import {
-  BaseOwnerError,
+  OwnerError,
   Owner,
   OwnerId,
   OwnerIdBytes,
@@ -172,12 +172,12 @@ export interface StorageDep {
 }
 
 /** Error indicating a serious write failure. */
-export interface StorageWriteError extends BaseOwnerError {
+export interface StorageWriteError extends OwnerError {
   readonly type: "StorageWriteError";
 }
 
 /** Error when storage or billing quota is exceeded. */
-export interface StorageQuotaError extends BaseOwnerError {
+export interface StorageQuotaError extends OwnerError {
   readonly type: "StorageQuotaError";
 }
 

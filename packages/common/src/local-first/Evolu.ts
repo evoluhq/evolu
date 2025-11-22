@@ -423,31 +423,35 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
   readonly exportDatabase: () => Promise<Uint8Array<ArrayBuffer>>;
 
   /**
-   * Use an owner. Using an owner means syncing it and subscribing to
-   * broadcasted changes. Returns a function to stop using the owner.
+   * Use a {@link SyncOwner}. Returns a {@link UnuseOwner}.
    *
-   * Transport connections are automatically deduplicated and reference-counted,
-   * so multiple owners using the same transport will share a single
-   * connection.
+   * Using an owner means syncing it with its transports, or the transports
+   * defined in Evolu config if the owner has no transports defined.
+   *
+   * Transport are automatically deduplicated and reference-counted, so multiple
+   * owners using the same transport will share a single connection.
    *
    * ### Example
    *
    * ```ts
-   * // Use an owner (starts syncing and subscribing to changes).
-   * const unuse = evolu.useOwner(shardOwner);
+   * // Use an owner (starts syncing).
+   * const unuseOwner = evolu.useOwner(shardOwner);
    *
    * // Later, stop using the owner.
-   * unuse();
+   * unuseOwner();
    *
    * // Bulk operations.
-   * const unuses = owners.map((owner) => evolu.useOwner(owner));
-   * // Later: unuses.forEach(unuse => unuse());
+   * const unuseOwners = owners.map((owner) => evolu.useOwner(owner));
+   * // Later: for (const unuse of unuseOwners) unuse();
    * ```
    *
    * @experimental
    */
-  readonly useOwner: (owner: SyncOwner) => () => void;
+  readonly useOwner: (owner: SyncOwner) => UnuseOwner;
 }
+
+/** Function returned by {@link Evolu#useOwner} to stop using an {@link SyncOwner}. */
+export type UnuseOwner = () => void;
 
 /** Represents errors that can occur in Evolu. */
 export type EvoluError =

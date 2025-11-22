@@ -10,7 +10,7 @@ import {
 } from "../src/Crypto.js";
 import { constFalse, constTrue, constVoid } from "../src/Function.js";
 import {
-  createOwner,
+  createAppOwner,
   createOwnerSecret,
   ownerIdToOwnerIdBytes,
 } from "../src/local-first/Owner.js";
@@ -74,10 +74,10 @@ export const testDeps: TestDeps = {
   time: testTime,
 };
 
-export const testOwner = createOwner(testOwnerSecret);
+export const testOwner = createAppOwner(testOwnerSecret);
 export const testOwnerIdBytes = ownerIdToOwnerIdBytes(testOwner.id);
 
-export const testOwner2 = createOwner(testOwnerSecret2);
+export const testOwner2 = createAppOwner(testOwnerSecret2);
 export const testOwnerIdBytes2 = ownerIdToOwnerIdBytes(testOwner2.id);
 
 //   /**

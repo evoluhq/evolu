@@ -26,7 +26,6 @@
     "src/Identicon.ts",
     "src/Instances.ts",
     "src/local-first/index.ts",
-    "src/local-first/Protocol.ts",
     "src/local-first/Public.ts",
     "src/Number.ts",
     "src/Object.ts",

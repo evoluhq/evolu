@@ -221,7 +221,7 @@ import {
 } from "../Type.js";
 import { Predicate } from "../Types.js";
 import {
-  BaseOwnerError,
+  OwnerError,
   Owner,
   OwnerId,
   OwnerIdBytes,
@@ -382,7 +382,7 @@ export type ProtocolError =
  * Represents a version mismatch in the Evolu Protocol. Occurs when the
  * initiator and non-initiator are using incompatible protocol versions.
  */
-export interface ProtocolVersionError extends BaseOwnerError {
+export interface ProtocolVersionError extends OwnerError {
   readonly type: "ProtocolVersionError";
   readonly version: NonNegativeInt;
   /** Indicates which side is obsolete and should update. */
@@ -397,7 +397,7 @@ export interface ProtocolInvalidDataError {
 }
 
 /** Error when a {@link OwnerWriteKey} is invalid, missing, or fails validation. */
-export interface ProtocolWriteKeyError extends BaseOwnerError {
+export interface ProtocolWriteKeyError extends OwnerError {
   readonly type: "ProtocolWriteKeyError";
 }
 
@@ -405,7 +405,7 @@ export interface ProtocolWriteKeyError extends BaseOwnerError {
  * Error indicating a serious relay-side write failure. Clients should log this
  * error and show a generic sync error to the user.
  */
-export interface ProtocolWriteError extends BaseOwnerError {
+export interface ProtocolWriteError extends OwnerError {
   readonly type: "ProtocolWriteError";
 }
 
@@ -422,7 +422,7 @@ export interface ProtocolWriteError extends BaseOwnerError {
  * plan. Quota monitoring and management is the relay provider's
  * responsibility.
  */
-export interface ProtocolQuotaError extends BaseOwnerError {
+export interface ProtocolQuotaError extends OwnerError {
   readonly type: "ProtocolQuotaError";
 }
 
@@ -430,7 +430,7 @@ export interface ProtocolQuotaError extends BaseOwnerError {
  * Error indicating a serious relay-side synchronization failure. Clients should
  * log this error and show a generic sync error to the user.
  */
-export interface ProtocolSyncError extends BaseOwnerError {
+export interface ProtocolSyncError extends OwnerError {
   readonly type: "ProtocolSyncError";
 }
 

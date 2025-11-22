@@ -6,6 +6,7 @@
 
 export { createEvolu } from "./Evolu.js";
 export type { Evolu, EvoluConfig, EvoluDeps, EvoluError } from "./Evolu.js";
+export type { UnuseOwner } from "./Evolu.js";
 export * from "./LocalAuth.js";
 export * from "./Owner.js";
 export * as kysely from "./PublicKysely.js";

@@ -42,16 +42,13 @@ import { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
 import type { AppOwnerDep, PostMessageDep } from "./Db.js";
 import {
   AppOwner,
-  OwnerEncryptionKey,
+  Owner,
   OwnerId,
   OwnerIdBytes,
   ownerIdBytesToOwnerId,
   ownerIdToOwnerIdBytes,
   OwnerTransport,
-  OwnerWriteKey,
-  ShardOwner,
-  SharedOwner,
-  SharedReadonlyOwner,
+  ReadonlyOwner,
 } from "./Owner.js";
 import {
   applyProtocolMessageAsClient,
@@ -97,9 +94,9 @@ export interface Sync extends Disposable {
   /**
    * Assigns or removes an owner to/from transports with reference counting.
    *
-   * Owners are only "active" if assigned to at least one transport. Uses
-   * `owner.transports` or falls back to config transports. Multiple calls
-   * increment/decrement reference counts (useful for React Hooks).
+   * Owners are only synced if assigned to at least one transport. Uses
+   * `owner.transports` or falls back to {@link SyncConfig} transports. Multiple
+   * calls increment/decrement reference counts (useful for React Hooks).
    */
   readonly useOwner: (use: boolean, owner: SyncOwner) => void;
 
@@ -119,18 +116,13 @@ export interface SyncDep {
 }
 
 /**
- * Represents an owner for sync operations. This is a unified interface that
- * abstracts over the specific owner types ({@link ShardOwner},
- * {@link SharedOwner}, {@link SharedReadonlyOwner}) for the sync layer.
+ * Represents an owner for sync operations.
  *
- * The sync layer only needs the essential data for synchronization and doesn't
- * need to distinguish between different owner types.
+ * Includes readonly owner fields plus optional write key (for clients that
+ * write) and optional transports to override SyncConfig transports per owner.
  */
-export interface SyncOwner {
-  readonly id: OwnerId;
-  readonly encryptionKey: OwnerEncryptionKey;
-  /** Optional for read-only owners like {@link SharedReadonlyOwner}. */
-  readonly writeKey?: OwnerWriteKey;
+export interface SyncOwner extends ReadonlyOwner {
+  readonly writeKey?: Owner["writeKey"];
   readonly transports?: ReadonlyArray<OwnerTransport>;
 }
 
@@ -180,7 +172,7 @@ export const createSync =
     /** Returns owner data only if actively assigned to at least one transport. */
     const getSyncOwner = (ownerId: OwnerId): SyncOwner | null => {
       if (isDisposed) return null;
-      return transports.getConsumer(ownerId);
+      return resources.getConsumer(ownerId);
     };
 
     const storageResult = createClientStorage({
@@ -191,24 +183,24 @@ export const createSync =
     if (!storageResult.ok) return storageResult;
     const storage = storageResult.value;
 
-    const createResource = (transportConfig: OwnerTransport): WebSocket => {
-      const transportKey = createTransportKey(transportConfig);
+    const createResource = (transport: OwnerTransport): WebSocket => {
+      const transportKey = createTransportKey(transport);
 
       deps.console.log("[sync]", "createWebSocket", {
         transportKey,
-        url: transportConfig.url,
+        url: transport.url,
       });
 
-      return deps.createWebSocket(transportConfig.url, {
+      return deps.createWebSocket(transport.url, {
         binaryType: "arraybuffer",
 
         onOpen: () => {
           if (isDisposed) return;
 
-          const webSocket = transports.getResource(transportKey);
+          const webSocket = resources.getResource(transportKey);
           if (!webSocket) return;
 
-          const ownerIds = transports.getConsumersForResource(transportKey);
+          const ownerIds = resources.getConsumersForResource(transportKey);
           deps.console.log("[sync]", "onOpen", { transportKey, ownerIds });
 
           for (const ownerId of ownerIds) {
@@ -239,7 +231,7 @@ export const createSync =
           // Only handle ArrayBuffer data for sync messages
           if (isDisposed || !(data instanceof ArrayBuffer)) return;
 
-          const webSocket = transports.getResource(transportKey);
+          const webSocket = resources.getResource(transportKey);
           if (!webSocket) return;
 
           const input = new Uint8Array(data);
@@ -277,7 +269,7 @@ export const createSync =
       });
     };
 
-    const transports = createResources<
+    const resources = createResources<
       WebSocket,
       TransportKey,
       OwnerTransport,
@@ -327,16 +319,16 @@ export const createSync =
         }
 
         deps.console.log("[sync]", "useOwner", { use, owner });
-        const transportsToUse = owner.transports ?? config.transports;
+        const transports = owner.transports ?? config.transports;
 
         if (use) {
-          transports.addConsumer(owner, transportsToUse);
+          resources.addConsumer(owner, transports);
         } else {
-          const result = transports.removeConsumer(owner, transportsToUse);
+          const result = resources.removeConsumer(owner, transports);
 
           if (!result.ok) {
             deps.console.warn("[sync]", "Failed to remove consumer", {
-              transportsToUse,
+              transports,
               ownerId: owner.id,
               error: result.error,
             });
@@ -382,13 +374,13 @@ export const createSync =
             messages,
           );
 
-          const transportsToUse = owner.transports ?? config.transports;
+          const transports = owner.transports ?? config.transports;
 
           // Send message to all transports for this owner
-          for (const transportConfig of transportsToUse) {
-            const transportKey = createTransportKey(transportConfig);
+          for (const transport of transports) {
+            const transportKey = createTransportKey(transport);
 
-            const webSocket = transports.getResource(transportKey);
+            const webSocket = resources.getResource(transportKey);
             if (!webSocket) continue;
 
             if (webSocket.isOpen()) {
@@ -404,7 +396,7 @@ export const createSync =
       [Symbol.dispose]: () => {
         if (isDisposed) return;
         isDisposed = true;
-        transports[Symbol.dispose]();
+        resources[Symbol.dispose]();
       },
     };
 
@@ -646,9 +638,9 @@ const createClientStorage =
 
 type TransportKey = string & Brand<"TransportKey">;
 
-/** Creates a unique identifier for a transport configuration. */
-const createTransportKey = (transportConfig: OwnerTransport): TransportKey => {
-  return `${transportConfig.type}:${transportConfig.url}` as TransportKey;
+/** Creates a unique identifier for a {@link OwnerTransport}. */
+const createTransportKey = (transport: OwnerTransport): TransportKey => {
+  return `${transport.type}:${transport.url}` as TransportKey;
 };
 
 export const applyLocalOnlyChange =
