@@ -1,5 +1,6 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { assert, expect, test } from "vitest";
+import { constTrue } from "../../src/Function.js";
 import { ownerIdToOwnerIdBytes } from "../../src/local-first/Owner.js";
 import {
   BaseSqliteStorageDep,
@@ -12,7 +13,6 @@ import {
   InfiniteUpperBound,
   StorageInsertTimestampStrategy,
   timestampBytesToFingerprint,
-  ValidDbChangeValues,
 } from "../../src/local-first/Storage.js";
 import {
   Counter,
@@ -22,7 +22,6 @@ import {
   TimestampBytes,
   timestampToTimestampBytes,
 } from "../../src/local-first/Timestamp.js";
-import { constTrue } from "../../src/Function.js";
 import { computeBalancedBuckets } from "../../src/Number.js";
 import { createRandom } from "../../src/Random.js";
 import { getOrThrow, ok } from "../../src/Result.js";
@@ -491,6 +490,7 @@ test.skip(
 test("DbChange", () => {
   const id = testCreateId();
 
+  // Valid
   expect(
     DbChange.is({
       table: "testTable",
@@ -501,22 +501,88 @@ test("DbChange", () => {
     }),
   ).toBe(true);
 
-  // ValidDbChangeValues rejects system columns: createdAt, updatedAt, id
-  expect(ValidDbChangeValues.is({ createdAt: "2024-01-01T00:00:00Z" })).toBe(
-    false,
-  );
-  expect(ValidDbChangeValues.is({ updatedAt: "2024-01-01T00:00:00Z" })).toBe(
-    false,
-  );
-  expect(ValidDbChangeValues.is({ id })).toBe(false);
+  // Invalid: system columns in values
+  expect(
+    DbChange.is({
+      table: "testTable",
+      id,
+      values: { createdAt: "2024-01-01T00:00:00Z" },
+      isInsert: true,
+      isDelete: false,
+    }),
+  ).toBe(false);
 
-  expect(ValidDbChangeValues.is({ isDeleted: 1 })).toBe(false);
+  expect(
+    DbChange.is({
+      table: "testTable",
+      id,
+      values: { updatedAt: "2024-01-01T00:00:00Z" },
+      isInsert: true,
+      isDelete: false,
+    }),
+  ).toBe(false);
 
-  // ValidDbChangeValues allows valid column values
-  expect(ValidDbChangeValues.is({ column1: "string", column2: 42 })).toBe(true);
-  expect(ValidDbChangeValues.is({ data: new Uint8Array([1, 2, 3]) })).toBe(
-    true,
-  );
-  expect(ValidDbChangeValues.is({ nullable: null })).toBe(true);
-  expect(ValidDbChangeValues.is({})).toBe(true);
+  expect(
+    DbChange.is({
+      table: "testTable",
+      id,
+      values: { id },
+      isInsert: true,
+      isDelete: false,
+    }),
+  ).toBe(false);
+
+  expect(
+    DbChange.is({
+      table: "testTable",
+      id,
+      values: { isDeleted: 1 },
+      isInsert: true,
+      isDelete: false,
+    }),
+  ).toBe(false);
+
+  // Invalid: invalid table
+  expect(
+    DbChange.is({
+      table: 123,
+      id,
+      values: { column1: "value1" },
+      isInsert: true,
+      isDelete: false,
+    }),
+  ).toBe(false);
+
+  // Invalid: invalid id
+  expect(
+    DbChange.is({
+      table: "testTable",
+      id: "invalid",
+      values: { column1: "value1" },
+      isInsert: true,
+      isDelete: false,
+    }),
+  ).toBe(false);
+
+  // Invalid: invalid isInsert
+  expect(
+    DbChange.is({
+      table: "testTable",
+      id,
+      values: { column1: "value1" },
+      isInsert: "true",
+      isDelete: false,
+    }),
+  ).toBe(false);
+
+  // Invalid: invalid isDelete
+  expect(
+    DbChange.is({
+      table: "testTable",
+      id,
+      values: { column1: "value1" },
+      isInsert: true,
+      isDelete: "false",
+    }),
+  ).toBe(false);
 });
