@@ -4,7 +4,7 @@ import {
   isNonEmptyArray,
   isNonEmptyReadonlyArray,
 } from "../Array.js";
-import { assertNonEmptyReadonlyArray } from "../Assert.js";
+import { assert, assertNonEmptyReadonlyArray } from "../Assert.js";
 import { createCallbacks } from "../Callbacks.js";
 import { ConsoleDep } from "../Console.js";
 import { RandomBytesDep, SymmetricCryptoDecryptError } from "../Crypto.js";
@@ -730,13 +730,18 @@ const createEvoluInstance =
           } else {
             const { id: _, isDeleted, ...values } = result.value;
 
-            const dbChange = DbChange.orThrow({
+            const dbChange = {
               table,
               id,
               values,
               isInsert: kind === "insert" || kind === "upsert",
               isDelete: SqliteBoolean.is(isDeleted) ? Boolean(isDeleted) : null,
-            });
+            };
+
+            assert(
+              DbChange.is(dbChange),
+              `Invalid DbChange for table '${table}': Please check schema type errors.`,
+            );
 
             mutateMicrotaskQueue.push([
               { ...dbChange, ownerId: options?.ownerId },
