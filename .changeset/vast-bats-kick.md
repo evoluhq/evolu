@@ -9,4 +9,4 @@ This patch fixes a bug where a mutation that contains only an `id` (no values) c
 Manually tested and snapshots updated.
 
 Manual verification steps: call `update("todo", { id })` and then invoke
-`readDbChange` via the sync with an empty relay.Ø
+`readDbChange` via the sync with an empty relay.
