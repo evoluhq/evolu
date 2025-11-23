@@ -14,7 +14,7 @@ By retaining all data, Evolu enables **time travel**. All mutations—including 
 Here’s how to query the history of a specific column:
 
 ```ts
-const titleHistory = evolu.createQuery((db) =>
+const titleHistoryQuery = evolu.createQuery((db) =>
   db
     .selectFrom("evolu_history")
     .select(["value", "timestamp"])
@@ -27,14 +27,14 @@ const titleHistory = evolu.createQuery((db) =>
 );
 
 const handleHistoryClick = () => {
-  void evolu.loadQuery(titleHistory).then(({ rows }) => {
+  void evolu.loadQuery(titleHistoryQuery).then((rows) => {
     const rowsWithTimestamp = rows.map((row) => ({
-      ...row,
-      timestamp: timestampBytesToTimestamp(row.timestamp),
+      value: row.value,
+      timestamp: timestampToDateIso(timestampBytesToTimestamp(row.timestamp)),
     }));
     alert(JSON.stringify(rowsWithTimestamp, null, 2));
   });
 };
 ```
 
-This API isn’t fully type-safe, but it’s not a concern. Evolu Schemas are append-only. Once an app is released, you should not rename or change existing table or column types. Only new tables and columns should be added to avoid breaking compatibility with existing data.
+This API isn’t fully type-safe, but it’s not a concern. Evolu Schemas are append-only. Once an app is released, do not rename or change the type of an existing table or column — only add new tables or columns to evolve your schema; changing existing columns or types breaks compatibility with historical data.
