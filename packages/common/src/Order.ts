@@ -94,7 +94,23 @@ export const orderNumber = createOrder<number>((a, b) => a < b);
  */
 export const orderBigInt = createOrder<bigint>((a, b) => a < b);
 
-export const orderUint8Array: Order<globalThis.Uint8Array> = (a, b) => {
+/**
+ * An {@link Order} for {@link Uint8Array} values.
+ *
+ * Comparison is performed in two phases:
+ *
+ * 1. Compare `byteLength` (shorter arrays are considered smaller).
+ * 2. If lengths are equal, compare bytes lexicographically (ascending).
+ *
+ * ### Example
+ *
+ * ```ts
+ * orderUint8Array(new Uint8Array([1, 2]), new Uint8Array([1, 2, 3])); // -1
+ * orderUint8Array(new Uint8Array([1, 2, 3]), new Uint8Array([1, 2])); // 1
+ * orderUint8Array(new Uint8Array([1, 2]), new Uint8Array([1, 3])); // -1
+ * ```
+ */
+export const orderUint8Array: Order<Uint8Array> = (a, b) => {
   if (a.byteLength > b.byteLength) return 1;
   if (a.byteLength < b.byteLength) return -1;
 
