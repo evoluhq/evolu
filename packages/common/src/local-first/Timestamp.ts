@@ -336,8 +336,21 @@ export const timestampBytesToTimestamp = (
   return { millis: Number(millis), counter, nodeId } as Timestamp;
 };
 
+/**
+ * An {@link Order} for {@link TimestampBytes}.
+ *
+ * This `Order` uses lexicographic byte order to compare serialized
+ * {@link TimestampBytes} produced by {@link timestampToTimestampBytes}. See
+ * {@link orderUint8Array} for the underlying implementation.
+ */
 export const orderTimestampBytes: Order<TimestampBytes> = orderUint8Array;
 
+/**
+ * Convert a {@link Timestamp} to an ISO 8601 {@link DateIso} string.
+ *
+ * The conversion uses the timestamp's `millis` (a {@link Millis} value) and
+ * `Date.prototype.toISOString()` to produce a `DateIso`.
+ */
 export const timestampToDateIso = (timestamp: Timestamp): DateIso =>
-  // `as DateIso` is safe because the timestamp is always valid
+  // `as DateIso` is safe because Timestamp guarantees a valid `millis`
   new Date(timestamp.millis).toISOString() as DateIso;
