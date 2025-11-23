@@ -15,7 +15,7 @@ import {
 import { eqArrayNumber } from "../Eq.js";
 import { createTransferableError, TransferableError } from "../Error.js";
 import { constFalse, constTrue } from "../Function.js";
-import { objectToEntries } from "../Object.js";
+import { createRecord, objectToEntries } from "../Object.js";
 import { RandomDep } from "../Random.js";
 import { createResources } from "../Resources.js";
 import { err, ok, Result } from "../Result.js";
@@ -581,7 +581,7 @@ const createClientStorage =
         assert(rows.length > 0, "Rows must not be empty");
 
         const { table, id } = rows[0];
-        const values: Record<string, SqliteValue> = {};
+        const values = createRecord<string, SqliteValue>();
         let isInsert = false;
         let isDelete: boolean | null = null;
 

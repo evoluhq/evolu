@@ -198,7 +198,7 @@ import {
 } from "../Crypto.js";
 import { eqArrayNumber } from "../Eq.js";
 import { computeBalancedBuckets } from "../Number.js";
-import { objectToEntries } from "../Object.js";
+import { createRecord, objectToEntries } from "../Object.js";
 import { err, ok, Result } from "../Result.js";
 import { SqliteValue } from "../Sqlite.js";
 import {
@@ -221,8 +221,8 @@ import {
 } from "../Type.js";
 import { Predicate } from "../Types.js";
 import {
-  OwnerError,
   Owner,
+  OwnerError,
   OwnerId,
   OwnerIdBytes,
   ownerIdToOwnerIdBytes,
@@ -1816,7 +1816,7 @@ export const decryptAndDecodeDbChange =
       const id = decodeId(buffer);
 
       const length = decodeLength(buffer);
-      const values = Object.create(null) as Record<string, SqliteValue>;
+      const values = createRecord<string, SqliteValue>();
 
       for (let i = 0; i < length; i++) {
         const column = decodeString(buffer);

@@ -31,7 +31,7 @@ type StringKeyOf<T> = Extract<keyof T, string>;
  *
  * ```ts
  * type UserId = string & { readonly __brand: "UserId" };
- * const users: Record<UserId, string> = {};
+ * const users = createRecord<UserId, string>();
  * const entries = objectToEntries(users); // [UserId, string][]
  * ```
  */
@@ -70,3 +70,22 @@ export const excludeProp = <T extends object, K extends keyof T>(
   const { [prop]: _, ...rest } = obj;
   return rest;
 };
+
+/**
+ * Creates a prototype-less object typed as `Record<K, V>`.
+ *
+ * Use this function when you need a plain record without a prototype chain
+ * (e.g. when keys are controlled by external sources) to avoid prototype
+ * pollution and accidental collisions with properties like `__proto__`.
+ *
+ * Example:
+ *
+ * ```ts
+ * const values = createRecord<string, SqliteValue>();
+ * values["__proto__"] = someValue; // safe, no prototype pollution
+ * ```
+ */
+export const createRecord = <K extends string = string, V = unknown>(): Record<
+  K,
+  V
+> => Object.create(null) as Record<K, V>;

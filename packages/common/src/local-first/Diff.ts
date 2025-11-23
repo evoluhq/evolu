@@ -1,5 +1,5 @@
 import { createRandomBytes } from "../Crypto.js";
-import { isPlainObject, ReadonlyRecord } from "../Object.js";
+import { createRecord, isPlainObject, ReadonlyRecord } from "../Object.js";
 import { orderUint8Array } from "../Order.js";
 import { SqliteValue } from "../Sqlite.js";
 import { createId, String } from "../Type.js";
@@ -136,7 +136,7 @@ const parse = (obj: unknown): unknown => {
 const parseObject = (
   obj: ReadonlyRecord<string, unknown>,
 ): ReadonlyRecord<string, unknown> => {
-  const result = Object.create(null) as Record<string, unknown>;
+  const result = createRecord();
   for (const key in obj) {
     result[key] = parse(obj[key]);
   }
