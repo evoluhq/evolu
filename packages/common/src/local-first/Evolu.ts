@@ -17,6 +17,7 @@ import {
   isSqlMutation,
   SafeSql,
   SqliteBoolean,
+  sqliteBooleanToBoolean,
   SqliteError,
   SqliteQuery,
 } from "../Sqlite.js";
@@ -735,7 +736,9 @@ const createEvoluInstance =
               id,
               values,
               isInsert: kind === "insert" || kind === "upsert",
-              isDelete: SqliteBoolean.is(isDeleted) ? Boolean(isDeleted) : null,
+              isDelete: SqliteBoolean.is(isDeleted)
+                ? sqliteBooleanToBoolean(isDeleted)
+                : null,
             };
 
             assert(
