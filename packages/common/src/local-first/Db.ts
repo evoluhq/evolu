@@ -336,9 +336,12 @@ export const createDbWorkerForPlatform = (
     DbWorkerInput,
     DbWorkerOutput,
     DbWorkerDeps
-  >({ init: createDbWorkerDeps(platformDeps), handlers });
+  >({
+    init: createInit(platformDeps),
+    handlers,
+  });
 
-const createDbWorkerDeps =
+const createInit =
   (platformDeps: DbWorkerPlatformDeps) =>
   async (
     initMessage: Extract<DbWorkerInput, { type: "init" }>,
@@ -375,16 +378,6 @@ const createDbWorkerDeps =
           protocolVersion: number;
         }>(sql`select protocolVersion from evolu_version limit 1;`);
         if (!currentVersion.ok) return currentVersion;
-
-        // TODO: Handle version migrations here if needed
-        // const [{ protocolVersion }] = protocolVersionResult.value.rows;
-        // if (protocolVersion < currentProtocolVersion) {
-        //   const migrateResult = migrateDatabase({ sqlite })(
-        //     protocolVersion,
-        //     currentProtocolVersion
-        //   );
-        //   if (!migrateResult.ok) return migrateResult;
-        // }
 
         const configResult = sqlite.exec<{
           clock: TimestampBytes;
