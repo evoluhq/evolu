@@ -724,7 +724,7 @@ describe("queries", () => {
             "isDeleted": null,
             "ownerId": "O-CuBGc9kBPdNNkVCKM1uA",
             "title": "Test Todo",
-            "updatedAt": "1970-01-01T00:00:00.008Z",
+            "updatedAt": null,
           },
         ],
       }
@@ -778,7 +778,7 @@ describe("queries", () => {
             "isDeleted": null,
             "ownerId": "eE5PP1qED8YN2k3_gFg8Zw",
             "title": "Test Todo",
-            "updatedAt": "1970-01-01T00:00:00.009Z",
+            "updatedAt": null,
           },
         ],
       }

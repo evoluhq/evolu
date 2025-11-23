@@ -1,10 +1,11 @@
 import {
+  appendToArray,
   firstInArray,
   isNonEmptyReadonlyArray,
   NonEmptyArray,
   NonEmptyReadonlyArray,
 } from "../Array.js";
-import { assert } from "../Assert.js";
+import { assert, assertNonEmptyReadonlyArray } from "../Assert.js";
 import { Brand } from "../Brand.js";
 import { ConsoleDep } from "../Console.js";
 import {
@@ -26,12 +27,18 @@ import {
   sqliteBooleanToBoolean,
   SqliteDep,
   SqliteError,
-  sqliteFalse,
   SqliteValue,
 } from "../Sqlite.js";
 import { AbortError, createMutex } from "../Task.js";
 import { TimeDep } from "../Time.js";
-import { IdBytes, idBytesToId, idToIdBytes, PositiveInt } from "../Type.js";
+import {
+  Boolean,
+  DateIso,
+  IdBytes,
+  idBytesToId,
+  idToIdBytes,
+  PositiveInt,
+} from "../Type.js";
 import { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
 import type { AppOwnerDep, PostMessageDep } from "./Db.js";
 import {
@@ -443,8 +450,7 @@ const createClientStorage =
       SqliteDep &
       SymmetricCryptoDep &
       TimeDep &
-      TimestampConfigDep &
-      PostMessageDep,
+      TimestampConfigDep,
   ) =>
   (config: {
     onError: (
@@ -578,11 +584,11 @@ const createClientStorage =
         }
 
         const { rows } = result.value;
-        assert(rows.length > 0, "Rows must not be empty");
+        assertNonEmptyReadonlyArray(rows, "Every timestamp must have rows");
 
-        const { table, id } = rows[0];
+        const { table, id } = firstInArray(rows);
         const values = createRecord<string, SqliteValue>();
-        let isInsert = false;
+        let isInsert;
         let isDelete: boolean | null = null;
 
         for (const r of rows) {
@@ -592,10 +598,13 @@ const createClientStorage =
             case "createdAt":
               isInsert = true;
               break;
+            case "updatedAt":
+              isInsert = false;
+              break;
             case "isDeleted":
               assert(
                 SqliteBoolean.is(r.value),
-                "isDeleted column must contain a valid SqliteBoolean (0 or 1)",
+                "isDeleted column must contain a valid SqliteBoolean",
               );
               isDelete = sqliteBooleanToBoolean(r.value);
               break;
@@ -603,6 +612,8 @@ const createClientStorage =
               values[r.column] = r.value;
           }
         }
+
+        assert(Boolean.is(isInsert), "isInsert must be in evolu_history");
 
         const message: CrdtMessage = {
           timestamp: timestampBytesToTimestamp(timestamp),
@@ -629,6 +640,24 @@ const createTransportKey = (transport: OwnerTransport): TransportKey => {
   return `${transport.type}:${transport.url}` as TransportKey;
 };
 
+const dbChangeToColumns = (change: DbChange, now: DateIso) => {
+  let values = objectToEntries(change.values);
+
+  // SystemColumns are not encoded in change.values.
+  values = appendToArray(values, [
+    change.isInsert ? "createdAt" : "updatedAt",
+    now,
+  ]);
+  if (change.isDelete != null) {
+    values = appendToArray(values, [
+      "isDeleted",
+      booleanToSqliteBoolean(change.isDelete),
+    ]);
+  }
+
+  return values;
+};
+
 export const applyLocalOnlyChange =
   (deps: SqliteDep & TimeDep & AppOwnerDep) =>
   (change: MutationChange): Result<void, SqliteError> => {
@@ -639,23 +668,16 @@ export const applyLocalOnlyChange =
       `);
       if (!result.ok) return result;
     } else {
-      const now = deps.time.nowIso();
       const ownerId = deps.appOwner.id;
+      const columns = dbChangeToColumns(change, deps.time.nowIso());
 
-      let entries = objectToEntries(change.values);
-      if (change.isDelete !== null) {
-        entries = [...entries, ["isDeleted", sqliteFalse]];
-      }
-
-      for (const [column, value] of entries) {
+      for (const [column, value] of columns) {
         const result = deps.sqlite.exec(sql.prepared`
           insert into ${sql.identifier(change.table)}
-            ("ownerId", "id", ${sql.identifier(column)}, createdAt, updatedAt)
-          values (${ownerId}, ${change.id}, ${value}, ${now}, ${now})
+            ("ownerId", "id", ${sql.identifier(column)})
+          values (${ownerId}, ${change.id}, ${value})
           on conflict ("ownerId", "id") do update
-            set
-              ${sql.identifier(column)} = ${value},
-              updatedAt = ${now};
+            set ${sql.identifier(column)} = ${value};
         `);
         if (!result.ok) return result;
       }
@@ -681,22 +703,11 @@ const applyMessages =
     let { firstTimestamp, lastTimestamp } = usage.value;
 
     for (const { timestamp, change } of messages) {
-      const dateIso = timestampToDateIso(timestamp);
       const timestampBytes = timestampToTimestampBytes(timestamp);
       const idBytes = idToIdBytes(change.id);
+      const columns = dbChangeToColumns(change, timestampToDateIso(timestamp));
 
-      const values = [...objectToEntries(change.values)];
-
-      // SystemColumns are not encoded in change.values.
-      if (change.isInsert) {
-        values.push(["createdAt", dateIso]);
-      }
-      if (change.isDelete !== null) {
-        values.push(["isDeleted", booleanToSqliteBoolean(change.isDelete)]);
-      }
-      // No `ownerId` and `updatedAt` because they are evolu_history columns.
-
-      for (const [column, value] of values) {
+      for (const [column, value] of columns) {
         const updateAppTable = deps.sqlite.exec(sql.prepared`
           with
             existingTimestamp as (
@@ -711,13 +722,11 @@ const applyMessages =
               limit 1
             )
           insert into ${sql.identifier(change.table)}
-            ("ownerId", "id", ${sql.identifier(column)}, "updatedAt")
-          select ${ownerId}, ${change.id}, ${value}, ${dateIso}
+            ("ownerId", "id", ${sql.identifier(column)})
+          select ${ownerId}, ${change.id}, ${value}
           where not exists (select 1 from existingTimestamp)
           on conflict ("ownerId", "id") do update
-            set
-              ${sql.identifier(column)} = ${value},
-              "updatedAt" = ${dateIso}
+            set ${sql.identifier(column)} = ${value}
             where not exists (select 1 from existingTimestamp);
         `);
 
