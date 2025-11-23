@@ -1,4 +1,6 @@
+---
 "@evolu/common": patch
+---
 
 Add a typed helper `createRecord` for safely creating prototype-less
 `Record<K, V>` instances (via `Object.create(null)`). This prevents
