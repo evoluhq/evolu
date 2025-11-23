@@ -23,6 +23,7 @@ import {
   sqliteTrue,
   timestampBytesToTimestamp,
 } from "@evolu/common";
+import { timestampToDateIso } from "@evolu/common/local-first";
 import {
   createUseEvolu,
   EvoluProvider,
@@ -419,7 +420,7 @@ const HomeTabProjectSectionTodoItem: FC<{
     void evolu.loadQuery(titleHistoryQuery).then((rows) => {
       const rowsWithTimestamp = rows.map((row) => ({
         value: row.value,
-        timestamp: timestampBytesToTimestamp(row.timestamp),
+        timestamp: timestampToDateIso(timestampBytesToTimestamp(row.timestamp)),
       }));
       alert(JSON.stringify(rowsWithTimestamp, null, 2));
     });
