@@ -31,20 +31,13 @@ import {
 } from "../Sqlite.js";
 import { AbortError, createMutex } from "../Task.js";
 import { TimeDep } from "../Time.js";
-import {
-  DateIso,
-  IdBytes,
-  idBytesToId,
-  idToIdBytes,
-  PositiveInt,
-} from "../Type.js";
+import { IdBytes, idBytesToId, idToIdBytes, PositiveInt } from "../Type.js";
 import { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
 import type { AppOwnerDep, PostMessageDep } from "./Db.js";
 import {
   AppOwner,
   Owner,
   OwnerId,
-  OwnerIdBytes,
   ownerIdBytesToOwnerId,
   ownerIdToOwnerIdBytes,
   OwnerTransport,
@@ -71,7 +64,6 @@ import {
   getOwnerUsage,
   getTimestampInsertStrategy,
   Storage,
-  StorageInsertTimestampStrategy,
   StorageWriteError,
   updateOwnerUsage,
 } from "./Storage.js";
@@ -545,12 +537,6 @@ const createClientStorage =
               if (!applyMessagesResult.ok) return applyMessagesResult;
             }
 
-            // // Apply local mutations atomically with approved messages
-            // for (const change of localMutations) {
-            //   const result = applyLocalOnlyChange(deps)(change);
-            //   if (!result.ok) return result;
-            // }
-
             return deps.clock.save(clockTimestamp);
           });
 
@@ -686,35 +672,88 @@ const applyMessages =
   ): Result<void, SqliteError> => {
     const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
 
-    const usageResult = getOwnerUsage(deps)(
+    const usage = getOwnerUsage(deps)(
       ownerIdBytes,
       timestampToTimestampBytes(firstInArray(messages).timestamp),
     );
-    if (!usageResult.ok) return usageResult;
+    if (!usage.ok) return usage;
 
-    let { firstTimestamp, lastTimestamp } = usageResult.value;
+    let { firstTimestamp, lastTimestamp } = usage.value;
 
-    for (const message of messages) {
-      const date = timestampToDateIso(message.timestamp);
-      const result1 = applyMessageToAppTable(deps)(ownerIdBytes, message, date);
-      if (!result1.ok) return result1;
+    for (const { timestamp, change } of messages) {
+      const dateIso = timestampToDateIso(timestamp);
+      const timestampBytes = timestampToTimestampBytes(timestamp);
+      const idBytes = idToIdBytes(change.id);
 
-      const timestamp = timestampToTimestampBytes(message.timestamp);
+      const values = [...objectToEntries(change.values)];
+
+      // SystemColumns are not encoded in change.values.
+      if (change.isInsert) {
+        values.push(["createdAt", dateIso]);
+      }
+      if (change.isDelete !== null) {
+        values.push(["isDeleted", booleanToSqliteBoolean(change.isDelete)]);
+      }
+      // No `ownerId` and `updatedAt` because they are evolu_history columns.
+
+      for (const [column, value] of values) {
+        const updateAppTable = deps.sqlite.exec(sql.prepared`
+          with
+            existingTimestamp as (
+              select 1
+              from evolu_history
+              where
+                "ownerId" = ${ownerIdBytes}
+                and "table" = ${change.table}
+                and "id" = ${idBytes}
+                and "column" = ${column}
+                and "timestamp" >= ${timestampBytes}
+              limit 1
+            )
+          insert into ${sql.identifier(change.table)}
+            ("ownerId", "id", ${sql.identifier(column)}, "updatedAt")
+          select ${ownerId}, ${change.id}, ${value}, ${dateIso}
+          where not exists (select 1 from existingTimestamp)
+          on conflict ("ownerId", "id") do update
+            set
+              ${sql.identifier(column)} = ${value},
+              "updatedAt" = ${dateIso}
+            where not exists (select 1 from existingTimestamp);
+        `);
+
+        if (!updateAppTable.ok) return updateAppTable;
+
+        const insertHistory = deps.sqlite.exec(sql.prepared`
+          insert into evolu_history
+            ("ownerId", "table", "id", "column", "value", "timestamp")
+          values
+            (
+              ${ownerIdBytes},
+              ${change.table},
+              ${idBytes},
+              ${column},
+              ${value},
+              ${timestampBytes}
+            )
+          on conflict do nothing;
+        `);
+
+        if (!insertHistory.ok) return insertHistory;
+      }
 
       let strategy;
       [strategy, firstTimestamp, lastTimestamp] = getTimestampInsertStrategy(
-        timestamp,
+        timestampBytes,
         firstTimestamp,
         lastTimestamp,
       );
 
-      const result2 = applyMessageToTimestampAndHistoryTables(deps)(
+      const insertTimestamp = deps.storage.insertTimestamp(
         ownerIdBytes,
-        message,
+        timestampBytes,
         strategy,
-        date,
       );
-      if (!result2.ok) return result2;
+      if (!insertTimestamp.ok) return insertTimestamp;
     }
 
     /**
@@ -732,98 +771,6 @@ const applyMessages =
 
     return ok();
   };
-
-const applyMessageToAppTable =
-  (deps: SqliteDep) =>
-  (
-    ownerIdBytes: OwnerIdBytes,
-    message: CrdtMessage,
-    date: DateIso,
-  ): Result<void, SqliteError> => {
-    const ownerId = ownerIdBytesToOwnerId(ownerIdBytes);
-    const columns = dbChangeToColumns(message.change, date);
-
-    for (const [column, value] of columns) {
-      const result = deps.sqlite.exec(sql.prepared`
-        with
-          existingTimestamp as (
-            select 1
-            from evolu_history
-            where
-              "ownerId" = ${ownerIdBytes}
-              and "table" = ${message.change.table}
-              and "id" = ${idToIdBytes(message.change.id)}
-              and "column" = ${column}
-              and "timestamp" >= ${timestampToTimestampBytes(message.timestamp)}
-            limit 1
-          )
-        insert into ${sql.identifier(message.change.table)}
-          ("ownerId", "id", ${sql.identifier(column)}, updatedAt)
-        select ${ownerId}, ${message.change.id}, ${value}, ${date}
-        where not exists (select 1 from existingTimestamp)
-        on conflict ("ownerId", "id") do update
-          set
-            ${sql.identifier(column)} = ${value},
-            updatedAt = ${date}
-          where not exists (select 1 from existingTimestamp);
-      `);
-
-      if (!result.ok) return result;
-    }
-
-    return ok();
-  };
-
-export const applyMessageToTimestampAndHistoryTables =
-  (deps: ClientStorageDep & SqliteDep) =>
-  (
-    ownerId: OwnerIdBytes,
-    message: CrdtMessage,
-    strategy: StorageInsertTimestampStrategy,
-    date: DateIso,
-  ): Result<void, SqliteError> => {
-    const timestamp = timestampToTimestampBytes(message.timestamp);
-    const id = idToIdBytes(message.change.id);
-
-    const result = deps.storage.insertTimestamp(ownerId, timestamp, strategy);
-    if (!result.ok) return result;
-
-    const columns = dbChangeToColumns(message.change, date);
-
-    for (const [column, value] of columns) {
-      const result = deps.sqlite.exec(sql.prepared`
-        insert into evolu_history
-          ("ownerId", "table", "id", "column", "value", "timestamp")
-        values
-          (
-            ${ownerId},
-            ${message.change.table},
-            ${id},
-            ${column},
-            ${value},
-            ${timestamp}
-          )
-        on conflict do nothing;
-      `);
-      if (!result.ok) return result;
-    }
-
-    return ok();
-  };
-
-const dbChangeToColumns = (
-  change: DbChange,
-  date: DateIso,
-): Array<[string, SqliteValue | DateIso]> => {
-  const entries = [...objectToEntries(change.values)];
-  if (change.isInsert) {
-    entries.push(["createdAt", date]);
-  }
-  if (change.isDelete !== null) {
-    entries.push(["isDeleted", booleanToSqliteBoolean(change.isDelete)]);
-  }
-  return entries;
-};
 
 /**
  * TODO: Rework for the new owners API.
