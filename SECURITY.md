@@ -1,9 +1,35 @@
 # Security Policy
 
-## Reporting a Vulnerability
+## Reporting Security Vulnerabilities
 
-The Evolu team and community take security bugs in Evolu seriously. We appreciate your efforts to responsibly disclose your findings and will make every effort to acknowledge your contributions.
+If you discover a security vulnerability in Evolu, please help keep the project secure by disclosing it responsibly.
 
-To report a security issue, please use the GitHub Security Advisory ["Report a Vulnerability"](https://github.com/evoluhq/evolu/security/advisories/new) tab.
+### How to Report
 
-The Evolu team will send a response indicating the next steps in handling your report. After the initial reply to your report, the security team will inform you of the progress towards a fix and full announcement and may ask for additional information or guidance.
+**Please DO NOT open a public GitHub issue for security vulnerabilities.**
+
+Instead, use GitHub's [private vulnerability reporting](https://github.com/evoluhq/evolu/security/advisories/new) feature.
+
+### Response Time
+
+As this project is maintained by a single volunteer, please be patient.
+
+## Security Considerations
+
+### Important Notice
+
+While Evolu is developed with care, please note:
+
+- This is a volunteer-maintained project
+- It has NOT undergone professional security audits yet
+- Use in production or security-critical contexts is at your own risk
+
+## Disclosure Policy
+
+When a vulnerability is confirmed:
+
+1. A fix will be developed privately
+2. A new version will be released with the fix
+3. The vulnerability will be disclosed in the release notes after users have had time to upgrade
+
+For non-security issues, please use GitHub Issues.
