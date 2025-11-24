@@ -37,11 +37,11 @@ import {
 } from "../Type.js";
 import { IntentionalNever } from "../Types.js";
 import { CreateDbWorkerDep, DbConfig, defaultDbConfig } from "./Db.js";
-import { applyPatches } from "./Diff.js";
 import { AppOwner } from "./Owner.js";
 import { FlushSyncDep, ReloadAppDep } from "./Platform.js";
 import { ProtocolError } from "./Protocol.js";
 import {
+  applyPatches,
   createSubscribedQueries,
   emptyRows,
   Queries,

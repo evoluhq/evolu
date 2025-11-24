@@ -13,7 +13,7 @@ import {
   TableNode,
   ValueNode,
 } from "kysely";
-import { kyselyJsonIdentifier } from "./Diff.js";
+import { kyselyJsonIdentifier } from "./Query.js";
 
 export { sql } from "kysely";
 export type { NotNull } from "kysely";

@@ -18,7 +18,6 @@ import { ok, Result } from "../Result.js";
 import {
   createSqlite,
   CreateSqliteDriverDep,
-  explainSqliteQueryPlan,
   sql,
   SqliteDep,
   SqliteError,
@@ -31,7 +30,6 @@ import {
   MessageHandlers,
   Worker,
 } from "../Worker.js";
-import { makePatches, QueryPatches } from "./Diff.js";
 import {
   AppOwner,
   createAppOwner,
@@ -45,11 +43,11 @@ import {
 } from "./Owner.js";
 import { ProtocolError, protocolVersion } from "./Protocol.js";
 import {
-  createQueryRowsCache,
-  deserializeQuery,
-  emptyRows,
+  createGetQueryRowsCache,
+  GetQueryRowsCacheDep,
+  loadQueries,
   Query,
-  QueryRowsCache,
+  QueryPatches,
 } from "./Query.js";
 import {
   DbSchema,
@@ -316,22 +314,18 @@ type DbWorkerDeps = Omit<
   DbWorkerPlatformDeps,
   keyof CreateSqliteDriverDep | keyof CreateWebSocketDep
 > &
+  AppOwnerDep &
   GetQueryRowsCacheDep &
   PostMessageDep &
   SqliteDep &
-  SyncDep &
-  AppOwnerDep;
+  SyncDep;
 
-interface GetQueryRowsCacheDep {
-  readonly getQueryRowsCache: (tabId: Id) => QueryRowsCache;
+export interface AppOwnerDep {
+  readonly appOwner: AppOwner;
 }
 
 export interface PostMessageDep {
   readonly postMessage: (message: DbWorkerOutput) => void;
-}
-
-export interface AppOwnerDep {
-  readonly appOwner: AppOwner;
 }
 
 export const createDbWorkerForPlatform = (
@@ -432,8 +426,8 @@ const createDbWorkerDeps = async (
       if (!result.ok) return result;
     }
 
-    const result = ensureDbSchema(deps)(initMessage.dbSchema, dbSchema.value);
-    if (!result.ok) return result;
+    const result1 = ensureDbSchema(deps)(initMessage.dbSchema, dbSchema.value);
+    if (!result1.ok) return result1;
 
     const sync = createSync({
       ...deps,
@@ -456,20 +450,9 @@ const createDbWorkerDeps = async (
 
     sync.value.useOwner(true, appOwner);
 
-    const tabQueryRowsCacheMap = new Map<Id, QueryRowsCache>();
-
-    const getQueryRowsCache = (tabId: Id) => {
-      let cache = tabQueryRowsCacheMap.get(tabId);
-      if (!cache) {
-        cache = createQueryRowsCache();
-        tabQueryRowsCacheMap.set(tabId, cache);
-      }
-      return cache;
-    };
-
     return ok({
       ...deps,
-      getQueryRowsCache,
+      getQueryRowsCache: createGetQueryRowsCache(),
       postMessage,
       sync: sync.value,
       appOwner,
@@ -718,41 +701,3 @@ const handlers: Omit<MessageHandlers<DbWorkerInput, DbWorkerDeps>, "init"> = {
     deps.sync.useOwner(message.use, message.owner);
   },
 };
-
-const loadQueries =
-  (deps: GetQueryRowsCacheDep & SqliteDep) =>
-  (
-    tabId: Id,
-    queries: ReadonlyArray<Query>,
-  ): Result<ReadonlyArray<QueryPatches>, SqliteError> => {
-    const queriesRows = [];
-
-    for (const query of queries) {
-      const sqlQuery = deserializeQuery(query);
-      const result = deps.sqlite.exec(sqlQuery);
-      if (!result.ok) return result;
-
-      queriesRows.push([query, result.value.rows] as const);
-      if (sqlQuery.options?.logExplainQueryPlan) {
-        explainSqliteQueryPlan(deps)(sqlQuery);
-      }
-    }
-
-    const queryRowsCache = deps.getQueryRowsCache(tabId);
-
-    const previousState = queryRowsCache.get();
-    queryRowsCache.set(queriesRows);
-
-    const currentState = queryRowsCache.get();
-
-    const queryPatchesArray = queries.map(
-      (query): QueryPatches => ({
-        query,
-        patches: makePatches(
-          previousState.get(query),
-          currentState.get(query) ?? emptyRows,
-        ),
-      }),
-    );
-    return ok(queryPatchesArray);
-  };

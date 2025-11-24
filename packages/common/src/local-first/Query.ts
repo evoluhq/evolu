@@ -1,14 +1,26 @@
 import { Brand } from "../Brand.js";
 import { bytesToHex, hexToBytes } from "../Buffer.js";
-import { objectToEntries } from "../Object.js";
+import { createRandomBytes } from "../Crypto.js";
 import {
+  createRecord,
+  isPlainObject,
+  objectToEntries,
+  ReadonlyRecord,
+} from "../Object.js";
+import { ok, Result } from "../Result.js";
+import {
+  eqSqliteValue,
+  explainSqliteQueryPlan,
   SafeSql,
+  SqliteDep,
+  SqliteError,
   SqliteQuery,
   SqliteQueryOptions,
   SqliteRow,
   SqliteValue,
 } from "../Sqlite.js";
 import { Store, StoreSubscribe } from "../Store.js";
+import { createId, Id, String } from "../Type.js";
 import { Simplify } from "../Types.js";
 
 /**
@@ -111,26 +123,6 @@ export type QueriesToQueryRowsPromises<Q extends Queries> = {
 
 export type QueryRowsMap = ReadonlyMap<Query, ReadonlyArray<Row>>;
 
-export interface QueryRowsCache {
-  readonly set: (
-    queriesRows: ReadonlyArray<readonly [Query, ReadonlyArray<SqliteRow>]>,
-  ) => void;
-  readonly get: () => QueryRowsMap;
-}
-
-export const createQueryRowsCache = (): QueryRowsCache => {
-  let queryRowsCache: QueryRowsMap = new Map();
-
-  const cache: QueryRowsCache = {
-    set: (queriesRows) => {
-      queryRowsCache = new Map([...queryRowsCache, ...queriesRows]);
-    },
-    get: () => queryRowsCache,
-  };
-
-  return cache;
-};
-
 export interface SubscribedQueries {
   subscribe: (query: Query) => StoreSubscribe;
 
@@ -165,4 +157,207 @@ export const createSubscribedQueries = (
   };
 
   return subscribedQueries;
+};
+
+export interface GetQueryRowsCacheDep {
+  readonly getQueryRowsCache: GetQueryRowsCache;
+}
+
+export type GetQueryRowsCache = (tabId: Id) => QueryRowsCache;
+
+export interface QueryRowsCache {
+  readonly set: (
+    queriesRows: ReadonlyArray<readonly [Query, ReadonlyArray<SqliteRow>]>,
+  ) => void;
+  readonly get: () => QueryRowsMap;
+}
+
+export const createGetQueryRowsCache = (): GetQueryRowsCache => {
+  const tabQueryRowsCacheMap = new Map<Id, QueryRowsCache>();
+
+  return (tabId: Id) => {
+    let cache = tabQueryRowsCacheMap.get(tabId);
+    if (!cache) {
+      let queryRowsCache: QueryRowsMap = new Map();
+      cache = {
+        set: (queriesRows) => {
+          queryRowsCache = new Map([...queryRowsCache, ...queriesRows]);
+        },
+        get: () => queryRowsCache,
+      };
+      tabQueryRowsCacheMap.set(tabId, cache);
+    }
+    return cache;
+  };
+};
+
+export const loadQueries =
+  (deps: GetQueryRowsCacheDep & SqliteDep) =>
+  (
+    tabId: Id,
+    queries: ReadonlyArray<Query>,
+  ): Result<ReadonlyArray<QueryPatches>, SqliteError> => {
+    const queriesRows = [];
+
+    for (const query of queries) {
+      const sqlQuery = deserializeQuery(query);
+      const result = deps.sqlite.exec(sqlQuery);
+      if (!result.ok) return result;
+
+      queriesRows.push([query, result.value.rows] as const);
+      if (sqlQuery.options?.logExplainQueryPlan) {
+        explainSqliteQueryPlan(deps)(sqlQuery);
+      }
+    }
+
+    const queryRowsCache = deps.getQueryRowsCache(tabId);
+
+    const previousState = queryRowsCache.get();
+    queryRowsCache.set(queriesRows);
+
+    const currentState = queryRowsCache.get();
+
+    const queryPatchesArray = queries.map(
+      (query): QueryPatches => ({
+        query,
+        patches: makePatches(
+          previousState.get(query),
+          currentState.get(query) ?? emptyRows,
+        ),
+      }),
+    );
+    return ok(queryPatchesArray);
+  };
+
+export interface QueryPatches {
+  readonly query: Query;
+  readonly patches: ReadonlyArray<Patch>;
+}
+
+export type Patch = ReplaceAllPatch | ReplaceAtPatch;
+
+export interface ReplaceAllPatch {
+  readonly op: "replaceAll";
+  readonly value: ReadonlyArray<Row>;
+}
+
+export interface ReplaceAtPatch {
+  readonly op: "replaceAt";
+  readonly index: number;
+  readonly value: Row;
+}
+
+/**
+ * We detect only changes in the whole result and in-place edits. In the future,
+ * we will add more heuristics. We will probably not implement the Myers diff
+ * algorithm because it's faster to rerender all than to compute many detailed
+ * patches. We will only implement logic a developer would implement manually,
+ * if necessary.
+ */
+export const makePatches = (
+  previousRows: ReadonlyArray<Row> | undefined,
+  nextRows: ReadonlyArray<Row>,
+): ReadonlyArray<Patch> => {
+  if (previousRows === undefined)
+    return [{ op: "replaceAll", value: nextRows }];
+  // TODO: Detect prepend and append, it's cheap.
+  if (previousRows.length !== nextRows.length) {
+    return [{ op: "replaceAll", value: nextRows }];
+  }
+
+  const length = previousRows.length;
+  const replaceAtPatches: Array<ReplaceAtPatch> = [];
+
+  for (let i = 0; i < length; i++) {
+    const previousRow = previousRows[i];
+    const nextRow = nextRows[i];
+
+    // We expect the same shape for both rows.
+    for (const key in previousRow)
+      if (
+        !eqSqliteValue(
+          previousRow[key] as SqliteValue,
+          nextRow[key] as SqliteValue,
+        )
+      ) {
+        replaceAtPatches.push({ op: "replaceAt", value: nextRow, index: i });
+        break;
+      }
+  }
+
+  if (length > 0 && replaceAtPatches.length === length) {
+    return [{ op: "replaceAll", value: nextRows }];
+  }
+  return replaceAtPatches;
+};
+
+export const applyPatches = (
+  patches: ReadonlyArray<Patch>,
+  current: ReadonlyArray<Row>,
+): ReadonlyArray<Row> =>
+  patches.reduce((next, patch) => {
+    switch (patch.op) {
+      case "replaceAll":
+        return parseSqliteJsonArray(patch.value);
+      case "replaceAt": {
+        const parsedRow = parseSqliteJsonArray([patch.value])[0];
+        return next.toSpliced(patch.index, 1, parsedRow);
+      }
+    }
+  }, current);
+
+/**
+ * A unique identifier prepended to JSON-encoded strings. This allows safe
+ * detection and parsing of only those columns that require JSON.parse.
+ *
+ * The identifier is a cryptographically random Evolu Id, ensuring uniqueness
+ * and preventing malicious actors from inserting fake data that could be
+ * misinterpreted as JSON by the application.
+ *
+ * Note: The same queries created by different browser tabs will have different
+ * identifiers and thus be considered different and cached separately. This is
+ * usually not a big deal, but if needed, the DB cache can be optimized by
+ * passing the kyselyJsonIdentifier into the DB worker during initialization,
+ * allowing queries to be grouped and recognized across tabs or sessions.
+ *
+ * See: https://github.com/kysely-org/kysely/issues/1372#issuecomment-2702773948
+ */
+export const kyselyJsonIdentifier = createId({
+  randomBytes: createRandomBytes(),
+});
+
+export const parseSqliteJsonArray = <T>(
+  arr: ReadonlyArray<T>,
+): ReadonlyArray<T> => {
+  const result = new Array<T>(arr.length);
+  for (let i = 0; i < arr.length; ++i) {
+    result[i] = parse(arr[i]) as T;
+  }
+  return result;
+};
+
+const parse = (obj: unknown): unknown => {
+  if (String.is(obj) && obj.startsWith(kyselyJsonIdentifier)) {
+    return JSON.parse(obj.slice(kyselyJsonIdentifier.length));
+  }
+
+  if (Array.isArray(obj)) {
+    return parseSqliteJsonArray(obj);
+  }
+
+  if (isPlainObject(obj)) {
+    return parseObject(obj);
+  }
+
+  return obj;
+};
+
+const parseObject = (
+  obj: ReadonlyRecord<string, unknown>,
+): ReadonlyRecord<string, unknown> => {
+  const result = createRecord();
+  for (const key in obj) {
+    result[key] = parse(obj[key]);
+  }
+  return result as ReadonlyRecord<string, unknown>;
 };
