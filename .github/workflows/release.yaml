@@ -31,20 +31,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm build
-
-      - name: Lint
-        run: pnpm lint
-
-      - name: Lint Monorepo
-        run: pnpm lint-monorepo
-
-      - name: Check Circular Dependencies
-        run: pnpm circular
-
-      - name: Test
-        run: pnpm test
+      - name: Verify
+        run: pnpm verify
 
       - name: Create Release Pull Request or Publish
         id: changesets
