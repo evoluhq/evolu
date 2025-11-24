@@ -266,10 +266,10 @@ importers:
         version: 20.3.13(@angular/common@20.3.13(@angular/core@20.3.13(@angular/compiler@20.3.13)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@20.3.13(@angular/compiler@20.3.13)(rxjs@7.8.2))
       '@evolu/common':
         specifier: latest
-        version: 7.2.2
+        version: 7.2.3
       '@evolu/web':
         specifier: latest
-        version: 2.2.1(@evolu/common@7.2.2)
+        version: 2.2.1(@evolu/common@7.2.3)
     devDependencies:
       '@analogjs/vite-plugin-angular':
         specifier: ^1.20.1
@@ -303,13 +303,13 @@ importers:
     dependencies:
       '@evolu/common':
         specifier: latest
-        version: 7.2.2
+        version: 7.2.3
       '@evolu/react':
         specifier: latest
-        version: 10.2.1(@evolu/common@7.2.2)(react@19.1.0)
+        version: 10.2.1(@evolu/common@7.2.3)(react@19.1.0)
       '@evolu/react-web':
         specifier: latest
-        version: 2.2.1(@evolu/common@7.2.2)(@evolu/web@2.2.1(@evolu/common@7.2.2))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        version: 2.2.1(@evolu/common@7.2.3)(@evolu/web@2.2.1(@evolu/common@7.2.3))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       react:
         specifier: 19.1.0
         version: 19.1.0
@@ -352,13 +352,13 @@ importers:
         version: 1.0.0(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       '@evolu/common':
         specifier: latest
-        version: 7.2.2
+        version: 7.2.3
       '@evolu/react':
         specifier: latest
-        version: 10.2.1(@evolu/common@7.2.2)(react@19.1.0)
+        version: 10.2.1(@evolu/common@7.2.3)(react@19.1.0)
       '@evolu/react-native':
         specifier: latest
-        version: 14.1.1(@evolu/common@7.2.2)(@evolu/react@10.2.1(@evolu/common@7.2.2)(react@19.1.0))(@op-engineering/op-sqlite@15.0.7(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(expo-secure-store@15.0.7(expo@54.0.25))(expo-sqlite@16.0.9(expo@54.0.25)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(expo@54.0.25)(react-native-nitro-modules@0.31.9(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-svg@15.15.0(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))
+        version: 14.1.1(@evolu/common@7.2.3)(@evolu/react@10.2.1(@evolu/common@7.2.3)(react@19.1.0))(@op-engineering/op-sqlite@15.0.7(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(expo-secure-store@15.0.7(expo@54.0.25))(expo-sqlite@16.0.9(expo@54.0.25)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(expo@54.0.25)(react-native-nitro-modules@0.31.9(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-svg@15.15.0(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))
       '@expo/metro-runtime':
         specifier: ^6.1.2
         version: 6.1.2(expo@54.0.25)(react-dom@19.1.0(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
@@ -431,13 +431,13 @@ importers:
     dependencies:
       '@evolu/common':
         specifier: latest
-        version: 7.2.2
+        version: 7.2.3
       '@evolu/react':
         specifier: latest
-        version: 10.2.1(@evolu/common@7.2.2)(react@19.1.0)
+        version: 10.2.1(@evolu/common@7.2.3)(react@19.1.0)
       '@evolu/react-web':
         specifier: latest
-        version: 2.2.1(@evolu/common@7.2.2)(@evolu/web@2.2.1(@evolu/common@7.2.2))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        version: 2.2.1(@evolu/common@7.2.3)(@evolu/web@2.2.1(@evolu/common@7.2.3))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@tabler/icons-react':
         specifier: ^3.35.0
         version: 3.35.0(react@19.1.0)
@@ -495,13 +495,13 @@ importers:
     dependencies:
       '@evolu/common':
         specifier: latest
-        version: 7.2.2
+        version: 7.2.3
       '@evolu/react':
         specifier: latest
-        version: 10.2.1(@evolu/common@7.2.2)(react@19.1.0)
+        version: 10.2.1(@evolu/common@7.2.3)(react@19.1.0)
       '@evolu/react-web':
         specifier: latest
-        version: 2.2.1(@evolu/common@7.2.2)(@evolu/web@2.2.1(@evolu/common@7.2.2))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        version: 2.2.1(@evolu/common@7.2.3)(@evolu/web@2.2.1(@evolu/common@7.2.3))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@tabler/icons-react':
         specifier: ^3.35.0
         version: 3.35.0(react@19.1.0)
@@ -622,13 +622,13 @@ importers:
     dependencies:
       '@evolu/common':
         specifier: latest
-        version: 7.2.2
+        version: 7.2.3
       '@evolu/vue':
         specifier: latest
-        version: 1.2.1(@evolu/common@7.2.2)(vue@3.5.24(typescript@5.9.3))
+        version: 1.2.1(@evolu/common@7.2.3)(vue@3.5.24(typescript@5.9.3))
       '@evolu/web':
         specifier: latest
-        version: 2.2.1(@evolu/common@7.2.2)
+        version: 2.2.1(@evolu/common@7.2.3)
       vue:
         specifier: ^3.5.24
         version: 3.5.24(typescript@5.9.3)
@@ -2340,8 +2340,8 @@ packages:
     resolution: {integrity: sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
-  '@evolu/common@7.2.2':
-    resolution: {integrity: sha512-7N8YQk29N3HgmzcqCr1BroClDV8IbsDItJ7aoX2RAhZ2VbCiJE5ciF9BQvLOR5NWj2PoEWes3bB1kDTwT0woaA==}
+  '@evolu/common@7.2.3':
+    resolution: {integrity: sha512-gS5WM+M+dCe7CjkN3w4rxZlWbOdGCFDfPk5nIRn01VRYPQz7MOtS+1l/QfhTyW/TS5+qi5Q2d6+jvzPEfo+/Ig==}
     engines: {node: '>=22.0.0'}
 
   '@evolu/react-native@14.1.1':
@@ -7306,8 +7306,8 @@ packages:
   mdast-util-phrasing@4.1.0:
     resolution: {integrity: sha512-TqICwyvJJpBwvGAMZjj4J2n0X8QWp21b9l0o7eXyVJ25YNWYbJDVIyD1bZXE6WtV6RmKJVYmQAKWa0zWOABz2w==}
 
-  mdast-util-to-hast@13.2.0:
-    resolution: {integrity: sha512-QGYKEuUsYT9ykKBCMOEDLsU5JRObWQusAolFMeko/tYPufNkRffBAQjIE+99jbA87xv6FgmjLtwjh9wBWajwAA==}
+  mdast-util-to-hast@13.2.1:
+    resolution: {integrity: sha512-cctsq2wp5vTsLIcaymblUriiTcZd0CwWtCbLvrOzYCDZoWyMNV8sZ7krj09FSnsiJi3WVsHLM4k6Dq/yaPyCXA==}
 
   mdast-util-to-markdown@2.1.2:
     resolution: {integrity: sha512-xj68wMTvGXVOKonmog6LwyJKrYXZPvlwabaryTjLh9LuvovB/KAH+kvi8Gjj+7rJjsFi23nkUxRQv1KqSroMqA==}
@@ -11753,7 +11753,7 @@ snapshots:
       '@eslint/core': 0.17.0
       levn: 0.4.1
 
-  '@evolu/common@7.2.2':
+  '@evolu/common@7.2.3':
     dependencies:
       '@noble/ciphers': 2.0.1
       '@noble/hashes': 2.0.1
@@ -11762,10 +11762,10 @@ snapshots:
       msgpackr: 1.11.5
       random: 5.4.1
 
-  '@evolu/react-native@14.1.1(@evolu/common@7.2.2)(@evolu/react@10.2.1(@evolu/common@7.2.2)(react@19.1.0))(@op-engineering/op-sqlite@15.0.7(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(expo-secure-store@15.0.7(expo@54.0.25))(expo-sqlite@16.0.9(expo@54.0.25)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(expo@54.0.25)(react-native-nitro-modules@0.31.9(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-svg@15.15.0(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))':
+  '@evolu/react-native@14.1.1(@evolu/common@7.2.3)(@evolu/react@10.2.1(@evolu/common@7.2.3)(react@19.1.0))(@op-engineering/op-sqlite@15.0.7(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(expo-secure-store@15.0.7(expo@54.0.25))(expo-sqlite@16.0.9(expo@54.0.25)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(expo@54.0.25)(react-native-nitro-modules@0.31.9(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-svg@15.15.0(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))':
     dependencies:
-      '@evolu/common': 7.2.2
-      '@evolu/react': 10.2.1(@evolu/common@7.2.2)(react@19.1.0)
+      '@evolu/common': 7.2.3
+      '@evolu/react': 10.2.1(@evolu/common@7.2.3)(react@19.1.0)
       react-native: 0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0)
     optionalDependencies:
       '@op-engineering/op-sqlite': 15.0.7(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
@@ -11775,28 +11775,28 @@ snapshots:
       react-native-nitro-modules: 0.31.9(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       react-native-svg: 15.15.0(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
 
-  '@evolu/react-web@2.2.1(@evolu/common@7.2.2)(@evolu/web@2.2.1(@evolu/common@7.2.2))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@evolu/react-web@2.2.1(@evolu/common@7.2.3)(@evolu/web@2.2.1(@evolu/common@7.2.3))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@evolu/common': 7.2.2
-      '@evolu/web': 2.2.1(@evolu/common@7.2.2)
+      '@evolu/common': 7.2.3
+      '@evolu/web': 2.2.1(@evolu/common@7.2.3)
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@evolu/react@10.2.1(@evolu/common@7.2.2)(react@19.1.0)':
+  '@evolu/react@10.2.1(@evolu/common@7.2.3)(react@19.1.0)':
     dependencies:
-      '@evolu/common': 7.2.2
+      '@evolu/common': 7.2.3
       react: 19.1.0
 
   '@evolu/sqlite-wasm@2.2.4': {}
 
-  '@evolu/vue@1.2.1(@evolu/common@7.2.2)(vue@3.5.24(typescript@5.9.3))':
+  '@evolu/vue@1.2.1(@evolu/common@7.2.3)(vue@3.5.24(typescript@5.9.3))':
     dependencies:
-      '@evolu/common': 7.2.2
+      '@evolu/common': 7.2.3
       vue: 3.5.24(typescript@5.9.3)
 
-  '@evolu/web@2.2.1(@evolu/common@7.2.2)':
+  '@evolu/web@2.2.1(@evolu/common@7.2.3)':
     dependencies:
-      '@evolu/common': 7.2.2
+      '@evolu/common': 7.2.3
       '@evolu/sqlite-wasm': 2.2.4
       idb-keyval: 6.2.2
 
@@ -16499,7 +16499,7 @@ snapshots:
       comma-separated-tokens: 2.0.3
       hast-util-whitespace: 3.0.0
       html-void-elements: 3.0.0
-      mdast-util-to-hast: 13.2.0
+      mdast-util-to-hast: 13.2.1
       property-information: 7.1.0
       space-separated-tokens: 2.0.2
       stringify-entities: 4.0.4
@@ -17446,7 +17446,7 @@ snapshots:
       '@types/mdast': 4.0.4
       unist-util-is: 6.0.1
 
-  mdast-util-to-hast@13.2.0:
+  mdast-util-to-hast@13.2.1:
     dependencies:
       '@types/hast': 3.0.4
       '@types/mdast': 4.0.4
@@ -19139,7 +19139,7 @@ snapshots:
     dependencies:
       '@types/hast': 3.0.4
       '@types/mdast': 4.0.4
-      mdast-util-to-hast: 13.2.0
+      mdast-util-to-hast: 13.2.1
       unified: 11.0.5
       vfile: 6.0.3
 
