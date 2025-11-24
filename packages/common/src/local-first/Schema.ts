@@ -458,6 +458,10 @@ export const DbSchema = object({
 });
 export type DbSchema = typeof DbSchema.Type;
 
+export interface DbSchemaDep {
+  readonly dbSchema: DbSchema;
+}
+
 /** Get the current database schema by reading SQLite metadata. */
 export const getDbSchema =
   (deps: SqliteDep) =>
@@ -532,10 +536,15 @@ export const ensureDbSchema =
   (deps: SqliteDep) =>
   (
     newSchema: DbSchema,
-    currentSchema: DbSchema,
-    options?: { ignoreIndexes: boolean },
+    currentSchema?: DbSchema,
   ): Result<void, SqliteError> => {
     const queries: Array<SqliteQuery> = [];
+
+    if (!currentSchema) {
+      const dbSchema = getDbSchema(deps)();
+      if (!dbSchema.ok) return dbSchema;
+      currentSchema = dbSchema.value;
+    }
 
     newSchema.tables.forEach((newTable) => {
       const currentTable = currentSchema.tables.find(
@@ -555,31 +564,29 @@ export const ensureDbSchema =
       }
     });
 
-    if (options?.ignoreIndexes !== true) {
-      // Remove current indexes that are not in the newSchema.
-      currentSchema.indexes
-        .filter(
-          (currentIndex) =>
-            !newSchema.indexes.some((newIndex) =>
-              indexesAreEqual(newIndex, currentIndex),
-            ),
-        )
-        .forEach((index) => {
-          queries.push(sql`drop index ${sql.identifier(index.name)};`);
-        });
+    // Remove current indexes that are not in the newSchema.
+    currentSchema.indexes
+      .filter(
+        (currentIndex) =>
+          !newSchema.indexes.some((newIndex) =>
+            indexesAreEqual(newIndex, currentIndex),
+          ),
+      )
+      .forEach((index) => {
+        queries.push(sql`drop index ${sql.identifier(index.name)};`);
+      });
 
-      // Add new indexes that are not in the currentSchema.
-      newSchema.indexes
-        .filter(
-          (newIndex) =>
-            !currentSchema.indexes.some((currentIndex) =>
-              indexesAreEqual(newIndex, currentIndex),
-            ),
-        )
-        .forEach((newIndex) => {
-          queries.push({ sql: `${newIndex.sql};` as SafeSql, parameters: [] });
-        });
-    }
+    // Add new indexes that are not in the currentSchema.
+    newSchema.indexes
+      .filter(
+        (newIndex) =>
+          !currentSchema.indexes.some((currentIndex) =>
+            indexesAreEqual(newIndex, currentIndex),
+          ),
+      )
+      .forEach((newIndex) => {
+        queries.push({ sql: `${newIndex.sql};` as SafeSql, parameters: [] });
+      });
 
     for (const query of queries) {
       const result = deps.sqlite.exec(query);

@@ -1,4 +1,9 @@
-import { isNonEmptyArray, NonEmptyReadonlyArray } from "../Array.js";
+import {
+  firstInArray,
+  isNonEmptyArray,
+  NonEmptyReadonlyArray,
+} from "../Array.js";
+import { assertNonEmptyReadonlyArray } from "../Assert.js";
 import { CallbackId } from "../Callbacks.js";
 import { ConsoleConfig, ConsoleDep } from "../Console.js";
 import {
@@ -337,146 +342,140 @@ export const createDbWorkerForPlatform = (
     DbWorkerOutput,
     DbWorkerDeps
   >({
-    init: createInit(platformDeps),
+    init: async (initMessage, postMessage) => {
+      platformDeps.console.enabled = initMessage.config.enableLogging ?? false;
+
+      const deps = await createDbWorkerDeps(
+        platformDeps,
+        initMessage,
+        postMessage,
+      );
+
+      if (!deps.ok) {
+        postMessage({ type: "onError", error: deps.error });
+        return null;
+      }
+
+      return deps.value;
+    },
     handlers,
   });
 
-const createInit =
-  (platformDeps: DbWorkerPlatformDeps) =>
-  async (
-    initMessage: Extract<DbWorkerInput, { type: "init" }>,
-    postMessage: (msg: DbWorkerOutput) => void,
-  ): Promise<DbWorkerDeps | null> => {
-    platformDeps.console.enabled = initMessage.config.enableLogging ?? false;
+const createDbWorkerDeps = async (
+  platformDeps: DbWorkerPlatformDeps,
+  initMessage: Extract<DbWorkerInput, { type: "init" }>,
+  postMessage: (msg: DbWorkerOutput) => void,
+) => {
+  const sqlite = await createSqlite(platformDeps)(initMessage.config.name, {
+    memory: initMessage.config.inMemory ?? false,
+    encryptionKey: initMessage.config.encryptionKey ?? undefined,
+  });
+  if (!sqlite.ok) return sqlite;
 
-    const sqliteResult = await createSqlite(platformDeps)(
-      initMessage.config.name,
-      {
-        memory: initMessage.config.inMemory ?? false,
-        encryptionKey: initMessage.config.encryptionKey ?? undefined,
-      },
+  const deps = { ...platformDeps, sqlite: sqlite.value };
+
+  return deps.sqlite.transaction(() => {
+    const dbSchema = getDbSchema(deps)();
+    if (!dbSchema.ok) return dbSchema;
+
+    const dbIsInitialized = dbSchema.value.tables.some(
+      (table) => table.name === "evolu_version",
     );
-    if (!sqliteResult.ok) {
-      postMessage({ type: "onError", error: sqliteResult.error });
-      return null;
-    }
-    const sqlite = sqliteResult.value;
 
-    const deps = sqlite.transaction(() => {
-      const currentDbSchema = getDbSchema({ sqlite })();
-      if (!currentDbSchema.ok) return currentDbSchema;
+    let appOwner: AppOwner;
+    let clock: Clock;
 
-      let appOwner: AppOwner;
-      let clock: Clock;
+    if (dbIsInitialized) {
+      const currentVersion = deps.sqlite.exec<{
+        protocolVersion: number;
+      }>(sql`select protocolVersion from evolu_version limit 1;`);
+      if (!currentVersion.ok) return currentVersion;
 
-      const dbIsInitialized = currentDbSchema.value.tables.some(
-        (table) => table.name === "evolu_version",
-      );
+      const configResult = deps.sqlite.exec<{
+        clock: TimestampBytes;
+        appOwnerId: OwnerId;
+        appOwnerEncryptionKey: OwnerEncryptionKey;
+        appOwnerWriteKey: OwnerWriteKey;
+        appOwnerMnemonic: Mnemonic | null;
+      }>(sql`
+        select
+          clock,
+          appOwnerId,
+          appOwnerEncryptionKey,
+          appOwnerWriteKey,
+          appOwnerMnemonic
+        from evolu_config
+        limit 1;
+      `);
+      if (!configResult.ok) return configResult;
 
-      if (dbIsInitialized) {
-        const currentVersion = sqlite.exec<{
-          protocolVersion: number;
-        }>(sql`select protocolVersion from evolu_version limit 1;`);
-        if (!currentVersion.ok) return currentVersion;
+      assertNonEmptyReadonlyArray(configResult.value.rows);
+      const config = firstInArray(configResult.value.rows);
 
-        const configResult = sqlite.exec<{
-          clock: TimestampBytes;
-          appOwnerId: OwnerId;
-          appOwnerEncryptionKey: OwnerEncryptionKey;
-          appOwnerWriteKey: OwnerWriteKey;
-          appOwnerMnemonic: Mnemonic | null;
-        }>(sql`
-          select
-            clock,
-            appOwnerId,
-            appOwnerEncryptionKey,
-            appOwnerWriteKey,
-            appOwnerMnemonic
-          from evolu_config
-          limit 1;
-        `);
-        if (!configResult.ok) return configResult;
+      appOwner = {
+        type: "AppOwner",
+        id: config.appOwnerId,
+        encryptionKey: config.appOwnerEncryptionKey,
+        writeKey: config.appOwnerWriteKey,
+        mnemonic: config.appOwnerMnemonic,
+      };
 
-        const [config] = configResult.value.rows;
+      clock = createClock(deps)(timestampBytesToTimestamp(config.clock));
+    } else {
+      appOwner =
+        initMessage.config.externalAppOwner ??
+        createAppOwner(createOwnerSecret(platformDeps));
 
-        appOwner = {
-          type: "AppOwner",
-          id: config.appOwnerId,
-          encryptionKey: config.appOwnerEncryptionKey,
-          writeKey: config.appOwnerWriteKey,
-          mnemonic: config.appOwnerMnemonic,
-        };
+      clock = createClock(deps)();
 
-        clock = createClock({ ...platformDeps, sqlite })(
-          timestampBytesToTimestamp(config.clock),
-        );
-      } else {
-        appOwner =
-          initMessage.config.externalAppOwner ??
-          createAppOwner(createOwnerSecret(platformDeps));
-
-        clock = createClock({ ...platformDeps, sqlite })();
-
-        const result = initializeDb({ sqlite })(appOwner, clock.get());
-        if (!result.ok) return result;
-      }
-
-      const result = ensureDbSchema({ sqlite })(
-        initMessage.dbSchema,
-        currentDbSchema.value,
-      );
+      const result = initializeDb(deps)(appOwner, clock.get());
       if (!result.ok) return result;
-
-      const sync = createSync({
-        ...platformDeps,
-        clock,
-        sqlite,
-        symmetricCrypto: createSymmetricCrypto(platformDeps),
-        timestampConfig: initMessage.config,
-        postMessage,
-      })({
-        appOwner,
-        transports: initMessage.config.transports,
-        onError: (error) => {
-          postMessage({ type: "onError", error });
-        },
-        onReceive: () => {
-          postMessage({ type: "refreshQueries" });
-        },
-      });
-      if (!sync.ok) return sync;
-
-      sync.value.useOwner(true, appOwner);
-
-      const tabQueryRowsCacheMap = new Map<Id, QueryRowsCache>();
-      const getQueryRowsCache = (tabId: Id) => {
-        let cache = tabQueryRowsCacheMap.get(tabId);
-        if (!cache) {
-          cache = createQueryRowsCache();
-          tabQueryRowsCacheMap.set(tabId, cache);
-        }
-        return cache;
-      };
-
-      const deps: DbWorkerDeps = {
-        ...platformDeps,
-        getQueryRowsCache,
-        postMessage,
-        sqlite,
-        sync: sync.value,
-        appOwner,
-      };
-
-      return ok(deps);
-    });
-
-    if (!deps.ok) {
-      postMessage({ type: "onError", error: deps.error });
-      return null;
     }
 
-    return deps.value;
-  };
+    const result = ensureDbSchema(deps)(initMessage.dbSchema, dbSchema.value);
+    if (!result.ok) return result;
+
+    const sync = createSync({
+      ...deps,
+      clock,
+      symmetricCrypto: createSymmetricCrypto(platformDeps),
+      timestampConfig: initMessage.config,
+      postMessage,
+      dbSchema: initMessage.dbSchema,
+    })({
+      appOwner,
+      transports: initMessage.config.transports,
+      onError: (error) => {
+        postMessage({ type: "onError", error });
+      },
+      onReceive: () => {
+        postMessage({ type: "refreshQueries" });
+      },
+    });
+    if (!sync.ok) return sync;
+
+    sync.value.useOwner(true, appOwner);
+
+    const tabQueryRowsCacheMap = new Map<Id, QueryRowsCache>();
+
+    const getQueryRowsCache = (tabId: Id) => {
+      let cache = tabQueryRowsCacheMap.get(tabId);
+      if (!cache) {
+        cache = createQueryRowsCache();
+        tabQueryRowsCacheMap.set(tabId, cache);
+      }
+      return cache;
+    };
+
+    return ok({
+      ...deps,
+      getQueryRowsCache,
+      postMessage,
+      sync: sync.value,
+      appOwner,
+    });
+  });
+};
 
 const initializeDb =
   (deps: SqliteDep) =>
@@ -548,7 +547,6 @@ const initializeDb =
       `,
 
       // Index for reading database changes by owner and timestamp.
-      // Timestamp always corresponds to a DbChange.
       sql`
         create index evolu_history_ownerId_timestamp on evolu_history (
           "ownerId",
@@ -665,21 +663,14 @@ const handlers: Omit<MessageHandlers<DbWorkerInput, DbWorkerDeps>, "init"> = {
       }
 
       if (message.restore) {
-        const dbSchema = getDbSchema(deps)();
-        if (!dbSchema.ok) return dbSchema;
-
-        const ensureDbSchemaResult = ensureDbSchema(deps)(
-          message.restore.dbSchema,
-          dbSchema.value,
-        );
-        if (!ensureDbSchemaResult.ok) return ensureDbSchemaResult;
+        const result = ensureDbSchema(deps)(message.restore.dbSchema);
+        if (!result.ok) return result;
 
         const secret = mnemonicToOwnerSecret(message.restore.mnemonic);
         const appOwner = createAppOwner(secret);
         const clock = createClock(deps)();
 
-        const initializeDbResult = initializeDb(deps)(appOwner, clock.get());
-        if (!initializeDbResult.ok) return initializeDbResult;
+        return initializeDb(deps)(appOwner, clock.get());
       }
 
       return ok();
@@ -698,21 +689,12 @@ const handlers: Omit<MessageHandlers<DbWorkerInput, DbWorkerDeps>, "init"> = {
   },
 
   ensureDbSchema: (deps) => (message) => {
-    const ensureSchema = deps.sqlite.transaction(() => {
-      const dbSchema = getDbSchema(deps)();
-      if (!dbSchema.ok) return dbSchema;
+    const result = deps.sqlite.transaction(() =>
+      ensureDbSchema(deps)(message.dbSchema),
+    );
 
-      const ensureDbSchemaResult = ensureDbSchema(deps)(
-        message.dbSchema,
-        dbSchema.value,
-      );
-      if (!ensureDbSchemaResult.ok) return ensureDbSchemaResult;
-
-      return ok();
-    });
-
-    if (!ensureSchema.ok) {
-      deps.postMessage({ type: "onError", error: ensureSchema.error });
+    if (!result.ok) {
+      deps.postMessage({ type: "onError", error: result.error });
       return;
     }
   },
