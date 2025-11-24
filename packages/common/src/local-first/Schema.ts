@@ -40,7 +40,7 @@ import {
 import { Simplify } from "../Types.js";
 import { AppOwner, OwnerId } from "./Owner.js";
 import { Query, Row } from "./Query.js";
-import { CrdtMessage, DbChange } from "./Storage.js";
+import type { CrdtMessage, DbChange } from "./Storage.js";
 import { Timestamp, TimestampBytes } from "./Timestamp.js";
 
 /**
