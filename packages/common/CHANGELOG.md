@@ -1,5 +1,22 @@
 # @evolu/common
 
+## 7.2.3
+
+### Patch Changes
+
+- adfd6af: Add a typed helper `createRecord` for safely creating prototype-less
+  `Record<K, V>` instances (via `Object.create(null)`). This prevents
+  prototype pollution and accidental key collisions for object keys that come
+  from external sources, like database column names.
+- 7e7a191: Fix handling of empty-update mutations and readDbChange
+
+  This patch fixes a bug where a mutation that contains only an `id` (no values) could result in an empty set of `evolu_history` rows for the corresponding timestamp. That caused `readDbChange` to fail when trying to build a CRDT change for syncing. The fix ensures `evolu_history` includes system columns so the storage and sync code always have at least one column to work with.
+
+  Manually tested and snapshots updated.
+
+  Manual verification steps: call `update("todo", { id })` and then invoke
+  `readDbChange` via the sync with an empty relay.
+
 ## 7.2.2
 
 ### Patch Changes
