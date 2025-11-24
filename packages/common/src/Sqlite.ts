@@ -2,6 +2,7 @@ import { Brand } from "./Brand.js";
 import { createLruCache } from "./Cache.js";
 import { ConsoleDep } from "./Console.js";
 import { EncryptionKey } from "./Crypto.js";
+import { Eq, eqArrayNumber } from "./Eq.js";
 import { createTransferableError, TransferableError } from "./Error.js";
 import { err, ok, Result, tryAsync, trySync } from "./Result.js";
 import {
@@ -85,6 +86,16 @@ export type SafeSql = string & Brand<"TimestampString">;
  */
 export const SqliteValue = union(Null, String, Number, Uint8Array);
 export type SqliteValue = typeof SqliteValue.Type;
+
+export const eqSqliteValue: Eq<SqliteValue> = (x, y) => {
+  if (
+    x instanceof globalThis.Uint8Array &&
+    y instanceof globalThis.Uint8Array
+  ) {
+    return eqArrayNumber(x, y);
+  }
+  return x === y;
+};
 
 export interface SqliteQueryOptions {
   /**
