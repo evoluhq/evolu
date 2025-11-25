@@ -83,21 +83,13 @@ interface Example {
 
 ## Interface over type
 
-Prefer `interface` over `type` for object shapes. TypeScript shows the interface name rather than expanding the whole structure, making types more readable.
+Prefer `interface` over `type` because interfaces always appear by name in error messages and tooltips.
 
 Use `type` only when necessary:
 
 - Union types: `type Status = "pending" | "done"`
 - Mapped types, tuples, or type utilities
 
-```ts
-// Prefer interface for object shapes.
-interface User {
-  readonly id: string;
-  readonly name: string;
-}
-
-// Use type for unions and utilities.
-type Status = "pending" | "done";
-type UserKeys = keyof User;
-```
+> Use `interface` until you need to use features from `type`.
+>
+> — [TypeScript Handbook](https://www.typescriptlang.org/docs/handbook/2/everyday-types.html#differences-between-type-aliases-and-interfaces)
