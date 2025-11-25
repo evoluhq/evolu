@@ -5,7 +5,7 @@ import { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Evolu",
-  description: "TypeScript Library and Local-First Platform",
+  description: "TypeScript library and local-first platform",
 };
 
 export default function Page(): React.ReactElement {
@@ -14,7 +14,7 @@ export default function Page(): React.ReactElement {
       <div className="flex flex-col gap-4 pt-14 xl:mx-auto xl:max-w-5xl">
         <Logo className="mx-auto h-9" />
         <p className="lead w-full text-center text-balance">
-          TypeScript Library and Local&#8209;First Platform
+          TypeScript library and local&#8209;first platform
         </p>
         <div className="flex justify-center gap-5">
           <Button

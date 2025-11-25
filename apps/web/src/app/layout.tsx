@@ -3,7 +3,7 @@ import { type Metadata } from "next";
 export const metadata: Metadata = {
   title: {
     template: "%s - Evolu",
-    default: "TypeScript Library and Local-First Platform",
+    default: "TypeScript library and local-first platform",
   },
   alternates: {
     types: {
