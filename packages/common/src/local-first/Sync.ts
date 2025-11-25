@@ -62,7 +62,7 @@ import {
   ProtocolTimestampMismatchError,
   SubscriptionFlags,
 } from "./Protocol.js";
-import { MutationChange } from "./Schema.js";
+import { DbSchemaDep, MutationChange } from "./Schema.js";
 import {
   BaseSqliteStorage,
   CrdtMessage,
@@ -157,6 +157,7 @@ export const createSync =
     deps: ClockDep &
       ConsoleDep &
       CreateWebSocketDep &
+      DbSchemaDep &
       PostMessageDep &
       RandomBytesDep &
       RandomDep &
@@ -445,6 +446,7 @@ export interface ClientStorageDep {
 const createClientStorage =
   (
     deps: ClockDep &
+      DbSchemaDep &
       GetSyncOwnerDep &
       RandomDep &
       SqliteDep &
@@ -687,7 +689,7 @@ export const applyLocalOnlyChange =
   };
 
 const applyMessages =
-  (deps: ClientStorageDep & ClockDep & RandomDep & SqliteDep) =>
+  (deps: ClientStorageDep & ClockDep & DbSchemaDep & RandomDep & SqliteDep) =>
   (
     ownerId: OwnerId,
     messages: NonEmptyReadonlyArray<CrdtMessage>,
@@ -702,10 +704,24 @@ const applyMessages =
 
     let { firstTimestamp, lastTimestamp } = usage.value;
 
-    for (const { timestamp, change } of messages) {
-      const timestampBytes = timestampToTimestampBytes(timestamp);
-      const idBytes = idToIdBytes(change.id);
-      const columns = dbChangeToColumns(change, timestampToDateIso(timestamp));
+    // const tableColumnsMap = new Map(
+    //   deps.dbSchema.tables.map((table) => [table.name, new Set(table.columns)]),
+    // );
+
+    for (const message of messages) {
+      // const tableColumns = tableColumnsMap.get(message.change.table);
+      // const isValidMessage =
+      //   tableColumns != null &&
+      //   new Set(Object.keys(message.change.values)).isSubsetOf(tableColumns);
+
+      // console.log({ isValidMessage });
+
+      const timestampBytes = timestampToTimestampBytes(message.timestamp);
+      const idBytes = idToIdBytes(message.change.id);
+      const columns = dbChangeToColumns(
+        message.change,
+        timestampToDateIso(message.timestamp),
+      );
 
       for (const [column, value] of columns) {
         const updateAppTable = deps.sqlite.exec(sql.prepared`
@@ -715,15 +731,15 @@ const applyMessages =
               from evolu_history
               where
                 "ownerId" = ${ownerIdBytes}
-                and "table" = ${change.table}
+                and "table" = ${message.change.table}
                 and "id" = ${idBytes}
                 and "column" = ${column}
                 and "timestamp" >= ${timestampBytes}
               limit 1
             )
-          insert into ${sql.identifier(change.table)}
+          insert into ${sql.identifier(message.change.table)}
             ("ownerId", "id", ${sql.identifier(column)})
-          select ${ownerId}, ${change.id}, ${value}
+          select ${ownerId}, ${message.change.id}, ${value}
           where not exists (select 1 from existingTimestamp)
           on conflict ("ownerId", "id") do update
             set ${sql.identifier(column)} = ${value}
@@ -738,7 +754,7 @@ const applyMessages =
           values
             (
               ${ownerIdBytes},
-              ${change.table},
+              ${message.change.table},
               ${idBytes},
               ${column},
               ${value},
@@ -766,9 +782,8 @@ const applyMessages =
     }
 
     /**
-     * TODO: Implement proper storedBytes tracking for client using encrypted
-     * message sizes (need to figure out how to reuse received or postpone
-     * client...).
+     * TODO: Implement proper storedBytes tracking for client using received and
+     * sent encrypted message sizes.
      */
     const updateUsage = updateOwnerUsage(deps)(
       ownerIdBytes,
