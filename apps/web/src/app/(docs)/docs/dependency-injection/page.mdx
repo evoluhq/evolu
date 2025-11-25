@@ -177,7 +177,7 @@ export interface TimeDep {
 }
 
 export interface LoggerDep {
-  logger: Logger;
+  readonly logger: Logger;
 }
 
 const app = (deps: TimeDep & LoggerDep) => {
@@ -250,7 +250,7 @@ app(appDeps);
 
 - Start with an interface or type—everything can be a dependency.
 - To avoid clashes, wrap dependencies (`TimeDep`, `LoggerDep`).
-- Write factory function (`createTime`, `createTestTime`)
+- Write factory functions (`createTime`, `createTestTime`)
 - Both regular functions and factory functions accept a single argument named `deps`, combining one or more dependencies (e.g., `A & B & C`).
 - Sort dependencies alphabetically in ascending order when combining them.
 
@@ -369,7 +369,7 @@ const result = timeUntilEvent(deps)(1742329310767);
 - `eventTimestamp` is just a number—it's not a dependency because it’s local to the function’s logic.
 - `time` is a dependency because it interacts with the outside world (`Date.now()`).
 
-**Key takeaway**: Use dependencies for external interactions (I/O, side effects) and keep regular arguments for pure, local data. At the composition root, assemble your `deps` object once and pass it where needed—over-providing is fine, as shown in the Example (#example) section!
+**Key takeaway**: Use dependencies for external interactions (I/O, side effects) and keep regular arguments for pure, local data. At the composition root, assemble your `deps` object once and pass it where needed—over-providing is fine, as shown in the [Example](#example) section.
 
 **Why shouldn't dependencies use generic arguments?**
 
