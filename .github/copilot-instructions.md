@@ -1,17 +1,16 @@
 ---
-applyTo: "**/*.ts"
+applyTo: "**/*.{ts,tsx}"
 ---
 
-# Evolu Project Guidelines
+# Evolu project guidelines
 
 You are helping with the Evolu project. Follow these specific conventions and patterns:
 
-## Code Organization & Imports
+## Code organization & imports
 
 - **Use named imports only** - avoid default exports and namespace imports
 - **Use unique exported members** - avoid namespaces, use descriptive names to prevent conflicts
 - **Organize code top-down** - public interfaces first, then implementation, then implementation details
-- **Separate public/internal code** - use package.json exports to define clear boundaries
 
 ```ts
 // ✅ Good
@@ -24,11 +23,9 @@ import Foo from "Foo.ts";
 export const Utils = { ok, trySync };
 ```
 
-## Type System & Immutability
+## Immutability
 
 - **Favor immutability** - use `readonly` properties and `ReadonlyArray`/`NonEmptyReadonlyArray`
-- **Use TypeScript's type system** to enforce immutability at compile time
-- **Use Type system for runtime validation** - never use assertions for input validation
 
 ```ts
 interface Example {
@@ -75,7 +72,7 @@ export const createUser = (data: UserData): User => {
 };
 ````
 
-## Error Handling with Result
+## Error handling with Result
 
 - Use `Result<T, E>` for business/domain errors in public APIs
 - Keep implementation-specific errors internal to dependencies
@@ -112,7 +109,7 @@ export interface Storage {
 }
 ```
 
-### Result Patterns
+### Result patterns
 
 - Use `Result<void, E>` for operations that don't return values
 - Use `trySync` for wrapping synchronous unsafe code
@@ -132,7 +129,7 @@ for (const op of operations) {
 }
 ```
 
-## Type System Patterns
+## Evolu Type
 
 - **Use Type for validation/parsing** - leverage Evolu's Type system for runtime validation
 - **Define typed errors** - use interfaces extending `TypeError<Name>`
@@ -165,13 +162,6 @@ const formatCurrencyCodeError = createTypeErrorFormatter<CurrencyCodeError>(
 );
 ```
 
-### Type System Guidelines
-
-- **Use readonly for Type definitions** - all Type interfaces should use readonly
-- **Create error formatters** - use `createTypeErrorFormatter` for consistent error messages
-- **Use base, brand, transform factories** - follow established patterns for Type creation
-- **Leverage type inference** - use `InferType`, `InferError`, etc. for type extraction
-
 ## Assertions
 
 - Use assertions for conditions logically guaranteed but not statically known by TypeScript
@@ -181,22 +171,17 @@ const formatCurrencyCodeError = createTypeErrorFormatter<CurrencyCodeError>(
 ```ts
 import { assert, assertNonEmptyArray } from "./Assert.js";
 
-// ✅ Good example
 const length = buffer.getLength();
 assert(NonNegativeInt.is(length), "buffer length should be non-negative");
 
-// ✅ Good - Non-empty array assertion
 assertNonEmptyArray(items, "Expected items to process");
-
-// ❌ Avoid - Use Type validation instead
-// Don't use assert for runtime input validation
 ```
 
-## Dependency Injection Pattern
+## Dependency injection
 
 Follow Evolu's convention-based DI approach without frameworks:
 
-### 1. Define Dependencies as Interfaces
+### 1. Define dependencies as interfaces
 
 ```ts
 export interface Time {
@@ -208,7 +193,7 @@ export interface TimeDep {
 }
 ```
 
-### 2. Use Currying for Functions with Dependencies
+### 2. Use currying for functions with dependencies
 
 ```ts
 const timeUntilEvent =
@@ -219,7 +204,7 @@ const timeUntilEvent =
   };
 ```
 
-### 3. Create Factory Functions
+### 3. Create factory functions
 
 ```ts
 export const createTime = (): Time => ({
@@ -227,7 +212,7 @@ export const createTime = (): Time => ({
 });
 ```
 
-### 4. Composition Root Pattern
+### 4. Composition root pattern
 
 ```ts
 const deps: TimeDep & Partial<LoggerDep> = {
@@ -243,7 +228,7 @@ const deps: TimeDep & Partial<LoggerDep> = {
 - **Over-providing is OK** - passing extra deps is fine, over-depending is not
 - **Use Partial<>** for optional dependencies
 - **No global static instances** - avoid service locator pattern
-- **No generics in dependency interfaces** - keep them simple and implementation-agnostic
+- **No generics in dependency interfaces** - keep them implementation-agnostic
 
 ## Testing
 
@@ -256,10 +241,6 @@ const deps: TimeDep & Partial<LoggerDep> = {
 - Create test factories (e.g., `createTestTime`)
 - Never rely on global state
 - Use assertions in tests for conditions that should never fail
-
-## Monorepo TypeScript Issues
-
-**ESLint "Unsafe..." errors after changes** - In a monorepo, ESLint may show "Unsafe call", "Unsafe member access", or "Unsafe assignment" errors after modifying packages that other packages depend on. These errors should be ignored. Solution: use VS Code's "Developer: Reload Window" command (Cmd+Shift+P)
 
 ```ts
 import { testCreateId, testTime, testOwner } from "../_deps.js";
@@ -275,11 +256,11 @@ test("timeUntilEvent calculates correctly", () => {
 });
 ```
 
-## Project Verification
+## Monorepo TypeScript issues
 
-- **Run `pnpm verify` after significant changes** – This command runs build, lint, monorepo lint, typedoc, and all tests to ensure the project is healthy after major updates. It is the recommended way to check the integrity of the entire monorepo.
+**ESLint "Unsafe..." errors after changes** - In a monorepo, ESLint may show "Unsafe call", "Unsafe member access", or "Unsafe assignment" errors after modifying packages that other packages depend on. These errors should be ignored. Solution: use VS Code's "Developer: Reload Window" command (Cmd+Shift+P)
 
-## Git Commit Messages
+## Git commit messages
 
 - **Write as sentences** - use proper sentence case without trailing period
 - **No prefixes** - avoid `feat:`, `fix:`, `feature:` etc.
