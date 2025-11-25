@@ -35,8 +35,8 @@ export interface CreateSqliteDriverDep {
 }
 
 export interface SqliteDriverOptions {
-  memory?: boolean;
-  encryptionKey?: EncryptionKey | undefined;
+  readonly memory?: boolean;
+  readonly encryptionKey?: EncryptionKey | undefined;
 }
 
 /**
@@ -76,7 +76,7 @@ export interface SqliteQuery {
 }
 
 /** A type representing a sanitized SQL string. */
-export type SafeSql = string & Brand<"TimestampString">;
+export type SafeSql = string & Brand<"SafeSql">;
 
 /**
  * A value that can be stored in Sqlite.
@@ -303,13 +303,13 @@ export const createPreparedStatementsCache = <P>(
 };
 
 export interface SqlIdentifier {
-  type: "SqlIdentifier";
-  sql: SafeSql;
+  readonly type: "SqlIdentifier";
+  readonly sql: SafeSql;
 }
 
 export interface RawSql {
-  type: "RawSql";
-  sql: string;
+  readonly type: "RawSql";
+  readonly sql: string;
 }
 
 export type SqlTemplateParam = SqliteValue | SqlIdentifier | RawSql;
