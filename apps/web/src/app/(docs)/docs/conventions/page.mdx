@@ -36,22 +36,6 @@ export const trySync = ...;
 // isBetweenBigInt
 ```
 
-## Internal code organization
-
-Separate public and internal code. Use package.json exports to define boundaries clearly.
-
-```ts
-// Evolu "public" code.
-export * from "./Evolu/Public.js";
-
-// Evolu "internal" code is exported in `package.json`.
-"exports": {
-  "./evolu": {
-    "import": "./dist/src/local-first/Internal.js"
-  }
-},
-```
-
 ## Order (top-down readability)
 
 Many developers naturally write code bottom-up, starting with small helpers and building up to the public API. However, Evolu optimizes for reading, not writing, because source code is read far more often than it is written. By presenting the public API first—interfaces and types—followed by the implementation and implementation details, we ensure that the developer-facing contract is immediately clear, making it easier to understand the purpose and structure of the code.
@@ -95,4 +79,25 @@ interface Example {
   readonly id: number;
   readonly items: ReadonlyArray<string>;
 }
+```
+
+## Interface over type
+
+Prefer `interface` over `type` for object shapes. TypeScript shows the interface name rather than expanding the whole structure, making types more readable.
+
+Use `type` only when necessary:
+
+- Union types: `type Status = "pending" | "done"`
+- Mapped types, tuples, or type utilities
+
+```ts
+// Prefer interface for object shapes.
+interface User {
+  readonly id: string;
+  readonly name: string;
+}
+
+// Use type for unions and utilities.
+type Status = "pending" | "done";
+type UserKeys = keyof User;
 ```
