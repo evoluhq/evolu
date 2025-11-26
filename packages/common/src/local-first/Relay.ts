@@ -217,13 +217,8 @@ export const createRelaySqliteStorage =
               (storedBytes ?? 0) + incomingBytes,
             );
 
-            const withinQuotaResult = config.isOwnerWithinQuota(
-              ownerId,
-              newStoredBytes,
-            );
-            const isWithinQuota = isAsync(withinQuotaResult)
-              ? await withinQuotaResult
-              : withinQuotaResult;
+            const result = config.isOwnerWithinQuota(ownerId, newStoredBytes);
+            const isWithinQuota = isAsync(result) ? await result : result;
             if (!isWithinQuota) {
               return err({ type: "StorageQuotaError", ownerId });
             }
@@ -240,30 +235,31 @@ export const createRelaySqliteStorage =
                     lastTimestamp,
                   );
 
-                const insertTimestampResult = sqliteStorageBase.insertTimestamp(
-                  ownerIdBytes,
-                  timestamp,
-                  strategy,
-                );
-                if (!insertTimestampResult.ok) return insertTimestampResult;
+                {
+                  const result = sqliteStorageBase.insertTimestamp(
+                    ownerIdBytes,
+                    timestamp,
+                    strategy,
+                  );
+                  if (!result.ok) return result;
+                }
 
-                const insertMessage = deps.sqlite.exec(sql`
-                  insert into evolu_message ("ownerId", "timestamp", "change")
-                  values (${ownerIdBytes}, ${timestamp}, ${change})
-                  on conflict do nothing;
-                `);
-                if (!insertMessage.ok) return insertMessage;
+                {
+                  const result = deps.sqlite.exec(sql`
+                    insert into evolu_message ("ownerId", "timestamp", "change")
+                    values (${ownerIdBytes}, ${timestamp}, ${change})
+                    on conflict do nothing;
+                  `);
+                  if (!result.ok) return result;
+                }
               }
 
-              const updateUsage = updateOwnerUsage(deps)(
+              return updateOwnerUsage(deps)(
                 ownerIdBytes,
                 newStoredBytes,
                 firstTimestamp,
                 lastTimestamp,
               );
-              if (!updateUsage.ok) return updateUsage;
-
-              return ok();
             });
           })();
 

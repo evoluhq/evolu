@@ -570,10 +570,12 @@ export const retry = <T, E>(
       }
 
       // Wait before retry
-      const delayResult = await wait(NonNegativeInt.orThrow(delay))(context);
-      if (!delayResult.ok) {
-        // If delay was aborted, return AbortError (will be handled by toTask)
-        return delayResult;
+      {
+        const result = await wait(NonNegativeInt.orThrow(delay))(context);
+        if (!result.ok) {
+          // If delay was aborted, return AbortError (will be handled by toTask)
+          return result;
+        }
       }
     }
   });

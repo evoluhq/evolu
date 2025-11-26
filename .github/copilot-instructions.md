@@ -112,13 +112,10 @@ const parseJson = (value: string): Result<unknown, ParseJsonError> =>
 
 // ✅ Good - Sequential operations with short-circuiting
 const processData = (deps: DataDeps) => {
-  const step1Result = doStep1(deps);
-  if (!step1Result.ok) return step1Result;
+  const foo = doFoo(deps);
+  if (!foo.ok) return foo;
 
-  const step2Result = doStep2(deps)(step1Result.value);
-  if (!step2Result.ok) return step2Result;
-
-  return ok(step2Result.value);
+  return doStep2(deps)(foo.value);
 };
 
 // ❌ Avoid - Implementation error in public API

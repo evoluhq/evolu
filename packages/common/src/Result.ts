@@ -1,3 +1,5 @@
+import type { Task } from "./Task.js";
+
 /**
  * The problem with throwing an exception in JavaScript is that the caught error
  * is always of an unknown type. The unknown type is a problem because we can't
@@ -82,19 +84,22 @@
  * };
  * ```
  *
+ * For lazy, cancellable async operations, see {@link Task}.
+ *
  * ### Naming convention
  *
- * - For values: `const user = getUser()`
- * - For a single void operation: `const result = foo()`
- * - For multiple void operations: use descriptive names for all
+ * - **For values you need:** use a name without Result suffix (`user`, `config`)
+ * - **For void operations:** use `result` (no value to name)
+ *
+ * For multiple void operations, use block scopes to avoid potentially long
+ * names like `createBaseTablesResult`, `createRelayTablesResult`, or counters
+ * like `result1`, `result2`:
  *
  * ```ts
  * const processUser = () => {
- *   // we have a value
  *   const user = getUser();
  *   if (!user.ok) return user;
  *
- *   // single void operation
  *   const result = saveToDatabase(user.value);
  *   if (!result.ok) return result;
  *
@@ -102,12 +107,15 @@
  * };
  *
  * const setupDatabase = () => {
- *   // multiple void operations - use descriptive names
- *   const baseTables = createBaseTables();
- *   if (!baseTables.ok) return baseTables;
- *
- *   const relayTables = createRelayTables();
- *   if (!relayTables.ok) return relayTables;
+ *   // Multiple void operations - use block scopes to avoid name clash
+ *   {
+ *     const result = createBaseTables();
+ *     if (!result.ok) return result;
+ *   }
+ *   {
+ *     const result = createRelayTables();
+ *     if (!result.ok) return result;
+ *   }
  *
  *   return ok();
  * };
@@ -124,30 +132,31 @@
  * schema, and initializes the database, stopping on the first error:
  *
  * ```ts
- * const resetResult = deps.sqlite.transaction(() => {
- *   const dropAllTablesResult = dropAllTables(deps);
- *   if (!dropAllTablesResult.ok) return dropAllTablesResult;
+ * const result = deps.sqlite.transaction(() => {
+ *   const result = dropAllTables(deps);
+ *   if (!result.ok) return result;
  *
  *   if (message.restore) {
  *     const dbSchema = getDbSchema(deps)();
  *     if (!dbSchema.ok) return dbSchema;
  *
- *     const ensureDbSchemaResult = ensureDbSchema(deps)(
- *       message.restore.dbSchema,
- *       dbSchema.value,
- *     );
- *     if (!ensureDbSchemaResult.ok) return ensureDbSchemaResult;
- *
- *     const initializeDbResult = initializeDb(deps)(
- *       message.restore.mnemonic,
- *     );
- *     if (!initializeDbResult.ok) return initializeDbResult;
+ *     {
+ *       const result = ensureDbSchema(deps)(
+ *         message.restore.dbSchema,
+ *         dbSchema.value,
+ *       );
+ *       if (!result.ok) return result;
+ *     }
+ *     {
+ *       const result = initializeDb(deps)(message.restore.mnemonic);
+ *       if (!result.ok) return result;
+ *     }
  *   }
  *   return ok();
  * });
  *
- * if (!resetResult.ok) {
- *   deps.postMessage({ type: "onError", error: resetResult.error });
+ * if (!result.ok) {
+ *   deps.postMessage({ type: "onError", error: result.error });
  *   return;
  * }
  * ```
@@ -254,13 +263,13 @@
  * ```ts
  * // ✅ Safe to return void - unsafe code is wrapped and error is handled
  * const processData = (data: string): void => {
- *   const parseResult = trySync(
+ *   const result = trySync(
  *     () => JSON.parse(data),
  *     (error) => ({ type: "ParseError", message: String(error) }),
  *   );
  *
- *   if (!parseResult.ok) {
- *     logError(parseResult.error);
+ *   if (!result.ok) {
+ *     logError(result.error);
  *     return;
  *   }
  *
