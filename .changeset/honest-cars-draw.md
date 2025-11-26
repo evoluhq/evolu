@@ -2,7 +2,7 @@
 "@evolu/common": minor
 ---
 
-Add `set` Type factory
+Added `set` Type factory
 
 The `set` factory creates a Type for validating `Set` instances with typed elements. It validates that the input is a `Set` and that all elements conform to the specified element type.
 
