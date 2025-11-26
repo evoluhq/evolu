@@ -89,3 +89,23 @@ export const createRecord = <K extends string = string, V = unknown>(): Record<
   K,
   V
 > => Object.create(null) as Record<K, V>;
+
+/**
+ * Safely gets a property from a record, returning `undefined` if the key
+ * doesn't exist.
+ *
+ * TypeScript's `Record<K, V>` type assumes all keys exist, but at runtime
+ * accessing a non-existent key returns `undefined`. This helper provides proper
+ * typing for that case without needing a type assertion.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const users: Record<string, User> = { alice: { name: "Alice" } };
+ * const user = getProperty(users, "bob"); // User | undefined
+ * ```
+ */
+export const getProperty = <K extends string, V>(
+  record: ReadonlyRecord<K, V>,
+  key: string,
+): V | undefined => (key in record ? record[key as K] : undefined);
