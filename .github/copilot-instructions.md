@@ -72,6 +72,24 @@ export const createUser = (data: UserData): User => {
 };
 ````
 
+## API stability & experimental APIs
+
+- **Use `@experimental` tag** for new APIs that may change or be removed
+- **Experimental APIs can change** in minor/patch versions without breaking semver
+- **Promote to stable** once confident in the design after real-world usage
+
+```ts
+// ✅ Good - Mark new/uncertain APIs as experimental
+/**
+ * Casts a value to its readonly counterpart.
+ *
+ * @experimental
+ */
+export const readonly = <T>(value: T): Readonly<T> => value;
+```
+
+This pattern allows iterating on API design without committing to stability too early.
+
 ## Error handling with Result
 
 - Use `Result<T, E>` for business/domain errors in public APIs
