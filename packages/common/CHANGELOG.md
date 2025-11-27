@@ -1,5 +1,60 @@
 # @evolu/common
 
+## 7.3.0
+
+### Minor Changes
+
+- d957af4: Added `getProperty` helper function
+
+  Safely gets a property from a record, returning `undefined` if the key doesn't exist. TypeScript's `Record<K, V>` type assumes all keys exist, but at runtime accessing a non-existent key returns `undefined`. This helper provides proper typing for that case without needing a type assertion.
+
+  ```ts
+  const users: Record<string, User> = { alice: { name: "Alice" } };
+  const user = getProperty(users, "bob"); // User | undefined
+  ```
+
+- a21a9fa: Added `set` Type factory
+
+  The `set` factory creates a Type for validating `Set` instances with typed elements. It validates that the input is a `Set` and that all elements conform to the specified element type.
+
+  ```ts
+  const NumberSet = set(Number);
+
+  const result1 = NumberSet.from(new Set([1, 2, 3])); // ok(Set { 1, 2, 3 })
+  const result2 = NumberSet.from(new Set(["a", "b"])); // err(...)
+  ```
+
+- 604940a: Added `readonly` helper function
+
+  The `readonly` function casts arrays, sets, records, and maps to their readonly counterparts with zero runtime cost. It preserves `NonEmptyArray` as `NonEmptyReadonlyArray` and provides proper type inference for all supported collection types.
+
+### Patch Changes
+
+- a04e86e: Update Result documentation with block scope pattern for multiple void operations
+
+  ```ts
+  // Before - inventing names to avoid name clash
+  const baseTables = createBaseSqliteStorageTables(deps);
+  if (!baseTables.ok) return baseTables;
+
+  const relayTables = createRelayStorageTables(deps);
+  if (!relayTables.ok) return relayTables;
+
+  // After - block scopes avoid name clash
+  {
+    const result = createBaseSqliteStorageTables(deps);
+    if (!result.ok) return result;
+  }
+  {
+    const result = createRelayStorageTables(deps);
+    if (!result.ok) return result;
+  }
+  ```
+
+- 5f5a867: Fix forward compatibility by quarantining messages with unknown schema
+
+  Messages with unknown tables or columns are now stored in `evolu_message_quarantine` table instead of being discarded. This fixes an issue where apps had to be updated to receive messages from newer versions. The quarantine table is queryable via `createQuery` and quarantined messages are automatically applied when the schema is updated.
+
 ## 7.2.3
 
 ### Patch Changes
