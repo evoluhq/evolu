@@ -1,5 +1,17 @@
 # @evolu/svelte
 
+## 2.3.0
+
+### Patch Changes
+
+- Updated dependencies [d957af4]
+- Updated dependencies [a21a9fa]
+- Updated dependencies [604940a]
+- Updated dependencies [a04e86e]
+- Updated dependencies [5f5a867]
+  - @evolu/common@7.3.0
+  - @evolu/web@2.3.0
+
 ## 2.2.1
 
 ### Patch Changes
