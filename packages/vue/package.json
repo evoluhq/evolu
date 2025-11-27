@@ -31,14 +31,14 @@
   ],
   "scripts": {
     "dev": "tsc --watch",
-    "build": "shx rm -rf dist && tsc",
-    "clean": "shx rm -rf .turbo node_modules dist",
+    "build": "rimraf dist && tsc",
+    "clean": "rimraf .turbo node_modules dist",
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "devDependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
-    "shx": "^0.4.0",
+    
     "typescript": "^5.9.2",
     "vitest": "^4.0.4"
   },

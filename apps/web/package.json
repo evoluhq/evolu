@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next build --webpack",
-    "clean": "shx rm -rf .turbo .next node_modules",
+    "clean": "rimraf .turbo .next node_modules",
     "dev": "next dev --webpack",
     "fix:docs": "tsx ./scripts/fix-api-reference.ts",
     "lint": "next lint",

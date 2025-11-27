@@ -44,10 +44,10 @@
   ],
   "scripts": {
     "dev": "tsc --watch",
-    "build": "shx rm -rf dist ./README.md && tsc && shx cp ../../README.md ./",
+    "build": "rimraf dist && tsc",
     "test": "vitest run --disableConsoleIntercept",
     "test:watch": "vitest --disableConsoleIntercept",
-    "clean": "shx rm -rf .turbo node_modules dist",
+    "clean": "rimraf .turbo node_modules dist",
     "format": "prettier --write \"src/*.{ts,tsx,md}\"",
     "bench": "vitest bench"
   },
@@ -66,7 +66,7 @@
     "@types/ws": "^8.18.1",
     "better-sqlite3": "^12.1.1",
     "fast-check": "^4.2.0",
-    "shx": "^0.4.0",
+    
     "typescript": "^5.9.2",
     "vitest": "^4.0.4",
     "ws": "^8.18.2"

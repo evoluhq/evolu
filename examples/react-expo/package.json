@@ -7,7 +7,7 @@
     "_dev": "expo start --web",
     "android": "expo run:android --no-build-cache",
     "android:go": "expo start --android",
-    "clean": "shx rm -rf .expo android ios node_modules",
+    "clean": "rimraf .expo android ios node_modules",
     "ios": "expo run:ios",
     "ios:go": "expo start --ios",
     "lint": "expo lint",
@@ -43,7 +43,7 @@
     "@babel/core": "^7.28.0",
     "@babel/plugin-transform-modules-commonjs": "^7.27.1",
     "@types/react": "~19.1.13",
-    "shx": "^0.4.0",
+    
     "typescript": "^5.9.2"
   }
 }

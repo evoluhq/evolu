@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "pnpx vite",
     "_build": "tsc && pnpx vite build && pnpx electron-builder",
-    "clean": "shx rm -rf node_modules .turbo dist-electron",
+    "clean": "rimraf node_modules .turbo dist-electron",
     "preview": "vite preview"
   },
   "dependencies": {

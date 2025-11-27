@@ -30,8 +30,8 @@
     "README.md"
   ],
   "scripts": {
-    "build": "shx rm -rf dist && tsc",
-    "clean": "shx rm -rf .turbo node_modules dist",
+    "build": "rimraf dist && tsc",
+    "clean": "rimraf .turbo node_modules dist",
     "dev": "tsc --watch",
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
@@ -43,7 +43,7 @@
     "@types/react-dom": "catalog:react19",
     "react": "catalog:react19",
     "react-dom": "catalog:react19",
-    "shx": "^0.4.0",
+    
     "typescript": "^5.9.2",
     "user-agent-data-types": "^0.4.2",
     "vitest": "^4.0.4"

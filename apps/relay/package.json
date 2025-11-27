@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "node --experimental-strip-types --watch src/index.ts",
-    "build": "shx rm -rf dist && tsc",
+    "build": "rimraf dist && tsc",
     "start": "node dist/index.js",
-    "clean": "shx rm -rf .turbo node_modules dist data/evolu-relay.db"
+    "clean": "rimraf .turbo node_modules dist data/evolu-relay.db"
   },
   "files": [
     "dist",
