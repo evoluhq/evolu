@@ -1,6 +1,19 @@
+import { utf8ToBytes } from "@noble/ciphers/utils.js";
+import { sha256 } from "@noble/hashes/sha2.js";
+import * as bip39 from "@scure/bip39";
+import { wordlist } from "@scure/bip39/wordlists/english.js";
+import { pack } from "msgpackr";
+import type { Brand } from "./Brand.js";
+import type { RandomBytesDep } from "./Crypto.js";
+import { isPlainObject } from "./Object.js";
+import { hasNodeBuffer } from "./Platform.js";
+import { err, getOrNull, getOrThrow, ok, Result, trySync } from "./Result.js";
+import { safelyStringifyUnknownValue } from "./String.js";
+import type { TimeDep } from "./Time.js";
+import type { Literal, Refinement, Simplify, WidenLiteral } from "./Types.js";
+import { IntentionalNever } from "./Types.js";
+
 /**
- * Runtime types
- *
  * Evolu {@link Type} is like a type guard that returns typed errors (via
  * {@link Result}) instead of throwing. We either get a safely typed value or a
  * composable typed error telling us exactly why validation failed.
@@ -197,25 +210,7 @@
  * ```
  *
  * Note `minLength` and `maxLength` are curried because they are factories.
- *
- * @module
  */
-
-import { utf8ToBytes } from "@noble/ciphers/utils.js";
-import { sha256 } from "@noble/hashes/sha2.js";
-import * as bip39 from "@scure/bip39";
-import { wordlist } from "@scure/bip39/wordlists/english.js";
-import { pack } from "msgpackr";
-import type { Brand } from "./Brand.js";
-import type { RandomBytesDep } from "./Crypto.js";
-import { isPlainObject } from "./Object.js";
-import { hasNodeBuffer } from "./Platform.js";
-import { err, getOrNull, getOrThrow, ok, Result, trySync } from "./Result.js";
-import { safelyStringifyUnknownValue } from "./String.js";
-import type { TimeDep } from "./Time.js";
-import type { Literal, Refinement, Simplify, WidenLiteral } from "./Types.js";
-import { IntentionalNever } from "./Types.js";
-
 export interface Type<
   Name extends TypeName,
   /** The type this Type resolves to. */

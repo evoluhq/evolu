@@ -23,7 +23,10 @@ export const navigation: Array<NavGroup> = [
         title: "Task",
         href: "/docs/api-reference/common/Task/interfaces/Task",
       },
-      { title: "Type", href: "/docs/api-reference/common/Type" },
+      {
+        title: "Type",
+        href: "/docs/api-reference/common/Type/interfaces/Type",
+      },
       { title: "Dependency injection", href: "/docs/dependency-injection" },
       { title: "Conventions", href: "/docs/conventions" },
     ],

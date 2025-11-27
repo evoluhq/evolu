@@ -1,5 +1,10 @@
 /**
- * Local-first code to be imported from "@evolu/common"
+ * Public local-first API exported from "@evolu/common"
+ *
+ * This module provides the supported consumer-facing API for Evolu's
+ * local-first system: prefer importing from `@evolu/common` (this module) when
+ * using Evolu in applications. If you require access to lower level internals,
+ * consider importing from `@evolu/common/local-first`.
  *
  * @module
  */

@@ -1,6 +1,4 @@
 /**
- * Cross-platform console
- *
  * Console abstraction for Chrome 123+, Firefox 125+, Safari 18.1+, Node.js
  * 22.x+, and React Native 0.75+. Includes methods guaranteed to be available in
  * these environments and expected to remain compatible in future versions.
@@ -35,13 +33,6 @@
  *   }
  * }
  * ```
- *
- * @module
- */
-
-/**
- * Cross-platform Console interface for Chrome 123+, Firefox 125+, Safari 18.1+,
- * Node.js 22.x+, and React Native 0.75+
  */
 export interface Console {
   /** Controls whether console methods produce output (default: true) */
