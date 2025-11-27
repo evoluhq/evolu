@@ -41,7 +41,6 @@
     "@types/react": "catalog:react19",
     "@types/react-dom": "catalog:react19",
     "react": "catalog:react19",
-    
     "typescript": "^5.9.2",
     "vitest": "^4.0.4"
   },
