@@ -101,6 +101,9 @@ export interface EvoluConfig extends Partial<DbConfig> {
    * URL to reload browser tabs after reset or restore.
    *
    * The default value is `/`.
+   *
+   * Note: This option will be moved to web platform deps in the next major
+   * version.
    */
   readonly reloadUrl?: string;
 }
@@ -836,15 +839,15 @@ const createEvoluInstance =
 
       subscribeQuery: (query) => (listener) => {
         // Call the listener only if the result has been changed.
-        let previousResult: unknown = null;
+        let previousRows: unknown = null;
         const unsubscribe = subscribedQueries.subscribe(query)(() => {
-          const result = evolu.getQueryRows(query);
-          if (previousResult === result) return;
-          previousResult = result;
+          const rows = evolu.getQueryRows(query);
+          if (previousRows === rows) return;
+          previousRows = rows;
           listener();
         });
         return () => {
-          previousResult = null;
+          previousRows = null;
           unsubscribe();
         };
       },

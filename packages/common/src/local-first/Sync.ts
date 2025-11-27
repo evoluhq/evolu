@@ -16,7 +16,7 @@ import {
 import { eqArrayNumber } from "../Eq.js";
 import { createTransferableError, TransferableError } from "../Error.js";
 import { constFalse, constTrue } from "../Function.js";
-import { createRecord, objectToEntries } from "../Object.js";
+import { createRecord, getProperty, objectToEntries } from "../Object.js";
 import { RandomDep } from "../Random.js";
 import { createResources } from "../Resources.js";
 import { err, ok, Result } from "../Result.js";
@@ -34,17 +34,19 @@ import { TimeDep } from "../Time.js";
 import {
   Boolean,
   DateIso,
+  Id,
   IdBytes,
   idBytesToId,
   idToIdBytes,
   PositiveInt,
 } from "../Type.js";
 import { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
-import type { AppOwnerDep, PostMessageDep } from "./Db.js";
 import {
   AppOwner,
+  AppOwnerDep,
   Owner,
   OwnerId,
+  OwnerIdBytes,
   ownerIdBytesToOwnerId,
   ownerIdToOwnerIdBytes,
   OwnerTransport,
@@ -62,7 +64,7 @@ import {
   ProtocolTimestampMismatchError,
   SubscriptionFlags,
 } from "./Protocol.js";
-import { DbSchemaDep, MutationChange } from "./Schema.js";
+import { DbSchemaDep, MutationChange, systemColumns } from "./Schema.js";
 import {
   BaseSqliteStorage,
   CrdtMessage,
@@ -80,6 +82,7 @@ import {
   receiveTimestamp,
   sendTimestamp,
   Timestamp,
+  TimestampBytes,
   timestampBytesToTimestamp,
   TimestampConfigDep,
   TimestampCounterOverflowError,
@@ -158,7 +161,7 @@ export const createSync =
       ConsoleDep &
       CreateWebSocketDep &
       DbSchemaDep &
-      PostMessageDep &
+      // PostMessageDep &
       RandomBytesDep &
       RandomDep &
       SqliteDep &
@@ -325,7 +328,6 @@ export const createSync =
           resources.addConsumer(owner, transports);
         } else {
           const result = resources.removeConsumer(owner, transports);
-
           if (!result.ok) {
             deps.console.warn("[sync]", "Failed to remove consumer", {
               transports,
@@ -486,7 +488,7 @@ const createClientStorage =
         const ownerId = ownerIdBytesToOwnerId(ownerIdBytes);
 
         // Everything is sync now, but we will need async crypto in the future.
-        const writeResult = await mutex.withLock<
+        const result = await mutex.withLock<
           boolean,
           | AbortError
           | ProtocolInvalidDataError
@@ -538,11 +540,11 @@ const createClientStorage =
             }
 
             if (isNonEmptyReadonlyArray(messages)) {
-              const applyMessagesResult = applyMessages({ ...deps, storage })(
+              const result = applyMessages({ ...deps, storage })(
                 owner.id,
                 messages,
               );
-              if (!applyMessagesResult.ok) return applyMessagesResult;
+              if (!result.ok) return result;
             }
 
             return deps.clock.save(clockTimestamp);
@@ -553,9 +555,9 @@ const createClientStorage =
           return ok(true);
         })();
 
-        if (!writeResult.ok) {
-          if (writeResult.error.type !== "AbortError") {
-            config.onError(writeResult.error);
+        if (!result.ok) {
+          if (result.error.type !== "AbortError") {
+            config.onError(result.error);
           }
           return err<StorageWriteError>({ type: "StorageWriteError", ownerId });
         }
@@ -571,22 +573,30 @@ const createClientStorage =
         if (!owner) return null;
 
         const result = deps.sqlite.exec<{
-          table: string;
-          id: IdBytes;
-          column: string;
-          value: SqliteValue;
+          readonly table: string;
+          readonly id: IdBytes;
+          readonly column: string;
+          readonly value: SqliteValue;
         }>(sql`
           select "table", "id", "column", "value"
           from evolu_history
+          where "ownerId" = ${ownerId} and "timestamp" = ${timestamp}
+          union all
+          select "table", "id", "column", "value"
+          from evolu_message_quarantine
           where "ownerId" = ${ownerId} and "timestamp" = ${timestamp};
         `);
+
         if (!result.ok) {
           config.onError(result.error);
           return null;
         }
 
         const { rows } = result.value;
-        assertNonEmptyReadonlyArray(rows, "Every timestamp must have rows");
+        assertNonEmptyReadonlyArray(
+          rows,
+          "Every timestamp must have rows in evolu_history or quarantine",
+        );
 
         const { table, id } = firstInArray(rows);
         const values = createRecord<string, SqliteValue>();
@@ -704,66 +714,41 @@ const applyMessages =
 
     let { firstTimestamp, lastTimestamp } = usage.value;
 
-    // const tableColumnsMap = new Map(
-    //   deps.dbSchema.tables.map((table) => [table.name, new Set(table.columns)]),
-    // );
-
-    for (const message of messages) {
-      // const tableColumns = tableColumnsMap.get(message.change.table);
-      // const isValidMessage =
-      //   tableColumns != null &&
-      //   new Set(Object.keys(message.change.values)).isSubsetOf(tableColumns);
-
-      // console.log({ isValidMessage });
-
-      const timestampBytes = timestampToTimestampBytes(message.timestamp);
-      const idBytes = idToIdBytes(message.change.id);
-      const columns = dbChangeToColumns(
-        message.change,
-        timestampToDateIso(message.timestamp),
-      );
+    for (const { timestamp, change } of messages) {
+      const columns = dbChangeToColumns(change, timestampToDateIso(timestamp));
+      const idBytes = idToIdBytes(change.id);
+      const timestampBytes = timestampToTimestampBytes(timestamp);
 
       for (const [column, value] of columns) {
-        const updateAppTable = deps.sqlite.exec(sql.prepared`
-          with
-            existingTimestamp as (
-              select 1
-              from evolu_history
-              where
-                "ownerId" = ${ownerIdBytes}
-                and "table" = ${message.change.table}
-                and "id" = ${idBytes}
-                and "column" = ${column}
-                and "timestamp" >= ${timestampBytes}
-              limit 1
-            )
-          insert into ${sql.identifier(message.change.table)}
-            ("ownerId", "id", ${sql.identifier(column)})
-          select ${ownerId}, ${message.change.id}, ${value}
-          where not exists (select 1 from existingTimestamp)
-          on conflict ("ownerId", "id") do update
-            set ${sql.identifier(column)} = ${value}
-            where not exists (select 1 from existingTimestamp);
-        `);
-
-        if (!updateAppTable.ok) return updateAppTable;
-
-        const insertHistory = deps.sqlite.exec(sql.prepared`
-          insert into evolu_history
-            ("ownerId", "table", "id", "column", "value", "timestamp")
-          values
-            (
-              ${ownerIdBytes},
-              ${message.change.table},
-              ${idBytes},
-              ${column},
-              ${value},
-              ${timestampBytes}
-            )
-          on conflict do nothing;
-        `);
-
-        if (!insertHistory.ok) return insertHistory;
+        if (validateColumnValue(deps)(change.table, column, value)) {
+          const result = applyColumnChange(deps)(
+            ownerIdBytes,
+            ownerId,
+            change.table,
+            idBytes,
+            change.id,
+            column,
+            value,
+            timestampBytes,
+          );
+          if (!result.ok) return result;
+        } else {
+          const result = deps.sqlite.exec(sql.prepared`
+            insert into evolu_message_quarantine
+              ("ownerId", "timestamp", "table", "id", "column", "value")
+            values
+              (
+                ${ownerIdBytes},
+                ${timestampBytes},
+                ${change.table},
+                ${idBytes},
+                ${column},
+                ${value}
+              )
+            on conflict do nothing;
+          `);
+          if (!result.ok) return result;
+        }
       }
 
       let strategy;
@@ -773,25 +758,149 @@ const applyMessages =
         lastTimestamp,
       );
 
-      const insertTimestamp = deps.storage.insertTimestamp(
+      const result = deps.storage.insertTimestamp(
         ownerIdBytes,
         timestampBytes,
         strategy,
       );
-      if (!insertTimestamp.ok) return insertTimestamp;
+      if (!result.ok) return result;
     }
 
     /**
      * TODO: Implement proper storedBytes tracking for client using received and
      * sent encrypted message sizes.
      */
-    const updateUsage = updateOwnerUsage(deps)(
+    return updateOwnerUsage(deps)(
       ownerIdBytes,
       1 as PositiveInt, // Placeholder until proper tracking implemented
       firstTimestamp,
       lastTimestamp,
     );
-    if (!updateUsage.ok) return updateUsage;
+  };
+
+/**
+ * System columns that can appear in sync messages. Excludes `ownerId` because
+ * it's handled separately (stored per-row, not per-column in messages).
+ */
+const systemColumnsWithoutOwnerId = systemColumns.difference(
+  new Set(["ownerId"]),
+);
+
+const validateColumnValue =
+  (deps: DbSchemaDep) =>
+  (table: string, column: string, _value: SqliteValue): boolean => {
+    const schemaColumns = getProperty(deps.dbSchema.tables, table);
+    return (
+      schemaColumns != null &&
+      (systemColumnsWithoutOwnerId.has(column) || schemaColumns.has(column))
+    );
+  };
+
+const applyColumnChange =
+  (deps: SqliteDep) =>
+  (
+    ownerIdBytes: OwnerIdBytes,
+    ownerId: OwnerId,
+    table: string,
+    idBytes: IdBytes,
+    id: Id,
+    column: string,
+    value: SqliteValue,
+    timestampBytes: TimestampBytes,
+  ): Result<void, SqliteError> => {
+    const result = deps.sqlite.exec(sql.prepared`
+      with
+        existingTimestamp as (
+          select 1
+          from evolu_history
+          where
+            "ownerId" = ${ownerIdBytes}
+            and "table" = ${table}
+            and "id" = ${idBytes}
+            and "column" = ${column}
+            and "timestamp" >= ${timestampBytes}
+          limit 1
+        )
+      insert into ${sql.identifier(table)}
+        ("ownerId", "id", ${sql.identifier(column)})
+      select ${ownerId}, ${id}, ${value}
+      where not exists (select 1 from existingTimestamp)
+      on conflict ("ownerId", "id") do update
+        set ${sql.identifier(column)} = ${value}
+        where not exists (select 1 from existingTimestamp);
+    `);
+    if (!result.ok) return result;
+
+    {
+      const result = deps.sqlite.exec(sql.prepared`
+        insert into evolu_history
+          ("ownerId", "table", "id", "column", "value", "timestamp")
+        values
+          (
+            ${ownerIdBytes},
+            ${table},
+            ${idBytes},
+            ${column},
+            ${value},
+            ${timestampBytes}
+          )
+        on conflict do nothing;
+      `);
+      if (!result.ok) return result;
+    }
+
+    return ok();
+  };
+
+/**
+ * Attempts to apply quarantined messages that may now be valid after a schema
+ * update. Messages are quarantined when they reference tables or columns that
+ * don't exist in the current schema (e.g., from a newer app version).
+ */
+export const tryApplyQuarantinedMessages =
+  (deps: DbSchemaDep & SqliteDep) => (): Result<void, SqliteError> => {
+    const rows = deps.sqlite.exec<{
+      readonly ownerId: OwnerIdBytes;
+      readonly timestamp: TimestampBytes;
+      readonly table: string;
+      readonly id: IdBytes;
+      readonly column: string;
+      readonly value: SqliteValue;
+    }>(sql`
+      select "ownerId", "timestamp", "table", "id", "column", "value"
+      from evolu_message_quarantine;
+    `);
+    if (!rows.ok) return rows;
+
+    for (const row of rows.value.rows) {
+      if (!validateColumnValue(deps)(row.table, row.column, row.value))
+        continue;
+
+      const result = applyColumnChange(deps)(
+        row.ownerId,
+        ownerIdBytesToOwnerId(row.ownerId),
+        row.table,
+        row.id,
+        idBytesToId(row.id),
+        row.column,
+        row.value,
+        row.timestamp,
+      );
+      if (!result.ok) return result;
+
+      {
+        const result = deps.sqlite.exec(sql`
+          delete from evolu_message_quarantine
+          where
+            "ownerId" = ${row.ownerId}
+            and "timestamp" = ${row.timestamp}
+            and "table" = ${row.table}
+            and "id" = ${row.id}
+            and "column" = ${row.column};
+        `);
+        if (!result.ok) return result;
+      }
+    }
 
     return ok();
   };

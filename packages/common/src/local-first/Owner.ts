@@ -188,6 +188,10 @@ export interface AppOwner extends Owner {
   readonly mnemonic?: Mnemonic | null;
 }
 
+export interface AppOwnerDep {
+  readonly appOwner: AppOwner;
+}
+
 /** Creates an {@link AppOwner} from an {@link OwnerSecret}. */
 export const createAppOwner = (secret: OwnerSecret): AppOwner => ({
   ...createOwner(secret),

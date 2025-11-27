@@ -32,6 +32,7 @@ import {
 } from "../Worker.js";
 import {
   AppOwner,
+  AppOwnerDep,
   createAppOwner,
   createOwnerSecret,
   createOwnerWebSocketTransport,
@@ -63,6 +64,7 @@ import {
   createSync,
   SyncDep,
   SyncOwner,
+  tryApplyQuarantinedMessages,
 } from "./Sync.js";
 import {
   Timestamp,
@@ -320,10 +322,6 @@ type DbWorkerDeps = Omit<
   SqliteDep &
   SyncDep;
 
-export interface AppOwnerDep {
-  readonly appOwner: AppOwner;
-}
-
 export interface PostMessageDep {
   readonly postMessage: (message: DbWorkerOutput) => void;
 }
@@ -372,9 +370,7 @@ const createDbWorkerDeps = async (
     const dbSchema = getDbSchema(deps)();
     if (!dbSchema.ok) return dbSchema;
 
-    const dbIsInitialized = dbSchema.value.tables.some(
-      (table) => table.name === "evolu_version",
-    );
+    const dbIsInitialized = "evolu_version" in dbSchema.value.tables;
 
     let appOwner: AppOwner;
     let clock: Clock;
@@ -426,15 +422,21 @@ const createDbWorkerDeps = async (
       if (!result.ok) return result;
     }
 
-    const result1 = ensureDbSchema(deps)(initMessage.dbSchema, dbSchema.value);
-    if (!result1.ok) return result1;
+    {
+      const result = ensureDbSchema(deps)(initMessage.dbSchema, dbSchema.value);
+      if (!result.ok) return result;
+    }
+
+    {
+      const result = ensureMessageQuarantineTable(deps);
+      if (!result.ok) return result;
+    }
 
     const sync = createSync({
       ...deps,
       clock,
       symmetricCrypto: createSymmetricCrypto(platformDeps),
       timestampConfig: initMessage.config,
-      postMessage,
       dbSchema: initMessage.dbSchema,
     })({
       appOwner,
@@ -447,6 +449,14 @@ const createDbWorkerDeps = async (
       },
     });
     if (!sync.ok) return sync;
+
+    {
+      const result = tryApplyQuarantinedMessages({
+        ...deps,
+        dbSchema: initMessage.dbSchema,
+      })();
+      if (!result.ok) return result;
+    }
 
     sync.value.useOwner(true, appOwner);
 
@@ -557,6 +567,41 @@ const initializeDb =
     return ok();
   };
 
+/**
+ * Ensures the quarantine table exists for storing messages with unknown schema.
+ *
+ * When a device receives sync messages containing tables or columns that don't
+ * exist in its current schema (e.g., from a newer app version), those messages
+ * are stored here instead of being discarded. This enables forward
+ * compatibility:
+ *
+ * 1. Unknown data is preserved and can be applied when the app is updated
+ * 2. Messages are still propagated to other devices that may understand them
+ * 3. Partial messages work - known columns go to app tables, unknown to quarantine
+ *
+ * The `union all` query in `readDbChange` combines `evolu_history` and this
+ * table, ensuring all data (known and unknown) is included when syncing to
+ * other devices.
+ */
+const ensureMessageQuarantineTable = (
+  deps: SqliteDep,
+): Result<void, SqliteError> => {
+  const result = deps.sqlite.exec(sql`
+    create table if not exists evolu_message_quarantine (
+      "ownerId" blob not null,
+      "timestamp" blob not null,
+      "table" text not null,
+      "id" blob not null,
+      "column" text not null,
+      "value" any,
+      primary key ("ownerId", "timestamp", "table", "id", "column")
+    )
+    strict;
+  `);
+  if (!result.ok) return result;
+  return ok();
+};
+
 const handlers: Omit<MessageHandlers<DbWorkerInput, DbWorkerDeps>, "init"> = {
   getAppOwner: (deps) => () => {
     deps.postMessage({
@@ -628,11 +673,11 @@ const handlers: Omit<MessageHandlers<DbWorkerInput, DbWorkerDeps>, "init"> = {
   },
 
   reset: (deps) => (message) => {
-    const resetResult = deps.sqlite.transaction(() => {
+    const result = deps.sqlite.transaction(() => {
       const dbSchema = getDbSchema(deps)();
       if (!dbSchema.ok) return dbSchema;
 
-      for (const table of dbSchema.value.tables) {
+      for (const tableName in dbSchema.value.tables) {
         /**
          * The dropped table is completely removed from the database schema and
          * the disk file. The table can not be recovered. All indices and
@@ -640,7 +685,7 @@ const handlers: Omit<MessageHandlers<DbWorkerInput, DbWorkerDeps>, "init"> = {
          * https://sqlite.org/lang_droptable.html
          */
         const result = deps.sqlite.exec(sql`
-          drop table ${sql.identifier(table.name)};
+          drop table ${sql.identifier(tableName)};
         `);
         if (!result.ok) return result;
       }
@@ -659,8 +704,8 @@ const handlers: Omit<MessageHandlers<DbWorkerInput, DbWorkerDeps>, "init"> = {
       return ok();
     });
 
-    if (!resetResult.ok) {
-      deps.postMessage({ type: "onError", error: resetResult.error });
+    if (!result.ok) {
+      deps.postMessage({ type: "onError", error: result.error });
       return;
     }
 
