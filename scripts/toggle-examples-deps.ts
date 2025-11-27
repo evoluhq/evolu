@@ -1,5 +1,5 @@
-import inquirer from "inquirer";
 import { execSync } from "node:child_process";
+import readline from "node:readline";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -58,12 +58,8 @@ const toggleMode = (examplePath: string, mode: Mode): void => {
     }
   };
 
-  if (packageJson.dependencies) {
-    toggleCatalogRefs(packageJson.dependencies);
-  }
-  if (packageJson.devDependencies) {
-    toggleCatalogRefs(packageJson.devDependencies);
-  }
+  toggleCatalogRefs(packageJson.dependencies);
+  toggleCatalogRefs(packageJson.devDependencies);
 
   fs.writeFileSync(
     packageJsonPath,
@@ -87,22 +83,49 @@ const toggleAllExamples = (targetMode: Mode): void => {
   console.log(`All examples switched to ${targetMode} mode.`);
 };
 
-// Ask the user for the mode interactively using inquirer
-const askForMode = async (): Promise<Mode> => {
-  const { mode } = await inquirer.prompt([
-    {
-      type: "list",
-      name: "mode",
-      message: "Which mode do you want to switch to?",
-      choices: ["development", "production"],
-    },
-  ]);
+// Parse string into Mode; returns null if invalid
+const parseModeString = (arg: string): Mode | null => {
+  switch (arg) {
+    case "1":
+    case "development":
+      return "development";
+    case "2":
+    case "production":
+      return "production";
+    default:
+      return null;
+  }
+};
 
-  return mode as Mode;
+// No CLI parsing — script is interactive only
+
+// Ask the user for the mode without inquirer, accepting short answers
+const askForModeInteractive = async (): Promise<Mode> => {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  const question =
+    "Which mode do you want to switch to? (1) development (2) production: ";
+  const prompt = (): Promise<string> =>
+    new Promise((resolve) => rl.question(question, resolve));
+
+  // Keep prompting until valid answer
+  while (true) {
+    const answer = (await prompt()).trim();
+    const mode = parseModeString(answer);
+    if (mode) {
+      rl.close();
+      return mode;
+    }
+    console.log(
+      "Invalid option — please reply with 1 or 2 (or 'development'/'production').",
+    );
+  }
 };
 
 const main = async () => {
-  const mode = await askForMode();
+  const mode = await askForModeInteractive();
   toggleAllExamples(mode);
 };
 
