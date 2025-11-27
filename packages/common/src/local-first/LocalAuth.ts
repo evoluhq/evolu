@@ -47,9 +47,9 @@ export interface LocalAuthDep {
 }
 
 /**
- * - **⚠️
- *
  * Secure storage interface that must be implemented by each platform.
+ *
+ * @experimental
  */
 export interface SecureStorage {
   setItem: (
