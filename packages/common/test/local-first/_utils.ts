@@ -19,14 +19,14 @@ export const getDbSnapshot = (deps: SqliteDep): DbSnapshot => {
 
   const tables = [];
 
-  for (const table of schema.value.tables) {
+  for (const tableName in schema.value.tables) {
     const result = deps.sqlite.exec(sql`
-      select * from ${sql.identifier(table.name)};
+      select * from ${sql.identifier(tableName)};
     `);
     assert(result.ok, "bug");
 
     tables.push({
-      name: table.name,
+      name: tableName,
       rows: result.value.rows,
     });
   }

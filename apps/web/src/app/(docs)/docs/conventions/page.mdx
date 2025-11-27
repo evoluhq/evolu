@@ -66,9 +66,16 @@ const bar = () => {
 
 ## Immutability
 
-Mutable state can be tricky because it increases the risk of unintended side effects, makes code harder to predict, and complicates debugging—especially in complex applications where data might be shared or modified unexpectedly.
+Mutable state is tricky because it increases the risk of unintended side effects, makes code harder to predict, and complicates debugging—especially in complex applications where data might be shared or modified unexpectedly. Favor immutable values using readonly types to reduce these risks and improve clarity.
 
-Favor immutable values using TypeScript's type system to reduce these risks and improve clarity. Use `ReadonlyArray` and `NonEmptyReadonlyArray` for arrays and prefix interface properties with readonly to enforce immutability at the type level.
+### Readonly types
+
+Use readonly types for collections and prefix interface properties with `readonly`:
+
+- `ReadonlyArray<T>` and `NonEmptyReadonlyArray<T>` for arrays
+- `ReadonlySet<T>` for sets
+- `ReadonlyRecord<K, V>` for records
+- `ReadonlyMap<K, V>` for maps
 
 ```ts
 // Use ReadonlyArray for immutable arrays.
@@ -78,8 +85,46 @@ const values: ReadonlyArray<string> = ["a", "b", "c"];
 interface Example {
   readonly id: number;
   readonly items: ReadonlyArray<string>;
+  readonly tags: ReadonlySet<string>;
 }
 ```
+
+### The `readonly` helper
+
+Use the [readonly](/docs/api-reference/common/Function/functions/readonly) helper to cast arrays, sets, records, and maps to their readonly counterparts with zero runtime cost.
+
+```ts
+import { readonly, NonEmptyArray } from "@evolu/common";
+
+// Array literals become NonEmptyReadonlyArray
+const items = readonly([1, 2, 3]);
+// Type: NonEmptyReadonlyArray<number>
+
+// NonEmptyArray is preserved as NonEmptyReadonlyArray
+const nonEmpty: NonEmptyArray<number> = [1, 2, 3];
+const readonlyNonEmpty = readonly(nonEmpty);
+// Type: NonEmptyReadonlyArray<number>
+
+// Regular arrays become ReadonlyArray
+const arr: Array<number> = getNumbers();
+const readonlyArr = readonly(arr);
+// Type: ReadonlyArray<number>
+
+// Sets, Records, and Maps
+const ids = readonly(new Set(["a", "b"]));
+// Type: ReadonlySet<string>
+
+const users: Record<UserId, string> = { ... };
+const readonlyUsers = readonly(users);
+// Type: ReadonlyRecord<UserId, string>
+
+const lookup = readonly(new Map([["key", "value"]]));
+// Type: ReadonlyMap<string, string>
+```
+
+### Immutable helpers
+
+Evolu provides helpers in the [Array](/docs/api-reference/common/Array) and [Object](/docs/api-reference/common/Object) modules that do not mutate and preserve readonly types.
 
 ## Interface over type
 

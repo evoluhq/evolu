@@ -972,12 +972,9 @@ export const applyProtocolMessageAsClient =
       const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
 
       if (isNonEmptyReadonlyArray(messages)) {
-        const writeResult = await deps.storage.writeMessages(
-          ownerIdBytes,
-          messages,
-        );
+        const result = await deps.storage.writeMessages(ownerIdBytes, messages);
         // Errors are handled by the Storage. Here we just stop syncing.
-        if (!writeResult.ok) return ok({ type: "no-response" });
+        if (!result.ok) return ok({ type: "no-response" });
       }
 
       // Now: No writeKey, no sync.
@@ -1006,10 +1003,10 @@ export const applyProtocolMessageAsClient =
         rangesMaxSize: options.rangesMaxSize,
       });
 
-      const syncResult = sync(deps)(ranges, output, ownerIdBytes);
+      const result = sync(deps)(ranges, output, ownerIdBytes);
 
       // Client sync error (handled via Storage) or no changes.
-      if (!syncResult.ok || !syncResult.value) {
+      if (!result.ok || !result.value) {
         return ok({ type: "no-response" });
       }
 
@@ -1126,14 +1123,11 @@ export const applyProtocolMessageAsRelay =
           });
         }
 
-        const writeResult = await deps.storage.writeMessages(
-          ownerIdBytes,
-          messages,
-        );
+        const result = await deps.storage.writeMessages(ownerIdBytes, messages);
 
-        if (!writeResult.ok) {
+        if (!result.ok) {
           const errorCode =
-            writeResult.error.type === "StorageWriteError"
+            result.error.type === "StorageWriteError"
               ? ProtocolErrorCode.WriteError
               : ProtocolErrorCode.QuotaError;
           const message = createProtocolMessageBuffer(ownerId, {
@@ -1189,13 +1183,13 @@ export const applyProtocolMessageAsRelay =
         return ok({ type: "response", message: output.unwrap() });
       }
 
-      const syncResult = sync(deps)(ranges, output, ownerIdBytes);
+      const result = sync(deps)(ranges, output, ownerIdBytes);
 
-      const message = syncResult.ok
+      const message = result.ok
         ? output.unwrap()
         : createProtocolMessageBuffer(ownerId, {
             messageType: MessageType.Response,
-            errorCode: syncResult.error,
+            errorCode: result.error,
           }).unwrap();
 
       // Non-initiators always respond to provide sync completion feedback,

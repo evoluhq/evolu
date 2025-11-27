@@ -315,22 +315,16 @@ test("init", async () => {
             },
             "dbSchema": {
               "indexes": [],
-              "tables": [
-                {
-                  "columns": [
-                    "title",
-                    "isCompleted",
-                    "categoryId",
-                  ],
-                  "name": "todo",
+              "tables": {
+                "todo": Set {
+                  "title",
+                  "isCompleted",
+                  "categoryId",
                 },
-                {
-                  "columns": [
-                    "name",
-                  ],
-                  "name": "todoCategory",
+                "todoCategory": Set {
+                  "name",
                 },
-              ],
+              },
             },
             "type": "init",
           },
@@ -1255,5 +1249,98 @@ describe("useOwner", () => {
 
     expect(postMessageCalls).toHaveLength(1);
     expect(postMessageCalls[0]).toEqual(ownerMessage(testOwner, false));
+  });
+});
+
+describe("createQuery type inference", () => {
+  test("Query.Row infers correct types for simple selectAll", async () => {
+    const { evolu } = await testCreateEvolu();
+
+    const _allTodosQuery = evolu.createQuery((db) =>
+      db.selectFrom("todo").selectAll(),
+    );
+
+    type AllTodosRow = typeof _allTodosQuery.Row;
+
+    // Verify the Row type has the correct shape including user-defined columns
+    expectTypeOf<AllTodosRow>().toExtend<{
+      readonly id: TodoId;
+      readonly title: NonEmptyString50 | null;
+      readonly isCompleted: SqliteBoolean | null;
+      readonly categoryId: TodoCategoryId | null;
+    }>();
+
+    // Verify system columns are included
+    expectTypeOf<AllTodosRow>().toHaveProperty("createdAt");
+    expectTypeOf<AllTodosRow>().toHaveProperty("updatedAt");
+    expectTypeOf<AllTodosRow>().toHaveProperty("isDeleted");
+    expectTypeOf<AllTodosRow>().toHaveProperty("ownerId");
+  });
+
+  test("Query.Row infers correct types for select with specific columns", async () => {
+    const { evolu } = await testCreateEvolu();
+
+    const _todoTitlesQuery = evolu.createQuery((db) =>
+      db.selectFrom("todo").select(["id", "title"]),
+    );
+
+    type TodoTitlesRow = typeof _todoTitlesQuery.Row;
+
+    // Should only have selected columns
+    expectTypeOf<TodoTitlesRow["id"]>().toEqualTypeOf<TodoId>();
+    expectTypeOf<
+      TodoTitlesRow["title"]
+    >().toEqualTypeOf<NonEmptyString50 | null>();
+  });
+
+  test("Query.Row infers correct types for table with foreign key", async () => {
+    const { evolu } = await testCreateEvolu();
+
+    const _todosWithCategoryQuery = evolu.createQuery((db) =>
+      db.selectFrom("todo").select(["id", "title", "categoryId"]),
+    );
+
+    type TodosWithCategoryRow = typeof _todosWithCategoryQuery.Row;
+
+    expectTypeOf<TodosWithCategoryRow["id"]>().toEqualTypeOf<TodoId>();
+    expectTypeOf<
+      TodosWithCategoryRow["title"]
+    >().toEqualTypeOf<NonEmptyString50 | null>();
+    expectTypeOf<
+      TodosWithCategoryRow["categoryId"]
+    >().toEqualTypeOf<TodoCategoryId | null>();
+  });
+
+  test("Query.Row infers correct types for different table", async () => {
+    const { evolu } = await testCreateEvolu();
+
+    const _categoriesQuery = evolu.createQuery((db) =>
+      db.selectFrom("todoCategory").select(["id", "name"]),
+    );
+
+    type CategoriesRow = typeof _categoriesQuery.Row;
+
+    expectTypeOf<CategoriesRow["id"]>().toEqualTypeOf<TodoCategoryId>();
+    expectTypeOf<
+      CategoriesRow["name"]
+    >().toEqualTypeOf<NonEmptyString50 | null>();
+  });
+
+  test("Query.Row infers correct types with $narrowType", async () => {
+    const { evolu } = await testCreateEvolu();
+
+    const _nonNullTitlesQuery = evolu.createQuery((db) =>
+      db
+        .selectFrom("todo")
+        .select(["id", "title"])
+        .where("title", "is not", null)
+        .$narrowType<{ title: NonEmptyString50 }>(),
+    );
+
+    type NonNullTitlesRow = typeof _nonNullTitlesQuery.Row;
+
+    // After $narrowType, title should not be nullable
+    expectTypeOf<NonNullTitlesRow["id"]>().toEqualTypeOf<TodoId>();
+    expectTypeOf<NonNullTitlesRow["title"]>().toEqualTypeOf<NonEmptyString50>();
   });
 });

@@ -33,79 +33,66 @@ exports[`externalAppOwner should use provided owner 1`] = `
       )",
       },
     ],
-    "tables": [
-      {
-        "columns": [
-          "protocolVersion",
-        ],
-        "name": "evolu_version",
+    "tables": {
+      "evolu_config": Set {
+        "clock",
+        "appOwnerId",
+        "appOwnerEncryptionKey",
+        "appOwnerWriteKey",
+        "appOwnerMnemonic",
       },
-      {
-        "columns": [
-          "clock",
-          "appOwnerId",
-          "appOwnerEncryptionKey",
-          "appOwnerWriteKey",
-          "appOwnerMnemonic",
-        ],
-        "name": "evolu_config",
+      "evolu_history": Set {
+        "ownerId",
+        "table",
+        "id",
+        "column",
+        "timestamp",
+        "value",
       },
-      {
-        "columns": [
-          "ownerId",
-          "table",
-          "id",
-          "column",
-          "timestamp",
-          "value",
-        ],
-        "name": "evolu_history",
+      "evolu_message_quarantine": Set {
+        "ownerId",
+        "timestamp",
+        "table",
+        "id",
+        "column",
+        "value",
       },
-      {
-        "columns": [
-          "ownerId",
-          "t",
-          "h1",
-          "h2",
-          "c",
-          "l",
-        ],
-        "name": "evolu_timestamp",
+      "evolu_timestamp": Set {
+        "ownerId",
+        "t",
+        "h1",
+        "h2",
+        "c",
+        "l",
       },
-      {
-        "columns": [
-          "ownerId",
-          "storedBytes",
-          "firstTimestamp",
-          "lastTimestamp",
-        ],
-        "name": "evolu_usage",
+      "evolu_usage": Set {
+        "ownerId",
+        "storedBytes",
+        "firstTimestamp",
+        "lastTimestamp",
       },
-      {
-        "columns": [
-          "id",
-          "createdAt",
-          "updatedAt",
-          "isDeleted",
-          "ownerId",
-          "title",
-          "isCompleted",
-          "categoryId",
-        ],
-        "name": "todo",
+      "evolu_version": Set {
+        "protocolVersion",
       },
-      {
-        "columns": [
-          "id",
-          "createdAt",
-          "updatedAt",
-          "isDeleted",
-          "ownerId",
-          "name",
-        ],
-        "name": "todoCategory",
+      "todo": Set {
+        "id",
+        "createdAt",
+        "updatedAt",
+        "isDeleted",
+        "ownerId",
+        "title",
+        "isCompleted",
+        "categoryId",
       },
-    ],
+      "todoCategory": Set {
+        "id",
+        "createdAt",
+        "updatedAt",
+        "isDeleted",
+        "ownerId",
+        "name",
+      },
+    },
   },
   "tables": [
     {
@@ -146,6 +133,10 @@ exports[`externalAppOwner should use provided owner 1`] = `
     },
     {
       "name": "todoCategory",
+      "rows": [],
+    },
+    {
+      "name": "evolu_message_quarantine",
       "rows": [],
     },
   ],

@@ -1,5 +1,10 @@
 import * as Kysely from "kysely";
-import { mapObject, objectToEntries, ReadonlyRecord } from "../Object.js";
+import {
+  createRecord,
+  getProperty,
+  mapObject,
+  ReadonlyRecord,
+} from "../Object.js";
 import { ok, Result } from "../Result.js";
 import {
   SafeSql,
@@ -30,6 +35,8 @@ import {
   omit,
   optional,
   OptionalType,
+  record,
+  set,
   String,
   TableId,
   Type,
@@ -42,6 +49,7 @@ import { AppOwner, OwnerId } from "./Owner.js";
 import { Query, Row } from "./Query.js";
 import type { CrdtMessage, DbChange } from "./Storage.js";
 import { Timestamp, TimestampBytes } from "./Timestamp.js";
+import { readonly } from "../Function.js";
 
 /**
  * Defines the schema of an Evolu database.
@@ -169,12 +177,10 @@ export const evoluSchemaToDbSchema = (
   schema: EvoluSchema,
   indexesConfig?: IndexesConfig,
 ): DbSchema => {
-  const tables = objectToEntries(schema).map(([tableName, table]) => ({
-    name: tableName,
-    columns: objectToEntries(table)
-      .filter(([k]) => k !== "id")
-      .map(([k]) => k),
-  }));
+  const tables = mapObject(
+    schema,
+    (table) => new Set(Object.keys(table).filter((k) => k !== "id")),
+  );
 
   const indexes = indexesConfig
     ? indexesConfig(createIndex).map(
@@ -206,6 +212,13 @@ export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
             readonly column: string;
             readonly value: SqliteValue;
           };
+          readonly evolu_message_quarantine: {
+            readonly timestamp: TimestampBytes;
+            readonly table: string;
+            readonly id: IdBytes;
+            readonly column: string;
+            readonly value: SqliteValue;
+          };
         }
       >,
       "selectFrom" | "fn" | "with" | "withRecursive"
@@ -231,7 +244,11 @@ export const SystemColumns = object({
 });
 export type SystemColumns = typeof SystemColumns.Type;
 
-export const systemColumns = Object.keys(SystemColumns.props);
+export const systemColumns = readonly(
+  new Set(Object.keys(SystemColumns.props)),
+);
+
+export const systemColumnsWithId = readonly([...systemColumns, "id"]);
 
 export type MutationKind = "insert" | "update" | "upsert";
 
@@ -443,21 +460,17 @@ export type InferColumnErrors<
   >;
 }[keyof MutationMapping<T, M>];
 
-export const DbTable = object({
-  name: String,
-  columns: array(String),
-});
-export type DbTable = typeof DbTable.Type;
-
 export const DbIndex = object({ name: String, sql: String });
 export type DbIndex = typeof DbIndex.Type;
 
 export const DbSchema = object({
-  tables: array(DbTable),
+  tables: record(String, set(String)),
   indexes: array(DbIndex),
 });
 export type DbSchema = typeof DbSchema.Type;
 
+// TODO: Use a ref and update dbSchema on hot reloading to support
+// development workflows where schema changes without full app restart.
 export interface DbSchemaDep {
   readonly dbSchema: DbSchema;
 }
@@ -469,7 +482,7 @@ export const getDbSchema =
     DbSchema,
     SqliteError
   > => {
-    const map = new Map<string, Array<string>>();
+    const tables = createRecord<string, Set<string>>();
 
     const tableAndColumnInfoRows = deps.sqlite.exec(sql`
       select
@@ -487,11 +500,8 @@ export const getDbSchema =
         tableName: string;
         columnName: string;
       };
-      if (!map.has(tableName)) map.set(tableName, []);
-      map.get(tableName)?.push(columnName);
+      (tables[tableName] ??= new Set()).add(columnName);
     });
-
-    const tables = Array.from(map, ([name, columns]) => ({ name, columns }));
 
     const indexesRows = deps.sqlite.exec(
       allIndexes
@@ -546,23 +556,19 @@ export const ensureDbSchema =
       currentSchema = dbSchema.value;
     }
 
-    newSchema.tables.forEach((newTable) => {
-      const currentTable = currentSchema.tables.find(
-        (t) => t.name === newTable.name,
-      );
-      if (!currentTable) {
-        queries.push(createAppTable(newTable));
+    for (const [tableName, newColumns] of Object.entries(newSchema.tables)) {
+      const currentColumns = getProperty(currentSchema.tables, tableName);
+      if (!currentColumns) {
+        queries.push(createAppTable(tableName, newColumns));
       } else {
-        newTable.columns
-          .filter((newColumn) => !currentTable.columns.includes(newColumn))
-          .forEach((newColumn) => {
-            queries.push(sql`
-              alter table ${sql.identifier(newTable.name)}
-              add column ${sql.identifier(newColumn)} blob;
-            `);
-          });
+        for (const newColumn of newColumns.difference(currentColumns)) {
+          queries.push(sql`
+            alter table ${sql.identifier(tableName)}
+            add column ${sql.identifier(newColumn)} any;
+          `);
+        }
       }
-    });
+    }
 
     // Remove current indexes that are not in the newSchema.
     currentSchema.indexes
@@ -595,19 +601,19 @@ export const ensureDbSchema =
     return ok();
   };
 
-const createAppTable = (table: DbTable) => sql`
-  create table ${sql.identifier(table.name)} (
+const createAppTable = (tableName: string, columns: ReadonlySet<string>) => sql`
+  create table ${sql.identifier(tableName)} (
     "id" text,
     ${sql.raw(
-      `${systemColumns
-        .concat(table.columns)
-        .filter((c) => c !== "id")
+      `${[...systemColumns, ...columns]
         // With strict tables and any type, data is preserved exactly as received
         // without any type affinity coercion. This allows storing any data type
         // while maintaining strict null enforcement for primary key columns.
+        // TODO: Use proper SQLite types for system columns (text for createdAt,
+        // updatedAt, ownerId, integer for isDeleted) instead of "any".
         .map((name) => `${sql.identifier(name).sql} any`)
-        .join(", ")}`,
-    )},
+        .join(", ")}, `,
+    )}
     primary key ("ownerId", "id")
   )
   without rowid, strict;

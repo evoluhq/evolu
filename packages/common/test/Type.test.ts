@@ -96,6 +96,8 @@ import {
   RecordError,
   recursive,
   regex,
+  set,
+  SetError,
   RegexError,
   SimplePassword,
   StandardSchemaV1,
@@ -1321,6 +1323,146 @@ test("array", () => {
   >();
   expectTypeOf<typeof TrimmedStringArray.ParentError>().toEqualTypeOf<
     ArrayError<StringError>
+  >();
+});
+
+test("set", () => {
+  const NumberSet = set(Number);
+
+  expect(NumberSet.element).toBe(Number);
+
+  expect(NumberSet.from(new Set([1, 2, 3]))).toEqual(ok(new Set([1, 2, 3])));
+
+  expect(NumberSet.fromUnknown(new Set(["a", 2, 3]))).toEqual(
+    err<SetError<any>>({
+      type: "Set",
+      value: new Set(["a", 2, 3]),
+      reason: {
+        kind: "Element",
+        index: 0,
+        error: { type: "Number", value: "a" },
+      },
+    }),
+  );
+
+  expect(NumberSet.fromUnknown("not a set")).toEqual(
+    err<SetError<any>>({
+      type: "Set",
+      value: "not a set",
+      reason: { kind: "NotSet" },
+    }),
+  );
+
+  expect(NumberSet.fromUnknown([1, 2, 3])).toEqual(
+    err<SetError<any>>({
+      type: "Set",
+      value: [1, 2, 3],
+      reason: { kind: "NotSet" },
+    }),
+  );
+
+  expect(NumberSet.from(new Set())).toEqual(ok(new Set()));
+
+  expect(NumberSet.fromParent(new Set([4, 5, 6]))).toEqual(
+    ok(new Set([4, 5, 6])),
+  );
+
+  expectTypeOf<typeof NumberSet.Type>().toEqualTypeOf<ReadonlySet<number>>();
+  expectTypeOf<typeof NumberSet.Input>().toEqualTypeOf<ReadonlySet<number>>();
+  expectTypeOf<typeof NumberSet.Error>().toEqualTypeOf<SetError<NumberError>>();
+  expectTypeOf<typeof NumberSet.Parent>().toEqualTypeOf<ReadonlySet<number>>();
+  expectTypeOf<typeof NumberSet.ParentError>().toEqualTypeOf<
+    SetError<NumberError>
+  >();
+
+  const StringSet = set(String);
+
+  expect(StringSet.from(new Set(["a", "b", "c"]))).toEqual(
+    ok(new Set(["a", "b", "c"])),
+  );
+
+  expect(StringSet.fromUnknown(new Set([1, "b", "c"]))).toEqual(
+    err<SetError<any>>({
+      type: "Set",
+      value: new Set([1, "b", "c"]),
+      reason: {
+        kind: "Element",
+        index: 0,
+        error: { type: "String", value: 1 },
+      },
+    }),
+  );
+
+  expect(NumberSet.is(new Set([1, 2, 3]))).toBe(true);
+  expect(NumberSet.is(new Set(["a", 2, 3]))).toBe(false);
+  expect(NumberSet.is("not a set")).toBe(false);
+  expect(NumberSet.is([1, 2, 3])).toBe(false);
+
+  expect(NumberSet.name).toBe("Set");
+
+  const TrimmedStringSet = set(TrimmedString);
+  expect(TrimmedStringSet.element).toBe(TrimmedString);
+
+  expect(TrimmedStringSet.from(new Set(["hello", "world"]))).toEqual(
+    ok(new Set(["hello", "world"])),
+  );
+
+  expect(TrimmedStringSet.from(new Set([" hello", "world"]))).toEqual(
+    err<SetError<TrimmedError>>({
+      type: "Set",
+      value: new Set([" hello", "world"]),
+      reason: {
+        kind: "Element",
+        index: 0,
+        error: { type: "Trimmed", value: " hello" },
+      },
+    }),
+  );
+
+  expect(
+    TrimmedStringSet.fromParent(
+      new Set(["test", "trimmed"]) as unknown as ReadonlySet<TrimmedString>,
+    ),
+  ).toEqual(ok(new Set(["test", "trimmed"])));
+
+  expect(
+    TrimmedStringSet.fromParent(
+      new Set(["valid", " invalid"]) as unknown as ReadonlySet<TrimmedString>,
+    ),
+  ).toEqual(
+    err<SetError<TrimmedError>>({
+      type: "Set",
+      value: new Set(["valid", " invalid"]),
+      reason: {
+        kind: "Element",
+        index: 1,
+        error: { type: "Trimmed", value: " invalid" },
+      },
+    }),
+  );
+
+  expect(TrimmedStringSet.is(new Set(["trimmed", "values"]))).toBe(true);
+  expect(TrimmedStringSet.is(new Set([" not trimmed", "values"]))).toBe(false);
+  expect(TrimmedStringSet.is("not a set")).toBe(false);
+
+  expect(TrimmedStringSet.from(new Set())).toEqual(ok(new Set()));
+
+  expect(TrimmedStringSet.name).toBe("Set");
+
+  expectTypeOf<typeof TrimmedStringSet.Type>().toEqualTypeOf<
+    ReadonlySet<TrimmedString>
+  >();
+  expectTypeOf<typeof TrimmedStringSet.Input>().toEqualTypeOf<
+    ReadonlySet<string>
+  >();
+  expectTypeOf<typeof TrimmedStringSet.Error>().toEqualTypeOf<
+    SetError<TrimmedError>
+  >();
+  expectTypeOf<typeof TrimmedStringSet.Parent>().toEqualTypeOf<
+    ReadonlySet<string>
+  >();
+  expectTypeOf<typeof TrimmedStringSet.ParentError>().toEqualTypeOf<
+    SetError<StringError>
   >();
 });
 

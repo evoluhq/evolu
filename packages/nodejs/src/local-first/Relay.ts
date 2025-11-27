@@ -87,11 +87,14 @@ const createNodeJsRelayWithDeps =
     const depsWithSqlite = { ...deps, sqlite: sqlite.value };
 
     if (!dbFileExists) {
-      const baseTables = createBaseSqliteStorageTables(depsWithSqlite);
-      if (!baseTables.ok) return baseTables;
-
-      const relayTables = createRelayStorageTables(depsWithSqlite);
-      if (!relayTables.ok) return relayTables;
+      {
+        const result = createBaseSqliteStorageTables(depsWithSqlite);
+        if (!result.ok) return result;
+      }
+      {
+        const result = createRelayStorageTables(depsWithSqlite);
+        if (!result.ok) return result;
+      }
     }
 
     const storage = createRelaySqliteStorage(depsWithSqlite)({

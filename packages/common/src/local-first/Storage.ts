@@ -26,13 +26,13 @@ import {
   TypeError,
 } from "../Type.js";
 import {
-  OwnerError,
   Owner,
+  OwnerError,
   OwnerId,
   OwnerIdBytes,
   OwnerWriteKey,
 } from "./Owner.js";
-import { systemColumns } from "./Schema.js";
+import { systemColumnsWithId } from "./Schema.js";
 import { orderTimestampBytes, Timestamp, TimestampBytes } from "./Timestamp.js";
 
 export interface StorageConfig {
@@ -256,16 +256,11 @@ export interface CrdtMessage {
 export const DbChangeValues = record(String, SqliteValue);
 export type DbChangeValues = typeof DbChangeValues.Type;
 
-// "createdAt" and "updatedAt" are derived from Timestamp.
-// "id" and "isDeleted" are encoded separately to save bytes
-// "ownerId" is part of the protocol message
-const forbiddenSystemColumns = systemColumns.concat("id");
-
 export const ValidDbChangeValues = brand(
   "ValidDbChangeValues",
   DbChangeValues,
   (value) => {
-    const invalidColumns = forbiddenSystemColumns.filter((key) => key in value);
+    const invalidColumns = systemColumnsWithId.filter((key) => key in value);
     if (invalidColumns.length > 0)
       return err<ValidDbChangeValuesError>({
         type: "ValidDbChangeValues",

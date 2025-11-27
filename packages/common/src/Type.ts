@@ -2392,6 +2392,124 @@ export const formatArrayError = <Error extends TypeError>(
   });
 
 /**
+ * Set of a specific {@link Type}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const NumberSet = set(Number);
+ *
+ * const result1 = NumberSet.from(new Set([1, 2, 3])); // ok(Set { 1, 2, 3 })
+ * const result2 = NumberSet.from(new Set(["a", "b"])); // err(...)
+ * ```
+ *
+ * @category Base Factories
+ */
+export const set = <ElementType extends AnyType>(
+  element: ElementType,
+): SetType<ElementType> => {
+  const fromUnknown = (
+    value: unknown,
+  ): Result<
+    ReadonlySet<InferType<ElementType>>,
+    SetError<InferErrors<ElementType>>
+  > => {
+    if (!(value instanceof globalThis.Set)) {
+      return err<SetError<InferErrors<ElementType>>>({
+        type: "Set",
+        value,
+        reason: { kind: "NotSet" },
+      });
+    }
+
+    let index = 0;
+    for (const item of value) {
+      const elementResult = element.fromUnknown(item);
+      if (!elementResult.ok) {
+        return err<SetError<InferErrors<ElementType>>>({
+          type: "Set",
+          value,
+          reason: {
+            kind: "Element",
+            index,
+            error: elementResult.error as InferErrors<ElementType>,
+          },
+        });
+      }
+      index++;
+    }
+
+    return ok(value as ReadonlySet<InferType<ElementType>>);
+  };
+
+  const fromParent = (
+    value: ReadonlySet<InferParent<ElementType>>,
+  ): Result<
+    ReadonlySet<InferType<ElementType>>,
+    SetError<InferError<ElementType>>
+  > => {
+    let index = 0;
+    for (const item of value) {
+      const elementResult = element.fromParent(item);
+      if (!elementResult.ok) {
+        return err({
+          type: "Set",
+          value,
+          reason: {
+            kind: "Element",
+            index,
+            error: elementResult.error as InferError<ElementType>,
+          },
+        });
+      }
+      index++;
+    }
+    return ok(value as ReadonlySet<InferType<ElementType>>);
+  };
+
+  return {
+    ...createType("Set", { fromUnknown, fromParent }),
+    element,
+  };
+};
+
+/** SetType extends Type with an additional `element` property for reflection. */
+export interface SetType<ElementType extends AnyType>
+  extends Type<
+    "Set",
+    ReadonlySet<InferType<ElementType>>,
+    ReadonlySet<InferInput<ElementType>>,
+    SetError<InferError<ElementType>>,
+    ReadonlySet<InferParent<ElementType>>,
+    SetError<InferParentError<ElementType>>
+  > {
+  readonly element: ElementType;
+}
+
+export interface SetError<Error extends TypeError = TypeError>
+  extends TypeErrorWithReason<
+    "Set",
+    | { readonly kind: "NotSet" }
+    | {
+        readonly kind: "Element";
+        readonly index: number;
+        readonly error: Error;
+      }
+  > {}
+
+export const formatSetError = <Error extends TypeError>(
+  formatTypeError: TypeErrorFormatter<Error>,
+): TypeErrorFormatter<SetError<Error>> =>
+  createTypeErrorFormatter((error) => {
+    switch (error.reason.kind) {
+      case "NotSet":
+        return `Expected a Set but received ${error.value}.`;
+      case "Element":
+        return `Invalid element at index ${error.reason.index}: ${formatTypeError(error.reason.error)}`;
+    }
+  });
+
+/**
  * Record of a key {@link Type} and value {@link Type}.
  *
  * - The input must be a plain object (validated by {@link isPlainObject}).
@@ -3970,6 +4088,7 @@ export type TypeErrors<ExtraErrors extends TypeError = never> =
   | ExtraErrors
   // Composite errors
   | ArrayError<TypeErrors<ExtraErrors>>
+  | SetError<TypeErrors<ExtraErrors>>
   | RecordError<TypeErrors<ExtraErrors>, TypeErrors<ExtraErrors>>
   | ObjectError<Record<string, TypeErrors<ExtraErrors>>>
   | ObjectWithRecordError<
@@ -4154,6 +4273,8 @@ export const createFormatTypeError = <ExtraErrors extends TypeError = never>(
         return formatSimplePasswordError(formatTypeError)(error);
       case "Array":
         return formatArrayError(formatTypeError)(error);
+      case "Set":
+        return formatSetError(formatTypeError)(error);
       case "Record":
         return formatRecordError(formatTypeError)(error);
       case "Object":
@@ -4199,6 +4320,18 @@ export const typeErrorToStandardSchemaIssues = <
       arrayError.reason.error as TypeErrors<ExtraErrors>,
       formatTypeError,
       [...path, arrayError.reason.index],
+    );
+  }
+
+  if (error.type === "Set") {
+    const setError = error as SetError;
+    if (setError.reason.kind === "NotSet") {
+      return [{ message: formatTypeError(error), path }];
+    }
+    return typeErrorToStandardSchemaIssues(
+      setError.reason.error as TypeErrors<ExtraErrors>,
+      formatTypeError,
+      [...path, setError.reason.index],
     );
   }
 
