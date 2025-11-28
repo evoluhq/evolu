@@ -1,6 +1,6 @@
 {
   "name": "@evolu/react-native",
-  "version": "14.2.0",
+  "version": "14.3.0",
   "description": "Evolu for React Native and Expo",
   "keywords": [
     "evolu",
@@ -86,8 +86,8 @@
     "vitest": "^4.0.4"
   },
   "peerDependencies": {
-    "@evolu/common": "^7.3.0",
-    "@evolu/react": "^10.3.0",
+    "@evolu/common": "^7.4.0",
+    "@evolu/react": "^10.4.0",
     "@op-engineering/op-sqlite": ">=12",
     "expo": ">=54",
     "expo-secure-store": ">=15",
