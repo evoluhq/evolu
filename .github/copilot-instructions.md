@@ -293,4 +293,18 @@ fix: memory leak in websocket reconnection
 Update schema validation to handle edge cases.
 ```
 
+## Changesets
+
+- **Write in past tense** - describe what was done, not what will be done
+
+```markdown
+# ✅ Good
+
+Added support for custom error formatters
+
+# ❌ Avoid
+
+Add support for custom error formatters
+```
+
 When suggesting code changes, ensure they follow these patterns and conventions.
