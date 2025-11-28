@@ -1,6 +1,6 @@
 {
   "name": "@evolu/nodejs",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "Evolu for Node.js",
   "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
   "license": "MIT",
@@ -39,7 +39,7 @@
     "vitest": "^4.0.4"
   },
   "peerDependencies": {
-    "@evolu/common": "^7.3.0"
+    "@evolu/common": "^7.4.0"
   },
   "engines": {
     "node": ">=22.0.0"

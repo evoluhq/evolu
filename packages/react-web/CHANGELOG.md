@@ -1,5 +1,13 @@
 # @evolu/react-web
 
+## 2.4.0
+
+### Patch Changes
+
+- Updated dependencies [1479665]
+  - @evolu/common@7.4.0
+  - @evolu/web@2.4.0
+
 ## 2.3.0
 
 ### Patch Changes
