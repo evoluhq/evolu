@@ -63,7 +63,7 @@ export class BufferError extends Error {
  * https://blog.mozilla.org/nnethercote/2014/11/04/please-grow-your-buffers-exponentially
  */
 export interface Buffer {
-  /** Returns the total allocated size of the buffer. */
+  /** Returns the current capacity of the buffer. */
   getCapacity: () => NonNegativeInt;
 
   /** Returns the current number of bytes stored in the buffer. */
@@ -110,6 +110,7 @@ export interface Buffer {
   unwrap: () => Uint8Array;
 }
 
+/** Creates a {@link Buffer} for efficient byte operations. */
 export const createBuffer = (
   arrayLike?: Uint8Array | ArrayLike<number>,
 ): Buffer => {

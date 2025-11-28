@@ -55,7 +55,7 @@ export interface Callbacks<T = undefined> {
 /** Unique identifier for a callback in {@link Callbacks}. */
 export type CallbackId = Id & Brand<"Callback">;
 
-/** Creates a new {@link Callbacks}. */
+/** Creates a {@link Callbacks} registry for managing callbacks. */
 export const createCallbacks = <T = undefined>(
   deps: RandomBytesDep,
 ): Callbacks<T> => {

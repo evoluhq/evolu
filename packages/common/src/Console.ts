@@ -96,7 +96,7 @@ export interface ConsoleConfig {
   readonly enableLogging?: boolean;
 }
 
-/** Creates a console instance using the global console. */
+/** Creates a {@link Console} for logging with configurable output. */
 export const createConsole = (config: ConsoleConfig = {}): Console => {
   const instance: Console = {
     enabled: config.enableLogging ?? false,
