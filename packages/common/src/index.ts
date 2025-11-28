@@ -18,6 +18,7 @@ export * from "./Object.js";
 export * from "./Order.js";
 export * from "./Platform.js";
 export * from "./Random.js";
+export * from "./Redacted.js";
 export * from "./Ref.js";
 export * from "./Relation.js";
 export * from "./Resources.js";

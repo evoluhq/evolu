@@ -28,6 +28,7 @@ import { TimestampBytes } from "./Timestamp.js";
  */
 export interface ReadonlyOwner {
   readonly id: OwnerId;
+  /** TODO: Wrap with `Redacted` in the next major version. */
   readonly encryptionKey: OwnerEncryptionKey;
 }
 
@@ -63,6 +64,7 @@ export interface ReadonlyOwner {
  * @see {@link createSharedReadonlyOwner}
  */
 export interface Owner extends ReadonlyOwner {
+  /** TODO: Wrap with `Redacted` in the next major version. */
   readonly writeKey: OwnerWriteKey;
 }
 
@@ -184,6 +186,8 @@ export interface AppOwner extends Owner {
    * The mnemonic that was used to derive the AppOwner keys. Optional when the
    * AppOwner is created from external keys to avoid sharing the mnemonic with
    * the Evolu app.
+   *
+   * TODO: Wrap with `Redacted` in the next major version.
    */
   readonly mnemonic?: Mnemonic | null;
 }

@@ -33,6 +33,7 @@
     "src/Order.ts",
     "src/Platform.ts",
     "src/Random.ts",
+    "src/Redacted.ts",
     "src/Ref.ts",
     "src/Relation.ts",
     "src/Resources.ts",
