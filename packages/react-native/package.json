@@ -86,7 +86,7 @@
     "vitest": "^4.0.4"
   },
   "peerDependencies": {
-    "@evolu/common": "^7.4.0",
+    "@evolu/common": "^7.4.1",
     "@evolu/react": "^10.4.0",
     "@op-engineering/op-sqlite": ">=12",
     "expo": ">=54",
