@@ -465,8 +465,9 @@ export type EvoluError =
   | TimestampError
   | TransferableError;
 
-interface InternalEvoluInstance<S extends EvoluSchema = EvoluSchema>
-  extends Evolu<S> {
+interface InternalEvoluInstance<
+  S extends EvoluSchema = EvoluSchema,
+> extends Evolu<S> {
   /**
    * Ensure tables and columns defined in {@link EvoluSchema} exist in the
    * database. This function is for hot reloading.

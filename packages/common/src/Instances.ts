@@ -12,8 +12,10 @@
  * (having two Evolu instances with the same name would mean two SQLite
  * connections to the same file, which could corrupt data).
  */
-export interface Instances<K extends string, T extends Disposable>
-  extends Disposable {
+export interface Instances<
+  K extends string,
+  T extends Disposable,
+> extends Disposable {
   /**
    * Ensures an instance exists for the given key, creating it if necessary. If
    * the instance already exists, the optional `onCacheHit` callback is invoked
