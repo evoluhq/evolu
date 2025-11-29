@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 7.4.1
+
+### Patch Changes
+
+- e1ed69a: Removed unnecessary assertions and simplified row validation in client storage row processing logic.
+
 ## 7.4.0
 
 ### Minor Changes
