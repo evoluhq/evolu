@@ -5,7 +5,7 @@ import {
   NonEmptyArray,
   NonEmptyReadonlyArray,
 } from "../Array.js";
-import { assert, assertNonEmptyReadonlyArray } from "../Assert.js";
+import { assertNonEmptyReadonlyArray } from "../Assert.js";
 import { Brand } from "../Brand.js";
 import { ConsoleDep } from "../Console.js";
 import {
@@ -13,7 +13,6 @@ import {
   SymmetricCryptoDecryptError,
   SymmetricCryptoDep,
 } from "../Crypto.js";
-import { eqArrayNumber } from "../Eq.js";
 import { createTransferableError, TransferableError } from "../Error.js";
 import { constFalse, constTrue } from "../Function.js";
 import { createRecord, getProperty, objectToEntries } from "../Object.js";
@@ -32,7 +31,6 @@ import {
 import { AbortError, createMutex } from "../Task.js";
 import { TimeDep } from "../Time.js";
 import {
-  Boolean,
   DateIso,
   Id,
   IdBytes,
@@ -593,19 +591,14 @@ const createClientStorage =
         }
 
         const { rows } = result.value;
-        assertNonEmptyReadonlyArray(
-          rows,
-          "Every timestamp must have rows in evolu_history or quarantine",
-        );
+        assertNonEmptyReadonlyArray(rows, "Every timestamp must have rows");
+        const firstRow = firstInArray(rows);
 
-        const { table, id } = firstInArray(rows);
         const values = createRecord<string, SqliteValue>();
-        let isInsert;
-        let isDelete: boolean | null = null;
+        let isInsert: DbChange["isInsert"] = false;
+        let isDelete: DbChange["isDelete"] = null;
 
         for (const r of rows) {
-          assert(r.table === table, "All rows must have the same table");
-          assert(eqArrayNumber(r.id, id), "All rows must have the same Id");
           switch (r.column) {
             case "createdAt":
               isInsert = true;
@@ -614,24 +607,20 @@ const createClientStorage =
               isInsert = false;
               break;
             case "isDeleted":
-              assert(
-                SqliteBoolean.is(r.value),
-                "isDeleted column must contain a valid SqliteBoolean",
-              );
-              isDelete = sqliteBooleanToBoolean(r.value);
+              if (SqliteBoolean.is(r.value)) {
+                isDelete = sqliteBooleanToBoolean(r.value);
+              }
               break;
             default:
               values[r.column] = r.value;
           }
         }
 
-        assert(Boolean.is(isInsert), "isInsert must be in evolu_history");
-
         const message: CrdtMessage = {
           timestamp: timestampBytesToTimestamp(timestamp),
           change: DbChange.orThrow({
-            table: rows[0].table,
-            id: idBytesToId(rows[0].id),
+            table: firstRow.table,
+            id: idBytesToId(firstRow.id),
             values,
             isInsert,
             isDelete,
