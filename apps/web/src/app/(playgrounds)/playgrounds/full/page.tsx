@@ -3,19 +3,16 @@
 import dynamic from "next/dynamic";
 
 /**
- * Evolu supports server-side rendering (SSR) even with web-only deps, but
- * that's only practical if we want to render empty rows and don't care about
- * the layout shift when the client hydrates.
+ * Using dynamic with ssr: false emulates SPA behavior in Next.js.
  *
- * Evolu can also SSR data with server deps (check tests). Use it only for
- * non-private (public or shared) data.
+ * Evolu supports SSR (server-side rendering), but because data is end-to-end
+ * encrypted, it must stay on clients - so SSR will render empty rows. If SSR
+ * with data is needed, use server deps to render public or shared data (check
+ * tests).
  */
 const EvoluFullExample = dynamic(
-  () =>
-    import("@/components/EvoluFullExample").then((mod) => mod.EvoluFullExample),
-  {
-    ssr: false,
-  },
+  () => import("./EvoluFullExample").then((mod) => mod.EvoluFullExample),
+  { ssr: false },
 );
 
 export default function Page(): React.ReactElement {
