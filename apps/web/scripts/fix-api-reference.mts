@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const reference = path.join(
-  __dirname,
+  import.meta.dirname,
   "..",
   "src/app/(docs)/docs/api-reference",
 );

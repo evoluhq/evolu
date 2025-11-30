@@ -21,13 +21,13 @@
     "android": "cd examples/react-expo && pnpm android",
     "typedoc": "typedoc && pnpm --filter=web run fix:docs",
     "bench": "turbo bench",
-    "examples:toggle-deps": "tsx ./scripts/toggle-examples-deps.ts",
+    "examples:toggle-deps": "node --experimental-strip-types ./scripts/toggle-examples-deps.mts",
     "examples:build": "turbo --filter @example/* build",
     "examples:react-nextjs:dev": "turbo --filter @example/react-nextjs dev",
     "examples:react-vite-pwa:dev": "turbo --filter @example/react-vite-pwa dev",
     "examples:svelte-vite-pwa:dev": "turbo --filter @example/svelte-vite-pwa dev",
     "examples:vue-vite-pwa:dev": "turbo --filter @example/vue-vite-pwa dev",
-    "publish:local": "tsx ./scripts/publish-local.ts"
+    "publish:local": "node --experimental-strip-types ./scripts/publish-local.mts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.8",
@@ -44,7 +44,6 @@
     "prettier-plugin-sql-cst": "^0.16.0",
     "prettier-plugin-tailwindcss": "^0.7.1",
     "rimraf": "^6.0.0",
-    "tsx": "^4.20.5",
     "turbo": "^2.5.8",
     "typedoc": "^0.28.13",
     "typedoc-plugin-markdown": "^4.9.0",

@@ -3,7 +3,7 @@ import readline from "node:readline";
 import fs from "node:fs";
 import path from "node:path";
 
-const examplesDir = path.resolve(__dirname, "../examples");
+const examplesDir = path.resolve(import.meta.dirname, "../examples");
 
 type Mode = "development" | "production";
 

@@ -6,7 +6,7 @@
     "build": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next build --webpack",
     "clean": "rimraf .turbo .next node_modules",
     "dev": "next dev --webpack",
-    "fix:docs": "tsx ./scripts/fix-api-reference.ts",
+    "fix:docs": "node --experimental-strip-types ./scripts/fix-api-reference.mts",
     "lint": "next lint",
     "start": "next start"
   },
@@ -45,7 +45,6 @@
     "shiki": "^3.9.2",
     "simple-functional-loader": "^1.2.1",
     "tailwindcss": "^4.1.12",
-    "tsx": "^4.20.5",
     "typescript": "^5.9.2",
     "unist-util-filter": "^5.0.1",
     "unist-util-visit": "^5.0.0",

@@ -1,6 +1,6 @@
-import { execSync } from "child_process";
-import { readdirSync } from "fs";
-import { join } from "path";
+import { execSync } from "node:child_process";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 
 const PACKAGES_DIR = "packages";
 const EXCLUDED_PACKAGES = ["tsconfig"];
@@ -11,7 +11,8 @@ interface PackageInfo {
 }
 
 function getPackageInfo(packagePath: string): PackageInfo {
-  const packageJson = require(join(process.cwd(), packagePath, "package.json"));
+  const packageJsonPath = join(process.cwd(), packagePath, "package.json");
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
   return {
     name: packageJson.name,
     version: packageJson.version,
