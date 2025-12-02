@@ -1,0 +1,169 @@
+export const metadata = {
+  title: "Resource Management",
+};
+
+# Resource Management
+
+For automatic cleanup of resources
+
+## The problem
+
+Resources like database connections, file handles, and locks need cleanup. Traditional approaches are error-prone:
+
+```ts
+// 🚨 Manual cleanup is easy to forget
+const conn = openConnection();
+doWork(conn);
+conn.close(); // What if doWork throws?
+```
+
+```ts
+// 🚨 try/finally is verbose and doesn't compose
+const conn = openConnection();
+try {
+  doWork(conn);
+} finally {
+  conn.close();
+}
+```
+
+## The solution: `using`
+
+The `using` declaration automatically disposes resources when they go out of scope:
+
+```ts
+const process = () => {
+  using conn = openConnection();
+  doWork(conn);
+}; // conn is automatically disposed here
+```
+
+This works even if `doWork` throws—disposal is guaranteed.
+
+## Disposable resources
+
+A resource is disposable if it has a `[Symbol.dispose]` method:
+
+```ts
+interface Disposable {
+  [Symbol.dispose](): void;
+}
+```
+
+For async cleanup, use `[Symbol.asyncDispose]` with `await using`:
+
+```ts
+interface AsyncDisposable {
+  [Symbol.asyncDispose](): Promise<void>;
+}
+```
+
+## Block scopes for precise lifetime control
+
+Use block scopes to control exactly when resources are disposed:
+
+```ts
+const process = () => {
+  console.log("start");
+
+  {
+    using lock = acquireLock("a");
+    console.log("critical-section-a");
+  } // lock "a" released here
+
+  console.log("between");
+
+  {
+    using lock = acquireLock("b");
+    console.log("critical-section-b");
+  } // lock "b" released here
+
+  console.log("end");
+};
+
+// Output:
+// "start"
+// "critical-section-a"
+// "unlock:a"
+// "between"
+// "critical-section-b"
+// "unlock:b"
+// "end"
+```
+
+## DisposableStack for multiple resources
+
+When acquiring multiple resources, use `DisposableStack` to ensure all are cleaned up:
+
+```ts
+const processResources = (): Result<string, CreateResourceError> => {
+  using stack = new DisposableStack();
+
+  const db = createResource("db", false);
+  if (!db.ok) return db; // stack disposes nothing yet
+
+  stack.use(db.value);
+
+  const file = createResource("file", false);
+  if (!file.ok) return file; // stack disposes db
+
+  stack.use(file.value);
+
+  return ok("processed");
+}; // stack disposes file, then db (reverse order)
+```
+
+Key methods:
+
+- `stack.use(resource)` — adds a disposable resource
+- `stack.defer(fn)` — adds a cleanup function (like Go's `defer`)
+- `stack.adopt(value, cleanup)` — wraps a non-disposable value with cleanup
+- `stack.move()` — transfers ownership to caller
+
+## Combining with Result
+
+`Result` and `Disposable` are orthogonal:
+
+- **Result** answers: "Did the operation succeed?"
+- **Disposable** answers: "When do we clean up resources?"
+
+They compose naturally:
+
+```ts
+const process = (): Result<void, MyError> => {
+  using stack = new DisposableStack();
+
+  const resource = createResource();
+  if (!resource.ok) return resource; // Early return, stack cleans up
+
+  stack.use(resource.value);
+
+  const result = doWork(resource.value);
+  if (!result.ok) return result; // Early return, stack cleans up
+
+  return ok();
+}; // Success path, stack cleans up
+```
+
+The pattern is simple:
+
+1. Create a `DisposableStack` with `using`
+2. Try to create a resource (returns `Result`)
+3. If failed, return early—stack disposes what's been acquired
+4. If succeeded, add to stack with `stack.use()`
+5. Repeat for additional resources
+
+## Polyfills
+
+Evolu provides polyfills for environments without native support (e.g., Safari):
+
+- `Symbol.dispose` and `Symbol.asyncDispose`
+- `DisposableStack` and `AsyncDisposableStack`
+
+These are installed automatically when importing `@evolu/common`.
+
+## Learn more
+
+- See `Result.test.ts` for comprehensive usage patterns
+- [MDN: Resource management](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Resource_management)
+- [MDN: using statement](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/using)
