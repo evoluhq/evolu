@@ -333,429 +333,431 @@ const createAsyncResource = async (
   return ok(createMockAsyncResource(id));
 };
 
-describe("Result with using keyword", () => {
-  it("disposes on success", () => {
-    const resource = createResource("db", false);
-    if (!resource.ok) throw new Error("Should not fail");
+describe("Result with Resource Management", () => {
+  describe("using keyword", () => {
+    it("disposes on success", () => {
+      const resource = createResource("db", false);
+      if (!resource.ok) throw new Error("Should not fail");
 
-    {
-      using _ = resource.value;
-      expect(resource.value.isDisposed()).toBe(false);
-    }
+      {
+        using _ = resource.value;
+        expect(resource.value.isDisposed()).toBe(false);
+      }
 
-    expect(resource.value.isDisposed()).toBe(true);
-  });
-
-  it("disposes on early return", () => {
-    let resource = null as Resource | null;
-
-    const process = (): Result<string, CreateResourceError> => {
-      const result = createResource("db", false);
-      if (!result.ok) return result;
-
-      resource = result.value;
-      using _ = resource;
-
-      return err({ type: "CreateResourceError", reason: "other failure" });
-    };
-
-    const result = process();
-    expect(result.ok).toBe(false);
-    expect(resource?.isDisposed()).toBe(true);
-  });
-
-  it("disposes on throw", () => {
-    let resource = null as Resource | null;
-
-    const process = (): void => {
-      const result = createResource("db", false);
-      if (!result.ok) throw new Error("Should not fail");
-
-      resource = result.value;
-      using _ = resource;
-
-      throw new Error("Unexpected!");
-    };
-
-    expect(() => {
-      process();
-    }).toThrow("Unexpected!");
-    expect(resource?.isDisposed()).toBe(true);
-  });
-
-  // Block scopes control resource lifetime (RAII pattern).
-  // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/using#using_in_a_block
-  it("disposes at block scope exit", () => {
-    const log: Array<string> = [];
-
-    const createLock = (name: string): Disposable => ({
-      [Symbol.dispose]: () => {
-        log.push(`unlock:${name}`);
-      },
+      expect(resource.value.isDisposed()).toBe(true);
     });
 
-    const process = (): void => {
-      log.push("start");
+    it("disposes on early return", () => {
+      let resource = null as Resource | null;
 
-      {
-        using _ = createLock("a");
-        log.push("critical-section-a");
-      } // lock "a" released here
+      const process = (): Result<string, CreateResourceError> => {
+        const result = createResource("db", false);
+        if (!result.ok) return result;
 
-      log.push("between");
+        resource = result.value;
+        using _ = resource;
 
-      {
-        using _ = createLock("b");
-        log.push("critical-section-b");
-      } // lock "b" released here
+        return err({ type: "CreateResourceError", reason: "other failure" });
+      };
 
-      log.push("end");
-    };
+      const result = process();
+      expect(result.ok).toBe(false);
+      expect(resource?.isDisposed()).toBe(true);
+    });
 
-    process();
-    expect(log).toEqual([
-      "start",
-      "critical-section-a",
-      "unlock:a",
-      "between",
-      "critical-section-b",
-      "unlock:b",
-      "end",
-    ]);
-  });
-});
+    it("disposes on throw", () => {
+      let resource = null as Resource | null;
 
-describe("Result with DisposableStack", () => {
-  it("disposes resources on successful completion", () => {
-    const disposed: Array<string> = [];
+      const process = (): void => {
+        const result = createResource("db", false);
+        if (!result.ok) throw new Error("Should not fail");
 
-    const processResources = (): Result<string, CreateResourceError> => {
-      using stack = new DisposableStack();
+        resource = result.value;
+        using _ = resource;
 
-      const resource1 = createResource("db", false);
-      if (!resource1.ok) return resource1;
-      stack.use(resource1.value);
-      stack.defer(() => disposed.push("db"));
+        throw new Error("Unexpected!");
+      };
 
-      const resource2 = createResource("file", false);
-      if (!resource2.ok) return resource2;
-      stack.use(resource2.value);
-      stack.defer(() => disposed.push("file"));
+      expect(() => {
+        process();
+      }).toThrow("Unexpected!");
+      expect(resource?.isDisposed()).toBe(true);
+    });
 
-      return ok("processed");
-    };
+    // Block scopes control resource lifetime (RAII pattern).
+    // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/using#using_in_a_block
+    it("disposes at block scope exit", () => {
+      const log: Array<string> = [];
 
-    const result = processResources();
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.value).toBe("processed");
-    }
-    expect(disposed).toEqual(["file", "db"]);
-  });
+      const createLock = (name: string): Disposable => ({
+        [Symbol.dispose]: () => {
+          log.push(`unlock:${name}`);
+        },
+      });
 
-  it("disposes created resources when later creation fails", () => {
-    const disposed: Array<string> = [];
+      const process = (): void => {
+        log.push("start");
 
-    const processResources = (): Result<string, CreateResourceError> => {
-      using stack = new DisposableStack();
+        {
+          using _ = createLock("a");
+          log.push("critical-section-a");
+        } // lock "a" released here
 
-      const resource1 = createResource("db", false);
-      if (!resource1.ok) return resource1;
-      stack.use(resource1.value);
-      stack.defer(() => disposed.push("db"));
+        log.push("between");
 
-      const resource2 = createResource("file", true);
-      if (!resource2.ok) return resource2;
+        {
+          using _ = createLock("b");
+          log.push("critical-section-b");
+        } // lock "b" released here
 
-      stack.use(resource2.value);
-      stack.defer(() => disposed.push("file"));
+        log.push("end");
+      };
 
-      return ok("processed");
-    };
-
-    const result = processResources();
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error.type).toBe("CreateResourceError");
-      expect(result.error.reason).toBe("Failed to create file");
-    }
-    expect(disposed).toEqual(["db"]);
+      process();
+      expect(log).toEqual([
+        "start",
+        "critical-section-a",
+        "unlock:a",
+        "between",
+        "critical-section-b",
+        "unlock:b",
+        "end",
+      ]);
+    });
   });
 
-  it("disposes nothing when first creation fails", () => {
-    const disposed: Array<string> = [];
+  describe("DisposableStack", () => {
+    it("disposes resources on successful completion", () => {
+      const disposed: Array<string> = [];
 
-    const processResources = (): Result<string, CreateResourceError> => {
-      using stack = new DisposableStack();
+      const processResources = (): Result<string, CreateResourceError> => {
+        using stack = new DisposableStack();
 
-      const resource1 = createResource("db", true);
-      if (!resource1.ok) return resource1;
-      stack.use(resource1.value);
-      stack.defer(() => disposed.push("db"));
+        const resource1 = createResource("db", false);
+        if (!resource1.ok) return resource1;
+        stack.use(resource1.value);
+        stack.defer(() => disposed.push("db"));
 
-      return ok("processed");
-    };
+        const resource2 = createResource("file", false);
+        if (!resource2.ok) return resource2;
+        stack.use(resource2.value);
+        stack.defer(() => disposed.push("file"));
 
-    const result = processResources();
-    expect(result.ok).toBe(false);
-    expect(disposed).toEqual([]);
-  });
+        return ok("processed");
+      };
 
-  it("works with adopt for non-disposable values", () => {
-    let connectionClosed = false;
-
-    interface Connection {
-      readonly query: (sql: string) => Array<string>;
-    }
-
-    const openConnection = (
-      shouldFail: boolean,
-    ): Result<Connection, CreateResourceError> => {
-      if (shouldFail) {
-        return err({
-          type: "CreateResourceError",
-          reason: "Connection failed",
-        });
+      const result = processResources();
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toBe("processed");
       }
-      return ok({
-        query: (sql: string) => [`result for: ${sql}`],
-      });
-    };
+      expect(disposed).toEqual(["file", "db"]);
+    });
 
-    const closeConnection = (_conn: Connection): void => {
-      connectionClosed = true;
-    };
+    it("disposes created resources when later creation fails", () => {
+      const disposed: Array<string> = [];
 
-    const queryDatabase = (): Result<Array<string>, CreateResourceError> => {
-      using stack = new DisposableStack();
+      const processResources = (): Result<string, CreateResourceError> => {
+        using stack = new DisposableStack();
 
-      const conn = openConnection(false);
-      if (!conn.ok) return conn;
+        const resource1 = createResource("db", false);
+        if (!resource1.ok) return resource1;
+        stack.use(resource1.value);
+        stack.defer(() => disposed.push("db"));
 
-      stack.adopt(conn.value, closeConnection);
+        const resource2 = createResource("file", true);
+        if (!resource2.ok) return resource2;
 
-      return ok(conn.value.query("SELECT * FROM users"));
-    };
+        stack.use(resource2.value);
+        stack.defer(() => disposed.push("file"));
 
-    const result = queryDatabase();
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.value).toEqual(["result for: SELECT * FROM users"]);
-    }
-    expect(connectionClosed).toBe(true);
+        return ok("processed");
+      };
+
+      const result = processResources();
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.type).toBe("CreateResourceError");
+        expect(result.error.reason).toBe("Failed to create file");
+      }
+      expect(disposed).toEqual(["db"]);
+    });
+
+    it("disposes nothing when first creation fails", () => {
+      const disposed: Array<string> = [];
+
+      const processResources = (): Result<string, CreateResourceError> => {
+        using stack = new DisposableStack();
+
+        const resource1 = createResource("db", true);
+        if (!resource1.ok) return resource1;
+        stack.use(resource1.value);
+        stack.defer(() => disposed.push("db"));
+
+        return ok("processed");
+      };
+
+      const result = processResources();
+      expect(result.ok).toBe(false);
+      expect(disposed).toEqual([]);
+    });
+
+    it("works with adopt for non-disposable values", () => {
+      let connectionClosed = false;
+
+      interface Connection {
+        readonly query: (sql: string) => Array<string>;
+      }
+
+      const openConnection = (
+        shouldFail: boolean,
+      ): Result<Connection, CreateResourceError> => {
+        if (shouldFail) {
+          return err({
+            type: "CreateResourceError",
+            reason: "Connection failed",
+          });
+        }
+        return ok({
+          query: (sql: string) => [`result for: ${sql}`],
+        });
+      };
+
+      const closeConnection = (_conn: Connection): void => {
+        connectionClosed = true;
+      };
+
+      const queryDatabase = (): Result<Array<string>, CreateResourceError> => {
+        using stack = new DisposableStack();
+
+        const conn = openConnection(false);
+        if (!conn.ok) return conn;
+
+        stack.adopt(conn.value, closeConnection);
+
+        return ok(conn.value.query("SELECT * FROM users"));
+      };
+
+      const result = queryDatabase();
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toEqual(["result for: SELECT * FROM users"]);
+      }
+      expect(connectionClosed).toBe(true);
+    });
+
+    it("handles multiple resources with mixed success/failure", () => {
+      const log: Array<string> = [];
+
+      interface ProcessingError {
+        readonly type: "ProcessingError";
+        readonly step: string;
+      }
+
+      type MyError = CreateResourceError | ProcessingError;
+
+      const process = (): Result<void, MyError> => {
+        using stack = new DisposableStack();
+
+        const db = createResource("db", false);
+        if (!db.ok) return db;
+        stack.use(db.value);
+        stack.defer(() => log.push("cleanup:db"));
+
+        const cache = createResource("cache", false);
+        if (!cache.ok) return cache;
+        stack.use(cache.value);
+        stack.defer(() => log.push("cleanup:cache"));
+
+        log.push("work:step1");
+
+        const step2Result = err({
+          type: "ProcessingError",
+          step: "step2",
+        }) as Result<void, ProcessingError>;
+        if (!step2Result.ok) return step2Result;
+
+        log.push("work:step2");
+        return ok();
+      };
+
+      const result = process();
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.type).toBe("ProcessingError");
+      }
+      expect(log).toEqual(["work:step1", "cleanup:cache", "cleanup:db"]);
+    });
+
+    it("disposes resources even when unexpected error is thrown", () => {
+      const disposed: Array<string> = [];
+
+      const processResources = (): Result<string, CreateResourceError> => {
+        using stack = new DisposableStack();
+
+        const resource1 = createResource("db", false);
+        if (!resource1.ok) return resource1;
+        stack.use(resource1.value);
+        stack.defer(() => disposed.push("db"));
+
+        // Simulate unexpected error (bug in code, not a Result error)
+        throw new Error("Unexpected bug!");
+
+        // This code is unreachable but shows the pattern
+        // return ok("processed");
+      };
+
+      // The unexpected error propagates, but disposal still happens
+      expect(() => processResources()).toThrow("Unexpected bug!");
+      expect(disposed).toEqual(["db"]);
+    });
+
+    it("transfers ownership with move()", () => {
+      const disposed: Array<string> = [];
+
+      const createResources = (): Result<
+        DisposableStack,
+        CreateResourceError
+      > => {
+        using stack = new DisposableStack();
+
+        const r1 = createResource("a", false);
+        if (!r1.ok) return r1;
+        stack.use(r1.value);
+        stack.defer(() => disposed.push("a"));
+
+        const r2 = createResource("b", false);
+        if (!r2.ok) return r2;
+        stack.use(r2.value);
+        stack.defer(() => disposed.push("b"));
+
+        return ok(stack.move());
+      };
+
+      interface TransferError {
+        readonly type: "TransferError";
+      }
+
+      const useResources = (): Result<
+        void,
+        CreateResourceError | TransferError
+      > => {
+        const resources = createResources();
+        if (!resources.ok) return resources;
+
+        using _ = resources.value;
+
+        disposed.push("work");
+
+        return ok();
+      };
+
+      const result = useResources();
+      expect(result.ok).toBe(true);
+      expect(disposed).toEqual(["work", "b", "a"]);
+    });
   });
 
-  it("handles multiple resources with mixed success/failure", () => {
-    const log: Array<string> = [];
+  describe("AsyncDisposableStack", () => {
+    it("disposes async resources on successful completion", async () => {
+      const disposed: Array<string> = [];
 
-    interface ProcessingError {
-      readonly type: "ProcessingError";
-      readonly step: string;
-    }
+      const processResources = async (): Promise<
+        Result<string, CreateResourceError>
+      > => {
+        await using stack = new AsyncDisposableStack();
 
-    type MyError = CreateResourceError | ProcessingError;
+        const resource1 = await createAsyncResource("db", false);
+        if (!resource1.ok) return resource1;
+        stack.use(resource1.value);
+        stack.defer(async () => {
+          await Promise.resolve();
+          disposed.push("db");
+        });
 
-    const process = (): Result<void, MyError> => {
-      using stack = new DisposableStack();
+        const resource2 = await createAsyncResource("file", false);
+        if (!resource2.ok) return resource2;
+        stack.use(resource2.value);
+        stack.defer(async () => {
+          await Promise.resolve();
+          disposed.push("file");
+        });
 
-      const db = createResource("db", false);
-      if (!db.ok) return db;
-      stack.use(db.value);
-      stack.defer(() => log.push("cleanup:db"));
+        return ok("processed");
+      };
 
-      const cache = createResource("cache", false);
-      if (!cache.ok) return cache;
-      stack.use(cache.value);
-      stack.defer(() => log.push("cleanup:cache"));
+      const result = await processResources();
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toBe("processed");
+      }
+      expect(disposed).toEqual(["file", "db"]);
+    });
 
-      log.push("work:step1");
+    it("disposes created async resources when later creation fails", async () => {
+      const disposed: Array<string> = [];
 
-      const step2Result = err({
-        type: "ProcessingError",
-        step: "step2",
-      }) as Result<void, ProcessingError>;
-      if (!step2Result.ok) return step2Result;
+      const processResources = async (): Promise<
+        Result<string, CreateResourceError>
+      > => {
+        await using stack = new AsyncDisposableStack();
 
-      log.push("work:step2");
-      return ok();
-    };
+        const resource1 = await createAsyncResource("db", false);
+        if (!resource1.ok) return resource1;
+        stack.use(resource1.value);
+        stack.defer(async () => {
+          await Promise.resolve();
+          disposed.push("db");
+        });
 
-    const result = process();
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error.type).toBe("ProcessingError");
-    }
-    expect(log).toEqual(["work:step1", "cleanup:cache", "cleanup:db"]);
-  });
+        const resource2 = await createAsyncResource("file", true);
+        if (!resource2.ok) return resource2;
+        stack.use(resource2.value);
+        stack.defer(async () => {
+          await Promise.resolve();
+          disposed.push("file");
+        });
 
-  it("disposes resources even when unexpected error is thrown", () => {
-    const disposed: Array<string> = [];
+        return ok("processed");
+      };
 
-    const processResources = (): Result<string, CreateResourceError> => {
-      using stack = new DisposableStack();
+      const result = await processResources();
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.reason).toBe("Failed to create file");
+      }
+      expect(disposed).toEqual(["db"]);
+    });
 
-      const resource1 = createResource("db", false);
-      if (!resource1.ok) return resource1;
-      stack.use(resource1.value);
-      stack.defer(() => disposed.push("db"));
+    it("can mix sync and async resources", async () => {
+      const disposed: Array<string> = [];
 
-      // Simulate unexpected error (bug in code, not a Result error)
-      throw new Error("Unexpected bug!");
+      const processResources = async (): Promise<
+        Result<string, CreateResourceError>
+      > => {
+        await using stack = new AsyncDisposableStack();
 
-      // This code is unreachable but shows the pattern
-      // return ok("processed");
-    };
+        const syncResource = createResource("sync", false);
+        if (!syncResource.ok) return syncResource;
+        stack.use(syncResource.value);
+        stack.defer(() => {
+          disposed.push("sync");
+        });
 
-    // The unexpected error propagates, but disposal still happens
-    expect(() => processResources()).toThrow("Unexpected bug!");
-    expect(disposed).toEqual(["db"]);
-  });
+        const asyncResource = await createAsyncResource("async", false);
+        if (!asyncResource.ok) return asyncResource;
+        stack.use(asyncResource.value);
+        stack.defer(async () => {
+          await Promise.resolve();
+          disposed.push("async");
+        });
 
-  it("transfers ownership with move()", () => {
-    const disposed: Array<string> = [];
+        return ok("mixed");
+      };
 
-    const createResources = (): Result<
-      DisposableStack,
-      CreateResourceError
-    > => {
-      using stack = new DisposableStack();
-
-      const r1 = createResource("a", false);
-      if (!r1.ok) return r1;
-      stack.use(r1.value);
-      stack.defer(() => disposed.push("a"));
-
-      const r2 = createResource("b", false);
-      if (!r2.ok) return r2;
-      stack.use(r2.value);
-      stack.defer(() => disposed.push("b"));
-
-      return ok(stack.move());
-    };
-
-    interface TransferError {
-      readonly type: "TransferError";
-    }
-
-    const useResources = (): Result<
-      void,
-      CreateResourceError | TransferError
-    > => {
-      const resources = createResources();
-      if (!resources.ok) return resources;
-
-      using _ = resources.value;
-
-      disposed.push("work");
-
-      return ok();
-    };
-
-    const result = useResources();
-    expect(result.ok).toBe(true);
-    expect(disposed).toEqual(["work", "b", "a"]);
-  });
-});
-
-describe("Result with AsyncDisposableStack", () => {
-  it("disposes async resources on successful completion", async () => {
-    const disposed: Array<string> = [];
-
-    const processResources = async (): Promise<
-      Result<string, CreateResourceError>
-    > => {
-      await using stack = new AsyncDisposableStack();
-
-      const resource1 = await createAsyncResource("db", false);
-      if (!resource1.ok) return resource1;
-      stack.use(resource1.value);
-      stack.defer(async () => {
-        await Promise.resolve();
-        disposed.push("db");
-      });
-
-      const resource2 = await createAsyncResource("file", false);
-      if (!resource2.ok) return resource2;
-      stack.use(resource2.value);
-      stack.defer(async () => {
-        await Promise.resolve();
-        disposed.push("file");
-      });
-
-      return ok("processed");
-    };
-
-    const result = await processResources();
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.value).toBe("processed");
-    }
-    expect(disposed).toEqual(["file", "db"]);
-  });
-
-  it("disposes created async resources when later creation fails", async () => {
-    const disposed: Array<string> = [];
-
-    const processResources = async (): Promise<
-      Result<string, CreateResourceError>
-    > => {
-      await using stack = new AsyncDisposableStack();
-
-      const resource1 = await createAsyncResource("db", false);
-      if (!resource1.ok) return resource1;
-      stack.use(resource1.value);
-      stack.defer(async () => {
-        await Promise.resolve();
-        disposed.push("db");
-      });
-
-      const resource2 = await createAsyncResource("file", true);
-      if (!resource2.ok) return resource2;
-      stack.use(resource2.value);
-      stack.defer(async () => {
-        await Promise.resolve();
-        disposed.push("file");
-      });
-
-      return ok("processed");
-    };
-
-    const result = await processResources();
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error.reason).toBe("Failed to create file");
-    }
-    expect(disposed).toEqual(["db"]);
-  });
-
-  it("can mix sync and async resources", async () => {
-    const disposed: Array<string> = [];
-
-    const processResources = async (): Promise<
-      Result<string, CreateResourceError>
-    > => {
-      await using stack = new AsyncDisposableStack();
-
-      const syncResource = createResource("sync", false);
-      if (!syncResource.ok) return syncResource;
-      stack.use(syncResource.value);
-      stack.defer(() => {
-        disposed.push("sync");
-      });
-
-      const asyncResource = await createAsyncResource("async", false);
-      if (!asyncResource.ok) return asyncResource;
-      stack.use(asyncResource.value);
-      stack.defer(async () => {
-        await Promise.resolve();
-        disposed.push("async");
-      });
-
-      return ok("mixed");
-    };
-
-    const result = await processResources();
-    expect(result.ok).toBe(true);
-    expect(disposed).toEqual(["async", "sync"]);
+      const result = await processResources();
+      expect(result.ok).toBe(true);
+      expect(disposed).toEqual(["async", "sync"]);
+    });
   });
 });
