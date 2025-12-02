@@ -29,7 +29,7 @@ try {
 
 ## The solution: `using`
 
-The `using` declaration automatically disposes resources when they go out of scope:
+The [`using`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/using) declaration automatically disposes resources when they go out of scope:
 
 ```ts
 const process = () => {
@@ -54,27 +54,33 @@ For async cleanup, use `[Symbol.asyncDispose]` with `await using`:
 
 ```ts
 interface AsyncDisposable {
-  [Symbol.asyncDispose](): Promise<void>;
+  [Symbol.asyncDispose](): PromiseLike<void>;
 }
 ```
 
-## Block scopes for precise lifetime control
+## Block scopes
 
 Use block scopes to control exactly when resources are disposed:
 
 ```ts
+const createLock = (name: string): Disposable => ({
+  [Symbol.dispose]: () => {
+    console.log(`unlock:${name}`);
+  },
+});
+
 const process = () => {
   console.log("start");
 
   {
-    using lock = acquireLock("a");
+    using lock = createLock("a");
     console.log("critical-section-a");
   } // lock "a" released here
 
   console.log("between");
 
   {
-    using lock = acquireLock("b");
+    using lock = createLock("b");
     console.log("critical-section-b");
   } // lock "b" released here
 
@@ -91,35 +97,6 @@ const process = () => {
 // "end"
 ```
 
-## DisposableStack for multiple resources
-
-When acquiring multiple resources, use `DisposableStack` to ensure all are cleaned up:
-
-```ts
-const processResources = (): Result<string, CreateResourceError> => {
-  using stack = new DisposableStack();
-
-  const db = createResource("db", false);
-  if (!db.ok) return db; // stack disposes nothing yet
-
-  stack.use(db.value);
-
-  const file = createResource("file", false);
-  if (!file.ok) return file; // stack disposes db
-
-  stack.use(file.value);
-
-  return ok("processed");
-}; // stack disposes file, then db (reverse order)
-```
-
-Key methods:
-
-- `stack.use(resource)` — adds a disposable resource
-- `stack.defer(fn)` — adds a cleanup function (like Go's `defer`)
-- `stack.adopt(value, cleanup)` — wraps a non-disposable value with cleanup
-- `stack.move()` — transfers ownership to caller
-
 ## Combining with Result
 
 `Result` and `Disposable` are orthogonal:
@@ -127,22 +104,28 @@ Key methods:
 - **Result** answers: "Did the operation succeed?"
 - **Disposable** answers: "When do we clean up resources?"
 
-They compose naturally:
+Early returns from `Result` checks don't bypass `using`—disposal is guaranteed on any exit path (see below).
+
+## DisposableStack
+
+When acquiring multiple resources, use [`DisposableStack`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DisposableStack) to ensure all are cleaned up:
 
 ```ts
-const process = (): Result<void, MyError> => {
+const processResources = (): Result<string, CreateResourceError> => {
   using stack = new DisposableStack();
 
-  const resource = createResource();
-  if (!resource.ok) return resource; // Early return, stack cleans up
+  const db = createResource("db");
+  if (!db.ok) return db; // stack disposes nothing yet
 
-  stack.use(resource.value);
+  stack.use(db.value);
 
-  const result = doWork(resource.value);
-  if (!result.ok) return result; // Early return, stack cleans up
+  const file = createResource("file");
+  if (!file.ok) return file; // stack disposes db
 
-  return ok();
-}; // Success path, stack cleans up
+  stack.use(file.value);
+
+  return ok("processed");
+}; // stack disposes file, then db (reverse order)
 ```
 
 The pattern is simple:
@@ -153,17 +136,68 @@ The pattern is simple:
 4. If succeeded, add to stack with `stack.use()`
 5. Repeat for additional resources
 
-## Polyfills
+For async resources, use [`AsyncDisposableStack`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack) with `await using`.
 
-Evolu provides polyfills for environments without native support (e.g., Safari):
+Key methods:
 
-- `Symbol.dispose` and `Symbol.asyncDispose`
-- `DisposableStack` and `AsyncDisposableStack`
+- `stack.use(resource)` — adds a disposable resource
+- `stack.defer(fn)` — adds a cleanup function (like Go's `defer`)
+- `stack.adopt(value, cleanup)` — wraps a non-disposable value with cleanup
+- `stack.move()` — transfers ownership to caller
 
-These are installed automatically when importing `@evolu/common`.
+### The use-and-move pattern
+
+When a factory function creates resources for use elsewhere, use `move()` to transfer ownership:
+
+```ts
+interface OpenFiles extends Disposable {
+  readonly handles: ReadonlyArray<FileHandle>;
+}
+
+const openFiles = (
+  paths: ReadonlyArray<string>,
+): Result<OpenFiles, OpenFileError> => {
+  using stack = new DisposableStack();
+
+  const handles: Array<FileHandle> = [];
+  for (const path of paths) {
+    const file = open(path);
+    if (!file.ok) return file; // Error: stack cleans up opened files
+
+    stack.use(file.value);
+    handles.push(file.value);
+  }
+
+  // Success: transfer ownership to caller
+  const cleanup = stack.move();
+  return ok({
+    handles,
+    [Symbol.dispose]: () => cleanup.dispose(),
+  });
+};
+
+const processFiles = (): Result<void, MyError> => {
+  const result = openFiles(["a.txt", "b.txt", "c.txt"]);
+  if (!result.ok) return result;
+
+  using files = result.value;
+
+  // ... use files.handles ...
+
+  return ok();
+}; // files cleaned up here
+```
+
+Without `move()`, the stack would dispose files when `openFiles` returns—even on success.
+
+## Ready to use
+
+Evolu [polyfills](/docs/api-reference/common/Polyfills#resource-management) `Symbol.dispose`, `Symbol.asyncDispose`, `DisposableStack`, and `AsyncDisposableStack` in environments without native support (for example, Safari).
 
 ## Learn more
 
-- See `Result.test.ts` for comprehensive usage patterns
 - [MDN: Resource management](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Resource_management)
 - [MDN: using statement](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/using)
+- [MDN: DisposableStack](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DisposableStack)
+- [MDN: AsyncDisposableStack](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack)
+- [`Result.test.ts`](https://github.com/evoluhq/evolu/blob/main/packages/common/test/Result.test.ts) for comprehensive usage patterns
