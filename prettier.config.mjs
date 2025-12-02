@@ -10,7 +10,7 @@ const prettierConfig = {
 
 /** @type {import("prettier-plugin-embed").PrettierPluginEmbedOptions} */
 const prettierPluginEmbedConfig = {
-  embeddedSqlTags: ["sql", "sql.prepared"],
+  embeddedSqlTags: ["sql", "sql.prepared", "sql.raw"],
   embeddedSqlPlugin: "prettier-plugin-sql-cst",
   embeddedSqlParser: "sqlite",
   sqlKeywordCase: "lower",
