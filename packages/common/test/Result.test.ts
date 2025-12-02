@@ -1,5 +1,6 @@
 import { describe, expect, expectTypeOf, it, test } from "vitest";
 import {
+  Err,
   err,
   getOrThrow,
   InferErr,
@@ -759,5 +760,311 @@ describe("Result with Resource Management", () => {
       expect(result.ok).toBe(true);
       expect(disposed).toEqual(["async", "sync"]);
     });
+  });
+});
+
+/**
+ * This test demonstrates that generator-based monadic composition is possible
+ * with Evolu's Result type, similar to Effect's approach.
+ *
+ * ### Imperative pattern
+ *
+ * ```ts
+ * const imperative = (
+ *   input: string,
+ * ): Result<number, ParseError | ValidationError> => {
+ *   const parsed = parse(input);
+ *   if (!parsed.ok) return parsed;
+ *
+ *   const validated = validate(parsed.value);
+ *   if (!validated.ok) return validated;
+ *
+ *   const doubled = double(validated.value);
+ *   if (!doubled.ok) return doubled;
+ *
+ *   return ok(doubled.value);
+ * };
+ * ```
+ *
+ * Pros:
+ *
+ * - Explicit control flow, easy to follow
+ * - No extra abstractions beyond Result itself
+ * - No generator/iterator overhead
+ *
+ * Cons:
+ *
+ * - Repetitive `if (!x.ok) return x` boilerplate
+ * - Verbose for longer chains (5+ operations)
+ *
+ * ### Generator pattern
+ *
+ * ```ts
+ * const program = function* (
+ *   input: string,
+ * ): Gen<number, ParseError | ValidationError> {
+ *   const parsed = yield* gen(parse(input));
+ *   const validated = yield* gen(validate(parsed));
+ *   const doubled = yield* gen(double(validated));
+ *   return doubled;
+ * };
+ * ```
+ *
+ * Pros:
+ *
+ * - Concise, less boilerplate for multi-step flows
+ * - Reads like straight-line sync code (similar to async/await)
+ * - Automatic error propagation via `yield*`
+ *
+ * Cons:
+ *
+ * - Requires understanding generators plus the Gen/runGen helpers
+ * - Each `gen()` call allocates a generator object (~13x slower, see perf test)
+ * - Less familiar to many JS/TS developers
+ *
+ * ### Performance (Apple M1, 1M iterations, 3-step chain)
+ *
+ * - Generator: 658 ms
+ * - Imperative: 49 ms
+ *
+ * The generator pattern is ~13x slower due to iterator allocation overhead. For
+ * most business logic this is negligible, but matters in hot paths.
+ */
+describe("generator-based composition", () => {
+  interface ParseError {
+    readonly type: "ParseError";
+  }
+
+  interface ValidationError {
+    readonly type: "ValidationError";
+  }
+
+  /** A generator that yields errors and returns a value on success. */
+  type Gen<T, E> = Generator<Err<E>, T>;
+
+  /**
+   * Converts a Result to a Gen for use with yield*.
+   *
+   * @yields {Err<E>} Err if the result is an error
+   */
+  function* gen<T, E>(result: Result<T, E>): Gen<T, E> {
+    if (result.ok) {
+      return result.value;
+    } else {
+      yield result;
+      // This line is never reached - the runner exits on first yielded Err
+      throw new Error("Unreachable");
+    }
+  }
+
+  /** Runs a Gen and returns the Result. */
+  const runGen = <T, E>(gen: Gen<T, E>): Result<T, E> => {
+    const next = gen.next();
+    if (!next.done) {
+      // Generator yielded an Err - force cleanup by calling return()
+      // This triggers finally blocks and `using` disposal in the generator
+      gen.return(undefined as T);
+      return next.value;
+    }
+    return ok(next.value);
+  };
+
+  const parse = (input: string): Result<number, ParseError> => {
+    const n = parseInt(input, 10);
+    return isNaN(n) ? err({ type: "ParseError" }) : ok(n);
+  };
+
+  const validate = (n: number): Result<number, ValidationError> =>
+    n > 0 ? ok(n) : err({ type: "ValidationError" });
+
+  const double = (n: number): Result<number, never> => ok(n * 2);
+
+  it("composes multiple Results with generators", () => {
+    const program = function* (
+      input: string,
+    ): Gen<number, ParseError | ValidationError> {
+      const parsed = yield* gen(parse(input));
+      const validated = yield* gen(validate(parsed));
+      const doubled = yield* gen(double(validated));
+      return doubled;
+    };
+
+    // Success case
+    const success = runGen(program("21"));
+    expect(success).toStrictEqual(ok(42));
+
+    // Parse error
+    const parseErr = runGen(program("not a number"));
+    expect(parseErr).toStrictEqual(err({ type: "ParseError" }));
+
+    // Validation error
+    const validationErr = runGen(program("-5"));
+    expect(validationErr).toStrictEqual(err({ type: "ValidationError" }));
+  });
+
+  it("is equivalent to imperative pattern", () => {
+    // Generator version
+    const withGenerator = (
+      input: string,
+    ): Result<number, ParseError | ValidationError> => {
+      const program = function* (): Gen<number, ParseError | ValidationError> {
+        const parsed = yield* gen(parse(input));
+        const validated = yield* gen(validate(parsed));
+        const doubled = yield* gen(double(validated));
+        return doubled;
+      };
+      return runGen(program());
+    };
+
+    // Imperative version
+    const imperative = (
+      input: string,
+    ): Result<number, ParseError | ValidationError> => {
+      const parsed = parse(input);
+      if (!parsed.ok) return parsed;
+
+      const validated = validate(parsed.value);
+      if (!validated.ok) return validated;
+
+      const doubled = double(validated.value);
+      if (!doubled.ok) return doubled;
+
+      return ok(doubled.value);
+    };
+
+    // Both produce identical results
+    expect(withGenerator("21")).toStrictEqual(imperative("21"));
+    expect(withGenerator("abc")).toStrictEqual(imperative("abc"));
+    expect(withGenerator("-5")).toStrictEqual(imperative("-5"));
+  });
+
+  it("shows type inference works correctly", () => {
+    const program = function* (): Gen<number, ParseError | ValidationError> {
+      const a = yield* gen(parse("10"));
+      const b = yield* gen(validate(a));
+      return b * 2;
+    };
+
+    const result = runGen(program());
+
+    expectTypeOf(result).toEqualTypeOf<
+      Result<number, ParseError | ValidationError>
+    >();
+  });
+
+  test.skip("generator vs imperative performance", () => {
+    const ITERATIONS = 1_000_000;
+
+    // Generator version
+    const withGenerator = (input: string): Result<number, ParseError> =>
+      runGen(
+        (function* (): Gen<number, ParseError> {
+          const a = yield* gen(parse(input));
+          const b = yield* gen(parse(String(a + 1)));
+          const c = yield* gen(parse(String(b + 1)));
+          return c;
+        })(),
+      );
+
+    // Imperative version
+    const imperative = (input: string): Result<number, ParseError> => {
+      const a = parse(input);
+      if (!a.ok) return a;
+      const b = parse(String(a.value + 1));
+      if (!b.ok) return b;
+      const c = parse(String(b.value + 1));
+      if (!c.ok) return c;
+      return ok(c.value);
+    };
+
+    const generatorStart = performance.now();
+    for (let i = 0; i < ITERATIONS; i++) {
+      withGenerator("1");
+    }
+    const generatorTime = performance.now() - generatorStart;
+
+    const imperativeStart = performance.now();
+    for (let i = 0; i < ITERATIONS; i++) {
+      imperative("1");
+    }
+    const imperativeTime = performance.now() - imperativeStart;
+
+    // eslint-disable-next-line no-console
+    console.log(`Generator:  ${generatorTime.toFixed(2)} ms`);
+    // eslint-disable-next-line no-console
+    console.log(`Imperative: ${imperativeTime.toFixed(2)} ms`);
+    // eslint-disable-next-line no-console
+    console.log(
+      `Difference: ${(generatorTime - imperativeTime).toFixed(2)} ms (${((generatorTime / imperativeTime - 1) * 100).toFixed(1)}% slower)`,
+    );
+  });
+
+  it("disposes resources when generator exits early on error", () => {
+    // This test demonstrates that runGen properly cleans up resources
+    // by calling gen.return() when it encounters an error.
+    // This triggers finally blocks and `using` disposal in the generator.
+
+    const disposed: Array<string> = [];
+
+    const createTestResource = (
+      id: string,
+      shouldFail: boolean,
+    ): Result<Disposable, ParseError> => {
+      if (shouldFail) return err({ type: "ParseError" });
+      return ok({
+        [Symbol.dispose]: () => {
+          disposed.push(id);
+        },
+      });
+    };
+
+    const program = function* (): Gen<string, ParseError> {
+      using stack = new DisposableStack();
+
+      const r1 = yield* gen(createTestResource("db", false));
+      stack.use(r1);
+
+      // This fails - generator yields Err and runGen calls gen.return()
+      const r2 = yield* gen(createTestResource("file", true));
+      stack.use(r2);
+
+      return "done";
+    };
+
+    const result = runGen(program());
+
+    expect(result.ok).toBe(false);
+    // Resources ARE disposed because runGen calls gen.return() on error
+    expect(disposed).toEqual(["db"]);
+  });
+
+  it("disposes resources when generator completes successfully", () => {
+    const disposed: Array<string> = [];
+
+    const createTestResource = (id: string): Result<Disposable, ParseError> =>
+      ok({
+        [Symbol.dispose]: () => {
+          disposed.push(id);
+        },
+      });
+
+    const program = function* (): Gen<string, ParseError> {
+      using stack = new DisposableStack();
+
+      const r1 = yield* gen(createTestResource("db"));
+      stack.use(r1);
+
+      const r2 = yield* gen(createTestResource("file"));
+      stack.use(r2);
+
+      return "done";
+    };
+
+    const result = runGen(program());
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toBe("done");
+    // Resources ARE disposed on successful completion
+    expect(disposed).toEqual(["file", "db"]);
   });
 });
