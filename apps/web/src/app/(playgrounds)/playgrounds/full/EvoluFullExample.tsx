@@ -654,15 +654,15 @@ const AccountTab: FC = () => {
 
   const handleDownloadDatabaseClick = () => {
     void evolu.exportDatabase().then((array) => {
-      const blob = new Blob([array], {
-        type: "application/x-sqlite3",
-      });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "todos.sqlite3";
-      a.click();
-      window.URL.revokeObjectURL(url);
+      const blob = new Blob([array], { type: "application/x-sqlite3" });
+
+      using stack = new DisposableStack();
+      const link = document.createElement("a");
+      const url = stack.adopt(URL.createObjectURL(blob), URL.revokeObjectURL);
+
+      link.href = url;
+      link.download = `${evolu.name}.sqlite3`;
+      link.click();
     });
   };
 

@@ -109,6 +109,9 @@ export interface EvoluConfig extends Partial<DbConfig> {
 }
 
 export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
+  /** The name of the Evolu instance from {@link EvoluConfig}. */
+  readonly name: SimpleName;
+
   /**
    * Subscribe to {@link EvoluError} changes.
    *
@@ -805,6 +808,8 @@ const createEvoluInstance =
     };
 
     const evolu: InternalEvoluInstance = {
+      name: dbConfig.name,
+
       subscribeError: errorStore.subscribe,
       getError: errorStore.get,
 
