@@ -23,6 +23,39 @@ import Foo from "Foo.ts";
 export const Utils = { ok, trySync };
 ```
 
+## Functions
+
+- **Use arrow functions** - avoid the `function` keyword for consistency
+- **Exception: function overloads** - TypeScript requires the `function` keyword for overloaded signatures
+
+```ts
+// ✅ Good - Arrow function
+export const createUser = (data: UserData): User => {
+  // implementation
+};
+
+// ✅ Good - Function overloads (requires function keyword)
+export function mapArray<T, U>(
+  array: NonEmptyReadonlyArray<T>,
+  mapper: (item: T) => U,
+): NonEmptyReadonlyArray<U>;
+export function mapArray<T, U>(
+  array: ReadonlyArray<T>,
+  mapper: (item: T) => U,
+): ReadonlyArray<U>;
+export function mapArray<T, U>(
+  array: ReadonlyArray<T>,
+  mapper: (item: T) => U,
+): ReadonlyArray<U> {
+  return array.map(mapper) as ReadonlyArray<U>;
+}
+
+// ❌ Avoid - function keyword without overloads
+export function createUser(data: UserData): User {
+  // implementation
+}
+```
+
 ## Immutability
 
 - **Favor immutability** - use `readonly` properties and `ReadonlyArray`/`NonEmptyReadonlyArray`
