@@ -7,7 +7,10 @@ import {
 import { assert, assertNonEmptyReadonlyArray } from "../Assert.js";
 import { createCallbacks } from "../Callbacks.js";
 import { ConsoleDep } from "../Console.js";
-import { RandomBytesDep, SymmetricCryptoDecryptError } from "../Crypto.js";
+import {
+  DecryptWithXChaCha20Poly1305Error,
+  RandomBytesDep,
+} from "../Crypto.js";
 import { eqArrayNumber } from "../Eq.js";
 import { TransferableError } from "../Error.js";
 import { exhaustiveCheck } from "../Function.js";
@@ -102,7 +105,7 @@ export interface EvoluConfig extends Partial<DbConfig> {
    *
    * The default value is `/`.
    *
-   * Note: This option will be moved to web platform deps in the next major
+   * TODO: This option will be moved to web platform deps in the next major
    * version.
    */
   readonly reloadUrl?: string;
@@ -464,7 +467,7 @@ export type UnuseOwner = () => void;
 export type EvoluError =
   | ProtocolError
   | SqliteError
-  | SymmetricCryptoDecryptError
+  | DecryptWithXChaCha20Poly1305Error
   | TimestampError
   | TransferableError;
 
