@@ -1,5 +1,4 @@
 import Alert from "@blazejkustra/react-native-alert";
-import type { Evolu as EvoluType } from "@evolu/common";
 import * as Evolu from "@evolu/common";
 import { createUseEvolu, EvoluProvider, useQuery } from "@evolu/react";
 import { EvoluIdenticon } from "@evolu/react-native";
@@ -42,7 +41,7 @@ const Schema = {
 export default function Index(): React.ReactNode {
   const [authResult, setAuthResult] = useState<Evolu.AuthResult | null>(null);
   const [ownerIds, setOwnerIds] = useState<Array<Evolu.AuthList> | null>(null);
-  const [evolu, setEvolu] = useState<EvoluType<typeof Schema> | null>(null);
+  const [evolu, setEvolu] = useState<Evolu.Evolu<typeof Schema> | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -59,7 +58,7 @@ export default function Index(): React.ReactNode {
         // }),
       });
 
-      setEvolu(evolu as EvoluType<typeof Schema>);
+      setEvolu(evolu as Evolu.Evolu<typeof Schema>);
       setOwnerIds(ownerIds);
       setAuthResult(authResult);
 
@@ -101,7 +100,7 @@ const EvoluDemo = ({
   ownerIds,
   authResult,
 }: {
-  evolu: EvoluType<typeof Schema>;
+  evolu: Evolu.Evolu<typeof Schema>;
   ownerIds: Array<Evolu.AuthList> | null;
   authResult: Evolu.AuthResult | null;
 }): React.ReactNode => {

@@ -209,32 +209,6 @@ const isAbortError = (error: unknown): error is AbortError =>
   error !== null &&
   (error as { type?: unknown }).type === "AbortError";
 
-// For React Native
-if (typeof AbortSignal.any !== "function") {
-  AbortSignal.any = function (signals: Array<AbortSignal>): AbortSignal {
-    const controller = new AbortController();
-
-    const onAbort = (event: Event) => {
-      controller.abort((event.target as AbortSignal).reason);
-      cleanup();
-    };
-
-    const cleanup = () => {
-      for (const s of signals) s.removeEventListener("abort", onAbort);
-    };
-
-    for (const s of signals) {
-      if (s.aborted) {
-        controller.abort(s.reason);
-        return controller.signal;
-      }
-      s.addEventListener("abort", onAbort);
-    }
-
-    return controller.signal;
-  };
-}
-
 /**
  * Combines user signal from context with an internal signal.
  *
@@ -322,21 +296,6 @@ export const toTask = <T, E>(
       }),
     ]);
   }) as Task<T, E>;
-
-// For React Native
-if (typeof AbortSignal.timeout !== "function") {
-  AbortSignal.timeout = function (ms: number): AbortSignal {
-    const controller = new AbortController();
-    const id = setTimeout(() => {
-      controller.abort();
-    }, ms);
-    // clear timeout if aborted early
-    controller.signal.addEventListener("abort", () => {
-      clearTimeout(id);
-    });
-    return controller.signal;
-  };
-}
 
 /**
  * Creates a {@link Task} that waits for the specified duration.

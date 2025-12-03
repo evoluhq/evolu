@@ -1,6 +1,8 @@
 import { install } from "react-native-quick-crypto";
+import { installPolyfills } from "../polyfills";
 
 install();
+installPolyfills();
 
 import { Stack } from "expo-router";
 

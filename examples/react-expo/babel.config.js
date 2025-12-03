@@ -15,6 +15,8 @@ module.exports = function (api) {
       // For Kysely to work with Hermes
       "@babel/plugin-transform-dynamic-import",
       "@babel/plugin-transform-modules-commonjs",
+      // For ECMAScript 'using' statement support
+      "@babel/plugin-transform-explicit-resource-management",
     ],
   };
 };

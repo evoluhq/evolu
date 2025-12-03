@@ -15,23 +15,6 @@ import {
   ReloadAppDep,
 } from "@evolu/common/local-first";
 
-/**
- * Polyfills `Promise.withResolvers`.
- *
- * @see https://github.com/facebook/hermes/pull/1452
- */
-if (typeof Promise.withResolvers === "undefined") {
-  // @ts-expect-error This is OK.
-  Promise.withResolvers = function () {
-    let resolve, reject;
-    const promise = new Promise((res, rej) => {
-      resolve = res;
-      reject = rej;
-    });
-    return { promise, resolve, reject };
-  };
-}
-
 const console = createConsole();
 const randomBytes = createRandomBytes();
 const time = createTime();
