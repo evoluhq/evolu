@@ -1,38 +1,38 @@
 import { bytesToHex, utf8ToBytes } from "@noble/ciphers/utils.js";
 import { assert, expect, test } from "vitest";
 import {
-  createSlip21,
-  createSymmetricCrypto,
   createPadmePaddedLength,
   createPadmePadding,
+  createSlip21,
+  decryptWithXChaCha20Poly1305,
+  encryptWithXChaCha20Poly1305,
+  XChaCha20Poly1305Ciphertext,
 } from "../src/Crypto.js";
 import { mnemonicToOwnerSecret } from "../src/index.js";
 import { ok } from "../src/Result.js";
 import { Mnemonic, NonNegativeInt } from "../src/Type.js";
 import { testDeps, testOwner } from "./_deps.js";
 
-test("SymmetricCrypto", () => {
-  const symmetricCrypto = createSymmetricCrypto(testDeps);
-
+test("encryptWithXChaCha20Poly1305 / decryptWithXChaCha20Poly1305", () => {
   const plaintext = utf8ToBytes("Hello, world!");
   const encryptionKey = testOwner.encryptionKey;
 
-  const { nonce, ciphertext } = symmetricCrypto.encrypt(
+  const [ciphertext, nonce] = encryptWithXChaCha20Poly1305(testDeps)(
     plaintext,
     encryptionKey,
   );
 
-  expect(symmetricCrypto.decrypt(ciphertext, encryptionKey, nonce)).toEqual(
-    ok(plaintext),
-  );
+  expect(
+    decryptWithXChaCha20Poly1305(ciphertext, nonce, encryptionKey),
+  ).toEqual(ok(plaintext));
 
-  const result = symmetricCrypto.decrypt(
-    new Uint8Array([1, 2, 3]),
-    encryptionKey,
+  const result = decryptWithXChaCha20Poly1305(
+    XChaCha20Poly1305Ciphertext.orThrow(new Uint8Array([1, 2, 3])),
     nonce,
+    encryptionKey,
   );
   assert(!result.ok);
-  expect(result.error.type).toBe("SymmetricCryptoDecryptError");
+  expect(result.error.type).toBe("DecryptWithXChaCha20Poly1305Error");
 });
 
 test("createPadmePaddedLength", () => {

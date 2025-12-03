@@ -2,7 +2,6 @@ import {
   createConsole,
   createLocalAuth,
   createRandomBytes,
-  createSymmetricCrypto,
   createTime,
 } from "@evolu/common";
 import {
@@ -16,7 +15,6 @@ import { createWebAuthnStore } from "./LocalAuth.js";
 import { reloadApp } from "./Platform.js";
 
 const randomBytes = createRandomBytes();
-const symmetricCrypto = createSymmetricCrypto({ randomBytes });
 
 const createDbWorker: CreateDbWorker = (name) =>
   createSharedWebWorker<DbWorkerInput, DbWorkerOutput>(
@@ -29,7 +27,7 @@ const createDbWorker: CreateDbWorker = (name) =>
 
 export const localAuth = createLocalAuth({
   randomBytes,
-  secureStorage: createWebAuthnStore({ randomBytes, symmetricCrypto }),
+  secureStorage: createWebAuthnStore({ randomBytes }),
 });
 
 export const evoluWebDeps: EvoluDeps = {

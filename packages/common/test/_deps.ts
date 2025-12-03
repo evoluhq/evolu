@@ -2,12 +2,7 @@ import { CreateWebSocket, TimingSafeEqual, WebSocket } from "@evolu/common";
 import BetterSQLite, { Statement } from "better-sqlite3";
 import { timingSafeEqual } from "crypto";
 import { Console } from "../src/Console.js";
-import {
-  createSymmetricCrypto,
-  RandomBytes,
-  RandomBytesDep,
-  SymmetricCryptoDep,
-} from "../src/Crypto.js";
+import { RandomBytes, RandomBytesDep } from "../src/Crypto.js";
 import { constFalse, constTrue, constVoid } from "../src/Function.js";
 import {
   createAppOwner,
@@ -64,13 +59,10 @@ export const testCreateId = (): Id => createId(randomBytesDep);
 export const testOwnerSecret = createOwnerSecret(randomBytesDep);
 export const testOwnerSecret2 = createOwnerSecret(randomBytesDep);
 
-export const testSymmetricCrypto = createSymmetricCrypto(randomBytesDep);
-
-type TestDeps = RandomBytesDep & SymmetricCryptoDep & TimeDep;
+type TestDeps = RandomBytesDep & TimeDep;
 
 export const testDeps: TestDeps = {
   randomBytes: testRandomBytes,
-  symmetricCrypto: testSymmetricCrypto,
   time: testTime,
 };
 

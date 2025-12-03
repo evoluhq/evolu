@@ -9,9 +9,8 @@ import { assertNonEmptyReadonlyArray } from "../Assert.js";
 import { Brand } from "../Brand.js";
 import { ConsoleDep } from "../Console.js";
 import {
+  DecryptWithXChaCha20Poly1305Error,
   RandomBytesDep,
-  SymmetricCryptoDecryptError,
-  SymmetricCryptoDep,
 } from "../Crypto.js";
 import { createTransferableError, TransferableError } from "../Error.js";
 import { constFalse, constTrue } from "../Function.js";
@@ -143,7 +142,7 @@ export interface SyncConfig {
       | ProtocolInvalidDataError
       | ProtocolTimestampMismatchError
       | SqliteError
-      | SymmetricCryptoDecryptError
+      | DecryptWithXChaCha20Poly1305Error
       | TimestampCounterOverflowError
       | TimestampDriftError
       | TimestampTimeOutOfRangeError
@@ -163,7 +162,6 @@ export const createSync =
       RandomBytesDep &
       RandomDep &
       SqliteDep &
-      SymmetricCryptoDep &
       TimeDep &
       TimestampConfigDep,
   ) =>
@@ -448,9 +446,9 @@ const createClientStorage =
     deps: ClockDep &
       DbSchemaDep &
       GetSyncOwnerDep &
+      RandomBytesDep &
       RandomDep &
       SqliteDep &
-      SymmetricCryptoDep &
       TimeDep &
       TimestampConfigDep,
   ) =>
@@ -460,7 +458,7 @@ const createClientStorage =
         | ProtocolInvalidDataError
         | ProtocolTimestampMismatchError
         | SqliteError
-        | SymmetricCryptoDecryptError
+        | DecryptWithXChaCha20Poly1305Error
         | TimestampCounterOverflowError
         | TimestampDriftError
         | TimestampTimeOutOfRangeError,
@@ -492,7 +490,7 @@ const createClientStorage =
           | ProtocolInvalidDataError
           | ProtocolTimestampMismatchError
           | SqliteError
-          | SymmetricCryptoDecryptError
+          | DecryptWithXChaCha20Poly1305Error
           | TimestampCounterOverflowError
           | TimestampDriftError
           | TimestampTimeOutOfRangeError
@@ -512,7 +510,7 @@ const createClientStorage =
           const messages: Array<CrdtMessage> = [];
 
           for (const message of encryptedMessages) {
-            const change = decryptAndDecodeDbChange(deps)(
+            const change = decryptAndDecodeDbChange(
               message,
               owner.encryptionKey,
             );

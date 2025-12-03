@@ -28,6 +28,7 @@ export interface RandomBytes {
    * Returns specific branded types for common sizes:
    *
    * - `Random16` for 16-byte values (128 bits)
+   * - `Random24` for 24-byte values (192 bits)
    * - `Random32` for 32-byte values (256 bits)
    * - `Random64` for 64-byte values (512 bits)
    * - `Random` for any other size
@@ -36,12 +37,14 @@ export interface RandomBytes {
    *
    * ```ts
    * const nonce = randomBytes.create(16); // Type: Random16
+   * const nonce24 = randomBytes.create(24); // Type: Random24
    * const key = randomBytes.create(32); // Type: Random32
    * const seed = randomBytes.create(64); // Type: Random64
    * const custom = randomBytes.create(48); // Type: Random
    * ```
    */
   create(bytesLength: 16): Entropy16;
+  create(bytesLength: 24): Entropy24;
   create(bytesLength: 32): Entropy32;
   create(bytesLength: 64): Entropy64;
   create(bytesLength: number): Entropy;
@@ -56,6 +59,9 @@ type Entropy = typeof Entropy.Type;
 
 export const Entropy16 = length(16)(Entropy);
 export type Entropy16 = typeof Entropy16.Type;
+
+export const Entropy24 = length(24)(Entropy);
+export type Entropy24 = typeof Entropy24.Type;
 
 export const Entropy32 = length(32)(Entropy);
 export type Entropy32 = typeof Entropy32.Type;
@@ -106,71 +112,95 @@ export const deriveSlip21Node = (
   return hmac(sha512, parentNode.slice(0, 32), message) as Entropy64;
 };
 
-/** The encryption key for {@link SymmetricCrypto}. */
+/** The encryption key for symmetric encryption. */
 export const EncryptionKey = brand("EncryptionKey", Entropy32);
 export type EncryptionKey = typeof EncryptionKey.Type;
 
-/** Symmetric cryptography. */
-export interface SymmetricCrypto {
-  readonly nonceLength: NonNegativeInt;
+/** The nonce length for XChaCha20-Poly1305 encryption. */
+export const xChaCha20Poly1305NonceLength = 24;
 
-  readonly encrypt: (
+/**
+ * Branded Uint8Array for XChaCha20-Poly1305 encryption.
+ *
+ * @see {@link encryptWithXChaCha20Poly1305}
+ */
+export const XChaCha20Poly1305Ciphertext = brand(
+  "XChaCha20Poly1305Ciphertext",
+  Uint8Array,
+);
+export type XChaCha20Poly1305Ciphertext =
+  typeof XChaCha20Poly1305Ciphertext.Type;
+
+/**
+ * Encrypts plaintext with XChaCha20-Poly1305.
+ *
+ * Generates a random nonce internally and returns both the ciphertext and
+ * nonce. The nonce must be stored alongside the ciphertext for decryption.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const deps = { randomBytes: createRandomBytes() };
+ * const [ciphertext, nonce] = encryptWithXChaCha20Poly1305(deps)(
+ *   utf8ToBytes("secret message"),
+ *   encryptionKey,
+ * );
+ * ```
+ *
+ * @see https://github.com/paulmillr/noble-ciphers
+ */
+export const encryptWithXChaCha20Poly1305 =
+  (deps: RandomBytesDep) =>
+  (
     plaintext: Uint8Array,
     encryptionKey: EncryptionKey,
-  ) => {
-    readonly nonce: Uint8Array;
-    readonly ciphertext: Uint8Array;
+  ): [XChaCha20Poly1305Ciphertext, Entropy24] => {
+    const nonce = deps.randomBytes.create(xChaCha20Poly1305NonceLength);
+    const ciphertext = XChaCha20Poly1305Ciphertext.orThrow(
+      xchacha20poly1305(encryptionKey, nonce).encrypt(plaintext),
+    );
+    return [ciphertext, nonce];
   };
 
-  readonly decrypt: (
-    ciphertext: Uint8Array,
-    encryptionKey: EncryptionKey,
-    nonce: Uint8Array,
-  ) => Result<Uint8Array, SymmetricCryptoDecryptError>;
-}
-
-export interface SymmetricCryptoDep {
-  readonly symmetricCrypto: SymmetricCrypto;
-}
-
-export interface SymmetricCryptoDecryptError {
-  readonly type: "SymmetricCryptoDecryptError";
+export interface DecryptWithXChaCha20Poly1305Error {
+  readonly type: "DecryptWithXChaCha20Poly1305Error";
   readonly error: unknown;
 }
 
 /**
- * XChaCha20-Poly1305 encryption
+ * Decrypts ciphertext with XChaCha20-Poly1305.
  *
- * https://github.com/paulmillr/noble-ciphers?tab=readme-ov-file#which-cipher-should-i-pick
+ * Requires the same nonce that was used during encryption. Returns a
+ * {@link Result} that may contain a decryption error if the ciphertext was
+ * tampered with or the wrong key/nonce was used.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const result = decryptWithXChaCha20Poly1305(
+ *   ciphertext,
+ *   nonce,
+ *   encryptionKey,
+ * );
+ * if (!result.ok) {
+ *   // Handle decryption error
+ *   return result;
+ * }
+ * const plaintext = result.value;
+ * ```
  */
-export const createSymmetricCrypto = (
-  deps: RandomBytesDep,
-): SymmetricCrypto => {
-  const nonceLength = NonNegativeInt.orThrow(24);
-
-  const symmetricCrypto: SymmetricCrypto = {
-    nonceLength,
-
-    encrypt: (plaintext, encryptionKey) => {
-      const nonce = deps.randomBytes.create(nonceLength);
-      const ciphertext = xchacha20poly1305(encryptionKey, nonce).encrypt(
-        plaintext,
-      );
-      return { nonce, ciphertext };
-    },
-
-    decrypt: (ciphertext, encryptionKey, nonce) =>
-      trySync(
-        () => xchacha20poly1305(encryptionKey, nonce).decrypt(ciphertext),
-        (error): SymmetricCryptoDecryptError => ({
-          type: "SymmetricCryptoDecryptError",
-          error,
-        }),
-      ),
-  };
-
-  return symmetricCrypto;
-};
+export const decryptWithXChaCha20Poly1305 = (
+  ciphertext: XChaCha20Poly1305Ciphertext,
+  nonce: Entropy24,
+  encryptionKey: EncryptionKey,
+): Result<Uint8Array, DecryptWithXChaCha20Poly1305Error> =>
+  trySync(
+    () => xchacha20poly1305(encryptionKey, nonce).decrypt(ciphertext),
+    (error): DecryptWithXChaCha20Poly1305Error => ({
+      type: "DecryptWithXChaCha20Poly1305Error",
+      error,
+    }),
+  );
 
 /**
  * Returns the PADMÉ padded length for a given input length.

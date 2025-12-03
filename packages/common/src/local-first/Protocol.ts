@@ -191,10 +191,14 @@ import {
 } from "../Buffer.js";
 import {
   createPadmePadding,
+  decryptWithXChaCha20Poly1305,
+  DecryptWithXChaCha20Poly1305Error,
   EncryptionKey,
+  encryptWithXChaCha20Poly1305,
+  Entropy24,
   RandomBytesDep,
-  SymmetricCryptoDecryptError,
-  SymmetricCryptoDep,
+  XChaCha20Poly1305Ciphertext,
+  xChaCha20Poly1305NonceLength,
 } from "../Crypto.js";
 import { eqArrayNumber } from "../Eq.js";
 import { computeBalancedBuckets } from "../Number.js";
@@ -453,7 +457,7 @@ export interface ProtocolTimestampMismatchError {
  * unidirectional and stateless transports.
  */
 export const createProtocolMessageFromCrdtMessages =
-  (deps: RandomBytesDep & SymmetricCryptoDep) =>
+  (deps: RandomBytesDep) =>
   (
     owner: Owner,
     messages: NonEmptyReadonlyArray<CrdtMessage>,
@@ -1715,7 +1719,7 @@ export const decodeFlags = (
  * data.
  */
 export const encodeAndEncryptDbChange =
-  (deps: SymmetricCryptoDep) =>
+  (deps: RandomBytesDep) =>
   (message: CrdtMessage, key: EncryptionKey): EncryptedDbChange => {
     const buffer = createBuffer();
 
@@ -1745,7 +1749,7 @@ export const encodeAndEncryptDbChange =
     // Add PADMÉ padding (ignored during decoding)
     buffer.extend(createPadmePadding(buffer.getLength()));
 
-    const { nonce, ciphertext } = deps.symmetricCrypto.encrypt(
+    const [ciphertext, nonce] = encryptWithXChaCha20Poly1305(deps)(
       buffer.unwrap(),
       key,
     );
@@ -1763,78 +1767,76 @@ export const encodeAndEncryptDbChange =
  * owner's encryption key. Verifies that the embedded timestamp matches the
  * expected timestamp to ensure message integrity.
  */
-export const decryptAndDecodeDbChange =
-  (deps: SymmetricCryptoDep) =>
-  (
-    message: EncryptedCrdtMessage,
-    key: EncryptionKey,
-  ): Result<
-    DbChange,
-    | SymmetricCryptoDecryptError
-    | ProtocolInvalidDataError
-    | ProtocolTimestampMismatchError
-  > => {
-    try {
-      const buffer = createBuffer(message.change);
+export const decryptAndDecodeDbChange = (
+  message: EncryptedCrdtMessage,
+  key: EncryptionKey,
+): Result<
+  DbChange,
+  | DecryptWithXChaCha20Poly1305Error
+  | ProtocolInvalidDataError
+  | ProtocolTimestampMismatchError
+> => {
+  try {
+    const buffer = createBuffer(message.change);
 
-      const nonce = buffer.shiftN(deps.symmetricCrypto.nonceLength);
-      const ciphertext = buffer.shiftN(decodeLength(buffer));
+    const nonce = buffer.shiftN(xChaCha20Poly1305NonceLength as NonNegativeInt);
+    const ciphertext = buffer.shiftN(decodeLength(buffer));
 
-      const plaintextBytes = deps.symmetricCrypto.decrypt(
-        ciphertext,
-        key,
-        nonce,
-      );
-      if (!plaintextBytes.ok) return plaintextBytes;
+    const plaintextBytes = decryptWithXChaCha20Poly1305(
+      XChaCha20Poly1305Ciphertext.orThrow(ciphertext),
+      Entropy24.orThrow(nonce),
+      key,
+    );
+    if (!plaintextBytes.ok) return plaintextBytes;
 
-      buffer.reset();
-      buffer.extend(plaintextBytes.value);
+    buffer.reset();
+    buffer.extend(plaintextBytes.value);
 
-      // Decode version (for future compatibility, not need yet)
-      decodeNonNegativeInt(buffer);
+    // Decode version (for future compatibility, not need yet)
+    decodeNonNegativeInt(buffer);
 
-      const timestamp = timestampBytesToTimestamp(
-        buffer.shiftN(timestampBytesLength) as TimestampBytes,
-      );
+    const timestamp = timestampBytesToTimestamp(
+      TimestampBytes.orThrow(buffer.shiftN(timestampBytesLength)),
+    );
 
-      if (!eqTimestamp(timestamp, message.timestamp)) {
-        return err<ProtocolTimestampMismatchError>({
-          type: "ProtocolTimestampMismatchError",
-          expected: message.timestamp,
-          timestamp,
-        });
-      }
-
-      const flags = decodeFlags(buffer, PositiveInt.orThrow(3));
-      const table = decodeString(buffer);
-      const id = decodeId(buffer);
-
-      const length = decodeLength(buffer);
-      const values = createRecord<string, SqliteValue>();
-
-      for (let i = 0; i < length; i++) {
-        const column = decodeString(buffer);
-        const value = decodeSqliteValue(buffer);
-        values[column] = value;
-      }
-
-      const dbChange = DbChange.orThrow({
-        table,
-        id,
-        values,
-        isInsert: flags[0],
-        isDelete: flags[1] ? flags[2] : null,
-      });
-
-      return ok(dbChange);
-    } catch (error) {
-      return err<ProtocolInvalidDataError>({
-        type: "ProtocolInvalidDataError",
-        data: message.change,
-        error,
+    if (!eqTimestamp(timestamp, message.timestamp)) {
+      return err<ProtocolTimestampMismatchError>({
+        type: "ProtocolTimestampMismatchError",
+        expected: message.timestamp,
+        timestamp,
       });
     }
-  };
+
+    const flags = decodeFlags(buffer, PositiveInt.orThrow(3));
+    const table = decodeString(buffer);
+    const id = decodeId(buffer);
+
+    const length = decodeLength(buffer);
+    const values = createRecord<string, SqliteValue>();
+
+    for (let i = 0; i < length; i++) {
+      const column = decodeString(buffer);
+      const value = decodeSqliteValue(buffer);
+      values[column] = value;
+    }
+
+    const dbChange = DbChange.orThrow({
+      table,
+      id,
+      values,
+      isInsert: flags[0],
+      isDelete: flags[1] ? flags[2] : null,
+    });
+
+    return ok(dbChange);
+  } catch (error) {
+    return err<ProtocolInvalidDataError>({
+      type: "ProtocolInvalidDataError",
+      data: message.change,
+      error,
+    });
+  }
+};
 
 /**
  * Encodes a non-negative integer into a variable-length integer format. It's
