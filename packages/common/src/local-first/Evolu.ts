@@ -25,7 +25,6 @@ import {
   SqliteQuery,
 } from "../Sqlite.js";
 import { createStore, StoreSubscribe } from "../Store.js";
-import { TimeDep } from "../Time.js";
 import {
   createId,
   Id,
@@ -481,20 +480,21 @@ interface InternalEvoluInstance<
   readonly ensureSchema: (schema: EvoluSchema) => void;
 }
 
-export type EvoluDeps = ConsoleDep &
-  CreateDbWorkerDep &
-  Partial<FlushSyncDep> &
-  RandomBytesDep &
-  ReloadAppDep &
-  TimeDep;
-
 const evoluInstances = createInstances<SimpleName, InternalEvoluInstance>();
 
 /**
  * Unique identifier for the current browser tab or app instance, lazily
  * initialized on first use to distinguish between multiple tabs.
+ *
+ * TODO: Remove
  */
 let tabId: Id | null = null;
+
+export type EvoluDeps = ConsoleDep &
+  CreateDbWorkerDep &
+  Partial<FlushSyncDep> &
+  RandomBytesDep &
+  ReloadAppDep;
 
 /**
  * Creates an {@link Evolu} instance for a platform configured with the specified
