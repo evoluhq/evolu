@@ -64,6 +64,47 @@ const bar = () => {
 };
 ```
 
+## Arrow functions
+
+Use arrow functions instead of the `function` keyword.
+
+```ts
+// Prefer
+export const createUser = (data: UserData): User => {
+  // implementation
+};
+
+// Avoid
+export function createUser(data: UserData): User {
+  // implementation
+}
+```
+
+Why arrow functions?
+
+- **No hoisting** - Combined with `const`, arrow functions aren't hoisted, which enforces top-down code organization
+- **Consistency** - One way to define functions means less cognitive overhead
+- **Currying** - Arrow functions make currying natural for [dependency injection](/docs/dependency-injection)
+
+**Exception: function overloads.** TypeScript requires the `function` keyword for overloaded signatures:
+
+```ts
+export function mapArray<T, U>(
+  array: NonEmptyReadonlyArray<T>,
+  mapper: (item: T) => U,
+): NonEmptyReadonlyArray<U>;
+export function mapArray<T, U>(
+  array: ReadonlyArray<T>,
+  mapper: (item: T) => U,
+): ReadonlyArray<U>;
+export function mapArray<T, U>(
+  array: ReadonlyArray<T>,
+  mapper: (item: T) => U,
+): ReadonlyArray<U> {
+  return array.map(mapper) as ReadonlyArray<U>;
+}
+```
+
 ## Immutability
 
 Mutable state is tricky because it increases the risk of unintended side effects, makes code harder to predict, and complicates debugging—especially in complex applications where data might be shared or modified unexpectedly. Favor immutable values using readonly types to reduce these risks and improve clarity.
