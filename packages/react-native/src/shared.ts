@@ -17,7 +17,6 @@ import {
 
 const console = createConsole();
 const randomBytes = createRandomBytes();
-const time = createTime();
 
 export const createSharedEvoluDeps = (
   deps: CreateSqliteDriverDep & ReloadAppDep,
@@ -31,10 +30,9 @@ export const createSharedEvoluDeps = (
       createWebSocket,
       random: createRandom(),
       randomBytes,
-      time,
+      time: createTime(),
     }),
   randomBytes,
-  time,
 });
 
 export const createSharedLocalAuth = (

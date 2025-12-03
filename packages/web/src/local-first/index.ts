@@ -2,7 +2,6 @@ import {
   createConsole,
   createLocalAuth,
   createRandomBytes,
-  createTime,
 } from "@evolu/common";
 import {
   CreateDbWorker,
@@ -35,5 +34,4 @@ export const evoluWebDeps: EvoluDeps = {
   createDbWorker,
   randomBytes: createRandomBytes(),
   reloadApp,
-  time: createTime(),
 };
