@@ -10,7 +10,6 @@ import {
   tryAsync,
   trySync,
 } from "../src/Result.js";
-import { timeout } from "../src/Task.js";
 
 describe("ok", () => {
   it("creates Ok with a value", () => {
