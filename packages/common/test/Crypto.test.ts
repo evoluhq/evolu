@@ -3,6 +3,7 @@ import { assert, expect, test } from "vitest";
 import {
   createPadmePaddedLength,
   createPadmePadding,
+  createRandomBytes,
   createSlip21,
   decryptWithXChaCha20Poly1305,
   encryptWithXChaCha20Poly1305,
@@ -90,4 +91,28 @@ test("createSlip21", () => {
   expect(bytesToHex(encryptionKey)).toMatchInlineSnapshot(
     `"abf2095887bc74adda889a572e29a407a457a39bfdd4202d34ee6eac5c28effc"`,
   );
+});
+
+/**
+ * This test demonstrates createRandomBytes performance, which is used for
+ * createId and is fast enough: ~0.0014ms per call on Apple M1.
+ */
+test.skip("createRandomBytes generates unique values", () => {
+  const randomBytes = createRandomBytes();
+  const values = new Set<string>();
+  const iterations = 10_000;
+
+  const start = performance.now();
+  for (let i = 0; i < iterations; i++) {
+    values.add(bytesToHex(randomBytes.create(16)));
+  }
+  const end = performance.now();
+
+  // ~14ms on Apple M1
+  // eslint-disable-next-line no-console
+  console.log(
+    `createRandomBytes: ${iterations} in ${(end - start).toFixed(2)}ms`,
+  );
+
+  expect(values.size).toBe(iterations);
 });
