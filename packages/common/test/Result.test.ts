@@ -10,6 +10,7 @@ import {
   tryAsync,
   trySync,
 } from "../src/Result.js";
+import { timeout } from "../src/Task.js";
 
 describe("ok", () => {
   it("creates Ok with a value", () => {
@@ -764,8 +765,9 @@ describe("Result with Resource Management", () => {
 });
 
 /**
- * This test demonstrates that generator-based monadic composition is possible
- * with Evolu's Result type, similar to Effect's approach.
+ * This test demonstrates generator-based monadic composition patterns for
+ * Result types, comparing Evolu's plain object approach with Effect's iterator
+ * protocol approach.
  *
  * ### Imperative pattern
  *
@@ -795,9 +797,8 @@ describe("Result with Resource Management", () => {
  * Cons:
  *
  * - Repetitive `if (!x.ok) return x` boilerplate
- * - Verbose for longer chains (5+ operations)
  *
- * ### Generator pattern
+ * ### Generator pattern (with gen() wrapper)
  *
  * ```ts
  * const program = function* (
@@ -810,25 +811,63 @@ describe("Result with Resource Management", () => {
  * };
  * ```
  *
+ * ### Generator pattern (with iterator protocol, like Effect)
+ *
+ * ```ts
+ * const program = function* (
+ *   input: string,
+ * ): Gen<number, ParseError | ValidationError> {
+ *   const parsed = yield* parse(input); // No gen() needed
+ *   const validated = yield* validate(parsed);
+ *   const doubled = yield* double(validated);
+ *   return doubled;
+ * };
+ * ```
+ *
  * Pros:
  *
- * - Concise, less boilerplate for multi-step flows
- * - Reads like straight-line sync code (similar to async/await)
- * - Automatic error propagation via `yield*`
+ * - Automatic error propagation via `yield*` (no need to access Result's value
+ *   property)
  *
  * Cons:
  *
  * - Requires understanding generators plus the Gen/runGen helpers
- * - Each `gen()` call allocates a generator object (~13x slower, see perf test)
  * - Less familiar to many JS/TS developers
+ * - Slower (see perf test)
  *
- * ### Performance (Apple M1, 1M iterations, 3-step chain)
+ * ### Performance (Apple M1, 500K iterations, 3-step chain)
  *
- * - Generator: 658 ms
- * - Imperative: 49 ms
+ * - Imperative: ~25 ms
+ * - Generator (gen wrapper): ~330 ms (~13x slower)
+ * - Iterator protocol (IIFE): ~1200 ms (~48x slower)
+ * - Iterator protocol (hoisted): ~990 ms (~40x slower)
  *
- * The generator pattern is ~13x slower due to iterator allocation overhead. For
- * most business logic this is negligible, but matters in hot paths.
+ * ### Conclusion
+ *
+ * The performance difference matters. Even at 500K iterations, generators add
+ * 300ms+ overhead. In real applications with many Result operations, this
+ * accumulates quickly.
+ *
+ * However, Evolu prefers the imperative pattern for a different reason:
+ * avoiding Buridan's ass (https://en.wikipedia.org/wiki/Buridan%27s_ass).
+ * Having two equivalent ways to write code forces developers to choose between
+ * them, second-guess their decisions, and refactor for no real benefit. The `if
+ * (!x.ok) return x` pattern isn't worse than `yield*` - it's just different
+ * syntax for the same control flow.
+ *
+ * Additionally, generators are harder to debug - they create synthetic call
+ * stacks and stepping through `yield*` in a debugger is less intuitive than
+ * stepping through regular function calls.
+ *
+ * Last but not least, plain object Results can be serialized (e.g., for IPC,
+ * storage, or logging) without losing information, while Effect-style Results
+ * with `[Symbol.iterator]` methods cannot without custom serialization and
+ * deserialization.
+ *
+ * Therefore, Evolu doesn't want to use generators for Result composition and
+ * will never export generator-based helpers.
+ *
+ * One clear pattern beats two equivalent ones.
  */
 describe("generator-based composition", () => {
   interface ParseError {
@@ -952,10 +991,10 @@ describe("generator-based composition", () => {
     >();
   });
 
-  test.skip("generator vs imperative performance", () => {
-    const ITERATIONS = 1_000_000;
+  test.only("generator vs imperative performance", () => {
+    const ITERATIONS = 500_000;
 
-    // Generator version
+    // Generator version (requires gen() wrapper)
     const withGenerator = (input: string): Result<number, ParseError> =>
       runGen(
         (function* (): Gen<number, ParseError> {
@@ -965,6 +1004,60 @@ describe("generator-based composition", () => {
           return c;
         })(),
       );
+
+    // Effect-style Result with iterator protocol (no gen() wrapper needed)
+    type EffectResult<T, E> =
+      | { readonly ok: true; readonly value: T; [Symbol.iterator](): Gen<T, E> }
+      | {
+          readonly ok: false;
+          readonly error: E;
+          [Symbol.iterator](): Gen<T, E>;
+        };
+
+    const effectOk = <T, E = never>(value: T): EffectResult<T, E> => ({
+      ok: true,
+      value,
+      // eslint-disable-next-line require-yield
+      *[Symbol.iterator]() {
+        return value;
+      },
+    });
+
+    const effectErr = <E, T = never>(error: E): EffectResult<T, E> => ({
+      ok: false,
+      error,
+      *[Symbol.iterator]() {
+        yield { ok: false, error } as Err<E>;
+        throw new Error("Unreachable");
+      },
+    });
+
+    const parseEffect = (input: string): EffectResult<number, ParseError> => {
+      const n = parseInt(input, 10);
+      return isNaN(n) ? effectErr({ type: "ParseError" }) : effectOk(n);
+    };
+
+    // Effect-style generator (no gen() wrapper)
+    const withEffectIterator = (input: string): Result<number, ParseError> =>
+      runGen(
+        (function* (): Gen<number, ParseError> {
+          const a = yield* parseEffect(input);
+          const b = yield* parseEffect(String(a + 1));
+          const c = yield* parseEffect(String(b + 1));
+          return c;
+        })(),
+      );
+
+    // Effect-style with hoisted generator function
+    const effectProgram = function* (input: string): Gen<number, ParseError> {
+      const a = yield* parseEffect(input);
+      const b = yield* parseEffect(String(a + 1));
+      const c = yield* parseEffect(String(b + 1));
+      return c;
+    };
+    const withEffectIteratorHoisted = (
+      input: string,
+    ): Result<number, ParseError> => runGen(effectProgram(input));
 
     // Imperative version
     const imperative = (input: string): Result<number, ParseError> => {
@@ -983,6 +1076,18 @@ describe("generator-based composition", () => {
     }
     const generatorTime = performance.now() - generatorStart;
 
+    const effectStart = performance.now();
+    for (let i = 0; i < ITERATIONS; i++) {
+      withEffectIterator("1");
+    }
+    const effectTime = performance.now() - effectStart;
+
+    const effectHoistedStart = performance.now();
+    for (let i = 0; i < ITERATIONS; i++) {
+      withEffectIteratorHoisted("1");
+    }
+    const effectHoistedTime = performance.now() - effectHoistedStart;
+
     const imperativeStart = performance.now();
     for (let i = 0; i < ITERATIONS; i++) {
       imperative("1");
@@ -990,12 +1095,26 @@ describe("generator-based composition", () => {
     const imperativeTime = performance.now() - imperativeStart;
 
     // eslint-disable-next-line no-console
-    console.log(`Generator:  ${generatorTime.toFixed(2)} ms`);
+    console.log(`Generator (gen wrapper):     ${generatorTime.toFixed(2)} ms`);
     // eslint-disable-next-line no-console
-    console.log(`Imperative: ${imperativeTime.toFixed(2)} ms`);
+    console.log(`Iterator (IIFE):             ${effectTime.toFixed(2)} ms`);
     // eslint-disable-next-line no-console
     console.log(
-      `Difference: ${(generatorTime - imperativeTime).toFixed(2)} ms (${((generatorTime / imperativeTime - 1) * 100).toFixed(1)}% slower)`,
+      `Iterator (hoisted):          ${effectHoistedTime.toFixed(2)} ms`,
+    );
+    // eslint-disable-next-line no-console
+    console.log(`Imperative:                  ${imperativeTime.toFixed(2)} ms`);
+    // eslint-disable-next-line no-console
+    console.log(
+      `gen wrapper is ${(generatorTime / imperativeTime).toFixed(1)}x slower`,
+    );
+    // eslint-disable-next-line no-console
+    console.log(
+      `iterator IIFE is ${(effectTime / imperativeTime).toFixed(1)}x slower`,
+    );
+    // eslint-disable-next-line no-console
+    console.log(
+      `iterator hoisted is ${(effectHoistedTime / imperativeTime).toFixed(1)}x slower`,
     );
   });
 
@@ -1066,5 +1185,63 @@ describe("generator-based composition", () => {
     if (result.ok) expect(result.value).toBe("done");
     // Resources ARE disposed on successful completion
     expect(disposed).toEqual(["file", "db"]);
+  });
+
+  /**
+   * Effect's Result (Either) implements `[Symbol.iterator]`, allowing direct
+   * `yield*` without a wrapper. This test demonstrates that pattern.
+   */
+  it("shows Effect-style iterator protocol (no gen wrapper needed)", () => {
+    // Effect-style Result with built-in iterator protocol
+    type EffectResult<T, E> =
+      | { readonly ok: true; readonly value: T; [Symbol.iterator](): Gen<T, E> }
+      | {
+          readonly ok: false;
+          readonly error: E;
+          [Symbol.iterator](): Gen<T, E>;
+        };
+
+    // Factory functions that add iterator protocol
+    const effectOk = <T, E = never>(value: T): EffectResult<T, E> => ({
+      ok: true,
+      value,
+      // eslint-disable-next-line require-yield
+      *[Symbol.iterator]() {
+        return value;
+      },
+    });
+
+    const effectErr = <E, T = never>(error: E): EffectResult<T, E> => ({
+      ok: false,
+      error,
+      *[Symbol.iterator]() {
+        yield { ok: false, error } as Err<E>;
+        throw new Error("Unreachable");
+      },
+    });
+
+    // Operations returning Effect-style Result
+    const parse = (input: string): EffectResult<number, ParseError> => {
+      const n = parseInt(input, 10);
+      return isNaN(n) ? effectErr({ type: "ParseError" }) : effectOk(n);
+    };
+
+    const validate = (n: number): EffectResult<number, ValidationError> =>
+      n > 0 ? effectOk(n) : effectErr({ type: "ValidationError" });
+
+    // With iterator protocol: direct yield* without gen() wrapper
+    const program = function* (
+      input: string,
+    ): Gen<number, ParseError | ValidationError> {
+      const parsed = yield* parse(input); // No gen() needed!
+      const validated = yield* validate(parsed); // No gen() needed!
+      return validated * 2;
+    };
+
+    expect(runGen(program("21"))).toStrictEqual(ok(42));
+    expect(runGen(program("abc"))).toStrictEqual(err({ type: "ParseError" }));
+    expect(runGen(program("-5"))).toStrictEqual(
+      err({ type: "ValidationError" }),
+    );
   });
 });
