@@ -990,7 +990,7 @@ describe("generator-based composition", () => {
     >();
   });
 
-  test.only("generator vs imperative performance", () => {
+  test.skip("generator vs imperative performance", () => {
     const ITERATIONS = 500_000;
 
     // Generator version (requires gen() wrapper)
