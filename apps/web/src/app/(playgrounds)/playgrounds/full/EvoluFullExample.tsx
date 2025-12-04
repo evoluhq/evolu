@@ -4,6 +4,7 @@ import {
   booleanToSqliteBoolean,
   createEvolu,
   createFormatTypeError,
+  createObjectURL,
   FiniteNumber,
   id,
   idToIdBytes,
@@ -653,14 +654,13 @@ const AccountTab: FC = () => {
   };
 
   const handleDownloadDatabaseClick = () => {
-    void evolu.exportDatabase().then((array) => {
-      const blob = new Blob([array], { type: "application/x-sqlite3" });
+    void evolu.exportDatabase().then((data) => {
+      using objectUrl = createObjectURL(
+        new Blob([data], { type: "application/x-sqlite3" }),
+      );
 
-      using stack = new DisposableStack();
       const link = document.createElement("a");
-      const url = stack.adopt(URL.createObjectURL(blob), URL.revokeObjectURL);
-
-      link.href = url;
+      link.href = objectUrl.url;
       link.download = `${evolu.name}.sqlite3`;
       link.click();
     });
