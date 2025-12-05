@@ -843,9 +843,8 @@ describe("Result with Resource Management", () => {
  *
  * ### Conclusion
  *
- * The performance difference matters. Even at 500K iterations, generators add
- * 300ms+ overhead. In real applications with many Result operations, this
- * accumulates quickly.
+ * The performance difference matters. In applications with many Result
+ * operations, this accumulates quickly.
  *
  * However, Evolu prefers the imperative pattern for a different reason:
  * avoiding Buridan's ass (https://en.wikipedia.org/wiki/Buridan%27s_ass).
@@ -858,15 +857,13 @@ describe("Result with Resource Management", () => {
  * stacks and stepping through `yield*` in a debugger is less intuitive than
  * stepping through regular function calls.
  *
- * Last but not least, plain object Results can be serialized (e.g., for IPC,
- * storage, or logging) without losing information, while Effect-style Results
+ * Last but not least, plain object Results can be easily serialized (e.g., for
+ * inter-process communication, storage, or logging), while Effect-style Results
  * with `[Symbol.iterator]` methods cannot without custom serialization and
  * deserialization.
  *
  * Therefore, Evolu doesn't want to use generators for Result composition and
  * will never export generator-based helpers.
- *
- * One clear pattern beats two equivalent ones.
  */
 describe("generator-based composition", () => {
   interface ParseError {
