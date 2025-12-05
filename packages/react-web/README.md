@@ -1,6 +1,6 @@
 # Evolu for React Web
 
-This package provides Evolu for [React](https://react.dev) on the web platform (browsers).
+This package provides Evolu for [React](https://react.dev) on the web platform (browsers). It re-exports everything from `@evolu/web` and adds React-specific functionality.
 
 ## Documentation
 

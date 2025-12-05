@@ -15,6 +15,7 @@ import { eqArrayNumber } from "../Eq.js";
 import { TransferableError } from "../Error.js";
 import { exhaustiveCheck } from "../Function.js";
 import { createInstances, Instances } from "../Instances.js";
+import { FlushSyncDep, ReloadAppDep } from "../Platform.js";
 import { err, ok, Result } from "../Result.js";
 import {
   isSqlMutation,
@@ -40,7 +41,6 @@ import {
 import { IntentionalNever } from "../Types.js";
 import { CreateDbWorkerDep, DbConfig, defaultDbConfig } from "./Db.js";
 import { AppOwner } from "./Owner.js";
-import { FlushSyncDep, ReloadAppDep } from "./Platform.js";
 import { ProtocolError } from "./Protocol.js";
 import {
   applyPatches,

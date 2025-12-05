@@ -7,12 +7,12 @@ import {
   createTime,
   createWebSocket,
   LocalAuth,
+  ReloadAppDep,
   SecureStorage,
 } from "@evolu/common";
 import {
   createDbWorkerForPlatform,
   EvoluDeps,
-  ReloadAppDep,
 } from "@evolu/common/local-first";
 
 const console = createConsole();
