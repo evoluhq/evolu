@@ -1,3 +1,7 @@
+import { ensurePolyfills } from "./Polyfills.js";
+
+ensurePolyfills();
+
 export * from "./Array.js";
 export * from "./Assert.js";
 export * from "./BigInt.js";

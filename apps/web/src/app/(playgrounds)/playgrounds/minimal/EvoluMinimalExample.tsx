@@ -241,16 +241,15 @@ const OwnerActions: FC = () => {
   };
 
   const handleDownloadDatabaseClick = () => {
-    void evolu.exportDatabase().then((array) => {
-      const blob = new Blob([array], {
-        type: "application/x-sqlite3",
-      });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "todos.sqlite3";
-      a.click();
-      window.URL.revokeObjectURL(url);
+    void evolu.exportDatabase().then((data) => {
+      using objectUrl = Evolu.createObjectURL(
+        new Blob([data], { type: "application/x-sqlite3" }),
+      );
+
+      const link = document.createElement("a");
+      link.href = objectUrl.url;
+      link.download = `${evolu.name}.sqlite3`;
+      link.click();
     });
   };
 

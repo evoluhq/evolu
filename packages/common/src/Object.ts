@@ -109,3 +109,36 @@ export const getProperty = <K extends string, V>(
   record: ReadonlyRecord<K, V>,
   key: string,
 ): V | undefined => (key in record ? record[key as K] : undefined);
+
+/**
+ * A disposable wrapper around `URL.createObjectURL` that automatically revokes
+ * the URL when disposed. Use with the `using` declaration for automatic
+ * cleanup.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const blob = new Blob(["hello"], { type: "text/plain" });
+ * using objectUrl = createObjectURL(blob);
+ * console.log(objectUrl.url); // blob:...
+ * // URL.revokeObjectURL is automatically called when the scope ends
+ * ```
+ *
+ * This ensures the URL is always revoked when the scope ends, even if an error
+ * occurs, preventing memory leaks from unreleased blob URLs.
+ */
+export interface ObjectURL extends Disposable {
+  /** The object URL string created by `URL.createObjectURL`. */
+  readonly url: string;
+}
+
+/** Creates a disposable {@link ObjectURL} for the given blob. */
+export const createObjectURL = (blob: Blob): ObjectURL => {
+  const url = URL.createObjectURL(blob);
+  return {
+    url,
+    [Symbol.dispose]: () => {
+      URL.revokeObjectURL(url);
+    },
+  };
+};

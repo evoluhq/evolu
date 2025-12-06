@@ -74,7 +74,9 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=24.0.0"
   },
-  "sideEffects": []
+  "sideEffects": [
+    "./dist/src/index.js"
+  ]
 }

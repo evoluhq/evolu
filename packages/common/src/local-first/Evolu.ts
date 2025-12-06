@@ -7,11 +7,15 @@ import {
 import { assert, assertNonEmptyReadonlyArray } from "../Assert.js";
 import { createCallbacks } from "../Callbacks.js";
 import { ConsoleDep } from "../Console.js";
-import { RandomBytesDep, SymmetricCryptoDecryptError } from "../Crypto.js";
+import {
+  DecryptWithXChaCha20Poly1305Error,
+  RandomBytesDep,
+} from "../Crypto.js";
 import { eqArrayNumber } from "../Eq.js";
 import { TransferableError } from "../Error.js";
 import { exhaustiveCheck } from "../Function.js";
 import { createInstances, Instances } from "../Instances.js";
+import { FlushSyncDep, ReloadAppDep } from "../Platform.js";
 import { err, ok, Result } from "../Result.js";
 import {
   isSqlMutation,
@@ -22,7 +26,6 @@ import {
   SqliteQuery,
 } from "../Sqlite.js";
 import { createStore, StoreSubscribe } from "../Store.js";
-import { TimeDep } from "../Time.js";
 import {
   createId,
   Id,
@@ -38,7 +41,6 @@ import {
 import { IntentionalNever } from "../Types.js";
 import { CreateDbWorkerDep, DbConfig, defaultDbConfig } from "./Db.js";
 import { AppOwner } from "./Owner.js";
-import { FlushSyncDep, ReloadAppDep } from "./Platform.js";
 import { ProtocolError } from "./Protocol.js";
 import {
   applyPatches,
@@ -102,13 +104,16 @@ export interface EvoluConfig extends Partial<DbConfig> {
    *
    * The default value is `/`.
    *
-   * Note: This option will be moved to web platform deps in the next major
+   * TODO: This option will be moved to web platform deps in the next major
    * version.
    */
   readonly reloadUrl?: string;
 }
 
 export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
+  /** The name of the Evolu instance from {@link EvoluConfig}. */
+  readonly name: SimpleName;
+
   /**
    * Subscribe to {@link EvoluError} changes.
    *
@@ -461,7 +466,7 @@ export type UnuseOwner = () => void;
 export type EvoluError =
   | ProtocolError
   | SqliteError
-  | SymmetricCryptoDecryptError
+  | DecryptWithXChaCha20Poly1305Error
   | TimestampError
   | TransferableError;
 
@@ -475,20 +480,21 @@ interface InternalEvoluInstance<
   readonly ensureSchema: (schema: EvoluSchema) => void;
 }
 
-export type EvoluDeps = ConsoleDep &
-  CreateDbWorkerDep &
-  Partial<FlushSyncDep> &
-  RandomBytesDep &
-  ReloadAppDep &
-  TimeDep;
-
 const evoluInstances = createInstances<SimpleName, InternalEvoluInstance>();
 
 /**
  * Unique identifier for the current browser tab or app instance, lazily
  * initialized on first use to distinguish between multiple tabs.
+ *
+ * TODO: Remove
  */
 let tabId: Id | null = null;
+
+export type EvoluDeps = ConsoleDep &
+  CreateDbWorkerDep &
+  Partial<FlushSyncDep> &
+  RandomBytesDep &
+  ReloadAppDep;
 
 /**
  * Creates an {@link Evolu} instance for a platform configured with the specified
@@ -805,6 +811,8 @@ const createEvoluInstance =
     };
 
     const evolu: InternalEvoluInstance = {
+      name: dbConfig.name,
+
       subscribeError: errorStore.subscribe,
       getError: errorStore.get,
 

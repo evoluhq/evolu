@@ -66,7 +66,6 @@ import {
   testOwner,
   testOwnerIdBytes,
   testRandomLib,
-  testSymmetricCrypto,
 } from "../_deps.js";
 import {
   maxTimestamp,
@@ -429,10 +428,7 @@ const createTestCrdtMessage = (): CrdtMessage => ({
 });
 
 const createEncryptedDbChange = (message: CrdtMessage): EncryptedDbChange =>
-  encodeAndEncryptDbChange({ symmetricCrypto: testSymmetricCrypto })(
-    message,
-    testOwner.encryptionKey,
-  );
+  encodeAndEncryptDbChange(testDeps)(message, testOwner.encryptionKey);
 
 const createEncryptedCrdtMessage = (
   message: CrdtMessage,
@@ -447,18 +443,22 @@ test("encodeAndEncryptDbChange/decryptAndDecodeDbChange", () => {
   expect(encryptedMessage.change).toMatchInlineSnapshot(
     `uint8:[16,69,47,67,224,147,108,220,182,159,114,71,126,12,238,156,41,185,89,190,160,122,175,72,120,76,181,224,107,85,168,103,15,6,146,125,39,9,172,69,216,141,153,15,154,20,147,248,169,157,20,234,231,0,208,79,81,194,248,169,52,179,33,204,1,185,51,79,47,82,82,154,23,59,74,149,0,227,135,221,163,160,7,137,70,251,3,110,111,203,194,232,132,85,109,58,28,85,230,20,41,31,168,210,50,130,238,78,142,108,10,132,153,166,4,250,87,106,229,12,107,164,41,8,50,250,168,191,14,73,151,62,202,207,30,165,131,24,98,236,45,11,227,189,242]`,
   );
-  const decrypted = decryptAndDecodeDbChange({
-    symmetricCrypto: testSymmetricCrypto,
-  })(encryptedMessage, testOwner.encryptionKey);
+  const decrypted = decryptAndDecodeDbChange(
+    encryptedMessage,
+    testOwner.encryptionKey,
+  );
   assert(decrypted.ok);
   expect(decrypted.value).toEqual(crdtMessage.change);
 
   const wrongKey = EncryptionKey.orThrow(new Uint8Array(32).fill(42));
-  const decryptedWithWrongKey = decryptAndDecodeDbChange({
-    symmetricCrypto: testSymmetricCrypto,
-  })(encryptedMessage, wrongKey);
+  const decryptedWithWrongKey = decryptAndDecodeDbChange(
+    encryptedMessage,
+    wrongKey,
+  );
   assert(!decryptedWithWrongKey.ok);
-  expect(decryptedWithWrongKey.error.type).toBe("SymmetricCryptoDecryptError");
+  expect(decryptedWithWrongKey.error.type).toBe(
+    "DecryptWithXChaCha20Poly1305Error",
+  );
 
   const corruptedCiphertext = new Uint8Array(
     encryptedMessage.change,
@@ -470,11 +470,14 @@ test("encodeAndEncryptDbChange/decryptAndDecodeDbChange", () => {
     timestamp: encryptedMessage.timestamp,
     change: corruptedCiphertext,
   };
-  const decryptedCorrupted = decryptAndDecodeDbChange({
-    symmetricCrypto: testSymmetricCrypto,
-  })(corruptedMessage, testOwner.encryptionKey);
+  const decryptedCorrupted = decryptAndDecodeDbChange(
+    corruptedMessage,
+    testOwner.encryptionKey,
+  );
   assert(!decryptedCorrupted.ok);
-  expect(decryptedCorrupted.error.type).toBe("SymmetricCryptoDecryptError");
+  expect(decryptedCorrupted.error.type).toBe(
+    "DecryptWithXChaCha20Poly1305Error",
+  );
 });
 
 test("decryptAndDecodeDbChange timestamp tamper-proofing", () => {
@@ -491,9 +494,10 @@ test("decryptAndDecodeDbChange timestamp tamper-proofing", () => {
   };
 
   // Attempt to decrypt with wrong timestamp should fail with ProtocolTimestampMismatchError
-  const decryptedWithWrongTimestamp = decryptAndDecodeDbChange({
-    symmetricCrypto: testSymmetricCrypto,
-  })(tamperedMessage, testOwner.encryptionKey);
+  const decryptedWithWrongTimestamp = decryptAndDecodeDbChange(
+    tamperedMessage,
+    testOwner.encryptionKey,
+  );
 
   expect(decryptedWithWrongTimestamp).toEqual(
     err({

@@ -53,7 +53,7 @@
   "devDependencies": {
     "@evolu/tsconfig": "workspace:*",
     "@types/mdx": "^2.0.13",
-    "@types/node": "^22.17.1",
+    "@types/node": "^24.0.0",
     "@types/react": "catalog:react19",
     "@types/react-dom": "catalog:react19",
     "@types/react-highlight-words": "^0.20.0",

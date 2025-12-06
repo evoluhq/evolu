@@ -1,14 +1,17 @@
 import { createConsole } from "@evolu/common";
 import { createNodeJsRelay } from "@evolu/nodejs";
 import { mkdirSync } from "fs";
+import { once } from "node:events";
 
 // Ensure the database is created in a predictable location for Docker.
 mkdirSync("data", { recursive: true });
 process.chdir("data");
 
-const relay = await createNodeJsRelay({
+const deps = {
   console: createConsole(),
-})({
+};
+
+const relay = await createNodeJsRelay(deps)({
   port: 4000,
   enableLogging: false,
 
@@ -21,10 +24,11 @@ const relay = await createNodeJsRelay({
   },
 });
 
-if (relay.ok) {
-  process.once("SIGINT", relay.value[Symbol.dispose]);
-  process.once("SIGTERM", relay.value[Symbol.dispose]);
+if (!relay.ok) {
+  deps.console.error(relay.error);
 } else {
-  // eslint-disable-next-line no-console
-  console.error(relay.error);
+  // The `using` declaration ensures `relay.value[Symbol.dispose]()` is called
+  // automatically when the block exits.
+  using _ = relay.value;
+  await Promise.race([once(process, "SIGINT"), once(process, "SIGTERM")]);
 }

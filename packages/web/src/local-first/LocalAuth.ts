@@ -1,29 +1,28 @@
-import { set, get, del, keys, clear, createStore } from "idb-keyval";
-
-import {
-  createSlip21,
-  utf8ToBytes,
-  bytesToUtf8,
-  base64UrlToUint8Array,
-  uint8ArrayToBase64Url,
-  EncryptionKey,
-  Base64Url,
-} from "@evolu/common";
-
 import type {
   AuthResult,
   Entropy32,
-  SensitiveInfoItem,
-  SecureStorage,
   RandomBytesDep,
-  SymmetricCryptoDep,
+  SecureStorage,
+  SensitiveInfoItem,
+} from "@evolu/common";
+import {
+  Base64Url,
+  base64UrlToUint8Array,
+  bytesToUtf8,
+  createSlip21,
+  decryptWithXChaCha20Poly1305,
+  EncryptionKey,
+  encryptWithXChaCha20Poly1305,
+  Entropy24,
+  uint8ArrayToBase64Url,
+  utf8ToBytes,
+  XChaCha20Poly1305Ciphertext,
 } from "@evolu/common";
 import type { UseStore } from "idb-keyval";
+import { clear, createStore, del, get, keys, set } from "idb-keyval";
 
 /** @experimental */
-export const createWebAuthnStore = (
-  deps: RandomBytesDep & SymmetricCryptoDep,
-): SecureStorage => ({
+export const createWebAuthnStore = (deps: RandomBytesDep): SecureStorage => ({
   setItem: async (key, value, options) => {
     if (options?.accessControl === "none") {
       const metadata = createMetadata(false);
@@ -86,7 +85,7 @@ export const createWebAuthnStore = (
       );
       const credentialSeed = extractSeedFromCredential(credential);
       const encryptionKey = deriveEncryptionKey(credentialSeed);
-      const authResultVal = decryptAuthResult(deps)(data, encryptionKey);
+      const authResultVal = decryptAuthResult(data, encryptionKey);
       if (!authResultVal) {
         return null;
       }
@@ -288,7 +287,7 @@ const deriveEncryptionKey = (seed: Uint8Array): EncryptionKey => {
 };
 
 const encryptAuthResult =
-  (deps: SymmetricCryptoDep) =>
+  (deps: RandomBytesDep) =>
   (
     authResult: AuthResult,
     encryptionKey: EncryptionKey,
@@ -297,7 +296,7 @@ const encryptAuthResult =
     ciphertext: Base64Url;
   } => {
     const plaintext = utf8ToBytes(JSON.stringify(authResult));
-    const { nonce, ciphertext } = deps.symmetricCrypto.encrypt(
+    const [ciphertext, nonce] = encryptWithXChaCha20Poly1305(deps)(
       plaintext,
       encryptionKey,
     );
@@ -307,22 +306,20 @@ const encryptAuthResult =
     };
   };
 
-const decryptAuthResult =
-  (deps: SymmetricCryptoDep) =>
-  (
-    encryptedData: { nonce: Base64Url; ciphertext: Base64Url },
-    encryptionKey: EncryptionKey,
-  ): string | null => {
-    const nonce = base64UrlToUint8Array(encryptedData.nonce);
-    const ciphertext = base64UrlToUint8Array(encryptedData.ciphertext);
-    const result = deps.symmetricCrypto.decrypt(
-      ciphertext,
-      encryptionKey,
-      nonce,
-    );
-    if (!result.ok) return null;
-    return bytesToUtf8(result.value);
-  };
+const decryptAuthResult = (
+  encryptedData: { nonce: Base64Url; ciphertext: Base64Url },
+  encryptionKey: EncryptionKey,
+): string | null => {
+  const nonce = base64UrlToUint8Array(encryptedData.nonce);
+  const ciphertext = base64UrlToUint8Array(encryptedData.ciphertext);
+  const result = decryptWithXChaCha20Poly1305(
+    XChaCha20Poly1305Ciphertext.orThrow(ciphertext),
+    Entropy24.orThrow(nonce),
+    encryptionKey,
+  );
+  if (!result.ok) return null;
+  return bytesToUtf8(result.value);
+};
 
 const generateSeed = (deps: RandomBytesDep) => () => {
   return deps.randomBytes.create(32);

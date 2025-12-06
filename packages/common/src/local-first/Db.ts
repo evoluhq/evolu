@@ -7,10 +7,9 @@ import { assertNonEmptyReadonlyArray } from "../Assert.js";
 import { CallbackId } from "../Callbacks.js";
 import { ConsoleConfig, ConsoleDep } from "../Console.js";
 import {
-  createSymmetricCrypto,
+  DecryptWithXChaCha20Poly1305Error,
   EncryptionKey,
   RandomBytesDep,
-  SymmetricCryptoDecryptError,
 } from "../Crypto.js";
 import { TransferableError } from "../Error.js";
 import { RandomDep } from "../Random.js";
@@ -276,7 +275,7 @@ export type DbWorkerOutput =
       readonly error:
         | ProtocolError
         | SqliteError
-        | SymmetricCryptoDecryptError
+        | DecryptWithXChaCha20Poly1305Error
         | TimestampError
         | TransferableError;
     }
@@ -435,7 +434,6 @@ const createDbWorkerDeps = async (
     const sync = createSync({
       ...deps,
       clock,
-      symmetricCrypto: createSymmetricCrypto(platformDeps),
       timestampConfig: initMessage.config,
       dbSchema: initMessage.dbSchema,
     })({

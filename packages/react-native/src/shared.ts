@@ -7,17 +7,16 @@ import {
   createTime,
   createWebSocket,
   LocalAuth,
+  ReloadAppDep,
   SecureStorage,
 } from "@evolu/common";
 import {
   createDbWorkerForPlatform,
   EvoluDeps,
-  ReloadAppDep,
 } from "@evolu/common/local-first";
 
 const console = createConsole();
 const randomBytes = createRandomBytes();
-const time = createTime();
 
 export const createSharedEvoluDeps = (
   deps: CreateSqliteDriverDep & ReloadAppDep,
@@ -31,10 +30,9 @@ export const createSharedEvoluDeps = (
       createWebSocket,
       random: createRandom(),
       randomBytes,
-      time,
+      time: createTime(),
     }),
   randomBytes,
-  time,
 });
 
 export const createSharedLocalAuth = (

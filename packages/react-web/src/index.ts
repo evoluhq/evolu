@@ -1,9 +1,9 @@
 import { EvoluDeps } from "@evolu/common/local-first";
-import { evoluWebDeps, localAuth } from "@evolu/web";
+import { evoluWebDeps } from "@evolu/web";
 import { flushSync } from "react-dom";
 
-export * from "./components/EvoluIdenticon.js";
-export { localAuth };
+export * from "@evolu/web";
+export * from "./components/index.js";
 
 export const evoluReactWebDeps: EvoluDeps = {
   ...evoluWebDeps,

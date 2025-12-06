@@ -9,6 +9,7 @@ import {
   brand,
   DateIso,
   InferType,
+  length,
   lessThanOrEqualTo,
   NonNegativeInt,
   object,
@@ -277,7 +278,7 @@ export const receiveTimestamp =
   };
 
 /** Sortable bytes representation of {@link Timestamp}. */
-export const TimestampBytes = brand("TimestampBytes", Uint8Array);
+export const TimestampBytes = brand("TimestampBytes", length(16)(Uint8Array));
 export type TimestampBytes = typeof TimestampBytes.Type;
 
 export const timestampBytesLength = NonNegativeInt.orThrow(16);
