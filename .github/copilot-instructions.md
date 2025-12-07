@@ -11,6 +11,7 @@ You are helping with the Evolu project. Follow these specific conventions and pa
 - **Use named imports only** - avoid default exports and namespace imports
 - **Use unique exported members** - avoid namespaces, use descriptive names to prevent conflicts
 - **Organize code top-down** - public interfaces first, then implementation, then implementation details
+- **Reference globals explicitly with `globalThis`** - when a name clashes with global APIs (e.g., `SharedWorker`, `Worker`), use `globalThis.SharedWorker` instead of aliasing imports
 
 ```ts
 // ✅ Good
@@ -18,9 +19,15 @@ import { bar, baz } from "Foo.ts";
 export const ok = ...;
 export const trySync = ...;
 
+// ✅ Good - Avoid naming conflicts with globals
+const nativeSharedWorker = new globalThis.SharedWorker(...);
+
 // ❌ Avoid
 import Foo from "Foo.ts";
 export const Utils = { ok, trySync };
+
+// ❌ Avoid - Aliasing to work around global name clash
+import { SharedWorker as SharedWorkerType } from "./Worker.js";
 ```
 
 ## Functions
@@ -166,7 +173,7 @@ export interface Storage {
 
 ```ts
 // For lazy operations array
-const operations: LazyValue<Result<void, MyError>>[] = [
+const operations: Lazy<Result<void, MyError>>[] = [
   () => doSomething(),
   () => doSomethingElse(),
 ];
