@@ -40,7 +40,7 @@ export interface SqliteDriverOptions {
 }
 
 /**
- * Cross-platform SQLite abstraction.
+ * Platform-agnostic SQLite.
  *
  * This API is sync only because SQLite is an embedded, single-threaded engine.
  * All operations are blocking and in-process, so async APIs add needless
