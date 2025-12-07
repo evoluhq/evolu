@@ -310,9 +310,9 @@ import type { Task } from "./Task.js";
  * execute each operation as needed, and can stop on the first error:
  *
  * ```ts
- * import type { LazyValue } from "./Function";
+ * import type { Lazy } from "./Function";
  *
- * const operations: LazyValue<Result<void, MyError>>[] = [
+ * const operations: Lazy<Result<void, MyError>>[] = [
  *   () => doSomething(),
  *   () => doSomethingElse(),
  * ];
