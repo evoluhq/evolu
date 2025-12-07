@@ -27,6 +27,9 @@ export interface TimestampConfig {
   readonly maxDrift: number;
 }
 
+/** Default value for {@link TimestampConfig.maxDrift}. */
+export const defaultTimestampMaxDrift = 5 * 60 * 1000;
+
 export interface TimestampConfigDep {
   readonly timestampConfig: TimestampConfig;
 }

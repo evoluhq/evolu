@@ -1,39 +1,31 @@
+import { constVoid, createLocalAuth, createRandomBytes } from "@evolu/common";
 import {
-  createConsole,
-  createLocalAuth,
-  createRandomBytes,
-} from "@evolu/common";
-import {
-  CreateDbWorker,
-  DbWorkerInput,
-  DbWorkerOutput,
+  createEvoluDeps as createCommonEvoluDeps,
   EvoluDeps,
+  type SharedWorker,
 } from "@evolu/common/local-first";
-import { createSharedWebWorker } from "../SharedWebWorker.js";
-import { createWebAuthnStore } from "./LocalAuth.js";
 import { reloadApp } from "../Platform.js";
+import { createSharedWorker, type SharedWorkerError } from "../Worker.js";
+import { createWebAuthnStore } from "./LocalAuth.js";
 
-const randomBytes = createRandomBytes();
-
-const createDbWorker: CreateDbWorker = (name) =>
-  createSharedWebWorker<DbWorkerInput, DbWorkerOutput>(
-    name,
-    () =>
-      new Worker(new URL("Db.worker.js", import.meta.url), {
-        type: "module",
-      }),
-  );
-
-// TODO: Factory.
+// TODO: Redesign.
 export const localAuth = createLocalAuth({
-  randomBytes,
-  secureStorage: createWebAuthnStore({ randomBytes }),
+  randomBytes: createRandomBytes(),
+  secureStorage: createWebAuthnStore({ randomBytes: createRandomBytes() }),
 });
 
-// TODO: Factory.
-export const evoluWebDeps: EvoluDeps = {
-  console: createConsole(),
-  createDbWorker,
-  randomBytes: createRandomBytes(),
-  reloadApp,
+/** Creates Evolu dependencies for the web platform. */
+export const createEvoluDeps = (options?: {
+  readonly onError?: (error: SharedWorkerError) => void;
+}): EvoluDeps => {
+  const sharedWorker: SharedWorker = createSharedWorker(
+    () =>
+      new globalThis.SharedWorker(
+        new URL("SharedWorker.worker.js", import.meta.url),
+        { type: "module" },
+      ),
+    options?.onError ?? constVoid,
+  );
+
+  return createCommonEvoluDeps({ sharedWorker, reloadApp });
 };

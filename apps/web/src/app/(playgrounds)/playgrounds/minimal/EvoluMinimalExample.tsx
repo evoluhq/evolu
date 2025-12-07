@@ -2,7 +2,7 @@
 
 import * as Evolu from "@evolu/common";
 import { createUseEvolu, EvoluProvider, useQuery } from "@evolu/react";
-import { evoluReactWebDeps } from "@evolu/react-web";
+import { createEvoluDeps } from "@evolu/react-web";
 import { IconEdit, IconTrash } from "@tabler/icons-react";
 import clsx from "clsx";
 import { FC, Suspense, use, useState } from "react";
@@ -24,24 +24,33 @@ const Schema = {
   },
 };
 
+const deps = createEvoluDeps();
+// bych takhle mohl mit jedny deps pro vsechno
+// deps.sharedWorker.subscribeTransportsStats nebo tak
+
 // Create Evolu instance for the React web platform.
-const evolu = Evolu.createEvolu(evoluReactWebDeps)(Schema, {
+const evolu = Evolu.createEvolu(deps)(Schema, {
   name: Evolu.SimpleName.orThrow("minimal-example"),
 
-  reloadUrl: "/playgrounds/minimal",
+  // TODO: Patri do web deps only? hmm, deps jsou sdilene
+  // tohle musim pak domyslet, callback? webReloadUrl? uvidime
+  // tohle rozhodne patri se
+  // reloadUrl: "/playgrounds/minimal",
 
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
   }),
 });
 
-// Creates a typed React Hook returning an instance of Evolu.
+// Creates a typed React Hook for accessing Evolu from EvoluProvider context.
+// You can also use `evolu` directly, but the hook enables replacing Evolu
+// in tests via the EvoluProvider.
 const useEvolu = createUseEvolu(evolu);
 
 /**
- * Subscribe to unexpected Evolu errors (database, network, sync issues). These
- * should not happen in normal operation, so always log them for debugging. Show
- * users a friendly error message instead of technical details.
+ * Subscribe to Evolu errors (database, network, sync issues). These should not
+ * happen in normal operation, so always log them for debugging. Show users a
+ * friendly error message instead of technical details.
  */
 evolu.subscribeError(() => {
   const error = evolu.getError();
@@ -106,7 +115,9 @@ const Todos: FC = () => {
   const addTodo = () => {
     const result = insert(
       "todo",
-      { title: newTodoTitle.trim() },
+      {
+        title: newTodoTitle.trim(),
+      },
       {
         onComplete: () => {
           setNewTodoTitle("");
@@ -231,12 +242,12 @@ const OwnerActions: FC = () => {
       return;
     }
 
-    void evolu.restoreAppOwner(result.value);
+    // void evolu.restoreAppOwner(result.value);
   };
 
   const handleResetAppOwnerClick = () => {
     if (confirm("Are you sure? This will delete all your local data.")) {
-      void evolu.resetAppOwner();
+      // void evolu.resetAppOwner();
     }
   };
 

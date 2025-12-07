@@ -8,47 +8,52 @@
  * @module
  */
 
-import { constVoid, Worker } from "@evolu/common";
+// import { constVoid, Worker } from "@evolu/common";
 
-/**
- * Wraps a Web Worker to provide a typed interface for sending and receiving
- * messages.
- */
-export const wrapWebWorker = <Input, Output>(
-  createWebWorker: () => globalThis.Worker,
-): Worker<Input, Output> => {
-  // Server.
-  if (typeof document === "undefined")
-    return {
-      postMessage: constVoid,
-      onMessage: constVoid,
-    };
+// /**
+//  * Wraps a Web Worker to provide a typed interface for sending and receiving
+//  * messages.
+//  */
+// export const wrapWebWorker = <Input, Output>(
+//   createWebWorker: () => globalThis.Worker,
+// ): Worker<Input, Output> => {
+//   // Server.
+//   if (typeof document === "undefined")
+//     return {
+//       postMessage: constVoid,
+//       onMessage: constVoid,
+//       [Symbol.dispose]: constVoid,
+//     };
 
-  const webWorker = createWebWorker();
+//   const webWorker = createWebWorker();
 
-  const worker: Worker<Input, Output> = {
-    postMessage: (message) => {
-      webWorker.postMessage(message);
-    },
+//   const worker: Worker<Input, Output> = {
+//     postMessage: (message) => {
+//       webWorker.postMessage(message);
+//     },
 
-    onMessage: (callback) => {
-      webWorker.onmessage = (event: MessageEvent<Output>) => {
-        callback(event.data);
-      };
-    },
-  };
+//     onMessage: (callback) => {
+//       webWorker.onmessage = (event: MessageEvent<Output>) => {
+//         callback(event.data);
+//       };
+//     },
 
-  return worker;
-};
+//     [Symbol.dispose]: () => {
+//       throw new Error("TODO");
+//     },
+//   };
 
-export const wrapWebWorkerSelf = <Input, Output>(
-  worker: Worker<Input, Output>,
-): void => {
-  worker.onMessage((message) => {
-    postMessage(message);
-  });
+//   return worker;
+// };
 
-  self.onmessage = (event: MessageEvent<Input>) => {
-    worker.postMessage(event.data);
-  };
-};
+// export const wrapWebWorkerSelf = <Input, Output>(
+//   worker: Worker<Input, Output>,
+// ): void => {
+//   worker.onMessage((message) => {
+//     postMessage(message);
+//   });
+
+//   self.onmessage = (event: MessageEvent<Input>) => {
+//     worker.postMessage(event.data);
+//   };
+// };

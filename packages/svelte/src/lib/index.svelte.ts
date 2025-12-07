@@ -6,19 +6,16 @@
 import type {
   AppOwner,
   Evolu,
-  EvoluDeps,
   EvoluSchema,
   InferRow,
   Query,
   QueryRows,
   Row,
 } from "@evolu/common/local-first";
-import { evoluWebDeps } from "@evolu/web";
+import { createEvoluDeps } from "@evolu/web";
 
 // just in case we need to add some svelte specific deps
-export const evoluSvelteDeps: EvoluDeps = {
-  ...evoluWebDeps,
-};
+export const evoluSvelteDeps = createEvoluDeps();
 
 /**
  * Load and subscribe to the Query, and return an object with `rows` property

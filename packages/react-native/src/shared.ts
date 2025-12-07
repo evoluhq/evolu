@@ -11,7 +11,7 @@ import {
   SecureStorage,
 } from "@evolu/common";
 import {
-  createDbWorkerForPlatform,
+  // createDbWorkerForPlatform,
   EvoluDeps,
 } from "@evolu/common/local-first";
 
@@ -23,15 +23,16 @@ export const createSharedEvoluDeps = (
 ): EvoluDeps => ({
   ...deps,
   console,
-  createDbWorker: () =>
-    createDbWorkerForPlatform({
-      ...deps,
-      console,
-      createWebSocket,
-      random: createRandom(),
-      randomBytes,
-      time: createTime(),
-    }),
+  sharedWorker: "TODO" as never,
+  // createDbWorker: () =>
+  //   createDbWorkerForPlatform({
+  //     ...deps,
+  //     console,
+  //     createWebSocket,
+  //     random: createRandom(),
+  //     randomBytes,
+  //     time: createTime(),
+  //   }),
   randomBytes,
 });
 

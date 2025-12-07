@@ -17,9 +17,9 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js",
-      "browser": "./dist/src/index.js"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "browser": "./dist/index.js"
     }
   },
   "files": [
@@ -42,6 +42,7 @@
   "devDependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
+    "@types/sharedworker": "^0.0.197",
     "@types/web-locks-api": "^0.0.5",
     "typescript": "^5.9.2",
     "user-agent-data-types": "^0.4.2",

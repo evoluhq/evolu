@@ -19,6 +19,7 @@ export * from "./Protocol.js";
 export * from "./Query.js";
 export * from "./Relay.js";
 export * from "./Schema.js";
+export * from "./SharedWorker.js";
 export * from "./Storage.js";
 export * from "./Sync.js";
 export * from "./Timestamp.js";

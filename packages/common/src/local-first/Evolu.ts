@@ -1,20 +1,15 @@
 import { pack } from "msgpackr";
-import {
-  dedupeArray,
-  isNonEmptyArray,
-  isNonEmptyReadonlyArray,
-} from "../Array.js";
+import { dedupeArray, isNonEmptyArray } from "../Array.js";
 import { assert, assertNonEmptyReadonlyArray } from "../Assert.js";
 import { createCallbacks } from "../Callbacks.js";
-import { ConsoleDep } from "../Console.js";
+import { ConsoleDep, createConsole } from "../Console.js";
 import {
+  createRandomBytes,
   DecryptWithXChaCha20Poly1305Error,
   RandomBytesDep,
 } from "../Crypto.js";
 import { eqArrayNumber } from "../Eq.js";
 import { TransferableError } from "../Error.js";
-import { exhaustiveCheck } from "../Function.js";
-import { createInstances, Instances } from "../Instances.js";
 import { FlushSyncDep, ReloadAppDep } from "../Platform.js";
 import { err, ok, Result } from "../Result.js";
 import {
@@ -31,19 +26,20 @@ import {
   Id,
   InferErrors,
   InferInput,
-  InferType,
-  Mnemonic,
   ObjectType,
   SimpleName,
   ValidMutationSize,
   ValidMutationSizeError,
 } from "../Type.js";
 import { IntentionalNever } from "../Types.js";
-import { CreateDbWorkerDep, DbConfig, defaultDbConfig } from "./Db.js";
-import { AppOwner } from "./Owner.js";
+import {
+  AppOwner,
+  createOwnerWebSocketTransport,
+  OwnerId,
+  OwnerTransport,
+} from "./Owner.js";
 import { ProtocolError } from "./Protocol.js";
 import {
-  applyPatches,
   createSubscribedQueries,
   emptyRows,
   Queries,
@@ -58,7 +54,6 @@ import {
 import {
   CreateQuery,
   EvoluSchema,
-  evoluSchemaToDbSchema,
   IndexesConfig,
   insertable,
   kysely,
@@ -72,11 +67,134 @@ import {
   upsertable,
   ValidateSchema,
 } from "./Schema.js";
+import { SharedWorkerDep } from "./SharedWorker.js";
 import { DbChange } from "./Storage.js";
-import { initialSyncState, SyncOwner, SyncState } from "./Sync.js";
+import { SyncOwner } from "./Sync.js";
 import { TimestampError } from "./Timestamp.js";
 
-export interface EvoluConfig extends Partial<DbConfig> {
+export interface EvoluConfig {
+  /**
+   * The name of the Evolu instance. Evolu is multitenant - it can run multiple
+   * instances concurrently. Each instance must have a unique name.
+   *
+   * The instance name is used as the SQLite database filename for persistent
+   * storage, ensuring that database files are separated and invisible to each
+   * other.
+   *
+   * ### Example
+   *
+   * ```ts
+   * // name: SimpleName.orThrow("MyApp")
+   * ```
+   */
+  readonly name: SimpleName;
+
+  /**
+   * Transport configuration for data sync and backup. Supports single transport
+   * or multiple transports simultaneously for redundancy.
+   *
+   * **Redundancy:** The ideal setup uses at least two completely independent
+   * relays - for example, a home relay and a geographically separate relay.
+   * Data is sent to both relays simultaneously, providing true redundancy
+   * similar to using two independent clouds. This eliminates vendor lock-in and
+   * ensures your app continues working regardless of circumstances - whether
+   * home relay hardware is stolen or a remote relay provider shuts down.
+   *
+   * Currently supports:
+   *
+   * - WebSocket: Real-time bidirectional communication with relay servers
+   *
+   * Empty transports create local-only instances. Transports can be dynamically
+   * added and removed for any owner (including {@link AppOwner}) via
+   * {@link Evolu#useOwner}.
+   *
+   * Use {@link createOwnerWebSocketTransport} to create WebSocket transport
+   * configurations with proper URL formatting and {@link OwnerId} inclusion. The
+   * {@link OwnerId} in the URL enables relay authentication, allowing relay
+   * servers to control access (e.g., for paid tiers or private instances).
+   *
+   * The default value is:
+   *
+   * `{ type: "WebSocket", url: "wss://free.evoluhq.com" }`.
+   *
+   * ### Example
+   *
+   * ```ts
+   * // Single WebSocket relay
+   * transports: [{ type: "WebSocket", url: "wss://relay1.example.com" }];
+   *
+   * // Multiple WebSocket relays for redundancy
+   * transports: [
+   *   { type: "WebSocket", url: "wss://relay1.example.com" },
+   *   { type: "WebSocket", url: "wss://relay2.example.com" },
+   *   { type: "WebSocket", url: "wss://relay3.example.com" },
+   * ];
+   *
+   * // Local-only instance (no sync) - useful for device settings or when relay
+   * // URL will be provided later (e.g., after authentication), allowing users
+   * // to work offline before the app connects
+   * transports: [];
+   *
+   * // Using createOwnerWebSocketTransport helper for relay authentication
+   * transports: [
+   *   createOwnerWebSocketTransport({
+   *     url: "ws://localhost:4000",
+   *     ownerId,
+   *   }),
+   * ];
+   * ```
+   */
+  readonly transports?: ReadonlyArray<OwnerTransport>;
+
+  /**
+   * External AppOwner to use when creating Evolu instance. Use this when you
+   * want to manage AppOwner creation and persistence externally (e.g., with
+   * your own authentication system). If omitted, Evolu will automatically
+   * create and persist an AppOwner locally.
+   *
+   * For device-specific settings and account management state, we can use a
+   * separate local-only Evolu instance via `transports: []`.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const ConfigId = id("Config");
+   * type ConfigId = typeof ConfigId.Type;
+   *
+   * const DeviceSchema = {
+   *   config: {
+   *     id: ConfigId,
+   *     key: NonEmptyString50,
+   *     value: NonEmptyString50,
+   *   },
+   * };
+   *
+   * // Local-only instance for device settings (no sync)
+   * const deviceEvolu = createEvolu(evoluReactWebDeps)(DeviceSchema, {
+   *   name: SimpleName.orThrow("MyApp-Device"),
+   *   transports: [], // No sync - stays local to device
+   * });
+   *
+   * // Main synced instance for user data
+   * const evolu = createEvolu(evoluReactWebDeps)(MainSchema, {
+   *   name: SimpleName.orThrow("MyApp"),
+   *   // Default transports for sync
+   * });
+   * ```
+   */
+  readonly externalAppOwner?: AppOwner;
+
+  /**
+   * Use in-memory SQLite database instead of persistent storage. Useful for
+   * testing or temporary data that doesn't need persistence.
+   *
+   * In-memory databases exist only in RAM and are completely destroyed when the
+   * process ends, making them forensically safe for sensitive data.
+   *
+   * The default value is: `false`.
+   */
+  readonly inMemory?: boolean;
+
   /**
    * Use the `indexes` option to define SQLite indexes.
    *
@@ -103,11 +221,8 @@ export interface EvoluConfig extends Partial<DbConfig> {
    * URL to reload browser tabs after reset or restore.
    *
    * The default value is `/`.
-   *
-   * TODO: This option will be moved to web platform deps in the next major
-   * version.
    */
-  readonly reloadUrl?: string;
+  readonly reloadAppUrl?: string;
 }
 
 export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
@@ -393,35 +508,35 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
    */
   upsert: Mutation<S, "upsert">;
 
-  /**
-   * Delete {@link AppOwner} and all their data from the current device. After
-   * the deletion, Evolu will purge the application state. For browsers, this
-   * will reload all tabs using Evolu. For native apps, it will restart the
-   * app.
-   *
-   * Reloading can be turned off via options if you want to provide a different
-   * UX.
-   */
-  readonly resetAppOwner: (options?: {
-    readonly reload?: boolean;
-  }) => Promise<void>;
+  // /**
+  //  * Delete {@link AppOwner} and all their data from the current device. After
+  //  * the deletion, Evolu will purge the application state. For browsers, this
+  //  * will reload all tabs using Evolu. For native apps, it will restart the
+  //  * app.
+  //  *
+  //  * Reloading can be turned off via options if you want to provide a different
+  //  * UX.
+  //  */
+  // readonly resetAppOwner: (options?: {
+  //   readonly reload?: boolean;
+  // }) => Promise<void>;
 
-  /**
-   * Restore {@link AppOwner} with all their synced data. It uses
-   * {@link Evolu#resetAppOwner}, so be careful.
-   */
-  readonly restoreAppOwner: (
-    mnemonic: Mnemonic,
-    options?: {
-      readonly reload?: boolean;
-    },
-  ) => Promise<void>;
+  // /**
+  //  * Restore {@link AppOwner} with all their synced data. It uses
+  //  * {@link Evolu#resetAppOwner}, so be careful.
+  //  */
+  // readonly restoreAppOwner: (
+  //   mnemonic: Mnemonic,
+  //   options?: {
+  //     readonly reload?: boolean;
+  //   },
+  // ) => Promise<void>;
 
-  /**
-   * Reload the app in a platform-specific way. For browsers, this will reload
-   * all tabs using Evolu. For native apps, it will restart the app.
-   */
-  readonly reloadApp: () => void;
+  // /**
+  //  * Reload the app in a platform-specific way. For browsers, this will reload
+  //  * all tabs using Evolu. For native apps, it will restart the app.
+  //  */
+  // readonly reloadApp: () => void;
 
   /**
    * Export SQLite database file as Uint8Array.
@@ -470,31 +585,29 @@ export type EvoluError =
   | TimestampError
   | TransferableError;
 
-interface InternalEvoluInstance<
-  S extends EvoluSchema = EvoluSchema,
-> extends Evolu<S> {
-  /**
-   * Ensure tables and columns defined in {@link EvoluSchema} exist in the
-   * database. This function is for hot reloading.
-   */
-  readonly ensureSchema: (schema: EvoluSchema) => void;
-}
-
-const evoluInstances = createInstances<SimpleName, InternalEvoluInstance>();
+export type EvoluDeps = ConsoleDep &
+  RandomBytesDep &
+  ReloadAppDep &
+  SharedWorkerDep &
+  Partial<FlushSyncDep>;
 
 /**
- * Unique identifier for the current browser tab or app instance, lazily
- * initialized on first use to distinguish between multiple tabs.
+ * Creates Evolu dependencies from common and platform-specific parts.
  *
- * TODO: Remove
+ * This function creates all Evolu dependencies by combining the common parts
+ * (console, randomBytes) that are the same across all platforms with
+ * platform-specific dependencies (sharedWorker, reloadApp) that are passed as
+ * parameters.
  */
-let tabId: Id | null = null;
-
-export type EvoluDeps = ConsoleDep &
-  CreateDbWorkerDep &
-  Partial<FlushSyncDep> &
-  RandomBytesDep &
-  ReloadAppDep;
+export const createEvoluDeps = (
+  platformDeps: Pick<EvoluDeps, "sharedWorker" | "reloadApp">,
+): EvoluDeps => {
+  return {
+    console: createConsole(),
+    randomBytes: createRandomBytes(),
+    ...platformDeps,
+  };
+};
 
 /**
  * Creates an {@link Evolu} instance for a platform configured with the specified
@@ -528,154 +641,146 @@ export type EvoluDeps = ConsoleDep &
  *
  * const evolu = createEvolu(evoluReactDeps)(Schema);
  * ```
- *
- * ### Instance Caching
- *
- * `createEvolu` caches instances using {@link Instances} by {@link EvoluConfig}
- * name to enable hot reloading and prevent database corruption from multiple
- * connections. For testing, use unique instance names to ensure proper
- * isolation.
  */
 export const createEvolu =
   (deps: EvoluDeps) =>
   <S extends EvoluSchema>(
     schema: ValidateSchema<S> extends never ? S : ValidateSchema<S>,
-    config?: EvoluConfig,
-  ): Evolu<S> =>
-    evoluInstances.ensure(
-      config?.name ?? defaultDbConfig.name,
-      () => createEvoluInstance(deps)(schema as EvoluSchema, config),
-      (evolu) => {
-        // Hot reloading. Note that indexes are intentionally omitted.
-        evolu.ensureSchema(schema as EvoluSchema);
-      },
-    ) as Evolu<S>;
-
-const createEvoluInstance =
-  (deps: EvoluDeps) =>
-  (schema: EvoluSchema, config?: EvoluConfig): InternalEvoluInstance => {
-    deps.console.enabled = config?.enableLogging ?? false;
-
-    const { indexes, reloadUrl = "/", ...partialDbConfig } = config ?? {};
-
-    const dbConfig: DbConfig = { ...defaultDbConfig, ...partialDbConfig };
-
-    deps.console.log("[evolu]", "createEvoluInstance", {
-      name: dbConfig.name,
-    });
+    {
+      name,
+      transports: _transports = [
+        { type: "WebSocket", url: "wss://free.evoluhq.com" },
+      ],
+      externalAppOwner,
+      inMemory: _inMemory,
+      indexes: _indexes,
+    }: EvoluConfig,
+  ): Evolu<S> => {
+    // Cast schema to S since ValidateSchema ensures type safety at compile time.
+    // At runtime, schema is always valid because invalid schemas are compile errors.
+    const validSchema = schema as S;
 
     const errorStore = createStore<EvoluError | null>(null);
     const rowsStore = createStore<QueryRowsMap>(new Map());
-
-    const { promise: appOwner, resolve: resolveAppOwner } =
-      Promise.withResolvers<AppOwner>();
-
-    if (config?.externalAppOwner) {
-      resolveAppOwner(config.externalAppOwner);
-    }
-
-    // TODO: Update it for the owner-api
-    const _syncStore = createStore<SyncState>(initialSyncState);
-
     const subscribedQueries = createSubscribedQueries(rowsStore);
     const loadingPromises = createLoadingPromises(subscribedQueries);
     const onCompleteCallbacks = createCallbacks(deps);
     const exportCallbacks = createCallbacks<Uint8Array<ArrayBuffer>>(deps);
 
-    const dbWorker = deps.createDbWorker(dbConfig.name);
+    const loadQueryMicrotaskQueue: Array<Query> = [];
+    const useOwnerMicrotaskQueue: Array<[SyncOwner, boolean, Uint8Array]> = [];
 
-    const getTabId = () => {
-      tabId ??= createId(deps);
-      return tabId;
-    };
+    const { promise: appOwner, resolve: resolveAppOwner } =
+      Promise.withResolvers<AppOwner>();
+    if (externalAppOwner) resolveAppOwner(externalAppOwner);
 
-    // Worker responses are delivered to all tabs. Each case must handle this
-    // properly (e.g., AppOwner promise resolves only once, tabId filtering).
-    dbWorker.onMessage((message) => {
-      switch (message.type) {
-        case "onError": {
-          errorStore.set(message.error);
-          break;
-        }
+    // const schema = _schema as EvoluSchema;
 
-        case "onGetAppOwner": {
-          resolveAppOwner(message.appOwner);
-          break;
-        }
+    // const { indexes, reloadUrl = "/", ...partialDbConfig } = config ?? {};
 
-        case "onQueryPatches": {
-          if (message.tabId !== getTabId()) return;
+    // const dbConfig: DbConfig = { ...defaultDbConfig, ...partialDbConfig };
 
-          const state = rowsStore.get();
-          const nextState = new Map([
-            ...state,
-            ...message.queryPatches.map(
-              ({ query, patches }): [Query, ReadonlyArray<Row>] => [
-                query,
-                applyPatches(patches, state.get(query) ?? emptyRows),
-              ],
-            ),
-          ]);
+    // deps.console.log("[evolu]", "createEvoluInstance", {
+    //   name: dbConfig.name,
+    // });
 
-          for (const { query } of message.queryPatches) {
-            loadingPromises.resolve(query, nextState.get(query) ?? emptyRows);
-          }
+    // // TODO: Update it for the owner-api
+    // const _syncStore = createStore<SyncState>(initialSyncState);
 
-          if (deps.flushSync && message.onCompleteIds.length > 0) {
-            deps.flushSync(() => {
-              rowsStore.set(nextState);
-            });
-          } else {
-            rowsStore.set(nextState);
-          }
+    // const dbWorker = deps.createDbWorker(dbConfig.name);
 
-          for (const id of message.onCompleteIds) {
-            onCompleteCallbacks.execute(id);
-          }
-          break;
-        }
+    // const getTabId = () => {
+    //   tabId ??= createId(deps);
+    //   return tabId;
+    // };
 
-        case "refreshQueries": {
-          if (message.tabId && message.tabId === getTabId()) return;
+    // // Worker responses are delivered to all tabs. Each case must handle this
+    // // properly (e.g., AppOwner promise resolves only once, tabId filtering).
+    // dbWorker.onMessage((message) => {
+    //   switch (message.type) {
+    //     case "onError": {
+    //       errorStore.set(message.error);
+    //       break;
+    //     }
 
-          const loadingPromisesQueries = loadingPromises.getQueries();
-          loadingPromises.releaseUnsubscribedOnMutation();
+    //     case "onGetAppOwner": {
+    //       resolveAppOwner(message.appOwner);
+    //       break;
+    //     }
 
-          const queries = dedupeArray([
-            ...loadingPromisesQueries,
-            ...subscribedQueries.get(),
-          ]);
+    //     case "onQueryPatches": {
+    //       if (message.tabId !== getTabId()) return;
 
-          if (isNonEmptyReadonlyArray(queries)) {
-            dbWorker.postMessage({ type: "query", tabId: getTabId(), queries });
-          }
+    //       const state = rowsStore.get();
+    //       const nextState = new Map([
+    //         ...state,
+    //         ...message.queryPatches.map(
+    //           ({ query, patches }): [Query, ReadonlyArray<Row>] => [
+    //             query,
+    //             applyPatches(patches, state.get(query) ?? emptyRows),
+    //           ],
+    //         ),
+    //       ]);
 
-          break;
-        }
+    //       for (const { query } of message.queryPatches) {
+    //         loadingPromises.resolve(query, nextState.get(query) ?? emptyRows);
+    //       }
 
-        case "onReset": {
-          if (message.reload) {
-            deps.reloadApp(reloadUrl);
-          } else {
-            onCompleteCallbacks.execute(message.onCompleteId);
-          }
-          break;
-        }
+    //       if (deps.flushSync && message.onCompleteIds.length > 0) {
+    //         deps.flushSync(() => {
+    //           rowsStore.set(nextState);
+    //         });
+    //       } else {
+    //         rowsStore.set(nextState);
+    //       }
 
-        case "onExport": {
-          exportCallbacks.execute(
-            message.onCompleteId,
-            message.file as Uint8Array<ArrayBuffer>,
-          );
-          break;
-        }
+    //       for (const id of message.onCompleteIds) {
+    //         onCompleteCallbacks.execute(id);
+    //       }
+    //       break;
+    //     }
 
-        default:
-          exhaustiveCheck(message);
-      }
-    });
+    //     case "refreshQueries": {
+    //       if (message.tabId && message.tabId === getTabId()) return;
 
-    const dbSchema = evoluSchemaToDbSchema(schema, indexes);
+    //       const loadingPromisesQueries = loadingPromises.getQueries();
+    //       loadingPromises.releaseUnsubscribedOnMutation();
+
+    //       const queries = dedupeArray([
+    //         ...loadingPromisesQueries,
+    //         ...subscribedQueries.get(),
+    //       ]);
+
+    //       if (isNonEmptyReadonlyArray(queries)) {
+    //         dbWorker.postMessage({ type: "query", tabId: getTabId(), queries });
+    //       }
+
+    //       break;
+    //     }
+
+    //     case "onReset": {
+    //       if (message.reload) {
+    //         deps.reloadApp(reloadUrl);
+    //       } else {
+    //         onCompleteCallbacks.execute(message.onCompleteId);
+    //       }
+    //       break;
+    //     }
+
+    //     case "onExport": {
+    //       exportCallbacks.execute(
+    //         message.onCompleteId,
+    //         message.file as Uint8Array<ArrayBuffer>,
+    //       );
+    //       break;
+    //     }
+
+    //     default:
+    //       exhaustiveCheck(message);
+    //   }
+    // });
+
+    // const dbSchema = evoluSchemaToDbSchema(schema, indexes);
 
     const mutationTypesCache = new Map<
       MutationKind,
@@ -693,41 +798,35 @@ const createEvoluInstance =
       if (!type) {
         type = { insert: insertable, update: updateable, upsert: upsertable }[
           kind
-        ](schema[table]);
+        ](validSchema[table]);
         types.set(table, type);
       }
       return type;
     };
 
-    dbWorker.postMessage({ type: "init", config: dbConfig, dbSchema });
+    // dbWorker.postMessage({ type: "init", config: dbConfig, dbSchema });
 
-    // We can't use `init` to get AppOwner because `init` runs only once per n tabs.
-    dbWorker.postMessage({ type: "getAppOwner" });
-
-    const loadQueryMicrotaskQueue: Array<Query> = [];
+    // // We can't use `init` to get AppOwner because `init` runs only once per n tabs.
+    // dbWorker.postMessage({ type: "getAppOwner" });
 
     const mutateMicrotaskQueue: Array<
       [MutationChange | null, MutationOptions["onComplete"] | undefined]
     > = [];
 
-    const useOwnerMicrotaskQueue: Array<[SyncOwner, boolean, Uint8Array]> = [];
-
     const createMutation =
-      <Kind extends MutationKind>(kind: Kind) =>
-      <TableName extends keyof typeof schema>(
+      <Kind extends MutationKind>(kind: Kind): Mutation<S, Kind> =>
+      <TableName extends keyof S>(
         table: TableName,
-        props: InferInput<
-          ObjectType<MutationMapping<(typeof schema)[TableName], Kind>>
-        >,
+        props: InferInput<ObjectType<MutationMapping<S[TableName], Kind>>>,
         options?: MutationOptions,
       ): Result<
-        { readonly id: InferType<(typeof schema)[TableName]["id"]> },
+        { readonly id: S[TableName]["id"]["Type"] },
         | ValidMutationSizeError
-        | InferErrors<
-            ObjectType<MutationMapping<(typeof schema)[TableName], Kind>>
-          >
+        | InferErrors<ObjectType<MutationMapping<S[TableName], Kind>>>
       > => {
-        const result = getMutationType(table, kind).fromUnknown(props);
+        const result = getMutationType(table as string, kind).fromUnknown(
+          props,
+        );
 
         const id =
           kind === "insert"
@@ -742,7 +841,7 @@ const createEvoluInstance =
             const { id: _, isDeleted, ...values } = result.value;
 
             const dbChange = {
-              table,
+              table: table as string,
               id,
               values,
               isInsert: kind === "insert" || kind === "upsert",
@@ -753,7 +852,7 @@ const createEvoluInstance =
 
             assert(
               DbChange.is(dbChange),
-              `Invalid DbChange for table '${table}': Please check schema type errors.`,
+              `Invalid DbChange for table '${String(table)}': Please check schema type errors.`,
             );
 
             mutateMicrotaskQueue.push([
@@ -767,14 +866,13 @@ const createEvoluInstance =
           }
         }
 
-        if (result.ok) return ok({ id });
+        if (result.ok)
+          return ok({ id } as { readonly id: S[TableName]["id"]["Type"] });
 
         return err(
           result.error as
             | ValidMutationSizeError
-            | InferErrors<
-                ObjectType<MutationMapping<(typeof schema)[TableName], Kind>>
-              >,
+            | InferErrors<ObjectType<MutationMapping<S[TableName], Kind>>>,
         );
       };
 
@@ -796,27 +894,28 @@ const createEvoluInstance =
         return;
       }
 
-      const onCompleteIds = onCompletes.map(onCompleteCallbacks.register);
+      const _onCompleteIds = onCompletes.map(onCompleteCallbacks.register);
       loadingPromises.releaseUnsubscribedOnMutation();
 
       if (!isNonEmptyArray(changes)) return;
 
-      dbWorker.postMessage({
-        type: "mutate",
-        tabId: getTabId(),
-        changes,
-        onCompleteIds,
-        subscribedQueries: subscribedQueries.get(),
-      });
+      // TODO:
+      // dbWorker.postMessage({
+      //   type: "mutate",
+      //   tabId: getTabId(),
+      //   changes,
+      //   onCompleteIds,
+      //   subscribedQueries: subscribedQueries.get(),
+      // });
     };
 
-    const evolu: InternalEvoluInstance = {
-      name: dbConfig.name,
+    const evolu: Evolu<S> = {
+      name,
 
       subscribeError: errorStore.subscribe,
       getError: errorStore.get,
 
-      createQuery,
+      createQuery: createQuery as CreateQuery<S>,
 
       loadQuery: <R extends Row>(query: Query<R>): Promise<QueryRows<R>> => {
         const { promise, isNew } = loadingPromises.get(query);
@@ -829,11 +928,11 @@ const createEvoluInstance =
               loadQueryMicrotaskQueue.length = 0;
               assertNonEmptyReadonlyArray(queries);
               deps.console.log("[evolu]", "loadQuery", { queries });
-              dbWorker.postMessage({
-                type: "query",
-                tabId: getTabId(),
-                queries,
-              });
+              // dbWorker.postMessage({
+              //   type: "query",
+              //   tabId: getTabId(),
+              //   queries,
+              // });
             });
           }
         }
@@ -874,44 +973,45 @@ const createEvoluInstance =
       update: createMutation("update"),
       upsert: createMutation("upsert"),
 
-      resetAppOwner: (options) => {
-        const { promise, resolve } = Promise.withResolvers<undefined>();
-        const onCompleteId = onCompleteCallbacks.register(resolve);
-        dbWorker.postMessage({
-          type: "reset",
-          onCompleteId,
-          reload: options?.reload ?? true,
-        });
-        return promise;
-      },
+      // resetAppOwner: (_options) => {
+      //   const { promise, resolve } = Promise.withResolvers<undefined>();
+      //   const _onCompleteId = onCompleteCallbacks.register(resolve);
+      //   // dbWorker.postMessage({
+      //   //   type: "reset",
+      //   //   onCompleteId,
+      //   //   reload: options?.reload ?? true,
+      //   // });
+      //   return promise;
+      // },
 
-      restoreAppOwner: (mnemonic, options) => {
-        const { promise, resolve } = Promise.withResolvers<undefined>();
-        const onCompleteId = onCompleteCallbacks.register(resolve);
-        dbWorker.postMessage({
-          type: "reset",
-          onCompleteId,
-          reload: options?.reload ?? true,
-          restore: { mnemonic, dbSchema },
-        });
-        return promise;
-      },
+      // restoreAppOwner: (_mnemonic, _options) => {
+      //   const { promise, resolve } = Promise.withResolvers<undefined>();
+      //   const _onCompleteId = onCompleteCallbacks.register(resolve);
+      //   // dbWorker.postMessage({
+      //   //   type: "reset",
+      //   //   onCompleteId,
+      //   //   reload: options?.reload ?? true,
+      //   //   restore: { mnemonic, dbSchema },
+      //   // });
+      //   return promise;
+      // },
 
-      reloadApp: () => {
-        deps.reloadApp(reloadUrl);
-      },
+      // reloadApp: () => {
+      //   // TODO:
+      //   // deps.reloadApp(reloadUrl);
+      // },
 
-      ensureSchema: (schema) => {
-        mutationTypesCache.clear();
-        const dbSchema = evoluSchemaToDbSchema(schema);
-        dbWorker.postMessage({ type: "ensureDbSchema", dbSchema });
-      },
+      // ensureSchema: (schema) => {
+      //   mutationTypesCache.clear();
+      //   const dbSchema = evoluSchemaToDbSchema(schema);
+      //   dbWorker.postMessage({ type: "ensureDbSchema", dbSchema });
+      // },
 
       exportDatabase: () => {
         const { promise, resolve } =
           Promise.withResolvers<Uint8Array<ArrayBuffer>>();
-        const onCompleteId = exportCallbacks.register(resolve);
-        dbWorker.postMessage({ type: "export", onCompleteId });
+        const _onCompleteId = exportCallbacks.register(resolve);
+        // dbWorker.postMessage({ type: "export", onCompleteId });
         return promise;
       },
 
@@ -952,8 +1052,8 @@ const createEvoluInstance =
               }
             }
 
-            for (const [owner, use] of result) {
-              dbWorker.postMessage({ type: "useOwner", owner, use });
+            for (const [_owner, _use] of result) {
+              // dbWorker.postMessage({ type: "useOwner", owner, use });
             }
           });
         };
@@ -978,6 +1078,7 @@ const createEvoluInstance =
     return evolu;
   };
 
+// TODO: Should not be exported, it is because of tests.
 export const createQuery = <R extends Row>(
   queryCallback: Parameters<CreateQuery<EvoluSchema>>[0],
   options?: Parameters<CreateQuery<EvoluSchema>>[1],
