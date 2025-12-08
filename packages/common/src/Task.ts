@@ -12,10 +12,12 @@ import { NonNegativeInt, PositiveInt } from "./Type.js";
  *
  * ### Cancellation
  *
- * Tasks support optional cancellation via signal in {@link TaskContext}. When a
- * Task is called without a signal, it cannot be cancelled and {@link AbortError}
- * will never be returned. When called with a signal, the Task can be cancelled
- * and AbortError is added to the error union with precise type safety.
+ * Tasks support optional cancellation via
+ * {@link https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal | AbortSignal}.
+ * When a Task is called without a signal, it cannot be cancelled and
+ * {@link AbortError} will never be returned. When called with a signal, the Task
+ * can be cancelled and AbortError is added to the error union with precise type
+ * safety.
  *
  * When composing Tasks, we typically have context and want to abort ASAP by
  * passing it through. However, there are valid cases where we don't want to
@@ -146,9 +148,10 @@ export interface Task<T, E> {
   /**
    * Invoke the Task.
    *
-   * Provide a context with an AbortSignal to enable cancellation. When called
-   * without a signal, {@link AbortError} cannot occur and the error type narrows
-   * accordingly.
+   * Provide a context with an
+   * {@link https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal | AbortSignal}
+   * to enable cancellation. When called without a signal, {@link AbortError}
+   * cannot occur and the error type narrows accordingly.
    *
    * ### Example
    *
@@ -191,13 +194,25 @@ export interface Task<T, E> {
   >;
 }
 
-/** Context passed to {@link Task}s for cancellation. */
+/**
+ * Context passed to {@link Task}s for cancellation.
+ *
+ * You can pass an
+ * {@link https://developer.mozilla.org/en-US/docs/Web/API/AbortController | AbortController}
+ * directly since it has a `signal` property.
+ */
 export interface TaskContext {
-  /** Signal for cancellation */
+  /**
+   * {@link https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal | AbortSignal}
+   * for cancellation.
+   */
   readonly signal?: AbortSignal;
 }
 
-/** Error returned when a {@link Task} is cancelled via AbortSignal. */
+/**
+ * Error returned when a {@link Task} is cancelled via
+ * {@link https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal | AbortSignal}.
+ */
 export interface AbortError {
   readonly type: "AbortError";
   readonly reason?: unknown;
@@ -212,7 +227,8 @@ const isAbortError = (error: unknown): error is AbortError =>
 /**
  * Combines user signal from context with an internal signal.
  *
- * If the context has a signal, combines both signals using AbortSignal.any().
+ * If the context has a signal, combines both signals using
+ * {@link https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal/any_static | AbortSignal.any()}.
  * Otherwise, returns just the internal signal.
  */
 const combineSignal = (
