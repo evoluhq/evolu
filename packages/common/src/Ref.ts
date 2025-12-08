@@ -6,11 +6,11 @@ import type { Store } from "./Store.js";
  * the current state.
  *
  * Use a Ref instead of a variable when you want to pass state around as an
- * object or update it in a controlled way. If you need subscriptions, see
- * {@link Store}.
+ * object. If you need subscriptions, see {@link Store}.
  *
- * Updating in a controlled way means all changes go through specific methods
- * (`set` or `modify`), making state updates predictable and easy to track.
+ * Ref is a valid dependency in Evolu's [Dependency
+ * Injection](https://evolu.dev/docs/dependency-injection) pattern—use it when
+ * functions need shared mutable state.
  *
  * ### Example
  *

@@ -5,6 +5,10 @@ import { Ref } from "./Ref.js";
  * A store for managing state with change notifications. Extends {@link Ref} with
  * subscriptions. Provides methods to get, set, and modify state, and to notify
  * listeners when the state changes.
+ *
+ * Store is a valid dependency in Evolu's [Dependency
+ * Injection](https://evolu.dev/docs/dependency-injection) pattern—use it when
+ * functions need shared mutable state with subscriptions.
  */
 export interface Store<T> extends Ref<T> {
   /**
