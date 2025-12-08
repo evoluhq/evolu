@@ -88,12 +88,12 @@ export const createSharedWorker = <Input, Output>(
     },
   };
 
-  nativeSharedWorker.port.onmessage = (ev) => {
+  nativeSharedWorker.port.onmessage = (ev: MessageEvent<Output>) => {
     assert(
       sharedWorker.port.onMessage != null,
       "onMessage must be set before receiving messages",
     );
-    sharedWorker.port.onMessage(ev.data as Output);
+    sharedWorker.port.onMessage(ev.data);
   };
 
   nativeSharedWorker.port.onmessageerror = (event) => {

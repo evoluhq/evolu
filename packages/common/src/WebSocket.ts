@@ -232,8 +232,10 @@ export const createWebSocket: CreateWebSocket = (
           resolve(err({ type: "WebSocketConnectionCloseError", event }));
         };
 
-        socket.onmessage = (event) => {
-          onMessage?.(event.data as string | ArrayBuffer | Blob);
+        socket.onmessage = (
+          event: MessageEvent<string | ArrayBuffer | Blob>,
+        ) => {
+          onMessage?.(event.data);
         };
       }),
   )(reconnectController).then((result) => {
