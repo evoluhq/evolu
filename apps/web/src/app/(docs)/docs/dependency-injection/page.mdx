@@ -12,23 +12,28 @@ Also known as "passing arguments"
 
 What is Dependency Injection? Someone once called it 'really just a pretentious way to say "taking an argument,"' and while it does involve taking or passing arguments, not every instance of that qualifies as Dependency Injection.
 
-Some function arguments are local—say, the return value of one function passed to another—and often used just once. Others, like a database instance, are global and needed across many functions.
-
-Traditionally, when something must be shared across functions, we might make it global using a 'service locator,' a well-known antipattern. This approach is problematic because it creates code that’s hard to test and compose (e.g., replacing a dependency becomes difficult).
+Some function arguments are local—say, the return value of one function passed to another—and often used just once. Others, like a database instance, are global and needed across many functions. Traditionally, when something must be shared across functions, we might export it from a module and let other modules import it directly:
 
 ```ts
-// 🚨 Don't do that! It's a 'service locator', a well-known antipattern.
-export const db = createDb("...");
+// db.ts
+export const db = createDb();
+
+// user.ts
+import { db } from "./db"; // 🚨 Direct import creates tight coupling
 ```
 
-So, what’s the alternative? We can pass the argument manually where it's required or use a framework (an Inversion of Control container). Evolu, however, argues we don’t need a framework for that—all we need is a convention.
+This turns `db` into a [service locator](https://blog.ploeh.dk/2010/02/03/ServiceLocatorisanAnti-Pattern/), a well-known anti-pattern—other modules "locate" the service by importing it. The problem? It's hard to test (you can't easily swap `db` for a mock) and hard to refactor (every module that imports `db` is tightly coupled to that specific instance).
+
+The alternative is to pass dependencies explicitly to where they're needed. But where do we create and wire them together? In a [Composition Root](https://blog.ploeh.dk/2011/07/28/CompositionRoot/)—a single place (typically your app's entry point) where all dependencies are instantiated and composed. From there, dependencies flow down through function arguments.
+
+Some frameworks use sophisticated DI Containers (Inversion of Control containers) to manage dependencies automatically. Evolu prefers [Pure DI](https://blog.ploeh.dk/2014/06/10/pure-di/)—Dependency Injection using plain, idiomatic JavaScript without a container. All we need is a convention.
 
 Imagine we have a function that does something with time:
 
 ```ts
-// 🚨 Antipattern: Using global Date directly (service locator style)
+// 🚨 Implicitly depends on global Date—a service we "locate" from global scope
 const timeUntilEvent = (eventTimestamp: number): number => {
-  const currentTime = Date.now(); // Implicitly depends on global Date
+  const currentTime = Date.now();
   return eventTimestamp - currentTime;
 };
 ```
@@ -42,9 +47,9 @@ const timeUntilEvent = (date: Date, eventTimestamp: number): number => {
 };
 ```
 
-- We are mixing function dependencies (`Date`) with function arguments (`eventTimestamp`)
+- We are mixing function dependencies (`date`) with function arguments (`eventTimestamp`)
 - Passing dependencies like that is tedious and verbose.
-- We only need the current time, but we’re using the entire `Date` class (which is hard to mock).
+- We only need the current time, but we're using the entire `Date` instance (which is hard to mock).
 
 We can do better. Let’s start with a simple interface:
 
@@ -79,7 +84,10 @@ This is better, but what if we need another dependency, like a `Logger`?
 
 ```ts
 export interface Logger {
-  readonly log: (message?: any, ...optionalParams: Array<any>) => void;
+  readonly log: (
+    message?: unknown,
+    ...optionalParams: ReadonlyArray<unknown>
+  ) => void;
 }
 ```
 
@@ -108,12 +116,12 @@ const timeUntilEvent =
   };
 ```
 
-The previous example isn't perfect because dependencies with overlapping property names would clash.
+The previous example isn't ideal because dependencies with overlapping property names would clash.
 And we even haven’t yet addressed creating dependencies or making them optional. Long story short, let’s look at the complete example.
 
 ## Example
 
-The example demonstrates a simple yet robust approach to Dependency Injection (DI) in TypeScript without relying on a framework. It calculates the time remaining until a given event timestamp using a `Time` dependency, with an optional `Logger` for logging. Dependencies are defined as interfaces (`Time` and `Logger`) and wrapped in distinct types (`TimeDep` and `LoggerDep`) to avoid clashes.
+The example demonstrates a simple yet robust approach to Dependency Injection (DI) in TypeScript without relying on a DI Container. It calculates the time remaining until a given event timestamp using a `Time` dependency, with an optional `Logger` for logging. Dependencies are defined as interfaces (`Time` and `Logger`) and wrapped in distinct types (`TimeDep` and `LoggerDep`) to avoid clashes.
 
 Factory functions (`createTime` and `createLogger`) instantiate these dependencies, and they’re passed as a single deps object to the `timeUntilEvent` function. The use of `Partial<LoggerDep>` makes the logger optional.
 
@@ -127,7 +135,10 @@ export interface TimeDep {
 }
 
 export interface Logger {
-  readonly log: (message?: any, ...optionalParams: Array<any>) => void;
+  readonly log: (
+    message?: unknown,
+    ...optionalParams: ReadonlyArray<unknown>
+  ) => void;
 }
 
 export interface LoggerDep {
@@ -157,17 +168,17 @@ export const createLogger = (): Logger => ({
 
 const enableLogging = true;
 
+// Composition Root: where we wire all dependencies together
 const deps: TimeDep & Partial<LoggerDep> = {
   time: createTime(),
-  // Inject a dependency conditionally
+  // Inject the dependency conditionally
   ...(enableLogging && { logger: createLogger() }),
 };
 
 timeUntilEvent(deps)(1742329310767);
 ```
 
-As you can see, we don't need a framework. Evolu prefers simplicity, conventions, and
-explicit code.
+As you can see, we don't need a framework with a DI Container (like Effect for example)—all we need is a convention.
 
 Note that passing `deps` manually isn't as verbose as you might think:
 
@@ -180,8 +191,9 @@ export interface LoggerDep {
   readonly logger: Logger;
 }
 
-const app = (deps: TimeDep & LoggerDep) => {
-  // Over-providing is OK—pass the whole `deps` object
+const runApp = (deps: LoggerDep & TimeDep) => {
+  // Over-providing is OK—doSomethingWithTime needs only TimeDep,
+  // but passing the whole `deps` object is fine
   doSomethingWithTime(deps);
   doSomethingWithLogger(deps);
 };
@@ -190,19 +202,19 @@ const doSomethingWithTime = (deps: TimeDep) => {
   deps.time.now();
 };
 
-// Over-depending is not OK—don’t require unused dependencies
-const doSomethingWithLogger = (deps: TimeDep & LoggerDep) => {
+// Over-depending is not OK—this function requires TimeDep but doesn't use it
+const doSomethingWithLogger = (deps: LoggerDep & TimeDep) => {
   deps.logger.log("foo");
 };
 
-type AppDeps = TimeDep & LoggerDep;
+type AppDeps = LoggerDep & TimeDep;
 
 const appDeps: AppDeps = {
-  time: createTime(),
   logger: createLogger(),
+  time: createTime(),
 };
 
-app(appDeps);
+runApp(appDeps);
 ```
 
 Remember:
@@ -220,7 +232,10 @@ export interface LoggerConfig {
 }
 
 export interface Logger {
-  readonly log: (message?: any, ...optionalParams: Array<any>) => void;
+  readonly log: (
+    message?: unknown,
+    ...optionalParams: ReadonlyArray<unknown>
+  ) => void;
 }
 
 export type CreateLogger = (config: LoggerConfig) => Logger;
@@ -235,38 +250,114 @@ export const createLogger: CreateLogger = (config) => ({
   },
 });
 
-type AppDeps = TimeDep & CreateLoggerDep;
+type AppDeps = CreateLoggerDep & TimeDep;
 
+// Note we pass `createLogger` as a factory, not calling it yet.
+// It will be called later when LoggerConfig becomes available.
 const appDeps: AppDeps = {
-  time: createTime(),
-  // Note we haven't run `createLogger` yet; it will be called later.
   createLogger,
+  time: createTime(),
 };
 
-app(appDeps);
+runApp(appDeps);
 ```
 
 ## Guidelines
 
 - Start with an interface or type—everything can be a dependency.
 - To avoid clashes, wrap dependencies (`TimeDep`, `LoggerDep`).
-- Write factory functions (`createTime`, `createTestTime`)
+- Write factory functions (`createTime`, `createTestTime`).
 - Both regular functions and factory functions accept a single argument named `deps`, combining one or more dependencies (e.g., `A & B & C`).
-- Sort dependencies alphabetically in ascending order when combining them.
+- Sort dependencies alphabetically when combining them, and place `Partial` deps last.
 
 <Note>
-  Never create a global instance (e.g., `export const logger = ...`). Developers
-  might use it instead of proper DI, turning it into a service locator—a code
-  smell that’s hard to test and refactor.
+  Never export a global instance from a shared module (e.g., `export const
+  logger = createLogger()`). Other modules might import it directly instead of
+  receiving it through proper DI, turning it into a [service
+  locator](https://blog.ploeh.dk/2010/02/03/ServiceLocatorisanAnti-Pattern/)—a
+  pattern that's hard to test and refactor. Creating instances at module scope
+  is fine in the [Composition
+  Root](https://blog.ploeh.dk/2011/07/28/CompositionRoot/), the application's
+  entry point where dependencies are wired together.
 </Note>
 
 Btw, Evolu provides
 [Console](/docs/api-reference/common/Console), so you probably
 don't need a Logger.
 
+## Error Handling
+
+Dependencies often perform operations that can fail. Use the [`Result`](/docs/api-reference/common/Result/type-aliases/Result) type to make errors explicit and type-safe. The key principle: **expose business errors, hide implementation errors**.
+
+```ts
+import { Result, ok, err } from "@evolu/common";
+
+// Business errors that callers care about
+interface StorageFullError {
+  readonly type: "StorageFullError";
+}
+
+interface PermissionError {
+  readonly type: "PermissionError";
+}
+
+// ✅ Good: Dependency interface exposes business errors
+export interface Storage {
+  readonly save: (
+    data: Data,
+  ) => Result<void, StorageFullError | PermissionError>;
+}
+
+export interface StorageDep {
+  readonly storage: Storage;
+}
+```
+
+The implementation maps internal errors to business errors:
+
+```ts
+// ❌ Avoid: Leaking implementation error (SqliteError) through interface
+export interface Storage {
+  readonly save: (data: Data) => Result<void, SqliteError>;
+}
+
+// ✅ Good: Map implementation errors to business errors
+export const createStorage = (deps: SqliteDep): Storage => ({
+  save: (data) => {
+    const result = deps.sqlite.exec(/* ... */);
+    if (!result.ok) {
+      // Map SqliteError to a business error
+      if (result.error.code === "SQLITE_FULL") {
+        return err({ type: "StorageFullError" });
+      }
+      return err({ type: "PermissionError" });
+    }
+    return ok();
+  },
+});
+```
+
+This approach keeps your business logic decoupled from implementation details. You can swap SQLite for IndexedDB without changing the `Storage` interface or any code that depends on it.
+
+### Testing Error Paths
+
+With typed errors, testing failure scenarios is straightforward:
+
+```ts
+const createFailingStorage = (): Storage => ({
+  save: () => err({ type: "StorageFullError" }),
+});
+
+test("handles storage full error", () => {
+  const deps = { storage: createFailingStorage() };
+  const result = saveUserData(deps)(userData);
+  expect(result).toEqual(err({ type: "StorageFullError" }));
+});
+```
+
 ## Testing
 
-Avoiding global state makes testing and composition easier. Here’s an example with mocked dependencies:
+Avoiding global state makes testing and composition easier. Here's an example with mocked dependencies:
 
 ```ts
 const createTestTime = (): Time => ({
@@ -275,9 +366,11 @@ const createTestTime = (): Time => ({
 
 test("timeUntilEvent calculates correctly", () => {
   const deps = { time: createTestTime() };
-  expect(timeUntilEvent(deps)(1234567990)).toBe(1000);
+  expect(timeUntilEvent(deps)(1234568890)).toBe(1000);
 });
 ```
+
+Evolu provides [`createTestTime`](/docs/api-reference/common/Time/functions/createTestTime) out of the box—a `Time` implementation that returns monotonically increasing values, useful for tests that need predictable, ordered timestamps.
 
 ## Tips
 
@@ -292,12 +385,24 @@ const appDeps: AppDeps = {
 };
 ```
 
+### Optional Deps
+
+Use `Partial` and conditional spreading to make deps optional:
+
+```ts
+const deps: TimeDep & Partial<LoggerDep> = {
+  time: createTime(),
+  // Inject the dependency conditionally
+  ...(enableLogging && { logger: createLogger() }),
+};
+```
+
 ### Refining Deps
 
 To reuse existing deps while swapping specific parts, use `Omit`. For example, if `AppDeps` includes `CreateSqliteDriverDep` and other deps, but you want to replace `CreateSqliteDriverDep` with `SqliteDep`:
 
 ```ts
-export type AppDeps = CreateSqliteDriverDep & TimeDep & LoggerDep;
+export type AppDeps = CreateSqliteDriverDep & LoggerDep & TimeDep;
 
 export type AppInstanceDeps = Omit<AppDeps, keyof CreateSqliteDriverDep> &
   SqliteDep;
@@ -312,21 +417,9 @@ export type TimeOnlyDeps = Omit<
 >;
 ```
 
-### Optional Deps
-
-Use `Partial` and conditional spreading to make deps optional:
-
-```ts
-const deps: TimeDep & Partial<LoggerDep> = {
-  time: createTime(),
-  // Inject logger only if enabled
-  ...(enableLogging && { logger: createLogger() }),
-};
-```
-
 ### Handling Clashes
 
-When combining deps with `&` (e.g., `TimeDep & LoggerDep`), property clashes are rare but possible. The fix is simple—use distinct wrappers:
+When combining deps with `&` (e.g., `LoggerDep & TimeDep`), property clashes are rare but possible. The fix is simple—use distinct wrappers:
 
 ```ts
 export interface LoggerADep {
@@ -340,60 +433,61 @@ export interface LoggerBDep {
 
 ## FAQ
 
-**Do I have to pass everything as a dependency?**
+**What qualifies as a dependency?**
 
-No, not at all! Dependency Injection is about managing things that interact with the outside world—like time (`Date`), logging (`console`), or databases—because these are tricky to test or swap out. Regular function arguments, like a number or a string, don’t need to be dependencies unless they represent something external.
-
-Think of your app as having a `composition root`: a central place where you "wire up" all your dependencies and pass them to the functions that need them. This is typically at the top level of your app. From there, you pass the `deps` object down to your functions, but not every argument needs to be part of it.
-
-For example:
+A dependency is anything that interacts with the outside world—like time (`Date`), logging (`console`), databases—or holds shared state, like [`Ref`](/docs/api-reference/common/Ref) and [`Store`](/docs/api-reference/common/Store). Regular function arguments are not dependencies because they are immutable—now you know why Evolu [recommends readonly objects](/docs/conventions#immutability).
 
 ```ts
-// Composition root (e.g., main.ts)
-const deps = {
-  time: createTime(),
-  logger: createLogger(),
+interface CounterRefDep {
+  readonly counterRef: Ref<number>;
+}
+
+const increment = (deps: CounterRefDep) => {
+  deps.counterRef.modify((n) => n + 1);
 };
-
-// A function with a dependency and a regular argument
-const timeUntilEvent =
-  (deps: TimeDep) =>
-  (eventTimestamp: number): number => {
-    return eventTimestamp - deps.time.now();
-  };
-
-// Usage
-const result = timeUntilEvent(deps)(1742329310767);
 ```
 
-- `eventTimestamp` is just a number—it's not a dependency because it’s local to the function’s logic.
-- `time` is a dependency because it interacts with the outside world (`Date.now()`).
-
-**Key takeaway**: Use dependencies for external interactions (I/O, side effects) and keep regular arguments for pure, local data. At the composition root, assemble your `deps` object once and pass it where needed—over-providing is fine, as shown in the [Example](#example) section.
+<Note>
+  Before reaching for DI, consider if you can restructure your code as an
+  [impure/pure/impure
+  sandwich](https://blog.ploeh.dk/2017/02/02/dependency-rejection/)—gather
+  impure data first, pass it to pure functions, then perform impure effects with
+  the result. This often eliminates the need for dependencies entirely.
+</Note>
 
 **Why shouldn't dependencies use generic arguments?**
 
-Dependencies must not use generic type parameters because it tightly couples function signatures to specific implementations and leaks implementation details into business logic. This reduces flexibility and composability.
-
-- **Decoupling:** By avoiding generics in dependencies, code remains agnostic to the underlying implementation (e.g., SQLite, IndexedDB, in-memory, etc.).
-- **Simplicity:** Consumers of the API must not know about implementation-specific types.
-- **Testability:** It is easy to swap or mock dependencies in tests without worrying about matching generic parameters.
-
-**Example:**
+Dependencies must not use generic type parameters—that would leak implementation details into business logic and tightly couple consumers to specific implementations.
 
 ```ts
-// ✅ Good: Result with business/domain error
-export type BusinessError = { type: "NotFound" } | { type: "PermissionDenied" };
-
-export interface UserService {
-  getUser: (id: UserId) => Result<User, BusinessError>;
+// ❌ Avoid: Generic parameter leaks implementation detail
+interface Storage<Row> {
+  query: (sql: string) => ReadonlyArray<Row>;
 }
 
-// 🚫 Not recommended: Result with implementation error
-export interface Storage {
-  writeMessages: (...) => Result<boolean, SqliteError>; // Avoid this!
-}
+// Now every function using Storage must know about Row
+const getUsers = (deps: { storage: Storage<UserRow> }) =>
+  deps.storage.query("SELECT * FROM users");
 ```
 
-**Summary:**  
-Use `Result` for business/domain errors, but keep implementation errors internal to the dependency implementation.
+The problem: `UserRow` might be SQLite-specific. If you switch to IndexedDB, the row shape could differ, breaking all code that depends on `Storage<UserRow>`.
+
+```ts
+// ✅ Good: No generic, implementation hidden
+interface Storage {
+  getUsers: () => Result<ReadonlyArray<User>, StorageError>;
+}
+
+// Consumer doesn't know or care how data is stored
+const getUsers = (deps: StorageDep) => deps.storage.getUsers();
+```
+
+By hiding the generic, the `Storage` interface becomes implementation-agnostic. You can swap SQLite for IndexedDB without changing any code that depends on `Storage`.
+
+**Key points:**
+
+- **Decoupling:** Code remains agnostic to underlying implementation (SQLite, IndexedDB, in-memory, etc.)
+- **Simplicity:** Consumers don't need to know implementation-specific types
+- **Testability:** Easy to mock without matching generic parameters
+
+See also [Error Handling](#error-handling) for related guidance on hiding implementation errors.
