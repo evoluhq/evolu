@@ -12,8 +12,8 @@ import dynamic from "next/dynamic";
  */
 const EvoluMinimalExample = dynamic(
   () =>
-    import("./EvoluMultitenantExample").then(
-      (mod) => mod.EvoluMultitenantExample,
+    import("./EvoloDatabaseWorkerLifecycleTest").then(
+      (mod) => mod.EvoloDatabaseWorkerLifecycleTest,
     ),
   { ssr: false },
 );
