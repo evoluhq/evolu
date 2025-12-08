@@ -31,7 +31,7 @@ import {
   useQueries,
   useQuery,
 } from "@evolu/react";
-import { evoluReactWebDeps } from "@evolu/react-web";
+import { createEvoluDeps } from "@evolu/react-web";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import {
   IconChecklist,
@@ -95,10 +95,12 @@ const Schema = {
   },
 };
 
-const evolu = createEvolu(evoluReactWebDeps)(Schema, {
+const deps = createEvoluDeps();
+
+const evolu = createEvolu(deps)(Schema, {
   name: SimpleName.orThrow("full-example"),
 
-  reloadUrl: "/playgrounds/full",
+  // reloadUrl: "/playgrounds/full",
 
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
@@ -114,7 +116,7 @@ const evolu = createEvolu(evoluReactWebDeps)(Schema, {
     create("todoProjectId").on("todo").column("projectId"),
   ],
 
-  enableLogging: false,
+  // enableLogging: false,
 });
 
 const useEvolu = createUseEvolu(evolu);
@@ -644,12 +646,12 @@ const AccountTab: FC = () => {
       return;
     }
 
-    void evolu.restoreAppOwner(result.value);
+    // void evolu.restoreAppOwner(result.value);
   };
 
   const handleResetAppOwnerClick = () => {
     if (confirm("Are you sure? This will delete all your local data.")) {
-      void evolu.resetAppOwner();
+      // void evolu.resetAppOwner();
     }
   };
 

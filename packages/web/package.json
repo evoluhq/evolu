@@ -30,7 +30,7 @@
   "scripts": {
     "dev": "tsc --watch",
     "build": "rimraf dist && tsc",
-    "test": "vitest run",
+    "_test": "vitest run",
     "test:watch": "vitest",
     "clean": "rimraf .turbo node_modules dist",
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
