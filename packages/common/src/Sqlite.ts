@@ -3,7 +3,7 @@ import { createLruCache } from "./Cache.js";
 import { ConsoleDep } from "./Console.js";
 import { EncryptionKey } from "./Crypto.js";
 import { Eq, eqArrayNumber } from "./Eq.js";
-import { createTransferableError, TransferableError } from "./Error.js";
+import { createUnknownError, UnknownError } from "./Error.js";
 import { err, ok, Result, tryAsync, trySync } from "./Result.js";
 import {
   Null,
@@ -132,8 +132,8 @@ export interface SqliteExecResult<R extends SqliteRow = SqliteRow> {
 /** Represents an error that occurred during a SQLite operation. */
 export interface SqliteError {
   readonly type: "SqliteError";
-  readonly error: TransferableError;
-  readonly rollbackError?: TransferableError;
+  readonly error: UnknownError;
+  readonly rollbackError?: UnknownError;
 }
 
 export type SqliteRow = Record<string, SqliteValue>;
@@ -174,7 +174,7 @@ export const createSqlite =
             },
             (error): SqliteError => ({
               type: "SqliteError",
-              error: createTransferableError(error),
+              error: createUnknownError(error),
             }),
           ),
 
@@ -213,7 +213,7 @@ export const createSqlite =
               deps.console?.log("[sql] rollback failed", rollback.error);
               return err({
                 type: "SqliteError",
-                error: createTransferableError(transactionResult.value.error),
+                error: createUnknownError(transactionResult.value.error),
                 rollbackError: rollback.error.error,
               });
             }
@@ -230,7 +230,7 @@ export const createSqlite =
             },
             (error): SqliteError => ({
               type: "SqliteError",
-              error: createTransferableError(error),
+              error: createUnknownError(error),
             }),
           ),
 
@@ -246,7 +246,7 @@ export const createSqlite =
 
 const createSqliteError = (error: unknown): SqliteError => ({
   type: "SqliteError",
-  error: createTransferableError(error),
+  error: createUnknownError(error),
 });
 
 const maybeLogSqliteQueryExecutionTime = <T>(

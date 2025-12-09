@@ -11,7 +11,7 @@
 //   EncryptionKey,
 //   RandomBytesDep,
 // } from "../Crypto.js";
-// import { TransferableError } from "../Error.js";
+// import { UnknownError } from "../Error.js";
 // import { RandomDep } from "../Random.js";
 // import { ok, Result } from "../Result.js";
 // import {
@@ -277,7 +277,7 @@
 //         | SqliteError
 //         | DecryptWithXChaCha20Poly1305Error
 //         | TimestampError
-//         | TransferableError;
+//         | UnknownError;
 //     }
 //   | {
 //       readonly type: "onGetAppOwner";
