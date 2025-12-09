@@ -287,12 +287,12 @@ don't need a Logger.
 
 ## Error Handling
 
-Dependencies often perform operations that can fail. Use the [`Result`](/docs/api-reference/common/Result/type-aliases/Result) type to make errors explicit and type-safe. The key principle: **expose business errors, hide implementation errors**.
+Dependencies often perform operations that can fail. Use the [`Result`](/docs/api-reference/common/Result/type-aliases/Result) type to make errors explicit and type-safe. The key principle: **expose domain errors, hide implementation errors**.
 
 ```ts
 import { Result, ok, err } from "@evolu/common";
 
-// Business errors that callers care about
+// Domain errors that callers care about
 interface StorageFullError {
   readonly type: "StorageFullError";
 }
@@ -301,7 +301,7 @@ interface PermissionError {
   readonly type: "PermissionError";
 }
 
-// ✅ Good: Dependency interface exposes business errors
+// ✅ Good: Dependency interface exposes domain errors
 export interface Storage {
   readonly save: (
     data: Data,
@@ -313,7 +313,7 @@ export interface StorageDep {
 }
 ```
 
-The implementation maps internal errors to business errors:
+The implementation maps internal errors to domain errors:
 
 ```ts
 // ❌ Avoid: Leaking implementation error (SqliteError) through interface
@@ -321,12 +321,12 @@ export interface Storage {
   readonly save: (data: Data) => Result<void, SqliteError>;
 }
 
-// ✅ Good: Map implementation errors to business errors
+// ✅ Good: Map implementation errors to domain errors
 export const createStorage = (deps: SqliteDep): Storage => ({
   save: (data) => {
     const result = deps.sqlite.exec(/* ... */);
     if (!result.ok) {
-      // Map SqliteError to a business error
+      // Map SqliteError to a domain error
       if (result.error.code === "SQLITE_FULL") {
         return err({ type: "StorageFullError" });
       }
@@ -337,7 +337,7 @@ export const createStorage = (deps: SqliteDep): Storage => ({
 });
 ```
 
-This approach keeps your business logic decoupled from implementation details. You can swap SQLite for IndexedDB without changing the `Storage` interface or any code that depends on it.
+This approach keeps your domain logic decoupled from implementation details. You can swap SQLite for IndexedDB without changing the `Storage` interface or any code that depends on it.
 
 ### Testing Error Paths
 
@@ -457,7 +457,7 @@ const increment = (deps: CounterRefDep) => {
 
 **Why shouldn't dependencies use generic arguments?**
 
-Dependencies must not use generic type parameters—that would leak implementation details into business logic and tightly couple consumers to specific implementations.
+Dependencies must not use generic type parameters—that would leak implementation details into domain logic and tightly couple consumers to specific implementations.
 
 ```ts
 // ❌ Avoid: Generic parameter leaks implementation detail
