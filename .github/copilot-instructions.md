@@ -9,6 +9,7 @@ You are helping with the Evolu project. Follow these specific conventions and pa
 ## Code organization & imports
 
 - **Use named imports only** - avoid default exports and namespace imports
+- **Avoid `import type`** - use regular imports for consistency
 - **Use unique exported members** - avoid namespaces, use descriptive names to prevent conflicts
 - **Organize code top-down** - public interfaces first, then implementation, then implementation details
 - **Reference globals explicitly with `globalThis`** - when a name clashes with global APIs (e.g., `SharedWorker`, `Worker`), use `globalThis.SharedWorker` instead of aliasing imports
@@ -79,6 +80,7 @@ interface Example {
 - **Avoid `@param` and `@return` tags** - TypeScript provides type information, focus on describing the function's purpose
 - **Use `### Example` instead of `@example`** - for better markdown rendering and consistency
 - **Write clear descriptions** - explain what the function does, not how to use it
+- **Use `{@link}` for references** - link to types, interfaces, functions, and exported symbols on first mention for discoverability
 
 ````ts
 // ✅ Good
@@ -95,6 +97,27 @@ export const createUser = (data: UserData): User => {
   // implementation
 };
 
+/**
+ * Dependency wrapper for {@link CreateMessageChannel}.
+ *
+ * Used with {@link EvoluPlatformDeps} to provide platform-specific
+ * MessageChannel creation.
+ */
+export interface CreateMessageChannelDep {
+  readonly createMessageChannel: CreateMessageChannel;
+}
+
+// ❌ Avoid
+/**
+ * Dependency wrapper for CreateMessageChannel.
+ *
+ * Used with EvoluPlatformDeps to provide platform-specific MessageChannel
+ * creation.
+ */
+export interface CreateMessageChannelDep {
+  readonly createMessageChannel: CreateMessageChannel;
+}
+
 // ❌ Avoid
 /**
  * Creates a new user with the provided data.
@@ -110,6 +133,16 @@ export const createUser = (data: UserData): User => {
 export const createUser = (data: UserData): User => {
   // implementation
 };
+
+/**
+ * Dependency wrapper for CreateMessageChannel.
+ *
+ * Used with EvoluPlatformDeps to provide platform-specific MessageChannel
+ * creation.
+ */
+export interface CreateMessageChannelDep {
+  readonly createMessageChannel: CreateMessageChannel;
+}
 ````
 
 ## API stability & experimental APIs
@@ -135,10 +168,10 @@ This pattern allows iterating on API design without committing to stability too 
 - Use `Result<T, E>` for business/domain errors in public APIs
 - Keep implementation-specific errors internal to dependencies
 - **Favor imperative patterns** over monadic helpers for readability
-- Use **plain objects** for business errors, Error instances only for debugging
+- Use **plain objects** for domain errors, Error instances only for debugging
 
 ```ts
-// ✅ Good - Business error
+// ✅ Good - Domain error
 interface ParseJsonError {
   readonly type: "ParseJsonError";
   readonly message: string;
