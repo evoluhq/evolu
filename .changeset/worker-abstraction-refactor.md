@@ -1,16 +1,16 @@
 ---
 "@evolu/common": major
 "@evolu/web": major
+"@evolu/react-native": major
+"@evolu/react-web": major
 ---
 
-**🚧 Work in Progress - Not Yet Functional**
+Refactored worker abstraction to support all platforms uniformly:
 
-Replaced Worker with SharedWorker architecture:
-
+- Added platform-agnostic worker interfaces: `Worker<Input, Output>`, `SharedWorker<Input, Output>`, `MessagePort<Input, Output>`, `MessageChannel<Input, Output>`
+- Added worker-side interfaces: `WorkerGlobalScope<Input, Output>` and `SharedWorkerGlobalScope<Input, Output>`
 - Changed `onMessage` from a method to a property for consistency with Web APIs
-- Introduced `MessagePort<Input, Output>` as the base interface for bidirectional communication
-- Added `SharedWorker<Input, Output>` interface for cross-tab worker sharing
-- Removed dedicated Worker implementation in favor of SharedWorker
-- Tests temporarily disabled during refactoring
-
-This changeset represents ongoing work. The implementation is incomplete and non-functional.
+- Made all worker and message port interfaces `Disposable` for proper resource cleanup
+- Added default generic parameters (`Output = never`) for simpler one-way communication patterns
+- Added complete web platform implementations: `createWorker`, `createSharedWorker`, `createMessageChannel`, `createWorkerGlobalScope`, `createSharedWorkerGlobalScope`
+- Added React Native polyfills for Workers and MessageChannel

@@ -1,15 +1,11 @@
-import { SqliteError } from "better-sqlite3";
-import { DecryptWithXChaCha20Poly1305Error } from "../Crypto.js";
-import { TransferableError } from "../Error.js";
-import { SimpleName } from "../Type.js";
-import { SharedWorker as CommonSharedWorker } from "../Worker.js";
-import { ProtocolError } from "./Protocol.js";
-import { TimestampError } from "./Timestamp.js";
+import { UnknownError } from "../Error.js";
+import {
+  SharedWorker as CommonSharedWorker,
+  MessagePort,
+  SharedWorkerGlobalScope,
+} from "../Worker.js";
 
-export type SharedWorker = CommonSharedWorker<
-  SharedWorkerInput,
-  SharedWorkerOutput
->;
+export type SharedWorker = CommonSharedWorker<SharedWorkerInput>;
 
 export interface SharedWorkerDep {
   readonly sharedWorker: SharedWorker;
@@ -17,35 +13,35 @@ export interface SharedWorkerDep {
 
 export type SharedWorkerInput =
   | {
-      readonly type: "init";
-      readonly name: SimpleName;
-      //   readonly config: DbConfig;
-      //   readonly dbSchema: DbSchema;
+      readonly type: "initErrorStore";
+      readonly port: MessagePort<UnknownError>;
     }
   | {
-      readonly type: "dispose";
-      readonly name: SimpleName;
+      readonly type: "TODO";
     };
 
-// eslint-disable-next-line @typescript-eslint/consistent-type-definitions
-export type SharedWorkerOutput = {
-  readonly type: "onError";
-  readonly error:
-    | ProtocolError
-    | SqliteError
-    | DecryptWithXChaCha20Poly1305Error
-    | TimestampError
-    | TransferableError;
-};
-//   | {
-//       readonly type: "onExport";
-//       readonly onCompleteId: CallbackId;
-//       readonly file: Uint8Array;
-//     };
+/**
+ * Initializes the SharedWorker message handling.
+ *
+ * Call this once from the platform-specific worker entry point, passing the
+ * global scope wrapped via the platform's helper (e.g.,
+ * `createWorkerGlobalScope`).
+ */
+export const initSharedWorker = (
+  self: SharedWorkerGlobalScope<SharedWorkerInput>,
+): void => {
+  const errorPorts = new Set<MessagePort<UnknownError>>();
 
-// export type SharedWorkerPlatformDeps = ConsoleDep &
-//   CreateSqliteDriverDep &
-//   CreateWebSocketDep &
-//   RandomBytesDep &
-//   RandomDep &
-//   TimeDep;
+  self.onConnect = (port) => {
+    port.onMessage = (message) => {
+      switch (message.type) {
+        case "initErrorStore":
+          errorPorts.add(message.port);
+          break;
+        case "TODO":
+          // Handle other message types here
+          break;
+      }
+    };
+  };
+};

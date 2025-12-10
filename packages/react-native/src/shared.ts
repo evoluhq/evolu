@@ -12,26 +12,30 @@ import {
   EvoluDeps,
 } from "@evolu/common/local-first";
 
-const console = createConsole();
+const _console = createConsole();
 const randomBytes = createRandomBytes();
 
 export const createSharedEvoluDeps = (
-  deps: CreateSqliteDriverDep & ReloadAppDep,
-): EvoluDeps => ({
-  ...deps,
-  console,
-  sharedWorker: "TODO" as never,
-  // createDbWorker: () =>
-  //   createDbWorkerForPlatform({
-  //     ...deps,
-  //     console,
-  //     createWebSocket,
-  //     random: createRandom(),
-  //     randomBytes,
-  //     time: createTime(),
-  //   }),
-  randomBytes,
-});
+  _deps: CreateSqliteDriverDep & ReloadAppDep,
+): EvoluDeps => {
+  throw new Error("todo");
+};
+
+//   ({
+//   ...deps,
+//   console,
+//   sharedWorker: "TODO" as never,
+//   // createDbWorker: () =>
+//   //   createDbWorkerForPlatform({
+//   //     ...deps,
+//   //     console,
+//   //     createWebSocket,
+//   //     random: createRandom(),
+//   //     randomBytes,
+//   //     time: createTime(),
+//   //   }),
+//   randomBytes,
+// });
 
 export const createSharedLocalAuth = (
   secureStorage: SecureStorage,

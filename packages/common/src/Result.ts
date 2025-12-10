@@ -1,6 +1,6 @@
 import { createUnknownError, UnknownError } from "./Error.js";
 import { exhaustiveCheck, Lazy } from "./Function.js";
-import { Task } from "./Task.js";
+import type { Task } from "./Task.js";
 
 /**
  * The problem with `throw` in JavaScript is that the caught value is always of

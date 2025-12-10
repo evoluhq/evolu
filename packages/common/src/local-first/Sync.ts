@@ -12,7 +12,7 @@ import {
   DecryptWithXChaCha20Poly1305Error,
   RandomBytesDep,
 } from "../Crypto.js";
-import { createTransferableError, TransferableError } from "../Error.js";
+import { createUnknownError, UnknownError } from "../Error.js";
 import { constFalse, constTrue } from "../Function.js";
 import { createRecord, getProperty, objectToEntries } from "../Object.js";
 import { RandomDep } from "../Random.js";
@@ -146,7 +146,7 @@ export interface SyncConfig {
       | TimestampCounterOverflowError
       | TimestampDriftError
       | TimestampTimeOutOfRangeError
-      | TransferableError,
+      | UnknownError,
   ) => void;
 
   readonly onReceive: () => void;
@@ -262,7 +262,7 @@ export const createSync =
               }
             })
             .catch((error: unknown) => {
-              config.onError(createTransferableError(error));
+              config.onError(createUnknownError(error));
             });
         },
       });
@@ -945,3 +945,6 @@ export interface PaymentRequiredError {
 }
 
 export const initialSyncState: SyncStateInitial = { type: "SyncStateInitial" };
+
+// TODO:
+// export const createSyncState, jasny, a ten si vezme taky shared worker, jasny

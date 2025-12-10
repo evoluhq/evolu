@@ -9,7 +9,7 @@ import {
   RandomBytesDep,
 } from "../Crypto.js";
 import { eqArrayNumber } from "../Eq.js";
-import { TransferableError } from "../Error.js";
+import { UnknownError } from "../Error.js";
 import { FlushSyncDep, ReloadAppDep } from "../Platform.js";
 import { err, ok, Result } from "../Result.js";
 import {
@@ -20,7 +20,7 @@ import {
   SqliteError,
   SqliteQuery,
 } from "../Sqlite.js";
-import { createStore, StoreSubscribe } from "../Store.js";
+import { createStore, ReadonlyStore, StoreSubscribe } from "../Store.js";
 import {
   createId,
   Id,
@@ -32,6 +32,7 @@ import {
   ValidMutationSizeError,
 } from "../Type.js";
 import { IntentionalNever } from "../Types.js";
+import { CreateMessageChannelDep } from "../Worker.js";
 import {
   AppOwner,
   createOwnerWebSocketTransport,
@@ -579,33 +580,47 @@ export type UnuseOwner = () => void;
 
 /** Represents errors that can occur in Evolu. */
 export type EvoluError =
+  | DecryptWithXChaCha20Poly1305Error
   | ProtocolError
   | SqliteError
-  | DecryptWithXChaCha20Poly1305Error
   | TimestampError
-  | TransferableError;
+  | UnknownError;
 
-export type EvoluDeps = ConsoleDep &
-  RandomBytesDep &
+export type EvoluPlatformDeps = CreateMessageChannelDep &
   ReloadAppDep &
   SharedWorkerDep &
   Partial<FlushSyncDep>;
 
-/**
- * Creates Evolu dependencies from common and platform-specific parts.
- *
- * This function creates all Evolu dependencies by combining the common parts
- * (console, randomBytes) that are the same across all platforms with
- * platform-specific dependencies (sharedWorker, reloadApp) that are passed as
- * parameters.
- */
-export const createEvoluDeps = (
-  platformDeps: Pick<EvoluDeps, "sharedWorker" | "reloadApp">,
-): EvoluDeps => {
+export type ErrorStore = ReadonlyStore<EvoluError | null>;
+
+export interface ErrorStoreDep {
+  errorStore: ErrorStore;
+}
+
+export type EvoluDeps = EvoluPlatformDeps &
+  ConsoleDep &
+  ErrorStoreDep &
+  RandomBytesDep;
+
+/** Creates Evolu dependencies from platform-specific dependencies. */
+export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
+  const errorChannel = deps.createMessageChannel<UnknownError>();
+  const errorStore = createStore<EvoluError | null>(null);
+
+  deps.sharedWorker.port.postMessage(
+    { type: "initErrorStore", port: errorChannel.port1 },
+    [errorChannel.port1],
+  );
+
+  errorChannel.port2.onMessage = (error) => {
+    errorStore.set(error);
+  };
+
   return {
     console: createConsole(),
     randomBytes: createRandomBytes(),
-    ...platformDeps,
+    errorStore,
+    ...deps,
   };
 };
 
@@ -673,6 +688,8 @@ export const createEvolu =
     const { promise: appOwner, resolve: resolveAppOwner } =
       Promise.withResolvers<AppOwner>();
     if (externalAppOwner) resolveAppOwner(externalAppOwner);
+
+    // deps.sharedWorker.
 
     // const schema = _schema as EvoluSchema;
 
