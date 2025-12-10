@@ -22,20 +22,7 @@ const Schema = {
 
 const deps = createEvoluDeps();
 
-// moznosti
-// vystavuju jen factories
-// v tom pripade ale, ne, factory je cajk
-// hmm, hmm, hmm, createSharedWorker, a pak teda
-// kazda connection bude instance, evolu, whatever
-// a pak se posle init, initEvolu, initStats
-// ta implementace shared workeru musi vedet, co je kterej port zac
-//
-// deps.sharedWorker.port.postMessage
-// deps.sharedWorker.port.onMessage
-
 // const syncStats = createSyncStats(deps)
-
-// deps.
 
 const evolu = Evolu.createEvolu(deps)(Schema, {
   name: Evolu.SimpleName.orThrow("minimal-example"),

@@ -25,8 +25,6 @@ const Schema = {
 };
 
 const deps = createEvoluDeps();
-// bych takhle mohl mit jedny deps pro vsechno
-// deps.sharedWorker.subscribeTransportsStats nebo tak
 
 // Create Evolu instance for the React web platform.
 const evolu = Evolu.createEvolu(deps)(Schema, {
