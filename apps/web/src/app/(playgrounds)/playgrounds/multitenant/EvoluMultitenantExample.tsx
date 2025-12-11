@@ -22,6 +22,15 @@ const Schema = {
 
 const deps = createEvoluDeps();
 
+deps.evoluError.subscribe(() => {
+  const error = deps.evoluError.get();
+  if (!error) return;
+
+  alert("Evolu error occurred. Check the console.");
+  // eslint-disable-next-line no-console
+  console.error(error);
+});
+
 // const syncStats = createSyncStats(deps)
 
 const evolu = Evolu.createEvolu(deps)(Schema, {

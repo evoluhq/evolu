@@ -1,9 +1,12 @@
-import { UnknownError } from "../Error.js";
+import { exhaustiveCheck } from "../Function.js";
 import {
   SharedWorker as CommonSharedWorker,
+  CreateMessagePortDep,
   MessagePort,
-  SharedWorkerGlobalScope,
+  NativeMessagePort,
+  SharedWorkerScope,
 } from "../Worker.js";
+import { EvoluError } from "./Error.js";
 
 export type SharedWorker = CommonSharedWorker<SharedWorkerInput>;
 
@@ -14,34 +17,37 @@ export interface SharedWorkerDep {
 export type SharedWorkerInput =
   | {
       readonly type: "initErrorStore";
-      readonly port: MessagePort<UnknownError>;
+      readonly port: NativeMessagePort;
     }
   | {
-      readonly type: "TODO";
+      readonly type: "initEvolu";
+      readonly port: NativeMessagePort;
     };
 
-/**
- * Initializes the SharedWorker message handling.
- *
- * Call this once from the platform-specific worker entry point, passing the
- * global scope wrapped via the platform's helper (e.g.,
- * `createWorkerGlobalScope`).
- */
-export const initSharedWorker = (
-  self: SharedWorkerGlobalScope<SharedWorkerInput>,
-): void => {
-  const errorPorts = new Set<MessagePort<UnknownError>>();
+export const runSharedWorkerScope =
+  (deps: CreateMessagePortDep) =>
+  (self: SharedWorkerScope<SharedWorkerInput>): void => {
+    const errorStorePorts = new Set<MessagePort<EvoluError>>();
 
-  self.onConnect = (port) => {
-    port.onMessage = (message) => {
-      switch (message.type) {
-        case "initErrorStore":
-          errorPorts.add(message.port);
-          break;
-        case "TODO":
-          // Handle other message types here
-          break;
-      }
+    self.onError = (error) => {
+      for (const port of errorStorePorts) port.postMessage(error);
+    };
+
+    self.onConnect = (port) => {
+      port.onMessage = (message) => {
+        switch (message.type) {
+          case "initErrorStore": {
+            errorStorePorts.add(
+              deps.createMessagePort<EvoluError>(message.port),
+            );
+            break;
+          }
+          case "initEvolu":
+            // TODO:
+            break;
+          default:
+            exhaustiveCheck(message);
+        }
+      };
     };
   };
-};

@@ -369,7 +369,7 @@ export const createResources = <
 /** See {@link createDisposableDep}. */
 export interface DisposableDep extends Disposable {}
 
-/** Creates a {@link DisposableDep} from {@link Disposable}. */
+/** Creates a {@link DisposableDep} from `Disposable`. */
 export const createDisposableDep = (disposable: Disposable): DisposableDep => ({
   [Symbol.dispose]: () => {
     disposable[Symbol.dispose]();

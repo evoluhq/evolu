@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 declare const self: SharedWorkerGlobalScope;
 
-import { initSharedWorker } from "@evolu/common/local-first";
-import { createSharedWorkerGlobalScope } from "../Worker.js";
+import { runSharedWorkerScope } from "@evolu/common/local-first";
+import { createMessagePort, createSharedWorkerScope } from "../Worker.js";
 
-initSharedWorker(createSharedWorkerGlobalScope(self));
+runSharedWorkerScope({ createMessagePort })(createSharedWorkerScope(self));

@@ -3,24 +3,23 @@ import { dedupeArray, isNonEmptyArray } from "../Array.js";
 import { assert, assertNonEmptyReadonlyArray } from "../Assert.js";
 import { createCallbacks } from "../Callbacks.js";
 import { ConsoleDep, createConsole } from "../Console.js";
-import {
-  createRandomBytes,
-  DecryptWithXChaCha20Poly1305Error,
-  RandomBytesDep,
-} from "../Crypto.js";
+import { createRandomBytes, RandomBytesDep } from "../Crypto.js";
 import { eqArrayNumber } from "../Eq.js";
-import { UnknownError } from "../Error.js";
 import { FlushSyncDep, ReloadAppDep } from "../Platform.js";
+import {
+  createDisposableDep,
+  DisposableDep,
+  DisposableStackDep,
+} from "../Resources.js";
 import { err, ok, Result } from "../Result.js";
 import {
   isSqlMutation,
   SafeSql,
   SqliteBoolean,
   sqliteBooleanToBoolean,
-  SqliteError,
   SqliteQuery,
 } from "../Sqlite.js";
-import { createStore, ReadonlyStore, StoreSubscribe } from "../Store.js";
+import { createStore, ReadonlyStore, Store, StoreSubscribe } from "../Store.js";
 import {
   createId,
   Id,
@@ -33,13 +32,13 @@ import {
 } from "../Type.js";
 import { IntentionalNever } from "../Types.js";
 import { CreateMessageChannelDep } from "../Worker.js";
+import { EvoluError } from "./Error.js";
 import {
   AppOwner,
   createOwnerWebSocketTransport,
   OwnerId,
   OwnerTransport,
 } from "./Owner.js";
-import { ProtocolError } from "./Protocol.js";
 import {
   createSubscribedQueries,
   emptyRows,
@@ -71,7 +70,6 @@ import {
 import { SharedWorkerDep } from "./SharedWorker.js";
 import { DbChange } from "./Storage.js";
 import { SyncOwner } from "./Sync.js";
-import { TimestampError } from "./Timestamp.js";
 
 export interface EvoluConfig {
   /**
@@ -578,50 +576,69 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
 /** Function returned by {@link Evolu#useOwner} to stop using an {@link SyncOwner}. */
 export type UnuseOwner = () => void;
 
-/** Represents errors that can occur in Evolu. */
-export type EvoluError =
-  | DecryptWithXChaCha20Poly1305Error
-  | ProtocolError
-  | SqliteError
-  | TimestampError
-  | UnknownError;
-
 export type EvoluPlatformDeps = CreateMessageChannelDep &
   ReloadAppDep &
   SharedWorkerDep &
   Partial<FlushSyncDep>;
 
-export type ErrorStore = ReadonlyStore<EvoluError | null>;
-
-export interface ErrorStoreDep {
-  errorStore: ErrorStore;
-}
-
 export type EvoluDeps = EvoluPlatformDeps &
   ConsoleDep &
+  DisposableDep &
   ErrorStoreDep &
   RandomBytesDep;
 
+export interface ErrorStoreDep {
+  /**
+   * Shared error store for all Evolu instances. Subscribe once to handle errors
+   * globally across all instances.
+   *
+   * ### Example
+   *
+   * ```ts
+   * deps.evoluError.subscribe(() => {
+   *   const error = deps.evoluError.get();
+   *   if (!error) return;
+   *   console.error(error);
+   * });
+   * ```
+   */
+  readonly evoluError: ReadonlyStore<EvoluError | null>;
+}
+
 /** Creates Evolu dependencies from platform-specific dependencies. */
 export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
-  const errorChannel = deps.createMessageChannel<UnknownError>();
-  const errorStore = createStore<EvoluError | null>(null);
+  const disposableStack = new DisposableStack();
+  const evoluError = createErrorStore({ ...deps, disposableStack });
+
+  return {
+    ...deps,
+    ...createDisposableDep(disposableStack),
+    console: createConsole(),
+    evoluError,
+    randomBytes: createRandomBytes(),
+  };
+};
+
+const createErrorStore = (
+  deps: CreateMessageChannelDep & SharedWorkerDep & DisposableStackDep,
+): Store<EvoluError | null> => {
+  const errorChannel = deps.disposableStack.use(
+    deps.createMessageChannel<EvoluError>(),
+  );
+  const evoluError = deps.disposableStack.use(
+    createStore<EvoluError | null>(null),
+  );
 
   deps.sharedWorker.port.postMessage(
-    { type: "initErrorStore", port: errorChannel.port1 },
-    [errorChannel.port1],
+    { type: "initErrorStore", port: errorChannel.port1.native },
+    [errorChannel.port1.native],
   );
 
   errorChannel.port2.onMessage = (error) => {
-    errorStore.set(error);
+    evoluError.set(error);
   };
 
-  return {
-    console: createConsole(),
-    randomBytes: createRandomBytes(),
-    errorStore,
-    ...deps,
-  };
+  return evoluError;
 };
 
 /**

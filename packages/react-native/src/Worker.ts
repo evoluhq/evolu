@@ -2,10 +2,11 @@ import {
   assert,
   MessageChannel,
   MessagePort,
+  NativeMessagePort,
   SharedWorker,
-  SharedWorkerGlobalScope,
+  SharedWorkerScope,
   Worker,
-  WorkerGlobalScope,
+  WorkerScope,
 } from "@evolu/common";
 
 /**
@@ -17,9 +18,9 @@ import {
  * semantics.
  */
 export const createWorker = <Input, Output>(
-  initWorker: (scope: WorkerGlobalScope<Input, Output>) => void,
+  initWorker: (scope: WorkerScope<Input, Output>) => void,
 ): Worker<Input, Output> => {
-  let workerScope: WorkerGlobalScope<Input, Output> | null = null;
+  let workerScope: WorkerScope<Input, Output> | null = null;
 
   const worker: Worker<Input, Output> = {
     postMessage: (message) => {
@@ -32,6 +33,7 @@ export const createWorker = <Input, Output>(
       });
     },
     onMessage: null,
+    native: null as unknown as NativeMessagePort, // React Native runs in-process, no real native port
     [Symbol.dispose]: () => {
       worker.onMessage = null;
       workerScope?.[Symbol.dispose]();
@@ -41,6 +43,7 @@ export const createWorker = <Input, Output>(
 
   workerScope = {
     onMessage: null,
+    onError: null, // React Native runs in-process, errors bubble to main thread
     postMessage: (message) => {
       queueMicrotask(() => {
         assert(
@@ -50,6 +53,7 @@ export const createWorker = <Input, Output>(
         worker.onMessage(message);
       });
     },
+    native: null as unknown as NativeMessagePort, // React Native runs in-process, no real native port
     [Symbol.dispose]: () => {
       if (workerScope) workerScope.onMessage = null;
     },
@@ -69,7 +73,7 @@ export const createWorker = <Input, Output>(
  * instance.
  */
 export const createSharedWorker = <Input, Output>(
-  initWorker: (scope: SharedWorkerGlobalScope<Input, Output>) => void,
+  initWorker: (scope: SharedWorkerScope<Input, Output>) => void,
 ): SharedWorker<Input, Output> => {
   let workerPort: MessagePort<Output, Input> | null = null;
 
@@ -84,6 +88,7 @@ export const createSharedWorker = <Input, Output>(
       });
     },
     onMessage: null,
+    native: null as unknown as NativeMessagePort, // React Native runs in-process, no real native port
     [Symbol.dispose]: () => {
       clientPort.onMessage = null;
     },
@@ -100,29 +105,31 @@ export const createSharedWorker = <Input, Output>(
       });
     },
     onMessage: null,
+    native: null as unknown as NativeMessagePort, // React Native runs in-process, no real native port
     [Symbol.dispose]: () => {
       if (workerPort) workerPort.onMessage = null;
     },
   };
 
-  const workerScope: SharedWorkerGlobalScope<Input, Output> = {
+  const scope: SharedWorkerScope<Input, Output> = {
     onConnect: null,
+    onError: null, // React Native runs in-process, errors bubble to main thread
     [Symbol.dispose]: () => {
-      workerScope.onConnect = null;
+      scope.onConnect = null;
       workerPort[Symbol.dispose]();
     },
   };
 
   // Initialize the worker
-  initWorker(workerScope);
+  initWorker(scope);
 
   // Simulate connection
   queueMicrotask(() => {
     assert(
-      workerScope.onConnect != null,
+      scope.onConnect != null,
       "onConnect must be set before receiving connections",
     );
-    workerScope.onConnect(workerPort);
+    scope.onConnect(workerPort);
   });
 
   return {
@@ -154,6 +161,7 @@ export const createMessageChannel = <Input, Output = never>(): MessageChannel<
       });
     },
     onMessage: null,
+    native: null as unknown as NativeMessagePort, // React Native runs in-process, no real native port
     [Symbol.dispose]: () => {
       port1.onMessage = null;
     },
@@ -170,6 +178,7 @@ export const createMessageChannel = <Input, Output = never>(): MessageChannel<
       });
     },
     onMessage: null,
+    native: null as unknown as NativeMessagePort, // React Native runs in-process, no real native port
     [Symbol.dispose]: () => {
       port2.onMessage = null;
     },
@@ -184,3 +193,14 @@ export const createMessageChannel = <Input, Output = never>(): MessageChannel<
     },
   };
 };
+
+/**
+ * Creates an Evolu {@link MessagePort} from a "native" port.
+ *
+ * In React Native, since we run in-process, the "native" port is already our
+ * wrapper, so this is a passthrough.
+ */
+export const createMessagePort = <Input, Output = never>(
+  nativePort: NativeMessagePort,
+): MessagePort<Input, Output> =>
+  nativePort as unknown as MessagePort<Input, Output>;

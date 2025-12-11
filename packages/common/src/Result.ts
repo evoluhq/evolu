@@ -1,4 +1,4 @@
-import { createUnknownError, UnknownError } from "./Error.js";
+import type { UnknownError } from "./Error.js";
 import { exhaustiveCheck, Lazy } from "./Function.js";
 import type { Task } from "./Task.js";
 
@@ -163,9 +163,7 @@ import type { Task } from "./Task.js";
  * ```
  *
  * {@link UnknownError} wraps `unknown` so it can be part of a union (`unknown`
- * absorbs all other types). Use {@link createUnknownError} to create it because
- * it preserves the stack trace when errors cross boundaries (e.g., from a
- * worker).
+ * absorbs all other types).
  *
  * Handle unrecoverable errors at the top level:
  *
@@ -195,23 +193,13 @@ import type { Task } from "./Task.js";
  * prevent all errors — bugs can still throw. Catch them with global handlers:
  *
  * ```ts
- * // Browser
- * window.addEventListener("error", (event) => {
- *   errorReportingService.report(event.error);
- * });
- * window.addEventListener("unhandledrejection", (event) => {
- *   errorReportingService.report(event.reason);
- * });
- *
- * // Node.js
- * process.on("uncaughtException", (error) => {
- *   errorReportingService.report(error);
- *   process.exit(1);
- * });
- * process.on("unhandledRejection", (reason) => {
- *   errorReportingService.report(reason);
- * });
+ * // Worker
+ * scope.onError = (error) => {
+ *   errorPort.postMessage(error);
+ * };
  * ```
+ *
+ * TODO: Window and Node.js
  *
  * ### FAQ
  *
