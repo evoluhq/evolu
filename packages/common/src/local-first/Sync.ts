@@ -9,11 +9,10 @@ import { assertNonEmptyReadonlyArray } from "../Assert.js";
 import { Brand } from "../Brand.js";
 import { ConsoleDep } from "../Console.js";
 import {
+  DecryptWithXChaCha20Poly1305Error,
   RandomBytesDep,
-  SymmetricCryptoDecryptError,
-  SymmetricCryptoDep,
 } from "../Crypto.js";
-import { createTransferableError, TransferableError } from "../Error.js";
+import { createUnknownError, UnknownError } from "../Error.js";
 import { constFalse, constTrue } from "../Function.js";
 import { createRecord, getProperty, objectToEntries } from "../Object.js";
 import { RandomDep } from "../Random.js";
@@ -143,11 +142,11 @@ export interface SyncConfig {
       | ProtocolInvalidDataError
       | ProtocolTimestampMismatchError
       | SqliteError
-      | SymmetricCryptoDecryptError
+      | DecryptWithXChaCha20Poly1305Error
       | TimestampCounterOverflowError
       | TimestampDriftError
       | TimestampTimeOutOfRangeError
-      | TransferableError,
+      | UnknownError,
   ) => void;
 
   readonly onReceive: () => void;
@@ -163,7 +162,6 @@ export const createSync =
       RandomBytesDep &
       RandomDep &
       SqliteDep &
-      SymmetricCryptoDep &
       TimeDep &
       TimestampConfigDep,
   ) =>
@@ -264,7 +262,7 @@ export const createSync =
               }
             })
             .catch((error: unknown) => {
-              config.onError(createTransferableError(error));
+              config.onError(createUnknownError(error));
             });
         },
       });
@@ -448,9 +446,9 @@ const createClientStorage =
     deps: ClockDep &
       DbSchemaDep &
       GetSyncOwnerDep &
+      RandomBytesDep &
       RandomDep &
       SqliteDep &
-      SymmetricCryptoDep &
       TimeDep &
       TimestampConfigDep,
   ) =>
@@ -460,7 +458,7 @@ const createClientStorage =
         | ProtocolInvalidDataError
         | ProtocolTimestampMismatchError
         | SqliteError
-        | SymmetricCryptoDecryptError
+        | DecryptWithXChaCha20Poly1305Error
         | TimestampCounterOverflowError
         | TimestampDriftError
         | TimestampTimeOutOfRangeError,
@@ -492,7 +490,7 @@ const createClientStorage =
           | ProtocolInvalidDataError
           | ProtocolTimestampMismatchError
           | SqliteError
-          | SymmetricCryptoDecryptError
+          | DecryptWithXChaCha20Poly1305Error
           | TimestampCounterOverflowError
           | TimestampDriftError
           | TimestampTimeOutOfRangeError
@@ -512,7 +510,7 @@ const createClientStorage =
           const messages: Array<CrdtMessage> = [];
 
           for (const message of encryptedMessages) {
-            const change = decryptAndDecodeDbChange(deps)(
+            const change = decryptAndDecodeDbChange(
               message,
               owner.encryptionKey,
             );
@@ -947,3 +945,6 @@ export interface PaymentRequiredError {
 }
 
 export const initialSyncState: SyncStateInitial = { type: "SyncStateInitial" };
+
+// TODO:
+// export const createSyncState, jasny, a ten si vezme taky shared worker, jasny

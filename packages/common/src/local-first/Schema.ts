@@ -1,4 +1,5 @@
 import * as Kysely from "kysely";
+import { readonly } from "../Function.js";
 import {
   createRecord,
   getProperty,
@@ -49,7 +50,6 @@ import { AppOwner, OwnerId } from "./Owner.js";
 import { Query, Row } from "./Query.js";
 import type { CrdtMessage, DbChange } from "./Storage.js";
 import { Timestamp, TimestampBytes } from "./Timestamp.js";
-import { readonly } from "../Function.js";
 
 /**
  * Defines the schema of an Evolu database.
@@ -605,15 +605,15 @@ const createAppTable = (tableName: string, columns: ReadonlySet<string>) => sql`
   create table ${sql.identifier(tableName)} (
     "id" text,
     ${sql.raw(
-      `${[...systemColumns, ...columns]
-        // With strict tables and any type, data is preserved exactly as received
-        // without any type affinity coercion. This allows storing any data type
-        // while maintaining strict null enforcement for primary key columns.
-        // TODO: Use proper SQLite types for system columns (text for createdAt,
-        // updatedAt, ownerId, integer for isDeleted) instead of "any".
+      // With strict tables and any type, data is preserved exactly as received
+      // without any type affinity coercion. This allows storing any data type
+      // while maintaining strict null enforcement for primary key columns.
+      // TODO: Use proper SQLite types for system columns (text for createdAt,
+      // updatedAt, ownerId, integer for isDeleted) instead of "any".
+      [...systemColumns, ...columns]
         .map((name) => `${sql.identifier(name).sql} any`)
-        .join(", ")}, `,
-    )}
+        .join(", "),
+    )},
     primary key ("ownerId", "id")
   )
   without rowid, strict;

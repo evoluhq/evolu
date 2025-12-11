@@ -28,6 +28,7 @@ export const navigation: Array<NavGroup> = [
         href: "/docs/api-reference/common/Type/interfaces/Type",
       },
       { title: "Dependency injection", href: "/docs/dependency-injection" },
+      { title: "Resource management", href: "/docs/resource-management" },
       { title: "Conventions", href: "/docs/conventions" },
     ],
   },

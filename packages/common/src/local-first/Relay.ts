@@ -6,7 +6,7 @@ import {
 } from "../Array.js";
 import { ConsoleConfig, ConsoleDep } from "../Console.js";
 import { TimingSafeEqualDep } from "../Crypto.js";
-import { LazyValue } from "../Function.js";
+import { Lazy } from "../Function.js";
 import { createInstances } from "../Instances.js";
 import { err, ok, Result } from "../Result.js";
 import { sql, SqliteDep, SqliteError } from "../Sqlite.js";
@@ -366,11 +366,11 @@ export interface RelayLogger {
   readonly connectionWebSocketError: (error: Error) => void;
   readonly relayOptionSubscribe: (
     ownerId: OwnerId,
-    getSubscriberCount: LazyValue<number>,
+    getSubscriberCount: Lazy<number>,
   ) => void;
   readonly relayOptionUnsubscribe: (
     ownerId: OwnerId,
-    getSubscriberCount: LazyValue<number>,
+    getSubscriberCount: Lazy<number>,
   ) => void;
   readonly relayOptionBroadcast: (
     ownerId: OwnerId,

@@ -9,6 +9,7 @@ import {
   brand,
   DateIso,
   InferType,
+  length,
   lessThanOrEqualTo,
   NonNegativeInt,
   object,
@@ -25,6 +26,9 @@ export interface TimestampConfig {
    */
   readonly maxDrift: number;
 }
+
+/** Default value for {@link TimestampConfig.maxDrift}. */
+export const defaultTimestampMaxDrift = 5 * 60 * 1000;
 
 export interface TimestampConfigDep {
   readonly timestampConfig: TimestampConfig;
@@ -277,7 +281,7 @@ export const receiveTimestamp =
   };
 
 /** Sortable bytes representation of {@link Timestamp}. */
-export const TimestampBytes = brand("TimestampBytes", Uint8Array);
+export const TimestampBytes = brand("TimestampBytes", length(16)(Uint8Array));
 export type TimestampBytes = typeof TimestampBytes.Type;
 
 export const timestampBytesLength = NonNegativeInt.orThrow(16);

@@ -1,6 +1,5 @@
 import SQLite from "better-sqlite3";
 import { describe, expect, test } from "vitest";
-import { defaultDbConfig } from "../../src/local-first/Db.js";
 import {
   Counter,
   Millis,
@@ -13,6 +12,7 @@ import {
   TimestampTimeOutOfRangeError,
   createInitialTimestamp,
   createTimestamp,
+  defaultTimestampMaxDrift,
   maxCounter,
   maxMillis,
   minCounter,
@@ -80,7 +80,7 @@ const deps0: TimeDep & TimestampConfigDep = {
     now: () => minMillis,
     nowIso: () => getOrThrow(dateToDateIso(new Date(minMillis))),
   },
-  timestampConfig: { maxDrift: defaultDbConfig.maxDrift },
+  timestampConfig: { maxDrift: defaultTimestampMaxDrift },
 };
 
 const deps1: TimeDep & TimestampConfigDep = {
@@ -88,7 +88,7 @@ const deps1: TimeDep & TimestampConfigDep = {
     now: () => minMillis + 1,
     nowIso: () => getOrThrow(dateToDateIso(new Date(minMillis + 1))),
   },
-  timestampConfig: { maxDrift: defaultDbConfig.maxDrift },
+  timestampConfig: { maxDrift: defaultTimestampMaxDrift },
 };
 
 describe("sendTimestamp", () => {
@@ -164,7 +164,7 @@ describe("sendTimestamp", () => {
     expect(
       sendTimestamp(deps0)(
         createTimestamp({
-          millis: makeMillis(minMillis + defaultDbConfig.maxDrift + 1),
+          millis: makeMillis(minMillis + defaultTimestampMaxDrift + 1),
         }),
       ),
     ).toMatchInlineSnapshot(`
@@ -278,7 +278,7 @@ describe("receiveTimestamp", () => {
       expect(
         receiveTimestamp(deps0)(
           createTimestamp({
-            millis: makeMillis(minMillis + defaultDbConfig.maxDrift + 1),
+            millis: makeMillis(minMillis + defaultTimestampMaxDrift + 1),
           }),
           makeNode2Timestamp(),
         ),
@@ -297,7 +297,7 @@ describe("receiveTimestamp", () => {
         receiveTimestamp(deps0)(
           makeNode2Timestamp(),
           createTimestamp({
-            millis: makeMillis(minMillis + defaultDbConfig.maxDrift + 1),
+            millis: makeMillis(minMillis + defaultTimestampMaxDrift + 1),
           }),
         ),
       ).toMatchInlineSnapshot(`

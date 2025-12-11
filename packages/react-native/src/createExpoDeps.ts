@@ -1,7 +1,3 @@
-import { CreateSqliteDriverDep, LocalAuth } from "@evolu/common";
-import { EvoluDeps, ReloadApp } from "@evolu/common/local-first";
-import * as Expo from "expo";
-import { createSharedEvoluDeps, createSharedLocalAuth } from "./shared.js";
 import type {
   AccessControl,
   LocalAuthOptions,
@@ -9,9 +5,17 @@ import type {
   SensitiveInfoItem,
   StorageMetadata,
 } from "@evolu/common";
-import { localAuthDefaultOptions } from "@evolu/common";
+import {
+  CreateSqliteDriverDep,
+  LocalAuth,
+  localAuthDefaultOptions,
+  ReloadApp,
+} from "@evolu/common";
+import { EvoluDeps } from "@evolu/common/local-first";
+import * as Expo from "expo";
 import * as SecureStore from "expo-secure-store";
 import KVStore from "expo-sqlite/kv-store";
+import { createSharedEvoluDeps, createSharedLocalAuth } from "./shared.js";
 
 const reloadApp: ReloadApp = () => {
   void Expo.reloadAppAsync();
