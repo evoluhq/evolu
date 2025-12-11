@@ -26,17 +26,17 @@
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "dependencies": {
-    "better-sqlite3": "^12.1.1",
-    "ws": "^8.18.2"
+    "better-sqlite3": "^12.5.0",
+    "ws": "^8.18.3"
   },
   "devDependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^24.0.0",
+    "@types/node": "^24.10.3",
     "@types/ws": "^8.18.1",
-    "typescript": "^5.9.2",
-    "vitest": "^4.0.4"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15"
   },
   "peerDependencies": {
     "@evolu/common": "^7.4.1"

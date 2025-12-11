@@ -44,9 +44,9 @@
     "@evolu/tsconfig": "workspace:*",
     "@types/sharedworker": "^0.0.197",
     "@types/web-locks-api": "^0.0.5",
-    "typescript": "^5.9.2",
+    "typescript": "^5.9.3",
     "user-agent-data-types": "^0.4.2",
-    "vitest": "^4.0.4"
+    "vitest": "^4.0.15"
   },
   "peerDependencies": {
     "@evolu/common": "^7.4.1"

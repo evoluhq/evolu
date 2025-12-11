@@ -19,8 +19,8 @@
   },
   "devDependencies": {
     "@evolu/tsconfig": "workspace:*",
-    "@types/node": "^24.0.0",
-    "typescript": "^5.9.2"
+    "@types/node": "^24.10.3",
+    "typescript": "^5.9.3"
   },
   "engines": {
     "node": ">=24.0.0"
