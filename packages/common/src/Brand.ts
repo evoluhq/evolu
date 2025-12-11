@@ -55,6 +55,26 @@
  * requiresMin1(min1Max100Value); // ✅ Valid: Min1Max100 satisfies Min1
  * requiresMax100(min1Max100Value); // ✅ Valid: Min1Max100 satisfies Max100
  * ```
+ *
+ * ### Example 3: Standalone Brand
+ *
+ * Brand can be used alone without a base type for purely nominal typing. This
+ * is useful for opaque values where the internal structure is hidden and type
+ * identity is based on name only. For example, platform-specific handles can be
+ * branded to prevent accidental mixing of implementations while keeping common
+ * code platform-agnostic.
+ *
+ * ```ts
+ * // A nominal type with no underlying structure exposed
+ * type NativePort = Brand<"NativePort">;
+ *
+ * // Only values explicitly cast to NativePort are accepted
+ * const requiresNativePort = (port: NativePort): void => {};
+ *
+ * const port: NativePort = nativeValue as NativePort;
+ * requiresNativePort(port); // ✅ Valid
+ * requiresNativePort(nativeValue); // ❌ TypeScript error
+ * ```
  */
 export interface Brand<B extends string> {
   readonly [__brand]: Readonly<Record<B, true>>;

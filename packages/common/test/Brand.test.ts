@@ -66,3 +66,26 @@ test("IsBranded", () => {
   expectTypeOf<IsBranded<BrandedNumber>>().toEqualTypeOf<true>();
   expectTypeOf<IsBranded<DoubleBranded>>().toEqualTypeOf<true>();
 });
+
+test("Brand - standalone (nominal type)", () => {
+  // Brand can be used alone without a base type for purely nominal typing.
+  // Useful for platform-specific values where type identity is based on name only.
+  type NativePort = Brand<"NativePort">;
+
+  const requiresNativePort = (_port: NativePort) => constVoid;
+
+  // Only branded values can be passed
+  const nativePort: NativePort = {} as NativePort;
+  requiresNativePort(nativePort);
+
+  // @ts-expect-error: plain unknown cannot be passed
+  requiresNativePort({} as unknown);
+
+  // @ts-expect-error: other types cannot be passed
+  requiresNativePort({});
+
+  // @ts-expect-error: null cannot be passed
+  requiresNativePort(null);
+
+  expectTypeOf<IsBranded<NativePort>>().toEqualTypeOf<true>();
+});
