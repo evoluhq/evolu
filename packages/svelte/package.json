@@ -42,7 +42,7 @@
     "@evolu/web": "workspace:*",
     "@sveltejs/package": "^2.5.7",
     "@tsconfig/svelte": "^5.0.6",
-    "svelte": "^5.45.8",
+    "svelte": "^5.45.9",
     "svelte-check": "^4.3.4",
     "typescript": "^5.9.3"
   },

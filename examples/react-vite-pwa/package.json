@@ -19,12 +19,12 @@
     "clsx": "^2.1.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "tailwindcss": "^4.1.17"
+    "tailwindcss": "^4.1.18"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@tailwindcss/forms": "^0.5.10",
-    "@tailwindcss/vite": "^4.1.17",
+    "@tailwindcss/vite": "^4.1.18",
     "@types/react": "~19.1.17",
     "@types/react-dom": "~19.1.11",
     "@typescript-eslint/eslint-plugin": "^8.49.0",
