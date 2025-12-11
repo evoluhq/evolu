@@ -1,3 +1,6 @@
+import { assert } from "./Assert.js";
+import type { tryAsync, trySync } from "./Result.js";
+
 /**
  * A wrapper for unknown errors caught at runtime.
  *
@@ -61,4 +64,46 @@ export const createUnknownError = (error: unknown): UnknownError => {
       };
     }
   }
+};
+
+/**
+ * Platform-agnostic scope for capturing global errors.
+ *
+ * Represents any execution context that can capture uncaught errors and
+ * unhandled promise rejections — browser windows, Node.js processes, workers,
+ * etc.
+ *
+ * Implementations hook into platform-specific global error handlers (`onerror`,
+ * `onunhandledrejection`, `uncaughtException`, etc.). Any error reaching these
+ * handlers is a programming error — all unsafe code should be wrapped with
+ * {@link trySync} or {@link tryAsync}. The `onError` callback exists for
+ * telemetry and debugging, not error recovery.
+ *
+ * Implementations use {@link handleGlobalError} to forward errors.
+ */
+export interface GlobalErrorScope extends Disposable {
+  /**
+   * Callback for uncaught errors and unhandled promise rejections.
+   *
+   * Set this to receive notifications when global errors occur in this scope.
+   */
+  onError: ((error: UnknownError) => void) | null;
+}
+
+/**
+ * Forwards an error to a {@link GlobalErrorScope}'s `onError` callback.
+ *
+ * Asserts that `onError` is set, then normalizes the error with
+ * {@link createUnknownError} and calls the callback.
+ */
+export const handleGlobalError = (
+  scope: GlobalErrorScope,
+  error: unknown,
+): void => {
+  if (scope.onError == null) {
+    // eslint-disable-next-line no-console
+    console.error("Unhandled global error:", error);
+    assert(false, "onError must be set before global errors occur");
+  }
+  scope.onError(createUnknownError(error));
 };
