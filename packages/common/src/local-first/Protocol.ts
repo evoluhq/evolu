@@ -20,7 +20,7 @@
  * transfer, ownership, real-time broadcasting, request-response semantics, and
  * error handling.
  *
- * ### Message structure
+ * ## Message structure
  *
  * | Field                          | Notes                     |
  * | :----------------------------- | :------------------------ |
@@ -43,7 +43,7 @@
  * | - {@link NonNegativeInt}       | Number of ranges.         |
  * | - {@link Range}                |                           |
  *
- * ### WriteKey validation
+ * ## WriteKey validation
  *
  * The initiator sends a hasWriteKey flag and optionally a WriteKey. The
  * WriteKey is required when sending messages as a secure token proving the
@@ -52,7 +52,7 @@
  * validates the WriteKey immediately after parsing the initiator header, before
  * processing any messages or ranges.
  *
- * ### Synchronization
+ * ## Synchronization
  *
  * - **Messages**: Sends {@link EncryptedCrdtMessage}s in either direction.
  * - **Ranges**: Determines messages to sync. Usage varies by transport—e.g., sent
@@ -79,7 +79,7 @@
  * initiator. In relay-to-relay or P2P sync, both sides may require the
  * {@link OwnerWriteKey} depending on who is the initiator.
  *
- * ### Protocol errors
+ * ## Protocol errors
  *
  * The protocol uses error codes in the header to signal issues:
  *
@@ -94,7 +94,7 @@
  * All protocol errors except `ProtocolInvalidDataError` include the `OwnerId`
  * to allow clients to associate errors with the correct owner.
  *
- * ### Message size limit
+ * ## Message size limit
  *
  * The protocol enforces a strict maximum size for all messages, defined by
  * {@link ProtocolMessageMaxSize}. This ensures every {@link ProtocolMessage} is
@@ -107,7 +107,7 @@
  * message limit to ensure efficient sync with
  * {@link defaultProtocolMessageRangesMaxSize}.
  *
- * ### Why Binary?
+ * ## Why Binary?
  *
  * The protocol avoids JSON because:
  *
@@ -127,7 +127,7 @@
  * To avoid reinventing serialization where it’s unnecessary—like for JSON and
  * certain numbers—the Evolu Protocol relies on MessagePack.
  *
- * ### Versioning
+ * ## Versioning
  *
  * Evolu Protocol uses explicit versioning to ensure compatibility between
  * clients and relays (or peers). Each protocol message begins with a version
@@ -148,7 +148,7 @@
  * Version negotiation is per-owner, allowing Evolu Protocol to evolve safely
  * over time and provide clear feedback about version mismatches.
  *
- * ### Credible exit
+ * ## Credible exit
  *
  * The protocol specification is intentionally non-configurable to ensure
  * universal compatibility. This design allows applications (users) to switch
@@ -1235,11 +1235,12 @@ const decodeMessages = (
 ): ReadonlyArray<EncryptedCrdtMessage> => {
   const timestamps = decodeTimestamps(buffer);
 
-  const messages: Array<EncryptedCrdtMessage> = [];
-  for (const timestamp of timestamps) {
+  const messages = new Array<EncryptedCrdtMessage>(timestamps.length);
+  for (let i = 0; i < timestamps.length; i++) {
+    const timestamp = timestamps[i];
     const changeLength = decodeLength(buffer);
     const change = buffer.shiftN(changeLength) as EncryptedDbChange;
-    messages.push({ timestamp, change });
+    messages[i] = { timestamp, change };
   }
 
   return messages;
@@ -1518,7 +1519,8 @@ const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
 
   const timestampsCount = NonNegativeInt.orThrow(rangesCount - 1);
   const timestamps = decodeTimestamps(buffer, timestampsCount);
-  const rangeTypes: Array<RangeType> = [];
+
+  const rangeTypes = new Array<RangeType>(rangesCount);
 
   for (let i = 0; i < rangesCount; i++) {
     const rangeType = decodeNonNegativeInt(buffer);
@@ -1526,14 +1528,14 @@ const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
       case RangeType.Fingerprint:
       case RangeType.Skip:
       case RangeType.Timestamps:
-        rangeTypes.push(rangeType as RangeType);
+        rangeTypes[i] = rangeType as RangeType;
         break;
       default:
         throw new ProtocolDecodeError(`Invalid RangeType: ${rangeType}`);
     }
   }
 
-  const ranges: Array<Range> = [];
+  const ranges = new Array<Range>(rangesCount);
 
   for (let i = 0; i < rangesCount; i++) {
     const upperBound =
@@ -1545,16 +1547,16 @@ const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
 
     switch (rangeType) {
       case RangeType.Skip:
-        ranges.push({ type: RangeType.Skip, upperBound });
+        ranges[i] = { type: RangeType.Skip, upperBound };
         break;
 
       case RangeType.Fingerprint: {
         const fingerprint = buffer.shiftN(fingerprintSize) as Fingerprint;
-        ranges.push({
+        ranges[i] = {
           type: RangeType.Fingerprint,
           upperBound,
           fingerprint,
-        });
+        };
         break;
       }
 
@@ -1562,11 +1564,11 @@ const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
         const timestamps = decodeTimestamps(buffer).map(
           timestampToTimestampBytes,
         );
-        ranges.push({
+        ranges[i] = {
           type: RangeType.Timestamps,
           upperBound,
           timestamps,
-        });
+        };
         break;
       }
     }
@@ -1575,7 +1577,6 @@ const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
   return ranges;
 };
 
-/** Decodes an array of sorted timestamps with delta-encoded millis. */
 const decodeTimestamps = (
   buffer: Buffer,
   length?: NonNegativeInt,
@@ -1584,48 +1585,66 @@ const decodeTimestamps = (
 
   let previousMillis = 0 as Millis;
 
-  const millises: Array<Millis> = [];
+  const millises = new Array<Millis>(length);
   for (let i = 0; i < length; i++) {
     const deltaMillis = decodeNonNegativeInt(buffer);
     const millis = Millis.from(previousMillis + deltaMillis);
     if (!millis.ok) throw new ProtocolDecodeError(millis.error.type);
-    millises.push(millis.value);
+    millises[i] = millis.value;
     previousMillis = millis.value;
   }
 
-  const counters: Array<Counter> = [];
-  let counterIndex = 0;
-  while (counterIndex < length) {
+  const counters = decodeRle(buffer, length, (): Counter => {
     const counter = Counter.from(decodeNonNegativeInt(buffer));
     if (!counter.ok) throw new ProtocolDecodeError(counter.error.type);
-    const runLength = decodeNonNegativeInt(buffer);
-    for (let i = 0; i < runLength; i++) {
-      counters.push(counter.value);
-      counterIndex++;
-    }
-  }
+    return counter.value;
+  });
 
-  const nodeIds: Array<NodeId> = [];
-  let nodeIdIndex = 0;
-  while (nodeIdIndex < length) {
-    const nodeId = decodeNodeId(buffer);
-    const runLength = decodeNonNegativeInt(buffer);
-    for (let i = 0; i < runLength; i++) {
-      nodeIds.push(nodeId);
-      nodeIdIndex++;
-    }
-  }
+  const nodeIds = decodeRle(buffer, length, (): NodeId => decodeNodeId(buffer));
 
-  const timestamps: Array<Timestamp> = [];
+  const timestamps = new Array<Timestamp>(length);
   for (let i = 0; i < length; i++) {
-    timestamps.push({
+    timestamps[i] = {
       millis: millises[i],
       counter: counters[i],
       nodeId: nodeIds[i],
-    });
+    };
   }
 
   return timestamps;
+};
+
+export const decodeRle = <T>(
+  buffer: Buffer,
+  length: NonNegativeInt,
+  decodeValue: () => T,
+): ReadonlyArray<T> => {
+  const values = new Array<T>(length);
+  let index = 0;
+  while (index < length) {
+    const value = decodeValue();
+    const runLength = decodeNonNegativeInt(buffer);
+
+    // Prevent infinite loop on malformed input.
+    if (runLength === 0) {
+      throw new ProtocolDecodeError(
+        "Invalid RLE encoding: runLength must be positive",
+      );
+    }
+    const remaining = length - index;
+
+    // Prevent CPU/memory amplification via oversized runLength.
+    if (runLength > remaining) {
+      throw new ProtocolDecodeError(
+        `Invalid RLE encoding: runLength ${runLength} exceeds remaining ${remaining}`,
+      );
+    }
+    for (let i = 0; i < runLength; i++) {
+      values[index] = value;
+      index++;
+    }
+  }
+  return values;
 };
 
 const decodeId = (buffer: Buffer): Id => {
@@ -1670,7 +1689,7 @@ export const decodeNumber = (buffer: Buffer): number => {
  * Each element in the array corresponds to a bit (0-7). Array can have 0-8
  * elements.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * encodeFlags(buffer, [true, false, true]); // Encodes bits 0, 1, 2
@@ -1692,7 +1711,7 @@ export const encodeFlags = (
 /**
  * Decodes a byte into an array of boolean flags.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const flags = decodeFlags(buffer, 3); // Decode 3 flags
@@ -1703,9 +1722,10 @@ export const decodeFlags = (
   count: PositiveInt,
 ): ReadonlyArray<boolean> => {
   const byte = buffer.shift();
-  const flags: Array<boolean> = [];
-  for (let i = 0; i < count && i < 8; i++) {
-    flags.push((byte & (1 << i)) !== 0);
+  const length = globalThis.Math.min(count, 8);
+  const flags = new Array<boolean>(length);
+  for (let i = 0; i < length; i++) {
+    flags[i] = (byte & (1 << i)) !== 0;
   }
   return flags;
 };

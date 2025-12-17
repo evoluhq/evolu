@@ -16,6 +16,7 @@ import {
   decodeNumber,
   decodeSqliteValue,
   decodeString,
+  decodeRle,
   decryptAndDecodeDbChange,
   defaultProtocolMessageRangesMaxSize,
   encodeAndEncryptDbChange,
@@ -531,6 +532,59 @@ test("createTimestampsBuffer maxTimestamp", () => {
   const buffer = createTimestampsBuffer();
   buffer.add(timestampBytesToTimestamp(maxTimestamp));
   expect(buffer.getLength()).toBe(21);
+});
+
+describe("decodeRle", () => {
+  test("rejects runLength exceeding remaining", () => {
+    const buffer = createBuffer();
+    // value=1, runLength=100000 (malicious: exceeds expected length of 2)
+    encodeNonNegativeInt(buffer, NonNegativeInt.orThrow(1));
+    encodeNonNegativeInt(buffer, NonNegativeInt.orThrow(100000));
+
+    expect(() =>
+      decodeRle(buffer, NonNegativeInt.orThrow(2), () =>
+        decodeNonNegativeInt(buffer),
+      ),
+    ).toThrow("Invalid RLE encoding: runLength 100000 exceeds remaining 2");
+  });
+
+  test("rejects zero runLength", () => {
+    const buffer = createBuffer();
+    // value=1, runLength=0 (malicious: would infinite-loop)
+    encodeNonNegativeInt(buffer, NonNegativeInt.orThrow(1));
+    encodeNonNegativeInt(buffer, NonNegativeInt.orThrow(0));
+
+    expect(() =>
+      decodeRle(buffer, NonNegativeInt.orThrow(1), () =>
+        decodeNonNegativeInt(buffer),
+      ),
+    ).toThrow("Invalid RLE encoding: runLength must be positive");
+  });
+
+  test("accepts valid RLE encoding", () => {
+    const buffer = createBuffer();
+    // [5 x 3]
+    encodeNonNegativeInt(buffer, NonNegativeInt.orThrow(5));
+    encodeNonNegativeInt(buffer, NonNegativeInt.orThrow(3));
+
+    const values = decodeRle(buffer, NonNegativeInt.orThrow(3), () =>
+      decodeNonNegativeInt(buffer),
+    );
+    expect(values).toEqual([5, 5, 5]);
+    expect(buffer.getLength()).toBe(0);
+  });
+
+  test("supports non-int values (NodeId)", () => {
+    const buffer = createBuffer();
+    encodeNodeId(buffer, "0123456789abcdef" as any);
+    encodeNonNegativeInt(buffer, NonNegativeInt.orThrow(2));
+
+    const values = decodeRle(buffer, NonNegativeInt.orThrow(2), () =>
+      decodeNodeId(buffer),
+    );
+    expect(values).toEqual(["0123456789abcdef", "0123456789abcdef"]);
+    expect(buffer.getLength()).toBe(0);
+  });
 });
 
 describe("createProtocolMessageBuffer", () => {
