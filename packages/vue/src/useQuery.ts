@@ -6,7 +6,7 @@ import { useEvolu } from "./useEvolu.js";
  * Load and subscribe to the query, returning a ref that stays in sync with
  * Evolu changes.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * // Get all rows.

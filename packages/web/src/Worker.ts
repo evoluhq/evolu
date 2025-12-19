@@ -75,7 +75,7 @@ const wrapMessagePortLike = <Input, Output>(
 /**
  * Creates a {@link MessageChannel} from the native browser MessageChannel.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const channel = createMessageChannel<Request, Response>();

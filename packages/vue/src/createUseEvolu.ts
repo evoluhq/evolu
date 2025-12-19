@@ -4,7 +4,7 @@ import { useEvolu } from "./useEvolu.js";
 /**
  * Creates a helper function returning a type-aware instance of {@link Evolu}.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const useEvolu = createUseEvolu(evolu);

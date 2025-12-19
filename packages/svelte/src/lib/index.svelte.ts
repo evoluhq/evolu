@@ -21,7 +21,7 @@ export const evoluSvelteDeps = createEvoluDeps();
  * Load and subscribe to the Query, and return an object with `rows` property
  * that are automatically updated when data changes.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * // Create your query
@@ -31,7 +31,7 @@ export const evoluSvelteDeps = createEvoluDeps();
  * const allTodosState = queryState(evolu, () => allTodos);
  * ```
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * // some kind of state
@@ -116,7 +116,7 @@ export function queryState<
 /**
  * Get the {@link AppOwner} promise that resolves when available.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * import { appOwnerState } from "@evolu/svelte";
