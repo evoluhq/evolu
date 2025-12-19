@@ -51,6 +51,11 @@
     font-size: 18.5px;
   }
 
+  /* Offset anchor scroll position for fixed header */
+  [id] {
+    scroll-margin-top: 5rem;
+  }
+
   [inert] ::-webkit-scrollbar {
     display: none;
   }

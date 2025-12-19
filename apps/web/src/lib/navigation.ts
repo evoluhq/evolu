@@ -21,7 +21,7 @@ export const navigation: Array<NavGroup> = [
       },
       {
         title: "Task",
-        href: "/docs/api-reference/common/Task/interfaces/Task",
+        href: "/docs/api-reference/common/Task/type-aliases/Task",
       },
       {
         title: "Type",

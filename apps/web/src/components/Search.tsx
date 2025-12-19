@@ -11,7 +11,6 @@ import clsx from "clsx";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   forwardRef,
-  Fragment,
   Suspense,
   useCallback,
   useEffect,
@@ -21,7 +20,6 @@ import {
 } from "react";
 import Highlighter from "react-highlight-words";
 
-import { navigation } from "@/lib/navigation";
 import { type Result } from "@/mdx/search.mjs";
 
 type EmptyObject = Record<string, never>;
@@ -83,7 +81,7 @@ function useAutocomplete({ close }: { close: () => void }) {
             {
               sourceId: "documentation",
               getItems() {
-                return search(query, { limit: 5 });
+                return search(query);
               },
               getItemUrl({ item }) {
                 return item.url;
@@ -179,20 +177,13 @@ function SearchResult({
 }) {
   const id = useId();
 
-  const sectionTitle = navigation.find((section) =>
-    section.links.find((link) => link.href === result.url.split("#")[0]),
-  )?.title;
-  const hierarchy = [sectionTitle, result.pageTitle].filter(
-    (x): x is string => typeof x === "string",
-  );
-
   return (
     <li
       className={clsx(
         "group block cursor-default px-4 py-3 aria-selected:bg-zinc-50 dark:aria-selected:bg-zinc-800/50",
         resultIndex > 0 && "border-t border-zinc-100 dark:border-zinc-800",
       )}
-      aria-labelledby={`${id}-hierarchy ${id}-title`}
+      aria-labelledby={`${id}-title`}
       {...autocomplete.getItemProps({
         item: result,
         source: collection.source,
@@ -203,35 +194,8 @@ function SearchResult({
         aria-hidden="true"
         className="text-sm font-medium text-zinc-900 group-aria-selected:text-blue-500 dark:text-white"
       >
-        {result.url.startsWith("/docs/api-reference") ? (
-          <span className="mr-1.5">API Reference /</span>
-        ) : (
-          <></>
-        )}
         <HighlightQuery text={result.title} query={query} />
       </div>
-      {hierarchy.length > 0 && (
-        <div
-          id={`${id}-hierarchy`}
-          aria-hidden="true"
-          className="text-2xs mt-1 truncate whitespace-nowrap text-zinc-500"
-        >
-          {hierarchy.map((item, itemIndex, items) => (
-            <Fragment key={itemIndex}>
-              <HighlightQuery text={item} query={query} />
-              <span
-                className={
-                  itemIndex === items.length - 1
-                    ? "sr-only"
-                    : "mx-2 text-zinc-300 dark:text-zinc-700"
-                }
-              >
-                /
-              </span>
-            </Fragment>
-          ))}
-        </div>
-      )}
       <div className="text-2xs mt-1 truncate whitespace-nowrap text-zinc-500">
         <HighlightQuery text={result.url} query={query} />
       </div>
@@ -408,7 +372,7 @@ function SearchDialog({
               />
               <div
                 ref={panelRef}
-                className="border-t border-zinc-200 bg-white empty:hidden dark:border-zinc-100/5 dark:bg-white/2.5"
+                className="max-h-[60vh] overflow-y-auto border-t border-zinc-200 bg-white empty:hidden dark:border-zinc-100/5 dark:bg-white/2.5"
                 {...autocomplete.getPanelProps({})}
               >
                 {autocompleteState.isOpen && (

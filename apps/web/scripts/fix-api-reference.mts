@@ -25,7 +25,11 @@ function rearrangeMdxFilesRecursively(dir: string) {
           `${baseName} - API reference`,
         );
       } else {
-        fixLinksInMdxFile(fullPath, "API reference");
+        const title =
+          dir === reference
+            ? "API reference"
+            : `${path.basename(dir)} - API reference`;
+        fixLinksInMdxFile(fullPath, title);
       }
     }
   }
@@ -34,28 +38,69 @@ function rearrangeMdxFilesRecursively(dir: string) {
 function fixLinksInMdxFile(filePath: string, title: string) {
   const content = fs.readFileSync(filePath, "utf-8");
   // first let's replace /page.mdx with /
-  let newContent = content.replace(/\/page.mdx/g, "");
-  newContent = newContent.replace(/\(([^)]+)\.mdx\)/g, "($1)");
+  let newContent = content.replace(/\/page\.mdx/g, "");
+  // Remove .mdx from Markdown link destinations, preserving query/hash.
+  // Examples:
+  // - [X](/docs/Foo.mdx) -> [X](/docs/Foo)
+  // - [X](/docs/Foo.mdx#bar) -> [X](/docs/Foo#bar)
+  // - [X](../Foo.mdx?x=1#bar) -> [X](../Foo?x=1#bar)
+  newContent = newContent.replace(/\]\(([^)]*?)\.mdx(?=[)#?])/g, "]($1");
 
-  // fix API reference breadcrumb link
+  // fix API reference breadcrumb link and separator
+  // Breadcrumb is the first line starting with `[API` - replace link text and separators
   newContent = newContent.replace(
-    /\[API Reference\]\([^)]*\)/g,
-    "[API reference](/docs/api-reference)",
+    /^(\[API Reference\]\([^)]*\))(.*)/m,
+    (_match, _apiLink, rest: string) => {
+      const fixedRest = rest.replace(/ \/ /g, " › ");
+      return `[API reference](/docs/api-reference)${fixedRest}`;
+    },
   );
 
-  // Remove call signatures
+  // Extract ## headings to generate sections for "On this page" navigation
+  const sections = extractSections(newContent);
+  const sectionsExport =
+    sections.length > 0
+      ? `export const sections = ${JSON.stringify(sections)};`
+      : "export const sections = [];";
+
+  // add meta tags (idempotent)
   newContent = newContent.replace(
-    /##\s*Call Signature\r?\n\s*```ts[\s\S]*?```/g,
+    /^export const metadata = \{ title: [^}]*\};\s*\r?\n\s*/,
     "",
   );
-
-  // add meta tags
+  newContent = newContent.replace(
+    /^export const sections = .*;\s*\r?\n\s*/m,
+    "",
+  );
   newContent = `export const metadata = { title: '${title}' };
-export const sections = [];
+${sectionsExport}
 	
 ${newContent}`;
 
   fs.writeFileSync(filePath, newContent);
+}
+
+/** Extract ## headings from MDX content to generate sections */
+function extractSections(
+  content: string,
+): Array<{ id: string; title: string }> {
+  const sections: Array<{ id: string; title: string }> = [];
+  // Match ## headings (not ### or deeper)
+  const headingRegex = /^## (.+)$/gm;
+  let match;
+  while ((match = headingRegex.exec(content)) !== null) {
+    const title = match[1].trim();
+    // Generate id from title (kebab-case)
+    const id = title
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-");
+    if (id) {
+      sections.push({ id, title });
+    }
+  }
+  return sections;
 }
 
 // Run the script
