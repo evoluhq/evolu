@@ -8,7 +8,7 @@ export const metadata = {
 
 Conventions minimize decision-making and improve consistency.
 
-## Named imports
+## Imports and exports
 
 Use named imports. Refactor modules with excessive imports.
 
@@ -16,15 +16,13 @@ Use named imports. Refactor modules with excessive imports.
 import { bar, baz } from "Foo.ts";
 ```
 
-## Unique exported members
-
 Avoid namespaces. Use unique and descriptive names for exported members to prevent conflicts and improve clarity.
 
 ```ts
 // Avoid
 export const Utils = { ok, trySync };
 
-// Prefer
+// Use
 export const ok = ...;
 export const trySync = ...;
 
@@ -38,9 +36,9 @@ export const trySync = ...;
 
 ## Order (top-down readability)
 
-Many developers naturally write code bottom-up, starting with small helpers and building up to the public API. However, Evolu optimizes for reading, not writing, because source code is read far more often than it is written. By presenting the public API first—interfaces and types—followed by the implementation and implementation details, we ensure that the developer-facing contract is immediately clear, making it easier to understand the purpose and structure of the code.
+Many developers naturally write code bottom-up, starting with small helpers and building up to the public API. However, Evolu optimizes for reading, not writing, because source code is read far more often than it is written. By presenting the public API first—interfaces and types—followed by implementation and implementation details, the developer-facing contract is immediately clear.
 
-Another way to think about it is that we approach the code from the whole to the detail, like a painter painting a picture. The painter never starts with details but with the overall layout and gradually adds details.
+Think of it like painting—from the whole to the detail. The painter never starts with details, but with the overall composition, then gradually refines.
 
 ```ts
 // Public interface first: the contract developers rely on.
@@ -64,50 +62,9 @@ const bar = () => {
 };
 ```
 
-## Arrow functions
-
-Use arrow functions instead of the `function` keyword.
-
-```ts
-// Prefer
-export const createUser = (data: UserData): User => {
-  // implementation
-};
-
-// Avoid
-export function createUser(data: UserData): User {
-  // implementation
-}
-```
-
-Why arrow functions?
-
-- **No hoisting** - Combined with `const`, arrow functions aren't hoisted, which enforces top-down code organization
-- **Consistency** - One way to define functions means less cognitive overhead
-- **Currying** - Arrow functions make currying natural for [dependency injection](/docs/dependency-injection)
-
-**Exception: function overloads.** TypeScript requires the `function` keyword for overloaded signatures:
-
-```ts
-export function mapArray<T, U>(
-  array: NonEmptyReadonlyArray<T>,
-  mapper: (item: T) => U,
-): NonEmptyReadonlyArray<U>;
-export function mapArray<T, U>(
-  array: ReadonlyArray<T>,
-  mapper: (item: T) => U,
-): ReadonlyArray<U>;
-export function mapArray<T, U>(
-  array: ReadonlyArray<T>,
-  mapper: (item: T) => U,
-): ReadonlyArray<U> {
-  return array.map(mapper) as ReadonlyArray<U>;
-}
-```
-
 ## Immutability
 
-Mutable state is tricky because it increases the risk of unintended side effects, makes code harder to predict, and complicates debugging—especially in complex applications where data might be shared or modified unexpectedly. Favor immutable values using readonly types to reduce these risks and improve clarity.
+Mutable state is tricky because it increases the risk of unintended side effects, makes code harder to predict, and complicates debugging—especially in complex applications where data might be shared or modified unexpectedly. Use immutable values with readonly types to reduce these risks and improve clarity.
 
 ### Readonly types
 
@@ -163,13 +120,11 @@ const lookup = readonly(new Map([["key", "value"]]));
 // Type: ReadonlyMap<string, string>
 ```
 
-### Immutable helpers
-
-Evolu provides helpers in the [Array](/docs/api-reference/common/Array) and [Object](/docs/api-reference/common/Object) modules that do not mutate and preserve readonly types.
+Evolu also provides helpers in the [Array](/docs/api-reference/common/Array) and [Object](/docs/api-reference/common/Object) modules that do not mutate and preserve readonly types.
 
 ## Interface over type
 
-Prefer `interface` over `type` because interfaces always appear by name in error messages and tooltips.
+Use `interface` over `type` because interfaces always appear by name in error messages and tooltips.
 
 Use `type` only when necessary:
 
@@ -179,3 +134,114 @@ Use `type` only when necessary:
 > Use `interface` until you need to use features from `type`.
 >
 > — [TypeScript Handbook](https://www.typescriptlang.org/docs/handbook/2/everyday-types.html#differences-between-type-aliases-and-interfaces)
+
+## Arrow functions
+
+Use arrow functions instead of the `function` keyword.
+
+```ts
+// Use
+export const createUser = (data: UserData): User => {
+  // implementation
+};
+
+// Avoid
+export function createUser(data: UserData): User {
+  // implementation
+}
+```
+
+Why arrow functions?
+
+- **No hoisting** - Combined with `const`, arrow functions aren't hoisted, which enforces top-down code organization
+- **Consistency** - One way to define functions means less cognitive overhead
+- **Currying** - Arrow functions make currying natural for [dependency injection](/docs/dependency-injection)
+
+**Exception: function overloads.** TypeScript requires the `function` keyword for overloaded signatures:
+
+```ts
+export function mapArray<T, U>(
+  array: NonEmptyReadonlyArray<T>,
+  mapper: (item: T) => U,
+): NonEmptyReadonlyArray<U>;
+export function mapArray<T, U>(
+  array: ReadonlyArray<T>,
+  mapper: (item: T) => U,
+): ReadonlyArray<U>;
+export function mapArray<T, U>(
+  array: ReadonlyArray<T>,
+  mapper: (item: T) => U,
+): ReadonlyArray<U> {
+  return array.map(mapper) as ReadonlyArray<U>;
+}
+```
+
+**In interfaces too.** Use arrow function syntax for interface methods—otherwise ESLint won't allow passing them as references due to JavaScript's `this` binding issues.
+
+```ts
+// Use arrow function syntax
+interface Foo {
+  readonly bar: (value: string) => void;
+  readonly baz: () => number;
+}
+
+// Avoid method shorthand syntax
+interface Foo {
+  bar(value: string): void;
+  baz(): number;
+}
+```
+
+## Avoid getters and setters
+
+Avoid JavaScript getters and setters. Use simple readonly properties for stable values and explicit methods for values that may change.
+
+**Getters mask mutability.** A getter looks like a simple property access (`obj.value`) but might return different values on each call. This violates the principle of least surprise and makes code harder to reason about.
+
+**Setters hide mutation and conflict with readonly.** Evolu uses `readonly` properties everywhere for immutability. Setters are incompatible with this approach and make mutation invisible—`obj.value = x` looks like simple assignment but executes arbitrary code.
+
+**Use explicit methods instead.** When a value can change or requires computation, use a method like `getValue()`. The parentheses signal "this might change or compute something" and make the behavior obvious at the call site. A readonly property like `readonly id: string` communicates stability—you can safely cache, memoize, or pass the value around knowing it won't change behind your back.
+
+```ts
+// Use explicit methods for mutable internal state
+interface Counter {
+  readonly getValue: () => number;
+  readonly increment: () => void;
+}
+
+// Avoid: This looks stable but if backed by a getter, value might change
+interface Counter {
+  readonly value: number;
+  readonly increment: () => void;
+}
+```
+
+## Factory functions instead of classes
+
+Use interfaces with factory functions instead of classes. Classes have subtle pitfalls: `this` binding is tricky and error-prone, and class inheritance encourages tight coupling. Evolu favors composition over inheritance (though interface inheritance is fine).
+
+```ts
+// Use interface + factory function
+interface Counter {
+  readonly getValue: () => number;
+  readonly increment: () => void;
+}
+
+const createCounter = (): Counter => {
+  let value = 0;
+  return {
+    getValue: () => value,
+    increment: () => {
+      value++;
+    },
+  };
+};
+
+// Avoid
+class Counter {
+  value = 0;
+  increment() {
+    this.value++;
+  }
+}
+```
