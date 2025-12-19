@@ -1,7 +1,7 @@
 /**
  * Checks if a value is a plain object (e.g., created with `{}` or `Object`).
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * isPlainObject({}); // true
@@ -27,7 +27,7 @@ type StringKeyOf<T> = Extract<keyof T, string>;
 /**
  * Like `Object.entries` but preserves branded keys.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * type UserId = string & { readonly __brand: "UserId" };
@@ -98,7 +98,7 @@ export const createRecord = <K extends string = string, V = unknown>(): Record<
  * accessing a non-existent key returns `undefined`. This helper provides proper
  * typing for that case without needing a type assertion.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const users: Record<string, User> = { alice: { name: "Alice" } };
@@ -115,7 +115,7 @@ export const getProperty = <K extends string, V>(
  * the URL when disposed. Use with the `using` declaration for automatic
  * cleanup.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const blob = new Blob(["hello"], { type: "text/plain" });

@@ -120,7 +120,7 @@ export const maxNodeId = "ffffffffffffffff" as NodeId;
  * Timestamps serve as globally unique, causally ordered identifiers for CRDT
  * messages in Evolu's sync protocol.
  *
- * ### Why Hybrid Logical Clocks
+ * ## Why Hybrid Logical Clocks
  *
  * Evolu uses Hybrid Logical Clocks (HLC), which combine physical time (millis)
  * with a logical counter. This hybrid approach preserves causality like logical
@@ -145,14 +145,14 @@ export const maxNodeId = "ffffffffffffffff" as NodeId;
  * configuration protects against buggy clocks and prevents problematic
  * future-dated entries from propagating through the network.
  *
- * ### References
+ * ## References
  *
  * - https://muratbuffalo.blogspot.com/2014/07/hybrid-logical-clocks.html
  * - https://sergeiturukin.com/2017/06/26/hybrid-logical-clocks.html
  * - https://jaredforsyth.com/posts/hybrid-logical-clocks/
  * - https://willowprotocol.org/more/timestamps_really/index.html
  *
- * ### Privacy Considerations
+ * ## Privacy Considerations
  *
  * Timestamps are metadata visible to relays and collaborators. While it can be
  * considered a privacy leak, let us explain why it's necessary, and how to
@@ -169,6 +169,10 @@ export const maxNodeId = "ffffffffffffffff" as NodeId;
  * 2. Periodically and randomly flush messages to sync tables
  *
  * **Trade-off:** It breaks real-time collaboration.
+ *
+ * Another technique is generating fake random activity (dummy messages) to mask
+ * real usage patterns. This preserves real-time collaboration but increases
+ * storage and bandwidth usage.
  */
 export const Timestamp = object({
   millis: Millis,

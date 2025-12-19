@@ -6,7 +6,7 @@
  *
  * Supports multiple brands, allowing types to act like flags.
  *
- * ### Example 1: Single Brand
+ * ## Example 1: Single Brand
  *
  * ```ts
  * // A branded type definition
@@ -30,7 +30,7 @@
  * getUser("123"); // ❌ TypeScript error
  * ```
  *
- * ### Example 2: Multiple Brands
+ * ## Example 2: Multiple Brands
  *
  * ```ts
  * // Define branded types
@@ -56,7 +56,7 @@
  * requiresMax100(min1Max100Value); // ✅ Valid: Min1Max100 satisfies Max100
  * ```
  *
- * ### Example 3: Standalone Brand
+ * ## Example 3: Standalone Brand
  *
  * Brand can be used alone without a base type for purely nominal typing. This
  * is useful for opaque values where the internal structure is hidden and type
@@ -87,7 +87,7 @@ declare const __brand: unique symbol;
  *
  * Works with any base type intersected with a `Brand`.
  *
- * ### Example
+ * ## Example
  *
  * - `IsBranded<string>` -> false
  * - `IsBranded<string & Brand<"X">>` -> true

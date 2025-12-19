@@ -2,7 +2,7 @@
  * Array types, type guards, operations, transformations, accessors, and (rare)
  * mutations
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * // Types - compile-time guarantee of at least one element
@@ -66,7 +66,7 @@
  * const result = firstInArray(mapped);
  * ```
  *
- * ### Why data-first?
+ * ## Why data-first?
  *
  * Evolu optimizes for consistent code style. We can't have both data-first
  * single operations and curried data-last helpers without sacrificing
@@ -103,7 +103,7 @@ export type NonEmptyReadonlyArray<T> = readonly [T, ...ReadonlyArray<T>];
  *
  * Use `if (!isNonEmptyArray(arr))` for empty checks.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const arr: Array<number> = [1, 2, 3];
@@ -124,7 +124,7 @@ export const isNonEmptyArray = <T>(
  *
  * Use `if (!isNonEmptyReadonlyArray(arr))` for empty checks.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const arr: ReadonlyArray<number> = [1, 2, 3];
@@ -144,7 +144,7 @@ export const isNonEmptyReadonlyArray = <T>(
  *
  * Accepts both mutable and readonly arrays. Does not mutate the original array.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * appendToArray([1, 2, 3], 4); // [1, 2, 3, 4]
@@ -163,7 +163,7 @@ export const appendToArray = <T>(
  *
  * Accepts both mutable and readonly arrays. Does not mutate the original array.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * prependToArray([2, 3], 1); // [1, 2, 3]
@@ -181,7 +181,7 @@ export const prependToArray = <T>(
  *
  * Accepts both mutable and readonly arrays. Preserves non-empty type.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * mapArray([1, 2, 3], (x) => x * 2); // [2, 4, 6]
@@ -213,15 +213,15 @@ export function mapArray<T, U>(
  * type to the narrowed type, making it useful for filtering with Evolu Types
  * like `PositiveInt.is`.
  *
- * ### Examples
+ * ## Examples
  *
- * #### With predicate
+ * ### With predicate
  *
  * ```ts
  * filterArray([1, 2, 3, 4, 5], (x) => x % 2 === 0); // [2, 4]
  * ```
  *
- * #### With refinement
+ * ### With refinement
  *
  * ```ts
  * const mixed: ReadonlyArray<NonEmptyString | PositiveInt> = [
@@ -258,7 +258,7 @@ export function filterArray<T>(
  * Accepts both mutable and readonly arrays. Does not mutate the original array.
  * Preserves non-empty type.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * // Dedupe primitives by value
@@ -314,9 +314,9 @@ export function dedupeArray<T>(
  * TypeScript will narrow the first array to the narrowed type, making it useful
  * for filtering with Evolu Types like `PositiveInt.is`.
  *
- * ### Examples
+ * ## Examples
  *
- * #### With predicate
+ * ### With predicate
  *
  * ```ts
  * const [evens, odds] = partitionArray(
@@ -327,7 +327,7 @@ export function dedupeArray<T>(
  * odds; // [1, 3, 5]
  * ```
  *
- * #### With refinement
+ * ### With refinement
  *
  * ```ts
  * const mixed: ReadonlyArray<NonEmptyString | PositiveInt> = [
@@ -372,7 +372,7 @@ export function partitionArray<T>(
  *
  * Accepts both mutable and readonly arrays. Does not mutate the original array.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * firstInArray(["a", "b", "c"]); // "a"
@@ -387,7 +387,7 @@ export const firstInArray = <T>(array: NonEmptyReadonlyArray<T>): T => array[0];
  *
  * Accepts both mutable and readonly arrays. Does not mutate the original array.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * lastInArray(["a", "b", "c"]); // "c"
@@ -403,7 +403,7 @@ export const lastInArray = <T>(array: NonEmptyReadonlyArray<T>): T =>
  *
  * **Mutates** the original array.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const arr: NonEmptyArray<number> = [1, 2, 3];
@@ -420,7 +420,7 @@ export const shiftArray = <T>(array: NonEmptyArray<T>): T => array.shift() as T;
  *
  * **Mutates** the original array.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const arr: NonEmptyArray<number> = [1, 2, 3];

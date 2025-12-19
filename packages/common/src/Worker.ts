@@ -100,7 +100,7 @@ export interface CreateMessagePortDep {
  *
  * For one-way communication, omit `Output` (defaults to `never`).
  *
- * ### Example
+ * ## Example
  *
  * One-way error channel: worker sends errors, main thread receives them.
  *

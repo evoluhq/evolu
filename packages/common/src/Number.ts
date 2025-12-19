@@ -18,7 +18,7 @@ export const clamp =
 /**
  * Creates a predicate that checks if a number is within a range, inclusive.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const isBetween10And20 = isBetween(10, 20);
@@ -48,7 +48,7 @@ export const max = <T extends number>(
  * least the minimum number of items. Returns a success result if the minimum is
  * met, or an error result with the required number of items if not.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * computeBalancedBuckets(10, 3, 2); // Returns ok([4, 7, 10])

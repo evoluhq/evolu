@@ -20,7 +20,7 @@ import type { Eq } from "./Eq.js";
  *
  * Implements `Disposable` for automatic cleanup via the `using` syntax.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * // Define branded types for your secrets
@@ -101,7 +101,7 @@ export const isRedacted = (value: unknown): value is Redacted<unknown> =>
  * Creates an {@link Eq} for {@link Redacted} values based on an equality function
  * for the underlying type.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * type ApiKey = string & Brand<"ApiKey">;

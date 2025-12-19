@@ -8,7 +8,7 @@ import { ReadonlyRecord } from "./Object.js";
  * Remember, it's useful only when we don't return anything from the switch
  * statement. Otherwise, a return type of a function is enough.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * type Color = "red" | "green" | "blue";
@@ -40,7 +40,7 @@ export const exhaustiveCheck = (value: never): never => {
  * Useful as a default transformation, placeholder callback, or when a function
  * is required but no transformation is needed.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const values = [1, 2, 3];
@@ -59,7 +59,7 @@ export const identity = <A>(a: A): A => a;
  * enforce immutability at the type level. Preserves {@link NonEmptyArray} as
  * {@link NonEmptyReadonlyArray}.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * // Array literals become NonEmptyReadonlyArray
@@ -117,7 +117,7 @@ export function readonly<T, K extends keyof any, V>(
  * - Deferring side effects so the callee controls when they run
  * - Providing default callbacks (see `constVoid`, `constTrue`, etc.)
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * // Delay expensive computation

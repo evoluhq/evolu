@@ -29,7 +29,7 @@ export const eqFromOrder =
  * Creates an equivalence function for array-like structures based on an
  * equivalence for their elements.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const eqArrayNumber = createEqArrayLike(eqNumber);
@@ -54,7 +54,7 @@ export const createEqArrayLike =
 /**
  * Compares two array-like structures of numbers for equality.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * eqArrayNumber([1, 2, 3], [1, 2, 3]); // true (works with regular arrays)
@@ -68,7 +68,7 @@ export const eqArrayNumber = createEqArrayLike(eqNumber);
  * Creates an equivalence function for objects based on an equivalence for their
  * fields.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const eqObjectNumber = createEqObject({ a: eqNumber });
@@ -100,7 +100,7 @@ export const createEqObject =
  *   serialization overhead and leveraging short-circuit evaluation for faster
  *   failure on mismatched structures.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const obj1: Json = { name: "Alice", hobbies: ["reading", "hiking"] };
@@ -190,7 +190,7 @@ export const eqJsonValue = (a: JsonValue, b: JsonValue): boolean => {
  *   serialization overhead and leveraging short-circuit evaluation for faster
  *   failure on mismatched structures.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const obj1: Json = { name: "Alice", hobbies: ["reading", "hiking"] };

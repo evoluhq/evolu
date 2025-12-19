@@ -13,7 +13,7 @@ import type { Store } from "./Store.js";
  * Injection](https://evolu.dev/docs/dependency-injection) pattern—use it when
  * functions need shared mutable state.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const count = createRef(0);
@@ -22,7 +22,7 @@ import type { Store } from "./Store.js";
  * console.log(count.get()); // 2
  * ```
  *
- * ### Example of using Ref as a dependency
+ * ## Example of using Ref as a dependency
  *
  * ```ts
  * interface CounterRefDep {
@@ -47,7 +47,7 @@ export interface Ref<T> {
 /**
  * Creates a {@link Ref} with the given initial state.
  *
- * By default, state is always updated. You can provide an optional {@link Eq}
+ * By default, state is always updated. We can provide an optional {@link Eq}
  * function as the second argument to skip updates when the new state equals the
  * current state.
  */

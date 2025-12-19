@@ -57,7 +57,7 @@ import { Timestamp, TimestampBytes } from "./Timestamp.js";
  * Table schema defines columns that are required for table rows. For not
  * required columns, use {@link nullOr}.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const TodoId = id("Todo");
@@ -289,7 +289,7 @@ export interface MutationOptions {
    * with unused owners are stored locally but not synced until the owner is
    * used.
    *
-   * ### Example
+   * ## Example
    *
    * ```ts
    * // Partition your own data by project (derived from your AppOwner)
@@ -335,7 +335,7 @@ export interface MutationChange extends DbChange {
  * optional (so they are not required), omits Id, and ensures the
  * {@link maxMutationSize}.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const InsertableTodo = insertable(Schema.todo);
@@ -366,7 +366,7 @@ export type Insertable<Props extends Record<string, AnyType>> = InferInput<
  * the `id` column optional (so they are not required) and ensures the
  * {@link maxMutationSize}.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const UpdateableTodo = updateable(Schema.todo);
@@ -409,7 +409,7 @@ export type Updateable<Props extends Record<string, AnyType>> = InferInput<
  * because they are derived from {@link CrdtMessage} timestamp. For external
  * createdAt, use a different column.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const UpsertableTodo = upsertable(Schema.todo);

@@ -124,7 +124,7 @@ export type Duration = DurationString | NonNegativeInt;
  * Accepts either a {@link DurationString} (e.g., "5m", "1h 30m") or milliseconds
  * as {@link NonNegativeInt}.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * durationToNonNegativeInt("0ms"); // 0 ✅

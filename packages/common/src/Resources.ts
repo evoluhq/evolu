@@ -123,7 +123,7 @@ export interface ResourcesConfig<
  * counts to know when it's safe to dispose resources. Resources are created
  * on-demand and disposed with a configurable delay to avoid churn.
  *
- * ### Example Usage
+ * ## Example Usage
  *
  * ```ts
  * // WebSocket connections

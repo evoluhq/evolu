@@ -1,6 +1,6 @@
 import { constVoid } from "./Function.js";
 import { err, ok, Result } from "./Result.js";
-import { retry, RetryError, RetryOptions } from "./Task.js";
+import { retry, RetryError, RetryOptions } from "./OldTask.js";
 import { maxPositiveInt } from "./Type.js";
 
 /** WebSocket with auto-reconnect and offline support. */
@@ -117,7 +117,7 @@ export interface WebSocketConnectionCloseError {
  * reconnect again. Retrying the connection can be controlled using the
  * retryOptions retryable predicate.
  *
- * ### How Binary Messages Work in WebSockets
+ * ## How Binary Messages Work in WebSockets
  *
  * The Server Chooses the Message Type:
  *
@@ -135,7 +135,7 @@ export interface WebSocketConnectionCloseError {
  *   - A Blob (default: "blob")
  *   - An ArrayBuffer ("arraybuffer")
  *
- * ### Example
+ * ## Example
  *
  * TODO:
  */

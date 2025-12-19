@@ -26,7 +26,7 @@ import { Simplify } from "../Types.js";
 /**
  * A type-safe SQL query.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const allTodos = evolu.createQuery((db) =>
@@ -40,7 +40,7 @@ export type Query<R extends Row = Row> = string &
     /**
      * A shorthand for {@link InferRow}.
      *
-     * ### Example
+     * ## Example
      *
      * ```ts
      * const allTodos = evolu.createQuery((db) =>

@@ -19,7 +19,7 @@ export type Ordering = -1 | 0 | 1;
 /**
  * Creates an ordering function from a "less than" comparator.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const orderNumber = createOrder<number>((x, y) => x < y);
@@ -36,7 +36,7 @@ export const createOrder =
 /**
  * Returns an order that reverses the order of the given order.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * reverseOrder(orderNumber)(1, 2); // 1
@@ -52,7 +52,7 @@ export const reverseOrder =
 /**
  * An order for `string` values in ascending order.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * orderString("a", "b"); // -1
@@ -66,7 +66,7 @@ export const orderString: Order<string> = createOrder((a, b) => a < b);
 /**
  * An order for numbers in ascending order.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * orderNumber(1, 2); // -1
@@ -83,7 +83,7 @@ export const orderNumber = createOrder<number>((a, b) => a < b);
 /**
  * An order for bigints in ascending order.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * orderBigInt(1n, 2n); // -1

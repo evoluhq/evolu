@@ -85,7 +85,7 @@
 //    *
 //    * The default value is: `Evolu`.
 //    *
-//    * ### Example
+//    * ## Example
 //    *
 //    * ```ts
 //    * // name: SimpleName.orThrow("MyApp")
@@ -110,7 +110,7 @@
 //    *
 //    * Empty transports create local-only instances. Transports can be dynamically
 //    * added and removed for any owner (including {@link AppOwner}) via
-//    * {@link Evolu#useOwner}.
+//    * {@link Evolu.useOwner}.
 //    *
 //    * Use {@link createOwnerWebSocketTransport} to create WebSocket transport
 //    * configurations with proper URL formatting and {@link OwnerId} inclusion. The
@@ -121,7 +121,7 @@
 //    *
 //    * `{ type: "WebSocket", url: "wss://free.evoluhq.com" }`.
 //    *
-//    * ### Example
+//    * ## Example
 //    *
 //    * ```ts
 //    * // Single WebSocket relay
@@ -159,7 +159,7 @@
 //    * For device-specific settings and account management state, we can use a
 //    * separate local-only Evolu instance via `transports: []`.
 //    *
-//    * ### Example
+//    * ## Example
 //    *
 //    * ```ts
 //    * const ConfigId = id("Config");

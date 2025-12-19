@@ -9,13 +9,13 @@
  * **Convention**: Use a tag (e.g., `[db]`) as the first argument for log
  * filtering.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * deps.console.log("[evolu]", "createEvoluInstance", { name });
  * ```
  *
- * **Tip**: In browser dev tools, you can filter logs by tag (e.g., `[db]`) to
+ * **Tip**: In browser dev tools, we can filter logs by tag (e.g., `[db]`) to
  * quickly find relevant messages. In Node.js, use `grep` to filter output:
  *
  * ```bash
