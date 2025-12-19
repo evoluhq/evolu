@@ -52,9 +52,7 @@ import type { Task } from "./Task.js";
  * }
  * ```
  *
- * ### Example
- *
- * Safe JSON parsing:
+ * ## Example
  *
  * ```ts
  * interface ParseJsonError {
@@ -92,10 +90,9 @@ import type { Task } from "./Task.js";
  * ```
  *
  * `trySync` makes synchronous code that can throw safe. For asynchronous code,
- * use {@link tryAsync}. For lazy, cancellable async operations, see
- * {@link Task}.
+ * use {@link tryAsync}.
  *
- * ### Naming convention
+ * ## Naming convention
  *
  * - **Result with a value:** name it after the value (`user`, `config`)
  * - **Result without a value:** use `result`
@@ -132,7 +129,7 @@ import type { Task } from "./Task.js";
  * };
  * ```
  *
- * ### Combining multiple error types
+ * ## Combining errors
  *
  * ```ts
  * const example = (value: string): Result<number, FooError | BarError> => {
@@ -146,7 +143,7 @@ import type { Task } from "./Task.js";
  * };
  * ```
  *
- * ### Unrecoverable errors
+ * ## Unrecoverable errors
  *
  * Some errors can't be handled locally — they must propagate to the top level.
  * These are **unrecoverable errors**: expected (you know they can happen) but
@@ -187,7 +184,7 @@ import type { Task } from "./Task.js";
  * };
  * ```
  *
- * ### Unexpected errors
+ * ## Unexpected errors
  *
  * Wrapping all unsafe code with {@link trySync} or {@link tryAsync} doesn't
  * prevent all errors — bugs can still throw. Catch them with global handlers:
@@ -201,16 +198,16 @@ import type { Task } from "./Task.js";
  *
  * TODO: Window and Node.js
  *
- * ### FAQ
+ * ## FAQ
  *
- * #### What if my function doesn't return a value on success?
+ * ### What if my function doesn't return a value on success?
  *
  * If your function performs an operation but doesn't need to return a value on
  * success, you can use `Result<void, E>`. Using `Result<void, E>` is clearer
  * than using `Result<true, E>` or `Result<null, E>` because it communicates
  * that the function doesn't produce a value but can produce errors.
  *
- * #### How do I process an array and stop on the first error?
+ * ### How do I process an array and stop on the first error?
  *
  * ```ts
  * for (const item of items) {
@@ -219,7 +216,7 @@ import type { Task } from "./Task.js";
  * }
  * ```
  *
- * #### How do I process lazy operations?
+ * ### How do I process lazy operations?
  *
  * When operations are represented as functions ({@link Lazy}), call each one and
  * check the result:
@@ -260,7 +257,7 @@ export interface Ok<T> {
  * The `error` property can be any type that describes the error. For domain
  * errors, use a plain object with a `type` field for discrimination.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * interface NotFoundError {
@@ -299,11 +296,11 @@ export type InferErr<R extends Result<any, any>> =
 /**
  * Creates an {@link Ok} result.
  *
- * - `ok()` creates an `Ok<void>` for operations that succeed without producing a
- *   value.
- * - `ok(value)` creates an `Ok<T>` containing the specified value.
+ * - `ok()` creates a `Result<void, never>` for operations that succeed without
+ *   producing a value.
+ * - `ok(value)` creates a `Result<T, never>` containing the specified value.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const noValue = ok();
@@ -313,15 +310,15 @@ export type InferErr<R extends Result<any, any>> =
  * console.log(success); // { ok: true, value: 42 }
  * ```
  */
-export function ok(): Ok<void>;
+export function ok(): Result<void, never>;
 /** Creates an {@link Ok} result with a specified value. */
-export function ok<T>(value: T): Ok<T>;
-export function ok<T>(value = undefined): Ok<T> {
+export function ok<T>(value: T): Result<T, never>;
+export function ok<T>(value?: T): Result<T, never> {
   return { ok: true, value: value as T };
 }
 
 /** Creates an {@link Err} result. */
-export const err = <E>(error: E): Err<E> => ({ ok: false, error });
+export const err = <E>(error: E): Result<never, E> => ({ ok: false, error });
 
 /**
  * Extracts the value from a {@link Result} if it is an `Ok`, or throws an error
@@ -334,7 +331,7 @@ export const err = <E>(error: E): Err<E> => ({ ok: false, error });
  * - Not recommended for general error handling in application logic—prefer
  *   explicit checks.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * // At app startup, crash if config is invalid:
@@ -362,7 +359,7 @@ export const getOrThrow = <T, E>(result: Result<T, E>): T => {
  *   `T | null`.
  * - When the error is not important and you just want the value or nothing.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * // For APIs that expect T | null
@@ -375,7 +372,7 @@ export const getOrNull = <T, E>(result: Result<T, E>): T | null =>
 /**
  * Wraps a synchronous function that may throw, returning a {@link Result}.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const parseJson = (value: string): Result<unknown, ParseJsonError> =>
@@ -399,7 +396,7 @@ export const trySync = <T, E>(
 /**
  * Wraps an async function that may throw, returning a {@link Result}.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const fetchJson = (url: string): Promise<Result<unknown, FetchError>> =>
