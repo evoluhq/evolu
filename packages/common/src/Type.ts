@@ -75,8 +75,10 @@ import { IntentionalNever } from "./Types.js";
  *
  * ## Branded types
  *
- * Branding adds semantic meaning & constraints while preserving the runtime
- * shape:
+ * Branding is the recommended way to define types in Evolu. Instead of using
+ * primitive types like `string` or `number` directly, wrap them with
+ * {@link brand} to create semantically meaningful types. See {@link Brand} for
+ * why this matters.
  *
  * ```ts
  * const CurrencyCode = brand("CurrencyCode", String, (value) =>
@@ -853,6 +855,10 @@ export const formatIsTypeError = createTypeErrorFormatter<EvoluTypeError>(
 
 /**
  * Branded {@link Type}.
+ *
+ * Branding is the recommended way to define types in Evolu. Instead of using
+ * primitive types like `string` or `number` directly, wrap them with `brand` to
+ * create semantically meaningful types. See {@link Brand} for why this matters.
  *
  * The `brand` Type Factory takes the name of a new {@link Brand}, a parent Type
  * to be branded, and the optional `refine` function for additional constraint.
@@ -3212,6 +3218,173 @@ export const formatObjectWithRecordError = <Error extends TypeError>(
         return `Invalid value at index key ${error.reason.key}: ${formatTypeError(error.reason.error)}`;
     }
   });
+
+/**
+ * Base interface for objects with a discriminant `type` property.
+ *
+ * This enables
+ * {@link https://www.typescriptlang.org/docs/handbook/2/narrowing.html#discriminated-unions | discriminated unions}
+ * (also known as tagged unions) — a pattern where TypeScript uses a literal
+ * `type` field to narrow union types automatically.
+ *
+ * ## Why Discriminated Unions?
+ *
+ * Discriminated unions model states that are **mutually exclusive**. Instead of
+ * optional fields and boolean flags that can combine into invalid
+ * configurations, each variant is a distinct type. This makes illegal states
+ * unrepresentable — invalid combinations cannot exist, so bugs cannot create
+ * them.
+ *
+ * Benefits:
+ *
+ * - **Self-documenting** — Union cases immediately show all possible states
+ * - **Compile-time safety** — TypeScript enforces handling all cases
+ * - **Refactoring-friendly** — Adding a new state breaks code that doesn't handle
+ *   it
+ *
+ * ## Examples
+ *
+ * ```ts
+ * // Bad: optional fields allow invalid states (no contact info at all)
+ * interface Contact {
+ *   readonly email?: Email;
+ *   readonly phone?: Phone;
+ * }
+ *
+ * // Good: discriminated union makes "at least one" explicit
+ * interface EmailOnly extends Typed<"EmailOnly"> {
+ *   readonly email: Email;
+ * }
+ * interface PhoneOnly extends Typed<"PhoneOnly"> {
+ *   readonly phone: Phone;
+ * }
+ * interface EmailAndPhone extends Typed<"EmailAndPhone"> {
+ *   readonly email: Email;
+ *   readonly phone: Phone;
+ * }
+ *
+ * type ContactInfo = EmailOnly | PhoneOnly | EmailAndPhone;
+ * ```
+ *
+ * ```ts
+ * interface Pending extends Typed<"Pending"> {
+ *   readonly createdAt: DateIso;
+ * }
+ * interface Shipped extends Typed<"Shipped"> {
+ *   readonly trackingNumber: TrackingNumber;
+ * }
+ * interface Delivered extends Typed<"Delivered"> {
+ *   readonly deliveredAt: DateIso;
+ * }
+ * interface Cancelled extends Typed<"Cancelled"> {
+ *   readonly reason: CancellationReason;
+ * }
+ *
+ * type OrderState = Pending | Shipped | Delivered | Cancelled;
+ *
+ * // TypeScript enforces exhaustiveness via return type
+ * const getStatusMessage = (state: OrderState): string => {
+ *   switch (state.type) {
+ *     case "Pending":
+ *       return "Order placed";
+ *     case "Shipped":
+ *       return `Shipped: ${state.trackingNumber}`;
+ *     case "Delivered":
+ *       return `Delivered on ${state.deliveredAt.toLocaleDateString()}`;
+ *     case "Cancelled":
+ *       return `Cancelled: ${state.reason}`;
+ *   }
+ * };
+ *
+ * // For void functions, use exhaustiveCheck to ensure all cases are handled
+ * const logState = (state: OrderState): void => {
+ *   switch (state.type) {
+ *     case "Pending":
+ *       console.log("Order placed");
+ *       break;
+ *     case "Shipped":
+ *       console.log(`Shipped: ${state.trackingNumber}`);
+ *       break;
+ *     case "Delivered":
+ *       console.log(
+ *         `Delivered on ${state.deliveredAt.toLocaleDateString()}`,
+ *       );
+ *       break;
+ *     case "Cancelled":
+ *       console.log(`Cancelled: ${state.reason}`);
+ *       break;
+ *     default:
+ *       exhaustiveCheck(state);
+ *   }
+ * };
+ * ```
+ *
+ * ## Why `type` (and not e.g. `_tag`)?
+ *
+ * Underscore-prefixing is meant to avoid clashing with domain properties, but
+ * proper discriminated union design means the discriminant IS the domain
+ * concept — there's no clash to avoid. The `type` prop name also aligns with
+ * {@link Type}'s name. If an entity has a meaningful "type" (like product
+ * category), model it as the discriminant itself:
+ *
+ * ```ts
+ * interface Electronics extends Typed<"Electronics"> {
+ *   voltage: Voltage;
+ * }
+ * interface Clothing extends Typed<"Clothing"> {
+ *   size: Size;
+ * }
+ * type Product = Electronics | Clothing;
+ * ```
+ *
+ * @see {@link exhaustiveCheck} to ensure all cases are handled in void functions.
+ * @see {@link typed} for runtime-validated typed objects.
+ */
+export interface Typed<T extends string> {
+  readonly type: T;
+}
+
+/**
+ * Creates a runtime-validated typed object with a `type` discriminant.
+ *
+ * ## Example
+ *
+ * ```ts
+ * const Card = typed("Card", {
+ *   cardNumber: CardNumber,
+ *   expiry: DateIso,
+ * });
+ *
+ * const Cash = typed("Cash", {
+ *   currency: NonEmptyTrimmedString,
+ * });
+ *
+ * const Payment = union(Card, Cash);
+ * type Payment = typeof Payment.Type;
+ *
+ * const result = Payment.fromUnknown(data);
+ * if (result.ok) {
+ *   switch (result.value.type) {
+ *     case "Card":
+ *       console.log(result.value.cardNumber);
+ *       break;
+ *     case "Cash":
+ *       console.log(result.value.currency);
+ *       break;
+ *   }
+ * }
+ * ```
+ *
+ * @see {@link Typed} for type-only discrimination.
+ */
+export const typed = <
+  Tag extends string,
+  Props extends Record<string, AnyType>,
+>(
+  tag: Tag,
+  props: Props,
+): ObjectType<{ type: LiteralType<Tag> } & Props> =>
+  object({ type: literal(tag), ...props });
 
 /**
  * Union {@link Type}.
