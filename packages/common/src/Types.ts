@@ -11,7 +11,7 @@ import * as Kysely from "kysely";
  *
  * A predicate starts with an 'is' prefix, e.g., `isEven`.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const isEven: Predicate<number> = (n) => n % 2 === 0;
@@ -27,7 +27,7 @@ export type Predicate<T> = (value: T) => boolean;
  *
  * Useful for callbacks that need both the element and its position.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const isEvenIndex: PredicateWithIndex<string> = (value, index) =>
@@ -42,7 +42,7 @@ export type PredicateWithIndex<T> = (value: T, index: number) => boolean;
 /**
  * A type guard function that refines type `A` to a narrower type `B`.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * type Animal = { name: string };
@@ -66,7 +66,7 @@ export type Refinement<in A, out B extends A> = (a: A) => a is B;
  * Useful for callbacks that need both the element and its position while
  * maintaining type narrowing.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * type Item = { type: "number" | "string"; value: unknown };
@@ -90,7 +90,7 @@ export type RefinementWithIndex<in A, out B extends A> = (
  * For each property in `T`, if `null` is a valid value for that property, the
  * property will be made optional in the resulting type.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * type Example = {
@@ -153,7 +153,7 @@ export type WidenLiteral<T extends Literal> = T extends string
  * This utility forces TypeScript to "flatten" an intersection type into a
  * single object type so that tooltips and error messages are easier to read.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * type A = { a: string } & { b: number };
