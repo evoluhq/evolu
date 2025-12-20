@@ -1,6 +1,54 @@
 /**
- * Array types, type guards, operations, transformations, accessors, and (rare)
- * mutations
+ * Array helpers that help TypeScript help us.
+ *
+ * Instead of checking array length at runtime, use {@link NonEmptyReadonlyArray}
+ * so TypeScript rejects empty arrays at compile time. Functions like
+ * {@link firstInArray} require a non-empty array — TypeScript won't let us pass
+ * an empty one. {@link mapArray} preserves non-emptiness (native `map` doesn't),
+ * while {@link appendToArray} and {@link prependToArray} guarantee the result is
+ * non-empty.
+ *
+ * All helpers return readonly arrays for safety. Consider how dangerous native
+ * `sort()` is — it mutates the original array and returns it, making bugs hard
+ * to track:
+ *
+ * ```ts
+ * const sortScores = (arr: number[]) => arr.sort((a, b) => a - b);
+ *
+ * const scores = [3, 1, 2];
+ * const leaderboard = sortScores(scores);
+ * leaderboard; // [1, 2, 3]
+ * scores; // [1, 2, 3] — original order lost!
+ * ```
+ *
+ * With readonly arrays, `sort()` doesn't exist (we can't sort readonly array).
+ * Use {@link sortArray} instead:
+ *
+ * ```ts
+ * const sortScores = (arr: ReadonlyArray<number>) =>
+ *   sortArray(arr, (a, b) => a - b);
+ *
+ * const scores: ReadonlyArray<number> = [3, 1, 2];
+ * const leaderboard = sortScores(scores);
+ * leaderboard; // [1, 2, 3]
+ * scores; // [3, 1, 2] — safe!
+ * ```
+ *
+ * Even better, require a {@link NonEmptyReadonlyArray} — there's nothing to sort
+ * if the array is empty anyway:
+ *
+ * ```ts
+ * const sortScores = (arr: NonEmptyReadonlyArray<number>) =>
+ *   sortArray(arr, (a, b) => a - b);
+ * ```
+ *
+ * Sorting an empty array isn't expensive, but functions can have side effects
+ * like database queries or network requests. Using non-empty arrays whenever
+ * possible is a good convention.
+ *
+ * For performance-critical cases where mutation is needed, Evolu provides
+ * {@link shiftFromArray} and {@link popFromArray} — but only because they improve
+ * type safety by returning a guaranteed `T` rather than an optional value.
  *
  * ## Example
  *
@@ -12,15 +60,13 @@
  *
  * // Type guards
  * const arr: ReadonlyArray<number> = [1, 2, 3];
- * if (isNonEmptyReadonlyArray(arr)) {
+ * if (isNonEmptyArray(arr)) {
  *   firstInArray(arr);
  * }
  *
- * // Operations
+ * // Transformations
  * const appended = appendToArray([1, 2, 3], 4); // [1, 2, 3, 4]
  * const prepended = prependToArray([2, 3], 1); // [1, 2, 3]
- *
- * // Transformations
  * const readonly: ReadonlyArray<number> = [1, 2, 3];
  * const mapped = mapArray(readonly, (x) => x * 2); // [2, 4, 6]
  * const filtered = filterArray(readonly, (x) => x > 1); // [2, 3]
@@ -36,48 +82,35 @@
  *
  * // Mutations
  * const mutable: NonEmptyArray<number> = [1, 2, 3];
- * shiftArray(mutable); // 1 (guaranteed to exist)
+ * shiftFromArray(mutable); // 1 (guaranteed to exist)
  * mutable; // [2, 3]
  * ```
  *
- * Functions are intentionally data-first to be prepared for the upcoming
- * JavaScript pipe operator.
+ * ## Composition
+ *
+ * All array helpers use a data-first style (the array is the first argument)
+ * because it's natural for single operations:
  *
  * ```ts
- * // Data-first is natural for single operations.
  * const timestamps = mapArray(messages, (m) => m.timestamp);
- *
- * // But data-first can be hard to read for nested calls.
- * const result = firstInArray(
- *   mapArray(dedupeArray(appendToArray(value, 2)), (x) => x * 2),
- * );
- *
- * // With the upcoming pipe operator, it's clear.
- * // const result = value
- * //   |> appendToArray(%, 2)
- * //   |> dedupeArray(%)
- * //   |> mapArray(%, (x) => x * 2)
- * //   |> firstInArray(%);
- *
- * // Until the pipe operator lands, use nested calls or name each step:
- * const appended = appendToArray(value, 2);
- * const deduped = dedupeArray(appended);
- * const mapped = mapArray(deduped, (x) => x * 2);
- * const result = firstInArray(mapped);
  * ```
  *
- * ## Why data-first?
+ * Data-first style works well also for a few operations, often fit on a single
+ * line:
  *
- * Evolu optimizes for consistent code style. We can't have both data-first
- * single operations and curried data-last helpers without sacrificing
- * consistency. We chose data-first because:
+ * ```ts
+ * const cheapest = firstInArray(sortArray(prices, orderNumber));
+ * const uniqueNames = dedupeArray(mapArray(users, (u) => u.name));
+ * const latestDone = lastInArray(filterArray(jobs, isCompletedJob));
+ * ```
  *
- * - It's natural for single operations (for example `mapArray(messages, (m) =>
- *   m.timestamp)`).
- * - It aligns with the upcoming JavaScript pipe operator.
+ * For deeper nesting, extract to a well-named function like
+ * `getOldestActiveUser` or `getUniqueActiveEmails`.
  *
- * **Note**: Feel free to use Array instance methods (mutation) if you think
- * it's better (performance, local scope, etc.).
+ * Some libraries provide dual APIs with data-last for pipe-based composition.
+ * Evolu prefers simple (in Latin, simplex means "one") and imperative APIs — no
+ * need to choose between seemingly equivalent options, and pipes would not help
+ * anyway; well-named functions communicate intent better.
  *
  * @module
  */
@@ -99,50 +132,43 @@ export type NonEmptyArray<T> = [T, ...Array<T>];
 export type NonEmptyReadonlyArray<T> = readonly [T, ...ReadonlyArray<T>];
 
 /**
- * Checks if an array is non-empty and narrows its type to {@link NonEmptyArray}.
+ * Checks if an array is non-empty and narrows its type to {@link NonEmptyArray}
+ * or {@link NonEmptyReadonlyArray} based on the input.
  *
- * Use `if (!isNonEmptyArray(arr))` for empty checks.
+ * To check if an array is empty, use `if (!isNonEmptyArray(arr))` — using the
+ * negated guard is better than `.length === 0` for early returns because
+ * TypeScript narrows the type after the check.
  *
- * ## Example
+ * ## Examples
  *
  * ```ts
+ * // Mutable array narrows to NonEmptyArray
  * const arr: Array<number> = [1, 2, 3];
  * if (isNonEmptyArray(arr)) {
- *   firstInArray(arr); // arr is NonEmptyArray<number>
+ *   shiftFromArray(arr); // arr is NonEmptyArray<number>
+ * }
+ *
+ * // Readonly array narrows to NonEmptyReadonlyArray
+ * const readonly: ReadonlyArray<number> = [1, 2, 3];
+ * if (isNonEmptyArray(readonly)) {
+ *   firstInArray(readonly); // readonly is NonEmptyReadonlyArray<number>
  * }
  * ```
  *
  * @category Type Guards
  */
-export const isNonEmptyArray = <T>(
-  array: Array<T>,
-): array is NonEmptyArray<T> => array.length > 0;
-
-/**
- * Checks if a readonly array is non-empty and narrows its type to
- * {@link NonEmptyReadonlyArray}.
- *
- * Use `if (!isNonEmptyReadonlyArray(arr))` for empty checks.
- *
- * ## Example
- *
- * ```ts
- * const arr: ReadonlyArray<number> = [1, 2, 3];
- * if (isNonEmptyReadonlyArray(arr)) {
- *   firstInArray(arr); // arr is NonEmptyReadonlyArray<number>
- * }
- * ```
- *
- * @category Type Guards
- */
-export const isNonEmptyReadonlyArray = <T>(
+export function isNonEmptyArray<T>(array: Array<T>): array is NonEmptyArray<T>;
+export function isNonEmptyArray<T>(
   array: ReadonlyArray<T>,
-): array is NonEmptyReadonlyArray<T> => array.length > 0;
+): array is NonEmptyReadonlyArray<T>;
+export function isNonEmptyArray<T>(
+  array: ReadonlyArray<T>,
+): array is NonEmptyReadonlyArray<T> {
+  return array.length > 0;
+}
 
 /**
  * Appends an item to an array, returning a new non-empty readonly array.
- *
- * Accepts both mutable and readonly arrays. Does not mutate the original array.
  *
  * ## Example
  *
@@ -150,7 +176,7 @@ export const isNonEmptyReadonlyArray = <T>(
  * appendToArray([1, 2, 3], 4); // [1, 2, 3, 4]
  * ```
  *
- * @category Operations
+ * @category Transformations
  */
 export const appendToArray = <T>(
   array: ReadonlyArray<T>,
@@ -161,15 +187,13 @@ export const appendToArray = <T>(
 /**
  * Prepends an item to an array, returning a new non-empty readonly array.
  *
- * Accepts both mutable and readonly arrays. Does not mutate the original array.
- *
  * ## Example
  *
  * ```ts
  * prependToArray([2, 3], 1); // [1, 2, 3]
  * ```
  *
- * @category Operations
+ * @category Transformations
  */
 export const prependToArray = <T>(
   array: ReadonlyArray<T>,
@@ -177,9 +201,9 @@ export const prependToArray = <T>(
 ): NonEmptyReadonlyArray<T> => [item, ...array] as NonEmptyReadonlyArray<T>;
 
 /**
- * Maps an array using a mapper function.
+ * Maps an array using a mapper function, returning a new readonly array.
  *
- * Accepts both mutable and readonly arrays. Preserves non-empty type.
+ * Preserves non-empty type.
  *
  * ## Example
  *
@@ -205,13 +229,85 @@ export function mapArray<T, U>(
 }
 
 /**
+ * Maps each element to an array and flattens the result.
+ *
+ * Preserves non-empty type when the input is non-empty and the mapper returns
+ * non-empty arrays.
+ *
+ * ## Example
+ *
+ * ```ts
+ * flatMapArray([1, 2, 3], (x) => [x, x * 10]); // [1, 10, 2, 20, 3, 30]
+ * flatMapArray(
+ *   [
+ *     [1, 2],
+ *     [3, 4],
+ *   ],
+ *   (x) => x,
+ * ); // [1, 2, 3, 4]
+ * ```
+ *
+ * @category Transformations
+ */
+export function flatMapArray<T, U>(
+  array: NonEmptyReadonlyArray<T> | NonEmptyArray<T>,
+  mapper: (
+    item: T,
+    index: number,
+  ) => NonEmptyReadonlyArray<U> | NonEmptyArray<U>,
+): NonEmptyReadonlyArray<U>;
+export function flatMapArray<T, U>(
+  array: ReadonlyArray<T> | Array<T>,
+  mapper: (item: T, index: number) => ReadonlyArray<U> | Array<U>,
+): ReadonlyArray<U>;
+export function flatMapArray<T, U>(
+  array: ReadonlyArray<T> | Array<T>,
+  mapper: (item: T, index: number) => ReadonlyArray<U> | Array<U>,
+): ReadonlyArray<U> {
+  return array.flatMap(mapper) as ReadonlyArray<U>;
+}
+
+/**
+ * Concatenates two arrays, returning a new readonly array.
+ *
+ * Returns a non-empty array when at least one input is non-empty.
+ *
+ * ## Example
+ *
+ * ```ts
+ * concatArrays([1, 2], [3, 4]); // [1, 2, 3, 4]
+ * concatArrays([], [1]); // [1] (non-empty)
+ * concatArrays([1], []); // [1] (non-empty)
+ * ```
+ *
+ * @category Transformations
+ */
+export function concatArrays<T>(
+  first: NonEmptyReadonlyArray<T> | NonEmptyArray<T>,
+  second: ReadonlyArray<T> | Array<T>,
+): NonEmptyReadonlyArray<T>;
+export function concatArrays<T>(
+  first: ReadonlyArray<T> | Array<T>,
+  second: NonEmptyReadonlyArray<T> | NonEmptyArray<T>,
+): NonEmptyReadonlyArray<T>;
+export function concatArrays<T>(
+  first: ReadonlyArray<T> | Array<T>,
+  second: ReadonlyArray<T> | Array<T>,
+): ReadonlyArray<T>;
+export function concatArrays<T>(
+  first: ReadonlyArray<T> | Array<T>,
+  second: ReadonlyArray<T> | Array<T>,
+): ReadonlyArray<T> {
+  return [...first, ...second] as ReadonlyArray<T>;
+}
+
+/**
  * Filters an array using a predicate or refinement function, returning a new
  * readonly array.
  *
- * Accepts both mutable and readonly arrays. When used with a refinement
- * function (with `value is Type` syntax), TypeScript will narrow the result
- * type to the narrowed type, making it useful for filtering with Evolu Types
- * like `PositiveInt.is`.
+ * When used with a refinement function (with `value is Type` syntax),
+ * TypeScript will narrow the result type to the narrowed type, making it useful
+ * for filtering with Evolu Types like `PositiveInt.is`.
  *
  * ## Examples
  *
@@ -255,7 +351,6 @@ export function filterArray<T>(
  * are used directly. Dedupes by reference equality of values (or extracted keys
  * when `by` is used).
  *
- * Accepts both mutable and readonly arrays. Does not mutate the original array.
  * Preserves non-empty type.
  *
  * ## Example
@@ -303,12 +398,11 @@ export function dedupeArray<T>(
 }
 
 /**
- * Partitions an array into two arrays based on a predicate or refinement
- * function.
+ * Partitions an array into two readonly arrays based on a predicate or
+ * refinement function.
  *
  * Returns a tuple where the first array contains elements that satisfy the
- * predicate, and the second array contains elements that do not. Accepts both
- * mutable and readonly arrays.
+ * predicate, and the second array contains elements that do not.
  *
  * When used with a refinement function (with `value is Type` syntax),
  * TypeScript will narrow the first array to the narrowed type, making it useful
@@ -368,9 +462,77 @@ export function partitionArray<T>(
 }
 
 /**
- * Returns the first element of a non-empty array.
+ * Returns a new sorted readonly array.
  *
- * Accepts both mutable and readonly arrays. Does not mutate the original array.
+ * Wraps native `toSorted`. Preserves non-empty type.
+ *
+ * ## Example
+ *
+ * ```ts
+ * sortArray([3, 1, 2], (a, b) => a - b); // [1, 2, 3]
+ * ```
+ *
+ * @category Transformations
+ */
+export function sortArray<T>(
+  array: NonEmptyReadonlyArray<T>,
+  compareFn?: (a: T, b: T) => number,
+): NonEmptyReadonlyArray<T>;
+export function sortArray<T>(
+  array: ReadonlyArray<T>,
+  compareFn?: (a: T, b: T) => number,
+): ReadonlyArray<T>;
+export function sortArray<T>(
+  array: ReadonlyArray<T>,
+  compareFn?: (a: T, b: T) => number,
+): ReadonlyArray<T> {
+  return array.toSorted(compareFn) as ReadonlyArray<T>;
+}
+
+/**
+ * Returns a new reversed readonly array.
+ *
+ * Wraps native `toReversed`. Preserves non-empty type.
+ *
+ * ## Example
+ *
+ * ```ts
+ * reverseArray([1, 2, 3]); // [3, 2, 1]
+ * ```
+ *
+ * @category Transformations
+ */
+export function reverseArray<T>(
+  array: NonEmptyReadonlyArray<T>,
+): NonEmptyReadonlyArray<T>;
+export function reverseArray<T>(array: ReadonlyArray<T>): ReadonlyArray<T>;
+export function reverseArray<T>(array: ReadonlyArray<T>): ReadonlyArray<T> {
+  return array.toReversed() as ReadonlyArray<T>;
+}
+
+/**
+ * Returns a new readonly array with elements removed and/or replaced.
+ *
+ * Wraps native `toSpliced`.
+ *
+ * ## Example
+ *
+ * ```ts
+ * spliceArray([1, 2, 3, 4], 1, 2); // [1, 4]
+ * spliceArray([1, 2, 3], 1, 1, 10, 11); // [1, 10, 11, 3]
+ * ```
+ *
+ * @category Transformations
+ */
+export const spliceArray = <T>(
+  array: ReadonlyArray<T>,
+  start: number,
+  deleteCount: number,
+  ...items: ReadonlyArray<T>
+): ReadonlyArray<T> => array.toSpliced(start, deleteCount, ...items);
+
+/**
+ * Returns the first element of a non-empty array.
  *
  * ## Example
  *
@@ -385,8 +547,6 @@ export const firstInArray = <T>(array: NonEmptyReadonlyArray<T>): T => array[0];
 /**
  * Returns the last element of a non-empty array.
  *
- * Accepts both mutable and readonly arrays. Does not mutate the original array.
- *
  * ## Example
  *
  * ```ts
@@ -399,35 +559,41 @@ export const lastInArray = <T>(array: NonEmptyReadonlyArray<T>): T =>
   array[array.length - 1];
 
 /**
- * Shifts an item from a non-empty mutable array, guaranteed to return T.
+ * Shifts (removes and returns) the first element from a non-empty mutable
+ * array.
  *
  * **Mutates** the original array.
  *
  * ## Example
  *
  * ```ts
- * const arr: NonEmptyArray<number> = [1, 2, 3];
- * shiftArray(arr); // 1
- * arr; // [2, 3]
+ * // Process a queue of callbacks
+ * const waitingQueue: Array<() => void> = [callback1, callback2];
+ * if (isNonEmptyArray(waitingQueue)) {
+ *   shiftFromArray(waitingQueue)(); // Remove and immediately invoke
+ * }
  * ```
  *
  * @category Mutations
  */
-export const shiftArray = <T>(array: NonEmptyArray<T>): T => array.shift() as T;
+export const shiftFromArray = <T>(array: NonEmptyArray<T>): T =>
+  array.shift() as T;
 
 /**
- * Pops an item from a non-empty mutable array, guaranteed to return T.
+ * Pops (removes and returns) the last element from a non-empty mutable array.
  *
  * **Mutates** the original array.
  *
  * ## Example
  *
  * ```ts
- * const arr: NonEmptyArray<number> = [1, 2, 3];
- * popArray(arr); // 3
- * arr; // [1, 2]
+ * // Process a stack of callbacks (LIFO)
+ * const callbackStack: Array<() => void> = [callback1, callback2];
+ * if (isNonEmptyArray(callbackStack)) {
+ *   popFromArray(callbackStack)(); // Remove and immediately invoke
+ * }
  * ```
  *
  * @category Mutations
  */
-export const popArray = <T>(array: NonEmptyArray<T>): T => array.pop() as T;
+export const popFromArray = <T>(array: NonEmptyArray<T>): T => array.pop() as T;
