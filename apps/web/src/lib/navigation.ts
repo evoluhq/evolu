@@ -16,6 +16,10 @@ export const navigation: Array<NavGroup> = [
     links: [
       { title: "Getting started", href: "/docs/library" },
       {
+        title: "Array",
+        href: "/docs/api-reference/common/Array",
+      },
+      {
         title: "Result",
         href: "/docs/api-reference/common/Result/type-aliases/Result",
       },
