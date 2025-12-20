@@ -8,7 +8,7 @@ const reference = path.join(
   "src/app/(docs)/docs/api-reference",
 );
 
-function rearrangeMdxFilesRecursively(dir: string) {
+const rearrangeMdxFilesRecursively = (dir: string): void => {
   for (const item of fs.readdirSync(dir)) {
     const fullPath = path.join(dir, item);
     const stat = fs.statSync(fullPath);
@@ -20,7 +20,7 @@ function rearrangeMdxFilesRecursively(dir: string) {
         const newFolder = path.join(dir, baseName);
         fs.mkdirSync(newFolder, { recursive: true });
         fs.renameSync(fullPath, path.join(newFolder, "page.mdx"));
-        fixLinksInMdxFile(
+        fixMdxFile(
           path.join(newFolder, "page.mdx"),
           `${baseName} - API reference`,
         );
@@ -29,13 +29,13 @@ function rearrangeMdxFilesRecursively(dir: string) {
           dir === reference
             ? "API reference"
             : `${path.basename(dir)} - API reference`;
-        fixLinksInMdxFile(fullPath, title);
+        fixMdxFile(fullPath, title);
       }
     }
   }
-}
+};
 
-function fixLinksInMdxFile(filePath: string, title: string) {
+const fixMdxFile = (filePath: string, title: string): void => {
   const content = fs.readFileSync(filePath, "utf-8");
   // first let's replace /page.mdx with /
   let newContent = content.replace(/\/page\.mdx/g, "");
@@ -56,52 +56,16 @@ function fixLinksInMdxFile(filePath: string, title: string) {
     },
   );
 
-  // Extract ## headings to generate sections for "On this page" navigation
-  const sections = extractSections(newContent);
-  const sectionsExport =
-    sections.length > 0
-      ? `export const sections = ${JSON.stringify(sections)};`
-      : "export const sections = [];";
+  newContent = newContent
+    .replace(/^export const metadata = \{ title: [^}]*\};\s*\r?\n\s*/, "")
+    .replace(/^export const sections = .*;\s*\r?\n\s*/m, "");
 
-  // add meta tags (idempotent)
-  newContent = newContent.replace(
-    /^export const metadata = \{ title: [^}]*\};\s*\r?\n\s*/,
-    "",
-  );
-  newContent = newContent.replace(
-    /^export const sections = .*;\s*\r?\n\s*/m,
-    "",
-  );
   newContent = `export const metadata = { title: '${title}' };
-${sectionsExport}
 	
 ${newContent}`;
 
   fs.writeFileSync(filePath, newContent);
-}
-
-/** Extract ## headings from MDX content to generate sections */
-function extractSections(
-  content: string,
-): Array<{ id: string; title: string }> {
-  const sections: Array<{ id: string; title: string }> = [];
-  // Match ## headings (not ### or deeper)
-  const headingRegex = /^## (.+)$/gm;
-  let match;
-  while ((match = headingRegex.exec(content)) !== null) {
-    const title = match[1].trim();
-    // Generate id from title (kebab-case)
-    const id = title
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, "")
-      .replace(/\s+/g, "-")
-      .replace(/-+/g, "-");
-    if (id) {
-      sections.push({ id, title });
-    }
-  }
-  return sections;
-}
+};
 
 // Run the script
 rearrangeMdxFilesRecursively(reference);
