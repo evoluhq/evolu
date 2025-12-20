@@ -123,7 +123,7 @@ export interface ResourcesConfig<
  * counts to know when it's safe to dispose resources. Resources are created
  * on-demand and disposed with a configurable delay to avoid churn.
  *
- * ### Example Usage
+ * ## Example Usage
  *
  * ```ts
  * // WebSocket connections
@@ -365,3 +365,21 @@ export const createResources = <
 
   return resources;
 };
+
+/** See {@link createDisposableDep}. */
+export interface DisposableDep extends Disposable {}
+
+/** Creates a {@link DisposableDep} from `Disposable`. */
+export const createDisposableDep = (disposable: Disposable): DisposableDep => ({
+  [Symbol.dispose]: () => {
+    disposable[Symbol.dispose]();
+  },
+});
+
+export interface DisposableStackDep {
+  readonly disposableStack: DisposableStack;
+}
+
+export interface AsyncDisposableStackDep {
+  readonly asyncDisposableStack: AsyncDisposableStack;
+}

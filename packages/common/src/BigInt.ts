@@ -15,7 +15,7 @@ export const clampBigInt =
 /**
  * Creates a predicate that checks if a BigInt is within a range, inclusive.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const isBetween10And20 = isBetweenBigInt(10n, 20n);

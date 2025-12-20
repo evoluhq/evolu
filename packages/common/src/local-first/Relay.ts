@@ -6,11 +6,11 @@ import {
 } from "../Array.js";
 import { ConsoleConfig, ConsoleDep } from "../Console.js";
 import { TimingSafeEqualDep } from "../Crypto.js";
-import { LazyValue } from "../Function.js";
+import { Lazy } from "../Function.js";
 import { createInstances } from "../Instances.js";
 import { err, ok, Result } from "../Result.js";
 import { sql, SqliteDep, SqliteError } from "../Sqlite.js";
-import { createMutex, isAsync, MaybeAsync, Mutex } from "../Task.js";
+import { createMutex, isAsync, MaybeAsync, Mutex } from "../OldTask.js";
 import { PositiveInt, SimpleName } from "../Type.js";
 import {
   OwnerId,
@@ -66,7 +66,7 @@ export interface RelayConfig extends ConsoleConfig, StorageConfig {
    * `ws://localhost:4000/<ownerId>`). The relay requires the URL to be in the
    * correct format for OwnerId extraction.
    *
-   * ### Example
+   * ## Example
    *
    * ```ts
    * // Client
@@ -366,11 +366,11 @@ export interface RelayLogger {
   readonly connectionWebSocketError: (error: Error) => void;
   readonly relayOptionSubscribe: (
     ownerId: OwnerId,
-    getSubscriberCount: LazyValue<number>,
+    getSubscriberCount: Lazy<number>,
   ) => void;
   readonly relayOptionUnsubscribe: (
     ownerId: OwnerId,
-    getSubscriberCount: LazyValue<number>,
+    getSubscriberCount: Lazy<number>,
   ) => void;
   readonly relayOptionBroadcast: (
     ownerId: OwnerId,

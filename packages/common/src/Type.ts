@@ -5,6 +5,7 @@ import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { pack } from "msgpackr";
 import type { Brand } from "./Brand.js";
 import type { RandomBytesDep } from "./Crypto.js";
+import { exhaustiveCheck } from "./Function.js";
 import { isPlainObject } from "./Object.js";
 import { hasNodeBuffer } from "./Platform.js";
 import { err, getOrNull, getOrThrow, ok, Result, trySync } from "./Result.js";
@@ -15,10 +16,15 @@ import { IntentionalNever } from "./Types.js";
 
 /**
  * Evolu {@link Type} is like a type guard that returns typed errors (via
- * {@link Result}) instead of throwing. We either get a safely typed value or a
- * composable typed error telling us exactly why validation failed.
+ * {@link Result}) instead of throwing. We either receive a safely typed value or
+ * a composable typed error that tells us exactly why the validation failed.
  *
- * Why another validation library?
+ * The reason why Evolu Type exists is that no other TypeScript validation
+ * library met Evolu's requirements. A distinctive feature of Evolu Type
+ * compared to other validation libraries is that it returns typed errors rather
+ * than string messages. This allows TypeScript to enforce that all validation
+ * errors are handled via {@link exhaustiveCheck}, significantly improving the
+ * developer experience. Those requirements are:
  *
  * - **Result-based error handling** – no exceptions for normal control flow.
  * - **Typed errors with decoupled formatters** – validation logic ≠ user
@@ -31,15 +37,16 @@ import { IntentionalNever } from "./Types.js";
  *   bottom.
  * - **No user-land chaining DSL** – prepared for TC39 Hack pipes.
  *
- * A distinctive feature of Evolu Type compared to other validation libraries is
- * that it returns typed errors rather than string messages. This allows
- * TypeScript to enforce that all validation errors are handled by type
- * checking, significantly improving the developer experience.
- *
  * Evolu Type supports [Standard Schema](https://standardschema.dev/) for
  * interoperability with 40+ validation-compatible tools and frameworks.
  *
- * ### Base Types Quick Start
+ * ## Examples
+ *
+ * Examples are shown below. For a complete list of all types and utilities
+ * Evolu Type provides, see the [API
+ * reference](/docs/api-reference/common/Type).
+ *
+ * ## Base types
  *
  * ```ts
  * // Validate unknown values
@@ -47,7 +54,7 @@ import { IntentionalNever } from "./Types.js";
  * const stringResult = String.fromUnknown(value);
  * if (!stringResult.ok) {
  *   // console.error(formatStringError(stringResult.error));
- *   return stringResult; // inside a function returning Result<string, _>
+ *   return stringResult;
  * }
  * // Safe branch: value is now string
  * const upper = stringResult.value.toUpperCase();
@@ -66,10 +73,12 @@ import { IntentionalNever } from "./Types.js";
  * Point.from({ x: 1, y: "2" }); // err -> nested Number error
  * ```
  *
- * ### Branding Basics
+ * ## Branded types
  *
- * Branding adds semantic meaning & constraints while preserving the runtime
- * shape:
+ * Branding is the recommended way to define types in Evolu. Instead of using
+ * primitive types like `string` or `number` directly, wrap them with
+ * {@link brand} to create semantically meaningful types. See {@link Brand} for
+ * why this matters.
  *
  * ```ts
  * const CurrencyCode = brand("CurrencyCode", String, (value) =>
@@ -93,7 +102,7 @@ import { IntentionalNever } from "./Types.js";
  * See also reusable brand factories like `minLength`, `maxLength`, `trimmed`,
  * `positive`, `between`, etc.
  *
- * ### Objects & Optional Fields
+ * ## Object types
  *
  * ```ts
  * const User = object({
@@ -104,9 +113,11 @@ import { IntentionalNever } from "./Types.js";
  *
  * User.from({ name: "Alice" }); // ok
  * User.from({ name: "Alice", age: -1 }); // err(PositiveInt)
+ *
+ * // TODO: Add `record`
  * ```
  *
- * ### Deriving JSON String Types
+ * ## JSON type
  *
  * ```ts
  * const Person = object({
@@ -133,7 +144,7 @@ import { IntentionalNever } from "./Types.js";
  * expect(personJsonToPerson(personJson)).toEqual(person);
  * ```
  *
- * ### Error Formatting
+ * ## Error Formatting
  *
  * Evolu separates validation logic from human-readable messages. There are two
  * layers:
@@ -144,14 +155,14 @@ import { IntentionalNever } from "./Types.js";
  *    custom errors (including nested composite types) and lets us override
  *    selected messages.
  *
- * #### 1. Per-Type Formatter (recap)
+ * ### 1. Per-Type formatter
  *
  * ```ts
  * const r = String.fromUnknown(42);
  * if (!r.ok) console.error(formatStringError(r.error));
  * ```
  *
- * #### 2. Unified Formatter with Overrides
+ * ### 2. Unified formatter with overrides
  *
  * ```ts
  * // Override only what we care about; fall back to built-ins for the rest.
@@ -174,12 +185,14 @@ import { IntentionalNever } from "./Types.js";
  * tuple / union) and applies overrides only where specified, greatly reducing
  * boilerplate when formatting complex validation errors.
  *
- * ### Tip
+ * ## Naming
  *
- * If necessary, write `globalThis.String` instead of `String` to avoid naming
- * clashes with native types.
+ * Evolu Types intentionally use the same names as native JavaScript types
+ * (String, Number, Boolean, etc.). When you need to distinguish between an
+ * Evolu Type and the native type, use `globalThis` to reference the native one
+ * (e.g., `globalThis.String`, `globalThis.Number`).
  *
- * ### Design Decision: No Bidirectional Transformations
+ * ## Design decision
  *
  * Evolu Type intentionally does not support bidirectional transformations. It
  * previously did, but supporting that while keeping typed error fidelity added
@@ -188,7 +201,7 @@ import { IntentionalNever } from "./Types.js";
  * reverse transforms would not buy much. We may revisit this if we can design a
  * minimal, 100% safe API that preserves simplicity.
  *
- * ### Prepared for TC39 Hack Pipes
+ * ## Prepared for TC39 hack pipes
  *
  * Take a look how `SimplePassword` is defined:
  *
@@ -254,7 +267,7 @@ export interface Type<
    *   critical; for better test error messages, use Vitest `schemaMatching` +
    *   `assert` with `.is()`)
    *
-   * ### Example
+   * ## Example
    *
    * ```ts
    * // ✅ Good: Known valid constant
@@ -293,7 +306,7 @@ export interface Type<
    * - When you need to convert a validation result to a nullable value
    * - When the error is not important and you just want the value or nothing
    *
-   * ### Example
+   * ## Example
    *
    * ```ts
    * // ✅ Good: Optional user input
@@ -333,7 +346,7 @@ export interface Type<
    * A **type guard** that checks whether an unknown value satisfies the
    * {@link Type}.
    *
-   * ### Example
+   * ## Example
    *
    * ```ts
    * const value: unknown = "hello";
@@ -355,7 +368,7 @@ export interface Type<
   /**
    * The type this Type resolves to.
    *
-   * ### Example
+   * ## Example
    *
    * ```ts
    * type String = typeof String.Type;
@@ -366,7 +379,7 @@ export interface Type<
   /**
    * The type expected by `from` and `fromUnknown`.
    *
-   * ### Example
+   * ## Example
    *
    * ```ts
    * type StringInput = typeof String.Input;
@@ -377,7 +390,7 @@ export interface Type<
   /**
    * The specific error introduced by this Type.
    *
-   * ### Example
+   * ## Example
    *
    * ```ts
    * type StringError = typeof String.Error;
@@ -388,7 +401,7 @@ export interface Type<
   /**
    * The parent type.
    *
-   * ### Example
+   * ## Example
    *
    * ```ts
    * type StringParent = typeof String.Parent;
@@ -399,7 +412,7 @@ export interface Type<
   /**
    * The parent's error.
    *
-   * ### Example
+   * ## Example
    *
    * ```ts
    * type StringParentError = typeof String.ParentError;
@@ -408,7 +421,7 @@ export interface Type<
   readonly ParentError: ParentError;
 
   /**
-   * ### Example
+   * ## Example
    *
    * ```ts
    * type StringParentErrors = typeof String.Errors;
@@ -584,7 +597,7 @@ const createType = <
  * The formatter generates human-readable error messages using a custom
  * formatting function and a safely stringified error value.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const formatStringError = createTypeErrorFormatter<StringError>(
@@ -612,7 +625,7 @@ export type TypeErrorFormatter<Error extends TypeError> = (
  *
  * A Base Type validates that a value conforms to a specific TypeScript type.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const String = base("String", (value) =>
@@ -645,7 +658,7 @@ export const base = <Name extends TypeName, T, Error extends TypeError>(
  * This formatter is specifically for Base Types that only need a simple error
  * message indicating that the value is not of the expected type.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * export const formatStringError =
@@ -761,7 +774,7 @@ export const formatUint8ArrayError =
  *
  * Ensures that a value is an instance of the given class constructor.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * class User {
@@ -817,7 +830,7 @@ export const Date = instanceOf(globalThis.Date);
  * Validates that an unknown value is an Evolu {@link Type} (i.e., satisfies
  * `AnyType`).
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const result = EvoluType.from(String); // ok(String)
@@ -843,12 +856,16 @@ export const formatIsTypeError = createTypeErrorFormatter<EvoluTypeError>(
 /**
  * Branded {@link Type}.
  *
+ * Branding is the recommended way to define types in Evolu. Instead of using
+ * primitive types like `string` or `number` directly, wrap them with `brand` to
+ * create semantically meaningful types. See {@link Brand} for why this matters.
+ *
  * The `brand` Type Factory takes the name of a new {@link Brand}, a parent Type
  * to be branded, and the optional `refine` function for additional constraint.
  *
  * The `refine` function can be omitted if we only want to add a brand.
  *
- * ### Examples
+ * ## Examples
  *
  * A simple `CurrencyCode` Type:
  *
@@ -1082,7 +1099,7 @@ export const formatCurrencyCodeError =
  *
  * Valid range: `"0000-01-01T00:00:00.000Z"` to `"9999-12-31T23:59:59.999Z"`.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const result = DateIso.from("2023-01-01T12:00:00.000Z"); // ok
@@ -1124,7 +1141,7 @@ export const dateIsoToDate = (value: DateIso): Date =>
 /**
  * Helper type for Type Factory that creates a branded Type.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const trimmed: BrandFactory<"Trimmed", string, TrimmedError> = (
@@ -1165,7 +1182,7 @@ export type BrandFactory<
  * This Type Factory validates whether a string has no leading or trailing
  * whitespaces.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const TrimmedNonEmptyString = trimmed(minLength(1)(String));
@@ -1207,7 +1224,7 @@ export const trim = (value: string): TrimmedString =>
 /**
  * Minimum length.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * // string & Brand<"MinLength1">
@@ -1239,7 +1256,7 @@ export const formatMinLengthError = createTypeErrorFormatter<MinLengthError>(
 /**
  * Maximum length.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * // string & Brand<"MaxLength100">
@@ -1271,7 +1288,7 @@ export const formatMaxLengthError = createTypeErrorFormatter<MaxLengthError>(
 /**
  * Exact length.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * // string & Brand<"Length1">
@@ -1367,7 +1384,7 @@ export const formatMnemonicError = createTypeErrorFormatter<MnemonicError>(
 /**
  * String matching a regular expression.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const Alphanumeric = regex("Alphanumeric", /^[a-z0-9]+$/i)(String);
@@ -1418,7 +1435,7 @@ export const formatRegexError = createTypeErrorFormatter<RegexError>(
  * This is the same character set used by Base64Url encoding, but this type does
  * not validate that the string is actually Base64Url-encoded data.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const result = UrlSafeString.from("abc123_-");
@@ -1527,7 +1544,7 @@ export const base64UrlToUint8Array: (str: Base64Url) => Uint8Array =
  *
  * The string must be between 1 and 64 characters.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const result = SimpleName.from("data-report-123");
@@ -1605,7 +1622,7 @@ export const formatSimplePasswordError = (
  * copied (logs, URLs, exports); only use it when you explicitly want insertion
  * locality for very large write‑heavy tables and accept timestamp exposure.
  *
- * ### Future
+ * ## Future
  *
  * A possible hybrid masked‑time approach (`timestamp ^ H(cluster_id, timestamp
  *
@@ -1634,7 +1651,7 @@ export const formatIdError = createTypeErrorFormatter<IdError>(
  * {@link createIdAsUuidv7} when you accept timestamp leakage for index
  * locality.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const id = createId(deps);
@@ -1659,7 +1676,7 @@ export const createId = <B extends string = never>(
  * with the same external identifier, they must resolve to the same Evolu ID to
  * ensure data consistency.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * // Both clients will generate the same ID
@@ -1699,7 +1716,7 @@ export const createIdFromString = <B extends string = never>(
  * by default to avoid activity leakage; choose this only if you explicitly
  * accept timestamp exposure.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const id = createIdAsUuidv7({ randomBytes, time });
@@ -1731,7 +1748,7 @@ export const createIdAsUuidv7 = <B extends string = never>(
  *
  * The table name becomes an additional brand for type safety.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const TodoId = id("Todo");
@@ -1800,7 +1817,7 @@ export const idBytesToId = (idBytes: IdBytes): Id =>
 /**
  * Positive number (> 0).
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const PositiveNumber = positive(Number);
@@ -1827,7 +1844,7 @@ export const formatPositiveError = createTypeErrorFormatter<PositiveError>(
 /**
  * Negative number (< 0).
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const NegativeNumber = negative(Number);
@@ -1851,7 +1868,7 @@ export const formatNegativeError = createTypeErrorFormatter<NegativeError>(
 /**
  * Non-positive number (≤ 0).
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const NonPositiveNumber = nonPositive(Number);
@@ -1880,7 +1897,7 @@ export const formatNonPositiveError =
 /**
  * Non-negative number (≥ 0).
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const NonNegativeNumber = nonNegative(Number);
@@ -1941,7 +1958,7 @@ export type NegativeNumber = typeof NegativeNumber.Type;
 /**
  * Integer within the safe range of JavaScript numbers.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const Int = int(Number);
@@ -2194,7 +2211,7 @@ export const formatMultipleOfError = createTypeErrorFormatter<MultipleOfError>(
 /**
  * Number within a range, inclusive.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const Between1And10 = between(1, 10)(PositiveNumber);
@@ -2233,7 +2250,7 @@ export const formatBetweenError = createTypeErrorFormatter<BetweenError>(
  *
  * https://www.typescriptlang.org/docs/handbook/2/everyday-types.html#literal-types
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const LiteralHello = literal("Hello");
@@ -2285,7 +2302,7 @@ export const formatLiteralError = createTypeErrorFormatter<LiteralError>(
 /**
  * Array of a specific {@link Type}.
  *
- * Usage:
+ * ## Example
  *
  * ```ts
  * const NumberArray = array(Number);
@@ -2404,7 +2421,7 @@ export const formatArrayError = <Error extends TypeError>(
 /**
  * Set of a specific {@link Type}.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const NumberSet = set(Number);
@@ -2528,7 +2545,7 @@ export const formatSetError = <Error extends TypeError>(
  *
  * The resulting type is `Readonly<Record<KeyT, ValueT>>`.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const StringToNumberRecord = record(String, Number);
@@ -2748,9 +2765,9 @@ export const formatRecordError = <Error extends TypeError>(
  *
  * https://www.typescriptlang.org/docs/handbook/2/objects.html#index-signatures
  *
- * ### Examples
+ * ## Examples
  *
- * #### Basic Object Validation
+ * ## Basic Object Validation
  *
  * ```ts
  * const User = object({
@@ -2763,7 +2780,7 @@ export const formatRecordError = <Error extends TypeError>(
  * const error = User.from({ name: "John", age: -5 }); // err
  * ```
  *
- * #### Optional Properties
+ * ## Optional Properties
  *
  * In this example the `age` property is marked as optional using
  * {@link optional}.
@@ -2776,7 +2793,7 @@ export const formatRecordError = <Error extends TypeError>(
  * type User = typeof User.Type;
  * ```
  *
- * #### Allowing Additional Properties
+ * ## Allowing Additional Properties
  *
  * ```ts
  * const UserWithAnyExtraProperties = object(
@@ -2795,7 +2812,7 @@ export const formatRecordError = <Error extends TypeError>(
  * });
  * ```
  *
- * #### Combining Fixed and Flexible Properties
+ * ## Combining Fixed and Flexible Properties
  *
  * ```ts
  * const NumberDictionary = object(
@@ -3203,6 +3220,173 @@ export const formatObjectWithRecordError = <Error extends TypeError>(
   });
 
 /**
+ * Base interface for objects with a discriminant `type` property.
+ *
+ * This enables
+ * {@link https://www.typescriptlang.org/docs/handbook/2/narrowing.html#discriminated-unions | discriminated unions}
+ * (also known as tagged unions) — a pattern where TypeScript uses a literal
+ * `type` field to narrow union types automatically.
+ *
+ * ## Why Discriminated Unions?
+ *
+ * Discriminated unions model states that are **mutually exclusive**. Instead of
+ * optional fields and boolean flags that can combine into invalid
+ * configurations, each variant is a distinct type. This makes illegal states
+ * unrepresentable — invalid combinations cannot exist, so bugs cannot create
+ * them.
+ *
+ * Benefits:
+ *
+ * - **Self-documenting** — Union cases immediately show all possible states
+ * - **Compile-time safety** — TypeScript enforces handling all cases
+ * - **Refactoring-friendly** — Adding a new state breaks code that doesn't handle
+ *   it
+ *
+ * ## Examples
+ *
+ * ```ts
+ * // Bad: optional fields allow invalid states (no contact info at all)
+ * interface Contact {
+ *   readonly email?: Email;
+ *   readonly phone?: Phone;
+ * }
+ *
+ * // Good: discriminated union makes "at least one" explicit
+ * interface EmailOnly extends Typed<"EmailOnly"> {
+ *   readonly email: Email;
+ * }
+ * interface PhoneOnly extends Typed<"PhoneOnly"> {
+ *   readonly phone: Phone;
+ * }
+ * interface EmailAndPhone extends Typed<"EmailAndPhone"> {
+ *   readonly email: Email;
+ *   readonly phone: Phone;
+ * }
+ *
+ * type ContactInfo = EmailOnly | PhoneOnly | EmailAndPhone;
+ * ```
+ *
+ * ```ts
+ * interface Pending extends Typed<"Pending"> {
+ *   readonly createdAt: DateIso;
+ * }
+ * interface Shipped extends Typed<"Shipped"> {
+ *   readonly trackingNumber: TrackingNumber;
+ * }
+ * interface Delivered extends Typed<"Delivered"> {
+ *   readonly deliveredAt: DateIso;
+ * }
+ * interface Cancelled extends Typed<"Cancelled"> {
+ *   readonly reason: CancellationReason;
+ * }
+ *
+ * type OrderState = Pending | Shipped | Delivered | Cancelled;
+ *
+ * // TypeScript enforces exhaustiveness via return type
+ * const getStatusMessage = (state: OrderState): string => {
+ *   switch (state.type) {
+ *     case "Pending":
+ *       return "Order placed";
+ *     case "Shipped":
+ *       return `Shipped: ${state.trackingNumber}`;
+ *     case "Delivered":
+ *       return `Delivered on ${state.deliveredAt.toLocaleDateString()}`;
+ *     case "Cancelled":
+ *       return `Cancelled: ${state.reason}`;
+ *   }
+ * };
+ *
+ * // For void functions, use exhaustiveCheck to ensure all cases are handled
+ * const logState = (state: OrderState): void => {
+ *   switch (state.type) {
+ *     case "Pending":
+ *       console.log("Order placed");
+ *       break;
+ *     case "Shipped":
+ *       console.log(`Shipped: ${state.trackingNumber}`);
+ *       break;
+ *     case "Delivered":
+ *       console.log(
+ *         `Delivered on ${state.deliveredAt.toLocaleDateString()}`,
+ *       );
+ *       break;
+ *     case "Cancelled":
+ *       console.log(`Cancelled: ${state.reason}`);
+ *       break;
+ *     default:
+ *       exhaustiveCheck(state);
+ *   }
+ * };
+ * ```
+ *
+ * ## Why `type` (and not e.g. `_tag`)?
+ *
+ * Underscore-prefixing is meant to avoid clashing with domain properties, but
+ * proper discriminated union design means the discriminant IS the domain
+ * concept — there's no clash to avoid. The `type` prop name also aligns with
+ * {@link Type}'s name. If an entity has a meaningful "type" (like product
+ * category), model it as the discriminant itself:
+ *
+ * ```ts
+ * interface Electronics extends Typed<"Electronics"> {
+ *   voltage: Voltage;
+ * }
+ * interface Clothing extends Typed<"Clothing"> {
+ *   size: Size;
+ * }
+ * type Product = Electronics | Clothing;
+ * ```
+ *
+ * @see {@link exhaustiveCheck} to ensure all cases are handled in void functions.
+ * @see {@link typed} for runtime-validated typed objects.
+ */
+export interface Typed<T extends string> {
+  readonly type: T;
+}
+
+/**
+ * Creates a runtime-validated typed object with a `type` discriminant.
+ *
+ * ## Example
+ *
+ * ```ts
+ * const Card = typed("Card", {
+ *   cardNumber: CardNumber,
+ *   expiry: DateIso,
+ * });
+ *
+ * const Cash = typed("Cash", {
+ *   currency: NonEmptyTrimmedString,
+ * });
+ *
+ * const Payment = union(Card, Cash);
+ * type Payment = typeof Payment.Type;
+ *
+ * const result = Payment.fromUnknown(data);
+ * if (result.ok) {
+ *   switch (result.value.type) {
+ *     case "Card":
+ *       console.log(result.value.cardNumber);
+ *       break;
+ *     case "Cash":
+ *       console.log(result.value.currency);
+ *       break;
+ *   }
+ * }
+ * ```
+ *
+ * @see {@link Typed} for type-only discrimination.
+ */
+export const typed = <
+  Tag extends string,
+  Props extends Record<string, AnyType>,
+>(
+  tag: Tag,
+  props: Props,
+): ObjectType<{ type: LiteralType<Tag> } & Props> =>
+  object({ type: literal(tag), ...props });
+
+/**
  * Union {@link Type}.
  *
  * `UnionType` represents a union of multiple member Types. Accepts both
@@ -3213,7 +3397,7 @@ export const formatObjectWithRecordError = <Error extends TypeError>(
  * runtime, it is impossible to determine which member should process a given
  * `Parent` value.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const AorB = union("a", "b");
@@ -3325,7 +3509,7 @@ export const isUnionType = (
  * Recursive types can't be inferred, so we must define them using an interface
  * and `recursive` Type Factory that returns a {@link Type}.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * interface Category {
@@ -3403,7 +3587,7 @@ export interface RecursiveType<ParentType extends AnyType> extends Type<
 /**
  * `union(null, T)` {@link Type}.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const NullOrString = nullOr(String);
@@ -3421,7 +3605,7 @@ export const nullOr = <T extends AnyType>(
 /**
  * `union(undefined, T)` {@link Type}.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const UndefinedOrString = undefinedOr(String);
@@ -3442,7 +3626,7 @@ export const undefinedOr = <T extends AnyType>(
  * Learn more:
  * https://www.typescriptlang.org/docs/handbook/release-notes/typescript-3-7.html#nullish-coalescing
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const NullishOrString = nullishOr(String);
@@ -3464,7 +3648,7 @@ export const nullishOr = <T extends AnyType>(
  *
  * Represents a tuple of specific Types.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const NameAndAge = tuple(NonEmptyTrimmedString, PositiveNumber);
@@ -3756,7 +3940,7 @@ export const parseJson = (value: string): Result<JsonValue, JsonError> =>
 /**
  * JSON-string {@link Type}.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const result = Json.from('{"key":"value"}'); // ok
@@ -3800,7 +3984,7 @@ export const jsonToJsonValue = (value: Json): JsonValue =>
  * Optimized for Evolu's SQLite workflow where we store typed JSON strings and
  * need type-safe conversions without double parsing.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const Person = object({
@@ -3866,7 +4050,7 @@ export const json = <T extends AnyType, Name extends TypeName>(
  * This is different from {@link undefinedOr}, which allows explicit `undefined`
  * but **still requires the key to exist**.
  *
- * ### Example:
+ * ## Example:
  *
  * ```ts
  * const Todo = object({
@@ -3906,7 +4090,7 @@ export const isOptionalType = (x: unknown): x is OptionalType<any> =>
  * are required, but if they are present they must conform to their
  * corresponding Types.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const PartialUser = partial({
@@ -4118,7 +4302,7 @@ export type TypeErrors<ExtraErrors extends TypeError = never> =
  * and custom errors, and lets us override default formatting for specific
  * errors.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const formatTypeError = createFormatTypeError<

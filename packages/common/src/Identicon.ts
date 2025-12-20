@@ -23,7 +23,7 @@ export type IdenticonStyle = "github" | "quadrant" | "gradient" | "sutnar";
  * - `"gradient"`: Diagonal stripes with smooth color gradients
  * - `"sutnar"`: Three compositional variants with adaptive colors
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const svg = createIdenticon(id);

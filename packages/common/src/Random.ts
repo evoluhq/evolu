@@ -5,7 +5,7 @@ import { Random as RandomLib } from "random";
  *
  * For more complex needs check {@link RandomLibDep}.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * // For apps

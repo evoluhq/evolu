@@ -1,20 +1,21 @@
 /**
- * Console abstraction for Chrome 123+, Firefox 125+, Safari 18.1+, Node.js
- * 22.x+, and React Native 0.75+. Includes methods guaranteed to be available in
- * these environments and expected to remain compatible in future versions.
- * Output formatting may vary (e.g., interactive UI in browsers vs. text in
- * Node.js/React Native), but functionality is consistent across platforms.
+ * Platform-agnostic Console for Chrome 123+, Firefox 125+, Safari 18.1+,
+ * Node.js 22.x+, and React Native 0.75+. Includes methods guaranteed to be
+ * available in these environments and expected to remain compatible in future
+ * versions. Output formatting may vary (e.g., interactive UI in browsers vs.
+ * text in Node.js/React Native), but functionality is consistent across
+ * platforms.
  *
  * **Convention**: Use a tag (e.g., `[db]`) as the first argument for log
  * filtering.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * deps.console.log("[evolu]", "createEvoluInstance", { name });
  * ```
  *
- * **Tip**: In browser dev tools, you can filter logs by tag (e.g., `[db]`) to
+ * **Tip**: In browser dev tools, we can filter logs by tag (e.g., `[db]`) to
  * quickly find relevant messages. In Node.js, use `grep` to filter output:
  *
  * ```bash

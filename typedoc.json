@@ -23,7 +23,7 @@
   "propertyMembersFormat": "table",
   "typeDeclarationFormat": "table",
   "excludeScopesInPaths": true,
-  "outputFileStrategy": "members",
+  "router": "member",
   "formatWithPrettier": true,
   "cleanOutputDir": true,
   "headings": {
@@ -39,5 +39,10 @@
       "name": "markdown",
       "path": "./apps/web/src/app/(docs)/docs/api-reference"
     }
-  ]
+  ],
+  "externalSymbolLinkMappings": {
+    "typescript": {
+      "PromiseLike": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise#thenables"
+    }
+  }
 }

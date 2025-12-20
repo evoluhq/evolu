@@ -43,7 +43,7 @@ test("transaction fails and rolls back on SQL error", async () => {
     err({
       type: "SqliteError",
       error: {
-        type: "TransferableError",
+        type: "UnknownError",
         error: {
           code: "SQLITE_ERROR",
           message: "no such table: notexisting",
@@ -191,7 +191,7 @@ test("transaction callback error and rollback fails", async () => {
     err({
       type: "SqliteError",
       error: {
-        type: "TransferableError",
+        type: "UnknownError",
         error: { type: "CallbackError" },
       },
       rollbackError: { error: { message: "Rollback failed" } },

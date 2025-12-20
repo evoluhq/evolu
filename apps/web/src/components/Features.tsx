@@ -17,14 +17,14 @@ import {
   IconLibrary,
   IconShieldLock,
   IconSql,
-  TablerIcon,
+  IconProps,
 } from "@tabler/icons-react";
 
 interface Feature {
   id: string;
   name: string;
   description: string;
-  icon: TablerIcon;
+  icon: React.ComponentType<IconProps>;
   pattern: Omit<
     React.ComponentPropsWithoutRef<typeof GridPattern>,
     "width" | "height"

@@ -6,25 +6,22 @@
 import type {
   AppOwner,
   Evolu,
-  EvoluDeps,
   EvoluSchema,
   InferRow,
   Query,
   QueryRows,
   Row,
 } from "@evolu/common/local-first";
-import { evoluWebDeps } from "@evolu/web";
+import { createEvoluDeps } from "@evolu/web";
 
 // just in case we need to add some svelte specific deps
-export const evoluSvelteDeps: EvoluDeps = {
-  ...evoluWebDeps,
-};
+export const evoluSvelteDeps = createEvoluDeps();
 
 /**
  * Load and subscribe to the Query, and return an object with `rows` property
  * that are automatically updated when data changes.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * // Create your query
@@ -34,7 +31,7 @@ export const evoluSvelteDeps: EvoluDeps = {
  * const allTodosState = queryState(evolu, () => allTodos);
  * ```
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * // some kind of state
@@ -119,7 +116,7 @@ export function queryState<
 /**
  * Get the {@link AppOwner} promise that resolves when available.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * import { appOwnerState } from "@evolu/svelte";

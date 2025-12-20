@@ -3,7 +3,7 @@ import { createLruCache } from "./Cache.js";
 import { ConsoleDep } from "./Console.js";
 import { EncryptionKey } from "./Crypto.js";
 import { Eq, eqArrayNumber } from "./Eq.js";
-import { createTransferableError, TransferableError } from "./Error.js";
+import { createUnknownError, UnknownError } from "./Error.js";
 import { err, ok, Result, tryAsync, trySync } from "./Result.js";
 import {
   Null,
@@ -40,7 +40,7 @@ export interface SqliteDriverOptions {
 }
 
 /**
- * Cross-platform SQLite abstraction.
+ * Platform-agnostic SQLite.
  *
  * This API is sync only because SQLite is an embedded, single-threaded engine.
  * All operations are blocking and in-process, so async APIs add needless
@@ -132,8 +132,8 @@ export interface SqliteExecResult<R extends SqliteRow = SqliteRow> {
 /** Represents an error that occurred during a SQLite operation. */
 export interface SqliteError {
   readonly type: "SqliteError";
-  readonly error: TransferableError;
-  readonly rollbackError?: TransferableError;
+  readonly error: UnknownError;
+  readonly rollbackError?: UnknownError;
 }
 
 export type SqliteRow = Record<string, SqliteValue>;
@@ -174,7 +174,7 @@ export const createSqlite =
             },
             (error): SqliteError => ({
               type: "SqliteError",
-              error: createTransferableError(error),
+              error: createUnknownError(error),
             }),
           ),
 
@@ -213,7 +213,7 @@ export const createSqlite =
               deps.console?.log("[sql] rollback failed", rollback.error);
               return err({
                 type: "SqliteError",
-                error: createTransferableError(transactionResult.value.error),
+                error: createUnknownError(transactionResult.value.error),
                 rollbackError: rollback.error.error,
               });
             }
@@ -230,7 +230,7 @@ export const createSqlite =
             },
             (error): SqliteError => ({
               type: "SqliteError",
-              error: createTransferableError(error),
+              error: createUnknownError(error),
             }),
           ),
 
@@ -246,7 +246,7 @@ export const createSqlite =
 
 const createSqliteError = (error: unknown): SqliteError => ({
   type: "SqliteError",
-  error: createTransferableError(error),
+  error: createUnknownError(error),
 });
 
 const maybeLogSqliteQueryExecutionTime = <T>(
@@ -320,7 +320,7 @@ export type SqlTemplateParam = SqliteValue | SqlIdentifier | RawSql;
  * Parameters are automatically escaped and bound as SQLite values. Use
  * `sql.identifier` for column/table names and `sql.raw` for unescaped SQL.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const id = 42;
@@ -346,7 +346,7 @@ export type SqlTemplateParam = SqliteValue | SqlIdentifier | RawSql;
  * sqlite.exec(sql`select * from users order by ${sql.raw(orderBy)};`);
  * ```
  *
- * ### TIP
+ * ## TIP
  *
  * Use `prettier-plugin-sql-cst` for SQL formatting. Like Prettier for
  * JavaScript, this plugin formats SQL expressions differently depending on
@@ -524,7 +524,7 @@ const drawSqliteQueryPlan = (rows: Array<SqliteQueryPlanRow>): string =>
  *
  * See: https://www.sqlite.org/quirks.html#no_separate_boolean_datatype
  *
- * ### Tips
+ * ## Tips
  *
  * - Use {@link sqliteTrue} and {@link sqliteFalse} constants for better
  *   readability.
@@ -551,7 +551,7 @@ export const sqliteFalse = 0;
 /**
  * Converts a JavaScript boolean to a {@link SqliteBoolean}.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const isActive = true;
@@ -564,7 +564,7 @@ export const booleanToSqliteBoolean = (value: boolean): SqliteBoolean =>
 /**
  * Converts a {@link SqliteBoolean} to a JavaScript boolean.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const sqlValue: SqliteBoolean = 1;

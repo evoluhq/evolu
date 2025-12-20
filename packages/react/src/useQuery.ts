@@ -17,7 +17,7 @@ import { useIsSsr } from "./useIsSsr.js";
  * useful for complex queries that might take noticeable time even with local
  * data. However, this is rarely needed as local queries are typically fast.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * // Get all rows.

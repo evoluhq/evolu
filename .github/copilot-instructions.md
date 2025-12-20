@@ -4,13 +4,20 @@ applyTo: "**/*.{ts,tsx}"
 
 # Evolu project guidelines
 
-You are helping with the Evolu project. Follow these specific conventions and patterns:
+Follow these specific conventions and patterns:
+
+## Test-driven development
+
+- Write a failing test before implementing a new feature or fixing a bug
+- Keep test code cleaner than production code — good tests let you refactor production code; nothing protects messy tests
 
 ## Code organization & imports
 
 - **Use named imports only** - avoid default exports and namespace imports
+- **Avoid `import type`** - use regular imports for consistency
 - **Use unique exported members** - avoid namespaces, use descriptive names to prevent conflicts
-- **Organize code top-down** - public interfaces first, then implementation, then implementation details
+- **Organize code top-down** - public interfaces first, then implementation, then implementation details. If a helper must be defined before the public export that uses it (due to JavaScript hoisting), place it immediately before that export.
+- **Reference globals explicitly with `globalThis`** - when a name clashes with global APIs (e.g., `SharedWorker`, `Worker`), use `globalThis.SharedWorker` instead of aliasing imports
 
 ```ts
 // ✅ Good
@@ -21,6 +28,12 @@ export const trySync = ...;
 // ❌ Avoid
 import Foo from "Foo.ts";
 export const Utils = { ok, trySync };
+
+// ✅ Good - Avoid naming conflicts with globals
+const nativeSharedWorker = new globalThis.SharedWorker(...);
+
+// ❌ Avoid - Aliasing to work around global name clash
+import { SharedWorker as SharedWorkerType } from "./Worker.js";
 ```
 
 ## Functions
@@ -28,12 +41,18 @@ export const Utils = { ok, trySync };
 - **Use arrow functions** - avoid the `function` keyword for consistency
 - **Exception: function overloads** - TypeScript requires the `function` keyword for overloaded signatures
 
-```ts
-// ✅ Good - Arrow function
-export const createUser = (data: UserData): User => {
-  // implementation
-};
+### Factories
 
+Use factory functions instead of classes for creating objects, typically named `createX`. Order function contents as follows:
+
+1. Const setup & invariants (args + derived consts + assertions)
+2. Mutable state
+3. Owned resources
+4. Side-effectful wiring
+5. Shared helpers
+6. Return object (public operations + disposal/closing)
+
+```ts
 // ✅ Good - Function overloads (requires function keyword)
 export function mapArray<T, U>(
   array: NonEmptyReadonlyArray<T>,
@@ -67,18 +86,48 @@ interface Example {
 }
 ```
 
+## Object enums
+
+- **Use PascalCase for keys** - all keys in constant objects should use PascalCase
+- **String values match keys** - when using strings, make values match the key names
+- **Numeric values for wire protocols** - use numbers for serialization efficiency
+- **Export with `as const`** - ensure TypeScript treats values as literals
+
+```ts
+// String values matching PascalCase keys
+export const TaskScopeState = {
+  Open: "Open",
+  Closing: "Closing",
+  Closed: "Closed",
+} as const;
+
+export type TaskScopeState =
+  (typeof TaskScopeState)[keyof typeof TaskScopeState];
+
+// Numeric values for wire protocols
+export const MessageType = {
+  Request: 0,
+  Response: 1,
+  Broadcast: 2,
+} as const;
+
+export type MessageType = (typeof MessageType)[keyof typeof MessageType];
+```
+
 ## Documentation & JSDoc
 
 - **Avoid `@param` and `@return` tags** - TypeScript provides type information, focus on describing the function's purpose
 - **Use `### Example` instead of `@example`** - for better markdown rendering and consistency
 - **Write clear descriptions** - explain what the function does, not how to use it
+- **Use `{@link}` for references** - link to types, interfaces, functions, and exported symbols on first mention for discoverability
+- **Avoid pipe characters in first sentence** - TypeDoc extracts the first sentence for table descriptions, and pipe characters (even in inline code like `T | undefined`) break markdown table rendering. Move such details to subsequent sentences.
 
 ````ts
 // ✅ Good
 /**
  * Creates a new user with the provided data.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * const user = createUser({ name: "John", email: "john@example.com" });
@@ -87,6 +136,27 @@ interface Example {
 export const createUser = (data: UserData): User => {
   // implementation
 };
+
+/**
+ * Dependency wrapper for {@link CreateMessageChannel}.
+ *
+ * Used with {@link EvoluPlatformDeps} to provide platform-specific
+ * MessageChannel creation.
+ */
+export interface CreateMessageChannelDep {
+  readonly createMessageChannel: CreateMessageChannel;
+}
+
+// ❌ Avoid
+/**
+ * Dependency wrapper for CreateMessageChannel.
+ *
+ * Used with EvoluPlatformDeps to provide platform-specific MessageChannel
+ * creation.
+ */
+export interface CreateMessageChannelDep {
+  readonly createMessageChannel: CreateMessageChannel;
+}
 
 // ❌ Avoid
 /**
@@ -103,6 +173,16 @@ export const createUser = (data: UserData): User => {
 export const createUser = (data: UserData): User => {
   // implementation
 };
+
+/**
+ * Dependency wrapper for CreateMessageChannel.
+ *
+ * Used with EvoluPlatformDeps to provide platform-specific MessageChannel
+ * creation.
+ */
+export interface CreateMessageChannelDep {
+  readonly createMessageChannel: CreateMessageChannel;
+}
 ````
 
 ## API stability & experimental APIs
@@ -128,10 +208,10 @@ This pattern allows iterating on API design without committing to stability too 
 - Use `Result<T, E>` for business/domain errors in public APIs
 - Keep implementation-specific errors internal to dependencies
 - **Favor imperative patterns** over monadic helpers for readability
-- Use **plain objects** for business errors, Error instances only for debugging
+- Use **plain objects** for domain errors, Error instances only for debugging
 
 ```ts
-// ✅ Good - Business error
+// ✅ Good - Domain error
 interface ParseJsonError {
   readonly type: "ParseJsonError";
   readonly message: string;
@@ -166,7 +246,7 @@ export interface Storage {
 
 ```ts
 // For lazy operations array
-const operations: LazyValue<Result<void, MyError>>[] = [
+const operations: Lazy<Result<void, MyError>>[] = [
   () => doSomething(),
   () => doSomethingElse(),
 ];

@@ -11,7 +11,7 @@ import { decrement } from "../Number.js";
 import { RandomDep } from "../Random.js";
 import { err, ok, Result } from "../Result.js";
 import { sql, SqliteDep, SqliteError, SqliteValue } from "../Sqlite.js";
-import { MaybeAsync } from "../Task.js";
+import { MaybeAsync } from "../OldTask.js";
 import {
   Boolean,
   brand,
@@ -51,7 +51,7 @@ export interface StorageConfig {
    * The callback returns a boolean rather than an error because error handling
    * and logging are the responsibility of the callback implementation.
    *
-   * ### Example
+   * ## Example
    *
    * ```ts
    * // Client
@@ -205,7 +205,9 @@ export interface BaseRange {
  */
 export type RangeUpperBound = TimestampBytes | InfiniteUpperBound;
 
-export const InfiniteUpperBound = Symbol("InfiniteUpperBound");
+export const InfiniteUpperBound = Symbol(
+  "evolu.local-first.Storage.InfiniteUpperBound",
+);
 export type InfiniteUpperBound = typeof InfiniteUpperBound;
 
 export const RangeType = {

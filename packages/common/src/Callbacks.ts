@@ -16,7 +16,7 @@ import { createId, Id } from "./Type.js";
  * The `execute` method intentionally does not use try-catch or {@link Result}
  * because it's the callback's responsibility to handle its own errors.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * // No-argument callbacks

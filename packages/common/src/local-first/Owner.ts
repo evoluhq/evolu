@@ -168,7 +168,7 @@ const createOwner = (secret: OwnerSecret): Owner => ({
  * devices need to sync the information that an owner was deleted so they can
  * delete their local data as well.
  *
- * ### Privacy Considerations
+ * ## Privacy Considerations
  *
  * AppOwner must never be shared with anyone, except for its {@link OwnerId},
  * which can be used for authorization with
@@ -301,7 +301,7 @@ export type OwnerTransport = OwnerWebSocketTransport;
 /**
  * WebSocket transport configuration.
  *
- * ### Authentication via URL
+ * ## Authentication via URL
  *
  * The {@link OwnerId} is passed as a URL query parameter. While this approach is
  * generally discouraged for authentication tokens (they get logged), it's safe
@@ -311,7 +311,7 @@ export type OwnerTransport = OwnerWebSocketTransport;
  * See: [HTTP headers in Websockets client
  * API](https://stackoverflow.com/questions/4361173/http-headers-in-websockets-client-api/74564827#74564827)
  *
- * ### Error Handling
+ * ## Error Handling
  *
  * When a relay rejects a connection (invalid OwnerId, unauthorized owner, or
  * server error), the browser WebSocket API does not expose the specific HTTP
@@ -338,7 +338,7 @@ export interface OwnerWebSocketTransport {
  * (e.g., `wss://relay.evolu.dev`, not `wss://relay.evolu.dev?foo=bar`). The
  * function appends the `ownerId` as a query parameter.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * // Create transport "wss://relay.evolu.dev?ownerId=..."
@@ -368,7 +368,7 @@ export const createOwnerWebSocketTransport = (config: {
  * Parses the query string `?ownerId=...` and validates that the extracted value
  * is a valid {@link OwnerId}.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * parseOwnerIdFromOwnerWebSocketTransportUrl(

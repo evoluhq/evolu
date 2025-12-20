@@ -14,8 +14,6 @@ export default defineConfig(
       "**/.turbo/",
       "**/dist/",
       "**/*.d.ts",
-      // TODO: Consider enabling linting for scripts and examples later.
-      "scripts/**",
       // To validate examples, uncomment apps/** and packages/** otherwise
       // FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
       "examples/**",
@@ -25,7 +23,7 @@ export default defineConfig(
   },
   eslint.configs.recommended,
   {
-    files: ["**/*.ts", "**/*.tsx"],
+    files: ["**/*.ts", "**/*.tsx", "**/*.mts"],
     extends: [
       tseslint.configs.strictTypeChecked,
       tseslint.configs.stylisticTypeChecked,
@@ -99,6 +97,13 @@ export default defineConfig(
     rules: {
       "react-hooks/rules-of-hooks": "off",
       "react-hooks/exhaustive-deps": "off",
+    },
+  },
+  {
+    files: ["apps/web/typography.mts"],
+    rules: {
+      "@typescript-eslint/no-unsafe-assignment": "off",
+      "@typescript-eslint/no-unsafe-member-access": "off",
     },
   },
 );

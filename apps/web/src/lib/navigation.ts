@@ -16,18 +16,23 @@ export const navigation: Array<NavGroup> = [
     links: [
       { title: "Getting started", href: "/docs/library" },
       {
+        title: "Array",
+        href: "/docs/api-reference/common/Array",
+      },
+      {
         title: "Result",
         href: "/docs/api-reference/common/Result/type-aliases/Result",
       },
       {
         title: "Task",
-        href: "/docs/api-reference/common/Task/interfaces/Task",
+        href: "/docs/api-reference/common/Task/type-aliases/Task",
       },
       {
         title: "Type",
         href: "/docs/api-reference/common/Type/interfaces/Type",
       },
       { title: "Dependency injection", href: "/docs/dependency-injection" },
+      { title: "Resource management", href: "/docs/resource-management" },
       { title: "Conventions", href: "/docs/conventions" },
     ],
   },
