@@ -153,6 +153,19 @@ describe("readonly", () => {
       expectTypeOf(map).toEqualTypeOf<ReadonlyMap<string, number>>();
     });
   });
+
+  describe("with ES2025 iterator .toArray()", () => {
+    test("converts iterator chain to ReadonlyArray", () => {
+      const result = readonly(
+        [1, 2, 3]
+          .values()
+          .map((x) => x * 2)
+          .toArray(),
+      );
+      expect(result).toEqual([2, 4, 6]);
+      expectTypeOf(result).toEqualTypeOf<ReadonlyArray<number>>();
+    });
+  });
 });
 
 describe("exhaustiveCheck", () => {

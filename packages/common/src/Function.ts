@@ -86,6 +86,10 @@ export const identity = <A>(a: A): A => a;
  *
  * const lookup = readonly(new Map([["key", "value"]]));
  * // Type: ReadonlyMap<string, string>
+ *
+ * // ES2025 iterator chains: use .toArray() then readonly
+ * const doubled = readonly([1, 2, 3].values().map((x) => x * 2).toArray());
+ * // Type: ReadonlyArray<number>
  * ```
  *
  * @experimental
