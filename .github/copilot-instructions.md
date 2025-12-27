@@ -75,6 +75,24 @@ export function createUser(data: UserData): User {
 }
 ```
 
+## Variable shadowing
+
+- **Shadowing is OK** - since we use `const` everywhere, shadowing avoids artificial names like `innerValue`, `newValue`, `result2`
+
+```ts
+// ✅ Good - Shadow in nested scopes
+const value = getData();
+items.map((value) => process(value)); // shadowing is fine
+
+const result = fetchUser();
+if (result.ok) {
+  const result = fetchProfile(result.value); // shadow in nested block
+  if (result.ok) {
+    // ...
+  }
+}
+```
+
 ## Immutability
 
 - **Favor immutability** - use `readonly` properties and `ReadonlyArray`/`NonEmptyReadonlyArray`
@@ -114,7 +132,12 @@ export const MessageType = {
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
 ```
 
-## Documentation & JSDoc
+## Documentation style
+
+- **Be direct and technical** - state facts, avoid conversational style
+- **Lead with the key point** - put the most important information first
+
+## JSDoc & TypeDoc
 
 - **Avoid `@param` and `@return` tags** - TypeScript provides type information, focus on describing the function's purpose
 - **Use `### Example` instead of `@example`** - for better markdown rendering and consistency
