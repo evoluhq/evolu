@@ -64,7 +64,21 @@ const bar = () => {
 
 ## Immutability
 
-Mutable state is tricky because it increases the risk of unintended side effects, makes code harder to predict, and complicates debugging—especially in complex applications where data might be shared or modified unexpectedly. Use immutable values with readonly types to reduce these risks and improve clarity.
+Immutable values enable **referential transparency**: identity (`===`) implies equality. React and React Compiler rely on this for efficient rendering—`prevValue !== nextValue` detects changes without deep comparison.
+
+```ts
+// Mutable: same reference, different content
+const items = [1, 2, 3];
+items.push(4);
+items === items; // true, but content changed
+
+// Immutable: new reference signals change
+const items = [1, 2, 3];
+const newItems = [...items, 4];
+items === newItems; // false
+```
+
+Mutation also causes unintended side effects, makes code harder to predict, and complicates debugging. Use immutable values with readonly types.
 
 ### Readonly types
 
@@ -196,7 +210,7 @@ interface Foo {
 
 Avoid JavaScript getters and setters. Use simple readonly properties for stable values and explicit methods for values that may change.
 
-**Getters mask mutability.** A getter looks like a simple property access (`obj.value`) but might return different values on each call. This violates the principle of least surprise and makes code harder to reason about.
+**Getters break the readonly contract.** In Evolu, `readonly` properties signal stable values you can safely cache or pass around. A getter disguised as a readonly property violates this expectation—it looks stable but might return different values on each access.
 
 **Setters hide mutation and conflict with readonly.** Evolu uses `readonly` properties everywhere for immutability. Setters are incompatible with this approach and make mutation invisible—`obj.value = x` looks like simple assignment but executes arbitrary code.
 
