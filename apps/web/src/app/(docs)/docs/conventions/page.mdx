@@ -10,29 +10,75 @@ Conventions minimize decision-making and improve consistency.
 
 ## Imports and exports
 
-Use named imports. Refactor modules with excessive imports.
+Use named imports.
 
 ```ts
 import { bar, baz } from "Foo.ts";
 ```
 
-Avoid namespaces. Use unique and descriptive names for exported members to prevent conflicts and improve clarity.
+Avoid namespaces. Use unique names because Evolu re-exports everything through a single `index.ts`.
 
 ```ts
-// Avoid
-export const Utils = { ok, trySync };
-
 // Use
 export const ok = ...;
 export const trySync = ...;
 
-// eqStrict
-// eqBoolean
-// orderString
-// orderNumber
-// isBetween
-// isBetweenBigInt
+// Avoid
+export const Utils = { ok, trySync };
 ```
+
+### Subpath exports for specialized modules
+
+When a module has many exports that would clash with common names or create verbose suffixed names, use [subpath exports](https://nodejs.org/api/packages.html#subpath-exports) instead:
+
+```ts
+// Instead of long suffixed names like takeSchedule, jitterSchedule, etc.
+import { take, jitter, exponential } from "@evolu/common/schedule";
+```
+
+This pattern is appropriate when:
+
+- The module is specialized (not needed by most users)
+- Short names would clash with other exports
+- Adding suffixes everywhere would hurt readability
+
+Configure in `package.json`:
+
+```json
+{
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./schedule": {
+      "types": "./dist/src/schedule/index.d.ts",
+      "import": "./dist/src/schedule/index.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "schedule": ["./dist/src/schedule/index.d.ts"]
+    }
+  }
+}
+```
+
+Use lowercase for subpath names (`schedule`, not `Schedule`) following Node.js conventions.
+
+### Naming conventions
+
+- **Types** — PascalCase without suffix: `Eq`, `Order`, `Result`, `Millis`
+- **Type instances** — type prefix + TypeSuffix: `eqString`, `eqNumber`, `orderString`, `orderBigInt`
+- **Operations** — verb + TypeSuffix: `mapArray`, `filterSet`, `sortArray`, `addToSet`
+- **Conversions** — `xToY` (often symmetric pairs): `ownerIdToOwnerIdBytes`/`ownerIdBytesToOwnerId`, `durationToMillis`
+- **Factories** — `createX`: `createTime`, `createStore`, `createRunner`
+- **Empty constants** — `emptyX`: `emptyArray`, `emptySet`, `emptyRecord`
+- **Predicates** — `isX`: `isNonEmptyArray`, `isBetween`, `isBetweenBigInt`
+- **Accessors** — position + `InX`: `firstInArray`, `lastInArray`, `firstInSet`
+- **Dependencies** — `XDep`: `TimeDep`, `RandomDep`, `ConsoleDep`
+
+Consistent prefixes enable discoverability—type `map` and autocomplete shows `mapArray`, `mapSet`, `mapObject`, `mapSchedule` without importing first.
 
 ## Order (top-down readability)
 
@@ -64,13 +110,13 @@ const bar = () => {
 
 ## Immutability
 
-Immutable values enable **referential transparency**: identity (`===`) implies equality. React and React Compiler rely on this for efficient rendering—`prevValue !== nextValue` detects changes without deep comparison.
+Immutable values enable **referential transparency**: identity (`===`) implies equality. React and React Compiler rely on this for efficient rendering — `prevValue !== nextValue` detects changes without deep comparison.
 
 ```ts
 // Mutable: same reference, different content
-const items = [1, 2, 3];
-items.push(4);
-items === items; // true, but content changed
+const mutableItems = [1, 2, 3];
+mutableItems.push(4);
+mutableItems === mutableItems; // true, but content changed
 
 // Immutable: new reference signals change
 const items = [1, 2, 3];
@@ -78,7 +124,7 @@ const newItems = [...items, 4];
 items === newItems; // false
 ```
 
-Mutation also causes unintended side effects, makes code harder to predict, and complicates debugging. Use immutable values with readonly types.
+Mutation causes unintended side effects, makes code harder to predict, and complicates debugging. Use immutable values with readonly types.
 
 ### Readonly types
 
@@ -200,10 +246,47 @@ interface Foo {
 }
 
 // Avoid method shorthand syntax
-interface Foo {
+interface FooAvoid {
   bar(value: string): void;
   baz(): number;
 }
+```
+
+## Function options
+
+For functions with optional configuration, use inline types without `readonly` for single-use options and named interfaces with `readonly` for reusable options. Always destructure immediately.
+
+**Inline types** when options are single-use:
+
+```ts
+export const race = (
+  tasks: Tasks,
+  {
+    abortReason = raceLostError,
+  }: {
+    /** The reason to abort losing tasks with. */
+    abortReason?: unknown;
+  } = {},
+): Task<...> => ...
+```
+
+**Named interfaces** when options are reused:
+
+```ts
+export interface RetryOptions {
+  readonly maxAttempts?: number;
+  readonly delay?: Duration;
+  readonly backoff?: "linear" | "exponential";
+}
+
+export const retry = (
+  {
+    maxAttempts = 3,
+    delay = "1s",
+    backoff = "exponential",
+  }: RetryOptions,
+  task: Task<T, E>,
+): Task<...> => ...
 ```
 
 ## Avoid getters and setters
@@ -224,7 +307,7 @@ interface Counter {
 }
 
 // Avoid: This looks stable but if backed by a getter, value might change
-interface Counter {
+interface CounterAvoid {
   readonly value: number;
   readonly increment: () => void;
 }
@@ -259,3 +342,46 @@ class Counter {
   }
 }
 ```
+
+## Opaque types
+
+Use opaque types when callers should not inspect or construct values directly—they can only pass them back to the API that created them.
+
+```ts
+import { Brand } from "@evolu/common";
+
+// Opaque type - callers cannot see the internal structure
+type TimeoutId = Brand<"TimeoutId">;
+
+interface Timer {
+  readonly setTimeout: (fn: () => void, ms: number) => TimeoutId;
+  readonly clearTimeout: (id: TimeoutId) => void;
+}
+```
+
+Opaque types are useful for:
+
+- **Platform abstraction** - Hide platform-specific details (e.g., `NativeMessagePort` wraps browser/Node MessagePort)
+- **Handle types** - IDs that should only be passed back to the creating API (e.g., timeout IDs, file handles)
+- **Type safety** - Prevent accidental misuse by making internal structure inaccessible
+
+## Composition without pipe
+
+Evolu doesn't provide a `pipe` helper. Instead, compose functions directly:
+
+```ts
+// Direct composition
+const awsRetry = jitter(1)(maxDelay("20s")(take(3)(exponential("1s"))));
+```
+
+If nested composition looks ugly, that's a signal we need a semantic helper—a named function that captures the intent:
+
+```ts
+// When nesting gets unwieldy, create a semantic helper
+const withAwsBackoff = <T>(schedule: Schedule): Schedule =>
+  jitter(1)(maxDelay("20s")(take(3)(schedule)));
+
+const retry = withAwsBackoff(exponential("1s"));
+```
+
+Evolu favors imperative code over pipes. Pipes add indirection. A well-named helper function is more discoverable and self-documenting than a chain of transformations.
