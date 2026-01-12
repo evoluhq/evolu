@@ -5,7 +5,7 @@ import {
   createSearch,
   getOriginalName,
   splitIntoWords,
-} from "./searchUtils.js";
+} from "./searchUtils.mjs";
 
 const data = "DATA_PLACEHOLDER";
 

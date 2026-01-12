@@ -18,7 +18,7 @@ import {
   extractMetadataTitle,
   getOriginalName,
   splitIntoWords,
-} from "./searchUtils.js";
+} from "./searchUtils.mjs";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const apiRefDir = path.join(__dirname, "../app/(docs)/docs/api-reference");
