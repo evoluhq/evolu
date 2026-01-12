@@ -23,5 +23,8 @@ jobs:
       - name: Setup
         uses: ./.github/actions/setup-node-pnpm-install
 
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
       - name: Verify
         run: pnpm verify
