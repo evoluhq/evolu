@@ -3,6 +3,7 @@ import {
   appendToArray,
   concatArrays,
   dedupeArray,
+  emptyArray,
   filterArray,
   firstInArray,
   flatMapArray,
@@ -19,6 +20,7 @@ import {
   type NonEmptyArray,
   type NonEmptyReadonlyArray,
 } from "../src/Array.js";
+import { err, ok } from "../src/Result.js";
 import { NonEmptyString, PositiveInt } from "../src/Type.js";
 
 describe("Types", () => {
@@ -32,6 +34,33 @@ describe("Types", () => {
     const _valid: NonEmptyReadonlyArray<string> = ["a", "b"];
     // @ts-expect-error - empty array is not a valid NonEmptyReadonlyArray
     const _invalid: NonEmptyReadonlyArray<string> = [];
+  });
+});
+
+describe("Constants", () => {
+  describe("emptyArray", () => {
+    test("is an empty array", () => {
+      expect(emptyArray).toEqual([]);
+      expect(emptyArray.length).toBe(0);
+    });
+
+    test("is assignable to any ReadonlyArray<T>", () => {
+      const numbers: ReadonlyArray<number> = emptyArray;
+      const strings: ReadonlyArray<string> = emptyArray;
+      const objects: ReadonlyArray<{ id: number }> = emptyArray;
+
+      expectTypeOf(numbers).toEqualTypeOf<ReadonlyArray<number>>();
+      expectTypeOf(strings).toEqualTypeOf<ReadonlyArray<string>>();
+      expectTypeOf(objects).toEqualTypeOf<ReadonlyArray<{ id: number }>>();
+    });
+
+    test("enables reference equality checks", () => {
+      let items: ReadonlyArray<number> = emptyArray;
+      expect(items === emptyArray).toBe(true);
+
+      items = [1, 2, 3];
+      expect(items === emptyArray).toBe(false);
+    });
   });
 });
 
@@ -176,13 +205,24 @@ describe("Transformations", () => {
       expectTypeOf(result).toEqualTypeOf<ReadonlyArray<number>>();
     });
 
-    test("flattens nested arrays", () => {
+    test("flattens nested arrays without mapper", () => {
       const arr: ReadonlyArray<ReadonlyArray<number>> = [
         [1, 2],
         [3, 4],
       ];
-      const result = flatMapArray(arr, (x) => x);
+      const result = flatMapArray(arr);
       expect(result).toEqual([1, 2, 3, 4]);
+      expectTypeOf(result).toEqualTypeOf<ReadonlyArray<number>>();
+    });
+
+    test("flattens non-empty nested arrays without mapper", () => {
+      const arr: NonEmptyReadonlyArray<NonEmptyReadonlyArray<number>> = [
+        [1, 2],
+        [3, 4],
+      ];
+      const result = flatMapArray(arr);
+      expect(result).toEqual([1, 2, 3, 4]);
+      expectTypeOf(result).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
     });
 
     test("preserves non-empty type when mapper returns non-empty", () => {
@@ -211,6 +251,20 @@ describe("Transformations", () => {
       const arr: ReadonlyArray<string> = ["a", "b"];
       const result = flatMapArray(arr, (x, i) => [x, String(i)]);
       expect(result).toEqual(["a", "0", "b", "1"]);
+    });
+
+    test("filters and maps in one pass using [] and [value] pattern", () => {
+      const validate = (n: number) =>
+        n > 0 ? ok(n) : err(`${n} is not positive`);
+
+      const fields = [1, -2, 3, -4];
+      const errors = flatMapArray(fields, (f) => {
+        const result = validate(f);
+        return result.ok ? [] : [result.error];
+      });
+
+      expect(errors).toEqual(["-2 is not positive", "-4 is not positive"]);
+      expectTypeOf(errors).toEqualTypeOf<ReadonlyArray<string>>();
     });
   });
 
