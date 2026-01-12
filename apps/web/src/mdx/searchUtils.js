@@ -41,7 +41,13 @@ export const addSyntheticH1 = (sections, mdx) => {
  */
 export const getOriginalName = (title) => {
   // Remove generic parameters like <T, E>
-  let t = title.replace(/<[^>]*>/g, "");
+  // Apply repeatedly to handle nested cases like Foo<<Bar>>
+  let t = title;
+  let previous;
+  do {
+    previous = t;
+    t = t.replace(/<[^>]*>/g, "");
+  } while (t !== previous);
   // Get the part after last colon, slash, or " - " separator
   const parts = t.split(/[:/]| - /);
   // For titles with " - ", the name is before the separator
