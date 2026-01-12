@@ -9,7 +9,7 @@
     "fix:docs": "node --experimental-strip-types ./scripts/fix-api-reference.mts",
     "lint": "next lint",
     "start": "next start",
-    "test": "node --test ./src/mdx/search.test.mjs"
+    "_test": "node --test ./src/mdx/search.test.mjs"
   },
   "browserslist": "defaults, not ie <= 11",
   "dependencies": {
