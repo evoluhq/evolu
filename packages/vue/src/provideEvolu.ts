@@ -1,8 +1,8 @@
 import type { Evolu } from "@evolu/common";
 import {
-  ComponentInternalInstance,
+  type ComponentInternalInstance,
   getCurrentInstance,
-  InjectionKey,
+  type InjectionKey,
   provide,
 } from "vue";
 

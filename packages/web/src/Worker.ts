@@ -1,7 +1,6 @@
-import {
-  assert,
+import { assert, handleGlobalError } from "@evolu/common";
+import type {
   CreateMessagePort,
-  handleGlobalError,
   MessageChannel,
   MessagePort,
   NativeMessagePort,

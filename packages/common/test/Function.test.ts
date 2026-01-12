@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, test } from "vitest";
-import { NonEmptyArray, NonEmptyReadonlyArray } from "../src/Array.js";
+import type { NonEmptyArray, NonEmptyReadonlyArray } from "../src/Array.js";
 import {
   constFalse,
   constNull,
@@ -10,7 +10,7 @@ import {
   identity,
   readonly,
 } from "../src/Function.js";
-import { ReadonlyRecord } from "../src/Object.js";
+import type { ReadonlyRecord } from "../src/Object.js";
 
 describe("identity", () => {
   test("returns the same value", () => {

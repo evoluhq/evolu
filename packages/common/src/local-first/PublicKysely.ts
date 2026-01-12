@@ -1,17 +1,19 @@
+import { sql } from "kysely";
 import {
-  AliasableExpression,
   AliasNode,
   ColumnNode,
-  Expression,
   ExpressionWrapper,
   IdentifierNode,
-  RawBuilder,
   ReferenceNode,
-  SelectQueryNode,
-  Simplify,
-  sql,
   TableNode,
   ValueNode,
+} from "kysely";
+import type {
+  AliasableExpression,
+  Expression,
+  RawBuilder,
+  SelectQueryNode,
+  Simplify,
 } from "kysely";
 import { kyselyJsonIdentifier } from "./Query.js";
 

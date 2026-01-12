@@ -1,4 +1,4 @@
-import { Result } from "./Result.js";
+import type { Result } from "./Result.js";
 import { NonNegativeInt } from "./Type.js";
 export {
   bytesToHex,

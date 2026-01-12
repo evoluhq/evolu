@@ -1,5 +1,5 @@
-import { Brand } from "./Brand.js";
-import { GlobalErrorScope } from "./Error.js";
+import type { Brand } from "./Brand.js";
+import type { GlobalErrorScope } from "./Error.js";
 
 /**
  * Platform-agnostic Worker.

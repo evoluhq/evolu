@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import WebSocket, { WebSocketServer } from "ws";
 import { err, ok } from "../src/Result.js";
-import { AbortError, RetryError, wait } from "../src/OldTask.js";
+import { wait } from "../src/OldTask.js";
+import type { AbortError, RetryError } from "../src/OldTask.js";
 import { PositiveInt } from "../src/Type.js";
-import {
-  createWebSocket,
+import { createWebSocket } from "../src/WebSocket.js";
+import type {
   WebSocketError,
   WebSocketReadyState,
   WebSocketRetryError,

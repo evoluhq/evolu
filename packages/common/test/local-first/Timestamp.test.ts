@@ -11,25 +11,28 @@ import {
   orderTimestampBytes,
   receiveTimestamp,
   sendTimestamp,
+  timestampBytesToTimestamp,
+  timestampToTimestampBytes,
+} from "../../src/local-first/Timestamp.js";
+import type {
   Timestamp,
   TimestampBytes,
-  timestampBytesToTimestamp,
   TimestampConfigDep,
   TimestampCounterOverflowError,
   TimestampDriftError,
   TimestampTimeOutOfRangeError,
-  timestampToTimestampBytes,
 } from "../../src/local-first/Timestamp.js";
 import { increment } from "../../src/Number.js";
 import { orderNumber } from "../../src/Order.js";
-import { ok, Result } from "../../src/Result.js";
+import { ok } from "../../src/Result.js";
+import type { Result } from "../../src/Result.js";
 import {
   createTestTime,
   maxMillis,
-  Millis,
   minMillis,
-  TimeDep,
+  Millis,
 } from "../../src/Time.js";
+import type { TimeDep } from "../../src/Time.js";
 import { testDeps, testRandomLib } from "../_deps.js";
 
 test("Millis", () => {

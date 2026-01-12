@@ -4,50 +4,51 @@ import {
   createRecord,
   getProperty,
   mapObject,
-  ReadonlyRecord,
+  type ReadonlyRecord,
 } from "../Object.js";
-import { ok, Result } from "../Result.js";
+import { ok, type Result } from "../Result.js";
 import {
-  SafeSql,
+  type SafeSql,
   sql,
   SqliteBoolean,
-  SqliteDep,
-  SqliteError,
-  SqliteQuery,
-  SqliteQueryOptions,
+  type SqliteDep,
+  type SqliteError,
+  type SqliteQuery,
+  type SqliteQueryOptions,
   SqliteValue,
 } from "../Sqlite.js";
 import {
-  AnyType,
+  type AnyType,
   array,
   createIdFromString,
   DateIso,
   IdBytes,
-  InferErrors,
-  InferInput,
-  InferType,
+  type InferErrors,
+  type InferInput,
+  type InferType,
   maxMutationSize,
-  MergeObjectTypeErrors,
+  type MergeObjectTypeErrors,
   nullableToOptional,
-  NullableToOptionalProps,
+  type NullableToOptionalProps,
   nullOr,
   object,
-  ObjectType,
+  type ObjectType,
   omit,
   optional,
-  OptionalType,
+  type OptionalType,
   record,
   set,
   String,
-  TableId,
-  Type,
-  ValidMutationSize,
+  type TableId,
+  type Type,
+  type ValidMutationSize,
   validMutationSize,
-  ValidMutationSizeError,
+  type ValidMutationSizeError,
 } from "../Type.js";
-import { Simplify } from "../Types.js";
-import { AppOwner, OwnerId } from "./Owner.js";
-import { Query, Row } from "./Query.js";
+import type { Simplify } from "../Types.js";
+import type { AppOwner } from "./Owner.js";
+import { OwnerId } from "./Owner.js";
+import type { Query, Row } from "./Query.js";
 import type { CrdtMessage, DbChange } from "./Storage.js";
 import { Timestamp, TimestampBytes } from "./Timestamp.js";
 

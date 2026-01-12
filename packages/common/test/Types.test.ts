@@ -1,5 +1,5 @@
 import { expectTypeOf, test } from "vitest";
-import { WidenLiteral } from "../src/Types.js";
+import type { WidenLiteral } from "../src/Types.js";
 
 test("WidenLiteral", () => {
   expectTypeOf<WidenLiteral<"foo">>().toEqualTypeOf<string>();

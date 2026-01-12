@@ -1,5 +1,5 @@
 import { expectTypeOf, test } from "vitest";
-import { Brand, IsBranded } from "../src/Brand.js";
+import type { Brand, IsBranded } from "../src/Brand.js";
 import { constVoid } from "../src/Function.js";
 
 test("Brand", () => {

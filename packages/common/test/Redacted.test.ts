@@ -6,9 +6,9 @@ import {
   createEqRedacted,
   createRedacted,
   isRedacted,
-  Redacted,
   revealRedacted,
 } from "../src/Redacted.js";
+import type { Redacted } from "../src/Redacted.js";
 
 describe("createRedacted hides value", () => {
   test("from toString", () => {

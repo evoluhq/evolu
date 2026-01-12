@@ -119,7 +119,7 @@
  */
 
 import { identity } from "./Function.js";
-import { PredicateWithIndex, RefinementWithIndex } from "./Types.js";
+import type { PredicateWithIndex, RefinementWithIndex } from "./Types.js";
 
 /**
  * An array with at least one element.

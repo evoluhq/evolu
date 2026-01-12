@@ -1,5 +1,5 @@
 import { Random as RandomLib } from "random";
-import { Brand } from "./Brand.js";
+import type { Brand } from "./Brand.js";
 
 /**
  * A random floating point number in [0, 1).

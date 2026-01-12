@@ -1,14 +1,14 @@
 import { fibonacciAt, FibonacciIndex } from "../Number.js";
-import { RandomDep } from "../Random.js";
-import { done, err, NextResult, ok } from "../Result.js";
+import type { RandomDep } from "../Random.js";
+import { done, err, type NextResult, ok } from "../Result.js";
 import {
-  Duration,
+  type Duration,
   durationToMillis,
   Millis,
   minMillis,
-  TimeDep,
+  type TimeDep,
 } from "../Time.js";
-import { Predicate } from "../Types.js";
+import type { Predicate } from "../Types.js";
 
 /**
  * Composable scheduling strategies for retry, repeat, and rate limiting.

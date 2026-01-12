@@ -2,75 +2,69 @@ import { pack } from "msgpackr";
 import { dedupeArray, isNonEmptyArray } from "../Array.js";
 import { assert, assertNonEmptyReadonlyArray } from "../Assert.js";
 import { createCallbacks } from "../Callbacks.js";
-import { ConsoleDep, createConsole } from "../Console.js";
-import { createRandomBytes, RandomBytesDep } from "../Crypto.js";
+import { createConsole } from "../Console.js";
+import type { ConsoleDep } from "../Console.js";
+import { createRandomBytes } from "../Crypto.js";
+import type { RandomBytesDep } from "../Crypto.js";
 import { eqArrayNumber } from "../Eq.js";
-import { Listener, Unsubscribe } from "../Listeners.js";
-import { FlushSyncDep, ReloadAppDep } from "../Platform.js";
-import {
-  createDisposableDep,
-  DisposableDep,
-  DisposableStackDep,
-} from "../Resources.js";
-import { err, ok, Result } from "../Result.js";
+import type { Listener, Unsubscribe } from "../Listeners.js";
+import type { FlushSyncDep, ReloadAppDep } from "../Platform.js";
+import { createDisposableDep } from "../Resources.js";
+import type { DisposableDep, DisposableStackDep } from "../Resources.js";
+import { err, ok } from "../Result.js";
+import type { Result } from "../Result.js";
 import {
   isSqlMutation,
-  SafeSql,
   SqliteBoolean,
   sqliteBooleanToBoolean,
-  SqliteQuery,
 } from "../Sqlite.js";
-import { createStore, ReadonlyStore, Store } from "../Store.js";
-import {
-  createId,
-  Id,
+import type { SafeSql, SqliteQuery } from "../Sqlite.js";
+import { createStore } from "../Store.js";
+import type { ReadonlyStore, Store } from "../Store.js";
+import { createId, Id, SimpleName } from "../Type.js";
+import type {
   InferErrors,
   InferInput,
   ObjectType,
-  SimpleName,
   ValidMutationSize,
   ValidMutationSizeError,
 } from "../Type.js";
-import { IntentionalNever } from "../Types.js";
-import { CreateMessageChannelDep } from "../Worker.js";
-import { EvoluError } from "./Error.js";
-import {
-  AppOwner,
-  createOwnerWebSocketTransport,
-  OwnerId,
-  OwnerTransport,
-} from "./Owner.js";
-import {
-  createSubscribedQueries,
-  emptyRows,
+import type { IntentionalNever } from "../Types.js";
+import type { CreateMessageChannelDep } from "../Worker.js";
+import type { EvoluError } from "./Error.js";
+import { createOwnerWebSocketTransport, OwnerId } from "./Owner.js";
+import type { AppOwner, OwnerTransport } from "./Owner.js";
+import { createSubscribedQueries, emptyRows, serializeQuery } from "./Query.js";
+import type {
   Queries,
   QueriesToQueryRowsPromises,
   Query,
   QueryRows,
   QueryRowsMap,
   Row,
-  serializeQuery,
   SubscribedQueries,
 } from "./Query.js";
 import {
+  insertable,
+  kysely,
+  SystemColumns,
+  updateable,
+  upsertable,
+} from "./Schema.js";
+import type {
   CreateQuery,
   EvoluSchema,
   IndexesConfig,
-  insertable,
-  kysely,
   Mutation,
   MutationChange,
   MutationKind,
   MutationMapping,
   MutationOptions,
-  SystemColumns,
-  updateable,
-  upsertable,
   ValidateSchema,
 } from "./Schema.js";
-import { SharedWorkerDep } from "./SharedWorker.js";
+import type { SharedWorkerDep } from "./SharedWorker.js";
 import { DbChange } from "./Storage.js";
-import { SyncOwner } from "./Sync.js";
+import type { SyncOwner } from "./Sync.js";
 
 export interface EvoluConfig {
   /**

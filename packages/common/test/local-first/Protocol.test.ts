@@ -33,18 +33,20 @@ import {
   ProtocolValueType,
   protocolVersion,
   SubscriptionFlags,
-  TimestampsRangeWithTimestampsBuffer,
 } from "../../src/local-first/Protocol.js";
+import type { TimestampsRangeWithTimestampsBuffer } from "../../src/local-first/Protocol.js";
 import {
-  CrdtMessage,
   DbChange,
-  EncryptedCrdtMessage,
-  EncryptedDbChange,
   InfiniteUpperBound,
   RangeType,
+  timestampBytesToFingerprint,
+} from "../../src/local-first/Storage.js";
+import type {
+  CrdtMessage,
+  EncryptedCrdtMessage,
+  EncryptedDbChange,
   Storage,
   StorageDep,
-  timestampBytesToFingerprint,
 } from "../../src/local-first/Storage.js";
 import {
   createInitialTimestamp,
@@ -52,11 +54,8 @@ import {
   timestampToTimestampBytes,
 } from "../../src/local-first/Timestamp.js";
 import { constFalse, constTrue } from "../../src/Function.js";
-import {
-  assertNonEmptyArray,
-  EncryptionKey,
-  NonEmptyReadonlyArray,
-} from "../../src/index.js";
+import { assertNonEmptyArray, EncryptionKey } from "../../src/index.js";
+import type { NonEmptyReadonlyArray } from "../../src/index.js";
 import { err, getOrThrow, ok } from "../../src/Result.js";
 import { SqliteValue } from "../../src/Sqlite.js";
 import { dateToDateIso, NonNegativeInt, PositiveInt } from "../../src/Type.js";

@@ -1,5 +1,6 @@
 import type { UnknownError } from "./Error.js";
-import { exhaustiveCheck, Lazy } from "./Function.js";
+import { exhaustiveCheck } from "./Function.js";
+import type { Lazy } from "./Function.js";
 import type { Typed } from "./Type.js";
 
 /**

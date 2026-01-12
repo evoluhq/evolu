@@ -1,14 +1,15 @@
 import { bytesToHex } from "../Buffer.js";
-import { RandomBytesDep } from "../Crypto.js";
+import type { RandomBytesDep } from "../Crypto.js";
 import { createEqObject, eqNumber, eqString } from "../Eq.js";
 import { increment } from "../Number.js";
-import { Order, orderUint8Array } from "../Order.js";
-import { err, ok, Result } from "../Result.js";
-import { Millis, minMillis, TimeDep } from "../Time.js";
+import { orderUint8Array } from "../Order.js";
+import type { Order } from "../Order.js";
+import { err, ok } from "../Result.js";
+import type { Result } from "../Result.js";
+import { minMillis, Millis } from "../Time.js";
+import type { TimeDep } from "../Time.js";
 import {
   brand,
-  DateIso,
-  InferType,
   length,
   lessThanOrEqualTo,
   NonNegativeInt,
@@ -17,6 +18,7 @@ import {
   String,
   Uint8Array,
 } from "../Type.js";
+import type { DateIso, InferType } from "../Type.js";
 
 export interface TimestampConfig {
   /**

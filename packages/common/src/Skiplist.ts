@@ -1,4 +1,4 @@
-import { RandomDep } from "./Random.js";
+import type { RandomDep } from "./Random.js";
 import { PositiveInt } from "./Type.js";
 
 export interface SkiplistLevel {

@@ -1,11 +1,6 @@
 import { describe, expect, expectTypeOf, test } from "vitest";
-import {
-  createTestTime,
-  createTime,
-  durationToMillis,
-  DurationLiteral,
-  Millis,
-} from "../src/Time.js";
+import { createTestTime, createTime, durationToMillis } from "../src/Time.js";
+import type { DurationLiteral, Millis } from "../src/Time.js";
 
 describe("Time", () => {
   test("createTime returns current time", () => {

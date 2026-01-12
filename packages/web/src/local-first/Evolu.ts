@@ -1,9 +1,6 @@
 import { createLocalAuth, createRandomBytes } from "@evolu/common";
-import {
-  createEvoluDeps as createCommonEvoluDeps,
-  EvoluDeps,
-  SharedWorkerInput,
-} from "@evolu/common/local-first";
+import { createEvoluDeps as createCommonEvoluDeps } from "@evolu/common/local-first";
+import type { EvoluDeps, SharedWorkerInput } from "@evolu/common/local-first";
 import { reloadApp } from "../Platform.js";
 import { createMessageChannel, createSharedWorker } from "../Worker.js";
 import { createWebAuthnStore } from "./LocalAuth.js";

@@ -1,4 +1,5 @@
-import { err, ok, Result } from "./Result.js";
+import { err, ok } from "./Result.js";
+import type { Result } from "./Result.js";
 import { PositiveInt } from "./Type.js";
 
 /**

@@ -1,20 +1,23 @@
-import { Brand } from "./Brand.js";
+import type { Brand } from "./Brand.js";
 import { createLruCache } from "./Cache.js";
-import { ConsoleDep } from "./Console.js";
-import { EncryptionKey } from "./Crypto.js";
-import { Eq, eqArrayNumber } from "./Eq.js";
-import { createUnknownError, UnknownError } from "./Error.js";
-import { err, ok, Result, tryAsync, trySync } from "./Result.js";
+import type { ConsoleDep } from "./Console.js";
+import type { EncryptionKey } from "./Crypto.js";
+import type { Eq } from "./Eq.js";
+import { eqArrayNumber } from "./Eq.js";
+import type { UnknownError } from "./Error.js";
+import { createUnknownError } from "./Error.js";
+import type { Result } from "./Result.js";
+import { err, ok, tryAsync, trySync } from "./Result.js";
+import type { SimpleName } from "./Type.js";
 import {
   Null,
   Number,
   PositiveInt,
-  SimpleName,
   String,
   Uint8Array,
   union,
 } from "./Type.js";
-import { IntentionalNever, Predicate } from "./Types.js";
+import type { IntentionalNever, Predicate } from "./Types.js";
 
 /**
  * SQLite driver interface. This is the minimal interface that platform-specific

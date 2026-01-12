@@ -1,37 +1,30 @@
 import { sha256 } from "@noble/hashes/sha2.js";
-import {
-  firstInArray,
-  isNonEmptyArray,
-  NonEmptyReadonlyArray,
-} from "../Array.js";
+import { firstInArray, isNonEmptyArray } from "../Array.js";
+import type { NonEmptyReadonlyArray } from "../Array.js";
 import { assert } from "../Assert.js";
-import { Brand } from "../Brand.js";
+import type { Brand } from "../Brand.js";
 import { concatBytes } from "../Buffer.js";
 import { decrement } from "../Number.js";
-import { RandomDep } from "../Random.js";
-import { err, ok, Result } from "../Result.js";
-import { sql, SqliteDep, SqliteError, SqliteValue } from "../Sqlite.js";
-import { MaybeAsync } from "../OldTask.js";
+import type { RandomDep } from "../Random.js";
+import { err, ok } from "../Result.js";
+import type { Result } from "../Result.js";
+import { sql, SqliteValue } from "../Sqlite.js";
+import type { SqliteDep, SqliteError } from "../Sqlite.js";
+import type { MaybeAsync } from "../OldTask.js";
 import {
   Boolean,
   brand,
   Id,
-  Int64String,
   NonNegativeInt,
   nullOr,
   object,
   PositiveInt,
   record,
   String,
-  TypeError,
 } from "../Type.js";
-import {
-  Owner,
-  OwnerError,
-  OwnerId,
-  OwnerIdBytes,
-  OwnerWriteKey,
-} from "./Owner.js";
+import type { Int64String, TypeError } from "../Type.js";
+import { OwnerId, OwnerWriteKey } from "./Owner.js";
+import type { Owner, OwnerError, OwnerIdBytes } from "./Owner.js";
 import { systemColumnsWithId } from "./Schema.js";
 import { orderTimestampBytes, Timestamp, TimestampBytes } from "./Timestamp.js";
 

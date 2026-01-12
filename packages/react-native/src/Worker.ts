@@ -1,12 +1,12 @@
 import {
   assert,
-  MessageChannel,
-  MessagePort,
-  NativeMessagePort,
-  SharedWorker,
-  SharedWorkerScope,
-  Worker,
-  WorkerScope,
+  type MessageChannel,
+  type MessagePort,
+  type NativeMessagePort,
+  type SharedWorker,
+  type SharedWorkerScope,
+  type Worker,
+  type WorkerScope,
 } from "@evolu/common";
 
 /**

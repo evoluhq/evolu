@@ -1,4 +1,4 @@
-import { ReloadApp } from "@evolu/common";
+import type { ReloadApp } from "@evolu/common";
 
 export const reloadApp: ReloadApp = (url) => {
   if (typeof document === "undefined") {

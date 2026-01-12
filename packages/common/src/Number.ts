@@ -1,14 +1,15 @@
-import { NonEmptyReadonlyArray } from "./Array.js";
+import type { NonEmptyReadonlyArray } from "./Array.js";
 import { assertNonEmptyReadonlyArray } from "./Assert.js";
-import { IsBranded } from "./Brand.js";
-import { err, ok, Result } from "./Result.js";
+import type { IsBranded } from "./Brand.js";
+import { err, ok } from "./Result.js";
+import type { Result } from "./Result.js";
 import {
   brand,
   lessThanOrEqualTo,
   NonNegativeInt,
   PositiveInt,
 } from "./Type.js";
-import { IntentionalNever, Predicate, WidenLiteral } from "./Types.js";
+import type { IntentionalNever, Predicate, WidenLiteral } from "./Types.js";
 
 export const increment = (n: number): number => n + 1;
 

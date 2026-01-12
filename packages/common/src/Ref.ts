@@ -1,4 +1,4 @@
-import { Eq } from "./Eq.js";
+import type { Eq } from "./Eq.js";
 import type { Store } from "./Store.js";
 
 /**

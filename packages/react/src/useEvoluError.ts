@@ -1,4 +1,4 @@
-import { constNull, EvoluError } from "@evolu/common";
+import { constNull, type EvoluError } from "@evolu/common";
 import { useSyncExternalStore } from "react";
 import { useEvolu } from "./useEvolu.js";
 

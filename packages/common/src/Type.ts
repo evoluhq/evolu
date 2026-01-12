@@ -8,19 +8,18 @@ import type { RandomBytesDep } from "./Crypto.js";
 import { exhaustiveCheck } from "./Function.js";
 import { isPlainObject } from "./Object.js";
 import { hasNodeBuffer } from "./Platform.js";
-import {
-  err,
-  getOrNull,
-  getOrThrow,
-  NextResult,
-  ok,
-  Result,
-  trySync,
-} from "./Result.js";
+import type { Result } from "./Result.js";
+import { err, getOrNull, getOrThrow, ok, trySync } from "./Result.js";
+import type { NextResult } from "./Result.js";
 import { safelyStringifyUnknownValue } from "./String.js";
 import type { TimeDep } from "./Time.js";
-import type { Literal, Refinement, Simplify, WidenLiteral } from "./Types.js";
-import { IntentionalNever } from "./Types.js";
+import type {
+  IntentionalNever,
+  Literal,
+  Refinement,
+  Simplify,
+  WidenLiteral,
+} from "./Types.js";
 
 /**
  * Evolu {@link Type} is like a type guard that returns typed errors (via

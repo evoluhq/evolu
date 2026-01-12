@@ -1,6 +1,8 @@
 import { isNonEmptyArray, shiftFromArray } from "./Array.js";
-import { err, ok, Result } from "./Result.js";
-import { Duration, durationToMillis, Millis } from "./Time.js";
+import type { Result } from "./Result.js";
+import { err, ok } from "./Result.js";
+import type { Duration } from "./Time.js";
+import { durationToMillis, Millis } from "./Time.js";
 import { PositiveInt } from "./Type.js";
 
 /**

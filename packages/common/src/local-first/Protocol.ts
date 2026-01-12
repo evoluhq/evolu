@@ -178,11 +178,11 @@
  */
 
 import { Packr } from "msgpackr";
-import { isNonEmptyArray, NonEmptyReadonlyArray } from "../Array.js";
+import { isNonEmptyArray, type NonEmptyReadonlyArray } from "../Array.js";
 import { assert } from "../Assert.js";
-import { Brand } from "../Brand.js";
+import type { Brand } from "../Brand.js";
 import {
-  Buffer,
+  type Buffer,
   bytesToHex,
   bytesToUtf8,
   createBuffer,
@@ -192,18 +192,18 @@ import {
 import {
   createPadmePadding,
   decryptWithXChaCha20Poly1305,
-  DecryptWithXChaCha20Poly1305Error,
+  type DecryptWithXChaCha20Poly1305Error,
   EncryptionKey,
   encryptWithXChaCha20Poly1305,
   Entropy24,
-  RandomBytesDep,
+  type RandomBytesDep,
   XChaCha20Poly1305Ciphertext,
   xChaCha20Poly1305NonceLength,
 } from "../Crypto.js";
 import { eqArrayNumber } from "../Eq.js";
 import { computeBalancedBuckets } from "../Number.js";
 import { createRecord, objectToEntries } from "../Object.js";
-import { err, ok, Result } from "../Result.js";
+import { err, ok, type Result } from "../Result.js";
 import { SqliteValue } from "../Sqlite.js";
 import { Millis } from "../Time.js";
 import {
@@ -224,10 +224,10 @@ import {
   PositiveInt,
   uint8ArrayToBase64Url,
 } from "../Type.js";
-import { Predicate } from "../Types.js";
+import type { Predicate } from "../Types.js";
 import {
-  Owner,
-  OwnerError,
+  type Owner,
+  type OwnerError,
   OwnerId,
   OwnerIdBytes,
   ownerIdToOwnerIdBytes,
@@ -235,21 +235,21 @@ import {
   ownerWriteKeyLength,
 } from "./Owner.js";
 import {
-  BaseRange,
-  CrdtMessage,
+  type BaseRange,
+  type CrdtMessage,
   DbChange,
-  EncryptedCrdtMessage,
-  EncryptedDbChange,
-  Fingerprint,
-  FingerprintRange,
+  type EncryptedCrdtMessage,
+  type EncryptedDbChange,
+  type Fingerprint,
+  type FingerprintRange,
   fingerprintSize,
   InfiniteUpperBound,
-  Range,
+  type Range,
   RangeType,
-  RangeUpperBound,
-  SkipRange,
-  StorageDep,
-  TimestampsRange,
+  type RangeUpperBound,
+  type SkipRange,
+  type StorageDep,
+  type TimestampsRange,
 } from "./Storage.js";
 import {
   Counter,

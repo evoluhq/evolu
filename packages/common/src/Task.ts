@@ -1,23 +1,20 @@
 import { isNonEmptyArray } from "./Array.js";
 import { assert } from "./Assert.js";
-import { createRandomBytes, RandomBytesDep } from "./Crypto.js";
+import { createRandomBytes } from "./Crypto.js";
+import type { RandomBytesDep } from "./Crypto.js";
 import { eqArrayStrict } from "./Eq.js";
 import { constTrue, constVoid } from "./Function.js";
 import { decrement, increment } from "./Number.js";
-import { createRandom, Random, RandomDep } from "./Random.js";
-import { Ref } from "./Ref.js";
-import { Done, err, NextResult, ok, Result, tryAsync } from "./Result.js";
-import { Schedule } from "./schedule/index.js";
+import { createRandom } from "./Random.js";
+import type { Random, RandomDep } from "./Random.js";
+import type { Ref } from "./Ref.js";
+import { err, ok, tryAsync } from "./Result.js";
+import type { Done, NextResult, Result } from "./Result.js";
+import type { Schedule } from "./schedule/index.js";
 import { addToSet, deleteFromSet, emptySet } from "./Set.js";
-import {
-  createTime,
-  Duration,
-  durationToMillis,
-  Millis,
-  Time,
-  TimeDep,
-} from "./Time.js";
-import { TracerConfigDep, TracerDep } from "./Tracer.js";
+import { createTime, durationToMillis, Millis } from "./Time.js";
+import type { Duration, Time, TimeDep } from "./Time.js";
+import type { TracerConfigDep, TracerDep } from "./Tracer.js";
 import {
   brand,
   createId,
@@ -28,7 +25,7 @@ import {
   Unknown,
   UnknownResult,
 } from "./Type.js";
-import { Awaitable, Mutable, Predicate } from "./Types.js";
+import { type Awaitable, type Mutable, type Predicate } from "./Types.js";
 
 /**
  * JavaScript-native structured concurrency.

@@ -3,16 +3,18 @@ import { assert, expect, test } from "vitest";
 import { constTrue } from "../../src/Function.js";
 import { ownerIdToOwnerIdBytes } from "../../src/local-first/Owner.js";
 import {
-  BaseSqliteStorageDep,
   createBaseSqliteStorage,
   createBaseSqliteStorageTables,
   DbChange,
-  Fingerprint,
   getTimestampByIndex,
   getTimestampInsertStrategy,
   InfiniteUpperBound,
-  StorageInsertTimestampStrategy,
   timestampBytesToFingerprint,
+} from "../../src/local-first/Storage.js";
+import type {
+  BaseSqliteStorageDep,
+  Fingerprint,
+  StorageInsertTimestampStrategy,
 } from "../../src/local-first/Storage.js";
 import {
   Counter,
@@ -24,8 +26,9 @@ import {
 import { computeBalancedBuckets } from "../../src/Number.js";
 import { createRandom } from "../../src/Random.js";
 import { getOrThrow, ok } from "../../src/Result.js";
-import { sql, SqliteDep } from "../../src/Sqlite.js";
-import { Millis } from "../../src/Time.js";
+import { sql } from "../../src/Sqlite.js";
+import type { SqliteDep } from "../../src/Sqlite.js";
+import type { Millis } from "../../src/Time.js";
 import { NonNegativeInt, PositiveInt } from "../../src/Type.js";
 import {
   testCreateId,

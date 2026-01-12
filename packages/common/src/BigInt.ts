@@ -1,4 +1,4 @@
-import { Predicate } from "./Types.js";
+import type { Predicate } from "./Types.js";
 
 /** Increments a bigint by 1. */
 export const incrementBigInt = (n: bigint): bigint => n + 1n;

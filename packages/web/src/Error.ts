@@ -1,4 +1,4 @@
-import { GlobalErrorScope, handleGlobalError } from "@evolu/common";
+import { type GlobalErrorScope, handleGlobalError } from "@evolu/common";
 
 /**
  * Creates a {@link GlobalErrorScope} for a browser window.

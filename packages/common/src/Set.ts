@@ -32,8 +32,8 @@
  * @module
  */
 
-import { Brand } from "./Brand.js";
-import { PredicateWithIndex, RefinementWithIndex } from "./Types.js";
+import type { Brand } from "./Brand.js";
+import type { PredicateWithIndex, RefinementWithIndex } from "./Types.js";
 
 /**
  * An empty readonly set.

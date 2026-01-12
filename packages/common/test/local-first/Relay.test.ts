@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vitest";
-import {
+import type {
   EncryptedCrdtMessage,
   EncryptedDbChange,
 } from "../../src/local-first/Storage.js";
@@ -7,12 +7,14 @@ import { createInitialTimestamp } from "../../src/local-first/Timestamp.js";
 import {
   constFalse,
   err,
-  NonNegativeInt,
-  OwnerIdBytes,
   sql,
-  SqliteDep,
   timestampBytesToTimestamp,
   wait,
+} from "../../src/index.js";
+import type {
+  NonNegativeInt,
+  OwnerIdBytes,
+  SqliteDep,
 } from "../../src/index.js";
 import {
   testCreateRelayStorageAndSqliteDeps,

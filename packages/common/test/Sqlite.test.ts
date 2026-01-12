@@ -3,12 +3,8 @@ import { existsSync, unlinkSync } from "fs";
 import { assert, describe, expect, test } from "vitest";
 import { constVoid } from "../src/Function.js";
 import { err, getOrThrow } from "../src/Result.js";
-import {
-  createSqlite,
-  isSqlMutation,
-  sql,
-  SqliteDriver,
-} from "../src/Sqlite.js";
+import { createSqlite, isSqlMutation, sql } from "../src/Sqlite.js";
+import type { SqliteDriver } from "../src/Sqlite.js";
 import { testCreateSqliteDriver, testSimpleName } from "./_deps.js";
 
 const createTestSqlite = async (consoleArgs?: Array<any>) => {

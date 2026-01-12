@@ -1,8 +1,8 @@
 import { assert } from "./Assert.js";
-import { Brand } from "./Brand.js";
+import type { Brand } from "./Brand.js";
 import type { yieldNow } from "./Task.js";
 import { brand, DateIso, lessThanOrEqualTo, NonNegativeInt } from "./Type.js";
-import {
+import type {
   Digit,
   Digit1To23,
   Digit1To51,

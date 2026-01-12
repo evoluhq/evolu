@@ -1,6 +1,6 @@
-import { Brand } from "./Brand.js";
-import { RandomBytesDep } from "./Crypto.js";
-import { Result } from "./Result.js";
+import type { Brand } from "./Brand.js";
+import type { RandomBytesDep } from "./Crypto.js";
+import type { Result } from "./Result.js";
 import { createId, Id } from "./Type.js";
 
 /**

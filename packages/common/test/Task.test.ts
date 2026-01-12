@@ -3,13 +3,29 @@ import { assert, describe, expect, expectTypeOf, test } from "vitest";
 import { isNonEmptyArray } from "../src/Array.js";
 import { exhaustiveCheck } from "../src/Function.js";
 import { createRef } from "../src/Ref.js";
-import { Done, err, ok, Result, tryAsync } from "../src/Result.js";
+import { err, ok, tryAsync } from "../src/Result.js";
+import type { Done, Result } from "../src/Result.js";
 import {
   AbortError,
   AsyncDisposableStack,
   createMutex,
   createRunner,
   createSemaphore,
+  race,
+  RaceLostError,
+  repeat,
+  retry,
+  runnerClosingError,
+  RunnerEvent,
+  RunnerState,
+  sleep,
+  timeout,
+  TimeoutError,
+  unabortable,
+  unabortableMask,
+  yieldNow,
+} from "../src/Task.js";
+import type {
   Fiber,
   InferFiberErr,
   InferFiberOk,
@@ -17,25 +33,13 @@ import {
   InferTaskErr,
   InferTaskOk,
   NextTask,
-  race,
-  RaceLostError,
-  repeat,
-  retry,
   Runner,
-  runnerClosingError,
   RunnerConfigDep,
-  RunnerEvent,
-  RunnerState,
-  sleep,
   Task,
-  timeout,
-  TimeoutError,
-  unabortable,
-  unabortableMask,
-  yieldNow,
 } from "../src/Task.js";
 import { createTestTime, msLongTask } from "../src/Time.js";
-import { Id, Typed } from "../src/Type.js";
+import { Id } from "../src/Type.js";
+import type { Typed } from "../src/Type.js";
 import { testCreateRunner } from "./_browser-deps.js";
 import {
   exponential,

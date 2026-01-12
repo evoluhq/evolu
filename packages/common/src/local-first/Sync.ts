@@ -1,51 +1,44 @@
-import {
-  appendToArray,
-  firstInArray,
-  isNonEmptyArray,
-  NonEmptyArray,
-  NonEmptyReadonlyArray,
-} from "../Array.js";
+import { appendToArray, firstInArray, isNonEmptyArray } from "../Array.js";
+import type { NonEmptyArray, NonEmptyReadonlyArray } from "../Array.js";
 import { assertNonEmptyReadonlyArray } from "../Assert.js";
-import { Brand } from "../Brand.js";
-import { ConsoleDep } from "../Console.js";
-import {
+import type { Brand } from "../Brand.js";
+import type { ConsoleDep } from "../Console.js";
+import type {
   DecryptWithXChaCha20Poly1305Error,
   RandomBytesDep,
 } from "../Crypto.js";
-import { createUnknownError, UnknownError } from "../Error.js";
+import { createUnknownError } from "../Error.js";
+import type { UnknownError } from "../Error.js";
 import { constFalse, constTrue } from "../Function.js";
 import { createRecord, getProperty, objectToEntries } from "../Object.js";
-import { AbortError, createMutex } from "../OldTask.js";
-import { RandomDep } from "../Random.js";
+import { createMutex } from "../OldTask.js";
+import type { AbortError } from "../OldTask.js";
+import type { RandomDep } from "../Random.js";
 import { createResources } from "../Resources.js";
-import { err, ok, Result } from "../Result.js";
+import { err, ok } from "../Result.js";
+import type { Result } from "../Result.js";
 import {
   booleanToSqliteBoolean,
   sql,
-  SqliteBoolean,
   sqliteBooleanToBoolean,
-  SqliteDep,
-  SqliteError,
+  SqliteBoolean,
   SqliteValue,
 } from "../Sqlite.js";
-import { TimeDep } from "../Time.js";
+import type { SqliteDep, SqliteError } from "../Sqlite.js";
+import type { TimeDep } from "../Time.js";
+import { Id, IdBytes, idBytesToId, idToIdBytes, PositiveInt } from "../Type.js";
+import type { DateIso } from "../Type.js";
+import type { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
 import {
-  DateIso,
-  Id,
-  IdBytes,
-  idBytesToId,
-  idToIdBytes,
-  PositiveInt,
-} from "../Type.js";
-import { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
-import {
-  AppOwner,
-  AppOwnerDep,
-  Owner,
   OwnerId,
   OwnerIdBytes,
   ownerIdBytesToOwnerId,
   ownerIdToOwnerIdBytes,
+} from "./Owner.js";
+import type {
+  AppOwner,
+  AppOwnerDep,
+  Owner,
   OwnerTransport,
   ReadonlyOwner,
 } from "./Owner.js";
@@ -56,37 +49,44 @@ import {
   createProtocolMessageFromCrdtMessages,
   decryptAndDecodeDbChange,
   encodeAndEncryptDbChange,
+  SubscriptionFlags,
+} from "./Protocol.js";
+import type {
   ProtocolError,
   ProtocolInvalidDataError,
   ProtocolTimestampMismatchError,
-  SubscriptionFlags,
 } from "./Protocol.js";
-import { DbSchemaDep, MutationChange, systemColumns } from "./Schema.js";
+import { systemColumns } from "./Schema.js";
+import type { DbSchemaDep, MutationChange } from "./Schema.js";
 import {
-  BaseSqliteStorage,
-  CrdtMessage,
   createBaseSqliteStorage,
-  DbChange,
   getOwnerUsage,
   getTimestampInsertStrategy,
-  Storage,
-  StorageWriteError,
   updateOwnerUsage,
 } from "./Storage.js";
-import { Millis } from "../Time.js";
+import { DbChange } from "./Storage.js";
+import type {
+  BaseSqliteStorage,
+  CrdtMessage,
+  Storage,
+  StorageWriteError,
+} from "./Storage.js";
+import type { Millis } from "../Time.js";
 import {
   createInitialTimestamp,
   receiveTimestamp,
   sendTimestamp,
+  timestampBytesToTimestamp,
+  timestampToDateIso,
+  timestampToTimestampBytes,
+} from "./Timestamp.js";
+import type {
   Timestamp,
   TimestampBytes,
-  timestampBytesToTimestamp,
   TimestampConfigDep,
   TimestampCounterOverflowError,
   TimestampDriftError,
   TimestampTimeOutOfRangeError,
-  timestampToDateIso,
-  timestampToTimestampBytes,
 } from "./Timestamp.js";
 
 export interface Sync extends Disposable {

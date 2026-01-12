@@ -1,12 +1,12 @@
 import { exhaustiveCheck } from "../Function.js";
-import {
+import type {
   SharedWorker as CommonSharedWorker,
   CreateMessagePortDep,
   MessagePort,
   NativeMessagePort,
   SharedWorkerScope,
 } from "../Worker.js";
-import { EvoluError } from "./Error.js";
+import type { EvoluError } from "./Error.js";
 
 export type SharedWorker = CommonSharedWorker<SharedWorkerInput>;
 

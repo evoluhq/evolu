@@ -5,7 +5,7 @@ import {
   eqJsonValueInput,
   eqNumber,
 } from "../src/Eq.js";
-import { JsonValueInput } from "../src/Type.js";
+import type { JsonValueInput } from "../src/Type.js";
 
 test("createEqArrayLike", () => {
   const eqArrayNumber = createEqArrayLike(eqNumber);

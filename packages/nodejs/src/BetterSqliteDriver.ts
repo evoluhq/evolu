@@ -1,11 +1,11 @@
 import {
   constVoid,
   createPreparedStatementsCache,
-  CreateSqliteDriver,
-  SqliteDriver,
-  SqliteRow,
+  type CreateSqliteDriver,
+  type SqliteDriver,
+  type SqliteRow,
 } from "@evolu/common";
-import BetterSQLite, { Statement } from "better-sqlite3";
+import BetterSQLite, { type Statement } from "better-sqlite3";
 
 export const createBetterSqliteDriver: CreateSqliteDriver = (name, options) => {
   const filename = options?.memory ? ":memory:" : `${name}.db`;

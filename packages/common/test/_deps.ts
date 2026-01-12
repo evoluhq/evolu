@@ -1,8 +1,13 @@
-import { CreateWebSocket, TimingSafeEqual, WebSocket } from "@evolu/common";
-import BetterSQLite, { Statement } from "better-sqlite3";
+import type {
+  CreateWebSocket,
+  TimingSafeEqual,
+  WebSocket,
+} from "@evolu/common";
+import type { Statement } from "better-sqlite3";
+import BetterSQLite from "better-sqlite3";
 import { timingSafeEqual } from "crypto";
-import { Console } from "../src/Console.js";
-import { RandomBytesDep } from "../src/Crypto.js";
+import type { Console } from "../src/Console.js";
+import type { RandomBytesDep } from "../src/Crypto.js";
 import { constFalse, constTrue, constVoid } from "../src/Function.js";
 import {
   createAppOwner,
@@ -13,23 +18,19 @@ import {
   createRelaySqliteStorage,
   createRelayStorageTables,
 } from "../src/local-first/Relay.js";
-import {
-  createBaseSqliteStorageTables,
-  StorageConfig,
-  StorageDep,
-} from "../src/local-first/Storage.js";
+import type { StorageConfig, StorageDep } from "../src/local-first/Storage.js";
+import { createBaseSqliteStorageTables } from "../src/local-first/Storage.js";
 import { createRandom, createRandomLibWithSeed } from "../src/Random.js";
 import { getOrThrow, ok } from "../src/Result.js";
-import {
-  createPreparedStatementsCache,
-  createSqlite,
+import type {
   CreateSqliteDriver,
   Sqlite,
   SqliteDep,
   SqliteDriver,
   SqliteRow,
 } from "../src/Sqlite.js";
-import { TimeDep } from "../src/Time.js";
+import { createPreparedStatementsCache, createSqlite } from "../src/Sqlite.js";
+import type { TimeDep } from "../src/Time.js";
 import { createId, Id, SimpleName } from "../src/Type.js";
 // import { existsSync, unlinkSync } from "fs";
 

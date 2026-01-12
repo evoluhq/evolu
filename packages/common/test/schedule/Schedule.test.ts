@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { RandomNumber } from "../../src/Random.js";
-import { done, err, NextResult, ok } from "../../src/Result.js";
+import type { RandomNumber } from "../../src/Random.js";
+import { done, err, ok } from "../../src/Result.js";
+import type { NextResult } from "../../src/Result.js";
 import {
   addDelay,
   collectAllOutputs,
@@ -33,7 +34,6 @@ import {
   resetAfter,
   retryStrategyAws,
   retryStrategyAwsThrottled,
-  Schedule,
   sequence,
   spaced,
   succeed,
@@ -49,6 +49,7 @@ import {
   whileOutput,
   windowed,
 } from "../../src/schedule/index.js";
+import type { Schedule } from "../../src/schedule/index.js";
 import {
   createTestTime,
   maxMillis,

@@ -1,20 +1,15 @@
 import { describe, expect, expectTypeOf, it, test } from "vitest";
-import {
+import { done, err, getOrThrow, ok, tryAsync, trySync } from "../src/Result.js";
+import type {
   Done,
-  done,
   Err,
-  err,
   ExcludeDone,
-  getOrThrow,
   InferDone,
   InferErr,
   InferOk,
   NextResult,
-  ok,
   OnlyDone,
   Result,
-  tryAsync,
-  trySync,
 } from "../src/Result.js";
 
 describe("ok", () => {

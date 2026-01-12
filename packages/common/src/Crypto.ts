@@ -11,7 +11,8 @@ import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
 import { hmac } from "@noble/hashes/hmac.js";
 import { sha512 } from "@noble/hashes/sha2.js";
 import { randomBytes, utf8ToBytes } from "@noble/hashes/utils.js";
-import { Result, trySync } from "./Result.js";
+import type { Result } from "./Result.js";
+import { trySync } from "./Result.js";
 import { brand, length, NonNegativeInt, Uint8Array } from "./Type.js";
 
 export interface RandomBytes {

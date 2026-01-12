@@ -4,13 +4,15 @@
  * This file can be imported in tests that run in both Node and browser
  * environments. For Node-only deps (like better-sqlite3), use `_deps.ts`.
  */
-import { RandomBytes } from "../src/Crypto.js";
+import type { RandomBytes } from "../src/Crypto.js";
 import {
   createRandomLibWithSeed,
   createRandomWithSeed,
 } from "../src/Random.js";
-import { createRunner, Runner, RunnerConfigDep } from "../src/Task.js";
-import { createTestTime, createTime, TimeDep } from "../src/Time.js";
+import { createRunner } from "../src/Task.js";
+import type { Runner, RunnerConfigDep } from "../src/Task.js";
+import { createTestTime, createTime } from "../src/Time.js";
+import type { TimeDep } from "../src/Time.js";
 
 export const testRandomLib = createRandomLibWithSeed("evolu").random;
 

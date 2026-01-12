@@ -6,12 +6,12 @@ import type {
   StorageMetadata,
 } from "@evolu/common";
 import {
-  CreateSqliteDriverDep,
-  LocalAuth,
+  type CreateSqliteDriverDep,
+  type LocalAuth,
   localAuthDefaultOptions,
-  ReloadApp,
+  type ReloadApp,
 } from "@evolu/common";
-import { EvoluDeps } from "@evolu/common/local-first";
+import type { EvoluDeps } from "@evolu/common/local-first";
 import * as Expo from "expo";
 import * as SecureStore from "expo-secure-store";
 import KVStore from "expo-sqlite/kv-store";

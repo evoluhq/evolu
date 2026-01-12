@@ -1,28 +1,27 @@
-import { Brand } from "../Brand.js";
+import type { Brand } from "../Brand.js";
 import { bytesToHex, hexToBytes } from "../Buffer.js";
 import { createRandomBytes } from "../Crypto.js";
-import {
-  createRecord,
-  isPlainObject,
-  objectToEntries,
-  ReadonlyRecord,
-} from "../Object.js";
-import { ok, Result } from "../Result.js";
+import { createRecord, isPlainObject, objectToEntries } from "../Object.js";
+import type { ReadonlyRecord } from "../Object.js";
+import { ok } from "../Result.js";
+import type { Result } from "../Result.js";
 import {
   eqSqliteValue,
   explainSqliteQueryPlan,
+  SqliteValue,
+} from "../Sqlite.js";
+import type {
   SafeSql,
   SqliteDep,
   SqliteError,
   SqliteQuery,
   SqliteQueryOptions,
   SqliteRow,
-  SqliteValue,
 } from "../Sqlite.js";
-import { Listener, Unsubscribe } from "../Listeners.js";
-import { Store } from "../Store.js";
+import type { Listener, Unsubscribe } from "../Listeners.js";
+import type { Store } from "../Store.js";
 import { createId, Id, String } from "../Type.js";
-import { Simplify } from "../Types.js";
+import type { Simplify } from "../Types.js";
 
 /**
  * A type-safe SQL query.

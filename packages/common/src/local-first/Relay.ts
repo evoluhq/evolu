@@ -4,32 +4,37 @@ import {
   isNonEmptyArray,
   mapArray,
 } from "../Array.js";
-import { ConsoleConfig, ConsoleDep } from "../Console.js";
-import { TimingSafeEqualDep } from "../Crypto.js";
-import { Lazy } from "../Function.js";
+import type { ConsoleConfig, ConsoleDep } from "../Console.js";
+import type { TimingSafeEqualDep } from "../Crypto.js";
+import type { Lazy } from "../Function.js";
 import { createInstances } from "../Instances.js";
-import { err, ok, Result } from "../Result.js";
-import { sql, SqliteDep, SqliteError } from "../Sqlite.js";
-import { createMutex, isAsync, MaybeAsync, Mutex } from "../OldTask.js";
-import { PositiveInt, SimpleName } from "../Type.js";
+import { err, ok } from "../Result.js";
+import type { Result } from "../Result.js";
+import { sql } from "../Sqlite.js";
+import type { SqliteDep, SqliteError } from "../Sqlite.js";
+import { createMutex, isAsync } from "../OldTask.js";
+import type { MaybeAsync, Mutex } from "../OldTask.js";
+import { SimpleName, PositiveInt } from "../Type.js";
 import {
   OwnerId,
   ownerIdBytesToOwnerId,
   // OwnerTransport,
   OwnerWriteKey,
 } from "./Owner.js";
-import { ProtocolInvalidDataError } from "./Protocol.js";
+import type { ProtocolInvalidDataError } from "./Protocol.js";
 import {
   createBaseSqliteStorage,
-  CreateBaseSqliteStorageConfig,
-  EncryptedDbChange,
   getOwnerUsage,
   getTimestampInsertStrategy,
+  updateOwnerUsage,
+} from "./Storage.js";
+import type {
+  CreateBaseSqliteStorageConfig,
+  EncryptedDbChange,
   SqliteStorageDeps,
   Storage,
   StorageConfig,
   StorageQuotaError,
-  updateOwnerUsage,
 } from "./Storage.js";
 import { timestampToTimestampBytes } from "./Timestamp.js";
 
