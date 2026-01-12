@@ -3,6 +3,8 @@ import {
   clamp,
   computeBalancedBuckets,
   decrement,
+  fibonacciAt,
+  FibonacciIndex,
   increment,
   isBetween,
   max,
@@ -108,4 +110,34 @@ test("max", () => {
   const result3 = max(e, f);
   expect(result3).toBe(4);
   expectTypeOf<typeof result3>().toEqualTypeOf<NonNegativeInt>();
+});
+
+test("FibonacciIndex", () => {
+  expect(FibonacciIndex.from(1).ok).toBe(true);
+  expect(FibonacciIndex.from(78).ok).toBe(true);
+  expect(FibonacciIndex.from(79).ok).toBe(false);
+  expect(FibonacciIndex.from(0).ok).toBe(false);
+  expect(FibonacciIndex.from(-1).ok).toBe(false);
+});
+
+test("fibonacciAt", () => {
+  const at = (n: number) => fibonacciAt(FibonacciIndex.orThrow(n));
+
+  // First 10 Fibonacci numbers (1-indexed)
+  expect(at(1)).toBe(1);
+  expect(at(2)).toBe(1);
+  expect(at(3)).toBe(2);
+  expect(at(4)).toBe(3);
+  expect(at(5)).toBe(5);
+  expect(at(6)).toBe(8);
+  expect(at(7)).toBe(13);
+  expect(at(8)).toBe(21);
+  expect(at(9)).toBe(34);
+  expect(at(10)).toBe(55);
+
+  // F(78) is the largest Fibonacci within MAX_SAFE_INTEGER
+  expect(at(78)).toBeLessThan(Number.MAX_SAFE_INTEGER);
+
+  // Return type is PositiveInt
+  expectTypeOf(at(1)).toEqualTypeOf<PositiveInt>();
 });

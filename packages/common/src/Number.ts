@@ -1,9 +1,14 @@
 import { NonEmptyReadonlyArray } from "./Array.js";
 import { assertNonEmptyReadonlyArray } from "./Assert.js";
-import { err, ok, Result } from "./Result.js";
-import { NonNegativeInt, PositiveInt } from "./Type.js";
-import { IntentionalNever, Predicate, WidenLiteral } from "./Types.js";
 import { IsBranded } from "./Brand.js";
+import { err, ok, Result } from "./Result.js";
+import {
+  brand,
+  lessThanOrEqualTo,
+  NonNegativeInt,
+  PositiveInt,
+} from "./Type.js";
+import { IntentionalNever, Predicate, WidenLiteral } from "./Types.js";
 
 export const increment = (n: number): number => n + 1;
 
@@ -18,7 +23,7 @@ export const clamp =
 /**
  * Creates a predicate that checks if a number is within a range, inclusive.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * const isBetween10And20 = isBetween(10, 20);
@@ -48,7 +53,7 @@ export const max = <T extends number>(
  * least the minimum number of items. Returns a success result if the minimum is
  * met, or an error result with the required number of items if not.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * computeBalancedBuckets(10, 3, 2); // Returns ok([4, 7, 10])
@@ -83,4 +88,24 @@ export const computeBalancedBuckets = (
 
   assertNonEmptyReadonlyArray(indexes);
   return ok(indexes);
+};
+
+/**
+ * Valid index for {@link fibonacciAt}, constrained to 1-78.
+ *
+ * Limited to 78 because F(79) exceeds JavaScript's `MAX_SAFE_INTEGER`.
+ */
+export const FibonacciIndex = brand(
+  "FibonacciIndex",
+  lessThanOrEqualTo(78)(PositiveInt),
+);
+export type FibonacciIndex = typeof FibonacciIndex.Type;
+
+/** Returns the Fibonacci number at the given index (1-indexed: 1,1,2,3,5,8,...). */
+export const fibonacciAt = (index: FibonacciIndex): PositiveInt => {
+  if (index <= 2) return PositiveInt.orThrow(1);
+  let a = 1;
+  let b = 1;
+  for (let i = 3; i <= index; i++) [a, b] = [b, a + b];
+  return PositiveInt.orThrow(b);
 };
