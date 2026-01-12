@@ -56,6 +56,37 @@ const fixMdxFile = (filePath: string, title: string): void => {
     },
   );
 
+  // Remove redundant sections (heading + content until next heading of same or higher level)
+  const lines = newContent.split("\n");
+  const result: Array<string> = [];
+  let skipUntilLevel = 0; // 0 = not skipping, otherwise skip until heading with <= this many #
+
+  for (const line of lines) {
+    const headingMatch = /^(#{2,4}) /.exec(line);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      if (
+        line.startsWith("## Type Parameter") ||
+        line.startsWith("## Parameter") ||
+        line.startsWith("## Return") ||
+        line.startsWith("### Type Parameter") ||
+        line.startsWith("### Parameter") ||
+        line.startsWith("### Return") ||
+        line.startsWith("#### Type Parameter") ||
+        line.startsWith("#### Parameter") ||
+        line.startsWith("#### Return")
+      ) {
+        skipUntilLevel = level;
+        continue;
+      }
+      if (skipUntilLevel > 0 && level <= skipUntilLevel) {
+        skipUntilLevel = 0;
+      }
+    }
+    if (skipUntilLevel === 0) result.push(line);
+  }
+  newContent = result.join("\n");
+
   newContent = newContent
     .replace(/^export const metadata = \{ title: [^}]*\};\s*\r?\n\s*/, "")
     .replace(/^export const sections = .*;\s*\r?\n\s*/m, "");

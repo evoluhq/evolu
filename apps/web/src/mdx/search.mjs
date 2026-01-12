@@ -9,6 +9,7 @@ import { createLoader } from "simple-functional-loader";
 import { filter } from "unist-util-filter";
 import { SKIP, visit } from "unist-util-visit";
 import * as url from "url";
+import { addSyntheticH1 } from "./searchUtils.js";
 
 const __filename = url.fileURLToPath(import.meta.url);
 const searchIndexPath = path.resolve(
@@ -80,6 +81,9 @@ export default function Search(nextConfig = {}) {
               } else {
                 let vfile = { value: mdx, sections };
                 processor.runSync(processor.parse(vfile), vfile);
+
+                addSyntheticH1(sections, mdx);
+
                 cache.set(file, [mdx, sections]);
               }
 
