@@ -7,13 +7,14 @@
     "build:web": "pnpm build:docs && turbo --filter web build",
     "build:docs": "typedoc && pnpm --filter=web run fix:docs",
     "test": "turbo run test",
+    "test:coverage": "turbo run test:coverage",
     "test:watch": "turbo run test:watch",
     "start": "turbo start",
     "//lint": "No --cache: typescript-eslint doesn't recommend it due to cross-file dependencies",
     "lint": "eslint",
     "biome": "biome check",
     "lint-monorepo": "pnpm dlx sherif@latest",
-    "verify": "pnpm build && pnpm test && pnpm lint && pnpm biome && pnpm lint-monorepo && pnpm build:docs",
+    "verify": "pnpm build && pnpm test && pnpm test:coverage && pnpm lint && pnpm biome && pnpm lint-monorepo && pnpm build:docs",
     "clean": "turbo clean && rimraf node_modules pnpm-lock.yaml .turbo .eslintcache out",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,md,mdx}\"",
     "version": "changeset version",
@@ -29,13 +30,13 @@
     "examples:vue-vite-pwa:dev": "turbo --filter @example/vue-vite-pwa dev"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.3.10",
+    "@biomejs/biome": "2.3.11",
     "@changesets/cli": "^2.29.8",
     "@eslint/js": "^9.39.1",
     "@types/inquirer": "^9.0.9",
     "@typescript-eslint/parser": "^8.49.0",
     "eslint": "^9.39.1",
-    "eslint-plugin-jsdoc": "^61.5.0",
+    "eslint-plugin-jsdoc": "^62.0.0",
     "eslint-plugin-react-hooks": "^7.0.1",
     "prettier": "^3.7.4",
     "prettier-plugin-embed": "^0.5.0",
@@ -53,7 +54,7 @@
   "engines": {
     "node": ">=24.0.0"
   },
-  "packageManager": "pnpm@10.26.1",
+  "packageManager": "pnpm@10.28.0",
   "pnpm": {
     "onlyBuiltDependencies": [
       "@parcel/watcher",

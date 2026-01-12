@@ -16,3 +16,4 @@ storybook-static
 .eslintcache
 out
 test-identicons
+coverage
