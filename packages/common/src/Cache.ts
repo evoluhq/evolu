@@ -31,7 +31,7 @@ export interface Cache<K, V> {
  * When the cache reaches capacity, the least recently used entry is evicted.
  * Both `get` and `set` operations update the access order.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * const cache = createLruCache<string, number>(2);

@@ -85,7 +85,7 @@
 //    *
 //    * The default value is: `Evolu`.
 //    *
-//    * ## Example
+//    * ### Example
 //    *
 //    * ```ts
 //    * // name: SimpleName.orThrow("MyApp")
@@ -121,7 +121,7 @@
 //    *
 //    * `{ type: "WebSocket", url: "wss://free.evoluhq.com" }`.
 //    *
-//    * ## Example
+//    * ### Example
 //    *
 //    * ```ts
 //    * // Single WebSocket relay
@@ -159,7 +159,7 @@
 //    * For device-specific settings and account management state, we can use a
 //    * separate local-only Evolu instance via `transports: []`.
 //    *
-//    * ## Example
+//    * ### Example
 //    *
 //    * ```ts
 //    * const ConfigId = id("Config");

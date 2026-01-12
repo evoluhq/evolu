@@ -338,7 +338,7 @@ export interface OwnerWebSocketTransport {
  * (e.g., `wss://relay.evolu.dev`, not `wss://relay.evolu.dev?foo=bar`). The
  * function appends the `ownerId` as a query parameter.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * // Create transport "wss://relay.evolu.dev?ownerId=..."
@@ -368,7 +368,7 @@ export const createOwnerWebSocketTransport = (config: {
  * Parses the query string `?ownerId=...` and validates that the extracted value
  * is a valid {@link OwnerId}.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * parseOwnerIdFromOwnerWebSocketTransportUrl(

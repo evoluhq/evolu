@@ -29,7 +29,7 @@ export const eqFromOrder =
  * Creates an equivalence function for array-like structures based on an
  * equivalence for their elements.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * const eqArrayNumber = createEqArrayLike(eqNumber);
@@ -52,9 +52,25 @@ export const createEqArrayLike =
   };
 
 /**
+ * Compares two array-like structures by strict reference equality (`===`).
+ *
+ * Useful for structural sharing checks where elements are compared by identity.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const a = { x: 1 };
+ * const b = { x: 1 };
+ * eqArrayStrict([a, a], [a, a]); // true (same references)
+ * eqArrayStrict([a], [b]); // false (different references, even if equal values)
+ * ```
+ */
+export const eqArrayStrict = createEqArrayLike(eqStrict);
+
+/**
  * Compares two array-like structures of numbers for equality.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * eqArrayNumber([1, 2, 3], [1, 2, 3]); // true (works with regular arrays)
@@ -68,7 +84,7 @@ export const eqArrayNumber = createEqArrayLike(eqNumber);
  * Creates an equivalence function for objects based on an equivalence for their
  * fields.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * const eqObjectNumber = createEqObject({ a: eqNumber });
@@ -100,7 +116,7 @@ export const createEqObject =
  *   serialization overhead and leveraging short-circuit evaluation for faster
  *   failure on mismatched structures.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * const obj1: Json = { name: "Alice", hobbies: ["reading", "hiking"] };
@@ -190,7 +206,7 @@ export const eqJsonValue = (a: JsonValue, b: JsonValue): boolean => {
  *   serialization overhead and leveraging short-circuit evaluation for faster
  *   failure on mismatched structures.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * const obj1: Json = { name: "Alice", hobbies: ["reading", "hiking"] };

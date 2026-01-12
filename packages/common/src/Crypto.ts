@@ -33,7 +33,7 @@ export interface RandomBytes {
    * - `Random64` for 64-byte values (512 bits)
    * - `Random` for any other size
    *
-   * ## Example
+   * ### Example
    *
    * ```ts
    * const nonce = randomBytes.create(16); // Type: Random16
@@ -137,7 +137,7 @@ export type XChaCha20Poly1305Ciphertext =
  * Generates a random nonce internally and returns both the ciphertext and
  * nonce. The nonce must be stored alongside the ciphertext for decryption.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * const deps = { randomBytes: createRandomBytes() };
@@ -174,7 +174,7 @@ export interface DecryptWithXChaCha20Poly1305Error {
  * {@link Result} that may contain a decryption error if the ciphertext was
  * tampered with or the wrong key/nonce was used.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * const result = decryptWithXChaCha20Poly1305(

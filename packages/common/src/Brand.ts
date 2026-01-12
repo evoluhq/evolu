@@ -6,7 +6,7 @@
  *
  * Supports multiple brands, allowing types to act like flags.
  *
- * ## Example 1: Single Brand
+ * ### Example 1: Single Brand
  *
  * ```ts
  * // A branded type definition
@@ -25,12 +25,12 @@
  *   // Implementation
  * };
  *
- * getUser(userId); // ✅ Valid
- * getUser(123); // ❌ TypeScript error
- * getUser("123"); // ❌ TypeScript error
+ * getUser(userId); // Valid
+ * getUser(123); // TypeScript error
+ * getUser("123"); // TypeScript error
  * ```
  *
- * ## Example 2: Multiple Brands
+ * ### Example 2: Multiple Brands
  *
  * ```ts
  * // Define branded types
@@ -50,13 +50,13 @@
  * const min1Max100Value: Min1Max100 = "typescript" as Min1Max100;
  *
  * // Valid cases
- * requiresMin1(min1Value); // ✅ Valid
- * requiresMax100(max100Value); // ✅ Valid
- * requiresMin1(min1Max100Value); // ✅ Valid: Min1Max100 satisfies Min1
- * requiresMax100(min1Max100Value); // ✅ Valid: Min1Max100 satisfies Max100
+ * requiresMin1(min1Value); // Valid
+ * requiresMax100(max100Value); // Valid
+ * requiresMin1(min1Max100Value); // Valid: Min1Max100 satisfies Min1
+ * requiresMax100(min1Max100Value); // Valid: Min1Max100 satisfies Max100
  * ```
  *
- * ## Example 3: Standalone Brand
+ * ### Example 3: Standalone Brand
  *
  * Brand can be used alone without a base type for purely nominal typing. This
  * is useful for opaque values where the internal structure is hidden and type
@@ -72,8 +72,8 @@
  * const requiresNativePort = (port: NativePort): void => {};
  *
  * const port: NativePort = nativeValue as NativePort;
- * requiresNativePort(port); // ✅ Valid
- * requiresNativePort(nativeValue); // ❌ TypeScript error
+ * requiresNativePort(port); // Valid
+ * requiresNativePort(nativeValue); // TypeScript error
  * ```
  */
 export interface Brand<B extends string> {
@@ -87,7 +87,7 @@ declare const __brand: unique symbol;
  *
  * Works with any base type intersected with a `Brand`.
  *
- * ## Example
+ * ### Example
  *
  * - `IsBranded<string>` -> false
  * - `IsBranded<string & Brand<"X">>` -> true

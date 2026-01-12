@@ -9,7 +9,7 @@
  * **Convention**: Use a tag (e.g., `[db]`) as the first argument for log
  * filtering.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * deps.console.log("[evolu]", "createEvoluInstance", { name });

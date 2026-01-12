@@ -135,7 +135,7 @@ export interface WebSocketConnectionCloseError {
  *   - A Blob (default: "blob")
  *   - An ArrayBuffer ("arraybuffer")
  *
- * ## Example
+ * ### Example
  *
  * TODO:
  */

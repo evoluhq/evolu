@@ -21,7 +21,7 @@ export type { NotNull } from "kysely";
 /**
  * A SQLite helper for aggregating a subquery into a JSON array.
  *
- * ## Examples
+ * ### Example
  *
  * ```ts
  * import { kysely } from "@evolu/common";
@@ -80,7 +80,7 @@ export function jsonArrayFrom<O>(
  *
  * The subquery must only return one row.
  *
- * ## Examples
+ * ### Example
  *
  * ```ts
  * import { kysely } from "@evolu/common";
@@ -135,7 +135,7 @@ export function jsonObjectFrom<O>(
 /**
  * The SQLite `json_object` function.
  *
- * ## Examples
+ * ### Example
  *
  * ```ts
  * import { kysely } from "@evolu/common";

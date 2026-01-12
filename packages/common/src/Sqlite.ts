@@ -320,7 +320,7 @@ export type SqlTemplateParam = SqliteValue | SqlIdentifier | RawSql;
  * Parameters are automatically escaped and bound as SQLite values. Use
  * `sql.identifier` for column/table names and `sql.raw` for unescaped SQL.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * const id = 42;
@@ -551,7 +551,7 @@ export const sqliteFalse = 0;
 /**
  * Converts a JavaScript boolean to a {@link SqliteBoolean}.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * const isActive = true;
@@ -564,7 +564,7 @@ export const booleanToSqliteBoolean = (value: boolean): SqliteBoolean =>
 /**
  * Converts a {@link SqliteBoolean} to a JavaScript boolean.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * const sqlValue: SqliteBoolean = 1;

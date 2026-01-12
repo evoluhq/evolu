@@ -42,7 +42,7 @@ export class BufferError extends Error {
  * avoids allocation overhead in success cases and leverages exceptions'
  * diagnostic benefits.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * const buffer = createBuffer();

@@ -12,7 +12,7 @@ import type { Type } from "./Type.js";
  * TypeScript, or for catching and signaling developer mistakes eagerly (e.g.,
  * invalid configuration).
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * assert(true, "true is not true"); // no-op
@@ -42,7 +42,7 @@ export const assert: (
  * the array as non-empty when this is logically guaranteed but not statically
  * known.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * assertNonEmptyArray([1, 2, 3]); // no-op
@@ -66,7 +66,7 @@ export const assertNonEmptyArray: <T>(
  * TypeScript infer non-emptiness when this is logically guaranteed but not
  * statically known.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * assertNonEmptyReadonlyArray([1, 2, 3]); // no-op
