@@ -23,6 +23,10 @@ if (isNonEmptyArray(mutableArr)) { ... }
 - `shiftArray` → `shiftFromArray`
 - `popArray` → `popFromArray`
 
+### New Constants
+
+- **`emptyArray`** — use as a default or initial value to avoid allocating new empty arrays
+
 ### New Functions
 
 - **`flatMapArray`** — maps each element to an array and flattens the result, preserving non-empty type when applicable
