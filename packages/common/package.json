@@ -28,12 +28,19 @@
     "./local-first": {
       "types": "./dist/src/local-first/index.d.ts",
       "import": "./dist/src/local-first/index.js"
+    },
+    "./schedule": {
+      "types": "./dist/src/schedule/index.d.ts",
+      "import": "./dist/src/schedule/index.js"
     }
   },
   "typesVersions": {
     "*": {
       "local-first": [
         "./dist/src/local-first/index.d.ts"
+      ],
+      "schedule": [
+        "./dist/src/schedule/index.d.ts"
       ]
     }
   },
@@ -47,7 +54,8 @@
     "build": "rimraf dist && tsc",
     "test": "vitest run --disableConsoleIntercept",
     "test:watch": "vitest --disableConsoleIntercept",
-    "clean": "rimraf .turbo node_modules dist",
+    "test:coverage": "vitest run --coverage --disableConsoleIntercept",
+    "clean": "rimraf .turbo node_modules dist converage",
     "format": "prettier --write \"src/*.{ts,tsx,md}\"",
     "bench": "vitest bench"
   },
@@ -66,6 +74,7 @@
     "@types/ws": "^8.18.1",
     "@vitest/browser": "^4.0.16",
     "@vitest/browser-playwright": "^4.0.16",
+    "@vitest/coverage-v8": "^4.0.16",
     "better-sqlite3": "^12.5.0",
     "fast-check": "^4.4.0",
     "playwright": "^1.57.0",
