@@ -11,7 +11,7 @@ import * as Kysely from "kysely";
  *
  * A predicate starts with an 'is' prefix, e.g., `isEven`.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * const isEven: Predicate<number> = (n) => n % 2 === 0;
@@ -27,7 +27,7 @@ export type Predicate<T> = (value: T) => boolean;
  *
  * Useful for callbacks that need both the element and its position.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * const isEvenIndex: PredicateWithIndex<string> = (value, index) =>
@@ -42,7 +42,7 @@ export type PredicateWithIndex<T> = (value: T, index: number) => boolean;
 /**
  * A type guard function that refines type `A` to a narrower type `B`.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * type Animal = { name: string };
@@ -66,7 +66,7 @@ export type Refinement<in A, out B extends A> = (a: A) => a is B;
  * Useful for callbacks that need both the element and its position while
  * maintaining type narrowing.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * type Item = { type: "number" | "string"; value: unknown };
@@ -90,7 +90,7 @@ export type RefinementWithIndex<in A, out B extends A> = (
  * For each property in `T`, if `null` is a valid value for that property, the
  * property will be made optional in the resulting type.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * type Example = {
@@ -148,12 +148,22 @@ export type WidenLiteral<T extends Literal> = T extends string
         : T;
 
 /**
+ * Removes `readonly` modifier from all properties of a type.
+ *
+ * Useful for constructing immutable objects step-by-step (e.g. builder pattern)
+ * before casting them back to the readonly type.
+ */
+export type Mutable<T> = {
+  -readonly [P in keyof T]: T[P];
+};
+
+/**
  * Simplify an intersection type into a single mapped type.
  *
  * This utility forces TypeScript to "flatten" an intersection type into a
  * single object type so that tooltips and error messages are easier to read.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * type A = { a: string } & { b: number };
@@ -173,3 +183,81 @@ export type Simplify<T> = Kysely.Simplify<T>;
  */
 export type PartialProp<T, K extends keyof T> = Omit<T, K> &
   Partial<Pick<T, K>>;
+
+/**
+ * A value that can be awaited.
+ *
+ * Use when a function may complete synchronously or asynchronously depending on
+ * runtime conditions (e.g., cache hit vs network fetch).
+ *
+ * ### Example
+ *
+ * ```ts
+ * const getData = (id: string): Awaitable<Data> => {
+ *   const cached = cache.get(id);
+ *   if (cached) return cached; // Sync path
+ *   return fetchData(id); // Async path
+ * };
+ *
+ * // Always works
+ * const data = await getData(id);
+ *
+ * // Or optimize for sync path
+ * const result = getData(id);
+ * const data = isPromiseLike(result) ? await result : result;
+ * ```
+ */
+export type Awaitable<T> = T | PromiseLike<T>;
+
+/**
+ * Type guard to check if a value is a {@link PromiseLike}.
+ *
+ * Use with {@link Awaitable} to conditionally `await` only when necessary,
+ * avoiding microtask overhead for synchronous values.
+ */
+export const isPromiseLike = <T>(
+  value: Awaitable<T>,
+): value is PromiseLike<T> =>
+  typeof (value as PromiseLike<T> | null | undefined)?.then === "function";
+
+/** Single digit 0-9. Useful for template literal type validation. */
+export type Digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
+
+/** Digit 1-9. Useful for template literal type validation. */
+export type Digit1To9 = Exclude<Digit, "0">;
+
+/** Numeric string 1-6. Useful for days validation. */
+export type Digit1To6 = "1" | "2" | "3" | "4" | "5" | "6";
+
+/** Numeric string 1-23. Useful for hours validation. */
+export type Digit1To23 =
+  | Digit1To9 // 1-9
+  | `1${Digit}` // 10-19
+  | `2${"0" | "1" | "2" | "3"}`; // 20-23
+
+/** Numeric string 1-51. Useful for weeks validation. */
+export type Digit1To51 =
+  | Digit1To9 // 1-9
+  | `${"1" | "2" | "3" | "4"}${Digit}` // 10-49
+  | `5${"0" | "1"}`; // 50-51
+
+/** Numeric string 1-99. Useful for years validation. */
+export type Digit1To99 =
+  | Digit1To9 // 1-9
+  | `${Digit1To9}${Digit}`; // 10-99
+
+/** Numeric string 1-59. Useful for minutes, seconds validation. */
+export type Digit1To59 =
+  | Digit1To9 // 1-9
+  | `1${Digit}` // 10-19
+  | `2${Digit}` // 20-29
+  | `3${Digit}` // 30-39
+  | `4${Digit}` // 40-49
+  | `5${Digit}`; // 50-59
+
+/** Converts a union to an intersection. */
+export type UnionToIntersection<U> = (
+  U extends unknown ? (k: U) => void : never
+) extends (k: infer I) => void
+  ? I
+  : never;
