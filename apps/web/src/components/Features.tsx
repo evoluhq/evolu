@@ -10,14 +10,22 @@ import {
 import { GridPattern } from "@/components/GridPattern";
 import {
   IconBolt,
+  IconBrandJavascript,
   IconBrandOpenSource,
   IconBrandTypescript,
-  IconClick,
+  IconCode,
+  IconDevices,
+  IconFilter,
   IconLayersIntersect2,
   IconLibrary,
+  IconLivePhoto,
+  IconPackage,
+  IconProps,
+  IconShieldCheck,
   IconShieldLock,
   IconSql,
-  IconProps,
+  IconSubtask,
+  IconTrash,
 } from "@tabler/icons-react";
 
 interface Feature {
@@ -31,106 +39,229 @@ interface Feature {
   >;
 }
 
-const features: Array<Feature> = [
+const patterns: Array<Feature["pattern"]> = [
   {
-    id: "#library",
-    name: "Library",
-    description: "TypeScript library for life, code, and everything.",
-    icon: IconLibrary,
-    pattern: {
-      y: -17,
-      x: -10,
-      squares: [],
-    },
+    y: 16,
+    x: 4,
+    squares: [
+      [0, 1],
+      [1, 3],
+    ],
   },
   {
-    id: "#encrypted",
-    name: "Encrypted",
-    description: "End-to-end encrypted sync and backup.",
-    icon: IconShieldLock,
-    pattern: {
-      y: -17,
-      x: -10,
-      squares: [],
-    },
+    y: -6,
+    x: -1,
+    squares: [
+      [-1, 2],
+      [1, 3],
+    ],
+  },
+  {
+    y: 32,
+    x: 10,
+    squares: [
+      [0, 2],
+      [1, 4],
+    ],
+  },
+  {
+    y: 22,
+    x: -14,
+    squares: [
+      [1, 1],
+      [0, 4],
+    ],
+  },
+  { y: -2, x: 8, squares: [[0, 1]] },
+  {
+    y: 14,
+    x: -6,
+    squares: [
+      [1, 2],
+      [0, 3],
+    ],
+  },
+  {
+    y: -10,
+    x: 16,
+    squares: [
+      [-1, 1],
+      [1, 2],
+    ],
+  },
+  {
+    y: 28,
+    x: -2,
+    squares: [
+      [0, 3],
+      [1, 1],
+    ],
+  },
+  {
+    y: 6,
+    x: 12,
+    squares: [
+      [1, 4],
+      [-1, 2],
+    ],
+  },
+  { y: -14, x: -8, squares: [[0, 2]] },
+  {
+    y: 20,
+    x: 6,
+    squares: [
+      [1, 1],
+      [0, 3],
+    ],
+  },
+  {
+    y: 4,
+    x: -12,
+    squares: [
+      [-1, 3],
+      [1, 2],
+    ],
+  },
+  {
+    y: -8,
+    x: 14,
+    squares: [
+      [0, 4],
+      [1, 1],
+    ],
+  },
+  { y: 18, x: -4, squares: [[1, 3]] },
+  {
+    y: 10,
+    x: 8,
+    squares: [
+      [-1, 1],
+      [0, 2],
+    ],
+  },
+  {
+    y: -4,
+    x: -6,
+    squares: [
+      [1, 2],
+      [0, 4],
+    ],
+  },
+];
+
+const features: Array<Feature> = [
+  {
+    id: "#standard-library",
+    name: "Standard library",
+    description: "A tree-shakable TypeScript library that fits in your head.",
+    icon: IconLibrary,
+    pattern: patterns[0],
+  },
+  {
+    id: "#safe-async",
+    name: "Safe async",
+    description: "Structured concurrency built on JavaScript Promises.",
+    icon: IconSubtask,
+    pattern: patterns[1],
+  },
+  {
+    id: "#automatic-cleanup",
+    name: "Automatic cleanup",
+    description: "Resource Management with the new JS using keyword.",
+    icon: IconTrash,
+    pattern: patterns[2],
+  },
+  {
+    id: "#idiomatic-javascript",
+    name: "Idiomatic JavaScript",
+    description: "No runtime overhead, native stack traces, debug-friendly.",
+    icon: IconBrandJavascript,
+    pattern: patterns[3],
+  },
+  {
+    id: "#batteries-included",
+    name: "Batteries included",
+    description: "Array, Set, and other helpers. Eq, Order, Time, and more.",
+    icon: IconPackage,
+    pattern: patterns[6],
+  },
+  {
+    id: "#typed-errors",
+    name: "Typed errors",
+    description: "No try/catch needed, exhaustive error handling.",
+    icon: IconShieldCheck,
+    pattern: patterns[7],
+  },
+  {
+    id: "#universal",
+    name: "Universal",
+    description: "Web, React Native, Electron, Solid, Vue, Svelte, and more.",
+    icon: IconDevices,
+    pattern: patterns[5],
+  },
+  {
+    id: "#developer-experience",
+    name: "Developer Experience",
+    description: "Readable source code, tests, DX-first API.",
+    icon: IconCode,
+    pattern: patterns[4],
+  },
+  {
+    id: "#runtime-validation",
+    name: "Runtime validation",
+    description: "Typed errors and formatters. All refinements branded.",
+    icon: IconFilter,
+    pattern: patterns[8],
   },
   {
     id: "#sqlite",
     name: "SQLite",
-    description: "All browsers supported, also Electron & React Native.",
+    description: "Local-first storage with SQLite on all platforms.",
     icon: IconSql,
-    pattern: {
-      y: -17,
-      x: -10,
-      squares: [],
-    },
+    pattern: patterns[9],
+  },
+  {
+    id: "#private-by-design",
+    name: "Private by design",
+    description: "E2E encrypted sync and backup. Post-quantum safe.",
+    icon: IconShieldLock,
+    pattern: patterns[10],
+  },
+  {
+    id: "#reactive",
+    name: "Reactive",
+    description: "Reactive queries with React Suspense support.",
+    icon: IconBolt,
+    pattern: patterns[11],
+  },
+  {
+    id: "#realtime",
+    name: "Real-time",
+    description: "WebSocket by default, other transports possible.",
+    icon: IconLivePhoto,
+    pattern: patterns[12],
+  },
+  {
+    id: "#type-safe-sql",
+    name: "Type-safe SQL",
+    description: "Typed database schema and SQL with Kysely.",
+    icon: IconBrandTypescript,
+    pattern: patterns[13],
   },
   {
     id: "#crdt",
     name: "CRDT",
-    description: "Merging changes without conflicts.",
+    description: "Merging changes without conflicts. History preserved.",
     icon: IconLayersIntersect2,
-    pattern: {
-      y: -17,
-      x: -10,
-      squares: [],
-    },
+    pattern: patterns[14],
   },
   {
     id: "#free",
     name: "Free",
     description: "MIT License, self-hostable Relay server.",
     icon: IconBrandOpenSource,
-    pattern: {
-      y: -17,
-      x: -10,
-      squares: [],
-    },
+    pattern: patterns[15],
   },
-  {
-    id: "#type-safe",
-    name: "Type-safe",
-    description: "Typed database schema and SQL with Kysely.",
-    icon: IconBrandTypescript,
-    pattern: {
-      y: -17,
-      x: -10,
-      squares: [],
-    },
-  },
-  {
-    id: "#reactive",
-    name: "Reactive",
-    description: "Reactive queries with full React Suspense support.",
-    icon: IconBolt,
-    pattern: {
-      y: -17,
-      x: -10,
-      squares: [],
-    },
-  },
-  {
-    id: "#realtime",
-    name: "Real-time",
-    description: "WebSocket by default, other transports possible.",
-    icon: IconClick,
-    pattern: {
-      y: -17,
-      x: -10,
-      squares: [],
-    },
-  },
-  // {
-  //   id: "#frameworks",
-  //   name: "Frameworks",
-  //   description: "Full React support. Solid/Vue/Svelte soon.",
-  //   icon: IconCategory2,
-  //   pattern: {
-  //     y: -17,
-  //     x: -10,
-  //     squares: [],
-  //   },
-  // },
 ];
 
 export function FeatureIcon({
@@ -207,7 +338,7 @@ function Feature({ feature }: { feature: Feature }) {
     >
       <FeaturePattern {...feature.pattern} mouseX={mouseX} mouseY={mouseY} />
       <div className="absolute inset-0 rounded-2xl ring-1 ring-zinc-900/7.5 ring-inset group-hover:ring-zinc-900/10 dark:ring-white/10 dark:group-hover:ring-white/20" />
-      <div className="relative rounded-2xl px-4 pt-4 pb-4">
+      <div className="relative rounded-2xl p-4 pt-4 pb-4">
         <div className="mb-2 flex items-center gap-3">
           <FeatureIcon icon={feature.icon} />
           <h3 className="text-sm leading-7 font-semibold text-zinc-900 dark:text-white">
