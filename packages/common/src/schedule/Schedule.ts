@@ -1,3 +1,8 @@
+/**
+ * Composable retry and backoff schedules.
+ *
+ * @module
+ */
 import { fibonacciAt, FibonacciIndex } from "../Number.js";
 import type { RandomDep } from "../Random.js";
 import { done, err, type NextResult, ok } from "../Result.js";

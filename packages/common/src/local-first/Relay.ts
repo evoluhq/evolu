@@ -1,3 +1,8 @@
+/**
+ * Relay server for data synchronization.
+ *
+ * @module
+ */
 import {
   filterArray,
   firstInArray,

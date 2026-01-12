@@ -1,3 +1,8 @@
+/**
+ * Time representations, durations, and scheduling utilities.
+ *
+ * @module
+ */
 import { assert } from "./Assert.js";
 import type { Brand } from "./Brand.js";
 import type { yieldNow } from "./Task.js";

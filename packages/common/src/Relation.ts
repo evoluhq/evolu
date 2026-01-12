@@ -1,3 +1,8 @@
+/**
+ * Bidirectional relations with O(1) lookup in both directions.
+ *
+ * @module
+ */
 import { assert } from "./Assert.js";
 
 /**

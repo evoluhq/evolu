@@ -1,3 +1,8 @@
+/**
+ * Number arithmetic, comparison, and branded numeric types.
+ *
+ * @module
+ */
 import type { NonEmptyReadonlyArray } from "./Array.js";
 import { assertNonEmptyReadonlyArray } from "./Assert.js";
 import type { IsBranded } from "./Brand.js";

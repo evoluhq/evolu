@@ -1,3 +1,8 @@
+/**
+ * Runtime assertions for invariant checking.
+ *
+ * @module
+ */
 import type { Type } from "./Type.js";
 
 /**

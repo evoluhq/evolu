@@ -1,3 +1,8 @@
+/**
+ * Evolu core implementation.
+ *
+ * @module
+ */
 import { pack } from "msgpackr";
 import { dedupeArray, isNonEmptyArray } from "../Array.js";
 import { assert, assertNonEmptyReadonlyArray } from "../Assert.js";

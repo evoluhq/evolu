@@ -1,3 +1,8 @@
+/**
+ * Equality comparison functions and utilities.
+ *
+ * @module
+ */
 import type {
   JsonArray,
   JsonObject,

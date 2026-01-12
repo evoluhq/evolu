@@ -6,6 +6,10 @@
  *
  * Supports multiple brands, allowing types to act like flags.
  *
+ * @module
+ */
+
+/**
  * ### Example 1: Single Brand
  *
  * ```ts

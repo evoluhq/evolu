@@ -1,3 +1,8 @@
+/**
+ * Owner identity and cryptographic key derivation.
+ *
+ * @module
+ */
 import * as bip39 from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 import type { NonEmptyReadonlyArray } from "../Array.js";

@@ -1,3 +1,8 @@
+/**
+ * Encrypted storage layer for local-first data.
+ *
+ * @module
+ */
 import { sha256 } from "@noble/hashes/sha2.js";
 import { firstInArray, isNonEmptyArray } from "../Array.js";
 import type { NonEmptyReadonlyArray } from "../Array.js";

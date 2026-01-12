@@ -1,3 +1,8 @@
+/**
+ * Reference-counted resource management with delayed disposal.
+ *
+ * @module
+ */
 import { err, ok } from "./Result.js";
 import type { Result } from "./Result.js";
 import { PositiveInt } from "./Type.js";

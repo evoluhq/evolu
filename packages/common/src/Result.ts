@@ -1,3 +1,8 @@
+/**
+ * Type-safe error handling with Result types.
+ *
+ * @module
+ */
 import type { UnknownError } from "./Error.js";
 import { exhaustiveCheck } from "./Function.js";
 import type { Lazy } from "./Function.js";

@@ -1,3 +1,8 @@
+/**
+ * Hybrid logical clock timestamps for CRDT ordering.
+ *
+ * @module
+ */
 import { bytesToHex } from "../Buffer.js";
 import type { RandomBytesDep } from "../Crypto.js";
 import { createEqObject, eqNumber, eqString } from "../Eq.js";

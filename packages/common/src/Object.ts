@@ -1,4 +1,10 @@
 /**
+ * Object utilities for plain object handling and manipulation.
+ *
+ * @module
+ */
+
+/**
  * Checks if a value is a plain object (e.g., created with `{}` or `Object`).
  *
  * ### Example

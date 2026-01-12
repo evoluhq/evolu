@@ -1,3 +1,8 @@
+/**
+ * Seeded random number generation.
+ *
+ * @module
+ */
 import { Random as RandomLib } from "random";
 import type { Brand } from "./Brand.js";
 

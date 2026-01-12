@@ -1,3 +1,8 @@
+/**
+ * Mutable reference container for state management.
+ *
+ * @module
+ */
 import type { Eq } from "./Eq.js";
 import type { Store } from "./Store.js";
 

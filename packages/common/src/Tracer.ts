@@ -1,3 +1,8 @@
+/**
+ * Minimal tracer interface for observability.
+ *
+ * @module
+ */
 import type { Ref } from "./Ref.js";
 import type { Runner } from "./Task.js";
 

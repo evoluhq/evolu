@@ -1,3 +1,8 @@
+/**
+ * Error types and utilities for safe error handling.
+ *
+ * @module
+ */
 import { assert } from "./Assert.js";
 import type { tryAsync, trySync } from "./Result.js";
 

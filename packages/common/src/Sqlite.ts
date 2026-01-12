@@ -1,3 +1,8 @@
+/**
+ * SQLite database abstraction and query execution.
+ *
+ * @module
+ */
 import type { Brand } from "./Brand.js";
 import { createLruCache } from "./Cache.js";
 import type { ConsoleDep } from "./Console.js";

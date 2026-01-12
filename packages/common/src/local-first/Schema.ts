@@ -1,3 +1,8 @@
+/**
+ * Database schema definition and validation.
+ *
+ * @module
+ */
 import * as Kysely from "kysely";
 import { readonly } from "../Function.js";
 import {

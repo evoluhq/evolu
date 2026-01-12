@@ -1,3 +1,8 @@
+/**
+ * Observable state container with change notifications.
+ *
+ * @module
+ */
 import { eqStrict } from "./Eq.js";
 import type { Eq } from "./Eq.js";
 import { createListeners } from "./Listeners.js";

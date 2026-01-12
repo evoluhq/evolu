@@ -1,3 +1,8 @@
+/**
+ * Request-response correlation for callbacks across boundaries.
+ *
+ * @module
+ */
 import type { Brand } from "./Brand.js";
 import type { RandomBytesDep } from "./Crypto.js";
 import type { Result } from "./Result.js";

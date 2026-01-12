@@ -1,3 +1,8 @@
+/**
+ * WebSocket with auto-reconnect and offline support.
+ *
+ * @module
+ */
 import { constVoid } from "./Function.js";
 import { err, ok } from "./Result.js";
 import type { Result } from "./Result.js";

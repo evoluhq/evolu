@@ -1,3 +1,8 @@
+/**
+ * Local authentication and owner management.
+ *
+ * @module
+ */
 import type { RandomBytesDep } from "../Crypto.js";
 import type { Mnemonic } from "../Type.js";
 import {

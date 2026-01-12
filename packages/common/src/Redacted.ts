@@ -1,3 +1,8 @@
+/**
+ * Sensitive value protection against accidental exposure.
+ *
+ * @module
+ */
 import { assert } from "./Assert.js";
 import type { Brand } from "./Brand.js";
 import type { Eq } from "./Eq.js";

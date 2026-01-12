@@ -1,3 +1,8 @@
+/**
+ * Runtime type validation, parsing, and branded types.
+ *
+ * @module
+ */
 import { utf8ToBytes } from "@noble/ciphers/utils.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import * as bip39 from "@scure/bip39";

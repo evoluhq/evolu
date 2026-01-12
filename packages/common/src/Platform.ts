@@ -1,3 +1,9 @@
+/**
+ * Runtime platform detection utilities.
+ *
+ * @module
+ */
+
 /** Detects if the code is running in React Native environment. */
 export const isReactNative =
   typeof navigator !== "undefined" &&

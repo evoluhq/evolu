@@ -1,3 +1,8 @@
+/**
+ * Query execution and caching.
+ *
+ * @module
+ */
 import type { Brand } from "../Brand.js";
 import { bytesToHex, hexToBytes } from "../Buffer.js";
 import { createRandomBytes } from "../Crypto.js";

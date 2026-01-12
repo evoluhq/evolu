@@ -1,3 +1,8 @@
+/**
+ * Function utilities including exhaustive checks and composition.
+ *
+ * @module
+ */
 import type { NonEmptyArray, NonEmptyReadonlyArray } from "./Array.js";
 import type { ReadonlyRecord } from "./Object.js";
 

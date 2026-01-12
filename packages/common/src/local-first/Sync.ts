@@ -1,3 +1,8 @@
+/**
+ * Synchronization logic between client and relay.
+ *
+ * @module
+ */
 import { appendToArray, firstInArray, isNonEmptyArray } from "../Array.js";
 import type { NonEmptyArray, NonEmptyReadonlyArray } from "../Array.js";
 import { assertNonEmptyReadonlyArray } from "../Assert.js";

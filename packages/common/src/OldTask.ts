@@ -1,3 +1,8 @@
+/**
+ * Legacy Task implementation for backward compatibility.
+ *
+ * @module
+ */
 import { isNonEmptyArray, shiftFromArray } from "./Array.js";
 import type { Result } from "./Result.js";
 import { err, ok } from "./Result.js";

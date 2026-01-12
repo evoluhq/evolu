@@ -1,3 +1,8 @@
+/**
+ * Local-first database implementation.
+ *
+ * @module
+ */
 // import {
 //   firstInArray,
 //   isNonEmptyArray,

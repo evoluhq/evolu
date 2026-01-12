@@ -1,3 +1,8 @@
+/**
+ * SharedWorker integration for Evolu.
+ *
+ * @module
+ */
 import { exhaustiveCheck } from "../Function.js";
 import type {
   SharedWorker as CommonSharedWorker,

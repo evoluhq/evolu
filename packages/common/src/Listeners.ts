@@ -1,3 +1,9 @@
+/**
+ * Simple publish-subscribe mechanism for event broadcasting.
+ *
+ * @module
+ */
+
 /** A callback invoked on notification. */
 export type Listener<T = void> = (value: T) => void;
 

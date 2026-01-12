@@ -1,3 +1,8 @@
+/**
+ * Platform-agnostic Worker and MessageChannel abstractions.
+ *
+ * @module
+ */
 import type { Brand } from "./Brand.js";
 import type { GlobalErrorScope } from "./Error.js";
 

@@ -1,3 +1,8 @@
+/**
+ * Kysely query builder extensions for Evolu.
+ *
+ * @module
+ */
 import { sql } from "kysely";
 import {
   AliasNode,

@@ -1,3 +1,8 @@
+/**
+ * Evolu common library exports.
+ *
+ * @module
+ */
 import { ensurePolyfills } from "./Polyfills.js";
 
 ensurePolyfills();
