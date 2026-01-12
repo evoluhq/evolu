@@ -4,7 +4,7 @@ import { createEqObject, eqNumber, eqString } from "../Eq.js";
 import { increment } from "../Number.js";
 import { Order, orderUint8Array } from "../Order.js";
 import { err, ok, Result } from "../Result.js";
-import { TimeDep } from "../Time.js";
+import { Millis, minMillis, TimeDep } from "../Time.js";
 import {
   brand,
   DateIso,
@@ -52,27 +52,6 @@ export interface TimestampCounterOverflowError {
 export interface TimestampTimeOutOfRangeError {
   readonly type: "TimestampTimeOutOfRangeError";
 }
-
-/**
- * Millis is a timestamp in milliseconds, like `Date.now()`, but limited to the
- * maximum value representable in 6 bytes (281474976710655) minus 1 (reserved
- * for infinity). This enables more efficient binary serialization, saving 2
- * bytes compared to the typical 8-byte (64-bit) timestamp representation.
- *
- * This limit is enforced to prevent data corruption. If a device's clock
- * exceeds this range, Evolu will stop saving data until the clock is
- * corrected.
- *
- * `new Date(281474976710654).toString()` = Tue Aug 02 10889 07:31:49
- */
-export const Millis = brand(
-  "Millis",
-  lessThanOrEqualTo(281474976710655 - 1)(NonNegativeInt),
-);
-export type Millis = typeof Millis.Type;
-
-export const minMillis = 0 as Millis;
-export const maxMillis = (281474976710655 - 1) as Millis;
 
 export const Counter = brand(
   "Counter",

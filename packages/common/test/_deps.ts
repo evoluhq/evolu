@@ -2,7 +2,7 @@ import { CreateWebSocket, TimingSafeEqual, WebSocket } from "@evolu/common";
 import BetterSQLite, { Statement } from "better-sqlite3";
 import { timingSafeEqual } from "crypto";
 import { Console } from "../src/Console.js";
-import { RandomBytes, RandomBytesDep } from "../src/Crypto.js";
+import { RandomBytesDep } from "../src/Crypto.js";
 import { constFalse, constTrue, constVoid } from "../src/Function.js";
 import {
   createAppOwner,
@@ -18,11 +18,7 @@ import {
   StorageConfig,
   StorageDep,
 } from "../src/local-first/Storage.js";
-import {
-  createRandom,
-  createRandomLibWithSeed,
-  createRandomWithSeed,
-} from "../src/Random.js";
+import { createRandom, createRandomLibWithSeed } from "../src/Random.js";
 import { getOrThrow, ok } from "../src/Result.js";
 import {
   createPreparedStatementsCache,
@@ -33,24 +29,21 @@ import {
   SqliteDriver,
   SqliteRow,
 } from "../src/Sqlite.js";
-import { createTestTime, TimeDep } from "../src/Time.js";
+import { TimeDep } from "../src/Time.js";
 import { createId, Id, SimpleName } from "../src/Type.js";
 // import { existsSync, unlinkSync } from "fs";
 
-export const testRandom = createRandomWithSeed("evolu");
-export const testTime = createTestTime();
+// Re-export browser-compatible deps
+export {
+  testRandom,
+  testRandomBytes,
+  testRandomLib,
+  testTime,
+} from "./_browser-deps.js";
 
-export const testRandomLib = createRandomLibWithSeed("evolu").random;
 export const testRandomLib2 = createRandomLibWithSeed("forever").random;
 
-export const testRandomBytes: RandomBytes = {
-  create: (bytesLength) => {
-    const array = Array.from({ length: bytesLength }, () =>
-      testRandomLib.int(0, 255),
-    );
-    return new Uint8Array(array);
-  },
-} as RandomBytes;
+import { testRandomBytes, testTime } from "./_browser-deps.js";
 
 const randomBytesDep = { randomBytes: testRandomBytes };
 

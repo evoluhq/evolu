@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { RandomNumber } from "../../src/Random.js";
 import { done, err, NextResult, ok } from "../../src/Result.js";
 import {
   addDelay,
@@ -528,7 +529,7 @@ describe("jitter", () => {
   test("validates Millis bounds", () => {
     const d = {
       time: createTestTime({ startAt: 0 as Millis }),
-      random: { next: () => 0.999999999 },
+      random: { next: () => 0.999999999 as RandomNumber },
     };
 
     const step = jitter(1)(spaced(maxMillis))(d);

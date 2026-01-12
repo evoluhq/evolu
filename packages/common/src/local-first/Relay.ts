@@ -1,7 +1,7 @@
 import {
   filterArray,
   firstInArray,
-  isNonEmptyReadonlyArray,
+  isNonEmptyArray,
   mapArray,
 } from "../Array.js";
 import { ConsoleConfig, ConsoleDep } from "../Console.js";
@@ -15,7 +15,7 @@ import { PositiveInt, SimpleName } from "../Type.js";
 import {
   OwnerId,
   ownerIdBytesToOwnerId,
-  OwnerTransport,
+  // OwnerTransport,
   OwnerWriteKey,
 } from "./Owner.js";
 import { ProtocolInvalidDataError } from "./Protocol.js";
@@ -60,13 +60,13 @@ export interface RelayConfig extends ConsoleConfig, StorageConfig {
    * relay access, not write permissions. Since all data is encrypted on the
    * relay, OwnerId exposure is safe.
    *
-   * Owners specify which relays to connect to via {@link OwnerTransport}. In
+   * Owners specify which relays to connect to via `OwnerTransport`. In
    * WebSocket-based implementations, this check occurs before accepting the
    * connection, with the OwnerId typically extracted from the URL Path (e.g.,
    * `ws://localhost:4000/<ownerId>`). The relay requires the URL to be in the
    * correct format for OwnerId extraction.
    *
-   * ## Example
+   * ### Example
    *
    * ```ts
    * // Client
@@ -140,7 +140,7 @@ export const createRelaySqliteStorage =
 
         const { rows } = selectWriteKey.value;
 
-        if (isNonEmptyReadonlyArray(rows)) {
+        if (isNonEmptyArray(rows)) {
           return deps.timingSafeEqual(rows[0].writeKey, writeKey);
         }
 
@@ -197,7 +197,7 @@ export const createRelaySqliteStorage =
             );
 
             // Nothing to write
-            if (!isNonEmptyReadonlyArray(newMessages)) {
+            if (!isNonEmptyArray(newMessages)) {
               return ok();
             }
 

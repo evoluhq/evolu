@@ -64,7 +64,7 @@ test("deleteOwner", async () => {
     const countResult = sqlite.exec<{ count: number }>(sql`
       select count(*) as count
       from ${sql.raw(table)}
-      where ownerId = ${testOwnerIdBytes};
+      where ownerid = ${testOwnerIdBytes};
     `);
     expect(countResult.ok && countResult.value.rows[0].count).toBe(0);
   }
@@ -80,9 +80,9 @@ describe("writeMessages", () => {
     (deps: SqliteDep) =>
     (ownerId: OwnerIdBytes): NonNegativeInt => {
       const usageResult = deps.sqlite.exec(sql`
-        select storedBytes
+        select storedbytes
         from evolu_usage
-        where ownerId = ${ownerId};
+        where ownerid = ${ownerId};
       `);
       assert(usageResult.ok);
       return usageResult.value.rows[0].storedBytes as NonNegativeInt;
@@ -119,7 +119,7 @@ describe("writeMessages", () => {
     const countResult = sqlite.exec<{ count: number }>(sql`
       select count(*) as count
       from evolu_message
-      where ownerId = ${testOwnerIdBytes};
+      where ownerid = ${testOwnerIdBytes};
     `);
 
     assert(countResult.ok);
@@ -195,7 +195,7 @@ describe("writeMessages", () => {
     const messageCountResult = sqlite.exec<{ count: number }>(sql`
       select count(*) as count
       from evolu_message
-      where ownerId = ${testOwnerIdBytes};
+      where ownerid = ${testOwnerIdBytes};
     `);
 
     assert(messageCountResult.ok);
@@ -204,7 +204,7 @@ describe("writeMessages", () => {
     const usageResult = sqlite.exec<{ count: number }>(sql`
       select count(*) as count
       from evolu_usage
-      where ownerId = ${testOwnerIdBytes};
+      where ownerid = ${testOwnerIdBytes};
     `);
 
     assert(usageResult.ok);

@@ -19,14 +19,15 @@ import {
   SqliteRow,
   SqliteValue,
 } from "../Sqlite.js";
-import { Store, StoreSubscribe } from "../Store.js";
+import { Listener, Unsubscribe } from "../Listeners.js";
+import { Store } from "../Store.js";
 import { createId, Id, String } from "../Type.js";
 import { Simplify } from "../Types.js";
 
 /**
  * A type-safe SQL query.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * const allTodos = evolu.createQuery((db) =>
@@ -40,7 +41,7 @@ export type Query<R extends Row = Row> = string &
     /**
      * A shorthand for {@link InferRow}.
      *
-     * ## Example
+     * ### Example
      *
      * ```ts
      * const allTodos = evolu.createQuery((db) =>
@@ -124,7 +125,7 @@ export type QueriesToQueryRowsPromises<Q extends Queries> = {
 export type QueryRowsMap = ReadonlyMap<Query, ReadonlyArray<Row>>;
 
 export interface SubscribedQueries {
-  subscribe: (query: Query) => StoreSubscribe;
+  subscribe: (query: Query) => (listener: Listener) => Unsubscribe;
 
   has: (query: Query) => boolean;
 

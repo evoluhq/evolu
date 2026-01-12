@@ -2,13 +2,12 @@ import {
   Counter,
   createTimestamp,
   maxCounter,
-  maxMillis,
   maxNodeId,
-  Millis,
   NodeId,
   orderTimestampBytes,
   timestampToTimestampBytes,
 } from "../../src/local-first/Timestamp.js";
+import { maxMillis, Millis } from "../../src/Time.js";
 import { testRandomLib } from "../_deps.js";
 
 // Random numbers are unique only for a few thousand iterations.

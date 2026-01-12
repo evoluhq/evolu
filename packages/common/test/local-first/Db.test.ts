@@ -22,7 +22,7 @@ test("TODO", () => {
 // import { createTimestamp, Millis } from "../../src/local-first/Timestamp.js";
 // import { getOrThrow } from "../../src/Result.js";
 // import { createSqlite, Sqlite } from "../../src/Sqlite.js";
-// import { wait } from "../../src/Task.js";
+// import { wait } from "../../src/OldTask.js";
 // import { createId } from "../../src/Type.js";
 // import {
 //   TestConsole,

@@ -17,7 +17,6 @@ import {
 import {
   Counter,
   createTimestamp,
-  Millis,
   orderTimestampBytes,
   TimestampBytes,
   timestampToTimestampBytes,
@@ -26,6 +25,7 @@ import { computeBalancedBuckets } from "../../src/Number.js";
 import { createRandom } from "../../src/Random.js";
 import { getOrThrow, ok } from "../../src/Result.js";
 import { sql, SqliteDep } from "../../src/Sqlite.js";
+import { Millis } from "../../src/Time.js";
 import { NonNegativeInt, PositiveInt } from "../../src/Type.js";
 import {
   testCreateId,
@@ -140,7 +140,7 @@ const testTimestamps = async (
         where
           (${lower} is null or t >= ${lower})
           and (${upper} is null or t < ${upper})
-          and ownerId = ${testOwnerIdBytes};
+          and ownerid = ${testOwnerIdBytes};
       `),
     );
 

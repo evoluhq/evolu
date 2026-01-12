@@ -1,7 +1,7 @@
 import {
   appendToArray,
   firstInArray,
-  isNonEmptyReadonlyArray,
+  isNonEmptyArray,
   NonEmptyArray,
   NonEmptyReadonlyArray,
 } from "../Array.js";
@@ -15,6 +15,7 @@ import {
 import { createUnknownError, UnknownError } from "../Error.js";
 import { constFalse, constTrue } from "../Function.js";
 import { createRecord, getProperty, objectToEntries } from "../Object.js";
+import { AbortError, createMutex } from "../OldTask.js";
 import { RandomDep } from "../Random.js";
 import { createResources } from "../Resources.js";
 import { err, ok, Result } from "../Result.js";
@@ -27,7 +28,6 @@ import {
   SqliteError,
   SqliteValue,
 } from "../Sqlite.js";
-import { AbortError, createMutex } from "../Task.js";
 import { TimeDep } from "../Time.js";
 import {
   DateIso,
@@ -73,9 +73,9 @@ import {
   StorageWriteError,
   updateOwnerUsage,
 } from "./Storage.js";
+import { Millis } from "../Time.js";
 import {
   createInitialTimestamp,
-  Millis,
   receiveTimestamp,
   sendTimestamp,
   Timestamp,
@@ -535,7 +535,7 @@ const createClientStorage =
               clockTimestamp = nextTimestamp.value;
             }
 
-            if (isNonEmptyReadonlyArray(messages)) {
+            if (isNonEmptyArray(messages)) {
               const result = applyMessages({ ...deps, storage })(
                 owner.id,
                 messages,

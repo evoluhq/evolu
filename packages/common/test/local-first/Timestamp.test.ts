@@ -2,32 +2,34 @@ import SQLite from "better-sqlite3";
 import { describe, expect, test } from "vitest";
 import {
   Counter,
-  Millis,
-  NodeId,
-  Timestamp,
-  TimestampBytes,
-  TimestampConfigDep,
-  TimestampCounterOverflowError,
-  TimestampDriftError,
-  TimestampTimeOutOfRangeError,
   createInitialTimestamp,
   createTimestamp,
   defaultTimestampMaxDrift,
   maxCounter,
-  maxMillis,
   minCounter,
-  minMillis,
+  NodeId,
   orderTimestampBytes,
   receiveTimestamp,
   sendTimestamp,
+  Timestamp,
+  TimestampBytes,
   timestampBytesToTimestamp,
+  TimestampConfigDep,
+  TimestampCounterOverflowError,
+  TimestampDriftError,
+  TimestampTimeOutOfRangeError,
   timestampToTimestampBytes,
 } from "../../src/local-first/Timestamp.js";
 import { increment } from "../../src/Number.js";
 import { orderNumber } from "../../src/Order.js";
-import { Result, getOrThrow, ok } from "../../src/Result.js";
-import { TimeDep } from "../../src/Time.js";
-import { dateToDateIso } from "../../src/Type.js";
+import { ok, Result } from "../../src/Result.js";
+import {
+  createTestTime,
+  maxMillis,
+  Millis,
+  minMillis,
+  TimeDep,
+} from "../../src/Time.js";
 import { testDeps, testRandomLib } from "../_deps.js";
 
 test("Millis", () => {
@@ -76,18 +78,12 @@ test("createInitialTimestamp", () => {
 const makeMillis = (millis: number): Millis => Millis.orThrow(millis);
 
 const deps0: TimeDep & TimestampConfigDep = {
-  time: {
-    now: () => minMillis,
-    nowIso: () => getOrThrow(dateToDateIso(new Date(minMillis))),
-  },
+  time: createTestTime({ startAt: minMillis }),
   timestampConfig: { maxDrift: defaultTimestampMaxDrift },
 };
 
 const deps1: TimeDep & TimestampConfigDep = {
-  time: {
-    now: () => minMillis + 1,
-    nowIso: () => getOrThrow(dateToDateIso(new Date(minMillis + 1))),
-  },
+  time: createTestTime({ startAt: (minMillis + 1) as Millis }),
   timestampConfig: { maxDrift: defaultTimestampMaxDrift },
 };
 

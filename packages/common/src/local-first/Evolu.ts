@@ -5,6 +5,7 @@ import { createCallbacks } from "../Callbacks.js";
 import { ConsoleDep, createConsole } from "../Console.js";
 import { createRandomBytes, RandomBytesDep } from "../Crypto.js";
 import { eqArrayNumber } from "../Eq.js";
+import { Listener, Unsubscribe } from "../Listeners.js";
 import { FlushSyncDep, ReloadAppDep } from "../Platform.js";
 import {
   createDisposableDep,
@@ -19,7 +20,7 @@ import {
   sqliteBooleanToBoolean,
   SqliteQuery,
 } from "../Sqlite.js";
-import { createStore, ReadonlyStore, Store, StoreSubscribe } from "../Store.js";
+import { createStore, ReadonlyStore, Store } from "../Store.js";
 import {
   createId,
   Id,
@@ -80,7 +81,7 @@ export interface EvoluConfig {
    * storage, ensuring that database files are separated and invisible to each
    * other.
    *
-   * ## Example
+   * ### Example
    *
    * ```ts
    * // name: SimpleName.orThrow("MyApp")
@@ -116,7 +117,7 @@ export interface EvoluConfig {
    *
    * `{ type: "WebSocket", url: "wss://free.evoluhq.com" }`.
    *
-   * ## Example
+   * ### Example
    *
    * ```ts
    * // Single WebSocket relay
@@ -154,7 +155,7 @@ export interface EvoluConfig {
    * For device-specific settings and account management state, we can use a
    * separate local-only Evolu instance via `transports: []`.
    *
-   * ## Example
+   * ### Example
    *
    * ```ts
    * const ConfigId = id("Config");
@@ -201,7 +202,7 @@ export interface EvoluConfig {
    *
    * https://medium.com/@JasonWyatt/squeezing-performance-from-sqlite-indexes-indexes-c4e175f3c346
    *
-   * ## Example
+   * ### Example
    *
    * ```ts
    * const evolu = createEvolu(evoluReactDeps)(Schema, {
@@ -231,7 +232,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
   /**
    * Subscribe to {@link EvoluError} changes.
    *
-   * ## Example
+   * ### Example
    *
    * ```ts
    * const unsubscribe = evolu.subscribeError(() => {
@@ -240,7 +241,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
    * });
    * ```
    */
-  readonly subscribeError: StoreSubscribe;
+  readonly subscribeError: (listener: Listener) => Unsubscribe;
 
   /** Get {@link EvoluError}. */
   readonly getError: () => EvoluError | null;
@@ -257,7 +258,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
    * For mutations, use {@link Evolu.insert}, {@link Evolu.update}, or
    * {@link Evolu.upsert}.
    *
-   * ## Example
+   * ### Example
    *
    * ```ts
    * const allTodos = evolu.createQuery((db) =>
@@ -286,7 +287,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
    * To subscribe a query for automatic updates, use
    * {@link Evolu.subscribeQuery}.
    *
-   * ## Example
+   * ### Example
    *
    * ```ts
    * const allTodos = evolu.createQuery((db) =>
@@ -304,7 +305,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
    * {@link QueryRows} promises. It's like `queries.map(loadQuery)` but with
    * proper types for returned promises.
    *
-   * ## Example
+   * ### Example
    *
    * ```ts
    * evolu.loadQueries([allTodos, todoById(1)]);
@@ -317,7 +318,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
   /**
    * Subscribe to {@link Query} {@link QueryRows} changes.
    *
-   * ## Example
+   * ### Example
    *
    * ```ts
    * const unsubscribe = evolu.subscribeQuery(allTodos)(() => {
@@ -325,12 +326,14 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
    * });
    * ```
    */
-  readonly subscribeQuery: (query: Query) => StoreSubscribe;
+  readonly subscribeQuery: (
+    query: Query,
+  ) => (listener: Listener) => Unsubscribe;
 
   /**
    * Get {@link QueryRows}.
    *
-   * ## Example
+   * ### Example
    *
    * ```ts
    * const unsubscribe = evolu.subscribeQuery(allTodos)(() => {
@@ -346,7 +349,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
    * Note: With web-only deps, this promise will not resolve during SSR because
    * there is no AppOwner on the server.
    *
-   * ## Example
+   * ### Example
    *
    * ```ts
    * const owner = await evolu.appOwner;
@@ -370,7 +373,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
    * predictably merged without conflicts. Explicit mutations also allow Evolu
    * to automatically update {@link SystemColumns}.
    *
-   * ## Example
+   * ### Example
    *
    * ```ts
    * const result = evolu.insert("todo", {
@@ -415,7 +418,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
    * predictably merged without conflicts. Explicit mutations also allow Evolu
    * to automatically update {@link SystemColumns}.
    *
-   * ## Example
+   * ### Example
    *
    * ```ts
    * const result = evolu.update("todo", {
@@ -468,7 +471,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
    * predictably merged without conflicts. Explicit mutations also allow Evolu
    * to automatically update {@link SystemColumns}.
    *
-   * ## Example
+   * ### Example
    *
    * ```ts
    * // Use deterministic ID for stable upserts across devices
@@ -554,7 +557,7 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
    * Transport are automatically deduplicated and reference-counted, so multiple
    * owners using the same transport will share a single connection.
    *
-   * ## Example
+   * ### Example
    *
    * ```ts
    * // Use an owner (starts syncing).
@@ -592,7 +595,7 @@ export interface ErrorStoreDep {
    * Shared error store for all Evolu instances. Subscribe once to handle errors
    * globally across all instances.
    *
-   * ## Example
+   * ### Example
    *
    * ```ts
    * deps.evoluError.subscribe(() => {
@@ -646,7 +649,7 @@ const createErrorStore = (
  * {@link EvoluSchema} and optional {@link EvoluConfig} providing a typed
  * interface for querying, mutating, and syncing your application's data.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * const TodoId = id("Todo");
@@ -785,7 +788,7 @@ export const createEvolu =
     //         ...subscribedQueries.get(),
     //       ]);
 
-    //       if (isNonEmptyReadonlyArray(queries)) {
+    //       if (isNonEmptyArray(queries)) {
     //         dbWorker.postMessage({ type: "query", tabId: getTabId(), queries });
     //       }
 

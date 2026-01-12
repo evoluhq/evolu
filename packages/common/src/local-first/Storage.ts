@@ -1,7 +1,7 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import {
   firstInArray,
-  isNonEmptyReadonlyArray,
+  isNonEmptyArray,
   NonEmptyReadonlyArray,
 } from "../Array.js";
 import { assert } from "../Assert.js";
@@ -51,7 +51,7 @@ export interface StorageConfig {
    * The callback returns a boolean rather than an error because error handling
    * and logging are the responsibility of the callback implementation.
    *
-   * ## Example
+   * ### Example
    *
    * ```ts
    * // Client
@@ -84,7 +84,7 @@ export interface StorageConfig {
  * SQLite's C API directly with no context switching between the event loop and
  * native code, and no promise microtasks or await overhead.
  *
- * The only exception is {@link Storage#writeMessages}, which is async to allow
+ * The only exception is {@link Storage.writeMessages}, which is async to allow
  * for async validation logic before writing to storage. The write operation
  * itself remains synchronous.
  */
@@ -1661,7 +1661,7 @@ export const getOwnerUsage =
     `);
     if (!result.ok) return result;
 
-    if (!isNonEmptyReadonlyArray(result.value.rows)) {
+    if (!isNonEmptyArray(result.value.rows)) {
       return ok({
         storedBytes: null,
         firstTimestamp: initialTimestamp,

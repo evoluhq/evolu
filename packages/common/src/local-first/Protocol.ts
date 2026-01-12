@@ -178,7 +178,7 @@
  */
 
 import { Packr } from "msgpackr";
-import { isNonEmptyReadonlyArray, NonEmptyReadonlyArray } from "../Array.js";
+import { isNonEmptyArray, NonEmptyReadonlyArray } from "../Array.js";
 import { assert } from "../Assert.js";
 import { Brand } from "../Brand.js";
 import {
@@ -205,6 +205,7 @@ import { computeBalancedBuckets } from "../Number.js";
 import { createRecord, objectToEntries } from "../Object.js";
 import { err, ok, Result } from "../Result.js";
 import { SqliteValue } from "../Sqlite.js";
+import { Millis } from "../Time.js";
 import {
   Base64Url,
   base64UrlToUint8Array,
@@ -253,7 +254,6 @@ import {
 import {
   Counter,
   eqTimestamp,
-  Millis,
   NodeId,
   Timestamp,
   TimestampBytes,
@@ -975,7 +975,7 @@ export const applyProtocolMessageAsClient =
       const messages = decodeMessages(input);
       const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
 
-      if (isNonEmptyReadonlyArray(messages)) {
+      if (isNonEmptyArray(messages)) {
         const result = await deps.storage.writeMessages(ownerIdBytes, messages);
         // Errors are handled by the Storage. Here we just stop syncing.
         if (!result.ok) return ok({ type: "no-response" });
@@ -997,7 +997,7 @@ export const applyProtocolMessageAsClient =
 
       const ranges = decodeRanges(input);
 
-      if (!isNonEmptyReadonlyArray(ranges)) {
+      if (!isNonEmptyArray(ranges)) {
         return ok({ type: "no-response" });
       }
 
@@ -1116,7 +1116,7 @@ export const applyProtocolMessageAsRelay =
 
       const messages = decodeMessages(input);
 
-      if (isNonEmptyReadonlyArray(messages)) {
+      if (isNonEmptyArray(messages)) {
         if (!writeKey) {
           return ok({
             type: "response",
@@ -1183,7 +1183,7 @@ export const applyProtocolMessageAsRelay =
 
       // Non-initiators always respond to provide sync completion feedback,
       // even when there's nothing to sync.
-      if (!isNonEmptyReadonlyArray(ranges)) {
+      if (!isNonEmptyArray(ranges)) {
         return ok({ type: "response", message: output.unwrap() });
       }
 
@@ -1689,7 +1689,7 @@ export const decodeNumber = (buffer: Buffer): number => {
  * Each element in the array corresponds to a bit (0-7). Array can have 0-8
  * elements.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * encodeFlags(buffer, [true, false, true]); // Encodes bits 0, 1, 2
@@ -1711,7 +1711,7 @@ export const encodeFlags = (
 /**
  * Decodes a byte into an array of boolean flags.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * const flags = decodeFlags(buffer, 3); // Decode 3 flags

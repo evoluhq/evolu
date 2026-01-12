@@ -1,64 +1,133 @@
-import { isNonEmptyArray, shiftArray } from "./Array.js";
-import { Result, err, ok } from "./Result.js";
-import { Duration, durationToNonNegativeInt } from "./Time.js";
-import { NonNegativeInt, PositiveInt } from "./Type.js";
+import { isNonEmptyArray } from "./Array.js";
+import { assert } from "./Assert.js";
+import { createRandomBytes, RandomBytesDep } from "./Crypto.js";
+import { eqArrayStrict } from "./Eq.js";
+import { constTrue, constVoid } from "./Function.js";
+import { decrement, increment } from "./Number.js";
+import { createRandom, Random, RandomDep } from "./Random.js";
+import { Ref } from "./Ref.js";
+import { Done, err, NextResult, ok, Result, tryAsync } from "./Result.js";
+import { Schedule } from "./schedule/index.js";
+import { addToSet, deleteFromSet, emptySet } from "./Set.js";
+import {
+  createTime,
+  Duration,
+  durationToMillis,
+  Millis,
+  Time,
+  TimeDep,
+} from "./Time.js";
+import { TracerConfigDep, TracerDep } from "./Tracer.js";
+import {
+  brand,
+  createId,
+  Id,
+  NonNegativeInt,
+  typed,
+  union,
+  Unknown,
+  UnknownResult,
+} from "./Type.js";
+import { Awaitable, Mutable, Predicate } from "./Types.js";
 
 /**
- * `Task` is a function that creates and returns an optionally cancellable
- * Promise using {@link Result}.
+ * JavaScript-native structured concurrency.
  *
- * The laziness allows safe composition, e.g. retry logic, because it prevents
- * eager execution until the Task is actually invoked.
+ * Structured concurrency is a simple idea: async operations form a tree where
+ * no child can outlive its parent — ending a parent aborts its children and
+ * waits for them to complete. This eliminates resource leaking and "fire and
+ * forget" bugs.
  *
- * ### Cancellation
+ * - **Automatic cancellation** — abort propagates to all descendants
+ * - **Guaranteed cleanup** — resources always released
+ * - **Observable state** — inspect what’s running and why
  *
- * Tasks support optional cancellation via
- * {@link https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal | AbortSignal}.
- * When a Task is called without a signal, it cannot be cancelled and
- * {@link AbortError} will never be returned. When called with a signal, the Task
- * can be cancelled and AbortError is added to the error union with precise type
- * safety.
+ * Evolu implements structured concurrency with these types:
  *
- * When composing Tasks, we typically have context and want to abort ASAP by
- * passing it through. However, there are valid cases where we don't want to
- * abort because we need some atomic unit to complete. For simple scripts and
- * tests, omitting context is fine.
+ * - **{@link Task}** — a function that takes {@link Runner} and returns
+ *   {@link Awaitable} (sync or async) {@link Result}
+ * - **{@link Runner}** — task runner returning {@link Fiber}
+ * - **{@link Fiber}** — awaitable, abortable, disposable handle to a running task
+ * - **{@link AsyncDisposableStack}** — task-aware resource management that
+ *   completes even when aborted
  *
- * ### Task Helpers
- *
- * - {@link toTask} - Convert async function to Task
- * - {@link wait} - Delay execution for a specified {@link Duration}
- * - {@link timeout} - Add timeout to any Task
- * - {@link retry} - Retry failed Tasks with configurable backoff
+ * Evolu's structured concurrency is minimal — one function with a few flags and
+ * helper methods built on native APIs: `Promise`, `AbortController`, `using`,
+ * etc.
  *
  * ### Example
  *
  * ```ts
- * interface FetchError {
- *   readonly type: "FetchError";
+ * // Pure DI.
+ * interface NativeFetchDep {
+ *   readonly fetch: typeof globalThis.fetch;
+ * }
+ *
+ * // Typed is an interface for objects with a `type` property.
+ * interface FetchError extends Typed<"FetchError"> {
  *   readonly error: unknown;
  * }
  *
- * // Task version of fetch with proper error handling and cancellation support.
- * const fetch = (url: string) =>
- *   toTask((context) =>
+ * // A Task wrapping native fetch.
+ * const fetchUrl =
+ *   (deps: NativeFetchDep) =>
+ *   (url: string): Task<Response, FetchError> =>
+ *   ({ signal }) =>
  *     tryAsync(
- *       () => globalThis.fetch(url, { signal: context?.signal ?? null }),
- *       (error): FetchError => ({ type: "FetchError", error }),
- *     ),
- *   );
+ *       () => deps.fetch(url, { signal }),
+ *       (error): FetchError | AbortError => {
+ *         if (AbortError.is(error)) return error;
+ *         return { type: "FetchError", error };
+ *       },
+ *     );
  *
- * // `satisfies` shows the expected type signature.
- * fetch satisfies (url: string) => Task<Response, FetchError>;
+ * // A composition root.
+ * const deps: NativeFetchDep = {
+ *   fetch: globalThis.fetch.bind(globalThis),
+ * };
  *
- * // Add timeout to prevent hanging
- * const fetchWithTimeout = (url: string) => timeout("30s", fetch(url));
+ * // Tasks need a runner to run.
+ * await using run = createRunner();
  *
- * fetchWithTimeout satisfies (
- *   url: string,
- * ) => Task<Response, TimeoutError | FetchError>;
+ * // Running a task returns a fiber that can be awaited.
+ * const result = await run(fetchUrl(deps)("/users/123"));
+ * expectTypeOf(result).toEqualTypeOf<
+ *   Result<Response, FetchError | AbortError>
+ * >();
  *
- * // Add retry for resilience
+ * // A fiber can also be aborted (or disposed with `using`).
+ * const fiber = run(fetchUrl(deps)("/users/456"));
+ * fiber.abort();
+ *
+ * // When this block ends, `await using` disposes run — aborting all fibers.
+ * ```
+ *
+ * ## Composition
+ *
+ * Tasks are lazy — just functions — so they can be wrapped and combined before
+ * running with helpers like:
+ *
+ * - {@link timeout} — time-bounded execution
+ * - {@link retry} — retry with backoff
+ * - {@link all} — run tasks concurrently, fail fast
+ *
+ * Composition helpers add typed errors to the error union (e.g.,
+ * {@link TimeoutError}, `RetryError`). These are for business logic — callers
+ * can pattern match on `error.type` to handle specific failures.
+ *
+ * Add timeout to prevent hanging:
+ *
+ * ```ts
+ * const fetchWithTimeout = (url: string) => timeout("30s", fetchUrl(url));
+ *
+ * expectTypeOf(fetchWithTimeout).toEqualTypeOf<
+ *   (url: string) => Task<Response, TimeoutError | FetchError>
+ * >();
+ * ```
+ *
+ * Add retry for resilience:
+ *
+ * ```ts
  * const fetchWithRetry = (url: string) =>
  *   retry(
  *     {
@@ -68,804 +137,1660 @@ import { NonNegativeInt, PositiveInt } from "./Type.js";
  *     fetchWithTimeout(url),
  *   );
  *
- * fetchWithRetry satisfies (
- *   url: string,
- * ) => Task<
- *   Response,
- *   TimeoutError | FetchError | RetryError<TimeoutError | FetchError>
- * >;
+ * // RetryError wraps the original error as `cause` when all attempts fail
+ * expectTypeOf(fetchWithRetry).toEqualTypeOf<
+ *   (
+ *     url: string,
+ *   ) => Task<
+ *     Response,
+ *     TimeoutError | FetchError | RetryError<TimeoutError | FetchError>
+ *   >
+ * >();
+ * ```
  *
+ * Control concurrency with semaphore:
+ *
+ * ```ts
  * const semaphore = createSemaphore(PositiveInt.orThrow(2));
  *
- * // Control concurrency with semaphore
+ * // Semaphore adds AbortError (semaphore can be disposed)
  * const fetchWithPermit = (url: string) =>
  *   semaphore.withPermit(fetchWithRetry(url));
  *
- * fetchWithPermit satisfies (url: string) => Task<
- *   Response,
- *   | TimeoutError
- *   | FetchError
- *   | AbortError // Semaphore dispose aborts Tasks
- *   | RetryError<TimeoutError | FetchError>
- * >;
- *
- * // Usage
- * const results = await Promise.all(
- *   [
- *     "https://api.example.com/users",
- *     "https://api.example.com/posts",
- *     "https://api.example.com/comments",
- *   ]
- *     .map(fetchWithPermit)
- *     .map((task) => task()),
- * );
- *
- * results satisfies Array<
- *   Result<
+ * expectTypeOf(fetchWithPermit).toEqualTypeOf<
+ *   (
+ *     url: string,
+ *   ) => Task<
  *     Response,
- *     | AbortError
  *     | TimeoutError
  *     | FetchError
+ *     | AbortError
  *     | RetryError<TimeoutError | FetchError>
  *   >
- * >;
- *
- * // Handle results
- * for (const result of results) {
- *   if (result.ok) {
- *     // Process successful response
- *     const response = result.value;
- *     expect(response).toBeInstanceOf(Response);
- *   } else {
- *     // Handle error (TimeoutError, FetchError, RetryError, or AbortError)
- *     expect(result.error).toBeDefined();
- *   }
- * }
- *
- * // Cancellation support
- * const controller = new AbortController();
- * const cancelableTask = fetchWithPermit("https://api.example.com/data");
- *
- * // Start task
- * const promise = cancelableTask(controller);
- *
- * // Cancel after some time
- * setTimeout(() => {
- *   controller.abort("User cancelled");
- * }, 1000);
- *
- * const _result = await promise;
- * // Result will be AbortError if cancelled
+ * >();
  * ```
  *
- * ### Dependency Injection Integration
+ * Run composed tasks in parallel:
  *
- * Tasks integrate naturally with Evolu's DI pattern. Use `deps` for static
- * dependencies and `TaskContext` for execution context like cancellation. Usage
- * follows the pattern: deps → arguments → execution context.
+ * ```ts
+ * // Create a global root runner at app startup
+ * await using run = createRunner();
+ *
+ * const urls = [
+ *   "https://api.example.com/users",
+ *   "https://api.example.com/posts",
+ *   "https://api.example.com/comments",
+ * ];
+ *
+ * // Semaphore limits to 2 concurrent requests
+ * const results = await Promise.all(
+ *   urls.map((url) => run(fetchWithPermit(url))),
+ * );
+ *
+ * expectTypeOf(results).toEqualTypeOf<
+ *   Array<
+ *     Result<
+ *       Response,
+ *       | AbortError
+ *       | TimeoutError
+ *       | FetchError
+ *       | RetryError<TimeoutError | FetchError>
+ *     >
+ *   >
+ * >();
+ * ```
+ *
+ * ## Resource management
+ *
+ * Evolu uses standard JavaScript
+ * {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Resource_management | resource management}.
+ *
+ * For task-based disposal, Evolu provides {@link AsyncDisposableStack}: a
+ * wrapper around the native
+ * {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack | AsyncDisposableStack}
+ * where methods accept {@link Task} for acquisition. All operations run
+ * {@link unabortable}, ensuring resources are acquired and released even when
+ * abort is requested.
+ *
+ * ```ts
+ * await using stack = run.stack();
+ * stack.defer(task);
+ * const conn = await stack.use(openConnection);
+ * const session = await stack.adopt(login, logout);
+ * ```
+ *
+ * ## Awaitable
+ *
+ * While {@link Task} returns {@link Awaitable} (allowing sync or async results),
+ * {@link Runner} is always async. Disposing a runner waits for all child runners
+ * to complete, which requires `await using`. This is a deliberate design
+ * choice:
+ *
+ * - **Sync** → {@link Result}, native `using` / `DisposableStack`
+ * - **Async** → {@link Task}, {@link Runner}, {@link Fiber}, `await using` /
+ *   `AsyncDisposableStack`
+ *
+ * Benefits:
+ *
+ * - **Zero overhead** — sync code stays with zero overhead
+ * - **No API ambiguity** — Task means async, Result means sync
+ *
+ * A unified sync/async API is theoretically possible — `isPromiseLike` can
+ * detect sync at runtime without throwing, and `await using` works with sync
+ * disposal. We may add it later.
+ *
+ * ## FAQ
+ *
+ * ### What's the difference between `run(task)` and `task(run)`?
+ *
+ * `run(task)` runs a task with its own runner and returns a {@link Fiber}.
+ * That's how tasks should be run.
+ *
+ * `task(run)` also runs a task, but with an existing runner. It does not return
+ * a fiber, so it can't be aborted nor monitored. Don't use it unless needed for
+ * a specific reason like composing tasks.
+ *
+ * ### Why doesn't Task have a generic `D` for dependencies?
+ *
+ * `Task<T, E, D>` where `D` represents dependencies that propagate
+ * automatically is possible, but it would introduce a different DI style than
+ * Pure DI. Evolu is like Go in TypeScript, not Scala ZIO in TypeScript. The
+ * point of Pure DI is to avoid ambient state and hidden machinery.
+ *
+ * ### How does it work?
+ *
+ * There are two approaches to structured concurrency in TypeScript. The
+ * program-as-data approach represents computations as data structures that a
+ * runtime interprets later. Evolu takes the direct approach — tasks are just
+ * functions that run directly. It's simpler, more transparent and performant,
+ * and easier to debug (native stack traces). Program-as-data is a powerful
+ * idea, but we believe it belongs to the language itself or a compiler.
+ *
+ * @category Core
  */
-export interface Task<T, E> {
+export type Task<T, E = never> = (
+  run: Runner,
+) => Awaitable<Result<T, E | AbortError>>;
+
+/**
+ * Extracts the value type from a {@link Task}.
+ *
+ * @category Utilities
+ */
+export type InferTaskOk<R extends Task<any, any>> =
+  R extends Task<infer T, any> ? T : never;
+
+/**
+ * Extracts the error type from a {@link Task}.
+ *
+ * @category Utilities
+ */
+export type InferTaskErr<R extends Task<any, any>> =
+  R extends Task<any, infer E> ? E : never;
+
+/**
+ * A {@link Task} that can complete with a value, signal done, or fail.
+ *
+ * Forms a parallel with {@link NextResult}:
+ *
+ * - `Result<A, E>` → `NextResult<A, E, D>`
+ * - `Task<T, E>` → `NextTask<T, E, D>`
+ *
+ * Use for pull-based protocols like iterators where `Done<D>` signals normal
+ * completion rather than an error.
+ *
+ * @category Core
+ */
+export type NextTask<T, E = never, D = void> = Task<T, E | Done<D>>;
+
+/**
+ * Extracts the done value type from a {@link NextTask}.
+ *
+ * @category Utilities
+ */
+export type InferTaskDone<T extends Task<any, any>> =
+  InferTaskErr<T> extends infer Errors
+    ? Errors extends Done<infer D>
+      ? D
+      : never
+    : never;
+
+/**
+ * Error returned when a {@link Task} is aborted via
+ * {@link https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal | AbortSignal}.
+ *
+ * The `reason` field is `unknown` by design — use typed errors for business
+ * logic. If you need to inspect the reason, use type guards like
+ * `RaceLostError.is(reason)`.
+ *
+ * @category Core
+ */
+export const AbortError = typed("AbortError", { reason: Unknown });
+export type AbortError = typeof AbortError.Type;
+
+/**
+ * Runs a {@link Task} with
+ * {@link https://en.wikipedia.org/wiki/Structured_concurrency | structured concurrency}
+ * guarantees.
+ *
+ * - **Lifetime** — child tasks are bound to parent scope
+ * - **Cancellation** — abort propagates to all descendants
+ * - **Observable state** — inspect running tasks via snapshots and events
+ *
+ * `Runner` is a callable object — callable because it's convenient to run tasks
+ * as `run(task)`, and an object because it holds state for abortability and
+ * monitoring.
+ *
+ * Evolu's structured concurrency leverages native JavaScript APIs:
+ *
+ * - `PromiseLike` as the async primitive
+ * - `AbortSignal` for cancellation
+ * - `await using` for resource management
+ * - `SuppressedError` for error aggregation
+ *
+ * This makes Runner idiomatic to JavaScript, tiny with minimal overhead, and
+ * easy to debug (native stack traces).
+ *
+ * @category Core
+ * @see {@link createRunner}
+ * @see {@link Task}
+ */
+export interface Runner extends AsyncDisposable {
+  /** Runs a {@link Task} and returns a {@link Fiber} handle. */
+  <T, E>(task: Task<T, E>): Fiber<T, E>;
+
+  /** Unique {@link Id} for this runner. */
+  readonly id: Id;
+
+  /** The parent {@link Runner}, if this runner was created as a child. */
+  readonly parent: Runner | null;
+
+  /** @see https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal */
+  readonly signal: AbortSignal;
+
+  /** The abort mask depth. `0` means abortable, `>= 1` means unabortable. */
+  readonly abortMask: AbortMask;
+
   /**
-   * Invoke the Task.
+   * Registers a callback to run when abort is requested.
    *
-   * Provide a context with an
-   * {@link https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal | AbortSignal}
-   * to enable cancellation. When called without a signal, {@link AbortError}
-   * cannot occur and the error type narrows accordingly.
+   * Shorthand for `signal.addEventListener("abort", ..., { once: true })`.
+   */
+  readonly onAbort: (fn: (reason: unknown) => void) => void;
+
+  /** Returns the current {@link RunnerState}. */
+  readonly getState: () => RunnerState;
+
+  /**
+   * Returns the fiber's completion value.
+   *
+   * `null` while pending. If abort was requested, this is {@link AbortError}
+   * even if the task completed successfully — see {@link Runner.getOutcome} for
+   * what the task actually returned.
+   */
+  readonly getResult: () => Result<unknown, unknown> | null;
+
+  /**
+   * Returns what the task actually returned.
+   *
+   * `null` while pending. Unlike {@link Runner.getResult}, not overridden by
+   * abort.
+   */
+  readonly getOutcome: () => Result<unknown, unknown> | null;
+
+  /** Returns the current child {@link Fiber}s. */
+  readonly getChildren: () => ReadonlySet<Fiber>;
+
+  /**
+   * Creates a memoized {@link RunnerSnapshot} of this runner.
+   *
+   * Use for monitoring, debugging, or building UI that visualizes task trees.
    *
    * ### Example
    *
    * ```ts
-   * interface FetchError {
-   *   readonly type: "FetchError";
-   *   readonly error: unknown;
-   * }
-   *
-   * // Task version of fetch with proper error handling and cancellation support.
-   * const fetch = (url: string) =>
-   *   toTask((context) =>
-   *     tryAsync(
-   *       () => globalThis.fetch(url, { signal: context?.signal ?? null }),
-   *       (error): FetchError => ({ type: "FetchError", error }),
-   *     ),
+   * // React integration with useSyncExternalStore
+   * const useRunnerSnapshot = (runner: Runner) =>
+   *   useSyncExternalStore(
+   *     (callback) => {
+   *       runner.onEvent = callback;
+   *       return () => {
+   *         runner.onEvent = undefined;
+   *       };
+   *     },
+   *     () => runner.snapshot(),
    *   );
-   *
-   * // `satisfies` shows the expected type signature.
-   * fetch satisfies (url: string) => Task<Response, FetchError>;
-   *
-   * const result1 = await fetch("https://api.example.com/data")();
-   * expectTypeOf(result1).toEqualTypeOf<Result<Response, FetchError>>();
-   *
-   * // With AbortController
-   * const controller = new AbortController();
-   * const result2 = await fetch("https://api.example.com/data")(
-   *   controller,
-   * );
-   * expectTypeOf(result2).toEqualTypeOf<
-   *   Result<Response, FetchError | AbortError>
-   * >();
    * ```
    */
-  // eslint-disable-next-line @typescript-eslint/prefer-function-type
-  <TContext extends TaskContext | undefined = undefined>(
-    context?: TContext,
-  ): Promise<
-    Result<T, TContext extends { signal: AbortSignal } ? E | AbortError : E>
-  >;
-}
+  readonly snapshot: () => RunnerSnapshot;
 
-/**
- * Context passed to {@link Task}s for cancellation.
- *
- * You can pass an
- * {@link https://developer.mozilla.org/en-US/docs/Web/API/AbortController | AbortController}
- * directly since it has a `signal` property.
- */
-export interface TaskContext {
   /**
-   * {@link https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal | AbortSignal}
-   * for cancellation.
+   * Callback for monitoring runner events.
+   *
+   * Called when this runner or any descendant emits a {@link RunnerEvent}.
+   * Events bubble up through parent runners, enabling centralized monitoring.
+   * Only emitted when {@link RunnerConfig.eventsEnabled} is `true`.
    */
-  readonly signal?: AbortSignal;
+  onEvent: ((event: RunnerEvent) => void) | undefined;
+
+  /**
+   * Runs a {@link Task} on the root runner instead of the current runner.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const myTask: Task<void, never> = async (run) => {
+   *   // Aborted when myTask ends
+   *   run(helperTask);
+   *
+   *   // Outlives myTask, aborted when the root runner is disposed
+   *   run.daemon(backgroundSync);
+   *
+   *   return ok();
+   * };
+   * ```
+   */
+  readonly daemon: <T, E>(task: Task<T, E>) => Fiber<T, E>;
+
+  /**
+   * Creates an {@link AsyncDisposable} that runs the task when disposed.
+   *
+   * Use for one-off task; for multiple, use {@link Runner.stack} instead.
+   *
+   * ### Example
+   *
+   * ```ts
+   * // One-off task with defer
+   * await using _ = run.defer(task);
+   *
+   * // For more tasks, a stack is more practical
+   * await using stack = run.stack();
+   * stack.defer(taskA);
+   * stack.defer(taskB);
+   *
+   * // Spread to make any object disposable with Task
+   * const connection = {
+   *   send: (data: Data) => { ... },
+   *   ...run.defer(async (run) => {
+   *     await run(notifyPeers);
+   *     return ok();
+   *   }),
+   * };
+   * // connection[Symbol.asyncDispose] is now defined
+   * ```
+   */
+  readonly defer: (onDisposeAsync: Task<void>) => AsyncDisposable;
+
+  /**
+   * Creates an {@link AsyncDisposableStack} bound to the root runner.
+   *
+   * ### Example
+   *
+   * ```ts
+   * await using stack = run.stack();
+   * stack.defer(task);
+   * const conn = await stack.use(openConnection);
+   * ```
+   */
+  readonly stack: () => AsyncDisposableStack;
+
+  /**
+   * {@link Time}.
+   *
+   * Used by {@link sleep}, {@link timeout}. Exposed for custom needs.
+   */
+  readonly time: Time;
+
+  /**
+   * {@link Random}.
+   *
+   * Used by {@link retry} for jitter. Exposed for custom needs.
+   */
+  readonly random: Random;
 }
 
 /**
- * Error returned when a {@link Task} is cancelled via
- * {@link https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal | AbortSignal}.
- */
-export interface AbortError {
-  readonly type: "AbortError";
-  readonly reason?: unknown;
-}
-
-/** Narrower check to detect AbortError objects at runtime. */
-const isAbortError = (error: unknown): error is AbortError =>
-  typeof error === "object" &&
-  error !== null &&
-  (error as { type?: unknown }).type === "AbortError";
-
-/**
- * Combines user signal from context with an internal signal.
+ * Abort mask depth for a {@link Runner} or {@link Fiber}.
  *
- * If the context has a signal, combines both signals using
- * {@link https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal/any_static | AbortSignal.any()}.
- * Otherwise, returns just the internal signal.
+ * - `0` — abortable (default)
+ * - `>= 1` — inside {@link unabortable}, abort requests are ignored
+ *
+ * The mask tracks nested unabortable regions. When abort is requested, the
+ * signal only propagates if `mask === 0`.
+ *
+ * - {@link unabortable} increments the mask — task becomes protected
+ * - {@link unabortableMask} provides `restore` to restore the previous mask
+ * - Tasks inherit their parent's mask by default
+ *
+ * This enables nested acquire/use/release patterns where each level can have
+ * its own abortable section while outer acquisitions remain protected.
+ *
+ * UI/debugging tools can use this to visually distinguish protected tasks
+ * (e.g., different icon or color) and explain why abort requests are ignored.
+ *
+ * @category Abort Masking
  */
-const combineSignal = (
-  context: TaskContext | undefined,
-  internalSignal: AbortSignal,
-): AbortSignal =>
-  context?.signal
-    ? AbortSignal.any([context.signal, internalSignal])
-    : internalSignal;
+export const AbortMask = brand("AbortMask", NonNegativeInt);
+export type AbortMask = typeof AbortMask.Type;
 
 /**
- * Converts async function returning {@link Result} to a {@link Task}.
+ * The lifecycle state of a {@link Runner}.
+ *
+ * - `active` — accepts new tasks
+ * - `disposing` — no new tasks accepted, waits for in-flight fibers
+ * - `disposed` — all fibers completed, disposal finished
+ *
+ * @category Core
+ */
+export const RunnerState = union("active", "disposing", "disposed");
+export type RunnerState = typeof RunnerState.Type;
+
+/**
+ * `Fiber` is a handle to a running {@link Task} that can be awaited, aborted, or
+ * disposed.
  *
  * ### Example
  *
  * ```ts
- * interface FetchError {
- *   readonly type: "FetchError";
- *   readonly error: unknown;
- * }
+ * await using run = createRunner();
  *
- * // Task version of fetch with proper error handling and cancellation support.
- * const fetch = (url: string) =>
- *   toTask((context) =>
- *     tryAsync(
- *       () => globalThis.fetch(url, { signal: context?.signal ?? null }),
- *       (error): FetchError => ({ type: "FetchError", error }),
- *     ),
- *   );
+ * // Await to get Result
+ * const result = await run(fetchData);
  *
- * // `satisfies` shows the expected type signature.
- * fetch satisfies (url: string) => Task<Response, FetchError>;
+ * // Abort manually
+ * const fiber = run(longRunningTask);
+ * fiber.abort();
+ * const aborted = await fiber; // Result contains AbortError (unless unabortable)
  *
- * const result1 = await fetch("https://api.example.com/data")();
- * result1 satisfies Result<Response, FetchError>;
+ * // Auto-abort with `using`
+ * {
+ *   using fiber = run(backgroundSync);
+ *   await someOtherWork();
+ * } // fiber.abort() called automatically here
  *
- * // With AbortController
- * const controller = new AbortController();
- * const result2 = await fetch("https://api.example.com/data")(controller);
- * result2 satisfies Result<Response, FetchError | AbortError>;
+ * // Run child tasks in fiber's scope
+ * fiber.run(childTask);
+ *
+ * // Monitor via the Runner
+ * fiber.run.onEvent = (event) => {
+ *   console.log(event);
+ * };
  * ```
+ *
+ * Because `Fiber` is a {@link PromiseLike} object, fibers can be composed with
+ * `Promise.all`, `Promise.race`, etc.
+ *
+ * Microtask timing: Runner wraps the task's promise with `.then` and
+ * `.finally`, which adds microtasks between task completion and fiber
+ * settlement. Do not write code that relies on a specific number of microtask
+ * yields between tasks. Use explicit synchronization primitives instead.
+ *
+ * @category Core
  */
-export const toTask = <T, E>(
-  fn: (context?: TaskContext) => Promise<Result<T, E>>,
-): Task<T, E> =>
-  // Note: Not using async to avoid Promise wrapper overhead in fast path
-  ((context) => {
-    const signal = context?.signal;
+export class Fiber<T = unknown, E = unknown>
+  implements PromiseLike<Result<T, E | AbortError>>, Disposable
+{
+  readonly then: PromiseLike<Result<T, E | AbortError>>["then"];
 
-    // Fast path when no signal – return promise directly
-    if (!signal) {
-      // Preserve future context fields (e.g., tracing) even without a signal
-      return fn(context);
+  /**
+   * Requests abort for this fiber (and any child it started).
+   *
+   * ### Example
+   *
+   * ```ts
+   * const fiber = run(fetchData);
+   * fiber.abort();
+   * const result = await fiber; // err(AbortError)
+   * ```
+   *
+   * When abort is requested, the fiber's result becomes {@link AbortError} even
+   * if the task completed successfully. This keeps behavior predictable —
+   * calling `abort()` always yields `AbortError`.
+   *
+   * The optional reason is stored in `AbortError.reason`. Since any value can
+   * be passed, abort reasons are `unknown` — use typed errors for business
+   * logic. To inspect the reason, use type guards like
+   * `RaceLostError.is(reason)`.
+   *
+   * Abort is idempotent — calling multiple times has no additional effect
+   * beyond the first call.
+   */
+  readonly abort: (reason?: unknown) => void;
+
+  /**
+   * A {@link Runner} whose lifetime is tied to this fiber.
+   *
+   * Tasks run via this runner are aborted when the fiber ends.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const fiber = run(longRunningTask);
+   *
+   * // helperTask is aborted when longRunningTask ends
+   * fiber.run(helperTask);
+   *
+   * // Monitor this fiber's runner
+   * fiber.run.onEvent = (event) => {
+   *   console.log(event);
+   * };
+   * ```
+   */
+  readonly run: Runner;
+
+  constructor(
+    run: Runner,
+    promise: Promise<Result<T, E | AbortError>>,
+    abort: (reason?: unknown) => void = constVoid,
+  ) {
+    this.then = promise.then.bind(promise);
+    this.abort = abort;
+    this.run = run;
+  }
+
+  /**
+   * Returns the fiber's completion value.
+   *
+   * `null` while pending. If abort was requested, this is {@link AbortError}
+   * even if the task completed successfully — see {@link Fiber.getOutcome} for
+   * what the task actually returned.
+   */
+  getResult(): Result<T, E | AbortError> | null {
+    return this.run.getResult() as Result<T, E | AbortError> | null;
+  }
+
+  /**
+   * Returns what the task actually returned.
+   *
+   * `null` while pending. Unlike {@link Fiber.getResult}, not overridden by
+   * abort.
+   */
+  getOutcome(): Result<T, E | AbortError> | null {
+    return this.run.getOutcome() as Result<T, E | AbortError> | null;
+  }
+
+  [Symbol.dispose](): void {
+    this.abort();
+  }
+}
+
+/**
+ * Extracts the value type from a {@link Fiber}.
+ *
+ * @category Utilities
+ */
+export type InferFiberOk<F extends Fiber<any, any>> =
+  F extends Fiber<infer T, any> ? T : never;
+
+/**
+ * Extracts the error type from a {@link Fiber}.
+ *
+ * @category Utilities
+ */
+export type InferFiberErr<F extends Fiber<any, any>> =
+  F extends Fiber<any, infer E> ? E : never;
+
+/**
+ * A recursive snapshot of a {@link Runner} tree.
+ *
+ * Snapshots use structural sharing — unchanged subtrees return the same object
+ * reference. This is useful for UI libraries like React that leverage
+ * referential transparency to skip re-rendering unchanged parts. Snapshots are
+ * computed on demand rather than pushed on every change. Push would require
+ * O(depth) new snapshot objects per mutation.
+ *
+ * @category Core
+ * @see {@link Runner.snapshot}
+ */
+export interface RunnerSnapshot {
+  /** The {@link Runner.id} of the {@link Fiber} this snapshot represents. */
+  readonly id: Id;
+
+  /** The current lifecycle state. */
+  readonly state: RunnerState;
+
+  /**
+   * The fiber's completion value.
+   *
+   * `null` while pending. If abort was requested, this is {@link AbortError}
+   * even if the task completed successfully — see {@link RunnerSnapshot.outcome}
+   * for what the task actually returned.
+   */
+  readonly result: Result<unknown, unknown> | null;
+
+  /**
+   * What the task actually returned.
+   *
+   * `null` while pending. Unlike {@link RunnerSnapshot.result}, not overridden
+   * by abort.
+   */
+  readonly outcome: Result<unknown, unknown> | null;
+
+  /** Child snapshots in spawn (start) order. */
+  readonly children: ReadonlyArray<RunnerSnapshot>;
+
+  /** The abort mask depth. `0` means abortable, `>= 1` means unabortable. */
+  readonly abortMask: AbortMask;
+}
+
+/**
+ * Emitted when a child {@link Fiber} is added to a {@link Runner}.
+ *
+ * @category Monitoring
+ */
+export const RunnerEventChildAdded = typed("childAdded", {
+  runnerId: Id,
+  childId: Id,
+  timestamp: Millis,
+});
+export type RunnerEventChildAdded = typeof RunnerEventChildAdded.Type;
+
+/**
+ * Emitted when a child {@link Fiber} is removed from a {@link Runner}.
+ *
+ * @category Monitoring
+ */
+export const RunnerEventChildRemoved = typed("childRemoved", {
+  runnerId: Id,
+  childId: Id,
+  timestamp: Millis,
+});
+export type RunnerEventChildRemoved = typeof RunnerEventChildRemoved.Type;
+
+/**
+ * Emitted when a {@link Runner}'s state changes.
+ *
+ * @category Monitoring
+ */
+export const RunnerEventStateChanged = typed("stateChanged", {
+  runnerId: Id,
+  state: RunnerState,
+  timestamp: Millis,
+});
+export type RunnerEventStateChanged = typeof RunnerEventStateChanged.Type;
+
+/**
+ * Emitted when a {@link Runner}'s result is set.
+ *
+ * @category Monitoring
+ */
+export const RunnerEventResultSet = typed("resultSet", {
+  runnerId: Id,
+  result: UnknownResult,
+  outcome: UnknownResult,
+  timestamp: Millis,
+});
+export type RunnerEventResultSet = typeof RunnerEventResultSet.Type;
+
+/**
+ * Events emitted by a {@link Runner} for monitoring and debugging.
+ *
+ * Events bubble up through parent runners, enabling centralized monitoring at
+ * the root. Use with {@link Runner.onEvent} to track task lifecycle.
+ *
+ * @category Monitoring
+ */
+export const RunnerEvent = union(
+  RunnerEventChildAdded,
+  RunnerEventChildRemoved,
+  RunnerEventStateChanged,
+  RunnerEventResultSet,
+);
+export type RunnerEvent = typeof RunnerEvent.Type;
+
+/**
+ * Task-aware wrapper around native
+ * {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack | AsyncDisposableStack}.
+ *
+ * All tasks run via this stack are {@link unabortable} and run with
+ * {@link Runner.daemon}, ensuring acquisition and cleanup complete even if abort
+ * is requested.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const task: Task<void, Error> = async (run) => {
+ *   await using stack = run.stack();
+ *
+ *   const a = await stack.use(acquireA);
+ *   if (!a.ok) return a;
+ *
+ *   const b = await stack.use(acquireB);
+ *   if (!b.ok) return b; // a released
+ *
+ *   stack.defer(sendAnalytics);
+ *
+ *   // work with a.value, b.value...
+ *   return ok();
+ * }; // b released, then a released, then analytics sent
+ * ```
+ *
+ * @category Resource management
+ */
+export class AsyncDisposableStack implements AsyncDisposable {
+  readonly #stack = new globalThis.AsyncDisposableStack();
+  readonly #daemon: Runner["daemon"];
+
+  constructor(run: Runner) {
+    this.#daemon = run.daemon;
+  }
+
+  #run<T, E>(task: Task<T, E>): Fiber<T, E> {
+    return this.#daemon(unabortable(task));
+  }
+
+  #runVoid(task: Task<void>): PromiseLike<void> {
+    return this.#run(task).then(constVoid);
+  }
+
+  /**
+   * Registers a {@link Task} to run when the stack is disposed.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack/defer
+   */
+  defer(onDisposeAsync: Task<void>): void {
+    this.#stack.defer(() => this.#runVoid(onDisposeAsync));
+  }
+
+  /**
+   * Registers a disposable resource and returns it.
+   *
+   * Accepts either a direct value (sync) or a {@link Task} (async acquisition).
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack/use
+   */
+  use<T extends AsyncDisposable | Disposable | null | undefined>(value: T): T;
+  use<T extends AsyncDisposable | Disposable | null | undefined, E>(
+    acquire: Task<T, E>,
+  ): PromiseLike<Result<T, E | AbortError>>;
+  use<T extends AsyncDisposable | Disposable | null | undefined, E>(
+    valueOrAcquire: T | Task<T, E>,
+  ): T | PromiseLike<Result<T, E | AbortError>> {
+    if (
+      valueOrAcquire == null ||
+      Symbol.dispose in valueOrAcquire ||
+      Symbol.asyncDispose in valueOrAcquire
+    ) {
+      return this.#stack.use(valueOrAcquire as T);
+    }
+    return this.#run(valueOrAcquire).then((result) => {
+      if (result.ok) this.#stack.use(result.value);
+      return result;
+    });
+  }
+
+  /**
+   * Adopts a value with a {@link Task}-based disposal.
+   *
+   * For values that don't implement {@link AsyncDisposable} and need disposal.
+   * If the value is already disposable, use {@link use} instead.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack/adopt
+   */
+  async adopt<T, E = never>(
+    acquire: Task<T, E>,
+    release: (value: T) => Task<void>,
+  ): Promise<Result<T, E | AbortError>> {
+    const result = await this.#run(acquire);
+    if (result.ok) {
+      this.#stack.adopt(result.value, (v) => this.#runVoid(release(v)));
+    }
+    return result;
+  }
+
+  /**
+   * Transfers disposal responsibility to a new stack, marking this one
+   * disposed.
+   *
+   * Enables transferring ownership out of the current scope — if an error
+   * occurs, resources are disposed; if successful, the caller takes ownership.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const createBundle: Task<Bundle, CreateBundleError> = async (run) => {
+   *   await using stack = run.stack();
+   *
+   *   const a = await stack.use(createResource("a"));
+   *   if (!a.ok) return a;
+   *
+   *   const b = await stack.use(createResource("b"));
+   *   if (!b.ok) return b;
+   *
+   *   const moved = stack.move();
+   *   return ok({
+   *     a: a.value,
+   *     b: b.value,
+   *     [Symbol.asyncDispose]: () => moved.disposeAsync(),
+   *   });
+   * };
+   * ```
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DisposableStack/move
+   */
+  move(): globalThis.AsyncDisposableStack {
+    return this.#stack.move();
+  }
+
+  /** Whether this stack has been disposed. */
+  get disposed(): boolean {
+    return this.#stack.disposed;
+  }
+
+  disposeAsync(): Promise<void> {
+    return this.#stack.disposeAsync();
+  }
+
+  [Symbol.asyncDispose](): Promise<void> {
+    return this.#stack.disposeAsync();
+  }
+}
+
+/**
+ * Configuration for {@link Runner} behavior.
+ *
+ * @category Monitoring
+ */
+export interface RunnerConfig {
+  /**
+   * Whether to emit {@link RunnerEvent}s.
+   *
+   * Use a {@link Ref} to enable/disable at runtime without recreating the
+   * runner. Disabled by default for zero overhead in production.
+   */
+  readonly eventsEnabled: Ref<boolean>;
+}
+
+export interface RunnerConfigDep {
+  readonly runnerConfig: RunnerConfig;
+}
+
+export type RunnerDeps = RandomBytesDep &
+  RandomDep &
+  TimeDep &
+  Partial<RunnerConfigDep> &
+  Partial<TracerConfigDep> & // TODO:
+  Partial<TracerDep>; // TODO:
+
+const defaultDeps: RunnerDeps = {
+  random: createRandom(),
+  randomBytes: createRandomBytes(),
+  time: createTime(),
+};
+
+/**
+ * Creates a root {@link Runner}.
+ *
+ * Call once per entry point (main thread, worker, etc.) and dispose on
+ * shutdown. All tasks run as descendants of this root runner.
+ *
+ * ### Example
+ *
+ * ```ts
+ * // App entry point
+ * await using run = createRunner();
+ *
+ * // All tasks are now tracked and will be cleaned up on disposal
+ * const result = await run(fetchData);
+ * ```
+ *
+ * @category Core
+ */
+export const createRunner = (deps = defaultDeps): Runner =>
+  createRunnerInternal(deps)();
+
+/** Internal Runner properties, hidden from public API via TypeScript types. */
+interface RunnerInternal extends Runner {
+  readonly requestAbort: (reason: AbortError) => void;
+  readonly requestSignal: AbortSignal;
+  readonly setResultAndOutcome: (
+    result: Result<unknown, unknown>,
+    outcome: Result<unknown, unknown>,
+  ) => void;
+}
+
+const createRunnerInternal =
+  (deps: RunnerDeps) =>
+  (
+    parent?: RunnerInternal,
+    daemon?: RunnerInternal,
+    behavior?: AbortBehavior,
+  ): RunnerInternal => {
+    const parentMask = parent?.abortMask ?? isAbortable;
+
+    let abortMask: AbortMask;
+    switch (behavior) {
+      case undefined:
+        abortMask = parentMask;
+        break;
+      case "unabortable":
+        abortMask = increment(parentMask) as AbortMask;
+        break;
+      default:
+        assert(
+          behavior <= parentMask,
+          "restore used outside its unabortableMask",
+        );
+        abortMask = behavior;
     }
 
-    if (signal.aborted) {
-      return Promise.resolve(
-        err({ type: "AbortError", reason: signal.reason as unknown }),
-      );
-    }
+    const requestController = new AbortController();
+    const signalController = new AbortController();
 
-    // Use Promise.withResolvers for clean abort handling and cleanup
-    const { promise: abortPromise, resolve: resolveAbort } =
-      Promise.withResolvers<Result<never, AbortError>>();
+    let state: RunnerState = "active";
+    let children: ReadonlySet<Fiber> = emptySet;
 
-    const handleAbort = () => {
-      resolveAbort(
-        err({ type: "AbortError", reason: signal.reason as unknown }),
-      );
+    // AbortController ensures idempotence.
+    const requestAbort = (reason: AbortError) => {
+      requestController.abort(reason);
+      if (abortMask === isAbortable) signalController.abort(reason);
     };
 
-    signal.addEventListener("abort", handleAbort, { once: true });
+    if (parent) {
+      const handleParentAbort = () => {
+        requestAbort(parent.requestSignal.reason as AbortError);
+      };
+      if (parent.requestSignal.aborted) {
+        handleParentAbort();
+      } else {
+        parent.requestSignal.addEventListener("abort", handleParentAbort, {
+          signal: requestController.signal,
+        });
+      }
+    }
 
-    // No finally: we expect no throws in normal flow; Result path removes listener.
-    // Unexpected throws indicate a bug and are allowed to crash (no recovery here).
-    return Promise.race([
-      abortPromise,
-      fn(context).then((result) => {
-        signal.removeEventListener("abort", handleAbort);
-        return result;
-      }),
-    ]);
-  }) as Task<T, E>;
+    type RunnerEventPayload<T> = T extends RunnerEvent
+      ? Omit<T, "runnerId" | "timestamp">
+      : never;
 
-/**
- * Creates a {@link Task} that waits for the specified duration.
- *
- * ### Example
- *
- * ```ts
- * const result1 = await wait("10ms")();
- * result1 satisfies Result<void, never>;
- *
- * // With AbortController
- * const controller = new AbortController();
- * const result2 = await wait("10ms")(controller);
- * result2 satisfies Result<void, AbortError>;
- * ```
- */
-export const wait = (duration: Duration): Task<void, never> =>
-  toTask(
-    (context) =>
-      new Promise<Result<void, never>>((resolve) => {
-        const ms = durationToNonNegativeInt(duration);
-        const timeoutSignal = AbortSignal.timeout(ms);
+    const emitEvent = (event: RunnerEventPayload<RunnerEvent>) => {
+      if (!deps.runnerConfig?.eventsEnabled.get()) return;
+      const fullEvent = {
+        ...event,
+        runnerId: self.id,
+        timestamp: deps.time.now(),
+      };
+      for (let node: Runner | null = self; node; node = node.parent)
+        node.onEvent?.(fullEvent);
+    };
 
-        const signal = combineSignal(context, timeoutSignal);
+    const run = <T, E>(task: Task<T, E>): Fiber<T, E> => {
+      const runner = createRunnerInternal(deps)(
+        self,
+        daemon ?? self,
+        getAbortBehavior(task),
+      );
 
-        // Listen for abort - either from timeout completion or external abort
-        signal.addEventListener(
+      if (state !== "active") {
+        runner.requestAbort(runnerClosingError);
+        task = () => Promise.resolve(err(runnerClosingError));
+      } else if (
+        signalController.signal.aborted &&
+        runner.abortMask === isAbortable
+      ) {
+        const abortReason = signalController.signal.reason as AbortError;
+        runner.requestAbort(abortReason);
+        task = () => Promise.resolve(err(abortReason));
+      }
+
+      const promise = Promise.try(task, runner)
+        .then((taskOutcome) => {
+          const childResult = runner.signal.aborted
+            ? err(runner.signal.reason)
+            : taskOutcome;
+          runner.setResultAndOutcome(childResult, taskOutcome);
+          return childResult;
+        })
+        .finally(runner[Symbol.asyncDispose])
+        .finally(() => {
+          children = deleteFromSet(children, fiber);
+          emitEvent({ type: "childRemoved", childId: runner.id });
+        });
+
+      const fiber = new Fiber<T, E>(runner, promise, (reason?: unknown) => {
+        runner.requestAbort(createAbortError(reason));
+      });
+
+      children = addToSet(children, fiber);
+      emitEvent({ type: "childAdded", childId: runner.id });
+
+      return fiber;
+    };
+
+    const self = run as RunnerInternal;
+
+    {
+      const run = self as Mutable<RunnerInternal>;
+      const id = createId(deps);
+
+      let result: Result<unknown, unknown> | null = null;
+      let outcome: Result<unknown, unknown> | null = null;
+      let snapshot: RunnerSnapshot | null = null;
+      let disposing: Promise<void> | null = null;
+
+      run.id = id;
+      run.parent = parent ?? null;
+
+      run.signal = signalController.signal;
+      run.abortMask = abortMask;
+      run.onAbort = (fn) => {
+        signalController.signal.addEventListener(
           "abort",
           () => {
-            resolve(ok());
+            fn((signalController.signal.reason as AbortError).reason);
           },
           { once: true },
         );
-      }),
-  );
+      };
 
-/** Error returned when {@link timeout} exceeds the specified duration. */
-export interface TimeoutError {
-  readonly type: "TimeoutError";
-  readonly timeoutMs: number;
-}
+      run.getState = () => state;
+      run.getResult = () => result;
+      run.getOutcome = () => outcome;
+      run.getChildren = () => children;
+
+      run.snapshot = () => {
+        const childSnapshots = Array.from(children).map((fiber) =>
+          fiber.run.snapshot(),
+        );
+        if (
+          snapshot?.state !== state ||
+          snapshot.result !== result ||
+          // No need to check outcome — it's set together with result
+          !eqArrayStrict(snapshot.children, childSnapshots)
+        ) {
+          snapshot = {
+            id,
+            state,
+            result,
+            outcome,
+            children: childSnapshots,
+            abortMask,
+          };
+        }
+        return snapshot;
+      };
+      run.onEvent = undefined;
+
+      run.daemon = (task) => (daemon ?? self)(task);
+      run.defer = (task) => ({
+        [Symbol.asyncDispose]: () =>
+          run.daemon(unabortable(task)).then(constVoid),
+      });
+      run.stack = () => new AsyncDisposableStack(self);
+
+      run.time = deps.time;
+      run.random = deps.random;
+
+      run[Symbol.asyncDispose] = () => {
+        if (disposing) return disposing;
+
+        state = "disposing";
+        emitEvent({ type: "stateChanged", state });
+
+        requestAbort(runnerClosingError);
+
+        disposing = Promise.allSettled(children)
+          .then(constVoid)
+          .finally(() => {
+            state = "disposed";
+            emitEvent({ type: "stateChanged", state });
+          });
+
+        return disposing;
+      };
+
+      // Internal properties (hidden from public Runner type)
+      run.requestAbort = requestAbort;
+      run.requestSignal = requestController.signal;
+      run.setResultAndOutcome = (fiberResult, taskOutcome) => {
+        result = fiberResult;
+        outcome = taskOutcome;
+        emitEvent({
+          type: "resultSet",
+          result: fiberResult,
+          outcome: taskOutcome,
+        });
+      };
+    }
+
+    return self;
+  };
+
+/** Mask value indicating the task is abortable. */
+const isAbortable = AbortMask.orThrow(0);
 
 /**
- * Adds timeout behavior to a {@link Task}.
+ * Error used as {@link AbortError} reason when a {@link Runner} is disposed.
+ *
+ * @category Core
+ */
+export const RunnerClosingError = typed("RunnerClosingError");
+export type RunnerClosingError = typeof RunnerClosingError.Type;
+
+const createAbortError = (reason: unknown): AbortError => ({
+  type: "AbortError",
+  reason,
+});
+
+/**
+ * The {@link AbortError} used when a {@link Runner} is disposed.
+ *
+ * Tasks run on a disposing or disposed runner receive this error.
+ *
+ * @category Core
+ */
+export const runnerClosingError = createAbortError({
+  type: "RunnerClosingError",
+} satisfies RunnerClosingError);
+
+type AbortBehavior = "unabortable" | AbortMask;
+
+interface MaybeAbortBehavior {
+  [_abortBehavior]?: AbortBehavior;
+}
+
+const getAbortBehavior = (task: Task<any, any>): AbortBehavior | undefined =>
+  (task as MaybeAbortBehavior)[_abortBehavior];
+
+const abortBehavior =
+  (behavior: AbortBehavior) =>
+  <T, E>(task: Task<T, E>): Task<T, E> => {
+    const wrapper: Task<T, E> = (run) => run(task);
+    (wrapper as MaybeAbortBehavior)[_abortBehavior] = behavior;
+    return wrapper;
+  };
+
+const _abortBehavior = Symbol("evolu.Task.abortBehavior");
+
+/**
+ * Makes a {@link Task} unabortable.
+ *
+ * Once started, an unabortable task always completes — abort requests are
+ * ignored and `signal.aborted` remains `false`.
  *
  * ### Example
  *
  * ```ts
- * interface FetchError {
- *   readonly type: "FetchError";
- *   readonly error: unknown;
- * }
+ * await using run = createRunner();
  *
- * // Task version of fetch with proper error handling and cancellation support.
- * const fetch = (url: string) =>
- *   toTask((context) =>
- *     tryAsync(
- *       () => globalThis.fetch(url, { signal: context?.signal ?? null }),
- *       (error): FetchError => ({ type: "FetchError", error }),
- *     ),
- *   );
+ * const events: Array<string> = [];
+ * const canComplete = Promise.withResolvers<void>();
+ * let signalAbortedInAnalytics = true;
  *
- * // `satisfies` shows the expected type signature.
- * fetch satisfies (url: string) => Task<Response, FetchError>;
+ * // Simulate async analytics API (abortable by default)
+ * const sendToAnalytics =
+ *   (event: number): Task<void, never> =>
+ *   async ({ signal }) => {
+ *     await canComplete.promise;
+ *     signalAbortedInAnalytics = signal.aborted;
+ *     events.push(`sent ${event}`);
+ *     return ok();
+ *   };
  *
- * const fetchWithTimeout = (url: string) => timeout("2m", fetch(url));
+ * // Important events must be sent even if the user navigates away
+ * const trackImportantEvent = (event: number) =>
+ *   unabortable(sendToAnalytics(event));
  *
- * const result1 = await fetchWithTimeout("https://api.example.com/data")();
- * result1 satisfies Result<Response, FetchError | TimeoutError>;
+ * // User clicks, we start tracking (task runs until first await)
+ * const fiber = run(trackImportantEvent(123));
  *
- * // With AbortController
- * const controller = new AbortController();
- * const result2 = await fetchWithTimeout("https://api.example.com/data")(
- *   controller,
- * );
- * result2 satisfies Result<
- *   Response,
- *   FetchError | TimeoutError | AbortError
- * >;
+ * // User navigates away (abort requested while task is running)
+ * fiber.abort();
+ * canComplete.resolve();
+ *
+ * const result = await fiber;
+ *
+ * expect(signalAbortedInAnalytics).toBe(false);
+ * // Analytics was sent despite abort
+ * expect(events).toEqual(["sent 123"]);
+ * expect(result).toEqual(ok());
  * ```
+ *
+ * @category Abort Masking
+ */
+export const unabortable = abortBehavior("unabortable");
+
+/**
+ * Like {@link unabortable}, but provides `restore` to restore abortability for
+ * specific tasks.
+ *
+ * Tasks inherit abort masking from their parent. This means:
+ *
+ * - Tasks run inside `unabortableMask` are unabortable by default
+ * - Tasks wrapped with `restore()` restore the previous abortability
+ *
+ * @category Abort Masking
+ */
+export const unabortableMask = <T, E>(
+  fn: (restore: <T2, E2>(task: Task<T2, E2>) => Task<T2, E2>) => Task<T, E>,
+): Task<T, E> =>
+  unabortable((run) =>
+    fn(abortBehavior(AbortMask.orThrow(decrement(run.abortMask))))(run),
+  );
+
+/**
+ * Yields execution to allow other work to proceed.
+ *
+ * Long-running JavaScript blocks the main thread. In browsers, this makes the
+ * UI unresponsive (user interactions, animations). In Node.js, it prevents I/O
+ * callbacks, timers, and other requests from being handled. Inserting yield
+ * points lets the runtime process high-priority work between chunks of code.
+ *
+ * Uses `scheduler.yield()` in browsers for optimal main thread scheduling,
+ * falls back to `setImmediate` in Node.js, or `setTimeout` elsewhere.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const processLargeArray: Task<void, never> = async (run) => {
+ *   let lastYield = run.time.now();
+ *
+ *   for (const item of largeArray) {
+ *     processItem(item);
+ *
+ *     // Yield periodically to keep UI responsive
+ *     if (run.time.now() - lastYield > msLongTask) {
+ *       const r = await yieldNow(run);
+ *       if (!r.ok) return r;
+ *       lastYield = run.time.now();
+ *     }
+ *   }
+ *
+ *   return ok();
+ * };
+ * ```
+ *
+ * Recursive tasks also benefit from periodic yields — without them, deep
+ * recursion overflows the call stack:
+ *
+ * ```ts
+ * const processRecursive =
+ *   (count: number, index: number, sum: number): Task<number> =>
+ *   async (run) => {
+ *     if (index >= count) return ok(sum);
+ *
+ *     // Yield periodically to break synchronous call chains.
+ *     if (index > 0 && index % 1000 === 0) {
+ *       const y = await run(yieldNow);
+ *       if (!y.ok) return y;
+ *     }
+ *
+ *     // Direct tail-call: no fiber overhead, stack-safe thanks to yieldNow.
+ *     return await processRecursive(count, index + 1, sum + index)(run);
+ *   };
+ * ```
+ *
+ * @category Composition
+ * @experimental
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Scheduler/yield
+ * @see https://web.dev/articles/optimize-long-tasks
+ */
+export const yieldNow: Task<void> = () =>
+  // tryAsync prepares for scheduler.yield({ signal }) which rejects on abort.
+  tryAsync(
+    () => yieldImpl(),
+    (error): AbortError => ({ type: "AbortError", reason: error }),
+  );
+
+const yieldImpl: () => Promise<void> =
+  "scheduler" in globalThis && "yield" in globalThis.scheduler
+    ? () => globalThis.scheduler.yield()
+    : typeof setImmediate !== "undefined"
+      ? () => new Promise<void>(setImmediate)
+      : () => new Promise<void>((r) => setTimeout(r, 0)); // Safari
+
+/**
+ * Pauses execution for a specified duration.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const task: Task<void> = async (run) => {
+ *   console.log("Starting...");
+ *   await run(sleep("1s"));
+ *   console.log("Done after 1 second");
+ *   return ok();
+ * };
+ * ```
+ *
+ * @category Composition
+ * @experimental
+ */
+export const sleep =
+  (duration: Duration): Task<void> =>
+  (run) =>
+    new Promise((resolve) => {
+      const id = run.time.setTimeout(() => {
+        resolve(ok());
+      }, durationToMillis(duration));
+
+      run.onAbort((reason) => {
+        run.time.clearTimeout(id);
+        resolve(err({ type: "AbortError", reason }));
+      });
+    });
+
+/**
+ * Returns a {@link Task} that completes first.
+ *
+ * Like
+ * {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/race | Promise.race},
+ * the first task to complete (whether success or failure) wins. All other tasks
+ * are aborted.
+ *
+ * Unlike `Promise.race`, this requires a non-empty array instead of an
+ * `Iterable`. This enables compile-time enforcement that at least one task is
+ * provided — `Promise.race([])` hangs forever, which is rarely intended. For
+ * tasks from an `Iterable`, spread and use {@link isNonEmptyArray}:
+ *
+ * ```ts
+ * const tasksArray = [...tasksIterable];
+ * if (isNonEmptyArray(tasksArray)) {
+ *   await run(race(tasksArray));
+ * }
+ * ```
+ *
+ * ### Example
+ *
+ * ```ts
+ * const fast: Task<string, never> = async () => ok("fast");
+ * const slow: Task<string, never> = async () => {
+ *   await new Promise((r) => setTimeout(r, 0));
+ *   return ok("slow");
+ * };
+ *
+ * // First to settle wins, others are aborted
+ * const result = await run(race([fast, slow])); // ok("fast")
+ * ```
+ *
+ * @category Composition
+ * @experimental
+ */
+export const race =
+  <T extends readonly [Task<any, any>, ...ReadonlyArray<Task<any, any>>]>(
+    tasks: T,
+    {
+      abortReason = raceLostError,
+    }: {
+      /** Abort reason for losing tasks. Defaults to {@link raceLostError}. */
+      abortReason?: unknown;
+    } = {},
+  ): Task<InferTaskOk<T[number]>, InferTaskErr<T[number]>> =>
+  async (run) => {
+    const fibers = tasks.map(run.daemon);
+    const abortPending = (reason: unknown) => {
+      for (const fiber of fibers)
+        if (fiber.getResult() === null) fiber.abort(reason);
+      return ok();
+    };
+    run.onAbort(abortPending);
+    await using _ = run.defer(() => abortPending(abortReason));
+    return await Promise.race(fibers);
+  };
+
+/**
+ * Abort reason for tasks that lose a {@link race}.
+ *
+ * @category Composition
+ */
+export const RaceLostError = typed("RaceLostError");
+export type RaceLostError = typeof RaceLostError.Type;
+
+/**
+ * {@link RaceLostError} used as abort reason in {@link race}.
+ *
+ * @category Composition
+ */
+export const raceLostError: RaceLostError = { type: "RaceLostError" };
+
+/**
+ * Wraps a {@link Task} with a time limit.
+ *
+ * Returns {@link TimeoutError} if the task doesn't complete within the specified
+ * duration. The original task is aborted when the timeout fires.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const fetchWithTimeout = timeout("5s", fetchData);
+ *
+ * const result = await run(fetchWithTimeout);
+ * if (!result.ok && result.error.type === "TimeoutError") {
+ *   console.log("Request timed out");
+ * }
+ * ```
+ *
+ * @category Composition
+ * @experimental
  */
 export const timeout = <T, E>(
   duration: Duration,
   task: Task<T, E>,
+  {
+    abortReason = timeoutError,
+  }: {
+    /**
+     * Abort reason for the task when timeout fires. Defaults to
+     * {@link timeoutError}.
+     */
+    abortReason?: unknown;
+  } = {},
 ): Task<T, E | TimeoutError> =>
-  toTask(async (context) => {
-    const timeoutMs = durationToNonNegativeInt(duration);
-    const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  race(
+    [
+      task,
+      async (run) => {
+        await run(sleep(duration));
+        return err(timeoutError);
+      },
+    ],
+    { abortReason },
+  );
 
-    const signal = combineSignal(context, timeoutSignal);
+/**
+ * Typed error returned by {@link timeout} when a task exceeds its time limit.
+ *
+ * @category Composition
+ */
+export const TimeoutError = typed("TimeoutError");
+export type TimeoutError = typeof TimeoutError.Type;
 
-    const result = await task({ signal });
+/**
+ * {@link TimeoutError} used as abort reason in {@link timeout}.
+ *
+ * @category Composition
+ */
+export const timeoutError: TimeoutError = { type: "TimeoutError" };
 
-    if (timeoutSignal.aborted) {
-      return err({ type: "TimeoutError", timeoutMs });
-    }
-
-    return result as Result<T, E | TimeoutError>;
-  });
-
-/** Options for configuring {@link retry} behavior. */
-export interface RetryOptions<E> {
-  /** Number of retry attempts after the initial failure. */
-  readonly retries: PositiveInt;
-
-  /**
-   * Initial delay for exponential backoff (1st retry uses this, 2nd uses
-   * this×factor, 3rd uses this×factor², etc.). Actual delays are randomized by
-   * {@link RetryOptions.jitter}.
-   */
-  readonly initialDelay?: Duration;
-
-  /** Maximum delay between retries. */
-  readonly maxDelay?: Duration;
-
-  /** Exponential backoff multiplier. */
-  readonly factor?: number;
-
-  /** Random jitter factor (0-1) to prevent thundering herd. */
-  readonly jitter?: number;
-
-  /**
-   * Predicate to determine if error should trigger retry. Receives AbortError
-   * too.
-   */
-  readonly retryable?: (error: E | AbortError) => boolean;
-
-  /** Callback invoked before each retry attempt. */
-  readonly onRetry?: (error: E, attempt: number, delay: number) => void;
-}
-
-/** Error returned when {@link retry} exhausts all retry attempts. */
+/**
+ * Error returned when all retry attempts are exhausted.
+ *
+ * @category Composition
+ */
 export interface RetryError<E> {
   readonly type: "RetryError";
+  /** The error from the final attempt. */
   readonly cause: E;
+  /** Total attempts made (initial + retries). */
   readonly attempts: number;
 }
 
 /**
- * Adds retry logic with exponential backoff and jitter to a {@link Task}.
+ * Wraps a {@link Task} with retry logic controlled by a {@link Schedule}.
+ *
+ * Retries the task according to the schedule's timing and termination rules.
+ * The schedule receives the error as input, enabling error-aware retry
+ * strategies.
+ *
+ * {@link AbortError} is never retried — abort always propagates immediately.
  *
  * ### Example
  *
  * ```ts
- * interface FetchError {
- *   readonly type: "FetchError";
- *   readonly error: unknown;
- * }
+ * import {
+ *   exponential,
+ *   jitter,
+ *   maxDelay,
+ *   take,
+ *   whileInput,
+ * } from "@evolu/common/schedule";
+ * import { retry } from "@evolu/common";
  *
- * // Task version of fetch with proper error handling and cancellation support.
- * const fetch = (url: string) =>
- *   toTask((context) =>
- *     tryAsync(
- *       () => globalThis.fetch(url, { signal: context?.signal ?? null }),
- *       (error): FetchError => ({ type: "FetchError", error }),
- *     ),
- *   );
- *
- * // `satisfies` shows the expected type signature.
- * fetch satisfies (url: string) => Task<Response, FetchError>;
- *
- * const fetchWithRetry = (url: string) =>
- *   retry({ retries: PositiveInt.orThrow(3) }, fetch(url));
- *
- * const result1 = await fetchWithRetry("https://api.example.com/data")();
- * result1 satisfies Result<Response, FetchError | RetryError<FetchError>>;
- *
- * // With AbortController
- * const controller = new AbortController();
- * const result2 = await fetchWithRetry("https://api.example.com/data")(
- *   controller,
+ * // Exponential backoff with jitter (3 retries = 4 total attempts)
+ * const fetchWithRetry = retry(
+ *   {
+ *     schedule: jitter(0.5)(maxDelay("5s")(take(3)(exponential("100ms")))),
+ *   },
+ *   fetchData,
  * );
- * result2 satisfies Result<
- *   Response,
- *   FetchError | RetryError<FetchError> | AbortError
- * >;
+ *
+ * // Error-aware retry: stop on fatal errors (5 retries = 6 total attempts max)
+ * const smartRetry = retry(
+ *   {
+ *     schedule: whileInput((e: MyError) => e.type !== "Fatal")(
+ *       take(5)(exponential("100ms")),
+ *     ),
+ *   },
+ *   fetchData,
+ * );
+ *
+ * const result = await run(fetchWithRetry);
+ * if (!result.ok && result.error.type === "RetryError") {
+ *   console.log(`Failed after ${result.error.attempts} attempts`);
+ * }
  * ```
+ *
+ * @category Composition
+ * @experimental
  */
-export const retry = <T, E>(
-  {
-    retries,
-    initialDelay = "1s",
-    maxDelay = "30s",
-    factor = 2,
-    jitter = 0.5,
-    retryable = (error: E | AbortError) => !isAbortError(error),
-    onRetry,
-  }: RetryOptions<E>,
-  task: Task<T, E>,
-): Task<T, E | RetryError<E>> =>
-  toTask(async (context): Promise<Result<T, E | RetryError<E>>> => {
-    const initialDelayMs = durationToNonNegativeInt(initialDelay);
-    const maxDelayMs = durationToNonNegativeInt(maxDelay);
-    const maxRetries = PositiveInt.orThrow(retries);
-
+export const retry =
+  <T, E>(
+    {
+      schedule,
+      retryable = constTrue,
+      onRetry,
+    }: {
+      /**
+       * Schedule controlling retry timing. Determines delays and attempt
+       * limits.
+       */
+      schedule: Schedule<unknown, E>;
+      /** Predicate to determine if error is retryable. Defaults to all errors. */
+      retryable?: Predicate<E>;
+      /**
+       * Callback invoked before each retry attempt with error and attempt
+       * number.
+       */
+      onRetry?: (error: E, attempt: number) => void;
+    },
+    task: Task<T, E>,
+  ): Task<T, E | RetryError<E>> =>
+  async (run) => {
+    const step = schedule(run);
     let attempt = 0;
+    let lastError: E | undefined;
 
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    while (true) {
-      const result = await task(context);
+    for (;;) {
+      attempt++;
 
-      if (result.ok) {
-        return result;
-      }
-
-      // Never retry on AbortError; propagate it directly
-      if (isAbortError(result.error)) {
-        return err(result.error) as Result<T, E | RetryError<E>>;
-      }
-
-      attempt += 1;
-
-      if (attempt > maxRetries || !retryable(result.error)) {
-        return err({
-          type: "RetryError",
-          cause: result.error,
-          attempts: attempt,
-        });
-      }
-
-      // Calculate delay with exponential backoff
-      const exponentialDelay = initialDelayMs * Math.pow(factor, attempt - 1);
-      const cappedDelay = Math.min(exponentialDelay, maxDelayMs);
-
-      // Apply jitter to prevent thundering herd problem
-      const randomFactor = 1 - jitter + Math.random() * jitter * 2;
-      const delay = Math.floor(cappedDelay * randomFactor);
-
-      if (onRetry) {
-        onRetry(result.error, attempt, delay);
-      }
-
-      // Wait before retry
-      {
-        const result = await wait(NonNegativeInt.orThrow(delay))(context);
-        if (!result.ok) {
-          // If delay was aborted, return AbortError (will be handled by toTask)
-          return result;
-        }
-      }
-    }
-  });
-
-/**
- * A semaphore that limits the number of concurrent async Tasks.
- *
- * For mutual exclusion (limiting to exactly one Task), consider using
- * {@link Mutex} instead.
- *
- * @see {@link createSemaphore} to create a semaphore instance.
- */
-export interface Semaphore extends Disposable {
-  /**
-   * Executes a Task while holding a semaphore permit.
-   *
-   * The Task will wait until a permit is available before executing. Supports
-   * cancellation via AbortSignal - if the signal is aborted while waiting for a
-   * permit or during execution, the Task is cancelled and permits are properly
-   * released.
-   */
-  readonly withPermit: <T, E>(task: Task<T, E>) => Task<T, E | AbortError>;
-}
-
-/**
- * Creates a semaphore that limits concurrent async Tasks to the specified
- * count.
- *
- * A semaphore controls access to a resource by maintaining a count of available
- * permits. Tasks acquire a permit before executing and release it when
- * complete.
- *
- * For mutual exclusion (exactly one Task at a time), consider using
- * {@link createMutex} instead.
- *
- * ### Example
- *
- * ```ts
- * // Allow maximum 3 concurrent Tasks
- * const semaphore = createSemaphore(PositiveInt.orThrow(3));
- *
- * let currentConcurrent = 0;
- * const events: Array<string> = [];
- *
- * const fetchData = (id: number) =>
- *   toTask<number, never>(async (context) => {
- *     currentConcurrent++;
- *     events.push(`start ${id} (concurrent: ${currentConcurrent})`);
- *
- *     await wait("10ms")(context);
- *
- *     currentConcurrent--;
- *     events.push(`end ${id} (concurrent: ${currentConcurrent})`);
- *     return ok(id * 10);
- *   });
- *
- * // These will execute with at most 3 running concurrently
- * const results = await Promise.all([
- *   semaphore.withPermit(fetchData(1))(),
- *   semaphore.withPermit(fetchData(2))(),
- *   semaphore.withPermit(fetchData(3))(),
- *   semaphore.withPermit(fetchData(4))(), // waits for one above to complete
- *   semaphore.withPermit(fetchData(5))(), // waits for permit
- * ]);
- *
- * expect(results.map(getOrThrow)).toEqual([10, 20, 30, 40, 50]);
- * expect(events).toMatchInlineSnapshot(`
- *   [
- *     "start 1 (concurrent: 1)",
- *     "start 2 (concurrent: 2)",
- *     "start 3 (concurrent: 3)",
- *     "end 1 (concurrent: 2)",
- *     "start 4 (concurrent: 3)",
- *     "end 2 (concurrent: 2)",
- *     "start 5 (concurrent: 3)",
- *     "end 3 (concurrent: 2)",
- *     "end 4 (concurrent: 1)",
- *     "end 5 (concurrent: 0)",
- *   ]
- * `);
- * ```
- */
-export const createSemaphore = (maxConcurrent: PositiveInt): Semaphore => {
-  let isDisposed = false;
-  let availablePermits = maxConcurrent;
-  const waitingQueue: Array<() => void> = [];
-  const semaphoreController = new AbortController();
-
-  const acquire = (): Promise<void> => {
-    if (availablePermits > 0) {
-      availablePermits--;
-      return Promise.resolve();
-    }
-
-    return new Promise<void>((resolve) => {
-      waitingQueue.push(resolve);
-    });
-  };
-
-  const release = (): void => {
-    if (isNonEmptyArray(waitingQueue)) {
-      shiftArray(waitingQueue)();
-    } else {
-      availablePermits++;
-    }
-  };
-
-  return {
-    withPermit: <T, E>(task: Task<T, E>): Task<T, E | AbortError> =>
-      toTask(async (context): Promise<Result<T, E | AbortError>> => {
-        await acquire();
-
-        // Check if semaphore was disposed while waiting
-        if (isDisposed) {
-          return err({
-            type: "AbortError",
-            reason: "Semaphore disposed",
+      // On retry (not first attempt), wait according to schedule
+      if (lastError !== undefined) {
+        const scheduleResult = step(lastError);
+        if (!scheduleResult.ok) {
+          // Schedule exhausted
+          return err<RetryError<E>>({
+            type: "RetryError",
+            cause: lastError,
+            attempts: attempt - 1,
           });
         }
 
-        const signal = combineSignal(context, semaphoreController.signal);
+        onRetry?.(lastError, attempt - 1);
 
-        const result = await task({ signal });
-
-        release();
-
-        return result;
-      }),
-
-    [Symbol.dispose]: () => {
-      if (isDisposed) return;
-      isDisposed = true;
-
-      // Cancel all running and waiting tasks
-      semaphoreController.abort("Semaphore disposed");
-
-      // Release all waiting tasks so they can continue and check isDisposed
-      while (isNonEmptyArray(waitingQueue)) {
-        shiftArray(waitingQueue)();
+        const [, delay] = scheduleResult.value;
+        if (delay > 0) {
+          const sleepResult = await run(sleep(delay));
+          if (!sleepResult.ok) return sleepResult;
+        }
       }
-    },
-  };
-};
 
-/**
- * A mutex (mutual exclusion) that ensures only one Task runs at a time.
- *
- * This is a specialized version of a {@link Semaphore} with a permit count of 1.
- *
- * @see {@link createMutex} to create a mutex instance.
- */
-export interface Mutex extends Disposable {
-  /**
-   * Executes a Task while holding the mutex lock.
-   *
-   * Only one Task can hold the lock at a time. Other Tasks will wait until the
-   * lock is released. Supports cancellation via AbortSignal.
-   */
-  readonly withLock: <T, E>(task: Task<T, E>) => Task<T, E | AbortError>;
-}
+      const result = await run(task);
+      if (result.ok) return result;
 
-/**
- * Creates a new mutex for ensuring mutual exclusion.
- *
- * A mutex is a {@link createSemaphore} with exactly one permit, ensuring that
- * only one Task can execute at a time.
- *
- * ### Example
- *
- * ```ts
- * const mutex = createMutex();
- *
- * const updateTask = (id: number) =>
- *   toTask((context) =>
- *     tryAsync(
- *       () => updateSharedResource(id, context),
- *       (error): UpdateError => ({ type: "UpdateError", error }),
- *     ),
- *   );
- *
- * // These Tasks will execute one at a time
- * const results = await Promise.all([
- *   mutex.withLock(updateTask(1))(),
- *   mutex.withLock(updateTask(2))(),
- *   mutex.withLock(updateTask(3))(),
- * ]);
- * ```
- */
-export const createMutex = (): Mutex => {
-  const mutex = createSemaphore(PositiveInt.orThrow(1));
+      // Never retry AbortError
+      if (AbortError.is(result.error)) return result;
 
-  return {
-    withLock: mutex.withPermit,
-    [Symbol.dispose]: mutex[Symbol.dispose],
-  };
-};
-
-/**
- * Schedule a task to run after all interactions (animations, gestures,
- * navigation) have completed.
- *
- * This uses `requestIdleCallback` when available, otherwise falls back to
- * `setTimeout(0)` for cross-platform compatibility.
- *
- * ### Example
- *
- * ```ts
- * const processDataTask: Task<void, ProcessError> = toTask(async () => {
- *   // Heavy processing work
- *   return ok();
- * });
- *
- * // Schedule the task to run when idle
- * void requestIdleTask(processDataTask)();
- * ```
- */
-export const requestIdleTask = <T, E>(task: Task<T, E>): Task<T, E> =>
-  toTask(
-    async (context?: TaskContext) =>
-      new Promise<Result<T, E>>((resolve) => {
-        idleCallback(() => {
-          void task(context).then(resolve);
+      lastError = result.error;
+      if (!retryable(lastError)) {
+        return err<RetryError<E>>({
+          type: "RetryError",
+          cause: lastError,
+          attempts: attempt,
         });
-      }),
-  );
-
-const idleCallback: (callback: () => void) => void =
-  typeof globalThis.requestIdleCallback === "function"
-    ? globalThis.requestIdleCallback
-    : (callback) => setTimeout(callback, 0);
+      }
+    }
+  };
 
 /**
- * Represents a value that can be either synchronous or asynchronous.
+ * Repeats a {@link Task} according to a {@link Schedule}.
  *
- * This type is useful for functions that may complete synchronously or
- * asynchronously depending on runtime conditions (e.g., cache hit vs network
- * fetch).
+ * Runs the task, then checks the schedule to determine if it should repeat. The
+ * schedule controls how many repetitions occur and the delay between them.
+ * Continues until the schedule returns `Err(Done<void>)` or the task fails.
  *
- * ### Why MaybeAsync?
- *
- * When a function can be sync or async, the typical approaches are:
- *
- * 1. **Always return Promise** - Simple but forces microtask overhead even for
- *    sync values (see "await always adds microtask" test in Task.test.ts)
- * 2. **Use callbacks** - Can avoid microtask, but calling code must still `await`
- *    for sane composition, which adds microtask anyway
- * 3. **Return `T | PromiseLike<T>`** - Calling code can check the value and only
- *    `await` when needed, avoiding microtask overhead for sync cases
- *
- * The third approach (MaybeAsync) provides:
- *
- * - **Performance**: No microtask overhead for synchronous operations
- * - **Reliability**: No interleaving via microtask queue when operations are
- *   _synchronous_, reducing need for mutexes to protect shared state
+ * With `take(n)`, the task runs n+1 times (initial run plus n repetitions).
  *
  * ### Example
  *
  * ```ts
- * // Function that may be sync or async
- * const getData = (id: string): MaybeAsync<Data> => {
- *   const cached = cache.get(id);
- *   if (cached) return cached; // Sync path
- *   return fetchData(id); // Async path
- * };
+ * import { fixed, take } from "@evolu/common/schedule";
+ * import { repeat } from "@evolu/common";
  *
- * // Caller can optimize based on actual behavior
- * const result = getData(id);
- * const data = isAsync(result) ? await result : result;
+ * // Heartbeat every 30 seconds (runs forever until aborted)
+ * const heartbeat = repeat(fixed("30s"), sendHeartbeat);
+ *
+ * // Poll 4 times total (initial + 3 repetitions), 1 second apart
+ * const poll = repeat(take(3)(fixed("1s")), checkStatus);
  * ```
  *
- * ### Alternative Approaches
- *
- * It's possible to eliminate the sync/async distinction using complex
- * frameworks with custom schedulers. However, such frameworks require depending
- * on other people's code that controls how your code executes, resulting in
- * more complex stack traces and debugging experiences. With MaybeAsync, we
- * don't need that machinery - it works directly with JavaScript's native
- * primitives and TypeScript's type system.
- *
- * ### TODO: Consider
- *
- * Use MaybeAsync in Task and Task helpers to preserve synchronous execution
- * when possible (e.g., mutex with available permit, retry on first success).
+ * @category Composition
+ * @experimental
  */
-export type MaybeAsync<T> = T | PromiseLike<T>;
+export const repeat = <T, E>(
+  schedule: Schedule<unknown, T>,
+  task: Task<T, E>,
+): Task<T, E> => {
+  return async (run) => {
+    const step = schedule(run);
+    let lastResult: Result<T, E>;
+
+    for (;;) {
+      const result = await run(task);
+      if (!result.ok) return result;
+      lastResult = result;
+
+      const next = step(result.value);
+      if (!next.ok) break;
+
+      const [, delay] = next.value;
+      if (delay > 0) {
+        const sleepResult = await run(sleep(delay));
+        if (!sleepResult.ok) return sleepResult;
+      }
+    }
+
+    return lastResult;
+  };
+};
 
 /**
- * Type guard to check if a {@link MaybeAsync} value is async (a promise).
- *
- * This function narrows the type of a {@link MaybeAsync} value, allowing you to
- * conditionally `await` only when necessary.
- *
- * ### Example
- *
- * ```ts
- * const getData = (id: string): MaybeAsync<Data> => {
- *   const cached = cache.get(id);
- *   if (cached) return cached; // Sync path
- *   return fetchData(id); // Async path
- * };
- *
- * const result = getData(id);
- * const data = isAsync(result) ? await result : result;
- * // No microtask overhead when cached!
- * ```
+ * @category Composition
+ * @experimental
  */
-export const isAsync = <T>(
-  value: MaybeAsync<T>,
-): value is T extends PromiseLike<unknown> ? never : PromiseLike<T> =>
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-  typeof (value as any)?.then === "function";
+export const all = (): never => {
+  throw new Error("TODO: later");
+};
 
-// TODO: Add tracing support
-// - Extend TaskContext with optional tracing field
-// - Add traced(name, task) helper that wraps Task execution
-// - Collect span data (name, timing, parent-child relationships, status)
-// - Support OpenTelemetry export format with proper traceId/spanId generation
-// - Automatic parent-child span relationships through context propagation
+/**
+ * @category Concurrency
+ * @experimental
+ */
+export const createSemaphore = (): never => {
+  throw new Error("TODO: later");
+};
+
+/**
+ * @category Concurrency
+ * @experimental
+ */
+export const createMutex = (): never => {
+  throw new Error("TODO: later");
+};
+
+// TODO: Implement `all` and `any` with concurrency option:
+//   all(tasks)                     // Unbounded concurrent (like Promise.all)
+//   all(tasks, { concurrency: 5 }) // Max 5 at a time (uses Semaphore)
+//   all(tasks, { concurrency: 1 }) // Sequential
+//   any(tasks)                     // Unbounded concurrent (like Promise.any)
+//   any(tasks, { concurrency: 1 }) // Sequential fallback ("first" pattern)
+// Both accept Iterable<Task> - lazy iteration useful for bounded concurrency.
+// race stays array-only and unbounded (bounded race doesn't make sense).
+
+// TODO: Implement `fetch` - Task wrapper around globalThis.fetch.
+// Add once retry is implemented to show composition (fetch + timeout + retry).
+
+// TODO: Prioritized Task Scheduling API integration
+// https://developer.mozilla.org/en-US/docs/Web/API/Prioritized_Task_Scheduling_API
+//
+// - `run(task, { priority })` - Fiber-level priority via TaskController
+//   (extends AbortController), so the fiber's signal gets priority and all
+//   nested work inherits it.
+// - `fiber.setPriority(priority)` - Dynamic priority changes mid-flight via
+//   TaskController.setPriority().
+//
+// Note: scheduler.yield() inherits priority from enclosing postTask, so
+// yieldNow doesn't need a priority argument — just run the fiber at priority.
+//
+// Safari doesn't support it yet, Node.js probably never will (use setImmediate).
+// For Safari, scheduler-polyfill can be used.
+// https://www.npmjs.com/package/scheduler-polyfill
