@@ -1,10 +1,28 @@
-/* eslint-disable @typescript-eslint/require-await */
 import { assert, describe, expect, expectTypeOf, test } from "vitest";
 import { isNonEmptyArray } from "../src/Array.js";
 import { exhaustiveCheck } from "../src/Function.js";
 import { createRef } from "../src/Ref.js";
-import { err, ok, tryAsync } from "../src/Result.js";
 import type { Done, Result } from "../src/Result.js";
+import { err, ok, tryAsync } from "../src/Result.js";
+import {
+  exponential,
+  fixed,
+  spaced,
+  take,
+  whileInput,
+} from "../src/schedule/index.js";
+import type {
+  Fiber,
+  InferFiberErr,
+  InferFiberOk,
+  InferTaskDone,
+  InferTaskErr,
+  InferTaskOk,
+  NextTask,
+  Runner,
+  RunnerConfigDep,
+  Task,
+} from "../src/Task.js";
 import {
   AbortError,
   AsyncDisposableStack,
@@ -25,29 +43,10 @@ import {
   unabortableMask,
   yieldNow,
 } from "../src/Task.js";
-import type {
-  Fiber,
-  InferFiberErr,
-  InferFiberOk,
-  InferTaskDone,
-  InferTaskErr,
-  InferTaskOk,
-  NextTask,
-  Runner,
-  RunnerConfigDep,
-  Task,
-} from "../src/Task.js";
 import { createTestTime, msLongTask } from "../src/Time.js";
-import { Id } from "../src/Type.js";
 import type { Typed } from "../src/Type.js";
+import { Id } from "../src/Type.js";
 import { testCreateRunner } from "./_browser-deps.js";
-import {
-  exponential,
-  fixed,
-  spaced,
-  take,
-  whileInput,
-} from "../src/schedule/index.js";
 
 const eventsEnabled: RunnerConfigDep = {
   runnerConfig: { eventsEnabled: createRef(true) },
@@ -87,10 +86,10 @@ describe("NextTask", () => {
   test("models three outcomes: value, done, error", async () => {
     await using run = testCreateRunner();
 
-    const valueTask: NextTask<number, MyError, string> = async () => ok(42);
-    const doneTask: NextTask<number, MyError, string> = async () =>
+    const valueTask: NextTask<number, MyError, string> = () => ok(42);
+    const doneTask: NextTask<number, MyError, string> = () =>
       err({ type: "Done", done: "finished" });
-    const errorTask: NextTask<number, MyError, string> = async () =>
+    const errorTask: NextTask<number, MyError, string> = () =>
       err({ type: "MyError" });
 
     const valueResult = await run(valueTask);
@@ -105,7 +104,7 @@ describe("NextTask", () => {
   test("type narrows correctly in pattern matching", async () => {
     await using run = testCreateRunner();
 
-    const task: NextTask<number, MyError, string> = async () =>
+    const task: NextTask<number, MyError, string> = () =>
       err({ type: "Done", done: "summary" });
 
     const result = await run(task);
@@ -137,7 +136,7 @@ describe("NextTask", () => {
     const items = [1, 2, 3];
     let index = 0;
 
-    const next: NextTask<number> = async () => {
+    const next: NextTask<number> = () => {
       if (index >= items.length) return err({ type: "Done", done: undefined });
       return ok(items[index++]);
     };
@@ -163,7 +162,7 @@ describe("Runner", () => {
     test("executes task and returns result", async () => {
       await using run = createRunner();
 
-      const task: Task<string> = async () => ok("hello");
+      const task: Task<string> = () => ok("hello");
 
       const result = await run(task);
 
@@ -223,7 +222,7 @@ describe("Runner", () => {
 
       let childTime: typeof run.time | null = null;
 
-      await run(async (childRun) => {
+      await run((childRun) => {
         childTime = childRun.time;
         return ok();
       });
@@ -460,7 +459,7 @@ describe("Runner", () => {
 
       const events: Array<string> = [];
 
-      const cleanup: Task<void> = async () => {
+      const cleanup: Task<void> = () => {
         events.push("cleanup");
         return ok();
       };
@@ -485,7 +484,7 @@ describe("Runner", () => {
       const taskStarted = Promise.withResolvers<void>();
       const canComplete = Promise.withResolvers<void>();
 
-      const cleanup: Task<void> = async () => {
+      const cleanup: Task<void> = () => {
         events.push("cleanup");
         return ok();
       };
@@ -607,18 +606,18 @@ describe("Runner", () => {
       let unabortableRan = false;
       let unabortableMaskRan = false;
 
-      const regularFiber = run(async () => {
+      const regularFiber = run(() => {
         regularRan = true;
         return ok();
       });
       const unabortableFiber = run(
-        unabortable(async () => {
+        unabortable(() => {
           unabortableRan = true;
           return ok();
         }),
       );
       const unabortableMaskFiber = run(
-        unabortableMask(() => async () => {
+        unabortableMask(() => () => {
           unabortableMaskRan = true;
           return ok();
         }),
@@ -652,18 +651,18 @@ describe("Runner", () => {
       let unabortableRan = false;
       let unabortableMaskRan = false;
 
-      const regularFiber = run(async () => {
+      const regularFiber = run(() => {
         regularRan = true;
         return ok();
       });
       const unabortableFiber = run(
-        unabortable(async () => {
+        unabortable(() => {
           unabortableRan = true;
           return ok();
         }),
       );
       const unabortableMaskFiber = run(
-        unabortableMask(() => async () => {
+        unabortableMask(() => () => {
           unabortableMaskRan = true;
           return ok();
         }),
@@ -769,7 +768,7 @@ describe("Fiber", () => {
         await Promise.resolve();
         signalAbortedBeforeInnerRun = run.signal.aborted;
 
-        const innerFiber = run(async () => {
+        const innerFiber = run(() => {
           taskRan = true;
           return ok("done");
         });
@@ -956,7 +955,7 @@ describe("Fiber", () => {
   test("getOutcome preserves original result when aborted", async () => {
     await using run = testCreateRunner();
 
-    const fiber = run(async () => ok("data"));
+    const fiber = run(() => ok("data"));
     fiber.abort("stop");
     await fiber;
 
@@ -1048,7 +1047,7 @@ describe("Fiber", () => {
         return ok();
       };
 
-      const parentTask: Task<void> = async (run) => {
+      const parentTask: Task<void> = (run) => {
         events.push("parent started");
         daemonFiber = run.daemon(daemonTask);
         events.push("parent completed");
@@ -1102,7 +1101,7 @@ describe("Fiber", () => {
         return await taskComplete.promise;
       };
 
-      const parentTask: Task<void> = async (run) => {
+      const parentTask: Task<void> = (run) => {
         run.daemon(daemonTask);
         return ok();
       };
@@ -1131,7 +1130,7 @@ describe("Fiber", () => {
       };
 
       // Nested task spawns a daemon via run.daemon
-      const childTask: Task<void> = async (run) => {
+      const childTask: Task<void> = (run) => {
         events.push("child started");
         daemonFiber = run.daemon(daemonTask);
         events.push("child completed");
@@ -1188,10 +1187,8 @@ describe("unabortable", () => {
   test("without abort completes", async () => {
     await using run = testCreateRunner();
 
-    const okResult = await run(unabortable(async () => ok(42)));
-    const errResult = await run(
-      unabortable(async () => err({ type: "MyError" })),
-    );
+    const okResult = await run(unabortable(() => ok(42)));
+    const errResult = await run(unabortable(() => err({ type: "MyError" })));
 
     expect(okResult).toEqual(ok(42));
     expect(errResult).toEqual(err({ type: "MyError" }));
@@ -1210,7 +1207,7 @@ describe("unabortable", () => {
       signalAbortedBeforeUnabortable = run.signal.aborted;
 
       innerResult = await run(
-        unabortable(async () => {
+        unabortable(() => {
           taskRan = true;
           return ok("done");
         }),
@@ -1270,7 +1267,7 @@ describe("unabortableMask", () => {
 
     const task = unabortableMask((restore) => async (run) => {
       return await run(
-        restore(async () => {
+        restore(() => {
           abortableRan = true;
           return ok("done");
         }),
@@ -1300,7 +1297,7 @@ describe("unabortableMask", () => {
 
           // abortable task is skipped because abort was requested
           await run(
-            restore(async () => {
+            restore(() => {
               events.push("use");
               return ok();
             }),
@@ -1341,7 +1338,7 @@ describe("unabortableMask", () => {
       signalAbortedAfterAwait = run.signal.aborted;
 
       // Regular task runs because it inherits the abort mask
-      await run(async ({ signal }) => {
+      await run(({ signal }) => {
         signalAbortedInUnmaskedTask = signal.aborted;
         events.push("unmasked task");
         return ok();
@@ -1349,7 +1346,7 @@ describe("unabortableMask", () => {
 
       // Abortable task is skipped
       await run(
-        restore(async () => {
+        restore(() => {
           events.push("use");
           return ok();
         }),
@@ -1393,7 +1390,7 @@ describe("unabortableMask", () => {
 
           // abortable1 restores to mask=0 (fully abortable)
           await run(
-            restore1(async ({ signal }) => {
+            restore1(({ signal }) => {
               events.push(`abortable1 task (aborted=${signal.aborted})`);
               return ok();
             }),
@@ -1401,7 +1398,7 @@ describe("unabortableMask", () => {
 
           // restore2 restores to mask=1 (still protected)
           await run(
-            restore2(async ({ signal }) => {
+            restore2(({ signal }) => {
               events.push(`restore2 task (aborted=${signal.aborted})`);
               return ok();
             }),
@@ -1437,7 +1434,7 @@ describe("unabortableMask", () => {
 
     const task = unabortableMask((_restore1) => async (run) => {
       return await run(
-        unabortableMask((restore2) => async (_run) => {
+        unabortableMask((restore2) => (_run) => {
           // restore2 restores to mask=1
           restoreFromInner = restore2;
 
@@ -1454,7 +1451,7 @@ describe("unabortableMask", () => {
     // (root mask=0, override=1). This must crash.
     expect(() =>
       run(
-        restoreFromInner!(async () => {
+        restoreFromInner!(() => {
           return ok();
         }),
       ),
@@ -1469,10 +1466,11 @@ describe("AsyncDisposableStack", () => {
 
   const createResource =
     (id: string, events: Array<string>): Task<Resource> =>
-    async () => {
+    () => {
       events.push(`${id} acquired`);
       return ok({
         id,
+        // eslint-disable-next-line @typescript-eslint/require-await
         [Symbol.asyncDispose]: async () => {
           events.push(`${id} released`);
         },
@@ -1490,7 +1488,7 @@ describe("AsyncDisposableStack", () => {
 
         expectTypeOf(stack).toEqualTypeOf<AsyncDisposableStack>();
 
-        stack.defer(async () => {
+        stack.defer(() => {
           events.push("cleanup");
           return ok();
         });
@@ -1512,7 +1510,7 @@ describe("AsyncDisposableStack", () => {
 
       const events: Array<string> = [];
 
-      const cleanup: Task<void> = async () => {
+      const cleanup: Task<void> = () => {
         events.push("cleanup");
         return ok();
       };
@@ -1537,11 +1535,11 @@ describe("AsyncDisposableStack", () => {
 
       const task: Task<string> = async (run) => {
         await using stack = run.stack();
-        stack.defer(async () => {
+        stack.defer(() => {
           events.push("cleanup A");
           return ok();
         });
-        stack.defer(async () => {
+        stack.defer(() => {
           events.push("cleanup B");
           return ok();
         });
@@ -1564,7 +1562,7 @@ describe("AsyncDisposableStack", () => {
 
       const task: Task<string, AbortError> = async (run) => {
         await using stack = run.stack();
-        stack.defer(async () => {
+        stack.defer(() => {
           events.push("cleanup");
           return ok();
         });
@@ -1598,7 +1596,7 @@ describe("AsyncDisposableStack", () => {
       const task: Task<string> = async (run) => {
         const stack = run.stack();
 
-        stack.defer(async () => {
+        stack.defer(() => {
           events.push("cleanup");
           return ok();
         });
@@ -1696,7 +1694,7 @@ describe("AsyncDisposableStack", () => {
 
       const events: Array<string> = [];
 
-      const failingResource: Task<Resource, AcquireError> = async () => {
+      const failingResource: Task<Resource, AcquireError> = () => {
         events.push("b failed");
         return err({ type: "AcquireError" });
       };
@@ -1728,7 +1726,7 @@ describe("AsyncDisposableStack", () => {
 
       const events: Array<string> = [];
 
-      const throwingAcquire: Task<Resource> = async () => {
+      const throwingAcquire: Task<Resource> = () => {
         events.push("b throwing");
         throw new Error("acquire threw");
       };
@@ -1765,6 +1763,7 @@ describe("AsyncDisposableStack", () => {
         events.push(`acquire completed, aborted: ${signal.aborted}`);
         return ok({
           id: "slow",
+          // eslint-disable-next-line @typescript-eslint/require-await
           [Symbol.asyncDispose]: async () => {
             events.push("slow released");
           },
@@ -1807,7 +1806,7 @@ describe("AsyncDisposableStack", () => {
 
       const createSyncResource =
         (id: string): Task<SyncResource> =>
-        async () => {
+        () => {
           events.push(`${id} acquired`);
           return ok({
             id,
@@ -1836,7 +1835,7 @@ describe("AsyncDisposableStack", () => {
 
       const task: Task<null> = async (run) => {
         await using stack = run.stack();
-        const result = await stack.use(async () => ok(null));
+        const result = await stack.use(() => ok(null));
         return result;
       };
 
@@ -1848,7 +1847,7 @@ describe("AsyncDisposableStack", () => {
 
       const task: Task<undefined> = async (run) => {
         await using stack = run.stack();
-        const result = await stack.use(async () => ok(undefined));
+        const result = await stack.use(() => ok(undefined));
         return result;
       };
 
@@ -1864,6 +1863,7 @@ describe("AsyncDisposableStack", () => {
         await using stack = run.stack();
 
         const resource: AsyncDisposable = {
+          // eslint-disable-next-line @typescript-eslint/require-await
           [Symbol.asyncDispose]: async () => {
             events.push("released");
           },
@@ -1918,7 +1918,7 @@ describe("AsyncDisposableStack", () => {
 
         // Create inner stack with resources
         const innerStack = run.stack();
-        innerStack.defer(async () => {
+        innerStack.defer(() => {
           events.push("inner cleanup");
           return ok();
         });
@@ -1950,7 +1950,7 @@ describe("AsyncDisposableStack", () => {
 
       const acquireHandle =
         (id: string): Task<Handle> =>
-        async () => {
+        () => {
           events.push(`${id} acquired`);
           return ok({ id });
         };
@@ -1958,13 +1958,10 @@ describe("AsyncDisposableStack", () => {
       const task: Task<string> = async (run) => {
         await using stack = run.stack();
 
-        const handle = await stack.adopt(
-          acquireHandle("h1"),
-          (h) => async () => {
-            events.push(`${h.id} released`);
-            return ok();
-          },
-        );
+        const handle = await stack.adopt(acquireHandle("h1"), (h) => () => {
+          events.push(`${h.id} released`);
+          return ok();
+        });
         if (!handle.ok) return handle;
 
         events.push(`using ${handle.value.id}`);
@@ -1988,8 +1985,8 @@ describe("AsyncDisposableStack", () => {
         await using stack = run.stack();
 
         const handle = await stack.adopt(
-          async () => ok({ id: "h1" }),
-          (h) => async () => {
+          () => ok({ id: "h1" }),
+          (h) => () => {
             events.push(`${h.id} released`);
             return ok();
           },
@@ -2027,11 +2024,11 @@ describe("AsyncDisposableStack", () => {
         await using stack = run.stack();
 
         const handle = await stack.adopt<{ id: string }, AcquireError>(
-          async () => {
+          () => {
             events.push("acquire failed");
             return err({ type: "AcquireError" });
           },
-          (h) => async () => {
+          (h) => () => {
             events.push(`${h.id} released`);
             return ok();
           },
@@ -2155,7 +2152,7 @@ describe("AsyncDisposableStack", () => {
         await using stack = run.stack();
 
         events.push("factory: acquired");
-        stack.defer(async () => {
+        stack.defer(() => {
           events.push("factory: cleanup via defer");
           return ok();
         });
@@ -2200,11 +2197,11 @@ describe("AsyncDisposableStack", () => {
         await using stack = run.stack();
 
         const handle = await stack.adopt<Handle>(
-          async () => {
+          () => {
             events.push("factory: h1 acquired");
             return ok({ id: "h1" });
           },
-          (h) => async () => {
+          (h) => () => {
             events.push(`factory: ${h.id} disposal via adopt`);
             return ok();
           },
@@ -2246,13 +2243,13 @@ describe("AsyncDisposableStack", () => {
       events: Array<string>,
       disposalTask?: Task<void>,
     ) => {
-      const createResource: Task<Resource> = async (run) => {
+      const createResource: Task<Resource> = (run) => {
         events.push("acquired");
         return ok({
           id: "r1",
           ...run.defer(
             disposalTask ??
-              (async () => {
+              (() => {
                 events.push("disposed");
                 return ok();
               }),
@@ -2288,7 +2285,7 @@ describe("AsyncDisposableStack", () => {
       const workStarted = Promise.withResolvers<void>();
       const canComplete = Promise.withResolvers<void>();
 
-      const cleanupHelper: Task<void> = async () => {
+      const cleanupHelper: Task<void> = () => {
         events.push("cleanup helper ran");
         return ok();
       };
@@ -2428,7 +2425,7 @@ describe("race", () => {
 
     const slowObservedAbort = Promise.withResolvers<unknown>();
 
-    const fast: Task<string> = async () => ok("fast");
+    const fast: Task<string> = () => ok("fast");
     const slow: Task<string> = async ({ signal }) => {
       await run(sleep("1ms"));
       slowObservedAbort.resolve(signal.reason);
@@ -2452,7 +2449,7 @@ describe("race", () => {
 
     interface FastError extends Typed<"FastError"> {}
 
-    const fast: Task<never, FastError> = async () => err({ type: "FastError" });
+    const fast: Task<never, FastError> = () => err({ type: "FastError" });
     const slow: Task<string> = async ({ signal }) => {
       await run(sleep("1ms"));
       slowObservedAbort.resolve(signal.reason);
@@ -2476,7 +2473,7 @@ describe("race", () => {
 
     const slowObservedAbort = Promise.withResolvers<unknown>();
 
-    const throwing: Task<never> = async () => {
+    const throwing: Task<never> = () => {
       throw new Error("boom");
     };
     const slow: Task<string> = async ({ signal }) => {
@@ -2498,8 +2495,8 @@ describe("race", () => {
     interface ErrorA extends Typed<"ErrorA"> {}
     interface ErrorB extends Typed<"ErrorB"> {}
 
-    const taskA: Task<string, ErrorA> = async () => ok("a");
-    const taskB: Task<number, ErrorB> = async () => ok(42);
+    const taskA: Task<string, ErrorA> = () => ok("a");
+    const taskB: Task<number, ErrorB> = () => ok(42);
 
     const result = await run(race([taskA, taskB]));
 
@@ -2515,8 +2512,8 @@ describe("race", () => {
 
     // Simulate tasks from an Iterable (e.g., Set, Map.values(), generator)
     const taskSet = new Set<Task<string>>([
-      async () => ok("first"),
-      async () => ok("second"),
+      () => ok("first"),
+      () => ok("second"),
     ]);
 
     // Spread to array, then use isNonEmptyArray to narrow type
@@ -2538,7 +2535,7 @@ describe("race", () => {
 
     let loserCompleted = false;
 
-    const winner: Task<string> = async () => ok("winner");
+    const winner: Task<string> = () => ok("winner");
     const unabortableLoser: Task<string> = unabortable(async (run) => {
       await run(sleep("10s"));
       loserCompleted = true;
@@ -2599,7 +2596,7 @@ describe("race", () => {
 
     const slowObservedAbort = Promise.withResolvers<unknown>();
 
-    const fast: Task<string> = async () => ok("fast");
+    const fast: Task<string> = () => ok("fast");
     const slow: Task<string> = async ({ signal }) => {
       await run(sleep("1ms"));
       slowObservedAbort.resolve(signal.reason);
@@ -2621,7 +2618,7 @@ describe("timeout", () => {
   test("completes when task finishes before timeout", async () => {
     await using run = testCreateRunner();
 
-    const fast: Task<string> = async () => ok("done");
+    const fast: Task<string> = () => ok("done");
 
     const result = await run(timeout("1s", fast));
 
@@ -3116,7 +3113,7 @@ describe("examples TODO: review", () => {
     test("abort wins, outcome preserves original result", async () => {
       await using run = testCreateRunner();
 
-      const fiber = run(async () => ok("data"));
+      const fiber = run(() => ok("data"));
       fiber.abort("stop");
       const result = await fiber;
 
@@ -3127,7 +3124,7 @@ describe("examples TODO: review", () => {
     test("unabortable preserves result and outcome", async () => {
       await using run = testCreateRunner();
 
-      const fiber = run(unabortable(async () => ok("data")));
+      const fiber = run(unabortable(() => ok("data")));
       fiber.abort("stop");
       const result = await fiber;
 
