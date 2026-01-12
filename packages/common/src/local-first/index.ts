@@ -1,13 +1,5 @@
 /**
- * Internal local-first modules re-exported from "@evolu/common/local-first"
- *
- * These exports expose the internal building blocks of Evolu's local-first
- * implementation (Db, Relay, Sync, Query, Storage, Timestamp, etc.). They are
- * primarily intended for use within Evolu packages and for advanced use-cases
- * that require direct access to local-first internals.
- *
- * Public consumers should us top-level exports from `@evolu/common` unless you
- * have a specific need to import these internals.
+ * Internal modules exported from "@evolu/common/local-first"
  *
  * @module
  */
