@@ -1,11 +1,17 @@
 import { describe, expect, expectTypeOf, it, test } from "vitest";
 import {
+  Done,
+  done,
   Err,
   err,
+  ExcludeDone,
   getOrThrow,
+  InferDone,
   InferErr,
   InferOk,
+  NextResult,
   ok,
+  OnlyDone,
   Result,
   tryAsync,
   trySync,
@@ -24,11 +30,34 @@ describe("ok", () => {
     // @ts-expect-error Type 'Ok<void>' is not assignable to type 'Result<string, Error>'
     const _result: Result<string, Error> = ok();
   });
+
+  it("returns Result<T, never> for correct type inference", () => {
+    const result = ok(42);
+    expectTypeOf(result).toEqualTypeOf<Result<number>>();
+  });
+
+  it("infers never for E when combining with err", () => {
+    interface MyError {
+      readonly type: "MyError";
+    }
+
+    const example = (fail: boolean): Result<number, MyError> => {
+      if (fail) return err({ type: "MyError" });
+      return ok(42);
+    };
+
+    expectTypeOf(example(false)).toEqualTypeOf<Result<number, MyError>>();
+  });
 });
 
 describe("err", () => {
   it("creates Err with an error", () => {
     expect(err("error")).toStrictEqual({ ok: false, error: "error" });
+  });
+
+  it("returns Result<never, E> for correct type inference", () => {
+    const result = err("oops");
+    expectTypeOf(result).toEqualTypeOf<Result<never, string>>();
   });
 });
 
@@ -146,6 +175,22 @@ describe("tryAsync", () => {
         type: "CustomError",
         name: "TypeError",
         message: "TypeError: Invalid type",
+      }),
+    );
+  });
+
+  it("catches synchronous throws", async () => {
+    const result = await tryAsync(
+      () => {
+        throw new Error("Sync throw before promise");
+      },
+      (error) => ({ type: "TestError", message: String(error) }),
+    );
+
+    expect(result).toStrictEqual(
+      err({
+        type: "TestError",
+        message: "Error: Sync throw before promise",
       }),
     );
   });
@@ -763,12 +808,116 @@ describe("Result with Resource Management", () => {
   });
 });
 
+describe("NextResult", () => {
+  it("models success, failure, and done", () => {
+    type E = "E";
+
+    const a: NextResult<number, E, string> = ok(1);
+    const b: NextResult<number, E, string> = err(done("finished"));
+    const c: NextResult<number, E, string> = err<E>("E");
+
+    expectTypeOf(a).toEqualTypeOf<NextResult<number, E, string>>();
+    expect(b.ok).toBe(false);
+    expect(c.ok).toBe(false);
+  });
+
+  describe("done", () => {
+    it("creates Done with done value", () => {
+      expect(done("finished")).toStrictEqual({
+        type: "Done",
+        done: "finished",
+      });
+    });
+
+    it("creates Done<void> without arguments", () => {
+      expect(done()).toStrictEqual({
+        type: "Done",
+        done: undefined,
+      });
+      expectTypeOf(done()).toEqualTypeOf<Done<void>>();
+    });
+
+    it("preserves done type", () => {
+      const value = done({ count: 1 });
+      expectTypeOf(value).toEqualTypeOf<Done<{ count: number }>>();
+      expectTypeOf(value.done).toEqualTypeOf<{ count: number }>();
+    });
+  });
+
+  it("extracts all type parameters from NextResult", () => {
+    type MyNextResult = NextResult<number, string, { summary: string }>;
+
+    expectTypeOf<InferOk<MyNextResult>>().toEqualTypeOf<number>();
+    expectTypeOf<InferErr<MyNextResult>>().toEqualTypeOf<
+      string | Done<{ summary: string }>
+    >();
+    expectTypeOf<InferDone<MyNextResult>>().toEqualTypeOf<{
+      summary: string;
+    }>();
+  });
+
+  describe("InferDone", () => {
+    it("extracts Done type from NextResult with void done", () => {
+      type R = NextResult<number, string>;
+      expectTypeOf<InferDone<R>>().toEqualTypeOf<void>();
+    });
+
+    it("extracts Done type from NextResult with complex done", () => {
+      type R = NextResult<
+        number,
+        string,
+        { count: number; items: Array<string> }
+      >;
+      expectTypeOf<InferDone<R>>().toEqualTypeOf<{
+        count: number;
+        items: Array<string>;
+      }>();
+    });
+
+    it("returns never for Result without Done", () => {
+      type R = Result<number, string>;
+      expectTypeOf<InferDone<R>>().toEqualTypeOf<never>();
+    });
+
+    it("works with union errors containing Done", () => {
+      interface MyError {
+        readonly type: "MyError";
+      }
+      type R = Result<number, MyError | Done<string>>;
+      expectTypeOf<InferDone<R>>().toEqualTypeOf<string>();
+    });
+  });
+
+  describe("ExcludeDone and OnlyDone", () => {
+    it("ExcludeDone removes Done from a union", () => {
+      interface MyError {
+        readonly type: "MyError";
+      }
+      type E = MyError | Done<void>;
+      expectTypeOf<ExcludeDone<E>>().toEqualTypeOf<MyError>();
+    });
+
+    it("OnlyDone keeps only Done from a union", () => {
+      interface MyError {
+        readonly type: "MyError";
+      }
+      type E = MyError | Done<"done">;
+      expectTypeOf<OnlyDone<E>>().toEqualTypeOf<Done<"done">>();
+    });
+
+    it("OnlyDone returns never when there is no Done", () => {
+      type E = "E";
+      expectTypeOf<OnlyDone<E>>().toEqualTypeOf<never>();
+    });
+  });
+});
+
 /**
  * This test demonstrates generator-based monadic composition patterns for
  * Result types, comparing Evolu's plain object approach with Effect's iterator
  * protocol approach.
  *
- * ### Imperative pattern
+ * ## Imperative pattern
  *
  * ```ts
  * const imperative = (
@@ -791,13 +940,14 @@ describe("Result with Resource Management", () => {
  *
  * - Explicit control flow, easy to follow
  * - No extra abstractions beyond Result itself
- * - No generator/iterator overhead
+ * - No generator/iterator
+ * - Easy debugging: `console.log(parsed)` between any steps
  *
  * Cons:
  *
- * - Repetitive `if (!x.ok) return x` boilerplate
+ * - Repetitive `if (!x.ok) return x` boilerplate (but composable with helpers)
  *
- * ### Generator pattern (with gen() wrapper)
+ * ## Generator pattern (with gen() wrapper)
  *
  * ```ts
  * const program = function* (
@@ -810,7 +960,7 @@ describe("Result with Resource Management", () => {
  * };
  * ```
  *
- * ### Generator pattern (with iterator protocol, like Effect)
+ * ## Generator pattern (with iterator protocol, like Effect)
  *
  * ```ts
  * const program = function* (
@@ -832,38 +982,52 @@ describe("Result with Resource Management", () => {
  *
  * - Requires understanding generators plus the Gen/runGen helpers
  * - Less familiar to many JS/TS developers
- * - Slower (see perf test)
  *
- * ### Performance (Apple M1, 500K iterations, 3-step chain)
+ * ## Performance (Apple M1, 500K iterations, 3-step chain)
  *
  * - Imperative: ~25 ms
  * - Generator (gen wrapper): ~330 ms (~13x slower)
  * - Iterator protocol (IIFE): ~1200 ms (~48x slower)
  * - Iterator protocol (hoisted): ~990 ms (~40x slower)
  *
- * ### Conclusion
+ * The overhead comes from iterator object allocations and GC pressure. V8 can't
+ * inline or escape-analyze generator code as effectively as plain functions.
  *
- * The performance difference matters. In applications with many Result
- * operations, this accumulates quickly.
+ * ## Conclusion
  *
- * However, Evolu prefers the imperative pattern for a different reason:
- * avoiding Buridan's ass (https://en.wikipedia.org/wiki/Buridan%27s_ass).
- * Having two equivalent ways to write code forces developers to choose between
- * them, second-guess their decisions, and refactor for no real benefit. The `if
- * (!x.ok) return x` pattern isn't worse than `yield*` - it's just different
- * syntax for the same control flow.
+ * While the performance comparison looks dramatic, it's an artificial
+ * microbenchmark—people rarely call 500K functions in a tight loop. This
+ * doesn't mean generators are slow in practice. Evolu decided not to use
+ * generators for different reasons:
  *
- * Additionally, generators are harder to debug - they create synthetic call
- * stacks and stepping through `yield*` in a debugger is less intuitive than
- * stepping through regular function calls.
+ * ### Debugging cost
  *
- * Last but not least, plain object Results can be easily serialized (e.g., for
- * inter-process communication, storage, or logging), while Effect-style Results
- * with `[Symbol.iterator]` methods cannot without custom serialization and
- * deserialization.
+ * Generators require all-in adoption to be worthwhile, and that adoption comes
+ * with debugging costs: noisier stack traces, non-intuitive debugger stepping,
+ * and exception locations obscured by iterator machinery.
  *
- * Therefore, Evolu doesn't want to use generators for Result composition and
- * will never export generator-based helpers.
+ * ### Syntax sugar trade-off
+ *
+ * Generator composition (`yield*`) is just syntax sugar over `if (!x.ok) return
+ * x`. Effect also requires wrapping all values in Effect containers.
+ *
+ * ### Relation to Task
+ *
+ * Evolu also considered generators for Task and Runner. The same debugging
+ * concerns apply, but with higher stakes—async code is already harder to debug,
+ * and adding generator machinery on top compounds the problem.
+ *
+ * ### Serialization
+ *
+ * Plain object Results can be easily serialized (e.g., for IPC, storage,
+ * logging). Results with `[Symbol.iterator]` methods require custom
+ * serialization and deserialization—cognitive load for every boundary.
+ *
+ * Evolu keeps concerns separate: Result for sync errors, Task for async +
+ * cancellation + structured concurrency, dependency injection for
+ * dependencies.
+ *
+ * Therefore, Evolu doesn't use generators.
  */
 describe("generator-based composition", () => {
   interface ParseError {
@@ -912,7 +1076,7 @@ describe("generator-based composition", () => {
   const validate = (n: number): Result<number, ValidationError> =>
     n > 0 ? ok(n) : err({ type: "ValidationError" });
 
-  const double = (n: number): Result<number, never> => ok(n * 2);
+  const double = (n: number): Result<number> => ok(n * 2);
 
   it("composes multiple Results with generators", () => {
     const program = function* (

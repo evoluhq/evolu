@@ -1,6 +1,6 @@
 import type { UnknownError } from "./Error.js";
 import { exhaustiveCheck, Lazy } from "./Function.js";
-import type { Task } from "./Task.js";
+import type { Typed } from "./Type.js";
 
 /**
  * The problem with `throw` in JavaScript is that the caught value is always of
@@ -40,19 +40,20 @@ import type { Task } from "./Task.js";
  * with an error). Create them with {@link ok} and {@link err}.
  *
  * ```ts
- * type Result<T, E> = Ok<T> | Err<E>;
+ * type Result<T, E = never> = Ok<T> | Err<E>;
  *
  * interface Ok<T> {
  *   readonly ok: true;
  *   readonly value: T;
  * }
+ *
  * interface Err<E> {
  *   readonly ok: false;
  *   readonly error: E;
  * }
  * ```
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * interface ParseJsonError {
@@ -69,9 +70,7 @@ import type { Task } from "./Task.js";
  * };
  *
  * const json = parseJson('{"name": "Alice"}');
- *
- * // Fail fast to handle errors early
- * if (!json.ok) return json;
+ * if (!json.ok) return json; // short-circuit on error
  *
  * // Now we have access to json.value (type: unknown)
  * console.log(json.value);
@@ -94,61 +93,72 @@ import type { Task } from "./Task.js";
  *
  * ## Naming convention
  *
- * - **Result with a value:** name it after the value (`user`, `config`)
- * - **Result without a value:** use `result`
+ * - Result with a value: name it after the value (`user`, `config`)
+ * - Result without a value: name it `result`
  *
  * ```ts
- * const processUser = () => {
+ * const processUser = (): Result<
+ *   void,
+ *   GetUserError | SaveToDatabaseError | SendWelcomeEmailError
+ * > => {
  *   const user = getUser();
- *   if (!user.ok) return user; // short-circuit on error
+ *   if (!user.ok) return user;
  *
  *   const result = saveToDatabase(user.value);
  *   if (!result.ok) return result;
  *
+ *   // To avoid a clash with the previous `result`, use a block scope.
+ *   {
+ *     const result = sendWelcomeEmail(user.value);
+ *     if (!result.ok) return result;
+ *   }
+ *
  *   return ok();
  * };
  * ```
  *
- * The pattern `if (!result.ok) return result` is called **short-circuiting** —
- * stopping on the first error.
+ * ## Examples
  *
- * For multiple results without values, use block scopes to reuse the name
- * `result`:
+ * ### Map on success
  *
  * ```ts
- * const setupDatabase = () => {
- *   {
- *     const result = createBaseTables();
- *     if (!result.ok) return result;
- *   }
- *   {
- *     const result = createRelayTables();
- *     if (!result.ok) return result;
- *   }
- *   return ok();
- * };
+ * const users = getActiveUsers();
+ * if (!users.ok) return users;
+ * const usernames = mapArray(users.value, (u) => u.username);
  * ```
  *
- * ## Combining errors
+ * ### Stop on the first error
  *
  * ```ts
- * const example = (value: string): Result<number, FooError | BarError> => {
- *   const foo = getFoo(value);
- *   if (!foo.ok) return foo;
+ * for (const item of items) {
+ *   const result = process(item);
+ *   if (!result.ok) return result;
+ * }
+ * ```
  *
- *   const bar = getBar(foo.value);
- *   if (!bar.ok) return bar;
+ * ### Collect successes
  *
- *   return ok(barToNumber(bar.value));
- * };
+ * ```ts
+ * const values = flatMapArray(fields, (field) => {
+ *   const result = validate(field);
+ *   return result.ok ? [result.value] : [];
+ * });
+ * ```
+ *
+ * ### Collect errors
+ *
+ * ```ts
+ * const errors = flatMapArray(fields, (field) => {
+ *   const result = validate(field);
+ *   return result.ok ? [] : [result.error];
+ * });
  * ```
  *
  * ## Unrecoverable errors
  *
  * Some errors can't be handled locally — they must propagate to the top level.
- * These are **unrecoverable errors**: expected (you know they can happen) but
- * only handleable at the app level. Group them in a union type like
- * `AppError`:
+ * These are unrecoverable errors: expected (you know they can happen) but only
+ * handleable at the app level. Group them in a union type like `AppError`:
  *
  * ```ts
  * type AppError = SqliteError | SyncError | UnknownError;
@@ -200,53 +210,14 @@ import type { Task } from "./Task.js";
  *
  * ## FAQ
  *
- * ### What if my function doesn't return a value on success?
+ * ### What if a function doesn't return a value on success?
  *
- * If your function performs an operation but doesn't need to return a value on
- * success, you can use `Result<void, E>`. Using `Result<void, E>` is clearer
- * than using `Result<true, E>` or `Result<null, E>` because it communicates
- * that the function doesn't produce a value but can produce errors.
- *
- * ### How do I process an array and stop on the first error?
- *
- * ```ts
- * for (const item of items) {
- *   const result = process(item);
- *   if (!result.ok) return result;
- * }
- * ```
- *
- * ### How do I process lazy operations?
- *
- * When operations are represented as functions ({@link Lazy}), call each one and
- * check the result:
- *
- * ```ts
- * const operations: ReadonlyArray<Lazy<Result<void, MyError>>> = [
- *   () => doSomething(),
- *   () => doSomethingElse(),
- * ];
- *
- * for (const op of operations) {
- *   const result = op();
- *   if (!result.ok) return result;
- * }
- * ```
- *
- * The same pattern works with `async`/`await` and {@link Task}.
- *
- * ### Why doesn't Evolu provide "handy helpers"?
- *
- * Evolu intentionally favors imperative patterns (like the `for...of` loop
- * above) over monadic helpers. Imperative code is generally more readable,
- * easier to debug, and more familiar to most JavaScript and TypeScript
- * developers. While monads and functional helpers can be powerful, they often
- * obscure control flow and make debugging harder.
+ * Use `Result<void, E>`.
  */
-export type Result<T, E> = Ok<T> | Err<E>;
+export type Result<T, E = never> = Ok<T> | Err<E>;
 
 /** A successful {@link Result}. */
-export interface Ok<T> {
+export interface Ok<out T> {
   readonly ok: true;
   readonly value: T;
 }
@@ -257,7 +228,7 @@ export interface Ok<T> {
  * The `error` property can be any type that describes the error. For domain
  * errors, use a plain object with a `type` field for discrimination.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * interface NotFoundError {
@@ -272,7 +243,7 @@ export interface Ok<T> {
  * };
  * ```
  */
-export interface Err<E> {
+export interface Err<out E> {
   readonly ok: false;
   readonly error: E;
 }
@@ -300,7 +271,7 @@ export type InferErr<R extends Result<any, any>> =
  *   producing a value.
  * - `ok(value)` creates a `Result<T, never>` containing the specified value.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * const noValue = ok();
@@ -310,15 +281,22 @@ export type InferErr<R extends Result<any, any>> =
  * console.log(success); // { ok: true, value: 42 }
  * ```
  */
-export function ok(): Result<void, never>;
+export function ok(): Result<void>;
 /** Creates an {@link Ok} result with a specified value. */
-export function ok<T>(value: T): Result<T, never>;
-export function ok<T>(value?: T): Result<T, never> {
+export function ok<T>(value: T): Result<T>;
+export function ok<T>(value?: T): Result<T> {
   return { ok: true, value: value as T };
 }
 
 /** Creates an {@link Err} result. */
 export const err = <E>(error: E): Result<never, E> => ({ ok: false, error });
+
+/** Type guard for {@link Ok} results. */
+export const isOk = <T, E>(result: Result<T, E>): result is Ok<T> => result.ok;
+
+/** Type guard for {@link Err} results. */
+export const isErr = <T, E>(result: Result<T, E>): result is Err<E> =>
+  !result.ok;
 
 /**
  * Extracts the value from a {@link Result} if it is an `Ok`, or throws an error
@@ -331,7 +309,7 @@ export const err = <E>(error: E): Result<never, E> => ({ ok: false, error });
  * - Not recommended for general error handling in application logic—prefer
  *   explicit checks.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * // At app startup, crash if config is invalid:
@@ -359,7 +337,7 @@ export const getOrThrow = <T, E>(result: Result<T, E>): T => {
  *   `T | null`.
  * - When the error is not important and you just want the value or nothing.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * // For APIs that expect T | null
@@ -372,7 +350,7 @@ export const getOrNull = <T, E>(result: Result<T, E>): T | null =>
 /**
  * Wraps a synchronous function that may throw, returning a {@link Result}.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * const parseJson = (value: string): Result<unknown, ParseJsonError> =>
@@ -396,7 +374,7 @@ export const trySync = <T, E>(
 /**
  * Wraps an async function that may throw, returning a {@link Result}.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * const fetchJson = (url: string): Promise<Result<unknown, FetchError>> =>
@@ -410,11 +388,85 @@ export const trySync = <T, E>(
  *   );
  * ```
  */
-export const tryAsync = async <T, E>(
-  promiseFn: () => Promise<T>,
+export const tryAsync = <T, E>(
+  lazyPromise: Lazy<Promise<T>>,
   mapError: (error: unknown) => E,
 ): Promise<Result<T, E>> =>
-  promiseFn().then(
+  Promise.try(lazyPromise).then(
     (value) => ok(value),
     (error: unknown) => err(mapError(error)),
   );
+
+/**
+ * A result for a pull-based protocol with three outcomes.
+ *
+ * The consumer requests the next value (e.g. via `next()`), and the producer
+ * responds with one of:
+ *
+ * - `Ok<A>` — produced a value
+ * - `Err<Done<D>>` — completed normally with a done value
+ * - `Err<E>` — failed with an error
+ *
+ * Inspired by JavaScript's `Iterator.next()`, which returns `{ value, done }`.
+ */
+export type NextResult<A, E = never, D = void> = Result<A, E | Done<D>>;
+
+/**
+ * A signal indicating normal completion of a pull-based protocol.
+ *
+ * This is not a failure — it is a control signal that carries an optional
+ * "done" value (often `void`, but can be a final summary or leftover).
+ *
+ * Inspired by JavaScript's `IteratorResult` where `{ done: true }` signals
+ * completion.
+ */
+export interface Done<out D = unknown> extends Typed<"Done"> {
+  readonly done: D;
+}
+
+/**
+ * Constructs a {@link Done} value.
+ *
+ * - `done()` creates a `Done<void>` for protocols that don't need a done value.
+ * - `done(value)` creates a `Done<D>` containing the specified value.
+ */
+export function done(): Done<void>;
+export function done<D>(value: D): Done<D>;
+export function done<D>(value?: D): Done<D> {
+  return {
+    type: "Done",
+    done: value as D,
+  };
+}
+
+/**
+ * Removes {@link Done} from an error union.
+ *
+ * Useful for pull-based protocols where completion is encoded in the error
+ * channel (for example {@link NextResult}).
+ *
+ * @category Utilities
+ */
+export type ExcludeDone<E> = Exclude<E, Done<any>>;
+
+/**
+ * Extracts only {@link Done} from an error union.
+ *
+ * Useful for pull-based protocols where completion is encoded in the error
+ * channel (for example {@link NextResult}).
+ *
+ * @category Utilities
+ */
+export type OnlyDone<E> = Extract<E, Done<any>>;
+
+/**
+ * Extracts the done value type from a {@link NextResult}.
+ *
+ * @category Utilities
+ */
+export type InferDone<R extends Result<any, any>> =
+  InferErr<R> extends infer Errors
+    ? Errors extends Done<infer D>
+      ? D
+      : never
+    : never;
