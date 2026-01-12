@@ -3,7 +3,7 @@
   "version": "2.0.0",
   "private": true,
   "scripts": {
-    "build": "cross-env NODE_OPTIONS=--max-old-space-size=8192 next build --webpack",
+    "build": "cross-env NODE_OPTIONS='--max-old-space-size-percentage=75' next build --webpack",
     "clean": "rimraf .turbo .next node_modules",
     "dev": "next dev --webpack",
     "fix:docs": "node --experimental-strip-types ./scripts/fix-api-reference.mts",
