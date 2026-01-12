@@ -7,7 +7,7 @@ import { GlobalErrorScope, handleGlobalError } from "@evolu/common";
  * `unhandledRejection`) to forward uncaught errors and unhandled promise
  * rejections to the scope's `onError` callback.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * const scope = createGlobalErrorScope(process);

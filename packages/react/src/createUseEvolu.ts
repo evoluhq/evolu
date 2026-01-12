@@ -4,7 +4,7 @@ import { useEvolu } from "./useEvolu.js";
 /**
  * Creates a typed React Hook returning an instance of {@link Evolu}.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * const useEvolu = createUseEvolu(evolu);
