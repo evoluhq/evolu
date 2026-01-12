@@ -1,11 +1,19 @@
 import { Random as RandomLib } from "random";
+import { Brand } from "./Brand.js";
+
+/**
+ * A random floating point number in [0, 1).
+ *
+ * Branded to distinguish random values from arbitrary numbers.
+ */
+export type RandomNumber = number & Brand<"RandomNumber">;
 
 /**
  * A simple wrapper around Math.random().
  *
  * For more complex needs check {@link RandomLibDep}.
  *
- * ## Example
+ * ### Example
  *
  * ```ts
  * // For apps
@@ -19,7 +27,7 @@ import { Random as RandomLib } from "random";
  */
 export interface Random {
   /** Returns a floating point number in [0, 1). Just like Math.random(). */
-  next: () => number;
+  next: () => RandomNumber;
 }
 
 export interface RandomDep {
@@ -28,7 +36,7 @@ export interface RandomDep {
 
 /** Creates a {@link Random} using Math.random(). */
 export const createRandom = (): Random => ({
-  next: () => Math.random(),
+  next: () => Math.random() as RandomNumber,
 });
 
 /**
@@ -38,7 +46,7 @@ export const createRandom = (): Random => ({
 export const createRandomWithSeed = (seed: string): Random => {
   const random = new RandomLib(seed);
   return {
-    next: () => random.next(),
+    next: () => random.next() as RandomNumber,
   };
 };
 
