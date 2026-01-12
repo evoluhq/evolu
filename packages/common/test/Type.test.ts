@@ -96,9 +96,10 @@ import {
   RecordError,
   recursive,
   regex,
+  RegexError,
+  result,
   set,
   SetError,
-  RegexError,
   SimplePassword,
   StandardSchemaV1,
   String,
@@ -110,6 +111,8 @@ import {
   tuple,
   TupleError,
   Type,
+  typed,
+  Typed,
   TypeError,
   TypeErrorFormatter,
   TypeErrors,
@@ -1864,6 +1867,31 @@ test("union", () => {
   union(String);
 });
 
+test("result", () => {
+  const Foo = object({ a: Number });
+  type Foo = typeof Foo.Type;
+
+  const BarError = typed("BarError");
+  type BarError = typeof BarError.Type;
+
+  const BazResult = result(Foo, BarError);
+  type BazResult = typeof BazResult.Type;
+
+  const okValue = { ok: true, value: { a: 1 } };
+  const errValue = { ok: false, error: { type: "BarError" } };
+
+  expect(BazResult.from(okValue)).toEqual(ok(okValue));
+  expect(BazResult.from(errValue)).toEqual(ok(errValue));
+
+  expect(BazResult.is(okValue)).toBe(true);
+  expect(BazResult.is(errValue)).toBe(true);
+
+  expectTypeOf<BazResult>().toEqualTypeOf<
+    | { readonly ok: true; readonly value: Foo }
+    | { readonly ok: false; readonly error: BarError }
+  >();
+});
+
 test("recursive", () => {
   interface Category {
     readonly name: string;
@@ -3232,5 +3260,234 @@ describe("Standard Schema V1", () => {
       name: expect.schemaMatching(NonEmptyTrimmedString100),
       age: expect.schemaMatching(PositiveInt),
     });
+  });
+});
+
+describe("typed", () => {
+  test("creates typed object with only tag (no props)", () => {
+    const Empty = typed("Empty");
+
+    type Empty = typeof Empty.Type;
+
+    expectTypeOf<Empty>().toEqualTypeOf<{
+      readonly type: "Empty";
+    }>();
+
+    const result = Empty.fromUnknown({ type: "Empty" });
+    expect(result).toEqual(ok({ type: "Empty" }));
+
+    // Wrong type discriminant
+    const wrongType = Empty.fromUnknown({ type: "Other" });
+    expect(wrongType.ok).toBe(false);
+
+    // Extra properties are rejected
+    const extraProps = Empty.fromUnknown({ type: "Empty", extra: "value" });
+    expect(extraProps.ok).toBe(false);
+
+    // Type guard
+    expect(Empty.is({ type: "Empty" })).toBe(true);
+    expect(Empty.is({ type: "Other" })).toBe(false);
+  });
+
+  test("creates typed object with type discriminant", () => {
+    const Pending = typed("Pending", {
+      createdAt: String,
+    });
+
+    type Pending = typeof Pending.Type;
+
+    expectTypeOf<Pending>().toEqualTypeOf<{
+      readonly type: "Pending";
+      readonly createdAt: string;
+    }>();
+
+    const result = Pending.fromUnknown({
+      type: "Pending",
+      createdAt: "2024-01-01",
+    });
+    expect(result).toEqual(ok({ type: "Pending", createdAt: "2024-01-01" }));
+
+    // Wrong type discriminant
+    const wrongType = Pending.fromUnknown({
+      type: "Shipped",
+      createdAt: "2024-01-01",
+    });
+    expect(wrongType.ok).toBe(false);
+
+    // Missing type
+    const missingType = Pending.fromUnknown({ createdAt: "2024-01-01" });
+    expect(missingType.ok).toBe(false);
+
+    // Type guard
+    expect(Pending.is({ type: "Pending", createdAt: "2024-01-01" })).toBe(true);
+    expect(Pending.is({ type: "Shipped", createdAt: "2024-01-01" })).toBe(
+      false,
+    );
+  });
+
+  test("union of typed variants (discriminated union)", () => {
+    // Define order state variants
+    const Pending = typed("Pending", {
+      createdAt: String,
+    });
+
+    const Shipped = typed("Shipped", {
+      trackingNumber: String,
+    });
+
+    const Delivered = typed("Delivered", {
+      deliveredAt: String,
+    });
+
+    const Cancelled = typed("Cancelled", {
+      reason: String,
+    });
+
+    // Create union
+    const OrderState = union(Pending, Shipped, Delivered, Cancelled);
+    type OrderState = typeof OrderState.Type;
+
+    expectTypeOf<OrderState>().toEqualTypeOf<
+      | { readonly type: "Pending"; readonly createdAt: string }
+      | { readonly type: "Shipped"; readonly trackingNumber: string }
+      | { readonly type: "Delivered"; readonly deliveredAt: string }
+      | { readonly type: "Cancelled"; readonly reason: string }
+    >();
+
+    // Parse different variants
+    expect(
+      OrderState.fromUnknown({ type: "Pending", createdAt: "2024-01-01" }),
+    ).toEqual(ok({ type: "Pending", createdAt: "2024-01-01" }));
+
+    expect(
+      OrderState.fromUnknown({ type: "Shipped", trackingNumber: "ABC123" }),
+    ).toEqual(ok({ type: "Shipped", trackingNumber: "ABC123" }));
+
+    // TypeScript narrows correctly in switch
+    const getStatusMessage = (state: OrderState): string => {
+      switch (state.type) {
+        case "Pending":
+          return `Order placed on ${state.createdAt}`;
+        case "Shipped":
+          return `Shipped: ${state.trackingNumber}`;
+        case "Delivered":
+          return `Delivered on ${state.deliveredAt}`;
+        case "Cancelled":
+          return `Cancelled: ${state.reason}`;
+      }
+    };
+
+    const pending = OrderState.orThrow({
+      type: "Pending",
+      createdAt: "2024-01-01",
+    });
+    expect(getStatusMessage(pending)).toBe("Order placed on 2024-01-01");
+
+    const shipped = OrderState.orThrow({
+      type: "Shipped",
+      trackingNumber: "ABC123",
+    });
+    expect(getStatusMessage(shipped)).toBe("Shipped: ABC123");
+  });
+
+  test("payment methods example", () => {
+    const Credit = typed("Credit", {
+      cardNumber: String,
+      expiry: String,
+    });
+
+    const Debit = typed("Debit", {
+      cardNumber: String,
+      pin: String,
+    });
+
+    const Cash = typed("Cash", {
+      currency: String,
+    });
+
+    const Crypto = typed("Crypto", {
+      walletAddress: String,
+    });
+
+    const Payment = union(Credit, Debit, Cash, Crypto);
+    type Payment = typeof Payment.Type;
+
+    // Each variant is distinguishable by type
+    const creditPayment = Payment.orThrow({
+      type: "Credit",
+      cardNumber: "1234-5678-9012-3456",
+      expiry: "12/25",
+    });
+
+    expect(creditPayment.type).toBe("Credit");
+    if (creditPayment.type === "Credit") {
+      expect(creditPayment.cardNumber).toBe("1234-5678-9012-3456");
+    }
+
+    const cryptoPayment = Payment.orThrow({
+      type: "Crypto",
+      walletAddress: "0xabc123",
+    });
+
+    expect(cryptoPayment.type).toBe("Crypto");
+    if (cryptoPayment.type === "Crypto") {
+      expect(cryptoPayment.walletAddress).toBe("0xabc123");
+    }
+  });
+
+  test("Typed interface works for type-only discrimination", () => {
+    // When you don't need runtime validation, use Typed interface directly
+    interface EmailOnly extends Typed<"EmailOnly"> {
+      readonly email: string;
+    }
+
+    interface PhoneOnly extends Typed<"PhoneOnly"> {
+      readonly phone: string;
+    }
+
+    type ContactInfo = EmailOnly | PhoneOnly;
+
+    const getContact = (info: ContactInfo): string => {
+      switch (info.type) {
+        case "EmailOnly":
+          return info.email;
+        case "PhoneOnly":
+          return info.phone;
+      }
+    };
+
+    const email: EmailOnly = { type: "EmailOnly", email: "test@example.com" };
+    const phone: PhoneOnly = { type: "PhoneOnly", phone: "123-456-7890" };
+
+    expect(getContact(email)).toBe("test@example.com");
+    expect(getContact(phone)).toBe("123-456-7890");
+  });
+
+  test("typed with branded types", () => {
+    const User = typed("User", {
+      id: Id,
+      name: NonEmptyTrimmedString100,
+      age: optional(PositiveInt),
+    });
+
+    type User = typeof User.Type;
+
+    const validUser = User.from({
+      type: "User",
+      id: createId(testDeps),
+      name: "Alice",
+      age: 30,
+    });
+
+    expect(validUser.ok).toBe(true);
+
+    const invalidUser = User.fromUnknown({
+      type: "User",
+      id: "not-a-valid-id",
+      name: "",
+      age: -5,
+    });
+
+    expect(invalidUser.ok).toBe(false);
   });
 });
