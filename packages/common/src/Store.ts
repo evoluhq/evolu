@@ -1,4 +1,5 @@
 import { Eq, eqStrict } from "./Eq.js";
+import { createListeners, Listener, Unsubscribe } from "./Listeners.js";
 import { createRef, Ref } from "./Ref.js";
 
 /**
@@ -13,7 +14,7 @@ export interface ReadonlyStore<T> extends Disposable {
    * Registers a listener to be called on state changes and returns a function
    * to unsubscribe.
    */
-  readonly subscribe: StoreSubscribe;
+  readonly subscribe: (listener: Listener) => Unsubscribe;
 
   /** Returns the current state of the store. */
   readonly get: () => T;
@@ -29,15 +30,6 @@ export interface ReadonlyStore<T> extends Disposable {
  */
 export interface Store<T> extends ReadonlyStore<T>, Ref<T> {}
 
-/** Registers a listener for state changes, returning an unsubscribe function. */
-export type StoreSubscribe = (listener: StoreListener) => StoreUnsubscribe;
-
-/** A callback invoked whenever the store's state updates. */
-export type StoreListener = () => void;
-
-/** A function to remove a previously added listener. */
-export type StoreUnsubscribe = () => void;
-
 /**
  * Creates a store with the given initial state. The store encapsulates its
  * state, which can be read with `get` and updated with `set` or `modify`. All
@@ -50,37 +42,25 @@ export const createStore = <T>(
   initialState: T,
   eq: Eq<T> = eqStrict,
 ): Store<T> => {
-  const listeners = new Set<StoreListener>();
+  const listeners = createListeners();
   const ref = createRef(initialState, eq);
 
-  const notify = () => {
-    listeners.forEach((listener) => {
-      listener();
-    });
-  };
-
   return {
-    subscribe: (listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-
+    subscribe: listeners.subscribe,
     get: ref.get,
 
     set: (state) => {
       const updated = ref.set(state);
-      if (updated) notify();
+      if (updated) listeners.notify();
       return updated;
     },
 
     modify: (updater) => {
       const updated = ref.modify(updater);
-      if (updated) notify();
+      if (updated) listeners.notify();
       return updated;
     },
 
-    [Symbol.dispose]: () => {
-      listeners.clear();
-    },
+    [Symbol.dispose]: listeners[Symbol.dispose],
   };
 };
