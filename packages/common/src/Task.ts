@@ -1,19 +1,24 @@
+/**
+ * Structured concurrency with fibers, runners, and cancellation.
+ *
+ * @module
+ */
 import { isNonEmptyArray } from "./Array.js";
 import { assert } from "./Assert.js";
-import { createRandomBytes } from "./Crypto.js";
 import type { RandomBytesDep } from "./Crypto.js";
+import { createRandomBytes } from "./Crypto.js";
 import { eqArrayStrict } from "./Eq.js";
 import { constTrue, constVoid } from "./Function.js";
 import { decrement, increment } from "./Number.js";
-import { createRandom } from "./Random.js";
 import type { Random, RandomDep } from "./Random.js";
+import { createRandom } from "./Random.js";
 import type { Ref } from "./Ref.js";
-import { err, ok, tryAsync } from "./Result.js";
 import type { Done, NextResult, Result } from "./Result.js";
+import { err, ok, tryAsync } from "./Result.js";
 import type { Schedule } from "./schedule/index.js";
 import { addToSet, deleteFromSet, emptySet } from "./Set.js";
-import { createTime, durationToMillis, Millis } from "./Time.js";
 import type { Duration, Time, TimeDep } from "./Time.js";
+import { createTime, durationToMillis, Millis } from "./Time.js";
 import type { TracerConfigDep, TracerDep } from "./Tracer.js";
 import {
   brand,
@@ -399,7 +404,7 @@ export interface Runner extends AsyncDisposable {
   readonly getChildren: () => ReadonlySet<Fiber>;
 
   /**
-   * Creates a memoized {@link RunnerSnapshot} of this runner.
+   * Creates a memoized {@link FiberSnapshot} of this runner.
    *
    * Use for monitoring, debugging, or building UI that visualizes task trees.
    *
@@ -407,7 +412,7 @@ export interface Runner extends AsyncDisposable {
    *
    * ```ts
    * // React integration with useSyncExternalStore
-   * const useRunnerSnapshot = (runner: Runner) =>
+   * const useFiberSnapshot = (runner: Runner) =>
    *   useSyncExternalStore(
    *     (callback) => {
    *       runner.onEvent = callback;
@@ -419,7 +424,7 @@ export interface Runner extends AsyncDisposable {
    *   );
    * ```
    */
-  readonly snapshot: () => RunnerSnapshot;
+  readonly snapshot: () => FiberSnapshot;
 
   /**
    * Callback for monitoring runner events.
@@ -699,7 +704,7 @@ export type InferFiberErr<F extends Fiber<any, any>> =
  * @category Core
  * @see {@link Runner.snapshot}
  */
-export interface RunnerSnapshot {
+export interface FiberSnapshot {
   /** The {@link Runner.id} of the {@link Fiber} this snapshot represents. */
   readonly id: Id;
 
@@ -710,7 +715,7 @@ export interface RunnerSnapshot {
    * The fiber's completion value.
    *
    * `null` while pending. If abort was requested, this is {@link AbortError}
-   * even if the task completed successfully — see {@link RunnerSnapshot.outcome}
+   * even if the task completed successfully — see {@link FiberSnapshot.outcome}
    * for what the task actually returned.
    */
   readonly result: Result<unknown, unknown> | null;
@@ -718,13 +723,13 @@ export interface RunnerSnapshot {
   /**
    * What the task actually returned.
    *
-   * `null` while pending. Unlike {@link RunnerSnapshot.result}, not overridden
-   * by abort.
+   * `null` while pending. Unlike {@link FiberSnapshot.result}, not overridden by
+   * abort.
    */
   readonly outcome: Result<unknown, unknown> | null;
 
   /** Child snapshots in spawn (start) order. */
-  readonly children: ReadonlyArray<RunnerSnapshot>;
+  readonly children: ReadonlyArray<FiberSnapshot>;
 
   /** The abort mask depth. `0` means abortable, `>= 1` means unabortable. */
   readonly abortMask: AbortMask;
@@ -1122,7 +1127,7 @@ const createRunnerInternal =
 
       let result: Result<unknown, unknown> | null = null;
       let outcome: Result<unknown, unknown> | null = null;
-      let snapshot: RunnerSnapshot | null = null;
+      let snapshot: FiberSnapshot | null = null;
       let disposing: Promise<void> | null = null;
 
       run.id = id;
