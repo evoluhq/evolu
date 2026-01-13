@@ -1,5 +1,13 @@
 import SQLite from "better-sqlite3";
 import { describe, expect, test } from "vitest";
+import type {
+  Timestamp,
+  TimestampBytes,
+  TimestampConfigDep,
+  TimestampCounterOverflowError,
+  TimestampDriftError,
+  TimestampTimeOutOfRangeError,
+} from "../../src/local-first/Timestamp.js";
 import {
   Counter,
   createInitialTimestamp,
@@ -14,26 +22,18 @@ import {
   timestampBytesToTimestamp,
   timestampToTimestampBytes,
 } from "../../src/local-first/Timestamp.js";
-import type {
-  Timestamp,
-  TimestampBytes,
-  TimestampConfigDep,
-  TimestampCounterOverflowError,
-  TimestampDriftError,
-  TimestampTimeOutOfRangeError,
-} from "../../src/local-first/Timestamp.js";
 import { increment } from "../../src/Number.js";
 import { orderNumber } from "../../src/Order.js";
-import { ok } from "../../src/Result.js";
 import type { Result } from "../../src/Result.js";
-import {
-  createTestTime,
-  maxMillis,
-  minMillis,
-  Millis,
-} from "../../src/Time.js";
+import { ok } from "../../src/Result.js";
+import { createTestDeps } from "../../src/Test.js";
 import type { TimeDep } from "../../src/Time.js";
-import { testDeps, testRandomLib } from "../_deps.js";
+import {
+  maxMillis,
+  Millis,
+  minMillis,
+  testCreateTime,
+} from "../../src/Time.js";
 
 test("Millis", () => {
   expect(Millis.from(-1).ok).toBe(false);
@@ -68,12 +68,13 @@ test("createTimestamp", () => {
 });
 
 test("createInitialTimestamp", () => {
-  const timestamp = createInitialTimestamp(testDeps);
+  const deps = createTestDeps();
+  const timestamp = createInitialTimestamp(deps);
   expect(timestamp).toMatchInlineSnapshot(`
     {
       "counter": 0,
       "millis": 0,
-      "nodeId": "4febdfb5d0782bfa",
+      "nodeId": "206365e6de2e95a6",
     }
   `);
 });
@@ -81,12 +82,12 @@ test("createInitialTimestamp", () => {
 const makeMillis = (millis: number): Millis => Millis.orThrow(millis);
 
 const deps0: TimeDep & TimestampConfigDep = {
-  time: createTestTime({ startAt: minMillis }),
+  time: testCreateTime({ startAt: minMillis }),
   timestampConfig: { maxDrift: defaultTimestampMaxDrift },
 };
 
 const deps1: TimeDep & TimestampConfigDep = {
-  time: createTestTime({ startAt: (minMillis + 1) as Millis }),
+  time: testCreateTime({ startAt: (minMillis + 1) as Millis }),
   timestampConfig: { maxDrift: defaultTimestampMaxDrift },
 };
 
@@ -313,6 +314,7 @@ describe("receiveTimestamp", () => {
   });
 
   test("timestampToTimestampBytes/timestampBytesToTimestamp", () => {
+    const deps = createTestDeps();
     const decodeFromEncoded = (t: TimestampBytes) =>
       timestampBytesToTimestamp(t);
 
@@ -360,7 +362,7 @@ describe("receiveTimestamp", () => {
 
     const randomMillis = new Set<Millis>();
     Array.from({ length: 1000 }).forEach(() => {
-      randomMillis.add(testRandomLib.int(0, 10000) as Millis);
+      randomMillis.add(deps.randomLib.int(0, 10000) as Millis);
     });
 
     const sortedMillis = [...randomMillis].toSorted(orderNumber);

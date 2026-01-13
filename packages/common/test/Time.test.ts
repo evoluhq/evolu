@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, test } from "vitest";
-import { createTestTime, createTime, durationToMillis } from "../src/Time.js";
+import { testCreateTime, createTime, durationToMillis } from "../src/Time.js";
 import type { DurationLiteral, Millis } from "../src/Time.js";
 
 describe("Time", () => {
@@ -11,8 +11,8 @@ describe("Time", () => {
     expect(time.now()).toBeLessThanOrEqual(now + 10);
   });
 
-  test("createTestTime advances time only when advance() is called", () => {
-    const time = createTestTime();
+  test("testCreateTime advances time only when advance() is called", () => {
+    const time = testCreateTime();
 
     expect(time.now()).toBe(0);
     expect(time.now()).toBe(0); // Still 0, no auto-increment
@@ -27,8 +27,8 @@ describe("Time", () => {
     expect(time.now()).toBe(1101);
   });
 
-  test("createTestTime with autoIncrement returns monotonically increasing values", async () => {
-    const time = createTestTime({ autoIncrement: true });
+  test("testCreateTime with autoIncrement returns monotonically increasing values", async () => {
+    const time = testCreateTime({ autoIncrement: true });
     const first = time.now();
 
     await Promise.resolve();

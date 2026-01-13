@@ -2,6 +2,11 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { assert, expect, test } from "vitest";
 import { constTrue } from "../../src/Function.js";
 import { ownerIdToOwnerIdBytes } from "../../src/local-first/Owner.js";
+import type {
+  BaseSqliteStorageDep,
+  Fingerprint,
+  StorageInsertTimestampStrategy,
+} from "../../src/local-first/Storage.js";
 import {
   createBaseSqliteStorage,
   createBaseSqliteStorageTables,
@@ -10,11 +15,6 @@ import {
   getTimestampInsertStrategy,
   InfiniteUpperBound,
   timestampBytesToFingerprint,
-} from "../../src/local-first/Storage.js";
-import type {
-  BaseSqliteStorageDep,
-  Fingerprint,
-  StorageInsertTimestampStrategy,
 } from "../../src/local-first/Storage.js";
 import {
   Counter,
@@ -26,18 +26,16 @@ import {
 import { computeBalancedBuckets } from "../../src/Number.js";
 import { createRandom } from "../../src/Random.js";
 import { getOrThrow, ok } from "../../src/Result.js";
-import { sql } from "../../src/Sqlite.js";
 import type { SqliteDep } from "../../src/Sqlite.js";
+import { sql } from "../../src/Sqlite.js";
+import { createTestDeps } from "../../src/Test.js";
 import type { Millis } from "../../src/Time.js";
-import { NonNegativeInt, PositiveInt } from "../../src/Type.js";
-import {
-  testCreateId,
-  testCreateSqlite,
-  testOwner2,
-  testOwnerIdBytes,
-} from "../_deps.js";
+import { createId, NonNegativeInt, PositiveInt } from "../../src/Type.js";
+import { testCreateSqlite } from "../_deps.js";
 import {
   testAnotherTimestampsAsc,
+  testOwner2,
+  testOwnerIdBytes,
   testTimestampsAsc,
   testTimestampsDesc,
   testTimestampsRandom,
@@ -491,7 +489,8 @@ test.skip(
 );
 
 test("DbChange", () => {
-  const id = testCreateId();
+  const deps = createTestDeps();
+  const id = createId(deps);
 
   // Valid
   expect(

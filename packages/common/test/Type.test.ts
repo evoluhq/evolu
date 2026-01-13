@@ -2,6 +2,54 @@ import { assert, describe, expect, expectTypeOf, test } from "vitest";
 import type { Brand } from "../src/Brand.js";
 import { constVoid, exhaustiveCheck } from "../src/Function.js";
 import { err, ok } from "../src/Result.js";
+import { createTestDeps } from "../src/Test.js";
+import type {
+  ArrayError,
+  BigIntError,
+  BooleanError,
+  BrandWithoutRefineError,
+  FiniteError,
+  InferError,
+  InferInput,
+  InferParent,
+  InferParentError,
+  InferType,
+  InstanceOfError,
+  Int64Error,
+  IntError,
+  JsonError,
+  JsonValueError,
+  JsonValueInput,
+  LengthError,
+  LiteralError,
+  MaxLengthError,
+  MinLengthError,
+  MultipleOfError,
+  NegativeError,
+  NonNaNError,
+  NonNegativeError,
+  NonPositiveError,
+  NullError,
+  NumberError,
+  ObjectError,
+  ObjectWithRecordError,
+  PositiveError,
+  RecordError,
+  RegexError,
+  SetError,
+  StandardSchemaV1,
+  StringError,
+  TableIdError,
+  TrimmedError,
+  TupleError,
+  Type,
+  Typed,
+  TypeError,
+  TypeErrorFormatter,
+  TypeErrors,
+  UndefinedError,
+  UnionError,
+} from "../src/Type.js";
 import {
   array,
   Base64Url,
@@ -79,54 +127,6 @@ import {
   Unknown,
   UrlSafeString,
 } from "../src/Type.js";
-import type {
-  ArrayError,
-  BigIntError,
-  BooleanError,
-  BrandWithoutRefineError,
-  FiniteError,
-  InferError,
-  InferInput,
-  InferParent,
-  InferParentError,
-  InferType,
-  InstanceOfError,
-  Int64Error,
-  IntError,
-  JsonError,
-  JsonValueError,
-  JsonValueInput,
-  LengthError,
-  LiteralError,
-  MaxLengthError,
-  MinLengthError,
-  MultipleOfError,
-  NegativeError,
-  NonNaNError,
-  NonNegativeError,
-  NonPositiveError,
-  NullError,
-  NumberError,
-  ObjectError,
-  ObjectWithRecordError,
-  PositiveError,
-  RecordError,
-  RegexError,
-  SetError,
-  StandardSchemaV1,
-  StringError,
-  TableIdError,
-  TrimmedError,
-  TupleError,
-  Type,
-  TypeError,
-  TypeErrorFormatter,
-  TypeErrors,
-  Typed,
-  UndefinedError,
-  UnionError,
-} from "../src/Type.js";
-import { testDeps } from "./_deps.js";
 
 test("Base Types", () => {
   expect(Unknown.from(42)).toEqual({ ok: true, value: 42 });
@@ -925,10 +925,12 @@ test("SimplePassword", () => {
 });
 
 test("id", () => {
+  const deps = createTestDeps();
+
   const UserId = id("User");
   type UserId = typeof UserId.Type;
 
-  const validId = createId(testDeps);
+  const validId = createId(deps);
   expect(UserId.from(validId)).toEqual(ok(validId));
   expect(UserId.fromParent(validId)).toEqual(ok(validId));
   expect(UserId.is(validId)).toBe(true);
@@ -966,10 +968,11 @@ test("id", () => {
 });
 
 test("createId", () => {
-  const id = createId(testDeps);
-  expect(id).toMatchInlineSnapshot(`"-7BOfTxCJQQifI1Bv_OErQ"`);
+  const deps = createTestDeps();
+  const id = createId(deps);
+  expect(id).toMatchInlineSnapshot(`"IGNl5t4ulaaQpdnwDhgoCA"`);
 
-  const _todoId = createId<"Todo">(testDeps);
+  const _todoId = createId<"Todo">(deps);
 
   expectTypeOf<typeof id>().toEqualTypeOf<Id>();
   expectTypeOf<typeof _todoId>().toEqualTypeOf<Id & Brand<"Todo">>();
@@ -1011,7 +1014,8 @@ test("createIdFromString", () => {
 });
 
 test("IdBytes/idToIdBytes/idBytesToId", () => {
-  const originalId = createId(testDeps);
+  const deps = createTestDeps();
+  const originalId = createId(deps);
   const idBytes = idToIdBytes(originalId);
   expect(IdBytes.is(idBytes)).toBe(true);
   expect(idBytesToId(idBytes)).toBe(originalId);
@@ -3466,6 +3470,8 @@ describe("typed", () => {
   });
 
   test("typed with branded types", () => {
+    const deps = createTestDeps();
+
     const User = typed("User", {
       id: Id,
       name: NonEmptyTrimmedString100,
@@ -3476,7 +3482,7 @@ describe("typed", () => {
 
     const validUser = User.from({
       type: "User",
-      id: createId(testDeps),
+      id: createId(deps),
       name: "Alice",
       age: 30,
     });

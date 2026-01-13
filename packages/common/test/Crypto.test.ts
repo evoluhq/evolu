@@ -11,14 +11,16 @@ import {
 } from "../src/Crypto.js";
 import { mnemonicToOwnerSecret } from "../src/index.js";
 import { ok } from "../src/Result.js";
+import { createTestDeps } from "../src/Test.js";
 import { Mnemonic, NonNegativeInt } from "../src/Type.js";
-import { testDeps, testOwner } from "./_deps.js";
+import { testOwner } from "./local-first/_fixtures.js";
 
 test("encryptWithXChaCha20Poly1305 / decryptWithXChaCha20Poly1305", () => {
+  const deps = createTestDeps();
   const plaintext = utf8ToBytes("Hello, world!");
   const encryptionKey = testOwner.encryptionKey;
 
-  const [ciphertext, nonce] = encryptWithXChaCha20Poly1305(testDeps)(
+  const [ciphertext, nonce] = encryptWithXChaCha20Poly1305(deps)(
     plaintext,
     encryptionKey,
   );

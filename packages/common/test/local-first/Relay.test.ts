@@ -1,9 +1,9 @@
 import { assert, describe, expect, test } from "vitest";
 import type {
-  EncryptedCrdtMessage,
-  EncryptedDbChange,
-} from "../../src/local-first/Storage.js";
-import { createInitialTimestamp } from "../../src/local-first/Timestamp.js";
+  NonNegativeInt,
+  OwnerIdBytes,
+  SqliteDep,
+} from "../../src/index.js";
 import {
   constFalse,
   err,
@@ -12,19 +12,19 @@ import {
   wait,
 } from "../../src/index.js";
 import type {
-  NonNegativeInt,
-  OwnerIdBytes,
-  SqliteDep,
-} from "../../src/index.js";
+  EncryptedCrdtMessage,
+  EncryptedDbChange,
+} from "../../src/local-first/Storage.js";
+import { createInitialTimestamp } from "../../src/local-first/Timestamp.js";
+import { createTestDeps } from "../../src/Test.js";
+import { testCreateRelayStorageAndSqliteDeps } from "../_deps.js";
 import {
-  testCreateRelayStorageAndSqliteDeps,
-  testDeps,
   testOwner,
   testOwner2,
   testOwnerIdBytes,
   testOwnerIdBytes2,
-} from "../_deps.js";
-import { testTimestampsAsc } from "./_fixtures.js";
+  testTimestampsAsc,
+} from "./_fixtures.js";
 
 test("validateWriteKey", async () => {
   const { storage } = await testCreateRelayStorageAndSqliteDeps();
@@ -73,8 +73,9 @@ test("deleteOwner", async () => {
 });
 
 describe("writeMessages", () => {
+  const deps = createTestDeps();
   const createTestMessage = (length = 3): EncryptedCrdtMessage => ({
-    timestamp: createInitialTimestamp(testDeps),
+    timestamp: createInitialTimestamp(deps),
     change: new Uint8Array(length) as EncryptedDbChange,
   });
 
