@@ -128,11 +128,11 @@ describe("trySync", () => {
 describe("tryAsync", () => {
   it("returns Ok on resolved promise", async () => {
     const result = await tryAsync(
-      () => Promise.resolve("success"),
+      () => Promise.resolve(),
       (error) => ({ type: "TestError", message: String(error) }),
     );
 
-    expect(result).toStrictEqual(ok("success"));
+    expect(result).toStrictEqual(ok());
   });
 
   it("returns Err on rejected promise", async () => {
