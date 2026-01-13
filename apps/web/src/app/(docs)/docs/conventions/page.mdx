@@ -370,7 +370,7 @@ Opaque types are useful for:
 Evolu doesn't provide a `pipe` helper. Instead, compose functions directly:
 
 ```ts
-// Direct composition
+// AWS-style retry - a jittered, capped, limited exponential backoff.
 const awsRetry = jitter(1)(maxDelay("20s")(take(3)(exponential("1s"))));
 ```
 
@@ -385,3 +385,25 @@ const retry = withAwsBackoff(exponential("1s"));
 ```
 
 Evolu favors imperative code over pipes. Pipes add indirection. A well-named helper function is more discoverable and self-documenting than a chain of transformations.
+
+## Avoid meaningless ok values
+
+Don't use `ok("done")` or `ok("success")` — the `ok()` itself already communicates success. Use `ok()` for `Result<void, E>` or return a meaningful value.
+
+```ts
+// Good - ok() means success, no redundant string needed
+const save = (): Result<void, SaveError> => {
+  // ...
+  return ok();
+};
+
+// Good - return a meaningful value
+const parse = (): Result<User, ParseError> => {
+  // ...
+  return ok(user);
+};
+
+// Avoid - "done" and "success" add no information
+return ok("done");
+return ok("success");
+```

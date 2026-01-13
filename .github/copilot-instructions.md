@@ -310,6 +310,28 @@ for (const op of operations) {
 }
 ```
 
+### Avoid meaningless ok values
+
+Don't use `ok("done")` or `ok("success")` - the `ok()` itself already communicates success. Use `ok()` for `Result<void, E>` or return a meaningful value.
+
+```ts
+// Good - ok() means success, no redundant string needed
+const save = (): Result<void, SaveError> => {
+  // ...
+  return ok();
+};
+
+// Good - return a meaningful value
+const parse = (): Result<User, ParseError> => {
+  // ...
+  return ok(user);
+};
+
+// Avoid - "done" and "success" add no information
+return ok("done");
+return ok("success");
+```
+
 ## Evolu Type
 
 - **Use Type for validation/parsing** - leverage Evolu's Type system for runtime validation
@@ -443,7 +465,7 @@ const result = await sleep("1s")(run);
 
 - **Leverage `_deps.ts`** - use existing test utilities and mocks from `packages/common/test/_deps.ts` (e.g., `testCreateId`, `testTime`, `testOwner`)
 - Mock dependencies using the same interfaces
-- Create test factories (e.g., `createTestTime`)
+- Create test factories (e.g., `testCreateTime`)
 - Never rely on global state
 - Use assertions in tests for conditions that should never fail
 
@@ -463,7 +485,7 @@ pnpm test --filter @evolu/common -- -t "yields and returns ok"
 ```ts
 import { testCreateId, testTime, testOwner } from "../_deps.js";
 
-const createTestTime = (): Time => ({
+const testCreateTime = (): Time => ({
   now: () => 1234567890, // Fixed time for testing
 });
 
