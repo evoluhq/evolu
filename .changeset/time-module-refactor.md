@@ -16,7 +16,7 @@ Refactored Time module for type safety, consistency, and better abstractions.
 - Added `Time.setTimeout` and `Time.clearTimeout` for platform-agnostic timers
 - Added `TimeoutId` opaque type for timeout handles
 - Added `TestTime` interface with `advance()` for controllable time in tests
-- Updated `createTestTime` with `startAt` and `autoIncrement` options
+- Added `testCreateTime` with `startAt` and `autoIncrement` options
 
 **Duration literals:**
 

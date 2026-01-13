@@ -86,7 +86,7 @@ export interface TestTime extends Time {
  * call via microtask (useful for tests that need monotonically increasing
  * values without explicit `advance()` calls).
  */
-export const createTestTime = (options?: {
+export const testCreateTime = (options?: {
   readonly startAt?: Millis;
   readonly autoIncrement?: boolean;
 }): TestTime => {

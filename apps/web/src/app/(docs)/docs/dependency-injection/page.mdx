@@ -266,7 +266,7 @@ runApp(appDeps);
 
 - Start with an interface or type—everything can be a dependency.
 - To avoid clashes, wrap dependencies (`TimeDep`, `LoggerDep`).
-- Write factory functions (`createTime`, `createTestTime`).
+- Write factory functions (`createTime`, `createRunner`).
 - Both regular functions and factory functions accept a single argument named `deps`, combining one or more dependencies (e.g., `A & B & C`).
 - Sort dependencies alphabetically when combining them, and place `Partial` deps last.
 
@@ -360,17 +360,17 @@ test("handles storage full error", () => {
 Avoiding global state makes testing and composition easier. Here's an example with mocked dependencies:
 
 ```ts
-const createTestTime = (): Time => ({
+const testCreateTime = (): Time => ({
   now: () => 1234567890, // Fixed time for testing
 });
 
 test("timeUntilEvent calculates correctly", () => {
-  const deps = { time: createTestTime() };
+  const deps = { time: testCreateTime() };
   expect(timeUntilEvent(deps)(1234568890)).toBe(1000);
 });
 ```
 
-Evolu provides [`createTestTime`](/docs/api-reference/common/Time/functions/createTestTime) out of the box—a `Time` implementation that returns monotonically increasing values, useful for tests that need predictable, ordered timestamps.
+Evolu provides [`testCreateTime`](/docs/api-reference/common/Time/functions/testCreateTime) out of the box—a `Time` implementation that returns monotonically increasing values, useful for tests that need predictable, ordered timestamps.
 
 ## Tips
 
