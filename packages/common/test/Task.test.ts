@@ -2863,10 +2863,10 @@ describe("retry", () => {
 
     const taskStarted = Promise.withResolvers<void>();
 
-    const task: Task<string, MyError> = async ({ signal }) => {
+    const task: Task<string, MyError> = async (run) => {
       taskStarted.resolve();
-      await new Promise((r) => setTimeout(r, 1000));
-      void signal.aborted; // Capture for potential assertion
+      const result = await run(sleep("1s"));
+      if (!result.ok) return result;
       return ok("success");
     };
 
