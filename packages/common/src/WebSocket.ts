@@ -281,3 +281,66 @@ const nativeToStringState: Record<number, WebSocketReadyState> = {
   [WebSocket.CLOSING]: "closing",
   [WebSocket.CLOSED]: "closed",
 };
+
+/** Test WebSocket with methods to simulate events. */
+export interface TestWebSocket extends WebSocket {
+  readonly sentMessages: ReadonlyArray<Uint8Array>;
+  readonly simulateMessage: (message: Uint8Array) => void;
+  readonly simulateOpen: () => void;
+  readonly simulateClose: () => void;
+}
+
+/**
+ * Creates a test WebSocket that captures sent messages and allows simulating
+ * events.
+ */
+export const testCreateWebSocket = (
+  _url?: string,
+  options?: {
+    onOpen?: () => void;
+    onClose?: (event: CloseEvent) => void;
+    onError?: (error: any) => void;
+    onMessage?: (data: string | ArrayBuffer | Blob) => void;
+  },
+): TestWebSocket => {
+  const sentMessages: Array<Uint8Array> = [];
+  let isWebSocketOpen = false;
+
+  return {
+    get sentMessages() {
+      return sentMessages;
+    },
+    send: (data: string | ArrayBufferLike | Blob | ArrayBufferView) => {
+      sentMessages.push(data as Uint8Array);
+      return ok();
+    },
+    getReadyState: () => (isWebSocketOpen ? "open" : "connecting"),
+    isOpen: () => isWebSocketOpen,
+    simulateMessage: (message: Uint8Array) => {
+      if (options?.onMessage) {
+        options.onMessage(message.buffer as ArrayBuffer);
+      }
+    },
+    simulateOpen: () => {
+      isWebSocketOpen = true;
+      if (options?.onOpen) {
+        options.onOpen();
+      }
+    },
+    simulateClose: () => {
+      isWebSocketOpen = false;
+      if (options?.onClose) {
+        options.onClose({} as CloseEvent);
+      }
+    },
+    [Symbol.dispose]: constVoid,
+  };
+};
+
+/** Creates a dummy WebSocket for tests that don't need simulation. */
+export const testCreateDummyWebSocket: CreateWebSocket = () => ({
+  send: () => ok(),
+  getReadyState: () => "connecting",
+  isOpen: () => false,
+  [Symbol.dispose]: constVoid,
+});
