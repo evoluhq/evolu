@@ -46,21 +46,22 @@ import { type Awaitable, type Mutable, type Predicate } from "./Types.js";
  *
  * Evolu implements structured concurrency with these types:
  *
- * - **{@link Task}** — a function that takes {@link Runner} and returns
- *   {@link Awaitable} (sync or async) {@link Result}
- * - **{@link Runner}** — task runner returning {@link Fiber}
+ * - **{@link Task}** — a function that takes {@link Runner}, optional deps, and
+ *   returns {@link Awaitable} (sync or async) {@link Result}
+ * - **{@link Runner}** — runs tasks, creates {@link Fiber}s, monitors and aborts
+ *   them
  * - **{@link Fiber}** — awaitable, abortable, disposable handle to a running task
  * - **{@link AsyncDisposableStack}** — task-aware resource management that
  *   completes even when aborted
  *
  * Evolu's structured concurrency is minimal — one function with a few flags and
- * helper methods built on native APIs: `Promise`, `AbortController`, `using`,
- * etc.
+ * helper methods using native APIs: `Promise`, `AbortController`,
+ * `DisposableStack`, etc.
  *
  * ### Example
  *
  * ```ts
- * // Pure DI.
+ * // Pure DI — deps as interface.
  * interface NativeFetchDep {
  *   readonly fetch: typeof globalThis.fetch;
  * }
@@ -72,9 +73,8 @@ import { type Awaitable, type Mutable, type Predicate } from "./Types.js";
  *
  * // A Task wrapping native fetch.
  * const fetchUrl =
- *   (deps: NativeFetchDep) =>
- *   (url: string): Task<Response, FetchError> =>
- *   ({ signal }) =>
+ *   (url: string): Task<Response, FetchError, NativeFetchDep> =>
+ *   ({ signal }, deps) =>
  *     tryAsync(
  *       () => deps.fetch(url, { signal }),
  *       (error): FetchError | AbortError => {
@@ -88,17 +88,17 @@ import { type Awaitable, type Mutable, type Predicate } from "./Types.js";
  *   fetch: globalThis.fetch.bind(globalThis),
  * };
  *
- * // Tasks need a runner to run.
- * await using run = createRunner();
+ * // Create runner with deps (passed to every task automatically).
+ * await using run = createRunner(deps);
  *
  * // Running a task returns a fiber that can be awaited.
- * const result = await run(fetchUrl(deps)("/users/123"));
+ * const result = await run(fetchUrl("/users/123"));
  * expectTypeOf(result).toEqualTypeOf<
  *   Result<Response, FetchError | AbortError>
  * >();
  *
  * // A fiber can also be aborted (or disposed with `using`).
- * const fiber = run(fetchUrl(deps)("/users/456"));
+ * const fiber = run(fetchUrl("/users/456"));
  * fiber.abort();
  *
  * // When this block ends, `await using` disposes run — aborting all fibers.
@@ -243,35 +243,26 @@ import { type Awaitable, type Mutable, type Predicate } from "./Types.js";
  *
  * ## FAQ
  *
- * ### What's the difference between `run(task)` and `task(run)`?
+ * ### Is `Task<T, E, D>` still Pure DI? Isn't Runner a DI container?
  *
- * `run(task)` runs a task with its own runner and returns a {@link Fiber}.
- * That's how tasks should be run.
- *
- * `task(run)` also runs a task, but with an existing runner. It does not return
- * a fiber, so it can't be aborted nor monitored. Don't use it unless needed for
- * a specific reason like composing tasks.
- *
- * ### Why doesn't Task have a generic `D` for dependencies?
- *
- * `Task<T, E, D>` where `D` represents dependencies that propagate
- * automatically is possible, but it would introduce a different DI style than
- * Pure DI. Evolu is like Go in TypeScript, not Scala ZIO in TypeScript. The
- * point of Pure DI is to avoid ambient state and hidden machinery.
+ * Yes, it's still Pure DI. `D` is just a deps object passed as a normal
+ * function argument. Instead of writing `task(deps)(args)` (curried DI), we
+ * write `createRunner<AppDeps>(deps)` once and the runner passes `deps` to
+ * every task as a second argument. This removes repetitive plumbing.
  *
  * ### How does it work?
  *
  * There are two approaches to structured concurrency in TypeScript. The
  * program-as-data approach represents computations as data structures that a
- * runtime interprets later. Evolu takes the direct approach — tasks are just
- * functions that run directly. It's simpler, more transparent and performant,
- * and easier to debug (native stack traces). Program-as-data is a powerful
- * idea, but we believe it belongs to the language itself or a compiler.
+ * runtime interprets later. Evolu is simpler — tasks are just functions that
+ * run directly. It's transparent, performant, and easier to debug (native stack
+ * traces).
  *
  * @category Core
  */
-export type Task<T, E = never> = (
-  run: Runner,
+export type Task<T, E = never, D = unknown> = (
+  run: Runner<D>,
+  deps: D,
 ) => Awaitable<Result<T, E | AbortError>>;
 
 /**
@@ -279,16 +270,24 @@ export type Task<T, E = never> = (
  *
  * @category Utilities
  */
-export type InferTaskOk<R extends Task<any, any>> =
-  R extends Task<infer T, any> ? T : never;
+export type InferTaskOk<R extends Task<any, any, any>> =
+  R extends Task<infer T, any, any> ? T : never;
 
 /**
  * Extracts the error type from a {@link Task}.
  *
  * @category Utilities
  */
-export type InferTaskErr<R extends Task<any, any>> =
-  R extends Task<any, infer E> ? E : never;
+export type InferTaskErr<R extends Task<any, any, any>> =
+  R extends Task<any, infer E, any> ? E : never;
+
+/**
+ * Extracts the deps type from a {@link Task}.
+ *
+ * @category Utilities
+ */
+export type InferTaskDeps<R extends Task<any, any, any>> =
+  R extends Task<any, any, infer D> ? D : never;
 
 /**
  * A {@link Task} that can complete with a value, signal done, or fail.
@@ -310,7 +309,7 @@ export type NextTask<T, E = never, D = void> = Task<T, E | Done<D>>;
  *
  * @category Utilities
  */
-export type InferTaskDone<T extends Task<any, any>> =
+export type InferTaskDone<T extends Task<any, any, any>> =
   InferTaskErr<T> extends infer Errors
     ? Errors extends Done<infer D>
       ? D
@@ -357,15 +356,15 @@ export type AbortError = typeof AbortError.Type;
  * @see {@link createRunner}
  * @see {@link Task}
  */
-export interface Runner extends AsyncDisposable {
+export interface Runner<D = unknown> extends AsyncDisposable {
   /** Runs a {@link Task} and returns a {@link Fiber} handle. */
-  <T, E>(task: Task<T, E>): Fiber<T, E>;
+  <T, E>(task: Task<T, E, D>): Fiber<T, E, D>;
 
   /** Unique {@link Id} for this runner. */
   readonly id: Id;
 
   /** The parent {@link Runner}, if this runner was created as a child. */
-  readonly parent: Runner | null;
+  readonly parent: Runner<D> | null;
 
   /** @see https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal */
   readonly signal: AbortSignal;
@@ -401,7 +400,7 @@ export interface Runner extends AsyncDisposable {
   readonly getOutcome: () => Result<unknown, unknown> | null;
 
   /** Returns the current child {@link Fiber}s. */
-  readonly getChildren: () => ReadonlySet<Fiber>;
+  readonly getChildren: () => ReadonlySet<Fiber<any, any, D>>;
 
   /**
    * Creates a memoized {@link FiberSnapshot} of this runner.
@@ -452,7 +451,7 @@ export interface Runner extends AsyncDisposable {
    * };
    * ```
    */
-  readonly daemon: <T, E>(task: Task<T, E>) => Fiber<T, E>;
+  readonly daemon: <T, E>(task: Task<T, E, D>) => Fiber<T, E, D>;
 
   /**
    * Creates an {@link AsyncDisposable} that runs the task when disposed.
@@ -481,7 +480,7 @@ export interface Runner extends AsyncDisposable {
    * // connection[Symbol.asyncDispose] is now defined
    * ```
    */
-  readonly defer: (onDisposeAsync: Task<void>) => AsyncDisposable;
+  readonly defer: (onDisposeAsync: Task<void, any, D>) => AsyncDisposable;
 
   /**
    * Creates an {@link AsyncDisposableStack} bound to the root runner.
@@ -494,7 +493,7 @@ export interface Runner extends AsyncDisposable {
    * const conn = await stack.use(openConnection);
    * ```
    */
-  readonly stack: () => AsyncDisposableStack;
+  readonly stack: () => AsyncDisposableStack<D>;
 
   /**
    * {@link Time}.
@@ -589,7 +588,7 @@ export type RunnerState = typeof RunnerState.Type;
  *
  * @category Core
  */
-export class Fiber<T = unknown, E = unknown>
+export class Fiber<T = unknown, E = unknown, D = unknown>
   implements PromiseLike<Result<T, E | AbortError>>, Disposable
 {
   readonly then: PromiseLike<Result<T, E | AbortError>>["then"];
@@ -638,10 +637,10 @@ export class Fiber<T = unknown, E = unknown>
    * };
    * ```
    */
-  readonly run: Runner;
+  readonly run: Runner<D>;
 
   constructor(
-    run: Runner,
+    run: Runner<D>,
     promise: Promise<Result<T, E | AbortError>>,
     abort: (reason?: unknown) => void = constVoid,
   ) {
@@ -681,16 +680,24 @@ export class Fiber<T = unknown, E = unknown>
  *
  * @category Utilities
  */
-export type InferFiberOk<F extends Fiber<any, any>> =
-  F extends Fiber<infer T, any> ? T : never;
+export type InferFiberOk<F extends Fiber<any, any, any>> =
+  F extends Fiber<infer T, any, any> ? T : never;
 
 /**
  * Extracts the error type from a {@link Fiber}.
  *
  * @category Utilities
  */
-export type InferFiberErr<F extends Fiber<any, any>> =
-  F extends Fiber<any, infer E> ? E : never;
+export type InferFiberErr<F extends Fiber<any, any, any>> =
+  F extends Fiber<any, infer E, any> ? E : never;
+
+/**
+ * Extracts the deps type from a {@link Fiber}.
+ *
+ * @category Utilities
+ */
+export type InferFiberDeps<F extends Fiber<any, any, any>> =
+  F extends Fiber<any, any, infer D> ? D : never;
 
 /**
  * A recursive snapshot of a {@link Runner} tree.
@@ -829,19 +836,19 @@ export type RunnerEvent = typeof RunnerEvent.Type;
  *
  * @category Resource management
  */
-export class AsyncDisposableStack implements AsyncDisposable {
+export class AsyncDisposableStack<D = unknown> implements AsyncDisposable {
   readonly #stack = new globalThis.AsyncDisposableStack();
-  readonly #daemon: Runner["daemon"];
+  readonly #daemon: Runner<D>["daemon"];
 
-  constructor(run: Runner) {
+  constructor(run: Runner<D>) {
     this.#daemon = run.daemon;
   }
 
-  #run<T, E>(task: Task<T, E>): Fiber<T, E> {
+  #run<T, E>(task: Task<T, E, D>): Fiber<T, E, D> {
     return this.#daemon(unabortable(task));
   }
 
-  #runVoid(task: Task<void>): PromiseLike<void> {
+  #runVoid(task: Task<void, any, D>): PromiseLike<void> {
     return this.#run(task).then(constVoid);
   }
 
@@ -850,7 +857,7 @@ export class AsyncDisposableStack implements AsyncDisposable {
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack/defer
    */
-  defer(onDisposeAsync: Task<void>): void {
+  defer(onDisposeAsync: Task<void, any, D>): void {
     this.#stack.defer(() => this.#runVoid(onDisposeAsync));
   }
 
@@ -863,10 +870,10 @@ export class AsyncDisposableStack implements AsyncDisposable {
    */
   use<T extends AsyncDisposable | Disposable | null | undefined>(value: T): T;
   use<T extends AsyncDisposable | Disposable | null | undefined, E>(
-    acquire: Task<T, E>,
+    acquire: Task<T, E, D>,
   ): PromiseLike<Result<T, E | AbortError>>;
   use<T extends AsyncDisposable | Disposable | null | undefined, E>(
-    valueOrAcquire: T | Task<T, E>,
+    valueOrAcquire: T | Task<T, E, D>,
   ): T | PromiseLike<Result<T, E | AbortError>> {
     if (
       valueOrAcquire == null ||
@@ -890,8 +897,8 @@ export class AsyncDisposableStack implements AsyncDisposable {
    * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack/adopt
    */
   async adopt<T, E = never>(
-    acquire: Task<T, E>,
-    release: (value: T) => Task<void>,
+    acquire: Task<T, E, D>,
+    release: (value: T) => Task<void, any, D>,
   ): Promise<Result<T, E | AbortError>> {
     const result = await this.#run(acquire);
     if (result.ok) {
@@ -992,17 +999,62 @@ const defaultDeps: RunnerDeps = {
  * // App entry point
  * await using run = createRunner();
  *
- * // All tasks are now tracked and will be cleaned up on disposal
  * const result = await run(fetchData);
+ * ```
+ *
+ * ### Example with custom dependencies
+ *
+ * ```ts
+ * // Define dependency interfaces
+ * interface Config {
+ *   readonly apiUrl: string;
+ * }
+ *
+ * interface ConfigDep {
+ *   readonly config: Config;
+ * }
+ *
+ * // Task declares its dependencies via the D type parameter
+ * const fetchUser =
+ *   (id: string): Task<User, FetchError, ConfigDep> =>
+ *   async (run, deps) => {
+ *     const response = await fetch(`${deps.config.apiUrl}/users/${id}`);
+ *     // ...
+ *   };
+ *
+ * // Composition root: create runner with custom deps
+ * type AppDeps = RunnerDeps & ConfigDep;
+ *
+ * const appDeps: AppDeps = {
+ *   ...createTestDeps(), // or spread individual deps
+ *   config: { apiUrl: "https://api.example.com" },
+ * };
+ *
+ * await using run = createRunner(appDeps);
+ *
+ * // Runner type is inferred from deps argument
+ * const result = await run(fetchUser("123"));
+ *
+ * // TypeScript catches missing deps at compile time:
+ * // await using run2 = createRunner(); // Runner<RunnerDeps>
+ * // run2(fetchUser("123")); // Error: Property 'config' is missing
  * ```
  *
  * @category Core
  */
-export const createRunner = (deps = defaultDeps): Runner =>
-  createRunnerInternal(deps)();
+export function createRunner(): Runner<RunnerDeps>;
+export function createRunner<D extends RunnerDeps>(deps: D): Runner<D>;
+export function createRunner<D extends RunnerDeps>(deps?: D): Runner<D> {
+  const mergedDeps = {
+    ...defaultDeps,
+    ...deps,
+  } as D;
+
+  return createRunnerInternal(mergedDeps)();
+}
 
 /** Internal Runner properties, hidden from public API via TypeScript types. */
-interface RunnerInternal extends Runner {
+interface RunnerInternal<D extends RunnerDeps = RunnerDeps> extends Runner<D> {
   readonly requestAbort: (reason: AbortError) => void;
   readonly requestSignal: AbortSignal;
   readonly setResultAndOutcome: (
@@ -1012,12 +1064,12 @@ interface RunnerInternal extends Runner {
 }
 
 const createRunnerInternal =
-  (deps: RunnerDeps) =>
+  <D extends RunnerDeps>(deps: D) =>
   (
-    parent?: RunnerInternal,
-    daemon?: RunnerInternal,
+    parent?: RunnerInternal<D>,
+    daemon?: RunnerInternal<D>,
     behavior?: AbortBehavior,
-  ): RunnerInternal => {
+  ): RunnerInternal<D> => {
     const parentMask = parent?.abortMask ?? isAbortable;
 
     let abortMask: AbortMask;
@@ -1040,9 +1092,8 @@ const createRunnerInternal =
     const signalController = new AbortController();
 
     let state: RunnerState = "active";
-    let children: ReadonlySet<Fiber> = emptySet;
+    let children: ReadonlySet<Fiber<any, any, D>> = emptySet;
 
-    // AbortController ensures idempotence.
     const requestAbort = (reason: AbortError) => {
       requestController.abort(reason);
       if (abortMask === isAbortable) signalController.abort(reason);
@@ -1072,11 +1123,11 @@ const createRunnerInternal =
         runnerId: self.id,
         timestamp: deps.time.now(),
       };
-      for (let node: Runner | null = self; node; node = node.parent)
+      for (let node: Runner<D> | null = self; node; node = node.parent)
         node.onEvent?.(fullEvent);
     };
 
-    const run = <T, E>(task: Task<T, E>): Fiber<T, E> => {
+    const run = <T, E>(task: Task<T, E, D>): Fiber<T, E, D> => {
       const runner = createRunnerInternal(deps)(
         self,
         daemon ?? self,
@@ -1095,7 +1146,7 @@ const createRunnerInternal =
         task = () => Promise.resolve(err(abortReason));
       }
 
-      const promise = Promise.try(task, runner)
+      const promise = Promise.try(task, runner, deps)
         .then((taskOutcome) => {
           const childResult = runner.signal.aborted
             ? err(runner.signal.reason)
@@ -1109,7 +1160,7 @@ const createRunnerInternal =
           emitEvent({ type: "childRemoved", childId: runner.id });
         });
 
-      const fiber = new Fiber<T, E>(runner, promise, (reason?: unknown) => {
+      const fiber = new Fiber<T, E, D>(runner, promise, (reason?: unknown) => {
         runner.requestAbort(createAbortError(reason));
       });
 
@@ -1119,10 +1170,10 @@ const createRunnerInternal =
       return fiber;
     };
 
-    const self = run as RunnerInternal;
+    const self = run as RunnerInternal<D>;
 
     {
-      const run = self as Mutable<RunnerInternal>;
+      const run = self as Mutable<RunnerInternal<D>>;
       const id = createId(deps);
 
       let result: Result<unknown, unknown> | null = null;
@@ -1251,13 +1302,14 @@ interface MaybeAbortBehavior {
   [_abortBehavior]?: AbortBehavior;
 }
 
-const getAbortBehavior = (task: Task<any, any>): AbortBehavior | undefined =>
-  (task as MaybeAbortBehavior)[_abortBehavior];
+const getAbortBehavior = (
+  task: Task<any, any, any>,
+): AbortBehavior | undefined => (task as MaybeAbortBehavior)[_abortBehavior];
 
 const abortBehavior =
   (behavior: AbortBehavior) =>
-  <T, E>(task: Task<T, E>): Task<T, E> => {
-    const wrapper: Task<T, E> = (run) => run(task);
+  <T, E, D>(task: Task<T, E, D>): Task<T, E, D> => {
+    const wrapper: Task<T, E, D> = (run) => run(task);
     (wrapper as MaybeAbortBehavior)[_abortBehavior] = behavior;
     return wrapper;
   };
@@ -1323,11 +1375,13 @@ export const unabortable = abortBehavior("unabortable");
  *
  * @category Abort Masking
  */
-export const unabortableMask = <T, E>(
-  fn: (restore: <T2, E2>(task: Task<T2, E2>) => Task<T2, E2>) => Task<T, E>,
-): Task<T, E> =>
-  unabortable((run) =>
-    fn(abortBehavior(AbortMask.orThrow(decrement(run.abortMask))))(run),
+export const unabortableMask = <T, E, D = unknown>(
+  fn: (
+    restore: <T2, E2>(task: Task<T2, E2, D>) => Task<T2, E2, D>,
+  ) => Task<T, E, D>,
+): Task<T, E, D> =>
+  unabortable((run, deps) =>
+    fn(abortBehavior(AbortMask.orThrow(decrement(run.abortMask))))(run, deps),
   );
 
 /**
@@ -1352,7 +1406,7 @@ export const unabortableMask = <T, E>(
  *
  *     // Yield periodically to keep UI responsive
  *     if (run.time.now() - lastYield > msLongTask) {
- *       const r = await yieldNow(run);
+ *       const r = await run(yieldNow);
  *       if (!r.ok) return r;
  *       lastYield = run.time.now();
  *     }
@@ -1469,7 +1523,12 @@ export const sleep =
  * @experimental
  */
 export const race =
-  <T extends readonly [Task<any, any>, ...ReadonlyArray<Task<any, any>>]>(
+  <
+    T extends readonly [
+      Task<any, any, any>,
+      ...ReadonlyArray<Task<any, any, any>>,
+    ],
+  >(
     tasks: T,
     {
       abortReason = raceLostError,
@@ -1477,7 +1536,11 @@ export const race =
       /** Abort reason for losing tasks. Defaults to {@link raceLostError}. */
       abortReason?: unknown;
     } = {},
-  ): Task<InferTaskOk<T[number]>, InferTaskErr<T[number]>> =>
+  ): Task<
+    InferTaskOk<T[number]>,
+    InferTaskErr<T[number]>,
+    InferTaskDeps<T[number]>
+  > =>
   async (run) => {
     const fibers = tasks.map(run.daemon);
     const abortPending = (reason: unknown) => {
@@ -1525,9 +1588,9 @@ export const raceLostError: RaceLostError = { type: "RaceLostError" };
  * @category Composition
  * @experimental
  */
-export const timeout = <T, E>(
+export const timeout = <T, E, D = unknown>(
   duration: Duration,
-  task: Task<T, E>,
+  task: Task<T, E, D>,
   {
     abortReason = timeoutError,
   }: {
@@ -1537,7 +1600,7 @@ export const timeout = <T, E>(
      */
     abortReason?: unknown;
   } = {},
-): Task<T, E | TimeoutError> =>
+): Task<T, E | TimeoutError, D> =>
   race(
     [
       task,
@@ -1545,7 +1608,7 @@ export const timeout = <T, E>(
         await run(sleep(duration));
         return err(timeoutError);
       },
-    ],
+    ] as const,
     { abortReason },
   );
 
@@ -1626,7 +1689,7 @@ export interface RetryError<E> {
  * @experimental
  */
 export const retry =
-  <T, E>(
+  <T, E, D = unknown>(
     {
       schedule,
       retryable = constTrue,
@@ -1645,8 +1708,8 @@ export const retry =
        */
       onRetry?: (error: E, attempt: number) => void;
     },
-    task: Task<T, E>,
-  ): Task<T, E | RetryError<E>> =>
+    task: Task<T, E, D>,
+  ): Task<T, E | RetryError<E>, D> =>
   async (run) => {
     const step = schedule(run);
     let attempt = 0;
@@ -1718,10 +1781,10 @@ export const retry =
  * @category Composition
  * @experimental
  */
-export const repeat = <T, E>(
+export const repeat = <T, E, D = unknown>(
   schedule: Schedule<unknown, T>,
-  task: Task<T, E>,
-): Task<T, E> => {
+  task: Task<T, E, D>,
+): Task<T, E, D> => {
   return async (run) => {
     const step = schedule(run);
     let lastResult: Result<T, E>;
