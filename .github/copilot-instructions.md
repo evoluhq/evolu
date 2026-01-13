@@ -463,11 +463,46 @@ const result = await sleep("1s")(run);
 
 ## Testing
 
-- **Leverage `_deps.ts`** - use existing test utilities and mocks from `packages/common/test/_deps.ts` (e.g., `testCreateId`, `testTime`, `testOwner`)
+- **Create deps per test** - use `createTestDeps()` from `@evolu/common` for test isolation
+- **Naming convention** - test factories follow `testCreateX` pattern (e.g., `testCreateTime`, `testCreateRandom`)
 - Mock dependencies using the same interfaces
-- Create test factories (e.g., `testCreateTime`)
-- Never rely on global state
-- Use assertions in tests for conditions that should never fail
+- Never rely on global state or shared mutable deps between tests
+
+### Test deps pattern
+
+Create fresh deps at the start of each test for isolation. Each call creates independent instances, preventing shared state between tests.
+
+```ts
+import { createTestDeps, createId } from "@evolu/common";
+
+test("creates unique IDs", () => {
+  const deps = createTestDeps();
+  const id1 = createId(deps);
+  const id2 = createId(deps);
+  expect(id1).not.toBe(id2);
+});
+
+test("with custom seed for reproducibility", () => {
+  const deps = createTestDeps({ seed: "my-test" });
+  const id = createId(deps);
+  expect(id).toMatchInlineSnapshot(`"..."`);
+});
+```
+
+### Test factories naming
+
+Test-specific factories use `testCreateX` prefix to distinguish from production `createX`:
+
+```ts
+// Production factory
+export const createTime = (): Time => ({ now: () => Date.now() });
+
+// Test factory with controllable time
+export const testCreateTime = (options?: {
+  readonly startAt?: Millis;
+  readonly autoIncrement?: boolean;
+}): TestTime => { ... };
+```
 
 ### Vitest filtering (https://vitest.dev/guide/filtering)
 
@@ -480,20 +515,6 @@ pnpm test --filter @evolu/common -- Task
 
 # Run a single test by name (-t flag)
 pnpm test --filter @evolu/common -- -t "yields and returns ok"
-```
-
-```ts
-import { testCreateId, testTime, testOwner } from "../_deps.js";
-
-const testCreateTime = (): Time => ({
-  now: () => 1234567890, // Fixed time for testing
-});
-
-test("timeUntilEvent calculates correctly", () => {
-  const deps = { time: testTime }; // Use from _deps.ts
-  const result = timeUntilEvent(deps)(1234567990);
-  assert(result === 100, "Expected result to be 100");
-});
 ```
 
 ## Monorepo TypeScript issues
