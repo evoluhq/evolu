@@ -3,16 +3,17 @@
  *
  * @module
  */
+
 import * as bip39 from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 import type { NonEmptyReadonlyArray } from "../Array.js";
+import type { RandomBytesDep } from "../Crypto.js";
 import {
   createSlip21,
   EncryptionKey,
   Entropy16,
   Entropy32,
 } from "../Crypto.js";
-import type { RandomBytesDep } from "../Crypto.js";
 import { getOrNull } from "../Result.js";
 import {
   brand,

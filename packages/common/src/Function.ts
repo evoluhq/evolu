@@ -3,6 +3,7 @@
  *
  * @module
  */
+
 import type { NonEmptyArray, NonEmptyReadonlyArray } from "./Array.js";
 import type { ReadonlyRecord } from "./Object.js";
 
@@ -96,8 +97,6 @@ export const identity = <A>(a: A): A => a;
  * const doubled = readonly([1, 2, 3].values().map((x) => x * 2).toArray());
  * // Type: ReadonlyArray<number>
  * ```
- *
- * @experimental
  */
 export function readonly<T>(array: NonEmptyArray<T>): NonEmptyReadonlyArray<T>;
 export function readonly<T>(array: Array<T>): ReadonlyArray<T>;
