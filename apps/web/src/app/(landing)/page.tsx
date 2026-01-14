@@ -1,7 +1,7 @@
 import { Button } from "@/components/Button";
 import { Features } from "@/components/Features";
 import { Logo } from "@/components/Logo";
-import { Metadata } from "next";
+import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Evolu",

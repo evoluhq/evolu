@@ -1,7 +1,12 @@
 "use client";
 
 import clsx from "clsx";
-import { motion, MotionStyle, useScroll, useTransform } from "motion/react";
+import {
+  motion,
+  type MotionStyle,
+  useScroll,
+  useTransform,
+} from "motion/react";
 import Link from "next/link";
 import { forwardRef, Suspense, useEffect, useRef } from "react";
 

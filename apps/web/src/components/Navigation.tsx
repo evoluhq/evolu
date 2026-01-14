@@ -9,7 +9,7 @@ import { useState } from "react";
 import { useSectionStore } from "@/components/SectionProvider";
 import { Tag } from "@/components/Tag";
 import { useIsInsideMobileNavigation } from "@/hooks/use-nav";
-import { NavGroup, navigation } from "@/lib/navigation";
+import { type NavGroup, navigation } from "@/lib/navigation";
 import { remToPx } from "@/lib/remToPx";
 import { IconArrowUpRight } from "@tabler/icons-react";
 

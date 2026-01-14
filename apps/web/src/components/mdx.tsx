@@ -61,7 +61,7 @@ export function Col({
   return (
     <div
       className={clsx(
-        "[&>:first-child]:mt-0 [&>:last-child]:mb-0",
+        "*:first:mt-0 *:last:mb-0",
         sticky && "xl:sticky xl:top-24",
       )}
     >
@@ -112,7 +112,7 @@ export function Property({
           </>
         )}
         <dt className="sr-only">Description</dt>
-        <dd className="w-full flex-none [&>:first-child]:mt-0 [&>:last-child]:mb-0">
+        <dd className="w-full flex-none *:first:mt-0 *:last:mb-0">
           {children}
         </dd>
       </dl>

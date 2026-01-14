@@ -1,8 +1,7 @@
 import { Prose } from "@/components/Prose";
 import { type ArticleWithSlug } from "@/lib/blog";
 import { formatDate } from "@/lib/formatDate";
-import { IconPointFilled } from "@tabler/icons-react";
-import { ReactNode } from "react";
+import { IconPointFilled, type ReactNode } from "@tabler/icons-react";
 function ArrowLeftIcon(props: React.ComponentPropsWithoutRef<"svg">) {
   return (
     <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" {...props}>

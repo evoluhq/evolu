@@ -6,7 +6,7 @@ import {
   Children,
   createContext,
   isValidElement,
-  ReactNode,
+  type ReactNode,
   useContext,
   useEffect,
   useRef,

@@ -11,8 +11,6 @@ import {
   json,
   kysely,
   maxLength,
-  MaxLengthError,
-  MinLengthError,
   Mnemonic,
   NonEmptyString,
   NonEmptyTrimmedString100,
@@ -23,6 +21,8 @@ import {
   sqliteFalse,
   sqliteTrue,
   timestampBytesToTimestamp,
+  type MaxLengthError,
+  type MinLengthError,
 } from "@evolu/common";
 import { timestampToDateIso } from "@evolu/common/local-first";
 import {
@@ -42,12 +42,12 @@ import {
 } from "@tabler/icons-react";
 import clsx from "clsx";
 import {
-  FC,
-  KeyboardEvent,
   startTransition,
   Suspense,
   use,
   useState,
+  type FC,
+  type KeyboardEvent,
 } from "react";
 
 // TODO: Epochs and sharing.

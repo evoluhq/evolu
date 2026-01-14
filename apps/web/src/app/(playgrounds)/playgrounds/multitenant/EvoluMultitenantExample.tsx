@@ -5,7 +5,7 @@ import { createUseEvolu, EvoluProvider, useQuery } from "@evolu/react";
 import { createEvoluDeps } from "@evolu/react-web";
 import { IconEdit, IconTrash } from "@tabler/icons-react";
 import clsx from "clsx";
-import { FC, Suspense, use, useState } from "react";
+import { type FC, Suspense, use, useState } from "react";
 
 const TodoId = Evolu.id("Todo");
 type TodoId = typeof TodoId.Type;

@@ -20,7 +20,7 @@ import {
   IconLibrary,
   IconLivePhoto,
   IconPackage,
-  IconProps,
+  type IconProps,
   IconShieldCheck,
   IconShieldLock,
   IconSql,
