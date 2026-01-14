@@ -27,45 +27,6 @@ export const trySync = ...;
 export const Utils = { ok, trySync };
 ```
 
-### Subpath exports for specialized modules
-
-When a module has many exports that would clash with common names or create verbose suffixed names, use [subpath exports](https://nodejs.org/api/packages.html#subpath-exports) instead:
-
-```ts
-// Instead of long suffixed names like takeSchedule, jitterSchedule, etc.
-import { take, jitter, exponential } from "@evolu/common/schedule";
-```
-
-This pattern is appropriate when:
-
-- The module is specialized (not needed by most users)
-- Short names would clash with other exports
-- Adding suffixes everywhere would hurt readability
-
-Configure in `package.json`:
-
-```json
-{
-  "exports": {
-    ".": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js"
-    },
-    "./schedule": {
-      "types": "./dist/src/schedule/index.d.ts",
-      "import": "./dist/src/schedule/index.js"
-    }
-  },
-  "typesVersions": {
-    "*": {
-      "schedule": ["./dist/src/schedule/index.d.ts"]
-    }
-  }
-}
-```
-
-Use lowercase for subpath names (`schedule`, not `Schedule`) following Node.js conventions.
-
 ### Naming conventions
 
 - **Types** — PascalCase without suffix: `Eq`, `Order`, `Result`, `Millis`
