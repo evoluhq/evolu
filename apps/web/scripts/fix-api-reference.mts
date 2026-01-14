@@ -56,6 +56,11 @@ const fixMdxFile = (filePath: string, title: string): void => {
     },
   );
 
+  // Prevent line breaks in displayed "local-first" labels without changing URLs.
+  newContent = newContent
+    .replace(/\[local-first\//g, "[local‑first/")
+    .replace(/ › local-first\//g, " › local‑first/");
+
   // Remove redundant sections (heading + content until next heading of same or higher level)
   const lines = newContent.split("\n");
   const result: Array<string> = [];
@@ -86,6 +91,12 @@ const fixMdxFile = (filePath: string, title: string): void => {
     if (skipUntilLevel === 0) result.push(line);
   }
   newContent = result.join("\n");
+
+  if (filePath === path.join(reference, "page.mdx")) {
+    newContent = newContent
+      .replace(/^## Modules\b/m, "## Packages")
+      .replace(/\bModule\b/g, "Package");
+  }
 
   newContent = newContent
     .replace(/^export const metadata = \{ title: [^}]*\};\s*\r?\n\s*/, "")
