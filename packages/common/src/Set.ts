@@ -1,5 +1,5 @@
 /**
- * Set helpers that help TypeScript help us.
+ * Set helpers.
  *
  * All helpers return readonly sets for safety. Native Set methods like `add()`
  * and `delete()` mutate the original — use {@link addToSet} and

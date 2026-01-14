@@ -3,6 +3,7 @@
  *
  * @module
  */
+
 import type { Eq } from "./Eq.js";
 import type { Store } from "./Store.js";
 

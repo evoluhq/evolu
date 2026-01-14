@@ -3,6 +3,7 @@
  *
  * @module
  */
+
 import { assert } from "./Assert.js";
 
 /**

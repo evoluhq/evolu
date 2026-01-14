@@ -3,6 +3,7 @@
  *
  * @module
  */
+
 import type { Predicate } from "./Types.js";
 
 /** Increments a bigint by 1. */

@@ -3,6 +3,7 @@
  *
  * @module
  */
+
 import type { Type } from "./Type.js";
 
 /**

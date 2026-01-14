@@ -3,6 +3,7 @@
  *
  * @module
  */
+
 import type { RandomDep } from "./Random.js";
 import { PositiveInt } from "./Type.js";
 

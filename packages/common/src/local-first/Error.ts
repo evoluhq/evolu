@@ -3,6 +3,7 @@
  *
  * @module
  */
+
 import type { DecryptWithXChaCha20Poly1305Error } from "../Crypto.js";
 import type { UnknownError } from "../Error.js";
 import type { SqliteError } from "../Sqlite.js";

@@ -3,12 +3,13 @@
  *
  * @module
  */
-import { eqStrict } from "./Eq.js";
+
 import type { Eq } from "./Eq.js";
-import { createListeners } from "./Listeners.js";
+import { eqStrict } from "./Eq.js";
 import type { Listener, Unsubscribe } from "./Listeners.js";
-import { createRef } from "./Ref.js";
+import { createListeners } from "./Listeners.js";
 import type { Ref } from "./Ref.js";
+import { createRef } from "./Ref.js";
 
 /**
  * A read-only view of a {@link Store} that provides state access and change

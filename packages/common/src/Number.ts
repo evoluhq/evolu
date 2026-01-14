@@ -3,11 +3,12 @@
  *
  * @module
  */
+
 import type { NonEmptyReadonlyArray } from "./Array.js";
 import { assertNonEmptyReadonlyArray } from "./Assert.js";
 import type { IsBranded } from "./Brand.js";
-import { err, ok } from "./Result.js";
 import type { Result } from "./Result.js";
+import { err, ok } from "./Result.js";
 import {
   brand,
   lessThanOrEqualTo,

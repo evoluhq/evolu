@@ -3,6 +3,7 @@
  *
  * @module
  */
+
 import { utf8ToBytes } from "@noble/ciphers/utils.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import * as bip39 from "@scure/bip39";
@@ -13,9 +14,8 @@ import type { RandomBytesDep } from "./Crypto.js";
 import { exhaustiveCheck } from "./Function.js";
 import { isPlainObject } from "./Object.js";
 import { hasNodeBuffer } from "./Platform.js";
-import type { Result } from "./Result.js";
+import type { NextResult, Result } from "./Result.js";
 import { err, getOrNull, getOrThrow, ok, trySync } from "./Result.js";
-import type { NextResult } from "./Result.js";
 import { safelyStringifyUnknownValue } from "./String.js";
 import type { TimeDep } from "./Time.js";
 import type {

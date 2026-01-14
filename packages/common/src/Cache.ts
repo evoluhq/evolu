@@ -3,6 +3,7 @@
  *
  * @module
  */
+
 import { PositiveInt } from "./Type.js";
 
 /**
