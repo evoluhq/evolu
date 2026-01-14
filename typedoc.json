@@ -1,9 +1,13 @@
 {
   "$schema": "https://typedoc-plugin-markdown.org/schema.json",
-  "entryPoints": ["packages/*"],
   "name": "API Reference",
   "entryPointStrategy": "packages",
+  "entryPoints": ["packages/*"],
   "exclude": ["packages/tsconfig"],
+  "packageOptions": {
+    "entryPoints": ["src/**/*.ts"],
+    "exclude": ["src/**/index.ts"]
+  },
   "plugin": ["typedoc-plugin-markdown"],
   "publicPath": "/docs/api-reference",
   "fileExtension": ".mdx",
@@ -14,7 +18,7 @@
   "hidePageHeader": true,
   "hidePageTitle": true,
   "useCodeBlocks": true,
-  "expandObjects": false,
+  "expandObjects": true,
   "expandParameters": true,
   "readme": "none",
   "hideGroupHeadings": true,
@@ -34,9 +38,6 @@
     "readme": false,
     "document": false
   },
-  "packageOptions": {
-    "alwaysCreateEntryPointModule": true
-  },
   "treatWarningsAsErrors": true,
   "outputs": [
     {
@@ -46,10 +47,10 @@
   ],
   "externalSymbolLinkMappings": {
     "typescript": {
-      "PromiseLike": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise#thenables",
       "AsyncDisposable": "https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-2.html#using-declarations-and-explicit-resource-management",
       "AsyncDisposableStack": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack",
-      "DisposableStack": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DisposableStack"
+      "DisposableStack": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DisposableStack",
+      "PromiseLike": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise#thenables"
     }
   }
 }
