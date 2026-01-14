@@ -28,19 +28,12 @@
     "./local-first": {
       "types": "./dist/src/local-first/index.d.ts",
       "import": "./dist/src/local-first/index.js"
-    },
-    "./schedule": {
-      "types": "./dist/src/schedule/index.d.ts",
-      "import": "./dist/src/schedule/index.js"
     }
   },
   "typesVersions": {
     "*": {
       "local-first": [
         "./dist/src/local-first/index.d.ts"
-      ],
-      "schedule": [
-        "./dist/src/schedule/index.d.ts"
       ]
     }
   },

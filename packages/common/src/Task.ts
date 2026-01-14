@@ -3,6 +3,7 @@
  *
  * @module
  */
+
 import { isNonEmptyArray } from "./Array.js";
 import { assert } from "./Assert.js";
 import type { RandomBytesDep } from "./Crypto.js";
@@ -15,7 +16,7 @@ import { createRandom } from "./Random.js";
 import type { Ref } from "./Ref.js";
 import type { Done, NextResult, Result } from "./Result.js";
 import { err, ok, tryAsync } from "./Result.js";
-import type { Schedule } from "./schedule/index.js";
+import type { Schedule } from "./Schedule.js";
 import { addToSet, deleteFromSet, emptySet } from "./Set.js";
 import type { Duration, Time, TimeDep } from "./Time.js";
 import { createTime, durationToMillis, Millis } from "./Time.js";
@@ -1437,7 +1438,6 @@ export const unabortableMask = <T, E, D = unknown>(
  * ```
  *
  * @category Composition
- * @experimental
  * @see https://developer.mozilla.org/en-US/docs/Web/API/Scheduler/yield
  * @see https://web.dev/articles/optimize-long-tasks
  */
@@ -1470,7 +1470,6 @@ const yieldImpl: () => Promise<void> =
  * ```
  *
  * @category Composition
- * @experimental
  */
 export const sleep =
   (duration: Duration): Task<void> =>
@@ -1520,7 +1519,6 @@ export const sleep =
  * ```
  *
  * @category Composition
- * @experimental
  */
 export const race =
   <
@@ -1586,21 +1584,22 @@ export const raceLostError: RaceLostError = { type: "RaceLostError" };
  * ```
  *
  * @category Composition
- * @experimental
  */
-export const timeout = <T, E, D = unknown>(
+export const timeout: <T, E, D = unknown>(
   duration: Duration,
   task: Task<T, E, D>,
-  {
-    abortReason = timeoutError,
-  }: {
+  options?: {
     /**
      * Abort reason for the task when timeout fires. Defaults to
      * {@link timeoutError}.
      */
     abortReason?: unknown;
-  } = {},
-): Task<T, E | TimeoutError, D> =>
+  },
+) => Task<T, E | TimeoutError, D> = (
+  duration,
+  task,
+  { abortReason = timeoutError } = {},
+) =>
   race(
     [
       task,
@@ -1686,13 +1685,12 @@ export interface RetryError<E> {
  * ```
  *
  * @category Composition
- * @experimental
  */
 export const retry =
   <T, E, D = unknown>(
     {
       schedule,
-      retryable = constTrue,
+      retryable = constTrue as Predicate<E>,
       onRetry,
     }: {
       /**
@@ -1742,7 +1740,6 @@ export const retry =
       const result = await run(task);
       if (result.ok) return result;
 
-      // Never retry AbortError
       if (AbortError.is(result.error)) return result;
 
       lastError = result.error;
@@ -1779,13 +1776,13 @@ export const retry =
  * ```
  *
  * @category Composition
- * @experimental
  */
-export const repeat = <T, E, D = unknown>(
-  schedule: Schedule<unknown, T>,
-  task: Task<T, E, D>,
-): Task<T, E, D> => {
-  return async (run) => {
+export const repeat =
+  <T, E, D = unknown>(
+    schedule: Schedule<unknown, T>,
+    task: Task<T, E, D>,
+  ): Task<T, E, D> =>
+  async (run) => {
     const step = schedule(run);
     let lastResult: Result<T, E>;
 
@@ -1806,28 +1803,18 @@ export const repeat = <T, E, D = unknown>(
 
     return lastResult;
   };
-};
 
-/**
- * @category Composition
- * @experimental
- */
+/** @category Composition */
 export const all = (): never => {
   throw new Error("TODO: later");
 };
 
-/**
- * @category Concurrency
- * @experimental
- */
+/** @category Concurrency */
 export const createSemaphore = (): never => {
   throw new Error("TODO: later");
 };
 
-/**
- * @category Concurrency
- * @experimental
- */
+/** @category Concurrency */
 export const createMutex = (): never => {
   throw new Error("TODO: later");
 };

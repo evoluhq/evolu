@@ -9,8 +9,8 @@ import {
   fixed,
   spaced,
   take,
-  whileInput,
-} from "../src/schedule/index.js";
+  whileScheduleInput,
+} from "../src/Schedule.js";
 import type {
   Fiber,
   InferFiberErr,
@@ -2909,12 +2909,12 @@ describe("retry", () => {
       return err<FatalError>({ type: "FatalError" });
     };
 
-    // Schedule stops on fatal errors via whileInput
+    // Schedule stops on fatal errors via whileScheduleInput
     const result = await run(
       retry(
         {
-          schedule: whileInput<RetryableError | FatalError>(
-            (e) => e.type !== "FatalError",
+          schedule: whileScheduleInput<RetryableError | FatalError>(
+            (e: RetryableError | FatalError) => e.type !== "FatalError",
           )(take(5)(spaced("1ms"))),
         },
         task,

@@ -1,15 +1,16 @@
 import { describe, expect, test } from "vitest";
-import type { RandomNumber } from "../../src/Random.js";
-import type { NextResult } from "../../src/Result.js";
-import { done, err, ok } from "../../src/Result.js";
-import type { Schedule } from "../../src/schedule/index.js";
+import type { RandomNumber } from "../src/Random.js";
+import type { NextResult } from "../src/Result.js";
+import { done, err, ok } from "../src/Result.js";
+import type { Schedule } from "../src/Schedule.js";
 import {
   addDelay,
-  collectAllOutputs,
-  collectInputs,
-  collectUntil,
-  collectWhile,
-  compensateExecution,
+  always,
+  collectAllScheduleOutputs,
+  collectScheduleInputs,
+  collectUntilScheduleOutput,
+  collectWhileScheduleOutput,
+  compensate,
   delayed,
   delays,
   during,
@@ -17,14 +18,14 @@ import {
   exponential,
   fibonacci,
   fixed,
-  fold,
+  foldSchedule,
   forever,
   fromDelay,
   fromDelays,
-  intersect,
+  intersectSchedules,
   jitter,
   linear,
-  map,
+  mapSchedule,
   maxDelay,
   maxElapsed,
   modifyDelay,
@@ -32,31 +33,24 @@ import {
   passthrough,
   recurs,
   repetitions,
-  resetAfter,
+  resetScheduleAfter,
   retryStrategyAws,
-  retryStrategyAwsThrottled,
-  sequence,
+  sequenceSchedules,
   spaced,
-  succeed,
   take,
-  tapInput,
-  tapOutput,
-  unfold,
-  union,
-  untilInput,
-  untilOutput,
+  tapScheduleInput,
+  tapScheduleOutput,
+  unfoldSchedule,
+  unionSchedules,
+  untilScheduleInput,
+  untilScheduleOutput,
   whenInput,
-  whileInput,
-  whileOutput,
+  whileScheduleInput,
+  whileScheduleOutput,
   windowed,
-} from "../../src/schedule/index.js";
-import { createTestDeps } from "../../src/Test.js";
-import {
-  maxMillis,
-  Millis,
-  minMillis,
-  testCreateTime,
-} from "../../src/Time.js";
+} from "../src/Schedule.js";
+import { createTestDeps } from "../src/Test.js";
+import { maxMillis, Millis, minMillis, testCreateTime } from "../src/Time.js";
 
 // Helper to create scheduleDeps with controllable time
 const createScheduleDeps = (startAt = 0) => {
@@ -402,7 +396,7 @@ describe("elapsed", () => {
 
   test("combined with other schedule", () => {
     const deps = createScheduleDeps();
-    const step = intersect(take(3)(spaced("100ms")), elapsed)(deps);
+    const step = intersectSchedules(take(3)(spaced("100ms")), elapsed)(deps);
 
     const result1 = step(undefined);
     expect(result1.ok).toBe(true);
@@ -443,10 +437,10 @@ describe("during", () => {
   });
 });
 
-describe("succeed", () => {
+describe("always", () => {
   test("always outputs constant value", () => {
     const deps = createScheduleDeps();
-    const step = take(3)(succeed("retry"))(deps);
+    const step = take(3)(always("retry"))(deps);
     expectOk(step(undefined), ["retry", 0]);
     expectOk(step(undefined), ["retry", 0]);
     expectOk(step(undefined), ["retry", 0]);
@@ -454,11 +448,11 @@ describe("succeed", () => {
   });
 });
 
-describe("unfold", () => {
+describe("unfoldSchedule", () => {
   test("creates schedule from state function", () => {
     const deps = createScheduleDeps();
     // Simple counter
-    const step = take(4)(unfold(0, (n) => n + 1))(deps);
+    const step = take(4)(unfoldSchedule(0, (n) => n + 1))(deps);
 
     expectOk(step(undefined), [0, 0]);
     expectOk(step(undefined), [1, 0]);
@@ -470,7 +464,7 @@ describe("unfold", () => {
   test("with custom state transformation", () => {
     const deps = createScheduleDeps();
     // Multiply by 2 each time
-    const step = take(4)(unfold(1, (n) => n * 2))(deps);
+    const step = take(4)(unfoldSchedule(1, (n) => n * 2))(deps);
 
     expectOk(step(undefined), [1, 0]);
     expectOk(step(undefined), [2, 0]);
@@ -490,7 +484,9 @@ describe("unfold", () => {
       count: phase.count + 1,
     });
 
-    const step = take(4)(unfold({ name: "init", count: 0 }, nextPhase))(deps);
+    const step = take(4)(unfoldSchedule({ name: "init", count: 0 }, nextPhase))(
+      deps,
+    );
 
     expectOk(step(undefined), [{ name: "init", count: 0 }, 0]);
     expectOk(step(undefined), [{ name: "warmup", count: 1 }, 0]);
@@ -611,10 +607,10 @@ describe("modifyDelay", () => {
   });
 });
 
-describe("compensateExecution", () => {
+describe("compensate", () => {
   test("subtracts execution time from delay", () => {
     const deps = createScheduleDeps();
-    const step = compensateExecution(spaced("1s"))(deps);
+    const step = compensate(spaced("1s"))(deps);
     // First attempt at T=0, no previous → full delay
     expectOk(step(undefined), [1000, 1000]);
     // Second at T=200 (execution took 200ms) → wait 800ms
@@ -627,19 +623,19 @@ describe("compensateExecution", () => {
 
   test("passes through termination", () => {
     const deps = createScheduleDeps();
-    const step = compensateExecution(take(1)(spaced("1s")))(deps);
+    const step = compensate(take(1)(spaced("1s")))(deps);
     expectOk(step(undefined), [1000, 1000]);
     expectDone(step(undefined));
   });
 });
 
-describe("whileInput", () => {
+describe("whileScheduleInput", () => {
   test("continues while predicate is true", () => {
     const deps = createScheduleDeps();
     interface Error {
       readonly type: "Transient" | "Fatal";
     }
-    const schedule = whileInput<Error>((e) => e.type === "Transient")(
+    const schedule = whileScheduleInput<Error>((e) => e.type === "Transient")(
       spaced("100ms"),
     );
     const step = schedule(deps);
@@ -650,14 +646,14 @@ describe("whileInput", () => {
   });
 });
 
-describe("untilInput", () => {
+describe("untilScheduleInput", () => {
   test("stops when predicate becomes true", () => {
     const deps = createScheduleDeps();
 
     interface Error {
       readonly type: "Transient" | "Fatal";
     }
-    const schedule = untilInput<Error>((e) => e.type === "Fatal")(
+    const schedule = untilScheduleInput<Error>((e) => e.type === "Fatal")(
       spaced("100ms"),
     );
     const step = schedule(deps);
@@ -668,11 +664,11 @@ describe("untilInput", () => {
   });
 });
 
-describe("whileOutput", () => {
+describe("whileScheduleOutput", () => {
   test("continues while predicate is true", () => {
     const deps = createScheduleDeps();
     // Stop when delay exceeds 300ms
-    const step = whileOutput((delay: Millis) => delay <= 300)(
+    const step = whileScheduleOutput((delay: Millis) => delay <= 300)(
       exponential("100ms"),
     )(deps);
     expectOk(step(undefined), [100, 100]);
@@ -682,17 +678,17 @@ describe("whileOutput", () => {
 
   test("passes through termination", () => {
     const deps = createScheduleDeps();
-    const step = whileOutput(() => true)(take(1)(forever))(deps);
+    const step = whileScheduleOutput(() => true)(take(1)(forever))(deps);
     expectOk(step(undefined), [0, 0]);
     expectDone(step(undefined));
   });
 });
 
-describe("untilOutput", () => {
+describe("untilScheduleOutput", () => {
   test("stops when predicate becomes true", () => {
     const deps = createScheduleDeps();
     // Stop when delay reaches 400ms
-    const step = untilOutput((delay: Millis) => delay >= 400)(
+    const step = untilScheduleOutput((delay: Millis) => delay >= 400)(
       exponential("100ms"),
     )(deps);
     expectOk(step(undefined), [100, 100]);
@@ -702,16 +698,16 @@ describe("untilOutput", () => {
 
   test("passes through termination", () => {
     const deps = createScheduleDeps();
-    const step = untilOutput(() => false)(take(1)(forever))(deps);
+    const step = untilScheduleOutput(() => false)(take(1)(forever))(deps);
     expectOk(step(undefined), [0, 0]);
     expectDone(step(undefined));
   });
 });
 
-describe("resetAfter", () => {
+describe("resetScheduleAfter", () => {
   test("resets schedule after inactivity", () => {
     const deps = createScheduleDeps();
-    const step = resetAfter("1s")(take(2)(spaced("100ms")))(deps);
+    const step = resetScheduleAfter("1s")(take(2)(spaced("100ms")))(deps);
     // First two attempts with short gaps (less than reset threshold)
     expectOk(step(undefined), [100, 100]);
     deps.time.advance("100ms");
@@ -722,7 +718,7 @@ describe("resetAfter", () => {
 
     // Test reset: after 1s+ gap, schedule resets
     const d2 = createScheduleDeps();
-    const step2 = resetAfter("1s")(take(2)(spaced("100ms")))(d2);
+    const step2 = resetScheduleAfter("1s")(take(2)(spaced("100ms")))(d2);
     expectOk(step2(undefined), [100, 100]);
     // Gap of 2000ms triggers reset, so we get fresh state
     d2.time.advance("2s");
@@ -736,10 +732,10 @@ describe("resetAfter", () => {
   });
 });
 
-describe("map", () => {
+describe("mapSchedule", () => {
   test("transforms output", () => {
     const deps = createScheduleDeps();
-    const schedule = map((delay: Millis) => ({
+    const schedule = mapSchedule((delay: Millis) => ({
       delay,
       doubled: delay * 2,
     }))(exponential("100ms"));
@@ -764,7 +760,7 @@ describe("map", () => {
 
   test("passes through termination", () => {
     const deps = createScheduleDeps();
-    const step = map((n: number) => n + 1)(take(1)(forever))(deps);
+    const step = mapSchedule((n: number) => n + 1)(take(1)(forever))(deps);
     expectOk(step(undefined), [1, 0]);
     expectDone(step(undefined));
   });
@@ -820,12 +816,12 @@ describe("passthrough", () => {
   });
 });
 
-describe("fold", () => {
+describe("foldSchedule", () => {
   test("accumulates state across iterations", () => {
     const deps = createScheduleDeps();
 
     // Track cumulative delay
-    const schedule = fold(
+    const schedule = foldSchedule(
       0,
       (total: number, delay: Millis) => total + delay,
     )(take(4)(exponential("100ms")));
@@ -872,10 +868,10 @@ describe("delays", () => {
   });
 });
 
-describe("collectAllOutputs", () => {
+describe("collectAllScheduleOutputs", () => {
   test("accumulates outputs into array", () => {
     const deps = createScheduleDeps();
-    const schedule = collectAllOutputs(take(3)(spaced("100ms")));
+    const schedule = collectAllScheduleOutputs(take(3)(spaced("100ms")));
     const step = schedule(deps);
 
     expectOk(step(undefined), [[100], 100]);
@@ -885,10 +881,10 @@ describe("collectAllOutputs", () => {
   });
 });
 
-describe("collectInputs", () => {
+describe("collectScheduleInputs", () => {
   test("accumulates inputs into array", () => {
     const deps = createScheduleDeps();
-    const schedule = collectInputs(take(3)(spaced("100ms")));
+    const schedule = collectScheduleInputs(take(3)(spaced("100ms")));
     const step = schedule(deps);
 
     expectOk(step("a"), [["a"], 100]);
@@ -898,10 +894,10 @@ describe("collectInputs", () => {
   });
 });
 
-describe("collectWhile", () => {
+describe("collectWhileScheduleOutput", () => {
   test("collects outputs while predicate is true", () => {
     const deps = createScheduleDeps();
-    const schedule = collectWhile((delay: Millis) => delay < 400)(
+    const schedule = collectWhileScheduleOutput((delay: Millis) => delay < 400)(
       exponential("100ms"),
     );
     const step = schedule(deps);
@@ -913,12 +909,12 @@ describe("collectWhile", () => {
   });
 });
 
-describe("collectUntil", () => {
+describe("collectUntilScheduleOutput", () => {
   test("collects outputs until predicate becomes true", () => {
     const deps = createScheduleDeps();
-    const schedule = collectUntil((delay: Millis) => delay >= 400)(
-      exponential("100ms"),
-    );
+    const schedule = collectUntilScheduleOutput(
+      (delay: Millis) => delay >= 400,
+    )(exponential("100ms"));
     const step = schedule(deps);
 
     expectOk(step(undefined), [[100], 100]);
@@ -928,11 +924,11 @@ describe("collectUntil", () => {
   });
 });
 
-describe("sequence", () => {
+describe("sequenceSchedules", () => {
   test("runs schedules in order", () => {
     const deps = createScheduleDeps();
 
-    const step = sequence(
+    const step = sequenceSchedules(
       take(2)(exponential("100ms")),
       take(3)(spaced("500ms")),
     )(deps);
@@ -951,7 +947,7 @@ describe("sequence", () => {
   test("handles three schedules", () => {
     const deps = createScheduleDeps();
 
-    const step = sequence(
+    const step = sequenceSchedules(
       take(1)(spaced("100ms")),
       take(1)(spaced("200ms")),
       take(1)(spaced("300ms")),
@@ -965,18 +961,18 @@ describe("sequence", () => {
 
   test("stops immediately for empty list", () => {
     const deps = createScheduleDeps();
-    const step = sequence()(deps);
+    const step = sequenceSchedules()(deps);
     expectDone(step(undefined));
   });
 });
 
-describe("intersect", () => {
+describe("intersectSchedules", () => {
   test("continues while both want to continue", () => {
     const deps = createScheduleDeps();
 
     const a = take(2)(spaced("100ms"));
     const b = take(4)(spaced("200ms"));
-    const step = intersect(a, b)(deps);
+    const step = intersectSchedules(a, b)(deps);
 
     expectOk(step(undefined), [[100, 200], 200]); // max(100, 200)
     expectOk(step(undefined), [[100, 200], 200]); // max(100, 200)
@@ -984,13 +980,13 @@ describe("intersect", () => {
   });
 });
 
-describe("union", () => {
+describe("unionSchedules", () => {
   test("continues while either wants to continue", () => {
     const deps = createScheduleDeps();
 
     const a = take(2)(spaced("100ms"));
     const b = take(4)(spaced("200ms"));
-    const step = union(a, b)(deps);
+    const step = unionSchedules(a, b)(deps);
 
     expectOk(step(undefined), [100, 100]); // min(100, 200)
     expectOk(step(undefined), [100, 100]); // min(100, 200)
@@ -1004,7 +1000,7 @@ describe("union", () => {
 
     const a = take(2)(spaced("200ms"));
     const b = take(1)(spaced("100ms"));
-    const step = union(a, b)(deps);
+    const step = unionSchedules(a, b)(deps);
 
     expectOk(step(undefined), [100, 100]);
     expectOk(step(undefined), [200, 200]);
@@ -1014,9 +1010,9 @@ describe("union", () => {
   test("returns output from the shorter delay", () => {
     const deps = createScheduleDeps();
 
-    const a = map(() => "a")(spaced("200ms"));
-    const b = map(() => "b")(spaced("100ms"));
-    const step = union(a, b)(deps);
+    const a = mapSchedule(() => "a")(spaced("200ms"));
+    const b = mapSchedule(() => "b")(spaced("100ms"));
+    const step = unionSchedules(a, b)(deps);
 
     expectOk(step(undefined), ["b", 100]);
   });
@@ -1059,12 +1055,12 @@ describe("whenInput", () => {
   });
 });
 
-describe("tapOutput", () => {
+describe("tapScheduleOutput", () => {
   test("executes side effect without altering schedule", () => {
     const deps = createScheduleDeps();
 
     const outputs: Array<Millis> = [];
-    const step = tapOutput((delay: Millis) => {
+    const step = tapScheduleOutput((delay: Millis) => {
       outputs.push(delay);
     })(take(3)(exponential("100ms")))(deps);
 
@@ -1080,7 +1076,7 @@ describe("tapOutput", () => {
     const deps = createScheduleDeps();
 
     const outputs: Array<number> = [];
-    const step = tapOutput((n: number) => {
+    const step = tapScheduleOutput((n: number) => {
       outputs.push(n);
     })(take(2)(forever))(deps);
 
@@ -1092,12 +1088,12 @@ describe("tapOutput", () => {
   });
 });
 
-describe("tapInput", () => {
+describe("tapScheduleInput", () => {
   test("executes side effect on input without altering schedule", () => {
     const deps = createScheduleDeps();
 
     const inputs: Array<string> = [];
-    const step = tapInput((input: string) => {
+    const step = tapScheduleInput((input: string) => {
       inputs.push(input);
     })(take(3)(spaced("100ms")))(deps);
 
@@ -1113,7 +1109,7 @@ describe("tapInput", () => {
     const deps = createScheduleDeps();
 
     const inputs: Array<string> = [];
-    const step = tapInput((input: string) => {
+    const step = tapScheduleInput((input: string) => {
       inputs.push(input);
     })(take(1)(forever))(deps);
 
@@ -1134,31 +1130,5 @@ describe("retryStrategyAws", () => {
     expect(result.ok).toBe(true);
     const [, delay] = result.ok ? result.value : [0, 0];
     expect(delay).toBeLessThanOrEqual(200); // 100ms * 2 (jitter upper bound)
-  });
-});
-
-describe("retryStrategyAwsThrottled", () => {
-  test("has higher base delay", () => {
-    const deps = createScheduleDeps();
-
-    const normalStep = retryStrategyAws(deps);
-    const throttledStep = retryStrategyAwsThrottled(deps);
-
-    // Run multiple times to get past jitter variance
-    // Throttled should generally have higher delays (1s vs 100ms base)
-    const normalDelays: Array<number> = [];
-    const throttledDelays: Array<number> = [];
-
-    for (let i = 0; i < 3; i++) {
-      const normal = normalStep(undefined);
-      const throttled = throttledStep(undefined);
-      if (normal.ok) normalDelays.push(normal.value[1]);
-      if (throttled.ok) throttledDelays.push(throttled.value[1]);
-    }
-
-    // Throttled delays should be approximately 10x higher on average
-    const normalSum = normalDelays.reduce((a, b) => a + b, 0);
-    const throttledSum = throttledDelays.reduce((a, b) => a + b, 0);
-    expect(throttledSum).toBeGreaterThan(normalSum);
   });
 });

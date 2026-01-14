@@ -1,22 +1,25 @@
 /**
- * Composable retry and backoff schedules.
+ * Composable scheduling strategies.
  *
  * @module
  */
-import { fibonacciAt, FibonacciIndex } from "../Number.js";
-import type { RandomDep } from "../Random.js";
-import { done, err, type NextResult, ok } from "../Result.js";
+
+import { fibonacciAt, FibonacciIndex } from "./Number.js";
+import type { RandomDep } from "./Random.js";
+import { done, err, type NextResult, ok } from "./Result.js";
+import type { repeat, retry } from "./Task.js";
 import {
   type Duration,
   durationToMillis,
   Millis,
   minMillis,
   type TimeDep,
-} from "../Time.js";
-import type { Predicate } from "../Types.js";
+} from "./Time.js";
+import type { Predicate } from "./Types.js";
 
 /**
- * Composable scheduling strategies for retry, repeat, and rate limiting.
+ * Composable scheduling strategies for {@link retry}, {@link repeat}, rate
+ * limiting, and more.
  *
  * A Schedule uses the State pattern: calling `schedule(deps)` creates a step
  * function with internal state captured in closures. Each call to `step(input)`
@@ -51,15 +54,6 @@ import type { Predicate } from "../Types.js";
  *
  * const fetchWithRetry = retry({ schedule: retryStrategyAws }, fetchData);
  * ```
- *
- * ## Use Cases
- *
- * - **Retry** — backoff strategies for transient failures
- * - **Repeat** — polling intervals, heartbeats
- * - **Rate limiting** — throttling request frequency
- * - **Circuit breaker** — track failure patterns across attempts
- *
- * @experimental
  */
 export type Schedule<out Output, in Input = unknown> = (
   deps: ScheduleDeps,
@@ -69,8 +63,6 @@ export type Schedule<out Output, in Input = unknown> = (
  * Dependencies provided to a {@link Schedule}.
  *
  * The executor provides these once, and the schedule uses what it needs.
- *
- * @experimental
  */
 export type ScheduleDeps = TimeDep & RandomDep;
 
@@ -78,8 +70,6 @@ export type ScheduleDeps = TimeDep & RandomDep;
  * Internal per-step metrics computed from timestamps.
  *
  * The schedule computes this internally from deps.time.now().
- *
- * @experimental
  */
 interface ScheduleStepMetrics {
   /** Current attempt number (1-indexed). */
@@ -94,8 +84,6 @@ interface ScheduleStepMetrics {
  * Creates an internal per-step metrics tracker.
  *
  * Each call updates internal state and returns computed metrics.
- *
- * @experimental
  */
 const createScheduleStepMetrics = (
   deps: TimeDep,
@@ -130,7 +118,6 @@ const createScheduleStepMetrics = (
  * ```
  *
  * @category Constructors
- * @experimental
  */
 export const forever: Schedule<number> = () => {
   let attempt = 0;
@@ -150,7 +137,6 @@ export const forever: Schedule<number> = () => {
  * ```
  *
  * @category Constructors
- * @experimental
  */
 export const once: Schedule<number> = () => {
   let finished = false;
@@ -175,7 +161,6 @@ export const once: Schedule<number> = () => {
  * ```
  *
  * @category Constructors
- * @experimental
  */
 export const recurs = (n: number): Schedule<number> => take(n)(forever);
 
@@ -199,7 +184,6 @@ export const recurs = (n: number): Schedule<number> => take(n)(forever);
  * ```
  *
  * @category Constructors
- * @experimental
  */
 export const spaced =
   (duration: Duration): Schedule<Millis> =>
@@ -231,7 +215,6 @@ export const spaced =
  * ```
  *
  * @category Constructors
- * @experimental
  */
 export const exponential =
   (base: Duration, factor = 2): Schedule<Millis> =>
@@ -266,7 +249,6 @@ export const exponential =
  * ```
  *
  * @category Constructors
- * @experimental
  */
 export const linear =
   (base: Duration): Schedule<Millis> =>
@@ -302,7 +284,6 @@ export const linear =
  * ```
  *
  * @category Constructors
- * @experimental
  */
 export const fibonacci =
   (initial: Duration): Schedule<Millis> =>
@@ -340,7 +321,6 @@ export const fibonacci =
  * ```
  *
  * @category Constructors
- * @experimental
  */
 export const fixed =
   (interval: Duration): Schedule<number> =>
@@ -378,7 +358,6 @@ export const fixed =
  * ```
  *
  * @category Constructors
- * @experimental
  */
 export const windowed =
   (interval: Duration): Schedule<number> =>
@@ -407,7 +386,6 @@ export const windowed =
  * ```
  *
  * @category Constructors
- * @experimental
  */
 export const fromDelay = (delay: Duration): Schedule<Millis> =>
   take(1)(spaced(delay));
@@ -426,11 +404,10 @@ export const fromDelay = (delay: Duration): Schedule<Millis> =>
  * ```
  *
  * @category Constructors
- * @experimental
  */
 export const fromDelays = (
   ...delays: ReadonlyArray<Duration>
-): Schedule<Millis> => sequence(...delays.map((d) => fromDelay(d)));
+): Schedule<Millis> => sequenceSchedules(...delays.map((d) => fromDelay(d)));
 
 /**
  * A schedule that outputs the total elapsed time since the schedule started.
@@ -442,15 +419,16 @@ export const fromDelays = (
  *
  * ```ts
  * // Track elapsed time alongside retries
- * const withTiming = intersect(exponential("100ms"), elapsed);
+ * const withTiming = intersectSchedules(exponential("100ms"), elapsed);
  * // Outputs: [[100, 0], [200, ~100], [400, ~300], ...]
  *
  * // Stop after 30 seconds of elapsed time
- * const timeLimited = whileOutput((ms: Millis) => ms < 30000)(elapsed);
+ * const timeLimited = whileScheduleOutput((ms: Millis) => ms < 30000)(
+ *   elapsed,
+ * );
  * ```
  *
  * @category Constructors
- * @experimental
  */
 export const elapsed: Schedule<Millis> = (deps) => {
   const metrics = createScheduleStepMetrics(deps);
@@ -470,14 +448,18 @@ export const elapsed: Schedule<Millis> = (deps) => {
  * const timeLimited = during("30s");
  *
  * // Combine with exponential for time-boxed retry
- * const timedRetry = intersect(exponential("100ms"), during("10s"));
+ * const timedRetry = intersectSchedules(
+ *   exponential("100ms"),
+ *   during("10s"),
+ * );
  * ```
  *
  * @category Constructors
- * @experimental
  */
 export const during = (duration: Duration): Schedule<Millis> =>
-  whileOutput((ms: Millis) => ms <= durationToMillis(duration))(elapsed);
+  whileScheduleOutput((ms: Millis) => ms <= durationToMillis(duration))(
+    elapsed,
+  );
 
 /**
  * A schedule that always outputs a constant value.
@@ -488,16 +470,19 @@ export const during = (duration: Duration): Schedule<Millis> =>
  *
  * ```ts
  * // Always output "retry"
- * const labeled = succeed("retry");
+ * const labeled = always("retry");
  *
  * // Combine with timing
- * const withLabel = intersect(exponential("100ms"), succeed("backoff"));
+ * const withLabel = intersectSchedules(
+ *   exponential("100ms"),
+ *   always("backoff"),
+ * );
  * ```
  *
  * @category Constructors
- * @experimental
  */
-export const succeed = <A>(value: A): Schedule<A> => map(() => value)(forever);
+export const always = <A>(value: A): Schedule<A> =>
+  mapSchedule(() => value)(forever);
 
 /**
  * Creates a schedule by unfolding a state.
@@ -510,14 +495,16 @@ export const succeed = <A>(value: A): Schedule<A> => map(() => value)(forever);
  *
  * ```ts
  * // Counter: 0, 1, 2, 3, ...
- * const counter = unfold(0, (n) => n + 1);
+ * const counter = unfoldSchedule(0, (n) => n + 1);
  *
  * // Custom backoff: 100, 150, 225, 338, ... (×1.5 each time)
- * const customBackoff = unfold(100, (delay) => Math.round(delay * 1.5));
+ * const customBackoff = unfoldSchedule(100, (delay) =>
+ *   Math.round(delay * 1.5),
+ * );
  *
  * // State machine
  * type Phase = "init" | "warmup" | "active";
- * const phases = unfold<Phase>("init", (phase) => {
+ * const phases = unfoldSchedule<Phase>("init", (phase) => {
  *   switch (phase) {
  *     case "init":
  *       return "warmup";
@@ -530,9 +517,8 @@ export const succeed = <A>(value: A): Schedule<A> => map(() => value)(forever);
  * ```
  *
  * @category Constructors
- * @experimental
  */
-export const unfold = <State>(
+export const unfoldSchedule = <State>(
   initial: State,
   next: (state: State) => State,
 ): Schedule<State> => {
@@ -560,7 +546,6 @@ export const unfold = <State>(
  * ```
  *
  * @category Limiting
- * @experimental
  */
 export const take =
   (n: number) =>
@@ -589,7 +574,6 @@ export const take =
  * ```
  *
  * @category Limiting
- * @experimental
  */
 export const maxElapsed = (duration: Duration) => {
   const maxMs = durationToMillis(duration);
@@ -620,7 +604,6 @@ export const maxElapsed = (duration: Duration) => {
  * ```
  *
  * @category Limiting
- * @experimental
  */
 export const maxDelay = (max: Duration) => {
   const maxMs = durationToMillis(max);
@@ -659,7 +642,6 @@ export const maxDelay = (max: Duration) => {
  * ```
  *
  * @category Delay
- * @experimental
  */
 export const jitter =
   (factor = 0.5) =>
@@ -688,7 +670,6 @@ export const jitter =
  * ```
  *
  * @category Delay
- * @experimental
  */
 export const delayed = (initialDelay: Duration) => {
   const initialMs = durationToMillis(initialDelay);
@@ -722,7 +703,6 @@ export const delayed = (initialDelay: Duration) => {
  * ```
  *
  * @category Delay
- * @experimental
  */
 export const addDelay = (
   extra: Duration,
@@ -749,7 +729,6 @@ export const addDelay = (
  * ```
  *
  * @category Delay
- * @experimental
  */
 export const modifyDelay =
   (f: (delay: Millis) => number) =>
@@ -776,14 +755,13 @@ export const modifyDelay =
  *
  * ```ts
  * // Poll every 5s, accounting for execution time
- * const polling = compensateExecution(spaced("5s"));
+ * const polling = compensate(spaced("5s"));
  * // If poll takes 1s → wait 4s. If poll takes 6s → wait 0s.
  * ```
  *
  * @category Delay
- * @experimental
  */
-export const compensateExecution =
+export const compensate =
   <Output, Input>(schedule: Schedule<Output, Input>): Schedule<Output, Input> =>
   (deps) => {
     const step = schedule(deps);
@@ -813,15 +791,14 @@ export const compensateExecution =
  * }
  *
  * // Only retry transient errors
- * const retryTransient = whileInput(
+ * const retryTransient = whileScheduleInput(
  *   (error: MyError) => error.type === "Transient",
  * )(exponential("100ms"));
  * ```
  *
  * @category Filtering
- * @experimental
  */
-export const whileInput =
+export const whileScheduleInput =
   <Input>(predicate: Predicate<Input>) =>
   <Output>(schedule: Schedule<Output, Input>): Schedule<Output, Input> =>
   (deps) => {
@@ -846,15 +823,14 @@ export const whileInput =
  * }
  *
  * // Stop retrying on fatal errors
- * const stopOnFatal = untilInput(
+ * const stopOnFatal = untilScheduleInput(
  *   (error: MyError) => error.type === "Fatal",
  * )(exponential("100ms"));
  * ```
  *
  * @category Filtering
- * @experimental
  */
-export const untilInput =
+export const untilScheduleInput =
   <Input>(predicate: Predicate<Input>) =>
   <Output>(schedule: Schedule<Output, Input>): Schedule<Output, Input> =>
   (deps) => {
@@ -874,15 +850,14 @@ export const untilInput =
  *
  * ```ts
  * // Continue while delay is under 5 seconds
- * const capped = whileOutput((delay: Millis) => delay < 5000)(
+ * const capped = whileScheduleOutput((delay: Millis) => delay < 5000)(
  *   exponential("1s"),
  * );
  * ```
  *
  * @category Filtering
- * @experimental
  */
-export const whileOutput =
+export const whileScheduleOutput =
   <Output>(predicate: Predicate<Output>) =>
   <Input>(schedule: Schedule<Output, Input>): Schedule<Output, Input> =>
   (deps) => {
@@ -904,15 +879,14 @@ export const whileOutput =
  *
  * ```ts
  * // Stop when delay reaches 1 second
- * const limited = untilOutput((delay: Millis) => delay >= 1000)(
+ * const limited = untilScheduleOutput((delay: Millis) => delay >= 1000)(
  *   exponential("100ms"),
  * );
  * ```
  *
  * @category Filtering
- * @experimental
  */
-export const untilOutput =
+export const untilScheduleOutput =
   <Output>(predicate: Predicate<Output>) =>
   <Input>(schedule: Schedule<Output, Input>): Schedule<Output, Input> =>
   (deps) => {
@@ -936,13 +910,14 @@ export const untilOutput =
  *
  * ```ts
  * // Reset retry count after 1 minute of success
- * const circuitBreaker = resetAfter("1m")(take(5)(exponential("1s")));
+ * const circuitBreaker = resetScheduleAfter("1m")(
+ *   take(5)(exponential("1s")),
+ * );
  * ```
  *
  * @category State
- * @experimental
  */
-export const resetAfter = (duration: Duration) => {
+export const resetScheduleAfter = (duration: Duration) => {
   const resetMs = durationToMillis(duration);
   return <Output, Input>(
       schedule: Schedule<Output, Input>,
@@ -968,18 +943,17 @@ export const resetAfter = (duration: Duration) => {
  * ### Example
  *
  * ```ts
- * import { exponential, map } from "@evolu/common/schedule";
+ * import { exponential, mapSchedule } from "@evolu/common/schedule";
  *
- * const schedule = map((delay) => ({
+ * const schedule = mapSchedule((delay) => ({
  *   delay,
  *   doubled: delay * 2,
  * }))(exponential("100ms"));
  * ```
  *
  * @category Transform
- * @experimental
  */
-export const map =
+export const mapSchedule =
   <A, B>(f: (a: A) => B) =>
   <Input>(schedule: Schedule<A, Input>): Schedule<B, Input> =>
   (deps) => {
@@ -1017,13 +991,9 @@ export const map =
  * ```
  *
  * @category Constructors
- * @experimental
  */
 export function passthrough<A>(): Schedule<A, A>;
-/**
- * @category Transform
- * @experimental
- */
+/** @category Transform */
 export function passthrough<Output, Input>(
   schedule: Schedule<Output, Input>,
 ): Schedule<Input, Input>;
@@ -1053,21 +1023,21 @@ export function passthrough<Output, Input>(
  *
  * ```ts
  * // Track total delay spent
- * const withTotal = fold(
+ * const withTotal = foldSchedule(
  *   0,
  *   (total: number, delay: Millis) => total + delay,
  * )(exponential("100ms"));
  * // Outputs: 100, 300, 700, 1500, ... (cumulative)
  *
  * // Collect all outputs
- * const collected = fold([] as Millis[], (acc, delay: Millis) => [
+ * const collected = foldSchedule([] as Millis[], (acc, delay: Millis) => [
  *   ...acc,
  *   delay,
  * ])(take(3)(spaced("1s")));
  * // Outputs: [1000], [1000, 1000], [1000, 1000, 1000]
  *
  * // Count attempts with custom output
- * const counted = fold(
+ * const counted = foldSchedule(
  *   { attempts: 0, lastDelay: 0 as Millis },
  *   (acc, delay: Millis) => ({
  *     attempts: acc.attempts + 1,
@@ -1077,9 +1047,8 @@ export function passthrough<Output, Input>(
  * ```
  *
  * @category Transform
- * @experimental
  */
-export const fold =
+export const foldSchedule =
   <Z, Output>(initial: Z, f: (acc: Z, output: Output) => Z) =>
   <Input>(schedule: Schedule<Output, Input>): Schedule<Z, Input> =>
   (deps) => {
@@ -1110,11 +1079,10 @@ export const fold =
  * ```
  *
  * @category Transform
- * @experimental
  */
 export const repetitions = <Output, Input>(
   schedule: Schedule<Output, Input>,
-): Schedule<number, Input> => fold(-1, (n) => n + 1)(schedule);
+): Schedule<number, Input> => foldSchedule(-1, (n) => n + 1)(schedule);
 
 /**
  * Outputs the delay between recurrences.
@@ -1130,11 +1098,12 @@ export const repetitions = <Output, Input>(
  * // Outputs: 100, 200, 400, 800, ... (the delays themselves)
  *
  * // Log delays for debugging
- * const logged = tapOutput(console.log)(delays(exponential("100ms")));
+ * const logged = tapScheduleOutput(console.log)(
+ *   delays(exponential("100ms")),
+ * );
  * ```
  *
  * @category Transform
- * @experimental
  */
 export const delays =
   <Output, Input>(schedule: Schedule<Output, Input>): Schedule<Millis, Input> =>
@@ -1157,17 +1126,16 @@ export const delays =
  *
  * ```ts
  * // Collect all delays
- * const collected = collectAllOutputs(take(3)(spaced("100ms")));
+ * const collected = collectAllScheduleOutputs(take(3)(spaced("100ms")));
  * // Outputs: [100], [100, 100], [100, 100, 100]
  * ```
  *
  * @category Collection
- * @experimental
  */
-export const collectAllOutputs = <Output, Input>(
+export const collectAllScheduleOutputs = <Output, Input>(
   schedule: Schedule<Output, Input>,
 ): Schedule<ReadonlyArray<Output>, Input> =>
-  fold<ReadonlyArray<Output>, Output>([], (acc, out) => [...acc, out])(
+  foldSchedule<ReadonlyArray<Output>, Output>([], (acc, out) => [...acc, out])(
     schedule,
   );
 
@@ -1175,75 +1143,74 @@ export const collectAllOutputs = <Output, Input>(
  * Collects all inputs into an array.
  *
  * Each step outputs an array containing all inputs received so far. Mirror of
- * {@link collectAllOutputs} but for inputs.
+ * {@link collectAllScheduleOutputs} but for inputs.
  *
  * ### Example
  *
  * ```ts
  * // Collect all errors during retry
- * const errorHistory = collectInputs(take(3)(exponential("100ms")));
+ * const errorHistory = collectScheduleInputs(
+ *   take(3)(exponential("100ms")),
+ * );
  * // After 3 retries, outputs array of all error inputs
  * ```
  *
  * @category Collection
- * @experimental
  */
-export const collectInputs = <Output, Input>(
+export const collectScheduleInputs = <Output, Input>(
   schedule: Schedule<Output, Input>,
 ): Schedule<ReadonlyArray<Input>, Input> =>
-  collectAllOutputs(passthrough(schedule));
+  collectAllScheduleOutputs(passthrough(schedule));
 
 /**
  * Collects outputs while a predicate is true.
  *
- * More flexible than {@link collectAllOutputs} — stops collecting when the
- * predicate returns false.
+ * More flexible than {@link collectAllScheduleOutputs} — stops collecting when
+ * the predicate returns false.
  *
  * ### Example
  *
  * ```ts
  * // Collect delays while under 1 second
- * const smallDelays = collectWhile((delay: Millis) => delay < 1000)(
- *   exponential("100ms"),
- * );
+ * const smallDelays = collectWhileScheduleOutput(
+ *   (delay: Millis) => delay < 1000,
+ * )(exponential("100ms"));
  * // Outputs: [100], [100, 200], [100, 200, 400], [100, 200, 400, 800], stops
  * ```
  *
  * @category Collection
- * @experimental
  */
-export const collectWhile =
+export const collectWhileScheduleOutput =
   <Output>(predicate: Predicate<Output>) =>
   <Input>(
     schedule: Schedule<Output, Input>,
   ): Schedule<ReadonlyArray<Output>, Input> =>
-    collectAllOutputs(whileOutput(predicate)(schedule));
+    collectAllScheduleOutputs(whileScheduleOutput(predicate)(schedule));
 
 /**
  * Collects outputs until a predicate becomes true.
  *
- * Mirror of {@link collectWhile} — stops collecting when the predicate returns
- * true (inclusive of the matching output).
+ * Mirror of {@link collectWhileScheduleOutput} — stops collecting when the
+ * predicate returns true (inclusive of the matching output).
  *
  * ### Example
  *
  * ```ts
  * // Collect delays until reaching 1 second
- * const untilLarge = collectUntil((delay: Millis) => delay >= 1000)(
- *   exponential("100ms"),
- * );
+ * const untilLarge = collectUntilScheduleOutput(
+ *   (delay: Millis) => delay >= 1000,
+ * )(exponential("100ms"));
  * // Outputs: [100], [100, 200], [100, 200, 400], [100, 200, 400, 800], stops
  * ```
  *
  * @category Collection
- * @experimental
  */
-export const collectUntil =
+export const collectUntilScheduleOutput =
   <Output>(predicate: Predicate<Output>) =>
   <Input>(
     schedule: Schedule<Output, Input>,
   ): Schedule<ReadonlyArray<Output>, Input> =>
-    collectAllOutputs(untilOutput(predicate)(schedule));
+    collectAllScheduleOutputs(untilScheduleOutput(predicate)(schedule));
 
 /**
  * Sequences schedules: runs each until it stops, then continues with the next.
@@ -1255,7 +1222,7 @@ export const collectUntil =
  *
  * ```ts
  * // Fast retries first, then slower, then final fallback
- * const adaptive = sequence(
+ * const adaptive = sequenceSchedules(
  *   take(3)(exponential("100ms")),
  *   take(5)(fixed("500ms")),
  *   fixed("1s"),
@@ -1264,9 +1231,8 @@ export const collectUntil =
  * ```
  *
  * @category Composition
- * @experimental
  */
-export const sequence = <Output, Input>(
+export const sequenceSchedules = <Output, Input>(
   ...schedules: ReadonlyArray<Schedule<Output, Input>>
 ): Schedule<Output, Input> => {
   return (deps) => {
@@ -1298,16 +1264,15 @@ export const sequence = <Output, Input>(
  *
  * ```ts
  * // Retry up to 5 times AND within 30 seconds (both conditions must be met)
- * const both = intersect(
+ * const both = intersectSchedules(
  *   take(5)(exponential("1s")),
  *   maxElapsed("30s")(forever),
  * );
  * ```
  *
  * @category Composition
- * @experimental
  */
-export const intersect =
+export const intersectSchedules =
   <OutputA, OutputB, Input>(
     a: Schedule<OutputA, Input>,
     b: Schedule<OutputB, Input>,
@@ -1334,16 +1299,15 @@ export const intersect =
  *
  * ```ts
  * // Retry up to 5 times OR up to 30 seconds, whichever is longer
- * const either = union(
+ * const either = unionSchedules(
  *   take(5)(exponential("1s")),
  *   maxElapsed("30s")(forever),
  * );
  * ```
  *
  * @category Composition
- * @experimental
  */
-export const union =
+export const unionSchedules =
   <OutputA, OutputB, Input>(
     a: Schedule<OutputA, Input>,
     b: Schedule<OutputB, Input>,
@@ -1390,7 +1354,6 @@ export const union =
  * ```
  *
  * @category Composition
- * @experimental
  */
 export const whenInput = <Input, Output>(
   predicate: Predicate<Input>,
@@ -1417,21 +1380,20 @@ export const whenInput = <Input, Output>(
  *
  * ```ts
  * // Log each delay for debugging
- * const logged = tapOutput((delay: Millis) => {
+ * const logged = tapScheduleOutput((delay: Millis) => {
  *   console.log(`Next delay: ${delay}ms`);
  * })(exponential("100ms"));
  *
  * // Track metrics
  * const recorded: Array<Millis> = [];
- * const tracked = tapOutput((delay: Millis) => {
+ * const tracked = tapScheduleOutput((delay: Millis) => {
  *   recorded.push(delay);
  * })(retryStrategyAws);
  * ```
  *
  * @category Side Effects
- * @experimental
  */
-export const tapOutput =
+export const tapScheduleOutput =
   <Output>(f: (output: Output) => void) =>
   <Input>(schedule: Schedule<Output, Input>): Schedule<Output, Input> =>
   (deps) => {
@@ -1460,21 +1422,20 @@ export const tapOutput =
  * const retrySchedule: Schedule<Millis, MyError> = exponential("100ms");
  *
  * // Log each error during retry
- * const logged = tapInput((error: MyError) => {
+ * const logged = tapScheduleInput((error: MyError) => {
  *   console.log(`Retrying after error: ${error.type}`);
  * })(retrySchedule);
  *
  * // Track retry reasons
  * const reasons: Array<string> = [];
- * const tracked = tapInput((error: MyError) => {
+ * const tracked = tapScheduleInput((error: MyError) => {
  *   reasons.push(error.type);
  * })(retrySchedule);
  * ```
  *
  * @category Side Effects
- * @experimental
  */
-export const tapInput =
+export const tapScheduleInput =
   <Input>(f: (input: Input) => void) =>
   <Output>(schedule: Schedule<Output, Input>): Schedule<Output, Input> =>
   (deps) => {
@@ -1486,30 +1447,15 @@ export const tapInput =
   };
 
 /**
- * AWS Standard Retry Strategy.
+ * AWS standard retry strategy.
  *
  * Exponential backoff (100ms base), max 2 retries (3 total attempts), 20s cap,
  * full jitter.
  *
  * @category Retry Strategies
- * @experimental
  * @see https://github.com/aws/aws-sdk-java-v2/blob/master/core/retries/src/main/java/software/amazon/awssdk/retries/StandardRetryStrategy.java
  * @see https://github.com/aws/aws-sdk-java-v2/blob/master/core/retries/src/main/java/software/amazon/awssdk/retries/DefaultRetryStrategy.java
  */
 export const retryStrategyAws: Schedule<Millis> = jitter(1)(
   maxDelay("20s")(take(2)(exponential("100ms"))),
-);
-
-/**
- * AWS Throttled Retry Strategy.
- *
- * Like {@link retryStrategyAws} but with 1s base delay for rate limiting errors.
- * Use with {@link whenInput} to select based on error type.
- *
- * @category Retry Strategies
- * @experimental
- * @see https://github.com/aws/aws-sdk-java-v2/blob/master/core/retries/src/main/java/software/amazon/awssdk/retries/DefaultRetryStrategy.java
- */
-export const retryStrategyAwsThrottled: Schedule<Millis> = jitter(1)(
-  maxDelay("20s")(take(2)(exponential("1s"))),
 );

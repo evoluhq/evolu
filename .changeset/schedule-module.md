@@ -21,22 +21,19 @@ Added Schedule module for composable scheduling strategies.
 - `fromDelays(...durations)` — sequence of delays
 - `elapsed` — outputs elapsed time
 - `during(duration)` — runs for specified duration
-- `succeed(value)` — constant output
-- `unfold(initial, next)` — state machine
+- `always(value)` — constant output
+- `unfoldSchedule(initial, next)` — state machine
 
 **Combinators:**
 
 - Limiting: `take`, `maxElapsed`, `maxDelay`
-- Delay: `jitter`, `delayed`, `addDelay`, `modifyDelay`, `compensateExecution`
-- Filtering: `whileInput`, `untilInput`, `whileOutput`, `untilOutput`, `resetAfter`
-- Transform: `map`, `passthrough`, `fold`, `repetitions`, `delays`
-- Collection: `collectAllOutputs`, `collectInputs`, `collectWhile`, `collectUntil`
-- Composition: `sequence`, `intersect`, `union`, `whenInput`
-- Side effects: `tapOutput`, `tapInput`
+- Delay: `jitter`, `delayed`, `addDelay`, `modifyDelay`, `compensate`
+- Filtering: `whileScheduleInput`, `untilScheduleInput`, `whileScheduleOutput`, `untilScheduleOutput`, `resetScheduleAfter`
+- Transform: `mapSchedule`, `passthrough`, `foldSchedule`, `repetitions`, `delays`
+- Collection: `collectAllScheduleOutputs`, `collectScheduleInputs`, `collectWhileScheduleOutput`, `collectUntilScheduleOutput`
+- Composition: `sequenceSchedules`, `intersectSchedules`, `unionSchedules`, `whenInput`
+- Side effects: `tapScheduleOutput`, `tapScheduleInput`
 
 **Presets:**
 
 - `retryStrategyAws` — exponential backoff (100ms base), max 2 retries, 20s cap, full jitter
-- `retryStrategyAwsThrottled` — same but with 1s base for rate limiting
-
-All APIs are marked `@experimental`.
