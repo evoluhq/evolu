@@ -3,16 +3,18 @@
  *
  * @module
  */
+
 import { bytesToHex } from "../Buffer.js";
 import type { RandomBytesDep } from "../Crypto.js";
 import { createEqObject, eqNumber, eqString } from "../Eq.js";
 import { increment } from "../Number.js";
-import { orderUint8Array } from "../Order.js";
 import type { Order } from "../Order.js";
-import { err, ok } from "../Result.js";
+import { orderUint8Array } from "../Order.js";
 import type { Result } from "../Result.js";
-import { minMillis, Millis } from "../Time.js";
+import { err, ok } from "../Result.js";
 import type { TimeDep } from "../Time.js";
+import { Millis, minMillis } from "../Time.js";
+import type { DateIso } from "../Type.js";
 import {
   brand,
   length,
@@ -23,7 +25,6 @@ import {
   String,
   Uint8Array,
 } from "../Type.js";
-import type { DateIso, InferType } from "../Type.js";
 
 export interface TimestampConfig {
   /**
@@ -165,7 +166,11 @@ export const Timestamp = object({
   counter: Counter,
   nodeId: NodeId,
 });
-export interface Timestamp extends InferType<typeof Timestamp> {}
+// TODO: Figure out why typedoc does not use Timestamp JSDoc.
+// export interface Timestamp extends InferType<typeof Timestamp> {}
+// TODO: Maybe we should not use this pattern (typeof Timestamp.Type) at all
+// because we want to have interfaces for objects because single name?
+export type Timestamp = typeof Timestamp.Type;
 
 /** Equality function for comparing {@link Timestamp}. */
 export const eqTimestamp = createEqObject<Timestamp>({
