@@ -14,7 +14,7 @@ import type { ConsoleConfig, ConsoleDep } from "../Console.js";
 import type { TimingSafeEqualDep } from "../Crypto.js";
 import type { Lazy } from "../Function.js";
 import { createInstances } from "../Instances.js";
-import type { MaybeAsync, Mutex } from "../OldTask.js";
+import type { MaybeAsync, MutexOld } from "../OldTask.js";
 import { createMutexOld, isAsync } from "../OldTask.js";
 import type { Result } from "../Result.js";
 import { err, ok } from "../Result.js";
@@ -122,7 +122,7 @@ export const createRelaySqliteStorage =
      * be small. Monitor production memory usage to determine if
      * eviction/cleanup is needed.
      */
-    const ownerMutexes = createInstances<OwnerId, Mutex>();
+    const ownerMutexes = createInstances<OwnerId, MutexOld>();
 
     return {
       ...sqliteStorageBase,

@@ -567,11 +567,11 @@ export const retryOld = <T, E>(
  * A semaphore that limits the number of concurrent async Tasks.
  *
  * For mutual exclusion (limiting to exactly one Task), consider using
- * {@link Mutex} instead.
+ * {@link MutexOld} instead.
  *
  * @see {@link createSemaphoreOld} to create a semaphore instance.
  */
-export interface Semaphore extends Disposable {
+export interface SemaphoreOld extends Disposable {
   /**
    * Executes a Task while holding a semaphore permit.
    *
@@ -643,7 +643,9 @@ export interface Semaphore extends Disposable {
  * `);
  * ```
  */
-export const createSemaphoreOld = (maxConcurrent: PositiveInt): Semaphore => {
+export const createSemaphoreOld = (
+  maxConcurrent: PositiveInt,
+): SemaphoreOld => {
   let isDisposed = false;
   let availablePermits = maxConcurrent;
   const waitingQueue: Array<() => void> = [];
@@ -708,11 +710,12 @@ export const createSemaphoreOld = (maxConcurrent: PositiveInt): Semaphore => {
 /**
  * A mutex (mutual exclusion) that ensures only one Task runs at a time.
  *
- * This is a specialized version of a {@link Semaphore} with a permit count of 1.
+ * This is a specialized version of a {@link SemaphoreOld} with a permit count of
+ * 1.
  *
  * @see {@link createMutexOld} to create a mutex instance.
  */
-export interface Mutex extends Disposable {
+export interface MutexOld extends Disposable {
   /**
    * Executes a Task while holding the mutex lock.
    *
@@ -751,7 +754,7 @@ export interface Mutex extends Disposable {
  * ]);
  * ```
  */
-export const createMutexOld = (): Mutex => {
+export const createMutexOld = (): MutexOld => {
   const mutex = createSemaphoreOld(PositiveInt.orThrow(1));
 
   return {
