@@ -34,16 +34,14 @@ import type { Predicate } from "./Types.js";
  *   exponential,
  *   jitter,
  *   maxDelay,
+ *   retry,
  *   take,
- * } from "@evolu/common/schedule";
- * import { retry } from "@evolu/common";
+ * } from "@evolu/common";
  *
  * const fetchWithRetry = retry(
- *   {
- *     // A jittered, capped, limited exponential backoff
- *     schedule: jitter(1)(maxDelay("20s")(take(2)(exponential("100ms")))),
- *   },
  *   fetchData,
+ *   // A jittered, capped, limited exponential backoff.
+ *   jitter(1)(maxDelay("20s")(take(2)(exponential("100ms")))),
  * );
  * ```
  *
@@ -52,7 +50,7 @@ import type { Predicate } from "./Types.js";
  * ```ts
  * import { retryStrategyAws, retry } from "@evolu/common";
  *
- * const fetchWithRetry = retry({ schedule: retryStrategyAws }, fetchData);
+ * const fetchWithRetry = retry(fetchData, retryStrategyAws);
  * ```
  */
 export type Schedule<out Output, in Input = unknown> = (
@@ -943,7 +941,7 @@ export const resetScheduleAfter = (duration: Duration) => {
  * ### Example
  *
  * ```ts
- * import { exponential, mapSchedule } from "@evolu/common/schedule";
+ * import { exponential, mapSchedule } from "@evolu/common";
  *
  * const schedule = mapSchedule((delay) => ({
  *   delay,
@@ -977,7 +975,7 @@ export const mapSchedule =
  * ### Example
  *
  * ```ts
- * import { exponential, passthrough } from "@evolu/common/schedule";
+ * import { exponential, passthrough } from "@evolu/common";
  *
  * interface MyError {
  *   readonly message: string;

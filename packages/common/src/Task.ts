@@ -121,7 +121,7 @@ import { type Awaitable, type Mutable, type Predicate } from "./Types.js";
  * Add timeout to prevent hanging:
  *
  * ```ts
- * const fetchWithTimeout = (url: string) => timeout("30s", fetchUrl(url));
+ * const fetchWithTimeout = (url: string) => timeout(fetchUrl(url), "30s");
  *
  * expectTypeOf(fetchWithTimeout).toEqualTypeOf<
  *   (url: string) => Task<Response, TimeoutError | FetchError>
@@ -132,13 +132,7 @@ import { type Awaitable, type Mutable, type Predicate } from "./Types.js";
  *
  * ```ts
  * const fetchWithRetry = (url: string) =>
- *   retry(
- *     {
- *       retries: PositiveInt.orThrow(3),
- *       initialDelay: "100ms",
- *     },
- *     fetchWithTimeout(url),
- *   );
+ *   retry(fetchWithTimeout(url), take(3)(spaced("100ms")));
  *
  * // RetryError wraps the original error as `cause` when all attempts fail
  * expectTypeOf(fetchWithRetry).toEqualTypeOf<
@@ -1575,7 +1569,7 @@ export const raceLostError: RaceLostError = { type: "RaceLostError" };
  * ### Example
  *
  * ```ts
- * const fetchWithTimeout = timeout("5s", fetchData);
+ * const fetchWithTimeout = timeout(fetchData, "5s");
  *
  * const result = await run(fetchWithTimeout);
  * if (!result.ok && result.error.type === "TimeoutError") {
@@ -1585,21 +1579,19 @@ export const raceLostError: RaceLostError = { type: "RaceLostError" };
  *
  * @category Composition
  */
-export const timeout: <T, E, D = unknown>(
-  duration: Duration,
+export const timeout = <T, E, D = unknown>(
   task: Task<T, E, D>,
-  options?: {
+  duration: Duration,
+  {
+    abortReason = timeoutError,
+  }: {
     /**
      * Abort reason for the task when timeout fires. Defaults to
      * {@link timeoutError}.
      */
     abortReason?: unknown;
-  },
-) => Task<T, E | TimeoutError, D> = (
-  duration,
-  task,
-  { abortReason = timeoutError } = {},
-) =>
+  } = {},
+): Task<T, E | TimeoutError, D> =>
   race(
     [
       task,
@@ -1655,27 +1647,14 @@ export interface RetryError<E> {
  *   exponential,
  *   jitter,
  *   maxDelay,
+ *   retry,
  *   take,
- *   whileInput,
- * } from "@evolu/common/schedule";
- * import { retry } from "@evolu/common";
+ * } from "@evolu/common";
  *
- * // Exponential backoff with jitter (3 retries = 4 total attempts)
  * const fetchWithRetry = retry(
- *   {
- *     schedule: jitter(0.5)(maxDelay("5s")(take(3)(exponential("100ms")))),
- *   },
  *   fetchData,
- * );
- *
- * // Error-aware retry: stop on fatal errors (5 retries = 6 total attempts max)
- * const smartRetry = retry(
- *   {
- *     schedule: whileInput((e: MyError) => e.type !== "Fatal")(
- *       take(5)(exponential("100ms")),
- *     ),
- *   },
- *   fetchData,
+ *   // A jittered, capped, limited exponential backoff.
+ *   jitter(1)(maxDelay("20s")(take(2)(exponential("100ms")))),
  * );
  *
  * const result = await run(fetchWithRetry);
@@ -1688,16 +1667,12 @@ export interface RetryError<E> {
  */
 export const retry =
   <T, E, D = unknown>(
+    task: Task<T, E, D>,
+    schedule: Schedule<unknown, E>,
     {
-      schedule,
       retryable = constTrue as Predicate<E>,
       onRetry,
     }: {
-      /**
-       * Schedule controlling retry timing. Determines delays and attempt
-       * limits.
-       */
-      schedule: Schedule<unknown, E>;
       /** Predicate to determine if error is retryable. Defaults to all errors. */
       retryable?: Predicate<E>;
       /**
@@ -1705,8 +1680,7 @@ export const retry =
        * number.
        */
       onRetry?: (error: E, attempt: number) => void;
-    },
-    task: Task<T, E, D>,
+    } = {},
   ): Task<T, E | RetryError<E>, D> =>
   async (run) => {
     const step = schedule(run);
@@ -1769,18 +1743,18 @@ export const retry =
  * import { repeat } from "@evolu/common";
  *
  * // Heartbeat every 30 seconds (runs forever until aborted)
- * const heartbeat = repeat(fixed("30s"), sendHeartbeat);
+ * const heartbeat = repeat(sendHeartbeat, fixed("30s"));
  *
  * // Poll 4 times total (initial + 3 repetitions), 1 second apart
- * const poll = repeat(take(3)(fixed("1s")), checkStatus);
+ * const poll = repeat(checkStatus, take(3)(fixed("1s")));
  * ```
  *
  * @category Composition
  */
 export const repeat =
   <T, E, D = unknown>(
-    schedule: Schedule<unknown, T>,
     task: Task<T, E, D>,
+    schedule: Schedule<unknown, T>,
   ): Task<T, E, D> =>
   async (run) => {
     const step = schedule(run);

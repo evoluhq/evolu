@@ -241,12 +241,13 @@ export interface RetryOptions {
 }
 
 export const retry = (
+  task: Task<T, E>,
+  schedule: Schedule<unknown, E>,
   {
     maxAttempts = 3,
     delay = "1s",
     backoff = "exponential",
   }: RetryOptions,
-  task: Task<T, E>,
 ): Task<...> => ...
 ```
 

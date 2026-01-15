@@ -2616,7 +2616,7 @@ describe("timeout", () => {
 
     const fast = () => ok();
 
-    const result = await run(timeout("1s", fast));
+    const result = await run(timeout(fast, "1s"));
 
     expectTypeOf(result).toEqualTypeOf<
       Result<void, TimeoutError | AbortError>
@@ -2630,7 +2630,7 @@ describe("timeout", () => {
 
     const slow = sleep("100ms");
 
-    const fiber = run(timeout("10ms", slow));
+    const fiber = run(timeout(slow, "10ms"));
     time.advance("10ms");
 
     const result = await fiber;
@@ -2653,7 +2653,7 @@ describe("timeout", () => {
       return ok();
     };
 
-    const fiber = run(timeout("10ms", slow));
+    const fiber = run(timeout(slow, "10ms"));
     time.advance("10ms");
 
     const result = await fiber;
@@ -2679,7 +2679,7 @@ describe("timeout", () => {
       return ok();
     };
 
-    const fiber = run(timeout("10ms", slow, { abortReason: customReason }));
+    const fiber = run(timeout(slow, "10ms", { abortReason: customReason }));
     time.advance("10ms");
 
     await fiber;
@@ -2703,7 +2703,7 @@ describe("timeout", () => {
       return ok();
     });
 
-    const fiber = run(timeout("10ms", slow));
+    const fiber = run(timeout(slow, "10ms"));
     time.advance("10ms");
 
     // timeout returns immediately with TimeoutError
@@ -2730,7 +2730,7 @@ describe("retry", () => {
       return ok();
     };
 
-    const result = await run(retry({ schedule: take(3)(spaced("1ms")) }, task));
+    const result = await run(retry(task, take(3)(spaced("1ms"))));
 
     expect(result).toEqual(ok());
     expect(attempts).toBe(1);
@@ -2746,7 +2746,7 @@ describe("retry", () => {
       return ok();
     };
 
-    const result = await run(retry({ schedule: take(3)(spaced("1ms")) }, task));
+    const result = await run(retry(task, take(3)(spaced("1ms"))));
 
     expect(result).toEqual(ok());
     expect(attempts).toBe(3);
@@ -2761,7 +2761,7 @@ describe("retry", () => {
       return err<MyError>({ type: "MyError" });
     };
 
-    const result = await run(retry({ schedule: take(2)(spaced("1ms")) }, task));
+    const result = await run(retry(task, take(2)(spaced("1ms"))));
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -2786,13 +2786,9 @@ describe("retry", () => {
     };
 
     await run(
-      retry(
-        {
-          schedule: take(3)(spaced("1ms")),
-          onRetry: (error, attempt) => retryLog.push({ error, attempt }),
-        },
-        task,
-      ),
+      retry(task, take(3)(spaced("1ms")), {
+        onRetry: (error, attempt) => retryLog.push({ error, attempt }),
+      }),
     );
 
     expect(retryLog).toEqual([
@@ -2816,13 +2812,9 @@ describe("retry", () => {
     };
 
     const result = await run(
-      retry(
-        {
-          schedule: take(3)(spaced("1ms")),
-          retryable: (error) => error.type === "RetryableError",
-        },
-        task,
-      ),
+      retry(task, take(3)(spaced("1ms")), {
+        retryable: (error) => error.type === "RetryableError",
+      }),
     );
 
     expect(result.ok).toBe(false);
@@ -2845,7 +2837,7 @@ describe("retry", () => {
       return err<AbortError>({ type: "AbortError", reason: "test" });
     };
 
-    const result = await run(retry({ schedule: take(3)(spaced("1ms")) }, task));
+    const result = await run(retry(task, take(3)(spaced("1ms"))));
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -2866,7 +2858,7 @@ describe("retry", () => {
       return ok();
     };
 
-    const fiber = run(retry({ schedule: take(3)(spaced("1ms")) }, task));
+    const fiber = run(retry(task, take(3)(spaced("1ms"))));
     await taskStarted.promise;
     fiber.abort();
 
@@ -2887,9 +2879,7 @@ describe("retry", () => {
       return ok();
     };
 
-    const result = await run(
-      retry({ schedule: take(5)(exponential("1ms")) }, task),
-    );
+    const result = await run(retry(task, take(5)(exponential("1ms"))));
 
     expect(result).toEqual(ok());
     expect(attempts).toBe(3);
@@ -2912,12 +2902,10 @@ describe("retry", () => {
     // Schedule stops on fatal errors via whileScheduleInput
     const result = await run(
       retry(
-        {
-          schedule: whileScheduleInput<RetryableError | FatalError>(
-            (e: RetryableError | FatalError) => e.type !== "FatalError",
-          )(take(5)(spaced("1ms"))),
-        },
         task,
+        whileScheduleInput<RetryableError | FatalError>(
+          (e: RetryableError | FatalError) => e.type !== "FatalError",
+        )(take(5)(spaced("1ms"))),
       ),
     );
 
@@ -2944,7 +2932,7 @@ describe("repeat", () => {
     };
 
     // take(3) = 3 repetitions after initial run = 4 total runs
-    const result = await run(repeat(take(3)(spaced("1ms")), task));
+    const result = await run(repeat(task, take(3)(spaced("1ms"))));
 
     expect(result).toEqual(ok(4));
     expect(count).toBe(4);
@@ -2960,7 +2948,7 @@ describe("repeat", () => {
     };
 
     // take(3) = 4 total runs
-    const result = await run(repeat(take(3)(fixed("1ms")), task));
+    const result = await run(repeat(task, take(3)(fixed("1ms"))));
 
     expect(result).toEqual(ok("fourth"));
   });
@@ -2975,7 +2963,7 @@ describe("repeat", () => {
       return ok(count);
     };
 
-    const result = await run(repeat(take(5)(spaced("1ms")), task));
+    const result = await run(repeat(task, take(5)(spaced("1ms"))));
 
     expect(result).toEqual(err({ type: "MyError" }));
     expect(count).toBe(2);
@@ -2992,7 +2980,7 @@ describe("repeat", () => {
       return ok(count);
     };
 
-    const fiber = run(repeat(take(100)(spaced("1ms")), task));
+    const fiber = run(repeat(task, take(100)(spaced("1ms"))));
     await Promise.resolve();
     fiber.abort();
 
@@ -3018,7 +3006,7 @@ describe("repeat", () => {
       return ok(count);
     };
 
-    const fiber = run(repeat(spaced("1ms"), task));
+    const fiber = run(repeat(task, spaced("1ms")));
 
     // Let a few iterations run
     await Promise.resolve();
@@ -3241,7 +3229,7 @@ describe("DI", () => {
     await using run = createRunner<RunnerDeps & HttpDep>({ ...deps, http });
 
     // timeout should preserve D from wrapped task
-    const fetchWithTimeout = timeout("5s", fetchUser("1"));
+    const fetchWithTimeout = timeout(fetchUser("1"), "5s");
     const result = await run(fetchWithTimeout);
 
     expect(result).toEqual(ok("Alice"));
@@ -3302,7 +3290,7 @@ describe("DI", () => {
       };
 
     const result = await run(
-      retry({ schedule: take(3)(spaced("1ms")) }, fetchUserWithError("Alice")),
+      retry(fetchUserWithError("Alice"), take(3)(spaced("1ms"))),
     );
 
     expect(result).toEqual(ok("Alice"));

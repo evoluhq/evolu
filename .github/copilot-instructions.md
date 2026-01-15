@@ -433,7 +433,7 @@ const processTask: Task<void, ParseError | TimeoutError> = async (run) => {
   const data = await run(fetchData);
   if (!data.ok) return data;
 
-  const parsed = await run(timeout("5s", parseData(data.value)));
+  const parsed = await run(timeout(parseData(data.value), "5s"));
   if (!parsed.ok) return parsed;
 
   return ok();
