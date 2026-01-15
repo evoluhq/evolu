@@ -27,9 +27,7 @@ import type {
 import {
   AbortError,
   AsyncDisposableStack,
-  createMutex,
   createRunner,
-  createSemaphore,
   race,
   RaceLostError,
   repeat,
@@ -45,9 +43,14 @@ import {
   yieldNow,
 } from "../src/Task.js";
 import { createTestDeps, createTestRunner } from "../src/Test.js";
-import { createTime, msLongTask, testCreateTime } from "../src/Time.js";
+import {
+  createTime,
+  msLongTask,
+  testCreateTime,
+  type Millis,
+} from "../src/Time.js";
 import type { Typed } from "../src/Type.js";
-import { Id } from "../src/Type.js";
+import { Id, PositiveInt } from "../src/Type.js";
 
 const eventsEnabled: RunnerConfigDep = {
   runnerConfig: { eventsEnabled: createRef(true) },
@@ -2768,7 +2771,7 @@ describe("retry", () => {
       expect(result.error).toEqual({
         type: "RetryError",
         cause: { type: "MyError" },
-        attempts: 3,
+        attempts: PositiveInt.orThrow(3),
       });
     }
     expect(attempts).toBe(3);
@@ -2777,7 +2780,12 @@ describe("retry", () => {
   test("calls onRetry before each retry", async () => {
     await using run = createRunner();
 
-    const retryLog: Array<{ error: MyError; attempt: number }> = [];
+    const retryLog: Array<{
+      error: MyError;
+      attempt: PositiveInt;
+      output: Millis;
+      delay: Millis;
+    }> = [];
     let attempts = 0;
     const task = () => {
       attempts++;
@@ -2787,13 +2795,29 @@ describe("retry", () => {
 
     await run(
       retry(task, take(3)(spaced("1ms")), {
-        onRetry: (error, attempt) => retryLog.push({ error, attempt }),
+        onRetry: ({ error, attempt, output, delay }) =>
+          retryLog.push({
+            error,
+            attempt,
+            output,
+            delay,
+          }),
       }),
     );
 
     expect(retryLog).toEqual([
-      { error: { type: "MyError" }, attempt: 1 },
-      { error: { type: "MyError" }, attempt: 2 },
+      {
+        error: { type: "MyError" },
+        attempt: PositiveInt.orThrow(1),
+        output: 1,
+        delay: 1,
+      },
+      {
+        error: { type: "MyError" },
+        attempt: PositiveInt.orThrow(2),
+        output: 1,
+        delay: 1,
+      },
     ]);
   });
 
@@ -2822,7 +2846,7 @@ describe("retry", () => {
       expect(result.error).toEqual({
         type: "RetryError",
         cause: { type: "NonRetryableError" },
-        attempts: 2,
+        attempts: PositiveInt.orThrow(2),
       });
     }
     expect(attempts).toBe(2);
@@ -2914,7 +2938,7 @@ describe("retry", () => {
       expect(result.error).toEqual({
         type: "RetryError",
         cause: { type: "FatalError" },
-        attempts: 2,
+        attempts: PositiveInt.orThrow(2),
       });
     }
     expect(attempts).toBe(2);
@@ -3295,16 +3319,6 @@ describe("DI", () => {
 
     expect(result).toEqual(ok("Alice"));
     expect(attempts).toBe(3);
-  });
-});
-
-describe("TODO stubs", () => {
-  test("createSemaphore throws TODO error", () => {
-    expect(() => createSemaphore()).toThrow("TODO: later");
-  });
-
-  test("createMutex throws TODO error", () => {
-    expect(() => createMutex()).toThrow("TODO: later");
   });
 });
 

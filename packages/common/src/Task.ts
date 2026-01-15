@@ -26,6 +26,8 @@ import {
   createId,
   Id,
   NonNegativeInt,
+  PositiveInt,
+  type Typed,
   typed,
   union,
   Unknown,
@@ -1619,16 +1621,42 @@ export type TimeoutError = typeof TimeoutError.Type;
 export const timeoutError: TimeoutError = { type: "TimeoutError" };
 
 /**
+ * Options for {@link retry}.
+ *
+ * @category Composition
+ */
+export interface RetryOptions<E, Output> {
+  /** Predicate to determine if error is retryable. Defaults to all errors. */
+  readonly retryable?: Predicate<E>;
+  /**
+   * Callback invoked before each retry attempt with error, retry attempt
+   * number, schedule output, and delay.
+   */
+  readonly onRetry?: (attemp: RetryAttempt<E, Output>) => void;
+}
+
+/**
+ * Info passed to {@link retry} {@link RetryOptions.onRetry} callback.
+ *
+ * @category Composition
+ */
+export interface RetryAttempt<E, Output> {
+  readonly error: E;
+  readonly attempt: PositiveInt;
+  readonly output: Output;
+  readonly delay: Millis;
+}
+
+/**
  * Error returned when all retry attempts are exhausted.
  *
  * @category Composition
  */
-export interface RetryError<E> {
-  readonly type: "RetryError";
+export interface RetryError<E> extends Typed<"RetryError"> {
   /** The error from the final attempt. */
   readonly cause: E;
   /** Total attempts made (initial + retries). */
-  readonly attempts: number;
+  readonly attempts: PositiveInt;
 }
 
 /**
@@ -1666,45 +1694,40 @@ export interface RetryError<E> {
  * @category Composition
  */
 export const retry =
-  <T, E, D = unknown>(
+  <T, E, D = unknown, Output = unknown>(
     task: Task<T, E, D>,
-    schedule: Schedule<unknown, E>,
+    schedule: Schedule<Output, E>,
     {
       retryable = constTrue as Predicate<E>,
       onRetry,
-    }: {
-      /** Predicate to determine if error is retryable. Defaults to all errors. */
-      retryable?: Predicate<E>;
-      /**
-       * Callback invoked before each retry attempt with error and attempt
-       * number.
-       */
-      onRetry?: (error: E, attempt: number) => void;
-    } = {},
+    }: RetryOptions<E, Output> = {},
   ): Task<T, E | RetryError<E>, D> =>
   async (run) => {
     const step = schedule(run);
-    let attempt = 0;
-    let lastError: E | undefined;
+    let attempt = PositiveInt.orThrow(1);
+    let error: E | undefined;
 
     for (;;) {
-      attempt++;
-
       // On retry (not first attempt), wait according to schedule
-      if (lastError !== undefined) {
-        const scheduleResult = step(lastError);
+      if (error !== undefined) {
+        const scheduleResult = step(error);
         if (!scheduleResult.ok) {
-          // Schedule exhausted
           return err<RetryError<E>>({
             type: "RetryError",
-            cause: lastError,
-            attempts: attempt - 1,
+            cause: error,
+            attempts: PositiveInt.orThrow(decrement(attempt)),
           });
         }
 
-        onRetry?.(lastError, attempt - 1);
+        const [output, delay] = scheduleResult.value;
+        const retryAttempt = PositiveInt.orThrow(decrement(attempt));
 
-        const [, delay] = scheduleResult.value;
+        onRetry?.({
+          error,
+          attempt: retryAttempt,
+          output,
+          delay,
+        });
         if (delay > 0) {
           const sleepResult = await run(sleep(delay));
           if (!sleepResult.ok) return sleepResult;
@@ -1716,14 +1739,16 @@ export const retry =
 
       if (AbortError.is(result.error)) return result;
 
-      lastError = result.error;
-      if (!retryable(lastError)) {
+      error = result.error;
+      if (!retryable(error)) {
         return err<RetryError<E>>({
           type: "RetryError",
-          cause: lastError,
-          attempts: attempt,
+          cause: error,
+          attempts: PositiveInt.orThrow(attempt),
         });
       }
+
+      attempt = PositiveInt.orThrow(increment(attempt));
     }
   };
 
