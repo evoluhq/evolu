@@ -98,7 +98,7 @@
  * const timestamps = mapArray(messages, (m) => m.timestamp);
  * ```
  *
- * Data-first style works well also for a few operations, often fit on a single
+ * Data-first style also reads well for a few operations, often fitting on a
  * line:
  *
  * ```ts
@@ -107,12 +107,12 @@
  * const latestDone = lastInArray(filterArray(jobs, isCompletedJob));
  * ```
  *
- * For deeper nesting, extract to a well-named function like
+ * For more operations, extract to a well-named function like
  * `getOldestActiveUser` or `getUniqueActiveEmails`.
  *
  * Some libraries provide dual APIs with data-last for pipe-based composition.
- * Evolu prefers simple (in Latin, simplex means "one") API — no need to choose
- * between seemingly equivalent options, and pipes would not help anyway;
+ * Evolu prefers a simple API (in Latin, simplex means "one") — no need to
+ * choose between seemingly equivalent options, and pipes would not help anyway;
  * well-named functions communicate intent better.
  *
  * @module
