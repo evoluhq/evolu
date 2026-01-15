@@ -1,32 +1,32 @@
 /**
- * Evolu core implementation.
+ * Local-first platform.
  *
  * @module
  */
+
 import { pack } from "msgpackr";
 import { dedupeArray, isNonEmptyArray } from "../Array.js";
 import { assert, assertNonEmptyReadonlyArray } from "../Assert.js";
 import { createCallbacks } from "../Callbacks.js";
-import { createConsole } from "../Console.js";
 import type { ConsoleDep } from "../Console.js";
-import { createRandomBytes } from "../Crypto.js";
+import { createConsole } from "../Console.js";
 import type { RandomBytesDep } from "../Crypto.js";
+import { createRandomBytes } from "../Crypto.js";
 import { eqArrayNumber } from "../Eq.js";
 import type { Listener, Unsubscribe } from "../Listeners.js";
 import type { FlushSyncDep, ReloadAppDep } from "../Platform.js";
-import { createDisposableDep } from "../Resources.js";
 import type { DisposableDep, DisposableStackDep } from "../Resources.js";
-import { err, ok } from "../Result.js";
+import { createDisposableDep } from "../Resources.js";
 import type { Result } from "../Result.js";
+import { err, ok } from "../Result.js";
+import type { SafeSql, SqliteQuery } from "../Sqlite.js";
 import {
   isSqlMutation,
   SqliteBoolean,
   sqliteBooleanToBoolean,
 } from "../Sqlite.js";
-import type { SafeSql, SqliteQuery } from "../Sqlite.js";
-import { createStore } from "../Store.js";
 import type { ReadonlyStore, Store } from "../Store.js";
-import { createId, Id, SimpleName } from "../Type.js";
+import { createStore } from "../Store.js";
 import type {
   InferErrors,
   InferInput,
@@ -34,12 +34,12 @@ import type {
   ValidMutationSize,
   ValidMutationSizeError,
 } from "../Type.js";
+import { createId, Id, SimpleName } from "../Type.js";
 import type { IntentionalNever } from "../Types.js";
 import type { CreateMessageChannelDep } from "../Worker.js";
 import type { EvoluError } from "./Error.js";
-import { createOwnerWebSocketTransport, OwnerId } from "./Owner.js";
 import type { AppOwner, OwnerTransport } from "./Owner.js";
-import { createSubscribedQueries, emptyRows, serializeQuery } from "./Query.js";
+import { createOwnerWebSocketTransport, OwnerId } from "./Owner.js";
 import type {
   Queries,
   QueriesToQueryRowsPromises,
@@ -49,13 +49,7 @@ import type {
   Row,
   SubscribedQueries,
 } from "./Query.js";
-import {
-  insertable,
-  kysely,
-  SystemColumns,
-  updateable,
-  upsertable,
-} from "./Schema.js";
+import { createSubscribedQueries, emptyRows, serializeQuery } from "./Query.js";
 import type {
   CreateQuery,
   EvoluSchema,
@@ -67,9 +61,16 @@ import type {
   MutationOptions,
   ValidateSchema,
 } from "./Schema.js";
-import type { SharedWorkerDep } from "./SharedWorker.js";
+import {
+  insertable,
+  kysely,
+  SystemColumns,
+  updateable,
+  upsertable,
+} from "./Schema.js";
 import { DbChange } from "./Storage.js";
 import type { SyncOwner } from "./Sync.js";
+import type { EvoluWorkerDep } from "./Worker.js";
 
 export interface EvoluConfig {
   /**
@@ -580,7 +581,7 @@ export type UnuseOwner = () => void;
 
 export type EvoluPlatformDeps = CreateMessageChannelDep &
   ReloadAppDep &
-  SharedWorkerDep &
+  EvoluWorkerDep &
   Partial<FlushSyncDep>;
 
 export type EvoluDeps = EvoluPlatformDeps &
@@ -622,7 +623,7 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
 };
 
 const createErrorStore = (
-  deps: CreateMessageChannelDep & SharedWorkerDep & DisposableStackDep,
+  deps: CreateMessageChannelDep & EvoluWorkerDep & DisposableStackDep,
 ): Store<EvoluError | null> => {
   const errorChannel = deps.disposableStack.use(
     deps.createMessageChannel<EvoluError>(),
@@ -631,7 +632,7 @@ const createErrorStore = (
     createStore<EvoluError | null>(null),
   );
 
-  deps.sharedWorker.port.postMessage(
+  deps.evoluWorker.port.postMessage(
     { type: "initErrorStore", port: errorChannel.port1.native },
     [errorChannel.port1.native],
   );

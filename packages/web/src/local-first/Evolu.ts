@@ -1,6 +1,6 @@
 import { createLocalAuth, createRandomBytes } from "@evolu/common";
+import type { EvoluDeps, EvoluWorkerInput } from "@evolu/common/local-first";
 import { createEvoluDeps as createCommonEvoluDeps } from "@evolu/common/local-first";
-import type { EvoluDeps, SharedWorkerInput } from "@evolu/common/local-first";
 import { reloadApp } from "../Platform.js";
 import { createMessageChannel, createSharedWorker } from "../Worker.js";
 import { createWebAuthnStore } from "./LocalAuth.js";
@@ -13,7 +13,7 @@ export const localAuth = createLocalAuth({
 
 /** Creates Evolu dependencies for the web platform. */
 export const createEvoluDeps = (): EvoluDeps => {
-  const sharedWorker = createSharedWorker<SharedWorkerInput>(
+  const evoluWorker = createSharedWorker<EvoluWorkerInput>(
     new SharedWorker(new URL("SharedWorker.worker.js", import.meta.url), {
       type: "module",
     }),
@@ -22,6 +22,6 @@ export const createEvoluDeps = (): EvoluDeps => {
   return createCommonEvoluDeps({
     createMessageChannel,
     reloadApp,
-    sharedWorker,
+    evoluWorker,
   });
 };

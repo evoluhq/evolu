@@ -47,8 +47,8 @@ export const emptySet: ReadonlySet<never> = new Set();
 /**
  * A readonly set with at least one element (branded for type safety).
  *
- * Use {@link isNonEmptySet} to narrow from {@link ReadonlySet}, or use functions
- * like {@link addToSet} that return branded non-empty sets.
+ * Use {@link isNonEmptySet} to narrow from `ReadonlySet`, or use functions like
+ * {@link addToSet} that return branded non-empty sets.
  *
  * There is no mutable `NonEmptySet` type because mutable sets can be emptied
  * after narrowing (via `clear()` or `delete()`), making compile-time guarantees

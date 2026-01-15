@@ -3,23 +3,24 @@
  *
  * @module
  */
+
 import { exhaustiveCheck } from "../Function.js";
 import type {
   SharedWorker as CommonSharedWorker,
   CreateMessagePortDep,
+  SharedWorkerScope as EvoluWorkerScope,
   MessagePort,
   NativeMessagePort,
-  SharedWorkerScope,
 } from "../Worker.js";
 import type { EvoluError } from "./Error.js";
 
-export type SharedWorker = CommonSharedWorker<SharedWorkerInput>;
+export type EvoluWorker = CommonSharedWorker<EvoluWorkerInput>;
 
-export interface SharedWorkerDep {
-  readonly sharedWorker: SharedWorker;
+export interface EvoluWorkerDep {
+  readonly evoluWorker: EvoluWorker;
 }
 
-export type SharedWorkerInput =
+export type EvoluWorkerInput =
   | {
       readonly type: "initErrorStore";
       readonly port: NativeMessagePort;
@@ -29,9 +30,9 @@ export type SharedWorkerInput =
       readonly port: NativeMessagePort;
     };
 
-export const runSharedWorkerScope =
+export const runEvoluWorkerScope =
   (deps: CreateMessagePortDep) =>
-  (self: SharedWorkerScope<SharedWorkerInput>): void => {
+  (self: EvoluWorkerScope<EvoluWorkerInput>): void => {
     const errorStorePorts = new Set<MessagePort<EvoluError>>();
 
     self.onError = (error) => {

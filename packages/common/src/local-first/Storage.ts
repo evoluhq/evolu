@@ -3,19 +3,21 @@
  *
  * @module
  */
+
 import { sha256 } from "@noble/hashes/sha2.js";
-import { firstInArray, isNonEmptyArray } from "../Array.js";
 import type { NonEmptyReadonlyArray } from "../Array.js";
+import { firstInArray, isNonEmptyArray } from "../Array.js";
 import { assert } from "../Assert.js";
 import type { Brand } from "../Brand.js";
 import { concatBytes } from "../Buffer.js";
 import { decrement } from "../Number.js";
-import type { RandomDep } from "../Random.js";
-import { err, ok } from "../Result.js";
-import type { Result } from "../Result.js";
-import { sql, SqliteValue } from "../Sqlite.js";
-import type { SqliteDep, SqliteError } from "../Sqlite.js";
 import type { MaybeAsync } from "../OldTask.js";
+import type { RandomDep } from "../Random.js";
+import type { Result } from "../Result.js";
+import { err, ok } from "../Result.js";
+import type { SqliteDep, SqliteError } from "../Sqlite.js";
+import { sql, SqliteValue } from "../Sqlite.js";
+import type { Int64String, TypeError } from "../Type.js";
 import {
   Boolean,
   brand,
@@ -27,9 +29,8 @@ import {
   record,
   String,
 } from "../Type.js";
-import type { Int64String, TypeError } from "../Type.js";
-import { OwnerId, OwnerWriteKey } from "./Owner.js";
 import type { Owner, OwnerError, OwnerIdBytes } from "./Owner.js";
+import { OwnerId, OwnerWriteKey } from "./Owner.js";
 import { systemColumnsWithId } from "./Schema.js";
 import { orderTimestampBytes, Timestamp, TimestampBytes } from "./Timestamp.js";
 
@@ -70,12 +71,12 @@ export interface StorageConfig {
 }
 
 /**
- * Evolu Storage
+ * Evolu Storage.
  *
- * Evolu protocol using Storage is agnostic to storage implementation
- * details—any storage can be plugged in, as long as it implements this
- * interface. Implementations must handle their own errors; return values only
- * indicate overall success or failure.
+ * Evolu Protocol is agnostic to storage implementation—any storage can be
+ * plugged in, as long as it implements this interface. Implementations must
+ * handle their own errors; return values only indicate overall success or
+ * failure.
  *
  * The Storage API is synchronous because SQLite's synchronous API is the
  * fastest way to use SQLite. Synchronous bindings (like better-sqlite3) call
@@ -181,7 +182,7 @@ export interface StorageQuotaError extends OwnerError {
 
 /**
  * A cryptographic hash used for efficiently comparing collections of
- * {@link TimestampBytes}s.
+ * {@link TimestampBytes}es.
  *
  * It consists of the first {@link fingerprintSize} bytes of the SHA-256 hash of
  * one or more timestamps.

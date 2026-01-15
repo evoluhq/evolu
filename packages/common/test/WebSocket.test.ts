@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import WebSocket, { WebSocketServer } from "ws";
 import { err, ok } from "../src/Result.js";
 import { wait } from "../src/OldTask.js";
-import type { AbortError, RetryError } from "../src/OldTask.js";
+import type { AbortErrorOld, RetryErrorOld } from "../src/OldTask.js";
 import { PositiveInt } from "../src/Type.js";
 import { createWebSocket } from "../src/WebSocket.js";
 import type {
@@ -374,7 +374,7 @@ test("respects maxRetries limit", async () => {
   const onRetry = vi.fn();
   const onError = vi.fn();
   const { promise, resolve } =
-    Promise.withResolvers<RetryError<WebSocketRetryError>>();
+    Promise.withResolvers<RetryErrorOld<WebSocketRetryError>>();
 
   const socket = createWebSocket(INVALID_URL, {
     retryOptions: {
@@ -456,7 +456,7 @@ test("retries only on specific error types", async () => {
 
   // Create a predicate that only retries WebSocketConnectionCloseError but not WebSocketConnectError
   const retryablePredicate = vi.fn(
-    (error: WebSocketRetryError | AbortError) => {
+    (error: WebSocketRetryError | AbortErrorOld) => {
       // Only retry on connection close errors, not on connect errors
       return error.type === "WebSocketConnectionCloseError";
     },
@@ -548,7 +548,7 @@ test("should not retry on invalid payload data close code", async () => {
   const { promise: serverSocketPromise, resolve: serverSocketResolve } =
     Promise.withResolvers<WebSocket>();
   const { promise: errorPromise, resolve: errorResolve } =
-    Promise.withResolvers<RetryError<WebSocketRetryError>>();
+    Promise.withResolvers<RetryErrorOld<WebSocketRetryError>>();
 
   // Track the server-side socket
   wsServer.once("connection", (socket) => {
@@ -557,7 +557,7 @@ test("should not retry on invalid payload data close code", async () => {
 
   // Create a retryable predicate that doesn't retry on invalid payload data
   const retryablePredicate = vi.fn(
-    (error: WebSocketRetryError | AbortError) => {
+    (error: WebSocketRetryError | AbortErrorOld) => {
       if (error.type === "WebSocketConnectionCloseError") {
         // Don't retry on Invalid Payload Data (1007)
         return error.event.code !== 1007;

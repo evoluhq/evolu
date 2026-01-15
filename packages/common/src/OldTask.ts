@@ -3,6 +3,7 @@
  *
  * @module
  */
+
 import { isNonEmptyArray, shiftFromArray } from "./Array.js";
 import type { Result } from "./Result.js";
 import { err, ok } from "./Result.js";
@@ -22,9 +23,9 @@ import { PositiveInt } from "./Type.js";
  * Tasks support optional cancellation via
  * {@link https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal | AbortSignal}.
  * When a Task is called without a signal, it cannot be cancelled and
- * {@link AbortError} will never be returned. When called with a signal, the Task
- * can be cancelled and AbortError is added to the error union with precise type
- * safety.
+ * {@link AbortErrorOld} will never be returned. When called with a signal, the
+ * Task can be cancelled and AbortError is added to the error union with precise
+ * type safety.
  *
  * When composing Tasks, we typically have context and want to abort ASAP by
  * passing it through. However, there are valid cases where we don't want to
@@ -35,8 +36,8 @@ import { PositiveInt } from "./Type.js";
  *
  * - {@link toTask} - Convert async function to Task
  * - {@link wait} - Delay execution for a specified {@link Duration}
- * - {@link timeout} - Add timeout to any Task
- * - {@link retry} - Retry failed Tasks with configurable backoff
+ * - {@link timeoutOld} - Add timeout to any Task
+ * - {@link retryOld} - Retry failed Tasks with configurable backoff
  *
  * ### Example
  *
@@ -151,13 +152,13 @@ import { PositiveInt } from "./Type.js";
  * dependencies and `TaskContext` for execution context like cancellation. Usage
  * follows the pattern: deps → arguments → execution context.
  */
-export interface Task<T, E> {
+export interface TaskOld<T, E> {
   /**
    * Invoke the Task.
    *
    * Provide a context with an
    * {@link https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal | AbortSignal}
-   * to enable cancellation. When called without a signal, {@link AbortError}
+   * to enable cancellation. When called without a signal, {@link AbortErrorOld}
    * cannot occur and the error type narrows accordingly.
    *
    * ### Example
@@ -197,12 +198,12 @@ export interface Task<T, E> {
   <TContext extends TaskContext | undefined = undefined>(
     context?: TContext,
   ): Promise<
-    Result<T, TContext extends { signal: AbortSignal } ? E | AbortError : E>
+    Result<T, TContext extends { signal: AbortSignal } ? E | AbortErrorOld : E>
   >;
 }
 
 /**
- * Context passed to {@link Task}s for cancellation.
+ * Context passed to {@link TaskOld}s for cancellation.
  *
  * You can pass an
  * {@link https://developer.mozilla.org/en-US/docs/Web/API/AbortController | AbortController}
@@ -217,16 +218,16 @@ export interface TaskContext {
 }
 
 /**
- * Error returned when a {@link Task} is cancelled via
+ * Error returned when a {@link TaskOld} is cancelled via
  * {@link https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal | AbortSignal}.
  */
-export interface AbortError {
+export interface AbortErrorOld {
   readonly type: "AbortError";
   readonly reason?: unknown;
 }
 
 /** Narrower check to detect AbortError objects at runtime. */
-const isAbortError = (error: unknown): error is AbortError =>
+const isAbortError = (error: unknown): error is AbortErrorOld =>
   typeof error === "object" &&
   error !== null &&
   (error as { type?: unknown }).type === "AbortError";
@@ -247,7 +248,7 @@ const combineSignal = (
     : internalSignal;
 
 /**
- * Converts async function returning {@link Result} to a {@link Task}.
+ * Converts async function returning {@link Result} to a {@link TaskOld}.
  *
  * ### Example
  *
@@ -280,7 +281,7 @@ const combineSignal = (
  */
 export const toTask = <T, E>(
   fn: (context?: TaskContext) => Promise<Result<T, E>>,
-): Task<T, E> =>
+): TaskOld<T, E> =>
   // Note: Not using async to avoid Promise wrapper overhead in fast path
   ((context) => {
     const signal = context?.signal;
@@ -299,7 +300,7 @@ export const toTask = <T, E>(
 
     // Use Promise.withResolvers for clean abort handling and cleanup
     const { promise: abortPromise, resolve: resolveAbort } =
-      Promise.withResolvers<Result<never, AbortError>>();
+      Promise.withResolvers<Result<never, AbortErrorOld>>();
 
     const handleAbort = () => {
       resolveAbort(
@@ -318,10 +319,10 @@ export const toTask = <T, E>(
         return result;
       }),
     ]);
-  }) as Task<T, E>;
+  }) as TaskOld<T, E>;
 
 /**
- * Creates a {@link Task} that waits for the specified duration.
+ * Creates a {@link TaskOld} that waits for the specified duration.
  *
  * ### Example
  *
@@ -335,7 +336,7 @@ export const toTask = <T, E>(
  * result2 satisfies Result<void, AbortError>;
  * ```
  */
-export const wait = (duration: Duration): Task<void, never> =>
+export const wait = (duration: Duration): TaskOld<void, never> =>
   toTask(
     (context) =>
       new Promise<Result<void>>((resolve) => {
@@ -355,14 +356,14 @@ export const wait = (duration: Duration): Task<void, never> =>
       }),
   );
 
-/** Error returned when {@link timeout} exceeds the specified duration. */
-export interface TimeoutError {
+/** Error returned when {@link timeoutOld} exceeds the specified duration. */
+export interface TimeoutErrorOld {
   readonly type: "TimeoutError";
   readonly timeoutMs: number;
 }
 
 /**
- * Adds timeout behavior to a {@link Task}.
+ * Adds timeout behavior to a {@link TaskOld}.
  *
  * ### Example
  *
@@ -400,10 +401,10 @@ export interface TimeoutError {
  * >;
  * ```
  */
-export const timeout = <T, E>(
+export const timeoutOld = <T, E>(
   duration: Duration,
-  task: Task<T, E>,
-): Task<T, E | TimeoutError> =>
+  task: TaskOld<T, E>,
+): TaskOld<T, E | TimeoutErrorOld> =>
   toTask(async (context) => {
     const timeoutMs = durationToMillis(duration);
     const timeoutSignal = AbortSignal.timeout(timeoutMs);
@@ -416,10 +417,10 @@ export const timeout = <T, E>(
       return err({ type: "TimeoutError", timeoutMs });
     }
 
-    return result as Result<T, E | TimeoutError>;
+    return result as Result<T, E | TimeoutErrorOld>;
   });
 
-/** Options for configuring {@link retry} behavior. */
+/** Options for configuring {@link retryOld} behavior. */
 export interface RetryOptions<E> {
   /** Number of retry attempts after the initial failure. */
   readonly retries: PositiveInt;
@@ -444,21 +445,21 @@ export interface RetryOptions<E> {
    * Predicate to determine if error should trigger retry. Receives AbortError
    * too.
    */
-  readonly retryable?: (error: E | AbortError) => boolean;
+  readonly retryable?: (error: E | AbortErrorOld) => boolean;
 
   /** Callback invoked before each retry attempt. */
   readonly onRetry?: (error: E, attempt: number, delay: number) => void;
 }
 
-/** Error returned when {@link retry} exhausts all retry attempts. */
-export interface RetryError<E> {
+/** Error returned when {@link retryOld} exhausts all retry attempts. */
+export interface RetryErrorOld<E> {
   readonly type: "RetryError";
   readonly cause: E;
   readonly attempts: number;
 }
 
 /**
- * Adds retry logic with exponential backoff and jitter to a {@link Task}.
+ * Adds retry logic with exponential backoff and jitter to a {@link TaskOld}.
  *
  * ### Example
  *
@@ -497,19 +498,19 @@ export interface RetryError<E> {
  * >;
  * ```
  */
-export const retry = <T, E>(
+export const retryOld = <T, E>(
   {
     retries,
     initialDelay = "1s",
     maxDelay = "30s",
     factor = 2,
     jitter = 0.5,
-    retryable = (error: E | AbortError) => !isAbortError(error),
+    retryable = (error: E | AbortErrorOld) => !isAbortError(error),
     onRetry,
   }: RetryOptions<E>,
-  task: Task<T, E>,
-): Task<T, E | RetryError<E>> =>
-  toTask(async (context): Promise<Result<T, E | RetryError<E>>> => {
+  task: TaskOld<T, E>,
+): TaskOld<T, E | RetryErrorOld<E>> =>
+  toTask(async (context): Promise<Result<T, E | RetryErrorOld<E>>> => {
     const initialDelayMs = durationToMillis(initialDelay);
     const maxDelayMs = durationToMillis(maxDelay);
     const maxRetries = PositiveInt.orThrow(retries);
@@ -526,7 +527,7 @@ export const retry = <T, E>(
 
       // Never retry on AbortError; propagate it directly
       if (isAbortError(result.error)) {
-        return err(result.error) as Result<T, E | RetryError<E>>;
+        return err(result.error) as Result<T, E | RetryErrorOld<E>>;
       }
 
       attempt += 1;
@@ -568,7 +569,7 @@ export const retry = <T, E>(
  * For mutual exclusion (limiting to exactly one Task), consider using
  * {@link Mutex} instead.
  *
- * @see {@link createSemaphore} to create a semaphore instance.
+ * @see {@link createSemaphoreOld} to create a semaphore instance.
  */
 export interface Semaphore extends Disposable {
   /**
@@ -579,7 +580,9 @@ export interface Semaphore extends Disposable {
    * permit or during execution, the Task is cancelled and permits are properly
    * released.
    */
-  readonly withPermit: <T, E>(task: Task<T, E>) => Task<T, E | AbortError>;
+  readonly withPermit: <T, E>(
+    task: TaskOld<T, E>,
+  ) => TaskOld<T, E | AbortErrorOld>;
 }
 
 /**
@@ -591,7 +594,7 @@ export interface Semaphore extends Disposable {
  * complete.
  *
  * For mutual exclusion (exactly one Task at a time), consider using
- * {@link createMutex} instead.
+ * {@link createMutexOld} instead.
  *
  * ### Example
  *
@@ -640,7 +643,7 @@ export interface Semaphore extends Disposable {
  * `);
  * ```
  */
-export const createSemaphore = (maxConcurrent: PositiveInt): Semaphore => {
+export const createSemaphoreOld = (maxConcurrent: PositiveInt): Semaphore => {
   let isDisposed = false;
   let availablePermits = maxConcurrent;
   const waitingQueue: Array<() => void> = [];
@@ -666,8 +669,8 @@ export const createSemaphore = (maxConcurrent: PositiveInt): Semaphore => {
   };
 
   return {
-    withPermit: <T, E>(task: Task<T, E>): Task<T, E | AbortError> =>
-      toTask(async (context): Promise<Result<T, E | AbortError>> => {
+    withPermit: <T, E>(task: TaskOld<T, E>): TaskOld<T, E | AbortErrorOld> =>
+      toTask(async (context): Promise<Result<T, E | AbortErrorOld>> => {
         await acquire();
 
         // Check if semaphore was disposed while waiting
@@ -707,7 +710,7 @@ export const createSemaphore = (maxConcurrent: PositiveInt): Semaphore => {
  *
  * This is a specialized version of a {@link Semaphore} with a permit count of 1.
  *
- * @see {@link createMutex} to create a mutex instance.
+ * @see {@link createMutexOld} to create a mutex instance.
  */
 export interface Mutex extends Disposable {
   /**
@@ -716,13 +719,15 @@ export interface Mutex extends Disposable {
    * Only one Task can hold the lock at a time. Other Tasks will wait until the
    * lock is released. Supports cancellation via AbortSignal.
    */
-  readonly withLock: <T, E>(task: Task<T, E>) => Task<T, E | AbortError>;
+  readonly withLock: <T, E>(
+    task: TaskOld<T, E>,
+  ) => TaskOld<T, E | AbortErrorOld>;
 }
 
 /**
  * Creates a new mutex for ensuring mutual exclusion.
  *
- * A mutex is a {@link createSemaphore} with exactly one permit, ensuring that
+ * A mutex is a {@link createSemaphoreOld} with exactly one permit, ensuring that
  * only one Task can execute at a time.
  *
  * ### Example
@@ -746,8 +751,8 @@ export interface Mutex extends Disposable {
  * ]);
  * ```
  */
-export const createMutex = (): Mutex => {
-  const mutex = createSemaphore(PositiveInt.orThrow(1));
+export const createMutexOld = (): Mutex => {
+  const mutex = createSemaphoreOld(PositiveInt.orThrow(1));
 
   return {
     withLock: mutex.withPermit,
@@ -774,7 +779,7 @@ export const createMutex = (): Mutex => {
  * void requestIdleTask(processDataTask)();
  * ```
  */
-export const requestIdleTask = <T, E>(task: Task<T, E>): Task<T, E> =>
+export const requestIdleTask = <T, E>(task: TaskOld<T, E>): TaskOld<T, E> =>
   toTask(
     async (context?: TaskContext) =>
       new Promise<Result<T, E>>((resolve) => {

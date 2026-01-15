@@ -3,6 +3,7 @@
  *
  * @module
  */
+
 import {
   filterArray,
   firstInArray,
@@ -13,13 +14,13 @@ import type { ConsoleConfig, ConsoleDep } from "../Console.js";
 import type { TimingSafeEqualDep } from "../Crypto.js";
 import type { Lazy } from "../Function.js";
 import { createInstances } from "../Instances.js";
-import { err, ok } from "../Result.js";
-import type { Result } from "../Result.js";
-import { sql } from "../Sqlite.js";
-import type { SqliteDep, SqliteError } from "../Sqlite.js";
-import { createMutex, isAsync } from "../OldTask.js";
 import type { MaybeAsync, Mutex } from "../OldTask.js";
-import { SimpleName, PositiveInt } from "../Type.js";
+import { createMutexOld, isAsync } from "../OldTask.js";
+import type { Result } from "../Result.js";
+import { err, ok } from "../Result.js";
+import type { SqliteDep, SqliteError } from "../Sqlite.js";
+import { sql } from "../Sqlite.js";
+import { PositiveInt, SimpleName } from "../Type.js";
 import {
   OwnerId,
   ownerIdBytesToOwnerId,
@@ -27,12 +28,6 @@ import {
   OwnerWriteKey,
 } from "./Owner.js";
 import type { ProtocolInvalidDataError } from "./Protocol.js";
-import {
-  createBaseSqliteStorage,
-  getOwnerUsage,
-  getTimestampInsertStrategy,
-  updateOwnerUsage,
-} from "./Storage.js";
 import type {
   CreateBaseSqliteStorageConfig,
   EncryptedDbChange,
@@ -40,6 +35,12 @@ import type {
   Storage,
   StorageConfig,
   StorageQuotaError,
+} from "./Storage.js";
+import {
+  createBaseSqliteStorage,
+  getOwnerUsage,
+  getTimestampInsertStrategy,
+  updateOwnerUsage,
 } from "./Storage.js";
 import { timestampToTimestampBytes } from "./Timestamp.js";
 
@@ -189,7 +190,7 @@ export const createRelaySqliteStorage =
         }));
 
         const result = await ownerMutexes
-          .ensure(ownerId, createMutex)
+          .ensure(ownerId, createMutexOld)
           .withLock<void, SqliteError | StorageQuotaError>(async () => {
             const existingTimestampsResult =
               sqliteStorageBase.getExistingTimestamps(

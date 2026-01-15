@@ -3,11 +3,12 @@
  *
  * @module
  */
+
 import { constVoid } from "./Function.js";
-import { err, ok } from "./Result.js";
+import type { RetryErrorOld, RetryOptions } from "./OldTask.js";
+import { retryOld } from "./OldTask.js";
 import type { Result } from "./Result.js";
-import { retry } from "./OldTask.js";
-import type { RetryError, RetryOptions } from "./OldTask.js";
+import { err, ok } from "./Result.js";
 import { maxPositiveInt } from "./Type.js";
 
 /** WebSocket with auto-reconnect and offline support. */
@@ -84,7 +85,7 @@ export interface WebSocketOptions {
 export type WebSocketError =
   | WebSocketConnectError
   | WebSocketConnectionError
-  | RetryError<WebSocketRetryError>;
+  | RetryErrorOld<WebSocketRetryError>;
 
 /**
  * An error that occurs when a connection cannot be established due to a network
@@ -197,7 +198,7 @@ export const createWebSocket: CreateWebSocket = (
    * - Is rejected when a connection is closed.
    * - Is resolved when WebSocket is disposed().
    */
-  void retry(
+  void retryOld(
     {
       ...defaultRetryOptions,
       ...retryOptions,
