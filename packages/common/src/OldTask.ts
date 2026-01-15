@@ -9,7 +9,7 @@ import type { Result } from "./Result.js";
 import { err, ok } from "./Result.js";
 import type { Duration } from "./Time.js";
 import { durationToMillis, Millis } from "./Time.js";
-import { PositiveInt } from "./Type.js";
+import { minPositiveInt, PositiveInt } from "./Type.js";
 
 /**
  * `Task` is a function that creates and returns an optionally cancellable
@@ -755,7 +755,7 @@ export interface MutexOld extends Disposable {
  * ```
  */
 export const createMutexOld = (): MutexOld => {
-  const mutex = createSemaphoreOld(PositiveInt.orThrow(1));
+  const mutex = createSemaphoreOld(minPositiveInt);
 
   return {
     withLock: mutex.withPermit,

@@ -12,6 +12,7 @@ import { err, ok } from "./Result.js";
 import {
   brand,
   lessThanOrEqualTo,
+  minPositiveInt,
   NonNegativeInt,
   PositiveInt,
 } from "./Type.js";
@@ -110,7 +111,7 @@ export type FibonacciIndex = typeof FibonacciIndex.Type;
 
 /** Returns the Fibonacci number at the given index (1-indexed: 1,1,2,3,5,8,...). */
 export const fibonacciAt = (index: FibonacciIndex): PositiveInt => {
-  if (index <= 2) return PositiveInt.orThrow(1);
+  if (index <= 2) return minPositiveInt;
   let a = 1;
   let b = 1;
   for (let i = 3; i <= index; i++) [a, b] = [b, a + b];

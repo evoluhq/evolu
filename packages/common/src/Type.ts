@@ -2015,7 +2015,10 @@ export type NonNegativeInt = typeof NonNegativeInt.Type;
 export const PositiveInt = positive(NonNegativeInt);
 export type PositiveInt = typeof PositiveInt.Type;
 
-/** Maximum safe positive integer value for practically infinite operations. */
+/** Minimum {#link PositiveInt} value (1). */
+export const minPositiveInt = PositiveInt.orThrow(1);
+
+/** Maximum safe {#link PositiveInt} value for practically infinite operations. */
 export const maxPositiveInt = PositiveInt.orThrow(
   globalThis.Number.MAX_SAFE_INTEGER,
 );

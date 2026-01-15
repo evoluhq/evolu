@@ -4,7 +4,7 @@
  * @module
  */
 
-import { fibonacciAt, FibonacciIndex } from "./Number.js";
+import { fibonacciAt, FibonacciIndex, increment } from "./Number.js";
 import type { RandomDep } from "./Random.js";
 import { done, err, type NextResult, ok } from "./Result.js";
 import type { repeat, retry } from "./Task.js";
@@ -15,6 +15,7 @@ import {
   minMillis,
   type TimeDep,
 } from "./Time.js";
+import { minPositiveInt, PositiveInt } from "./Type.js";
 import type { Predicate } from "./Types.js";
 
 /**
@@ -70,8 +71,8 @@ export type ScheduleDeps = TimeDep & RandomDep;
  * The schedule computes this internally from deps.time.now().
  */
 interface ScheduleStepMetrics {
-  /** Current attempt number (1-indexed). */
-  readonly attempt: number;
+  /** Current attempt number. */
+  readonly attempt: PositiveInt;
   /** Milliseconds elapsed since the schedule started. */
   readonly elapsed: Millis;
   /** Milliseconds since the previous step. On first step, this is 0. */
@@ -86,19 +87,20 @@ interface ScheduleStepMetrics {
 const createScheduleStepMetrics = (
   deps: TimeDep,
 ): (() => ScheduleStepMetrics) => {
-  let attempt = 0;
+  let attempt = minPositiveInt;
   let start: Millis | null = null;
   let previous: Millis | null = null;
 
   return () => {
     const now = deps.time.now();
-    attempt++;
+    const currentAttempt = attempt;
+    attempt = increment(attempt) as PositiveInt;
     start ??= now;
     const elapsed = (now - start) as Millis;
     const elapsedSincePrevious =
       previous === null ? (0 as Millis) : ((now - previous) as Millis);
     previous = now;
-    return { attempt, elapsed, elapsedSincePrevious };
+    return { attempt: currentAttempt, elapsed, elapsedSincePrevious };
   };
 };
 
@@ -519,8 +521,7 @@ export const always = <A>(value: A): Schedule<A> =>
 export const unfoldSchedule = <State>(
   initial: State,
   next: (state: State) => State,
-): Schedule<State> => {
-  return () => {
+): Schedule<State> => () => {
     let state = initial;
     return () => {
       const current = state;
@@ -528,7 +529,6 @@ export const unfoldSchedule = <State>(
       return ok([current, minMillis]);
     };
   };
-};
 
 /**
  * Limits a schedule to a maximum number of attempts.
@@ -1232,8 +1232,7 @@ export const collectUntilScheduleOutput =
  */
 export const sequenceSchedules = <Output, Input>(
   ...schedules: ReadonlyArray<Schedule<Output, Input>>
-): Schedule<Output, Input> => {
-  return (deps) => {
+): Schedule<Output, Input> => (deps) => {
     let index = 0;
     type Step =
       | ((input: Input) => NextResult<readonly [Output, Millis]>)
@@ -1251,7 +1250,6 @@ export const sequenceSchedules = <Output, Input>(
       return err(done());
     };
   };
-};
 
 /**
  * Combines two schedules with AND semantics.
@@ -1356,8 +1354,7 @@ export const unionSchedules =
 export const whenInput = <Input, Output>(
   predicate: Predicate<Input>,
   altSchedule: Schedule<Output, Input>,
-) => {
-  return (schedule: Schedule<Output, Input>): Schedule<Output, Input> =>
+) => (schedule: Schedule<Output, Input>): Schedule<Output, Input> =>
     (deps) => {
       const normalStep = schedule(deps);
       const altStep = altSchedule(deps);
@@ -1366,7 +1363,6 @@ export const whenInput = <Input, Output>(
         return normalStep(input);
       };
     };
-};
 
 /**
  * Executes a side effect for every output without altering the schedule.

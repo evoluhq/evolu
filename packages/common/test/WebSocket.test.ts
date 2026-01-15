@@ -3,7 +3,7 @@ import WebSocket, { WebSocketServer } from "ws";
 import { err, ok } from "../src/Result.js";
 import { wait } from "../src/OldTask.js";
 import type { AbortErrorOld, RetryErrorOld } from "../src/OldTask.js";
-import { PositiveInt } from "../src/Type.js";
+import { minPositiveInt, PositiveInt } from "../src/Type.js";
 import { createWebSocket } from "../src/WebSocket.js";
 import type {
   WebSocketError,
@@ -176,7 +176,7 @@ test("calls onRetry during reconnection attempts", async () => {
   });
 
   const socket = createWebSocket(INVALID_URL, {
-    retryOptions: { retries: PositiveInt.orThrow(1), onRetry },
+    retryOptions: { retries: minPositiveInt, onRetry },
   });
 
   const error = await promise;
@@ -419,7 +419,7 @@ test("aborts connection attempts when disposed", async () => {
 
   const socket = createWebSocket(INVALID_URL, {
     retryOptions: {
-      retries: PositiveInt.orThrow(1),
+      retries: minPositiveInt,
       onRetry: (error) => {
         onRetry(error);
         retryCallCount++;
@@ -456,15 +456,15 @@ test("retries only on specific error types", async () => {
 
   // Create a predicate that only retries WebSocketConnectionCloseError but not WebSocketConnectError
   const retryablePredicate = vi.fn(
-    (error: WebSocketRetryError | AbortErrorOld) => {
+    (error: WebSocketRetryError | AbortErrorOld) => 
       // Only retry on connection close errors, not on connect errors
-      return error.type === "WebSocketConnectionCloseError";
-    },
+       error.type === "WebSocketConnectionCloseError"
+    ,
   );
 
   const socket = createWebSocket(INVALID_URL, {
     retryOptions: {
-      retries: PositiveInt.orThrow(1),
+      retries: minPositiveInt,
       onRetry: (error) => {
         onRetry(error);
       },
@@ -573,7 +573,7 @@ test("should not retry on invalid payload data close code", async () => {
       openResolve(undefined);
     },
     retryOptions: {
-      retries: PositiveInt.orThrow(1),
+      retries: minPositiveInt,
       retryable: retryablePredicate,
       onRetry,
     },
