@@ -14,7 +14,7 @@ export const localAuth = createLocalAuth({
 /** Creates Evolu dependencies for the web platform. */
 export const createEvoluDeps = (): EvoluDeps => {
   const evoluWorker = createSharedWorker<EvoluWorkerInput>(
-    new SharedWorker(new URL("SharedWorker.worker.js", import.meta.url), {
+    new SharedWorker(new URL("Worker.worker.js", import.meta.url), {
       type: "module",
     }),
   );
