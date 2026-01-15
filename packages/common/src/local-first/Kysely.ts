@@ -3,22 +3,23 @@
  *
  * @module
  */
-import { sql } from "kysely";
-import {
-  AliasNode,
-  ColumnNode,
-  ExpressionWrapper,
-  IdentifierNode,
-  ReferenceNode,
-  TableNode,
-  ValueNode,
-} from "kysely";
+
 import type {
   AliasableExpression,
   Expression,
   RawBuilder,
   SelectQueryNode,
   Simplify,
+} from "kysely";
+import {
+  AliasNode,
+  ColumnNode,
+  ExpressionWrapper,
+  IdentifierNode,
+  ReferenceNode,
+  sql,
+  TableNode,
+  ValueNode,
 } from "kysely";
 import { kyselyJsonIdentifier } from "./Query.js";
 
@@ -216,7 +217,7 @@ export function getJsonObjectArgs(
   table: string,
 ): Array<Expression<unknown> | string> {
   const args: Array<Expression<unknown> | string> = [];
-  
+
   for (const { selection: s } of node.selections ?? []) {
     if (ReferenceNode.is(s) && ColumnNode.is(s.column)) {
       args.push(
