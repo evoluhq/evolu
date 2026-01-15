@@ -691,9 +691,8 @@ export const createProtocolMessageBuffer = (
       assert(isWithinSizeLimits(), "the message is too big");
     },
 
-    canSplitRange: () => {
-      return getRangesSize() + safeMargins.splitRange <= rangesMaxSize;
-    },
+    canSplitRange: () =>
+      getRangesSize() + safeMargins.splitRange <= rangesMaxSize,
 
     canAddTimestampsRangeAndMessage: (timestamps, message) => {
       const rangesNewSize =

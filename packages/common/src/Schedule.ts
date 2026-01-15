@@ -518,10 +518,9 @@ export const always = <A>(value: A): Schedule<A> =>
  *
  * @category Constructors
  */
-export const unfoldSchedule = <State>(
-  initial: State,
-  next: (state: State) => State,
-): Schedule<State> => () => {
+export const unfoldSchedule =
+  <State>(initial: State, next: (state: State) => State): Schedule<State> =>
+  () => {
     let state = initial;
     return () => {
       const current = state;
@@ -1230,9 +1229,11 @@ export const collectUntilScheduleOutput =
  *
  * @category Composition
  */
-export const sequenceSchedules = <Output, Input>(
-  ...schedules: ReadonlyArray<Schedule<Output, Input>>
-): Schedule<Output, Input> => (deps) => {
+export const sequenceSchedules =
+  <Output, Input>(
+    ...schedules: ReadonlyArray<Schedule<Output, Input>>
+  ): Schedule<Output, Input> =>
+  (deps) => {
     let index = 0;
     type Step =
       | ((input: Input) => NextResult<readonly [Output, Millis]>)
@@ -1351,18 +1352,20 @@ export const unionSchedules =
  *
  * @category Composition
  */
-export const whenInput = <Input, Output>(
-  predicate: Predicate<Input>,
-  altSchedule: Schedule<Output, Input>,
-) => (schedule: Schedule<Output, Input>): Schedule<Output, Input> =>
-    (deps) => {
-      const normalStep = schedule(deps);
-      const altStep = altSchedule(deps);
-      return (input) => {
-        if (predicate(input)) return altStep(input);
-        return normalStep(input);
-      };
+export const whenInput =
+  <Input, Output>(
+    predicate: Predicate<Input>,
+    altSchedule: Schedule<Output, Input>,
+  ) =>
+  (schedule: Schedule<Output, Input>): Schedule<Output, Input> =>
+  (deps) => {
+    const normalStep = schedule(deps);
+    const altStep = altSchedule(deps);
+    return (input) => {
+      if (predicate(input)) return altStep(input);
+      return normalStep(input);
     };
+  };
 
 /**
  * Executes a side effect for every output without altering the schedule.

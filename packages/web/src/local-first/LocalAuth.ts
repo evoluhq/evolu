@@ -136,19 +136,16 @@ export const createWebAuthnStore = (deps: RandomBytesDep): SecureStorage => ({
  * Create default metadata for backwards compatibility with items that don't
  * have stored metadata.
  */
-const createMetadata = (isSecure = true): SensitiveInfoItem["metadata"] => {
-  return {
-    backend: "keychain",
-    accessControl: isSecure ? "biometryCurrentSet" : "none",
-    securityLevel: isSecure ? "biometry" : "software",
-    timestamp: Date.now(),
-  };
-};
+const createMetadata = (isSecure = true): SensitiveInfoItem["metadata"] => ({
+  backend: "keychain",
+  accessControl: isSecure ? "biometryCurrentSet" : "none",
+  securityLevel: isSecure ? "biometry" : "software",
+  timestamp: Date.now(),
+});
 
 /** Get storage key for owner ID. (supports namespaces via prefix) */
-const getStore = (prefix = "default"): UseStore => {
-  return createStore(prefix, "evolu-auth");
-};
+const getStore = (prefix = "default"): UseStore =>
+  createStore(prefix, "evolu-auth");
 
 const createCredential =
   (deps: RandomBytesDep) =>
@@ -217,43 +214,41 @@ const createCredentialCreationOptions =
     relyingPartyName?: string,
     userVerification?: UserVerificationRequirement,
     authenticatorAttachment?: AuthenticatorAttachment,
-  ): CredentialCreationOptions => {
-    return {
-      publicKey: {
-        challenge: generateSeed(deps)() as BufferSource,
-        rp: {
-          id: relyingPartyID ?? document.location.hostname,
-          name: relyingPartyName ?? "Evolu",
-        },
-        user: {
-          id: seed as BufferSource,
-          name: username,
-          displayName: username,
-        },
-        pubKeyCredParams: [
-          { type: "public-key", alg: -8 }, // Ed25519
-          { type: "public-key", alg: -7 }, // ES256
-          { type: "public-key", alg: -257 }, // RS256
-        ],
-        attestation: "none",
-        authenticatorSelection: {
-          // - "platform": Uses the platform's built-in authenticator.
-          // - "cross-platform": Uses a device specific authenticator (yubikey, fido2, etc.)
-          authenticatorAttachment: authenticatorAttachment ?? "platform",
-          // - "discouraged": Only User Presence is needed.
-          // - "preferred": User Verification is preferred but not required. Falls back to User Presence.
-          // - "required": User Verification MUST occur (biometrics/PIN). Clients may silently downgrade to User Presence only.
-          userVerification: userVerification ?? "required",
-          // - "discouraged": Server-side credential is preferable, but will accept client-side discoverable credential.
-          // - "preferred": Relying Party strongly prefers client-side discoverable credential but will accept server-side credential.
-          // - "required": Client-side discoverable credential MUST be created, error if it can't be created.
-          residentKey: "required",
-          // Included for backwards compatibility. Deprecated in favor of residentKey (true = "required")
-          requireResidentKey: true,
-        },
+  ): CredentialCreationOptions => ({
+    publicKey: {
+      challenge: generateSeed(deps)() as BufferSource,
+      rp: {
+        id: relyingPartyID ?? document.location.hostname,
+        name: relyingPartyName ?? "Evolu",
       },
-    };
-  };
+      user: {
+        id: seed as BufferSource,
+        name: username,
+        displayName: username,
+      },
+      pubKeyCredParams: [
+        { type: "public-key", alg: -8 }, // Ed25519
+        { type: "public-key", alg: -7 }, // ES256
+        { type: "public-key", alg: -257 }, // RS256
+      ],
+      attestation: "none",
+      authenticatorSelection: {
+        // - "platform": Uses the platform's built-in authenticator.
+        // - "cross-platform": Uses a device specific authenticator (yubikey, fido2, etc.)
+        authenticatorAttachment: authenticatorAttachment ?? "platform",
+        // - "discouraged": Only User Presence is needed.
+        // - "preferred": User Verification is preferred but not required. Falls back to User Presence.
+        // - "required": User Verification MUST occur (biometrics/PIN). Clients may silently downgrade to User Presence only.
+        userVerification: userVerification ?? "required",
+        // - "discouraged": Server-side credential is preferable, but will accept client-side discoverable credential.
+        // - "preferred": Relying Party strongly prefers client-side discoverable credential but will accept server-side credential.
+        // - "required": Client-side discoverable credential MUST be created, error if it can't be created.
+        residentKey: "required",
+        // Included for backwards compatibility. Deprecated in favor of residentKey (true = "required")
+        requireResidentKey: true,
+      },
+    },
+  });
 
 const createCredentialRequestOptions =
   (deps: RandomBytesDep) =>
@@ -261,23 +256,21 @@ const createCredentialRequestOptions =
     credentialId: string,
     relyingPartyID?: string,
     userVerification?: UserVerificationRequirement,
-  ): CredentialRequestOptions => {
-    return {
-      publicKey: {
-        challenge: generateSeed(deps)() as BufferSource,
-        rpId: relyingPartyID ?? document.location.hostname,
-        userVerification: userVerification ?? "preferred",
-        allowCredentials: [
-          {
-            type: "public-key",
-            id: base64UrlToUint8Array(
-              Base64Url.orThrow(credentialId),
-            ) as BufferSource,
-          },
-        ],
-      },
-    };
-  };
+  ): CredentialRequestOptions => ({
+    publicKey: {
+      challenge: generateSeed(deps)() as BufferSource,
+      rpId: relyingPartyID ?? document.location.hostname,
+      userVerification: userVerification ?? "preferred",
+      allowCredentials: [
+        {
+          type: "public-key",
+          id: base64UrlToUint8Array(
+            Base64Url.orThrow(credentialId),
+          ) as BufferSource,
+        },
+      ],
+    },
+  });
 
 const deriveEncryptionKey = (seed: Uint8Array): EncryptionKey => {
   const seed32 = seed.length === 32 ? seed : seed.slice(0, 32);
@@ -321,6 +314,5 @@ const decryptAuthResult = (
   return bytesToUtf8(result.value);
 };
 
-const generateSeed = (deps: RandomBytesDep) => () => {
-  return deps.randomBytes.create(32);
-};
+const generateSeed = (deps: RandomBytesDep) => () =>
+  deps.randomBytes.create(32);

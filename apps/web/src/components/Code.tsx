@@ -181,10 +181,8 @@ function CodePanel({
       code = childrenArray[0];
     } else {
       // Try to extract text content from children
-      const extractTextFromChildren = (
-        nodes: Array<React.ReactNode>,
-      ): string => {
-        return nodes
+      const extractTextFromChildren = (nodes: Array<React.ReactNode>): string =>
+        nodes
           .map((node) => {
             if (typeof node === "string") return node;
             if (typeof node === "number") return String(node);
@@ -201,7 +199,6 @@ function CodePanel({
             return "";
           })
           .join("");
-      };
 
       code = extractTextFromChildren(childrenArray);
     }
@@ -294,13 +291,14 @@ function usePreventLayoutShift() {
   const positionRef = useRef<HTMLElement>(null);
   const rafRef = useRef<number>(undefined);
 
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => () => {
       if (typeof rafRef.current !== "undefined") {
         window.cancelAnimationFrame(rafRef.current);
       }
-    };
-  }, []);
+    },
+    [],
+  );
 
   return {
     positionRef,

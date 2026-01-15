@@ -38,6 +38,7 @@ export default defineConfig(
       },
     },
     rules: {
+      "arrow-body-style": ["error", "as-needed"],
       "no-console": "error",
       "@typescript-eslint/array-type": ["error", { default: "generic" }],
       "@typescript-eslint/no-non-null-assertion": "off",
@@ -63,6 +64,11 @@ export default defineConfig(
           ignoreRestSiblings: true,
         },
       ],
+      "@typescript-eslint/no-confusing-void-expression": [
+        "error",
+        { ignoreArrowShorthand: true },
+      ],
+
       "jsdoc/require-jsdoc": "off",
       "jsdoc/require-param": "off",
       "jsdoc/require-returns": "off",

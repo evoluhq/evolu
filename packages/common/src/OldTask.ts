@@ -421,14 +421,14 @@ export const timeoutOld = <T, E>(
   });
 
 /** Options for configuring {@link retryOld} behavior. */
-export interface RetryOptions<E> {
+export interface RetryOptionsOld<E> {
   /** Number of retry attempts after the initial failure. */
   readonly retries: PositiveInt;
 
   /**
    * Initial delay for exponential backoff (1st retry uses this, 2nd uses
    * this×factor, 3rd uses this×factor², etc.). Actual delays are randomized by
-   * {@link RetryOptions.jitter}.
+   * {@link RetryOptionsOld.jitter}.
    */
   readonly initialDelay?: Duration;
 
@@ -507,7 +507,7 @@ export const retryOld = <T, E>(
     jitter = 0.5,
     retryable = (error: E | AbortErrorOld) => !isAbortError(error),
     onRetry,
-  }: RetryOptions<E>,
+  }: RetryOptionsOld<E>,
   task: TaskOld<T, E>,
 ): TaskOld<T, E | RetryErrorOld<E>> =>
   toTask(async (context): Promise<Result<T, E | RetryErrorOld<E>>> => {

@@ -96,14 +96,12 @@ const createSecureStore = (): SecureStorage => {
  * Create default metadata for backwards compatibility with items that don't
  * have stored metadata.
  */
-const createMetadata = (isSecure = true): SensitiveInfoItem["metadata"] => {
-  return {
-    backend: "keychain",
-    accessControl: isSecure ? "biometryCurrentSet" : "none",
-    securityLevel: isSecure ? "biometry" : "software",
-    timestamp: Date.now(),
-  };
-};
+const createMetadata = (isSecure = true): SensitiveInfoItem["metadata"] => ({
+  backend: "keychain",
+  accessControl: isSecure ? "biometryCurrentSet" : "none",
+  securityLevel: isSecure ? "biometry" : "software",
+  timestamp: Date.now(),
+});
 
 function convertOptions(
   options?: LocalAuthOptions,

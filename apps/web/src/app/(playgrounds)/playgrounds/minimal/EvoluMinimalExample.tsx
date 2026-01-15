@@ -59,30 +59,28 @@ evolu.subscribeError(() => {
   console.error(error);
 });
 
-export const EvoluMinimalExample: FC = () => {
-  return (
-    <div className="min-h-screen px-8 py-8">
-      <div className="mx-auto max-w-md">
-        <div className="mb-2 flex items-center justify-between pb-4">
-          <h1 className="w-full text-center text-xl font-semibold text-gray-900">
-            Minimal Todo App
-          </h1>
-        </div>
+export const EvoluMinimalExample: FC = () => (
+  <div className="min-h-screen px-8 py-8">
+    <div className="mx-auto max-w-md">
+      <div className="mb-2 flex items-center justify-between pb-4">
+        <h1 className="w-full text-center text-xl font-semibold text-gray-900">
+          Minimal Todo App
+        </h1>
+      </div>
 
-        <EvoluProvider value={evolu}>
-          {/*
+      <EvoluProvider value={evolu}>
+        {/*
             Suspense delivers great UX (no loading flickers) and DX (no loading
             states to manage). Highly recommended with Evolu.
           */}
-          <Suspense>
-            <Todos />
-            <OwnerActions />
-          </Suspense>
-        </EvoluProvider>
-      </div>
+        <Suspense>
+          <Todos />
+          <OwnerActions />
+        </Suspense>
+      </EvoluProvider>
     </div>
-  );
-};
+  </div>
+);
 
 // Evolu uses Kysely for type-safe SQL (https://kysely.dev/).
 const todosQuery = evolu.createQuery((db) =>

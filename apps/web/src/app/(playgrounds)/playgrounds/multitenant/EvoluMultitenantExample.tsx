@@ -52,26 +52,24 @@ evolu.subscribeError(() => {
   console.error(error);
 });
 
-export const EvoluMultitenantExample: FC = () => {
-  return (
-    <div className="min-h-screen px-8 py-8">
-      <div className="mx-auto max-w-md">
-        <div className="mb-2 flex items-center justify-between pb-4">
-          <h1 className="w-full text-center text-xl font-semibold text-gray-900">
-            Minimal Todo App
-          </h1>
-        </div>
-
-        <EvoluProvider value={evolu}>
-          <Suspense>
-            <Todos />
-            <OwnerActions />
-          </Suspense>
-        </EvoluProvider>
+export const EvoluMultitenantExample: FC = () => (
+  <div className="min-h-screen px-8 py-8">
+    <div className="mx-auto max-w-md">
+      <div className="mb-2 flex items-center justify-between pb-4">
+        <h1 className="w-full text-center text-xl font-semibold text-gray-900">
+          Minimal Todo App
+        </h1>
       </div>
+
+      <EvoluProvider value={evolu}>
+        <Suspense>
+          <Todos />
+          <OwnerActions />
+        </Suspense>
+      </EvoluProvider>
     </div>
-  );
-};
+  </div>
+);
 
 // Evolu uses Kysely for type-safe SQL (https://kysely.dev/).
 const todosQuery = evolu.createQuery((db) =>

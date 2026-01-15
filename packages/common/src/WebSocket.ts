@@ -5,7 +5,7 @@
  */
 
 import { constVoid } from "./Function.js";
-import type { RetryErrorOld, RetryOptions } from "./OldTask.js";
+import type { RetryErrorOld, RetryOptionsOld } from "./OldTask.js";
 import { retryOld } from "./OldTask.js";
 import type { Result } from "./Result.js";
 import { err, ok } from "./Result.js";
@@ -70,7 +70,7 @@ export interface WebSocketOptions {
   onMessage?: (data: string | ArrayBuffer | Blob) => void;
 
   /** Options for retry behavior. */
-  retryOptions?: Omit<RetryOptions<WebSocketRetryError>, "signal">;
+  retryOptions?: Omit<RetryOptionsOld<WebSocketRetryError>, "signal">;
 
   /**
    * For custom WebSocket implementations.
@@ -164,7 +164,7 @@ export const createWebSocket: CreateWebSocket = (
 
   const reconnectController = new AbortController();
 
-  const defaultRetryOptions: RetryOptions<WebSocketRetryError> = {
+  const defaultRetryOptions: RetryOptionsOld<WebSocketRetryError> = {
     retries: maxPositiveInt, // Practically infinite retries
   };
 

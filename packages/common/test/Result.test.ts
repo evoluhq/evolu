@@ -260,17 +260,13 @@ test.skip("Result wrapping vs unwrapped performance", () => {
     bytes: Uint8Array,
     offset: number,
     size: number,
-  ): Result<Uint8Array, string> => {
-    return ok(bytes.subarray(offset, offset + size));
-  };
+  ): Result<Uint8Array, string> => ok(bytes.subarray(offset, offset + size));
 
   const readUnwrapped = (
     bytes: Uint8Array,
     offset: number,
     size: number,
-  ): Uint8Array => {
-    return bytes.subarray(offset, offset + size);
-  };
+  ): Uint8Array => bytes.subarray(offset, offset + size);
 
   const wrappedStart = performance.now();
   for (let offset = 0, i = 0; i < NUM_ITEMS; i++, offset += AVG_ITEM_SIZE) {

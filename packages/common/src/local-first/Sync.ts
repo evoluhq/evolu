@@ -640,9 +640,8 @@ const createClientStorage =
 type TransportKey = string & Brand<"TransportKey">;
 
 /** Creates a unique identifier for a {@link OwnerTransport}. */
-const createTransportKey = (transport: OwnerTransport): TransportKey => {
-  return `${transport.type}:${transport.url}` as TransportKey;
-};
+const createTransportKey = (transport: OwnerTransport): TransportKey =>
+  `${transport.type}:${transport.url}` as TransportKey;
 
 const dbChangeToColumns = (change: DbChange, now: DateIso) => {
   let values = objectToEntries(change.values);

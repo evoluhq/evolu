@@ -225,12 +225,10 @@ export interface ShardOwner extends Owner {
 }
 
 /** Creates a {@link ShardOwner} from an {@link OwnerSecret}. */
-export const createShardOwner = (secret: OwnerSecret): ShardOwner => {
-  return {
-    ...createOwner(secret),
-    type: "ShardOwner",
-  };
-};
+export const createShardOwner = (secret: OwnerSecret): ShardOwner => ({
+  ...createOwner(secret),
+  type: "ShardOwner",
+});
 
 /**
  * Derives a {@link ShardOwner} from an {@link AppOwner} using the specified path.

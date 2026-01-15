@@ -456,10 +456,9 @@ test("retries only on specific error types", async () => {
 
   // Create a predicate that only retries WebSocketConnectionCloseError but not WebSocketConnectError
   const retryablePredicate = vi.fn(
-    (error: WebSocketRetryError | AbortErrorOld) => 
+    (error: WebSocketRetryError | AbortErrorOld) =>
       // Only retry on connection close errors, not on connect errors
-       error.type === "WebSocketConnectionCloseError"
-    ,
+      error.type === "WebSocketConnectionCloseError",
   );
 
   const socket = createWebSocket(INVALID_URL, {

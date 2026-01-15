@@ -130,19 +130,17 @@ evolu.subscribeError(() => {
   console.error(error);
 });
 
-export const EvoluFullExample: FC = () => {
-  return (
-    <div className="min-h-screen px-8 py-8">
-      <div className="mx-auto max-w-md min-w-sm md:min-w-md">
-        <EvoluProvider value={evolu}>
-          <Suspense>
-            <App />
-          </Suspense>
-        </EvoluProvider>
-      </div>
+export const EvoluFullExample: FC = () => (
+  <div className="min-h-screen px-8 py-8">
+    <div className="mx-auto max-w-md min-w-sm md:min-w-md">
+      <EvoluProvider value={evolu}>
+        <Suspense>
+          <App />
+        </Suspense>
+      </EvoluProvider>
     </div>
-  );
-};
+  </div>
+);
 
 const App: FC = () => {
   const [activeTab, setActiveTab] = useState<

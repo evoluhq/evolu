@@ -234,9 +234,7 @@ export const createSqlite =
 
         export: () =>
           trySync(
-            () => {
-              return driver.export();
-            },
+            () => driver.export(),
             (error): SqliteError => ({
               type: "SqliteError",
               error: createUnknownError(error),

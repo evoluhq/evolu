@@ -46,20 +46,18 @@ function createSectionStore(sections: Array<Section>) {
       );
     },
     registerHeading: ({ id, ref, offsetRem }) => {
-      set((state) => {
-        return {
-          sections: state.sections.map((section) => {
-            if (section.id === id) {
-              return {
-                ...section,
-                headingRef: ref,
-                offsetRem,
-              };
-            }
-            return section;
-          }),
-        };
-      });
+      set((state) => ({
+        sections: state.sections.map((section) => {
+          if (section.id === id) {
+            return {
+              ...section,
+              headingRef: ref,
+              offsetRem,
+            };
+          }
+          return section;
+        }),
+      }));
     },
   }));
 }
