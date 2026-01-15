@@ -39,7 +39,7 @@
     "@evolu/common": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.16"
+    "vitest": "^4.0.17"
   },
   "peerDependencies": {
     "@evolu/common": "^7.4.1",

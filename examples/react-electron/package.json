@@ -21,9 +21,9 @@
     "@types/react-dom": "~19.1.11",
     "@vitejs/plugin-react": "^5.1.2",
     "electron": "38.2.0",
-    "electron-builder": "^26.0.12",
+    "electron-builder": "^26.4.0",
     "typescript": "^5.9.3",
-    "vite": "^7.2.7",
+    "vite": "^7.3.1",
     "vite-plugin-electron": "^0.29.0",
     "vite-plugin-electron-renderer": "^0.14.6"
   },

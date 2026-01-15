@@ -56,8 +56,8 @@
     "@noble/ciphers": "^2.1.1",
     "@noble/hashes": "^2.0.1",
     "@scure/bip39": "^2.0.1",
-    "kysely": "^0.28.8",
-    "msgpackr": "^1.11.5",
+    "kysely": "^0.28.9",
+    "msgpackr": "^1.11.8",
     "random": "^5.4.1"
   },
   "devDependencies": {
@@ -65,15 +65,15 @@
     "@evolu/tsconfig": "workspace:*",
     "@types/better-sqlite3": "^7.6.13",
     "@types/ws": "^8.18.1",
-    "@vitest/browser": "^4.0.16",
-    "@vitest/browser-playwright": "^4.0.16",
-    "@vitest/coverage-v8": "^4.0.16",
-    "better-sqlite3": "^12.5.0",
-    "fast-check": "^4.4.0",
+    "@vitest/browser": "^4.0.17",
+    "@vitest/browser-playwright": "^4.0.17",
+    "@vitest/coverage-v8": "^4.0.17",
+    "better-sqlite3": "^12.6.0",
+    "fast-check": "^4.5.3",
     "playwright": "^1.57.0",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.16",
-    "ws": "^8.18.3"
+    "vitest": "^4.0.17",
+    "ws": "^8.19.0"
   },
   "publishConfig": {
     "access": "public"

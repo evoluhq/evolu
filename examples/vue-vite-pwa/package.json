@@ -14,7 +14,7 @@
     "@evolu/common": "latest",
     "@evolu/vue": "latest",
     "@evolu/web": "latest",
-    "vue": "^3.5.25",
+    "vue": "^3.5.26",
     "workbox-window": "^7.4.0"
   },
   "devDependencies": {
@@ -22,8 +22,8 @@
     "@vitejs/plugin-vue": "^6.0.3",
     "@vue/tsconfig": "^0.8.1",
     "typescript": "^5.9.3",
-    "vite": "^7.2.7",
+    "vite": "^7.3.1",
     "vite-plugin-pwa": "^1.2.0",
-    "vue-tsc": "^3.1.8"
+    "vue-tsc": "^3.2.2"
   }
 }

@@ -74,8 +74,8 @@
     "@evolu/common": "workspace:*",
     "@evolu/react": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
-    "@op-engineering/op-sqlite": "^15.1.6",
-    "expo": "^54.0.29",
+    "@op-engineering/op-sqlite": "^15.2.2",
+    "expo": "^54.0.31",
     "expo-secure-store": "~15.0.8",
     "expo-sqlite": "~16.0.10",
     "react-native": "^0.81.5",
@@ -83,7 +83,7 @@
     "react-native-sensitive-info": "6.0.0-rc.11",
     "react-native-svg": "^15.15.1",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.16"
+    "vitest": "^4.0.17"
   },
   "peerDependencies": {
     "@evolu/common": "^7.4.1",
