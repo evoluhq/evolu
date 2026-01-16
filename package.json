@@ -14,7 +14,7 @@
     "lint": "eslint",
     "biome": "biome check",
     "lint-monorepo": "pnpm dlx sherif@latest",
-    "verify": "pnpm build && pnpm test && pnpm test:coverage && pnpm lint && pnpm biome && pnpm lint-monorepo && pnpm build:docs",
+    "verify": "pnpm build && pnpm test && pnpm test:coverage && pnpm lint && pnpm biome && pnpm lint-monorepo && pnpm build:docs && pnpm vitest run scripts/typedoc-plugin-evolu-type.test.mts",
     "clean": "turbo clean && rimraf node_modules pnpm-lock.yaml .turbo .eslintcache out",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,md,mdx}\"",
     "version": "changeset version",
