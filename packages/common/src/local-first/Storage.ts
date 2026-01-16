@@ -17,7 +17,7 @@ import type { Result } from "../Result.js";
 import { err, ok } from "../Result.js";
 import type { SqliteDep, SqliteError } from "../Sqlite.js";
 import { sql, SqliteValue } from "../Sqlite.js";
-import type { Int64String, TypeError } from "../Type.js";
+import type { InferType, Int64String, TypeError } from "../Type.js";
 import {
   Boolean,
   brand,
@@ -289,7 +289,7 @@ export const DbChange = object({
   isInsert: Boolean,
   isDelete: nullOr(Boolean),
 });
-export type DbChange = typeof DbChange.Type;
+export interface DbChange extends InferType<typeof DbChange> {}
 
 /**
  * Common interface for both client and relay SQLite storages.
@@ -470,12 +470,12 @@ export const createBaseSqliteStorage =
       /**
        * TODO: In rare cases, we might overfetch a lot of rows here, but we
        * don't have real usage numbers yet. Fetching one row at a time would
-       * probably be slower in almost all cases. In the future, we should
-       * fetch in chunks (e.g., 1,000 rows at a time). For now, consider
-       * logging unused rows to gather data and calculate an average, then use
-       * that information to determine an optimal chunk size. Before
-       * implementing chunking, be sure to run performance tests (including
-       * fetching one by one).
+       * probably be slower in almost all cases. In the future, we should fetch
+       * in chunks (e.g., 1,000 rows at a time). For now, consider logging
+       * unused rows to gather data and calculate an average, then use that
+       * information to determine an optimal chunk size. Before implementing
+       * chunking, be sure to run performance tests (including fetching one by
+       * one).
        */
       const result = deps.sqlite.exec<{ t: TimestampBytes }>(sql`
         select t

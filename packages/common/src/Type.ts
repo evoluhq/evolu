@@ -121,7 +121,10 @@ import type {
  *   name: NonEmptyTrimmedString100,
  *   age: optional(PositiveInt),
  * });
- * type User = typeof User.Type;
+ *
+ * // Use interface for objects. TypeScript displays the interface name
+ * // instead of expanding all properties.
+ * interface User extends InferType<typeof User> {}
  *
  * User.from({ name: "Alice" }); // ok
  * User.from({ name: "Alice", age: -1 }); // err(PositiveInt)
@@ -138,7 +141,7 @@ import type {
  *   // To prevent this, use FiniteNumber.
  *   age: FiniteNumber,
  * });
- * type Person = typeof Person.Type;
+ * interface Person extends InferType<typeof Person> {}
  *
  * const [PersonJson, personToPersonJson, personJsonToPerson] = json(
  *   Person,
@@ -481,6 +484,19 @@ export type InferName<A extends AnyType> =
 
 /**
  * Extracts the type from a {@link Type}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const User = object({
+ *   name: NonEmptyTrimmedString100,
+ *   age: optional(PositiveInt),
+ * });
+ *
+ * // Use interface for objects. TypeScript displays the interface name
+ * // instead of expanding all properties.
+ * interface User extends InferType<typeof User> {}
+ * ```
  *
  * @category Utilities
  */
@@ -1166,6 +1182,17 @@ export const dateIsoToDate = (value: DateIso): Date =>
  *   );
  * ```
  *
+ * ### Numeric literal inference
+ *
+ * When using factories with numeric parameters (like `lessThan`, `maxLength`,
+ * `between`), use numeric literals instead of expressions. TypeScript widens
+ * expressions to `number`, losing the literal type in the brand name:
+ *
+ * ```ts
+ * lessThan(100)(Number); // Brand<"LessThan100"> ✓
+ * lessThan(100 - 1)(Number); // Brand<"LessThan" + number> ✗
+ * ```
+ *
  * @category Utilities
  */
 export type BrandFactory<
@@ -1236,6 +1263,8 @@ export const trim = (value: string): TrimmedString =>
 /**
  * Minimum length.
  *
+ * Use numeric literal, not expression. See {@link BrandFactory}.
+ *
  * ### Example
  *
  * ```ts
@@ -1268,6 +1297,8 @@ export const formatMinLengthError = createTypeErrorFormatter<MinLengthError>(
 /**
  * Maximum length.
  *
+ * Use numeric literal, not expression. See {@link BrandFactory}.
+ *
  * ### Example
  *
  * ```ts
@@ -1299,6 +1330,8 @@ export const formatMaxLengthError = createTypeErrorFormatter<MaxLengthError>(
 
 /**
  * Exact length.
+ *
+ * Use numeric literal, not expression. See {@link BrandFactory}.
  *
  * ### Example
  *
@@ -2015,10 +2048,10 @@ export type NonNegativeInt = typeof NonNegativeInt.Type;
 export const PositiveInt = positive(NonNegativeInt);
 export type PositiveInt = typeof PositiveInt.Type;
 
-/** Minimum {#link PositiveInt} value (1). */
+/** Minimum {@link PositiveInt} value (1). */
 export const minPositiveInt = PositiveInt.orThrow(1);
 
-/** Maximum safe {#link PositiveInt} value for practically infinite operations. */
+/** Maximum safe {@link PositiveInt} value for practically infinite operations. */
 export const maxPositiveInt = PositiveInt.orThrow(
   globalThis.Number.MAX_SAFE_INTEGER,
 );
@@ -2041,6 +2074,8 @@ export type NegativeInt = typeof NegativeInt.Type;
 
 /**
  * Number greater than a specified value.
+ *
+ * Use numeric literal, not expression. See {@link BrandFactory}.
  *
  * @category Number
  */
@@ -2066,6 +2101,8 @@ export const formatGreaterThanError =
 /**
  * Number less than a specified value.
  *
+ * Use numeric literal, not expression. See {@link BrandFactory}.
+ *
  * @category Number
  */
 export const lessThan: <Max extends number>(
@@ -2088,6 +2125,8 @@ export const formatLessThanError = createTypeErrorFormatter<LessThanError>(
 
 /**
  * Number ≥ a specified value.
+ *
+ * Use numeric literal, not expression. See {@link BrandFactory}.
  *
  * @category Number
  */
@@ -2117,6 +2156,8 @@ export const formatGreaterThanOrEqualToError =
 
 /**
  * Number ≤ a specified value.
+ *
+ * Use numeric literal, not expression. See {@link BrandFactory}.
  *
  * @category Number
  */
@@ -2201,6 +2242,8 @@ export type FiniteNumber = typeof FiniteNumber.Type;
 /**
  * Number that is a multiple of a divisor.
  *
+ * Use numeric literal, not expression. See {@link BrandFactory}.
+ *
  * @category Number
  */
 export const multipleOf: <Divisor extends number>(
@@ -2225,6 +2268,8 @@ export const formatMultipleOfError = createTypeErrorFormatter<MultipleOfError>(
 
 /**
  * Number within a range, inclusive.
+ *
+ * Use numeric literal, not expression. See {@link BrandFactory}.
  *
  * ### Example
  *
@@ -2789,7 +2834,7 @@ export const formatRecordError = <Error extends TypeError>(
  *   name: NonEmptyTrimmedString,
  *   age: PositiveNumber,
  * });
- * type User = typeof User.Type;
+ * interface User extends InferType<typeof User> {}
  *
  * const result = User.from({ name: "John", age: 30 }); // ok({ name: "John", age: 30 })
  * const error = User.from({ name: "John", age: -5 }); // err
@@ -2805,7 +2850,7 @@ export const formatRecordError = <Error extends TypeError>(
  *   name: NonEmptyString, // Required
  *   age: optional(PositiveNumber), // Optional
  * });
- * type User = typeof User.Type;
+ * interface User extends InferType<typeof User> {}
  * ```
  *
  * ## Allowing Additional Properties
@@ -4117,7 +4162,7 @@ export const jsonToJsonValue = (value: Json): JsonValue =>
  *   name: NonEmptyString100,
  *   age: FiniteNumber,
  * });
- * type Person = typeof Person.Type;
+ * interface Person extends InferType<typeof Person> {}
  *
  * const [PersonJson, personToPersonJson, personJsonToPerson] = json(
  *   Person,

@@ -21,15 +21,15 @@ Follow these specific conventions and patterns:
 ```ts
 // Good
 import { bar, baz } from "Foo.ts";
-export const ok = ...;
-export const trySync = ...;
+export const ok = () => {};
+export const trySync = () => {};
 
 // Avoid
 import Foo from "Foo.ts";
 export const Utils = { ok, trySync };
 
 // Good - Avoid naming conflicts with globals
-const nativeSharedWorker = new globalThis.SharedWorker(...);
+const nativeSharedWorker = new globalThis.SharedWorker(url);
 
 // Avoid - Aliasing to work around global name clash
 import { SharedWorker as SharedWorkerType } from "./Worker.js";
@@ -87,7 +87,9 @@ export const race = (
   }: {
     abortReason?: unknown;
   } = {},
-): Task<...> => ...
+): Task<T, E> => {
+  // implementation
+};
 
 // Good - named interface, reusable
 export interface RetryOptions {
@@ -123,6 +125,20 @@ interface Example {
   readonly id: number;
   readonly items: ReadonlyArray<string>;
 }
+```
+
+## Interface over type for Evolu Type objects
+
+For Evolu Type objects created with `object()`, use interface with `InferType` instead of type alias. TypeScript displays the interface name instead of expanding all properties.
+
+```ts
+// Use interface for objects
+const User = object({ name: String, age: Number });
+export interface User extends InferType<typeof User> {}
+
+// Avoid - TypeScript expands all properties in tooltips
+const User = object({ name: String, age: Number });
+export type User = typeof User.Type;
 ```
 
 ## Opaque types

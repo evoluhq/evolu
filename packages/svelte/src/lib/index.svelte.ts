@@ -25,7 +25,9 @@ export const evoluSvelteDeps = createEvoluDeps();
  *
  * ```ts
  * // Create your query
- * const allTodos = evolu.createQuery((db) => ...);
+ * const allTodos = evolu.createQuery((db) =>
+ *   db.selectFrom("todo").selectAll(),
+ * );
  *
  * // Get all rows.
  * const allTodosState = queryState(evolu, () => allTodos);
@@ -35,10 +37,14 @@ export const evoluSvelteDeps = createEvoluDeps();
  *
  * ```ts
  * // some kind of state
- * let someKindOfState = $state('someId');
+ * let someKindOfState = $state("someId");
  *
  * // derive your query based other props
- * const allTodos = $derived(evolu.createQuery((db) => use someKindOfState here ));
+ * const allTodos = $derived(
+ *   evolu.createQuery((db) =>
+ *     db.selectFrom("todo").where("id", "=", someKindOfState).selectAll(),
+ *   ),
+ * );
  *
  * // Get all rows, once someKindOfState changes, this allTodosState will be updated with the evolu query result
  * const allTodosState = queryState(evolu, () => allTodos);

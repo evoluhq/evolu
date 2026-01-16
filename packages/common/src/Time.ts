@@ -7,7 +7,7 @@
 import { assert } from "./Assert.js";
 import type { Brand } from "./Brand.js";
 import type { yieldNow } from "./Task.js";
-import { brand, DateIso, lessThanOrEqualTo, NonNegativeInt } from "./Type.js";
+import { brand, DateIso, lessThan, NonNegativeInt } from "./Type.js";
 import type {
   Digit,
   Digit1To23,
@@ -132,8 +132,11 @@ export const testCreateTime = (options?: {
   };
 };
 
+// Literal (not expression like 1 + 2) to preserve type for Brand<"LessThan...">
+const maxMillisWithInfinity = 281474976710655;
+
 /**
- * Milliseconds timestamp, like `Date.now()`, but limited to 6 bytes max value.
+ * Milliseconds timestamp, like `Date.now()`.
  *
  * The maximum value is 281474976710654 (281474976710655 - 1, reserved for
  * infinity). This enables efficient binary serialization, saving 2 bytes
@@ -146,7 +149,7 @@ export const testCreateTime = (options?: {
  */
 export const Millis = brand(
   "Millis",
-  lessThanOrEqualTo(281474976710655 - 1)(NonNegativeInt),
+  lessThan(maxMillisWithInfinity)(NonNegativeInt),
 );
 export type Millis = typeof Millis.Type;
 
@@ -154,7 +157,7 @@ export type Millis = typeof Millis.Type;
 export const minMillis = 0 as Millis;
 
 /** Maximum {@link Millis} value. */
-export const maxMillis = (281474976710655 - 1) as Millis;
+export const maxMillis = (maxMillisWithInfinity - 1) as Millis;
 
 /**
  * Duration can be either a {@link DurationLiteral} or milliseconds as

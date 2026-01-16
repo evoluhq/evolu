@@ -1,8 +1,6 @@
 import { Heading } from "@/components/Heading";
 
-export const metadata = {
-  title: "Conventions",
-};
+export const metadata = { title: "Conventions" };
 
 # Conventions
 
@@ -20,8 +18,8 @@ Avoid namespaces. Use unique names because Evolu re-exports everything through a
 
 ```ts
 // Use
-export const ok = ...;
-export const trySync = ...;
+export const ok = () => {};
+export const trySync = () => {};
 
 // Avoid
 export const Utils = { ok, trySync };
@@ -133,7 +131,7 @@ const readonlyArr = readonly(arr);
 const ids = readonly(new Set(["a", "b"]));
 // Type: ReadonlySet<string>
 
-const users: Record<UserId, string> = { ... };
+const users: Record<UserId, string> = {};
 const readonlyUsers = readonly(users);
 // Type: ReadonlyRecord<UserId, string>
 
@@ -156,40 +154,56 @@ Use `type` only when necessary:
 >
 > — [TypeScript Handbook](https://www.typescriptlang.org/docs/handbook/2/everyday-types.html#differences-between-type-aliases-and-interfaces)
 
+### Evolu Type objects
+
+For Evolu Type objects created with `object()`, use interface with `InferType` instead of type alias. TypeScript displays the interface name instead of expanding all properties.
+
+```ts
+import { object, String, Number, InferType } from "@evolu/common";
+
+// Use interface for objects
+const User = object({ name: String, age: Number });
+interface User extends InferType<typeof User> {}
+
+// Avoid - TypeScript expands all properties in tooltips
+const User = object({ name: String, age: Number });
+type User = typeof User.Type;
+```
+
 ## Arrow functions
 
 Use arrow functions instead of the `function` keyword.
 
 ```ts
 // Use
-export const createUser = (data: UserData): User => {
+const createUser = (data: UserData): User => {
   // implementation
 };
 
 // Avoid
-export function createUser(data: UserData): User {
+function createUser(data: UserData): User {
   // implementation
 }
 ```
 
 Why arrow functions?
 
-- **No hoisting** - Combined with `const`, arrow functions aren't hoisted, which enforces top-down code organization
 - **Consistency** - One way to define functions means less cognitive overhead
+- **No hoisting** - Combined with `const`, arrow functions aren't hoisted, which enforces top-down code organization
 - **Currying** - Arrow functions make currying natural for [dependency injection](/docs/dependency-injection)
 
 **Exception: function overloads.** TypeScript requires the `function` keyword for overloaded signatures:
 
 ```ts
-export function mapArray<T, U>(
+function mapArray<T, U>(
   array: NonEmptyReadonlyArray<T>,
   mapper: (item: T) => U,
 ): NonEmptyReadonlyArray<U>;
-export function mapArray<T, U>(
+function mapArray<T, U>(
   array: ReadonlyArray<T>,
   mapper: (item: T) => U,
 ): ReadonlyArray<U>;
-export function mapArray<T, U>(
+function mapArray<T, U>(
   array: ReadonlyArray<T>,
   mapper: (item: T) => U,
 ): ReadonlyArray<U> {
@@ -220,35 +234,35 @@ For functions with optional configuration, use inline types without `readonly` f
 **Inline types** when options are single-use:
 
 ```ts
-export const race = (
+const race = (
   tasks: Tasks,
   {
     abortReason = raceLostError,
   }: {
-    /** The reason to abort losing tasks with. */
+    // The reason to abort losing tasks with.
     abortReason?: unknown;
   } = {},
-): Task<...> => ...
+): Task<T, E> => {
+  // implementation
+};
 ```
 
 **Named interfaces** when options are reused:
 
 ```ts
-export interface RetryOptions {
+interface RetryOptions {
   readonly maxAttempts?: number;
   readonly delay?: Duration;
   readonly backoff?: "linear" | "exponential";
 }
 
-export const retry = (
+const retry = (
   task: Task<T, E>,
   schedule: Schedule<unknown, E>,
-  {
-    maxAttempts = 3,
-    delay = "1s",
-    backoff = "exponential",
-  }: RetryOptions,
-): Task<...> => ...
+  { maxAttempts = 3, delay = "1s", backoff = "exponential" }: RetryOptions,
+): Task<T, RetryError<E>> => {
+  // implementation
+};
 ```
 
 ## Avoid getters and setters
@@ -391,13 +405,15 @@ Test-specific factories use `testCreateX` prefix to distinguish from production 
 
 ```ts
 // Production factory
-export const createTime = (): Time => ({ now: () => Date.now() });
+const createTime = (): Time => ({ now: () => Date.now() });
 
 // Test factory with controllable time
-export const testCreateTime = (options?: {
+const testCreateTime = (options?: {
   readonly startAt?: Millis;
   readonly autoIncrement?: boolean;
-}): TestTime => { ... };
+}): TestTime => {
+  // implementation
+};
 ```
 
 The `testCreateX` prefix signals:

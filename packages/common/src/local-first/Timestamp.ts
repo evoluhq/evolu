@@ -14,7 +14,7 @@ import type { Result } from "../Result.js";
 import { err, ok } from "../Result.js";
 import type { TimeDep } from "../Time.js";
 import { Millis, minMillis } from "../Time.js";
-import type { DateIso } from "../Type.js";
+import type { DateIso, InferType } from "../Type.js";
 import {
   brand,
   length,
@@ -166,11 +166,7 @@ export const Timestamp = object({
   counter: Counter,
   nodeId: NodeId,
 });
-// TODO: Figure out why typedoc does not use Timestamp JSDoc.
-// export interface Timestamp extends InferType<typeof Timestamp> {}
-// TODO: Maybe we should not use this pattern (typeof Timestamp.Type) at all
-// because we want to have interfaces for objects because single name?
-export type Timestamp = typeof Timestamp.Type;
+export interface Timestamp extends InferType<typeof Timestamp> {}
 
 /** Equality function for comparing {@link Timestamp}. */
 export const eqTimestamp = createEqObject<Timestamp>({

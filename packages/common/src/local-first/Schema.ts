@@ -249,7 +249,7 @@ export const SystemColumns = object({
   isDeleted: nullOr(SqliteBoolean),
   ownerId: OwnerId,
 });
-export type SystemColumns = typeof SystemColumns.Type;
+export interface SystemColumns extends InferType<typeof SystemColumns> {}
 
 export const systemColumns = readonly(
   new Set(Object.keys(SystemColumns.props)),
@@ -468,13 +468,13 @@ export type InferColumnErrors<
 }[keyof MutationMapping<T, M>];
 
 export const DbIndex = object({ name: String, sql: String });
-export type DbIndex = typeof DbIndex.Type;
+export interface DbIndex extends InferType<typeof DbIndex> {}
 
 export const DbSchema = object({
   tables: record(String, set(String)),
   indexes: array(DbIndex),
 });
-export type DbSchema = typeof DbSchema.Type;
+export interface DbSchema extends InferType<typeof DbSchema> {}
 
 // TODO: Use a ref and update dbSchema on hot reloading to support
 // development workflows where schema changes without full app restart.
