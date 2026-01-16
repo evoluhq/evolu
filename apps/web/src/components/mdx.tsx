@@ -1,8 +1,8 @@
 import clsx from "clsx";
 import Link from "next/link";
 
-import { Feedback } from "@/components/Feedback";
 import { Heading } from "@/components/Heading";
+import { LlmLink } from "@/components/LlmLink";
 import { Prose } from "@/components/Prose";
 
 export const a = Link;
@@ -11,8 +11,8 @@ export { Button } from "@/components/Button";
 export {
   Code as code,
   CodeGroup,
-  SinglePlatformCodeGroup,
   Pre as pre,
+  SinglePlatformCodeGroup,
 } from "@/components/Code";
 export { ConditionalPlatformAlert } from "@/components/ConditionalPlatformAlert";
 export { PlatformSelector } from "@/components/PlatformSelector";
@@ -25,10 +25,12 @@ export function wrapper({
   return (
     <article className="flex h-full flex-col pt-16 pb-10">
       <Prose className="flex-auto">{children}</Prose>
-      {/* TODO: feedback form? */}
+      <LlmLink />
+      {/* TODO: feedback form
       <footer className="mx-auto mt-16 hidden w-full max-w-2xl lg:max-w-5xl">
         <Feedback />
       </footer>
+      */}
     </article>
   );
 }

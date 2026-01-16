@@ -19,6 +19,20 @@ const nextConfig = {
   outputFileTracingIncludes: {
     "/**/*": ["./src/app/**/*.mdx"],
   },
+  async rewrites() {
+    return [
+      {
+        // Rewrite /docs/index.md to the root docs page
+        source: "/docs/index.md",
+        destination: "/api/docs-md/index",
+      },
+      {
+        // Rewrite /docs/*.md to the LLM markdown route
+        source: "/docs/:path*.md",
+        destination: "/api/docs-md/:path*",
+      },
+    ];
+  },
 };
 
 export default withSearch(withMDX(nextConfig));

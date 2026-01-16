@@ -1,4 +1,5 @@
 import fs from "fs";
+import { navigation } from "./navigation";
 
 /**
  * Cleans MDX content by removing imports, exports, JSX components, and
@@ -8,16 +9,40 @@ export function cleanMdxContent(content: string): string {
   // Remove import statements - ensuring we catch all top-level imports
   let cleanedContent = content.replace(/^import\s+.*?['"].*?['"];?\s*$/gm, "");
 
-  // Remove export statements including metadata objects
+  // Remove export statements including metadata objects and sections arrays
   cleanedContent = cleanedContent.replace(
     /export\s+const\s+metadata\s*=\s*\{[\s\S]*?\};\s*/g,
     "",
   );
-
-  // Remove JSX component tags
-  cleanedContent = cleanedContent.replace(/<[A-Z][a-zA-Z]*.*?\/>/g, "");
   cleanedContent = cleanedContent.replace(
-    /<[A-Z][a-zA-Z]*.*?>.*?<\/[A-Z][a-zA-Z]*>/g,
+    /export\s+const\s+sections\s*=\s*\[[\s\S]*?\];\s*/g,
+    "",
+  );
+
+  // Convert <Heading level={2} id="...">Title</Heading> to ## Title
+  cleanedContent = cleanedContent.replace(
+    /<Heading\s+level=\{(\d)\}\s+id="[^"]*">\s*([\s\S]*?)\s*<\/Heading>/g,
+    (_match: string, level: string, title: string) => {
+      const hashes = "#".repeat(Number(level));
+      return `${hashes} ${title.trim()}`;
+    },
+  );
+
+  // Convert <Note>content</Note> to blockquote
+  cleanedContent = cleanedContent.replace(
+    /<Note>\s*([\s\S]*?)\s*<\/Note>/g,
+    (_match: string, noteContent: string) => {
+      const lines = noteContent.trim().split("\n");
+      return lines.map((line) => `> ${line.trim()}`).join("\n");
+    },
+  );
+
+  // Remove self-closing JSX component tags
+  cleanedContent = cleanedContent.replace(/<[A-Z][a-zA-Z]*[^>]*\/>/g, "");
+
+  // Remove other JSX component tags with content (generic fallback)
+  cleanedContent = cleanedContent.replace(
+    /<[A-Z][a-zA-Z]*[^>]*>[\s\S]*?<\/[A-Z][a-zA-Z]*>/g,
     "",
   );
 
@@ -40,6 +65,9 @@ export function cleanMdxContent(content: string): string {
     },
   );
 
+  // Clean up multiple consecutive blank lines
+  cleanedContent = cleanedContent.replace(/\n{3,}/g, "\n\n");
+
   return cleanedContent.trim();
 }
 
@@ -53,25 +81,57 @@ export interface MDXModule {
 }
 
 export const customOrder: Record<string, number> = {
-  quickstart: 1,
-  patterns: 2,
-  indexes: 3,
-  migrations: 4,
-  "time-travel": 5,
+  // Root overview
+  "page.mdx": 1,
+  // Library section
+  library: 10,
+  "dependency-injection": 11,
+  "resource-management": 12,
+  conventions: 13,
+  // Local-first section
+  "local-first": 20,
+  playgrounds: 21,
+  relay: 22,
+  migrations: 23,
+  "time-travel": 24,
+  indexes: 25,
+  privacy: 26,
+  faq: 27,
+  // API reference last
   "api-reference": 100,
 };
 
-export const excludePaths = [
-  "api-reference",
-  "showcase",
-  "examples",
-  "comparison",
-  "conventions",
-  "dependency-injection",
-  "relay",
-  "faq",
-  // Add other paths to exclude as needed
+export const excludePaths = ["showcase", "examples", "comparison"];
+
+/** Pages to exclude from llms.txt (still available via direct .md URL) */
+const llmsExcludePaths = [
+  "/docs/showcase",
+  "/docs/examples",
+  "/docs/comparison",
+  "https://", // External links
 ];
+
+const defaultBaseUrl = "https://www.evolu.dev";
+
+/** Creates file list from navigation, preserving order */
+const createFileListFromNavigation = (baseUrl: string): Array<string> => {
+  const links: Array<string> = [];
+
+  for (const group of navigation) {
+    for (const link of group.links) {
+      // Skip external links and excluded paths
+      if (llmsExcludePaths.some((exclude) => link.href.startsWith(exclude))) {
+        continue;
+      }
+
+      // Handle root /docs path
+      const path = link.href === "/docs" ? "/docs/index.md" : `${link.href}.md`;
+      links.push(`- [${link.title}](${baseUrl}${path})`);
+    }
+  }
+
+  return links;
+};
 
 /** Loads and processes MDX content from a file path */
 export async function loadMdxContent(
@@ -168,3 +228,48 @@ export async function fetchProcessedMdxPages(
     }),
   );
 }
+
+export const createLlmsIndex = async ({
+  includeApiReference = false,
+  baseUrl = defaultBaseUrl,
+}: {
+  includeApiReference?: boolean;
+  baseUrl?: string;
+} = {}): Promise<string> => {
+  const normalizedBaseUrl = baseUrl.replace(/\/$/, "");
+
+  const lines: Array<string> = [
+    "# Evolu",
+    "",
+    "> Evolu is a TypeScript library and local-first platform.",
+    "",
+    "Use these links for LLM-friendly documentation.",
+    "",
+    "## Docs",
+    ...createFileListFromNavigation(normalizedBaseUrl),
+  ];
+
+  if (includeApiReference) {
+    const pages = await fetchProcessedMdxPages(true);
+    const apiReferencePages = pages.filter((page) =>
+      page.path.includes("/api-reference"),
+    );
+    lines.push("", "## API reference");
+    lines.push(
+      ...apiReferencePages.map((page) => {
+        const normalizedPath = page.path
+          .replace(/^\/\(docs\)\/docs/, "/docs")
+          .replace(/\/$/, "");
+        return `- [${page.title}](${normalizedBaseUrl}${normalizedPath}.md)`;
+      }),
+    );
+  } else {
+    lines.push(
+      "",
+      "## Optional",
+      `- [Full docs with API reference](${normalizedBaseUrl}/llms-full.txt)`,
+    );
+  }
+
+  return lines.join("\n");
+};
