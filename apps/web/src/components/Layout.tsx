@@ -1,14 +1,13 @@
 "use client";
 
-import { motion } from "motion/react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { Logo } from "@/components/Logo";
 import { Navigation } from "@/components/Navigation";
 import { type Section, SectionProvider } from "@/components/SectionProvider";
+import { motion } from "motion/react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 export function Layout({
   children,

@@ -1,6 +1,11 @@
 /* eslint-disable no-console */
+import { compile } from "@mdx-js/mdx";
+import glob from "fast-glob";
 import fs from "node:fs";
 import path from "node:path";
+
+import { rehypePlugins } from "../src/mdx/rehype.mjs";
+import { remarkPlugins } from "../src/mdx/remark.mjs";
 
 const reference = path.join(
   import.meta.dirname,
@@ -115,3 +120,50 @@ rearrangeMdxFilesRecursively(reference);
 console.log("--------------------------------------");
 console.log("API reference rearranged successfully.");
 console.log("--------------------------------------");
+
+// Generate sections.json
+const docsDir = path.join(import.meta.dirname, "..", "src/app/(docs)");
+const outputPath = path.join(
+  import.meta.dirname,
+  "..",
+  "src/data/sections.json",
+);
+
+const generateSections = async (): Promise<void> => {
+  const pages = await glob("**/*.mdx", { cwd: docsDir });
+  const allSections: Record<string, Array<{ title: string; id: string }>> = {};
+
+  for (const filename of pages) {
+    const filePath = path.join(docsDir, filename);
+    const content = fs.readFileSync(filePath, "utf-8");
+
+    const compiled = await compile(content, {
+      remarkPlugins,
+      rehypePlugins,
+    });
+
+    // Extract sections from compiled output
+    const match = /export const sections = (\[[\s\S]*?\]);/.exec(
+      String(compiled.value),
+    );
+
+    const routePath = "/" + filename.replace(/(^|\/)page\.mdx$/, "");
+
+    if (match) {
+      const sections = eval(match[1]) as Array<{ title: string; id: string }>;
+      allSections[routePath] = sections;
+    } else {
+      allSections[routePath] = [];
+    }
+  }
+
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.writeFileSync(outputPath, JSON.stringify(allSections, null, 2));
+
+  console.log("--------------------------------------");
+  console.log(`Sections generated: ${outputPath}`);
+  console.log(`Total pages: ${Object.keys(allSections).length}`);
+  console.log("--------------------------------------");
+};
+
+await generateSections();
