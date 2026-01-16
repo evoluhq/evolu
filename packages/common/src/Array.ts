@@ -24,8 +24,10 @@
  * scores; // [1, 2, 3] — original order lost!
  * ```
  *
- * With readonly arrays, `sort()` doesn't exist (we can't sort readonly array).
- * Use {@link sortArray} instead:
+ * Imagine every methods doing that.
+ *
+ * On a `ReadonlyArray`, `.sort()` doesn't even exist. Use {@link sortArray}
+ * instead:
  *
  * ```ts
  * const sortScores = (arr: ReadonlyArray<number>) =>
