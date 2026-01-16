@@ -44,7 +44,7 @@ export const navigation: Array<NavGroup> = [
       { title: "Examples", href: "/docs/examples" },
       {
         title: "Owners",
-        href: "/docs/api-reference/common/local-first/interfaces/Owner",
+        href: "/docs/api-reference/common/local-first/Owner/interfaces/Owner",
       },
       { title: "Relay", href: "/docs/relay" },
       { title: "Migrations", href: "/docs/migrations" },
