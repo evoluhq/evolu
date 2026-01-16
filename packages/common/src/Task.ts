@@ -16,7 +16,7 @@ import { createRandom } from "./Random.js";
 import type { Ref } from "./Ref.js";
 import type { Done, NextResult, Result } from "./Result.js";
 import { err, ok, tryAsync } from "./Result.js";
-import type { Schedule } from "./Schedule.js";
+import type { Schedule, ScheduleStep } from "./Schedule.js";
 import { addToSet, deleteFromSet, emptySet } from "./Set.js";
 import type { Duration, Time, TimeDep } from "./Time.js";
 import { createTime, durationToMillis, Millis } from "./Time.js";
@@ -25,6 +25,8 @@ import {
   brand,
   createId,
   Id,
+  type InferType,
+  minPositiveInt,
   NonNegativeInt,
   PositiveInt,
   type Typed,
@@ -53,13 +55,12 @@ import { type Awaitable, type Mutable, type Predicate } from "./Types.js";
  *   returns {@link Awaitable} (sync or async) {@link Result}
  * - **{@link Runner}** — runs tasks, creates {@link Fiber}s, monitors and aborts
  *   them
- * - **{@link Fiber}** — awaitable, abortable, disposable handle to a running task
+ * - **{@link Fiber}** — awaitable, abortable/disposable handle to a running task
  * - **{@link AsyncDisposableStack}** — task-aware resource management that
  *   completes even when aborted
  *
- * Evolu's structured concurrency is minimal — one function with a few flags and
- * helper methods using native APIs: `Promise`, `AbortController`,
- * `DisposableStack`, etc.
+ * Evolu's structured concurrency core is minimal — one function with a few
+ * flags and helper methods using native APIs.
  *
  * ### Example
  *
@@ -234,9 +235,9 @@ import { type Awaitable, type Mutable, type Predicate } from "./Types.js";
  * - **Zero overhead** — sync code stays with zero overhead
  * - **No API ambiguity** — Task means async, Result means sync
  *
- * A unified sync/async API is theoretically possible — `isPromiseLike` can
- * detect sync at runtime without throwing, and `await using` works with sync
- * disposal. We may add it later.
+ * A unified sync/async API is possible — `isPromiseLike` can detect sync at
+ * runtime without throwing, and `await using` works with sync disposal, but we
+ * don't have a use case for that.
  *
  * ## FAQ
  *
@@ -1052,7 +1053,7 @@ export function createRunner<D extends RunnerDeps>(deps?: D): Runner<D> {
 
 /** Internal Runner properties, hidden from public API via TypeScript types. */
 interface RunnerInternal<D extends RunnerDeps = RunnerDeps> extends Runner<D> {
-  readonly requestAbort: (reason: AbortError) => void;
+  readonly requestAbort: (abortError: AbortError) => void;
   readonly requestSignal: AbortSignal;
   readonly setResultAndOutcome: (
     result: Result<unknown, unknown>,
@@ -1091,9 +1092,9 @@ const createRunnerInternal =
     let state: RunnerState = "active";
     let children: ReadonlySet<Fiber<any, any, D>> = emptySet;
 
-    const requestAbort = (reason: AbortError) => {
-      requestController.abort(reason);
-      if (abortMask === isAbortable) signalController.abort(reason);
+    const requestAbort = (abortError: AbortError) => {
+      requestController.abort(abortError);
+      if (abortMask === isAbortable) signalController.abort(abortError);
     };
 
     if (parent) {
@@ -1138,11 +1139,12 @@ const createRunnerInternal =
         signalController.signal.aborted &&
         runner.abortMask === isAbortable
       ) {
-        const abortReason = signalController.signal.reason as AbortError;
-        runner.requestAbort(abortReason);
-        task = () => Promise.resolve(err(abortReason));
+        const abortError = signalController.signal.reason as AbortError;
+        runner.requestAbort(abortError);
+        task = () => Promise.resolve(err(abortError));
       }
 
+      // Promise.try is polyfilled
       const promise = Promise.try(task, runner, deps)
         .then((taskOutcome) => {
           const childResult = runner.signal.aborted
@@ -1438,9 +1440,8 @@ export const unabortableMask = <T, E, D = unknown>(
  * @see https://web.dev/articles/optimize-long-tasks
  */
 export const yieldNow: Task<void> = () =>
-  // tryAsync prepares for scheduler.yield({ signal }) which rejects on abort.
   tryAsync(
-    () => yieldImpl(),
+    () => yieldImpl(), // TODO: yieldImpl(run.signal)
     (error): AbortError => ({ type: "AbortError", reason: error }),
   );
 
@@ -1506,11 +1507,11 @@ export const sleep =
  * ```ts
  * const fast: Task<string, never> = async () => ok("fast");
  * const slow: Task<string, never> = async () => {
- *   await new Promise((r) => setTimeout(r, 0));
+ *   await new Promise((r) => setTimeout(r, 10));
  *   return ok("slow");
  * };
  *
- * // First to settle wins, others are aborted
+ * // First wins, others are aborted.
  * const result = await run(race([fast, slow])); // ok("fast")
  * ```
  *
@@ -1628,11 +1629,12 @@ export const timeoutError: TimeoutError = { type: "TimeoutError" };
 export interface RetryOptions<E, Output> {
   /** Predicate to determine if error is retryable. Defaults to all errors. */
   readonly retryable?: Predicate<E>;
+
   /**
    * Callback invoked before each retry attempt with error, retry attempt
    * number, schedule output, and delay.
    */
-  readonly onRetry?: (attemp: RetryAttempt<E, Output>) => void;
+  readonly onRetry?: (attempt: RetryAttempt<E, Output>) => void;
 }
 
 /**
@@ -1640,11 +1642,8 @@ export interface RetryOptions<E, Output> {
  *
  * @category Composition
  */
-export interface RetryAttempt<E, Output> {
+export interface RetryAttempt<E, Output> extends ScheduleStep<Output> {
   readonly error: E;
-  readonly attempt: PositiveInt;
-  readonly output: Output;
-  readonly delay: Millis;
 }
 
 /**
@@ -1655,6 +1654,7 @@ export interface RetryAttempt<E, Output> {
 export interface RetryError<E> extends Typed<"RetryError"> {
   /** The error from the final attempt. */
   readonly cause: E;
+
   /** Total attempts made (initial + retries). */
   readonly attempts: PositiveInt;
 }
@@ -1704,11 +1704,10 @@ export const retry =
   ): Task<T, E | RetryError<E>, D> =>
   async (run) => {
     const step = schedule(run);
-    let attempt = PositiveInt.orThrow(1);
+    let attempt = minPositiveInt;
     let error: E | undefined;
 
     for (;;) {
-      // On retry (not first attempt), wait according to schedule
       if (error !== undefined) {
         const scheduleResult = step(error);
         if (!scheduleResult.ok) {
@@ -1720,11 +1719,9 @@ export const retry =
         }
 
         const [output, delay] = scheduleResult.value;
-        const retryAttempt = PositiveInt.orThrow(decrement(attempt));
-
         onRetry?.({
           error,
-          attempt: retryAttempt,
+          attempt: PositiveInt.orThrow(decrement(attempt)),
           output,
           delay,
         });
@@ -1744,13 +1741,37 @@ export const retry =
         return err<RetryError<E>>({
           type: "RetryError",
           cause: error,
-          attempts: PositiveInt.orThrow(attempt),
+          attempts: attempt,
         });
       }
 
       attempt = PositiveInt.orThrow(increment(attempt));
     }
   };
+
+/**
+ * Options for {@link repeat}.
+ *
+ * @category Composition
+ */
+export interface RepeatOptions<T, Output> {
+  /** Predicate to determine if value is repeatable. Defaults to all values. */
+  readonly repeatable?: Predicate<T>;
+  /**
+   * Callback invoked before each repeat with value, repeat attempt number,
+   * schedule output, and delay.
+   */
+  readonly onRepeat?: (attempt: RepeatAttempt<T, Output>) => void;
+}
+
+/**
+ * Info passed to {@link repeat} {@link RepeatOptions.onRepeat} callback.
+ *
+ * @category Composition
+ */
+export interface RepeatAttempt<T, Output> extends ScheduleStep<Output> {
+  readonly value: T;
+}
 
 /**
  * Repeats a {@link Task} according to a {@link Schedule}.
@@ -1760,6 +1781,9 @@ export const retry =
  * Continues until the schedule returns `Err(Done<void>)` or the task fails.
  *
  * With `take(n)`, the task runs n+1 times (initial run plus n repetitions).
+ *
+ * Also works with {@link NextTask} — when the task returns `Err(Done<D>)`,
+ * repeat stops and propagates the done signal.
  *
  * ### Example
  *
@@ -1772,28 +1796,55 @@ export const retry =
  *
  * // Poll 4 times total (initial + 3 repetitions), 1 second apart
  * const poll = repeat(checkStatus, take(3)(fixed("1s")));
+ *
+ * // Process queue items until empty (NextTask pattern)
+ * const processQueue: NextTask<Item, ProcessError, void> = async (run) => {
+ *   const item = queue.dequeue();
+ *   if (!item) return err(done()); // Queue empty, stop
+ *   await process(item);
+ *   return ok(item);
+ * };
+ *
+ * const result = await run(repeat(processQueue, fixed("100ms")));
+ * if (!result.ok && result.error.type === "Done") {
+ *   console.log("Queue exhausted");
+ * }
  * ```
  *
  * @category Composition
  */
 export const repeat =
-  <T, E, D = unknown>(
+  <T, E, D = unknown, Output = unknown>(
     task: Task<T, E, D>,
-    schedule: Schedule<unknown, T>,
+    schedule: Schedule<Output, T>,
+    {
+      repeatable = constTrue as Predicate<T>,
+      onRepeat,
+    }: RepeatOptions<T, Output> = {},
   ): Task<T, E, D> =>
   async (run) => {
     const step = schedule(run);
     let lastResult: Result<T, E>;
+    let attempt = minPositiveInt;
 
     for (;;) {
       const result = await run(task);
       if (!result.ok) return result;
       lastResult = result;
 
+      if (!repeatable(result.value)) return lastResult;
+
       const next = step(result.value);
       if (!next.ok) break;
 
-      const [, delay] = next.value;
+      const [output, delay] = next.value;
+      onRepeat?.({
+        value: result.value,
+        attempt,
+        output,
+        delay,
+      });
+      attempt = PositiveInt.orThrow(increment(attempt));
       if (delay > 0) {
         const sleepResult = await run(sleep(delay));
         if (!sleepResult.ok) return sleepResult;
@@ -1803,18 +1854,337 @@ export const repeat =
     return lastResult;
   };
 
+/**
+ * A value that can be resolved later.
+ *
+ * Similar to
+ * {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/withResolvers | Promise.withResolvers},
+ * but integrated with {@link Task} and {@link Runner} for cancellation support.
+ *
+ * Use for bridging callback-based APIs or coordinating between tasks.
+ *
+ * Disposing aborts all waiting tasks with an {@link AbortError} whose cause is
+ * {@link deferredDisposedError}.
+ *
+ * @category Concurrency
+ * @see {@link createDeferred}
+ */
+export interface Deferred<T, E = never> extends Disposable {
+  /** A {@link Task} that waits until {@link Deferred.resolve} is called. */
+  readonly task: Task<T, E | DeferredDisposedError>;
+
+  /**
+   * Resolves the value. Returns `true` on first call, `false` if already
+   * resolved.
+   */
+  readonly resolve: (result: Result<T, E | DeferredDisposedError>) => boolean;
+}
+
+/**
+ * Creates a {@link Deferred}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const deferred = createDeferred<string, MyError>();
+ *
+ * // Start waiting for the value
+ * const fiber = run(deferred.task);
+ *
+ * // Resolve from elsewhere (callback, another task, etc.)
+ * deferred.resolve(ok("value"));
+ *
+ * const result = await fiber; // ok("value")
+ * ```
+ *
+ * @category Concurrency
+ */
+export const createDeferred = <T, E = never>(): Deferred<T, E> => {
+  let resolved: Result<T, E | DeferredDisposedError> | null = null;
+  const resolvers = new Set<
+    (result: Result<T, E | DeferredDisposedError>) => void
+  >();
+
+  const resolve = (result: Result<T, E | DeferredDisposedError>) => {
+    if (resolved !== null) return false;
+    resolved = result;
+    for (const resolver of resolvers) resolver(result);
+    resolvers.clear();
+    return true;
+  };
+
+  return {
+    task: (run) => {
+      if (resolved !== null) return resolved;
+
+      return new Promise((resolvePromise) => {
+        const resolve = (
+          result: Result<T, E | AbortError | DeferredDisposedError>,
+        ) => {
+          resolvers.delete(resolve);
+          resolvePromise(result);
+        };
+
+        resolvers.add(resolve);
+
+        run.onAbort((reason) => {
+          resolve(err(createAbortError(reason)));
+        });
+      });
+    },
+
+    resolve,
+
+    [Symbol.dispose]: () => {
+      resolve(err(deferredDisposedError));
+    },
+  };
+};
+
+/**
+ * Abort reason used when a {@link Deferred} is disposed.
+ *
+ * @category Concurrency
+ */
+export const DeferredDisposedError = typed("DeferredDisposedError");
+// zkusit, nejak to slo, kde to bylo?
+// export type DeferredDisposedError = typeof DeferredDisposedError.Type;
+export interface DeferredDisposedError extends InferType<
+  typeof DeferredDisposedError
+> {}
+
+/**
+ * {@link DeferredDisposedError} used as abort reason in {@link createDeferred}.
+ *
+ * @category Concurrency
+ */
+export const deferredDisposedError: DeferredDisposedError = {
+  type: "DeferredDisposedError",
+};
+
+/**
+ * A blocking {@link Task} — like a gate.
+ *
+ * - **Closed**: Tasks wait.
+ * - **Open**: Tasks proceed.
+ *
+ * Use it to pause execution based on a condition. Unlike a {@link Deferred}
+ * (which triggers once), a {@link Gate} can be opened and closed repeatedly.
+ *
+ * Disposing aborts all waiting tasks with {@link deferredDisposedError}.
+ *
+ * @category Concurrency
+ * @see {@link createGate}
+ */
+export interface Gate<D = unknown> extends Disposable {
+  readonly wait: Task<void, DeferredDisposedError, D>;
+  readonly open: () => void;
+  readonly close: () => void;
+  readonly isOpen: () => boolean;
+}
+
+/**
+ * Creates a {@link Gate} that starts closed.
+ *
+ * Useful for "stop/go" logic where multiple tasks need to wait for a state
+ * change.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const networkGate = createGate();
+ *
+ * // Pause processing when offline
+ * const onOffline = () => networkGate.close();
+ *
+ * // Resume processing when online
+ * const onOnline = () => networkGate.open();
+ *
+ * const syncLoop = async (run) => {
+ *   while (true) {
+ *     // Blocks here whenever the gate is closed
+ *     await run(networkGate.wait);
+ *     await run(uploadNextItem);
+ *   }
+ * };
+ * ```
+ *
+ * @category Concurrency
+ */
+export const createGate = <D = unknown>(): Gate<D> => {
+  let isOpen = false;
+  let disposed = false;
+  let deferred = createDeferred<void>();
+
+  return {
+    wait: (run) => {
+      if (disposed) return err(deferredDisposedError);
+      if (isOpen) return ok();
+      return run(deferred.task);
+    },
+
+    open: () => {
+      if (disposed || isOpen) return;
+      isOpen = true;
+      deferred.resolve(ok());
+    },
+
+    close: () => {
+      if (disposed || !isOpen) return;
+      isOpen = false;
+      deferred = createDeferred<void>();
+    },
+
+    isOpen: () => isOpen,
+
+    [Symbol.dispose]: () => {
+      if (disposed) return;
+      disposed = true;
+      deferred[Symbol.dispose]();
+    },
+  };
+};
+
+/**
+ * A semaphore that limits the number of concurrent {@link Task}s.
+ *
+ * For mutual exclusion (limiting to exactly one {@link Task}), use {@link Mutex}
+ * instead.
+ *
+ * @category Concurrency
+ */
+export interface Semaphore extends Disposable {
+  /**
+   * Executes a {@link Task} while holding a semaphore permit.
+   *
+   * The task waits until a permit is available. If the semaphore is disposed
+   * while waiting or running, the task is aborted with an {@link AbortError}
+   * whose reason is {@link semaphoreDisposedError}.
+   */
+  readonly withPermit: <T, E, D>(task: Task<T, E, D>) => Task<T, E, D>;
+}
+
+/**
+ * Creates a {@link Semaphore} that limits concurrent {@link Task}s.
+ *
+ * @category Concurrency
+ */
+export const createSemaphore = (maxConcurrent: PositiveInt): Semaphore => {
+  let disposed = false;
+  let availablePermits: number = maxConcurrent;
+  const queue = new Set<(result: Result<void, AbortError>) => void>();
+  const runningFibers = new Set<Fiber<any, any, any>>();
+
+  const abortResult = (reason: unknown): Result<never, AbortError> =>
+    err(createAbortError(reason));
+
+  const release = (): void => {
+    const next = queue.values().next();
+    if (!next.done) {
+      queue.delete(next.value);
+      next.value(ok());
+      return;
+    }
+    availablePermits += 1;
+  };
+
+  const abortWaiting = (reason: unknown): void => {
+    for (const resolve of queue) resolve(abortResult(reason));
+    queue.clear();
+  };
+
+  return {
+    withPermit:
+      <T, E, D>(task: Task<T, E, D>): Task<T, E, D> =>
+      async (run) => {
+        if (disposed) return abortResult(semaphoreDisposedError);
+        if (run.signal.aborted) return err(run.signal.reason as AbortError);
+
+        if (availablePermits === 0) {
+          const acquired = await new Promise<Result<void, AbortError>>(
+            (resolve) => {
+              queue.add(resolve);
+              run.onAbort((reason) => {
+                queue.delete(resolve);
+                resolve(abortResult(reason));
+              });
+            },
+          );
+          if (!acquired.ok) return acquired;
+        } else {
+          availablePermits -= 1;
+        }
+
+        const fiber = run(task);
+        runningFibers.add(fiber);
+
+        try {
+          return await fiber;
+        } finally {
+          runningFibers.delete(fiber);
+          release();
+        }
+      },
+
+    [Symbol.dispose]: () => {
+      if (disposed) return;
+      disposed = true;
+
+      for (const fiber of runningFibers) {
+        fiber.abort(semaphoreDisposedError);
+      }
+
+      abortWaiting(semaphoreDisposedError);
+    },
+  };
+};
+
+/**
+ * Abort reason used when a {@link Semaphore} is disposed.
+ *
+ * @category Concurrency
+ */
+export const SemaphoreDisposedError = typed("SemaphoreDisposedError");
+export type SemaphoreDisposedError = typeof SemaphoreDisposedError.Type;
+
+/**
+ * {@link SemaphoreDisposedError} used as abort reason in {@link createSemaphore}.
+ *
+ * @category Concurrency
+ */
+export const semaphoreDisposedError: SemaphoreDisposedError = {
+  type: "SemaphoreDisposedError",
+};
+
+/**
+ * A mutex (mutual exclusion) that ensures only one {@link Task} runs at a time.
+ *
+ * This is a specialized version of a {@link Semaphore} with a permit count of 1.
+ *
+ * @category Concurrency
+ */
+export interface Mutex extends Disposable {
+  /**
+   * Executes a {@link Task} while holding the mutex lock.
+   *
+   * Only one task can hold the lock at a time. Other tasks wait until the lock
+   * is released.
+   */
+  readonly withLock: <T, E, D>(task: Task<T, E, D>) => Task<T, E, D>;
+}
+
+/** @category Concurrency */
+export const createMutex = (): Mutex => {
+  const semaphore = createSemaphore(minPositiveInt);
+
+  return {
+    withLock: semaphore.withPermit,
+    [Symbol.dispose]: semaphore[Symbol.dispose],
+  };
+};
+
 /** @category Composition */
 export const all = (): never => {
-  throw new Error("TODO: later");
-};
-
-/** @category Concurrency */
-export const createSemaphore = (): never => {
-  throw new Error("TODO: later");
-};
-
-/** @category Concurrency */
-export const createMutex = (): never => {
   throw new Error("TODO: later");
 };
 

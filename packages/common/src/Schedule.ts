@@ -7,7 +7,7 @@
 import { fibonacciAt, FibonacciIndex, increment } from "./Number.js";
 import type { RandomDep } from "./Random.js";
 import { done, err, type NextResult, ok } from "./Result.js";
-import type { repeat, retry } from "./Task.js";
+import type { repeat, RepeatAttempt, retry, RetryAttempt } from "./Task.js";
 import {
   type Duration,
   durationToMillis,
@@ -64,6 +64,25 @@ export type Schedule<out Output, in Input = unknown> = (
  * The executor provides these once, and the schedule uses what it needs.
  */
 export type ScheduleDeps = TimeDep & RandomDep;
+
+/**
+ * Base interface for schedule-based task helpers.
+ *
+ * Used by {@link RetryAttempt}, {@link RepeatAttempt}, and future schedule-driven
+ * helpers.
+ *
+ * @category Composition
+ */
+export interface ScheduleStep<Output> {
+  /** The current attempt. */
+  readonly attempt: PositiveInt;
+
+  /** Output from the {@link Schedule} step. */
+  readonly output: Output;
+
+  /** Delay before this step executes. */
+  readonly delay: Millis;
+}
 
 /**
  * Internal per-step metrics computed from timestamps.

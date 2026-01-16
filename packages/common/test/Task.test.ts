@@ -27,7 +27,13 @@ import type {
 import {
   AbortError,
   AsyncDisposableStack,
+  createDeferred,
+  createGate,
+  createMutex,
   createRunner,
+  createSemaphore,
+  deferredDisposedError,
+  DeferredDisposedError,
   race,
   RaceLostError,
   repeat,
@@ -35,6 +41,7 @@ import {
   runnerClosingError,
   RunnerEvent,
   RunnerState,
+  semaphoreDisposedError,
   sleep,
   timeout,
   TimeoutError,
@@ -43,14 +50,9 @@ import {
   yieldNow,
 } from "../src/Task.js";
 import { createTestDeps, createTestRunner } from "../src/Test.js";
-import {
-  createTime,
-  msLongTask,
-  testCreateTime,
-  type Millis,
-} from "../src/Time.js";
+import { createTime, Millis, msLongTask, testCreateTime } from "../src/Time.js";
 import type { Typed } from "../src/Type.js";
-import { Id, PositiveInt } from "../src/Type.js";
+import { Id, minPositiveInt, PositiveInt } from "../src/Type.js";
 
 const eventsEnabled: RunnerConfigDep = {
   runnerConfig: { eventsEnabled: createRef(true) },
@@ -1264,14 +1266,15 @@ describe("unabortableMask", () => {
 
     let abortableRan = false;
 
-    const task = unabortableMask((restore) => async (run) => {
-      return await run(
-        restore(() => {
-          abortableRan = true;
-          return ok();
-        }),
-      );
-    });
+    const task = unabortableMask(
+      (restore) => async (run) =>
+        await run(
+          restore(() => {
+            abortableRan = true;
+            return ok();
+          }),
+        ),
+    );
 
     const result = await run(task);
 
@@ -1431,16 +1434,17 @@ describe("unabortableMask", () => {
 
     let restoreFromInner: (<T, E>(task: Task<T, E>) => Task<T, E>) | undefined;
 
-    const task = unabortableMask((_restore1) => async (run) => {
-      return await run(
-        unabortableMask((restore2) => (_run) => {
-          // restore2 restores to mask=1
-          restoreFromInner = restore2;
+    const task = unabortableMask(
+      (_restore1) => async (run) =>
+        await run(
+          unabortableMask((restore2) => (_run) => {
+            // restore2 restores to mask=1
+            restoreFromInner = restore2;
 
-          return ok();
-        }),
-      );
-    });
+            return ok();
+          }),
+        ),
+    );
 
     const result = await run(task);
     expect(result).toEqual(ok());
@@ -1448,13 +1452,9 @@ describe("unabortableMask", () => {
 
     // Using restore2 outside its intended scope would increase abort mask
     // (root mask=0, override=1). This must crash.
-    expect(() =>
-      run(
-        restoreFromInner!(() => {
-          return ok();
-        }),
-      ),
-    ).toThrow("restore used outside its unabortableMask");
+    expect(() => run(restoreFromInner!(() => ok()))).toThrow(
+      "restore used outside its unabortableMask",
+    );
   });
 });
 
@@ -2808,7 +2808,7 @@ describe("retry", () => {
     expect(retryLog).toEqual([
       {
         error: { type: "MyError" },
-        attempt: PositiveInt.orThrow(1),
+        attempt: minPositiveInt,
         output: 1,
         delay: 1,
       },
@@ -2967,9 +2967,7 @@ describe("repeat", () => {
 
     const values = ["first", "second", "third", "fourth"];
     let index = 0;
-    const task = () => {
-      return ok(values[index++]);
-    };
+    const task = () => ok(values[index++]);
 
     // take(3) = 4 total runs
     const result = await run(repeat(task, take(3)(fixed("1ms"))));
@@ -2991,6 +2989,68 @@ describe("repeat", () => {
 
     expect(result).toEqual(err({ type: "MyError" }));
     expect(count).toBe(2);
+  });
+
+  test("respects repeatable predicate", async () => {
+    await using run = createRunner();
+
+    let count = 0;
+    const task = () => {
+      count++;
+      return ok(count);
+    };
+
+    const result = await run(
+      repeat(task, take(5)(spaced(Millis.orThrow(0))), {
+        repeatable: (value) => value < 1,
+      }),
+    );
+
+    expect(result).toEqual(ok(1));
+    expect(count).toBe(1);
+  });
+
+  test("calls onRepeat before each repeat", async () => {
+    await using run = createRunner();
+
+    const repeatLog: Array<{
+      value: number;
+      attempt: PositiveInt;
+      output: Millis;
+      delay: Millis;
+    }> = [];
+    let count = 0;
+    const task = () => {
+      count++;
+      return ok(count);
+    };
+
+    await run(
+      repeat(task, take(2)(spaced(Millis.orThrow(0))), {
+        onRepeat: ({ value, attempt, output, delay }) =>
+          repeatLog.push({
+            value,
+            attempt,
+            output,
+            delay,
+          }),
+      }),
+    );
+
+    expect(repeatLog).toEqual([
+      {
+        value: 1,
+        attempt: minPositiveInt,
+        output: Millis.orThrow(0),
+        delay: Millis.orThrow(0),
+      },
+      {
+        value: 2,
+        attempt: PositiveInt.orThrow(2),
+        output: Millis.orThrow(0),
+        delay: Millis.orThrow(0),
+      },
+    ]);
   });
 
   test("can be aborted", async () => {
@@ -3044,6 +3104,77 @@ describe("repeat", () => {
 
     expect(result.ok).toBe(false);
     expect(count).toBeGreaterThanOrEqual(1);
+  });
+
+  test("does not sleep when delay is zero", async () => {
+    const time = testCreateTime();
+    await using run = createTestRunner({ time });
+
+    let count = 0;
+    const task = () => {
+      count++;
+      return ok(count);
+    };
+
+    const result = await run(repeat(task, take(2)(fixed(Millis.orThrow(0)))));
+
+    expect(result).toEqual(ok(3));
+    expect(count).toBe(3);
+  });
+
+  test("aborts while waiting between repeats", async () => {
+    const time = testCreateTime();
+    await using run = createTestRunner({ time });
+
+    let count = 0;
+    const task = () => {
+      count++;
+      return ok(count);
+    };
+
+    const fiber = run(repeat(task, take(1)(fixed("10ms"))));
+    await Promise.resolve();
+    fiber.abort("stop");
+
+    const result = await fiber;
+
+    expect(result).toEqual(err({ type: "AbortError", reason: "stop" }));
+    expect(count).toBe(1);
+  });
+
+  test("stops on Done from NextTask", async () => {
+    await using run = createRunner();
+
+    let count = 0;
+    const next: NextTask<number> = () => {
+      count++;
+      if (count === 3) return err(done());
+      return ok(count);
+    };
+
+    const result = await run(repeat(next, spaced(Millis.orThrow(0))));
+
+    expect(result).toEqual(err(done()));
+    expect(count).toBe(3);
+  });
+
+  test("processes queue until empty (NextTask pattern)", async () => {
+    await using run = createRunner();
+
+    const queue = [1, 2, 3];
+    const processed: Array<number> = [];
+
+    const processQueue: NextTask<number> = () => {
+      const item = queue.shift();
+      if (item === undefined) return err(done());
+      processed.push(item);
+      return ok(item);
+    };
+
+    const result = await run(repeat(processQueue, spaced(Millis.orThrow(0))));
+
+    expect(result).toEqual(err(done()));
+    expect(processed).toEqual([1, 2, 3]);
   });
 });
 
@@ -3135,9 +3266,8 @@ describe("DI", () => {
     // Type is inferred from argument
     expectTypeOf(run).toEqualTypeOf<Runner<typeof customDeps>>();
 
-    const task: Task<string, never, ConfigDep> = (_run, deps) => {
-      return ok(deps.config.apiUrl);
-    };
+    const task: Task<string, never, ConfigDep> = (_run, deps) =>
+      ok(deps.config.apiUrl);
 
     const result = await run(task);
 
@@ -3309,9 +3439,8 @@ describe("DI", () => {
 
     const fetchUserWithError =
       (id: string): Task<string, NetworkError, HttpWithErrorDep> =>
-      (run, deps) => {
-        return run(deps.http.get(`/users/${id}`));
-      };
+      (run, deps) =>
+        run(deps.http.get(`/users/${id}`));
 
     const result = await run(
       retry(fetchUserWithError("Alice"), take(3)(spaced("1ms"))),
@@ -3319,6 +3448,531 @@ describe("DI", () => {
 
     expect(result).toEqual(ok("Alice"));
     expect(attempts).toBe(3);
+  });
+});
+
+describe("concurrency", () => {
+  describe("Deferred", () => {
+    test("resolves with ok", async () => {
+      await using run = createRunner();
+
+      const { task, resolve } = createDeferred<string, MyError>();
+
+      const fiber = run(task);
+      resolve(ok("value"));
+
+      const result = await fiber;
+      expect(result).toEqual(ok("value"));
+    });
+
+    test("resolves with error", async () => {
+      await using run = createRunner();
+
+      const { task, resolve } = createDeferred<string, MyError>();
+
+      const fiber = run(task);
+      resolve(err({ type: "MyError" }));
+
+      const result = await fiber;
+      expect(result).toEqual(err({ type: "MyError" }));
+    });
+
+    test("resolves with AbortError when fiber aborted", async () => {
+      await using run = createRunner();
+
+      const { task } = createDeferred<string, MyError>();
+
+      const fiber = run(task);
+      fiber.abort("stop");
+
+      const result = await fiber;
+      expect(result).toEqual(err({ type: "AbortError", reason: "stop" }));
+    });
+
+    test("resolve returns true only on first call", () => {
+      const { resolve } = createDeferred<string, MyError>();
+
+      expect(resolve(ok("value"))).toBe(true);
+      expect(resolve(ok("ignored"))).toBe(false);
+    });
+
+    test("resolve still works after fiber abort", async () => {
+      await using run = createRunner();
+
+      const { task, resolve } = createDeferred<string, MyError>();
+
+      const fiber = run(task);
+      fiber.abort("stop");
+
+      await fiber;
+
+      // Fiber abort doesn't affect Deferred state - it can still be resolved
+      expect(resolve(ok("value"))).toBe(true);
+      expect(resolve(ok("ignored"))).toBe(false);
+    });
+
+    test("aborting one does not affect other", async () => {
+      await using run = createRunner();
+
+      const { task, resolve } = createDeferred<string, MyError>();
+
+      const fiber1 = run(task);
+      const fiber2 = run(task);
+      const fiber3 = run(task);
+
+      // Abort only fiber2
+      fiber2.abort("stop fiber2");
+
+      // fiber2 should get AbortError
+      const result2 = await fiber2;
+      expect(result2).toEqual(
+        err({ type: "AbortError", reason: "stop fiber2" }),
+      );
+
+      // fiber1 and fiber3 should still be pending, resolve them
+      resolve(ok("value"));
+
+      const result1 = await fiber1;
+      const result3 = await fiber3;
+
+      expect(result1).toEqual(ok("value"));
+      expect(result3).toEqual(ok("value"));
+    });
+
+    test("dispose aborts waiting fibers", async () => {
+      await using run = createRunner();
+
+      const deferred = createDeferred<string, MyError>();
+
+      const fiber1 = run(deferred.task);
+      const fiber2 = run(deferred.task);
+
+      deferred[Symbol.dispose]();
+
+      const result1 = await fiber1;
+      const result2 = await fiber2;
+
+      expect(result1).toEqual(err(deferredDisposedError));
+      expect(result2).toEqual(err(deferredDisposedError));
+    });
+  });
+
+  describe("Gate", () => {
+    test("wait blocks until gate is opened", async () => {
+      await using run = createRunner();
+
+      const gate = createGate();
+      const events: Array<string> = [];
+
+      const fiber = run(async (run) => {
+        events.push("waiting");
+        const result = await run(gate.wait);
+        if (!result.ok) return result;
+        events.push("passed");
+        return ok();
+      });
+
+      await Promise.resolve();
+      expect(events).toEqual(["waiting"]);
+      expect(gate.isOpen()).toBe(false);
+
+      gate.open();
+      await fiber;
+
+      expect(events).toEqual(["waiting", "passed"]);
+      expect(gate.isOpen()).toBe(true);
+    });
+
+    test("wait returns immediately when gate is already open", async () => {
+      await using run = createRunner();
+
+      const gate = createGate();
+      gate.open();
+
+      const result = await run(gate.wait);
+
+      expect(result).toEqual(ok());
+    });
+
+    test("multiple tasks proceed when gate opens", async () => {
+      await using run = createRunner();
+
+      const gate = createGate();
+      const events: Array<string> = [];
+
+      const createWaiter =
+        (id: number): Task<void, DeferredDisposedError> =>
+        async (run) => {
+          events.push(`waiting ${id}`);
+          const r = await run(gate.wait);
+          if (!r.ok) return r;
+          events.push(`passed ${id}`);
+          return ok();
+        };
+
+      const fiber1 = run(createWaiter(1));
+      const fiber2 = run(createWaiter(2));
+      const fiber3 = run(createWaiter(3));
+
+      await Promise.resolve();
+      expect(events).toEqual(["waiting 1", "waiting 2", "waiting 3"]);
+
+      gate.open();
+      await Promise.all([fiber1, fiber2, fiber3]);
+
+      expect(events).toEqual([
+        "waiting 1",
+        "waiting 2",
+        "waiting 3",
+        "passed 1",
+        "passed 2",
+        "passed 3",
+      ]);
+    });
+
+    test("close makes future tasks wait", async () => {
+      await using run = createRunner();
+
+      const gate = createGate();
+      const events: Array<string> = [];
+
+      gate.open();
+      const result1 = await run(gate.wait);
+      expect(result1).toEqual(ok());
+
+      gate.close();
+      expect(gate.isOpen()).toBe(false);
+
+      const fiber = run(async (run) => {
+        events.push("waiting after close");
+        const r = await run(gate.wait);
+        if (!r.ok) return r;
+        events.push("passed after reopen");
+        return ok();
+      });
+
+      await Promise.resolve();
+      expect(events).toEqual(["waiting after close"]);
+
+      gate.open();
+      await fiber;
+
+      expect(events).toEqual(["waiting after close", "passed after reopen"]);
+    });
+
+    test("abort while waiting returns AbortError", async () => {
+      await using run = createRunner();
+
+      const gate = createGate();
+
+      const fiber = run(gate.wait);
+      fiber.abort("cancelled");
+
+      const result = await fiber;
+      expect(result).toEqual(err({ type: "AbortError", reason: "cancelled" }));
+    });
+
+    test("open is idempotent", () => {
+      const gate = createGate();
+
+      gate.open();
+      gate.open();
+      gate.open();
+
+      expect(gate.isOpen()).toBe(true);
+    });
+
+    test("close is idempotent", () => {
+      const gate = createGate();
+
+      gate.close();
+      gate.close();
+      gate.close();
+
+      expect(gate.isOpen()).toBe(false);
+    });
+
+    test("preserves deps type", () => {
+      interface GateDeps {
+        readonly foo: string;
+      }
+
+      const gate = createGate<GateDeps>();
+
+      expectTypeOf(gate.wait).toEqualTypeOf<
+        Task<void, DeferredDisposedError, GateDeps>
+      >();
+    });
+
+    test("dispose aborts waiting tasks", async () => {
+      await using run = createRunner();
+
+      const gate = createGate();
+
+      const fiber1 = run(gate.wait);
+      const fiber2 = run(gate.wait);
+
+      gate[Symbol.dispose]();
+
+      const result1 = await fiber1;
+      const result2 = await fiber2;
+
+      expect(result1).toEqual(err(deferredDisposedError));
+      expect(result2).toEqual(err(deferredDisposedError));
+    });
+
+    test("dispose is idempotent", () => {
+      const gate = createGate();
+
+      gate[Symbol.dispose]();
+      gate[Symbol.dispose]();
+      gate[Symbol.dispose]();
+
+      expect(gate.isOpen()).toBe(false);
+    });
+
+    test("wait returns DeferredDisposedError after dispose", async () => {
+      await using run = createRunner();
+
+      const gate = createGate();
+      gate[Symbol.dispose]();
+
+      const result = await run(gate.wait);
+
+      expect(result).toEqual(err(deferredDisposedError));
+    });
+  });
+  describe("Semaphore", () => {
+    test("limits concurrent tasks", async () => {
+      await using run = createRunner();
+
+      const semaphore = createSemaphore(PositiveInt.orThrow(2));
+      const events: Array<string> = [];
+
+      const started = Array.from({ length: 3 }, () =>
+        Promise.withResolvers<void>(),
+      );
+      const finish = Array.from({ length: 3 }, () =>
+        Promise.withResolvers<void>(),
+      );
+
+      const task =
+        (id: number): Task<void> =>
+        async () => {
+          events.push(`start ${id}`);
+          started[id].resolve();
+          await finish[id].promise;
+          events.push(`end ${id}`);
+          return ok();
+        };
+
+      const fibers = [0, 1, 2].map((id) => run(semaphore.withPermit(task(id))));
+
+      await Promise.all([started[0].promise, started[1].promise]);
+      expect(events).toEqual(["start 0", "start 1"]);
+
+      finish[0].resolve();
+      await fibers[0];
+
+      await started[2].promise;
+      const indexEnd0 = events.indexOf("end 0");
+      const indexStart2 = events.indexOf("start 2");
+      expect(indexStart2).toBeGreaterThan(indexEnd0);
+
+      finish[1].resolve();
+      finish[2].resolve();
+      await Promise.all(fibers);
+
+      semaphore[Symbol.dispose]();
+    });
+
+    test("releases permit on task error", async () => {
+      await using run = createRunner();
+
+      const semaphore = createSemaphore(minPositiveInt);
+      const started = Promise.withResolvers<void>();
+      const waitingStarted = Promise.withResolvers<void>();
+      const releaseFirst = Promise.withResolvers<void>();
+
+      const failingTask: Task<void, { readonly type: "Fail" }> = async () => {
+        started.resolve();
+        await releaseFirst.promise;
+        return err({ type: "Fail" });
+      };
+
+      const waitingTask: Task<void> = () => {
+        waitingStarted.resolve();
+        return ok();
+      };
+
+      const failingFiber = run(semaphore.withPermit(failingTask));
+      await started.promise;
+
+      const waitingFiber = run(semaphore.withPermit(waitingTask));
+      releaseFirst.resolve();
+
+      const failingResult = await failingFiber;
+      expect(failingResult).toEqual(err({ type: "Fail" }));
+
+      const waitingResult = await waitingFiber;
+      expect(waitingResult).toEqual(ok());
+      await waitingStarted.promise;
+
+      semaphore[Symbol.dispose]();
+    });
+
+    test("runs waiters in FIFO order", async () => {
+      await using run = createRunner();
+
+      const semaphore = createSemaphore(minPositiveInt);
+      const events: Array<string> = [];
+
+      const holderRelease = Promise.withResolvers<void>();
+      const holder: Task<void> = async () => {
+        events.push("start holder");
+        await holderRelease.promise;
+        events.push("end holder");
+        return ok();
+      };
+
+      const waitingTask =
+        (id: number): Task<void> =>
+        () => {
+          events.push(`start ${id}`);
+          return ok();
+        };
+
+      const holderFiber = run(semaphore.withPermit(holder));
+      await Promise.resolve();
+
+      const firstWaiter = run(semaphore.withPermit(waitingTask(1)));
+      const secondWaiter = run(semaphore.withPermit(waitingTask(2)));
+
+      holderRelease.resolve();
+      await holderFiber;
+
+      await firstWaiter;
+      await secondWaiter;
+
+      const start1 = events.indexOf("start 1");
+      const start2 = events.indexOf("start 2");
+      expect(start1).toBeGreaterThan(events.indexOf("end holder"));
+      expect(start1).toBeLessThan(start2);
+
+      semaphore[Symbol.dispose]();
+    });
+
+    test("dispose aborts waiting and running tasks", async () => {
+      await using run = createRunner();
+
+      const semaphore = createSemaphore(minPositiveInt);
+      const runningStarted = Promise.withResolvers<void>();
+      const runningCanFinish = Promise.withResolvers<void>();
+      const runningAbortReason = Promise.withResolvers<unknown>();
+
+      const runningTask: Task<void> = async ({ onAbort }) => {
+        onAbort((reason) => {
+          runningAbortReason.resolve(reason);
+          runningCanFinish.resolve();
+        });
+
+        runningStarted.resolve();
+        await runningCanFinish.promise;
+        return ok();
+      };
+
+      const waitingTask: Task<void> = () => ok();
+
+      const runningFiber = run(semaphore.withPermit(runningTask));
+      await runningStarted.promise;
+
+      const waitingFiber = run(semaphore.withPermit(waitingTask));
+
+      semaphore[Symbol.dispose]();
+
+      const runningResult = await runningFiber;
+      const waitingResult = await waitingFiber;
+
+      expect(runningResult).toEqual(
+        err({ type: "AbortError", reason: semaphoreDisposedError }),
+      );
+      expect(waitingResult).toEqual(
+        err({ type: "AbortError", reason: semaphoreDisposedError }),
+      );
+
+      const reason = await runningAbortReason.promise;
+      expect(reason).toEqual(semaphoreDisposedError);
+    });
+
+    test("aborted runner does not hang waiting for permit", async () => {
+      await using run = createRunner();
+
+      const semaphore = createSemaphore(minPositiveInt);
+      const hold = Promise.withResolvers<void>();
+
+      const holder: Task<void> = async () => {
+        await hold.promise;
+        return ok();
+      };
+
+      const holderFiber = run(semaphore.withPermit(holder));
+
+      const waiterFiber = run(semaphore.withPermit(() => ok()));
+      waiterFiber.abort("stop");
+
+      const waiterResult = await waiterFiber;
+      expect(waiterResult).toEqual(err({ type: "AbortError", reason: "stop" }));
+
+      hold.resolve();
+      await holderFiber;
+
+      semaphore[Symbol.dispose]();
+    });
+  });
+
+  describe("Mutex", () => {
+    test("runs tasks sequentially", async () => {
+      await using run = createRunner();
+
+      const mutex = createMutex();
+      const events: Array<string> = [];
+
+      const firstStarted = Promise.withResolvers<void>();
+      const firstFinish = Promise.withResolvers<void>();
+      const secondStarted = Promise.withResolvers<void>();
+
+      const firstTask: Task<void> = async () => {
+        events.push("start 1");
+        firstStarted.resolve();
+        await firstFinish.promise;
+        events.push("end 1");
+        return ok();
+      };
+
+      const secondTask: Task<void> = () => {
+        events.push("start 2");
+        secondStarted.resolve();
+        events.push("end 2");
+        return ok();
+      };
+
+      const firstFiber = run(mutex.withLock(firstTask));
+      await firstStarted.promise;
+
+      const secondFiber = run(mutex.withLock(secondTask));
+
+      await Promise.resolve();
+      expect(events).toEqual(["start 1"]);
+
+      firstFinish.resolve();
+      await firstFiber;
+      await secondStarted.promise;
+      await secondFiber;
+
+      expect(events).toEqual(["start 1", "end 1", "start 2", "end 2"]);
+
+      mutex[Symbol.dispose]();
+    });
   });
 });
 
