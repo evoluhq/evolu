@@ -11,7 +11,10 @@
     "start": "next start",
     "_test": "node --test ./src/mdx/search.test.mjs"
   },
-  "browserslist": "defaults, not ie <= 11",
+  "browserslist": [
+    "defaults",
+    "maintained node versions"
+  ],
   "dependencies": {
     "@algolia/autocomplete-core": "^1.19.4",
     "@evolu/common": "workspace:*",
