@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "cross-env NODE_OPTIONS='--max-old-space-size-percentage=75' next build --webpack",
-    "clean": "rimraf .turbo .next node_modules",
+    "clean": "rimraf .turbo .next out node_modules",
     "dev": "next dev --webpack",
     "fix:docs": "node --experimental-strip-types ./scripts/fix-api-reference.mts",
     "lint": "next lint",
