@@ -95,7 +95,7 @@ import { Timestamp, TimestampBytes } from "./Timestamp.js";
 export type EvoluSchema = ReadonlyRecord<
   string,
   // TypeScript errors are cryptic so we use ValidateSchema.
-  ReadonlyRecord<string, Type<any, any, any, any, any, any>>
+  ReadonlyRecord<string, AnyType>
 >;
 
 /**
