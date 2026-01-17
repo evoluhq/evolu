@@ -51,8 +51,8 @@ import { type Awaitable, type Mutable, type Predicate } from "./Types.js";
  *
  * Evolu implements structured concurrency with these types:
  *
- * - **{@link Task}** — a function that takes {@link Runner}, optional deps, and
- *   returns {@link Awaitable} (sync or async) {@link Result}
+ * - **{@link Task}** — a function that takes {@link Runner} and deps, returning
+ *   {@link Awaitable} (sync or async) {@link Result}
  * - **{@link Runner}** — runs tasks, creates {@link Fiber}s, monitors and aborts
  *   them
  * - **{@link Fiber}** — awaitable, abortable/disposable handle to a running task
@@ -62,10 +62,14 @@ import { type Awaitable, type Mutable, type Predicate } from "./Types.js";
  * Evolu's structured concurrency core is minimal — one function with a few
  * flags and helper methods using native APIs.
  *
+ * Task's `deps` argument is for dependency injection — dependencies are defined
+ * as interfaces, wrapped to avoid clashes, and passed to every task
+ * automatically by the runner.
+ *
  * ### Example
  *
  * ```ts
- * // Pure DI — deps as interface.
+ * // A dependency — wraps native fetch for testability.
  * interface NativeFetchDep {
  *   readonly fetch: typeof globalThis.fetch;
  * }
@@ -75,7 +79,7 @@ import { type Awaitable, type Mutable, type Predicate } from "./Types.js";
  *   readonly error: unknown;
  * }
  *
- * // A Task wrapping native fetch.
+ * // A Task wrapping native fetch — adds abortability.
  * const fetchUrl =
  *   (url: string): Task<Response, FetchError, NativeFetchDep> =>
  *   ({ signal }, deps) =>
@@ -87,7 +91,7 @@ import { type Awaitable, type Mutable, type Predicate } from "./Types.js";
  *       },
  *     );
  *
- * // A composition root.
+ * // In a composition root…
  * const deps: NativeFetchDep = {
  *   fetch: globalThis.fetch.bind(globalThis),
  * };
@@ -212,6 +216,8 @@ import { type Awaitable, type Mutable, type Predicate } from "./Types.js";
  * {@link unabortable}, ensuring resources are acquired and released even when
  * abort is requested.
  *
+ * ### Example
+ *
  * ```ts
  * await using stack = run.stack();
  * stack.defer(task);
@@ -220,6 +226,10 @@ import { type Awaitable, type Mutable, type Predicate } from "./Types.js";
  * ```
  *
  * ## Awaitable
+ *
+ * ```ts
+ * type Awaitable<T> = T | PromiseLike<T>;
+ * ```
  *
  * While {@link Task} returns {@link Awaitable} (allowing sync or async results),
  * {@link Runner} is always async. Disposing a runner waits for all child runners
@@ -325,7 +335,7 @@ export type InferTaskDone<T extends Task<any, any, any>> =
  * @category Core
  */
 export const AbortError = typed("AbortError", { reason: Unknown });
-export type AbortError = typeof AbortError.Type;
+export interface AbortError extends InferType<typeof AbortError> {}
 
 /**
  * Runs a {@link Task} with
@@ -750,7 +760,9 @@ export const RunnerEventChildAdded = typed("childAdded", {
   childId: Id,
   timestamp: Millis,
 });
-export type RunnerEventChildAdded = typeof RunnerEventChildAdded.Type;
+export interface RunnerEventChildAdded extends InferType<
+  typeof RunnerEventChildAdded
+> {}
 
 /**
  * Emitted when a child {@link Fiber} is removed from a {@link Runner}.
@@ -762,7 +774,9 @@ export const RunnerEventChildRemoved = typed("childRemoved", {
   childId: Id,
   timestamp: Millis,
 });
-export type RunnerEventChildRemoved = typeof RunnerEventChildRemoved.Type;
+export interface RunnerEventChildRemoved extends InferType<
+  typeof RunnerEventChildRemoved
+> {}
 
 /**
  * Emitted when a {@link Runner}'s state changes.
@@ -774,7 +788,9 @@ export const RunnerEventStateChanged = typed("stateChanged", {
   state: RunnerState,
   timestamp: Millis,
 });
-export type RunnerEventStateChanged = typeof RunnerEventStateChanged.Type;
+export interface RunnerEventStateChanged extends InferType<
+  typeof RunnerEventStateChanged
+> {}
 
 /**
  * Emitted when a {@link Runner}'s result is set.
@@ -787,7 +803,9 @@ export const RunnerEventResultSet = typed("resultSet", {
   outcome: UnknownResult,
   timestamp: Millis,
 });
-export type RunnerEventResultSet = typeof RunnerEventResultSet.Type;
+export interface RunnerEventResultSet extends InferType<
+  typeof RunnerEventResultSet
+> {}
 
 /**
  * Events emitted by a {@link Runner} for monitoring and debugging.
@@ -1277,7 +1295,9 @@ const isAbortable = AbortMask.orThrow(0);
  * @category Core
  */
 export const RunnerClosingError = typed("RunnerClosingError");
-export type RunnerClosingError = typeof RunnerClosingError.Type;
+export interface RunnerClosingError extends InferType<
+  typeof RunnerClosingError
+> {}
 
 const createAbortError = (reason: unknown): AbortError => ({
   type: "AbortError",
@@ -1554,7 +1574,7 @@ export const race =
  * @category Composition
  */
 export const RaceLostError = typed("RaceLostError");
-export type RaceLostError = typeof RaceLostError.Type;
+export interface RaceLostError extends InferType<typeof RaceLostError> {}
 
 /**
  * {@link RaceLostError} used as abort reason in {@link race}.
@@ -1612,7 +1632,7 @@ export const timeout = <T, E, D = unknown>(
  * @category Composition
  */
 export const TimeoutError = typed("TimeoutError");
-export type TimeoutError = typeof TimeoutError.Type;
+export interface TimeoutError extends InferType<typeof TimeoutError> {}
 
 /**
  * {@link TimeoutError} used as abort reason in {@link timeout}.
@@ -1947,8 +1967,6 @@ export const createDeferred = <T, E = never>(): Deferred<T, E> => {
  * @category Concurrency
  */
 export const DeferredDisposedError = typed("DeferredDisposedError");
-// zkusit, nejak to slo, kde to bylo?
-// export type DeferredDisposedError = typeof DeferredDisposedError.Type;
 export interface DeferredDisposedError extends InferType<
   typeof DeferredDisposedError
 > {}
@@ -2145,7 +2163,9 @@ export const createSemaphore = (maxConcurrent: PositiveInt): Semaphore => {
  * @category Concurrency
  */
 export const SemaphoreDisposedError = typed("SemaphoreDisposedError");
-export type SemaphoreDisposedError = typeof SemaphoreDisposedError.Type;
+export interface SemaphoreDisposedError extends InferType<
+  typeof SemaphoreDisposedError
+> {}
 
 /**
  * {@link SemaphoreDisposedError} used as abort reason in {@link createSemaphore}.
