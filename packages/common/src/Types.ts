@@ -261,3 +261,24 @@ export type UnionToIntersection<U> = (
 ) extends (k: infer I) => void
   ? I
   : never;
+
+/**
+ * Removes keys from each member of a union.
+ *
+ * Use when {@link Omit} would collapse a discriminated union into a single
+ * shared shape.
+ *
+ * ### Example
+ *
+ * ```ts
+ * type Event =
+ *   | { type: "a"; a: string; shared: number }
+ *   | { type: "b"; b: number; shared: number };
+ *
+ * type Payload = DistributiveOmit<Event, "shared">;
+ * // { type: "a"; a: string } | { type: "b"; b: number }
+ * ```
+ */
+export type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
+  ? Omit<T, K>
+  : never;

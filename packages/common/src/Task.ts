@@ -35,7 +35,12 @@ import {
   Unknown,
   UnknownResult,
 } from "./Type.js";
-import { type Awaitable, type Mutable, type Predicate } from "./Types.js";
+import {
+  type Awaitable,
+  type DistributiveOmit,
+  type Mutable,
+  type Predicate,
+} from "./Types.js";
 
 /**
  * JavaScript-native structured concurrency.
@@ -1125,19 +1130,13 @@ const createRunnerInternal =
       }
     }
 
-    type RunnerEventPayload<T> = T extends RunnerEvent
-      ? Omit<T, "runnerId" | "timestamp">
-      : never;
-
-    const emitEvent = (event: RunnerEventPayload<RunnerEvent>) => {
+    const emitEvent = (
+      event: DistributiveOmit<RunnerEvent, "runnerId" | "timestamp">,
+    ) => {
       if (!deps.runnerConfig?.eventsEnabled.get()) return;
-      const fullEvent = {
-        ...event,
-        runnerId: self.id,
-        timestamp: deps.time.now(),
-      };
+      const e = { ...event, runnerId: self.id, timestamp: deps.time.now() };
       for (let node: Runner<D> | null = self; node; node = node.parent)
-        node.onEvent?.(fullEvent);
+        node.onEvent?.(e);
     };
 
     const run = <T, E>(task: Task<T, E, D>): Fiber<T, E, D> => {
@@ -1149,14 +1148,14 @@ const createRunnerInternal =
 
       if (state !== "active") {
         runner.requestAbort(runnerClosingError);
-        task = () => Promise.resolve(err(runnerClosingError));
+        task = () => err(runnerClosingError);
       } else if (
         signalController.signal.aborted &&
         runner.abortMask === isAbortable
       ) {
         const abortError = signalController.signal.reason as AbortError;
         runner.requestAbort(abortError);
-        task = () => Promise.resolve(err(abortError));
+        task = () => err(abortError);
       }
 
       // Promise.try is polyfilled
