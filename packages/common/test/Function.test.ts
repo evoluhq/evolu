@@ -1,11 +1,11 @@
 import { describe, expect, expectTypeOf, test } from "vitest";
 import type { NonEmptyArray, NonEmptyReadonlyArray } from "../src/Array.js";
 import {
-  constFalse,
-  constNull,
-  constTrue,
-  constUndefined,
-  constVoid,
+  lazyFalse,
+  lazyNull,
+  lazyTrue,
+  lazyUndefined,
+  lazyVoid,
   exhaustiveCheck,
   identity,
   readonly,
@@ -176,27 +176,25 @@ describe("exhaustiveCheck", () => {
   });
 });
 
-describe("const functions", () => {
-  test("constVoid returns void", () => {
-    constVoid();
-    expectTypeOf<ReturnType<typeof constVoid>>().toEqualTypeOf<void>();
+describe("lazy functions", () => {
+  test("lazyVoid returns void", () => {
+    lazyVoid();
+    expectTypeOf<ReturnType<typeof lazyVoid>>().toEqualTypeOf<void>();
   });
 
-  test("constUndefined returns undefined", () => {
-    expectTypeOf<
-      ReturnType<typeof constUndefined>
-    >().toEqualTypeOf<undefined>();
+  test("lazyUndefined returns undefined", () => {
+    expectTypeOf<ReturnType<typeof lazyUndefined>>().toEqualTypeOf<undefined>();
   });
 
-  test("constNull returns null", () => {
-    expect(constNull()).toBe(null);
+  test("lazyNull returns null", () => {
+    expect(lazyNull()).toBe(null);
   });
 
-  test("constTrue returns true", () => {
-    expect(constTrue()).toBe(true);
+  test("lazyTrue returns true", () => {
+    expect(lazyTrue()).toBe(true);
   });
 
-  test("constFalse returns false", () => {
-    expect(constFalse()).toBe(false);
+  test("lazyFalse returns false", () => {
+    expect(lazyFalse()).toBe(false);
   });
 });

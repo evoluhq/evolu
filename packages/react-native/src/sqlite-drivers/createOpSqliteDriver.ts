@@ -1,9 +1,9 @@
 import {
   bytesToHex,
-  constVoid,
   createPreparedStatementsCache,
   type CreateSqliteDriver,
   isSqlMutation,
+  lazyVoid,
   type SqliteDriver,
   type SqliteRow,
 } from "@evolu/common";
@@ -26,7 +26,7 @@ export const createOpSqliteDriver: CreateSqliteDriver = (name, options) => {
   const cache = createPreparedStatementsCache<PreparedStatement>(
     (sql) => db.prepareStatement(sql),
     // op-sqlite doesn't have API for that
-    constVoid,
+    lazyVoid,
   );
 
   const driver: SqliteDriver = {

@@ -2,7 +2,7 @@ import { compress, init } from "@bokuweb/zstd-wasm";
 import * as fc from "fast-check";
 import { assert, beforeAll, describe, expect, it, test } from "vitest";
 import { createBuffer } from "../../src/Buffer.js";
-import { constFalse, constTrue } from "../../src/Function.js";
+import { lazyFalse, lazyTrue } from "../../src/Function.js";
 import type { NonEmptyReadonlyArray } from "../../src/index.js";
 import { assertNonEmptyArray, EncryptionKey } from "../../src/index.js";
 import type { TimestampsRangeWithTimestampsBuffer } from "../../src/local-first/Protocol.js";
@@ -838,7 +838,7 @@ describe("E2E errors", () => {
     const responseWithWriteKeyError = await applyProtocolMessageAsRelay({
       storage: {
         ...shouldNotBeCalledStorageDep.storage,
-        validateWriteKey: constFalse,
+        validateWriteKey: lazyFalse,
       },
     })(initiatorMessage);
 
@@ -955,7 +955,7 @@ describe("E2E relay options", () => {
     await applyProtocolMessageAsRelay({
       storage: {
         ...shouldNotBeCalledStorageDep.storage,
-        validateWriteKey: constTrue,
+        validateWriteKey: lazyTrue,
         writeMessages: () => Promise.resolve(ok()),
       },
     })(initiatorMessage, {

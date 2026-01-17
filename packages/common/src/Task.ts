@@ -9,7 +9,7 @@ import { assert } from "./Assert.js";
 import type { RandomBytesDep } from "./Crypto.js";
 import { createRandomBytes } from "./Crypto.js";
 import { eqArrayStrict } from "./Eq.js";
-import { constTrue, constVoid } from "./Function.js";
+import { lazyTrue, lazyVoid } from "./Function.js";
 import { decrement, increment } from "./Number.js";
 import type { Random, RandomDep } from "./Random.js";
 import { createRandom } from "./Random.js";
@@ -867,7 +867,7 @@ export class AsyncDisposableStack<D = unknown> implements AsyncDisposable {
   }
 
   #runVoid(task: Task<void, any, D>): PromiseLike<void> {
-    return this.#run(task).then(constVoid);
+    return this.#run(task).then(lazyVoid);
   }
 
   /**
@@ -1238,7 +1238,7 @@ const createRunnerInternal =
       run.daemon = (task) => (daemon ?? self)(task);
       run.defer = (task) => ({
         [Symbol.asyncDispose]: () =>
-          run.daemon(unabortable(task)).then(constVoid),
+          run.daemon(unabortable(task)).then(lazyVoid),
       });
       run.stack = () => new AsyncDisposableStack(self);
 
@@ -1254,7 +1254,7 @@ const createRunnerInternal =
         requestAbort(runnerClosingError);
 
         disposing = Promise.allSettled(children)
-          .then(constVoid)
+          .then(lazyVoid)
           .finally(() => {
             state = "disposed";
             emitEvent({ type: "stateChanged", state });
@@ -1712,7 +1712,7 @@ export const retry =
     task: Task<T, E, D>,
     schedule: Schedule<Output, E>,
     {
-      retryable = constTrue as Predicate<E>,
+      retryable = lazyTrue as Predicate<E>,
       onRetry,
     }: RetryOptions<E, Output> = {},
   ): Task<T, E | RetryError<E>, D> =>
@@ -1832,7 +1832,7 @@ export const repeat =
     task: Task<T, E, D>,
     schedule: Schedule<Output, T>,
     {
-      repeatable = constTrue as Predicate<T>,
+      repeatable = lazyTrue as Predicate<T>,
       onRepeat,
     }: RepeatOptions<T, Output> = {},
   ): Task<T, E, D> =>

@@ -1,6 +1,6 @@
 import { assert, describe, expect, expectTypeOf, test } from "vitest";
 import type { Brand } from "../src/Brand.js";
-import { constVoid, exhaustiveCheck } from "../src/Function.js";
+import { lazyVoid, exhaustiveCheck } from "../src/Function.js";
 import { err, ok } from "../src/Result.js";
 import { createTestDeps } from "../src/Test.js";
 import type {
@@ -2150,7 +2150,7 @@ test("JsonValue", () => {
 
   const invalidJsonValues = [
     undefined,
-    constVoid,
+    lazyVoid,
     Symbol("symbol"),
     BigInt(123),
     { circular: undefined },
@@ -2201,12 +2201,12 @@ test("JsonArray", () => {
 
   const invalidJsonArrays = [
     undefined,
-    constVoid,
+    lazyVoid,
     Symbol("symbol"),
     BigInt(123),
     { key: "value" },
     ["valid", undefined],
-    [1, "string", constVoid],
+    [1, "string", lazyVoid],
     [{ circular: undefined }],
   ];
 
@@ -2262,7 +2262,7 @@ test("JsonObject", () => {
     42,
     "string",
     BigInt(123),
-    constVoid,
+    lazyVoid,
     { key: undefined }, // Undefined is not a valid JsonValue
     { validKey: "value", invalidKey: undefined }, // Mixed validity
     { key: Symbol("symbol") }, // Symbol is not valid

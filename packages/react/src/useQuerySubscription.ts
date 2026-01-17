@@ -1,4 +1,4 @@
-import { constVoid } from "@evolu/common";
+import { lazyVoid } from "@evolu/common";
 import {
   type Query,
   type QueryRows,
@@ -28,7 +28,7 @@ export const useQuerySubscription = <R extends Row>(
     /* eslint-disable react-hooks/rules-of-hooks */
     useEffect(
       // No useSyncExternalStore, no unnecessary updates.
-      () => evolu.subscribeQuery(query)(constVoid),
+      () => evolu.subscribeQuery(query)(lazyVoid),
       [evolu, query],
     );
     return evolu.getQueryRows(query);

@@ -4,7 +4,7 @@
  * @module
  */
 
-import { constVoid } from "./Function.js";
+import { lazyVoid } from "./Function.js";
 import type { RetryErrorOld, RetryOptionsOld } from "./OldTask.js";
 import { retryOld } from "./OldTask.js";
 import type { Result } from "./Result.js";
@@ -189,7 +189,7 @@ export const createWebSocket: CreateWebSocket = (
   };
 
   // To prevent a memory leak from pending connection promise.
-  let disposePromise: null | typeof constVoid = null;
+  let disposePromise: null | typeof lazyVoid = null;
 
   /**
    * This promise represents continuous connection which:
@@ -334,7 +334,7 @@ export const testCreateWebSocket = (
         options.onClose({} as CloseEvent);
       }
     },
-    [Symbol.dispose]: constVoid,
+    [Symbol.dispose]: lazyVoid,
   };
 };
 
@@ -343,5 +343,5 @@ export const testCreateDummyWebSocket: CreateWebSocket = () => ({
   send: () => ok(),
   getReadyState: () => "connecting",
   isOpen: () => false,
-  [Symbol.dispose]: constVoid,
+  [Symbol.dispose]: lazyVoid,
 });

@@ -1,6 +1,6 @@
 import { expectTypeOf, test } from "vitest";
 import type { Brand, IsBranded } from "../src/Brand.js";
-import { constVoid } from "../src/Function.js";
+import { lazyVoid } from "../src/Function.js";
 
 test("Brand", () => {
   type UserId = string & Brand<"UserId">;
@@ -33,8 +33,8 @@ test("Brand - multiple brands", () => {
   type Max100 = string & Brand<"Max100">;
   type Min1Max100 = string & Brand<"Min1" | "Max100">;
 
-  const requiresMin1 = (_value: Min1) => constVoid;
-  const requiresMax100 = (_value: Max100) => constVoid;
+  const requiresMin1 = (_value: Min1) => lazyVoid;
+  const requiresMax100 = (_value: Max100) => lazyVoid;
 
   const min1Value: Min1 = "hello" as Min1;
   const max100Value: Max100 = "world" as Max100;
@@ -72,7 +72,7 @@ test("Brand - standalone (nominal type)", () => {
   // Useful for platform-specific values where type identity is based on name only.
   type NativePort = Brand<"NativePort">;
 
-  const requiresNativePort = (_port: NativePort) => constVoid;
+  const requiresNativePort = (_port: NativePort) => lazyVoid;
 
   // Only branded values can be passed
   const nativePort: NativePort = {} as NativePort;

@@ -1,7 +1,7 @@
 import BetterSQLite from "better-sqlite3";
 import { existsSync, unlinkSync } from "fs";
 import { assert, describe, expect, test } from "vitest";
-import { constVoid } from "../src/Function.js";
+import { lazyVoid } from "../src/Function.js";
 import { err, getOrThrow } from "../src/Result.js";
 import { createSqlite, isSqlMutation, sql } from "../src/Sqlite.js";
 import type { SqliteDriver } from "../src/Sqlite.js";
@@ -172,7 +172,7 @@ test("transaction callback error and rollback fails", async () => {
       return emptyResult;
     },
     export: () => new Uint8Array(),
-    [Symbol.dispose]: constVoid,
+    [Symbol.dispose]: lazyVoid,
   };
   const sqlite = getOrThrow(
     await createSqlite({

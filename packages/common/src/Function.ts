@@ -121,32 +121,48 @@ export function readonly<T, K extends keyof any, V>(
  *
  * Useful for:
  *
+ * - Providing default callbacks (see {@link lazyVoid}, {@link lazyTrue}, etc.)
  * - Delaying expensive operations until actually needed
  * - Deferring side effects so the callee controls when they run
- * - Providing default callbacks (see `constVoid`, `constTrue`, etc.)
  *
  * ### Example
  *
  * ```ts
- * // Delay expensive computation
- * const expensiveData: Lazy<Data> = () => computeExpensiveData();
- * const data = expensiveData(); // Runs only when called
- *
- * // Defer side effects — callee can set up error handling before creation
- * const createWorker = (create: Lazy<SharedWorker>, onError: OnError) => {
- *   // Setup happens first
- *   const worker = create(); // Then the effect runs
- *   worker.onerror = onError;
- *   return worker;
+ * // Default callback
+ * const notify = (onDone: Lazy<void> = lazyVoid) => {
+ *   onDone();
  * };
- * createWorker(() => new SharedWorker(url), handleError);
+ *
+ * // Delay computation
+ * const getData: Lazy<Data> = () => compute();
+ * const data = getData();
+ *
+ * // Defer side effects
+ * const schedule = (job: Lazy<void>) => {
+ *   queueMicrotask(job);
+ * };
+ * schedule(() => logMetric("loaded"));
  * ```
  */
 export type Lazy<T> = () => T;
 
-// TODO: Rename to lazyVoid etc.
-export const constVoid: Lazy<void> = () => undefined;
-export const constUndefined: Lazy<undefined> = () => undefined;
-export const constNull: Lazy<null> = () => null;
-export const constTrue: Lazy<true> = () => true;
-export const constFalse: Lazy<false> = () => false;
+/** Creates a {@link Lazy} from a value. Useful for defining constant thunks. */
+export const lazy =
+  <T>(value: T): Lazy<T> =>
+  () =>
+    value;
+
+/** A {@link Lazy} that returns `true`. */
+export const lazyTrue: Lazy<true> = lazy(true);
+
+/** A {@link Lazy} that returns `false`. */
+export const lazyFalse: Lazy<false> = lazy(false);
+
+/** A {@link Lazy} that returns `null`. */
+export const lazyNull: Lazy<null> = lazy(null);
+
+/** A {@link Lazy} that returns `undefined`. */
+export const lazyUndefined: Lazy<undefined> = lazy(undefined);
+
+/** A {@link Lazy} that returns `undefined` for void callbacks. */
+export const lazyVoid: Lazy<void> = lazyUndefined;

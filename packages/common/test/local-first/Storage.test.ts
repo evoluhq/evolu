@@ -1,6 +1,6 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { assert, expect, test } from "vitest";
-import { constTrue } from "../../src/Function.js";
+import { lazyTrue } from "../../src/Function.js";
 import { ownerIdToOwnerIdBytes } from "../../src/local-first/Owner.js";
 import type {
   BaseSqliteStorageDep,
@@ -54,7 +54,7 @@ const createDeps = async (): Promise<SqliteDep & BaseSqliteStorageDep> => {
     onStorageError: (error) => {
       throw new Error(error.type);
     },
-    isOwnerWithinQuota: constTrue, // Allow all writes in tests
+    isOwnerWithinQuota: lazyTrue, // Allow all writes in tests
   });
   return { sqlite, storage };
 };

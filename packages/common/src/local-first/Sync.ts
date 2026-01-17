@@ -15,7 +15,7 @@ import type {
 } from "../Crypto.js";
 import type { UnknownError } from "../Error.js";
 import { createUnknownError } from "../Error.js";
-import { constFalse, constTrue } from "../Function.js";
+import { lazyFalse, lazyTrue } from "../Function.js";
 import { createRecord, getProperty, objectToEntries } from "../Object.js";
 import type { AbortErrorOld } from "../OldTask.js";
 import { createMutexOld } from "../OldTask.js";
@@ -472,7 +472,7 @@ const createClientStorage =
   }): Result<ClientStorage, SqliteError> => {
     const sqliteStorageBase = createBaseSqliteStorage(deps)({
       onStorageError: config.onError,
-      isOwnerWithinQuota: constTrue, // Clients don't have quota limits
+      isOwnerWithinQuota: lazyTrue, // Clients don't have quota limits
     });
 
     // TODO: Mutex per OwnerId
@@ -482,8 +482,8 @@ const createClientStorage =
       ...sqliteStorageBase,
 
       // Not implemented yet.
-      validateWriteKey: constFalse,
-      setWriteKey: constFalse,
+      validateWriteKey: lazyFalse,
+      setWriteKey: lazyFalse,
 
       writeMessages: async (ownerIdBytes, encryptedMessages) => {
         const ownerId = ownerIdBytesToOwnerId(ownerIdBytes);

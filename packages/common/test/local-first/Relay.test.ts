@@ -5,7 +5,7 @@ import type {
   SqliteDep,
 } from "../../src/index.js";
 import {
-  constFalse,
+  lazyFalse,
   err,
   sql,
   timestampBytesToTimestamp,
@@ -186,7 +186,7 @@ describe("writeMessages", () => {
 
   test("transaction rollback on quota error", async () => {
     const { storage, sqlite } = await testCreateRelayStorageAndSqliteDeps({
-      isOwnerWithinQuota: constFalse,
+      isOwnerWithinQuota: lazyFalse,
     });
 
     const result = await storage.writeMessages(testOwnerIdBytes, [message]);
@@ -262,7 +262,7 @@ describe("writeMessages", () => {
 
     test("fails when isOwnerWithinQuota returns false", async () => {
       const { storage } = await testCreateRelayStorageAndSqliteDeps({
-        isOwnerWithinQuota: constFalse,
+        isOwnerWithinQuota: lazyFalse,
       });
 
       const result = await storage.writeMessages(testOwnerIdBytes, [message]);

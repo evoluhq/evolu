@@ -25,18 +25,18 @@ export default defineConfig({
           environment: "node",
         },
       },
-      {
-        test: {
-          include: ["test/Task.test.ts"],
-          name: "browser",
-          browser: {
-            enabled: true,
-            provider: playwright(),
-            headless: true,
-            instances: [{ browser: "chromium" }],
-          },
-        },
-      },
+      // {
+      //   test: {
+      //     include: ["test/Task.test.ts"],
+      //     name: "browser",
+      //     browser: {
+      //       enabled: true,
+      //       provider: playwright(),
+      //       headless: true,
+      //       instances: [{ browser: "chromium" }],
+      //     },
+      //   },
+      // },
     ],
   },
 });

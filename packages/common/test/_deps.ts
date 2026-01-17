@@ -1,5 +1,5 @@
 import type { TimingSafeEqual } from "../src/Crypto.js";
-import { constTrue, constVoid } from "../src/Function.js";
+import { lazyTrue, lazyVoid } from "../src/Function.js";
 import {
   createRelaySqliteStorage,
   createRelayStorageTables,
@@ -36,7 +36,7 @@ export const testCreateSqliteDriver: CreateSqliteDriver = async () => {
 
   const cache = createPreparedStatementsCache<Statement>(
     (sql) => db.prepare(sql),
-    constVoid,
+    lazyVoid,
   );
 
   const driver: SqliteDriver = {
@@ -96,7 +96,7 @@ export const testCreateRelayStorageAndSqliteDeps = async (
     onStorageError: (error) => {
       throw new Error(error.type);
     },
-    isOwnerWithinQuota: constTrue,
+    isOwnerWithinQuota: lazyTrue,
     ...config,
   });
 
