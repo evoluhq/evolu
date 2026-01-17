@@ -1,7 +1,7 @@
 import { IconMoonFilled, IconSun } from "@tabler/icons-react";
 import { useTheme } from "next-themes";
 
-export function ThemeToggle(): React.ReactElement {
+export const ThemeToggle = (): React.ReactElement => {
   const { resolvedTheme, setTheme } = useTheme();
   const otherTheme = resolvedTheme === "dark" ? "light" : "dark";
 
@@ -18,4 +18,4 @@ export function ThemeToggle(): React.ReactElement {
       <IconMoonFilled className="hidden size-4 stroke-white dark:block" />
     </button>
   );
-}
+};

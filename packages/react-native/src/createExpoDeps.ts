@@ -103,9 +103,9 @@ const createMetadata = (isSecure = true): SensitiveInfoItem["metadata"] => ({
   timestamp: Date.now(),
 });
 
-function convertOptions(
+const convertOptions = (
   options?: LocalAuthOptions,
-): SecureStore.SecureStoreOptions {
+): SecureStore.SecureStoreOptions => {
   const accessGroup =
     options?.keychainGroup ?? localAuthDefaultOptions.keychainGroup ?? "";
   const keychainService =
@@ -126,11 +126,11 @@ function convertOptions(
     authenticationPrompt,
     requireAuthentication: options?.accessControl !== "none",
   };
-}
+};
 
-function convertKeychainAccessible(
+const convertKeychainAccessible = (
   accessControl: AccessControl,
-): SecureStore.KeychainAccessibilityConstant {
+): SecureStore.KeychainAccessibilityConstant => {
   switch (accessControl) {
     case "none":
       // eslint-disable-next-line @typescript-eslint/no-deprecated
@@ -149,7 +149,7 @@ function convertKeychainAccessible(
       // Default (for typescript, should never hit)
       return SecureStore.AFTER_FIRST_UNLOCK;
   }
-}
+};
 
 const localAuth = createSharedLocalAuth(createSecureStore());
 

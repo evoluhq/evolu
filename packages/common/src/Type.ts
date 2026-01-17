@@ -4342,10 +4342,10 @@ export type NullTypeInMembers<Members extends [AnyType, ...Array<AnyType>]> =
  *
  * @group Object
  */
-export function omit<T extends ObjectType<any>, Keys extends keyof T["props"]>(
+export const omit = <T extends ObjectType<any>, Keys extends keyof T["props"]>(
   objectType: T,
   ...keys: ReadonlyArray<Keys>
-): ObjectType<Omit<T["props"], Keys>> {
+): ObjectType<Omit<T["props"], Keys>> => {
   const newProps = {} as Omit<T["props"], Keys>;
 
   for (const key in objectType.props) {
@@ -4355,7 +4355,7 @@ export function omit<T extends ObjectType<any>, Keys extends keyof T["props"]>(
     }
   }
   return object(newProps);
-}
+};
 
 export const maxMutationSize = 655360;
 

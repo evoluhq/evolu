@@ -9,13 +9,13 @@ import { motion } from "motion/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-export function Layout({
+export const Layout = ({
   children,
   allSections,
 }: {
   children: React.ReactNode;
   allSections: Record<string, Array<Section>>;
-}): React.ReactElement {
+}): React.ReactElement => {
   const pathname = usePathname();
 
   return (
@@ -42,4 +42,4 @@ export function Layout({
       </div>
     </SectionProvider>
   );
-}
+};

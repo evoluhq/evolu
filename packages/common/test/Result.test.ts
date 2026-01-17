@@ -1037,6 +1037,7 @@ describe("generator-based composition", () => {
    *
    * @yields {Err<E>} Err if the result is an error
    */
+  // eslint-disable-next-line func-style -- generators require function keyword
   function* gen<T, E>(result: Result<T, E>): Gen<T, E> {
     if (result.ok) {
       return result.value;

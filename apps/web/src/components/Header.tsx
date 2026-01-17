@@ -32,7 +32,7 @@ import {
   useMobileNavigationStore,
 } from "@/hooks/use-nav";
 
-function TopLevelNavItem({
+const TopLevelNavItem = ({
   href,
   target = "_self",
   children,
@@ -40,8 +40,7 @@ function TopLevelNavItem({
   href: string;
   target?: string;
   children: React.ReactNode;
-}) {
-  return (
+}) => (
     <li>
       <Link
         href={href}
@@ -52,10 +51,8 @@ function TopLevelNavItem({
       </Link>
     </li>
   );
-}
 
-function MenuIcon(props: React.ComponentPropsWithoutRef<"svg">) {
-  return (
+const MenuIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
     <svg
       viewBox="0 0 10 9"
       fill="none"
@@ -66,18 +63,14 @@ function MenuIcon(props: React.ComponentPropsWithoutRef<"svg">) {
       <path d="M.5 1h9M.5 8h9M.5 4.5h9" />
     </svg>
   );
-}
 
-function XIcon(props: React.ComponentPropsWithoutRef<"svg">) {
-  return (
+const XIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
     <svg viewBox="0 0 20 20" aria-hidden="true" {...props}>
       <path d="M11.1527 8.92804L16.2525 3H15.044L10.6159 8.14724L7.07919 3H3L8.34821 10.7835L3 17H4.20855L8.88474 11.5643L12.6198 17H16.699L11.1524 8.92804H11.1527ZM9.49748 10.8521L8.95559 10.077L4.644 3.90978H6.50026L9.97976 8.88696L10.5216 9.66202L15.0446 16.1316H13.1883L9.49748 10.8524V10.8521Z" />
     </svg>
   );
-}
 
-function XCloseIcon(props: React.ComponentPropsWithoutRef<"svg">) {
-  return (
+const XCloseIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
     <svg
       viewBox="0 0 10 9"
       fill="none"
@@ -88,15 +81,14 @@ function XCloseIcon(props: React.ComponentPropsWithoutRef<"svg">) {
       <path d="m1.5 1 7 7M8.5 1l-7 7" />
     </svg>
   );
-}
 
-function MobileNavigationDialog({
+const MobileNavigationDialog = ({
   isOpen,
   close,
 }: {
   isOpen: boolean;
   close: () => void;
-}) {
+}) => {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const initialPathname = useRef(pathname);
@@ -111,7 +103,7 @@ function MobileNavigationDialog({
     }
   }, [pathname, searchParams, close, initialPathname, initialSearchParams]);
 
-  function onClickDialog(event: React.MouseEvent<HTMLDivElement>) {
+  const onClickDialog = (event: React.MouseEvent<HTMLDivElement>) => {
     if (!(event.target instanceof HTMLElement)) {
       return;
     }
@@ -124,7 +116,7 @@ function MobileNavigationDialog({
     ) {
       close();
     }
-  }
+  };
 
   return (
     <Dialog
@@ -154,9 +146,9 @@ function MobileNavigationDialog({
       </DialogPanel>
     </Dialog>
   );
-}
+};
 
-export function MobileNavigation(): React.ReactElement {
+export const MobileNavigation = (): React.ReactElement => {
   const isInsideMobileNavigation = useIsInsideMobileNavigation();
   const { isOpen, toggle, close } = useMobileNavigationStore();
   const ToggleIcon = isOpen ? XCloseIcon : MenuIcon;
@@ -178,7 +170,7 @@ export function MobileNavigation(): React.ReactElement {
       )}
     </IsInsideMobileNavigationContext.Provider>
   );
-}
+};
 
 export const Header = forwardRef<
   React.ComponentRef<"div">,

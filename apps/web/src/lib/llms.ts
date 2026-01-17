@@ -5,7 +5,7 @@ import { navigation } from "./navigation";
  * Cleans MDX content by removing imports, exports, JSX components, and
  * converting relative links.
  */
-export function cleanMdxContent(content: string): string {
+export const cleanMdxContent = (content: string): string => {
   // Remove import statements - ensuring we catch all top-level imports
   let cleanedContent = content.replace(/^import\s+.*?['"].*?['"];?\s*$/gm, "");
 
@@ -69,7 +69,7 @@ export function cleanMdxContent(content: string): string {
   cleanedContent = cleanedContent.replace(/\n{3,}/g, "\n\n");
 
   return cleanedContent.trim();
-}
+};
 
 export interface MDXModule {
   metadata?: {
@@ -134,7 +134,7 @@ const createFileListFromNavigation = (baseUrl: string): Array<string> => {
 };
 
 /** Loads and processes MDX content from a file path */
-export async function loadMdxContent(
+export const loadMdxContent = async (
   fullPath: string,
   relativePath: string,
 ): Promise<{
@@ -142,7 +142,7 @@ export async function loadMdxContent(
   title: string;
   sections: Array<{ title: string; id: string }>;
   content: string;
-}> {
+}> => {
   try {
     const path = `/(docs)/docs/${relativePath.replace(/page\.mdx$/, "")}`;
 
@@ -179,10 +179,10 @@ export async function loadMdxContent(
       content: "",
     };
   }
-}
+};
 
 /** Fetches and processes all MDX files for LLM documentation */
-export async function fetchProcessedMdxPages(
+export const fetchProcessedMdxPages = async (
   includeApiReference = false,
 ): Promise<
   Array<{
@@ -191,7 +191,7 @@ export async function fetchProcessedMdxPages(
     sections: Array<{ title: string; id: string }>;
     content: string;
   }>
-> {
+> => {
   const glob = await import("fast-glob");
 
   // Find all MDX files, conditionally excluding specified paths
@@ -227,7 +227,7 @@ export async function fetchProcessedMdxPages(
       return loadMdxContent(fullPath, filename);
     }),
   );
-}
+};
 
 export const createLlmsIndex = async ({
   includeApiReference = false,

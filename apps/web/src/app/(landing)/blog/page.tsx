@@ -7,39 +7,37 @@ import { RssIcon } from "@/components/icons/RssIcon";
 import { type ArticleWithSlug, getAllArticles } from "@/lib/blog";
 import { formatDate } from "@/lib/formatDate";
 
-function Article({ article }: { article: ArticleWithSlug }) {
-  return (
-    <article className="md:grid md:grid-cols-4 md:items-baseline">
-      <Card className="md:col-span-3">
-        <Card.Title href={`/blog/${article.slug}`}>{article.title}</Card.Title>
-        <Card.Eyebrow
-          as="time"
-          dateTime={article.date}
-          className="md:hidden"
-          decorate
-        >
-          {formatDate(article.date)}
-        </Card.Eyebrow>
-        <Card.Description>{article.description}</Card.Description>
-        <Card.Cta>Read article</Card.Cta>
-      </Card>
+const Article = ({ article }: { article: ArticleWithSlug }) => (
+  <article className="md:grid md:grid-cols-4 md:items-baseline">
+    <Card className="md:col-span-3">
+      <Card.Title href={`/blog/${article.slug}`}>{article.title}</Card.Title>
       <Card.Eyebrow
         as="time"
         dateTime={article.date}
-        className="mt-1 hidden md:block"
+        className="md:hidden"
+        decorate
       >
         {formatDate(article.date)}
       </Card.Eyebrow>
-    </article>
-  );
-}
+      <Card.Description>{article.description}</Card.Description>
+      <Card.Cta>Read article</Card.Cta>
+    </Card>
+    <Card.Eyebrow
+      as="time"
+      dateTime={article.date}
+      className="mt-1 hidden md:block"
+    >
+      {formatDate(article.date)}
+    </Card.Eyebrow>
+  </article>
+);
 
 export const metadata: Metadata = {
   title: "Blog",
   description: "Restore data ownership",
 };
 
-export default async function ArticlesIndex(): Promise<React.ReactElement> {
+const ArticlesIndex = async (): Promise<React.ReactElement> => {
   const articles = await getAllArticles();
 
   return (
@@ -65,4 +63,6 @@ export default async function ArticlesIndex(): Promise<React.ReactElement> {
       </div>
     </SimpleLayout>
   );
-}
+};
+
+export default ArticlesIndex;

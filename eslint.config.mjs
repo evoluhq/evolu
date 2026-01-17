@@ -38,6 +38,8 @@ export default defineConfig(
       },
     },
     rules: {
+      // Enforce arrows, auto-exempts overloaded functions
+      "func-style": ["error", "expression"],
       "arrow-body-style": ["error", "as-needed"],
       "no-console": "error",
       "@typescript-eslint/array-type": ["error", { default: "generic" }],

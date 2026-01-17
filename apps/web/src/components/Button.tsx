@@ -1,18 +1,16 @@
 import clsx from "clsx";
 import Link from "next/link";
 
-function ArrowIcon(props: React.ComponentPropsWithoutRef<"svg">) {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" {...props}>
-      <path
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="m11.5 6.5 3 3.5m0 0-3 3.5m3-3.5h-9"
-      />
-    </svg>
-  );
-}
+const ArrowIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
+  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" {...props}>
+    <path
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="m11.5 6.5 3 3.5m0 0-3 3.5m3-3.5h-9"
+    />
+  </svg>
+);
 
 const variantStyles = {
   primary:
@@ -34,13 +32,13 @@ type ButtonProps = {
   | (React.ComponentPropsWithoutRef<"button"> & { href?: undefined })
 );
 
-export function Button({
+export const Button = ({
   variant = "primary",
   className,
   children,
   arrow,
   ...props
-}: ButtonProps): React.ReactElement {
+}: ButtonProps): React.ReactElement => {
   className = clsx(
     "inline-flex gap-0.5 justify-center overflow-hidden text-sm font-medium transition",
     variantStyles[variant],
@@ -80,4 +78,4 @@ export function Button({
       {inner}
     </Link>
   );
-}
+};

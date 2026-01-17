@@ -1,3 +1,4 @@
+/* eslint-disable func-style */
 /**
  * Kysely query builder extensions for Evolu.
  *

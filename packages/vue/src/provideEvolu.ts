@@ -20,7 +20,7 @@ export const EvoluContext: InjectionKey<Evolu<any> | null> =
   Symbol("EvoluContext");
 
 /** Provide the Evolu instance to components via Vue's provide/inject system. */
-export function provideEvolu(evolu: Evolu<any> | (() => Evolu<any>)): void {
+export const provideEvolu = (evolu: Evolu<any> | (() => Evolu<any>)): void => {
   const vueInstance = getCurrentInstance();
 
   if (!vueInstance) {
@@ -36,4 +36,4 @@ export function provideEvolu(evolu: Evolu<any> | (() => Evolu<any>)): void {
   // Vue doesn't allow injecting a value from the same component where it was provided,
   // so we store the mapping to give root components access as well.
   evoluInstanceMap.set(vueInstance, instance);
-}
+};

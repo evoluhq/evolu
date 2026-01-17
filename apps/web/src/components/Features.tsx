@@ -264,26 +264,24 @@ const features: Array<Feature> = [
   },
 ];
 
-export function FeatureIcon({
+export const FeatureIcon = ({
   icon: Icon,
 }: {
   icon: Feature["icon"];
-}): React.ReactElement {
-  return (
+}): React.ReactElement => (
     <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white ring-1 ring-zinc-900/25 backdrop-blur-[2px] transition duration-300 group-hover:bg-white/50 group-hover:ring-zinc-900/50 dark:bg-white/10 dark:ring-white/15 dark:group-hover:bg-zinc-300/10 dark:group-hover:ring-zinc-400">
       <Icon className="h-5 w-5 stroke-zinc-700 transition-colors duration-300 group-hover:stroke-zinc-900 dark:stroke-zinc-400 dark:group-hover:stroke-zinc-400" />
     </div>
   );
-}
 
-function FeaturePattern({
+const FeaturePattern = ({
   mouseX,
   mouseY,
   ...gridProps
 }: Feature["pattern"] & {
   mouseX: MotionValue<number>;
   mouseY: MotionValue<number>;
-}) {
+}) => {
   const maskImage = useMotionTemplate`radial-gradient(180px at ${mouseX}px ${mouseY}px, white, transparent)`;
   const style = { maskImage, WebkitMaskImage: maskImage };
 
@@ -314,21 +312,21 @@ function FeaturePattern({
       </motion.div>
     </div>
   );
-}
+};
 
-function Feature({ feature }: { feature: Feature }) {
+const Feature = ({ feature }: { feature: Feature }) => {
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
 
-  function onMouseMove({
+  const onMouseMove = ({
     currentTarget,
     clientX,
     clientY,
-  }: React.MouseEvent<HTMLDivElement>) {
+  }: React.MouseEvent<HTMLDivElement>) => {
     const { left, top } = currentTarget.getBoundingClientRect();
     mouseX.set(clientX - left);
     mouseY.set(clientY - top);
-  }
+  };
 
   return (
     <div
@@ -354,10 +352,9 @@ function Feature({ feature }: { feature: Feature }) {
       </div>
     </div>
   );
-}
+};
 
-export function Features(): React.ReactElement {
-  return (
+export const Features = (): React.ReactElement => (
     <div className="xl:max-w-none">
       <div className="not-prose mt-4 grid grid-cols-1 gap-2 pt-10 sm:grid-cols-2 lg:gap-8 xl:grid-cols-4">
         {features.map((feature) => (
@@ -366,4 +363,3 @@ export function Features(): React.ReactElement {
       </div>
     </div>
   );
-}

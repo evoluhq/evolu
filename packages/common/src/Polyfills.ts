@@ -143,6 +143,7 @@ const syncState = new WeakMap<object, StackState>();
 const asyncState = new WeakMap<object, StackState>();
 
 // DisposableStack implementation
+// eslint-disable-next-line func-style -- requires function keyword for `this` and `new.target`
 function DisposableStackConstructor(this: unknown): void {
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   if (!new.target) {
@@ -246,6 +247,7 @@ Object.defineProperty(
 );
 
 // AsyncDisposableStack implementation
+// eslint-disable-next-line func-style -- requires function keyword for `this` and `new.target`
 function AsyncDisposableStackConstructor(this: unknown): void {
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   if (!new.target) {

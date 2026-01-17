@@ -32,7 +32,7 @@ type Autocomplete = AutocompleteApi<
   React.KeyboardEvent
 >;
 
-function useAutocomplete({ close }: { close: () => void }) {
+const useAutocomplete = ({ close }: { close: () => void }) => {
   const id = useId();
   const router = useRouter();
   const [autocompleteState, setAutocompleteState] = useState<
@@ -40,7 +40,7 @@ function useAutocomplete({ close }: { close: () => void }) {
     AutocompleteState<Result> | EmptyObject
   >({});
 
-  function navigate({ itemUrl }: { itemUrl?: string }) {
+  const navigate = ({ itemUrl }: { itemUrl?: string }) => {
     if (!itemUrl) {
       return;
     }
@@ -53,7 +53,7 @@ function useAutocomplete({ close }: { close: () => void }) {
     ) {
       close();
     }
-  }
+  };
 
   const [autocomplete] = useState<Autocomplete>(() =>
     createAutocomplete<
@@ -93,33 +93,29 @@ function useAutocomplete({ close }: { close: () => void }) {
   );
 
   return { autocomplete, autocompleteState };
-}
+};
 
-function SearchIcon(props: React.ComponentPropsWithoutRef<"svg">) {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" {...props}>
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M12.01 12a4.25 4.25 0 1 0-6.02-6 4.25 4.25 0 0 0 6.02 6Zm0 0 3.24 3.25"
-      />
-    </svg>
-  );
-}
+const SearchIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
+  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" {...props}>
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M12.01 12a4.25 4.25 0 1 0-6.02-6 4.25 4.25 0 0 0 6.02 6Zm0 0 3.24 3.25"
+    />
+  </svg>
+);
 
-function NoResultsIcon(props: React.ComponentPropsWithoutRef<"svg">) {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" {...props}>
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M12.01 12a4.237 4.237 0 0 0 1.24-3c0-.62-.132-1.207-.37-1.738M12.01 12A4.237 4.237 0 0 1 9 13.25c-.635 0-1.237-.14-1.777-.388M12.01 12l3.24 3.25m-3.715-9.661a4.25 4.25 0 0 0-5.975 5.908M4.5 15.5l11-11"
-      />
-    </svg>
-  );
-}
+const NoResultsIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
+  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" {...props}>
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M12.01 12a4.237 4.237 0 0 0 1.24-3c0-.62-.132-1.207-.37-1.738M12.01 12A4.237 4.237 0 0 1 9 13.25c-.635 0-1.237-.14-1.777-.388M12.01 12l3.24 3.25m-3.715-9.661a4.25 4.25 0 0 0-5.975 5.908M4.5 15.5l11-11"
+    />
+  </svg>
+);
 
-function LoadingIcon(props: React.ComponentPropsWithoutRef<"svg">) {
+const LoadingIcon = (props: React.ComponentPropsWithoutRef<"svg">) => {
   const id = useId();
 
   return (
@@ -146,20 +142,18 @@ function LoadingIcon(props: React.ComponentPropsWithoutRef<"svg">) {
       </defs>
     </svg>
   );
-}
+};
 
-function HighlightQuery({ text, query }: { text: string; query: string }) {
-  return (
-    <Highlighter
-      highlightClassName="underline bg-transparent text-blue-500"
-      searchWords={[query]}
-      autoEscape={true}
-      textToHighlight={text}
-    />
-  );
-}
+const HighlightQuery = ({ text, query }: { text: string; query: string }) => (
+  <Highlighter
+    highlightClassName="underline bg-transparent text-blue-500"
+    searchWords={[query]}
+    autoEscape={true}
+    textToHighlight={text}
+  />
+);
 
-function SearchResult({
+const SearchResult = ({
   result,
   resultIndex,
   autocomplete,
@@ -172,7 +166,7 @@ function SearchResult({
   // @ts-expect-error - `autocompleteState` is not used in this component
   collection: AutocompleteCollection<Result>;
   query: string;
-}) {
+}) => {
   const id = useId();
 
   return (
@@ -199,9 +193,9 @@ function SearchResult({
       </div>
     </li>
   );
-}
+};
 
-function SearchResults({
+const SearchResults = ({
   autocomplete,
   query,
   collection,
@@ -210,7 +204,7 @@ function SearchResults({
   query: string;
   // @ts-expect-error - `autocompleteState` is not used in this component
   collection: AutocompleteCollection<Result>;
-}) {
+}) => {
   if (collection.items.length === 0) {
     return (
       <div className="p-6 text-center">
@@ -240,7 +234,7 @@ function SearchResults({
       ))}
     </ul>
   );
-}
+};
 
 const SearchInput = forwardRef<
   React.ComponentRef<"input">,
@@ -291,7 +285,7 @@ const SearchInput = forwardRef<
   );
 });
 
-function SearchDialog({
+const SearchDialog = ({
   open,
   setOpen,
   className,
@@ -299,7 +293,7 @@ function SearchDialog({
   open: boolean;
   setOpen: (open: boolean) => void;
   className?: string;
-}) {
+}) => {
   const formRef = useRef<React.ComponentRef<"form">>(null);
   const panelRef = useRef<React.ComponentRef<"div">>(null);
   const inputRef = useRef<React.ComponentRef<typeof SearchInput>>(null);
@@ -320,12 +314,12 @@ function SearchDialog({
       return;
     }
 
-    function onKeyDown(event: KeyboardEvent) {
+    const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "k" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         setOpen(true);
       }
-    }
+    };
 
     window.addEventListener("keydown", onKeyDown);
 
@@ -387,9 +381,9 @@ function SearchDialog({
       </div>
     </Dialog>
   );
-}
+};
 
-function useSearchProps() {
+const useSearchProps = () => {
   const buttonRef = useRef<React.ComponentRef<"button">>(null);
   const [open, setOpen] = useState(false);
 
@@ -414,9 +408,9 @@ function useSearchProps() {
       ),
     },
   };
-}
+};
 
-export function Search(): React.ReactElement {
+export const Search = (): React.ReactElement => {
   const [modifierKey] = useState<string>(() =>
     // eslint-disable-next-line @typescript-eslint/no-deprecated
     /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform) ? "⌘" : "Ctrl ",
@@ -442,9 +436,9 @@ export function Search(): React.ReactElement {
       </Suspense>
     </div>
   );
-}
+};
 
-export function MobileSearch(): React.ReactElement {
+export const MobileSearch = (): React.ReactElement => {
   const { buttonProps, dialogProps } = useSearchProps();
 
   return (
@@ -462,4 +456,4 @@ export function MobileSearch(): React.ReactElement {
       </Suspense>
     </div>
   );
-}
+};

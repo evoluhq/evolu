@@ -34,8 +34,8 @@ interface SectionState {
   }) => void;
 }
 
-function createSectionStore(sections: Array<Section>) {
-  return createStore<SectionState>()((set) => ({
+const createSectionStore = (sections: Array<Section>) =>
+  createStore<SectionState>()((set) => ({
     sections,
     visibleSections: [],
     setVisibleSections: (visibleSections) => {
@@ -60,9 +60,8 @@ function createSectionStore(sections: Array<Section>) {
       }));
     },
   }));
-}
 
-function useVisibleSections(sectionStore: StoreApi<SectionState>) {
+const useVisibleSections = (sectionStore: StoreApi<SectionState>) => {
   const setVisibleSections = useStore(
     sectionStore,
     (s) => s.setVisibleSections,
@@ -70,7 +69,7 @@ function useVisibleSections(sectionStore: StoreApi<SectionState>) {
   const sections = useStore(sectionStore, (s) => s.sections);
 
   useEffect(() => {
-    function checkVisibleSections() {
+    const checkVisibleSections = () => {
       const { innerHeight, scrollY } = window;
       const newVisibleSections = [];
 
@@ -111,7 +110,7 @@ function useVisibleSections(sectionStore: StoreApi<SectionState>) {
       }
 
       setVisibleSections(newVisibleSections);
-    }
+    };
 
     const raf = window.requestAnimationFrame(() => {
       checkVisibleSections();
@@ -125,20 +124,20 @@ function useVisibleSections(sectionStore: StoreApi<SectionState>) {
       window.removeEventListener("resize", checkVisibleSections);
     };
   }, [setVisibleSections, sections]);
-}
+};
 
 const SectionStoreContext = createContext<StoreApi<SectionState> | null>(null);
 
 const useIsomorphicLayoutEffect =
   typeof window === "undefined" ? useEffect : useLayoutEffect;
 
-export function SectionProvider({
+export const SectionProvider = ({
   sections,
   children,
 }: {
   sections: Array<Section>;
   children: React.ReactNode;
-}): React.ReactElement {
+}): React.ReactElement => {
   const [sectionStore] = useState(() => createSectionStore(sections));
 
   useVisibleSections(sectionStore);
@@ -152,13 +151,15 @@ export function SectionProvider({
       {children}
     </SectionStoreContext.Provider>
   );
-}
+};
 
-export function useSectionStore<T>(selector: (state: SectionState) => T): T {
+export const useSectionStore = <T,>(
+  selector: (state: SectionState) => T,
+): T => {
   const store = useContext(SectionStoreContext);
   if (!store) {
     return {} as T;
   }
   // eslint-disable-next-line react-hooks/rules-of-hooks
   return useStore(store, selector);
-}
+};

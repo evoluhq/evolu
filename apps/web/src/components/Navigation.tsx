@@ -13,12 +13,12 @@ import { type NavGroup, navigation } from "@/lib/navigation";
 import { remToPx } from "@/lib/remToPx";
 import { IconArrowUpRight } from "@tabler/icons-react";
 
-function useInitialValue<T>(value: T, condition = true) {
+const useInitialValue = <T,>(value: T, condition = true) => {
   const [initialValue] = useState(value);
   return condition ? initialValue : value;
-}
+};
 
-function TopLevelNavItem({
+const TopLevelNavItem = ({
   href,
   target,
   children,
@@ -26,21 +26,19 @@ function TopLevelNavItem({
   href: string;
   target?: string;
   children: React.ReactNode;
-}) {
-  return (
-    <li className="md:hidden">
-      <Link
-        href={href}
-        target={target}
-        className="flex items-center py-1 text-sm text-zinc-600 transition hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white [&>svg]:ml-0.5 [&>svg]:size-3 [&>svg]:stroke-1 [&>svg]:text-gray-400"
-      >
-        {children}
-      </Link>
-    </li>
-  );
-}
+}) => (
+  <li className="md:hidden">
+    <Link
+      href={href}
+      target={target}
+      className="flex items-center py-1 text-sm text-zinc-600 transition hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white [&>svg]:ml-0.5 [&>svg]:size-3 [&>svg]:stroke-1 [&>svg]:text-gray-400"
+    >
+      {children}
+    </Link>
+  </li>
+);
 
-function NavLink({
+const NavLink = ({
   href,
   children,
   tag,
@@ -52,38 +50,36 @@ function NavLink({
   tag?: string | undefined;
   active?: boolean;
   isAnchorLink?: boolean;
-}) {
-  return (
-    <Link
-      href={href}
-      aria-current={active ? "page" : undefined}
-      className={clsx(
-        "flex justify-between gap-2 py-1 pr-3 text-sm transition",
-        isAnchorLink ? "pl-7" : "pl-4",
-        active
-          ? "text-zinc-900 dark:text-white"
-          : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white",
-      )}
-    >
-      <span className="flex items-center truncate [&>svg]:ml-0.5 [&>svg]:size-3 [&>svg]:stroke-1 [&>svg]:text-gray-400">
-        {children}
-      </span>
-      {tag && (
-        <Tag variant="small" color="zinc">
-          {tag}
-        </Tag>
-      )}
-    </Link>
-  );
-}
+}) => (
+  <Link
+    href={href}
+    aria-current={active ? "page" : undefined}
+    className={clsx(
+      "flex justify-between gap-2 py-1 pr-3 text-sm transition",
+      isAnchorLink ? "pl-7" : "pl-4",
+      active
+        ? "text-zinc-900 dark:text-white"
+        : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white",
+    )}
+  >
+    <span className="flex items-center truncate [&>svg]:ml-0.5 [&>svg]:size-3 [&>svg]:stroke-1 [&>svg]:text-gray-400">
+      {children}
+    </span>
+    {tag && (
+      <Tag variant="small" color="zinc">
+        {tag}
+      </Tag>
+    )}
+  </Link>
+);
 
-function VisibleSectionHighlight({
+const VisibleSectionHighlight = ({
   group,
   pathname,
 }: {
   group: NavGroup;
   pathname: string;
-}) {
+}) => {
   const [sections, visibleSections] = useInitialValue(
     [
       useSectionStore((s) => s.sections),
@@ -117,15 +113,15 @@ function VisibleSectionHighlight({
       style={{ borderRadius: 8, height, top }}
     />
   );
-}
+};
 
-function ActivePageMarker({
+const ActivePageMarker = ({
   group,
   pathname,
 }: {
   group: NavGroup;
   pathname: string;
-}) {
+}) => {
   const itemHeight = remToPx(2);
   const offset = remToPx(0.25);
   const activePageIndex = group.links.findIndex(
@@ -143,15 +139,15 @@ function ActivePageMarker({
       style={{ top }}
     />
   );
-}
+};
 
-function NavigationGroup({
+const NavigationGroup = ({
   group,
   className,
 }: {
   group: NavGroup;
   className?: string;
-}) {
+}) => {
   // If this is the mobile navigation then we always render the initial
   // state, so that the state does not change during the close animation.
   // The state will still update when we re-open (re-render) the navigation.
@@ -228,36 +224,31 @@ function NavigationGroup({
       </div>
     </li>
   );
-}
+};
 
-export function Navigation(
+export const Navigation = (
   props: React.ComponentPropsWithoutRef<"nav">,
-): React.ReactElement {
-  return (
-    <nav {...props}>
-      <ul role="list">
-        <TopLevelNavItem href="/blog">Blog</TopLevelNavItem>
-        <TopLevelNavItem
-          target="_blank"
-          href="https://github.com/evoluhq/evolu"
-        >
-          GitHub <IconArrowUpRight />
-        </TopLevelNavItem>
-        <TopLevelNavItem
-          target="_blank"
-          href="https://github.com/evoluhq/evolu/releases"
-        >
-          Releases <IconArrowUpRight />
-        </TopLevelNavItem>
+): React.ReactElement => (
+  <nav {...props}>
+    <ul role="list">
+      <TopLevelNavItem href="/blog">Blog</TopLevelNavItem>
+      <TopLevelNavItem target="_blank" href="https://github.com/evoluhq/evolu">
+        GitHub <IconArrowUpRight />
+      </TopLevelNavItem>
+      <TopLevelNavItem
+        target="_blank"
+        href="https://github.com/evoluhq/evolu/releases"
+      >
+        Releases <IconArrowUpRight />
+      </TopLevelNavItem>
 
-        {navigation.map((group, groupIndex) => (
-          <NavigationGroup
-            key={group.title}
-            group={group}
-            className={groupIndex === 0 ? "md:mt-0" : ""}
-          />
-        ))}
-      </ul>
-    </nav>
-  );
-}
+      {navigation.map((group, groupIndex) => (
+        <NavigationGroup
+          key={group.title}
+          group={group}
+          className={groupIndex === 0 ? "md:mt-0" : ""}
+        />
+      ))}
+    </ul>
+  </nav>
+);

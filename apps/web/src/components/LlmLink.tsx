@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import { IconFileText } from "@tabler/icons-react";
 
-export function LlmLink(): React.ReactElement | null {
+export const LlmLink = (): React.ReactElement | null => {
   const pathname = usePathname();
 
   // Only show on docs pages
@@ -22,4 +22,4 @@ export function LlmLink(): React.ReactElement | null {
       </a>
     </div>
   );
-}
+};

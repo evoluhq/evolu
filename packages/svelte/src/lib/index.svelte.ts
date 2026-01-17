@@ -52,7 +52,7 @@ export const evoluSvelteDeps = createEvoluDeps();
  * // use allTodosState.rows in further calculations / UI
  * ```
  */
-export function queryState<
+export const queryState = <
   R extends Row,
   Schema extends EvoluSchema,
   MappedRow = InferRow<Query<R>>,
@@ -74,12 +74,12 @@ export function queryState<
      */
     mapping?: (row: R) => MappedRow;
   },
-): { readonly rows: Array<MappedRow> } {
+): { readonly rows: Array<MappedRow> } => {
   {
     // writing to this variable - svelte's compiler will track it
     let writableState: Array<MappedRow> = $state([]);
 
-    function updateState(rows: QueryRows<R>): void {
+    const updateState = (rows: QueryRows<R>): void => {
       if (options?.mapping) {
         // re-assigning because somehow typescript thinks its still nullable here
         // remove again once no issue anymore
@@ -88,7 +88,7 @@ export function queryState<
       }
 
       writableState = rows as Array<MappedRow>;
-    }
+    };
 
     $effect(() => {
       const query = observedQuery();
@@ -117,7 +117,7 @@ export function queryState<
       },
     };
   }
-}
+};
 
 /**
  * Get the {@link AppOwner} promise that resolves when available.
@@ -133,11 +133,11 @@ export function queryState<
  * // it will be undefined initially and set once the promise resolves
  * ```
  */
-export function appOwnerState<Schema extends EvoluSchema>(
+export const appOwnerState = <Schema extends EvoluSchema>(
   evolu: Evolu<Schema>,
 ): {
   readonly current: AppOwner | undefined;
-} {
+} => {
   {
     // writing to this variable - svelte's compiler will track it
     let writableState = $state<AppOwner | undefined>(undefined);
@@ -155,4 +155,4 @@ export function appOwnerState<Schema extends EvoluSchema>(
       },
     };
   }
-}
+};
