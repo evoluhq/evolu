@@ -5,7 +5,7 @@
  */
 
 import { isNonEmptyArray } from "./Array.js";
-import { assert } from "./Assert.js";
+import { assert, assertType } from "./Assert.js";
 import type { RandomBytesDep } from "./Crypto.js";
 import { createRandomBytes } from "./Crypto.js";
 import { eqArrayStrict } from "./Eq.js";
@@ -1119,7 +1119,8 @@ const createRunnerInternal =
 
     if (parent) {
       const handleParentAbort = () => {
-        requestAbort(parent.requestSignal.reason as AbortError);
+        assertType(AbortError, parent.requestSignal.reason);
+        requestAbort(parent.requestSignal.reason);
       };
       if (parent.requestSignal.aborted) {
         handleParentAbort();
@@ -1153,9 +1154,9 @@ const createRunnerInternal =
         signalController.signal.aborted &&
         runner.abortMask === isAbortable
       ) {
-        const abortError = signalController.signal.reason as AbortError;
-        runner.requestAbort(abortError);
-        task = () => err(abortError);
+        assertType(AbortError, signalController.signal.reason);
+        runner.requestAbort(signalController.signal.reason);
+        task = () => err(signalController.signal.reason);
       }
 
       // Promise.try is polyfilled
@@ -1201,7 +1202,8 @@ const createRunnerInternal =
         signalController.signal.addEventListener(
           "abort",
           () => {
-            fn((signalController.signal.reason as AbortError).reason);
+            assertType(AbortError, signalController.signal.reason);
+            fn(signalController.signal.reason.reason);
           },
           { once: true },
         );
@@ -1616,7 +1618,7 @@ export const timeout = <T, E, D = unknown>(
         await run(sleep(duration));
         return err(timeoutError);
       },
-    ] as const,
+    ],
     { abortReason },
   );
 
@@ -2110,7 +2112,7 @@ export const createSemaphore = (maxConcurrent: PositiveInt): Semaphore => {
       <T, E, D>(task: Task<T, E, D>): Task<T, E, D> =>
       async (run) => {
         if (disposed) return abortResult(semaphoreDisposedError);
-        if (run.signal.aborted) return err(run.signal.reason as AbortError);
+        if (run.signal.aborted) return err(run.signal.reason);
 
         if (availablePermits === 0) {
           const acquired = await new Promise<Result<void, AbortError>>(

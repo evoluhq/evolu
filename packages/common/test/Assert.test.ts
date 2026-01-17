@@ -3,7 +3,9 @@ import {
   assert,
   assertNonEmptyArray,
   assertNonEmptyReadonlyArray,
+  assertType,
 } from "../src/Assert.js";
+import { AbortError } from "../src/Task.js";
 
 test("assert", () => {
   // Should not throw when the condition is true
@@ -46,5 +48,17 @@ test("assertNonEmptyReadonlyArray", () => {
   // Custom error message
   expect(() => {
     assertNonEmptyReadonlyArray([], "Custom error");
+  }).toThrowError("Custom error");
+});
+
+test("assertType", () => {
+  assertType(AbortError, { type: "AbortError", reason: "timeout" });
+
+  expect(() => {
+    assertType(AbortError, { type: "Other" });
+  }).toThrowError("Expected Object.");
+
+  expect(() => {
+    assertType(AbortError, { type: "Other" }, "Custom error");
   }).toThrowError("Custom error");
 });
