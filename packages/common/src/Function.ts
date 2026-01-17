@@ -11,15 +11,12 @@ import type { ReadonlyRecord } from "./Object.js";
  * Helper function to ensure exhaustive matching in a switch statement. Throws
  * an error if an unhandled case is encountered.
  *
- * Remember, it's useful only when we don't return anything from the switch
- * statement. Otherwise, a return type of a function is enough.
- *
  * ### Example
  *
  * ```ts
  * type Color = "red" | "green" | "blue";
  *
- * function handleColor(color: Color): void {
+ * const handleColor = (color: Color): void => {
  *   switch (color) {
  *     case "red":
  *       console.log("Handling red");
@@ -33,7 +30,29 @@ import type { ReadonlyRecord } from "./Object.js";
  *     default:
  *       exhaustiveCheck(color); // Ensures all cases are handled
  *   }
- * }
+ * };
+ * ```
+ *
+ * Useful only when the switch returns `void`; if it returns a value, the
+ * function return type enforces exhaustiveness.
+ *
+ * ### Example
+ *
+ * Use a return type when the switch returns a value.
+ *
+ * ```ts
+ * type Color = "red" | "green" | "blue";
+ *
+ * const colorToHex = (color: Color): string => {
+ *   switch (color) {
+ *     case "red":
+ *       return "#ff0000";
+ *     case "green":
+ *       return "#00ff00";
+ *     case "blue":
+ *       return "#0000ff";
+ *   }
+ * };
  * ```
  */
 export const exhaustiveCheck = (value: never): never => {
@@ -41,7 +60,7 @@ export const exhaustiveCheck = (value: never): never => {
 };
 
 /**
- * Returns the input value unchanged.
+ * Returns the value unchanged.
  *
  * Useful as a default transformation, placeholder callback, or when a function
  * is required but no transformation is needed.
@@ -166,3 +185,29 @@ export const lazyUndefined: Lazy<undefined> = lazy(undefined);
 
 /** A {@link Lazy} that returns `undefined` for void callbacks. */
 export const lazyVoid: Lazy<void> = lazyUndefined;
+
+/**
+ * Development placeholder that always throws.
+ *
+ * Use to sketch function bodies before implementing them. TypeScript infers the
+ * return type from context, so surrounding code still type-checks. Use an
+ * explicit generic when there is no return type annotation.
+ *
+ * ### Example
+ *
+ * ```ts
+ * // Type inferred from return type annotation
+ * const fetchUser = (id: UserId): Result<User, FetchError> => todo();
+ * expectTypeOf(fetchUser).returns.toEqualTypeOf<
+ *   Result<User, FetchError>
+ * >();
+ *
+ * // Explicit generic when no return type
+ * const getConfig = () => todo<Config>();
+ * expectTypeOf(getConfig).returns.toEqualTypeOf<Config>();
+ * ```
+ */
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
+export const todo = <T>(): T => {
+  throw new Error("not yet implemented");
+};

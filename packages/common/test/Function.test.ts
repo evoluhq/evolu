@@ -9,8 +9,17 @@ import {
   exhaustiveCheck,
   identity,
   readonly,
+  todo,
 } from "../src/Function.js";
 import type { ReadonlyRecord } from "../src/Object.js";
+
+describe("exhaustiveCheck", () => {
+  test("throws error for unhandled case", () => {
+    expect(() => exhaustiveCheck("unexpected" as never)).toThrow(
+      'exhaustiveCheck unhandled case: "unexpected"',
+    );
+  });
+});
 
 describe("identity", () => {
   test("returns the same value", () => {
@@ -168,17 +177,8 @@ describe("readonly", () => {
   });
 });
 
-describe("exhaustiveCheck", () => {
-  test("throws error for unhandled case", () => {
-    expect(() => exhaustiveCheck("unexpected" as never)).toThrow(
-      'exhaustiveCheck unhandled case: "unexpected"',
-    );
-  });
-});
-
-describe("lazy functions", () => {
+describe("lazy", () => {
   test("lazyVoid returns void", () => {
-    lazyVoid();
     expectTypeOf<ReturnType<typeof lazyVoid>>().toEqualTypeOf<void>();
   });
 
@@ -196,5 +196,21 @@ describe("lazy functions", () => {
 
   test("lazyFalse returns false", () => {
     expect(lazyFalse()).toBe(false);
+  });
+});
+
+describe("todo", () => {
+  test("throws", () => {
+    expect(() => todo()).toThrow("not yet implemented");
+  });
+
+  test("infers type from return type annotation", () => {
+    const fn = (): number => todo();
+    expectTypeOf(fn).returns.toEqualTypeOf<number>();
+  });
+
+  test("accepts explicit generic when no return type", () => {
+    const fn = () => todo<string>();
+    expectTypeOf(fn).returns.toEqualTypeOf<string>();
   });
 });
