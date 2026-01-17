@@ -570,8 +570,6 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
    * const unuseOwners = owners.map((owner) => evolu.useOwner(owner));
    * // Later: for (const unuse of unuseOwners) unuse();
    * ```
-   *
-   * @experimental
    */
   readonly useOwner: (owner: SyncOwner) => UnuseOwner;
 }

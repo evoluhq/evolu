@@ -210,7 +210,6 @@
 //    * Note: If an unencrypted SQLite database already exists and you provide an
 //    * encryptionKey, SQLite will throw an error.
 //    *
-//    * @experimental
 //    */
 //   readonly encryptionKey?: EncryptionKey;
 // }

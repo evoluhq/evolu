@@ -21,7 +21,6 @@ import {
 import type { UseStore } from "idb-keyval";
 import { clear, createStore, del, get, keys, set } from "idb-keyval";
 
-/** @experimental */
 export const createWebAuthnStore = (deps: RandomBytesDep): SecureStorage => ({
   setItem: async (key, value, options) => {
     if (options?.accessControl === "none") {

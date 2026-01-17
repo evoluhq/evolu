@@ -318,8 +318,6 @@ export interface MutationOptions {
    *   { ownerId: sharedOwner.id },
    * );
    * ```
-   *
-   * @experimental
    */
   readonly ownerId?: OwnerId;
 

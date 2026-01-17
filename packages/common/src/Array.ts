@@ -126,14 +126,14 @@ import type { PredicateWithIndex, RefinementWithIndex } from "./Types.js";
 /**
  * An array with at least one element.
  *
- * @category Types
+ * @group Types
  */
 export type NonEmptyArray<T> = [T, ...Array<T>];
 
 /**
  * A readonly array with at least one element.
  *
- * @category Types
+ * @group Types
  */
 export type NonEmptyReadonlyArray<T> = readonly [T, ...ReadonlyArray<T>];
 
@@ -142,7 +142,7 @@ export type NonEmptyReadonlyArray<T> = readonly [T, ...ReadonlyArray<T>];
  *
  * Use as a default or initial value to avoid allocating new empty arrays.
  *
- * @category Constants
+ * @group Constants
  */
 export const emptyArray: ReadonlyArray<never> = [];
 
@@ -170,7 +170,7 @@ export const emptyArray: ReadonlyArray<never> = [];
  * }
  * ```
  *
- * @category Type Guards
+ * @group Types
  */
 export function isNonEmptyArray<T>(array: Array<T>): array is NonEmptyArray<T>;
 export function isNonEmptyArray<T>(
@@ -191,7 +191,7 @@ export function isNonEmptyArray<T>(
  * appendToArray([1, 2, 3], 4); // [1, 2, 3, 4]
  * ```
  *
- * @category Transformations
+ * @group Transformations
  */
 export const appendToArray = <T>(
   array: ReadonlyArray<T>,
@@ -208,7 +208,7 @@ export const appendToArray = <T>(
  * prependToArray([2, 3], 1); // [1, 2, 3]
  * ```
  *
- * @category Transformations
+ * @group Transformations
  */
 export const prependToArray = <T>(
   array: ReadonlyArray<T>,
@@ -226,7 +226,7 @@ export const prependToArray = <T>(
  * mapArray([1, 2, 3], (x) => x * 2); // [2, 4, 6]
  * ```
  *
- * @category Transformations
+ * @group Transformations
  */
 export function mapArray<T, U>(
   array: NonEmptyReadonlyArray<T> | NonEmptyArray<T>,
@@ -272,7 +272,7 @@ export function mapArray<T, U>(
  * });
  * ```
  *
- * @category Transformations
+ * @group Transformations
  */
 export function flatMapArray<T>(
   array:
@@ -321,7 +321,7 @@ export function flatMapArray<T, U>(
  * concatArrays([1], []); // [1] (non-empty)
  * ```
  *
- * @category Transformations
+ * @group Transformations
  */
 export function concatArrays<T>(
   first: NonEmptyReadonlyArray<T> | NonEmptyArray<T>,
@@ -369,7 +369,7 @@ export function concatArrays<T>(
  * // positiveInts: ReadonlyArray<PositiveInt> (narrowed type)
  * ```
  *
- * @category Transformations
+ * @group Transformations
  */
 export function filterArray<T, S extends T>(
   array: ReadonlyArray<T>,
@@ -411,7 +411,7 @@ export function filterArray<T>(
  * ); // [{ id: 1, name: "Alice" }, { id: 2, name: "Bob" }]
  * ```
  *
- * @category Transformations
+ * @group Transformations
  */
 export function dedupeArray<T>(
   array: NonEmptyReadonlyArray<T> | NonEmptyArray<T>,
@@ -474,7 +474,7 @@ export function dedupeArray<T>(
  * // strings: ReadonlyArray<NonEmptyString> (Exclude<T, PositiveInt>)
  * ```
  *
- * @category Transformations
+ * @group Transformations
  */
 export function partitionArray<T, S extends T>(
   array: ReadonlyArray<T>,
@@ -513,7 +513,7 @@ export function partitionArray<T>(
  * sortArray([3, 1, 2], (a, b) => a - b); // [1, 2, 3]
  * ```
  *
- * @category Transformations
+ * @group Transformations
  */
 export function sortArray<T>(
   array: NonEmptyReadonlyArray<T>,
@@ -541,7 +541,7 @@ export function sortArray<T>(
  * reverseArray([1, 2, 3]); // [3, 2, 1]
  * ```
  *
- * @category Transformations
+ * @group Transformations
  */
 export function reverseArray<T>(
   array: NonEmptyReadonlyArray<T>,
@@ -563,7 +563,7 @@ export function reverseArray<T>(array: ReadonlyArray<T>): ReadonlyArray<T> {
  * spliceArray([1, 2, 3], 1, 1, 10, 11); // [1, 10, 11, 3]
  * ```
  *
- * @category Transformations
+ * @group Transformations
  */
 export const spliceArray = <T>(
   array: ReadonlyArray<T>,
@@ -581,7 +581,7 @@ export const spliceArray = <T>(
  * firstInArray(["a", "b", "c"]); // "a"
  * ```
  *
- * @category Accessors
+ * @group Accessors
  */
 export const firstInArray = <T>(array: NonEmptyReadonlyArray<T>): T => array[0];
 
@@ -594,7 +594,7 @@ export const firstInArray = <T>(array: NonEmptyReadonlyArray<T>): T => array[0];
  * lastInArray(["a", "b", "c"]); // "c"
  * ```
  *
- * @category Accessors
+ * @group Accessors
  */
 export const lastInArray = <T>(array: NonEmptyReadonlyArray<T>): T =>
   array[array.length - 1];
@@ -615,7 +615,7 @@ export const lastInArray = <T>(array: NonEmptyReadonlyArray<T>): T =>
  * }
  * ```
  *
- * @category Mutations
+ * @group Mutations
  */
 export const shiftFromArray = <T>(array: NonEmptyArray<T>): T =>
   array.shift() as T;
@@ -635,6 +635,6 @@ export const shiftFromArray = <T>(array: NonEmptyArray<T>): T =>
  * }
  * ```
  *
- * @category Mutations
+ * @group Mutations
  */
 export const popFromArray = <T>(array: NonEmptyArray<T>): T => array.pop() as T;

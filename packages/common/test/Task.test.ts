@@ -167,7 +167,7 @@ describe("Runner", () => {
     test("executes task and returns result", async () => {
       await using run = createRunner();
 
-      const task = () => ok("hello");
+      const task: Task<string> = () => ok("hello");
 
       const result = await run(task);
 
@@ -750,7 +750,7 @@ describe("Fiber", () => {
     const task: Task<number> = () => Promise.resolve(ok(42));
     const fiber = run(task);
 
-    expectTypeOf(fiber).toEqualTypeOf<Fiber<number, never, RunnerDeps>>();
+    expectTypeOf(fiber).toEqualTypeOf<Fiber<number, never>>();
 
     const result = await fiber;
 
@@ -3277,7 +3277,7 @@ describe("DI", () => {
   test("createRunner without args returns Runner<RunnerDeps>", async () => {
     await using run = createRunner();
 
-    expectTypeOf(run).toEqualTypeOf<Runner<RunnerDeps>>();
+    expectTypeOf(run).toEqualTypeOf<Runner>();
   });
 
   test("runner rejects task with missing deps", async () => {
@@ -3742,6 +3742,7 @@ describe("concurrency", () => {
       expect(result).toEqual(err(deferredDisposedError));
     });
   });
+
   describe("Semaphore", () => {
     test("limits concurrent tasks", async () => {
       await using run = createRunner();

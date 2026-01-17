@@ -40,7 +40,7 @@ import type { PredicateWithIndex, RefinementWithIndex } from "./Types.js";
  *
  * Use as a default or initial value to avoid allocating new empty sets.
  *
- * @category Constants
+ * @group Constants
  */
 export const emptySet: ReadonlySet<never> = new Set();
 
@@ -54,7 +54,7 @@ export const emptySet: ReadonlySet<never> = new Set();
  * after narrowing (via `clear()` or `delete()`), making compile-time guarantees
  * impossible.
  *
- * @category Types
+ * @group Types
  */
 export type NonEmptyReadonlySet<T> = ReadonlySet<T> & Brand<"NonEmpty">;
 
@@ -79,7 +79,7 @@ export type NonEmptyReadonlySet<T> = ReadonlySet<T> & Brand<"NonEmpty">;
  * }
  * ```
  *
- * @category Type Guards
+ * @group Type Guards
  */
 export const isNonEmptySet = <T>(
   set: ReadonlySet<T>,
@@ -98,7 +98,7 @@ export const isNonEmptySet = <T>(
  * addToSet(new Set([1, 2]), 2); // Set {1, 2} (new reference)
  * ```
  *
- * @category Transformations
+ * @group Transformations
  */
 export const addToSet = <T>(
   set: ReadonlySet<T>,
@@ -122,7 +122,7 @@ export const addToSet = <T>(
  * deleteFromSet(new Set([1, 2]), 5); // Set {1, 2} (new reference)
  * ```
  *
- * @category Transformations
+ * @group Transformations
  */
 export const deleteFromSet = <T>(
   set: ReadonlySet<T>,
@@ -148,7 +148,7 @@ export const deleteFromSet = <T>(
  * mapSet(new Set([1, 2, 3]), (x) => x % 2); // Set {1, 0} (duplicates merged)
  * ```
  *
- * @category Transformations
+ * @group Transformations
  */
 export function mapSet<T, U>(
   set: NonEmptyReadonlySet<T>,
@@ -182,7 +182,7 @@ export function mapSet<T, U>(
  * filterSet(new Set([1, 2, 3, 4, 5]), (x) => x % 2 === 0); // Set {2, 4}
  * ```
  *
- * @category Transformations
+ * @group Transformations
  */
 export function filterSet<T, S extends T>(
   set: ReadonlySet<T>,
@@ -215,7 +215,7 @@ export function filterSet<T>(
  * firstInSet(new Set(["a", "b", "c"])); // "a"
  * ```
  *
- * @category Accessors
+ * @group Accessors
  */
 export const firstInSet = <T>(set: NonEmptyReadonlySet<T>): T =>
   set.values().next().value as T;

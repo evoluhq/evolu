@@ -71,7 +71,7 @@ export type ScheduleDeps = TimeDep & RandomDep;
  * Used by {@link RetryAttempt}, {@link RepeatAttempt}, and future schedule-driven
  * helpers.
  *
- * @category Composition
+ * @group Composition
  */
 export interface ScheduleStep<Output> {
   /** The current attempt. */
@@ -136,7 +136,7 @@ const createScheduleStepMetrics = (
  * const immediate = take(5)(forever);
  * ```
  *
- * @category Constructors
+ * @group Constructors
  */
 export const forever: Schedule<number> = () => {
   let attempt = 0;
@@ -155,7 +155,7 @@ export const forever: Schedule<number> = () => {
  * const oneShot = once;
  * ```
  *
- * @category Constructors
+ * @group Constructors
  */
 export const once: Schedule<number> = () => {
   let finished = false;
@@ -179,7 +179,7 @@ export const once: Schedule<number> = () => {
  * const retry = recurs(3);
  * ```
  *
- * @category Constructors
+ * @group Constructors
  */
 export const recurs = (n: number): Schedule<number> => take(n)(forever);
 
@@ -202,7 +202,7 @@ export const recurs = (n: number): Schedule<number> => take(n)(forever);
  * const heartbeat = spaced("30s");
  * ```
  *
- * @category Constructors
+ * @group Constructors
  */
 export const spaced =
   (duration: Duration): Schedule<Millis> =>
@@ -233,7 +233,7 @@ export const spaced =
  * const gentle = exponential("100ms", 1.5);
  * ```
  *
- * @category Constructors
+ * @group Constructors
  */
 export const exponential =
   (base: Duration, factor = 2): Schedule<Millis> =>
@@ -267,7 +267,7 @@ export const exponential =
  * const lin = linear("100ms");
  * ```
  *
- * @category Constructors
+ * @group Constructors
  */
 export const linear =
   (base: Duration): Schedule<Millis> =>
@@ -302,7 +302,7 @@ export const linear =
  * const fib = fibonacci("100ms");
  * ```
  *
- * @category Constructors
+ * @group Constructors
  */
 export const fibonacci =
   (initial: Duration): Schedule<Millis> =>
@@ -339,7 +339,7 @@ export const fibonacci =
  * const cronLike = fixed("1m");
  * ```
  *
- * @category Constructors
+ * @group Constructors
  */
 export const fixed =
   (interval: Duration): Schedule<number> =>
@@ -376,7 +376,7 @@ export const fixed =
  * // If elapsed is 3s, waits 2s. If elapsed is 7s, waits 3s.
  * ```
  *
- * @category Constructors
+ * @group Constructors
  */
 export const windowed =
   (interval: Duration): Schedule<number> =>
@@ -404,7 +404,7 @@ export const windowed =
  * const oneShot = fromDelay("1s");
  * ```
  *
- * @category Constructors
+ * @group Constructors
  */
 export const fromDelay = (delay: Duration): Schedule<Millis> =>
   take(1)(spaced(delay));
@@ -422,7 +422,7 @@ export const fromDelay = (delay: Duration): Schedule<Millis> =>
  * const custom = fromDelays("100ms", "500ms", "2s");
  * ```
  *
- * @category Constructors
+ * @group Constructors
  */
 export const fromDelays = (
   ...delays: ReadonlyArray<Duration>
@@ -447,7 +447,7 @@ export const fromDelays = (
  * );
  * ```
  *
- * @category Constructors
+ * @group Constructors
  */
 export const elapsed: Schedule<Millis> = (deps) => {
   const metrics = createScheduleStepMetrics(deps);
@@ -473,7 +473,7 @@ export const elapsed: Schedule<Millis> = (deps) => {
  * );
  * ```
  *
- * @category Constructors
+ * @group Constructors
  */
 export const during = (duration: Duration): Schedule<Millis> =>
   whileScheduleOutput((ms: Millis) => ms <= durationToMillis(duration))(
@@ -498,7 +498,7 @@ export const during = (duration: Duration): Schedule<Millis> =>
  * );
  * ```
  *
- * @category Constructors
+ * @group Constructors
  */
 export const always = <A>(value: A): Schedule<A> =>
   mapSchedule(() => value)(forever);
@@ -535,7 +535,7 @@ export const always = <A>(value: A): Schedule<A> =>
  * });
  * ```
  *
- * @category Constructors
+ * @group Constructors
  */
 export const unfoldSchedule =
   <State>(initial: State, next: (state: State) => State): Schedule<State> =>
@@ -561,7 +561,7 @@ export const unfoldSchedule =
  * // Attempt 1: 100ms, Attempt 2: 200ms, Attempt 3: 400ms, Attempt 4: Err(Done<void>)
  * ```
  *
- * @category Limiting
+ * @group Limiting
  */
 export const take =
   (n: number) =>
@@ -589,7 +589,7 @@ export const take =
  * const timeLimited = maxElapsed("30s")(exponential("1s"));
  * ```
  *
- * @category Limiting
+ * @group Limiting
  */
 export const maxElapsed = (duration: Duration) => {
   const maxMs = durationToMillis(duration);
@@ -619,7 +619,7 @@ export const maxElapsed = (duration: Duration) => {
  * // 1s, 2s, 4s, 8s, 10s, 10s, 10s, ...
  * ```
  *
- * @category Limiting
+ * @group Limiting
  */
 export const maxDelay = (max: Duration) => {
   const maxMs = durationToMillis(max);
@@ -657,7 +657,7 @@ export const maxDelay = (max: Duration) => {
  * const conservative = jitter(0.25)(exponential("1s"));
  * ```
  *
- * @category Delay
+ * @group Delay
  */
 export const jitter =
   (factor = 0.5) =>
@@ -685,7 +685,7 @@ export const jitter =
  * const withWarmup = delayed("1s")(exponential("100ms"));
  * ```
  *
- * @category Delay
+ * @group Delay
  */
 export const delayed = (initialDelay: Duration) => {
   const initialMs = durationToMillis(initialDelay);
@@ -718,7 +718,7 @@ export const delayed = (initialDelay: Duration) => {
  * // Delays: 600ms, 700ms, 900ms, 1300ms, ...
  * ```
  *
- * @category Delay
+ * @group Delay
  */
 export const addDelay = (
   extra: Duration,
@@ -744,7 +744,7 @@ export const addDelay = (
  * const capped = modifyDelay((d) => Math.min(d, 10000))(exponential("1s"));
  * ```
  *
- * @category Delay
+ * @group Delay
  */
 export const modifyDelay =
   (f: (delay: Millis) => number) =>
@@ -775,7 +775,7 @@ export const modifyDelay =
  * // If poll takes 1s → wait 4s. If poll takes 6s → wait 0s.
  * ```
  *
- * @category Delay
+ * @group Delay
  */
 export const compensate =
   <Output, Input>(schedule: Schedule<Output, Input>): Schedule<Output, Input> =>
@@ -812,7 +812,7 @@ export const compensate =
  * )(exponential("100ms"));
  * ```
  *
- * @category Filtering
+ * @group Filtering
  */
 export const whileScheduleInput =
   <Input>(predicate: Predicate<Input>) =>
@@ -844,7 +844,7 @@ export const whileScheduleInput =
  * )(exponential("100ms"));
  * ```
  *
- * @category Filtering
+ * @group Filtering
  */
 export const untilScheduleInput =
   <Input>(predicate: Predicate<Input>) =>
@@ -871,7 +871,7 @@ export const untilScheduleInput =
  * );
  * ```
  *
- * @category Filtering
+ * @group Filtering
  */
 export const whileScheduleOutput =
   <Output>(predicate: Predicate<Output>) =>
@@ -900,7 +900,7 @@ export const whileScheduleOutput =
  * );
  * ```
  *
- * @category Filtering
+ * @group Filtering
  */
 export const untilScheduleOutput =
   <Output>(predicate: Predicate<Output>) =>
@@ -931,7 +931,7 @@ export const untilScheduleOutput =
  * );
  * ```
  *
- * @category State
+ * @group State
  */
 export const resetScheduleAfter = (duration: Duration) => {
   const resetMs = durationToMillis(duration);
@@ -967,7 +967,7 @@ export const resetScheduleAfter = (duration: Duration) => {
  * }))(exponential("100ms"));
  * ```
  *
- * @category Transform
+ * @group Transform
  */
 export const mapSchedule =
   <A, B>(f: (a: A) => B) =>
@@ -1006,10 +1006,10 @@ export const mapSchedule =
  * const withInput = passthrough(exponential("100ms"));
  * ```
  *
- * @category Constructors
+ * @group Constructors
  */
 export function passthrough<A>(): Schedule<A, A>;
-/** @category Transform */
+/** @group Transform */
 export function passthrough<Output, Input>(
   schedule: Schedule<Output, Input>,
 ): Schedule<Input, Input>;
@@ -1062,7 +1062,7 @@ export function passthrough<Output, Input>(
  * )(exponential("100ms"));
  * ```
  *
- * @category Transform
+ * @group Transform
  */
 export const foldSchedule =
   <Z, Output>(initial: Z, f: (acc: Z, output: Output) => Z) =>
@@ -1094,7 +1094,7 @@ export const foldSchedule =
  * // Outputs: 0, 1, 2, ... with exponential delays
  * ```
  *
- * @category Transform
+ * @group Transform
  */
 export const repetitions = <Output, Input>(
   schedule: Schedule<Output, Input>,
@@ -1119,7 +1119,7 @@ export const repetitions = <Output, Input>(
  * );
  * ```
  *
- * @category Transform
+ * @group Transform
  */
 export const delays =
   <Output, Input>(schedule: Schedule<Output, Input>): Schedule<Millis, Input> =>
@@ -1146,7 +1146,7 @@ export const delays =
  * // Outputs: [100], [100, 100], [100, 100, 100]
  * ```
  *
- * @category Collection
+ * @group Collection
  */
 export const collectAllScheduleOutputs = <Output, Input>(
   schedule: Schedule<Output, Input>,
@@ -1171,7 +1171,7 @@ export const collectAllScheduleOutputs = <Output, Input>(
  * // After 3 retries, outputs array of all error inputs
  * ```
  *
- * @category Collection
+ * @group Collection
  */
 export const collectScheduleInputs = <Output, Input>(
   schedule: Schedule<Output, Input>,
@@ -1194,7 +1194,7 @@ export const collectScheduleInputs = <Output, Input>(
  * // Outputs: [100], [100, 200], [100, 200, 400], [100, 200, 400, 800], stops
  * ```
  *
- * @category Collection
+ * @group Collection
  */
 export const collectWhileScheduleOutput =
   <Output>(predicate: Predicate<Output>) =>
@@ -1219,7 +1219,7 @@ export const collectWhileScheduleOutput =
  * // Outputs: [100], [100, 200], [100, 200, 400], [100, 200, 400, 800], stops
  * ```
  *
- * @category Collection
+ * @group Collection
  */
 export const collectUntilScheduleOutput =
   <Output>(predicate: Predicate<Output>) =>
@@ -1246,7 +1246,7 @@ export const collectUntilScheduleOutput =
  * // Runs: 100ms, 200ms, 400ms, then 500ms×5, then 1s forever
  * ```
  *
- * @category Composition
+ * @group Composition
  */
 export const sequenceSchedules =
   <Output, Input>(
@@ -1286,7 +1286,7 @@ export const sequenceSchedules =
  * );
  * ```
  *
- * @category Composition
+ * @group Composition
  */
 export const intersectSchedules =
   <OutputA, OutputB, Input>(
@@ -1321,7 +1321,7 @@ export const intersectSchedules =
  * );
  * ```
  *
- * @category Composition
+ * @group Composition
  */
 export const unionSchedules =
   <OutputA, OutputB, Input>(
@@ -1369,7 +1369,7 @@ export const unionSchedules =
  * )(exponential("100ms")); // normal: 100ms base
  * ```
  *
- * @category Composition
+ * @group Composition
  */
 export const whenInput =
   <Input, Output>(
@@ -1407,7 +1407,7 @@ export const whenInput =
  * })(retryStrategyAws);
  * ```
  *
- * @category Side Effects
+ * @group Side Effects
  */
 export const tapScheduleOutput =
   <Output>(f: (output: Output) => void) =>
@@ -1449,7 +1449,7 @@ export const tapScheduleOutput =
  * })(retrySchedule);
  * ```
  *
- * @category Side Effects
+ * @group Side Effects
  */
 export const tapScheduleInput =
   <Input>(f: (input: Input) => void) =>
@@ -1468,7 +1468,7 @@ export const tapScheduleInput =
  * Exponential backoff (100ms base), max 2 retries (3 total attempts), 20s cap,
  * full jitter.
  *
- * @category Retry Strategies
+ * @group Retry Strategies
  * @see https://github.com/aws/aws-sdk-java-v2/blob/master/core/retries/src/main/java/software/amazon/awssdk/retries/StandardRetryStrategy.java
  * @see https://github.com/aws/aws-sdk-java-v2/blob/master/core/retries/src/main/java/software/amazon/awssdk/retries/DefaultRetryStrategy.java
  */

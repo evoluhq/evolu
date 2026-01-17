@@ -289,7 +289,7 @@ interface CounterAvoid {
 }
 ```
 
-## Factory functions instead of classes
+## Factory functions (no classes)
 
 Use interfaces with factory functions instead of classes. Classes have subtle pitfalls: `this` binding is tricky and error-prone, and class inheritance encourages tight coupling. Evolu favors composition over inheritance (though interface inheritance is fine).
 
@@ -350,17 +350,18 @@ Evolu doesn't provide a `pipe` helper. Instead, compose functions directly:
 const awsRetry = jitter(1)(maxDelay("20s")(take(3)(exponential("1s"))));
 ```
 
-If nested composition looks ugly, that's a signal we need a semantic helper—a named function that captures the intent:
+If nested composition gets too deep, split into meaningful named parts:
 
 ```ts
-// When nesting gets unwieldy, create a semantic helper
-const withAwsBackoff = <T>(schedule: Schedule): Schedule =>
-  jitter(1)(maxDelay("20s")(take(3)(schedule)));
-
-const retry = withAwsBackoff(exponential("1s"));
+// Split long compositions into named intermediate values
+const limitedExponential = take(3)(exponential("1s"));
+const cappedBackoff = maxDelay("20s")(limitedExponential);
+const awsRetry = jitter(1)(cappedBackoff);
 ```
 
-Evolu favors imperative code over pipes. Pipes add indirection. A well-named helper function is more discoverable and self-documenting than a chain of transformations.
+Shallow nesting often fits one line (like `awsRetry`). If it doesn't, split — there's a good chance you'll reuse those named parts elsewhere.
+
+Evolu favors imperative code over pipes. A well-named helper is more discoverable and self-documenting than a long chain of transformations.
 
 ## Avoid meaningless ok values
 

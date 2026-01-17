@@ -6,8 +6,6 @@ export const metadata = {
 
 For automatic cleanup of resources
 
-## The problem
-
 Resources like database connections, file handles, and locks need cleanup. Traditional approaches are error-prone:
 
 ```ts
@@ -27,9 +25,7 @@ try {
 }
 ```
 
-## The solution: `using`
-
-The [`using`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/using) declaration automatically disposes resources when they go out of scope:
+The [`using`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/using) declaration is a new JavaScript feature that automatically disposes resources when they go out of scope:
 
 ```ts
 const process = () => {

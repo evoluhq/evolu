@@ -26,8 +26,6 @@ import type { Runner } from "./Task.js";
  * ```
  *
  * TODO: Complete implementation with OpenTelemetry adapter.
- *
- * @experimental
  */
 export interface Tracer {
   /**

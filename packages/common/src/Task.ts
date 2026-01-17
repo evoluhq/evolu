@@ -1,5 +1,5 @@
 /**
- * Structured concurrency with fibers, runners, and cancellation.
+ * JavaScript-native structured concurrency.
  *
  * @module
  */
@@ -232,9 +232,7 @@ import { type Awaitable, type Mutable, type Predicate } from "./Types.js";
  * ```
  *
  * While {@link Task} returns {@link Awaitable} (allowing sync or async results),
- * {@link Runner} is always async. Disposing a runner waits for all child runners
- * to complete, which requires `await using`. This is a deliberate design
- * choice:
+ * {@link Runner} is always async. This is a deliberate design choice:
  *
  * - **Sync** → {@link Result}, native `using` / `DisposableStack`
  * - **Async** → {@link Task}, {@link Runner}, {@link Fiber}, `await using` /
@@ -242,12 +240,14 @@ import { type Awaitable, type Mutable, type Predicate } from "./Types.js";
  *
  * Benefits:
  *
- * - **Zero overhead** — sync code stays with zero overhead
  * - **No API ambiguity** — Task means async, Result means sync
+ * - **Zero overhead** — sync code stays with zero overhead
  *
- * A unified sync/async API is possible — `isPromiseLike` can detect sync at
- * runtime without throwing, and `await using` works with sync disposal, but we
- * don't have a use case for that.
+ * Even though a unified sync/async API is technically possible - with
+ * `isPromiseLike` detection and two-phase disposal (sync first, async if
+ * needed, and a flag for callers) - we prefer plain functions for sync code
+ * because almost anything can be async anyway, and when we need sync, it's for
+ * simplicity (no dependencies) and performance (zero abstraction).
  *
  * ## FAQ
  *
@@ -260,13 +260,11 @@ import { type Awaitable, type Mutable, type Predicate } from "./Types.js";
  *
  * ### How does it work?
  *
- * There are two approaches to structured concurrency in TypeScript. The
- * program-as-data approach represents computations as data structures that a
- * runtime interprets later. Evolu is simpler — tasks are just functions that
- * run directly. It's transparent, performant, and easier to debug (native stack
- * traces).
+ * Some libraries represent computations as data structures that a runtime
+ * interprets later. Evolu is simpler — it uses wrapped promises. Check the
+ * source code; it's short and readable.
  *
- * @category Core
+ * @group Core Types
  */
 export type Task<T, E = never, D = unknown> = (
   run: Runner<D>,
@@ -276,7 +274,7 @@ export type Task<T, E = never, D = unknown> = (
 /**
  * Extracts the value type from a {@link Task}.
  *
- * @category Utilities
+ * @group Type Utilities
  */
 export type InferTaskOk<R extends Task<any, any, any>> =
   R extends Task<infer T, any, any> ? T : never;
@@ -284,7 +282,7 @@ export type InferTaskOk<R extends Task<any, any, any>> =
 /**
  * Extracts the error type from a {@link Task}.
  *
- * @category Utilities
+ * @group Type Utilities
  */
 export type InferTaskErr<R extends Task<any, any, any>> =
   R extends Task<any, infer E, any> ? E : never;
@@ -292,7 +290,7 @@ export type InferTaskErr<R extends Task<any, any, any>> =
 /**
  * Extracts the deps type from a {@link Task}.
  *
- * @category Utilities
+ * @group Type Utilities
  */
 export type InferTaskDeps<R extends Task<any, any, any>> =
   R extends Task<any, any, infer D> ? D : never;
@@ -308,14 +306,14 @@ export type InferTaskDeps<R extends Task<any, any, any>> =
  * Use for pull-based protocols like iterators where `Done<D>` signals normal
  * completion rather than an error.
  *
- * @category Core
+ * @group Core Types
  */
 export type NextTask<T, E = never, D = void> = Task<T, E | Done<D>>;
 
 /**
  * Extracts the done value type from a {@link NextTask}.
  *
- * @category Utilities
+ * @group Type Utilities
  */
 export type InferTaskDone<T extends Task<any, any, any>> =
   InferTaskErr<T> extends infer Errors
@@ -332,7 +330,7 @@ export type InferTaskDone<T extends Task<any, any, any>> =
  * logic. If you need to inspect the reason, use type guards like
  * `RaceLostError.is(reason)`.
  *
- * @category Core
+ * @group Core Types
  */
 export const AbortError = typed("AbortError", { reason: Unknown });
 export interface AbortError extends InferType<typeof AbortError> {}
@@ -360,7 +358,7 @@ export interface AbortError extends InferType<typeof AbortError> {}
  * This makes Runner idiomatic to JavaScript, tiny with minimal overhead, and
  * easy to debug (native stack traces).
  *
- * @category Core
+ * @group Core Types
  * @see {@link createRunner}
  * @see {@link Task}
  */
@@ -537,7 +535,7 @@ export interface Runner<D = unknown> extends AsyncDisposable {
  * UI/debugging tools can use this to visually distinguish protected tasks
  * (e.g., different icon or color) and explain why abort requests are ignored.
  *
- * @category Abort Masking
+ * @group Abort Masking
  */
 export const AbortMask = brand("AbortMask", NonNegativeInt);
 export type AbortMask = typeof AbortMask.Type;
@@ -549,7 +547,7 @@ export type AbortMask = typeof AbortMask.Type;
  * - `disposing` — no new tasks accepted, waits for in-flight fibers
  * - `disposed` — all fibers completed, disposal finished
  *
- * @category Core
+ * @group Core Types
  */
 export const RunnerState = union("active", "disposing", "disposed");
 export type RunnerState = typeof RunnerState.Type;
@@ -594,12 +592,38 @@ export type RunnerState = typeof RunnerState.Type;
  * settlement. Do not write code that relies on a specific number of microtask
  * yields between tasks. Use explicit synchronization primitives instead.
  *
- * @category Core
+ * @group Core Types
  */
 export class Fiber<T = unknown, E = unknown, D = unknown>
   implements PromiseLike<Result<T, E | AbortError>>, Disposable
 {
   readonly then: PromiseLike<Result<T, E | AbortError>>["then"];
+
+  /**
+   * A {@link Runner} whose lifetime is tied to this fiber.
+   *
+   * Tasks run via this runner are aborted when the fiber ends.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const fiber = run(longRunningTask);
+   *
+   * // helperTask is aborted when longRunningTask ends
+   * fiber.run(helperTask);
+   *
+   * // Monitor this fiber's runner
+   * fiber.run.onEvent = (event) => {
+   *   console.log(event);
+   * };
+   * ```
+   */
+  readonly run: Runner<D>;
+
+  constructor(run: Runner<D>, promise: Promise<Result<T, E | AbortError>>) {
+    this.then = promise.then.bind(promise);
+    this.run = run;
+  }
 
   /**
    * Requests abort for this fiber (and any child it started).
@@ -624,37 +648,10 @@ export class Fiber<T = unknown, E = unknown, D = unknown>
    * Abort is idempotent — calling multiple times has no additional effect
    * beyond the first call.
    */
-  readonly abort: (reason?: unknown) => void;
-
-  /**
-   * A {@link Runner} whose lifetime is tied to this fiber.
-   *
-   * Tasks run via this runner are aborted when the fiber ends.
-   *
-   * ### Example
-   *
-   * ```ts
-   * const fiber = run(longRunningTask);
-   *
-   * // helperTask is aborted when longRunningTask ends
-   * fiber.run(helperTask);
-   *
-   * // Monitor this fiber's runner
-   * fiber.run.onEvent = (event) => {
-   *   console.log(event);
-   * };
-   * ```
-   */
-  readonly run: Runner<D>;
-
-  constructor(
-    run: Runner<D>,
-    promise: Promise<Result<T, E | AbortError>>,
-    abort: (reason?: unknown) => void = constVoid,
-  ) {
-    this.then = promise.then.bind(promise);
-    this.abort = abort;
-    this.run = run;
+  abort(reason?: unknown): void {
+    (this.run as RunnerInternal<RunnerDeps & D>).requestAbort(
+      createAbortError(reason),
+    );
   }
 
   /**
@@ -686,7 +683,7 @@ export class Fiber<T = unknown, E = unknown, D = unknown>
 /**
  * Extracts the value type from a {@link Fiber}.
  *
- * @category Utilities
+ * @group Type Utilities
  */
 export type InferFiberOk<F extends Fiber<any, any, any>> =
   F extends Fiber<infer T, any, any> ? T : never;
@@ -694,7 +691,7 @@ export type InferFiberOk<F extends Fiber<any, any, any>> =
 /**
  * Extracts the error type from a {@link Fiber}.
  *
- * @category Utilities
+ * @group Type Utilities
  */
 export type InferFiberErr<F extends Fiber<any, any, any>> =
   F extends Fiber<any, infer E, any> ? E : never;
@@ -702,7 +699,7 @@ export type InferFiberErr<F extends Fiber<any, any, any>> =
 /**
  * Extracts the deps type from a {@link Fiber}.
  *
- * @category Utilities
+ * @group Type Utilities
  */
 export type InferFiberDeps<F extends Fiber<any, any, any>> =
   F extends Fiber<any, any, infer D> ? D : never;
@@ -716,7 +713,7 @@ export type InferFiberDeps<F extends Fiber<any, any, any>> =
  * computed on demand rather than pushed on every change. Push would require
  * O(depth) new snapshot objects per mutation.
  *
- * @category Core
+ * @group Core Types
  * @see {@link Runner.snapshot}
  */
 export interface FiberSnapshot {
@@ -753,7 +750,7 @@ export interface FiberSnapshot {
 /**
  * Emitted when a child {@link Fiber} is added to a {@link Runner}.
  *
- * @category Monitoring
+ * @group Monitoring
  */
 export const RunnerEventChildAdded = typed("childAdded", {
   runnerId: Id,
@@ -767,7 +764,7 @@ export interface RunnerEventChildAdded extends InferType<
 /**
  * Emitted when a child {@link Fiber} is removed from a {@link Runner}.
  *
- * @category Monitoring
+ * @group Monitoring
  */
 export const RunnerEventChildRemoved = typed("childRemoved", {
   runnerId: Id,
@@ -781,7 +778,7 @@ export interface RunnerEventChildRemoved extends InferType<
 /**
  * Emitted when a {@link Runner}'s state changes.
  *
- * @category Monitoring
+ * @group Monitoring
  */
 export const RunnerEventStateChanged = typed("stateChanged", {
   runnerId: Id,
@@ -795,7 +792,7 @@ export interface RunnerEventStateChanged extends InferType<
 /**
  * Emitted when a {@link Runner}'s result is set.
  *
- * @category Monitoring
+ * @group Monitoring
  */
 export const RunnerEventResultSet = typed("resultSet", {
   runnerId: Id,
@@ -813,7 +810,7 @@ export interface RunnerEventResultSet extends InferType<
  * Events bubble up through parent runners, enabling centralized monitoring at
  * the root. Use with {@link Runner.onEvent} to track task lifecycle.
  *
- * @category Monitoring
+ * @group Monitoring
  */
 export const RunnerEvent = union(
   RunnerEventChildAdded,
@@ -850,7 +847,7 @@ export type RunnerEvent = typeof RunnerEvent.Type;
  * }; // b released, then a released, then analytics sent
  * ```
  *
- * @category Resource management
+ * @group Resource Management
  */
 export class AsyncDisposableStack<D = unknown> implements AsyncDisposable {
   readonly #stack = new globalThis.AsyncDisposableStack();
@@ -974,7 +971,7 @@ export class AsyncDisposableStack<D = unknown> implements AsyncDisposable {
 /**
  * Configuration for {@link Runner} behavior.
  *
- * @category Monitoring
+ * @group Monitoring
  */
 export interface RunnerConfig {
   /**
@@ -1056,9 +1053,9 @@ const defaultDeps: RunnerDeps = {
  * // run2(fetchUser("123")); // Error: Property 'config' is missing
  * ```
  *
- * @category Core
+ * @group Creating Runners
  */
-export function createRunner(): Runner<RunnerDeps>;
+export function createRunner(): Runner;
 export function createRunner<D extends RunnerDeps>(deps: D): Runner<D>;
 export function createRunner<D extends RunnerDeps>(deps?: D): Runner<D> {
   const mergedDeps = {
@@ -1177,9 +1174,7 @@ const createRunnerInternal =
           emitEvent({ type: "childRemoved", childId: runner.id });
         });
 
-      const fiber = new Fiber<T, E, D>(runner, promise, (reason?: unknown) => {
-        runner.requestAbort(createAbortError(reason));
-      });
+      const fiber = new Fiber<T, E, D>(runner, promise);
 
       children = addToSet(children, fiber);
       emitEvent({ type: "childAdded", childId: runner.id });
@@ -1292,7 +1287,7 @@ const isAbortable = AbortMask.orThrow(0);
 /**
  * Error used as {@link AbortError} reason when a {@link Runner} is disposed.
  *
- * @category Core
+ * @group Creating Runners
  */
 export const RunnerClosingError = typed("RunnerClosingError");
 export interface RunnerClosingError extends InferType<
@@ -1309,7 +1304,7 @@ const createAbortError = (reason: unknown): AbortError => ({
  *
  * Tasks run on a disposing or disposed runner receive this error.
  *
- * @category Core
+ * @group Creating Runners
  */
 export const runnerClosingError = createAbortError({
   type: "RunnerClosingError",
@@ -1379,7 +1374,7 @@ const _abortBehavior = Symbol("evolu.Task.abortBehavior");
  * expect(result).toEqual(ok());
  * ```
  *
- * @category Abort Masking
+ * @group Abort Masking
  */
 export const unabortable = abortBehavior("unabortable");
 
@@ -1392,7 +1387,7 @@ export const unabortable = abortBehavior("unabortable");
  * - Tasks run inside `unabortableMask` are unabortable by default
  * - Tasks wrapped with `restore()` restore the previous abortability
  *
- * @category Abort Masking
+ * @group Abort Masking
  */
 export const unabortableMask = <T, E, D = unknown>(
   fn: (
@@ -1455,7 +1450,7 @@ export const unabortableMask = <T, E, D = unknown>(
  *   };
  * ```
  *
- * @category Composition
+ * @group Composition
  * @see https://developer.mozilla.org/en-US/docs/Web/API/Scheduler/yield
  * @see https://web.dev/articles/optimize-long-tasks
  */
@@ -1486,7 +1481,7 @@ const yieldImpl: () => Promise<void> =
  * };
  * ```
  *
- * @category Composition
+ * @group Composition
  */
 export const sleep =
   (duration: Duration): Task<void> =>
@@ -1535,7 +1530,7 @@ export const sleep =
  * const result = await run(race([fast, slow])); // ok("fast")
  * ```
  *
- * @category Composition
+ * @group Composition
  */
 export const race =
   <
@@ -1571,7 +1566,7 @@ export const race =
 /**
  * Abort reason for tasks that lose a {@link race}.
  *
- * @category Composition
+ * @group Composition
  */
 export const RaceLostError = typed("RaceLostError");
 export interface RaceLostError extends InferType<typeof RaceLostError> {}
@@ -1579,7 +1574,7 @@ export interface RaceLostError extends InferType<typeof RaceLostError> {}
 /**
  * {@link RaceLostError} used as abort reason in {@link race}.
  *
- * @category Composition
+ * @group Composition
  */
 export const raceLostError: RaceLostError = { type: "RaceLostError" };
 
@@ -1600,7 +1595,7 @@ export const raceLostError: RaceLostError = { type: "RaceLostError" };
  * }
  * ```
  *
- * @category Composition
+ * @group Composition
  */
 export const timeout = <T, E, D = unknown>(
   task: Task<T, E, D>,
@@ -1629,7 +1624,7 @@ export const timeout = <T, E, D = unknown>(
 /**
  * Typed error returned by {@link timeout} when a task exceeds its time limit.
  *
- * @category Composition
+ * @group Composition
  */
 export const TimeoutError = typed("TimeoutError");
 export interface TimeoutError extends InferType<typeof TimeoutError> {}
@@ -1637,14 +1632,14 @@ export interface TimeoutError extends InferType<typeof TimeoutError> {}
 /**
  * {@link TimeoutError} used as abort reason in {@link timeout}.
  *
- * @category Composition
+ * @group Composition
  */
 export const timeoutError: TimeoutError = { type: "TimeoutError" };
 
 /**
  * Options for {@link retry}.
  *
- * @category Composition
+ * @group Composition
  */
 export interface RetryOptions<E, Output> {
   /** Predicate to determine if error is retryable. Defaults to all errors. */
@@ -1660,7 +1655,7 @@ export interface RetryOptions<E, Output> {
 /**
  * Info passed to {@link retry} {@link RetryOptions.onRetry} callback.
  *
- * @category Composition
+ * @group Composition
  */
 export interface RetryAttempt<E, Output> extends ScheduleStep<Output> {
   readonly error: E;
@@ -1669,7 +1664,7 @@ export interface RetryAttempt<E, Output> extends ScheduleStep<Output> {
 /**
  * Error returned when all retry attempts are exhausted.
  *
- * @category Composition
+ * @group Composition
  */
 export interface RetryError<E> extends Typed<"RetryError"> {
   /** The error from the final attempt. */
@@ -1711,7 +1706,7 @@ export interface RetryError<E> extends Typed<"RetryError"> {
  * }
  * ```
  *
- * @category Composition
+ * @group Composition
  */
 export const retry =
   <T, E, D = unknown, Output = unknown>(
@@ -1772,7 +1767,7 @@ export const retry =
 /**
  * Options for {@link repeat}.
  *
- * @category Composition
+ * @group Composition
  */
 export interface RepeatOptions<T, Output> {
   /** Predicate to determine if value is repeatable. Defaults to all values. */
@@ -1787,7 +1782,7 @@ export interface RepeatOptions<T, Output> {
 /**
  * Info passed to {@link repeat} {@link RepeatOptions.onRepeat} callback.
  *
- * @category Composition
+ * @group Composition
  */
 export interface RepeatAttempt<T, Output> extends ScheduleStep<Output> {
   readonly value: T;
@@ -1831,7 +1826,7 @@ export interface RepeatAttempt<T, Output> extends ScheduleStep<Output> {
  * }
  * ```
  *
- * @category Composition
+ * @group Composition
  */
 export const repeat =
   <T, E, D = unknown, Output = unknown>(
@@ -1886,7 +1881,7 @@ export const repeat =
  * Disposing aborts all waiting tasks with an {@link AbortError} whose cause is
  * {@link deferredDisposedError}.
  *
- * @category Concurrency
+ * @group Concurrency Primitives
  * @see {@link createDeferred}
  */
 export interface Deferred<T, E = never> extends Disposable {
@@ -1917,7 +1912,7 @@ export interface Deferred<T, E = never> extends Disposable {
  * const result = await fiber; // ok("value")
  * ```
  *
- * @category Concurrency
+ * @group Concurrency Primitives
  */
 export const createDeferred = <T, E = never>(): Deferred<T, E> => {
   let resolved: Result<T, E | DeferredDisposedError> | null = null;
@@ -1964,7 +1959,7 @@ export const createDeferred = <T, E = never>(): Deferred<T, E> => {
 /**
  * Abort reason used when a {@link Deferred} is disposed.
  *
- * @category Concurrency
+ * @group Concurrency Primitives
  */
 export const DeferredDisposedError = typed("DeferredDisposedError");
 export interface DeferredDisposedError extends InferType<
@@ -1974,7 +1969,7 @@ export interface DeferredDisposedError extends InferType<
 /**
  * {@link DeferredDisposedError} used as abort reason in {@link createDeferred}.
  *
- * @category Concurrency
+ * @group Concurrency Primitives
  */
 export const deferredDisposedError: DeferredDisposedError = {
   type: "DeferredDisposedError",
@@ -1991,7 +1986,7 @@ export const deferredDisposedError: DeferredDisposedError = {
  *
  * Disposing aborts all waiting tasks with {@link deferredDisposedError}.
  *
- * @category Concurrency
+ * @group Concurrency Primitives
  * @see {@link createGate}
  */
 export interface Gate<D = unknown> extends Disposable {
@@ -2027,7 +2022,7 @@ export interface Gate<D = unknown> extends Disposable {
  * };
  * ```
  *
- * @category Concurrency
+ * @group Concurrency Primitives
  */
 export const createGate = <D = unknown>(): Gate<D> => {
   let isOpen = false;
@@ -2069,7 +2064,7 @@ export const createGate = <D = unknown>(): Gate<D> => {
  * For mutual exclusion (limiting to exactly one {@link Task}), use {@link Mutex}
  * instead.
  *
- * @category Concurrency
+ * @group Concurrency Primitives
  */
 export interface Semaphore extends Disposable {
   /**
@@ -2085,7 +2080,7 @@ export interface Semaphore extends Disposable {
 /**
  * Creates a {@link Semaphore} that limits concurrent {@link Task}s.
  *
- * @category Concurrency
+ * @group Concurrency Primitives
  */
 export const createSemaphore = (maxConcurrent: PositiveInt): Semaphore => {
   let disposed = false;
@@ -2160,7 +2155,7 @@ export const createSemaphore = (maxConcurrent: PositiveInt): Semaphore => {
 /**
  * Abort reason used when a {@link Semaphore} is disposed.
  *
- * @category Concurrency
+ * @group Concurrency Primitives
  */
 export const SemaphoreDisposedError = typed("SemaphoreDisposedError");
 export interface SemaphoreDisposedError extends InferType<
@@ -2170,7 +2165,7 @@ export interface SemaphoreDisposedError extends InferType<
 /**
  * {@link SemaphoreDisposedError} used as abort reason in {@link createSemaphore}.
  *
- * @category Concurrency
+ * @group Concurrency Primitives
  */
 export const semaphoreDisposedError: SemaphoreDisposedError = {
   type: "SemaphoreDisposedError",
@@ -2181,7 +2176,7 @@ export const semaphoreDisposedError: SemaphoreDisposedError = {
  *
  * This is a specialized version of a {@link Semaphore} with a permit count of 1.
  *
- * @category Concurrency
+ * @group Concurrency Primitives
  */
 export interface Mutex extends Disposable {
   /**
@@ -2193,7 +2188,7 @@ export interface Mutex extends Disposable {
   readonly withLock: <T, E, D>(task: Task<T, E, D>) => Task<T, E, D>;
 }
 
-/** @category Concurrency */
+/** @group Concurrency Primitives */
 export const createMutex = (): Mutex => {
   const semaphore = createSemaphore(minPositiveInt);
 
@@ -2203,7 +2198,7 @@ export const createMutex = (): Mutex => {
   };
 };
 
-/** @category Composition */
+/** @group Composition */
 export const all = (): never => {
   throw new Error("TODO: later");
 };

@@ -219,7 +219,9 @@ import type { Typed } from "./Type.js";
  *
  * ### What if a function doesn't return a value on success?
  *
- * Use `Result<void, E>`.
+ * Use `Result<void, E>` and return `ok()` (no argument). Don't return
+ * `ok(true)`, `ok("success")`, or `ok("done")` — `ok()` already signals
+ * success; redundant values add noise.
  */
 export type Result<T, E = never> = Ok<T> | Err<E>;
 
@@ -258,7 +260,7 @@ export interface Err<out E> {
 /**
  * Extracts the value type from a {@link Result}.
  *
- * @category Utilities
+ * @group Utilities
  */
 export type InferOk<R extends Result<any, any>> =
   R extends Ok<infer T> ? T : never;
@@ -266,7 +268,7 @@ export type InferOk<R extends Result<any, any>> =
 /**
  * Extracts the error type from a {@link Result}.
  *
- * @category Utilities
+ * @group Utilities
  */
 export type InferErr<R extends Result<any, any>> =
   R extends Err<infer E> ? E : never;
@@ -452,7 +454,7 @@ export function done<D>(value?: D): Done<D> {
  * Useful for pull-based protocols where completion is encoded in the error
  * channel (for example {@link NextResult}).
  *
- * @category Utilities
+ * @group Utilities
  */
 export type ExcludeDone<E> = Exclude<E, Done<any>>;
 
@@ -462,14 +464,14 @@ export type ExcludeDone<E> = Exclude<E, Done<any>>;
  * Useful for pull-based protocols where completion is encoded in the error
  * channel (for example {@link NextResult}).
  *
- * @category Utilities
+ * @group Utilities
  */
 export type OnlyDone<E> = Extract<E, Done<any>>;
 
 /**
  * Extracts the done value type from a {@link NextResult}.
  *
- * @category Utilities
+ * @group Utilities
  */
 export type InferDone<R extends Result<any, any>> =
   InferErr<R> extends infer Errors

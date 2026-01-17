@@ -8,8 +8,6 @@ export const metadata = {
 
 Also known as "passing arguments"
 
-## Intro
-
 What is Dependency Injection? Someone once called it 'really just a pretentious way to say "taking an argument,"' and while it does involve taking or passing arguments, not every instance of that qualifies as Dependency Injection.
 
 Some function arguments are local—say, the return value of one function passed to another—and often used just once. Others, like a database instance, are global and needed across many functions. Traditionally, when something must be shared across functions, we might export it from a module and let other modules import it directly:

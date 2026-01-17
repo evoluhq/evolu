@@ -101,7 +101,7 @@ export const createRecord = <K extends string = string, V = unknown>(): Record<
  *
  * Use as a default or initial value to avoid allocating new empty records.
  *
- * @category Constants
+ * @group Constants
  */
 export const emptyRecord: Readonly<Record<string, never>> = createRecord();
 
