@@ -8,6 +8,7 @@ import type { Brand } from "./Brand.js";
 import type { RandomBytesDep } from "./Crypto.js";
 import type { Result } from "./Result.js";
 import { createId, Id } from "./Type.js";
+import type { Callback } from "./Types.js";
 
 /**
  * Request-response correlation for callbacks across boundaries.
@@ -50,7 +51,7 @@ import { createId, Id } from "./Type.js";
  */
 export interface Callbacks<T = undefined> {
   /** Registers a callback function and returns a unique ID. */
-  readonly register: (callback: (arg: T) => void) => CallbackId;
+  readonly register: (callback: Callback<T>) => CallbackId;
 
   /** Executes and removes a callback associated with the given ID. */
   readonly execute: T extends undefined
@@ -65,7 +66,7 @@ export type CallbackId = Id & Brand<"Callback">;
 export const createCallbacks = <T = undefined>(
   deps: RandomBytesDep,
 ): Callbacks<T> => {
-  const callbackMap = new Map<CallbackId, (arg: T) => void>();
+  const callbackMap = new Map<CallbackId, Callback<T>>();
 
   return {
     register: (callback) => {

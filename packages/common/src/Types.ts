@@ -7,6 +7,20 @@
 import * as Kysely from "kysely";
 
 /**
+ * A function that receives a value and returns nothing.
+ *
+ * Use for event handlers, observers, and async completion handlers.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const onComplete: Callback<string> = (value) => console.log(value);
+ * const queue = new Set<Callback<Result<Data, Error>>>();
+ * ```
+ */
+export type Callback<T> = (value: T) => void;
+
+/**
  * Checks a condition on a value and returns a boolean.
  *
  * A predicate starts with an 'is' prefix, e.g., `isEven`.
