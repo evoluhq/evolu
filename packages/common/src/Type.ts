@@ -233,6 +233,45 @@ import type {
  * const Min8TrimmedString64 = minLength(8)(maxLength(64)(TrimmedString));
  * const SimplePassword = brand("SimplePassword", Min8TrimmedString64);
  * ```
+ *
+ * ## FAQ
+ *
+ * ### How do I create a generic interface like `FooState<T>`?
+ *
+ * TypeScript's {@link InferType} extracts a concrete type, not a generic one.
+ * You cannot write `interface FooState<T> extends InferType<typeof
+ * fooState<T>>` because `InferType` needs a concrete Type instance.
+ *
+ * The recommended approach is to define the generic interface manually, then
+ * create a Type factory that produces structurally compatible Types:
+ *
+ * ```ts
+ * // Define the generic interface manually
+ * interface FooState<T> {
+ *   readonly value: T;
+ *   readonly loading: boolean;
+ * }
+ *
+ * // Create a Type factory that produces Types matching the interface
+ * const fooState = <T extends AnyType>(valueType: T) =>
+ *   object({
+ *     value: valueType,
+ *     loading: Boolean,
+ *   });
+ *
+ * // Usage
+ * const StringFooState = fooState(String);
+ * type StringFooState = InferType<typeof StringFooState>;
+ *
+ * // The interface and inferred type are structurally compatible
+ * const state: FooState<string> = StringFooState.orThrow({
+ *   value: "hi",
+ *   loading: false,
+ * });
+ * ```
+ *
+ * This keeps the interface generic while having type-safe runtime validation
+ * for each concrete use.
  */
 export interface Type<
   Name extends TypeName,

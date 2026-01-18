@@ -1,9 +1,10 @@
 import { assert, describe, expect, expectTypeOf, test } from "vitest";
 import type { Brand } from "../src/Brand.js";
-import { lazyVoid, exhaustiveCheck } from "../src/Function.js";
+import { exhaustiveCheck, lazyVoid } from "../src/Function.js";
 import { err, ok } from "../src/Result.js";
 import { createTestDeps } from "../src/Test.js";
 import type {
+  AnyType,
   ArrayError,
   BigIntError,
   BooleanError,
@@ -3430,5 +3431,39 @@ describe("typed", () => {
     });
 
     expect(invalidUser.ok).toBe(false);
+  });
+});
+
+describe("examples", () => {
+  test("generic interface with Type factory", () => {
+    // Define the generic interface manually
+    interface FooState<T> {
+      readonly value: T;
+      readonly loading: boolean;
+    }
+
+    // Create a Type factory that produces Types matching the interface
+    const fooState = <X extends AnyType>(valueType: X) =>
+      object({
+        value: valueType,
+        loading: Boolean,
+      });
+
+    // Usage
+    const StringFooState = fooState(String);
+    type StringFooState = InferType<typeof StringFooState>;
+
+    // The interface and inferred type are structurally compatible
+    const state: FooState<string> = StringFooState.orThrow({
+      value: "hi",
+      loading: false,
+    });
+
+    expect(state.value).toBe("hi");
+    expect(state.loading).toBe(false);
+
+    // Type check: inferred type matches generic interface
+    expectTypeOf(state).toEqualTypeOf<FooState<string>>();
+    expectTypeOf(state).toEqualTypeOf<StringFooState>();
   });
 });
