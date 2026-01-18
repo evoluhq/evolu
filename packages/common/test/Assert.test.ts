@@ -52,7 +52,7 @@ test("assertNonEmptyReadonlyArray", () => {
 });
 
 test("assertType", () => {
-  assertType(AbortError, { type: "AbortError", reason: "timeout" });
+  assertType(AbortError, { type: "AbortError", cause: "timeout" });
 
   expect(() => {
     assertType(AbortError, { type: "Other" });
