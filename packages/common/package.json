@@ -56,7 +56,7 @@
     "@noble/ciphers": "^2.1.1",
     "@noble/hashes": "^2.0.1",
     "@scure/bip39": "^2.0.1",
-    "kysely": "^0.28.9",
+    "kysely": "^0.28.10",
     "msgpackr": "^1.11.8",
     "random": "^5.4.1"
   },
@@ -68,7 +68,7 @@
     "@vitest/browser": "^4.0.17",
     "@vitest/browser-playwright": "^4.0.17",
     "@vitest/coverage-v8": "^4.0.17",
-    "better-sqlite3": "^12.6.0",
+    "better-sqlite3": "^12.6.2",
     "fast-check": "^4.5.3",
     "playwright": "^1.57.0",
     "typescript": "^5.9.3",
