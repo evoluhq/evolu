@@ -4,6 +4,7 @@
  * @module
  */
 
+import { testCreateConsole, type ConsoleDep } from "./Console.js";
 import { testCreateRandomBytes, type RandomBytesDep } from "./Crypto.js";
 import {
   testCreateRandom,
@@ -15,7 +16,11 @@ import { createRunner, type Runner, type RunnerConfigDep } from "./Task.js";
 import { testCreateTime, type TimeDep } from "./Time.js";
 
 /** Test deps created by {@link createTestDeps}. */
-export type TestDeps = RandomDep & RandomLibDep & RandomBytesDep & TimeDep;
+export type TestDeps = ConsoleDep &
+  RandomBytesDep &
+  RandomDep &
+  RandomLibDep &
+  TimeDep;
 
 /**
  * Creates test deps for proper isolation.
@@ -39,11 +44,12 @@ export const createTestDeps = (options?: {
   readonly seed?: string;
 }): TestDeps => {
   const seed = options?.seed ?? "evolu";
+  const console = testCreateConsole();
   const random = testCreateRandom(seed);
   const randomLib = testCreateRandomLib(seed);
   const randomBytes = testCreateRandomBytes({ randomLib });
   const time = testCreateTime();
-  return { random, randomLib, randomBytes, time };
+  return { console, randomBytes, random, randomLib, time };
 };
 
 /**
