@@ -13,6 +13,7 @@ import {
 } from "../src/Schedule.js";
 import type {
   Fiber,
+  FiberState,
   InferFiberErr,
   InferFiberOk,
   InferTaskDone,
@@ -40,7 +41,6 @@ import {
   retry,
   runnerClosingError,
   RunnerEvent,
-  RunnerState,
   sleep,
   timeout,
   TimeoutError,
@@ -256,16 +256,19 @@ describe("Runner", () => {
 
       const fiber = run(() => taskComplete.promise);
 
-      const childAddedEvents = events.filter((e) => e.type === "childAdded");
+      const childAddedEvents = events.filter(
+        (e) => e.data.type === "childAdded",
+      );
       expect(childAddedEvents.length).toBe(1);
-      expect(childAddedEvents[0].runnerId).toBe(run.id);
-      expect(childAddedEvents[0].childId).toBe(fiber.run.id);
+      expect(childAddedEvents[0].id).toBe(run.id);
+      assert(childAddedEvents[0].data.type === "childAdded");
+      expect(childAddedEvents[0].data.childId).toBe(fiber.run.id);
 
       taskComplete.resolve(ok());
       await fiber;
     });
 
-    test("emits resultSet and childRemoved when child completes", async () => {
+    test("emits completing, completed, childRemoved when child completes", async () => {
       await using run = createTestRunner(eventsEnabled);
 
       const events: Array<RunnerEvent> = [];
@@ -280,15 +283,25 @@ describe("Runner", () => {
       taskComplete.resolve(ok());
       await fiber;
 
-      // Assert exact ordering: resultSet must come before childRemoved
-      expect(events.map((e) => e.type)).toMatchInlineSnapshot(`
-        [
-          "resultSet",
-          "stateChanged",
-          "stateChanged",
-          "childRemoved",
-        ]
-      `);
+      expect(events.map((e) => e.data.type)).toEqual([
+        "stateChanged",
+        "stateChanged",
+        "childRemoved",
+      ]);
+
+      const [completing, completed, childRemoved] = events;
+
+      assert(completing.data.type === "stateChanged");
+      expect(completing.data.state.type).toBe("completing");
+
+      assert(completed.data.type === "stateChanged");
+      expect(completed.data.state.type).toBe("completed");
+      assert(completed.data.state.type === "completed");
+      expect(completed.data.state.result).toEqual(ok());
+      expect(completed.data.state.outcome).toEqual(ok());
+
+      assert(childRemoved.data.type === "childRemoved");
+      expect(childRemoved.data.childId).toBe(fiber.run.id);
     });
 
     test("bubbles up through parent chain", async () => {
@@ -563,17 +576,17 @@ describe("Runner", () => {
       expect(results).toEqual(["task1 aborted", "task2 aborted"]);
     });
 
-    test("transitions active → disposing → disposed", async () => {
+    test("transitions running → completing → completed", async () => {
       const run = createRunner();
 
-      expectTypeOf(run.getState()).toEqualTypeOf<RunnerState>();
-      expect(run.getState()).toBe("active");
+      expectTypeOf(run.getState()).toEqualTypeOf<FiberState>();
+      expect(run.getState().type).toBe("running");
 
       const taskStarted = Promise.withResolvers<void>();
       const taskCanFinish = Promise.withResolvers<void>();
 
-      let stateInAbortHandler: RunnerState | null = null;
-      let stateAfterAwait: RunnerState | null = null;
+      let stateInAbortHandler: FiberState | undefined;
+      let stateAfterAwait: FiberState | undefined;
 
       const task: Task<void> = async (run) => {
         run.signal.addEventListener("abort", () => {
@@ -589,14 +602,14 @@ describe("Runner", () => {
       await taskStarted.promise;
 
       const disposePromise = run[Symbol.asyncDispose]();
-      expect(run.getState()).toBe("disposing");
+      expect(run.getState().type).toBe("completing");
 
       taskCanFinish.resolve();
       await disposePromise;
 
-      expect(stateInAbortHandler).toBe("disposing");
-      expect(stateAfterAwait).toBe("disposing");
-      expect(run.getState()).toBe("disposed");
+      expect(stateInAbortHandler!.type).toBe("completing");
+      expect(stateAfterAwait!.type).toBe("completing");
+      expect(run.getState().type).toBe("completed");
     });
 
     test("is idempotent", async () => {
@@ -608,11 +621,11 @@ describe("Runner", () => {
       expect(promise1).toBe(promise2);
     });
 
-    test("does not run new tasks when disposing", async () => {
+    test("does not run new tasks when completing", async () => {
       const run = createRunner();
       run[Symbol.asyncDispose]();
 
-      expect(run.getState()).toBe("disposing");
+      expect(run.getState().type).toBe("completing");
 
       let regularRan = false;
       let unabortableRan = false;
@@ -643,9 +656,9 @@ describe("Runner", () => {
       expect(unabortableRan).toBe(false);
       expect(unabortableMaskRan).toBe(false);
 
-      expect(regularFiber.run.getState()).toBe("disposed");
-      expect(unabortableFiber.run.getState()).toBe("disposed");
-      expect(unabortableMaskFiber.run.getState()).toBe("disposed");
+      expect(regularFiber.run.getState().type).toBe("completed");
+      expect(unabortableFiber.run.getState().type).toBe("completed");
+      expect(unabortableMaskFiber.run.getState().type).toBe("completed");
 
       const expected = err({ type: "AbortError", cause: runnerClosingError });
       expect(regularResult).toEqual(expected);
@@ -653,11 +666,11 @@ describe("Runner", () => {
       expect(unabortableMaskResult).toEqual(expected);
     });
 
-    test("does not run new tasks when disposed", async () => {
+    test("does not run new tasks when completed", async () => {
       const run = createRunner();
       await run[Symbol.asyncDispose]();
 
-      expect(run.getState()).toBe("disposed");
+      expect(run.getState().type).toBe("completed");
 
       let regularRan = false;
       let unabortableRan = false;
@@ -688,9 +701,9 @@ describe("Runner", () => {
       expect(unabortableRan).toBe(false);
       expect(unabortableMaskRan).toBe(false);
 
-      expect(regularFiber.run.getState()).toBe("disposed");
-      expect(unabortableFiber.run.getState()).toBe("disposed");
-      expect(unabortableMaskFiber.run.getState()).toBe("disposed");
+      expect(regularFiber.run.getState().type).toBe("completed");
+      expect(unabortableFiber.run.getState().type).toBe("completed");
+      expect(unabortableMaskFiber.run.getState().type).toBe("completed");
 
       const expected = err({ type: "AbortError", cause: runnerClosingError });
       expect(regularResult).toEqual(expected);
@@ -773,8 +786,7 @@ describe("Fiber", () => {
 
       let taskRan = false;
       let signalAbortedBeforeInnerRun = false;
-      let innerFiberState: string | null = null;
-      let innerFiberResult: Result<unknown, unknown> | null = null;
+      let innerFiberState: FiberState<void, never> | undefined;
 
       const fiber = run(async (run) => {
         await Promise.resolve();
@@ -787,8 +799,7 @@ describe("Fiber", () => {
 
         await innerFiber;
 
-        innerFiberState = innerFiber.run.getState();
-        innerFiberResult = innerFiber.run.getResult();
+        innerFiberState = innerFiber.getState();
 
         return ok();
       });
@@ -798,8 +809,8 @@ describe("Fiber", () => {
 
       expect(signalAbortedBeforeInnerRun).toBe(true);
       expect(taskRan).toBe(false);
-      expect(innerFiberState).toBe("disposed");
-      expect(innerFiberResult).toEqual(
+      assert(innerFiberState?.type === "completed");
+      expect(innerFiberState.result).toEqual(
         err({ type: "AbortError", cause: "stop" }),
       );
       expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
@@ -927,54 +938,54 @@ describe("Fiber", () => {
     });
   });
 
-  test("getResult returns null while pending, Result after completion", async () => {
+  test("getState returns running while running, completed with result after completion", async () => {
     await using run = createRunner();
 
     const taskComplete = Promise.withResolvers<Result<number, MyError>>();
 
     const fiber = run(() => taskComplete.promise);
 
-    expect(fiber.getResult()).toBeNull();
+    expect(fiber.getState().type).toBe("running");
 
     taskComplete.resolve(ok(42));
     await fiber;
 
-    expectTypeOf(fiber.getResult()).toEqualTypeOf<Result<
-      number,
-      MyError | AbortError
-    > | null>();
-    expect(fiber.getResult()).toEqual(ok(42));
+    const state = fiber.getState();
+    expectTypeOf(state).toEqualTypeOf<FiberState<number, MyError>>();
+    assert(state.type === "completed");
+    expect(state.result).toEqual(ok(42));
   });
 
-  test("getOutcome equals getResult when not aborted", async () => {
+  test("completed state outcome equals result when not aborted", async () => {
     await using run = createRunner();
 
     const taskComplete = Promise.withResolvers<Result<number, MyError>>();
 
     const fiber = run(() => taskComplete.promise);
 
-    expect(fiber.getOutcome()).toBeNull();
-    expect(fiber.getResult()).toBeNull();
+    expect(fiber.getState().type).toBe("running");
 
     taskComplete.resolve(ok(42));
     await fiber;
 
-    expect(fiber.getOutcome()).toEqual(fiber.getResult());
+    const state = fiber.getState();
+    assert(state.type === "completed");
+    expect(state.outcome).toEqual(state.result);
   });
 
-  test("getOutcome preserves original result when aborted", async () => {
+  test("completed state outcome preserves original result when aborted", async () => {
     await using run = createRunner();
 
     const fiber = run(() => ok("data"));
     fiber.abort("stop");
     await fiber;
 
-    // getResult returns AbortError
-    expect(fiber.getResult()).toEqual(
-      err({ type: "AbortError", cause: "stop" }),
-    );
-    // getOutcome preserves what the task actually returned
-    expect(fiber.getOutcome()).toEqual(ok("data"));
+    const state = fiber.getState();
+    assert(state.type === "completed");
+    // result returns AbortError
+    expect(state.result).toEqual(err({ type: "AbortError", cause: "stop" }));
+    // outcome preserves what the task actually returned
+    expect(state.outcome).toEqual(ok("data"));
   });
 
   describe("run", () => {
@@ -1004,17 +1015,19 @@ describe("Fiber", () => {
       expect(parentFiberId).not.toBe(childFiberId);
     });
 
-    test("snapshot returns null result while pending, Result after completion", async () => {
+    test("snapshot returns running state while running, completed with result after completion", async () => {
       await using run = createRunner();
 
       const taskComplete = Promise.withResolvers<Result<number>>();
 
       const fiber = run(() => taskComplete.promise);
-      expect(fiber.run.snapshot().result).toBeNull();
+      expect(fiber.run.snapshot().state.type).toBe("running");
 
       taskComplete.resolve(ok(42));
       await fiber;
-      expect(fiber.run.snapshot().result).toEqual(ok(42));
+      const snapshotState = fiber.run.snapshot().state;
+      assert(snapshotState.type === "completed");
+      expect(snapshotState.result).toEqual(ok(42));
     });
   });
 
@@ -1236,7 +1249,9 @@ describe("unabortable", () => {
     // But outer abortable task was aborted
     expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
     // Outcome preserves what the task actually returned
-    expect(fiber.getOutcome()).toEqual(innerResult);
+    const state = fiber.getState();
+    assert(state.type === "completed");
+    expect(state.outcome).toEqual(innerResult);
   });
 
   test("with abort during run masks signal and completes", async () => {
@@ -1895,7 +1910,7 @@ describe("AsyncDisposableStack", () => {
       await using run = createRunner();
 
       let childRunner: Runner | null = null;
-      let stateWhileWorking: RunnerState | null = null;
+      let stateWhileWorking: FiberState | null = null;
 
       const task: Task<void> = async (run) => {
         await using stack = run.stack();
@@ -1912,8 +1927,8 @@ describe("AsyncDisposableStack", () => {
       const result = await run(task);
 
       expect(result).toEqual(ok());
-      expect(stateWhileWorking).toBe("active");
-      expect(childRunner!.getState()).toBe("disposed");
+      expect(stateWhileWorking!.type).toBe("running");
+      expect(childRunner!.getState().type).toBe("completed");
     });
 
     test("accepts moved native stack", async () => {
@@ -2420,7 +2435,9 @@ describe("sleep", () => {
     const elapsed = Date.now() - start;
 
     expect(result).toEqual(err({ type: "AbortError", cause: "cancelled" }));
-    expect(fiber.getOutcome()).toEqual(
+    const state = fiber.getState();
+    assert(state.type === "completed");
+    expect(state.outcome).toEqual(
       err({ type: "AbortError", cause: "cancelled" }),
     );
     expect(elapsed).toBeLessThan(50);
@@ -4274,7 +4291,7 @@ describe("examples TODO: review", () => {
   describe("createSemaphore", () => {
     test("limits concurrency with sleep helper", async () => {
       await using run = createRunner();
-      run.console.enabled = true;
+      // run.console.enabled = true;
 
       const semaphore = createSemaphore(PositiveInt.orThrow(2));
 
@@ -4371,7 +4388,9 @@ describe("examples TODO: review", () => {
       const result = await fiber;
 
       expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
-      expect(fiber.getOutcome()).toEqual(ok("data"));
+      const state = fiber.getState();
+      assert(state.type === "completed");
+      expect(state.outcome).toEqual(ok("data"));
     });
 
     test("unabortable preserves result and outcome", async () => {
@@ -4382,7 +4401,9 @@ describe("examples TODO: review", () => {
       const result = await fiber;
 
       expect(result).toEqual(ok("data"));
-      expect(fiber.getOutcome()).toEqual(ok("data"));
+      const state = fiber.getState();
+      assert(state.type === "completed");
+      expect(state.outcome).toEqual(ok("data"));
     });
   });
 

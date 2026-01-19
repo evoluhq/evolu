@@ -29,6 +29,7 @@ import {
   type InferType,
   minPositiveInt,
   NonNegativeInt,
+  object,
   PositiveInt,
   type Typed,
   typed,
@@ -39,7 +40,6 @@ import {
 import {
   type Awaitable,
   type Callback,
-  type DistributiveOmit,
   type Mutable,
   type Predicate,
 } from "./Types.js";
@@ -392,25 +392,8 @@ export interface Runner<D = unknown> extends AsyncDisposable {
    */
   readonly onAbort: (fn: (cause: unknown) => void) => void;
 
-  /** Returns the current {@link RunnerState}. */
-  readonly getState: () => RunnerState;
-
-  /**
-   * Returns the fiber's completion value.
-   *
-   * `null` while pending. If abort was requested, this is {@link AbortError}
-   * even if the task completed successfully — see {@link Runner.getOutcome} for
-   * what the task actually returned.
-   */
-  readonly getResult: () => UnknownResult | null;
-
-  /**
-   * Returns what the task actually returned.
-   *
-   * `null` while pending. Unlike {@link Runner.getResult}, not overridden by
-   * abort.
-   */
-  readonly getOutcome: () => UnknownResult | null;
+  /** Returns the current {@link FiberState}. */
+  readonly getState: () => FiberState;
 
   /** Returns the current child {@link Fiber}s. */
   readonly getChildren: () => ReadonlySet<Fiber<any, any, D>>;
@@ -556,18 +539,6 @@ export const AbortMask = brand("AbortMask", NonNegativeInt);
 export type AbortMask = typeof AbortMask.Type;
 
 /**
- * The lifecycle state of a {@link Runner}.
- *
- * - `active` — accepts new tasks
- * - `disposing` — no new tasks accepted, waits for in-flight fibers
- * - `disposed` — all fibers completed, disposal finished
- *
- * @group Core Types
- */
-export const RunnerState = union("active", "disposing", "disposed");
-export type RunnerState = typeof RunnerState.Type;
-
-/**
  * `Fiber` is a handle to a running {@link Task} that can be awaited, aborted, or
  * disposed.
  *
@@ -673,25 +644,9 @@ export class Fiber<T = unknown, E = unknown, D = unknown>
     );
   }
 
-  /**
-   * Returns the fiber's completion value.
-   *
-   * `null` while pending. If abort was requested, this is {@link AbortError}
-   * even if the task completed successfully — see {@link Fiber.getOutcome} for
-   * what the task actually returned.
-   */
-  getResult(): Result<T, E | AbortError> | null {
-    return this.run.getResult() as Result<T, E | AbortError> | null;
-  }
-
-  /**
-   * Returns what the task actually returned.
-   *
-   * `null` while pending. Unlike {@link Fiber.getResult}, not overridden by
-   * abort.
-   */
-  getOutcome(): Result<T, E | AbortError> | null {
-    return this.run.getOutcome() as Result<T, E | AbortError> | null;
+  /** Returns the current {@link FiberState}. */
+  getState(): FiberState<T, E> {
+    return this.run.getState() as FiberState<T, E>;
   }
 
   [Symbol.dispose](): void {
@@ -724,6 +679,50 @@ export type InferFiberDeps<F extends Fiber<any, any, any>> =
   F extends Fiber<any, any, infer D> ? D : never;
 
 /**
+ * The lifecycle state of a {@link Fiber}.
+ *
+ * - `running` — task running, no result yet
+ * - `completing` — waiting for children to complete
+ * - `completed` — completed with result and outcome
+ *
+ * @group Core Types
+ */
+export type FiberState<T = unknown, E = unknown> =
+  | { readonly type: "running" }
+  | { readonly type: "completing" }
+  | {
+      readonly type: "completed";
+
+      /**
+       * The fiber's completion value.
+       *
+       * If abort was requested, this is {@link AbortError} even if the task
+       * completed successfully — see `outcome` for what the task actually
+       * returned.
+       */
+      readonly result: Result<T, E | AbortError>;
+
+      /**
+       * What the task actually returned.
+       *
+       * Unlike `result`, not overridden by abort.
+       */
+      readonly outcome: Result<T, E | AbortError>;
+    };
+
+/**
+ * {@link FiberState} Type.
+ *
+ * @group Monitoring
+ */
+export const FiberSnapshotState = union(
+  typed("running"),
+  typed("completing"),
+  typed("completed", { result: UnknownResult, outcome: UnknownResult }),
+);
+export type FiberSnapshotState = typeof FiberSnapshotState.Type;
+
+/**
  * A recursive snapshot of a {@link Runner} tree.
  *
  * Snapshots use structural sharing — unchanged subtrees return the same object
@@ -740,24 +739,7 @@ export interface FiberSnapshot {
   readonly id: Id;
 
   /** The current lifecycle state. */
-  readonly state: RunnerState;
-
-  /**
-   * The fiber's completion value.
-   *
-   * `null` while pending. If abort was requested, this is {@link AbortError}
-   * even if the task completed successfully — see {@link FiberSnapshot.outcome}
-   * for what the task actually returned.
-   */
-  readonly result: UnknownResult | null;
-
-  /**
-   * What the task actually returned.
-   *
-   * `null` while pending. Unlike {@link FiberSnapshot.result}, not overridden by
-   * abort.
-   */
-  readonly outcome: UnknownResult | null;
+  readonly state: FiberSnapshotState;
 
   /** Child snapshots in spawn (start) order. */
   readonly children: ReadonlyArray<FiberSnapshot>;
@@ -767,61 +749,16 @@ export interface FiberSnapshot {
 }
 
 /**
- * Emitted when a child {@link Fiber} is added to a {@link Runner}.
+ * The event-specific payload of a {@link RunnerEvent}.
  *
  * @group Monitoring
  */
-export const RunnerEventChildAdded = typed("childAdded", {
-  runnerId: Id,
-  childId: Id,
-  timestamp: Millis,
-});
-export interface RunnerEventChildAdded extends InferType<
-  typeof RunnerEventChildAdded
-> {}
-
-/**
- * Emitted when a child {@link Fiber} is removed from a {@link Runner}.
- *
- * @group Monitoring
- */
-export const RunnerEventChildRemoved = typed("childRemoved", {
-  runnerId: Id,
-  childId: Id,
-  timestamp: Millis,
-});
-export interface RunnerEventChildRemoved extends InferType<
-  typeof RunnerEventChildRemoved
-> {}
-
-/**
- * Emitted when a {@link Runner}'s state changes.
- *
- * @group Monitoring
- */
-export const RunnerEventStateChanged = typed("stateChanged", {
-  runnerId: Id,
-  state: RunnerState,
-  timestamp: Millis,
-});
-export interface RunnerEventStateChanged extends InferType<
-  typeof RunnerEventStateChanged
-> {}
-
-/**
- * Emitted when a {@link Runner}'s result is set.
- *
- * @group Monitoring
- */
-export const RunnerEventResultSet = typed("resultSet", {
-  runnerId: Id,
-  result: UnknownResult,
-  outcome: UnknownResult,
-  timestamp: Millis,
-});
-export interface RunnerEventResultSet extends InferType<
-  typeof RunnerEventResultSet
-> {}
+export const RunnerEventData = union(
+  typed("childAdded", { childId: Id }),
+  typed("childRemoved", { childId: Id }),
+  typed("stateChanged", { state: FiberSnapshotState }),
+);
+export type RunnerEventData = typeof RunnerEventData.Type;
 
 /**
  * Events emitted by a {@link Runner} for monitoring and debugging.
@@ -831,13 +768,12 @@ export interface RunnerEventResultSet extends InferType<
  *
  * @group Monitoring
  */
-export const RunnerEvent = union(
-  RunnerEventChildAdded,
-  RunnerEventChildRemoved,
-  RunnerEventStateChanged,
-  RunnerEventResultSet,
-);
-export type RunnerEvent = typeof RunnerEvent.Type;
+export const RunnerEvent = object({
+  id: Id,
+  timestamp: Millis,
+  data: RunnerEventData,
+});
+export interface RunnerEvent extends InferType<typeof RunnerEvent> {}
 
 /**
  * Task-aware wrapper around native
@@ -1100,10 +1036,7 @@ export function createRunner<D extends RunnerDeps>(deps?: D): Runner<D> {
 interface RunnerInternal<D extends RunnerDeps = RunnerDeps> extends Runner<D> {
   readonly requestAbort: (reason: unknown) => void;
   readonly requestSignal: AbortSignal;
-  readonly setResultAndOutcome: (
-    result: UnknownResult,
-    outcome: UnknownResult,
-  ) => void;
+  readonly complete: (result: UnknownResult, outcome: UnknownResult) => void;
 }
 
 const createRunnerInternal =
@@ -1134,7 +1067,9 @@ const createRunnerInternal =
     const requestController = new AbortController();
     const signalController = new AbortController();
 
-    let state: RunnerState = "active";
+    let state: FiberState = running;
+    let result: UnknownResult = ok();
+    let outcome: UnknownResult = ok();
     let children: ReadonlySet<Fiber<any, any, D>> = emptySet;
 
     const requestAbort = (reason: unknown) => {
@@ -1154,11 +1089,9 @@ const createRunnerInternal =
       }
     }
 
-    const emitEvent = (
-      event: DistributiveOmit<RunnerEvent, "runnerId" | "timestamp">,
-    ) => {
+    const emitEvent = (data: RunnerEventData) => {
       if (!deps.runnerConfig?.eventsEnabled.get()) return;
-      const e = { ...event, runnerId: self.id, timestamp: deps.time.now() };
+      const e: RunnerEvent = { id: self.id, timestamp: deps.time.now(), data };
       for (let node: Runner<D> | null = self; node; node = node.parent)
         node.onEvent?.(e);
     };
@@ -1170,7 +1103,7 @@ const createRunnerInternal =
         getAbortBehavior(task),
       );
 
-      if (state !== "active") {
+      if (state !== running) {
         runner.requestAbort(runnerClosingAbortError);
         task = () => err(runnerClosingAbortError);
       } else if (
@@ -1186,7 +1119,7 @@ const createRunnerInternal =
           const taskResult = runner.signal.aborted
             ? err(runner.signal.reason)
             : taskOutcome;
-          runner.setResultAndOutcome(taskResult, taskOutcome);
+          runner.complete(taskResult, taskOutcome);
           return taskResult;
         })
         .finally(runner[Symbol.asyncDispose])
@@ -1209,10 +1142,8 @@ const createRunnerInternal =
       const run = self as Mutable<RunnerInternal<D>>;
       const id = createId(deps);
 
-      let result: UnknownResult | null = null;
-      let outcome: UnknownResult | null = null;
       let snapshot: FiberSnapshot | null = null;
-      let disposing: Promise<void> | null = null;
+      let disposingPromise: Promise<void> | null = null;
 
       run.id = id;
       run.parent = parent ?? null;
@@ -1231,8 +1162,6 @@ const createRunnerInternal =
       };
 
       run.getState = () => state;
-      run.getResult = () => result;
-      run.getOutcome = () => outcome;
       run.getChildren = () => children;
 
       run.snapshot = () => {
@@ -1241,15 +1170,11 @@ const createRunnerInternal =
         );
         if (
           snapshot?.state !== state ||
-          snapshot.result !== result ||
-          // No need to check outcome — it's set together with result
           !eqArrayStrict(snapshot.children, childSnapshots)
         ) {
           snapshot = {
             id,
-            state,
-            result,
-            outcome,
+            state: state as FiberSnapshotState,
             children: childSnapshots,
             abortMask,
           };
@@ -1271,35 +1196,37 @@ const createRunnerInternal =
       run.randomBytes = deps.randomBytes;
 
       run[Symbol.asyncDispose] = () => {
-        if (disposing) return disposing;
+        if (disposingPromise) return disposingPromise;
 
-        state = "disposing";
+        state = completing;
         emitEvent({ type: "stateChanged", state });
 
         requestAbort(runnerClosingAbortError);
 
-        disposing = Promise.allSettled(children)
+        disposingPromise = Promise.allSettled(children)
           .then(lazyVoid)
           .finally(() => {
-            state = "disposed";
+            state = { type: "completed", result, outcome };
             emitEvent({ type: "stateChanged", state });
           });
 
-        return disposing;
+        return disposingPromise;
       };
 
       // Internal
       run.requestAbort = requestAbort;
       run.requestSignal = requestController.signal;
-      run.setResultAndOutcome = (taskResult, taskOutcome) => {
+      run.complete = (taskResult, taskOutcome) => {
         result = taskResult;
         outcome = taskOutcome;
-        emitEvent({ type: "resultSet", result, outcome });
       };
     }
 
     return self;
   };
+
+const running: FiberState = { type: "running" };
+const completing: FiberState = { type: "completing" };
 
 /** Mask value indicating the task is abortable. */
 const isAbortable = AbortMask.orThrow(0);
@@ -1578,8 +1505,7 @@ export const race =
   async (run) => {
     const fibers = tasks.map(run.daemon);
     const abortPending = (cause: unknown) => {
-      for (const fiber of fibers)
-        if (fiber.getResult() === null) fiber.abort(cause);
+      for (const fiber of fibers) fiber.abort(cause);
       return ok();
     };
     run.onAbort(abortPending);
