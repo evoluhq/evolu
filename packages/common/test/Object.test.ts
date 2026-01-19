@@ -1,11 +1,28 @@
 import { expect, test } from "vitest";
-import { createRecord, getProperty, isPlainObject } from "../src/Object.js";
+import {
+  createRecord,
+  getProperty,
+  isIterable,
+  isPlainObject,
+} from "../src/Object.js";
 
 test("isPlainObject", () => {
   expect(isPlainObject({})).toBe(true);
   expect(isPlainObject(new Date())).toBe(false);
   expect(isPlainObject([])).toBe(false);
   expect(isPlainObject(null)).toBe(false);
+});
+
+test("isIterable", () => {
+  expect(isIterable([1, 2, 3])).toBe(true);
+  expect(isIterable("abc")).toBe(true);
+  expect(isIterable(new Set([1]))).toBe(true);
+  expect(isIterable(new Map([["a", 1]]))).toBe(true);
+  expect(isIterable({})).toBe(false);
+  expect(isIterable(0)).toBe(false);
+  expect(isIterable(null)).toBe(false);
+  expect(isIterable(undefined)).toBe(false);
+  expect(isIterable({ [Symbol.iterator]: 1 })).toBe(false);
 });
 
 test("createRecord", () => {

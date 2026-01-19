@@ -22,6 +22,21 @@ export const isPlainObject = (
   Object.prototype.toString.call(value) === "[object Object]";
 
 /**
+ * Checks if a value implements {@link Iterable}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * isIterable([1, 2, 3]); // true
+ * isIterable("abc"); // true
+ * isIterable({}); // false
+ * ```
+ */
+export const isIterable = (value: unknown): value is Iterable<unknown> =>
+  value != null &&
+  typeof (value as Iterable<unknown>)[Symbol.iterator] === "function";
+
+/**
  * A read-only `Record<K, V>` with `K extends keyof any` to preserve branded key
  * types (e.g., in {@link mapObject}).
  */
