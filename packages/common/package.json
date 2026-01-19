@@ -47,16 +47,17 @@
     "build": "rimraf dist && tsc",
     "test": "vitest run --disableConsoleIntercept",
     "test:watch": "vitest --disableConsoleIntercept",
-    "clean": "rimraf .turbo node_modules dist",
+    "test:coverage": "vitest run --coverage --disableConsoleIntercept",
+    "clean": "rimraf .turbo node_modules dist coverage",
     "format": "prettier --write \"src/*.{ts,tsx,md}\"",
     "bench": "vitest bench"
   },
   "dependencies": {
-    "@noble/ciphers": "^2.0.0",
-    "@noble/hashes": "^2.0.0",
-    "@scure/bip39": "^2.0.0",
-    "kysely": "^0.28.4",
-    "msgpackr": "^1.11.5",
+    "@noble/ciphers": "^2.1.1",
+    "@noble/hashes": "^2.0.1",
+    "@scure/bip39": "^2.0.1",
+    "kysely": "^0.28.10",
+    "msgpackr": "^1.11.8",
     "random": "^5.4.1"
   },
   "devDependencies": {
@@ -64,17 +65,23 @@
     "@evolu/tsconfig": "workspace:*",
     "@types/better-sqlite3": "^7.6.13",
     "@types/ws": "^8.18.1",
-    "better-sqlite3": "^12.1.1",
-    "fast-check": "^4.2.0",
-    "typescript": "^5.9.2",
-    "vitest": "^4.0.4",
-    "ws": "^8.18.2"
+    "@vitest/browser": "^4.0.17",
+    "@vitest/browser-playwright": "^4.0.17",
+    "@vitest/coverage-v8": "^4.0.17",
+    "better-sqlite3": "^12.6.2",
+    "fast-check": "^4.5.3",
+    "playwright": "^1.57.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.17",
+    "ws": "^8.19.0"
   },
   "publishConfig": {
     "access": "public"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=24.0.0"
   },
-  "sideEffects": []
+  "sideEffects": [
+    "./dist/src/index.js"
+  ]
 }

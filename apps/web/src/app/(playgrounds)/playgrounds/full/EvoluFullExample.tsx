@@ -4,14 +4,13 @@ import {
   booleanToSqliteBoolean,
   createEvolu,
   createFormatTypeError,
+  createObjectURL,
   FiniteNumber,
   id,
   idToIdBytes,
   json,
   kysely,
   maxLength,
-  MaxLengthError,
-  MinLengthError,
   Mnemonic,
   NonEmptyString,
   NonEmptyTrimmedString100,
@@ -22,6 +21,8 @@ import {
   sqliteFalse,
   sqliteTrue,
   timestampBytesToTimestamp,
+  type MaxLengthError,
+  type MinLengthError,
 } from "@evolu/common";
 import { timestampToDateIso } from "@evolu/common/local-first";
 import {
@@ -30,7 +31,7 @@ import {
   useQueries,
   useQuery,
 } from "@evolu/react";
-import { evoluReactWebDeps } from "@evolu/react-web";
+import { createEvoluDeps } from "@evolu/react-web";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import {
   IconChecklist,
@@ -41,12 +42,12 @@ import {
 } from "@tabler/icons-react";
 import clsx from "clsx";
 import {
-  FC,
-  KeyboardEvent,
   startTransition,
   Suspense,
   use,
   useState,
+  type FC,
+  type KeyboardEvent,
 } from "react";
 
 // TODO: Epochs and sharing.
@@ -94,10 +95,12 @@ const Schema = {
   },
 };
 
-const evolu = createEvolu(evoluReactWebDeps)(Schema, {
+const deps = createEvoluDeps();
+
+const evolu = createEvolu(deps)(Schema, {
   name: SimpleName.orThrow("full-example"),
 
-  reloadUrl: "/playgrounds/full",
+  // reloadUrl: "/playgrounds/full",
 
   ...(process.env.NODE_ENV === "development" && {
     transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
@@ -113,7 +116,7 @@ const evolu = createEvolu(evoluReactWebDeps)(Schema, {
     create("todoProjectId").on("todo").column("projectId"),
   ],
 
-  enableLogging: false,
+  // enableLogging: false,
 });
 
 const useEvolu = createUseEvolu(evolu);
@@ -127,19 +130,17 @@ evolu.subscribeError(() => {
   console.error(error);
 });
 
-export const EvoluFullExample: FC = () => {
-  return (
-    <div className="min-h-screen px-8 py-8">
-      <div className="mx-auto max-w-md min-w-sm md:min-w-md">
-        <EvoluProvider value={evolu}>
-          <Suspense>
-            <App />
-          </Suspense>
-        </EvoluProvider>
-      </div>
+export const EvoluFullExample: FC = () => (
+  <div className="min-h-screen px-8 py-8">
+    <div className="mx-auto max-w-md min-w-sm md:min-w-md">
+      <EvoluProvider value={evolu}>
+        <Suspense>
+          <App />
+        </Suspense>
+      </EvoluProvider>
     </div>
-  );
-};
+  </div>
+);
 
 const App: FC = () => {
   const [activeTab, setActiveTab] = useState<
@@ -643,26 +644,25 @@ const AccountTab: FC = () => {
       return;
     }
 
-    void evolu.restoreAppOwner(result.value);
+    // void evolu.restoreAppOwner(result.value);
   };
 
   const handleResetAppOwnerClick = () => {
     if (confirm("Are you sure? This will delete all your local data.")) {
-      void evolu.resetAppOwner();
+      // void evolu.resetAppOwner();
     }
   };
 
   const handleDownloadDatabaseClick = () => {
-    void evolu.exportDatabase().then((array) => {
-      const blob = new Blob([array], {
-        type: "application/x-sqlite3",
-      });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "todos.sqlite3";
-      a.click();
-      window.URL.revokeObjectURL(url);
+    void evolu.exportDatabase().then((data) => {
+      using objectUrl = createObjectURL(
+        new Blob([data], { type: "application/x-sqlite3" }),
+      );
+
+      const link = document.createElement("a");
+      link.href = objectUrl.url;
+      link.download = `${evolu.name}.sqlite3`;
+      link.click();
     });
   };
 

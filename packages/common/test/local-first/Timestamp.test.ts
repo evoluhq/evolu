@@ -1,22 +1,21 @@
 import SQLite from "better-sqlite3";
 import { describe, expect, test } from "vitest";
-import { defaultDbConfig } from "../../src/local-first/Db.js";
-import {
-  Counter,
-  Millis,
-  NodeId,
+import type {
   Timestamp,
   TimestampBytes,
   TimestampConfigDep,
   TimestampCounterOverflowError,
   TimestampDriftError,
   TimestampTimeOutOfRangeError,
+} from "../../src/local-first/Timestamp.js";
+import {
+  Counter,
   createInitialTimestamp,
   createTimestamp,
+  defaultTimestampMaxDrift,
   maxCounter,
-  maxMillis,
   minCounter,
-  minMillis,
+  NodeId,
   orderTimestampBytes,
   receiveTimestamp,
   sendTimestamp,
@@ -25,10 +24,16 @@ import {
 } from "../../src/local-first/Timestamp.js";
 import { increment } from "../../src/Number.js";
 import { orderNumber } from "../../src/Order.js";
-import { Result, getOrThrow, ok } from "../../src/Result.js";
-import { TimeDep } from "../../src/Time.js";
-import { dateToDateIso } from "../../src/Type.js";
-import { testDeps, testRandomLib } from "../_deps.js";
+import type { Result } from "../../src/Result.js";
+import { ok } from "../../src/Result.js";
+import { createTestDeps } from "../../src/Test.js";
+import type { TimeDep } from "../../src/Time.js";
+import {
+  maxMillis,
+  Millis,
+  minMillis,
+  testCreateTime,
+} from "../../src/Time.js";
 
 test("Millis", () => {
   expect(Millis.from(-1).ok).toBe(false);
@@ -63,12 +68,13 @@ test("createTimestamp", () => {
 });
 
 test("createInitialTimestamp", () => {
-  const timestamp = createInitialTimestamp(testDeps);
+  const deps = createTestDeps();
+  const timestamp = createInitialTimestamp(deps);
   expect(timestamp).toMatchInlineSnapshot(`
     {
       "counter": 0,
       "millis": 0,
-      "nodeId": "4febdfb5d0782bfa",
+      "nodeId": "206365e6de2e95a6",
     }
   `);
 });
@@ -76,19 +82,13 @@ test("createInitialTimestamp", () => {
 const makeMillis = (millis: number): Millis => Millis.orThrow(millis);
 
 const deps0: TimeDep & TimestampConfigDep = {
-  time: {
-    now: () => minMillis,
-    nowIso: () => getOrThrow(dateToDateIso(new Date(minMillis))),
-  },
-  timestampConfig: { maxDrift: defaultDbConfig.maxDrift },
+  time: testCreateTime({ startAt: minMillis }),
+  timestampConfig: { maxDrift: defaultTimestampMaxDrift },
 };
 
 const deps1: TimeDep & TimestampConfigDep = {
-  time: {
-    now: () => minMillis + 1,
-    nowIso: () => getOrThrow(dateToDateIso(new Date(minMillis + 1))),
-  },
-  timestampConfig: { maxDrift: defaultDbConfig.maxDrift },
+  time: testCreateTime({ startAt: (minMillis + 1) as Millis }),
+  timestampConfig: { maxDrift: defaultTimestampMaxDrift },
 };
 
 describe("sendTimestamp", () => {
@@ -164,7 +164,7 @@ describe("sendTimestamp", () => {
     expect(
       sendTimestamp(deps0)(
         createTimestamp({
-          millis: makeMillis(minMillis + defaultDbConfig.maxDrift + 1),
+          millis: makeMillis(minMillis + defaultTimestampMaxDrift + 1),
         }),
       ),
     ).toMatchInlineSnapshot(`
@@ -278,7 +278,7 @@ describe("receiveTimestamp", () => {
       expect(
         receiveTimestamp(deps0)(
           createTimestamp({
-            millis: makeMillis(minMillis + defaultDbConfig.maxDrift + 1),
+            millis: makeMillis(minMillis + defaultTimestampMaxDrift + 1),
           }),
           makeNode2Timestamp(),
         ),
@@ -297,7 +297,7 @@ describe("receiveTimestamp", () => {
         receiveTimestamp(deps0)(
           makeNode2Timestamp(),
           createTimestamp({
-            millis: makeMillis(minMillis + defaultDbConfig.maxDrift + 1),
+            millis: makeMillis(minMillis + defaultTimestampMaxDrift + 1),
           }),
         ),
       ).toMatchInlineSnapshot(`
@@ -314,6 +314,7 @@ describe("receiveTimestamp", () => {
   });
 
   test("timestampToTimestampBytes/timestampBytesToTimestamp", () => {
+    const deps = createTestDeps();
     const decodeFromEncoded = (t: TimestampBytes) =>
       timestampBytesToTimestamp(t);
 
@@ -361,7 +362,7 @@ describe("receiveTimestamp", () => {
 
     const randomMillis = new Set<Millis>();
     Array.from({ length: 1000 }).forEach(() => {
-      randomMillis.add(testRandomLib.int(0, 10000) as Millis);
+      randomMillis.add(deps.randomLib.int(0, 10000) as Millis);
     });
 
     const sortedMillis = [...randomMillis].toSorted(orderNumber);

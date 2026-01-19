@@ -19,32 +19,17 @@ const nextConfig = {
   outputFileTracingIncludes: {
     "/**/*": ["./src/app/**/*.mdx"],
   },
-  async redirects() {
+  async rewrites() {
     return [
       {
-        source: "/docs/quickstart",
-        destination: "/docs/local-first",
-        permanent: true,
+        // Rewrite /docs/index.md to the root docs page
+        source: "/docs/index.md",
+        destination: "/api/docs-md/index",
       },
       {
-        source: "/docs/installation",
-        destination: "/docs/local-first",
-        permanent: true,
-      },
-      {
-        source: "/docs/evolu-server",
-        destination: "/docs/relay",
-        permanent: true,
-      },
-      {
-        source: "/docs/evolu-relay",
-        destination: "/docs/relay",
-        permanent: true,
-      },
-      {
-        source: "/examples/:path*",
-        destination: "/docs/examples",
-        permanent: true,
+        // Rewrite /docs/*.md to the LLM markdown route
+        source: "/docs/:path*.md",
+        destination: "/api/docs-md/:path*",
       },
     ];
   },

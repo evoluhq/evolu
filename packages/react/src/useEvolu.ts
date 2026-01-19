@@ -1,4 +1,4 @@
-import { Evolu } from "@evolu/common/local-first";
+import type { Evolu } from "@evolu/common/local-first";
 import { useContext } from "react";
 import { EvoluContext } from "./EvoluContext.js";
 import type { createUseEvolu } from "./createUseEvolu.js";

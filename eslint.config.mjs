@@ -13,9 +13,8 @@ export default defineConfig(
       "**/.svelte-kit/",
       "**/.turbo/",
       "**/dist/",
+      "**/out/",
       "**/*.d.ts",
-      // TODO: Consider enabling linting for scripts and examples later.
-      "scripts/**",
       // To validate examples, uncomment apps/** and packages/** otherwise
       // FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
       "examples/**",
@@ -25,7 +24,7 @@ export default defineConfig(
   },
   eslint.configs.recommended,
   {
-    files: ["**/*.ts", "**/*.tsx"],
+    files: ["**/*.ts", "**/*.tsx", "**/*.mts"],
     extends: [
       tseslint.configs.strictTypeChecked,
       tseslint.configs.stylisticTypeChecked,
@@ -39,6 +38,9 @@ export default defineConfig(
       },
     },
     rules: {
+      // Enforce arrows, auto-exempts overloaded functions
+      "func-style": ["error", "expression"],
+      "arrow-body-style": ["error", "as-needed"],
       "no-console": "error",
       "@typescript-eslint/array-type": ["error", { default: "generic" }],
       "@typescript-eslint/no-non-null-assertion": "off",
@@ -64,6 +66,11 @@ export default defineConfig(
           ignoreRestSiblings: true,
         },
       ],
+      "@typescript-eslint/no-confusing-void-expression": [
+        "error",
+        { ignoreArrowShorthand: true },
+      ],
+
       "jsdoc/require-jsdoc": "off",
       "jsdoc/require-param": "off",
       "jsdoc/require-returns": "off",
@@ -75,10 +82,7 @@ export default defineConfig(
           tags: { param: { lines: "never" } },
         },
       ],
-      "jsdoc/check-tag-names": [
-        "error",
-        { definedTags: ["category", "experimental"] },
-      ],
+      "jsdoc/check-tag-names": ["error", { definedTags: ["group"] }],
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "error",
     },
@@ -99,6 +103,13 @@ export default defineConfig(
     rules: {
       "react-hooks/rules-of-hooks": "off",
       "react-hooks/exhaustive-deps": "off",
+    },
+  },
+  {
+    files: ["apps/web/typography.mts"],
+    rules: {
+      "@typescript-eslint/no-unsafe-assignment": "off",
+      "@typescript-eslint/no-unsafe-member-access": "off",
     },
   },
 );

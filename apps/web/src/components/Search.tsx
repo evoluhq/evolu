@@ -11,7 +11,6 @@ import clsx from "clsx";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   forwardRef,
-  Fragment,
   Suspense,
   useCallback,
   useEffect,
@@ -21,7 +20,6 @@ import {
 } from "react";
 import Highlighter from "react-highlight-words";
 
-import { navigation } from "@/lib/navigation";
 import { type Result } from "@/mdx/search.mjs";
 
 type EmptyObject = Record<string, never>;
@@ -34,7 +32,7 @@ type Autocomplete = AutocompleteApi<
   React.KeyboardEvent
 >;
 
-function useAutocomplete({ close }: { close: () => void }) {
+const useAutocomplete = ({ close }: { close: () => void }) => {
   const id = useId();
   const router = useRouter();
   const [autocompleteState, setAutocompleteState] = useState<
@@ -42,7 +40,7 @@ function useAutocomplete({ close }: { close: () => void }) {
     AutocompleteState<Result> | EmptyObject
   >({});
 
-  function navigate({ itemUrl }: { itemUrl?: string }) {
+  const navigate = ({ itemUrl }: { itemUrl?: string }) => {
     if (!itemUrl) {
       return;
     }
@@ -55,7 +53,7 @@ function useAutocomplete({ close }: { close: () => void }) {
     ) {
       close();
     }
-  }
+  };
 
   const [autocomplete] = useState<Autocomplete>(() =>
     createAutocomplete<
@@ -78,52 +76,46 @@ function useAutocomplete({ close }: { close: () => void }) {
         navigate,
       },
       getSources({ query }) {
-        return import("@/mdx/search.mjs").then(({ search }) => {
-          return [
-            {
-              sourceId: "documentation",
-              getItems() {
-                return search(query, { limit: 5 });
-              },
-              getItemUrl({ item }) {
-                return item.url;
-              },
-              onSelect: navigate,
+        return import("@/mdx/search.mjs").then(({ search }) => [
+          {
+            sourceId: "documentation",
+            getItems() {
+              return search(query);
             },
-          ];
-        });
+            getItemUrl({ item }) {
+              return item.url;
+            },
+            onSelect: navigate,
+          },
+        ]);
       },
     }),
   );
 
   return { autocomplete, autocompleteState };
-}
+};
 
-function SearchIcon(props: React.ComponentPropsWithoutRef<"svg">) {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" {...props}>
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M12.01 12a4.25 4.25 0 1 0-6.02-6 4.25 4.25 0 0 0 6.02 6Zm0 0 3.24 3.25"
-      />
-    </svg>
-  );
-}
+const SearchIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
+  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" {...props}>
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M12.01 12a4.25 4.25 0 1 0-6.02-6 4.25 4.25 0 0 0 6.02 6Zm0 0 3.24 3.25"
+    />
+  </svg>
+);
 
-function NoResultsIcon(props: React.ComponentPropsWithoutRef<"svg">) {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" {...props}>
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M12.01 12a4.237 4.237 0 0 0 1.24-3c0-.62-.132-1.207-.37-1.738M12.01 12A4.237 4.237 0 0 1 9 13.25c-.635 0-1.237-.14-1.777-.388M12.01 12l3.24 3.25m-3.715-9.661a4.25 4.25 0 0 0-5.975 5.908M4.5 15.5l11-11"
-      />
-    </svg>
-  );
-}
+const NoResultsIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
+  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" {...props}>
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M12.01 12a4.237 4.237 0 0 0 1.24-3c0-.62-.132-1.207-.37-1.738M12.01 12A4.237 4.237 0 0 1 9 13.25c-.635 0-1.237-.14-1.777-.388M12.01 12l3.24 3.25m-3.715-9.661a4.25 4.25 0 0 0-5.975 5.908M4.5 15.5l11-11"
+    />
+  </svg>
+);
 
-function LoadingIcon(props: React.ComponentPropsWithoutRef<"svg">) {
+const LoadingIcon = (props: React.ComponentPropsWithoutRef<"svg">) => {
   const id = useId();
 
   return (
@@ -150,20 +142,18 @@ function LoadingIcon(props: React.ComponentPropsWithoutRef<"svg">) {
       </defs>
     </svg>
   );
-}
+};
 
-function HighlightQuery({ text, query }: { text: string; query: string }) {
-  return (
-    <Highlighter
-      highlightClassName="underline bg-transparent text-blue-500"
-      searchWords={[query]}
-      autoEscape={true}
-      textToHighlight={text}
-    />
-  );
-}
+const HighlightQuery = ({ text, query }: { text: string; query: string }) => (
+  <Highlighter
+    highlightClassName="underline bg-transparent text-blue-500"
+    searchWords={[query]}
+    autoEscape={true}
+    textToHighlight={text}
+  />
+);
 
-function SearchResult({
+const SearchResult = ({
   result,
   resultIndex,
   autocomplete,
@@ -176,15 +166,8 @@ function SearchResult({
   // @ts-expect-error - `autocompleteState` is not used in this component
   collection: AutocompleteCollection<Result>;
   query: string;
-}) {
+}) => {
   const id = useId();
-
-  const sectionTitle = navigation.find((section) =>
-    section.links.find((link) => link.href === result.url.split("#")[0]),
-  )?.title;
-  const hierarchy = [sectionTitle, result.pageTitle].filter(
-    (x): x is string => typeof x === "string",
-  );
 
   return (
     <li
@@ -192,7 +175,7 @@ function SearchResult({
         "group block cursor-default px-4 py-3 aria-selected:bg-zinc-50 dark:aria-selected:bg-zinc-800/50",
         resultIndex > 0 && "border-t border-zinc-100 dark:border-zinc-800",
       )}
-      aria-labelledby={`${id}-hierarchy ${id}-title`}
+      aria-labelledby={`${id}-title`}
       {...autocomplete.getItemProps({
         item: result,
         source: collection.source,
@@ -203,43 +186,16 @@ function SearchResult({
         aria-hidden="true"
         className="text-sm font-medium text-zinc-900 group-aria-selected:text-blue-500 dark:text-white"
       >
-        {result.url.startsWith("/docs/api-reference") ? (
-          <span className="mr-1.5">API Reference /</span>
-        ) : (
-          <></>
-        )}
         <HighlightQuery text={result.title} query={query} />
       </div>
-      {hierarchy.length > 0 && (
-        <div
-          id={`${id}-hierarchy`}
-          aria-hidden="true"
-          className="text-2xs mt-1 truncate whitespace-nowrap text-zinc-500"
-        >
-          {hierarchy.map((item, itemIndex, items) => (
-            <Fragment key={itemIndex}>
-              <HighlightQuery text={item} query={query} />
-              <span
-                className={
-                  itemIndex === items.length - 1
-                    ? "sr-only"
-                    : "mx-2 text-zinc-300 dark:text-zinc-700"
-                }
-              >
-                /
-              </span>
-            </Fragment>
-          ))}
-        </div>
-      )}
       <div className="text-2xs mt-1 truncate whitespace-nowrap text-zinc-500">
         <HighlightQuery text={result.url} query={query} />
       </div>
     </li>
   );
-}
+};
 
-function SearchResults({
+const SearchResults = ({
   autocomplete,
   query,
   collection,
@@ -248,7 +204,7 @@ function SearchResults({
   query: string;
   // @ts-expect-error - `autocompleteState` is not used in this component
   collection: AutocompleteCollection<Result>;
-}) {
+}) => {
   if (collection.items.length === 0) {
     return (
       <div className="p-6 text-center">
@@ -278,7 +234,7 @@ function SearchResults({
       ))}
     </ul>
   );
-}
+};
 
 const SearchInput = forwardRef<
   React.ComponentRef<"input">,
@@ -329,7 +285,7 @@ const SearchInput = forwardRef<
   );
 });
 
-function SearchDialog({
+const SearchDialog = ({
   open,
   setOpen,
   className,
@@ -337,7 +293,7 @@ function SearchDialog({
   open: boolean;
   setOpen: (open: boolean) => void;
   className?: string;
-}) {
+}) => {
   const formRef = useRef<React.ComponentRef<"form">>(null);
   const panelRef = useRef<React.ComponentRef<"div">>(null);
   const inputRef = useRef<React.ComponentRef<typeof SearchInput>>(null);
@@ -358,12 +314,12 @@ function SearchDialog({
       return;
     }
 
-    function onKeyDown(event: KeyboardEvent) {
+    const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "k" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         setOpen(true);
       }
-    }
+    };
 
     window.addEventListener("keydown", onKeyDown);
 
@@ -408,7 +364,7 @@ function SearchDialog({
               />
               <div
                 ref={panelRef}
-                className="border-t border-zinc-200 bg-white empty:hidden dark:border-zinc-100/5 dark:bg-white/2.5"
+                className="max-h-[60vh] overflow-y-auto border-t border-zinc-200 bg-white empty:hidden dark:border-zinc-100/5 dark:bg-white/2.5"
                 {...autocomplete.getPanelProps({})}
               >
                 {autocompleteState.isOpen && (
@@ -425,9 +381,9 @@ function SearchDialog({
       </div>
     </Dialog>
   );
-}
+};
 
-function useSearchProps() {
+const useSearchProps = () => {
   const buttonRef = useRef<React.ComponentRef<"button">>(null);
   const [open, setOpen] = useState(false);
 
@@ -452,9 +408,9 @@ function useSearchProps() {
       ),
     },
   };
-}
+};
 
-export function Search(): React.ReactElement {
+export const Search = (): React.ReactElement => {
   const [modifierKey] = useState<string>(() =>
     // eslint-disable-next-line @typescript-eslint/no-deprecated
     /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform) ? "⌘" : "Ctrl ",
@@ -480,9 +436,9 @@ export function Search(): React.ReactElement {
       </Suspense>
     </div>
   );
-}
+};
 
-export function MobileSearch(): React.ReactElement {
+export const MobileSearch = (): React.ReactElement => {
   const { buttonProps, dialogProps } = useSearchProps();
 
   return (
@@ -500,4 +456,4 @@ export function MobileSearch(): React.ReactElement {
       </Suspense>
     </div>
   );
-}
+};

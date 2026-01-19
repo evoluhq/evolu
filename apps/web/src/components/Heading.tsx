@@ -8,8 +8,7 @@ import { useSectionStore } from "@/components/SectionProvider";
 import { Tag } from "@/components/Tag";
 import { remToPx } from "@/lib/remToPx";
 
-function AnchorIcon(props: React.ComponentPropsWithoutRef<"svg">) {
-  return (
+const AnchorIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
     <svg
       viewBox="0 0 20 20"
       fill="none"
@@ -20,15 +19,14 @@ function AnchorIcon(props: React.ComponentPropsWithoutRef<"svg">) {
       <path d="m6.5 11.5-.964-.964a3.535 3.535 0 1 1 5-5l.964.964m2 2 .964.964a3.536 3.536 0 0 1-5 5L8.5 13.5m0-5 3 3" />
     </svg>
   );
-}
 
-function Eyebrow({
+const Eyebrow = ({
   tag,
   label,
 }: {
   tag?: string | undefined;
   label?: string | undefined;
-}) {
+}) => {
   if (!tag && !label) {
     return null;
   }
@@ -44,9 +42,9 @@ function Eyebrow({
       )}
     </div>
   );
-}
+};
 
-function Anchor({
+const Anchor = ({
   id,
   inView,
   children,
@@ -54,8 +52,7 @@ function Anchor({
   id: string;
   inView: boolean;
   children: React.ReactNode;
-}) {
-  return (
+}) => (
     <Link
       href={`#${id}`}
       className="group text-inherit no-underline hover:text-inherit"
@@ -70,9 +67,8 @@ function Anchor({
       {children}
     </Link>
   );
-}
 
-export function Heading<Level extends 2 | 3>({
+export const Heading = <Level extends 2 | 3>({
   children,
   tag,
   label,
@@ -85,7 +81,7 @@ export function Heading<Level extends 2 | 3>({
   label?: string;
   level?: Level;
   anchor?: boolean;
-}): React.ReactElement {
+}): React.ReactElement => {
   level = level ?? (2 as Level);
   const Component = `h${level}` as "h2" | "h3";
   const ref = useRef<HTMLHeadingElement>(null);
@@ -129,4 +125,4 @@ export function Heading<Level extends 2 | 3>({
       </Component>
     </>
   );
-}
+};

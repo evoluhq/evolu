@@ -1,23 +1,24 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { assert, expect, test } from "vitest";
-import { constTrue } from "../../src/Function.js";
+import { lazyTrue } from "../../src/Function.js";
 import { ownerIdToOwnerIdBytes } from "../../src/local-first/Owner.js";
-import {
+import type {
   BaseSqliteStorageDep,
+  Fingerprint,
+  StorageInsertTimestampStrategy,
+} from "../../src/local-first/Storage.js";
+import {
   createBaseSqliteStorage,
   createBaseSqliteStorageTables,
   DbChange,
-  Fingerprint,
   getTimestampByIndex,
   getTimestampInsertStrategy,
   InfiniteUpperBound,
-  StorageInsertTimestampStrategy,
   timestampBytesToFingerprint,
 } from "../../src/local-first/Storage.js";
 import {
   Counter,
   createTimestamp,
-  Millis,
   orderTimestampBytes,
   TimestampBytes,
   timestampToTimestampBytes,
@@ -25,16 +26,16 @@ import {
 import { computeBalancedBuckets } from "../../src/Number.js";
 import { createRandom } from "../../src/Random.js";
 import { getOrThrow, ok } from "../../src/Result.js";
-import { sql, SqliteDep } from "../../src/Sqlite.js";
-import { NonNegativeInt, PositiveInt } from "../../src/Type.js";
-import {
-  testCreateId,
-  testCreateSqlite,
-  testOwner2,
-  testOwnerIdBytes,
-} from "../_deps.js";
+import type { SqliteDep } from "../../src/Sqlite.js";
+import { sql } from "../../src/Sqlite.js";
+import { createTestDeps } from "../../src/Test.js";
+import type { Millis } from "../../src/Time.js";
+import { createId, NonNegativeInt, PositiveInt } from "../../src/Type.js";
+import { testCreateSqlite } from "../_deps.js";
 import {
   testAnotherTimestampsAsc,
+  testOwner2,
+  testOwnerIdBytes,
   testTimestampsAsc,
   testTimestampsDesc,
   testTimestampsRandom,
@@ -53,7 +54,7 @@ const createDeps = async (): Promise<SqliteDep & BaseSqliteStorageDep> => {
     onStorageError: (error) => {
       throw new Error(error.type);
     },
-    isOwnerWithinQuota: constTrue, // Allow all writes in tests
+    isOwnerWithinQuota: lazyTrue, // Allow all writes in tests
   });
   return { sqlite, storage };
 };
@@ -140,7 +141,7 @@ const testTimestamps = async (
         where
           (${lower} is null or t >= ${lower})
           and (${upper} is null or t < ${upper})
-          and ownerId = ${testOwnerIdBytes};
+          and ownerid = ${testOwnerIdBytes};
       `),
     );
 
@@ -488,7 +489,8 @@ test.skip(
 );
 
 test("DbChange", () => {
-  const id = testCreateId();
+  const deps = createTestDeps();
+  const id = createId(deps);
 
   // Valid
   expect(

@@ -1,3 +1,9 @@
+/**
+ * Bidirectional relations with O(1) lookup in both directions.
+ *
+ * @module
+ */
+
 import { assert } from "./Assert.js";
 
 /**
@@ -151,15 +157,12 @@ export const createRelation = <A, B>(): Relation<A, B> => {
       }
     },
 
-    [Symbol.iterator](): IterableIterator<readonly [A, B]> {
-      const iterator = function* () {
-        for (const [a, bSet] of aToB) {
-          for (const b of bSet) {
-            yield [a, b] as const;
-          }
+    *[Symbol.iterator](): IterableIterator<readonly [A, B]> {
+      for (const [a, bSet] of aToB) {
+        for (const b of bSet) {
+          yield [a, b] as const;
         }
-      };
-      return iterator();
+      }
     },
 
     has(a: A, b: B) {

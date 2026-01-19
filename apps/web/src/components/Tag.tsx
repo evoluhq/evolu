@@ -40,7 +40,7 @@ const valueColorMap = {
   DELETE: "rose",
 } as Record<string, keyof typeof colorStyles>;
 
-export function Tag({
+export const Tag = ({
   children,
   variant = "medium",
   color = valueColorMap[children] ?? "blue",
@@ -48,16 +48,14 @@ export function Tag({
   children: keyof typeof valueColorMap & (string | object);
   variant?: keyof typeof variantStyles;
   color?: keyof typeof colorStyles;
-}): React.ReactElement {
-  return (
-    <span
-      className={clsx(
-        "font-mono text-[0.625rem] leading-6 font-semibold",
-        variantStyles[variant],
-        colorStyles[color][variant],
-      )}
-    >
-      {children}
-    </span>
-  );
-}
+}): React.ReactElement => (
+  <span
+    className={clsx(
+      "font-mono text-[0.625rem] leading-6 font-semibold",
+      variantStyles[variant],
+      colorStyles[color][variant],
+    )}
+  >
+    {children}
+  </span>
+);

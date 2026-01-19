@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { createLruCache } from "../src/Cache.js";
-import { PositiveInt } from "../src/Type.js";
+import { minPositiveInt, PositiveInt } from "../src/Type.js";
 
 test("LRU cache - basic set and get", () => {
   const cache = createLruCache<string, number>(PositiveInt.orThrow(3));
@@ -163,7 +163,7 @@ test("LRU cache - reference-based key comparison", () => {
 });
 
 test("LRU cache - capacity of 1", () => {
-  const cache = createLruCache<string, number>(PositiveInt.orThrow(1));
+  const cache = createLruCache<string, number>(minPositiveInt);
 
   cache.set("a", 1);
   expect(cache.has("a")).toBe(true);

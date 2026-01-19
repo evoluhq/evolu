@@ -1,55 +1,58 @@
-import {
-  appendToArray,
-  firstInArray,
-  isNonEmptyReadonlyArray,
-  NonEmptyArray,
-  NonEmptyReadonlyArray,
-} from "../Array.js";
+/**
+ * Synchronization logic between client and relay.
+ *
+ * @module
+ */
+
+import type { NonEmptyArray, NonEmptyReadonlyArray } from "../Array.js";
+import { appendToArray, firstInArray, isNonEmptyArray } from "../Array.js";
 import { assertNonEmptyReadonlyArray } from "../Assert.js";
-import { Brand } from "../Brand.js";
-import { ConsoleDep } from "../Console.js";
-import {
+import type { Brand } from "../Brand.js";
+import type { ConsoleDep } from "../Console.js";
+import type {
+  DecryptWithXChaCha20Poly1305Error,
   RandomBytesDep,
-  SymmetricCryptoDecryptError,
-  SymmetricCryptoDep,
 } from "../Crypto.js";
-import { createTransferableError, TransferableError } from "../Error.js";
-import { constFalse, constTrue } from "../Function.js";
+import type { UnknownError } from "../Error.js";
+import { createUnknownError } from "../Error.js";
+import { lazyFalse, lazyTrue } from "../Function.js";
 import { createRecord, getProperty, objectToEntries } from "../Object.js";
-import { RandomDep } from "../Random.js";
+import type { AbortErrorOld } from "../OldTask.js";
+import { createMutexOld } from "../OldTask.js";
+import type { RandomDep } from "../Random.js";
 import { createResources } from "../Resources.js";
-import { err, ok, Result } from "../Result.js";
+import type { Result } from "../Result.js";
+import { err, ok } from "../Result.js";
+import type { SqliteDep, SqliteError } from "../Sqlite.js";
 import {
   booleanToSqliteBoolean,
   sql,
   SqliteBoolean,
   sqliteBooleanToBoolean,
-  SqliteDep,
-  SqliteError,
   SqliteValue,
 } from "../Sqlite.js";
-import { AbortError, createMutex } from "../Task.js";
-import { TimeDep } from "../Time.js";
-import {
-  DateIso,
-  Id,
-  IdBytes,
-  idBytesToId,
-  idToIdBytes,
-  PositiveInt,
-} from "../Type.js";
-import { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
-import {
+import type { Millis, TimeDep } from "../Time.js";
+import type { DateIso } from "../Type.js";
+import { Id, IdBytes, idBytesToId, idToIdBytes, PositiveInt } from "../Type.js";
+import type { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
+import type {
   AppOwner,
   AppOwnerDep,
   Owner,
+  OwnerTransport,
+  ReadonlyOwner,
+} from "./Owner.js";
+import {
   OwnerId,
   OwnerIdBytes,
   ownerIdBytesToOwnerId,
   ownerIdToOwnerIdBytes,
-  OwnerTransport,
-  ReadonlyOwner,
 } from "./Owner.js";
+import type {
+  ProtocolError,
+  ProtocolInvalidDataError,
+  ProtocolTimestampMismatchError,
+} from "./Protocol.js";
 import {
   applyProtocolMessageAsClient,
   createProtocolMessageForSync,
@@ -57,35 +60,36 @@ import {
   createProtocolMessageFromCrdtMessages,
   decryptAndDecodeDbChange,
   encodeAndEncryptDbChange,
-  ProtocolError,
-  ProtocolInvalidDataError,
-  ProtocolTimestampMismatchError,
   SubscriptionFlags,
 } from "./Protocol.js";
-import { DbSchemaDep, MutationChange, systemColumns } from "./Schema.js";
-import {
+import type { DbSchemaDep, MutationChange } from "./Schema.js";
+import { systemColumns } from "./Schema.js";
+import type {
   BaseSqliteStorage,
   CrdtMessage,
+  Storage,
+  StorageWriteError,
+} from "./Storage.js";
+import {
   createBaseSqliteStorage,
   DbChange,
   getOwnerUsage,
   getTimestampInsertStrategy,
-  Storage,
-  StorageWriteError,
   updateOwnerUsage,
 } from "./Storage.js";
-import {
-  createInitialTimestamp,
-  Millis,
-  receiveTimestamp,
-  sendTimestamp,
+import type {
   Timestamp,
   TimestampBytes,
-  timestampBytesToTimestamp,
   TimestampConfigDep,
   TimestampCounterOverflowError,
   TimestampDriftError,
   TimestampTimeOutOfRangeError,
+} from "./Timestamp.js";
+import {
+  createInitialTimestamp,
+  receiveTimestamp,
+  sendTimestamp,
+  timestampBytesToTimestamp,
   timestampToDateIso,
   timestampToTimestampBytes,
 } from "./Timestamp.js";
@@ -143,11 +147,11 @@ export interface SyncConfig {
       | ProtocolInvalidDataError
       | ProtocolTimestampMismatchError
       | SqliteError
-      | SymmetricCryptoDecryptError
+      | DecryptWithXChaCha20Poly1305Error
       | TimestampCounterOverflowError
       | TimestampDriftError
       | TimestampTimeOutOfRangeError
-      | TransferableError,
+      | UnknownError,
   ) => void;
 
   readonly onReceive: () => void;
@@ -163,7 +167,6 @@ export const createSync =
       RandomBytesDep &
       RandomDep &
       SqliteDep &
-      SymmetricCryptoDep &
       TimeDep &
       TimestampConfigDep,
   ) =>
@@ -264,7 +267,7 @@ export const createSync =
               }
             })
             .catch((error: unknown) => {
-              config.onError(createTransferableError(error));
+              config.onError(createUnknownError(error));
             });
         },
       });
@@ -448,9 +451,9 @@ const createClientStorage =
     deps: ClockDep &
       DbSchemaDep &
       GetSyncOwnerDep &
+      RandomBytesDep &
       RandomDep &
       SqliteDep &
-      SymmetricCryptoDep &
       TimeDep &
       TimestampConfigDep,
   ) =>
@@ -460,7 +463,7 @@ const createClientStorage =
         | ProtocolInvalidDataError
         | ProtocolTimestampMismatchError
         | SqliteError
-        | SymmetricCryptoDecryptError
+        | DecryptWithXChaCha20Poly1305Error
         | TimestampCounterOverflowError
         | TimestampDriftError
         | TimestampTimeOutOfRangeError,
@@ -469,18 +472,18 @@ const createClientStorage =
   }): Result<ClientStorage, SqliteError> => {
     const sqliteStorageBase = createBaseSqliteStorage(deps)({
       onStorageError: config.onError,
-      isOwnerWithinQuota: constTrue, // Clients don't have quota limits
+      isOwnerWithinQuota: lazyTrue, // Clients don't have quota limits
     });
 
     // TODO: Mutex per OwnerId
-    const mutex = createMutex();
+    const mutex = createMutexOld();
 
     const storage: ClientStorage = {
       ...sqliteStorageBase,
 
       // Not implemented yet.
-      validateWriteKey: constFalse,
-      setWriteKey: constFalse,
+      validateWriteKey: lazyFalse,
+      setWriteKey: lazyFalse,
 
       writeMessages: async (ownerIdBytes, encryptedMessages) => {
         const ownerId = ownerIdBytesToOwnerId(ownerIdBytes);
@@ -488,11 +491,11 @@ const createClientStorage =
         // Everything is sync now, but we will need async crypto in the future.
         const result = await mutex.withLock<
           boolean,
-          | AbortError
+          | AbortErrorOld
           | ProtocolInvalidDataError
           | ProtocolTimestampMismatchError
           | SqliteError
-          | SymmetricCryptoDecryptError
+          | DecryptWithXChaCha20Poly1305Error
           | TimestampCounterOverflowError
           | TimestampDriftError
           | TimestampTimeOutOfRangeError
@@ -512,7 +515,7 @@ const createClientStorage =
           const messages: Array<CrdtMessage> = [];
 
           for (const message of encryptedMessages) {
-            const change = decryptAndDecodeDbChange(deps)(
+            const change = decryptAndDecodeDbChange(
               message,
               owner.encryptionKey,
             );
@@ -537,7 +540,7 @@ const createClientStorage =
               clockTimestamp = nextTimestamp.value;
             }
 
-            if (isNonEmptyReadonlyArray(messages)) {
+            if (isNonEmptyArray(messages)) {
               const result = applyMessages({ ...deps, storage })(
                 owner.id,
                 messages,
@@ -637,9 +640,8 @@ const createClientStorage =
 type TransportKey = string & Brand<"TransportKey">;
 
 /** Creates a unique identifier for a {@link OwnerTransport}. */
-const createTransportKey = (transport: OwnerTransport): TransportKey => {
-  return `${transport.type}:${transport.url}` as TransportKey;
-};
+const createTransportKey = (transport: OwnerTransport): TransportKey =>
+  `${transport.type}:${transport.url}` as TransportKey;
 
 const dbChangeToColumns = (change: DbChange, now: DateIso) => {
   let values = objectToEntries(change.values);
@@ -947,3 +949,6 @@ export interface PaymentRequiredError {
 }
 
 export const initialSyncState: SyncStateInitial = { type: "SyncStateInitial" };
+
+// TODO:
+// export const createSyncState, jasny, a ten si vezme taky shared worker, jasny

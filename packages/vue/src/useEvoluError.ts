@@ -1,5 +1,5 @@
 import type { EvoluError } from "@evolu/common";
-import { onScopeDispose, Ref, ref } from "vue";
+import { onScopeDispose, type Ref, ref } from "vue";
 import { useEvolu } from "./useEvolu.js";
 
 /** Subscribe to {@link EvoluError} changes. */

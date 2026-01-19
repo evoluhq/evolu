@@ -1,7 +1,3 @@
-import { CreateSqliteDriverDep, LocalAuth } from "@evolu/common";
-import { EvoluDeps, ReloadApp } from "@evolu/common/local-first";
-import * as Expo from "expo";
-import { createSharedEvoluDeps, createSharedLocalAuth } from "./shared.js";
 import type {
   AccessControl,
   LocalAuthOptions,
@@ -9,9 +5,17 @@ import type {
   SensitiveInfoItem,
   StorageMetadata,
 } from "@evolu/common";
-import { localAuthDefaultOptions } from "@evolu/common";
+import {
+  type CreateSqliteDriverDep,
+  type LocalAuth,
+  localAuthDefaultOptions,
+  type ReloadApp,
+} from "@evolu/common";
+import type { EvoluDeps } from "@evolu/common/local-first";
+import * as Expo from "expo";
 import * as SecureStore from "expo-secure-store";
 import KVStore from "expo-sqlite/kv-store";
+import { createSharedEvoluDeps, createSharedLocalAuth } from "./shared.js";
 
 const reloadApp: ReloadApp = () => {
   void Expo.reloadAppAsync();
@@ -92,18 +96,16 @@ const createSecureStore = (): SecureStorage => {
  * Create default metadata for backwards compatibility with items that don't
  * have stored metadata.
  */
-const createMetadata = (isSecure = true): SensitiveInfoItem["metadata"] => {
-  return {
-    backend: "keychain",
-    accessControl: isSecure ? "biometryCurrentSet" : "none",
-    securityLevel: isSecure ? "biometry" : "software",
-    timestamp: Date.now(),
-  };
-};
+const createMetadata = (isSecure = true): SensitiveInfoItem["metadata"] => ({
+  backend: "keychain",
+  accessControl: isSecure ? "biometryCurrentSet" : "none",
+  securityLevel: isSecure ? "biometry" : "software",
+  timestamp: Date.now(),
+});
 
-function convertOptions(
+const convertOptions = (
   options?: LocalAuthOptions,
-): SecureStore.SecureStoreOptions {
+): SecureStore.SecureStoreOptions => {
   const accessGroup =
     options?.keychainGroup ?? localAuthDefaultOptions.keychainGroup ?? "";
   const keychainService =
@@ -124,11 +126,11 @@ function convertOptions(
     authenticationPrompt,
     requireAuthentication: options?.accessControl !== "none",
   };
-}
+};
 
-function convertKeychainAccessible(
+const convertKeychainAccessible = (
   accessControl: AccessControl,
-): SecureStore.KeychainAccessibilityConstant {
+): SecureStore.KeychainAccessibilityConstant => {
   switch (accessControl) {
     case "none":
       // eslint-disable-next-line @typescript-eslint/no-deprecated
@@ -147,7 +149,7 @@ function convertKeychainAccessible(
       // Default (for typescript, should never hit)
       return SecureStore.AFTER_FIRST_UNLOCK;
   }
-}
+};
 
 const localAuth = createSharedLocalAuth(createSecureStore());
 

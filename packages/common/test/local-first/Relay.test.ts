@@ -1,28 +1,30 @@
 import { assert, describe, expect, test } from "vitest";
+import type {
+  NonNegativeInt,
+  OwnerIdBytes,
+  SqliteDep,
+} from "../../src/index.js";
 import {
+  lazyFalse,
+  err,
+  sql,
+  timestampBytesToTimestamp,
+  wait,
+} from "../../src/index.js";
+import type {
   EncryptedCrdtMessage,
   EncryptedDbChange,
 } from "../../src/local-first/Storage.js";
 import { createInitialTimestamp } from "../../src/local-first/Timestamp.js";
+import { createTestDeps } from "../../src/Test.js";
+import { testCreateRelayStorageAndSqliteDeps } from "../_deps.js";
 import {
-  constFalse,
-  err,
-  NonNegativeInt,
-  OwnerIdBytes,
-  sql,
-  SqliteDep,
-  timestampBytesToTimestamp,
-  wait,
-} from "../../src/index.js";
-import {
-  testCreateRelayStorageAndSqliteDeps,
-  testDeps,
   testOwner,
   testOwner2,
   testOwnerIdBytes,
   testOwnerIdBytes2,
-} from "../_deps.js";
-import { testTimestampsAsc } from "./_fixtures.js";
+  testTimestampsAsc,
+} from "./_fixtures.js";
 
 test("validateWriteKey", async () => {
   const { storage } = await testCreateRelayStorageAndSqliteDeps();
@@ -64,15 +66,16 @@ test("deleteOwner", async () => {
     const countResult = sqlite.exec<{ count: number }>(sql`
       select count(*) as count
       from ${sql.raw(table)}
-      where ownerId = ${testOwnerIdBytes};
+      where ownerid = ${testOwnerIdBytes};
     `);
     expect(countResult.ok && countResult.value.rows[0].count).toBe(0);
   }
 });
 
 describe("writeMessages", () => {
+  const deps = createTestDeps();
   const createTestMessage = (length = 3): EncryptedCrdtMessage => ({
-    timestamp: createInitialTimestamp(testDeps),
+    timestamp: createInitialTimestamp(deps),
     change: new Uint8Array(length) as EncryptedDbChange,
   });
 
@@ -80,9 +83,9 @@ describe("writeMessages", () => {
     (deps: SqliteDep) =>
     (ownerId: OwnerIdBytes): NonNegativeInt => {
       const usageResult = deps.sqlite.exec(sql`
-        select storedBytes
+        select storedbytes
         from evolu_usage
-        where ownerId = ${ownerId};
+        where ownerid = ${ownerId};
       `);
       assert(usageResult.ok);
       return usageResult.value.rows[0].storedBytes as NonNegativeInt;
@@ -119,7 +122,7 @@ describe("writeMessages", () => {
     const countResult = sqlite.exec<{ count: number }>(sql`
       select count(*) as count
       from evolu_message
-      where ownerId = ${testOwnerIdBytes};
+      where ownerid = ${testOwnerIdBytes};
     `);
 
     assert(countResult.ok);
@@ -183,7 +186,7 @@ describe("writeMessages", () => {
 
   test("transaction rollback on quota error", async () => {
     const { storage, sqlite } = await testCreateRelayStorageAndSqliteDeps({
-      isOwnerWithinQuota: constFalse,
+      isOwnerWithinQuota: lazyFalse,
     });
 
     const result = await storage.writeMessages(testOwnerIdBytes, [message]);
@@ -195,7 +198,7 @@ describe("writeMessages", () => {
     const messageCountResult = sqlite.exec<{ count: number }>(sql`
       select count(*) as count
       from evolu_message
-      where ownerId = ${testOwnerIdBytes};
+      where ownerid = ${testOwnerIdBytes};
     `);
 
     assert(messageCountResult.ok);
@@ -204,7 +207,7 @@ describe("writeMessages", () => {
     const usageResult = sqlite.exec<{ count: number }>(sql`
       select count(*) as count
       from evolu_usage
-      where ownerId = ${testOwnerIdBytes};
+      where ownerid = ${testOwnerIdBytes};
     `);
 
     assert(usageResult.ok);
@@ -259,7 +262,7 @@ describe("writeMessages", () => {
 
     test("fails when isOwnerWithinQuota returns false", async () => {
       const { storage } = await testCreateRelayStorageAndSqliteDeps({
-        isOwnerWithinQuota: constFalse,
+        isOwnerWithinQuota: lazyFalse,
       });
 
       const result = await storage.writeMessages(testOwnerIdBytes, [message]);

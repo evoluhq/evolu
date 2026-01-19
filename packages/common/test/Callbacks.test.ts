@@ -1,9 +1,10 @@
 import { expect, test } from "vitest";
 import { createCallbacks } from "../src/Callbacks.js";
-import { testDeps } from "./_deps.js";
+import { createTestDeps } from "../src/Test.js";
 
 test("Callbacks with no argument", () => {
-  const callbacks = createCallbacks(testDeps);
+  const deps = createTestDeps();
+  const callbacks = createCallbacks(deps);
 
   let called = false;
   const id = callbacks.register(() => {
@@ -19,7 +20,8 @@ test("Callbacks with no argument", () => {
 });
 
 test("Callbacks with string type", () => {
-  const callbacks = createCallbacks<string>(testDeps);
+  const deps = createTestDeps();
+  const callbacks = createCallbacks<string>(deps);
 
   let receivedValue: string | null = null;
   const id = callbacks.register((value) => {
@@ -35,7 +37,8 @@ test("Callbacks with string type", () => {
 });
 
 test("Callbacks with Promise.withResolvers pattern", () => {
-  const callbacks = createCallbacks<string>(testDeps);
+  const deps = createTestDeps();
+  const callbacks = createCallbacks<string>(deps);
 
   const { promise, resolve } = Promise.withResolvers<string>();
   const id = callbacks.register(resolve);

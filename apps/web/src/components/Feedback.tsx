@@ -4,8 +4,7 @@ import { Transition } from "@headlessui/react";
 import clsx from "clsx";
 import { forwardRef, useState } from "react";
 
-function CheckIcon(props: React.ComponentPropsWithoutRef<"svg">) {
-  return (
+const CheckIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
     <svg viewBox="0 0 20 20" aria-hidden="true" {...props}>
       <circle cx="10" cy="10" r="10" strokeWidth="0" />
       <path
@@ -17,19 +16,16 @@ function CheckIcon(props: React.ComponentPropsWithoutRef<"svg">) {
       />
     </svg>
   );
-}
 
-function FeedbackButton(
+const FeedbackButton = (
   props: Omit<React.ComponentPropsWithoutRef<"button">, "type" | "className">,
-) {
-  return (
+) => (
     <button
       type="submit"
       className="px-3 text-sm font-medium text-zinc-600 transition hover:bg-zinc-900/2.5 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-white"
       {...props}
     />
   );
-}
 
 const FeedbackForm = forwardRef<
   React.ComponentRef<"form">,
@@ -78,17 +74,17 @@ const FeedbackThanks = forwardRef<
   );
 });
 
-export function Feedback(): React.ReactElement {
+export const Feedback = (): React.ReactElement => {
   const [submitted, setSubmitted] = useState(false);
 
-  function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+  const onSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     // event.nativeEvent.submitter.dataset.response
     // => "yes" or "no"
 
     setSubmitted(true);
-  }
+  };
 
   return (
     <div className="relative h-8">
@@ -103,4 +99,4 @@ export function Feedback(): React.ReactElement {
       </Transition>
     </div>
   );
-}
+};

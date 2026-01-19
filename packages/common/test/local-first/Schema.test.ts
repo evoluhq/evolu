@@ -20,7 +20,7 @@ describe("ensureDbSchema", () => {
     };
 
     const result = ensureDbSchema(deps)(newSchema);
-    expect(result).toEqual(ok(undefined));
+    expect(result).toEqual(ok());
 
     const dbSchema = getDbSchema(deps)();
     expect(dbSchema.ok).toBe(true);
@@ -48,7 +48,7 @@ describe("ensureDbSchema", () => {
     };
 
     const result1 = ensureDbSchema(deps)(initialSchema);
-    expect(result1).toEqual(ok(undefined));
+    expect(result1).toEqual(ok());
 
     const updatedSchema: DbSchema = {
       tables: {
@@ -58,7 +58,7 @@ describe("ensureDbSchema", () => {
     };
 
     const result2 = ensureDbSchema(deps)(updatedSchema);
-    expect(result2).toEqual(ok(undefined));
+    expect(result2).toEqual(ok());
 
     const dbSchema = getDbSchema(deps)();
     expect(dbSchema.ok).toBe(true);
@@ -82,7 +82,7 @@ describe("ensureDbSchema", () => {
     };
 
     const result = ensureDbSchema(deps)(newSchema);
-    expect(result).toEqual(ok(undefined));
+    expect(result).toEqual(ok());
 
     const dbSchema = getDbSchema(deps)();
     expect(dbSchema.ok).toBe(true);
@@ -115,7 +115,7 @@ describe("ensureDbSchema", () => {
     };
 
     const result = ensureDbSchema(deps)(updatedSchema);
-    expect(result).toEqual(ok(undefined));
+    expect(result).toEqual(ok());
 
     const dbSchema = getDbSchema(deps)();
     expect(dbSchema.ok).toBe(true);
@@ -153,7 +153,7 @@ describe("ensureDbSchema", () => {
 
     // Pass currentSchema to skip getDbSchema
     const result = ensureDbSchema(deps)(newSchema, currentSchema);
-    expect(result).toEqual(ok(undefined));
+    expect(result).toEqual(ok());
 
     const dbSchema = getDbSchema(deps)();
     expect(dbSchema.ok).toBe(true);

@@ -1,22 +1,47 @@
+import "@/styles/tailwind.css";
+
+import { Providers } from "@/app/providers";
 import { Button } from "@/components/Button";
+import { Footer } from "@/components/Footer";
+import { Header } from "@/components/Header";
 
 export default function NotFound(): React.ReactElement {
   return (
-    <>
-      <div className="mx-auto flex h-full max-w-xl flex-col items-center justify-center py-16 text-center">
-        <p className="text-sm font-semibold text-zinc-900 dark:text-white">
-          404
-        </p>
-        <h1 className="mt-2 text-2xl font-bold text-zinc-900 dark:text-white">
-          Page not found
-        </h1>
-        <p className="mt-2 text-base text-zinc-600 dark:text-zinc-400">
-          Sorry, we couldn’t find the page you’re looking for.
-        </p>
-        <Button href="/" arrow="right" className="mt-8">
-          Back to docs
-        </Button>
+    <Providers>
+      <div className="mx-auto h-full max-w-5xl">
+        <Header variant="landing" />
+        <div className="relative flex h-full flex-col px-4 pt-14 sm:px-6 lg:px-8">
+          <main className="flex-auto">
+            <div className="mx-auto flex min-h-[70vh] max-w-2xl flex-col items-center justify-center px-6 py-16 text-center">
+              <div className="rounded-full border border-zinc-200/70 bg-white/70 px-4 py-1 text-xs font-semibold tracking-[0.2em] text-zinc-700 uppercase shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5 dark:text-zinc-300">
+                404
+              </div>
+              <h1 className="mt-4 text-3xl font-semibold text-zinc-900 sm:text-4xl dark:text-white">
+                Page not found
+              </h1>
+              <p className="mt-3 max-w-lg text-base text-zinc-600 dark:text-zinc-400">
+                Sorry, we couldn’t find the page you’re looking for. The URL
+                might be mistyped or the page may have moved.
+              </p>
+              <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row">
+                <Button href="/" arrow="right">
+                  Back home
+                </Button>
+                <Button href="/docs" variant="outline">
+                  Docs
+                </Button>
+              </div>
+              <div className="mt-8 flex items-center gap-3 text-xs text-zinc-500 dark:text-zinc-500">
+                <span className="rounded-full bg-zinc-100 px-2 py-1 dark:bg-zinc-800/60">
+                  Tip
+                </span>
+                <span>Try the docs search or browse API reference.</span>
+              </div>
+            </div>
+          </main>
+          <Footer />
+        </div>
       </div>
-    </>
+    </Providers>
   );
 }

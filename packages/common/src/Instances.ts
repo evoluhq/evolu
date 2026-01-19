@@ -1,6 +1,10 @@
 /**
  * Manages disposable instances by key, ensuring exactly one instance per key.
  *
+ * @module
+ */
+
+/**
  * Use cases:
  *
  * - One mutex per key to prevent concurrent writes

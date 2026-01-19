@@ -1,42 +1,43 @@
-import { Eq, eqStrict } from "./Eq.js";
-import { Ref } from "./Ref.js";
+/**
+ * Observable state container with change notifications.
+ *
+ * @module
+ */
+
+import type { Eq } from "./Eq.js";
+import { eqStrict } from "./Eq.js";
+import type { Listener, Unsubscribe } from "./Listeners.js";
+import { createListeners } from "./Listeners.js";
+import type { Ref } from "./Ref.js";
+import { createRef } from "./Ref.js";
 
 /**
- * A store for managing state with change notifications. Extends {@link Ref} with
- * subscriptions. Provides methods to get, set, and modify state, and to notify
- * listeners when the state changes.
+ * A read-only view of a {@link Store} that provides state access and change
+ * notifications without allowing modifications.
+ *
+ * Use {@link ReadonlyStore} in public APIs where consumers should observe state
+ * but not modify it directly.
  */
-export interface Store<T> extends Ref<T> {
+export interface ReadonlyStore<T> extends Disposable {
   /**
    * Registers a listener to be called on state changes and returns a function
    * to unsubscribe.
    */
-  readonly subscribe: StoreSubscribe;
+  readonly subscribe: (listener: Listener) => Unsubscribe;
 
   /** Returns the current state of the store. */
   readonly get: () => T;
-
-  /**
-   * Updates the store's state and notifies all subscribed listeners if the new
-   * state differs from the current one.
-   */
-  readonly set: (state: T) => void;
-
-  /**
-   * Modifies the store's state by applying a callback function to the current
-   * state and notifies listeners if the state changes.
-   */
-  readonly modify: (updater: (current: T) => T) => void;
 }
 
-/** Registers a listener for state changes, returning an unsubscribe function. */
-export type StoreSubscribe = (listener: StoreListener) => StoreUnsubscribe;
-
-/** A callback invoked whenever the store's state updates. */
-export type StoreListener = () => void;
-
-/** A function to remove a previously added listener. */
-export type StoreUnsubscribe = () => void;
+/**
+ * A store for managing state with change notifications. Like a {@link Ref} with
+ * subscriptions.
+ *
+ * Store is a valid dependency in Evolu's [Dependency
+ * Injection](https://evolu.dev/docs/dependency-injection) pattern—use it when
+ * functions need shared mutable state with subscriptions.
+ */
+export interface Store<T> extends ReadonlyStore<T>, Ref<T> {}
 
 /**
  * Creates a store with the given initial state. The store encapsulates its
@@ -50,31 +51,25 @@ export const createStore = <T>(
   initialState: T,
   eq: Eq<T> = eqStrict,
 ): Store<T> => {
-  const listeners = new Set<StoreListener>();
-  let currentState = initialState;
-
-  const updateState = (newState: T) => {
-    if (eq(newState, currentState)) return;
-    currentState = newState;
-    listeners.forEach((listener) => {
-      listener();
-    });
-  };
+  const listeners = createListeners();
+  const ref = createRef(initialState, eq);
 
   return {
-    subscribe: (listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-
-    get: () => currentState,
+    subscribe: listeners.subscribe,
+    get: ref.get,
 
     set: (state) => {
-      updateState(state);
+      const updated = ref.set(state);
+      if (updated) listeners.notify();
+      return updated;
     },
 
     modify: (updater) => {
-      updateState(updater(currentState));
+      const updated = ref.modify(updater);
+      if (updated) listeners.notify();
+      return updated;
     },
+
+    [Symbol.dispose]: listeners[Symbol.dispose],
   };
 };

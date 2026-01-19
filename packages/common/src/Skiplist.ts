@@ -1,4 +1,10 @@
-import { RandomDep } from "./Random.js";
+/**
+ * Skiplist level generation for probabilistic data structures.
+ *
+ * @module
+ */
+
+import type { RandomDep } from "./Random.js";
 import { PositiveInt } from "./Type.js";
 
 export interface SkiplistLevel {

@@ -1,55 +1,62 @@
+/**
+ * Database schema definition and validation.
+ *
+ * @module
+ */
+
 import * as Kysely from "kysely";
+import { readonly } from "../Function.js";
 import {
   createRecord,
   getProperty,
   mapObject,
-  ReadonlyRecord,
+  type ReadonlyRecord,
 } from "../Object.js";
-import { ok, Result } from "../Result.js";
+import { ok, type Result } from "../Result.js";
 import {
-  SafeSql,
+  type SafeSql,
   sql,
   SqliteBoolean,
-  SqliteDep,
-  SqliteError,
-  SqliteQuery,
-  SqliteQueryOptions,
+  type SqliteDep,
+  type SqliteError,
+  type SqliteQuery,
+  type SqliteQueryOptions,
   SqliteValue,
 } from "../Sqlite.js";
 import {
-  AnyType,
+  type AnyType,
   array,
   createIdFromString,
   DateIso,
   IdBytes,
-  InferErrors,
-  InferInput,
-  InferType,
+  type InferErrors,
+  type InferInput,
+  type InferType,
   maxMutationSize,
-  MergeObjectTypeErrors,
+  type MergeObjectTypeErrors,
   nullableToOptional,
-  NullableToOptionalProps,
+  type NullableToOptionalProps,
   nullOr,
   object,
-  ObjectType,
+  type ObjectType,
   omit,
   optional,
-  OptionalType,
+  type OptionalType,
   record,
   set,
   String,
-  TableId,
-  Type,
-  ValidMutationSize,
+  type TableId,
+  type Type,
+  type ValidMutationSize,
   validMutationSize,
-  ValidMutationSizeError,
+  type ValidMutationSizeError,
 } from "../Type.js";
-import { Simplify } from "../Types.js";
-import { AppOwner, OwnerId } from "./Owner.js";
-import { Query, Row } from "./Query.js";
+import type { Simplify } from "../Types.js";
+import type { AppOwner } from "./Owner.js";
+import { OwnerId } from "./Owner.js";
+import type { Query, Row } from "./Query.js";
 import type { CrdtMessage, DbChange } from "./Storage.js";
 import { Timestamp, TimestampBytes } from "./Timestamp.js";
-import { readonly } from "../Function.js";
 
 /**
  * Defines the schema of an Evolu database.
@@ -88,7 +95,7 @@ import { readonly } from "../Function.js";
 export type EvoluSchema = ReadonlyRecord<
   string,
   // TypeScript errors are cryptic so we use ValidateSchema.
-  ReadonlyRecord<string, Type<any, any, any, any, any, any>>
+  ReadonlyRecord<string, AnyType>
 >;
 
 /**
@@ -242,7 +249,7 @@ export const SystemColumns = object({
   isDeleted: nullOr(SqliteBoolean),
   ownerId: OwnerId,
 });
-export type SystemColumns = typeof SystemColumns.Type;
+export interface SystemColumns extends InferType<typeof SystemColumns> {}
 
 export const systemColumns = readonly(
   new Set(Object.keys(SystemColumns.props)),
@@ -311,8 +318,6 @@ export interface MutationOptions {
    *   { ownerId: sharedOwner.id },
    * );
    * ```
-   *
-   * @experimental
    */
   readonly ownerId?: OwnerId;
 
@@ -461,13 +466,13 @@ export type InferColumnErrors<
 }[keyof MutationMapping<T, M>];
 
 export const DbIndex = object({ name: String, sql: String });
-export type DbIndex = typeof DbIndex.Type;
+export interface DbIndex extends InferType<typeof DbIndex> {}
 
 export const DbSchema = object({
   tables: record(String, set(String)),
   indexes: array(DbIndex),
 });
-export type DbSchema = typeof DbSchema.Type;
+export interface DbSchema extends InferType<typeof DbSchema> {}
 
 // TODO: Use a ref and update dbSchema on hot reloading to support
 // development workflows where schema changes without full app restart.
@@ -605,15 +610,15 @@ const createAppTable = (tableName: string, columns: ReadonlySet<string>) => sql`
   create table ${sql.identifier(tableName)} (
     "id" text,
     ${sql.raw(
-      `${[...systemColumns, ...columns]
-        // With strict tables and any type, data is preserved exactly as received
-        // without any type affinity coercion. This allows storing any data type
-        // while maintaining strict null enforcement for primary key columns.
-        // TODO: Use proper SQLite types for system columns (text for createdAt,
-        // updatedAt, ownerId, integer for isDeleted) instead of "any".
+      // With strict tables and any type, data is preserved exactly as received
+      // without any type affinity coercion. This allows storing any data type
+      // while maintaining strict null enforcement for primary key columns.
+      // TODO: Use proper SQLite types for system columns (text for createdAt,
+      // updatedAt, ownerId, integer for isDeleted) instead of "any".
+      [...systemColumns, ...columns]
         .map((name) => `${sql.identifier(name).sql} any`)
-        .join(", ")}, `,
-    )}
+        .join(", "),
+    )},
     primary key ("ownerId", "id")
   )
   without rowid, strict;

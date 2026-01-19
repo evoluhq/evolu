@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { constVoid } from "../src/Function.js";
+import { lazyVoid } from "../src/Function.js";
 import { createInstances } from "../src/Instances.js";
 
 interface TestInstance extends Disposable {
@@ -14,7 +14,7 @@ test("creates and returns new instance on first call", () => {
     createCount++;
     return {
       id: "test-1",
-      [Symbol.dispose]: constVoid,
+      [Symbol.dispose]: lazyVoid,
     };
   });
 
@@ -30,7 +30,7 @@ test("returns existing instance on second call with same key", () => {
     createCount++;
     return {
       id: "test-1",
-      [Symbol.dispose]: constVoid,
+      [Symbol.dispose]: lazyVoid,
     };
   });
 
@@ -38,7 +38,7 @@ test("returns existing instance on second call with same key", () => {
     createCount++;
     return {
       id: "test-2",
-      [Symbol.dispose]: constVoid,
+      [Symbol.dispose]: lazyVoid,
     };
   });
 
@@ -64,7 +64,7 @@ test("calls onCacheHit when returning existing instance", () => {
       update: (newValue: string) => {
         value = newValue;
       },
-      [Symbol.dispose]: constVoid,
+      [Symbol.dispose]: lazyVoid,
     };
   };
 
@@ -90,12 +90,12 @@ test("maintains separate instances for different keys", () => {
 
   const instance1 = instances.ensure("key1", () => ({
     id: "instance-1",
-    [Symbol.dispose]: constVoid,
+    [Symbol.dispose]: lazyVoid,
   }));
 
   const instance2 = instances.ensure("key2", () => ({
     id: "instance-2",
-    [Symbol.dispose]: constVoid,
+    [Symbol.dispose]: lazyVoid,
   }));
 
   expect(instance1).not.toBe(instance2);
@@ -108,7 +108,7 @@ test("get returns instance if it exists", () => {
 
   instances.ensure("test", () => ({
     id: "test-1",
-    [Symbol.dispose]: constVoid,
+    [Symbol.dispose]: lazyVoid,
   }));
 
   const retrieved = instances.get("test");
@@ -127,7 +127,7 @@ test("has returns true if instance exists", () => {
 
   instances.ensure("test", () => ({
     id: "test-1",
-    [Symbol.dispose]: constVoid,
+    [Symbol.dispose]: lazyVoid,
   }));
 
   expect(instances.has("test")).toBe(true);
@@ -333,7 +333,7 @@ test("Symbol.dispose throws single error if only one disposal fails", () => {
 
   instances.ensure("test2", () => ({
     id: "test-2",
-    [Symbol.dispose]: constVoid,
+    [Symbol.dispose]: lazyVoid,
   }));
 
   expect(() => {

@@ -20,7 +20,7 @@
  * transfer, ownership, real-time broadcasting, request-response semantics, and
  * error handling.
  *
- * ### Message structure
+ * ## Message structure
  *
  * | Field                          | Notes                     |
  * | :----------------------------- | :------------------------ |
@@ -43,7 +43,7 @@
  * | - {@link NonNegativeInt}       | Number of ranges.         |
  * | - {@link Range}                |                           |
  *
- * ### WriteKey validation
+ * ## WriteKey validation
  *
  * The initiator sends a hasWriteKey flag and optionally a WriteKey. The
  * WriteKey is required when sending messages as a secure token proving the
@@ -52,7 +52,7 @@
  * validates the WriteKey immediately after parsing the initiator header, before
  * processing any messages or ranges.
  *
- * ### Synchronization
+ * ## Synchronization
  *
  * - **Messages**: Sends {@link EncryptedCrdtMessage}s in either direction.
  * - **Ranges**: Determines messages to sync. Usage varies by transport—e.g., sent
@@ -79,7 +79,7 @@
  * initiator. In relay-to-relay or P2P sync, both sides may require the
  * {@link OwnerWriteKey} depending on who is the initiator.
  *
- * ### Protocol errors
+ * ## Protocol errors
  *
  * The protocol uses error codes in the header to signal issues:
  *
@@ -94,7 +94,7 @@
  * All protocol errors except `ProtocolInvalidDataError` include the `OwnerId`
  * to allow clients to associate errors with the correct owner.
  *
- * ### Message size limit
+ * ## Message size limit
  *
  * The protocol enforces a strict maximum size for all messages, defined by
  * {@link ProtocolMessageMaxSize}. This ensures every {@link ProtocolMessage} is
@@ -107,7 +107,7 @@
  * message limit to ensure efficient sync with
  * {@link defaultProtocolMessageRangesMaxSize}.
  *
- * ### Why Binary?
+ * ## Why Binary?
  *
  * The protocol avoids JSON because:
  *
@@ -127,7 +127,7 @@
  * To avoid reinventing serialization where it’s unnecessary—like for JSON and
  * certain numbers—the Evolu Protocol relies on MessagePack.
  *
- * ### Versioning
+ * ## Versioning
  *
  * Evolu Protocol uses explicit versioning to ensure compatibility between
  * clients and relays (or peers). Each protocol message begins with a version
@@ -148,7 +148,7 @@
  * Version negotiation is per-owner, allowing Evolu Protocol to evolve safely
  * over time and provide clear feedback about version mismatches.
  *
- * ### Credible exit
+ * ## Credible exit
  *
  * The protocol specification is intentionally non-configurable to ensure
  * universal compatibility. This design allows applications (users) to switch
@@ -178,11 +178,11 @@
  */
 
 import { Packr } from "msgpackr";
-import { isNonEmptyReadonlyArray, NonEmptyReadonlyArray } from "../Array.js";
+import { isNonEmptyArray, type NonEmptyReadonlyArray } from "../Array.js";
 import { assert } from "../Assert.js";
-import { Brand } from "../Brand.js";
+import type { Brand } from "../Brand.js";
 import {
-  Buffer,
+  type Buffer,
   bytesToHex,
   bytesToUtf8,
   createBuffer,
@@ -191,16 +191,21 @@ import {
 } from "../Buffer.js";
 import {
   createPadmePadding,
+  decryptWithXChaCha20Poly1305,
+  type DecryptWithXChaCha20Poly1305Error,
   EncryptionKey,
-  RandomBytesDep,
-  SymmetricCryptoDecryptError,
-  SymmetricCryptoDep,
+  encryptWithXChaCha20Poly1305,
+  Entropy24,
+  type RandomBytesDep,
+  XChaCha20Poly1305Ciphertext,
+  xChaCha20Poly1305NonceLength,
 } from "../Crypto.js";
 import { eqArrayNumber } from "../Eq.js";
 import { computeBalancedBuckets } from "../Number.js";
 import { createRecord, objectToEntries } from "../Object.js";
-import { err, ok, Result } from "../Result.js";
+import { err, ok, type Result } from "../Result.js";
 import { SqliteValue } from "../Sqlite.js";
+import { Millis } from "../Time.js";
 import {
   Base64Url,
   base64UrlToUint8Array,
@@ -219,10 +224,10 @@ import {
   PositiveInt,
   uint8ArrayToBase64Url,
 } from "../Type.js";
-import { Predicate } from "../Types.js";
+import type { Predicate } from "../Types.js";
 import {
-  Owner,
-  OwnerError,
+  type Owner,
+  type OwnerError,
   OwnerId,
   OwnerIdBytes,
   ownerIdToOwnerIdBytes,
@@ -230,26 +235,25 @@ import {
   ownerWriteKeyLength,
 } from "./Owner.js";
 import {
-  BaseRange,
-  CrdtMessage,
+  type BaseRange,
+  type CrdtMessage,
   DbChange,
-  EncryptedCrdtMessage,
-  EncryptedDbChange,
-  Fingerprint,
-  FingerprintRange,
+  type EncryptedCrdtMessage,
+  type EncryptedDbChange,
+  type Fingerprint,
+  type FingerprintRange,
   fingerprintSize,
   InfiniteUpperBound,
-  Range,
+  type Range,
   RangeType,
-  RangeUpperBound,
-  SkipRange,
-  StorageDep,
-  TimestampsRange,
+  type RangeUpperBound,
+  type SkipRange,
+  type StorageDep,
+  type TimestampsRange,
 } from "./Storage.js";
 import {
   Counter,
   eqTimestamp,
-  Millis,
   NodeId,
   Timestamp,
   TimestampBytes,
@@ -453,7 +457,7 @@ export interface ProtocolTimestampMismatchError {
  * unidirectional and stateless transports.
  */
 export const createProtocolMessageFromCrdtMessages =
-  (deps: RandomBytesDep & SymmetricCryptoDep) =>
+  (deps: RandomBytesDep) =>
   (
     owner: Owner,
     messages: NonEmptyReadonlyArray<CrdtMessage>,
@@ -687,9 +691,8 @@ export const createProtocolMessageBuffer = (
       assert(isWithinSizeLimits(), "the message is too big");
     },
 
-    canSplitRange: () => {
-      return getRangesSize() + safeMargins.splitRange <= rangesMaxSize;
-    },
+    canSplitRange: () =>
+      getRangesSize() + safeMargins.splitRange <= rangesMaxSize,
 
     canAddTimestampsRangeAndMessage: (timestamps, message) => {
       const rangesNewSize =
@@ -971,7 +974,7 @@ export const applyProtocolMessageAsClient =
       const messages = decodeMessages(input);
       const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
 
-      if (isNonEmptyReadonlyArray(messages)) {
+      if (isNonEmptyArray(messages)) {
         const result = await deps.storage.writeMessages(ownerIdBytes, messages);
         // Errors are handled by the Storage. Here we just stop syncing.
         if (!result.ok) return ok({ type: "no-response" });
@@ -993,7 +996,7 @@ export const applyProtocolMessageAsClient =
 
       const ranges = decodeRanges(input);
 
-      if (!isNonEmptyReadonlyArray(ranges)) {
+      if (!isNonEmptyArray(ranges)) {
         return ok({ type: "no-response" });
       }
 
@@ -1112,7 +1115,7 @@ export const applyProtocolMessageAsRelay =
 
       const messages = decodeMessages(input);
 
-      if (isNonEmptyReadonlyArray(messages)) {
+      if (isNonEmptyArray(messages)) {
         if (!writeKey) {
           return ok({
             type: "response",
@@ -1179,7 +1182,7 @@ export const applyProtocolMessageAsRelay =
 
       // Non-initiators always respond to provide sync completion feedback,
       // even when there's nothing to sync.
-      if (!isNonEmptyReadonlyArray(ranges)) {
+      if (!isNonEmptyArray(ranges)) {
         return ok({ type: "response", message: output.unwrap() });
       }
 
@@ -1231,11 +1234,12 @@ const decodeMessages = (
 ): ReadonlyArray<EncryptedCrdtMessage> => {
   const timestamps = decodeTimestamps(buffer);
 
-  const messages: Array<EncryptedCrdtMessage> = [];
-  for (const timestamp of timestamps) {
+  const messages = new Array<EncryptedCrdtMessage>(timestamps.length);
+  for (let i = 0; i < timestamps.length; i++) {
+    const timestamp = timestamps[i];
     const changeLength = decodeLength(buffer);
     const change = buffer.shiftN(changeLength) as EncryptedDbChange;
-    messages.push({ timestamp, change });
+    messages[i] = { timestamp, change };
   }
 
   return messages;
@@ -1514,7 +1518,8 @@ const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
 
   const timestampsCount = NonNegativeInt.orThrow(rangesCount - 1);
   const timestamps = decodeTimestamps(buffer, timestampsCount);
-  const rangeTypes: Array<RangeType> = [];
+
+  const rangeTypes = new Array<RangeType>(rangesCount);
 
   for (let i = 0; i < rangesCount; i++) {
     const rangeType = decodeNonNegativeInt(buffer);
@@ -1522,14 +1527,14 @@ const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
       case RangeType.Fingerprint:
       case RangeType.Skip:
       case RangeType.Timestamps:
-        rangeTypes.push(rangeType as RangeType);
+        rangeTypes[i] = rangeType as RangeType;
         break;
       default:
         throw new ProtocolDecodeError(`Invalid RangeType: ${rangeType}`);
     }
   }
 
-  const ranges: Array<Range> = [];
+  const ranges = new Array<Range>(rangesCount);
 
   for (let i = 0; i < rangesCount; i++) {
     const upperBound =
@@ -1541,16 +1546,16 @@ const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
 
     switch (rangeType) {
       case RangeType.Skip:
-        ranges.push({ type: RangeType.Skip, upperBound });
+        ranges[i] = { type: RangeType.Skip, upperBound };
         break;
 
       case RangeType.Fingerprint: {
         const fingerprint = buffer.shiftN(fingerprintSize) as Fingerprint;
-        ranges.push({
+        ranges[i] = {
           type: RangeType.Fingerprint,
           upperBound,
           fingerprint,
-        });
+        };
         break;
       }
 
@@ -1558,11 +1563,11 @@ const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
         const timestamps = decodeTimestamps(buffer).map(
           timestampToTimestampBytes,
         );
-        ranges.push({
+        ranges[i] = {
           type: RangeType.Timestamps,
           upperBound,
           timestamps,
-        });
+        };
         break;
       }
     }
@@ -1571,7 +1576,6 @@ const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
   return ranges;
 };
 
-/** Decodes an array of sorted timestamps with delta-encoded millis. */
 const decodeTimestamps = (
   buffer: Buffer,
   length?: NonNegativeInt,
@@ -1580,48 +1584,66 @@ const decodeTimestamps = (
 
   let previousMillis = 0 as Millis;
 
-  const millises: Array<Millis> = [];
+  const millises = new Array<Millis>(length);
   for (let i = 0; i < length; i++) {
     const deltaMillis = decodeNonNegativeInt(buffer);
     const millis = Millis.from(previousMillis + deltaMillis);
     if (!millis.ok) throw new ProtocolDecodeError(millis.error.type);
-    millises.push(millis.value);
+    millises[i] = millis.value;
     previousMillis = millis.value;
   }
 
-  const counters: Array<Counter> = [];
-  let counterIndex = 0;
-  while (counterIndex < length) {
+  const counters = decodeRle(buffer, length, (): Counter => {
     const counter = Counter.from(decodeNonNegativeInt(buffer));
     if (!counter.ok) throw new ProtocolDecodeError(counter.error.type);
-    const runLength = decodeNonNegativeInt(buffer);
-    for (let i = 0; i < runLength; i++) {
-      counters.push(counter.value);
-      counterIndex++;
-    }
-  }
+    return counter.value;
+  });
 
-  const nodeIds: Array<NodeId> = [];
-  let nodeIdIndex = 0;
-  while (nodeIdIndex < length) {
-    const nodeId = decodeNodeId(buffer);
-    const runLength = decodeNonNegativeInt(buffer);
-    for (let i = 0; i < runLength; i++) {
-      nodeIds.push(nodeId);
-      nodeIdIndex++;
-    }
-  }
+  const nodeIds = decodeRle(buffer, length, (): NodeId => decodeNodeId(buffer));
 
-  const timestamps: Array<Timestamp> = [];
+  const timestamps = new Array<Timestamp>(length);
   for (let i = 0; i < length; i++) {
-    timestamps.push({
+    timestamps[i] = {
       millis: millises[i],
       counter: counters[i],
       nodeId: nodeIds[i],
-    });
+    };
   }
 
   return timestamps;
+};
+
+export const decodeRle = <T>(
+  buffer: Buffer,
+  length: NonNegativeInt,
+  decodeValue: () => T,
+): ReadonlyArray<T> => {
+  const values = new Array<T>(length);
+  let index = 0;
+  while (index < length) {
+    const value = decodeValue();
+    const runLength = decodeNonNegativeInt(buffer);
+
+    // Prevent infinite loop on malformed input.
+    if (runLength === 0) {
+      throw new ProtocolDecodeError(
+        "Invalid RLE encoding: runLength must be positive",
+      );
+    }
+    const remaining = length - index;
+
+    // Prevent CPU/memory amplification via oversized runLength.
+    if (runLength > remaining) {
+      throw new ProtocolDecodeError(
+        `Invalid RLE encoding: runLength ${runLength} exceeds remaining ${remaining}`,
+      );
+    }
+    for (let i = 0; i < runLength; i++) {
+      values[index] = value;
+      index++;
+    }
+  }
+  return values;
 };
 
 const decodeId = (buffer: Buffer): Id => {
@@ -1699,9 +1721,10 @@ export const decodeFlags = (
   count: PositiveInt,
 ): ReadonlyArray<boolean> => {
   const byte = buffer.shift();
-  const flags: Array<boolean> = [];
-  for (let i = 0; i < count && i < 8; i++) {
-    flags.push((byte & (1 << i)) !== 0);
+  const length = globalThis.Math.min(count, 8);
+  const flags = new Array<boolean>(length);
+  for (let i = 0; i < length; i++) {
+    flags[i] = (byte & (1 << i)) !== 0;
   }
   return flags;
 };
@@ -1715,7 +1738,7 @@ export const decodeFlags = (
  * data.
  */
 export const encodeAndEncryptDbChange =
-  (deps: SymmetricCryptoDep) =>
+  (deps: RandomBytesDep) =>
   (message: CrdtMessage, key: EncryptionKey): EncryptedDbChange => {
     const buffer = createBuffer();
 
@@ -1745,7 +1768,7 @@ export const encodeAndEncryptDbChange =
     // Add PADMÉ padding (ignored during decoding)
     buffer.extend(createPadmePadding(buffer.getLength()));
 
-    const { nonce, ciphertext } = deps.symmetricCrypto.encrypt(
+    const [ciphertext, nonce] = encryptWithXChaCha20Poly1305(deps)(
       buffer.unwrap(),
       key,
     );
@@ -1763,78 +1786,76 @@ export const encodeAndEncryptDbChange =
  * owner's encryption key. Verifies that the embedded timestamp matches the
  * expected timestamp to ensure message integrity.
  */
-export const decryptAndDecodeDbChange =
-  (deps: SymmetricCryptoDep) =>
-  (
-    message: EncryptedCrdtMessage,
-    key: EncryptionKey,
-  ): Result<
-    DbChange,
-    | SymmetricCryptoDecryptError
-    | ProtocolInvalidDataError
-    | ProtocolTimestampMismatchError
-  > => {
-    try {
-      const buffer = createBuffer(message.change);
+export const decryptAndDecodeDbChange = (
+  message: EncryptedCrdtMessage,
+  key: EncryptionKey,
+): Result<
+  DbChange,
+  | DecryptWithXChaCha20Poly1305Error
+  | ProtocolInvalidDataError
+  | ProtocolTimestampMismatchError
+> => {
+  try {
+    const buffer = createBuffer(message.change);
 
-      const nonce = buffer.shiftN(deps.symmetricCrypto.nonceLength);
-      const ciphertext = buffer.shiftN(decodeLength(buffer));
+    const nonce = buffer.shiftN(xChaCha20Poly1305NonceLength as NonNegativeInt);
+    const ciphertext = buffer.shiftN(decodeLength(buffer));
 
-      const plaintextBytes = deps.symmetricCrypto.decrypt(
-        ciphertext,
-        key,
-        nonce,
-      );
-      if (!plaintextBytes.ok) return plaintextBytes;
+    const plaintextBytes = decryptWithXChaCha20Poly1305(
+      XChaCha20Poly1305Ciphertext.orThrow(ciphertext),
+      Entropy24.orThrow(nonce),
+      key,
+    );
+    if (!plaintextBytes.ok) return plaintextBytes;
 
-      buffer.reset();
-      buffer.extend(plaintextBytes.value);
+    buffer.reset();
+    buffer.extend(plaintextBytes.value);
 
-      // Decode version (for future compatibility, not need yet)
-      decodeNonNegativeInt(buffer);
+    // Decode version (for future compatibility, not need yet)
+    decodeNonNegativeInt(buffer);
 
-      const timestamp = timestampBytesToTimestamp(
-        buffer.shiftN(timestampBytesLength) as TimestampBytes,
-      );
+    const timestamp = timestampBytesToTimestamp(
+      TimestampBytes.orThrow(buffer.shiftN(timestampBytesLength)),
+    );
 
-      if (!eqTimestamp(timestamp, message.timestamp)) {
-        return err<ProtocolTimestampMismatchError>({
-          type: "ProtocolTimestampMismatchError",
-          expected: message.timestamp,
-          timestamp,
-        });
-      }
-
-      const flags = decodeFlags(buffer, PositiveInt.orThrow(3));
-      const table = decodeString(buffer);
-      const id = decodeId(buffer);
-
-      const length = decodeLength(buffer);
-      const values = createRecord<string, SqliteValue>();
-
-      for (let i = 0; i < length; i++) {
-        const column = decodeString(buffer);
-        const value = decodeSqliteValue(buffer);
-        values[column] = value;
-      }
-
-      const dbChange = DbChange.orThrow({
-        table,
-        id,
-        values,
-        isInsert: flags[0],
-        isDelete: flags[1] ? flags[2] : null,
-      });
-
-      return ok(dbChange);
-    } catch (error) {
-      return err<ProtocolInvalidDataError>({
-        type: "ProtocolInvalidDataError",
-        data: message.change,
-        error,
+    if (!eqTimestamp(timestamp, message.timestamp)) {
+      return err<ProtocolTimestampMismatchError>({
+        type: "ProtocolTimestampMismatchError",
+        expected: message.timestamp,
+        timestamp,
       });
     }
-  };
+
+    const flags = decodeFlags(buffer, PositiveInt.orThrow(3));
+    const table = decodeString(buffer);
+    const id = decodeId(buffer);
+
+    const length = decodeLength(buffer);
+    const values = createRecord<string, SqliteValue>();
+
+    for (let i = 0; i < length; i++) {
+      const column = decodeString(buffer);
+      const value = decodeSqliteValue(buffer);
+      values[column] = value;
+    }
+
+    const dbChange = DbChange.orThrow({
+      table,
+      id,
+      values,
+      isInsert: flags[0],
+      isDelete: flags[1] ? flags[2] : null,
+    });
+
+    return ok(dbChange);
+  } catch (error) {
+    return err<ProtocolInvalidDataError>({
+      type: "ProtocolInvalidDataError",
+      data: message.change,
+      error,
+    });
+  }
+};
 
 /**
  * Encodes a non-negative integer into a variable-length integer format. It's

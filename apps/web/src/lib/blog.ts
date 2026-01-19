@@ -11,9 +11,9 @@ export interface ArticleWithSlug extends Article {
   slug: string;
 }
 
-async function importArticle(
+const importArticle = async (
   articleFilename: string,
-): Promise<ArticleWithSlug> {
+): Promise<ArticleWithSlug> => {
   const { article } = (await import(
     `../app/(landing)/blog/${articleFilename}`
   )) as {
@@ -25,9 +25,9 @@ async function importArticle(
     slug: articleFilename.replace(/(\/page)?\.mdx$/, ""),
     ...article,
   };
-}
+};
 
-export async function getAllArticles(): Promise<Array<ArticleWithSlug>> {
+export const getAllArticles = async (): Promise<Array<ArticleWithSlug>> => {
   const articleFilenames = await glob("*/page.mdx", {
     cwd: "./src/app/(landing)/blog",
   });
@@ -35,4 +35,4 @@ export async function getAllArticles(): Promise<Array<ArticleWithSlug>> {
   const articles = await Promise.all(articleFilenames.map(importArticle));
 
   return articles.sort((a, z) => +new Date(z.date) - +new Date(a.date));
-}
+};

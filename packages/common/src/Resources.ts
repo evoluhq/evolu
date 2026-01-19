@@ -1,4 +1,11 @@
-import { err, ok, Result } from "./Result.js";
+/**
+ * Reference-counted resource management with delayed disposal.
+ *
+ * @module
+ */
+
+import type { Result } from "./Result.js";
+import { err, ok } from "./Result.js";
 import { PositiveInt } from "./Type.js";
 
 /**
@@ -365,3 +372,21 @@ export const createResources = <
 
   return resources;
 };
+
+/** See {@link createDisposableDep}. */
+export interface DisposableDep extends Disposable {}
+
+/** Creates a {@link DisposableDep} from `Disposable`. */
+export const createDisposableDep = (disposable: Disposable): DisposableDep => ({
+  [Symbol.dispose]: () => {
+    disposable[Symbol.dispose]();
+  },
+});
+
+export interface DisposableStackDep {
+  readonly disposableStack: DisposableStack;
+}
+
+export interface AsyncDisposableStackDep {
+  readonly asyncDisposableStack: AsyncDisposableStack;
+}

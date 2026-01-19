@@ -3,9 +3,8 @@ import { create } from "zustand";
 
 export const IsInsideMobileNavigationContext = createContext(false);
 
-export function useIsInsideMobileNavigation(): boolean {
-  return useContext(IsInsideMobileNavigationContext);
-}
+export const useIsInsideMobileNavigation = (): boolean =>
+  useContext(IsInsideMobileNavigationContext);
 
 export const useMobileNavigationStore = create<{
   isOpen: boolean;

@@ -1,4 +1,4 @@
-import { constFalse, constTrue } from "@evolu/common";
+import { lazyFalse, lazyTrue } from "@evolu/common";
 import { useSyncExternalStore } from "react";
 
 // eslint-disable-next-line @typescript-eslint/no-empty-function
@@ -9,7 +9,6 @@ const emptySubscribe = () => () => {};
  *
  * @see https://kurtextrem.de/posts/react-uses-hydration
  */
-export const useIsSsr = (): boolean => {
+export const useIsSsr = (): boolean =>
   // TODO: Consider useDeferredValue(isSSRSync);
-  return useSyncExternalStore(emptySubscribe, constFalse, constTrue);
-};
+  useSyncExternalStore(emptySubscribe, lazyFalse, lazyTrue);

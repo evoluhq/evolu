@@ -1,46 +1,49 @@
 import { Heading } from "@/components/Heading";
 
-export const metadata = {
-  title: "Conventions",
-};
+export const metadata = { title: "Conventions" };
 
 # Conventions
 
 Conventions minimize decision-making and improve consistency.
 
-## Named imports
+## Imports and exports
 
-Use named imports. Refactor modules with excessive imports.
+Use named imports.
 
 ```ts
 import { bar, baz } from "Foo.ts";
 ```
 
-## Unique exported members
-
-Avoid namespaces. Use unique and descriptive names for exported members to prevent conflicts and improve clarity.
+Avoid namespaces. Use unique names because Evolu re-exports everything through a single `index.ts`.
 
 ```ts
+// Use
+export const ok = () => {};
+export const trySync = () => {};
+
 // Avoid
 export const Utils = { ok, trySync };
-
-// Prefer
-export const ok = ...;
-export const trySync = ...;
-
-// eqStrict
-// eqBoolean
-// orderString
-// orderNumber
-// isBetween
-// isBetweenBigInt
 ```
+
+### Naming conventions
+
+- **Types** — PascalCase without suffix: `Eq`, `Order`, `Result`, `Millis`
+- **Type instances** — type prefix + TypeSuffix: `eqString`, `eqNumber`, `orderString`, `orderBigInt`
+- **Operations** — verb + TypeSuffix: `mapArray`, `filterSet`, `sortArray`, `addToSet`
+- **Conversions** — `xToY` (often symmetric pairs): `ownerIdToOwnerIdBytes`/`ownerIdBytesToOwnerId`, `durationToMillis`
+- **Factories** — `createX`: `createTime`, `createStore`, `createRunner`
+- **Empty constants** — `emptyX`: `emptyArray`, `emptySet`, `emptyRecord`
+- **Predicates** — `isX`: `isNonEmptyArray`, `isBetween`, `isBetweenBigInt`
+- **Accessors** — position + `InX`: `firstInArray`, `lastInArray`, `firstInSet`
+- **Dependencies** — `XDep`: `TimeDep`, `RandomDep`, `ConsoleDep`
+
+Consistent prefixes enable discoverability—type `map` and autocomplete shows `mapArray`, `mapSet`, `mapObject`, `mapSchedule` without importing first.
 
 ## Order (top-down readability)
 
-Many developers naturally write code bottom-up, starting with small helpers and building up to the public API. However, Evolu optimizes for reading, not writing, because source code is read far more often than it is written. By presenting the public API first—interfaces and types—followed by the implementation and implementation details, we ensure that the developer-facing contract is immediately clear, making it easier to understand the purpose and structure of the code.
+Many developers naturally write code bottom-up, starting with small helpers and building up to the public API. However, Evolu optimizes for reading, not writing, because source code is read far more often than it is written. By presenting the public API first—interfaces and types—followed by implementation and implementation details, the developer-facing contract is immediately clear.
 
-Another way to think about it is that we approach the code from the whole to the detail, like a painter painting a picture. The painter never starts with details but with the overall layout and gradually adds details.
+Think of it like painting—from the whole to the detail. The painter never starts with details, but with the overall composition, then gradually refines.
 
 ```ts
 // Public interface first: the contract developers rely on.
@@ -64,50 +67,23 @@ const bar = () => {
 };
 ```
 
-## Arrow functions
-
-Use arrow functions instead of the `function` keyword.
-
-```ts
-// Prefer
-export const createUser = (data: UserData): User => {
-  // implementation
-};
-
-// Avoid
-export function createUser(data: UserData): User {
-  // implementation
-}
-```
-
-Why arrow functions?
-
-- **No hoisting** - Combined with `const`, arrow functions aren't hoisted, which enforces top-down code organization
-- **Consistency** - One way to define functions means less cognitive overhead
-- **Currying** - Arrow functions make currying natural for [dependency injection](/docs/dependency-injection)
-
-**Exception: function overloads.** TypeScript requires the `function` keyword for overloaded signatures:
-
-```ts
-export function mapArray<T, U>(
-  array: NonEmptyReadonlyArray<T>,
-  mapper: (item: T) => U,
-): NonEmptyReadonlyArray<U>;
-export function mapArray<T, U>(
-  array: ReadonlyArray<T>,
-  mapper: (item: T) => U,
-): ReadonlyArray<U>;
-export function mapArray<T, U>(
-  array: ReadonlyArray<T>,
-  mapper: (item: T) => U,
-): ReadonlyArray<U> {
-  return array.map(mapper) as ReadonlyArray<U>;
-}
-```
-
 ## Immutability
 
-Mutable state is tricky because it increases the risk of unintended side effects, makes code harder to predict, and complicates debugging—especially in complex applications where data might be shared or modified unexpectedly. Favor immutable values using readonly types to reduce these risks and improve clarity.
+Immutable values enable **referential transparency**: identity (`===`) implies equality. React and React Compiler rely on this for efficient rendering — `prevValue !== nextValue` detects changes without deep comparison.
+
+```ts
+// Mutable: same reference, different content
+const mutableItems = [1, 2, 3];
+mutableItems.push(4);
+mutableItems === mutableItems; // true, but content changed
+
+// Immutable: new reference signals change
+const items = [1, 2, 3];
+const newItems = [...items, 4];
+items === newItems; // false
+```
+
+Mutation causes unintended side effects, makes code harder to predict, and complicates debugging. Use immutable values with readonly types.
 
 ### Readonly types
 
@@ -155,7 +131,7 @@ const readonlyArr = readonly(arr);
 const ids = readonly(new Set(["a", "b"]));
 // Type: ReadonlySet<string>
 
-const users: Record<UserId, string> = { ... };
+const users: Record<UserId, string> = {};
 const readonlyUsers = readonly(users);
 // Type: ReadonlyRecord<UserId, string>
 
@@ -163,13 +139,11 @@ const lookup = readonly(new Map([["key", "value"]]));
 // Type: ReadonlyMap<string, string>
 ```
 
-### Immutable helpers
-
-Evolu provides helpers in the [Array](/docs/api-reference/common/Array) and [Object](/docs/api-reference/common/Object) modules that do not mutate and preserve readonly types.
+Evolu also provides helpers in the [Array](/docs/api-reference/common/Array) and [Object](/docs/api-reference/common/Object) modules that do not mutate and preserve readonly types.
 
 ## Interface over type
 
-Prefer `interface` over `type` because interfaces always appear by name in error messages and tooltips.
+Use `interface` over `type` because interfaces always appear by name in error messages and tooltips.
 
 Use `type` only when necessary:
 
@@ -179,3 +153,272 @@ Use `type` only when necessary:
 > Use `interface` until you need to use features from `type`.
 >
 > — [TypeScript Handbook](https://www.typescriptlang.org/docs/handbook/2/everyday-types.html#differences-between-type-aliases-and-interfaces)
+
+### Evolu Type objects
+
+For Evolu Type objects created with `object()`, use interface with `InferType` instead of type alias. TypeScript displays the interface name instead of expanding all properties.
+
+```ts
+import { object, String, Number, InferType } from "@evolu/common";
+
+// Use interface for objects
+const User = object({ name: String, age: Number });
+interface User extends InferType<typeof User> {}
+
+// Avoid - TypeScript expands all properties in tooltips
+const User = object({ name: String, age: Number });
+type User = typeof User.Type;
+```
+
+## Arrow functions
+
+Use arrow functions instead of the `function` keyword.
+
+```ts
+// Use
+const createUser = (data: UserData): User => {
+  // implementation
+};
+
+// Avoid
+function createUser(data: UserData): User {
+  // implementation
+}
+```
+
+Why arrow functions?
+
+- **Consistency** - One way to define functions means less cognitive overhead
+- **No hoisting** - Combined with `const`, arrow functions aren't hoisted, which enforces top-down code organization
+- **Currying** - Arrow functions make currying natural for [dependency injection](/docs/dependency-injection)
+
+**Exception: function overloads.** TypeScript requires the `function` keyword for overloaded signatures:
+
+```ts
+function mapArray<T, U>(
+  array: NonEmptyReadonlyArray<T>,
+  mapper: (item: T) => U,
+): NonEmptyReadonlyArray<U>;
+function mapArray<T, U>(
+  array: ReadonlyArray<T>,
+  mapper: (item: T) => U,
+): ReadonlyArray<U>;
+function mapArray<T, U>(
+  array: ReadonlyArray<T>,
+  mapper: (item: T) => U,
+): ReadonlyArray<U> {
+  return array.map(mapper) as ReadonlyArray<U>;
+}
+```
+
+**In interfaces too.** Use arrow function syntax for interface methods—otherwise ESLint won't allow passing them as references due to JavaScript's `this` binding issues.
+
+```ts
+// Use arrow function syntax
+interface Foo {
+  readonly bar: (value: string) => void;
+  readonly baz: () => number;
+}
+
+// Avoid method shorthand syntax
+interface FooAvoid {
+  bar(value: string): void;
+  baz(): number;
+}
+```
+
+## Function options
+
+For functions with optional configuration, use inline types without `readonly` for single-use options and named interfaces with `readonly` for reusable options. Always destructure immediately.
+
+**Inline types** when options are single-use:
+
+```ts
+const race = (
+  tasks: Tasks,
+  {
+    abortReason = raceLostError,
+  }: {
+    // The reason to abort losing tasks with.
+    abortReason?: unknown;
+  } = {},
+): Task<T, E> => {
+  // implementation
+};
+```
+
+**Named interfaces** when options are reused:
+
+```ts
+interface RetryOptions {
+  readonly maxAttempts?: number;
+  readonly delay?: Duration;
+  readonly backoff?: "linear" | "exponential";
+}
+
+const retry = (
+  task: Task<T, E>,
+  schedule: Schedule<unknown, E>,
+  { maxAttempts = 3, delay = "1s", backoff = "exponential" }: RetryOptions,
+): Task<T, RetryError<E>> => {
+  // implementation
+};
+```
+
+## Avoid getters and setters
+
+Avoid JavaScript getters and setters. Use simple readonly properties for stable values and explicit methods for values that may change.
+
+**Getters break the readonly contract.** In Evolu, `readonly` properties signal stable values you can safely cache or pass around. A getter disguised as a readonly property violates this expectation—it looks stable but might return different values on each access.
+
+**Setters hide mutation and conflict with readonly.** Evolu uses `readonly` properties everywhere for immutability. Setters are incompatible with this approach and make mutation invisible—`obj.value = x` looks like simple assignment but executes arbitrary code.
+
+**Use explicit methods instead.** When a value can change or requires computation, use a method like `getValue()`. The parentheses signal "this might change or compute something" and make the behavior obvious at the call site. A readonly property like `readonly id: string` communicates stability—you can safely cache, memoize, or pass the value around knowing it won't change behind your back.
+
+```ts
+// Use explicit methods for mutable internal state
+interface Counter {
+  readonly getValue: () => number;
+  readonly increment: () => void;
+}
+
+// Avoid: This looks stable but if backed by a getter, value might change
+interface CounterAvoid {
+  readonly value: number;
+  readonly increment: () => void;
+}
+```
+
+## Factory functions (no classes)
+
+Use interfaces with factory functions instead of classes. Classes have subtle pitfalls: `this` binding is tricky and error-prone, and class inheritance encourages tight coupling. Evolu favors composition over inheritance (though interface inheritance is fine).
+
+```ts
+// Use interface + factory function
+interface Counter {
+  readonly getValue: () => number;
+  readonly increment: () => void;
+}
+
+const createCounter = (): Counter => {
+  let value = 0;
+  return {
+    getValue: () => value,
+    increment: () => {
+      value++;
+    },
+  };
+};
+
+// Avoid
+class Counter {
+  value = 0;
+  increment() {
+    this.value++;
+  }
+}
+```
+
+## Opaque types
+
+Use opaque types when callers should not inspect or construct values directly—they can only pass them back to the API that created them.
+
+```ts
+import { Brand } from "@evolu/common";
+
+// Opaque type - callers cannot see the internal structure
+type TimeoutId = Brand<"TimeoutId">;
+
+interface Timer {
+  readonly setTimeout: (fn: () => void, ms: number) => TimeoutId;
+  readonly clearTimeout: (id: TimeoutId) => void;
+}
+```
+
+Opaque types are useful for:
+
+- **Platform abstraction** - Hide platform-specific details (e.g., `NativeMessagePort` wraps browser/Node MessagePort)
+- **Handle types** - IDs that should only be passed back to the creating API (e.g., timeout IDs, file handles)
+- **Type safety** - Prevent accidental misuse by making internal structure inaccessible
+
+## Composition without pipe
+
+Evolu doesn't provide a `pipe` helper. Instead, compose functions directly:
+
+```ts
+// AWS-style retry - a jittered, capped, limited exponential backoff.
+const awsRetry = jitter(1)(maxDelay("20s")(take(3)(exponential("1s"))));
+```
+
+If nested composition gets too deep, split into meaningful named parts:
+
+```ts
+// Split long compositions into named intermediate values
+const limitedExponential = take(3)(exponential("1s"));
+const cappedBackoff = maxDelay("20s")(limitedExponential);
+const awsRetry = jitter(1)(cappedBackoff);
+```
+
+Shallow nesting often fits one line (like `awsRetry`). If it doesn't, split — there's a good chance you'll reuse those named parts elsewhere.
+
+Evolu favors imperative code over pipes. A well-named helper is more discoverable and self-documenting than a long chain of transformations.
+
+## Avoid meaningless ok values
+
+Don't use `ok("done")` or `ok("success")` — the `ok()` itself already communicates success. Use `ok()` for `Result<void, E>` or return a meaningful value.
+
+```ts
+// Good - ok() means success, no redundant string needed
+const save = (): Result<void, SaveError> => {
+  // ...
+  return ok();
+};
+
+// Good - return a meaningful value
+const parse = (): Result<User, ParseError> => {
+  // ...
+  return ok(user);
+};
+
+// Avoid - "done" and "success" add no information
+return ok("done");
+return ok("success");
+```
+
+## Testing
+
+Create fresh deps per test for isolation using `createTestDeps()`. Each call returns independent instances, preventing shared state between tests.
+
+```ts
+import { createTestDeps, createId } from "@evolu/common";
+
+test("creates unique IDs", () => {
+  const deps = createTestDeps();
+  const id1 = createId(deps);
+  const id2 = createId(deps);
+  expect(id1).not.toBe(id2);
+});
+```
+
+### Test factories naming
+
+Test-specific factories use `testCreateX` prefix to distinguish from production `createX`:
+
+```ts
+// Production factory
+const createTime = (): Time => ({ now: () => Date.now() });
+
+// Test factory with controllable time
+const testCreateTime = (options?: {
+  readonly startAt?: Millis;
+  readonly autoIncrement?: boolean;
+}): TestTime => {
+  // implementation
+};
+```
+
+The `testCreateX` prefix signals:
+
+- Returns a test double, not a real implementation
+- May have additional capabilities (e.g., `advance()` method on `testCreateTime`)
+- Designed for deterministic, repeatable tests

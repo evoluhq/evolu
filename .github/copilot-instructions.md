@@ -4,23 +4,35 @@ applyTo: "**/*.{ts,tsx}"
 
 # Evolu project guidelines
 
-You are helping with the Evolu project. Follow these specific conventions and patterns:
+Follow these specific conventions and patterns:
+
+## Test-driven development
+
+- Write a failing test before implementing a new feature or fixing a bug
+- Keep test code cleaner than production code — good tests let you refactor production code; nothing protects messy tests
 
 ## Code organization & imports
 
 - **Use named imports only** - avoid default exports and namespace imports
 - **Use unique exported members** - avoid namespaces, use descriptive names to prevent conflicts
-- **Organize code top-down** - public interfaces first, then implementation, then implementation details
+- **Organize code top-down** - public interfaces first, then implementation, then implementation details. If a helper must be defined before the public export that uses it (due to JavaScript hoisting), place it immediately before that export.
+- **Reference globals explicitly with `globalThis`** - when a name clashes with global APIs (e.g., `SharedWorker`, `Worker`), use `globalThis.SharedWorker` instead of aliasing imports
 
 ```ts
-// ✅ Good
+// Good
 import { bar, baz } from "Foo.ts";
-export const ok = ...;
-export const trySync = ...;
+export const ok = () => {};
+export const trySync = () => {};
 
-// ❌ Avoid
+// Avoid
 import Foo from "Foo.ts";
 export const Utils = { ok, trySync };
+
+// Good - Avoid naming conflicts with globals
+const nativeSharedWorker = new globalThis.SharedWorker(url);
+
+// Avoid - Aliasing to work around global name clash
+import { SharedWorker as SharedWorkerType } from "./Worker.js";
 ```
 
 ## Functions
@@ -28,13 +40,19 @@ export const Utils = { ok, trySync };
 - **Use arrow functions** - avoid the `function` keyword for consistency
 - **Exception: function overloads** - TypeScript requires the `function` keyword for overloaded signatures
 
-```ts
-// ✅ Good - Arrow function
-export const createUser = (data: UserData): User => {
-  // implementation
-};
+### Factories
 
-// ✅ Good - Function overloads (requires function keyword)
+Use factory functions instead of classes for creating objects, typically named `createX`. Order function contents as follows:
+
+1. Const setup & invariants (args + derived consts + assertions)
+2. Mutable state
+3. Owned resources
+4. Side-effectful wiring
+5. Shared helpers
+6. Return object (public operations + disposal/closing)
+
+```ts
+// Good - Function overloads (requires function keyword)
 export function mapArray<T, U>(
   array: NonEmptyReadonlyArray<T>,
   mapper: (item: T) => U,
@@ -50,9 +68,51 @@ export function mapArray<T, U>(
   return array.map(mapper) as ReadonlyArray<U>;
 }
 
-// ❌ Avoid - function keyword without overloads
+// Avoid - function keyword without overloads
 export function createUser(data: UserData): User {
   // implementation
+}
+```
+
+### Function options
+
+For functions with optional configuration, use inline types without `readonly` for single-use options and named interfaces with `readonly` for reusable options. Always destructure immediately.
+
+```ts
+// Good - inline type, single-use
+export const race = (
+  tasks: Tasks,
+  {
+    abortReason = raceLostError,
+  }: {
+    abortReason?: unknown;
+  } = {},
+): Task<T, E> => {
+  // implementation
+};
+
+// Good - named interface, reusable
+export interface RetryOptions {
+  readonly maxAttempts?: number;
+  readonly delay?: Duration;
+}
+```
+
+## Variable shadowing
+
+- **Shadowing is OK** - since we use `const` everywhere, shadowing avoids artificial names like `innerValue`, `newValue`, `result2`
+
+```ts
+// Good - Shadow in nested scopes
+const value = getData();
+items.map((value) => process(value)); // shadowing is fine
+
+const result = fetchUser();
+if (result.ok) {
+  const result = fetchProfile(result.value); // shadow in nested block
+  if (result.ok) {
+    // ...
+  }
 }
 ```
 
@@ -67,14 +127,73 @@ interface Example {
 }
 ```
 
-## Documentation & JSDoc
+## Interface over type for Evolu Type objects
+
+For Evolu Type objects created with `object()`, use interface with `InferType` instead of type alias. TypeScript displays the interface name instead of expanding all properties.
+
+```ts
+// Use interface for objects
+const User = object({ name: String, age: Number });
+export interface User extends InferType<typeof User> {}
+
+// Avoid - TypeScript expands all properties in tooltips
+const User = object({ name: String, age: Number });
+export type User = typeof User.Type;
+```
+
+## Opaque types
+
+- **Use `Brand<"Name">`** for values callers cannot inspect or construct—only pass back to the creating API
+- Useful for platform abstraction, handle types (timeout IDs, file handles), and type safety
+
+```ts
+type TimeoutId = Brand<"TimeoutId">;
+type NativeMessagePort = Brand<"NativeMessagePort">;
+```
+
+## Object enums
+
+- **Use PascalCase for keys** - all keys in constant objects should use PascalCase
+- **String values match keys** - when using strings, make values match the key names
+- **Numeric values for wire protocols** - use numbers for serialization efficiency
+- **Export with `as const`** - ensure TypeScript treats values as literals
+
+```ts
+// String values matching PascalCase keys
+export const TaskScopeState = {
+  Open: "Open",
+  Closing: "Closing",
+  Closed: "Closed",
+} as const;
+
+export type TaskScopeState =
+  (typeof TaskScopeState)[keyof typeof TaskScopeState];
+
+// Numeric values for wire protocols
+export const MessageType = {
+  Request: 0,
+  Response: 1,
+  Broadcast: 2,
+} as const;
+
+export type MessageType = (typeof MessageType)[keyof typeof MessageType];
+```
+
+## Documentation style
+
+- **Be direct and technical** - state facts, avoid conversational style
+- **Lead with the key point** - put the most important information first
+
+## JSDoc & TypeDoc
 
 - **Avoid `@param` and `@return` tags** - TypeScript provides type information, focus on describing the function's purpose
-- **Use `### Example` instead of `@example`** - for better markdown rendering and consistency
+- **Use `### Example` instead of `@example`** - for better markdown rendering and consistency with TypeDoc
 - **Write clear descriptions** - explain what the function does, not how to use it
+- **Use `{@link}` for references** - link to types, interfaces, functions, and exported symbols on first mention for discoverability
+- **Avoid pipe characters in first sentence** - TypeDoc extracts the first sentence for table descriptions, and pipe characters (even in inline code like `T | undefined`) break markdown table rendering. Move such details to subsequent sentences.
 
 ````ts
-// ✅ Good
+// Good
 /**
  * Creates a new user with the provided data.
  *
@@ -88,7 +207,28 @@ export const createUser = (data: UserData): User => {
   // implementation
 };
 
-// ❌ Avoid
+/**
+ * Dependency wrapper for {@link CreateMessageChannel}.
+ *
+ * Used with {@link EvoluPlatformDeps} to provide platform-specific
+ * MessageChannel creation.
+ */
+export interface CreateMessageChannelDep {
+  readonly createMessageChannel: CreateMessageChannel;
+}
+
+// Avoid
+/**
+ * Dependency wrapper for CreateMessageChannel.
+ *
+ * Used with EvoluPlatformDeps to provide platform-specific MessageChannel
+ * creation.
+ */
+export interface CreateMessageChannelDep {
+  readonly createMessageChannel: CreateMessageChannel;
+}
+
+// Avoid
 /**
  * Creates a new user with the provided data.
  *
@@ -103,35 +243,26 @@ export const createUser = (data: UserData): User => {
 export const createUser = (data: UserData): User => {
   // implementation
 };
-````
 
-## API stability & experimental APIs
-
-- **Use `@experimental` tag** for new APIs that may change or be removed
-- **Experimental APIs can change** in minor/patch versions without breaking semver
-- **Promote to stable** once confident in the design after real-world usage
-
-```ts
-// ✅ Good - Mark new/uncertain APIs as experimental
 /**
- * Casts a value to its readonly counterpart.
+ * Dependency wrapper for CreateMessageChannel.
  *
- * @experimental
+ * Used with EvoluPlatformDeps to provide platform-specific MessageChannel
+ * creation.
  */
-export const readonly = <T>(value: T): Readonly<T> => value;
-```
-
-This pattern allows iterating on API design without committing to stability too early.
+export interface CreateMessageChannelDep {
+  readonly createMessageChannel: CreateMessageChannel;
+}
+````
 
 ## Error handling with Result
 
 - Use `Result<T, E>` for business/domain errors in public APIs
 - Keep implementation-specific errors internal to dependencies
-- **Favor imperative patterns** over monadic helpers for readability
-- Use **plain objects** for business errors, Error instances only for debugging
+- Use **plain objects** for domain errors, Error instances only for debugging
 
 ```ts
-// ✅ Good - Business error
+// Good - Domain error
 interface ParseJsonError {
   readonly type: "ParseJsonError";
   readonly message: string;
@@ -143,7 +274,7 @@ const parseJson = (value: string): Result<unknown, ParseJsonError> =>
     (error) => ({ type: "ParseJsonError", message: String(error) }),
   );
 
-// ✅ Good - Sequential operations with short-circuiting
+// Good - Sequential operations with short-circuiting
 const processData = (deps: DataDeps) => {
   const foo = doFoo(deps);
   if (!foo.ok) return foo;
@@ -151,7 +282,7 @@ const processData = (deps: DataDeps) => {
   return doStep2(deps)(foo.value);
 };
 
-// ❌ Avoid - Implementation error in public API
+// Avoid - Implementation error in public API
 export interface Storage {
   writeMessages: (...) => Result<boolean, SqliteError>;
 }
@@ -166,7 +297,7 @@ export interface Storage {
 
 ```ts
 // For lazy operations array
-const operations: LazyValue<Result<void, MyError>>[] = [
+const operations: Lazy<Result<void, MyError>>[] = [
   () => doSomething(),
   () => doSomethingElse(),
 ];
@@ -177,6 +308,28 @@ for (const op of operations) {
 }
 ```
 
+### Avoid meaningless ok values
+
+Don't use `ok("done")` or `ok("success")` - the `ok()` itself already communicates success. Use `ok()` for `Result<void, E>` or return a meaningful value.
+
+```ts
+// Good - ok() means success, no redundant string needed
+const save = (): Result<void, SaveError> => {
+  // ...
+  return ok();
+};
+
+// Good - return a meaningful value
+const parse = (): Result<User, ParseError> => {
+  // ...
+  return ok(user);
+};
+
+// Avoid - "done" and "success" add no information
+return ok("done");
+return ok("success");
+```
+
 ## Evolu Type
 
 - **Use Type for validation/parsing** - leverage Evolu's Type system for runtime validation
@@ -185,17 +338,17 @@ for (const op of operations) {
 - **Use Brand types** - for semantic distinctions and constraints
 
 ```ts
-// ✅ Good - Define typed error
+// Good - Define typed error
 interface CurrencyCodeError extends TypeError<"CurrencyCode"> {}
 
-// ✅ Good - Brand for semantic meaning and validation
+// Good - Brand for semantic meaning and validation
 const CurrencyCode = brand("CurrencyCode", String, (value) =>
   /^[A-Z]{3}$/.test(value)
     ? ok(value)
     : err<CurrencyCodeError>({ type: "CurrencyCode", value }),
 );
 
-// ✅ Good - Type factory pattern
+// Good - Type factory pattern
 const minLength: <Min extends number>(
   min: Min,
 ) => BrandFactory<`MinLength${Min}`, { length: number }, MinLengthError<Min>> =
@@ -204,7 +357,7 @@ const minLength: <Min extends number>(
       value.length >= min ? ok(value) : err({ type: "MinLength", value, min }),
     );
 
-// ✅ Good - Error formatter
+// Good - Error formatter
 const formatCurrencyCodeError = createTypeErrorFormatter<CurrencyCodeError>(
   (error) => `Invalid currency code: ${error.value}`,
 );
@@ -278,30 +431,88 @@ const deps: TimeDep & Partial<LoggerDep> = {
 - **No global static instances** - avoid service locator pattern
 - **No generics in dependency interfaces** - keep them implementation-agnostic
 
-## Testing
+## Tasks
 
-- **Run tests using pnpm** - use `pnpm test` from the project root to run all tests
-- **Run specific test files** - use `pnpm test --filter @evolu/package-name -- test-file-pattern` from project root (e.g., `pnpm test --filter @evolu/common -- Protocol`)
-- **Check compilation** - use `pnpm build` to check TypeScript compilation across all packages
-- **Run linting** - use `pnpm lint` to check code style and linting rules
-- **Leverage `_deps.ts`** - use existing test utilities and mocks from `packages/common/test/_deps.ts` (e.g., `testCreateId`, `testTime`, `testOwner`)
-- Mock dependencies using the same interfaces
-- Create test factories (e.g., `createTestTime`)
-- Never rely on global state
-- Use assertions in tests for conditions that should never fail
+- **Call tasks with `run(task)`** - never call `task(run)` directly in user code
+- **Handle Results** - check `result.ok` before using values, short-circuit on error
+- **Compose tasks** - use helpers like `timeout`, `race` to combine tasks
 
 ```ts
-import { testCreateId, testTime, testOwner } from "../_deps.js";
+// Good - Call tasks with run()
+const result = await run(sleep("1s"));
+if (!result.ok) return result;
 
-const createTestTime = (): Time => ({
-  now: () => 1234567890, // Fixed time for testing
+const data = result.value; // only available if ok
+
+// Good - Compose and short-circuit
+const processTask: Task<void, ParseError | TimeoutError> = async (run) => {
+  const data = await run(fetchData);
+  if (!data.ok) return data;
+
+  const parsed = await run(timeout(parseData(data.value), "5s"));
+  if (!parsed.ok) return parsed;
+
+  return ok();
+};
+
+// Avoid - Calling task directly
+const result = await sleep("1s")(run);
+```
+
+## Testing
+
+- **Create deps per test** - use `createTestDeps()` from `@evolu/common` for test isolation
+- **Naming convention** - test factories follow `testCreateX` pattern (e.g., `testCreateTime`, `testCreateRandom`)
+- Mock dependencies using the same interfaces
+- Never rely on global state or shared mutable deps between tests
+
+### Test deps pattern
+
+Create fresh deps at the start of each test for isolation. Each call creates independent instances, preventing shared state between tests.
+
+```ts
+import { createTestDeps, createId } from "@evolu/common";
+
+test("creates unique IDs", () => {
+  const deps = createTestDeps();
+  const id1 = createId(deps);
+  const id2 = createId(deps);
+  expect(id1).not.toBe(id2);
 });
 
-test("timeUntilEvent calculates correctly", () => {
-  const deps = { time: testTime }; // Use from _deps.ts
-  const result = timeUntilEvent(deps)(1234567990);
-  assert(result === 100, "Expected result to be 100");
+test("with custom seed for reproducibility", () => {
+  const deps = createTestDeps({ seed: "my-test" });
+  const id = createId(deps);
+  expect(id).toMatchInlineSnapshot(`"..."`);
 });
+```
+
+### Test factories naming
+
+Test-specific factories use `testCreateX` prefix to distinguish from production `createX`:
+
+```ts
+// Production factory
+export const createTime = (): Time => ({ now: () => Date.now() });
+
+// Test factory with controllable time
+export const testCreateTime = (options?: {
+  readonly startAt?: Millis;
+  readonly autoIncrement?: boolean;
+}): TestTime => { ... };
+```
+
+### Vitest filtering (https://vitest.dev/guide/filtering)
+
+```bash
+# Run all tests in a package
+pnpm test --filter @evolu/common
+
+# Run a single file
+pnpm test --filter @evolu/common -- Task
+
+# Run a single test by name (-t flag)
+pnpm test --filter @evolu/common -- -t "yields and returns ok"
 ```
 
 ## Monorepo TypeScript issues
@@ -315,12 +526,12 @@ test("timeUntilEvent calculates correctly", () => {
 - **Be descriptive** - explain what the change does
 
 ```bash
-# ✅ Good
+# Good
 Add support for custom error formatters
 Fix memory leak in WebSocket reconnection
 Update schema validation to handle edge cases
 
-# ❌ Avoid
+# Avoid
 feat: add support for custom error formatters
 fix: memory leak in websocket reconnection
 Update schema validation to handle edge cases.
@@ -331,11 +542,11 @@ Update schema validation to handle edge cases.
 - **Write in past tense** - describe what was done, not what will be done
 
 ```markdown
-# ✅ Good
+# Good
 
 Added support for custom error formatters
 
-# ❌ Avoid
+# Avoid
 
 Add support for custom error formatters
 ```

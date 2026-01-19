@@ -1,16 +1,25 @@
 import { describe, expect, expectTypeOf, test } from "vitest";
-import { NonEmptyArray, NonEmptyReadonlyArray } from "../src/Array.js";
+import type { NonEmptyArray, NonEmptyReadonlyArray } from "../src/Array.js";
 import {
-  constFalse,
-  constNull,
-  constTrue,
-  constUndefined,
-  constVoid,
+  lazyFalse,
+  lazyNull,
+  lazyTrue,
+  lazyUndefined,
+  lazyVoid,
   exhaustiveCheck,
   identity,
   readonly,
+  todo,
 } from "../src/Function.js";
-import { ReadonlyRecord } from "../src/Object.js";
+import type { ReadonlyRecord } from "../src/Object.js";
+
+describe("exhaustiveCheck", () => {
+  test("throws error for unhandled case", () => {
+    expect(() => exhaustiveCheck("unexpected" as never)).toThrow(
+      'exhaustiveCheck unhandled case: "unexpected"',
+    );
+  });
+});
 
 describe("identity", () => {
   test("returns the same value", () => {
@@ -153,37 +162,55 @@ describe("readonly", () => {
       expectTypeOf(map).toEqualTypeOf<ReadonlyMap<string, number>>();
     });
   });
-});
 
-describe("exhaustiveCheck", () => {
-  test("throws error for unhandled case", () => {
-    expect(() => exhaustiveCheck("unexpected" as never)).toThrow(
-      'exhaustiveCheck unhandled case: "unexpected"',
-    );
+  describe("with ES2025 iterator .toArray()", () => {
+    test("converts iterator chain to ReadonlyArray", () => {
+      const result = readonly(
+        [1, 2, 3]
+          .values()
+          .map((x) => x * 2)
+          .toArray(),
+      );
+      expect(result).toEqual([2, 4, 6]);
+      expectTypeOf(result).toEqualTypeOf<ReadonlyArray<number>>();
+    });
   });
 });
 
-describe("const functions", () => {
-  test("constVoid returns void", () => {
-    constVoid();
-    expectTypeOf<ReturnType<typeof constVoid>>().toEqualTypeOf<void>();
+describe("lazy", () => {
+  test("lazyVoid returns void", () => {
+    expectTypeOf<ReturnType<typeof lazyVoid>>().toEqualTypeOf<void>();
   });
 
-  test("constUndefined returns undefined", () => {
-    expectTypeOf<
-      ReturnType<typeof constUndefined>
-    >().toEqualTypeOf<undefined>();
+  test("lazyUndefined returns undefined", () => {
+    expectTypeOf<ReturnType<typeof lazyUndefined>>().toEqualTypeOf<undefined>();
   });
 
-  test("constNull returns null", () => {
-    expect(constNull()).toBe(null);
+  test("lazyNull returns null", () => {
+    expect(lazyNull()).toBe(null);
   });
 
-  test("constTrue returns true", () => {
-    expect(constTrue()).toBe(true);
+  test("lazyTrue returns true", () => {
+    expect(lazyTrue()).toBe(true);
   });
 
-  test("constFalse returns false", () => {
-    expect(constFalse()).toBe(false);
+  test("lazyFalse returns false", () => {
+    expect(lazyFalse()).toBe(false);
+  });
+});
+
+describe("todo", () => {
+  test("throws", () => {
+    expect(() => todo()).toThrow("not yet implemented");
+  });
+
+  test("infers type from return type annotation", () => {
+    const fn = (): number => todo();
+    expectTypeOf(fn).returns.toEqualTypeOf<number>();
+  });
+
+  test("accepts explicit generic when no return type", () => {
+    const fn = () => todo<string>();
+    expectTypeOf(fn).returns.toEqualTypeOf<string>();
   });
 });

@@ -1,4 +1,4 @@
-import { SyncOwner } from "@evolu/common";
+import type { SyncOwner } from "@evolu/common";
 import { useEvolu } from "./useEvolu.js";
 
 /**

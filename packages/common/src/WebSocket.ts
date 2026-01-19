@@ -1,6 +1,14 @@
-import { constVoid } from "./Function.js";
-import { err, ok, Result } from "./Result.js";
-import { retry, RetryError, RetryOptions } from "./Task.js";
+/**
+ * WebSocket with auto-reconnect and offline support.
+ *
+ * @module
+ */
+
+import { lazyVoid } from "./Function.js";
+import type { RetryErrorOld, RetryOptionsOld } from "./OldTask.js";
+import { retryOld } from "./OldTask.js";
+import type { Result } from "./Result.js";
+import { err, ok } from "./Result.js";
 import { maxPositiveInt } from "./Type.js";
 
 /** WebSocket with auto-reconnect and offline support. */
@@ -62,7 +70,7 @@ export interface WebSocketOptions {
   onMessage?: (data: string | ArrayBuffer | Blob) => void;
 
   /** Options for retry behavior. */
-  retryOptions?: Omit<RetryOptions<WebSocketRetryError>, "signal">;
+  retryOptions?: Omit<RetryOptionsOld<WebSocketRetryError>, "signal">;
 
   /**
    * For custom WebSocket implementations.
@@ -77,7 +85,7 @@ export interface WebSocketOptions {
 export type WebSocketError =
   | WebSocketConnectError
   | WebSocketConnectionError
-  | RetryError<WebSocketRetryError>;
+  | RetryErrorOld<WebSocketRetryError>;
 
 /**
  * An error that occurs when a connection cannot be established due to a network
@@ -117,7 +125,7 @@ export interface WebSocketConnectionCloseError {
  * reconnect again. Retrying the connection can be controlled using the
  * retryOptions retryable predicate.
  *
- * ### How Binary Messages Work in WebSockets
+ * ## How Binary Messages Work in WebSockets
  *
  * The Server Chooses the Message Type:
  *
@@ -156,7 +164,7 @@ export const createWebSocket: CreateWebSocket = (
 
   const reconnectController = new AbortController();
 
-  const defaultRetryOptions: RetryOptions<WebSocketRetryError> = {
+  const defaultRetryOptions: RetryOptionsOld<WebSocketRetryError> = {
     retries: maxPositiveInt, // Practically infinite retries
   };
 
@@ -181,7 +189,7 @@ export const createWebSocket: CreateWebSocket = (
   };
 
   // To prevent a memory leak from pending connection promise.
-  let disposePromise: null | typeof constVoid = null;
+  let disposePromise: null | typeof lazyVoid = null;
 
   /**
    * This promise represents continuous connection which:
@@ -190,7 +198,7 @@ export const createWebSocket: CreateWebSocket = (
    * - Is rejected when a connection is closed.
    * - Is resolved when WebSocket is disposed().
    */
-  void retry(
+  void retryOld(
     {
       ...defaultRetryOptions,
       ...retryOptions,
@@ -232,8 +240,10 @@ export const createWebSocket: CreateWebSocket = (
           resolve(err({ type: "WebSocketConnectionCloseError", event }));
         };
 
-        socket.onmessage = (event) => {
-          onMessage?.(event.data as string | ArrayBuffer | Blob);
+        socket.onmessage = (
+          event: MessageEvent<string | ArrayBuffer | Blob>,
+        ) => {
+          onMessage?.(event.data);
         };
       }),
   )(reconnectController).then((result) => {
@@ -272,3 +282,66 @@ const nativeToStringState: Record<number, WebSocketReadyState> = {
   [WebSocket.CLOSING]: "closing",
   [WebSocket.CLOSED]: "closed",
 };
+
+/** Test WebSocket with methods to simulate events. */
+export interface TestWebSocket extends WebSocket {
+  readonly sentMessages: ReadonlyArray<Uint8Array>;
+  readonly simulateMessage: (message: Uint8Array) => void;
+  readonly simulateOpen: () => void;
+  readonly simulateClose: () => void;
+}
+
+/**
+ * Creates a test WebSocket that captures sent messages and allows simulating
+ * events.
+ */
+export const testCreateWebSocket = (
+  _url?: string,
+  options?: {
+    onOpen?: () => void;
+    onClose?: (event: CloseEvent) => void;
+    onError?: (error: any) => void;
+    onMessage?: (data: string | ArrayBuffer | Blob) => void;
+  },
+): TestWebSocket => {
+  const sentMessages: Array<Uint8Array> = [];
+  let isWebSocketOpen = false;
+
+  return {
+    get sentMessages() {
+      return sentMessages;
+    },
+    send: (data: string | ArrayBufferLike | Blob | ArrayBufferView) => {
+      sentMessages.push(data as Uint8Array);
+      return ok();
+    },
+    getReadyState: () => (isWebSocketOpen ? "open" : "connecting"),
+    isOpen: () => isWebSocketOpen,
+    simulateMessage: (message: Uint8Array) => {
+      if (options?.onMessage) {
+        options.onMessage(message.buffer as ArrayBuffer);
+      }
+    },
+    simulateOpen: () => {
+      isWebSocketOpen = true;
+      if (options?.onOpen) {
+        options.onOpen();
+      }
+    },
+    simulateClose: () => {
+      isWebSocketOpen = false;
+      if (options?.onClose) {
+        options.onClose({} as CloseEvent);
+      }
+    },
+    [Symbol.dispose]: lazyVoid,
+  };
+};
+
+/** Creates a dummy WebSocket for tests that don't need simulation. */
+export const testCreateDummyWebSocket: CreateWebSocket = () => ({
+  send: () => ok(),
+  getReadyState: () => "connecting",
+  isOpen: () => false,
+  [Symbol.dispose]: lazyVoid,
+});

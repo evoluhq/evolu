@@ -1,4 +1,10 @@
 /**
+ * Ordering and comparison utilities.
+ *
+ * @module
+ */
+
+/**
  * Compares two values of type `A` and returns their ordering.
  *
  * Ordering functions start with an 'order' prefix, e.g., `orderNumber`.

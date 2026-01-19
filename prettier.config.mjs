@@ -10,13 +10,15 @@ const prettierConfig = {
 
 /** @type {import("prettier-plugin-embed").PrettierPluginEmbedOptions} */
 const prettierPluginEmbedConfig = {
-  embeddedSqlTags: ["sql", "sql.prepared"],
-  embeddedSqlPlugin: "prettier-plugin-sql-cst",
   embeddedSqlParser: "sqlite",
-  sqlKeywordCase: "lower",
-  sqlParamTypes: ["$name"],
+  embeddedSqlPlugin: "prettier-plugin-sql-cst",
+  embeddedSqlTags: ["sql", "sql.prepared", "sql.raw"],
   sqlCanonicalSyntax: false,
+  sqlFunctionCase: "lower",
+  sqlKeywordCase: "lower",
   sqlLiteralCase: "lower",
+  sqlParamTypes: ["$name"],
+  sqlTypeCase: "lower",
 };
 
 const config = {

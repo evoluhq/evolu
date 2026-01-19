@@ -1,5 +1,16 @@
-import { JsonArray, JsonObject, JsonValue, JsonValueInput } from "./Type.js";
-import { Order } from "./Order.js";
+/**
+ * Equality comparison functions and utilities.
+ *
+ * @module
+ */
+
+import type { Order } from "./Order.js";
+import type {
+  JsonArray,
+  JsonObject,
+  JsonValue,
+  JsonValueInput,
+} from "./Type.js";
 
 /**
  * Compares two values of the same type `A` for equality.
@@ -50,6 +61,22 @@ export const createEqArrayLike =
 
     return true;
   };
+
+/**
+ * Compares two array-like structures by strict reference equality (`===`).
+ *
+ * Useful for structural sharing checks where elements are compared by identity.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const a = { x: 1 };
+ * const b = { x: 1 };
+ * eqArrayStrict([a, a], [a, a]); // true (same references)
+ * eqArrayStrict([a], [b]); // false (different references, even if equal values)
+ * ```
+ */
+export const eqArrayStrict = createEqArrayLike(eqStrict);
 
 /**
  * Compares two array-like structures of numbers for equality.

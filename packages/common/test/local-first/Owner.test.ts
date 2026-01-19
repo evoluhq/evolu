@@ -8,12 +8,8 @@ import {
   ownerIdToOwnerIdBytes,
   ownerSecretToMnemonic,
 } from "../../src/index.js";
-import {
-  testDeps,
-  testOwner,
-  testOwnerSecret,
-  testOwnerSecret2,
-} from "../_deps.js";
+import { createTestDeps } from "../../src/Test.js";
+import { testOwner, testOwnerSecret, testOwnerSecret2 } from "./_fixtures.js";
 
 test("ownerIdToOwnerIdBytes/ownerIdBytesToOwnerId", () => {
   const id = testOwner.id;
@@ -21,7 +17,8 @@ test("ownerIdToOwnerIdBytes/ownerIdBytesToOwnerId", () => {
 });
 
 test("ownerSecretToMnemonic and mnemonicToOwnerSecret are inverses", () => {
-  const secret = createOwnerSecret(testDeps);
+  const deps = createTestDeps();
+  const secret = createOwnerSecret(deps);
   const mnemonic = ownerSecretToMnemonic(secret);
   const backToSecret = mnemonicToOwnerSecret(mnemonic);
 

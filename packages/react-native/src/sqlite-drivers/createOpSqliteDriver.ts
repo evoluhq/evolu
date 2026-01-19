@@ -1,13 +1,13 @@
 import {
   bytesToHex,
-  constVoid,
   createPreparedStatementsCache,
-  CreateSqliteDriver,
+  type CreateSqliteDriver,
   isSqlMutation,
-  SqliteDriver,
-  SqliteRow,
+  lazyVoid,
+  type SqliteDriver,
+  type SqliteRow,
 } from "@evolu/common";
-import { open, PreparedStatement } from "@op-engineering/op-sqlite";
+import { open, type PreparedStatement } from "@op-engineering/op-sqlite";
 
 export const createOpSqliteDriver: CreateSqliteDriver = (name, options) => {
   // https://op-engineering.github.io/op-sqlite/docs/configuration#in-memory
@@ -26,7 +26,7 @@ export const createOpSqliteDriver: CreateSqliteDriver = (name, options) => {
   const cache = createPreparedStatementsCache<PreparedStatement>(
     (sql) => db.prepareStatement(sql),
     // op-sqlite doesn't have API for that
-    constVoid,
+    lazyVoid,
   );
 
   const driver: SqliteDriver = {

@@ -1,4 +1,4 @@
-import { Evolu, EvoluSchema } from "@evolu/common";
+import type { Evolu, EvoluSchema } from "@evolu/common";
 import { useEvolu } from "./useEvolu.js";
 
 /**

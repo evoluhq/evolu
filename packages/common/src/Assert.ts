@@ -1,4 +1,10 @@
-import type { Type } from "./Type.js";
+/**
+ * Runtime assertions for invariant checking.
+ *
+ * @module
+ */
+
+import type { AnyType, InferType, Type } from "./Type.js";
 
 /**
  * Ensures a condition is true, throwing an error with the provided message if
@@ -7,23 +13,15 @@ import type { Type } from "./Type.js";
  * Prevents invalid states from propagating through the system by halting
  * execution when a condition fails, improving reliability and debuggability.
  *
- * **Warning**: Do not use this instead of {@link Type}. Assertions are intended
- * for conditions that are logically guaranteed but not statically known by
- * TypeScript, or for catching and signaling developer mistakes eagerly (e.g.,
- * invalid configuration).
+ * Do not use this instead of {@link Type}. Assertions are intended for
+ * conditions that are logically guaranteed but not statically known by
+ * TypeScript, or for catching and signaling developer mistakes eagerly.
  *
  * ### Example
  *
  * ```ts
  * assert(true, "true is not true"); // no-op
  * assert(false, "true is not true"); // throws Error
- *
- * const length = buffer.getLength();
- * // We know length is logically non-negative, but TypeScript doesn't
- * assert(
- *   NonNegativeInt.is(length),
- *   "buffer length should be non-negative",
- * );
  * ```
  */
 export const assert: (
@@ -81,4 +79,26 @@ export const assertNonEmptyReadonlyArray: <T>(
   message = "Expected a non-empty readonly array.",
 ) => {
   assert(arr.length > 0, message);
+};
+
+/**
+ * Ensures a value conforms to a {@link Type}.
+ *
+ * Uses the Type name for the default error message.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const length = buffer.getLength();
+ *
+ * // We know length is logically non-negative, but TypeScript doesn't.
+ * assertType(NonNegativeInt, length);
+ * ```
+ */
+export const assertType: <T extends AnyType>(
+  type: T,
+  value: unknown,
+  message?: string,
+) => asserts value is InferType<T> = (type, value, message) => {
+  assert(type.is(value), message ?? `Expected ${type.name}.`);
 };

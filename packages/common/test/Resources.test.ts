@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import type { Brand } from "../src/Brand.js";
 import { createResources } from "../src/Resources.js";
 import { err } from "../src/Result.js";
-import { wait } from "../src/Task.js";
+import { wait } from "../src/OldTask.js";
 
 interface Resource extends Disposable {
   readonly id: ResourceKey;
