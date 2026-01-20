@@ -1,8 +1,14 @@
 /**
- * Object utilities for plain object handling and manipulation.
+ * Object utilities.
  *
  * @module
  */
+
+/**
+ * A read-only `Record<K, V>` with `K extends keyof any` to preserve branded key
+ * types (e.g., in {@link mapObject}).
+ */
+export type ReadonlyRecord<K extends keyof any, V> = Readonly<Record<K, V>>;
 
 /**
  * Checks if a value is a plain object (e.g., created with `{}` or `Object`).
@@ -51,15 +57,6 @@ export const isIterable = (value: unknown): value is Iterable<unknown> =>
   typeof (value as Iterable<unknown>)[Symbol.iterator] === "function";
 
 /**
- * A read-only `Record<K, V>` with `K extends keyof any` to preserve branded key
- * types (e.g., in {@link mapObject}).
- */
-export type ReadonlyRecord<K extends keyof any, V> = Readonly<Record<K, V>>;
-
-// A helper type to remove symbol keys (e.g for branded objects).
-type StringKeyOf<T> = Extract<keyof T, string>;
-
-/**
  * Like `Object.entries` but preserves branded keys.
  *
  * ### Example
@@ -76,6 +73,29 @@ export const objectToEntries = <T extends Record<string, any>>(
   Object.entries(record) as Array<
     [StringKeyOf<T>, T[StringKeyOf<T>]]
   > as ReadonlyArray<[StringKeyOf<T>, T[StringKeyOf<T>]]>;
+
+// A helper type to remove symbol keys (e.g for branded objects).
+type StringKeyOf<T> = Extract<keyof T, string>;
+
+/**
+ * Creates an object from key-value pairs, preserving branded key types.
+ *
+ * The inverse of {@link objectToEntries}. Use when you need type-safe
+ * reconstruction of objects with branded keys.
+ *
+ * ### Example
+ *
+ * ```ts
+ * type UserId = string & { readonly __brand: "UserId" };
+ * const entries: ReadonlyArray<[UserId, string]> = [
+ *   ["u1" as UserId, "Alice"],
+ * ];
+ * const users = objectFromEntries(entries); // ReadonlyRecord<UserId, string>
+ * ```
+ */
+export const objectFromEntries = <K extends string, V>(
+  entries: Iterable<readonly [K, V]>,
+): ReadonlyRecord<K, V> => Object.fromEntries(entries) as ReadonlyRecord<K, V>;
 
 /**
  * Maps a `ReadonlyRecord<K, V>` to a new `ReadonlyRecord<K, U>`, preserving
