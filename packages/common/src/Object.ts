@@ -36,7 +36,7 @@ export const isFunction = (value: unknown): value is globalThis.Function =>
   typeof value === "function";
 
 /**
- * Checks if a value implements {@link Iterable}.
+ * Checks if a value is {@link Iterable}.
  *
  * ### Example
  *
