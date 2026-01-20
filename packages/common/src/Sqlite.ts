@@ -23,7 +23,7 @@ import {
   Uint8Array,
   union,
 } from "./Type.js";
-import type { IntentionalNever, Predicate } from "./Types.js";
+import type { Predicate } from "./Types.js";
 
 /**
  * SQLite driver interface. This is the minimal interface that platform-specific
@@ -179,7 +179,7 @@ export const createSqlite =
 
               deps.console?.log("[sql]", { result });
 
-              return result as IntentionalNever;
+              return result as never;
             },
             (error): SqliteError => ({
               type: "SqliteError",
@@ -291,13 +291,13 @@ export const createPreparedStatementsCache = <P>(
   return {
     get: (query, alwaysPrepare) => {
       if (alwaysPrepare !== true && !query.options?.prepare)
-        return null as IntentionalNever;
+        return null as never;
       let statement = cache.get(query.sql);
       if (!statement) {
         statement = factory(query.sql);
         cache.set(query.sql, statement);
       }
-      return statement as IntentionalNever;
+      return statement as never;
     },
 
     [Symbol.dispose]: () => {

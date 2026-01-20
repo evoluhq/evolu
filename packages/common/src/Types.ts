@@ -129,12 +129,6 @@ export type NullablePartial<
 > = { [K in keyof NP]: NP[K] };
 
 /**
- * A type alias for `never` that is used intentionally when casting is not
- * needed and unit tests exist to ensure correctness.
- */
-export type IntentionalNever = never;
-
-/**
  * String, number, bigint, boolean, undefined, null
  *
  * https://www.typescriptlang.org/docs/handbook/2/everyday-types.html#literal-types

@@ -35,7 +35,6 @@ import type {
   ValidMutationSizeError,
 } from "../Type.js";
 import { createId, Id, SimpleName } from "../Type.js";
-import type { IntentionalNever } from "../Types.js";
 import type { CreateMessageChannelDep } from "../Worker.js";
 import type { EvoluError } from "./Error.js";
 import type { AppOwner, OwnerTransport } from "./Owner.js";
@@ -1118,7 +1117,7 @@ export const createQuery = <R extends Row>(
   queryCallback: Parameters<CreateQuery<EvoluSchema>>[0],
   options?: Parameters<CreateQuery<EvoluSchema>>[1],
 ): Query<R> => {
-  const compiledQuery = queryCallback(kysely as IntentionalNever).compile();
+  const compiledQuery = queryCallback(kysely as never).compile();
 
   if (isSqlMutation(compiledQuery.sql))
     throw new Error(

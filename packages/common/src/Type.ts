@@ -18,13 +18,7 @@ import type { NextResult, Result } from "./Result.js";
 import { err, getOrNull, getOrThrow, ok, trySync } from "./Result.js";
 import { safelyStringifyUnknownValue } from "./String.js";
 import type { TimeDep } from "./Time.js";
-import type {
-  IntentionalNever,
-  Literal,
-  Refinement,
-  Simplify,
-  WidenLiteral,
-} from "./Types.js";
+import type { Literal, Refinement, Simplify, WidenLiteral } from "./Types.js";
 
 /**
  * Evolu {@link Type} is like a type guard that returns typed errors (via
@@ -1087,15 +1081,15 @@ export function brand<
     ? (value: unknown) => {
         const parentResult = parent.fromUnknown(value);
         if (!parentResult.ok) return parentResult;
-        return refine(parentResult.value as IntentionalNever);
+        return refine(parentResult.value as never);
       }
     : (value: unknown) => {
         const parentResult = parent.fromUnknown(value);
         if (!parentResult.ok)
-          return err<BrandWithoutRefineError<Name, IntentionalNever>>({
+          return err<BrandWithoutRefineError<Name, never>>({
             type: name,
             value,
-            parentError: parentResult.error as IntentionalNever,
+            parentError: parentResult.error as never,
           });
         return ok(parentResult.value);
       };
@@ -1103,7 +1097,7 @@ export function brand<
   return {
     ...createType("Brand", {
       fromUnknown,
-      fromParent: (refine ?? ok) as IntentionalNever,
+      fromParent: (refine ?? ok) as never,
     }),
     brand: name,
     parentType: parent,
@@ -2707,7 +2701,7 @@ export const record = <
           type: "Record",
           value,
           reason: { kind: "Key", key: rawKey, error: keyResult.error },
-        } as IntentionalNever);
+        } as never);
       }
 
       const valueResult = valueType.fromUnknown(rawValue);
@@ -2718,12 +2712,12 @@ export const record = <
           reason: {
             kind: "Value",
             key: rawKey,
-            error: valueResult.error as IntentionalNever,
+            error: valueResult.error as never,
           },
         });
       }
 
-      result[keyResult.value] = valueResult.value as IntentionalNever;
+      result[keyResult.value] = valueResult.value as never;
     }
 
     return ok(result);
@@ -2780,7 +2774,7 @@ export const record = <
     }),
     key: keyType,
     value: valueType,
-  } as IntentionalNever;
+  } as never;
 };
 
 /**
@@ -3017,9 +3011,9 @@ export function object(
 
       const propResult = props[key].fromUnknown(value[key]);
       if (!propResult.ok) {
-        errors[key] = propResult.error as IntentionalNever;
+        errors[key] = propResult.error as never;
       } else {
-        result[key] = propResult.value as IntentionalNever;
+        result[key] = propResult.value as never;
       }
     }
 
@@ -3037,7 +3031,7 @@ export function object(
             reason: {
               kind: "IndexKey",
               key,
-              error: keyResult.error as IntentionalNever,
+              error: keyResult.error as never,
             },
           });
         }
@@ -3050,12 +3044,12 @@ export function object(
             reason: {
               kind: "IndexValue",
               key,
-              error: valueResult.error as IntentionalNever,
+              error: valueResult.error as never,
             },
           });
         }
 
-        result[keyResult.value] = valueResult.value as IntentionalNever;
+        result[keyResult.value] = valueResult.value as never;
       }
     } else if (extraKeys.length > 0) {
       return err({
@@ -3897,7 +3891,7 @@ export const tuple = <Elements extends [AnyType, ...ReadonlyArray<AnyType>]>(
           reason: {
             kind: "Element",
             index: i,
-            error: elementResult.error as IntentionalNever,
+            error: elementResult.error as never,
           },
         });
       }
@@ -3928,7 +3922,7 @@ export const tuple = <Elements extends [AnyType, ...ReadonlyArray<AnyType>]>(
           reason: {
             kind: "Element",
             index: i,
-            error: elementResult.error as IntentionalNever,
+            error: elementResult.error as never,
           },
         });
       }
@@ -3944,7 +3938,7 @@ export const tuple = <Elements extends [AnyType, ...ReadonlyArray<AnyType>]>(
       fromParent,
     }),
     elements,
-  } as IntentionalNever;
+  } as never;
 };
 
 /**
@@ -4242,11 +4236,7 @@ export const json = <T extends AnyType, Name extends TypeName>(
     return ok(value);
   }) as BrandType<typeof String, Name, JsonError | InferErrors<T>, StringError>;
 
-  return [
-    BrandedJsonType,
-    jsonValueToJson as IntentionalNever,
-    jsonToJsonValue as IntentionalNever,
-  ];
+  return [BrandedJsonType, jsonValueToJson as never, jsonToJsonValue as never];
 };
 
 /**

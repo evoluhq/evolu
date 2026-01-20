@@ -16,7 +16,7 @@ import {
   NonNegativeInt,
   PositiveInt,
 } from "./Type.js";
-import type { IntentionalNever, Predicate, WidenLiteral } from "./Types.js";
+import type { Predicate, WidenLiteral } from "./Types.js";
 
 export const increment = (n: number): number => n + 1;
 
@@ -48,13 +48,13 @@ export const isBetween =
 export const min = <T extends number>(
   ...values: [T, ...ReadonlyArray<T>]
 ): IsBranded<T> extends true ? T : WidenLiteral<T> =>
-  values.reduce((a, b) => (a < b ? a : b)) as IntentionalNever;
+  values.reduce((a, b) => (a < b ? a : b)) as never;
 
 /** Returns the maximum value, preserving branded type if applicable. */
 export const max = <T extends number>(
   ...values: [T, ...ReadonlyArray<T>]
 ): IsBranded<T> extends true ? T : WidenLiteral<T> =>
-  values.reduce((a, b) => (a > b ? a : b)) as IntentionalNever;
+  values.reduce((a, b) => (a > b ? a : b)) as never;
 
 /**
  * Divides items into buckets as evenly as possible, ensuring each bucket has at
