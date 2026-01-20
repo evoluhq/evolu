@@ -294,8 +294,12 @@ export function ok(): Result<void>;
 /** Creates an {@link Ok} result with a specified value. */
 export function ok<T>(value: T): Result<T>;
 export function ok<T>(value?: T): Result<T> {
+  if (arguments.length === 0) return okVoid as Result<T>;
   return { ok: true, value: value as T };
 }
+
+/** Cache ok() to avoid repeated allocations (ok(undefined) stays distinct). */
+const okVoid: Result<void> = { ok: true, value: undefined };
 
 /** Creates an {@link Err} result. */
 export const err = <E>(error: E): Result<never, E> => ({ ok: false, error });

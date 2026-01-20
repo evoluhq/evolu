@@ -21,6 +21,11 @@ describe("ok", () => {
     expect(ok()).toStrictEqual({ ok: true, value: undefined });
   });
 
+  it("distinguishes ok() from ok(undefined)", () => {
+    expect(ok()).toBe(ok());
+    expect(ok(undefined)).not.toBe(ok());
+  });
+
   it("rejects Ok<void> when Result expects a value", () => {
     // @ts-expect-error Type 'Ok<void>' is not assignable to type 'Result<string, Error>'
     const _result: Result<string, Error> = ok();
