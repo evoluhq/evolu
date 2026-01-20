@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import {
   createRecord,
   getProperty,
+  isFunction,
   isIterable,
   isPlainObject,
 } from "../src/Object.js";
@@ -11,6 +12,19 @@ test("isPlainObject", () => {
   expect(isPlainObject(new Date())).toBe(false);
   expect(isPlainObject([])).toBe(false);
   expect(isPlainObject(null)).toBe(false);
+});
+
+test("isFunction", () => {
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  expect(isFunction(() => {})).toBe(true);
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  expect(isFunction(function () {})).toBe(true);
+  expect(isFunction({})).toBe(false);
+  expect(isFunction([])).toBe(false);
+  expect(isFunction("fn")).toBe(false);
+  expect(isFunction(123)).toBe(false);
+  expect(isFunction(null)).toBe(false);
+  expect(isFunction(undefined)).toBe(false);
 });
 
 test("isIterable", () => {
@@ -37,9 +51,10 @@ test("createRecord", () => {
 });
 
 test("getProperty", () => {
-  const record: Record<string, number> = { a: 1, b: 2 };
+  const record = { a: 1, b: 2 };
 
   expect(getProperty(record, "a")).toBe(1);
   expect(getProperty(record, "b")).toBe(2);
+  // @ts-expect-error c does not exists
   expect(getProperty(record, "c")).toBe(undefined);
 });

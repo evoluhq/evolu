@@ -22,6 +22,20 @@ export const isPlainObject = (
   Object.prototype.toString.call(value) === "[object Object]";
 
 /**
+ * Checks if a value is a function.
+ *
+ * ### Example
+ *
+ * ```ts
+ * isFunction(() => {}); // true
+ * isFunction(function () {}); // true
+ * isFunction({}); // false
+ * ```
+ */
+export const isFunction = (value: unknown): value is globalThis.Function =>
+  typeof value === "function";
+
+/**
  * Checks if a value implements {@link Iterable}.
  *
  * ### Example
@@ -137,8 +151,8 @@ export const emptyRecord: Readonly<Record<string, never>> = createRecord();
  */
 export const getProperty = <K extends string, V>(
   record: ReadonlyRecord<K, V>,
-  key: string,
-): V | undefined => (key in record ? record[key as K] : undefined);
+  key: K,
+): V | undefined => (key in record ? record[key] : undefined);
 
 /**
  * A disposable wrapper around `URL.createObjectURL` that automatically revokes

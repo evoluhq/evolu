@@ -12,7 +12,7 @@ import { pack } from "msgpackr";
 import type { Brand } from "./Brand.js";
 import type { RandomBytesDep } from "./Crypto.js";
 import { exhaustiveCheck } from "./Function.js";
-import { isPlainObject } from "./Object.js";
+import { isFunction, isPlainObject } from "./Object.js";
 import { hasNodeBuffer } from "./Platform.js";
 import type { NextResult, Result } from "./Result.js";
 import { err, getOrNull, getOrThrow, ok, trySync } from "./Result.js";
@@ -506,6 +506,11 @@ export interface TypeErrorWithReason<
   readonly reason: Reason;
 }
 
+/**
+ * A {@link Type} with all type parameters set to `any`.
+ *
+ * @group Utilities
+ */
 export type AnyType = Type<any, any, any, any, any, any>;
 
 /**
@@ -809,7 +814,7 @@ export const formatNullError = createBaseTypeErrorFormatter<NullError>();
 
 /** @group Base Types */
 export const Function = base("Function", (value) =>
-  typeof value === "function"
+  isFunction(value)
     ? ok(value)
     : err<FunctionError>({ type: "Function", value }),
 );
@@ -2085,7 +2090,7 @@ export type PositiveInt = typeof PositiveInt.Type;
 /** Minimum {@link PositiveInt} value (1). */
 export const minPositiveInt = PositiveInt.orThrow(1);
 
-/** Maximum safe {@link PositiveInt} value for practically infinite operations. */
+/** Maximum {@link PositiveInt} value (MAX_SAFE_INTEGER). */
 export const maxPositiveInt = PositiveInt.orThrow(
   globalThis.Number.MAX_SAFE_INTEGER,
 );
