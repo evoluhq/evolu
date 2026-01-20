@@ -147,6 +147,38 @@ export type NonEmptyReadonlyArray<T> = readonly [T, ...ReadonlyArray<T>];
 export const emptyArray: ReadonlyArray<never> = [];
 
 /**
+ * Creates a readonly array of the specified length using a function to produce
+ * each element.
+ *
+ * ### Example
+ *
+ * ```ts
+ * // Create array of indices
+ * createArray(3, identity); // [0, 1, 2]
+ *
+ * // Create array of objects (each is a unique instance)
+ * createArray(2, () => ({ count: 0 })); // [{ count: 0 }, { count: 0 }]
+ * ```
+ *
+ * @group Constructors
+ */
+export const createArray = <T>(
+  length: number,
+  map: (index: number) => T,
+): ReadonlyArray<T> => Array.from({ length }, (_, i) => map(i));
+
+/**
+ * Converts an {@link Iterable} to a readonly array.
+ *
+ * Returns the input unchanged if it's already an array, avoiding unnecessary
+ * allocation.
+ *
+ * @group Constructors
+ */
+export const ensureArray = <T>(iterable: Iterable<T>): ReadonlyArray<T> =>
+  Array.isArray(iterable) ? (iterable as ReadonlyArray<T>) : [...iterable];
+
+/**
  * Checks if an array is non-empty and narrows its type to {@link NonEmptyArray}
  * or {@link NonEmptyReadonlyArray} based on the input.
  *

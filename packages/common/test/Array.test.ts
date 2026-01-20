@@ -2,6 +2,7 @@ import { describe, expect, expectTypeOf, test } from "vitest";
 import {
   appendToArray,
   concatArrays,
+  createArray,
   dedupeArray,
   emptyArray,
   filterArray,
@@ -22,6 +23,7 @@ import {
 } from "../src/Array.js";
 import { err, ok } from "../src/Result.js";
 import { NonEmptyString, PositiveInt } from "../src/Type.js";
+import { identity } from "../src/Function.js";
 
 describe("Types", () => {
   test("NonEmptyArray requires at least one element", () => {
@@ -60,6 +62,23 @@ describe("Constants", () => {
 
       items = [1, 2, 3];
       expect(items === emptyArray).toBe(false);
+    });
+  });
+
+  describe("createArray", () => {
+    test("creates array with specified length", () => {
+      const result = createArray(3, identity);
+      expect(result).toEqual([0, 1, 2]);
+    });
+
+    test("returns readonly array", () => {
+      const result = createArray(2, () => "x");
+      expectTypeOf(result).toEqualTypeOf<ReadonlyArray<string>>();
+    });
+
+    test("passes index to callback", () => {
+      const result = createArray(4, (i) => i * 10);
+      expect(result).toEqual([0, 10, 20, 30]);
     });
   });
 });
