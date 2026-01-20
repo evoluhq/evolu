@@ -1,5 +1,14 @@
 import { describe, expect, expectTypeOf, it, test } from "vitest";
-import { done, err, getOrThrow, ok, tryAsync, trySync } from "../src/Result.js";
+import {
+  done,
+  err,
+  getOrThrow,
+  isErr,
+  isOk,
+  ok,
+  tryAsync,
+  trySync,
+} from "../src/Result.js";
 import type {
   Done,
   Err,
@@ -58,6 +67,28 @@ describe("err", () => {
   it("returns Result<never, E> for correct type inference", () => {
     const result = err("oops");
     expectTypeOf(result).toEqualTypeOf<Result<never, string>>();
+  });
+});
+
+describe("isOk and isErr", () => {
+  it("identifies Ok result", () => {
+    const result = ok(123);
+    expect(isOk(result)).toBe(true);
+    expect(isErr(result)).toBe(false);
+
+    if (isOk(result)) {
+      expectTypeOf(result.value).toEqualTypeOf<number>();
+    }
+  });
+
+  it("identifies Err result", () => {
+    const result = err({ type: "TestError" as const });
+    expect(isOk(result)).toBe(false);
+    expect(isErr(result)).toBe(true);
+
+    if (isErr(result)) {
+      expectTypeOf(result.error).toEqualTypeOf({ type: "TestError" as const });
+    }
   });
 });
 
