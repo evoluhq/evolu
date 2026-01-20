@@ -1,6 +1,8 @@
 import { assert, describe, expect, expectTypeOf, test } from "vitest";
 import { isNonEmptyArray } from "../src/Array.js";
+import { testCreateConsole } from "../src/Console.js";
 import { exhaustiveCheck } from "../src/Function.js";
+import { testCreateRandom } from "../src/Random.js";
 import { createRef } from "../src/Ref.js";
 import type { Done, Result } from "../src/Result.js";
 import { done, err, ok, tryAsync } from "../src/Result.js";
@@ -27,6 +29,8 @@ import type {
 } from "../src/Task.js";
 import {
   AbortError,
+  all,
+  AllFailedError,
   AsyncDisposableStack,
   createDeferred,
   createGate,
@@ -46,12 +50,11 @@ import {
   TimeoutError,
   unabortable,
   unabortableMask,
+  withConcurrency,
   yieldNow,
 } from "../src/Task.js";
 import { createTestDeps, createTestRunner } from "../src/Test.js";
 import { createTime, Millis, msLongTask, testCreateTime } from "../src/Time.js";
-import { testCreateConsole } from "../src/Console.js";
-import { testCreateRandom } from "../src/Random.js";
 import type { Typed } from "../src/Type.js";
 import { Id, minPositiveInt, PositiveInt } from "../src/Type.js";
 
@@ -610,6 +613,19 @@ describe("Runner", () => {
       expect(stateInAbortHandler!.type).toBe("completing");
       expect(stateAfterAwait!.type).toBe("completing");
       expect(run.getState().type).toBe("completed");
+    });
+
+    test("defaults completed result and outcome to ok", async () => {
+      const run = createRunner();
+
+      await run[Symbol.asyncDispose]();
+
+      const state = run.getState();
+      expect(state).toEqual({
+        type: "completed",
+        result: ok(),
+        outcome: ok(),
+      });
     });
 
     test("is idempotent", async () => {
@@ -2186,15 +2202,12 @@ describe("AsyncDisposableStack", () => {
         });
       };
 
-      // Run factory - task scope ends after this
       const bundle = await run(createBundle);
       expect(bundle.ok).toBe(true);
       if (!bundle.ok) throw new Error("unreachable");
 
       events.push("using bundle after factory ended");
 
-      // Factory task scope is dead, but cleanup should still work
-      // because defer() uses daemon (root scope)
       await bundle.value[Symbol.asyncDispose]();
 
       expect(events).toEqual([
@@ -2238,15 +2251,12 @@ describe("AsyncDisposableStack", () => {
         });
       };
 
-      // Run factory - task scope ends after this
       const bundle = await run(createBundle);
       expect(bundle.ok).toBe(true);
       if (!bundle.ok) throw new Error("unreachable");
 
       events.push(`using ${bundle.value.handle.id} after factory ended`);
 
-      // Factory task scope is dead, but disposal should still work
-      // because adopt() uses daemon (root scope)
       await bundle.value[Symbol.asyncDispose]();
 
       expect(events).toEqual([
@@ -3127,7 +3137,7 @@ describe("repeat", () => {
     expect(count).toBe(1);
   });
 
-  test("uses forever schedule when unbounded", async () => {
+  test("uses forever schedule when unlimited", async () => {
     await using run = createRunner();
 
     let count = 0;
@@ -4284,6 +4294,470 @@ describe("concurrency", () => {
 
       mutex[Symbol.dispose]();
     });
+  });
+});
+
+describe("all", () => {
+  test("runs tasks sequentially by default", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+
+    const createTask =
+      (id: number): Task<number> =>
+      async () => {
+        events.push(`start ${id}`);
+        await Promise.resolve();
+        events.push(`end ${id}`);
+        return ok(id);
+      };
+
+    const result = await run(
+      all([createTask(1), createTask(2), createTask(3)]),
+    );
+
+    expect(result).toEqual(ok([1, 2, 3]));
+    expect(events).toEqual([
+      "start 1",
+      "end 1",
+      "start 2",
+      "end 2",
+      "start 3",
+      "end 3",
+    ]);
+  });
+
+  test("returns empty array for empty input", async () => {
+    await using run = createRunner();
+
+    const emptyTasks: Array<Task<number>> = [];
+    const result = await run(all(emptyTasks));
+
+    expect(result).toEqual(ok([]));
+  });
+
+  test("fails fast on first error", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+    const canFail = Promise.withResolvers<void>();
+
+    const slowTask: Task<string> = async ({ signal }) => {
+      events.push("slow start");
+      // Wait until aborted or a very long time
+      await new Promise<void>((resolve) => {
+        if (signal.aborted) {
+          resolve();
+          return;
+        }
+        signal.addEventListener("abort", () => resolve(), { once: true });
+      });
+      if (!signal.aborted) {
+        events.push("slow end");
+      }
+      return ok("slow");
+    };
+
+    const failingTask: Task<string, MyError> = async () => {
+      events.push("fail start");
+      await canFail.promise;
+      events.push("fail end");
+      return err({ type: "MyError" });
+    };
+
+    const fiber = run(withConcurrency(100, all([slowTask, failingTask])));
+
+    expect(events).toEqual(["slow start", "fail start"]);
+
+    // Let failing task fail
+    canFail.resolve();
+
+    const result = await fiber;
+
+    expect(result).toEqual(err({ type: "MyError" }));
+    // Slow task was aborted (no "slow end")
+    expect(events).not.toContain("slow end");
+  });
+
+  test("aborts others when a task throws", async () => {
+    await using run = createRunner();
+
+    const slowObservedAbort = Promise.withResolvers<unknown>();
+
+    const slowTask: Task<void> = async (run) => {
+      await new Promise<void>((resolve) => {
+        run.onAbort(() => resolve());
+      });
+      slowObservedAbort.resolve(run.signal.reason);
+      return ok();
+    };
+
+    const throwingTask: Task<void> = () => {
+      throw new Error("boom");
+    };
+
+    await expect(
+      run(withConcurrency(all([slowTask, throwingTask]))),
+    ).rejects.toThrow("boom");
+
+    const slowAbortReason = await slowObservedAbort.promise;
+    assert(AbortError.is(slowAbortReason));
+    expect(AllFailedError.is(slowAbortReason.cause)).toBe(true);
+  });
+
+  test("propagates abort cause to other tasks", async () => {
+    await using run = createRunner();
+
+    const abortCause = { type: "TestAbort" } as const;
+    const causes: Array<unknown> = [];
+
+    const waitForAbort: Task<void> = (run) =>
+      new Promise((resolve) => {
+        run.onAbort((cause) => {
+          causes.push(cause);
+          resolve(ok());
+        });
+      });
+
+    const abortingTask: Task<void, AbortError> = () =>
+      err({ type: "AbortError", cause: abortCause });
+
+    const fiber = run(
+      withConcurrency(3, all([waitForAbort, abortingTask, waitForAbort])),
+    );
+
+    const result = await fiber;
+
+    expect(result).toEqual(err({ type: "AbortError", cause: abortCause }));
+    expect(causes).toEqual([abortCause, abortCause]);
+  });
+
+  test("limits concurrency with explicit number", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+    const canFinish = Promise.withResolvers<void>();
+
+    const createTask =
+      (id: number): Task<number> =>
+      async () => {
+        events.push(`start ${id}`);
+        await canFinish.promise;
+        events.push(`end ${id}`);
+        return ok(id);
+      };
+
+    const fiber = run(
+      withConcurrency(
+        PositiveInt.orThrow(2),
+        all([createTask(1), createTask(2), createTask(3), createTask(4)]),
+      ),
+    );
+
+    // Only 2 tasks should start
+    expect(events).toEqual(["start 1", "start 2"]);
+
+    canFinish.resolve();
+    const result = await fiber;
+
+    expect(result).toEqual(ok([1, 2, 3, 4]));
+    expect(events).toContain("start 3");
+    expect(events).toContain("start 4");
+  });
+
+  test("supports struct input and returns object with same keys", async () => {
+    await using run = createRunner();
+
+    const taskA: Task<number> = () => ok(42);
+    const taskB: Task<string> = () => ok("hello");
+    const taskC: Task<boolean> = () => ok(true);
+
+    const result = await run(all({ a: taskA, b: taskB, c: taskC }));
+
+    expect(result).toEqual(ok({ a: 42, b: "hello", c: true }));
+  });
+
+  test("struct preserves types", async () => {
+    await using run = createRunner();
+
+    const struct = {
+      num: (() => ok(42)) as Task<number>,
+      str: (() => ok("hello")) as Task<string>,
+    };
+
+    const result = await run(all(struct));
+    if (result.ok) {
+      expectTypeOf(result.value.num).toEqualTypeOf<number>();
+      expectTypeOf(result.value.str).toEqualTypeOf<string>();
+    }
+  });
+
+  test("struct fails fast on first error", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+    const canFail = Promise.withResolvers<void>();
+
+    const goodTask: Task<string> = async ({ signal }) => {
+      events.push("good start");
+      await new Promise<void>((resolve) => {
+        if (signal.aborted) {
+          resolve();
+          return;
+        }
+        signal.addEventListener("abort", () => resolve(), { once: true });
+      });
+      return ok("good");
+    };
+
+    const badTask: Task<string, MyError> = async () => {
+      events.push("bad start");
+      await canFail.promise;
+      return err({ type: "MyError" });
+    };
+
+    const fiber = run(
+      withConcurrency(100, all({ good: goodTask, bad: badTask })),
+    );
+
+    expect(events).toEqual(["good start", "bad start"]);
+
+    canFail.resolve();
+    const result = await fiber;
+
+    expect(result).toEqual(err({ type: "MyError" }));
+  });
+
+  test("struct returns empty object for empty input", async () => {
+    await using run = createRunner();
+
+    const result = await run(all({}));
+
+    expect(result).toEqual(ok({}));
+  });
+
+  test("struct respects withConcurrency", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+    const canFinish = Promise.withResolvers<void>();
+
+    const createTask =
+      (id: string): Task<string> =>
+      async () => {
+        events.push(`start ${id}`);
+        await canFinish.promise;
+        events.push(`end ${id}`);
+        return ok(id);
+      };
+
+    const fiber = run(
+      withConcurrency(
+        minPositiveInt,
+        all({ a: createTask("a"), b: createTask("b"), c: createTask("c") }),
+      ),
+    );
+
+    // Sequential: only one at a time
+    expect(events).toEqual(["start a"]);
+
+    canFinish.resolve();
+    const result = await fiber;
+
+    expect(result).toEqual(ok({ a: "a", b: "b", c: "c" }));
+  });
+
+  test("supports iterable input", async () => {
+    await using run = createRunner();
+
+    const generateTasks = function* (): Generator<Task<number>> {
+      yield () => ok(1);
+      yield () => ok(2);
+      yield () => ok(3);
+    };
+
+    const result = await run(all(generateTasks()));
+
+    expect(result).toEqual(ok([1, 2, 3]));
+    if (result.ok) {
+      expectTypeOf(result.value).toEqualTypeOf<ReadonlyArray<number>>();
+    }
+  });
+
+  test("tuple preserves types with as const", async () => {
+    await using run = createRunner();
+
+    const result = await run(
+      all([() => ok(42), () => ok("hello"), () => ok(true)] as const),
+    );
+
+    if (result.ok) {
+      expectTypeOf(result.value).toEqualTypeOf<
+        readonly [number, string, boolean]
+      >();
+    }
+  });
+});
+
+describe("withConcurrency", () => {
+  test("defaults to max concurrency when passed only a task", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+    const canFinish = Promise.withResolvers<void>();
+
+    const createTask =
+      (id: number): Task<number> =>
+      async () => {
+        events.push(`start ${id}`);
+        await canFinish.promise;
+        events.push(`end ${id}`);
+        return ok(id);
+      };
+
+    const fiber = run(
+      withConcurrency(all([createTask(1), createTask(2), createTask(3)])),
+    );
+
+    expect(events).toEqual(["start 1", "start 2", "start 3"]);
+
+    canFinish.resolve();
+    const result = await fiber;
+
+    expect(result).toEqual(ok([1, 2, 3]));
+  });
+
+  test("inherits concurrency", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+    const canFinish = Promise.withResolvers<void>();
+
+    const createTask =
+      (id: number): Task<number> =>
+      async () => {
+        events.push(`start ${id}`);
+        await canFinish.promise;
+        events.push(`end ${id}`);
+        return ok(id);
+      };
+
+    const fiber = run(
+      withConcurrency(PositiveInt.orThrow(2), (run) =>
+        run(all([createTask(1), createTask(2), createTask(3), createTask(4)])),
+      ),
+    );
+
+    // Only 2 tasks should start (inherited)
+    await Promise.resolve();
+    expect(events).toEqual(["start 1", "start 2"]);
+
+    canFinish.resolve();
+    const result = await fiber;
+
+    expect(result).toEqual(ok([1, 2, 3, 4]));
+  });
+
+  test("nested withConcurrency overrides parent", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+    const canFinish = Promise.withResolvers<void>();
+
+    const createTask =
+      (id: number): Task<number> =>
+      async () => {
+        events.push(`start ${id}`);
+        await canFinish.promise;
+        events.push(`end ${id}`);
+        return ok(id);
+      };
+
+    const fiber = run(
+      withConcurrency(PositiveInt.orThrow(5), (run) =>
+        run(
+          withConcurrency(minPositiveInt, (run) =>
+            run(all([createTask(1), createTask(2), createTask(3)])),
+          ),
+        ),
+      ),
+    );
+
+    // Only 1 task should start (inner concurrency overrides)
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(events).toEqual(["start 1"]);
+
+    canFinish.resolve();
+    const result = await fiber;
+
+    expect(result).toEqual(ok([1, 2, 3]));
+  });
+
+  test("default concurrency is sequential", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+
+    const createTask =
+      (id: number): Task<number> =>
+      () => {
+        events.push(`start ${id}`);
+        events.push(`end ${id}`);
+        return ok(id);
+      };
+
+    // Default is sequential, tasks run one at a time
+    const result = await run(
+      all([createTask(1), createTask(2), createTask(3)]),
+    );
+
+    // Sequential: 1 starts and finishes, then 2, then 3
+    expect(events).toEqual([
+      "start 1",
+      "end 1",
+      "start 2",
+      "end 2",
+      "start 3",
+      "end 3",
+    ]);
+    expect(result).toEqual(ok([1, 2, 3]));
+  });
+
+  test("abort propagates to all tasks", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+    const canFinish = Promise.withResolvers<void>();
+
+    const createTask =
+      (id: number): Task<number> =>
+      async ({ onAbort }) => {
+        events.push(`start ${id}`);
+        onAbort(() => events.push(`abort ${id}`));
+        await canFinish.promise;
+        events.push(`end ${id}`);
+        return ok(id);
+      };
+
+    const fiber = run(
+      withConcurrency(100, all([createTask(1), createTask(2), createTask(3)])),
+    );
+
+    await Promise.resolve();
+    expect(events).toEqual(["start 1", "start 2", "start 3"]);
+
+    fiber.abort();
+    canFinish.resolve();
+    const result = await fiber;
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(AbortError.is(result.error)).toBe(true);
+    }
+    expect(events).toContain("abort 1");
+    expect(events).toContain("abort 2");
+    expect(events).toContain("abort 3");
   });
 });
 
