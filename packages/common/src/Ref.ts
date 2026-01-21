@@ -1,3 +1,10 @@
+/**
+ * Mutable reference container for state management.
+ *
+ * @module
+ */
+
+import type { Eq } from "./Eq.js";
 import type { Store } from "./Store.js";
 
 /**
@@ -6,11 +13,11 @@ import type { Store } from "./Store.js";
  * the current state.
  *
  * Use a Ref instead of a variable when you want to pass state around as an
- * object or update it in a controlled way. If you need subscriptions, see
- * {@link Store}.
+ * object. If you need subscriptions, see {@link Store}.
  *
- * Updating in a controlled way means all changes go through specific methods
- * (`set` or `modify`), making state updates predictable and easy to track.
+ * Ref is a valid dependency in Evolu's [Dependency
+ * Injection](https://evolu.dev/docs/dependency-injection) pattern—use it when
+ * functions need shared mutable state.
  *
  * ### Example
  *
@@ -33,26 +40,37 @@ export interface Ref<T> {
   /** Returns the current state. */
   readonly get: () => T;
 
-  /** Sets the state. */
-  readonly set: (state: T) => void;
+  /** Sets the state. Returns `true` if the state was updated. */
+  readonly set: (state: T) => boolean;
 
-  /** Modifies the state using an updater function. */
-  readonly modify: (updater: (current: T) => T) => void;
+  /**
+   * Modifies the state using an updater function. Returns `true` if the state
+   * was updated.
+   */
+  readonly modify: (updater: (current: T) => T) => boolean;
 }
 
-/** Creates a {@link Ref} with the given initial state. */
-export const createRef = <T>(initialState: T): Ref<T> => {
+/**
+ * Creates a {@link Ref} with the given initial state.
+ *
+ * By default, state is always updated. We can provide an optional {@link Eq}
+ * function as the second argument to skip updates when the new state equals the
+ * current state.
+ */
+export const createRef = <T>(initialState: T, eq?: Eq<T>): Ref<T> => {
   let currentState = initialState;
+
+  const updateState = (newState: T): boolean => {
+    if (eq?.(newState, currentState)) return false;
+    currentState = newState;
+    return true;
+  };
 
   return {
     get: () => currentState,
 
-    set: (state) => {
-      currentState = state;
-    },
+    set: (state) => updateState(state),
 
-    modify: (updater) => {
-      currentState = updater(currentState);
-    },
+    modify: (updater) => updateState(updater(currentState)),
   };
 };

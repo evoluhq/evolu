@@ -1,22 +1,21 @@
 "use client";
 
-import { motion } from "motion/react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { Logo } from "@/components/Logo";
 import { Navigation } from "@/components/Navigation";
 import { type Section, SectionProvider } from "@/components/SectionProvider";
+import { motion } from "motion/react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
-export function Layout({
+export const Layout = ({
   children,
   allSections,
 }: {
   children: React.ReactNode;
   allSections: Record<string, Array<Section>>;
-}): React.ReactElement {
+}): React.ReactElement => {
   const pathname = usePathname();
 
   return (
@@ -43,4 +42,4 @@ export function Layout({
       </div>
     </SectionProvider>
   );
-}
+};

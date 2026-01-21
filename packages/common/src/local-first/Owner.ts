@@ -1,12 +1,18 @@
+/**
+ * Owner identity and cryptographic key derivation.
+ *
+ * @module
+ */
+
 import * as bip39 from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
-import { NonEmptyReadonlyArray } from "../Array.js";
+import type { NonEmptyReadonlyArray } from "../Array.js";
+import type { RandomBytesDep } from "../Crypto.js";
 import {
   createSlip21,
   EncryptionKey,
   Entropy16,
   Entropy32,
-  RandomBytesDep,
 } from "../Crypto.js";
 import { getOrNull } from "../Result.js";
 import {
@@ -168,7 +174,7 @@ const createOwner = (secret: OwnerSecret): Owner => ({
  * devices need to sync the information that an owner was deleted so they can
  * delete their local data as well.
  *
- * ### Privacy Considerations
+ * ## Privacy Considerations
  *
  * AppOwner must never be shared with anyone, except for its {@link OwnerId},
  * which can be used for authorization with
@@ -219,12 +225,10 @@ export interface ShardOwner extends Owner {
 }
 
 /** Creates a {@link ShardOwner} from an {@link OwnerSecret}. */
-export const createShardOwner = (secret: OwnerSecret): ShardOwner => {
-  return {
-    ...createOwner(secret),
-    type: "ShardOwner",
-  };
-};
+export const createShardOwner = (secret: OwnerSecret): ShardOwner => ({
+  ...createOwner(secret),
+  type: "ShardOwner",
+});
 
 /**
  * Derives a {@link ShardOwner} from an {@link AppOwner} using the specified path.
@@ -301,7 +305,7 @@ export type OwnerTransport = OwnerWebSocketTransport;
 /**
  * WebSocket transport configuration.
  *
- * ### Authentication via URL
+ * ## Authentication via URL
  *
  * The {@link OwnerId} is passed as a URL query parameter. While this approach is
  * generally discouraged for authentication tokens (they get logged), it's safe
@@ -311,7 +315,7 @@ export type OwnerTransport = OwnerWebSocketTransport;
  * See: [HTTP headers in Websockets client
  * API](https://stackoverflow.com/questions/4361173/http-headers-in-websockets-client-api/74564827#74564827)
  *
- * ### Error Handling
+ * ## Error Handling
  *
  * When a relay rejects a connection (invalid OwnerId, unauthorized owner, or
  * server error), the browser WebSocket API does not expose the specific HTTP

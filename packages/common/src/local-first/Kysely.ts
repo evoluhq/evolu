@@ -1,14 +1,23 @@
-import {
+/* eslint-disable func-style */
+/**
+ * Kysely query builder extensions for Evolu.
+ *
+ * @module
+ */
+
+import type {
   AliasableExpression,
-  AliasNode,
-  ColumnNode,
   Expression,
-  ExpressionWrapper,
-  IdentifierNode,
   RawBuilder,
-  ReferenceNode,
   SelectQueryNode,
   Simplify,
+} from "kysely";
+import {
+  AliasNode,
+  ColumnNode,
+  ExpressionWrapper,
+  IdentifierNode,
+  ReferenceNode,
   sql,
   TableNode,
   ValueNode,
@@ -21,7 +30,7 @@ export type { NotNull } from "kysely";
 /**
  * A SQLite helper for aggregating a subquery into a JSON array.
  *
- * ### Examples
+ * ### Example
  *
  * ```ts
  * import { kysely } from "@evolu/common";
@@ -80,7 +89,7 @@ export function jsonArrayFrom<O>(
  *
  * The subquery must only return one row.
  *
- * ### Examples
+ * ### Example
  *
  * ```ts
  * import { kysely } from "@evolu/common";
@@ -135,7 +144,7 @@ export function jsonObjectFrom<O>(
 /**
  * The SQLite `json_object` function.
  *
- * ### Examples
+ * ### Example
  *
  * ```ts
  * import { kysely } from "@evolu/common";
@@ -209,7 +218,7 @@ export function getJsonObjectArgs(
   table: string,
 ): Array<Expression<unknown> | string> {
   const args: Array<Expression<unknown> | string> = [];
-  
+
   for (const { selection: s } of node.selections ?? []) {
     if (ReferenceNode.is(s) && ColumnNode.is(s.column)) {
       args.push(

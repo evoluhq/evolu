@@ -1,0 +1,108 @@
+import { ArticleLayout } from "@/components/ArticleLayout";
+
+export const article = {
+  author: "Daniel Steigerwald",
+  date: "2025-12-09",
+  title: "You might not need Comlink",
+  description:
+    "Why MessageChannel with simple callbacks often beats Comlink's Proxy-based RPC for Web Workers and SharedWorkers.",
+};
+
+export const metadata = {
+  title: article.title,
+  description: article.description,
+};
+
+export default (props) => <ArticleLayout article={article} {...props} />;
+
+> **Note:** This article is a draft. Examples from the Evolu codebase are coming soon.
+
+[Comlink](https://github.com/GoogleChromeLabs/comlink) is a popular library (12.5k stars) that makes Web Workers feel like calling async functions. It's well-designed and tiny (~1.1kB). Many projects use it successfully.
+
+But after evaluating it for [Evolu](https://evolu.dev), I decided to use plain web APIs instead. Here's why.
+
+## What Comlink does well
+
+Comlink wraps `postMessage` with ES6 Proxy, so instead of:
+
+```ts
+worker.postMessage({ type: "query", sql: "SELECT * FROM users" });
+worker.onmessage = (e) => handleResult(e.data);
+```
+
+You write:
+
+```ts
+const result = await workerProxy.query("SELECT * FROM users");
+```
+
+It also provides `Comlink.proxy()` for callbacks, `Comlink.transfer()` for transferables, and supports SharedWorker, iframes, and Node's worker_threads.
+
+## The Proxy abstraction leaks
+
+### Debugging is harder
+
+When you `console.log` a Comlink proxy, you don't see the actual object - you see a Proxy. Setting breakpoints and inspecting state requires understanding what's happening under the hood.
+
+### Performance overhead
+
+While Proxy performance is fast enough for most use cases, issue [#647](https://github.com/GoogleChromeLabs/comlink/issues/647) showed real bottlenecks under load. Proxies must also be manually released with `proxy[Comlink.releaseProxy]()`, otherwise they leak memory. Comlink uses WeakRef for automatic cleanup, but it doesn't work reliably with SharedWorkers (issue [#673](https://github.com/GoogleChromeLabs/comlink/issues/673)).
+
+## The alternative: plain web APIs
+
+Instead of Comlink's Proxy abstraction, Evolu uses [`MessageChannel`](https://developer.mozilla.org/en-US/docs/Web/API/MessageChannel) and a simple [`Callbacks<T>`](/docs/api-reference/common/Callbacks) utility for request-response correlation:
+
+```ts
+interface Callbacks<T> {
+  register: (callback: (arg: T) => void) => CallbackId;
+  execute: (id: CallbackId, arg: T) => void;
+}
+```
+
+Combined with `Promise.withResolvers`, you get clean RPC:
+
+```ts
+const callbacks = createCallbacks<QueryResult>(deps);
+
+const query = async (sql: string): Promise<QueryResult> => {
+  const { promise, resolve } = Promise.withResolvers<QueryResult>();
+  const callbackId = callbacks.register(resolve);
+  queryPort.postMessage({ sql, callbackId });
+  return promise;
+};
+
+// When response arrives:
+queryPort.onmessage = (e) => {
+  callbacks.execute(e.data.callbackId, e.data.result);
+};
+```
+
+No Proxy, no WeakRef finalization registry, no magic. Just a Map of pending callbacks. It works with any transport - postMessage, WebSocket, whatever.
+
+TODO: More examples from Evolu codebase showing MessageChannel patterns:
+
+- init message handshake
+- HeartBeat for connection monitoring
+- different topologies (notify selected tabs, broadcast to all, etc.)
+- helpers
+
+## The maintenance situation
+
+Comlink has 76 open issues and 40 open PRs - some from 2022, waiting 3+ years. The maintainers [are too busy](https://github.com/GoogleChromeLabs/comlink/pull/678#issuecomment-2982151350) and looking for help. Even merged PRs [don't get released to npm](https://github.com/GoogleChromeLabs/comlink/pull/678#issuecomment-3207623025). There's a PR [#683](https://github.com/GoogleChromeLabs/comlink/pull/683) that fixes many issues, but it has significant breaking changes and has been blocked on CLA since October 2024.
+
+## Conclusion
+
+Comlink is a good library for simple cases - offloading computation to a worker with straightforward request-response patterns.
+
+But if you need:
+
+- Explicit initialization handshakes
+- SharedWorker with multiple tabs
+- Reliable cleanup
+- Easy debugging
+- Full control over message flow
+- Different topologies (broadcast to all tabs, notify selected tabs, etc.)
+
+...consider using plain web APIs with simple helpers. `MessageChannel` gives you typed, independent pipes. A callbacks Map gives you request-response correlation. It's more code upfront, but it's code you understand and control.
+
+Sometimes the "boring" approach is the right one.

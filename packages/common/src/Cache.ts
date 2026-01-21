@@ -1,3 +1,9 @@
+/**
+ * Cache implementations including LRU eviction.
+ *
+ * @module
+ */
+
 import { PositiveInt } from "./Type.js";
 
 /**

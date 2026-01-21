@@ -43,9 +43,9 @@
     "@types/react-dom": "catalog:react19",
     "react": "catalog:react19",
     "react-dom": "catalog:react19",
-    "typescript": "^5.9.2",
+    "typescript": "^5.9.3",
     "user-agent-data-types": "^0.4.2",
-    "vitest": "^4.0.4"
+    "vitest": "^4.0.17"
   },
   "peerDependencies": {
     "@evolu/common": "^7.4.1",
@@ -54,7 +54,7 @@
     "react-dom": ">=19"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=24.0.0"
   },
   "publishConfig": {
     "access": "public"

@@ -1,14 +1,10 @@
 import BetterSQLite from "better-sqlite3";
 import { existsSync, unlinkSync } from "fs";
 import { assert, describe, expect, test } from "vitest";
-import { constVoid } from "../src/Function.js";
+import { lazyVoid } from "../src/Function.js";
 import { err, getOrThrow } from "../src/Result.js";
-import {
-  createSqlite,
-  isSqlMutation,
-  sql,
-  SqliteDriver,
-} from "../src/Sqlite.js";
+import { createSqlite, isSqlMutation, sql } from "../src/Sqlite.js";
+import type { SqliteDriver } from "../src/Sqlite.js";
 import { testCreateSqliteDriver, testSimpleName } from "./_deps.js";
 
 const createTestSqlite = async (consoleArgs?: Array<any>) => {
@@ -43,7 +39,7 @@ test("transaction fails and rolls back on SQL error", async () => {
     err({
       type: "SqliteError",
       error: {
-        type: "TransferableError",
+        type: "UnknownError",
         error: {
           code: "SQLITE_ERROR",
           message: "no such table: notexisting",
@@ -176,7 +172,7 @@ test("transaction callback error and rollback fails", async () => {
       return emptyResult;
     },
     export: () => new Uint8Array(),
-    [Symbol.dispose]: constVoid,
+    [Symbol.dispose]: lazyVoid,
   };
   const sqlite = getOrThrow(
     await createSqlite({
@@ -191,7 +187,7 @@ test("transaction callback error and rollback fails", async () => {
     err({
       type: "SqliteError",
       error: {
-        type: "TransferableError",
+        type: "UnknownError",
         error: { type: "CallbackError" },
       },
       rollbackError: { error: { message: "Rollback failed" } },

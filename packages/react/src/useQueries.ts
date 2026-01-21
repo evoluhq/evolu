@@ -1,4 +1,4 @@
-import {
+import type {
   Queries,
   QueriesToQueryRows,
   QueriesToQueryRowsPromises,
@@ -6,9 +6,9 @@ import {
 } from "@evolu/common/local-first";
 import { use, useRef } from "react";
 import { useEvolu } from "./useEvolu.js";
+import { useIsSsr } from "./useIsSsr.js";
 import type { useQuery } from "./useQuery.js";
 import { useQuerySubscription } from "./useQuerySubscription.js";
-import { useIsSsr } from "./useIsSsr.js";
 
 /**
  * The same as {@link useQuery}, but for many queries.

@@ -1,11 +1,12 @@
-import { EvoluDeps } from "@evolu/common/local-first";
-import { evoluWebDeps, localAuth } from "@evolu/web";
+import type { EvoluDeps } from "@evolu/common/local-first";
+import { createEvoluDeps as createWebEvoluDeps } from "@evolu/web";
 import { flushSync } from "react-dom";
 
-export * from "./components/EvoluIdenticon.js";
-export { localAuth };
+export * from "@evolu/web";
+export * from "./components/index.js";
 
-export const evoluReactWebDeps: EvoluDeps = {
-  ...evoluWebDeps,
-  flushSync,
+/** Creates Evolu dependencies for React web with React DOM flush sync support. */
+export const createEvoluDeps = (): EvoluDeps => {
+  const deps = createWebEvoluDeps();
+  return { ...deps, flushSync };
 };

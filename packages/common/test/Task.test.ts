@@ -1,1449 +1,4921 @@
-import { beforeEach, describe, expect, expectTypeOf, test, vi } from "vitest";
-import { err, getOrThrow, ok, Result, tryAsync } from "../src/Result.js";
+import { assert, describe, expect, expectTypeOf, test } from "vitest";
+import { isNonEmptyArray } from "../src/Array.js";
+import { testCreateConsole } from "../src/Console.js";
+import { exhaustiveCheck } from "../src/Function.js";
+import { testCreateRandom } from "../src/Random.js";
+import { createRef } from "../src/Ref.js";
+import type { Done, Result } from "../src/Result.js";
+import { done, err, ok, tryAsync } from "../src/Result.js";
+import {
+  exponential,
+  fixed,
+  spaced,
+  take,
+  whileScheduleInput,
+} from "../src/Schedule.js";
+import type {
+  Fiber,
+  FiberState,
+  InferFiberErr,
+  InferFiberOk,
+  InferTaskDone,
+  InferTaskErr,
+  InferTaskOk,
+  NextTask,
+  Runner,
+  RunnerConfigDep,
+  RunnerDeps,
+  Task,
+} from "../src/Task.js";
 import {
   AbortError,
+  all,
+  AllFailedError,
+  AsyncDisposableStack,
+  createDeferred,
+  createGate,
   createMutex,
+  createRunner,
   createSemaphore,
-  isAsync,
-  MaybeAsync,
-  requestIdleTask,
+  deferredDisposedError,
+  DeferredDisposedError,
+  race,
+  RaceLostError,
+  repeat,
   retry,
-  RetryError,
-  Task,
-  TaskContext,
+  runnerClosingError,
+  RunnerEvent,
+  sleep,
   timeout,
   TimeoutError,
-  toTask,
-  wait,
+  unabortable,
+  unabortableMask,
+  withConcurrency,
+  yieldNow,
 } from "../src/Task.js";
-import { NonNegativeInt, PositiveInt } from "../src/Type.js";
+import { createTestDeps, createTestRunner } from "../src/Test.js";
+import { createTime, Millis, msLongTask, testCreateTime } from "../src/Time.js";
+import type { Typed } from "../src/Type.js";
+import { Id, minPositiveInt, PositiveInt } from "../src/Type.js";
 
-describe("toTask", () => {
-  test("returns correct types based on context", async () => {
-    const mockFn = () => Promise.resolve<Result<void, never>>(ok());
-    const task = toTask(mockFn);
+const eventsEnabled: RunnerConfigDep = {
+  runnerConfig: { eventsEnabled: createRef(true) },
+};
 
-    // Without context: Result<void, never> (no AbortError possible)
-    const result1 = await task();
-    expect(result1).toEqual(ok());
-    expectTypeOf(result1).toEqualTypeOf<Result<void, never>>();
+interface MyError extends Typed<"MyError"> {}
 
-    // With empty context: Result<void, never> (no AbortError - same as fast path)
-    const result2 = await task({});
-    expect(result2).toEqual(ok());
-    expectTypeOf(result2).toEqualTypeOf<Result<void, never>>();
+describe("Task", () => {
+  test("InferTaskOk and InferTaskErr extract type parameters", () => {
+    type MyTask = Task<string, MyError>;
+    expectTypeOf<InferTaskOk<MyTask>>().toEqualTypeOf<string>();
 
-    // With context containing signal: Result<void, AbortError>
-    const controller = new AbortController();
-    const result3 = await task(controller);
-    expect(result3).toEqual(ok());
-    expectTypeOf(result3).toEqualTypeOf<Result<void, AbortError>>();
-  });
+    type MyTask2 = Task<void, MyError>;
+    expectTypeOf<InferTaskErr<MyTask2>>().toEqualTypeOf<MyError>();
 
-  test("supports cancellation when signal is provided", async () => {
-    const mockFn = () =>
-      new Promise<Result<void, never>>((resolve) => {
-        setTimeout(() => {
-          resolve(ok());
-        }, 100);
-      });
-
-    const task = toTask(mockFn);
-    const controller = new AbortController();
-
-    // Start the task
-    const promise = task(controller);
-
-    // Abort immediately
-    controller.abort("test abort");
-
-    const result = await promise;
-    expect(result).toEqual(
-      err({
-        type: "AbortError",
-        reason: "test abort",
-      }),
-    );
-  });
-
-  test("does not retry on AbortError by default", async () => {
-    const onRetry = vi.fn();
-
-    const task = toTask<string, { type: "E" } | AbortError>(async (context) => {
-      // Immediately return AbortError when context signal is present and aborted
-      if (context?.signal?.aborted) {
-        return err({
-          type: "AbortError",
-          reason: context.signal.reason as unknown,
-        });
-      }
-      return new Promise((resolve) => {
-        // Will be aborted externally before resolving
-        setTimeout(() => {
-          resolve(ok("should-not-resolve"));
-        }, 100);
-      });
-    });
-
-    const r = retry(
-      { retries: PositiveInt.orThrow(3), initialDelay: "1ms", onRetry },
-      task,
-    );
-
-    const controller = new AbortController();
-    const p = r(controller);
-    controller.abort("stop");
-    const result = await p;
-
-    expect(result).toEqual(err({ type: "AbortError", reason: "stop" }));
-    expect(onRetry).not.toHaveBeenCalled();
-  });
-
-  test("fast path when no context provided", async () => {
-    const mockFn = () => Promise.resolve<Result<void, never>>(ok());
-    const task = toTask(mockFn);
-
-    const result = await task();
-    expect(result).toEqual(ok());
-
-    // Verify this is the fast path type without AbortError
-    expectTypeOf(result).toEqualTypeOf<Result<void, never>>();
-  });
-
-  test("forwards context to inner fn when no signal", async () => {
-    // Arrange: capture the context seen inside the inner function
-    let seenContext: TaskContext | undefined;
-    const task = toTask<string, never>((context) => {
-      seenContext = context;
-      return Promise.resolve(ok("ok"));
-    });
-
-    // Provide a context object without a signal
-    const providedContext = {} as TaskContext;
-
-    // Act: call the task with our context
-    const result = await task(providedContext);
-
-    // Assert: result ok and the inner function received the same context object
-    expect(result).toEqual(ok("ok"));
-    expect(seenContext).toBe(providedContext);
+    // Handles void Task
+    type VoidTask = Task<void, Error>;
+    expectTypeOf<InferTaskOk<VoidTask>>().toEqualTypeOf<void>();
+    expectTypeOf<InferTaskErr<VoidTask>>().toEqualTypeOf<Error>();
   });
 });
 
-describe("wait", () => {
-  test("returns correct types based on context", async () => {
-    const waitTask = wait("5ms");
+describe("NextTask", () => {
+  test("InferTaskDone extracts done type", () => {
+    type MyNextTask = NextTask<number, MyError, string>;
+    expectTypeOf<InferTaskDone<MyNextTask>>().toEqualTypeOf<string>();
 
-    // Without context: Result<void, never> (no AbortError possible)
-    const result1 = await waitTask();
-    expect(result1).toEqual(ok());
-    expectTypeOf(result1).toEqualTypeOf<Result<void, never>>();
+    // void done type
+    type VoidDone = NextTask<number>;
+    expectTypeOf<InferTaskDone<VoidDone>>().toEqualTypeOf<void>();
 
-    // With empty context: Result<void, never> (no AbortError - same as fast path)
-    const result2 = await waitTask({});
-    expect(result2).toEqual(ok());
-    expectTypeOf(result2).toEqualTypeOf<Result<void, never>>();
-
-    // With context containing signal: Result<void, AbortError>
-    const controller = new AbortController();
-    const result3 = await waitTask(controller);
-    expect(result3).toEqual(ok());
-    expectTypeOf(result3).toEqualTypeOf<Result<void, AbortError>>();
+    // Regular Task has never as done type
+    type RegularTask = Task<number, MyError>;
+    expectTypeOf<InferTaskDone<RegularTask>>().toEqualTypeOf<never>();
   });
 
-  test("supports cancellation when signal is provided", async () => {
-    const controller = new AbortController();
+  test("models three outcomes: value, done, error", async () => {
+    await using run = createRunner();
+
+    const valueTask: NextTask<number, MyError, string> = () => ok(42);
+    const doneTask: NextTask<number, MyError> = () => err(done());
+    const errorTask: NextTask<number, MyError, string> = () =>
+      err({ type: "MyError" });
+
+    const valueResult = await run(valueTask);
+    const doneResult = await run(doneTask);
+    const errorResult = await run(errorTask);
+
+    expect(valueResult).toEqual(ok(42));
+    expect(doneResult).toEqual(err({ type: "Done", done: undefined }));
+    expect(errorResult).toEqual(err({ type: "MyError" }));
+  });
+
+  test("type narrows correctly in pattern matching", async () => {
+    await using run = createRunner();
+
+    const task: NextTask<number, MyError, string> = () =>
+      err({ type: "Done", done: "summary" });
+
+    const result = await run(task);
+
+    if (result.ok) {
+      expectTypeOf(result.value).toEqualTypeOf<number>();
+      return;
+    }
+
+    switch (result.error.type) {
+      case "Done":
+        expectTypeOf(result.error).toEqualTypeOf<Done<string>>();
+        expect(result.error.done).toBe("summary");
+        break;
+      case "MyError":
+        expectTypeOf(result.error).toEqualTypeOf<MyError>();
+        break;
+      case "AbortError":
+        expectTypeOf(result.error).toEqualTypeOf<AbortError>();
+        break;
+      default:
+        exhaustiveCheck(result.error);
+    }
+  });
+
+  test("simulates iterator pattern with pull-based protocol", async () => {
+    await using run = createRunner();
+
+    const items = [1, 2, 3];
+    let index = 0;
+
+    const next: NextTask<number> = () => {
+      if (index >= items.length) return err({ type: "Done", done: undefined });
+      return ok(items[index++]);
+    };
+
+    const collected: Array<number> = [];
+
+    for (;;) {
+      const result = await run(next);
+      if (!result.ok) {
+        if (result.error.type === "Done") break;
+        // Handle other errors if any
+        return result;
+      }
+      collected.push(result.value);
+    }
+
+    expect(collected).toEqual([1, 2, 3]);
+  });
+});
+
+describe("Runner", () => {
+  describe("run", () => {
+    test("executes task and returns result", async () => {
+      await using run = createRunner();
+
+      const task: Task<string> = () => ok("hello");
+
+      const result = await run(task);
+
+      expect(result).toEqual(ok("hello"));
+    });
+  });
+
+  describe("error handling", () => {
+    test("synchronous throw does not leak fiber", async () => {
+      await using run = createRunner();
+
+      const syncThrowingTask = () => {
+        throw new Error("sync throw");
+      };
+
+      expect(run.getChildren().size).toBe(0);
+
+      const fiber = run(syncThrowingTask);
+
+      expect(run.getChildren().size).toBe(1);
+
+      await expect(fiber).rejects.toThrow("sync throw");
+
+      expect(run.getChildren().size).toBe(0);
+    });
+
+    test("rejected promise does not leak fiber", async () => {
+      await using run = createRunner();
+
+      const rejectingTask = () => Promise.reject(new Error("rejected"));
+
+      expect(run.getChildren().size).toBe(0);
+
+      const fiber = run(rejectingTask);
+
+      expect(run.getChildren().size).toBe(1);
+
+      await expect(fiber).rejects.toThrow("rejected");
+
+      expect(run.getChildren().size).toBe(0);
+    });
+  });
+
+  describe("deps", () => {
+    test("exposes injected time", async () => {
+      const time = testCreateTime();
+      await using run = createTestRunner({ time });
+
+      expect(run.time).toBe(time);
+    });
+
+    test("exposes injected console", async () => {
+      const console = testCreateConsole();
+      await using run = createTestRunner({ console });
+
+      expect(run.console).toBe(console);
+    });
+
+    test("exposes injected random", async () => {
+      const random = testCreateRandom();
+      await using run = createTestRunner({ random });
+
+      expect(run.random).toBe(random);
+    });
+
+    test("exposes injected randomBytes", async () => {
+      const deps = createTestDeps();
+      await using run = createTestRunner(deps);
+
+      expect(run.randomBytes).toBe(deps.randomBytes);
+    });
+  });
+
+  describe("onEvent", () => {
+    test("emits childAdded when child is added", async () => {
+      const deps = createTestDeps();
+      await using run = createTestRunner({ ...deps, ...eventsEnabled });
+
+      const events: Array<RunnerEvent> = [];
+      const taskComplete = Promise.withResolvers<Result<void>>();
+
+      run.onEvent = (event) => {
+        events.push(event);
+      };
+
+      const fiber = run(() => taskComplete.promise);
+
+      const childAddedEvents = events.filter(
+        (e) => e.data.type === "childAdded",
+      );
+      expect(childAddedEvents.length).toBe(1);
+      expect(childAddedEvents[0].id).toBe(run.id);
+      assert(childAddedEvents[0].data.type === "childAdded");
+      expect(childAddedEvents[0].data.childId).toBe(fiber.run.id);
+
+      taskComplete.resolve(ok());
+      await fiber;
+    });
+
+    test("emits completing, completed, childRemoved when child completes", async () => {
+      await using run = createTestRunner(eventsEnabled);
+
+      const events: Array<RunnerEvent> = [];
+      const taskComplete = Promise.withResolvers<Result<void>>();
+
+      const fiber = run(() => taskComplete.promise);
+
+      run.onEvent = (event) => {
+        events.push(event);
+      };
+
+      taskComplete.resolve(ok());
+      await fiber;
+
+      expect(events.map((e) => e.data.type)).toEqual([
+        "stateChanged",
+        "stateChanged",
+        "childRemoved",
+      ]);
+
+      const [completing, completed, childRemoved] = events;
+
+      assert(completing.data.type === "stateChanged");
+      expect(completing.data.state.type).toBe("completing");
+
+      assert(completed.data.type === "stateChanged");
+      expect(completed.data.state.type).toBe("completed");
+      assert(completed.data.state.type === "completed");
+      expect(completed.data.state.result).toEqual(ok());
+      expect(completed.data.state.outcome).toEqual(ok());
+
+      assert(childRemoved.data.type === "childRemoved");
+      expect(childRemoved.data.childId).toBe(fiber.run.id);
+    });
+
+    test("bubbles up through parent chain", async () => {
+      await using run = createTestRunner(eventsEnabled);
+
+      const events: Array<{ level: string; event: RunnerEvent }> = [];
+
+      run.onEvent = (event) => {
+        events.push({ level: "root", event });
+      };
+
+      const taskComplete = Promise.withResolvers<Result<void>>();
+
+      const fiber = run(async (parentRun) => {
+        parentRun.onEvent = (event) => {
+          events.push({ level: "parent", event });
+        };
+
+        const childFiber = parentRun(async (childRun) => {
+          childRun.onEvent = (event) => {
+            events.push({ level: "child", event });
+          };
+
+          // Start a grandchild
+          const grandchildComplete = Promise.withResolvers<Result<void>>();
+          const grandchild = childRun(() => grandchildComplete.promise);
+          grandchildComplete.resolve(ok());
+          await grandchild;
+
+          return ok();
+        });
+
+        await childFiber;
+        await taskComplete.promise;
+        return ok();
+      });
+
+      taskComplete.resolve(ok());
+      await fiber;
+
+      // Each level should have received events
+      expect(events.filter((e) => e.level === "root").length).toBeGreaterThan(
+        0,
+      );
+      expect(events.filter((e) => e.level === "parent").length).toBeGreaterThan(
+        0,
+      );
+      expect(events.filter((e) => e.level === "child").length).toBeGreaterThan(
+        0,
+      );
+    });
+
+    test("not emitted when eventsEnabled is false", async () => {
+      await using run = createRunner(); // Events disabled by default
+
+      const events: Array<RunnerEvent> = [];
+
+      run.onEvent = (event) => {
+        events.push(event);
+      };
+
+      const fiber = run(() => Promise.resolve(ok()));
+      await fiber;
+
+      expect(events.length).toBe(0);
+    });
+  });
+
+  describe("snapshot", () => {
+    test("returns same reference when nothing changes", async () => {
+      await using run = createRunner();
+
+      const snapshot1 = run.snapshot();
+      const snapshot2 = run.snapshot();
+
+      expect(snapshot1).toBe(snapshot2);
+    });
+
+    test("returns new reference when children change", async () => {
+      await using run = createRunner();
+
+      const taskComplete = Promise.withResolvers<Result<void>>();
+
+      const task = () => taskComplete.promise;
+
+      const before = run.snapshot();
+      expect(before.children.length).toBe(0);
+
+      const fiber = run(task);
+
+      const during = run.snapshot();
+      expect(during.children.length).toBe(1);
+      expect(during).not.toBe(before);
+
+      taskComplete.resolve(ok());
+      await fiber;
+
+      const after = run.snapshot();
+      expect(after.children.length).toBe(0);
+      expect(after).not.toBe(during);
+    });
+
+    test("preserves child snapshot references when sibling changes", async () => {
+      await using run = createRunner();
+
+      const task1Complete = Promise.withResolvers<Result<void>>();
+      const task2Complete = Promise.withResolvers<Result<void>>();
+
+      const fiber1 = run(() => task1Complete.promise);
+      const fiber2 = run(() => task2Complete.promise);
+
+      const snapshot1 = run.snapshot();
+      const child1Snapshot1 = snapshot1.children[0];
+
+      // Complete fiber2, which changes parent's children array
+      task2Complete.resolve(ok());
+      await fiber2;
+
+      const snapshot2 = run.snapshot();
+      const child1Snapshot2 = snapshot2.children[0];
+
+      // Parent snapshot changed (different children count)
+      expect(snapshot2).not.toBe(snapshot1);
+      expect(snapshot2.children.length).toBe(1);
+
+      // But fiber1's snapshot is unchanged, same reference
+      expect(child1Snapshot2).toBe(child1Snapshot1);
+
+      task1Complete.resolve(ok());
+      await fiber1;
+    });
+
+    test("structural sharing during rapid concurrent completions", async () => {
+      await using run = createRunner();
+
+      const taskCompletes: Array<PromiseWithResolvers<Result<number>>> = [];
+
+      // Start 5 concurrent fibers
+      const fibers = Array.from({ length: 5 }, () => {
+        const taskComplete = Promise.withResolvers<Result<number>>();
+        taskCompletes.push(taskComplete);
+        return run(() => taskComplete.promise);
+      });
+
+      const initialSnapshot = run.snapshot();
+      expect(initialSnapshot.children.length).toBe(5);
+
+      // Complete fibers 0, 2, 4 simultaneously
+      taskCompletes[0].resolve(ok(0));
+      taskCompletes[2].resolve(ok(2));
+      taskCompletes[4].resolve(ok(4));
+      await Promise.all([fibers[0], fibers[2], fibers[4]]);
+
+      const midSnapshot = run.snapshot();
+      expect(midSnapshot.children.length).toBe(2);
+
+      // Remaining fibers (1, 3) should have same snapshot references
+      const fiber1Snap = midSnapshot.children.find(
+        (c) => c.id === fibers[1].run.id,
+      );
+      const fiber3Snap = midSnapshot.children.find(
+        (c) => c.id === fibers[3].run.id,
+      );
+      expect(fiber1Snap).toBeDefined();
+      expect(fiber3Snap).toBeDefined();
+
+      // Complete remaining
+      taskCompletes[1].resolve(ok(1));
+      taskCompletes[3].resolve(ok(3));
+      await Promise.all([fibers[1], fibers[3]]);
+
+      const finalSnapshot = run.snapshot();
+      expect(finalSnapshot.children.length).toBe(0);
+    });
+  });
+
+  describe("defer", () => {
+    test("runs task when disposed", async () => {
+      await using run = createRunner();
+
+      const events: Array<string> = [];
+
+      const cleanup = () => {
+        events.push("cleanup");
+        return ok();
+      };
+
+      const task: Task<void> = async (run) => {
+        await using _ = run.defer(cleanup);
+
+        events.push("work");
+        return ok();
+      };
+
+      const result = await run(task);
+
+      expect(result).toEqual(ok());
+      expect(events).toEqual(["work", "cleanup"]);
+    });
+
+    test("is unabortable", async () => {
+      await using run = createRunner();
+
+      const events: Array<string> = [];
+      const taskStarted = Promise.withResolvers<void>();
+      const canComplete = Promise.withResolvers<void>();
+
+      const cleanup = () => {
+        events.push("cleanup");
+        return ok();
+      };
+
+      const task: Task<void, AbortError> = async (run) => {
+        await using _ = run.defer(cleanup);
+        events.push("work started");
+        taskStarted.resolve();
+        await canComplete.promise;
+        if (run.signal.aborted) {
+          return err(run.signal.reason);
+        }
+        return ok();
+      };
+
+      const fiber = run(task);
+      await taskStarted.promise;
+      fiber.abort("stop");
+      canComplete.resolve();
+
+      const result = await fiber;
+
+      expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
+      expect(events).toEqual(["work started", "cleanup"]);
+    });
+  });
+
+  describe("dispose", () => {
+    test("aborts all running fibers", async () => {
+      const results: Array<string> = [];
+
+      {
+        await using run = createRunner();
+
+        const makeTask =
+          (id: string): Task<string> =>
+          async ({ signal }) => {
+            const taskComplete =
+              Promise.withResolvers<Result<string, AbortError>>();
+
+            const timeout = setTimeout(() => {
+              results.push(`${id} completed`);
+              taskComplete.resolve(ok(id));
+            }, 1000);
+
+            signal.addEventListener(
+              "abort",
+              () => {
+                clearTimeout(timeout);
+                results.push(`${id} aborted`);
+                taskComplete.resolve(err(signal.reason));
+              },
+              { once: true },
+            );
+
+            return await taskComplete.promise;
+          };
+
+        run(makeTask("task1"));
+        run(makeTask("task2"));
+      }
+      // runner disposed here
+
+      expect(results).toEqual(["task1 aborted", "task2 aborted"]);
+    });
+
+    test("transitions running → completing → completed", async () => {
+      const run = createRunner();
+
+      expectTypeOf(run.getState()).toEqualTypeOf<FiberState>();
+      expect(run.getState().type).toBe("running");
+
+      const taskStarted = Promise.withResolvers<void>();
+      const taskCanFinish = Promise.withResolvers<void>();
+
+      let stateInAbortHandler: FiberState | undefined;
+      let stateAfterAwait: FiberState | undefined;
+
+      const task: Task<void> = async (run) => {
+        run.signal.addEventListener("abort", () => {
+          stateInAbortHandler = run.parent!.getState();
+        });
+        taskStarted.resolve();
+        await taskCanFinish.promise;
+        stateAfterAwait = run.parent!.getState();
+        return ok();
+      };
+
+      run(task);
+      await taskStarted.promise;
+
+      const disposePromise = run[Symbol.asyncDispose]();
+      expect(run.getState().type).toBe("completing");
+
+      taskCanFinish.resolve();
+      await disposePromise;
+
+      expect(stateInAbortHandler!.type).toBe("completing");
+      expect(stateAfterAwait!.type).toBe("completing");
+      expect(run.getState().type).toBe("completed");
+    });
+
+    test("defaults completed result and outcome to ok", async () => {
+      const run = createRunner();
+
+      await run[Symbol.asyncDispose]();
+
+      const state = run.getState();
+      expect(state).toEqual({
+        type: "completed",
+        result: ok(),
+        outcome: ok(),
+      });
+    });
+
+    test("is idempotent", async () => {
+      await using run = createRunner();
+
+      const promise1 = run[Symbol.asyncDispose]();
+      const promise2 = run[Symbol.asyncDispose]();
+
+      expect(promise1).toBe(promise2);
+    });
+
+    test("does not run new tasks when completing", async () => {
+      const run = createRunner();
+      run[Symbol.asyncDispose]();
+
+      expect(run.getState().type).toBe("completing");
+
+      let regularRan = false;
+      let unabortableRan = false;
+      let unabortableMaskRan = false;
+
+      const regularFiber = run(() => {
+        regularRan = true;
+        return ok();
+      });
+      const unabortableFiber = run(
+        unabortable(() => {
+          unabortableRan = true;
+          return ok();
+        }),
+      );
+      const unabortableMaskFiber = run(
+        unabortableMask(() => () => {
+          unabortableMaskRan = true;
+          return ok();
+        }),
+      );
+
+      const regularResult = await regularFiber;
+      const unabortableResult = await unabortableFiber;
+      const unabortableMaskResult = await unabortableMaskFiber;
+
+      expect(regularRan).toBe(false);
+      expect(unabortableRan).toBe(false);
+      expect(unabortableMaskRan).toBe(false);
+
+      expect(regularFiber.run.getState().type).toBe("completed");
+      expect(unabortableFiber.run.getState().type).toBe("completed");
+      expect(unabortableMaskFiber.run.getState().type).toBe("completed");
+
+      const expected = err({ type: "AbortError", cause: runnerClosingError });
+      expect(regularResult).toEqual(expected);
+      expect(unabortableResult).toEqual(expected);
+      expect(unabortableMaskResult).toEqual(expected);
+    });
+
+    test("does not run new tasks when completed", async () => {
+      const run = createRunner();
+      await run[Symbol.asyncDispose]();
+
+      expect(run.getState().type).toBe("completed");
+
+      let regularRan = false;
+      let unabortableRan = false;
+      let unabortableMaskRan = false;
+
+      const regularFiber = run(() => {
+        regularRan = true;
+        return ok();
+      });
+      const unabortableFiber = run(
+        unabortable(() => {
+          unabortableRan = true;
+          return ok();
+        }),
+      );
+      const unabortableMaskFiber = run(
+        unabortableMask(() => () => {
+          unabortableMaskRan = true;
+          return ok();
+        }),
+      );
+
+      const regularResult = await regularFiber;
+      const unabortableResult = await unabortableFiber;
+      const unabortableMaskResult = await unabortableMaskFiber;
+
+      expect(regularRan).toBe(false);
+      expect(unabortableRan).toBe(false);
+      expect(unabortableMaskRan).toBe(false);
+
+      expect(regularFiber.run.getState().type).toBe("completed");
+      expect(unabortableFiber.run.getState().type).toBe("completed");
+      expect(unabortableMaskFiber.run.getState().type).toBe("completed");
+
+      const expected = err({ type: "AbortError", cause: runnerClosingError });
+      expect(regularResult).toEqual(expected);
+      expect(unabortableResult).toEqual(expected);
+      expect(unabortableMaskResult).toEqual(expected);
+    });
+  });
+
+  describe("onAbort", () => {
+    test("passes the abort reason directly, not wrapped in AbortError", async () => {
+      await using run = createRunner();
+
+      const receivedReason = Promise.withResolvers<unknown>();
+      const taskStarted = Promise.withResolvers<void>();
+
+      const fiber = run(async (childRun) => {
+        childRun.onAbort((reason) => {
+          receivedReason.resolve(reason);
+        });
+
+        taskStarted.resolve();
+
+        await Promise.resolve();
+        return ok();
+      });
+
+      await taskStarted.promise;
+      fiber.abort("my-reason");
+
+      const reason = await receivedReason.promise;
+
+      expect(reason).toBe("my-reason");
+    });
+
+    test("receives undefined when aborted without reason", async () => {
+      await using run = createRunner();
+
+      const receivedReason = Promise.withResolvers<unknown>();
+      const taskStarted = Promise.withResolvers<void>();
+
+      const fiber = run(async (childRun) => {
+        childRun.onAbort((reason) => {
+          receivedReason.resolve(reason);
+        });
+
+        taskStarted.resolve();
+
+        await Promise.resolve();
+        return ok();
+      });
+
+      await taskStarted.promise;
+      fiber.abort();
+
+      const reason = await receivedReason.promise;
+
+      expect(reason).toBeUndefined();
+    });
+  });
+});
+
+describe("Fiber", () => {
+  test("is awaitable", async () => {
+    await using run = createRunner();
+
+    const task: Task<number> = () => Promise.resolve(ok(42));
+    const fiber = run(task);
+
+    expectTypeOf(fiber).toEqualTypeOf<Fiber<number, never>>();
+
+    const result = await fiber;
+
+    expectTypeOf(result).toEqualTypeOf<Result<number, AbortError>>();
+    expect(result).toEqual(ok(42));
+  });
+
+  describe("abort", () => {
+    test("before run short-circuits child task", async () => {
+      await using run = createRunner();
+
+      let taskRan = false;
+      let signalAbortedBeforeInnerRun = false;
+      let innerFiberState: FiberState<void, never> | undefined;
+
+      const fiber = run(async (run) => {
+        await Promise.resolve();
+        signalAbortedBeforeInnerRun = run.signal.aborted;
+
+        const innerFiber = run(() => {
+          taskRan = true;
+          return ok();
+        });
+
+        await innerFiber;
+
+        innerFiberState = innerFiber.getState();
+
+        return ok();
+      });
+
+      fiber.abort("stop");
+      const result = await fiber;
+
+      expect(signalAbortedBeforeInnerRun).toBe(true);
+      expect(taskRan).toBe(false);
+      assert(innerFiberState?.type === "completed");
+      expect(innerFiberState.result).toEqual(
+        err({ type: "AbortError", cause: "stop" }),
+      );
+      expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
+    });
+
+    test("during run signals abort via AbortSignal", async () => {
+      await using run = createRunner();
+
+      let signalAbortedInHandler = false;
+
+      const task: Task<void> = async ({ signal }) => {
+        const taskComplete = Promise.withResolvers<Result<void, AbortError>>();
+
+        const timeout = setTimeout(() => {
+          taskComplete.resolve(ok());
+        }, 1000);
+
+        signal.addEventListener(
+          "abort",
+          () => {
+            signalAbortedInHandler = signal.aborted;
+            clearTimeout(timeout);
+            taskComplete.resolve(err(signal.reason));
+          },
+          { once: true },
+        );
+
+        return await taskComplete.promise;
+      };
+
+      const fiber = run(task);
+      fiber.abort("test abort");
+
+      const result = await fiber;
+
+      expect(signalAbortedInHandler).toBe(true);
+      expect(result).toEqual(
+        err({
+          type: "AbortError",
+          cause: "test abort",
+        }),
+      );
+    });
+
+    /**
+     * Native APIs like fetch throw signal.reason when aborted. To properly
+     * propagate the Task's AbortError and distinguish abort from other errors,
+     * wrap the native API with tryAsync and check signal.aborted in the error
+     * handler to return signal.reason (the AbortError) instead of wrapping it
+     * as a domain error.
+     */
+    test("propagates to native APIs", async () => {
+      interface FetchError extends Typed<"FetchError"> {
+        readonly error: unknown;
+      }
+
+      const errorCapture = Promise.withResolvers<unknown>();
+
+      const fetchTask =
+        (url: string): Task<Response, FetchError> =>
+        ({ signal }) =>
+          tryAsync(
+            () => fetch(url, { signal }),
+            (error): FetchError | AbortError => {
+              errorCapture.resolve(error);
+              if (AbortError.is(error)) return error;
+              return { type: "FetchError", error };
+            },
+          );
+
+      await using run = createRunner();
+
+      const fiber = run(fetchTask("https://example.com"));
+      fiber.abort("cancelled");
+
+      expect(await fiber).toEqual(
+        err({
+          type: "AbortError",
+          cause: "cancelled",
+        }),
+      );
+
+      expect(await errorCapture.promise).toEqual({
+        type: "AbortError",
+        cause: "cancelled",
+      });
+    });
+  });
+
+  describe("dispose", () => {
+    test("aborts task via using", async () => {
+      await using run = createRunner();
+
+      const task: Task<void> = async ({ signal }) => {
+        const taskComplete = Promise.withResolvers<Result<void, AbortError>>();
+
+        const timeout = setTimeout(() => {
+          taskComplete.resolve(ok());
+        }, 1000);
+
+        signal.addEventListener(
+          "abort",
+          () => {
+            clearTimeout(timeout);
+            taskComplete.resolve(err(signal.reason));
+          },
+          { once: true },
+        );
+
+        return await taskComplete.promise;
+      };
+
+      let fiber: Fiber<void>;
+      {
+        using f = run(task);
+        fiber = f;
+      }
+
+      expect(await fiber).toEqual(
+        err({
+          type: "AbortError",
+          cause: undefined,
+        }),
+      );
+    });
+  });
+
+  test("getState returns running while running, completed with result after completion", async () => {
+    await using run = createRunner();
+
+    const taskComplete = Promise.withResolvers<Result<number, MyError>>();
+
+    const fiber = run(() => taskComplete.promise);
+
+    expect(fiber.getState().type).toBe("running");
+
+    taskComplete.resolve(ok(42));
+    await fiber;
+
+    const state = fiber.getState();
+    expectTypeOf(state).toEqualTypeOf<FiberState<number, MyError>>();
+    assert(state.type === "completed");
+    expect(state.result).toEqual(ok(42));
+  });
+
+  test("completed state outcome equals result when not aborted", async () => {
+    await using run = createRunner();
+
+    const taskComplete = Promise.withResolvers<Result<number, MyError>>();
+
+    const fiber = run(() => taskComplete.promise);
+
+    expect(fiber.getState().type).toBe("running");
+
+    taskComplete.resolve(ok(42));
+    await fiber;
+
+    const state = fiber.getState();
+    assert(state.type === "completed");
+    expect(state.outcome).toEqual(state.result);
+  });
+
+  test("completed state outcome preserves original result when aborted", async () => {
+    await using run = createRunner();
+
+    const fiber = run(() => ok("data"));
+    fiber.abort("stop");
+    await fiber;
+
+    const state = fiber.getState();
+    assert(state.type === "completed");
+    // result returns AbortError
+    expect(state.result).toEqual(err({ type: "AbortError", cause: "stop" }));
+    // outcome preserves what the task actually returned
+    expect(state.outcome).toEqual(ok("data"));
+  });
+
+  describe("run", () => {
+    test("id matches run.id inside task", async () => {
+      await using run = createRunner();
+
+      let parentFiberId: Id | null = null;
+      let childFiber: Fiber<void> | null = null;
+      let childFiberId: Id | null = null;
+
+      const parentFiber = run(async (run) => {
+        parentFiberId = run.id;
+
+        childFiber = run(({ id }) => {
+          childFiberId = id;
+          return Promise.resolve(ok());
+        });
+        await childFiber;
+
+        return ok();
+      });
+
+      await parentFiber;
+
+      expect(parentFiberId).toBe(parentFiber.run.id);
+      expect(childFiberId).toBe(childFiber!.run.id);
+      expect(parentFiberId).not.toBe(childFiberId);
+    });
+
+    test("snapshot returns running state while running, completed with result after completion", async () => {
+      await using run = createRunner();
+
+      const taskComplete = Promise.withResolvers<Result<number>>();
+
+      const fiber = run(() => taskComplete.promise);
+      expect(fiber.run.snapshot().state.type).toBe("running");
+
+      taskComplete.resolve(ok(42));
+      await fiber;
+      const snapshotState = fiber.run.snapshot().state;
+      assert(snapshotState.type === "completed");
+      expect(snapshotState.result).toEqual(ok(42));
+    });
+  });
+
+  describe("daemon", () => {
+    test("called directly on root runner", async () => {
+      const events: Array<string> = [];
+      const daemonCanComplete = Promise.withResolvers<void>();
+
+      await using run = createRunner();
+
+      const daemonTask: Task<void> = async () => {
+        events.push("daemon started");
+        await daemonCanComplete.promise;
+        events.push("daemon completed");
+        return ok();
+      };
+
+      // Call daemon directly on root runner (not from inside a task)
+      const fiber = run.daemon(daemonTask);
+
+      expect(events).toEqual(["daemon started"]);
+
+      daemonCanComplete.resolve();
+      await fiber;
+
+      expect(events).toEqual(["daemon started", "daemon completed"]);
+    });
+
+    test("outlives parent task", async () => {
+      const events: Array<string> = [];
+      const daemonCanComplete = Promise.withResolvers<void>();
+      let daemonFiber: Fiber<void>;
+
+      await using run = createRunner();
+
+      const daemonTask: Task<void> = async () => {
+        events.push("daemon started");
+        await daemonCanComplete.promise;
+        events.push("daemon completed");
+        return ok();
+      };
+
+      const parentTask: Task<void> = (run) => {
+        events.push("parent started");
+        daemonFiber = run.daemon(daemonTask);
+        events.push("parent completed");
+        return ok();
+      };
+
+      await run(parentTask);
+
+      // Parent completed but daemon should still be running
+      expect(events).toEqual([
+        "parent started",
+        "daemon started",
+        "parent completed",
+      ]);
+
+      // Let daemon complete and wait for it
+      daemonCanComplete.resolve();
+      await daemonFiber!;
+
+      expect(events).toEqual([
+        "parent started",
+        "daemon started",
+        "parent completed",
+        "daemon completed",
+      ]);
+    });
+
+    test("aborted when root runner disposes", async () => {
+      const events: Array<string> = [];
+      const run = createRunner();
+
+      const daemonTask: Task<void> = async ({ signal }) => {
+        events.push("daemon started");
+        const taskComplete = Promise.withResolvers<Result<void, AbortError>>();
+
+        const timeout = setTimeout(() => {
+          events.push("daemon completed");
+          taskComplete.resolve(ok());
+        }, 1000);
+
+        signal.addEventListener(
+          "abort",
+          () => {
+            clearTimeout(timeout);
+            events.push("daemon aborted");
+            taskComplete.resolve(err(signal.reason));
+          },
+          { once: true },
+        );
+
+        return await taskComplete.promise;
+      };
+
+      const parentTask: Task<void> = (run) => {
+        run.daemon(daemonTask);
+        return ok();
+      };
+
+      await run(parentTask);
+      expect(events).toEqual(["daemon started"]);
+
+      // Dispose root runner
+      await run[Symbol.asyncDispose]();
+
+      expect(events).toEqual(["daemon started", "daemon aborted"]);
+    });
+
+    test("from nested task runs on root runner", async () => {
+      const events: Array<string> = [];
+      const daemonCanComplete = Promise.withResolvers<void>();
+      let daemonFiber: Fiber<void>;
+
+      await using run = createRunner();
+
+      const daemonTask: Task<void> = async () => {
+        events.push("daemon started");
+        await daemonCanComplete.promise;
+        events.push("daemon completed");
+        return ok();
+      };
+
+      // Nested task spawns a daemon via run.daemon
+      const childTask: Task<void> = (run) => {
+        events.push("child started");
+        daemonFiber = run.daemon(daemonTask);
+        events.push("child completed");
+        return ok();
+      };
+
+      const parentTask: Task<void> = async (run) => {
+        events.push("parent started");
+        await run(childTask);
+        events.push("parent completed");
+        return ok();
+      };
+
+      await run(parentTask);
+
+      // Both parent and child completed, but daemon should still be running
+      expect(events).toEqual([
+        "parent started",
+        "child started",
+        "daemon started",
+        "child completed",
+        "parent completed",
+      ]);
+
+      daemonCanComplete.resolve();
+      await daemonFiber!;
+
+      expect(events).toEqual([
+        "parent started",
+        "child started",
+        "daemon started",
+        "child completed",
+        "parent completed",
+        "daemon completed",
+      ]);
+    });
+  });
+
+  test("InferFiberOk and InferFiberErr extract type parameters", () => {
+    type MyFiber = Fiber<string, MyError>;
+    expectTypeOf<InferFiberOk<MyFiber>>().toEqualTypeOf<string>();
+
+    type MyFiber2 = Fiber<number, MyError>;
+    expectTypeOf<InferFiberErr<MyFiber2>>().toEqualTypeOf<MyError>();
+
+    // Handles void Fiber
+    type VoidFiber = Fiber<void, Error>;
+    expectTypeOf<InferFiberOk<VoidFiber>>().toEqualTypeOf<void>();
+    expectTypeOf<InferFiberErr<VoidFiber>>().toEqualTypeOf<Error>();
+  });
+});
+
+describe("unabortable", () => {
+  test("without abort completes", async () => {
+    await using run = createRunner();
+
+    const okResult = await run(unabortable(() => ok(42)));
+    const errResult = await run(unabortable(() => err({ type: "MyError" })));
+
+    expect(okResult).toEqual(ok(42));
+    expect(errResult).toEqual(err({ type: "MyError" }));
+  });
+
+  test("with abort before run masks signal and completes", async () => {
+    await using run = createRunner();
+
+    let taskRan = false;
+    let innerResult: Result<void, AbortError> | null = null;
+    let signalAbortedBeforeUnabortable = false;
+
+    // Abort first, then run unabortable task
+    const fiber = run(async (run) => {
+      await Promise.resolve(); // yield to let abort propagate
+      signalAbortedBeforeUnabortable = run.signal.aborted;
+
+      innerResult = await run(
+        unabortable(() => {
+          taskRan = true;
+          return ok();
+        }),
+      );
+      return innerResult;
+    });
+
+    fiber.abort("stop");
+    const result = await fiber;
+
+    expect(signalAbortedBeforeUnabortable).toBe(true);
+    // Unabortable task ran despite parent being aborted
+    expect(taskRan).toBe(true);
+    // Inner unabortable task completed successfully
+    expect(innerResult).toEqual(ok());
+    // But outer abortable task was aborted
+    expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
+    // Outcome preserves what the task actually returned
+    const state = fiber.getState();
+    assert(state.type === "completed");
+    expect(state.outcome).toEqual(innerResult);
+  });
+
+  test("with abort during run masks signal and completes", async () => {
+    await using run = createRunner();
+
+    const canComplete = Promise.withResolvers<void>();
+    let signalAbortedAtStart = true;
+    let signalAbortedAfterAbort = true;
+
+    const fiber = run(
+      unabortable(async ({ signal }) => {
+        signalAbortedAtStart = signal.aborted;
+        await canComplete.promise;
+        // Signal should still be false despite abort
+        signalAbortedAfterAbort = signal.aborted;
+        return ok();
+      }),
+    );
+
+    // Abort while task is running
+    fiber.abort("stop");
+
+    // Let the task complete
+    canComplete.resolve();
+    const result = await fiber;
+
+    expect(signalAbortedAtStart).toBe(false);
+    expect(signalAbortedAfterAbort).toBe(false);
+    expect(result).toEqual(ok());
+  });
+});
+
+describe("unabortableMask", () => {
+  test("without abort completes", async () => {
+    await using run = createRunner();
+
+    let abortableRan = false;
+
+    const task = unabortableMask(
+      (restore) => async (run) =>
+        await run(
+          restore(() => {
+            abortableRan = true;
+            return ok();
+          }),
+        ),
+    );
+
+    const result = await run(task);
+
+    expect(abortableRan).toBe(true);
+    expect(result).toEqual(ok());
+  });
+
+  test("with abort before run still runs unabortable", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+    let signalAbortedBeforeMask = false;
+
+    const fiber = run(async (run) => {
+      await Promise.resolve();
+      signalAbortedBeforeMask = run.signal.aborted;
+
+      // unabortableMask runs even though parent is already aborted
+      return await run(
+        unabortableMask((restore) => async (run) => {
+          events.push("acquire");
+
+          // abortable task is skipped because abort was requested
+          await run(
+            restore(() => {
+              events.push("use");
+              return ok();
+            }),
+          );
+
+          events.push("release");
+          return ok();
+        }),
+      );
+    });
+
+    fiber.abort("stop");
+    const result = await fiber;
+
+    expect(signalAbortedBeforeMask).toBe(true);
+    // acquire and release ran, use was skipped (abortable sees the abort)
+    expect(events).toEqual(["acquire", "release"]);
+    // Outer fiber result is AbortError because outer task was aborted
+    expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
+  });
+
+  test("with abort during run masks signal, skips abortable", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+    const acquireStarted = Promise.withResolvers<void>();
+    const canContinue = Promise.withResolvers<void>();
+    let signalAbortedAtStart = true;
+    let signalAbortedAfterAwait = true;
+    let signalAbortedInUnmaskedTask = true;
+
+    const task = unabortableMask((restore) => async (run) => {
+      signalAbortedAtStart = run.signal.aborted;
+      events.push("acquire");
+      acquireStarted.resolve();
+      await canContinue.promise;
+
+      signalAbortedAfterAwait = run.signal.aborted;
+
+      // Regular task runs because it inherits the abort mask
+      await run(({ signal }) => {
+        signalAbortedInUnmaskedTask = signal.aborted;
+        events.push("unmasked task");
+        return ok();
+      });
+
+      // Abortable task is skipped
+      await run(
+        restore(() => {
+          events.push("use");
+          return ok();
+        }),
+      );
+
+      events.push("release");
+      return ok();
+    });
+
+    const fiber = run(task);
+    await acquireStarted.promise;
+    fiber.abort("stop");
+    canContinue.resolve();
+
+    const result = await fiber;
+
+    expect(signalAbortedAtStart).toBe(false);
+    expect(signalAbortedAfterAwait).toBe(false);
+    expect(signalAbortedInUnmaskedTask).toBe(false);
+    expect(events).toEqual(["acquire", "unmasked task", "release"]);
+    expect(result).toEqual(ok());
+  });
+
+  test("nested unabortableMask: outer abortable restores to fully abortable", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+    const innerStarted = Promise.withResolvers<void>();
+    const canContinue = Promise.withResolvers<void>();
+
+    const task = unabortableMask((restore1) => async (run) => {
+      // mask = 1
+      events.push("outer acquire");
+
+      return await run(
+        unabortableMask((restore2) => async (run) => {
+          // mask = 2
+          events.push("inner acquire");
+          innerStarted.resolve();
+          await canContinue.promise;
+
+          // abortable1 restores to mask=0 (fully abortable)
+          await run(
+            restore1(({ signal }) => {
+              events.push(`abortable1 task (aborted=${signal.aborted})`);
+              return ok();
+            }),
+          );
+
+          // restore2 restores to mask=1 (still protected)
+          await run(
+            restore2(({ signal }) => {
+              events.push(`restore2 task (aborted=${signal.aborted})`);
+              return ok();
+            }),
+          );
+
+          events.push("inner release");
+          return ok();
+        }),
+      );
+    });
+
+    const fiber = run(task);
+    await innerStarted.promise;
+    fiber.abort("stop");
+    canContinue.resolve();
+
+    const result = await fiber;
+
+    expect(events).toEqual([
+      "outer acquire",
+      "inner acquire",
+      // abortable1 skipped (mask=0, abort visible)
+      "restore2 task (aborted=false)",
+      "inner release",
+    ]);
+    expect(result).toEqual(ok());
+  });
+
+  test("restore throws when used outside its unabortableMask", async () => {
+    await using run = createRunner();
+
+    let restoreFromInner: (<T, E>(task: Task<T, E>) => Task<T, E>) | undefined;
+
+    const task = unabortableMask(
+      (_restore1) => async (run) =>
+        await run(
+          unabortableMask((restore2) => (_run) => {
+            // restore2 restores to mask=1
+            restoreFromInner = restore2;
+
+            return ok();
+          }),
+        ),
+    );
+
+    const result = await run(task);
+    expect(result).toEqual(ok());
+    expect(restoreFromInner).toBeDefined();
+
+    // Using restore2 outside its intended scope would increase abort mask
+    // (root mask=0, override=1). This must crash.
+    expect(() => run(restoreFromInner!(() => ok()))).toThrow(
+      "restore used outside its unabortableMask",
+    );
+  });
+});
+
+describe("AsyncDisposableStack", () => {
+  interface Resource extends globalThis.AsyncDisposable {
+    readonly id: string;
+  }
+
+  const createResource =
+    (id: string, events: Array<string>): Task<Resource> =>
+    () => {
+      events.push(`${id} acquired`);
+      return ok({
+        id,
+        // eslint-disable-next-line @typescript-eslint/require-await
+        [Symbol.asyncDispose]: async () => {
+          events.push(`${id} released`);
+        },
+      });
+    };
+
+  describe("stack via Runner", () => {
+    test("run.stack() creates AsyncDisposableStack", async () => {
+      await using run = createRunner();
+
+      const events: Array<string> = [];
+
+      const task: Task<void> = async (run) => {
+        await using stack = run.stack();
+
+        expectTypeOf(stack).toEqualTypeOf<AsyncDisposableStack>();
+
+        stack.defer(() => {
+          events.push("cleanup");
+          return ok();
+        });
+
+        events.push("work");
+        return ok();
+      };
+
+      const result = await run(task);
+
+      expect(result).toEqual(ok());
+      expect(events).toEqual(["work", "cleanup"]);
+    });
+  });
+
+  describe("defer", () => {
+    test("runs task on dispose", async () => {
+      await using run = createRunner();
+
+      const events: Array<string> = [];
+
+      const cleanup = () => {
+        events.push("cleanup");
+        return ok();
+      };
+
+      const task: Task<void> = async (run) => {
+        await using stack = run.stack();
+        stack.defer(cleanup);
+        events.push("work");
+        return ok();
+      };
+
+      const result = await run(task);
+
+      expect(result).toEqual(ok());
+      expect(events).toEqual(["work", "cleanup"]);
+    });
+
+    test("runs multiple deferred tasks in LIFO order", async () => {
+      await using run = createRunner();
+
+      const events: Array<string> = [];
+
+      const task: Task<void> = async (run) => {
+        await using stack = run.stack();
+        stack.defer(() => {
+          events.push("cleanup A");
+          return ok();
+        });
+        stack.defer(() => {
+          events.push("cleanup B");
+          return ok();
+        });
+        events.push("work");
+        return ok();
+      };
+
+      const result = await run(task);
+
+      expect(result).toEqual(ok());
+      expect(events).toEqual(["work", "cleanup B", "cleanup A"]);
+    });
+
+    test("is unabortable", async () => {
+      await using run = createRunner();
+
+      const events: Array<string> = [];
+      const taskStarted = Promise.withResolvers<void>();
+      const canComplete = Promise.withResolvers<void>();
+
+      const task: Task<void, AbortError> = async (run) => {
+        await using stack = run.stack();
+        stack.defer(() => {
+          events.push("cleanup");
+          return ok();
+        });
+        events.push("work started");
+        taskStarted.resolve();
+        await canComplete.promise;
+        if (run.signal.aborted) {
+          return err(run.signal.reason);
+        }
+        return ok();
+      };
+
+      const fiber = run(task);
+      await taskStarted.promise;
+      fiber.abort("stop");
+      canComplete.resolve();
+
+      const result = await fiber;
+
+      expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
+      expect(events).toEqual(["work started", "cleanup"]);
+    });
+  });
+
+  describe("disposeAsync", () => {
+    test("disposes the stack", async () => {
+      await using run = createRunner();
+
+      const events: Array<string> = [];
+
+      const task: Task<void> = async (run) => {
+        const stack = run.stack();
+
+        stack.defer(() => {
+          events.push("cleanup");
+          return ok();
+        });
+
+        events.push("work");
+        await stack.disposeAsync();
+
+        return ok();
+      };
+
+      const result = await run(task);
+
+      expect(result).toEqual(ok());
+      expect(events).toEqual(["work", "cleanup"]);
+    });
+  });
+
+  describe("disposed", () => {
+    test("returns false before dispose, true after", async () => {
+      await using run = createRunner();
+
+      const task: Task<void> = async (run) => {
+        const stack = run.stack();
+        expect(stack.disposed).toBe(false);
+
+        await stack.disposeAsync();
+        expect(stack.disposed).toBe(true);
+
+        return ok();
+      };
+
+      expect(await run(task)).toEqual(ok());
+    });
+  });
+
+  describe("use", () => {
+    test("acquires and disposes resource", async () => {
+      await using run = createRunner();
+
+      const events: Array<string> = [];
+
+      const task: Task<void> = async (run) => {
+        await using stack = run.stack();
+        const a = await stack.use(createResource("a", events));
+        if (!a.ok) return a;
+        events.push(`using ${a.value.id}`);
+        return ok();
+      };
+
+      const result = await run(task);
+
+      expect(result).toEqual(ok());
+      expect(events).toEqual(["a acquired", "using a", "a released"]);
+    });
+
+    test("acquires multiple resources in LIFO disposal order", async () => {
+      await using run = createRunner();
+
+      const events: Array<string> = [];
+
+      const task: Task<void> = async (run) => {
+        await using stack = run.stack();
+
+        const a = await stack.use(createResource("a", events));
+        if (!a.ok) return a;
+
+        const b = await stack.use(createResource("b", events));
+        if (!b.ok) return b;
+
+        const c = await stack.use(createResource("c", events));
+        if (!c.ok) return c;
+
+        events.push(`using ${a.value.id}, ${b.value.id}, ${c.value.id}`);
+        return ok();
+      };
+
+      const result = await run(task);
+
+      expect(result).toEqual(ok());
+      expect(events).toEqual([
+        "a acquired",
+        "b acquired",
+        "c acquired",
+        "using a, b, c",
+        "c released",
+        "b released",
+        "a released",
+      ]);
+    });
+
+    test("propagates acquire error and releases acquired resources", async () => {
+      await using run = createRunner();
+
+      interface AcquireError extends Typed<"AcquireError"> {}
+
+      const events: Array<string> = [];
+
+      const failingResource: Task<Resource, AcquireError> = () => {
+        events.push("b failed");
+        return err({ type: "AcquireError" });
+      };
+
+      const task: Task<void, AcquireError> = async (run) => {
+        await using stack = run.stack();
+
+        const a = await stack.use(createResource("a", events));
+        if (!a.ok) return a;
+
+        const b = await stack.use(failingResource);
+        if (!b.ok) return b;
+
+        const c = await stack.use(createResource("c", events));
+        if (!c.ok) return c;
+
+        events.push(`using ${a.value.id}, ${b.value.id}, ${c.value.id}`);
+        return ok();
+      };
+
+      const result = await run(task);
+
+      expect(result).toEqual(err({ type: "AcquireError" }));
+      expect(events).toEqual(["a acquired", "b failed", "a released"]);
+    });
+
+    test("releases acquired resources when acquire throws", async () => {
+      await using run = createRunner();
+
+      const events: Array<string> = [];
+
+      const throwingAcquire: Task<Resource> = () => {
+        events.push("b throwing");
+        throw new Error("acquire threw");
+      };
+
+      const task: Task<void> = async (run) => {
+        await using stack = run.stack();
+
+        const a = await stack.use(createResource("a", events));
+        if (!a.ok) return a;
+
+        const b = await stack.use(throwingAcquire);
+        if (!b.ok) return b;
+
+        const c = await stack.use(createResource("c", events));
+        if (!c.ok) return c;
+
+        events.push(`using ${a.value.id}, ${b.value.id}, ${c.value.id}`);
+        return ok();
+      };
+
+      await expect(run(task)).rejects.toThrow("acquire threw");
+      expect(events).toEqual(["a acquired", "b throwing", "a released"]);
+    });
+
+    test("acquisition is unabortable", async () => {
+      await using run = createRunner();
+
+      const events: Array<string> = [];
+      const canComplete = Promise.withResolvers<void>();
+
+      const slowAcquire: Task<Resource> = async ({ signal }) => {
+        events.push(`acquire started, aborted: ${signal.aborted}`);
+        await canComplete.promise;
+        events.push(`acquire completed, aborted: ${signal.aborted}`);
+        return ok({
+          id: "slow",
+          // eslint-disable-next-line @typescript-eslint/require-await
+          [Symbol.asyncDispose]: async () => {
+            events.push("slow released");
+          },
+        });
+      };
+
+      const task: Task<void, AbortError> = async (run) => {
+        await using stack = run.stack();
+        const a = await stack.use(slowAcquire);
+        if (!a.ok) return a;
+        if (run.signal.aborted) {
+          return err(run.signal.reason);
+        }
+        events.push(`using ${a.value.id}`);
+        return ok();
+      };
+
+      const fiber = run(task);
+      fiber.abort("stop");
+      canComplete.resolve();
+
+      const result = await fiber;
+
+      expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
+      expect(events).toEqual([
+        "acquire started, aborted: false",
+        "acquire completed, aborted: false",
+        "slow released",
+      ]);
+    });
+
+    test("accepts sync Disposable", async () => {
+      await using run = createRunner();
+
+      const events: Array<string> = [];
+
+      interface SyncResource extends Disposable {
+        readonly id: string;
+      }
+
+      const createSyncResource =
+        (id: string): Task<SyncResource> =>
+        () => {
+          events.push(`${id} acquired`);
+          return ok({
+            id,
+            [Symbol.dispose]: () => {
+              events.push(`${id} released`);
+            },
+          });
+        };
+
+      const task: Task<void> = async (run) => {
+        await using stack = run.stack();
+        const a = await stack.use(createSyncResource("a"));
+        if (!a.ok) return a;
+        events.push(`using ${a.value.id}`);
+        return ok();
+      };
+
+      const result = await run(task);
+
+      expect(result).toEqual(ok());
+      expect(events).toEqual(["a acquired", "using a", "a released"]);
+    });
+
+    test("accepts null without registering disposal", async () => {
+      await using run = createRunner();
+
+      const task: Task<null> = async (run) => {
+        await using stack = run.stack();
+        const result = await stack.use(() => ok(null));
+        return result;
+      };
+
+      expect(await run(task)).toEqual(ok(null));
+    });
+
+    test("accepts undefined without registering disposal", async () => {
+      await using run = createRunner();
+
+      const task: Task<undefined> = async (run) => {
+        await using stack = run.stack();
+        const result = await stack.use(() => ok(undefined));
+        return result;
+      };
+
+      expect(await run(task)).toEqual(ok(undefined));
+    });
+
+    test("accepts direct value (sync)", async () => {
+      await using run = createRunner();
+
+      const events: Array<string> = [];
+
+      const task: Task<void> = async (run) => {
+        await using stack = run.stack();
+
+        const resource: AsyncDisposable = {
+          // eslint-disable-next-line @typescript-eslint/require-await
+          [Symbol.asyncDispose]: async () => {
+            events.push("released");
+          },
+        };
+
+        const value = stack.use(resource);
+        expectTypeOf(value).toEqualTypeOf<AsyncDisposable>();
+        expect(value).toBe(resource);
+
+        events.push("work");
+        return ok();
+      };
+
+      const result = await run(task);
+
+      expect(result).toEqual(ok());
+      expect(events).toEqual(["work", "released"]);
+    });
+
+    test("accepts disposable callable (not mistaken for Task)", async () => {
+      await using run = createRunner();
+
+      let childRunner: Runner | null = null;
+      let stateWhileWorking: FiberState | null = null;
+
+      const task: Task<void> = async (run) => {
+        await using stack = run.stack();
+
+        // Runner is a callable with Symbol.asyncDispose
+        // use must detect the symbol, not use typeof === "function"
+        childRunner = createRunner();
+        stack.use(childRunner);
+
+        stateWhileWorking = childRunner.getState();
+        return ok();
+      };
+
+      const result = await run(task);
+
+      expect(result).toEqual(ok());
+      expect(stateWhileWorking!.type).toBe("running");
+      expect(childRunner!.getState().type).toBe("completed");
+    });
+
+    test("accepts moved native stack", async () => {
+      await using run = createRunner();
+
+      const events: Array<string> = [];
+
+      const task: Task<void> = async (run) => {
+        await using outerStack = run.stack();
+
+        // Create inner stack with resources
+        const innerStack = run.stack();
+        innerStack.defer(() => {
+          events.push("inner cleanup");
+          return ok();
+        });
+
+        // Move and add to outer stack
+        const moved = innerStack.move();
+        outerStack.use(moved);
+
+        events.push("work");
+        return ok();
+      };
+
+      const result = await run(task);
+
+      expect(result).toEqual(ok());
+      expect(events).toEqual(["work", "inner cleanup"]);
+    });
+  });
+
+  describe("adopt", () => {
+    test("acquires value via task and registers task-based disposal", async () => {
+      await using run = createRunner();
+
+      const events: Array<string> = [];
+
+      interface Handle {
+        readonly id: string;
+      }
+
+      const acquireHandle =
+        (id: string): Task<Handle> =>
+        () => {
+          events.push(`${id} acquired`);
+          return ok({ id });
+        };
+
+      const task: Task<void> = async (run) => {
+        await using stack = run.stack();
+
+        const handle = await stack.adopt(acquireHandle("h1"), (h) => () => {
+          events.push(`${h.id} released`);
+          return ok();
+        });
+        if (!handle.ok) return handle;
+
+        events.push(`using ${handle.value.id}`);
+        return ok();
+      };
+
+      const result = await run(task);
+
+      expect(result).toEqual(ok());
+      expect(events).toEqual(["h1 acquired", "using h1", "h1 released"]);
+    });
+
+    test("disposal is unabortable", async () => {
+      await using run = createRunner();
+
+      const events: Array<string> = [];
+      const taskStarted = Promise.withResolvers<void>();
+      const canComplete = Promise.withResolvers<void>();
+
+      const task: Task<void, AbortError> = async (run) => {
+        await using stack = run.stack();
+
+        const handle = await stack.adopt(
+          () => ok({ id: "h1" }),
+          (h) => () => {
+            events.push(`${h.id} released`);
+            return ok();
+          },
+        );
+        if (!handle.ok) return handle;
+
+        events.push("work started");
+        taskStarted.resolve();
+        await canComplete.promise;
+        if (run.signal.aborted) {
+          return err(run.signal.reason);
+        }
+        return ok();
+      };
+
+      const fiber = run(task);
+      await taskStarted.promise;
+      fiber.abort("stop");
+      canComplete.resolve();
+
+      const result = await fiber;
+
+      expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
+      expect(events).toEqual(["work started", "h1 released"]);
+    });
+
+    test("does not register disposal if acquire fails", async () => {
+      await using run = createRunner();
+
+      const events: Array<string> = [];
+
+      interface AcquireError extends Typed<"AcquireError"> {}
+
+      const task: Task<void, AcquireError> = async (run) => {
+        await using stack = run.stack();
+
+        const handle = await stack.adopt<{ id: string }, AcquireError>(
+          () => {
+            events.push("acquire failed");
+            return err({ type: "AcquireError" });
+          },
+          (h) => () => {
+            events.push(`${h.id} released`);
+            return ok();
+          },
+        );
+        if (!handle.ok) return handle;
+
+        events.push(`using ${handle.value.id}`);
+        return ok();
+      };
+
+      const result = await run(task);
+
+      expect(result).toEqual(err({ type: "AcquireError" }));
+      // Release should not be called since acquire failed
+      expect(events).toEqual(["acquire failed"]);
+    });
+  });
+
+  describe("move", () => {
+    test("transfers ownership to returned AsyncDisposableStack", async () => {
+      await using run = createRunner();
+
+      const events: Array<string> = [];
+
+      const createBundle: Task<
+        { a: Resource; b: Resource } & AsyncDisposable
+      > = async (run) => {
+        await using stack = run.stack();
+
+        const a = await stack.use(createResource("a", events));
+        if (!a.ok) return a;
+
+        const b = await stack.use(createResource("b", events));
+        if (!b.ok) return b;
+
+        const moved = stack.move();
+        return ok({
+          a: a.value,
+          b: b.value,
+          [Symbol.asyncDispose]: () => moved.disposeAsync(),
+        });
+      };
+
+      const bundle = await run(createBundle);
+      expect(bundle.ok).toBe(true);
+      if (!bundle.ok) throw new Error("unreachable");
+
+      events.push(`using ${bundle.value.a.id}, ${bundle.value.b.id}`);
+
+      // Resources not released yet
+      expect(events).toEqual(["a acquired", "b acquired", "using a, b"]);
+
+      // Dispose the bundle
+      await bundle.value[Symbol.asyncDispose]();
+
+      expect(events).toEqual([
+        "a acquired",
+        "b acquired",
+        "using a, b",
+        "b released",
+        "a released",
+      ]);
+    });
+
+    test("cleans up on early return after move is possible", async () => {
+      await using run = createRunner();
+
+      const events: Array<string> = [];
+      const canContinue = Promise.withResolvers<void>();
+
+      // Abortable factory - if aborted, acquired resources are cleaned up
+      const createBundle: Task<
+        { a: Resource; b: Resource } & AsyncDisposable
+      > = async (run) => {
+        await using stack = run.stack();
+
+        const a = await stack.use(createResource("a", events));
+        if (!a.ok) return a;
+
+        // Simulate slow acquisition
+        await canContinue.promise;
+
+        // Check abort after await
+        if (run.signal.aborted) {
+          return err(run.signal.reason);
+        }
+
+        const b = await stack.use(createResource("b", events));
+        if (!b.ok) return b;
+
+        const moved = stack.move();
+        return ok({
+          a: a.value,
+          b: b.value,
+          [Symbol.asyncDispose]: () => moved.disposeAsync(),
+        });
+      };
+
+      const fiber = run(createBundle);
+
+      // Abort while 'a' is acquired but waiting for 'b'
+      fiber.abort("cancelled");
+      canContinue.resolve();
+
+      const result = await fiber;
+
+      expect(result).toEqual(err({ type: "AbortError", cause: "cancelled" }));
+      // 'a' was acquired then cleaned up when scope exited
+      expect(events).toEqual(["a acquired", "a released"]);
+    });
+  });
+
+  describe("cleanup runs on root scope", () => {
+    test("defer cleanup survives factory task scope", async () => {
+      await using run = createRunner();
+
+      const events: Array<string> = [];
+
+      // Factory task creates a resource with Task-based cleanup via defer
+      const createBundle: Task<AsyncDisposable> = async (run) => {
+        await using stack = run.stack();
+
+        events.push("factory: acquired");
+        stack.defer(() => {
+          events.push("factory: cleanup via defer");
+          return ok();
+        });
+
+        const moved = stack.move();
+        return ok({
+          [Symbol.asyncDispose]: () => moved.disposeAsync(),
+        });
+      };
+
+      const bundle = await run(createBundle);
+      expect(bundle.ok).toBe(true);
+      if (!bundle.ok) throw new Error("unreachable");
+
+      events.push("using bundle after factory ended");
+
+      await bundle.value[Symbol.asyncDispose]();
+
+      expect(events).toEqual([
+        "factory: acquired",
+        "using bundle after factory ended",
+        "factory: cleanup via defer",
+      ]);
+    });
+
+    test("adopt disposal survives factory task scope", async () => {
+      await using run = createRunner();
+
+      const events: Array<string> = [];
+
+      interface Handle {
+        readonly id: string;
+      }
+
+      // Factory task creates a resource with Task-based disposal via adopt
+      const createBundle: Task<{ handle: Handle } & AsyncDisposable> = async (
+        run,
+      ) => {
+        await using stack = run.stack();
+
+        const handle = await stack.adopt<Handle>(
+          () => {
+            events.push("factory: h1 acquired");
+            return ok({ id: "h1" });
+          },
+          (h) => () => {
+            events.push(`factory: ${h.id} disposal via adopt`);
+            return ok();
+          },
+        );
+        if (!handle.ok) return handle;
+
+        const moved = stack.move();
+        return ok({
+          handle: handle.value,
+          [Symbol.asyncDispose]: () => moved.disposeAsync(),
+        });
+      };
+
+      const bundle = await run(createBundle);
+      expect(bundle.ok).toBe(true);
+      if (!bundle.ok) throw new Error("unreachable");
+
+      events.push(`using ${bundle.value.handle.id} after factory ended`);
+
+      await bundle.value[Symbol.asyncDispose]();
+
+      expect(events).toEqual([
+        "factory: h1 acquired",
+        "using h1 after factory ended",
+        "factory: h1 disposal via adopt",
+      ]);
+    });
+  });
+
+  describe("AsyncDisposable with Task-based disposal via run.defer", () => {
+    interface Resource extends AsyncDisposable {
+      readonly id: string;
+    }
+
+    const createResourceFactory = (
+      events: Array<string>,
+      disposalTask?: Task<void>,
+    ) => {
+      const createResource: Task<Resource> = (run) => {
+        events.push("acquired");
+        return ok({
+          id: "r1",
+          ...run.defer(
+            disposalTask ??
+              (() => {
+                events.push("disposed");
+                return ok();
+              }),
+          ),
+        });
+      };
+      return createResource;
+    };
+
+    test("disposal runs when stack disposes", async () => {
+      await using run = createRunner();
+
+      const events: Array<string> = [];
+
+      const task: Task<void> = async (run) => {
+        await using stack = run.stack();
+        const r = await stack.use(createResourceFactory(events));
+        if (!r.ok) return r;
+        events.push("work");
+        return ok();
+      };
+
+      const result = await run(task);
+
+      expect(result).toEqual(ok());
+      expect(events).toEqual(["acquired", "work", "disposed"]);
+    });
+
+    test("disposal completes even when parent task is aborted", async () => {
+      await using run = createRunner();
+
+      const events: Array<string> = [];
+      const workStarted = Promise.withResolvers<void>();
+      const canComplete = Promise.withResolvers<void>();
+
+      const cleanupHelper = () => {
+        events.push("cleanup helper ran");
+        return ok();
+      };
+
+      const task: Task<void, AbortError> = async (run) => {
+        await using stack = run.stack();
+
+        const r = await stack.use(
+          createResourceFactory(events, async (run) => {
+            events.push("disposal started");
+            await canComplete.promise;
+            // Verify runner works inside disposal task
+            await run(cleanupHelper);
+            events.push("disposal completed");
+            return ok();
+          }),
+        );
+        if (!r.ok) return r;
+
+        events.push("work started");
+        workStarted.resolve();
+
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        if (run.signal.aborted) return err(run.signal.reason);
+
+        events.push("work completed");
+        return ok();
+      };
+
+      const fiber = run(task);
+      await workStarted.promise;
+      fiber.abort("stop");
+      canComplete.resolve();
+
+      const result = await fiber;
+
+      expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
+      expect(events).toEqual([
+        "acquired",
+        "work started",
+        "disposal started",
+        "cleanup helper ran",
+        "disposal completed",
+      ]);
+    });
+
+    test("disposal survives factory task scope ending", async () => {
+      await using run = createRunner();
+
+      const events: Array<string> = [];
+
+      const r = await run(createResourceFactory(events));
+      expect(r.ok).toBe(true);
+      if (!r.ok) throw new Error("unreachable");
+
+      events.push("using after factory ended");
+      await r.value[Symbol.asyncDispose]();
+
+      expect(events).toEqual([
+        "acquired",
+        "using after factory ended",
+        "disposed",
+      ]);
+    });
+  });
+});
+
+describe("yieldNow", () => {
+  test("is polyfilled properly", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+
+    const task: Task<void> = async (run) => {
+      const p = run(yieldNow).then(() => events.push("yield-resolved"));
+
+      queueMicrotask(() => events.push("queueMicrotask"));
+      void Promise.resolve().then(() => {
+        events.push("promise");
+      });
+
+      events.push("sync");
+
+      await p;
+      return ok();
+    };
+
+    await run(task);
+
+    // Execution order:
+    // 1. sync code runs immediately
+    // 2. microtasks drain (queueMicrotask, Promise.then)
+    // 3. macrotasks run (scheduler.yield, setImmediate, setTimeout)
+    expect(events).toEqual([
+      "sync",
+      "queueMicrotask",
+      "promise",
+      "yield-resolved",
+    ]);
+  });
+});
+
+describe("sleep", () => {
+  test("completes after duration", async () => {
+    const time = testCreateTime();
+    await using run = createTestRunner({ time });
+
+    const fiber = run(sleep("100ms"));
+
+    time.advance("100ms");
+
+    const result = await fiber;
+    expect(result).toEqual(ok());
+  });
+
+  test("returns AbortError and clears timeout when aborted", async () => {
+    await using run = createRunner();
+
     const start = Date.now();
+    const fiber = run(sleep("1h"));
+    fiber.abort("cancelled");
 
-    // Start the wait
-    const promise = wait("100ms")(controller);
-
-    // Abort after 25ms
-    setTimeout(() => {
-      controller.abort("test abort");
-    }, 25);
-
-    const result = await promise;
+    const result = await fiber;
     const elapsed = Date.now() - start;
 
-    expect(result).toEqual(
-      err({
-        type: "AbortError",
-        reason: "test abort",
-      }),
+    expect(result).toEqual(err({ type: "AbortError", cause: "cancelled" }));
+    const state = fiber.getState();
+    assert(state.type === "completed");
+    expect(state.outcome).toEqual(
+      err({ type: "AbortError", cause: "cancelled" }),
     );
-    expect(elapsed).toBeLessThan(50); // Should abort early
+    expect(elapsed).toBeLessThan(50);
+  });
+});
+
+describe("race", () => {
+  test("returns first task to succeed and aborts others", async () => {
+    await using run = createRunner();
+
+    const slowObservedAbort = Promise.withResolvers<unknown>();
+
+    const fast = () => ok("fast");
+    const slow = async ({ signal }: { signal: AbortSignal }) => {
+      await run(sleep("1ms"));
+      slowObservedAbort.resolve(signal.reason);
+      return ok("slow");
+    };
+
+    const result = await run(race([fast, slow]));
+
+    expectTypeOf(result).toEqualTypeOf<Result<string, AbortError>>();
+    expect(result).toEqual(ok("fast"));
+
+    const slowAbortReason = await slowObservedAbort.promise;
+    assert(AbortError.is(slowAbortReason));
+    expect(RaceLostError.is(slowAbortReason.cause)).toBe(true);
   });
 
-  test("handles already aborted signal", async () => {
-    const controller = new AbortController();
-    controller.abort("already aborted");
+  test("returns first task to fail and aborts others", async () => {
+    await using run = createRunner();
 
-    const result = await wait("100ms")(controller);
+    const slowObservedAbort = Promise.withResolvers<unknown>();
+
+    interface FastError extends Typed<"FastError"> {}
+
+    const fast: Task<never, FastError> = () => err({ type: "FastError" });
+    const slow: Task<string> = async ({ signal }) => {
+      await run(sleep("1ms"));
+      slowObservedAbort.resolve(signal.reason);
+      return ok("slow");
+    };
+
+    const result = await run(race([fast, slow]));
+
+    expectTypeOf(result).toEqualTypeOf<
+      Result<string, FastError | AbortError>
+    >();
+    expect(result).toEqual(err({ type: "FastError" }));
+
+    const slowAbortReason = await slowObservedAbort.promise;
+    assert(AbortError.is(slowAbortReason));
+    expect(RaceLostError.is(slowAbortReason.cause)).toBe(true);
+  });
+
+  test("aborts others when one throws", async () => {
+    await using run = createRunner();
+
+    const slowObservedAbort = Promise.withResolvers<unknown>();
+
+    const throwing = () => {
+      throw new Error("boom");
+    };
+    const slow = async ({ signal }: { signal: AbortSignal }) => {
+      await run(sleep("1ms"));
+      slowObservedAbort.resolve(signal.reason);
+      return ok("slow");
+    };
+
+    await expect(run(race([throwing, slow]))).rejects.toThrow("boom");
+
+    const slowAbortReason = await slowObservedAbort.promise;
+    assert(AbortError.is(slowAbortReason));
+    expect(RaceLostError.is(slowAbortReason.cause)).toBe(true);
+  });
+
+  test("infers union of Ok and Err types from heterogeneous tasks", async () => {
+    await using run = createRunner();
+
+    interface ErrorA extends Typed<"ErrorA"> {}
+    interface ErrorB extends Typed<"ErrorB"> {}
+
+    const taskA: Task<string, ErrorA> = () => ok("a");
+    const taskB: Task<number, ErrorB> = () => ok(42);
+
+    const result = await run(race([taskA, taskB]));
+
+    // race collapses to union of Ok types and union of Err types
+    expectTypeOf(result).toEqualTypeOf<
+      Result<string | number, ErrorA | ErrorB | AbortError>
+    >();
+    expect(result.ok).toBe(true);
+  });
+
+  test("works with Iterable via isNonEmptyArray", async () => {
+    await using run = createRunner();
+
+    // Simulate tasks from an Iterable (e.g., Set, Map.values(), generator)
+    const taskSet = new Set<Task<string>>([
+      () => ok("first"),
+      () => ok("second"),
+    ]);
+
+    // Spread to array, then use isNonEmptyArray to narrow type
+    const tasksArray = [...taskSet];
+    if (!isNonEmptyArray(tasksArray)) {
+      throw new Error("Expected non-empty");
+    }
+
+    const result = await run(race(tasksArray));
+
+    expect(result.ok).toBe(true);
+  });
+
+  test("unabortable loser does not block winner", async () => {
+    // Not using `await using` because disposal waits for all fibers to complete,
+    // including the unabortable loser (10s). We want to verify race() returns
+    // promptly without blocking on unabortable tasks.
+    const run = createRunner();
+
+    let loserCompleted = false;
+
+    const winner = () => ok("winner");
+    const unabortableLoser = unabortable(async (run) => {
+      await run(sleep("10s"));
+      loserCompleted = true;
+      return ok("loser");
+    });
+
+    const start = Date.now();
+    const result = await run(race([winner, unabortableLoser]));
+    const elapsed = Date.now() - start;
+
+    // race returns promptly with winner, doesn't wait for unabortable loser
+    expect(result).toEqual(ok("winner"));
+    expect(elapsed).toBeLessThan(50);
+    expect(loserCompleted).toBe(false);
+  });
+
+  test("propagates external abort to all raced tasks", async () => {
+    await using run = createRunner();
+
+    const task1ObservedAbort = Promise.withResolvers<unknown>();
+    const task2ObservedAbort = Promise.withResolvers<unknown>();
+
+    const task1: Task<string> = async ({ signal }) => {
+      await Promise.resolve();
+      task1ObservedAbort.resolve(signal.reason);
+      return ok("task1");
+    };
+
+    const task2: Task<string> = async ({ signal }) => {
+      await Promise.resolve();
+      task2ObservedAbort.resolve(signal.reason);
+      return ok("task2");
+    };
+
+    const fiber = run(race([task1, task2]));
+
+    // Abort the race externally (not by task completion)
+    fiber.abort("external abort");
+
+    const result = await fiber;
 
     expect(result).toEqual(
-      err({
-        type: "AbortError",
-        reason: "already aborted",
-      }),
+      err({ type: "AbortError", cause: "external abort" }),
     );
+
+    // Both tasks should have observed the abort
+    const task1Reason = await task1ObservedAbort.promise;
+    const task2Reason = await task2ObservedAbort.promise;
+
+    assert(AbortError.is(task1Reason));
+    assert(AbortError.is(task2Reason));
+    expect(task1Reason.cause).toBe("external abort");
+    expect(task2Reason.cause).toBe("external abort");
+  });
+
+  test("uses custom abortReason for losing tasks", async () => {
+    await using run = createRunner();
+
+    const slowObservedAbort = Promise.withResolvers<unknown>();
+
+    const fast = () => ok("fast");
+    const slow = async ({ signal }: { signal: AbortSignal }) => {
+      await run(sleep("1ms"));
+      slowObservedAbort.resolve(signal.reason);
+      return ok("slow");
+    };
+
+    const customReason = { type: "CustomAbort", message: "you lost" };
+    const result = await run(race([fast, slow], { abortCause: customReason }));
+
+    expect(result).toEqual(ok("fast"));
+
+    const slowAbortReason = await slowObservedAbort.promise;
+    assert(AbortError.is(slowAbortReason));
+    expect(slowAbortReason.cause).toEqual(customReason);
   });
 });
 
 describe("timeout", () => {
-  test("returns correct types based on context", async () => {
-    const mockTask = toTask(() => Promise.resolve<Result<void, never>>(ok()));
-    const timeoutTask = timeout("100ms", mockTask);
+  test("completes when task finishes before timeout", async () => {
+    await using run = createRunner();
 
-    // Without context: Result<void, TimeoutError>
-    const result1 = await timeoutTask();
-    expectTypeOf(result1).toEqualTypeOf<Result<void, TimeoutError>>();
+    const fast = () => ok();
 
-    // With empty context: Result<void, TimeoutError>
-    const result2 = await timeoutTask({});
-    expectTypeOf(result2).toEqualTypeOf<Result<void, TimeoutError>>();
+    const result = await run(timeout(fast, "1s"));
 
-    // With context containing signal: Result<void, TimeoutError | AbortError>
-    const controller = new AbortController();
-    const result3 = await timeoutTask(controller);
-    expectTypeOf(result3).toEqualTypeOf<
+    expectTypeOf(result).toEqualTypeOf<
       Result<void, TimeoutError | AbortError>
     >();
+    expect(result).toEqual(ok());
   });
 
-  test("returns result when task completes before timeout", async () => {
-    const fastTask = toTask(() =>
-      Promise.resolve<Result<string, never>>(ok("success")),
-    );
-    const timeoutTask = timeout("100ms", fastTask);
+  test("returns TimeoutError when task exceeds duration", async () => {
+    const time = testCreateTime();
+    await using run = createTestRunner({ time });
 
-    const result = await timeoutTask();
-    expect(result).toEqual(ok("success"));
+    const slow = sleep("100ms");
+
+    const fiber = run(timeout(slow, "10ms"));
+    time.advance("10ms");
+
+    const result = await fiber;
+
+    expect(result).toEqual(err({ type: "TimeoutError" }));
   });
 
-  test("returns TimeoutError when task exceeds timeout", async () => {
-    const slowTask = toTask(
-      () =>
-        new Promise<Result<string, never>>((resolve) => {
-          setTimeout(() => {
-            resolve(ok("too late"));
-          }, 100);
-        }),
-    );
-    const timeoutTask = timeout("50ms", slowTask);
+  test("aborts task when timeout fires", async () => {
+    const time = testCreateTime();
+    await using run = createTestRunner({ time });
 
-    const result = await timeoutTask();
-    expect(result).toEqual(err({ type: "TimeoutError", timeoutMs: 50 }));
+    const abortReasonCapture = Promise.withResolvers<unknown>();
+
+    const slow: Task<void> = async ({ onAbort }) => {
+      onAbort((reason) => {
+        abortReasonCapture.resolve(reason);
+      });
+      const result = await run(sleep("100ms"));
+      if (!result.ok) return result;
+      return ok();
+    };
+
+    const fiber = run(timeout(slow, "10ms"));
+    time.advance("10ms");
+
+    const result = await fiber;
+    expect(result).toEqual(err({ type: "TimeoutError" }));
+
+    const abortReason = await abortReasonCapture.promise;
+    expect(TimeoutError.is(abortReason)).toBe(true);
   });
 
-  test("supports cancellation when signal is provided", async () => {
-    const slowTask = toTask(
-      () =>
-        new Promise<Result<string, never>>((resolve) => {
-          setTimeout(() => {
-            resolve(ok("should not complete"));
-          }, 100);
-        }),
-    );
-    const timeoutTask = timeout("200ms", slowTask);
-    const controller = new AbortController();
+  test("uses custom abortReason when provided", async () => {
+    const time = testCreateTime();
+    await using run = createTestRunner({ time });
 
-    // Start the timeout task
-    const promise = timeoutTask(controller);
+    const customReason = { type: "CustomTimeout" };
+    const abortReasonCapture = Promise.withResolvers<unknown>();
 
-    // Abort after 25ms
-    setTimeout(() => {
-      controller.abort("test abort");
-    }, 25);
+    const slow: Task<void> = async ({ onAbort }) => {
+      onAbort((reason) => {
+        abortReasonCapture.resolve(reason);
+      });
+      const result = await run(sleep("100ms"));
+      if (!result.ok) return result;
+      return ok();
+    };
 
-    const result = await promise;
-    expect(result).toEqual(
-      err({
-        type: "AbortError",
-        reason: "test abort",
-      }),
-    );
+    const fiber = run(timeout(slow, "10ms", { abortCause: customReason }));
+    time.advance("10ms");
+
+    await fiber;
+
+    const abortReason = await abortReasonCapture.promise;
+    expect(abortReason).toBe(customReason);
   });
 
-  test("handles already aborted signal", async () => {
-    const task = toTask(() =>
-      Promise.resolve<Result<string, never>>(ok("success")),
-    );
-    const timeoutTask = timeout("100ms", task);
-    const controller = new AbortController();
-    controller.abort("already aborted");
+  test("returns TimeoutError immediately when unabortable task exceeds duration", async () => {
+    const time = testCreateTime();
+    await using run = createTestRunner({ time });
 
-    const result = await timeoutTask(controller);
+    let taskCompleted = false;
+    const completionCapture = Promise.withResolvers<void>();
 
-    expect(result).toEqual(
-      err({
-        type: "AbortError",
-        reason: "already aborted",
-      }),
-    );
-  });
+    const slow: Task<void, AbortError> = unabortable(async (run) => {
+      const result = await run(sleep("100ms"));
+      if (!result.ok) return result;
+      taskCompleted = true;
+      completionCapture.resolve();
+      return ok();
+    });
 
-  test("correctly returns AbortError when signal is aborted before timeout", async () => {
-    const slowTask = toTask(
-      () =>
-        new Promise<Result<string, never>>((resolve) => {
-          setTimeout(() => {
-            resolve(ok("should not complete"));
-          }, 1000); // Long delay
-        }),
-    );
-    const timeoutTask = timeout("500ms", slowTask); // Timeout longer than abort
-    const controller = new AbortController();
+    const fiber = run(timeout(slow, "10ms"));
+    time.advance("10ms");
 
-    const promise = timeoutTask(controller);
+    // timeout returns immediately with TimeoutError
+    const result = await fiber;
+    expect(result).toEqual(err({ type: "TimeoutError" }));
 
-    // Abort before timeout fires
-    setTimeout(() => {
-      controller.abort("external abort");
-    }, 100);
+    // But the unabortable task hasn't completed yet
+    expect(taskCompleted).toBe(false);
 
-    const result = await promise;
-
-    // This works correctly - external abort is handled by toTask wrapper
-    expect(result).toEqual(
-      err({
-        type: "AbortError",
-        reason: "external abort",
-      }),
-    );
-  });
-
-  test("cancels underlying task when timeout fires", async () => {
-    let taskAborted = false;
-    const slowTask = toTask(
-      (context) =>
-        new Promise<Result<string, never>>((resolve) => {
-          context?.signal?.addEventListener("abort", () => {
-            taskAborted = true;
-          });
-
-          setTimeout(() => {
-            resolve(ok("completed"));
-          }, 1000);
-        }),
-    );
-
-    const timeoutTask = timeout("100ms", slowTask);
-    const result = await timeoutTask();
-
-    expect(result).toEqual(err({ type: "TimeoutError", timeoutMs: 100 }));
-
-    // Task should be cancelled when timeout fires
-    expect(taskAborted).toBe(true);
+    // After more time passes, unabortable task completes
+    time.advance("100ms");
+    await completionCapture.promise;
+    expect(taskCompleted).toBe(true);
   });
 });
 
 describe("retry", () => {
-  test("returns correct types based on context", async () => {
-    const mockTask = toTask(() => Promise.resolve<Result<void, never>>(ok()));
-    const retryTask = retry({ retries: PositiveInt.orThrow(1) }, mockTask);
-
-    // Without context: Result<void, RetryError<never>>
-    const result1 = await retryTask();
-    expectTypeOf(result1).toEqualTypeOf<Result<void, RetryError<never>>>();
-
-    // With empty context: Result<void, RetryError<never>>
-    const result2 = await retryTask({});
-    expectTypeOf(result2).toEqualTypeOf<Result<void, RetryError<never>>>();
-
-    // With context containing signal: Result<void, RetryError<never> | AbortError>
-    const controller = new AbortController();
-    const result3 = await retryTask(controller);
-    expectTypeOf(result3).toEqualTypeOf<
-      Result<void, RetryError<never> | AbortError>
-    >();
-  });
-
   test("succeeds on first attempt", async () => {
-    const mockTask = toTask(() => Promise.resolve<Result<void, never>>(ok()));
-    const retryTask = retry({ retries: PositiveInt.orThrow(1) }, mockTask);
+    await using run = createRunner();
 
-    const result = await retryTask();
+    let attempts = 0;
+    const task = () => {
+      attempts++;
+      return ok();
+    };
+
+    const result = await run(retry(task, take(3)(spaced("1ms"))));
 
     expect(result).toEqual(ok());
+    expect(attempts).toBe(1);
   });
 
-  test("succeeds after several attempts", async () => {
-    let attempts = 0;
-    const flakyTask = toTask(() => {
-      attempts++;
-      if (attempts < 3) {
-        return Promise.resolve<
-          Result<void, { type: "TestError"; message: string }>
-        >(err({ type: "TestError", message: `Error ${attempts}` }));
-      }
-      return Promise.resolve<
-        Result<void, { type: "TestError"; message: string }>
-      >(ok());
-    });
+  test("succeeds after retries", async () => {
+    await using run = createRunner();
 
-    const retryTask = retry(
-      { retries: PositiveInt.orThrow(2), initialDelay: "1ms" },
-      flakyTask,
-    );
-    const result = await retryTask();
+    let attempts = 0;
+    const task = () => {
+      attempts++;
+      if (attempts < 3) return err<MyError>({ type: "MyError" });
+      return ok();
+    };
+
+    const result = await run(retry(task, take(3)(spaced("1ms"))));
 
     expect(result).toEqual(ok());
     expect(attempts).toBe(3);
   });
 
-  test("returns error after max retries", async () => {
-    const testError = { type: "TestError", message: "Failed" };
-    const failingTask = toTask(() =>
-      Promise.resolve<Result<never, typeof testError>>(err(testError)),
-    );
-
-    const retryTask = retry(
-      { retries: PositiveInt.orThrow(3), initialDelay: "1ms" },
-      failingTask,
-    );
-    const result = await retryTask();
-
-    expect(result).toEqual(
-      err({
-        type: "RetryError",
-        cause: testError,
-        attempts: 4, // initial + 3 retries = 4 attempts
-      }),
-    );
-  });
-
-  test("supports cancellation when signal is provided", async () => {
-    const slowTask = toTask(
-      () =>
-        new Promise<Result<never, { type: "TestError" }>>((resolve) => {
-          setTimeout(() => {
-            resolve(err({ type: "TestError" }));
-          }, 50);
-        }),
-    );
-
-    const retryTask = retry(
-      { retries: PositiveInt.orThrow(1), initialDelay: "20ms" },
-      slowTask,
-    );
-    const controller = new AbortController();
-
-    // Start the retry task
-    const promise = retryTask(controller);
-
-    // Abort after 10ms (should abort during first attempt or delay)
-    setTimeout(() => {
-      controller.abort("test abort");
-    }, 10);
-
-    const result = await promise;
-    expect(result).toEqual(
-      err({
-        type: "AbortError",
-        reason: "test abort",
-      }),
-    );
-  });
-
-  test("uses retryable predicate", async () => {
-    interface RetryableError {
-      type: "RetryableError";
-      attempt: number;
-    }
-    interface NonRetryableError {
-      type: "NonRetryableError";
-      reason: string;
-    }
+  test("returns RetryError when all attempts exhausted", async () => {
+    await using run = createRunner();
 
     let attempts = 0;
-    const taskWithMixedErrors = toTask(() => {
+    const task = () => {
       attempts++;
-      if (attempts === 1) {
-        return Promise.resolve<
-          Result<never, RetryableError | NonRetryableError>
-        >(err({ type: "RetryableError", attempt: 1 }));
-      }
-      return Promise.resolve<Result<never, RetryableError | NonRetryableError>>(
-        err({ type: "NonRetryableError", reason: "fatal" }),
-      );
-    });
+      return err<MyError>({ type: "MyError" });
+    };
 
-    const retryTask = retry(
-      {
-        retries: PositiveInt.orThrow(1),
-        initialDelay: "1ms",
-        retryable: (error) => error.type === "RetryableError",
-      },
-      taskWithMixedErrors,
-    );
+    const result = await run(retry(task, take(2)(spaced("1ms"))));
 
-    const result = await retryTask();
-
-    expect(result).toEqual(
-      err({
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toEqual({
         type: "RetryError",
-        cause: { type: "NonRetryableError", reason: "fatal" },
-        attempts: 2,
+        cause: { type: "MyError" },
+        attempts: PositiveInt.orThrow(3),
+      });
+    }
+    expect(attempts).toBe(3);
+  });
+
+  test("calls onRetry before each retry", async () => {
+    await using run = createRunner();
+
+    const retryLog: Array<{
+      error: MyError;
+      attempt: PositiveInt;
+      output: Millis;
+      delay: Millis;
+    }> = [];
+    let attempts = 0;
+    const task = () => {
+      attempts++;
+      if (attempts < 3) return err<MyError>({ type: "MyError" });
+      return ok();
+    };
+
+    await run(
+      retry(task, take(3)(spaced("1ms")), {
+        onRetry: ({ error, attempt, output, delay }) =>
+          retryLog.push({
+            error,
+            attempt,
+            output,
+            delay,
+          }),
       }),
     );
+
+    expect(retryLog).toEqual([
+      {
+        error: { type: "MyError" },
+        attempt: minPositiveInt,
+        output: 1,
+        delay: 1,
+      },
+      {
+        error: { type: "MyError" },
+        attempt: PositiveInt.orThrow(2),
+        output: 1,
+        delay: 1,
+      },
+    ]);
+  });
+
+  test("respects retryable predicate", async () => {
+    await using run = createRunner();
+
+    interface RetryableError extends Typed<"RetryableError"> {}
+    interface NonRetryableError extends Typed<"NonRetryableError"> {}
+
+    let attempts = 0;
+    const task: Task<void, RetryableError | NonRetryableError> = () => {
+      attempts++;
+      if (attempts === 1)
+        return err<RetryableError>({ type: "RetryableError" });
+      return err<NonRetryableError>({ type: "NonRetryableError" });
+    };
+
+    const result = await run(
+      retry(task, take(3)(spaced("1ms")), {
+        retryable: (error) => error.type === "RetryableError",
+      }),
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toEqual({
+        type: "RetryError",
+        cause: { type: "NonRetryableError" },
+        attempts: PositiveInt.orThrow(2),
+      });
+    }
     expect(attempts).toBe(2);
   });
 
-  test("calls onRetry callback", async () => {
-    const onRetry = vi.fn();
-    const testError = { type: "TestError", message: "Failed" };
+  test("never retries AbortError", async () => {
+    await using run = createRunner();
 
     let attempts = 0;
-    const flakyTask = toTask(() => {
+    const task = () => {
       attempts++;
-      if (attempts < 3) {
-        return Promise.resolve<Result<never, typeof testError>>(err(testError));
-      }
-      return Promise.resolve<Result<void, typeof testError>>(ok());
-    });
-
-    const retryTask = retry(
-      {
-        retries: PositiveInt.orThrow(2),
-        initialDelay: "1ms",
-        onRetry,
-      },
-      flakyTask,
-    );
-
-    const result = await retryTask();
-
-    expect(result).toEqual(ok());
-    expect(onRetry).toHaveBeenCalledTimes(2);
-    expect(onRetry).toHaveBeenCalledWith(testError, 1, expect.any(Number));
-    expect(onRetry).toHaveBeenCalledWith(testError, 2, expect.any(Number));
-  });
-
-  test("handles already aborted signal", async () => {
-    const task = toTask(() => Promise.resolve<Result<void, never>>(ok()));
-    const retryTask = retry({ retries: PositiveInt.orThrow(1) }, task);
-    const controller = new AbortController();
-    controller.abort("already aborted");
-
-    const result = await retryTask(controller);
-
-    expect(result).toEqual(
-      err({
-        type: "AbortError",
-        reason: "already aborted",
-      }),
-    );
-  });
-
-  test("uses exponential backoff with jitter", async () => {
-    const onRetry = vi.fn();
-    let attempts = 0;
-    const failingTask = toTask(() => {
-      attempts++;
-      if (attempts < 4) {
-        return Promise.resolve<Result<never, { type: "TestError" }>>(
-          err({ type: "TestError" }),
-        );
-      }
-      return Promise.resolve<Result<void, { type: "TestError" }>>(ok());
-    });
-
-    const result = await retry(
-      {
-        retries: PositiveInt.orThrow(3),
-        initialDelay: "10ms", // Use small delays for fast test
-        factor: 2,
-        jitter: 0.1,
-        onRetry,
-      },
-      failingTask,
-    )();
-
-    expect(result).toEqual(ok());
-    expect(attempts).toBe(4); // initial + 3 retries
-    expect(onRetry).toHaveBeenCalledTimes(3);
-
-    // Verify delays are called with exponential backoff
-    // First retry: ~10ms (10 * 2^0 = 10)
-    expect(onRetry).toHaveBeenNthCalledWith(
-      1,
-      { type: "TestError" },
-      1,
-      expect.any(Number),
-    );
-    const firstDelay = onRetry.mock.calls[0]?.[2] as number;
-    expect(firstDelay).toBeGreaterThanOrEqual(9); // 10 * (1 - 0.1) = 9
-    expect(firstDelay).toBeLessThanOrEqual(12); // 10 * (1 + 0.1) = 11, rounded up
-
-    // Second retry: ~20ms (10 * 2^1 = 20)
-    expect(onRetry).toHaveBeenNthCalledWith(
-      2,
-      { type: "TestError" },
-      2,
-      expect.any(Number),
-    );
-    const secondDelay = onRetry.mock.calls[1]?.[2] as number;
-    expect(secondDelay).toBeGreaterThanOrEqual(18); // 20 * (1 - 0.1) = 18
-    expect(secondDelay).toBeLessThanOrEqual(24); // 20 * (1 + 0.1) = 22, rounded up
-
-    // Third retry: ~40ms (10 * 2^2 = 40)
-    expect(onRetry).toHaveBeenNthCalledWith(
-      3,
-      { type: "TestError" },
-      3,
-      expect.any(Number),
-    );
-    const thirdDelay = onRetry.mock.calls[2]?.[2] as number;
-    expect(thirdDelay).toBeGreaterThanOrEqual(36); // 40 * (1 - 0.1) = 36
-    expect(thirdDelay).toBeLessThanOrEqual(48); // 40 * (1 + 0.1) = 44, rounded up
-  });
-
-  test("with real delays works as expected", async () => {
-    // Keep track of when each attempt happens
-    const attemptTimes: Array<number> = [];
-    const onRetry = vi.fn();
-
-    // Function that fails 3 times then succeeds
-    let attempts = 0;
-    const failingTask = toTask(() => {
-      attempts++;
-      const now = Date.now();
-      attemptTimes.push(now);
-
-      if (attempts <= 3) {
-        return Promise.resolve<Result<never, { type: "TestError" }>>(
-          err({ type: "TestError" }),
-        );
-      } else {
-        return Promise.resolve<Result<void, { type: "TestError" }>>(ok());
-      }
-    });
-
-    // Use real short delays
-    const result = await retry(
-      {
-        retries: PositiveInt.orThrow(3),
-        initialDelay: "50ms", // 50ms initial delay
-        factor: 2, // Double each time
-        jitter: 0, // No jitter for predictable testing
-        onRetry,
-      },
-      failingTask,
-    )();
-
-    // Should succeed after 4 attempts (1 initial + 3 retries)
-    expect(result).toEqual(ok());
-    expect(attempts).toBe(4);
-    expect(onRetry).toHaveBeenCalledTimes(3);
-
-    // Check delays between attempts
-    // First retry should be ~50ms after initial attempt
-    expect(attemptTimes[1] - attemptTimes[0]).toBeGreaterThanOrEqual(45);
-
-    // Second retry should be ~100ms after first retry
-    expect(attemptTimes[2] - attemptTimes[1]).toBeGreaterThanOrEqual(95);
-
-    // Third retry should be ~200ms after second retry
-    expect(attemptTimes[3] - attemptTimes[2]).toBeGreaterThanOrEqual(195);
-
-    // Total time should be at least 50 + 100 + 200 = 350ms
-    expect(attemptTimes[3] - attemptTimes[0]).toBeGreaterThanOrEqual(345);
-  });
-
-  test("respects maxDelay option", async () => {
-    // Keep track of when each attempt happens
-    const attemptTimes: Array<number> = [];
-    const onRetry = vi.fn();
-
-    // Function that always fails
-    let attempts = 0;
-    const failingTask = toTask(() => {
-      attempts++;
-      const now = Date.now();
-      attemptTimes.push(now);
-      return Promise.resolve<Result<never, { type: "TestError" }>>(
-        err({ type: "TestError" }),
-      );
-    });
-
-    // Use a very short maxDelay to demonstrate the capping effect
-    const result = await retry(
-      {
-        retries: PositiveInt.orThrow(3),
-        initialDelay: "50ms", // 50ms initial delay
-        factor: 10, // Would normally increase 50 -> 500 -> 5000, but maxDelay caps it
-        maxDelay: "100ms", // Cap delays at 100ms
-        jitter: 0, // No jitter for predictable testing
-        onRetry,
-      },
-      failingTask,
-    )();
-
-    // Should fail after 4 attempts (1 initial + 3 retries)
-    expect(result).toEqual(
-      err({
-        type: "RetryError",
-        cause: { type: "TestError" },
-        attempts: 4,
-      }),
-    );
-    expect(attempts).toBe(4);
-    expect(onRetry).toHaveBeenCalledTimes(3);
-
-    // First retry should be ~50ms after initial attempt
-    expect(attemptTimes[1] - attemptTimes[0]).toBeGreaterThanOrEqual(45);
-
-    // Second retry would normally be 500ms, but maxDelay caps it at 100ms
-    expect(attemptTimes[2] - attemptTimes[1]).toBeGreaterThanOrEqual(95);
-    expect(attemptTimes[2] - attemptTimes[1]).toBeLessThan(200);
-
-    // Third retry would normally be 5000ms, but maxDelay caps it at 100ms
-    expect(attemptTimes[3] - attemptTimes[2]).toBeGreaterThanOrEqual(95);
-    expect(attemptTimes[3] - attemptTimes[2]).toBeLessThan(200);
-  });
-});
-
-describe("createSemaphore", () => {
-  test("allows concurrent Tasks up to limit", async () => {
-    const semaphore = createSemaphore(PositiveInt.orThrow(2));
-    let runningCount = 0;
-    let maxRunning = 0;
-
-    const task = (duration: number) =>
-      toTask<number, never>(async () => {
-        runningCount++;
-        maxRunning = Math.max(maxRunning, runningCount);
-        await wait(duration as NonNegativeInt)();
-        runningCount--;
-        return ok(runningCount);
-      });
-
-    // Start 4 Tasks, but only 2 should run concurrently
-    await Promise.all([
-      semaphore.withPermit(task(50))(),
-      semaphore.withPermit(task(50))(),
-      semaphore.withPermit(task(50))(),
-      semaphore.withPermit(task(50))(),
-    ]);
-
-    // Should never have more than 2 running at once
-    expect(maxRunning).toBe(2);
-  });
-
-  test("executes Tasks sequentially with limit of 1", async () => {
-    const semaphore = createSemaphore(PositiveInt.orThrow(1));
-    const events: Array<{
-      id: number;
-      event: "start" | "end";
-    }> = [];
-
-    const task = (id: number) =>
-      toTask<number, never>(async () => {
-        events.push({ id, event: "start" });
-        await wait("20ms")(); // Longer delay to ensure overlap would be detectable
-        events.push({ id, event: "end" });
-        return ok(id);
-      });
-
-    await Promise.all([
-      semaphore.withPermit(task(1))(),
-      semaphore.withPermit(task(2))(),
-      semaphore.withPermit(task(3))(),
-    ]);
-
-    // Verify sequential execution: each Task must fully complete before the next starts
-    expect(events.map((i) => JSON.stringify(i))).toMatchInlineSnapshot(`
-      [
-        "{"id":1,"event":"start"}",
-        "{"id":1,"event":"end"}",
-        "{"id":2,"event":"start"}",
-        "{"id":2,"event":"end"}",
-        "{"id":3,"event":"start"}",
-        "{"id":3,"event":"end"}",
-      ]
-    `);
-  });
-
-  test("fails fast on unexpected errors without releasing permits", async () => {
-    const semaphore = createSemaphore(PositiveInt.orThrow(1));
-
-    const failingTask = () => {
-      throw new Error("Unexpected error");
+      return err<AbortError>({ type: "AbortError", cause: "test" });
     };
 
-    // Task throws unexpected error - should bubble up
-    await expect(semaphore.withPermit(failingTask)).rejects.toThrow(
-      "Unexpected error",
-    );
+    const result = await run(retry(task, take(3)(spaced("1ms"))));
 
-    // Note: In real code, the app would have crashed at this point.
-    // The semaphore permit is intentionally "leaked" because we don't
-    // attempt to recover from unexpected errors.
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(AbortError.is(result.error)).toBe(true);
+    }
+    expect(attempts).toBe(1);
   });
 
-  test("aborting individual tasks", async () => {
-    // Allow maximum 3 concurrent Tasks
-    const semaphore = createSemaphore(PositiveInt.orThrow(3));
+  test("propagates abort to running task", async () => {
+    await using run = createRunner();
 
-    let currentConcurrent = 0;
-    const events: Array<string> = [];
+    const taskStarted = Promise.withResolvers<void>();
 
-    const fetchData = (id: number) =>
-      toTask<number, never>(async (context) => {
-        currentConcurrent++;
-        events.push(`start ${id} (concurrent: ${currentConcurrent})`);
+    const task: Task<void, MyError> = async (run) => {
+      taskStarted.resolve();
+      const result = await run(sleep("1s"));
+      if (!result.ok) return result;
+      return ok();
+    };
 
-        await wait("100ms")(context);
+    const fiber = run(retry(task, take(3)(spaced("1ms"))));
+    await taskStarted.promise;
+    fiber.abort();
 
-        currentConcurrent--;
-        events.push(`end ${id} (concurrent: ${currentConcurrent})`);
-        return ok(id * 10);
-      });
-
-    // Create individual controllers for some tasks
-    const controller2 = new AbortController();
-    const controller4 = new AbortController();
-
-    // Start multiple tasks, some with individual abort controllers
-    const promises = [
-      semaphore.withPermit(fetchData(1))(), // No individual controller
-      semaphore.withPermit(fetchData(2))(controller2), // Individual controller - will be running
-      semaphore.withPermit(fetchData(3))(), // No individual controller
-      semaphore.withPermit(fetchData(4))(controller4), // Individual controller - will be pending
-      semaphore.withPermit(fetchData(5))(), // No individual controller - will be pending
-    ];
-
-    // Give tasks time to start (1, 2, 3 should be running, 4, 5 pending)
-    await wait("20ms")();
-
-    // Abort task 2 while it's running
-    controller2.abort("Individual abort task 2");
-
-    // Abort task 4 while it's pending (hasn't started yet)
-    controller4.abort("Individual abort task 4");
-
-    // Wait for all tasks to complete or abort
-    const results = await Promise.all(promises);
-
-    // Check results
-    expect(results[0]).toEqual(ok(10)); // Task 1 should succeed
-    expect(results[1]).toEqual(
-      err({ type: "AbortError", reason: "Individual abort task 2" }),
-    );
-    expect(results[2]).toEqual(ok(30)); // Task 3 should succeed
-    expect(results[3]).toEqual(
-      err({ type: "AbortError", reason: "Individual abort task 4" }),
-    );
-    expect(results[4]).toEqual(ok(50)); // Task 5 should succeed
-
-    // Verify the sequence of events - properly limited to 3 concurrent
-    // Note: aborted tasks may or may not reach "end" events depending on timing
-    expect(events).toMatchInlineSnapshot(`
-      [
-        "start 1 (concurrent: 1)",
-        "start 2 (concurrent: 2)",
-        "start 3 (concurrent: 3)",
-        "end 2 (concurrent: 2)",
-        "start 5 (concurrent: 3)",
-        "end 1 (concurrent: 2)",
-        "end 3 (concurrent: 1)",
-        "end 5 (concurrent: 0)",
-      ]
-    `);
+    const result = await fiber;
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(AbortError.is(result.error)).toBe(true);
+    }
   });
 
-  test("disposal cancels tasks", async () => {
-    const semaphore = createSemaphore(PositiveInt.orThrow(1));
+  test("uses exponential backoff schedule", async () => {
+    await using run = createRunner();
 
-    const slowTask = wait("100ms");
-    const waitingTask = wait("10ms");
+    let attempts = 0;
+    const task = () => {
+      attempts++;
+      if (attempts < 3) return err<MyError>({ type: "MyError" });
+      return ok();
+    };
 
-    // Start a slow task that will hold the permit
-    const firstPromise = semaphore.withPermit(slowTask)();
+    const result = await run(retry(task, take(5)(exponential("1ms"))));
 
-    // Start a second task that will wait for permit
-    const secondPromise = semaphore.withPermit(waitingTask)();
-
-    // Give tasks time to start
-    await wait("20ms")();
-
-    // Dispose the semaphore while second task is waiting
-    semaphore[Symbol.dispose]();
-
-    // Running task should be cancelled with AbortError
-    expect(await firstPromise).toEqual(
-      err({
-        type: "AbortError",
-        reason: "Semaphore disposed",
-      }),
-    );
-
-    // Waiting task should be cancelled with AbortError
-    expect(await secondPromise).toEqual(
-      err({
-        type: "AbortError",
-        reason: "Semaphore disposed",
-      }),
-    );
+    expect(result).toEqual(ok());
+    expect(attempts).toBe(3);
   });
 
-  test("disposal prevents new Tasks from being accepted", async () => {
-    const semaphore = createSemaphore(PositiveInt.orThrow(1));
+  test("schedule can filter by error type", async () => {
+    await using run = createRunner();
 
-    // Dispose the semaphore
-    semaphore[Symbol.dispose]();
+    interface RetryableError extends Typed<"RetryableError"> {}
+    interface FatalError extends Typed<"FatalError"> {}
 
-    const task = toTask(() => Promise.resolve(ok("should-not-run")));
+    let attempts = 0;
+    const task: Task<void, RetryableError | FatalError> = () => {
+      attempts++;
+      if (attempts === 1)
+        return err<RetryableError>({ type: "RetryableError" });
+      return err<FatalError>({ type: "FatalError" });
+    };
 
-    // Try to execute a task on disposed semaphore
-    const result = await semaphore.withPermit(task)();
-
-    expect(result).toEqual(
-      err({
-        type: "AbortError",
-        reason: "Semaphore disposed",
-      }),
-    );
-  });
-
-  test("disposal is idempotent", () => {
-    const semaphore = createSemaphore(PositiveInt.orThrow(1));
-
-    // Multiple disposals should not throw
-    expect(() => {
-      semaphore[Symbol.dispose]();
-      semaphore[Symbol.dispose]();
-      semaphore[Symbol.dispose]();
-    }).not.toThrow();
-  });
-});
-
-describe("createMutex", () => {
-  test("executes Tasks sequentially", async () => {
-    const mutex = createMutex();
-    const events: Array<string> = [];
-
-    const task = (id: number) =>
-      toTask(async (context) => {
-        events.push(`start-${id}`);
-        await wait("10ms")(context);
-        events.push(`end-${id}`);
-        return ok(id);
-      });
-
-    const results = await Promise.all([
-      mutex.withLock(task(1))(),
-      mutex.withLock(task(2))(),
-    ]);
-
-    expect(results.map((r) => (r.ok ? r.value : null))).toEqual([1, 2]);
-    expect(events).toEqual(["start-1", "end-1", "start-2", "end-2"]);
-  });
-
-  test("disposal cancels running and waiting tasks", async () => {
-    const mutex = createMutex();
-
-    const slowTask = wait("100ms");
-    const waitingTask = wait("10ms");
-
-    // Start a slow task that will hold the lock
-    const firstPromise = mutex.withLock(slowTask)();
-
-    // Start a second task that will wait for lock
-    const secondPromise = mutex.withLock(waitingTask)();
-
-    // Give tasks time to start
-    await wait("20ms")();
-
-    // Dispose the mutex while second task is waiting
-    mutex[Symbol.dispose]();
-
-    // Running task should be cancelled with AbortError
-    const firstResult = await firstPromise;
-    expect(firstResult).toEqual(
-      err({
-        type: "AbortError",
-        reason: "Semaphore disposed",
-      }),
-    );
-
-    // Waiting task should be cancelled with AbortError
-    const secondResult = await secondPromise;
-    expect(secondResult).toEqual(
-      err({
-        type: "AbortError",
-        reason: "Semaphore disposed",
-      }),
-    );
-  });
-
-  test("disposal prevents new Tasks from being accepted", async () => {
-    const mutex = createMutex();
-
-    // Dispose the mutex
-    mutex[Symbol.dispose]();
-
-    const task = toTask(() => {
-      return Promise.resolve(ok("should-not-run"));
-    });
-
-    // Try to execute a task on disposed mutex
-    const result = await mutex.withLock(task)();
-
-    expect(result).toEqual(
-      err({
-        type: "AbortError",
-        reason: "Semaphore disposed",
-      }),
-    );
-  });
-
-  test("disposal is idempotent", () => {
-    const mutex = createMutex();
-
-    // Multiple disposals should not throw
-    expect(() => {
-      mutex[Symbol.dispose]();
-      mutex[Symbol.dispose]();
-      mutex[Symbol.dispose]();
-    }).not.toThrow();
-  });
-});
-
-describe("Task Composition", () => {
-  // Mock fetch for testing
-  const mockFetch = vi.fn();
-  const urlCalls = new Map<string, number>();
-
-  beforeEach(() => {
-    vi.stubGlobal("fetch", mockFetch);
-    mockFetch.mockClear();
-  });
-
-  interface FetchError {
-    readonly type: "FetchError";
-    readonly error: unknown;
-  }
-
-  test("timeout, retry, and semaphore working together", async () => {
-    mockFetch.mockImplementation((url: string) => {
-      const currentCalls = urlCalls.get(url) ?? 0;
-      urlCalls.set(url, currentCalls + 1);
-
-      // Simulate flaky network - fail first few times per specific URL
-      if (url.includes("users") && currentCalls < 2) {
-        return Promise.reject(new Error("Network timeout"));
-      }
-      if (url.includes("posts") && currentCalls < 2) {
-        return Promise.reject(new Error("Server error"));
-      }
-      // Eventually succeed
-      return Promise.resolve(new Response(`Success for ${url}`));
-    });
-
-    // Basic fetch task
-    const fetchTask = (url: string) =>
-      toTask((context) =>
-        tryAsync(
-          () => fetch(url, { signal: context?.signal ?? null }),
-          (error): FetchError => ({ type: "FetchError", error }),
-        ),
-      );
-
-    // Compose timeout and retry for resilient fetching
-    const resilientFetch = (url: string) =>
+    // Schedule stops on fatal errors via whileScheduleInput
+    const result = await run(
       retry(
-        {
-          retries: PositiveInt.orThrow(3),
-          initialDelay: "1ms", // Fast for testing
-        },
-        timeout("100ms", fetchTask(url)),
-      );
-
-    // Limit concurrent requests to prevent overwhelming the server
-    const semaphore = createSemaphore(PositiveInt.orThrow(2));
-
-    const fetchWithConcurrencyLimit = (url: string) =>
-      semaphore.withPermit(resilientFetch(url));
-
-    // Usage: Fetch multiple URLs with timeout, retry, and concurrency control
-    const urls = [
-      "https://api.example.com/users",
-      "https://api.example.com/posts",
-      "https://api.example.com/comments",
-    ];
-
-    const results = await Promise.all(
-      urls.map((url) => fetchWithConcurrencyLimit(url)()),
-    );
-
-    // All should succeed after retries
-    expect(results.every((r) => r.ok)).toBe(true);
-
-    // Verify the retry patterns worked correctly
-    expect(Array.from(urlCalls.entries())).toMatchInlineSnapshot(`
-      [
-        [
-          "https://api.example.com/users",
-          3,
-        ],
-        [
-          "https://api.example.com/posts",
-          3,
-        ],
-        [
-          "https://api.example.com/comments",
-          1,
-        ],
-      ]
-    `);
-
-    // Test with cancellation support
-    urlCalls.clear();
-    const controller = new AbortController();
-    const result = await fetchWithConcurrencyLimit(
-      "https://api.example.com/data",
-    )(controller);
-
-    // Verify the complete error type includes all composed errors
-    expect(result.ok).toBe(true);
-
-    // Snapshot after successful data fetch
-    expect(Array.from(urlCalls.entries())).toMatchInlineSnapshot(`
-      [
-        [
-          "https://api.example.com/data",
-          1,
-        ],
-      ]
-    `);
-
-    // Test cancellation actually works
-    urlCalls.clear();
-    const controller2 = new AbortController();
-    controller2.abort("Test cancellation");
-    const cancelledResult = await fetchWithConcurrencyLimit(
-      "https://api.example.com/cancelled",
-    )(controller2);
-
-    expect(cancelledResult).toEqual(
-      err({
-        type: "AbortError",
-        reason: "Test cancellation",
-      }),
-    );
-
-    // Final snapshot showing the cancelled call didn't get tracked
-    expect(Array.from(urlCalls.entries())).toMatchInlineSnapshot(`[]`);
-  });
-});
-
-describe("Examples", () => {
-  // Mock fetch for testing
-  const mockFetch = vi.fn();
-  beforeEach(() => {
-    vi.stubGlobal("fetch", mockFetch);
-    mockFetch.mockClear();
-  });
-
-  interface FetchError {
-    readonly type: "FetchError";
-    readonly error: unknown;
-  }
-
-  // Task version of fetch with proper error handling and cancellation support.
-  const fetch = (url: string) =>
-    toTask((context) =>
-      tryAsync(
-        () => globalThis.fetch(url, { signal: context?.signal ?? null }),
-        (error): FetchError => ({ type: "FetchError", error }),
+        task,
+        whileScheduleInput<RetryableError | FatalError>(
+          (e: RetryableError | FatalError) => e.type !== "FatalError",
+        )(take(5)(spaced("1ms"))),
       ),
     );
 
-  // `satisfies` shows the expected type signature.
-  fetch satisfies (url: string) => Task<Response, FetchError>;
-
-  test("toTask", async () => {
-    mockFetch.mockResolvedValue(new Response("success"));
-
-    const result1 = await fetch("https://api.example.com/data")();
-    result1 satisfies Result<Response, FetchError>;
-
-    // With AbortController
-    const controller = new AbortController();
-    const result2 = await fetch("https://api.example.com/data")(controller);
-    result2 satisfies Result<Response, FetchError | AbortError>;
-  });
-
-  test("wait", async () => {
-    const result1 = await wait("10ms")();
-    result1 satisfies Result<void, never>;
-
-    // With AbortController
-    const controller = new AbortController();
-    const result2 = await wait("10ms")(controller);
-    result2 satisfies Result<void, AbortError>;
-  });
-
-  test("timeout", async () => {
-    const fetchWithTimeout = (url: string) => timeout("2m", fetch(url));
-
-    const result1 = await fetchWithTimeout("https://api.example.com/data")();
-    result1 satisfies Result<Response, FetchError | TimeoutError>;
-
-    // With AbortController
-    const controller = new AbortController();
-    const result2 = await fetchWithTimeout("https://api.example.com/data")(
-      controller,
-    );
-    result2 satisfies Result<Response, FetchError | TimeoutError | AbortError>;
-  });
-
-  test("retry", async () => {
-    const fetchWithRetry = (url: string) =>
-      retry({ retries: PositiveInt.orThrow(3) }, fetch(url));
-
-    const result1 = await fetchWithRetry("https://api.example.com/data")();
-    result1 satisfies Result<Response, FetchError | RetryError<FetchError>>;
-
-    // With AbortController
-    const controller = new AbortController();
-    const result2 = await fetchWithRetry("https://api.example.com/data")(
-      controller,
-    );
-    result2 satisfies Result<
-      Response,
-      FetchError | RetryError<FetchError> | AbortError
-    >;
-  });
-
-  test("semaphore", async () => {
-    // Allow maximum 3 concurrent Tasks
-    const semaphore = createSemaphore(PositiveInt.orThrow(3));
-
-    let currentConcurrent = 0;
-    const events: Array<string> = [];
-
-    const fetchData = (id: number) =>
-      toTask<number, never>(async (context) => {
-        currentConcurrent++;
-        events.push(`start ${id} (concurrent: ${currentConcurrent})`);
-
-        await wait("10ms")(context);
-
-        currentConcurrent--;
-        events.push(`end ${id} (concurrent: ${currentConcurrent})`);
-        return ok(id * 10);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toEqual({
+        type: "RetryError",
+        cause: { type: "FatalError" },
+        attempts: PositiveInt.orThrow(2),
       });
-
-    // These will execute with at most 3 running concurrently
-    const results = await Promise.all([
-      semaphore.withPermit(fetchData(1))(),
-      semaphore.withPermit(fetchData(2))(),
-      semaphore.withPermit(fetchData(3))(),
-      semaphore.withPermit(fetchData(4))(), // waits for one above to complete
-      semaphore.withPermit(fetchData(5))(), // waits for permit
-    ]);
-
-    expect(results.map(getOrThrow)).toEqual([10, 20, 30, 40, 50]);
-    expect(events).toMatchInlineSnapshot(`
-      [
-        "start 1 (concurrent: 1)",
-        "start 2 (concurrent: 2)",
-        "start 3 (concurrent: 3)",
-        "end 1 (concurrent: 2)",
-        "start 4 (concurrent: 3)",
-        "end 2 (concurrent: 2)",
-        "start 5 (concurrent: 3)",
-        "end 3 (concurrent: 2)",
-        "end 4 (concurrent: 1)",
-        "end 5 (concurrent: 0)",
-      ]
-    `);
+    }
+    expect(attempts).toBe(2);
   });
 
-  test("composing timeout, retry, and semaphore", async () => {
-    // Add timeout to prevent hanging
-    const fetchWithTimeout = (url: string) => timeout("30s", fetch(url));
+  test("abort during retry delay returns AbortError", async () => {
+    await using run = createRunner();
 
-    fetchWithTimeout satisfies (
-      url: string,
-    ) => Task<Response, TimeoutError | FetchError>;
+    let attempts = 0;
+    const task: Task<void, MyError> = () => {
+      attempts++;
+      return err<MyError>({ type: "MyError" });
+    };
 
-    // Add retry for resilience
-    const fetchWithRetry = (url: string) =>
-      retry(
-        {
-          retries: PositiveInt.orThrow(3),
-          initialDelay: "100ms",
-        },
-        fetchWithTimeout(url),
-      );
+    // Use a long delay so we can abort during it
+    const fiber = run(retry(task, take(3)(spaced("1s"))));
 
-    fetchWithRetry satisfies (
-      url: string,
-    ) => Task<
-      Response,
-      TimeoutError | FetchError | RetryError<TimeoutError | FetchError>
-    >;
+    // Wait for first attempt to complete and delay to start
+    await run(sleep("10ms"));
+    expect(attempts).toBe(1);
 
-    const semaphore = createSemaphore(PositiveInt.orThrow(2));
+    fiber.abort();
 
-    // Control concurrency with semaphore
-    const fetchWithPermit = (url: string) =>
-      semaphore.withPermit(fetchWithRetry(url));
+    const result = await fiber;
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(AbortError.is(result.error)).toBe(true);
+    }
+  });
+});
 
-    fetchWithPermit satisfies (url: string) => Task<
-      Response,
-      | TimeoutError
-      | FetchError
-      | AbortError // Semaphore dispose aborts Tasks
-      | RetryError<TimeoutError | FetchError>
-    >;
+describe("repeat", () => {
+  test("runs task n+1 times with take(n)", async () => {
+    await using run = createRunner();
 
-    // Usage
-    const results = await Promise.all(
-      [
-        "https://api.example.com/users",
-        "https://api.example.com/posts",
-        "https://api.example.com/comments",
-      ]
-        .map(fetchWithPermit)
-        .map((task) => task()),
+    let count = 0;
+    const task = () => {
+      count++;
+      return ok(count);
+    };
+
+    // take(3) = 3 repetitions after initial run = 4 total runs
+    const result = await run(repeat(task, take(3)(spaced("1ms"))));
+
+    expect(result).toEqual(ok(4));
+    expect(count).toBe(4);
+  });
+
+  test("returns last successful value when schedule exhausted", async () => {
+    await using run = createRunner();
+
+    const values = ["first", "second", "third", "fourth"];
+    let index = 0;
+    const task = () => ok(values[index++]);
+
+    // take(3) = 4 total runs
+    const result = await run(repeat(task, take(3)(fixed("1ms"))));
+
+    expect(result).toEqual(ok("fourth"));
+  });
+
+  test("stops and returns error when task fails", async () => {
+    await using run = createRunner();
+
+    let count = 0;
+    const task = () => {
+      count++;
+      if (count === 2) return err<MyError>({ type: "MyError" });
+      return ok(count);
+    };
+
+    const result = await run(repeat(task, take(5)(spaced("1ms"))));
+
+    expect(result).toEqual(err({ type: "MyError" }));
+    expect(count).toBe(2);
+  });
+
+  test("respects repeatable predicate", async () => {
+    await using run = createRunner();
+
+    let count = 0;
+    const task = () => {
+      count++;
+      return ok(count);
+    };
+
+    const result = await run(
+      repeat(task, take(5)(spaced(Millis.orThrow(0))), {
+        repeatable: (value) => value < 1,
+      }),
     );
 
-    results satisfies Array<
-      Result<
-        Response,
-        | AbortError
-        | TimeoutError
-        | FetchError
-        | RetryError<TimeoutError | FetchError>
-      >
-    >;
+    expect(result).toEqual(ok(1));
+    expect(count).toBe(1);
+  });
 
-    // Handle results
-    for (const result of results) {
-      if (result.ok) {
-        // Process successful response
-        const response = result.value;
-        expect(response).toBeInstanceOf(Response);
-      } else {
-        // Handle error (TimeoutError, FetchError, RetryError, or AbortError)
-        expect(result.error).toBeDefined();
+  test("calls onRepeat before each repeat", async () => {
+    await using run = createRunner();
+
+    const repeatLog: Array<{
+      value: number;
+      attempt: PositiveInt;
+      output: Millis;
+      delay: Millis;
+    }> = [];
+    let count = 0;
+    const task = () => {
+      count++;
+      return ok(count);
+    };
+
+    await run(
+      repeat(task, take(2)(spaced(Millis.orThrow(0))), {
+        onRepeat: ({ value, attempt, output, delay }) =>
+          repeatLog.push({
+            value,
+            attempt,
+            output,
+            delay,
+          }),
+      }),
+    );
+
+    expect(repeatLog).toEqual([
+      {
+        value: 1,
+        attempt: minPositiveInt,
+        output: Millis.orThrow(0),
+        delay: Millis.orThrow(0),
+      },
+      {
+        value: 2,
+        attempt: PositiveInt.orThrow(2),
+        output: Millis.orThrow(0),
+        delay: Millis.orThrow(0),
+      },
+    ]);
+  });
+
+  test("can be aborted", async () => {
+    await using run = createRunner();
+
+    let count = 0;
+    const task: Task<number> = async () => {
+      count++;
+      const result = await run(sleep("10ms"));
+      if (!result.ok) return result;
+      return ok(count);
+    };
+
+    const fiber = run(repeat(task, take(100)(spaced("1ms"))));
+    await Promise.resolve();
+    fiber.abort();
+
+    const result = await fiber;
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(AbortError.is(result.error)).toBe(true);
+    }
+    expect(count).toBe(1);
+  });
+
+  test("uses forever schedule when unlimited", async () => {
+    await using run = createRunner();
+
+    let count = 0;
+    const task: Task<number> = async () => {
+      count++;
+      if (count >= 5) {
+        // Abort after 5 iterations to prevent infinite loop
+        const result = await run(sleep("10ms"));
+        if (!result.ok) return result;
       }
+      return ok(count);
+    };
+
+    const fiber = run(repeat(task, spaced("1ms")));
+
+    // Let a few iterations run
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    fiber.abort();
+    const result = await fiber;
+
+    expect(result.ok).toBe(false);
+    expect(count).toBeGreaterThanOrEqual(1);
+  });
+
+  test("does not sleep when delay is zero", async () => {
+    const time = testCreateTime();
+    await using run = createTestRunner({ time });
+
+    let count = 0;
+    const task = () => {
+      count++;
+      return ok(count);
+    };
+
+    const result = await run(repeat(task, take(2)(fixed(Millis.orThrow(0)))));
+
+    expect(result).toEqual(ok(3));
+    expect(count).toBe(3);
+  });
+
+  test("aborts while waiting between repeats", async () => {
+    const time = testCreateTime();
+    await using run = createTestRunner({ time });
+
+    let count = 0;
+    const task = () => {
+      count++;
+      return ok(count);
+    };
+
+    const fiber = run(repeat(task, take(1)(fixed("10ms"))));
+    await Promise.resolve();
+    fiber.abort("stop");
+
+    const result = await fiber;
+
+    expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
+    expect(count).toBe(1);
+  });
+
+  test("stops on Done from NextTask", async () => {
+    await using run = createRunner();
+
+    let count = 0;
+    const next: NextTask<number> = () => {
+      count++;
+      if (count === 3) return err(done());
+      return ok(count);
+    };
+
+    const result = await run(repeat(next, spaced(Millis.orThrow(0))));
+
+    expect(result).toEqual(err(done()));
+    expect(count).toBe(3);
+  });
+
+  test("processes queue until empty (NextTask pattern)", async () => {
+    await using run = createRunner();
+
+    const queue = [1, 2, 3];
+    const processed: Array<number> = [];
+
+    const processQueue: NextTask<number> = () => {
+      const item = queue.shift();
+      if (item === undefined) return err(done());
+      processed.push(item);
+      return ok(item);
+    };
+
+    const result = await run(repeat(processQueue, spaced(Millis.orThrow(0))));
+
+    expect(result).toEqual(err(done()));
+    expect(processed).toEqual([1, 2, 3]);
+  });
+});
+
+describe("DI", () => {
+  // Define dependencies as interfaces
+  interface Http {
+    readonly get: (url: string) => Task<string>;
+  }
+
+  interface HttpDep {
+    readonly http: Http;
+  }
+
+  interface Db {
+    readonly save: (data: string) => Task<void>;
+    readonly load: (id: string) => Task<string>;
+  }
+
+  interface DbDep {
+    readonly db: Db;
+  }
+
+  // Create test implementations
+  const createTestHttp = (responses: Record<string, string>): Http => ({
+    get: (url) => () => ok(responses[url] ?? "not found"),
+  });
+
+  const createTestDb = (): Db & { readonly data: Map<string, string> } => {
+    const data = new Map<string, string>();
+    return {
+      data,
+      save: (value) => () => {
+        data.set("last", value);
+        return ok();
+      },
+      load: (id) => () => ok(data.get(id) ?? ""),
+    };
+  };
+
+  // Custom deps must extend RunnerDeps
+  type AppDeps = RunnerDeps & HttpDep & DbDep;
+
+  // Tasks declare deps in type parameter D, receive as second arg
+  const fetchUser =
+    (id: string): Task<string, never, HttpDep> =>
+    (run, deps) =>
+      run(deps.http.get(`/users/${id}`));
+
+  const saveUser =
+    (data: string): Task<void, never, DbDep> =>
+    (run, deps) =>
+      run(deps.db.save(data));
+
+  // Composition - deps flow through Runner automatically
+  const syncUser =
+    (id: string): Task<void, never, HttpDep & DbDep> =>
+    async (run) => {
+      const user = await run(fetchUser(id));
+      if (!user.ok) return user;
+      return await run(saveUser(user.value));
+    };
+
+  test("simple task with deps", async () => {
+    const deps = createTestDeps();
+    const http = createTestHttp({ "/users/1": "Alice" });
+
+    await using run = createRunner<RunnerDeps & HttpDep>({ ...deps, http });
+
+    const result = await run(fetchUser("1"));
+
+    expect(result).toEqual(ok("Alice"));
+  });
+
+  test("createRunner with custom deps infers type from argument", async () => {
+    interface Config {
+      readonly apiUrl: string;
     }
 
-    // Cancellation support
-    const controller = new AbortController();
-    const cancelableTask = fetchWithPermit("https://api.example.com/data");
+    interface ConfigDep {
+      readonly config: Config;
+    }
 
-    // Start task
-    const promise = cancelableTask(controller);
+    const deps = createTestDeps();
+    const config: Config = { apiUrl: "https://api.example.com" };
+    const customDeps = { ...deps, config };
 
-    // Cancel after some time
-    setTimeout(() => {
-      controller.abort("User cancelled");
-    }, 1000);
+    await using run = createRunner(customDeps);
 
-    const _result = await promise;
-    // Result will be AbortError if cancelled
+    // Type is inferred from argument
+    expectTypeOf(run).toEqualTypeOf<Runner<typeof customDeps>>();
+
+    const task: Task<string, never, ConfigDep> = (_run, deps) =>
+      ok(deps.config.apiUrl);
+
+    const result = await run(task);
+
+    expect(result).toEqual(ok("https://api.example.com"));
   });
-});
 
-describe("requestIdleTask", () => {
-  test("should execute task asynchronously", async () => {
-    let executed = false;
+  test("createRunner without args returns Runner<RunnerDeps>", async () => {
+    await using run = createRunner();
 
-    const task = toTask(() => {
-      executed = true;
-      return Promise.resolve(ok());
-    });
+    expectTypeOf(run).toEqualTypeOf<Runner>();
+  });
 
-    const result = await requestIdleTask(task)();
+  test("runner rejects task with missing deps", async () => {
+    const task: Task<void, never, HttpDep> = () => ok();
+    await using run = createRunner();
 
-    expect(executed).toBe(true);
+    // @ts-expect-error Property 'http' is missing in type 'RunnerDeps'...
+    run(task);
+  });
+
+  test("fiber.run preserves deps type", async () => {
+    const deps = createTestDeps();
+    const http = createTestHttp({ "/users/1": "Alice" });
+
+    await using run = createRunner<RunnerDeps & HttpDep>({ ...deps, http });
+
+    const fiber = run(fetchUser("1"));
+
+    expectTypeOf(fiber).toEqualTypeOf<
+      Fiber<string, never, RunnerDeps & HttpDep>
+    >();
+    expectTypeOf(fiber.run).toEqualTypeOf<Runner<RunnerDeps & HttpDep>>();
+
+    const result = await fiber.run(fetchUser("1"));
+    expect(result).toEqual(ok("Alice"));
+  });
+
+  test("composed tasks with deps", async () => {
+    const deps = createTestDeps();
+    const http = createTestHttp({ "/users/1": "Alice" });
+    const db = createTestDb();
+
+    await using run = createRunner<AppDeps>({ ...deps, http, db });
+
+    const result = await run(syncUser("1"));
+
     expect(result).toEqual(ok());
+    expect(db.data.get("last")).toBe("Alice");
   });
 
-  test("should handle task errors properly", async () => {
-    const task = toTask(() => {
-      return Promise.resolve(err("Task failed"));
+  test("larger composition with multiple operations", async () => {
+    const deps = createTestDeps();
+
+    interface Logger {
+      readonly log: (msg: string) => void;
+    }
+
+    interface LoggerDep {
+      readonly logger: Logger;
+    }
+
+    const logs: Array<string> = [];
+    const logger: Logger = { log: (msg) => logs.push(msg) };
+    const http = createTestHttp({
+      "/users/1": "Alice",
+      "/users/2": "Bob",
+    });
+    const db = createTestDb();
+
+    // Task that logs before and after - adds LoggerDep
+    const withLogging =
+      <T, E, D>(
+        label: string,
+        task: Task<T, E, D>,
+      ): Task<T, E, D & LoggerDep> =>
+      async (run, deps) => {
+        deps.logger.log(`${label}: start`);
+        const result = await run(task);
+        deps.logger.log(`${label}: ${result.ok ? "ok" : "err"}`);
+        return result;
+      };
+
+    // Sync multiple users
+    const syncUsers =
+      (ids: ReadonlyArray<string>): Task<void, never, HttpDep & DbDep> =>
+      async (run) => {
+        for (const id of ids) {
+          const result = await run(syncUser(id));
+          if (!result.ok) return result;
+        }
+        return ok();
+      };
+
+    // Full pipeline with logging
+    const syncAllWithLogging: Task<void, never, HttpDep & DbDep & LoggerDep> =
+      withLogging("syncAll", syncUsers(["1", "2"]));
+
+    type AllDeps = RunnerDeps & HttpDep & DbDep & LoggerDep;
+
+    await using run = createRunner<AllDeps>({ ...deps, http, db, logger });
+
+    const result = await run(syncAllWithLogging);
+
+    expect(result).toEqual(ok());
+    expect(logs).toEqual(["syncAll: start", "syncAll: ok"]);
+    expect(db.data.get("last")).toBe("Bob");
+  });
+
+  test("timeout with deps", async () => {
+    const deps = createTestDeps();
+    const http = createTestHttp({ "/users/1": "Alice" });
+
+    await using run = createRunner<RunnerDeps & HttpDep>({ ...deps, http });
+
+    // timeout should preserve D from wrapped task
+    const fetchWithTimeout = timeout(fetchUser("1"), "5s");
+    const result = await run(fetchWithTimeout);
+
+    expect(result).toEqual(ok("Alice"));
+  });
+
+  test("race with deps", async () => {
+    const deps = createTestDeps();
+    const http = createTestHttp({
+      "/users/1": "Alice",
+      "/users/2": "Bob",
+    });
+    await using run = createRunner<RunnerDeps & HttpDep>({ ...deps, http });
+
+    // race should preserve D from all tasks
+    const result = await run(race([fetchUser("1"), fetchUser("2")]));
+
+    // One of them wins
+    expect(result.ok).toBe(true);
+    expect(["Alice", "Bob"]).toContain((result as { value: string }).value);
+  });
+
+  test("retry with deps", async () => {
+    const deps = createTestDeps();
+
+    interface NetworkError {
+      readonly type: "NetworkError";
+    }
+
+    interface HttpWithError {
+      readonly get: (url: string) => Task<string, NetworkError>;
+    }
+
+    interface HttpWithErrorDep {
+      readonly http: HttpWithError;
+    }
+
+    let attempts = 0;
+    const http: HttpWithError = {
+      get:
+        (url): Task<string, NetworkError> =>
+        () => {
+          attempts++;
+          if (attempts < 3) return err<NetworkError>({ type: "NetworkError" });
+          return ok(url.split("/").pop()!);
+        },
+    };
+
+    await using run = createRunner<RunnerDeps & HttpWithErrorDep>({
+      ...deps,
+      http,
+      time: createTime(),
     });
 
-    const result = await requestIdleTask(task)();
+    const fetchUserWithError =
+      (id: string): Task<string, NetworkError, HttpWithErrorDep> =>
+      (run, deps) =>
+        run(deps.http.get(`/users/${id}`));
 
-    expect(result).toEqual(err("Task failed"));
+    const result = await run(
+      retry(fetchUserWithError("Alice"), take(3)(spaced("1ms"))),
+    );
+
+    expect(result).toEqual(ok("Alice"));
+    expect(attempts).toBe(3);
   });
 });
 
-/**
- * This test demonstrates that `await` always adds a microtask, even for
- * non-Promise values. This is important for understanding concurrency control:
- * when you `await` a synchronous callback result, the microtask allows other
- * code on the microtask queue to run before continuing. This is why we need a
- * mutex to protect shared state - even with synchronous operations, using
- * `await` yields control, allowing concurrent operations to interleave without
- * proper locking.
- */
-test("await always adds microtask", async () => {
-  const events: Array<string> = [];
+describe("concurrency", () => {
+  describe("Deferred", () => {
+    test("resolves with ok", async () => {
+      await using run = createRunner();
 
-  events.push("1. before await");
+      const { task, resolve } = createDeferred<string, MyError>();
 
-  // Queue a microtask BEFORE awaiting the sync value
-  queueMicrotask(() => {
-    events.push("2. queued microtask BEFORE await");
+      const fiber = run(task);
+      resolve(ok("value"));
+
+      const result = await fiber;
+      expect(result).toEqual(ok("value"));
+    });
+
+    test("resolves with error", async () => {
+      await using run = createRunner();
+
+      const { task, resolve } = createDeferred<string, MyError>();
+
+      const fiber = run(task);
+      resolve(err({ type: "MyError" }));
+
+      const result = await fiber;
+      expect(result).toEqual(err({ type: "MyError" }));
+    });
+
+    test("resolves with AbortError when fiber aborted", async () => {
+      await using run = createRunner();
+
+      const { task } = createDeferred<string, MyError>();
+
+      const fiber = run(task);
+      fiber.abort("stop");
+
+      const result = await fiber;
+      expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
+    });
+
+    test("resolve returns true only on first call", () => {
+      const { resolve } = createDeferred<string, MyError>();
+
+      expect(resolve(ok("value"))).toBe(true);
+      expect(resolve(ok("ignored"))).toBe(false);
+    });
+
+    test("resolve still works after fiber abort", async () => {
+      await using run = createRunner();
+
+      const { task, resolve } = createDeferred<string, MyError>();
+
+      const fiber = run(task);
+      fiber.abort("stop");
+
+      await fiber;
+
+      // Fiber abort doesn't affect Deferred state - it can still be resolved
+      expect(resolve(ok("value"))).toBe(true);
+      expect(resolve(ok("ignored"))).toBe(false);
+    });
+
+    test("aborting one does not affect other", async () => {
+      await using run = createRunner();
+
+      const { task, resolve } = createDeferred<string, MyError>();
+
+      const fiber1 = run(task);
+      const fiber2 = run(task);
+      const fiber3 = run(task);
+
+      // Abort only fiber2
+      fiber2.abort("stop fiber2");
+
+      // fiber2 should get AbortError
+      const result2 = await fiber2;
+      expect(result2).toEqual(
+        err({ type: "AbortError", cause: "stop fiber2" }),
+      );
+
+      // fiber1 and fiber3 should still be pending, resolve them
+      resolve(ok("value"));
+
+      const result1 = await fiber1;
+      const result3 = await fiber3;
+
+      expect(result1).toEqual(ok("value"));
+      expect(result3).toEqual(ok("value"));
+    });
+
+    test("dispose aborts waiting fibers", async () => {
+      await using run = createRunner();
+
+      const deferred = createDeferred<string, MyError>();
+
+      const fiber1 = run(deferred.task);
+      const fiber2 = run(deferred.task);
+
+      deferred[Symbol.dispose]();
+
+      const result1 = await fiber1;
+      const result2 = await fiber2;
+
+      expect(result1).toEqual(err(deferredDisposedError));
+      expect(result2).toEqual(err(deferredDisposedError));
+    });
+
+    test("task returns immediately when already resolved", async () => {
+      await using run = createRunner();
+
+      const { task, resolve } = createDeferred<string, MyError>();
+
+      // Resolve before running the task
+      resolve(ok("pre-resolved"));
+
+      const result = await run(task);
+      expect(result).toEqual(ok("pre-resolved"));
+    });
   });
 
-  const syncValue = "sync";
-  // eslint-disable-next-line @typescript-eslint/await-thenable
-  const _result = await syncValue;
+  describe("Gate", () => {
+    test("wait blocks until gate is opened", async () => {
+      await using run = createRunner();
 
-  events.push("3. after await");
+      const gate = createGate();
+      const events: Array<string> = [];
 
-  expect(events).toEqual([
-    "1. before await",
-    "2. queued microtask BEFORE await",
-    "3. after await",
-  ]);
+      const fiber = run(async (run) => {
+        events.push("waiting");
+        const result = await run(gate.wait);
+        if (!result.ok) return result;
+        events.push("passed");
+        return ok();
+      });
+
+      await Promise.resolve();
+      expect(events).toEqual(["waiting"]);
+      expect(gate.isOpen()).toBe(false);
+
+      gate.open();
+      await fiber;
+
+      expect(events).toEqual(["waiting", "passed"]);
+      expect(gate.isOpen()).toBe(true);
+    });
+
+    test("wait returns immediately when gate is already open", async () => {
+      await using run = createRunner();
+
+      const gate = createGate();
+      gate.open();
+
+      const result = await run(gate.wait);
+
+      expect(result).toEqual(ok());
+    });
+
+    test("multiple tasks proceed when gate opens", async () => {
+      await using run = createRunner();
+
+      const gate = createGate();
+      const events: Array<string> = [];
+
+      const createWaiter =
+        (id: number): Task<void, DeferredDisposedError> =>
+        async (run) => {
+          events.push(`waiting ${id}`);
+          const r = await run(gate.wait);
+          if (!r.ok) return r;
+          events.push(`passed ${id}`);
+          return ok();
+        };
+
+      const fiber1 = run(createWaiter(1));
+      const fiber2 = run(createWaiter(2));
+      const fiber3 = run(createWaiter(3));
+
+      await Promise.resolve();
+      expect(events).toEqual(["waiting 1", "waiting 2", "waiting 3"]);
+
+      gate.open();
+      await Promise.all([fiber1, fiber2, fiber3]);
+
+      expect(events).toEqual([
+        "waiting 1",
+        "waiting 2",
+        "waiting 3",
+        "passed 1",
+        "passed 2",
+        "passed 3",
+      ]);
+    });
+
+    test("close makes future tasks wait", async () => {
+      await using run = createRunner();
+
+      const gate = createGate();
+      const events: Array<string> = [];
+
+      gate.open();
+      const result1 = await run(gate.wait);
+      expect(result1).toEqual(ok());
+
+      gate.close();
+      expect(gate.isOpen()).toBe(false);
+
+      const fiber = run(async (run) => {
+        events.push("waiting after close");
+        const r = await run(gate.wait);
+        if (!r.ok) return r;
+        events.push("passed after reopen");
+        return ok();
+      });
+
+      await Promise.resolve();
+      expect(events).toEqual(["waiting after close"]);
+
+      gate.open();
+      await fiber;
+
+      expect(events).toEqual(["waiting after close", "passed after reopen"]);
+    });
+
+    test("abort while waiting returns AbortError", async () => {
+      await using run = createRunner();
+
+      const gate = createGate();
+
+      const fiber = run(gate.wait);
+      fiber.abort("cancelled");
+
+      const result = await fiber;
+      expect(result).toEqual(err({ type: "AbortError", cause: "cancelled" }));
+    });
+
+    test("preserves deps type", () => {
+      interface GateDeps {
+        readonly foo: string;
+      }
+
+      const gate = createGate<GateDeps>();
+
+      expectTypeOf(gate.wait).toEqualTypeOf<
+        Task<void, DeferredDisposedError, GateDeps>
+      >();
+    });
+
+    test("dispose aborts waiting tasks", async () => {
+      await using run = createRunner();
+
+      const gate = createGate();
+
+      const fiber1 = run(gate.wait);
+      const fiber2 = run(gate.wait);
+
+      gate[Symbol.dispose]();
+
+      const result1 = await fiber1;
+      const result2 = await fiber2;
+
+      expect(result1).toEqual(err(deferredDisposedError));
+      expect(result2).toEqual(err(deferredDisposedError));
+    });
+
+    test("dispose is idempotent", () => {
+      const gate = createGate();
+
+      gate[Symbol.dispose]();
+      gate[Symbol.dispose]();
+      gate[Symbol.dispose]();
+
+      expect(gate.isOpen()).toBe(false);
+    });
+
+    test("open is idempotent", () => {
+      const gate = createGate();
+
+      gate.open();
+      expect(gate.isOpen()).toBe(true);
+
+      gate.open();
+      gate.open();
+      expect(gate.isOpen()).toBe(true);
+    });
+
+    test("close is idempotent", () => {
+      const gate = createGate();
+
+      // Already closed, close again
+      gate.close();
+      gate.close();
+      expect(gate.isOpen()).toBe(false);
+
+      gate.open();
+      gate.close();
+      gate.close();
+      expect(gate.isOpen()).toBe(false);
+    });
+
+    test("open and close are no-op after dispose", () => {
+      const gate = createGate();
+
+      gate[Symbol.dispose]();
+
+      // Should not throw or change state
+      gate.open();
+      gate.close();
+      expect(gate.isOpen()).toBe(false);
+    });
+
+    test("wait returns DeferredDisposedError after dispose", async () => {
+      await using run = createRunner();
+
+      const gate = createGate();
+      gate[Symbol.dispose]();
+
+      const result = await run(gate.wait);
+
+      expect(result).toEqual(err(deferredDisposedError));
+    });
+  });
+
+  describe("Semaphore", () => {
+    test("runs a task", async () => {
+      await using run = createRunner();
+
+      const semaphore = createSemaphore(minPositiveInt);
+
+      const result = await run(semaphore.withPermit(() => ok("ran")));
+
+      expect(result).toEqual(ok("ran"));
+    });
+
+    test("limits concurrent tasks to permit count", async () => {
+      await using run = createRunner();
+
+      const semaphore = createSemaphore(PositiveInt.orThrow(2));
+      const events: Array<string> = [];
+
+      const task1Started = Promise.withResolvers<void>();
+      const task2Started = Promise.withResolvers<void>();
+      const canFinish = Promise.withResolvers<void>();
+
+      const createTask =
+        (id: number, started: () => void): Task<void> =>
+        async () => {
+          events.push(`start ${id}`);
+          started();
+          await canFinish.promise;
+          events.push(`end ${id}`);
+          return ok();
+        };
+
+      // Start 3 tasks with 2 permits
+      const fiber1 = run(
+        semaphore.withPermit(createTask(1, task1Started.resolve)),
+      );
+      const fiber2 = run(
+        semaphore.withPermit(createTask(2, task2Started.resolve)),
+      );
+
+      await task1Started.promise;
+      await task2Started.promise;
+
+      // Third task should be queued
+      const task3Started = Promise.withResolvers<void>();
+      const fiber3 = run(
+        semaphore.withPermit(createTask(3, task3Started.resolve)),
+      );
+
+      await Promise.resolve();
+      expect(events).toEqual(["start 1", "start 2"]);
+
+      // Let task 1 finish
+      canFinish.resolve();
+      await fiber1;
+
+      // Now task 3 should start
+      await task3Started.promise;
+      expect(events).toContain("start 3");
+
+      await Promise.all([fiber2, fiber3]);
+    });
+
+    test("queues tasks when permits exhausted", async () => {
+      await using run = createRunner();
+
+      const semaphore = createSemaphore(minPositiveInt);
+      const events: Array<string> = [];
+
+      const task1Started = Promise.withResolvers<void>();
+      const task1CanFinish = Promise.withResolvers<void>();
+
+      const fiber1 = run(
+        semaphore.withPermit(async () => {
+          events.push("start 1");
+          task1Started.resolve();
+          await task1CanFinish.promise;
+          events.push("end 1");
+          return ok();
+        }),
+      );
+
+      await task1Started.promise;
+
+      // Second task should wait
+      const fiber2 = run(
+        semaphore.withPermit(() => {
+          events.push("task 2 ran");
+          return ok();
+        }),
+      );
+
+      await Promise.resolve();
+      expect(events).toEqual(["start 1"]);
+
+      // Let first task finish
+      task1CanFinish.resolve();
+      await fiber1;
+      await fiber2;
+
+      expect(events).toEqual(["start 1", "end 1", "task 2 ran"]);
+    });
+
+    test("returns task result", async () => {
+      await using run = createRunner();
+
+      const semaphore = createSemaphore(minPositiveInt);
+
+      const okResult = await run(semaphore.withPermit(() => ok(42)));
+      const errResult = await run(
+        semaphore.withPermit(() => err({ type: "MyError" })),
+      );
+
+      expect(okResult).toEqual(ok(42));
+      expect(errResult).toEqual(err({ type: "MyError" }));
+    });
+
+    test("releases permit when task succeeds", async () => {
+      await using run = createRunner();
+
+      const semaphore = createSemaphore(minPositiveInt);
+
+      // First task succeeds
+      await run(semaphore.withPermit(() => ok("first")));
+
+      // Second task should run immediately (permit released)
+      let secondRan = false;
+      await run(
+        semaphore.withPermit(() => {
+          secondRan = true;
+          return ok();
+        }),
+      );
+
+      expect(secondRan).toBe(true);
+    });
+
+    test("releases permit when task fails", async () => {
+      await using run = createRunner();
+
+      const semaphore = createSemaphore(minPositiveInt);
+
+      // First task fails
+      await run(semaphore.withPermit(() => err({ type: "MyError" })));
+
+      // Second task should run immediately (permit released)
+      let secondRan = false;
+      await run(
+        semaphore.withPermit(() => {
+          secondRan = true;
+          return ok();
+        }),
+      );
+
+      expect(secondRan).toBe(true);
+    });
+
+    test("abort while waiting removes from queue", async () => {
+      await using run = createRunner();
+
+      const semaphore = createSemaphore(minPositiveInt);
+      const events: Array<string> = [];
+
+      const task1Started = Promise.withResolvers<void>();
+      const task1CanFinish = Promise.withResolvers<void>();
+
+      const fiber1 = run(
+        semaphore.withPermit(async () => {
+          events.push("start 1");
+          task1Started.resolve();
+          await task1CanFinish.promise;
+          events.push("end 1");
+          return ok();
+        }),
+      );
+
+      await task1Started.promise;
+
+      // Second task waits
+      const fiber2 = run(
+        semaphore.withPermit(() => {
+          events.push("task 2 ran");
+          return ok();
+        }),
+      );
+
+      // Abort the waiting task
+      fiber2.abort("cancelled");
+
+      const result2 = await fiber2;
+      expect(result2).toEqual(err({ type: "AbortError", cause: "cancelled" }));
+
+      // Third task should proceed when permit is released
+      const fiber3 = run(
+        semaphore.withPermit(() => {
+          events.push("task 3 ran");
+          return ok();
+        }),
+      );
+
+      task1CanFinish.resolve();
+      await fiber1;
+      await fiber3;
+
+      expect(events).toEqual(["start 1", "end 1", "task 3 ran"]);
+    });
+
+    test("abort while running aborts task", async () => {
+      await using run = createRunner();
+
+      const semaphore = createSemaphore(minPositiveInt);
+      let abortReceived = false;
+
+      const fiber = run(
+        semaphore.withPermit(
+          ({ signal }) =>
+            new Promise<Result<void, AbortError>>((resolve) => {
+              signal.addEventListener("abort", () => {
+                abortReceived = true;
+                resolve(err({ type: "AbortError", cause: signal.reason }));
+              });
+            }),
+        ),
+      );
+
+      fiber.abort("stop");
+      const result = await fiber;
+
+      expect(abortReceived).toBe(true);
+      expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
+    });
+
+    test("dispose aborts running tasks", async () => {
+      await using run = createRunner();
+
+      const semaphore = createSemaphore(minPositiveInt);
+      const events: Array<string> = [];
+
+      const taskStarted = Promise.withResolvers<void>();
+
+      const fiber = run(
+        semaphore.withPermit(({ signal }) => {
+          events.push("task started");
+          taskStarted.resolve();
+          return new Promise<Result<void, AbortError>>((resolve) => {
+            signal.addEventListener("abort", () => {
+              events.push("task aborted");
+              resolve(err({ type: "AbortError", cause: signal.reason }));
+            });
+          });
+        }),
+      );
+
+      await taskStarted.promise;
+      semaphore[Symbol.dispose]();
+
+      const result = await fiber;
+
+      expect(events).toEqual(["task started", "task aborted"]);
+      expect(result).toEqual(
+        err({
+          type: "AbortError",
+          cause: { type: "SemaphoreDisposedError" },
+        }),
+      );
+    });
+
+    test("dispose aborts waiting tasks", async () => {
+      await using run = createRunner();
+
+      const semaphore = createSemaphore(minPositiveInt);
+
+      const task1Started = Promise.withResolvers<void>();
+
+      // Hold the permit with a task that listens for abort
+      const fiber1 = run(
+        semaphore.withPermit(({ signal }) => {
+          task1Started.resolve();
+          return new Promise<Result<void, AbortError>>((resolve) => {
+            signal.addEventListener("abort", () => {
+              resolve(err({ type: "AbortError", cause: signal.reason }));
+            });
+          });
+        }),
+      );
+
+      await task1Started.promise;
+
+      // Waiting task
+      const fiber2 = run(semaphore.withPermit(() => ok("should not run")));
+
+      semaphore[Symbol.dispose]();
+
+      const [result1, result2] = await Promise.all([fiber1, fiber2]);
+
+      // Running task was aborted
+      expect(result1).toEqual(
+        err({
+          type: "AbortError",
+          cause: { type: "SemaphoreDisposedError" },
+        }),
+      );
+
+      // Waiting task was aborted
+      expect(result2).toEqual(
+        err({
+          type: "AbortError",
+          cause: { type: "SemaphoreDisposedError" },
+        }),
+      );
+    });
+
+    test("acquire after dispose returns SemaphoreDisposedError", async () => {
+      await using run = createRunner();
+
+      const semaphore = createSemaphore(minPositiveInt);
+      semaphore[Symbol.dispose]();
+
+      const result = await run(
+        semaphore.withPermit(() => ok("should not run")),
+      );
+
+      expect(result).toEqual(
+        err({
+          type: "AbortError",
+          cause: { type: "SemaphoreDisposedError" },
+        }),
+      );
+    });
+
+    test("dispose is idempotent", () => {
+      const semaphore = createSemaphore(minPositiveInt);
+
+      semaphore[Symbol.dispose]();
+      semaphore[Symbol.dispose]();
+      semaphore[Symbol.dispose]();
+
+      // Should not throw
+    });
+
+    test("preserves FIFO order for queued tasks", async () => {
+      await using run = createRunner();
+
+      const semaphore = createSemaphore(minPositiveInt);
+      const events: Array<string> = [];
+
+      const task1Started = Promise.withResolvers<void>();
+      const task1CanFinish = Promise.withResolvers<void>();
+
+      // Hold the permit
+      const fiber1 = run(
+        semaphore.withPermit(async () => {
+          task1Started.resolve();
+          await task1CanFinish.promise;
+          events.push("task 1");
+          return ok();
+        }),
+      );
+
+      await task1Started.promise;
+
+      // Queue tasks in order
+      const fiber2 = run(
+        semaphore.withPermit(() => {
+          events.push("task 2");
+          return ok();
+        }),
+      );
+      const fiber3 = run(
+        semaphore.withPermit(() => {
+          events.push("task 3");
+          return ok();
+        }),
+      );
+      const fiber4 = run(
+        semaphore.withPermit(() => {
+          events.push("task 4");
+          return ok();
+        }),
+      );
+
+      task1CanFinish.resolve();
+      await Promise.all([fiber1, fiber2, fiber3, fiber4]);
+
+      expect(events).toEqual(["task 1", "task 2", "task 3", "task 4"]);
+    });
+
+    test("multiple permits allow concurrent execution", async () => {
+      await using run = createRunner();
+
+      const semaphore = createSemaphore(PositiveInt.orThrow(3));
+      let concurrent = 0;
+      let maxConcurrent = 0;
+
+      const taskFinished = Promise.withResolvers<void>();
+      let finishedCount = 0;
+
+      const createTask = (): Task<void> => async () => {
+        concurrent += 1;
+        maxConcurrent = Math.max(maxConcurrent, concurrent);
+        await Promise.resolve();
+        concurrent -= 1;
+        finishedCount += 1;
+        if (finishedCount === 5) taskFinished.resolve();
+        return ok();
+      };
+
+      // Run 5 tasks with 3 permits
+      run(semaphore.withPermit(createTask()));
+      run(semaphore.withPermit(createTask()));
+      run(semaphore.withPermit(createTask()));
+      run(semaphore.withPermit(createTask()));
+      run(semaphore.withPermit(createTask()));
+
+      await taskFinished.promise;
+
+      expect(maxConcurrent).toBe(3);
+    });
+  });
+
+  describe("Mutex", () => {
+    test("runs tasks sequentially", async () => {
+      await using run = createRunner();
+
+      const mutex = createMutex();
+      const events: Array<string> = [];
+
+      const firstStarted = Promise.withResolvers<void>();
+      const firstFinish = Promise.withResolvers<void>();
+      const secondStarted = Promise.withResolvers<void>();
+
+      const firstTask: Task<void> = async () => {
+        events.push("start 1");
+        firstStarted.resolve();
+        await firstFinish.promise;
+        events.push("end 1");
+        return ok();
+      };
+
+      const secondTask: Task<void> = () => {
+        events.push("start 2");
+        secondStarted.resolve();
+        events.push("end 2");
+        return ok();
+      };
+
+      const firstFiber = run(mutex.withLock(firstTask));
+      await firstStarted.promise;
+
+      const secondFiber = run(mutex.withLock(secondTask));
+
+      await Promise.resolve();
+      expect(events).toEqual(["start 1"]);
+
+      firstFinish.resolve();
+      await firstFiber;
+      await secondStarted.promise;
+      await secondFiber;
+
+      expect(events).toEqual(["start 1", "end 1", "start 2", "end 2"]);
+
+      mutex[Symbol.dispose]();
+    });
+  });
 });
 
-test("isAsync with MaybeAsync pattern", async () => {
-  const syncValue = 42 as MaybeAsync<number>;
-  const asyncValue = Promise.resolve(42) as MaybeAsync<number>;
+describe("all", () => {
+  test("runs tasks sequentially by default", async () => {
+    await using run = createRunner();
 
-  if (isAsync(syncValue)) {
-    expectTypeOf(syncValue).toEqualTypeOf<PromiseLike<number>>();
-    expect.fail("Should not be async");
-  } else {
-    expectTypeOf(syncValue).toEqualTypeOf<number>();
-    expect(syncValue).toBe(42);
-  }
+    const events: Array<string> = [];
 
-  if (isAsync(asyncValue)) {
-    expectTypeOf(asyncValue).toEqualTypeOf<PromiseLike<number>>();
-    expect(await asyncValue).toBe(42);
-  } else {
-    expectTypeOf(syncValue).toEqualTypeOf<number>();
-    expect.fail("Should be async");
-  }
+    const createTask =
+      (id: number): Task<number> =>
+      async () => {
+        events.push(`start ${id}`);
+        await Promise.resolve();
+        events.push(`end ${id}`);
+        return ok(id);
+      };
 
-  // Edge cases - should all return false
-  expect(isAsync(null as any)).toBe(false);
-  expect(isAsync(undefined as any)).toBe(false);
-  expect(isAsync(0 as any)).toBe(false);
-  expect(isAsync("" as any)).toBe(false);
-  expect(isAsync(false as any)).toBe(false);
-  expect(isAsync({} as any)).toBe(false);
-  expect(isAsync({ then: "not a function" } as any)).toBe(false);
+    const result = await run(
+      all([createTask(1), createTask(2), createTask(3)]),
+    );
 
-  // Thenable object - should return true
-  const thenable = {
-    then: (resolve: (value: number) => void) => {
-      resolve(42);
-    },
-  };
-  expect(isAsync(thenable as any)).toBe(true);
+    expect(result).toEqual(ok([1, 2, 3]));
+    expect(events).toEqual([
+      "start 1",
+      "end 1",
+      "start 2",
+      "end 2",
+      "start 3",
+      "end 3",
+    ]);
+  });
+
+  test("returns empty array for empty input", async () => {
+    await using run = createRunner();
+
+    const emptyTasks: Array<Task<number>> = [];
+    const result = await run(all(emptyTasks));
+
+    expect(result).toEqual(ok([]));
+  });
+
+  test("fails fast on first error", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+    const canFail = Promise.withResolvers<void>();
+
+    const slowTask: Task<string> = async ({ signal }) => {
+      events.push("slow start");
+      // Wait until aborted or a very long time
+      await new Promise<void>((resolve) => {
+        if (signal.aborted) {
+          resolve();
+          return;
+        }
+        signal.addEventListener("abort", () => resolve(), { once: true });
+      });
+      if (!signal.aborted) {
+        events.push("slow end");
+      }
+      return ok("slow");
+    };
+
+    const failingTask: Task<string, MyError> = async () => {
+      events.push("fail start");
+      await canFail.promise;
+      events.push("fail end");
+      return err({ type: "MyError" });
+    };
+
+    const fiber = run(withConcurrency(100, all([slowTask, failingTask])));
+
+    expect(events).toEqual(["slow start", "fail start"]);
+
+    // Let failing task fail
+    canFail.resolve();
+
+    const result = await fiber;
+
+    expect(result).toEqual(err({ type: "MyError" }));
+    // Slow task was aborted (no "slow end")
+    expect(events).not.toContain("slow end");
+  });
+
+  test("aborts others when a task throws", async () => {
+    await using run = createRunner();
+
+    const slowObservedAbort = Promise.withResolvers<unknown>();
+
+    const slowTask: Task<void> = async (run) => {
+      await new Promise<void>((resolve) => {
+        run.onAbort(() => resolve());
+      });
+      slowObservedAbort.resolve(run.signal.reason);
+      return ok();
+    };
+
+    const throwingTask: Task<void> = () => {
+      throw new Error("boom");
+    };
+
+    await expect(
+      run(withConcurrency(all([slowTask, throwingTask]))),
+    ).rejects.toThrow("boom");
+
+    const slowAbortReason = await slowObservedAbort.promise;
+    assert(AbortError.is(slowAbortReason));
+    expect(AllFailedError.is(slowAbortReason.cause)).toBe(true);
+  });
+
+  test("propagates abort cause to other tasks", async () => {
+    await using run = createRunner();
+
+    const abortCause = { type: "TestAbort" } as const;
+    const causes: Array<unknown> = [];
+
+    const waitForAbort: Task<void> = (run) =>
+      new Promise((resolve) => {
+        run.onAbort((cause) => {
+          causes.push(cause);
+          resolve(ok());
+        });
+      });
+
+    const abortingTask: Task<void, AbortError> = () =>
+      err({ type: "AbortError", cause: abortCause });
+
+    const fiber = run(
+      withConcurrency(3, all([waitForAbort, abortingTask, waitForAbort])),
+    );
+
+    const result = await fiber;
+
+    expect(result).toEqual(err({ type: "AbortError", cause: abortCause }));
+    expect(causes).toEqual([abortCause, abortCause]);
+  });
+
+  test("limits concurrency with explicit number", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+    const canFinish = Promise.withResolvers<void>();
+
+    const createTask =
+      (id: number): Task<number> =>
+      async () => {
+        events.push(`start ${id}`);
+        await canFinish.promise;
+        events.push(`end ${id}`);
+        return ok(id);
+      };
+
+    const fiber = run(
+      withConcurrency(
+        PositiveInt.orThrow(2),
+        all([createTask(1), createTask(2), createTask(3), createTask(4)]),
+      ),
+    );
+
+    // Only 2 tasks should start
+    expect(events).toEqual(["start 1", "start 2"]);
+
+    canFinish.resolve();
+    const result = await fiber;
+
+    expect(result).toEqual(ok([1, 2, 3, 4]));
+    expect(events).toContain("start 3");
+    expect(events).toContain("start 4");
+  });
+
+  test("supports struct input and returns object with same keys", async () => {
+    await using run = createRunner();
+
+    const taskA: Task<number> = () => ok(42);
+    const taskB: Task<string> = () => ok("hello");
+    const taskC: Task<boolean> = () => ok(true);
+
+    const result = await run(all({ a: taskA, b: taskB, c: taskC }));
+
+    expect(result).toEqual(ok({ a: 42, b: "hello", c: true }));
+  });
+
+  test("struct preserves types", async () => {
+    await using run = createRunner();
+
+    const struct = {
+      num: (() => ok(42)) as Task<number>,
+      str: (() => ok("hello")) as Task<string>,
+    };
+
+    const result = await run(all(struct));
+    if (result.ok) {
+      expectTypeOf(result.value.num).toEqualTypeOf<number>();
+      expectTypeOf(result.value.str).toEqualTypeOf<string>();
+    }
+  });
+
+  test("struct fails fast on first error", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+    const canFail = Promise.withResolvers<void>();
+
+    const goodTask: Task<string> = async ({ signal }) => {
+      events.push("good start");
+      await new Promise<void>((resolve) => {
+        if (signal.aborted) {
+          resolve();
+          return;
+        }
+        signal.addEventListener("abort", () => resolve(), { once: true });
+      });
+      return ok("good");
+    };
+
+    const badTask: Task<string, MyError> = async () => {
+      events.push("bad start");
+      await canFail.promise;
+      return err({ type: "MyError" });
+    };
+
+    const fiber = run(
+      withConcurrency(100, all({ good: goodTask, bad: badTask })),
+    );
+
+    expect(events).toEqual(["good start", "bad start"]);
+
+    canFail.resolve();
+    const result = await fiber;
+
+    expect(result).toEqual(err({ type: "MyError" }));
+  });
+
+  test("struct returns empty object for empty input", async () => {
+    await using run = createRunner();
+
+    const result = await run(all({}));
+
+    expect(result).toEqual(ok({}));
+  });
+
+  test("struct respects withConcurrency", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+    const canFinish = Promise.withResolvers<void>();
+
+    const createTask =
+      (id: string): Task<string> =>
+      async () => {
+        events.push(`start ${id}`);
+        await canFinish.promise;
+        events.push(`end ${id}`);
+        return ok(id);
+      };
+
+    const fiber = run(
+      withConcurrency(
+        minPositiveInt,
+        all({ a: createTask("a"), b: createTask("b"), c: createTask("c") }),
+      ),
+    );
+
+    // Sequential: only one at a time
+    expect(events).toEqual(["start a"]);
+
+    canFinish.resolve();
+    const result = await fiber;
+
+    expect(result).toEqual(ok({ a: "a", b: "b", c: "c" }));
+  });
+
+  test("supports iterable input", async () => {
+    await using run = createRunner();
+
+    const generateTasks = function* (): Generator<Task<number>> {
+      yield () => ok(1);
+      yield () => ok(2);
+      yield () => ok(3);
+    };
+
+    const result = await run(all(generateTasks()));
+
+    expect(result).toEqual(ok([1, 2, 3]));
+    if (result.ok) {
+      expectTypeOf(result.value).toEqualTypeOf<ReadonlyArray<number>>();
+    }
+  });
+
+  test("tuple preserves types with as const", async () => {
+    await using run = createRunner();
+
+    const result = await run(
+      all([() => ok(42), () => ok("hello"), () => ok(true)] as const),
+    );
+
+    if (result.ok) {
+      expectTypeOf(result.value).toEqualTypeOf<
+        readonly [number, string, boolean]
+      >();
+    }
+  });
+});
+
+describe("withConcurrency", () => {
+  test("defaults to max concurrency when passed only a task", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+    const canFinish = Promise.withResolvers<void>();
+
+    const createTask =
+      (id: number): Task<number> =>
+      async () => {
+        events.push(`start ${id}`);
+        await canFinish.promise;
+        events.push(`end ${id}`);
+        return ok(id);
+      };
+
+    const fiber = run(
+      withConcurrency(all([createTask(1), createTask(2), createTask(3)])),
+    );
+
+    expect(events).toEqual(["start 1", "start 2", "start 3"]);
+
+    canFinish.resolve();
+    const result = await fiber;
+
+    expect(result).toEqual(ok([1, 2, 3]));
+  });
+
+  test("inherits concurrency", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+    const canFinish = Promise.withResolvers<void>();
+
+    const createTask =
+      (id: number): Task<number> =>
+      async () => {
+        events.push(`start ${id}`);
+        await canFinish.promise;
+        events.push(`end ${id}`);
+        return ok(id);
+      };
+
+    const fiber = run(
+      withConcurrency(PositiveInt.orThrow(2), (run) =>
+        run(all([createTask(1), createTask(2), createTask(3), createTask(4)])),
+      ),
+    );
+
+    // Only 2 tasks should start (inherited)
+    await Promise.resolve();
+    expect(events).toEqual(["start 1", "start 2"]);
+
+    canFinish.resolve();
+    const result = await fiber;
+
+    expect(result).toEqual(ok([1, 2, 3, 4]));
+  });
+
+  test("nested withConcurrency overrides parent", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+    const canFinish = Promise.withResolvers<void>();
+
+    const createTask =
+      (id: number): Task<number> =>
+      async () => {
+        events.push(`start ${id}`);
+        await canFinish.promise;
+        events.push(`end ${id}`);
+        return ok(id);
+      };
+
+    const fiber = run(
+      withConcurrency(PositiveInt.orThrow(5), (run) =>
+        run(
+          withConcurrency(minPositiveInt, (run) =>
+            run(all([createTask(1), createTask(2), createTask(3)])),
+          ),
+        ),
+      ),
+    );
+
+    // Only 1 task should start (inner concurrency overrides)
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(events).toEqual(["start 1"]);
+
+    canFinish.resolve();
+    const result = await fiber;
+
+    expect(result).toEqual(ok([1, 2, 3]));
+  });
+
+  test("default concurrency is sequential", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+
+    const createTask =
+      (id: number): Task<number> =>
+      () => {
+        events.push(`start ${id}`);
+        events.push(`end ${id}`);
+        return ok(id);
+      };
+
+    // Default is sequential, tasks run one at a time
+    const result = await run(
+      all([createTask(1), createTask(2), createTask(3)]),
+    );
+
+    // Sequential: 1 starts and finishes, then 2, then 3
+    expect(events).toEqual([
+      "start 1",
+      "end 1",
+      "start 2",
+      "end 2",
+      "start 3",
+      "end 3",
+    ]);
+    expect(result).toEqual(ok([1, 2, 3]));
+  });
+
+  test("abort propagates to all tasks", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+    const canFinish = Promise.withResolvers<void>();
+
+    const createTask =
+      (id: number): Task<number> =>
+      async ({ onAbort }) => {
+        events.push(`start ${id}`);
+        onAbort(() => events.push(`abort ${id}`));
+        await canFinish.promise;
+        events.push(`end ${id}`);
+        return ok(id);
+      };
+
+    const fiber = run(
+      withConcurrency(100, all([createTask(1), createTask(2), createTask(3)])),
+    );
+
+    await Promise.resolve();
+    expect(events).toEqual(["start 1", "start 2", "start 3"]);
+
+    fiber.abort();
+    canFinish.resolve();
+    const result = await fiber;
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(AbortError.is(result.error)).toBe(true);
+    }
+    expect(events).toContain("abort 1");
+    expect(events).toContain("abort 2");
+    expect(events).toContain("abort 3");
+  });
+});
+
+describe("examples TODO: review", () => {
+  describe("createSemaphore", () => {
+    test("limits concurrency with sleep helper", async () => {
+      await using run = createRunner();
+      // run.console.enabled = true;
+
+      const semaphore = createSemaphore(PositiveInt.orThrow(2));
+
+      const fetchUser =
+        (id: string): Task<string> =>
+        async (run) => {
+          run.console.log("[demo]", "start", id);
+          const slept = await run(sleep("5ms"));
+          if (!slept.ok) return slept;
+          run.console.log("[demo]", "end", id);
+          return ok(`user:${id}`);
+        };
+
+      const fetchWithPermit = (id: string) =>
+        semaphore.withPermit(fetchUser(id));
+
+      await Promise.all([
+        run(fetchWithPermit("1")),
+        run(fetchWithPermit("2")),
+        run(fetchWithPermit("3")),
+      ]);
+    });
+  });
+
+  describe("yieldNow", () => {
+    test("keeps UI responsive when processing large arrays", async () => {
+      await using run = createRunner();
+
+      const largeArray = Array.from({ length: 50_000 }, (_, i) => i);
+      let processedCount = 0;
+
+      const processLargeArray: Task<number> = async (run) => {
+        let lastYield = run.time.now();
+
+        for (const item of largeArray) {
+          processedCount += item;
+
+          // Yield periodically to keep UI responsive
+          if (run.time.now() - lastYield > msLongTask) {
+            const r = await run(yieldNow);
+            if (!r.ok) return r;
+            lastYield = run.time.now();
+          }
+        }
+
+        return ok(processedCount);
+      };
+
+      const result = await run(processLargeArray);
+
+      // Sum of 0..(n-1) = n * (n - 1) / 2
+      const expectedSum = (largeArray.length * (largeArray.length - 1)) / 2;
+      expect(result).toEqual(ok(expectedSum));
+    });
+
+    test("enables stack-safe recursion", async () => {
+      await using run = createRunner();
+
+      // When processing a large amount of work recursively (via `run(childTask)`),
+      // yield periodically so the recursion stays stack-safe.
+      const processLargeCount =
+        (count: number, index: number, sum: number): Task<number> =>
+        async (run, deps) => {
+          if (index >= count) return ok(sum);
+
+          // Yield periodically to break synchronous call chains.
+          if (index > 0 && index % 1000 === 0) {
+            const y = await run(yieldNow);
+            if (!y.ok) return y;
+          }
+
+          // Direct tail-call: no fiber overhead, stack-safe thanks to yieldNow.
+          return await processLargeCount(
+            count,
+            index + 1,
+            sum + index,
+          )(run, deps);
+        };
+
+      const count = 50_000;
+      const result = await run(processLargeCount(count, 0, 0));
+
+      // Sum of 0..(count-1) = count * (count - 1) / 2
+      expect(result).toEqual(ok((count * (count - 1)) / 2));
+    });
+  });
+
+  describe("Fiber.abort", () => {
+    test("abort wins, outcome preserves original result", async () => {
+      await using run = createRunner();
+
+      const fiber = run(() => ok("data"));
+      fiber.abort("stop");
+      const result = await fiber;
+
+      expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
+      const state = fiber.getState();
+      assert(state.type === "completed");
+      expect(state.outcome).toEqual(ok("data"));
+    });
+
+    test("unabortable preserves result and outcome", async () => {
+      await using run = createRunner();
+
+      const fiber = run(unabortable(() => ok("data")));
+      fiber.abort("stop");
+      const result = await fiber;
+
+      expect(result).toEqual(ok("data"));
+      const state = fiber.getState();
+      assert(state.type === "completed");
+      expect(state.outcome).toEqual(ok("data"));
+    });
+  });
+
+  describe("unabortable", () => {
+    test("analytics tracking completes despite abort", async () => {
+      await using run = createRunner();
+
+      const events: Array<string> = [];
+      const canComplete = Promise.withResolvers<void>();
+      let signalAbortedInAnalytics = true;
+
+      // Simulate async analytics API (abortable by default)
+      const sendToAnalytics =
+        (event: number): Task<void> =>
+        async ({ signal }) => {
+          await canComplete.promise;
+          signalAbortedInAnalytics = signal.aborted;
+          events.push(`sent ${event}`);
+          return ok();
+        };
+
+      // Important events must be sent even if the user navigates away
+      const trackImportantEvent = (event: number) =>
+        unabortable(sendToAnalytics(event));
+
+      // User clicks, we start tracking (task runs until first await)
+      const fiber = run(trackImportantEvent(123));
+
+      // User navigates away (abort requested while task is running)
+      fiber.abort();
+      canComplete.resolve();
+
+      const result = await fiber;
+
+      expect(signalAbortedInAnalytics).toBe(false);
+      // Analytics was sent despite abort
+      expect(events).toEqual(["sent 123"]);
+      expect(result).toEqual(ok());
+    });
+  });
 });

@@ -1,7 +1,13 @@
-import { RandomBytesDep } from "../Crypto.js";
-import { Mnemonic } from "../Type.js";
+/**
+ * Local authentication and owner management.
+ *
+ * @module
+ */
+
+import type { RandomBytesDep } from "../Crypto.js";
+import type { Mnemonic } from "../Type.js";
+import type { AppOwner } from "./Owner.js";
 import {
-  AppOwner,
   createAppOwner,
   createOwnerSecret,
   mnemonicToOwnerSecret,
@@ -13,8 +19,6 @@ import {
 /**
  * Local authentication and authorization system for Evolu. This is API is
  * subject to change and not recommended for production use.
- *
- * @experimental
  */
 export interface LocalAuth {
   /** Logs in with the given owner ID, or loads the target owner if not provided. */
@@ -46,11 +50,7 @@ export interface LocalAuthDep {
   readonly localAuth: LocalAuth;
 }
 
-/**
- * Secure storage interface that must be implemented by each platform.
- *
- * @experimental
- */
+/** Secure storage interface that must be implemented by each platform. */
 export interface SecureStorage {
   setItem: (
     key: string,

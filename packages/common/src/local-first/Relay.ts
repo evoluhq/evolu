@@ -1,34 +1,45 @@
+/**
+ * Relay server for data synchronization.
+ *
+ * @module
+ */
+
 import {
   filterArray,
   firstInArray,
-  isNonEmptyReadonlyArray,
+  isNonEmptyArray,
   mapArray,
 } from "../Array.js";
-import { ConsoleConfig, ConsoleDep } from "../Console.js";
-import { TimingSafeEqualDep } from "../Crypto.js";
-import { LazyValue } from "../Function.js";
+import type { ConsoleConfig, ConsoleDep } from "../Console.js";
+import type { TimingSafeEqualDep } from "../Crypto.js";
+import type { Lazy } from "../Function.js";
 import { createInstances } from "../Instances.js";
-import { err, ok, Result } from "../Result.js";
-import { sql, SqliteDep, SqliteError } from "../Sqlite.js";
-import { createMutex, isAsync, MaybeAsync, Mutex } from "../Task.js";
+import type { MaybeAsync, MutexOld } from "../OldTask.js";
+import { createMutexOld, isAsync } from "../OldTask.js";
+import type { Result } from "../Result.js";
+import { err, ok } from "../Result.js";
+import type { SqliteDep, SqliteError } from "../Sqlite.js";
+import { sql } from "../Sqlite.js";
 import { PositiveInt, SimpleName } from "../Type.js";
 import {
   OwnerId,
   ownerIdBytesToOwnerId,
-  OwnerTransport,
+  // OwnerTransport,
   OwnerWriteKey,
 } from "./Owner.js";
-import { ProtocolInvalidDataError } from "./Protocol.js";
-import {
-  createBaseSqliteStorage,
+import type { ProtocolInvalidDataError } from "./Protocol.js";
+import type {
   CreateBaseSqliteStorageConfig,
   EncryptedDbChange,
-  getOwnerUsage,
-  getTimestampInsertStrategy,
   SqliteStorageDeps,
   Storage,
   StorageConfig,
   StorageQuotaError,
+} from "./Storage.js";
+import {
+  createBaseSqliteStorage,
+  getOwnerUsage,
+  getTimestampInsertStrategy,
   updateOwnerUsage,
 } from "./Storage.js";
 import { timestampToTimestampBytes } from "./Timestamp.js";
@@ -60,7 +71,7 @@ export interface RelayConfig extends ConsoleConfig, StorageConfig {
    * relay access, not write permissions. Since all data is encrypted on the
    * relay, OwnerId exposure is safe.
    *
-   * Owners specify which relays to connect to via {@link OwnerTransport}. In
+   * Owners specify which relays to connect to via `OwnerTransport`. In
    * WebSocket-based implementations, this check occurs before accepting the
    * connection, with the OwnerId typically extracted from the URL Path (e.g.,
    * `ws://localhost:4000/<ownerId>`). The relay requires the URL to be in the
@@ -111,7 +122,7 @@ export const createRelaySqliteStorage =
      * be small. Monitor production memory usage to determine if
      * eviction/cleanup is needed.
      */
-    const ownerMutexes = createInstances<OwnerId, Mutex>();
+    const ownerMutexes = createInstances<OwnerId, MutexOld>();
 
     return {
       ...sqliteStorageBase,
@@ -140,7 +151,7 @@ export const createRelaySqliteStorage =
 
         const { rows } = selectWriteKey.value;
 
-        if (isNonEmptyReadonlyArray(rows)) {
+        if (isNonEmptyArray(rows)) {
           return deps.timingSafeEqual(rows[0].writeKey, writeKey);
         }
 
@@ -179,7 +190,7 @@ export const createRelaySqliteStorage =
         }));
 
         const result = await ownerMutexes
-          .ensure(ownerId, createMutex)
+          .ensure(ownerId, createMutexOld)
           .withLock<void, SqliteError | StorageQuotaError>(async () => {
             const existingTimestampsResult =
               sqliteStorageBase.getExistingTimestamps(
@@ -197,7 +208,7 @@ export const createRelaySqliteStorage =
             );
 
             // Nothing to write
-            if (!isNonEmptyReadonlyArray(newMessages)) {
+            if (!isNonEmptyArray(newMessages)) {
               return ok();
             }
 
@@ -366,11 +377,11 @@ export interface RelayLogger {
   readonly connectionWebSocketError: (error: Error) => void;
   readonly relayOptionSubscribe: (
     ownerId: OwnerId,
-    getSubscriberCount: LazyValue<number>,
+    getSubscriberCount: Lazy<number>,
   ) => void;
   readonly relayOptionUnsubscribe: (
     ownerId: OwnerId,
-    getSubscriberCount: LazyValue<number>,
+    getSubscriberCount: Lazy<number>,
   ) => void;
   readonly relayOptionBroadcast: (
     ownerId: OwnerId,

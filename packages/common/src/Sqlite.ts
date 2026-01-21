@@ -1,20 +1,29 @@
-import { Brand } from "./Brand.js";
+/**
+ * SQLite database abstraction and query execution.
+ *
+ * @module
+ */
+
+import type { Brand } from "./Brand.js";
 import { createLruCache } from "./Cache.js";
-import { ConsoleDep } from "./Console.js";
-import { EncryptionKey } from "./Crypto.js";
-import { Eq, eqArrayNumber } from "./Eq.js";
-import { createTransferableError, TransferableError } from "./Error.js";
-import { err, ok, Result, tryAsync, trySync } from "./Result.js";
+import type { ConsoleDep } from "./Console.js";
+import type { EncryptionKey } from "./Crypto.js";
+import type { Eq } from "./Eq.js";
+import { eqArrayNumber } from "./Eq.js";
+import type { UnknownError } from "./Error.js";
+import { createUnknownError } from "./Error.js";
+import type { Result } from "./Result.js";
+import { err, ok, tryAsync, trySync } from "./Result.js";
+import type { SimpleName } from "./Type.js";
 import {
   Null,
   Number,
   PositiveInt,
-  SimpleName,
   String,
   Uint8Array,
   union,
 } from "./Type.js";
-import { IntentionalNever, Predicate } from "./Types.js";
+import type { Predicate } from "./Types.js";
 
 /**
  * SQLite driver interface. This is the minimal interface that platform-specific
@@ -40,7 +49,7 @@ export interface SqliteDriverOptions {
 }
 
 /**
- * Cross-platform SQLite abstraction.
+ * Platform-agnostic SQLite.
  *
  * This API is sync only because SQLite is an embedded, single-threaded engine.
  * All operations are blocking and in-process, so async APIs add needless
@@ -132,8 +141,8 @@ export interface SqliteExecResult<R extends SqliteRow = SqliteRow> {
 /** Represents an error that occurred during a SQLite operation. */
 export interface SqliteError {
   readonly type: "SqliteError";
-  readonly error: TransferableError;
-  readonly rollbackError?: TransferableError;
+  readonly error: UnknownError;
+  readonly rollbackError?: UnknownError;
 }
 
 export type SqliteRow = Record<string, SqliteValue>;
@@ -170,11 +179,11 @@ export const createSqlite =
 
               deps.console?.log("[sql]", { result });
 
-              return result as IntentionalNever;
+              return result as never;
             },
             (error): SqliteError => ({
               type: "SqliteError",
-              error: createTransferableError(error),
+              error: createUnknownError(error),
             }),
           ),
 
@@ -213,7 +222,7 @@ export const createSqlite =
               deps.console?.log("[sql] rollback failed", rollback.error);
               return err({
                 type: "SqliteError",
-                error: createTransferableError(transactionResult.value.error),
+                error: createUnknownError(transactionResult.value.error),
                 rollbackError: rollback.error.error,
               });
             }
@@ -225,12 +234,10 @@ export const createSqlite =
 
         export: () =>
           trySync(
-            () => {
-              return driver.export();
-            },
+            () => driver.export(),
             (error): SqliteError => ({
               type: "SqliteError",
-              error: createTransferableError(error),
+              error: createUnknownError(error),
             }),
           ),
 
@@ -246,7 +253,7 @@ export const createSqlite =
 
 const createSqliteError = (error: unknown): SqliteError => ({
   type: "SqliteError",
-  error: createTransferableError(error),
+  error: createUnknownError(error),
 });
 
 const maybeLogSqliteQueryExecutionTime = <T>(
@@ -284,13 +291,13 @@ export const createPreparedStatementsCache = <P>(
   return {
     get: (query, alwaysPrepare) => {
       if (alwaysPrepare !== true && !query.options?.prepare)
-        return null as IntentionalNever;
+        return null as never;
       let statement = cache.get(query.sql);
       if (!statement) {
         statement = factory(query.sql);
         cache.set(query.sql, statement);
       }
-      return statement as IntentionalNever;
+      return statement as never;
     },
 
     [Symbol.dispose]: () => {
@@ -346,7 +353,7 @@ export type SqlTemplateParam = SqliteValue | SqlIdentifier | RawSql;
  * sqlite.exec(sql`select * from users order by ${sql.raw(orderBy)};`);
  * ```
  *
- * ### TIP
+ * ## TIP
  *
  * Use `prettier-plugin-sql-cst` for SQL formatting. Like Prettier for
  * JavaScript, this plugin formats SQL expressions differently depending on
@@ -524,7 +531,7 @@ const drawSqliteQueryPlan = (rows: Array<SqliteQueryPlanRow>): string =>
  *
  * See: https://www.sqlite.org/quirks.html#no_separate_boolean_datatype
  *
- * ### Tips
+ * ## Tips
  *
  * - Use {@link sqliteTrue} and {@link sqliteFalse} constants for better
  *   readability.

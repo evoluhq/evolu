@@ -17,9 +17,9 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js",
-      "browser": "./dist/src/index.js"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "browser": "./dist/index.js"
     }
   },
   "files": [
@@ -30,7 +30,7 @@
   "scripts": {
     "dev": "tsc --watch",
     "build": "rimraf dist && tsc",
-    "test": "vitest run",
+    "_test": "vitest run",
     "test:watch": "vitest",
     "clean": "rimraf .turbo node_modules dist",
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
@@ -42,10 +42,11 @@
   "devDependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
+    "@types/sharedworker": "^0.0.205",
     "@types/web-locks-api": "^0.0.5",
-    "typescript": "^5.9.2",
+    "typescript": "^5.9.3",
     "user-agent-data-types": "^0.4.2",
-    "vitest": "^4.0.4"
+    "vitest": "^4.0.17"
   },
   "peerDependencies": {
     "@evolu/common": "^7.4.1"
@@ -54,7 +55,7 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=24.0.0"
   },
   "sideEffects": []
 }

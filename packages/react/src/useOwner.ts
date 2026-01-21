@@ -1,4 +1,4 @@
-import { SyncOwner } from "@evolu/common";
+import type { SyncOwner } from "@evolu/common";
 import { useEffect } from "react";
 import { useEvolu } from "./useEvolu.js";
 

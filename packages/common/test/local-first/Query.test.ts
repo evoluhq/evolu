@@ -3,11 +3,10 @@ import {
   applyPatches,
   deserializeQuery,
   makePatches,
-  Query,
-  Row,
   serializeQuery,
 } from "../../src/local-first/Query.js";
-import { SafeSql, SqliteQuery } from "../../src/Sqlite.js";
+import type { Query, Row } from "../../src/local-first/Query.js";
+import type { SafeSql, SqliteQuery } from "../../src/Sqlite.js";
 
 test("Query", () => {
   const query1 = "a" as Query<{ a: 1 }>;

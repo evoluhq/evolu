@@ -1,4 +1,16 @@
 /**
+ * Object utilities.
+ *
+ * @module
+ */
+
+/**
+ * A read-only `Record<K, V>` with `K extends keyof any` to preserve branded key
+ * types (e.g., in {@link mapObject}).
+ */
+export type ReadonlyRecord<K extends keyof any, V> = Readonly<Record<K, V>>;
+
+/**
  * Checks if a value is a plain object (e.g., created with `{}` or `Object`).
  *
  * ### Example
@@ -16,13 +28,33 @@ export const isPlainObject = (
   Object.prototype.toString.call(value) === "[object Object]";
 
 /**
- * A read-only `Record<K, V>` with `K extends keyof any` to preserve branded key
- * types (e.g., in {@link mapObject}).
+ * Checks if a value is a function.
+ *
+ * ### Example
+ *
+ * ```ts
+ * isFunction(() => {}); // true
+ * isFunction(function () {}); // true
+ * isFunction({}); // false
+ * ```
  */
-export type ReadonlyRecord<K extends keyof any, V> = Readonly<Record<K, V>>;
+export const isFunction = (value: unknown): value is globalThis.Function =>
+  typeof value === "function";
 
-// A helper type to remove symbol keys (e.g for branded objects).
-type StringKeyOf<T> = Extract<keyof T, string>;
+/**
+ * Checks if a value is {@link Iterable}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * isIterable([1, 2, 3]); // true
+ * isIterable("abc"); // true
+ * isIterable({}); // false
+ * ```
+ */
+export const isIterable = (value: unknown): value is Iterable<unknown> =>
+  value != null &&
+  typeof (value as Iterable<unknown>)[Symbol.iterator] === "function";
 
 /**
  * Like `Object.entries` but preserves branded keys.
@@ -41,6 +73,29 @@ export const objectToEntries = <T extends Record<string, any>>(
   Object.entries(record) as Array<
     [StringKeyOf<T>, T[StringKeyOf<T>]]
   > as ReadonlyArray<[StringKeyOf<T>, T[StringKeyOf<T>]]>;
+
+// A helper type to remove symbol keys (e.g for branded objects).
+type StringKeyOf<T> = Extract<keyof T, string>;
+
+/**
+ * Creates an object from key-value pairs, preserving branded key types.
+ *
+ * The inverse of {@link objectToEntries}. Use when you need type-safe
+ * reconstruction of objects with branded keys.
+ *
+ * ### Example
+ *
+ * ```ts
+ * type UserId = string & { readonly __brand: "UserId" };
+ * const entries: ReadonlyArray<[UserId, string]> = [
+ *   ["u1" as UserId, "Alice"],
+ * ];
+ * const users = objectFromEntries(entries); // ReadonlyRecord<UserId, string>
+ * ```
+ */
+export const objectFromEntries = <K extends string, V>(
+  entries: Iterable<readonly [K, V]>,
+): ReadonlyRecord<K, V> => Object.fromEntries(entries) as ReadonlyRecord<K, V>;
 
 /**
  * Maps a `ReadonlyRecord<K, V>` to a new `ReadonlyRecord<K, U>`, preserving
@@ -91,6 +146,15 @@ export const createRecord = <K extends string = string, V = unknown>(): Record<
 > => Object.create(null) as Record<K, V>;
 
 /**
+ * An empty readonly record.
+ *
+ * Use as a default or initial value to avoid allocating new empty records.
+ *
+ * @group Constants
+ */
+export const emptyRecord: Readonly<Record<string, never>> = createRecord();
+
+/**
  * Safely gets a property from a record, returning `undefined` if the key
  * doesn't exist.
  *
@@ -107,5 +171,38 @@ export const createRecord = <K extends string = string, V = unknown>(): Record<
  */
 export const getProperty = <K extends string, V>(
   record: ReadonlyRecord<K, V>,
-  key: string,
-): V | undefined => (key in record ? record[key as K] : undefined);
+  key: K,
+): V | undefined => (key in record ? record[key] : undefined);
+
+/**
+ * A disposable wrapper around `URL.createObjectURL` that automatically revokes
+ * the URL when disposed. Use with the `using` declaration for automatic
+ * cleanup.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const blob = new Blob(["hello"], { type: "text/plain" });
+ * using objectUrl = createObjectURL(blob);
+ * console.log(objectUrl.url); // blob:...
+ * // URL.revokeObjectURL is automatically called when the scope ends
+ * ```
+ *
+ * This ensures the URL is always revoked when the scope ends, even if an error
+ * occurs, preventing memory leaks from unreleased blob URLs.
+ */
+export interface ObjectURL extends Disposable {
+  /** The object URL string created by `URL.createObjectURL`. */
+  readonly url: string;
+}
+
+/** Creates a disposable {@link ObjectURL} for the given blob. */
+export const createObjectURL = (blob: Blob): ObjectURL => {
+  const url = URL.createObjectURL(blob);
+  return {
+    url,
+    [Symbol.dispose]: () => {
+      URL.revokeObjectURL(url);
+    },
+  };
+};

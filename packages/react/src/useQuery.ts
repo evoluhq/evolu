@@ -1,9 +1,9 @@
-import { Query, QueryRows, Row } from "@evolu/common/local-first";
+import type { Query, QueryRows, Row } from "@evolu/common/local-first";
 import { use } from "react";
 import { useEvolu } from "./useEvolu.js";
+import { useIsSsr } from "./useIsSsr.js";
 import type { useQueries } from "./useQueries.js";
 import { useQuerySubscription } from "./useQuerySubscription.js";
-import { useIsSsr } from "./useIsSsr.js";
 
 /**
  * Load and subscribe to the Query, and return an object with `rows` and `row`

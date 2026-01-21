@@ -1,10 +1,17 @@
 {
   "$schema": "https://typedoc-plugin-markdown.org/schema.json",
-  "entryPoints": ["packages/*"],
   "name": "API Reference",
   "entryPointStrategy": "packages",
+  "entryPoints": ["packages/*"],
   "exclude": ["packages/tsconfig"],
-  "plugin": ["typedoc-plugin-markdown"],
+  "packageOptions": {
+    "entryPoints": ["src/**/*.ts"],
+    "exclude": ["src/**/index.ts"]
+  },
+  "plugin": [
+    "typedoc-plugin-markdown",
+    "./scripts/typedoc-plugin-evolu-type.mts"
+  ],
   "publicPath": "/docs/api-reference",
   "fileExtension": ".mdx",
   "githubPages": false,
@@ -12,26 +19,27 @@
   "entryFileName": "page",
   "mergeReadme": false,
   "hidePageHeader": true,
+  "hidePageTitle": true,
   "useCodeBlocks": true,
+  "expandObjects": true,
+  "expandParameters": true,
   "readme": "none",
   "hideGroupHeadings": true,
   "indexFormat": "table",
   "parametersFormat": "table",
-  "interfacePropertiesFormat": "table",
-  "classPropertiesFormat": "table",
+  "interfacePropertiesFormat": "list",
+  "classPropertiesFormat": "list",
   "enumMembersFormat": "table",
   "propertyMembersFormat": "table",
   "typeDeclarationFormat": "table",
   "excludeScopesInPaths": true,
-  "outputFileStrategy": "members",
+  "router": "member",
   "formatWithPrettier": true,
+  "useHTMLAnchors": true,
   "cleanOutputDir": true,
   "headings": {
     "readme": false,
     "document": false
-  },
-  "packageOptions": {
-    "alwaysCreateEntryPointModule": true
   },
   "treatWarningsAsErrors": true,
   "outputs": [
@@ -39,5 +47,15 @@
       "name": "markdown",
       "path": "./apps/web/src/app/(docs)/docs/api-reference"
     }
-  ]
+  ],
+  "externalSymbolLinkMappings": {
+    "typescript": {
+      "AsyncDisposable": "https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-2.html#using-declarations-and-explicit-resource-management",
+      "AsyncDisposableStack": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack",
+      "DisposableStack": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DisposableStack",
+      "Iterable": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols#the_iterable_protocol",
+      "Omit": "https://www.typescriptlang.org/docs/handbook/utility-types.html#omittype-keys",
+      "PromiseLike": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise#thenables"
+    }
+  }
 }

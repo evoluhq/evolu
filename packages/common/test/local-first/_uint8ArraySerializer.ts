@@ -1,4 +1,4 @@
-import { SnapshotSerializer } from "vitest";
+import type { SnapshotSerializer } from "vitest";
 
 export default {
   serialize(val: Uint8Array, _config, _indentation, _depth, _refs, _printer) {

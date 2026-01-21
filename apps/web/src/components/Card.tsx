@@ -1,27 +1,25 @@
 import clsx from "clsx";
 import Link from "next/link";
 
-function ChevronRightIcon(props: React.ComponentPropsWithoutRef<"svg">) {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" {...props}>
-      <path
-        d="M6.75 5.75 9.25 8l-2.5 2.25"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
+const ChevronRightIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
+  <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" {...props}>
+    <path
+      d="M6.75 5.75 9.25 8l-2.5 2.25"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
 
-export function Card<T extends React.ElementType = "div">({
+export const Card = <T extends React.ElementType = "div">({
   as,
   className,
   children,
 }: Omit<React.ComponentPropsWithoutRef<T>, "as" | "className"> & {
   as?: T;
   className?: string;
-}): React.ReactElement {
+}): React.ReactElement => {
   const Component = as ?? "div";
 
   return (
@@ -31,31 +29,29 @@ export function Card<T extends React.ElementType = "div">({
       {children}
     </Component>
   );
-}
-
-Card.Link = function CardLink({
-  children,
-  ...props
-}: React.ComponentPropsWithoutRef<typeof Link>) {
-  return (
-    <>
-      <div className="absolute -inset-x-4 -inset-y-6 z-0 scale-95 bg-zinc-50 opacity-0 transition group-hover:scale-100 group-hover:opacity-100 sm:-inset-x-6 sm:rounded-2xl dark:bg-zinc-800/50" />
-      <Link {...props}>
-        <span className="absolute -inset-x-4 -inset-y-6 z-20 sm:-inset-x-6 sm:rounded-2xl" />
-        <span className="relative z-10">{children}</span>
-      </Link>
-    </>
-  );
 };
 
-Card.Title = function CardTitle<T extends React.ElementType = "h2">({
+Card.Link = ({
+  children,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof Link>) => (
+  <>
+    <div className="absolute -inset-x-4 -inset-y-6 z-0 scale-95 bg-zinc-50 opacity-0 transition group-hover:scale-100 group-hover:opacity-100 sm:-inset-x-6 sm:rounded-2xl dark:bg-zinc-800/50" />
+    <Link {...props}>
+      <span className="absolute -inset-x-4 -inset-y-6 z-20 sm:-inset-x-6 sm:rounded-2xl" />
+      <span className="relative z-10">{children}</span>
+    </Link>
+  </>
+);
+
+Card.Title = <T extends React.ElementType = "h2">({
   as,
   href,
   children,
 }: Omit<React.ComponentPropsWithoutRef<T>, "as" | "href"> & {
   as?: T;
   href?: string;
-}) {
+}) => {
   const Component = as ?? "h2";
 
   return (
@@ -65,31 +61,23 @@ Card.Title = function CardTitle<T extends React.ElementType = "h2">({
   );
 };
 
-Card.Description = function CardDescription({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <p className="relative z-10 mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-      {children}
-    </p>
-  );
-};
+Card.Description = ({ children }: { children: React.ReactNode }) => (
+  <p className="relative z-10 mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+    {children}
+  </p>
+);
 
-Card.Cta = function CardCta({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      aria-hidden="true"
-      className="relative z-10 mt-4 flex items-center text-sm font-medium text-blue-500"
-    >
-      {children}
-      <ChevronRightIcon className="ml-1 h-4 w-4 stroke-current" />
-    </div>
-  );
-};
+Card.Cta = ({ children }: { children: React.ReactNode }) => (
+  <div
+    aria-hidden="true"
+    className="relative z-10 mt-4 flex items-center text-sm font-medium text-blue-500"
+  >
+    {children}
+    <ChevronRightIcon className="ml-1 h-4 w-4 stroke-current" />
+  </div>
+);
 
-Card.Eyebrow = function CardEyebrow<T extends React.ElementType = "p">({
+Card.Eyebrow = <T extends React.ElementType = "p">({
   as,
   decorate = false,
   className,
@@ -98,7 +86,7 @@ Card.Eyebrow = function CardEyebrow<T extends React.ElementType = "p">({
 }: Omit<React.ComponentPropsWithoutRef<T>, "as" | "decorate"> & {
   as?: T;
   decorate?: boolean;
-}) {
+}) => {
   const Component = as ?? "p";
 
   return (

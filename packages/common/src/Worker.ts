@@ -1,172 +1,184 @@
-import { assert } from "./Assert.js";
-import { createTransferableError, TransferableError } from "./Error.js";
+/**
+ * Platform-agnostic Worker and MessageChannel abstractions.
+ *
+ * @module
+ */
 
-/** Cross-platform worker abstraction. */
-export interface Worker<Input, Output> {
-  /** Sends a message to the worker. */
-  readonly postMessage: (message: Input) => void;
+import type { Brand } from "./Brand.js";
+import type { GlobalErrorScope } from "./Error.js";
 
-  /** Sets a callback for messages from the worker. */
-  readonly onMessage: (callback: (message: Output) => void) => void;
-}
+/**
+ * Platform-agnostic Worker.
+ *
+ * Initialization errors (script load failures, syntax errors) bubble to global
+ * error handlers — they're programming errors, not recoverable runtime
+ * conditions.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Worker
+ */
+export interface Worker<Input, Output = never> extends MessagePort<
+  Input,
+  Output
+> {}
 
-export interface WorkerPostMessageDep<Output> {
-  readonly postMessage: (message: Output) => void;
+/**
+ * Platform-agnostic SharedWorker.
+ *
+ * A shared worker is shared across multiple clients (tabs, windows, iframes)
+ * and provides a port for bidirectional communication with each client.
+ *
+ * Initialization errors (script load failures, syntax errors) bubble to global
+ * error handlers — they're programming errors, not recoverable runtime
+ * conditions.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/SharedWorker
+ */
+export interface SharedWorker<Input, Output = never> extends Disposable {
+  /** Port for communicating with the shared worker. */
+  readonly port: MessagePort<Input, Output>;
 }
 
 /**
- * Error reporting wrapper that catches synchronous errors in handlers and
- * converts them to transferable error messages sent to the main thread.
+ * Platform-agnostic MessagePort.
+ *
+ * Message deserialization errors (structured clone failures) bubble to global
+ * error handlers — they're programming errors, not recoverable runtime
+ * conditions.
+ *
+ * Note: There is no reliable way to detect when a port is closed or
+ * disconnected. Calling `postMessage` on a disposed port does not throw — it
+ * silently fails. To detect dead ports, use a heartbeat pattern where the other
+ * end periodically sends "alive" messages and stale ports are pruned after a
+ * timeout.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/MessagePort
  */
-export type WithErrorReporting = <A extends Array<any>>(
-  handler: (...args: A) => void,
-) => (...args: A) => void;
-
-type HasInit<Input> =
-  Extract<Input, { type: "init" }> extends never
-    ? ["Input must contain a variant with { type: 'init' }"]
-    : unknown;
-
-type HasWorkerErrorOutput<T> =
-  Extract<T, { type: "onError" }> extends infer E
-    ? [E] extends [never]
-      ? [
-          "Output must contain { type: 'onError'; error: TransferableError | ... }",
-        ]
-      : E extends { error: infer Err }
-        ? TransferableError extends Err
-          ? unknown
-          : ["Output.onError.error must include TransferableError"]
-        : ["Output.onError must have an error property"]
-    : never;
-
-/**
- * Creates a {@link Worker} that supports initialization with dependencies and
- * safe error handling.
- */
-export const createInitializedWorker = <
-  Input extends { readonly type: string } & HasInit<Input>,
-  Output extends { readonly type: string } & HasWorkerErrorOutput<Output>,
-  Deps,
->({
-  init,
-  onMessage,
-}: {
-  readonly init: (
-    initMessage: Extract<Input, { type: "init" }>,
-    postMessage: (msg: Output) => void,
-    withErrorReporting: WithErrorReporting,
-  ) => Promise<Deps | null>;
-  readonly onMessage: (
-    deps: Deps,
-  ) => (message: Exclude<Input, { type: "init" }>) => void;
-}): Worker<Input, Output> => {
-  type NonInitMessage = Exclude<Input, { type: "init" }>;
-
-  let onMessageCallback: ((msg: Output) => void) | null = null;
-  let deps: Deps | null = null;
-  const pendingMessages: Array<Input> = [];
-  let initializing = false;
-
-  const postMessage = (msg: Output) => {
-    assert(onMessageCallback != null, "The onMessage wasn't set");
-    onMessageCallback(msg);
-  };
-
-  const postMessageTransferableError = (error: unknown) => {
-    postMessage({
-      type: "onError",
-      error: createTransferableError(error),
-    } as unknown as Output);
-  };
+export interface MessagePort<Input, Output = never> extends Disposable {
+  /**
+   * Sends a message.
+   *
+   * Transferable objects in the optional transfer array will have their
+   * ownership transferred to the receiver, making them unusable in the sender.
+   * The transferable objects must be reachable from the message object.
+   */
+  readonly postMessage: (
+    message: Input,
+    transfer?: ReadonlyArray<Transferable>,
+  ) => void;
 
   /**
-   * Wraps function to catch errors and send them to the main thread instead of
-   * crashing the worker.
+   * Callback for messages from the port (like `onmessage` on MessagePort).
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/MessagePort/message_event
    */
-  const withErrorReporting =
-    <A extends Array<any>>(handler: (...args: A) => void) =>
-    (...args: A) => {
-      try {
-        handler(...args);
-      } catch (error) {
-        postMessageTransferableError(error);
-      }
-    };
+  onMessage: ((message: Output) => void) | null;
 
-  const worker: Worker<Input, Output> = {
-    postMessage: (message) => {
-      if (message.type !== "init") {
-        if (!deps) {
-          pendingMessages.push(message);
-        } else {
-          withErrorReporting(onMessage(deps))(message as NonInitMessage);
-        }
-        return;
-      }
+  /** The native underlying port. Use this only for transferring via postMessage. */
+  readonly native: NativeMessagePort;
+}
 
-      if (initializing) return;
-      initializing = true;
-
-      init(
-        message as Extract<Input, { type: "init" }>,
-        postMessage,
-        withErrorReporting,
-      )
-        .then((_deps) => {
-          if (_deps == null) return;
-          deps = _deps;
-          for (const message of pendingMessages) {
-            withErrorReporting(onMessage(deps))(message as NonInitMessage);
-          }
-          pendingMessages.length = 0;
-        })
-        .catch(postMessageTransferableError);
-    },
-
-    onMessage: (callback) => {
-      onMessageCallback = callback;
-    },
-  };
-
-  return worker;
-};
-
-/** Type helper to extract message types from a union type */
-export type MessageHandlers<Input extends { readonly type: string }, Deps> = {
-  readonly [K in Input["type"]]: (
-    deps: Deps,
-  ) => (message: Extract<Input, { type: K }>) => void;
-};
+export type Transferable = NativeMessagePort | ArrayBuffer;
 
 /**
- * Creates a {@link Worker} with type-safe message handlers for each message
- * type. This provides better type safety and organization compared to a single
- * onMessage handler.
+ * Opaque type for platform-specific native MessagePort.
+ *
+ * Exists because `postMessage` transfer requires the native object itself, not
+ * a wrapper. Ensures type-safe wiring between {@link MessagePort.native} and
+ * {@link CreateMessagePort} without exposing platform details.
  */
-export const createInitializedWorkerWithHandlers = <
-  Input extends { readonly type: string } & HasInit<Input>,
-  Output extends { readonly type: string } & HasWorkerErrorOutput<Output>,
-  Deps,
->({
-  init,
-  handlers,
-}: {
-  readonly init: (
-    initMessage: Extract<Input, { type: "init" }>,
-    postMessage: (msg: Output) => void,
-    withErrorReporting: WithErrorReporting,
-  ) => Promise<Deps | null>;
-  readonly handlers: Omit<MessageHandlers<Input, Deps>, "init">;
-}): Worker<Input, Output> =>
-  createInitializedWorker({
-    init,
-    onMessage: (deps) => (message) => {
-      type NonInitMessageType = Exclude<Input["type"], "init">;
-      const messageType = message.type as NonInitMessageType;
-      const handler = handlers[messageType];
+export type NativeMessagePort = Brand<"NativeMessagePort">;
 
-      // TypeScript knows handler exists because handlers covers all non-init message types
-      handler(deps)(message as Extract<Input, { type: typeof messageType }>);
-    },
-  });
+/** Factory function to create a {@link MessagePort} from a native port. */
+export type CreateMessagePort = <Input, Output = never>(
+  nativePort: NativeMessagePort,
+) => MessagePort<Input, Output>;
+
+export interface CreateMessagePortDep {
+  readonly createMessagePort: CreateMessagePort;
+}
+
+/**
+ * Platform-agnostic MessageChannel.
+ *
+ * A channel creates two entangled ports: keep one and transfer the other (e.g.,
+ * to a SharedWorker via `postMessage` with `transfer`). Messages sent to one
+ * port are received by the other.
+ *
+ * For one-way communication, omit `Output` (defaults to `never`).
+ *
+ * ### Example
+ *
+ * One-way error channel: worker sends errors, main thread receives them.
+ *
+ * Main thread:
+ *
+ * ```ts
+ * const errorChannel = createMessageChannel<UnknownError>();
+ * const errorStore = createStore<UnknownError | null>(null);
+ *
+ * sharedWorker.port.postMessage(
+ *   { type: "initErrorStore", port: errorChannel.port1.native },
+ *   [errorChannel.port1.native], // transfer ownership to worker
+ * );
+ *
+ * errorChannel.port2.onMessage = (error) => {
+ *   errorStore.set(error);
+ * };
+ * ```
+ *
+ * Inside worker:
+ *
+ * ```ts
+ * scope.onError = (error) => {
+ *   errorPort.postMessage(error);
+ * };
+ * ```
+ *
+ * Bidirectional channel (both sides send and receive):
+ *
+ * ```ts
+ * const channel = createMessageChannel<Request, Response>();
+ * ```
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/MessageChannel
+ */
+export interface MessageChannel<Input, Output = never> extends Disposable {
+  /** The first port of the channel. */
+  readonly port1: MessagePort<Input, Output>;
+
+  /** The second port of the channel. */
+  readonly port2: MessagePort<Output, Input>;
+}
+
+/** Factory function to create a {@link MessageChannel}. */
+export type CreateMessageChannel = <Input, Output = never>() => MessageChannel<
+  Input,
+  Output
+>;
+
+export interface CreateMessageChannelDep {
+  readonly createMessageChannel: CreateMessageChannel;
+}
+
+// Worker-side types (for code running inside workers)
+
+/**
+ * Typed scope for code running inside a dedicated worker.
+ *
+ * This is the worker-side counterpart to {@link Worker} — a typed
+ * {@link MessagePort} combined with {@link GlobalErrorScope} that wraps `self`
+ * inside the worker.
+ */
+export interface WorkerScope<Input, Output = never>
+  extends MessagePort<Output, Input>, GlobalErrorScope {}
+
+/**
+ * Typed scope for code running inside a shared worker.
+ *
+ * This is the worker-side counterpart to {@link SharedWorker}. It wraps `self`
+ * inside the shared worker, providing typed `onConnect` callbacks.
+ */
+export interface SharedWorkerScope<Input, Output = never>
+  extends GlobalErrorScope, Disposable {
+  onConnect: ((port: MessagePort<Output, Input>) => void) | null;
+}

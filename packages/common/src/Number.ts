@@ -1,9 +1,22 @@
-import { NonEmptyReadonlyArray } from "./Array.js";
+/**
+ * Number arithmetic, comparison, and branded numeric types.
+ *
+ * @module
+ */
+
+import type { NonEmptyReadonlyArray } from "./Array.js";
 import { assertNonEmptyReadonlyArray } from "./Assert.js";
-import { err, ok, Result } from "./Result.js";
-import { NonNegativeInt, PositiveInt } from "./Type.js";
-import { IntentionalNever, Predicate, WidenLiteral } from "./Types.js";
-import { IsBranded } from "./Brand.js";
+import type { IsBranded } from "./Brand.js";
+import type { Result } from "./Result.js";
+import { err, ok } from "./Result.js";
+import {
+  brand,
+  lessThanOrEqualTo,
+  minPositiveInt,
+  NonNegativeInt,
+  PositiveInt,
+} from "./Type.js";
+import type { Predicate, WidenLiteral } from "./Types.js";
 
 export const increment = (n: number): number => n + 1;
 
@@ -35,13 +48,13 @@ export const isBetween =
 export const min = <T extends number>(
   ...values: [T, ...ReadonlyArray<T>]
 ): IsBranded<T> extends true ? T : WidenLiteral<T> =>
-  values.reduce((a, b) => (a < b ? a : b)) as IntentionalNever;
+  values.reduce((a, b) => (a < b ? a : b)) as never;
 
 /** Returns the maximum value, preserving branded type if applicable. */
 export const max = <T extends number>(
   ...values: [T, ...ReadonlyArray<T>]
 ): IsBranded<T> extends true ? T : WidenLiteral<T> =>
-  values.reduce((a, b) => (a > b ? a : b)) as IntentionalNever;
+  values.reduce((a, b) => (a > b ? a : b)) as never;
 
 /**
  * Divides items into buckets as evenly as possible, ensuring each bucket has at
@@ -83,4 +96,24 @@ export const computeBalancedBuckets = (
 
   assertNonEmptyReadonlyArray(indexes);
   return ok(indexes);
+};
+
+/**
+ * Valid index for {@link fibonacciAt}, constrained to 1-78.
+ *
+ * Limited to 78 because F(79) exceeds JavaScript's `MAX_SAFE_INTEGER`.
+ */
+export const FibonacciIndex = brand(
+  "FibonacciIndex",
+  lessThanOrEqualTo(78)(PositiveInt),
+);
+export type FibonacciIndex = typeof FibonacciIndex.Type;
+
+/** Returns the Fibonacci number at the given index (1-indexed: 1,1,2,3,5,8,...). */
+export const fibonacciAt = (index: FibonacciIndex): PositiveInt => {
+  if (index <= 2) return minPositiveInt;
+  let a = 1;
+  let b = 1;
+  for (let i = 3; i <= index; i++) [a, b] = [b, a + b];
+  return PositiveInt.orThrow(b);
 };

@@ -1,9 +1,14 @@
 /**
- * Console abstraction for Chrome 123+, Firefox 125+, Safari 18.1+, Node.js
- * 22.x+, and React Native 0.75+. Includes methods guaranteed to be available in
- * these environments and expected to remain compatible in future versions.
- * Output formatting may vary (e.g., interactive UI in browsers vs. text in
- * Node.js/React Native), but functionality is consistent across platforms.
+ * Platform-agnostic Console.
+ *
+ * @module
+ */
+
+/**
+ * Includes methods guaranteed to be available in these environments and
+ * expected to remain compatible in future versions. Output formatting may vary
+ * (e.g., interactive UI in browsers vs. text in Node.js/React Native), but
+ * functionality is consistent across platforms.
  *
  * **Convention**: Use a tag (e.g., `[db]`) as the first argument for log
  * filtering.
@@ -14,7 +19,7 @@
  * deps.console.log("[evolu]", "createEvoluInstance", { name });
  * ```
  *
- * **Tip**: In browser dev tools, you can filter logs by tag (e.g., `[db]`) to
+ * **Tip**: In browser dev tools, we can filter logs by tag (e.g., `[db]`) to
  * quickly find relevant messages. In Node.js, use `grep` to filter output:
  *
  * ```bash
@@ -227,4 +232,100 @@ export const createConsoleWithTime = (
   console.trace = withTimestamp(console.trace);
 
   return console;
+};
+
+/**
+ * A test console that captures all console output for snapshot testing.
+ *
+ * Use this as a drop-in replacement for `createConsole` in tests where you want
+ * to capture and verify console output.
+ */
+export interface TestConsole extends Console {
+  /** Gets all captured console logs. Clears the captured logs after returning. */
+  readonly getLogsSnapshot: () => ReadonlyArray<Array<unknown>>;
+
+  /** Clears all captured logs. */
+  readonly clearLogs: () => void;
+}
+
+/**
+ * Creates a test console that captures all console output for testing.
+ *
+ * ### Example
+ *
+ * ```ts
+ * test("console output", () => {
+ *   const testConsole = testCreateConsole();
+ *
+ *   // Use it in place of createConsole()
+ *   const deps = { console: testConsole };
+ *
+ *   // ... run code that logs to console
+ *
+ *   expect(testConsole.getLogsSnapshot()).toMatchInlineSnapshot();
+ * });
+ * ```
+ */
+export const testCreateConsole = (): TestConsole => {
+  const logs: Array<Array<unknown>> = [];
+
+  return {
+    enabled: true,
+
+    log: (...args) => {
+      logs.push(args);
+    },
+    info: (...args) => {
+      logs.push(args);
+    },
+    warn: (...args) => {
+      logs.push(args);
+    },
+    error: (...args) => {
+      logs.push(args);
+    },
+    debug: (...args) => {
+      logs.push(args);
+    },
+    time: (label) => {
+      logs.push(["time", label]);
+    },
+    timeLog: (label, ...data) => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      logs.push(["timeLog", label, ...data]);
+    },
+    timeEnd: (label) => {
+      logs.push(["timeEnd", label]);
+    },
+    dir: (object, options) => {
+      logs.push(["dir", object, options]);
+    },
+    table: (tabularData, properties) => {
+      logs.push(["table", tabularData, properties]);
+    },
+    count: (label) => {
+      logs.push(["count", label]);
+    },
+    countReset: (label) => {
+      logs.push(["countReset", label]);
+    },
+    assert: (value, message, ...optionalParams) => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      logs.push(["assert", value, message, ...optionalParams]);
+    },
+    trace: (message, ...optionalParams) => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      logs.push(["trace", message, ...optionalParams]);
+    },
+
+    getLogsSnapshot: () => {
+      const snapshot = [...logs];
+      logs.length = 0;
+      return snapshot;
+    },
+
+    clearLogs: () => {
+      logs.length = 0;
+    },
+  };
 };
